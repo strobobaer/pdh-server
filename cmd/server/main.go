@@ -17,6 +17,7 @@ import (
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
+	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
@@ -29,13 +30,13 @@ import (
 
 func main() {
 	cfg, err := config.Load()
-	if err != nil { fmt.Fprintf(os.Stderr, "config fehler: %v\n", err); os.Exit(1) }
+	if err != nil { fmt.Fprintf(os.Stderr, "config: %v\n", err); os.Exit(1) }
 
 	logger.Init(cfg.Server.Env)
 	log.Info().Str("env", cfg.Server.Env).Msg("PDH startet")
 
 	db, err := database.New(&cfg.Database)
-	if err != nil { log.Fatal().Err(err).Msg("datenbank fehler") }
+	if err != nil { log.Fatal().Err(err).Msg("datenbank") }
 	defer db.Close()
 	log.Info().Msg("datenbank verbunden")
 
@@ -44,29 +45,26 @@ func main() {
 	userHandler := users.NewHandler(userSvc)
 
 	shiftRepo    := shifts.NewRepository(db.Pool)
-	shiftSvc     := shifts.NewService(shiftRepo)
-	shiftHandler := shifts.NewHandler(shiftSvc)
+	shiftHandler := shifts.NewHandler(shifts.NewService(shiftRepo))
 
 	infraRepo    := infrastructure.NewRepository(db.Pool)
-	infraSvc     := infrastructure.NewService(infraRepo)
-	infraHandler := infrastructure.NewHandler(infraSvc)
+	infraHandler := infrastructure.NewHandler(infrastructure.NewService(infraRepo))
 
 	ticketRepo    := tickets.NewRepository(db.Pool)
-	ticketSvc     := tickets.NewService(ticketRepo)
-	ticketHandler := tickets.NewHandler(ticketSvc)
+	ticketHandler := tickets.NewHandler(tickets.NewService(ticketRepo))
 
 	faultRepo    := faults.NewRepository(db.Pool)
 	copilot      := faults.NewCopilot(cfg.Copilot.AnthropicKey, cfg.Copilot.OllamaURL, cfg.Copilot.Model, faultRepo)
-	faultSvc     := faults.NewService(faultRepo, copilot)
-	faultHandler := faults.NewHandler(faultSvc)
+	faultHandler := faults.NewHandler(faults.NewService(faultRepo, copilot))
 
 	timeRepo    := timetracking.NewRepository(db.Pool)
-	timeSvc     := timetracking.NewService(timeRepo)
-	timeHandler := timetracking.NewHandler(timeSvc)
+	timeHandler := timetracking.NewHandler(timetracking.NewService(timeRepo))
 
 	maintRepo    := maintenance.NewRepository(db.Pool)
-	maintSvc     := maintenance.NewService(maintRepo)
-	maintHandler := maintenance.NewHandler(maintSvc)
+	maintHandler := maintenance.NewHandler(maintenance.NewService(maintRepo))
+
+	invRepo    := inventory.NewRepository(db.Pool)
+	invHandler := inventory.NewHandler(inventory.NewService(invRepo))
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
@@ -76,8 +74,8 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, map[string]interface{}{
 			"service": "PDH – Prozess Data Hub",
-			"version": "0.6.0",
-			"modules": []string{"users","shifts","infrastructure","tickets","faults","timetracking","maintenance"},
+			"version": "0.7.0",
+			"modules": []string{"users","shifts","infrastructure","tickets","faults","timetracking","maintenance","inventory"},
 			"copilot": copilot.Info(),
 		})
 	})
@@ -86,7 +84,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(ctx); err != nil { http.Error(w, "db error", 503); return }
-		w.Write([]byte(`{"status":"ok","service":"pdh"}`))
+		w.Write([]byte(`{"status":"ok","service":"pdh","version":"0.7.0"}`))
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -97,6 +95,7 @@ func main() {
 		r.Mount("/faults",         faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time",           timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance",    maintHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/inventory",      invHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
