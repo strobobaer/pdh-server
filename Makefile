@@ -1,4 +1,4 @@
-.PHONY: run build tidy deploy push migrate test
+.PHONY: run build tidy deploy push
 
 run:
 	go run ./cmd/server/...
@@ -15,13 +15,6 @@ deploy: build
 	@sudo systemctl status pdh --no-pager -l | head -8
 
 push:
-	git push origin main
-	git push gitea main
+	git push origin main --force
+	git push gitea main --force
 	@echo "✅ GitHub + Gitea aktualisiert"
-
-migrate:
-	psql -U $$PDH_DATABASE_USER -d $$PDH_DATABASE_NAME \
-	  -h $$PDH_DATABASE_HOST -W -f migrations/004_timetracking.up.sql
-
-test:
-	go test ./...

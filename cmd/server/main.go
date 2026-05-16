@@ -13,6 +13,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
 
+	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
@@ -52,6 +53,11 @@ func main() {
 	shiftSvc := shifts.NewService(shiftRepo)
 	shiftHandler := shifts.NewHandler(shiftSvc)
 
+	// Core: Infrastruktur
+	infraRepo := infrastructure.NewRepository(db.Pool)
+	infraSvc := infrastructure.NewService(infraRepo)
+	infraHandler := infrastructure.NewHandler(infraSvc)
+
 	// Modul: Tickets
 	ticketRepo := tickets.NewRepository(db.Pool)
 	ticketSvc := tickets.NewService(ticketRepo)
@@ -79,9 +85,9 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, map[string]interface{}{
 			"service": "PDH – Prozess Data Hub",
-			"version": "0.4.0",
+			"version": "0.5.0",
 			"status":  "running",
-			"modules": []string{"users", "shifts", "tickets", "faults", "timetracking"},
+			"modules": []string{"users", "shifts", "infrastructure", "tickets", "faults", "timetracking"},
 			"copilot": copilot.Info(),
 		})
 	})
@@ -97,18 +103,20 @@ func main() {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Mount("/users",        userHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/shifts",       shiftHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/tickets",      ticketHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/faults",       faultHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/time",         timeHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/users",          userHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/shifts",         shiftHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/tickets",        ticketHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/faults",         faultHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/time",           timeHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr: addr, Handler: r,
-		ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second,
-		IdleTimeout: 60 * time.Second,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	quit := make(chan os.Signal, 1)
