@@ -17,6 +17,7 @@ import (
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tickets"
+	"pdh/internal/modules/timetracking"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 	"pdh/pkg/logger"
@@ -62,9 +63,13 @@ func main() {
 	faultSvc := faults.NewService(faultRepo, copilot)
 	faultHandler := faults.NewHandler(faultSvc)
 
+	// Modul: Zeiterfassung
+	timeRepo := timetracking.NewRepository(db.Pool)
+	timeSvc := timetracking.NewService(timeRepo)
+	timeHandler := timetracking.NewHandler(timeSvc)
+
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
-	// Router
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RequestID)
@@ -74,9 +79,9 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, map[string]interface{}{
 			"service": "PDH – Prozess Data Hub",
-			"version": "0.3.0",
+			"version": "0.4.0",
 			"status":  "running",
-			"modules": []string{"users", "shifts", "tickets", "faults"},
+			"modules": []string{"users", "shifts", "tickets", "faults", "timetracking"},
 			"copilot": copilot.Info(),
 		})
 	})
@@ -92,19 +97,18 @@ func main() {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Mount("/users",   userHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/shifts",  shiftHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/faults",  faultHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/users",        userHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/shifts",       shiftHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/tickets",      ticketHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/faults",       faultHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/time",         timeHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr: addr, Handler: r,
+		ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second,
+		IdleTimeout: 60 * time.Second,
 	}
 
 	quit := make(chan os.Signal, 1)

@@ -21,7 +21,7 @@ push:
 
 migrate:
 	psql -U $$PDH_DATABASE_USER -d $$PDH_DATABASE_NAME \
-	  -h $$PDH_DATABASE_HOST -W -f migrations/003_shifts_schema.up.sql
+	  -h $$PDH_DATABASE_HOST -W -f migrations/004_timetracking.up.sql
 
 test:
 	go test ./...
