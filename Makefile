@@ -1,4 +1,4 @@
-.PHONY: run build tidy deploy migrate test
+.PHONY: run build tidy deploy push migrate test
 
 run:
 	go run ./cmd/server/...
@@ -11,13 +11,17 @@ tidy:
 
 deploy: build
 	sudo systemctl restart pdh
-	@echo "✅ PDH deployed"
-	@sudo systemctl status pdh --no-pager -l | head -10
+	@sleep 2
+	@sudo systemctl status pdh --no-pager -l | head -8
+
+push:
+	git push origin main
+	git push gitea main
+	@echo "✅ GitHub + Gitea aktualisiert"
 
 migrate:
 	psql -U $$PDH_DATABASE_USER -d $$PDH_DATABASE_NAME \
-	  -h $$PDH_DATABASE_HOST -W \
-	  -f migrations/002_faults_schema.up.sql
+	  -h $$PDH_DATABASE_HOST -W -f migrations/003_shifts_schema.up.sql
 
 test:
 	go test ./...

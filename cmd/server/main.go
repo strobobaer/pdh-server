@@ -13,6 +13,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
 
+	"pdh/internal/core/shifts"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tickets"
@@ -45,26 +46,23 @@ func main() {
 	userSvc := users.NewService(userRepo, cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
 	userHandler := users.NewHandler(userSvc)
 
+	// Core: Schichtplanung
+	shiftRepo := shifts.NewRepository(db.Pool)
+	shiftSvc := shifts.NewService(shiftRepo)
+	shiftHandler := shifts.NewHandler(shiftSvc)
+
 	// Modul: Tickets
 	ticketRepo := tickets.NewRepository(db.Pool)
 	ticketSvc := tickets.NewService(ticketRepo)
 	ticketHandler := tickets.NewHandler(ticketSvc)
 
-	// Modul: Störungserfassung + Copilot
+	// Modul: Störungserfassung
 	faultRepo := faults.NewRepository(db.Pool)
-	copilot := faults.NewCopilot(
-		cfg.Copilot.AnthropicKey,
-		cfg.Copilot.OllamaURL,
-		cfg.Copilot.Model,
-		faultRepo,
-	)
+	copilot := faults.NewCopilot(cfg.Copilot.AnthropicKey, cfg.Copilot.OllamaURL, cfg.Copilot.Model, faultRepo)
 	faultSvc := faults.NewService(faultRepo, copilot)
 	faultHandler := faults.NewHandler(faultSvc)
 
-	log.Info().
-		Str("backend", cfg.Copilot.Backend).
-		Str("model", cfg.Copilot.Model).
-		Msg("copilot bereit")
+	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
 	// Router
 	r := chi.NewRouter()
@@ -76,8 +74,9 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, map[string]interface{}{
 			"service": "PDH – Prozess Data Hub",
-			"version": "0.2.0",
+			"version": "0.3.0",
 			"status":  "running",
+			"modules": []string{"users", "shifts", "tickets", "faults"},
 			"copilot": copilot.Info(),
 		})
 	})
@@ -93,9 +92,10 @@ func main() {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Mount("/users", userHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/users",   userHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/shifts",  shiftHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/faults", faultHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/faults",  faultHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -121,8 +121,6 @@ func main() {
 	log.Info().Msg("server wird gestoppt...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("shutdown fehler")
-	}
+	srv.Shutdown(ctx)
 	log.Info().Msg("server gestoppt")
 }
