@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rs/zerolog/log"
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
@@ -195,7 +194,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Put("/tickets/{id}/status", h.UpdateTicketStatus)
 	r.Get("/faults", h.Faults)
 	r.Post("/faults", h.CreateFault)
+	r.Get("/faults/{id}", h.FaultDetail)
 	r.Post("/faults/{id}/analyze", h.AnalyzeFault)
+	r.Post("/faults/{id}/resolve", h.FaultResolve)
+	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
 	r.Get("/maintenance", h.Maintenance)
@@ -222,20 +224,15 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()
 	if err != nil { http.Error(w, err.Error(), 500); return }
-	files := []string{"web/templates/" + tmpl + ".gohtml"}
 	if tmpl == "login" {
-		// Login hat kein base - direkt rendern
-		lt, _ := t.ParseFiles(files...)
-		if err := lt.ExecuteTemplate(w, "login.gohtml", data); err != nil {
-			http.Error(w, "Login: "+err.Error(), 500)
-		}
+		lt, _ := t.ParseFiles("web/templates/login.gohtml")
+		lt.ExecuteTemplate(w, "login.gohtml", data)
 		return
 	}
-	if _, err2 := t.ParseFiles(files...); err2 != nil {
+	if _, err2 := t.ParseFiles("web/templates/" + tmpl + ".gohtml"); err2 != nil {
 		http.Error(w, "Parse: "+err2.Error(), 500); return
 	}
 	if err3 := t.ExecuteTemplate(w, "base", data); err3 != nil {
-		log.Error().Err(err3).Str("template", tmpl).Msg("template error")
 		http.Error(w, "Template-Fehler: "+err3.Error(), 500)
 	}
 }
@@ -651,4 +648,119 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// ── Fault Detail ─────────────────────────────────────────────
+
+type FaultDetailData struct {
+	BaseData
+	Fault        FaultDetailView
+	Analysis     *faults.CopilotAnalysis
+	TimeEntries  []*timetracking.TimeEntry
+	RunningTime  *timetracking.TimeEntry
+	SimilarFaults []SimilarFaultView
+}
+
+type FaultDetailView struct {
+	ID          string
+	Title       string
+	Description string
+	Symptoms    []string
+	Status      string
+	StatusLabel string
+	StatusClass string
+	Severity    string
+	SeverityClass string
+	InfraName   string
+	DetectedAgo string
+	Resolution  string
+	RootCause   string
+}
+
+type SimilarFaultView struct {
+	ID         string
+	Title      string
+	Resolution string
+}
+
+func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	fault, err := h.faults.GetByID(ctx, id)
+	if err != nil {
+		http.Redirect(w, r, "/faults", http.StatusFound)
+		return
+	}
+
+	u := getUser(r)
+	data := FaultDetailData{
+		BaseData: BaseData{
+			Title: fault.Title, Page: "faults",
+			ContextTitle: "Ähnliche Störungen",
+			UserName: u.FirstName + " " + u.LastName,
+			UserFirstName: u.FirstName, UserLastName: u.LastName,
+			FaultID: id,
+		},
+		Fault: FaultDetailView{
+			ID: fault.ID, Title: fault.Title,
+			Description: fault.Description,
+			Symptoms: fault.Symptoms,
+			Status: string(fault.Status),
+			StatusLabel: statusLabel(string(fault.Status)),
+			StatusClass: statusClass(string(fault.Status)),
+			Severity: string(fault.Severity),
+			SeverityClass: severityClass(string(fault.Severity)),
+			DetectedAgo: timeAgo(fault.DetectedAt),
+		},
+	}
+	if fault.Resolution != nil { data.Fault.Resolution = *fault.Resolution }
+	if fault.RootCause != nil  { data.Fault.RootCause = *fault.RootCause }
+
+	// Analyse laden
+	if a, err := h.faults.GetAnalysis(ctx, id); err == nil {
+		data.Analysis = a
+		for _, s := range a.SimilarFaults {
+			data.SimilarFaults = append(data.SimilarFaults, SimilarFaultView{
+				ID: s.ID, Title: s.Title, Resolution: s.Resolution,
+			})
+		}
+	}
+
+	// Zeiteinträge
+	if entries, err := h.time.ListByRef(ctx, timetracking.RefFault, id); err == nil {
+		data.TimeEntries = entries
+	}
+
+	// Läuft gerade?
+	if running, err := h.time.GetRunning(ctx, u.ID); err == nil && running != nil {
+		data.RunningTime = running
+	}
+
+	h.render(w, "fault_detail", data)
+}
+
+func (h *Handler) FaultResolve(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	h.faults.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"))
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Störung gelöst! <a href="/faults" style="color:var(--accent)">Zurück zur Liste</a></div>`)
+}
+
+func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+	in := &timetracking.CreateEntryInput{
+		RefType:     timetracking.RefFault,
+		RefID:       id,
+		Description: "Entstörung vor Ort",
+	}
+	entry, err := h.time.Start(r.Context(), in, u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-top:8px">Fehler: `+err.Error()+`</div>`)
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: `+entry.ID[:8]+`...)</div>`)
 }
