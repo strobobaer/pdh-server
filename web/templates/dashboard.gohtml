@@ -1,0 +1,111 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">Guten {{.Greeting}}, {{.UserFirstName}}</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
+</div>
+
+<div class="stats">
+  <div class="stat s-blue">
+    <div class="stat-label">Offene Tickets</div>
+    <div class="stat-val">{{.Stats.OpenTickets}}</div>
+    <div class="stat-sub">{{.Stats.CriticalTickets}} kritisch</div>
+  </div>
+  <div class="stat s-red">
+    <div class="stat-label">Störungen</div>
+    <div class="stat-val">{{.Stats.ActiveFaults}}</div>
+    <div class="stat-sub">{{.Stats.AnalyzingFaults}} analysiert</div>
+  </div>
+  <div class="stat s-amber">
+    <div class="stat-label">Wartung fällig</div>
+    <div class="stat-val">{{.Stats.MaintenanceDue}}</div>
+    <div class="stat-sub">diese Woche</div>
+  </div>
+  <div class="stat s-green">
+    <div class="stat-label">Lagerwert</div>
+    <div class="stat-val">{{.Stats.InventoryValue}}€</div>
+    <div class="stat-sub">{{.Stats.LowStock}} unter Mindest</div>
+  </div>
+</div>
+
+<div class="grid2">
+  <!-- Störungen -->
+  <div class="card">
+    <div class="card-title">
+      Aktive Störungen
+      <a href="/faults" class="card-action">alle anzeigen →</a>
+    </div>
+    {{if .Faults}}
+    {{range .Faults}}
+    <div class="li">
+      <div class="li-text">
+        <div class="li-title">{{.Title}}</div>
+        <div class="li-sub">{{.InfraName}} · {{.DetectedAgo}}</div>
+      </div>
+      <span class="badge {{.SeverityClass}}">{{.Severity}}</span>
+    </div>
+    {{end}}
+    {{else}}
+    <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine aktiven Störungen</div>
+    {{end}}
+  </div>
+
+  <!-- Schichtplan -->
+  <div class="card">
+    <div class="card-title">
+      Schichtplan KW {{.WeekNumber}}
+      <span style="font-size:11px;color:var(--muted)">{{.WeekRange}}</span>
+    </div>
+    {{if .WeekPlan}}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:5px">{{.UserFirstName}} {{.UserLastName}}</div>
+    <div class="shift-grid">
+      {{range .WeekDays}}
+      <div class="shift-day">
+        <div class="shift-day-name">{{.Short}}</div>
+        <div class="shift-pill {{.Class}}">{{.Label}}</div>
+      </div>
+      {{end}}
+    </div>
+    <div style="margin-top:10px;font-size:10px;color:var(--muted);display:flex;gap:10px">
+      <span style="color:#6ee7b7">■ Früh</span>
+      <span style="color:#fcd34d">■ Spät</span>
+      <span style="color:#a5b4fc">■ Nacht</span>
+    </div>
+    {{else}}
+    <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Schichten diese Woche</div>
+    {{end}}
+  </div>
+</div>
+
+<!-- Wartung heute -->
+<div class="card">
+  <div class="card-title">
+    Wartung fällig
+    <a href="/maintenance" class="card-action">alle anzeigen →</a>
+  </div>
+  {{if .MaintenanceDue}}
+  {{range .MaintenanceDue}}
+  <div class="li">
+    <div class="li-text">
+      <div class="li-title">{{.Title}}</div>
+      <div class="li-sub">{{.InfraName}} · ~{{.EstimatedMin}}min</div>
+    </div>
+    <span class="badge {{.PriorityClass}}">{{.Priority}}</span>
+  </div>
+  {{end}}
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Wartung fällig</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .OpenTickets}}
+<div class="act-item">
+  <div class="act-dot {{.PriorityDot}}"></div>
+  <div class="act-text">{{.Title}}</div>
+  <span class="badge {{.PriorityClass}}">{{.Priority}}</span>
+</div>
+{{end}}
+{{end}}

@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
+	"pdh/internal/web"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 	"pdh/pkg/logger"
@@ -40,51 +43,62 @@ func main() {
 	defer db.Close()
 	log.Info().Msg("datenbank verbunden")
 
+	// Services
 	userRepo    := users.NewRepository(db.Pool)
 	userSvc     := users.NewService(userRepo, cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
 	userHandler := users.NewHandler(userSvc)
 
 	shiftRepo    := shifts.NewRepository(db.Pool)
-	shiftHandler := shifts.NewHandler(shifts.NewService(shiftRepo))
+	shiftSvc     := shifts.NewService(shiftRepo)
+	shiftHandler := shifts.NewHandler(shiftSvc)
 
 	infraRepo    := infrastructure.NewRepository(db.Pool)
-	infraHandler := infrastructure.NewHandler(infrastructure.NewService(infraRepo))
+	infraSvc     := infrastructure.NewService(infraRepo)
+	infraHandler := infrastructure.NewHandler(infraSvc)
 
 	ticketRepo    := tickets.NewRepository(db.Pool)
-	ticketHandler := tickets.NewHandler(tickets.NewService(ticketRepo))
+	ticketSvc     := tickets.NewService(ticketRepo)
+	ticketHandler := tickets.NewHandler(ticketSvc)
 
 	faultRepo    := faults.NewRepository(db.Pool)
 	copilot      := faults.NewCopilot(cfg.Copilot.AnthropicKey, cfg.Copilot.OllamaURL, cfg.Copilot.Model, faultRepo)
-	faultHandler := faults.NewHandler(faults.NewService(faultRepo, copilot))
+	faultSvc     := faults.NewService(faultRepo, copilot)
+	faultHandler := faults.NewHandler(faultSvc)
 
 	timeRepo    := timetracking.NewRepository(db.Pool)
-	timeHandler := timetracking.NewHandler(timetracking.NewService(timeRepo))
+	timeSvc     := timetracking.NewService(timeRepo)
+	timeHandler := timetracking.NewHandler(timeSvc)
 
 	maintRepo    := maintenance.NewRepository(db.Pool)
-	maintHandler := maintenance.NewHandler(maintenance.NewService(maintRepo))
+	maintSvc     := maintenance.NewService(maintRepo)
+	maintHandler := maintenance.NewHandler(maintSvc)
 
 	invRepo    := inventory.NewRepository(db.Pool)
-	invHandler := inventory.NewHandler(inventory.NewService(invRepo))
+	invSvc     := inventory.NewService(invRepo)
+	invHandler := inventory.NewHandler(invSvc)
+
+	// Templates laden
+	tmplPath := filepath.Join("web", "templates", "base.gohtml")
+	tmpl, err := template.ParseGlob(tmplPath)
+	if err != nil {
+		log.Fatal().Err(err).Str("path", tmplPath).Msg("templates laden fehlgeschlagen")
+	}
+	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
+
+	// Web Handler
+	webHandler := web.NewHandler(tmpl, userSvc, shiftSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, timeSvc)
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer, chimw.RequestID, middleware.Logger, middleware.CORS)
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		response.JSON(w, http.StatusOK, map[string]interface{}{
-			"service": "PDH – Prozess Data Hub",
-			"version": "0.7.0",
-			"modules": []string{"users","shifts","infrastructure","tickets","faults","timetracking","maintenance","inventory"},
-			"copilot": copilot.Info(),
-		})
-	})
-
+	// API
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(ctx); err != nil { http.Error(w, "db error", 503); return }
-		w.Write([]byte(`{"status":"ok","service":"pdh","version":"0.7.0"}`))
+		w.Write([]byte(`{"status":"ok","service":"pdh","version":"0.8.0"}`))
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -98,9 +112,12 @@ func main() {
 		r.Mount("/inventory",      invHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
+	// Web UI
+	r.Mount("/", webHandler.Routes())
+
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{Addr: addr, Handler: r,
-		ReadTimeout: 15*time.Second, WriteTimeout: 120*time.Second, IdleTimeout: 60*time.Second}
+		ReadTimeout: 15*time.Second, WriteTimeout: 120*time.Second}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -111,9 +128,11 @@ func main() {
 		}
 	}()
 	<-quit
-	log.Info().Msg("server wird gestoppt...")
+	log.Info().Msg("PDH wird gestoppt...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
-	log.Info().Msg("server gestoppt")
+	log.Info().Msg("PDH gestoppt")
+
+	_ = response.JSON
 }

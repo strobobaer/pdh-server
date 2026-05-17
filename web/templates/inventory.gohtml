@@ -1,0 +1,82 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Ersatzteillager</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.Total}} Teile · Wert: {{.Stats.TotalValue}}€</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/inventory/book" class="btn"><i class="ti ti-arrows-exchange"></i>Buchen</a>
+    <button class="btn btn-primary" onclick="document.getElementById('new-part-form').style.display='block'"><i class="ti ti-plus"></i>Neues Teil</button>
+  </div>
+</div>
+
+<div class="stats" style="grid-template-columns:repeat(4,1fr)">
+  <div class="stat s-blue"><div class="stat-label">Gesamt</div><div class="stat-val">{{.Stats.Total}}</div></div>
+  <div class="stat s-amber"><div class="stat-label">Unter Mindest</div><div class="stat-val">{{.Stats.LowStock}}</div></div>
+  <div class="stat s-red"><div class="stat-label">Kritisch</div><div class="stat-val">{{.Stats.Critical}}</div></div>
+  <div class="stat s-green"><div class="stat-label">Lagerwert</div><div class="stat-val">{{.Stats.TotalValue}}€</div></div>
+</div>
+
+<div id="new-part-form" style="display:none" class="card">
+  <div class="card-title">Teil anlegen</div>
+  <form hx-post="/inventory" hx-target="#parts-table" hx-swap="outerHTML">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Teilenummer</label><input name="part_number" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Lagerort</label><input name="storage_location" class="form-input" placeholder="Lager A"></div>
+      <div class="form-group"><label class="form-label">Lagerplatz</label><input name="storage_place" class="form-input" placeholder="Regal 1 / Fach 2"></div>
+      <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" class="form-input" value="1"></div>
+      <div class="form-group"><label class="form-label">Anfangsbestand</label><input name="initial_stock" type="number" class="form-input" value="0"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-part-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Anlegen</button>
+    </div>
+  </form>
+</div>
+
+<div id="parts-table" class="card" style="padding:0">
+  <table>
+    <thead><tr><th>Teil</th><th>Lagerort</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .Parts}}
+    <tr>
+      <td>
+        <div style="font-weight:500">{{.Name}}</div>
+        <div style="font-size:11px;color:var(--muted)">{{.PartNumber}} · {{.Manufacturer}}</div>
+      </td>
+      <td style="font-size:12px;color:var(--muted)">{{.StorageLocation}}<br>{{.StoragePlace}}</td>
+      <td>
+        <div style="font-weight:500">{{.StockQty}} {{.Unit}}</div>
+        <div style="font-size:10px;color:var(--muted)">Min: {{.MinQty}}</div>
+      </td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td>
+        <button class="btn" style="font-size:11px;padding:4px 10px"
+          hx-get="/inventory/{{.ID}}/movements"
+          hx-target="#movements-{{.ID}}"
+          hx-swap="innerHTML">
+          <i class="ti ti-history"></i>
+        </button>
+      </td>
+    </tr>
+    <tr id="movements-{{.ID}}" style="display:none"><td colspan="5"></td></tr>
+    {{else}}
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{define "context-list"}}
+{{range .LowStockParts}}
+<div class="act-item">
+  <div class="act-dot {{.StatusDot}}"></div>
+  <div class="act-text">{{.Name}}</div>
+  <span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span>
+</div>
+{{end}}
+{{end}}

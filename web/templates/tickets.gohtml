@@ -1,0 +1,89 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Ticketmanagement</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Tickets · {{.Open}} offen</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('new-ticket-form').style.display='block'">
+    <i class="ti ti-plus"></i>Neues Ticket
+  </button>
+</div>
+
+<div id="new-ticket-form" style="display:none" class="card">
+  <div class="card-title">Ticket erstellen</div>
+  <form hx-post="/tickets" hx-target="#ticket-table" hx-swap="outerHTML">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Titel</label>
+        <input name="title" class="form-input" placeholder="Kurzbeschreibung" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Priorität</label>
+        <select name="priority" class="form-input">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Beschreibung</label>
+      <input name="description" class="form-input" placeholder="Details">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-ticket-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Erstellen</button>
+    </div>
+  </form>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:14px">
+  <a href="/tickets" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
+  <a href="/tickets?status=open" class="btn {{if eq .Filter "open"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Offen</a>
+  <a href="/tickets?status=in_progress" class="btn {{if eq .Filter "in_progress"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">In Arbeit</a>
+  <a href="/tickets?status=resolved" class="btn {{if eq .Filter "resolved"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Gelöst</a>
+</div>
+
+<div id="ticket-table" class="card" style="padding:0">
+  <table>
+    <thead><tr><th>Ticket</th><th>Priorität</th><th>Status</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
+    <tbody>
+    {{range .Tickets}}
+    <tr>
+      <td>
+        <div style="font-weight:500">{{.Title}}</div>
+        <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
+      </td>
+      <td><span class="badge {{.PriorityClass}}">{{.Priority}}</span></td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td style="font-size:11px;color:var(--muted)">{{.CreatedAgo}}</td>
+      <td>
+        <select class="form-input" style="font-size:11px;padding:4px 8px;width:auto"
+          hx-put="/tickets/{{.ID}}/status"
+          hx-trigger="change"
+          hx-target="closest tr">
+          <option value="open" {{if eq .Status "open"}}selected{{end}}>Offen</option>
+          <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>In Arbeit</option>
+          <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Gelöst</option>
+          <option value="closed" {{if eq .Status "closed"}}selected{{end}}>Geschlossen</option>
+        </select>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Tickets vorhanden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+{{define "context-list"}}
+{{range .CriticalTickets}}
+<div class="act-item">
+  <div class="act-dot d-red"></div>
+  <div class="act-text">{{.Title}}</div>
+  <span class="badge b-red">Krit</span>
+</div>
+{{end}}
+{{end}}

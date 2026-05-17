@@ -10,6 +10,6 @@ deploy: build
 	@sleep 2
 	@sudo systemctl status pdh --no-pager -l | head -8
 push:
-	git push origin main --force
-	git push gitea main --force
-	@echo "✅ GitHub + Gitea aktualisiert"
+	git push origin main 
+	git push gitea main 
+	@echo "GitHub + Gitea aktualisiert"

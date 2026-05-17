@@ -1,0 +1,108 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Störungserfassung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Störungen · {{.Open}} offen</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('new-fault-form').style.display='block'">
+    <i class="ti ti-plus"></i>Neue Störung
+  </button>
+</div>
+
+<!-- Neue Störung Form -->
+<div id="new-fault-form" style="display:none" class="card" style="margin-bottom:16px">
+  <div class="card-title">Störung erfassen <button onclick="document.getElementById('new-fault-form').style.display='none'" style="background:none;border:0;color:var(--muted);cursor:pointer;font-size:18px;margin-left:auto">×</button></div>
+  <form hx-post="/faults" hx-target="#faults-list" hx-swap="outerHTML">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Titel</label>
+        <input name="title" class="form-input" placeholder="Kurzbeschreibung" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Schweregrad</label>
+        <select name="severity" class="form-input">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Beschreibung</label>
+      <input name="description" class="form-input" placeholder="Detaillierte Beschreibung">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Symptome (kommagetrennt)</label>
+      <input name="symptoms" class="form-input" placeholder="Überhitzung, Lärm, Brandgeruch">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-fault-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Erfassen</button>
+    </div>
+  </form>
+</div>
+
+<!-- Filter -->
+<div style="display:flex;gap:8px;margin-bottom:14px">
+  <a href="/faults" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
+  <a href="/faults?status=detected" class="btn {{if eq .Filter "detected"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Erkannt</a>
+  <a href="/faults?status=in_progress" class="btn {{if eq .Filter "in_progress"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">In Bearbeitung</a>
+  <a href="/faults?status=resolved" class="btn {{if eq .Filter "resolved"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Gelöst</a>
+</div>
+
+<!-- Liste -->
+<div id="faults-list" class="card" style="padding:0">
+  <table>
+    <thead>
+      <tr>
+        <th>Störung</th>
+        <th>Schweregrad</th>
+        <th>Status</th>
+        <th>Erfasst</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .Faults}}
+    <tr>
+      <td>
+        <div style="font-weight:500">{{.Title}}</div>
+        <div style="font-size:11px;color:var(--muted)">{{.InfraName}}</div>
+      </td>
+      <td><span class="badge {{.SeverityClass}}">{{.Severity}}</span></td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td style="font-size:11px;color:var(--muted)">{{.DetectedAgo}}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <a href="/faults/{{.ID}}" class="btn" style="font-size:11px;padding:4px 10px"><i class="ti ti-eye"></i>Details</a>
+          {{if eq .Status "detected"}}
+          <button class="btn btn-primary" style="font-size:11px;padding:4px 10px"
+            hx-post="/faults/{{.ID}}/analyze"
+            hx-target="closest tr"
+            hx-swap="outerHTML">
+            <i class="ti ti-brain"></i>Analysieren
+          </button>
+          {{end}}
+        </div>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Störungen vorhanden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .RecentAnalyses}}
+<div class="act-item">
+  <div class="act-dot d-blue"></div>
+  <div class="act-text">{{.FaultTitle}}</div>
+  <span style="font-size:10px;color:var(--muted)">{{printf "%.0f" .Confidence}}%</span>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,253 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDH – {{.Title}}</title>
+<script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;
+  --accent:#4f6ef7;--accent2:#7c3aed;
+  --text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;
+  --green:#10b981;--amber:#f59e0b;--red:#ef4444;
+  --font:'DM Sans',system-ui,sans-serif
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+a{color:inherit;text-decoration:none}
+.app{display:grid;grid-template-columns:200px 1fr 260px;flex:1;overflow:hidden}
+/* ── Sidebar ── */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.logo{padding:16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.logo-text{font-size:14px;font-weight:600}
+.logo-ver{font-size:10px;color:var(--muted)}
+nav{padding:12px 0;flex:1}
+.nav-section{padding:12px 16px 4px;font-size:10px;font-weight:600;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:var(--muted);border-left:2px solid transparent;transition:all .15s}
+.nav-item:hover{color:var(--text);background:var(--bg3)}
+.nav-item.active{color:var(--accent);background:rgba(79,110,247,.08);border-left-color:var(--accent)}
+.nav-item i{font-size:16px;width:18px;text-align:center;flex-shrink:0}
+/* ── Topbar ── */
+.topbar{height:46px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:8px;flex-shrink:0}
+.topbar-path{font-size:12px;color:var(--muted)}
+.topbar-cur{font-size:13px;font-weight:500}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);margin-left:auto;box-shadow:0 0 0 3px rgba(16,185,129,.2)}
+.topbar-user{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--muted)}
+.topbar-user i{font-size:15px}
+/* ── Main ── */
+.main-wrap{display:flex;flex-direction:column;overflow:hidden}
+.main{flex:1;overflow-y:auto;padding:22px}
+/* ── Context ── */
+.context{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.ctx-section{border-bottom:1px solid var(--border);padding:14px;flex-shrink:0}
+.ctx-section.grow{flex:1;overflow-y:auto}
+.ctx-title{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.ctx-title i{font-size:14px}
+/* ── Search ── */
+.search-box{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+.search-box input{background:none;border:0;outline:0;color:var(--text);font-size:12px;width:100%;font-family:var(--font)}
+.search-box i{color:var(--muted);font-size:15px}
+/* ── Copilot ── */
+.copilot-msgs{background:var(--bg3);border:1px solid var(--border);border-radius:8px;min-height:70px;max-height:140px;overflow-y:auto;padding:10px;margin-bottom:8px;font-size:12px;line-height:1.5}
+.cop-hint{color:var(--muted);font-style:italic;font-size:11px}
+.cop-q{color:var(--accent);margin-bottom:4px}
+.cop-a{color:var(--text)}
+.copilot-input{display:flex;gap:6px}
+.copilot-input input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:11px;outline:0;font-family:var(--font)}
+.cop-btn{background:var(--accent);border:0;border-radius:6px;padding:5px 10px;color:#fff;font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap}
+/* ── Activity ── */
+.act-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
+.act-item:last-child{border:0;padding-bottom:0}
+.act-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.d-red{background:var(--red)}.d-amber{background:var(--amber)}.d-green{background:var(--green)}.d-blue{background:var(--accent)}
+.act-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.act-time{font-size:10px;color:var(--muted);flex-shrink:0}
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:13px}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px}
+.stat-val{font-size:22px;font-weight:600;letter-spacing:-.5px}
+.stat-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.s-blue .stat-val{color:var(--accent)}
+.s-red .stat-val{color:var(--red)}
+.s-amber .stat-val{color:var(--amber)}
+.s-green .stat-val{color:var(--green)}
+/* ── Cards ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px}
+.card-title{font-size:12px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.card-action{color:var(--muted);font-size:11px;font-weight:400}
+.card-action:hover{color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+/* ── Badges ── */
+.badge{display:inline-flex;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:500;white-space:nowrap}
+.b-red{background:rgba(239,68,68,.15);color:#fca5a5}
+.b-amber{background:rgba(245,158,11,.15);color:#fcd34d}
+.b-green{background:rgba(16,185,129,.15);color:#6ee7b7}
+.b-blue{background:rgba(79,110,247,.15);color:#a5b4fc}
+.b-gray{background:rgba(107,114,128,.15);color:#9ca3af}
+/* ── List items ── */
+.li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.li:last-child{border:0;padding-bottom:0}
+.li-text{flex:1;min-width:0}
+.li-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.li-sub{font-size:10px;color:var(--muted);margin-top:1px}
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--bg3)}
+tr:last-child td{border:0}
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:13px;font-family:var(--font);cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);transition:all .15s}
+.btn:hover{background:var(--bg2);border-color:var(--muted)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.9}
+/* ── Forms ── */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:var(--font);outline:0}
+.form-input:focus{border-color:var(--accent)}
+select.form-input option{background:var(--bg2)}
+/* ── Shift ── */
+.shift-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:6px}
+.shift-day{text-align:center;font-size:10px}
+.shift-day-name{color:var(--muted);margin-bottom:3px}
+.shift-pill{padding:3px;border-radius:5px;font-size:10px;font-weight:500;text-align:center}
+.sf{background:rgba(16,185,129,.2);color:#6ee7b7}
+.ss{background:rgba(245,158,11,.2);color:#fcd34d}
+.sn{background:rgba(99,102,241,.2);color:#a5b4fc}
+.se{background:var(--bg3);color:var(--muted)}
+/* ── HTMX loading ── */
+.htmx-indicator{display:none}
+.htmx-request .htmx-indicator{display:inline}
+.htmx-request.htmx-indicator{display:inline}
+</style>
+{{block "head" .}}{{end}}
+</head>
+<body>
+<div class="app">
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">P</div>
+    <div><div class="logo-text">PDH</div><div class="logo-ver">v0.7.0</div></div>
+  </div>
+  <nav>
+    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i>Dashboard</a>
+
+    <div class="nav-section">Module</div>
+    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i>Tickets</a>
+    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i>Störungen</a>
+    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i>Wartung</a>
+    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i>Ersatzteile</a>
+    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i>Zeiterfassung</a>
+
+    <div class="nav-section">Core</div>
+    <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i>Benutzer</a>
+    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i>Schichtplan</a>
+    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i>Infrastruktur</a>
+  </nav>
+</aside>
+
+<!-- ── Hauptbereich ── -->
+<div class="main-wrap">
+  <div class="topbar">
+    <span class="topbar-path">PDH /</span>
+    <span class="topbar-cur">{{.Title}}</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      <div class="topbar-user"><i class="ti ti-user"></i>{{.UserName}}</div>
+      <div class="status-dot" title="API online"></div>
+    </div>
+  </div>
+  <div class="main">
+    {{block "content" .}}{{end}}
+  </div>
+</div>
+
+<!-- ── Kontext-Spalte ── -->
+<aside class="context">
+  <!-- Suche -->
+  <div class="ctx-section">
+    <div class="ctx-title"><i class="ti ti-search"></i>Suche</div>
+    <div class="search-box">
+      <i class="ti ti-search"></i>
+      <input placeholder="Anlage, Ticket, Teil..."
+        hx-get="/api/search"
+        hx-trigger="keyup changed delay:400ms"
+        hx-target="#search-results"
+        hx-include="this"
+        name="q"
+        id="search-input">
+    </div>
+    <div id="search-results" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+  </div>
+
+  <!-- Copilot -->
+  <div class="ctx-section">
+    <div class="ctx-title"><i class="ti ti-brain"></i>Copilot</div>
+    <div class="copilot-msgs" id="cop-msgs">
+      <div class="cop-hint">KI-Copilot für Entstörung und Analyse...</div>
+    </div>
+    <div class="copilot-input">
+      <input placeholder="Frage stellen..." id="cop-in"
+        onkeydown="if(event.key==='Enter')sendCop()">
+      <button class="cop-btn" onclick="sendCop()">Senden</button>
+    </div>
+  </div>
+
+  <!-- Aktivität -->
+  <div class="ctx-section grow">
+    <div class="ctx-title"><i class="ti ti-bell"></i>Aktivität</div>
+    <div id="activity-feed"
+      hx-get="/api/activity"
+      hx-trigger="load, every 30s">
+      <div style="font-size:11px;color:var(--muted)">Lädt...</div>
+    </div>
+  </div>
+
+  <!-- Kontext-Liste (seitenabhängig) -->
+  <div class="ctx-section">
+    <div class="ctx-title"><i class="ti ti-list"></i>{{.ContextTitle}}</div>
+    <div id="ctx-list">
+      {{block "context-list" .}}
+      <div style="font-size:11px;color:var(--muted)">Keine Einträge</div>
+      {{end}}
+    </div>
+  </div>
+</aside>
+
+</div>
+
+<script>
+const API = '';
+const TOKEN = localStorage.getItem('pdh_token') || '';
+
+function sendCop() {
+  const q = document.getElementById('cop-in').value.trim();
+  if(!q) return;
+  const msgs = document.getElementById('cop-msgs');
+  msgs.innerHTML += '<div class="cop-q">Du: ' + q + '</div>';
+  document.getElementById('cop-in').value = '';
+  msgs.scrollTop = msgs.scrollHeight;
+  fetch(API + '/api/v1/faults/{{.FaultID}}/chat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
+    body: JSON.stringify({message:q, history:[]})
+  }).then(r=>r.json()).then(d=>{
+    if(d.data?.reply) {
+      msgs.innerHTML += '<div class="cop-a">Copilot: ' + d.data.reply + '</div>';
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+  }).catch(()=>{
+    msgs.innerHTML += '<div class="cop-a" style="color:var(--muted)">Copilot nicht erreichbar</div>';
+  });
+}
+</script>
+{{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}
