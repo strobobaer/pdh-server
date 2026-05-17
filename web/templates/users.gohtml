@@ -1,0 +1,173 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Benutzerverwaltung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TotalUsers}} Benutzer · {{.ActiveUsers}} aktiv</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('new-user-form').style.display='block'">
+    <i class="ti ti-user-plus"></i>Neuer Benutzer
+  </button>
+</div>
+
+<!-- Neuer Benutzer -->
+<div id="new-user-form" style="display:none" class="card">
+  <div class="card-title">Benutzer anlegen</div>
+  <form hx-post="/users/create-web" hx-target="#user-tbody" hx-swap="afterbegin"
+        hx-on::after-request="this.reset();document.getElementById('new-user-form').style.display='none'">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Vorname</label><input name="first_name" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Nachname</label><input name="last_name" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Benutzername</label><input name="username" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">E-Mail</label><input name="email" type="email" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" required minlength="8"></div>
+      <div class="form-group"><label class="form-label">Rolle</label>
+        <select name="role" class="form-input">
+          <option value="worker">👷 Mitarbeiter</option>
+          <option value="technician">🔧 Techniker</option>
+          <option value="manager">📋 Manager</option>
+          <option value="admin">👑 Administrator</option>
+          <option value="viewer">👁️ Betrachter</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" placeholder="z.B. Produktion"></div>
+      <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" placeholder="z.B. +49 821 ..."></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-user-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Anlegen</button>
+    </div>
+  </form>
+</div>
+
+<!-- Filter -->
+<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+  <a href="/users" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
+  <a href="/users?role=technician" class="btn {{if eq .Filter "technician"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">🔧 Techniker</a>
+  <a href="/users?role=manager" class="btn {{if eq .Filter "manager"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">📋 Manager</a>
+  <a href="/users?role=worker" class="btn {{if eq .Filter "worker"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">👷 Mitarbeiter</a>
+  <a href="/users?role=admin" class="btn {{if eq .Filter "admin"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">👑 Admin</a>
+</div>
+
+<!-- Benutzer Tabelle -->
+<div class="card" style="padding:0">
+  <table>
+    <thead>
+      <tr>
+        <th>Benutzer</th>
+        <th>Rolle</th>
+        <th>Abteilung</th>
+        <th>Kontakt</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="user-tbody">
+    {{range .Users}}
+    <tr id="user-row-{{.ID}}">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
+          <div>
+            <div style="font-weight:500">{{.FullName}}</div>
+            <div style="font-size:11px;color:var(--muted)">@{{.Username}}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span></td>
+      <td style="font-size:13px;color:var(--muted)">{{.Department}}</td>
+      <td style="font-size:12px">
+        <div>{{.Email}}</div>
+        {{if .Phone}}<div style="color:var(--muted)">{{.Phone}}</div>{{end}}
+      </td>
+      <td>
+        {{if .Active}}
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--green)"><div style="width:7px;height:7px;border-radius:50%;background:var(--green)"></div>Aktiv</span>
+        {{else}}
+        <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><div style="width:7px;height:7px;border-radius:50%;background:var(--muted)"></div>Inaktiv</span>
+        {{end}}
+      </td>
+      <td>
+        <div style="position:relative">
+          <button class="btn" onclick="toggleMenu('umenu-{{.ID}}')" style="font-size:11px;padding:3px 8px"><i class="ti ti-dots"></i></button>
+          <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
+            <button class="menu-item" hx-put="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
+            {{if .Active}}
+            <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
+            {{end}}
+          </div>
+        </div>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">Keine Benutzer gefunden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:480px;margin:20px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:16px">Benutzer bearbeiten</div>
+    <form id="edit-form" hx-put="/users/__ID__/update-web" hx-target="#user-tbody" hx-swap="innerHTML"
+          hx-on::after-request="document.getElementById('edit-modal').style.display='none'">
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">Vorname</label><input id="ef-first" name="first_name" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Nachname</label><input id="ef-last" name="last_name" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Rolle</label>
+          <select id="ef-role" name="role" class="form-input">
+            <option value="worker">👷 Mitarbeiter</option>
+            <option value="technician">🔧 Techniker</option>
+            <option value="manager">📋 Manager</option>
+            <option value="admin">👑 Administrator</option>
+            <option value="viewer">👁️ Betrachter</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Abteilung</label><input id="ef-dept" name="department" class="form-input"></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+        <button type="button" class="btn" onclick="document.getElementById('edit-modal').style.display='none'">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .RoleStats}}
+<div class="act-item">
+  <div style="font-size:13px">{{.Icon}}</div>
+  <div class="act-text">{{.Label}}</div>
+  <span style="font-size:11px;color:var(--muted)">{{.Count}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id^="umenu-"]'))
+    document.querySelectorAll('[id^="umenu-"]').forEach(m=>m.style.display='none');
+});
+
+function editUser(id, first, last, role, dept, phone) {
+  const modal = document.getElementById('edit-modal');
+  const form  = document.getElementById('edit-form');
+  form.setAttribute('hx-put', '/users/'+id+'/update-web');
+  htmx.process(form);
+  document.getElementById('ef-first').value = first;
+  document.getElementById('ef-last').value  = last;
+  document.getElementById('ef-role').value  = role;
+  document.getElementById('ef-dept').value  = dept;
+  document.getElementById('ef-phone').value = phone;
+  modal.style.display = 'flex';
+}
+</script>
+{{end}}
