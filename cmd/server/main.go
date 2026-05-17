@@ -18,6 +18,8 @@ import (
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/users"
+	"pdh/internal/modules/attachments"
+	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/maintenance"
@@ -77,9 +79,22 @@ func main() {
 	invSvc     := inventory.NewService(invRepo)
 	invHandler := inventory.NewHandler(invSvc)
 
+	// Uploads-Verzeichnis
+	os.MkdirAll("uploads", 0755)
+
+	// Modul: Anhänge
+	attachRepo    := attachments.NewRepository(db.Pool)
+	attachSvc     := attachments.NewService(attachRepo)
+	attachHandler := attachments.NewHandler(attachSvc)
+
+	// Modul: Checklisten
+	checkRepo    := checklists.NewRepository(db.Pool)
+	checkSvc     := checklists.NewService(checkRepo)
+	checkHandler := checklists.NewHandler(checkSvc)
+
 	// Templates laden
 	tmplPath := filepath.Join("web", "templates", "base.gohtml")
-	tmpl, err := template.ParseGlob(tmplPath)
+	tmpl, err := template.ParseFiles(tmplPath)
 	if err != nil {
 		log.Fatal().Err(err).Str("path", tmplPath).Msg("templates laden fehlgeschlagen")
 	}
@@ -110,7 +125,12 @@ func main() {
 		r.Mount("/time",           timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance",    maintHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/inventory",      invHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/attachments",    attachHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/checklists",     checkHandler.Routes(cfg.Auth.JWTSecret))
 	})
+
+	// Static uploads
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
 	// Web UI
 	r.Mount("/", webHandler.Routes())

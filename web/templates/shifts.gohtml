@@ -1,0 +1,91 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Schichtplanung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">KW {{.WeekNumber}} · {{.WeekRange}}</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a href="/shifts?week={{.PrevWeek}}" class="btn" style="padding:6px 12px"><i class="ti ti-chevron-left"></i></a>
+    <a href="/shifts?week={{.NextWeek}}" class="btn" style="padding:6px 12px"><i class="ti ti-chevron-right"></i></a>
+  </div>
+</div>
+
+<!-- Wochenplan Tabelle -->
+<div class="card" style="padding:0;overflow:auto">
+  <table style="min-width:700px">
+    <thead>
+      <tr>
+        <th style="width:160px">Mitarbeiter</th>
+        {{range .Days}}
+        <th style="text-align:center;font-size:11px">
+          <div>{{.Short}}</div>
+          <div style="font-weight:400;color:var(--muted)">{{.Date}}</div>
+        </th>
+        {{end}}
+      </tr>
+    </thead>
+    <tbody>
+    {{range .Users}}
+    <tr>
+      <td>
+        <div style="font-weight:500;font-size:13px">{{.UserName}}</div>
+      </td>
+      {{range $.Days}}
+      {{$date := .DateFull}}
+      <td style="text-align:center;padding:8px 4px">
+        {{range $.ShiftMap}}
+          {{if and (eq .UserID $.UserID) (eq .Date $date)}}
+          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          {{end}}
+        {{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Keine Schichtzuweisungen diese Woche</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<!-- Legende + Abwesenheiten -->
+<div class="grid2" style="margin-top:14px">
+  <div class="card">
+    <div class="card-title">Legende</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      {{range .ShiftDefs}}
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+        <div class="shift-pill {{.Class}}" style="display:inline-block;padding:2px 8px">{{.ShortName}}</div>
+        <span style="color:var(--muted)">{{.Name}} {{.StartTime}}–{{.EndTime}}</span>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Abwesenheiten</div>
+    {{range .Absences}}
+    <div class="li">
+      <div class="act-dot {{.TypeDot}}"></div>
+      <div class="li-text">
+        <div class="li-title">{{.UserName}}</div>
+        <div class="li-sub">{{.TypeLabel}} · {{.StartDate}} – {{.EndDate}} · {{.Days}} Tage</div>
+      </div>
+      <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+    </div>
+    {{else}}
+    <div style="font-size:12px;color:var(--muted);padding:4px 0">Keine Abwesenheiten</div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Absences}}
+<div class="act-item">
+  <div class="act-dot {{.TypeDot}}"></div>
+  <div class="act-text">{{.UserName}} – {{.TypeLabel}}</div>
+  <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
+</div>
+{{end}}
+{{end}}

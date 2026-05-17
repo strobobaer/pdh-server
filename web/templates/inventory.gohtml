@@ -40,12 +40,12 @@
 
 <div id="parts-table" class="card" style="padding:0">
   <table>
-    <thead><tr><th>Teil</th><th>Lagerort</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
+    <thead><tr style="cursor:pointer"><th>Teil</th><th>Lagerort</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
     <tbody>
     {{range .Parts}}
-    <tr>
-      <td>
-        <div style="font-weight:500">{{.Name}}</div>
+    <tr style="cursor:pointer">
+      <td style="position:relative"><a href="/inventory/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
+        <div style="font-weight:500;position:relative">{{.Name}}</div>
         <div style="font-size:11px;color:var(--muted)">{{.PartNumber}} · {{.Manufacturer}}</div>
       </td>
       <td style="font-size:12px;color:var(--muted)">{{.StorageLocation}}<br>{{.StoragePlace}}</td>
@@ -65,7 +65,7 @@
     </tr>
     <tr id="movements-{{.ID}}" style="display:none"><td colspan="5"></td></tr>
     {{else}}
-    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>
+    <tr style="cursor:pointer"><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>
     {{end}}
     </tbody>
   </table>

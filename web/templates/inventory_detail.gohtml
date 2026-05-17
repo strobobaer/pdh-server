@@ -1,0 +1,132 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/inventory" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.Part.Name}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Part.PartNumber}} · {{.Part.Manufacturer}}</p>
+  </div>
+  <span class="badge {{.Part.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Part.StatusLabel}}</span>
+  <!-- ... Menü -->
+  <div style="position:relative">
+    <button class="btn" onclick="toggleMenu('inv-menu')" style="padding:6px 10px"><i class="ti ti-dots"></i></button>
+    <div id="inv-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+      <button class="menu-item" onclick="document.getElementById('book-form').style.display='block';closeMenu('inv-menu')"><i class="ti ti-arrows-exchange"></i>Buchung erfassen</button>
+      <button class="menu-item" onclick="document.getElementById('edit-form').style.display='block';closeMenu('inv-menu')"><i class="ti ti-edit"></i>Bearbeiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Buchungs-Form -->
+<div id="book-form" style="display:none" class="card">
+  <div class="card-title">Lagerbewegung buchen</div>
+  <form hx-post="/inventory/book-web" hx-target="#movements-list" hx-swap="afterbegin">
+    <input type="hidden" name="part_id" value="{{.Part.ID}}">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Typ</label>
+        <select name="type" class="form-input">
+          <option value="in">📦 Zugang</option>
+          <option value="out">📤 Abgang</option>
+          <option value="correction">✏️ Korrektur</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Menge</label>
+        <input name="qty" type="number" step="0.001" class="form-input" required value="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Referenz</label>
+        <input name="reference" class="form-input" placeholder="z.B. Störung #123">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notiz</label>
+        <input name="notes" class="form-input" placeholder="Optionale Notiz">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('book-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Buchen</button>
+    </div>
+  </form>
+</div>
+
+<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
+  <div>
+    <!-- Bewegungshistorie -->
+    <div class="card">
+      <div class="card-title">Bewegungshistorie</div>
+      <div id="movements-list">
+        {{range .Movements}}
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+            background:{{if eq .Type "in"}}rgba(16,185,129,.15){{else if eq .Type "out"}}rgba(239,68,68,.15){{else}}rgba(107,114,128,.15){{end}}">
+            <i class="ti {{if eq .Type "in"}}ti-arrow-down{{else if eq .Type "out"}}ti-arrow-up{{else}}ti-arrows-exchange{{end}}"
+              style="font-size:14px;color:{{if eq .Type "in"}}var(--green){{else if eq .Type "out"}}var(--red){{else}}var(--muted){{end}}"></i>
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:500">{{if eq .Type "in"}}Zugang{{else if eq .Type "out"}}Abgang{{else}}Korrektur{{end}}
+              {{if .Reference}}<span style="color:var(--muted);font-size:11px">· {{.Reference}}</span>{{end}}</div>
+            <div style="font-size:11px;color:var(--muted)">{{.UserName}} · {{.QtyBefore}} → {{.QtyAfter}} {{$.Part.Unit}}</div>
+          </div>
+          <div style="text-align:right;font-weight:600;
+            color:{{if eq .Type "in"}}var(--green){{else if eq .Type "out"}}var(--red){{else}}var(--muted){{end}}">
+            {{if eq .Type "in"}}+{{else if eq .Type "out"}}-{{end}}{{.Qty}}
+          </div>
+        </div>
+        {{else}}
+        <div style="color:var(--muted);font-size:12px;padding:8px 0">Keine Bewegungen vorhanden</div>
+        {{end}}
+      </div>
+    </div>
+
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Part.ID}}" data-attach-ref="inventory:{{.Part.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-file-upload"></i>Dokument<input type="file" accept=".pdf,.doc,.docx" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info-Karte -->
+  <div>
+    <div class="card">
+      <div class="card-title">Lagerinfo</div>
+      <div class="li"><div class="li-text"><div class="li-sub">Bestand</div><div class="li-title" style="font-size:20px;font-weight:600;color:{{if eq .Part.Status "ok"}}var(--green){{else}}var(--amber){{end}}">{{.Part.StockQty}} {{.Part.Unit}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Mindestbestand</div><div class="li-title">{{.Part.MinQty}} {{.Part.Unit}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Lagerort</div><div class="li-title">{{.Part.StorageLocation}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Lagerplatz</div><div class="li-title">{{.Part.StoragePlace}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Preis</div><div class="li-title">{{.Part.Price}} €</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Kategorie</div><div class="li-title">{{.Part.Category}}</div></div></div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .LowStockParts}}
+<div class="act-item">
+  <div class="act-dot {{.StatusDot}}"></div>
+  <div class="act-text">{{.Name}}</div>
+  <span style="font-size:10px;color:var(--amber)">{{.StockQty}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
+</script>
+{{end}}

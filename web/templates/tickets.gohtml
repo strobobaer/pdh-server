@@ -48,12 +48,12 @@
 
 <div id="ticket-table" class="card" style="padding:0">
   <table>
-    <thead><tr><th>Ticket</th><th>Priorität</th><th>Status</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
+    <thead><tr style="cursor:pointer"><th>Ticket</th><th>Priorität</th><th>Status</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
     <tbody>
     {{range .Tickets}}
-    <tr>
-      <td>
-        <div style="font-weight:500">{{.Title}}</div>
+    <tr style="cursor:pointer">
+      <td style="position:relative"><a href="/tickets/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
+        <div style="font-weight:500;position:relative">{{.Title}}</div>
         <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
       </td>
       <td><span class="badge {{.PriorityClass}}">{{.Priority}}</span></td>
@@ -72,7 +72,7 @@
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Tickets vorhanden</td></tr>
+    <tr style="cursor:pointer"><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Tickets vorhanden</td></tr>
     {{end}}
     </tbody>
   </table>

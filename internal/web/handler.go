@@ -147,6 +147,7 @@ type PartView struct {
 	MinQty          string
 	StorageLocation string
 	StoragePlace    string
+	Price           string
 	Status          string
 	StatusLabel     string
 	StatusClass     string
@@ -191,7 +192,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/", h.Dashboard)
 	r.Get("/tickets", h.Tickets)
 	r.Post("/tickets", h.CreateTicket)
+	r.Get("/tickets/{id}", h.TicketDetail)
 	r.Put("/tickets/{id}/status", h.UpdateTicketStatus)
+	r.Put("/tickets/{id}/status-web", h.TicketStatusWeb)
+	r.Post("/tickets/{id}/comment", h.TicketAddComment)
+	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
 	r.Get("/faults", h.Faults)
 	r.Post("/faults", h.CreateFault)
 	r.Get("/faults/{id}", h.FaultDetail)
@@ -200,7 +205,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
+	r.Get("/inventory/{id}", h.InventoryDetail)
+	r.Post("/inventory/book-web", h.InventoryBookWeb)
 	r.Get("/maintenance", h.Maintenance)
+	r.Post("/maintenance/plans", h.MaintenanceCreatePlan)
+	r.Post("/maintenance/generate", h.MaintenanceGenerate)
 	r.Get("/shifts", h.Shifts)
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/users", h.Users)
@@ -232,7 +241,7 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 	if _, err2 := t.ParseFiles("web/templates/" + tmpl + ".gohtml"); err2 != nil {
 		http.Error(w, "Parse: "+err2.Error(), 500); return
 	}
-	if err3 := t.ExecuteTemplate(w, "base", data); err3 != nil {
+	if err3 := t.ExecuteTemplate(w, "base.gohtml", data); err3 != nil {
 		http.Error(w, "Template-Fehler: "+err3.Error(), 500)
 	}
 }
@@ -598,8 +607,6 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 // Platzhalter-Seiten
-func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request)   { h.simplePage(w, r, "maintenance", "Wartungsplanung", "Fällige Aufträge") }
-func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request)        { h.simplePage(w, r, "shifts", "Schichtplanung", "Diese Woche") }
 func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request){ h.simplePage(w, r, "infrastructure", "Infrastruktur", "Topologie") }
 func (h *Handler) Users(w http.ResponseWriter, r *http.Request)         { h.simplePage(w, r, "users", "Benutzer", "Aktive User") }
 func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request)  { h.simplePage(w, r, "time", "Zeiterfassung", "Heute") }
@@ -763,4 +770,430 @@ func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: `+entry.ID[:8]+`...)</div>`)
+}
+
+// ── Maintenance Page ─────────────────────────────────────────
+
+type MaintenancePageData struct {
+	BaseData
+	TotalPlans int
+	OpenTasks  int
+	Today      string
+	Plans      []MaintPlanView
+	Tasks      []MaintTaskView
+	DueTasks   []MaintTaskView
+	InfraOptions []InfraOption
+}
+
+type InfraOption struct{ ID, Name string }
+
+type MaintPlanView struct {
+	ID            string
+	Name          string
+	InfraName     string
+	TypeLabel     string
+	IntervalLabel string
+	NextDue       string
+	Priority      string
+	PriorityDot   string
+}
+
+type MaintTaskView struct {
+	ID           string
+	Title        string
+	InfraName    string
+	Status       string
+	StatusLabel  string
+	StatusClass  string
+	Priority     string
+	PriorityClass string
+	PriorityDot  string
+	DueDate      string
+}
+
+func maintTaskView(t *maintenance.MaintenanceTask) MaintTaskView {
+	return MaintTaskView{
+		ID: t.ID, Title: t.Title, InfraName: t.InfraName,
+		Status: string(t.Status), StatusLabel: statusLabel(string(t.Status)),
+		StatusClass: statusClass(string(t.Status)),
+		Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
+		PriorityDot: priorityDot(string(t.Priority)),
+		DueDate: t.DueDate.Format("02.01."),
+	}
+}
+
+func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	status := maintenance.TaskStatus(r.URL.Query().Get("status"))
+
+	data := MaintenancePageData{
+		BaseData: baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
+		Today:    time.Now().Format("2006-01-02"),
+	}
+
+	if plans, err := h.maint.ListPlans(ctx, ""); err == nil {
+		data.TotalPlans = len(plans)
+		intervalLabels := map[maintenance.Interval]string{
+			"daily":"Täglich","weekly":"Wöchentlich","monthly":"Monatlich",
+			"quarterly":"Quartalsweise","yearly":"Jährlich",
+		}
+		typeLabels := map[maintenance.PlanType]string{
+			"preventive":"Vorbeugend","inspection":"Inspektion",
+			"calibration":"Kalibrierung","cleaning":"Reinigung",
+		}
+		for _, p := range plans {
+			data.Plans = append(data.Plans, MaintPlanView{
+				ID: p.ID, Name: p.Name, InfraName: p.InfraName,
+				TypeLabel: typeLabels[p.Type],
+				IntervalLabel: intervalLabels[p.Interval],
+				NextDue: p.NextDueAt.Format("02.01.2006"),
+				Priority: string(p.Priority),
+				PriorityDot: priorityDot(string(p.Priority)),
+			})
+		}
+	}
+
+	if tasks, err := h.maint.ListTasks(ctx, status, ""); err == nil {
+		for _, t := range tasks {
+			data.Tasks = append(data.Tasks, maintTaskView(t))
+			if t.Status == "open" { data.OpenTasks++ }
+		}
+	}
+
+	if due, err := h.maint.GetDueToday(ctx); err == nil {
+		for _, t := range due {
+			data.DueTasks = append(data.DueTasks, maintTaskView(t))
+		}
+	}
+
+	if infra, err := h.infra.List(ctx, nil, ""); err == nil {
+		for _, i := range infra {
+			data.InfraOptions = append(data.InfraOptions, InfraOption{ID: i.ID, Name: i.Name})
+		}
+	}
+
+	h.render(w, "maintenance", data)
+}
+
+func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	u := getUser(r)
+	in := &maintenance.CreatePlanInput{
+		Name:             r.FormValue("name"),
+		Type:             maintenance.PlanType(r.FormValue("type")),
+		InfrastructureID: r.FormValue("infrastructure_id"),
+		Interval:         maintenance.Interval(r.FormValue("interval")),
+		Priority:         maintenance.Priority(r.FormValue("priority")),
+		FirstDueAt:       r.FormValue("first_due_at"),
+	}
+	h.maint.CreatePlan(r.Context(), in, u.ID)
+	h.Maintenance(w, r)
+}
+
+func (h *Handler) MaintenanceGenerate(w http.ResponseWriter, r *http.Request) {
+	u := getUser(r)
+	count, err := h.maint.GenerateTasks(r.Context(), u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;padding:8px">Fehler: `+err.Error()+`</div>`)
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;padding:8px;background:rgba(16,185,129,.1);border-radius:8px;margin-bottom:12px"><i class="ti ti-check"></i> %d Aufträge generiert</div>`, count)
+}
+
+// ── Shifts Page ───────────────────────────────────────────────
+
+type ShiftsPageData struct {
+	BaseData
+	WeekNumber int
+	WeekRange  string
+	PrevWeek   string
+	NextWeek   string
+	Days       []WeekDay
+	Users      []shifts.UserWeekPlan
+	ShiftDefs  []ShiftDefView
+	Absences   []AbsenceView
+	ShiftMap   []ShiftEntry
+}
+
+type WeekDay struct {
+	Short    string
+	Date     string
+	DateFull string
+}
+
+type ShiftDefView struct {
+	Name      string
+	ShortName string
+	StartTime string
+	EndTime   string
+	Class     string
+}
+
+type AbsenceView struct {
+	UserName   string
+	TypeLabel  string
+	TypeDot    string
+	StartDate  string
+	EndDate    string
+	Days       int
+	StatusLabel string
+	StatusClass string
+}
+
+type ShiftEntry struct {
+	UserID string
+	Date   string
+	Label  string
+	Class  string
+}
+
+func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	weekParam := r.URL.Query().Get("week")
+	if weekParam == "" { weekParam = time.Now().Format("2006-01-02") }
+
+	t, _ := time.Parse("2006-01-02", weekParam)
+	wd := int(t.Weekday()); if wd == 0 { wd = 7 }
+	monday := t.AddDate(0, 0, -(wd-1))
+	sunday := monday.AddDate(0, 0, 6)
+	_, week := monday.ISOWeek()
+
+	dayNames := []string{"Mo","Di","Mi","Do","Fr","Sa","So"}
+	data := ShiftsPageData{
+		BaseData:   baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
+		WeekNumber: week,
+		WeekRange:  monday.Format("02.01") + "–" + sunday.Format("02.01.2006"),
+		PrevWeek:   monday.AddDate(0, 0, -7).Format("2006-01-02"),
+		NextWeek:   monday.AddDate(0, 0, 7).Format("2006-01-02"),
+	}
+
+	for d := 0; d < 7; d++ {
+		day := monday.AddDate(0, 0, d)
+		data.Days = append(data.Days, WeekDay{
+			Short:    dayNames[d],
+			Date:     day.Format("02.01"),
+			DateFull: day.Format("2006-01-02"),
+		})
+	}
+
+	shiftClasses := map[string]string{"F":"sf","S":"ss","N":"sn"}
+
+	if wp, err := h.shifts.GetWeekPlan(ctx, monday.Format("2006-01-02")); err == nil && wp != nil {
+		data.Users = wp.Users
+		for _, u := range wp.Users {
+			for date, entry := range u.Days {
+				class := shiftClasses[entry.ShortName]
+				if class == "" { class = "se" }
+				data.ShiftMap = append(data.ShiftMap, ShiftEntry{
+					UserID: u.UserID, Date: date,
+					Label: entry.ShortName, Class: class,
+				})
+			}
+		}
+	}
+
+	if models, err := h.shifts.ListModels(ctx); err == nil && len(models) > 0 {
+		if defs, err := h.shifts.ListShifts(ctx, models[0].ID); err == nil {
+			for _, d := range defs {
+				class := shiftClasses[d.ShortName]
+				data.ShiftDefs = append(data.ShiftDefs, ShiftDefView{
+					Name: d.Name, ShortName: d.ShortName,
+					StartTime: d.StartTime, EndTime: d.EndTime, Class: class,
+				})
+			}
+		}
+	}
+
+	absTypeLabels := map[string]string{"vacation":"Urlaub","sick":"Krank","training":"Schulung","other":"Sonstiges"}
+	absTypeDots   := map[string]string{"vacation":"d-blue","sick":"d-red","training":"d-green","other":"d-amber"}
+	if abs, err := h.shifts.ListAbsences(ctx, "", ""); err == nil {
+		for _, a := range abs {
+			data.Absences = append(data.Absences, AbsenceView{
+				UserName:    a.UserName,
+				TypeLabel:   absTypeLabels[string(a.Type)],
+				TypeDot:     absTypeDots[string(a.Type)],
+				StartDate:   a.StartDate,
+				EndDate:     a.EndDate,
+				Days:        a.Days,
+				StatusLabel: statusLabel(string(a.Status)),
+				StatusClass: statusClass(string(a.Status)),
+			})
+		}
+	}
+
+	h.render(w, "shifts", data)
+}
+
+// ── Ticket Detail ─────────────────────────────────────────────
+
+type TicketDetailData struct {
+	BaseData
+	Ticket         TicketView
+	Comments       []CommentView
+	CommentCount   int
+	TimeEntries    []*timetracking.TimeEntry
+	RunningTime    *timetracking.TimeEntry
+	StatusOptions  []StatusOption
+	RelatedTickets []TicketView
+}
+
+type CommentView struct {
+	ID        string
+	UserName  string
+	Text      string
+	CreatedAgo string
+}
+
+type StatusOption struct {
+	Value string
+	Label string
+}
+
+func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+
+	t, err := h.tickets.GetByID(ctx, id)
+	if err != nil { http.Redirect(w, r, "/tickets", http.StatusFound); return }
+
+	data := TicketDetailData{
+		BaseData: baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
+		Ticket: TicketView{
+			ID: t.ID, Title: t.Title, Description: t.Description,
+			Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
+			PriorityDot: priorityDot(string(t.Priority)),
+			Status: string(t.Status), StatusLabel: statusLabel(string(t.Status)),
+			StatusClass: statusClass(string(t.Status)),
+			CreatedAgo: timeAgo(t.CreatedAt),
+		},
+		StatusOptions: []StatusOption{
+			{"open","Offen"},{"in_progress","In Arbeit"},
+			{"resolved","Gelöst"},{"closed","Geschlossen"},
+		},
+	}
+
+	if running, err := h.time.GetRunning(ctx, u.ID); err == nil { data.RunningTime = running }
+	if entries, err := h.time.ListByRef(ctx, timetracking.RefTicket, id); err == nil { data.TimeEntries = entries }
+	if tl, err := h.tickets.List(ctx, "open"); err == nil {
+		for _, t2 := range tl {
+			if t2.ID != id && len(data.RelatedTickets) < 5 {
+				data.RelatedTickets = append(data.RelatedTickets, TicketView{
+					ID: t2.ID, Title: t2.Title,
+					PriorityDot: priorityDot(string(t2.Priority)),
+					StatusLabel: statusLabel(string(t2.Status)),
+					StatusClass: statusClass(string(t2.Status)),
+				})
+			}
+		}
+	}
+	h.render(w, "ticket_detail", data)
+}
+
+func (h *Handler) TicketAddComment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+	r.ParseForm()
+	c, err := h.tickets.AddComment(r.Context(), id, u.ID, r.FormValue("text"))
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`); return }
+	fmt.Fprintf(w, `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+		<div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">%s</div>
+		<div><div style="font-size:12px;font-weight:500">%s · <span style="color:var(--muted);font-weight:400">gerade eben</span></div>
+		<div style="font-size:13px;margin-top:4px">%s</div></div></div>`,
+		string([]rune(u.FirstName)[:1]), u.FirstName+" "+u.LastName, c.Text)
+}
+
+func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	status := tickets.Status(r.FormValue("status"))
+	h.tickets.UpdateStatus(r.Context(), id, status)
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClass(string(status)), statusLabel(string(status)))
+}
+
+func (h *Handler) TicketStartTime(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+	in := &timetracking.CreateEntryInput{RefType: timetracking.RefTicket, RefID: id, Description: "Ticket bearbeiten"}
+	entry, err := h.time.Start(r.Context(), in, u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`); return }
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px">⏱ Zeit gestartet (%s)</div>`, entry.ID[:8])
+}
+
+// ── Inventory Detail ──────────────────────────────────────────
+
+type InventoryDetailData struct {
+	BaseData
+	Part          PartView
+	Movements     []*inventory.StockMovement
+	LowStockParts []PartView
+}
+
+func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	p, err := h.inv.GetByID(ctx, id)
+	if err != nil { http.Redirect(w, r, "/inventory", http.StatusFound); return }
+
+	statusLabels := map[string]string{"ok":"OK","low":"Niedrig","critical":"Kritisch","empty":"Leer"}
+	statusClasses := map[string]string{"ok":"b-green","low":"b-amber","critical":"b-red","empty":"b-red"}
+	statusDots := map[string]string{"ok":"d-green","low":"d-amber","critical":"d-red","empty":"d-red"}
+	st := string(p.Status)
+
+	pv := PartView{
+		ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
+		Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
+		StockQty: fmt.Sprintf("%.2f", p.StockQty),
+		MinQty:   fmt.Sprintf("%.2f", p.MinQty),
+		StorageLocation: p.StorageLocation, StoragePlace: p.StoragePlace,
+		Price: fmt.Sprintf("%.2f", p.Price),
+		Status: st, StatusLabel: statusLabels[st],
+		StatusClass: statusClasses[st], StatusDot: statusDots[st],
+	}
+
+	data := InventoryDetailData{
+		BaseData: baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
+		Part: pv,
+	}
+
+	if mv, err := h.inv.GetMovements(ctx, id); err == nil { data.Movements = mv }
+	if parts, err := h.inv.GetLowStock(ctx); err == nil {
+		for _, lp := range parts {
+			if lp.ID != id && len(data.LowStockParts) < 5 {
+				lst := string(lp.Status)
+				data.LowStockParts = append(data.LowStockParts, PartView{
+					ID: lp.ID, Name: lp.Name,
+					StockQty: fmt.Sprintf("%.1f", lp.StockQty),
+					Status: lst, StatusDot: statusDots[lst],
+				})
+			}
+		}
+	}
+	h.render(w, "inventory_detail", data)
+}
+
+func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	u := getUser(r)
+	qty, _ := strconv.ParseFloat(r.FormValue("qty"), 64)
+	in := &inventory.BookMovementInput{
+		PartID:    r.FormValue("part_id"),
+		Type:      inventory.MovementType(r.FormValue("type")),
+		Qty:       qty,
+		Reference: r.FormValue("reference"),
+		Notes:     r.FormValue("notes"),
+	}
+	mv, err := h.inv.Book(r.Context(), in, u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: `+err.Error()+`</div>`); return }
+	typeLabel := map[inventory.MovementType]string{"in":"Zugang","out":"Abgang","correction":"Korrektur"}
+	fmt.Fprintf(w, `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+		<div style="font-weight:500;flex:1">%s · Bestand: %.2f</div>
+		<div style="font-weight:600;color:var(--green)">%.2f</div></div>`,
+		typeLabel[mv.Type], mv.QtyAfter, mv.Qty)
 }

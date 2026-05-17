@@ -1,0 +1,167 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Checklisten-Vorlagen</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Vorlagen</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('builder').style.display='block'">
+    <i class="ti ti-plus"></i>Neue Vorlage
+  </button>
+</div>
+
+<!-- Builder -->
+<div id="builder" style="display:none" class="card">
+  <div class="card-title">Neue Checklisten-Vorlage</div>
+  <div class="grid2">
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input id="cl-name" class="form-input" placeholder="z.B. Monatliche FU-Inspektion">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Kategorie</label>
+      <input id="cl-cat" class="form-input" placeholder="z.B. Antriebstechnik">
+    </div>
+    <div class="form-group" style="grid-column:1/-1">
+      <label class="form-label">Beschreibung</label>
+      <input id="cl-desc" class="form-input" placeholder="Kurze Beschreibung">
+    </div>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Felder</div>
+    <div id="items-list"></div>
+  </div>
+
+  <!-- Feld hinzufügen -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+    <button class="btn" onclick="addItem('checkbox')" style="font-size:12px"><i class="ti ti-checkbox"></i>Checkbox</button>
+    <button class="btn" onclick="addItem('text')" style="font-size:12px"><i class="ti ti-text-size"></i>Freitext</button>
+    <button class="btn" onclick="addItem('number')" style="font-size:12px"><i class="ti ti-hash"></i>Zahlenwert</button>
+    <button class="btn" onclick="addItem('compare')" style="font-size:12px"><i class="ti ti-equal"></i>Vergleichswert</button>
+    <button class="btn" onclick="addItem('select')" style="font-size:12px"><i class="ti ti-list"></i>Auswahl</button>
+    <button class="btn" onclick="addItem('image')" style="font-size:12px"><i class="ti ti-camera"></i>Foto</button>
+  </div>
+
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn" onclick="document.getElementById('builder').style.display='none'">Abbrechen</button>
+    <button class="btn btn-primary" onclick="saveChecklist()"><i class="ti ti-check"></i>Vorlage speichern</button>
+  </div>
+</div>
+
+<!-- Vorlagen Liste -->
+<div class="grid2">
+{{range .Checklists}}
+<div class="card" style="cursor:pointer" data-href="/checklists/{{.ID}}">
+  <div class="card-title">
+    {{.Name}}
+    <span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:20px;color:var(--muted)">{{.Category}}</span>
+  </div>
+  <p style="font-size:12px;color:var(--muted)">{{.Description}}</p>
+</div>
+{{else}}
+<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">
+  <i class="ti ti-clipboard" style="font-size:40px;display:block;margin-bottom:12px"></i>
+  Noch keine Vorlagen vorhanden
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted)">Feldtypen:</div>
+<div class="act-item"><div class="act-dot d-green"></div><div class="act-text">Checkbox – Ja/Nein</div></div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Freitext – Notizen</div></div>
+<div class="act-item"><div class="act-dot d-amber"></div><div class="act-text">Vergleichswert – Soll/Ist</div></div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Foto – Bilddokumentation</div></div>
+{{end}}
+
+{{block "scripts" .}}
+<script>
+let items = [];
+let itemCounter = 0;
+
+const typeIcons = {
+  checkbox:'ti-checkbox', text:'ti-text-size', number:'ti-hash',
+  compare:'ti-equal', select:'ti-list', image:'ti-camera'
+};
+const typeLabels = {
+  checkbox:'Checkbox', text:'Freitext', number:'Zahl',
+  compare:'Vergleich', select:'Auswahl', image:'Foto'
+};
+
+function addItem(type) {
+  const id = 'item-' + (++itemCounter);
+  items.push({id, type, label:'', required:false});
+
+  const extraHTML = {
+    compare: `<div style="display:flex;gap:6px;margin-top:6px">
+      <input class="form-input" placeholder="Sollwert" style="flex:1;font-size:11px" oninput="updateItem('${id}','compare_value',this.value)">
+      <input class="form-input" placeholder="Einheit" style="width:80px;font-size:11px" oninput="updateItem('${id}','compare_unit',this.value)">
+      <input class="form-input" placeholder="±Toleranz" style="width:90px;font-size:11px" oninput="updateItem('${id}','compare_tolerance',this.value)">
+    </div>`,
+    select: `<input class="form-input" placeholder="Optionen, kommagetrennt" style="margin-top:6px;font-size:11px" oninput="updateItem('${id}','options',this.value)">`,
+    number: `<div style="display:flex;gap:6px;margin-top:6px">
+      <input class="form-input" placeholder="Min" style="flex:1;font-size:11px" oninput="updateItem('${id}','min_value',this.value)">
+      <input class="form-input" placeholder="Max" style="flex:1;font-size:11px" oninput="updateItem('${id}','max_value',this.value)">
+    </div>`,
+  }[type] || '';
+
+  document.getElementById('items-list').insertAdjacentHTML('beforeend', `
+    <div id="${id}" style="background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">
+      <div style="background:var(--accent);border-radius:6px;padding:6px;flex-shrink:0">
+        <i class="ti ${typeIcons[type]}" style="font-size:14px;color:#fff"></i>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">${typeLabels[type]}</div>
+        <input class="form-input" placeholder="Bezeichnung / Frage" style="font-size:12px"
+          oninput="updateItem('${id}','label',this.value)">
+        ${extraHTML}
+        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" onchange="updateItem('${id}','required',this.checked)"> Pflichtfeld
+        </label>
+      </div>
+      <button onclick="removeItem('${id}')" style="background:none;border:0;color:var(--muted);cursor:pointer;font-size:18px;padding:0">×</button>
+    </div>
+  `);
+}
+
+function updateItem(id, field, value) {
+  const item = items.find(i => i.id === id);
+  if(item) item[field] = value;
+}
+
+function removeItem(id) {
+  items = items.filter(i => i.id !== id);
+  document.getElementById(id)?.remove();
+}
+
+async function saveChecklist() {
+  const payload = {
+    name: document.getElementById('cl-name').value,
+    description: document.getElementById('cl-desc').value,
+    category: document.getElementById('cl-cat').value,
+    items: items.map(item => ({
+      type: item.type,
+      label: item.label,
+      required: item.required || false,
+      compare_value: item.compare_value ? parseFloat(item.compare_value) : null,
+      compare_unit: item.compare_unit || '',
+      compare_tolerance: item.compare_tolerance ? parseFloat(item.compare_tolerance) : null,
+      options: item.options ? item.options.split(',').map(o=>o.trim()) : [],
+      min_value: item.min_value ? parseFloat(item.min_value) : null,
+      max_value: item.max_value ? parseFloat(item.max_value) : null,
+    }))
+  };
+
+  const token = document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || '';
+  const res = await fetch('/api/v1/checklists', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','Authorization':'Bearer '+token},
+    body: JSON.stringify(payload)
+  });
+  if(res.ok) location.reload();
+  else alert('Fehler beim Speichern');
+}
+</script>
+{{end}}
