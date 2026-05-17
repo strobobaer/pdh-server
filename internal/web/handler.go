@@ -220,6 +220,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/maintenance/generate", h.MaintenanceGenerate)
 	r.Get("/shifts", h.Shifts)
 	r.Get("/infrastructure", h.Infrastructure)
+	r.Get("/infrastructure/{id}", h.InfraDetail)
+	r.Put("/infrastructure/{id}/edit", h.InfraUpdate)
+	r.Get("/it", h.ITPage)
+	r.Post("/it", h.ITCreate)
+	r.Put("/it/{id}/status-web", h.ITStatusWeb)
+	r.Get("/storage", h.StoragePage)
+	r.Post("/storage", h.StorageCreateWarehouse)
+	r.Post("/storage/{id}/locations-web", h.StorageAddLocation)
+	r.Post("/storage/locations/{id}/places-web", h.StorageAddPlace)
 	r.Get("/users", h.Users)
 	r.Get("/time", h.TimeTracking)
 
@@ -1419,20 +1428,21 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
-	typeLabels := map[string]string{"server":"Server","network":"Netzwerk","workstation":"Workstation","printer":"Drucker","phone":"Telefon","tablet":"Tablet","other":"Sonstiges"}
-	typeIcons  := map[string]string{"server":"🖥️","network":"🌐","workstation":"💻","printer":"🖨️","phone":"📱","tablet":"📟","other":"📦"}
-	a, err := h.it.Create(r.Context(), r.FormValue("name"), string(it.AssetType(r.FormValue("type"))), r.FormValue("hostname"), r.FormValue("ip_address"), r.FormValue("manufacturer"), r.FormValue("model"), r.FormValue("serial_no"), r.FormValue("location"), r.FormValue("os"), r.FormValue("notes"), u.ID)
+	in := &it.CreateAssetInput{
+		Name: r.FormValue("name"), Type: it.AssetType(r.FormValue("type")),
+		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
+		Manufacturer: r.FormValue("manufacturer"), Model: r.FormValue("model"),
+		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
+		OS: r.FormValue("os"), Notes: r.FormValue("notes"),
+	}
+	a, err := h.it.Create(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
-	if err != nil { fmt.Fprintf(w, `<tr><td colspan="6" style="color:var(--red)">Fehler: `+err.Error()+`</td></tr>`); return }
+	if err != nil { fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", err.Error()); return }
+	icons := map[string]string{"server":"🖥️","network":"🌐","workstation":"💻","printer":"🖨️","phone":"📱","tablet":"📟","other":"📦"}
+	labels := map[string]string{"server":"Server","network":"Netzwerk","workstation":"Workstation","printer":"Drucker","phone":"Telefon","tablet":"Tablet","other":"Sonstiges"}
 	t := string(a.Type)
-	fmt.Fprintf(w, `<tr>
-		<td><div style="font-weight:500">%s</div><div style="font-size:11px;color:var(--muted)">%s %s</div></td>
-		<td><span style="font-size:13px">%s</span> <span style="font-size:12px;color:var(--muted)">%s</span></td>
-		<td style="font-size:12px;font-family:monospace">%s</td>
-		<td style="font-size:12px;color:var(--muted)">%s</td>
-		<td><span class="badge b-green">Aktiv</span></td>
-		<td></td></tr>`,
-		a.Name, a.Manufacturer, a.Model, typeIcons[t], typeLabels[t], a.IPAddress, a.Location)
+	fmt.Fprintf(w, "<tr><td><b>%s</b><br><small>%s %s</small></td><td>%s %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td><td></td></tr>",
+		a.Name, a.Manufacturer, a.Model, icons[t], labels[t], a.IPAddress, a.Location)
 }
 
 func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
@@ -1444,4 +1454,64 @@ func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
 	statusClasses := map[string]string{"active":"b-green","inactive":"b-gray","maintenance":"b-amber","retired":"b-red"}
 	statusLabels := map[string]string{"active":"Aktiv","inactive":"Inaktiv","maintenance":"Wartung","retired":"Außer Dienst"}
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClasses[string(status)], statusLabels[string(status)])
+}
+
+func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	type InfraDetailData struct {
+		BaseData
+		Node     InfraNodeView
+		Children []InfraNodeView
+		Parent   *InfraNodeView
+	}
+
+	node, err := h.infra.GetByID(ctx, id)
+	if err != nil { http.Redirect(w, r, "/infrastructure", http.StatusFound); return }
+
+	data := InfraDetailData{
+		BaseData: baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
+		Node:     infraNodeView(node),
+	}
+
+	// Kinder laden
+	if children, err := h.infra.List(ctx, &id, ""); err == nil {
+		for _, c := range children {
+			data.Children = append(data.Children, infraNodeView(c))
+		}
+	}
+
+	// Übergeordnet laden
+	if node.ParentID != nil {
+		if parent, err := h.infra.GetByID(ctx, *node.ParentID); err == nil {
+			pv := infraNodeView(parent)
+			data.Parent = &pv
+		}
+	}
+
+	// Upload-Karte + Attach-Liste inline rendern
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	t, _ := h.tmpl.Clone()
+	t.ParseFiles("web/templates/infra_detail.gohtml")
+	t.ExecuteTemplate(w, "base.gohtml", data)
+}
+
+func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	in := &infrastructure.UpdateInput{
+		Name:         r.FormValue("name"),
+		Location:     r.FormValue("location"),
+		Manufacturer: r.FormValue("manufacturer"),
+		SerialNo:     r.FormValue("serial_no"),
+		Model:        r.FormValue("model"),
+	}
+	err := h.infra.Update(r.Context(), id, in)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;padding:8px 0"><i class="ti ti-check"></i> Gespeichert</div>`)
 }

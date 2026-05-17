@@ -1,0 +1,135 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/infrastructure" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  {{if .Parent}}<a href="/infrastructure/{{.Parent.ID}}" class="btn" style="padding:5px 10px;font-size:12px;color:var(--muted)">{{.Parent.TypeIcon}} {{.Parent.Name}}</a>
+  <span style="color:var(--muted)">/</span>{{end}}
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.Node.TypeIcon}} {{.Node.Name}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Node.TypeLabel}}{{if .Node.Location}} · {{.Node.Location}}{{end}}</p>
+  </div>
+  <div style="position:relative">
+    <button class="btn" onclick="toggleMenu('infra-menu')" style="padding:6px 10px"><i class="ti ti-dots"></i></button>
+    <div id="infra-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+      <button class="menu-item" onclick="document.getElementById('add-child').style.display='block';closeMenu('infra-menu')"><i class="ti ti-plus"></i>Unteranlage hinzufügen</button>
+      <button class="menu-item menu-danger" hx-delete="/api/v1/infrastructure/{{.Node.ID}}" hx-confirm="Element löschen?" onclick="closeMenu('infra-menu')"><i class="ti ti-trash"></i>Löschen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kind hinzufügen -->
+<div id="add-child" style="display:none" class="card">
+  <div class="card-title">Unteranlage hinzufügen</div>
+  <form hx-post="/infrastructure" hx-target="#children-list" hx-swap="afterbegin">
+    <input type="hidden" name="parent_id" value="{{.Node.ID}}">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Typ</label>
+        <select name="type" class="form-input">
+          <option value="line">🔄 Linie</option>
+          <option value="plant">⚙️ Anlage</option>
+          <option value="device">🔌 Gerät</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('add-child').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Hinzufügen</button>
+    </div>
+  </form>
+</div>
+
+<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
+  <div>
+    <!-- Untergeordnete Elemente -->
+    <div class="card">
+      <div class="card-title">Untergeordnete Anlagen <span class="card-action" onclick="document.getElementById('add-child').style.display='block'">+ Hinzufügen</span></div>
+      <div id="children-list">
+        {{range .Children}}
+        <div class="li" data-href="/infrastructure/{{.ID}}" style="cursor:pointer">
+          <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{.TypeBg}};flex-shrink:0">{{.TypeIcon}}</div>
+          <div class="li-text">
+            <div class="li-title">{{.Name}}</div>
+            <div class="li-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}</div>
+          </div>
+          <i class="ti ti-chevron-right" style="color:var(--muted);font-size:14px"></i>
+        </div>
+        {{else}}
+        <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Keine untergeordneten Elemente</div>
+        {{end}}
+      </div>
+    </div>
+
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Node.ID}}" data-attach-ref="infrastructure:{{.Node.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-file-upload"></i>Dokument<input type="file" accept=".pdf,.doc,.docx" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bearbeiten -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">Bearbeiten <span class="card-action" onclick="toggleEdit()">✏️</span></div>
+      <div id="edit-form" style="display:none">
+        <form hx-put="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
+          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Node.Name}}" required></div>
+          <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Node.Location}}"></div>
+          <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input" value="{{.Node.Manufacturer}}"></div>
+          <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{.Node.SerialNo}}"></div>
+          <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+            <button type="button" class="btn" onclick="toggleEdit()">Abbrechen</button>
+            <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Speichern</button>
+          </div>
+        </form>
+        <div id="edit-result"></div>
+      </div>
+      <div id="edit-info">
+        <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Node.TypeIcon}} {{.Node.TypeLabel}}</div></div></div>
+        {{if .Node.Location}}<div class="li"><div class="li-text"><div class="li-sub">Standort</div><div class="li-title">{{.Node.Location}}</div></div></div>{{end}}
+        {{if .Node.Manufacturer}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
+        {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
+        {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
+      </div>
+    </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Children}}
+<div class="act-item" onclick="window.location='/infrastructure/{{.ID}}'" style="cursor:pointer">
+  <div style="font-size:12px">{{.TypeIcon}}</div>
+  <div class="act-text">{{.Name}}</div>
+  <i class="ti ti-chevron-right" style="font-size:12px;color:var(--muted)"></i>
+</div>
+{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
+document.querySelectorAll('[data-href]').forEach(el=>el.addEventListener('click',()=>window.location=el.dataset.href));
+function toggleEdit() {
+  const form = document.getElementById('edit-form');
+  const info = document.getElementById('edit-info');
+  const show = form.style.display === 'none';
+  form.style.display = show ? 'block' : 'none';
+  info.style.display = show ? 'none' : 'block';
+}
+</script>
+{{end}}
