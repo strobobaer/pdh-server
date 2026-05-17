@@ -13,8 +13,10 @@ import (
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
+	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
+	"pdh/internal/modules/it"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
@@ -160,11 +162,13 @@ type Handler struct {
 	tmpl    *template.Template
 	users   *users.Service
 	shifts  *shifts.Service
+	storage *storage.Service
 	infra   *infrastructure.Service
 	tickets *tickets.Service
 	faults  *faults.Service
 	maint   *maintenance.Service
 	inv     *inventory.Service
+	it      *it.Service
 	time    *timetracking.Service
 }
 
@@ -172,16 +176,20 @@ func NewHandler(
 	tmpl *template.Template,
 	u *users.Service,
 	s *shifts.Service,
+	st *storage.Service,
 	i *infrastructure.Service,
 	t *tickets.Service,
 	f *faults.Service,
 	m *maintenance.Service,
 	inv *inventory.Service,
+	itt *it.Service,
 	tt *timetracking.Service,
 ) *Handler {
 	return &Handler{
-		tmpl: tmpl, users: u, shifts: s, infra: i,
-		tickets: t, faults: f, maint: m, inv: inv, time: tt,
+		tmpl: tmpl, users: u, shifts: s,
+		storage: st, infra: i,
+		tickets: t, faults: f, maint: m, inv: inv,
+		it:  itt, time: tt,
 	}
 }
 
@@ -252,7 +260,6 @@ func greeting() string {
 	if h < 18 { return "Tag" }
 	return "Abend"
 }
-
 func timeAgo(t time.Time) string {
 	d := time.Since(t)
 	if d < time.Minute { return "gerade eben" }
@@ -260,7 +267,6 @@ func timeAgo(t time.Time) string {
 	if d < 24*time.Hour { return fmt.Sprintf("vor %dh", int(d.Hours())) }
 	return fmt.Sprintf("vor %dd", int(d.Hours()/24))
 }
-
 func severityClass(s string) string {
 	switch s {
 	case "critical": return "b-red"
@@ -607,7 +613,7 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 // Platzhalter-Seiten
-func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request){ h.simplePage(w, r, "infrastructure", "Infrastruktur", "Topologie") }
+
 func (h *Handler) Users(w http.ResponseWriter, r *http.Request)         { h.simplePage(w, r, "users", "Benutzer", "Aktive User") }
 func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request)  { h.simplePage(w, r, "time", "Zeiterfassung", "Heute") }
 
@@ -1196,4 +1202,246 @@ func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 		<div style="font-weight:500;flex:1">%s · Bestand: %.2f</div>
 		<div style="font-weight:600;color:var(--green)">%.2f</div></div>`,
 		typeLabel[mv.Type], mv.QtyAfter, mv.Qty)
+}
+
+// ── Infrastructure Page ───────────────────────────────────────
+
+type InfraPageData struct {
+	BaseData
+	Tree     []InfraNodeView
+	AllNodes []InfraNodeView
+	Stats    map[string]int
+}
+
+type InfraNodeView struct {
+	ID           string
+	Name         string
+	TypeLabel    string
+	TypeIcon     string
+	TypeBg       string
+	Location     string
+	Manufacturer string
+	SerialNo     string
+	Children     []InfraNodeView
+}
+
+func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
+	icons := map[infrastructure.InfraType]string{
+		"building":"🏭","line":"🔄","plant":"⚙️","device":"🔌",
+	}
+	labels := map[infrastructure.InfraType]string{
+		"building":"Gebäude","line":"Linie","plant":"Anlage","device":"Gerät",
+	}
+	bgs := map[infrastructure.InfraType]string{
+		"building":"rgba(99,102,241,.2)","line":"rgba(79,110,247,.2)",
+		"plant":"rgba(16,185,129,.2)","device":"rgba(245,158,11,.2)",
+	}
+	v := InfraNodeView{
+		ID: i.ID, Name: i.Name,
+		TypeLabel: labels[i.Type], TypeIcon: icons[i.Type],
+		TypeBg: bgs[i.Type],
+		Location: i.Location, Manufacturer: i.Manufacturer,
+		SerialNo: i.SerialNo,
+	}
+	for _, c := range i.Children {
+		v.Children = append(v.Children, infraNodeView(c))
+	}
+	return v
+}
+
+func flattenNodes(nodes []InfraNodeView) []InfraNodeView {
+	var flat []InfraNodeView
+	for _, n := range nodes {
+		flat = append(flat, InfraNodeView{ID: n.ID, Name: n.Name, TypeIcon: n.TypeIcon, TypeLabel: n.TypeLabel})
+		flat = append(flat, flattenNodes(n.Children)...)
+	}
+	return flat
+}
+
+func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	data := InfraPageData{
+		BaseData: baseData(r, "infrastructure", "Infrastruktur", "Schnellzugriff"),
+	}
+
+	if tree, err := h.infra.GetTree(ctx); err == nil {
+		for _, i := range tree {
+			data.Tree = append(data.Tree, infraNodeView(i))
+		}
+		data.AllNodes = flattenNodes(data.Tree)
+	}
+
+	if stats, err := h.infra.GetStats(ctx); err == nil {
+		data.Stats = stats
+	}
+
+	h.render(w, "infrastructure", data)
+}
+
+func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	parentID := r.FormValue("parent_id")
+	in := &infrastructure.CreateInput{
+		Name:         r.FormValue("name"),
+		Type:         infrastructure.InfraType(r.FormValue("type")),
+		Location:     r.FormValue("location"),
+		Manufacturer: r.FormValue("manufacturer"),
+		SerialNo:     r.FormValue("serial_no"),
+		Description:  r.FormValue("description"),
+	}
+	if parentID != "" { in.ParentID = &parentID }
+	h.infra.Create(r.Context(), in)
+	h.Infrastructure(w, r)
+}
+
+// ── Storage Page ──────────────────────────────────────────────
+
+type StoragePageData struct {
+	BaseData
+	Warehouses []*storage.Warehouse
+	Stats      map[string]int
+}
+
+func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
+	data := StoragePageData{
+		BaseData: baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
+		Stats:    map[string]int{},
+	}
+	if list, err := h.storage.ListWarehouses(r.Context()); err == nil { data.Warehouses = list }
+	if stats, err := h.storage.GetStats(r.Context()); err == nil { data.Stats = stats }
+	h.render(w, "storage", data)
+}
+
+func (h *Handler) StorageCreateWarehouse(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	u := getUser(r)
+	wh, err := h.storage.CreateWarehouse(r.Context(), r.FormValue("name"), r.FormValue("description"), r.FormValue("location"), u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: `+err.Error()+`</div>`); return }
+	fmt.Fprintf(w, `<div class="card" style="margin-bottom:14px">
+		<div style="display:flex;align-items:center;gap:12px">
+		<div style="width:36px;height:36px;background:rgba(79,110,247,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">🏭</div>
+		<div><div style="font-size:15px;font-weight:500">%s</div><div style="font-size:12px;color:var(--muted)">%s</div></div></div>
+		<div id="locs-%s" style="margin-top:14px"><div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">Noch keine Lagerorte</div></div>
+		</div>`, wh.Name, wh.Location, wh.ID)
+}
+
+func (h *Handler) StorageAddLocation(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	loc, err := h.storage.CreateLocation(r.Context(), id, r.FormValue("name"), r.FormValue("description"))
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`); return }
+	fmt.Fprintf(w, `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+		<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg3)">
+		<div style="width:24px;height:24px;background:rgba(16,185,129,.2);border-radius:6px;display:flex;align-items:center;justify-content:center">📦</div>
+		<div style="flex:1"><div style="font-size:13px;font-weight:500">%s</div><div style="font-size:11px;color:var(--muted)">%s</div></div>
+		<button class="btn" style="font-size:11px;padding:3px 8px" onclick="showAddPlace('%s')"><i class="ti ti-plus"></i>Platz</button></div>
+		<div id="add-place-%s" style="display:none;padding:10px;background:var(--bg3);border-top:1px solid var(--border)">
+		<form hx-post="/storage/locations/%s/places-web" hx-target="#places-%s" hx-swap="beforeend" style="display:flex;gap:6px">
+		<input name="name" class="form-input" placeholder="z.B. Fach 1" required style="flex:1;font-size:12px">
+		<input name="capacity" class="form-input" placeholder="Kapazität" style="width:100px;font-size:12px">
+		<button type="submit" class="btn btn-primary" style="font-size:11px">OK</button></form></div>
+		<div id="places-%s" style="padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px">
+		<div style="color:var(--muted);font-size:11px;padding:8px 0;grid-column:1/-1">Noch keine Plätze</div></div></div>`,
+		loc.Name, loc.Description, loc.ID, loc.ID, loc.ID, loc.ID, loc.ID)
+}
+
+func (h *Handler) StorageAddPlace(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	p, err := h.storage.CreatePlace(r.Context(), id, r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity"))
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`); return }
+	fmt.Fprintf(w, `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;cursor:pointer" onclick="selectPlace('%s','%s')">
+		<div style="font-size:11px;font-weight:500;color:var(--text)">%s</div>
+		%s</div>`,
+		p.ID, p.Name, p.Name,
+		func() string {
+			if r.FormValue("capacity") != "" {
+				return `<div style="font-size:10px;color:var(--muted);margin-top:2px">` + r.FormValue("capacity") + `</div>`
+			}
+			return ""
+		}())
+}
+
+// ── IT-Infrastruktur Page ─────────────────────────────────────
+
+type ITPageData struct {
+	BaseData
+	Assets  []ITAssetView
+	Stats   map[string]int
+	Filter  string
+}
+
+type ITAssetView struct {
+	ID          string
+	Name        string
+	TypeLabel   string
+	TypeIcon    string
+	StatusLabel string
+	StatusClass string
+	IPAddress   string
+	Hostname    string
+	Manufacturer string
+	Model       string
+	SerialNo    string
+	Location    string
+}
+
+func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
+	data := ITPageData{
+		BaseData: baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
+		Filter:   r.URL.Query().Get("type"),
+		Stats:    map[string]int{},
+	}
+	typeLabels := map[string]string{"server":"Server","network":"Netzwerk","workstation":"Workstation","printer":"Drucker","phone":"Telefon","tablet":"Tablet","other":"Sonstiges"}
+	typeIcons  := map[string]string{"server":"🖥️","network":"🌐","workstation":"💻","printer":"🖨️","phone":"📱","tablet":"📟","other":"📦"}
+	statusLabels := map[string]string{"active":"Aktiv","inactive":"Inaktiv","maintenance":"Wartung","retired":"Außer Dienst"}
+	statusClasses := map[string]string{"active":"b-green","inactive":"b-gray","maintenance":"b-amber","retired":"b-red"}
+
+	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
+		for _, a := range list {
+			data.Assets = append(data.Assets, ITAssetView{
+				ID: a.ID, Name: a.Name,
+				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
+				IPAddress: a.IPAddress, Hostname: a.Hostname,
+				Manufacturer: a.Manufacturer, Model: a.Model,
+				SerialNo: a.SerialNo, Location: a.Location,
+			})
+		}
+	}
+	if stats, err := h.it.GetStats(r.Context()); err == nil { data.Stats = stats }
+	h.render(w, "it", data)
+}
+
+func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	u := getUser(r)
+	typeLabels := map[string]string{"server":"Server","network":"Netzwerk","workstation":"Workstation","printer":"Drucker","phone":"Telefon","tablet":"Tablet","other":"Sonstiges"}
+	typeIcons  := map[string]string{"server":"🖥️","network":"🌐","workstation":"💻","printer":"🖨️","phone":"📱","tablet":"📟","other":"📦"}
+	a, err := h.it.Create(r.Context(), r.FormValue("name"), string(it.AssetType(r.FormValue("type"))), r.FormValue("hostname"), r.FormValue("ip_address"), r.FormValue("manufacturer"), r.FormValue("model"), r.FormValue("serial_no"), r.FormValue("location"), r.FormValue("os"), r.FormValue("notes"), u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil { fmt.Fprintf(w, `<tr><td colspan="6" style="color:var(--red)">Fehler: `+err.Error()+`</td></tr>`); return }
+	t := string(a.Type)
+	fmt.Fprintf(w, `<tr>
+		<td><div style="font-weight:500">%s</div><div style="font-size:11px;color:var(--muted)">%s %s</div></td>
+		<td><span style="font-size:13px">%s</span> <span style="font-size:12px;color:var(--muted)">%s</span></td>
+		<td style="font-size:12px;font-family:monospace">%s</td>
+		<td style="font-size:12px;color:var(--muted)">%s</td>
+		<td><span class="badge b-green">Aktiv</span></td>
+		<td></td></tr>`,
+		a.Name, a.Manufacturer, a.Model, typeIcons[t], typeLabels[t], a.IPAddress, a.Location)
+}
+
+func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	status := it.AssetStatus(r.FormValue("status"))
+	h.it.UpdateStatus(r.Context(), id, status)
+	w.Header().Set("Content-Type", "text/html")
+	statusClasses := map[string]string{"active":"b-green","inactive":"b-gray","maintenance":"b-amber","retired":"b-red"}
+	statusLabels := map[string]string{"active":"Aktiv","inactive":"Inaktiv","maintenance":"Wartung","retired":"Außer Dienst"}
+	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClasses[string(status)], statusLabels[string(status)])
 }

@@ -1,0 +1,150 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Lagerverwaltung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">
+      {{.Stats.warehouses}} Lager · {{.Stats.locations}} Lagerorte · {{.Stats.places}} Lagerplätze
+    </p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('new-warehouse').style.display='block'">
+    <i class="ti ti-plus"></i>Neues Lager
+  </button>
+</div>
+
+<!-- Neues Lager -->
+<div id="new-warehouse" style="display:none" class="card">
+  <div class="card-title">Lager anlegen</div>
+  <form hx-post="/storage" hx-target="#warehouse-list" hx-swap="afterbegin" hx-on::after-request="this.reset();document.getElementById('new-warehouse').style.display='none'">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" placeholder="z.B. Hauptlager" required></div>
+      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Halle B"></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-warehouse').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Anlegen</button>
+    </div>
+  </form>
+</div>
+
+<!-- Lager Liste -->
+<div id="warehouse-list">
+{{range .Warehouses}}
+<div class="card" style="margin-bottom:14px">
+  <!-- Lager Header -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+    <div style="width:36px;height:36px;background:rgba(79,110,247,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🏭</div>
+    <div style="flex:1">
+      <div style="font-size:15px;font-weight:600">{{.Name}}</div>
+      <div style="font-size:12px;color:var(--muted)">{{.Location}} · {{.PartCount}} Lagerplätze</div>
+    </div>
+    <div style="position:relative">
+      <button class="btn" onclick="toggleMenu('wh-menu-{{.ID}}')" style="padding:5px 9px"><i class="ti ti-dots"></i></button>
+      <div id="wh-menu-{{.ID}}" style="display:none;position:absolute;right:0;top:32px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+        <button class="menu-item" onclick="showAddLocation('{{.ID}}');closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-plus"></i>Lagerort hinzufügen</button>
+        <button class="menu-item menu-danger" hx-delete="/storage/{{.ID}}" hx-confirm="Lager löschen?" hx-target="closest .card" hx-swap="outerHTML" onclick="closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-trash"></i>Lager löschen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Neuer Lagerort Form -->
+  <div id="add-loc-{{.ID}}" style="display:none;background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:8px">Lagerort hinzufügen</div>
+    <form hx-post="/storage/{{.ID}}/locations-web" hx-target="#locs-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:8px">
+      <input name="name" class="form-input" placeholder="z.B. Regal A" required style="flex:1">
+      <input name="description" class="form-input" placeholder="Beschreibung" style="flex:1">
+      <button type="submit" class="btn btn-primary" style="white-space:nowrap">Hinzufügen</button>
+    </form>
+  </div>
+
+  <!-- Lagerorte -->
+  <div id="locs-{{.ID}}">
+    {{range .Locations}}
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+      <!-- Lagerort Header -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg3);cursor:pointer"
+           onclick="toggleLoc('places-{{.ID}}')">
+        <i class="ti ti-chevron-down" id="loc-icon-{{.ID}}" style="font-size:13px;color:var(--muted)"></i>
+        <div style="width:24px;height:24px;background:rgba(16,185,129,.2);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px">📦</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">{{.Name}}</div>
+          <div style="font-size:11px;color:var(--muted)">{{.Description}} · {{len .Places}} Plätze</div>
+        </div>
+        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();showAddPlace('{{.ID}}')"><i class="ti ti-plus"></i>Platz</button>
+      </div>
+
+      <!-- Neuer Lagerplatz Form -->
+      <div id="add-place-{{.ID}}" style="display:none;padding:10px 12px;background:var(--bg3);border-top:1px solid var(--border)">
+        <form hx-post="/storage/locations/{{.ID}}/places-web" hx-target="#places-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:6px">
+          <input name="name" class="form-input" placeholder="z.B. Fach 1" required style="flex:1;font-size:12px">
+          <input name="capacity" class="form-input" placeholder="Kapazität" style="width:100px;font-size:12px">
+          <button type="submit" class="btn btn-primary" style="font-size:11px">OK</button>
+        </form>
+      </div>
+
+      <!-- Lagerplätze -->
+      <div id="places-{{.ID}}" style="padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px">
+        {{range .Places}}
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;cursor:pointer"
+             title="{{.Description}}" onclick="selectPlace('{{.ID}}','{{.Name}}')">
+          <div style="font-size:11px;font-weight:500;color:var(--text)">{{.Name}}</div>
+          {{if .Capacity}}<div style="font-size:10px;color:var(--muted);margin-top:2px">{{.Capacity}}</div>{{end}}
+          {{if .CurrentParts}}<div style="font-size:10px;color:var(--accent);margin-top:2px">{{.CurrentParts}} Teile</div>{{end}}
+        </div>
+        {{else}}
+        <div style="color:var(--muted);font-size:11px;padding:8px 0;grid-column:1/-1">Noch keine Plätze</div>
+        {{end}}
+      </div>
+    </div>
+    {{else}}
+    <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">
+      <i class="ti ti-box" style="font-size:24px;display:block;margin-bottom:8px"></i>
+      Noch keine Lagerorte – füge einen hinzu
+    </div>
+    {{end}}
+  </div>
+</div>
+{{else}}
+<div class="card" style="text-align:center;padding:40px;color:var(--muted)">
+  <i class="ti ti-building-warehouse" style="font-size:48px;display:block;margin-bottom:12px"></i>
+  Noch kein Lager vorhanden
+</div>
+{{end}}
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Übersicht</div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Lager gesamt</div><span style="font-size:11px">{{.Stats.warehouses}}</span></div>
+<div class="act-item"><div class="act-dot d-green"></div><div class="act-text">Lagerorte</div><span style="font-size:11px">{{.Stats.locations}}</span></div>
+<div class="act-item"><div class="act-dot d-amber"></div><div class="act-text">Lagerplätze</div><span style="font-size:11px">{{.Stats.places}}</span></div>
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id*="-menu-"]'))document.querySelectorAll('[id*="-menu-"]').forEach(m=>m.style.display='none');});
+
+function showAddLocation(id) { document.getElementById('add-loc-'+id).style.display='block'; }
+function showAddPlace(id) {
+  const el = document.getElementById('add-place-'+id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleLoc(id) {
+  const el = document.getElementById(id);
+  const locId = id.replace('places-','');
+  const icon = document.getElementById('loc-icon-'+locId);
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'grid';
+  if(icon) icon.style.transform = open ? 'rotate(-90deg)' : '';
+}
+
+function selectPlace(id, name) {
+  alert('Lagerplatz: ' + name + '\nID: ' + id);
+}
+</script>
+{{end}}

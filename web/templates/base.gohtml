@@ -148,6 +148,8 @@ select.form-input option{background:var(--bg2)}
 
     <div class="nav-section">Core</div>
     <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i>Benutzer</a>
+    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i>IT-Assets</a>
+    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i>Lager</a>
     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i>Schichtplan</a>
     <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i>Infrastruktur</a>
   </nav>

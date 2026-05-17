@@ -17,10 +17,12 @@ import (
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
+	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/attachments"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
+	"pdh/internal/modules/it"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
@@ -51,6 +53,10 @@ func main() {
 	userHandler := users.NewHandler(userSvc)
 
 	shiftRepo    := shifts.NewRepository(db.Pool)
+
+	storageRepo    := storage.NewRepository(db.Pool)
+	storageSvc     := storage.NewService(storageRepo)
+	storageHandler := storage.NewHandler(storageSvc)
 	shiftSvc     := shifts.NewService(shiftRepo)
 	shiftHandler := shifts.NewHandler(shiftSvc)
 
@@ -76,6 +82,10 @@ func main() {
 	maintHandler := maintenance.NewHandler(maintSvc)
 
 	invRepo    := inventory.NewRepository(db.Pool)
+
+	itRepo    := it.NewRepository(db.Pool)
+	itSvc     := it.NewService(itRepo)
+	itHandler := it.NewHandler(itSvc)
 	invSvc     := inventory.NewService(invRepo)
 	invHandler := inventory.NewHandler(invSvc)
 
@@ -101,7 +111,7 @@ func main() {
 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
 
 	// Web Handler
-	webHandler := web.NewHandler(tmpl, userSvc, shiftSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, timeSvc)
+	webHandler := web.NewHandler(tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc)
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
@@ -118,12 +128,14 @@ func main() {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Mount("/users",          userHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/storage",     storageHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/shifts",         shiftHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets",        ticketHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/faults",         faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time",           timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance",    maintHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/it",         itHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/inventory",      invHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/attachments",    attachHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/checklists",     checkHandler.Routes(cfg.Auth.JWTSecret))

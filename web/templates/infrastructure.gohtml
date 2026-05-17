@@ -1,0 +1,152 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Infrastruktur-Topologie</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.building}} Gebäude · {{.Stats.line}} Linien · {{.Stats.plant}} Anlagen · {{.Stats.device}} Geräte</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="expandAll()"><i class="ti ti-arrows-maximize"></i>Alle aufklappen</button>
+    <button class="btn btn-primary" onclick="document.getElementById('new-node-form').style.display='block'"><i class="ti ti-plus"></i>Hinzufügen</button>
+  </div>
+</div>
+
+<!-- Neuer Knoten -->
+<div id="new-node-form" style="display:none" class="card">
+  <div class="card-title">Infrastruktur hinzufügen</div>
+  <form hx-post="/infrastructure" hx-target="#infra-tree" hx-swap="outerHTML">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input name="name" class="form-input" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Typ</label>
+        <select name="type" class="form-input">
+          <option value="building">🏭 Gebäude</option>
+          <option value="line">🔄 Produktionslinie</option>
+          <option value="plant">⚙️ Anlage</option>
+          <option value="device">🔌 Gerät</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Übergeordnet (optional)</label>
+        <select name="parent_id" class="form-input">
+          <option value="">– kein übergeordnetes Element –</option>
+          {{range .AllNodes}}
+          <option value="{{.ID}}">{{.TypeIcon}} {{.Name}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Standort</label>
+        <input name="location" class="form-input" placeholder="z.B. Halle A">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hersteller</label>
+        <input name="manufacturer" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Seriennummer</label>
+        <input name="serial_no" class="form-input">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-node-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Hinzufügen</button>
+    </div>
+  </form>
+</div>
+
+<!-- Legende -->
+<div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#6366F1"></div>Gebäude</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#4f6ef7"></div>Linie</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#10b981"></div>Anlage</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#f59e0b"></div>Gerät</div>
+</div>
+
+<!-- Infrastruktur-Baum -->
+<div id="infra-tree" class="card" style="padding:16px;overflow-x:auto">
+  {{range .Tree}}
+  {{template "infra_node" .}}
+  {{else}}
+  <div style="text-align:center;padding:40px;color:var(--muted)">
+    <i class="ti ti-hierarchy-2" style="font-size:48px;display:block;margin-bottom:12px"></i>
+    Noch keine Infrastruktur vorhanden
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "infra_node"}}
+<div class="infra-node" data-id="{{.ID}}" style="margin-bottom:6px">
+  <div class="infra-row" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;background:var(--bg3);border:1px solid var(--border)"
+    onclick="toggleNode('{{.ID}}')">
+    {{if .Children}}
+    <i id="toggle-{{.ID}}" class="ti ti-chevron-down" style="font-size:14px;color:var(--muted);transition:transform .2s;flex-shrink:0"></i>
+    {{else}}
+    <div style="width:14px;flex-shrink:0"></div>
+    {{end}}
+    <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:{{.TypeBg}}">{{.TypeIcon}}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Name}}</div>
+      <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}</div>
+    </div>
+    {{if .SerialNo}}<span style="font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;flex-shrink:0">{{.SerialNo}}</span>{{end}}
+    <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
+      <a href="/infrastructure/{{.ID}}" class="btn" style="font-size:11px;padding:3px 8px"><i class="ti ti-eye"></i></a>
+      <button class="btn" style="font-size:11px;padding:3px 8px" onclick="addChildNode('{{.ID}}','{{.Name}}')"><i class="ti ti-plus"></i></button>
+    </div>
+  </div>
+  {{if .Children}}
+  <div id="children-{{.ID}}" style="margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
+    {{range .Children}}
+    {{template "infra_node" .}}
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Schnellzugriff</div>
+{{range .AllNodes}}
+<div class="act-item" style="cursor:pointer" onclick="scrollToNode('{{.ID}}')">
+  <div style="font-size:12px">{{.TypeIcon}}</div>
+  <div class="act-text">{{.Name}}</div>
+  <span style="font-size:10px;color:var(--muted)">{{.TypeLabel}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleNode(id) {
+  const children = document.getElementById('children-'+id);
+  const icon = document.getElementById('toggle-'+id);
+  if(!children) return;
+  const open = children.style.display !== 'none';
+  children.style.display = open ? 'none' : 'block';
+  if(icon) icon.style.transform = open ? 'rotate(-90deg)' : '';
+}
+
+function expandAll() {
+  document.querySelectorAll('[id^="children-"]').forEach(el => el.style.display = 'block');
+  document.querySelectorAll('[id^="toggle-"]').forEach(el => el.style.transform = '');
+}
+
+function scrollToNode(id) {
+  const el = document.querySelector('[data-id="'+id+'"]');
+  if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('.infra-row').style.background='rgba(79,110,247,.2)'; setTimeout(()=>el.querySelector('.infra-row').style.background='',1500); }
+}
+
+function addChildNode(parentId, parentName) {
+  document.getElementById('new-node-form').style.display = 'block';
+  const sel = document.querySelector('select[name="parent_id"]');
+  if(sel) sel.value = parentId;
+  document.getElementById('new-node-form').scrollIntoView({behavior:'smooth'});
+}
+</script>
+{{end}}

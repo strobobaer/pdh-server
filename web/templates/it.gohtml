@@ -1,0 +1,107 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">IT-Infrastruktur</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.total}} Assets · {{.Stats.active}} aktiv</p>
+  </div>
+  <button class="btn btn-primary" onclick="document.getElementById('new-asset').style.display='block'"><i class="ti ti-plus"></i>Neues Asset</button>
+</div>
+
+<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+  <div class="stat s-blue"><div class="stat-label">Gesamt</div><div class="stat-val">{{.Stats.total}}</div></div>
+  <div class="stat s-green"><div class="stat-label">Aktiv</div><div class="stat-val">{{.Stats.active}}</div></div>
+  <div class="stat s-amber"><div class="stat-label">Server</div><div class="stat-val">{{.Stats.servers}}</div></div>
+  <div class="stat s-blue"><div class="stat-label">Netzwerk</div><div class="stat-val">{{.Stats.network}}</div></div>
+</div>
+
+<div id="new-asset" style="display:none" class="card">
+  <div class="card-title">Asset erfassen</div>
+  <form hx-post="/it" hx-target="#asset-table tbody" hx-swap="afterbegin">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required placeholder="z.B. PDH-Server-01"></div>
+      <div class="form-group"><label class="form-label">Typ</label>
+        <select name="type" class="form-input">
+          <option value="server">🖥️ Server</option>
+          <option value="network">🌐 Netzwerk</option>
+          <option value="workstation">💻 Workstation</option>
+          <option value="printer">🖨️ Drucker</option>
+          <option value="phone">📱 Telefon/Handy</option>
+          <option value="tablet">📟 Tablet</option>
+          <option value="other">📦 Sonstiges</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Hostname</label><input name="hostname" class="form-input" placeholder="z.B. pdh-srv-01"></div>
+      <div class="form-group"><label class="form-label">IP-Adresse</label><input name="ip_address" class="form-input" placeholder="z.B. 10.10.0.100"></div>
+      <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Serverraum"></div>
+      <div class="form-group"><label class="form-label">Betriebssystem</label><input name="os" class="form-input" placeholder="z.B. Debian 12"></div>
+      <div class="form-group"><label class="form-label">Notizen</label><input name="notes" class="form-input"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-asset').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary">Erfassen</button>
+    </div>
+  </form>
+</div>
+
+<!-- Filter -->
+<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+  <a href="/it" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
+  <a href="/it?type=server" class="btn {{if eq .Filter "server"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">🖥️ Server</a>
+  <a href="/it?type=network" class="btn {{if eq .Filter "network"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">🌐 Netzwerk</a>
+  <a href="/it?type=workstation" class="btn {{if eq .Filter "workstation"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">💻 Workstation</a>
+</div>
+
+<div class="card" style="padding:0">
+  <table id="asset-table">
+    <thead><tr><th>Asset</th><th>Typ</th><th>IP / Hostname</th><th>Standort</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .Assets}}
+    <tr style="cursor:pointer">
+      <td style="position:relative">
+        <a href="/it/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
+        <div style="font-weight:500;position:relative">{{.Name}}</div>
+        <div style="font-size:11px;color:var(--muted)">{{.Manufacturer}} {{.Model}}{{if .SerialNo}} · {{.SerialNo}}{{end}}</div>
+      </td>
+      <td><span style="font-size:13px">{{.TypeIcon}}</span> <span style="font-size:12px;color:var(--muted)">{{.TypeLabel}}</span></td>
+      <td style="font-size:12px">
+        {{if .IPAddress}}<div style="font-family:monospace">{{.IPAddress}}</div>{{end}}
+        {{if .Hostname}}<div style="color:var(--muted);font-size:11px">{{.Hostname}}</div>{{end}}
+      </td>
+      <td style="font-size:12px;color:var(--muted)">{{.Location}}</td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td onclick="event.stopPropagation()">
+        <div style="position:relative">
+          <button class="btn" onclick="toggleMenu('it-{{.ID}}')" style="font-size:11px;padding:3px 8px"><i class="ti ti-dots"></i></button>
+          <div id="it-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:140px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.3)">
+            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"active"}' onclick="closeMenu('it-{{.ID}}')">✅ Aktiv</button>
+            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"maintenance"}' onclick="closeMenu('it-{{.ID}}')">🔧 Wartung</button>
+            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"inactive"}' onclick="closeMenu('it-{{.ID}}')">⭕ Inaktiv</button>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">Keine Assets vorhanden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Übersicht</div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Server</div><span>{{.Stats.servers}}</span></div>
+<div class="act-item"><div class="act-dot d-green"></div><div class="act-text">Netzwerk</div><span>{{.Stats.network}}</span></div>
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id^="it-"]'))document.querySelectorAll('[id^="it-"]').forEach(m=>{if(m.tagName==='DIV')m.style.display='none';});});
+</script>
+{{end}}
