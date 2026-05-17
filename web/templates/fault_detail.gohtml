@@ -3,29 +3,30 @@
 {{define "content"}}
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
   <a href="/faults" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
-  <div>
+  <div style="flex:1">
     <h1 style="font-size:18px;font-weight:600">{{.Fault.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">
-      Erkannt {{.Fault.DetectedAgo}} · {{.Fault.InfraName}}
-    </p>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erkannt {{.Fault.DetectedAgo}} · {{.Fault.InfraName}}</p>
   </div>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
-    <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
+  <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
+  <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
+  <div style="position:relative">
+    <button class="btn" onclick="toggleMenu('fault-menu')" style="padding:6px 10px"><i class="ti ti-dots"></i></button>
+    <div id="fault-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+      {{if eq .Fault.Status "detected"}}
+      <button class="menu-item" hx-post="/faults/{{.Fault.ID}}/analyze" hx-target="#analyze-result" onclick="closeMenu('fault-menu')"><i class="ti ti-brain"></i>Copilot analysieren</button>
+      {{end}}
+      {{if eq .Fault.Status "in_progress"}}
+      <button class="menu-item" onclick="document.getElementById('resolve-form').style.display='block';closeMenu('fault-menu')"><i class="ti ti-check"></i>Als gelöst markieren</button>
+      {{end}}
+    </div>
   </div>
 </div>
 
 <div class="grid2" style="grid-template-columns:1fr 380px;gap:14px;align-items:start">
-
-  <!-- Linke Spalte: Info + Analyse + Lösung -->
   <div>
-
-    <!-- Symptome -->
     <div class="card">
       <div class="card-title">Symptome & Beschreibung</div>
-      {{if .Fault.Description}}
-      <p style="font-size:13px;margin-bottom:12px;line-height:1.6">{{.Fault.Description}}</p>
-      {{end}}
+      {{if .Fault.Description}}<p style="font-size:13px;margin-bottom:12px;line-height:1.6">{{.Fault.Description}}</p>{{end}}
       {{if .Fault.Symptoms}}
       <div style="display:flex;flex-wrap:wrap;gap:6px">
         {{range .Fault.Symptoms}}
@@ -35,7 +36,6 @@
       {{end}}
     </div>
 
-    <!-- Copilot Analyse -->
     {{if .Analysis}}
     <div class="card">
       <div class="card-title">
@@ -43,7 +43,6 @@
         <span style="font-size:11px;color:var(--muted)">Konfidenz: {{printf "%.0f" .Analysis.Confidence}}%</span>
       </div>
       <p style="font-size:13px;margin-bottom:14px;line-height:1.6;color:var(--muted)">{{.Analysis.Summary}}</p>
-
       {{if .Analysis.PossibleCauses}}
       <div style="margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Mögliche Ursachen</div>
@@ -52,7 +51,6 @@
         {{end}}
       </div>
       {{end}}
-
       {{if .Analysis.Steps}}
       <div>
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Entstörungsschritte</div>
@@ -73,10 +71,7 @@
     <div class="card" style="text-align:center;padding:24px">
       <i class="ti ti-brain" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px"></i>
       <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Noch keine Analyse vorhanden</p>
-      <button class="btn btn-primary"
-        hx-post="/faults/{{.Fault.ID}}/analyze"
-        hx-target="#analyze-result"
-        hx-indicator="#analyze-spinner">
+      <button class="btn btn-primary" hx-post="/faults/{{.Fault.ID}}/analyze" hx-target="#analyze-result" hx-indicator="#analyze-spinner">
         <i class="ti ti-brain"></i>Copilot analysieren lassen
         <span id="analyze-spinner" class="htmx-indicator" style="margin-left:6px">...</span>
       </button>
@@ -84,9 +79,8 @@
     </div>
     {{end}}
 
-    <!-- Lösung -->
     {{if eq .Fault.Status "in_progress"}}
-    <div class="card">
+    <div id="resolve-form" style="display:none" class="card">
       <div class="card-title">Störung lösen</div>
       <form hx-post="/faults/{{.Fault.ID}}/resolve" hx-target="#resolve-result">
         <div class="form-group">
@@ -98,7 +92,8 @@
           <input name="root_cause" class="form-input" placeholder="Warum ist es passiert?">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Als gelöst markieren</button>
+          <button type="button" class="btn" onclick="document.getElementById('resolve-form').style.display='none'">Abbrechen</button>
+          <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Gelöst</button>
         </div>
       </form>
       <div id="resolve-result"></div>
@@ -113,28 +108,41 @@
     </div>
     {{end}}
 
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Fault.ID}}" data-attach-ref="fault:{{.Fault.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-photo"></i>Galerie
+          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-camera"></i>Kamera
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-file-upload"></i>Dokument
+          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Rechte Spalte: Copilot Chat + Zeiterfassung -->
+  <!-- Rechte Spalte -->
   <div>
-
-    <!-- Copilot Chat -->
-    <div class="card" style="margin-bottom:14px">
+    <div class="card">
       <div class="card-title"><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot Chat</div>
       <div id="chat-messages" style="background:var(--bg3);border-radius:8px;padding:10px;min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:10px;font-size:13px">
         <div style="color:var(--muted);font-style:italic;font-size:12px">Stelle Fragen zur Entstörung...</div>
       </div>
-      <div style="display:flex;gap:8px">
-        <input id="chat-input" class="form-input" placeholder="z.B. Was könnte die Ursache sein?"
-          style="font-size:12px"
-          onkeydown="if(event.key==='Enter')sendChat()">
-        <button class="btn btn-primary" style="white-space:nowrap;padding:7px 14px" onclick="sendChat()">
-          <i class="ti ti-send"></i>
-        </button>
-      </div>
+      <form hx-post="/faults/{{.Fault.ID}}/chat-web" hx-target="#chat-messages" hx-swap="beforeend" hx-on::before-request="appendUserMsg(this)" style="display:flex;gap:8px">
+        <input name="message" id="chat-input" class="form-input" placeholder="z.B. Was könnte die Ursache sein?" style="font-size:12px" autocomplete="off">
+        <button type="submit" class="btn btn-primary" style="white-space:nowrap;padding:7px 14px"><i class="ti ti-send"></i></button>
+      </form>
     </div>
 
-    <!-- Zeiterfassung -->
     <div class="card">
       <div class="card-title">Zeiterfassung</div>
       {{if .RunningTime}}
@@ -142,35 +150,20 @@
         <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.RunningTime.StartedAt.Format "15:04"}}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">{{.RunningTime.Description}}</div>
       </div>
-      <button class="btn" style="width:100%;justify-content:center"
-        hx-post="/time/{{.RunningTime.ID}}/stop"
-        hx-target="#time-result">
-        <i class="ti ti-player-stop"></i>Zeit stoppen
-      </button>
+      <button class="btn" style="width:100%;justify-content:center" hx-post="/time/{{.RunningTime.ID}}/stop-web" hx-target="#time-result" hx-on::after-request="setTimeout(()=>location.reload(),1000)"><i class="ti ti-player-stop"></i>Zeit stoppen</button>
       {{else}}
-      <button class="btn btn-primary" style="width:100%;justify-content:center"
-        hx-post="/faults/{{.Fault.ID}}/time/start"
-        hx-target="#time-result">
-        <i class="ti ti-player-play"></i>Zeit erfassen starten
-      </button>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" hx-post="/faults/{{.Fault.ID}}/time/start" hx-target="#time-result"><i class="ti ti-player-play"></i>Zeit erfassen starten</button>
       {{end}}
       <div id="time-result"></div>
-
-      {{if .TimeEntries}}
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Zeiteinträge</div>
-        {{range .TimeEntries}}
-        <div class="li">
-          <div class="li-text">
-            <div class="li-title" style="font-size:12px">{{.Description}}</div>
-            <div class="li-sub">{{.UserName}} · {{if .DurationMin}}{{.DurationMin}}min{{else}}läuft...{{end}}</div>
-          </div>
+      {{range .TimeEntries}}
+      <div class="li">
+        <div class="li-text">
+          <div class="li-title" style="font-size:12px">{{.Description}}</div>
+          <div class="li-sub">{{.UserName}} · {{if .DurationMin}}{{.DurationMin}}min{{else}}läuft...{{end}}</div>
         </div>
-        {{end}}
       </div>
       {{end}}
     </div>
-
   </div>
 </div>
 {{end}}
@@ -187,35 +180,22 @@
 
 {{block "scripts" .}}
 <script>
-const FAULT_ID = '{{.Fault.ID}}';
-const TOKEN = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('pdh_token='))?.split('=')[1] || '';
-let chatHistory = [];
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
 
-function appendMsg(role, text) {
-  const el = document.getElementById('chat-messages');
-  const color = role === 'user' ? 'var(--accent)' : 'var(--text)';
-  const label = role === 'user' ? 'Du' : 'Copilot';
-  el.innerHTML += `<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">${label}</div><div style="color:${color};line-height:1.5;font-size:12px">${text}</div></div>`;
-  el.scrollTop = el.scrollHeight;
-}
-
-function sendChat() {
-  const input = document.getElementById('chat-input');
+function appendUserMsg(form) {
+  const input = form.querySelector('[name=message]');
   const msg = input.value.trim();
   if(!msg) return;
+  const el = document.getElementById('chat-messages');
+  el.innerHTML += '<div style="margin-bottom:8px"><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Du</div><div style="color:var(--accent);font-size:12px">'+msg+'</div></div>';
+  el.scrollTop = el.scrollHeight;
   input.value = '';
-  appendMsg('user', msg);
-  chatHistory.push({role:'user', content:msg});
-
-  fetch('/api/v1/faults/'+FAULT_ID+'/chat', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
-    body: JSON.stringify({message:msg, history:chatHistory})
-  }).then(r=>r.json()).then(d=>{
-    const reply = d.data?.reply || d.error || 'Keine Antwort';
-    appendMsg('assistant', reply);
-    chatHistory.push({role:'assistant', content:reply});
-  }).catch(()=>appendMsg('assistant','Copilot nicht erreichbar'));
 }
+document.body.addEventListener('htmx:afterSettle', function() {
+  const el = document.getElementById('chat-messages');
+  if(el) el.scrollTop = el.scrollHeight;
+});
 </script>
 {{end}}
