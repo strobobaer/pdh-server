@@ -223,6 +223,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/inventory/book-web", h.InventoryBookWeb)
 	r.Get("/maintenance", h.Maintenance)
 	r.Post("/maintenance/plans", h.MaintenanceCreatePlan)
+	r.Put("/maintenance/plans/{id}/edit-web", h.MaintenancePlanEditWeb)
+	r.Post("/maintenance/plans/{id}/duplicate-web", h.MaintenancePlanDuplicateWeb)
 	r.Post("/maintenance/generate", h.MaintenanceGenerate)
 	r.Get("/maintenance/tasks/{id}", h.MaintenanceTaskDetail)
 	r.Post("/maintenance/tasks/{id}/start-web", h.MaintenanceTaskStartWeb)
@@ -1031,10 +1033,15 @@ type InfraOption struct{ ID, Name string }
 type MaintPlanView struct {
 	ID            string
 	Name          string
+	InfraID       string
 	InfraName     string
+	TypeValue     string
 	TypeLabel     string
+	IntervalValue string
+	IntervalDays  int
 	IntervalLabel string
 	NextDue       string
+	NextDueISO    string
 	Priority      string
 	PriorityDot   string
 }
@@ -1085,10 +1092,14 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, p := range plans {
 			data.Plans = append(data.Plans, MaintPlanView{
-				ID: p.ID, Name: p.Name, InfraName: p.InfraName,
+				ID: p.ID, Name: p.Name, InfraID: p.InfrastructureID, InfraName: p.InfraName,
+				TypeValue:     string(p.Type),
 				TypeLabel:     typeLabels[p.Type],
+				IntervalValue: string(p.Interval),
+				IntervalDays:  p.IntervalDays,
 				IntervalLabel: intervalLabels[p.Interval],
 				NextDue:       p.NextDueAt.Format("02.01.2006"),
+				NextDueISO:    p.NextDueAt.Format("2006-01-02"),
 				Priority:      string(p.Priority),
 				PriorityDot:   priorityDot(string(p.Priority)),
 			})
@@ -1149,6 +1160,45 @@ func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
+}
+
+func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	intervalDays, _ := strconv.Atoi(r.FormValue("interval_days"))
+	estimatedMin, _ := strconv.Atoi(r.FormValue("estimated_min"))
+	in := &maintenance.UpdatePlanInput{
+		Name:             strings.TrimSpace(r.FormValue("name")),
+		Description:      strings.TrimSpace(r.FormValue("description")),
+		Type:             maintenance.PlanType(r.FormValue("type")),
+		InfrastructureID: strings.TrimSpace(r.FormValue("infrastructure_id")),
+		Interval:         maintenance.Interval(r.FormValue("interval")),
+		IntervalDays:     intervalDays,
+		EstimatedMin:     estimatedMin,
+		Priority:         maintenance.Priority(r.FormValue("priority")),
+		NextDueAt:        r.FormValue("next_due_at"),
+	}
+	if in.Name == "" {
+		http.Error(w, "Name ist Pflicht", http.StatusBadRequest)
+		return
+	}
+	if err := h.maint.UpdatePlan(r.Context(), chi.URLParam(r, "id"), in); err != nil {
+		http.Error(w, "Wartungsplan konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(`<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Gespeichert</span>`))
+}
+
+func (h *Handler) MaintenancePlanDuplicateWeb(w http.ResponseWriter, r *http.Request) {
+	u := getUser(r)
+	if _, err := h.maint.DuplicatePlan(r.Context(), chi.URLParam(r, "id"), u.ID); err != nil {
+		http.Error(w, "Wartungsplan konnte nicht dupliziert werden: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
 }
 
 func (h *Handler) MaintenanceGenerate(w http.ResponseWriter, r *http.Request) {

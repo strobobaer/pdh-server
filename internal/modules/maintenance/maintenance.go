@@ -128,6 +128,18 @@ type CreateTaskInput struct {
 	DueDate          string   `json:"due_date"`
 }
 
+type UpdatePlanInput struct {
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	Type             PlanType `json:"type"`
+	InfrastructureID string   `json:"infrastructure_id"`
+	Interval         Interval `json:"interval"`
+	IntervalDays     int      `json:"interval_days"`
+	EstimatedMin     int      `json:"estimated_min"`
+	Priority         Priority `json:"priority"`
+	NextDueAt        string   `json:"next_due_at"`
+}
+
 type CompleteTaskInput struct {
 	Notes       string `json:"notes"`
 	DurationMin int    `json:"duration_min"`
@@ -195,6 +207,50 @@ func (r *Repository) ListPlans(ctx context.Context, infraID string) ([]*Maintena
 		plans = append(plans, p)
 	}
 	return plans, nil
+}
+
+func (r *Repository) GetPlanByID(ctx context.Context, id string) (*MaintenancePlan, error) {
+	p := &MaintenancePlan{}
+	err := r.db.QueryRow(ctx, `
+		SELECT mp.id, mp.name, COALESCE(mp.description,''), mp.type,
+		       mp.infrastructure_id, mp.interval_type, mp.interval_days,
+		       mp.estimated_min, mp.priority, mp.assigned_to, mp.active,
+		       mp.last_executed_at, mp.next_due_at, mp.created_by, mp.created_at,
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		FROM maintenance_plans mp
+		LEFT JOIN infrastructure i ON mp.infrastructure_id = i.id
+		LEFT JOIN users u ON mp.assigned_to = u.id
+		WHERE mp.id=$1 AND mp.active=true`, id).Scan(
+		&p.ID, &p.Name, &p.Description, &p.Type,
+		&p.InfrastructureID, &p.Interval, &p.IntervalDays,
+		&p.EstimatedMin, &p.Priority, &p.AssignedTo, &p.Active,
+		&p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
+		&p.InfraName, &p.AssigneeName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (r *Repository) UpdatePlan(ctx context.Context, id string, p *MaintenancePlan) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE maintenance_plans
+		SET name=$1, description=$2, type=$3, infrastructure_id=$4,
+		    interval_type=$5, interval_days=$6, estimated_min=$7,
+		    priority=$8, assigned_to=$9, next_due_at=$10
+		WHERE id=$11 AND active=true`,
+		p.Name, p.Description, p.Type, p.InfrastructureID,
+		p.Interval, p.IntervalDays, p.EstimatedMin,
+		p.Priority, p.AssignedTo, p.NextDueAt, id,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("wartungsplan nicht gefunden")
+	}
+	return nil
 }
 
 func (r *Repository) CreateTask(ctx context.Context, t *MaintenanceTask) error {
@@ -390,32 +446,35 @@ type Service struct{ repo *Repository }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
+func intervalDaysFor(interval Interval, fallback int) int {
+	switch interval {
+	case IntervalDaily:
+		return 1
+	case IntervalWeekly:
+		return 7
+	case IntervalMonthly:
+		return 30
+	case IntervalQuarterly:
+		return 90
+	case IntervalYearly:
+		return 365
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return 30
+}
+
 func (s *Service) CreatePlan(ctx context.Context, in *CreatePlanInput, userID string) (*MaintenancePlan, error) {
 	nextDue, err := time.Parse("2006-01-02", in.FirstDueAt)
 	if err != nil {
 		nextDue = time.Now().AddDate(0, 0, in.IntervalDays)
 	}
 
-	intervalDays := in.IntervalDays
-	if intervalDays == 0 {
-		switch in.Interval {
-		case IntervalDaily:
-			intervalDays = 1
-		case IntervalWeekly:
-			intervalDays = 7
-		case IntervalMonthly:
-			intervalDays = 30
-		case IntervalQuarterly:
-			intervalDays = 90
-		case IntervalYearly:
-			intervalDays = 365
-		}
-	}
-
 	p := &MaintenancePlan{
 		Name: in.Name, Description: in.Description, Type: in.Type,
 		InfrastructureID: in.InfrastructureID, Interval: in.Interval,
-		IntervalDays: intervalDays, EstimatedMin: in.EstimatedMin,
+		IntervalDays: intervalDaysFor(in.Interval, in.IntervalDays), EstimatedMin: in.EstimatedMin,
 		Priority: in.Priority, AssignedTo: in.AssignedTo,
 		Active: true, NextDueAt: nextDue, CreatedBy: userID,
 	}
@@ -424,6 +483,56 @@ func (s *Service) CreatePlan(ctx context.Context, in *CreatePlanInput, userID st
 
 func (s *Service) ListPlans(ctx context.Context, infraID string) ([]*MaintenancePlan, error) {
 	return s.repo.ListPlans(ctx, infraID)
+}
+
+func (s *Service) UpdatePlan(ctx context.Context, id string, in *UpdatePlanInput) error {
+	p, err := s.repo.GetPlanByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if in.Name != "" {
+		p.Name = in.Name
+	}
+	if in.Description != "" {
+		p.Description = in.Description
+	}
+	if in.Type != "" {
+		p.Type = in.Type
+	}
+	if in.InfrastructureID != "" {
+		p.InfrastructureID = in.InfrastructureID
+	}
+	if in.Interval != "" {
+		p.Interval = in.Interval
+		p.IntervalDays = intervalDaysFor(in.Interval, in.IntervalDays)
+	} else if in.IntervalDays > 0 {
+		p.IntervalDays = in.IntervalDays
+	}
+	if in.EstimatedMin > 0 {
+		p.EstimatedMin = in.EstimatedMin
+	}
+	if in.Priority != "" {
+		p.Priority = in.Priority
+	}
+	if in.NextDueAt != "" {
+		if nextDue, err := time.Parse("2006-01-02", in.NextDueAt); err == nil {
+			p.NextDueAt = nextDue
+		}
+	}
+	return s.repo.UpdatePlan(ctx, id, p)
+}
+
+func (s *Service) DuplicatePlan(ctx context.Context, id, userID string) (*MaintenancePlan, error) {
+	p, err := s.repo.GetPlanByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	p.ID = ""
+	p.Name = p.Name + " Kopie"
+	p.Active = true
+	p.LastExecutedAt = nil
+	p.CreatedBy = userID
+	return p, s.repo.CreatePlan(ctx, p)
 }
 
 func (s *Service) CreateTask(ctx context.Context, in *CreateTaskInput, userID string) (*MaintenanceTask, error) {
