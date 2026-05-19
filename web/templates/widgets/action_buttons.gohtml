@@ -48,10 +48,10 @@ Disabled    bool
 {{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
 {{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
-{{- if eq $action "activate" -}}{{- $icon = "ti ti-toggle-right" -}}{{- if not $label -}}{{- $label = "Aktiv" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
-{{- if eq $action "deactivate" -}}{{- $icon = "ti ti-toggle-left" -}}{{- if not $label -}}{{- $label = "Inaktiv" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "activate" -}}{{- $icon = "ti ti-circle-arrow-up" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "deactivate" -}}{{- $icon = "ti ti-circle-arrow-down" -}}{{- if not $label -}}{{- $label = "Deaktivieren" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
 {{- if eq $action "done" -}}{{- $icon = "ti ti-check" -}}{{- if not $label -}}{{- $label = "Fertig" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
-{{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if .Href }}
 <a href="{{.Href}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
@@ -81,6 +81,50 @@ Disabled    bool
 {{- end }}
 {{end}}
 
+{{define "icon-button"}}
+{{- $action := .Action -}}
+{{- $label := .Label -}}
+{{- $icon := "ti ti-circle" -}}
+{{- $variant := "btn" -}}
+{{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
+{{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
+{{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "activate" -}}{{- $icon = "ti ti-circle-arrow-up" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "deactivate" -}}{{- $icon = "ti ti-circle-arrow-down" -}}{{- if not $label -}}{{- $label = "Deaktivieren" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "done" -}}{{- $icon = "ti ti-check" -}}{{- if not $label -}}{{- $label = "Erledigen" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
+{{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if .Href }}
+<a href="{{.Href}}" class="{{$variant}} btn-icon {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
+   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
+   {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
+   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
+   {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
+   {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
+   {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
+   {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
+  <i class="{{$icon}}" aria-hidden="true"></i><span class="sr-only">{{$label}}</span>
+</a>
+{{- else }}
+<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} btn-icon {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
+   {{if .Disabled}}disabled{{end}}
+   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
+   {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
+   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
+   {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
+   {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
+   {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
+   {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
+  <i class="{{$icon}}" aria-hidden="true"></i><span class="sr-only">{{$label}}</span>
+</button>
+{{- end }}
+{{end}}
+
 {{define "button-new"}}{{template "action-button" .}}{{end}}
 {{define "button-refresh"}}{{template "action-button" .}}{{end}}
 {{define "button-edit"}}{{template "action-button" .}}{{end}}
@@ -92,3 +136,14 @@ Disabled    bool
 {{define "button-done"}}{{template "action-button" .}}{{end}}
 {{define "button-cancel"}}{{template "action-button" .}}{{end}}
 {{define "button-save"}}{{template "action-button" .}}{{end}}
+{{define "icon-button-new"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-refresh"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-edit"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-copy"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-delete"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-delete-mark"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-activate"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-deactivate"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-done"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-cancel"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-save"}}{{template "icon-button" .}}{{end}}

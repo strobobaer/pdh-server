@@ -20,7 +20,7 @@ uploads
 *.pid
 
 # Local binaries
-server
+/server
 
 # Editor and OS files
 .DS_Store

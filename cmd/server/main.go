@@ -120,6 +120,9 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Str("path", tmplPath).Msg("templates laden fehlgeschlagen")
 	}
+	if _, err := tmpl.ParseGlob(filepath.Join("web", "templates", "widgets", "*.gohtml")); err != nil {
+		log.Fatal().Err(err).Msg("widget-templates laden fehlgeschlagen")
+	}
 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
 
 	// Web Handler

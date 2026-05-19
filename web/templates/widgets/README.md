@@ -124,15 +124,32 @@ ActionButtonData{
 }
 ```
 
-## Naechster Integrationsschritt
+Icon-only Varianten:
 
-Damit die Widgets in allen Seiten nutzbar sind, sollte `internal/web/handler.go` beim Rendern zusaetzlich alle Widget-Templates parsen, z. B.:
+```gotemplate
+{{template "icon-button" .Button}}
+```
+
+Unterstuetzte Aktionen:
+
+- `new` - Plus
+- `edit` - Stift
+- `copy` - Kopieren
+- `save` - Diskette
+- `activate` - Pfeil im Kreis nach oben
+- `deactivate` - Pfeil im Kreis nach unten
+- `done` - gruener Haken
+- `cancel` - rotes X
+
+## Integration
+
+Die Widgets werden beim Serverstart geladen:
 
 ```go
 t.ParseGlob("web/templates/widgets/*.gohtml")
 ```
 
-Danach koennen die Seiten-Templates die Widgets direkt mit `{{template "..." .}}` einbinden.
+Seiten-Templates koennen die Widgets direkt mit `{{template "..." .}}` einbinden.
 
 ## Design-Regel
 
