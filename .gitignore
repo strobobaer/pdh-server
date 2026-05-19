@@ -1,6 +1,34 @@
+# Build outputs
 bin/
+build/
+dist/
+*.exe
+*.test
+*.out
+
+# Local configuration and secrets
 .env
+.env.*
+!.env.example
 config.yaml
+config.local.yaml
+
+# Runtime data
+uploads/
 *.log
+*.pid
+
+# Editor and OS files
 .DS_Store
-go.sum
+Thumbs.db
+.vscode/
+.idea/
+
+# Go workspace files
+*.coverprofile
+coverage.out
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
