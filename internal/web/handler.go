@@ -1019,6 +1019,7 @@ type MaintenancePageData struct {
 	Tasks        []MaintTaskView
 	DueTasks     []MaintTaskView
 	InfraOptions []InfraOption
+	Filter       string
 }
 
 type InfraOption struct{ ID, Name string }
@@ -1065,6 +1066,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 	data := MaintenancePageData{
 		BaseData: baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
 		Today:    time.Now().Format("2006-01-02"),
+		Filter:   string(status),
 	}
 
 	if plans, err := h.maint.ListPlans(ctx, ""); err == nil {

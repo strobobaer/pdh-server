@@ -43,8 +43,14 @@
       <div class="infra-picker" data-infra-picker data-target="ticket-infra-id" data-selected-label="ticket-infra-selected">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <div id="ticket-infra-selected" style="flex:1;font-size:12px;color:var(--muted)">Keine Infrastruktur ausgewählt</div>
-          <button type="button" class="btn" data-action="refresh" style="font-size:11px;padding:5px 10px" onclick="loadInfraPicker(this.closest('[data-infra-picker]'))"><i class="ti ti-refresh"></i>Aktualisieren</button>
-          <button type="button" class="btn" data-action="cancel" style="font-size:11px;padding:5px 10px" onclick="clearInfraPicker(this.closest('[data-infra-picker]'))"><i class="ti ti-x"></i>Leeren</button>
+          {{template "icon-button-toolbar" (dict
+            "Class" "compact"
+            "Label" "Infrastruktur-Auswahl"
+            "Items" (list
+              (dict "Action" "refresh" "ShowLabel" true "Class" "btn-small" "OnClick" "loadInfraPicker(this.closest('[data-infra-picker]'))")
+              (dict "Action" "cancel" "ShowLabel" true "Label" "Leeren" "Class" "btn-small" "OnClick" "clearInfraPicker(this.closest('[data-infra-picker]'))")
+            )
+          )}}
         </div>
         <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät..." oninput="filterInfraPicker(this)" style="margin-bottom:8px">
         <div data-infra-tree style="border:1px solid var(--border);border-radius:8px;max-height:220px;overflow:auto;padding:8px;background:var(--bg3);font-size:12px;color:var(--muted)">Noch nicht geladen</div>
@@ -64,11 +70,11 @@
   </form>
 </div>
 
-<div style="display:flex;gap:8px;margin-bottom:14px">
-  <a href="/tickets" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
-  <a href="/tickets?status=open" class="btn {{if eq .Filter "open"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Offen</a>
-  <a href="/tickets?status=in_progress" class="btn {{if eq .Filter "in_progress"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">In Arbeit</a>
-  <a href="/tickets?status=resolved" class="btn {{if eq .Filter "resolved"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Gelöst</a>
+<div class="widget-icon-toolbar compact" style="margin-bottom:14px" aria-label="Ticketfilter">
+  {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/tickets" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/tickets")}}{{end}}
+  {{if eq .Filter "open"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Offen" "Href" "/tickets?status=open" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Offen" "Href" "/tickets?status=open")}}{{end}}
+  {{if eq .Filter "in_progress"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Arbeit" "Href" "/tickets?status=in_progress" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Arbeit" "Href" "/tickets?status=in_progress")}}{{end}}
+  {{if eq .Filter "resolved"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/tickets?status=resolved" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/tickets?status=resolved")}}{{end}}
 </div>
 
 <div id="ticket-table" class="card" style="padding:0">
@@ -77,9 +83,11 @@
     <tbody>
     {{range .Tickets}}
     <tr style="cursor:pointer">
-      <td style="position:relative"><a href="/tickets/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
-        <div style="font-weight:500;position:relative">{{.Title}}</div>
-        <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
+      <td>
+        <a href="/tickets/{{.ID}}" style="display:block;color:inherit;text-decoration:none">
+          <div style="font-weight:500">{{.Title}}</div>
+          <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
+        </a>
       </td>
       <td><span class="badge {{.PriorityClass}}">{{.Priority}}</span></td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
@@ -117,25 +125,8 @@
 <script>
 function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
 function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
-function flattenInfra(nodes, depth=0, out=[]){(nodes||[]).forEach(n=>{out.push({...n, depth}); flattenInfra(n.children||[], depth+1, out)}); return out}
-async function loadInfraPicker(root){
-  if(!root) return;
-  const box=root.querySelector('[data-infra-tree]'); box.innerHTML='Lädt...';
-  try{
-    const res=await fetch('/api/v1/infrastructure/tree',{headers:{Authorization:'Bearer '+pdhToken()}});
-    const json=await res.json(); const items=flattenInfra(json.data||[]);
-    root.__infraItems=items;
-    renderInfraPicker(root, items);
-  }catch(e){box.innerHTML='<span style="color:var(--red)">Infrastruktur konnte nicht geladen werden</span>'}
-}
-function renderInfraPicker(root, items){
-  const box=root.querySelector('[data-infra-tree]');
-  if(!items.length){box.innerHTML='Keine Infrastruktur vorhanden'; return}
-  box.innerHTML=items.map(i=>`<button type="button" data-infra-id="${i.id}" data-infra-name="${escapeHtml(i.name)}" onclick="selectInfra(this)" style="display:block;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:5px 6px;border-radius:6px;cursor:pointer;margin-left:${i.depth*12}px">${infraIcon(i.type)} ${escapeHtml(i.name)} <span style="color:var(--muted);font-size:10px">${i.type}</span></button>`).join('');
-}
 function selectInfra(btn){const root=btn.closest('[data-infra-picker]'); document.getElementById(root.dataset.target).value=btn.dataset.infraId; document.getElementById(root.dataset.selectedLabel).textContent=btn.dataset.infraName}
 function clearInfraPicker(root){document.getElementById(root.dataset.target).value=''; document.getElementById(root.dataset.selectedLabel).textContent='Keine Infrastruktur ausgewählt'}
-function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase(); renderInfraPicker(root,(root.__infraItems||[]).filter(i=>i.name.toLowerCase().includes(q)||String(i.type).includes(q)))}
 function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
 async function loadInfraPicker(root){

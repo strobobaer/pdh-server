@@ -10,6 +10,8 @@ Supported actions:
 - new
 - refresh
 - expand
+- filter
+- analyze
 - edit
 - view
 - copy
@@ -27,7 +29,7 @@ Supported actions:
 - save
 
 Expected data fields:
-Action      string  // new, refresh, expand, edit, view, copy, history, more, start, stop, book, delete, delete-mark, activate, deactivate, done, cancel, save
+Action      string  // new, refresh, expand, filter, analyze, edit, view, copy, history, more, start, stop, book, delete, delete-mark, activate, deactivate, done, cancel, save
 ID          string  // optional element id
 Label       string  // optional; falls back to the default action label
 ShowLabel   bool    // optional; shows the label next to the icon for compact text buttons
@@ -55,6 +57,8 @@ Disabled    bool
 {{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
 {{- if eq $action "expand" -}}{{- $icon = "ti ti-arrows-maximize" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "filter" -}}{{- $icon = "ti ti-filter" -}}{{- if not $label -}}{{- $label = "Filtern" -}}{{- end -}}{{- end -}}
+{{- if eq $action "analyze" -}}{{- $icon = "ti ti-brain" -}}{{- if not $label -}}{{- $label = "Analysieren" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
 {{- if eq $action "view" -}}{{- $icon = "ti ti-eye" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
 {{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
@@ -106,6 +110,8 @@ Disabled    bool
 {{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
 {{- if eq $action "expand" -}}{{- $icon = "ti ti-arrows-maximize" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "filter" -}}{{- $icon = "ti ti-filter" -}}{{- if not $label -}}{{- $label = "Filtern" -}}{{- end -}}{{- end -}}
+{{- if eq $action "analyze" -}}{{- $icon = "ti ti-brain" -}}{{- if not $label -}}{{- $label = "Analysieren" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
 {{- if eq $action "view" -}}{{- $icon = "ti ti-eye" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
 {{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
@@ -169,6 +175,8 @@ Disabled    bool
 {{define "icon-button-new"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-refresh"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-expand"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-filter"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-analyze"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-edit"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-view"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-copy"}}{{template "icon-button" .}}{{end}}
