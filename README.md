@@ -1,6 +1,6 @@
 # PDH Server
 
-PDH Server ist das Backend fuer den **PDH - Prozess Data Hub**. Das Projekt stellt eine modulare HTTP-API fuer betriebliche Daten bereit, unter anderem fuer Benutzer, Schichten, Infrastruktur, Tickets, Stoerungen, Zeiterfassung, Wartung und Inventar.
+PDH Server ist das Backend und die Web-Oberflaeche fuer den **PDH - Prozess Data Hub**. Das Projekt stellt eine modulare HTTP-API und Web-UI fuer betriebliche Daten bereit, unter anderem fuer Benutzer, Schichten, Lagerorte, Infrastruktur, Tickets, Stoerungen, IT, Checklisten, Anhaenge, Zeiterfassung, Wartung und Inventar.
 
 ## Inhalt
 
@@ -14,6 +14,7 @@ PDH Server ist das Backend fuer den **PDH - Prozess Data Hub**. Das Projekt stel
 - [Migration ausfuehren](#migration-ausfuehren)
 - [Server starten](#server-starten)
 - [API-Endpunkte](#api-endpunkte)
+- [Web-UI](#web-ui)
 - [Deployment mit systemd](#deployment-mit-systemd)
 - [Entwicklung](#entwicklung)
 - [Sicherheitshinweise](#sicherheitshinweise)
@@ -25,13 +26,19 @@ PDH Server ist das Backend fuer den **PDH - Prozess Data Hub**. Das Projekt stel
 Aktuell registrierte Module:
 
 - `users` - Benutzer, Login, Registrierung, Rollen
+- `storage` - Lagerorte und Lagerstruktur
 - `shifts` - Schichtmodelle und Schichtzuweisungen
 - `infrastructure` - Bauwerke, Linien, Anlagen und Geraete
 - `tickets` - Tickets und Aufgaben
 - `faults` - Stoerungen mit optionalem Copilot
-- `timetracking` - Zeiterfassung
+- `time` - Zeiterfassung
 - `maintenance` - Wartung
+- `it` - IT-Modul
 - `inventory` - Inventar
+- `attachments` - Anhaenge und Uploads
+- `checklists` - Checklisten
+- Web-UI unter `/`
+- statische Uploads unter `/uploads/`
 
 ## Technik-Stack
 
@@ -43,14 +50,17 @@ Aktuell registrierte Module:
 - `github.com/rs/zerolog` fuer Logging
 - `github.com/spf13/viper` fuer Konfiguration
 - `golang.org/x/crypto/bcrypt` fuer Passwort-Hashes
+- Go HTML Templates fuer die Web-UI
 
 ## Projektstruktur
 
 ```text
 .
 ├── cmd/server/                 # Einstiegspunkt des HTTP-Servers
-├── internal/core/               # Kernmodule: users, shifts, infrastructure
-├── internal/modules/            # Fachmodule: faults, inventory, maintenance, tickets, timetracking
+├── internal/core/               # Kernmodule: users, shifts, storage, infrastructure
+├── internal/modules/            # Fachmodule: faults, inventory, maintenance, tickets, timetracking, it, attachments, checklists
+├── internal/web/                # Web-Handler
+├── web/templates/               # Go HTML Templates
 ├── migrations/                  # SQL-Migrationen
 ├── pkg/config/                  # Konfiguration ueber .env, config.yaml und ENV
 ├── pkg/database/                # PostgreSQL-Verbindung
@@ -173,14 +183,16 @@ psql "postgres://pdh:SicheresPasswortAendern@localhost:5432/pdh?sslmode=disable"
 
 ## Migration ausfuehren
 
-Aktuell liegt eine SQL-Migration im Ordner `migrations/`.
+Migrationen liegen im Ordner `migrations/`.
 
-Migration ausfuehren:
+Beispiel fuer die Core-Migration:
 
 ```bash
 psql "postgres://pdh:SicheresPasswortAendern@localhost:5432/pdh?sslmode=disable" \
   -f migrations/001_core_schema.up.sql
 ```
+
+Falls weitere Migrationen vorhanden sind, diese in numerischer Reihenfolge ausfuehren.
 
 Hinweis: Ein automatischer Migration-Runner ist derzeit noch nicht enthalten.
 
@@ -210,10 +222,14 @@ Healthcheck:
 curl http://localhost:8090/health
 ```
 
-Root-Endpunkt:
+Erwartete Antwort:
 
-```bash
-curl http://localhost:8090/
+```json
+{
+  "service": "pdh",
+  "status": "ok",
+  "version": "0.8.0"
+}
 ```
 
 ## API-Endpunkte
@@ -228,7 +244,6 @@ Registrierte Routen:
 
 ```text
 GET  /health
-GET  /
 
 POST /api/v1/users/login
 POST /api/v1/users/register
@@ -237,13 +252,17 @@ GET  /api/v1/users/{id}
 PUT  /api/v1/users/{id}
 DEL  /api/v1/users/{id}
 
+/api/v1/storage
 /api/v1/shifts
 /api/v1/infrastructure
 /api/v1/tickets
 /api/v1/faults
 /api/v1/time
 /api/v1/maintenance
+/api/v1/it
 /api/v1/inventory
+/api/v1/attachments
+/api/v1/checklists
 ```
 
 Geschuetzte Endpunkte erwarten einen Bearer-Token:
@@ -251,6 +270,22 @@ Geschuetzte Endpunkte erwarten einen Bearer-Token:
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" http://localhost:8090/api/v1/users/
 ```
+
+## Web-UI
+
+Die Web-UI wird unter `/` gemountet.
+
+```text
+http://localhost:8090/
+```
+
+Templates werden aus folgendem Pfad geladen:
+
+```text
+web/templates/base.gohtml
+```
+
+Uploads werden lokal im Ordner `uploads/` gespeichert und unter `/uploads/` ausgeliefert.
 
 ## Deployment mit systemd
 
@@ -334,6 +369,12 @@ Starten:
 make run
 ```
 
+Aenderungen pushen:
+
+```bash
+make push
+```
+
 ## Sicherheitshinweise
 
 Vor produktivem Einsatz pruefen:
@@ -345,14 +386,17 @@ Vor produktivem Einsatz pruefen:
 5. Datenbankpasswoerter duerfen nicht committed werden.
 6. Fuer externe Datenbankverbindungen sollte SSL aktiviert werden.
 7. Backups fuer PostgreSQL einrichten.
+8. Der Ordner `uploads/` sollte nicht ins Repository committed werden.
+9. Branch Protection fuer `main` ist empfohlen.
 
 ## Bekannte Bremskloetze
 
 - Noch kein Dockerfile vorhanden.
 - Noch keine `docker-compose.yml` vorhanden.
 - Noch kein automatischer Migration-Runner vorhanden.
-- `README.md` wurde nachtraeglich erstellt und sollte bei neuen Features gepflegt werden.
-- Das Makefile sollte keine erzwungenen Pushes verwenden, ausser bewusst mit `--force-with-lease`.
+- CORS sollte fuer Produktion konfigurierbar gemacht werden.
+- Registrierung ist aktuell als oeffentliche Route dokumentiert und sollte fuer interne Installationen geprueft werden.
+- Upload-Speicherung erfolgt lokal im Dateisystem.
 
 ## Troubleshooting
 
@@ -389,9 +433,19 @@ Anderen Port setzen:
 PDH_SERVER_PORT=8091
 ```
 
+### Fehler: Templates koennen nicht geladen werden
+
+Pruefen, ob die Datei vorhanden ist:
+
+```bash
+ls -la web/templates/base.gohtml
+```
+
+Wenn der Dienst per systemd laeuft, muss `WorkingDirectory` auf das Repository-Verzeichnis zeigen.
+
 ### Fehler: Migration wurde schon ausgefuehrt
 
-Die Migration enthaelt `CREATE TABLE`-Statements ohne `IF NOT EXISTS`. Wenn Tabellen bereits existieren, muss die Datenbank entweder bereinigt oder eine Folgemigration erstellt werden.
+Einige Migrationen koennen `CREATE TABLE`-Statements ohne `IF NOT EXISTS` enthalten. Wenn Tabellen bereits existieren, muss die Datenbank bereinigt oder eine Folgemigration erstellt werden.
 
 ## Lizenz
 
