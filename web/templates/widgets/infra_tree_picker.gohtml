@@ -1,0 +1,38 @@
+{{/*
+Reusable infrastructure tree picker widget.
+
+Usage:
+
+{{template "infra-tree-picker" dict
+  "TargetID" "ticket-infra-id"
+  "SelectedLabelID" "ticket-infra-selected"
+  "Label" "Infrastruktur"
+}}
+
+The widget is configured via data attributes so it can be embedded in tickets,
+faults, maintenance plans and future dashboard widgets without custom JS per form.
+*/}}
+
+{{define "infra-tree-picker"}}
+<div class="widget-field infra-picker-widget">
+  <label class="form-label">{{.Label}}</label>
+  <input type="hidden" id="{{.TargetID}}" name="infrastructure_id" value="{{.Value}}">
+  <div class="infra-picker"
+       data-infra-picker
+       data-target="{{.TargetID}}"
+       data-selected-label="{{.SelectedLabelID}}">
+    <div class="infra-picker-head">
+      <div id="{{.SelectedLabelID}}" class="infra-picker-selected">
+        {{if .SelectedLabel}}{{.SelectedLabel}}{{else}}Keine Infrastruktur ausgewählt{{end}}
+      </div>
+      <button type="button" class="btn btn-small" data-infra-clear>Leeren</button>
+    </div>
+    <div class="infra-picker-search">
+      <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät...">
+    </div>
+    <div class="infra-picker-tree" data-infra-tree>
+      <div class="infra-picker-empty">Baum wird geladen...</div>
+    </div>
+  </div>
+</div>
+{{end}}
