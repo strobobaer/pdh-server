@@ -1,0 +1,94 @@
+{{/*
+Reusable action button widgets for PDH.
+
+Goal:
+- one visual and semantic button system for all modules
+- usable in forms, tables, cards, modals and HTMX fragments
+- supports normal links, submit buttons, plain buttons and HTMX actions
+
+Supported actions:
+- new
+- refresh
+- edit
+- copy
+- delete
+- delete-mark
+- activate
+- deactivate
+- done
+- cancel
+- save
+
+Expected data fields:
+Action      string  // new, refresh, edit, copy, delete, delete-mark, activate, deactivate, done, cancel, save
+Label       string  // optional; falls back to the default action label
+Href        string  // optional link target
+Type        string  // optional button type: button, submit, reset
+Class       string  // optional extra classes
+Style       string  // optional inline style
+Confirm     string  // optional confirm text
+HxGet       string
+HxPost      string
+HxPut       string
+HxDelete    string
+HxTarget    string
+HxSwap      string
+HxTrigger   string
+Disabled    bool
+*/}}
+
+{{define "action-button"}}
+{{- $action := .Action -}}
+{{- $label := .Label -}}
+{{- $icon := "ti ti-circle" -}}
+{{- $variant := "btn" -}}
+{{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
+{{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
+{{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "activate" -}}{{- $icon = "ti ti-toggle-right" -}}{{- if not $label -}}{{- $label = "Aktiv" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "deactivate" -}}{{- $icon = "ti ti-toggle-left" -}}{{- if not $label -}}{{- $label = "Inaktiv" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "done" -}}{{- $icon = "ti ti-check" -}}{{- if not $label -}}{{- $label = "Fertig" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if .Href }}
+<a href="{{.Href}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
+   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
+   {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
+   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
+   {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
+   {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
+   {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
+   {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
+  <i class="{{$icon}}"></i>{{- $label -}}
+</a>
+{{- else }}
+<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
+   {{if .Disabled}}disabled{{end}}
+   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
+   {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
+   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
+   {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
+   {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
+   {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
+   {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
+  <i class="{{$icon}}"></i>{{- $label -}}
+</button>
+{{- end }}
+{{end}}
+
+{{define "button-new"}}{{template "action-button" .}}{{end}}
+{{define "button-refresh"}}{{template "action-button" .}}{{end}}
+{{define "button-edit"}}{{template "action-button" .}}{{end}}
+{{define "button-copy"}}{{template "action-button" .}}{{end}}
+{{define "button-delete"}}{{template "action-button" .}}{{end}}
+{{define "button-delete-mark"}}{{template "action-button" .}}{{end}}
+{{define "button-activate"}}{{template "action-button" .}}{{end}}
+{{define "button-deactivate"}}{{template "action-button" .}}{{end}}
+{{define "button-done"}}{{template "action-button" .}}{{end}}
+{{define "button-cancel"}}{{template "action-button" .}}{{end}}
+{{define "button-save"}}{{template "action-button" .}}{{end}}
