@@ -125,6 +125,12 @@ Disabled    bool
 {{- end }}
 {{end}}
 
+{{define "icon-button-toolbar"}}
+<div class="widget-icon-toolbar {{.Class}}" style="{{.Style}}" {{if .Label}}aria-label="{{.Label}}"{{end}}>
+  {{range .Items}}{{template "icon-button" .}}{{end}}
+</div>
+{{end}}
+
 {{define "button-new"}}{{template "action-button" .}}{{end}}
 {{define "button-refresh"}}{{template "action-button" .}}{{end}}
 {{define "button-edit"}}{{template "action-button" .}}{{end}}

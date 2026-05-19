@@ -130,6 +130,35 @@ Icon-only Varianten:
 {{template "icon-button" .Button}}
 ```
 
+Mini-Toolbar zum Einsetzen:
+
+```gotemplate
+{{template "icon-button-toolbar" .Actions}}
+```
+
+Datenstruktur:
+
+```go
+Actions: struct {
+    Class string
+    Style string
+    Label string
+    Items []ActionButtonData
+}{
+    Class: "end compact",
+    Label: "Aktionen",
+    Items: []ActionButtonData{
+        {Action: "new", Href: "/tickets/new"},
+        {Action: "edit", Href: "/tickets/123/edit"},
+        {Action: "copy", HxPost: "/tickets/123/copy"},
+        {Action: "save", Type: "submit"},
+        {Action: "deactivate", HxPut: "/tickets/123/deactivate"},
+        {Action: "done", HxPut: "/tickets/123/done"},
+        {Action: "cancel", Href: "/tickets"},
+    },
+}
+```
+
 Unterstuetzte Aktionen:
 
 - `new` - Plus
