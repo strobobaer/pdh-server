@@ -123,7 +123,11 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(ctx); err != nil { http.Error(w, "db error", 503); return }
-		w.Write([]byte(`{"status":"ok","service":"pdh","version":"0.8.0"}`))
+		response.JSON(w, http.StatusOK, map[string]string{
+			"status":  "ok",
+			"service": "pdh",
+			"version": "0.8.0",
+		})
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -165,6 +169,4 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	log.Info().Msg("PDH gestoppt")
-
-	_ = response.JSON
 }
