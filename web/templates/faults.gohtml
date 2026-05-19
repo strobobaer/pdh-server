@@ -147,6 +147,47 @@ function selectInfra(btn){const root=btn.closest('[data-infra-picker]'); documen
 function clearInfraPicker(root){document.getElementById(root.dataset.target).value=''; document.getElementById(root.dataset.selectedLabel).textContent='Keine Infrastruktur ausgewählt'}
 function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase(); renderInfraPicker(root,(root.__infraItems||[]).filter(i=>i.name.toLowerCase().includes(q)||String(i.type).includes(q)))}
 function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
+async function loadInfraPicker(root){
+  if(!root) return;
+  const box=root.querySelector('[data-infra-tree]'); box.innerHTML='Laedt...';
+  try{
+    const res=await fetch('/api/v1/infrastructure/tree',{headers:{Authorization:'Bearer '+pdhToken()}});
+    const json=await res.json();
+    root.__infraTree=json.data||[];
+    root.__infraExpanded=new Set();
+    collectInfraBranches(root.__infraTree, root.__infraExpanded);
+    renderInfraPicker(root, root.__infraTree);
+  }catch(e){box.innerHTML='<span style="color:var(--red)">Infrastruktur konnte nicht geladen werden</span>'}
+}
+function renderInfraPicker(root, nodes){
+  const box=root.querySelector('[data-infra-tree]');
+  if(!nodes.length){box.innerHTML='Keine Infrastruktur vorhanden'; return}
+  box.innerHTML=renderInfraNodes(root, nodes, 0);
+}
+function renderInfraNodes(root, nodes, depth){
+  const expanded=root.__infraExpanded||new Set();
+  return (nodes||[]).map(n=>{
+    const children=n.children||[];
+    const hasChildren=children.length>0;
+    const open=hasChildren && expanded.has(n.id);
+    const toggle=hasChildren
+      ? `<button type="button" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}" style="width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;color:var(--muted);cursor:pointer;flex-shrink:0"><i class="ti ti-chevron-right" style="font-size:14px;transition:transform .15s;transform:${open?'rotate(90deg)':'rotate(0deg)'}"></i></button>`
+      : `<span style="width:22px;height:22px;display:inline-block;flex-shrink:0"></span>`;
+    return `<div data-infra-node="${escapeHtml(n.id)}" style="margin-left:${depth*12}px"><div style="display:flex;align-items:center;gap:4px">${toggle}<button type="button" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)" style="flex:1;text-align:left;background:none;border:0;color:var(--text);padding:5px 6px;border-radius:6px;cursor:pointer;min-width:0">${infraIcon(n.type)} ${escapeHtml(n.name)} <span style="color:var(--muted);font-size:10px">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
+  }).join('');
+}
+function toggleInfraBranch(event, btn){
+  event.stopPropagation();
+  const root=btn.closest('[data-infra-picker]');
+  const id=btn.dataset.infraToggle;
+  root.__infraExpanded=root.__infraExpanded||new Set();
+  if(root.__infraExpanded.has(id)) root.__infraExpanded.delete(id); else root.__infraExpanded.add(id);
+  const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
+  renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]));
+}
+function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const children=filterInfraTree(n.children||[],q); const match=String(n.name||'').toLowerCase().includes(q)||String(n.type||'').toLowerCase().includes(q); return match||children.length?{...n,children}:null}).filter(Boolean)}
+function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase().trim(); renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]))}
 async function submitFaultForm(form){
   const fd=new FormData(form);
   const symptoms=String(fd.get('symptoms')||'').split(',').map(s=>s.trim()).filter(Boolean);
