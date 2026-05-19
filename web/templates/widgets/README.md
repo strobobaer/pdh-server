@@ -100,6 +100,7 @@ type ActionButtonData struct {
     HxTarget  string
     HxSwap    string
     HxTrigger string
+    OnClick   string
     Disabled  bool
 }
 ```
@@ -148,7 +149,7 @@ Actions: struct {
     Class: "end compact",
     Label: "Aktionen",
     Items: []ActionButtonData{
-        {Action: "new", Href: "/tickets/new"},
+        {Action: "new", OnClick: "document.getElementById('new-ticket-form').style.display='block'"},
         {Action: "edit", Href: "/tickets/123/edit"},
         {Action: "copy", HxPost: "/tickets/123/copy"},
         {Action: "save", Type: "submit"},

@@ -27,6 +27,7 @@ Type        string  // optional button type: button, submit, reset
 Class       string  // optional extra classes
 Style       string  // optional inline style
 Confirm     string  // optional confirm text
+OnClick     string
 HxGet       string
 HxPost      string
 HxPut       string
@@ -55,7 +56,7 @@ Disabled    bool
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if .Href }}
 <a href="{{.Href}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
-   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
    {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
@@ -68,7 +69,7 @@ Disabled    bool
 {{- else }}
 <button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
    {{if .Disabled}}disabled{{end}}
-   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
    {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
@@ -99,7 +100,7 @@ Disabled    bool
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if .Href }}
 <a href="{{.Href}}" class="{{$variant}} btn-icon {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
-   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
    {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
@@ -112,7 +113,7 @@ Disabled    bool
 {{- else }}
 <button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} btn-icon {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .Disabled}}disabled{{end}}
-   {{if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
+   {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
    {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}

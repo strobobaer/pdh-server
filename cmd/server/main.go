@@ -116,7 +116,7 @@ func main() {
 
 	// Templates laden
 	tmplPath := filepath.Join("web", "templates", "base.gohtml")
-	tmpl, err := template.ParseFiles(tmplPath)
+	tmpl, err := template.New(filepath.Base(tmplPath)).Funcs(web.TemplateFuncs()).ParseFiles(tmplPath)
 	if err != nil {
 		log.Fatal().Err(err).Str("path", tmplPath).Msg("templates laden fehlgeschlagen")
 	}

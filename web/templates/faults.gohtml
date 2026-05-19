@@ -6,9 +6,13 @@
     <h1 style="font-size:19px;font-weight:600">Störungserfassung</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Störungen · {{.Open}} offen</p>
   </div>
-  <button class="btn btn-primary" data-action="new" onclick="document.getElementById('new-fault-form').style.display='block'">
-    <i class="ti ti-plus"></i>Neu
-  </button>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Störungsaktionen"
+    "Items" (list
+      (dict "Action" "new" "OnClick" "document.getElementById('new-fault-form').style.display='block'")
+    )
+  )}}
 </div>
 
 <!-- Neue Störung Form -->
@@ -54,10 +58,15 @@
     </div>
 
     <div id="fault-create-result" style="font-size:12px;margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" data-action="cancel" onclick="document.getElementById('new-fault-form').style.display='none'"><i class="ti ti-x"></i>Abbrechen</button>
-      <button type="submit" class="btn btn-primary" data-action="save"><i class="ti ti-check"></i>Erfassen</button>
-    </div>
+    {{template "icon-button-toolbar" (dict
+      "Class" "end"
+      "Label" "Formularaktionen"
+      "Style" "width:100%;justify-content:flex-end"
+      "Items" (list
+        (dict "Action" "cancel" "OnClick" "document.getElementById('new-fault-form').style.display='none'")
+        (dict "Action" "save" "Type" "submit" "Label" "Erfassen")
+      )
+    )}}
   </form>
 </div>
 
