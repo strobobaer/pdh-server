@@ -5,14 +5,14 @@
     <h1 style="font-size:19px;font-weight:600">Ticketmanagement</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Tickets · {{.Open}} offen</p>
   </div>
-  <button class="btn btn-primary" onclick="document.getElementById('new-ticket-form').style.display='block'">
-    <i class="ti ti-plus"></i>Neues Ticket
+  <button class="btn btn-primary" data-action="new" onclick="document.getElementById('new-ticket-form').style.display='block'">
+    <i class="ti ti-plus"></i>Neu
   </button>
 </div>
 
 <div id="new-ticket-form" style="display:none" class="card">
   <div class="card-title">Ticket erstellen</div>
-  <form hx-post="/tickets" hx-target="#ticket-table" hx-swap="outerHTML">
+  <form onsubmit="return submitTicketForm(this)">
     <div class="grid2">
       <div class="form-group">
         <label class="form-label">Titel</label>
@@ -32,9 +32,25 @@
       <label class="form-label">Beschreibung</label>
       <input name="description" class="form-input" placeholder="Details">
     </div>
+
+    <div class="form-group">
+      <label class="form-label">Infrastruktur</label>
+      <input type="hidden" id="ticket-infra-id" name="infrastructure_id">
+      <div class="infra-picker" data-infra-picker data-target="ticket-infra-id" data-selected-label="ticket-infra-selected">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <div id="ticket-infra-selected" style="flex:1;font-size:12px;color:var(--muted)">Keine Infrastruktur ausgewählt</div>
+          <button type="button" class="btn" data-action="refresh" style="font-size:11px;padding:5px 10px" onclick="loadInfraPicker(this.closest('[data-infra-picker]'))"><i class="ti ti-refresh"></i>Aktualisieren</button>
+          <button type="button" class="btn" data-action="cancel" style="font-size:11px;padding:5px 10px" onclick="clearInfraPicker(this.closest('[data-infra-picker]'))"><i class="ti ti-x"></i>Leeren</button>
+        </div>
+        <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät..." oninput="filterInfraPicker(this)" style="margin-bottom:8px">
+        <div data-infra-tree style="border:1px solid var(--border);border-radius:8px;max-height:220px;overflow:auto;padding:8px;background:var(--bg3);font-size:12px;color:var(--muted)">Noch nicht geladen</div>
+      </div>
+    </div>
+
+    <div id="ticket-create-result" style="font-size:12px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" onclick="document.getElementById('new-ticket-form').style.display='none'">Abbrechen</button>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Erstellen</button>
+      <button type="button" class="btn" data-action="cancel" onclick="document.getElementById('new-ticket-form').style.display='none'"><i class="ti ti-x"></i>Abbrechen</button>
+      <button type="submit" class="btn btn-primary" data-action="save"><i class="ti ti-check"></i>Erstellen</button>
     </div>
   </form>
 </div>
@@ -86,4 +102,43 @@
   <span class="badge b-red">Krit</span>
 </div>
 {{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
+function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
+function flattenInfra(nodes, depth=0, out=[]){(nodes||[]).forEach(n=>{out.push({...n, depth}); flattenInfra(n.children||[], depth+1, out)}); return out}
+async function loadInfraPicker(root){
+  if(!root) return;
+  const box=root.querySelector('[data-infra-tree]'); box.innerHTML='Lädt...';
+  try{
+    const res=await fetch('/api/v1/infrastructure/tree',{headers:{Authorization:'Bearer '+pdhToken()}});
+    const json=await res.json(); const items=flattenInfra(json.data||[]);
+    root.__infraItems=items;
+    renderInfraPicker(root, items);
+  }catch(e){box.innerHTML='<span style="color:var(--red)">Infrastruktur konnte nicht geladen werden</span>'}
+}
+function renderInfraPicker(root, items){
+  const box=root.querySelector('[data-infra-tree]');
+  if(!items.length){box.innerHTML='Keine Infrastruktur vorhanden'; return}
+  box.innerHTML=items.map(i=>`<button type="button" data-infra-id="${i.id}" data-infra-name="${escapeHtml(i.name)}" onclick="selectInfra(this)" style="display:block;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:5px 6px;border-radius:6px;cursor:pointer;margin-left:${i.depth*12}px">${infraIcon(i.type)} ${escapeHtml(i.name)} <span style="color:var(--muted);font-size:10px">${i.type}</span></button>`).join('');
+}
+function selectInfra(btn){const root=btn.closest('[data-infra-picker]'); document.getElementById(root.dataset.target).value=btn.dataset.infraId; document.getElementById(root.dataset.selectedLabel).textContent=btn.dataset.infraName}
+function clearInfraPicker(root){document.getElementById(root.dataset.target).value=''; document.getElementById(root.dataset.selectedLabel).textContent='Keine Infrastruktur ausgewählt'}
+function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase(); renderInfraPicker(root,(root.__infraItems||[]).filter(i=>i.name.toLowerCase().includes(q)||String(i.type).includes(q)))}
+function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+async function submitTicketForm(form){
+  const fd=new FormData(form); const payload={title:fd.get('title'),description:fd.get('description'),priority:fd.get('priority')};
+  if(fd.get('infrastructure_id')) payload.infrastructure_id=fd.get('infrastructure_id');
+  const result=document.getElementById('ticket-create-result'); result.textContent='Speichere...';
+  try{
+    const res=await fetch('/api/v1/tickets/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});
+    const json=await res.json(); if(!res.ok||!json.success) throw new Error(json.error||'Fehler');
+    window.location.href='/tickets';
+  }catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'}
+  return false;
+}
+document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[data-infra-picker]').forEach(loadInfraPicker));
+</script>
 {{end}}
