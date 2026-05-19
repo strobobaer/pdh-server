@@ -7,20 +7,20 @@
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TotalPlans}} Pläne · {{.OpenTasks}} Aufträge offen</p>
   </div>
   {{template "icon-button-toolbar" (dict
-    "Class" "end"
-    "Label" "Wartungsaktionen"
-    "Items" (list
-      (dict "Action" "new" "OnClick" "document.getElementById('new-plan-form').style.display='block'")
-      (dict "Action" "refresh" "HxPost" "/maintenance/generate" "HxTarget" "#generate-result")
-    )
-  )}}
+  "Class" "end"
+  "Label" "Wartungsaktionen"
+  "Items" (list
+      (dict "Action" "new" "ShowLabel" true "OnClick" "document.getElementById('new-plan-form').style.display='block'")
+      (dict "Action" "refresh" "ShowLabel" true "HxPost" "/maintenance/generate" "HxTarget" "#generate-result")
+  )
+)}}
 </div>
 <div id="generate-result"></div>
 
 <!-- Neuer Plan -->
 <div id="new-plan-form" style="display:none" class="card">
   <div class="card-title">Wartungsplan anlegen</div>
-  <form hx-post="/maintenance/plans" hx-target="#plans-list" hx-swap="outerHTML">
+  <form onsubmit="return submitMaintenancePlanForm(this)">
     <div class="grid2">
       <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
       <div class="form-group"><label class="form-label">Typ</label>
@@ -62,13 +62,14 @@
         </select>
       </div>
     </div>
+    <div id="maintenance-create-result" style="font-size:12px;margin-bottom:8px"></div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
       "Label" "Formularaktionen"
       "Style" "width:100%;justify-content:flex-end"
       "Items" (list
-        (dict "Action" "cancel" "OnClick" "document.getElementById('new-plan-form').style.display='none'")
-        (dict "Action" "save" "Type" "submit" "Label" "Anlegen")
+        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('new-plan-form').style.display='none'")
+        (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")
       )
     )}}
   </form>
@@ -211,6 +212,19 @@ function toggleInfraBranch(event, btn){
 }
 function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const children=filterInfraTree(n.children||[],q); const match=String(n.name||'').toLowerCase().includes(q)||String(n.type||'').toLowerCase().includes(q); return match||children.length?{...n,children}:null}).filter(Boolean)}
 function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase().trim(); renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]))}
+async function submitMaintenancePlanForm(form){
+  const result=document.getElementById('maintenance-create-result');
+  result.textContent='Speichere...';
+  try{
+    const res=await fetch('/maintenance/plans',{method:'POST',headers:{'HX-Request':'true'},body:new FormData(form)});
+    const text=await res.text();
+    if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Anlegen');
+    window.location.href='/maintenance';
+  }catch(e){
+    result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';
+  }
+  return false;
+}
 document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[data-infra-picker]').forEach(loadInfraPicker));
 </script>
 {{end}}

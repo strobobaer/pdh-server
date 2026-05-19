@@ -1114,18 +1114,35 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
+	if name == "" || infraID == "" {
+		http.Error(w, "Name und Infrastruktur sind Pflicht", http.StatusBadRequest)
+		return
+	}
 	u := getUser(r)
 	in := &maintenance.CreatePlanInput{
-		Name:             r.FormValue("name"),
+		Name:             name,
 		Type:             maintenance.PlanType(r.FormValue("type")),
-		InfrastructureID: r.FormValue("infrastructure_id"),
+		InfrastructureID: infraID,
 		Interval:         maintenance.Interval(r.FormValue("interval")),
 		Priority:         maintenance.Priority(r.FormValue("priority")),
 		FirstDueAt:       r.FormValue("first_due_at"),
 	}
-	h.maint.CreatePlan(r.Context(), in, u.ID)
-	h.Maintenance(w, r)
+	if _, err := h.maint.CreatePlan(r.Context(), in, u.ID); err != nil {
+		http.Error(w, "Wartungsplan konnte nicht angelegt werden: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/maintenance")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
 }
 
 func (h *Handler) MaintenanceGenerate(w http.ResponseWriter, r *http.Request) {

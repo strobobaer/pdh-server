@@ -88,6 +88,7 @@ Erwartete Datenstruktur:
 type ActionButtonData struct {
     Action    string
     Label     string
+    ShowLabel bool
     Href      string
     Type      string
     Class     string
@@ -149,7 +150,7 @@ Actions: struct {
     Class: "end compact",
     Label: "Aktionen",
     Items: []ActionButtonData{
-        {Action: "new", OnClick: "document.getElementById('new-ticket-form').style.display='block'"},
+        {Action: "new", ShowLabel: true, OnClick: "document.getElementById('new-ticket-form').style.display='block'"},
         {Action: "edit", Href: "/tickets/123/edit"},
         {Action: "copy", HxPost: "/tickets/123/copy"},
         {Action: "save", Type: "submit"},
