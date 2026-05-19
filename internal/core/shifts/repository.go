@@ -30,7 +30,9 @@ func (r *Repository) ListModels(ctx context.Context) ([]*ShiftModel, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, name, description, active, created_at
 		 FROM shift_models WHERE active = true ORDER BY name`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var models []*ShiftModel
@@ -58,7 +60,9 @@ func (r *Repository) ListShifts(ctx context.Context, modelID string) ([]*ShiftDe
 		`SELECT id, model_id, name, short_name, start_time, end_time, color, is_night
 		 FROM shift_definitions WHERE model_id = $1 ORDER BY start_time`,
 		modelID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var shifts []*ShiftDefinition
@@ -94,7 +98,9 @@ func (r *Repository) GetWeekPlan(ctx context.Context, weekStart, weekEnd string)
 		 WHERE sa.date BETWEEN $1 AND $2
 		 ORDER BY sa.date, u.last_name`,
 		weekStart, weekEnd)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var assignments []*ShiftAssignment
@@ -116,7 +122,9 @@ func (r *Repository) GetUserShifts(ctx context.Context, userID, from, to string)
 		 WHERE sa.user_id = $1 AND sa.date BETWEEN $2 AND $3
 		 ORDER BY sa.date`,
 		userID, from, to)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var assignments []*ShiftAssignment
@@ -166,7 +174,9 @@ func (r *Repository) ListAbsences(ctx context.Context, userID string, status Abs
 	query += " ORDER BY a.start_date DESC"
 
 	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var absences []*Absence
@@ -181,7 +191,9 @@ func (r *Repository) ListAbsences(ctx context.Context, userID string, status Abs
 
 func (r *Repository) ApproveAbsence(ctx context.Context, id, approvedBy string, approved bool) error {
 	status := AbsenceApproved
-	if !approved { status = AbsenceRejected }
+	if !approved {
+		status = AbsenceRejected
+	}
 	_, err := r.db.Exec(ctx,
 		`UPDATE absences SET status=$1, approved_by=$2 WHERE id=$3`,
 		status, approvedBy, id)

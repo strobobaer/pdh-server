@@ -4,6 +4,8 @@ DO $$ BEGIN
     CREATE TYPE time_ref_type AS ENUM ('ticket','fault','project','maintenance','production');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+ALTER TYPE time_ref_type ADD VALUE IF NOT EXISTS 'fault';
+
 CREATE TABLE IF NOT EXISTS time_entries (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id      UUID NOT NULL REFERENCES users(id),

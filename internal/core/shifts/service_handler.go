@@ -31,7 +31,9 @@ func (s *Service) ListModels(ctx context.Context) ([]*ShiftModel, error) {
 }
 
 func (s *Service) CreateShift(ctx context.Context, in *CreateShiftInput) (*ShiftDefinition, error) {
-	if in.Color == "" { in.Color = "#3B82F6" }
+	if in.Color == "" {
+		in.Color = "#3B82F6"
+	}
 	sd := &ShiftDefinition{
 		ModelID: in.ModelID, Name: in.Name, ShortName: in.ShortName,
 		StartTime: in.StartTime, EndTime: in.EndTime, Color: in.Color, IsNight: in.IsNight,
@@ -52,7 +54,9 @@ func (s *Service) BulkAssign(ctx context.Context, in *BulkAssignInput, createdBy
 	count := 0
 	for _, item := range in.Assignments {
 		a := &ShiftAssignment{UserID: item.UserID, ShiftID: item.ShiftID, Date: item.Date, Note: item.Note, CreatedBy: createdBy}
-		if err := s.repo.Assign(ctx, a); err != nil { return count, err }
+		if err := s.repo.Assign(ctx, a); err != nil {
+			return count, err
+		}
 		count++
 	}
 	return count, nil
@@ -60,15 +64,21 @@ func (s *Service) BulkAssign(ctx context.Context, in *BulkAssignInput, createdBy
 
 func (s *Service) GetWeekPlan(ctx context.Context, weekStart string) (*WeekPlan, error) {
 	t, err := time.Parse("2006-01-02", weekStart)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	weekDay := int(t.Weekday())
-	if weekDay == 0 { weekDay = 7 }
+	if weekDay == 0 {
+		weekDay = 7
+	}
 	monday := t.AddDate(0, 0, -(weekDay - 1))
 	sunday := monday.AddDate(0, 0, 6)
 
 	assignments, err := s.repo.GetWeekPlan(ctx, monday.Format("2006-01-02"), sunday.Format("2006-01-02"))
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	// Strukturieren
 	userMap := make(map[string]*UserWeekPlan)
@@ -86,7 +96,9 @@ func (s *Service) GetWeekPlan(ctx context.Context, weekStart string) (*WeekPlan,
 	}
 
 	var users []UserWeekPlan
-	for _, u := range userMap { users = append(users, *u) }
+	for _, u := range userMap {
+		users = append(users, *u)
+	}
 
 	return &WeekPlan{
 		WeekStart: monday.Format("2006-01-02"),
@@ -154,70 +166,113 @@ func decode(r *http.Request, v interface{}) error {
 
 func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 	models, err := h.svc.ListModels(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, models)
 }
 
 func (h *Handler) CreateModel(w http.ResponseWriter, r *http.Request) {
 	var in CreateModelInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	m, err := h.svc.CreateModel(r.Context(), &in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, m)
 }
 
 func (h *Handler) ListShifts(w http.ResponseWriter, r *http.Request) {
 	shifts, err := h.svc.ListShifts(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, shifts)
 }
 
 func (h *Handler) CreateShift(w http.ResponseWriter, r *http.Request) {
 	var in CreateShiftInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	in.ModelID = chi.URLParam(r, "id")
 	s, err := h.svc.CreateShift(r.Context(), &in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, s)
 }
 
 func (h *Handler) Assign(w http.ResponseWriter, r *http.Request) {
 	var in AssignShiftInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	a, err := h.svc.Assign(r.Context(), &in, userID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, a)
 }
 
 func (h *Handler) BulkAssign(w http.ResponseWriter, r *http.Request) {
 	var in BulkAssignInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	count, err := h.svc.BulkAssign(r.Context(), &in, userID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, map[string]int{"assigned": count})
 }
 
 func (h *Handler) DeleteAssignment(w http.ResponseWriter, r *http.Request) {
 	err := h.svc.repo.DeleteAssignment(r.Context(), chi.URLParam(r, "userID"), chi.URLParam(r, "date"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
 }
 
 func (h *Handler) GetWeekPlan(w http.ResponseWriter, r *http.Request) {
 	plan, err := h.svc.GetWeekPlan(r.Context(), chi.URLParam(r, "date"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, plan)
 }
 
 func (h *Handler) GetUserShifts(w http.ResponseWriter, r *http.Request) {
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
-	if from == "" { from = time.Now().Format("2006-01-02") }
-	if to == "" { to = time.Now().AddDate(0, 1, 0).Format("2006-01-02") }
+	if from == "" {
+		from = time.Now().Format("2006-01-02")
+	}
+	if to == "" {
+		to = time.Now().AddDate(0, 1, 0).Format("2006-01-02")
+	}
 	shifts, err := h.svc.repo.GetUserShifts(r.Context(), chi.URLParam(r, "id"), from, to)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, shifts)
 }
 
@@ -225,24 +280,39 @@ func (h *Handler) ListAbsences(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	status := AbsenceStatus(r.URL.Query().Get("status"))
 	absences, err := h.svc.ListAbsences(r.Context(), userID, status)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, absences)
 }
 
 func (h *Handler) CreateAbsence(w http.ResponseWriter, r *http.Request) {
 	var in CreateAbsenceInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	a, err := h.svc.CreateAbsence(r.Context(), &in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, a)
 }
 
 func (h *Handler) ApproveAbsence(w http.ResponseWriter, r *http.Request) {
-	var in struct { Approved bool `json:"approved"` }
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	var in struct {
+		Approved bool `json:"approved"`
+	}
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	approverID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	if err := h.svc.ApproveAbsence(r.Context(), chi.URLParam(r, "id"), approverID, in.Approved); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]bool{"approved": in.Approved})
 }

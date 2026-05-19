@@ -15,8 +15,12 @@ config.local.yaml
 
 # Runtime data
 uploads/
+uploads
 *.log
 *.pid
+
+# Local binaries
+server
 
 # Editor and OS files
 .DS_Store

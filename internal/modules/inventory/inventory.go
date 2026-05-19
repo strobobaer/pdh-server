@@ -16,18 +16,18 @@ import (
 // ── Typen ────────────────────────────────────────────────────
 
 type MovementType string
-type StockStatus  string
+type StockStatus string
 
 const (
-	MovementIn       MovementType = "in"        // Zugang
-	MovementOut      MovementType = "out"       // Abgang
-	MovementTransfer MovementType = "transfer"  // Umbuchung
-	MovementCorrect  MovementType = "correction"// Korrektur
+	MovementIn       MovementType = "in"         // Zugang
+	MovementOut      MovementType = "out"        // Abgang
+	MovementTransfer MovementType = "transfer"   // Umbuchung
+	MovementCorrect  MovementType = "correction" // Korrektur
 
 	StatusOK       StockStatus = "ok"
-	StatusLow      StockStatus = "low"       // Unter Mindestbestand
-	StatusCritical StockStatus = "critical"  // Unter kritischem Bestand
-	StatusEmpty    StockStatus = "empty"     // Leer
+	StatusLow      StockStatus = "low"      // Unter Mindestbestand
+	StatusCritical StockStatus = "critical" // Unter kritischem Bestand
+	StatusEmpty    StockStatus = "empty"    // Leer
 )
 
 // ── Ersatzteil ───────────────────────────────────────────────
@@ -55,26 +55,26 @@ type SparePart struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 
 	// Berechnet
-	Status     StockStatus `json:"status"`
-	InfraName  string      `json:"infra_name,omitempty"`
+	Status    StockStatus `json:"status"`
+	InfraName string      `json:"infra_name,omitempty"`
 }
 
 // ── Lagerbewegung ────────────────────────────────────────────
 
 type StockMovement struct {
-	ID          string       `json:"id"`
-	PartID      string       `json:"part_id"`
-	Type        MovementType `json:"type"`
-	Qty         float64      `json:"qty"`
-	QtyBefore   float64      `json:"qty_before"`
-	QtyAfter    float64      `json:"qty_after"`
-	Reference   string       `json:"reference,omitempty"`
-	Notes       string       `json:"notes,omitempty"`
-	CreatedBy   string       `json:"created_by"`
-	CreatedAt   time.Time    `json:"created_at"`
+	ID        string       `json:"id"`
+	PartID    string       `json:"part_id"`
+	Type      MovementType `json:"type"`
+	Qty       float64      `json:"qty"`
+	QtyBefore float64      `json:"qty_before"`
+	QtyAfter  float64      `json:"qty_after"`
+	Reference string       `json:"reference,omitempty"`
+	Notes     string       `json:"notes,omitempty"`
+	CreatedBy string       `json:"created_by"`
+	CreatedAt time.Time    `json:"created_at"`
 
-	PartName    string `json:"part_name,omitempty"`
-	UserName    string `json:"user_name,omitempty"`
+	PartName string `json:"part_name,omitempty"`
+	UserName string `json:"user_name,omitempty"`
 }
 
 // ── Inputs ───────────────────────────────────────────────────
@@ -108,12 +108,19 @@ type BookMovementInput struct {
 // ── Repository ───────────────────────────────────────────────
 
 type Repository struct{ db *pgxpool.Pool }
+
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func calcStatus(stock, min, critical float64) StockStatus {
-	if stock <= 0          { return StatusEmpty }
-	if stock <= critical   { return StatusCritical }
-	if stock <= min        { return StatusLow }
+	if stock <= 0 {
+		return StatusEmpty
+	}
+	if stock <= critical {
+		return StatusCritical
+	}
+	if stock <= min {
+		return StatusLow
+	}
 	return StatusOK
 }
 
@@ -154,7 +161,9 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*SparePart, error)
 		&p.Price, &p.InfrastructureID, &p.Active,
 		&p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &p.InfraName,
 	)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	p.Status = calcStatus(p.StockQty, p.MinQty, p.CriticalQty)
 	return p, nil
 }
@@ -177,17 +186,21 @@ func (r *Repository) List(ctx context.Context, category, status, q string) ([]*S
 
 	if category != "" {
 		query += fmt.Sprintf(" AND sp.category=$%d", n)
-		args = append(args, category); n++
+		args = append(args, category)
+		n++
 	}
 	if q != "" {
 		query += fmt.Sprintf(" AND (sp.name ILIKE $%d OR sp.part_number ILIKE $%d OR sp.manufacturer ILIKE $%d)", n, n, n)
-		args = append(args, "%"+q+"%"); n++
+		args = append(args, "%"+q+"%")
+		n++
 	}
 
 	query += " ORDER BY sp.category, sp.name"
 
 	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var parts []*SparePart
@@ -204,7 +217,9 @@ func (r *Repository) List(ctx context.Context, category, status, q string) ([]*S
 		p.Status = calcStatus(p.StockQty, p.MinQty, p.CriticalQty)
 
 		// Status-Filter
-		if status != "" && string(p.Status) != status { continue }
+		if status != "" && string(p.Status) != status {
+			continue
+		}
 		parts = append(parts, p)
 	}
 	return parts, nil
@@ -232,7 +247,9 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE spare_parts SET stock_qty=$1, updated_at=NOW() WHERE id=$2`,
 		newQty, m.PartID)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	// Bewegung buchen
 	return r.db.QueryRow(ctx, `
@@ -256,7 +273,9 @@ func (r *Repository) GetMovements(ctx context.Context, partID string) ([]*StockM
 		JOIN users u ON sm.created_by = u.id
 		WHERE sm.part_id=$1
 		ORDER BY sm.created_at DESC LIMIT 50`, partID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var movements []*StockMovement
@@ -284,7 +303,9 @@ func (r *Repository) GetLowStock(ctx context.Context) ([]*SparePart, error) {
 		LEFT JOIN infrastructure i ON sp.infrastructure_id = i.id
 		WHERE sp.active=true AND sp.stock_qty <= sp.min_qty
 		ORDER BY sp.stock_qty / NULLIF(sp.min_qty, 0) ASC`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var parts []*SparePart
@@ -324,6 +345,7 @@ func (r *Repository) GetStats(ctx context.Context) (map[string]interface{}, erro
 // ── Service ──────────────────────────────────────────────────
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) Create(ctx context.Context, in *CreatePartInput, userID string) (*SparePart, error) {
@@ -337,15 +359,27 @@ func (s *Service) Create(ctx context.Context, in *CreatePartInput, userID string
 		Price: in.Price, InfrastructureID: in.InfrastructureID,
 		CreatedBy: userID,
 	}
-	if p.Unit == "" { p.Unit = "Stück" }
+	if p.Unit == "" {
+		p.Unit = "Stück"
+	}
 	return p, s.repo.Create(ctx, p)
 }
 
-func (s *Service) GetByID(ctx context.Context, id string) (*SparePart, error)                { return s.repo.GetByID(ctx, id) }
-func (s *Service) List(ctx context.Context, cat, status, q string) ([]*SparePart, error)     { return s.repo.List(ctx, cat, status, q) }
-func (s *Service) GetLowStock(ctx context.Context) ([]*SparePart, error)                      { return s.repo.GetLowStock(ctx) }
-func (s *Service) GetMovements(ctx context.Context, partID string) ([]*StockMovement, error)  { return s.repo.GetMovements(ctx, partID) }
-func (s *Service) GetStats(ctx context.Context) (map[string]interface{}, error)               { return s.repo.GetStats(ctx) }
+func (s *Service) GetByID(ctx context.Context, id string) (*SparePart, error) {
+	return s.repo.GetByID(ctx, id)
+}
+func (s *Service) List(ctx context.Context, cat, status, q string) ([]*SparePart, error) {
+	return s.repo.List(ctx, cat, status, q)
+}
+func (s *Service) GetLowStock(ctx context.Context) ([]*SparePart, error) {
+	return s.repo.GetLowStock(ctx)
+}
+func (s *Service) GetMovements(ctx context.Context, partID string) ([]*StockMovement, error) {
+	return s.repo.GetMovements(ctx, partID)
+}
+func (s *Service) GetStats(ctx context.Context) (map[string]interface{}, error) {
+	return s.repo.GetStats(ctx)
+}
 
 func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string) (*StockMovement, error) {
 	if in.Qty <= 0 && in.Type != MovementCorrect {
@@ -361,36 +395,46 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
 
-	r.Get("/",          h.List)
-	r.Post("/",         h.Create)
-	r.Get("/low",       h.LowStock)
-	r.Get("/stats",     h.Stats)
-	r.Post("/book",     h.Book)
-	r.Get("/{id}",      h.GetByID)
+	r.Get("/", h.List)
+	r.Post("/", h.Create)
+	r.Get("/low", h.LowStock)
+	r.Get("/stats", h.Stats)
+	r.Post("/book", h.Book)
+	r.Get("/{id}", h.GetByID)
 	r.Get("/{id}/movements", h.GetMovements)
 
 	return r
 }
 
 func decode(r *http.Request, v interface{}) error { return json.NewDecoder(r.Body).Decode(v) }
-func uid(r *http.Request) string { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
+func uid(r *http.Request) string                  { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in CreatePartInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	p, err := h.svc.Create(r.Context(), &in, uid(r))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, p)
 }
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	p, err := h.svc.GetByID(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 404, "nicht gefunden"); return }
+	if err != nil {
+		response.Error(w, 404, "nicht gefunden")
+		return
+	}
 	response.JSON(w, 200, p)
 }
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -398,28 +442,46 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("category"),
 		r.URL.Query().Get("status"),
 		r.URL.Query().Get("q"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, parts)
 }
 func (h *Handler) LowStock(w http.ResponseWriter, r *http.Request) {
 	parts, err := h.svc.GetLowStock(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, parts)
 }
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.svc.GetStats(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, stats)
 }
 func (h *Handler) Book(w http.ResponseWriter, r *http.Request) {
 	var in BookMovementInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	m, err := h.svc.Book(r.Context(), &in, uid(r))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, m)
 }
 func (h *Handler) GetMovements(w http.ResponseWriter, r *http.Request) {
 	movements, err := h.svc.GetMovements(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, movements)
 }

@@ -17,13 +17,14 @@ import (
 // ── Typen ────────────────────────────────────────────────────
 
 type ItemType string
+
 const (
-	TypeCheckbox ItemType = "checkbox"  // Abhaken
-	TypeText     ItemType = "text"      // Freier Text
-	TypeNumber   ItemType = "number"    // Zahlenwert
-	TypeCompare  ItemType = "compare"   // Vergleichswert (Soll/Ist)
-	TypeSelect   ItemType = "select"    // Auswahl
-	TypeImage    ItemType = "image"     // Foto-Dokumentation
+	TypeCheckbox ItemType = "checkbox" // Abhaken
+	TypeText     ItemType = "text"     // Freier Text
+	TypeNumber   ItemType = "number"   // Zahlenwert
+	TypeCompare  ItemType = "compare"  // Vergleichswert (Soll/Ist)
+	TypeSelect   ItemType = "select"   // Auswahl
+	TypeImage    ItemType = "image"    // Foto-Dokumentation
 )
 
 // ── Modelle ──────────────────────────────────────────────────
@@ -39,19 +40,19 @@ type Checklist struct {
 }
 
 type Item struct {
-	ID               string      `json:"id"`
-	ChecklistID      string      `json:"checklist_id"`
-	SortOrder        int         `json:"sort_order"`
-	Type             ItemType    `json:"type"`
-	Label            string      `json:"label"`
-	Description      string      `json:"description,omitempty"`
-	Required         bool        `json:"required"`
-	CompareValue     *float64    `json:"compare_value,omitempty"`
-	CompareUnit      string      `json:"compare_unit,omitempty"`
-	CompareTolerance *float64    `json:"compare_tolerance,omitempty"`
-	Options          []string    `json:"options,omitempty"`
-	MinValue         *float64    `json:"min_value,omitempty"`
-	MaxValue         *float64    `json:"max_value,omitempty"`
+	ID               string   `json:"id"`
+	ChecklistID      string   `json:"checklist_id"`
+	SortOrder        int      `json:"sort_order"`
+	Type             ItemType `json:"type"`
+	Label            string   `json:"label"`
+	Description      string   `json:"description,omitempty"`
+	Required         bool     `json:"required"`
+	CompareValue     *float64 `json:"compare_value,omitempty"`
+	CompareUnit      string   `json:"compare_unit,omitempty"`
+	CompareTolerance *float64 `json:"compare_tolerance,omitempty"`
+	Options          []string `json:"options,omitempty"`
+	MinValue         *float64 `json:"min_value,omitempty"`
+	MaxValue         *float64 `json:"max_value,omitempty"`
 }
 
 type TaskLog struct {
@@ -66,16 +67,16 @@ type TaskLog struct {
 	Note        string   `json:"note,omitempty"`
 	CreatedBy   string   `json:"created_by"`
 	// Joined
-	ItemLabel   string   `json:"item_label,omitempty"`
-	ItemType    string   `json:"item_type,omitempty"`
+	ItemLabel string `json:"item_label,omitempty"`
+	ItemType  string `json:"item_type,omitempty"`
 }
 
 // ── Inputs ───────────────────────────────────────────────────
 
 type CreateChecklistInput struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Category    string       `json:"category"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Category    string            `json:"category"`
 	Items       []CreateItemInput `json:"items"`
 }
 
@@ -104,6 +105,7 @@ type SaveLogInput struct {
 // ── Repository ───────────────────────────────────────────────
 
 type Repository struct{ db *pgxpool.Pool }
+
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Create(ctx context.Context, c *Checklist) error {
@@ -113,7 +115,9 @@ func (r *Repository) Create(ctx context.Context, c *Checklist) error {
 		RETURNING id, created_at`,
 		c.Name, c.Description, c.Category, c.CreatedBy,
 	).Scan(&c.ID, &c.CreatedAt)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	for i, item := range c.Items {
 		opts, _ := json.Marshal(item.Options)
@@ -144,7 +148,9 @@ func (r *Repository) List(ctx context.Context, category string) ([]*Checklist, e
 	}
 	query += " ORDER BY name"
 	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var list []*Checklist
 	for rows.Next() {
@@ -161,7 +167,9 @@ func (r *Repository) GetWithItems(ctx context.Context, id string) (*Checklist, e
 		SELECT id, name, COALESCE(description,''), COALESCE(category,''), created_by, created_at
 		FROM maintenance_checklists WHERE id=$1`, id).
 		Scan(&c.ID, &c.Name, &c.Description, &c.Category, &c.CreatedBy, &c.CreatedAt)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	rows, _ := r.db.Query(ctx, `
 		SELECT id, checklist_id, sort_order, item_type, label, COALESCE(description,''),
@@ -192,7 +200,9 @@ func (r *Repository) SaveLog(ctx context.Context, taskID, userID string, in *Sav
 			Scan(&compareVal, &tolerance)
 		if compareVal != 0 {
 			diff := *in.NumberValue - compareVal
-			if diff < 0 { diff = -diff }
+			if diff < 0 {
+				diff = -diff
+			}
 			okVal := diff <= tolerance
 			ok = &okVal
 		}
@@ -218,7 +228,9 @@ func (r *Repository) GetLogs(ctx context.Context, taskID string) ([]*TaskLog, er
 		JOIN checklist_items ci ON l.item_id = ci.id
 		WHERE l.task_id=$1
 		ORDER BY ci.sort_order`, taskID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var logs []*TaskLog
@@ -235,6 +247,7 @@ func (r *Repository) GetLogs(ctx context.Context, taskID string) ([]*TaskLog, er
 // ── Service ──────────────────────────────────────────────────
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) Create(ctx context.Context, in *CreateChecklistInput, userID string) (*Checklist, error) {
@@ -250,14 +263,23 @@ func (s *Service) Create(ctx context.Context, in *CreateChecklistInput, userID s
 	return c, s.repo.Create(ctx, c)
 }
 
-func (s *Service) List(ctx context.Context, category string) ([]*Checklist, error) { return s.repo.List(ctx, category) }
-func (s *Service) Get(ctx context.Context, id string) (*Checklist, error)          { return s.repo.GetWithItems(ctx, id) }
-func (s *Service) SaveLog(ctx context.Context, taskID, userID string, in *SaveLogInput) error { return s.repo.SaveLog(ctx, taskID, userID, in) }
-func (s *Service) GetLogs(ctx context.Context, taskID string) ([]*TaskLog, error)  { return s.repo.GetLogs(ctx, taskID) }
+func (s *Service) List(ctx context.Context, category string) ([]*Checklist, error) {
+	return s.repo.List(ctx, category)
+}
+func (s *Service) Get(ctx context.Context, id string) (*Checklist, error) {
+	return s.repo.GetWithItems(ctx, id)
+}
+func (s *Service) SaveLog(ctx context.Context, taskID, userID string, in *SaveLogInput) error {
+	return s.repo.SaveLog(ctx, taskID, userID, in)
+}
+func (s *Service) GetLogs(ctx context.Context, taskID string) ([]*TaskLog, error) {
+	return s.repo.GetLogs(ctx, taskID)
+}
 
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
@@ -277,22 +299,34 @@ func decode(r *http.Request, v interface{}) error {
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in CreateChecklistInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	c, err := h.svc.Create(r.Context(), &in, userID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, c)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.svc.List(r.Context(), r.URL.Query().Get("category"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, list)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	c, err := h.svc.Get(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 404, "nicht gefunden"); return }
+	if err != nil {
+		response.Error(w, 404, "nicht gefunden")
+		return
+	}
 	response.JSON(w, 200, c)
 }
 
@@ -300,23 +334,34 @@ func (h *Handler) SaveLog(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskID")
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	var in SaveLogInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	if err := h.svc.SaveLog(r.Context(), taskID, userID, &in); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	logs, err := h.svc.GetLogs(r.Context(), chi.URLParam(r, "taskID"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, logs)
 }
 
 func floatPtr(s string) *float64 {
-	if s == "" { return nil }
+	if s == "" {
+		return nil
+	}
 	f, err := strconv.ParseFloat(s, 64)
-	if err != nil { return nil }
+	if err != nil {
+		return nil
+	}
 	return &f
 }
 

@@ -1,0 +1,273 @@
+{{template "base" .}}
+{{define "content"}}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Wartungsplanung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TotalPlans}} Pläne · {{.OpenTasks}} Aufträge offen</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-primary" hx-post="/maintenance/generate" hx-target="#gen-result"><i class="ti ti-refresh"></i>Aufträge generieren</button>
+    <button class="btn btn-primary" onclick="document.getElementById('new-plan-form').style.display='block'"><i class="ti ti-plus"></i>Neuer Plan</button>
+  </div>
+</div>
+<div id="gen-result"></div>
+
+<!-- Neuer Plan -->
+<div id="new-plan-form" style="display:none" class="card">
+  <div class="card-title" style="margin-bottom:16px">Wartungsplan anlegen
+    <button onclick="document.getElementById('new-plan-form').style.display='none';resetPlanForm()" style="background:none;border:0;color:var(--muted);cursor:pointer;font-size:18px;margin-left:auto">x</button>
+  </div>
+  <form id="plan-form" onsubmit="submitPlan(event)">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Name</label><input id="pf-name" name="name" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Typ</label>
+        <select id="pf-type" name="type" class="form-input">
+          <option value="preventive">Vorbeugend</option>
+          <option value="inspection">Inspektion</option>
+          <option value="calibration">Kalibrierung</option>
+          <option value="cleaning">Reinigung</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Anlage / Infrastruktur</label>
+        <div style="position:relative">
+          <div id="infra-btn-maint" onclick="openInfraPicker('maint')" style="cursor:pointer;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between">
+            <span id="infra-label-maint">-- keine Anlage --</span>
+            <i class="ti ti-hierarchy-2" style="color:var(--muted);font-size:14px"></i>
+          </div>
+          <input type="hidden" name="infrastructure_id" id="infra-id-maint">
+          <div id="infra-drop-maint" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);max-height:260px;overflow-y:auto;margin-top:4px;padding:6px">
+            <div style="font-size:11px;color:var(--muted);padding:4px 8px 8px">Infrastruktur auswaehlen</div>
+            <div id="infra-list-maint">Laedt...</div>
+            <div style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px">
+              <button type="button" onclick="clearInfra('maint')" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 8px">x Auswahl aufheben</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Intervall</label>
+        <select id="pf-interval" name="interval" class="form-input">
+          <option value="daily">Taeglich</option>
+          <option value="weekly">Woechentlich</option>
+          <option value="monthly" selected>Monatlich</option>
+          <option value="quarterly">Quartalsweise</option>
+          <option value="yearly">Jaehrlich</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Erstes Faelligkeitsdatum</label><input id="pf-due" name="first_due_at" type="date" class="form-input" value="{{.Today}}"></div>
+      <div class="form-group"><label class="form-label">Prioritaet</label>
+        <select id="pf-prio" name="priority" class="form-input">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+    </div>
+    <!-- Checkliste -->
+    <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Checkliste <span style="font-weight:400">(optional)</span></div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="btn" style="font-size:11px;padding:3px 10px" onclick="addCLItem('checkbox')"><i class="ti ti-checkbox"></i>Abhaken</button>
+          <button type="button" class="btn" style="font-size:11px;padding:3px 10px" onclick="addCLItem('number')"><i class="ti ti-hash"></i>Messwert</button>
+          <button type="button" class="btn" style="font-size:11px;padding:3px 10px" onclick="addCLItem('text')"><i class="ti ti-text-size"></i>Text</button>
+          <button type="button" class="btn" style="font-size:11px;padding:3px 10px" onclick="addCLItem('image')"><i class="ti ti-camera"></i>Foto</button>
+        </div>
+      </div>
+      <div id="cl-items" style="min-height:24px"></div>
+      <input type="hidden" id="checklist_json" name="checklist_json" value="[]">
+    </div>
+    <div id="plan-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-top:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="btn" onclick="document.getElementById('new-plan-form').style.display='none';resetPlanForm()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i>Plan anlegen</button>
+    </div>
+  </form>
+</div>
+
+{{if .DueTasks}}
+<div class="card" style="border-color:rgba(245,158,11,.3);margin-bottom:14px">
+  <div class="card-title"><i class="ti ti-alert-circle" style="color:var(--amber)"></i> Heute faellig</div>
+  {{range .DueTasks}}
+  <a href="/maintenance/tasks/{{.ID}}" style="display:block;text-decoration:none;color:inherit">
+    <div class="li" style="cursor:pointer">
+      <div class="act-dot {{.PriorityDot}}"></div>
+      <div class="li-text">
+        {{if .InfraName}}<div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:2px"><i class="ti ti-hierarchy-2" style="font-size:12px"></i> {{.InfraName}}</div>{{end}}
+        <div class="li-title">{{.Title}}</div>
+        <div class="li-sub">faellig {{.DueDate}}</div>
+      </div>
+      <span class="badge {{.PriorityClass}}">{{.Priority}}</span>
+    </div>
+  </a>
+  {{end}}
+</div>
+{{end}}
+
+<div class="grid2">
+  <div>
+    <div class="card">
+      <div class="card-title">Wartungsplaene <span class="card-action">{{.TotalPlans}} aktiv</span></div>
+      {{range .Plans}}
+      <div class="li" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="act-dot {{.PriorityDot}}"></div>
+          <div class="li-text">
+            {{if .InfraName}}<div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:2px"><i class="ti ti-hierarchy-2" style="font-size:12px"></i> {{.InfraName}}</div>{{end}}
+            <div class="li-title">{{.Name}}</div>
+            <div class="li-sub">{{.IntervalLabel}} · naechste: {{.NextDue}}</div>
+          </div>
+          <span class="badge b-gray" style="font-size:10px">{{.TypeLabel}}</span>
+          <button class="btn" style="font-size:11px;padding:3px 8px" onclick="togglePlanEdit('edit-{{.ID}}')"><i class="ti ti-edit"></i></button>
+        </div>
+        <div id="edit-{{.ID}}" style="display:none;background:var(--bg3);border-radius:8px;padding:12px;margin-top:4px">
+          <form hx-put="/maintenance/plans/{{.ID}}/edit-web" hx-target="#edit-result-{{.ID}}" hx-swap="innerHTML">
+            <div class="grid2" style="gap:8px">
+              <div class="form-group" style="margin-bottom:8px"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
+              <div class="form-group" style="margin-bottom:8px"><label class="form-label">Prioritaet</label>
+                <select name="priority" class="form-input">
+                  <option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option>
+                  <option value="medium" {{if eq .Priority "medium"}}selected{{end}}>Medium</option>
+                  <option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option>
+                  <option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:8px"><label class="form-label">Intervall</label>
+                <select name="interval" class="form-input">
+                  <option value="daily" {{if eq .IntervalValue "daily"}}selected{{end}}>Taeglich</option>
+                  <option value="weekly" {{if eq .IntervalValue "weekly"}}selected{{end}}>Woechentlich</option>
+                  <option value="monthly" {{if eq .IntervalValue "monthly"}}selected{{end}}>Monatlich</option>
+                  <option value="quarterly" {{if eq .IntervalValue "quarterly"}}selected{{end}}>Quartalsweise</option>
+                  <option value="yearly" {{if eq .IntervalValue "yearly"}}selected{{end}}>Jaehrlich</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label class="form-label">Naechste Faelligkeit</label>
+                <input name="next_due_at" type="date" class="form-input" value="{{.NextDueISO}}">
+                <input type="hidden" name="interval_days" value="{{.IntervalDays}}">
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;justify-content:flex-end">
+              <button type="button" class="btn" style="font-size:11px" onclick="togglePlanEdit('edit-{{.ID}}')">Abbrechen</button>
+              <button type="submit" class="btn btn-primary" style="font-size:11px"><i class="ti ti-device-floppy"></i>Speichern</button>
+            </div>
+          </form>
+          <div id="edit-result-{{.ID}}" style="margin-top:6px"></div>
+        </div>
+      </div>
+      {{else}}
+      <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Plaene vorhanden</div>
+      {{end}}
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-title">Auftraege
+        <div style="display:flex;gap:6px">
+          <a href="/maintenance?status=open" class="card-action">offen</a>
+          <a href="/maintenance?status=in_progress" class="card-action">in Arbeit</a>
+          <a href="/maintenance" class="card-action">alle</a>
+        </div>
+      </div>
+      {{range .Tasks}}
+      <a href="/maintenance/tasks/{{.ID}}" style="display:block;text-decoration:none;color:inherit">
+        <div class="li" style="cursor:pointer">
+          <div class="act-dot {{.PriorityDot}}"></div>
+          <div class="li-text">
+            {{if .InfraName}}<div style="font-size:13px;color:var(--accent);font-weight:600;margin-bottom:2px"><i class="ti ti-hierarchy-2" style="font-size:12px"></i> {{.InfraName}}</div>{{end}}
+            <div class="li-title">{{.Title}}</div>
+            <div class="li-sub">faellig {{.DueDate}}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+            <span class="badge {{.PriorityClass}}" style="font-size:9px">{{.Priority}}</span>
+          </div>
+        </div>
+      </a>
+      {{else}}
+      <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Auftraege offen</div>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+<style>
+.cl-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:7px;margin-bottom:6px}
+.cl-icon{width:26px;height:26px;border-radius:6px;background:rgba(79,110,247,.15);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+</style>
+<script>
+function togglePlanEdit(id){var el=document.getElementById(id);if(!el)return;el.style.display=el.style.display==='none'?'block':'none';}
+
+var clItems=[];
+var clIcons={checkbox:'[x]',number:'#',text:'T',image:'[img]'};
+var clLabels={checkbox:'Abhaken',number:'Messwert',text:'Freitext',image:'Foto'};
+
+function addCLItem(type){
+  var id=Date.now();
+  clItems.push({id:id,type:type,label:'',required:false});
+  var div=document.createElement('div');
+  div.className='cl-item';
+  div.id='cli-'+id;
+  var icon=clIcons[type]||'?';
+  var label=clLabels[type]||type;
+  div.innerHTML='<div class="cl-icon">'+icon+'</div>'
+    +'<div style="flex:1;min-width:0">'
+    +'<div style="font-size:10px;color:var(--muted);margin-bottom:3px">'+label+'</div>'
+    +'<input class="form-input" style="font-size:12px" placeholder="Bezeichnung / Pruefpunkt"'
+    +' oninput="updateCLItem('+id+',\'label\',this.value)"></div>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap">'
+    +'<input type="checkbox" onchange="updateCLItem('+id+',\'required\',this.checked)"> Pflicht</label>'
+    +'<button type="button" onclick="removeCLItem('+id+')" style="background:none;border:0;color:var(--muted);cursor:pointer;font-size:18px;padding:0;flex-shrink:0">x</button>';
+  document.getElementById('cl-items').appendChild(div);
+  updateCLJson();
+}
+
+function updateCLItem(id,field,value){
+  var item=clItems.find(function(i){return i.id===id;});
+  if(item){item[field]=value;updateCLJson();}
+}
+
+function removeCLItem(id){
+  clItems=clItems.filter(function(i){return i.id!==id;});
+  var el=document.getElementById('cli-'+id);
+  if(el)el.remove();
+  updateCLJson();
+}
+
+function updateCLJson(){
+  document.getElementById('checklist_json').value=JSON.stringify(
+    clItems.filter(function(i){return i.label.trim();}).map(function(i){return {type:i.type,label:i.label,required:i.required};})
+  );
+}
+
+function resetPlanForm(){
+  clItems=[];
+  document.getElementById('cl-items').innerHTML='';
+  document.getElementById('checklist_json').value='[]';
+  document.getElementById('plan-form').reset();
+}
+
+async function submitPlan(e){
+  e.preventDefault();
+  updateCLJson();
+  var fd=new FormData(document.getElementById('plan-form'));
+  var res=await fetch('/maintenance/plans',{method:'POST',body:fd});
+  if(res.ok){location.reload();}
+  else{
+    document.getElementById('plan-error').textContent='Fehler beim Anlegen';
+    document.getElementById('plan-error').style.display='block';
+  }
+}
+</script>
+{{end}}
+
+{{define "context-list"}}
+{{range .DueTasks}}
+<div class="act-item">
+  <div class="act-dot {{.PriorityDot}}"></div>
+  <div class="act-text">{{.Title}}</div>
+  <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
+</div>
+{{end}}
+{{end}}

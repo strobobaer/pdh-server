@@ -151,8 +151,8 @@ func (h *Handler) GetAnalysis(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in struct {
-		Message string              `json:"message"`
-		History []anthropicMessage  `json:"history"`
+		Message string             `json:"message"`
+		History []anthropicMessage `json:"history"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")

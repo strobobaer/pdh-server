@@ -1,0 +1,71 @@
+{{template "base" .}}
+{{define "content"}}
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/maintenance" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.PlanName}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Archiv · {{len .Tasks}} abgeschlossene Aufträge</p>
+  </div>
+</div>
+
+{{if not .Tasks}}
+<div class="card" style="text-align:center;padding:32px">
+  <i class="ti ti-archive" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px;opacity:.4"></i>
+  <p style="font-size:13px;color:var(--muted)">Noch keine abgeschlossenen Aufträge</p>
+</div>
+{{else}}
+{{range .Tasks}}
+<div class="card" style="margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:{{if .Logs}}12{{else}}0{{end}}px">
+    <div style="width:36px;height:36px;background:rgba(16,185,129,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="ti ti-check" style="color:var(--green);font-size:16px"></i>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:500;font-size:14px">{{.Title}}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">
+        Abgeschlossen {{.CompletedAt}}{{if .DurationStr}} · Dauer: {{.DurationStr}}{{end}}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <a href="/maintenance/tasks/{{.ID}}" class="btn" style="font-size:11px;padding:4px 10px"><i class="ti ti-eye"></i>Details</a>
+      <form method="POST" action="/maintenance/tasks/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Auftrag löschen?')">
+        <button type="submit" class="btn" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:rgba(239,68,68,.3)"><i class="ti ti-trash"></i></button>
+      </form>
+    </div>
+  </div>
+
+  {{if .Logs}}
+  <div style="border-top:1px solid var(--border);padding-top:10px">
+    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Checkliste</div>
+    {{range .Logs}}
+    <div class="li">
+      <div style="width:20px;height:20px;border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+        {{if .OK}}background:rgba(16,185,129,.15){{else if .Checked}}background:rgba(16,185,129,.15){{else}}background:var(--bg3){{end}}">
+        {{if .OK}}<i class="ti ti-check" style="color:var(--green);font-size:11px"></i>
+        {{else if .Checked}}<i class="ti ti-check" style="color:var(--green);font-size:11px"></i>
+        {{else}}<i class="ti ti-minus" style="color:var(--muted);font-size:11px"></i>{{end}}
+      </div>
+      <div class="li-text">
+        <div class="li-title" style="font-size:12px">{{.ItemLabel}}</div>
+        {{if .TextValue}}<div class="li-sub">{{.TextValue}}</div>{{end}}
+        {{if .NumberValue}}<div class="li-sub">{{printf "%.2f" .NumberValue}}</div>{{end}}
+      </div>
+      {{if .OK}}<span style="font-size:10px;color:var(--green)">OK</span>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{end}}
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Plan</div>
+<div class="act-item">
+  <div class="act-dot d-green"></div>
+  <div class="act-text">{{.PlanName}}</div>
+  <span style="font-size:10px;color:var(--muted)">{{len .Tasks}} Aufträge</span>
+</div>
+{{end}}

@@ -1,0 +1,52 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div><h1 style="font-size:19px;font-weight:600">System-Diagnose</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.GoVersion}}</p></div>
+  <button class="btn" onclick="location.reload()"><i class="ti ti-refresh"></i>Aktualisieren</button>
+</div>
+<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+  <div class="stat s-blue"><div class="stat-label">Goroutinen</div><div class="stat-val">{{.Goroutines}}</div></div>
+  <div class="stat s-blue"><div class="stat-label">Heap</div><div class="stat-val">{{.HeapMB}}<span style="font-size:13px"> MB</span></div></div>
+  <div class="stat s-green"><div class="stat-label">GC-Zyklen</div><div class="stat-val">{{.GCRuns}}</div></div>
+  <div class="stat {{if .DBOk}}s-green{{else}}s-red{{end}}"><div class="stat-label">Datenbank</div><div class="stat-val" style="font-size:15px">{{if .DBOk}}✅ OK{{else}}❌{{end}}</div></div>
+</div>
+<div class="grid2">
+<div class="card">
+  <div class="card-title"><i class="ti ti-cpu" style="color:var(--accent)"></i> System-Info</div>
+  {{range .SysInfo}}
+  <div style="display:flex;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+    <div style="flex:1;color:var(--muted)">{{.Label}}</div>
+    <div style="font-family:monospace;font-size:11px">{{.Value}}</div>
+  </div>
+  {{end}}
+</div>
+<div class="card" style="grid-column:1/-1">
+  <div class="card-title"><i class="ti ti-terminal" style="color:var(--accent)"></i> Systemlog
+    <div style="display:flex;gap:6px">
+      <button class="btn" style="font-size:11px;padding:3px 10px" onclick="filterLogs('')">Alle</button>
+      <button class="btn" style="font-size:11px;padding:3px 10px;color:var(--red)" onclick="filterLogs('ERR')">Fehler</button>
+      <button class="btn" style="font-size:11px;padding:3px 10px;color:var(--amber)" onclick="filterLogs('WRN')">Warn</button>
+    </div>
+  </div>
+  <div id="log-box" style="background:var(--bg);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;line-height:1.7;max-height:450px;overflow-y:auto">
+    {{range .Logs}}
+    <div class="ll" style="color:{{.Color}};padding:1px 4px;border-radius:3px">
+      <span style="color:var(--muted);user-select:none">{{.Time}} </span><span style="opacity:.6">{{.Level}} </span>{{.Msg}}
+    </div>
+    {{end}}
+  </div>
+</div>
+</div>
+{{end}}
+{{define "context-list"}}
+<div class="act-item"><div class="act-dot {{if .DBOk}}d-green{{else}}d-red{{end}}"></div><div class="act-text">Datenbank</div><span style="font-size:11px">{{if .DBOk}}OK{{else}}Fehler{{end}}</span></div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Heap</div><span style="font-size:11px">{{.HeapMB}} MB</span></div>
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">Goroutinen</div><span style="font-size:11px">{{.Goroutines}}</span></div>
+{{end}}
+{{block "scripts" .}}
+<script>
+function filterLogs(kw){document.querySelectorAll('.ll').forEach(l=>l.style.display=(!kw||l.textContent.includes(kw))?'block':'none');}
+const lb=document.getElementById('log-box'); if(lb) lb.scrollTop=lb.scrollHeight;
+</script>
+{{end}}

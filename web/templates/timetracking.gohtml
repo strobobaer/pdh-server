@@ -1,0 +1,302 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Zeiterfassung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TodayCount}} Einträge heute · {{.TodayStr}}</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="openManual()"><i class="ti ti-pencil"></i>Manuell</button>
+    <button class="btn btn-primary" onclick="openStart()"><i class="ti ti-player-play"></i>Zeit starten</button>
+  </div>
+</div>
+
+{{if .Running}}
+<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+  <div style="width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(16,185,129,.15);flex-shrink:0;animation:pulse 1.5s infinite"></div>
+  <div style="flex:1">
+    <div style="font-weight:500;font-size:14px">{{.Running.Description}}</div>
+    <div style="font-size:12px;color:var(--green);margin-top:2px">
+      Gestartet {{.Running.StartedStr}} · <span id="live-timer" style="font-weight:600">…</span>
+    </div>
+  </div>
+  <button data-stop-id="{{.Running.ID}}" class="btn" style="border-color:rgba(16,185,129,.5);color:var(--green)">
+    <i class="ti ti-player-stop"></i>Stoppen
+  </button>
+</div>
+{{end}}
+
+<div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
+  <div class="stat s-blue">
+    <div class="stat-label">Heute</div>
+    <div class="stat-val">{{.TodayStr}}</div>
+    <div class="stat-sub">{{.TodayCount}} Einträge</div>
+  </div>
+  <div class="stat s-green">
+    <div class="stat-label">Diese Woche</div>
+    <div class="stat-val">{{.WeekStr}}</div>
+  </div>
+  <div class="stat {{if .Running}}s-amber{{else}}s-gray{{end}}">
+    <div class="stat-label">Status</div>
+    <div class="stat-val" style="font-size:16px">{{if .Running}}Läuft{{else}}–{{end}}</div>
+  </div>
+</div>
+
+<div class="card" style="padding:0">
+  <table>
+    <thead>
+      <tr><th>Beschreibung</th><th>Typ</th><th>Start</th><th>Ende</th><th>Dauer</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{range .Entries}}
+    <tr id="entry-{{.ID}}">
+      <td><div style="font-weight:500">{{.Description}}</div></td>
+      <td><div style="display:flex;align-items:center;gap:6px"><div class="act-dot {{.RefTypeDot}}"></div><span style="font-size:12px;color:var(--muted)">{{.RefTypeLabel}}</span></div></td>
+      <td style="font-family:monospace;font-size:12px">{{.StartedStr}}</td>
+      <td style="font-family:monospace;font-size:12px">{{if .Running}}<span style="color:var(--green)">läuft…</span>{{else}}{{.EndedStr}}{{end}}</td>
+      <td><span style="font-size:12px;font-weight:500">{{if .Running}}<span style="color:var(--green)">aktiv</span>{{else}}{{.DurationStr}}{{end}}</span></td>
+      <td>{{if not .Running}}<button data-delete-id="{{.ID}}" class="btn" style="font-size:11px;padding:3px 8px;color:var(--muted)"><i class="ti ti-trash"></i></button>{{end}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
+      <i class="ti ti-clock" style="font-size:36px;display:block;margin-bottom:10px;opacity:.4"></i>Noch keine Einträge heute
+    </td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Start Modal ── -->
+<div id="start-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:460px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:4px">Zeit starten</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Aufgabe auswählen</div>
+    <form id="start-form">
+      <div class="form-group">
+        <label class="form-label">Typ</label>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px" id="start-type-btns">
+          <button type="button" class="type-btn active" onclick="setType(this,'fault')"><div style="font-size:18px">🔴</div><div style="font-size:10px;margin-top:3px">Störung</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'ticket')"><div style="font-size:18px">🎫</div><div style="font-size:10px;margin-top:3px">Ticket</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'maintenance')"><div style="font-size:18px">🔧</div><div style="font-size:10px;margin-top:3px">Wartung</div></button>
+          <button type="button" class="type-btn" onclick="setType(this,'production')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
+        </div>
+        <input type="hidden" id="start-ref-type" value="fault">
+      </div>
+      <div class="form-group" id="start-select-grp">
+        <label class="form-label">Aufgabe</label>
+        <select id="start-ref-select" class="form-input"><option value="">Lädt…</option></select>
+      </div>
+      <div class="form-group" id="start-text-grp" style="display:none">
+        <label class="form-label">Aktivität</label>
+        <input id="start-activity" class="form-input" placeholder="z.B. Rüsten, Reinigung…">
+        <input type="hidden" id="start-uuid">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Beschreibung <span style="color:var(--muted)">(optional)</span></label>
+        <input id="start-desc" class="form-input" placeholder="Was wird gemacht?">
+      </div>
+      <div id="start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="closeStart()">Abbrechen</button>
+        <button type="submit" id="start-btn" class="btn btn-primary"><i class="ti ti-player-play"></i>Starten</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Manuell Modal ── -->
+<div id="manual-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:460px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:4px">Manuell erfassen</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Zurückliegende Zeit eintragen</div>
+    <form id="manual-form">
+      <div class="form-group">
+        <label class="form-label">Typ</label>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+          <button type="button" class="type-btn active" onclick="setTypeM(this,'fault')"><div style="font-size:18px">🔴</div><div style="font-size:10px;margin-top:3px">Störung</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'ticket')"><div style="font-size:18px">🎫</div><div style="font-size:10px;margin-top:3px">Ticket</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'maintenance')"><div style="font-size:18px">🔧</div><div style="font-size:10px;margin-top:3px">Wartung</div></button>
+          <button type="button" class="type-btn" onclick="setTypeM(this,'production')"><div style="font-size:18px">⚙️</div><div style="font-size:10px;margin-top:3px">Sonstiges</div></button>
+        </div>
+        <input type="hidden" id="manual-ref-type" value="fault">
+      </div>
+      <div class="form-group" id="manual-select-grp">
+        <label class="form-label">Aufgabe</label>
+        <select id="manual-ref-select" class="form-input"><option value="">Lädt…</option></select>
+      </div>
+      <div class="form-group" id="manual-text-grp" style="display:none">
+        <label class="form-label">Aktivität</label>
+        <input id="manual-activity" class="form-input" placeholder="z.B. Rüsten, Reinigung…">
+        <input type="hidden" id="manual-uuid">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Beschreibung</label>
+        <input id="manual-desc" class="form-input" placeholder="Was wurde gemacht?">
+      </div>
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">Start</label><input type="datetime-local" id="manual-start" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Ende</label><input type="datetime-local" id="manual-end" class="form-input" required></div>
+      </div>
+      <div id="manual-duration" style="font-size:12px;text-align:right;margin-top:-8px;margin-bottom:12px"></div>
+      <div id="manual-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="closeManual()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Heute</div>
+{{range .Entries}}
+<div class="act-item">
+  <div class="act-dot {{.RefTypeDot}}"></div>
+  <div class="act-text">{{.Description}}</div>
+  <span style="font-size:10px;color:var(--muted)">{{if .Running}}läuft{{else}}{{.DurationStr}}{{end}}</span>
+</div>
+{{else}}<div style="font-size:11px;color:var(--muted)">Keine Einträge</div>{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<style>
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.type-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 6px;cursor:pointer;text-align:center;color:var(--text);transition:all .15s;font-family:var(--font)}
+.type-btn:hover{border-color:var(--muted)}
+.type-btn.active{border-color:var(--accent);background:rgba(79,110,247,.12)}
+.s-gray .stat-val{color:var(--muted)}
+</style>
+<script>
+const tok = () => document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1]||'';
+
+// ── Live-Timer ───────────────────────────────────────────────
+{{if .Running}}
+(function(){
+  const el = document.getElementById('live-timer');
+  if(!el) return;
+  const parts = '{{.Running.StartedStr}}'.split(':');
+  const start = new Date();
+  start.setHours(+parts[0], +parts[1], 0, 0);
+  if(start > new Date()) start.setDate(start.getDate()-1);
+  const tick = () => {
+    const s = Math.floor((Date.now()-start)/1000);
+    const h = Math.floor(s/3600), m = Math.floor(s%3600/60), sec = s%60;
+    el.textContent = h>0 ? `${h}h ${String(m).padStart(2,'0')}min` : `${m}min ${String(sec).padStart(2,'0')}s`;
+  };
+  tick(); setInterval(tick, 1000);
+})();
+{{end}}
+
+// ── Stopp ────────────────────────────────────────────────────
+document.querySelectorAll('[data-stop-id]').forEach(btn => {
+  btn.addEventListener('click', async function(){
+    this.disabled=true; this.textContent='…';
+    await fetch(`/time/${this.dataset.stopId}/stop-web`, {method:'POST'});
+    location.reload();
+  });
+});
+
+// ── Löschen ──────────────────────────────────────────────────
+document.querySelectorAll('[data-delete-id]').forEach(btn => {
+  btn.addEventListener('click', async function(){
+    if(!confirm('Eintrag löschen?')) return;
+    this.disabled=true;
+    await fetch(`/time/${this.dataset.deleteId}/delete-web`, {method:'DELETE'});
+    const row = document.getElementById('entry-'+this.dataset.deleteId);
+    if(row){ row.style.transition='opacity .25s'; row.style.opacity='0'; setTimeout(()=>row.remove(),250); }
+  });
+});
+
+// ── API laden ────────────────────────────────────────────────
+async function fetchRefs(type) {
+  const h = {'Authorization':'Bearer '+tok()};
+  try {
+    if(type==='fault') { const d=await(await fetch('/api/v1/faults',{headers:h})).json(); return (d.data||[]).filter(x=>x.status!=='resolved'&&x.status!=='closed').map(x=>({id:x.id,title:x.title})); }
+    if(type==='ticket') { const d=await(await fetch('/api/v1/tickets?status=open',{headers:h})).json(); return (d.data||[]).map(x=>({id:x.id,title:x.title})); }
+    if(type==='maintenance') { const d=await(await fetch('/api/v1/maintenance/tasks?status=open',{headers:h})).json(); return (d.data||[]).map(x=>({id:x.id,title:x.title})); }
+  } catch(e){}
+  return [];
+}
+async function fillSelect(sel, type) {
+  sel.innerHTML='<option>Lädt…</option>';
+  const items = await fetchRefs(type);
+  sel.innerHTML = items.length ? items.map(i=>`<option value="${i.id}">${i.title}</option>`).join('') : '<option value="">– Keine Einträge –</option>';
+}
+
+// ── Start Modal ──────────────────────────────────────────────
+function openStart(){document.getElementById('start-modal').style.display='flex';loadStartRefs('fault');}
+function closeStart(){document.getElementById('start-modal').style.display='none';}
+function setType(btn,type){
+  btn.closest('[id="start-type-btns"]').querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('start-ref-type').value=type;
+  loadStartRefs(type);
+}
+async function loadStartRefs(type){
+  const sg=document.getElementById('start-select-grp'),tg=document.getElementById('start-text-grp'),sel=document.getElementById('start-ref-select');
+  if(type==='production'){sg.style.display='none';tg.style.display='block';document.getElementById('start-uuid').value=crypto.randomUUID();}
+  else{sg.style.display='block';tg.style.display='none';await fillSelect(sel,type);}
+}
+document.getElementById('start-form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const btn=document.getElementById('start-btn'); btn.disabled=true; btn.textContent='…';
+  const type=document.getElementById('start-ref-type').value;
+  let refId='', desc=document.getElementById('start-desc').value.trim();
+  if(type==='production'){refId=document.getElementById('start-uuid').value; if(!desc)desc=document.getElementById('start-activity').value||'Sonstiges';}
+  else{const sel=document.getElementById('start-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
+  const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
+  const res=await fetch('/time/start-web',{method:'POST',body:fd});
+  if(res.ok){closeStart();location.reload();}
+  else{const t=await res.text(); const err=document.getElementById('start-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block'; btn.disabled=false; btn.innerHTML='<i class="ti ti-player-play"></i>Starten';}
+});
+
+// ── Manuell Modal ────────────────────────────────────────────
+function openManual(){
+  document.getElementById('manual-modal').style.display='flex';
+  const now=new Date(), p=n=>String(n).padStart(2,'0');
+  const fmt=d=>`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  document.getElementById('manual-end').value=fmt(now);
+  document.getElementById('manual-start').value=fmt(new Date(now-3600000));
+  updateDuration(); loadManualRefs('fault');
+}
+function closeManual(){document.getElementById('manual-modal').style.display='none';}
+function setTypeM(btn,type){
+  btn.closest('.form-group').querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); document.getElementById('manual-ref-type').value=type; loadManualRefs(type);
+}
+async function loadManualRefs(type){
+  const sg=document.getElementById('manual-select-grp'),tg=document.getElementById('manual-text-grp'),sel=document.getElementById('manual-ref-select');
+  if(type==='production'){sg.style.display='none';tg.style.display='block';document.getElementById('manual-uuid').value=crypto.randomUUID();}
+  else{sg.style.display='block';tg.style.display='none';await fillSelect(sel,type);}
+}
+function updateDuration(){
+  const s=document.getElementById('manual-start').value, e=document.getElementById('manual-end').value, el=document.getElementById('manual-duration');
+  if(!s||!e){el.textContent='';return;}
+  const diff=Math.round((new Date(e)-new Date(s))/60000);
+  if(diff<=0){el.style.color='var(--red)';el.textContent='⚠ Ende muss nach Start liegen';return;}
+  el.style.color='var(--accent)'; el.textContent=`Dauer: ${diff>=60?Math.floor(diff/60)+'h ':''}${diff%60}min`;
+}
+document.getElementById('manual-start').addEventListener('change',updateDuration);
+document.getElementById('manual-end').addEventListener('change',updateDuration);
+document.getElementById('manual-form').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const type=document.getElementById('manual-ref-type').value;
+  let refId='', desc=document.getElementById('manual-desc').value.trim();
+  if(type==='production'){refId=document.getElementById('manual-uuid').value; if(!desc)desc=document.getElementById('manual-activity').value||'Sonstiges';}
+  else{const sel=document.getElementById('manual-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
+  const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
+  fd.append('started_at',document.getElementById('manual-start').value);
+  fd.append('ended_at',document.getElementById('manual-end').value);
+  const res=await fetch('/time/manual-web',{method:'POST',body:fd});
+  if(res.ok){closeManual();location.reload();}
+  else{const t=await res.text(); const err=document.getElementById('manual-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block';}
+});
+
+// ── Backdrop ─────────────────────────────────────────────────
+['start-modal','manual-modal'].forEach(id=>{
+  document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)document.getElementById(id).style.display='none';});
+});
+</script>
+{{end}}

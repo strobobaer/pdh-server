@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	"github.com/spf13/viper"
 )
 
@@ -101,6 +103,10 @@ func Load() (*Config, error) {
 	cfg.Copilot.OllamaURL = viper.GetString("copilot.ollamaurl")
 	cfg.Copilot.Model = viper.GetString("copilot.model")
 	cfg.Copilot.AnthropicKey = viper.GetString("copilot.anthropickey")
+
+	if len(cfg.Auth.JWTSecret) < 32 {
+		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")
+	}
 
 	return cfg, nil
 }

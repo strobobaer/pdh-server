@@ -16,15 +16,15 @@ import (
 // ── Modelle ──────────────────────────────────────────────────
 
 type Warehouse struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Location    string    `json:"location,omitempty"`
-	Active      bool      `json:"active"`
-	CreatedBy   string    `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Location    string     `json:"location,omitempty"`
+	Active      bool       `json:"active"`
+	CreatedBy   string     `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
 	Locations   []Location `json:"locations,omitempty"`
-	PartCount   int       `json:"part_count,omitempty"`
+	PartCount   int        `json:"part_count,omitempty"`
 }
 
 type Location struct {
@@ -47,6 +47,7 @@ type Place struct {
 // ── Repository ───────────────────────────────────────────────
 
 type Repository struct{ db *pgxpool.Pool }
+
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func (r *Repository) CreateWarehouse(ctx context.Context, w *Warehouse) error {
@@ -67,7 +68,9 @@ func (r *Repository) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
 		 LEFT JOIN storage_places sp ON sp.storage_location_id = sl.id
 		 WHERE w.active=true
 		 GROUP BY w.id ORDER BY w.name`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var list []*Warehouse
 	for rows.Next() {
@@ -84,7 +87,9 @@ func (r *Repository) GetWarehouseTree(ctx context.Context, id string) (*Warehous
 		`SELECT id, name, COALESCE(description,''), COALESCE(location,''), active, created_by, created_at
 		 FROM warehouses WHERE id=$1`, id).
 		Scan(&w.ID, &w.Name, &w.Description, &w.Location, &w.Active, &w.CreatedBy, &w.CreatedAt)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	rows, _ := r.db.Query(ctx,
 		`SELECT id, warehouse_id, name, COALESCE(description,'') FROM storage_locations WHERE warehouse_id=$1 ORDER BY name`, id)
@@ -139,6 +144,7 @@ func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 // ── Service ──────────────────────────────────────────────────
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) CreateWarehouse(ctx context.Context, name, desc, loc, userID string) (*Warehouse, error) {
@@ -146,8 +152,12 @@ func (s *Service) CreateWarehouse(ctx context.Context, name, desc, loc, userID s
 	return w, s.repo.CreateWarehouse(ctx, w)
 }
 
-func (s *Service) ListWarehouses(ctx context.Context) ([]*Warehouse, error) { return s.repo.ListWarehouses(ctx) }
-func (s *Service) GetTree(ctx context.Context, id string) (*Warehouse, error) { return s.repo.GetWarehouseTree(ctx, id) }
+func (s *Service) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
+	return s.repo.ListWarehouses(ctx)
+}
+func (s *Service) GetTree(ctx context.Context, id string) (*Warehouse, error) {
+	return s.repo.GetWarehouseTree(ctx, id)
+}
 func (s *Service) GetStats(ctx context.Context) (map[string]int, error) { return s.repo.GetStats(ctx) }
 
 func (s *Service) CreateLocation(ctx context.Context, warehouseID, name, desc string) (*Location, error) {
@@ -160,46 +170,61 @@ func (s *Service) CreatePlace(ctx context.Context, locationID, name, desc, capac
 	return p, s.repo.CreatePlace(ctx, p)
 }
 
-func (s *Service) DeleteWarehouse(ctx context.Context, id string) error { return s.repo.DeleteWarehouse(ctx, id) }
+func (s *Service) DeleteWarehouse(ctx context.Context, id string) error {
+	return s.repo.DeleteWarehouse(ctx, id)
+}
 
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
-	r.Get("/",                    h.List)
-	r.Post("/",                   h.CreateWarehouse)
-	r.Get("/{id}",                h.GetTree)
-	r.Delete("/{id}",             h.Delete)
-	r.Post("/{id}/locations",     h.CreateLocation)
+	r.Get("/", h.List)
+	r.Post("/", h.CreateWarehouse)
+	r.Get("/{id}", h.GetTree)
+	r.Delete("/{id}", h.Delete)
+	r.Post("/{id}/locations", h.CreateLocation)
 	r.Post("/locations/{id}/places", h.CreatePlace)
-	r.Get("/stats",               h.Stats)
+	r.Get("/stats", h.Stats)
 	return r
 }
 
 func decode(r *http.Request, v interface{}) error { return json.NewDecoder(r.Body).Decode(v) }
-func uid(r *http.Request) string { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
+func uid(r *http.Request) string                  { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.svc.ListWarehouses(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, list)
 }
 
 func (h *Handler) CreateWarehouse(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description, Location string }
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	wh, err := h.svc.CreateWarehouse(r.Context(), in.Name, in.Description, in.Location, uid(r))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, wh)
 }
 
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 	tree, err := h.svc.GetTree(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 404, "nicht gefunden"); return }
+	if err != nil {
+		response.Error(w, 404, "nicht gefunden")
+		return
+	}
 	response.JSON(w, 200, tree)
 }
 
@@ -210,17 +235,29 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description string }
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	loc, err := h.svc.CreateLocation(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, loc)
 }
 
 func (h *Handler) CreatePlace(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description, Capacity string }
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	p, err := h.svc.CreatePlace(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Capacity)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, p)
 }
 

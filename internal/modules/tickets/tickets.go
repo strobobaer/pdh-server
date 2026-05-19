@@ -31,19 +31,19 @@ const (
 
 // Ticket - Hauptmodell
 type Ticket struct {
-	ID             string    `json:"id"`
-	Title          string    `json:"title"`
-	Description    string    `json:"description"`
-	Priority       Priority  `json:"priority"`
-	Status         Status    `json:"status"`
-	AssignedTo     *string   `json:"assigned_to,omitempty"`
-	CreatedBy      string    `json:"created_by"`
-	InfrastructureID *string `json:"infrastructure_id,omitempty"`
-	Tags           []string  `json:"tags"`
-	DueDate        *time.Time `json:"due_date,omitempty"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID               string     `json:"id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Priority         Priority   `json:"priority"`
+	Status           Status     `json:"status"`
+	AssignedTo       *string    `json:"assigned_to,omitempty"`
+	CreatedBy        string     `json:"created_by"`
+	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
+	Tags             []string   `json:"tags"`
+	DueDate          *time.Time `json:"due_date,omitempty"`
+	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // Kommentar zu einem Ticket

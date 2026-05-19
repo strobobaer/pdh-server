@@ -33,6 +33,7 @@ type Attachment struct {
 }
 
 type Repository struct{ db *pgxpool.Pool }
+
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Save(ctx context.Context, a *Attachment) error {
@@ -51,7 +52,9 @@ func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attach
 		       size_bytes, COALESCE(caption,''), created_by, created_at
 		FROM attachments WHERE ref_type=$1 AND ref_id=$2
 		ORDER BY created_at DESC`, refType, refID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var list []*Attachment
@@ -75,6 +78,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID string) (string, err
 // ── Service ──────────────────────────────────────────────────
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *http.Request) ([]*Attachment, error) {
@@ -87,34 +91,48 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 
 	var saved []*Attachment
 	files := r.MultipartForm.File["files"]
-	if len(files) == 0 { files = r.MultipartForm.File["file"] }
+	if len(files) == 0 {
+		files = r.MultipartForm.File["file"]
+	}
 
 	for _, fh := range files {
-		if fh.Size > 20<<20 { continue } // max 20MB
+		if fh.Size > 20<<20 {
+			continue
+		} // max 20MB
 
 		src, err := fh.Open()
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		defer src.Close()
 
 		ext := strings.ToLower(filepath.Ext(fh.Filename))
-		if ext == "" { ext = ".jpg" }
-	allowed := map[string]bool{
-		".jpg":true,".jpeg":true,".png":true,".gif":true,".webp":true,
-		".pdf":true,".doc":true,".docx":true,
-		".xls":true,".xlsx":true,".txt":true,".csv":true,
-	}
-	if !allowed[ext] { continue }
+		if ext == "" {
+			ext = ".jpg"
+		}
+		allowed := map[string]bool{
+			".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
+			".pdf": true, ".doc": true, ".docx": true,
+			".xls": true, ".xlsx": true, ".txt": true, ".csv": true,
+		}
+		if !allowed[ext] {
+			continue
+		}
 		fname := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 		relPath := filepath.Join(refType, refID, fname)
 		absPath := filepath.Join(UploadDir, relPath)
 
 		dst, err := os.Create(absPath)
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		written, _ := io.Copy(dst, src)
 		dst.Close()
 
 		mime := fh.Header.Get("Content-Type")
-		if mime == "" { mime = "image/jpeg" }
+		if mime == "" {
+			mime = "image/jpeg"
+		}
 
 		caption := r.FormValue("caption")
 		a := &Attachment{
@@ -137,13 +155,16 @@ func (s *Service) List(ctx context.Context, refType, refID string) ([]*Attachmen
 
 func (s *Service) Delete(ctx context.Context, id, userID string) error {
 	fp, _ := s.repo.Delete(ctx, id, userID)
-	if fp != "" { os.Remove(filepath.Join(UploadDir, fp)) }
+	if fp != "" {
+		os.Remove(filepath.Join(UploadDir, fp))
+	}
 	return nil
 }
 
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
@@ -157,16 +178,22 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	refType := chi.URLParam(r, "refType")
-	refID   := chi.URLParam(r, "refID")
+	refID := chi.URLParam(r, "refID")
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	files, err := h.svc.Upload(r.Context(), refType, refID, userID, r)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, files)
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	files, err := h.svc.List(r.Context(), chi.URLParam(r, "refType"), chi.URLParam(r, "refID"))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, files)
 }
 

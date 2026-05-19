@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS shift_models (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE shift_models
+    ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;
+
 -- ============================================================
 -- SCHICHTDEFINITIONEN
 -- ============================================================
@@ -26,6 +29,18 @@ CREATE TABLE IF NOT EXISTS shift_definitions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_shift_def_model ON shift_definitions(model_id);
+
+ALTER TABLE shift_definitions
+    ADD COLUMN IF NOT EXISTS short_name VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS is_night BOOLEAN NOT NULL DEFAULT false;
+
+UPDATE shift_definitions
+SET short_name = COALESCE(NULLIF(short_name, ''), LEFT(name, 1))
+WHERE short_name IS NULL OR short_name = '';
+
+ALTER TABLE shift_definitions
+    ALTER COLUMN short_name SET DEFAULT '',
+    ALTER COLUMN short_name SET NOT NULL;
 
 -- ============================================================
 -- SCHICHTZUWEISUNGEN
@@ -43,6 +58,10 @@ CREATE TABLE IF NOT EXISTS shift_assignments (
 
 CREATE INDEX IF NOT EXISTS idx_shift_assign_date ON shift_assignments(date);
 CREATE INDEX IF NOT EXISTS idx_shift_assign_user ON shift_assignments(user_id);
+
+ALTER TABLE shift_assignments
+    ADD COLUMN IF NOT EXISTS note TEXT,
+    ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id);
 
 -- ============================================================
 -- ABWESENHEITEN

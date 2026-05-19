@@ -67,7 +67,7 @@ type Repository struct{ db *pgxpool.Pool }
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 // scanItem liest eine Zeile – Reihenfolge muss mit SELECT übereinstimmen
-// SELECT: id, parent_id, name, type, COALESCE(description,'') AS description, COALESCE(location,'') AS location, COALESCE(serial_no,'') AS serial_no, COALESCE(manufacturer,'') AS manufacturer, COALESCE(model,'') AS model, installed_at::text, active, created_at, updated_at
+// SELECT: id, parent_id, name, type, COALESCE(description,”) AS description, COALESCE(location,”) AS location, COALESCE(serial_no,”) AS serial_no, COALESCE(manufacturer,”) AS manufacturer, COALESCE(model,”) AS model, installed_at::text, active, created_at, updated_at
 func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, error) {
 	i := &Infrastructure{}
 	err := row.Scan(
@@ -106,22 +106,29 @@ func (r *Repository) List(ctx context.Context, parentID *string, infraType Infra
 	args := []interface{}{}
 	n := 1
 	if parentID != nil {
-		query += fmt.Sprintf(" AND parent_id=$%d", n); args = append(args, *parentID); n++
+		query += fmt.Sprintf(" AND parent_id=$%d", n)
+		args = append(args, *parentID)
+		n++
 	} else {
 		query += " AND parent_id IS NULL"
 	}
 	if infraType != "" {
-		query += fmt.Sprintf(" AND type=$%d", n); args = append(args, infraType)
+		query += fmt.Sprintf(" AND type=$%d", n)
+		args = append(args, infraType)
 	}
 	query += " ORDER BY type, name"
 
 	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var items []*Infrastructure
 	for rows.Next() {
 		i, err := scanItem(rows)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		items = append(items, i)
 	}
 	return items, nil
@@ -130,7 +137,9 @@ func (r *Repository) List(ctx context.Context, parentID *string, infraType Infra
 func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT `+selectCols+` FROM infrastructure WHERE active=true ORDER BY type, name`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	all := map[string]*Infrastructure{}
@@ -138,7 +147,9 @@ func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 
 	for rows.Next() {
 		i, err := scanItem(rows)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		i.Children = []*Infrastructure{}
 		all[i.ID] = i
 	}
@@ -174,12 +185,16 @@ func (r *Repository) Search(ctx context.Context, q string) ([]*Infrastructure, e
 		 name ILIKE $1 OR description ILIKE $1 OR serial_no ILIKE $1 OR
 		 manufacturer ILIKE $1 OR model ILIKE $1 OR location ILIKE $1)
 		 ORDER BY type, name LIMIT 50`, "%"+q+"%")
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var items []*Infrastructure
 	for rows.Next() {
 		i, err := scanItem(rows)
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		items = append(items, i)
 	}
 	return items, nil
@@ -188,11 +203,14 @@ func (r *Repository) Search(ctx context.Context, q string) ([]*Infrastructure, e
 func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT type, COUNT(*) FROM infrastructure WHERE active=true GROUP BY type`)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	stats := map[string]int{}
 	for rows.Next() {
-		var t string; var c int
+		var t string
+		var c int
 		rows.Scan(&t, &c)
 		stats[t] = c
 	}
@@ -202,6 +220,7 @@ func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 // ── Service ──────────────────────────────────────────────────
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
 func (s *Service) Create(ctx context.Context, in *CreateInput) (*Infrastructure, error) {
@@ -211,12 +230,18 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Infrastructure,
 		Model: in.Model, InstalledAt: in.InstalledAt}
 	return i, s.repo.Create(ctx, i)
 }
-func (s *Service) GetByID(ctx context.Context, id string) (*Infrastructure, error)  { return s.repo.GetByID(ctx, id) }
-func (s *Service) List(ctx context.Context, p *string, t InfraType) ([]*Infrastructure, error) { return s.repo.List(ctx, p, t) }
-func (s *Service) GetTree(ctx context.Context) ([]*Infrastructure, error)             { return s.repo.GetTree(ctx) }
-func (s *Service) Search(ctx context.Context, q string) ([]*Infrastructure, error)   { return s.repo.Search(ctx, q) }
-func (s *Service) GetStats(ctx context.Context) (map[string]int, error)              { return s.repo.GetStats(ctx) }
-func (s *Service) Deactivate(ctx context.Context, id string) error                   { return s.repo.Deactivate(ctx, id) }
+func (s *Service) GetByID(ctx context.Context, id string) (*Infrastructure, error) {
+	return s.repo.GetByID(ctx, id)
+}
+func (s *Service) List(ctx context.Context, p *string, t InfraType) ([]*Infrastructure, error) {
+	return s.repo.List(ctx, p, t)
+}
+func (s *Service) GetTree(ctx context.Context) ([]*Infrastructure, error) { return s.repo.GetTree(ctx) }
+func (s *Service) Search(ctx context.Context, q string) ([]*Infrastructure, error) {
+	return s.repo.Search(ctx, q)
+}
+func (s *Service) GetStats(ctx context.Context) (map[string]int, error) { return s.repo.GetStats(ctx) }
+func (s *Service) Deactivate(ctx context.Context, id string) error      { return s.repo.Deactivate(ctx, id) }
 func (s *Service) Update(ctx context.Context, id string, in *UpdateInput) error {
 	return s.repo.Update(ctx, &Infrastructure{ID: id, Name: in.Name,
 		Description: in.Description, Location: in.Location,
@@ -226,20 +251,21 @@ func (s *Service) Update(ctx context.Context, id string, in *UpdateInput) error 
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
-	r.Get("/",             h.List)
-	r.Post("/",            h.Create)
-	r.Get("/tree",         h.GetTree)
-	r.Get("/search",       h.Search)
-	r.Get("/stats",        h.Stats)
-	r.Get("/{id}",         h.GetByID)
-	r.Put("/{id}",         h.Update)
-	r.Delete("/{id}",      h.Deactivate)
-	r.Get("/{id}/children",h.GetChildren)
+	r.Get("/", h.List)
+	r.Post("/", h.Create)
+	r.Get("/tree", h.GetTree)
+	r.Get("/search", h.Search)
+	r.Get("/stats", h.Stats)
+	r.Get("/{id}", h.GetByID)
+	r.Put("/{id}", h.Update)
+	r.Delete("/{id}", h.Deactivate)
+	r.Get("/{id}/children", h.GetChildren)
 	return r
 }
 
@@ -247,57 +273,91 @@ func decode(r *http.Request, v interface{}) error { return json.NewDecoder(r.Bod
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in CreateInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	item, err := h.svc.Create(r.Context(), &in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, item)
 }
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	item, err := h.svc.GetByID(r.Context(), chi.URLParam(r, "id"))
-	if err != nil { response.Error(w, 404, "nicht gefunden"); return }
+	if err != nil {
+		response.Error(w, 404, "nicht gefunden")
+		return
+	}
 	response.JSON(w, 200, item)
 }
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	var p *string
-	if v := r.URL.Query().Get("parent_id"); v != "" { p = &v }
+	if v := r.URL.Query().Get("parent_id"); v != "" {
+		p = &v
+	}
 	items, err := h.svc.List(r.Context(), p, InfraType(r.URL.Query().Get("type")))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, items)
 }
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 	tree, err := h.svc.GetTree(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, tree)
 }
 func (h *Handler) GetChildren(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	items, err := h.svc.List(r.Context(), &id, InfraType(r.URL.Query().Get("type")))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, items)
 }
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	var in UpdateInput
-	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	if err := decode(r, &in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
 	if err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), &in); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "aktualisiert"})
 }
 func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Deactivate(r.Context(), chi.URLParam(r, "id")); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "deaktiviert"})
 }
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	if q == "" { response.Error(w, 400, "suchbegriff fehlt"); return }
+	if q == "" {
+		response.Error(w, 400, "suchbegriff fehlt")
+		return
+	}
 	items, err := h.svc.Search(r.Context(), q)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, items)
 }
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.svc.GetStats(r.Context())
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, stats)
 }

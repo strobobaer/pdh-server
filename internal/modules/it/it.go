@@ -12,7 +12,7 @@ import (
 	"pdh/pkg/response"
 )
 
-type AssetType   string
+type AssetType string
 type AssetStatus string
 
 const (
@@ -31,43 +31,44 @@ const (
 )
 
 type Asset struct {
-	ID             string      `json:"id"`
-	Name           string      `json:"name"`
-	Type           AssetType   `json:"type"`
-	Status         AssetStatus `json:"status"`
-	Hostname       string      `json:"hostname,omitempty"`
-	IPAddress      string      `json:"ip_address,omitempty"`
-	MACAddress     string      `json:"mac_address,omitempty"`
-	Manufacturer   string      `json:"manufacturer,omitempty"`
-	Model          string      `json:"model,omitempty"`
-	SerialNo       string      `json:"serial_no,omitempty"`
-	Location       string      `json:"location,omitempty"`
-	OS             string      `json:"os,omitempty"`
-	PurchasedAt    *string     `json:"purchased_at,omitempty"`
-	WarrantyUntil  *string     `json:"warranty_until,omitempty"`
-	AssignedTo     *string     `json:"assigned_to,omitempty"`
-	Notes          string      `json:"notes,omitempty"`
-	CreatedBy      string      `json:"created_by"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-	AssigneeName   string      `json:"assignee_name,omitempty"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	Type          AssetType   `json:"type"`
+	Status        AssetStatus `json:"status"`
+	Hostname      string      `json:"hostname,omitempty"`
+	IPAddress     string      `json:"ip_address,omitempty"`
+	MACAddress    string      `json:"mac_address,omitempty"`
+	Manufacturer  string      `json:"manufacturer,omitempty"`
+	Model         string      `json:"model,omitempty"`
+	SerialNo      string      `json:"serial_no,omitempty"`
+	Location      string      `json:"location,omitempty"`
+	OS            string      `json:"os,omitempty"`
+	PurchasedAt   *string     `json:"purchased_at,omitempty"`
+	WarrantyUntil *string     `json:"warranty_until,omitempty"`
+	AssignedTo    *string     `json:"assigned_to,omitempty"`
+	Notes         string      `json:"notes,omitempty"`
+	CreatedBy     string      `json:"created_by"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+	AssigneeName  string      `json:"assignee_name,omitempty"`
 }
 
 type CreateAssetInput struct {
-	Name          string      `json:"name"`
-	Type          AssetType   `json:"type"`
-	Hostname      string      `json:"hostname"`
-	IPAddress     string      `json:"ip_address"`
-	Manufacturer  string      `json:"manufacturer"`
-	Model         string      `json:"model"`
-	SerialNo      string      `json:"serial_no"`
-	Location      string      `json:"location"`
-	OS            string      `json:"os"`
-	AssignedTo    *string     `json:"assigned_to,omitempty"`
-	Notes         string      `json:"notes"`
+	Name         string    `json:"name"`
+	Type         AssetType `json:"type"`
+	Hostname     string    `json:"hostname"`
+	IPAddress    string    `json:"ip_address"`
+	Manufacturer string    `json:"manufacturer"`
+	Model        string    `json:"model"`
+	SerialNo     string    `json:"serial_no"`
+	Location     string    `json:"location"`
+	OS           string    `json:"os"`
+	AssignedTo   *string   `json:"assigned_to,omitempty"`
+	Notes        string    `json:"notes"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
+
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func (r *Repository) Create(ctx context.Context, a *Asset) error {
@@ -93,11 +94,20 @@ func (r *Repository) List(ctx context.Context, assetType AssetType, status Asset
 		WHERE 1=1`
 	args := []interface{}{}
 	n := 1
-	if assetType != "" { query += ` AND a.type=$` + string(rune('0'+n)); args = append(args, assetType); n++ }
-	if status != "" { query += ` AND a.status=$` + string(rune('0'+n)); args = append(args, status) }
+	if assetType != "" {
+		query += ` AND a.type=$` + string(rune('0'+n))
+		args = append(args, assetType)
+		n++
+	}
+	if status != "" {
+		query += ` AND a.status=$` + string(rune('0'+n))
+		args = append(args, status)
+	}
 	query += " ORDER BY a.type, a.name"
 	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var list []*Asset
 	for rows.Next() {
@@ -127,6 +137,7 @@ func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 }
 
 type Service struct{ repo *Repository }
+
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 func (s *Service) Create(ctx context.Context, in *CreateAssetInput, userID string) (*Asset, error) {
 	a := &Asset{Name: in.Name, Type: in.Type, Hostname: in.Hostname,
@@ -135,26 +146,34 @@ func (s *Service) Create(ctx context.Context, in *CreateAssetInput, userID strin
 		AssignedTo: in.AssignedTo, Notes: in.Notes, CreatedBy: userID}
 	return a, s.repo.Create(ctx, a)
 }
-func (s *Service) List(ctx context.Context, t AssetType, st AssetStatus) ([]*Asset, error) { return s.repo.List(ctx, t, st) }
-func (s *Service) UpdateStatus(ctx context.Context, id string, status AssetStatus) error   { return s.repo.UpdateStatus(ctx, id, status) }
-func (s *Service) GetStats(ctx context.Context) (map[string]int, error)                    { return s.repo.GetStats(ctx) }
+func (s *Service) List(ctx context.Context, t AssetType, st AssetStatus) ([]*Asset, error) {
+	return s.repo.List(ctx, t, st)
+}
+func (s *Service) UpdateStatus(ctx context.Context, id string, status AssetStatus) error {
+	return s.repo.UpdateStatus(ctx, id, status)
+}
+func (s *Service) GetStats(ctx context.Context) (map[string]int, error) { return s.repo.GetStats(ctx) }
 
 type Handler struct{ svc *Service }
+
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
-	r.Get("/",          h.List)
-	r.Post("/",         h.Create)
-	r.Get("/stats",     h.Stats)
+	r.Get("/", h.List)
+	r.Post("/", h.Create)
+	r.Get("/stats", h.Stats)
 	r.Put("/{id}/status", h.UpdateStatus)
 	return r
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.svc.List(r.Context(), AssetType(r.URL.Query().Get("type")), AssetStatus(r.URL.Query().Get("status")))
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, list)
 }
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -162,11 +181,16 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&in)
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	a, err := h.svc.Create(r.Context(), &in, userID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, a)
 }
 func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Status AssetStatus `json:"status"` }
+	var in struct {
+		Status AssetStatus `json:"status"`
+	}
 	json.NewDecoder(r.Body).Decode(&in)
 	h.svc.UpdateStatus(r.Context(), chi.URLParam(r, "id"), in.Status)
 	response.JSON(w, 200, map[string]string{"status": string(in.Status)})

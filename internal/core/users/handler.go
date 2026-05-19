@@ -71,6 +71,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	in.Role = RoleWorker
+
 	user, err := h.svc.Register(r.Context(), &in)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())

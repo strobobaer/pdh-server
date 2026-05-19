@@ -39,14 +39,14 @@ type Fault struct {
 
 // Copilot-Analyse
 type CopilotAnalysis struct {
-	ID             string          `json:"id"`
-	FaultID        string          `json:"fault_id"`
-	Summary        string          `json:"summary"`
-	PossibleCauses []string        `json:"possible_causes"`
+	ID             string             `json:"id"`
+	FaultID        string             `json:"fault_id"`
+	Summary        string             `json:"summary"`
+	PossibleCauses []string           `json:"possible_causes"`
 	Steps          []TroubleshootStep `json:"steps"`
-	SimilarFaults  []SimilarFault  `json:"similar_faults"`
-	Confidence     float64         `json:"confidence"`
-	CreatedAt      time.Time       `json:"created_at"`
+	SimilarFaults  []SimilarFault     `json:"similar_faults"`
+	Confidence     float64            `json:"confidence"`
+	CreatedAt      time.Time          `json:"created_at"`
 }
 
 type TroubleshootStep struct {
@@ -66,15 +66,15 @@ type SimilarFault struct {
 
 // Wissenseintrag
 type KnowledgeEntry struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Symptoms    []string  `json:"symptoms"`
-	Solution    string    `json:"solution"`
-	Category    string    `json:"category"`
-	Tags        []string  `json:"tags"`
-	CreatedBy   string    `json:"created_by"`
-	UsageCount  int       `json:"usage_count"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Symptoms   []string  `json:"symptoms"`
+	Solution   string    `json:"solution"`
+	Category   string    `json:"category"`
+	Tags       []string  `json:"tags"`
+	CreatedBy  string    `json:"created_by"`
+	UsageCount int       `json:"usage_count"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Eingaben

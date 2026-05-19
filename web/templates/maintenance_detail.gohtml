@@ -1,0 +1,210 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/maintenance" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.Task.Title}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">
+      {{.Task.TypeLabel}} · fällig {{.Task.DueDate}}{{if .Task.InfraName}} · {{.Task.InfraName}}{{end}}
+    </p>
+  </div>
+  <span class="badge {{.Task.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Task.Priority}}</span>
+  <span class="badge {{.Task.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Task.StatusLabel}}</span>
+    <!-- Icon-Toolbar -->
+  <div style="display:flex;gap:4px;align-items:center">
+    <button onclick="toggleEdit();closeMenu('maint-menu')" title="Bearbeiten" class="btn" style="padding:6px 9px"><i class="ti ti-edit"></i></button>
+    {{if .Task.CanComplete}}
+    <button onclick="document.getElementById('complete-form').style.display='block'" title="Abschließen" class="btn" style="padding:6px 9px;color:var(--green);border-color:rgba(16,185,129,.4)"><i class="ti ti-circle-check"></i></button>
+    {{end}}
+    {{if .Task.CanStart}}
+    <button hx-post="/maintenance/tasks/{{.Task.ID}}/start-web" hx-on::after-request="location.reload()" title="Starten" class="btn" style="padding:6px 9px;color:var(--accent);border-color:rgba(79,110,247,.4)"><i class="ti ti-player-play"></i></button>
+    {{end}}
+  <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag löschen?')">
+    <button type="submit" class="btn" title="Löschen" style="padding:6px 9px;color:var(--red);border-color:rgba(239,68,68,.3)"><i class="ti ti-trash"></i></button>
+  </form>
+  </div>
+</div>
+
+<!-- Bearbeiten -->
+<div id="edit-form" style="display:none" class="card">
+  <div class="card-title">Auftrag bearbeiten</div>
+  <form hx-put="/maintenance/tasks/{{.Task.ID}}/edit-web" hx-target="#edit-result" hx-swap="innerHTML">
+    <div class="grid2">
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Titel</label><input name="title" class="form-input" value="{{.Task.Title}}" required></div>
+      <div class="form-group"><label class="form-label">Priorität</label>
+        <select name="priority" class="form-input">
+          <option value="low" {{if eq .Task.Priority "low"}}selected{{end}}>Low</option>
+          <option value="medium" {{if eq .Task.Priority "medium"}}selected{{end}}>Medium</option>
+          <option value="high" {{if eq .Task.Priority "high"}}selected{{end}}>High</option>
+          <option value="critical" {{if eq .Task.Priority "critical"}}selected{{end}}>Critical</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input" value="{{.Task.DueDateISO}}"></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="3" style="resize:vertical">{{.Task.Description}}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="2" style="resize:vertical">{{.Task.Notes}}</textarea></div>
+    </div>
+    <div id="edit-result" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="toggleEdit()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Speichern</button>
+    </div>
+  </form>
+</div>
+
+<!-- Abschließen -->
+{{if .Task.CanComplete}}
+<div id="complete-form" style="display:none" class="card">
+  <div class="card-title">Auftrag abschließen</div>
+  <form hx-post="/maintenance/tasks/{{.Task.ID}}/complete-web" hx-on::after-request="location.reload()">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Dauer (Minuten)</label><input name="duration_min" type="number" class="form-input" placeholder="z.B. 60" min="0"></div>
+      <div class="form-group"><label class="form-label">Abschlussnotiz</label><input name="notes" class="form-input" placeholder="Was wurde gemacht?"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('complete-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Abschließen</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+<div class="grid2" style="grid-template-columns:1fr 300px;gap:14px;align-items:start">
+  <div>
+    {{if eq .Task.Status "done"}}
+    <div class="card" style="border-color:rgba(16,185,129,.3)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;background:rgba(16,185,129,.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="color:var(--green);font-size:18px"></i></div>
+        <div><div style="font-weight:500;color:var(--green)">Abgeschlossen {{.Task.CompletedAt}}</div>
+        {{if .Task.DurationStr}}<div style="font-size:12px;color:var(--muted)">Dauer: {{.Task.DurationStr}}</div>{{end}}</div>
+      </div>
+      {{if .Task.Notes}}<p style="font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6">{{.Task.Notes}}</p>{{end}}
+    </div>
+    {{end}}
+    {{if eq .Task.Status "in_progress"}}
+    <div class="card" style="border-color:rgba(79,110,247,.3)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;background:rgba(79,110,247,.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-loader" style="color:var(--accent);font-size:18px"></i></div>
+        <div><div style="font-weight:500;color:var(--accent)">In Bearbeitung{{if .Task.StartedAt}} seit {{.Task.StartedAt}}{{end}}</div></div>
+      </div>
+    </div>
+    {{end}}
+    {{if .Task.Description}}
+    <div class="card">
+      <div class="card-title"><i class="ti ti-file-description" style="color:var(--accent)"></i> Beschreibung</div>
+      <p style="font-size:13px;line-height:1.7;color:var(--muted)">{{.Task.Description}}</p>
+    </div>
+    {{end}}
+    {{if .Task.CanStart}}
+    <div class="card" style="text-align:center;padding:24px">
+      <i class="ti ti-player-play" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px;opacity:.5"></i>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Auftrag noch nicht gestartet</p>
+      <button class="btn btn-primary" hx-post="/maintenance/tasks/{{.Task.ID}}/start-web" hx-on::after-request="location.reload()"><i class="ti ti-player-play"></i>Auftrag starten</button>
+    </div>
+    {{end}}
+    <!-- Zeiterfassung -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-clock"></i> Zeiterfassung</div>
+      {{if .Running}}
+      <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.Running.StartedAt.Format "15:04"}}</div>
+      </div>
+      <button class="btn" style="width:100%;justify-content:center;margin-bottom:8px" hx-post="/time/{{.Running.ID}}/stop-web" hx-on::after-request="location.reload()"><i class="ti ti-player-stop"></i>Zeit stoppen</button>
+      {{else}}
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" hx-post="/maintenance/tasks/{{.Task.ID}}/time/start" hx-target="#time-result"><i class="ti ti-player-play"></i>Zeit erfassen</button>
+      {{end}}
+      <div id="time-result"></div>
+      {{range .TimeEntries}}
+      <div class="li">
+        <div class="li-text"><div class="li-title" style="font-size:12px">{{.Description}}</div><div class="li-sub">{{.UserName}} · {{.StartedAt.Format "02.01. 15:04"}}</div></div>
+        <span style="font-size:12px;color:var(--green);font-weight:500">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft…{{end}}</span>
+      </div>
+      {{else}}<div style="font-size:12px;color:var(--muted);padding:4px 0">Keine Zeiteinträge</div>{{end}}
+    </div>
+
+    <!-- Checkliste -->
+    {{if .ChecklistItems}}
+    <div class="card">
+      <div class="card-title"><i class="ti ti-checklist" style="color:var(--accent)"></i> Checkliste</div>
+      <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/checklist">
+        {{range .ChecklistItems}}
+        <div class="li" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:13px;font-weight:500;flex:1">
+              {{if .Required}}<span style="color:var(--red);font-size:10px">✱</span> {{end}}{{.Label}}
+            </div>
+            <span style="font-size:10px;color:var(--muted)">{{.Type}}</span>
+          </div>
+          {{if eq .Type "checkbox"}}
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" name="item_{{.ID}}" value="1" style="width:16px;height:16px">
+            <span style="color:var(--muted)">Erledigt</span>
+          </label>
+          {{else if eq .Type "number"}}
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" name="item_{{.ID}}" class="form-input" style="max-width:160px" placeholder="Messwert eingeben"
+              {{if .CompareValue}}step="0.01"{{end}}>
+            {{if .CompareUnit}}<span style="font-size:12px;color:var(--muted)">{{.CompareUnit}}</span>{{end}}
+          </div>
+          {{else if eq .Type "image"}}
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+            <i class="ti ti-camera"></i>Foto aufnehmen
+            <input type="file" accept="image/*" capture="environment" name="item_{{.ID}}" style="display:none">
+          </label>
+          {{else}}
+          <input type="text" name="item_{{.ID}}" class="form-input" placeholder="{{.Label}}">
+          {{end}}
+        </div>
+        {{end}}
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--border)">
+          <button type="submit" class="btn btn-primary"><i class="ti ti-clipboard-check"></i>Checkliste speichern</button>
+        </div>
+      </form>
+    </div>
+    {{end}}
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Task.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)"><i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)"><i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
+      </div>
+    </div>
+  </div>
+  <!-- Details -->
+  <div>
+    <div class="card">
+      <div class="card-title">Details</div>
+      <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Task.TypeLabel}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Task.PriorityClass}}">{{.Task.Priority}}</span></div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title"><span class="badge {{.Task.StatusClass}}">{{.Task.StatusLabel}}</span></div></div></div>
+      {{if .Task.InfraName}}<div class="li"><div class="li-text"><div class="li-sub">Infrastruktur</div><div class="li-title"><a href="/infrastructure/{{.Task.InfraID}}" style="color:var(--accent)">{{.Task.InfraName}}</a></div></div></div>{{end}}
+      <div class="li"><div class="li-text"><div class="li-sub">Fällig am</div><div class="li-title" style="{{if eq .Task.Status "open"}}color:var(--amber){{end}}">{{.Task.DueDate}}</div></div></div>
+      {{if .Task.AssigneeName}}<div class="li"><div class="li-text"><div class="li-sub">Zugewiesen</div><div class="li-title">{{.Task.AssigneeName}}</div></div></div>{{end}}
+      {{if .Task.DurationStr}}<div class="li"><div class="li-text"><div class="li-sub">Dauer</div><div class="li-title" style="font-weight:600;color:var(--green)">{{.Task.DurationStr}}</div></div></div>{{end}}
+      <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px;color:var(--muted)">{{.Task.CreatedAt}}</div></div></div>
+    </div>
+    {{if .Task.CanComplete}}
+    <div class="card">
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('complete-form').style.display='block';window.scrollTo({top:0,behavior:'smooth'})"><i class="ti ti-check"></i>Als erledigt markieren</button>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Auftrag</div>
+<div class="act-item"><div class="act-dot {{.Task.PriorityDot}}"></div><div class="act-text">{{.Task.Title}}</div><span class="badge {{.Task.StatusClass}}" style="font-size:9px">{{.Task.StatusLabel}}</span></div>
+{{range .TimeEntries}}<div class="act-item"><div class="act-dot d-green"></div><div class="act-text">{{.UserName}}</div><span style="font-size:10px;color:var(--muted)">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft{{end}}</span></div>{{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
+function closeMenu(id){document.getElementById(id).style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
+function toggleEdit(){const f=document.getElementById('edit-form');f.style.display=f.style.display==='none'?'block':'none';if(f.style.display==='block')f.scrollIntoView({behavior:'smooth',block:'nearest'});}
+</script>
+{{end}}

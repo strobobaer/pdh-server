@@ -35,17 +35,17 @@ type ShiftAssignment struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Joined fields
-	ShiftName  string `json:"shift_name,omitempty"`
-	ShortName  string `json:"short_name,omitempty"`
-	StartTime  string `json:"start_time,omitempty"`
-	EndTime    string `json:"end_time,omitempty"`
-	Color      string `json:"color,omitempty"`
-	UserName   string `json:"user_name,omitempty"`
+	ShiftName string `json:"shift_name,omitempty"`
+	ShortName string `json:"short_name,omitempty"`
+	StartTime string `json:"start_time,omitempty"`
+	EndTime   string `json:"end_time,omitempty"`
+	Color     string `json:"color,omitempty"`
+	UserName  string `json:"user_name,omitempty"`
 }
 
 // ── Abwesenheit ──────────────────────────────────────────────
 
-type AbsenceType   string
+type AbsenceType string
 type AbsenceStatus string
 
 const (
@@ -71,21 +71,21 @@ type Absence struct {
 	ApprovedBy *string       `json:"approved_by,omitempty"`
 	CreatedAt  time.Time     `json:"created_at"`
 
-	UserName   string `json:"user_name,omitempty"`
+	UserName string `json:"user_name,omitempty"`
 }
 
 // ── Schichtplan (Wochenübersicht) ────────────────────────────
 
 type WeekPlan struct {
-	WeekStart string            `json:"week_start"`
-	WeekEnd   string            `json:"week_end"`
-	Users     []UserWeekPlan    `json:"users"`
+	WeekStart string         `json:"week_start"`
+	WeekEnd   string         `json:"week_end"`
+	Users     []UserWeekPlan `json:"users"`
 }
 
 type UserWeekPlan struct {
-	UserID    string          `json:"user_id"`
-	UserName  string          `json:"user_name"`
-	Days      map[string]DayEntry `json:"days"`
+	UserID   string              `json:"user_id"`
+	UserName string              `json:"user_name"`
+	Days     map[string]DayEntry `json:"days"`
 }
 
 type DayEntry struct {

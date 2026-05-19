@@ -53,11 +53,11 @@ type StopEntryInput struct {
 }
 
 type Summary struct {
-	RefType     RefType `json:"ref_type"`
-	RefID       string  `json:"ref_id"`
-	TotalMin    int     `json:"total_min"`
-	TotalHours  float64 `json:"total_hours"`
-	EntryCount  int     `json:"entry_count"`
+	RefType    RefType `json:"ref_type"`
+	RefID      string  `json:"ref_id"`
+	TotalMin   int     `json:"total_min"`
+	TotalHours float64 `json:"total_hours"`
+	EntryCount int     `json:"entry_count"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -115,7 +115,9 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 		WHERE user_id=$1 AND started_at::date BETWEEN $2 AND $3
 		ORDER BY started_at DESC`,
 		userID, from, to)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var entries []*TimeEntry
@@ -138,7 +140,9 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 		WHERE te.ref_type=$1 AND te.ref_id=$2
 		ORDER BY te.started_at DESC`,
 		refType, refID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var entries []*TimeEntry
@@ -161,7 +165,9 @@ func (r *Repository) GetRunning(ctx context.Context, userID string) (*TimeEntry,
 		&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 		&e.StartedAt, &e.CreatedAt,
 	)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	return e, nil
 }
 
@@ -177,7 +183,9 @@ func (r *Repository) Summary(ctx context.Context, userID, from, to string) ([]*S
 		GROUP BY ref_type, ref_id
 		ORDER BY total_min DESC`,
 		userID, from, to)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var summaries []*Summary
@@ -222,7 +230,9 @@ func (s *Service) Start(ctx context.Context, in *CreateEntryInput, userID string
 }
 
 func (s *Service) Stop(ctx context.Context, id, userID string, endedAt time.Time) error {
-	if endedAt.IsZero() { endedAt = time.Now() }
+	if endedAt.IsZero() {
+		endedAt = time.Now()
+	}
 	return s.repo.Stop(ctx, id, userID, endedAt)
 }
 
@@ -231,8 +241,12 @@ func (s *Service) GetRunning(ctx context.Context, userID string) (*TimeEntry, er
 }
 
 func (s *Service) ListByUser(ctx context.Context, userID, from, to string) ([]*TimeEntry, error) {
-	if from == "" { from = time.Now().AddDate(0, -1, 0).Format("2006-01-02") }
-	if to == "" { to = time.Now().Format("2006-01-02") }
+	if from == "" {
+		from = time.Now().AddDate(0, -1, 0).Format("2006-01-02")
+	}
+	if to == "" {
+		to = time.Now().Format("2006-01-02")
+	}
 	return s.repo.ListByUser(ctx, userID, from, to)
 }
 
@@ -241,8 +255,12 @@ func (s *Service) ListByRef(ctx context.Context, refType RefType, refID string) 
 }
 
 func (s *Service) Summary(ctx context.Context, userID, from, to string) ([]*Summary, error) {
-	if from == "" { from = time.Now().AddDate(0, -1, 0).Format("2006-01-02") }
-	if to == "" { to = time.Now().Format("2006-01-02") }
+	if from == "" {
+		from = time.Now().AddDate(0, -1, 0).Format("2006-01-02")
+	}
+	if to == "" {
+		to = time.Now().Format("2006-01-02")
+	}
 	return s.repo.Summary(ctx, userID, from, to)
 }
 
@@ -278,11 +296,15 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	var in CreateEntryInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.Error(w, 400, "ungültige eingabe"); return
+		response.Error(w, 400, "ungültige eingabe")
+		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	e, err := h.svc.Start(r.Context(), &in, userID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 201, e)
 }
 
@@ -292,7 +314,8 @@ func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&in)
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	if err := h.svc.Stop(r.Context(), id, userID, in.EndedAt); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "gestoppt"})
 }
@@ -301,7 +324,8 @@ func (h *Handler) GetRunning(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	e, err := h.svc.GetRunning(r.Context(), userID)
 	if err != nil {
-		response.JSON(w, 200, nil); return
+		response.JSON(w, 200, nil)
+		return
 	}
 	response.JSON(w, 200, e)
 }
@@ -311,7 +335,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
 	entries, err := h.svc.ListByUser(r.Context(), userID, from, to)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, entries)
 }
 
@@ -319,7 +346,10 @@ func (h *Handler) ListByRef(w http.ResponseWriter, r *http.Request) {
 	refType := RefType(chi.URLParam(r, "type"))
 	refID := chi.URLParam(r, "id")
 	entries, err := h.svc.ListByRef(r.Context(), refType, refID)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, entries)
 }
 
@@ -328,7 +358,10 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	from := r.URL.Query().Get("from")
 	to := r.URL.Query().Get("to")
 	summaries, err := h.svc.Summary(r.Context(), userID, from, to)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, summaries)
 }
 
@@ -336,7 +369,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	if err := h.svc.Delete(r.Context(), id, userID); err != nil {
-		response.Error(w, 500, err.Error()); return
+		response.Error(w, 500, err.Error())
+		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
 }
@@ -344,7 +378,9 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 // ── Helpers ──────────────────────────────────────────────────
 
 func calcDuration(start time.Time, end *time.Time) *int {
-	if end == nil { return nil }
+	if end == nil {
+		return nil
+	}
 	min := int(end.Sub(start).Minutes())
 	return &min
 }
