@@ -16,6 +16,7 @@ import (
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
+	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
@@ -171,6 +172,7 @@ type Handler struct {
 	inv       *inventory.Service
 	it        *it.Service
 	time      *timetracking.Service
+	checks    *checklists.Service
 	jwtSecret string
 }
 
@@ -186,11 +188,13 @@ func NewHandler(
 	inv *inventory.Service,
 	itt *it.Service,
 	tt *timetracking.Service,
+	ch *checklists.Service,
 	jwtSecret string,
 ) *Handler {
 	return &Handler{
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
+		checks:    ch,
 		jwtSecret: jwtSecret,
 	}
 }
@@ -2129,11 +2133,27 @@ func (h *Handler) TimeDeleteWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
+	type checklistView struct {
+		ID          string
+		Name        string
+		Description string
+		Category    string
+	}
 	data := struct {
 		BaseData
 		Total      int
-		Checklists []struct{ ID, Name, Description, Category string }
+		Checklists []checklistView
 	}{BaseData: baseData(r, "checklists", "Checklisten-Vorlagen", "Feldtypen")}
+	if h.checks != nil {
+		if list, err := h.checks.List(r.Context(), r.URL.Query().Get("category")); err == nil {
+			data.Total = len(list)
+			for _, c := range list {
+				data.Checklists = append(data.Checklists, checklistView{
+					ID: c.ID, Name: c.Name, Description: c.Description, Category: c.Category,
+				})
+			}
+		}
+	}
 	h.render(w, "checklist_builder", data)
 }
 

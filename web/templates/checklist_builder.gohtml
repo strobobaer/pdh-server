@@ -162,6 +162,10 @@ async function saveChecklist() {
       max_value: item.max_value ? parseFloat(item.max_value) : null,
     }))
   };
+  if(!payload.name.trim()) {
+    alert('Name ist Pflicht');
+    return;
+  }
 
   const token = document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || '';
   const res = await fetch('/api/v1/checklists', {
@@ -170,7 +174,7 @@ async function saveChecklist() {
     body: JSON.stringify(payload)
   });
   if(res.ok) location.reload();
-  else alert('Fehler beim Speichern');
+  else alert('Fehler beim Speichern: ' + (await res.text()));
 }
 </script>
 {{end}}

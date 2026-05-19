@@ -132,6 +132,26 @@ tr:last-child td{border:0}
 .theme-toggle{height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;gap:8px;font-size:13px;font-family:var(--font);cursor:pointer}
 .theme-toggle:hover{border-color:var(--muted);background:var(--bg2)}
 .theme-toggle i{font-size:16px;color:var(--accent)}
+html.icons-fallback .ti::before{font-family:var(--font);font-weight:700;display:inline-block;line-height:1}
+html.icons-fallback .ti-plus::before{content:"+"}
+html.icons-fallback .ti-refresh::before{content:"R"}
+html.icons-fallback .ti-x::before{content:"x"}
+html.icons-fallback .ti-device-floppy::before{content:"S"}
+html.icons-fallback .ti-filter::before{content:"F"}
+html.icons-fallback .ti-eye::before{content:"O"}
+html.icons-fallback .ti-brain::before{content:"AI";font-size:.72em}
+html.icons-fallback .ti-pencil::before{content:"E"}
+html.icons-fallback .ti-copy::before{content:"C"}
+html.icons-fallback .ti-circle-arrow-up::before{content:"^"}
+html.icons-fallback .ti-circle-arrow-down::before{content:"v"}
+html.icons-fallback .ti-check::before{content:"✓"}
+html.icons-fallback .ti-trash::before{content:"D"}
+html.icons-fallback .ti-trash-x::before{content:"Dx";font-size:.72em}
+html.icons-fallback .ti-player-play::before{content:">"}
+html.icons-fallback .ti-player-stop::before{content:"[]";font-size:.72em}
+html.icons-fallback .ti-device-desktop::before{content:"[]";font-size:.72em}
+html.icons-fallback .ti-sun::before{content:"*"}
+html.icons-fallback .ti-moon::before{content:"("}
 .widget-icon-toolbar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .widget-icon-toolbar.end{justify-content:flex-end}
 .widget-icon-toolbar.compact{gap:4px}
@@ -291,6 +311,19 @@ function cycleThemeMode() {
   applyThemeMode(THEME_MODES[(index + 1) % THEME_MODES.length]);
 }
 document.addEventListener('DOMContentLoaded', () => applyThemeMode(localStorage.getItem('pdh_theme') || 'system'));
+function ensureIconFont() {
+  const probe = document.createElement('i');
+  probe.className = 'ti ti-plus';
+  probe.style.position = 'absolute';
+  probe.style.left = '-9999px';
+  document.body.appendChild(probe);
+  const content = getComputedStyle(probe, '::before').content;
+  probe.remove();
+  if(!content || content === 'none' || content === 'normal') {
+    document.documentElement.classList.add('icons-fallback');
+  }
+}
+window.addEventListener('load', () => setTimeout(ensureIconFont, 300));
 if(window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if((localStorage.getItem('pdh_theme') || 'system') === 'system') applyThemeMode('system');

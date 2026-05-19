@@ -151,8 +151,8 @@ func (r *Repository) CreatePlan(ctx context.Context, p *MaintenancePlan) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_plans
 		  (id, name, description, type, infrastructure_id, interval_type, interval_days,
-		   estimated_min, priority, assigned_to, next_due_at, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		   estimated_min, priority, assigned_to, active, next_due_at, created_by)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11)
 		RETURNING id, active, created_at`,
 		p.Name, p.Description, p.Type, p.InfrastructureID,
 		p.Interval, p.IntervalDays, p.EstimatedMin, p.Priority,
@@ -417,7 +417,7 @@ func (s *Service) CreatePlan(ctx context.Context, in *CreatePlanInput, userID st
 		InfrastructureID: in.InfrastructureID, Interval: in.Interval,
 		IntervalDays: intervalDays, EstimatedMin: in.EstimatedMin,
 		Priority: in.Priority, AssignedTo: in.AssignedTo,
-		NextDueAt: nextDue, CreatedBy: userID,
+		Active: true, NextDueAt: nextDue, CreatedBy: userID,
 	}
 	return p, s.repo.CreatePlan(ctx, p)
 }
