@@ -12,7 +12,7 @@ type Role string
 
 const (
 	RoleAdmin      Role = "admin"
-	RoleManger     Role = "manager"
+	RoleManager    Role = "manager"
 	RoleTechnician Role = "technician"
 	RoleWorker     Role = "worker"
 	RoleViewer     Role = "viewer"
