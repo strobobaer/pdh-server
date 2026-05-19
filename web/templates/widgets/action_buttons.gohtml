@@ -32,7 +32,7 @@ Expected data fields:
 Action      string  // new, refresh, expand, filter, analyze, edit, view, copy, history, more, start, stop, book, delete, delete-mark, activate, deactivate, done, cancel, save
 ID          string  // optional element id
 Label       string  // optional; falls back to the default action label
-ShowLabel   bool    // optional; shows the label next to the icon for compact text buttons
+ShowLabel   bool    // optional; shows the label next to the icon for normal touch-friendly buttons
 Href        string  // optional link target
 Type        string  // optional button type: button, submit, reset
 Class       string  // optional extra classes
@@ -127,8 +127,9 @@ Disabled    bool
 {{- if eq $action "done" -}}{{- $icon = "ti ti-check" -}}{{- if not $label -}}{{- $label = "Erledigen" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
 {{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- $showInlineLabel := .ShowLabel -}}
 {{- if .Href }}
-<a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
+<a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if $showInlineLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
@@ -137,10 +138,10 @@ Disabled    bool
    {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
    {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
    {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
-  <i class="{{$icon}}" aria-hidden="true"></i>{{if .ShowLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
+  <i class="{{$icon}}" aria-hidden="true"></i>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
 </a>
 {{- else }}
-<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
+<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if $showInlineLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .Disabled}}disabled{{end}}
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
@@ -150,7 +151,7 @@ Disabled    bool
    {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
    {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
    {{if .HxTrigger}}hx-trigger="{{.HxTrigger}}"{{end}}>
-  <i class="{{$icon}}" aria-hidden="true"></i>{{if .ShowLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
+  <i class="{{$icon}}" aria-hidden="true"></i>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
 </button>
 {{- end }}
 {{end}}
