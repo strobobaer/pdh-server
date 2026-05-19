@@ -87,6 +87,7 @@ Erwartete Datenstruktur:
 ```go
 type ActionButtonData struct {
     Action    string
+    ID        string
     Label     string
     ShowLabel bool
     Href      string
@@ -164,9 +165,19 @@ Actions: struct {
 Unterstuetzte Aktionen:
 
 - `new` - Plus
+- `refresh` - Aktualisieren
+- `expand` - Aufklappen
 - `edit` - Stift
+- `view` - Auge / Details
 - `copy` - Kopieren
+- `history` - Historie
+- `more` - Mehr-Menue
+- `start` - Starten
+- `stop` - Stoppen
+- `book` - Buchen
 - `save` - Diskette
+- `delete` - Papierkorb
+- `delete-mark` - Loeschvormerkung
 - `activate` - Pfeil im Kreis nach oben
 - `deactivate` - Pfeil im Kreis nach unten
 - `done` - gruener Haken

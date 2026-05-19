@@ -9,8 +9,15 @@ Goal:
 Supported actions:
 - new
 - refresh
+- expand
 - edit
+- view
 - copy
+- history
+- more
+- start
+- stop
+- book
 - delete
 - delete-mark
 - activate
@@ -20,7 +27,8 @@ Supported actions:
 - save
 
 Expected data fields:
-Action      string  // new, refresh, edit, copy, delete, delete-mark, activate, deactivate, done, cancel, save
+Action      string  // new, refresh, expand, edit, view, copy, history, more, start, stop, book, delete, delete-mark, activate, deactivate, done, cancel, save
+ID          string  // optional element id
 Label       string  // optional; falls back to the default action label
 ShowLabel   bool    // optional; shows the label next to the icon for compact text buttons
 Href        string  // optional link target
@@ -46,8 +54,15 @@ Disabled    bool
 {{- $variant := "btn" -}}
 {{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "expand" -}}{{- $icon = "ti ti-arrows-maximize" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
 {{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
+{{- if eq $action "view" -}}{{- $icon = "ti ti-eye" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
 {{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "history" -}}{{- $icon = "ti ti-history" -}}{{- if not $label -}}{{- $label = "Historie" -}}{{- end -}}{{- end -}}
+{{- if eq $action "more" -}}{{- $icon = "ti ti-dots" -}}{{- if not $label -}}{{- $label = "Mehr" -}}{{- end -}}{{- end -}}
+{{- if eq $action "start" -}}{{- $icon = "ti ti-player-play" -}}{{- if not $label -}}{{- $label = "Starten" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "stop" -}}{{- $icon = "ti ti-player-stop" -}}{{- if not $label -}}{{- $label = "Stoppen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "book" -}}{{- $icon = "ti ti-arrows-exchange" -}}{{- if not $label -}}{{- $label = "Buchen" -}}{{- end -}}{{- end -}}
 {{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
 {{- if eq $action "activate" -}}{{- $icon = "ti ti-circle-arrow-up" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
@@ -56,7 +71,7 @@ Disabled    bool
 {{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if .Href }}
-<a href="{{.Href}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
+<a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} {{.Class}}" style="{{css .Style}}"
    {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
@@ -68,7 +83,7 @@ Disabled    bool
   <i class="{{$icon}}"></i>{{- $label -}}
 </a>
 {{- else }}
-<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} {{.Class}}" style="{{.Style}}"
+<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} {{.Class}}" style="{{css .Style}}"
    {{if .Disabled}}disabled{{end}}
    {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
@@ -90,8 +105,15 @@ Disabled    bool
 {{- $variant := "btn" -}}
 {{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "expand" -}}{{- $icon = "ti ti-arrows-maximize" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
 {{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
+{{- if eq $action "view" -}}{{- $icon = "ti ti-eye" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
 {{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "history" -}}{{- $icon = "ti ti-history" -}}{{- if not $label -}}{{- $label = "Historie" -}}{{- end -}}{{- end -}}
+{{- if eq $action "more" -}}{{- $icon = "ti ti-dots" -}}{{- if not $label -}}{{- $label = "Mehr" -}}{{- end -}}{{- end -}}
+{{- if eq $action "start" -}}{{- $icon = "ti ti-player-play" -}}{{- if not $label -}}{{- $label = "Starten" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "stop" -}}{{- $icon = "ti ti-player-stop" -}}{{- if not $label -}}{{- $label = "Stoppen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "book" -}}{{- $icon = "ti ti-arrows-exchange" -}}{{- if not $label -}}{{- $label = "Buchen" -}}{{- end -}}{{- end -}}
 {{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
 {{- if eq $action "activate" -}}{{- $icon = "ti ti-circle-arrow-up" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
@@ -100,7 +122,7 @@ Disabled    bool
 {{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
 {{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if .Href }}
-<a href="{{.Href}}" class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
+<a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
@@ -112,7 +134,7 @@ Disabled    bool
   <i class="{{$icon}}" aria-hidden="true"></i>{{if .ShowLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
 </a>
 {{- else }}
-<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{.Style}}" aria-label="{{$label}}" title="{{$label}}"
+<button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if .ShowLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .Disabled}}disabled{{end}}
    {{if .OnClick}}onclick="{{.OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
@@ -128,7 +150,7 @@ Disabled    bool
 {{end}}
 
 {{define "icon-button-toolbar"}}
-<div class="widget-icon-toolbar {{.Class}}" style="{{.Style}}" {{if .Label}}aria-label="{{.Label}}"{{end}}>
+<div class="widget-icon-toolbar {{.Class}}" style="{{css .Style}}" {{if .Label}}aria-label="{{.Label}}"{{end}}>
   {{range .Items}}{{template "icon-button" .}}{{end}}
 </div>
 {{end}}
@@ -146,8 +168,15 @@ Disabled    bool
 {{define "button-save"}}{{template "action-button" .}}{{end}}
 {{define "icon-button-new"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-refresh"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-expand"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-edit"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-view"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-copy"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-history"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-more"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-start"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-stop"}}{{template "icon-button" .}}{{end}}
+{{define "icon-button-book"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-delete"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-delete-mark"}}{{template "icon-button" .}}{{end}}
 {{define "icon-button-activate"}}{{template "icon-button" .}}{{end}}

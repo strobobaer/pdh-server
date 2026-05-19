@@ -4,17 +4,21 @@
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
   <div>
     <h1 style="font-size:19px;font-weight:600">Infrastruktur-Topologie</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.building}} Gebäude · {{.Stats.line}} Linien · {{.Stats.plant}} Anlagen · {{.Stats.device}} Geräte</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.building}} GebÃ¤ude Â· {{.Stats.line}} Linien Â· {{.Stats.plant}} Anlagen Â· {{.Stats.device}} GerÃ¤te</p>
   </div>
-  <div style="display:flex;gap:8px">
-    <button class="btn" onclick="expandAll()"><i class="ti ti-arrows-maximize"></i>Alle aufklappen</button>
-    <button class="btn btn-primary" onclick="document.getElementById('new-node-form').style.display='block'"><i class="ti ti-plus"></i>Hinzufügen</button>
-  </div>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Infrastruktur-Aktionen"
+    "Items" (list
+      (dict "Action" "expand" "ShowLabel" true "Label" "Alle aufklappen" "OnClick" "expandAll()")
+      (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "OnClick" "document.getElementById('new-node-form').style.display='block'")
+    )
+  )}}
 </div>
 
 <!-- Neuer Knoten -->
 <div id="new-node-form" style="display:none" class="card">
-  <div class="card-title">Infrastruktur hinzufügen</div>
+  <div class="card-title">Infrastruktur hinzufÃ¼gen</div>
   <form hx-post="/infrastructure" hx-target="#infra-tree" hx-swap="outerHTML">
     <div class="grid2">
       <div class="form-group">
@@ -24,16 +28,16 @@
       <div class="form-group">
         <label class="form-label">Typ</label>
         <select name="type" class="form-input">
-          <option value="building">🏭 Gebäude</option>
-          <option value="line">🔄 Produktionslinie</option>
-          <option value="plant">⚙️ Anlage</option>
-          <option value="device">🔌 Gerät</option>
+          <option value="building">ðŸ­ GebÃ¤ude</option>
+          <option value="line">ðŸ”„ Produktionslinie</option>
+          <option value="plant">âš™ï¸ Anlage</option>
+          <option value="device">ðŸ”Œ GerÃ¤t</option>
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Übergeordnet (optional)</label>
+        <label class="form-label">Ãœbergeordnet (optional)</label>
         <select name="parent_id" class="form-input">
-          <option value="">– kein übergeordnetes Element –</option>
+          <option value="">â€“ kein Ã¼bergeordnetes Element â€“</option>
           {{range .AllNodes}}
           <option value="{{.ID}}">{{.TypeIcon}} {{.Name}}</option>
           {{end}}
@@ -52,19 +56,24 @@
         <input name="serial_no" class="form-input">
       </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" onclick="document.getElementById('new-node-form').style.display='none'">Abbrechen</button>
-      <button type="submit" class="btn btn-primary">Hinzufügen</button>
-    </div>
+    {{template "icon-button-toolbar" (dict
+      "Class" "end"
+      "Label" "Formularaktionen"
+      "Style" "width:100%;justify-content:flex-end"
+      "Items" (list
+        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('new-node-form').style.display='none'")
+        (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Hinzufügen")
+      )
+    )}}
   </form>
 </div>
 
 <!-- Legende -->
 <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
-  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#6366F1"></div>Gebäude</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#6366F1"></div>GebÃ¤ude</div>
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#4f6ef7"></div>Linie</div>
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#10b981"></div>Anlage</div>
-  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#f59e0b"></div>Gerät</div>
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><div style="width:12px;height:12px;border-radius:3px;background:#f59e0b"></div>GerÃ¤t</div>
 </div>
 
 <!-- Infrastruktur-Baum -->
@@ -89,15 +98,21 @@
     {{else}}
     <div style="width:14px;flex-shrink:0"></div>
     {{end}}
-    <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:{{.TypeBg}}">{{.TypeIcon}}</div>
+    <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:{{css .TypeBg}}">{{.TypeIcon}}</div>
     <div style="flex:1;min-width:0">
       <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Name}}</div>
-      <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}</div>
+      <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} Â· {{.Location}}{{end}}{{if .Manufacturer}} Â· {{.Manufacturer}}{{end}}</div>
     </div>
     {{if .SerialNo}}<span style="font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;flex-shrink:0">{{.SerialNo}}</span>{{end}}
     <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
-      <a href="/infrastructure/{{.ID}}" class="btn" style="font-size:11px;padding:3px 8px"><i class="ti ti-eye"></i></a>
-      <button class="btn" style="font-size:11px;padding:3px 8px" onclick="addChildNode('{{.ID}}','{{.Name}}')"><i class="ti ti-plus"></i></button>
+      {{template "icon-button-toolbar" (dict
+        "Class" "compact"
+        "Label" "Knotenaktionen"
+        "Items" (list
+          (dict "Action" "view" "Href" (printf "/infrastructure/%s" .ID))
+          (dict "Action" "new" "Label" "Unteranlage hinzufügen" "OnClick" (printf "addChildNode('%s','%s')" .ID .Name))
+        )
+      )}}
     </div>
   </div>
   {{if .Children}}

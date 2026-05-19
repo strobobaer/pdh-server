@@ -6,10 +6,14 @@
     <h1 style="font-size:19px;font-weight:600">Zeiterfassung</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TodayCount}} Einträge heute · {{.TodayStr}}</p>
   </div>
-  <div style="display:flex;gap:8px">
-    <button class="btn" onclick="openManual()"><i class="ti ti-pencil"></i>Manuell</button>
-    <button class="btn btn-primary" onclick="openStart()"><i class="ti ti-player-play"></i>Zeit starten</button>
-  </div>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Zeit-Aktionen"
+    "Items" (list
+      (dict "Action" "edit" "ShowLabel" true "Label" "Manuell" "OnClick" "openManual()")
+      (dict "Action" "start" "ShowLabel" true "Label" "Zeit starten" "OnClick" "openStart()")
+    )
+  )}}
 </div>
 
 {{if .Running}}
@@ -21,9 +25,7 @@
       Gestartet {{.Running.StartedStr}} · <span id="live-timer" style="font-weight:600">…</span>
     </div>
   </div>
-  <button data-stop-id="{{.Running.ID}}" class="btn" style="border-color:rgba(16,185,129,.5);color:var(--green)">
-    <i class="ti ti-player-stop"></i>Stoppen
-  </button>
+  {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Style" "border-color:rgba(16,185,129,.5);color:var(--green)" "Label" "Stoppen" "OnClick" (printf "this.disabled=true;this.textContent='...';fetch('/time/%s/stop-web',{method:'POST'}).then(()=>location.reload())" .Running.ID))}}
 </div>
 {{end}}
 
@@ -56,7 +58,7 @@
       <td style="font-family:monospace;font-size:12px">{{.StartedStr}}</td>
       <td style="font-family:monospace;font-size:12px">{{if .Running}}<span style="color:var(--green)">läuft…</span>{{else}}{{.EndedStr}}{{end}}</td>
       <td><span style="font-size:12px;font-weight:500">{{if .Running}}<span style="color:var(--green)">aktiv</span>{{else}}{{.DurationStr}}{{end}}</span></td>
-      <td>{{if not .Running}}<button data-delete-id="{{.ID}}" class="btn" style="font-size:11px;padding:3px 8px;color:var(--muted)"><i class="ti ti-trash"></i></button>{{end}}</td>
+      <td>{{if not .Running}}{{template "icon-button" (dict "Action" "delete" "Style" "color:var(--muted)" "Label" "Löschen" "OnClick" (printf "if(confirm('Eintrag löschen?')){this.disabled=true;fetch('/time/%s/delete-web',{method:'DELETE'}).then(()=>document.getElementById('entry-%s')?.remove())}" .ID .ID))}}{{end}}</td>
     </tr>
     {{else}}
     <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
@@ -97,10 +99,15 @@
         <input id="start-desc" class="form-input" placeholder="Was wird gemacht?">
       </div>
       <div id="start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="button" class="btn" onclick="closeStart()">Abbrechen</button>
-        <button type="submit" id="start-btn" class="btn btn-primary"><i class="ti ti-player-play"></i>Starten</button>
-      </div>
+      {{template "icon-button-toolbar" (dict
+        "Class" "end"
+        "Label" "Formularaktionen"
+        "Style" "width:100%;justify-content:flex-end"
+        "Items" (list
+          (dict "Action" "cancel" "ShowLabel" true "OnClick" "closeStart()")
+          (dict "Action" "start" "ShowLabel" true "Type" "submit" "ID" "start-btn")
+        )
+      )}}
     </form>
   </div>
 </div>
@@ -140,10 +147,15 @@
       </div>
       <div id="manual-duration" style="font-size:12px;text-align:right;margin-top:-8px;margin-bottom:12px"></div>
       <div id="manual-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="button" class="btn" onclick="closeManual()">Abbrechen</button>
-        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Speichern</button>
-      </div>
+      {{template "icon-button-toolbar" (dict
+        "Class" "end"
+        "Label" "Formularaktionen"
+        "Style" "width:100%;justify-content:flex-end"
+        "Items" (list
+          (dict "Action" "cancel" "ShowLabel" true "OnClick" "closeManual()")
+          (dict "Action" "save" "ShowLabel" true "Type" "submit")
+        )
+      )}}
     </form>
   </div>
 </div>

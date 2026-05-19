@@ -7,9 +7,17 @@ import (
 
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
+		"css":  templateCSS,
 		"dict": templateDict,
 		"list": templateList,
 	}
+}
+
+func templateCSS(value interface{}) template.CSS {
+	if value == nil {
+		return ""
+	}
+	return template.CSS(fmt.Sprint(value))
 }
 
 func templateDict(values ...interface{}) (map[string]interface{}, error) {

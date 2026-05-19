@@ -8,9 +8,13 @@
       {{.Stats.warehouses}} Lager · {{.Stats.locations}} Lagerorte · {{.Stats.places}} Lagerplätze
     </p>
   </div>
-  <button class="btn btn-primary" onclick="document.getElementById('new-warehouse').style.display='block'">
-    <i class="ti ti-plus"></i>Neues Lager
-  </button>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Lager-Aktionen"
+    "Items" (list
+      (dict "Action" "new" "ShowLabel" true "Label" "Neues Lager" "OnClick" "document.getElementById('new-warehouse').style.display='block'")
+    )
+  )}}
 </div>
 
 <!-- Neues Lager -->
@@ -22,10 +26,15 @@
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Halle B"></div>
       <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" onclick="document.getElementById('new-warehouse').style.display='none'">Abbrechen</button>
-      <button type="submit" class="btn btn-primary">Anlegen</button>
-    </div>
+    {{template "icon-button-toolbar" (dict
+      "Class" "end"
+      "Label" "Formularaktionen"
+      "Style" "width:100%;justify-content:flex-end"
+      "Items" (list
+        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('new-warehouse').style.display='none'")
+        (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")
+      )
+    )}}
   </form>
 </div>
 
@@ -41,7 +50,7 @@
       <div style="font-size:12px;color:var(--muted)">{{.Location}} · {{.PartCount}} Lagerplätze</div>
     </div>
     <div style="position:relative">
-      <button class="btn" onclick="toggleMenu('wh-menu-{{.ID}}')" style="padding:5px 9px"><i class="ti ti-dots"></i></button>
+      {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('wh-menu-%s')" .ID))}}
       <div id="wh-menu-{{.ID}}" style="display:none;position:absolute;right:0;top:32px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
         <button class="menu-item" onclick="showAddLocation('{{.ID}}');closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-plus"></i>Lagerort hinzufügen</button>
         <button class="menu-item menu-danger" hx-delete="/storage/{{.ID}}" hx-confirm="Lager löschen?" hx-target="closest .card" hx-swap="outerHTML" onclick="closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-trash"></i>Lager löschen</button>
@@ -55,7 +64,7 @@
     <form hx-post="/storage/{{.ID}}/locations-web" hx-target="#locs-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:8px">
       <input name="name" class="form-input" placeholder="z.B. Regal A" required style="flex:1">
       <input name="description" class="form-input" placeholder="Beschreibung" style="flex:1">
-      <button type="submit" class="btn btn-primary" style="white-space:nowrap">Hinzufügen</button>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Hinzufügen")}}
     </form>
   </div>
 
@@ -72,7 +81,7 @@
           <div style="font-size:13px;font-weight:500">{{.Name}}</div>
           <div style="font-size:11px;color:var(--muted)">{{.Description}} · {{len .Places}} Plätze</div>
         </div>
-        <button class="btn" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();showAddPlace('{{.ID}}')"><i class="ti ti-plus"></i>Platz</button>
+        {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Platz" "OnClick" (printf "event.stopPropagation();showAddPlace('%s')" .ID))}}
       </div>
 
       <!-- Neuer Lagerplatz Form -->
@@ -80,7 +89,7 @@
         <form hx-post="/storage/locations/{{.ID}}/places-web" hx-target="#places-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:6px">
           <input name="name" class="form-input" placeholder="z.B. Fach 1" required style="flex:1;font-size:12px">
           <input name="capacity" class="form-input" placeholder="Kapazität" style="width:100px;font-size:12px">
-          <button type="submit" class="btn btn-primary" style="font-size:11px">OK</button>
+          {{template "icon-button" (dict "Action" "save" "Type" "submit" "Label" "OK")}}
         </form>
       </div>
 

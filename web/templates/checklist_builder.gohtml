@@ -5,9 +5,13 @@
     <h1 style="font-size:19px;font-weight:600">Checklisten-Vorlagen</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Vorlagen</p>
   </div>
-  <button class="btn btn-primary" onclick="document.getElementById('builder').style.display='block'">
-    <i class="ti ti-plus"></i>Neue Vorlage
-  </button>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Checklisten-Aktionen"
+    "Items" (list
+      (dict "Action" "new" "ShowLabel" true "Label" "Neue Vorlage" "OnClick" "document.getElementById('builder').style.display='block'")
+    )
+  )}}
 </div>
 
 <!-- Builder -->
@@ -43,10 +47,15 @@
     <button class="btn" onclick="addItem('image')" style="font-size:12px"><i class="ti ti-camera"></i>Foto</button>
   </div>
 
-  <div style="display:flex;gap:8px;justify-content:flex-end">
-    <button class="btn" onclick="document.getElementById('builder').style.display='none'">Abbrechen</button>
-    <button class="btn btn-primary" onclick="saveChecklist()"><i class="ti ti-check"></i>Vorlage speichern</button>
-  </div>
+  {{template "icon-button-toolbar" (dict
+    "Class" "end"
+    "Label" "Formularaktionen"
+    "Style" "width:100%;justify-content:flex-end"
+    "Items" (list
+      (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('builder').style.display='none'")
+      (dict "Action" "save" "ShowLabel" true "Label" "Vorlage speichern" "OnClick" "saveChecklist()")
+    )
+  )}}
 </div>
 
 <!-- Vorlagen Liste -->
