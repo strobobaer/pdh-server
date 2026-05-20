@@ -146,11 +146,12 @@ type CompleteTaskInput struct {
 }
 
 type UpdateTaskInput struct {
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Priority    Priority `json:"priority"`
-	DueDate     string   `json:"due_date"`
-	Notes       string   `json:"notes"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description"`
+	InfrastructureID string   `json:"infrastructure_id"`
+	Priority         Priority `json:"priority"`
+	DueDate          string   `json:"due_date"`
+	Notes            string   `json:"notes"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -336,16 +337,16 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, in *UpdateTaskIn
 	if err != nil {
 		_, err = r.db.Exec(ctx, `
 			UPDATE maintenance_tasks
-			SET title=$1, description=$2, priority=$3, notes=$4
-			WHERE id=$5`,
-			in.Title, in.Description, in.Priority, in.Notes, id)
+			SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, notes=$5, updated_at=NOW()
+			WHERE id=$6`,
+			in.Title, in.Description, in.InfrastructureID, in.Priority, in.Notes, id)
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
 		UPDATE maintenance_tasks
-		SET title=$1, description=$2, priority=$3, due_date=$4, notes=$5
-		WHERE id=$6`,
-		in.Title, in.Description, in.Priority, dueDate, in.Notes, id)
+		SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, due_date=$5, notes=$6, updated_at=NOW()
+		WHERE id=$7`,
+		in.Title, in.Description, in.InfrastructureID, in.Priority, dueDate, in.Notes, id)
 	return err
 }
 

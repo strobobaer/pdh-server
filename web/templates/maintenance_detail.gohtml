@@ -40,6 +40,7 @@
         </select>
       </div>
       <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input" value="{{.Task.DueDateISO}}"></div>
+      {{template "infra-tree-picker" (dict "TargetID" "task-infra-id" "SelectedLabelID" "task-infra-selected" "Label" "Infrastruktur" "Value" .Task.InfraID "SelectedLabel" .Task.InfraName)}}
       <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="3" style="resize:vertical">{{.Task.Description}}</textarea></div>
       <div class="form-group" style="grid-column:1/-1"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="2" style="resize:vertical">{{.Task.Notes}}</textarea></div>
     </div>

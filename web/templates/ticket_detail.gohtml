@@ -4,7 +4,7 @@
   {{template "icon-button" (dict "Action" "back" "Href" "/tickets")}}
   <div style="flex:1">
     <h1 style="font-size:18px;font-weight:600">{{.Ticket.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt {{.Ticket.CreatedAgo}}</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt {{.Ticket.CreatedAgo}}{{if .Ticket.InfraName}} · {{.Ticket.InfraName}}{{end}}</p>
   </div>
   <span class="badge {{.Ticket.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.Priority}}</span>
   <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
@@ -15,10 +15,10 @@
     <div id="ticket-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
       <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
       {{range .StatusOptions}}
-      <button class="menu-item" hx-put="/tickets/{{$.Ticket.ID}}/status-web" hx-vals='{"status":"{{.Value}}"}' hx-target="#status-badge" onclick="closeMenu('ticket-menu')">{{.Label}}</button>
+      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}
       {{end}}
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      <button class="menu-item menu-danger" hx-delete="/tickets/{{.Ticket.ID}}" hx-confirm="Ticket löschen?" hx-target="body">Ticket löschen</button>
+      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Ticket löschen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxDelete" (printf "/tickets/%s" .Ticket.ID) "HxConfirm" "Ticket löschen?" "HxTarget" "body" "OnClick" "closeMenu('ticket-menu')")}}
     </div>
   </div>
 </div>
@@ -87,6 +87,11 @@
       <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Ticket.PriorityClass}}">{{.Ticket.Priority}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title" id="status-badge"><span class="badge {{.Ticket.StatusClass}}">{{.Ticket.StatusLabel}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px">{{.Ticket.CreatedAgo}}</div></div></div>
+      <form hx-put="/tickets/{{.Ticket.ID}}/infrastructure-web" hx-target="#ticket-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        {{template "infra-tree-picker" (dict "TargetID" "ticket-detail-infra-id" "SelectedLabelID" "ticket-detail-infra-selected" "Label" "Infrastruktur" "Value" .Ticket.InfraID "SelectedLabel" .Ticket.InfraName)}}
+        <div id="ticket-infra-result" style="font-size:12px;margin-bottom:8px"></div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
       <form hx-put="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="form-group">
           <label class="form-label">Verantwortlich</label>

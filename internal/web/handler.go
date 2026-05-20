@@ -65,11 +65,13 @@ type DashStats struct {
 type FaultView struct {
 	ID              string
 	Title           string
+	Description     string
 	Status          string
 	StatusLabel     string
 	StatusClass     string
 	Severity        string
 	SeverityClass   string
+	InfraID         string
 	InfraName       string
 	DetectedAgo     string
 	Confidence      float64
@@ -84,6 +86,8 @@ type TicketView struct {
 	ID              string
 	Title           string
 	Description     string
+	InfraID         string
+	InfraName       string
 	Priority        string
 	PriorityClass   string
 	PriorityDot     string
@@ -247,6 +251,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/tickets/{id}", h.TicketDetail)
 	r.Put("/tickets/{id}/status", h.UpdateTicketStatus)
 	r.Put("/tickets/{id}/status-web", h.TicketStatusWeb)
+	r.Put("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb)
 	r.Post("/tickets/{id}/comment", h.TicketAddComment)
 	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
 	r.Get("/faults", h.Faults)
@@ -254,6 +259,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/faults/{id}", h.FaultDetail)
 	r.Post("/faults/{id}/analyze", h.AnalyzeFault)
 	r.Post("/faults/{id}/resolve", h.FaultResolve)
+	r.Put("/faults/{id}/infrastructure-web", h.FaultInfrastructureWeb)
 	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
@@ -476,6 +482,17 @@ func optionalID(value string) *string {
 	return &value
 }
 
+func (h *Handler) infraName(ctx context.Context, id *string) string {
+	if id == nil || strings.TrimSpace(*id) == "" || h.infra == nil {
+		return ""
+	}
+	node, err := h.infra.GetByID(ctx, *id)
+	if err != nil || node == nil {
+		return ""
+	}
+	return node.Name
+}
+
 func (h *Handler) userOptions(ctx context.Context) []UserOption {
 	list, err := h.users.List(ctx)
 	if err != nil {
@@ -531,6 +548,35 @@ func (h *Handler) recordImageURL(ctx context.Context, refType, id string) string
 		return ""
 	}
 	return "/uploads/" + *path
+}
+
+func (h *Handler) updateInfrastructureWeb(w http.ResponseWriter, r *http.Request, refType string) {
+	table, ok := recordTable(refType)
+	if !ok || h.db == nil {
+		http.Error(w, "ungültiger Datensatztyp", http.StatusBadRequest)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
+	query := fmt.Sprintf(`UPDATE %s SET infrastructure_id=NULLIF($1,'')::uuid, updated_at=NOW() WHERE id=$2`, table)
+	if _, err := h.db.Exec(r.Context(), query, infraID, id); err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
+		return
+	}
+	label := "Keine Infrastruktur"
+	if infraID != "" && h.infra != nil {
+		if node, err := h.infra.GetByID(r.Context(), infraID); err == nil && node != nil {
+			label = node.Name
+		}
+	}
+	u := getUser(r)
+	_, _ = h.db.Exec(r.Context(), `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
+		VALUES ($1, $2, 'update', 'infrastructure_id', $3, $4, 'Infrastruktur geändert')`,
+		refType, id, infraID, u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Gespeichert: %s</div>`, esc(label))
 }
 
 func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
@@ -750,13 +796,18 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 			if f.Status == "detected" || f.Status == "in_progress" {
 				data.Open++
 			}
-			data.Faults = append(data.Faults, FaultView{
-				ID: f.ID, Title: f.Title,
+			fv := FaultView{
+				ID: f.ID, Title: f.Title, Description: f.Description,
 				Status: string(f.Status), StatusLabel: statusLabel(string(f.Status)),
 				StatusClass: statusClass(string(f.Status)),
 				Severity:    string(f.Severity), SeverityClass: severityClass(string(f.Severity)),
 				DetectedAgo: timeAgo(f.DetectedAt),
-			})
+				InfraName:   h.infraName(ctx, f.InfrastructureID),
+			}
+			if f.InfrastructureID != nil {
+				fv.InfraID = *f.InfrastructureID
+			}
+			data.Faults = append(data.Faults, fv)
 		}
 	}
 	h.render(w, "faults", data)
@@ -780,11 +831,15 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 			}
 			tv := TicketView{
 				ID: t.ID, Title: t.Title, Description: t.Description,
-				Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
+				InfraName: h.infraName(ctx, t.InfrastructureID),
+				Priority:  string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 				PriorityDot: priorityDot(string(t.Priority)),
 				Status:      string(t.Status), StatusLabel: statusLabel(string(t.Status)),
 				StatusClass: statusClass(string(t.Status)),
 				CreatedAgo:  timeAgo(t.CreatedAt),
+			}
+			if t.InfrastructureID != nil {
+				tv.InfraID = *t.InfrastructureID
 			}
 			data.Tickets = append(data.Tickets, tv)
 			if t.Priority == "critical" {
@@ -1143,6 +1198,7 @@ type FaultDetailView struct {
 	StatusClass     string
 	Severity        string
 	SeverityClass   string
+	InfraID         string
 	InfraName       string
 	DetectedAgo     string
 	Resolution      string
@@ -1191,6 +1247,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 			StatusClass:     statusClass(string(fault.Status)),
 			Severity:        string(fault.Severity),
 			SeverityClass:   severityClass(string(fault.Severity)),
+			InfraName:       h.infraName(ctx, fault.InfrastructureID),
 			DetectedAgo:     timeAgo(fault.DetectedAt),
 			AssignedID:      people.AssignedID,
 			ResponsibleID:   people.ResponsibleID,
@@ -1198,6 +1255,9 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 			ResponsibleName: people.ResponsibleName,
 			RecordImageURL:  h.recordImageURL(ctx, "fault", id),
 		},
+	}
+	if fault.InfrastructureID != nil {
+		data.Fault.InfraID = *fault.InfrastructureID
 	}
 	if fault.Resolution != nil {
 		data.Fault.Resolution = *fault.Resolution
@@ -1239,6 +1299,10 @@ func (h *Handler) FaultResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Störung gelöst! <a href="/faults" style="color:var(--accent)">Zurück zur Liste</a></div>`)
+}
+
+func (h *Handler) FaultInfrastructureWeb(w http.ResponseWriter, r *http.Request) {
+	h.updateInfrastructureWeb(w, r, "fault")
 }
 
 func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
@@ -1603,11 +1667,12 @@ func (h *Handler) MaintenanceTaskCompleteWeb(w http.ResponseWriter, r *http.Requ
 func (h *Handler) MaintenanceTaskEditWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	in := &maintenance.UpdateTaskInput{
-		Title:       r.FormValue("title"),
-		Description: r.FormValue("description"),
-		Priority:    maintenance.Priority(r.FormValue("priority")),
-		DueDate:     r.FormValue("due_date"),
-		Notes:       r.FormValue("notes"),
+		Title:            r.FormValue("title"),
+		Description:      r.FormValue("description"),
+		InfrastructureID: strings.TrimSpace(r.FormValue("infrastructure_id")),
+		Priority:         maintenance.Priority(r.FormValue("priority")),
+		DueDate:          r.FormValue("due_date"),
+		Notes:            r.FormValue("notes"),
 	}
 	if err := h.maint.UpdateTask(r.Context(), chi.URLParam(r, "id"), in); err != nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -1822,7 +1887,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{
 			ID: t.ID, Title: t.Title, Description: t.Description,
-			Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
+			InfraName: h.infraName(ctx, t.InfrastructureID),
+			Priority:  string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 			PriorityDot: priorityDot(string(t.Priority)),
 			Status:      string(t.Status), StatusLabel: statusLabel(string(t.Status)),
 			StatusClass: statusClass(string(t.Status)),
@@ -1832,6 +1898,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			{"open", "Offen"}, {"in_progress", "In Arbeit"},
 			{"resolved", "Gelöst"}, {"closed", "Geschlossen"},
 		},
+	}
+	if t.InfrastructureID != nil {
+		data.Ticket.InfraID = *t.InfrastructureID
 	}
 	people := h.recordPeople(ctx, "ticket", id)
 	data.Ticket.AssignedID = people.AssignedID
@@ -1890,6 +1959,10 @@ func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
 	h.tickets.UpdateStatus(r.Context(), id, status, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClass(string(status)), statusLabel(string(status)))
+}
+
+func (h *Handler) TicketInfrastructureWeb(w http.ResponseWriter, r *http.Request) {
+	h.updateInfrastructureWeb(w, r, "ticket")
 }
 
 func (h *Handler) TicketStartTime(w http.ResponseWriter, r *http.Request) {
@@ -2185,6 +2258,8 @@ type ITAssetView struct {
 	Model        string
 	SerialNo     string
 	Location     string
+	InfraName    string
+	Notes        string
 }
 
 type UsersPageData struct {
@@ -2547,6 +2622,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 				StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 				IPAddress: a.IPAddress, Hostname: a.Hostname,
 				Manufacturer: a.Manufacturer, Model: a.Model, SerialNo: a.SerialNo, Location: a.Location,
+				InfraName: a.InfraName, Notes: a.Notes,
 			})
 		}
 	}
@@ -2564,7 +2640,7 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
 		Manufacturer: r.FormValue("manufacturer"), Model: r.FormValue("model"),
 		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
-		OS: r.FormValue("os"), Notes: r.FormValue("notes"),
+		OS: r.FormValue("os"), InfrastructureID: optionalID(r.FormValue("infrastructure_id")), Notes: r.FormValue("notes"),
 	}
 	a, err := h.it.Create(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
@@ -2575,8 +2651,8 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 	icons := map[string]string{"server": "🖥️", "network": "🌐", "workstation": "💻", "printer": "🖨️", "phone": "📱", "tablet": "📟", "other": "📦"}
 	labels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
 	t := string(a.Type)
-	fmt.Fprintf(w, "<tr><td><b>%s</b></td><td>%s %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td><td></td></tr>",
-		esc(a.Name), esc(icons[t]), esc(labels[t]), esc(a.IPAddress), esc(a.Location))
+	fmt.Fprintf(w, "<tr><td><b>%s</b><div style=\"font-size:11px;color:var(--muted)\">%s</div><div style=\"font-size:11px;color:var(--muted)\">%s</div></td><td>%s %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td><td></td></tr>",
+		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icons[t]), esc(labels[t]), esc(a.IPAddress), esc(a.Location))
 }
 
 func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {

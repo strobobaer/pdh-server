@@ -16,7 +16,7 @@ faults, maintenance plans and future dashboard widgets without custom JS per for
 {{define "infra-tree-picker"}}
 <div class="widget-field infra-picker-widget">
   <label class="form-label">{{.Label}}</label>
-  <input type="hidden" id="{{.TargetID}}" name="infrastructure_id" value="{{.Value}}">
+  <input type="hidden" id="{{.TargetID}}" name="infrastructure_id" value="{{.Value}}" {{if .Required}}required{{end}}>
   <div class="infra-picker"
        data-infra-picker
        data-target="{{.TargetID}}"
@@ -25,7 +25,7 @@ faults, maintenance plans and future dashboard widgets without custom JS per for
       <div id="{{.SelectedLabelID}}" class="infra-picker-selected">
         {{if .SelectedLabel}}{{.SelectedLabel}}{{else}}Keine Infrastruktur ausgewählt{{end}}
       </div>
-      {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "Label" "Leeren" "Class" "btn-small" "OnClick" "clearInfraPicker(this.closest('[data-infra-picker]'))")}}
+      {{if not .Required}}{{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "Label" "Leeren" "Class" "btn-small" "OnClick" "clearInfraPicker(this.closest('[data-infra-picker]'))")}}{{end}}
     </div>
     <div class="infra-picker-search">
       <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät...">

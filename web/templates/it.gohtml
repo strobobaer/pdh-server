@@ -43,6 +43,7 @@
       <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
       <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input"></div>
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Serverraum"></div>
+      {{template "infra-tree-picker" (dict "TargetID" "it-infra-id" "SelectedLabelID" "it-infra-selected" "Label" "Infrastruktur")}}
       <div class="form-group"><label class="form-label">Betriebssystem</label><input name="os" class="form-input" placeholder="z.B. Debian 12"></div>
       <div class="form-group"><label class="form-label">Notizen</label><input name="notes" class="form-input"></div>
     </div>
@@ -60,10 +61,10 @@
 
 <!-- Filter -->
 <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-  <a href="/it" class="btn {{if eq .Filter ""}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">Alle</a>
-  <a href="/it?type=server" class="btn {{if eq .Filter "server"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">🖥️ Server</a>
-  <a href="/it?type=network" class="btn {{if eq .Filter "network"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">🌐 Netzwerk</a>
-  <a href="/it?type=workstation" class="btn {{if eq .Filter "workstation"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">💻 Workstation</a>
+  {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/it")}}{{end}}
+  {{if eq .Filter "server"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Server" "Href" "/it?type=server")}}{{end}}
+  {{if eq .Filter "network"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Netzwerk" "Href" "/it?type=network")}}{{end}}
+  {{if eq .Filter "workstation"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Workstation" "Href" "/it?type=workstation")}}{{end}}
 </div>
 
 <div class="card" style="padding:0">
@@ -75,7 +76,8 @@
       <td style="position:relative">
         <a href="/it/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
         <div style="font-weight:500;position:relative">{{.Name}}</div>
-        <div style="font-size:11px;color:var(--muted)">{{.Manufacturer}} {{.Model}}{{if .SerialNo}} · {{.SerialNo}}{{end}}</div>
+        {{if .InfraName}}<div style="font-size:11px;color:var(--accent);position:relative">{{.InfraName}}</div>{{end}}
+        <div style="font-size:11px;color:var(--muted);position:relative">{{if .Notes}}{{.Notes}}{{else}}{{.Manufacturer}} {{.Model}}{{if .SerialNo}} · {{.SerialNo}}{{end}}{{end}}</div>
       </td>
       <td><span style="font-size:13px">{{.TypeIcon}}</span> <span style="font-size:12px;color:var(--muted)">{{.TypeLabel}}</span></td>
       <td style="font-size:12px">
@@ -88,9 +90,9 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('it-%s')" .ID))}}
           <div id="it-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:140px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.3)">
-            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"active"}' onclick="closeMenu('it-{{.ID}}')">✅ Aktiv</button>
-            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"maintenance"}' onclick="closeMenu('it-{{.ID}}')">🔧 Wartung</button>
-            <button class="menu-item" hx-put="/it/{{.ID}}/status-web" hx-vals='{"status":"inactive"}' onclick="closeMenu('it-{{.ID}}')">⭕ Inaktiv</button>
+            {{template "icon-button" (dict "Action" "activate" "ShowLabel" true "Label" "Aktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"active\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
+            {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" "Wartung" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"maintenance\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
+            {{template "icon-button" (dict "Action" "deactivate" "ShowLabel" true "Label" "Inaktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"inactive\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
           </div>
         </div>
       </td>

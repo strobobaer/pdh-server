@@ -105,7 +105,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
 	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
-		created_by, due_date, archived_at, created_at, updated_at
+		created_by, infrastructure_id, due_date, archived_at, created_at, updated_at
 		FROM tickets`
 	args := []interface{}{}
 	if status == Status("archive") {
@@ -129,7 +129,7 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 		t := &Ticket{}
 		err := rows.Scan(
 			&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
-			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.DueDate, &t.ArchivedAt,
+			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID, &t.DueDate, &t.ArchivedAt,
 			&t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {

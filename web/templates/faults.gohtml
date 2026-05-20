@@ -63,25 +63,7 @@
       <input name="symptoms" class="form-input" placeholder="Überhitzung, Lärm, Brandgeruch">
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Infrastruktur</label>
-      <input type="hidden" id="fault-infra-id" name="infrastructure_id">
-      <div class="infra-picker" data-infra-picker data-target="fault-infra-id" data-selected-label="fault-infra-selected">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-          <div id="fault-infra-selected" style="flex:1;font-size:12px;color:var(--muted)">Keine Infrastruktur ausgewählt</div>
-          {{template "icon-button-toolbar" (dict
-            "Class" "compact"
-            "Label" "Infrastruktur-Auswahl"
-            "Items" (list
-              (dict "Action" "refresh" "ShowLabel" true "Class" "btn-small" "OnClick" "loadInfraPicker(this.closest('[data-infra-picker]'))")
-              (dict "Action" "cancel" "ShowLabel" true "Label" "Leeren" "Class" "btn-small" "OnClick" "clearInfraPicker(this.closest('[data-infra-picker]'))")
-            )
-          )}}
-        </div>
-        <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät..." oninput="filterInfraPicker(this)" style="margin-bottom:8px">
-        <div data-infra-tree style="border:1px solid var(--border);border-radius:8px;max-height:220px;overflow:auto;padding:8px;background:var(--bg3);font-size:12px;color:var(--muted)">Noch nicht geladen</div>
-      </div>
-    </div>
+    {{template "infra-tree-picker" (dict "TargetID" "fault-infra-id" "SelectedLabelID" "fault-infra-selected" "Label" "Infrastruktur")}}
 
     <div id="fault-create-result" style="font-size:12px;margin-bottom:8px"></div>
     {{template "icon-button-toolbar" (dict
@@ -122,7 +104,8 @@
       <td>
         <a href="/faults/{{.ID}}" style="display:block;color:inherit;text-decoration:none">
           <div style="font-weight:500">{{.Title}}</div>
-          <div style="font-size:11px;color:var(--muted)">{{.InfraName}}</div>
+          {{if .InfraName}}<div style="font-size:11px;color:var(--accent)">{{.InfraName}}</div>{{end}}
+          <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
         </a>
       </td>
       <td><span class="badge {{.SeverityClass}}">{{.Severity}}</span></td>
@@ -157,52 +140,6 @@
 
 {{define "scripts"}}
 <script>
-function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
-function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
-function selectInfra(btn){const root=btn.closest('[data-infra-picker]'); document.getElementById(root.dataset.target).value=btn.dataset.infraId; document.getElementById(root.dataset.selectedLabel).textContent=btn.dataset.infraName}
-function clearInfraPicker(root){document.getElementById(root.dataset.target).value=''; document.getElementById(root.dataset.selectedLabel).textContent='Keine Infrastruktur ausgewählt'}
-function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
-function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
-async function loadInfraPicker(root){
-  if(!root) return;
-  const box=root.querySelector('[data-infra-tree]'); box.innerHTML='Laedt...';
-  try{
-    const res=await fetch('/api/v1/infrastructure/tree',{headers:{Authorization:'Bearer '+pdhToken()}});
-    const json=await res.json();
-    root.__infraTree=json.data||[];
-    root.__infraExpanded=new Set();
-    collectInfraBranches(root.__infraTree, root.__infraExpanded);
-    renderInfraPicker(root, root.__infraTree);
-  }catch(e){box.innerHTML='<span style="color:var(--red)">Infrastruktur konnte nicht geladen werden</span>'}
-}
-function renderInfraPicker(root, nodes){
-  const box=root.querySelector('[data-infra-tree]');
-  if(!nodes.length){box.innerHTML='Keine Infrastruktur vorhanden'; return}
-  box.innerHTML=renderInfraNodes(root, nodes, 0);
-}
-function renderInfraNodes(root, nodes, depth){
-  const expanded=root.__infraExpanded||new Set();
-  return (nodes||[]).map(n=>{
-    const children=n.children||[];
-    const hasChildren=children.length>0;
-    const open=hasChildren && expanded.has(n.id);
-    const toggle=hasChildren
-      ? `<button type="button" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}" style="width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;background:none;border:0;color:var(--muted);cursor:pointer;flex-shrink:0"><i class="ti ti-chevron-right" style="font-size:14px;transition:transform .15s;transform:${open?'rotate(90deg)':'rotate(0deg)'}"></i></button>`
-      : `<span style="width:22px;height:22px;display:inline-block;flex-shrink:0"></span>`;
-    return `<div data-infra-node="${escapeHtml(n.id)}" style="margin-left:${depth*12}px"><div style="display:flex;align-items:center;gap:4px">${toggle}<button type="button" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)" style="flex:1;text-align:left;background:none;border:0;color:var(--text);padding:5px 6px;border-radius:6px;cursor:pointer;min-width:0">${infraIcon(n.type)} ${escapeHtml(n.name)} <span style="color:var(--muted);font-size:10px">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
-  }).join('');
-}
-function toggleInfraBranch(event, btn){
-  event.stopPropagation();
-  const root=btn.closest('[data-infra-picker]');
-  const id=btn.dataset.infraToggle;
-  root.__infraExpanded=root.__infraExpanded||new Set();
-  if(root.__infraExpanded.has(id)) root.__infraExpanded.delete(id); else root.__infraExpanded.add(id);
-  const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
-  renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]));
-}
-function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const children=filterInfraTree(n.children||[],q); const match=String(n.name||'').toLowerCase().includes(q)||String(n.type||'').toLowerCase().includes(q); return match||children.length?{...n,children}:null}).filter(Boolean)}
-function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase().trim(); renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]))}
 async function submitFaultForm(form){
   const fd=new FormData(form);
   const symptoms=String(fd.get('symptoms')||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -218,6 +155,5 @@ async function submitFaultForm(form){
   }catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'}
   return false;
 }
-document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[data-infra-picker]').forEach(loadInfraPicker));
 </script>
 {{end}}

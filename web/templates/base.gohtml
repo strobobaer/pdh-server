@@ -210,6 +210,23 @@ html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justi
 .attachment-actions{display:flex;gap:6px;flex-wrap:wrap}
 .attachment-actions .btn{min-height:34px;padding:0 9px;font-size:11px}
 .attachment-badge{position:absolute;left:6px;top:6px;background:rgba(16,185,129,.92);color:#fff;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700}
+.widget-field{margin-bottom:14px}
+.infra-picker-widget{grid-column:1/-1}
+.infra-picker{border:1px solid var(--border);border-radius:8px;background:var(--bg3);padding:8px}
+.infra-picker-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.infra-picker-selected{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.infra-picker-search{margin-bottom:8px}
+.infra-picker-tree{max-height:230px;overflow:auto;font-size:12px;color:var(--muted)}
+.infra-picker-empty{font-size:12px;color:var(--muted);padding:8px}
+.infra-picker-node{margin-left:var(--depth,0)}
+.infra-picker-row{display:flex;align-items:center;gap:4px}
+.infra-picker-toggle{width:24px;height:24px;border:0;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.infra-picker-toggle i{font-size:14px;transition:transform .15s}
+.infra-picker-toggle[aria-expanded="true"] i{transform:rotate(90deg)}
+.infra-picker-spacer{width:24px;height:24px;display:inline-block;flex-shrink:0}
+.infra-picker-select{flex:1;text-align:left;background:transparent;border:0;color:var(--text);padding:6px;border-radius:6px;cursor:pointer;min-width:0;font:inherit}
+.infra-picker-select:hover{background:rgba(79,110,247,.1)}
+.infra-picker-type{color:var(--muted);font-size:10px}
 /* ── Forms ── */
 .form-group{margin-bottom:14px}
 .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
@@ -449,6 +466,75 @@ document.addEventListener('DOMContentLoaded', () => {
   applySidebarState();
   activateContextTab(localStorage.getItem('pdh_context_tab') || 'search');
 });
+
+function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
+function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
+function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
+function selectInfra(btn){
+  const root=btn.closest('[data-infra-picker]');
+  if(!root) return;
+  const target=document.getElementById(root.dataset.target);
+  const label=document.getElementById(root.dataset.selectedLabel);
+  if(target) target.value=btn.dataset.infraId || '';
+  if(label) label.textContent=btn.dataset.infraName || 'Keine Infrastruktur ausgewählt';
+}
+function clearInfraPicker(root){
+  if(!root) return;
+  const target=document.getElementById(root.dataset.target);
+  const label=document.getElementById(root.dataset.selectedLabel);
+  if(target) target.value='';
+  if(label) label.textContent='Keine Infrastruktur ausgewählt';
+}
+async function loadInfraPicker(root){
+  if(!root) return;
+  const box=root.querySelector('[data-infra-tree]');
+  if(box) box.innerHTML='<div class="infra-picker-empty">Lade Baum...</div>';
+  try{
+    const res=await fetch('/api/v1/infrastructure/tree',{headers:{Authorization:'Bearer '+pdhToken()}});
+    const json=await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Infrastruktur konnte nicht geladen werden');
+    root.__infraTree=json.data||[];
+    root.__infraExpanded=new Set();
+    collectInfraBranches(root.__infraTree, root.__infraExpanded);
+    renderInfraPicker(root, root.__infraTree);
+  }catch(e){
+    if(box) box.innerHTML='<div class="infra-picker-empty" style="color:var(--red)">Infrastruktur konnte nicht geladen werden</div>';
+  }
+}
+function renderInfraPicker(root, nodes){
+  const box=root.querySelector('[data-infra-tree]');
+  if(!box) return;
+  if(!nodes.length){box.innerHTML='<div class="infra-picker-empty">Keine Infrastruktur vorhanden</div>'; return}
+  box.innerHTML=renderInfraNodes(root, nodes, 0);
+}
+function renderInfraNodes(root, nodes, depth){
+  const expanded=root.__infraExpanded||new Set();
+  return (nodes||[]).map(n=>{
+    const children=n.children||[];
+    const hasChildren=children.length>0;
+    const open=hasChildren && expanded.has(n.id);
+    const toggle=hasChildren
+      ? `<button type="button" class="infra-picker-toggle" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}"><i class="ti ti-chevron-right"></i></button>`
+      : `<span class="infra-picker-spacer"></span>`;
+    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)">${infraIcon(n.type)} ${escapeHtml(n.name)} <span class="infra-picker-type">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
+  }).join('');
+}
+function toggleInfraBranch(event, btn){
+  event.stopPropagation();
+  const root=btn.closest('[data-infra-picker]');
+  const id=btn.dataset.infraToggle;
+  root.__infraExpanded=root.__infraExpanded||new Set();
+  if(root.__infraExpanded.has(id)) root.__infraExpanded.delete(id); else root.__infraExpanded.add(id);
+  const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
+  renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]));
+}
+function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const children=filterInfraTree(n.children||[],q); const match=String(n.name||'').toLowerCase().includes(q)||String(n.type||'').toLowerCase().includes(q); return match||children.length?{...n,children}:null}).filter(Boolean)}
+function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase().trim(); renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]))}
+document.addEventListener('input', event => {
+  if(event.target.matches('[data-infra-filter]')) filterInfraPicker(event.target);
+});
+document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[data-infra-picker]').forEach(loadInfraPicker));
 
 let globalStatusTimer = null;
 let selectedListItem = null;
