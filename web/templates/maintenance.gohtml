@@ -11,6 +11,10 @@
   "Label" "Wartungsaktionen"
   "Items" (list
       (dict "Action" "new" "ShowLabel" true "OnClick" "document.getElementById('new-plan-form').style.display='block'")
+      (dict "Action" "edit" "ShowLabel" true "Label" "Auswahl bearbeiten" "OnClick" "runSelectedItemAction('edit')")
+      (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl duplizieren" "OnClick" "runSelectedItemAction('copy')")
+      (dict "Action" "save" "ShowLabel" true "Label" "Auswahl speichern" "OnClick" "runSelectedItemAction('save')")
+      (dict "Action" "cancel" "ShowLabel" true "Label" "Auswahl abbrechen" "OnClick" "runSelectedItemAction('cancel')")
       (dict "Action" "refresh" "ShowLabel" true "HxPost" "/maintenance/generate" "HxTarget" "#generate-result")
   )
 )}}
@@ -103,7 +107,7 @@
   <div class="card" id="plans-list">
     <div class="card-title">Wartungspläne <span class="card-action">{{.TotalPlans}} aktiv</span></div>
     {{range .Plans}}
-    <div class="li" style="flex-direction:column;align-items:stretch;gap:8px">
+    <div class="li selectable-item" data-selectable data-title="{{.Name}}" data-edit-target="edit-plan-{{.ID}}" data-save-target="#edit-plan-{{.ID}} form" data-cancel-target="edit-plan-{{.ID}}" data-copy-url="/maintenance/plans/{{.ID}}/duplicate-web" data-copy-text="{{.Name}} {{.InfraName}}" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="act-dot {{.PriorityDot}}"></div>
         <div class="li-text">

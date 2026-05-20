@@ -2,7 +2,7 @@
 
 {{define "content"}}
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-  <a href="/faults" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  {{template "icon-button" (dict "Action" "back" "Href" "/faults")}}
   <div style="flex:1">
     <h1 style="font-size:18px;font-weight:600">{{.Fault.Title}}</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:2px">Erkannt {{.Fault.DetectedAgo}} · {{.Fault.InfraName}}</p>
@@ -10,7 +10,7 @@
   <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
   <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
   <div style="position:relative">
-    <button class="btn" onclick="toggleMenu('fault-menu')" style="padding:6px 10px"><i class="ti ti-dots"></i></button>
+    {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('fault-menu')")}}
     <div id="fault-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
       {{if eq .Fault.Status "detected"}}
       <button class="menu-item" hx-post="/faults/{{.Fault.ID}}/analyze" hx-target="#analyze-result" onclick="closeMenu('fault-menu')"><i class="ti ti-brain"></i>Copilot analysieren</button>
@@ -71,10 +71,8 @@
     <div class="card" style="text-align:center;padding:24px">
       <i class="ti ti-brain" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px"></i>
       <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Noch keine Analyse vorhanden</p>
-      <button class="btn btn-primary" hx-post="/faults/{{.Fault.ID}}/analyze" hx-target="#analyze-result" hx-indicator="#analyze-spinner">
-        <i class="ti ti-brain"></i>Copilot analysieren lassen
-        <span id="analyze-spinner" class="htmx-indicator" style="margin-left:6px">...</span>
-      </button>
+      {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren lassen" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result")}}
+      <span id="analyze-spinner" class="htmx-indicator" style="margin-left:6px">...</span>
       <div id="analyze-result"></div>
     </div>
     {{end}}
@@ -91,10 +89,15 @@
           <label class="form-label">Grundursache</label>
           <input name="root_cause" class="form-input" placeholder="Warum ist es passiert?">
         </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button type="button" class="btn" onclick="document.getElementById('resolve-form').style.display='none'">Abbrechen</button>
-          <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Gelöst</button>
-        </div>
+        {{template "icon-button-toolbar" (dict
+          "Class" "end"
+          "Label" "Störung lösen"
+          "Style" "width:100%;justify-content:flex-end"
+          "Items" (list
+            (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('resolve-form').style.display='none'")
+            (dict "Action" "done" "ShowLabel" true "Type" "submit" "Label" "Gelöst")
+          )
+        )}}
       </form>
       <div id="resolve-result"></div>
     </div>
@@ -139,7 +142,7 @@
       </div>
       <form hx-post="/faults/{{.Fault.ID}}/chat-web" hx-target="#chat-messages" hx-swap="beforeend" hx-on::before-request="appendUserMsg(this)" style="display:flex;gap:8px">
         <input name="message" id="chat-input" class="form-input" placeholder="z.B. Was könnte die Ursache sein?" style="font-size:12px" autocomplete="off">
-        <button type="submit" class="btn btn-primary" style="white-space:nowrap;padding:7px 14px"><i class="ti ti-send"></i></button>
+        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
       </form>
     </div>
 
@@ -150,9 +153,9 @@
         <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.RunningTime.StartedAt.Format "15:04"}}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px">{{.RunningTime.Description}}</div>
       </div>
-      <button class="btn" style="width:100%;justify-content:center" hx-post="/time/{{.RunningTime.ID}}/stop-web" hx-target="#time-result" hx-on::after-request="setTimeout(()=>location.reload(),1000)"><i class="ti ti-player-stop"></i>Zeit stoppen</button>
+      {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Label" "Zeit stoppen" "Style" "width:100%;justify-content:center" "HxPost" (printf "/time/%s/stop-web" .RunningTime.ID) "HxTarget" "#time-result" "HxOnAfterRequest" "setTimeout(()=>location.reload(),1000)")}}
       {{else}}
-      <button class="btn btn-primary" style="width:100%;justify-content:center" hx-post="/faults/{{.Fault.ID}}/time/start" hx-target="#time-result"><i class="ti ti-player-play"></i>Zeit erfassen starten</button>
+      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Zeit erfassen starten" "Style" "width:100%;justify-content:center" "HxPost" (printf "/faults/%s/time/start" .Fault.ID) "HxTarget" "#time-result")}}
       {{end}}
       <div id="time-result"></div>
       {{range .TimeEntries}}

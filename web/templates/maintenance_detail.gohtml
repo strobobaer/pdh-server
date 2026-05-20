@@ -2,7 +2,7 @@
 
 {{define "content"}}
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-  <a href="/maintenance" class="btn" style="padding:5px 10px;font-size:12px"><i class="ti ti-arrow-left"></i></a>
+  {{template "icon-button" (dict "Action" "back" "Href" "/maintenance")}}
   <div style="flex:1">
     <h1 style="font-size:18px;font-weight:600">{{.Task.Title}}</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:2px">
@@ -11,17 +11,16 @@
   </div>
   <span class="badge {{.Task.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Task.Priority}}</span>
   <span class="badge {{.Task.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Task.StatusLabel}}</span>
-    <!-- Icon-Toolbar -->
-  <div style="display:flex;gap:4px;align-items:center">
-    <button onclick="toggleEdit();closeMenu('maint-menu')" title="Bearbeiten" class="btn" style="padding:6px 9px"><i class="ti ti-edit"></i></button>
+  <div class="widget-icon-toolbar compact">
+    {{template "icon-button" (dict "Action" "edit" "OnClick" "toggleEdit();closeMenu('maint-menu')")}}
     {{if .Task.CanComplete}}
-    <button onclick="document.getElementById('complete-form').style.display='block'" title="Abschließen" class="btn" style="padding:6px 9px;color:var(--green);border-color:rgba(16,185,129,.4)"><i class="ti ti-circle-check"></i></button>
+    {{template "icon-button" (dict "Action" "done" "Label" "Abschließen" "OnClick" "document.getElementById('complete-form').style.display='block'")}}
     {{end}}
     {{if .Task.CanStart}}
-    <button hx-post="/maintenance/tasks/{{.Task.ID}}/start-web" hx-on::after-request="location.reload()" title="Starten" class="btn" style="padding:6px 9px;color:var(--accent);border-color:rgba(79,110,247,.4)"><i class="ti ti-player-play"></i></button>
+    {{template "icon-button" (dict "Action" "start" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
     {{end}}
   <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag löschen?')">
-    <button type="submit" class="btn" title="Löschen" style="padding:6px 9px;color:var(--red);border-color:rgba(239,68,68,.3)"><i class="ti ti-trash"></i></button>
+    {{template "icon-button" (dict "Action" "delete" "Type" "submit" "Label" "Löschen")}}
   </form>
   </div>
 </div>
@@ -45,10 +44,15 @@
       <div class="form-group" style="grid-column:1/-1"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="2" style="resize:vertical">{{.Task.Notes}}</textarea></div>
     </div>
     <div id="edit-result" style="margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" onclick="toggleEdit()">Abbrechen</button>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Speichern</button>
-    </div>
+    {{template "icon-button-toolbar" (dict
+      "Class" "end"
+      "Label" "Auftrag bearbeiten"
+      "Style" "width:100%;justify-content:flex-end"
+      "Items" (list
+        (dict "Action" "cancel" "ShowLabel" true "OnClick" "toggleEdit()")
+        (dict "Action" "save" "ShowLabel" true "Type" "submit")
+      )
+    )}}
   </form>
 </div>
 
@@ -61,10 +65,15 @@
       <div class="form-group"><label class="form-label">Dauer (Minuten)</label><input name="duration_min" type="number" class="form-input" placeholder="z.B. 60" min="0"></div>
       <div class="form-group"><label class="form-label">Abschlussnotiz</label><input name="notes" class="form-input" placeholder="Was wurde gemacht?"></div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="btn" onclick="document.getElementById('complete-form').style.display='none'">Abbrechen</button>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i>Abschließen</button>
-    </div>
+    {{template "icon-button-toolbar" (dict
+      "Class" "end"
+      "Label" "Auftrag abschließen"
+      "Style" "width:100%;justify-content:flex-end"
+      "Items" (list
+        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('complete-form').style.display='none'")
+        (dict "Action" "done" "ShowLabel" true "Type" "submit" "Label" "Abschließen")
+      )
+    )}}
   </form>
 </div>
 {{end}}
@@ -99,7 +108,7 @@
     <div class="card" style="text-align:center;padding:24px">
       <i class="ti ti-player-play" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px;opacity:.5"></i>
       <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Auftrag noch nicht gestartet</p>
-      <button class="btn btn-primary" hx-post="/maintenance/tasks/{{.Task.ID}}/start-web" hx-on::after-request="location.reload()"><i class="ti ti-player-play"></i>Auftrag starten</button>
+      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Auftrag starten" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
     </div>
     {{end}}
     <!-- Zeiterfassung -->
@@ -109,9 +118,9 @@
       <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px;margin-bottom:10px">
         <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.Running.StartedAt.Format "15:04"}}</div>
       </div>
-      <button class="btn" style="width:100%;justify-content:center;margin-bottom:8px" hx-post="/time/{{.Running.ID}}/stop-web" hx-on::after-request="location.reload()"><i class="ti ti-player-stop"></i>Zeit stoppen</button>
+      {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Label" "Zeit stoppen" "Style" "width:100%;justify-content:center;margin-bottom:8px" "HxPost" (printf "/time/%s/stop-web" .Running.ID) "HxOnAfterRequest" "location.reload()")}}
       {{else}}
-      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" hx-post="/maintenance/tasks/{{.Task.ID}}/time/start" hx-target="#time-result"><i class="ti ti-player-play"></i>Zeit erfassen</button>
+      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Zeit erfassen" "Style" "width:100%;justify-content:center;margin-bottom:8px" "HxPost" (printf "/maintenance/tasks/%s/time/start" .Task.ID) "HxTarget" "#time-result")}}
       {{end}}
       <div id="time-result"></div>
       {{range .TimeEntries}}
@@ -156,9 +165,14 @@
           {{end}}
         </div>
         {{end}}
-        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--border)">
-          <button type="submit" class="btn btn-primary"><i class="ti ti-clipboard-check"></i>Checkliste speichern</button>
-        </div>
+        {{template "icon-button-toolbar" (dict
+          "Class" "end"
+          "Label" "Checkliste"
+          "Style" "width:100%;justify-content:flex-end;padding-top:10px;border-top:1px solid var(--border)"
+          "Items" (list
+            (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Checkliste speichern")
+          )
+        )}}
       </form>
     </div>
     {{end}}
@@ -187,7 +201,7 @@
     </div>
     {{if .Task.CanComplete}}
     <div class="card">
-      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="document.getElementById('complete-form').style.display='block';window.scrollTo({top:0,behavior:'smooth'})"><i class="ti ti-check"></i>Als erledigt markieren</button>
+      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als erledigt markieren" "Style" "width:100%;justify-content:center" "OnClick" "document.getElementById('complete-form').style.display='block';window.scrollTo({top:0,behavior:'smooth'})")}}
     </div>
     {{end}}
   </div>

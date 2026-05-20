@@ -38,14 +38,19 @@
   </div>
 
   <!-- Feld hinzufügen -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-    <button class="btn" onclick="addItem('checkbox')" style="font-size:12px"><i class="ti ti-checkbox"></i>Checkbox</button>
-    <button class="btn" onclick="addItem('text')" style="font-size:12px"><i class="ti ti-text-size"></i>Freitext</button>
-    <button class="btn" onclick="addItem('number')" style="font-size:12px"><i class="ti ti-hash"></i>Zahlenwert</button>
-    <button class="btn" onclick="addItem('compare')" style="font-size:12px"><i class="ti ti-equal"></i>Vergleichswert</button>
-    <button class="btn" onclick="addItem('select')" style="font-size:12px"><i class="ti ti-list"></i>Auswahl</button>
-    <button class="btn" onclick="addItem('image')" style="font-size:12px"><i class="ti ti-camera"></i>Foto</button>
-  </div>
+  {{template "icon-button-toolbar" (dict
+    "Class" "compact"
+    "Label" "Feld hinzufügen"
+    "Style" "margin-bottom:14px"
+    "Items" (list
+      (dict "Action" "new" "ShowLabel" true "Label" "Checkbox" "OnClick" "addItem('checkbox')")
+      (dict "Action" "new" "ShowLabel" true "Label" "Freitext" "OnClick" "addItem('text')")
+      (dict "Action" "new" "ShowLabel" true "Label" "Zahlenwert" "OnClick" "addItem('number')")
+      (dict "Action" "new" "ShowLabel" true "Label" "Vergleichswert" "OnClick" "addItem('compare')")
+      (dict "Action" "new" "ShowLabel" true "Label" "Auswahl" "OnClick" "addItem('select')")
+      (dict "Action" "new" "ShowLabel" true "Label" "Foto" "OnClick" "addItem('image')")
+    )
+  )}}
 
   {{template "icon-button-toolbar" (dict
     "Class" "end"

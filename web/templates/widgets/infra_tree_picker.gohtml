@@ -25,7 +25,7 @@ faults, maintenance plans and future dashboard widgets without custom JS per for
       <div id="{{.SelectedLabelID}}" class="infra-picker-selected">
         {{if .SelectedLabel}}{{.SelectedLabel}}{{else}}Keine Infrastruktur ausgewählt{{end}}
       </div>
-      <button type="button" class="btn btn-small" data-infra-clear>Leeren</button>
+      {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "Label" "Leeren" "Class" "btn-small" "OnClick" "clearInfraPicker(this.closest('[data-infra-picker]'))")}}
     </div>
     <div class="infra-picker-search">
       <input class="form-input" data-infra-filter placeholder="Suchen: Gebäude, Linie, Anlage, Gerät...">

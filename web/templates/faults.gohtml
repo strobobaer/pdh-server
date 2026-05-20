@@ -11,6 +11,10 @@
   "Label" "Störungsaktionen"
   "Items" (list
       (dict "Action" "new" "ShowLabel" true "OnClick" "document.getElementById('new-fault-form').style.display='block'")
+      (dict "Action" "view" "ShowLabel" true "Label" "Auswahl öffnen" "OnClick" "runSelectedItemAction('view')")
+      (dict "Action" "analyze" "ShowLabel" true "Label" "Auswahl analysieren" "OnClick" "runSelectedItemAction('analyze')")
+      (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl kopieren" "OnClick" "runSelectedItemAction('copy')")
+      (dict "Action" "done" "ShowLabel" true "Label" "Auswahl erledigen" "OnClick" "runSelectedItemAction('done')")
   )
 )}}
 </div>
@@ -100,7 +104,7 @@
     </thead>
     <tbody>
     {{range .Faults}}
-    <tr style="cursor:pointer">
+    <tr class="selectable-item" data-selectable data-title="{{.Title}}" data-view-href="/faults/{{.ID}}" data-copy-text="{{.Title}} {{.InfraName}}" data-done-url="/faults/{{.ID}}/resolve" {{if eq .Status "detected"}}data-analyze-url="/faults/{{.ID}}/analyze"{{end}} style="cursor:pointer">
       <td>
         <a href="/faults/{{.ID}}" style="display:block;color:inherit;text-decoration:none">
           <div style="font-weight:500">{{.Title}}</div>

@@ -10,6 +10,9 @@
   "Label" "Ticket-Aktionen"
   "Items" (list
       (dict "Action" "new" "ShowLabel" true "OnClick" "document.getElementById('new-ticket-form').style.display='block'")
+      (dict "Action" "view" "ShowLabel" true "Label" "Auswahl öffnen" "OnClick" "runSelectedItemAction('view')")
+      (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl kopieren" "OnClick" "runSelectedItemAction('copy')")
+      (dict "Action" "done" "ShowLabel" true "Label" "Auswahl erledigen" "OnClick" "runSelectedItemAction('done')")
   )
 )}}
 </div>
@@ -82,7 +85,7 @@
     <thead><tr style="cursor:pointer"><th>Ticket</th><th>Priorität</th><th>Status</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
     <tbody>
     {{range .Tickets}}
-    <tr style="cursor:pointer">
+    <tr class="selectable-item" data-selectable data-title="{{.Title}}" data-view-href="/tickets/{{.ID}}" data-copy-text="{{.Title}} {{.Description}}" data-done-url="/tickets/{{.ID}}/status-web" data-done-method="PUT" data-done-body="status=resolved" style="cursor:pointer">
       <td>
         <a href="/tickets/{{.ID}}" style="display:block;color:inherit;text-decoration:none">
           <div style="font-weight:500">{{.Title}}</div>
@@ -93,8 +96,8 @@
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
       <td style="font-size:11px;color:var(--muted)">{{.CreatedAgo}}</td>
       <td>
-        <select class="form-input" style="font-size:11px;padding:4px 8px;width:auto"
-          hx-put="/tickets/{{.ID}}/status"
+        <select name="status" class="form-input" style="font-size:11px;padding:4px 8px;width:auto"
+          hx-put="/tickets/{{.ID}}/status-web"
           hx-trigger="change"
           hx-target="closest tr">
           <option value="open" {{if eq .Status "open"}}selected{{end}}>Offen</option>

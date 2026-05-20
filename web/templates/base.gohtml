@@ -125,6 +125,7 @@ tr:last-child td{border:0}
 .btn-success:hover,.btn-warning:hover,.btn-danger:hover{filter:brightness(.96)}
 .btn-icon{width:44px;min-width:44px;height:44px;padding:0;justify-content:center;gap:0;flex-shrink:0}
 .btn-icon i{font-size:18px}
+.btn-icon-glyph{display:none;font-weight:700;font-size:13px;line-height:1;min-width:18px;text-align:center}
 .btn-icon-labeled{width:auto;min-width:44px;padding:0 14px;gap:8px}
 .btn-icon-label{font-size:13px;font-weight:600;line-height:1;white-space:nowrap}
 .btn-small{min-height:40px;padding:0 12px;font-size:12px}
@@ -137,6 +138,8 @@ html.icons-fallback .ti-plus::before{content:"+"}
 html.icons-fallback .ti-refresh::before{content:"R"}
 html.icons-fallback .ti-x::before{content:"x"}
 html.icons-fallback .ti-device-floppy::before{content:"S"}
+html.icons-fallback .ti-arrow-left::before{content:"<"}
+html.icons-fallback .ti-send::before{content:">"}
 html.icons-fallback .ti-filter::before{content:"F"}
 html.icons-fallback .ti-eye::before{content:"O"}
 html.icons-fallback .ti-brain::before{content:"AI";font-size:.72em}
@@ -145,6 +148,7 @@ html.icons-fallback .ti-copy::before{content:"C"}
 html.icons-fallback .ti-circle-arrow-up::before{content:"^"}
 html.icons-fallback .ti-circle-arrow-down::before{content:"v"}
 html.icons-fallback .ti-check::before{content:"✓"}
+html.icons-fallback .ti-circle-check::before{content:"✓"}
 html.icons-fallback .ti-trash::before{content:"D"}
 html.icons-fallback .ti-trash-x::before{content:"Dx";font-size:.72em}
 html.icons-fallback .ti-player-play::before{content:">"}
@@ -152,9 +156,24 @@ html.icons-fallback .ti-player-stop::before{content:"[]";font-size:.72em}
 html.icons-fallback .ti-device-desktop::before{content:"[]";font-size:.72em}
 html.icons-fallback .ti-sun::before{content:"*"}
 html.icons-fallback .ti-moon::before{content:"("}
+html.icons-fallback .btn .ti{display:none}
+html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}
 .widget-icon-toolbar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .widget-icon-toolbar.end{justify-content:flex-end}
 .widget-icon-toolbar.compact{gap:4px}
+.selectable-item{cursor:pointer}
+.selectable-item.is-selected{background:rgba(79,110,247,.12);outline:2px solid rgba(79,110,247,.45);outline-offset:-2px;border-radius:8px}
+.selectable-item.is-selected td{background:rgba(79,110,247,.12)}
+.global-footer{height:34px;background:var(--bg2);border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,420px) minmax(180px,1fr);align-items:center;gap:14px;padding:0 18px;font-size:12px;color:var(--muted);flex-shrink:0}
+.footer-status-left,.footer-status-error{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.footer-status-error{justify-content:flex-end}
+.footer-status-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.14);flex-shrink:0}
+.footer-progress{height:8px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);overflow:hidden}
+.footer-progress-fill{height:100%;width:0%;border-radius:inherit;background:var(--green);transition:width .2s ease,background .2s ease}
+.global-footer.busy .footer-status-dot,.global-footer.busy .footer-progress-fill{background:var(--accent)}
+.global-footer.warn .footer-status-dot,.global-footer.warn .footer-progress-fill{background:var(--amber)}
+.global-footer.error .footer-status-dot,.global-footer.error .footer-progress-fill{background:var(--red)}
+.global-footer.ok .footer-status-dot,.global-footer.ok .footer-progress-fill{background:var(--green)}
 /* ── Forms ── */
 .form-group{margin-bottom:14px}
 .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
@@ -278,6 +297,17 @@ select.form-input option{background:var(--bg2)}
 
 </div>
 
+<footer class="global-footer ok" id="global-status-footer" aria-live="polite">
+  <div class="footer-status-left">
+    <span class="footer-status-dot" id="footer-status-dot"></span>
+    <span id="footer-status-text">Bereit</span>
+  </div>
+  <div class="footer-progress" aria-label="Statusfortschritt">
+    <div class="footer-progress-fill" id="footer-progress-fill"></div>
+  </div>
+  <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
+</footer>
+
 <script>
 const API = '';
 const TOKEN = localStorage.getItem('pdh_token') || '';
@@ -317,18 +347,213 @@ function ensureIconFont() {
   probe.style.position = 'absolute';
   probe.style.left = '-9999px';
   document.body.appendChild(probe);
-  const content = getComputedStyle(probe, '::before').content;
+  const pseudo = getComputedStyle(probe, '::before');
+  const content = pseudo.content;
+  const family = (pseudo.fontFamily || '').toLowerCase();
   probe.remove();
-  if(!content || content === 'none' || content === 'normal') {
+  const hasIconCss = !!content && content !== 'none' && content !== 'normal' && content !== '""';
+  let fontReady = true;
+  if(document.fonts && family.includes('tabler')) {
+    fontReady = document.fonts.check('16px "tabler-icons"') || document.fonts.check('16px tabler-icons');
+  }
+  if(!hasIconCss || !fontReady) {
     document.documentElement.classList.add('icons-fallback');
+  } else {
+    document.documentElement.classList.remove('icons-fallback');
   }
 }
 window.addEventListener('load', () => setTimeout(ensureIconFont, 300));
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(ensureIconFont);
 if(window.matchMedia) {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if((localStorage.getItem('pdh_theme') || 'system') === 'system') applyThemeMode('system');
   });
 }
+
+let globalStatusTimer = null;
+let selectedListItem = null;
+function setGlobalStatus(state, message, progress, errorText) {
+  const footer = document.getElementById('global-status-footer');
+  if(!footer) return;
+  const normalized = ['ok','busy','warn','error'].includes(state) ? state : 'ok';
+  footer.className = 'global-footer ' + normalized;
+  const text = document.getElementById('footer-status-text');
+  const error = document.getElementById('footer-status-error');
+  const fill = document.getElementById('footer-progress-fill');
+  if(text) text.textContent = message || (normalized === 'busy' ? 'Arbeite...' : 'Bereit');
+  if(error) error.textContent = errorText || (normalized === 'error' ? (message || 'Fehler') : 'Keine Fehler');
+  if(fill) {
+    let width = progress;
+    if(width === undefined || width === null) width = normalized === 'busy' ? 45 : 100;
+    fill.style.width = Math.max(0, Math.min(100, Number(width) || 0)) + '%';
+  }
+  if(globalStatusTimer) window.clearTimeout(globalStatusTimer);
+  if(normalized === 'ok') {
+    globalStatusTimer = window.setTimeout(() => {
+      if(fill) fill.style.width = '0%';
+    }, 1200);
+  }
+}
+function showGlobalError(message, detail) {
+  setGlobalStatus('error', message || 'Fehler', 100, detail || message || 'Fehler');
+}
+function csrfHeaders() {
+  const token = document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || TOKEN;
+  return token ? {'Authorization':'Bearer '+token} : {};
+}
+function markSelectedListItem(item) {
+  if(!item) return;
+  document.querySelectorAll('.selectable-item.is-selected').forEach(el => {
+    if(el !== item) el.classList.remove('is-selected');
+  });
+  selectedListItem = item;
+  item.classList.add('is-selected');
+  const title = item.dataset.title || item.querySelector('.li-title')?.textContent || item.textContent || '';
+  setGlobalStatus('ok', 'Ausgewaehlt: ' + title.trim().slice(0, 80), 100, 'Keine Fehler');
+}
+function getSelectedListItem() {
+  if(selectedListItem && document.body.contains(selectedListItem)) return selectedListItem;
+  selectedListItem = document.querySelector('.selectable-item.is-selected');
+  if(selectedListItem) return selectedListItem;
+  setGlobalStatus('warn', 'Bitte zuerst einen Listeneintrag auswaehlen', 100, 'Keine Auswahl');
+  return null;
+}
+function resolveTargetElement(selectorOrId, root) {
+  if(!selectorOrId) return null;
+  const scope = root || document;
+  if(selectorOrId.startsWith('#') || selectorOrId.startsWith('.') || selectorOrId.includes('[')) {
+    return scope.querySelector(selectorOrId) || document.querySelector(selectorOrId);
+  }
+  return document.getElementById(selectorOrId) || scope.querySelector(selectorOrId);
+}
+async function postSelectedAction(item, action) {
+  const url = item.dataset[action + 'Url'] || item.dataset.actionUrl;
+  if(!url) return false;
+  const method = item.dataset[action + 'Method'] || item.dataset.actionMethod || 'POST';
+  const headers = csrfHeaders();
+  let body = null;
+  const bodyValue = item.dataset[action + 'Body'] || item.dataset.actionBody;
+  if(bodyValue) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+    body = bodyValue;
+  }
+  setGlobalStatus('busy', 'Sende Aktion...', 45, '');
+  const res = await fetch(url, {method, headers, body});
+  if(!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);
+  setGlobalStatus('ok', 'Aktion ausgefuehrt', 100, 'Keine Fehler');
+  window.setTimeout(() => location.reload(), 350);
+  return true;
+}
+async function runSelectedItemAction(action) {
+  const item = getSelectedListItem();
+  if(!item) return false;
+  try {
+    if(action === 'view') {
+      const href = item.dataset.viewHref || item.dataset.href || item.getAttribute('data-href') || item.querySelector('a[href]')?.getAttribute('href');
+      if(href) location.href = href;
+      else setGlobalStatus('warn', 'Keine Detailansicht hinterlegt', 100, 'Keine Detailansicht');
+      return false;
+    }
+    if(action === 'edit') {
+      const target = resolveTargetElement(item.dataset.editTarget, item);
+      if(target) {
+        target.style.display = target.style.display === 'none' || !target.style.display ? 'block' : 'none';
+        setGlobalStatus('ok', 'Bearbeiten umgeschaltet', 100, 'Keine Fehler');
+      } else if(item.dataset.editUrl) {
+        location.href = item.dataset.editUrl;
+      } else {
+        setGlobalStatus('warn', 'Keine Bearbeiten-Aktion hinterlegt', 100, 'Keine Bearbeiten-Aktion');
+      }
+      return false;
+    }
+    if(action === 'save') {
+      const form = resolveTargetElement(item.dataset.saveTarget, item) || resolveTargetElement(item.dataset.editTarget, item)?.querySelector('form');
+      if(form && form.requestSubmit) form.requestSubmit();
+      else if(form) form.submit();
+      else setGlobalStatus('warn', 'Kein Formular zum Speichern gefunden', 100, 'Kein Formular');
+      return false;
+    }
+    if(action === 'cancel') {
+      const target = resolveTargetElement(item.dataset.cancelTarget || item.dataset.editTarget, item);
+      if(target) {
+        target.style.display = 'none';
+        setGlobalStatus('ok', 'Abgebrochen', 100, 'Keine Fehler');
+      } else {
+        setGlobalStatus('warn', 'Keine Abbrechen-Aktion hinterlegt', 100, 'Keine Abbrechen-Aktion');
+      }
+      return false;
+    }
+    if(action === 'copy') {
+      if(await postSelectedAction(item, 'copy')) return false;
+      const text = item.dataset.copyText || item.dataset.title || item.textContent;
+      if(navigator.clipboard && text) {
+        await navigator.clipboard.writeText(text.trim());
+        setGlobalStatus('ok', 'In Zwischenablage kopiert', 100, 'Keine Fehler');
+      } else {
+        setGlobalStatus('warn', 'Keine Kopieren-Aktion hinterlegt', 100, 'Keine Kopieren-Aktion');
+      }
+      return false;
+    }
+    if(action === 'refresh') {
+      location.reload();
+      return false;
+    }
+    if(['analyze','done','activate','deactivate','delete','start','stop'].includes(action)) {
+      return await postSelectedAction(item, action);
+    }
+    setGlobalStatus('warn', 'Aktion nicht hinterlegt: ' + action, 100, 'Unbekannte Aktion');
+  } catch(err) {
+    showGlobalError('Aktion fehlgeschlagen', err.message || String(err));
+  }
+  return false;
+}
+document.addEventListener('click', (event) => {
+  const item = event.target.closest('[data-selectable]');
+  if(!item) return;
+  if(event.target.closest('button,input,select,textarea,label,.widget-icon-toolbar,[data-ignore-select]')) return;
+  const link = event.target.closest('a[href]');
+  if(link && item.contains(link)) event.preventDefault();
+  markSelectedListItem(item);
+});
+document.addEventListener('dblclick', (event) => {
+  const item = event.target.closest('[data-selectable]');
+  if(!item || event.target.closest('button,input,select,textarea,label,[data-ignore-select]')) return;
+  const link = event.target.closest('a[href]');
+  if(link && item.contains(link)) event.preventDefault();
+  markSelectedListItem(item);
+  runSelectedItemAction('view');
+});
+document.addEventListener('DOMContentLoaded', () => {
+  setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
+});
+const pdhNativeFetch = window.fetch ? window.fetch.bind(window) : null;
+if(pdhNativeFetch) {
+  window.fetch = async function(input, init) {
+    setGlobalStatus('busy', 'Laedt...', 35, '');
+    try {
+      const response = await pdhNativeFetch(input, init);
+      if(response.ok) setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
+      else showGlobalError('HTTP ' + response.status, response.statusText || 'Request fehlgeschlagen');
+      return response;
+    } catch(err) {
+      showGlobalError('Netzwerkfehler', err.message || String(err));
+      throw err;
+    }
+  };
+}
+document.body.addEventListener('htmx:beforeRequest', () => setGlobalStatus('busy', 'Sende Anfrage...', 35, ''));
+document.body.addEventListener('htmx:afterRequest', (event) => {
+  const xhr = event.detail && event.detail.xhr;
+  if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
+  else setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
+});
+document.body.addEventListener('htmx:responseError', (event) => {
+  const xhr = event.detail && event.detail.xhr;
+  showGlobalError('HTMX-Fehler', xhr ? ('HTTP ' + xhr.status + ' ' + xhr.statusText) : 'Antwortfehler');
+});
+document.body.addEventListener('htmx:sendError', () => showGlobalError('HTMX-Sendefehler', 'Anfrage konnte nicht gesendet werden'));
+window.addEventListener('error', (event) => showGlobalError('JavaScript-Fehler', event.message || 'Unbekannter Fehler'));
+window.addEventListener('unhandledrejection', (event) => showGlobalError('Promise-Fehler', event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unbekannter Fehler')));
 
 function sendCop() {
   const q = document.getElementById('cop-in').value.trim();
