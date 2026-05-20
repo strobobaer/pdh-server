@@ -71,6 +71,12 @@
           <option value="critical">Critical</option>
         </select>
       </div>
+      <div class="form-group"><label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
     </div>
     <div id="maintenance-create-result" style="font-size:12px;margin-bottom:8px"></div>
     {{template "icon-button-toolbar" (dict

@@ -34,6 +34,20 @@
           <option value="critical">Critical</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Verantwortlich</label>
+        <select name="responsible_to" class="form-input">
+          <option value="">Nicht gesetzt</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
@@ -77,7 +91,7 @@
   {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/tickets" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/tickets")}}{{end}}
   {{if eq .Filter "open"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Offen" "Href" "/tickets?status=open" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Offen" "Href" "/tickets?status=open")}}{{end}}
   {{if eq .Filter "in_progress"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Arbeit" "Href" "/tickets?status=in_progress" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Arbeit" "Href" "/tickets?status=in_progress")}}{{end}}
-  {{if eq .Filter "resolved"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/tickets?status=resolved" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/tickets?status=resolved")}}{{end}}
+  {{if eq .Filter "archive"}}{{template "icon-button" (dict "Action" "history" "ShowLabel" true "Label" "Archiv" "Href" "/tickets?status=archive" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "history" "ShowLabel" true "Label" "Archiv" "Href" "/tickets?status=archive")}}{{end}}
 </div>
 
 <div id="ticket-table" class="card" style="padding:0">
@@ -175,6 +189,8 @@ function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'
 async function submitTicketForm(form){
   const fd=new FormData(form); const payload={title:fd.get('title'),description:fd.get('description'),priority:fd.get('priority')};
   if(fd.get('infrastructure_id')) payload.infrastructure_id=fd.get('infrastructure_id');
+  if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
+  if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
   const result=document.getElementById('ticket-create-result'); result.textContent='Speichere...';
   try{
     const res=await fetch('/api/v1/tickets/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});

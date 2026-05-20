@@ -37,11 +37,14 @@ type Ticket struct {
 	Priority         Priority   `json:"priority"`
 	Status           Status     `json:"status"`
 	AssignedTo       *string    `json:"assigned_to,omitempty"`
+	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
 	CreatedBy        string     `json:"created_by"`
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
+	RecordImageID    *string    `json:"record_image_attachment_id,omitempty"`
 	Tags             []string   `json:"tags"`
 	DueDate          *time.Time `json:"due_date,omitempty"`
 	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
@@ -61,6 +64,7 @@ type CreateInput struct {
 	Description      string     `json:"description"`
 	Priority         Priority   `json:"priority"`
 	AssignedTo       *string    `json:"assigned_to,omitempty"`
+	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
 	Tags             []string   `json:"tags"`
 	DueDate          *time.Time `json:"due_date,omitempty"`
@@ -77,36 +81,40 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, t *Ticket) error {
 	query := `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, created_by, infrastructure_id, due_date)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
-		t.AssignedTo, t.CreatedBy, t.InfrastructureID, t.DueDate,
+		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	t := &Ticket{}
-	query := `SELECT id, title, description, priority, status, assigned_to,
-		created_by, infrastructure_id, due_date, resolved_at, created_at, updated_at
+	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
+		created_by, infrastructure_id, record_image_attachment_id, due_date, resolved_at, archived_at, created_at, updated_at
 		FROM tickets WHERE id = $1`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
-		&t.AssignedTo, &t.CreatedBy, &t.InfrastructureID,
-		&t.DueDate, &t.ResolvedAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID,
+		&t.RecordImageID, &t.DueDate, &t.ResolvedAt, &t.ArchivedAt, &t.CreatedAt, &t.UpdatedAt,
 	)
 	return t, err
 }
 
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
-	query := `SELECT id, title, description, priority, status, assigned_to,
-		created_by, due_date, created_at, updated_at
+	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
+		created_by, due_date, archived_at, created_at, updated_at
 		FROM tickets`
 	args := []interface{}{}
-	if status != "" {
-		query += " WHERE status = $1"
+	if status == Status("archive") {
+		query += " WHERE archived_at IS NOT NULL"
+	} else if status != "" {
+		query += " WHERE status = $1 AND archived_at IS NULL"
 		args = append(args, status)
+	} else {
+		query += " WHERE archived_at IS NULL"
 	}
 	query += " ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at DESC"
 
@@ -121,7 +129,7 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 		t := &Ticket{}
 		err := rows.Scan(
 			&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
-			&t.AssignedTo, &t.CreatedBy, &t.DueDate,
+			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.DueDate, &t.ArchivedAt,
 			&t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {
@@ -132,13 +140,22 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 	return tickets, nil
 }
 
-func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status) error {
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
 	query := `UPDATE tickets SET status=$1, updated_at=NOW()`
-	if status == StatusResolved {
-		query += ", resolved_at=NOW()"
+	if status == StatusResolved || status == StatusClosed {
+		query += ", resolved_at=COALESCE(resolved_at,NOW()), archived_at=COALESCE(archived_at,NOW()), archived_by=$3"
 	}
 	query += " WHERE id=$2"
-	_, err := r.db.Exec(ctx, query, status, id)
+	var err error
+	if status == StatusResolved || status == StatusClosed {
+		_, err = r.db.Exec(ctx, query, status, id, userID)
+	} else {
+		_, err = r.db.Exec(ctx, query, status, id)
+	}
+	if err == nil {
+		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
+			VALUES ('ticket', $1, 'status', 'status', $2, $3, 'Status geändert')`, id, string(status), userID)
+	}
 	return err
 }
 
@@ -165,6 +182,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		Description:      in.Description,
 		Priority:         in.Priority,
 		AssignedTo:       in.AssignedTo,
+		ResponsibleTo:    in.ResponsibleTo,
 		CreatedBy:        createdBy,
 		InfrastructureID: in.InfrastructureID,
 		Tags:             in.Tags,
@@ -181,8 +199,8 @@ func (s *Service) List(ctx context.Context, status Status) ([]*Ticket, error) {
 	return s.repo.List(ctx, status)
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id string, status Status) error {
-	return s.repo.UpdateStatus(ctx, id, status)
+func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
+	return s.repo.UpdateStatus(ctx, id, status, userID)
 }
 
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
@@ -256,7 +274,8 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
 		return
 	}
-	if err := h.svc.UpdateStatus(r.Context(), id, in.Status); err != nil {
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	if err := h.svc.UpdateStatus(r.Context(), id, in.Status, userID); err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

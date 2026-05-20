@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
@@ -62,29 +63,61 @@ type DashStats struct {
 }
 
 type FaultView struct {
-	ID            string
-	Title         string
-	Status        string
-	StatusLabel   string
-	StatusClass   string
-	Severity      string
-	SeverityClass string
-	InfraName     string
-	DetectedAgo   string
-	Confidence    float64
+	ID              string
+	Title           string
+	Status          string
+	StatusLabel     string
+	StatusClass     string
+	Severity        string
+	SeverityClass   string
+	InfraName       string
+	DetectedAgo     string
+	Confidence      float64
+	AssignedID      string
+	ResponsibleID   string
+	AssignedName    string
+	ResponsibleName string
+	RecordImageURL  string
 }
 
 type TicketView struct {
-	ID            string
-	Title         string
-	Description   string
-	Priority      string
-	PriorityClass string
-	PriorityDot   string
-	Status        string
-	StatusLabel   string
-	StatusClass   string
-	CreatedAgo    string
+	ID              string
+	Title           string
+	Description     string
+	Priority        string
+	PriorityClass   string
+	PriorityDot     string
+	Status          string
+	StatusLabel     string
+	StatusClass     string
+	CreatedAgo      string
+	AssignedID      string
+	ResponsibleID   string
+	AssignedName    string
+	ResponsibleName string
+	RecordImageURL  string
+}
+
+type UserOption struct {
+	ID   string
+	Name string
+}
+
+type HistoryView struct {
+	Action    string
+	FieldName string
+	OldValue  string
+	NewValue  string
+	Message   string
+	UserName  string
+	CreatedAt string
+}
+
+type RecordPeople struct {
+	AssignedID      string
+	ResponsibleID   string
+	AssignedName    string
+	ResponsibleName string
 }
 
 type MaintenanceView struct {
@@ -109,6 +142,7 @@ type FaultsPageData struct {
 	Filter         string
 	Faults         []FaultView
 	RecentAnalyses []AnalysisView
+	Users          []UserOption
 }
 
 type AnalysisView struct {
@@ -123,6 +157,7 @@ type TicketsPageData struct {
 	Filter          string
 	Tickets         []TicketView
 	CriticalTickets []TicketView
+	Users           []UserOption
 }
 
 type InventoryPageData struct {
@@ -161,6 +196,7 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
+	db        *pgxpool.Pool
 	tmpl      *template.Template
 	users     *users.Service
 	shifts    *shifts.Service
@@ -177,6 +213,7 @@ type Handler struct {
 }
 
 func NewHandler(
+	db *pgxpool.Pool,
 	tmpl *template.Template,
 	u *users.Service,
 	s *shifts.Service,
@@ -192,6 +229,7 @@ func NewHandler(
 	jwtSecret string,
 ) *Handler {
 	return &Handler{
+		db:   db,
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
 		checks:    ch,
@@ -253,6 +291,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/time/manual-web", h.TimeManualWeb)
 	r.Post("/time/{id}/stop-web", h.TimeStopWeb)
 	r.Delete("/time/{id}/delete-web", h.TimeDeleteWeb)
+	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
+	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/users", h.Users)
 	r.Post("/users/create-web", h.UserCreateWeb)
 	r.Put("/users/{id}/update-web", h.UserUpdateWeb)
@@ -381,7 +421,7 @@ func statusLabel(s string) string {
 		"open": "Offen", "in_progress": "In Arbeit",
 		"resolved": "Gelöst", "closed": "Geschlossen",
 		"detected": "Erkannt", "analyzing": "Analysiert",
-		"pending": "Ausstehend",
+		"pending": "Ausstehend", "archive": "Archiv",
 	}
 	if l, ok := labels[s]; ok {
 		return l
@@ -405,6 +445,184 @@ func baseData(r *http.Request, page, title, ctxTitle string) BaseData {
 		UserFirstName: u.FirstName,
 		UserLastName:  u.LastName,
 	}
+}
+
+func recordTable(refType string) (string, bool) {
+	switch refType {
+	case "ticket":
+		return "tickets", true
+	case "fault":
+		return "faults", true
+	case "maintenance_task":
+		return "maintenance_tasks", true
+	default:
+		return "", false
+	}
+}
+
+func nullID(value string) interface{} {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func optionalID(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func (h *Handler) userOptions(ctx context.Context) []UserOption {
+	list, err := h.users.List(ctx)
+	if err != nil {
+		return nil
+	}
+	opts := make([]UserOption, 0, len(list))
+	for _, u := range list {
+		opts = append(opts, UserOption{ID: u.ID, Name: strings.TrimSpace(u.FirstName + " " + u.LastName)})
+	}
+	return opts
+}
+
+func (h *Handler) recordPeople(ctx context.Context, refType, id string) RecordPeople {
+	table, ok := recordTable(refType)
+	if !ok || h.db == nil {
+		return RecordPeople{}
+	}
+	var assignedID, responsibleID *string
+	var assignedName, responsibleName string
+	query := fmt.Sprintf(`
+		SELECT r.assigned_to::text, r.responsible_to::text,
+		       COALESCE(au.first_name || ' ' || au.last_name, ''),
+		       COALESCE(ru.first_name || ' ' || ru.last_name, '')
+		FROM %s r
+		LEFT JOIN users au ON r.assigned_to = au.id
+		LEFT JOIN users ru ON r.responsible_to = ru.id
+		WHERE r.id=$1`, table)
+	if err := h.db.QueryRow(ctx, query, id).Scan(&assignedID, &responsibleID, &assignedName, &responsibleName); err != nil {
+		return RecordPeople{}
+	}
+	result := RecordPeople{AssignedName: assignedName, ResponsibleName: responsibleName}
+	if assignedID != nil {
+		result.AssignedID = *assignedID
+	}
+	if responsibleID != nil {
+		result.ResponsibleID = *responsibleID
+	}
+	return result
+}
+
+func (h *Handler) recordImageURL(ctx context.Context, refType, id string) string {
+	table, ok := recordTable(refType)
+	if !ok || h.db == nil {
+		return ""
+	}
+	var path *string
+	query := fmt.Sprintf(`
+		SELECT a.filepath
+		FROM %s r
+		JOIN attachments a ON a.id = r.record_image_attachment_id
+		WHERE r.id=$1`, table)
+	if err := h.db.QueryRow(ctx, query, id).Scan(&path); err != nil || path == nil {
+		return ""
+	}
+	return "/uploads/" + *path
+}
+
+func (h *Handler) recordHistory(ctx context.Context, refType, id string) []HistoryView {
+	if h.db == nil {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `
+		SELECT rh.action, COALESCE(rh.field_name,''), COALESCE(rh.old_value,''),
+		       COALESCE(rh.new_value,''), COALESCE(rh.message,''),
+		       COALESCE(u.first_name || ' ' || u.last_name, 'System'), rh.created_at
+		FROM record_history rh
+		LEFT JOIN users u ON rh.created_by = u.id
+		WHERE rh.ref_type=$1 AND rh.ref_id=$2
+		ORDER BY rh.created_at DESC
+		LIMIT 30`, refType, id)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var list []HistoryView
+	for rows.Next() {
+		var item HistoryView
+		var created time.Time
+		if err := rows.Scan(&item.Action, &item.FieldName, &item.OldValue, &item.NewValue, &item.Message, &item.UserName, &created); err == nil {
+			item.CreatedAt = created.Format("02.01.2006 15:04")
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
+func (h *Handler) addHistory(ctx context.Context, refType, id, action, field, oldValue, newValue, message, userID string) {
+	if h.db == nil {
+		return
+	}
+	_, _ = h.db.Exec(ctx, `
+		INSERT INTO record_history (ref_type, ref_id, action, field_name, old_value, new_value, message, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		refType, id, action, field, oldValue, newValue, message, nullID(userID))
+}
+
+func (h *Handler) RecordPeopleWeb(w http.ResponseWriter, r *http.Request) {
+	refType := chi.URLParam(r, "refType")
+	id := chi.URLParam(r, "id")
+	table, ok := recordTable(refType)
+	if !ok {
+		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
+		return
+	}
+	r.ParseForm()
+	u := getUser(r)
+	old := h.recordPeople(r.Context(), refType, id)
+	assigned := r.FormValue("assigned_to")
+	responsible := r.FormValue("responsible_to")
+	_, err := h.db.Exec(r.Context(), fmt.Sprintf(`
+		UPDATE %s SET assigned_to=$1, responsible_to=$2, updated_at=NOW() WHERE id=$3`, table),
+		nullID(assigned), nullID(responsible), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if old.AssignedID != assigned {
+		h.addHistory(r.Context(), refType, id, "people", "assigned_to", old.AssignedID, assigned, "Zugewiesener Mitarbeiter geändert", u.ID)
+	}
+	if old.ResponsibleID != responsible {
+		h.addHistory(r.Context(), refType, id, "people", "responsible_to", old.ResponsibleID, responsible, "Verantwortlicher Mitarbeiter geändert", u.ID)
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Zuständigkeit gespeichert</span>`)
+}
+
+func (h *Handler) RecordArchiveWeb(w http.ResponseWriter, r *http.Request) {
+	refType := chi.URLParam(r, "refType")
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+	var err error
+	switch refType {
+	case "ticket":
+		err = h.tickets.UpdateStatus(r.Context(), id, tickets.StatusClosed, u.ID)
+	case "fault":
+		err = h.faults.Resolve(r.Context(), id, "Archiviert", "", u.ID)
+	default:
+		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.addHistory(r.Context(), refType, id, "archive", "archived_at", "", time.Now().Format(time.RFC3339), "Datensatz archiviert", u.ID)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<span style="color:var(--green);font-size:12px"><i class="ti ti-archive"></i> Archiviert</span>`)
 }
 
 // ── Seiten ───────────────────────────────────────────────────
@@ -523,6 +741,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	data := FaultsPageData{
 		BaseData: baseData(r, "faults", "Störungen", "Copilot-Analysen"),
 		Filter:   filter,
+		Users:    h.userOptions(ctx),
 	}
 
 	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
@@ -550,6 +769,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	data := TicketsPageData{
 		BaseData: baseData(r, "tickets", "Tickets", "Kritische Tickets"),
 		Filter:   filter,
+		Users:    h.userOptions(ctx),
 	}
 
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
@@ -635,10 +855,12 @@ func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	in := &faults.CreateFaultInput{
-		Title:       r.FormValue("title"),
-		Description: r.FormValue("description"),
-		Symptoms:    symptoms,
-		Severity:    faults.Severity(r.FormValue("severity")),
+		Title:         r.FormValue("title"),
+		Description:   r.FormValue("description"),
+		Symptoms:      symptoms,
+		Severity:      faults.Severity(r.FormValue("severity")),
+		AssignedTo:    optionalID(r.FormValue("assigned_to")),
+		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
 	}
 	h.faults.Create(r.Context(), in, u.ID)
 	h.Faults(w, r)
@@ -655,9 +877,11 @@ func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
 	in := &tickets.CreateInput{
-		Title:       r.FormValue("title"),
-		Description: r.FormValue("description"),
-		Priority:    tickets.Priority(r.FormValue("priority")),
+		Title:         r.FormValue("title"),
+		Description:   r.FormValue("description"),
+		Priority:      tickets.Priority(r.FormValue("priority")),
+		AssignedTo:    optionalID(r.FormValue("assigned_to")),
+		ResponsibleTo: optionalID(r.FormValue("responsible_to")),
 	}
 	h.tickets.Create(r.Context(), in, u.ID)
 	h.Tickets(w, r)
@@ -667,7 +891,8 @@ func (h *Handler) UpdateTicketStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	status := tickets.Status(r.FormValue("status"))
-	h.tickets.UpdateStatus(r.Context(), id, status)
+	u := getUser(r)
+	h.tickets.UpdateStatus(r.Context(), id, status, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<tr><td colspan="5" style="color:var(--green);padding:8px 12px"><i class="ti ti-check"></i> Status aktualisiert</td></tr>`)
 }
@@ -904,22 +1129,29 @@ type FaultDetailData struct {
 	TimeEntries   []*timetracking.TimeEntry
 	RunningTime   *timetracking.TimeEntry
 	SimilarFaults []SimilarFaultView
+	Users         []UserOption
+	History       []HistoryView
 }
 
 type FaultDetailView struct {
-	ID            string
-	Title         string
-	Description   string
-	Symptoms      []string
-	Status        string
-	StatusLabel   string
-	StatusClass   string
-	Severity      string
-	SeverityClass string
-	InfraName     string
-	DetectedAgo   string
-	Resolution    string
-	RootCause     string
+	ID              string
+	Title           string
+	Description     string
+	Symptoms        []string
+	Status          string
+	StatusLabel     string
+	StatusClass     string
+	Severity        string
+	SeverityClass   string
+	InfraName       string
+	DetectedAgo     string
+	Resolution      string
+	RootCause       string
+	AssignedID      string
+	ResponsibleID   string
+	AssignedName    string
+	ResponsibleName string
+	RecordImageURL  string
 }
 
 type SimilarFaultView struct {
@@ -939,6 +1171,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u := getUser(r)
+	people := h.recordPeople(ctx, "fault", id)
 	data := FaultDetailData{
 		BaseData: BaseData{
 			Title: fault.Title, Page: "faults",
@@ -947,16 +1180,23 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 			UserFirstName: u.FirstName, UserLastName: u.LastName,
 			FaultID: id,
 		},
+		Users:   h.userOptions(ctx),
+		History: h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,
-			Description:   fault.Description,
-			Symptoms:      fault.Symptoms,
-			Status:        string(fault.Status),
-			StatusLabel:   statusLabel(string(fault.Status)),
-			StatusClass:   statusClass(string(fault.Status)),
-			Severity:      string(fault.Severity),
-			SeverityClass: severityClass(string(fault.Severity)),
-			DetectedAgo:   timeAgo(fault.DetectedAt),
+			Description:     fault.Description,
+			Symptoms:        fault.Symptoms,
+			Status:          string(fault.Status),
+			StatusLabel:     statusLabel(string(fault.Status)),
+			StatusClass:     statusClass(string(fault.Status)),
+			Severity:        string(fault.Severity),
+			SeverityClass:   severityClass(string(fault.Severity)),
+			DetectedAgo:     timeAgo(fault.DetectedAt),
+			AssignedID:      people.AssignedID,
+			ResponsibleID:   people.ResponsibleID,
+			AssignedName:    people.AssignedName,
+			ResponsibleName: people.ResponsibleName,
+			RecordImageURL:  h.recordImageURL(ctx, "fault", id),
 		},
 	}
 	if fault.Resolution != nil {
@@ -992,7 +1232,11 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) FaultResolve(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
-	h.faults.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"))
+	u := getUser(r)
+	if err := h.faults.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Störung gelöst! <a href="/faults" style="color:var(--accent)">Zurück zur Liste</a></div>`)
 }
@@ -1026,6 +1270,7 @@ type MaintenancePageData struct {
 	DueTasks     []MaintTaskView
 	InfraOptions []InfraOption
 	Filter       string
+	Users        []UserOption
 }
 
 type InfraOption struct{ ID, Name string }
@@ -1078,6 +1323,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		BaseData: baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
 		Today:    time.Now().Format("2006-01-02"),
 		Filter:   string(status),
+		Users:    h.userOptions(ctx),
 	}
 
 	if plans, err := h.maint.ListPlans(ctx, ""); err == nil {
@@ -1148,6 +1394,7 @@ func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) 
 		InfrastructureID: infraID,
 		Interval:         maintenance.Interval(r.FormValue("interval")),
 		Priority:         maintenance.Priority(r.FormValue("priority")),
+		AssignedTo:       optionalID(r.FormValue("assigned_to")),
 		FirstDueAt:       r.FormValue("first_due_at"),
 	}
 	if _, err := h.maint.CreatePlan(r.Context(), in, u.ID); err != nil {
@@ -1218,31 +1465,37 @@ type MaintenanceTaskDetailData struct {
 	TimeEntries    []*timetracking.TimeEntry
 	Running        *timetracking.TimeEntry
 	ChecklistItems []struct{}
+	Users          []UserOption
+	History        []HistoryView
 }
 
 type MaintenanceTaskDetailView struct {
-	ID            string
-	Title         string
-	Description   string
-	TypeLabel     string
-	InfraID       string
-	InfraName     string
-	Priority      string
-	PriorityClass string
-	PriorityDot   string
-	Status        string
-	StatusLabel   string
-	StatusClass   string
-	DueDate       string
-	DueDateISO    string
-	StartedAt     string
-	CompletedAt   string
-	DurationStr   string
-	Notes         string
-	AssigneeName  string
-	CreatedAt     string
-	CanStart      bool
-	CanComplete   bool
+	ID              string
+	Title           string
+	Description     string
+	TypeLabel       string
+	InfraID         string
+	InfraName       string
+	Priority        string
+	PriorityClass   string
+	PriorityDot     string
+	Status          string
+	StatusLabel     string
+	StatusClass     string
+	DueDate         string
+	DueDateISO      string
+	StartedAt       string
+	CompletedAt     string
+	DurationStr     string
+	Notes           string
+	AssignedID      string
+	ResponsibleID   string
+	AssigneeName    string
+	ResponsibleName string
+	RecordImageURL  string
+	CreatedAt       string
+	CanStart        bool
+	CanComplete     bool
 }
 
 func maintenanceTypeLabel(t maintenance.PlanType) string {
@@ -1302,7 +1555,15 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 	data := MaintenanceTaskDetailData{
 		BaseData: baseData(r, "maintenance", task.Title, "Auftrag"),
 		Task:     maintenanceTaskDetailView(task),
+		Users:    h.userOptions(r.Context()),
+		History:  h.recordHistory(r.Context(), "maintenance_task", id),
 	}
+	people := h.recordPeople(r.Context(), "maintenance_task", id)
+	data.Task.AssignedID = people.AssignedID
+	data.Task.ResponsibleID = people.ResponsibleID
+	data.Task.AssigneeName = people.AssignedName
+	data.Task.ResponsibleName = people.ResponsibleName
+	data.Task.RecordImageURL = h.recordImageURL(r.Context(), "maintenance_task", id)
 	if entries, err := h.time.ListByRef(r.Context(), timetracking.RefMaintenance, id); err == nil {
 		data.TimeEntries = entries
 	}
@@ -1528,6 +1789,8 @@ type TicketDetailData struct {
 	RunningTime    *timetracking.TimeEntry
 	StatusOptions  []StatusOption
 	RelatedTickets []TicketView
+	Users          []UserOption
+	History        []HistoryView
 }
 
 type CommentView struct {
@@ -1555,6 +1818,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 
 	data := TicketDetailData{
 		BaseData: baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
+		Users:    h.userOptions(ctx),
+		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{
 			ID: t.ID, Title: t.Title, Description: t.Description,
 			Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
@@ -1568,6 +1833,12 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			{"resolved", "Gelöst"}, {"closed", "Geschlossen"},
 		},
 	}
+	people := h.recordPeople(ctx, "ticket", id)
+	data.Ticket.AssignedID = people.AssignedID
+	data.Ticket.ResponsibleID = people.ResponsibleID
+	data.Ticket.AssignedName = people.AssignedName
+	data.Ticket.ResponsibleName = people.ResponsibleName
+	data.Ticket.RecordImageURL = h.recordImageURL(ctx, "ticket", id)
 
 	if running, err := h.time.GetRunning(ctx, u.ID); err == nil {
 		data.RunningTime = running
@@ -1615,7 +1886,8 @@ func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	status := tickets.Status(r.FormValue("status"))
-	h.tickets.UpdateStatus(r.Context(), id, status)
+	u := getUser(r)
+	h.tickets.UpdateStatus(r.Context(), id, status, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClass(string(status)), statusLabel(string(status)))
 }

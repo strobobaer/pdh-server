@@ -9,6 +9,7 @@
   </div>
   <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
   <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
+  {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/fault/%s/archive" .Fault.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/faults?status=archive',700)")}}
   <div style="position:relative">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('fault-menu')")}}
     <div id="fault-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
@@ -21,6 +22,7 @@
     </div>
   </div>
 </div>
+<div id="archive-result" style="margin-bottom:10px"></div>
 
 <div class="grid2" style="grid-template-columns:1fr 380px;gap:14px;align-items:start">
   <div>
@@ -131,10 +133,39 @@
       </div>
     </div>
 
+    {{template "record-history" .History}}
+
   </div>
 
   <!-- Rechte Spalte -->
   <div>
+    <div class="card">
+      <div class="card-title">Details</div>
+      {{if .Fault.RecordImageURL}}
+      <img src="{{.Fault.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px">
+      {{end}}
+      <div class="li"><div class="li-text"><div class="li-sub">Schweregrad</div><div class="li-title"><span class="badge {{.Fault.SeverityClass}}">{{.Fault.Severity}}</span></div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title"><span class="badge {{.Fault.StatusClass}}">{{.Fault.StatusLabel}}</span></div></div></div>
+      <form hx-put="/records/fault/{{.Fault.ID}}/people" hx-target="#people-result-fault" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="form-group">
+          <label class="form-label">Verantwortlich</label>
+          <select name="responsible_to" class="form-input">
+            <option value="">Nicht gesetzt</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Fault.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesen</label>
+          <select name="assigned_to" class="form-input">
+            <option value="">Nicht zugewiesen</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Fault.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div id="people-result-fault" style="font-size:12px;margin-bottom:8px"></div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
+    </div>
+
     <div class="card">
       <div class="card-title"><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot Chat</div>
       <div id="chat-messages" style="background:var(--bg3);border-radius:8px;padding:10px;min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:10px;font-size:13px">

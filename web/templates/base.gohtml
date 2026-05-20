@@ -10,6 +10,8 @@
   const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.themeMode = mode;
+  if(localStorage.getItem('pdh_sidebar_left') === 'collapsed') document.documentElement.classList.add('sidebar-left-collapsed');
+  if(localStorage.getItem('pdh_sidebar_right') === 'collapsed') document.documentElement.classList.add('sidebar-right-collapsed');
 })();
 </script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
@@ -21,7 +23,8 @@
   --accent:#4f6ef7;--accent2:#7c3aed;
   --text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;
   --green:#10b981;--amber:#f59e0b;--red:#ef4444;
-  --font:'DM Sans',system-ui,sans-serif
+  --font:'DM Sans',system-ui,sans-serif;
+  --left-sidebar-w:200px;--right-sidebar-w:260px
 }
 html[data-theme="light"]{
   --bg:#f5f7fb;--bg2:#ffffff;--bg3:#eef2f7;
@@ -31,19 +34,29 @@ html[data-theme="light"]{
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 a{color:inherit;text-decoration:none}
-.app{display:grid;grid-template-columns:200px 1fr 260px;flex:1;overflow:hidden}
+.app{display:grid;grid-template-columns:var(--left-sidebar-w) 1fr var(--right-sidebar-w);flex:1;overflow:hidden;transition:grid-template-columns .18s ease}
+html.sidebar-left-collapsed{--left-sidebar-w:54px}
+html.sidebar-right-collapsed{--right-sidebar-w:54px}
 /* ── Sidebar ── */
 .sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
-.logo{padding:16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.logo{padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
 .logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
 .logo-text{font-size:14px;font-weight:600}
 .logo-ver{font-size:10px;color:var(--muted)}
+.sidebar-toggle{width:44px;min-width:44px;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.sidebar-toggle:hover{border-color:var(--muted);background:var(--bg2)}
+.sidebar-toggle i{font-size:18px}
 nav{padding:12px 0;flex:1}
 .nav-section{padding:12px 16px 4px;font-size:10px;font-weight:600;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase}
 .nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:var(--muted);border-left:2px solid transparent;transition:all .15s}
 .nav-item:hover{color:var(--text);background:var(--bg3)}
 .nav-item.active{color:var(--accent);background:rgba(79,110,247,.08);border-left-color:var(--accent)}
 .nav-item i{font-size:16px;width:18px;text-align:center;flex-shrink:0}
+html.sidebar-left-collapsed .sidebar{overflow:hidden}
+html.sidebar-left-collapsed .logo{padding:5px;justify-content:center;flex-wrap:wrap}
+html.sidebar-left-collapsed .logo > div:not(.logo-icon),html.sidebar-left-collapsed .nav-section,html.sidebar-left-collapsed .nav-label{display:none}
+html.sidebar-left-collapsed .nav-item{justify-content:center;padding:10px 0;border-left-width:0;border-right:2px solid transparent}
+html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 /* ── Topbar ── */
 .topbar{height:46px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:8px;flex-shrink:0}
 .topbar-path{font-size:12px;color:var(--muted)}
@@ -55,9 +68,18 @@ nav{padding:12px 0;flex:1}
 .main-wrap{display:flex;flex-direction:column;overflow:hidden}
 .main{flex:1;overflow-y:auto;padding:22px}
 /* ── Context ── */
-.context{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.ctx-section{border-bottom:1px solid var(--border);padding:14px;flex-shrink:0}
-.ctx-section.grow{flex:1;overflow-y:auto}
+.context{background:var(--bg2);border-left:1px solid var(--border);display:grid;grid-template-columns:44px 1fr;overflow:hidden;min-width:0}
+.ctx-tabs{border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 5px;background:var(--bg2)}
+.ctx-tab{width:34px;height:34px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.ctx-tab:hover,.ctx-tab.active{color:var(--accent);background:var(--bg3);border-color:var(--border)}
+.ctx-tab i{font-size:17px}
+.ctx-panel-wrap{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.ctx-section{border-bottom:1px solid var(--border);padding:14px;flex-shrink:0;display:none}
+.ctx-section.active{display:block}
+.ctx-section.grow.active{flex:1;overflow-y:auto}
+html.sidebar-right-collapsed .context{grid-template-columns:54px}
+html.sidebar-right-collapsed .ctx-tabs{padding:5px}
+html.sidebar-right-collapsed .ctx-panel-wrap{display:none}
 .ctx-title{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .ctx-title i{font-size:14px}
 /* ── Search ── */
@@ -156,6 +178,10 @@ html.icons-fallback .ti-player-stop::before{content:"[]";font-size:.72em}
 html.icons-fallback .ti-device-desktop::before{content:"[]";font-size:.72em}
 html.icons-fallback .ti-sun::before{content:"*"}
 html.icons-fallback .ti-moon::before{content:"("}
+html.icons-fallback .ti-menu-2::before{content:"="}
+html.icons-fallback .ti-help::before{content:"?"}
+html.icons-fallback .ti-photo-check::before{content:"P"}
+html.icons-fallback .ti-file-description::before{content:"F"}
 html.icons-fallback .btn .ti{display:none}
 html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}
 .widget-icon-toolbar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -174,6 +200,16 @@ html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justi
 .global-footer.warn .footer-status-dot,.global-footer.warn .footer-progress-fill{background:var(--amber)}
 .global-footer.error .footer-status-dot,.global-footer.error .footer-progress-fill{background:var(--red)}
 .global-footer.ok .footer-status-dot,.global-footer.ok .footer-progress-fill{background:var(--green)}
+.attachment-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;margin-bottom:12px;min-height:20px;width:100%}
+.attachment-card{border:1px solid var(--border);border-radius:8px;background:var(--bg3);overflow:hidden;min-width:0}
+.attachment-preview{height:96px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--muted);position:relative}
+.attachment-preview img{width:100%;height:100%;object-fit:cover;display:block}
+.attachment-preview i{font-size:30px}
+.attachment-meta{padding:8px;display:flex;flex-direction:column;gap:7px}
+.attachment-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.attachment-actions{display:flex;gap:6px;flex-wrap:wrap}
+.attachment-actions .btn{min-height:34px;padding:0 9px;font-size:11px}
+.attachment-badge{position:absolute;left:6px;top:6px;background:rgba(16,185,129,.92);color:#fff;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700}
 /* ── Forms ── */
 .form-group{margin-bottom:14px}
 .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
@@ -204,23 +240,24 @@ select.form-input option{background:var(--bg2)}
   <div class="logo">
     <div class="logo-icon">P</div>
     <div><div class="logo-text">PDH</div><div class="logo-ver">v0.7.0</div></div>
+    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="Navigation einklappen" title="Navigation einklappen"><i class="ti ti-menu-2"></i></button>
   </div>
   <nav>
-    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i>Dashboard</a>
+    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">Dashboard</span></a>
 
     <div class="nav-section">Module</div>
-    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i>Tickets</a>
-    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i>Störungen</a>
-    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i>Wartung</a>
-    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i>Ersatzteile</a>
-    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i>Zeiterfassung</a>
+    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i><span class="nav-label">Tickets</span></a>
+    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i><span class="nav-label">Störungen</span></a>
+    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i><span class="nav-label">Wartung</span></a>
+    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i><span class="nav-label">Ersatzteile</span></a>
+    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">Zeiterfassung</span></a>
 
     <div class="nav-section">Core</div>
-    <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i>Benutzer</a>
-    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i>IT-Assets</a>
-    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i>Lager</a>
-    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i>Schichtplan</a>
-    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i>Infrastruktur</a>
+    <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>
+    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
+    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
+    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
+    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">Infrastruktur</span></a>
   </nav>
 </aside>
 
@@ -245,8 +282,17 @@ select.form-input option{background:var(--bg2)}
 
 <!-- ── Kontext-Spalte ── -->
 <aside class="context">
+  <div class="ctx-tabs" aria-label="Kontextauswahl">
+    <button type="button" class="ctx-tab active" data-context-tab="search" onclick="activateContextTab('search')" title="Suche" aria-label="Suche"><i class="ti ti-search"></i></button>
+    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="Copilot" aria-label="Copilot"><i class="ti ti-brain"></i></button>
+    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="Aktivitaet" aria-label="Aktivitaet"><i class="ti ti-bell"></i></button>
+    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="Auswahl" aria-label="Auswahl"><i class="ti ti-list"></i></button>
+    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="Hilfe" aria-label="Hilfe"><i class="ti ti-help"></i></button>
+    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('right')" aria-label="Kontext einklappen" title="Kontext einklappen" style="margin-top:auto"><i class="ti ti-menu-2"></i></button>
+  </div>
+  <div class="ctx-panel-wrap">
   <!-- Suche -->
-  <div class="ctx-section">
+  <div class="ctx-section active" data-context-panel="search">
     <div class="ctx-title"><i class="ti ti-search"></i>Suche</div>
     <div class="search-box">
       <i class="ti ti-search"></i>
@@ -262,7 +308,7 @@ select.form-input option{background:var(--bg2)}
   </div>
 
   <!-- Copilot -->
-  <div class="ctx-section">
+  <div class="ctx-section" data-context-panel="copilot">
     <div class="ctx-title"><i class="ti ti-brain"></i>Copilot</div>
     <div class="copilot-msgs" id="cop-msgs">
       <div class="cop-hint">KI-Copilot für Entstörung und Analyse...</div>
@@ -275,7 +321,7 @@ select.form-input option{background:var(--bg2)}
   </div>
 
   <!-- Aktivität -->
-  <div class="ctx-section grow">
+  <div class="ctx-section grow" data-context-panel="activity">
     <div class="ctx-title"><i class="ti ti-bell"></i>Aktivität</div>
     <div id="activity-feed"
       hx-get="/api/activity"
@@ -285,13 +331,20 @@ select.form-input option{background:var(--bg2)}
   </div>
 
   <!-- Kontext-Liste (seitenabhängig) -->
-  <div class="ctx-section">
+  <div class="ctx-section" data-context-panel="list">
     <div class="ctx-title"><i class="ti ti-list"></i>{{.ContextTitle}}</div>
     <div id="ctx-list">
       {{block "context-list" .}}
       <div style="font-size:11px;color:var(--muted)">Keine Einträge</div>
       {{end}}
     </div>
+  </div>
+  <div class="ctx-section" data-context-panel="help">
+    <div class="ctx-title"><i class="ti ti-help"></i>Hilfe</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6">
+      Eintrag in einer Liste markieren und danach die Aktionsbuttons oben nutzen. Bilder und Dokumente erscheinen im Datensatz unten in der Galerie.
+    </div>
+  </div>
   </div>
 </aside>
 
@@ -369,6 +422,33 @@ if(window.matchMedia) {
     if((localStorage.getItem('pdh_theme') || 'system') === 'system') applyThemeMode('system');
   });
 }
+
+function applySidebarState() {
+  const left = localStorage.getItem('pdh_sidebar_left') === 'collapsed';
+  const right = localStorage.getItem('pdh_sidebar_right') === 'collapsed';
+  document.documentElement.classList.toggle('sidebar-left-collapsed', left);
+  document.documentElement.classList.toggle('sidebar-right-collapsed', right);
+}
+function toggleSidebar(side) {
+  const key = side === 'right' ? 'pdh_sidebar_right' : 'pdh_sidebar_left';
+  const collapsed = localStorage.getItem(key) === 'collapsed';
+  localStorage.setItem(key, collapsed ? 'expanded' : 'collapsed');
+  applySidebarState();
+}
+function activateContextTab(id) {
+  const selected = id || localStorage.getItem('pdh_context_tab') || 'search';
+  document.querySelectorAll('[data-context-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.contextTab === selected));
+  document.querySelectorAll('[data-context-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.contextPanel === selected));
+  localStorage.setItem('pdh_context_tab', selected);
+  if(document.documentElement.classList.contains('sidebar-right-collapsed')) {
+    localStorage.setItem('pdh_sidebar_right', 'expanded');
+    applySidebarState();
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  applySidebarState();
+  activateContextTab(localStorage.getItem('pdh_context_tab') || 'search');
+});
 
 let globalStatusTimer = null;
 let selectedListItem = null;
@@ -611,4 +691,97 @@ async function deleteAttachment(id, refType, refId) {
   await fetch('/api/v1/attachments/'+id, {method:'DELETE',headers:{'Authorization':'Bearer '+token}});
   htmx.trigger('#attachments-'+refId, 'load');
 }
+</script>
+<script>
+function attachmentToken(){
+  return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || '';
+}
+function escapeAttr(value){
+  return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function attachmentCard(a, refType, refId){
+  const name = escapeAttr(a.filename || 'Datei');
+  const url = escapeAttr(a.url || ('/uploads/' + (a.filepath || '')));
+  const isImage = !!a.is_image;
+  const recordBadge = a.record_image ? '<span class="attachment-badge">Datensatzbild</span>' : '';
+  const preview = isImage ? `<img src="${url}" alt="${name}">${recordBadge}` : `<i class="ti ti-file-description"></i>`;
+  const imageButton = isImage && !a.record_image
+    ? `<button type="button" class="btn" onclick="setRecordImage('${refType}','${refId}','${a.id}')"><i class="ti ti-photo-check"></i> Aktivieren</button>`
+    : '';
+  return `<div class="attachment-card">
+    <a class="attachment-preview" href="${url}" target="_blank" rel="noopener">${preview}</a>
+    <div class="attachment-meta">
+      <div class="attachment-name" title="${name}">${name}</div>
+      <div class="attachment-actions">
+        ${imageButton}
+        <button type="button" class="btn btn-danger" onclick="deleteAttachment('${a.id}','${refType}','${refId}')"><i class="ti ti-trash"></i> Entfernen</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function loadAttachmentGallery(refType, refId) {
+  const container = document.getElementById('attachments-'+refId);
+  if(!container) return;
+  container.classList.add('attachment-gallery');
+  container.style.display = 'grid';
+  container.style.flexWrap = '';
+  container.style.gap = '10px';
+  container.innerHTML = '<div style="font-size:12px;color:var(--muted)">Lade Galerie...</div>';
+  try {
+    const res = await fetch('/api/v1/attachments/'+refType+'/'+refId, {headers:{Authorization:'Bearer '+attachmentToken()}});
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Galerie konnte nicht geladen werden');
+    const files = json.data || [];
+    container.innerHTML = files.length ? files.map(a => attachmentCard(a, refType, refId)).join('') : '<div style="font-size:12px;color:var(--muted)">Keine Bilder oder Dokumente vorhanden</div>';
+  } catch(err) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--red)">Fehler: '+escapeAttr(err.message || err)+'</div>';
+  }
+}
+async function uploadFiles(input, refType, refId) {
+  if(!input.files.length) return;
+  const fd = new FormData();
+  for(const f of input.files) fd.append('files', f);
+  try {
+    const res = await fetch('/api/v1/attachments/'+refType+'/'+refId, {
+      method:'POST',
+      headers:{Authorization:'Bearer '+attachmentToken()},
+      body:fd
+    });
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Upload fehlgeschlagen');
+    input.value = '';
+    await loadAttachmentGallery(refType, refId);
+  } catch(err) {
+    showGlobalError('Upload fehlgeschlagen', err.message || String(err));
+  }
+}
+async function deleteAttachment(id, refType, refId) {
+  try {
+    const res = await fetch('/api/v1/attachments/'+id, {method:'DELETE',headers:{Authorization:'Bearer '+attachmentToken()}});
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Loeschen fehlgeschlagen');
+    await loadAttachmentGallery(refType, refId);
+  } catch(err) {
+    showGlobalError('Anhang konnte nicht entfernt werden', err.message || String(err));
+  }
+}
+async function setRecordImage(refType, refId, id) {
+  try {
+    const res = await fetch('/api/v1/attachments/'+refType+'/'+refId+'/'+id+'/record-image', {method:'POST',headers:{Authorization:'Bearer '+attachmentToken()}});
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Datensatzbild konnte nicht gesetzt werden');
+    await loadAttachmentGallery(refType, refId);
+    setGlobalStatus('ok', 'Datensatzbild gesetzt', 100, 'Keine Fehler');
+  } catch(err) {
+    showGlobalError('Datensatzbild fehlgeschlagen', err.message || String(err));
+  }
+}
+function initAttachmentGalleries(){
+  document.querySelectorAll('[data-attach-ref]').forEach(el => {
+    const [refType, refId] = String(el.dataset.attachRef || '').split(':');
+    if(refType && refId) loadAttachmentGallery(refType, refId);
+  });
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAttachmentGalleries);
+else initAttachmentGalleries();
 </script>

@@ -28,11 +28,14 @@ type Fault struct {
 	Status           FaultStatus `json:"status"`
 	InfrastructureID *string     `json:"infrastructure_id,omitempty"`
 	AssignedTo       *string     `json:"assigned_to,omitempty"`
+	ResponsibleTo    *string     `json:"responsible_to,omitempty"`
 	CreatedBy        string      `json:"created_by"`
+	RecordImageID    *string     `json:"record_image_attachment_id,omitempty"`
 	Resolution       *string     `json:"resolution,omitempty"`
 	RootCause        *string     `json:"root_cause,omitempty"`
 	DetectedAt       time.Time   `json:"detected_at"`
 	ResolvedAt       *time.Time  `json:"resolved_at,omitempty"`
+	ArchivedAt       *time.Time  `json:"archived_at,omitempty"`
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
 }
@@ -84,6 +87,8 @@ type CreateFaultInput struct {
 	Symptoms         []string `json:"symptoms"`
 	Severity         Severity `json:"severity"`
 	InfrastructureID *string  `json:"infrastructure_id,omitempty"`
+	AssignedTo       *string  `json:"assigned_to,omitempty"`
+	ResponsibleTo    *string  `json:"responsible_to,omitempty"`
 }
 
 type ResolveInput struct {

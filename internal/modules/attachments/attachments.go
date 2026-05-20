@@ -19,17 +19,19 @@ import (
 const UploadDir = "uploads"
 
 type Attachment struct {
-	ID        string    `json:"id"`
-	RefType   string    `json:"ref_type"`
-	RefID     string    `json:"ref_id"`
-	Filename  string    `json:"filename"`
-	Filepath  string    `json:"filepath"`
-	Mimetype  string    `json:"mimetype"`
-	SizeBytes int       `json:"size_bytes"`
-	Caption   string    `json:"caption,omitempty"`
-	CreatedBy string    `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
-	URL       string    `json:"url"`
+	ID          string    `json:"id"`
+	RefType     string    `json:"ref_type"`
+	RefID       string    `json:"ref_id"`
+	Filename    string    `json:"filename"`
+	Filepath    string    `json:"filepath"`
+	Mimetype    string    `json:"mimetype"`
+	SizeBytes   int       `json:"size_bytes"`
+	Caption     string    `json:"caption,omitempty"`
+	CreatedBy   string    `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	URL         string    `json:"url"`
+	IsImage     bool      `json:"is_image"`
+	RecordImage bool      `json:"record_image"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
@@ -47,6 +49,7 @@ func (r *Repository) Save(ctx context.Context, a *Attachment) error {
 }
 
 func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attachment, error) {
+	recordImageID, _ := r.RecordImageID(ctx, refType, refID)
 	rows, err := r.db.Query(ctx, `
 		SELECT id, ref_type, ref_id, filename, filepath, mimetype,
 		       size_bytes, COALESCE(caption,''), created_by, created_at
@@ -64,15 +67,69 @@ func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attach
 			&a.Filepath, &a.Mimetype, &a.SizeBytes,
 			&a.Caption, &a.CreatedBy, &a.CreatedAt)
 		a.URL = "/uploads/" + a.Filepath
+		a.IsImage = strings.HasPrefix(strings.ToLower(a.Mimetype), "image/")
+		a.RecordImage = recordImageID != "" && a.ID == recordImageID
 		list = append(list, a)
 	}
 	return list, nil
 }
 
+func (r *Repository) RecordImageID(ctx context.Context, refType, refID string) (string, error) {
+	var table string
+	switch refType {
+	case "ticket":
+		table = "tickets"
+	case "fault":
+		table = "faults"
+	case "maintenance_task":
+		table = "maintenance_tasks"
+	default:
+		return "", nil
+	}
+	var id *string
+	err := r.db.QueryRow(ctx, fmt.Sprintf(`SELECT record_image_attachment_id::text FROM %s WHERE id=$1`, table), refID).Scan(&id)
+	if err != nil || id == nil {
+		return "", err
+	}
+	return *id, nil
+}
+
+func (r *Repository) SetRecordImage(ctx context.Context, refType, refID, id string) error {
+	var table string
+	switch refType {
+	case "ticket":
+		table = "tickets"
+	case "fault":
+		table = "faults"
+	case "maintenance_task":
+		table = "maintenance_tasks"
+	default:
+		return fmt.Errorf("ref_type %q unterstützt kein datensatzbild", refType)
+	}
+	var ok bool
+	if err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM attachments
+			WHERE id=$1 AND ref_type=$2 AND ref_id=$3 AND lower(mimetype) LIKE 'image/%'
+		)`, id, refType, refID).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("bild nicht gefunden")
+	}
+	_, err := r.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET record_image_attachment_id=$1 WHERE id=$2`, table), id, refID)
+	return err
+}
+
 func (r *Repository) Delete(ctx context.Context, id, userID string) (string, error) {
 	var fp string
-	r.db.QueryRow(ctx, `DELETE FROM attachments WHERE id=$1 AND created_by=$2 RETURNING filepath`, id, userID).Scan(&fp)
-	return fp, nil
+	err := r.db.QueryRow(ctx, `DELETE FROM attachments WHERE id=$1 AND created_by=$2 RETURNING filepath`, id, userID).Scan(&fp)
+	if err == nil {
+		_, _ = r.db.Exec(ctx, `UPDATE tickets SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
+		_, _ = r.db.Exec(ctx, `UPDATE faults SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
+		_, _ = r.db.Exec(ctx, `UPDATE maintenance_tasks SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
+	}
+	return fp, err
 }
 
 // ── Service ──────────────────────────────────────────────────
@@ -143,6 +200,11 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 		}
 		if err := s.repo.Save(ctx, a); err == nil {
 			a.URL = "/uploads/" + relPath
+			a.IsImage = strings.HasPrefix(strings.ToLower(a.Mimetype), "image/")
+			_, _ = s.repo.db.Exec(ctx, `
+				INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
+				VALUES ($1, $2, 'attachment', 'attachments', $3, $4, 'Anhang hinzugefügt')`,
+				refType, refID, a.Filename, userID)
 			saved = append(saved, a)
 		}
 	}
@@ -161,6 +223,17 @@ func (s *Service) Delete(ctx context.Context, id, userID string) error {
 	return nil
 }
 
+func (s *Service) SetRecordImage(ctx context.Context, refType, refID, id string) error {
+	if err := s.repo.SetRecordImage(ctx, refType, refID, id); err != nil {
+		return err
+	}
+	_, _ = s.repo.db.Exec(ctx, `
+		INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, message)
+		VALUES ($1, $2, 'record_image', 'record_image_attachment_id', $3, 'Datensatzbild gesetzt')`,
+		refType, refID, id)
+	return nil
+}
+
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
@@ -172,6 +245,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Use(middleware.Auth(jwtSecret))
 	r.Post("/{refType}/{refID}", h.Upload)
 	r.Get("/{refType}/{refID}", h.List)
+	r.Post("/{refType}/{refID}/{id}/record-image", h.SetRecordImage)
 	r.Delete("/{id}", h.Delete)
 	return r
 }
@@ -201,4 +275,12 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	h.svc.Delete(r.Context(), chi.URLParam(r, "id"), userID)
 	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
+}
+
+func (h *Handler) SetRecordImage(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.SetRecordImage(r.Context(), chi.URLParam(r, "refType"), chi.URLParam(r, "refID"), chi.URLParam(r, "id")); err != nil {
+		response.Error(w, 400, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "ok"})
 }

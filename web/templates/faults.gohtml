@@ -39,6 +39,20 @@
           <option value="critical">Critical</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Verantwortlich</label>
+        <select name="responsible_to" class="form-input">
+          <option value="">Nicht gesetzt</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
@@ -87,7 +101,7 @@
   {{if eq .Filter ""}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/faults" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Alle" "Href" "/faults")}}{{end}}
   {{if eq .Filter "detected"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Erkannt" "Href" "/faults?status=detected" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Erkannt" "Href" "/faults?status=detected")}}{{end}}
   {{if eq .Filter "in_progress"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Bearbeitung" "Href" "/faults?status=in_progress" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "In Bearbeitung" "Href" "/faults?status=in_progress")}}{{end}}
-  {{if eq .Filter "resolved"}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/faults?status=resolved" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "filter" "ShowLabel" true "Label" "Gelöst" "Href" "/faults?status=resolved")}}{{end}}
+  {{if eq .Filter "archive"}}{{template "icon-button" (dict "Action" "history" "ShowLabel" true "Label" "Archiv" "Href" "/faults?status=archive" "Class" "btn-primary")}}{{else}}{{template "icon-button" (dict "Action" "history" "ShowLabel" true "Label" "Archiv" "Href" "/faults?status=archive")}}{{end}}
 </div>
 
 <!-- Liste -->
@@ -194,6 +208,8 @@ async function submitFaultForm(form){
   const symptoms=String(fd.get('symptoms')||'').split(',').map(s=>s.trim()).filter(Boolean);
   const payload={title:fd.get('title'),description:fd.get('description'),severity:fd.get('severity'),symptoms};
   if(fd.get('infrastructure_id')) payload.infrastructure_id=fd.get('infrastructure_id');
+  if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
+  if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
   const result=document.getElementById('fault-create-result'); result.textContent='Speichere...';
   try{
     const res=await fetch('/api/v1/faults/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});

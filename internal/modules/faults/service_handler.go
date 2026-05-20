@@ -27,6 +27,8 @@ func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID strin
 		Symptoms:         in.Symptoms,
 		Severity:         in.Severity,
 		InfrastructureID: in.InfrastructureID,
+		AssignedTo:       in.AssignedTo,
+		ResponsibleTo:    in.ResponsibleTo,
 		CreatedBy:        userID,
 	}
 	return f, s.repo.Create(ctx, f)
@@ -45,13 +47,13 @@ func (s *Service) Analyze(ctx context.Context, faultID string) (*CopilotAnalysis
 	if err != nil {
 		return nil, err
 	}
-	s.repo.UpdateStatus(ctx, faultID, StatusAnalyzing)
+	s.repo.UpdateStatus(ctx, faultID, StatusAnalyzing, "")
 	analysis, err := s.copilot.Analyze(ctx, fault)
 	if err != nil {
-		s.repo.UpdateStatus(ctx, faultID, StatusDetected)
+		s.repo.UpdateStatus(ctx, faultID, StatusDetected, "")
 		return nil, err
 	}
-	s.repo.UpdateStatus(ctx, faultID, StatusInProgress)
+	s.repo.UpdateStatus(ctx, faultID, StatusInProgress, "")
 	return analysis, nil
 }
 
@@ -67,8 +69,8 @@ func (s *Service) Chat(ctx context.Context, faultID, userID, message string, his
 	return s.copilot.Chat(ctx, fault, history, message)
 }
 
-func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause string) error {
-	return s.repo.Resolve(ctx, faultID, resolution, rootCause)
+func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause, userID string) error {
+	return s.repo.Resolve(ctx, faultID, resolution, rootCause, userID)
 }
 
 // Handler
@@ -174,7 +176,8 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
 		return
 	}
-	if err := h.svc.Resolve(r.Context(), id, in.Resolution, in.RootCause); err != nil {
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	if err := h.svc.Resolve(r.Context(), id, in.Resolution, in.RootCause, userID); err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

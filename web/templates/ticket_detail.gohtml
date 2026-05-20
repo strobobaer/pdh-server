@@ -8,6 +8,7 @@
   </div>
   <span class="badge {{.Ticket.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.Priority}}</span>
   <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
+  {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/ticket/%s/archive" .Ticket.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/tickets?status=archive',700)")}}
   <!-- ... Menü -->
   <div style="position:relative">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('ticket-menu')")}}
@@ -21,6 +22,7 @@
     </div>
   </div>
 </div>
+<div id="archive-result" style="margin-bottom:10px"></div>
 
 <div class="grid2" style="grid-template-columns:1fr 340px;gap:14px;align-items:start">
   <div>
@@ -71,15 +73,38 @@
         </label>
       </div>
     </div>
+
+    {{template "record-history" .History}}
   </div>
 
   <!-- Rechte Spalte -->
   <div>
     <div class="card">
       <div class="card-title">Details</div>
+      {{if .Ticket.RecordImageURL}}
+      <img src="{{.Ticket.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px">
+      {{end}}
       <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Ticket.PriorityClass}}">{{.Ticket.Priority}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title" id="status-badge"><span class="badge {{.Ticket.StatusClass}}">{{.Ticket.StatusLabel}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px">{{.Ticket.CreatedAgo}}</div></div></div>
+      <form hx-put="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="form-group">
+          <label class="form-label">Verantwortlich</label>
+          <select name="responsible_to" class="form-input">
+            <option value="">Nicht gesetzt</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesen</label>
+          <select name="assigned_to" class="form-input">
+            <option value="">Nicht zugewiesen</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div id="people-result-ticket" style="font-size:12px;margin-bottom:8px"></div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
     </div>
 
     <div class="card">
