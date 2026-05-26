@@ -1,6 +1,7 @@
 package attachments
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -19,19 +21,20 @@ import (
 const UploadDir = "uploads"
 
 type Attachment struct {
-	ID          string    `json:"id"`
-	RefType     string    `json:"ref_type"`
-	RefID       string    `json:"ref_id"`
-	Filename    string    `json:"filename"`
-	Filepath    string    `json:"filepath"`
-	Mimetype    string    `json:"mimetype"`
-	SizeBytes   int       `json:"size_bytes"`
-	Caption     string    `json:"caption,omitempty"`
-	CreatedBy   string    `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
-	URL         string    `json:"url"`
-	IsImage     bool      `json:"is_image"`
-	RecordImage bool      `json:"record_image"`
+	ID            string    `json:"id"`
+	RefType       string    `json:"ref_type"`
+	RefID         string    `json:"ref_id"`
+	Filename      string    `json:"filename"`
+	Filepath      string    `json:"filepath"`
+	Mimetype      string    `json:"mimetype"`
+	SizeBytes     int       `json:"size_bytes"`
+	Caption       string    `json:"caption,omitempty"`
+	CreatedBy     string    `json:"created_by"`
+	CreatedAt     time.Time `json:"created_at"`
+	URL           string    `json:"url"`
+	NextcloudPath string    `json:"nextcloud_path,omitempty"`
+	IsImage       bool      `json:"is_image"`
+	RecordImage   bool      `json:"record_image"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
@@ -67,6 +70,7 @@ func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attach
 			&a.Filepath, &a.Mimetype, &a.SizeBytes,
 			&a.Caption, &a.CreatedBy, &a.CreatedAt)
 		a.URL = "/uploads/" + a.Filepath
+		a.NextcloudPath = nextcloudRemotePath(a.RefType, a.RefID, a.Filename)
 		a.IsImage = strings.HasPrefix(strings.ToLower(a.Mimetype), "image/")
 		a.RecordImage = recordImageID != "" && a.ID == recordImageID
 		list = append(list, a)
@@ -132,7 +136,7 @@ func (r *Repository) Delete(ctx context.Context, id, userID string) (string, err
 	return fp, err
 }
 
-// ── Service ──────────────────────────────────────────────────
+// Service
 
 type Service struct{ repo *Repository }
 
@@ -152,10 +156,12 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 		files = r.MultipartForm.File["file"]
 	}
 
+	ncClient := nextcloudClientFromEnv()
+
 	for _, fh := range files {
 		if fh.Size > 20<<20 {
 			continue
-		} // max 20MB
+		}
 
 		src, err := fh.Open()
 		if err != nil {
@@ -183,7 +189,8 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 		if err != nil {
 			continue
 		}
-		written, _ := io.Copy(dst, src)
+		var buf bytes.Buffer
+		written, _ := io.Copy(io.MultiWriter(dst, &buf), src)
 		dst.Close()
 
 		mime := fh.Header.Get("Content-Type")
@@ -201,6 +208,11 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 		if err := s.repo.Save(ctx, a); err == nil {
 			a.URL = "/uploads/" + relPath
 			a.IsImage = strings.HasPrefix(strings.ToLower(a.Mimetype), "image/")
+			if ncClient.Enabled() {
+				if p, err := ncClient.UploadAttachment(ctx, refType, refID, fh.Filename, bytes.NewReader(buf.Bytes())); err == nil {
+					a.NextcloudPath = p
+				}
+			}
 			_, _ = s.repo.db.Exec(ctx, `
 				INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 				VALUES ($1, $2, 'attachment', 'attachments', $3, $4, 'Anhang hinzugefügt')`,
@@ -234,7 +246,7 @@ func (s *Service) SetRecordImage(ctx context.Context, refType, refID, id string)
 	return nil
 }
 
-// ── Handler ──────────────────────────────────────────────────
+// Handler
 
 type Handler struct{ svc *Service }
 
@@ -283,4 +295,26 @@ func (h *Handler) SetRecordImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "ok"})
+}
+
+func nextcloudClientFromEnv() *nextcloud.Client {
+	return nextcloud.NewClient(nextcloud.Config{
+		Enabled:  strings.EqualFold(os.Getenv("PDH_NEXTCLOUD_ENABLED"), "true") || os.Getenv("PDH_NEXTCLOUD_ENABLED") == "1",
+		BaseURL:  os.Getenv("PDH_NEXTCLOUD_BASEURL"),
+		Username: os.Getenv("PDH_NEXTCLOUD_USERNAME"),
+		Password: os.Getenv("PDH_NEXTCLOUD_PASSWORD"),
+		RootPath: os.Getenv("PDH_NEXTCLOUD_ROOTPATH"),
+	})
+}
+
+func nextcloudRemotePath(refType, refID, filename string) string {
+	root := os.Getenv("PDH_NEXTCLOUD_ROOTPATH")
+	if root == "" {
+		root = "PDH"
+	}
+	module := map[string]string{"ticket": "Tickets", "fault": "Stoerungen", "maintenance_task": "Wartung"}[refType]
+	if module == "" {
+		module = refType
+	}
+	return strings.Trim(root, "/") + "/" + module + "/" + refID + "/" + filename
 }
