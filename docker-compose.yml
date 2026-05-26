@@ -46,12 +46,6 @@ services:
       - "8090:8090"
     volumes:
       - pdh-uploads:/app/uploads
-    healthcheck:
-      test: ["CMD", "/app/pdh", "--healthcheck"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
 
 volumes:
   pdh-postgres:
