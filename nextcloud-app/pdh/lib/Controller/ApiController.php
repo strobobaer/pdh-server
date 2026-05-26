@@ -3,6 +3,8 @@ namespace OCA\PDH\Controller;
 
 use OCA\PDH\Service\PdhApiService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
@@ -14,6 +16,8 @@ class ApiController extends Controller {
         $this->api = $api;
     }
 
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
     public function status(): JSONResponse {
         return new JSONResponse($this->api->status());
     }
