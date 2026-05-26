@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
@@ -160,11 +161,13 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 
 	for _, fh := range files {
 		if fh.Size > 20<<20 {
+			log.Warn().Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Int64("size", fh.Size).Msg("attachment übersprungen: datei zu groß")
 			continue
 		}
 
 		src, err := fh.Open()
 		if err != nil {
+			log.Warn().Err(err).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment öffnen fehlgeschlagen")
 			continue
 		}
 		defer src.Close()
@@ -179,6 +182,7 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 			".xls": true, ".xlsx": true, ".txt": true, ".csv": true,
 		}
 		if !allowed[ext] {
+			log.Warn().Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Str("ext", ext).Msg("attachment übersprungen: dateityp nicht erlaubt")
 			continue
 		}
 		fname := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
@@ -187,11 +191,20 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 
 		dst, err := os.Create(absPath)
 		if err != nil {
+			log.Error().Err(err).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Str("path", absPath).Msg("attachment lokal speichern fehlgeschlagen")
 			continue
 		}
 		var buf bytes.Buffer
-		written, _ := io.Copy(io.MultiWriter(dst, &buf), src)
-		dst.Close()
+		written, copyErr := io.Copy(io.MultiWriter(dst, &buf), src)
+		closeErr := dst.Close()
+		if copyErr != nil {
+			log.Error().Err(copyErr).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment lokal kopieren fehlgeschlagen")
+			continue
+		}
+		if closeErr != nil {
+			log.Error().Err(closeErr).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment datei schließen fehlgeschlagen")
+			continue
+		}
 
 		mime := fh.Header.Get("Content-Type")
 		if mime == "" {
@@ -211,13 +224,20 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 			if ncClient.Enabled() {
 				if p, err := ncClient.UploadAttachment(ctx, refType, refID, fh.Filename, bytes.NewReader(buf.Bytes())); err == nil {
 					a.NextcloudPath = p
+					log.Info().Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Str("nextcloud_path", p).Msg("attachment nach nextcloud gespiegelt")
+				} else {
+					log.Error().Err(err).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment nextcloud webdav spiegelung fehlgeschlagen")
 				}
+			} else {
+				log.Debug().Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("nextcloud spiegelung deaktiviert")
 			}
 			_, _ = s.repo.db.Exec(ctx, `
 				INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 				VALUES ($1, $2, 'attachment', 'attachments', $3, $4, 'Anhang hinzugefügt')`,
 				refType, refID, a.Filename, userID)
 			saved = append(saved, a)
+		} else {
+			log.Error().Err(err).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment metadaten speichern fehlgeschlagen")
 		}
 	}
 	return saved, nil
