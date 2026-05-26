@@ -5,6 +5,7 @@ set -Eeuo pipefail
 # Source of truth for membership: Nextcloud group.
 # PDH username = Nextcloud userId.
 # PDH roles stay managed in PDH; new users receive --default-role.
+# Database writes are executed locally as Linux user `postgres` via Unix socket.
 
 NEXTCLOUD_DIR="/var/www/nextcloud"
 GROUP_ID="pdh"
@@ -12,9 +13,6 @@ DEFAULT_ROLE="viewer"
 DEACTIVATE_MISSING="0"
 DRY_RUN="0"
 DB_NAME="${PDH_DATABASE_NAME:-pdh}"
-DB_USER="${PDH_DATABASE_USER:-pdh}"
-DB_HOST="${PDH_DATABASE_HOST:-127.0.0.1}"
-DB_PORT="${PDH_DATABASE_PORT:-5432}"
 
 log() { printf '\n==> %s\n' "$*"; }
 warn() { printf '\nWARN: %s\n' "$*"; }
@@ -31,9 +29,6 @@ Options:
   --deactivate-missing      Deactivate PDH users previously synced from Nextcloud but no longer in group
   --dry-run                 Print planned changes only
   --db-name NAME            Default: env PDH_DATABASE_NAME or pdh
-  --db-user USER            Default: env PDH_DATABASE_USER or pdh
-  --db-host HOST            Default: env PDH_DATABASE_HOST or 127.0.0.1
-  --db-port PORT            Default: env PDH_DATABASE_PORT or 5432
   -h, --help                Show help
 
 Examples:
@@ -55,9 +50,6 @@ while [[ $# -gt 0 ]]; do
     --deactivate-missing) DEACTIVATE_MISSING="1"; shift ;;
     --dry-run) DRY_RUN="1"; shift ;;
     --db-name) DB_NAME="${2:-}"; shift 2 ;;
-    --db-user) DB_USER="${2:-}"; shift 2 ;;
-    --db-host) DB_HOST="${2:-}"; shift 2 ;;
-    --db-port) DB_PORT="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) err "Unknown argument: $1"; usage; exit 2 ;;
   esac
@@ -84,10 +76,20 @@ if ! command -v psql >/dev/null 2>&1; then
 fi
 
 OCC=(sudo -u www-data php -d apc.enable_cli=1 "${NEXTCLOUD_DIR}/occ")
-PSQL=(sudo -u postgres psql -v ON_ERROR_STOP=1 -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}")
+PSQL=(sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME}")
 TMP_MEMBERS="$(mktemp)"
 TMP_SQL="$(mktemp)"
-trap 'rm -f "${TMP_MEMBERS}" "${TMP_SQL}"' EXIT
+trap 'rm -f "${TMP_MEMBERS}" "${TMP_SQL}" /tmp/pdh-nc-group-info.txt /tmp/pdh-nc-group-err.txt /tmp/pdh-nc-user-*.txt' EXIT
+
+run_sql_file() {
+  chmod 0644 "${TMP_SQL}"
+  "${PSQL[@]}" -f "${TMP_SQL}"
+}
+
+log "Checking database access as postgres user"
+if [[ "${DRY_RUN}" != "1" ]]; then
+  "${PSQL[@]}" -c 'SELECT 1;' >/dev/null
+fi
 
 log "Checking Nextcloud group: ${GROUP_ID}"
 if ! "${OCC[@]}" group:info "${GROUP_ID}" >/tmp/pdh-nc-group-info.txt 2>/tmp/pdh-nc-group-err.txt; then
@@ -105,13 +107,13 @@ in_users = False
 for line in text:
     stripped = line.strip()
     low = stripped.lower()
-    if low.startswith('- users:') or low == 'users:':
+    if low.startswith('- users:') or low == 'users:' or low == 'users':
         in_users = True
         continue
     if in_users:
         if re.match(r'^-\s+', stripped):
             val = re.sub(r'^-\s+', '', stripped).strip()
-            if val:
+            if val and not val.endswith(':'):
                 users.append(val)
         elif stripped.endswith(':') and not stripped.lower().startswith('users'):
             in_users = False
@@ -124,6 +126,7 @@ PY
 
 if [[ ! -s "${TMP_MEMBERS}" ]]; then
   warn "No members in Nextcloud group: ${GROUP_ID}"
+  warn "Add users first, e.g.: sudo bash scripts/sync-nextcloud-pdh-group.sh --add-users michael"
 else
   log "Members found"
   sed 's/^/  - /' "${TMP_MEMBERS}"
@@ -145,7 +148,7 @@ SQL
 if [[ "${DRY_RUN}" == "1" ]]; then
   cat "${TMP_SQL}"
 else
-  "${PSQL[@]}" -f "${TMP_SQL}"
+  run_sql_file
 fi
 
 escape_sql() {
@@ -222,7 +225,7 @@ SQL
     printf '\n-- user: %s\n' "${nc_user}"
     cat "${TMP_SQL}"
   else
-    "${PSQL[@]}" -f "${TMP_SQL}"
+    run_sql_file
   fi
   IMPORTED=$((IMPORTED + 1))
 done < "${TMP_MEMBERS}"
@@ -251,7 +254,7 @@ SQL
   if [[ "${DRY_RUN}" == "1" ]]; then
     cat "${TMP_SQL}"
   else
-    "${PSQL[@]}" -f "${TMP_SQL}"
+    run_sql_file
   fi
 fi
 
