@@ -8,6 +8,8 @@ set -Eeuo pipefail
 #   Security:   STARTTLS / tls
 #
 # Use an Apple app-specific password, not your Apple ID password.
+# Some Nextcloud versions do not provide an `occ mail:test` command; in that
+# case, use the web UI test in Administration settings -> Basic settings.
 
 NEXTCLOUD_DIR="/var/www/nextcloud"
 FROM_ADDRESS="cloud"
@@ -17,6 +19,7 @@ ICLOUD_APP_PASS=""
 TEST_USER=""
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+warn() { printf '\n\033[1;33mWARN: %s\033[0m\n' "$*"; }
 err() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; }
 
 usage() {
@@ -31,7 +34,7 @@ Optional:
   --from-address NAME          Sender local part shown by Nextcloud, default: cloud
   --from-domain DOMAIN         Sender domain shown by Nextcloud, default: strobl-home.net
   --nextcloud-dir PATH         Nextcloud dir, default: /var/www/nextcloud
-  --test-user USER             Run Nextcloud mail:test for this user
+  --test-user USER             Test user hint; uses occ mail:test only when available
   -h, --help                   Show help
 
 Example:
@@ -100,8 +103,15 @@ log "Current visible mail configuration"
 "${OCC[@]}" config:system:get mail_smtpname || true
 
 if [[ -n "${TEST_USER}" ]]; then
-  log "Running Nextcloud mail test for user: ${TEST_USER}"
-  "${OCC[@]}" mail:test "${TEST_USER}"
+  log "Checking whether occ mail:test exists"
+  if "${OCC[@]}" list --raw 2>/dev/null | grep -qx 'mail:test'; then
+    log "Running Nextcloud mail test for user: ${TEST_USER}"
+    "${OCC[@]}" mail:test "${TEST_USER}"
+  else
+    warn "This Nextcloud installation has no occ mail:test command. Use the web UI test instead."
+    warn "Path: Administration settings -> Basic settings -> Email server -> Send email"
+    "${OCC[@]}" user:setting "${TEST_USER}" settings email || true
+  fi
 else
   log "No --test-user supplied. Test in Nextcloud UI: Administration settings -> Basic settings -> Email server -> Send email."
 fi
@@ -112,3 +122,4 @@ printf 'SMTP port: 587\n'
 printf 'Security:  tls / STARTTLS\n'
 printf 'SMTP user: %s\n' "${ICLOUD_USER}"
 printf 'Sender:    %s@%s\n' "${FROM_ADDRESS}" "${FROM_DOMAIN}"
+printf '\nImportant: if this password was pasted into chat or logs, revoke it and create a new Apple app-specific password.\n'
