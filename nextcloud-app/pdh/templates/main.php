@@ -14,5 +14,10 @@ $pdhPublicUrl = $_['pdhPublicUrl'] ?? 'https://pdh.strobl-home.net';
             <a class="button" href="<?php p($pdhPublicUrl); ?>" target="_blank" rel="noreferrer noopener">Extern öffnen</a>
         </div>
     </div>
-    <iframe id="pdh-frame" class="pdh-frame" src="<?php p($pdhPublicUrl); ?>" title="PDH" loading="eager"></iframe>
+    <div class="pdh-frame-wrap">
+        <div id="pdh-frame-hint" class="pdh-frame-hint">
+            PDH konnte im eingebetteten Bereich nicht sichtbar geladen werden. Prüfe X-Frame-Options und Content-Security-Policy der PDH-Nginx-Site.
+        </div>
+        <iframe id="pdh-frame" class="pdh-frame" src="<?php p($pdhPublicUrl); ?>" title="PDH" loading="eager"></iframe>
+    </div>
 </div>
