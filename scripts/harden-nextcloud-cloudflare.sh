@@ -14,6 +14,7 @@ REDIS_SOCKET="/run/redis/redis-server.sock"
 PHP_MEMORY_LIMIT="512M"
 PHP_UPLOAD_LIMIT="1024M"
 PHP_MAX_EXECUTION_TIME="360"
+TRUSTED_PROXY="127.0.0.1"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\n\033[1;33mWARN: %s\033[0m\n' "$*"; }
@@ -32,6 +33,7 @@ Options:
   --memory-limit VALUE        PHP memory_limit, default: 512M
   --upload-limit VALUE        upload_max_filesize/post_max_size, default: 1024M
   --max-execution-time SEC    PHP max_execution_time, default: 360
+  --trusted-proxy IP          Trusted proxy for Nextcloud, default: 127.0.0.1
   -h, --help                  Show this help
 USAGE
 }
@@ -46,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --memory-limit) PHP_MEMORY_LIMIT="${2:-}"; shift 2 ;;
     --upload-limit) PHP_UPLOAD_LIMIT="${2:-}"; shift 2 ;;
     --max-execution-time) PHP_MAX_EXECUTION_TIME="${2:-}"; shift 2 ;;
+    --trusted-proxy) TRUSTED_PROXY="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) err "Unknown argument: $1"; usage; exit 2 ;;
   esac
@@ -126,7 +129,7 @@ if [[ -f /etc/redis/redis.conf ]]; then
 fi
 usermod -aG redis www-data || true
 
-log "Hardening Nginx MIME/HSTS settings"
+log "Hardening Nginx MIME/HSTS and proxy settings"
 NGINX_SITE="/etc/nginx/sites-available/nextcloud-cloudflare.conf"
 if [[ -f "${NGINX_SITE}" ]]; then
   cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d%H%M%S)"
@@ -139,6 +142,13 @@ if [[ -f "${NGINX_SITE}" ]]; then
   fi
   if ! grep -q 'Strict-Transport-Security' "${NGINX_SITE}"; then
     sed -i '/add_header X-XSS-Protection/a\    add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;' "${NGINX_SITE}"
+  fi
+  if ! grep -q 'fastcgi_param HTTP_X_FORWARDED_FOR' "${NGINX_SITE}"; then
+    sed -i '/fastcgi_param HTTPS on;/a\        fastcgi_param HTTP_X_FORWARDED_FOR $http_x_forwarded_for;\n        fastcgi_param HTTP_X_REAL_IP $http_x_real_ip;\n        fastcgi_param HTTP_CF_CONNECTING_IP $http_cf_connecting_ip;\n        fastcgi_param HTTP_X_FORWARDED_PROTO $http_x_forwarded_proto;\n        fastcgi_param HTTP_X_FORWARDED_HOST $http_x_forwarded_host;' "${NGINX_SITE}"
+  fi
+  if ! grep -q 'real_ip_header CF-Connecting-IP' "${NGINX_SITE}"; then
+    sed -i '/server_name/a\
+\n    set_real_ip_from 127.0.0.1;\n    set_real_ip_from ::1;\n    real_ip_header CF-Connecting-IP;\n    real_ip_recursive on;' "${NGINX_SITE}"
   fi
   if grep -q 'listen 127.0.0.1:' "${NGINX_SITE}" && grep -q 'listen .* ssl http2;' "${NGINX_SITE}"; then
     sed -i -E 's/(listen .* ssl) http2;/\1;\n    http2 on;/' "${NGINX_SITE}"
@@ -155,6 +165,10 @@ log "Applying Nextcloud system configuration"
 OCC=(sudo -u www-data php -d apc.enable_cli=1 "${NEXTCLOUD_DIR}/occ")
 "${OCC[@]}" config:system:set trusted_domains 0 --value="${DOMAIN}"
 "${OCC[@]}" config:system:set trusted_domains 1 --value="localhost:${ORIGIN_PORT}"
+"${OCC[@]}" config:system:set trusted_proxies 0 --value="${TRUSTED_PROXY}"
+"${OCC[@]}" config:system:set trusted_proxies 1 --value="::1"
+"${OCC[@]}" config:system:set forwarded_for_headers 0 --value="HTTP_CF_CONNECTING_IP"
+"${OCC[@]}" config:system:set forwarded_for_headers 1 --value="HTTP_X_FORWARDED_FOR"
 "${OCC[@]}" config:system:set overwrite.cli.url --value="https://${DOMAIN}"
 "${OCC[@]}" config:system:set overwritehost --value="${DOMAIN}"
 "${OCC[@]}" config:system:set overwriteprotocol --value="https"
@@ -194,6 +208,9 @@ systemctl reload nginx
 log "Checks"
 printf '\nPHP modules:\n'
 php -d apc.enable_cli=1 -m | grep -Ei 'apcu|redis|imagick' || true
+printf '\nNextcloud proxy config:\n'
+"${OCC[@]}" config:system:get trusted_proxies || true
+"${OCC[@]}" config:system:get forwarded_for_headers || true
 printf '\nNextcloud status:\n'
 "${OCC[@]}" status || true
 printf '\nNextcloud security overview / setup checks:\n'
