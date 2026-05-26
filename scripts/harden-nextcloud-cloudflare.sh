@@ -126,6 +126,25 @@ if [[ -f /etc/redis/redis.conf ]]; then
 fi
 usermod -aG redis www-data || true
 
+log "Hardening Nginx MIME/HSTS settings"
+NGINX_SITE="/etc/nginx/sites-available/nextcloud-cloudflare.conf"
+if [[ -f "${NGINX_SITE}" ]]; then
+  cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d%H%M%S)"
+  if ! grep -q 'application/javascript.*mjs' /etc/nginx/mime.types; then
+    if grep -q 'application/javascript' /etc/nginx/mime.types; then
+      sed -i 's/application\/javascript[[:space:]]\+js;/application\/javascript js mjs;/' /etc/nginx/mime.types
+    elif grep -q 'text\/javascript' /etc/nginx/mime.types; then
+      sed -i 's/text\/javascript[[:space:]]\+js;/text\/javascript js mjs;/' /etc/nginx/mime.types
+    fi
+  fi
+  if ! grep -q 'Strict-Transport-Security' "${NGINX_SITE}"; then
+    sed -i '/add_header X-XSS-Protection/a\    add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;' "${NGINX_SITE}"
+  fi
+  if grep -q 'listen 127.0.0.1:' "${NGINX_SITE}" && grep -q 'listen .* ssl http2;' "${NGINX_SITE}"; then
+    sed -i -E 's/(listen .* ssl) http2;/\1;\n    http2 on;/' "${NGINX_SITE}"
+  fi
+fi
+
 log "Hardening filesystem permissions"
 chown -R www-data:www-data "${NEXTCLOUD_DIR}"
 find "${NEXTCLOUD_DIR}" -type d -exec chmod 750 {} \;
@@ -169,6 +188,7 @@ chmod 644 /etc/cron.d/nextcloud
 log "Restarting services"
 systemctl restart redis-server
 systemctl restart "${PHP_FPM_SERVICE}" 2>/dev/null || systemctl restart "php${PHP_VERSION}-fpm"
+nginx -t
 systemctl reload nginx
 
 log "Checks"
