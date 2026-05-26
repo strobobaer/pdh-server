@@ -1,0 +1,17 @@
+.git
+.github
+bin
+build
+dist
+uploads
+*.log
+*.pid
+.env
+.env.*
+!.env.example
+config.yaml
+config.local.yaml
+.DS_Store
+Thumbs.db
+.vscode
+.idea
