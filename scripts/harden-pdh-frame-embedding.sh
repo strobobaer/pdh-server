@@ -37,7 +37,16 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 if [[ -z "${PDH_SITE}" ]]; then
-  PDH_SITE="$(grep -Rsl 'pdh.strobl-home.net\|127.0.0.1:8090\|localhost:8090' /etc/nginx/sites-available /etc/nginx/conf.d 2>/dev/null | head -n 1 || true)"
+  for candidate in /etc/nginx/sites-enabled/pdh /etc/nginx/sites-available/pdh /etc/nginx/sites-enabled/pdh.conf /etc/nginx/sites-available/pdh.conf; do
+    if [[ -f "${candidate}" ]]; then
+      PDH_SITE="${candidate}"
+      break
+    fi
+  done
+fi
+
+if [[ -z "${PDH_SITE}" ]]; then
+  PDH_SITE="$(grep -Rsl 'pdh.strobl-home.net\|127.0.0.1:8090\|localhost:8090' /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | head -n 1 || true)"
 fi
 
 if [[ -z "${PDH_SITE}" || ! -f "${PDH_SITE}" ]]; then
@@ -57,9 +66,26 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "no-referrer" always;
 NGINX
 
-if ! grep -q "${NGINX_SNIPPET}" "${PDH_SITE}"; then
-  sed -i "/proxy_pass http:\/\/127.0.0.1:8090/a\        include ${NGINX_SNIPPET};" "${PDH_SITE}"
-  sed -i "/proxy_pass http:\/\/localhost:8090/a\        include ${NGINX_SNIPPET};" "${PDH_SITE}"
+if ! grep -q "include ${NGINX_SNIPPET};" "${PDH_SITE}"; then
+  python3 - "$PDH_SITE" "$NGINX_SNIPPET" <<'PY'
+import sys
+from pathlib import Path
+site = Path(sys.argv[1])
+snippet = sys.argv[2]
+text = site.read_text()
+needle = "proxy_pass         http://127.0.0.1:8090;"
+if needle not in text:
+    needle = "proxy_pass http://127.0.0.1:8090;"
+if needle not in text:
+    needle = "proxy_pass         http://localhost:8090;"
+if needle not in text:
+    needle = "proxy_pass http://localhost:8090;"
+if needle not in text:
+    print("Could not find proxy_pass line", file=sys.stderr)
+    sys.exit(1)
+replacement = needle + "\n        include " + snippet + ";"
+site.write_text(text.replace(needle, replacement, 1))
+PY
 fi
 
 nginx -t
