@@ -24,6 +24,10 @@
     background: var(--color-main-background);
 }
 
+.pdh-app.pdh-debug {
+    top: 50px;
+}
+
 .pdh-toolbar {
     display: flex;
     align-items: center;
