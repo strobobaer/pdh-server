@@ -2,9 +2,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const el = document.getElementById('pdh-status');
   const frame = document.getElementById('pdh-frame');
   const reload = document.getElementById('pdh-reload-frame');
+  const hint = document.getElementById('pdh-frame-hint');
+
+  if (frame) {
+    frame.addEventListener('load', () => {
+      if (hint) hint.classList.remove('visible');
+    });
+  }
 
   if (reload && frame) {
     reload.addEventListener('click', () => {
+      if (hint) hint.classList.remove('visible');
       frame.src = frame.src;
     });
   }
@@ -22,9 +30,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       el.className = 'pdh-status warn';
       el.textContent = 'PDH ist nicht erreichbar: ' + (data.baseUrl || 'unbekannt');
+      if (hint) hint.classList.add('visible');
     }
   } catch (err) {
     el.className = 'pdh-status error';
     el.textContent = 'Status konnte nicht geladen werden.';
+    if (hint) hint.classList.add('visible');
   }
 });
