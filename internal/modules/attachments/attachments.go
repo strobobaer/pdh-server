@@ -180,6 +180,7 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 			".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
 			".pdf": true, ".doc": true, ".docx": true,
 			".xls": true, ".xlsx": true, ".txt": true, ".csv": true,
+			".url": true, ".webloc": true,
 		}
 		if !allowed[ext] {
 			log.Warn().Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Str("ext", ext).Msg("attachment übersprungen: dateityp nicht erlaubt")
@@ -208,7 +209,7 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 
 		mime := fh.Header.Get("Content-Type")
 		if mime == "" {
-			mime = "image/jpeg"
+			mime = "application/octet-stream"
 		}
 
 		caption := r.FormValue("caption")
