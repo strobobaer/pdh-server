@@ -2,8 +2,10 @@
 script('pdh', 'pdh-main');
 style('pdh', 'pdh-main');
 $pdhPublicUrl = $_['pdhPublicUrl'] ?? 'https://pdh.strobl-home.net';
+$debug = $_['debug'] ?? false;
 ?>
-<div id="pdh-app" class="pdh-app" data-pdh-public-url="<?php p($pdhPublicUrl); ?>">
+<div id="pdh-app" class="pdh-app<?php if ($debug) { p(' pdh-debug'); } ?>" data-pdh-public-url="<?php p($pdhPublicUrl); ?>">
+    <?php if ($debug) { ?>
     <div class="pdh-toolbar">
         <div>
             <h2>PDH</h2>
@@ -14,6 +16,7 @@ $pdhPublicUrl = $_['pdhPublicUrl'] ?? 'https://pdh.strobl-home.net';
             <a class="button" href="<?php p($pdhPublicUrl); ?>" target="_blank" rel="noreferrer noopener">Extern öffnen</a>
         </div>
     </div>
+    <?php } ?>
     <div class="pdh-frame-wrap">
         <div id="pdh-frame-hint" class="pdh-frame-hint">
             PDH konnte im eingebetteten Bereich nicht sichtbar geladen werden. Prüfe X-Frame-Options und Content-Security-Policy der PDH-Nginx-Site.
