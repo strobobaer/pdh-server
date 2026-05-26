@@ -1,4 +1,4 @@
-.PHONY: run build tidy deploy push
+.PHONY: run build tidy fmt test check deploy push
 
 run:
 	go run ./cmd/server/...
@@ -9,7 +9,23 @@ build:
 tidy:
 	go mod tidy
 
-deploy: build
+fmt:
+	gofmt -w .
+
+test:
+	go test ./...
+
+check:
+	@files=$$(gofmt -l .); \
+	if [ -n "$$files" ]; then \
+		echo "Die folgenden Dateien sind nicht gofmt-formatiert:"; \
+		echo "$$files"; \
+		exit 1; \
+	fi
+	go test ./...
+	go build ./cmd/server/...
+
+deploy: check build
 	sudo systemctl restart pdh
 	@sleep 2
 	@sudo systemctl status pdh --no-pager -l | head -8
