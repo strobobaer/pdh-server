@@ -2,15 +2,32 @@
 Reusable action button widgets for PDH.
 
 Icons are rendered with OpenUI5 Web Components Icons via <ui5-icon>.
-The module imports are intentionally included in this widget file so the buttons
-work on every page that uses the widget templates.
+The loader is guarded so pages with many toolbars only import OpenUI5 once.
 */}}
 
 {{define "action-button"}}{{template "icon-button" .}}{{end}}
 
 {{define "ui5-icon-loader"}}
-<script type="module" src="https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Icon.js"></script>
-<script type="module" src="https://cdn.jsdelivr.net/npm/@ui5/webcomponents-icons/dist/AllIcons.js"></script>
+<script>
+(function(){
+  if (window.__pdhUi5IconsLoading) return;
+  window.__pdhUi5IconsLoading = true;
+
+  var style = document.createElement('style');
+  style.textContent = 'ui5-icon{width:18px;height:18px;color:currentColor;display:inline-flex;align-items:center;justify-content:center}ui5-icon:not(:defined){display:none}ui5-icon:not(:defined)+.btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}';
+  document.head.appendChild(style);
+
+  function loadModule(src){
+    var s = document.createElement('script');
+    s.type = 'module';
+    s.src = src;
+    document.head.appendChild(s);
+  }
+
+  loadModule('https://cdn.jsdelivr.net/npm/@ui5/webcomponents@2/dist/Icon.js');
+  loadModule('https://cdn.jsdelivr.net/npm/@ui5/webcomponents-icons@2/dist/AllIcons.js');
+})();
+</script>
 {{end}}
 
 {{define "icon-button"}}
