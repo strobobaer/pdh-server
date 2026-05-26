@@ -4,7 +4,7 @@
     <name>PDH</name>
     <summary>Prozess Data Hub integration for Nextcloud</summary>
     <description>Shows PDH inside Nextcloud and prepares the bridge for files, tickets, faults and maintenance.</description>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <licence>agpl</licence>
     <author mail="admin@strobl-home.net">PDH</author>
     <namespace>PDH</namespace>
