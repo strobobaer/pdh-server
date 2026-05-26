@@ -126,15 +126,19 @@ func (r *Repository) SetRecordImage(ctx context.Context, refType, refID, id stri
 	return err
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID string) (string, error) {
-	var fp string
-	err := r.db.QueryRow(ctx, `DELETE FROM attachments WHERE id=$1 AND created_by=$2 RETURNING filepath`, id, userID).Scan(&fp)
+func (r *Repository) Delete(ctx context.Context, id, userID string) (*Attachment, error) {
+	a := &Attachment{}
+	err := r.db.QueryRow(ctx, `
+		DELETE FROM attachments
+		WHERE id=$1 AND created_by=$2
+		RETURNING id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, COALESCE(caption,''), created_by, created_at`, id, userID).
+		Scan(&a.ID, &a.RefType, &a.RefID, &a.Filename, &a.Filepath, &a.Mimetype, &a.SizeBytes, &a.Caption, &a.CreatedBy, &a.CreatedAt)
 	if err == nil {
 		_, _ = r.db.Exec(ctx, `UPDATE tickets SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
 		_, _ = r.db.Exec(ctx, `UPDATE faults SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
 		_, _ = r.db.Exec(ctx, `UPDATE maintenance_tasks SET record_image_attachment_id=NULL WHERE record_image_attachment_id=$1`, id)
 	}
-	return fp, err
+	return a, err
 }
 
 // Service
@@ -249,9 +253,25 @@ func (s *Service) List(ctx context.Context, refType, refID string) ([]*Attachmen
 }
 
 func (s *Service) Delete(ctx context.Context, id, userID string) error {
-	fp, _ := s.repo.Delete(ctx, id, userID)
-	if fp != "" {
-		os.Remove(filepath.Join(UploadDir, fp))
+	a, err := s.repo.Delete(ctx, id, userID)
+	if err != nil {
+		log.Warn().Err(err).Str("attachment_id", id).Str("user_id", userID).Msg("attachment löschen: datensatz nicht gefunden oder nicht erlaubt")
+		return nil
+	}
+	if a.Filepath != "" {
+		if err := os.Remove(filepath.Join(UploadDir, a.Filepath)); err != nil && !os.IsNotExist(err) {
+			log.Error().Err(err).Str("attachment_id", a.ID).Str("ref_type", a.RefType).Str("ref_id", a.RefID).Str("filename", a.Filename).Str("path", a.Filepath).Msg("attachment lokale datei löschen fehlgeschlagen")
+		} else {
+			log.Info().Str("attachment_id", a.ID).Str("ref_type", a.RefType).Str("ref_id", a.RefID).Str("filename", a.Filename).Msg("attachment lokale datei gelöscht")
+		}
+	}
+	ncClient := nextcloudClientFromEnv()
+	if ncClient.Enabled() {
+		if p, err := ncClient.DeleteAttachment(ctx, a.RefType, a.RefID, a.Filename); err != nil {
+			log.Error().Err(err).Str("attachment_id", a.ID).Str("ref_type", a.RefType).Str("ref_id", a.RefID).Str("filename", a.Filename).Str("nextcloud_path", p).Msg("attachment nextcloud webdav löschen fehlgeschlagen")
+		} else {
+			log.Info().Str("attachment_id", a.ID).Str("ref_type", a.RefType).Str("ref_id", a.RefID).Str("filename", a.Filename).Str("nextcloud_path", p).Msg("attachment aus nextcloud gelöscht")
+		}
 	}
 	return nil
 }
