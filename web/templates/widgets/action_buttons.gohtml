@@ -14,18 +14,13 @@ The loader is guarded so pages with many toolbars only import OpenUI5 once.
   window.__pdhUi5IconsLoading = true;
 
   var style = document.createElement('style');
-  style.textContent = 'ui5-icon{width:18px;height:18px;color:currentColor;display:inline-flex;align-items:center;justify-content:center}ui5-icon:not(:defined){display:none}ui5-icon:not(:defined)+.btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}';
+  style.textContent = 'ui5-icon{width:18px;height:18px;color:currentColor;display:inline-flex;align-items:center;justify-content:center}ui5-icon:not(:defined){display:none}ui5-icon:not(:defined)+.btn-icon-glyph{display:inline-flex;align-items:center;justify-content:center}ui5-icon:defined+.btn-icon-glyph{display:none!important}';
   document.head.appendChild(style);
 
-  function loadModule(src){
-    var s = document.createElement('script');
-    s.type = 'module';
-    s.src = src;
-    document.head.appendChild(s);
-  }
-
-  loadModule('https://cdn.jsdelivr.net/npm/@ui5/webcomponents@2/dist/Icon.js');
-  loadModule('https://cdn.jsdelivr.net/npm/@ui5/webcomponents-icons@2/dist/AllIcons.js');
+  var s = document.createElement('script');
+  s.type = 'module';
+  s.textContent = "import 'https://esm.sh/@ui5/webcomponents@2/dist/Icon.js';\nimport 'https://esm.sh/@ui5/webcomponents-icons@2/dist/AllIcons.js';";
+  document.head.appendChild(s);
 })();
 </script>
 {{end}}
