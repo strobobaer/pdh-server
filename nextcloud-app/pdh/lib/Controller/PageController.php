@@ -24,10 +24,12 @@ class PageController extends Controller {
     public function index(): TemplateResponse {
         $pdhPublicUrl = $this->config->getAppValue('pdh', 'public_url', 'https://pdh.strobl-home.net');
         $pdhOrigin = $this->originFromUrl($pdhPublicUrl);
+        $debug = $this->request->getParam('debug', '0') === '1' || $this->request->getParam('toolbar', '0') === '1';
 
         $response = new TemplateResponse('pdh', 'main', [
             'userId' => $this->userId ?? '',
             'pdhPublicUrl' => $pdhPublicUrl,
+            'debug' => $debug,
         ]);
 
         $policy = new ContentSecurityPolicy();
