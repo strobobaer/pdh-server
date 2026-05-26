@@ -7,6 +7,7 @@ set -Eeuo pipefail
 # - APCu available for Nextcloud occ/CLI
 # - Nginx local HTTPS origin on 127.0.0.1:8436
 # - Nextcloud overwrite/trusted domain config for Cloudflare HTTPS
+# - disables older conflicting nextcloud.conf site symlink when present
 
 DOMAIN="cloud.strobl-home.net"
 ORIGIN_HOST="127.0.0.1"
@@ -90,10 +91,14 @@ log "Using PHP ${PHP_VERSION} via ${PHP_SOCKET}"
 
 log "Enabling APCu for PHP CLI and FPM"
 mkdir -p "/etc/php/${PHP_VERSION}/cli/conf.d" "/etc/php/${PHP_VERSION}/fpm/conf.d"
-printf 'apc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/cli/conf.d/99-nextcloud-apcu.ini"
-printf 'apc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/fpm/conf.d/99-nextcloud-apcu.ini"
-phpenmod apcu || true
+printf 'extension=apcu.so\napc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/cli/conf.d/99-nextcloud-apcu.ini"
+printf 'extension=apcu.so\napc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/fpm/conf.d/99-nextcloud-apcu.ini"
+phpenmod -v "${PHP_VERSION}" apcu || true
 systemctl restart "${PHP_FPM_SERVICE}" 2>/dev/null || systemctl restart "php${PHP_VERSION}-fpm"
+
+if ! php -d apc.enable_cli=1 -m | grep -qi '^apcu$'; then
+  warn "APCu is still not visible in PHP CLI. Check: php -m | grep -i apcu"
+fi
 
 log "Preparing local HTTPS certificate"
 SSL_DIR="$(dirname "${SSL_CERT}")"
@@ -109,17 +114,23 @@ if [[ ! -f "${SSL_CERT}" || ! -f "${SSL_KEY}" ]]; then
   warn "Generated self-signed local origin cert. In Cloudflare Tunnel set noTLSVerify=true."
 fi
 
+log "Disabling conflicting old Nextcloud Nginx site symlink if present"
+if [[ -L /etc/nginx/sites-enabled/nextcloud.conf ]]; then
+  rm -f /etc/nginx/sites-enabled/nextcloud.conf
+fi
+
 log "Writing Nginx Cloudflare origin site"
 NGINX_SITE="/etc/nginx/sites-available/nextcloud-cloudflare.conf"
 [[ -f "${NGINX_SITE}" ]] && cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d%H%M%S)"
 
 cat > "${NGINX_SITE}" <<NGINX
-upstream nextcloud_php_handler {
+upstream nextcloud_cloudflare_php_handler {
     server unix:${PHP_SOCKET};
 }
 
 server {
-    listen ${ORIGIN_HOST}:${ORIGIN_PORT} ssl http2;
+    listen ${ORIGIN_HOST}:${ORIGIN_PORT} ssl;
+    http2 on;
     server_name ${DOMAIN} localhost;
 
     ssl_certificate ${SSL_CERT};
@@ -169,7 +180,7 @@ server {
         fastcgi_param HTTPS on;
         fastcgi_param modHeadersAvailable true;
         fastcgi_param front_controller_active true;
-        fastcgi_pass nextcloud_php_handler;
+        fastcgi_pass nextcloud_cloudflare_php_handler;
         fastcgi_intercept_errors on;
         fastcgi_request_buffering off;
         fastcgi_max_temp_file_size 0;
