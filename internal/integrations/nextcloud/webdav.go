@@ -27,7 +27,7 @@ type Client struct {
 
 func NewClient(cfg Config) *Client {
 	return &Client{
-		cfg: cfg,
+		cfg:        cfg,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -49,6 +49,14 @@ func (c *Client) UploadAttachment(ctx context.Context, refType, refID, filename 
 		return "", err
 	}
 	return remotePath, nil
+}
+
+func (c *Client) DeleteAttachment(ctx context.Context, refType, refID, filename string) (string, error) {
+	if !c.Enabled() {
+		return "", nil
+	}
+	remotePath := path.Join(c.remoteFolder(refType, refID), safeName(filename))
+	return remotePath, c.delete(ctx, remotePath)
 }
 
 func (c *Client) remoteFolder(refType, refID string) string {
@@ -126,6 +134,24 @@ func (c *Client) put(ctx context.Context, remotePath string, r io.Reader) error 
 	}
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	return fmt.Errorf("nextcloud PUT %s: %s %s", remotePath, resp.Status, string(bodyBytes))
+}
+
+func (c *Client) delete(ctx context.Context, remotePath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.webdavURL(remotePath), nil)
+	if err != nil {
+		return err
+	}
+	c.auth(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	return fmt.Errorf("nextcloud DELETE %s: %s %s", remotePath, resp.Status, string(body))
 }
 
 func (c *Client) webdavURL(remotePath string) string {
