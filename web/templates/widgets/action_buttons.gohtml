@@ -1,91 +1,48 @@
 {{/*
 Reusable action button widgets for PDH.
 
-Goal:
-- one visual and semantic button system for all modules
-- usable in forms, tables, cards, modals and HTMX fragments
-- supports normal links, submit buttons, plain buttons and HTMX actions
-
-Supported actions:
-- new
-- refresh
-- expand
-- filter
-- analyze
-- edit
-- view
-- copy
-- history
-- more
-- start
-- stop
-- book
-- delete
-- delete-mark
-- activate
-- deactivate
-- done
-- cancel
-- save
-- back
-- send
-
-Expected data fields:
-Action      string  // new, refresh, expand, filter, analyze, edit, view, copy, history, more, start, stop, book, delete, delete-mark, activate, deactivate, done, cancel, save, back, send
-ID          string  // optional element id
-Label       string  // optional; falls back to the default action label
-ShowLabel   bool    // optional; only filter shows a label by default, all other actions are icon-only
-Href        string  // optional link target
-Type        string  // optional button type: button, submit, reset
-Class       string  // optional extra classes
-Style       string  // optional inline style
-Confirm     string  // optional confirm text
-OnClick     string
-HxGet       string
-HxPost      string
-HxPut       string
-HxDelete    string
-HxTarget    string
-HxSwap      string
-HxTrigger   string
-HxVals      string
-HxConfirm   string
-HxIndicator string
-HxOnAfterRequest string
-Disabled    bool
+Icons are rendered with OpenUI5 Web Components Icons via <ui5-icon>.
+The module imports are intentionally included in this widget file so the buttons
+work on every page that uses the widget templates.
 */}}
 
 {{define "action-button"}}{{template "icon-button" .}}{{end}}
 
+{{define "ui5-icon-loader"}}
+<script type="module" src="https://cdn.jsdelivr.net/npm/@ui5/webcomponents/dist/Icon.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@ui5/webcomponents-icons/dist/AllIcons.js"></script>
+{{end}}
+
 {{define "icon-button"}}
+{{template "ui5-icon-loader" .}}
 {{- $action := .Action -}}
 {{- $label := .Label -}}
-{{- $icon := "ti ti-circle" -}}
+{{- $icon := "question-mark" -}}
 {{- $fallback := "?" -}}
 {{- $variant := "btn" -}}
-{{- if eq $action "new" -}}{{- $icon = "ti ti-plus" -}}{{- $fallback = "+" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- if eq $action "refresh" -}}{{- $icon = "ti ti-refresh" -}}{{- $fallback = "R" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
-{{- if eq $action "expand" -}}{{- $icon = "ti ti-arrows-maximize" -}}{{- $fallback = "[]" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
-{{- if eq $action "filter" -}}{{- $icon = "ti ti-filter" -}}{{- $fallback = "F" -}}{{- if not $label -}}{{- $label = "Filtern" -}}{{- end -}}{{- end -}}
-{{- if eq $action "analyze" -}}{{- $icon = "ti ti-brain" -}}{{- $fallback = "AI" -}}{{- if not $label -}}{{- $label = "Analysieren" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- if eq $action "edit" -}}{{- $icon = "ti ti-pencil" -}}{{- $fallback = "E" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
-{{- if eq $action "view" -}}{{- $icon = "ti ti-eye" -}}{{- $fallback = "O" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
-{{- if eq $action "copy" -}}{{- $icon = "ti ti-copy" -}}{{- $fallback = "C" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
-{{- if eq $action "history" -}}{{- $icon = "ti ti-history" -}}{{- $fallback = "H" -}}{{- if not $label -}}{{- $label = "Historie" -}}{{- end -}}{{- end -}}
-{{- if eq $action "more" -}}{{- $icon = "ti ti-dots" -}}{{- $fallback = "..." -}}{{- if not $label -}}{{- $label = "Mehr" -}}{{- end -}}{{- end -}}
-{{- if eq $action "start" -}}{{- $icon = "ti ti-player-play" -}}{{- $fallback = ">" -}}{{- if not $label -}}{{- $label = "Starten" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- if eq $action "stop" -}}{{- $icon = "ti ti-player-stop" -}}{{- $fallback = "[]" -}}{{- if not $label -}}{{- $label = "Stoppen" -}}{{- end -}}{{- end -}}
-{{- if eq $action "book" -}}{{- $icon = "ti ti-arrows-exchange" -}}{{- $fallback = "B" -}}{{- if not $label -}}{{- $label = "Buchen" -}}{{- end -}}{{- end -}}
-{{- if eq $action "delete" -}}{{- $icon = "ti ti-trash" -}}{{- $fallback = "D" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
-{{- if eq $action "delete-mark" -}}{{- $icon = "ti ti-trash-x" -}}{{- $fallback = "DX" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
-{{- if eq $action "activate" -}}{{- $icon = "ti ti-circle-arrow-up" -}}{{- $fallback = "^" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
-{{- if eq $action "deactivate" -}}{{- $icon = "ti ti-circle-arrow-down" -}}{{- $fallback = "v" -}}{{- if not $label -}}{{- $label = "Deaktivieren" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
-{{- if eq $action "done" -}}{{- $icon = "ti ti-check" -}}{{- $fallback = "OK" -}}{{- if not $label -}}{{- $label = "Erledigen" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
-{{- if eq $action "cancel" -}}{{- $icon = "ti ti-x" -}}{{- $fallback = "X" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
-{{- if eq $action "save" -}}{{- $icon = "ti ti-device-floppy" -}}{{- $fallback = "S" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- if eq $action "back" -}}{{- $icon = "ti ti-arrow-left" -}}{{- $fallback = "<" -}}{{- if not $label -}}{{- $label = "Zurück" -}}{{- end -}}{{- end -}}
-{{- if eq $action "send" -}}{{- $icon = "ti ti-send" -}}{{- $fallback = ">" -}}{{- if not $label -}}{{- $label = "Senden" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- $showInlineLabel := or .ShowLabel (eq $action "filter") -}}
+{{- if eq $action "new" -}}{{- $icon = "add" -}}{{- $fallback = "+" -}}{{- if not $label -}}{{- $label = "Neu" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "refresh" -}}{{- $icon = "refresh" -}}{{- $fallback = "R" -}}{{- if not $label -}}{{- $label = "Aktualisieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "expand" -}}{{- $icon = "full-screen" -}}{{- $fallback = "[]" -}}{{- if not $label -}}{{- $label = "Aufklappen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "filter" -}}{{- $icon = "filter" -}}{{- $fallback = "F" -}}{{- if not $label -}}{{- $label = "Filtern" -}}{{- end -}}{{- end -}}
+{{- if eq $action "analyze" -}}{{- $icon = "intelligence" -}}{{- $fallback = "AI" -}}{{- if not $label -}}{{- $label = "Analysieren" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "edit" -}}{{- $icon = "edit" -}}{{- $fallback = "E" -}}{{- if not $label -}}{{- $label = "Bearbeiten" -}}{{- end -}}{{- end -}}
+{{- if eq $action "view" -}}{{- $icon = "show" -}}{{- $fallback = "O" -}}{{- if not $label -}}{{- $label = "Details" -}}{{- end -}}{{- end -}}
+{{- if eq $action "copy" -}}{{- $icon = "copy" -}}{{- $fallback = "C" -}}{{- if not $label -}}{{- $label = "Kopieren" -}}{{- end -}}{{- end -}}
+{{- if eq $action "history" -}}{{- $icon = "history" -}}{{- $fallback = "H" -}}{{- if not $label -}}{{- $label = "Historie" -}}{{- end -}}{{- end -}}
+{{- if eq $action "more" -}}{{- $icon = "overflow" -}}{{- $fallback = "..." -}}{{- if not $label -}}{{- $label = "Mehr" -}}{{- end -}}{{- end -}}
+{{- if eq $action "start" -}}{{- $icon = "media-play" -}}{{- $fallback = ">" -}}{{- if not $label -}}{{- $label = "Starten" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "stop" -}}{{- $icon = "media-pause" -}}{{- $fallback = "[]" -}}{{- if not $label -}}{{- $label = "Stoppen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "book" -}}{{- $icon = "switch-classes" -}}{{- $fallback = "B" -}}{{- if not $label -}}{{- $label = "Buchen" -}}{{- end -}}{{- end -}}
+{{- if eq $action "delete" -}}{{- $icon = "delete" -}}{{- $fallback = "D" -}}{{- if not $label -}}{{- $label = "Löschen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
+{{- if eq $action "delete-mark" -}}{{- $icon = "delete" -}}{{- $fallback = "DX" -}}{{- if not $label -}}{{- $label = "Löschvormerkung" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "activate" -}}{{- $icon = "accept" -}}{{- $fallback = "^" -}}{{- if not $label -}}{{- $label = "Aktivieren" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "deactivate" -}}{{- $icon = "decline" -}}{{- $fallback = "v" -}}{{- if not $label -}}{{- $label = "Deaktivieren" -}}{{- end -}}{{- $variant = "btn btn-warning" -}}{{- end -}}
+{{- if eq $action "done" -}}{{- $icon = "accept" -}}{{- $fallback = "OK" -}}{{- if not $label -}}{{- $label = "Erledigen" -}}{{- end -}}{{- $variant = "btn btn-success" -}}{{- end -}}
+{{- if eq $action "cancel" -}}{{- $icon = "decline" -}}{{- $fallback = "X" -}}{{- if not $label -}}{{- $label = "Abbrechen" -}}{{- end -}}{{- $variant = "btn btn-danger" -}}{{- end -}}
+{{- if eq $action "save" -}}{{- $icon = "save" -}}{{- $fallback = "S" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- if eq $action "back" -}}{{- $icon = "nav-back" -}}{{- $fallback = "<" -}}{{- if not $label -}}{{- $label = "Zurück" -}}{{- end -}}{{- end -}}
+{{- if eq $action "send" -}}{{- $icon = "paper-plane" -}}{{- $fallback = ">" -}}{{- if not $label -}}{{- $label = "Senden" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
+{{- $showInlineLabel := eq $action "filter" -}}
 {{- if .Href }}
 <a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if $showInlineLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
@@ -100,7 +57,7 @@ Disabled    bool
    {{if .HxConfirm}}hx-confirm="{{.HxConfirm}}"{{end}}
    {{if .HxIndicator}}hx-indicator="{{.HxIndicator}}"{{end}}
    {{if .HxOnAfterRequest}}hx-on::after-request="{{safeJS .HxOnAfterRequest}}"{{end}}>
-  <i class="{{$icon}}" aria-hidden="true"></i><span class="btn-icon-glyph" aria-hidden="true">{{$fallback}}</span>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
+  <ui5-icon name="{{$icon}}" aria-hidden="true"></ui5-icon><span class="btn-icon-glyph" aria-hidden="true">{{$fallback}}</span>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
 </a>
 {{- else }}
 <button type="{{if .Type}}{{.Type}}{{else}}button{{end}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if $showInlineLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
@@ -117,12 +74,13 @@ Disabled    bool
    {{if .HxConfirm}}hx-confirm="{{.HxConfirm}}"{{end}}
    {{if .HxIndicator}}hx-indicator="{{.HxIndicator}}"{{end}}
    {{if .HxOnAfterRequest}}hx-on::after-request="{{safeJS .HxOnAfterRequest}}"{{end}}>
-  <i class="{{$icon}}" aria-hidden="true"></i><span class="btn-icon-glyph" aria-hidden="true">{{$fallback}}</span>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
+  <ui5-icon name="{{$icon}}" aria-hidden="true"></ui5-icon><span class="btn-icon-glyph" aria-hidden="true">{{$fallback}}</span>{{if $showInlineLabel}}<span class="btn-icon-label">{{$label}}</span>{{else}}<span class="sr-only">{{$label}}</span>{{end}}
 </button>
 {{- end }}
 {{end}}
 
 {{define "icon-button-toolbar"}}
+{{template "ui5-icon-loader" .}}
 <div class="widget-icon-toolbar {{.Class}}" style="{{css .Style}}" {{if .Label}}aria-label="{{.Label}}"{{end}}>
   {{range .Items}}{{template "icon-button" .}}{{end}}
 </div>
