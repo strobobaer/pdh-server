@@ -50,11 +50,25 @@ git merge origin/main
 
 ## 5. Build pruefen
 
+Standardpruefung:
+
 ```bash
-go mod tidy
-gofmt -w .
+make check
+```
+
+Das fuehrt aus:
+
+```bash
+gofmt -l .
 go test ./...
 go build ./cmd/server/...
+```
+
+Wenn du bewusst formatieren willst:
+
+```bash
+make fmt
+make check
 ```
 
 ## 6. Migrationen pruefen
@@ -75,6 +89,14 @@ psql "postgres://pdh:SicheresPasswortAendern@localhost:5432/pdh?sslmode=disable"
 Passwort aus `.env` verwenden.
 
 ## 7. Dienst neu starten
+
+Sicherer Weg mit Vorpruefung:
+
+```bash
+make deploy
+```
+
+Oder manuell:
 
 ```bash
 sudo systemctl restart pdh
@@ -113,7 +135,7 @@ Dann vorherigen Commit auswaehlen und temporaer zuruecksetzen:
 
 ```bash
 git checkout <commit-sha>
-go build ./cmd/server/...
+make check
 sudo systemctl restart pdh
 ```
 
@@ -137,6 +159,6 @@ Bei Konflikten:
 ```bash
 git status
 nano <konflikt-datei>
-gofmt -w .
-go build ./cmd/server/...
+make fmt
+make check
 ```
