@@ -89,11 +89,12 @@ PHP_FPM_SERVICE="$(basename "${PHP_SOCKET}" .sock)"
 PHP_VERSION="$(basename "${PHP_SOCKET}" | sed -E 's/^php([0-9]+\.[0-9]+)-fpm\.sock$/\1/')"
 log "Using PHP ${PHP_VERSION} via ${PHP_SOCKET}"
 
-log "Enabling APCu for PHP CLI and FPM"
-mkdir -p "/etc/php/${PHP_VERSION}/cli/conf.d" "/etc/php/${PHP_VERSION}/fpm/conf.d"
-printf 'extension=apcu.so\napc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/cli/conf.d/99-nextcloud-apcu.ini"
-printf 'extension=apcu.so\napc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/fpm/conf.d/99-nextcloud-apcu.ini"
+log "Cleaning and enabling APCu for PHP CLI/FPM"
+rm -f "/etc/php/${PHP_VERSION}/cli/conf.d/99-nextcloud-apcu.ini" "/etc/php/${PHP_VERSION}/fpm/conf.d/99-nextcloud-apcu.ini"
 phpenmod -v "${PHP_VERSION}" apcu || true
+mkdir -p "/etc/php/${PHP_VERSION}/cli/conf.d" "/etc/php/${PHP_VERSION}/fpm/conf.d"
+printf 'apc.enable_cli=1\n' > "/etc/php/${PHP_VERSION}/cli/conf.d/99-nextcloud-apcu-cli.ini"
+printf '; APCu is loaded by phpenmod. Do not load extension again here.\napc.enabled=1\n' > "/etc/php/${PHP_VERSION}/fpm/conf.d/99-nextcloud-apcu-fpm.ini"
 systemctl restart "${PHP_FPM_SERVICE}" 2>/dev/null || systemctl restart "php${PHP_VERSION}-fpm"
 
 if ! php -d apc.enable_cli=1 -m | grep -qi '^apcu$'; then
