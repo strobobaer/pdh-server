@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>pdh</id>
+    <name>PDH</name>
+    <summary>Prozess Data Hub integration for Nextcloud</summary>
+    <description>Shows PDH inside Nextcloud and prepares the bridge for files, tickets, faults and maintenance.</description>
+    <version>0.1.0</version>
+    <licence>agpl</licence>
+    <author mail="admin@strobl-home.net">PDH</author>
+    <namespace>PDH</namespace>
+    <category>integration</category>
+    <category>tools</category>
+    <dependencies>
+        <nextcloud min-version="29" max-version="33"/>
+        <php min-version="8.1"/>
+    </dependencies>
+    <navigations>
+        <navigation>
+            <name>PDH</name>
+            <route>pdh.page.index</route>
+            <icon>app.svg</icon>
+            <order>10</order>
+        </navigation>
+    </navigations>
+</info>
