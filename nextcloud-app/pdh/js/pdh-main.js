@@ -1,5 +1,14 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const el = document.getElementById('pdh-status');
+  const frame = document.getElementById('pdh-frame');
+  const reload = document.getElementById('pdh-reload-frame');
+
+  if (reload && frame) {
+    reload.addEventListener('click', () => {
+      frame.src = frame.src;
+    });
+  }
+
   if (!el) return;
 
   try {
