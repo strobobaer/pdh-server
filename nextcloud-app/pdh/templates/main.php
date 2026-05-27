@@ -3,6 +3,7 @@ script('pdh', 'pdh-main');
 style('pdh', 'pdh-main');
 $pdhPublicUrl = $_['pdhPublicUrl'] ?? 'https://pdh.strobl-home.net';
 $debug = $_['debug'] ?? false;
+$ssoLaunchUrl = $_['ssoLaunchUrl'] ?? '/apps/pdh/auth/launch';
 ?>
 <div id="pdh-app" class="pdh-app<?php if ($debug) { p(' pdh-debug'); } ?>" data-pdh-public-url="<?php p($pdhPublicUrl); ?>">
     <?php if ($debug) { ?>
@@ -19,8 +20,8 @@ $debug = $_['debug'] ?? false;
     <?php } ?>
     <div class="pdh-frame-wrap">
         <div id="pdh-frame-hint" class="pdh-frame-hint">
-            PDH konnte im eingebetteten Bereich nicht sichtbar geladen werden. Prüfe X-Frame-Options und Content-Security-Policy der PDH-Nginx-Site.
+            PDH konnte im eingebetteten Bereich nicht sichtbar geladen werden. Prüfe Nextcloud-SSO, X-Frame-Options und Content-Security-Policy.
         </div>
-        <iframe id="pdh-frame" class="pdh-frame" src="<?php p($pdhPublicUrl); ?>" title="PDH" loading="eager"></iframe>
+        <iframe id="pdh-frame" class="pdh-frame" src="<?php p($ssoLaunchUrl); ?>" title="PDH" loading="eager"></iframe>
     </div>
 </div>
