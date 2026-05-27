@@ -28,6 +28,30 @@ func (r *Repository) Create(ctx context.Context, f *Fault) error {
 	).Scan(&f.ID, &f.Status, &f.DetectedAt, &f.CreatedAt, &f.UpdatedAt)
 }
 
+func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priority string) (string, error) {
+	description := f.Description
+	if len(f.Symptoms) > 0 {
+		b, _ := json.MarshalIndent(f.Symptoms, "", "  ")
+		description += "\n\nSymptome:\n" + string(b)
+	}
+	description += "\n\nQuelle: PDH-Störung " + f.ID
+
+	var id string
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7)
+		RETURNING id`,
+		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID,
+	).Scan(&id)
+	if err == nil {
+		_, _ = r.db.Exec(ctx, `
+			INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
+			VALUES ('fault', $1, 'ticket', 'ticket_id', $2, $3, 'Ticket aus Störung erstellt')`,
+			f.ID, id, f.CreatedBy)
+	}
+	return id, err
+}
+
 func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 	f := &Fault{}
 	var symptoms []byte
