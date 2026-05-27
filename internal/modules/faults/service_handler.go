@@ -31,7 +31,11 @@ func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID strin
 		ResponsibleTo:    in.ResponsibleTo,
 		CreatedBy:        userID,
 	}
-	return f, s.repo.Create(ctx, f)
+	if err := s.repo.Create(ctx, f); err != nil {
+		return f, err
+	}
+	s.syncFaultAsync(f)
+	return f, nil
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*Fault, error) {
@@ -110,7 +114,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var in CreateFaultInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
 		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
@@ -125,7 +129,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetByID(w http.ResponseWriter, r *http.Request) {
 	fault, err := h.svc.GetByID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusNotFound, "störung nicht gefunden")
+		response.Error(w, http.StatusNotFound, "stoerung nicht gefunden")
 		return
 	}
 	response.JSON(w, http.StatusOK, fault)
@@ -157,7 +161,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		History []anthropicMessage `json:"history"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
 		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
@@ -173,7 +177,7 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in ResolveInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
 		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
