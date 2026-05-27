@@ -194,27 +194,44 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		return t, err
 	}
 
+	s.syncTicketToDeckAsync(t)
+	return t, nil
+}
+
+func (s *Service) syncTicketToDeckAsync(t *Ticket) {
 	deck := nextcloud.DeckClientFromEnv()
-	if deck.Enabled() {
-		due := ""
-		if t.DueDate != nil {
-			due = t.DueDate.Format(time.RFC3339)
-		}
-		if card, err := deck.CreateTicketCard(ctx, nextcloud.DeckCardInput{
-			RefType:     "ticket",
-			RefID:       t.ID,
-			Title:       "Ticket: " + t.Title,
-			Description: t.Description,
-			Priority:    string(t.Priority),
-			DueDate:     due,
-		}); err != nil {
-			log.Error().Err(err).Str("ticket_id", t.ID).Str("title", t.Title).Msg("nextcloud deck ticket-karte erstellen fehlgeschlagen")
-		} else if card != nil {
-			log.Info().Str("ticket_id", t.ID).Int("deck_card_id", card.ID).Msg("nextcloud deck ticket-karte erstellt")
-		}
+	if !deck.Enabled() {
+		log.Debug().Str("ticket_id", t.ID).Str("title", t.Title).Msg("nextcloud deck ticket-sync deaktiviert")
+		return
 	}
 
-	return t, nil
+	due := ""
+	if t.DueDate != nil {
+		due = t.DueDate.Format(time.RFC3339)
+	}
+
+	input := nextcloud.DeckCardInput{
+		RefType:     "ticket",
+		RefID:       t.ID,
+		Title:       "Ticket: " + t.Title,
+		Description: t.Description,
+		Priority:    string(t.Priority),
+		DueDate:     due,
+	}
+
+	go func(ticketID, title string, cardInput nextcloud.DeckCardInput) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		card, err := deck.CreateTicketCard(ctx, cardInput)
+		if err != nil {
+			log.Error().Err(err).Str("ticket_id", ticketID).Str("title", title).Msg("nextcloud deck ticket-karte erstellen fehlgeschlagen")
+			return
+		}
+		if card != nil {
+			log.Info().Str("ticket_id", ticketID).Int("deck_card_id", card.ID).Msg("nextcloud deck ticket-karte erstellt")
+		}
+	}(t.ID, t.Title, input)
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*Ticket, error) {
