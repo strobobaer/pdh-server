@@ -166,6 +166,9 @@ func main() {
 	// Static uploads
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
+	// SSO routes must be mounted before the protected web UI.
+	r.Get("/sso/nextcloud", web.NextcloudSSOHandler(db.Pool, cfg.Auth.JWTSecret))
+
 	// Web UI
 	r.Mount("/", webHandler.Routes())
 
