@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
+	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -188,7 +190,31 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		Tags:             in.Tags,
 		DueDate:          in.DueDate,
 	}
-	return t, s.repo.Create(ctx, t)
+	if err := s.repo.Create(ctx, t); err != nil {
+		return t, err
+	}
+
+	deck := nextcloud.DeckClientFromEnv()
+	if deck.Enabled() {
+		due := ""
+		if t.DueDate != nil {
+			due = t.DueDate.Format(time.RFC3339)
+		}
+		if card, err := deck.CreateTicketCard(ctx, nextcloud.DeckCardInput{
+			RefType:     "ticket",
+			RefID:       t.ID,
+			Title:       "Ticket: " + t.Title,
+			Description: t.Description,
+			Priority:    string(t.Priority),
+			DueDate:     due,
+		}); err != nil {
+			log.Error().Err(err).Str("ticket_id", t.ID).Str("title", t.Title).Msg("nextcloud deck ticket-karte erstellen fehlgeschlagen")
+		} else if card != nil {
+			log.Info().Str("ticket_id", t.ID).Int("deck_card_id", card.ID).Msg("nextcloud deck ticket-karte erstellt")
+		}
+	}
+
+	return t, nil
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*Ticket, error) {
