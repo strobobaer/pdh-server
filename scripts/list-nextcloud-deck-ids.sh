@@ -17,6 +17,7 @@ BOARD_ID=""
 JSON_ONLY="0"
 
 log() { printf '\n==> %s\n' "$*"; }
+warn() { printf '\nWARN: %s\n' "$*"; }
 err() { printf '\nERROR: %s\n' "$*" >&2; }
 
 usage() {
@@ -33,9 +34,9 @@ Options:
   -h, --help            Show help
 
 Examples:
-  bash scripts/list-nextcloud-deck-ids.sh
+  sudo bash scripts/list-nextcloud-deck-ids.sh
 
-  bash scripts/list-nextcloud-deck-ids.sh --board-id 1
+  sudo bash scripts/list-nextcloud-deck-ids.sh --board-id 1
 
   bash scripts/list-nextcloud-deck-ids.sh \
     --base-url https://cloud.strobl-home.net \
@@ -58,6 +59,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -f "${ENV_FILE}" ]]; then
+  if [[ ! -r "${ENV_FILE}" ]]; then
+    err "Env file is not readable: ${ENV_FILE}. Run with sudo or pass --username/--app-password."
+    exit 1
+  fi
   # shellcheck disable=SC1090
   set -a
   source "${ENV_FILE}"
@@ -85,36 +90,80 @@ require_cmd python3
 
 api_get() {
   local path="$1"
-  curl -k -fsS \
+  local body_file code
+  body_file="$(mktemp)"
+  code="$(curl -k -sS -o "${body_file}" -w '%{http_code}' \
     -u "${USERNAME}:${APP_PASSWORD}" \
     -H 'Accept: application/json' \
     -H 'OCS-APIRequest: true' \
-    "${BASE_URL%/}${path}"
+    "${BASE_URL%/}${path}" || true)"
+  if [[ "${code}" -lt 200 || "${code}" -ge 300 ]]; then
+    err "Deck API request failed: ${path} HTTP ${code}"
+    sed 's/^/  /' "${body_file}" | head -n 30 >&2
+    rm -f "${body_file}"
+    return 1
+  fi
+  cat "${body_file}"
+  rm -f "${body_file}"
+}
+
+extract_board_ids() {
+  python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+data = json.loads(raw)
+if isinstance(data, dict) and "ocs" in data:
+    data = data.get("ocs", {}).get("data", [])
+if isinstance(data, dict) and "data" in data:
+    data = data.get("data", [])
+for board in data if isinstance(data, list) else []:
+    bid = board.get("id")
+    if bid is not None:
+        print(bid)
+'
 }
 
 print_boards() {
-  python3 - <<'PY'
+  python3 -c '
 import json, sys
-raw = sys.stdin.read()
-data = json.loads(raw or '[]')
-print('\nBoards:')
-print('BOARD_ID\tTITLE')
-for board in data:
-    print(f"{board.get('id','')}\t{board.get('title','')}")
-PY
+raw = sys.stdin.read().strip()
+data = json.loads(raw or "[]")
+if isinstance(data, dict) and "ocs" in data:
+    data = data.get("ocs", {}).get("data", [])
+if isinstance(data, dict) and "data" in data:
+    data = data.get("data", [])
+print("\nBoards:")
+print("BOARD_ID\tTITLE")
+count = 0
+for board in data if isinstance(data, list) else []:
+    print(f"{board.get("id", "")}\t{board.get("title", "")}")
+    count += 1
+if count == 0:
+    print("-\tKeine Boards gefunden")
+'
 }
 
 print_stacks() {
-  python3 - "$1" <<'PY'
+  python3 -c '
 import json, sys
 board_id = sys.argv[1]
-raw = sys.stdin.read()
-data = json.loads(raw or '[]')
-print(f'\nStacks/Listen für Board {board_id}:')
-print('STACK_ID\tTITLE')
-for stack in data:
-    print(f"{stack.get('id','')}\t{stack.get('title','')}")
-PY
+raw = sys.stdin.read().strip()
+data = json.loads(raw or "[]")
+if isinstance(data, dict) and "ocs" in data:
+    data = data.get("ocs", {}).get("data", [])
+if isinstance(data, dict) and "data" in data:
+    data = data.get("data", [])
+print(f"\nStacks/Listen fuer Board {board_id}:")
+print("STACK_ID\tTITLE")
+count = 0
+for stack in data if isinstance(data, list) else []:
+    print(f"{stack.get("id", "")}\t{stack.get("title", "")}")
+    count += 1
+if count == 0:
+    print("-\tKeine Stacks/Listen gefunden")
+' "$1"
 }
 
 log "Nextcloud Deck API"
@@ -131,13 +180,10 @@ if [[ -z "${BOARD_ID}" ]]; then
   fi
 
   log "Listing stacks for all boards"
-  python3 - <<'PY' <<< "${boards_json}" > /tmp/pdh-deck-board-ids.txt
-import json, sys
-for board in json.load(sys.stdin):
-    bid = board.get('id')
-    if bid is not None:
-        print(bid)
-PY
+  board_ids="$(printf '%s' "${boards_json}" | extract_board_ids)"
+  if [[ -z "${board_ids}" ]]; then
+    warn "No Deck boards returned. Check that the Deck app is enabled and that user ${USERNAME} has access to at least one board."
+  fi
   while IFS= read -r bid; do
     [[ -z "${bid}" ]] && continue
     stacks_json="$(api_get "/index.php/apps/deck/api/v1.0/boards/${bid}/stacks")"
@@ -146,8 +192,7 @@ PY
     else
       printf '%s' "${stacks_json}" | print_stacks "${bid}"
     fi
-  done < /tmp/pdh-deck-board-ids.txt
-  rm -f /tmp/pdh-deck-board-ids.txt
+  done <<< "${board_ids}"
 else
   log "Listing stacks for board ${BOARD_ID}"
   stacks_json="$(api_get "/index.php/apps/deck/api/v1.0/boards/${BOARD_ID}/stacks")"
