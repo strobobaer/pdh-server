@@ -92,6 +92,7 @@
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
               {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Platz" "OnClick" (printf "showAddPlace('%s')" .ID))}}
+              {{template "icon-button" (dict "Action" "delete" "OnClick" "event.stopPropagation()" "Attrs" (printf "hx-delete='/storage/locations/%s' hx-confirm='Lagerort inklusive Lagerplätze löschen?' hx-target='closest .storage-location' hx-swap='outerHTML'" .ID))}}
             </div>
           </div>
 
@@ -115,6 +116,9 @@
                   <div style="flex:1;min-width:0">
                     <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Name}}</div>
                     <div style="font-size:10px;color:var(--muted)">{{if .Capacity}}Kapazität: {{.Capacity}}{{else}}Lagerplatz{{end}}{{if .CurrentParts}} · {{.CurrentParts}} Teile{{end}}</div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
+                    {{template "icon-button" (dict "Action" "delete" "Attrs" (printf "hx-delete='/storage/places/%s' hx-confirm='Lagerplatz löschen?' hx-target='closest .storage-place' hx-swap='outerHTML'" .ID))}}
                   </div>
                 </div>
               </div>
