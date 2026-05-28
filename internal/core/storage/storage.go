@@ -157,6 +157,26 @@ func (r *Repository) DeleteWarehouse(ctx context.Context, id string) error {
 	return err
 }
 
+func (r *Repository) DeleteLocation(ctx context.Context, id string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM storage_places WHERE storage_location_id=$1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM storage_locations WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) DeletePlace(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM storage_places WHERE id=$1`, id)
+	return err
+}
+
 func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 	var wh, locs, places int
 	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM warehouses WHERE active=true`).Scan(&wh)
@@ -198,6 +218,14 @@ func (s *Service) DeleteWarehouse(ctx context.Context, id string) error {
 	return s.repo.DeleteWarehouse(ctx, id)
 }
 
+func (s *Service) DeleteLocation(ctx context.Context, id string) error {
+	return s.repo.DeleteLocation(ctx, id)
+}
+
+func (s *Service) DeletePlace(ctx context.Context, id string) error {
+	return s.repo.DeletePlace(ctx, id)
+}
+
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct{ svc *Service }
@@ -212,7 +240,9 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/{id}", h.GetTree)
 	r.Delete("/{id}", h.Delete)
 	r.Post("/{id}/locations", h.CreateLocation)
+	r.Delete("/locations/{id}", h.DeleteLocation)
 	r.Post("/locations/{id}/places", h.CreatePlace)
+	r.Delete("/places/{id}", h.DeletePlace)
 	r.Get("/stats", h.Stats)
 	return r
 }
@@ -253,7 +283,26 @@ func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	h.svc.DeleteWarehouse(r.Context(), chi.URLParam(r, "id"))
+	if err := h.svc.DeleteWarehouse(r.Context(), chi.URLParam(r, "id")); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
+}
+
+func (h *Handler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.DeleteLocation(r.Context(), chi.URLParam(r, "id")); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
+}
+
+func (h *Handler) DeletePlace(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.DeletePlace(r.Context(), chi.URLParam(r, "id")); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
 }
 
