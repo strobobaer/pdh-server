@@ -86,10 +86,7 @@
         <div style="font-size:11px;color:var(--muted)">{{.PartNumber}} · {{.Manufacturer}}</div>
       </td>
       <td style="font-size:12px;color:var(--muted)">{{.StorageLocation}}<br>{{.StoragePlace}}</td>
-      <td>
-        <div style="font-weight:500">{{.StockQty}} {{.Unit}}</div>
-        <div style="font-size:10px;color:var(--muted)">Min: {{.MinQty}}</div>
-      </td>
+      <td><div style="font-weight:500">{{.StockQty}} {{.Unit}}</div><div style="font-size:10px;color:var(--muted)">Min: {{.MinQty}}</div></td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
       <td style="white-space:nowrap">
         {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "togglePartEdit('%s')" .ID))}}
@@ -128,11 +125,7 @@
 
 {{define "context-list"}}
 {{range .LowStockParts}}
-<div class="act-item">
-  <div class="act-dot {{.StatusDot}}"></div>
-  <div class="act-text">{{.Name}}</div>
-  <span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span>
-</div>
+<div class="act-item"><div class="act-dot {{.StatusDot}}"></div><div class="act-text">{{.Name}}</div><span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span></div>
 {{end}}
 {{end}}
 
@@ -142,19 +135,33 @@ let storagePickerTarget = {loc: null, place: null};
 let storageTreeCache = null;
 let fieldDefsCache = null;
 
+async function apiData(url, options) {
+  const res = await fetch(url, Object.assign({credentials:'same-origin'}, options || {}));
+  let payload = null;
+  try { payload = await res.json(); } catch(e) { throw new Error('Keine JSON-Antwort von ' + url); }
+  if (!res.ok || payload.success === false) throw new Error(payload.error || payload.message || ('HTTP ' + res.status));
+  return Array.isArray(payload) ? payload : (payload.data !== undefined ? payload.data : payload);
+}
+
 function toggleFieldAdmin(){ const el=document.getElementById('field-admin'); el.style.display=el.style.display==='none'?'block':'none'; if(el.style.display==='block') loadFieldDefs(); }
 function togglePartEdit(id){ const el=document.getElementById('edit-'+id); el.style.display=el.style.display==='none'?'table-row':'none'; if(el.style.display==='table-row') loadStorageTree(); }
 function openStoragePicker(locId, placeId){ storagePickerTarget={loc:locId, place:placeId}; document.getElementById('storage-picker').style.display='block'; loadStorageTree(); }
 function closeStoragePicker(){ document.getElementById('storage-picker').style.display='none'; }
 
 async function loadStorageTree(){
-  if(storageTreeCache){ renderStorageTree(storageTreeCache); return; }
-  const r = await fetch('/api/v1/storage/', {credentials:'same-origin'});
-  storageTreeCache = await r.json();
-  renderStorageTree(storageTreeCache);
+  const root=document.getElementById('storage-picker-tree');
+  try {
+    if(storageTreeCache){ renderStorageTree(storageTreeCache); return; }
+    root.innerHTML = 'Lade Lagerbaum...';
+    storageTreeCache = await apiData('/api/v1/storage/');
+    renderStorageTree(storageTreeCache);
+  } catch(e) {
+    root.innerHTML = '<div style="color:var(--red)">Lagerbaum konnte nicht geladen werden: '+escapeHtml(e.message)+'</div>';
+  }
 }
 function renderStorageTree(warehouses){
   const root=document.getElementById('storage-picker-tree'); if(!root) return;
+  if(!Array.isArray(warehouses) || warehouses.length===0){ root.innerHTML='<div style="color:var(--muted)">Keine Lager vorhanden</div>'; return; }
   root.innerHTML = warehouses.map(w => `
     <div style="margin-bottom:8px">
       <div style="font-weight:600;color:var(--fg);padding:6px 0">${escapeHtml(w.name||'Lager')}</div>
@@ -168,19 +175,26 @@ function renderStorageTree(warehouses){
 function selectStorage(loc, place){ document.getElementById(storagePickerTarget.loc).value=loc; document.getElementById(storagePickerTarget.place).value=place; closeStoragePicker(); }
 
 async function loadFieldDefs(){
-  const r=await fetch('/api/v1/inventory/fields', {credentials:'same-origin'}); fieldDefsCache=await r.json();
-  const list=document.getElementById('field-def-list'); if(list) list.innerHTML = fieldDefsCache.length ? fieldDefsCache.map(f=>`<span class="badge b-blue" style="margin-right:4px">${escapeHtml(f.name)}</span>`).join('') : 'Noch keine freien Felder angelegt';
+  const list=document.getElementById('field-def-list');
+  try {
+    fieldDefsCache=await apiData('/api/v1/inventory/fields');
+    list.innerHTML = fieldDefsCache.length ? fieldDefsCache.map(f=>`<span class="badge b-blue" style="margin-right:4px">${escapeHtml(f.name)}</span>`).join('') : 'Noch keine freien Felder angelegt';
+  } catch(e) { if(list) list.innerHTML='<span style="color:var(--red)">Felder konnten nicht geladen werden: '+escapeHtml(e.message)+'</span>'; }
 }
 async function loadPartFields(id){
   const box=document.getElementById('custom-fields-'+id); box.innerHTML='Lade Stammdatenfelder...';
-  const r=await fetch('/api/v1/inventory/'+id+'/fields', {credentials:'same-origin'}); const fields=await r.json();
-  box.innerHTML = `<div class="grid2">${fields.map(f=>`<div class="form-group"><label class="form-label">${escapeHtml(f.name)}</label><input data-field-id="${f.field_id}" class="form-input custom-field-input" value="${escapeHtml(f.value||'')}"></div>`).join('')}</div>`;
+  try {
+    const fields=await apiData('/api/v1/inventory/'+id+'/fields');
+    box.innerHTML = fields.length ? `<div class="grid2">${fields.map(f=>`<div class="form-group"><label class="form-label">${escapeHtml(f.name)}</label><input data-field-id="${f.field_id}" class="form-input custom-field-input" value="${escapeHtml(f.value||'')}"></div>`).join('')}</div>` : '<div style="color:var(--muted);font-size:12px">Keine Stammfelder angelegt.</div>';
+  } catch(e) { box.innerHTML='<span style="color:var(--red)">Stammdatenfelder konnten nicht geladen werden: '+escapeHtml(e.message)+'</span>'; }
 }
 async function savePartFields(id){
   const box=document.getElementById('custom-fields-'+id); const values={};
   box.querySelectorAll('.custom-field-input').forEach(i=>values[i.dataset.fieldId]=i.value);
-  await fetch('/api/v1/inventory/'+id+'/fields', {method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({values})});
-  alert('Stammfelder gespeichert');
+  try {
+    await apiData('/api/v1/inventory/'+id+'/fields', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({values})});
+    alert('Stammfelder gespeichert');
+  } catch(e) { alert('Stammfelder konnten nicht gespeichert werden: '+e.message); }
 }
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function escapeJs(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
