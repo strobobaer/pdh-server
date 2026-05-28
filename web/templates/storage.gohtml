@@ -18,10 +18,9 @@
   )}}
 </div>
 
-<!-- Neues Lager -->
 <div id="new-warehouse" style="display:none" class="card">
   <div class="card-title">Lager anlegen</div>
-  <form hx-post="/storage" hx-target="#warehouse-list" hx-swap="afterbegin" hx-on::after-request="this.reset();document.getElementById('new-warehouse').style.display='none'">
+  <form hx-post="/storage" hx-target="#warehouse-list" hx-swap="afterbegin" hx-on::after-request="this.reset();document.getElementById('new-warehouse').style.display='none';location.reload()">
     <div class="grid2">
       <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" placeholder="z.B. Hauptlager" required></div>
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Halle B"></div>
@@ -39,7 +38,6 @@
   </form>
 </div>
 
-<!-- Lager Baum -->
 <div id="warehouse-list" class="card" style="padding:16px;overflow-x:auto">
   {{range .Warehouses}}
   <div class="storage-node storage-warehouse" data-storage-id="{{.ID}}" style="margin-bottom:8px">
@@ -56,25 +54,35 @@
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
         {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Ort" "OnClick" (printf "showAddLocation('%s')" .ID))}}
-        {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('wh-menu-%s')" .ID))}}
-        <div id="wh-menu-{{.ID}}" style="display:none;position:absolute;right:24px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-          <button class="menu-item" onclick="showAddLocation('{{.ID}}');closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-plus"></i>Lagerort hinzufügen</button>
-          <button class="menu-item menu-danger" hx-delete="/storage/{{.ID}}" hx-confirm="Lager löschen?" hx-target="closest .storage-warehouse" hx-swap="outerHTML" onclick="closeMenu('wh-menu-{{.ID}}')"><i class="ti ti-trash"></i>Lager löschen</button>
-        </div>
+        {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditWarehouse('%s')" .ID))}}
+        {{template "icon-button" (dict "Action" "delete" "HxDelete" (printf "/api/v1/storage/%s" .ID) "HxConfirm" "Lager löschen?" "HxTarget" "closest .storage-warehouse" "HxSwap" "delete")}}
       </div>
     </div>
 
-    <!-- Neuer Lagerort Form -->
+    <div id="edit-warehouse-{{.ID}}" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0 8px 36px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px">Lager bearbeiten</div>
+      <form hx-put="/api/v1/storage/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()">
+        <div class="grid2">
+          <input name="name" class="form-input" value="{{.Name}}" required>
+          <input name="location" class="form-input" value="{{.Location}}" placeholder="Standort">
+          <input name="description" class="form-input" value="{{.Description}}" placeholder="Beschreibung" style="grid-column:1/-1">
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+          {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" (printf "showEditWarehouse('%s')" .ID))}}
+          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+        </div>
+      </form>
+    </div>
+
     <div id="add-loc-{{.ID}}" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0 8px 36px">
       <div style="font-size:12px;font-weight:600;margin-bottom:8px">Lagerort hinzufügen</div>
-      <form hx-post="/storage/{{.ID}}/locations-web" hx-target="#locs-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:8px">
+      <form hx-post="/storage/{{.ID}}/locations-web" hx-target="#locs-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset();location.reload()" style="display:flex;gap:8px">
         <input name="name" class="form-input" placeholder="z.B. Regal A" required style="flex:1">
         <input name="description" class="form-input" placeholder="Beschreibung" style="flex:1">
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Hinzufügen")}}
       </form>
     </div>
 
-    <!-- Lagerorte -->
     <div id="storage-children-warehouse-{{.ID}}" style="margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
       <div id="locs-{{.ID}}">
         {{range .Locations}}
@@ -92,20 +100,29 @@
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
               {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Platz" "OnClick" (printf "showAddPlace('%s')" .ID))}}
-              {{template "icon-button" (dict "Action" "delete" "OnClick" "event.stopPropagation()" "Attrs" (printf "hx-delete='/storage/locations/%s' hx-confirm='Lagerort inklusive Lagerplätze löschen?' hx-target='closest .storage-location' hx-swap='outerHTML'" .ID))}}
+              {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditLocation('%s')" .ID))}}
+              {{template "icon-button" (dict "Action" "delete" "HxDelete" (printf "/api/v1/storage/locations/%s" .ID) "HxConfirm" "Lagerort inklusive Lagerplätze löschen?" "HxTarget" "closest .storage-location" "HxSwap" "delete")}}
             </div>
           </div>
 
-          <!-- Neuer Lagerplatz Form -->
+          <div id="edit-location-{{.ID}}" style="display:none;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin:6px 0 8px 36px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:8px">Lagerort bearbeiten</div>
+            <form hx-put="/api/v1/storage/locations/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()" style="display:flex;gap:6px">
+              <input name="name" class="form-input" value="{{.Name}}" required style="flex:1;font-size:12px">
+              <input name="description" class="form-input" value="{{.Description}}" placeholder="Beschreibung" style="flex:1;font-size:12px">
+              {{template "icon-button" (dict "Action" "cancel" "OnClick" (printf "showEditLocation('%s')" .ID))}}
+              {{template "icon-button" (dict "Action" "save" "Type" "submit")}}
+            </form>
+          </div>
+
           <div id="add-place-{{.ID}}" style="display:none;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin:6px 0 8px 36px">
-            <form hx-post="/storage/locations/{{.ID}}/places-web" hx-target="#places-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset()" style="display:flex;gap:6px">
+            <form hx-post="/storage/locations/{{.ID}}/places-web" hx-target="#places-{{.ID}}" hx-swap="beforeend" hx-on::after-request="this.reset();location.reload()" style="display:flex;gap:6px">
               <input name="name" class="form-input" placeholder="z.B. Fach 1" required style="flex:1;font-size:12px">
               <input name="capacity" class="form-input" placeholder="Kapazität" style="width:120px;font-size:12px">
               {{template "icon-button" (dict "Action" "save" "Type" "submit" "Label" "OK")}}
             </form>
           </div>
 
-          <!-- Lagerplätze -->
           <div id="storage-children-location-{{.ID}}" style="margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
             <div id="places-{{.ID}}">
               {{range .Places}}
@@ -118,8 +135,18 @@
                     <div style="font-size:10px;color:var(--muted)">{{if .Capacity}}Kapazität: {{.Capacity}}{{else}}Lagerplatz{{end}}{{if .CurrentParts}} · {{.CurrentParts}} Teile{{end}}</div>
                   </div>
                   <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
-                    {{template "icon-button" (dict "Action" "delete" "Attrs" (printf "hx-delete='/storage/places/%s' hx-confirm='Lagerplatz löschen?' hx-target='closest .storage-place' hx-swap='outerHTML'" .ID))}}
+                    {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditPlace('%s')" .ID))}}
+                    {{template "icon-button" (dict "Action" "delete" "HxDelete" (printf "/api/v1/storage/places/%s" .ID) "HxConfirm" "Lagerplatz löschen?" "HxTarget" "closest .storage-place" "HxSwap" "delete")}}
                   </div>
+                </div>
+                <div id="edit-place-{{.ID}}" style="display:none;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin:6px 0 8px 36px">
+                  <form hx-put="/api/v1/storage/places/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()" style="display:flex;gap:6px">
+                    <input name="name" class="form-input" value="{{.Name}}" required style="flex:1;font-size:12px">
+                    <input name="description" class="form-input" value="{{.Description}}" placeholder="Beschreibung" style="flex:1;font-size:12px">
+                    <input name="capacity" class="form-input" value="{{.Capacity}}" placeholder="Kapazität" style="width:120px;font-size:12px">
+                    {{template "icon-button" (dict "Action" "cancel" "OnClick" (printf "showEditPlace('%s')" .ID))}}
+                    {{template "icon-button" (dict "Action" "save" "Type" "submit")}}
+                  </form>
                 </div>
               </div>
               {{else}}
@@ -155,35 +182,13 @@
 
 {{block "scripts" .}}
 <script>
-function toggleMenu(id){const m=document.getElementById(id);if(m)m.style.display=m.style.display==='none'?'block':'none';}
-function closeMenu(id){const m=document.getElementById(id);if(m)m.style.display='none';}
-document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id*="-menu-"]'))document.querySelectorAll('[id*="-menu-"]').forEach(m=>m.style.display='none');});
-
-function showAddLocation(id) {
-  const el = document.getElementById('add-loc-'+id);
-  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-function showAddPlace(id) {
-  const el = document.getElementById('add-place-'+id);
-  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-
-function toggleStorageNode(key) {
-  const children = document.getElementById('storage-children-'+key);
-  const icon = document.getElementById('storage-icon-'+key);
-  if(!children) return;
-  const open = children.style.display !== 'none';
-  children.style.display = open ? 'none' : 'block';
-  if(icon) icon.style.transform = open ? 'rotate(-90deg)' : '';
-}
-
-function expandStorageTree() {
-  document.querySelectorAll('[id^="storage-children-"]').forEach(el => el.style.display = 'block');
-  document.querySelectorAll('[id^="storage-icon-"]').forEach(el => el.style.transform = '');
-}
-
-function selectPlace(id, name) {
-  alert('Lagerplatz: ' + name + '\nID: ' + id);
-}
+function showAddLocation(id) { const el = document.getElementById('add-loc-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function showAddPlace(id) { const el = document.getElementById('add-place-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function showEditWarehouse(id) { const el = document.getElementById('edit-warehouse-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function showEditLocation(id) { const el = document.getElementById('edit-location-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function showEditPlace(id) { const el = document.getElementById('edit-place-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function toggleStorageNode(key) { const children = document.getElementById('storage-children-'+key); const icon = document.getElementById('storage-icon-'+key); if(!children) return; const open = children.style.display !== 'none'; children.style.display = open ? 'none' : 'block'; if(icon) icon.style.transform = open ? 'rotate(-90deg)' : ''; }
+function expandStorageTree() { document.querySelectorAll('[id^="storage-children-"]').forEach(el => el.style.display = 'block'); document.querySelectorAll('[id^="storage-icon-"]').forEach(el => el.style.transform = ''); }
+function selectPlace(id, name) { /* reserved for later detail panel */ }
 </script>
 {{end}}
