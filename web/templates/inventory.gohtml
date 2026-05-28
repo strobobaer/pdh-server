@@ -7,10 +7,11 @@
   </div>
   {{template "icon-button-toolbar" (dict
     "Class" "end"
-    "Label" "Lager-Aktionen"
+    "Label" "Ersatzteil-Aktionen"
     "Items" (list
       (dict "Action" "book" "ShowLabel" true "Href" "/inventory/book")
-      (dict "Action" "new" "ShowLabel" true "Label" "Neues Teil" "OnClick" "document.getElementById('new-part-form').style.display='block'")
+      (dict "Action" "edit" "ShowLabel" true "Label" "Stammfelder" "OnClick" "toggleFieldAdmin()")
+      (dict "Action" "new" "ShowLabel" true "Label" "Neues Teil" "OnClick" "document.getElementById('new-part-form').style.display='block';loadStorageTree()")
     )
   )}}
 </div>
@@ -22,18 +23,45 @@
   <div class="stat s-green"><div class="stat-label">Lagerwert</div><div class="stat-val">{{.Stats.TotalValue}}€</div></div>
 </div>
 
+<div id="field-admin" class="card" style="display:none">
+  <div class="card-title">Stammdatenfelder anlegen</div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Freie Felder werden global angelegt und können danach je Ersatzteil befüllt werden.</p>
+  <form hx-post="/api/v1/inventory/fields" hx-on::after-request="if(event.detail.successful){this.reset();loadFieldDefs();}">
+    <div style="display:flex;gap:8px;align-items:end">
+      <div class="form-group" style="flex:1"><label class="form-label">Feldname</label><input name="name" class="form-input" placeholder="z.B. Spannung, Baugröße, Lieferant" required></div>
+      <div class="form-group" style="width:160px"><label class="form-label">Typ</label><select name="field_type" class="form-input"><option value="text">Text</option><option value="number">Zahl</option><option value="date">Datum</option></select></div>
+      <div class="form-group" style="width:120px"><label class="form-label">Sortierung</label><input name="sort_order" type="number" class="form-input" value="100"></div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Feld anlegen")}}
+    </div>
+  </form>
+  <div id="field-def-list" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+</div>
+
+<div id="storage-picker" class="card" style="display:none;position:fixed;right:24px;top:92px;width:420px;max-height:70vh;overflow:auto;z-index:5000;box-shadow:0 18px 48px rgba(0,0,0,.35)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div class="card-title" style="margin:0">Lager auswählen</div>
+    {{template "icon-button" (dict "Action" "cancel" "OnClick" "closeStoragePicker()")}}
+  </div>
+  <div id="storage-picker-tree" style="font-size:12px;color:var(--muted)">Lade Lagerbaum...</div>
+</div>
+
 <div id="new-part-form" style="display:none" class="card">
   <div class="card-title">Teil anlegen</div>
-  <form hx-post="/inventory" hx-target="#parts-table" hx-swap="outerHTML">
+  <form hx-post="/api/v1/inventory" hx-on::after-request="if(event.detail.successful) location.reload()">
     <div class="grid2">
       <div class="form-group"><label class="form-label">Teilenummer</label><input name="part_number" class="form-input" required></div>
       <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
       <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
       <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input"></div>
-      <div class="form-group"><label class="form-label">Lagerort</label><input name="storage_location" class="form-input" placeholder="Lager A"></div>
-      <div class="form-group"><label class="form-label">Lagerplatz</label><input name="storage_place" class="form-input" placeholder="Regal 1 / Fach 2"></div>
-      <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" class="form-input" value="1"></div>
-      <div class="form-group"><label class="form-label">Anfangsbestand</label><input name="initial_stock" type="number" class="form-input" value="0"></div>
+      <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="Stück"></div>
+      <div class="form-group"><label class="form-label">Preis</label><input name="price" type="number" step="0.01" class="form-input" value="0"></div>
+      <div class="form-group"><label class="form-label">Lagerort</label><input id="new-storage-location" name="storage_location" class="form-input" readonly onclick="openStoragePicker('new-storage-location','new-storage-place')" placeholder="Aus Baum auswählen"></div>
+      <div class="form-group"><label class="form-label">Lagerplatz</label><input id="new-storage-place" name="storage_place" class="form-input" readonly onclick="openStoragePicker('new-storage-location','new-storage-place')" placeholder="Aus Baum auswählen"></div>
+      <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" step="0.001" class="form-input" value="1"></div>
+      <div class="form-group"><label class="form-label">Kritischer Bestand</label><input name="critical_qty" type="number" step="0.001" class="form-input" value="0"></div>
+      <div class="form-group"><label class="form-label">Bestellmenge</label><input name="reorder_qty" type="number" step="0.001" class="form-input" value="5"></div>
+      <div class="form-group"><label class="form-label">Anfangsbestand</label><input name="initial_stock" type="number" step="0.001" class="form-input" value="0"></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
     </div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -49,10 +77,10 @@
 
 <div id="parts-table" class="card" style="padding:0">
   <table>
-    <thead><tr style="cursor:pointer"><th>Teil</th><th>Lagerort</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Teil</th><th>Lagerort</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
     <tbody>
     {{range .Parts}}
-    <tr style="cursor:pointer">
+    <tr>
       <td style="position:relative"><a href="/inventory/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
         <div style="font-weight:500;position:relative">{{.Name}}</div>
         <div style="font-size:11px;color:var(--muted)">{{.PartNumber}} · {{.Manufacturer}}</div>
@@ -63,23 +91,41 @@
         <div style="font-size:10px;color:var(--muted)">Min: {{.MinQty}}</div>
       </td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
-      <td>
-        {{template "icon-button" (dict
-          "Action" "history"
-          "HxGet" (printf "/inventory/%s/movements" .ID)
-          "HxTarget" (printf "#movements-%s" .ID)
-          "HxSwap" "innerHTML"
-        )}}
+      <td style="white-space:nowrap">
+        {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "togglePartEdit('%s')" .ID))}}
+        {{template "icon-button" (dict "Action" "history" "HxGet" (printf "/inventory/%s/movements" .ID) "HxTarget" (printf "#movements-%s" .ID) "HxSwap" "innerHTML")}}
       </td>
     </tr>
+    <tr id="edit-{{.ID}}" style="display:none"><td colspan="5" style="background:var(--bg3);padding:14px">
+      <form hx-put="/api/v1/inventory/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()">
+        <div class="grid2">
+          <div class="form-group"><label class="form-label">Teilenummer</label><input name="part_number" class="form-input" value="{{.PartNumber}}" required></div>
+          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
+          <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input" value="{{.Manufacturer}}"></div>
+          <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" value="{{.Category}}"></div>
+          <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="{{.Unit}}"></div>
+          <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" step="0.001" class="form-input" value="{{.MinQty}}"></div>
+          <div class="form-group"><label class="form-label">Lagerort</label><input id="loc-{{.ID}}" name="storage_location" class="form-input" value="{{.StorageLocation}}" readonly onclick="openStoragePicker('loc-{{.ID}}','place-{{.ID}}')"></div>
+          <div class="form-group"><label class="form-label">Lagerplatz</label><input id="place-{{.ID}}" name="storage_place" class="form-input" value="{{.StoragePlace}}" readonly onclick="openStoragePicker('loc-{{.ID}}','place-{{.ID}}')"></div>
+        </div>
+        <div id="custom-fields-{{.ID}}" data-part-id="{{.ID}}" style="margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+          {{template "icon-button" (dict "Action" "edit" "ShowLabel" true "Label" "Stammfelder laden" "OnClick" (printf "loadPartFields('%s')" .ID))}}
+          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Label" "Stammfelder speichern" "OnClick" (printf "savePartFields('%s')" .ID))}}
+          {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" (printf "togglePartEdit('%s')" .ID))}}
+          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Teil speichern")}}
+        </div>
+      </form>
+    </td></tr>
     <tr id="movements-{{.ID}}" style="display:none"><td colspan="5"></td></tr>
     {{else}}
-    <tr style="cursor:pointer"><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>
     {{end}}
     </tbody>
   </table>
 </div>
 {{end}}
+
 {{define "context-list"}}
 {{range .LowStockParts}}
 <div class="act-item">
@@ -88,4 +134,55 @@
   <span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span>
 </div>
 {{end}}
+{{end}}
+
+{{block "scripts" .}}
+<script>
+let storagePickerTarget = {loc: null, place: null};
+let storageTreeCache = null;
+let fieldDefsCache = null;
+
+function toggleFieldAdmin(){ const el=document.getElementById('field-admin'); el.style.display=el.style.display==='none'?'block':'none'; if(el.style.display==='block') loadFieldDefs(); }
+function togglePartEdit(id){ const el=document.getElementById('edit-'+id); el.style.display=el.style.display==='none'?'table-row':'none'; if(el.style.display==='table-row') loadStorageTree(); }
+function openStoragePicker(locId, placeId){ storagePickerTarget={loc:locId, place:placeId}; document.getElementById('storage-picker').style.display='block'; loadStorageTree(); }
+function closeStoragePicker(){ document.getElementById('storage-picker').style.display='none'; }
+
+async function loadStorageTree(){
+  if(storageTreeCache){ renderStorageTree(storageTreeCache); return; }
+  const r = await fetch('/api/v1/storage/', {credentials:'same-origin'});
+  storageTreeCache = await r.json();
+  renderStorageTree(storageTreeCache);
+}
+function renderStorageTree(warehouses){
+  const root=document.getElementById('storage-picker-tree'); if(!root) return;
+  root.innerHTML = warehouses.map(w => `
+    <div style="margin-bottom:8px">
+      <div style="font-weight:600;color:var(--fg);padding:6px 0">${escapeHtml(w.name||'Lager')}</div>
+      ${(w.locations||[]).map(l => `
+        <div style="margin-left:14px;border-left:2px solid var(--border);padding-left:10px;margin-bottom:6px">
+          <div style="font-weight:500;color:var(--fg);padding:4px 0">${escapeHtml(l.name||'Lagerort')}</div>
+          ${(l.places||[]).map(p => `<button type="button" class="btn" style="width:100%;justify-content:flex-start;margin:2px 0" onclick="selectStorage('${escapeJs(l.name||'')}','${escapeJs(p.name||'')}')">${escapeHtml(p.name||'Lagerplatz')}</button>`).join('') || '<div style="font-size:11px;color:var(--muted)">Keine Lagerplätze</div>'}
+        </div>`).join('') || '<div style="font-size:11px;color:var(--muted)">Keine Lagerorte</div>'}
+    </div>`).join('');
+}
+function selectStorage(loc, place){ document.getElementById(storagePickerTarget.loc).value=loc; document.getElementById(storagePickerTarget.place).value=place; closeStoragePicker(); }
+
+async function loadFieldDefs(){
+  const r=await fetch('/api/v1/inventory/fields', {credentials:'same-origin'}); fieldDefsCache=await r.json();
+  const list=document.getElementById('field-def-list'); if(list) list.innerHTML = fieldDefsCache.length ? fieldDefsCache.map(f=>`<span class="badge b-blue" style="margin-right:4px">${escapeHtml(f.name)}</span>`).join('') : 'Noch keine freien Felder angelegt';
+}
+async function loadPartFields(id){
+  const box=document.getElementById('custom-fields-'+id); box.innerHTML='Lade Stammdatenfelder...';
+  const r=await fetch('/api/v1/inventory/'+id+'/fields', {credentials:'same-origin'}); const fields=await r.json();
+  box.innerHTML = `<div class="grid2">${fields.map(f=>`<div class="form-group"><label class="form-label">${escapeHtml(f.name)}</label><input data-field-id="${f.field_id}" class="form-input custom-field-input" value="${escapeHtml(f.value||'')}"></div>`).join('')}</div>`;
+}
+async function savePartFields(id){
+  const box=document.getElementById('custom-fields-'+id); const values={};
+  box.querySelectorAll('.custom-field-input').forEach(i=>values[i.dataset.fieldId]=i.value);
+  await fetch('/api/v1/inventory/'+id+'/fields', {method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({values})});
+  alert('Stammfelder gespeichert');
+}
+function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function escapeJs(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+</script>
 {{end}}
