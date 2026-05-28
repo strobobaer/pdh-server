@@ -72,13 +72,21 @@ func (r *Repository) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
 		return nil, err
 	}
 	defer rows.Close()
+
 	var list []*Warehouse
 	for rows.Next() {
 		w := &Warehouse{}
-		rows.Scan(&w.ID, &w.Name, &w.Description, &w.Location, &w.Active, &w.CreatedBy, &w.CreatedAt, &w.PartCount)
-		list = append(list, w)
+		if err := rows.Scan(&w.ID, &w.Name, &w.Description, &w.Location, &w.Active, &w.CreatedBy, &w.CreatedAt, &w.PartCount); err != nil {
+			return nil, err
+		}
+		if tree, err := r.GetWarehouseTree(ctx, w.ID); err == nil && tree != nil {
+			tree.PartCount = w.PartCount
+			list = append(list, tree)
+		} else {
+			list = append(list, w)
+		}
 	}
-	return list, nil
+	return list, rows.Err()
 }
 
 func (r *Repository) GetWarehouseTree(ctx context.Context, id string) (*Warehouse, error) {
@@ -91,25 +99,41 @@ func (r *Repository) GetWarehouseTree(ctx context.Context, id string) (*Warehous
 		return nil, err
 	}
 
-	rows, _ := r.db.Query(ctx,
+	rows, err := r.db.Query(ctx,
 		`SELECT id, warehouse_id, name, COALESCE(description,'') FROM storage_locations WHERE warehouse_id=$1 ORDER BY name`, id)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
+
 	for rows.Next() {
 		loc := Location{}
-		rows.Scan(&loc.ID, &loc.WarehouseID, &loc.Name, &loc.Description)
-		// Plätze laden
-		prows, _ := r.db.Query(ctx,
+		if err := rows.Scan(&loc.ID, &loc.WarehouseID, &loc.Name, &loc.Description); err != nil {
+			return nil, err
+		}
+		prows, err := r.db.Query(ctx,
 			`SELECT id, storage_location_id, name, COALESCE(description,''), COALESCE(capacity,''), current_parts
 			 FROM storage_places WHERE storage_location_id=$1 ORDER BY name`, loc.ID)
+		if err != nil {
+			return nil, err
+		}
 		for prows.Next() {
 			p := Place{}
-			prows.Scan(&p.ID, &p.StorageLocationID, &p.Name, &p.Description, &p.Capacity, &p.CurrentParts)
+			if err := prows.Scan(&p.ID, &p.StorageLocationID, &p.Name, &p.Description, &p.Capacity, &p.CurrentParts); err != nil {
+				prows.Close()
+				return nil, err
+			}
 			loc.Places = append(loc.Places, p)
 		}
+		if err := prows.Err(); err != nil {
+			prows.Close()
+			return nil, err
+		}
 		prows.Close()
+		w.PartCount += len(loc.Places)
 		w.Locations = append(w.Locations, loc)
 	}
-	return w, nil
+	return w, rows.Err()
 }
 
 func (r *Repository) CreateLocation(ctx context.Context, l *Location) error {
@@ -137,7 +161,7 @@ func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
 	var wh, locs, places int
 	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM warehouses WHERE active=true`).Scan(&wh)
 	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM storage_locations sl JOIN warehouses w ON sl.warehouse_id=w.id WHERE w.active=true`).Scan(&locs)
-	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM storage_places`).Scan(&places)
+	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM storage_places sp JOIN storage_locations sl ON sp.storage_location_id=sl.id JOIN warehouses w ON sl.warehouse_id=w.id WHERE w.active=true`).Scan(&places)
 	return map[string]int{"warehouses": wh, "locations": locs, "places": places}, nil
 }
 
