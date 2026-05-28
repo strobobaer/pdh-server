@@ -49,7 +49,15 @@
   <div class="card-title">Teil anlegen</div>
   <form hx-post="/api/v1/inventory" hx-on::after-request="if(event.detail.successful) location.reload()">
     <div class="grid2">
-      <div class="form-group"><label class="form-label">Teilenummer</label><input name="part_number" class="form-input" required></div>
+      <div class="form-group">
+        <label class="form-label">Teilenummer</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="new-part-number" name="part_number" class="form-input" required style="flex:1">
+          <input id="barcode-new-part-number" type="file" accept="image/*" capture="environment" style="display:none" onchange="scanBarcodeIntoInput(this,'new-part-number')">
+          <button type="button" class="btn" onclick="document.getElementById('barcode-new-part-number').click()" title="Barcode per Smartphone-Bild erkennen"><i class="ti ti-barcode"></i></button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Tippen oder Barcode/QR-Code per Kamera-Bild erkennen.</div>
+      </div>
       <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
       <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
       <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input"></div>
@@ -96,7 +104,14 @@
     <tr id="edit-{{.ID}}" style="display:none"><td colspan="5" style="background:var(--bg3);padding:14px">
       <form hx-put="/api/v1/inventory/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()">
         <div class="grid2">
-          <div class="form-group"><label class="form-label">Teilenummer</label><input name="part_number" class="form-input" value="{{.PartNumber}}" required></div>
+          <div class="form-group">
+            <label class="form-label">Teilenummer</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="part-number-{{.ID}}" name="part_number" class="form-input" value="{{.PartNumber}}" required style="flex:1">
+              <input id="barcode-part-number-{{.ID}}" type="file" accept="image/*" capture="environment" style="display:none" onchange="scanBarcodeIntoInput(this,'part-number-{{.ID}}')">
+              <button type="button" class="btn" onclick="document.getElementById('barcode-part-number-{{.ID}}').click()" title="Barcode per Smartphone-Bild erkennen"><i class="ti ti-barcode"></i></button>
+            </div>
+          </div>
           <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
           <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input" value="{{.Manufacturer}}"></div>
           <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" value="{{.Category}}"></div>
@@ -196,6 +211,34 @@ async function savePartFields(id){
     alert('Stammfelder gespeichert');
   } catch(e) { alert('Stammfelder konnten nicht gespeichert werden: '+e.message); }
 }
+
+async function scanBarcodeIntoInput(fileInput, targetInputId){
+  const target = document.getElementById(targetInputId);
+  if(!target || !fileInput.files || fileInput.files.length === 0) return;
+  if(!('BarcodeDetector' in window)){
+    alert('Barcode-Erkennung wird von diesem Browser nicht unterstützt. Bitte Teilenummer manuell eintragen oder Chrome/Edge auf Android verwenden.');
+    fileInput.value = '';
+    return;
+  }
+  try {
+    const bitmap = await createImageBitmap(fileInput.files[0]);
+    const formats = await BarcodeDetector.getSupportedFormats();
+    const detector = new BarcodeDetector({formats: formats && formats.length ? formats : undefined});
+    const codes = await detector.detect(bitmap);
+    if(!codes || codes.length === 0){
+      alert('Kein Barcode erkannt. Bitte Bild schärfer/heller aufnehmen oder Teilenummer manuell eintragen.');
+      return;
+    }
+    target.value = codes[0].rawValue || '';
+    target.dispatchEvent(new Event('input', {bubbles:true}));
+    target.focus();
+  } catch(e) {
+    alert('Barcode konnte nicht erkannt werden: ' + e.message);
+  } finally {
+    fileInput.value = '';
+  }
+}
+
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function escapeJs(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 </script>
