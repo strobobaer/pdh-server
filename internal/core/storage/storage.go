@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -56,6 +57,13 @@ func (r *Repository) CreateWarehouse(ctx context.Context, w *Warehouse) error {
 		 VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id, created_at`,
 		w.Name, w.Description, w.Location, w.CreatedBy,
 	).Scan(&w.ID, &w.CreatedAt)
+}
+
+func (r *Repository) UpdateWarehouse(ctx context.Context, id string, w *Warehouse) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE warehouses SET name=$1, description=$2, location=$3 WHERE id=$4 AND active=true`,
+		w.Name, w.Description, w.Location, id)
+	return err
 }
 
 func (r *Repository) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
@@ -144,12 +152,26 @@ func (r *Repository) CreateLocation(ctx context.Context, l *Location) error {
 	).Scan(&l.ID)
 }
 
+func (r *Repository) UpdateLocation(ctx context.Context, id string, l *Location) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE storage_locations SET name=$1, description=$2 WHERE id=$3`,
+		l.Name, l.Description, id)
+	return err
+}
+
 func (r *Repository) CreatePlace(ctx context.Context, p *Place) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO storage_places (id, storage_location_id, name, description, capacity)
 		 VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id`,
 		p.StorageLocationID, p.Name, p.Description, p.Capacity,
 	).Scan(&p.ID)
+}
+
+func (r *Repository) UpdatePlace(ctx context.Context, id string, p *Place) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE storage_places SET name=$1, description=$2, capacity=$3 WHERE id=$4`,
+		p.Name, p.Description, p.Capacity, id)
+	return err
 }
 
 func (r *Repository) DeleteWarehouse(ctx context.Context, id string) error {
@@ -196,6 +218,10 @@ func (s *Service) CreateWarehouse(ctx context.Context, name, desc, loc, userID s
 	return w, s.repo.CreateWarehouse(ctx, w)
 }
 
+func (s *Service) UpdateWarehouse(ctx context.Context, id, name, desc, loc string) error {
+	return s.repo.UpdateWarehouse(ctx, id, &Warehouse{Name: name, Description: desc, Location: loc})
+}
+
 func (s *Service) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
 	return s.repo.ListWarehouses(ctx)
 }
@@ -209,9 +235,17 @@ func (s *Service) CreateLocation(ctx context.Context, warehouseID, name, desc st
 	return l, s.repo.CreateLocation(ctx, l)
 }
 
+func (s *Service) UpdateLocation(ctx context.Context, id, name, desc string) error {
+	return s.repo.UpdateLocation(ctx, id, &Location{Name: name, Description: desc})
+}
+
 func (s *Service) CreatePlace(ctx context.Context, locationID, name, desc, capacity string) (*Place, error) {
 	p := &Place{StorageLocationID: locationID, Name: name, Description: desc, Capacity: capacity}
 	return p, s.repo.CreatePlace(ctx, p)
+}
+
+func (s *Service) UpdatePlace(ctx context.Context, id, name, desc, capacity string) error {
+	return s.repo.UpdatePlace(ctx, id, &Place{Name: name, Description: desc, Capacity: capacity})
 }
 
 func (s *Service) DeleteWarehouse(ctx context.Context, id string) error {
@@ -238,17 +272,31 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/", h.List)
 	r.Post("/", h.CreateWarehouse)
 	r.Get("/{id}", h.GetTree)
+	r.Put("/{id}", h.UpdateWarehouse)
 	r.Delete("/{id}", h.Delete)
 	r.Post("/{id}/locations", h.CreateLocation)
+	r.Put("/locations/{id}", h.UpdateLocation)
 	r.Delete("/locations/{id}", h.DeleteLocation)
 	r.Post("/locations/{id}/places", h.CreatePlace)
+	r.Put("/places/{id}", h.UpdatePlace)
 	r.Delete("/places/{id}", h.DeletePlace)
 	r.Get("/stats", h.Stats)
 	return r
 }
 
-func decode(r *http.Request, v interface{}) error { return json.NewDecoder(r.Body).Decode(v) }
-func uid(r *http.Request) string                  { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
+func uid(r *http.Request) string { v, _ := r.Context().Value(middleware.UserIDKey).(string); return v }
+
+func formOrJSON(r *http.Request, out interface{}, applyForm func()) error {
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/x-www-form-urlencoded") || strings.Contains(ct, "multipart/form-data") {
+		if err := r.ParseForm(); err != nil {
+			return err
+		}
+		applyForm()
+		return nil
+	}
+	return json.NewDecoder(r.Body).Decode(out)
+}
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.svc.ListWarehouses(r.Context())
@@ -261,7 +309,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateWarehouse(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description, Location string }
-	if err := decode(r, &in); err != nil {
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Location = r.FormValue("name"), r.FormValue("description"), r.FormValue("location") }); err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
@@ -271,6 +319,19 @@ func (h *Handler) CreateWarehouse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, 201, wh)
+}
+
+func (h *Handler) UpdateWarehouse(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Name, Description, Location string }
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Location = r.FormValue("name"), r.FormValue("description"), r.FormValue("location") }); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
+	if err := h.svc.UpdateWarehouse(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Location); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +369,7 @@ func (h *Handler) DeletePlace(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description string }
-	if err := decode(r, &in); err != nil {
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description = r.FormValue("name"), r.FormValue("description") }); err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
@@ -320,9 +381,22 @@ func (h *Handler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, 201, loc)
 }
 
+func (h *Handler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Name, Description string }
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description = r.FormValue("name"), r.FormValue("description") }); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
+	if err := h.svc.UpdateLocation(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
+}
+
 func (h *Handler) CreatePlace(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Name, Description, Capacity string }
-	if err := decode(r, &in); err != nil {
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Capacity = r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity") }); err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
@@ -332,6 +406,19 @@ func (h *Handler) CreatePlace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, 201, p)
+}
+
+func (h *Handler) UpdatePlace(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Name, Description, Capacity string }
+	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Capacity = r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity") }); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
+	if err := h.svc.UpdatePlace(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Capacity); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
