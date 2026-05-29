@@ -34,10 +34,6 @@ type saveTaskChecklistInput struct {
 	Done   map[string]bool   `json:"done"`
 }
 
-func (s *Service) CreateChecklistTemplate(name, description, userID string) (*ChecklistTemplate, error) {
-	return s.repo.CreateChecklistTemplate(nilSafeContext(), strings.TrimSpace(name), strings.TrimSpace(description), userID)
-}
-
 func (s *Service) ListChecklistTemplatesForAPI(r *http.Request) ([]*ChecklistTemplate, error) {
 	return s.repo.ListChecklistTemplates(r.Context())
 }
@@ -81,8 +77,6 @@ func (s *Service) DefaultDurationForTaskForAPI(r *http.Request, taskID string) i
 	return s.repo.DefaultDurationForTask(r.Context(), taskID)
 }
 
-// ChecklistRoutes exposes the maintenance checklist/template API under a separate mount.
-// This keeps the existing maintenance routes stable and avoids breaking older clients.
 func (h *Handler) ChecklistRoutes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
