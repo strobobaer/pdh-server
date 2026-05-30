@@ -14,7 +14,7 @@
   <div class="widget-icon-toolbar compact">
     {{template "icon-button" (dict "Action" "edit" "OnClick" "toggleEdit();closeMenu('maint-menu')")}}
     {{if .Task.CanComplete}}
-    {{template "icon-button" (dict "Action" "done" "Label" "Abschließen" "OnClick" "document.getElementById('complete-form').style.display='block'")}}
+    {{template "icon-button" (dict "Action" "done" "Label" "Abschließen" "OnClick" (printf "openCompleteForm('%s')" .Task.ID))}}
     {{end}}
     {{if .Task.CanStart}}
     {{template "icon-button" (dict "Action" "start" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
@@ -60,12 +60,19 @@
 <!-- Abschließen -->
 {{if .Task.CanComplete}}
 <div id="complete-form" style="display:none" class="card">
-  <div class="card-title">Auftrag abschließen</div>
-  <form hx-post="/maintenance/tasks/{{.Task.ID}}/complete-web" hx-on::after-request="location.reload()">
+  <div class="card-title">Auftrag durchführen und abschließen</div>
+  <form onsubmit="return submitMaintenanceCompletion(this,'{{.Task.ID}}')">
     <div class="grid2">
-      <div class="form-group"><label class="form-label">Dauer (Minuten)</label><input name="duration_min" type="number" class="form-input" placeholder="z.B. 60" min="0"></div>
+      <div class="form-group"><label class="form-label">Dauer (Minuten)</label><input id="complete-duration" name="duration_min" type="number" class="form-input" placeholder="Standarddauer wird geladen" min="0"></div>
       <div class="form-group"><label class="form-label">Abschlussnotiz</label><input name="notes" class="form-input" placeholder="Was wurde gemacht?"></div>
     </div>
+    <div id="due-checklist-box" style="margin:10px 0;font-size:12px;color:var(--muted)">Fällige Checklistenpunkte werden geladen...</div>
+    <div class="card" style="background:var(--bg3);margin:10px 0;padding:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px">Nach Abschluss</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px"><input type="checkbox" name="ask_inventory" checked> Nach verwendeten Ersatzteilen fragen</label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)"><input type="checkbox" name="ask_time" checked> Nach Zeiteintrag fragen / Dauer übernehmen</label>
+    </div>
+    <div id="complete-result" style="font-size:12px;margin-bottom:8px"></div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
       "Label" "Auftrag abschließen"
@@ -152,8 +159,7 @@
           </label>
           {{else if eq .Type "number"}}
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" name="item_{{.ID}}" class="form-input" style="max-width:160px" placeholder="Messwert eingeben"
-              {{if .CompareValue}}step="0.01"{{end}}>
+            <input type="number" name="item_{{.ID}}" class="form-input" style="max-width:160px" placeholder="Messwert eingeben" {{if .CompareValue}}step="0.01"{{end}}>
             {{if .CompareUnit}}<span style="font-size:12px;color:var(--muted)">{{.CompareUnit}}</span>{{end}}
           </div>
           {{else if eq .Type "image"}}
@@ -225,7 +231,7 @@
     </div>
     {{if .Task.CanComplete}}
     <div class="card">
-      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als erledigt markieren" "Style" "width:100%;justify-content:center" "OnClick" "document.getElementById('complete-form').style.display='block';window.scrollTo({top:0,behavior:'smooth'})")}}
+      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als erledigt markieren" "Style" "width:100%;justify-content:center" "OnClick" (printf "openCompleteForm('%s');window.scrollTo({top:0,behavior:'smooth'})" .Task.ID))}}
     </div>
     {{end}}
   </div>
@@ -241,8 +247,15 @@
 {{block "scripts" .}}
 <script>
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
-function closeMenu(id){document.getElementById(id).style.display='none';}
+function closeMenu(id){const el=document.getElementById(id); if(el) el.style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
 function toggleEdit(){const f=document.getElementById('edit-form');f.style.display=f.style.display==='none'?'block':'none';if(f.style.display==='block')f.scrollIntoView({behavior:'smooth',block:'nearest'});}
+async function apiData(url, options){const res=await fetch(url,Object.assign({credentials:'same-origin'},options||{}));let payload=null;try{payload=await res.json();}catch(e){payload=null;}if(!res.ok)throw new Error((payload&&(payload.error||payload.message))||('HTTP '+res.status));return payload&&payload.data!==undefined?payload.data:payload;}
+async function openCompleteForm(taskID){const box=document.getElementById('complete-form');box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'nearest'});await loadDefaultDuration(taskID);await loadDueChecklist(taskID);}
+async function loadDefaultDuration(taskID){try{const d=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/default-duration');const input=document.getElementById('complete-duration');if(input && !input.value && d && d.default_duration_min>0)input.value=d.default_duration_min;}catch(e){console.warn(e);}}
+async function loadDueChecklist(taskID){const box=document.getElementById('due-checklist-box');try{const items=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/due-checklist');if(!items||items.length===0){box.innerHTML='<div style="padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--muted)">Keine fälligen Vorlagen-Checklistenpunkte.</div>';return;}box.innerHTML='<div class="card-title" style="margin:0 0 8px 0"><i class="ti ti-checklist"></i> Fällige Checklistenpunkte</div>'+items.map(renderDueChecklistItem).join('');}catch(e){box.innerHTML='<div style="color:var(--red)">Fällige Checkliste konnte nicht geladen werden: '+escapeHtml(e.message)+'</div>';}}
+function renderDueChecklistItem(item){const req=item.required?'<span style="color:var(--red);font-size:10px">✱</span> ':'';const last=item.last_done_at?'<div style="font-size:10px;color:var(--muted)">Zuletzt: '+escapeHtml(item.last_done_at)+'</div>':'';let input='';if(item.item_type==='number'){input='<input type="number" step="0.01" class="form-input due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" placeholder="Messwert">';}else if(item.item_type==='text'){input='<input type="text" class="form-input due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" placeholder="Wert / Notiz">';}else{input='<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)"><input type="checkbox" class="due-check-done" data-item-id="'+escapeHtml(item.template_item_id)+'"> erledigt</label><input type="hidden" class="due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" value="erledigt">';}return '<div class="li" style="flex-direction:column;align-items:stretch;gap:6px"><div style="display:flex;gap:8px"><div style="flex:1;font-weight:500;font-size:13px">'+req+escapeHtml(item.label)+'</div><span class="badge b-gray" style="font-size:10px">'+escapeHtml(item.interval_days)+' Tage</span></div>'+last+input+'</div>';}
+async function submitMaintenanceCompletion(form,taskID){const result=document.getElementById('complete-result');result.textContent='Speichere Checkliste...';try{const values={};const done={};document.querySelectorAll('#due-checklist-box .due-check-value').forEach(i=>{values[i.dataset.itemId]=i.value||'';});document.querySelectorAll('#due-checklist-box .due-check-done').forEach(i=>{done[i.dataset.itemId]=i.checked;});if(Object.keys(values).length>0){await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values,done})});}result.textContent='Schließe Auftrag ab...';const res=await fetch('/maintenance/tasks/'+taskID+'/complete-web',{method:'POST',headers:{'HX-Request':'true'},body:new FormData(form),credentials:'same-origin'});const text=await res.text();if(!res.ok)throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Abschluss fehlgeschlagen');const askInv=form.querySelector('[name="ask_inventory"]')?.checked;const askTime=form.querySelector('[name="ask_time"]')?.checked;if(askInv||askTime){let msg='Auftrag abgeschlossen. ';if(askInv)msg+='Bitte verwendete Ersatzteile im Ersatzteillager buchen. ';if(askTime)msg+='Zeiteintrag/Dauer bitte in der Zeiterfassung prüfen.';alert(msg);}location.reload();}catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';}return false;}
+function escapeHtml(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 </script>
 {{end}}
