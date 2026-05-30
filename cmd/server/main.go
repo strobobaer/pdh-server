@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -162,6 +164,76 @@ func main() {
 		r.Mount("/inventory", invHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/attachments", attachHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/checklists", checkHandler.Routes(cfg.Auth.JWTSecret))
+	})
+
+	// Web-save fallback: speichert Checklisten-Zuordnung und Standarddauer zusammen mit dem Wartungsplan.
+	// Diese Route liegt vor dem generischen Web-Mount und verhindert, dass ein fehlgeschlagener Browser-API-Call
+	// die Wartungsplan-Stammdaten unvollständig lässt.
+	r.Put("/maintenance/plans/{id}/edit-web", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+			return
+		}
+		planID := chi.URLParam(r, "id")
+		name := strings.TrimSpace(r.FormValue("name"))
+		infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
+		if name == "" || infraID == "" {
+			http.Error(w, "Name und Infrastruktur sind Pflicht", http.StatusBadRequest)
+			return
+		}
+		intervalDays, _ := strconv.Atoi(r.FormValue("interval_days"))
+		estimatedMin, _ := strconv.Atoi(r.FormValue("estimated_min"))
+		defaultDurationMin, _ := strconv.Atoi(r.FormValue("default_duration_min"))
+		if defaultDurationMin > 0 {
+			estimatedMin = defaultDurationMin
+		}
+		_, err := db.Pool.Exec(r.Context(), `
+			UPDATE maintenance_plans
+			SET name=$1,
+			    description=COALESCE(NULLIF($2,''), description),
+			    type=$3::maintenance_type,
+			    infrastructure_id=$4::uuid,
+			    interval_type=$5::maintenance_interval,
+			    interval_days=CASE WHEN $6 > 0 THEN $6 ELSE interval_days END,
+			    estimated_min=CASE WHEN $7 > 0 THEN $7 ELSE estimated_min END,
+			    default_duration_min=$8,
+			    priority=$9::maintenance_priority,
+			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::timestamptz END
+			WHERE id=$11`,
+			name,
+			strings.TrimSpace(r.FormValue("description")),
+			r.FormValue("type"),
+			infraID,
+			r.FormValue("interval"),
+			intervalDays,
+			estimatedMin,
+			defaultDurationMin,
+			r.FormValue("priority"),
+			strings.TrimSpace(r.FormValue("next_due_at")),
+			planID,
+		)
+		if err != nil {
+			http.Error(w, "Wartungsplan konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		templateIDs := r.Form["checklist_template_ids"]
+		if len(templateIDs) == 0 {
+			templateIDs = r.Form["checklist_template_id"]
+		}
+		if err := maintRepo.AssignChecklistTemplatesToPlan(r.Context(), planID, templateIDs, defaultDurationMin); err != nil {
+			http.Error(w, "Checklisten konnten nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(`<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Gespeichert</span>`))
+	})
+
+	r.Delete("/maintenance/plans/{id}/delete-web", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := db.Pool.Exec(r.Context(), `UPDATE maintenance_plans SET active=false WHERE id=$1`, chi.URLParam(r, "id")); err != nil {
+			http.Error(w, "Wartungsplan konnte nicht vorgemerkt werden: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// Static uploads
