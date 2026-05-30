@@ -25,8 +25,9 @@ type createChecklistTemplateItemInput struct {
 }
 
 type assignChecklistTemplateInput struct {
-	TemplateID         string `json:"template_id"`
-	DefaultDurationMin int    `json:"default_duration_min"`
+	TemplateID         string   `json:"template_id"`
+	TemplateIDs        []string `json:"template_ids"`
+	DefaultDurationMin int      `json:"default_duration_min"`
 }
 
 type saveTaskChecklistInput struct {
@@ -40,6 +41,10 @@ func (s *Service) ListChecklistTemplatesForAPI(r *http.Request) ([]*ChecklistTem
 
 func (s *Service) CreateChecklistTemplateForAPI(r *http.Request, in createChecklistTemplateInput, userID string) (*ChecklistTemplate, error) {
 	return s.repo.CreateChecklistTemplate(r.Context(), strings.TrimSpace(in.Name), strings.TrimSpace(in.Description), userID)
+}
+
+func (s *Service) DeleteChecklistTemplateForAPI(r *http.Request, templateID string) error {
+	return s.repo.DeleteChecklistTemplate(r.Context(), templateID)
 }
 
 func (s *Service) ListChecklistTemplateItemsForAPI(r *http.Request, templateID string) ([]*ChecklistTemplateItem, error) {
@@ -59,8 +64,22 @@ func (s *Service) CreateChecklistTemplateItemForAPI(r *http.Request, templateID 
 	return item, nil
 }
 
+func (s *Service) DeleteChecklistTemplateItemForAPI(r *http.Request, itemID string) error {
+	return s.repo.DeleteChecklistTemplateItem(r.Context(), itemID)
+}
+
 func (s *Service) AssignChecklistTemplateForAPI(r *http.Request, planID string, in assignChecklistTemplateInput) error {
-	return s.repo.AssignChecklistTemplateToPlan(r.Context(), planID, in.TemplateID, in.DefaultDurationMin)
+	ids := in.TemplateIDs
+	if len(ids) == 0 && strings.TrimSpace(in.TemplateID) != "" {
+		ids = []string{strings.TrimSpace(in.TemplateID)}
+	}
+	return s.repo.AssignChecklistTemplatesToPlan(r.Context(), planID, ids, in.DefaultDurationMin)
+}
+
+func (s *Service) GetAssignedChecklistTemplatesForAPI(r *http.Request, planID string) (map[string]interface{}, error) {
+	ids, duration, err := s.repo.GetAssignedChecklistTemplateIDs(r.Context(), planID)
+	if err != nil { return nil, err }
+	return map[string]interface{}{"template_ids": ids, "default_duration_min": duration}, nil
 }
 
 func (s *Service) DueChecklistItemsForTaskForAPI(r *http.Request, taskID string) ([]*TaskChecklistItem, error) {
@@ -82,8 +101,11 @@ func (h *Handler) ChecklistRoutes(jwtSecret string) chi.Router {
 	r.Use(middleware.Auth(jwtSecret))
 	r.Get("/templates", h.ListChecklistTemplates)
 	r.Post("/templates", h.CreateChecklistTemplate)
+	r.Delete("/templates/{templateID}", h.DeleteChecklistTemplate)
 	r.Get("/templates/{templateID}/items", h.ListChecklistTemplateItems)
 	r.Post("/templates/{templateID}/items", h.CreateChecklistTemplateItem)
+	r.Delete("/items/{itemID}", h.DeleteChecklistTemplateItem)
+	r.Get("/plans/{planID}/template", h.GetAssignedChecklistTemplates)
 	r.Put("/plans/{planID}/template", h.AssignChecklistTemplate)
 	r.Get("/tasks/{taskID}/due-checklist", h.DueChecklistItemsForTask)
 	r.Post("/tasks/{taskID}/checklist-results", h.SaveTaskChecklistResults)
@@ -106,6 +128,11 @@ func (h *Handler) CreateChecklistTemplate(w http.ResponseWriter, r *http.Request
 	response.JSON(w, 201, item)
 }
 
+func (h *Handler) DeleteChecklistTemplate(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.DeleteChecklistTemplateForAPI(r, chi.URLParam(r, "templateID")); err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, map[string]string{"status":"gelöscht"})
+}
+
 func (h *Handler) ListChecklistTemplateItems(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.ListChecklistTemplateItemsForAPI(r, chi.URLParam(r, "templateID"))
 	if err != nil { response.Error(w, 500, err.Error()); return }
@@ -120,6 +147,17 @@ func (h *Handler) CreateChecklistTemplateItem(w http.ResponseWriter, r *http.Req
 	item, err := h.svc.CreateChecklistTemplateItemForAPI(r, chi.URLParam(r, "templateID"), in)
 	if err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 201, item)
+}
+
+func (h *Handler) DeleteChecklistTemplateItem(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.DeleteChecklistTemplateItemForAPI(r, chi.URLParam(r, "itemID")); err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, map[string]string{"status":"gelöscht"})
+}
+
+func (h *Handler) GetAssignedChecklistTemplates(w http.ResponseWriter, r *http.Request) {
+	data, err := h.svc.GetAssignedChecklistTemplatesForAPI(r, chi.URLParam(r, "planID"))
+	if err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, data)
 }
 
 func (h *Handler) AssignChecklistTemplate(w http.ResponseWriter, r *http.Request) {
