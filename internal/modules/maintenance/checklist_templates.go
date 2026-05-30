@@ -16,17 +16,17 @@ type ChecklistTemplate struct {
 }
 
 type ChecklistTemplateItem struct {
-	ID           string    `json:"id"`
-	TemplateID   string    `json:"template_id"`
-	Label        string    `json:"label"`
-	Description  string    `json:"description"`
-	ItemType     string    `json:"item_type"`
-	Required     bool      `json:"required"`
-	IntervalDays int       `json:"interval_days"`
-	SortOrder    int       `json:"sort_order"`
-	Active       bool      `json:"active"`
-	CreatedAt    time.Time `json:"created_at"`
-	Due          bool      `json:"due"`
+	ID           string     `json:"id"`
+	TemplateID   string     `json:"template_id"`
+	Label        string     `json:"label"`
+	Description  string     `json:"description"`
+	ItemType     string     `json:"item_type"`
+	Required     bool       `json:"required"`
+	IntervalDays int        `json:"interval_days"`
+	SortOrder    int        `json:"sort_order"`
+	Active       bool       `json:"active"`
+	CreatedAt    time.Time  `json:"created_at"`
+	Due          bool       `json:"due"`
 	LastDoneAt   *time.Time `json:"last_done_at,omitempty"`
 }
 
@@ -88,6 +88,20 @@ func (r *Repository) ensureChecklistTemplateTables(ctx context.Context) error {
 			ON maintenance_task_checklist_results(task_id);
 		CREATE INDEX IF NOT EXISTS idx_maintenance_task_checklist_results_item_checked
 			ON maintenance_task_checklist_results(template_item_id, checked_at);
+		CREATE TABLE IF NOT EXISTS maintenance_plan_checklist_templates (
+			plan_id UUID NOT NULL REFERENCES maintenance_plans(id) ON DELETE CASCADE,
+			template_id UUID NOT NULL REFERENCES maintenance_checklist_templates(id) ON DELETE CASCADE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (plan_id, template_id)
+		);
+		INSERT INTO maintenance_plan_checklist_templates (plan_id, template_id)
+		SELECT id, checklist_template_id FROM maintenance_plans
+		WHERE checklist_template_id IS NOT NULL
+		ON CONFLICT DO NOTHING;
+		CREATE INDEX IF NOT EXISTS idx_maintenance_plan_checklist_templates_plan
+			ON maintenance_plan_checklist_templates(plan_id);
+		CREATE INDEX IF NOT EXISTS idx_maintenance_plan_checklist_templates_template
+			ON maintenance_plan_checklist_templates(template_id);
 	`)
 	return err
 }
@@ -109,6 +123,12 @@ func (r *Repository) ListChecklistTemplates(ctx context.Context) ([]*ChecklistTe
 	return out, rows.Err()
 }
 
+func (r *Repository) DeleteChecklistTemplate(ctx context.Context, templateID string) error {
+	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return err }
+	_, err := r.db.Exec(ctx, `UPDATE maintenance_checklist_templates SET active=false WHERE id=$1`, templateID)
+	return err
+}
+
 func (r *Repository) CreateChecklistTemplateItem(ctx context.Context, item *ChecklistTemplateItem) error {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return err }
 	if item.ItemType == "" { item.ItemType = "checkbox" }
@@ -126,20 +146,64 @@ func (r *Repository) ListChecklistTemplateItems(ctx context.Context, templateID 
 	return out, rows.Err()
 }
 
-func (r *Repository) AssignChecklistTemplateToPlan(ctx context.Context, planID, templateID string, defaultDurationMin int) error {
+func (r *Repository) DeleteChecklistTemplateItem(ctx context.Context, itemID string) error {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return err }
-	_, err := r.db.Exec(ctx, `UPDATE maintenance_plans SET checklist_template_id=NULLIF($1,'')::uuid, default_duration_min=$2 WHERE id=$3`, templateID, defaultDurationMin, planID)
+	_, err := r.db.Exec(ctx, `UPDATE maintenance_checklist_template_items SET active=false WHERE id=$1`, itemID)
 	return err
+}
+
+func (r *Repository) AssignChecklistTemplateToPlan(ctx context.Context, planID, templateID string, defaultDurationMin int) error {
+	ids := []string{}
+	if templateID != "" { ids = append(ids, templateID) }
+	return r.AssignChecklistTemplatesToPlan(ctx, planID, ids, defaultDurationMin)
+}
+
+func (r *Repository) AssignChecklistTemplatesToPlan(ctx context.Context, planID string, templateIDs []string, defaultDurationMin int) error {
+	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return err }
+	tx, err := r.db.Begin(ctx)
+	if err != nil { return err }
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM maintenance_plan_checklist_templates WHERE plan_id=$1`, planID); err != nil { return err }
+	first := ""
+	for _, id := range templateIDs {
+		if id == "" { continue }
+		if first == "" { first = id }
+		if _, err := tx.Exec(ctx, `INSERT INTO maintenance_plan_checklist_templates (plan_id, template_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, planID, id); err != nil { return err }
+	}
+	if _, err := tx.Exec(ctx, `UPDATE maintenance_plans SET checklist_template_id=NULLIF($1,'')::uuid, default_duration_min=$2 WHERE id=$3`, first, defaultDurationMin, planID); err != nil { return err }
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) GetAssignedChecklistTemplateIDs(ctx context.Context, planID string) ([]string, int, error) {
+	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return nil, 0, err }
+	rows, err := r.db.Query(ctx, `SELECT template_id::text FROM maintenance_plan_checklist_templates WHERE plan_id=$1 ORDER BY created_at`, planID)
+	if err != nil { return nil, 0, err }
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() { var id string; if err := rows.Scan(&id); err != nil { return nil, 0, err }; ids = append(ids, id) }
+	var legacy *string
+	var duration int
+	_ = r.db.QueryRow(ctx, `SELECT checklist_template_id::text, COALESCE(default_duration_min,0) FROM maintenance_plans WHERE id=$1`, planID).Scan(&legacy, &duration)
+	if len(ids) == 0 && legacy != nil && *legacy != "" { ids = append(ids, *legacy) }
+	return ids, duration, rows.Err()
 }
 
 func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string) ([]*TaskChecklistItem, error) {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return nil, err }
 	rows, err := r.db.Query(ctx, `
 		WITH task_plan AS (
-			SELECT mt.id AS task_id, mt.plan_id, mp.checklist_template_id
+			SELECT mt.id AS task_id, mt.plan_id
 			FROM maintenance_tasks mt
-			JOIN maintenance_plans mp ON mt.plan_id=mp.id
-			WHERE mt.id=$1 AND mp.checklist_template_id IS NOT NULL
+			WHERE mt.id=$1 AND mt.plan_id IS NOT NULL
+		), template_ids AS (
+			SELECT pct.template_id
+			FROM task_plan tp
+			JOIN maintenance_plan_checklist_templates pct ON pct.plan_id=tp.plan_id
+			UNION
+			SELECT mp.checklist_template_id
+			FROM task_plan tp
+			JOIN maintenance_plans mp ON mp.id=tp.plan_id
+			WHERE mp.checklist_template_id IS NOT NULL
 		), last_done AS (
 			SELECT template_item_id, max(checked_at) AS last_done_at
 			FROM maintenance_task_checklist_results
@@ -148,9 +212,9 @@ func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string
 		)
 		SELECT COALESCE(r.id::text,''), i.id::text, i.label, i.description, i.item_type, i.required, i.interval_days,
 		       COALESCE(r.value,''), COALESCE(r.done,false), ld.last_done_at
-		FROM task_plan tp
-		JOIN maintenance_checklist_template_items i ON i.template_id=tp.checklist_template_id AND i.active=true
-		LEFT JOIN maintenance_task_checklist_results r ON r.task_id=tp.task_id AND r.template_item_id=i.id
+		FROM template_ids ti
+		JOIN maintenance_checklist_template_items i ON i.template_id=ti.template_id AND i.active=true
+		LEFT JOIN maintenance_task_checklist_results r ON r.task_id=$1 AND r.template_item_id=i.id
 		LEFT JOIN last_done ld ON ld.template_item_id=i.id
 		WHERE ld.last_done_at IS NULL OR ld.last_done_at + (i.interval_days || ' days')::interval <= NOW()
 		ORDER BY i.sort_order, i.label`, taskID)
@@ -181,6 +245,6 @@ func (r *Repository) SaveTaskChecklistResults(ctx context.Context, taskID, userI
 func (r *Repository) DefaultDurationForTask(ctx context.Context, taskID string) int {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return 0 }
 	var min int
-	_ = r.db.QueryRow(ctx, `SELECT COALESCE(mp.default_duration_min, mp.estimated_min, 0) FROM maintenance_tasks mt JOIN maintenance_plans mp ON mt.plan_id=mp.id WHERE mt.id=$1`, taskID).Scan(&min)
+	_ = r.db.QueryRow(ctx, `SELECT COALESCE(NULLIF(mp.default_duration_min,0), mp.estimated_min, 0) FROM maintenance_tasks mt JOIN maintenance_plans mp ON mt.plan_id=mp.id WHERE mt.id=$1`, taskID).Scan(&min)
 	return min
 }
