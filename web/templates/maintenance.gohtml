@@ -15,6 +15,7 @@
       (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl duplizieren" "OnClick" "runSelectedItemAction('copy')")
       (dict "Action" "save" "ShowLabel" true "Label" "Auswahl speichern" "OnClick" "runSelectedItemAction('save')")
       (dict "Action" "cancel" "ShowLabel" true "Label" "Auswahl abbrechen" "OnClick" "runSelectedItemAction('cancel')")
+      (dict "Action" "book" "ShowLabel" true "Label" "Checklisten" "OnClick" "toggleMaintenanceChecklistAdmin()")
       (dict "Action" "refresh" "ShowLabel" true "HxPost" "/maintenance/generate" "HxTarget" "#generate-result")
   )
 )}}
@@ -72,6 +73,35 @@
       )
     )}}
   </form>
+</div>
+
+<!-- Checklisten-Vorlagen -->
+<div id="maintenance-checklist-admin" style="display:none" class="card">
+  <div class="card-title">Wartungs-Checklisten-Vorlagen</div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Vorlagen sind unabhängig von Ersatzteil-Feldsätzen. Jeder Punkt hat ein Pflicht-Intervall. Bei der Durchführung werden nur fällige Punkte angezeigt.</p>
+  <div class="grid2">
+    <form onsubmit="return createMaintenanceChecklistTemplate(this)">
+      <div class="form-group"><label class="form-label">Vorlagenname</label><input name="name" class="form-input" placeholder="Optipress Wartung" required></div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input" placeholder="Standardpunkte für Optipress"></div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Vorlage anlegen")}}
+    </form>
+    <form onsubmit="return createMaintenanceChecklistItem(this)">
+      <div class="form-group"><label class="form-label">Vorlage</label><select name="template_id" id="checklist-template-select" class="form-input" required></select></div>
+      <div class="form-group"><label class="form-label">Punkt</label><input name="label" class="form-input" placeholder="Riemenspannung prüfen" required></div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr">
+        <div class="form-group"><label class="form-label">Typ</label><select name="item_type" class="form-input"><option value="checkbox">Checkbox</option><option value="number">Messwert</option><option value="text">Text</option></select></div>
+        <div class="form-group"><label class="form-label">Intervall Tage *</label><input name="interval_days" type="number" min="1" class="form-input" value="30" required></div>
+      </div>
+      <div class="grid2" style="grid-template-columns:1fr 1fr">
+        <div class="form-group"><label class="form-label">Sortierung</label><input name="sort_order" type="number" class="form-input" value="100"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding-top:22px"><input name="required" type="checkbox" checked> Pflichtpunkt</label>
+      </div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input" placeholder="Hinweis / Grenzwert / Arbeitsschritt"></div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Punkt anlegen")}}
+    </form>
+  </div>
+  <div id="maintenance-checklist-admin-result" style="font-size:12px;margin-bottom:8px"></div>
+  <div id="maintenance-checklist-template-list" style="font-size:12px;color:var(--muted)">Noch nicht geladen</div>
 </div>
 
 <!-- Fällige Aufträge -->
@@ -145,7 +175,10 @@
                 <option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option>
               </select>
             </div>
+            <div class="form-group"><label class="form-label">Checklisten-Vorlage</label><select name="checklist_template_id" class="form-input maintenance-template-select"><option value="">Nicht ändern / keine Vorlage</option></select></div>
+            <div class="form-group"><label class="form-label">Standarddauer Minuten</label><input name="default_duration_min" type="number" min="0" class="form-input" placeholder="z.B. 45"></div>
           </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Vorlage und Standarddauer werden beim Speichern zusätzlich am Wartungsplan hinterlegt.</div>
           <div id="plan-edit-result-{{.ID}}" style="font-size:12px;margin-bottom:8px"></div>
           {{template "icon-button-toolbar" (dict
             "Class" "end"
@@ -208,6 +241,61 @@
 
 {{define "scripts"}}
 <script>
+let maintenanceChecklistTemplates = [];
+async function maintenanceJSON(url, options){
+  const res = await fetch(url, Object.assign({credentials:'same-origin'}, options||{}));
+  let payload = null;
+  try{ payload = await res.json(); }catch(e){ payload = null; }
+  if(!res.ok || (payload && payload.success === false)) throw new Error((payload && (payload.error||payload.message)) || ('HTTP '+res.status));
+  return payload && payload.data !== undefined ? payload.data : payload;
+}
+async function loadMaintenanceChecklistTemplates(){
+  maintenanceChecklistTemplates = await maintenanceJSON('/api/v1/maintenance-checklists/templates');
+  const opts = '<option value="">Keine Vorlage</option>' + (maintenanceChecklistTemplates||[]).map(t => '<option value="'+escapeHtml(t.id)+'">'+escapeHtml(t.name)+'</option>').join('');
+  document.querySelectorAll('.maintenance-template-select,#checklist-template-select').forEach(sel => { sel.innerHTML = opts; });
+  renderMaintenanceChecklistTemplateList();
+}
+async function renderMaintenanceChecklistTemplateList(){
+  const box = document.getElementById('maintenance-checklist-template-list');
+  if(!box) return;
+  if(!maintenanceChecklistTemplates || maintenanceChecklistTemplates.length===0){ box.innerHTML='Noch keine Vorlagen vorhanden'; return; }
+  const blocks = [];
+  for(const t of maintenanceChecklistTemplates){
+    let items = [];
+    try{ items = await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(t.id)+'/items'); }catch(e){}
+    blocks.push('<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg3)"><div style="font-weight:600;color:var(--text);margin-bottom:4px">'+escapeHtml(t.name)+'</div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+escapeHtml(t.description||'')+'</div>'+ (items.length ? items.map(i => '<div class="li"><div class="li-text"><div class="li-title" style="font-size:12px">'+escapeHtml(i.label)+'</div><div class="li-sub">'+escapeHtml(i.item_type)+' · Intervall '+escapeHtml(i.interval_days)+' Tage'+(i.required?' · Pflicht':'')+'</div></div></div>').join('') : '<div style="font-size:11px;color:var(--muted)">Keine Punkte</div>') + '</div>');
+  }
+  box.innerHTML = blocks.join('');
+}
+function toggleMaintenanceChecklistAdmin(){
+  const el=document.getElementById('maintenance-checklist-admin');
+  if(!el) return;
+  el.style.display=el.style.display==='none'||!el.style.display?'block':'none';
+  if(el.style.display==='block'){ loadMaintenanceChecklistTemplates().catch(e => { document.getElementById('maintenance-checklist-admin-result').innerHTML='<span style="color:var(--red)">'+escapeHtml(e.message)+'</span>'; }); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
+async function createMaintenanceChecklistTemplate(form){
+  const result=document.getElementById('maintenance-checklist-admin-result');
+  result.textContent='Speichere Vorlage...';
+  try{
+    await maintenanceJSON('/api/v1/maintenance-checklists/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.name.value, description:form.description.value})});
+    form.reset();
+    await loadMaintenanceChecklistTemplates();
+    result.innerHTML='<span style="color:var(--green)">Vorlage angelegt</span>';
+  }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
+  return false;
+}
+async function createMaintenanceChecklistItem(form){
+  const result=document.getElementById('maintenance-checklist-admin-result');
+  result.textContent='Speichere Punkt...';
+  try{
+    const templateID=form.template_id.value;
+    await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(templateID)+'/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:form.label.value, description:form.description.value, item_type:form.item_type.value, required:form.required.checked, interval_days:Number(form.interval_days.value||0), sort_order:Number(form.sort_order.value||100)})});
+    form.label.value=''; form.description.value='';
+    await loadMaintenanceChecklistTemplates();
+    result.innerHTML='<span style="color:var(--green)">Punkt angelegt</span>';
+  }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
+  return false;
+}
 async function submitMaintenancePlanForm(form){
   const result=document.getElementById('maintenance-create-result');
   result.textContent='Speichere...';
@@ -225,7 +313,7 @@ function toggleMaintenancePlanEdit(id){
   const el=document.getElementById(id);
   if(!el) return;
   el.style.display=el.style.display==='none'||!el.style.display?'block':'none';
-  if(el.style.display==='block') el.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if(el.style.display==='block') { loadMaintenanceChecklistTemplates().catch(()=>{}); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
 }
 async function submitMaintenancePlanEdit(form,id){
   const result=document.getElementById('plan-edit-result-'+id);
@@ -234,6 +322,11 @@ async function submitMaintenancePlanEdit(form,id){
     const res=await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/edit-web',{method:'PUT',headers:{'HX-Request':'true'},body:new FormData(form)});
     const text=await res.text();
     if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Speichern');
+    const templateID = form.checklist_template_id ? form.checklist_template_id.value : '';
+    const durationValue = form.default_duration_min ? form.default_duration_min.value : '';
+    if(templateID || durationValue){
+      await maintenanceJSON('/api/v1/maintenance-checklists/plans/'+encodeURIComponent(id)+'/template',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({template_id:templateID, default_duration_min:Number(durationValue||0)})});
+    }
     window.location.href='/maintenance';
   }catch(e){
     if(result) result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';
@@ -258,5 +351,6 @@ document.addEventListener('click', function(event){
   if(event.target.closest('a,button,input,select,textarea,label,.widget-icon-toolbar,[data-ignore-select]')) return;
   window.location.href = row.dataset.viewHref;
 });
+document.addEventListener('DOMContentLoaded', function(){ loadMaintenanceChecklistTemplates().catch(()=>{}); });
 </script>
 {{end}}
