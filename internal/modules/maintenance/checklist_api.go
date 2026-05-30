@@ -82,6 +82,10 @@ func (s *Service) GetAssignedChecklistTemplatesForAPI(r *http.Request, planID st
 	return map[string]interface{}{"template_ids": ids, "default_duration_min": duration}, nil
 }
 
+func (s *Service) DeactivatePlanForAPI(r *http.Request, planID string) error {
+	return s.repo.DeletePlanSoft(r.Context(), planID)
+}
+
 func (s *Service) DueChecklistItemsForTaskForAPI(r *http.Request, taskID string) ([]*TaskChecklistItem, error) {
 	return s.repo.DueChecklistItemsForTask(r.Context(), taskID)
 }
@@ -107,6 +111,7 @@ func (h *Handler) ChecklistRoutes(jwtSecret string) chi.Router {
 	r.Delete("/items/{itemID}", h.DeleteChecklistTemplateItem)
 	r.Get("/plans/{planID}/template", h.GetAssignedChecklistTemplates)
 	r.Put("/plans/{planID}/template", h.AssignChecklistTemplate)
+	r.Delete("/plans/{planID}", h.DeactivatePlan)
 	r.Get("/tasks/{taskID}/due-checklist", h.DueChecklistItemsForTask)
 	r.Post("/tasks/{taskID}/checklist-results", h.SaveTaskChecklistResults)
 	r.Get("/tasks/{taskID}/default-duration", h.DefaultDurationForTask)
@@ -165,6 +170,11 @@ func (h *Handler) AssignChecklistTemplate(w http.ResponseWriter, r *http.Request
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
 	if err := h.svc.AssignChecklistTemplateForAPI(r, chi.URLParam(r, "planID"), in); err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 200, map[string]string{"status":"gespeichert"})
+}
+
+func (h *Handler) DeactivatePlan(w http.ResponseWriter, r *http.Request) {
+	if err := h.svc.DeactivatePlanForAPI(r, chi.URLParam(r, "planID")); err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, map[string]string{"status":"vorgemerkt"})
 }
 
 func (h *Handler) DueChecklistItemsForTask(w http.ResponseWriter, r *http.Request) {
