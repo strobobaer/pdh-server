@@ -181,11 +181,16 @@ func (r *Repository) GetAssignedChecklistTemplateIDs(ctx context.Context, planID
 	defer rows.Close()
 	ids := []string{}
 	for rows.Next() { var id string; if err := rows.Scan(&id); err != nil { return nil, 0, err }; ids = append(ids, id) }
-	var legacy *string
+	var legacy string
 	var duration int
-	_ = r.db.QueryRow(ctx, `SELECT checklist_template_id::text, COALESCE(default_duration_min,0) FROM maintenance_plans WHERE id=$1`, planID).Scan(&legacy, &duration)
-	if len(ids) == 0 && legacy != nil && *legacy != "" { ids = append(ids, *legacy) }
+	_ = r.db.QueryRow(ctx, `SELECT COALESCE(checklist_template_id::text,''), COALESCE(default_duration_min,0) FROM maintenance_plans WHERE id=$1`, planID).Scan(&legacy, &duration)
+	if len(ids) == 0 && legacy != "" { ids = append(ids, legacy) }
 	return ids, duration, rows.Err()
+}
+
+func (r *Repository) DeletePlanSoft(ctx context.Context, planID string) error {
+	_, err := r.db.Exec(ctx, `UPDATE maintenance_plans SET active=false WHERE id=$1`, planID)
+	return err
 }
 
 func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string) ([]*TaskChecklistItem, error) {
