@@ -174,6 +174,7 @@ func main() {
 		}
 		name := strings.TrimSpace(r.FormValue("name"))
 		infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
+		log.Info().Str("name", name).Str("infrastructure_id", infraID).Str("type", r.FormValue("type")).Str("interval", r.FormValue("interval")).Str("priority", r.FormValue("priority")).Str("first_due_at", r.FormValue("first_due_at")).Msg("maintenance plan create form")
 		if name == "" || infraID == "" {
 			http.Error(w, "Name und Infrastruktur sind Pflicht", http.StatusBadRequest)
 			return
@@ -201,7 +202,7 @@ func main() {
 			http.Error(w, "Kein aktiver Benutzer fuer created_by gefunden", http.StatusInternalServerError)
 			return
 		}
-		_, err := db.Pool.Exec(r.Context(), `
+		cmd, err := db.Pool.Exec(r.Context(), `
 			INSERT INTO maintenance_plans
 			  (id, name, description, type, infrastructure_id, interval_type, interval_days,
 			   estimated_min, priority, assigned_to, active, next_due_at, created_by)
@@ -219,9 +220,11 @@ func main() {
 			createdBy,
 		)
 		if err != nil {
+			log.Error().Err(err).Msg("maintenance plan create failed")
 			http.Error(w, "Wartungsplan konnte nicht angelegt werden: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		log.Info().Int64("rows", cmd.RowsAffected()).Msg("maintenance plan created")
 		if r.Header.Get("HX-Request") == "true" {
 			w.Header().Set("HX-Redirect", "/maintenance")
 			w.WriteHeader(http.StatusNoContent)
@@ -248,7 +251,12 @@ func main() {
 		if defaultDurationMin > 0 {
 			estimatedMin = defaultDurationMin
 		}
-		_, err := db.Pool.Exec(r.Context(), `
+		templateIDs := r.Form["checklist_template_ids"]
+		if len(templateIDs) == 0 {
+			templateIDs = r.Form["checklist_template_id"]
+		}
+		log.Info().Str("plan_id", planID).Str("name", name).Str("infrastructure_id", infraID).Int("default_duration_min", defaultDurationMin).Strs("template_ids", templateIDs).Msg("maintenance plan edit form")
+		cmd, err := db.Pool.Exec(r.Context(), `
 			UPDATE maintenance_plans
 			SET name=$1,
 			    description=COALESCE(NULLIF($2,''), description),
@@ -259,7 +267,8 @@ func main() {
 			    estimated_min=CASE WHEN $7 > 0 THEN $7 ELSE estimated_min END,
 			    default_duration_min=$8,
 			    priority=$9::maintenance_priority,
-			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::date END
+			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::date END,
+			active=true
 			WHERE id=$11`,
 			name,
 			strings.TrimSpace(r.FormValue("description")),
@@ -274,19 +283,34 @@ func main() {
 			planID,
 		)
 		if err != nil {
+			log.Error().Err(err).Str("plan_id", planID).Msg("maintenance plan edit failed")
 			http.Error(w, "Wartungsplan konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		templateIDs := r.Form["checklist_template_ids"]
-		if len(templateIDs) == 0 {
-			templateIDs = r.Form["checklist_template_id"]
-		}
 		if err := maintRepo.AssignChecklistTemplatesToPlan(r.Context(), planID, templateIDs, defaultDurationMin); err != nil {
+			log.Error().Err(err).Str("plan_id", planID).Strs("template_ids", templateIDs).Msg("maintenance checklist assignment failed")
 			http.Error(w, "Checklisten konnten nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		log.Info().Int64("rows", cmd.RowsAffected()).Str("plan_id", planID).Msg("maintenance plan edited")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(`<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Gespeichert</span>`))
+	})
+
+	r.Post("/maintenance/plans/restore-all-web", func(w http.ResponseWriter, r *http.Request) {
+		cmd, err := db.Pool.Exec(r.Context(), `UPDATE maintenance_plans SET active=true WHERE active=false`)
+		if err != nil {
+			log.Error().Err(err).Msg("maintenance plans restore failed")
+			http.Error(w, "Wartungspläne konnten nicht wiederhergestellt werden: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Info().Int64("rows", cmd.RowsAffected()).Msg("maintenance plans restored")
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Redirect", "/maintenance")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
 	})
 
 	r.Delete("/maintenance/plans/{id}/delete-web", func(w http.ResponseWriter, r *http.Request) {
