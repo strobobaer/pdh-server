@@ -166,9 +166,70 @@ func main() {
 		r.Mount("/checklists", checkHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
-	// Web-save fallback: speichert Checklisten-Zuordnung und Standarddauer zusammen mit dem Wartungsplan.
-	// Diese Route liegt vor dem generischen Web-Mount und verhindert, dass ein fehlgeschlagener Browser-API-Call
-	// die Wartungsplan-Stammdaten unvollständig lässt.
+	// Web-save fallbacks: diese Routen liegen vor dem generischen Web-Mount.
+	r.Post("/maintenance/plans", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+			return
+		}
+		name := strings.TrimSpace(r.FormValue("name"))
+		infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
+		if name == "" || infraID == "" {
+			http.Error(w, "Name und Infrastruktur sind Pflicht", http.StatusBadRequest)
+			return
+		}
+		interval := r.FormValue("interval")
+		intervalDays := 30
+		switch interval {
+		case "daily":
+			intervalDays = 1
+		case "weekly":
+			intervalDays = 7
+		case "monthly":
+			intervalDays = 30
+		case "quarterly":
+			intervalDays = 90
+		case "yearly":
+			intervalDays = 365
+		}
+		firstDue := strings.TrimSpace(r.FormValue("first_due_at"))
+		if firstDue == "" {
+			firstDue = time.Now().Format("2006-01-02")
+		}
+		var createdBy string
+		if err := db.Pool.QueryRow(r.Context(), `SELECT id::text FROM users WHERE active=true ORDER BY created_at LIMIT 1`).Scan(&createdBy); err != nil || createdBy == "" {
+			http.Error(w, "Kein aktiver Benutzer fuer created_by gefunden", http.StatusInternalServerError)
+			return
+		}
+		_, err := db.Pool.Exec(r.Context(), `
+			INSERT INTO maintenance_plans
+			  (id, name, description, type, infrastructure_id, interval_type, interval_days,
+			   estimated_min, priority, assigned_to, active, next_due_at, created_by)
+			VALUES (gen_random_uuid(), $1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
+			        0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid)`,
+			name,
+			strings.TrimSpace(r.FormValue("description")),
+			r.FormValue("type"),
+			infraID,
+			interval,
+			intervalDays,
+			r.FormValue("priority"),
+			strings.TrimSpace(r.FormValue("assigned_to")),
+			firstDue,
+			createdBy,
+		)
+		if err != nil {
+			http.Error(w, "Wartungsplan konnte nicht angelegt werden: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Redirect", "/maintenance")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
+	})
+
 	r.Put("/maintenance/plans/{id}/edit-web", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
@@ -198,7 +259,7 @@ func main() {
 			    estimated_min=CASE WHEN $7 > 0 THEN $7 ELSE estimated_min END,
 			    default_duration_min=$8,
 			    priority=$9::maintenance_priority,
-			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::timestamptz END
+			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::date END
 			WHERE id=$11`,
 			name,
 			strings.TrimSpace(r.FormValue("description")),
