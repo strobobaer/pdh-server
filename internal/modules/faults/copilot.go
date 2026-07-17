@@ -18,15 +18,16 @@ const (
 )
 
 type Copilot struct {
-	backend    CopilotBackend
-	apiKey     string
-	ollamaURL  string
-	model      string
-	httpClient *http.Client
-	repo       *Repository
+	backend        CopilotBackend
+	apiKey         string
+	ollamaURL      string
+	model          string
+	anthropicModel string
+	httpClient     *http.Client
+	repo           *Repository
 }
 
-func NewCopilot(apiKey, ollamaURL, model string, repo *Repository) *Copilot {
+func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repository) *Copilot {
 	backend := BackendOllama
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
@@ -34,16 +35,20 @@ func NewCopilot(apiKey, ollamaURL, model string, repo *Repository) *Copilot {
 	if model == "" {
 		model = "llama3.2"
 	}
+	if anthropicModel == "" {
+		anthropicModel = "claude-sonnet-4-20250514"
+	}
 	if apiKey != "" && strings.HasPrefix(apiKey, "sk-ant-") {
 		backend = BackendAnthropic
 	}
 	return &Copilot{
-		backend:    backend,
-		apiKey:     apiKey,
-		ollamaURL:  ollamaURL,
-		model:      model,
-		httpClient: &http.Client{Timeout: 120 * time.Second},
-		repo:       repo,
+		backend:        backend,
+		apiKey:         apiKey,
+		ollamaURL:      ollamaURL,
+		model:          model,
+		anthropicModel: anthropicModel,
+		httpClient:     &http.Client{Timeout: 120 * time.Second},
+		repo:           repo,
 	}
 }
 
@@ -114,7 +119,7 @@ type anthropicResponse struct {
 
 func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg string) (string, error) {
 	req := anthropicRequest{
-		Model:     "claude-sonnet-4-20250514",
+		Model:     c.anthropicModel, // FIX: war hardcoded "claude-sonnet-4-20250514"
 		MaxTokens: 1500,
 		System:    system,
 		Messages:  []anthropicMessage{{Role: "user", Content: userMsg}},

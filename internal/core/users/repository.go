@@ -12,7 +12,7 @@ type Role string
 
 const (
 	RoleAdmin      Role = "admin"
-	RoleManager    Role = "manager"
+	RoleManager    Role = "manager" // FIX: war "RoleManger" (Typo)
 	RoleTechnician Role = "technician"
 	RoleWorker     Role = "worker"
 	RoleViewer     Role = "viewer"

@@ -8,8 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rs/zerolog/log"
-	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -33,22 +31,19 @@ const (
 
 // Ticket - Hauptmodell
 type Ticket struct {
-	ID               string     `json:"id"`
-	Title            string     `json:"title"`
-	Description      string     `json:"description"`
-	Priority         Priority   `json:"priority"`
-	Status           Status     `json:"status"`
-	AssignedTo       *string    `json:"assigned_to,omitempty"`
-	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
-	CreatedBy        string     `json:"created_by"`
-	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
-	RecordImageID    *string    `json:"record_image_attachment_id,omitempty"`
-	Tags             []string   `json:"tags"`
-	DueDate          *time.Time `json:"due_date,omitempty"`
-	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
-	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID             string    `json:"id"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description"`
+	Priority       Priority  `json:"priority"`
+	Status         Status    `json:"status"`
+	AssignedTo     *string   `json:"assigned_to,omitempty"`
+	CreatedBy      string    `json:"created_by"`
+	InfrastructureID *string `json:"infrastructure_id,omitempty"`
+	Tags           []string  `json:"tags"`
+	DueDate        *time.Time `json:"due_date,omitempty"`
+	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // Kommentar zu einem Ticket
@@ -66,7 +61,6 @@ type CreateInput struct {
 	Description      string     `json:"description"`
 	Priority         Priority   `json:"priority"`
 	AssignedTo       *string    `json:"assigned_to,omitempty"`
-	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
 	Tags             []string   `json:"tags"`
 	DueDate          *time.Time `json:"due_date,omitempty"`
@@ -82,41 +76,46 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, t *Ticket) error {
+	// FIX: Tags wurden vorher nicht gespeichert
+	tags, _ := json.Marshal(t.Tags)
 	query := `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, created_by, infrastructure_id, due_date, tags)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
-		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate,
+		t.AssignedTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	t := &Ticket{}
-	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
-		created_by, infrastructure_id, record_image_attachment_id, due_date, resolved_at, archived_at, created_at, updated_at
+	var tags []byte
+	// FIX: tags jetzt mit ausgelesen
+	query := `SELECT id, title, description, priority, status, assigned_to,
+		created_by, infrastructure_id, due_date, resolved_at, created_at, updated_at, tags
 		FROM tickets WHERE id = $1`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
-		&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID,
-		&t.RecordImageID, &t.DueDate, &t.ResolvedAt, &t.ArchivedAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.AssignedTo, &t.CreatedBy, &t.InfrastructureID,
+		&t.DueDate, &t.ResolvedAt, &t.CreatedAt, &t.UpdatedAt, &tags,
 	)
-	return t, err
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(tags, &t.Tags)
+	return t, nil
 }
 
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
-	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
-		created_by, infrastructure_id, due_date, archived_at, created_at, updated_at
+	// FIX: tags jetzt mit ausgelesen
+	query := `SELECT id, title, description, priority, status, assigned_to,
+		created_by, due_date, created_at, updated_at, tags
 		FROM tickets`
 	args := []interface{}{}
-	if status == Status("archive") {
-		query += " WHERE archived_at IS NOT NULL"
-	} else if status != "" {
-		query += " WHERE status = $1 AND archived_at IS NULL"
+	if status != "" {
+		query += " WHERE status = $1"
 		args = append(args, status)
-	} else {
-		query += " WHERE archived_at IS NULL"
 	}
 	query += " ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at DESC"
 
@@ -129,35 +128,28 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 	var tickets []*Ticket
 	for rows.Next() {
 		t := &Ticket{}
+		var tags []byte
 		err := rows.Scan(
 			&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
-			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID, &t.DueDate, &t.ArchivedAt,
-			&t.CreatedAt, &t.UpdatedAt,
+			&t.AssignedTo, &t.CreatedBy, &t.DueDate,
+			&t.CreatedAt, &t.UpdatedAt, &tags,
 		)
 		if err != nil {
 			return nil, err
 		}
+		json.Unmarshal(tags, &t.Tags)
 		tickets = append(tickets, t)
 	}
 	return tickets, nil
 }
 
-func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status) error {
 	query := `UPDATE tickets SET status=$1, updated_at=NOW()`
-	if status == StatusResolved || status == StatusClosed {
-		query += ", resolved_at=COALESCE(resolved_at,NOW()), archived_at=COALESCE(archived_at,NOW()), archived_by=$3"
+	if status == StatusResolved {
+		query += ", resolved_at=NOW()"
 	}
 	query += " WHERE id=$2"
-	var err error
-	if status == StatusResolved || status == StatusClosed {
-		_, err = r.db.Exec(ctx, query, status, id, userID)
-	} else {
-		_, err = r.db.Exec(ctx, query, status, id)
-	}
-	if err == nil {
-		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
-			VALUES ('ticket', $1, 'status', 'status', $2, $3, 'Status geändert')`, id, string(status), userID)
-	}
+	_, err := r.db.Exec(ctx, query, status, id)
 	return err
 }
 
@@ -184,54 +176,12 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		Description:      in.Description,
 		Priority:         in.Priority,
 		AssignedTo:       in.AssignedTo,
-		ResponsibleTo:    in.ResponsibleTo,
 		CreatedBy:        createdBy,
 		InfrastructureID: in.InfrastructureID,
 		Tags:             in.Tags,
 		DueDate:          in.DueDate,
 	}
-	if err := s.repo.Create(ctx, t); err != nil {
-		return t, err
-	}
-
-	s.syncTicketToDeckAsync(t)
-	return t, nil
-}
-
-func (s *Service) syncTicketToDeckAsync(t *Ticket) {
-	deck := nextcloud.DeckClientFromEnv()
-	if !deck.Enabled() {
-		log.Debug().Str("ticket_id", t.ID).Str("title", t.Title).Msg("nextcloud deck ticket-sync deaktiviert")
-		return
-	}
-
-	due := ""
-	if t.DueDate != nil {
-		due = t.DueDate.Format(time.RFC3339)
-	}
-
-	input := nextcloud.DeckCardInput{
-		RefType:     "ticket",
-		RefID:       t.ID,
-		Title:       "Ticket: " + t.Title,
-		Description: t.Description,
-		Priority:    string(t.Priority),
-		DueDate:     due,
-	}
-
-	go func(ticketID, title string, cardInput nextcloud.DeckCardInput) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		card, err := deck.CreateTicketCard(ctx, cardInput)
-		if err != nil {
-			log.Error().Err(err).Str("ticket_id", ticketID).Str("title", title).Msg("nextcloud deck ticket-karte erstellen fehlgeschlagen")
-			return
-		}
-		if card != nil {
-			log.Info().Str("ticket_id", ticketID).Int("deck_card_id", card.ID).Msg("nextcloud deck ticket-karte erstellt")
-		}
-	}(t.ID, t.Title, input)
+	return t, s.repo.Create(ctx, t)
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*Ticket, error) {
@@ -242,8 +192,8 @@ func (s *Service) List(ctx context.Context, status Status) ([]*Ticket, error) {
 	return s.repo.List(ctx, status)
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
-	return s.repo.UpdateStatus(ctx, id, status, userID)
+func (s *Service) UpdateStatus(ctx context.Context, id string, status Status) error {
+	return s.repo.UpdateStatus(ctx, id, status)
 }
 
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
@@ -267,7 +217,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/", h.List)
 	r.Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
-	r.Put("/{id}/status", h.UpdateStatus)
+	r.Post("/{id}/status", h.UpdateStatus) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/{id}/comments", h.AddComment)
 
 	return r
@@ -317,8 +267,7 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
 		return
 	}
-	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	if err := h.svc.UpdateStatus(r.Context(), id, in.Status, userID); err != nil {
+	if err := h.svc.UpdateStatus(r.Context(), id, in.Status); err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}

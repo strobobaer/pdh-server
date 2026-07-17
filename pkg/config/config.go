@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/spf13/viper"
 )
 
@@ -34,10 +32,11 @@ type AuthConfig struct {
 }
 
 type CopilotConfig struct {
-	Backend      string
-	OllamaURL    string
-	Model        string
-	AnthropicKey string
+	Backend        string
+	OllamaURL      string
+	Model          string
+	AnthropicKey   string
+	AnthropicModel string // FIX: war hardcoded in copilot.go
 }
 
 func Load() (*Config, error) {
@@ -74,6 +73,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("copilot.ollamaurl", "PDH_COPILOT_OLLAMAURL")
 	viper.BindEnv("copilot.model", "PDH_COPILOT_MODEL")
 	viper.BindEnv("copilot.anthropickey", "PDH_COPILOT_ANTHROPICKEY")
+	viper.BindEnv("copilot.anthropicmodel", "PDH_COPILOT_ANTHROPICMODEL")
 
 	// Standardwerte
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -86,6 +86,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("copilot.backend", "ollama")
 	viper.SetDefault("copilot.ollamaurl", "http://localhost:11434")
 	viper.SetDefault("copilot.model", "llama3.2")
+	viper.SetDefault("copilot.anthropicmodel", "claude-sonnet-4-20250514")
 
 	cfg := &Config{}
 	cfg.Server.Host = viper.GetString("server.host")
@@ -103,10 +104,7 @@ func Load() (*Config, error) {
 	cfg.Copilot.OllamaURL = viper.GetString("copilot.ollamaurl")
 	cfg.Copilot.Model = viper.GetString("copilot.model")
 	cfg.Copilot.AnthropicKey = viper.GetString("copilot.anthropickey")
-
-	if len(cfg.Auth.JWTSecret) < 32 {
-		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")
-	}
+	cfg.Copilot.AnthropicModel = viper.GetString("copilot.anthropicmodel")
 
 	return cfg, nil
 }

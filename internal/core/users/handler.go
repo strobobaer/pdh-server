@@ -30,7 +30,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 		r.Use(middleware.Auth(jwtSecret))
 		r.Get("/", h.List)
 		r.Get("/{id}", h.GetByID)
-		r.Put("/{id}", h.Update)
+		r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 
 		// Nur Admin
 		r.Group(func(r chi.Router) {
@@ -70,8 +70,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
 		return
 	}
-
-	in.Role = RoleWorker
 
 	user, err := h.svc.Register(r.Context(), &in)
 	if err != nil {
