@@ -45,17 +45,24 @@ func CORS(next http.Handler) http.Handler {
 	})
 }
 
-// Auth - JWT-Token prüfen
+// Auth - JWT-Token prüfen.
+// Unterstützt API-Clients mit Authorization: Bearer ... und die Web-/SSO-Session
+// über den Cookie pdh_token. Dadurch können HTMX/Fetch-Aufrufe aus der Web-UI
+// dieselben API-Routen nutzen wie externe API-Clients.
 func Auth(jwtSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			header := r.Header.Get("Authorization")
-			if header == "" || !strings.HasPrefix(header, "Bearer ") {
+			tokenStr := bearerToken(r)
+			if tokenStr == "" {
+				if cookie, err := r.Cookie("pdh_token"); err == nil {
+					tokenStr = strings.TrimSpace(cookie.Value)
+				}
+			}
+			if tokenStr == "" {
 				response.Error(w, http.StatusUnauthorized, "kein token")
 				return
 			}
 
-			tokenStr := strings.TrimPrefix(header, "Bearer ")
 			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 				// FIX: Signaturmethode explizit prüfen (Algorithm-Confusion-Schutz)
 				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -80,6 +87,14 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func bearerToken(r *http.Request) string {
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if header == "" || !strings.HasPrefix(header, "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 }
 
 // RequireRole - Rollenprüfung
