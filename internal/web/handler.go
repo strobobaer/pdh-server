@@ -100,6 +100,9 @@ type TicketView struct {
 	AssignedName    string
 	ResponsibleName string
 	RecordImageURL  string
+	CostCenterID     string
+	CostCenterNumber string
+	CostCenterName   string
 }
 
 type UserOption struct {
@@ -180,21 +183,19 @@ type InventoryStats struct {
 }
 
 type PartView struct {
-	ID              string
-	PartNumber      string
-	Name            string
-	Manufacturer    string
-	Category        string
-	Unit            string
-	StockQty        string
-	MinQty          string
-	StorageLocation string
-	StoragePlace    string
-	Price           string
-	Status          string
-	StatusLabel     string
-	StatusClass     string
-	StatusDot       string
+	ID           string
+	PartNumber   string
+	Name         string
+	Manufacturer string
+	Category     string
+	Unit         string
+	StockQty     string
+	MinQty       string
+	Price        string
+	Status       string
+	StatusLabel  string
+	StatusClass  string
+	StatusDot    string
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -273,7 +274,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/maintenance/tasks/{id}", h.MaintenanceTaskDetail)
 	r.Post("/maintenance/tasks/{id}/start-web", h.MaintenanceTaskStartWeb)
 	r.Post("/maintenance/tasks/{id}/complete-web", h.MaintenanceTaskCompleteWeb)
-	r.Put("/maintenance/tasks/{id}/edit-web", h.MaintenanceTaskEditWeb)
+	r.Post("/maintenance/tasks/{id}/edit-web", h.MaintenanceTaskEditWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/maintenance/tasks/{id}/delete-web", h.MaintenanceTaskDeleteWeb)
 	r.Post("/maintenance/tasks/{id}/time/start", h.MaintenanceTaskStartTime)
 	r.Post("/maintenance/tasks/{id}/checklist", h.MaintenanceTaskChecklistWeb)
@@ -885,7 +886,6 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 				Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
 				StockQty:        strconv.FormatFloat(p.StockQty, 'f', 1, 64),
 				MinQty:          strconv.FormatFloat(p.MinQty, 'f', 1, 64),
-				StorageLocation: p.StorageLocation, StoragePlace: p.StoragePlace,
 				Status:      st,
 				StatusLabel: statusLabels[st], StatusClass: statusClasses[st], StatusDot: statusDots[st],
 			}
@@ -955,16 +955,12 @@ func (h *Handler) CreatePart(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
 	minQty, _ := strconv.ParseFloat(r.FormValue("min_qty"), 64)
-	initStock, _ := strconv.ParseFloat(r.FormValue("initial_stock"), 64)
 	in := &inventory.CreatePartInput{
-		PartNumber:      r.FormValue("part_number"),
-		Name:            r.FormValue("name"),
-		Manufacturer:    r.FormValue("manufacturer"),
-		Category:        r.FormValue("category"),
-		StorageLocation: r.FormValue("storage_location"),
-		StoragePlace:    r.FormValue("storage_place"),
-		MinQty:          minQty,
-		InitialStock:    initStock,
+		PartNumber:   r.FormValue("part_number"),
+		Name:         r.FormValue("name"),
+		Manufacturer: r.FormValue("manufacturer"),
+		Category:     r.FormValue("category"),
+		MinQty:       minQty,
 	}
 	h.inv.Create(r.Context(), in, u.ID)
 	h.Inventory(w, r)
@@ -1016,6 +1012,7 @@ type TimeEntryView struct {
 	EndedStr     string
 	DurationStr  string
 	Running      bool
+	InfraName    string
 }
 
 func timeRefLabel(t timetracking.RefType) string {
@@ -1063,6 +1060,7 @@ func timeEntryView(e *timetracking.TimeEntry) TimeEntryView {
 		RefTypeDot:   timeRefDot(e.RefType),
 		StartedStr:   e.StartedAt.Format("15:04"),
 		Running:      e.EndedAt == nil,
+		InfraName:    e.InfraName,
 	}
 	if e.EndedAt != nil {
 		v.EndedStr = e.EndedAt.Format("15:04")
@@ -1207,6 +1205,9 @@ type FaultDetailView struct {
 	AssignedName    string
 	ResponsibleName string
 	RecordImageURL  string
+	CostCenterID     string
+	CostCenterNumber string
+	CostCenterName   string
 }
 
 type SimilarFaultView struct {
@@ -1253,10 +1254,15 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 			AssignedName:    people.AssignedName,
 			ResponsibleName: people.ResponsibleName,
 			RecordImageURL:  h.recordImageURL(ctx, "fault", id),
+			CostCenterNumber: fault.CostCenterNumber,
+			CostCenterName:   fault.CostCenterName,
 		},
 	}
 	if fault.InfrastructureID != nil {
 		data.Fault.InfraID = *fault.InfrastructureID
+	}
+	if fault.CostCenterID != nil {
+		data.Fault.CostCenterID = *fault.CostCenterID
 	}
 	if fault.Resolution != nil {
 		data.Fault.Resolution = *fault.Resolution
@@ -1672,6 +1678,7 @@ func (h *Handler) MaintenanceTaskEditWeb(w http.ResponseWriter, r *http.Request)
 		Priority:         maintenance.Priority(r.FormValue("priority")),
 		DueDate:          r.FormValue("due_date"),
 		Notes:            r.FormValue("notes"),
+		CostCenterID:     optionalID(r.FormValue("cost_center_id")),
 	}
 	if err := h.maint.UpdateTask(r.Context(), chi.URLParam(r, "id"), in); err != nil {
 		w.Header().Set("Content-Type", "text/html")
@@ -1892,6 +1899,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			Status:      string(t.Status), StatusLabel: statusLabel(string(t.Status)),
 			StatusClass: statusClass(string(t.Status)),
 			CreatedAgo:  timeAgo(t.CreatedAt),
+			CostCenterNumber: t.CostCenterNumber,
+			CostCenterName:   t.CostCenterName,
 		},
 		StatusOptions: []StatusOption{
 			{"open", "Offen"}, {"in_progress", "In Arbeit"},
@@ -1900,6 +1909,9 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if t.InfrastructureID != nil {
 		data.Ticket.InfraID = *t.InfrastructureID
+	}
+	if t.CostCenterID != nil {
+		data.Ticket.CostCenterID = *t.CostCenterID
 	}
 	people := h.recordPeople(ctx, "ticket", id)
 	data.Ticket.AssignedID = people.AssignedID
@@ -2004,11 +2016,10 @@ func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
 	pv := PartView{
 		ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
 		Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
-		StockQty:        fmt.Sprintf("%.2f", p.StockQty),
-		MinQty:          fmt.Sprintf("%.2f", p.MinQty),
-		StorageLocation: p.StorageLocation, StoragePlace: p.StoragePlace,
-		Price:  fmt.Sprintf("%.2f", p.Price),
-		Status: st, StatusLabel: statusLabels[st],
+		StockQty: fmt.Sprintf("%.2f", p.StockQty),
+		MinQty:   fmt.Sprintf("%.2f", p.MinQty),
+		Price:    fmt.Sprintf("%.2f", p.Price),
+		Status:   st, StatusLabel: statusLabels[st],
 		StatusClass: statusClasses[st], StatusDot: statusDots[st],
 	}
 
@@ -2040,11 +2051,12 @@ func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	qty, _ := strconv.ParseFloat(r.FormValue("qty"), 64)
 	in := &inventory.BookMovementInput{
-		PartID:    r.FormValue("part_id"),
-		Type:      inventory.MovementType(r.FormValue("type")),
-		Qty:       qty,
-		Reference: r.FormValue("reference"),
-		Notes:     r.FormValue("notes"),
+		PartID:        r.FormValue("part_id"),
+		Type:          inventory.MovementType(r.FormValue("type")),
+		Qty:           qty,
+		StorageNodeID: r.FormValue("storage_node_id"),
+		Reference:     r.FormValue("reference"),
+		Notes:         r.FormValue("notes"),
 	}
 	mv, err := h.inv.Book(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
@@ -2052,7 +2064,7 @@ func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: `+err.Error()+`</div>`)
 		return
 	}
-	typeLabel := map[inventory.MovementType]string{"in": "Zugang", "out": "Abgang", "correction": "Korrektur"}
+	typeLabel := map[inventory.MovementType]string{"in": "Zugang", "out": "Abgang", "correction": "Korrektur", "inventory": "Inventur"}
 	fmt.Fprintf(w, `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
 		<div style="font-weight:500;flex:1">%s · Bestand: %.2f</div>
 		<div style="font-weight:600;color:var(--green)">%.2f</div></div>`,
@@ -2077,7 +2089,9 @@ type InfraNodeView struct {
 	Location     string
 	Manufacturer string
 	SerialNo     string
-	CostCenter   string
+	CostCenterID     string
+	CostCenterNumber string
+	CostCenterName   string
 	Children     []InfraNodeView
 }
 
@@ -2097,7 +2111,11 @@ func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
 		TypeLabel: labels[i.Type], TypeIcon: icons[i.Type],
 		TypeBg:   bgs[i.Type],
 		Location: i.Location, Manufacturer: i.Manufacturer,
-		SerialNo: i.SerialNo, CostCenter: i.CostCenter,
+		SerialNo: i.SerialNo,
+		CostCenterNumber: i.CostCenterNumber, CostCenterName: i.CostCenterName,
+	}
+	if i.CostCenterID != nil {
+		v.CostCenterID = *i.CostCenterID
 	}
 	for _, c := range i.Children {
 		v.Children = append(v.Children, infraNodeView(c))
@@ -2144,7 +2162,7 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 		Manufacturer: r.FormValue("manufacturer"),
 		SerialNo:     r.FormValue("serial_no"),
 		Description:  r.FormValue("description"),
-		CostCenter:   r.FormValue("cost_center"),
+		CostCenterID: optionalID(r.FormValue("cost_center_id")),
 	}
 	if parentID != "" {
 		in.ParentID = &parentID
@@ -2495,12 +2513,15 @@ func parseDateTimeLocal(v string) (time.Time, error) {
 }
 
 func (h *Handler) TimeStartWeb(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	r.ParseMultipartForm(32 << 20) // FIX: r.ParseForm() parst kein multipart/form-data (FormData+fetch)
 	u := getUser(r)
 	in := &timetracking.CreateEntryInput{
 		RefType:     timetracking.RefType(r.FormValue("ref_type")),
 		RefID:       r.FormValue("ref_id"),
 		Description: r.FormValue("description"),
+	}
+	if infraID := r.FormValue("infrastructure_id"); infraID != "" {
+		in.InfrastructureID = &infraID
 	}
 	if in.RefType == "" || in.RefID == "" {
 		http.Error(w, "Typ und Bezug fehlen", http.StatusBadRequest)
@@ -2517,7 +2538,7 @@ func (h *Handler) TimeStartWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	r.ParseMultipartForm(32 << 20) // FIX: r.ParseForm() parst kein multipart/form-data (FormData+fetch)
 	u := getUser(r)
 	startedAt, err := parseDateTimeLocal(r.FormValue("started_at"))
 	if err != nil || startedAt.IsZero() {
@@ -2535,6 +2556,9 @@ func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
 		Description: r.FormValue("description"),
 		StartedAt:   startedAt,
 		EndedAt:     &endedAt,
+	}
+	if infraID := r.FormValue("infrastructure_id"); infraID != "" {
+		in.InfrastructureID = &infraID
 	}
 	if in.RefType == "" || in.RefID == "" {
 		http.Error(w, "Typ und Bezug fehlen", http.StatusBadRequest)
@@ -2624,7 +2648,7 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	in := &infrastructure.UpdateInput{
 		Name: r.FormValue("name"), Location: r.FormValue("location"),
 		Manufacturer: r.FormValue("manufacturer"), SerialNo: r.FormValue("serial_no"),
-		Model: r.FormValue("model"), CostCenter: r.FormValue("cost_center"),
+		Model: r.FormValue("model"), CostCenterID: optionalID(r.FormValue("cost_center_id")),
 	}
 	err := h.infra.Update(r.Context(), id, in)
 	w.Header().Set("Content-Type", "text/html")
