@@ -32,6 +32,7 @@ type Infrastructure struct {
 	SerialNo     string            `json:"serial_no,omitempty"`
 	Manufacturer string            `json:"manufacturer,omitempty"`
 	Model        string            `json:"model,omitempty"`
+	CostCenter   string            `json:"cost_center,omitempty"`
 	InstalledAt  *string           `json:"installed_at,omitempty"`
 	Active       bool              `json:"active"`
 	CreatedAt    time.Time         `json:"created_at"`
@@ -48,6 +49,7 @@ type CreateInput struct {
 	SerialNo     string    `json:"serial_no,omitempty"`
 	Manufacturer string    `json:"manufacturer,omitempty"`
 	Model        string    `json:"model,omitempty"`
+	CostCenter   string    `json:"cost_center,omitempty"`
 	InstalledAt  *string   `json:"installed_at,omitempty"`
 }
 
@@ -58,6 +60,7 @@ type UpdateInput struct {
 	SerialNo     string `json:"serial_no"`
 	Manufacturer string `json:"manufacturer"`
 	Model        string `json:"model"`
+	CostCenter   string `json:"cost_center"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -66,32 +69,33 @@ type Repository struct{ db *pgxpool.Pool }
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
-// scanItem liest eine Zeile – Reihenfolge muss mit SELECT übereinstimmen
-// SELECT: id, parent_id, name, type, COALESCE(description,”) AS description, COALESCE(location,”) AS location, COALESCE(serial_no,”) AS serial_no, COALESCE(manufacturer,”) AS manufacturer, COALESCE(model,”) AS model, installed_at::text, active, created_at, updated_at
+const selectCols = `id, parent_id, name, type, COALESCE(description,'') AS description, COALESCE(location,'') AS location,
+	COALESCE(serial_no,'') AS serial_no, COALESCE(manufacturer,'') AS manufacturer, COALESCE(model,'') AS model,
+	COALESCE(cost_center,'') AS cost_center, installed_at::text,
+	active, created_at, updated_at`
+
+// scanItem liest eine Zeile – Reihenfolge muss mit selectCols übereinstimmen
 func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, error) {
 	i := &Infrastructure{}
 	err := row.Scan(
 		&i.ID, &i.ParentID, &i.Name, &i.Type,
 		&i.Description, &i.Location,
 		&i.SerialNo, &i.Manufacturer, &i.Model,
+		&i.CostCenter,
 		&i.InstalledAt,
 		&i.Active, &i.CreatedAt, &i.UpdatedAt,
 	)
 	return i, err
 }
 
-const selectCols = `id, parent_id, name, type, COALESCE(description,'') AS description, COALESCE(location,'') AS location,
-	COALESCE(serial_no,'') AS serial_no, COALESCE(manufacturer,'') AS manufacturer, COALESCE(model,'') AS model, installed_at::text,
-	active, created_at, updated_at`
-
 func (r *Repository) Create(ctx context.Context, i *Infrastructure) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO infrastructure
-		 (id, parent_id, name, type, description, location, serial_no, manufacturer, model, installed_at)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 (id, parent_id, name, type, description, location, serial_no, manufacturer, model, cost_center, installed_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING id, active, created_at, updated_at`,
 		i.ParentID, i.Name, i.Type, i.Description,
-		i.Location, i.SerialNo, i.Manufacturer, i.Model, i.InstalledAt,
+		i.Location, i.SerialNo, i.Manufacturer, i.Model, i.CostCenter, i.InstalledAt,
 	).Scan(&i.ID, &i.Active, &i.CreatedAt, &i.UpdatedAt)
 }
 
@@ -167,9 +171,9 @@ func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 func (r *Repository) Update(ctx context.Context, i *Infrastructure) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE infrastructure SET name=$1, description=$2, location=$3,
-		 serial_no=$4, manufacturer=$5, model=$6, updated_at=NOW() WHERE id=$7`,
+		 serial_no=$4, manufacturer=$5, model=$6, cost_center=$7, updated_at=NOW() WHERE id=$8`,
 		i.Name, i.Description, i.Location,
-		i.SerialNo, i.Manufacturer, i.Model, i.ID)
+		i.SerialNo, i.Manufacturer, i.Model, i.CostCenter, i.ID)
 	return err
 }
 
@@ -183,7 +187,7 @@ func (r *Repository) Search(ctx context.Context, q string) ([]*Infrastructure, e
 	rows, err := r.db.Query(ctx,
 		`SELECT `+selectCols+` FROM infrastructure WHERE active=true AND (
 		 name ILIKE $1 OR description ILIKE $1 OR serial_no ILIKE $1 OR
-		 manufacturer ILIKE $1 OR model ILIKE $1 OR location ILIKE $1)
+		 manufacturer ILIKE $1 OR model ILIKE $1 OR location ILIKE $1 OR cost_center ILIKE $1)
 		 ORDER BY type, name LIMIT 50`, "%"+q+"%")
 	if err != nil {
 		return nil, err
@@ -227,7 +231,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Infrastructure,
 	i := &Infrastructure{ParentID: in.ParentID, Name: in.Name, Type: in.Type,
 		Description: in.Description, Location: in.Location,
 		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer,
-		Model: in.Model, InstalledAt: in.InstalledAt}
+		Model: in.Model, CostCenter: in.CostCenter, InstalledAt: in.InstalledAt}
 	return i, s.repo.Create(ctx, i)
 }
 func (s *Service) GetByID(ctx context.Context, id string) (*Infrastructure, error) {
@@ -245,7 +249,7 @@ func (s *Service) Deactivate(ctx context.Context, id string) error      { return
 func (s *Service) Update(ctx context.Context, id string, in *UpdateInput) error {
 	return s.repo.Update(ctx, &Infrastructure{ID: id, Name: in.Name,
 		Description: in.Description, Location: in.Location,
-		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, Model: in.Model})
+		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, Model: in.Model, CostCenter: in.CostCenter})
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -263,7 +267,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/search", h.Search)
 	r.Get("/stats", h.Stats)
 	r.Get("/{id}", h.GetByID)
-	r.Put("/{id}", h.Update)
+	r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/{id}", h.Deactivate)
 	r.Get("/{id}/children", h.GetChildren)
 	return r

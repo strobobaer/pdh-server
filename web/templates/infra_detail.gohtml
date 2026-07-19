@@ -33,6 +33,7 @@
       </div>
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input"></div>
       <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Kostenstelle</label><input name="cost_center" class="form-input" placeholder="z.B. KST-4711"></div>
     </div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -60,7 +61,7 @@
           <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{.TypeBg}};flex-shrink:0">{{.TypeIcon}}</div>
           <div class="li-text">
             <div class="li-title">{{.Name}}</div>
-            <div class="li-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}</div>
+            <div class="li-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenter}} · {{.CostCenter}}{{end}}</div>
           </div>
           <i class="ti ti-chevron-right" style="color:var(--muted);font-size:14px"></i>
         </div>
@@ -95,12 +96,13 @@
         {{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}
       </div>
       <div id="edit-form" style="display:none">
-        <form hx-put="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
+        <form hx-post="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
           <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Node.Name}}" required></div>
           <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Node.Location}}"></div>
           <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input" value="{{.Node.Manufacturer}}"></div>
           <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{.Node.SerialNo}}"></div>
           <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
+          <div class="form-group"><label class="form-label">Kostenstelle</label><input name="cost_center" class="form-input" value="{{.Node.CostCenter}}" placeholder="z.B. KST-4711"></div>
           {{template "icon-button-toolbar" (dict
             "Class" "end"
             "Label" "Infrastruktur bearbeiten"
@@ -118,6 +120,7 @@
         {{if .Node.Location}}<div class="li"><div class="li-text"><div class="li-sub">Standort</div><div class="li-title">{{.Node.Location}}</div></div></div>{{end}}
         {{if .Node.Manufacturer}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
         {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
+        {{if .Node.CostCenter}}<div class="li"><div class="li-text"><div class="li-sub">Kostenstelle</div><div class="li-title">{{.Node.CostCenter}}</div></div></div>{{end}}
         {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
       </div>
     </div>

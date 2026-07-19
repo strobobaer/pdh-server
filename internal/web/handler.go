@@ -280,7 +280,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/shifts", h.Shifts)
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
-	r.Put("/infrastructure/{id}/edit", h.InfraUpdate)
+	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/infrastructure", h.InfraCreate)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
@@ -2077,6 +2077,7 @@ type InfraNodeView struct {
 	Location     string
 	Manufacturer string
 	SerialNo     string
+	CostCenter   string
 	Children     []InfraNodeView
 }
 
@@ -2096,7 +2097,7 @@ func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
 		TypeLabel: labels[i.Type], TypeIcon: icons[i.Type],
 		TypeBg:   bgs[i.Type],
 		Location: i.Location, Manufacturer: i.Manufacturer,
-		SerialNo: i.SerialNo,
+		SerialNo: i.SerialNo, CostCenter: i.CostCenter,
 	}
 	for _, c := range i.Children {
 		v.Children = append(v.Children, infraNodeView(c))
@@ -2143,6 +2144,7 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 		Manufacturer: r.FormValue("manufacturer"),
 		SerialNo:     r.FormValue("serial_no"),
 		Description:  r.FormValue("description"),
+		CostCenter:   r.FormValue("cost_center"),
 	}
 	if parentID != "" {
 		in.ParentID = &parentID
@@ -2622,7 +2624,7 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	in := &infrastructure.UpdateInput{
 		Name: r.FormValue("name"), Location: r.FormValue("location"),
 		Manufacturer: r.FormValue("manufacturer"), SerialNo: r.FormValue("serial_no"),
-		Model: r.FormValue("model"),
+		Model: r.FormValue("model"), CostCenter: r.FormValue("cost_center"),
 	}
 	err := h.infra.Update(r.Context(), id, in)
 	w.Header().Set("Content-Type", "text/html")
