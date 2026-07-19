@@ -16,33 +16,53 @@ import (
 
 // ── Modelle ──────────────────────────────────────────────────
 
-type Warehouse struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	Location    string     `json:"location,omitempty"`
-	Active      bool       `json:"active"`
-	CreatedBy   string     `json:"created_by"`
-	CreatedAt   time.Time  `json:"created_at"`
-	Locations   []Location `json:"locations,omitempty"`
-	PartCount   int        `json:"part_count,omitempty"`
+// NodeType ist die Ebene eines Lagerort-Knotens im Baum.
+// Ein Knoten muss immer eine "tiefere" Ebene sein als sein Elternknoten,
+// siehe typeDepth weiter unten - Schachtelung darf aber Ebenen überspringen
+// (z.B. ein Fach direkt unter einem Lagerort, ohne Regal dazwischen).
+type NodeType string
+
+const (
+	TypeLagerort NodeType = "lagerort"
+	TypeRegal    NodeType = "regal"
+	TypeFach     NodeType = "fach"
+	TypePlatz    NodeType = "platz"
+)
+
+// typeDepth definiert die erlaubte Reihenfolge der Ebenen.
+var typeDepth = map[NodeType]int{
+	TypeLagerort: 0,
+	TypeRegal:    1,
+	TypeFach:     2,
+	TypePlatz:    3,
 }
 
-type Location struct {
-	ID          string  `json:"id"`
-	WarehouseID string  `json:"warehouse_id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description,omitempty"`
-	Places      []Place `json:"places,omitempty"`
+func validType(t string) (NodeType, bool) {
+	switch NodeType(t) {
+	case TypeLagerort, TypeRegal, TypeFach, TypePlatz:
+		return NodeType(t), true
+	}
+	return "", false
 }
 
-type Place struct {
-	ID                string `json:"id"`
-	StorageLocationID string `json:"storage_location_id"`
-	Name              string `json:"name"`
-	Description       string `json:"description,omitempty"`
-	Capacity          string `json:"capacity,omitempty"`
-	CurrentParts      int    `json:"current_parts"`
+// Node ist ein einzelner Knoten im Lagerort-Baum (Lagerort, Regal, Fach oder Platz).
+// Children wird nur beim Baum-Abruf (GetTree/GetSubtree) befüllt.
+// Location ist nur beim Typ "lagerort" sinnvoll befüllt (entspricht dem
+// früheren separaten "Standort"-Feld des Warehouse-Modells).
+type Node struct {
+	ID           string    `json:"id"`
+	ParentID     *string   `json:"parent_id,omitempty"`
+	Name         string    `json:"name"`
+	Type         NodeType  `json:"type"`
+	Description  string    `json:"description,omitempty"`
+	Location     string    `json:"location,omitempty"`
+	Capacity     string    `json:"capacity,omitempty"`
+	CurrentParts int       `json:"current_parts"`
+	Active       bool      `json:"active"`
+	CreatedBy    string    `json:"created_by"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Children     []*Node   `json:"children,omitempty"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -51,160 +71,101 @@ type Repository struct{ db *pgxpool.Pool }
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
-func (r *Repository) CreateWarehouse(ctx context.Context, w *Warehouse) error {
+func (r *Repository) Create(ctx context.Context, n *Node) error {
 	return r.db.QueryRow(ctx,
-		`INSERT INTO warehouses (id, name, description, location, created_by)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id, created_at`,
-		w.Name, w.Description, w.Location, w.CreatedBy,
-	).Scan(&w.ID, &w.CreatedAt)
+		`INSERT INTO storage_nodes (id, parent_id, name, type, description, location, capacity, created_by)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, current_parts, active, created_at, updated_at`,
+		n.ParentID, n.Name, n.Type, n.Description, n.Location, n.Capacity, n.CreatedBy,
+	).Scan(&n.ID, &n.CurrentParts, &n.Active, &n.CreatedAt, &n.UpdatedAt)
 }
 
-func (r *Repository) UpdateWarehouse(ctx context.Context, id string, w *Warehouse) error {
+func (r *Repository) Update(ctx context.Context, id string, n *Node) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE warehouses SET name=$1, description=$2, location=$3 WHERE id=$4 AND active=true`,
-		w.Name, w.Description, w.Location, id)
+		`UPDATE storage_nodes SET name=$1, description=$2, location=$3, capacity=$4, updated_at=NOW()
+		 WHERE id=$5 AND active=true`,
+		n.Name, n.Description, n.Location, n.Capacity, id)
 	return err
 }
 
-func (r *Repository) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT w.id, w.name, COALESCE(w.description,''), COALESCE(w.location,''),
-		        w.active, w.created_by, w.created_at,
-		        COUNT(sp.id) as part_count
-		 FROM warehouses w
-		 LEFT JOIN storage_locations sl ON sl.warehouse_id = w.id
-		 LEFT JOIN storage_places sp ON sp.storage_location_id = sl.id
-		 WHERE w.active=true
-		 GROUP BY w.id ORDER BY w.name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var list []*Warehouse
-	for rows.Next() {
-		w := &Warehouse{}
-		if err := rows.Scan(&w.ID, &w.Name, &w.Description, &w.Location, &w.Active, &w.CreatedBy, &w.CreatedAt, &w.PartCount); err != nil {
-			return nil, err
-		}
-		if tree, err := r.GetWarehouseTree(ctx, w.ID); err == nil && tree != nil {
-			tree.PartCount = w.PartCount
-			list = append(list, tree)
-		} else {
-			list = append(list, w)
-		}
-	}
-	return list, rows.Err()
-}
-
-func (r *Repository) GetWarehouseTree(ctx context.Context, id string) (*Warehouse, error) {
-	w := &Warehouse{}
+func (r *Repository) GetByID(ctx context.Context, id string) (*Node, error) {
+	n := &Node{}
 	err := r.db.QueryRow(ctx,
-		`SELECT id, name, COALESCE(description,''), COALESCE(location,''), active, created_by, created_at
-		 FROM warehouses WHERE id=$1`, id).
-		Scan(&w.ID, &w.Name, &w.Description, &w.Location, &w.Active, &w.CreatedBy, &w.CreatedAt)
+		`SELECT id, parent_id, name, type, COALESCE(description,''), COALESCE(location,''), COALESCE(capacity,''),
+		        current_parts, active, created_by, created_at, updated_at
+		 FROM storage_nodes WHERE id=$1`, id).
+		Scan(&n.ID, &n.ParentID, &n.Name, &n.Type, &n.Description, &n.Location, &n.Capacity,
+			&n.CurrentParts, &n.Active, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
+	return n, nil
+}
 
+// ListAll holt den kompletten aktiven Baum als flache Liste.
+// Der Aufbau der Eltern-Kind-Beziehungen passiert danach in Go (buildTree),
+// weil rekursive Baum-Queries in Go schwerer zu debuggen sind als eine
+// einfache Liste + anschließende Verknüpfung über parent_id.
+func (r *Repository) ListAll(ctx context.Context) ([]*Node, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, warehouse_id, name, COALESCE(description,'') FROM storage_locations WHERE warehouse_id=$1 ORDER BY name`, id)
+		`SELECT id, parent_id, name, type, COALESCE(description,''), COALESCE(location,''), COALESCE(capacity,''),
+		        current_parts, active, created_by, created_at, updated_at
+		 FROM storage_nodes WHERE active=true ORDER BY type, name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	var nodes []*Node
 	for rows.Next() {
-		loc := Location{}
-		if err := rows.Scan(&loc.ID, &loc.WarehouseID, &loc.Name, &loc.Description); err != nil {
+		n := &Node{}
+		if err := rows.Scan(&n.ID, &n.ParentID, &n.Name, &n.Type, &n.Description, &n.Location, &n.Capacity,
+			&n.CurrentParts, &n.Active, &n.CreatedBy, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
-		prows, err := r.db.Query(ctx,
-			`SELECT id, storage_location_id, name, COALESCE(description,''), COALESCE(capacity,''), current_parts
-			 FROM storage_places WHERE storage_location_id=$1 ORDER BY name`, loc.ID)
-		if err != nil {
-			return nil, err
-		}
-		for prows.Next() {
-			p := Place{}
-			if err := prows.Scan(&p.ID, &p.StorageLocationID, &p.Name, &p.Description, &p.Capacity, &p.CurrentParts); err != nil {
-				prows.Close()
-				return nil, err
-			}
-			loc.Places = append(loc.Places, p)
-		}
-		if err := prows.Err(); err != nil {
-			prows.Close()
-			return nil, err
-		}
-		prows.Close()
-		w.PartCount += len(loc.Places)
-		w.Locations = append(w.Locations, loc)
+		nodes = append(nodes, n)
 	}
-	return w, rows.Err()
+	return nodes, rows.Err()
 }
 
-func (r *Repository) CreateLocation(ctx context.Context, l *Location) error {
-	return r.db.QueryRow(ctx,
-		`INSERT INTO storage_locations (id, warehouse_id, name, description)
-		 VALUES (gen_random_uuid(), $1, $2, $3) RETURNING id`,
-		l.WarehouseID, l.Name, l.Description,
-	).Scan(&l.ID)
-}
-
-func (r *Repository) UpdateLocation(ctx context.Context, id string, l *Location) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE storage_locations SET name=$1, description=$2 WHERE id=$3`,
-		l.Name, l.Description, id)
-	return err
-}
-
-func (r *Repository) CreatePlace(ctx context.Context, p *Place) error {
-	return r.db.QueryRow(ctx,
-		`INSERT INTO storage_places (id, storage_location_id, name, description, capacity)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id`,
-		p.StorageLocationID, p.Name, p.Description, p.Capacity,
-	).Scan(&p.ID)
-}
-
-func (r *Repository) UpdatePlace(ctx context.Context, id string, p *Place) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE storage_places SET name=$1, description=$2, capacity=$3 WHERE id=$4`,
-		p.Name, p.Description, p.Capacity, id)
-	return err
-}
-
-func (r *Repository) DeleteWarehouse(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `UPDATE warehouses SET active=false WHERE id=$1`, id)
-	return err
-}
-
-func (r *Repository) DeleteLocation(ctx context.Context, id string) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `DELETE FROM storage_places WHERE storage_location_id=$1`, id); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM storage_locations WHERE id=$1`, id); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func (r *Repository) DeletePlace(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM storage_places WHERE id=$1`, id)
+// Delete deaktiviert den Knoten UND alle Nachfahren (rekursiv über parent_id),
+// damit z.B. beim Löschen eines Regals nicht "verwaiste" Fächer/Plätze übrig bleiben.
+func (r *Repository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM storage_nodes WHERE id = $1
+			UNION ALL
+			SELECT sn.id FROM storage_nodes sn
+			JOIN subtree s ON sn.parent_id = s.id
+		)
+		UPDATE storage_nodes SET active=false, updated_at=NOW()
+		WHERE id IN (SELECT id FROM subtree)`, id)
 	return err
 }
 
 func (r *Repository) GetStats(ctx context.Context) (map[string]int, error) {
-	var wh, locs, places int
-	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM warehouses WHERE active=true`).Scan(&wh)
-	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM storage_locations sl JOIN warehouses w ON sl.warehouse_id=w.id WHERE w.active=true`).Scan(&locs)
-	r.db.QueryRow(ctx, `SELECT COUNT(*) FROM storage_places sp JOIN storage_locations sl ON sp.storage_location_id=sl.id JOIN warehouses w ON sl.warehouse_id=w.id WHERE w.active=true`).Scan(&places)
-	return map[string]int{"warehouses": wh, "locations": locs, "places": places}, nil
+	rows, err := r.db.Query(ctx,
+		`SELECT type, COUNT(*) FROM storage_nodes WHERE active=true GROUP BY type`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := map[string]int{
+		string(TypeLagerort): 0,
+		string(TypeRegal):    0,
+		string(TypeFach):     0,
+		string(TypePlatz):    0,
+	}
+	for rows.Next() {
+		var t string
+		var c int
+		if err := rows.Scan(&t, &c); err != nil {
+			return nil, err
+		}
+		stats[t] = c
+	}
+	return stats, rows.Err()
 }
 
 // ── Service ──────────────────────────────────────────────────
@@ -213,54 +174,95 @@ type Service struct{ repo *Repository }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 
-func (s *Service) CreateWarehouse(ctx context.Context, name, desc, loc, userID string) (*Warehouse, error) {
-	w := &Warehouse{Name: name, Description: desc, Location: loc, CreatedBy: userID}
-	return w, s.repo.CreateWarehouse(ctx, w)
+// Create legt einen neuen Knoten an. parentID == nil bedeutet: neuer
+// Wurzelknoten, muss dann vom Typ "lagerort" sein.
+func (s *Service) Create(ctx context.Context, parentID *string, name, nodeType, description, location, capacity, userID string) (*Node, error) {
+	t, ok := validType(nodeType)
+	if !ok {
+		return nil, fmt.Errorf("ungültiger typ %q (erlaubt: lagerort, regal, fach, platz)", nodeType)
+	}
+
+	if parentID == nil {
+		if t != TypeLagerort {
+			return nil, fmt.Errorf("ohne übergeordneten lagerort kann nur der typ 'lagerort' angelegt werden")
+		}
+	} else {
+		parent, err := s.repo.GetByID(ctx, *parentID)
+		if err != nil {
+			return nil, fmt.Errorf("übergeordneter knoten nicht gefunden")
+		}
+		if typeDepth[t] <= typeDepth[parent.Type] {
+			return nil, fmt.Errorf("%s kann nicht unter %s liegen (muss in der hierarchie weiter unten sein)", t, parent.Type)
+		}
+	}
+
+	n := &Node{ParentID: parentID, Name: name, Type: t, Description: description, Location: location, Capacity: capacity, CreatedBy: userID}
+	return n, s.repo.Create(ctx, n)
 }
 
-func (s *Service) UpdateWarehouse(ctx context.Context, id, name, desc, loc string) error {
-	return s.repo.UpdateWarehouse(ctx, id, &Warehouse{Name: name, Description: desc, Location: loc})
+func (s *Service) Update(ctx context.Context, id, name, description, location, capacity string) error {
+	return s.repo.Update(ctx, id, &Node{Name: name, Description: description, Location: location, Capacity: capacity})
 }
 
-func (s *Service) ListWarehouses(ctx context.Context) ([]*Warehouse, error) {
-	return s.repo.ListWarehouses(ctx)
+func (s *Service) GetTree(ctx context.Context) ([]*Node, error) {
+	flat, err := s.repo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return buildTree(flat), nil
 }
-func (s *Service) GetTree(ctx context.Context, id string) (*Warehouse, error) {
-	return s.repo.GetWarehouseTree(ctx, id)
+
+func (s *Service) GetSubtree(ctx context.Context, id string) (*Node, error) {
+	flat, err := s.repo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return findNode(buildTree(flat), id), nil
 }
+
 func (s *Service) GetStats(ctx context.Context) (map[string]int, error) { return s.repo.GetStats(ctx) }
 
-func (s *Service) CreateLocation(ctx context.Context, warehouseID, name, desc string) (*Location, error) {
-	l := &Location{WarehouseID: warehouseID, Name: name, Description: desc}
-	return l, s.repo.CreateLocation(ctx, l)
+func (s *Service) Delete(ctx context.Context, id string) error { return s.repo.Delete(ctx, id) }
+
+// buildTree baut aus der flachen Liste (mit ParentID) eine verschachtelte
+// Baumstruktur. Wurzeln sind Knoten, deren Elternknoten nicht (mehr) in der
+// aktiven Liste vorkommt (z.B. weil er selbst kein parent_id hat).
+func buildTree(flat []*Node) []*Node {
+	byID := make(map[string]*Node, len(flat))
+	for _, n := range flat {
+		n.Children = nil
+		byID[n.ID] = n
+	}
+	var roots []*Node
+	for _, n := range flat {
+		if n.ParentID != nil {
+			if parent, ok := byID[*n.ParentID]; ok {
+				parent.Children = append(parent.Children, n)
+				continue
+			}
+		}
+		roots = append(roots, n)
+	}
+	return roots
 }
 
-func (s *Service) UpdateLocation(ctx context.Context, id, name, desc string) error {
-	return s.repo.UpdateLocation(ctx, id, &Location{Name: name, Description: desc})
-}
-
-func (s *Service) CreatePlace(ctx context.Context, locationID, name, desc, capacity string) (*Place, error) {
-	p := &Place{StorageLocationID: locationID, Name: name, Description: desc, Capacity: capacity}
-	return p, s.repo.CreatePlace(ctx, p)
-}
-
-func (s *Service) UpdatePlace(ctx context.Context, id, name, desc, capacity string) error {
-	return s.repo.UpdatePlace(ctx, id, &Place{Name: name, Description: desc, Capacity: capacity})
-}
-
-func (s *Service) DeleteWarehouse(ctx context.Context, id string) error {
-	return s.repo.DeleteWarehouse(ctx, id)
-}
-
-func (s *Service) DeleteLocation(ctx context.Context, id string) error {
-	return s.repo.DeleteLocation(ctx, id)
-}
-
-func (s *Service) DeletePlace(ctx context.Context, id string) error {
-	return s.repo.DeletePlace(ctx, id)
+func findNode(nodes []*Node, id string) *Node {
+	for _, n := range nodes {
+		if n.ID == id {
+			return n
+		}
+		if found := findNode(n.Children, id); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 // ── Handler ──────────────────────────────────────────────────
+// Diese JSON-API läuft unter /api/v1/storage (siehe main.go).
+// Wichtig: alle Ebenen (lagerort/regal/fach/platz) teilen sich jetzt dieselben
+// Endpunkte - es gibt keine separaten Pfade wie /locations/{id} oder
+// /places/{id} mehr, weil intern alles ein "Node" ist.
 
 type Handler struct{ svc *Service }
 
@@ -269,18 +271,15 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
-	r.Get("/", h.List)
-	r.Post("/", h.CreateWarehouse)
-	r.Get("/{id}", h.GetTree)
-	r.Put("/{id}", h.UpdateWarehouse)
-	r.Delete("/{id}", h.Delete)
-	r.Post("/{id}/locations", h.CreateLocation)
-	r.Put("/locations/{id}", h.UpdateLocation)
-	r.Delete("/locations/{id}", h.DeleteLocation)
-	r.Post("/locations/{id}/places", h.CreatePlace)
-	r.Put("/places/{id}", h.UpdatePlace)
-	r.Delete("/places/{id}", h.DeletePlace)
+
+	r.Get("/", h.GetTree)
 	r.Get("/stats", h.Stats)
+	r.Get("/{id}", h.GetSubtree)
+	r.Post("/", h.Create)                   // neuen Wurzel-Lagerort anlegen
+	r.Post("/{id}/children", h.CreateChild) // Kind-Knoten unter {id} anlegen
+	r.Post("/{id}", h.Update)               // FIX: POST statt PUT, sonst von Cloudflare/Nginx blockiert
+	r.Delete("/{id}", h.Delete)
+
 	return r
 }
 
@@ -298,36 +297,62 @@ func formOrJSON(r *http.Request, out interface{}, applyForm func()) error {
 	return json.NewDecoder(r.Body).Decode(out)
 }
 
-func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	list, err := h.svc.ListWarehouses(r.Context())
-	if err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 200, list)
+type nodeInput struct {
+	Name        string
+	Type        string
+	Description string
+	Location    string
+	Capacity    string
 }
 
-func (h *Handler) CreateWarehouse(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description, Location string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Location = r.FormValue("name"), r.FormValue("description"), r.FormValue("location") }); err != nil {
+func bindNodeInput(r *http.Request) (nodeInput, error) {
+	var in nodeInput
+	err := formOrJSON(r, &in, func() {
+		in.Name = r.FormValue("name")
+		in.Type = r.FormValue("type")
+		in.Description = r.FormValue("description")
+		in.Location = r.FormValue("location")
+		in.Capacity = r.FormValue("capacity")
+	})
+	return in, err
+}
+
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	in, err := bindNodeInput(r)
+	if err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
-	wh, err := h.svc.CreateWarehouse(r.Context(), in.Name, in.Description, in.Location, uid(r))
+	n, err := h.svc.Create(r.Context(), nil, in.Name, in.Type, in.Description, in.Location, in.Capacity, uid(r))
 	if err != nil {
-		response.Error(w, 500, err.Error())
+		response.Error(w, 400, err.Error())
 		return
 	}
-	response.JSON(w, 201, wh)
+	response.JSON(w, 201, n)
 }
 
-func (h *Handler) UpdateWarehouse(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description, Location string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Location = r.FormValue("name"), r.FormValue("description"), r.FormValue("location") }); err != nil {
+func (h *Handler) CreateChild(w http.ResponseWriter, r *http.Request) {
+	parentID := chi.URLParam(r, "id")
+	in, err := bindNodeInput(r)
+	if err != nil {
 		response.Error(w, 400, "ungültige eingabe")
 		return
 	}
-	if err := h.svc.UpdateWarehouse(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Location); err != nil {
+	n, err := h.svc.Create(r.Context(), &parentID, in.Name, in.Type, in.Description, in.Location, in.Capacity, uid(r))
+	if err != nil {
+		response.Error(w, 400, err.Error())
+		return
+	}
+	response.JSON(w, 201, n)
+}
+
+func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	in, err := bindNodeInput(r)
+	if err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
+	if err := h.svc.Update(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Location, in.Capacity); err != nil {
 		response.Error(w, 500, err.Error())
 		return
 	}
@@ -335,95 +360,40 @@ func (h *Handler) UpdateWarehouse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetTree(w http.ResponseWriter, r *http.Request) {
-	tree, err := h.svc.GetTree(r.Context(), chi.URLParam(r, "id"))
+	tree, err := h.svc.GetTree(r.Context())
 	if err != nil {
-		response.Error(w, 404, "nicht gefunden")
+		response.Error(w, 500, err.Error())
 		return
 	}
 	response.JSON(w, 200, tree)
 }
 
+func (h *Handler) GetSubtree(w http.ResponseWriter, r *http.Request) {
+	n, err := h.svc.GetSubtree(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	if n == nil {
+		response.Error(w, 404, "nicht gefunden")
+		return
+	}
+	response.JSON(w, 200, n)
+}
+
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteWarehouse(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := h.svc.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		response.Error(w, 500, err.Error())
 		return
 	}
 	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
-}
-
-func (h *Handler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeleteLocation(r.Context(), chi.URLParam(r, "id")); err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
-}
-
-func (h *Handler) DeletePlace(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.DeletePlace(r.Context(), chi.URLParam(r, "id")); err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 200, map[string]string{"status": "gelöscht"})
-}
-
-func (h *Handler) CreateLocation(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description = r.FormValue("name"), r.FormValue("description") }); err != nil {
-		response.Error(w, 400, "ungültige eingabe")
-		return
-	}
-	loc, err := h.svc.CreateLocation(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description)
-	if err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 201, loc)
-}
-
-func (h *Handler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description = r.FormValue("name"), r.FormValue("description") }); err != nil {
-		response.Error(w, 400, "ungültige eingabe")
-		return
-	}
-	if err := h.svc.UpdateLocation(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description); err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
-}
-
-func (h *Handler) CreatePlace(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description, Capacity string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Capacity = r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity") }); err != nil {
-		response.Error(w, 400, "ungültige eingabe")
-		return
-	}
-	p, err := h.svc.CreatePlace(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Capacity)
-	if err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 201, p)
-}
-
-func (h *Handler) UpdatePlace(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name, Description, Capacity string }
-	if err := formOrJSON(r, &in, func() { in.Name, in.Description, in.Capacity = r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity") }); err != nil {
-		response.Error(w, 400, "ungültige eingabe")
-		return
-	}
-	if err := h.svc.UpdatePlace(r.Context(), chi.URLParam(r, "id"), in.Name, in.Description, in.Capacity); err != nil {
-		response.Error(w, 500, err.Error())
-		return
-	}
-	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
-	stats, _ := h.svc.GetStats(r.Context())
+	stats, err := h.svc.GetStats(r.Context())
+	if err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
 	response.JSON(w, 200, stats)
 }
-
-var _ = fmt.Sprintf

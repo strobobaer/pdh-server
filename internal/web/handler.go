@@ -286,9 +286,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/it", h.ITCreate)
 	r.Put("/it/{id}/status-web", h.ITStatusWeb)
 	r.Get("/storage", h.StoragePage)
-	r.Post("/storage", h.StorageCreateWarehouse)
-	r.Post("/storage/{id}/locations-web", h.StorageAddLocation)
-	r.Post("/storage/locations/{id}/places-web", h.StorageAddPlace)
+	r.Post("/storage", h.StorageCreateRoot)
+	r.Post("/storage/{id}/children-web", h.StorageAddChild)
 	r.Get("/checklists", h.ChecklistsPage)
 	r.Get("/shifts", h.Shifts)
 	r.Post("/faults/{id}/chat-web", h.FaultChatWeb)
@@ -2153,11 +2152,73 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Storage Page ──────────────────────────────────────────────
+// Generischer Lagerort-Baum (lagerort -> regal -> fach -> platz), ersetzt die
+// frühere feste 3-Ebenen-Struktur (Warehouse -> Location -> Place).
+
+type StorageNodeView struct {
+	ID             string
+	Name           string
+	Type           string
+	TypeLabel      string
+	TypeIcon       string
+	Description    string
+	Location       string
+	Capacity       string
+	CurrentParts   int
+	ChildType      string
+	ChildTypeLabel string
+	Children       []StorageNodeView
+}
 
 type StoragePageData struct {
 	BaseData
-	Warehouses []*storage.Warehouse
-	Stats      map[string]int
+	Tree  []StorageNodeView
+	Stats map[string]int
+}
+
+var storageTypeIcons = map[storage.NodeType]string{
+	storage.TypeLagerort: "🏭",
+	storage.TypeRegal:    "🗄️",
+	storage.TypeFach:     "📁",
+	storage.TypePlatz:    "📦",
+}
+
+var storageTypeLabels = map[storage.NodeType]string{
+	storage.TypeLagerort: "Lagerort",
+	storage.TypeRegal:    "Regal",
+	storage.TypeFach:     "Fach",
+	storage.TypePlatz:    "Platz",
+}
+
+// storageChildTypes: welcher Typ darf als Nächstes unter diesem Typ angelegt
+// werden (steuert das "+"-Button-Label im Template). Platz ist die unterste
+// Ebene und hat bewusst keinen Eintrag.
+var storageChildTypes = map[storage.NodeType]storage.NodeType{
+	storage.TypeLagerort: storage.TypeRegal,
+	storage.TypeRegal:    storage.TypeFach,
+	storage.TypeFach:     storage.TypePlatz,
+}
+
+func storageNodeView(n *storage.Node) StorageNodeView {
+	v := StorageNodeView{
+		ID:           n.ID,
+		Name:         n.Name,
+		Type:         string(n.Type),
+		TypeLabel:    storageTypeLabels[n.Type],
+		TypeIcon:     storageTypeIcons[n.Type],
+		Description:  n.Description,
+		Location:     n.Location,
+		Capacity:     n.Capacity,
+		CurrentParts: n.CurrentParts,
+	}
+	if childType, ok := storageChildTypes[n.Type]; ok {
+		v.ChildType = string(childType)
+		v.ChildTypeLabel = storageTypeLabels[childType]
+	}
+	for _, c := range n.Children {
+		v.Children = append(v.Children, storageNodeView(c))
+	}
+	return v
 }
 
 func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
@@ -2165,8 +2226,10 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 		BaseData: baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
 		Stats:    map[string]int{},
 	}
-	if list, err := h.storage.ListWarehouses(r.Context()); err == nil {
-		data.Warehouses = list
+	if tree, err := h.storage.GetTree(r.Context()); err == nil {
+		for _, n := range tree {
+			data.Tree = append(data.Tree, storageNodeView(n))
+		}
 	}
 	if stats, err := h.storage.GetStats(r.Context()); err == nil {
 		data.Stats = stats
@@ -2174,66 +2237,31 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "storage", data)
 }
 
-func (h *Handler) StorageCreateWarehouse(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) StorageCreateRoot(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
-	wh, err := h.storage.CreateWarehouse(r.Context(), r.FormValue("name"), r.FormValue("description"), r.FormValue("location"), u.ID)
+	_, err := h.storage.Create(r.Context(), nil, r.FormValue("name"), "lagerort", r.FormValue("description"), r.FormValue("location"), "", u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: `+err.Error()+`</div>`)
+		w.WriteHeader(http.StatusBadRequest) // FIX: sonst haelt htmx den Fehler fuer einen Erfolg
+		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
-	fmt.Fprintf(w, `<div class="card" style="margin-bottom:14px">
-		<div style="display:flex;align-items:center;gap:12px">
-		<div style="width:36px;height:36px;background:rgba(79,110,247,.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">🏭</div>
-		<div><div style="font-size:15px;font-weight:500">%s</div><div style="font-size:12px;color:var(--muted)">%s</div></div></div>
-		<div id="locs-%s" style="margin-top:14px"><div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">Noch keine Lagerorte</div></div>
-		</div>`, esc(wh.Name), esc(wh.Location), esc(wh.ID))
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) StorageAddLocation(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+func (h *Handler) StorageAddChild(w http.ResponseWriter, r *http.Request) {
+	parentID := chi.URLParam(r, "id")
 	r.ParseForm()
-	loc, err := h.storage.CreateLocation(r.Context(), id, r.FormValue("name"), r.FormValue("description"))
+	u := getUser(r)
+	_, err := h.storage.Create(r.Context(), &parentID, r.FormValue("name"), r.FormValue("type"), r.FormValue("description"), "", r.FormValue("capacity"), u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`)
+		w.WriteHeader(http.StatusBadRequest) // FIX: sonst haelt htmx den Fehler fuer einen Erfolg
+		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
-	fmt.Fprintf(w, `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
-		<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg3)">
-		<div style="width:24px;height:24px;background:rgba(16,185,129,.2);border-radius:6px;display:flex;align-items:center;justify-content:center">📦</div>
-		<div style="flex:1"><div style="font-size:13px;font-weight:500">%s</div><div style="font-size:11px;color:var(--muted)">%s</div></div>
-		<button class="btn" style="font-size:11px;padding:3px 8px" onclick="showAddPlace('%s')"><i class="ti ti-plus"></i>Platz</button></div>
-		<div id="add-place-%s" style="display:none;padding:10px;background:var(--bg3);border-top:1px solid var(--border)">
-		<form hx-post="/storage/locations/%s/places-web" hx-target="#places-%s" hx-swap="beforeend" style="display:flex;gap:6px">
-		<input name="name" class="form-input" placeholder="z.B. Fach 1" required style="flex:1;font-size:12px">
-		<input name="capacity" class="form-input" placeholder="Kapazität" style="width:100px;font-size:12px">
-		<button type="submit" class="btn btn-primary" style="font-size:11px">OK</button></form></div>
-		<div id="places-%s" style="padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px">
-		<div style="color:var(--muted);font-size:11px;padding:8px 0;grid-column:1/-1">Noch keine Plätze</div></div></div>`,
-		esc(loc.Name), esc(loc.Description), jsesc(loc.ID), esc(loc.ID), esc(loc.ID), esc(loc.ID), esc(loc.ID))
-}
-
-func (h *Handler) StorageAddPlace(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	r.ParseForm()
-	p, err := h.storage.CreatePlace(r.Context(), id, r.FormValue("name"), r.FormValue("description"), r.FormValue("capacity"))
-	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler</div>`)
-		return
-	}
-	fmt.Fprintf(w, `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;text-align:center;cursor:pointer" onclick="selectPlace('%s','%s')">
-		<div style="font-size:11px;font-weight:500;color:var(--text)">%s</div>
-		%s</div>`,
-		jsesc(p.ID), jsesc(p.Name), esc(p.Name),
-		func() string {
-			if r.FormValue("capacity") != "" {
-				return `<div style="font-size:10px;color:var(--muted);margin-top:2px">` + esc(r.FormValue("capacity")) + `</div>`
-			}
-			return ""
-		}())
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── Users Page ────────────────────────────────────────────────
