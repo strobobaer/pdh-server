@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/core/addins"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -65,6 +66,11 @@ type MaintenancePlan struct {
 	// Joined
 	InfraName    string `json:"infra_name,omitempty"`
 	AssigneeName string `json:"assignee_name,omitempty"`
+
+	// Kostenstelle (eigenständig, unabhängig von der Infrastruktur)
+	CostCenterID     *string `json:"cost_center_id,omitempty"`
+	CostCenterNumber string  `json:"cost_center_number,omitempty"`
+	CostCenterName   string  `json:"cost_center_name,omitempty"`
 }
 
 // ── Wartungsauftrag (einmalig) ───────────────────────────────
@@ -90,6 +96,11 @@ type MaintenanceTask struct {
 	// Joined
 	InfraName    string `json:"infra_name,omitempty"`
 	AssigneeName string `json:"assignee_name,omitempty"`
+
+	// Kostenstelle (eigenständig, unabhängig von der Infrastruktur)
+	CostCenterID     *string `json:"cost_center_id,omitempty"`
+	CostCenterNumber string  `json:"cost_center_number,omitempty"`
+	CostCenterName   string  `json:"cost_center_name,omitempty"`
 }
 
 // ── Wartungsprüfpunkt ────────────────────────────────────────
@@ -115,6 +126,7 @@ type CreatePlanInput struct {
 	Priority         Priority `json:"priority"`
 	AssignedTo       *string  `json:"assigned_to,omitempty"`
 	FirstDueAt       string   `json:"first_due_at"`
+	CostCenterID     *string  `json:"cost_center_id,omitempty"`
 }
 
 type CreateTaskInput struct {
@@ -126,6 +138,7 @@ type CreateTaskInput struct {
 	Priority         Priority `json:"priority"`
 	AssignedTo       *string  `json:"assigned_to,omitempty"`
 	DueDate          string   `json:"due_date"`
+	CostCenterID     *string  `json:"cost_center_id,omitempty"`
 }
 
 type UpdatePlanInput struct {
@@ -138,11 +151,13 @@ type UpdatePlanInput struct {
 	EstimatedMin     int      `json:"estimated_min"`
 	Priority         Priority `json:"priority"`
 	NextDueAt        string   `json:"next_due_at"`
+	CostCenterID     *string  `json:"cost_center_id,omitempty"`
 }
 
 type CompleteTaskInput struct {
-	Notes       string `json:"notes"`
-	DurationMin int    `json:"duration_min"`
+	Notes         string `json:"notes"`
+	DurationMin   int    `json:"duration_min"`
+	NoPartsNeeded bool   `json:"no_parts_needed"`
 }
 
 type UpdateTaskInput struct {
@@ -152,6 +167,7 @@ type UpdateTaskInput struct {
 	Priority         Priority `json:"priority"`
 	DueDate          string   `json:"due_date"`
 	Notes            string   `json:"notes"`
+	CostCenterID     *string  `json:"cost_center_id,omitempty"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -164,12 +180,12 @@ func (r *Repository) CreatePlan(ctx context.Context, p *MaintenancePlan) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_plans
 		  (id, name, description, type, infrastructure_id, interval_type, interval_days,
-		   estimated_min, priority, assigned_to, active, next_due_at, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11)
+		   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12)
 		RETURNING id, active, created_at`,
 		p.Name, p.Description, p.Type, p.InfrastructureID,
 		p.Interval, p.IntervalDays, p.EstimatedMin, p.Priority,
-		p.AssignedTo, p.NextDueAt, p.CreatedBy,
+		p.AssignedTo, p.NextDueAt, p.CreatedBy, p.CostCenterID,
 	).Scan(&p.ID, &p.Active, &p.CreatedAt)
 }
 
@@ -179,10 +195,12 @@ func (r *Repository) ListPlans(ctx context.Context, infraID string) ([]*Maintena
 		       mp.infrastructure_id, mp.interval_type, mp.interval_days,
 		       mp.estimated_min, mp.priority, mp.assigned_to, mp.active,
 		       mp.last_executed_at, mp.next_due_at, mp.created_by, mp.created_at,
-		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
+		       mp.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM maintenance_plans mp
 		LEFT JOIN infrastructure i ON mp.infrastructure_id = i.id
 		LEFT JOIN users u ON mp.assigned_to = u.id
+		LEFT JOIN cost_centers cc ON mp.cost_center_id = cc.id
 		WHERE mp.active=true`
 	args := []interface{}{}
 	if infraID != "" {
@@ -204,7 +222,8 @@ func (r *Repository) ListPlans(ctx context.Context, infraID string) ([]*Maintena
 			&p.InfrastructureID, &p.Interval, &p.IntervalDays,
 			&p.EstimatedMin, &p.Priority, &p.AssignedTo, &p.Active,
 			&p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
-			&p.InfraName, &p.AssigneeName)
+			&p.InfraName, &p.AssigneeName,
+			&p.CostCenterID, &p.CostCenterNumber, &p.CostCenterName)
 		plans = append(plans, p)
 	}
 	return plans, nil
@@ -217,16 +236,19 @@ func (r *Repository) GetPlanByID(ctx context.Context, id string) (*MaintenancePl
 		       mp.infrastructure_id, mp.interval_type, mp.interval_days,
 		       mp.estimated_min, mp.priority, mp.assigned_to, mp.active,
 		       mp.last_executed_at, mp.next_due_at, mp.created_by, mp.created_at,
-		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
+		       mp.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM maintenance_plans mp
 		LEFT JOIN infrastructure i ON mp.infrastructure_id = i.id
 		LEFT JOIN users u ON mp.assigned_to = u.id
+		LEFT JOIN cost_centers cc ON mp.cost_center_id = cc.id
 		WHERE mp.id=$1 AND mp.active=true`, id).Scan(
 		&p.ID, &p.Name, &p.Description, &p.Type,
 		&p.InfrastructureID, &p.Interval, &p.IntervalDays,
 		&p.EstimatedMin, &p.Priority, &p.AssignedTo, &p.Active,
 		&p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 		&p.InfraName, &p.AssigneeName,
+		&p.CostCenterID, &p.CostCenterNumber, &p.CostCenterName,
 	)
 	if err != nil {
 		return nil, err
@@ -239,11 +261,11 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, p *MaintenancePl
 		UPDATE maintenance_plans
 		SET name=$1, description=$2, type=$3, infrastructure_id=$4,
 		    interval_type=$5, interval_days=$6, estimated_min=$7,
-		    priority=$8, assigned_to=$9, next_due_at=$10
-		WHERE id=$11 AND active=true`,
+		    priority=$8, assigned_to=$9, next_due_at=$10, cost_center_id=$11
+		WHERE id=$12 AND active=true`,
 		p.Name, p.Description, p.Type, p.InfrastructureID,
 		p.Interval, p.IntervalDays, p.EstimatedMin,
-		p.Priority, p.AssignedTo, p.NextDueAt, id,
+		p.Priority, p.AssignedTo, p.NextDueAt, p.CostCenterID, id,
 	)
 	if err != nil {
 		return err
@@ -258,11 +280,11 @@ func (r *Repository) CreateTask(ctx context.Context, t *MaintenanceTask) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_tasks
 		  (id, plan_id, title, description, type, infrastructure_id,
-		   priority, status, assigned_to, due_date, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'open', $7, $8, $9)
+		   priority, status, assigned_to, due_date, created_by, cost_center_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10)
 		RETURNING id, status, created_at`,
 		t.PlanID, t.Title, t.Description, t.Type, t.InfrastructureID,
-		t.Priority, t.AssignedTo, t.DueDate, t.CreatedBy,
+		t.Priority, t.AssignedTo, t.DueDate, t.CreatedBy, t.CostCenterID,
 	).Scan(&t.ID, &t.Status, &t.CreatedAt)
 }
 
@@ -272,7 +294,8 @@ func scanTask(row interface{ Scan(...interface{}) error }) (*MaintenanceTask, er
 		&t.InfrastructureID, &t.Priority, &t.Status, &t.AssignedTo,
 		&t.DueDate, &t.StartedAt, &t.CompletedAt, &t.DurationMin,
 		&t.Notes, &t.CreatedBy, &t.CreatedAt,
-		&t.InfraName, &t.AssigneeName)
+		&t.InfraName, &t.AssigneeName,
+		&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName)
 	return t, err
 }
 
@@ -282,10 +305,12 @@ func (r *Repository) ListTasks(ctx context.Context, status TaskStatus, infraID s
 		       mt.infrastructure_id, mt.priority, mt.status, mt.assigned_to,
 		       mt.due_date, mt.started_at, mt.completed_at, mt.duration_min,
 		       COALESCE(mt.notes,''), mt.created_by, mt.created_at,
-		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
+		       mt.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM maintenance_tasks mt
 		LEFT JOIN infrastructure i ON mt.infrastructure_id = i.id
 		LEFT JOIN users u ON mt.assigned_to = u.id
+		LEFT JOIN cost_centers cc ON mt.cost_center_id = cc.id
 		WHERE 1=1`
 	args := []interface{}{}
 	n := 1
@@ -313,7 +338,8 @@ func (r *Repository) ListTasks(ctx context.Context, status TaskStatus, infraID s
 			&t.InfrastructureID, &t.Priority, &t.Status, &t.AssignedTo,
 			&t.DueDate, &t.StartedAt, &t.CompletedAt, &t.DurationMin,
 			&t.Notes, &t.CreatedBy, &t.CreatedAt,
-			&t.InfraName, &t.AssigneeName)
+			&t.InfraName, &t.AssigneeName,
+			&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName)
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
@@ -325,10 +351,12 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (*MaintenanceTa
 		       mt.infrastructure_id, mt.priority, mt.status, mt.assigned_to,
 		       mt.due_date, mt.started_at, mt.completed_at, mt.duration_min,
 		       COALESCE(mt.notes,''), mt.created_by, mt.created_at,
-		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
+		       mt.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM maintenance_tasks mt
 		LEFT JOIN infrastructure i ON mt.infrastructure_id = i.id
 		LEFT JOIN users u ON mt.assigned_to = u.id
+		LEFT JOIN cost_centers cc ON mt.cost_center_id = cc.id
 		WHERE mt.id=$1`, id))
 }
 
@@ -337,16 +365,16 @@ func (r *Repository) UpdateTask(ctx context.Context, id string, in *UpdateTaskIn
 	if err != nil {
 		_, err = r.db.Exec(ctx, `
 			UPDATE maintenance_tasks
-			SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, notes=$5, updated_at=NOW()
-			WHERE id=$6`,
-			in.Title, in.Description, in.InfrastructureID, in.Priority, in.Notes, id)
+			SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, notes=$5, cost_center_id=$6, updated_at=NOW()
+			WHERE id=$7`,
+			in.Title, in.Description, in.InfrastructureID, in.Priority, in.Notes, in.CostCenterID, id)
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
 		UPDATE maintenance_tasks
-		SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, due_date=$5, notes=$6, updated_at=NOW()
-		WHERE id=$7`,
-		in.Title, in.Description, in.InfrastructureID, in.Priority, dueDate, in.Notes, id)
+		SET title=$1, description=$2, infrastructure_id=COALESCE(NULLIF($3,'')::uuid,infrastructure_id), priority=$4, due_date=$5, notes=$6, cost_center_id=$7, updated_at=NOW()
+		WHERE id=$8`,
+		in.Title, in.Description, in.InfrastructureID, in.Priority, dueDate, in.Notes, in.CostCenterID, id)
 	return err
 }
 
@@ -381,10 +409,12 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 		       mt.infrastructure_id, mt.priority, mt.status, mt.assigned_to,
 		       mt.due_date, mt.started_at, mt.completed_at, mt.duration_min,
 		       COALESCE(mt.notes,''), mt.created_by, mt.created_at,
-		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,'')
+		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
+		       mt.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM maintenance_tasks mt
 		LEFT JOIN infrastructure i ON mt.infrastructure_id = i.id
 		LEFT JOIN users u ON mt.assigned_to = u.id
+		LEFT JOIN cost_centers cc ON mt.cost_center_id = cc.id
 		WHERE mt.due_date::date <= NOW()::date AND mt.status IN ('open','in_progress')
 		ORDER BY mt.priority, mt.due_date`)
 	if err != nil {
@@ -399,7 +429,8 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 			&t.InfrastructureID, &t.Priority, &t.Status, &t.AssignedTo,
 			&t.DueDate, &t.StartedAt, &t.CompletedAt, &t.DurationMin,
 			&t.Notes, &t.CreatedBy, &t.CreatedAt,
-			&t.InfraName, &t.AssigneeName)
+			&t.InfraName, &t.AssigneeName,
+			&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName)
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
@@ -412,7 +443,7 @@ func (r *Repository) DeleteTask(ctx context.Context, id string) error {
 
 func (r *Repository) GenerateTasksFromPlans(ctx context.Context, createdBy string) (int, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, type, infrastructure_id, priority, assigned_to, interval_days, next_due_at
+		SELECT id, name, type, infrastructure_id, priority, assigned_to, interval_days, next_due_at, cost_center_id
 		FROM maintenance_plans
 		WHERE active=true AND next_due_at::date <= NOW()::date`)
 	if err != nil {
@@ -424,15 +455,17 @@ func (r *Repository) GenerateTasksFromPlans(ctx context.Context, createdBy strin
 	for rows.Next() {
 		var planID, name, infraID, priority string
 		var assigned *string
+		var costCenterID *string
 		var intervalDays int
 		var nextDue time.Time
 		var planType PlanType
-		rows.Scan(&planID, &name, &planType, &infraID, &priority, &assigned, &intervalDays, &nextDue)
+		rows.Scan(&planID, &name, &planType, &infraID, &priority, &assigned, &intervalDays, &nextDue, &costCenterID)
 
 		t := &MaintenanceTask{
 			PlanID: &planID, Title: name, Type: planType,
 			InfrastructureID: infraID, Priority: Priority(priority),
 			AssignedTo: assigned, DueDate: nextDue, CreatedBy: createdBy,
+			CostCenterID: costCenterID,
 		}
 		if err := r.CreateTask(ctx, t); err == nil {
 			count++
@@ -478,6 +511,7 @@ func (s *Service) CreatePlan(ctx context.Context, in *CreatePlanInput, userID st
 		IntervalDays: intervalDaysFor(in.Interval, in.IntervalDays), EstimatedMin: in.EstimatedMin,
 		Priority: in.Priority, AssignedTo: in.AssignedTo,
 		Active: true, NextDueAt: nextDue, CreatedBy: userID,
+		CostCenterID: in.CostCenterID,
 	}
 	return p, s.repo.CreatePlan(ctx, p)
 }
@@ -520,6 +554,9 @@ func (s *Service) UpdatePlan(ctx context.Context, id string, in *UpdatePlanInput
 			p.NextDueAt = nextDue
 		}
 	}
+	if in.CostCenterID != nil {
+		p.CostCenterID = in.CostCenterID
+	}
 	return s.repo.UpdatePlan(ctx, id, p)
 }
 
@@ -547,6 +584,7 @@ func (s *Service) CreateTask(ctx context.Context, in *CreateTaskInput, userID st
 		Type: in.Type, InfrastructureID: in.InfrastructureID,
 		Priority: in.Priority, AssignedTo: in.AssignedTo,
 		DueDate: dueDate, CreatedBy: userID,
+		CostCenterID: in.CostCenterID,
 	}
 	return t, s.repo.CreateTask(ctx, t)
 }
@@ -570,8 +608,19 @@ func (s *Service) StartTask(ctx context.Context, id, userID string) error {
 	return s.repo.StartTask(ctx, id, userID)
 }
 
+var eventBus *addins.EventBus
+
+// SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
+func SetEventBus(b *addins.EventBus) { eventBus = b }
+
 func (s *Service) CompleteTask(ctx context.Context, id, userID string, in *CompleteTaskInput) error {
-	return s.repo.CompleteTask(ctx, id, userID, in.Notes, in.DurationMin)
+	err := s.repo.CompleteTask(ctx, id, userID, in.Notes, in.DurationMin)
+	if err == nil && eventBus != nil {
+		eventBus.Publish("maintenance.task_completed", map[string]interface{}{
+			"id": id, "completed_by": userID, "notes": in.Notes, "duration_min": in.DurationMin,
+		})
+	}
+	return err
 }
 
 func (s *Service) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error) {
@@ -607,6 +656,13 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Post("/tasks/generate", h.GenerateTasks)
 	r.Post("/tasks/{id}/start", h.StartTask)
 	r.Post("/tasks/{id}/complete", h.CompleteTask)
+	r.Post("/tasks/{id}/actions", h.AddAction)
+	r.Get("/tasks/{id}/actions", h.GetActions)
+	r.Delete("/tasks/{id}/actions/{actionID}", h.DeleteAction)
+	r.Get("/tasks/{id}/parts-usage", h.GetPartsUsage)
+	r.Post("/tasks/{id}/pending-parts", h.AddPendingPart)
+	r.Get("/tasks/{id}/pending-parts", h.GetPendingParts)
+	r.Delete("/tasks/{id}/pending-parts/{partItemID}", h.DeletePendingPart)
 
 	return r
 }
@@ -691,7 +747,7 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CompleteTask(w http.ResponseWriter, r *http.Request) {
 	var in CompleteTaskInput
 	decode(r, &in)
-	if err := h.svc.CompleteTask(r.Context(), chi.URLParam(r, "id"), uid(r), &in); err != nil {
+	if err := h.svc.CompleteTaskValidated(r.Context(), chi.URLParam(r, "id"), uid(r), &in, in.NoPartsNeeded); err != nil {
 		response.Error(w, 500, err.Error())
 		return
 	}

@@ -1,0 +1,92 @@
+{{/*
+Reusable cost center picker widget - Dropdown + "+"-Button, der ein Popup zum
+schnellen Anlegen einer neuen Kostenstelle öffnet (statt einer separaten
+Verwaltungsseite - direkt dort nutzbar, wo die Kostenstelle gebraucht wird).
+
+Usage:
+{{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "ticket-cost-center-id" "Value" .Ticket.CostCenterID)}}
+*/}}
+{{define "cost-center-picker"}}
+<div class="widget-field cost-center-picker-widget form-group">
+  <label class="form-label">{{.Label}}</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <select name="cost_center_id" id="{{.TargetID}}" class="form-input" data-cost-center-picker data-selected="{{.Value}}" style="flex:1">
+      <option value="">– keine Kostenstelle –</option>
+    </select>
+    <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" onclick="openCostCenterModal('{{.TargetID}}')" title="Neue Kostenstelle anlegen">
+      <i class="ti ti-plus"></i>
+    </button>
+  </div>
+</div>
+
+<div id="cc-modal-{{.TargetID}}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:360px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Neue Kostenstelle</div>
+    <div class="form-group">
+      <label class="form-label">Nummer</label>
+      <input id="cc-modal-number-{{.TargetID}}" class="form-input" placeholder="z.B. 4711">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input id="cc-modal-name-{{.TargetID}}" class="form-input" placeholder="z.B. Fertigung">
+    </div>
+    <div id="cc-modal-error-{{.TargetID}}" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="closeCostCenterModal('{{.TargetID}}')">Abbrechen</button>
+      <button type="button" class="btn btn-primary" onclick="submitCostCenterModal('{{.TargetID}}')">Anlegen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openCostCenterModal(targetId){
+  const modal = document.getElementById('cc-modal-'+targetId);
+  if(modal) modal.style.display='flex';
+}
+function closeCostCenterModal(targetId){
+  const modal = document.getElementById('cc-modal-'+targetId);
+  if(modal) modal.style.display='none';
+  const err = document.getElementById('cc-modal-error-'+targetId);
+  if(err) err.style.display='none';
+}
+async function submitCostCenterModal(targetId){
+  const numberInput = document.getElementById('cc-modal-number-'+targetId);
+  const nameInput = document.getElementById('cc-modal-name-'+targetId);
+  const errEl = document.getElementById('cc-modal-error-'+targetId);
+  const number = numberInput.value.trim();
+  const name = nameInput.value.trim();
+  if(!number || !name){
+    errEl.textContent = 'Nummer und Name sind Pflicht';
+    errEl.style.display = 'block';
+    return;
+  }
+  try{
+    const headers = {'Content-Type':'application/json'};
+    if(typeof pdhToken === 'function'){ headers['Authorization'] = 'Bearer '+pdhToken(); }
+    const res = await fetch('/api/v1/costcenters/', {
+      method: 'POST',
+      headers: headers,
+      credentials: 'same-origin',
+      body: JSON.stringify({number: number, name: name})
+    });
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error((json && json.error) || 'Fehler beim Anlegen');
+    const cc = json.data;
+    const select = document.getElementById(targetId);
+    if(select){
+      const opt = document.createElement('option');
+      opt.value = cc.id;
+      opt.textContent = cc.number + ' - ' + cc.name;
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+    numberInput.value = '';
+    nameInput.value = '';
+    closeCostCenterModal(targetId);
+  }catch(e){
+    errEl.textContent = 'Fehler: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+</script>
+{{end}}

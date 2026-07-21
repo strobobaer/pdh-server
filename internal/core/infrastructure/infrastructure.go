@@ -32,12 +32,16 @@ type Infrastructure struct {
 	SerialNo     string            `json:"serial_no,omitempty"`
 	Manufacturer string            `json:"manufacturer,omitempty"`
 	Model        string            `json:"model,omitempty"`
-	CostCenter   string            `json:"cost_center,omitempty"`
 	InstalledAt  *string           `json:"installed_at,omitempty"`
 	Active       bool              `json:"active"`
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
 	Children     []*Infrastructure `json:"children,omitempty"`
+
+	// Kostenstelle (strukturiert, aus der cost_centers-Liste)
+	CostCenterID     *string `json:"cost_center_id,omitempty"`
+	CostCenterNumber string  `json:"cost_center_number,omitempty"`
+	CostCenterName   string  `json:"cost_center_name,omitempty"`
 }
 
 type CreateInput struct {
@@ -49,18 +53,18 @@ type CreateInput struct {
 	SerialNo     string    `json:"serial_no,omitempty"`
 	Manufacturer string    `json:"manufacturer,omitempty"`
 	Model        string    `json:"model,omitempty"`
-	CostCenter   string    `json:"cost_center,omitempty"`
+	CostCenterID *string   `json:"cost_center_id,omitempty"`
 	InstalledAt  *string   `json:"installed_at,omitempty"`
 }
 
 type UpdateInput struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Location     string `json:"location"`
-	SerialNo     string `json:"serial_no"`
-	Manufacturer string `json:"manufacturer"`
-	Model        string `json:"model"`
-	CostCenter   string `json:"cost_center"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Location     string  `json:"location"`
+	SerialNo     string  `json:"serial_no"`
+	Manufacturer string  `json:"manufacturer"`
+	Model        string  `json:"model"`
+	CostCenterID *string `json:"cost_center_id,omitempty"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -69,10 +73,13 @@ type Repository struct{ db *pgxpool.Pool }
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
-const selectCols = `id, parent_id, name, type, COALESCE(description,'') AS description, COALESCE(location,'') AS location,
-	COALESCE(serial_no,'') AS serial_no, COALESCE(manufacturer,'') AS manufacturer, COALESCE(model,'') AS model,
-	COALESCE(cost_center,'') AS cost_center, installed_at::text,
-	active, created_at, updated_at`
+const selectCols = `i.id, i.parent_id, i.name, i.type, COALESCE(i.description,'') AS description, COALESCE(i.location,'') AS location,
+	COALESCE(i.serial_no,'') AS serial_no, COALESCE(i.manufacturer,'') AS manufacturer, COALESCE(i.model,'') AS model,
+	i.installed_at::text,
+	i.active, i.created_at, i.updated_at,
+	i.cost_center_id, COALESCE(cc.number,'') AS cc_number, COALESCE(cc.name,'') AS cc_name`
+
+const fromJoin = `FROM infrastructure i LEFT JOIN cost_centers cc ON i.cost_center_id = cc.id`
 
 // scanItem liest eine Zeile – Reihenfolge muss mit selectCols übereinstimmen
 func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, error) {
@@ -81,9 +88,9 @@ func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, err
 		&i.ID, &i.ParentID, &i.Name, &i.Type,
 		&i.Description, &i.Location,
 		&i.SerialNo, &i.Manufacturer, &i.Model,
-		&i.CostCenter,
 		&i.InstalledAt,
 		&i.Active, &i.CreatedAt, &i.UpdatedAt,
+		&i.CostCenterID, &i.CostCenterNumber, &i.CostCenterName,
 	)
 	return i, err
 }
@@ -91,36 +98,36 @@ func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, err
 func (r *Repository) Create(ctx context.Context, i *Infrastructure) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO infrastructure
-		 (id, parent_id, name, type, description, location, serial_no, manufacturer, model, cost_center, installed_at)
+		 (id, parent_id, name, type, description, location, serial_no, manufacturer, model, cost_center_id, installed_at)
 		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 RETURNING id, active, created_at, updated_at`,
 		i.ParentID, i.Name, i.Type, i.Description,
-		i.Location, i.SerialNo, i.Manufacturer, i.Model, i.CostCenter, i.InstalledAt,
+		i.Location, i.SerialNo, i.Manufacturer, i.Model, i.CostCenterID, i.InstalledAt,
 	).Scan(&i.ID, &i.Active, &i.CreatedAt, &i.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Infrastructure, error) {
 	row := r.db.QueryRow(ctx,
-		`SELECT `+selectCols+` FROM infrastructure WHERE id=$1 AND active=true`, id)
+		`SELECT `+selectCols+` `+fromJoin+` WHERE i.id=$1 AND i.active=true`, id)
 	return scanItem(row)
 }
 
 func (r *Repository) List(ctx context.Context, parentID *string, infraType InfraType) ([]*Infrastructure, error) {
-	query := `SELECT ` + selectCols + ` FROM infrastructure WHERE active=true`
+	query := `SELECT ` + selectCols + ` ` + fromJoin + ` WHERE i.active=true`
 	args := []interface{}{}
 	n := 1
 	if parentID != nil {
-		query += fmt.Sprintf(" AND parent_id=$%d", n)
+		query += fmt.Sprintf(" AND i.parent_id=$%d", n)
 		args = append(args, *parentID)
 		n++
 	} else {
-		query += " AND parent_id IS NULL"
+		query += " AND i.parent_id IS NULL"
 	}
 	if infraType != "" {
-		query += fmt.Sprintf(" AND type=$%d", n)
+		query += fmt.Sprintf(" AND i.type=$%d", n)
 		args = append(args, infraType)
 	}
-	query += " ORDER BY type, name"
+	query += " ORDER BY i.type, i.name"
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
@@ -140,7 +147,7 @@ func (r *Repository) List(ctx context.Context, parentID *string, infraType Infra
 
 func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT `+selectCols+` FROM infrastructure WHERE active=true ORDER BY type, name`)
+		`SELECT `+selectCols+` `+fromJoin+` WHERE i.active=true ORDER BY i.type, i.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -171,9 +178,9 @@ func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 func (r *Repository) Update(ctx context.Context, i *Infrastructure) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE infrastructure SET name=$1, description=$2, location=$3,
-		 serial_no=$4, manufacturer=$5, model=$6, cost_center=$7, updated_at=NOW() WHERE id=$8`,
+		 serial_no=$4, manufacturer=$5, model=$6, cost_center_id=$7, updated_at=NOW() WHERE id=$8`,
 		i.Name, i.Description, i.Location,
-		i.SerialNo, i.Manufacturer, i.Model, i.CostCenter, i.ID)
+		i.SerialNo, i.Manufacturer, i.Model, i.CostCenterID, i.ID)
 	return err
 }
 
@@ -185,10 +192,11 @@ func (r *Repository) Deactivate(ctx context.Context, id string) error {
 
 func (r *Repository) Search(ctx context.Context, q string) ([]*Infrastructure, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT `+selectCols+` FROM infrastructure WHERE active=true AND (
-		 name ILIKE $1 OR description ILIKE $1 OR serial_no ILIKE $1 OR
-		 manufacturer ILIKE $1 OR model ILIKE $1 OR location ILIKE $1 OR cost_center ILIKE $1)
-		 ORDER BY type, name LIMIT 50`, "%"+q+"%")
+		`SELECT `+selectCols+` `+fromJoin+` WHERE i.active=true AND (
+		 i.name ILIKE $1 OR i.description ILIKE $1 OR i.serial_no ILIKE $1 OR
+		 i.manufacturer ILIKE $1 OR i.model ILIKE $1 OR i.location ILIKE $1 OR
+		 cc.name ILIKE $1 OR cc.number ILIKE $1)
+		 ORDER BY i.type, i.name LIMIT 50`, "%"+q+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +239,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput) (*Infrastructure,
 	i := &Infrastructure{ParentID: in.ParentID, Name: in.Name, Type: in.Type,
 		Description: in.Description, Location: in.Location,
 		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer,
-		Model: in.Model, CostCenter: in.CostCenter, InstalledAt: in.InstalledAt}
+		Model: in.Model, CostCenterID: in.CostCenterID, InstalledAt: in.InstalledAt}
 	return i, s.repo.Create(ctx, i)
 }
 func (s *Service) GetByID(ctx context.Context, id string) (*Infrastructure, error) {
@@ -249,7 +257,8 @@ func (s *Service) Deactivate(ctx context.Context, id string) error      { return
 func (s *Service) Update(ctx context.Context, id string, in *UpdateInput) error {
 	return s.repo.Update(ctx, &Infrastructure{ID: id, Name: in.Name,
 		Description: in.Description, Location: in.Location,
-		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, Model: in.Model, CostCenter: in.CostCenter})
+		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, Model: in.Model,
+		CostCenterID: in.CostCenterID})
 }
 
 // ── Handler ──────────────────────────────────────────────────

@@ -38,6 +38,14 @@ type Fault struct {
 	ArchivedAt       *time.Time  `json:"archived_at,omitempty"`
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
+
+	// Kostenstelle (eigenständig, unabhängig von der Infrastruktur)
+	CostCenterID     *string `json:"cost_center_id,omitempty"`
+	CostCenterNumber string  `json:"cost_center_number,omitempty"`
+	CostCenterName   string  `json:"cost_center_name,omitempty"`
+
+	// Pflichtangaben beim Lösen: Maßnahmen-Verlauf + Ersatzteilverwendung
+	NoPartsNeeded bool `json:"no_parts_needed,omitempty"`
 }
 
 // Copilot-Analyse
@@ -89,9 +97,11 @@ type CreateFaultInput struct {
 	InfrastructureID *string  `json:"infrastructure_id,omitempty"`
 	AssignedTo       *string  `json:"assigned_to,omitempty"`
 	ResponsibleTo    *string  `json:"responsible_to,omitempty"`
+	CostCenterID     *string  `json:"cost_center_id,omitempty"`
 }
 
 type ResolveInput struct {
-	Resolution string `json:"resolution"`
-	RootCause  string `json:"root_cause"`
+	Resolution    string `json:"resolution"`
+	RootCause     string `json:"root_cause"`
+	NoPartsNeeded bool   `json:"no_parts_needed"`
 }

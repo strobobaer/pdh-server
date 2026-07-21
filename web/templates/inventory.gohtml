@@ -5,7 +5,7 @@
     <h1 style="font-size:19px;font-weight:600">Ersatzteillager</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.Total}} Teile · Wert: {{.Stats.TotalValue}}€</p>
   </div>
-  {{template "icon-button-toolbar" (dict "Class" "end" "Label" "Ersatzteil-Aktionen" "Items" (list (dict "Action" "book" "ShowLabel" true "OnClick" "openBookingModal()") (dict "Action" "edit" "ShowLabel" true "Label" "Feldsätze" "OnClick" "toggleFieldAdmin()") (dict "Action" "new" "ShowLabel" true "Label" "Neues Teil" "OnClick" "document.getElementById('new-part-form').style.display='block'")) )}}
+  {{template "icon-button-toolbar" (dict "Class" "end" "Label" "Ersatzteil-Aktionen" "Items" (list (dict "Action" "book" "ShowLabel" true "OnClick" "openBookingModal()") (dict "Action" "history" "ShowLabel" true "Label" "Inventur" "OnClick" "openStocktakeModal()") (dict "Action" "edit" "ShowLabel" true "Label" "Feldsätze" "OnClick" "toggleFieldAdmin()") (dict "Action" "new" "ShowLabel" true "Label" "Neues Teil" "OnClick" "document.getElementById('new-part-form').style.display='block'")) )}}
 </div>
 
 <div class="stats" style="grid-template-columns:repeat(4,1fr)">
@@ -122,6 +122,7 @@
           <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" value="{{.Category}}"></div>
           <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="{{.Unit}}"></div>
           <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" step="0.001" class="form-input" value="{{.MinQty}}"></div>
+          <div class="form-group"><label class="form-label">Preis</label><input name="price" type="number" step="0.01" class="form-input" value="{{.Price}}"></div>
           <div class="form-group" style="grid-column:1/-1"><label class="form-label">Feldsätze</label><div id="field-sets-{{.ID}}" data-field-set-box="{{.ID}}" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">Lade Feldsätze...</div></div>
           <div class="form-group" style="grid-column:1/-1"><label class="form-label">Teilebild URL</label><div style="display:flex;gap:6px"><input data-image-url="1" class="form-input" placeholder="https://...jpg/png/webp" oninput="previewImageUrl(this)"><button type="button" class="btn" onclick="openImageSearch(this.form)"><i class="ti ti-search"></i> Suchen</button></div><div class="image-preview" style="margin-top:6px"></div></div>
           <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
@@ -139,6 +140,46 @@
     {{else}}<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>{{end}}
     </tbody>
   </table>
+</div>
+<div id="stocktake-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:640px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:600" id="stocktake-title">Inventur</div>
+      <button type="button" class="btn" style="padding:4px 8px" onclick="closeStocktakeModal()"><i class="ti ti-x"></i></button>
+    </div>
+
+    <div id="stocktake-view-list">
+      <div id="stocktake-open-sessions" style="margin-bottom:16px"></div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Neue Inventur starten</div>
+        <div class="form-group">
+          <label class="form-label">Von (Lagerort)</label>
+          <div id="stocktake-tree-from" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">Lade Lagerbaum...</div>
+          <div id="stocktake-from-selected" style="font-size:11px;color:var(--muted);margin-top:4px">Nicht ausgewählt</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Bis (Lagerort, gleicher übergeordneter Ort)</label>
+          <div id="stocktake-tree-to" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px">Lade Lagerbaum...</div>
+          <div id="stocktake-to-selected" style="font-size:11px;color:var(--muted);margin-top:4px">Nicht ausgewählt</div>
+        </div>
+        <div id="stocktake-start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:10px"></div>
+        <div style="display:flex;justify-content:flex-end">
+          <button type="button" class="btn btn-primary" onclick="startStocktake()"><i class="ti ti-list-check"></i> Zählliste erstellen</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="stocktake-view-count" style="display:none">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="stocktake-count-range"></div>
+      <div id="stocktake-items" style="max-height:50vh;overflow-y:auto;margin-bottom:12px"></div>
+      <div id="stocktake-count-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" style="color:var(--red);border-color:rgba(239,68,68,.4)" onclick="cancelStocktake()"><i class="ti ti-trash"></i> Abbrechen</button>
+        <button type="button" class="btn" onclick="saveStocktakeCounts(false)"><i class="ti ti-device-floppy"></i> Zwischenspeichern</button>
+        <button type="button" class="btn btn-primary" style="background:var(--green);border-color:var(--green)" onclick="saveStocktakeCounts(true)"><i class="ti ti-check"></i> Inventur buchen</button>
+      </div>
+    </div>
+  </div>
 </div>
 {{end}}
 
@@ -175,5 +216,148 @@ async function savePartFields(id){const box=document.getElementById('custom-fiel
 function imageUrlFromDescription(desc){const m=String(desc||'').match(/(?:^|\n)PDH_IMAGE_URL:\s*(\S+)/);return m?m[1]:'';}function cleanImageUrlFromDescription(desc){return String(desc||'').replace(/(?:^|\n)PDH_IMAGE_URL:\s*\S+\s*/g,'').trim();}function embedImageUrlIntoDescription(form){const input=form.querySelector('[data-image-url]');const desc=form.querySelector('[name="description"]');if(!input||!desc)return true;const clean=cleanImageUrlFromDescription(desc.value);const url=input.value.trim();desc.value=url?(clean?clean+'\n':'')+'PDH_IMAGE_URL: '+url:clean;return true;}function initImageFields(root=document){if(!root)return;root.querySelectorAll('form').forEach(form=>{const img=form.querySelector('[data-image-url]');const desc=form.querySelector('[name="description"]');if(img&&desc){img.value=imageUrlFromDescription(desc.value);desc.value=cleanImageUrlFromDescription(desc.value);previewImageUrl(img);}});}function previewImageUrl(input){const box=input.closest('.form-group')?.querySelector('.image-preview');if(!box)return;const url=input.value.trim();box.innerHTML=url?`<img src="${escapeHtml(url)}" style="max-height:90px;max-width:180px;border-radius:8px;border:1px solid var(--border);object-fit:contain" onerror="this.replaceWith(document.createTextNode('Bild konnte nicht geladen werden'))">`:'';}function openImageSearch(form){const part=form.querySelector('[name="part_number"]')?.value||'';const name=form.querySelector('[name="name"]')?.value||'';const manufacturer=form.querySelector('[name="manufacturer"]')?.value||'';const q=[manufacturer,part,name].filter(Boolean).join(' ').trim()||'Ersatzteil';const enc=encodeURIComponent(q);const panel=document.getElementById('image-search-panel');const content=document.getElementById('image-search-content');panel.style.display='block';content.innerHTML=`<div style="margin-bottom:10px;color:var(--fg)">Suchbegriff: <b>${escapeHtml(q)}</b></div><div style="display:grid;gap:6px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/search?tbm=isch&q=${enc}">Google Bilder öffnen</a><a class="btn" target="_blank" rel="noopener" href="https://www.bing.com/images/search?q=${enc}">Bing Bilder öffnen</a><a class="btn" target="_blank" rel="noopener" href="https://duckduckgo.com/?iax=images&ia=images&q=${enc}">DuckDuckGo Bilder öffnen</a></div>`;}function closeImageSearch(){document.getElementById('image-search-panel').style.display='none';}
 async function scanBarcodeIntoInput(fileInput,targetInputId){const target=document.getElementById(targetInputId);if(!target||!fileInput.files||fileInput.files.length===0)return;if(!('BarcodeDetector'in window)){alert('Barcode-Erkennung wird von diesem Browser nicht unterstützt.');fileInput.value='';return;}try{const bitmap=await createImageBitmap(fileInput.files[0]);const formats=await BarcodeDetector.getSupportedFormats();const detector=new BarcodeDetector({formats:formats&&formats.length?formats:undefined});const codes=await detector.detect(bitmap);if(!codes||codes.length===0){alert('Kein Barcode erkannt.');return;}target.value=codes[0].rawValue||'';target.dispatchEvent(new Event('input',{bubbles:true}));target.focus();}catch(e){alert('Barcode konnte nicht erkannt werden: '+e.message);}finally{fileInput.value='';}}
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}function escapeJs(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+let stocktakeTreeCache=null;
+let stocktakeFromId=null, stocktakeToId=null;
+let currentStocktakeSessionID=null;
+
+function openStocktakeModal(){document.getElementById('stocktake-modal').style.display='flex';showStocktakeListView();loadOpenStocktakes();loadStocktakeTrees();}
+function closeStocktakeModal(){document.getElementById('stocktake-modal').style.display='none';}
+function showStocktakeListView(){document.getElementById('stocktake-view-list').style.display='block';document.getElementById('stocktake-view-count').style.display='none';document.getElementById('stocktake-title').textContent='Inventur';}
+function showStocktakeCountView(){document.getElementById('stocktake-view-list').style.display='none';document.getElementById('stocktake-view-count').style.display='block';document.getElementById('stocktake-title').textContent='Zählliste';}
+
+async function loadOpenStocktakes(){
+  const box=document.getElementById('stocktake-open-sessions');
+  try{
+    const sessions=await apiData('/api/v1/inventory/stocktake/open');
+    if(!sessions||sessions.length===0){box.innerHTML='<div style="font-size:12px;color:var(--muted)">Keine laufende Inventur</div>';return;}
+    box.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:8px">Laufende Inventuren</div>'+sessions.map(s=>`
+      <div class="li" style="cursor:pointer" onclick="openStocktakeSession('${s.id}')">
+        <div class="li-text"><div class="li-title">${escapeHtml(s.from_name)} – ${escapeHtml(s.to_name)}</div><div class="li-sub">gestartet ${new Date(s.created_at).toLocaleString()}</div></div>
+        <span class="badge b-amber">offen</span>
+      </div>`).join('');
+  }catch(e){box.innerHTML='<div style="color:var(--red);font-size:12px">'+escapeHtml(e.message)+'</div>';}
+}
+
+async function loadStocktakeTrees(){
+  if(!stocktakeTreeCache){try{stocktakeTreeCache=await apiData('/api/v1/storage/');}catch(e){console.warn(e);return;}}
+  document.getElementById('stocktake-tree-from').innerHTML=renderStocktakeTree(stocktakeTreeCache,'from')||'<div style="color:var(--muted)">Keine Lagerorte vorhanden</div>';
+  document.getElementById('stocktake-tree-to').innerHTML=renderStocktakeTree(stocktakeTreeCache,'to')||'<div style="color:var(--muted)">Keine Lagerorte vorhanden</div>';
+}
+function renderStocktakeTree(nodes,which,depth){
+  depth=depth||0;
+  if(!Array.isArray(nodes)||nodes.length===0)return '';
+  return nodes.map(n=>`<div style="margin-left:${depth*12}px">
+    <div style="padding:3px 4px;cursor:pointer;border-radius:4px" onclick="selectStocktakeNode('${which}','${n.id}','${escapeJs(n.name)}')" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      ${escapeHtml(n.name)} <span style="color:var(--muted);font-size:10px">(${escapeHtml(n.type)})</span>
+    </div>
+    ${n.children&&n.children.length?renderStocktakeTree(n.children,which,depth+1):''}
+  </div>`).join('');
+}
+function selectStocktakeNode(which,id,name){
+  if(which==='from'){stocktakeFromId=id;document.getElementById('stocktake-from-selected').textContent='Ausgewählt: '+name;}
+  else{stocktakeToId=id;document.getElementById('stocktake-to-selected').textContent='Ausgewählt: '+name;}
+}
+
+async function startStocktake(){
+  const errEl=document.getElementById('stocktake-start-error');
+  errEl.style.display='none';
+  if(!stocktakeFromId||!stocktakeToId){errEl.textContent='Bitte "Von" und "Bis" auswählen';errEl.style.display='block';return;}
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(typeof pdhToken==='function'){headers['Authorization']='Bearer '+pdhToken();}
+    const res=await fetch('/api/v1/inventory/stocktake',{method:'POST',headers:headers,credentials:'same-origin',body:JSON.stringify({from_node_id:stocktakeFromId,to_node_id:stocktakeToId})});
+    const json=await res.json();
+    if(!res.ok||json.success===false)throw new Error((json&&json.error)||'Fehler beim Erstellen der Zählliste');
+    currentStocktakeSessionID=json.data.session.id;
+    renderStocktakeItems(json.data.items,json.data.session);
+    showStocktakeCountView();
+  }catch(e){errEl.textContent='Fehler: '+e.message;errEl.style.display='block';}
+}
+
+async function openStocktakeSession(sessionId){
+  try{
+    const data=await apiData('/api/v1/inventory/stocktake/'+sessionId);
+    currentStocktakeSessionID=sessionId;
+    renderStocktakeItems(data.items,data.session);
+    showStocktakeCountView();
+  }catch(e){alert('Sitzung konnte nicht geladen werden: '+e.message);}
+}
+
+function renderStocktakeItems(items,session){
+  document.getElementById('stocktake-count-range').textContent='Bereich: '+session.from_name+' – '+session.to_name;
+  const box=document.getElementById('stocktake-items');
+  if(!items||items.length===0){box.innerHTML='<div style="color:var(--muted);font-size:12px">Keine Positionen</div>';return;}
+  box.innerHTML=items.map(it=>{
+    const isPlaceholder=!it.part_id;
+    const label=isPlaceholder?'<span style="color:var(--muted);font-style:italic">Leerer Platz</span>':escapeHtml(it.part_name)+' ('+escapeHtml(it.part_number)+')';
+    const countedVal=(it.counted_qty!==undefined&&it.counted_qty!==null)?it.counted_qty:'';
+    return `<div class="li" style="flex-direction:column;align-items:stretch;gap:6px" data-item-id="${it.id}">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--accent)">${escapeHtml(it.storage_name)}</div>
+          <div style="font-size:13px;font-weight:500">${label}</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">Soll: ${it.expected_qty}</div>
+      </div>
+      ${isPlaceholder?'<input type="text" class="form-input stocktake-part-search" placeholder="Teil suchen falls hier etwas gefunden wurde..." style="font-size:12px" oninput="filterStocktakePartOptions(this)"><select class="form-input stocktake-part-select" style="font-size:12px"><option value="">– kein Teil zugewiesen –</option></select>':''}
+      <input type="number" step="0.001" class="form-input stocktake-qty-input" placeholder="Ist-Menge" value="${countedVal}">
+    </div>`;
+  }).join('');
+  if(items.some(it=>!it.part_id)){populateStocktakePartSelects();}
+}
+
+async function populateStocktakePartSelects(){
+  if(!bookPartsCache){try{bookPartsCache=await apiData('/api/v1/inventory/');}catch(e){return;}}
+  document.querySelectorAll('.stocktake-part-select').forEach(sel=>{
+    sel.innerHTML='<option value="">– kein Teil zugewiesen –</option>'+bookPartsCache.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} (${escapeHtml(p.part_number)})</option>`).join('');
+  });
+}
+function filterStocktakePartOptions(input){
+  const q=input.value.toLowerCase();
+  const sel=input.parentElement.querySelector('.stocktake-part-select');
+  if(!sel)return;
+  [...sel.options].forEach(o=>{o.style.display=(!o.value||o.textContent.toLowerCase().includes(q))?'':'none';});
+}
+
+async function saveStocktakeCounts(thenBook){
+  const errEl=document.getElementById('stocktake-count-error');
+  errEl.style.display='none';
+  const rows=[...document.querySelectorAll('#stocktake-items [data-item-id]')];
+  const items=rows.map(row=>{
+    const itemId=row.dataset.itemId;
+    const qtyInput=row.querySelector('.stocktake-qty-input');
+    const partSelect=row.querySelector('.stocktake-part-select');
+    const qtyVal=qtyInput.value.trim();
+    const entry={item_id:itemId,counted_qty:qtyVal===''?null:parseFloat(qtyVal)};
+    if(partSelect&&partSelect.value){entry.part_id=partSelect.value;}
+    return entry;
+  });
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(typeof pdhToken==='function'){headers['Authorization']='Bearer '+pdhToken();}
+    let res=await fetch('/api/v1/inventory/stocktake/'+currentStocktakeSessionID+'/count',{method:'POST',headers:headers,credentials:'same-origin',body:JSON.stringify({items:items})});
+    let json=await res.json();
+    if(!res.ok||json.success===false)throw new Error((json&&json.error)||'Fehler beim Speichern');
+    if(thenBook){
+      res=await fetch('/api/v1/inventory/stocktake/'+currentStocktakeSessionID+'/book',{method:'POST',headers:headers,credentials:'same-origin'});
+      json=await res.json();
+      if(!res.ok||json.success===false)throw new Error((json&&json.error)||'Fehler beim Buchen');
+      closeStocktakeModal();
+      location.reload();
+    }else{
+      alert('Zählung gespeichert');
+    }
+  }catch(e){errEl.textContent='Fehler: '+e.message;errEl.style.display='block';}
+}
+
+async function cancelStocktake(){
+  if(!confirm('Inventur wirklich abbrechen? Die Sperre wird aufgehoben, es wird nichts gebucht.'))return;
+  try{
+    const headers={};
+    if(typeof pdhToken==='function'){headers['Authorization']='Bearer '+pdhToken();}
+    await fetch('/api/v1/inventory/stocktake/'+currentStocktakeSessionID+'/cancel',{method:'POST',headers:headers,credentials:'same-origin'});
+    closeStocktakeModal();
+  }catch(e){alert('Fehler: '+e.message);}
+}
 </script>
 {{end}}

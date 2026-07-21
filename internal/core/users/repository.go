@@ -32,6 +32,14 @@ type User struct {
 	Active       bool      `json:"active"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+
+	// Schicht-Qualifikationen (Kennzeichen, sichtbar im Schichtplan)
+	OnCallDuty      bool `json:"on_call_duty"`
+	ShiftLocksmith1 bool `json:"shift_locksmith_1"`
+	ShiftLocksmith2 bool `json:"shift_locksmith_2"`
+	Sharpening      bool `json:"sharpening"`
+	HeatingFill     bool `json:"heating_fill"`
+	ShiftLeader     bool `json:"shift_leader"`
 }
 
 // CreateUserInput - Eingabe für neuen User
@@ -70,13 +78,15 @@ func (r *Repository) Create(ctx context.Context, u *User) error {
 func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, created_at, updated_at
+		role, department, phone, active, created_at, updated_at,
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE id = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
 		&u.Department, &u.Phone, &u.Active,
 		&u.CreatedAt, &u.UpdatedAt,
+		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 	)
 	return u, err
 }
@@ -84,20 +94,23 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, created_at, updated_at
+		role, department, phone, active, created_at, updated_at,
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE email = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
 		&u.Department, &u.Phone, &u.Active,
 		&u.CreatedAt, &u.UpdatedAt,
+		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 	)
 	return u, err
 }
 
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
 	query := `SELECT id, username, email, first_name, last_name,
-		role, department, phone, active, created_at, updated_at
+		role, department, phone, active, created_at, updated_at,
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE active = true ORDER BY last_name, first_name`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -113,6 +126,7 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 			&u.FirstName, &u.LastName, &u.Role,
 			&u.Department, &u.Phone, &u.Active,
 			&u.CreatedAt, &u.UpdatedAt,
+			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 		)
 		if err != nil {
 			return nil, err
@@ -124,11 +138,15 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 
 func (r *Repository) Update(ctx context.Context, u *User) error {
 	query := `UPDATE users SET first_name=$1, last_name=$2, role=$3,
-		department=$4, phone=$5, updated_at=NOW()
-		WHERE id=$6`
+		department=$4, phone=$5,
+		on_call_duty=$6, shift_locksmith_1=$7, shift_locksmith_2=$8, sharpening=$9, heating_fill=$10, shift_leader=$11,
+		updated_at=NOW()
+		WHERE id=$12`
 	_, err := r.db.Exec(ctx, query,
 		u.FirstName, u.LastName, u.Role,
-		u.Department, u.Phone, u.ID,
+		u.Department, u.Phone,
+		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
+		u.ID,
 	)
 	return err
 }

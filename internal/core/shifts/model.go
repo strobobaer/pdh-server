@@ -86,6 +86,17 @@ type UserWeekPlan struct {
 	UserID   string              `json:"user_id"`
 	UserName string              `json:"user_name"`
 	Days     map[string]DayEntry `json:"days"`
+
+	// Qualifikations-Kennzeichen fuer die Anzeige im Schichtplan
+	OnCallDuty      bool   `json:"on_call_duty,omitempty"`
+	OnCallPhone     string `json:"on_call_phone,omitempty"`
+	ShiftLocksmith1 bool   `json:"shift_locksmith_1,omitempty"`
+	ShiftLocksmith2 bool   `json:"shift_locksmith_2,omitempty"`
+	LocksmithPhone  string `json:"locksmith_phone,omitempty"`
+	Sharpening      bool   `json:"sharpening,omitempty"`
+	HeatingFill     bool   `json:"heating_fill,omitempty"`
+	ShiftLeader     bool   `json:"shift_leader,omitempty"`
+	TeamSortOrder   int    `json:"-"`
 }
 
 type DayEntry struct {

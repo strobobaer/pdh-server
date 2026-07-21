@@ -56,6 +56,8 @@
 
     {{template "infra-tree-picker" (dict "TargetID" "ticket-infra-id" "SelectedLabelID" "ticket-infra-selected" "Label" "Infrastruktur")}}
 
+    {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "ticket-cost-center-id")}}
+
     <div id="ticket-create-result" style="font-size:12px;margin-bottom:8px"></div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -123,9 +125,54 @@
 
 {{define "scripts"}}
 <script>
+async function populateCostCenterSelects(){
+  const selects = document.querySelectorAll('[data-cost-center-picker]');
+  if(selects.length===0) return;
+  try{
+    const res = await fetch('/api/v1/costcenters', {credentials:'same-origin'});
+    const json = await res.json();
+    const items = json.data || [];
+    selects.forEach(function(sel){
+      const selected = sel.dataset.selected || '';
+      items.forEach(function(cc){
+        const opt = document.createElement('option');
+        opt.value = cc.id;
+        opt.textContent = cc.number + ' - ' + cc.name;
+        if(cc.id === selected) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
+}
+if(document.readyState !== 'loading') populateCostCenterSelects();
+else document.addEventListener('DOMContentLoaded', populateCostCenterSelects);
+
+function watchInfraForCostCenter(hiddenInfraInputId, costCenterSelectId){
+  const hidden = document.getElementById(hiddenInfraInputId);
+  const ccSelect = document.getElementById(costCenterSelectId);
+  if(!hidden || !ccSelect) return;
+  let lastVal = hidden.value;
+  setInterval(async function(){
+    if(hidden.value === lastVal) return;
+    lastVal = hidden.value;
+    if(!lastVal) return;
+    if(ccSelect.value) return; // Nutzer hat bereits manuell etwas gewaehlt - nicht ueberschreiben
+    try{
+      const res = await fetch('/api/v1/infrastructure/'+lastVal, {credentials:'same-origin'});
+      const json = await res.json();
+      const infra = json.data;
+      if(infra && infra.cost_center_id){
+        ccSelect.value = infra.cost_center_id;
+      }
+    }catch(e){ console.warn('Kostenstelle aus Infrastruktur laden fehlgeschlagen', e); }
+  }, 400);
+}
+watchInfraForCostCenter('ticket-infra-id', 'ticket-cost-center-id');
+
 async function submitTicketForm(form){
   const fd=new FormData(form); const payload={title:fd.get('title'),description:fd.get('description'),priority:fd.get('priority')};
   if(fd.get('infrastructure_id')) payload.infrastructure_id=fd.get('infrastructure_id');
+  if(fd.get('cost_center_id')) payload.cost_center_id=fd.get('cost_center_id');
   if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
   if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
   const result=document.getElementById('ticket-create-result'); result.textContent='Speichere...';

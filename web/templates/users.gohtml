@@ -102,7 +102,7 @@
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
             <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
-            <button class="menu-item" hx-put="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
+            <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
             {{if .Active}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
             {{end}}

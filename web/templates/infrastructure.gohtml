@@ -55,10 +55,7 @@
         <label class="form-label">Seriennummer</label>
         <input name="serial_no" class="form-input">
       </div>
-      <div class="form-group">
-        <label class="form-label">Kostenstelle</label>
-        <input name="cost_center" class="form-input" placeholder="z.B. KST-4711">
-      </div>
+      {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-cost-center-id")}}
     </div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -105,7 +102,7 @@
     <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:{{css .TypeBg}}">{{.TypeLabel}}</div>
     <div style="flex:1;min-width:0">
       <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Name}}</div>
-      <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenter}} · {{.CostCenter}}{{end}}</div>
+      <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div>
     </div>
     {{if .SerialNo}}<span style="font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;flex-shrink:0">{{.SerialNo}}</span>{{end}}
     <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">

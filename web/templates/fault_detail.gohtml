@@ -91,6 +91,11 @@
           <label class="form-label">Grundursache</label>
           <input name="root_cause" class="form-input" placeholder="Warum ist es passiert?">
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" name="no_parts_needed"> Keine Ersatzteile benötigt
+          </label>
+        </div>
         {{template "icon-button-toolbar" (dict
           "Class" "end"
           "Label" "Störung lösen"
@@ -110,6 +115,53 @@
       <div class="card-title"><i class="ti ti-check" style="color:var(--green)"></i> Gelöst</div>
       <p style="font-size:13px;margin-bottom:8px"><strong>Maßnahme:</strong> {{.Fault.Resolution}}</p>
       {{if .Fault.RootCause}}<p style="font-size:13px;color:var(--muted)"><strong>Grundursache:</strong> {{.Fault.RootCause}}</p>{{end}}
+    </div>
+    {{end}}
+
+    <!-- Durchgeführte Maßnahmen -->
+    <div class="card">
+      <div class="card-title">Durchgeführte Maßnahmen</div>
+      <div id="fault-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      <div style="display:flex;gap:8px">
+        <input id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
+        <button type="button" class="btn" onclick="addFaultAction()"><i class="ti ti-plus"></i></button>
+      </div>
+    </div>
+
+    <!-- Ersatzteile: Merkliste (Buchung erst beim Lösen) bzw. gebuchte Teile -->
+    <div class="card">
+      <div class="card-title">{{if .Fault.Resolution}}Verwendete Ersatzteile{{else}}Ersatzteile für die Reparatur{{end}}</div>
+      {{if not .Fault.Resolution}}<p style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen der Störung tatsächlich aus dem Lager gebucht.</p>{{end}}
+      <div id="fault-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      {{if not .Fault.Resolution}}<button type="button" class="btn" onclick="openFaultPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>{{end}}
+    </div>
+
+    {{if not .Fault.Resolution}}
+    <!-- Ersatzteil-vormerken Popup -->
+    <div id="fault-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
+        <div class="form-group">
+          <label class="form-label">Ersatzteil</label>
+          <input id="fa-part-search" class="form-input" placeholder="Suchen..." oninput="filterFaultParts()" autocomplete="off">
+          <div id="fa-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
+          <input type="hidden" id="fa-part-id">
+          <div id="fa-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lagerort</label>
+          <select id="fa-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Menge</label>
+          <input id="fa-part-qty" type="number" step="0.001" class="form-input" value="1">
+        </div>
+        <div id="fa-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn" onclick="closeFaultPartModal()">Abbrechen</button>
+          <button type="button" class="btn btn-primary" onclick="bookFaultPart()">Vormerken</button>
+        </div>
+      </div>
     </div>
     {{end}}
 
@@ -149,6 +201,10 @@
       <form hx-put="/faults/{{.Fault.ID}}/infrastructure-web" hx-target="#fault-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         {{template "infra-tree-picker" (dict "TargetID" "fault-detail-infra-id" "SelectedLabelID" "fault-detail-infra-selected" "Label" "Infrastruktur" "Value" .Fault.InfraID "SelectedLabel" .Fault.InfraName)}}
         <div id="fault-infra-result" style="font-size:12px;margin-bottom:8px"></div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
+      <form hx-post="/api/v1/faults/{{.Fault.ID}}/cost-center" hx-swap="none" hx-on::after-request="if(event.detail.successful) location.reload()" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" .Fault.CostCenterID)}}
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
       <form hx-put="/records/fault/{{.Fault.ID}}/people" hx-target="#people-result-fault" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
@@ -219,6 +275,28 @@
 
 {{block "scripts" .}}
 <script>
+async function populateCostCenterSelects(){
+  const selects = document.querySelectorAll('[data-cost-center-picker]');
+  if(selects.length===0) return;
+  try{
+    const res = await fetch('/api/v1/costcenters', {credentials:'same-origin'});
+    const json = await res.json();
+    const items = json.data || [];
+    selects.forEach(function(sel){
+      const selected = sel.dataset.selected || '';
+      items.forEach(function(cc){
+        const opt = document.createElement('option');
+        opt.value = cc.id;
+        opt.textContent = cc.number + ' - ' + cc.name;
+        if(cc.id === selected) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
+}
+if(document.readyState !== 'loading') populateCostCenterSelects();
+else document.addEventListener('DOMContentLoaded', populateCostCenterSelects);
+
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){document.getElementById(id).style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
@@ -236,5 +314,155 @@ document.body.addEventListener('htmx:afterSettle', function() {
   const el = document.getElementById('chat-messages');
   if(el) el.scrollTop = el.scrollHeight;
 });
+
+// ── Durchgeführte Maßnahmen + Ersatzteilverwendung ──────────────
+const FAULT_ID = '{{.Fault.ID}}';
+const FAULT_RESOLVED = {{if .Fault.Resolution}}true{{else}}false{{end}};
+let faPartsCache = null;
+
+function escFa(s){return String(s||'').replace(/[&<>'"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c];});}
+
+async function loadFaultActions(){
+  const box = document.getElementById('fault-actions-list');
+  try{
+    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/actions', {credentials:'same-origin'});
+    const json = await res.json();
+    const actions = json.data || json || [];
+    box.innerHTML = actions.length ? actions.map(function(a){
+      const t = new Date(a.created_at);
+      const timeStr = t.toLocaleString('de-DE', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escFa(a.description)+'</div><div class="li-sub">'+timeStr+' · '+escFa(a.created_by_name)+'</div></div></div>';
+    }).join('') : '<div style="padding:4px 0">Noch keine Maßnahmen erfasst</div>';
+  }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
+}
+async function addFaultAction(){
+  const input = document.getElementById('fa-new-action');
+  const description = input.value.trim();
+  if(!description) return;
+  try{
+    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/actions', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({description:description})
+    });
+    const json = await res.json();
+    if(!res.ok) throw new Error(json.error||'Fehler');
+    input.value='';
+    loadFaultActions();
+  }catch(e){ alert('Fehler: '+e.message); }
+}
+
+async function loadFaultPartsUsage(){
+  const box = document.getElementById('fault-parts-usage-list');
+  try{
+    if(FAULT_RESOLVED){
+      const res = await fetch('/api/v1/faults/'+FAULT_ID+'/parts-usage', {credentials:'same-origin'});
+      const json = await res.json();
+      const movements = json.data || json || [];
+      box.innerHTML = movements.length ? movements.map(function(m){
+        return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escFa(m.part_name)+' <span style="color:var(--muted)">('+escFa(m.part_number)+')</span></div><div class="li-sub">'+m.qty+' Stk · '+escFa(m.created_by_name)+'</div></div></div>';
+      }).join('') : '<div style="padding:4px 0">Keine Ersatzteile verwendet</div>';
+      return;
+    }
+    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/pending-parts', {credentials:'same-origin'});
+    const json = await res.json();
+    const pending = json.data || json || [];
+    box.innerHTML = pending.length ? pending.map(function(p){
+      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escFa(p.part_name)+' <span style="color:var(--muted)">('+escFa(p.part_number)+')</span></div><div class="li-sub">'+p.qty+' Stk · '+escFa(p.storage_name)+'</div></div><button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="removePendingPart(THISID)"><i class="ti ti-x"></i></button></div>'.replace('THISID', "'"+p.id+"'");
+    }).join('') : '<div style="padding:4px 0">Noch keine Ersatzteile vorgemerkt</div>';
+  }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
+}
+
+async function removePendingPart(id){
+  try{
+    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/pending-parts/'+id, {method:'DELETE', credentials:'same-origin'});
+    const json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+    loadFaultPartsUsage();
+  }catch(e){ alert('Fehler beim Entfernen: '+e.message); }
+}
+
+async function loadFaultPartsCache(){
+  if(faPartsCache) return faPartsCache;
+  const res = await fetch('/api/v1/inventory/', {credentials:'same-origin'});
+  const json = await res.json();
+  faPartsCache = json.data || json || [];
+  return faPartsCache;
+}
+
+async function loadStorageFlatOptions(selectEl){
+  try{
+    const res = await fetch('/api/v1/storage/', {credentials:'same-origin'});
+    const json = await res.json();
+    const tree = json.data || json;
+    const options = [];
+    function walk(nodes, prefix){
+      (nodes||[]).forEach(function(n){
+        const label = prefix ? prefix+' > '+n.name : n.name;
+        options.push({id:n.id, label:label});
+        if(n.children && n.children.length) walk(n.children, label);
+      });
+    }
+    walk(Array.isArray(tree) ? tree : (tree.children||[]), '');
+    selectEl.innerHTML = '<option value="">Lagerort wählen...</option>' + options.map(function(o){return '<option value="'+o.id+'">'+escFa(o.label)+'</option>';}).join('');
+  }catch(e){
+    selectEl.innerHTML = '<option value="">Fehler beim Laden</option>';
+  }
+}
+
+function openFaultPartModal(){
+  document.getElementById('fault-part-modal').style.display='flex';
+  document.getElementById('fa-part-search').value='';
+  document.getElementById('fa-part-id').value='';
+  document.getElementById('fa-part-selected').textContent='';
+  document.getElementById('fa-part-results').style.display='none';
+  document.getElementById('fa-part-error').style.display='none';
+  document.getElementById('fa-part-qty').value='1';
+  loadStorageFlatOptions(document.getElementById('fa-part-location'));
+}
+function closeFaultPartModal(){ document.getElementById('fault-part-modal').style.display='none'; }
+
+async function filterFaultParts(){
+  const q = document.getElementById('fa-part-search').value.trim().toLowerCase();
+  const box = document.getElementById('fa-part-results');
+  if(!q){ box.style.display='none'; return; }
+  const parts = await loadFaultPartsCache();
+  const matches = parts.filter(function(p){
+    return (p.name||'').toLowerCase().includes(q) || (p.part_number||'').toLowerCase().includes(q);
+  }).slice(0,20);
+  box.innerHTML = matches.length ? matches.map(function(p){
+    return '<div style="padding:6px 8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)" onclick="selectFaultPart(\''+p.id+'\',\''+escFa(p.name).replace(/'/g,"\\'")+'\')">'+escFa(p.name)+' <span style="color:var(--muted)">('+escFa(p.part_number)+')</span></div>';
+  }).join('') : '<div style="padding:6px 8px;font-size:12px;color:var(--muted)">Keine Treffer</div>';
+  box.style.display='block';
+}
+function selectFaultPart(id,label){
+  document.getElementById('fa-part-id').value=id;
+  document.getElementById('fa-part-selected').textContent='Ausgewählt: '+label;
+  document.getElementById('fa-part-results').style.display='none';
+  document.getElementById('fa-part-search').value='';
+}
+
+async function bookFaultPart(){
+  const partId = document.getElementById('fa-part-id').value;
+  const locationId = document.getElementById('fa-part-location').value;
+  const qty = parseFloat(document.getElementById('fa-part-qty').value);
+  const errEl = document.getElementById('fa-part-error');
+  errEl.style.display='none';
+  if(!partId){ errEl.textContent='Bitte ein Ersatzteil auswählen'; errEl.style.display='block'; return; }
+  if(!locationId){ errEl.textContent='Bitte einen Lagerort auswählen'; errEl.style.display='block'; return; }
+  if(!qty || qty<=0){ errEl.textContent='Bitte eine gültige Menge angeben'; errEl.style.display='block'; return; }
+  try{
+    const res = await fetch('/api/v1/faults/'+FAULT_ID+'/pending-parts', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({part_id:partId, storage_node_id:locationId, qty:qty})
+    });
+    const json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+    closeFaultPartModal();
+    loadFaultPartsUsage();
+  }catch(e){ errEl.textContent='Fehler: '+e.message; errEl.style.display='block'; }
+}
+
+if(document.readyState !== 'loading'){ loadFaultActions(); loadFaultPartsUsage(); }
+else document.addEventListener('DOMContentLoaded', function(){ loadFaultActions(); loadFaultPartsUsage(); });
 </script>
 {{end}}

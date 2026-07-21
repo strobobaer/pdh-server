@@ -145,6 +145,30 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Post("/absences", h.CreateAbsence)
 	r.Post("/absences/{id}/approve", h.ApproveAbsence) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 
+	// Rotationsmuster
+	r.Get("/patterns", h.ListRotationPatterns)
+	r.Post("/patterns", h.CreateRotationPattern)
+	r.Get("/patterns/{id}", h.GetRotationPattern)
+	r.Post("/patterns/{id}/days", h.SetPatternDay)
+
+	// Schichtplaene (Entwurf/Veroeffentlicht)
+	r.Get("/plans", h.ListPlans)
+	r.Post("/plans", h.CreatePlan)
+	r.Post("/plans/generate", h.GeneratePlan)
+	r.Get("/plans/{id}", h.GetPlan)
+	r.Post("/plans/{id}/assign", h.AssignInPlan)
+	r.Post("/plans/{id}/publish", h.PublishPlan)
+	r.Post("/plans/{id}/unpublish", h.UnpublishPlan)
+	r.Delete("/plans/{id}", h.DeletePlan)
+
+	// Teams (erweiterbare Liste, z.B. fuer Schichtschlosser-Diensthandys)
+	r.Get("/teams", h.ListTeams)
+	r.Post("/teams", h.CreateTeam)
+	r.Post("/teams/{id}", h.UpdateTeam)
+	r.Delete("/teams/{id}", h.DeactivateTeam)
+	r.Get("/teams/locksmith-assignments", h.GetLocksmithAssignments)
+	r.Post("/teams/locksmith-assignments/{slot}", h.SetLocksmithAssignment)
+
 	return r
 }
 
@@ -206,7 +230,9 @@ func (h *Handler) DeleteAssignment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetWeekPlan(w http.ResponseWriter, r *http.Request) {
-	plan, err := h.svc.GetWeekPlan(r.Context(), chi.URLParam(r, "date"))
+	role, _ := r.Context().Value(middleware.RoleKey).(string)
+	isPlanner := role == "admin" || role == "manager"
+	plan, err := h.svc.GetWeekPlanForRole(r.Context(), chi.URLParam(r, "date"), isPlanner)
 	if err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 200, plan)
 }
@@ -216,7 +242,15 @@ func (h *Handler) GetUserShifts(w http.ResponseWriter, r *http.Request) {
 	to := r.URL.Query().Get("to")
 	if from == "" { from = time.Now().Format("2006-01-02") }
 	if to == "" { to = time.Now().AddDate(0, 1, 0).Format("2006-01-02") }
-	shifts, err := h.svc.repo.GetUserShifts(r.Context(), chi.URLParam(r, "id"), from, to)
+	role, _ := r.Context().Value(middleware.RoleKey).(string)
+	isPlanner := role == "admin" || role == "manager"
+	var shifts []*ShiftAssignment
+	var err error
+	if isPlanner {
+		shifts, err = h.svc.repo.GetUserShifts(r.Context(), chi.URLParam(r, "id"), from, to)
+	} else {
+		shifts, err = h.svc.repo.GetUserShiftsFiltered(r.Context(), chi.URLParam(r, "id"), from, to)
+	}
 	if err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 200, shifts)
 }

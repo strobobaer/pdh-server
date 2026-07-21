@@ -3,9 +3,13 @@ package faults
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/addins"
+	"pdh/internal/modules/inventory"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -20,6 +24,11 @@ func NewService(repo *Repository, copilot *Copilot) *Service {
 	return &Service{repo: repo, copilot: copilot}
 }
 
+var eventBus *addins.EventBus
+
+// SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
+func SetEventBus(b *addins.EventBus) { eventBus = b }
+
 func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID string) (*Fault, error) {
 	f := &Fault{
 		Title:            in.Title,
@@ -30,11 +39,17 @@ func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID strin
 		AssignedTo:       in.AssignedTo,
 		ResponsibleTo:    in.ResponsibleTo,
 		CreatedBy:        userID,
+		CostCenterID:     in.CostCenterID,
 	}
 	if err := s.repo.Create(ctx, f); err != nil {
 		return f, err
 	}
 	s.syncFaultAsync(f)
+	if eventBus != nil {
+		eventBus.Publish("fault.created", map[string]interface{}{
+			"id": f.ID, "title": f.Title, "severity": string(f.Severity), "created_by": f.CreatedBy,
+		})
+	}
 	return f, nil
 }
 
@@ -73,8 +88,66 @@ func (s *Service) Chat(ctx context.Context, faultID, userID, message string, his
 	return s.copilot.Chat(ctx, fault, history, message)
 }
 
-func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause, userID string) error {
-	return s.repo.Resolve(ctx, faultID, resolution, rootCause, userID)
+func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause, userID string, noPartsNeeded bool) error {
+	actionCount, err := s.repo.CountActions(ctx, faultID)
+	if err != nil {
+		return err
+	}
+	if actionCount == 0 {
+		return fmt.Errorf("bitte mindestens eine durchgeführte maßnahme erfassen, bevor die störung gelöst werden kann")
+	}
+
+	pendingParts, err := s.repo.GetPendingParts(ctx, faultID)
+	if err != nil {
+		return err
+	}
+	if !noPartsNeeded && len(pendingParts) == 0 {
+		return fmt.Errorf(`bitte verwendete ersatzteile erfassen oder "keine teile benötigt" bestätigen`)
+	}
+
+	// Vorgemerkte Ersatzteile jetzt tatsaechlich buchen (Warenausgang).
+	// Erfolgreich gebuchte Eintraege werden sofort aus der Merkliste
+	// entfernt, damit ein Wiederholungsversuch nach einem Fehler nicht
+	// bereits gebuchte Teile doppelt bucht.
+	if invService != nil {
+		for _, pp := range pendingParts {
+			_, bookErr := invService.Book(ctx, &inventory.BookMovementInput{
+				PartID: pp.PartID, Type: inventory.MovementOut, Qty: pp.Qty,
+				StorageNodeID: pp.StorageNodeID, Reference: "Störung " + faultID, FaultID: faultID,
+			}, pp.CreatedBy)
+			if bookErr != nil {
+				return fmt.Errorf("buchung für ersatzteil \"%s\" fehlgeschlagen: %w", pp.PartName, bookErr)
+			}
+			_ = s.repo.DeletePendingPart(ctx, pp.ID)
+		}
+	}
+
+	err = s.repo.Resolve(ctx, faultID, resolution, rootCause, userID, noPartsNeeded)
+	if err == nil && eventBus != nil {
+		eventBus.Publish("fault.resolved", map[string]interface{}{
+			"id": faultID, "resolution": resolution, "root_cause": rootCause, "resolved_by": userID,
+		})
+	}
+	return err
+}
+
+func (s *Service) UpdateCostCenter(ctx context.Context, id string, costCenterID *string) error {
+	return s.repo.UpdateCostCenter(ctx, id, costCenterID)
+}
+
+// QuickResolve schließt eine Störung OHNE die Pflichtprüfung (mind. eine
+// Maßnahme, Ersatzteile/"keine benötigt") ab. Gedacht für den generischen
+// Archivieren-Weg (z.B. versehentlich angelegte Datensätze), der Tickets
+// und Störungen gleich behandelt und keine detaillierte
+// Störungsbehebung durchläuft.
+func (s *Service) QuickResolve(ctx context.Context, faultID, resolution, rootCause, userID string) error {
+	err := s.repo.Resolve(ctx, faultID, resolution, rootCause, userID, true)
+	if err == nil && eventBus != nil {
+		eventBus.Publish("fault.resolved", map[string]interface{}{
+			"id": faultID, "resolution": resolution, "root_cause": rootCause, "resolved_by": userID,
+		})
+	}
+	return err
 }
 
 // Handler
@@ -97,6 +170,14 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/{id}/analysis", h.GetAnalysis)
 	r.Post("/{id}/chat", h.Chat)
 	r.Post("/{id}/resolve", h.Resolve)
+	r.Post("/{id}/cost-center", h.UpdateCostCenter)
+	r.Post("/{id}/actions", h.AddAction)
+	r.Get("/{id}/actions", h.GetActions)
+	r.Delete("/{id}/actions/{actionID}", h.DeleteAction)
+	r.Get("/{id}/parts-usage", h.GetPartsUsage)
+	r.Post("/{id}/pending-parts", h.AddPendingPart)
+	r.Get("/{id}/pending-parts", h.GetPendingParts)
+	r.Delete("/{id}/pending-parts/{partItemID}", h.DeletePendingPart)
 
 	return r
 }
@@ -181,9 +262,41 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	if err := h.svc.Resolve(r.Context(), id, in.Resolution, in.RootCause, userID); err != nil {
+	if err := h.svc.Resolve(r.Context(), id, in.Resolution, in.RootCause, userID, in.NoPartsNeeded); err != nil {
 		response.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": "resolved"})
+}
+
+// UpdateCostCenter akzeptiert sowohl JSON als auch normale Formulardaten
+// (fuer htmx-Formulare wie in fault_detail.gohtml).
+func (h *Handler) UpdateCostCenter(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var costCenterID *string
+
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var in struct {
+			CostCenterID *string `json:"cost_center_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
+			return
+		}
+		costCenterID = in.CostCenterID
+	} else {
+		if err := r.ParseForm(); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
+			return
+		}
+		if v := r.FormValue("cost_center_id"); v != "" {
+			costCenterID = &v
+		}
+	}
+
+	if err := h.svc.UpdateCostCenter(r.Context(), id, costCenterID); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"status": "aktualisiert"})
 }

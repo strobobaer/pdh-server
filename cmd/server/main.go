@@ -17,6 +17,8 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
 
+	"pdh/internal/core/addins"
+	"pdh/internal/core/costcenters"
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
@@ -78,6 +80,10 @@ func main() {
 	infraSvc := infrastructure.NewService(infraRepo)
 	infraHandler := infrastructure.NewHandler(infraSvc)
 
+	costCenterRepo := costcenters.NewRepository(db.Pool)
+	costCenterSvc := costcenters.NewService(costCenterRepo)
+	costCenterHandler := costcenters.NewHandler(costCenterSvc)
+
 	ticketRepo := tickets.NewRepository(db.Pool)
 	ticketSvc := tickets.NewService(ticketRepo)
 	ticketHandler := tickets.NewHandler(ticketSvc)
@@ -103,6 +109,18 @@ func main() {
 	itHandler := it.NewHandler(itSvc)
 	invSvc := inventory.NewService(invRepo)
 	invHandler := inventory.NewHandler(invSvc)
+	maintenance.SetInventoryService(invSvc)
+	tickets.SetInventoryService(invSvc)
+	faults.SetInventoryService(invSvc)
+
+	// Add-ins: Ereignis-Bus + Verwaltung (nur Admin, siehe internal/core/addins)
+	addinsRepo := addins.NewRepository(db.Pool)
+	addinsBus := addins.NewEventBus(addinsRepo)
+	addinsHandler := addins.NewHandler(addinsRepo, addinsBus)
+	tickets.SetEventBus(addinsBus)
+	faults.SetEventBus(addinsBus)
+	inventory.SetEventBus(addinsBus)
+	maintenance.SetEventBus(addinsBus)
 
 	// Uploads-Verzeichnis
 	os.MkdirAll("uploads", 0755)
@@ -156,6 +174,7 @@ func main() {
 		r.Mount("/storage", storageHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/shifts", shiftHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/costcenters", costCenterHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/faults", faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time", timeHandler.Routes(cfg.Auth.JWTSecret))
@@ -165,11 +184,12 @@ func main() {
 		r.Mount("/inventory", invHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/attachments", attachHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/checklists", checkHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/addins", addinsHandler.Routes(cfg.Auth.JWTSecret))
 	})
 
 	// Web-save fallbacks: diese Routen liegen vor dem generischen Web-Mount.
 	r.Post("/maintenance/plans", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseMultipartForm(32 << 20); err != nil { // FIX: r.ParseForm() parst kein multipart/form-data (FormData+fetch)
 			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
 			return
 		}
@@ -206,9 +226,9 @@ func main() {
 		cmd, err := db.Pool.Exec(r.Context(), `
 			INSERT INTO maintenance_plans
 			  (id, name, description, type, infrastructure_id, interval_type, interval_days,
-			   estimated_min, priority, assigned_to, active, next_due_at, created_by)
+			   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id)
 			VALUES (gen_random_uuid(), $1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
-				0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid)`,
+				0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid, NULLIF($11,'')::uuid)`,
 			name,
 			strings.TrimSpace(r.FormValue("description")),
 			r.FormValue("type"),
@@ -219,6 +239,7 @@ func main() {
 			strings.TrimSpace(r.FormValue("assigned_to")),
 			firstDue,
 			createdBy,
+			strings.TrimSpace(r.FormValue("cost_center_id")),
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("maintenance plan create failed")
@@ -271,8 +292,9 @@ func main() {
 			    default_duration_min=$8,
 			    priority=$9::maintenance_priority,
 			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::date END,
+			    cost_center_id=NULLIF($11,'')::uuid,
 			active=true
-			WHERE id=$11`,
+			WHERE id=$12`,
 			name,
 			strings.TrimSpace(r.FormValue("description")),
 			r.FormValue("type"),
@@ -283,6 +305,7 @@ func main() {
 			defaultDurationMin,
 			r.FormValue("priority"),
 			strings.TrimSpace(r.FormValue("next_due_at")),
+			strings.TrimSpace(r.FormValue("cost_center_id")),
 			planID,
 		)
 		if err != nil {

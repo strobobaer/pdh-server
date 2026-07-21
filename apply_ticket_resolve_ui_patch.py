@@ -1,54 +1,25 @@
-{{template "base" .}}
-{{define "content"}}
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-  {{template "icon-button" (dict "Action" "back" "Href" "/tickets")}}
-  <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Ticket.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt {{.Ticket.CreatedAgo}}{{if .Ticket.InfraName}} · {{.Ticket.InfraName}}{{end}}</p>
-  </div>
-  <span class="badge {{.Ticket.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.Priority}}</span>
-  <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
-  {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/ticket/%s/archive" .Ticket.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/tickets?status=archive',700)")}}
-  <!-- ... Menü -->
-  <div style="position:relative">
-    {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('ticket-menu')")}}
-    <div id="ticket-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-      <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
-      {{range .StatusOptions}}
-      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}
-      {{end}}
-      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Ticket löschen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxDelete" (printf "/tickets/%s" .Ticket.ID) "HxConfirm" "Ticket löschen?" "HxTarget" "body" "OnClick" "closeMenu('ticket-menu')")}}
-    </div>
-  </div>
-</div>
-<div id="archive-result" style="margin-bottom:10px"></div>
+#!/usr/bin/env python3
+"""
+Patcht web/templates/ticket_detail.gohtml: fügt "Ticket lösen"-Formular
+(Maßnahme + Grundursache + "keine Teile benötigt"), Maßnahmen-Verlauf und
+Ersatzteil-Merkliste hinzu - analog zur Störungsseite. Der gelöst-Status wird
+per JS aus der JSON-API ermittelt (kein Zugriff auf unbekannte TicketView-
+Felder nötig).
 
-<div class="grid2" style="grid-template-columns:1fr 340px;gap:14px;align-items:start">
-  <div>
-    <!-- Beschreibung -->
-    <div class="card">
-      <div class="card-title">Beschreibung</div>
-      <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if .Ticket.Description}}{{.Ticket.Description}}{{else}}Keine Beschreibung{{end}}</p>
+Aufruf:
+    python3 apply_ticket_resolve_ui_patch.py web/templates/ticket_detail.gohtml
+"""
+import sys
+
+CARDS_OLD = '''      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
+        <input name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
+        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
+      </form>
     </div>
 
-    <!-- Kommentare -->
-    <div class="card">
-      <div class="card-title">Kommentare <span style="font-size:11px;color:var(--muted)">{{.CommentCount}}</span></div>
-      <div id="comments-list">
-        {{range .Comments}}
-        <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">{{slice .UserName 0 1}}</div>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:500">{{.UserName}} <span style="color:var(--muted);font-weight:400">· {{.CreatedAgo}}</span></div>
-            <div style="font-size:13px;margin-top:4px;line-height:1.5">{{.Text}}</div>
-          </div>
-        </div>
-        {{else}}
-        <div style="color:var(--muted);font-size:12px;padding:8px 0">Noch keine Kommentare</div>
-        {{end}}
-      </div>
-      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
+    <!-- Anhänge -->'''
+
+CARDS_NEW = '''      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
         <input name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
         {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
       </form>
@@ -128,122 +99,21 @@
       </div>
     </div>
 
-    <!-- Anhänge -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
-      <div id="attachments-{{.Ticket.ID}}" data-attach-ref="ticket:{{.Ticket.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo" style="font-size:16px"></i>Galerie
-          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera" style="font-size:16px"></i>Kamera
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload" style="font-size:16px"></i>Dokument
-          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-      </div>
-    </div>
+    <!-- Anhänge -->'''
 
-    {{template "record-history" .History}}
-  </div>
-
-  <!-- Rechte Spalte -->
-  <div>
-    <div class="card">
-      <div class="card-title">Details</div>
-      {{if .Ticket.RecordImageURL}}
-      <img src="{{.Ticket.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px">
-      {{end}}
-      <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Ticket.PriorityClass}}">{{.Ticket.Priority}}</span></div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title" id="status-badge"><span class="badge {{.Ticket.StatusClass}}">{{.Ticket.StatusLabel}}</span></div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px">{{.Ticket.CreatedAgo}}</div></div></div>
-      <form hx-put="/tickets/{{.Ticket.ID}}/infrastructure-web" hx-target="#ticket-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        {{template "infra-tree-picker" (dict "TargetID" "ticket-detail-infra-id" "SelectedLabelID" "ticket-detail-infra-selected" "Label" "Infrastruktur" "Value" .Ticket.InfraID "SelectedLabel" .Ticket.InfraName)}}
-        <div id="ticket-infra-result" style="font-size:12px;margin-bottom:8px"></div>
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-      <form hx-post="/api/v1/tickets/{{.Ticket.ID}}/cost-center" hx-swap="none" hx-on::after-request="if(event.detail.successful) location.reload()" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" .Ticket.CostCenterID)}}
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-      <form hx-put="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div class="form-group">
-          <label class="form-label">Verantwortlich</label>
-          <select name="responsible_to" class="form-input">
-            <option value="">Nicht gesetzt</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Zugewiesen</label>
-          <select name="assigned_to" class="form-input">
-            <option value="">Nicht zugewiesen</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div id="people-result-ticket" style="font-size:12px;margin-bottom:8px"></div>
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Zeiterfassung</div>
-      {{if .RunningTime}}
-      <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.RunningTime.StartedAt.Format "15:04"}}</div>
-      </div>
-      {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Label" "Zeit stoppen" "Style" "width:100%;justify-content:center" "HxPost" (printf "/time/%s/stop-web" .RunningTime.ID) "HxTarget" "#time-result" "HxOnAfterRequest" "setTimeout(()=>location.reload(),1000)")}}
-      {{else}}
-      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Zeit erfassen" "Style" "width:100%;justify-content:center" "HxPost" (printf "/tickets/%s/time/start" .Ticket.ID) "HxTarget" "#time-result")}}
-      {{end}}
-      <div id="time-result"></div>
-      {{range .TimeEntries}}
-      <div class="li"><div class="li-text"><div class="li-sub">{{.UserName}}</div></div><span style="font-size:11px;color:var(--green)">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft...{{end}}</span></div>
-      {{end}}
-    </div>
-  </div>
-</div>
-{{end}}
-
-{{define "context-list"}}
-{{range .RelatedTickets}}
-<div class="act-item">
-  <div class="act-dot {{.PriorityDot}}"></div>
-  <div class="act-text">{{.Title}}</div>
-  <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
-</div>
-{{end}}
-{{end}}
-
-{{block "scripts" .}}
-<script>
-async function populateCostCenterSelects(){
-  const selects = document.querySelectorAll('[data-cost-center-picker]');
-  if(selects.length===0) return;
-  try{
-    const res = await fetch('/api/v1/costcenters', {credentials:'same-origin'});
-    const json = await res.json();
-    const items = json.data || [];
-    selects.forEach(function(sel){
-      const selected = sel.dataset.selected || '';
-      items.forEach(function(cc){
-        const opt = document.createElement('option');
-        opt.value = cc.id;
-        opt.textContent = cc.number + ' - ' + cc.name;
-        if(cc.id === selected) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    });
-  }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
+SCRIPTS_OLD = '''function toggleMenu(id) {
+  const m = document.getElementById(id);
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
 }
-if(document.readyState !== 'loading') populateCostCenterSelects();
-else document.addEventListener('DOMContentLoaded', populateCostCenterSelects);
+function closeMenu(id) { document.getElementById(id).style.display='none'; }
+document.addEventListener('click', e => {
+  if(!e.target.closest('[onclick*="toggleMenu"]') && !e.target.closest('[id$="-menu"]'))
+    document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');
+});
+</script>
+{{end}}'''
 
-function toggleMenu(id) {
+SCRIPTS_NEW = '''function toggleMenu(id) {
   const m = document.getElementById(id);
   m.style.display = m.style.display === 'none' ? 'block' : 'none';
 }
@@ -398,7 +268,7 @@ async function filterTicketParts(){
   }).slice(0,20);
   box.innerHTML = matches.length ? matches.map(function(p){
     const label = escTk(p.name)+' ('+escTk(p.part_number)+')';
-    const safeLabel = label.replace(/'/g,"\\'");
+    const safeLabel = label.replace(/'/g,"\\\\'");
     const row = '<div style="padding:6px 8px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)" onclick="selectTicketPart(PID,PLABEL)">'+label+'</div>';
     return row.replace('PID', "'"+p.id+"'").replace('PLABEL', "'"+safeLabel+"'");
   }).join('') : '<div style="padding:6px 8px;font-size:12px;color:var(--muted)">Keine Treffer</div>';
@@ -435,4 +305,38 @@ async function bookTicketPart(){
 if(document.readyState !== 'loading') initTicketResolveUI();
 else document.addEventListener('DOMContentLoaded', initTicketResolveUI);
 </script>
-{{end}}
+{{end}}'''
+
+REPLACEMENTS = [
+    ("Neue Karten einfuegen", CARDS_OLD, CARDS_NEW),
+    ("JS-Logik ergaenzen", SCRIPTS_OLD, SCRIPTS_NEW),
+]
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Aufruf: python3 apply_ticket_resolve_ui_patch.py web/templates/ticket_detail.gohtml")
+        sys.exit(1)
+
+    path = sys.argv[1]
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    changed = content
+    for label, old, new in REPLACEMENTS:
+        count = changed.count(old)
+        if count == 0:
+            print(f"FEHLER: Block '{label}' wurde nicht gefunden. Nichts geändert.")
+            sys.exit(1)
+        if count > 1:
+            print(f"FEHLER: Block '{label}' wurde {count}x gefunden (erwartet 1x). Nichts geändert.")
+            sys.exit(1)
+        changed = changed.replace(old, new, 1)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(changed)
+    print(f"OK: {path} gepatcht ({len(REPLACEMENTS)} Stellen ersetzt).")
+
+
+if __name__ == "__main__":
+    main()

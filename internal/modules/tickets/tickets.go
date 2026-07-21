@@ -3,12 +3,15 @@ package tickets
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
+	"pdh/internal/core/addins"
 	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
@@ -49,6 +52,16 @@ type Ticket struct {
 	ArchivedAt       *time.Time `json:"archived_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+
+	// Kostenstelle (eigenständig, unabhängig von der Infrastruktur)
+	CostCenterID     *string `json:"cost_center_id,omitempty"`
+	CostCenterNumber string  `json:"cost_center_number,omitempty"`
+	CostCenterName   string  `json:"cost_center_name,omitempty"`
+
+	// Pflichtangaben beim Schließen: Maßnahmen-Verlauf + Ersatzteilverwendung
+	Resolution    *string `json:"resolution,omitempty"`
+	RootCause     *string `json:"root_cause,omitempty"`
+	NoPartsNeeded bool    `json:"no_parts_needed,omitempty"`
 }
 
 // Kommentar zu einem Ticket
@@ -70,6 +83,7 @@ type CreateInput struct {
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
 	Tags             []string   `json:"tags"`
 	DueDate          *time.Time `json:"due_date,omitempty"`
+	CostCenterID     *string    `json:"cost_center_id,omitempty"`
 }
 
 // Repository
@@ -82,29 +96,31 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, t *Ticket) error {
-	// FIX: Tags wurden vorher nicht gespeichert
 	tags, _ := json.Marshal(t.Tags)
 	query := `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
-		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags,
+		t.AssignedTo, t.ResponsibleTo, t.CreatedBy, t.InfrastructureID, t.DueDate, tags, t.CostCenterID,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 	t := &Ticket{}
 	var tags []byte
-	// FIX: tags jetzt mit ausgelesen
-	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
-		created_by, infrastructure_id, record_image_attachment_id, due_date, resolved_at, archived_at, created_at, updated_at, tags
-		FROM tickets WHERE id = $1`
+	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
+		t.created_by, t.infrastructure_id, t.record_image_attachment_id, t.due_date, t.resolved_at, t.archived_at, t.created_at, t.updated_at, t.tags,
+		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		FROM tickets t
+		LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
+		WHERE t.id = $1`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
 		&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID,
 		&t.RecordImageID, &t.DueDate, &t.ResolvedAt, &t.ArchivedAt, &t.CreatedAt, &t.UpdatedAt, &tags,
+		&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName,
 	)
 	if err != nil {
 		return nil, err
@@ -114,20 +130,21 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Ticket, error) {
 }
 
 func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error) {
-	// FIX: tags jetzt mit ausgelesen
-	query := `SELECT id, title, description, priority, status, assigned_to, responsible_to,
-		created_by, infrastructure_id, due_date, archived_at, created_at, updated_at, tags
-		FROM tickets`
+	query := `SELECT t.id, t.title, t.description, t.priority, t.status, t.assigned_to, t.responsible_to,
+		t.created_by, t.infrastructure_id, t.due_date, t.archived_at, t.created_at, t.updated_at, t.tags,
+		t.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		FROM tickets t
+		LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id`
 	args := []interface{}{}
 	if status == Status("archive") {
-		query += " WHERE archived_at IS NOT NULL"
+		query += " WHERE t.archived_at IS NOT NULL"
 	} else if status != "" {
-		query += " WHERE status = $1 AND archived_at IS NULL"
+		query += " WHERE t.status = $1 AND t.archived_at IS NULL"
 		args = append(args, status)
 	} else {
-		query += " WHERE archived_at IS NULL"
+		query += " WHERE t.archived_at IS NULL"
 	}
-	query += " ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at DESC"
+	query += " ORDER BY CASE t.priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, t.created_at DESC"
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
@@ -143,6 +160,7 @@ func (r *Repository) List(ctx context.Context, status Status) ([]*Ticket, error)
 			&t.ID, &t.Title, &t.Description, &t.Priority, &t.Status,
 			&t.AssignedTo, &t.ResponsibleTo, &t.CreatedBy, &t.InfrastructureID, &t.DueDate, &t.ArchivedAt,
 			&t.CreatedAt, &t.UpdatedAt, &tags,
+			&t.CostCenterID, &t.CostCenterNumber, &t.CostCenterName,
 		)
 		if err != nil {
 			return nil, err
@@ -172,6 +190,14 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status,
 	return err
 }
 
+// UpdateCostCenter setzt/ändert die Kostenstelle eines bestehenden Tickets.
+func (r *Repository) UpdateCostCenter(ctx context.Context, id string, costCenterID *string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE tickets SET cost_center_id=$1, updated_at=NOW() WHERE id=$2`,
+		costCenterID, id)
+	return err
+}
+
 func (r *Repository) AddComment(ctx context.Context, c *Comment) error {
 	query := `INSERT INTO ticket_comments (id, ticket_id, user_id, text)
 		VALUES (gen_random_uuid(), $1, $2, $3)
@@ -189,6 +215,11 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
+var eventBus *addins.EventBus
+
+// SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
+func SetEventBus(b *addins.EventBus) { eventBus = b }
+
 func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string) (*Ticket, error) {
 	t := &Ticket{
 		Title:            in.Title,
@@ -200,9 +231,15 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		InfrastructureID: in.InfrastructureID,
 		Tags:             in.Tags,
 		DueDate:          in.DueDate,
+		CostCenterID:     in.CostCenterID,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return t, err
+	}
+	if eventBus != nil {
+		eventBus.Publish("ticket.created", map[string]interface{}{
+			"id": t.ID, "title": t.Title, "priority": string(t.Priority), "created_by": t.CreatedBy,
+		})
 	}
 
 	s.syncTicketToDeckAsync(t)
@@ -254,7 +291,14 @@ func (s *Service) List(ctx context.Context, status Status) ([]*Ticket, error) {
 }
 
 func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, userID string) error {
+	if status == StatusResolved || status == StatusClosed {
+		return fmt.Errorf(`bitte das Ticket über "Ticket lösen" abschließen, nicht über die Status-Auswahl`)
+	}
 	return s.repo.UpdateStatus(ctx, id, status, userID)
+}
+
+func (s *Service) UpdateCostCenter(ctx context.Context, id string, costCenterID *string) error {
+	return s.repo.UpdateCostCenter(ctx, id, costCenterID)
 }
 
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
@@ -278,8 +322,17 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/", h.List)
 	r.Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
-	r.Post("/{id}/status", h.UpdateStatus) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/{id}/status", h.UpdateStatus)
+	r.Post("/{id}/cost-center", h.UpdateCostCenter)
 	r.Post("/{id}/comments", h.AddComment)
+	r.Post("/{id}/resolve", h.Resolve)
+	r.Post("/{id}/actions", h.AddAction)
+	r.Get("/{id}/actions", h.GetActions)
+	r.Delete("/{id}/actions/{actionID}", h.DeleteAction)
+	r.Get("/{id}/parts-usage", h.GetPartsUsage)
+	r.Post("/{id}/pending-parts", h.AddPendingPart)
+	r.Get("/{id}/pending-parts", h.GetPendingParts)
+	r.Delete("/{id}/pending-parts/{partItemID}", h.DeletePendingPart)
 
 	return r
 }
@@ -334,6 +387,39 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": string(in.Status)})
+}
+
+// UpdateCostCenter akzeptiert sowohl JSON (für die JS-Fetch-Formulare in
+// tickets.gohtml) als auch normale Formulardaten (für htmx-Formulare wie in
+// ticket_detail.gohtml).
+func (h *Handler) UpdateCostCenter(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var costCenterID *string
+
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var in struct {
+			CostCenterID *string `json:"cost_center_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+			return
+		}
+		costCenterID = in.CostCenterID
+	} else {
+		if err := r.ParseForm(); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+			return
+		}
+		if v := r.FormValue("cost_center_id"); v != "" {
+			costCenterID = &v
+		}
+	}
+
+	if err := h.svc.UpdateCostCenter(r.Context(), id, costCenterID); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"status": "aktualisiert"})
 }
 
 func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {

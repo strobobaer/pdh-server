@@ -6,6 +6,8 @@
     <p style="font-size:12px;color:var(--muted);margin-top:3px">KW {{.WeekNumber}} · {{.WeekRange}}</p>
   </div>
   <div style="display:flex;gap:8px">
+    <button type="button" class="btn btn-primary" onclick="openShiftPlanModal('plans')"><i class="ti ti-calendar-plus"></i> Neuer Schichtplan</button>
+    <button type="button" class="btn" onclick="openShiftPlanModal('models')"><i class="ti ti-settings"></i> Verwalten</button>
     <a href="/shifts?week={{.PrevWeek}}" class="btn" style="padding:6px 12px"><i class="ti ti-chevron-left"></i></a>
     <a href="/shifts?week={{.NextWeek}}" class="btn" style="padding:6px 12px"><i class="ti ti-chevron-right"></i></a>
   </div>
@@ -30,6 +32,16 @@
     <tr>
       <td>
         <div style="font-weight:500;font-size:13px">{{.UserName}}</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+          {{if .OnCallDuty}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-phone"></i> Bereitschaft{{if .OnCallPhone}} {{.OnCallPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith1}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-tool"></i> Schlosser 1{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith2}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)"><i class="ti ti-tool"></i> Schlosser 2{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          <div style="display:flex;gap:4px">
+            {{if .Sharpening}}<i class="ti ti-scissors" style="font-size:11px;color:var(--accent)" title="Schärferei"></i>{{end}}
+            {{if .HeatingFill}}<i class="ti ti-flame" style="font-size:11px;color:var(--accent)" title="Heizungsbefüllung"></i>{{end}}
+            {{if .ShiftLeader}}<i class="ti ti-star" style="font-size:11px;color:var(--amber)" title="Schichtleiter"></i>{{end}}
+          </div>
+        </div>
       </td>
       {{range $.Days}}
       {{$date := .DateFull}}
@@ -78,6 +90,67 @@
     {{end}}
   </div>
 </div>
+<div id="shiftplan-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:720px;margin:20px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-size:15px;font-weight:600">Schichtplanung verwalten</div>
+      <button type="button" class="btn" style="padding:4px 8px" onclick="closeShiftPlanModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:10px">
+      <button type="button" class="btn" onclick="showShiftPlanTab('models')">Modelle</button>
+      <button type="button" class="btn" onclick="showShiftPlanTab('patterns')">Rotationsmuster</button>
+      <button type="button" class="btn" onclick="showShiftPlanTab('plans')">Pläne</button>
+    </div>
+
+    <div id="sp-tab-models">
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px">
+        <div class="form-group" style="flex:1;margin-bottom:0"><label class="form-label">Neues Schichtmodell</label><input id="new-model-name" class="form-input" placeholder="z.B. 3-Schicht Wartung"></div>
+        <button type="button" class="btn" onclick="createModel()"><i class="ti ti-plus"></i></button>
+      </div>
+      <div class="form-group"><label class="form-label">Modell auswählen</label><select id="model-select" class="form-input" onchange="onModelSelected()"></select></div>
+      <div id="model-shifts-list" style="margin:10px 0;font-size:12px"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;border-top:1px solid var(--border);padding-top:10px">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Schicht-Name</label><input id="new-shift-name" class="form-input" style="width:120px" placeholder="Frühschicht"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Kürzel</label><input id="new-shift-short" class="form-input" style="width:60px" placeholder="F"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Von</label><input id="new-shift-start" type="time" class="form-input" style="width:100px"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Bis</label><input id="new-shift-end" type="time" class="form-input" style="width:100px"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Farbe</label><input id="new-shift-color" type="color" class="form-input" style="width:50px;padding:2px" value="#3B82F6"></div>
+        <button type="button" class="btn" onclick="createShiftDef()"><i class="ti ti-plus"></i> Schicht</button>
+      </div>
+    </div>
+
+    <div id="sp-tab-patterns" style="display:none">
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px">
+        <div class="form-group" style="flex:1;margin-bottom:0"><label class="form-label">Modell</label><select id="pattern-model-select" class="form-input" onchange="loadPatterns()"></select></div>
+        <div class="form-group" style="flex:1;margin-bottom:0"><label class="form-label">Muster-Name</label><input id="new-pattern-name" class="form-input" placeholder="z.B. 4er-Rotation"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Zykluslänge (Tage)</label><input id="new-pattern-cycle" type="number" class="form-input" style="width:90px" value="4"></div>
+        <button type="button" class="btn" onclick="createPattern()"><i class="ti ti-plus"></i></button>
+      </div>
+      <div class="form-group"><label class="form-label">Muster auswählen</label><select id="pattern-select" class="form-input" onchange="onPatternSelected()"></select></div>
+      <div id="pattern-days-editor" style="margin-top:10px"></div>
+    </div>
+
+    <div id="sp-tab-plans" style="display:none">
+      <div id="plans-list" style="margin-bottom:16px"></div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Neuen Plan aus Muster generieren</div>
+        <div class="grid2">
+          <div class="form-group"><label class="form-label">Muster</label><select id="gen-pattern-select" class="form-input"></select></div>
+          <div class="form-group"><label class="form-label">Plan-Name</label><input id="gen-plan-name" class="form-input" placeholder="z.B. KW 30-33 Team A"></div>
+          <div class="form-group"><label class="form-label">Von</label><input id="gen-start" type="date" class="form-input"></div>
+          <div class="form-group"><label class="form-label">Bis</label><input id="gen-end" type="date" class="form-input"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Mitarbeiter (mit Rotations-Versatz)</label></div>
+        <div id="gen-users-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px"></div>
+        <div id="gen-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-top:10px"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px">
+          <button type="button" class="btn btn-primary" onclick="generatePlan()"><i class="ti ti-wand"></i> Plan generieren</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {{end}}
 
 {{define "context-list"}}
@@ -88,4 +161,175 @@
   <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
 </div>
 {{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+let spModelsCache=null, spShiftsCache={}, spPatternsCache=null, spUsersCache=null;
+
+function openShiftPlanModal(startTab){document.getElementById('shiftplan-modal').style.display='flex';showShiftPlanTab(startTab||'models');loadModels();}
+function closeShiftPlanModal(){document.getElementById('shiftplan-modal').style.display='none';}
+function showShiftPlanTab(tab){
+  ['models','patterns','plans'].forEach(function(t){document.getElementById('sp-tab-'+t).style.display=(t===tab)?'block':'none';});
+  if(tab==='patterns'){loadModelsIntoSelect('pattern-model-select');loadPatterns();}
+  if(tab==='plans'){loadPlans();loadPatternsIntoSelect('gen-pattern-select');loadEmployeesForGen();}
+}
+
+async function spApi(url,options){
+  const res=await fetch(url,Object.assign({credentials:'same-origin'},options||{}));
+  let payload=null;try{payload=await res.json();}catch(e){throw new Error('Keine JSON-Antwort');}
+  if(!res.ok||payload.success===false)throw new Error(payload.error||('HTTP '+res.status));
+  return Array.isArray(payload)?payload:(payload.data!==undefined?payload.data:payload);
+}
+
+async function loadModels(){
+  spModelsCache=await spApi('/api/v1/shifts/models');
+  const sel=document.getElementById('model-select');
+  sel.innerHTML=(spModelsCache||[]).map(function(m){return `<option value="${m.id}">${escSp(m.name)}</option>`;}).join('')||'<option value="">Keine Modelle</option>';
+  if(spModelsCache&&spModelsCache.length)onModelSelected();
+}
+async function loadModelsIntoSelect(selectId){
+  if(!spModelsCache)await loadModels();
+  document.getElementById(selectId).innerHTML=(spModelsCache||[]).map(function(m){return `<option value="${m.id}">${escSp(m.name)}</option>`;}).join('');
+}
+async function createModel(){
+  const name=document.getElementById('new-model-name').value.trim();
+  if(!name){alert('Bitte einen Namen eingeben');return;}
+  try{
+    await spApi('/api/v1/shifts/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,description:''})});
+    document.getElementById('new-model-name').value='';
+    await loadModels();
+  }catch(e){alert('Fehler: '+e.message);}
+}
+async function onModelSelected(){
+  const modelId=document.getElementById('model-select').value;
+  if(!modelId)return;
+  const shifts=await spApi('/api/v1/shifts/models/'+modelId+'/shifts');
+  spShiftsCache[modelId]=shifts;
+  document.getElementById('model-shifts-list').innerHTML=shifts.length?shifts.map(function(s){return `<span class="badge" style="background:${s.color};color:#fff;margin-right:4px">${escSp(s.short_name)} ${escSp(s.name)} (${s.start_time}-${s.end_time})</span>`;}).join(''):'Noch keine Schichten in diesem Modell';
+}
+async function createShiftDef(){
+  const modelId=document.getElementById('model-select').value;
+  if(!modelId){alert('Bitte zuerst ein Modell wählen/anlegen');return;}
+  const name=document.getElementById('new-shift-name').value.trim();
+  const short=document.getElementById('new-shift-short').value.trim();
+  const start=document.getElementById('new-shift-start').value;
+  const end=document.getElementById('new-shift-end').value;
+  const color=document.getElementById('new-shift-color').value;
+  if(!name||!short||!start||!end){alert('Bitte alle Felder ausfüllen');return;}
+  try{
+    await spApi('/api/v1/shifts/models/'+modelId+'/shifts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,short_name:short,start_time:start,end_time:end,color:color})});
+    document.getElementById('new-shift-name').value='';
+    document.getElementById('new-shift-short').value='';
+    onModelSelected();
+  }catch(e){alert('Fehler: '+e.message);}
+}
+
+async function loadPatterns(){
+  const modelId=document.getElementById('pattern-model-select').value;
+  spPatternsCache=await spApi('/api/v1/shifts/patterns'+(modelId?('?model_id='+modelId):''));
+  const sel=document.getElementById('pattern-select');
+  sel.innerHTML=(spPatternsCache||[]).map(function(p){return `<option value="${p.id}">${escSp(p.name)} (${p.cycle_length} Tage)</option>`;}).join('')||'<option value="">Keine Muster</option>';
+  if(spPatternsCache&&spPatternsCache.length)onPatternSelected();
+  else document.getElementById('pattern-days-editor').innerHTML='';
+}
+function loadPatternsIntoSelect(selectId){
+  spApi('/api/v1/shifts/patterns').then(function(patterns){
+    spPatternsCache=patterns;
+    document.getElementById(selectId).innerHTML=(patterns||[]).map(function(p){return `<option value="${p.id}">${escSp(p.name)} (${p.cycle_length} Tage)</option>`;}).join('')||'<option value="">Keine Muster</option>';
+  });
+}
+async function createPattern(){
+  const modelId=document.getElementById('pattern-model-select').value;
+  const name=document.getElementById('new-pattern-name').value.trim();
+  const cycle=parseInt(document.getElementById('new-pattern-cycle').value)||0;
+  if(!modelId||!name||cycle<=0){alert('Bitte Modell, Name und gültige Zykluslänge angeben');return;}
+  try{
+    await spApi('/api/v1/shifts/patterns',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:modelId,name:name,cycle_length:cycle})});
+    document.getElementById('new-pattern-name').value='';
+    loadPatterns();
+  }catch(e){alert('Fehler: '+e.message);}
+}
+async function onPatternSelected(){
+  const patternId=document.getElementById('pattern-select').value;
+  if(!patternId)return;
+  const pattern=await spApi('/api/v1/shifts/patterns/'+patternId);
+  let shifts=spShiftsCache[pattern.model_id];
+  if(!shifts){shifts=await spApi('/api/v1/shifts/models/'+pattern.model_id+'/shifts');spShiftsCache[pattern.model_id]=shifts;}
+  const dayMap={};
+  (pattern.days||[]).forEach(function(d){dayMap[d.day_index]=d.shift_id;});
+  let html='';
+  for(let i=0;i<pattern.cycle_length;i++){
+    const opts='<option value="">– frei –</option>'+shifts.map(function(s){return `<option value="${s.id}" ${dayMap[i]===s.id?'selected':''}>${escSp(s.short_name)} ${escSp(s.name)}</option>`;}).join('');
+    html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:60px;font-size:12px;color:var(--muted)">Tag ${i+1}</span><select class="form-input" style="flex:1" onchange="setPatternDay('${patternId}',${i},this.value)">${opts}</select></div>`;
+  }
+  document.getElementById('pattern-days-editor').innerHTML=html;
+}
+async function setPatternDay(patternId,dayIndex,shiftId){
+  try{
+    await spApi('/api/v1/shifts/patterns/'+patternId+'/days',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({day_index:dayIndex,shift_id:shiftId||null})});
+  }catch(e){alert('Fehler beim Speichern: '+e.message);}
+}
+
+async function loadPlans(){
+  const box=document.getElementById('plans-list');
+  try{
+    const plans=await spApi('/api/v1/shifts/plans');
+    box.innerHTML = plans.length ? plans.map(function(p){
+      const statusBadge = `<span class="badge ${p.status==='published'?'b-green':'b-amber'}">${p.status==='published'?'Veröffentlicht':'Entwurf'}</span>`;
+      const mainBtn = p.status==='draft'
+        ? `<button type="button" class="btn" style="font-size:11px" onclick="publishPlan('${p.id}')"><i class="ti ti-send"></i> Veröffentlichen</button>`
+        : `<button type="button" class="btn" style="font-size:11px" onclick="unpublishPlan('${p.id}')"><i class="ti ti-arrow-back-up"></i> Zurückziehen</button>`;
+      const delBtn = p.status==='draft'
+        ? `<button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="deletePlan('${p.id}')"><i class="ti ti-trash"></i></button>`
+        : '';
+      return `<div class="li" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1"><div style="font-weight:500;font-size:13px">${escSp(p.name)}</div><div style="font-size:11px;color:var(--muted)">${escSp(p.model_name)} · ${p.start_date} – ${p.end_date}</div></div>
+          ${statusBadge}
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">${mainBtn}${delBtn}</div>
+      </div>`;
+    }).join('') : '<div style="color:var(--muted);font-size:12px">Noch keine Pläne</div>';
+  }catch(e){box.innerHTML='<span style="color:var(--red)">'+escSp(e.message)+'</span>';}
+}
+async function publishPlan(id){try{await spApi('/api/v1/shifts/plans/'+id+'/publish',{method:'POST'});loadPlans();location.reload();}catch(e){alert('Fehler: '+e.message);}}
+async function unpublishPlan(id){try{await spApi('/api/v1/shifts/plans/'+id+'/unpublish',{method:'POST'});loadPlans();location.reload();}catch(e){alert('Fehler: '+e.message);}}
+async function deletePlan(id){if(!confirm('Entwurf wirklich löschen?'))return;try{await spApi('/api/v1/shifts/plans/'+id,{method:'DELETE'});loadPlans();}catch(e){alert('Fehler: '+e.message);}}
+
+async function loadEmployeesForGen(){
+  if(!spUsersCache){spUsersCache=await spApi('/api/v1/users/');}
+  document.getElementById('gen-users-list').innerHTML=(spUsersCache||[]).map(function(u){
+    return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+      <input type="checkbox" class="gen-user-check" data-user-id="${u.id}">
+      <span style="flex:1">${escSp(u.first_name)} ${escSp(u.last_name)}</span>
+      <input type="number" class="form-input gen-user-offset" data-user-id="${u.id}" style="width:70px" value="0" placeholder="Versatz">
+    </label>`;
+  }).join('');
+}
+async function generatePlan(){
+  const errEl=document.getElementById('gen-error');
+  errEl.style.display='none';
+  const patternId=document.getElementById('gen-pattern-select').value;
+  const name=document.getElementById('gen-plan-name').value.trim();
+  const start=document.getElementById('gen-start').value;
+  const end=document.getElementById('gen-end').value;
+  const checked=[...document.querySelectorAll('.gen-user-check:checked')];
+  if(!patternId||!name||!start||!end){errEl.textContent='Bitte alle Felder ausfüllen';errEl.style.display='block';return;}
+  if(checked.length===0){errEl.textContent='Bitte mindestens einen Mitarbeiter auswählen';errEl.style.display='block';return;}
+  const usersPayload=checked.map(function(cb){
+    const uid=cb.dataset.userId;
+    const offsetInput=document.querySelector('.gen-user-offset[data-user-id="'+uid+'"]');
+    return {user_id:uid,offset:parseInt(offsetInput.value)||0};
+  });
+  try{
+    await spApi('/api/v1/shifts/plans/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pattern_id:patternId,name:name,start_date:start,end_date:end,users:usersPayload})});
+    document.getElementById('gen-plan-name').value='';
+    loadPlans();
+    alert('Plan als Entwurf erstellt. Bitte prüfen und veröffentlichen.');
+  }catch(e){errEl.textContent='Fehler: '+e.message;errEl.style.display='block';}
+}
+
+function escSp(s){return String(s||'').replace(/[&<>'"]/g,function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[c];});}
+</script>
 {{end}}

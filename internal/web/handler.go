@@ -251,7 +251,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/tickets", h.CreateTicket)
 	r.Get("/tickets/{id}", h.TicketDetail)
 	r.Put("/tickets/{id}/status", h.UpdateTicketStatus)
-	r.Put("/tickets/{id}/status-web", h.TicketStatusWeb)
+	r.Post("/tickets/{id}/status-web", h.TicketStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/tickets/{id}/resolve-web", h.TicketResolve)
 	r.Put("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb)
 	r.Post("/tickets/{id}/comment", h.TicketAddComment)
 	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
@@ -301,8 +302,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/users", h.Users)
 	r.Post("/users/create-web", h.UserCreateWeb)
-	r.Put("/users/{id}/update-web", h.UserUpdateWeb)
-	r.Put("/users/{id}/role-web", h.UserRoleWeb)
+	r.Post("/users/{id}/update-web", h.UserUpdateWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
 	r.Get("/time", h.TimeTracking)
 
@@ -655,9 +656,9 @@ func (h *Handler) RecordArchiveWeb(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch refType {
 	case "ticket":
-		err = h.tickets.UpdateStatus(r.Context(), id, tickets.StatusClosed, u.ID)
+		err = h.tickets.QuickResolve(r.Context(), id, "Archiviert", "", u.ID)
 	case "fault":
-		err = h.faults.Resolve(r.Context(), id, "Archiviert", "", u.ID)
+		err = h.faults.QuickResolve(r.Context(), id, "Archiviert", "", u.ID)
 	default:
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
 		return
@@ -886,6 +887,7 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 				Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
 				StockQty:        strconv.FormatFloat(p.StockQty, 'f', 1, 64),
 				MinQty:          strconv.FormatFloat(p.MinQty, 'f', 1, 64),
+				Price:       fmt.Sprintf("%.2f", p.Price),
 				Status:      st,
 				StatusLabel: statusLabels[st], StatusClass: statusClasses[st], StatusDot: statusDots[st],
 			}
@@ -1298,11 +1300,12 @@ func (h *Handler) FaultResolve(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	u := getUser(r)
-	if err := h.faults.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
+	w.Header().Set("Content-Type", "text/html")
+	if err := h.faults.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID, noPartsNeeded); err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;text-align:center;font-size:13px">%s</div>`, esc(err.Error()))
 		return
 	}
-	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Störung gelöst! <a href="/faults" style="color:var(--accent)">Zurück zur Liste</a></div>`)
 }
 
@@ -1657,15 +1660,16 @@ func (h *Handler) MaintenanceTaskCompleteWeb(w http.ResponseWriter, r *http.Requ
 	r.ParseForm()
 	u := getUser(r)
 	duration, _ := strconv.Atoi(r.FormValue("duration_min"))
+	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
 	in := &maintenance.CompleteTaskInput{
 		Notes:       r.FormValue("notes"),
 		DurationMin: duration,
 	}
-	if err := h.maint.CompleteTask(r.Context(), chi.URLParam(r, "id"), u.ID, in); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "text/html")
+	if err := h.maint.CompleteTaskValidated(r.Context(), chi.URLParam(r, "id"), u.ID, in, noPartsNeeded); err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))
 		return
 	}
-	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprint(w, `<div style="color:var(--green);font-size:12px">Abgeschlossen</div>`)
 }
 
@@ -1967,9 +1971,25 @@ func (h *Handler) TicketStatusWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	status := tickets.Status(r.FormValue("status"))
 	u := getUser(r)
-	h.tickets.UpdateStatus(r.Context(), id, status, u.ID)
 	w.Header().Set("Content-Type", "text/html")
+	if err := h.tickets.UpdateStatus(r.Context(), id, status, u.ID); err != nil {
+		fmt.Fprintf(w, `<span class="badge b-red" title="%s">Nicht möglich</span>`, esc(err.Error()))
+		return
+	}
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClass(string(status)), statusLabel(string(status)))
+}
+
+func (h *Handler) TicketResolve(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+	u := getUser(r)
+	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
+	w.Header().Set("Content-Type", "text/html")
+	if err := h.tickets.Resolve(r.Context(), id, r.FormValue("resolution"), r.FormValue("root_cause"), u.ID, noPartsNeeded); err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);padding:10px;text-align:center;font-size:13px">%s</div>`, esc(err.Error()))
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);padding:12px;text-align:center"><i class="ti ti-check"></i> Ticket gelöst! <a href="/tickets" style="color:var(--accent)">Zurück zur Liste</a></div>`)
 }
 
 func (h *Handler) TicketInfrastructureWeb(w http.ResponseWriter, r *http.Request) {
@@ -2334,6 +2354,13 @@ type UserView struct {
 	Department string
 	Phone      string
 	Active     bool
+
+	OnCallDuty      bool
+	ShiftLocksmith1 bool
+	ShiftLocksmith2 bool
+	Sharpening      bool
+	HeatingFill     bool
+	ShiftLeader     bool
 }
 
 type RoleStat struct {
@@ -2369,6 +2396,8 @@ func userView(u *users.User) UserView {
 		RoleValue: string(u.Role),
 		RoleLabel: roleLabels[u.Role], RoleClass: roleClasses[u.Role],
 		Department: u.Department, Phone: u.Phone, Active: u.Active,
+		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
+		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
 	}
 }
 
@@ -2441,12 +2470,18 @@ func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	u := &users.User{
-		ID:         id,
-		FirstName:  r.FormValue("first_name"),
-		LastName:   r.FormValue("last_name"),
-		Role:       users.Role(r.FormValue("role")),
-		Department: r.FormValue("department"),
-		Phone:      r.FormValue("phone"),
+		ID:              id,
+		FirstName:       r.FormValue("first_name"),
+		LastName:        r.FormValue("last_name"),
+		Role:            users.Role(r.FormValue("role")),
+		Department:      r.FormValue("department"),
+		Phone:           r.FormValue("phone"),
+		OnCallDuty:      r.FormValue("on_call_duty") == "on",
+		ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on",
+		ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
+		Sharpening:      r.FormValue("sharpening") == "on",
+		HeatingFill:     r.FormValue("heating_fill") == "on",
+		ShiftLeader:     r.FormValue("shift_leader") == "on",
 	}
 	h.users.Update(r.Context(), u)
 	h.Users(w, r)

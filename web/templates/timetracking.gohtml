@@ -48,25 +48,43 @@
 <div class="card" style="padding:0">
   <table>
     <thead>
-      <tr><th>Beschreibung</th><th>Typ</th><th>Start</th><th>Ende</th><th>Dauer</th><th></th></tr>
+      <tr><th>Beschreibung</th><th>Typ</th><th>Kostenstelle</th><th>Start</th><th>Ende</th><th>Dauer</th><th></th></tr>
     </thead>
     <tbody>
     {{range .Entries}}
     <tr id="entry-{{.ID}}">
       <td><div style="font-weight:500">{{.Description}}</div></td>
       <td><div style="display:flex;align-items:center;gap:6px"><div class="act-dot {{.RefTypeDot}}"></div><span style="font-size:12px;color:var(--muted)">{{.RefTypeLabel}}</span></div></td>
+      <td style="font-size:12px;color:var(--muted)">{{if .InfraName}}{{.InfraName}}{{else}}–{{end}}</td>
       <td style="font-family:monospace;font-size:12px">{{.StartedStr}}</td>
       <td style="font-family:monospace;font-size:12px">{{if .Running}}<span style="color:var(--green)">läuft…</span>{{else}}{{.EndedStr}}{{end}}</td>
       <td><span style="font-size:12px;font-weight:500">{{if .Running}}<span style="color:var(--green)">aktiv</span>{{else}}{{.DurationStr}}{{end}}</span></td>
       <td>{{if not .Running}}{{template "icon-button" (dict "Action" "delete" "Style" "color:var(--muted)" "Label" "Löschen" "OnClick" (printf "if(confirm('Eintrag löschen?')){this.disabled=true;fetch('/time/%s/delete-web',{method:'DELETE'}).then(()=>document.getElementById('entry-%s')?.remove())}" .ID .ID))}}{{end}}</td>
     </tr>
     {{else}}
-    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">
+    <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">
       <i class="ti ti-clock" style="font-size:36px;display:block;margin-bottom:10px;opacity:.4"></i>Noch keine Einträge heute
     </td></tr>
     {{end}}
     </tbody>
   </table>
+</div>
+
+<!-- ── Monatsauswertung ── -->
+<div class="card" style="margin-top:24px">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <span>Monatsauswertung</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button type="button" class="btn btn-small" onclick="changeMonth(-1)"><i class="ti ti-chevron-left"></i></button>
+      <div id="month-label" style="font-size:13px;font-weight:500;min-width:120px;text-align:center"></div>
+      <button type="button" class="btn btn-small" onclick="changeMonth(1)"><i class="ti ti-chevron-right"></i></button>
+      <a id="export-csv-link" href="#" class="btn btn-small" style="margin-left:8px;text-decoration:none"><i class="ti ti-download"></i> CSV Export</a>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;padding:16px;align-items:start" class="month-charts-grid">
+    <div style="position:relative;height:260px"><canvas id="month-bar-chart"></canvas></div>
+    <div style="position:relative;height:260px"><canvas id="month-pie-chart"></canvas></div>
+  </div>
 </div>
 
 <!-- ── Start Modal ── -->
@@ -98,6 +116,7 @@
         <label class="form-label">Beschreibung <span style="color:var(--muted)">(optional)</span></label>
         <input id="start-desc" class="form-input" placeholder="Was wird gemacht?">
       </div>
+      {{template "infra-tree-picker" (dict "TargetID" "start-infra-id" "SelectedLabelID" "start-infra-selected" "Label" "Kostenstelle (optional)")}}
       <div id="start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
       {{template "icon-button-toolbar" (dict
         "Class" "end"
@@ -141,6 +160,7 @@
         <label class="form-label">Beschreibung</label>
         <input id="manual-desc" class="form-input" placeholder="Was wurde gemacht?">
       </div>
+      {{template "infra-tree-picker" (dict "TargetID" "manual-infra-id" "SelectedLabelID" "manual-infra-selected" "Label" "Kostenstelle (optional)")}}
       <div class="grid2">
         <div class="form-group"><label class="form-label">Start</label><input type="datetime-local" id="manual-start" class="form-input" required></div>
         <div class="form-group"><label class="form-label">Ende</label><input type="datetime-local" id="manual-end" class="form-input" required></div>
@@ -173,6 +193,7 @@
 {{end}}
 
 {{block "scripts" .}}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .type-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 6px;cursor:pointer;text-align:center;color:var(--text);transition:all .15s;font-family:var(--font)}
@@ -182,6 +203,70 @@
 </style>
 <script>
 const tok = () => document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1]||'';
+
+// ── Monatsauswertung (Balken- & Tortendiagramm) ─────────────
+let chartYear, chartMonth, monthBarChart, monthPieChart;
+const MONTH_NAMES = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+function changeMonth(delta) {
+  chartMonth += delta;
+  if (chartMonth < 1) { chartMonth = 12; chartYear--; }
+  if (chartMonth > 12) { chartMonth = 1; chartYear++; }
+  loadMonthlyCharts();
+}
+
+async function loadMonthlyCharts() {
+  document.getElementById('month-label').textContent = MONTH_NAMES[chartMonth-1] + ' ' + chartYear;
+  document.getElementById('export-csv-link').href = `/api/v1/time/export.csv?year=${chartYear}&month=${chartMonth}`;
+
+  const h = {'Authorization':'Bearer '+tok()};
+  const [daysRes, catsRes] = await Promise.all([
+    fetch(`/api/v1/time/monthly/days?year=${chartYear}&month=${chartMonth}`, {headers:h}),
+    fetch(`/api/v1/time/monthly/categories?year=${chartYear}&month=${chartMonth}`, {headers:h}),
+  ]);
+  const days = (await daysRes.json()).data || [];
+  const cats = (await catsRes.json()).data || [];
+
+  const daysInMonth = new Date(chartYear, chartMonth, 0).getDate();
+  const dayLabels = [], dayHours = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${chartYear}-${String(chartMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const entry = days.find(x => x.date === dateStr);
+    dayLabels.push(d);
+    dayHours.push(entry ? +(entry.total_min/60).toFixed(2) : 0);
+  }
+
+  const catLabels = cats.map(c => c.label);
+  const catHours = cats.map(c => +(c.total_min/60).toFixed(2));
+
+  if (monthBarChart) monthBarChart.destroy();
+  monthBarChart = new Chart(document.getElementById('month-bar-chart'), {
+    type: 'bar',
+    data: { labels: dayLabels, datasets: [{ label: 'Stunden', data: dayHours, backgroundColor: '#4f6ef7', borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: false } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Stunden' } }, x: { title: { display: true, text: 'Tag' } } }
+    }
+  });
+
+  if (monthPieChart) monthPieChart.destroy();
+  monthPieChart = new Chart(document.getElementById('month-pie-chart'), {
+    type: 'pie',
+    data: { labels: catLabels, datasets: [{ data: catHours, backgroundColor: ['#4f6ef7','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#6366f1','#14b8a6'] }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+    }
+  });
+}
+
+(function initMonthlyCharts(){
+  const now = new Date();
+  chartYear = now.getFullYear();
+  chartMonth = now.getMonth() + 1;
+  loadMonthlyCharts();
+})();
 
 // ── Live-Timer ───────────────────────────────────────────────
 {{if .Running}}
@@ -259,6 +344,7 @@ document.getElementById('start-form').addEventListener('submit', async function(
   if(type==='production'){refId=document.getElementById('start-uuid').value; if(!desc)desc=document.getElementById('start-activity').value||'Sonstiges';}
   else{const sel=document.getElementById('start-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
   const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
+  fd.append('infrastructure_id', document.getElementById('start-infra-id').value);
   const res=await fetch('/time/start-web',{method:'POST',body:fd});
   if(res.ok){closeStart();location.reload();}
   else{const t=await res.text(); const err=document.getElementById('start-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block'; btn.disabled=false; btn.innerHTML='<i class="ti ti-player-play"></i>Starten';}
@@ -301,6 +387,7 @@ document.getElementById('manual-form').addEventListener('submit', async function
   const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
   fd.append('started_at',document.getElementById('manual-start').value);
   fd.append('ended_at',document.getElementById('manual-end').value);
+  fd.append('infrastructure_id', document.getElementById('manual-infra-id').value);
   const res=await fetch('/time/manual-web',{method:'POST',body:fd});
   if(res.ok){closeManual();location.reload();}
   else{const t=await res.text(); const err=document.getElementById('manual-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block';}

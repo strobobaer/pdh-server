@@ -19,12 +19,12 @@ func (r *Repository) Create(ctx context.Context, f *Fault) error {
 	symptoms, _ := json.Marshal(f.Symptoms)
 	query := `
 		INSERT INTO faults (id, title, description, symptoms, severity, status,
-			infrastructure_id, assigned_to, responsible_to, created_by, detected_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW())
+			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, cost_center_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9)
 		RETURNING id, status, detected_at, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		f.Title, f.Description, symptoms, f.Severity,
-		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy,
+		f.InfrastructureID, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.CostCenterID,
 	).Scan(&f.ID, &f.Status, &f.DetectedAt, &f.CreatedAt, &f.UpdatedAt)
 }
 
@@ -38,10 +38,10 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8)
 		RETURNING id`,
-		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID,
+		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID,
 	).Scan(&id)
 	if err == nil {
 		_, _ = r.db.Exec(ctx, `
@@ -55,15 +55,19 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 	f := &Fault{}
 	var symptoms []byte
-	query := `SELECT id, title, description, symptoms, severity, status,
-		infrastructure_id, assigned_to, responsible_to, created_by, record_image_attachment_id, resolution, root_cause,
-		detected_at, resolved_at, archived_at, created_at, updated_at
-		FROM faults WHERE id = $1`
+	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
+		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.record_image_attachment_id, fl.resolution, fl.root_cause,
+		fl.detected_at, fl.resolved_at, fl.archived_at, fl.created_at, fl.updated_at,
+		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		FROM faults fl
+		LEFT JOIN cost_centers cc ON fl.cost_center_id = cc.id
+		WHERE fl.id = $1`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&f.ID, &f.Title, &f.Description, &symptoms, &f.Severity, &f.Status,
 		&f.InfrastructureID, &f.AssignedTo, &f.ResponsibleTo, &f.CreatedBy, &f.RecordImageID,
 		&f.Resolution, &f.RootCause,
 		&f.DetectedAt, &f.ResolvedAt, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
+		&f.CostCenterID, &f.CostCenterNumber, &f.CostCenterName,
 	)
 	if err != nil {
 		return nil, err
@@ -73,19 +77,21 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 }
 
 func (r *Repository) List(ctx context.Context, status FaultStatus) ([]*Fault, error) {
-	query := `SELECT id, title, description, symptoms, severity, status,
-		infrastructure_id, assigned_to, responsible_to, created_by, detected_at, archived_at, created_at, updated_at
-		FROM faults`
+	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
+		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.detected_at, fl.archived_at, fl.created_at, fl.updated_at,
+		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
+		FROM faults fl
+		LEFT JOIN cost_centers cc ON fl.cost_center_id = cc.id`
 	args := []interface{}{}
 	if status == FaultStatus("archive") {
-		query += " WHERE archived_at IS NOT NULL"
+		query += " WHERE fl.archived_at IS NOT NULL"
 	} else if status != "" {
-		query += " WHERE status = $1 AND archived_at IS NULL"
+		query += " WHERE fl.status = $1 AND fl.archived_at IS NULL"
 		args = append(args, status)
 	} else {
-		query += " WHERE archived_at IS NULL"
+		query += " WHERE fl.archived_at IS NULL"
 	}
-	query += " ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, detected_at DESC"
+	query += " ORDER BY CASE fl.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, fl.detected_at DESC"
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
@@ -101,6 +107,7 @@ func (r *Repository) List(ctx context.Context, status FaultStatus) ([]*Fault, er
 			&f.ID, &f.Title, &f.Description, &symptoms, &f.Severity, &f.Status,
 			&f.InfrastructureID, &f.AssignedTo, &f.ResponsibleTo, &f.CreatedBy,
 			&f.DetectedAt, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
+			&f.CostCenterID, &f.CostCenterNumber, &f.CostCenterName,
 		)
 		if err != nil {
 			return nil, err
@@ -130,16 +137,38 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status FaultSt
 	return err
 }
 
-func (r *Repository) Resolve(ctx context.Context, id, resolution, rootCause, userID string) error {
+// UpdateCostCenter setzt/ändert die Kostenstelle einer bestehenden Störung.
+func (r *Repository) UpdateCostCenter(ctx context.Context, id string, costCenterID *string) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE faults SET status='resolved', resolution=$1, root_cause=$2,
+		`UPDATE faults SET cost_center_id=$1, updated_at=NOW() WHERE id=$2`,
+		costCenterID, id)
+	return err
+}
+
+func (r *Repository) Resolve(ctx context.Context, id, resolution, rootCause, userID string, noPartsNeeded bool) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE faults SET status='resolved', resolution=$1, root_cause=$2, no_parts_needed=$5,
 		resolved_at=NOW(), archived_at=COALESCE(archived_at,NOW()), archived_by=$4, updated_at=NOW() WHERE id=$3`,
-		resolution, rootCause, id, userID)
+		resolution, rootCause, id, userID, noPartsNeeded)
 	if err == nil {
 		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 			VALUES ('fault', $1, 'resolved', 'status', 'resolved', $2, 'Störung gelöst und archiviert')`, id, userID)
 	}
 	return err
+}
+
+// CountActions: Anzahl erfasster Maßnahmen (fault_actions) für eine Störung.
+func (r *Repository) CountActions(ctx context.Context, faultID string) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM fault_actions WHERE fault_id=$1`, faultID).Scan(&n)
+	return n, err
+}
+
+// CountPartsUsage: Anzahl mit dieser Störung verknüpfter Lagerbuchungen.
+func (r *Repository) CountPartsUsage(ctx context.Context, faultID string) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM stock_movements WHERE fault_id=$1`, faultID).Scan(&n)
+	return n, err
 }
 
 func (r *Repository) SaveAnalysis(ctx context.Context, a *CopilotAnalysis) error {

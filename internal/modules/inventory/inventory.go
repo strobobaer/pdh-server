@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/core/addins"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -76,7 +77,10 @@ type StockMovement struct {
 	StorageName   string       `json:"storage_name,omitempty"`
 	Reference     string       `json:"reference,omitempty"`
 	Notes         string       `json:"notes,omitempty"`
-	CreatedBy     string       `json:"created_by"`
+	FaultID            string  `json:"fault_id,omitempty"`
+	TicketID           string  `json:"ticket_id,omitempty"`
+	MaintenanceTaskID  string  `json:"maintenance_task_id,omitempty"`
+	CreatedBy          string  `json:"created_by"`
 	CreatedAt     time.Time    `json:"created_at"`
 	PartName      string       `json:"part_name,omitempty"`
 	UserName      string       `json:"user_name,omitempty"`
@@ -140,6 +144,9 @@ type BookMovementInput struct {
 	StorageNodeID string       `json:"storage_node_id"`
 	Reference     string       `json:"reference"`
 	Notes         string       `json:"notes"`
+	FaultID           string `json:"fault_id,omitempty"`
+	TicketID          string `json:"ticket_id,omitempty"`
+	MaintenanceTaskID string `json:"maintenance_task_id,omitempty"`
 }
 
 type CreateFieldDefInput struct {
@@ -326,11 +333,21 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 		return err
 	}
 
+	var faultIDArg, ticketIDArg, maintTaskIDArg interface{}
+	if m.FaultID != "" {
+		faultIDArg = m.FaultID
+	}
+	if m.TicketID != "" {
+		ticketIDArg = m.TicketID
+	}
+	if m.MaintenanceTaskID != "" {
+		maintTaskIDArg = m.MaintenanceTaskID
+	}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at`,
-		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy,
+		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg,
 	).Scan(&m.ID, &m.CreatedAt); err != nil {
 		return err
 	}
@@ -525,9 +542,21 @@ func (s *Service) GetStockLocations(ctx context.Context, partID string) ([]*Part
 	return s.repo.GetStockLocations(ctx, partID)
 }
 
+var eventBus *addins.EventBus
+
+// SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
+func SetEventBus(b *addins.EventBus) { eventBus = b }
+
 func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string) (*StockMovement, error) {
 	if strings.TrimSpace(in.StorageNodeID) == "" {
 		return nil, fmt.Errorf("lagerort ist pflicht")
+	}
+	locked, err := s.repo.IsLocationLocked(ctx, in.StorageNodeID)
+	if err != nil {
+		return nil, err
+	}
+	if locked {
+		return nil, fmt.Errorf("dieser lagerort ist aktuell durch eine laufende inventur gesperrt")
 	}
 	if (in.Type == MovementIn || in.Type == MovementOut) && in.Qty <= 0 {
 		return nil, fmt.Errorf("menge muss größer als 0 sein")
@@ -537,9 +566,18 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 	}
 	m := &StockMovement{
 		PartID: in.PartID, Type: in.Type, Qty: in.Qty, StorageNodeID: in.StorageNodeID,
-		Reference: in.Reference, Notes: in.Notes, CreatedBy: userID,
+		Reference: in.Reference, Notes: in.Notes, FaultID: in.FaultID, TicketID: in.TicketID,
+		MaintenanceTaskID: in.MaintenanceTaskID, CreatedBy: userID,
 	}
-	return m, s.repo.BookMovement(ctx, m)
+	bookErr := s.repo.BookMovement(ctx, m)
+	if bookErr == nil && eventBus != nil {
+		eventBus.Publish("inventory.booked", map[string]interface{}{
+			"part_id": m.PartID, "type": string(m.Type), "qty": m.Qty,
+			"qty_before": m.QtyBefore, "qty_after": m.QtyAfter,
+			"storage_node_id": m.StorageNodeID, "created_by": m.CreatedBy,
+		})
+	}
+	return m, bookErr
 }
 
 type Handler struct{ svc *Service }
@@ -574,6 +612,12 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/{id}/movements", h.GetMovements)
 	r.Get("/{id}/stock", h.GetStockLocations)
 	r.Get("/{id}/stock/{nodeID}", h.GetStockAtLocation)
+	r.Post("/stocktake", h.CreateStocktake)
+	r.Get("/stocktake/open", h.ListOpenStocktakes)
+	r.Get("/stocktake/{sessionID}", h.GetStocktake)
+	r.Post("/stocktake/{sessionID}/count", h.SubmitStocktakeCounts)
+	r.Post("/stocktake/{sessionID}/book", h.BookStocktake)
+	r.Post("/stocktake/{sessionID}/cancel", h.CancelStocktake)
 	return r
 }
 
