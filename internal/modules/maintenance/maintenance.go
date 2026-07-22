@@ -415,7 +415,7 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 		LEFT JOIN infrastructure i ON mt.infrastructure_id = i.id
 		LEFT JOIN users u ON mt.assigned_to = u.id
 		LEFT JOIN cost_centers cc ON mt.cost_center_id = cc.id
-		WHERE mt.due_date::date <= NOW()::date AND mt.status IN ('open','in_progress')
+		WHERE mt.due_date::date <= (NOW() + INTERVAL '2 days')::date AND mt.status IN ('open','in_progress')
 		ORDER BY mt.priority, mt.due_date`)
 	if err != nil {
 		return nil, err
