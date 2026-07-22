@@ -258,7 +258,7 @@ func main() {
 	// FIX: war r.Put(...) - PUT wird von Cloudflare/Nginx blockiert, siehe gleiches
 	// Problem bei users/tickets/shifts. Frontend muss ggf. auf POST umgestellt werden.
 	r.Post("/maintenance/plans/{id}/edit-web", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
 			return
 		}

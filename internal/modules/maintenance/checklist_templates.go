@@ -152,6 +152,15 @@ func (r *Repository) DeleteChecklistTemplateItem(ctx context.Context, itemID str
 	return err
 }
 
+func (r *Repository) UpdateChecklistTemplateItem(ctx context.Context, itemID string, item *ChecklistTemplateItem) error {
+	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return err }
+	if item.ItemType == "" { item.ItemType = "checkbox" }
+	if item.SortOrder == 0 { item.SortOrder = 100 }
+	_, err := r.db.Exec(ctx, `UPDATE maintenance_checklist_template_items SET label=$1, description=$2, item_type=$3, required=$4, interval_days=$5, sort_order=$6 WHERE id=$7`,
+		item.Label, item.Description, item.ItemType, item.Required, item.IntervalDays, item.SortOrder, itemID)
+	return err
+}
+
 func (r *Repository) AssignChecklistTemplateToPlan(ctx context.Context, planID, templateID string, defaultDurationMin int) error {
 	ids := []string{}
 	if templateID != "" { ids = append(ids, templateID) }

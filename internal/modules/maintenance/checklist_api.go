@@ -68,6 +68,19 @@ func (s *Service) DeleteChecklistTemplateItemForAPI(r *http.Request, itemID stri
 	return s.repo.DeleteChecklistTemplateItem(r.Context(), itemID)
 }
 
+func (s *Service) UpdateChecklistTemplateItemForAPI(r *http.Request, itemID string, in createChecklistTemplateItemInput) (*ChecklistTemplateItem, error) {
+	item := &ChecklistTemplateItem{
+		Label: strings.TrimSpace(in.Label), Description: strings.TrimSpace(in.Description),
+		ItemType: in.ItemType, Required: in.Required, IntervalDays: in.IntervalDays, SortOrder: in.SortOrder,
+	}
+	if item.ItemType == "" { item.ItemType = "checkbox" }
+	if item.IntervalDays <= 0 { item.IntervalDays = 1 }
+	if item.SortOrder == 0 { item.SortOrder = 100 }
+	if err := s.repo.UpdateChecklistTemplateItem(r.Context(), itemID, item); err != nil { return nil, err }
+	item.ID = itemID
+	return item, nil
+}
+
 func (s *Service) AssignChecklistTemplateForAPI(r *http.Request, planID string, in assignChecklistTemplateInput) error {
 	ids := in.TemplateIDs
 	if len(ids) == 0 && strings.TrimSpace(in.TemplateID) != "" {
@@ -109,6 +122,7 @@ func (h *Handler) ChecklistRoutes(jwtSecret string) chi.Router {
 	r.Get("/templates/{templateID}/items", h.ListChecklistTemplateItems)
 	r.Post("/templates/{templateID}/items", h.CreateChecklistTemplateItem)
 	r.Delete("/items/{itemID}", h.DeleteChecklistTemplateItem)
+	r.Post("/items/{itemID}", h.UpdateChecklistTemplateItem)
 	r.Get("/plans/{planID}/template", h.GetAssignedChecklistTemplates)
 	r.Put("/plans/{planID}/template", h.AssignChecklistTemplate)
 	r.Delete("/plans/{planID}", h.DeactivatePlan)
@@ -157,6 +171,16 @@ func (h *Handler) CreateChecklistTemplateItem(w http.ResponseWriter, r *http.Req
 func (h *Handler) DeleteChecklistTemplateItem(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.DeleteChecklistTemplateItemForAPI(r, chi.URLParam(r, "itemID")); err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 200, map[string]string{"status":"gelöscht"})
+}
+
+func (h *Handler) UpdateChecklistTemplateItem(w http.ResponseWriter, r *http.Request) {
+	var in createChecklistTemplateItemInput
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil { response.Error(w, 400, "ungueltige eingabe"); return }
+	if strings.TrimSpace(in.Label) == "" { response.Error(w, 400, "label ist pflicht"); return }
+	if in.IntervalDays <= 0 { response.Error(w, 400, "intervall ist pflicht"); return }
+	item, err := h.svc.UpdateChecklistTemplateItemForAPI(r, chi.URLParam(r, "itemID"), in)
+	if err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, item)
 }
 
 func (h *Handler) GetAssignedChecklistTemplates(w http.ResponseWriter, r *http.Request) {
