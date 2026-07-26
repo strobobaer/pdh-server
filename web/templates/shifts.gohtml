@@ -29,6 +29,7 @@
     </thead>
     <tbody>
     {{range .Users}}
+    {{$uid := .UserID}}
     <tr>
       <td>
         <div style="font-weight:500;font-size:13px">{{.UserName}}</div>
@@ -45,9 +46,9 @@
       </td>
       {{range $.Days}}
       {{$date := .DateFull}}
-      <td style="text-align:center;padding:8px 4px">
+      <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
         {{range $.ShiftMap}}
-          {{if and (eq .UserID $.UserID) (eq .Date $date)}}
+          {{if and (eq .UserID $uid) (eq .Date $date)}}
           <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
           {{end}}
         {{end}}
@@ -166,6 +167,100 @@
 {{define "scripts"}}
 <script>
 let spModelsCache=null, spShiftsCache={}, spPatternsCache=null, spUsersCache=null;
+
+var SHIFT_DEFS = [
+{{range .ShiftDefs}}
+  {id:'{{.ID}}', name:'{{.Name}}', shortName:'{{.ShortName}}', class:'{{.Class}}'},
+{{end}}
+];
+
+function openAssignPopup(userID, date, cellEl){
+  closeAssignPopup();
+  var popup = document.createElement('div');
+  popup.id = 'assign-popup';
+  popup.style.position = 'fixed';
+  popup.style.background = 'var(--bg2)';
+  popup.style.border = '1px solid var(--border)';
+  popup.style.borderRadius = '10px';
+  popup.style.padding = '8px';
+  popup.style.zIndex = '500';
+  popup.style.boxShadow = '0 8px 24px rgba(0,0,0,.3)';
+  popup.style.minWidth = '160px';
+
+  var rect = cellEl.getBoundingClientRect();
+  popup.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+  popup.style.left = (rect.left + window.scrollX) + 'px';
+
+  SHIFT_DEFS.forEach(function(def){
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'shift-pill ' + def.class;
+    btn.style.display = 'block';
+    btn.style.width = '100%';
+    btn.style.marginBottom = '4px';
+    btn.style.cursor = 'pointer';
+    btn.style.border = '1px solid var(--border)';
+    btn.textContent = def.shortName + ' - ' + def.name;
+    btn.addEventListener('click', function(){ assignShift(userID, date, def.id); });
+    popup.appendChild(btn);
+  });
+
+  var removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn';
+  removeBtn.style.width = '100%';
+  removeBtn.style.fontSize = '11px';
+  removeBtn.style.marginTop = '4px';
+  removeBtn.textContent = 'Entfernen';
+  removeBtn.addEventListener('click', function(){ removeShift(userID, date); });
+  popup.appendChild(removeBtn);
+
+  document.body.appendChild(popup);
+
+  setTimeout(function(){
+    document.addEventListener('click', assignPopupOutsideClick);
+  }, 0);
+}
+
+function assignPopupOutsideClick(e){
+  var popup = document.getElementById('assign-popup');
+  if(popup && !popup.contains(e.target)){
+    closeAssignPopup();
+  }
+}
+
+function closeAssignPopup(){
+  var popup = document.getElementById('assign-popup');
+  if(popup) popup.remove();
+  document.removeEventListener('click', assignPopupOutsideClick);
+}
+
+async function assignShift(userID, date, shiftID){
+  closeAssignPopup();
+  try{
+    var res = await fetch('/api/v1/shifts/assign', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_id:userID, shift_id:shiftID, date:date, note:''})
+    });
+    if(!res.ok){
+      var json = await res.json().catch(function(){return null;});
+      throw new Error((json && json.error) || ('HTTP '+res.status));
+    }
+    location.reload();
+  }catch(e){ alert('Fehler beim Zuweisen: '+e.message); }
+}
+
+async function removeShift(userID, date){
+  closeAssignPopup();
+  try{
+    var res = await fetch('/api/v1/shifts/assign/'+userID+'/'+date, {method:'DELETE', credentials:'same-origin'});
+    if(!res.ok){
+      var json = await res.json().catch(function(){return null;});
+      throw new Error((json && json.error) || ('HTTP '+res.status));
+    }
+    location.reload();
+  }catch(e){ alert('Fehler beim Entfernen: '+e.message); }
+}
 
 function openShiftPlanModal(startTab){document.getElementById('shiftplan-modal').style.display='flex';showShiftPlanTab(startTab||'models');loadModels();}
 function closeShiftPlanModal(){document.getElementById('shiftplan-modal').style.display='none';}

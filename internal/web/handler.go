@@ -1876,6 +1876,7 @@ type WeekDay struct {
 }
 
 type ShiftDefView struct {
+	ID        string
 	Name      string
 	ShortName string
 	StartTime string
@@ -1958,6 +1959,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 			for _, d := range defs {
 				class := shiftClasses[d.ShortName]
 				data.ShiftDefs = append(data.ShiftDefs, ShiftDefView{
+					ID:   d.ID,
 					Name: d.Name, ShortName: d.ShortName,
 					StartTime: d.StartTime, EndTime: d.EndTime, Class: class,
 				})
