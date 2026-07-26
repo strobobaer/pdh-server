@@ -25,6 +25,7 @@ const (
 	RefProject     RefType = "project"
 	RefMaintenance RefType = "maintenance"
 	RefProduction  RefType = "production"
+	RefTask        RefType = "task"
 )
 
 type TimeEntry struct {

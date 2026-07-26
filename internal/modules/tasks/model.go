@@ -67,6 +67,7 @@ type UpdateTaskInput struct {
 	DueDate     string   `json:"due_date"`
 	StartDate   string   `json:"start_date"`
 	ProjectID   *string  `json:"project_id,omitempty"`
+	ClearProject bool `json:"clear_project,omitempty"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
@@ -165,10 +166,16 @@ func itoa(n int) string {
 
 func (r *Repository) Update(ctx context.Context, id string, in *UpdateTaskInput) error {
 	_, err := r.db.Exec(ctx, `
-		UPDATE tasks SET title=$1, description=$2, priority=$3, due_date=$4, start_date=$5,
-			project_id=$6, updated_at=NOW()
+		UPDATE tasks SET
+			title=COALESCE(NULLIF($1,''), title),
+			description=CASE WHEN $1 = '' THEN description ELSE $2 END,
+			priority=COALESCE(NULLIF($3,''), priority),
+			due_date=COALESCE($4, due_date),
+			start_date=COALESCE($5, start_date),
+			project_id=CASE WHEN $6::uuid IS NOT NULL OR $8 THEN $6 ELSE project_id END,
+			updated_at=NOW()
 		WHERE id=$7`,
-		in.Title, in.Description, in.Priority, nullDate(in.DueDate), nullDate(in.StartDate), in.ProjectID, id)
+		in.Title, in.Description, in.Priority, nullDate(in.DueDate), nullDate(in.StartDate), in.ProjectID, id, in.ClearProject)
 	return err
 }
 

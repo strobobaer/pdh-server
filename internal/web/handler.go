@@ -282,6 +282,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/maintenance", h.Maintenance)
 	r.Get("/tasks", h.TasksPage)
 	r.Get("/tasks/{id}", h.TaskDetail)
+	r.Post("/tasks/{id}/time/start", h.TaskStartTime)
 	r.Get("/projects", h.ProjectsPage)
 	r.Get("/projects/{id}", h.ProjectDetail)
 	r.Post("/maintenance/plans", h.MaintenanceCreatePlan)

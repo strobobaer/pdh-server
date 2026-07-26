@@ -1,0 +1,181 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  <a href="/projects" class="btn btn-icon"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.Project.Name}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">
+      {{if .Project.StartDate}}{{.Project.StartDate}} – {{.Project.EndDate}}{{end}}
+    </p>
+  </div>
+  <span class="badge {{.Project.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Project.StatusLabel}}</span>
+</div>
+
+{{if .Project.Description}}
+<div class="card">
+  <div class="card-title">Beschreibung</div>
+  <p style="font-size:13px;line-height:1.7;color:var(--muted)">{{.Project.Description}}</p>
+</div>
+{{end}}
+
+<div class="card">
+  <div class="card-title">Zeitstrahl</div>
+  <div id="gantt-target" style="overflow-x:auto"></div>
+  <div id="gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">
+    Keine Aufgaben mit Start-/Fälligkeitsdatum vorhanden.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    Aufgaben
+    <button type="button" class="btn btn-icon" style="font-size:11px" onclick="document.getElementById('new-project-task-form').style.display='block'" title="Neue Aufgabe"><i class="ti ti-plus"></i></button>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <select id="assign-existing-task" class="form-input" style="flex:1"><option value="">Lade offene, nicht zugeordnete Aufgaben...</option></select>
+    <button type="button" class="btn btn-primary" onclick="assignExistingTask()">Zuordnen</button>
+  </div>
+  <div id="assign-task-result" style="font-size:12px;margin-bottom:10px"></div>
+
+  <div id="new-project-task-form" style="display:none;background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:12px">
+    <form onsubmit="return submitProjectTaskForm(this)">
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">Titel</label><input name="title" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Priorität</label>
+          <select name="priority" class="form-input">
+            <option value="low">Low</option><option value="medium" selected>Medium</option>
+            <option value="high">High</option><option value="critical">Critical</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Start</label><input name="start_date" type="date" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input"></div>
+      </div>
+      <div id="project-task-create-result" style="font-size:12px;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="document.getElementById('new-project-task-form').style.display='none'">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Hinzufügen</button>
+      </div>
+    </form>
+  </div>
+
+  {{range .Tasks}}
+  <div class="li" style="cursor:pointer" onclick="window.location='/tasks/{{.ID}}'">
+    <div class="li-text">
+      <div class="li-title">{{.Title}}</div>
+      <div class="li-sub">{{if .DueDate}}fällig {{.DueDate}}{{end}}</div>
+    </div>
+    <span class="badge {{.PriorityClass}}" style="font-size:9px">{{.Priority}}</span>
+    <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+  </div>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">Noch keine Aufgaben in diesem Projekt</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Tasks}}
+<div class="act-item">
+  <div class="act-text">{{.Title}}</div>
+  <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<script>
+var PROJECT_ID = '{{.Project.ID}}';
+var ganttTasks = [
+{{range .Tasks}}{{if and .StartDateISO .DueDateISO}}
+  {id:'{{.ID}}', name:'{{.Title}}', start:'{{.StartDateISO}}', end:'{{.DueDateISO}}', progress: {{if eq .Status "resolved"}}100{{else if eq .Status "closed"}}100{{else if eq .Status "in_progress"}}50{{else}}0{{end}} },
+{{end}}{{end}}
+];
+
+function renderGantt(){
+  var target = document.getElementById('gantt-target');
+  var empty = document.getElementById('gantt-empty');
+  if(!ganttTasks.length){
+    target.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  target.style.display = 'block';
+  empty.style.display = 'none';
+  try{
+    new Gantt('#gantt-target', ganttTasks, {
+      on_click: function(task){ window.location = '/tasks/' + task.id; },
+      view_mode: 'Week'
+    });
+  }catch(e){
+    console.warn('Gantt-Rendering fehlgeschlagen', e);
+    target.style.display = 'none';
+    empty.style.display = 'block';
+    empty.textContent = 'Zeitstrahl konnte nicht geladen werden.';
+  }
+}
+async function loadUnassignedTasks(){
+  var sel = document.getElementById('assign-existing-task');
+  if(!sel) return;
+  try{
+    var res = await fetch('/api/v1/tasks/?unassigned=true', {credentials:'same-origin'});
+    var json = await res.json();
+    var all = json.data || json || [];
+    var open = all.filter(function(t){ return t.status === 'open' || t.status === 'in_progress'; });
+    if(open.length === 0){
+      sel.innerHTML = '<option value="">Keine offenen, nicht zugeordneten Aufgaben</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Aufgabe wählen...</option>' + open.map(function(t){
+      return '<option value="'+t.id+'">'+escapeHtml(t.title)+'</option>';
+    }).join('');
+  }catch(e){
+    sel.innerHTML = '<option value="">Fehler beim Laden</option>';
+  }
+}
+
+async function assignExistingTask(){
+  var sel = document.getElementById('assign-existing-task');
+  var taskId = sel.value;
+  var result = document.getElementById('assign-task-result');
+  if(!taskId){ result.innerHTML = '<span style="color:var(--red)">Bitte eine Aufgabe auswählen</span>'; return; }
+  result.textContent = 'Ordne zu...';
+  try{
+    var res = await fetch('/api/v1/tasks/'+taskId+'/edit', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project_id: PROJECT_ID})
+    });
+    var json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+    location.reload();
+  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
+}
+
+if(document.readyState !== 'loading'){ renderGantt(); loadUnassignedTasks(); }
+else document.addEventListener('DOMContentLoaded', function(){ renderGantt(); loadUnassignedTasks(); });
+
+async function submitProjectTaskForm(form){
+  var fd = new FormData(form);
+  var payload = {
+    title: fd.get('title'), priority: fd.get('priority'),
+    start_date: fd.get('start_date'), due_date: fd.get('due_date'),
+    project_id: PROJECT_ID
+  };
+  var result = document.getElementById('project-task-create-result');
+  result.textContent = 'Speichere...';
+  try{
+    var res = await fetch('/api/v1/tasks/', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json', Authorization:'Bearer '+pdhToken()},
+      body: JSON.stringify(payload)
+    });
+    var json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
+    location.reload();
+  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
+  return false;
+}
+</script>
+{{end}}
+

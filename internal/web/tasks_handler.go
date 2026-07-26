@@ -1,10 +1,12 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/modules/tasks"
+	"pdh/internal/modules/timetracking"
 )
 
 type TaskView struct {
@@ -116,6 +118,8 @@ type TaskDetailData struct {
 	Task           TaskView
 	Users          []UserOption
 	ProjectOptions []ProjectOption
+	TimeEntries    []*timetracking.TimeEntry
+	RunningTime    *timetracking.TimeEntry
 }
 
 func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
@@ -139,5 +143,31 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if entries, err := h.time.ListByRef(ctx, timetracking.RefTask, id); err == nil {
+		data.TimeEntries = entries
+	}
+	if running, err := h.time.GetRunning(ctx, getUser(r).ID); err == nil && running != nil {
+		data.RunningTime = running
+	}
+
 	h.render(w, "task_detail", data)
 }
+
+
+func (h *Handler) TaskStartTime(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	u := getUser(r)
+	in := &timetracking.CreateEntryInput{
+		RefType:     timetracking.RefTask,
+		RefID:       id,
+		Description: "Bearbeitung",
+	}
+	entry, err := h.time.Start(r.Context(), in, u.ID)
+	w.Header().Set("Content-Type", "text/html")
+	if err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-top:8px">Fehler: %s</div>`, err.Error())
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, entry.ID[:8])
+}
+

@@ -1,0 +1,115 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Aufgaben</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Aufgaben · {{.Open}} offen</p>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="document.getElementById('new-task-form').style.display='block'"><i class="ti ti-plus"></i> Neue Aufgabe</button>
+</div>
+
+<div id="new-task-form" style="display:none" class="card">
+  <div class="card-title">Aufgabe erstellen</div>
+  <form onsubmit="return submitTaskForm(this)">
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Titel</label><input name="title" class="form-input" placeholder="Kurzbeschreibung" required></div>
+      <div class="form-group"><label class="form-label">Priorität</label>
+        <select name="priority" class="form-input">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Verantwortlich</label>
+        <select name="responsible_to" class="form-input">
+          <option value="">Nicht gesetzt</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Start</label><input name="start_date" type="date" class="form-input"></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Projekt (optional)</label>
+        <select name="project_id" class="form-input">
+          <option value="">Keinem Projekt zugeordnet</option>
+          {{range .ProjectOptions}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Beschreibung</label>
+      <input name="description" class="form-input" placeholder="Details">
+    </div>
+    <div id="task-create-result" style="font-size:12px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="document.getElementById('new-task-form').style.display='none'">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Erstellen</button>
+    </div>
+  </form>
+</div>
+
+<div class="widget-icon-toolbar compact" style="margin-bottom:14px">
+  <a class="btn {{if eq .Filter ""}}btn-primary{{end}}" href="/tasks">Alle</a>
+  <a class="btn {{if eq .Filter "open"}}btn-primary{{end}}" href="/tasks?status=open">Offen</a>
+  <a class="btn {{if eq .Filter "in_progress"}}btn-primary{{end}}" href="/tasks?status=in_progress">In Arbeit</a>
+  <a class="btn" href="/tasks?unassigned=true">Ohne Projekt</a>
+</div>
+
+<div class="card" style="padding:0">
+  <table>
+    <thead><tr><th>Aufgabe</th><th>Projekt</th><th>Priorität</th><th>Status</th><th>Fällig</th></tr></thead>
+    <tbody>
+    {{range .Tasks}}
+    <tr style="cursor:pointer" onclick="window.location='/tasks/{{.ID}}'">
+      <td>
+        <div style="font-weight:500">{{.Title}}</div>
+        <div style="font-size:11px;color:var(--muted)">{{.Description}}</div>
+      </td>
+      <td style="font-size:12px;color:var(--muted)">{{if .ProjectName}}{{.ProjectName}}{{else}}–{{end}}</td>
+      <td><span class="badge {{.PriorityClass}}">{{.Priority}}</span></td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td style="font-size:11px;color:var(--muted)">{{.DueDate}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Aufgaben vorhanden</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Tasks}}
+<div class="act-item">
+  <div class="act-dot {{.PriorityDot}}"></div>
+  <div class="act-text">{{.Title}}</div>
+  <span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+async function submitTaskForm(form){
+  const fd=new FormData(form);
+  const payload={title:fd.get('title'),description:fd.get('description'),priority:fd.get('priority'),due_date:fd.get('due_date'),start_date:fd.get('start_date')};
+  if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
+  if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
+  if(fd.get('project_id')) payload.project_id=fd.get('project_id');
+  const result=document.getElementById('task-create-result'); result.textContent='Speichere...';
+  try{
+    const res=await fetch('/api/v1/tasks/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});
+    const json=await res.json(); if(!res.ok||!json.success) throw new Error(json.error||'Fehler');
+    window.location.href='/tasks';
+  }catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'}
+  return false;
+}
+</script>
+{{end}}
+
