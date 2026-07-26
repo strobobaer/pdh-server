@@ -32,6 +32,7 @@ import (
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/tasks"
+	"pdh/internal/modules/projects"
 	"pdh/internal/modules/timetracking"
 	"pdh/internal/web"
 	"pdh/pkg/config"
@@ -93,6 +94,10 @@ func main() {
 	taskRepo := tasks.NewRepository(db.Pool)
 	taskSvc := tasks.NewService(taskRepo)
 	taskHandler := tasks.NewHandler(taskSvc)
+
+	projectRepo := projects.NewRepository(db.Pool)
+	projectSvc := projects.NewService(projectRepo)
+	projectHandler := projects.NewHandler(projectSvc)
 
 	faultRepo := faults.NewRepository(db.Pool)
 	// FIX: AnthropicModel wird jetzt aus der Config übergeben statt hardcoded (copilot.go)
@@ -190,6 +195,7 @@ func main() {
 		r.Mount("/costcenters", costCenterHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tasks", taskHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/projects", projectHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/faults", faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time", timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance", maintHandler.Routes(cfg.Auth.JWTSecret))
