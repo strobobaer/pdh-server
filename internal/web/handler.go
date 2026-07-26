@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog/log"
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/shifts"
@@ -83,23 +84,23 @@ type FaultView struct {
 }
 
 type TicketView struct {
-	ID              string
-	Title           string
-	Description     string
-	InfraID         string
-	InfraName       string
-	Priority        string
-	PriorityClass   string
-	PriorityDot     string
-	Status          string
-	StatusLabel     string
-	StatusClass     string
-	CreatedAgo      string
-	AssignedID      string
-	ResponsibleID   string
-	AssignedName    string
-	ResponsibleName string
-	RecordImageURL  string
+	ID               string
+	Title            string
+	Description      string
+	InfraID          string
+	InfraName        string
+	Priority         string
+	PriorityClass    string
+	PriorityDot      string
+	Status           string
+	StatusLabel      string
+	StatusClass      string
+	CreatedAgo       string
+	AssignedID       string
+	ResponsibleID    string
+	AssignedName     string
+	ResponsibleName  string
+	RecordImageURL   string
 	CostCenterID     string
 	CostCenterNumber string
 	CostCenterName   string
@@ -303,7 +304,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/users", h.Users)
 	r.Post("/users/create-web", h.UserCreateWeb)
 	r.Post("/users/{id}/update-web", h.UserUpdateWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
-	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/users/{id}/role-web", h.UserRoleWeb)     // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
 	r.Get("/time", h.TimeTracking)
 
@@ -885,8 +886,8 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 			pv := PartView{
 				ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
 				Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
-				StockQty:        strconv.FormatFloat(p.StockQty, 'f', 1, 64),
-				MinQty:          strconv.FormatFloat(p.MinQty, 'f', 1, 64),
+				StockQty:    strconv.FormatFloat(p.StockQty, 'f', 1, 64),
+				MinQty:      strconv.FormatFloat(p.MinQty, 'f', 1, 64),
 				Price:       fmt.Sprintf("%.2f", p.Price),
 				Status:      st,
 				StatusLabel: statusLabels[st], StatusClass: statusClasses[st], StatusDot: statusDots[st],
@@ -1188,25 +1189,25 @@ type FaultDetailData struct {
 }
 
 type FaultDetailView struct {
-	ID              string
-	Title           string
-	Description     string
-	Symptoms        []string
-	Status          string
-	StatusLabel     string
-	StatusClass     string
-	Severity        string
-	SeverityClass   string
-	InfraID         string
-	InfraName       string
-	DetectedAgo     string
-	Resolution      string
-	RootCause       string
-	AssignedID      string
-	ResponsibleID   string
-	AssignedName    string
-	ResponsibleName string
-	RecordImageURL  string
+	ID               string
+	Title            string
+	Description      string
+	Symptoms         []string
+	Status           string
+	StatusLabel      string
+	StatusClass      string
+	Severity         string
+	SeverityClass    string
+	InfraID          string
+	InfraName        string
+	DetectedAgo      string
+	Resolution       string
+	RootCause        string
+	AssignedID       string
+	ResponsibleID    string
+	AssignedName     string
+	ResponsibleName  string
+	RecordImageURL   string
 	CostCenterID     string
 	CostCenterNumber string
 	CostCenterName   string
@@ -1242,20 +1243,20 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 		History: h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,
-			Description:     fault.Description,
-			Symptoms:        fault.Symptoms,
-			Status:          string(fault.Status),
-			StatusLabel:     statusLabel(string(fault.Status)),
-			StatusClass:     statusClass(string(fault.Status)),
-			Severity:        string(fault.Severity),
-			SeverityClass:   severityClass(string(fault.Severity)),
-			InfraName:       h.infraName(ctx, fault.InfrastructureID),
-			DetectedAgo:     timeAgo(fault.DetectedAt),
-			AssignedID:      people.AssignedID,
-			ResponsibleID:   people.ResponsibleID,
-			AssignedName:    people.AssignedName,
-			ResponsibleName: people.ResponsibleName,
-			RecordImageURL:  h.recordImageURL(ctx, "fault", id),
+			Description:      fault.Description,
+			Symptoms:         fault.Symptoms,
+			Status:           string(fault.Status),
+			StatusLabel:      statusLabel(string(fault.Status)),
+			StatusClass:      statusClass(string(fault.Status)),
+			Severity:         string(fault.Severity),
+			SeverityClass:    severityClass(string(fault.Severity)),
+			InfraName:        h.infraName(ctx, fault.InfrastructureID),
+			DetectedAgo:      timeAgo(fault.DetectedAt),
+			AssignedID:       people.AssignedID,
+			ResponsibleID:    people.ResponsibleID,
+			AssignedName:     people.AssignedName,
+			ResponsibleName:  people.ResponsibleName,
+			RecordImageURL:   h.recordImageURL(ctx, "fault", id),
 			CostCenterNumber: fault.CostCenterNumber,
 			CostCenterName:   fault.CostCenterName,
 		},
@@ -1426,10 +1427,13 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 
 	if tasks, err := h.maint.ListTasks(ctx, status, ""); err == nil {
 		for _, t := range tasks {
-			data.Tasks = append(data.Tasks, maintTaskView(t))
 			if t.Status == "open" {
 				data.OpenTasks++
 			}
+			if status == "" && t.Status != "open" && t.Status != "in_progress" {
+				continue
+			}
+			data.Tasks = append(data.Tasks, maintTaskView(t))
 		}
 	}
 
@@ -1657,7 +1661,7 @@ func (h *Handler) MaintenanceTaskStartWeb(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) MaintenanceTaskCompleteWeb(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+	r.ParseMultipartForm(32 << 20)
 	u := getUser(r)
 	duration, _ := strconv.Atoi(r.FormValue("duration_min"))
 	noPartsNeeded := r.FormValue("no_parts_needed") == "on"
@@ -1667,6 +1671,8 @@ func (h *Handler) MaintenanceTaskCompleteWeb(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "text/html")
 	if err := h.maint.CompleteTaskValidated(r.Context(), chi.URLParam(r, "id"), u.ID, in, noPartsNeeded); err != nil {
+		log.Error().Err(err).Str("task_id", chi.URLParam(r, "id")).Msg("maintenance complete-web fehlgeschlagen")
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))
 		return
 	}
@@ -1901,8 +1907,8 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			Priority:  string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 			PriorityDot: priorityDot(string(t.Priority)),
 			Status:      string(t.Status), StatusLabel: statusLabel(string(t.Status)),
-			StatusClass: statusClass(string(t.Status)),
-			CreatedAgo:  timeAgo(t.CreatedAt),
+			StatusClass:      statusClass(string(t.Status)),
+			CreatedAgo:       timeAgo(t.CreatedAt),
 			CostCenterNumber: t.CostCenterNumber,
 			CostCenterName:   t.CostCenterName,
 		},
@@ -2101,18 +2107,18 @@ type InfraPageData struct {
 }
 
 type InfraNodeView struct {
-	ID           string
-	Name         string
-	TypeLabel    string
-	TypeIcon     string
-	TypeBg       string
-	Location     string
-	Manufacturer string
-	SerialNo     string
+	ID               string
+	Name             string
+	TypeLabel        string
+	TypeIcon         string
+	TypeBg           string
+	Location         string
+	Manufacturer     string
+	SerialNo         string
 	CostCenterID     string
 	CostCenterNumber string
 	CostCenterName   string
-	Children     []InfraNodeView
+	Children         []InfraNodeView
 }
 
 func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
@@ -2131,7 +2137,7 @@ func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
 		TypeLabel: labels[i.Type], TypeIcon: icons[i.Type],
 		TypeBg:   bgs[i.Type],
 		Location: i.Location, Manufacturer: i.Manufacturer,
-		SerialNo: i.SerialNo,
+		SerialNo:         i.SerialNo,
 		CostCenterNumber: i.CostCenterNumber, CostCenterName: i.CostCenterName,
 	}
 	if i.CostCenterID != nil {
