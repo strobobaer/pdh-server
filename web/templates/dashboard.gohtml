@@ -38,7 +38,7 @@
     </div>
     {{if .Faults}}
     {{range .Faults}}
-    <div class="li">
+    <div class="li {{.BlinkClass}}">
       <div class="li-text">
         <div class="li-title">{{.Title}}</div>
         <div class="li-sub">{{.InfraName}} · {{.DetectedAgo}}</div>
@@ -86,7 +86,7 @@
   </div>
   {{if .MaintenanceDue}}
   {{range .MaintenanceDue}}
-  <div class="li">
+  <div class="li {{.BlinkClass}}">
     <div class="li-text">
       <div class="li-title">{{.Title}}</div>
       <div class="li-sub">{{.InfraName}} · ~{{.EstimatedMin}}min</div>
@@ -102,7 +102,7 @@
 
 {{define "context-list"}}
 {{range .OpenTickets}}
-<div class="act-item">
+<div class="act-item {{.BlinkClass}}">
   <div class="act-dot {{.PriorityDot}}"></div>
   <div class="act-text">{{.Title}}</div>
   <span class="badge {{.PriorityClass}}">{{.Priority}}</span>

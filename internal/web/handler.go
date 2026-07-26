@@ -81,6 +81,7 @@ type FaultView struct {
 	AssignedName    string
 	ResponsibleName string
 	RecordImageURL  string
+	BlinkClass     string
 }
 
 type TicketView struct {
@@ -104,6 +105,7 @@ type TicketView struct {
 	CostCenterID     string
 	CostCenterNumber string
 	CostCenterName   string
+	BlinkClass       string
 }
 
 type UserOption struct {
@@ -135,6 +137,7 @@ type MaintenanceView struct {
 	EstimatedMin  int
 	Priority      string
 	PriorityClass string
+	BlinkClass    string
 }
 
 type ShiftDay struct {
@@ -437,6 +440,33 @@ func statusLabel(s string) string {
 	return s
 }
 
+func faultBlinkClass(status string) string {
+	if status == "detected" {
+		return "blink-yellow"
+	}
+	return ""
+}
+
+func ticketBlinkClass(assignedTo *string, status string) string {
+	if status == "open" && assignedTo == nil {
+		return "blink-purple"
+	}
+	return ""
+}
+
+func maintenanceBlinkClass(dueDate time.Time) string {
+	today := time.Now().Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	due := dueDate.Format("2006-01-02")
+	if due <= today {
+		return "blink-red"
+	}
+	if due == tomorrow {
+		return "blink-yellow"
+	}
+	return ""
+}
+
 func getUser(r *http.Request) *users.User {
 	if u, ok := r.Context().Value("user").(*users.User); ok {
 		return u
@@ -707,6 +737,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					StatusClass: statusClass(string(f.Status)),
 					Severity:    string(f.Severity), SeverityClass: severityClass(string(f.Severity)),
 					DetectedAgo: timeAgo(f.DetectedAt),
+					BlinkClass: faultBlinkClass(string(f.Status)),
 				})
 			}
 		}
@@ -726,6 +757,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					ID: t.ID, Title: t.Title,
 					Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 					PriorityDot: priorityDot(string(t.Priority)),
+					BlinkClass: ticketBlinkClass(t.AssignedTo, string(t.Status)),
 				})
 			}
 		}
@@ -740,6 +772,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					ID: m.ID, Title: m.Title, InfraName: m.InfraName,
 					EstimatedMin: 0, Priority: string(m.Priority),
 					PriorityClass: priorityClass(string(m.Priority)),
+					BlinkClass: maintenanceBlinkClass(m.DueDate),
 				})
 			}
 		}

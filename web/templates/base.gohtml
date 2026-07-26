@@ -246,6 +246,13 @@ select.form-input option{background:var(--bg2)}
 .htmx-indicator{display:none}
 .htmx-request .htmx-indicator{display:inline}
 .htmx-request.htmx-indicator{display:inline}
+
+@keyframes blink-red-anim { 0%,100%{background:rgba(239,68,68,.05)} 50%{background:rgba(239,68,68,.35)} }
+@keyframes blink-yellow-anim { 0%,100%{background:rgba(245,158,11,.05)} 50%{background:rgba(245,158,11,.35)} }
+@keyframes blink-purple-anim { 0%,100%{background:rgba(124,58,237,.05)} 50%{background:rgba(124,58,237,.35)} }
+.blink-red{animation:blink-red-anim 1.2s ease-in-out infinite;border-radius:6px}
+.blink-yellow{animation:blink-yellow-anim 1.2s ease-in-out infinite;border-radius:6px}
+.blink-purple{animation:blink-purple-anim 1.2s ease-in-out infinite;border-radius:6px}
 </style>
 {{block "head" .}}{{end}}
 </head>
