@@ -156,6 +156,67 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 	return entries, nil
 }
 
+// ListAll: alle Zeiteintraege aller Nutzer im Zeitraum (nur fuer Admin/Manager-Ansicht).
+func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
+		       te.started_at, te.ended_at, te.duration_min, te.created_at,
+		       te.infrastructure_id, COALESCE(i.name, ''),
+		       u.first_name || ' ' || u.last_name
+		FROM time_entries te
+		JOIN users u ON te.user_id = u.id
+		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		WHERE te.started_at::date BETWEEN $1 AND $2
+		ORDER BY te.started_at DESC`,
+		from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*TimeEntry
+	for rows.Next() {
+		e := &TimeEntry{}
+		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
+			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
+			&e.InfrastructureID, &e.InfraName, &e.UserName); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
+// UpdateEntryInput: Felder, die bei einer manuellen Korrektur geaendert werden koennen.
+type UpdateEntryInput struct {
+	Description string    `json:"description"`
+	StartedAt   time.Time `json:"started_at"`
+	EndedAt     *time.Time `json:"ended_at,omitempty"`
+}
+
+// Update aktualisiert Beschreibung/Start/Ende und berechnet die Dauer neu.
+// isAdmin=true erlaubt das Bearbeiten fremder Eintraege.
+func (r *Repository) Update(ctx context.Context, id, userID string, isAdmin bool, in *UpdateEntryInput) error {
+	query := `
+		UPDATE time_entries
+		SET description=COALESCE(NULLIF($1,''), description), started_at=$2, ended_at=$3,
+		    duration_min=CASE WHEN $3::timestamptz IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM ($3::timestamptz - $2::timestamptz))/60 END
+		WHERE id=$4`
+	args := []interface{}{in.Description, in.StartedAt, in.EndedAt, id}
+	if !isAdmin {
+		query += ` AND user_id=$5`
+		args = append(args, userID)
+	}
+	tag, err := r.db.Exec(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("eintrag nicht gefunden oder keine berechtigung")
+	}
+	return nil
+}
+
 func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID string) ([]*TimeEntry, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
@@ -286,10 +347,21 @@ func (r *Repository) MonthlyByCategory(ctx context.Context, userID, from, to str
 	return cats, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID string) error {
-	_, err := r.db.Exec(ctx,
-		`DELETE FROM time_entries WHERE id=$1 AND user_id=$2`, id, userID)
-	return err
+func (r *Repository) Delete(ctx context.Context, id, userID string, isAdmin bool) error {
+	query := `DELETE FROM time_entries WHERE id=$1`
+	args := []interface{}{id}
+	if !isAdmin {
+		query += ` AND user_id=$2`
+		args = append(args, userID)
+	}
+	tag, err := r.db.Exec(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("eintrag nicht gefunden oder keine berechtigung")
+	}
+	return nil
 }
 
 // ── Service ──────────────────────────────────────────────────
@@ -375,8 +447,16 @@ func (s *Service) ExportMonth(ctx context.Context, userID string, year, month in
 	return s.repo.ListByUser(ctx, userID, from, to)
 }
 
-func (s *Service) Delete(ctx context.Context, id, userID string) error {
-	return s.repo.Delete(ctx, id, userID)
+func (s *Service) Delete(ctx context.Context, id, userID string, isAdmin bool) error {
+	return s.repo.Delete(ctx, id, userID, isAdmin)
+}
+
+func (s *Service) ListAll(ctx context.Context, from, to string) ([]*TimeEntry, error) {
+	return s.repo.ListAll(ctx, from, to)
+}
+
+func (s *Service) Update(ctx context.Context, id, userID string, isAdmin bool, in *UpdateEntryInput) error {
+	return s.repo.Update(ctx, id, userID, isAdmin, in)
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -559,7 +639,9 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	if err := h.svc.Delete(r.Context(), id, userID); err != nil {
+	role, _ := r.Context().Value(middleware.RoleKey).(string)
+	isAdmin := role == "admin" || role == "manager"
+	if err := h.svc.Delete(r.Context(), id, userID, isAdmin); err != nil {
 		response.Error(w, 500, err.Error())
 		return
 	}

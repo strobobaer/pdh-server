@@ -315,6 +315,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/time/manual-web", h.TimeManualWeb)
 	r.Post("/time/{id}/stop-web", h.TimeStopWeb)
 	r.Delete("/time/{id}/delete-web", h.TimeDeleteWeb)
+	r.Post("/time/{id}/edit-web", h.TimeEditWeb)
 	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/users", h.Users)
@@ -1045,11 +1046,18 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 type TimePageData struct {
 	BaseData
-	TodayStr   string
-	WeekStr    string
-	TodayCount int
-	Entries    []TimeEntryView
-	Running    *TimeEntryView
+	TodayStr      string
+	WeekStr       string
+	TodayCount    int
+	Entries       []TimeEntryView
+	Running       *TimeEntryView
+	IsAdmin       bool
+	Users         []UserOption
+	FilterUser    string
+	FilterRange   string
+	FilterRaster  string
+	RangeFromISO  string
+	RangeToISO    string
 }
 
 type TimeEntryView struct {
@@ -1059,9 +1067,13 @@ type TimeEntryView struct {
 	RefTypeDot   string
 	StartedStr   string
 	EndedStr     string
+	StartedISO   string
+	EndedISO     string
 	DurationStr  string
 	Running      bool
 	InfraName    string
+	UserName     string
+	CanEdit      bool
 }
 
 func timeRefLabel(t timetracking.RefType) string {
@@ -1102,17 +1114,22 @@ func durationText(min int) string {
 }
 
 func timeEntryView(e *timetracking.TimeEntry) TimeEntryView {
+	startedLocal := e.StartedAt.In(time.Local)
 	v := TimeEntryView{
 		ID:           e.ID,
 		Description:  e.Description,
 		RefTypeLabel: timeRefLabel(e.RefType),
 		RefTypeDot:   timeRefDot(e.RefType),
-		StartedStr:   e.StartedAt.Format("15:04"),
+		StartedStr:   startedLocal.Format("15:04 02.01."),
+		StartedISO:   startedLocal.Format("2006-01-02T15:04"),
 		Running:      e.EndedAt == nil,
 		InfraName:    e.InfraName,
+		UserName:     e.UserName,
 	}
 	if e.EndedAt != nil {
-		v.EndedStr = e.EndedAt.Format("15:04")
+		endedLocal := e.EndedAt.In(time.Local)
+		v.EndedStr = endedLocal.Format("15:04 02.01.")
+		v.EndedISO = endedLocal.Format("2006-01-02T15:04")
 	}
 	if e.DurationMin != nil {
 		v.DurationStr = durationText(*e.DurationMin)
@@ -1121,6 +1138,7 @@ func timeEntryView(e *timetracking.TimeEntry) TimeEntryView {
 }
 
 func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	u := getUser(r)
 	now := time.Now()
 	weekStart := now.AddDate(0, 0, -int(now.Weekday())+1)
@@ -1128,23 +1146,85 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 		weekStart = now.AddDate(0, 0, -6)
 	}
 
-	data := TimePageData{
-		BaseData: baseData(r, "time", "Zeiterfassung", "Heute"),
-		TodayStr: now.Format("02.01.2006"),
-		WeekStr:  weekStart.Format("02.01.") + " - " + weekStart.AddDate(0, 0, 6).Format("02.01."),
+	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	filterUser := r.URL.Query().Get("user")
+	filterRange := r.URL.Query().Get("range")
+	if filterRange == "" {
+		filterRange = "today"
 	}
-	if entries, err := h.time.ListByUser(r.Context(), u.ID, now.Format("2006-01-02"), now.Format("2006-01-02")); err == nil {
-		data.TodayCount = len(entries)
-		for _, e := range entries {
-			view := timeEntryView(e)
-			data.Entries = append(data.Entries, view)
-			if view.Running && data.Running == nil {
-				running := view
-				data.Running = &running
+	filterRaster := r.URL.Query().Get("raster")
+	if filterRaster == "" {
+		filterRaster = "day"
+	}
+
+	rangeFrom := now.Format("2006-01-02")
+	rangeTo := now.Format("2006-01-02")
+	switch filterRange {
+	case "week":
+		rangeFrom = weekStart.Format("2006-01-02")
+		rangeTo = weekStart.AddDate(0, 0, 6).Format("2006-01-02")
+	case "month":
+		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		monthEnd := monthStart.AddDate(0, 1, -1)
+		rangeFrom = monthStart.Format("2006-01-02")
+		rangeTo = monthEnd.Format("2006-01-02")
+	}
+
+	rangeFromDate, _ := time.Parse("2006-01-02", rangeFrom)
+	rangeToDate, _ := time.Parse("2006-01-02", rangeTo)
+	rangeToExclusive := rangeToDate.AddDate(0, 0, 1)
+
+	data := TimePageData{
+		BaseData:     baseData(r, "time", "Zeiterfassung", "Heute"),
+		TodayStr:     now.Format("02.01.2006"),
+		WeekStr:      weekStart.Format("02.01.") + " - " + weekStart.AddDate(0, 0, 6).Format("02.01."),
+		IsAdmin:      isAdmin,
+		FilterUser:   filterUser,
+		FilterRange:  filterRange,
+		FilterRaster: filterRaster,
+		RangeFromISO: rangeFromDate.Format("2006-01-02T15:04:05"),
+		RangeToISO:   rangeToExclusive.Format("2006-01-02T15:04:05"),
+	}
+
+	if isAdmin {
+		data.Users = h.userOptions(ctx)
+		var entries []*timetracking.TimeEntry
+		var err error
+		if filterUser != "" {
+			entries, err = h.time.ListByUser(ctx, filterUser, rangeFrom, rangeTo)
+		} else {
+			entries, err = h.time.ListAll(ctx, rangeFrom, rangeTo)
+		}
+		if err == nil {
+			for _, e := range entries {
+				view := timeEntryView(e)
+				view.CanEdit = true
+				data.Entries = append(data.Entries, view)
+				if e.StartedAt.Format("2006-01-02") == now.Format("2006-01-02") {
+					data.TodayCount++
+				}
+				if view.Running && e.UserID == u.ID && data.Running == nil {
+					running := view
+					data.Running = &running
+				}
+			}
+		}
+	} else {
+		if entries, err := h.time.ListByUser(ctx, u.ID, rangeFrom, rangeTo); err == nil {
+			data.TodayCount = len(entries)
+			for _, e := range entries {
+				view := timeEntryView(e)
+				view.CanEdit = true
+				data.Entries = append(data.Entries, view)
+				if view.Running && data.Running == nil {
+					running := view
+					data.Running = &running
+				}
 			}
 		}
 	}
-	if running, err := h.time.GetRunning(r.Context(), u.ID); err == nil && running != nil && data.Running == nil {
+
+	if running, err := h.time.GetRunning(ctx, u.ID); err == nil && running != nil && data.Running == nil {
 		view := timeEntryView(running)
 		data.Running = &view
 	}
@@ -2663,11 +2743,38 @@ func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) TimeDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
-	if err := h.time.Delete(r.Context(), chi.URLParam(r, "id"), u.ID); err != nil {
+	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	if err := h.time.Delete(r.Context(), chi.URLParam(r, "id"), u.ID, isAdmin); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) TimeEditWeb(w http.ResponseWriter, r *http.Request) {
+	u := getUser(r)
+	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	r.ParseMultipartForm(32 << 20)
+	started, err := time.ParseInLocation("2006-01-02T15:04", r.FormValue("started_at"), time.Local)
+	if err != nil {
+		http.Error(w, "ungueltiges startdatum", http.StatusBadRequest)
+		return
+	}
+	in := &timetracking.UpdateEntryInput{
+		Description: r.FormValue("description"),
+		StartedAt:   started,
+	}
+	if endedStr := r.FormValue("ended_at"); endedStr != "" {
+		if ended, err := time.ParseInLocation("2006-01-02T15:04", endedStr, time.Local); err == nil {
+			in.EndedAt = &ended
+		}
+	}
+	w.Header().Set("Content-Type", "text/html")
+	if err := h.time.Update(r.Context(), chi.URLParam(r, "id"), u.ID, isAdmin, in); err != nil {
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))
+		return
+	}
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Gespeichert</div>`)
 }
 
 func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
