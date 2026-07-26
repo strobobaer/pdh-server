@@ -33,6 +33,7 @@ type TaskView struct {
 	RootCause       string
 	CreatedAgo      string
 	CanResolve      bool
+	Color           string
 }
 
 func taskView(t *tasks.Task) TaskView {
@@ -46,6 +47,7 @@ func taskView(t *tasks.Task) TaskView {
 		Resolution: t.Resolution, RootCause: t.RootCause,
 		CreatedAgo: timeAgo(t.CreatedAt),
 		CanResolve: t.Status == "open" || t.Status == "in_progress",
+		Color: t.Color,
 	}
 	if t.DueDate != nil {
 		v.DueDate = t.DueDate.Format("02.01.2006")

@@ -90,9 +90,64 @@
 var PROJECT_ID = '{{.Project.ID}}';
 var ganttTasks = [
 {{range .Tasks}}{{if and .StartDateISO .DueDateISO}}
-  {id:'{{.ID}}', name:'{{.Title}}', start:'{{.StartDateISO}}', end:'{{.DueDateISO}}', progress: {{if eq .Status "resolved"}}100{{else if eq .Status "closed"}}100{{else if eq .Status "in_progress"}}50{{else}}0{{end}} },
+  {id:'{{.ID}}', name:'{{.Title}}', start:'{{.StartDateISO}}', end:'{{.DueDateISO}}',
+   progress: {{if eq .Status "resolved"}}100{{else if eq .Status "closed"}}100{{else if eq .Status "in_progress"}}50{{else}}0{{end}},
+   status: '{{.Status}}', dueDateISO: '{{.DueDateISO}}', color: '{{.Color}}' },
 {{end}}{{end}}
 ];
+
+function ganttTaskColor(t){
+  var today = new Date(); today.setHours(0,0,0,0);
+  var due = t.dueDateISO ? new Date(t.dueDateISO+'T00:00:00') : null;
+  var isDone = (t.status === 'resolved' || t.status === 'closed');
+  var isOverdue = (!isDone && due && due < today);
+  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+  var isDueSoon = (!isDone && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
+
+  if(isDone) return {fill:'#10b981', stroke:'#10b981'};
+  if(isOverdue) return {fill: t.color || '#4f6ef7', stroke:'#ef4444'};
+  if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b'};
+  return {fill: t.color || '#4f6ef7', stroke: t.color || '#4f6ef7'};
+}
+
+function applyGanttColors(){
+  ganttTasks.forEach(function(t){
+    var colors = ganttTaskColor(t);
+    var wrapper = document.querySelector('.bar-wrapper[data-id="' + t.id + '"]');
+    if(!wrapper) return;
+    var bar = wrapper.querySelector('.bar');
+    var barProgress = wrapper.querySelector('.bar-progress');
+    if(bar){
+      bar.style.fill = colors.fill;
+      bar.style.stroke = colors.stroke;
+      bar.style.strokeWidth = (colors.stroke === '#ef4444') ? '3px' : '1px';
+    }
+    if(barProgress){
+      barProgress.style.fill = colors.fill;
+    }
+  });
+}
+
+function formatDateISO(d){
+  var year = d.getFullYear();
+  var month = String(d.getMonth()+1).padStart(2,'0');
+  var day = String(d.getDate()).padStart(2,'0');
+  return year + '-' + month + '-' + day;
+}
+
+async function saveTaskDates(taskId, start, end){
+  try{
+    var res = await fetch('/api/v1/tasks/'+taskId+'/edit', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({start_date: formatDateISO(start), due_date: formatDateISO(end)})
+    });
+    var json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+  }catch(e){
+    alert('Termin konnte nicht gespeichert werden: '+e.message);
+    location.reload();
+  }
+}
 
 function renderGantt(){
   var target = document.getElementById('gantt-target');
@@ -107,8 +162,10 @@ function renderGantt(){
   try{
     new Gantt('#gantt-target', ganttTasks, {
       on_click: function(task){ window.location = '/tasks/' + task.id; },
+      on_date_change: function(task, start, end){ saveTaskDates(task.id, start, end); },
       view_mode: 'Week'
     });
+    setTimeout(applyGanttColors, 100);
   }catch(e){
     console.warn('Gantt-Rendering fehlgeschlagen', e);
     target.style.display = 'none';

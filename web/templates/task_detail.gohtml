@@ -127,6 +127,16 @@
       {{if .Task.AssigneeName}}<div class="li"><div class="li-text"><div class="li-sub">Zugewiesen</div><div class="li-title">{{.Task.AssigneeName}}</div></div></div>{{end}}
       {{if .Task.ResponsibleName}}<div class="li"><div class="li-text"><div class="li-sub">Verantwortlich</div><div class="li-title">{{.Task.ResponsibleName}}</div></div></div>{{end}}
       {{if .Task.ProjectName}}<div class="li"><div class="li-text"><div class="li-sub">Projekt</div><div class="li-title"><a href="/projects/{{.Task.ProjectID}}" style="color:var(--accent)">{{.Task.ProjectName}}</a></div></div></div>{{end}}
+      {{if .Task.CanResolve}}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <label class="form-label">Farbe im Gantt (optional)</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="color" id="ta-color-picker" class="form-input" style="width:60px;height:36px;padding:2px" value="{{if .Task.Color}}{{.Task.Color}}{{else}}#4f6ef7{{end}}">
+          <button type="button" class="btn" style="font-size:11px" onclick="saveTaskColor()">Speichern</button>
+        </div>
+        <div id="task-color-result" style="font-size:11px;margin-top:6px"></div>
+      </div>
+      {{end}}
     </div>
   </div>
 </div>
@@ -333,6 +343,21 @@ async function stopTaskTime(entryID){
     var text = await res.text();
     result.innerHTML = text;
     setTimeout(function(){ location.reload(); }, 800);
+  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
+}
+
+async function saveTaskColor(){
+  var color = document.getElementById('ta-color-picker').value;
+  var result = document.getElementById('task-color-result');
+  result.textContent = 'Speichere...';
+  try{
+    var res = await fetch('/api/v1/tasks/'+TASK_ID+'/edit', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({color: color})
+    });
+    var json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+    result.innerHTML = '<span style="color:var(--green)">Gespeichert</span>';
   }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
 }
 

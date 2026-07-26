@@ -21,7 +21,7 @@ func (s *Service) Create(ctx context.Context, in *CreateTaskInput, userID string
 	t := &Task{
 		Title: in.Title, Description: in.Description, Priority: in.Priority,
 		AssignedTo: in.AssignedTo, ResponsibleTo: in.ResponsibleTo, ProjectID: in.ProjectID,
-		CreatedBy: userID,
+		CreatedBy: userID, Color: in.Color,
 	}
 	if in.DueDate != "" {
 		if due, err := parseDate(in.DueDate); err == nil {
