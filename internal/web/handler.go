@@ -24,6 +24,8 @@ import (
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
+	"pdh/internal/modules/tasks"
+	"pdh/internal/modules/projects"
 	"pdh/internal/modules/timetracking"
 )
 
@@ -218,6 +220,8 @@ type Handler struct {
 	it        *it.Service
 	time      *timetracking.Service
 	checks    *checklists.Service
+	tasks     *tasks.Service
+	projects  *projects.Service
 	jwtSecret string
 }
 
@@ -235,6 +239,8 @@ func NewHandler(
 	itt *it.Service,
 	tt *timetracking.Service,
 	ch *checklists.Service,
+	tk *tasks.Service,
+	pj *projects.Service,
 	jwtSecret string,
 ) *Handler {
 	return &Handler{
@@ -242,6 +248,8 @@ func NewHandler(
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
 		checks:    ch,
+		tasks:     tk,
+		projects:  pj,
 		jwtSecret: jwtSecret,
 	}
 }
@@ -272,6 +280,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/inventory/{id}", h.InventoryDetail)
 	r.Post("/inventory/book-web", h.InventoryBookWeb)
 	r.Get("/maintenance", h.Maintenance)
+	r.Get("/tasks", h.TasksPage)
+	r.Get("/tasks/{id}", h.TaskDetail)
+	r.Get("/projects", h.ProjectsPage)
+	r.Get("/projects/{id}", h.ProjectDetail)
 	r.Post("/maintenance/plans", h.MaintenanceCreatePlan)
 	r.Put("/maintenance/plans/{id}/edit-web", h.MaintenancePlanEditWeb)
 	r.Post("/maintenance/plans/{id}/duplicate-web", h.MaintenancePlanDuplicateWeb)
