@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/core/synclink"
 	"github.com/rs/zerolog/log"
 	"pdh/internal/core/addins"
 	"pdh/internal/integrations/nextcloud"
@@ -187,6 +188,44 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status Status,
 		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 			VALUES ('ticket', $1, 'status', 'status', $2, $3, 'Status geändert')`, id, string(status), userID)
 	}
+	if err == nil && userID != "" {
+		notifyTicketLinkerStatus(ctx, id, string(status), userID)
+	}
+	return err
+}
+
+// GetLinkedFaultID liefert die ID der mit diesem Ticket verknuepften
+// Stoerung (leer, falls keine verknuepft ist).
+func (r *Repository) GetLinkedFaultID(ctx context.Context, ticketID string) (string, error) {
+	var id *string
+	err := r.db.QueryRow(ctx, `SELECT linked_fault_id::text FROM tickets WHERE id=$1`, ticketID).Scan(&id)
+	if err != nil || id == nil {
+		return "", err
+	}
+	return *id, nil
+}
+
+// SetStatusDirect setzt den Status ohne Pflichtpruefung und OHNE die
+// Synchronisation zur verknuepften Stoerung erneut auszuloesen (wird nur
+// vom synclink-Paket aufgerufen, um Endlosschleifen zu vermeiden).
+func (r *Repository) SetStatusDirect(ctx context.Context, ticketID, status, userID string) error {
+	query := `UPDATE tickets SET status=$1, updated_at=NOW()`
+	if status == "resolved" || status == "closed" {
+		query += `, resolved_at=COALESCE(resolved_at,NOW()), archived_at=COALESCE(archived_at,NOW())`
+	}
+	query += ` WHERE id=$2`
+	_, err := r.db.Exec(ctx, query, status, ticketID)
+	return err
+}
+
+// AddActionDirect erfasst eine Massnahme (wird vom synclink-Paket
+// aufgerufen, um eine bei der Stoerung erfasste Massnahme auch beim
+// verknuepften Ticket einzutragen).
+func (r *Repository) AddActionDirect(ctx context.Context, ticketID, description, userID string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO ticket_actions (id, ticket_id, description, created_by)
+		VALUES (gen_random_uuid(), $1, $2, $3)`,
+		ticketID, description, userID)
 	return err
 }
 
@@ -212,6 +251,7 @@ type Service struct {
 }
 
 func NewService(repo *Repository) *Service {
+	globalTicketRepo = repo
 	return &Service{repo: repo}
 }
 
@@ -219,6 +259,34 @@ var eventBus *addins.EventBus
 
 // SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
 func SetEventBus(b *addins.EventBus) { eventBus = b }
+
+var ticketLinker *synclink.Linker
+var globalTicketRepo *Repository
+
+// SetLinker verbindet das tickets-Modul mit dem synclink-Paket (wird in
+// main.go gesetzt), um Status und Massnahmen mit einer verknuepften
+// Stoerung zu synchronisieren.
+func SetLinker(l *synclink.Linker) {
+	ticketLinker = l
+	l.RegisterTicket(
+		func(ctx context.Context, ticketID, status, userID string) error {
+			return globalTicketRepo.SetStatusDirect(ctx, ticketID, status, userID)
+		},
+		func(ctx context.Context, ticketID, description, userID string) error {
+			return globalTicketRepo.AddActionDirect(ctx, ticketID, description, userID)
+		},
+		func(ctx context.Context, ticketID string) (string, error) {
+			return globalTicketRepo.GetLinkedFaultID(ctx, ticketID)
+		},
+	)
+}
+
+// notifyTicketLinkerStatus ruft den synclink-Hook auf (falls gesetzt).
+func notifyTicketLinkerStatus(ctx context.Context, ticketID, status, userID string) {
+	if ticketLinker != nil {
+		ticketLinker.OnTicketStatusChanged(ctx, ticketID, status, userID)
+	}
+}
 
 func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string) (*Ticket, error) {
 	t := &Ticket{

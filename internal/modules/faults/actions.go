@@ -110,7 +110,11 @@ func (s *Service) AddAction(ctx context.Context, faultID, description, userID st
 	if strings.TrimSpace(description) == "" {
 		return nil, fmt.Errorf("beschreibung ist pflicht")
 	}
-	return s.repo.AddAction(ctx, faultID, description, userID)
+	a, err := s.repo.AddAction(ctx, faultID, description, userID)
+	if err == nil && faultLinker != nil {
+		faultLinker.OnFaultActionAdded(ctx, faultID, description, userID)
+	}
+	return a, err
 }
 func (s *Service) GetActions(ctx context.Context, faultID string) ([]*FaultAction, error) {
 	return s.repo.GetActions(ctx, faultID)

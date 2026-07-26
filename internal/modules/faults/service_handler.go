@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/core/addins"
 	"pdh/internal/modules/inventory"
+	"pdh/internal/core/synclink"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -21,6 +22,7 @@ type Service struct {
 }
 
 func NewService(repo *Repository, copilot *Copilot) *Service {
+	globalFaultRepo = repo
 	return &Service{repo: repo, copilot: copilot}
 }
 
@@ -28,6 +30,35 @@ var eventBus *addins.EventBus
 
 // SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
 func SetEventBus(b *addins.EventBus) { eventBus = b }
+
+var faultLinker *synclink.Linker
+var globalFaultRepo *Repository
+
+// notifyFaultLinkerStatus ruft den synclink-Hook auf (falls gesetzt).
+// Eigene Funktion, damit repository.go keinen Import von synclink braucht.
+func notifyFaultLinkerStatus(ctx context.Context, faultID, status, userID string) {
+	if faultLinker != nil {
+		faultLinker.OnFaultStatusChanged(ctx, faultID, status, userID)
+	}
+}
+
+// SetLinker verbindet das faults-Modul mit dem synclink-Paket (wird in
+// main.go gesetzt), um Status und Massnahmen mit einem verknuepften
+// Ticket zu synchronisieren.
+func SetLinker(l *synclink.Linker) {
+	faultLinker = l
+	l.RegisterFault(
+		func(ctx context.Context, faultID, status, userID string) error {
+			return globalFaultRepo.SetStatusDirect(ctx, faultID, status, userID)
+		},
+		func(ctx context.Context, faultID, description, userID string) error {
+			return globalFaultRepo.AddActionDirect(ctx, faultID, description, userID)
+		},
+		func(ctx context.Context, faultID string) (string, error) {
+			return globalFaultRepo.GetLinkedTicketID(ctx, faultID)
+		},
+	)
+}
 
 func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID string) (*Fault, error) {
 	f := &Fault{
@@ -127,6 +158,9 @@ func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause, u
 		eventBus.Publish("fault.resolved", map[string]interface{}{
 			"id": faultID, "resolution": resolution, "root_cause": rootCause, "resolved_by": userID,
 		})
+	}
+	if err == nil && faultLinker != nil {
+		faultLinker.OnFaultStatusChanged(ctx, faultID, "resolved", userID)
 	}
 	return err
 }

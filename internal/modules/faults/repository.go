@@ -38,18 +38,54 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
-		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID,
+		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID, f.ID,
 	).Scan(&id)
 	if err == nil {
+		_, _ = r.db.Exec(ctx, `UPDATE faults SET linked_ticket_id=$1 WHERE id=$2`, id, f.ID)
 		_, _ = r.db.Exec(ctx, `
 			INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 			VALUES ('fault', $1, 'ticket', 'ticket_id', $2, $3, 'Ticket aus Störung erstellt')`,
 			f.ID, id, f.CreatedBy)
 	}
 	return id, err
+}
+
+// GetLinkedTicketID liefert die ID des mit dieser Stoerung verknuepften
+// Tickets (leer, falls keins verknuepft ist).
+func (r *Repository) GetLinkedTicketID(ctx context.Context, faultID string) (string, error) {
+	var id *string
+	err := r.db.QueryRow(ctx, `SELECT linked_ticket_id::text FROM faults WHERE id=$1`, faultID).Scan(&id)
+	if err != nil || id == nil {
+		return "", err
+	}
+	return *id, nil
+}
+
+// SetStatusDirect setzt den Status ohne Pflichtpruefung und OHNE die
+// Synchronisation zum verknuepften Ticket erneut auszuloesen (wird nur
+// vom synclink-Paket aufgerufen, um Endlosschleifen zu vermeiden).
+func (r *Repository) SetStatusDirect(ctx context.Context, faultID, status, userID string) error {
+	query := `UPDATE faults SET status=$1, updated_at=NOW()`
+	if status == "resolved" || status == "closed" {
+		query += `, resolved_at=COALESCE(resolved_at,NOW()), archived_at=COALESCE(archived_at,NOW())`
+	}
+	query += ` WHERE id=$2`
+	_, err := r.db.Exec(ctx, query, status, faultID)
+	return err
+}
+
+// AddActionDirect erfasst eine Massnahme (wird vom synclink-Paket
+// aufgerufen, um eine im Ticket erfasste Massnahme auch bei der
+// verknuepften Stoerung einzutragen).
+func (r *Repository) AddActionDirect(ctx context.Context, faultID, description, userID string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO fault_actions (id, fault_id, description, created_by)
+		VALUES (gen_random_uuid(), $1, $2, $3)`,
+		faultID, description, userID)
+	return err
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
@@ -133,6 +169,9 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status FaultSt
 	if err == nil && userID != "" {
 		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 			VALUES ('fault', $1, 'status', 'status', $2, $3, 'Status geändert')`, id, string(status), userID)
+	}
+		if err == nil && userID != "" {
+		notifyFaultLinkerStatus(ctx, id, string(status), userID)
 	}
 	return err
 }

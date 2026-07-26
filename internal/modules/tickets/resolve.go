@@ -233,6 +233,9 @@ func (s *Service) Resolve(ctx context.Context, ticketID, resolution, rootCause, 
 			"id": ticketID, "resolved_by": userID,
 		})
 	}
+	if ticketLinker != nil {
+		ticketLinker.OnTicketStatusChanged(ctx, ticketID, "resolved", userID)
+	}
 	return nil
 }
 
@@ -255,7 +258,11 @@ func (s *Service) AddAction(ctx context.Context, ticketID, description, userID s
 	if strings.TrimSpace(description) == "" {
 		return nil, fmt.Errorf("beschreibung ist pflicht")
 	}
-	return s.repo.AddAction(ctx, ticketID, description, userID)
+	a, err := s.repo.AddAction(ctx, ticketID, description, userID)
+	if err == nil && ticketLinker != nil {
+		ticketLinker.OnTicketActionAdded(ctx, ticketID, description, userID)
+	}
+	return a, err
 }
 func (s *Service) GetActions(ctx context.Context, ticketID string) ([]*TicketAction, error) {
 	return s.repo.GetActions(ctx, ticketID)

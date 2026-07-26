@@ -26,6 +26,7 @@ import (
 	"pdh/internal/modules/attachments"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
+	"pdh/internal/core/synclink"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/maintenance"
@@ -119,6 +120,11 @@ func main() {
 	addinsHandler := addins.NewHandler(addinsRepo, addinsBus)
 	tickets.SetEventBus(addinsBus)
 	faults.SetEventBus(addinsBus)
+
+	// Stoerung <-> Ticket Synchronisation (Status + Massnahmen)
+	linker := synclink.New()
+	faults.SetLinker(linker)
+	tickets.SetLinker(linker)
 	inventory.SetEventBus(addinsBus)
 	maintenance.SetEventBus(addinsBus)
 
