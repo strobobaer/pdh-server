@@ -31,6 +31,7 @@ import (
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tickets"
+	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/timetracking"
 	"pdh/internal/web"
 	"pdh/pkg/config"
@@ -89,6 +90,10 @@ func main() {
 	ticketSvc := tickets.NewService(ticketRepo)
 	ticketHandler := tickets.NewHandler(ticketSvc)
 
+	taskRepo := tasks.NewRepository(db.Pool)
+	taskSvc := tasks.NewService(taskRepo)
+	taskHandler := tasks.NewHandler(taskSvc)
+
 	faultRepo := faults.NewRepository(db.Pool)
 	// FIX: AnthropicModel wird jetzt aus der Config übergeben statt hardcoded (copilot.go)
 	copilot := faults.NewCopilot(cfg.Copilot.AnthropicKey, cfg.Copilot.OllamaURL, cfg.Copilot.Model, cfg.Copilot.AnthropicModel, faultRepo)
@@ -113,6 +118,7 @@ func main() {
 	maintenance.SetInventoryService(invSvc)
 	tickets.SetInventoryService(invSvc)
 	faults.SetInventoryService(invSvc)
+	tasks.SetInventoryService(invSvc)
 
 	// Add-ins: Ereignis-Bus + Verwaltung (nur Admin, siehe internal/core/addins)
 	addinsRepo := addins.NewRepository(db.Pool)
@@ -125,6 +131,7 @@ func main() {
 	linker := synclink.New()
 	faults.SetLinker(linker)
 	tickets.SetLinker(linker)
+	tasks.SetLinker(linker)
 	inventory.SetEventBus(addinsBus)
 	maintenance.SetEventBus(addinsBus)
 
@@ -182,6 +189,7 @@ func main() {
 		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/costcenters", costCenterHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/tasks", taskHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/faults", faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time", timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance", maintHandler.Routes(cfg.Auth.JWTSecret))

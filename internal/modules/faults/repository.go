@@ -64,6 +64,17 @@ func (r *Repository) GetLinkedTicketID(ctx context.Context, faultID string) (str
 	return *id, nil
 }
 
+// GetLinkedTaskID liefert die ID der mit dieser Stoerung verknuepften
+// Aufgabe (leer, falls keine verknuepft ist).
+func (r *Repository) GetLinkedTaskID(ctx context.Context, faultID string) (string, error) {
+	var id *string
+	err := r.db.QueryRow(ctx, `SELECT linked_task_id::text FROM faults WHERE id=$1`, faultID).Scan(&id)
+	if err != nil || id == nil {
+		return "", err
+	}
+	return *id, nil
+}
+
 // SetStatusDirect setzt den Status ohne Pflichtpruefung und OHNE die
 // Synchronisation zum verknuepften Ticket erneut auszuloesen (wird nur
 // vom synclink-Paket aufgerufen, um Endlosschleifen zu vermeiden).

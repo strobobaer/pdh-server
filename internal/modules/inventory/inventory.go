@@ -80,6 +80,7 @@ type StockMovement struct {
 	FaultID            string  `json:"fault_id,omitempty"`
 	TicketID           string  `json:"ticket_id,omitempty"`
 	MaintenanceTaskID  string  `json:"maintenance_task_id,omitempty"`
+	TaskID             string  `json:"task_id,omitempty"`
 	CreatedBy          string  `json:"created_by"`
 	CreatedAt     time.Time    `json:"created_at"`
 	PartName      string       `json:"part_name,omitempty"`
@@ -147,6 +148,7 @@ type BookMovementInput struct {
 	FaultID           string `json:"fault_id,omitempty"`
 	TicketID          string `json:"ticket_id,omitempty"`
 	MaintenanceTaskID string `json:"maintenance_task_id,omitempty"`
+	TaskID            string `json:"task_id,omitempty"`
 }
 
 type CreateFieldDefInput struct {
@@ -333,7 +335,7 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 		return err
 	}
 
-	var faultIDArg, ticketIDArg, maintTaskIDArg interface{}
+	var faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg interface{}
 	if m.FaultID != "" {
 		faultIDArg = m.FaultID
 	}
@@ -343,11 +345,14 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 	if m.MaintenanceTaskID != "" {
 		maintTaskIDArg = m.MaintenanceTaskID
 	}
+	if m.TaskID != "" {
+		taskIDArg = m.TaskID
+	}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, created_at`,
-		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg,
+		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg,
 	).Scan(&m.ID, &m.CreatedAt); err != nil {
 		return err
 	}
@@ -567,7 +572,7 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 	m := &StockMovement{
 		PartID: in.PartID, Type: in.Type, Qty: in.Qty, StorageNodeID: in.StorageNodeID,
 		Reference: in.Reference, Notes: in.Notes, FaultID: in.FaultID, TicketID: in.TicketID,
-		MaintenanceTaskID: in.MaintenanceTaskID, CreatedBy: userID,
+		MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, CreatedBy: userID,
 	}
 	bookErr := s.repo.BookMovement(ctx, m)
 	if bookErr == nil && eventBus != nil {

@@ -57,6 +57,9 @@ func SetLinker(l *synclink.Linker) {
 		func(ctx context.Context, faultID string) (string, error) {
 			return globalFaultRepo.GetLinkedTicketID(ctx, faultID)
 		},
+		func(ctx context.Context, faultID string) (string, error) {
+			return globalFaultRepo.GetLinkedTaskID(ctx, faultID)
+		},
 	)
 }
 
