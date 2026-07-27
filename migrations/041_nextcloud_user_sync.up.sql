@@ -1,4 +1,4 @@
--- 011_nextcloud_user_sync.up.sql
+-- 041_nextcloud_user_sync.up.sql
 -- Store Nextcloud identity metadata for PDH users synced from the Nextcloud group `pdh`.
 
 ALTER TABLE users

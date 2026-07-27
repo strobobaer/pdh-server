@@ -1858,15 +1858,22 @@ func (h *Handler) MaintenanceTaskChecklistWeb(w http.ResponseWriter, r *http.Req
 
 type ShiftsPageData struct {
 	BaseData
-	WeekNumber int
-	WeekRange  string
-	PrevWeek   string
-	NextWeek   string
-	Days       []WeekDay
-	Users      []shifts.UserWeekPlan
-	ShiftDefs  []ShiftDefView
-	Absences   []AbsenceView
-	ShiftMap   []ShiftEntry
+	WeekNumber          int
+	WeekRange           string
+	PrevWeek            string
+	NextWeek            string
+	Days                []WeekDay
+	Users               []shifts.UserWeekPlan
+	ShiftDefs           []ShiftDefView
+	Absences            []AbsenceView
+	ShiftMap            []ShiftEntry
+	LocksmithSlot1Phone string
+	LocksmithSlot2Phone string
+	LocksmithSlot1TeamID string
+	LocksmithSlot2TeamID string
+	LocksmithSlot1UserID string
+	LocksmithSlot2UserID string
+	UserOptions          []UserOption
 }
 
 type WeekDay struct {
@@ -1950,6 +1957,32 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 					UserID: u.UserID, Date: date,
 					Label: entry.ShortName, Class: class,
 				})
+			}
+		}
+	}
+
+	data.UserOptions = h.userOptions(ctx)
+	for _, u := range data.Users {
+		if u.ShiftLocksmith1 {
+			data.LocksmithSlot1UserID = u.UserID
+		}
+		if u.ShiftLocksmith2 {
+			data.LocksmithSlot2UserID = u.UserID
+		}
+	}
+
+	if assignments, err := h.shifts.GetLocksmithAssignments(ctx); err == nil {
+		for _, a := range assignments {
+			if a.Slot == 1 {
+				data.LocksmithSlot1Phone = a.Phone
+				if a.TeamID != nil {
+					data.LocksmithSlot1TeamID = *a.TeamID
+				}
+			} else if a.Slot == 2 {
+				data.LocksmithSlot2Phone = a.Phone
+				if a.TeamID != nil {
+					data.LocksmithSlot2TeamID = *a.TeamID
+				}
 			}
 		}
 	}

@@ -1,4 +1,4 @@
--- 012_record_media_assignments_history.up.sql
+-- 042_record_media_assignments_history.up.sql
 -- Datensatzbild, Verantwortliche/Zuweisung, Archiv und Historie
 
 ALTER TABLE tickets

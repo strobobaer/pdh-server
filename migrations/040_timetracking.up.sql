@@ -1,4 +1,4 @@
--- 004_timetracking.up.sql
+-- 040_timetracking.up.sql
 
 DO $$ BEGIN
     CREATE TYPE time_ref_type AS ENUM ('ticket','fault','project','maintenance','production');

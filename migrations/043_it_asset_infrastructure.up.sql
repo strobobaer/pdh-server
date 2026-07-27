@@ -1,4 +1,4 @@
--- 013_it_asset_infrastructure.up.sql
+-- 043_it_asset_infrastructure.up.sql
 -- IT-Assets mit Infrastrukturbaum verknüpfen
 
 ALTER TABLE it_assets

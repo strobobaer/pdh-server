@@ -72,7 +72,7 @@ func (r *Repository) ListTeams(ctx context.Context) ([]*ShiftTeam, error) {
 }
 
 func (r *Repository) UpdateTeam(ctx context.Context, id, name, phone string) error {
-	_, err := r.db.Exec(ctx, `UPDATE shift_teams SET name=$1, phone=$2 WHERE id=$3`, name, phone, id)
+	_, err := r.db.Exec(ctx, `UPDATE shift_teams SET name=COALESCE(NULLIF($1,''), name), phone=$2 WHERE id=$3`, name, phone, id)
 	return err
 }
 

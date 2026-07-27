@@ -3,6 +3,7 @@ package users
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"pdh/pkg/middleware"
@@ -31,6 +32,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 		r.Get("/", h.List)
 		r.Get("/{id}", h.GetByID)
 		r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+		r.Post("/set-locksmith/{slot}", h.SetLocksmithSlot)
 
 		// Nur Admin
 		r.Group(func(r chi.Router) {
@@ -40,6 +42,26 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	})
 
 	return r
+}
+
+func (h *Handler) SetLocksmithSlot(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		UserID string `json:"user_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		return
+	}
+	slot, err := strconv.Atoi(chi.URLParam(r, "slot"))
+	if err != nil || (slot != 1 && slot != 2) {
+		response.Error(w, http.StatusBadRequest, "ungültiger slot (nur 1 oder 2)")
+		return
+	}
+	if err := h.svc.SetLocksmithSlot(r.Context(), slot, in.UserID); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {

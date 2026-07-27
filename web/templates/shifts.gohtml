@@ -28,7 +28,24 @@
       </tr>
     </thead>
     <tbody>
+    <tr>
+      <td colspan="8" style="background:var(--bg3);padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-tool" style="color:var(--accent)"></i>
+          <span style="font-weight:600;font-size:12px">Schichtschlosser 1</span>
+          <select class="form-input" style="max-width:200px;font-size:12px" onchange="setLocksmithUser(1,this.value)">
+            <option value="">Nicht zugewiesen</option>
+            {{range $.UserOptions}}<option value="{{.ID}}" {{if eq .ID $.LocksmithSlot1UserID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+          <input type="tel" class="form-input" style="max-width:150px;font-size:12px" placeholder="Telefonnummer"
+            value="{{.LocksmithSlot1Phone}}" onchange="saveLocksmithPhone(1,this.value)">
+        </div>
+      </td>
+    </tr>
+    {{$hasSlot1 := false}}
     {{range .Users}}
+    {{if .ShiftLocksmith1}}
+    {{$hasSlot1 = true}}
     {{$uid := .UserID}}
     <tr>
       <td>
@@ -37,9 +54,9 @@
           {{if .OnCallDuty}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-phone"></i> Bereitschaft{{if .OnCallPhone}} {{.OnCallPhone}}{{end}}</div>{{end}}
           {{if .ShiftLocksmith1}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-tool"></i> Schlosser 1{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
           {{if .ShiftLocksmith2}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)"><i class="ti ti-tool"></i> Schlosser 2{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .Sharpening}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-scissors"></i> Schärferei</div>{{end}}
+          {{if .HeatingFill}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-flame"></i> Heizungsbefüllung</div>{{end}}
           <div style="display:flex;gap:4px">
-            {{if .Sharpening}}<i class="ti ti-scissors" style="font-size:11px;color:var(--accent)" title="Schärferei"></i>{{end}}
-            {{if .HeatingFill}}<i class="ti ti-flame" style="font-size:11px;color:var(--accent)" title="Heizungsbefüllung"></i>{{end}}
             {{if .ShiftLeader}}<i class="ti ti-star" style="font-size:11px;color:var(--amber)" title="Schichtleiter"></i>{{end}}
           </div>
         </div>
@@ -55,7 +72,103 @@
       </td>
       {{end}}
     </tr>
-    {{else}}
+    {{end}}
+    {{end}}
+    {{if not $hasSlot1}}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">Kein Mitarbeiter zugeordnet</td></tr>
+    {{end}}
+
+    <tr>
+      <td colspan="8" style="background:var(--bg3);padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-tool" style="color:var(--accent)"></i>
+          <span style="font-weight:600;font-size:12px">Schichtschlosser 2</span>
+          <select class="form-input" style="max-width:200px;font-size:12px" onchange="setLocksmithUser(2,this.value)">
+            <option value="">Nicht zugewiesen</option>
+            {{range $.UserOptions}}<option value="{{.ID}}" {{if eq .ID $.LocksmithSlot2UserID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+          <input type="tel" class="form-input" style="max-width:150px;font-size:12px" placeholder="Telefonnummer"
+            value="{{.LocksmithSlot2Phone}}" onchange="saveLocksmithPhone(2,this.value)">
+        </div>
+      </td>
+    </tr>
+    {{$hasSlot2 := false}}
+    {{range .Users}}
+    {{if .ShiftLocksmith2}}
+    {{$hasSlot2 = true}}
+    {{$uid := .UserID}}
+    <tr>
+      <td>
+        <div style="font-weight:500;font-size:13px">{{.UserName}}</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+          {{if .OnCallDuty}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-phone"></i> Bereitschaft{{if .OnCallPhone}} {{.OnCallPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith1}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-tool"></i> Schlosser 1{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith2}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)"><i class="ti ti-tool"></i> Schlosser 2{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .Sharpening}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-scissors"></i> Schärferei</div>{{end}}
+          {{if .HeatingFill}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-flame"></i> Heizungsbefüllung</div>{{end}}
+          <div style="display:flex;gap:4px">
+            {{if .ShiftLeader}}<i class="ti ti-star" style="font-size:11px;color:var(--amber)" title="Schichtleiter"></i>{{end}}
+          </div>
+        </div>
+      </td>
+      {{range $.Days}}
+      {{$date := .DateFull}}
+      <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
+        {{range $.ShiftMap}}
+          {{if and (eq .UserID $uid) (eq .Date $date)}}
+          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          {{end}}
+        {{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+    {{end}}
+    {{if not $hasSlot2}}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">Kein Mitarbeiter zugeordnet</td></tr>
+    {{end}}
+
+    <tr>
+      <td colspan="8" style="background:var(--bg3);padding:8px 12px">
+        <span style="font-weight:600;font-size:12px;color:var(--muted)">Weitere Mitarbeiter</span>
+      </td>
+    </tr>
+    {{$hasOthers := false}}
+    {{range .Users}}
+    {{if and (not .ShiftLocksmith1) (not .ShiftLocksmith2)}}
+    {{$hasOthers = true}}
+    {{$uid := .UserID}}
+    <tr>
+      <td>
+        <div style="font-weight:500;font-size:13px">{{.UserName}}</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:2px">
+          {{if .OnCallDuty}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-phone"></i> Bereitschaft{{if .OnCallPhone}} {{.OnCallPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith1}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-tool"></i> Schlosser 1{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .ShiftLocksmith2}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)"><i class="ti ti-tool"></i> Schlosser 2{{if .LocksmithPhone}} {{.LocksmithPhone}}{{end}}</div>{{end}}
+          {{if .Sharpening}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-scissors"></i> Schärferei</div>{{end}}
+          {{if .HeatingFill}}<div style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--accent)"><i class="ti ti-flame"></i> Heizungsbefüllung</div>{{end}}
+          <div style="display:flex;gap:4px">
+            {{if .ShiftLeader}}<i class="ti ti-star" style="font-size:11px;color:var(--amber)" title="Schichtleiter"></i>{{end}}
+          </div>
+        </div>
+      </td>
+      {{range $.Days}}
+      {{$date := .DateFull}}
+      <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
+        {{range $.ShiftMap}}
+          {{if and (eq .UserID $uid) (eq .Date $date)}}
+          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          {{end}}
+        {{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+    {{end}}
+    {{if not $hasOthers}}
+    <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:12px;font-size:12px">Keine weiteren Mitarbeiter</td></tr>
+    {{end}}
+    {{if not .Users}}
     <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Keine Schichtzuweisungen diese Woche</td></tr>
     {{end}}
     </tbody>
@@ -260,6 +373,38 @@ async function removeShift(userID, date){
     }
     location.reload();
   }catch(e){ alert('Fehler beim Entfernen: '+e.message); }
+}
+
+async function setLocksmithUser(slot, userID){
+  try{
+    var res = await fetch('/api/v1/users/set-locksmith/'+slot, {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_id:userID})
+    });
+    if(!res.ok){
+      var json = await res.json().catch(function(){return null;});
+      throw new Error((json && json.error) || ('HTTP '+res.status));
+    }
+    location.reload();
+  }catch(e){ alert('Fehler beim Zuweisen: '+e.message); }
+}
+
+async function saveLocksmithPhone(slot, phone){
+  try{
+    var teamIdField = slot === 1 ? '{{.LocksmithSlot1TeamID}}' : '{{.LocksmithSlot2TeamID}}';
+    if(!teamIdField){
+      alert('Fuer diesen Slot ist noch kein Team hinterlegt. Bitte zuerst unter "Verwalten" ein Team anlegen und zuweisen.');
+      return;
+    }
+    var res = await fetch('/api/v1/shifts/teams/'+teamIdField, {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name:'', phone:phone})
+    });
+    if(!res.ok){
+      var json = await res.json().catch(function(){return null;});
+      throw new Error((json && json.error) || ('HTTP '+res.status));
+    }
+  }catch(e){ alert('Fehler beim Speichern der Telefonnummer: '+e.message); }
 }
 
 function openShiftPlanModal(startTab){document.getElementById('shiftplan-modal').style.display='flex';showShiftPlanTab(startTab||'models');loadModels();}

@@ -88,3 +88,7 @@ func (s *Service) Update(ctx context.Context, u *User) error {
 func (s *Service) Deactivate(ctx context.Context, id string) error {
 	return s.repo.Deactivate(ctx, id)
 }
+
+func (s *Service) SetLocksmithSlot(ctx context.Context, slot int, userID string) error {
+	return s.repo.SetLocksmithSlot(ctx, slot, userID)
+}

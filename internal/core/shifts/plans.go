@@ -353,6 +353,7 @@ func (r *Repository) GeneratePlanFromPattern(ctx context.Context, plan *ShiftPla
 
 // UserQualInfo: Qualifikations-Kennzeichen + Telefonnummer eines Mitarbeiters.
 type UserQualInfo struct {
+	UserName        string
 	Phone           string
 	OnCallDuty      bool
 	ShiftLocksmith1 bool
@@ -366,7 +367,7 @@ type UserQualInfo struct {
 // per User-ID.
 func (r *Repository) GetUserQualifications(ctx context.Context) (map[string]*UserQualInfo, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id::text, COALESCE(phone,''), on_call_duty, shift_locksmith_1, shift_locksmith_2,
+		SELECT id::text, first_name || ' ' || last_name, COALESCE(phone,''), on_call_duty, shift_locksmith_1, shift_locksmith_2,
 			sharpening, heating_fill, shift_leader
 		FROM users WHERE active=true`)
 	if err != nil {
@@ -377,7 +378,7 @@ func (r *Repository) GetUserQualifications(ctx context.Context) (map[string]*Use
 	for rows.Next() {
 		var id string
 		q := &UserQualInfo{}
-		if err := rows.Scan(&id, &q.Phone, &q.OnCallDuty, &q.ShiftLocksmith1, &q.ShiftLocksmith2,
+		if err := rows.Scan(&id, &q.UserName, &q.Phone, &q.OnCallDuty, &q.ShiftLocksmith1, &q.ShiftLocksmith2,
 			&q.Sharpening, &q.HeatingFill, &q.ShiftLeader); err != nil {
 			return nil, err
 		}
@@ -565,6 +566,31 @@ func (s *Service) GetWeekPlanForRole(ctx context.Context, weekStart string, isPl
 			ShiftName: a.ShiftName, ShortName: a.ShortName, Color: a.Color, StartTime: a.StartTime, EndTime: a.EndTime,
 		}
 	}
+	// Alle aktiven Mitarbeiter ergaenzen, die noch keine Zuweisung diese
+	// Woche haben, damit sie in der Tabelle sichtbar bleiben (z.B. um sie
+	// als Schichtschlosser zuzuweisen, auch ohne bereits eine Schicht zu haben).
+	for id, q := range quals {
+		if _, ok := userMap[id]; ok {
+			continue
+		}
+		uwp := &UserWeekPlan{UserID: id, UserName: q.UserName, Days: make(map[string]DayEntry), TeamSortOrder: 3}
+		uwp.OnCallDuty = q.OnCallDuty
+		uwp.OnCallPhone = q.Phone
+		uwp.ShiftLocksmith1 = q.ShiftLocksmith1
+		uwp.ShiftLocksmith2 = q.ShiftLocksmith2
+		uwp.Sharpening = q.Sharpening
+		uwp.HeatingFill = q.HeatingFill
+		uwp.ShiftLeader = q.ShiftLeader
+		if q.ShiftLocksmith1 {
+			uwp.LocksmithPhone = slot1Phone
+			uwp.TeamSortOrder = 1
+		} else if q.ShiftLocksmith2 {
+			uwp.LocksmithPhone = slot2Phone
+			uwp.TeamSortOrder = 2
+		}
+		userMap[id] = uwp
+	}
+
 	var users []UserWeekPlan
 	for _, u := range userMap {
 		users = append(users, *u)

@@ -121,8 +121,7 @@
 <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:480px;margin:20px">
     <div style="font-size:15px;font-weight:600;margin-bottom:16px">Benutzer bearbeiten</div>
-    <form id="edit-form" hx-put="/users/__ID__/update-web" hx-target="#user-tbody" hx-swap="innerHTML"
-          hx-on::after-request="document.getElementById('edit-modal').style.display='none'">
+    <form id="edit-form" onsubmit="return submitUserEdit(event)">
       <div class="grid2">
         <div class="form-group"><label class="form-label">Vorname</label><input id="ef-first" name="first_name" class="form-input" required></div>
         <div class="form-group"><label class="form-label">Nachname</label><input id="ef-last" name="last_name" class="form-input" required></div>
@@ -137,6 +136,15 @@
         </div>
         <div class="form-group"><label class="form-label">Abteilung</label><input id="ef-dept" name="department" class="form-input"></div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Schicht-Qualifikationen</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-oncall" name="on_call_duty"> Bereitschaft</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-sharpening" name="sharpening"> Schärferei</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-heating" name="heating_fill"> Heizungsbefüllung</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-leader" name="shift_leader"> Schichtleiter</label>
+        </div>
       </div>
       {{template "icon-button-toolbar" (dict
         "Class" "end"
@@ -164,6 +172,33 @@
 
 {{block "scripts" .}}
 <script>
+async function submitUserEdit(event){
+  event.preventDefault();
+  const payload = {
+    first_name: document.getElementById('ef-first').value,
+    last_name: document.getElementById('ef-last').value,
+    role: document.getElementById('ef-role').value,
+    department: document.getElementById('ef-dept').value,
+    phone: document.getElementById('ef-phone').value,
+    on_call_duty: document.getElementById('ef-oncall').checked,
+    sharpening: document.getElementById('ef-sharpening').checked,
+    heating_fill: document.getElementById('ef-heating').checked,
+    shift_leader: document.getElementById('ef-leader').checked,
+  };
+  try{
+    const res = await fetch('/api/v1/users/'+currentEditUserID, {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      const json = await res.json().catch(function(){return null;});
+      throw new Error((json && json.error) || ('HTTP '+res.status));
+    }
+    location.reload();
+  }catch(e){ alert('Fehler beim Speichern: '+e.message); }
+  return false;
+}
+
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){document.getElementById(id).style.display='none';}
 document.addEventListener('click',e=>{
@@ -171,11 +206,10 @@ document.addEventListener('click',e=>{
     document.querySelectorAll('[id^="umenu-"]').forEach(m=>m.style.display='none');
 });
 
+let currentEditUserID = null;
 function editUser(id, first, last, role, dept, phone) {
+  currentEditUserID = id;
   const modal = document.getElementById('edit-modal');
-  const form  = document.getElementById('edit-form');
-  form.setAttribute('hx-put', '/users/'+id+'/update-web');
-  htmx.process(form);
   document.getElementById('ef-first').value = first;
   document.getElementById('ef-last').value  = last;
   document.getElementById('ef-role').value  = role;
