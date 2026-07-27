@@ -1,0 +1,13 @@
+diff --git a/web/templates/task_detail.gohtml b/web/templates/task_detail.gohtml
+index 8db5e67..5e792dd 100644
+--- a/web/templates/task_detail.gohtml
++++ b/web/templates/task_detail.gohtml
+@@ -1,7 +1,7 @@
+ {{template "base" .}}
+ {{define "content"}}
+ <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+-  <a href="/tasks" class="btn btn-icon"><i class="ti ti-arrow-left"></i></a>
++  <a href="{{if .Task.ProjectID}}/projects/{{.Task.ProjectID}}{{else}}/tasks{{end}}" class="btn btn-icon"><i class="ti ti-arrow-left"></i></a>
+   <div style="flex:1">
+     <h1 style="font-size:18px;font-weight:600">{{.Task.Title}}</h1>
+     <p style="font-size:12px;color:var(--muted);margin-top:2px">
