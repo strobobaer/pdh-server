@@ -341,7 +341,7 @@ var RANGE_FROM = new Date('{{.RangeFromISO}}');
 var RANGE_TO = new Date('{{.RangeToISO}}');
 var timelineEntries = [
 {{range .Entries}}
-  {id:'{{.ID}}', name:'{{if $.IsAdmin}}{{.UserName}}: {{end}}{{.Description}}', start:'{{.StartedISO}}', end:'{{if .EndedISO}}{{.EndedISO}}{{else}}{{.StartedISO}}{{end}}', running: {{if .Running}}true{{else}}false{{end}} },
+  {id:'{{.ID}}', name:'{{if $.IsAdmin}}{{.UserName}}: {{end}}{{.Description}}', desc:'{{.Description}}', start:'{{.StartedISO}}', end:'{{if .EndedISO}}{{.EndedISO}}{{else}}{{.StartedISO}}{{end}}', endedRaw:'{{.EndedISO}}', running: {{if .Running}}true{{else}}false{{end}} },
 {{end}}
 ];
 
@@ -438,6 +438,13 @@ function renderTimeGantt(){
     bar.style.overflow = 'hidden';
     bar.title = entry.name + ' (' + entryStart.toLocaleString('de-DE') + ' - ' + entryEnd.toLocaleString('de-DE') + ')';
     bar.textContent = entry.name;
+    bar.title += ' — Doppelklick zum Bearbeiten';
+
+    bar.addEventListener('dblclick', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      openEditEntry(entry.id, entry.desc, entry.start, entry.endedRaw);
+    });
 
     if(!entry.running){
       var leftHandle = document.createElement('div');
