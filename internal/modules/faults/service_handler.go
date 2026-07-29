@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/core/addins"
-	"pdh/internal/modules/inventory"
 	"pdh/internal/core/synclink"
+	"pdh/internal/modules/inventory"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -172,6 +173,12 @@ func (s *Service) UpdateCostCenter(ctx context.Context, id string, costCenterID 
 	return s.repo.UpdateCostCenter(ctx, id, costCenterID)
 }
 
+// UpdateDueDate setzt/löscht das Fälligkeitsdatum einer Störung (z.B. per
+// Drag im Dashboard-Zeitstrahl). dueDate == nil löscht es wieder.
+func (s *Service) UpdateDueDate(ctx context.Context, id string, dueDate *time.Time) error {
+	return s.repo.UpdateDueDate(ctx, id, dueDate)
+}
+
 // QuickResolve schließt eine Störung OHNE die Pflichtprüfung (mind. eine
 // Maßnahme, Ersatzteile/"keine benötigt") ab. Gedacht für den generischen
 // Archivieren-Weg (z.B. versehentlich angelegte Datensätze), der Tickets
@@ -208,6 +215,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Post("/{id}/chat", h.Chat)
 	r.Post("/{id}/resolve", h.Resolve)
 	r.Post("/{id}/cost-center", h.UpdateCostCenter)
+	r.Post("/{id}/due-date", h.UpdateDueDate)
 	r.Post("/{id}/actions", h.AddAction)
 	r.Get("/{id}/actions", h.GetActions)
 	r.Delete("/{id}/actions/{actionID}", h.DeleteAction)
@@ -304,6 +312,34 @@ func (h *Handler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": "resolved"})
+}
+
+// UpdateDueDate setzt/löscht das Fälligkeitsdatum einer Störung, z.B. per
+// Drag im Dashboard-Zeitstrahl. Erwartet JSON {"due_date": "2026-08-01"}
+// (leerer String löscht das Datum wieder).
+func (h *Handler) UpdateDueDate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		DueDate string `json:"due_date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
+		return
+	}
+	var dueDate *time.Time
+	if in.DueDate != "" {
+		parsed, err := time.Parse("2006-01-02", in.DueDate)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "ungueltiges datum")
+			return
+		}
+		dueDate = &parsed
+	}
+	if err := h.svc.UpdateDueDate(r.Context(), id, dueDate); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"status": "gespeichert"})
 }
 
 // UpdateCostCenter akzeptiert sowohl JSON als auch normale Formulardaten

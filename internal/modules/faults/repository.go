@@ -3,6 +3,7 @@ package faults
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -104,7 +105,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 	var symptoms []byte
 	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
 		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.record_image_attachment_id, fl.resolution, fl.root_cause,
-		fl.detected_at, fl.resolved_at, fl.archived_at, fl.created_at, fl.updated_at,
+		fl.detected_at, fl.due_date, fl.resolved_at, fl.archived_at, fl.created_at, fl.updated_at,
 		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM faults fl
 		LEFT JOIN cost_centers cc ON fl.cost_center_id = cc.id
@@ -113,7 +114,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 		&f.ID, &f.Title, &f.Description, &symptoms, &f.Severity, &f.Status,
 		&f.InfrastructureID, &f.AssignedTo, &f.ResponsibleTo, &f.CreatedBy, &f.RecordImageID,
 		&f.Resolution, &f.RootCause,
-		&f.DetectedAt, &f.ResolvedAt, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
+		&f.DetectedAt, &f.DueDate, &f.ResolvedAt, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
 		&f.CostCenterID, &f.CostCenterNumber, &f.CostCenterName,
 	)
 	if err != nil {
@@ -125,7 +126,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Fault, error) {
 
 func (r *Repository) List(ctx context.Context, status FaultStatus) ([]*Fault, error) {
 	query := `SELECT fl.id, fl.title, fl.description, fl.symptoms, fl.severity, fl.status,
-		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.detected_at, fl.archived_at, fl.created_at, fl.updated_at,
+		fl.infrastructure_id, fl.assigned_to, fl.responsible_to, fl.created_by, fl.detected_at, fl.due_date, fl.archived_at, fl.created_at, fl.updated_at,
 		fl.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,'')
 		FROM faults fl
 		LEFT JOIN cost_centers cc ON fl.cost_center_id = cc.id`
@@ -153,7 +154,7 @@ func (r *Repository) List(ctx context.Context, status FaultStatus) ([]*Fault, er
 		err := rows.Scan(
 			&f.ID, &f.Title, &f.Description, &symptoms, &f.Severity, &f.Status,
 			&f.InfrastructureID, &f.AssignedTo, &f.ResponsibleTo, &f.CreatedBy,
-			&f.DetectedAt, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
+			&f.DetectedAt, &f.DueDate, &f.ArchivedAt, &f.CreatedAt, &f.UpdatedAt,
 			&f.CostCenterID, &f.CostCenterNumber, &f.CostCenterName,
 		)
 		if err != nil {
@@ -181,7 +182,7 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status FaultSt
 		_, _ = r.db.Exec(ctx, `INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 			VALUES ('fault', $1, 'status', 'status', $2, $3, 'Status geändert')`, id, string(status), userID)
 	}
-		if err == nil && userID != "" {
+	if err == nil && userID != "" {
 		notifyFaultLinkerStatus(ctx, id, string(status), userID)
 	}
 	return err
@@ -192,6 +193,16 @@ func (r *Repository) UpdateCostCenter(ctx context.Context, id string, costCenter
 	_, err := r.db.Exec(ctx,
 		`UPDATE faults SET cost_center_id=$1, updated_at=NOW() WHERE id=$2`,
 		costCenterID, id)
+	return err
+}
+
+// UpdateDueDate setzt/ändert ausschließlich das Fälligkeitsdatum einer
+// Störung (z.B. per Drag im Dashboard-Zeitstrahl). Rührt bewusst keine
+// anderen Felder an, um nichts versehentlich zu überschreiben.
+func (r *Repository) UpdateDueDate(ctx context.Context, id string, dueDate *time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE faults SET due_date=$1, updated_at=NOW() WHERE id=$2`,
+		dueDate, id)
 	return err
 }
 

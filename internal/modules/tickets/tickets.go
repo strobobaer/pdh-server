@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"pdh/internal/core/synclink"
 	"github.com/rs/zerolog/log"
 	"pdh/internal/core/addins"
+	"pdh/internal/core/synclink"
 	"pdh/internal/integrations/nextcloud"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
@@ -248,6 +248,15 @@ func (r *Repository) UpdateCostCenter(ctx context.Context, id string, costCenter
 	return err
 }
 
+// UpdateDueDate setzt/löscht ausschließlich das Fälligkeitsdatum eines
+// Tickets (z.B. per Drag im Dashboard-Zeitstrahl).
+func (r *Repository) UpdateDueDate(ctx context.Context, id string, dueDate *time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE tickets SET due_date=$1, updated_at=NOW() WHERE id=$2`,
+		dueDate, id)
+	return err
+}
+
 func (r *Repository) AddComment(ctx context.Context, c *Comment) error {
 	query := `INSERT INTO ticket_comments (id, ticket_id, user_id, text)
 		VALUES (gen_random_uuid(), $1, $2, $3)
@@ -383,6 +392,12 @@ func (s *Service) UpdateCostCenter(ctx context.Context, id string, costCenterID 
 	return s.repo.UpdateCostCenter(ctx, id, costCenterID)
 }
 
+// UpdateDueDate setzt/löscht das Fälligkeitsdatum eines Tickets (z.B. per
+// Drag im Dashboard-Zeitstrahl). dueDate == nil löscht es wieder.
+func (s *Service) UpdateDueDate(ctx context.Context, id string, dueDate *time.Time) error {
+	return s.repo.UpdateDueDate(ctx, id, dueDate)
+}
+
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
 	c := &Comment{TicketID: ticketID, UserID: userID, Text: text}
 	return c, s.repo.AddComment(ctx, c)
@@ -406,6 +421,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/{id}", h.GetByID)
 	r.Post("/{id}/status", h.UpdateStatus)
 	r.Post("/{id}/cost-center", h.UpdateCostCenter)
+	r.Post("/{id}/due-date", h.UpdateDueDate)
 	r.Post("/{id}/comments", h.AddComment)
 	r.Post("/{id}/resolve", h.Resolve)
 	r.Post("/{id}/actions", h.AddAction)
@@ -474,6 +490,31 @@ func (h *Handler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 // UpdateCostCenter akzeptiert sowohl JSON (für die JS-Fetch-Formulare in
 // tickets.gohtml) als auch normale Formulardaten (für htmx-Formulare wie in
 // ticket_detail.gohtml).
+func (h *Handler) UpdateDueDate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		DueDate string `json:"due_date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		return
+	}
+	var dueDate *time.Time
+	if in.DueDate != "" {
+		parsed, err := time.Parse("2006-01-02", in.DueDate)
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "ungültiges datum")
+			return
+		}
+		dueDate = &parsed
+	}
+	if err := h.svc.UpdateDueDate(r.Context(), id, dueDate); err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"status": "gespeichert"})
+}
+
 func (h *Handler) UpdateCostCenter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var costCenterID *string

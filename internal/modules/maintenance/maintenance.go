@@ -360,6 +360,17 @@ func (r *Repository) GetTaskByID(ctx context.Context, id string) (*MaintenanceTa
 		WHERE mt.id=$1`, id))
 }
 
+// UpdateDueDate setzt ausschließlich das Fälligkeitsdatum eines
+// Wartungsauftrags (z.B. per Drag im Dashboard-Zeitstrahl). Rührt bewusst
+// keine anderen Felder an - anders als UpdateTask oben, das Titel/
+// Beschreibung immer mit überschreibt.
+func (r *Repository) UpdateDueDate(ctx context.Context, id string, dueDate time.Time) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE maintenance_tasks SET due_date=$1, updated_at=NOW() WHERE id=$2`,
+		dueDate, id)
+	return err
+}
+
 func (r *Repository) UpdateTask(ctx context.Context, id string, in *UpdateTaskInput) error {
 	dueDate, err := time.Parse("2006-01-02", in.DueDate)
 	if err != nil {
@@ -604,6 +615,12 @@ func (s *Service) UpdateTask(ctx context.Context, id string, in *UpdateTaskInput
 	return s.repo.UpdateTask(ctx, id, in)
 }
 
+// UpdateDueDate setzt ausschließlich das Fälligkeitsdatum eines
+// Wartungsauftrags (z.B. per Drag im Dashboard-Zeitstrahl).
+func (s *Service) UpdateDueDate(ctx context.Context, id string, dueDate time.Time) error {
+	return s.repo.UpdateDueDate(ctx, id, dueDate)
+}
+
 func (s *Service) StartTask(ctx context.Context, id, userID string) error {
 	return s.repo.StartTask(ctx, id, userID)
 }
@@ -653,6 +670,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r.Get("/tasks", h.ListTasks)
 	r.Post("/tasks", h.CreateTask)
 	r.Get("/tasks/due", h.GetDueToday)
+	r.Post("/tasks/{id}/due-date", h.UpdateDueDate)
 	r.Post("/tasks/generate", h.GenerateTasks)
 	r.Post("/tasks/{id}/start", h.StartTask)
 	r.Post("/tasks/{id}/complete", h.CompleteTask)
@@ -725,6 +743,29 @@ func (h *Handler) GetDueToday(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.JSON(w, 200, tasks)
+}
+
+// UpdateDueDate setzt ausschließlich das Fälligkeitsdatum eines
+// Wartungsauftrags, z.B. per Drag im Dashboard-Zeitstrahl. Erwartet JSON
+// {"due_date": "2026-08-01"}.
+func (h *Handler) UpdateDueDate(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		DueDate string `json:"due_date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		response.Error(w, 400, "ungültige eingabe")
+		return
+	}
+	dueDate, err := time.Parse("2006-01-02", in.DueDate)
+	if err != nil {
+		response.Error(w, 400, "ungültiges datum")
+		return
+	}
+	if err := h.svc.UpdateDueDate(r.Context(), chi.URLParam(r, "id"), dueDate); err != nil {
+		response.Error(w, 500, err.Error())
+		return
+	}
+	response.JSON(w, 200, map[string]string{"status": "gespeichert"})
 }
 
 func (h *Handler) GenerateTasks(w http.ResponseWriter, r *http.Request) {

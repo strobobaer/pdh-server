@@ -34,6 +34,7 @@ type Fault struct {
 	Resolution       *string     `json:"resolution,omitempty"`
 	RootCause        *string     `json:"root_cause,omitempty"`
 	DetectedAt       time.Time   `json:"detected_at"`
+	DueDate          *time.Time  `json:"due_date,omitempty"`
 	ResolvedAt       *time.Time  `json:"resolved_at,omitempty"`
 	ArchivedAt       *time.Time  `json:"archived_at,omitempty"`
 	CreatedAt        time.Time   `json:"created_at"`

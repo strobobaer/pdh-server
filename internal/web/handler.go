@@ -23,9 +23,9 @@ import (
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/maintenance"
-	"pdh/internal/modules/tickets"
-	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/projects"
+	"pdh/internal/modules/tasks"
+	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
 )
 
@@ -53,6 +53,22 @@ type DashboardData struct {
 	OpenTickets    []TicketView
 	WeekPlan       bool
 	WeekDays       []ShiftDay
+	GanttItems     []GanttItem
+}
+
+// GanttItem ist ein vereinheitlichter Zeitstrahl-Eintrag fürs Dashboard,
+// zusammengeführt aus Aufgaben, Tickets, Wartungsaufträgen und Störungen.
+type GanttItem struct {
+	ID              string
+	RefType         string // "task" | "ticket" | "maintenance" | "fault"
+	Title           string
+	StartISO        string // YYYY-MM-DD
+	EndISO          string // YYYY-MM-DD (echt oder vorläufig)
+	IsProvisional   bool   // kein echtes Fälligkeitsdatum -> +30 Tage Platzhalter
+	IsDone          bool
+	Color           string
+	DetailURL       string
+	DueDateEndpoint string // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
 }
 
 type DashStats struct {
@@ -83,7 +99,7 @@ type FaultView struct {
 	AssignedName    string
 	ResponsibleName string
 	RecordImageURL  string
-	BlinkClass     string
+	BlinkClass      string
 }
 
 type TicketView struct {
@@ -751,7 +767,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					StatusClass: statusClass(string(f.Status)),
 					Severity:    string(f.Severity), SeverityClass: severityClass(string(f.Severity)),
 					DetectedAgo: timeAgo(f.DetectedAt),
-					BlinkClass: faultBlinkClass(string(f.Status)),
+					BlinkClass:  faultBlinkClass(string(f.Status)),
 				})
 			}
 		}
@@ -771,7 +787,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					ID: t.ID, Title: t.Title,
 					Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 					PriorityDot: priorityDot(string(t.Priority)),
-					BlinkClass: ticketBlinkClass(t.AssignedTo, string(t.Status)),
+					BlinkClass:  ticketBlinkClass(t.AssignedTo, string(t.Status)),
 				})
 			}
 		}
@@ -786,7 +802,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 					ID: m.ID, Title: m.Title, InfraName: m.InfraName,
 					EstimatedMin: 0, Priority: string(m.Priority),
 					PriorityClass: priorityClass(string(m.Priority)),
-					BlinkClass: maintenanceBlinkClass(m.DueDate),
+					BlinkClass:    maintenanceBlinkClass(m.DueDate),
 				})
 			}
 		}
@@ -826,7 +842,147 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ── Kombinierter Zeitstrahl (Aufgaben, Tickets, Wartung, Störungen) ──
+	data.GanttItems = h.buildDashboardGantt(ctx, now)
+
 	h.render(w, "dashboard", data)
+}
+
+// buildDashboardGantt führt Aufgaben, Tickets, Wartungsaufträge und
+// Störungen zu einer einheitlichen Zeitstrahl-Liste fürs Dashboard
+// zusammen. Objekte ohne echtes Fälligkeitsdatum bekommen ein vorläufiges
+// Enddatum (Erstellungsdatum + 30 Tage) und werden als "vorläufig"
+// markiert, damit das Template die Balkenfarbe entsprechend ausblassen
+// kann.
+func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []GanttItem {
+	const recentDoneWindow = 14 * 24 * time.Hour
+	var items []GanttItem
+
+	// Aufgaben
+	if tl, err := h.tasks.List(ctx, "", "", false); err == nil {
+		for _, t := range tl {
+			isDone := t.Status == tasks.StatusResolved || t.Status == tasks.StatusClosed
+			start := t.CreatedAt
+			if t.StartDate != nil {
+				start = *t.StartDate
+			}
+			end := start.AddDate(0, 0, 30)
+			provisional := true
+			if t.DueDate != nil {
+				end = *t.DueDate
+				provisional = false
+			}
+			if isDone {
+				if t.ResolvedAt != nil {
+					if now.Sub(*t.ResolvedAt) > recentDoneWindow {
+						continue
+					}
+					end = *t.ResolvedAt
+				}
+				provisional = false
+			}
+			color := t.Color
+			if color == "" {
+				color = "#4f6ef7"
+			}
+			items = append(items, GanttItem{
+				ID: t.ID, RefType: "task", Title: t.Title,
+				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
+				IsProvisional: provisional, IsDone: isDone, Color: color,
+				DetailURL:       "/tasks/" + t.ID,
+				DueDateEndpoint: "/api/v1/tasks/" + t.ID + "/edit",
+			})
+		}
+	}
+
+	// Tickets
+	if tl, err := h.tickets.List(ctx, ""); err == nil {
+		for _, t := range tl {
+			isDone := t.Status == "resolved" || t.Status == "closed"
+			start := t.CreatedAt
+			end := start.AddDate(0, 0, 30)
+			provisional := true
+			if t.DueDate != nil {
+				end = *t.DueDate
+				provisional = false
+			}
+			if isDone {
+				if t.ResolvedAt != nil {
+					if now.Sub(*t.ResolvedAt) > recentDoneWindow {
+						continue
+					}
+					end = *t.ResolvedAt
+				}
+				provisional = false
+			}
+			items = append(items, GanttItem{
+				ID: t.ID, RefType: "ticket", Title: t.Title,
+				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
+				IsProvisional: provisional, IsDone: isDone, Color: "#8b5cf6",
+				DetailURL:       "/tickets/" + t.ID,
+				DueDateEndpoint: "/api/v1/tickets/" + t.ID + "/due-date",
+			})
+		}
+	}
+
+	// Wartungsaufträge
+	if ml, err := h.maint.ListTasks(ctx, "", ""); err == nil {
+		for _, m := range ml {
+			if m.Status == maintenance.TaskSkipped {
+				continue
+			}
+			isDone := m.Status == maintenance.TaskDone
+			start := m.CreatedAt
+			end := m.DueDate // immer gesetzt, nie vorläufig
+			if isDone {
+				if m.CompletedAt != nil {
+					if now.Sub(*m.CompletedAt) > recentDoneWindow {
+						continue
+					}
+					end = *m.CompletedAt
+				}
+			}
+			items = append(items, GanttItem{
+				ID: m.ID, RefType: "maintenance", Title: m.Title,
+				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
+				IsProvisional: false, IsDone: isDone, Color: "#14b8a6",
+				DetailURL:       "/maintenance/tasks/" + m.ID,
+				DueDateEndpoint: "/api/v1/maintenance/tasks/" + m.ID + "/due-date",
+			})
+		}
+	}
+
+	// Störungen
+	if fl, err := h.faults.List(ctx, ""); err == nil {
+		for _, f := range fl {
+			isDone := f.Status == "resolved" || f.Status == "closed"
+			start := f.DetectedAt
+			end := start.AddDate(0, 0, 30)
+			provisional := true
+			if f.DueDate != nil {
+				end = *f.DueDate
+				provisional = false
+			}
+			if isDone {
+				if f.ResolvedAt != nil {
+					if now.Sub(*f.ResolvedAt) > recentDoneWindow {
+						continue
+					}
+					end = *f.ResolvedAt
+				}
+				provisional = false
+			}
+			items = append(items, GanttItem{
+				ID: f.ID, RefType: "fault", Title: f.Title,
+				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
+				IsProvisional: provisional, IsDone: isDone, Color: "#f97316",
+				DetailURL:       "/faults/" + f.ID,
+				DueDateEndpoint: "/api/v1/faults/" + f.ID + "/due-date",
+			})
+		}
+	}
+
+	return items
 }
 
 func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
@@ -1046,18 +1202,18 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 
 type TimePageData struct {
 	BaseData
-	TodayStr      string
-	WeekStr       string
-	TodayCount    int
-	Entries       []TimeEntryView
-	Running       *TimeEntryView
-	IsAdmin       bool
-	Users         []UserOption
-	FilterUser    string
-	FilterRange   string
-	FilterRaster  string
-	RangeFromISO  string
-	RangeToISO    string
+	TodayStr     string
+	WeekStr      string
+	TodayCount   int
+	Entries      []TimeEntryView
+	Running      *TimeEntryView
+	IsAdmin      bool
+	Users        []UserOption
+	FilterUser   string
+	FilterRange  string
+	FilterRaster string
+	RangeFromISO string
+	RangeToISO   string
 }
 
 type TimeEntryView struct {
@@ -1858,17 +2014,17 @@ func (h *Handler) MaintenanceTaskChecklistWeb(w http.ResponseWriter, r *http.Req
 
 type ShiftsPageData struct {
 	BaseData
-	WeekNumber          int
-	WeekRange           string
-	PrevWeek            string
-	NextWeek            string
-	Days                []WeekDay
-	Users               []shifts.UserWeekPlan
-	ShiftDefs           []ShiftDefView
-	Absences            []AbsenceView
-	ShiftMap            []ShiftEntry
-	LocksmithSlot1Phone string
-	LocksmithSlot2Phone string
+	WeekNumber           int
+	WeekRange            string
+	PrevWeek             string
+	NextWeek             string
+	Days                 []WeekDay
+	Users                []shifts.UserWeekPlan
+	ShiftDefs            []ShiftDefView
+	Absences             []AbsenceView
+	ShiftMap             []ShiftEntry
+	LocksmithSlot1Phone  string
+	LocksmithSlot2Phone  string
 	LocksmithSlot1TeamID string
 	LocksmithSlot2TeamID string
 	LocksmithSlot1UserID string
