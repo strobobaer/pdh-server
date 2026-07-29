@@ -90,9 +90,9 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('it-%s')" .ID))}}
           <div id="it-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:140px;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.3)">
-            {{template "icon-button" (dict "Action" "activate" "ShowLabel" true "Label" "Aktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"active\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
-            {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" "Wartung" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"maintenance\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
-            {{template "icon-button" (dict "Action" "deactivate" "ShowLabel" true "Label" "Inaktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPut" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"inactive\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
+            {{template "icon-button" (dict "Action" "activate" "ShowLabel" true "Label" "Aktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"active\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
+            {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" "Wartung" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"maintenance\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
+            {{template "icon-button" (dict "Action" "deactivate" "ShowLabel" true "Label" "Inaktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"inactive\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
           </div>
         </div>
       </td>

@@ -93,6 +93,78 @@ func (r *Repository) Create(ctx context.Context, a *Asset) error {
 	return nil
 }
 
+// GetByID liefert ein einzelnes Asset inkl. Fälligkeits-/Garantiedatum,
+// zugewiesenem Nutzer und Infrastruktur-Namen (für die Detailseite).
+func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
+	a := &Asset{}
+	var purchasedAt, warrantyUntil *time.Time
+	err := r.db.QueryRow(ctx, `SELECT a.id, a.name, a.type, a.status,
+		COALESCE(a.hostname,''), COALESCE(a.ip_address,''), COALESCE(a.mac_address,''),
+		COALESCE(a.manufacturer,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
+		COALESCE(a.location,''), COALESCE(a.os,''), a.purchased_at, a.warranty_until,
+		a.assigned_to, a.infrastructure_id,
+		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
+		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,'')
+		FROM it_assets a
+		LEFT JOIN users u ON a.assigned_to = u.id
+		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
+		WHERE a.id=$1`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Status,
+		&a.Hostname, &a.IPAddress, &a.MACAddress,
+		&a.Manufacturer, &a.Model, &a.SerialNo,
+		&a.Location, &a.OS, &purchasedAt, &warrantyUntil,
+		&a.AssignedTo, &a.InfrastructureID,
+		&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName)
+	if err != nil {
+		return nil, err
+	}
+	if purchasedAt != nil {
+		s := purchasedAt.Format("2006-01-02")
+		a.PurchasedAt = &s
+	}
+	if warrantyUntil != nil {
+		s := warrantyUntil.Format("2006-01-02")
+		a.WarrantyUntil = &s
+	}
+	return a, nil
+}
+
+// UpdateDetailsInput fasst die auf der Detailseite bearbeitbaren Felder
+// zusammen. Wird immer komplett aus dem vorausgefüllten Formular gesendet,
+// deshalb hier bewusst kein partielles COALESCE-Update wie bei den
+// gezielten Einzelfeld-Endpunkten andernorts.
+type UpdateDetailsInput struct {
+	Name             string
+	Type             AssetType
+	Hostname         string
+	IPAddress        string
+	MACAddress       string
+	Manufacturer     string
+	Model            string
+	SerialNo         string
+	Location         string
+	OS               string
+	PurchasedAt      *string
+	WarrantyUntil    *string
+	AssignedTo       *string
+	InfrastructureID *string
+	Notes            string
+}
+
+func (r *Repository) UpdateDetails(ctx context.Context, id string, in *UpdateDetailsInput) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE it_assets SET
+			name=$1, type=$2, hostname=$3, ip_address=$4, mac_address=$5,
+			manufacturer=$6, model=$7, serial_no=$8, location=$9, os=$10,
+			purchased_at=$11, warranty_until=$12, assigned_to=$13, infrastructure_id=$14,
+			notes=$15, updated_at=NOW()
+		WHERE id=$16`,
+		in.Name, in.Type, in.Hostname, in.IPAddress, in.MACAddress,
+		in.Manufacturer, in.Model, in.SerialNo, in.Location, in.OS,
+		in.PurchasedAt, in.WarrantyUntil, in.AssignedTo, in.InfrastructureID,
+		in.Notes, id)
+	return err
+}
+
 func (r *Repository) List(ctx context.Context, assetType AssetType, status AssetStatus) ([]*Asset, error) {
 	query := `SELECT a.id, a.name, a.type, a.status,
 		COALESCE(a.hostname,''), COALESCE(a.ip_address,''), COALESCE(a.mac_address,''),
@@ -160,6 +232,12 @@ func (s *Service) Create(ctx context.Context, in *CreateAssetInput, userID strin
 }
 func (s *Service) List(ctx context.Context, t AssetType, st AssetStatus) ([]*Asset, error) {
 	return s.repo.List(ctx, t, st)
+}
+func (s *Service) GetByID(ctx context.Context, id string) (*Asset, error) {
+	return s.repo.GetByID(ctx, id)
+}
+func (s *Service) UpdateDetails(ctx context.Context, id string, in *UpdateDetailsInput) error {
+	return s.repo.UpdateDetails(ctx, id, in)
 }
 func (s *Service) UpdateStatus(ctx context.Context, id string, status AssetStatus) error {
 	return s.repo.UpdateStatus(ctx, id, status)

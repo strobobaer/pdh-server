@@ -319,7 +319,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure", h.InfraCreate)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
-	r.Put("/it/{id}/status-web", h.ITStatusWeb)
+	r.Get("/it/{id}", h.ITDetail)
+	r.Post("/it/{id}/edit-web", h.ITEditWeb)
+	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/storage", h.StoragePage)
 	r.Post("/storage", h.StorageCreateRoot)
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
@@ -2653,6 +2655,39 @@ type ITAssetView struct {
 	Notes        string
 }
 
+type ITDetailData struct {
+	BaseData
+	Users []UserOption
+	Asset ITAssetDetailView
+}
+
+type ITAssetDetailView struct {
+	ID               string
+	Name             string
+	Type             string
+	TypeLabel        string
+	TypeIcon         string
+	Status           string
+	StatusLabel      string
+	StatusClass      string
+	Hostname         string
+	IPAddress        string
+	MACAddress       string
+	Manufacturer     string
+	Model            string
+	SerialNo         string
+	Location         string
+	OS               string
+	PurchasedAt      string
+	WarrantyUntil    string
+	AssignedID       string
+	AssigneeName     string
+	InfrastructureID string
+	InfraName        string
+	Notes            string
+	CreatedAgo       string
+}
+
 type UsersPageData struct {
 	BaseData
 	Users       []UserView
@@ -3103,4 +3138,82 @@ func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	fmt.Fprintf(w, `<span class="badge %s">%s</span>`, statusClasses[string(status)], statusLabels[string(status)])
+}
+
+func itAssetDetailView(a *it.Asset) ITAssetDetailView {
+	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
+	typeIcons := map[string]string{"server": "🖥️", "network": "🌐", "workstation": "💻", "printer": "🖨️", "phone": "📱", "tablet": "📟", "other": "📦"}
+	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
+	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
+	v := ITAssetDetailView{
+		ID: a.ID, Name: a.Name, Type: string(a.Type),
+		TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
+		Status: string(a.Status), StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
+		Hostname: a.Hostname, IPAddress: a.IPAddress, MACAddress: a.MACAddress,
+		Manufacturer: a.Manufacturer, Model: a.Model, SerialNo: a.SerialNo,
+		Location: a.Location, OS: a.OS,
+		AssigneeName: a.AssigneeName, InfraName: a.InfraName,
+		Notes: a.Notes, CreatedAgo: timeAgo(a.CreatedAt),
+	}
+	if a.PurchasedAt != nil {
+		v.PurchasedAt = *a.PurchasedAt
+	}
+	if a.WarrantyUntil != nil {
+		v.WarrantyUntil = *a.WarrantyUntil
+	}
+	if a.AssignedTo != nil {
+		v.AssignedID = *a.AssignedTo
+	}
+	if a.InfrastructureID != nil {
+		v.InfrastructureID = *a.InfrastructureID
+	}
+	return v
+}
+
+// ITDetail zeigt die Detailseite eines IT-Assets. Die Route dafuer fehlte
+// bisher komplett - jeder Klick auf ein Asset in der Liste fuehrte zu
+// einem 404, weil nur "/it" (Liste) und "/it/{id}/status-web" existierten.
+func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	a, err := h.it.GetByID(ctx, id)
+	if err != nil {
+		http.Redirect(w, r, "/it", http.StatusFound)
+		return
+	}
+
+	data := ITDetailData{
+		BaseData: baseData(r, "it", a.Name, "IT-Infrastruktur"),
+		Users:    h.userOptions(ctx),
+		Asset:    itAssetDetailView(a),
+	}
+	h.render(w, "it_detail", data)
+}
+
+// ITEditWeb speichert die auf der Detailseite bearbeitbaren Felder. POST
+// statt PUT, weil Cloudflare/Nginx PUT-Requests blockiert (siehe andere
+// "-web" Endpunkte in dieser Datei).
+func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	r.ParseForm()
+
+	in := &it.UpdateDetailsInput{
+		Name: r.FormValue("name"), Type: it.AssetType(r.FormValue("type")),
+		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
+		MACAddress:   r.FormValue("mac_address"),
+		Manufacturer: r.FormValue("manufacturer"), Model: r.FormValue("model"),
+		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
+		OS:               r.FormValue("os"),
+		PurchasedAt:      optionalID(r.FormValue("purchased_at")),
+		WarrantyUntil:    optionalID(r.FormValue("warranty_until")),
+		AssignedTo:       optionalID(r.FormValue("assigned_to")),
+		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
+		Notes:            r.FormValue("notes"),
+	}
+	if err := h.it.UpdateDetails(r.Context(), id, in); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/it/"+id, http.StatusFound)
 }

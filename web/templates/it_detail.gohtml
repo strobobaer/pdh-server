@@ -1,0 +1,139 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+  {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">{{.Asset.TypeIcon}} {{.Asset.Name}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Asset.TypeLabel}} · Erstellt {{.Asset.CreatedAgo}}{{if .Asset.InfraName}} · {{.Asset.InfraName}}{{end}}</p>
+  </div>
+  <span id="status-badge" class="badge {{.Asset.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Asset.StatusLabel}}</span>
+
+  <div style="position:relative">
+    {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('it-menu')")}}
+    <div id="it-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+      <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
+      {{template "icon-button" (dict "Action" "activate" "ShowLabel" true "Label" "Aktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .Asset.ID) "HxVals" "{\"status\":\"active\"}" "HxTarget" "#status-badge" "OnClick" "closeMenu('it-menu')")}}
+      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" "Wartung" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .Asset.ID) "HxVals" "{\"status\":\"maintenance\"}" "HxTarget" "#status-badge" "OnClick" "closeMenu('it-menu')")}}
+      {{template "icon-button" (dict "Action" "deactivate" "ShowLabel" true "Label" "Inaktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .Asset.ID) "HxVals" "{\"status\":\"inactive\"}" "HxTarget" "#status-badge" "OnClick" "closeMenu('it-menu')")}}
+      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Außer Dienst" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/it/%s/status-web" .Asset.ID) "HxVals" "{\"status\":\"retired\"}" "HxTarget" "#status-badge" "OnClick" "closeMenu('it-menu')")}}
+    </div>
+  </div>
+</div>
+
+<div class="grid2" style="grid-template-columns:1fr 340px;gap:14px;align-items:start">
+  <div>
+    <!-- Übersicht -->
+    <div class="card">
+      <div class="card-title">Übersicht</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px">
+        <div><div style="color:var(--muted);font-size:11px">Hostname</div>{{if .Asset.Hostname}}{{.Asset.Hostname}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">IP-Adresse</div>{{if .Asset.IPAddress}}{{.Asset.IPAddress}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">MAC-Adresse</div>{{if .Asset.MACAddress}}{{.Asset.MACAddress}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Betriebssystem</div>{{if .Asset.OS}}{{.Asset.OS}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Hersteller</div>{{if .Asset.Manufacturer}}{{.Asset.Manufacturer}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Modell</div>{{if .Asset.Model}}{{.Asset.Model}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Seriennummer</div>{{if .Asset.SerialNo}}{{.Asset.SerialNo}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Standort</div>{{if .Asset.Location}}{{.Asset.Location}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Gekauft am</div>{{if .Asset.PurchasedAt}}{{.Asset.PurchasedAt}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Garantie bis</div>{{if .Asset.WarrantyUntil}}{{.Asset.WarrantyUntil}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Zugewiesen an</div>{{if .Asset.AssigneeName}}{{.Asset.AssigneeName}}{{else}}Niemand{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Infrastruktur</div>{{if .Asset.InfraName}}{{.Asset.InfraName}}{{else}}—{{end}}</div>
+      </div>
+    </div>
+
+    <!-- Notizen -->
+    <div class="card">
+      <div class="card-title">Notizen</div>
+      <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if .Asset.Notes}}{{.Asset.Notes}}{{else}}Keine Notizen{{end}}</p>
+    </div>
+  </div>
+
+  <div>
+    <!-- Bearbeiten -->
+    <div class="card">
+      <div class="card-title">Bearbeiten</div>
+      <form method="POST" action="/it/{{.Asset.ID}}/edit-web">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input name="name" class="form-input" value="{{.Asset.Name}}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Typ</label>
+          <select name="type" class="form-input">
+            <option value="server" {{if eq .Asset.Type "server"}}selected{{end}}>Server</option>
+            <option value="network" {{if eq .Asset.Type "network"}}selected{{end}}>Netzwerk</option>
+            <option value="workstation" {{if eq .Asset.Type "workstation"}}selected{{end}}>Workstation</option>
+            <option value="printer" {{if eq .Asset.Type "printer"}}selected{{end}}>Drucker</option>
+            <option value="phone" {{if eq .Asset.Type "phone"}}selected{{end}}>Telefon</option>
+            <option value="tablet" {{if eq .Asset.Type "tablet"}}selected{{end}}>Tablet</option>
+            <option value="other" {{if eq .Asset.Type "other"}}selected{{end}}>Sonstiges</option>
+          </select>
+        </div>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group">
+            <label class="form-label">Hostname</label>
+            <input name="hostname" class="form-input" value="{{.Asset.Hostname}}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">IP-Adresse</label>
+            <input name="ip_address" class="form-input" value="{{.Asset.IPAddress}}">
+          </div>
+        </div>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group">
+            <label class="form-label">MAC-Adresse</label>
+            <input name="mac_address" class="form-input" value="{{.Asset.MACAddress}}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Betriebssystem</label>
+            <input name="os" class="form-input" value="{{.Asset.OS}}">
+          </div>
+        </div>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group">
+            <label class="form-label">Hersteller</label>
+            <input name="manufacturer" class="form-input" value="{{.Asset.Manufacturer}}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modell</label>
+            <input name="model" class="form-input" value="{{.Asset.Model}}">
+          </div>
+        </div>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group">
+            <label class="form-label">Seriennummer</label>
+            <input name="serial_no" class="form-input" value="{{.Asset.SerialNo}}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Standort</label>
+            <input name="location" class="form-input" value="{{.Asset.Location}}">
+          </div>
+        </div>
+        <div class="grid2" style="gap:10px">
+          <div class="form-group">
+            <label class="form-label">Gekauft am</label>
+            <input type="date" name="purchased_at" class="form-input" value="{{.Asset.PurchasedAt}}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Garantie bis</label>
+            <input type="date" name="warranty_until" class="form-input" value="{{.Asset.WarrantyUntil}}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesen an</label>
+          <select name="assigned_to" class="form-input">
+            <option value="">Niemand</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Asset.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        {{template "infra-tree-picker" (dict "TargetID" "it-detail-infra-id" "SelectedLabelID" "it-detail-infra-selected" "Label" "Infrastruktur" "Value" .Asset.InfrastructureID "SelectedLabel" .Asset.InfraName)}}
+        <div class="form-group">
+          <label class="form-label">Notizen</label>
+          <textarea name="notes" class="form-input" rows="4">{{.Asset.Notes}}</textarea>
+        </div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}

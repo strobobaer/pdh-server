@@ -15,7 +15,7 @@
     <div id="ticket-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
       <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
       {{range .StatusOptions}}
-      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPut" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}
+      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}
       {{end}}
       <div style="border-top:1px solid var(--border);margin:4px 0"></div>
       {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Ticket löschen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxDelete" (printf "/tickets/%s" .Ticket.ID) "HxConfirm" "Ticket löschen?" "HxTarget" "body" "OnClick" "closeMenu('ticket-menu')")}}
