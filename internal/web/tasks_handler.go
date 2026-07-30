@@ -47,7 +47,7 @@ func taskView(t *tasks.Task) TaskView {
 		Resolution: t.Resolution, RootCause: t.RootCause,
 		CreatedAgo: timeAgo(t.CreatedAt),
 		CanResolve: t.Status == "open" || t.Status == "in_progress",
-		Color: t.Color,
+		Color:      t.Color,
 	}
 	if t.DueDate != nil {
 		v.DueDate = t.DueDate.Format("02.01.2006")
@@ -90,7 +90,7 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 	unassigned := r.URL.Query().Get("unassigned") == "true"
 
 	data := TasksPageData{
-		BaseData: baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
+		BaseData: h.baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
 		Filter:   filter,
 		Users:    h.userOptions(ctx),
 	}
@@ -135,7 +135,7 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TaskDetailData{
-		BaseData: baseData(r, "tasks", t.Title, "Aufgabe"),
+		BaseData: h.baseData(r, "tasks", t.Title, "Aufgabe"),
 		Task:     taskView(t),
 		Users:    h.userOptions(ctx),
 	}
@@ -155,7 +155,6 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "task_detail", data)
 }
 
-
 func (h *Handler) TaskStartTime(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	u := getUser(r)
@@ -172,4 +171,3 @@ func (h *Handler) TaskStartTime(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, entry.ID[:8])
 }
-

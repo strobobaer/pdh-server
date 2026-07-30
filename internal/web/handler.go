@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"pdh/internal/core/infrastructure"
+	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
@@ -39,6 +40,13 @@ type BaseData struct {
 	UserFirstName string
 	UserLastName  string
 	FaultID       string
+
+	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
+	IsSystemUser           bool // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
+	IsOverrideSession      bool // aktuell per Override auf einem Systemnutzer angemeldet
+	IdleTimeoutMinutes     int  // globale Auto-Logout-Zeit (Minuten)
+	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
+	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
 }
 
 type DashboardData struct {
@@ -238,6 +246,7 @@ type Handler struct {
 	checks    *checklists.Service
 	tasks     *tasks.Service
 	projects  *projects.Service
+	rbac      *rbac.Service
 	jwtSecret string
 }
 
@@ -257,6 +266,7 @@ func NewHandler(
 	ch *checklists.Service,
 	tk *tasks.Service,
 	pj *projects.Service,
+	rb *rbac.Service,
 	jwtSecret string,
 ) *Handler {
 	return &Handler{
@@ -266,6 +276,7 @@ func NewHandler(
 		checks:    ch,
 		tasks:     tk,
 		projects:  pj,
+		rbac:      rb,
 		jwtSecret: jwtSecret,
 	}
 }
@@ -342,6 +353,17 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/role-web", h.UserRoleWeb)     // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
 	r.Get("/time", h.TimeTracking)
+
+	// Rollen & Berechtigungen
+	r.Get("/admin/roles", h.RolesPage)
+	r.Post("/admin/roles", h.RoleCreateWeb)
+	r.Post("/admin/roles/{id}/delete-web", h.RoleDeleteWeb)
+	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
+	r.Post("/admin/settings", h.SettingsWeb)
+
+	// Override-Anmeldung an Systemnutzer-Terminals
+	r.Post("/override-login", h.OverrideLoginWeb)
+	r.Post("/override-logout", h.OverrideLogoutWeb)
 
 	// HTMX partials
 	r.Get("/api/activity", h.ActivityFeed)
@@ -506,14 +528,27 @@ func getUser(r *http.Request) *users.User {
 	return &users.User{FirstName: "Gast", LastName: "", Role: "viewer"}
 }
 
-func baseData(r *http.Request, page, title, ctxTitle string) BaseData {
+// baseData baut die auf jeder Seite benoetigten Basisdaten - inklusive der
+// Auto-Logout-/Override-Felder, die base.gohtml global fuer den
+// Inaktivitaets-Timer und die Override-Anmeldung braucht.
+func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseData {
 	u := getUser(r)
+	isOverride := false
+	if c, err := r.Cookie("pdh_return_token"); err == nil && c.Value != "" {
+		isOverride = true
+	}
 	return BaseData{
 		Title: title, Page: page,
 		ContextTitle:  ctxTitle,
 		UserName:      u.FirstName + " " + u.LastName,
 		UserFirstName: u.FirstName,
 		UserLastName:  u.LastName,
+
+		IsSystemUser:           u.IsSystemUser,
+		IsOverrideSession:      isOverride,
+		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
+		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
+		CanManageRoles:         h.rbac.HasPermission(string(u.Role), "system.manage_roles"),
 	}
 }
 
@@ -744,7 +779,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	_, week := now.ISOWeek()
 
 	data := DashboardData{
-		BaseData:   baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
+		BaseData:   h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
 		Greeting:   greeting(),
 		DateStr:    now.Format("Mo 02. January 2006"),
 		WeekNumber: week,
@@ -992,7 +1027,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("status")
 
 	data := FaultsPageData{
-		BaseData: baseData(r, "faults", "Störungen", "Copilot-Analysen"),
+		BaseData: h.baseData(r, "faults", "Störungen", "Copilot-Analysen"),
 		Filter:   filter,
 		Users:    h.userOptions(ctx),
 	}
@@ -1025,7 +1060,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("status")
 
 	data := TicketsPageData{
-		BaseData: baseData(r, "tickets", "Tickets", "Kritische Tickets"),
+		BaseData: h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
 		Filter:   filter,
 		Users:    h.userOptions(ctx),
 	}
@@ -1060,7 +1095,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	data := InventoryPageData{
-		BaseData: baseData(r, "inventory", "Ersatzteillager", "Unter Mindestbestand"),
+		BaseData: h.baseData(r, "inventory", "Ersatzteillager", "Unter Mindestbestand"),
 	}
 
 	if stats, err := h.inv.GetStats(ctx); err == nil {
@@ -1333,7 +1368,7 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 	rangeToExclusive := rangeToDate.AddDate(0, 0, 1)
 
 	data := TimePageData{
-		BaseData:     baseData(r, "time", "Zeiterfassung", "Heute"),
+		BaseData:     h.baseData(r, "time", "Zeiterfassung", "Heute"),
 		TodayStr:     now.Format("02.01.2006"),
 		WeekStr:      weekStart.Format("02.01.") + " - " + weekStart.AddDate(0, 0, 6).Format("02.01."),
 		IsAdmin:      isAdmin,
@@ -1390,7 +1425,7 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) simplePage(w http.ResponseWriter, r *http.Request, page, title, ctxTitle string) {
-	h.render(w, "simple", struct{ BaseData }{baseData(r, page, title, ctxTitle)})
+	h.render(w, "simple", struct{ BaseData }{h.baseData(r, page, title, ctxTitle)})
 }
 
 // ── Auth ──────────────────────────────────────────────────────
@@ -1424,26 +1459,51 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		cookie, err := r.Cookie("pdh_token")
-		if err != nil || cookie.Value == "" {
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
+		tokenStr := ""
+		if err == nil {
+			tokenStr = cookie.Value
 		}
-		token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
-			if t.Method != jwt.SigningMethodHS256 {
-				return nil, fmt.Errorf("unerwartete signaturmethode")
+
+		userID := ""
+		if tokenStr != "" {
+			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+				if t.Method != jwt.SigningMethodHS256 {
+					return nil, fmt.Errorf("unerwartete signaturmethode")
+				}
+				return []byte(h.jwtSecret), nil
+			})
+			if err == nil && token.Valid {
+				if claims, ok := token.Claims.(jwt.MapClaims); ok {
+					userID, _ = claims["sub"].(string)
+				}
 			}
-			return []byte(h.jwtSecret), nil
-		})
-		if err != nil || !token.Valid {
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
 		}
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
+
+		// Kein gueltiges Token (fehlt oder abgelaufen): falls eine
+		// Override-Sitzung lief, automatisch zum Systemnutzer zurueckfallen,
+		// statt den Terminal-Bildschirm auf die Login-Seite zu werfen -
+		// genau das "automatisch mit Rücksprung" aus der Anforderung, auch
+		// wenn niemand mehr am Terminal ist, um manuell zurückzukehren.
+		if userID == "" {
+			if returnCookie, err := r.Cookie("pdh_return_token"); err == nil && returnCookie.Value != "" {
+				if rt, err := jwt.Parse(returnCookie.Value, func(t *jwt.Token) (interface{}, error) {
+					if t.Method != jwt.SigningMethodHS256 {
+						return nil, fmt.Errorf("unerwartete signaturmethode")
+					}
+					return []byte(h.jwtSecret), nil
+				}); err == nil && rt.Valid {
+					if claims, ok := rt.Claims.(jwt.MapClaims); ok {
+						if sub, _ := claims["sub"].(string); sub != "" {
+							http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+							http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: sub, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+							http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+							userID = sub
+						}
+					}
+				}
+			}
 		}
-		userID, _ := claims["sub"].(string)
+
 		if userID == "" {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
@@ -1677,7 +1737,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 	status := maintenance.TaskStatus(r.URL.Query().Get("status"))
 
 	data := MaintenancePageData{
-		BaseData: baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
+		BaseData: h.baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
 		Today:    time.Now().Format("2006-01-02"),
 		Filter:   string(status),
 		Users:    h.userOptions(ctx),
@@ -1913,7 +1973,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 
 	u := getUser(r)
 	data := MaintenanceTaskDetailData{
-		BaseData: baseData(r, "maintenance", task.Title, "Auftrag"),
+		BaseData: h.baseData(r, "maintenance", task.Title, "Auftrag"),
 		Task:     maintenanceTaskDetailView(task),
 		Users:    h.userOptions(r.Context()),
 		History:  h.recordHistory(r.Context(), "maintenance_task", id),
@@ -2085,7 +2145,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 
 	dayNames := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
 	data := ShiftsPageData{
-		BaseData:   baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
+		BaseData:   h.baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
 		WeekNumber: week,
 		WeekRange:  monday.Format("02.01") + "–" + sunday.Format("02.01.2006"),
 		PrevWeek:   monday.AddDate(0, 0, -7).Format("2006-01-02"),
@@ -2217,7 +2277,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TicketDetailData{
-		BaseData: baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
+		BaseData: h.baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
 		Users:    h.userOptions(ctx),
 		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{
@@ -2369,7 +2429,7 @@ func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := InventoryDetailData{
-		BaseData: baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
+		BaseData: h.baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
 		Part:     pv,
 	}
 
@@ -2480,7 +2540,7 @@ func flattenNodes(nodes []InfraNodeView) []InfraNodeView {
 func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	data := InfraPageData{
-		BaseData: baseData(r, "infrastructure", "Infrastruktur", "Schnellzugriff"),
+		BaseData: h.baseData(r, "infrastructure", "Infrastruktur", "Schnellzugriff"),
 	}
 
 	if tree, err := h.infra.GetTree(ctx); err == nil {
@@ -2588,7 +2648,7 @@ func storageNodeView(n *storage.Node) StorageNodeView {
 
 func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 	data := StoragePageData{
-		BaseData: baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
+		BaseData: h.baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
 		Stats:    map[string]int{},
 	}
 	if tree, err := h.storage.GetTree(r.Context()); err == nil {
@@ -2695,23 +2755,25 @@ type UsersPageData struct {
 	ActiveUsers int
 	Filter      string
 	RoleStats   []RoleStat
+	Roles       []*rbac.Role
 }
 
 type UserView struct {
-	ID         string
-	Username   string
-	Email      string
-	FirstName  string
-	LastName   string
-	FullName   string
-	Initials   string
-	AvatarBg   string
-	RoleValue  string
-	RoleLabel  string
-	RoleClass  string
-	Department string
-	Phone      string
-	Active     bool
+	ID           string
+	Username     string
+	Email        string
+	FirstName    string
+	LastName     string
+	FullName     string
+	Initials     string
+	AvatarBg     string
+	RoleValue    string
+	RoleLabel    string
+	RoleClass    string
+	IsSystemUser bool
+	Department   string
+	Phone        string
+	Active       bool
 
 	OnCallDuty      bool
 	ShiftLocksmith1 bool
@@ -2727,11 +2789,18 @@ type RoleStat struct {
 	Count int
 }
 
-func userView(u *users.User) UserView {
-	roleLabels := map[users.Role]string{
-		"admin": "Administrator", "manager": "Manager", "technician": "Techniker",
-		"worker": "Mitarbeiter", "viewer": "Betrachter",
+// roleLabelMap liefert key->label für alle Rollen (inkl. selbst angelegter),
+// fuer die Anzeige in UserViews.
+func (h *Handler) roleLabelMap(ctx context.Context) map[string]string {
+	roles, _ := h.rbac.ListRoles(ctx)
+	m := map[string]string{}
+	for _, ro := range roles {
+		m[ro.Key] = ro.Label
 	}
+	return m
+}
+
+func userView(u *users.User, roleLabels map[string]string) UserView {
 	roleClasses := map[users.Role]string{
 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
 		"worker": "b-gray", "viewer": "b-gray",
@@ -2746,14 +2815,21 @@ func userView(u *users.User) UserView {
 	}
 	bg := avatarBgs[(len(u.FirstName)+len(u.LastName))%len(avatarBgs)]
 
+	label := roleLabels[string(u.Role)]
+	if label == "" {
+		label = string(u.Role)
+	}
+
 	return UserView{
 		ID: u.ID, Username: u.Username, Email: u.Email,
 		FirstName: u.FirstName, LastName: u.LastName,
 		FullName: u.FirstName + " " + u.LastName,
 		Initials: initials, AvatarBg: bg,
-		RoleValue: string(u.Role),
-		RoleLabel: roleLabels[u.Role], RoleClass: roleClasses[u.Role],
-		Department: u.Department, Phone: u.Phone, Active: u.Active,
+		RoleValue:    string(u.Role),
+		RoleLabel:    label,
+		RoleClass:    roleClasses[u.Role],
+		IsSystemUser: u.IsSystemUser,
+		Department:   u.Department, Phone: u.Phone, Active: u.Active,
 		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
 		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
 	}
@@ -2763,9 +2839,13 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	filter := r.URL.Query().Get("role")
 	data := UsersPageData{
-		BaseData: baseData(r, "users", "Benutzerverwaltung", "Rollen"),
+		BaseData: h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
 		Filter:   filter,
 	}
+
+	roles, _ := h.rbac.ListRoles(ctx)
+	data.Roles = roles
+	roleLabelByKey := h.roleLabelMap(ctx)
 
 	allUsers, err := h.users.List(ctx)
 	if err == nil {
@@ -2777,15 +2857,18 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 			data.ActiveUsers++
 			roleCounts[string(u.Role)]++
 			if filter == "" || string(u.Role) == filter {
-				data.Users = append(data.Users, userView(u))
+				data.Users = append(data.Users, userView(u, roleLabelByKey))
 			}
 		}
 		data.TotalUsers = len(allUsers)
 		roleIcons := map[string]string{"admin": "👑", "manager": "📋", "technician": "🔧", "worker": "👷", "viewer": "👁️"}
-		roleNames := map[string]string{"admin": "Admin", "manager": "Manager", "technician": "Techniker", "worker": "Mitarbeiter", "viewer": "Betrachter"}
-		for _, role := range []string{"admin", "manager", "technician", "worker", "viewer"} {
-			if roleCounts[role] > 0 {
-				data.RoleStats = append(data.RoleStats, RoleStat{Icon: roleIcons[role], Label: roleNames[role], Count: roleCounts[role]})
+		for _, ro := range roles {
+			if roleCounts[ro.Key] > 0 {
+				icon := roleIcons[ro.Key]
+				if icon == "" {
+					icon = "🔑"
+				}
+				data.RoleStats = append(data.RoleStats, RoleStat{Icon: icon, Label: ro.Label, Count: roleCounts[ro.Key]})
 			}
 		}
 	}
@@ -2795,14 +2878,15 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	in := &users.CreateUserInput{
-		Username:   r.FormValue("username"),
-		Email:      r.FormValue("email"),
-		Password:   r.FormValue("password"),
-		FirstName:  r.FormValue("first_name"),
-		LastName:   r.FormValue("last_name"),
-		Role:       users.Role(r.FormValue("role")),
-		Department: r.FormValue("department"),
-		Phone:      r.FormValue("phone"),
+		Username:     r.FormValue("username"),
+		Email:        r.FormValue("email"),
+		Password:     r.FormValue("password"),
+		FirstName:    r.FormValue("first_name"),
+		LastName:     r.FormValue("last_name"),
+		Role:         users.Role(r.FormValue("role")),
+		Department:   r.FormValue("department"),
+		Phone:        r.FormValue("phone"),
+		IsSystemUser: r.FormValue("is_system_user") == "on",
 	}
 	u, err := h.users.Register(r.Context(), in)
 	w.Header().Set("Content-Type", "text/html")
@@ -2810,7 +2894,7 @@ func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<tr><td colspan="6" style="color:var(--red);padding:10px">Fehler: `+esc(err.Error())+`</td></tr>`)
 		return
 	}
-	v := userView(u)
+	v := userView(u, h.roleLabelMap(r.Context()))
 	fmt.Fprintf(w, `<tr id="user-row-%s">
 		<td><div style="display:flex;align-items:center;gap:10px">
 			<div style="width:34px;height:34px;border-radius:50%%;background:%s;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff">%s</div>
@@ -2834,6 +2918,7 @@ func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
 		Role:            users.Role(r.FormValue("role")),
 		Department:      r.FormValue("department"),
 		Phone:           r.FormValue("phone"),
+		IsSystemUser:    r.FormValue("is_system_user") == "on",
 		OnCallDuty:      r.FormValue("on_call_duty") == "on",
 		ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on",
 		ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
@@ -2865,6 +2950,201 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
 	u.Role = users.Role(r.FormValue("role"))
 	h.users.Update(r.Context(), u)
 	h.Users(w, r)
+}
+
+// ── Rollen- & Berechtigungsverwaltung ────────────────────────────
+
+type RolesPageData struct {
+	BaseData
+	Roles                  []*rbac.Role
+	PermissionGroups       []PermissionGroup
+	Matrix                 map[string]map[string]bool // roleID -> permissionID -> granted
+	IdleTimeoutMinutes     int
+	OverrideTimeoutMinutes int
+}
+
+type PermissionGroup struct {
+	Category    string
+	Permissions []*rbac.Permission
+}
+
+func (h *Handler) canManageRoles(r *http.Request) bool {
+	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_roles")
+}
+
+func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	ctx := r.Context()
+	roles, _ := h.rbac.ListRoles(ctx)
+	perms, _ := h.rbac.ListPermissions(ctx)
+	matrix, _ := h.rbac.MatrixEntries(ctx)
+
+	var groups []PermissionGroup
+	currentCat := ""
+	for _, p := range perms {
+		if p.Category != currentCat || len(groups) == 0 {
+			groups = append(groups, PermissionGroup{Category: p.Category})
+			currentCat = p.Category
+		}
+		last := &groups[len(groups)-1]
+		last.Permissions = append(last.Permissions, p)
+	}
+
+	data := RolesPageData{
+		BaseData:               h.baseData(r, "roles", "Rollen & Berechtigungen", "Auto-Logout"),
+		Roles:                  roles,
+		PermissionGroups:       groups,
+		Matrix:                 matrix,
+		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
+		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
+	}
+	h.render(w, "roles", data)
+}
+
+func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	r.ParseForm()
+	key := strings.TrimSpace(r.FormValue("key"))
+	label := strings.TrimSpace(r.FormValue("label"))
+	if key != "" && label != "" {
+		h.rbac.CreateRole(r.Context(), key, label)
+	}
+	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+}
+
+func (h *Handler) RoleDeleteWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	h.rbac.DeleteRole(r.Context(), chi.URLParam(r, "id"))
+	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+}
+
+// RoleMatrixWeb schaltet eine einzelne Berechtigung fuer eine Rolle per
+// htmx-Checkbox um, ohne die Seite neu zu laden.
+func (h *Handler) RoleMatrixWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	r.ParseForm()
+	roleID := r.FormValue("role_id")
+	permID := r.FormValue("permission_id")
+	granted := r.FormValue("granted") == "true"
+	if err := h.rbac.SetRolePermission(r.Context(), roleID, permID, granted); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) SettingsWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	r.ParseForm()
+	if v, err := strconv.Atoi(r.FormValue("idle_timeout_minutes")); err == nil {
+		h.rbac.SetIdleTimeoutMinutes(r.Context(), v)
+	}
+	if v, err := strconv.Atoi(r.FormValue("override_timeout_minutes")); err == nil {
+		h.rbac.SetOverrideTimeoutMinutes(r.Context(), v)
+	}
+	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+}
+
+// ── Override-Anmeldung an Systemnutzer-Terminals ─────────────────
+//
+// Ablauf: An einem als "Systemnutzer" markierten, dauerhaft eingeloggten
+// Terminal meldet sich jemand mit "system.override"-Berechtigung kurz mit
+// den eigenen Zugangsdaten an, erledigt eine Aufgabe unter eigenem Namen,
+// und kehrt danach (manuell per Button oder automatisch nach
+// Inaktivitaet) wieder zum Systemnutzer zurueck. Der urspruengliche
+// Systemnutzer-Token wird dafuer im Cookie "pdh_return_token"
+// zwischengespeichert - er wird niemals ueberschrieben, solange eine
+// Override-Sitzung bereits laeuft, damit sich Override-Anmeldungen nicht
+// verschachteln koennen.
+
+func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
+	systemCookie, err := r.Cookie("pdh_token")
+	if err != nil || systemCookie.Value == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	current := getUser(r)
+	if !current.IsSystemUser {
+		http.Redirect(w, r, "/?override_error=nur_am_systemnutzer", http.StatusFound)
+		return
+	}
+
+	r.ParseForm()
+	overrideUser, err := h.users.Authenticate(r.Context(), r.FormValue("email"), r.FormValue("password"))
+	if err != nil {
+		http.Redirect(w, r, "/?override_error=zugangsdaten", http.StatusFound)
+		return
+	}
+	if !h.rbac.HasPermission(string(overrideUser.Role), "system.override") {
+		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
+		return
+	}
+
+	// Nur beim allerersten Override-Login den Rueckkehr-Token setzen, damit
+	// verschachtelte Override-Anmeldungen nicht den eigentlichen
+	// Systemnutzer "verlieren".
+	if _, err := r.Cookie("pdh_return_token"); err != nil {
+		http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: systemCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	}
+
+	overrideTTL := time.Duration(h.rbac.OverrideTimeoutMinutes()) * time.Minute
+	tokenStr, err := h.users.IssueToken(overrideUser, overrideTTL, map[string]interface{}{"override": true})
+	if err != nil {
+		http.Redirect(w, r, "/?override_error=token", http.StatusFound)
+		return
+	}
+	maxAge := int(overrideTTL.Seconds())
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: tokenStr, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: overrideUser.ID, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// OverrideLogoutWeb kehrt zur Systemnutzer-Sitzung zurueck (Button "Zurück
+// zum Systemnutzer" oder automatisch per Inaktivitaets-Timer im Frontend).
+// Ohne aktive Override-Sitzung faellt das Verhalten auf einen normalen
+// Logout zurueck.
+func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
+	returnCookie, err := r.Cookie("pdh_return_token")
+	if err != nil || returnCookie.Value == "" {
+		h.Logout(w, r)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+
+	token, parseErr := jwt.Parse(returnCookie.Value, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unerwartete signaturmethode")
+		}
+		return []byte(h.jwtSecret), nil
+	})
+	if parseErr != nil || !token.Valid {
+		h.Logout(w, r)
+		return
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	userID, _ := claims["sub"].(string)
+	if !ok || userID == "" {
+		h.Logout(w, r)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: userID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // ── Wiederhergestellte Handler ────────────────────────────────
@@ -3014,7 +3294,7 @@ func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
 		BaseData
 		Total      int
 		Checklists []checklistView
-	}{BaseData: baseData(r, "checklists", "Checklisten-Vorlagen", "Feldtypen")}
+	}{BaseData: h.baseData(r, "checklists", "Checklisten-Vorlagen", "Feldtypen")}
 	if h.checks != nil {
 		if list, err := h.checks.List(r.Context(), r.URL.Query().Get("category")); err == nil {
 			data.Total = len(list)
@@ -3043,7 +3323,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := InfraDetailData{
-		BaseData: baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
+		BaseData: h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
 		Node:     infraNodeView(node),
 	}
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
@@ -3081,7 +3361,7 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	data := ITPageData{
-		BaseData: baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
+		BaseData: h.baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
 	}
 	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
@@ -3184,7 +3464,7 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := ITDetailData{
-		BaseData: baseData(r, "it", a.Name, "IT-Infrastruktur"),
+		BaseData: h.baseData(r, "it", a.Name, "IT-Infrastruktur"),
 		Users:    h.userOptions(ctx),
 		Asset:    itAssetDetailView(a),
 	}

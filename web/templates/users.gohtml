@@ -28,15 +28,14 @@
       <div class="form-group"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" required minlength="8"></div>
       <div class="form-group"><label class="form-label">Rolle</label>
         <select name="role" class="form-input">
-          <option value="worker">👷 Mitarbeiter</option>
-          <option value="technician">🔧 Techniker</option>
-          <option value="manager">📋 Manager</option>
-          <option value="admin">👑 Administrator</option>
-          <option value="viewer">👁️ Betrachter</option>
+          {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" placeholder="z.B. Produktion"></div>
       <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" placeholder="z.B. +49 821 ..."></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:22px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt, z.B. Werkstatt-Terminal)</label>
+      </div>
     </div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -84,7 +83,7 @@
           </div>
         </div>
       </td>
-      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span></td>
+      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span>{{if .IsSystemUser}} <span class="badge b-blue" title="Bleibt dauerhaft eingeloggt"><i class="ti ti-device-desktop"></i> System</span>{{end}}</td>
       <td style="font-size:13px;color:var(--muted)">{{.Department}}</td>
       <td style="font-size:12px">
         <div>{{.Email}}</div>
@@ -101,7 +100,7 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
+            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}',{{if .IsSystemUser}}true{{else}}false{{end}});closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
             <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
             {{if .Active}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
@@ -127,15 +126,14 @@
         <div class="form-group"><label class="form-label">Nachname</label><input id="ef-last" name="last_name" class="form-input" required></div>
         <div class="form-group"><label class="form-label">Rolle</label>
           <select id="ef-role" name="role" class="form-input">
-            <option value="worker">👷 Mitarbeiter</option>
-            <option value="technician">🔧 Techniker</option>
-            <option value="manager">📋 Manager</option>
-            <option value="admin">👑 Administrator</option>
-            <option value="viewer">👁️ Betrachter</option>
+            {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
           </select>
         </div>
         <div class="form-group"><label class="form-label">Abteilung</label><input id="ef-dept" name="department" class="form-input"></div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-systemuser" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt)</label>
+        </div>
       </div>
       <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
         <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Schicht-Qualifikationen</div>
@@ -180,6 +178,7 @@ async function submitUserEdit(event){
     role: document.getElementById('ef-role').value,
     department: document.getElementById('ef-dept').value,
     phone: document.getElementById('ef-phone').value,
+    is_system_user: document.getElementById('ef-systemuser').checked,
     on_call_duty: document.getElementById('ef-oncall').checked,
     sharpening: document.getElementById('ef-sharpening').checked,
     heating_fill: document.getElementById('ef-heating').checked,
@@ -207,7 +206,7 @@ document.addEventListener('click',e=>{
 });
 
 let currentEditUserID = null;
-function editUser(id, first, last, role, dept, phone) {
+function editUser(id, first, last, role, dept, phone, isSystemUser) {
   currentEditUserID = id;
   const modal = document.getElementById('edit-modal');
   document.getElementById('ef-first').value = first;
@@ -215,6 +214,7 @@ function editUser(id, first, last, role, dept, phone) {
   document.getElementById('ef-role').value  = role;
   document.getElementById('ef-dept').value  = dept;
   document.getElementById('ef-phone').value = phone;
+  document.getElementById('ef-systemuser').checked = !!isSystemUser;
   modal.style.display = 'flex';
 }
 </script>

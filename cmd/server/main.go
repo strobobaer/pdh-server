@@ -20,19 +20,20 @@ import (
 	"pdh/internal/core/addins"
 	"pdh/internal/core/costcenters"
 	"pdh/internal/core/infrastructure"
+	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
+	"pdh/internal/core/synclink"
 	"pdh/internal/core/users"
 	"pdh/internal/modules/attachments"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
-	"pdh/internal/core/synclink"
 	"pdh/internal/modules/inventory"
 	"pdh/internal/modules/it"
 	"pdh/internal/modules/maintenance"
-	"pdh/internal/modules/tickets"
-	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/projects"
+	"pdh/internal/modules/tasks"
+	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
 	"pdh/internal/web"
 	"pdh/pkg/config"
@@ -69,7 +70,14 @@ func main() {
 	// Services
 	userRepo := users.NewRepository(db.Pool)
 	userSvc := users.NewService(userRepo, cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
-	userHandler := users.NewHandler(userSvc)
+
+	rbacRepo := rbac.NewRepository(db.Pool)
+	rbacSvc := rbac.NewService(rbacRepo)
+	if err := rbacSvc.Warm(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("rbac-cache konnte nicht initial geladen werden")
+	}
+
+	userHandler := users.NewHandler(userSvc, rbacSvc)
 
 	shiftRepo := shifts.NewRepository(db.Pool)
 
@@ -165,7 +173,7 @@ func main() {
 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
 
 	// Web Handler
-	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, cfg.Auth.JWTSecret)
+	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 

@@ -1,0 +1,108 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Rollen & Berechtigungen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{len .Roles}} Rollen · {{len .PermissionGroups}} Berechtigungsgruppen</p>
+</div>
+
+<div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+  <!-- Neue Rolle -->
+  <div class="card">
+    <div class="card-title">Neue Rolle anlegen</div>
+    <form method="POST" action="/admin/roles">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Schlüssel (technisch, z.B. "einkauf")</label>
+          <input name="key" class="form-input" pattern="[a-z0-9_]+" title="nur Kleinbuchstaben, Ziffern, Unterstrich" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Anzeigename</label>
+          <input name="label" class="form-input" placeholder="z.B. Einkauf" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Rolle anlegen</button>
+    </form>
+  </div>
+
+  <!-- Auto-Logout -->
+  <div class="card">
+    <div class="card-title">Auto-Logout</div>
+    <form method="POST" action="/admin/settings">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Inaktivität bis Auto-Logout (Minuten)</label>
+          <input type="number" min="1" name="idle_timeout_minutes" class="form-input" value="{{.IdleTimeoutMinutes}}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Override-Sitzung: Rücksprung nach (Minuten)</label>
+          <input type="number" min="1" name="override_timeout_minutes" class="form-input" value="{{.OverrideTimeoutMinutes}}" required>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Systemnutzer (Häkchen in der Benutzerverwaltung) sind von der Auto-Logout-Zeit ausgenommen und bleiben dauerhaft eingeloggt.</p>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+</div>
+
+<!-- Berechtigungs-Matrix -->
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Berechtigungs-Matrix</div>
+  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Berechtigung</th>
+        {{range .Roles}}
+        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">
+          {{.Label}}
+          {{if not .IsBuiltin}}
+          <form method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
+            <button type="submit" class="btn-icon" style="width:20px;height:20px;vertical-align:middle" title="Rolle löschen"><i class="ti ti-trash" style="font-size:12px"></i></button>
+          </form>
+          {{end}}
+        </th>
+        {{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{$roles := .Roles}}
+      {{$matrix := .Matrix}}
+      {{range .PermissionGroups}}
+      <tr><td colspan="99" style="padding:10px 10px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">{{.Category}}</td></tr>
+      {{range .Permissions}}
+      {{$perm := .}}
+      <tr>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Label}}</td>
+        {{range $roles}}
+        {{$role := .}}
+        <td style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border)">
+          <input type="checkbox" {{if index $matrix $role.ID $perm.ID}}checked{{end}}
+                 onchange="saveMatrixCell(this,'{{$role.ID}}','{{$perm.ID}}')">
+        </td>
+        {{end}}
+      </tr>
+      {{end}}
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+async function saveMatrixCell(checkbox, roleId, permId){
+  checkbox.disabled = true;
+  try{
+    const res = await fetch('/admin/roles/matrix-web', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'role_id=' + encodeURIComponent(roleId) + '&permission_id=' + encodeURIComponent(permId) + '&granted=' + (checkbox.checked ? 'true' : 'false')
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+  }catch(e){
+    alert('Konnte nicht gespeichert werden: ' + e.message);
+    checkbox.checked = !checkbox.checked;
+  }
+  checkbox.disabled = false;
+}
+</script>
+{{end}}

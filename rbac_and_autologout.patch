@@ -1,0 +1,1808 @@
+diff --git a/cmd/server/main.go b/cmd/server/main.go
+index 6eef5d0..05386fe 100644
+--- a/cmd/server/main.go
++++ b/cmd/server/main.go
+@@ -20,19 +20,20 @@ import (
+ 	"pdh/internal/core/addins"
+ 	"pdh/internal/core/costcenters"
+ 	"pdh/internal/core/infrastructure"
++	"pdh/internal/core/rbac"
+ 	"pdh/internal/core/shifts"
+ 	"pdh/internal/core/storage"
++	"pdh/internal/core/synclink"
+ 	"pdh/internal/core/users"
+ 	"pdh/internal/modules/attachments"
+ 	"pdh/internal/modules/checklists"
+ 	"pdh/internal/modules/faults"
+-	"pdh/internal/core/synclink"
+ 	"pdh/internal/modules/inventory"
+ 	"pdh/internal/modules/it"
+ 	"pdh/internal/modules/maintenance"
+-	"pdh/internal/modules/tickets"
+-	"pdh/internal/modules/tasks"
+ 	"pdh/internal/modules/projects"
++	"pdh/internal/modules/tasks"
++	"pdh/internal/modules/tickets"
+ 	"pdh/internal/modules/timetracking"
+ 	"pdh/internal/web"
+ 	"pdh/pkg/config"
+@@ -69,7 +70,14 @@ func main() {
+ 	// Services
+ 	userRepo := users.NewRepository(db.Pool)
+ 	userSvc := users.NewService(userRepo, cfg.Auth.JWTSecret, cfg.Auth.TokenDuration)
+-	userHandler := users.NewHandler(userSvc)
++
++	rbacRepo := rbac.NewRepository(db.Pool)
++	rbacSvc := rbac.NewService(rbacRepo)
++	if err := rbacSvc.Warm(context.Background()); err != nil {
++		log.Warn().Err(err).Msg("rbac-cache konnte nicht initial geladen werden")
++	}
++
++	userHandler := users.NewHandler(userSvc, rbacSvc)
+ 
+ 	shiftRepo := shifts.NewRepository(db.Pool)
+ 
+@@ -165,7 +173,7 @@ func main() {
+ 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
+ 
+ 	// Web Handler
+-	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, cfg.Auth.JWTSecret)
++	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
+ 
+ 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
+ 
+diff --git a/internal/core/rbac/rbac.go b/internal/core/rbac/rbac.go
+new file mode 100644
+index 0000000..3c65565
+--- /dev/null
++++ b/internal/core/rbac/rbac.go
+@@ -0,0 +1,314 @@
++package rbac
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"strconv"
++	"sync"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"pdh/pkg/middleware"
++	"pdh/pkg/response"
++)
++
++// ── Typen ────────────────────────────────────────────────────
++
++type Role struct {
++	ID        string    `json:"id"`
++	Key       string    `json:"key"`
++	Label     string    `json:"label"`
++	IsBuiltin bool      `json:"is_builtin"`
++	CreatedAt time.Time `json:"created_at"`
++}
++
++type Permission struct {
++	ID       string `json:"id"`
++	Key      string `json:"key"`
++	Label    string `json:"label"`
++	Category string `json:"category"`
++}
++
++// ── Repository ───────────────────────────────────────────────
++
++type Repository struct{ db *pgxpool.Pool }
++
++func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
++
++func (r *Repository) ListRoles(ctx context.Context) ([]*Role, error) {
++	rows, err := r.db.Query(ctx, `SELECT id, key, label, is_builtin, created_at FROM roles ORDER BY is_builtin DESC, label`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var list []*Role
++	for rows.Next() {
++		role := &Role{}
++		if err := rows.Scan(&role.ID, &role.Key, &role.Label, &role.IsBuiltin, &role.CreatedAt); err != nil {
++			return nil, err
++		}
++		list = append(list, role)
++	}
++	return list, nil
++}
++
++func (r *Repository) CreateRole(ctx context.Context, key, label string) (*Role, error) {
++	role := &Role{Key: key, Label: label}
++	err := r.db.QueryRow(ctx,
++		`INSERT INTO roles (key, label, is_builtin) VALUES ($1, $2, false) RETURNING id, created_at`,
++		key, label).Scan(&role.ID, &role.CreatedAt)
++	if err != nil {
++		return nil, err
++	}
++	return role, nil
++}
++
++// DeleteRole loescht nur benutzerdefinierte Rollen. Eingebaute Rollen
++// (admin/manager/technician/worker/viewer) koennen nicht geloescht werden,
++// weil zahlreiche RequireRole()-Aufrufe im Code fest darauf verweisen.
++func (r *Repository) DeleteRole(ctx context.Context, id string) error {
++	tag, err := r.db.Exec(ctx, `DELETE FROM roles WHERE id=$1 AND is_builtin=false`, id)
++	if err != nil {
++		return err
++	}
++	if tag.RowsAffected() == 0 {
++		return fmt.Errorf("eingebaute Rollen können nicht gelöscht werden")
++	}
++	return nil
++}
++
++func (r *Repository) ListPermissions(ctx context.Context) ([]*Permission, error) {
++	rows, err := r.db.Query(ctx, `SELECT id, key, label, category FROM permissions ORDER BY category, label`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var list []*Permission
++	for rows.Next() {
++		p := &Permission{}
++		if err := rows.Scan(&p.ID, &p.Key, &p.Label, &p.Category); err != nil {
++			return nil, err
++		}
++		list = append(list, p)
++	}
++	return list, nil
++}
++
++// MatrixEntries liefert alle (role_id, permission_id) Paare, die aktuell
++// gewaehrt sind - fuer den schnellen Aufbau der Checkbox-Matrix.
++func (r *Repository) MatrixEntries(ctx context.Context) (map[string]map[string]bool, error) {
++	rows, err := r.db.Query(ctx, `SELECT role_id, permission_id FROM role_permissions`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	out := map[string]map[string]bool{}
++	for rows.Next() {
++		var roleID, permID string
++		if err := rows.Scan(&roleID, &permID); err != nil {
++			return nil, err
++		}
++		if out[roleID] == nil {
++			out[roleID] = map[string]bool{}
++		}
++		out[roleID][permID] = true
++	}
++	return out, nil
++}
++
++func (r *Repository) SetRolePermission(ctx context.Context, roleID, permissionID string, granted bool) error {
++	if granted {
++		_, err := r.db.Exec(ctx,
++			`INSERT INTO role_permissions (role_id, permission_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
++			roleID, permissionID)
++		return err
++	}
++	_, err := r.db.Exec(ctx,
++		`DELETE FROM role_permissions WHERE role_id=$1 AND permission_id=$2`, roleID, permissionID)
++	return err
++}
++
++// RolePermissionKeys liefert die Menge der Permission-Keys, die einer
++// Rolle (per key, z.B. "admin") aktuell zugewiesen sind - Grundlage fuer
++// den in-memory Cache.
++func (r *Repository) RolePermissionKeysByRoleKey(ctx context.Context) (map[string]map[string]bool, error) {
++	rows, err := r.db.Query(ctx, `
++		SELECT ro.key, p.key
++		FROM role_permissions rp
++		JOIN roles ro ON ro.id = rp.role_id
++		JOIN permissions p ON p.id = rp.permission_id`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	out := map[string]map[string]bool{}
++	for rows.Next() {
++		var roleKey, permKey string
++		if err := rows.Scan(&roleKey, &permKey); err != nil {
++			return nil, err
++		}
++		if out[roleKey] == nil {
++			out[roleKey] = map[string]bool{}
++		}
++		out[roleKey][permKey] = true
++	}
++	return out, nil
++}
++
++func (r *Repository) GetSetting(ctx context.Context, key string) (string, error) {
++	var value string
++	err := r.db.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&value)
++	return value, err
++}
++
++func (r *Repository) SetSetting(ctx context.Context, key, value string) error {
++	_, err := r.db.Exec(ctx, `
++		INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
++		ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=NOW()`, key, value)
++	return err
++}
++
++// ── Service (mit In-Memory-Cache für die heiße Berechtigungsprüfung) ──
++
++type Service struct {
++	repo *Repository
++
++	mu               sync.RWMutex
++	permCache        map[string]map[string]bool // roleKey -> Set(permissionKey)
++	idleTimeoutMin   int
++	overrideTimeoutM int
++}
++
++func NewService(repo *Repository) *Service {
++	s := &Service{repo: repo, permCache: map[string]map[string]bool{}, idleTimeoutMin: 30, overrideTimeoutM: 10}
++	return s
++}
++
++// Warm laedt den Berechtigungs-Cache und die Einstellungen initial (beim
++// Serverstart aufzurufen).
++func (s *Service) Warm(ctx context.Context) error {
++	return s.RefreshCache(ctx)
++}
++
++func (s *Service) RefreshCache(ctx context.Context) error {
++	m, err := s.repo.RolePermissionKeysByRoleKey(ctx)
++	if err != nil {
++		return err
++	}
++	idleStr, err := s.repo.GetSetting(ctx, "idle_timeout_minutes")
++	idleMin := 30
++	if err == nil {
++		if v, convErr := strconv.Atoi(idleStr); convErr == nil && v > 0 {
++			idleMin = v
++		}
++	}
++	overrideStr, err := s.repo.GetSetting(ctx, "override_timeout_minutes")
++	overrideMin := 10
++	if err == nil {
++		if v, convErr := strconv.Atoi(overrideStr); convErr == nil && v > 0 {
++			overrideMin = v
++		}
++	}
++
++	s.mu.Lock()
++	s.permCache = m
++	s.idleTimeoutMin = idleMin
++	s.overrideTimeoutM = overrideMin
++	s.mu.Unlock()
++	return nil
++}
++
++// HasPermission prüft, ob eine Rolle (per key, z.B. "admin") eine
++// bestimmte Berechtigung hat. Nutzt ausschließlich den In-Memory-Cache,
++// damit die Prüfung auch bei jedem Request schnell bleibt.
++func (s *Service) HasPermission(roleKey, permissionKey string) bool {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	perms, ok := s.permCache[roleKey]
++	if !ok {
++		return false
++	}
++	return perms[permissionKey]
++}
++
++func (s *Service) IdleTimeoutMinutes() int {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.idleTimeoutMin
++}
++
++func (s *Service) OverrideTimeoutMinutes() int {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	return s.overrideTimeoutM
++}
++
++func (s *Service) ListRoles(ctx context.Context) ([]*Role, error) { return s.repo.ListRoles(ctx) }
++func (s *Service) ListPermissions(ctx context.Context) ([]*Permission, error) {
++	return s.repo.ListPermissions(ctx)
++}
++func (s *Service) MatrixEntries(ctx context.Context) (map[string]map[string]bool, error) {
++	return s.repo.MatrixEntries(ctx)
++}
++
++// RequirePermission ist eine chi-kompatible Middleware fuer die
++// API-Routen (middleware.Auth setzt den Rollen-Context, hier draufsetzen).
++// Fuer Web-Seiten (HTML) wird die Berechtigung stattdessen direkt per
++// HasPermission() im jeweiligen Handler geprueft, weil dort statt eines
++// Redirects meist eine sprechendere Fehlermeldung/Weiterleitung noetig ist.
++func (s *Service) RequirePermission(permissionKey string) func(http.Handler) http.Handler {
++	return func(next http.Handler) http.Handler {
++		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++			roleKey, _ := r.Context().Value(middleware.RoleKey).(string)
++			if !s.HasPermission(roleKey, permissionKey) {
++				response.Error(w, http.StatusForbidden, "keine berechtigung")
++				return
++			}
++			next.ServeHTTP(w, r)
++		})
++	}
++}
++
++func (s *Service) CreateRole(ctx context.Context, key, label string) (*Role, error) {
++	role, err := s.repo.CreateRole(ctx, key, label)
++	if err != nil {
++		return nil, err
++	}
++	_ = s.RefreshCache(ctx)
++	return role, nil
++}
++
++func (s *Service) DeleteRole(ctx context.Context, id string) error {
++	if err := s.repo.DeleteRole(ctx, id); err != nil {
++		return err
++	}
++	return s.RefreshCache(ctx)
++}
++
++func (s *Service) SetRolePermission(ctx context.Context, roleID, permissionID string, granted bool) error {
++	if err := s.repo.SetRolePermission(ctx, roleID, permissionID, granted); err != nil {
++		return err
++	}
++	return s.RefreshCache(ctx)
++}
++
++func (s *Service) SetIdleTimeoutMinutes(ctx context.Context, minutes int) error {
++	if minutes < 1 {
++		minutes = 1
++	}
++	if err := s.repo.SetSetting(ctx, "idle_timeout_minutes", strconv.Itoa(minutes)); err != nil {
++		return err
++	}
++	return s.RefreshCache(ctx)
++}
++
++func (s *Service) SetOverrideTimeoutMinutes(ctx context.Context, minutes int) error {
++	if minutes < 1 {
++		minutes = 1
++	}
++	if err := s.repo.SetSetting(ctx, "override_timeout_minutes", strconv.Itoa(minutes)); err != nil {
++		return err
++	}
++	return s.RefreshCache(ctx)
++}
+diff --git a/internal/core/users/handler.go b/internal/core/users/handler.go
+index 344a3f1..e957f5b 100644
+--- a/internal/core/users/handler.go
++++ b/internal/core/users/handler.go
+@@ -6,16 +6,18 @@ import (
+ 	"strconv"
+ 
+ 	"github.com/go-chi/chi/v5"
++	"pdh/internal/core/rbac"
+ 	"pdh/pkg/middleware"
+ 	"pdh/pkg/response"
+ )
+ 
+ type Handler struct {
+-	svc *Service
++	svc  *Service
++	rbac *rbac.Service
+ }
+ 
+-func NewHandler(svc *Service) *Handler {
+-	return &Handler{svc: svc}
++func NewHandler(svc *Service, rb *rbac.Service) *Handler {
++	return &Handler{svc: svc, rbac: rb}
+ }
+ 
+ // Routes - registriert alle User-Routen
+@@ -34,9 +36,11 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
+ 		r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+ 		r.Post("/set-locksmith/{slot}", h.SetLocksmithSlot)
+ 
+-		// Nur Admin
++		// Nur mit "system.manage_users"-Berechtigung (frueher hart auf die
++		// Rolle "admin" verdrahtet - jetzt ueber die Rollen-/Berechtigungs-
++		// verwaltung konfigurierbar).
+ 		r.Group(func(r chi.Router) {
+-			r.Use(middleware.RequireRole("admin"))
++			r.Use(h.rbac.RequirePermission("system.manage_users"))
+ 			r.Delete("/{id}", h.Deactivate)
+ 		})
+ 	})
+diff --git a/internal/core/users/repository.go b/internal/core/users/repository.go
+index daff010..3740e19 100644
+--- a/internal/core/users/repository.go
++++ b/internal/core/users/repository.go
+@@ -30,6 +30,7 @@ type User struct {
+ 	Department   string    `json:"department"`
+ 	Phone        string    `json:"phone"`
+ 	Active       bool      `json:"active"`
++	IsSystemUser bool      `json:"is_system_user"`
+ 	CreatedAt    time.Time `json:"created_at"`
+ 	UpdatedAt    time.Time `json:"updated_at"`
+ 
+@@ -44,14 +45,15 @@ type User struct {
+ 
+ // CreateUserInput - Eingabe für neuen User
+ type CreateUserInput struct {
+-	Username   string `json:"username"`
+-	Email      string `json:"email"`
+-	Password   string `json:"password"`
+-	FirstName  string `json:"first_name"`
+-	LastName   string `json:"last_name"`
+-	Role       Role   `json:"role"`
+-	Department string `json:"department"`
+-	Phone      string `json:"phone"`
++	Username     string `json:"username"`
++	Email        string `json:"email"`
++	Password     string `json:"password"`
++	FirstName    string `json:"first_name"`
++	LastName     string `json:"last_name"`
++	Role         Role   `json:"role"`
++	Department   string `json:"department"`
++	Phone        string `json:"phone"`
++	IsSystemUser bool   `json:"is_system_user"`
+ }
+ 
+ // Repository - Datenbankzugriff
+@@ -65,26 +67,26 @@ func NewRepository(db *pgxpool.Pool) *Repository {
+ 
+ func (r *Repository) Create(ctx context.Context, u *User) error {
+ 	query := `
+-		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active)
+-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true)
++		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user)
++		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9)
+ 		RETURNING id, created_at, updated_at`
+ 	return r.db.QueryRow(ctx, query,
+ 		u.Username, u.Email, u.PasswordHash,
+ 		u.FirstName, u.LastName, u.Role,
+-		u.Department, u.Phone,
++		u.Department, u.Phone, u.IsSystemUser,
+ 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
+ }
+ 
+ func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
+ 	u := &User{}
+ 	query := `SELECT id, username, email, password_hash, first_name, last_name,
+-		role, department, phone, active, created_at, updated_at,
++		role, department, phone, active, is_system_user, created_at, updated_at,
+ 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+ 		FROM users WHERE id = $1 AND active = true`
+ 	err := r.db.QueryRow(ctx, query, id).Scan(
+ 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+ 		&u.FirstName, &u.LastName, &u.Role,
+-		&u.Department, &u.Phone, &u.Active,
++		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+ 		&u.CreatedAt, &u.UpdatedAt,
+ 		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+ 	)
+@@ -94,13 +96,13 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
+ func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error) {
+ 	u := &User{}
+ 	query := `SELECT id, username, email, password_hash, first_name, last_name,
+-		role, department, phone, active, created_at, updated_at,
++		role, department, phone, active, is_system_user, created_at, updated_at,
+ 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+ 		FROM users WHERE email = $1 AND active = true`
+ 	err := r.db.QueryRow(ctx, query, email).Scan(
+ 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+ 		&u.FirstName, &u.LastName, &u.Role,
+-		&u.Department, &u.Phone, &u.Active,
++		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+ 		&u.CreatedAt, &u.UpdatedAt,
+ 		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+ 	)
+@@ -109,7 +111,7 @@ func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error
+ 
+ func (r *Repository) List(ctx context.Context) ([]*User, error) {
+ 	query := `SELECT id, username, email, first_name, last_name,
+-		role, department, phone, active, created_at, updated_at,
++		role, department, phone, active, is_system_user, created_at, updated_at,
+ 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+ 		FROM users WHERE active = true ORDER BY last_name, first_name`
+ 	rows, err := r.db.Query(ctx, query)
+@@ -124,7 +126,7 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
+ 		err := rows.Scan(
+ 			&u.ID, &u.Username, &u.Email,
+ 			&u.FirstName, &u.LastName, &u.Role,
+-			&u.Department, &u.Phone, &u.Active,
++			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+ 			&u.CreatedAt, &u.UpdatedAt,
+ 			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+ 		)
+@@ -138,13 +140,13 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
+ 
+ func (r *Repository) Update(ctx context.Context, u *User) error {
+ 	query := `UPDATE users SET first_name=$1, last_name=$2, role=$3,
+-		department=$4, phone=$5,
+-		on_call_duty=$6, shift_locksmith_1=$7, shift_locksmith_2=$8, sharpening=$9, heating_fill=$10, shift_leader=$11,
++		department=$4, phone=$5, is_system_user=$6,
++		on_call_duty=$7, shift_locksmith_1=$8, shift_locksmith_2=$9, sharpening=$10, heating_fill=$11, shift_leader=$12,
+ 		updated_at=NOW()
+-		WHERE id=$12`
++		WHERE id=$13`
+ 	_, err := r.db.Exec(ctx, query,
+ 		u.FirstName, u.LastName, u.Role,
+-		u.Department, u.Phone,
++		u.Department, u.Phone, u.IsSystemUser,
+ 		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
+ 		u.ID,
+ 	)
+diff --git a/internal/core/users/service.go b/internal/core/users/service.go
+index a1e6201..cfe24da 100644
+--- a/internal/core/users/service.go
++++ b/internal/core/users/service.go
+@@ -39,6 +39,7 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
+ 		Role:         in.Role,
+ 		Department:   in.Department,
+ 		Phone:        in.Phone,
++		IsSystemUser: in.IsSystemUser,
+ 	}
+ 
+ 	if err := s.repo.Create(ctx, u); err != nil {
+@@ -47,30 +48,56 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
+ 	return u, nil
+ }
+ 
+-// Login - gibt JWT-Token zurück
++// Login - prüft Zugangsdaten und gibt ein JWT-Token zurück. Systemnutzer
++// (is_system_user) bekommen eine sehr lange Laufzeit, damit die Sitzung
++// wie gewünscht "immer eingeloggt" bleibt - der Inaktivitäts-Timer im
++// Frontend wird für sie ohnehin gar nicht erst gestartet.
+ func (s *Service) Login(ctx context.Context, email, password string) (string, *User, error) {
+-	u, err := s.repo.GetByEmail(ctx, email)
++	u, err := s.Authenticate(ctx, email, password)
++	if err != nil {
++		return "", nil, err
++	}
++	ttl := s.tokenTTL
++	if u.IsSystemUser {
++		ttl = 10 * 365 * 24 * time.Hour // effektiv "läuft nicht ab"
++	}
++	tokenStr, err := s.IssueToken(u, ttl, nil)
+ 	if err != nil {
+-		return "", nil, fmt.Errorf("benutzer nicht gefunden")
++		return "", nil, err
+ 	}
++	return tokenStr, u, nil
++}
+ 
++// Authenticate prüft nur E-Mail/Passwort, ohne ein Token auszustellen.
++// Wird für den Override-Login genutzt, wo die Aufrufstelle selbst
++// entscheidet, mit welcher Laufzeit/welchen Zusatz-Claims das Token
++// ausgestellt wird.
++func (s *Service) Authenticate(ctx context.Context, email, password string) (*User, error) {
++	u, err := s.repo.GetByEmail(ctx, email)
++	if err != nil {
++		return nil, fmt.Errorf("benutzer nicht gefunden")
++	}
+ 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+-		return "", nil, fmt.Errorf("falsches passwort")
++		return nil, fmt.Errorf("falsches passwort")
+ 	}
++	return u, nil
++}
+ 
+-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
++// IssueToken stellt ein JWT für einen bereits authentifizierten Nutzer
++// aus. extraClaims wird optional in die Claims gemergt (z.B. "override":
++// true für Override-Sitzungen).
++func (s *Service) IssueToken(u *User, ttl time.Duration, extraClaims map[string]interface{}) (string, error) {
++	claims := jwt.MapClaims{
+ 		"sub":  u.ID,
+ 		"role": string(u.Role),
+-		"exp":  time.Now().Add(s.tokenTTL).Unix(),
++		"exp":  time.Now().Add(ttl).Unix(),
+ 		"iat":  time.Now().Unix(),
+-	})
+-
+-	tokenStr, err := token.SignedString([]byte(s.jwtSecret))
+-	if err != nil {
+-		return "", nil, fmt.Errorf("token generieren: %w", err)
+ 	}
+-
+-	return tokenStr, u, nil
++	for k, v := range extraClaims {
++		claims[k] = v
++	}
++	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
++	return token.SignedString([]byte(s.jwtSecret))
+ }
+ 
+ func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
+diff --git a/internal/web/handler.go b/internal/web/handler.go
+index 7a2a6ff..2974fa4 100644
+--- a/internal/web/handler.go
++++ b/internal/web/handler.go
+@@ -15,6 +15,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 
+ 	"pdh/internal/core/infrastructure"
++	"pdh/internal/core/rbac"
+ 	"pdh/internal/core/shifts"
+ 	"pdh/internal/core/storage"
+ 	"pdh/internal/core/users"
+@@ -39,6 +40,13 @@ type BaseData struct {
+ 	UserFirstName string
+ 	UserLastName  string
+ 	FaultID       string
++
++	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
++	IsSystemUser           bool // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
++	IsOverrideSession      bool // aktuell per Override auf einem Systemnutzer angemeldet
++	IdleTimeoutMinutes     int  // globale Auto-Logout-Zeit (Minuten)
++	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
++	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
+ }
+ 
+ type DashboardData struct {
+@@ -238,6 +246,7 @@ type Handler struct {
+ 	checks    *checklists.Service
+ 	tasks     *tasks.Service
+ 	projects  *projects.Service
++	rbac      *rbac.Service
+ 	jwtSecret string
+ }
+ 
+@@ -257,6 +266,7 @@ func NewHandler(
+ 	ch *checklists.Service,
+ 	tk *tasks.Service,
+ 	pj *projects.Service,
++	rb *rbac.Service,
+ 	jwtSecret string,
+ ) *Handler {
+ 	return &Handler{
+@@ -266,6 +276,7 @@ func NewHandler(
+ 		checks:    ch,
+ 		tasks:     tk,
+ 		projects:  pj,
++		rbac:      rb,
+ 		jwtSecret: jwtSecret,
+ 	}
+ }
+@@ -343,6 +354,17 @@ func (h *Handler) Routes() chi.Router {
+ 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
+ 	r.Get("/time", h.TimeTracking)
+ 
++	// Rollen & Berechtigungen
++	r.Get("/admin/roles", h.RolesPage)
++	r.Post("/admin/roles", h.RoleCreateWeb)
++	r.Post("/admin/roles/{id}/delete-web", h.RoleDeleteWeb)
++	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
++	r.Post("/admin/settings", h.SettingsWeb)
++
++	// Override-Anmeldung an Systemnutzer-Terminals
++	r.Post("/override-login", h.OverrideLoginWeb)
++	r.Post("/override-logout", h.OverrideLogoutWeb)
++
+ 	// HTMX partials
+ 	r.Get("/api/activity", h.ActivityFeed)
+ 	r.Get("/api/search", h.Search)
+@@ -506,14 +528,27 @@ func getUser(r *http.Request) *users.User {
+ 	return &users.User{FirstName: "Gast", LastName: "", Role: "viewer"}
+ }
+ 
+-func baseData(r *http.Request, page, title, ctxTitle string) BaseData {
++// baseData baut die auf jeder Seite benoetigten Basisdaten - inklusive der
++// Auto-Logout-/Override-Felder, die base.gohtml global fuer den
++// Inaktivitaets-Timer und die Override-Anmeldung braucht.
++func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseData {
+ 	u := getUser(r)
++	isOverride := false
++	if c, err := r.Cookie("pdh_return_token"); err == nil && c.Value != "" {
++		isOverride = true
++	}
+ 	return BaseData{
+ 		Title: title, Page: page,
+ 		ContextTitle:  ctxTitle,
+ 		UserName:      u.FirstName + " " + u.LastName,
+ 		UserFirstName: u.FirstName,
+ 		UserLastName:  u.LastName,
++
++		IsSystemUser:           u.IsSystemUser,
++		IsOverrideSession:      isOverride,
++		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
++		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
++		CanManageRoles:         h.rbac.HasPermission(string(u.Role), "system.manage_roles"),
+ 	}
+ }
+ 
+@@ -744,7 +779,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
+ 	_, week := now.ISOWeek()
+ 
+ 	data := DashboardData{
+-		BaseData:   baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
++		BaseData:   h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
+ 		Greeting:   greeting(),
+ 		DateStr:    now.Format("Mo 02. January 2006"),
+ 		WeekNumber: week,
+@@ -992,7 +1027,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
+ 	filter := r.URL.Query().Get("status")
+ 
+ 	data := FaultsPageData{
+-		BaseData: baseData(r, "faults", "Störungen", "Copilot-Analysen"),
++		BaseData: h.baseData(r, "faults", "Störungen", "Copilot-Analysen"),
+ 		Filter:   filter,
+ 		Users:    h.userOptions(ctx),
+ 	}
+@@ -1025,7 +1060,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
+ 	filter := r.URL.Query().Get("status")
+ 
+ 	data := TicketsPageData{
+-		BaseData: baseData(r, "tickets", "Tickets", "Kritische Tickets"),
++		BaseData: h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
+ 		Filter:   filter,
+ 		Users:    h.userOptions(ctx),
+ 	}
+@@ -1060,7 +1095,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
+ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
+ 	ctx := r.Context()
+ 	data := InventoryPageData{
+-		BaseData: baseData(r, "inventory", "Ersatzteillager", "Unter Mindestbestand"),
++		BaseData: h.baseData(r, "inventory", "Ersatzteillager", "Unter Mindestbestand"),
+ 	}
+ 
+ 	if stats, err := h.inv.GetStats(ctx); err == nil {
+@@ -1333,7 +1368,7 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
+ 	rangeToExclusive := rangeToDate.AddDate(0, 0, 1)
+ 
+ 	data := TimePageData{
+-		BaseData:     baseData(r, "time", "Zeiterfassung", "Heute"),
++		BaseData:     h.baseData(r, "time", "Zeiterfassung", "Heute"),
+ 		TodayStr:     now.Format("02.01.2006"),
+ 		WeekStr:      weekStart.Format("02.01.") + " - " + weekStart.AddDate(0, 0, 6).Format("02.01."),
+ 		IsAdmin:      isAdmin,
+@@ -1390,7 +1425,7 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
+ }
+ 
+ func (h *Handler) simplePage(w http.ResponseWriter, r *http.Request, page, title, ctxTitle string) {
+-	h.render(w, "simple", struct{ BaseData }{baseData(r, page, title, ctxTitle)})
++	h.render(w, "simple", struct{ BaseData }{h.baseData(r, page, title, ctxTitle)})
+ }
+ 
+ // ── Auth ──────────────────────────────────────────────────────
+@@ -1424,26 +1459,51 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
+ 			return
+ 		}
+ 		cookie, err := r.Cookie("pdh_token")
+-		if err != nil || cookie.Value == "" {
+-			http.Redirect(w, r, "/login", http.StatusFound)
+-			return
++		tokenStr := ""
++		if err == nil {
++			tokenStr = cookie.Value
+ 		}
+-		token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
+-			if t.Method != jwt.SigningMethodHS256 {
+-				return nil, fmt.Errorf("unerwartete signaturmethode")
++
++		userID := ""
++		if tokenStr != "" {
++			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
++				if t.Method != jwt.SigningMethodHS256 {
++					return nil, fmt.Errorf("unerwartete signaturmethode")
++				}
++				return []byte(h.jwtSecret), nil
++			})
++			if err == nil && token.Valid {
++				if claims, ok := token.Claims.(jwt.MapClaims); ok {
++					userID, _ = claims["sub"].(string)
++				}
+ 			}
+-			return []byte(h.jwtSecret), nil
+-		})
+-		if err != nil || !token.Valid {
+-			http.Redirect(w, r, "/login", http.StatusFound)
+-			return
+ 		}
+-		claims, ok := token.Claims.(jwt.MapClaims)
+-		if !ok {
+-			http.Redirect(w, r, "/login", http.StatusFound)
+-			return
++
++		// Kein gueltiges Token (fehlt oder abgelaufen): falls eine
++		// Override-Sitzung lief, automatisch zum Systemnutzer zurueckfallen,
++		// statt den Terminal-Bildschirm auf die Login-Seite zu werfen -
++		// genau das "automatisch mit Rücksprung" aus der Anforderung, auch
++		// wenn niemand mehr am Terminal ist, um manuell zurückzukehren.
++		if userID == "" {
++			if returnCookie, err := r.Cookie("pdh_return_token"); err == nil && returnCookie.Value != "" {
++				if rt, err := jwt.Parse(returnCookie.Value, func(t *jwt.Token) (interface{}, error) {
++					if t.Method != jwt.SigningMethodHS256 {
++						return nil, fmt.Errorf("unerwartete signaturmethode")
++					}
++					return []byte(h.jwtSecret), nil
++				}); err == nil && rt.Valid {
++					if claims, ok := rt.Claims.(jwt.MapClaims); ok {
++						if sub, _ := claims["sub"].(string); sub != "" {
++							http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
++							http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: sub, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
++							http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
++							userID = sub
++						}
++					}
++				}
++			}
+ 		}
+-		userID, _ := claims["sub"].(string)
++
+ 		if userID == "" {
+ 			http.Redirect(w, r, "/login", http.StatusFound)
+ 			return
+@@ -1677,7 +1737,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
+ 	status := maintenance.TaskStatus(r.URL.Query().Get("status"))
+ 
+ 	data := MaintenancePageData{
+-		BaseData: baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
++		BaseData: h.baseData(r, "maintenance", "Wartungsplanung", "Fällige Aufträge"),
+ 		Today:    time.Now().Format("2006-01-02"),
+ 		Filter:   string(status),
+ 		Users:    h.userOptions(ctx),
+@@ -1913,7 +1973,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request)
+ 
+ 	u := getUser(r)
+ 	data := MaintenanceTaskDetailData{
+-		BaseData: baseData(r, "maintenance", task.Title, "Auftrag"),
++		BaseData: h.baseData(r, "maintenance", task.Title, "Auftrag"),
+ 		Task:     maintenanceTaskDetailView(task),
+ 		Users:    h.userOptions(r.Context()),
+ 		History:  h.recordHistory(r.Context(), "maintenance_task", id),
+@@ -2085,7 +2145,7 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
+ 
+ 	dayNames := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+ 	data := ShiftsPageData{
+-		BaseData:   baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
++		BaseData:   h.baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
+ 		WeekNumber: week,
+ 		WeekRange:  monday.Format("02.01") + "–" + sunday.Format("02.01.2006"),
+ 		PrevWeek:   monday.AddDate(0, 0, -7).Format("2006-01-02"),
+@@ -2217,7 +2277,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	data := TicketDetailData{
+-		BaseData: baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
++		BaseData: h.baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
+ 		Users:    h.userOptions(ctx),
+ 		History:  h.recordHistory(ctx, "ticket", id),
+ 		Ticket: TicketView{
+@@ -2369,7 +2429,7 @@ func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	data := InventoryDetailData{
+-		BaseData: baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
++		BaseData: h.baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
+ 		Part:     pv,
+ 	}
+ 
+@@ -2480,7 +2540,7 @@ func flattenNodes(nodes []InfraNodeView) []InfraNodeView {
+ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
+ 	ctx := r.Context()
+ 	data := InfraPageData{
+-		BaseData: baseData(r, "infrastructure", "Infrastruktur", "Schnellzugriff"),
++		BaseData: h.baseData(r, "infrastructure", "Infrastruktur", "Schnellzugriff"),
+ 	}
+ 
+ 	if tree, err := h.infra.GetTree(ctx); err == nil {
+@@ -2588,7 +2648,7 @@ func storageNodeView(n *storage.Node) StorageNodeView {
+ 
+ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
+ 	data := StoragePageData{
+-		BaseData: baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
++		BaseData: h.baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
+ 		Stats:    map[string]int{},
+ 	}
+ 	if tree, err := h.storage.GetTree(r.Context()); err == nil {
+@@ -2695,23 +2755,25 @@ type UsersPageData struct {
+ 	ActiveUsers int
+ 	Filter      string
+ 	RoleStats   []RoleStat
++	Roles       []*rbac.Role
+ }
+ 
+ type UserView struct {
+-	ID         string
+-	Username   string
+-	Email      string
+-	FirstName  string
+-	LastName   string
+-	FullName   string
+-	Initials   string
+-	AvatarBg   string
+-	RoleValue  string
+-	RoleLabel  string
+-	RoleClass  string
+-	Department string
+-	Phone      string
+-	Active     bool
++	ID           string
++	Username     string
++	Email        string
++	FirstName    string
++	LastName     string
++	FullName     string
++	Initials     string
++	AvatarBg     string
++	RoleValue    string
++	RoleLabel    string
++	RoleClass    string
++	IsSystemUser bool
++	Department   string
++	Phone        string
++	Active       bool
+ 
+ 	OnCallDuty      bool
+ 	ShiftLocksmith1 bool
+@@ -2727,11 +2789,18 @@ type RoleStat struct {
+ 	Count int
+ }
+ 
+-func userView(u *users.User) UserView {
+-	roleLabels := map[users.Role]string{
+-		"admin": "Administrator", "manager": "Manager", "technician": "Techniker",
+-		"worker": "Mitarbeiter", "viewer": "Betrachter",
++// roleLabelMap liefert key->label für alle Rollen (inkl. selbst angelegter),
++// fuer die Anzeige in UserViews.
++func (h *Handler) roleLabelMap(ctx context.Context) map[string]string {
++	roles, _ := h.rbac.ListRoles(ctx)
++	m := map[string]string{}
++	for _, ro := range roles {
++		m[ro.Key] = ro.Label
+ 	}
++	return m
++}
++
++func userView(u *users.User, roleLabels map[string]string) UserView {
+ 	roleClasses := map[users.Role]string{
+ 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
+ 		"worker": "b-gray", "viewer": "b-gray",
+@@ -2746,14 +2815,21 @@ func userView(u *users.User) UserView {
+ 	}
+ 	bg := avatarBgs[(len(u.FirstName)+len(u.LastName))%len(avatarBgs)]
+ 
++	label := roleLabels[string(u.Role)]
++	if label == "" {
++		label = string(u.Role)
++	}
++
+ 	return UserView{
+ 		ID: u.ID, Username: u.Username, Email: u.Email,
+ 		FirstName: u.FirstName, LastName: u.LastName,
+ 		FullName: u.FirstName + " " + u.LastName,
+ 		Initials: initials, AvatarBg: bg,
+-		RoleValue: string(u.Role),
+-		RoleLabel: roleLabels[u.Role], RoleClass: roleClasses[u.Role],
+-		Department: u.Department, Phone: u.Phone, Active: u.Active,
++		RoleValue:    string(u.Role),
++		RoleLabel:    label,
++		RoleClass:    roleClasses[u.Role],
++		IsSystemUser: u.IsSystemUser,
++		Department:   u.Department, Phone: u.Phone, Active: u.Active,
+ 		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
+ 		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
+ 	}
+@@ -2763,10 +2839,14 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
+ 	ctx := r.Context()
+ 	filter := r.URL.Query().Get("role")
+ 	data := UsersPageData{
+-		BaseData: baseData(r, "users", "Benutzerverwaltung", "Rollen"),
++		BaseData: h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
+ 		Filter:   filter,
+ 	}
+ 
++	roles, _ := h.rbac.ListRoles(ctx)
++	data.Roles = roles
++	roleLabelByKey := h.roleLabelMap(ctx)
++
+ 	allUsers, err := h.users.List(ctx)
+ 	if err == nil {
+ 		roleCounts := map[string]int{}
+@@ -2777,15 +2857,18 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
+ 			data.ActiveUsers++
+ 			roleCounts[string(u.Role)]++
+ 			if filter == "" || string(u.Role) == filter {
+-				data.Users = append(data.Users, userView(u))
++				data.Users = append(data.Users, userView(u, roleLabelByKey))
+ 			}
+ 		}
+ 		data.TotalUsers = len(allUsers)
+ 		roleIcons := map[string]string{"admin": "👑", "manager": "📋", "technician": "🔧", "worker": "👷", "viewer": "👁️"}
+-		roleNames := map[string]string{"admin": "Admin", "manager": "Manager", "technician": "Techniker", "worker": "Mitarbeiter", "viewer": "Betrachter"}
+-		for _, role := range []string{"admin", "manager", "technician", "worker", "viewer"} {
+-			if roleCounts[role] > 0 {
+-				data.RoleStats = append(data.RoleStats, RoleStat{Icon: roleIcons[role], Label: roleNames[role], Count: roleCounts[role]})
++		for _, ro := range roles {
++			if roleCounts[ro.Key] > 0 {
++				icon := roleIcons[ro.Key]
++				if icon == "" {
++					icon = "🔑"
++				}
++				data.RoleStats = append(data.RoleStats, RoleStat{Icon: icon, Label: ro.Label, Count: roleCounts[ro.Key]})
+ 			}
+ 		}
+ 	}
+@@ -2795,14 +2878,15 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
+ func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
+ 	r.ParseForm()
+ 	in := &users.CreateUserInput{
+-		Username:   r.FormValue("username"),
+-		Email:      r.FormValue("email"),
+-		Password:   r.FormValue("password"),
+-		FirstName:  r.FormValue("first_name"),
+-		LastName:   r.FormValue("last_name"),
+-		Role:       users.Role(r.FormValue("role")),
+-		Department: r.FormValue("department"),
+-		Phone:      r.FormValue("phone"),
++		Username:     r.FormValue("username"),
++		Email:        r.FormValue("email"),
++		Password:     r.FormValue("password"),
++		FirstName:    r.FormValue("first_name"),
++		LastName:     r.FormValue("last_name"),
++		Role:         users.Role(r.FormValue("role")),
++		Department:   r.FormValue("department"),
++		Phone:        r.FormValue("phone"),
++		IsSystemUser: r.FormValue("is_system_user") == "on",
+ 	}
+ 	u, err := h.users.Register(r.Context(), in)
+ 	w.Header().Set("Content-Type", "text/html")
+@@ -2810,7 +2894,7 @@ func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
+ 		fmt.Fprintf(w, `<tr><td colspan="6" style="color:var(--red);padding:10px">Fehler: `+esc(err.Error())+`</td></tr>`)
+ 		return
+ 	}
+-	v := userView(u)
++	v := userView(u, h.roleLabelMap(r.Context()))
+ 	fmt.Fprintf(w, `<tr id="user-row-%s">
+ 		<td><div style="display:flex;align-items:center;gap:10px">
+ 			<div style="width:34px;height:34px;border-radius:50%%;background:%s;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff">%s</div>
+@@ -2834,6 +2918,7 @@ func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
+ 		Role:            users.Role(r.FormValue("role")),
+ 		Department:      r.FormValue("department"),
+ 		Phone:           r.FormValue("phone"),
++		IsSystemUser:    r.FormValue("is_system_user") == "on",
+ 		OnCallDuty:      r.FormValue("on_call_duty") == "on",
+ 		ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on",
+ 		ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
+@@ -2867,6 +2952,201 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
+ 	h.Users(w, r)
+ }
+ 
++// ── Rollen- & Berechtigungsverwaltung ────────────────────────────
++
++type RolesPageData struct {
++	BaseData
++	Roles                  []*rbac.Role
++	PermissionGroups       []PermissionGroup
++	Matrix                 map[string]map[string]bool // roleID -> permissionID -> granted
++	IdleTimeoutMinutes     int
++	OverrideTimeoutMinutes int
++}
++
++type PermissionGroup struct {
++	Category    string
++	Permissions []*rbac.Permission
++}
++
++func (h *Handler) canManageRoles(r *http.Request) bool {
++	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_roles")
++}
++
++func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageRoles(r) {
++		http.Redirect(w, r, "/", http.StatusFound)
++		return
++	}
++	ctx := r.Context()
++	roles, _ := h.rbac.ListRoles(ctx)
++	perms, _ := h.rbac.ListPermissions(ctx)
++	matrix, _ := h.rbac.MatrixEntries(ctx)
++
++	var groups []PermissionGroup
++	currentCat := ""
++	for _, p := range perms {
++		if p.Category != currentCat || len(groups) == 0 {
++			groups = append(groups, PermissionGroup{Category: p.Category})
++			currentCat = p.Category
++		}
++		last := &groups[len(groups)-1]
++		last.Permissions = append(last.Permissions, p)
++	}
++
++	data := RolesPageData{
++		BaseData:               h.baseData(r, "roles", "Rollen & Berechtigungen", "Auto-Logout"),
++		Roles:                  roles,
++		PermissionGroups:       groups,
++		Matrix:                 matrix,
++		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
++		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
++	}
++	h.render(w, "roles", data)
++}
++
++func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageRoles(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	key := strings.TrimSpace(r.FormValue("key"))
++	label := strings.TrimSpace(r.FormValue("label"))
++	if key != "" && label != "" {
++		h.rbac.CreateRole(r.Context(), key, label)
++	}
++	http.Redirect(w, r, "/admin/roles", http.StatusFound)
++}
++
++func (h *Handler) RoleDeleteWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageRoles(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	h.rbac.DeleteRole(r.Context(), chi.URLParam(r, "id"))
++	http.Redirect(w, r, "/admin/roles", http.StatusFound)
++}
++
++// RoleMatrixWeb schaltet eine einzelne Berechtigung fuer eine Rolle per
++// htmx-Checkbox um, ohne die Seite neu zu laden.
++func (h *Handler) RoleMatrixWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageRoles(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	roleID := r.FormValue("role_id")
++	permID := r.FormValue("permission_id")
++	granted := r.FormValue("granted") == "true"
++	if err := h.rbac.SetRolePermission(r.Context(), roleID, permID, granted); err != nil {
++		http.Error(w, err.Error(), http.StatusInternalServerError)
++		return
++	}
++	w.WriteHeader(http.StatusOK)
++}
++
++func (h *Handler) SettingsWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageRoles(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	if v, err := strconv.Atoi(r.FormValue("idle_timeout_minutes")); err == nil {
++		h.rbac.SetIdleTimeoutMinutes(r.Context(), v)
++	}
++	if v, err := strconv.Atoi(r.FormValue("override_timeout_minutes")); err == nil {
++		h.rbac.SetOverrideTimeoutMinutes(r.Context(), v)
++	}
++	http.Redirect(w, r, "/admin/roles", http.StatusFound)
++}
++
++// ── Override-Anmeldung an Systemnutzer-Terminals ─────────────────
++//
++// Ablauf: An einem als "Systemnutzer" markierten, dauerhaft eingeloggten
++// Terminal meldet sich jemand mit "system.override"-Berechtigung kurz mit
++// den eigenen Zugangsdaten an, erledigt eine Aufgabe unter eigenem Namen,
++// und kehrt danach (manuell per Button oder automatisch nach
++// Inaktivitaet) wieder zum Systemnutzer zurueck. Der urspruengliche
++// Systemnutzer-Token wird dafuer im Cookie "pdh_return_token"
++// zwischengespeichert - er wird niemals ueberschrieben, solange eine
++// Override-Sitzung bereits laeuft, damit sich Override-Anmeldungen nicht
++// verschachteln koennen.
++
++func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
++	systemCookie, err := r.Cookie("pdh_token")
++	if err != nil || systemCookie.Value == "" {
++		http.Redirect(w, r, "/login", http.StatusFound)
++		return
++	}
++	current := getUser(r)
++	if !current.IsSystemUser {
++		http.Redirect(w, r, "/?override_error=nur_am_systemnutzer", http.StatusFound)
++		return
++	}
++
++	r.ParseForm()
++	overrideUser, err := h.users.Authenticate(r.Context(), r.FormValue("email"), r.FormValue("password"))
++	if err != nil {
++		http.Redirect(w, r, "/?override_error=zugangsdaten", http.StatusFound)
++		return
++	}
++	if !h.rbac.HasPermission(string(overrideUser.Role), "system.override") {
++		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
++		return
++	}
++
++	// Nur beim allerersten Override-Login den Rueckkehr-Token setzen, damit
++	// verschachtelte Override-Anmeldungen nicht den eigentlichen
++	// Systemnutzer "verlieren".
++	if _, err := r.Cookie("pdh_return_token"); err != nil {
++		http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: systemCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
++	}
++
++	overrideTTL := time.Duration(h.rbac.OverrideTimeoutMinutes()) * time.Minute
++	tokenStr, err := h.users.IssueToken(overrideUser, overrideTTL, map[string]interface{}{"override": true})
++	if err != nil {
++		http.Redirect(w, r, "/?override_error=token", http.StatusFound)
++		return
++	}
++	maxAge := int(overrideTTL.Seconds())
++	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: tokenStr, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
++	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: overrideUser.ID, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
++	http.Redirect(w, r, "/", http.StatusFound)
++}
++
++// OverrideLogoutWeb kehrt zur Systemnutzer-Sitzung zurueck (Button "Zurück
++// zum Systemnutzer" oder automatisch per Inaktivitaets-Timer im Frontend).
++// Ohne aktive Override-Sitzung faellt das Verhalten auf einen normalen
++// Logout zurueck.
++func (h *Handler) OverrideLogoutWeb(w http.ResponseWriter, r *http.Request) {
++	returnCookie, err := r.Cookie("pdh_return_token")
++	if err != nil || returnCookie.Value == "" {
++		h.Logout(w, r)
++		return
++	}
++	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
++
++	token, parseErr := jwt.Parse(returnCookie.Value, func(t *jwt.Token) (interface{}, error) {
++		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
++			return nil, fmt.Errorf("unerwartete signaturmethode")
++		}
++		return []byte(h.jwtSecret), nil
++	})
++	if parseErr != nil || !token.Valid {
++		h.Logout(w, r)
++		return
++	}
++	claims, ok := token.Claims.(jwt.MapClaims)
++	userID, _ := claims["sub"].(string)
++	if !ok || userID == "" {
++		h.Logout(w, r)
++		return
++	}
++	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
++	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: userID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
++	http.Redirect(w, r, "/", http.StatusFound)
++}
++
+ // ── Wiederhergestellte Handler ────────────────────────────────
+ 
+ func (h *Handler) FaultChatWeb(w http.ResponseWriter, r *http.Request) {
+@@ -3014,7 +3294,7 @@ func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
+ 		BaseData
+ 		Total      int
+ 		Checklists []checklistView
+-	}{BaseData: baseData(r, "checklists", "Checklisten-Vorlagen", "Feldtypen")}
++	}{BaseData: h.baseData(r, "checklists", "Checklisten-Vorlagen", "Feldtypen")}
+ 	if h.checks != nil {
+ 		if list, err := h.checks.List(r.Context(), r.URL.Query().Get("category")); err == nil {
+ 			data.Total = len(list)
+@@ -3043,7 +3323,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
+ 		return
+ 	}
+ 	data := InfraDetailData{
+-		BaseData: baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
++		BaseData: h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
+ 		Node:     infraNodeView(node),
+ 	}
+ 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
+@@ -3081,7 +3361,7 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
+ 
+ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
+ 	data := ITPageData{
+-		BaseData: baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
++		BaseData: h.baseData(r, "it", "IT-Infrastruktur", "Übersicht"),
+ 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
+ 	}
+ 	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
+@@ -3184,7 +3464,7 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	data := ITDetailData{
+-		BaseData: baseData(r, "it", a.Name, "IT-Infrastruktur"),
++		BaseData: h.baseData(r, "it", a.Name, "IT-Infrastruktur"),
+ 		Users:    h.userOptions(ctx),
+ 		Asset:    itAssetDetailView(a),
+ 	}
+diff --git a/internal/web/projects_handler.go b/internal/web/projects_handler.go
+index 171ed9b..7019b18 100644
+--- a/internal/web/projects_handler.go
++++ b/internal/web/projects_handler.go
+@@ -92,7 +92,7 @@ type ProjectsPageData struct {
+ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
+ 	ctx := r.Context()
+ 	data := ProjectsPageData{
+-		BaseData: baseData(r, "projects", "Projektplanung", "Projekte"),
++		BaseData: h.baseData(r, "projects", "Projektplanung", "Projekte"),
+ 		Users:    h.userOptions(ctx),
+ 	}
+ 	list, err := h.projects.List(ctx, "")
+@@ -123,7 +123,7 @@ func (h *Handler) ProjectDetail(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	data := ProjectDetailData{
+-		BaseData: baseData(r, "projects", p.Name, "Projekt"),
++		BaseData: h.baseData(r, "projects", p.Name, "Projekt"),
+ 		Project:  projectView(p),
+ 		Users:    h.userOptions(ctx),
+ 	}
+diff --git a/internal/web/tasks_handler.go b/internal/web/tasks_handler.go
+index 70e00c7..d31283a 100644
+--- a/internal/web/tasks_handler.go
++++ b/internal/web/tasks_handler.go
+@@ -47,7 +47,7 @@ func taskView(t *tasks.Task) TaskView {
+ 		Resolution: t.Resolution, RootCause: t.RootCause,
+ 		CreatedAgo: timeAgo(t.CreatedAt),
+ 		CanResolve: t.Status == "open" || t.Status == "in_progress",
+-		Color: t.Color,
++		Color:      t.Color,
+ 	}
+ 	if t.DueDate != nil {
+ 		v.DueDate = t.DueDate.Format("02.01.2006")
+@@ -90,7 +90,7 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
+ 	unassigned := r.URL.Query().Get("unassigned") == "true"
+ 
+ 	data := TasksPageData{
+-		BaseData: baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
++		BaseData: h.baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
+ 		Filter:   filter,
+ 		Users:    h.userOptions(ctx),
+ 	}
+@@ -135,7 +135,7 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 
+ 	data := TaskDetailData{
+-		BaseData: baseData(r, "tasks", t.Title, "Aufgabe"),
++		BaseData: h.baseData(r, "tasks", t.Title, "Aufgabe"),
+ 		Task:     taskView(t),
+ 		Users:    h.userOptions(ctx),
+ 	}
+@@ -155,7 +155,6 @@ func (h *Handler) TaskDetail(w http.ResponseWriter, r *http.Request) {
+ 	h.render(w, "task_detail", data)
+ }
+ 
+-
+ func (h *Handler) TaskStartTime(w http.ResponseWriter, r *http.Request) {
+ 	id := chi.URLParam(r, "id")
+ 	u := getUser(r)
+@@ -172,4 +171,3 @@ func (h *Handler) TaskStartTime(w http.ResponseWriter, r *http.Request) {
+ 	}
+ 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, entry.ID[:8])
+ }
+-
+diff --git a/migrations/045_rbac_and_system_users.up.sql b/migrations/045_rbac_and_system_users.up.sql
+new file mode 100644
+index 0000000..ebbc99d
+--- /dev/null
++++ b/migrations/045_rbac_and_system_users.up.sql
+@@ -0,0 +1,95 @@
++-- 045_rbac_and_system_users.up.sql
++--
++-- Rollen-/Berechtigungs-Matrix, Systemnutzer-Kennzeichen und globale
++-- App-Einstellungen (u.a. fuer Auto-Logout-Zeiten).
++--
++-- Bewusst additiv: users.role bleibt als String-Spalte bestehen (viele
++-- bestehende RequireRole()-Aufrufe im Code haengen daran) - roles.key ist
++-- derselbe Wertebereich, verknuepft per Join auf roles.key = users.role,
++-- keine Fremdschluessel-Spalte auf users noetig.
++
++CREATE TABLE IF NOT EXISTS roles (
++    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    key        VARCHAR(50) UNIQUE NOT NULL,
++    label      VARCHAR(100) NOT NULL,
++    is_builtin BOOLEAN NOT NULL DEFAULT false,
++    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++CREATE TABLE IF NOT EXISTS permissions (
++    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    key        VARCHAR(100) UNIQUE NOT NULL,
++    label      VARCHAR(150) NOT NULL,
++    category   VARCHAR(50) NOT NULL,
++    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++CREATE TABLE IF NOT EXISTS role_permissions (
++    role_id       UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
++    permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
++    PRIMARY KEY (role_id, permission_id)
++);
++
++CREATE TABLE IF NOT EXISTS app_settings (
++    key        VARCHAR(100) PRIMARY KEY,
++    value      TEXT NOT NULL,
++    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system_user BOOLEAN NOT NULL DEFAULT false;
++
++-- Die 5 bereits bestehenden Rollen als "builtin" (nicht loeschbar) anlegen
++INSERT INTO roles (key, label, is_builtin) VALUES
++    ('admin', 'Administrator', true),
++    ('manager', 'Manager', true),
++    ('technician', 'Techniker', true),
++    ('worker', 'Mitarbeiter', true),
++    ('viewer', 'Betrachter', true)
++ON CONFLICT (key) DO NOTHING;
++
++-- Startset an Berechtigungen. "system.override" ist die einzige, die vom
++-- Code aktuell tatsaechlich geprueft wird (Override-Anmeldung am
++-- Systemnutzer) - der Rest ist bewusst als Grundgeruest angelegt, damit
++-- die Matrix von Anfang an sinnvoll befuellt ist und schrittweise an
++-- weiteren Stellen im Code scharf geschaltet werden kann.
++INSERT INTO permissions (key, label, category) VALUES
++    ('system.override',      'Als Systemnutzer-Override anmelden', 'System'),
++    ('system.manage_users',  'Benutzer verwalten',                  'System'),
++    ('system.manage_roles',  'Rollen & Berechtigungen verwalten',   'System'),
++    ('tickets.view',         'Tickets ansehen',                     'Tickets'),
++    ('tickets.edit',         'Tickets bearbeiten',                  'Tickets'),
++    ('tickets.resolve',      'Tickets abschließen',                 'Tickets'),
++    ('faults.view',          'Störungen ansehen',                   'Störungen'),
++    ('faults.edit',          'Störungen bearbeiten',                'Störungen'),
++    ('faults.resolve',       'Störungen abschließen',               'Störungen'),
++    ('maintenance.view',     'Wartung ansehen',                     'Wartung'),
++    ('maintenance.edit',     'Wartung bearbeiten',                  'Wartung'),
++    ('maintenance.complete', 'Wartung abschließen',                 'Wartung'),
++    ('tasks.view',           'Aufgaben ansehen',                    'Aufgaben & Projekte'),
++    ('tasks.edit',           'Aufgaben bearbeiten',                 'Aufgaben & Projekte'),
++    ('projects.edit',        'Projekte bearbeiten',                 'Aufgaben & Projekte'),
++    ('inventory.view',       'Lager ansehen',                       'Lager'),
++    ('inventory.edit',       'Lager bearbeiten',                    'Lager'),
++    ('it.view',              'IT-Infrastruktur ansehen',            'IT'),
++    ('it.edit',              'IT-Infrastruktur bearbeiten',         'IT'),
++    ('shifts.view',          'Schichtplan ansehen',                 'Schichtplanung'),
++    ('shifts.edit',          'Schichtplan bearbeiten',               'Schichtplanung'),
++    ('timetracking.view_all','Zeiterfassung aller Nutzer ansehen',  'Zeiterfassung')
++ON CONFLICT (key) DO NOTHING;
++
++-- Admin bekommt initial alles zugewiesen, damit das System sofort nutzbar
++-- ist. Alle anderen Rollen starten bewusst leer - Policy wird ueber die
++-- Matrix-UI selbst festgelegt.
++INSERT INTO role_permissions (role_id, permission_id)
++SELECT r.id, p.id FROM roles r CROSS JOIN permissions p WHERE r.key = 'admin'
++ON CONFLICT DO NOTHING;
++
++-- Standardwerte fuer Auto-Logout (Minuten). ueber die Einstellungen-UI
++-- aenderbar.
++INSERT INTO app_settings (key, value) VALUES
++    ('idle_timeout_minutes', '30'),
++    ('override_timeout_minutes', '10')
++ON CONFLICT (key) DO NOTHING;
++
++CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
++CREATE INDEX IF NOT EXISTS idx_role_permissions_perm ON role_permissions(permission_id);
+diff --git a/web/templates/base.gohtml b/web/templates/base.gohtml
+index 11f690b..66fa7fc 100644
+--- a/web/templates/base.gohtml
++++ b/web/templates/base.gohtml
+@@ -280,6 +280,7 @@ select.form-input option{background:var(--bg2)}
+ 
+     <div class="nav-section">Core</div>
+     <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>
++    {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
+     <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
+     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
+     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
+@@ -297,7 +298,22 @@ select.form-input option{background:var(--bg2)}
+         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
+         <span id="theme-toggle-label">System</span>
+       </button>
+-      <div class="topbar-user"><i class="ti ti-user"></i>{{.UserName}}</div>
++      {{if .IsOverrideSession}}
++      <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="Zurück zum Systemnutzer">
++        <i class="ti ti-corner-up-left"></i> Zurück zum Systemnutzer
++      </button>
++      <form id="override-logout-form" method="POST" action="/override-logout" style="display:none"></form>
++      {{else if .IsSystemUser}}
++      <button type="button" class="btn btn-small" onclick="document.getElementById('override-login-modal').style.display='flex'" title="Kurz mit eigenem Konto anmelden">
++        <i class="ti ti-user-plus"></i> Anmelden zur Erledigung
++      </button>
++      {{end}}
++      <div style="position:relative">
++        <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
++        <div id="user-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.3)">
++          <a href="/logout" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-logout"></i>Abmelden</a>
++        </div>
++      </div>
+       <div class="status-dot" title="API online"></div>
+     </div>
+   </div>
+@@ -306,6 +322,30 @@ select.form-input option{background:var(--bg2)}
+   </div>
+ </div>
+ 
++{{if .IsSystemUser}}{{if not .IsOverrideSession}}
++<!-- Override-Anmeldung: kurzzeitig mit eigenem Konto an einem Systemnutzer-Terminal anmelden -->
++<div id="override-login-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
++  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
++    <div style="font-size:15px;font-weight:600;margin-bottom:6px">Anmelden zur Erledigung</div>
++    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach {{.OverrideTimeoutMinutes}} Minuten Inaktivität (oder per Klick auf "Zurück") kehrt das Terminal automatisch zum Systemnutzer zurück.</p>
++    <form method="POST" action="/override-login">
++      <div class="form-group">
++        <label class="form-label">E-Mail</label>
++        <input type="email" name="email" class="form-input" required autofocus>
++      </div>
++      <div class="form-group">
++        <label class="form-label">Passwort</label>
++        <input type="password" name="password" class="form-input" required>
++      </div>
++      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
++        <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">Abbrechen</button>
++        <button type="submit" class="btn btn-primary">Anmelden</button>
++      </div>
++    </form>
++  </div>
++</div>
++{{end}}{{end}}
++
+ <!-- ── Kontext-Spalte ── -->
+ <aside class="context">
+   <div class="ctx-tabs" aria-label="Kontextauswahl">
+@@ -461,6 +501,68 @@ function toggleSidebar(side) {
+   localStorage.setItem(key, collapsed ? 'expanded' : 'collapsed');
+   applySidebarState();
+ }
++// ── Menü-Umschalter (globaler Fallback; einzelne Seiten dürfen das lokal
++// überschreiben, z.B. für andere ID-Präfixe) ──────────────────────────
++function toggleMenu(id){
++  var m = document.getElementById(id);
++  if(m) m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
++}
++function closeMenu(id){
++  var m = document.getElementById(id);
++  if(m) m.style.display = 'none';
++}
++document.addEventListener('click', function(e){
++  if(!e.target.closest('[onclick*="toggleMenu"]')){
++    document.querySelectorAll('[id$="-menu"]').forEach(function(m){ m.style.display = 'none'; });
++  }
++});
++
++// ── Auto-Logout nach Inaktivität, mit Systemnutzer-/Override-Ausnahme ──
++(function(){
++  var isSystemUser = {{if .IsSystemUser}}true{{else}}false{{end}};
++  var isOverride    = {{if .IsOverrideSession}}true{{else}}false{{end}};
++  var idleMinutes     = {{.IdleTimeoutMinutes}};
++  var overrideMinutes = {{.OverrideTimeoutMinutes}};
++
++  var logoutUrl = null, minutes = 0;
++  if(isOverride){
++    // Override-Sitzung: kehrt nach Inaktivität automatisch zum
++    // Systemnutzer zurück, statt komplett auszuloggen.
++    logoutUrl = '/override-logout';
++    minutes = overrideMinutes;
++  } else if(!isSystemUser){
++    logoutUrl = '/logout';
++    minutes = idleMinutes;
++  }
++  // reiner Systemnutzer (kein Override aktiv): kein Timer, bleibt wie
++  // gewünscht dauerhaft eingeloggt.
++
++  if(logoutUrl && minutes > 0){
++    var idleTimer;
++    function resetIdleTimer(){
++      clearTimeout(idleTimer);
++      idleTimer = setTimeout(function(){ window.location = logoutUrl; }, minutes * 60 * 1000);
++    }
++    ['mousemove','keydown','click','touchstart','scroll'].forEach(function(evt){
++      document.addEventListener(evt, resetIdleTimer, {passive:true});
++    });
++    resetIdleTimer();
++  }
++
++  var params = new URLSearchParams(location.search);
++  var overrideErr = params.get('override_error');
++  if(overrideErr){
++    var messages = {
++      'nur_am_systemnutzer': 'Override-Anmeldung ist nur an einem Systemnutzer-Terminal möglich.',
++      'zugangsdaten': 'E-Mail oder Passwort falsch.',
++      'keine_berechtigung': 'Dieses Konto hat keine Berechtigung für die Override-Anmeldung.',
++      'token': 'Anmeldung fehlgeschlagen, bitte erneut versuchen.'
++    };
++    alert(messages[overrideErr] || 'Anmeldung fehlgeschlagen.');
++    history.replaceState({}, '', location.pathname);
++  }
++})();
++
+ function activateContextTab(id) {
+   const selected = id || localStorage.getItem('pdh_context_tab') || 'search';
+   document.querySelectorAll('[data-context-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.contextTab === selected));
+diff --git a/web/templates/roles.gohtml b/web/templates/roles.gohtml
+new file mode 100644
+index 0000000..b75b60b
+--- /dev/null
++++ b/web/templates/roles.gohtml
+@@ -0,0 +1,108 @@
++{{template "base" .}}
++{{define "content"}}
++<div style="margin-bottom:18px">
++  <h1 style="font-size:19px;font-weight:600">Rollen & Berechtigungen</h1>
++  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{len .Roles}} Rollen · {{len .PermissionGroups}} Berechtigungsgruppen</p>
++</div>
++
++<div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
++  <!-- Neue Rolle -->
++  <div class="card">
++    <div class="card-title">Neue Rolle anlegen</div>
++    <form method="POST" action="/admin/roles">
++      <div class="grid2" style="gap:10px">
++        <div class="form-group">
++          <label class="form-label">Schlüssel (technisch, z.B. "einkauf")</label>
++          <input name="key" class="form-input" pattern="[a-z0-9_]+" title="nur Kleinbuchstaben, Ziffern, Unterstrich" required>
++        </div>
++        <div class="form-group">
++          <label class="form-label">Anzeigename</label>
++          <input name="label" class="form-input" placeholder="z.B. Einkauf" required>
++        </div>
++      </div>
++      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Rolle anlegen</button>
++    </form>
++  </div>
++
++  <!-- Auto-Logout -->
++  <div class="card">
++    <div class="card-title">Auto-Logout</div>
++    <form method="POST" action="/admin/settings">
++      <div class="grid2" style="gap:10px">
++        <div class="form-group">
++          <label class="form-label">Inaktivität bis Auto-Logout (Minuten)</label>
++          <input type="number" min="1" name="idle_timeout_minutes" class="form-input" value="{{.IdleTimeoutMinutes}}" required>
++        </div>
++        <div class="form-group">
++          <label class="form-label">Override-Sitzung: Rücksprung nach (Minuten)</label>
++          <input type="number" min="1" name="override_timeout_minutes" class="form-input" value="{{.OverrideTimeoutMinutes}}" required>
++        </div>
++      </div>
++      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Systemnutzer (Häkchen in der Benutzerverwaltung) sind von der Auto-Logout-Zeit ausgenommen und bleiben dauerhaft eingeloggt.</p>
++      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
++    </form>
++  </div>
++</div>
++
++<!-- Berechtigungs-Matrix -->
++<div class="card" style="overflow-x:auto">
++  <div class="card-title">Berechtigungs-Matrix</div>
++  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
++    <thead>
++      <tr>
++        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Berechtigung</th>
++        {{range .Roles}}
++        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">
++          {{.Label}}
++          {{if not .IsBuiltin}}
++          <form method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
++            <button type="submit" class="btn-icon" style="width:20px;height:20px;vertical-align:middle" title="Rolle löschen"><i class="ti ti-trash" style="font-size:12px"></i></button>
++          </form>
++          {{end}}
++        </th>
++        {{end}}
++      </tr>
++    </thead>
++    <tbody>
++      {{$roles := .Roles}}
++      {{$matrix := .Matrix}}
++      {{range .PermissionGroups}}
++      <tr><td colspan="99" style="padding:10px 10px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">{{.Category}}</td></tr>
++      {{range .Permissions}}
++      {{$perm := .}}
++      <tr>
++        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Label}}</td>
++        {{range $roles}}
++        {{$role := .}}
++        <td style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border)">
++          <input type="checkbox" {{if index $matrix $role.ID $perm.ID}}checked{{end}}
++                 onchange="saveMatrixCell(this,'{{$role.ID}}','{{$perm.ID}}')">
++        </td>
++        {{end}}
++      </tr>
++      {{end}}
++      {{end}}
++    </tbody>
++  </table>
++</div>
++{{end}}
++
++{{define "scripts"}}
++<script>
++async function saveMatrixCell(checkbox, roleId, permId){
++  checkbox.disabled = true;
++  try{
++    const res = await fetch('/admin/roles/matrix-web', {
++      method: 'POST', credentials: 'same-origin',
++      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
++      body: 'role_id=' + encodeURIComponent(roleId) + '&permission_id=' + encodeURIComponent(permId) + '&granted=' + (checkbox.checked ? 'true' : 'false')
++    });
++    if(!res.ok) throw new Error('HTTP ' + res.status);
++  }catch(e){
++    alert('Konnte nicht gespeichert werden: ' + e.message);
++    checkbox.checked = !checkbox.checked;
++  }
++  checkbox.disabled = false;
++}
++</script>
++{{end}}
+diff --git a/web/templates/users.gohtml b/web/templates/users.gohtml
+index cd48f82..fd99ffb 100644
+--- a/web/templates/users.gohtml
++++ b/web/templates/users.gohtml
+@@ -28,15 +28,14 @@
+       <div class="form-group"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" required minlength="8"></div>
+       <div class="form-group"><label class="form-label">Rolle</label>
+         <select name="role" class="form-input">
+-          <option value="worker">👷 Mitarbeiter</option>
+-          <option value="technician">🔧 Techniker</option>
+-          <option value="manager">📋 Manager</option>
+-          <option value="admin">👑 Administrator</option>
+-          <option value="viewer">👁️ Betrachter</option>
++          {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+         </select>
+       </div>
+       <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" placeholder="z.B. Produktion"></div>
+       <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" placeholder="z.B. +49 821 ..."></div>
++      <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:22px">
++        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt, z.B. Werkstatt-Terminal)</label>
++      </div>
+     </div>
+     {{template "icon-button-toolbar" (dict
+       "Class" "end"
+@@ -84,7 +83,7 @@
+           </div>
+         </div>
+       </td>
+-      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span></td>
++      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span>{{if .IsSystemUser}} <span class="badge b-blue" title="Bleibt dauerhaft eingeloggt"><i class="ti ti-device-desktop"></i> System</span>{{end}}</td>
+       <td style="font-size:13px;color:var(--muted)">{{.Department}}</td>
+       <td style="font-size:12px">
+         <div>{{.Email}}</div>
+@@ -101,7 +100,7 @@
+         <div style="position:relative">
+           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
+           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+-            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
++            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}',{{if .IsSystemUser}}true{{else}}false{{end}});closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
+             <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
+             {{if .Active}}
+             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
+@@ -127,15 +126,14 @@
+         <div class="form-group"><label class="form-label">Nachname</label><input id="ef-last" name="last_name" class="form-input" required></div>
+         <div class="form-group"><label class="form-label">Rolle</label>
+           <select id="ef-role" name="role" class="form-input">
+-            <option value="worker">👷 Mitarbeiter</option>
+-            <option value="technician">🔧 Techniker</option>
+-            <option value="manager">📋 Manager</option>
+-            <option value="admin">👑 Administrator</option>
+-            <option value="viewer">👁️ Betrachter</option>
++            {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+           </select>
+         </div>
+         <div class="form-group"><label class="form-label">Abteilung</label><input id="ef-dept" name="department" class="form-input"></div>
+         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
++        <div class="form-group" style="grid-column:1/-1">
++          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-systemuser" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt)</label>
++        </div>
+       </div>
+       <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
+         <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Schicht-Qualifikationen</div>
+@@ -180,6 +178,7 @@ async function submitUserEdit(event){
+     role: document.getElementById('ef-role').value,
+     department: document.getElementById('ef-dept').value,
+     phone: document.getElementById('ef-phone').value,
++    is_system_user: document.getElementById('ef-systemuser').checked,
+     on_call_duty: document.getElementById('ef-oncall').checked,
+     sharpening: document.getElementById('ef-sharpening').checked,
+     heating_fill: document.getElementById('ef-heating').checked,
+@@ -207,7 +206,7 @@ document.addEventListener('click',e=>{
+ });
+ 
+ let currentEditUserID = null;
+-function editUser(id, first, last, role, dept, phone) {
++function editUser(id, first, last, role, dept, phone, isSystemUser) {
+   currentEditUserID = id;
+   const modal = document.getElementById('edit-modal');
+   document.getElementById('ef-first').value = first;
+@@ -215,6 +214,7 @@ function editUser(id, first, last, role, dept, phone) {
+   document.getElementById('ef-role').value  = role;
+   document.getElementById('ef-dept').value  = dept;
+   document.getElementById('ef-phone').value = phone;
++  document.getElementById('ef-systemuser').checked = !!isSystemUser;
+   modal.style.display = 'flex';
+ }
+ </script>

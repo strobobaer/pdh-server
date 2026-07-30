@@ -92,7 +92,7 @@ type ProjectsPageData struct {
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	data := ProjectsPageData{
-		BaseData: baseData(r, "projects", "Projektplanung", "Projekte"),
+		BaseData: h.baseData(r, "projects", "Projektplanung", "Projekte"),
 		Users:    h.userOptions(ctx),
 	}
 	list, err := h.projects.List(ctx, "")
@@ -123,7 +123,7 @@ func (h *Handler) ProjectDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := ProjectDetailData{
-		BaseData: baseData(r, "projects", p.Name, "Projekt"),
+		BaseData: h.baseData(r, "projects", p.Name, "Projekt"),
 		Project:  projectView(p),
 		Users:    h.userOptions(ctx),
 	}

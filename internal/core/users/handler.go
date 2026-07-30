@@ -6,16 +6,18 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/rbac"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
 
 type Handler struct {
-	svc *Service
+	svc  *Service
+	rbac *rbac.Service
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, rb *rbac.Service) *Handler {
+	return &Handler{svc: svc, rbac: rb}
 }
 
 // Routes - registriert alle User-Routen
@@ -34,9 +36,11 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 		r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 		r.Post("/set-locksmith/{slot}", h.SetLocksmithSlot)
 
-		// Nur Admin
+		// Nur mit "system.manage_users"-Berechtigung (frueher hart auf die
+		// Rolle "admin" verdrahtet - jetzt ueber die Rollen-/Berechtigungs-
+		// verwaltung konfigurierbar).
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireRole("admin"))
+			r.Use(h.rbac.RequirePermission("system.manage_users"))
 			r.Delete("/{id}", h.Deactivate)
 		})
 	})

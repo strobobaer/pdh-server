@@ -280,6 +280,7 @@ select.form-input option{background:var(--bg2)}
 
     <div class="nav-section">Core</div>
     <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>
+    {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
     <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
@@ -297,7 +298,22 @@ select.form-input option{background:var(--bg2)}
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
-      <div class="topbar-user"><i class="ti ti-user"></i>{{.UserName}}</div>
+      {{if .IsOverrideSession}}
+      <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="Zurück zum Systemnutzer">
+        <i class="ti ti-corner-up-left"></i> Zurück zum Systemnutzer
+      </button>
+      <form id="override-logout-form" method="POST" action="/override-logout" style="display:none"></form>
+      {{else if .IsSystemUser}}
+      <button type="button" class="btn btn-small" onclick="document.getElementById('override-login-modal').style.display='flex'" title="Kurz mit eigenem Konto anmelden">
+        <i class="ti ti-user-plus"></i> Anmelden zur Erledigung
+      </button>
+      {{end}}
+      <div style="position:relative">
+        <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
+        <div id="user-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+          <a href="/logout" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-logout"></i>Abmelden</a>
+        </div>
+      </div>
       <div class="status-dot" title="API online"></div>
     </div>
   </div>
@@ -305,6 +321,30 @@ select.form-input option{background:var(--bg2)}
     {{block "content" .}}{{end}}
   </div>
 </div>
+
+{{if .IsSystemUser}}{{if not .IsOverrideSession}}
+<!-- Override-Anmeldung: kurzzeitig mit eigenem Konto an einem Systemnutzer-Terminal anmelden -->
+<div id="override-login-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">Anmelden zur Erledigung</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach {{.OverrideTimeoutMinutes}} Minuten Inaktivität (oder per Klick auf "Zurück") kehrt das Terminal automatisch zum Systemnutzer zurück.</p>
+    <form method="POST" action="/override-login">
+      <div class="form-group">
+        <label class="form-label">E-Mail</label>
+        <input type="email" name="email" class="form-input" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Passwort</label>
+        <input type="password" name="password" class="form-input" required>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Anmelden</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}{{end}}
 
 <!-- ── Kontext-Spalte ── -->
 <aside class="context">
@@ -461,6 +501,68 @@ function toggleSidebar(side) {
   localStorage.setItem(key, collapsed ? 'expanded' : 'collapsed');
   applySidebarState();
 }
+// ── Menü-Umschalter (globaler Fallback; einzelne Seiten dürfen das lokal
+// überschreiben, z.B. für andere ID-Präfixe) ──────────────────────────
+function toggleMenu(id){
+  var m = document.getElementById(id);
+  if(m) m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+}
+function closeMenu(id){
+  var m = document.getElementById(id);
+  if(m) m.style.display = 'none';
+}
+document.addEventListener('click', function(e){
+  if(!e.target.closest('[onclick*="toggleMenu"]')){
+    document.querySelectorAll('[id$="-menu"]').forEach(function(m){ m.style.display = 'none'; });
+  }
+});
+
+// ── Auto-Logout nach Inaktivität, mit Systemnutzer-/Override-Ausnahme ──
+(function(){
+  var isSystemUser = {{if .IsSystemUser}}true{{else}}false{{end}};
+  var isOverride    = {{if .IsOverrideSession}}true{{else}}false{{end}};
+  var idleMinutes     = {{.IdleTimeoutMinutes}};
+  var overrideMinutes = {{.OverrideTimeoutMinutes}};
+
+  var logoutUrl = null, minutes = 0;
+  if(isOverride){
+    // Override-Sitzung: kehrt nach Inaktivität automatisch zum
+    // Systemnutzer zurück, statt komplett auszuloggen.
+    logoutUrl = '/override-logout';
+    minutes = overrideMinutes;
+  } else if(!isSystemUser){
+    logoutUrl = '/logout';
+    minutes = idleMinutes;
+  }
+  // reiner Systemnutzer (kein Override aktiv): kein Timer, bleibt wie
+  // gewünscht dauerhaft eingeloggt.
+
+  if(logoutUrl && minutes > 0){
+    var idleTimer;
+    function resetIdleTimer(){
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(function(){ window.location = logoutUrl; }, minutes * 60 * 1000);
+    }
+    ['mousemove','keydown','click','touchstart','scroll'].forEach(function(evt){
+      document.addEventListener(evt, resetIdleTimer, {passive:true});
+    });
+    resetIdleTimer();
+  }
+
+  var params = new URLSearchParams(location.search);
+  var overrideErr = params.get('override_error');
+  if(overrideErr){
+    var messages = {
+      'nur_am_systemnutzer': 'Override-Anmeldung ist nur an einem Systemnutzer-Terminal möglich.',
+      'zugangsdaten': 'E-Mail oder Passwort falsch.',
+      'keine_berechtigung': 'Dieses Konto hat keine Berechtigung für die Override-Anmeldung.',
+      'token': 'Anmeldung fehlgeschlagen, bitte erneut versuchen.'
+    };
+    alert(messages[overrideErr] || 'Anmeldung fehlgeschlagen.');
+    history.replaceState({}, '', location.pathname);
+  }
+})();
+
 function activateContextTab(id) {
   const selected = id || localStorage.getItem('pdh_context_tab') || 'search';
   document.querySelectorAll('[data-context-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.contextTab === selected));
