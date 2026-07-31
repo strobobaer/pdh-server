@@ -330,8 +330,8 @@ select.form-input option{background:var(--bg2)}
     <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach {{.OverrideTimeoutMinutes}} Minuten Inaktivität (oder per Klick auf "Zurück") kehrt das Terminal automatisch zum Systemnutzer zurück.</p>
     <form method="POST" action="/override-login">
       <div class="form-group">
-        <label class="form-label">E-Mail</label>
-        <input type="email" name="email" class="form-input" required autofocus>
+        <label class="form-label">E-Mail oder Benutzername</label>
+        <input type="text" name="email" class="form-input" required autofocus>
       </div>
       <div class="form-group">
         <label class="form-label">Passwort</label>
@@ -340,6 +340,15 @@ select.form-input option{background:var(--bg2)}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">Abbrechen</button>
         <button type="submit" class="btn btn-primary">Anmelden</button>
+      </div>
+    </form>
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--muted);font-size:11px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>ODER<div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <form method="POST" action="/override-login/rfid">
+      <div class="form-group">
+        <label class="form-label">RFID-Karte</label>
+        <input type="text" name="uid" class="form-input" placeholder="Karte an den Leser halten..." autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();this.form.submit();}">
       </div>
     </form>
   </div>
@@ -554,7 +563,8 @@ document.addEventListener('click', function(e){
   if(overrideErr){
     var messages = {
       'nur_am_systemnutzer': 'Override-Anmeldung ist nur an einem Systemnutzer-Terminal möglich.',
-      'zugangsdaten': 'E-Mail oder Passwort falsch.',
+      'zugangsdaten': 'E-Mail/Benutzername oder Passwort falsch.',
+      'unbekannte_karte': 'Diese RFID-Karte ist keinem Konto zugeordnet.',
       'keine_berechtigung': 'Dieses Konto hat keine Berechtigung für die Override-Anmeldung.',
       'token': 'Anmeldung fehlgeschlagen, bitte erneut versuchen.'
     };

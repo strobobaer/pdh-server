@@ -36,6 +36,10 @@
       <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:22px">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt, z.B. Werkstatt-Terminal)</label>
       </div>
+      <div class="form-group">
+        <label class="form-label">RFID-Karte (optional)</label>
+        <input name="rfid_uid" class="form-input" placeholder="Karte an den Leser halten oder UID eintippen">
+      </div>
     </div>
     {{template "icon-button-toolbar" (dict
       "Class" "end"
@@ -83,7 +87,7 @@
           </div>
         </div>
       </td>
-      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span>{{if .IsSystemUser}} <span class="badge b-blue" title="Bleibt dauerhaft eingeloggt"><i class="ti ti-device-desktop"></i> System</span>{{end}}</td>
+      <td><span class="badge {{.RoleClass}}">{{.RoleLabel}}</span>{{if .IsSystemUser}} <span class="badge b-blue" title="Bleibt dauerhaft eingeloggt"><i class="ti ti-device-desktop"></i> System</span>{{end}}{{if .RFIDUID}} <span class="badge b-gray" title="RFID-Karte hinterlegt"><i class="ti ti-credit-card"></i></span>{{end}}</td>
       <td style="font-size:13px;color:var(--muted)">{{.Department}}</td>
       <td style="font-size:12px">
         <div>{{.Email}}</div>
@@ -100,7 +104,7 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}',{{if .IsSystemUser}}true{{else}}false{{end}});closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
+            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}',{{if .IsSystemUser}}true{{else}}false{{end}},'{{.RFIDUID}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
             <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
             {{if .Active}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
@@ -133,6 +137,10 @@
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
         <div class="form-group" style="grid-column:1/-1">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-systemuser" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt)</label>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">RFID-Karte (optional)</label>
+          <input id="ef-rfid" name="rfid_uid" class="form-input" placeholder="Karte an den Leser halten oder UID eintippen">
         </div>
       </div>
       <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
@@ -179,6 +187,7 @@ async function submitUserEdit(event){
     department: document.getElementById('ef-dept').value,
     phone: document.getElementById('ef-phone').value,
     is_system_user: document.getElementById('ef-systemuser').checked,
+    rfid_uid: document.getElementById('ef-rfid').value || null,
     on_call_duty: document.getElementById('ef-oncall').checked,
     sharpening: document.getElementById('ef-sharpening').checked,
     heating_fill: document.getElementById('ef-heating').checked,
@@ -206,7 +215,7 @@ document.addEventListener('click',e=>{
 });
 
 let currentEditUserID = null;
-function editUser(id, first, last, role, dept, phone, isSystemUser) {
+function editUser(id, first, last, role, dept, phone, isSystemUser, rfid) {
   currentEditUserID = id;
   const modal = document.getElementById('edit-modal');
   document.getElementById('ef-first').value = first;
@@ -215,6 +224,7 @@ function editUser(id, first, last, role, dept, phone, isSystemUser) {
   document.getElementById('ef-dept').value  = dept;
   document.getElementById('ef-phone').value = phone;
   document.getElementById('ef-systemuser').checked = !!isSystemUser;
+  document.getElementById('ef-rfid').value = rfid || '';
   modal.style.display = 'flex';
 }
 </script>

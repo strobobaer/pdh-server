@@ -31,6 +31,7 @@ type User struct {
 	Phone        string    `json:"phone"`
 	Active       bool      `json:"active"`
 	IsSystemUser bool      `json:"is_system_user"`
+	RFIDUID      *string   `json:"rfid_uid,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
@@ -45,15 +46,16 @@ type User struct {
 
 // CreateUserInput - Eingabe für neuen User
 type CreateUserInput struct {
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	Password     string `json:"password"`
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	Role         Role   `json:"role"`
-	Department   string `json:"department"`
-	Phone        string `json:"phone"`
-	IsSystemUser bool   `json:"is_system_user"`
+	Username     string  `json:"username"`
+	Email        string  `json:"email"`
+	Password     string  `json:"password"`
+	FirstName    string  `json:"first_name"`
+	LastName     string  `json:"last_name"`
+	Role         Role    `json:"role"`
+	Department   string  `json:"department"`
+	Phone        string  `json:"phone"`
+	IsSystemUser bool    `json:"is_system_user"`
+	RFIDUID      *string `json:"rfid_uid,omitempty"`
 }
 
 // Repository - Datenbankzugriff
@@ -67,42 +69,63 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 
 func (r *Repository) Create(ctx context.Context, u *User) error {
 	query := `
-		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9)
+		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user, rfid_uid)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		u.Username, u.Email, u.PasswordHash,
 		u.FirstName, u.LastName, u.Role,
-		u.Department, u.Phone, u.IsSystemUser,
+		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, created_at, updated_at,
+		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE id = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
-		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
 		&u.CreatedAt, &u.UpdatedAt,
 		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 	)
 	return u, err
 }
 
-func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error) {
+// GetByIdentifier findet einen Nutzer per E-Mail ODER Benutzername - fürs
+// Login-Formular, das beides akzeptiert.
+func (r *Repository) GetByIdentifier(ctx context.Context, identifier string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, created_at, updated_at,
+		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
-		FROM users WHERE email = $1 AND active = true`
-	err := r.db.QueryRow(ctx, query, email).Scan(
+		FROM users WHERE (email = $1 OR username = $1) AND active = true`
+	err := r.db.QueryRow(ctx, query, identifier).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
-		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
+		&u.CreatedAt, &u.UpdatedAt,
+		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+	)
+	return u, err
+}
+
+// GetByRFID findet einen Nutzer per RFID-Tag-UID - für die
+// Karten-/Transponder-Anmeldung. Der Tag muss (dank UNIQUE-Constraint aus
+// der Migration) höchstens einem aktiven Konto zugeordnet sein.
+func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
+	u := &User{}
+	query := `SELECT id, username, email, password_hash, first_name, last_name,
+		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+		FROM users WHERE rfid_uid = $1 AND active = true`
+	err := r.db.QueryRow(ctx, query, uid).Scan(
+		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
+		&u.FirstName, &u.LastName, &u.Role,
+		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
 		&u.CreatedAt, &u.UpdatedAt,
 		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 	)
@@ -111,7 +134,7 @@ func (r *Repository) GetByEmail(ctx context.Context, email string) (*User, error
 
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
 	query := `SELECT id, username, email, first_name, last_name,
-		role, department, phone, active, is_system_user, created_at, updated_at,
+		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE active = true ORDER BY last_name, first_name`
 	rows, err := r.db.Query(ctx, query)
@@ -126,7 +149,7 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 		err := rows.Scan(
 			&u.ID, &u.Username, &u.Email,
 			&u.FirstName, &u.LastName, &u.Role,
-			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser,
+			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
 			&u.CreatedAt, &u.UpdatedAt,
 			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 		)
@@ -140,13 +163,13 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 
 func (r *Repository) Update(ctx context.Context, u *User) error {
 	query := `UPDATE users SET first_name=$1, last_name=$2, role=$3,
-		department=$4, phone=$5, is_system_user=$6,
-		on_call_duty=$7, shift_locksmith_1=$8, shift_locksmith_2=$9, sharpening=$10, heating_fill=$11, shift_leader=$12,
+		department=$4, phone=$5, is_system_user=$6, rfid_uid=$7,
+		on_call_duty=$8, shift_locksmith_1=$9, shift_locksmith_2=$10, sharpening=$11, heating_fill=$12, shift_leader=$13,
 		updated_at=NOW()
-		WHERE id=$13`
+		WHERE id=$14`
 	_, err := r.db.Exec(ctx, query,
 		u.FirstName, u.LastName, u.Role,
-		u.Department, u.Phone, u.IsSystemUser,
+		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
 		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
 		u.ID,
 	)

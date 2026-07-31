@@ -363,6 +363,7 @@ func (h *Handler) Routes() chi.Router {
 
 	// Override-Anmeldung an Systemnutzer-Terminals
 	r.Post("/override-login", h.OverrideLoginWeb)
+	r.Post("/override-login/rfid", h.OverrideLoginRFIDWeb)
 	r.Post("/override-logout", h.OverrideLogoutWeb)
 
 	// HTMX partials
@@ -372,6 +373,7 @@ func (h *Handler) Routes() chi.Router {
 	// Auth
 	r.Get("/login", h.LoginPage)
 	r.Post("/login", h.LoginPost)
+	r.Post("/login/rfid", h.LoginRFIDWeb)
 	r.Get("/logout", h.Logout)
 
 	return r
@@ -571,6 +573,14 @@ func nullID(value string) interface{} {
 		return nil
 	}
 	return value
+}
+
+// derefOr liefert *s, falls s nicht nil ist, sonst den Default-Wert.
+func derefOr(s *string, def string) string {
+	if s == nil {
+		return def
+	}
+	return *s
 }
 
 func optionalID(value string) *string {
@@ -1439,6 +1449,27 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		h.render(w, "login", struct{ Error string }{"Ungültige Anmeldedaten"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// LoginRFIDWeb meldet per RFID-Karten-UID an (kein Passwort - der Besitz
+// der Karte ist der Anmeldefaktor). Gängige RFID-Lesegeräte an
+// Werkstatt-Terminals emulieren eine Tastatur und tippen die UID gefolgt
+// von Enter, daher reicht ein einfaches Formularfeld im Frontend.
+func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	uid := strings.TrimSpace(r.FormValue("uid"))
+	if uid == "" {
+		h.render(w, "login", struct{ Error string }{"Keine Karte erkannt"})
+		return
+	}
+	token, user, err := h.users.LoginByRFID(r.Context(), uid)
+	if err != nil {
+		h.render(w, "login", struct{ Error string }{"Unbekannte Karte"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
@@ -2771,6 +2802,7 @@ type UserView struct {
 	RoleLabel    string
 	RoleClass    string
 	IsSystemUser bool
+	RFIDUID      string
 	Department   string
 	Phone        string
 	Active       bool
@@ -2829,6 +2861,7 @@ func userView(u *users.User, roleLabels map[string]string) UserView {
 		RoleLabel:    label,
 		RoleClass:    roleClasses[u.Role],
 		IsSystemUser: u.IsSystemUser,
+		RFIDUID:      derefOr(u.RFIDUID, ""),
 		Department:   u.Department, Phone: u.Phone, Active: u.Active,
 		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
 		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
@@ -2887,6 +2920,7 @@ func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
 		Department:   r.FormValue("department"),
 		Phone:        r.FormValue("phone"),
 		IsSystemUser: r.FormValue("is_system_user") == "on",
+		RFIDUID:      optionalID(r.FormValue("rfid_uid")),
 	}
 	u, err := h.users.Register(r.Context(), in)
 	w.Header().Set("Content-Type", "text/html")
@@ -2919,6 +2953,7 @@ func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
 		Department:      r.FormValue("department"),
 		Phone:           r.FormValue("phone"),
 		IsSystemUser:    r.FormValue("is_system_user") == "on",
+		RFIDUID:         optionalID(r.FormValue("rfid_uid")),
 		OnCallDuty:      r.FormValue("on_call_duty") == "on",
 		ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on",
 		ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
@@ -3071,6 +3106,49 @@ func (h *Handler) SettingsWeb(w http.ResponseWriter, r *http.Request) {
 // zwischengespeichert - er wird niemals ueberschrieben, solange eine
 // Override-Sitzung bereits laeuft, damit sich Override-Anmeldungen nicht
 // verschachteln koennen.
+
+// OverrideLoginRFIDWeb: wie OverrideLoginWeb, aber per RFID-Karten-UID
+// statt E-Mail+Passwort - der praktische Regelfall am Terminal ("kurz
+// Karte dranhalten"), Formular mit E-Mail+Passwort bleibt als Fallback.
+func (h *Handler) OverrideLoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
+	systemCookie, err := r.Cookie("pdh_token")
+	if err != nil || systemCookie.Value == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	current := getUser(r)
+	if !current.IsSystemUser {
+		http.Redirect(w, r, "/?override_error=nur_am_systemnutzer", http.StatusFound)
+		return
+	}
+
+	r.ParseForm()
+	uid := strings.TrimSpace(r.FormValue("uid"))
+	overrideUser, err := h.users.GetByRFID(r.Context(), uid)
+	if err != nil {
+		http.Redirect(w, r, "/?override_error=unbekannte_karte", http.StatusFound)
+		return
+	}
+	if !h.rbac.HasPermission(string(overrideUser.Role), "system.override") {
+		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
+		return
+	}
+
+	if _, err := r.Cookie("pdh_return_token"); err != nil {
+		http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: systemCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	}
+
+	overrideTTL := time.Duration(h.rbac.OverrideTimeoutMinutes()) * time.Minute
+	tokenStr, err := h.users.IssueToken(overrideUser, overrideTTL, map[string]interface{}{"override": true})
+	if err != nil {
+		http.Redirect(w, r, "/?override_error=token", http.StatusFound)
+		return
+	}
+	maxAge := int(overrideTTL.Seconds())
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: tokenStr, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: overrideUser.ID, Path: "/", MaxAge: maxAge, SameSite: http.SameSiteLaxMode})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
 
 func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
 	systemCookie, err := r.Cookie("pdh_token")

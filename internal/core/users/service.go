@@ -40,6 +40,7 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
 		Department:   in.Department,
 		Phone:        in.Phone,
 		IsSystemUser: in.IsSystemUser,
+		RFIDUID:      in.RFIDUID,
 	}
 
 	if err := s.repo.Create(ctx, u); err != nil {
@@ -68,12 +69,12 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, *U
 	return tokenStr, u, nil
 }
 
-// Authenticate prüft nur E-Mail/Passwort, ohne ein Token auszustellen.
-// Wird für den Override-Login genutzt, wo die Aufrufstelle selbst
-// entscheidet, mit welcher Laufzeit/welchen Zusatz-Claims das Token
-// ausgestellt wird.
-func (s *Service) Authenticate(ctx context.Context, email, password string) (*User, error) {
-	u, err := s.repo.GetByEmail(ctx, email)
+// Authenticate prüft nur E-Mail-ODER-Benutzername + Passwort, ohne ein
+// Token auszustellen. Wird für den Override-Login genutzt, wo die
+// Aufrufstelle selbst entscheidet, mit welcher Laufzeit/welchen
+// Zusatz-Claims das Token ausgestellt wird.
+func (s *Service) Authenticate(ctx context.Context, identifier, password string) (*User, error) {
+	u, err := s.repo.GetByIdentifier(ctx, identifier)
 	if err != nil {
 		return nil, fmt.Errorf("benutzer nicht gefunden")
 	}
@@ -81,6 +82,28 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*Us
 		return nil, fmt.Errorf("falsches passwort")
 	}
 	return u, nil
+}
+
+// LoginByRFID meldet einen Nutzer allein anhand seiner RFID-Karten-UID an,
+// ohne Passwort - der physische Besitz der Karte ist hier der
+// Anmeldefaktor (üblich für schnelle Anmeldungen an Werkstatt-Terminals).
+// Bewusst kein Ersatz für passwortgeschützte Konten mit weitreichenden
+// Rechten; wie streng das gehandhabt wird, entscheidet die Rollen-
+// /Berechtigungsvergabe an der Aufrufstelle.
+func (s *Service) LoginByRFID(ctx context.Context, uid string) (string, *User, error) {
+	u, err := s.repo.GetByRFID(ctx, uid)
+	if err != nil {
+		return "", nil, fmt.Errorf("unbekannte karte")
+	}
+	ttl := s.tokenTTL
+	if u.IsSystemUser {
+		ttl = 10 * 365 * 24 * time.Hour
+	}
+	tokenStr, err := s.IssueToken(u, ttl, nil)
+	if err != nil {
+		return "", nil, err
+	}
+	return tokenStr, u, nil
 }
 
 // IssueToken stellt ein JWT für einen bereits authentifizierten Nutzer
@@ -102,6 +125,10 @@ func (s *Service) IssueToken(u *User, ttl time.Duration, extraClaims map[string]
 
 func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+func (s *Service) GetByRFID(ctx context.Context, uid string) (*User, error) {
+	return s.repo.GetByRFID(ctx, uid)
 }
 
 func (s *Service) List(ctx context.Context) ([]*User, error) {

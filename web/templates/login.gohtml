@@ -33,8 +33,8 @@ input:focus{border-color:var(--accent)}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
   <form method="POST" action="/login">
     <div class="form-group">
-      <label>E-Mail</label>
-      <input type="email" name="email" placeholder="name@beispiel.de" required autofocus>
+      <label>E-Mail oder Benutzername</label>
+      <input type="text" name="email" placeholder="name@beispiel.de oder Benutzername" required autofocus>
     </div>
     <div class="form-group">
       <label>Passwort</label>
@@ -42,6 +42,24 @@ input:focus{border-color:var(--accent)}
     </div>
     <button type="submit" class="btn">Anmelden →</button>
   </form>
+  <div style="display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--muted);font-size:11px">
+    <div style="flex:1;height:1px;background:var(--border)"></div>ODER<div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+  <form method="POST" action="/login/rfid" onsubmit="return true">
+    <div class="form-group">
+      <label>RFID-Karte</label>
+      <input type="text" name="uid" id="rfid-input" placeholder="Karte an den Leser halten..." autocomplete="off">
+    </div>
+  </form>
+  <script>
+    // Die meisten RFID-Leser tippen die UID gefolgt von Enter/Return wie
+    // eine Tastatur - das Formular sendet sich dadurch von selbst ab,
+    // sobald die Karte gescannt wurde.
+    var rfidInput = document.getElementById('rfid-input');
+    rfidInput.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); this.form.submit(); }
+    });
+  </script>
 </div>
 </body>
 </html>
