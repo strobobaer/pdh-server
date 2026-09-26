@@ -1,0 +1,1427 @@
+diff --git a/cmd/server/main.go b/cmd/server/main.go
+index 05386fe..3535b9d 100644
+--- a/cmd/server/main.go
++++ b/cmd/server/main.go
+@@ -20,6 +20,7 @@ import (
+ 	"pdh/internal/core/addins"
+ 	"pdh/internal/core/costcenters"
+ 	"pdh/internal/core/infrastructure"
++	"pdh/internal/core/integrations"
+ 	"pdh/internal/core/rbac"
+ 	"pdh/internal/core/shifts"
+ 	"pdh/internal/core/storage"
+@@ -31,6 +32,7 @@ import (
+ 	"pdh/internal/modules/inventory"
+ 	"pdh/internal/modules/it"
+ 	"pdh/internal/modules/maintenance"
++	"pdh/internal/modules/production"
+ 	"pdh/internal/modules/projects"
+ 	"pdh/internal/modules/tasks"
+ 	"pdh/internal/modules/tickets"
+@@ -79,6 +81,12 @@ func main() {
+ 
+ 	userHandler := users.NewHandler(userSvc, rbacSvc)
+ 
++	prodRepo := production.NewRepository(db.Pool)
++	prodSvc := production.NewService(prodRepo)
++
++	integrRepo := integrations.NewRepository(db.Pool)
++	integrSvc := integrations.NewService(integrRepo)
++
+ 	shiftRepo := shifts.NewRepository(db.Pool)
+ 
+ 	storageRepo := storage.NewRepository(db.Pool)
+@@ -173,7 +181,7 @@ func main() {
+ 	log.Info().Int("count", len(tmpl.Templates())).Msg("templates geladen")
+ 
+ 	// Web Handler
+-	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
++	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, prodSvc, integrSvc, cfg.Auth.JWTSecret)
+ 
+ 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
+ 
+@@ -213,6 +221,8 @@ func main() {
+ 		r.Mount("/attachments", attachHandler.Routes(cfg.Auth.JWTSecret))
+ 		r.Mount("/checklists", checkHandler.Routes(cfg.Auth.JWTSecret))
+ 		r.Mount("/addins", addinsHandler.Routes(cfg.Auth.JWTSecret))
++		// Fuer n8n & Co: eigene Auth per X-API-Key statt JWT-Session
++		r.Mount("/integration", integrSvc.AuthMiddleware(webHandler.IntegrationRoutes()))
+ 	})
+ 
+ 	// Web-save fallbacks: diese Routen liegen vor dem generischen Web-Mount.
+diff --git a/internal/core/integrations/integrations.go b/internal/core/integrations/integrations.go
+new file mode 100644
+index 0000000..d31c28d
+--- /dev/null
++++ b/internal/core/integrations/integrations.go
+@@ -0,0 +1,319 @@
++// Package integrations stellt die generische Infrastruktur für externe
++// Systeme (z.B. n8n) bereit:
++//   - API-Schlüssel für eingehende Aufrufe (n8n -> PDH, per X-API-Key-Header)
++//   - Webhooks für ausgehende Ereignisse (PDH -> n8n, signiert per HMAC)
++//
++// Ist bewusst nicht an ein einzelnes Modul gebunden - jede Stelle im Code
++// kann Dispatch() aufrufen, um ein Ereignis an alle passenden Webhooks zu
++// senden.
++package integrations
++
++import (
++	"bytes"
++	"context"
++	"crypto/hmac"
++	"crypto/rand"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"net/http"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/rs/zerolog/log"
++)
++
++type APIKey struct {
++	ID         string     `json:"id"`
++	Name       string     `json:"name"`
++	KeyPrefix  string     `json:"key_prefix"`
++	Active     bool       `json:"active"`
++	CreatedBy  *string    `json:"created_by,omitempty"`
++	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
++	CreatedAt  time.Time  `json:"created_at"`
++}
++
++type Webhook struct {
++	ID              string     `json:"id"`
++	Name            string     `json:"name"`
++	TargetURL       string     `json:"target_url"`
++	Secret          string     `json:"secret,omitempty"`
++	Events          []string   `json:"events"`
++	Active          bool       `json:"active"`
++	CreatedBy       *string    `json:"created_by,omitempty"`
++	LastTriggeredAt *time.Time `json:"last_triggered_at,omitempty"`
++	LastStatus      string     `json:"last_status,omitempty"`
++	LastError       string     `json:"last_error,omitempty"`
++	CreatedAt       time.Time  `json:"created_at"`
++}
++
++// Bekannte Ereignis-Schlüssel, an die sich Webhooks abonnieren können.
++// Nicht abschliessend - siehe README-Hinweis im Patch dazu, an welchen
++// Stellen Dispatch() aktuell aufgerufen wird.
++const (
++	EventProductionRecorded = "production.recorded"
++	EventFaultCreated       = "fault.created"
++)
++
++// ── Repository ────────────────────────────────────────────────
++
++type Repository struct{ db *pgxpool.Pool }
++
++func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
++
++func (r *Repository) CreateAPIKey(ctx context.Context, name, keyHash, keyPrefix string, createdBy *string) (*APIKey, error) {
++	k := &APIKey{}
++	err := r.db.QueryRow(ctx, `
++		INSERT INTO integration_api_keys (name, key_hash, key_prefix, created_by)
++		VALUES ($1,$2,$3,$4)
++		RETURNING id, name, key_prefix, active, created_by, last_used_at, created_at`,
++		name, keyHash, keyPrefix, createdBy,
++	).Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.Active, &k.CreatedBy, &k.LastUsedAt, &k.CreatedAt)
++	return k, err
++}
++
++func (r *Repository) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
++	rows, err := r.db.Query(ctx, `SELECT id, name, key_prefix, active, created_by, last_used_at, created_at
++		FROM integration_api_keys ORDER BY created_at DESC`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var keys []*APIKey
++	for rows.Next() {
++		k := &APIKey{}
++		if err := rows.Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.Active, &k.CreatedBy, &k.LastUsedAt, &k.CreatedAt); err != nil {
++			return nil, err
++		}
++		keys = append(keys, k)
++	}
++	return keys, nil
++}
++
++func (r *Repository) RevokeAPIKey(ctx context.Context, id string) error {
++	_, err := r.db.Exec(ctx, `UPDATE integration_api_keys SET active=false WHERE id=$1`, id)
++	return err
++}
++
++func (r *Repository) FindActiveAPIKeyByHash(ctx context.Context, hash string) (*APIKey, error) {
++	k := &APIKey{}
++	err := r.db.QueryRow(ctx, `SELECT id, name, key_prefix, active, created_by, last_used_at, created_at
++		FROM integration_api_keys WHERE key_hash=$1 AND active=true`, hash,
++	).Scan(&k.ID, &k.Name, &k.KeyPrefix, &k.Active, &k.CreatedBy, &k.LastUsedAt, &k.CreatedAt)
++	return k, err
++}
++
++func (r *Repository) TouchAPIKey(ctx context.Context, id string) {
++	r.db.Exec(ctx, `UPDATE integration_api_keys SET last_used_at=NOW() WHERE id=$1`, id)
++}
++
++func (r *Repository) CreateWebhook(ctx context.Context, name, targetURL, secret string, events []string, createdBy *string) (*Webhook, error) {
++	eventsJSON, _ := json.Marshal(events)
++	w := &Webhook{}
++	err := r.db.QueryRow(ctx, `
++		INSERT INTO integration_webhooks (name, target_url, secret, events, created_by)
++		VALUES ($1,$2,$3,$4,$5)
++		RETURNING id, name, target_url, secret, events, active, created_by, last_triggered_at, COALESCE(last_status,''), COALESCE(last_error,''), created_at`,
++		name, targetURL, secret, eventsJSON, createdBy,
++	).Scan(&w.ID, &w.Name, &w.TargetURL, &w.Secret, jsonEventsScanner{&w.Events}, &w.Active, &w.CreatedBy, &w.LastTriggeredAt, &w.LastStatus, &w.LastError, &w.CreatedAt)
++	return w, err
++}
++
++func (r *Repository) ListWebhooks(ctx context.Context) ([]*Webhook, error) {
++	rows, err := r.db.Query(ctx, `SELECT id, name, target_url, secret, events, active, created_by, last_triggered_at, COALESCE(last_status,''), COALESCE(last_error,''), created_at
++		FROM integration_webhooks ORDER BY created_at DESC`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var hooks []*Webhook
++	for rows.Next() {
++		w := &Webhook{}
++		if err := rows.Scan(&w.ID, &w.Name, &w.TargetURL, &w.Secret, jsonEventsScanner{&w.Events}, &w.Active, &w.CreatedBy, &w.LastTriggeredAt, &w.LastStatus, &w.LastError, &w.CreatedAt); err != nil {
++			return nil, err
++		}
++		hooks = append(hooks, w)
++	}
++	return hooks, nil
++}
++
++func (r *Repository) ListActiveWebhooksForEvent(ctx context.Context, event string) ([]*Webhook, error) {
++	all, err := r.ListWebhooks(ctx)
++	if err != nil {
++		return nil, err
++	}
++	var matched []*Webhook
++	for _, w := range all {
++		if !w.Active {
++			continue
++		}
++		for _, e := range w.Events {
++			if e == event {
++				matched = append(matched, w)
++				break
++			}
++		}
++	}
++	return matched, nil
++}
++
++func (r *Repository) DeleteWebhook(ctx context.Context, id string) error {
++	_, err := r.db.Exec(ctx, `DELETE FROM integration_webhooks WHERE id=$1`, id)
++	return err
++}
++
++func (r *Repository) RecordWebhookResult(ctx context.Context, id string, status string, errMsg string) {
++	r.db.Exec(ctx, `UPDATE integration_webhooks SET last_triggered_at=NOW(), last_status=$1, last_error=$2 WHERE id=$3`, status, errMsg, id)
++}
++
++// jsonEventsScanner erlaubt pgx, die JSONB-Spalte "events" direkt in ein
++// []string zu scannen, ohne an jeder Aufrufstelle manuell json.Unmarshal
++// aufzurufen.
++type jsonEventsScanner struct{ dest *[]string }
++
++func (s jsonEventsScanner) Scan(src interface{}) error {
++	var raw []byte
++	switch v := src.(type) {
++	case []byte:
++		raw = v
++	case string:
++		raw = []byte(v)
++	default:
++		*s.dest = nil
++		return nil
++	}
++	return json.Unmarshal(raw, s.dest)
++}
++
++// ── Service ───────────────────────────────────────────────────
++
++type Service struct {
++	repo *Repository
++}
++
++func NewService(repo *Repository) *Service { return &Service{repo: repo} }
++
++// GenerateAPIKey erzeugt einen neuen, hochentropischen Schlüssel. Der
++// Rohschlüssel wird NUR hier zurückgegeben (einmalig sichtbar) - in der DB
++// landet nur sein SHA-256-Hash.
++func (s *Service) GenerateAPIKey(ctx context.Context, name string, createdBy *string) (rawKey string, key *APIKey, err error) {
++	raw := make([]byte, 32)
++	if _, err := rand.Read(raw); err != nil {
++		return "", nil, err
++	}
++	rawKey = "pdh_" + hex.EncodeToString(raw)
++	hash := sha256.Sum256([]byte(rawKey))
++	hashHex := hex.EncodeToString(hash[:])
++	prefix := rawKey[:12]
++	key, err = s.repo.CreateAPIKey(ctx, name, hashHex, prefix, createdBy)
++	return rawKey, key, err
++}
++
++func (s *Service) ValidateAPIKey(ctx context.Context, rawKey string) (*APIKey, error) {
++	hash := sha256.Sum256([]byte(rawKey))
++	hashHex := hex.EncodeToString(hash[:])
++	key, err := s.repo.FindActiveAPIKeyByHash(ctx, hashHex)
++	if err != nil {
++		return nil, err
++	}
++	s.repo.TouchAPIKey(ctx, key.ID)
++	return key, nil
++}
++
++func (s *Service) ListAPIKeys(ctx context.Context) ([]*APIKey, error) { return s.repo.ListAPIKeys(ctx) }
++func (s *Service) RevokeAPIKey(ctx context.Context, id string) error {
++	return s.repo.RevokeAPIKey(ctx, id)
++}
++
++type ctxKey string
++
++const apiKeyCtxKey ctxKey = "integration_api_key"
++
++// AuthMiddleware prüft den "X-API-Key"-Header gegen die gespeicherten,
++// aktiven Integrations-Schlüssel. Für die /api/v1/integration/*-Routen
++// gedacht - komplett getrennt von der normalen JWT-Session-Auth, weil n8n
++// (oder ein anderes externes System) kein Nutzerkonto ist.
++func (s *Service) AuthMiddleware(next http.Handler) http.Handler {
++	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		key := r.Header.Get("X-API-Key")
++		if key == "" {
++			http.Error(w, `{"error":"X-API-Key Header fehlt"}`, http.StatusUnauthorized)
++			return
++		}
++		apiKey, err := s.ValidateAPIKey(r.Context(), key)
++		if err != nil {
++			http.Error(w, `{"error":"ungueltiger API-Key"}`, http.StatusUnauthorized)
++			return
++		}
++		ctx := context.WithValue(r.Context(), apiKeyCtxKey, apiKey)
++		next.ServeHTTP(w, r.WithContext(ctx))
++	})
++}
++
++// APIKeyFromContext liefert den validierten API-Schlüssel-Datensatz der
++// aktuellen Anfrage (gesetzt von AuthMiddleware).
++func APIKeyFromContext(ctx context.Context) *APIKey {
++	k, _ := ctx.Value(apiKeyCtxKey).(*APIKey)
++	return k
++}
++
++func (s *Service) CreateWebhook(ctx context.Context, name, targetURL, secret string, events []string, createdBy *string) (*Webhook, error) {
++	return s.repo.CreateWebhook(ctx, name, targetURL, secret, events, createdBy)
++}
++func (s *Service) ListWebhooks(ctx context.Context) ([]*Webhook, error) {
++	return s.repo.ListWebhooks(ctx)
++}
++func (s *Service) DeleteWebhook(ctx context.Context, id string) error {
++	return s.repo.DeleteWebhook(ctx, id)
++}
++
++// Dispatch sendet ein Ereignis an alle aktiven, dafür abonnierten Webhooks.
++// Läuft asynchron (eigene Goroutine pro Webhook) und blockiert damit nie
++// den eigentlichen Request, der das Ereignis ausgelöst hat.
++func (s *Service) Dispatch(ctx context.Context, event string, payload interface{}) {
++	hooks, err := s.repo.ListActiveWebhooksForEvent(ctx, event)
++	if err != nil || len(hooks) == 0 {
++		return
++	}
++	body, err := json.Marshal(map[string]interface{}{
++		"event":     event,
++		"data":      payload,
++		"timestamp": time.Now().UTC().Format(time.RFC3339),
++	})
++	if err != nil {
++		return
++	}
++	for _, hook := range hooks {
++		go s.send(hook, body)
++	}
++}
++
++func (s *Service) send(hook *Webhook, body []byte) {
++	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++	defer cancel()
++
++	mac := hmac.New(sha256.New, []byte(hook.Secret))
++	mac.Write(body)
++	signature := hex.EncodeToString(mac.Sum(nil))
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook.TargetURL, bytes.NewReader(body))
++	if err != nil {
++		s.repo.RecordWebhookResult(ctx, hook.ID, "error", err.Error())
++		return
++	}
++	req.Header.Set("Content-Type", "application/json")
++	req.Header.Set("X-PDH-Signature", "sha256="+signature)
++
++	resp, err := http.DefaultClient.Do(req)
++	if err != nil {
++		log.Warn().Err(err).Str("webhook", hook.Name).Msg("webhook-versand fehlgeschlagen")
++		s.repo.RecordWebhookResult(ctx, hook.ID, "error", err.Error())
++		return
++	}
++	defer resp.Body.Close()
++	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
++		s.repo.RecordWebhookResult(ctx, hook.ID, "ok", "")
++	} else {
++		s.repo.RecordWebhookResult(ctx, hook.ID, "error", "HTTP "+http.StatusText(resp.StatusCode))
++	}
++}
+diff --git a/internal/modules/production/production.go b/internal/modules/production/production.go
+new file mode 100644
+index 0000000..5547c70
+--- /dev/null
++++ b/internal/modules/production/production.go
+@@ -0,0 +1,143 @@
++// Package production verwaltet Produktionsdaten (Stückzahlen, Ausschuss,
++// Zykluszeit) pro Maschine/Anlage. Datensätze können manuell im Web-UI
++// erfasst oder über die Integrations-API (z.B. per n8n aus einem
++// externen MES) importiert werden - das Feld "Source" unterscheidet
++// beides.
++package production
++
++import (
++	"context"
++	"strconv"
++	"time"
++
++	"github.com/jackc/pgx/v5/pgxpool"
++)
++
++type Record struct {
++	ID               string    `json:"id"`
++	InfrastructureID *string   `json:"infrastructure_id,omitempty"`
++	InfraName        string    `json:"infrastructure_name,omitempty"`
++	RecordedAt       time.Time `json:"recorded_at"`
++	QuantityGood     int       `json:"quantity_good"`
++	QuantityScrap    int       `json:"quantity_scrap"`
++	CycleTimeSeconds *float64  `json:"cycle_time_seconds,omitempty"`
++	Notes            string    `json:"notes,omitempty"`
++	Source           string    `json:"source"` // manual | import | api
++	ExternalRef      *string   `json:"external_ref,omitempty"`
++	CreatedBy        *string   `json:"created_by,omitempty"`
++	CreatedByName    string    `json:"created_by_name,omitempty"`
++	CreatedAt        time.Time `json:"created_at"`
++}
++
++type CreateInput struct {
++	InfrastructureID *string
++	RecordedAt       *time.Time
++	QuantityGood     int
++	QuantityScrap    int
++	CycleTimeSeconds *float64
++	Notes            string
++	Source           string
++	ExternalRef      *string
++	CreatedBy        *string
++}
++
++type Filter struct {
++	InfrastructureID string
++	From             *time.Time
++	To               *time.Time
++	Limit            int
++}
++
++// ── Repository ────────────────────────────────────────────────
++
++type Repository struct{ db *pgxpool.Pool }
++
++func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
++
++func (r *Repository) Create(ctx context.Context, in *CreateInput) (*Record, error) {
++	recordedAt := time.Now()
++	if in.RecordedAt != nil {
++		recordedAt = *in.RecordedAt
++	}
++	source := in.Source
++	if source == "" {
++		source = "manual"
++	}
++	rec := &Record{}
++	err := r.db.QueryRow(ctx, `
++		INSERT INTO production_records
++			(infrastructure_id, recorded_at, quantity_good, quantity_scrap, cycle_time_seconds, notes, source, external_ref, created_by)
++		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
++		RETURNING id, infrastructure_id, recorded_at, quantity_good, quantity_scrap, cycle_time_seconds, COALESCE(notes,''), source, external_ref, created_by, created_at`,
++		in.InfrastructureID, recordedAt, in.QuantityGood, in.QuantityScrap, in.CycleTimeSeconds, in.Notes, source, in.ExternalRef, in.CreatedBy,
++	).Scan(&rec.ID, &rec.InfrastructureID, &rec.RecordedAt, &rec.QuantityGood, &rec.QuantityScrap,
++		&rec.CycleTimeSeconds, &rec.Notes, &rec.Source, &rec.ExternalRef, &rec.CreatedBy, &rec.CreatedAt)
++	return rec, err
++}
++
++func (r *Repository) List(ctx context.Context, f Filter) ([]*Record, error) {
++	query := `SELECT pr.id, pr.infrastructure_id, COALESCE(i.name,''), pr.recorded_at,
++		pr.quantity_good, pr.quantity_scrap, pr.cycle_time_seconds, COALESCE(pr.notes,''),
++		pr.source, pr.external_ref, pr.created_by, COALESCE(u.first_name||' '||u.last_name,''), pr.created_at
++		FROM production_records pr
++		LEFT JOIN infrastructure i ON pr.infrastructure_id = i.id
++		LEFT JOIN users u ON pr.created_by = u.id
++		WHERE 1=1`
++	args := []interface{}{}
++	n := 0
++	if f.InfrastructureID != "" {
++		n++
++		query += " AND pr.infrastructure_id = $" + strconv.Itoa(n)
++		args = append(args, f.InfrastructureID)
++	}
++	if f.From != nil {
++		n++
++		query += " AND pr.recorded_at >= $" + strconv.Itoa(n)
++		args = append(args, *f.From)
++	}
++	if f.To != nil {
++		n++
++		query += " AND pr.recorded_at <= $" + strconv.Itoa(n)
++		args = append(args, *f.To)
++	}
++	query += " ORDER BY pr.recorded_at DESC"
++	limit := f.Limit
++	if limit <= 0 || limit > 5000 {
++		limit = 500
++	}
++	n++
++	query += " LIMIT $" + strconv.Itoa(n)
++	args = append(args, limit)
++
++	rows, err := r.db.Query(ctx, query, args...)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++
++	var records []*Record
++	for rows.Next() {
++		rec := &Record{}
++		if err := rows.Scan(&rec.ID, &rec.InfrastructureID, &rec.InfraName, &rec.RecordedAt,
++			&rec.QuantityGood, &rec.QuantityScrap, &rec.CycleTimeSeconds, &rec.Notes,
++			&rec.Source, &rec.ExternalRef, &rec.CreatedBy, &rec.CreatedByName, &rec.CreatedAt); err != nil {
++			return nil, err
++		}
++		records = append(records, rec)
++	}
++	return records, nil
++}
++
++// ── Service ───────────────────────────────────────────────────
++
++type Service struct{ repo *Repository }
++
++func NewService(repo *Repository) *Service { return &Service{repo: repo} }
++
++func (s *Service) Create(ctx context.Context, in *CreateInput) (*Record, error) {
++	return s.repo.Create(ctx, in)
++}
++
++func (s *Service) List(ctx context.Context, f Filter) ([]*Record, error) {
++	return s.repo.List(ctx, f)
++}
+diff --git a/internal/web/handler.go b/internal/web/handler.go
+index ed6bade..a490ef8 100644
+--- a/internal/web/handler.go
++++ b/internal/web/handler.go
+@@ -2,9 +2,12 @@ package web
+ 
+ import (
+ 	"context"
++	"crypto/rand"
++	"encoding/hex"
+ 	"fmt"
+ 	"html/template"
+ 	"net/http"
++	"net/url"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -15,6 +18,7 @@ import (
+ 	"github.com/rs/zerolog/log"
+ 
+ 	"pdh/internal/core/infrastructure"
++	"pdh/internal/core/integrations"
+ 	"pdh/internal/core/rbac"
+ 	"pdh/internal/core/shifts"
+ 	"pdh/internal/core/storage"
+@@ -24,6 +28,7 @@ import (
+ 	"pdh/internal/modules/inventory"
+ 	"pdh/internal/modules/it"
+ 	"pdh/internal/modules/maintenance"
++	"pdh/internal/modules/production"
+ 	"pdh/internal/modules/projects"
+ 	"pdh/internal/modules/tasks"
+ 	"pdh/internal/modules/tickets"
+@@ -47,6 +52,7 @@ type BaseData struct {
+ 	IdleTimeoutMinutes     int  // globale Auto-Logout-Zeit (Minuten)
+ 	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
+ 	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
++	CanManageIntegrations  bool // Nav-Link "Schnittstellen" anzeigen
+ }
+ 
+ type DashboardData struct {
+@@ -231,23 +237,25 @@ type PartView struct {
+ // ── Handler ──────────────────────────────────────────────────
+ 
+ type Handler struct {
+-	db        *pgxpool.Pool
+-	tmpl      *template.Template
+-	users     *users.Service
+-	shifts    *shifts.Service
+-	storage   *storage.Service
+-	infra     *infrastructure.Service
+-	tickets   *tickets.Service
+-	faults    *faults.Service
+-	maint     *maintenance.Service
+-	inv       *inventory.Service
+-	it        *it.Service
+-	time      *timetracking.Service
+-	checks    *checklists.Service
+-	tasks     *tasks.Service
+-	projects  *projects.Service
+-	rbac      *rbac.Service
+-	jwtSecret string
++	db           *pgxpool.Pool
++	tmpl         *template.Template
++	users        *users.Service
++	shifts       *shifts.Service
++	storage      *storage.Service
++	infra        *infrastructure.Service
++	tickets      *tickets.Service
++	faults       *faults.Service
++	maint        *maintenance.Service
++	inv          *inventory.Service
++	it           *it.Service
++	time         *timetracking.Service
++	checks       *checklists.Service
++	tasks        *tasks.Service
++	projects     *projects.Service
++	rbac         *rbac.Service
++	production   *production.Service
++	integrations *integrations.Service
++	jwtSecret    string
+ }
+ 
+ func NewHandler(
+@@ -267,17 +275,21 @@ func NewHandler(
+ 	tk *tasks.Service,
+ 	pj *projects.Service,
+ 	rb *rbac.Service,
++	prod *production.Service,
++	integr *integrations.Service,
+ 	jwtSecret string,
+ ) *Handler {
+ 	return &Handler{
+ 		db:   db,
+ 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
+ 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
+-		checks:    ch,
+-		tasks:     tk,
+-		projects:  pj,
+-		rbac:      rb,
+-		jwtSecret: jwtSecret,
++		checks:       ch,
++		tasks:        tk,
++		projects:     pj,
++		rbac:         rb,
++		production:   prod,
++		integrations: integr,
++		jwtSecret:    jwtSecret,
+ 	}
+ }
+ 
+@@ -361,6 +373,17 @@ func (h *Handler) Routes() chi.Router {
+ 	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
+ 	r.Post("/admin/settings", h.SettingsWeb)
+ 
++	// Schnittstellen (API-Keys & Webhooks fuer n8n & Co.)
++	r.Get("/admin/integrations", h.IntegrationsPage)
++	r.Post("/admin/integrations/keys", h.IntegrationKeyCreateWeb)
++	r.Post("/admin/integrations/keys/{id}/revoke-web", h.IntegrationKeyRevokeWeb)
++	r.Post("/admin/integrations/webhooks", h.IntegrationWebhookCreateWeb)
++	r.Post("/admin/integrations/webhooks/{id}/delete-web", h.IntegrationWebhookDeleteWeb)
++
++	// Produktionsdaten
++	r.Get("/production", h.ProductionPage)
++	r.Post("/production", h.ProductionCreateWeb)
++
+ 	// Override-Anmeldung an Systemnutzer-Terminals
+ 	r.Post("/override-login", h.OverrideLoginWeb)
+ 	r.Post("/override-login/rfid", h.OverrideLoginRFIDWeb)
+@@ -551,6 +574,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
+ 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
+ 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
+ 		CanManageRoles:         h.rbac.HasPermission(string(u.Role), "system.manage_roles"),
++		CanManageIntegrations:  h.rbac.HasPermission(string(u.Role), "integrations.manage"),
+ 	}
+ }
+ 
+@@ -3007,6 +3031,167 @@ func (h *Handler) canManageRoles(r *http.Request) bool {
+ 	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_roles")
+ }
+ 
++func (h *Handler) canManageIntegrations(r *http.Request) bool {
++	return h.rbac.HasPermission(string(getUser(r).Role), "integrations.manage")
++}
++
++// ── Schnittstellen (API-Keys & Webhooks für n8n & Co.) ───────────
++
++type IntegrationsPageData struct {
++	BaseData
++	APIKeys    []*integrations.APIKey
++	Webhooks   []*integrations.Webhook
++	NewKeyRaw  string
++	NewKeyName string
++	AllEvents  []string
++}
++
++func (h *Handler) IntegrationsPage(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageIntegrations(r) {
++		http.Redirect(w, r, "/", http.StatusFound)
++		return
++	}
++	ctx := r.Context()
++	keys, _ := h.integrations.ListAPIKeys(ctx)
++	hooks, _ := h.integrations.ListWebhooks(ctx)
++	data := IntegrationsPageData{
++		BaseData: h.baseData(r, "integrations", "Schnittstellen", "Produktionsdaten-Import/-Export"),
++		APIKeys:  keys,
++		Webhooks: hooks,
++		AllEvents: []string{
++			integrations.EventProductionRecorded,
++			integrations.EventFaultCreated,
++		},
++	}
++	q := r.URL.Query()
++	data.NewKeyRaw = q.Get("new_key")
++	data.NewKeyName = q.Get("key_name")
++	h.render(w, "integrations", data)
++}
++
++func (h *Handler) IntegrationKeyCreateWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageIntegrations(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	name := strings.TrimSpace(r.FormValue("name"))
++	if name == "" {
++		http.Redirect(w, r, "/admin/integrations", http.StatusFound)
++		return
++	}
++	u := getUser(r)
++	rawKey, _, err := h.integrations.GenerateAPIKey(r.Context(), name, &u.ID)
++	if err != nil {
++		http.Error(w, err.Error(), http.StatusInternalServerError)
++		return
++	}
++	http.Redirect(w, r, "/admin/integrations?new_key="+url.QueryEscape(rawKey)+"&key_name="+url.QueryEscape(name), http.StatusFound)
++}
++
++func (h *Handler) IntegrationKeyRevokeWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageIntegrations(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	h.integrations.RevokeAPIKey(r.Context(), chi.URLParam(r, "id"))
++	http.Redirect(w, r, "/admin/integrations", http.StatusFound)
++}
++
++func (h *Handler) IntegrationWebhookCreateWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageIntegrations(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	name := strings.TrimSpace(r.FormValue("name"))
++	targetURL := strings.TrimSpace(r.FormValue("target_url"))
++	secret := strings.TrimSpace(r.FormValue("secret"))
++	events := r.Form["events"]
++	if name == "" || targetURL == "" {
++		http.Redirect(w, r, "/admin/integrations", http.StatusFound)
++		return
++	}
++	if secret == "" {
++		raw := make([]byte, 24)
++		rand.Read(raw)
++		secret = hex.EncodeToString(raw)
++	}
++	u := getUser(r)
++	h.integrations.CreateWebhook(r.Context(), name, targetURL, secret, events, &u.ID)
++	http.Redirect(w, r, "/admin/integrations", http.StatusFound)
++}
++
++func (h *Handler) IntegrationWebhookDeleteWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.canManageIntegrations(r) {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	h.integrations.DeleteWebhook(r.Context(), chi.URLParam(r, "id"))
++	http.Redirect(w, r, "/admin/integrations", http.StatusFound)
++}
++
++// ── Produktionsdaten (manuelle Erfassung, Ergänzung zum n8n-Import) ──
++
++type ProductionPageData struct {
++	BaseData
++	Records      []*production.Record
++	InfraOptions []InfraOption
++	CanEdit      bool
++}
++
++func (h *Handler) ProductionPage(w http.ResponseWriter, r *http.Request) {
++	if !h.rbac.HasPermission(string(getUser(r).Role), "production.view") {
++		http.Redirect(w, r, "/", http.StatusFound)
++		return
++	}
++	ctx := r.Context()
++	records, _ := h.production.List(ctx, production.Filter{Limit: 200})
++	infraList, _ := h.infra.List(ctx, nil, "")
++	var infraOptions []InfraOption
++	for _, i := range infraList {
++		infraOptions = append(infraOptions, InfraOption{ID: i.ID, Name: i.Name})
++	}
++	data := ProductionPageData{
++		BaseData:     h.baseData(r, "production", "Produktionsdaten", "Stückzahlen & Ausschuss"),
++		Records:      records,
++		InfraOptions: infraOptions,
++		CanEdit:      h.rbac.HasPermission(string(getUser(r).Role), "production.edit"),
++	}
++	h.render(w, "production", data)
++}
++
++func (h *Handler) ProductionCreateWeb(w http.ResponseWriter, r *http.Request) {
++	if !h.rbac.HasPermission(string(getUser(r).Role), "production.edit") {
++		http.Error(w, "keine berechtigung", http.StatusForbidden)
++		return
++	}
++	r.ParseForm()
++	good, _ := strconv.Atoi(r.FormValue("quantity_good"))
++	scrap, _ := strconv.Atoi(r.FormValue("quantity_scrap"))
++	in := &production.CreateInput{
++		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
++		QuantityGood:     good,
++		QuantityScrap:    scrap,
++		Notes:            r.FormValue("notes"),
++		Source:           "manual",
++	}
++	if ct := r.FormValue("cycle_time_seconds"); ct != "" {
++		if f, err := strconv.ParseFloat(ct, 64); err == nil {
++			in.CycleTimeSeconds = &f
++		}
++	}
++	u := getUser(r)
++	in.CreatedBy = &u.ID
++	rec, err := h.production.Create(r.Context(), in)
++	if err != nil {
++		http.Error(w, err.Error(), http.StatusInternalServerError)
++		return
++	}
++	h.integrations.Dispatch(r.Context(), integrations.EventProductionRecorded, rec)
++	http.Redirect(w, r, "/production", http.StatusFound)
++}
++
+ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
+ 	if !h.canManageRoles(r) {
+ 		http.Redirect(w, r, "/", http.StatusFound)
+diff --git a/internal/web/integration_handler.go b/internal/web/integration_handler.go
+new file mode 100644
+index 0000000..4d667ca
+--- /dev/null
++++ b/internal/web/integration_handler.go
+@@ -0,0 +1,278 @@
++package web
++
++// integration_handler.go
++//
++// HTTP-Endpunkte unter /api/v1/integration/* für externe Systeme wie n8n.
++// Abgesichert per X-API-Key-Header (integrations.Service.AuthMiddleware),
++// NICHT per JWT-Session - n8n ist kein Nutzerkonto. API-Schlüssel werden
++// unter "Schnittstellen" in der PDH-Oberfläche erzeugt/verwaltet.
++//
++// Zwei Richtungen:
++//   Export (GET)  - PDH-Daten für externe Systeme abrufbar machen
++//   Import (POST) - externe Systeme legen/aktualisieren Daten in PDH an
++//
++// Bewusste Grenze: nicht jedes PDH-Modul hat hier einen Endpunkt, siehe
++// Doku im Patch dazu. Die Struktur ist so angelegt, dass sich weitere
++// Module nach demselben Muster ergänzen lassen.
++
++import (
++	"encoding/json"
++	"net/http"
++	"strconv"
++	"time"
++
++	"github.com/go-chi/chi/v5"
++
++	"pdh/internal/core/integrations"
++	"pdh/internal/modules/faults"
++	"pdh/internal/modules/maintenance"
++	"pdh/internal/modules/production"
++	"pdh/internal/modules/tickets"
++)
++
++// IntegrationRoutes registriert alle /api/v1/integration/*-Endpunkte.
++// Wird in main.go mit integrations.Service.AuthMiddleware statt der
++// normalen JWT-Middleware verknüpft.
++func (h *Handler) IntegrationRoutes() chi.Router {
++	r := chi.NewRouter()
++
++	r.Get("/production", h.IntegrationExportProduction)
++	r.Post("/production", h.IntegrationImportProduction)
++
++	r.Get("/tasks", h.IntegrationExportTasks)
++	r.Get("/tickets", h.IntegrationExportTickets)
++	r.Get("/faults", h.IntegrationExportFaults)
++	r.Post("/faults", h.IntegrationImportFault)
++	r.Get("/maintenance", h.IntegrationExportMaintenance)
++	r.Get("/inventory", h.IntegrationExportInventory)
++
++	return r
++}
++
++func writeJSON(w http.ResponseWriter, status int, v interface{}) {
++	w.Header().Set("Content-Type", "application/json")
++	w.WriteHeader(status)
++	json.NewEncoder(w).Encode(v)
++}
++
++// parseTimeRange liest optionale "from"/"to" Query-Parameter (Format
++// YYYY-MM-DD oder RFC3339) für die Export-Endpunkte.
++func parseTimeRange(r *http.Request) (from, to *time.Time) {
++	parse := func(s string) *time.Time {
++		if s == "" {
++			return nil
++		}
++		if t, err := time.Parse(time.RFC3339, s); err == nil {
++			return &t
++		}
++		if t, err := time.Parse("2006-01-02", s); err == nil {
++			return &t
++		}
++		return nil
++	}
++	from = parse(r.URL.Query().Get("from"))
++	to = parse(r.URL.Query().Get("to"))
++	return
++}
++
++// ── Produktionsdaten ──────────────────────────────────────────
++
++func (h *Handler) IntegrationExportProduction(w http.ResponseWriter, r *http.Request) {
++	from, to := parseTimeRange(r)
++	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
++	records, err := h.production.List(r.Context(), production.Filter{
++		InfrastructureID: r.URL.Query().Get("infrastructure_id"),
++		From:             from,
++		To:               to,
++		Limit:            limit,
++	})
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": records, "count": len(records)})
++}
++
++// productionImportItem entspricht einem einzelnen Datensatz beim Import;
++// wird sowohl fuer einzelne Objekte als auch fuer Arrays (Batch-Import aus
++// einem MES/einer Maschinensteuerung) verwendet.
++type productionImportItem struct {
++	InfrastructureID *string  `json:"infrastructure_id"`
++	RecordedAt       *string  `json:"recorded_at"` // RFC3339 oder YYYY-MM-DD, optional (Standard: jetzt)
++	QuantityGood     int      `json:"quantity_good"`
++	QuantityScrap    int      `json:"quantity_scrap"`
++	CycleTimeSeconds *float64 `json:"cycle_time_seconds"`
++	Notes            string   `json:"notes"`
++	ExternalRef      *string  `json:"external_ref"`
++}
++
++func (h *Handler) IntegrationImportProduction(w http.ResponseWriter, r *http.Request) {
++	body, err := readJSONArrayOrObject(r)
++	if err != nil {
++		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ungültiges JSON: " + err.Error()})
++		return
++	}
++	apiKey := integrations.APIKeyFromContext(r.Context())
++
++	var imported []*production.Record
++	var errs []string
++	for _, raw := range body {
++		var item productionImportItem
++		if err := json.Unmarshal(raw, &item); err != nil {
++			errs = append(errs, err.Error())
++			continue
++		}
++		in := &production.CreateInput{
++			InfrastructureID: item.InfrastructureID,
++			QuantityGood:     item.QuantityGood,
++			QuantityScrap:    item.QuantityScrap,
++			CycleTimeSeconds: item.CycleTimeSeconds,
++			Notes:            item.Notes,
++			Source:           "import",
++			ExternalRef:      item.ExternalRef,
++		}
++		if apiKey != nil {
++			in.CreatedBy = apiKey.CreatedBy
++		}
++		if item.RecordedAt != nil {
++			if t, err := time.Parse(time.RFC3339, *item.RecordedAt); err == nil {
++				in.RecordedAt = &t
++			} else if t, err := time.Parse("2006-01-02", *item.RecordedAt); err == nil {
++				in.RecordedAt = &t
++			}
++		}
++		rec, err := h.production.Create(r.Context(), in)
++		if err != nil {
++			errs = append(errs, err.Error())
++			continue
++		}
++		imported = append(imported, rec)
++		h.integrations.Dispatch(r.Context(), "production.recorded", rec)
++	}
++
++	status := http.StatusCreated
++	if len(errs) > 0 && len(imported) == 0 {
++		status = http.StatusBadRequest
++	}
++	writeJSON(w, status, map[string]interface{}{"imported": len(imported), "data": imported, "errors": errs})
++}
++
++// readJSONArrayOrObject akzeptiert sowohl ein einzelnes JSON-Objekt als
++// auch ein Array davon - praktisch fuer n8n, das je nach Workflow mal
++// einzelne Items, mal ganze Batches sendet.
++func readJSONArrayOrObject(r *http.Request) ([]json.RawMessage, error) {
++	var arr []json.RawMessage
++	dec := json.NewDecoder(r.Body)
++	raw := json.RawMessage{}
++	if err := dec.Decode(&raw); err != nil {
++		return nil, err
++	}
++	trimmed := trimLeadingSpace(raw)
++	if len(trimmed) > 0 && trimmed[0] == '[' {
++		if err := json.Unmarshal(raw, &arr); err != nil {
++			return nil, err
++		}
++		return arr, nil
++	}
++	return []json.RawMessage{raw}, nil
++}
++
++func trimLeadingSpace(b []byte) []byte {
++	i := 0
++	for i < len(b) && (b[i] == ' ' || b[i] == '\t' || b[i] == '\n' || b[i] == '\r') {
++		i++
++	}
++	return b[i:]
++}
++
++// ── Export bestehender Module ─────────────────────────────────
++
++func (h *Handler) IntegrationExportTasks(w http.ResponseWriter, r *http.Request) {
++	list, err := h.tasks.List(r.Context(), "", "", false)
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": list, "count": len(list)})
++}
++
++func (h *Handler) IntegrationExportTickets(w http.ResponseWriter, r *http.Request) {
++	list, err := h.tickets.List(r.Context(), tickets.Status(r.URL.Query().Get("status")))
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": list, "count": len(list)})
++}
++
++func (h *Handler) IntegrationExportFaults(w http.ResponseWriter, r *http.Request) {
++	list, err := h.faults.List(r.Context(), faults.FaultStatus(r.URL.Query().Get("status")))
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": list, "count": len(list)})
++}
++
++func (h *Handler) IntegrationExportMaintenance(w http.ResponseWriter, r *http.Request) {
++	list, err := h.maint.ListTasks(r.Context(), maintenance.TaskStatus(r.URL.Query().Get("status")), r.URL.Query().Get("infrastructure_id"))
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": list, "count": len(list)})
++}
++
++func (h *Handler) IntegrationExportInventory(w http.ResponseWriter, r *http.Request) {
++	list, err := h.inv.List(r.Context(), r.URL.Query().Get("category"), r.URL.Query().Get("status"), r.URL.Query().Get("q"))
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	writeJSON(w, http.StatusOK, map[string]interface{}{"data": list, "count": len(list)})
++}
++
++// ── Import: Störung von einem externen System anlegen ────────
++//
++// Konkretes Beispiel fuer die "Import"-Richtung: eine SPS/ein
++// Alarmsystem meldet per n8n einen Fehler, der als PDH-Stoerung
++// angelegt wird und normal im Stoerungsworkflow weiterlaeuft.
++
++type faultImportItem struct {
++	Title            string  `json:"title"`
++	Description      string  `json:"description"`
++	Severity         string  `json:"severity"`
++	InfrastructureID *string `json:"infrastructure_id"`
++}
++
++func (h *Handler) IntegrationImportFault(w http.ResponseWriter, r *http.Request) {
++	var in faultImportItem
++	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
++		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ungültiges JSON: " + err.Error()})
++		return
++	}
++	if in.Title == "" {
++		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title ist erforderlich"})
++		return
++	}
++	if in.Severity == "" {
++		in.Severity = "medium"
++	}
++	apiKey := integrations.APIKeyFromContext(r.Context())
++	if apiKey == nil || apiKey.CreatedBy == nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "API-Key ist keinem Ersteller zugeordnet"})
++		return
++	}
++	f, err := h.faults.Create(r.Context(), &faults.CreateFaultInput{
++		Title:            in.Title,
++		Description:      in.Description,
++		Severity:         faults.Severity(in.Severity),
++		InfrastructureID: in.InfrastructureID,
++	}, *apiKey.CreatedBy)
++	if err != nil {
++		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
++		return
++	}
++	h.integrations.Dispatch(r.Context(), "fault.created", f)
++	writeJSON(w, http.StatusCreated, map[string]interface{}{"data": f})
++}
+diff --git a/internal/web/template_funcs.go b/internal/web/template_funcs.go
+index 5ea11ce..491a336 100644
+--- a/internal/web/template_funcs.go
++++ b/internal/web/template_funcs.go
+@@ -7,13 +7,24 @@ import (
+ 
+ func TemplateFuncs() template.FuncMap {
+ 	return template.FuncMap{
+-		"css":    templateCSS,
+-		"dict":   templateDict,
+-		"list":   templateList,
+-		"safeJS": templateJS,
++		"css":        templateCSS,
++		"dict":       templateDict,
++		"list":       templateList,
++		"safeJS":     templateJS,
++		"derefFloat": templateDerefFloat,
+ 	}
+ }
+ 
++// templateDerefFloat gibt den Wert eines *float64 zurück (0, falls nil) -
++// Go-Templates dereferenzieren Pointer bei printf/Vergleichen nicht
++// automatisch, das würde sonst "%!f(*float64=0xc...)" ausgeben.
++func templateDerefFloat(f *float64) float64 {
++	if f == nil {
++		return 0
++	}
++	return *f
++}
++
+ func templateCSS(value interface{}) template.CSS {
+ 	if value == nil {
+ 		return ""
+diff --git a/migrations/047_production_data_and_integrations.up.sql b/migrations/047_production_data_and_integrations.up.sql
+new file mode 100644
+index 0000000..7ecdbf2
+--- /dev/null
++++ b/migrations/047_production_data_and_integrations.up.sql
+@@ -0,0 +1,70 @@
++-- 047_production_data_and_integrations.up.sql
++--
++-- Zwei zusammengehoerige Ergaenzungen fuer die n8n-Anbindung:
++--
++-- 1) production_records: neue Erfassung von Stueckzahlen/Ausschuss/
++--    Zykluszeit pro Maschine (Infrastruktur-Eintrag) - gab es im System
++--    bisher nicht, ist die eigentliche "Produktionsdaten"-Tabelle.
++--    "source" unterscheidet manuell erfasste von importierten Datensaetzen.
++--
++-- 2) Generisches Integrations-Framework, wiederverwendbar fuer n8n oder
++--    jedes andere externe System:
++--    - integration_api_keys: Schluessel fuer eingehende Aufrufe (n8n -> PDH)
++--    - integration_webhooks: Ziel-URLs fuer ausgehende Ereignisse (PDH -> n8n)
++
++CREATE TABLE IF NOT EXISTS production_records (
++    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    infrastructure_id  UUID REFERENCES infrastructure(id),
++    recorded_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++    quantity_good      INTEGER NOT NULL DEFAULT 0,
++    quantity_scrap     INTEGER NOT NULL DEFAULT 0,
++    cycle_time_seconds NUMERIC(10,2),
++    notes              TEXT,
++    source             VARCHAR(20) NOT NULL DEFAULT 'manual', -- manual | import | api
++    external_ref       VARCHAR(255), -- ID/Referenz im externen System, fuer Abgleich bei wiederholtem Import
++    created_by         UUID REFERENCES users(id),
++    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++CREATE INDEX IF NOT EXISTS idx_production_records_infra ON production_records(infrastructure_id);
++CREATE INDEX IF NOT EXISTS idx_production_records_recorded_at ON production_records(recorded_at);
++CREATE INDEX IF NOT EXISTS idx_production_records_external_ref ON production_records(external_ref) WHERE external_ref IS NOT NULL;
++
++CREATE TABLE IF NOT EXISTS integration_api_keys (
++    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    name         VARCHAR(255) NOT NULL,
++    key_hash     VARCHAR(64) NOT NULL UNIQUE,  -- sha256-Hex des eigentlichen Schluessels
++    key_prefix   VARCHAR(12) NOT NULL,          -- erste Zeichen zur Wiedererkennung in der UI
++    active       BOOLEAN NOT NULL DEFAULT true,
++    created_by   UUID REFERENCES users(id),
++    last_used_at TIMESTAMPTZ,
++    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++CREATE TABLE IF NOT EXISTS integration_webhooks (
++    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++    name              VARCHAR(255) NOT NULL,
++    target_url        TEXT NOT NULL,
++    secret            VARCHAR(255) NOT NULL,
++    events            JSONB NOT NULL DEFAULT '[]',
++    active            BOOLEAN NOT NULL DEFAULT true,
++    created_by        UUID REFERENCES users(id),
++    last_triggered_at TIMESTAMPTZ,
++    last_status       VARCHAR(20),
++    last_error        TEXT,
++    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++
++-- Neue Berechtigung fuer die Schnittstellen-Verwaltung (API-Keys/Webhooks),
++-- passend zum bestehenden Rollen-/Berechtigungskatalog aus Migration 045.
++INSERT INTO permissions (key, label, category) VALUES
++    ('integrations.manage', 'Schnittstellen (API-Keys/Webhooks) verwalten', 'System'),
++    ('production.view',     'Produktionsdaten ansehen',                    'Produktion'),
++    ('production.edit',     'Produktionsdaten erfassen',                   'Produktion')
++ON CONFLICT (key) DO NOTHING;
++
++-- Admin bekommt die neuen Berechtigungen automatisch mit (gleiches Muster
++-- wie in Migration 045: Admin startet mit allem, andere Rollen leer).
++INSERT INTO role_permissions (role_id, permission_id)
++SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
++WHERE r.key = 'admin' AND p.key IN ('integrations.manage', 'production.view', 'production.edit')
++ON CONFLICT DO NOTHING;
+diff --git a/web/templates/base.gohtml b/web/templates/base.gohtml
+index aa97cec..b2215b9 100644
+--- a/web/templates/base.gohtml
++++ b/web/templates/base.gohtml
+@@ -281,6 +281,8 @@ select.form-input option{background:var(--bg2)}
+     <div class="nav-section">Core</div>
+     <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>
+     {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
++    <a href="/production" class="nav-item {{if eq .Page "production"}}active{{end}}"><i class="ti ti-chart-bar"></i><span class="nav-label">Produktionsdaten</span></a>
++    {{if .CanManageIntegrations}}<a href="/admin/integrations" class="nav-item {{if eq .Page "integrations"}}active{{end}}"><i class="ti ti-plug"></i><span class="nav-label">Schnittstellen</span></a>{{end}}
+     <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
+     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
+     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
+diff --git a/web/templates/integrations.gohtml b/web/templates/integrations.gohtml
+new file mode 100644
+index 0000000..f303474
+--- /dev/null
++++ b/web/templates/integrations.gohtml
+@@ -0,0 +1,102 @@
++{{template "base" .}}
++{{define "content"}}
++<div style="margin-bottom:18px">
++  <h1 style="font-size:19px;font-weight:600">Schnittstellen</h1>
++  <p style="font-size:12px;color:var(--muted);margin-top:3px">API-Zugänge und Webhooks für externe Systeme wie n8n</p>
++</div>
++
++{{if .NewKeyRaw}}
++<div class="card" style="border-color:var(--amber,#f59e0b);background:rgba(245,158,11,.08);margin-bottom:14px">
++  <div style="font-size:13px;font-weight:600;margin-bottom:6px"><i class="ti ti-alert-triangle"></i> Neuer API-Schlüssel "{{.NewKeyName}}" — jetzt kopieren, wird nicht noch einmal angezeigt</div>
++  <code id="new-key-value" style="display:block;background:var(--bg3);padding:10px 12px;border-radius:8px;font-size:12.5px;word-break:break-all;margin-bottom:8px">{{.NewKeyRaw}}</code>
++  <button type="button" class="btn btn-small" onclick="navigator.clipboard.writeText(document.getElementById('new-key-value').textContent); this.textContent='Kopiert ✓'"><i class="ti ti-copy"></i> In Zwischenablage kopieren</button>
++</div>
++<script>history.replaceState({}, '', location.pathname);</script>
++{{end}}
++
++<div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
++  <!-- API-Schlüssel -->
++  <div class="card">
++    <div class="card-title">API-Schlüssel (eingehend, n8n → PDH)</div>
++    <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Header <code>X-API-Key</code> bei Aufrufen von <code>/api/v1/integration/...</code>.</p>
++    <form method="POST" action="/admin/integrations/keys" style="display:flex;gap:8px;margin-bottom:14px">
++      <input name="name" class="form-input" placeholder="z.B. n8n Produktion" required style="flex:1">
++      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Erzeugen</button>
++    </form>
++    {{range .APIKeys}}
++    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px">
++      <div>
++        <div style="font-weight:500">{{.Name}}</div>
++        <div style="color:var(--muted);font-size:11px">{{.KeyPrefix}}… {{if .LastUsedAt}}· zuletzt genutzt {{.LastUsedAt.Format "02.01.2006 15:04"}}{{else}}· noch nie genutzt{{end}}</div>
++      </div>
++      {{if .Active}}
++      <form method="POST" action="/admin/integrations/keys/{{.ID}}/revoke-web" onsubmit="return confirm('Schlüssel {{.Name}} widerrufen? Aufrufe damit schlagen danach fehl.')">
++        <button type="submit" class="btn-icon" title="Widerrufen"><i class="ti ti-ban"></i></button>
++      </form>
++      {{else}}
++      <span class="badge b-gray">widerrufen</span>
++      {{end}}
++    </div>
++    {{else}}
++    <div style="font-size:12px;color:var(--muted);padding:8px 0">Noch keine Schlüssel erzeugt</div>
++    {{end}}
++  </div>
++
++  <!-- Webhooks -->
++  <div class="card">
++    <div class="card-title">Webhooks (ausgehend, PDH → n8n)</div>
++    <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Payload wird mit dem Secret per HMAC-SHA256 signiert (Header <code>X-PDH-Signature</code>).</p>
++    <form method="POST" action="/admin/integrations/webhooks" style="margin-bottom:14px">
++      <div class="form-group">
++        <label class="form-label">Name</label>
++        <input name="name" class="form-input" placeholder="z.B. n8n Produktions-Webhook" required>
++      </div>
++      <div class="form-group">
++        <label class="form-label">Ziel-URL</label>
++        <input name="target_url" class="form-input" placeholder="http://host.docker.internal:5678/webhook/..." required>
++      </div>
++      <div class="form-group">
++        <label class="form-label">Secret (leer = automatisch erzeugt)</label>
++        <input name="secret" class="form-input" placeholder="wird sonst zufällig erzeugt">
++      </div>
++      <div class="form-group">
++        <label class="form-label">Ereignisse</label>
++        {{range .AllEvents}}
++        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px;cursor:pointer">
++          <input type="checkbox" name="events" value="{{.}}"> {{.}}
++        </label>
++        {{end}}
++      </div>
++      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Webhook anlegen</button>
++    </form>
++    {{range .Webhooks}}
++    <div style="padding:8px 0;border-top:1px solid var(--border);font-size:12.5px">
++      <div style="display:flex;align-items:center;justify-content:space-between">
++        <div style="font-weight:500">{{.Name}}</div>
++        <form method="POST" action="/admin/integrations/webhooks/{{.ID}}/delete-web" onsubmit="return confirm('Webhook {{.Name}} löschen?')">
++          <button type="submit" class="btn-icon" title="Löschen"><i class="ti ti-trash"></i></button>
++        </form>
++      </div>
++      <div style="color:var(--muted);font-size:11px;word-break:break-all">{{.TargetURL}}</div>
++      <div style="margin-top:4px">
++        {{range .Events}}<span class="badge b-gray" style="margin-right:4px">{{.}}</span>{{end}}
++        {{if eq .LastStatus "ok"}}<span class="badge b-green">zuletzt ok</span>{{else if eq .LastStatus "error"}}<span class="badge b-red" title="{{.LastError}}">zuletzt fehlgeschlagen</span>{{end}}
++      </div>
++    </div>
++    {{else}}
++    <div style="font-size:12px;color:var(--muted);padding:8px 0">Noch keine Webhooks angelegt</div>
++    {{end}}
++  </div>
++</div>
++
++<!-- Kurzreferenz für n8n -->
++<div class="card">
++  <div class="card-title">Kurzreferenz für n8n (HTTP-Request-Knoten)</div>
++  <div style="font-size:12.5px;line-height:1.7">
++    <p><strong>Export (GET):</strong> <code>/api/v1/integration/production</code>, <code>/tasks</code>, <code>/tickets</code>, <code>/faults</code>, <code>/maintenance</code>, <code>/inventory</code> — Query-Parameter <code>from</code>/<code>to</code> (YYYY-MM-DD) und <code>limit</code> wo sinnvoll.</p>
++    <p><strong>Import (POST):</strong> <code>/api/v1/integration/production</code> (einzelnes Objekt oder Array), <code>/api/v1/integration/faults</code> (legt eine neue Störung an).</p>
++    <p><strong>Header bei jedem Aufruf:</strong> <code>X-API-Key: &lt;dein Schlüssel&gt;</code></p>
++    <p>PDH von n8n aus erreichen: <code>http://host.docker.internal:&lt;PDH-Port&gt;</code> (siehe pdh-admin-Stack).</p>
++  </div>
++</div>
++{{end}}
+diff --git a/web/templates/production.gohtml b/web/templates/production.gohtml
+new file mode 100644
+index 0000000..2626c92
+--- /dev/null
++++ b/web/templates/production.gohtml
+@@ -0,0 +1,77 @@
++{{template "base" .}}
++{{define "content"}}
++<div style="margin-bottom:18px">
++  <h1 style="font-size:19px;font-weight:600">Produktionsdaten</h1>
++  <p style="font-size:12px;color:var(--muted);margin-top:3px">Stückzahlen, Ausschuss und Zykluszeit pro Maschine — manuell erfasst oder per n8n importiert</p>
++</div>
++
++<div class="grid2" style="grid-template-columns:{{if .CanEdit}}320px 1fr{{else}}1fr{{end}};gap:14px">
++  {{if .CanEdit}}
++  <div class="card">
++    <div class="card-title">Neu erfassen</div>
++    <form method="POST" action="/production">
++      <div class="form-group">
++        <label class="form-label">Maschine / Anlage</label>
++        <select name="infrastructure_id" class="form-input">
++          <option value="">— keine Zuordnung —</option>
++          {{range .InfraOptions}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
++        </select>
++      </div>
++      <div class="grid2" style="gap:10px">
++        <div class="form-group">
++          <label class="form-label">Gutteile</label>
++          <input type="number" min="0" name="quantity_good" class="form-input" value="0" required>
++        </div>
++        <div class="form-group">
++          <label class="form-label">Ausschuss</label>
++          <input type="number" min="0" name="quantity_scrap" class="form-input" value="0" required>
++        </div>
++      </div>
++      <div class="form-group">
++        <label class="form-label">Zykluszeit (Sekunden, optional)</label>
++        <input type="number" min="0" step="0.1" name="cycle_time_seconds" class="form-input">
++      </div>
++      <div class="form-group">
++        <label class="form-label">Notizen</label>
++        <textarea name="notes" class="form-input" rows="2"></textarea>
++      </div>
++      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern" "Style" "width:100%;justify-content:center")}}
++    </form>
++  </div>
++  {{end}}
++
++  <div class="card" style="overflow-x:auto">
++    <div class="card-title">Letzte Einträge</div>
++    <table style="border-collapse:collapse;width:100%;font-size:12.5px">
++      <thead>
++        <tr>
++          <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Zeit</th>
++          <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Maschine</th>
++          <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Gut</th>
++          <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Ausschuss</th>
++          <th style="text-align:right;padding:6px 10px;border-bottom:1px solid var(--border)">Zykluszeit</th>
++          <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Quelle</th>
++          <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Notizen</th>
++        </tr>
++      </thead>
++      <tbody>
++        {{range .Records}}
++        <tr>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">{{.RecordedAt.Format "02.01. 15:04"}}</td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{if .InfraName}}{{.InfraName}}{{else}}—{{end}}</td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right">{{.QuantityGood}}</td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right{{if gt .QuantityScrap 0}};color:var(--red){{end}}">{{.QuantityScrap}}</td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right">{{if .CycleTimeSeconds}}{{printf "%.1f" (derefFloat .CycleTimeSeconds)}}s{{else}}—{{end}}</td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border)">
++            {{if eq .Source "manual"}}<span class="badge b-gray">manuell</span>{{else if eq .Source "import"}}<span class="badge b-blue">Import</span>{{else}}<span class="badge b-blue">API</span>{{end}}
++          </td>
++          <td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted)">{{.Notes}}</td>
++        </tr>
++        {{else}}
++        <tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted)">Noch keine Produktionsdaten erfasst</td></tr>
++        {{end}}
++      </tbody>
++    </table>
++  </div>
++</div>
++{{end}}

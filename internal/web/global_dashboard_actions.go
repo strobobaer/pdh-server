@@ -19,7 +19,7 @@ type GlobalBoardActionInput struct {
 	RFIDUID       string `json:"rfid_uid"`
 	AssignedTo    string `json:"assigned_to"`
 	FollowUpDate  string `json:"follow_up_date"`
-	NoPartsNeeded bool  `json:"no_parts_needed"`
+	NoPartsNeeded bool   `json:"no_parts_needed"`
 }
 
 func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) {
