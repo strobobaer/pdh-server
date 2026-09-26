@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+*.patch
+uploads
+bin
+build
+dist
+docs
+nextcloud-app
+scripts

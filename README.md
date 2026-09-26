@@ -450,3 +450,12 @@ Einige Migrationen koennen `CREATE TABLE`-Statements ohne `IF NOT EXISTS` enthal
 ## Lizenz
 
 Noch keine Lizenzdatei gefunden. Falls das Repository oeffentlich bleibt, sollte eine Lizenzdatei ergaenzt werden.
+
+## Added an Ubuntu Docker deployment for PDH:
+
+Dockerfile builds the server into a non-root Ubuntu 24.04 image with a health check.
+compose.yaml starts PDH and PostgreSQL, waits for database readiness, and persists database data and uploads.
+install-docker.sh installs Docker on Ubuntu, generates database and JWT secrets on first run, then builds and starts the services.
+Docker installation guide covers installation, updates, stopping, and data removal.
+To install on Ubuntu, run chmod +x install-docker.sh && ./install-docker.sh from the repository directory. Editor diagnostics found no errors; I couldn’t run the Docker build or Compose validation because the available terminal is outside this virtual workspace.
+
