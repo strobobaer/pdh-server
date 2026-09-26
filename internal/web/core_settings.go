@@ -15,22 +15,22 @@ const updateRepository = "strobobaer/pdh-server"
 
 type CoreSettingsPageData struct {
 	BaseData
-	AutoCheckEnabled bool
-	CheckInterval    int
-	CurrentCommit    string
-	LatestCommit     string
-	ComparisonURL    string
-	ComparisonStatus string
+	AutoCheckEnabled    bool
+	CheckInterval       int
+	CurrentCommit       string
+	LatestCommit        string
+	ComparisonURL       string
+	ComparisonStatus    string
 	ComparedCommitCount int
-	ComparisonCommits []UpdateCommitView
-	LastChecked      string
-	LastCheckError   string
-	UpdateAvailable  bool
-	AgentConfigured  bool
-	AgentReachable   bool
-	AgentStatus      string
-	AgentOutput      string
-	Notice           string
+	ComparisonCommits   []UpdateCommitView
+	LastChecked         string
+	LastCheckError      string
+	UpdateAvailable     bool
+	AgentConfigured     bool
+	AgentReachable      bool
+	AgentStatus         string
+	AgentOutput         string
+	Notice              string
 }
 
 type UpdateCommitView struct {
@@ -241,36 +241,25 @@ func (h *Handler) checkUpdateIfDue(ctx context.Context) {
 func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	endpoint := "https://api.github.com/repos/" + updateRepository + "/commits/main"
-	if h.buildCommit != "" && h.buildCommit != "unknown" {
-		endpoint = "https://api.github.com/repos/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "...main"
+	var latest struct {
+		SHA string `json:"sha"`
 	}
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "pdh-server-update-checker")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
+	if err := fetchGitHubJSON(requestCtx, "https://api.github.com/repos/"+updateRepository+"/commits/main", &latest); err != nil {
 		h.recordUpdateCheckError(ctx, err)
 		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		err = fmt.Errorf("GitHub antwortet mit HTTP %d", resp.StatusCode)
+	latestCommit := latest.SHA
+	if latestCommit == "" {
+		err := fmt.Errorf("GitHub-Antwort enthält keinen Commit")
 		h.recordUpdateCheckError(ctx, err)
 		return err
 	}
+	comparisonStatus := ""
 	var result struct {
-		SHA    string `json:"sha"`
-		Status string `json:"status"`
-		Head   struct {
-			SHA string `json:"sha"`
-		} `json:"head"`
-		AheadBy  int `json:"ahead_by"`
-		BehindBy int `json:"behind_by"`
-		Commits []struct {
+		Status   string `json:"status"`
+		AheadBy  int    `json:"ahead_by"`
+		BehindBy int    `json:"behind_by"`
+		Commits  []struct {
 			SHA     string `json:"sha"`
 			HTMLURL string `json:"html_url"`
 			Commit  struct {
@@ -281,27 +270,20 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 			} `json:"commit"`
 		} `json:"commits"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		h.recordUpdateCheckError(ctx, err)
-		return err
-	}
-	latestCommit := result.SHA
-	comparisonStatus := ""
 	if h.buildCommit != "" && h.buildCommit != "unknown" {
-		latestCommit = result.Head.SHA
+		endpoint := "https://api.github.com/repos/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "..." + url.PathEscape(latestCommit)
+		if err := fetchGitHubJSON(requestCtx, endpoint, &result); err != nil {
+			h.recordUpdateCheckError(ctx, err)
+			return err
+		}
 		comparisonStatus = result.Status
 		switch comparisonStatus {
 		case "ahead", "behind", "identical", "diverged":
 		default:
-			err = fmt.Errorf("GitHub-Antwort enthält keinen gültigen Commit-Vergleich")
+			err := fmt.Errorf("GitHub-Antwort enthält keinen gültigen Commit-Vergleich")
+			h.recordUpdateCheckError(ctx, err)
+			return err
 		}
-	}
-	if err != nil || latestCommit == "" {
-		if err == nil {
-			err = fmt.Errorf("GitHub-Antwort enthält keinen Commit")
-		}
-		h.recordUpdateCheckError(ctx, err)
-		return err
 	}
 	if err := h.setUpdateSetting(ctx, "update_latest_commit", latestCommit); err != nil {
 		return err
@@ -346,6 +328,24 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	}
 	_ = h.setUpdateSetting(ctx, "update_last_check_error", "")
 	return h.setUpdateSetting(ctx, "update_last_checked_at", time.Now().UTC().Format(time.RFC3339))
+}
+
+func fetchGitHubJSON(ctx context.Context, endpoint string, target interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "pdh-server-update-checker")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub antwortet mit HTTP %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
 }
 
 func (h *Handler) recordUpdateCheckError(ctx context.Context, err error) {
