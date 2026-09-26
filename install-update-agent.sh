@@ -42,8 +42,8 @@ set_env_value PDH_UPDATE_AGENT_URL "http://127.0.0.1:8091"
 build_commit="$(git -C "$repo_dir" rev-parse HEAD)"
 install -d -m 0750 /var/cache/pdh-updater
 mkdir -p "$repo_dir/bin"
-(cd "$repo_dir" && go build -trimpath -ldflags="-s -w -X main.buildCommit=$build_commit" -o bin/pdh ./cmd/server)
-(cd "$repo_dir" && go build -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
+(cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$build_commit" -o bin/pdh ./cmd/server)
+(cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
 install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent
 
 cat > /etc/systemd/system/pdh-update-agent.service <<EOF

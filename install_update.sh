@@ -61,8 +61,8 @@ if [[ "$mode" == "docker" ]]; then
     "${compose[@]}" up -d --no-deps app updater
 else
     mkdir -p "$repo_dir/bin"
-    (cd "$repo_dir" && go build -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
-    (cd "$repo_dir" && go build -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
+    (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
+    (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
     install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent
     systemctl restart pdh
     systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
