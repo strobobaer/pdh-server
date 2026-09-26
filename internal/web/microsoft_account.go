@@ -35,7 +35,6 @@ type AccountPageData struct {
 	MicrosoftConnected  bool
 	MicrosoftAccountLabel string
 	MicrosoftTeamsPermission bool
-	MicrosoftTeamsPermission bool
 	SyncShifts           bool
 	SyncTasks            bool
 	SyncMaintenance      bool
