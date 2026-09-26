@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -251,6 +252,8 @@ type Handler struct {
 	updateAgentURL   string
 	updateAgentToken string
 	buildCommit      string
+	microsoft        MicrosoftOAuthConfig
+	microsoftSyncMu  sync.Mutex
 }
 
 func NewHandler(
@@ -289,6 +292,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Use(h.authMiddleware)
 
 	r.Get("/", h.Dashboard)
+	r.Get("/account", h.AccountPage)
+	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
+	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
+	r.Get("/account/microsoft/callback", h.MicrosoftConnectCallback)
+	r.Post("/account/microsoft/disconnect", h.MicrosoftDisconnect)
+	r.Post("/account/microsoft/calendar", h.SaveMicrosoftCalendarPreferences)
+	r.Post("/account/microsoft/calendar/sync", h.SyncMicrosoftCalendarWeb)
 	r.Get("/tickets", h.Tickets)
 	r.Post("/tickets", h.CreateTicket)
 	r.Get("/tickets/{id}", h.TicketDetail)
@@ -360,6 +370,8 @@ func (h *Handler) Routes() chi.Router {
 	// Rollen & Berechtigungen
 	r.Get("/admin/roles", h.RolesPage)
 	r.Get("/core/settings", h.CoreSettingsPage)
+	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
+	r.Post("/core/settings/microsoft/sync", h.MicrosoftDirectorySyncWeb)
 	r.Post("/core/settings", h.SaveCoreSettings)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
@@ -2142,6 +2154,7 @@ type ShiftEntry struct {
 	Date   string
 	Label  string
 	Class  string
+	Title  string
 }
 
 func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
@@ -2249,6 +2262,30 @@ func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
 				StatusLabel: statusLabel(string(a.Status)),
 				StatusClass: statusClass(string(a.Status)),
 			})
+		}
+	}
+	if rows, err := h.db.Query(ctx, `
+		SELECT user_id::text, starts_at, ends_at FROM microsoft_calendar_blocks
+		WHERE starts_at < $2 AND ends_at > $1`, monday, sunday.AddDate(0, 0, 1)); err == nil {
+		defer rows.Close()
+		marked := make(map[string]struct{})
+		for rows.Next() {
+			var userID string
+			var startsAt, endsAt time.Time
+			if rows.Scan(&userID, &startsAt, &endsAt) != nil || !endsAt.After(startsAt) {
+				continue
+			}
+			localStart := startsAt.In(time.Local)
+			localEnd := endsAt.Add(-time.Nanosecond).In(time.Local)
+			for day := time.Date(localStart.Year(), localStart.Month(), localStart.Day(), 0, 0, 0, 0, time.Local); !day.After(localEnd); day = day.AddDate(0, 0, 1) {
+				date := day.Format("2006-01-02")
+				key := userID + ":" + date
+				if _, exists := marked[key]; exists {
+					continue
+				}
+				marked[key] = struct{}{}
+				data.ShiftMap = append(data.ShiftMap, ShiftEntry{UserID: userID, Date: date, Label: "O", Class: "outlook-busy", Title: "Outlook belegt"})
+			}
 		}
 	}
 

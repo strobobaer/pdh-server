@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestGitHubComparisonResponseDecode(t *testing.T) {
@@ -37,5 +38,66 @@ func TestUpdateAvailableRequiresKnownBuildBehindGitHub(t *testing.T) {
 				t.Fatalf("updateAvailable(%q, %q) = %t, want %t", test.comparisonStatus, test.buildCommit, got, test.want)
 			}
 		})
+	}
+}
+
+func TestMicrosoftTokenEncryptionRoundTrip(t *testing.T) {
+	handler := &Handler{jwtSecret: "test-signing-secret-with-more-than-32-characters"}
+	const token = "sample-refresh-token"
+	encrypted, err := handler.encryptMicrosoftToken(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if encrypted == token {
+		t.Fatal("encrypted token must not contain plaintext")
+	}
+	decrypted, err := handler.decryptMicrosoftToken(encrypted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decrypted != token {
+		t.Fatalf("decrypted token = %q, want %q", decrypted, token)
+	}
+}
+
+func TestParseMicrosoftDateTime(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  time.Time
+	}{
+		{name: "UTC offset", value: "2026-09-27T13:45:00Z", want: time.Date(2026, 9, 27, 13, 45, 0, 0, time.UTC)},
+		{name: "Graph UTC wall time", value: "2026-09-27T13:45:00.0000000", want: time.Date(2026, 9, 27, 13, 45, 0, 0, time.UTC)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseMicrosoftDateTime(test.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Equal(test.want) {
+				t.Fatalf("parsed datetime = %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestMicrosoftBusyStatusFiltersFreeEvents(t *testing.T) {
+	if !microsoftBusyStatus("busy") || !microsoftBusyStatus("oof") || !microsoftBusyStatus("tentative") {
+		t.Fatal("expected busy statuses to be imported")
+	}
+	if microsoftBusyStatus("free") || microsoftBusyStatus("unknown") {
+		t.Fatal("free and unknown statuses must not block availability")
+	}
+}
+
+func TestMicrosoftScopesKeepTeamsOptIn(t *testing.T) {
+	calendarScopes := microsoftScopes("calendar")
+	teamsScopes := microsoftScopes("teams")
+	if hasMicrosoftScope(calendarScopes, "Chat.ReadWrite") || hasMicrosoftScope(calendarScopes, "ChannelMessage.Send") {
+		t.Fatal("standard account consent must not request Teams permissions")
+	}
+	if !hasMicrosoftScope(teamsScopes, "Chat.ReadWrite") || !hasMicrosoftScope(teamsScopes, "ChannelMessage.Send") {
+		t.Fatal("Teams consent must request direct chat and channel message permissions")
 	}
 }

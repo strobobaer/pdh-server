@@ -1,0 +1,27 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Microsoft 365</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Entra-Verzeichnis mit bestehenden PDH-Konten abgleichen</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+<div class="card" style="max-width:680px">
+  <div class="card-title">Organisationsverzeichnis</div>
+  {{if .Configured}}
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;font-size:13px;margin:0 0 14px">
+    <dt style="color:var(--muted)">Tenant-ID</dt><dd style="margin:0">{{.TenantID}}</dd>
+    <dt style="color:var(--muted)">Letzter Abgleich</dt><dd style="margin:0">{{.LastSync}}</dd>
+    <dt style="color:var(--muted)">Zugeordnet</dt><dd style="margin:0">{{.Matched}}</dd>
+    <dt style="color:var(--muted)">Ohne PDH-Konto</dt><dd style="margin:0">{{.Unmatched}}</dd>
+  </dl>
+  <form method="POST" action="/core/settings/microsoft/sync">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-refresh"></i> Jetzt abgleichen</button>
+  </form>
+  {{else}}
+  <p style="font-size:13px;color:var(--muted)">Microsoft Client-ID, Client-Secret und Organisations-Tenant-ID müssen serverseitig konfiguriert sein.</p>
+  {{end}}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Abgleich verknüpft bestehende aktive PDH-Konten per E-Mail. Er legt keine Konten an, ändert keine Rollen und deaktiviert niemanden.</p>
+</div>
+{{end}}

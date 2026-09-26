@@ -1,0 +1,60 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Mein Konto</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Verbundene Anmeldungen und Dienste</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+<div class="card" style="max-width:680px">
+  <div class="card-title">Microsoft 365</div>
+  {{if .MicrosoftConnected}}
+  <p>Verbunden als <strong>{{.MicrosoftAccountLabel}}</strong></p>
+  {{if .MicrosoftTeamsPermission}}
+  <p style="font-size:12px;color:var(--green)">Teams-Berechtigungen erteilt</p>
+  {{else}}
+  <form method="POST" action="/account/microsoft/connect-teams" style="margin-bottom:10px">
+    <button type="submit" class="btn"><i class="ti ti-brand-teams"></i> Teams freigeben</button>
+  </form>
+  {{end}}
+  <form method="POST" action="/account/microsoft/disconnect" onsubmit="return confirm('Microsoft-Konto wirklich trennen?')">
+    <button type="submit" class="btn"><i class="ti ti-unlink"></i> Konto trennen</button>
+  </form>
+  <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">Outlook-Kalender</div>
+    <form method="POST" action="/account/microsoft/calendar">
+      <div style="display:grid;gap:8px;font-size:13px">
+        <label><input type="checkbox" name="sync_shifts" {{if .SyncShifts}}checked{{end}}> Schichten nach Outlook schreiben</label>
+        <label><input type="checkbox" name="sync_tasks" {{if .SyncTasks}}checked{{end}}> Zugewiesene Aufgaben nach Outlook schreiben</label>
+        <label><input type="checkbox" name="sync_maintenance" {{if .SyncMaintenance}}checked{{end}}> Wartungen nach Outlook schreiben</label>
+        <label><input type="checkbox" name="sync_tickets_faults" {{if .SyncTicketsFaults}}checked{{end}}> Tickets und Störungen nach Outlook schreiben</label>
+        <label><input type="checkbox" name="import_busy_events" {{if .ImportBusyEvents}}checked{{end}}> Outlook-Termine als private Busy-Blocker nach PDH importieren</label>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+        <button type="submit" class="btn"><i class="ti ti-device-floppy"></i> Kalenderauswahl speichern</button>
+      </div>
+    </form>
+    <form method="POST" action="/account/microsoft/calendar/sync" style="margin-top:8px">
+      <button type="submit" class="btn btn-primary"><i class="ti ti-refresh"></i> Jetzt synchronisieren</button>
+    </form>
+    <p style="font-size:11px;color:var(--muted)">Letzter Sync: {{if .CalendarLastSync}}{{.CalendarLastSync}}{{else}}noch keiner{{end}} · {{.CalendarBusyCount}} Busy-Blocker importiert</p>
+    {{if .CalendarBusyBlocks}}
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">Kommende Busy-Blocker</div>
+      <ul style="padding-left:18px;margin:0;color:var(--muted);font-size:12px">
+        {{range .CalendarBusyBlocks}}<li>{{.StartsAt}} bis {{.EndsAt}}</li>{{end}}
+      </ul>
+    </div>
+    {{end}}
+  </div>
+  {{else if .MicrosoftConfigured}}
+  <p style="font-size:13px;color:var(--muted)">Verbinde dein Geschäfts- oder persönliches Microsoft-Konto mit PDH.</p>
+  <form method="POST" action="/account/microsoft/connect">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-brand-windows"></i> Mit Microsoft verbinden</button>
+  </form>
+  {{else}}
+  <p style="font-size:13px;color:var(--muted)">Microsoft OAuth ist serverseitig noch nicht konfiguriert.</p>
+  {{end}}
+</div>
+{{end}}

@@ -12,6 +12,7 @@ type Config struct {
 	Auth     AuthConfig
 	Copilot  CopilotConfig
 	Update   UpdateConfig
+	Microsoft MicrosoftConfig
 }
 
 type ServerConfig struct {
@@ -45,6 +46,16 @@ type CopilotConfig struct {
 type UpdateConfig struct {
 	AgentURL   string
 	AgentToken string
+}
+
+type MicrosoftConfig struct {
+	ClientID          string
+	ClientSecret      string
+	RedirectURL       string
+	TenantID          string
+	TeamsSenderUserID string
+	TeamsID           string
+	TeamsChannelID    string
 }
 
 func Load() (*Config, error) {
@@ -84,6 +95,13 @@ func Load() (*Config, error) {
 	viper.BindEnv("copilot.anthropicmodel", "PDH_COPILOT_ANTHROPICMODEL")
 	viper.BindEnv("update.agenturl", "PDH_UPDATE_AGENT_URL")
 	viper.BindEnv("update.agenttoken", "PDH_UPDATE_AGENT_TOKEN")
+	viper.BindEnv("microsoft.clientid", "PDH_MICROSOFT_CLIENT_ID")
+	viper.BindEnv("microsoft.clientsecret", "PDH_MICROSOFT_CLIENT_SECRET")
+	viper.BindEnv("microsoft.redirecturl", "PDH_MICROSOFT_REDIRECT_URL")
+	viper.BindEnv("microsoft.tenantid", "PDH_MICROSOFT_TENANT_ID")
+	viper.BindEnv("microsoft.teamssenderuserid", "PDH_MICROSOFT_TEAMS_SENDER_USER_ID")
+	viper.BindEnv("microsoft.teamsid", "PDH_MICROSOFT_TEAMS_ID")
+	viper.BindEnv("microsoft.teamschannelid", "PDH_MICROSOFT_TEAMS_CHANNEL_ID")
 
 	// Standardwerte
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -117,6 +135,13 @@ func Load() (*Config, error) {
 	cfg.Copilot.AnthropicModel = viper.GetString("copilot.anthropicmodel")
 	cfg.Update.AgentURL = viper.GetString("update.agenturl")
 	cfg.Update.AgentToken = viper.GetString("update.agenttoken")
+	cfg.Microsoft.ClientID = viper.GetString("microsoft.clientid")
+	cfg.Microsoft.ClientSecret = viper.GetString("microsoft.clientsecret")
+	cfg.Microsoft.RedirectURL = viper.GetString("microsoft.redirecturl")
+	cfg.Microsoft.TenantID = viper.GetString("microsoft.tenantid")
+	cfg.Microsoft.TeamsSenderUserID = viper.GetString("microsoft.teamssenderuserid")
+	cfg.Microsoft.TeamsID = viper.GetString("microsoft.teamsid")
+	cfg.Microsoft.TeamsChannelID = viper.GetString("microsoft.teamschannelid")
 
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")

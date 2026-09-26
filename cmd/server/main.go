@@ -177,6 +177,15 @@ func main() {
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
+	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
+		ClientID:     cfg.Microsoft.ClientID,
+		ClientSecret: cfg.Microsoft.ClientSecret,
+		RedirectURL:  cfg.Microsoft.RedirectURL,
+		TenantID:     cfg.Microsoft.TenantID,
+		TeamsSenderUserID: cfg.Microsoft.TeamsSenderUserID,
+		TeamsID:           cfg.Microsoft.TeamsID,
+		TeamsChannelID:    cfg.Microsoft.TeamsChannelID,
+	})
 	webHandler.StartUpdateChecker(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")

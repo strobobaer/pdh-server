@@ -66,7 +66,7 @@
       <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
         {{range $.ShiftMap}}
           {{if and (eq .UserID $uid) (eq .Date $date)}}
-          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          <div class="shift-pill {{.Class}}" title="{{.Title}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
           {{end}}
         {{end}}
       </td>
@@ -116,7 +116,7 @@
       <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
         {{range $.ShiftMap}}
           {{if and (eq .UserID $uid) (eq .Date $date)}}
-          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          <div class="shift-pill {{.Class}}" title="{{.Title}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
           {{end}}
         {{end}}
       </td>
@@ -157,7 +157,7 @@
       <td style="text-align:center;padding:8px 4px;cursor:pointer" onclick="openAssignPopup('{{$uid}}','{{$date}}',this)">
         {{range $.ShiftMap}}
           {{if and (eq .UserID $uid) (eq .Date $date)}}
-          <div class="shift-pill {{.Class}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
+          <div class="shift-pill {{.Class}}" title="{{.Title}}" style="display:inline-block;min-width:28px;padding:3px 6px">{{.Label}}</div>
           {{end}}
         {{end}}
       </td>

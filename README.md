@@ -16,6 +16,7 @@ PDH Server ist das Backend und die Web-Oberflaeche fuer den **PDH - Prozess Data
 - [API-Endpunkte](#api-endpunkte)
 - [Web-UI](#web-ui)
 - [Deployment mit systemd](#deployment-mit-systemd)
+- [Microsoft-365-Verknüpfung](docs/microsoft-365.md)
 - [Entwicklung](#entwicklung)
 - [Sicherheitshinweise](#sicherheitshinweise)
 - [Bekannte Bremskloetze](#bekannte-bremskloetze)

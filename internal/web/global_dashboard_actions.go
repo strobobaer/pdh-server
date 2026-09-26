@@ -87,6 +87,7 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Aktion wurde ausgeführt, konnte aber nicht protokolliert werden")
 		return
 	}
+	go h.notifyMicrosoftTeamsBoardAction(in, assignedTo)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

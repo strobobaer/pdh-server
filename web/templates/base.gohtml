@@ -239,6 +239,7 @@ select.form-input option{background:var(--bg2)}
 .shift-day-name{color:var(--muted);margin-bottom:3px}
 .shift-pill{padding:3px;border-radius:5px;font-size:10px;font-weight:500;text-align:center}
 .sf{background:rgba(16,185,129,.2);color:#6ee7b7}
+.outlook-busy{background:rgba(245,158,11,.18);color:#f5c451}
 .ss{background:rgba(245,158,11,.2);color:#fcd34d}
 .sn{background:rgba(99,102,241,.2);color:#a5b4fc}
 .se{background:var(--bg3);color:var(--muted)}
@@ -314,6 +315,7 @@ select.form-input option{background:var(--bg2)}
       <div style="position:relative">
         <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
         <div id="user-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+          <a href="/account" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-user-cog"></i>Mein Konto</a>
           <a href="/logout" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-logout"></i>Abmelden</a>
         </div>
       </div>
