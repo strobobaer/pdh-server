@@ -18,18 +18,7 @@
     </dl>
     {{if eq .CurrentCommit "unknown"}}<p role="status" style="color:var(--muted);font-size:12px">Build-Commit unbekannt; Update-Verfügbarkeit ist nicht vergleichbar.</p>{{else if .UpdateAvailable}}<p role="status" style="color:var(--amber);font-size:13px;font-weight:600">Ein Update ist verfügbar.</p>{{else if eq .ComparisonStatus "diverged"}}<p role="alert" style="color:var(--red);font-size:13px">Lokaler Stand ist abweichend; Fast-Forward ist nicht möglich.</p>{{else if eq .ComparisonStatus "behind"}}<p role="status" style="color:var(--muted);font-size:13px">Der installierte Stand liegt vor GitHub main.</p>{{else if eq .ComparisonStatus "identical"}}<p role="status" style="color:var(--green);font-size:13px">PDH ist aktuell.</p>{{else if .LatestCommit}}<p role="status" style="color:var(--muted);font-size:13px">Vergleich nicht verfügbar.</p>{{end}}
     {{if .LastCheckError}}<p role="alert" style="color:var(--red);font-size:12px">{{.LastCheckError}}</p>{{end}}
-    {{if .ComparisonURL}}<p style="font-size:13px"><a href="{{.ComparisonURL}}" target="_blank" rel="noopener">Vollständigen Commit-Vergleich auf GitHub öffnen</a></p>{{end}}
-    {{if gt .ComparedCommitCount 0}}
-    <details open style="margin:12px 0;font-size:12px">
-      <summary style="cursor:pointer;font-weight:600">Verglichene Commits ({{.ComparedCommitCount}})</summary>
-      <ol style="padding-left:22px;display:grid;gap:8px">
-        {{range .ComparisonCommits}}
-        <li><a href="{{.URL}}" target="_blank" rel="noopener">{{.SHA}}</a> · {{.Date}}<br>{{.Message}}</li>
-        {{end}}
-      </ol>
-      {{if gt .ComparedCommitCount 20}}<p style="color:var(--muted)">Angezeigt werden die 20 neuesten Commits; der vollständige Vergleich ist auf GitHub verfügbar.</p>{{end}}
-    </details>
-    {{end}}
+    {{if and .CurrentCommit (ne .CurrentCommit "unknown")}}<p style="font-size:13px"><a href="https://github.com/strobobaer/pdh-server/compare/{{.CurrentCommit}}...main" target="_blank" rel="noopener">Vollständigen Commit-Vergleich auf GitHub öffnen</a></p>{{end}}
     {{if .AgentStatus}}<p role="status" style="font-size:12px">{{.AgentStatus}}</p>{{end}}
     {{if .AgentOutput}}<pre style="max-height:180px;overflow:auto;white-space:pre-wrap;font-size:11px;color:var(--muted)">{{.AgentOutput}}</pre>{{end}}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
