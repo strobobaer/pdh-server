@@ -43,6 +43,8 @@ import (
 	"pdh/pkg/response"
 )
 
+var buildCommit = "unknown"
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -174,6 +176,8 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
+	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
+	webHandler.StartUpdateChecker(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 

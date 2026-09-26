@@ -19,6 +19,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: app
+      args:
+        PDH_BUILD_COMMIT: ${PDH_BUILD_COMMIT:-unknown}
     image: pdh-server:local
     restart: unless-stopped
     init: true
@@ -38,10 +41,34 @@ services:
       PDH_DATABASE_NAME: ${PDH_DATABASE_NAME:-pdh}
       PDH_DATABASE_SSLMODE: disable
       PDH_AUTH_JWTSECRET: ${PDH_AUTH_JWTSECRET:?Set PDH_AUTH_JWTSECRET in .env.docker}
+      PDH_UPDATE_AGENT_URL: http://updater:8091
+      PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
     ports:
       - "8090:8090"
     volumes:
       - pdh_uploads:/app/uploads
+
+  updater:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: updater
+    image: pdh-updater:local
+    restart: unless-stopped
+    environment:
+      PDH_UPDATE_LISTEN: 0.0.0.0:8091
+      PDH_UPDATE_MODE: docker
+      PDH_UPDATE_REPO_DIR: /repo
+      PDH_COMPOSE_PROJECT_NAME: ${PDH_COMPOSE_PROJECT_NAME:-pdh-server}
+      PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
+    volumes:
+      - ${PDH_UPDATE_HOST_REPO_DIR:-.}:/repo
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8091/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   pdh_database:

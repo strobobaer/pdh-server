@@ -47,6 +47,19 @@ as_docker() {
     fi
 }
 
+set_env_value() {
+    local key="$1"
+    local value="$2"
+    local escaped_value="${value//\\/\\\\}"
+    escaped_value="${escaped_value//&/\\&}"
+    escaped_value="${escaped_value//|/\\|}"
+    if grep -q "^${key}=" "$env_file"; then
+        sed -i "s|^${key}=.*|${key}=${escaped_value}|" "$env_file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$env_file"
+    fi
+}
+
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
     as_root apt-get update
     as_root apt-get install -y docker.io docker-compose-v2 openssl
@@ -86,7 +99,28 @@ else
     echo "Using existing .env.docker; it was not overwritten."
 fi
 
+update_token="$(grep '^PDH_UPDATE_AGENT_TOKEN=' "$env_file" | tail -n 1 | cut -d= -f2- || true)"
+if [[ ${#update_token} -lt 32 ]]; then
+    update_token="$(openssl rand -hex 32)"
+    if grep -q '^PDH_UPDATE_AGENT_TOKEN=' "$env_file"; then
+        sed -i "s/^PDH_UPDATE_AGENT_TOKEN=.*/PDH_UPDATE_AGENT_TOKEN=$update_token/" "$env_file"
+    else
+        printf '\nPDH_UPDATE_AGENT_TOKEN=%s\n' "$update_token" >> "$env_file"
+    fi
+    echo "Generated update-agent token in .env.docker."
+fi
+build_commit="$(git -C "$repo_dir" rev-parse HEAD)"
+set_env_value PDH_BUILD_COMMIT "$build_commit"
+set_env_value PDH_UPDATE_HOST_REPO_DIR "$repo_dir"
+project_name="$(grep '^PDH_COMPOSE_PROJECT_NAME=' "$env_file" | tail -n 1 | cut -d= -f2- || true)"
+if [[ -z "$project_name" ]]; then
+    project_name="$(basename "$repo_dir")"
+fi
+set_env_value PDH_COMPOSE_PROJECT_NAME "$project_name"
+chmod 600 "$env_file"
+
 as_docker compose \
+    --project-name "$project_name" \
     --env-file "$env_file" \
     --project-directory "$repo_dir" \
     -f "$repo_dir/compose.yaml" \

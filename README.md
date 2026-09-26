@@ -337,6 +337,15 @@ sudo systemctl start pdh
 sudo systemctl status pdh --no-pager -l
 ```
 
+Den Update-Agent einmalig automatisch einrichten (installiert fehlende Git-/Go-/OpenSSL-Pakete, erzeugt das Agent-Token, baut die Binaries und aktiviert den lokalen systemd-Dienst):
+
+```bash
+chmod +x install-update-agent.sh
+sudo ./install-update-agent.sh
+```
+
+Danach können Administratoren Updates unter **Core-Einstellungen** prüfen und installieren. Automatische Prüfungen installieren keine Updates. Der systemd-Agent läuft mit Root-Rechten, ist aber ausschließlich an `127.0.0.1:8091` gebunden und startet nur das feste `install_update.sh`-Skript.
+
 Logs anzeigen:
 
 ```bash

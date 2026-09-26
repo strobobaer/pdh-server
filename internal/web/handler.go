@@ -248,6 +248,9 @@ type Handler struct {
 	projects  *projects.Service
 	rbac      *rbac.Service
 	jwtSecret string
+	updateAgentURL   string
+	updateAgentToken string
+	buildCommit      string
 }
 
 func NewHandler(
@@ -356,6 +359,10 @@ func (h *Handler) Routes() chi.Router {
 
 	// Rollen & Berechtigungen
 	r.Get("/admin/roles", h.RolesPage)
+	r.Get("/core/settings", h.CoreSettingsPage)
+	r.Post("/core/settings", h.SaveCoreSettings)
+	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
+	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
 	r.Post("/admin/roles/{id}/delete-web", h.RoleDeleteWeb)
 	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)

@@ -11,6 +11,7 @@ type Config struct {
 	Database DatabaseConfig
 	Auth     AuthConfig
 	Copilot  CopilotConfig
+	Update   UpdateConfig
 }
 
 type ServerConfig struct {
@@ -39,6 +40,11 @@ type CopilotConfig struct {
 	Model          string
 	AnthropicKey   string
 	AnthropicModel string // FIX: war hardcoded in copilot.go
+}
+
+type UpdateConfig struct {
+	AgentURL   string
+	AgentToken string
 }
 
 func Load() (*Config, error) {
@@ -76,6 +82,8 @@ func Load() (*Config, error) {
 	viper.BindEnv("copilot.model", "PDH_COPILOT_MODEL")
 	viper.BindEnv("copilot.anthropickey", "PDH_COPILOT_ANTHROPICKEY")
 	viper.BindEnv("copilot.anthropicmodel", "PDH_COPILOT_ANTHROPICMODEL")
+	viper.BindEnv("update.agenturl", "PDH_UPDATE_AGENT_URL")
+	viper.BindEnv("update.agenttoken", "PDH_UPDATE_AGENT_TOKEN")
 
 	// Standardwerte
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -107,6 +115,8 @@ func Load() (*Config, error) {
 	cfg.Copilot.Model = viper.GetString("copilot.model")
 	cfg.Copilot.AnthropicKey = viper.GetString("copilot.anthropickey")
 	cfg.Copilot.AnthropicModel = viper.GetString("copilot.anthropicmodel")
+	cfg.Update.AgentURL = viper.GetString("update.agenturl")
+	cfg.Update.AgentToken = viper.GetString("update.agenttoken")
 
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")

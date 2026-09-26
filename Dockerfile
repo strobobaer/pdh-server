@@ -6,9 +6,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/pdh ./cmd/server
+ARG PDH_BUILD_COMMIT=unknown
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.buildCommit=${PDH_BUILD_COMMIT}" -o /out/pdh ./cmd/server \
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/update-agent ./cmd/update-agent
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS app
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -34,3 +36,16 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
     CMD ["curl", "--fail", "--silent", "http://127.0.0.1:8090/health"]
 
 ENTRYPOINT ["/app/pdh"]
+
+FROM ubuntu:24.04 AS updater
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl git docker.io docker-compose-v2 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/update-agent /usr/local/bin/update-agent
+ENV PDH_UPDATE_REPO_DIR=/repo
+EXPOSE 8091
+ENTRYPOINT ["/usr/local/bin/update-agent"]
+
+FROM app AS final

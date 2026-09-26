@@ -1,0 +1,52 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Core-Einstellungen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Systemweite Einstellungen und Updates</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+<div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px">
+  <div class="card">
+    <div class="card-title">GitHub-Updates</div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Repository: strobobaer/pdh-server · Branch: main</p>
+    <dl style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;font-size:13px">
+      <dt style="color:var(--muted)">Installierter Commit</dt><dd style="margin:0">{{if .CurrentCommit}}{{.CurrentCommit}}{{else}}unbekannt{{end}}</dd>
+      <dt style="color:var(--muted)">GitHub-Commit</dt><dd style="margin:0">{{if .LatestCommit}}{{.LatestCommit}}{{else}}Noch nicht geprüft{{end}}</dd>
+      <dt style="color:var(--muted)">Letzte Prüfung</dt><dd style="margin:0">{{if .LastChecked}}{{.LastChecked}}{{else}}Noch nicht geprüft{{end}}</dd>
+    </dl>
+    {{if eq .CurrentCommit "unknown"}}<p role="status" style="color:var(--muted);font-size:12px">Build-Commit unbekannt; Update-Verfügbarkeit ist nicht vergleichbar.</p>{{else if .UpdateAvailable}}<p role="status" style="color:var(--amber);font-size:13px;font-weight:600">Ein Update ist verfügbar.</p>{{else if eq .ComparisonStatus "diverged"}}<p role="alert" style="color:var(--red);font-size:13px">Lokaler Stand ist abweichend; Fast-Forward ist nicht möglich.</p>{{else if eq .ComparisonStatus "behind"}}<p role="status" style="color:var(--muted);font-size:13px">Der installierte Stand liegt vor GitHub main.</p>{{else if eq .ComparisonStatus "identical"}}<p role="status" style="color:var(--green);font-size:13px">PDH ist aktuell.</p>{{else if .LatestCommit}}<p role="status" style="color:var(--muted);font-size:13px">Vergleich nicht verfügbar.</p>{{end}}
+    {{if .LastCheckError}}<p role="alert" style="color:var(--red);font-size:12px">{{.LastCheckError}}</p>{{end}}
+    {{if .AgentStatus}}<p role="status" style="font-size:12px">{{.AgentStatus}}</p>{{end}}
+    {{if .AgentOutput}}<pre style="max-height:180px;overflow:auto;white-space:pre-wrap;font-size:11px;color:var(--muted)">{{.AgentOutput}}</pre>{{end}}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <form method="POST" action="/core/settings/check-update">
+        {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Type" "submit" "Label" "Jetzt prüfen")}}
+      </form>
+      <form method="POST" action="/core/settings/install-update" onsubmit="return confirm('Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet.')">
+        <button class="btn btn-primary" type="submit" {{if or (not .AgentConfigured) (not .AgentReachable) (not .UpdateAvailable)}}disabled title="Update-Agent nicht bereit oder kein Update verfügbar"{{end}}><i class="ti ti-download"></i> Update installieren</button>
+      </form>
+    </div>
+    {{if not .AgentConfigured}}<p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Update-Agent ist nicht erreichbar oder nicht konfiguriert. Installationsskript und Agent-Konfiguration prüfen.</p>{{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Automatische Update-Prüfung</div>
+    <form method="POST" action="/core/settings">
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" name="auto_check_enabled" {{if .AutoCheckEnabled}}checked{{end}}>
+          Regelmäßig nach Updates suchen
+        </label>
+      </div>
+      <div class="form-group" style="max-width:220px">
+        <label class="form-label" for="check_interval_hours">Prüfintervall (Stunden)</label>
+        <input id="check_interval_hours" type="number" min="1" max="168" name="check_interval_hours" class="form-input" value="{{.CheckInterval}}" required>
+      </div>
+      <p style="font-size:12px;color:var(--muted)">Die Prüfung installiert nichts automatisch. Updates werden nur nach einem Admin-Klick eingespielt.</p>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+</div>
+{{end}}

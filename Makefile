@@ -1,10 +1,15 @@
-.PHONY: run build tidy deploy push migrate migrate004 test
+.PHONY: run build build-update-agent tidy deploy push migrate migrate004 test
 
 run:
 	go run ./cmd/server/...
 
 build:
-	go build -o bin/pdh ./cmd/server/...
+	mkdir -p bin
+	go build -trimpath -ldflags="-X main.buildCommit=$(shell git rev-parse HEAD)" -o bin/pdh ./cmd/server
+	go build -trimpath -o bin/update-agent ./cmd/update-agent
+
+build-update-agent:
+	go build -trimpath -o bin/update-agent ./cmd/update-agent
 
 tidy:
 	go mod tidy
