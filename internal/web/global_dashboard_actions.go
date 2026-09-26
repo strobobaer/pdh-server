@@ -9,18 +9,16 @@ import (
 
 	coreusers "pdh/internal/core/users"
 	"pdh/internal/modules/maintenance"
-	"pdh/internal/modules/tasks"
-	"pdh/internal/modules/tickets"
 )
 
 type GlobalBoardActionInput struct {
-	Type         string `json:"type"`
-	ID           string `json:"id"`
-	Action       string `json:"action"`
-	Comment      string `json:"comment"`
-	RFIDUID      string `json:"rfid_uid"`
-	AssignedTo   string `json:"assigned_to"`
-	FollowUpDate string `json:"follow_up_date"`
+	Type          string `json:"type"`
+	ID            string `json:"id"`
+	Action        string `json:"action"`
+	Comment       string `json:"comment"`
+	RFIDUID       string `json:"rfid_uid"`
+	AssignedTo    string `json:"assigned_to"`
+	FollowUpDate  string `json:"follow_up_date"`
 	NoPartsNeeded bool  `json:"no_parts_needed"`
 }
 
