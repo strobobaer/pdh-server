@@ -381,6 +381,9 @@ func main() {
 	// SSO routes must be mounted before the protected web UI.
 	r.Get("/sso/nextcloud", web.NextcloudSSOHandler(db.Pool, cfg.Auth.JWTSecret))
 
+	// Public shop-floor dashboard; its write actions authenticate each operator by RFID.
+	r.Mount("/global", webHandler.GlobalDashboardRoutes())
+
 	// Web UI
 	r.Mount("/", webHandler.Routes())
 

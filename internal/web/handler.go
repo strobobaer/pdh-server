@@ -1480,7 +1480,8 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
-	http.Redirect(w, r, "/login", http.StatusFound)
+	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+	http.Redirect(w, r, "/global/", http.StatusFound)
 }
 
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
@@ -1510,38 +1511,16 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Kein gueltiges Token (fehlt oder abgelaufen): falls eine
-		// Override-Sitzung lief, automatisch zum Systemnutzer zurueckfallen,
-		// statt den Terminal-Bildschirm auf die Login-Seite zu werfen -
-		// genau das "automatisch mit Rücksprung" aus der Anforderung, auch
-		// wenn niemand mehr am Terminal ist, um manuell zurückzukehren.
 		if userID == "" {
-			if returnCookie, err := r.Cookie("pdh_return_token"); err == nil && returnCookie.Value != "" {
-				if rt, err := jwt.Parse(returnCookie.Value, func(t *jwt.Token) (interface{}, error) {
-					if t.Method != jwt.SigningMethodHS256 {
-						return nil, fmt.Errorf("unerwartete signaturmethode")
-					}
-					return []byte(h.jwtSecret), nil
-				}); err == nil && rt.Valid {
-					if claims, ok := rt.Claims.(jwt.MapClaims); ok {
-						if sub, _ := claims["sub"].(string); sub != "" {
-							http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: returnCookie.Value, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
-							http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: sub, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
-							http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
-							userID = sub
-						}
-					}
-				}
-			}
-		}
-
-		if userID == "" {
-			http.Redirect(w, r, "/login", http.StatusFound)
+			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
+			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
+			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+			http.Redirect(w, r, "/global/", http.StatusFound)
 			return
 		}
 		user, err := h.users.GetByID(r.Context(), userID)
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusFound)
+			http.Redirect(w, r, "/global/", http.StatusFound)
 			return
 		}
 		ctx := context.WithValue(r.Context(), "user", user)

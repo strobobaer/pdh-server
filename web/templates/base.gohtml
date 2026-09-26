@@ -535,9 +535,8 @@ document.addEventListener('click', function(e){
 
   var logoutUrl = null, minutes = 0;
   if(isOverride){
-    // Override-Sitzung: kehrt nach Inaktivität automatisch zum
-    // Systemnutzer zurück, statt komplett auszuloggen.
-    logoutUrl = '/override-logout';
+    // Inaktivität beendet auch eine Override-Sitzung und führt zum Leitstand.
+    logoutUrl = '/logout';
     minutes = overrideMinutes;
   } else if(!isSystemUser){
     logoutUrl = '/logout';

@@ -290,6 +290,22 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, us
 	return s.repo.UpdateStatus(ctx, id, status, userID)
 }
 
+func (s *Service) Discard(ctx context.Context, id, userID string) error {
+	result, err := s.repo.db.Exec(ctx, `
+		UPDATE tasks SET status='closed', archived_at=NOW(), updated_at=NOW()
+		WHERE id=$1::uuid AND status IN ('open','in_progress')`, id)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return fmt.Errorf("aufgabe ist nicht mehr offen")
+	}
+	if taskLinker != nil {
+		taskLinker.OnTaskStatusChanged(ctx, id, string(StatusClosed), userID)
+	}
+	return nil
+}
+
 func (s *Service) Resolve(ctx context.Context, taskID, resolution, rootCause, userID string, noPartsNeeded bool) error {
 	actionCount, err := s.repo.CountActions(ctx, taskID)
 	if err != nil {
