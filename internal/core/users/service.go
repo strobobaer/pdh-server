@@ -33,6 +33,7 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
 	u := &User{
 		Username:     in.Username,
 		Email:        in.Email,
+		NextcloudUserID: in.NextcloudUserID,
 		PasswordHash: string(hash),
 		FirstName:    in.FirstName,
 		LastName:     in.LastName,
@@ -41,6 +42,12 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
 		Phone:        in.Phone,
 		IsSystemUser: in.IsSystemUser,
 		RFIDUID:      in.RFIDUID,
+		OnCallDuty:      in.OnCallDuty,
+		ShiftLocksmith1: in.ShiftLocksmith1,
+		ShiftLocksmith2: in.ShiftLocksmith2,
+		Sharpening:      in.Sharpening,
+		HeatingFill:     in.HeatingFill,
+		ShiftLeader:     in.ShiftLeader,
 	}
 
 	if err := s.repo.Create(ctx, u); err != nil {
@@ -136,6 +143,20 @@ func (s *Service) List(ctx context.Context) ([]*User, error) {
 }
 
 func (s *Service) Update(ctx context.Context, u *User) error {
+	return s.repo.Update(ctx, u)
+}
+
+func (s *Service) UpdateWithPassword(ctx context.Context, u *User, password string) error {
+	if password != "" {
+		if len(password) < 8 {
+			return fmt.Errorf("passwort muss mindestens 8 zeichen lang sein")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("passwort hash: %w", err)
+		}
+		u.PasswordHash = string(hash)
+	}
 	return s.repo.Update(ctx, u)
 }
 

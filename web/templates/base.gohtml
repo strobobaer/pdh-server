@@ -281,7 +281,7 @@ select.form-input option{background:var(--bg2)}
     <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">Zeiterfassung</span></a>
 
     <div class="nav-section">Core</div>
-    <a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>
+    {{if .CanManageUsers}}<a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">Core-Einstellungen</span></a>{{end}}
     <a href="https://cloud.strobl-home.net" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-cloud"></i><span class="nav-label">Nextcloud</span></a>

@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,12 +24,14 @@ type User struct {
 	ID           string    `json:"id"`
 	Username     string    `json:"username"`
 	Email        string    `json:"email"`
+	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
 	PasswordHash string    `json:"-"`
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`
 	Role         Role      `json:"role"`
 	Department   string    `json:"department"`
 	Phone        string    `json:"phone"`
+	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
 	Active       bool      `json:"active"`
 	IsSystemUser bool      `json:"is_system_user"`
 	RFIDUID      *string   `json:"rfid_uid,omitempty"`
@@ -48,14 +51,22 @@ type User struct {
 type CreateUserInput struct {
 	Username     string  `json:"username"`
 	Email        string  `json:"email"`
+	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
 	Password     string  `json:"password"`
 	FirstName    string  `json:"first_name"`
 	LastName     string  `json:"last_name"`
 	Role         Role    `json:"role"`
 	Department   string  `json:"department"`
 	Phone        string  `json:"phone"`
+	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
 	IsSystemUser bool    `json:"is_system_user"`
 	RFIDUID      *string `json:"rfid_uid,omitempty"`
+	OnCallDuty      bool `json:"on_call_duty"`
+	ShiftLocksmith1 bool `json:"shift_locksmith_1"`
+	ShiftLocksmith2 bool `json:"shift_locksmith_2"`
+	Sharpening      bool `json:"sharpening"`
+	HeatingFill     bool `json:"heating_fill"`
+	ShiftLeader     bool `json:"shift_leader"`
 }
 
 // Repository - Datenbankzugriff
@@ -68,27 +79,33 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 }
 
 func (r *Repository) Create(ctx context.Context, u *User) error {
+	var nextcloudUserID interface{}
+	if strings.TrimSpace(u.NextcloudUserID) != "" {
+		nextcloudUserID = strings.TrimSpace(u.NextcloudUserID)
+	}
 	query := `
-		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user, rfid_uid)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
+		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user, rfid_uid, nextcloud_user_id,
+			on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		u.Username, u.Email, u.PasswordHash,
 		u.FirstName, u.LastName, u.Role,
 		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
+		nextcloudUserID, u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
+		role, department, phone, active, is_system_user, rfid_uid, nextcloud_user_id, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE id = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
-		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
+		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID, &u.NextcloudUserID,
 		&u.CreatedAt, &u.UpdatedAt,
 		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 	)
@@ -134,7 +151,7 @@ func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
 
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
 	query := `SELECT id, username, email, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
+		role, department, phone, active, is_system_user, rfid_uid, nextcloud_user_id, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE active = true ORDER BY last_name, first_name`
 	rows, err := r.db.Query(ctx, query)
@@ -149,7 +166,7 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 		err := rows.Scan(
 			&u.ID, &u.Username, &u.Email,
 			&u.FirstName, &u.LastName, &u.Role,
-			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID,
+			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID, &u.NextcloudUserID,
 			&u.CreatedAt, &u.UpdatedAt,
 			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
 		)
@@ -162,13 +179,14 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 }
 
 func (r *Repository) Update(ctx context.Context, u *User) error {
-	query := `UPDATE users SET first_name=$1, last_name=$2, role=$3,
-		department=$4, phone=$5, is_system_user=$6, rfid_uid=$7,
-		on_call_duty=$8, shift_locksmith_1=$9, shift_locksmith_2=$10, sharpening=$11, heating_fill=$12, shift_leader=$13,
+	query := `UPDATE users SET username=COALESCE(NULLIF($1,''),username), email=COALESCE(NULLIF($2,''),email),
+		password_hash=COALESCE(NULLIF($3,''),password_hash), nextcloud_user_id=COALESCE(NULLIF($4,''),nextcloud_user_id),
+		first_name=$5, last_name=$6, role=$7, department=$8, phone=$9, is_system_user=$10, rfid_uid=$11,
+		on_call_duty=$12, shift_locksmith_1=$13, shift_locksmith_2=$14, sharpening=$15, heating_fill=$16, shift_leader=$17,
 		updated_at=NOW()
-		WHERE id=$14`
+		WHERE id=$18`
 	_, err := r.db.Exec(ctx, query,
-		u.FirstName, u.LastName, u.Role,
+		u.Username, u.Email, u.PasswordHash, u.NextcloudUserID, u.FirstName, u.LastName, u.Role,
 		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
 		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
 		u.ID,

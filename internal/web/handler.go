@@ -47,6 +47,7 @@ type BaseData struct {
 	IsOverrideSession      bool // aktuell per Override auf einem Systemnutzer angemeldet
 	IdleTimeoutMinutes     int  // globale Auto-Logout-Zeit (Minuten)
 	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
+	CanManageUsers         bool // Benutzerverwaltung anzeigen
 	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
 }
 
@@ -362,6 +363,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/users", h.Users)
 	r.Post("/users/create-web", h.UserCreateWeb)
+	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/update-web", h.UserUpdateWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/users/{id}/role-web", h.UserRoleWeb)     // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
@@ -569,6 +571,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsOverrideSession:      isOverride,
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
+		CanManageUsers:         h.rbac.HasPermission(string(u.Role), "system.manage_users"),
 		CanManageRoles:         h.rbac.HasPermission(string(u.Role), "system.manage_roles"),
 	}
 }
@@ -2816,6 +2819,7 @@ type UserView struct {
 	ID           string
 	Username     string
 	Email        string
+	NextcloudUserID string
 	FirstName    string
 	LastName     string
 	FullName     string
@@ -2877,6 +2881,7 @@ func userView(u *users.User, roleLabels map[string]string) UserView {
 
 	return UserView{
 		ID: u.ID, Username: u.Username, Email: u.Email,
+		NextcloudUserID: u.NextcloudUserID,
 		FirstName: u.FirstName, LastName: u.LastName,
 		FullName: u.FirstName + " " + u.LastName,
 		Initials: initials, AvatarBg: bg,
@@ -2892,6 +2897,10 @@ func userView(u *users.User, roleLabels map[string]string) UserView {
 }
 
 func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
 	ctx := r.Context()
 	filter := r.URL.Query().Get("role")
 	data := UsersPageData{
@@ -2932,14 +2941,26 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	r.ParseForm()
+	role := users.Role(strings.TrimSpace(r.FormValue("role")))
+	if role == "" {
+		role = users.RoleWorker
+	}
+	if role != users.RoleWorker && !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+		return
+	}
 	in := &users.CreateUserInput{
 		Username:     r.FormValue("username"),
 		Email:        r.FormValue("email"),
 		Password:     r.FormValue("password"),
 		FirstName:    r.FormValue("first_name"),
 		LastName:     r.FormValue("last_name"),
-		Role:         users.Role(r.FormValue("role")),
+		Role:         role,
 		Department:   r.FormValue("department"),
 		Phone:        r.FormValue("phone"),
 		IsSystemUser: r.FormValue("is_system_user") == "on",
@@ -2966,8 +2987,22 @@ func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
+	current, err := h.users.GetByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+		return
+	}
+	newRole := users.Role(r.FormValue("role"))
+	if newRole != current.Role && !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+		return
+	}
 	u := &users.User{
 		ID:              id,
 		FirstName:       r.FormValue("first_name"),
@@ -2988,7 +3023,98 @@ func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	h.Users(w, r)
 }
 
+func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	userID := strings.TrimSpace(r.FormValue("user_id"))
+	username := strings.TrimSpace(r.FormValue("username"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	firstName := strings.TrimSpace(r.FormValue("first_name"))
+	lastName := strings.TrimSpace(r.FormValue("last_name"))
+	password := r.FormValue("password")
+	if username == "" || email == "" || firstName == "" || lastName == "" {
+		http.Error(w, "Vorname, Nachname, Benutzername und E-Mail sind Pflichtfelder", http.StatusBadRequest)
+		return
+	}
+	role := users.Role(r.FormValue("role"))
+	if role == "" {
+		http.Error(w, "Bitte eine Rolle auswählen", http.StatusBadRequest)
+		return
+	}
+	var currentUser *users.User
+	if userID == "" {
+		if role != users.RoleWorker && !h.canManageRoles(r) {
+			http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+			return
+		}
+	} else {
+		var err error
+		currentUser, err = h.users.GetByID(r.Context(), userID)
+		if err != nil {
+			http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+			return
+		}
+		if role != currentUser.Role && !h.canManageRoles(r) {
+			http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+			return
+		}
+	}
+	common := func(u *users.User) {
+		u.Username = username
+		u.Email = email
+		u.NextcloudUserID = strings.TrimSpace(r.FormValue("nextcloud_user_id"))
+		u.FirstName = firstName
+		u.LastName = lastName
+		u.Role = role
+		u.Department = strings.TrimSpace(r.FormValue("department"))
+		u.Phone = strings.TrimSpace(r.FormValue("phone"))
+		u.IsSystemUser = r.FormValue("is_system_user") == "on"
+		u.RFIDUID = optionalID(r.FormValue("rfid_uid"))
+		u.OnCallDuty = r.FormValue("on_call_duty") == "on"
+		u.Sharpening = r.FormValue("sharpening") == "on"
+		u.HeatingFill = r.FormValue("heating_fill") == "on"
+		u.ShiftLeader = r.FormValue("shift_leader") == "on"
+	}
+	if userID == "" {
+		if len(password) < 8 {
+			http.Error(w, "Neues Passwort muss mindestens 8 Zeichen lang sein", http.StatusBadRequest)
+			return
+		}
+		in := &users.CreateUserInput{
+			Username: username, Email: email, Password: password,
+			NextcloudUserID: strings.TrimSpace(r.FormValue("nextcloud_user_id")),
+			FirstName: firstName, LastName: lastName, Role: role,
+			Department: strings.TrimSpace(r.FormValue("department")),
+			Phone: strings.TrimSpace(r.FormValue("phone")),
+			IsSystemUser: r.FormValue("is_system_user") == "on", RFIDUID: optionalID(r.FormValue("rfid_uid")),
+			OnCallDuty: r.FormValue("on_call_duty") == "on", Sharpening: r.FormValue("sharpening") == "on",
+			HeatingFill: r.FormValue("heating_fill") == "on", ShiftLeader: r.FormValue("shift_leader") == "on",
+		}
+		if _, err := h.users.Register(r.Context(), in); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		common(currentUser)
+		if err := h.users.UpdateWithPassword(r.Context(), currentUser, password); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) UserDeactivateWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	h.users.Deactivate(r.Context(), id)
 	w.Header().Set("Content-Type", "text/html")
@@ -2998,6 +3124,10 @@ func (h *Handler) UserDeactivateWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageUsers(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	u, err := h.users.GetByID(r.Context(), id)
@@ -3028,6 +3158,10 @@ type PermissionGroup struct {
 
 func (h *Handler) canManageRoles(r *http.Request) bool {
 	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_roles")
+}
+
+func (h *Handler) canManageUsers(r *http.Request) bool {
+	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_users")
 }
 
 func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {

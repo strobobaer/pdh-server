@@ -10,47 +10,55 @@
     "Class" "end"
     "Label" "Benutzer-Aktionen"
     "Items" (list
-      (dict "Action" "new" "ShowLabel" true "Label" "Neuer Benutzer" "OnClick" "document.getElementById('new-user-form').style.display='block'")
+      (dict "Action" "new" "ShowLabel" true "Label" "Neuer Benutzer" "OnClick" "openNewUserModal()")
     )
   )}}
 </div>
 
-<!-- Neuer Benutzer -->
-<div id="new-user-form" style="display:none" class="card">
-  <div class="card-title">Benutzer anlegen</div>
-  <form hx-post="/users/create-web" hx-target="#user-tbody" hx-swap="afterbegin"
-        hx-on::after-request="this.reset();document.getElementById('new-user-form').style.display='none'">
-    <div class="grid2">
-      <div class="form-group"><label class="form-label">Vorname</label><input name="first_name" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">Nachname</label><input name="last_name" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">Benutzername</label><input name="username" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">E-Mail</label><input name="email" type="email" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" required minlength="8"></div>
-      <div class="form-group"><label class="form-label">Rolle</label>
-        <select name="role" class="form-input">
-          {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" placeholder="z.B. Produktion"></div>
-      <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" placeholder="z.B. +49 821 ..."></div>
-      <div class="form-group" style="display:flex;align-items:center;gap:8px;padding-top:22px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt, z.B. Werkstatt-Terminal)</label>
-      </div>
-      <div class="form-group">
-        <label class="form-label">RFID-Karte (optional)</label>
-        <input name="rfid_uid" class="form-input" placeholder="Karte an den Leser halten oder UID eintippen">
-      </div>
+<!-- Benutzer erstellen und bearbeiten -->
+<div id="user-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:18px" onclick="if(event.target===this)closeUserModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(760px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h2 id="user-modal-title" style="font-size:17px;margin:0">Benutzer anlegen</h2>
+      <button type="button" class="btn-icon" aria-label="Schließen" title="Schließen" onclick="closeUserModal()"><i class="ti ti-x"></i></button>
     </div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Formularaktionen"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('new-user-form').style.display='none'")
-        (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")
-      )
-    )}}
-  </form>
+    <form id="user-form" onsubmit="return submitUserForm(event)">
+      <input type="hidden" name="user_id">
+      <div class="card-title">Zugang und Kontaktdaten</div>
+      <div class="grid2">
+        <div class="form-group"><label class="form-label" for="uf-first">Vorname</label><input id="uf-first" name="first_name" class="form-input" required></div>
+        <div class="form-group"><label class="form-label" for="uf-last">Nachname</label><input id="uf-last" name="last_name" class="form-input" required></div>
+        <div class="form-group"><label class="form-label" for="uf-username">Benutzername</label><input id="uf-username" name="username" class="form-input" required autocomplete="username"></div>
+        <div class="form-group"><label class="form-label" for="uf-email">E-Mail</label><input id="uf-email" name="email" type="email" class="form-input" required autocomplete="email"></div>
+        <div class="form-group"><label class="form-label" for="uf-nextcloud">Nextcloud-Benutzer-ID</label><input id="uf-nextcloud" name="nextcloud_user_id" class="form-input" placeholder="Optional, für SSO-Verknüpfung"></div>
+        <div class="form-group"><label class="form-label" for="uf-password">Passwort <span id="password-help" style="color:var(--muted);font-weight:400">(Pflichtfeld)</span></label><input id="uf-password" name="password" type="password" class="form-input" minlength="8" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label" for="uf-phone">Telefon</label><input id="uf-phone" name="phone" class="form-input" autocomplete="tel"></div>
+      </div>
+
+      <div class="card-title" style="margin-top:14px">Rolle und Zugriff</div>
+      <div class="grid2">
+        <div class="form-group"><label class="form-label" for="uf-role">Rolle</label>
+          <select id="uf-role" name="role" class="form-input" required>{{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select>
+        </div>
+        <div class="form-group"><label class="form-label" for="uf-department">Abteilung</label><input id="uf-department" name="department" class="form-input"></div>
+        <div class="form-group"><label class="form-label" for="uf-rfid">RFID-Karte</label><input id="uf-rfid" name="rfid_uid" class="form-input" placeholder="UID oder Karte scannen"></div>
+        <label class="form-group" style="display:flex;align-items:center;gap:8px;margin:0"><input type="checkbox" name="is_system_user"> Systemnutzer (dauerhaft angemeldet)</label>
+      </div>
+
+      <div class="card-title" style="margin-top:14px">Schicht-Qualifikationen</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;font-size:13px">
+        <label><input type="checkbox" name="on_call_duty"> Bereitschaft</label>
+        <label><input type="checkbox" name="sharpening"> Schärferei</label>
+        <label><input type="checkbox" name="heating_fill"> Heizungsbefüllung</label>
+        <label><input type="checkbox" name="shift_leader"> Schichtleiter</label>
+      </div>
+      <p id="user-form-error" role="alert" style="display:none;color:var(--red);font-size:12px;margin:12px 0 0"></p>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+        <button type="button" class="btn" onclick="closeUserModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary" id="user-save-button"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Filter -->
@@ -104,7 +112,12 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-            <button class="menu-item" onclick="editUser('{{.ID}}','{{.FirstName}}','{{.LastName}}','{{.RoleValue}}','{{.Department}}','{{.Phone}}',{{if .IsSystemUser}}true{{else}}false{{end}},'{{.RFIDUID}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-edit"></i>Bearbeiten</button>
+            <button type="button" class="menu-item" onclick="editUser(this);closeMenu('umenu-{{.ID}}')"
+              data-id="{{.ID}}" data-first-name="{{.FirstName}}" data-last-name="{{.LastName}}"
+              data-username="{{.Username}}" data-email="{{.Email}}" data-role="{{.RoleValue}}" data-nextcloud-user-id="{{.NextcloudUserID}}"
+              data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}"
+              data-system-user="{{.IsSystemUser}}" data-on-call="{{.OnCallDuty}}"
+              data-sharpening="{{.Sharpening}}" data-heating-fill="{{.HeatingFill}}" data-shift-leader="{{.ShiftLeader}}"><i class="ti ti-edit"></i>Bearbeiten</button>
             <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
             {{if .Active}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
@@ -120,50 +133,6 @@
   </table>
 </div>
 
-<!-- Edit Modal -->
-<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:480px;margin:20px">
-    <div style="font-size:15px;font-weight:600;margin-bottom:16px">Benutzer bearbeiten</div>
-    <form id="edit-form" onsubmit="return submitUserEdit(event)">
-      <div class="grid2">
-        <div class="form-group"><label class="form-label">Vorname</label><input id="ef-first" name="first_name" class="form-input" required></div>
-        <div class="form-group"><label class="form-label">Nachname</label><input id="ef-last" name="last_name" class="form-input" required></div>
-        <div class="form-group"><label class="form-label">Rolle</label>
-          <select id="ef-role" name="role" class="form-input">
-            {{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Abteilung</label><input id="ef-dept" name="department" class="form-input"></div>
-        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Telefon</label><input id="ef-phone" name="phone" class="form-input"></div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-systemuser" name="is_system_user"> Systemnutzer (bleibt dauerhaft eingeloggt)</label>
-        </div>
-        <div class="form-group" style="grid-column:1/-1">
-          <label class="form-label">RFID-Karte (optional)</label>
-          <input id="ef-rfid" name="rfid_uid" class="form-input" placeholder="Karte an den Leser halten oder UID eintippen">
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:12px">
-        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Schicht-Qualifikationen</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-oncall" name="on_call_duty"> Bereitschaft</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-sharpening" name="sharpening"> Schärferei</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-heating" name="heating_fill"> Heizungsbefüllung</label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ef-leader" name="shift_leader"> Schichtleiter</label>
-        </div>
-      </div>
-      {{template "icon-button-toolbar" (dict
-        "Class" "end"
-        "Label" "Formularaktionen"
-        "Style" "width:100%;justify-content:flex-end;margin-top:4px"
-        "Items" (list
-          (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('edit-modal').style.display='none'")
-          (dict "Action" "save" "ShowLabel" true "Type" "submit")
-        )
-      )}}
-    </form>
-  </div>
-</div>
 {{end}}
 
 {{define "context-list"}}
@@ -178,35 +147,6 @@
 
 {{block "scripts" .}}
 <script>
-async function submitUserEdit(event){
-  event.preventDefault();
-  const payload = {
-    first_name: document.getElementById('ef-first').value,
-    last_name: document.getElementById('ef-last').value,
-    role: document.getElementById('ef-role').value,
-    department: document.getElementById('ef-dept').value,
-    phone: document.getElementById('ef-phone').value,
-    is_system_user: document.getElementById('ef-systemuser').checked,
-    rfid_uid: document.getElementById('ef-rfid').value || null,
-    on_call_duty: document.getElementById('ef-oncall').checked,
-    sharpening: document.getElementById('ef-sharpening').checked,
-    heating_fill: document.getElementById('ef-heating').checked,
-    shift_leader: document.getElementById('ef-leader').checked,
-  };
-  try{
-    const res = await fetch('/api/v1/users/'+currentEditUserID, {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    if(!res.ok){
-      const json = await res.json().catch(function(){return null;});
-      throw new Error((json && json.error) || ('HTTP '+res.status));
-    }
-    location.reload();
-  }catch(e){ alert('Fehler beim Speichern: '+e.message); }
-  return false;
-}
-
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){document.getElementById(id).style.display='none';}
 document.addEventListener('click',e=>{
@@ -214,18 +154,79 @@ document.addEventListener('click',e=>{
     document.querySelectorAll('[id^="umenu-"]').forEach(m=>m.style.display='none');
 });
 
-let currentEditUserID = null;
-function editUser(id, first, last, role, dept, phone, isSystemUser, rfid) {
-  currentEditUserID = id;
-  const modal = document.getElementById('edit-modal');
-  document.getElementById('ef-first').value = first;
-  document.getElementById('ef-last').value  = last;
-  document.getElementById('ef-role').value  = role;
-  document.getElementById('ef-dept').value  = dept;
-  document.getElementById('ef-phone').value = phone;
-  document.getElementById('ef-systemuser').checked = !!isSystemUser;
-  document.getElementById('ef-rfid').value = rfid || '';
-  modal.style.display = 'flex';
+const userForm = document.getElementById('user-form');
+const userModal = document.getElementById('user-modal');
+const userPassword = userForm.elements.namedItem('password');
+const userPasswordHelp = document.getElementById('password-help');
+
+function openNewUserModal(){
+  userForm.reset();
+  userForm.elements.namedItem('user_id').value = '';
+  userForm.elements.namedItem('role').value = userForm.elements.namedItem('role').options[0]?.value || '';
+  userPassword.required = true;
+  userPasswordHelp.textContent = '(Pflichtfeld, mindestens 8 Zeichen)';
+  document.getElementById('user-modal-title').textContent = 'Benutzer anlegen';
+  document.getElementById('user-save-button').innerHTML = '<i class="ti ti-device-floppy"></i> Benutzer anlegen';
+  document.getElementById('user-form-error').style.display = 'none';
+  userModal.style.display = 'flex';
+  userForm.elements.namedItem('first_name').focus();
+}
+
+function editUser(button){
+  openNewUserModal();
+  const data = button.dataset;
+  userForm.elements.namedItem('user_id').value = data.id || '';
+  userForm.elements.namedItem('first_name').value = data.firstName || '';
+  userForm.elements.namedItem('last_name').value = data.lastName || '';
+  userForm.elements.namedItem('username').value = data.username || '';
+  userForm.elements.namedItem('email').value = data.email || '';
+  userForm.elements.namedItem('nextcloud_user_id').value = data.nextcloudUserId || '';
+  userForm.elements.namedItem('role').value = data.role || '';
+  userForm.elements.namedItem('department').value = data.department || '';
+  userForm.elements.namedItem('phone').value = data.phone || '';
+  userForm.elements.namedItem('rfid_uid').value = data.rfid || '';
+  ['is_system_user','on_call_duty','sharpening','heating_fill','shift_leader'].forEach(function(name){
+    userForm.elements.namedItem(name).checked = dataFieldFor(name, data) === 'true';
+  });
+  userPassword.required = false;
+  userPassword.value = '';
+  userPasswordHelp.textContent = '(leer lassen, um das Passwort beizubehalten)';
+  document.getElementById('user-modal-title').textContent = 'Benutzer bearbeiten';
+  document.getElementById('user-save-button').innerHTML = '<i class="ti ti-device-floppy"></i> Änderungen speichern';
+}
+
+function dataFieldFor(name, data){
+  const fields = {
+    is_system_user:'systemUser', on_call_duty:'onCall', sharpening:'sharpening',
+    heating_fill:'heatingFill', shift_leader:'shiftLeader'
+  };
+  return data[fields[name]] || 'false';
+}
+
+function closeUserModal(){
+  userModal.style.display = 'none';
+  userForm.reset();
+}
+
+async function submitUserForm(event){
+  event.preventDefault();
+  if(!userForm.reportValidity()) return false;
+  const button = document.getElementById('user-save-button');
+  const errorBox = document.getElementById('user-form-error');
+  button.disabled = true;
+  errorBox.style.display = 'none';
+  try{
+    const response = await fetch('/users/save-web', {method:'POST',credentials:'same-origin',body:new FormData(userForm)});
+    if(!response.ok) throw new Error((await response.text()) || ('HTTP '+response.status));
+    closeUserModal();
+    location.reload();
+  }catch(error){
+    errorBox.textContent = 'Speichern fehlgeschlagen: ' + error.message;
+    errorBox.style.display = 'block';
+  }finally{
+    button.disabled = false;
+  }
+  return false;
 }
 </script>
 {{end}}
