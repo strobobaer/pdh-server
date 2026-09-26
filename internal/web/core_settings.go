@@ -19,7 +19,10 @@ type CoreSettingsPageData struct {
 	CheckInterval    int
 	CurrentCommit    string
 	LatestCommit     string
+	ComparisonURL    string
 	ComparisonStatus string
+	ComparedCommitCount int
+	ComparisonCommits []UpdateCommitView
 	LastChecked      string
 	LastCheckError   string
 	UpdateAvailable  bool
@@ -28,6 +31,13 @@ type CoreSettingsPageData struct {
 	AgentStatus      string
 	AgentOutput      string
 	Notice           string
+}
+
+type UpdateCommitView struct {
+	SHA     string
+	URL     string
+	Message string
+	Date    string
 }
 
 type updateAgentStatus struct {
@@ -82,6 +92,11 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		LastCheckError:   h.getUpdateSetting(ctx, "update_last_check_error", ""),
 		AgentConfigured:  h.updateAgentURL != "" && h.updateAgentToken != "",
 		Notice:           r.URL.Query().Get("notice"),
+	}
+	_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
+	data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
+	if latestCommit != "" && h.buildCommit != "" && h.buildCommit != "unknown" {
+		data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "...main"
 	}
 	if checked := h.getUpdateSetting(ctx, "update_last_checked_at", ""); checked != "" {
 		if parsed, err := time.Parse(time.RFC3339, checked); err == nil {
@@ -253,6 +268,18 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 		Head   struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
+		AheadBy  int `json:"ahead_by"`
+		BehindBy int `json:"behind_by"`
+		Commits []struct {
+			SHA     string `json:"sha"`
+			HTMLURL string `json:"html_url"`
+			Commit  struct {
+				Message string `json:"message"`
+				Author  struct {
+					Date time.Time `json:"date"`
+				} `json:"author"`
+			} `json:"commit"`
+		} `json:"commits"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		h.recordUpdateCheckError(ctx, err)
@@ -282,12 +309,49 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	if err := h.setUpdateSetting(ctx, "update_comparison_status", comparisonStatus); err != nil {
 		return err
 	}
+	commitViews := make([]UpdateCommitView, 0)
+	if len(result.Commits) > 0 {
+		start := len(result.Commits) - 20
+		if start < 0 {
+			start = 0
+		}
+		for index := len(result.Commits) - 1; index >= start; index-- {
+			commit := result.Commits[index]
+			message := strings.SplitN(strings.TrimSpace(commit.Commit.Message), "\n", 2)[0]
+			if len([]rune(message)) > 180 {
+				message = string([]rune(message)[:177]) + "..."
+			}
+			commitURL := commit.HTMLURL
+			if commitURL == "" {
+				commitURL = "https://github.com/" + updateRepository + "/commit/" + url.PathEscape(commit.SHA)
+			}
+			commitViews = append(commitViews, UpdateCommitView{
+				SHA:     shortCommit(commit.SHA),
+				URL:     commitURL,
+				Message: message,
+				Date:    commit.Commit.Author.Date.Local().Format("02.01.2006 15:04"),
+			})
+		}
+	}
+	commitJSON, err := json.Marshal(commitViews)
+	if err != nil {
+		return err
+	}
+	if err := h.setUpdateSetting(ctx, "update_comparison_commits", string(commitJSON)); err != nil {
+		return err
+	}
+	commitCount := result.AheadBy + result.BehindBy
+	if err := h.setUpdateSetting(ctx, "update_comparison_commit_count", strconv.Itoa(commitCount)); err != nil {
+		return err
+	}
 	_ = h.setUpdateSetting(ctx, "update_last_check_error", "")
 	return h.setUpdateSetting(ctx, "update_last_checked_at", time.Now().UTC().Format(time.RFC3339))
 }
 
 func (h *Handler) recordUpdateCheckError(ctx context.Context, err error) {
 	_ = h.setUpdateSetting(ctx, "update_comparison_status", "")
+	_ = h.setUpdateSetting(ctx, "update_comparison_commits", "[]")
+	_ = h.setUpdateSetting(ctx, "update_comparison_commit_count", "0")
 	_ = h.setUpdateSetting(ctx, "update_last_check_error", err.Error())
 	_ = h.setUpdateSetting(ctx, "update_last_checked_at", time.Now().UTC().Format(time.RFC3339))
 }
