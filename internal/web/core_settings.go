@@ -79,24 +79,6 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 	enabled := h.getUpdateSetting(ctx, "update_auto_check_enabled", "true") == "true"
 	interval, _ := strconv.Atoi(h.getUpdateSetting(ctx, "update_check_interval_hours", "24"))
 	if interval < 1 || interval > 168 {
-
-	type githubComparisonResponse struct {
-		Status   string                `json:"status"`
-		AheadBy  int                   `json:"ahead_by"`
-		BehindBy int                   `json:"behind_by"`
-		Commits  []githubCommitSummary `json:"commits"`
-	}
-
-	type githubCommitSummary struct {
-		SHA     string `json:"sha"`
-		HTMLURL string `json:"html_url"`
-		Commit  struct {
-			Message string `json:"message"`
-			Author  struct {
-				Date time.Time `json:"date"`
-			} `json:"author"`
-		} `json:"commit"`
-	}
 		interval = 24
 	}
 	latestCommit := h.getUpdateSetting(ctx, "update_latest_commit", "")
@@ -203,7 +185,21 @@ func (h *Handler) InstallUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	if h.updateAgentURL == "" || h.updateAgentToken == "" {
 		http.Redirect(w, r, "/core/settings?notice=Update-Agent+nicht+konfiguriert", http.StatusSeeOther)
 		return
-		var result githubComparisonResponse
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.updateAgentURL+"/v1/update", nil)
+	if err != nil {
+		http.Redirect(w, r, "/core/settings?notice=Update-Agent-Adresse+ungültig", http.StatusSeeOther)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+h.updateAgentToken)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Redirect(w, r, "/core/settings?notice=Update-Agent+nicht+erreichbar", http.StatusSeeOther)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusAccepted {
 		http.Redirect(w, r, "/core/settings?notice=Update+wurde+gestartet", http.StatusSeeOther)
 		return
 	}
