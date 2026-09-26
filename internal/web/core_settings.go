@@ -40,6 +40,24 @@ type UpdateCommitView struct {
 	Date    string
 }
 
+type githubComparisonResponse struct {
+	Status   string                `json:"status"`
+	AheadBy  int                   `json:"ahead_by"`
+	BehindBy int                   `json:"behind_by"`
+	Commits  []githubCommitSummary `json:"commits"`
+}
+
+type githubCommitSummary struct {
+	SHA     string `json:"sha"`
+	HTMLURL string `json:"html_url"`
+	Commit  struct {
+		Message string `json:"message"`
+		Author  struct {
+			Date time.Time `json:"date"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
 type updateAgentStatus struct {
 	Running    bool      `json:"running"`
 	Success    bool      `json:"success"`
@@ -255,21 +273,7 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 		return err
 	}
 	comparisonStatus := ""
-	var result struct {
-		Status   string `json:"status"`
-		AheadBy  int    `json:"ahead_by"`
-		BehindBy int    `json:"behind_by"`
-		Commits  []struct {
-			SHA     string `json:"sha"`
-			HTMLURL string `json:"html_url"`
-			Commit  struct {
-				Message string `json:"message"`
-				Author  struct {
-					Date time.Time `json:"date"`
-				} `json:"author"`
-			} `json:"commit"`
-		} `json:"commits"`
-	}
+	var result githubComparisonResponse
 	if h.buildCommit != "" && h.buildCommit != "unknown" {
 		endpoint := "https://api.github.com/repos/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "..." + url.PathEscape(latestCommit)
 		if err := fetchGitHubJSON(requestCtx, endpoint, &result); err != nil {
