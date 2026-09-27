@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/mochi-mqtt/server/v2 v2.7.9
@@ -12,9 +13,11 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/xuri/excelize/v2 v2.8.0
 	golang.org/x/crypto v0.31.0
+	modernc.org/sqlite v1.34.1
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -57,7 +60,6 @@ require (
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
-	modernc.org/sqlite v1.34.1 // indirect
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )

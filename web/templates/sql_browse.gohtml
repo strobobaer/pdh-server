@@ -1,7 +1,7 @@
 {{template "base" .}}
 {{define "content"}}
 <div style="margin-bottom:18px">
-  <h1 style="font-size:19px;font-weight:600">SQLite-Vorschau · {{.ConnectionName}}</h1>
+  <h1 style="font-size:19px;font-weight:600">Datenbank-Vorschau · {{.ConnectionName}}</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a></p>
 </div>
 
@@ -9,20 +9,21 @@
 
 {{if not .Applicable}}
 <div class="card" role="status">
-  Diese Verbindung ist keine SQLite-Verbindung.
+  Diese Verbindung ist keine durchsuchbare Datenbankverbindung.
 </div>
 {{else}}
 
 <div class="card" style="margin-bottom:14px">
   <div class="card-title">Quelle</div>
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
-    <dt style="color:var(--muted)">Datei</dt><dd style="margin:0;word-break:break-all">{{if .SourcePath}}{{.SourcePath}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+    <dt style="color:var(--muted)">Typ</dt><dd style="margin:0">{{.KindLabel}}</dd>
+    <dt style="color:var(--muted)">Adresse</dt><dd style="margin:0;word-break:break-all">{{if .SourceLabel}}{{.SourceLabel}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
   </dl>
   {{if .CanWrite}}
   <form method="POST" action="/import/connections/{{.ConnectionID}}/browse/refresh" style="margin-top:12px">
     <button type="submit" class="btn btn-primary"><i class="ti ti-refresh"></i> Jetzt aktualisieren</button>
   </form>
-  <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Liest die Datenbank neu ein und übernimmt für jede Zuordnung den Wert der zuletzt eingefügten Zeile der markierten Spalte (jede Tabelle wird als fortlaufendes Log behandelt).</p>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Liest die Datenbank neu ein und übernimmt für jede Zuordnung den Wert der zuletzt eingefügten Zeile der markierten Spalte (jede Tabelle wird als fortlaufendes Log behandelt - bei MySQL wird dafür ein eindeutiger Primärschlüssel benötigt).</p>
   {{end}}
 </div>
 
