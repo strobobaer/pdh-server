@@ -77,6 +77,21 @@
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
 
+    <div class="kind-fields" id="fields-mssql" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Host</label><input name="f_mssql_host" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Port</label><input type="number" name="f_mssql_port" class="form-input" value="1433"></div>
+        <div class="form-group"><label class="form-label">Datenbank</label><input name="f_mssql_database" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Instanzname</label><input name="f_mssql_instance_name" class="form-input" placeholder="optional"></div>
+        <div class="form-group"><label class="form-label">Zieltabelle</label><input name="f_mssql_table_name" class="form-input" placeholder="z.B. export_log"></div>
+        <div class="form-group"><label class="form-label">Benutzername</label><input name="f_mssql_username" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mssql_password" class="form-input" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mssql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mssql_use_tls"> TLS-Verschlüsselung</label>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
+    </div>
+
     <div class="kind-fields" id="fields-opcua" hidden>
       <div class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label">Endpunkt-URL</label><input name="f_opcua_endpoint_url" class="form-input" placeholder="opc.tcp://host:4840"></div>
@@ -235,7 +250,8 @@ function connContextItems(row, direction){
     items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }});
     items.push({label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }});
   }
-  if(row.dataset.connKind === 'excel' || row.dataset.connKind === 'pdf'){
+  const exportableKinds = ['excel', 'pdf', 'sqlite', 'mysql', 'mssql', 'opcua', 'modbus'];
+  if(exportableKinds.indexOf(row.dataset.connKind) !== -1){
     items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
       window.location = '/export/connections/' + row.dataset.connId + '/preview';
     }});

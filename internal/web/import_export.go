@@ -59,6 +59,7 @@ var exportKindOptions = []KindOption{
 	{"excel", "Excel"},
 	{"sqlite", "SQLite"},
 	{"mysql", "MySQL"},
+	{"mssql", "MSSQL"},
 	{"opcua", "OPC UA"},
 	{"modbus", "Modbus TCP"},
 }
@@ -88,6 +89,7 @@ var exportKindFields = map[string][]string{
 	"excel":  {"template_id", "destination_path", "schedule_cron"},
 	"sqlite": {"file_path", "table_name", "schedule_cron"},
 	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
+	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "table_name", "schedule_cron"},
 	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
 	"modbus": {"host", "port", "unit_id", "schedule_cron"},
 }

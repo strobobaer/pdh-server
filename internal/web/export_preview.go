@@ -35,7 +35,7 @@ import (
 
 func exportableKind(kind string) bool {
 	switch kind {
-	case "excel", "pdf", "sqlite", "mysql", "opcua", "modbus":
+	case "excel", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus":
 		return true
 	default:
 		return false
@@ -52,6 +52,8 @@ func exportKindLabel(kind string) string {
 		return "SQLite"
 	case "mysql":
 		return "MySQL"
+	case "mssql":
+		return "MSSQL"
 	case "opcua":
 		return "OPC UA"
 	case "modbus":
@@ -102,6 +104,14 @@ func exportDestinationLabel(kind string, config map[string]string) string {
 	case "mysql":
 		host := strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "3306") + "/" + strings.TrimSpace(config["database"])
 		return host + " · Tabelle " + strings.TrimSpace(config["table_name"])
+	case "mssql":
+		host := strings.TrimSpace(config["host"])
+		if instance := strings.TrimSpace(config["instance_name"]); instance != "" {
+			host += `\` + instance
+		} else {
+			host += ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "1433")
+		}
+		return host + "/" + strings.TrimSpace(config["database"]) + " · Tabelle " + strings.TrimSpace(config["table_name"])
 	case "opcua":
 		return strings.TrimSpace(config["endpoint_url"])
 	case "modbus":
@@ -217,7 +227,7 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 			tpl := h.resolveExportTemplate(ctx, "pdf", config["template_id"])
 			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings)
 		}
-	case "sqlite", "mysql":
+	case "sqlite", "mysql", "mssql":
 		writeErr = writeSQLExport(kind, config, mappings)
 	case "opcua":
 		writeErr = writeOPCUAExport(ctx, config, mappings)
@@ -404,6 +414,8 @@ func writeSQLExport(kind string, config map[string]string, mappings []ExportMapp
 		db, err = openSqliteDBWritable(strings.TrimSpace(config["file_path"]))
 	case "mysql":
 		db, err = openMysqlDB(config)
+	case "mssql":
+		db, err = openMssqlDB(config)
 	default:
 		return fmt.Errorf("nicht unterstützter Verbindungstyp")
 	}
