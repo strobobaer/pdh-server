@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -134,6 +135,20 @@ type MqttBrokerPageData struct {
 	BytesSent        int64
 	Subscriptions    int64
 	RecentJSON       string
+
+	// Client-Einstellungen: nur fuer Betrachter mit Schreibrecht sichtbar,
+	// da Benutzername/Passwort enthalten sein koennen (siehe canConnectionWrite).
+	CanWrite       bool
+	SuggestedHost  string
+	ListenPort     string
+	WebsocketPort  string
+	TLSEnabled     bool
+	AllowAnonymous bool
+	BrokerUsername string
+	BrokerPassword string
+	TopicFilter    string
+	QoS            string
+	RetainEnabled  bool
 }
 
 func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
@@ -161,6 +176,23 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 		Applicable:     kind == "mqtt" && config["broker_mode"] == "integrated",
 		Enabled:        enabled,
 		RecentJSON:     "[]",
+		CanWrite:       h.canConnectionWrite(r, "import"),
+	}
+	if data.Applicable && data.CanWrite {
+		suggestedHost := r.Host
+		if host, _, err := net.SplitHostPort(r.Host); err == nil {
+			suggestedHost = host
+		}
+		data.SuggestedHost = suggestedHost
+		data.ListenPort = config["int_listen_port"]
+		data.WebsocketPort = config["int_websocket_port"]
+		data.TLSEnabled = strings.TrimSpace(config["int_tls_cert_path"]) != "" && strings.TrimSpace(config["int_tls_key_path"]) != ""
+		data.AllowAnonymous = config["int_allow_anonymous"] == "true"
+		data.BrokerUsername = config["int_broker_username"]
+		data.BrokerPassword = config["int_broker_password"]
+		data.TopicFilter = config["int_topic_filter"]
+		data.QoS = config["int_qos"]
+		data.RetainEnabled = config["int_retain_enabled"] == "true"
 	}
 	if data.Applicable {
 		if status, ok := h.mqttBrokers.Status(id); ok {

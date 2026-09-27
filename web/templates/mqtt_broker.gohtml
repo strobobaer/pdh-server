@@ -9,7 +9,34 @@
 <div class="card" role="status">
   Diese Verbindung nutzt keinen integrierten Broker (kein MQTT-Konnektor mit "Integrierter Broker").
 </div>
-{{else if not .Enabled}}
+{{else}}
+
+{{if .CanWrite}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Client-Einstellungen</div>
+  <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Diese Werte in einem MQTT-Client/Gerät eintragen, um sich mit diesem Broker zu verbinden.</p>
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
+    <dt style="color:var(--muted)">Host</dt><dd style="margin:0"><code id="cs-host">{{.SuggestedHost}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-host')" title="Kopieren"><i class="ti ti-copy"></i></button> <span style="font-size:11px;color:var(--muted)">(Adresse, unter der dieser PDH-Server erreichbar ist - bei eigener Portweiterleitung ggf. abweichend)</span></dd>
+    <dt style="color:var(--muted)">Port (TCP)</dt><dd style="margin:0"><code id="cs-port">{{.ListenPort}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-port')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>
+    {{if .WebsocketPort}}<dt style="color:var(--muted)">Port (WebSocket)</dt><dd style="margin:0"><code id="cs-ws-port">{{.WebsocketPort}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-ws-port')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>{{end}}
+    <dt style="color:var(--muted)">Verschlüsselung</dt><dd style="margin:0">{{if .TLSEnabled}}TLS aktiv (mqtts/wss){{else}}Keine (mqtt/ws){{end}}</dd>
+    <dt style="color:var(--muted)">Anmeldung</dt>
+    {{if .AllowAnonymous}}
+    <dd style="margin:0">Anonym erlaubt - kein Benutzername/Passwort nötig</dd>
+    {{else}}
+    <dd style="margin:0">
+      Benutzername <code id="cs-user">{{.BrokerUsername}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-user')" title="Kopieren"><i class="ti ti-copy"></i></button>
+      · Passwort <code id="cs-pass">{{.BrokerPassword}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-pass')" title="Kopieren"><i class="ti ti-copy"></i></button>
+    </dd>
+    {{end}}
+    {{if .TopicFilter}}<dt style="color:var(--muted)">Empfohlenes Topic</dt><dd style="margin:0"><code id="cs-topic">{{.TopicFilter}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-topic')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>{{end}}
+    <dt style="color:var(--muted)">QoS</dt><dd style="margin:0">{{if .QoS}}{{.QoS}}{{else}}0{{end}}</dd>
+    <dt style="color:var(--muted)">Retained Messages</dt><dd style="margin:0">{{if .RetainEnabled}}erlaubt{{else}}nicht erlaubt{{end}}</dd>
+  </dl>
+</div>
+{{end}}
+
+{{if not .Enabled}}
 <div class="card" role="status">
   Diese Verbindung ist deaktiviert, der integrierte Broker läuft daher nicht. Über den Import-Bereich (Rechtsklick → Aktivieren/Deaktivieren) aktivieren.
 </div>
@@ -66,9 +93,19 @@
 </div>
 {{end}}
 {{end}}
+{{end}}
 
 {{define "scripts"}}
 <script>
+function copyValue(elementId){
+  const el = document.getElementById(elementId);
+  if(!el) return;
+  const text = el.textContent || '';
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).catch(function(){});
+  }
+}
+
 (function(){
   if(!{{if .Running}}true{{else}}false{{end}}) return;
 
