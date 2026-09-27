@@ -199,10 +199,15 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label>Titel <span class="required-hint">Pflichtfeld</span>
         <input id="create-title" name="title" required minlength="3" maxlength="255" placeholder="Kurzbeschreibung">
       </label>
-      <label>Beschreibung
-        <textarea id="create-description" name="description" maxlength="2000" placeholder="Details (optional)"></textarea>
+      <label>Beschreibung <span class="required-hint">Pflichtfeld, mehr als drei Wörter</span>
+        <textarea id="create-description" name="description" maxlength="2000" required placeholder="Was ist los? Bitte in ganzen Sätzen beschreiben."></textarea>
       </label>
-      <label id="create-priority-field">Priorität
+      <label id="create-infra-field">Infrastruktur <span class="required-hint">Pflichtfeld</span>
+        <select id="create-infra" name="infrastructure_id" required>
+          <option value="">Infrastruktur auswählen …</option>
+        </select>
+      </label>
+      <label>Priorität
         <select id="create-priority" name="priority">
           <option value="low">Niedrig</option>
           <option value="medium" selected>Mittel</option>
@@ -213,8 +218,13 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label id="create-symptoms-field" class="hidden">Symptome
         <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
       </label>
-      <label>RFID-Karte zur Bestätigung <span class="required-hint">Pflichtfeld</span>
-        <input id="create-rfid" name="rfid_uid" type="password" autocomplete="off" required placeholder="Karte scannen">
+      <label>Ersteller/in <span class="required-hint">Pflichtfeld</span>
+        <select id="create-reporter" name="reporter_id" required>
+          <option value="">Mitarbeiter/in auswählen …</option>
+        </select>
+      </label>
+      <label>Abweichender Melder <span class="required-hint">Optional, z.B. Besucher ohne PDH-Konto</span>
+        <input id="create-reporter-name" name="reporter_name" maxlength="120" placeholder="Nur ausfüllen, falls jemand anderes gemeldet hat">
       </label>
       <div class="form-actions">
         <button type="button" class="action-button" id="create-cancel">Abbrechen</button>
@@ -363,9 +373,15 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   function itemKey(item){ return item.type_key + ':' + item.id; }
 
+  function fillSelect(select, options, placeholder){
+    if(!select) return;
+    const previous = select.value;
+    select.replaceChildren(new Option(placeholder, ''));
+    (options || []).forEach(function(opt){ select.add(new Option(opt.name, opt.id)); });
+    select.value = previous;
+  }
   function setOptions(options){
-    workerSelect.replaceChildren(new Option('Mitarbeiter auswählen …',''));
-    options.forEach(function(worker){workerSelect.add(new Option(worker.name,worker.id));});
+    fillSelect(workerSelect, options, 'Mitarbeiter auswählen …');
   }
 
   function renderAxis(windowStart, totalDays){
@@ -562,6 +578,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   const createPanel = document.getElementById('create-panel');
   const createForm = document.getElementById('create-form');
   const createSymptomsField = document.getElementById('create-symptoms-field');
+  const createInfraField = document.getElementById('create-infra-field');
+  const createInfraSelect = document.getElementById('create-infra');
+  const createDescriptionInput = document.getElementById('create-description');
   const createTitleInput = document.getElementById('create-title');
   let createType = null;
 
@@ -570,6 +589,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     closeEditPanel();
     document.getElementById('create-panel-title').textContent = createTileNames[type] || 'Neuer Vorgang';
     createSymptomsField.classList.toggle('hidden', type !== 'fault');
+    const needsInfra = type !== 'task';
+    createInfraField.classList.toggle('hidden', !needsInfra);
+    createInfraSelect.required = needsInfra;
     createForm.reset();
     document.getElementById('create-priority').value = 'medium';
     createPanel.classList.remove('hidden');
@@ -587,15 +609,22 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   document.getElementById('create-close').addEventListener('click', closeCreatePanel);
   document.getElementById('create-cancel').addEventListener('click', closeCreatePanel);
 
+  createDescriptionInput.addEventListener('input', function(){
+    const wordCount = createDescriptionInput.value.trim().split(/\s+/).filter(Boolean).length;
+    createDescriptionInput.setCustomValidity(wordCount > 3 ? '' : 'Bitte mehr als drei Wörter eingeben');
+  });
+
   createForm.addEventListener('submit', async function(event){
     event.preventDefault();
     if(!createType || !createForm.reportValidity()) return;
     const payload = {
       type: createType,
       title: createTitleInput.value.trim(),
-      description: document.getElementById('create-description').value.trim(),
+      description: createDescriptionInput.value.trim(),
       priority: document.getElementById('create-priority').value,
-      rfid_uid: document.getElementById('create-rfid').value.trim()
+      infrastructure_id: createInfraSelect.value,
+      reporter_id: document.getElementById('create-reporter').value,
+      reporter_name: document.getElementById('create-reporter-name').value.trim()
     };
     if(createType === 'fault'){
       payload.symptoms = String(document.getElementById('create-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
@@ -614,13 +643,14 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       loadState.textContent = error.message;
     }finally{
       submit.disabled = false;
-      document.getElementById('create-rfid').value = '';
     }
   });
 
   function render(data){
     latestData = data;
     setOptions(data.workers || []);
+    fillSelect(document.getElementById('create-reporter'), data.workers || [], 'Mitarbeiter/in auswählen …');
+    fillSelect(document.getElementById('create-infra'), data.infrastructure || [], 'Infrastruktur auswählen …');
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     renderTimeline(data.items);
     renderNoDueDate(data.items);

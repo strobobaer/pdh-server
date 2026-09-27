@@ -5,24 +5,31 @@ import (
 	"net/http"
 	"strings"
 
-	coreusers "pdh/internal/core/users"
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/tickets"
 )
 
 // globalBoardCreateInput ist die Eingabe fuer die drei Touch-Felder im
-// Leitstand ("+ Neues Ticket" / "+ Neue Aufgabe" / "+ Neue Störung") -
-// bewusst schlank gehalten, damit sich ein neuer Vorgang schnell am
-// Terminal erfassen laesst. Weitere Details (Zuweisung, Infrastruktur,
-// Fälligkeit) werden wie gewohnt spaeter beim Bearbeiten ergaenzt.
+// Leitstand ("+ Neues Ticket" / "+ Neue Aufgabe" / "+ Neue Störung").
+// Anlegen ist bewusst fuer jeden moeglich (keine Anmeldung, keine
+// RFID-Karte) - anders als Annehmen/Fertig/Verwerfen/Warten, die
+// weiterhin eine RFID-Bestaetigung durch Instandhaltung/IT-Personal
+// voraussetzen. Wer tatsaechlich gemeldet hat, wird stattdessen ueber
+// ReporterID (Pflicht-Auswahl aus der Mitarbeiterliste) und optional
+// ReporterName (schriftlicher Override, z.B. fuer Besucher ohne
+// PDH-Konto) festgehalten - technisch bleibt ReporterID der Ersteller in
+// der Datenbank (created_by ist dort ein Pflichtfeld auf ein echtes
+// Konto), ReporterName wird als Vermerk in der Beschreibung ergaenzt.
 type globalBoardCreateInput struct {
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Priority    string   `json:"priority"`
-	Symptoms    []string `json:"symptoms"`
-	RFIDUID     string   `json:"rfid_uid"`
+	Type             string   `json:"type"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description"`
+	Priority         string   `json:"priority"`
+	Symptoms         []string `json:"symptoms"`
+	InfrastructureID string   `json:"infrastructure_id"`
+	ReporterID       string   `json:"reporter_id"`
+	ReporterName     string   `json:"reporter_name"`
 }
 
 func globalBoardCreateTypeAllowed(t string) bool {
@@ -34,12 +41,18 @@ func globalBoardCreateTypeAllowed(t string) bool {
 	}
 }
 
+// globalBoardDescriptionWordCount liefert die Anzahl durch Leerraum
+// getrennter Woerter - Grundlage fuer die Mindestlaenge der Beschreibung
+// (mehr als drei sinnvolle Woerter statt eines Stichworts).
+func globalBoardDescriptionWordCount(s string) int {
+	return len(strings.Fields(s))
+}
+
 // GlobalDashboardCreate legt ueber die Touch-Felder im Leitstand einen
-// neuen Vorgang an. Wie bei den uebrigen Leitstand-Aktionen identifiziert
-// sich die anlegende Person per RFID-Karte (keine Anmeldung noetig) -
-// dieselbe Instandhaltung/IT-Einschraenkung wie bei Annehmen/Fertig/etc.
-// gilt auch hier, weil sonst jeder am oeffentlichen Terminal beliebig
-// Vorgaenge im Namen eines fremden Kontos anlegen koennte.
+// neuen Vorgang an - fuer jeden ohne Anmeldung nutzbar. Infrastruktur
+// (bei Ticket/Störung) und eine aussagekraeftige Beschreibung sind
+// Pflicht, damit auch ohne RFID-Bestaetigung ein Mindestmass an
+// verwertbarer Information ankommt.
 func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var in globalBoardCreateInput
@@ -49,8 +62,10 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.Description = strings.TrimSpace(in.Description)
-	in.RFIDUID = strings.TrimSpace(in.RFIDUID)
 	in.Priority = strings.ToLower(strings.TrimSpace(in.Priority))
+	in.InfrastructureID = strings.TrimSpace(in.InfrastructureID)
+	in.ReporterID = strings.TrimSpace(in.ReporterID)
+	in.ReporterName = strings.TrimSpace(in.ReporterName)
 	if !globalBoardCreateTypeAllowed(in.Type) {
 		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannter Vorgangstyp")
 		return
@@ -59,8 +74,16 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		writeGlobalBoardError(w, http.StatusBadRequest, "Der Titel muss 3 bis 255 Zeichen lang sein")
 		return
 	}
-	if in.RFIDUID == "" {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "Bitte RFID-Karte zur Bestätigung scannen")
+	if globalBoardDescriptionWordCount(in.Description) <= 3 {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Die Beschreibung muss aus mehr als drei Wörtern bestehen")
+		return
+	}
+	if in.Type != "task" && in.InfrastructureID == "" {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte eine Infrastruktur auswählen")
+		return
+	}
+	if in.ReporterID == "" {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte den/die Ersteller/in auswählen")
 		return
 	}
 	if in.Priority == "" {
@@ -73,21 +96,30 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, actor, err := h.users.LoginByRFID(r.Context(), in.RFIDUID)
-	if err != nil || actor == nil || !isGlobalBoardDepartment(actor.Department) || actor.Role == coreusers.RoleViewer {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "RFID-Karte gehört keinem aktiven Mitarbeiter aus Instandhaltung oder IT")
+	reporter, err := h.users.GetByID(r.Context(), in.ReporterID)
+	if err != nil || reporter == nil {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannte/r Ersteller/in")
 		return
+	}
+	description := in.Description
+	if in.ReporterName != "" {
+		description = "Gemeldet von: " + in.ReporterName + "\n\n" + description
+	}
+	var infrastructureID *string
+	if in.InfrastructureID != "" {
+		infrastructureID = &in.InfrastructureID
 	}
 
 	switch in.Type {
 	case "ticket":
 		_, err = h.tickets.Create(r.Context(), &tickets.CreateInput{
-			Title: in.Title, Description: in.Description, Priority: tickets.Priority(in.Priority),
-		}, actor.ID)
+			Title: in.Title, Description: description, Priority: tickets.Priority(in.Priority),
+			InfrastructureID: infrastructureID,
+		}, reporter.ID)
 	case "task":
 		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
-			Title: in.Title, Description: in.Description, Priority: tasks.Priority(in.Priority),
-		}, actor.ID)
+			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
+		}, reporter.ID)
 	case "fault":
 		symptoms := make([]string, 0, len(in.Symptoms))
 		for _, s := range in.Symptoms {
@@ -96,8 +128,9 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 		_, err = h.faults.Create(r.Context(), &faults.CreateFaultInput{
-			Title: in.Title, Description: in.Description, Severity: faults.Severity(in.Priority), Symptoms: symptoms,
-		}, actor.ID)
+			Title: in.Title, Description: description, Severity: faults.Severity(in.Priority), Symptoms: symptoms,
+			InfrastructureID: infrastructureID,
+		}, reporter.ID)
 	}
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Vorgang konnte nicht angelegt werden")

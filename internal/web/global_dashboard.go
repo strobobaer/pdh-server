@@ -25,8 +25,9 @@ type GlobalBoardItem struct {
 }
 
 type GlobalDashboardData struct {
-	Items   []GlobalBoardItem `json:"items"`
-	Workers []UserOption      `json:"workers"`
+	Items          []GlobalBoardItem `json:"items"`
+	Workers        []UserOption      `json:"workers"`
+	Infrastructure []UserOption      `json:"infrastructure"`
 }
 
 func (h *Handler) GlobalDashboardRoutes() chi.Router {
@@ -130,8 +131,9 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx := r.Context()
 	data := GlobalDashboardData{
-		Items:   make([]GlobalBoardItem, 0),
-		Workers: make([]UserOption, 0),
+		Items:          make([]GlobalBoardItem, 0),
+		Workers:        make([]UserOption, 0),
+		Infrastructure: make([]UserOption, 0),
 	}
 
 	rows, err := h.db.Query(ctx, `
@@ -213,6 +215,34 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := userRows.Err(); err != nil {
 		http.Error(w, "Mitarbeiter konnten nicht gelesen werden", http.StatusInternalServerError)
+		return
+	}
+
+	infraRows, err := h.db.Query(ctx, `
+		WITH RECURSIVE tree AS (
+			SELECT id, name::text AS path
+			FROM infrastructure WHERE parent_id IS NULL AND active = true
+			UNION ALL
+			SELECT i.id, tree.path || ' › ' || i.name
+			FROM infrastructure i JOIN tree ON i.parent_id = tree.id
+			WHERE i.active = true
+		)
+		SELECT id::text, path FROM tree ORDER BY path`)
+	if err != nil {
+		http.Error(w, "Infrastruktur konnte nicht geladen werden", http.StatusInternalServerError)
+		return
+	}
+	defer infraRows.Close()
+	for infraRows.Next() {
+		var id, path string
+		if err := infraRows.Scan(&id, &path); err != nil {
+			http.Error(w, "Infrastruktur konnte nicht gelesen werden", http.StatusInternalServerError)
+			return
+		}
+		data.Infrastructure = append(data.Infrastructure, UserOption{ID: id, Name: path})
+	}
+	if err := infraRows.Err(); err != nil {
+		http.Error(w, "Infrastruktur konnte nicht gelesen werden", http.StatusInternalServerError)
 		return
 	}
 
