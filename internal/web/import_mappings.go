@@ -136,18 +136,6 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	}
 	h.reconcileMqttConsumer(connectionID)
 
-	returnPath := "sniffer"
-	switch {
-	case kind == "excel":
-		returnPath = "preview"
-	case sqlBrowsableKind(kind):
-		returnPath = "browse"
-	case webBrowsableKind(kind):
-		returnPath = "response"
-	case kind == "modbus":
-		returnPath = "read"
-	case kind == "opcua":
-		returnPath = "nodes"
-	}
+	returnPath := importConnectionDetailPath(kind)
 	http.Redirect(w, r, "/import/connections/"+connectionID+"/"+returnPath+"?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
 }

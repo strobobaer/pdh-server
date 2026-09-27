@@ -422,6 +422,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/read/refresh", h.ModbusRefreshValuesWeb)
 	r.Get("/import/connections/{id}/nodes", h.OPCUABrowsePage)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
+	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
@@ -435,6 +436,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/templates", h.ExportTemplateCreateWeb)
 	r.Post("/export/templates/{id}/edit-web", h.ExportTemplateEditWeb)
 	r.Post("/export/templates/{id}/delete-web", h.ExportTemplateDeleteWeb)
+	r.Get("/export/mappings", h.ExportMappingsOverviewPage)
 
 	// Override-Anmeldung an Systemnutzer-Terminals
 	r.Post("/override-login", h.OverrideLoginWeb)

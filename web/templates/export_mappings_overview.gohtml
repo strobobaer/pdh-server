@@ -1,0 +1,77 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Zuordnungen · Export</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/export">← zurück zu Export</a> · alle für einen Export markierten Werte aus allen Export-Verbindungen an einem Ort</p>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <input id="mapping-search" class="form-input" placeholder="Suchen (Verbindung, Quelle, Zielfeld, Infrastruktur)..." oninput="filterMappingRows()" autocomplete="off">
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Zuordnungen · {{len .ExportMappings}}</div>
+  {{if .ExportMappings}}
+  <table style="border-collapse:collapse;width:100%;font-size:12.5px" id="mapping-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Verbindung</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Quellwert</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Infrastruktur</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Zielfeld</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Notiz</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Aktueller Wert</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Zuletzt exportiert</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .ExportMappings}}
+      <tr data-mapping-id="{{.ID}}" data-mapping-name="{{.FieldName}}" data-conn-id="{{.ConnectionID}}" data-can-write="{{$.CanWrite}}"
+          oncontextmenu="showContextMenu(event, overviewMappingContextItems(this, 'export')); return false;">
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.ConnectionName}} <span style="color:var(--muted)">({{.ConnectionKindLabel}})</span></td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.SourceName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace">{{.FieldName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Note}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-all">{{if .SourceValue}}{{.SourceValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">{{if .LastExportedAt}}{{.LastExportedAt}}{{else}}<span style="color:var(--muted)">noch nicht exportiert</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine Werte für den Export markiert.</div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function filterMappingRows(){
+  const q = document.getElementById('mapping-search').value.toLowerCase();
+  document.querySelectorAll('#mapping-table tbody tr').forEach(function(row){
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function overviewMappingContextItems(row, direction){
+  const canWrite = row.dataset.canWrite === 'true';
+  const items = [{heading: row.dataset.mappingName}];
+  items.push({label: 'Zur Verbindung öffnen', icon: 'ti-external-link', onClick: function(){
+    window.location = '/' + direction + '/connections/' + row.dataset.connId + '/preview';
+  }});
+  if(canWrite){
+    items.push({separator: true});
+    items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){
+      if(!confirm('Zuordnung "' + row.dataset.mappingName + '" wirklich löschen?')) return;
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/' + direction + '/connections/' + row.dataset.connId + '/mappings/' + row.dataset.mappingId + '/delete-web';
+      document.body.appendChild(form);
+      form.submit();
+    }});
+  }
+  return items;
+}
+</script>
+{{end}}
