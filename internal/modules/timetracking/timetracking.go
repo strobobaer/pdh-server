@@ -187,10 +187,46 @@ func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry
 	return entries, rows.Err()
 }
 
+// ListByUserIDs: Zeiteintraege mehrerer Nutzer im Zeitraum - fuer
+// Vorgesetzte, die (ohne volle Admin/Manager-Rolle) die Zeiten ihrer
+// direkten und indirekten Unteruser auswerten duerfen.
+func (r *Repository) ListByUserIDs(ctx context.Context, userIDs []string, from, to string) ([]*TimeEntry, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
+		       te.started_at, te.ended_at, te.duration_min, te.created_at,
+		       te.infrastructure_id, COALESCE(i.name, ''),
+		       u.first_name || ' ' || u.last_name
+		FROM time_entries te
+		JOIN users u ON te.user_id = u.id
+		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		WHERE te.user_id = ANY($1) AND te.started_at::date BETWEEN $2 AND $3
+		ORDER BY te.started_at DESC`,
+		userIDs, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*TimeEntry
+	for rows.Next() {
+		e := &TimeEntry{}
+		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
+			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
+			&e.InfrastructureID, &e.InfraName, &e.UserName); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // UpdateEntryInput: Felder, die bei einer manuellen Korrektur geaendert werden koennen.
 type UpdateEntryInput struct {
-	Description string    `json:"description"`
-	StartedAt   time.Time `json:"started_at"`
+	Description string     `json:"description"`
+	StartedAt   time.Time  `json:"started_at"`
 	EndedAt     *time.Time `json:"ended_at,omitempty"`
 }
 
@@ -453,6 +489,10 @@ func (s *Service) Delete(ctx context.Context, id, userID string, isAdmin bool) e
 
 func (s *Service) ListAll(ctx context.Context, from, to string) ([]*TimeEntry, error) {
 	return s.repo.ListAll(ctx, from, to)
+}
+
+func (s *Service) ListByUserIDs(ctx context.Context, userIDs []string, from, to string) ([]*TimeEntry, error) {
+	return s.repo.ListByUserIDs(ctx, userIDs, from, to)
 }
 
 func (s *Service) Update(ctx context.Context, id, userID string, isAdmin bool, in *UpdateEntryInput) error {

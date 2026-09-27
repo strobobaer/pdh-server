@@ -31,17 +31,18 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
 	}
 
 	u := &User{
-		Username:     in.Username,
-		Email:        in.Email,
+		Username:        in.Username,
+		Email:           in.Email,
 		NextcloudUserID: in.NextcloudUserID,
-		PasswordHash: string(hash),
-		FirstName:    in.FirstName,
-		LastName:     in.LastName,
-		Role:         in.Role,
-		Department:   in.Department,
-		Phone:        in.Phone,
-		IsSystemUser: in.IsSystemUser,
-		RFIDUID:      in.RFIDUID,
+		PasswordHash:    string(hash),
+		FirstName:       in.FirstName,
+		LastName:        in.LastName,
+		Role:            in.Role,
+		Department:      in.Department,
+		Phone:           in.Phone,
+		IsSystemUser:    in.IsSystemUser,
+		RFIDUID:         in.RFIDUID,
+		ManagerID:       in.ManagerID,
 		OnCallDuty:      in.OnCallDuty,
 		ShiftLocksmith1: in.ShiftLocksmith1,
 		ShiftLocksmith2: in.ShiftLocksmith2,
@@ -132,6 +133,14 @@ func (s *Service) IssueToken(u *User, ttl time.Duration, extraClaims map[string]
 
 func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
 	return s.repo.GetByID(ctx, id)
+}
+
+func (s *Service) IsSubordinate(ctx context.Context, managerID, targetID string) (bool, error) {
+	return s.repo.IsSubordinate(ctx, managerID, targetID)
+}
+
+func (s *Service) SubordinateIDs(ctx context.Context, managerID string) ([]string, error) {
+	return s.repo.SubordinateIDs(ctx, managerID)
 }
 
 func (s *Service) GetByRFID(ctx context.Context, uid string) (*User, error) {

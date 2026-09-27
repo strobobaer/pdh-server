@@ -34,6 +34,7 @@ type User struct {
 	Active          bool      `json:"active"`
 	IsSystemUser    bool      `json:"is_system_user"`
 	RFIDUID         *string   `json:"rfid_uid,omitempty"`
+	ManagerID       *string   `json:"manager_id,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 
@@ -59,6 +60,7 @@ type CreateUserInput struct {
 	Phone           string  `json:"phone"`
 	IsSystemUser    bool    `json:"is_system_user"`
 	RFIDUID         *string `json:"rfid_uid,omitempty"`
+	ManagerID       *string `json:"manager_id,omitempty"`
 	OnCallDuty      bool    `json:"on_call_duty"`
 	ShiftLocksmith1 bool    `json:"shift_locksmith_1"`
 	ShiftLocksmith2 bool    `json:"shift_locksmith_2"`
@@ -83,14 +85,14 @@ func (r *Repository) Create(ctx context.Context, u *User) error {
 	}
 	query := `
 		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user, rfid_uid, nextcloud_user_id,
-			on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		u.Username, u.Email, u.PasswordHash,
 		u.FirstName, u.LastName, u.Role,
 		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
-		nextcloudUserID, u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
+		nextcloudUserID, u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader, u.ManagerID,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
@@ -98,14 +100,14 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
 		role, department, phone, active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
-		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id
 		FROM users WHERE id = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash,
 		&u.FirstName, &u.LastName, &u.Role,
 		&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID, &u.NextcloudUserID,
 		&u.CreatedAt, &u.UpdatedAt,
-		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+		&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader, &u.ManagerID,
 	)
 	return u, err
 }
@@ -150,7 +152,7 @@ func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
 	query := `SELECT id, username, email, first_name, last_name,
 		role, department, phone, active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
-		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
+		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id
 		FROM users WHERE active = true ORDER BY last_name, first_name`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -166,7 +168,7 @@ func (r *Repository) List(ctx context.Context) ([]*User, error) {
 			&u.FirstName, &u.LastName, &u.Role,
 			&u.Department, &u.Phone, &u.Active, &u.IsSystemUser, &u.RFIDUID, &u.NextcloudUserID,
 			&u.CreatedAt, &u.UpdatedAt,
-			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader,
+			&u.OnCallDuty, &u.ShiftLocksmith1, &u.ShiftLocksmith2, &u.Sharpening, &u.HeatingFill, &u.ShiftLeader, &u.ManagerID,
 		)
 		if err != nil {
 			return nil, err
@@ -181,15 +183,60 @@ func (r *Repository) Update(ctx context.Context, u *User) error {
 		password_hash=COALESCE(NULLIF($3,''),password_hash), nextcloud_user_id=COALESCE(NULLIF($4,''),nextcloud_user_id),
 		first_name=$5, last_name=$6, role=$7, department=$8, phone=$9, is_system_user=$10, rfid_uid=$11,
 		on_call_duty=$12, shift_locksmith_1=$13, shift_locksmith_2=$14, sharpening=$15, heating_fill=$16, shift_leader=$17,
-		updated_at=NOW()
-		WHERE id=$18`
+		manager_id=$18, updated_at=NOW()
+		WHERE id=$19`
 	_, err := r.db.Exec(ctx, query,
 		u.Username, u.Email, u.PasswordHash, u.NextcloudUserID, u.FirstName, u.LastName, u.Role,
 		u.Department, u.Phone, u.IsSystemUser, u.RFIDUID,
 		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
-		u.ID,
+		u.ManagerID, u.ID,
 	)
 	return err
+}
+
+// IsSubordinate prueft, ob targetID ein direkter oder indirekter
+// Unteruser von managerID ist (rekursiv ueber manager_id) - Grundlage
+// fuer "jeder darf seine Unteruser und deren Unteruser bearbeiten",
+// unabhaengig von Rolle/system.manage_users.
+func (r *Repository) IsSubordinate(ctx context.Context, managerID, targetID string) (bool, error) {
+	if managerID == "" || targetID == "" || managerID == targetID {
+		return false, nil
+	}
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM users WHERE manager_id = $1::uuid
+			UNION ALL
+			SELECT u.id FROM users u JOIN subtree s ON u.manager_id = s.id
+		)
+		SELECT EXISTS(SELECT 1 FROM subtree WHERE id = $2::uuid)`, managerID, targetID).Scan(&exists)
+	return exists, err
+}
+
+// SubordinateIDs liefert alle direkten und indirekten Unteruser einer
+// Person - Grundlage fuer die eingeschraenkte Benutzerliste, wenn der
+// Betrachter kein system.manage_users hat.
+func (r *Repository) SubordinateIDs(ctx context.Context, managerID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM users WHERE manager_id = $1::uuid
+			UNION ALL
+			SELECT u.id FROM users u JOIN subtree s ON u.manager_id = s.id
+		)
+		SELECT id::text FROM subtree`, managerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func (r *Repository) Deactivate(ctx context.Context, id string) error {

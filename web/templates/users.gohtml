@@ -37,8 +37,14 @@
 
       <div class="card-title" style="margin-top:14px">Rolle und Zugriff</div>
       <div class="grid2">
-        <div class="form-group"><label class="form-label" for="uf-role">Rolle</label>
+        <div class="form-group"><label class="form-label" for="uf-role">Rolle <span id="role-help" style="color:var(--muted);font-weight:400"></span></label>
           <select id="uf-role" name="role" class="form-input" required>{{range .Roles}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select>
+        </div>
+        <div class="form-group"><label class="form-label" for="uf-manager">Vorgesetzter</label>
+          <select id="uf-manager" name="manager_id" class="form-input">
+            <option value="">Kein Vorgesetzter</option>
+            {{range .ManagerOptions}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
         </div>
         <div class="form-group"><label class="form-label" for="uf-department">Abteilung</label><input id="uf-department" name="department" class="form-input"></div>
         <div class="form-group"><label class="form-label" for="uf-rfid">RFID-Karte</label><input id="uf-rfid" name="rfid_uid" class="form-input" placeholder="UID oder Karte scannen"></div>
@@ -93,7 +99,7 @@
           <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
           <div>
             <div style="font-weight:500">{{.FullName}}</div>
-            <div style="font-size:11px;color:var(--muted)">@{{.Username}}</div>
+            <div style="font-size:11px;color:var(--muted)">@{{.Username}}{{if .ManagerName}} · berichtet an {{.ManagerName}}{{end}}</div>
           </div>
         </div>
       </td>
@@ -111,15 +117,15 @@
         {{end}}
       </td>
       <td>
-        {{if .CanManage}}
+        {{if .CanEditProfile}}
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
             <button type="button" class="menu-item" onclick="editUser(this);closeMenu('umenu-{{.ID}}')"
               data-id="{{.ID}}" data-first-name="{{.FirstName}}" data-last-name="{{.LastName}}"
               data-username="{{.Username}}" data-email="{{.Email}}" data-role="{{.RoleValue}}" data-nextcloud-user-id="{{.NextcloudUserID}}"
-              data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}"
-              data-system-user="{{.IsSystemUser}}" data-on-call="{{.OnCallDuty}}"
+              data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}" data-manager-id="{{.ManagerID}}"
+              data-system-user="{{.IsSystemUser}}" data-on-call="{{.OnCallDuty}}" data-can-change-role="{{.CanManage}}"
               data-shift-locksmith1="{{.ShiftLocksmith1}}" data-shift-locksmith2="{{.ShiftLocksmith2}}"
               data-sharpening="{{.Sharpening}}" data-heating-fill="{{.HeatingFill}}" data-shift-leader="{{.ShiftLeader}}"><i class="ti ti-edit"></i>Bearbeiten</button>
             {{if $.CanPromoteAdmin}}
@@ -128,7 +134,7 @@
             {{if $.CanManageRoles}}
             <button type="button" class="menu-item" onclick="openPermissionsModal('{{.ID}}','{{.FullName}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-shield-lock"></i>Einzelrechte</button>
             {{end}}
-            {{if .Active}}
+            {{if and .Active .CanManage}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
             {{end}}
           </div>
@@ -185,6 +191,8 @@ function openNewUserModal(){
   userForm.reset();
   userForm.elements.namedItem('user_id').value = '';
   userForm.elements.namedItem('role').value = userForm.elements.namedItem('role').options[0]?.value || '';
+  userForm.elements.namedItem('role').disabled = false;
+  document.getElementById('role-help').textContent = '';
   userForm.elements.namedItem('username').readOnly = false;
   document.getElementById('username-help').textContent = '';
   userPassword.required = true;
@@ -208,6 +216,10 @@ function editUser(button){
   userForm.elements.namedItem('email').value = data.email || '';
   userForm.elements.namedItem('nextcloud_user_id').value = data.nextcloudUserId || '';
   userForm.elements.namedItem('role').value = data.role || '';
+  const canChangeRole = data.canChangeRole === 'true';
+  userForm.elements.namedItem('role').disabled = !canChangeRole;
+  document.getElementById('role-help').textContent = canChangeRole ? '' : '(nur Vorgesetzte mit Benutzerverwaltung können die Rolle ändern)';
+  userForm.elements.namedItem('manager_id').value = data.managerId || '';
   userForm.elements.namedItem('department').value = data.department || '';
   userForm.elements.namedItem('phone').value = data.phone || '';
   userForm.elements.namedItem('rfid_uid').value = data.rfid || '';
@@ -330,13 +342,19 @@ function closePermissionsModal(){
 
 (function(){
   const params = new URLSearchParams(location.search);
-  const openID = params.get('permissions');
-  if(!openID) return;
-  const trigger = document.querySelector('[data-id="' + CSS.escape(openID) + '"]');
-  if(!trigger) return;
-  const name = ((trigger.dataset.firstName || '') + ' ' + (trigger.dataset.lastName || '')).trim();
-  openPermissionsModal(openID, name);
-  history.replaceState({}, '', location.pathname);
+  const permissionsID = params.get('permissions');
+  const editID = params.get('edit');
+  if(permissionsID){
+    const trigger = document.querySelector('[data-id="' + CSS.escape(permissionsID) + '"]');
+    if(trigger){
+      const name = ((trigger.dataset.firstName || '') + ' ' + (trigger.dataset.lastName || '')).trim();
+      openPermissionsModal(permissionsID, name);
+    }
+  } else if(editID){
+    const trigger = document.querySelector('[data-id="' + CSS.escape(editID) + '"]');
+    if(trigger) editUser(trigger);
+  }
+  if(permissionsID || editID) history.replaceState({}, '', location.pathname);
 })();
 </script>
 {{end}}

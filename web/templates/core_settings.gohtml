@@ -3,10 +3,19 @@
 <div style="margin-bottom:18px">
   <h1 style="font-size:19px;font-weight:600">Core-Einstellungen</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px">Systemweite Einstellungen und Updates</p>
-  <p style="font-size:12px;margin-top:8px"><a href="/core/settings/microsoft">Microsoft-365-Organisationssync</a></p>
 </div>
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Verwaltung</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {{if .CanManageUsers}}<a href="/users" class="btn" style="font-size:12px"><i class="ti ti-users"></i> Benutzerverwaltung</a>{{end}}
+    <a href="/admin/roles" class="btn" style="font-size:12px"><i class="ti ti-shield-lock"></i> Rollen & Rechte</a>
+    <a href="/admin/orgchart" class="btn" style="font-size:12px"><i class="ti ti-sitemap"></i> Organigramm</a>
+    <a href="/core/settings/microsoft" class="btn" style="font-size:12px"><i class="ti ti-brand-windows"></i> Microsoft-365-Organisationssync</a>
+  </div>
+</div>
 
 <div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px">
   <div class="card">

@@ -1,4 +1,23 @@
 {{template "base" .}}
+{{define "head"}}
+<style>
+.orgchart-tree{display:flex;flex-direction:column;align-items:center;padding:24px 10px 10px;min-width:min-content}
+.orgchart-tier-connector{width:2px;height:22px;background:var(--border)}
+.orgchart-tier-row{display:flex;gap:36px;width:fit-content;margin:0 auto;position:relative}
+.orgchart-tier-row.multi{border-top:2px solid var(--border);padding-top:22px}
+.orgchart-tier-row:not(.multi){padding-top:22px}
+.orgchart-role-node{position:relative;display:flex;flex-direction:column;align-items:center;flex:0 0 auto}
+.orgchart-role-node::before{content:'';position:absolute;top:-22px;left:calc(50% - 1px);width:2px;height:22px;background:var(--border)}
+.orgchart-role-box{min-width:180px;border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:10px;background:var(--bg2);padding:12px 16px;text-align:center;transition:outline .1s,background .1s;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.orgchart-role-box .orgchart-role-label{font-size:14.5px;font-weight:700;letter-spacing:.2px}
+.orgchart-role-box .orgchart-role-meta{font-size:10.5px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.4px}
+.orgchart-role-stem{width:2px;height:22px;background:var(--border)}
+.orgchart-user-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:280px;padding-top:2px}
+.orgchart-card{display:flex;align-items:center;gap:6px;padding:4px 9px 4px 4px;border:1px solid var(--border);border-radius:20px;background:var(--bg3);font-size:11.5px;color:var(--muted);white-space:nowrap}
+.orgchart-empty{font-size:11px;color:var(--muted);padding-top:2px;font-style:italic}
+@media(max-width:900px){.orgchart-tree{align-items:flex-start}.orgchart-tier-row{width:auto;flex-wrap:wrap;justify-content:flex-start;margin:0}.orgchart-tier-row.multi{border-top:none;padding-top:0}.orgchart-role-node::before{display:none}.orgchart-tier-connector{display:none}}
+</style>
+{{end}}
 {{define "content"}}
 <div style="margin-bottom:18px">
   <h1 style="font-size:19px;font-weight:600">Organigramm</h1>
@@ -7,30 +26,42 @@
 
 <p id="orgchart-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:10px"></p>
 
-<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;align-items:flex-start">
-  {{range .Columns}}
-  <div class="card orgchart-column" data-role-key="{{.Key}}" data-can-assign="{{.CanAssign}}"
-       style="min-width:220px;flex:0 0 220px;transition:outline .1s{{if not .CanAssign}};opacity:.55{{end}}"
-       ondragover="orgchartDragOver(event, this)" ondragleave="orgchartDragLeave(event, this)" ondrop="orgchartDrop(event, this)">
-    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-      <span>{{.Label}}</span>
-      <span style="font-size:10px;font-weight:400;color:var(--muted)" title="Rangstufe in der Hierarchie">Rang {{.Level}}</span>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">{{len .Users}} Benutzer</div>
-    <div class="orgchart-users" style="display:flex;flex-direction:column;gap:6px;min-height:40px">
-      {{range .Users}}
-      <div class="orgchart-card" {{if .CanManage}}draggable="true" ondragstart="orgchartDragStart(event,'{{.ID}}')" ondragend="orgchartDragEnd(event)"{{end}}
-           style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);{{if .CanManage}}cursor:grab{{else}}cursor:default{{end}}"
-           title="{{.FullName}}{{if not .CanManage}} · Rang zu niedrig, um diesen Benutzer zu verschieben{{end}}">
-        <div style="width:26px;height:26px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
-        <div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">{{.FullName}}</div>
-        {{if $.CanManageRoles}}<a href="/users?permissions={{.ID}}" title="Einzelrechte bearbeiten" style="flex-shrink:0;color:var(--muted);display:flex" onclick="event.stopPropagation()"><i class="ti ti-shield-lock" style="font-size:14px"></i></a>{{end}}
+<div class="card" style="overflow-x:auto">
+  <div class="orgchart-tree">
+    {{range $ti, $tier := .Tiers}}
+    {{if gt $ti 0}}<div class="orgchart-tier-connector"></div>{{end}}
+    <div class="orgchart-tier-row{{if gt (len $tier.Roles) 1}} multi{{end}}">
+      {{range $tier.Roles}}
+      <div class="orgchart-role-node">
+        <div class="orgchart-role-box" data-role-key="{{.Key}}" data-can-assign="{{.CanAssign}}"
+             style="{{if not .CanAssign}}opacity:.55{{end}};cursor:pointer" title="Klicken, um die Berechtigungen dieser Rolle zu bearbeiten"
+             onclick="location.href='/admin/roles'"
+             ondragover="orgchartDragOver(event, this)" ondragleave="orgchartDragLeave(event, this)" ondrop="orgchartDrop(event, this)">
+          <div class="orgchart-role-label">{{.Label}}</div>
+          <div class="orgchart-role-meta" title="Rangstufe in der Hierarchie">Rang {{.Level}} · {{len .Users}} Benutzer</div>
+        </div>
+        {{if .Users}}
+        <div class="orgchart-role-stem"></div>
+        <div class="orgchart-user-row">
+          {{range .Users}}
+          <div class="orgchart-card" {{if .CanManage}}draggable="true" ondragstart="orgchartDragStart(event,'{{.ID}}')" ondragend="orgchartDragEnd(event)"{{end}}
+               style="cursor:pointer" onclick="location.href='/users?edit={{.ID}}'"
+               title="{{.FullName}} · klicken zum Bearbeiten{{if .CanManage}} · ziehen, um die Rolle zu ändern{{end}}">
+            <div style="width:22px;height:22px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
+            <span style="max-width:130px;overflow:hidden;text-overflow:ellipsis">{{.FullName}}</span>
+            {{if $.CanManageRoles}}<a href="/users?permissions={{.ID}}" title="Einzelrechte bearbeiten" style="color:var(--muted);display:flex;margin-left:2px" onclick="event.stopPropagation()"><i class="ti ti-shield-lock" style="font-size:13px"></i></a>{{end}}
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="orgchart-role-stem"></div>
+        <div class="orgchart-empty">Keine Benutzer</div>
+        {{end}}
       </div>
       {{end}}
-      {{if not .Users}}<div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Benutzer</div>{{end}}
     </div>
+    {{end}}
   </div>
-  {{end}}
 </div>
 {{end}}
 
@@ -47,20 +78,23 @@ function orgchartDragEnd(event){
   event.currentTarget.style.opacity = '';
   orgchartDraggedUserID = null;
 }
-function orgchartDragOver(event, column){
-  if(column.dataset.canAssign !== 'true' || !orgchartDraggedUserID) return;
+function orgchartDragOver(event, box){
+  if(box.dataset.canAssign !== 'true' || !orgchartDraggedUserID) return;
   event.preventDefault();
-  column.style.outline = '2px solid var(--accent)';
+  box.style.outline = '2px solid var(--accent)';
+  box.style.background = 'var(--bg3)';
 }
-function orgchartDragLeave(event, column){
-  column.style.outline = '';
+function orgchartDragLeave(event, box){
+  box.style.outline = '';
+  box.style.background = '';
 }
-async function orgchartDrop(event, column){
+async function orgchartDrop(event, box){
   event.preventDefault();
-  column.style.outline = '';
-  const roleKey = column.dataset.roleKey;
+  box.style.outline = '';
+  box.style.background = '';
+  const roleKey = box.dataset.roleKey;
   const userID = orgchartDraggedUserID;
-  if(!userID || column.dataset.canAssign !== 'true') return;
+  if(!userID || box.dataset.canAssign !== 'true') return;
   const errorBox = document.getElementById('orgchart-error');
   errorBox.style.display = 'none';
   try{

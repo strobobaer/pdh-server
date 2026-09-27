@@ -1375,7 +1375,12 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 		weekStart = now.AddDate(0, 0, -6)
 	}
 
-	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	isFullAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	subordinateIDs, _ := h.users.SubordinateIDs(ctx, u.ID)
+	// Wer keine volle Admin/Manager-Rolle hat, aber eigene (direkte oder
+	// indirekte) Unteruser fuehrt, darf trotzdem deren Zeiten zusammen mit
+	// den eigenen auswerten - eingeschraenkt auf den eigenen Team-Umfang.
+	isAdmin := isFullAdmin || len(subordinateIDs) > 0
 	filterUser := r.URL.Query().Get("user")
 	filterRange := r.URL.Query().Get("range")
 	if filterRange == "" {
@@ -1416,18 +1421,43 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isAdmin {
-		data.Users = h.userOptions(ctx)
+		scopeIDs := append([]string{u.ID}, subordinateIDs...)
+		if isFullAdmin {
+			data.Users = h.userOptions(ctx)
+		} else {
+			allOptions := h.userOptions(ctx)
+			scopeSet := make(map[string]bool, len(scopeIDs))
+			for _, id := range scopeIDs {
+				scopeSet[id] = true
+			}
+			for _, opt := range allOptions {
+				if scopeSet[opt.ID] {
+					data.Users = append(data.Users, opt)
+				}
+			}
+			// nicht autorisierter Filterversuch ausserhalb des eigenen
+			// Teams: ignorieren und auf den eigenen Team-Umfang zurueckfallen.
+			if filterUser != "" && !scopeSet[filterUser] {
+				filterUser = ""
+			}
+		}
 		var entries []*timetracking.TimeEntry
 		var err error
 		if filterUser != "" {
 			entries, err = h.time.ListByUser(ctx, filterUser, rangeFrom, rangeTo)
-		} else {
+		} else if isFullAdmin {
 			entries, err = h.time.ListAll(ctx, rangeFrom, rangeTo)
+		} else {
+			entries, err = h.time.ListByUserIDs(ctx, scopeIDs, rangeFrom, rangeTo)
 		}
 		if err == nil {
 			for _, e := range entries {
 				view := timeEntryView(e)
-				view.CanEdit = true
+				// Wer nur ueber Unteruser (nicht per Rolle) Zugriff hat,
+				// darf fremde Zeiten auswerten, aber nicht bearbeiten -
+				// nur eigene Eintraege bleiben editierbar (TimeEditWeb/
+				// TimeDeleteWeb pruefen serverseitig ohnehin unabhaengig).
+				view.CanEdit = isFullAdmin || e.UserID == u.ID
 				data.Entries = append(data.Entries, view)
 				if e.StartedAt.Format("2006-01-02") == now.Format("2006-01-02") {
 					data.TodayCount++
@@ -2850,6 +2880,8 @@ type UsersPageData struct {
 	RoleStats       []RoleStat
 	Roles           []*rbac.Role
 	CanPromoteAdmin bool
+	ScopedToOwnTeam bool         // Betrachter hat kein system.manage_users, sieht/bearbeitet nur eigene (indirekte) Unteruser
+	ManagerOptions  []UserOption // fuer die "Vorgesetzter"-Auswahl im Bearbeiten-Formular
 }
 
 type UserView struct {
@@ -2870,7 +2902,10 @@ type UserView struct {
 	Department      string
 	Phone           string
 	Active          bool
-	CanManage       bool // ob der angemeldete Benutzer diesen Nutzer laut Rollenhierarchie verwalten darf
+	CanManage       bool // ob der angemeldete Benutzer diesen Nutzer laut Rollenhierarchie verwalten darf (inkl. Rolle/Deaktivieren)
+	CanEditProfile  bool // CanManage ODER dieser Nutzer ist ein (indirekter) Unteruser - erlaubt nur die Profil-Bearbeitung, keine Rollenaenderung
+	ManagerID       string
+	ManagerName     string
 
 	OnCallDuty      bool
 	ShiftLocksmith1 bool
@@ -2913,7 +2948,7 @@ func avatarFor(firstName, lastName string) (initials, bg string) {
 	return initials, bg
 }
 
-func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels map[string]string) UserView {
+func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels, userNames map[string]string, subordinateIDs map[string]bool) UserView {
 	roleClasses := map[users.Role]string{
 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
 		"worker": "b-gray", "viewer": "b-gray",
@@ -2924,6 +2959,8 @@ func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels map[st
 	if label == "" {
 		label = string(u.Role)
 	}
+	canManage := h.rbac.Outranks(actorRoleKey, string(u.Role))
+	managerID := derefOr(u.ManagerID, "")
 
 	return UserView{
 		ID: u.ID, Username: u.Username, Email: u.Email,
@@ -2937,24 +2974,37 @@ func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels map[st
 		IsSystemUser: u.IsSystemUser,
 		RFIDUID:      derefOr(u.RFIDUID, ""),
 		Department:   u.Department, Phone: u.Phone, Active: u.Active,
-		CanManage:  h.rbac.Outranks(actorRoleKey, string(u.Role)),
-		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
+		CanManage:      canManage,
+		CanEditProfile: canManage || subordinateIDs[u.ID],
+		ManagerID:      managerID,
+		ManagerName:    userNames[managerID],
+		OnCallDuty:     u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
 		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
 	}
 }
 
 func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageUsers(r) {
+	ctx := r.Context()
+	actor := getUser(r)
+	actorRoleKey := string(actor.Role)
+	canFullyManage := h.canManageUsers(r)
+	subordinateList, _ := h.users.SubordinateIDs(ctx, actor.ID)
+	subordinateSet := make(map[string]bool, len(subordinateList))
+	for _, id := range subordinateList {
+		subordinateSet[id] = true
+	}
+	if !canFullyManage && len(subordinateSet) == 0 {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	ctx := r.Context()
+
 	filter := r.URL.Query().Get("role")
-	actorRoleKey := string(getUser(r).Role)
 	data := UsersPageData{
 		BaseData:        h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
 		Filter:          filter,
 		CanPromoteAdmin: h.rbac.Outranks(actorRoleKey, "admin"),
+		ScopedToOwnTeam: !canFullyManage,
+		ManagerOptions:  h.userOptions(ctx),
 	}
 
 	roles, _ := h.rbac.ListRoles(ctx)
@@ -2967,18 +3017,31 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 
 	allUsers, err := h.users.List(ctx)
 	if err == nil {
-		roleCounts := map[string]int{}
+		userNames := make(map[string]string, len(allUsers))
 		for _, u := range allUsers {
+			userNames[u.ID] = strings.TrimSpace(u.FirstName + " " + u.LastName)
+		}
+		roleCounts := map[string]int{}
+		scopedTotal := 0
+		for _, u := range allUsers {
+			if !canFullyManage && !subordinateSet[u.ID] {
+				continue
+			}
+			scopedTotal++
 			if !u.Active {
 				continue
 			}
 			data.ActiveUsers++
 			roleCounts[string(u.Role)]++
 			if filter == "" || string(u.Role) == filter {
-				data.Users = append(data.Users, h.userView(actorRoleKey, u, roleLabelByKey))
+				data.Users = append(data.Users, h.userView(actorRoleKey, u, roleLabelByKey, userNames, subordinateSet))
 			}
 		}
-		data.TotalUsers = len(allUsers)
+		if canFullyManage {
+			data.TotalUsers = len(allUsers)
+		} else {
+			data.TotalUsers = scopedTotal
+		}
 		roleIcons := map[string]string{"admin": "👑", "manager": "📋", "technician": "🔧", "worker": "👷", "viewer": "👁️"}
 		for _, ro := range roles {
 			if roleCounts[ro.Key] > 0 {
@@ -2994,14 +3057,12 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageUsers(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
 		return
 	}
+	ctx := r.Context()
+	actor := getUser(r)
 	userID := strings.TrimSpace(r.FormValue("user_id"))
 	username := strings.TrimSpace(r.FormValue("username"))
 	email := strings.TrimSpace(r.FormValue("email"))
@@ -3012,49 +3073,24 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Vorname, Nachname, Benutzername und E-Mail sind Pflichtfelder", http.StatusBadRequest)
 		return
 	}
-	role := users.Role(r.FormValue("role"))
-	if role == "" {
-		http.Error(w, "Bitte eine Rolle auswählen", http.StatusBadRequest)
-		return
-	}
-	// Hierarchie: eine Rolle darf nur Benutzer und Rollen mit echt
-	// niedrigerem Rang verwalten (Ausnahme: die ranghoechste Rolle darf
-	// auch Gleichrangige verwalten) - siehe rbac.Service.Outranks.
-	var currentUser *users.User
-	if userID == "" {
-		if !h.outranksRole(r, string(role)) {
-			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
-			return
-		}
-	} else {
-		var err error
-		currentUser, err = h.users.GetByID(r.Context(), userID)
-		if err != nil {
-			http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
-			return
-		}
-		if userID != getUser(r).ID && !h.outranksRole(r, string(currentUser.Role)) {
-			http.Error(w, "keine berechtigung, diesen Benutzer zu bearbeiten", http.StatusForbidden)
-			return
-		}
-		if role != currentUser.Role && !h.outranksRole(r, string(role)) {
-			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
-			return
-		}
-	}
-	// Benutzername ist nach dem Anlegen nicht mehr aenderbar (u.Username
-	// bleibt hier bewusst unangetastet) - RFID-Karten, Nextcloud-Sync und
-	// Microsoft-Verzeichnisabgleich koennen darauf verweisen.
-	common := func(u *users.User) {
+	roleValue := strings.TrimSpace(r.FormValue("role"))
+	canFullyManage := h.canManageUsers(r)
+
+	// common setzt die Profilfelder, die sowohl volle Verwalter als auch
+	// Vorgesetzte (fuer ihre Unteruser) aendern duerfen. Rolle und
+	// Benutzername sind bewusst NICHT enthalten: die Rolle wird separat
+	// ueber die Rang-Hierarchie freigegeben (siehe unten), der
+	// Benutzername ist nach dem Anlegen nicht mehr aenderbar.
+	common := func(u *users.User, managerID *string) {
 		u.Email = email
 		u.NextcloudUserID = strings.TrimSpace(r.FormValue("nextcloud_user_id"))
 		u.FirstName = firstName
 		u.LastName = lastName
-		u.Role = role
 		u.Department = strings.TrimSpace(r.FormValue("department"))
 		u.Phone = strings.TrimSpace(r.FormValue("phone"))
 		u.IsSystemUser = r.FormValue("is_system_user") == "on"
 		u.RFIDUID = optionalID(r.FormValue("rfid_uid"))
+		u.ManagerID = managerID
 		u.OnCallDuty = r.FormValue("on_call_duty") == "on"
 		u.ShiftLocksmith1 = r.FormValue("shift_locksmith_1") == "on"
 		u.ShiftLocksmith2 = r.FormValue("shift_locksmith_2") == "on"
@@ -3062,9 +3098,31 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		u.HeatingFill = r.FormValue("heating_fill") == "on"
 		u.ShiftLeader = r.FormValue("shift_leader") == "on"
 	}
+
 	if userID == "" {
+		// Neuanlage bleibt Admins/Managern mit system.manage_users
+		// vorbehalten - Unteruser-Zugriff gilt nur fuers Bearbeiten
+		// bestehender Personen.
+		if !canFullyManage {
+			http.Error(w, "keine berechtigung", http.StatusForbidden)
+			return
+		}
+		if roleValue == "" {
+			http.Error(w, "Bitte eine Rolle auswählen", http.StatusBadRequest)
+			return
+		}
+		role := users.Role(roleValue)
+		if !h.outranksRole(r, string(role)) {
+			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
+			return
+		}
 		if len(password) < 8 {
 			http.Error(w, "Neues Passwort muss mindestens 8 Zeichen lang sein", http.StatusBadRequest)
+			return
+		}
+		managerID, err := h.validatedManagerID(ctx, "", r.FormValue("manager_id"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		in := &users.CreateUserInput{
@@ -3074,22 +3132,88 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 			Department:   strings.TrimSpace(r.FormValue("department")),
 			Phone:        strings.TrimSpace(r.FormValue("phone")),
 			IsSystemUser: r.FormValue("is_system_user") == "on", RFIDUID: optionalID(r.FormValue("rfid_uid")),
+			ManagerID:  managerID,
 			OnCallDuty: r.FormValue("on_call_duty") == "on", Sharpening: r.FormValue("sharpening") == "on",
 			HeatingFill: r.FormValue("heating_fill") == "on", ShiftLeader: r.FormValue("shift_leader") == "on",
 			ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on", ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
 		}
-		if _, err := h.users.Register(r.Context(), in); err != nil {
+		if _, err := h.users.Register(ctx, in); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-	} else {
-		common(currentUser)
-		if err := h.users.UpdateWithPassword(r.Context(), currentUser, password); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	currentUser, err := h.users.GetByID(ctx, userID)
+	if err != nil {
+		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+		return
+	}
+	// Hierarchie: eine Rolle darf nur Benutzer und Rollen mit echt
+	// niedrigerem Rang verwalten (Ausnahme: die ranghoechste Rolle darf
+	// auch Gleichrangige verwalten) - siehe rbac.Service.Outranks.
+	canManageThisUser := canFullyManage && h.outranksRole(r, string(currentUser.Role))
+	if !canManageThisUser {
+		// Zweite, unabhaengige Zugriffsart: jeder darf seine direkten und
+		// indirekten Unteruser bearbeiten (Profilfelder), unabhaengig von
+		// system.manage_users und der Rang-Hierarchie - aber ohne die
+		// Rolle aendern zu duerfen (siehe unten).
+		isSubordinate, subErr := h.users.IsSubordinate(ctx, actor.ID, userID)
+		if subErr != nil || !isSubordinate {
+			http.Error(w, "keine berechtigung, diesen Benutzer zu bearbeiten", http.StatusForbidden)
 			return
 		}
 	}
+
+	role := currentUser.Role
+	if canManageThisUser && roleValue != "" {
+		newRole := users.Role(roleValue)
+		if newRole != currentUser.Role {
+			if !h.outranksRole(r, string(newRole)) {
+				http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
+				return
+			}
+			role = newRole
+		}
+	}
+
+	managerID, err := h.validatedManagerID(ctx, userID, r.FormValue("manager_id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	common(currentUser, managerID)
+	currentUser.Role = role
+	if err := h.users.UpdateWithPassword(ctx, currentUser, password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validatedManagerID liest den gewaehlten Vorgesetzten aus dem Formular
+// und verhindert Zyklen (niemand darf sein eigener oder ein indirekter
+// eigener Vorgesetzter werden).
+func (h *Handler) validatedManagerID(ctx context.Context, userID, raw string) (*string, error) {
+	managerID := optionalID(raw)
+	if managerID == nil {
+		return nil, nil
+	}
+	if *managerID == userID {
+		return nil, fmt.Errorf("Ein Benutzer kann nicht sein eigener Vorgesetzter sein")
+	}
+	if userID != "" {
+		cyclic, err := h.users.IsSubordinate(ctx, userID, *managerID)
+		if err != nil {
+			return nil, fmt.Errorf("Vorgesetzten-Zuordnung konnte nicht geprüft werden")
+		}
+		if cyclic {
+			return nil, fmt.Errorf("Der gewählte Vorgesetzte ist bereits ein Unteruser dieser Person")
+		}
+	}
+	return managerID, nil
 }
 
 func (h *Handler) UserDeactivateWeb(w http.ResponseWriter, r *http.Request) {
