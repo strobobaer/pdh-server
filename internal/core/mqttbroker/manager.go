@@ -63,9 +63,10 @@ type runningBroker struct {
 	websocketAddr string
 	startedAt     time.Time
 
-	mu          sync.Mutex
-	recent      []ActivityEvent
-	subscribers map[chan ActivityEvent]struct{}
+	mu           sync.Mutex
+	recent       []ActivityEvent
+	subscribers  map[chan ActivityEvent]struct{}
+	inlineTopics map[string]struct{}
 }
 
 func (rb *runningBroker) publish(event ActivityEvent) {
@@ -142,7 +143,8 @@ func (m *Manager) start(id string, cfg Config) error {
 	}
 
 	opts := &mqtt.Options{
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		InlineClient: true, // fuer SubscribeTopic() - interne Wertuebernahme markierter Topics ohne Netzwerk-Client
 	}
 	opts.Capabilities = mqtt.NewDefaultServerCapabilities()
 	if cfg.MaxClients > 0 {
@@ -156,9 +158,10 @@ func (m *Manager) start(id string, cfg Config) error {
 
 	server := mqtt.New(opts)
 	rb := &runningBroker{
-		server:      server,
-		startedAt:   time.Now(),
-		subscribers: map[chan ActivityEvent]struct{}{},
+		server:       server,
+		startedAt:    time.Now(),
+		subscribers:  map[chan ActivityEvent]struct{}{},
+		inlineTopics: map[string]struct{}{},
 	}
 
 	if cfg.AllowAnonymous {
@@ -314,6 +317,51 @@ func (m *Manager) Subscribe(id string) (<-chan ActivityEvent, func(), bool) {
 		rb.mu.Unlock()
 	}
 	return ch, cancel, true
+}
+
+// SubscribeTopic registriert einen internen (inline) Abonnenten direkt auf
+// dem laufenden Broker - fuer die automatische Wertuebernahme markierter
+// Topics (siehe Handler.reconcileMqttConsumer), ohne eine zusaetzliche
+// Netzwerkverbindung zu benoetigen. Erfordert einen laufenden Broker.
+func (m *Manager) SubscribeTopic(id, topic string, handler func(topic string, payload []byte)) error {
+	m.mu.Lock()
+	rb, ok := m.brokers[id]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("broker nicht aktiv")
+	}
+	if err := rb.server.Subscribe(topic, 1, func(_ *mqtt.Client, _ packets.Subscription, pk packets.Packet) {
+		handler(pk.TopicName, pk.Payload)
+	}); err != nil {
+		return err
+	}
+	rb.mu.Lock()
+	rb.inlineTopics[topic] = struct{}{}
+	rb.mu.Unlock()
+	return nil
+}
+
+// UnsubscribeAllTopics beendet alle ueber SubscribeTopic registrierten
+// internen Abonnements eines Brokers (No-Op, falls keiner laeuft oder
+// nichts abonniert ist) - fuer den Stop-dann-neu-Aufbau-Zyklus in
+// reconcileMqttConsumer.
+func (m *Manager) UnsubscribeAllTopics(id string) {
+	m.mu.Lock()
+	rb, ok := m.brokers[id]
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	rb.mu.Lock()
+	topics := make([]string, 0, len(rb.inlineTopics))
+	for t := range rb.inlineTopics {
+		topics = append(topics, t)
+	}
+	rb.inlineTopics = map[string]struct{}{}
+	rb.mu.Unlock()
+	for _, t := range topics {
+		_ = rb.server.Unsubscribe(t, 1)
+	}
 }
 
 // ── Hooks ────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import (
 
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/mqttbroker"
+	"pdh/internal/core/mqttimport"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
@@ -259,6 +260,7 @@ type Handler struct {
 	microsoft        MicrosoftOAuthConfig
 	microsoftSyncMu  sync.Mutex
 	mqttBrokers      *mqttbroker.Manager
+	mqttImport       *mqttimport.Manager
 }
 
 func NewHandler(
@@ -290,6 +292,7 @@ func NewHandler(
 		rbac:        rb,
 		jwtSecret:   jwtSecret,
 		mqttBrokers: mqttbroker.NewManager(),
+		mqttImport:  mqttimport.NewManager(),
 	}
 }
 

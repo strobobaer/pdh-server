@@ -10,10 +10,11 @@ import (
 )
 
 // MQTT-Wertzuordnungen: im Sniffer markierte Topics werden einer
-// Infrastruktur zugeordnet und frei benannt/beschrieben - Grundlage fuer
-// die spaetere echte Datenuebernahme. Diese Seite verwaltet nur die
-// Zuordnung selbst (Anlegen/Loeschen), keine automatische Verarbeitung
-// eingehender Werte.
+// Infrastruktur zugeordnet und frei benannt/beschrieben. Sobald eine
+// Zuordnung besteht und die Verbindung aktiv ist, abonniert PDH das
+// Topic dauerhaft im Hintergrund (siehe reconcileMqttConsumer in
+// mqtt_broker.go) und haelt hier den zuletzt empfangenen Wert fest -
+// kein Verlauf/Historie in dieser Ausbaustufe, nur der aktuelle Stand.
 
 type MqttMappingView struct {
 	ID                 string `json:"id"`
@@ -22,6 +23,8 @@ type MqttMappingView struct {
 	InfrastructureName string `json:"infrastructure_name"`
 	Name               string `json:"name"`
 	Note               string `json:"note"`
+	LastValue          string `json:"last_value"`
+	LastReceivedAt     string `json:"last_received_at"`
 	CreatedAt          string `json:"created_at"`
 }
 
@@ -33,6 +36,7 @@ func (h *Handler) mqttMappings(ctx context.Context, connectionID string) ([]Mqtt
 			SELECT i.id, tree.path || ' › ' || i.name FROM infrastructure i JOIN tree ON i.parent_id = tree.id
 		)
 		SELECT m.id::text, m.topic, m.infrastructure_id::text, COALESCE(t.path, ''), m.name, m.note,
+		       COALESCE(m.last_value, ''), COALESCE(to_char(m.last_received_at, 'DD.MM.YYYY HH24:MI:SS'), ''),
 		       to_char(m.created_at, 'DD.MM.YYYY HH24:MI')
 		FROM mqtt_import_mappings m
 		LEFT JOIN tree t ON t.id = m.infrastructure_id
@@ -45,7 +49,8 @@ func (h *Handler) mqttMappings(ctx context.Context, connectionID string) ([]Mqtt
 	list := make([]MqttMappingView, 0)
 	for rows.Next() {
 		var v MqttMappingView
-		if err := rows.Scan(&v.ID, &v.Topic, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note, &v.CreatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Topic, &v.InfrastructureID, &v.InfrastructureName, &v.Name, &v.Note,
+			&v.LastValue, &v.LastReceivedAt, &v.CreatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, v)
@@ -105,6 +110,7 @@ func (h *Handler) MqttMappingCreateWeb(w http.ResponseWriter, r *http.Request) {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Zuordnung konnte nicht angelegt werden - existiert die gewählte Infrastruktur?")
 		return
 	}
+	h.reconcileMqttConsumer(connectionID)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": id})
 }
@@ -121,5 +127,6 @@ func (h *Handler) MqttMappingDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Zuordnung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}
+	h.reconcileMqttConsumer(connectionID)
 	http.Redirect(w, r, "/import/connections/"+connectionID+"/sniffer?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
 }

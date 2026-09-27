@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T13:42:58.953Z",
+  "generatedAt": "2026-09-27T13:54:24.278Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -611,6 +611,17 @@
       "sqlHash": "83c01c8dd33aa6137f185950a2bb9883cd2517ad9a6a7bc6c929466d8c24346e",
       "title": "057_mqtt_import_mappings.up.sql",
       "updatedAt": "2026-09-27T13:42:58.337Z"
+    },
+    {
+      "createdAt": "2026-09-27T13:54:23.650Z",
+      "path": "migrations/058_mqtt_mapping_values.up.sql",
+      "catalogContext": null,
+      "searchText": "058_mqtt_mapping_values.up.sql migrations/058_mqtt_mapping_values.up.sql -- 058_mqtt_mapping_values.up.sql\n--\n-- automatische werteuebernahme fuer markierte mqtt-topics: der zuletzt\n-- empfangene wert je zuordnung wird direkt an der zuordnung gespeichert\n-- (kein verlauf/historie in dieser ausbaustufe - nur der aktuelle stand).\n\nalter table mqtt_import_mappings add column if not exists last_value text;\nalter table mqtt_import_mappings add column if not exists last_received_at timestamptz;\n",
+      "searchUpdatedAt": "2026-09-27T13:54:23.762Z",
+      "schemaContext": null,
+      "sqlHash": "2981bc09c4f2b6cf809dbadb4ceab1d7e7a38da34d9ad8859adf1522e3d5eae4",
+      "title": "058_mqtt_mapping_values.up.sql",
+      "updatedAt": "2026-09-27T13:54:23.650Z"
     }
   ]
 }

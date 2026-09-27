@@ -188,6 +188,7 @@ func main() {
 	})
 	webHandler.StartUpdateChecker(context.Background())
 	webHandler.StartEnabledMqttBrokers(context.Background())
+	webHandler.StartEnabledMqttConsumers(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 

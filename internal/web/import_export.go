@@ -347,6 +347,7 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}
+	h.mqttImport.Stop(id)
 	h.mqttBrokers.Stop(id)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gelöscht"), http.StatusSeeOther)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"pdh/internal/core/mqttbroker"
+	"pdh/internal/core/mqttimport"
 )
 
 // Broker-Status: der integrierte MQTT-Broker (siehe internal/core/mqttbroker)
@@ -61,6 +62,8 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 	if direction != "import" || kind != "mqtt" {
 		return
 	}
+	defer h.reconcileMqttConsumer(id)
+
 	h.mqttBrokers.Stop(id)
 	if !enabled || config["broker_mode"] != "integrated" {
 		return
@@ -72,6 +75,129 @@ func (h *Handler) reconcileMqttBroker(id, direction, kind string, enabled bool, 
 	}
 	if err := h.mqttBrokers.Start(id, cfg); err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("integrierter mqtt-broker konnte nicht gestartet werden")
+	}
+}
+
+// reconcileMqttConsumer gleicht die automatische Wertuebernahme markierter
+// Topics (siehe mqtt_mappings.go) mit dem Soll-Zustand ab - aufgerufen
+// nach jedem Anlegen/Bearbeiten/Aktivieren-Deaktivieren einer Verbindung
+// (ueber reconcileMqttBroker) sowie nach jedem Anlegen/Loeschen einer
+// Zuordnung. Stoppt immer zuerst alle laufenden Abonnements (No-Op, falls
+// keine laufen) und baut sie danach bei Bedarf mit dem aktuellen
+// Topic-Set neu auf - je nach Broker-Modus entweder als interne
+// Inline-Subscription auf dem eigenen Broker oder als dauerhafte externe
+// Verbindung.
+func (h *Handler) reconcileMqttConsumer(connectionID string) {
+	var kind string
+	var enabled bool
+	var configBytes []byte
+	err := h.db.QueryRow(context.Background(), `
+		SELECT kind, enabled, config FROM import_export_connections WHERE id=$1 AND direction='import'`, connectionID).
+		Scan(&kind, &enabled, &configBytes)
+	if err != nil || kind != "mqtt" {
+		return
+	}
+	config := map[string]string{}
+	_ = json.Unmarshal(configBytes, &config)
+
+	h.mqttBrokers.UnsubscribeAllTopics(connectionID)
+	h.mqttImport.Stop(connectionID)
+	if !enabled {
+		return
+	}
+
+	mappings, err := h.mqttMappings(context.Background(), connectionID)
+	if err != nil || len(mappings) == 0 {
+		return
+	}
+	topics := make([]string, 0, len(mappings))
+	for _, mp := range mappings {
+		topics = append(topics, mp.Topic)
+	}
+	handler := func(topic string, payload []byte) {
+		h.recordMqttValue(connectionID, topic, payload)
+	}
+
+	switch config["broker_mode"] {
+	case "integrated":
+		for _, topic := range topics {
+			if err := h.mqttBrokers.SubscribeTopic(connectionID, topic, handler); err != nil {
+				log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).
+					Msg("mqtt-wertuebernahme: abonnieren auf integriertem broker fehlgeschlagen")
+			}
+		}
+	case "external":
+		host := strings.TrimSpace(config["ext_broker_host"])
+		if host == "" {
+			return
+		}
+		port := strings.TrimSpace(config["ext_broker_port"])
+		if port == "" {
+			port = "1883"
+		}
+		scheme := "tcp"
+		if config["ext_use_tls"] == "true" {
+			scheme = "ssl"
+		}
+		clientID := strings.TrimSpace(config["ext_client_id"])
+		if clientID != "" {
+			clientID += "-import"
+		} else {
+			clientID = "pdh-import-" + connectionID
+		}
+		cfg := mqttimport.Config{
+			BrokerURL: scheme + "://" + host + ":" + port,
+			ClientID:  clientID,
+			Username:  config["ext_username"],
+			Password:  config["ext_password"],
+			UseTLS:    config["ext_use_tls"] == "true",
+		}
+		if err := h.mqttImport.Start(connectionID, cfg, topics, handler); err != nil {
+			log.Error().Err(err).Str("connection_id", connectionID).Msg("mqtt-wertuebernahme: verbindung zum externen broker fehlgeschlagen")
+		}
+	}
+}
+
+// recordMqttValue speichert den zuletzt empfangenen Wert eines markierten
+// Topics direkt an der Zuordnung (kein Verlauf in dieser Ausbaustufe).
+// Laeuft in einem MQTT-Client-Callback-Goroutine, daher ohne Request-
+// Kontext.
+func (h *Handler) recordMqttValue(connectionID, topic string, payload []byte) {
+	value := string(payload)
+	if len(value) > 2000 {
+		value = value[:2000]
+	}
+	if _, err := h.db.Exec(context.Background(), `
+		UPDATE mqtt_import_mappings SET last_value=$1, last_received_at=NOW()
+		WHERE connection_id=$2 AND topic=$3`, value, connectionID, topic); err != nil {
+		log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-wert konnte nicht gespeichert werden")
+	}
+}
+
+// StartEnabledMqttConsumers baut beim Serverstart die automatische
+// Wertuebernahme fuer alle bereits aktivierten MQTT-Import-Verbindungen
+// mit mindestens einer Zuordnung wieder auf (unabhaengig vom Broker-
+// Modus - anders als StartEnabledMqttBrokers, das nur integrierte Broker
+// betrifft).
+func (h *Handler) StartEnabledMqttConsumers(ctx context.Context) {
+	rows, err := h.db.Query(ctx,
+		`SELECT id::text FROM import_export_connections WHERE direction='import' AND kind='mqtt' AND enabled=true`)
+	if err != nil {
+		log.Error().Err(err).Msg("mqtt-wertuebernahme konnte beim start nicht geladen werden")
+		return
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	for _, id := range ids {
+		h.reconcileMqttConsumer(id)
 	}
 }
 
@@ -110,11 +236,13 @@ func (h *Handler) StartEnabledMqttBrokers(ctx context.Context) {
 	}
 }
 
-// StopMqttBrokers beendet alle laufenden integrierten Broker - beim
-// geordneten Herunterfahren des PDH-Prozesses aufgerufen, damit belegte
-// Ports sauber freigegeben werden.
+// StopMqttBrokers beendet alle laufenden integrierten Broker und externen
+// Wertuebernahme-Verbindungen - beim geordneten Herunterfahren des
+// PDH-Prozesses aufgerufen, damit belegte Ports/Verbindungen sauber
+// freigegeben werden.
 func (h *Handler) StopMqttBrokers() {
 	h.mqttBrokers.StopAll()
+	h.mqttImport.StopAll()
 }
 
 type MqttBrokerPageData struct {
