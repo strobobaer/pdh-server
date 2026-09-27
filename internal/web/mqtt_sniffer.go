@@ -42,6 +42,8 @@ type MqttSnifferPageData struct {
 	Topic          string
 	Integrated     bool
 	CanExecute     bool
+	CanWrite       bool
+	Mappings       []MqttMappingView
 }
 
 func (h *Handler) mqttConnectionConfig(ctx context.Context, id string) (string, map[string]string, error) {
@@ -95,10 +97,14 @@ func (h *Handler) MqttSnifferPage(w http.ResponseWriter, r *http.Request) {
 		ConnectionName: name,
 		Integrated:     integrated,
 		CanExecute:     h.canConnectionExecute(r, "import"),
+		CanWrite:       h.canConnectionWrite(r, "import"),
 	}
 	if !integrated {
 		data.Target = mqttExternalTarget(config)
 		data.Topic = topic
+	}
+	if mappings, err := h.mqttMappings(r.Context(), id); err == nil {
+		data.Mappings = mappings
 	}
 	h.render(w, "mqtt_sniffer", data)
 }

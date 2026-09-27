@@ -402,6 +402,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
 	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
 	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
+	r.Post("/import/connections/{id}/mappings", h.MqttMappingCreateWeb)
+	r.Post("/import/connections/{id}/mappings/{mappingId}/delete-web", h.MqttMappingDeleteWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)

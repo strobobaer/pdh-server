@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T12:20:43.901Z",
+  "generatedAt": "2026-09-27T13:42:58.953Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -600,6 +600,17 @@
       "sqlHash": "f2a146268d2969ef5ed115ed7c66defe1a74854e8490264379a1f7fbedf84ec5",
       "title": "056_import_export.up.sql",
       "updatedAt": "2026-09-27T12:20:43.266Z"
+    },
+    {
+      "createdAt": "2026-09-27T13:42:58.337Z",
+      "path": "migrations/057_mqtt_import_mappings.up.sql",
+      "catalogContext": null,
+      "searchText": "057_mqtt_import_mappings.up.sql migrations/057_mqtt_import_mappings.up.sql -- 057_mqtt_import_mappings.up.sql\n--\n-- im mqtt-sniffer markierte werte: ein beobachtetes topic wird einer\n-- infrastruktur zugeordnet (infrastruktur-baum-picker) und bekommt eine\n-- freie bezeichnung sowie eine optionale zuordnungsnotiz. grundlage fuer\n-- die spaetere echte datenuebernahme (aktuell nur zuordnungsverwaltung,\n-- keine automatische verarbeitung eingehender werte).\n\ncreate table if not exists mqtt_import_mappings (\n    id                uuid primary key default gen_random_uuid(),\n    connection_id     uuid not null references import_export_connections(id) on delete cascade,\n    topic             varchar(500) not null,\n    infrastructure_id uuid not null references infrastructure(id),\n    name              varchar(150) not null,\n    note              varchar(500) not null default '',\n    created_by        uuid references users(id),\n    created_at        timestamptz not null default now(),\n    updated_at        timestamptz not null default now()\n);\n\ncreate index if not exists idx_mqtt_import_mappings_connection on mqtt_import_mappings (connection_id);\n",
+      "searchUpdatedAt": "2026-09-27T13:42:58.425Z",
+      "schemaContext": null,
+      "sqlHash": "83c01c8dd33aa6137f185950a2bb9883cd2517ad9a6a7bc6c929466d8c24346e",
+      "title": "057_mqtt_import_mappings.up.sql",
+      "updatedAt": "2026-09-27T13:42:58.337Z"
     }
   ]
 }
