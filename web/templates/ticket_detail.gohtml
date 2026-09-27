@@ -10,9 +10,9 @@
   <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
   {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/ticket/%s/archive" .Ticket.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/tickets?status=archive',700)")}}
   <!-- ... Menü -->
-  <div style="position:relative">
+  <div style="position:relative" oncontextmenu="toggleMenu('ticket-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('ticket-menu')")}}
-    <div id="ticket-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+    <div id="ticket-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
       <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
       {{range .StatusOptions}}
       {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}

@@ -10,9 +10,9 @@
   <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
   <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
   {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/fault/%s/archive" .Fault.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/faults?status=archive',700)")}}
-  <div style="position:relative">
+  <div style="position:relative" oncontextmenu="toggleMenu('fault-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('fault-menu')")}}
-    <div id="fault-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+    <div id="fault-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
       {{if eq .Fault.Status "detected"}}
       {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result" "OnClick" "closeMenu('fault-menu')")}}
       {{end}}

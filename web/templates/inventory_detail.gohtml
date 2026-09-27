@@ -8,9 +8,9 @@
   </div>
   <span class="badge {{.Part.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Part.StatusLabel}}</span>
   <!-- ... Menü -->
-  <div style="position:relative">
+  <div style="position:relative" oncontextmenu="toggleMenu('inv-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('inv-menu')")}}
-    <div id="inv-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:180px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+    <div id="inv-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
       {{template "icon-button" (dict "Action" "book" "ShowLabel" true "Label" "Buchung erfassen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('book-form').style.display='block';closeMenu('inv-menu')")}}
       {{template "icon-button" (dict "Action" "edit" "ShowLabel" true "Label" "Bearbeiten" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "OnClick" "document.getElementById('edit-form').style.display='block';closeMenu('inv-menu')")}}
     </div>

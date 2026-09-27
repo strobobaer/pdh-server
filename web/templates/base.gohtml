@@ -274,6 +274,15 @@ select.form-input option{background:var(--bg2)}
 .win11-menu-item.danger:hover:not(:disabled){background:color-mix(in srgb, var(--red) 12%, transparent)}
 .win11-menu-separator{height:1px;margin:4px 6px;background:var(--border)}
 .win11-menu-label{padding:6px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+/* Bestehende, ueber die Seite verteilte "..."-Dropdowns (Detail-Menues,
+   Konto-Menue) bekommen dieselbe Win11-Optik, sobald sie zusaetzlich
+   class="win11-menu" tragen - ohne ihre hx-*/onclick-Logik anzufassen. */
+.win11-menu > .btn,.win11-menu a.menu-item,.win11-menu button.menu-item{display:flex;min-height:32px;padding:6px 10px;border-radius:5px;border:0;background:transparent;color:var(--text);justify-content:flex-start;align-items:center;gap:10px;font-size:13px;margin-bottom:0!important;text-decoration:none}
+.win11-menu > .btn:hover,.win11-menu a.menu-item:hover,.win11-menu button.menu-item:hover{background:color-mix(in srgb, var(--text) 8%, transparent);border-color:transparent;opacity:1}
+.win11-menu > .btn-primary{color:var(--accent)}
+.win11-menu > .btn-danger,.win11-menu > .btn-warning{color:var(--red)}
+.win11-menu > .btn i,.win11-menu > .btn ui5-icon,.win11-menu a.menu-item i,.win11-menu button.menu-item i{font-size:15px;width:16px;height:16px;color:var(--muted);flex-shrink:0}
+.win11-menu .sr-only{position:static;width:auto;height:auto;padding:0;margin:0;overflow:visible;clip:auto;white-space:nowrap;font-size:13px}
 </style>
 {{block "head" .}}{{end}}
 </head>
@@ -336,9 +345,9 @@ select.form-input option{background:var(--bg2)}
       {{end}}
       <div style="position:relative">
         <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
-        <div id="user-menu" style="display:none;position:absolute;right:0;top:36px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-          <a href="/account" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-user-cog"></i>Mein Konto</a>
-          <a href="/logout" class="menu-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;border-radius:6px;color:var(--text);text-decoration:none"><i class="ti ti-logout"></i>Abmelden</a>
+        <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:200">
+          <a href="/account" class="menu-item"><i class="ti ti-user-cog"></i>Mein Konto</a>
+          <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>Abmelden</a>
         </div>
       </div>
       <div class="status-dot" title="API online"></div>
