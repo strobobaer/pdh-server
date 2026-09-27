@@ -48,6 +48,8 @@ var importKindOptions = []KindOption{
 	{"mqtt", "MQTT"},
 	{"web", "Web"},
 	{"rest_api", "REST-API"},
+	{"modbus", "Modbus TCP"},
+	{"opcua", "OPC UA"},
 }
 
 var exportKindOptions = []KindOption{
@@ -71,6 +73,8 @@ var importKindFields = map[string][]string{
 	},
 	"web":      {"url", "method", "poll_interval_minutes"},
 	"rest_api": {"base_url", "auth_method", "username", "password", "bearer_token", "api_key_header", "api_key_value", "poll_interval_minutes"},
+	"modbus":   {"host", "port", "unit_id"},
+	"opcua":    {"endpoint_url", "auth_mode", "username", "password"},
 }
 
 var exportKindFields = map[string][]string{

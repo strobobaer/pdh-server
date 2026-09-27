@@ -140,6 +140,32 @@
       </div>
     </div>
 
+    <div class="kind-fields" id="fields-modbus" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Host</label><input name="f_modbus_host" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Port</label><input type="number" name="f_modbus_port" class="form-input" value="502"></div>
+        <div class="form-group"><label class="form-label">Unit-ID (Slave)</label><input type="number" min="1" max="255" name="f_modbus_unit_id" class="form-input" value="1"></div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Modbus hat keine Feldnamen - Register werden nach dem Anlegen über einen Test-Lese-Dialog erkundet und markiert.</p>
+    </div>
+
+    <div class="kind-fields" id="fields-opcua" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Endpunkt-URL</label><input name="f_opcua_endpoint_url" class="form-input" placeholder="opc.tcp://host:4840"></div>
+        <div class="form-group"><label class="form-label">Anmeldung</label>
+          <select id="f_opcua_auth_mode" name="f_opcua_auth_mode" class="form-input" onchange="opcuaAuthModeChanged()">
+            <option value="anonymous">Anonym</option>
+            <option value="username">Benutzername/Passwort</option>
+          </select>
+        </div>
+      </div>
+      <div id="opcua-auth-username" hidden class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Benutzername</label><input name="f_opcua_username" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_opcua_password" class="form-input" autocomplete="new-password"></div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Nur unverschlüsselte Verbindung (SecurityPolicy "None") in dieser Ausbaustufe.</p>
+    </div>
+
     <div style="display:flex;gap:8px;margin-top:10px">
       <button type="submit" class="btn btn-primary" id="conn-submit"><i class="ti ti-plus"></i> Verbindung anlegen</button>
       <button type="button" class="btn" id="conn-cancel" onclick="resetConnForm()" hidden>Abbrechen</button>
@@ -199,6 +225,10 @@ function restAuthMethodChanged(){
     document.getElementById('rest-auth-' + m).hidden = method !== m;
   });
 }
+function opcuaAuthModeChanged(){
+  const mode = document.getElementById('f_opcua_auth_mode').value;
+  document.getElementById('opcua-auth-username').hidden = mode !== 'username';
+}
 
 function resetConnForm(){
   const form = document.getElementById('conn-form');
@@ -212,6 +242,7 @@ function resetConnForm(){
   connFormKindChanged();
   mqttModeChanged();
   restAuthMethodChanged();
+  opcuaAuthModeChanged();
 }
 
 function fillConnField(kind, field, value, isCheckbox){
@@ -235,6 +266,7 @@ function editConnFromRow(row){
   connFormKindChanged();
   mqttModeChanged();
   restAuthMethodChanged();
+  opcuaAuthModeChanged();
   document.getElementById('conn-name').value = name;
   document.getElementById('conn-id').value = id;
 
@@ -244,6 +276,7 @@ function editConnFromRow(row){
   });
   if(kind === 'mqtt') mqttModeChanged();
   if(kind === 'rest_api') restAuthMethodChanged();
+  if(kind === 'opcua') opcuaAuthModeChanged();
 
   form.action = form.action.replace(/\/connections.*/, '/connections/' + id + '/edit-web');
   document.getElementById('conn-form-title').textContent = 'Verbindung bearbeiten';
@@ -303,6 +336,16 @@ function connContextItems(row, direction){
       window.location = '/import/connections/' + row.dataset.connId + '/response';
     }});
   }
+  if(direction === 'import' && row.dataset.connKind === 'modbus'){
+    items.push({label: 'Register lesen', icon: 'ti-plug', onClick: function(){
+      window.location = '/import/connections/' + row.dataset.connId + '/read';
+    }});
+  }
+  if(direction === 'import' && row.dataset.connKind === 'opcua'){
+    items.push({label: 'Namespace durchsuchen', icon: 'ti-sitemap', onClick: function(){
+      window.location = '/import/connections/' + row.dataset.connId + '/nodes';
+    }});
+  }
   if(canWrite){
     items.push({separator: true});
     items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }});
@@ -314,6 +357,7 @@ if(document.getElementById('conn-form')){
   connFormKindChanged();
   mqttModeChanged();
   restAuthMethodChanged();
+  opcuaAuthModeChanged();
 }
 </script>
 {{end}}

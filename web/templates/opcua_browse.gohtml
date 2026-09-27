@@ -1,0 +1,184 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">OPC-UA-Vorschau · {{.ConnectionName}}</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a></p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+{{if not .Applicable}}
+<div class="card" role="status">
+  Diese Verbindung ist keine OPC-UA-Verbindung.
+</div>
+{{else}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Quelle</div>
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
+    <dt style="color:var(--muted)">Endpunkt</dt><dd style="margin:0;word-break:break-all">{{if .EndpointURL}}{{.EndpointURL}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+  </dl>
+  {{if .CanWrite}}
+  <form method="POST" action="/import/connections/{{.ConnectionID}}/nodes/refresh" style="margin-top:12px">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-refresh"></i> Alle Zuordnungen aktualisieren</button>
+  </form>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Liest für jede Zuordnung den aktuellen Wert ihrer NodeID neu ein.</p>
+  {{end}}
+</div>
+
+{{if .Error}}
+<div class="card" role="alert" style="margin-bottom:14px">
+  {{.Error}}
+</div>
+{{end}}
+
+{{if .Fields}}
+<div class="card" style="overflow-x:auto;margin-bottom:14px">
+  <div class="card-title">Namespace · {{len .Fields}} Variable(n)</div>
+  <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Begrenzt auf die ersten Ebenen/Knoten, damit ein großer Server nicht blockiert.</p>
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Pfad</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">NodeID</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Wert</th>
+        {{if .CanWrite}}<th style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Aktion</th>{{end}}
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Fields}}
+      <tr>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all">{{.Path}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all;font-family:monospace">{{.NodeID}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all">{{.Value}}</td>
+        {{if $.CanWrite}}<td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:center"><button type="button" class="btn-icon" style="width:22px;height:22px;min-width:22px" onclick="markNode('{{.NodeID}}')" title="Wert markieren"><i class="ti ti-map-pin" style="font-size:12px"></i></button></td>{{end}}
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+{{if .CanWrite}}
+<div class="card" id="mark-panel" style="margin-bottom:14px" hidden>
+  <div class="card-title">Wert markieren</div>
+  <div class="form-group">
+    <label class="form-label">NodeID</label>
+    <input id="mark-node" class="form-input" readonly>
+  </div>
+  {{template "infra-tree-picker" (dict "TargetID" "mark-infra-id" "SelectedLabelID" "mark-infra-selected" "Label" "Infrastruktur" "Required" true)}}
+  <div class="form-group">
+    <label class="form-label">Bezeichnung</label>
+    <input id="mark-name" class="form-input" maxlength="150" placeholder="z.B. Temperatur Halle 1" required>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Zuordnung / Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <textarea id="mark-note" class="form-input" maxlength="500" placeholder="z.B. Einheit, Kontext, Verwendungszweck"></textarea>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button type="button" class="btn" id="mark-cancel">Abbrechen</button>
+    <button type="button" class="btn btn-primary" id="mark-submit"><i class="ti ti-map-pin"></i> Zuordnung speichern</button>
+  </div>
+  <p id="mark-error" role="alert" style="font-size:12px;color:var(--red);margin:10px 0 0"></p>
+</div>
+{{end}}
+{{else}}
+{{if not .Error}}<div class="card" role="status">Keine Variablen im durchsuchten Bereich des Namespace gefunden.</div>{{end}}
+{{end}}
+
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Zuordnungen · {{len .Mappings}}</div>
+  {{if .Mappings}}
+  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">NodeID</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Bezeichnung</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Infrastruktur</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Zuordnung</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Letzter Wert</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Aktualisiert</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Mappings}}
+      <tr data-mapping-id="{{.ID}}" data-mapping-name="{{.Name}}"
+          {{if $.CanWrite}}oncontextmenu="showContextMenu(event, mappingContextItems(this)); return false;"{{end}}>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-all;font-family:monospace">{{.SourceRef}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Note}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-all">{{if .LastValue}}{{.LastValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">{{if .LastReceivedAt}}{{.LastReceivedAt}}{{else}}<span style="color:var(--muted)">noch kein Wert</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine Knoten markiert.</div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function markNode(nodeID){
+  const panel = document.getElementById('mark-panel');
+  if(!panel) return;
+  document.getElementById('mark-node').value = nodeID;
+  document.getElementById('mark-name').value = '';
+  document.getElementById('mark-note').value = '';
+  document.getElementById('mark-error').textContent = '';
+  const pickerRoot = document.querySelector('.infra-picker[data-target="mark-infra-id"]');
+  if(pickerRoot) clearInfraPicker(pickerRoot);
+  panel.hidden = false;
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  const cancelBtn = document.getElementById('mark-cancel');
+  const submitBtn = document.getElementById('mark-submit');
+  if(cancelBtn) cancelBtn.addEventListener('click', function(){
+    document.getElementById('mark-panel').hidden = true;
+  });
+  if(submitBtn) submitBtn.addEventListener('click', async function(){
+    const errorEl = document.getElementById('mark-error');
+    errorEl.textContent = '';
+    const payload = {
+      source_ref: document.getElementById('mark-node').value,
+      infrastructure_id: document.getElementById('mark-infra-id').value,
+      name: document.getElementById('mark-name').value.trim(),
+      note: document.getElementById('mark-note').value.trim()
+    };
+    if(!payload.infrastructure_id){ errorEl.textContent = 'Bitte eine Infrastruktur auswählen'; return; }
+    if(payload.name.length < 2){ errorEl.textContent = 'Bitte eine Bezeichnung eingeben'; return; }
+    submitBtn.disabled = true;
+    try{
+      const response = await fetch('/import/connections/{{.ConnectionID}}/mappings', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(function(){ return {}; });
+      if(!response.ok) throw new Error(result.error || 'Zuordnung konnte nicht gespeichert werden');
+      location.reload();
+    }catch(e){
+      errorEl.textContent = e.message;
+      submitBtn.disabled = false;
+    }
+  });
+});
+
+function mappingContextItems(row){
+  return [
+    {heading: row.dataset.mappingName},
+    {label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){
+      if(!confirm('Zuordnung "' + row.dataset.mappingName + '" wirklich löschen?')) return;
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/import/connections/{{.ConnectionID}}/mappings/' + row.dataset.mappingId + '/delete-web';
+      document.body.appendChild(form);
+      form.submit();
+    }}
+  ];
+}
+</script>
+{{end}}
