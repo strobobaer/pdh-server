@@ -1519,14 +1519,23 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 		}
 		return []byte(h.jwtSecret), nil
 	})
-	if err != nil || !token.Valid {
+	if err != nil {
+		log.Warn().Err(err).Str("path", r.URL.Path).Msg("sitzung: jwt ungueltig")
+		return ""
+	}
+	if !token.Valid {
+		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt als ungueltig markiert")
 		return ""
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
+		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt-claims unlesbar")
 		return ""
 	}
 	userID, _ := claims["sub"].(string)
+	if userID == "" {
+		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt ohne sub-claim")
+	}
 	return userID
 }
 
@@ -1542,6 +1551,7 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 	}
 	user, err := h.users.GetByID(r.Context(), userID)
 	if err != nil {
+		log.Warn().Err(err).Str("path", r.URL.Path).Str("user_id", userID).Msg("sitzung: benutzer nicht ladbar (deaktiviert/geloescht?)")
 		return nil
 	}
 	return user
