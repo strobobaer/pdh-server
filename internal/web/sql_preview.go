@@ -12,22 +12,24 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	mysqldriver "github.com/go-sql-driver/mysql"
+	_ "github.com/microsoft/go-mssqldb"
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
 )
 
 // SQL-Datenbank-Vorschau: gemeinsame Tabellen/Spalten-Vorschau fuer alle
-// relationalen Import-Konnektoren (aktuell SQLite und MySQL, MSSQL folgt
-// nach demselben Muster - siehe sqlDialect). Eine Datenbank kann mehrere
-// Tabellen enthalten, deshalb zusaetzlich eine Tabellenauswahl (anders
-// als bei Excel mit fester Sheet-Konfiguration). Der Quellwert einer
-// Zuordnung wird als "Tabelle.Spalte" gespeichert.
+// relationalen Import-Konnektoren (SQLite, MySQL, MSSQL - jeweils nur ein
+// zusaetzlicher Dialekt-Zweig in den Funktionen unten, keine eigene
+// Seite je Datenbanktyp). Eine Datenbank kann mehrere Tabellen enthalten,
+// deshalb zusaetzlich eine Tabellenauswahl (anders als bei Excel mit
+// fester Sheet-Konfiguration). Der Quellwert einer Zuordnung wird als
+// "Tabelle.Spalte" gespeichert.
 
 const sqlPreviewMaxRows = 20
 
 func sqlBrowsableKind(kind string) bool {
 	switch kind {
-	case "sqlite", "mysql":
+	case "sqlite", "mysql", "mssql":
 		return true
 	default:
 		return false
@@ -40,6 +42,8 @@ func sqlKindLabel(kind string) string {
 		return "SQLite"
 	case "mysql":
 		return "MySQL"
+	case "mssql":
+		return "MSSQL"
 	default:
 		return kind
 	}
@@ -54,6 +58,16 @@ func openSQLConnection(kind string, config map[string]string) (*sql.DB, string, 
 	case "mysql":
 		db, err := openMysqlDB(config)
 		label := strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "3306") + "/" + strings.TrimSpace(config["database"])
+		return db, label, err
+	case "mssql":
+		db, err := openMssqlDB(config)
+		host := strings.TrimSpace(config["host"])
+		if instance := strings.TrimSpace(config["instance_name"]); instance != "" {
+			host += `\` + instance
+		} else {
+			host += ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "1433")
+		}
+		label := host + "/" + strings.TrimSpace(config["database"])
 		return db, label, err
 	default:
 		return nil, "", fmt.Errorf("nicht unterstützter Verbindungstyp")
@@ -114,10 +128,53 @@ func openMysqlDB(config map[string]string) (*sql.DB, error) {
 	return db, nil
 }
 
+func openMssqlDB(config map[string]string) (*sql.DB, error) {
+	host := strings.TrimSpace(config["host"])
+	if host == "" {
+		return nil, fmt.Errorf("kein Host konfiguriert")
+	}
+	dsn := url.URL{
+		Scheme: "sqlserver",
+		User:   url.UserPassword(config["username"], config["password"]),
+	}
+	if instance := strings.TrimSpace(config["instance_name"]); instance != "" {
+		// Mit Instanzname ohne Port verbinden - der Treiber ermittelt den
+		// tatsaechlichen Port ueber den SQL Server Browser Dienst (UDP 1434).
+		dsn.Host = host
+		dsn.Path = "/" + instance
+	} else {
+		dsn.Host = host + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "1433")
+	}
+
+	query := url.Values{}
+	if db := strings.TrimSpace(config["database"]); db != "" {
+		query.Set("database", db)
+	}
+	if config["use_tls"] == "true" {
+		query.Set("encrypt", "true")
+	} else {
+		query.Set("encrypt", "disable")
+	}
+	dsn.RawQuery = query.Encode()
+
+	db, err := sql.Open("sqlserver", dsn.String())
+	if err != nil {
+		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
+	}
+	db.SetConnMaxLifetime(5 * time.Minute)
+	if err := db.PingContext(context.Background()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("Verbindung fehlgeschlagen: %w", err)
+	}
+	return db, nil
+}
+
 func quoteIdent(kind, name string) string {
 	switch kind {
 	case "mysql":
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	case "mssql":
+		return "[" + strings.ReplaceAll(name, "]", "]]") + "]"
 	default: // sqlite
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 	}
@@ -130,6 +187,8 @@ func listSQLTables(db *sql.DB, kind string) ([]string, error) {
 		query = `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`
 	case "mysql":
 		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name`
+	case "mssql":
+		query = `SELECT table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' ORDER BY table_name`
 	default:
 		return nil, fmt.Errorf("nicht unterstützt")
 	}
@@ -198,6 +257,25 @@ func readSQLPreview(db *sql.DB, kind, table string) ([]string, [][]string, error
 // Zeile" bestimmt werden kann - bei SQLite immer die eingebaute rowid,
 // bei MySQL der (einzelne) Primaerschluessel. Ohne eindeutigen Kandidaten
 // ein klarer Fehler statt eine zufaellige Zeile zurueckzugeben.
+func singlePrimaryKeyColumn(rows *sql.Rows) (string, error) {
+	defer rows.Close()
+	var cols []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return "", err
+		}
+		cols = append(cols, c)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	if len(cols) != 1 {
+		return "", fmt.Errorf("keine eindeutige Sortierspalte gefunden (Primärschlüssel mit genau einer Spalte erforderlich)")
+	}
+	return cols[0], nil
+}
+
 func findOrderColumn(db *sql.DB, kind, table string) (column string, quoted bool, err error) {
 	switch kind {
 	case "sqlite":
@@ -210,22 +288,27 @@ func findOrderColumn(db *sql.DB, kind, table string) (column string, quoted bool
 		if err != nil {
 			return "", false, err
 		}
-		defer rows.Close()
-		var cols []string
-		for rows.Next() {
-			var c string
-			if err := rows.Scan(&c); err != nil {
-				return "", false, err
-			}
-			cols = append(cols, c)
-		}
-		if err := rows.Err(); err != nil {
+		col, err := singlePrimaryKeyColumn(rows)
+		if err != nil {
 			return "", false, err
 		}
-		if len(cols) != 1 {
-			return "", false, fmt.Errorf("keine eindeutige Sortierspalte gefunden (Primärschlüssel mit genau einer Spalte erforderlich)")
+		return col, true, nil
+	case "mssql":
+		rows, err := db.Query(`
+			SELECT ku.column_name
+			FROM information_schema.table_constraints tc
+			JOIN information_schema.key_column_usage ku
+			  ON tc.constraint_name = ku.constraint_name AND tc.table_schema = ku.table_schema
+			WHERE tc.table_name = ? AND tc.constraint_type = 'PRIMARY KEY'
+			ORDER BY ku.ordinal_position`, table)
+		if err != nil {
+			return "", false, err
 		}
-		return cols[0], true, nil
+		col, err := singlePrimaryKeyColumn(rows)
+		if err != nil {
+			return "", false, err
+		}
+		return col, true, nil
 	default:
 		return "", false, fmt.Errorf("nicht unterstützt")
 	}

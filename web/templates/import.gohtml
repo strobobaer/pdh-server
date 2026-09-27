@@ -293,7 +293,7 @@ function connContextItems(row, direction){
       window.location = '/import/connections/' + row.dataset.connId + '/preview';
     }});
   }
-  if(direction === 'import' && (row.dataset.connKind === 'sqlite' || row.dataset.connKind === 'mysql')){
+  if(direction === 'import' && (row.dataset.connKind === 'sqlite' || row.dataset.connKind === 'mysql' || row.dataset.connKind === 'mssql')){
     items.push({label: 'Datenbank durchsuchen', icon: 'ti-table', onClick: function(){
       window.location = '/import/connections/' + row.dataset.connId + '/browse';
     }});

@@ -24,7 +24,7 @@ func writeTestSqliteDB(t *testing.T) string {
 }
 
 func TestSQLBrowsableKind(t *testing.T) {
-	cases := map[string]bool{"sqlite": true, "mysql": true, "excel": false, "mqtt": false, "mssql": false}
+	cases := map[string]bool{"sqlite": true, "mysql": true, "mssql": true, "excel": false, "mqtt": false, "web": false}
 	for kind, want := range cases {
 		if got := sqlBrowsableKind(kind); got != want {
 			t.Errorf("sqlBrowsableKind(%q) = %v, want %v", kind, got, want)
@@ -38,6 +38,9 @@ func TestQuoteIdent(t *testing.T) {
 	}
 	if got := quoteIdent("sqlite", `a"b`); got != `"a""b"` {
 		t.Errorf("sqlite quoteIdent = %q", got)
+	}
+	if got := quoteIdent("mssql", "a]b"); got != "[a]]b]" {
+		t.Errorf("mssql quoteIdent = %q", got)
 	}
 }
 
@@ -115,5 +118,18 @@ func TestOpenMysqlDBUnreachable(t *testing.T) {
 	_, err := openMysqlDB(map[string]string{"host": "127.0.0.1", "port": "1", "database": "x", "username": "x", "password": "x"})
 	if err == nil {
 		t.Fatal("expected error for unreachable mysql host")
+	}
+}
+
+func TestOpenMssqlDBNoHost(t *testing.T) {
+	if _, err := openMssqlDB(map[string]string{}); err == nil {
+		t.Fatal("expected error for missing host")
+	}
+}
+
+func TestOpenMssqlDBUnreachable(t *testing.T) {
+	_, err := openMssqlDB(map[string]string{"host": "127.0.0.1", "port": "1", "database": "x", "username": "x", "password": "x"})
+	if err == nil {
+		t.Fatal("expected error for unreachable mssql host")
 	}
 }
