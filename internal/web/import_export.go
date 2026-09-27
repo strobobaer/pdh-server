@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/internal/core/scheduler"
 )
 
 // ── Rechte ───────────────────────────────────────────────────
@@ -84,10 +86,10 @@ var importKindFields = map[string][]string{
 var exportKindFields = map[string][]string{
 	"pdf":    {"template_id", "destination_path", "schedule_cron"},
 	"excel":  {"template_id", "destination_path", "schedule_cron"},
-	"sqlite": {"file_path", "table_name"},
-	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name"},
-	"opcua":  {"endpoint_url", "auth_mode", "username", "password"},
-	"modbus": {"host", "port", "unit_id"},
+	"sqlite": {"file_path", "table_name", "schedule_cron"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
+	"opcua":  {"endpoint_url", "auth_mode", "username", "password", "schedule_cron"},
+	"modbus": {"host", "port", "unit_id", "schedule_cron"},
 }
 
 var booleanConfigFields = map[string]bool{
@@ -294,6 +296,10 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	config := buildConnectionConfig(r, kind, fields)
+	if err := scheduler.ValidateCronSpec(config["schedule_cron"]); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
 	configJSON, err := json.Marshal(config)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
@@ -309,6 +315,8 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	h.reconcileMqttBroker(id, direction, kind, true, config)
+	h.reconcileExportSchedule(id, direction, true, config)
+	h.reconcileImportPoll(id, direction, kind, true, config)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung angelegt"), http.StatusSeeOther)
 }
 
@@ -341,6 +349,10 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		return
 	}
 	config := buildConnectionConfig(r, kind, fields)
+	if err := scheduler.ValidateCronSpec(config["schedule_cron"]); err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
 	configJSON, err := json.Marshal(config)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
@@ -354,6 +366,8 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		return
 	}
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
+	h.reconcileExportSchedule(id, direction, enabled, config)
+	h.reconcileImportPoll(id, direction, kind, enabled, config)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"), http.StatusSeeOther)
 }
 
@@ -371,6 +385,8 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 	}
 	h.mqttImport.Stop(id)
 	h.mqttBrokers.Stop(id)
+	h.exportCron.Unschedule(id)
+	h.importPoll.Stop(id)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gelöscht"), http.StatusSeeOther)
 }
 
@@ -393,5 +409,7 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 	config := map[string]string{}
 	_ = json.Unmarshal(configBytes, &config)
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
+	h.reconcileExportSchedule(id, direction, enabled, config)
+	h.reconcileImportPoll(id, direction, kind, enabled, config)
 	w.WriteHeader(http.StatusNoContent)
 }

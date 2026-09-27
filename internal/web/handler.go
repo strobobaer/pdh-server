@@ -19,6 +19,7 @@ import (
 	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/mqttimport"
 	"pdh/internal/core/rbac"
+	"pdh/internal/core/scheduler"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
 	"pdh/internal/core/users"
@@ -261,6 +262,8 @@ type Handler struct {
 	microsoftSyncMu  sync.Mutex
 	mqttBrokers      *mqttbroker.Manager
 	mqttImport       *mqttimport.Manager
+	exportCron       *scheduler.CronManager
+	importPoll       *scheduler.IntervalManager
 }
 
 func NewHandler(
@@ -293,6 +296,8 @@ func NewHandler(
 		jwtSecret:   jwtSecret,
 		mqttBrokers: mqttbroker.NewManager(),
 		mqttImport:  mqttimport.NewManager(),
+		exportCron:  scheduler.NewCronManager(),
+		importPoll:  scheduler.NewIntervalManager(),
 	}
 }
 

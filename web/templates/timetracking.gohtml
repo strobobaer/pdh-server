@@ -31,6 +31,13 @@
 {{if .Running}}
 <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
   <div style="width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 5px rgba(16,185,129,.15);flex-shrink:0;animation:pulse 1.5s infinite"></div>
+  <svg id="live-clock" width="34" height="34" viewBox="0 0 36 36" style="flex-shrink:0" aria-hidden="true">
+    <circle cx="18" cy="18" r="16" fill="none" stroke="var(--green)" stroke-width="1.5" opacity="0.35"/>
+    <circle cx="18" cy="18" r="1.6" fill="var(--green)"/>
+    <line id="clock-hour" x1="18" y1="18" x2="18" y2="11" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/>
+    <line id="clock-minute" x1="18" y1="18" x2="18" y2="7" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round"/>
+    <line id="clock-second" x1="18" y1="18" x2="18" y2="5" stroke="var(--green)" stroke-width="1" stroke-linecap="round" opacity="0.7"/>
+  </svg>
   <div style="flex:1">
     <div style="font-weight:500;font-size:14px">{{.Running.Description}}</div>
     <div style="font-size:12px;color:var(--green);margin-top:2px">
@@ -610,6 +617,9 @@ else document.addEventListener('DOMContentLoaded', renderTimeGantt);
 (function(){
   const el = document.getElementById('live-timer');
   if(!el) return;
+  const hourHand = document.getElementById('clock-hour');
+  const minuteHand = document.getElementById('clock-minute');
+  const secondHand = document.getElementById('clock-second');
   const parts = '{{.Running.StartedStr}}'.split(':');
   const start = new Date();
   start.setHours(+parts[0], +parts[1], 0, 0);
@@ -618,6 +628,13 @@ else document.addEventListener('DOMContentLoaded', renderTimeGantt);
     const s = Math.floor((Date.now()-start)/1000);
     const h = Math.floor(s/3600), m = Math.floor(s%3600/60), sec = s%60;
     el.textContent = h>0 ? `${h}h ${String(m).padStart(2,'0')}min` : `${m}min ${String(sec).padStart(2,'0')}s`;
+    if(hourHand){
+      // Zeigt die verstrichene Dauer wie eine Stoppuhr, nicht die Tageszeit -
+      // der Stundenzeiger macht dafuer eine volle Umdrehung je 12h Laufzeit.
+      hourHand.setAttribute('transform', `rotate(${(h % 12) * 30 + m / 2} 18 18)`);
+      minuteHand.setAttribute('transform', `rotate(${m * 6 + sec / 10} 18 18)`);
+      secondHand.setAttribute('transform', `rotate(${sec * 6} 18 18)`);
+    }
   };
   tick(); setInterval(tick, 1000);
 })();

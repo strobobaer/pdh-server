@@ -85,6 +85,7 @@ type ExportPreviewPageData struct {
 	KindLabel        string
 	FieldNameLabel   string
 	DestinationLabel string
+	ScheduleCron     string
 	RegisterTypes    []KindOption
 	DataTypes        []KindOption
 	AvailableSources []ImportMappingView
@@ -137,6 +138,7 @@ func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
 		KindLabel:        exportKindLabel(kind),
 		FieldNameLabel:   exportFieldNameLabel(kind),
 		DestinationLabel: exportDestinationLabel(kind, config),
+		ScheduleCron:     strings.TrimSpace(config["schedule_cron"]),
 		RegisterTypes:    modbusWritableRegisterTypes,
 		DataTypes:        modbusDataTypes,
 		Notice:           r.URL.Query().Get("notice"),
@@ -165,35 +167,46 @@ func (h *Handler) ExportRunWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	base := "/export/connections/" + id + "/preview"
 
+	count, _, err := h.runExport(r.Context(), id)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Export fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d Feld(er) exportiert", count)), http.StatusSeeOther)
+}
+
+// runExport fuehrt einen Export tatsaechlich aus - gemeinsame Kernlogik
+// fuer den manuellen "Jetzt exportieren"-Knopf (ExportRunWeb) und den
+// automatischen Zeitplan (reconcileExportSchedule). Liefert die Anzahl
+// exportierter Felder.
+func (h *Handler) runExport(ctx context.Context, id string) (int, string, error) {
 	var kind string
 	var configBytes []byte
-	if err := h.db.QueryRow(r.Context(),
+	if err := h.db.QueryRow(ctx,
 		`SELECT kind, config FROM import_export_connections WHERE id=$1 AND direction='export'`, id).
 		Scan(&kind, &configBytes); err != nil || !exportableKind(kind) {
-		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
-		return
+		return 0, "", fmt.Errorf("Verbindung nicht gefunden")
 	}
 	config := map[string]string{}
 	_ = json.Unmarshal(configBytes, &config)
 
-	mappings, err := h.exportMappings(r.Context(), id)
+	mappings, err := h.exportMappings(ctx, id)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Zuordnungen konnten nicht geladen werden"), http.StatusSeeOther)
-		return
+		return 0, "", fmt.Errorf("Zuordnungen konnten nicht geladen werden")
 	}
 	if len(mappings) == 0 {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Keine Zuordnungen zum Exportieren vorhanden"), http.StatusSeeOther)
-		return
+		return 0, "", fmt.Errorf("keine Zuordnungen zum Exportieren vorhanden")
 	}
-	var writeErr error
+
 	destLabel := exportDestinationLabel(kind, config)
+	var writeErr error
 	switch kind {
 	case "excel":
 		destPath := strings.TrimSpace(config["destination_path"])
 		if destPath == "" {
 			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
 		} else {
-			tpl := h.resolveExportTemplate(r.Context(), "excel", config["template_id"])
+			tpl := h.resolveExportTemplate(ctx, "excel", config["template_id"])
 			writeErr = writeExcelExport(destPath, tpl.SheetName, mappings)
 		}
 	case "pdf":
@@ -201,31 +214,99 @@ func (h *Handler) ExportRunWeb(w http.ResponseWriter, r *http.Request) {
 		if destPath == "" {
 			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
 		} else {
-			tpl := h.resolveExportTemplate(r.Context(), "pdf", config["template_id"])
+			tpl := h.resolveExportTemplate(ctx, "pdf", config["template_id"])
 			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings)
 		}
 	case "sqlite", "mysql":
 		writeErr = writeSQLExport(kind, config, mappings)
 	case "opcua":
-		writeErr = writeOPCUAExport(r.Context(), config, mappings)
+		writeErr = writeOPCUAExport(ctx, config, mappings)
 	case "modbus":
 		writeErr = writeModbusExport(config, mappings)
 	}
 	if writeErr != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Export fehlgeschlagen: "+writeErr.Error()), http.StatusSeeOther)
-		return
+		return 0, destLabel, writeErr
 	}
 
 	ids := make([]string, len(mappings))
 	for i, m := range mappings {
 		ids[i] = m.ID
 	}
-	if _, err := h.db.Exec(r.Context(),
+	if _, err := h.db.Exec(ctx,
 		`UPDATE export_mappings SET last_exported_at=NOW() WHERE id::text = ANY($1)`, ids); err != nil {
 		log.Error().Err(err).Str("connection_id", id).Msg("export: exportzeitpunkt konnte nicht gespeichert werden")
 	}
+	return len(mappings), destLabel, nil
+}
 
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d Feld(er) nach %s exportiert", len(mappings), destLabel)), http.StatusSeeOther)
+// reconcileExportSchedule gleicht den automatischen Export-Zeitplan
+// (schedule_cron) mit dem Soll-Zustand ab - aufgerufen nach jedem
+// Anlegen/Bearbeiten/Aktivieren-Deaktivieren einer Verbindung. Ersetzt
+// immer zuerst einen bestehenden Eintrag (Stop-dann-neu-Aufbau, wie bei
+// den anderen Hintergrund-Manager dieser Session).
+func (h *Handler) reconcileExportSchedule(id, direction string, enabled bool, config map[string]string) {
+	if direction != "export" {
+		return
+	}
+	spec := strings.TrimSpace(config["schedule_cron"])
+	if !enabled || spec == "" {
+		h.exportCron.Unschedule(id)
+		return
+	}
+	if err := h.exportCron.Schedule(id, spec, func() { h.runExportScheduled(id) }); err != nil {
+		log.Error().Err(err).Str("connection_id", id).Str("spec", spec).Msg("export-zeitplan ungültig")
+	}
+}
+
+// StartEnabledExportSchedules baut beim Serverstart die Zeitplaene aller
+// bereits aktivierten Export-Verbindungen mit Zeitplan wieder auf.
+func (h *Handler) StartEnabledExportSchedules(ctx context.Context) {
+	rows, err := h.db.Query(ctx,
+		`SELECT id::text, config FROM import_export_connections WHERE direction='export' AND enabled=true`)
+	if err != nil {
+		log.Error().Err(err).Msg("export-zeitplaene konnten beim start nicht geladen werden")
+		return
+	}
+	defer rows.Close()
+	type pending struct {
+		id     string
+		config map[string]string
+	}
+	var items []pending
+	for rows.Next() {
+		var id string
+		var configBytes []byte
+		if err := rows.Scan(&id, &configBytes); err != nil {
+			continue
+		}
+		config := map[string]string{}
+		_ = json.Unmarshal(configBytes, &config)
+		items = append(items, pending{id: id, config: config})
+	}
+	rows.Close()
+	for _, it := range items {
+		h.reconcileExportSchedule(it.id, "export", true, it.config)
+	}
+}
+
+// StopExportSchedules beendet den Cron-Runner - beim geordneten
+// Herunterfahren des PDH-Prozesses aufgerufen.
+func (h *Handler) StopExportSchedules() {
+	h.exportCron.Stop()
+}
+
+// runExportScheduled ist der Cron-Callback - Fehler landen nur im Log,
+// da hier (anders als beim manuellen Knopf) niemand eine HTTP-Antwort
+// entgegennimmt.
+func (h *Handler) runExportScheduled(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	count, destLabel, err := h.runExport(ctx, id)
+	if err != nil {
+		log.Error().Err(err).Str("connection_id", id).Msg("automatischer export fehlgeschlagen")
+		return
+	}
+	log.Info().Str("connection_id", id).Int("count", count).Str("destination", destLabel).Msg("automatischer export erfolgreich")
 }
 
 // resolveExportTemplate laedt die gewaehlte Vorlage - ohne Auswahl (oder

@@ -19,6 +19,7 @@
     <dt style="color:var(--muted)">Typ</dt><dd style="margin:0">{{.KindLabel}}</dd>
     <dt style="color:var(--muted)">URL</dt><dd style="margin:0;word-break:break-all">{{if .TargetURL}}{{.TargetURL}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
     {{if .StatusCode}}<dt style="color:var(--muted)">Status</dt><dd style="margin:0">HTTP {{.StatusCode}}</dd>{{end}}
+    <dt style="color:var(--muted)">Automatisch</dt><dd style="margin:0">{{if .PollInterval}}<span class="badge" style="background:var(--green)">aktiv</span> alle {{.PollInterval}} Minute(n){{else}}nur manuell (kein Intervall konfiguriert){{end}}</dd>
   </dl>
   {{if .CanWrite}}
   <form method="POST" action="/import/connections/{{.ConnectionID}}/response/refresh" style="margin-top:12px">

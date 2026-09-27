@@ -189,6 +189,8 @@ func main() {
 	webHandler.StartUpdateChecker(context.Background())
 	webHandler.StartEnabledMqttBrokers(context.Background())
 	webHandler.StartEnabledMqttConsumers(context.Background())
+	webHandler.StartEnabledExportSchedules(context.Background())
+	webHandler.StartEnabledImportPolls(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
@@ -420,5 +422,7 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	webHandler.StopMqttBrokers()
+	webHandler.StopExportSchedules()
+	webHandler.StopImportPolls()
 	log.Info().Msg("PDH gestoppt")
 }

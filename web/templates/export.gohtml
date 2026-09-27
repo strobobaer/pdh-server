@@ -58,6 +58,7 @@
       <div class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label">Dateipfad</label><input name="f_sqlite_file_path" class="form-input" placeholder="Pfad zur .sqlite/.db-Datei"></div>
         <div class="form-group"><label class="form-label">Zieltabelle</label><input name="f_sqlite_table_name" class="form-input" placeholder="z.B. export_log"></div>
+        <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_sqlite_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
     </div>
@@ -70,6 +71,7 @@
         <div class="form-group"><label class="form-label">Zieltabelle</label><input name="f_mysql_table_name" class="form-input" placeholder="z.B. export_log"></div>
         <div class="form-group"><label class="form-label">Benutzername</label><input name="f_mysql_username" class="form-input"></div>
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mysql_password" class="form-input" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_mysql_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
@@ -89,6 +91,7 @@
         <div class="form-group"><label class="form-label">Benutzername</label><input name="f_opcua_username" class="form-input"></div>
         <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_opcua_password" class="form-input" autocomplete="new-password"></div>
       </div>
+      <div class="form-group" style="max-width:260px"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_opcua_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Schreibt auf bestehende, beschreibbare Knoten (NodeID als Zielfeldname bei der Zuordnung) - nur unverschlüsselte Verbindung (SecurityPolicy "None").</p>
     </div>
 
@@ -97,6 +100,7 @@
         <div class="form-group"><label class="form-label">Host</label><input name="f_modbus_host" class="form-input"></div>
         <div class="form-group"><label class="form-label">Port</label><input type="number" name="f_modbus_port" class="form-input" value="502"></div>
         <div class="form-group"><label class="form-label">Unit-ID (Slave)</label><input type="number" min="1" max="255" name="f_modbus_unit_id" class="form-input" value="1"></div>
+        <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_modbus_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Schreibt auf Coils/Holding Register (Registertyp:Adresse:Datentyp als Zielfeldname bei der Zuordnung).</p>
     </div>

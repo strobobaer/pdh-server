@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -163,6 +164,7 @@ type ImportResponsePageData struct {
 	StatusCode     int
 	Error          string
 	RawPreview     string
+	PollInterval   int
 	Fields         []JSONField
 	Mappings       []ImportMappingView
 	Notice         string
@@ -209,6 +211,9 @@ func (h *Handler) ImportResponsePage(w http.ResponseWriter, r *http.Request) {
 		TargetURL:      importResponseTargetURL(kind, config),
 		Notice:         r.URL.Query().Get("notice"),
 	}
+	if minutes, err := strconv.Atoi(strings.TrimSpace(config["poll_interval_minutes"])); err == nil && minutes > 0 {
+		data.PollInterval = minutes
+	}
 	if !data.Applicable {
 		h.render(w, "import_response", data)
 		return
@@ -251,46 +256,122 @@ func (h *Handler) ImportResponseRefreshWeb(w http.ResponseWriter, r *http.Reques
 	id := chi.URLParam(r, "id")
 	base := "/import/connections/" + id + "/response"
 
+	updated, total, err := h.runImportPoll(r.Context(), id)
+	if err != nil {
+		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d von %d Wert(en) aktualisiert", updated, total)), http.StatusSeeOther)
+}
+
+// runImportPoll ruft die konfigurierte URL ab und uebernimmt fuer jede
+// Zuordnung den Wert des aktuell passenden JSON-Pfads - gemeinsame
+// Kernlogik fuer den manuellen "Jetzt aktualisieren"-Knopf
+// (ImportResponseRefreshWeb) und das automatische Abruf-Intervall
+// (reconcileImportPoll).
+func (h *Handler) runImportPoll(ctx context.Context, id string) (updated, total int, err error) {
 	var kind string
 	var configBytes []byte
-	if err := h.db.QueryRow(r.Context(),
+	if err := h.db.QueryRow(ctx,
 		`SELECT kind, config FROM import_export_connections WHERE id=$1 AND direction='import'`, id).
 		Scan(&kind, &configBytes); err != nil || !webBrowsableKind(kind) {
-		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
-		return
+		return 0, 0, fmt.Errorf("Verbindung nicht gefunden")
 	}
 	config := map[string]string{}
 	_ = json.Unmarshal(configBytes, &config)
 
 	body, _, err := fetchImportResponse(kind, config)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
-		return
+		return 0, 0, err
 	}
 	var parsed interface{}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Antwort ist kein gültiges JSON"), http.StatusSeeOther)
-		return
+		return 0, 0, fmt.Errorf("Antwort ist kein gültiges JSON")
 	}
 	values := flattenJSONMap(parsed)
 
-	mappings, err := h.importMappings(r.Context(), id)
+	mappings, err := h.importMappings(ctx, id)
 	if err != nil {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Zuordnungen konnten nicht geladen werden"), http.StatusSeeOther)
-		return
+		return 0, 0, fmt.Errorf("Zuordnungen konnten nicht geladen werden")
 	}
-	updated := 0
 	for _, mp := range mappings {
 		value, ok := values[mp.SourceRef]
 		if !ok {
 			continue
 		}
-		if _, err := h.db.Exec(r.Context(), `
+		if _, err := h.db.Exec(ctx, `
 			UPDATE import_mappings SET last_value=$1, last_received_at=NOW() WHERE id=$2`, value, mp.ID); err != nil {
 			log.Error().Err(err).Str("mapping_id", mp.ID).Msg("api-wert konnte nicht gespeichert werden")
 			continue
 		}
 		updated++
 	}
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d von %d Wert(en) aktualisiert", updated, len(mappings))), http.StatusSeeOther)
+	return updated, len(mappings), nil
+}
+
+// reconcileImportPoll gleicht das automatische Abruf-Intervall
+// (poll_interval_minutes, nur web/rest_api) mit dem Soll-Zustand ab -
+// aufgerufen nach jedem Anlegen/Bearbeiten/Aktivieren-Deaktivieren einer
+// Verbindung. Stoppt immer zuerst (No-Op, falls nichts laeuft), da
+// IntervalManager.Start() sonst bei bereits laufendem Ticker ein No-Op
+// waere und ein geaendertes Intervall nie greifen wuerde.
+func (h *Handler) reconcileImportPoll(id, direction, kind string, enabled bool, config map[string]string) {
+	if direction != "import" || !webBrowsableKind(kind) {
+		return
+	}
+	h.importPoll.Stop(id)
+	if !enabled {
+		return
+	}
+	minutes, err := strconv.Atoi(strings.TrimSpace(config["poll_interval_minutes"]))
+	if err != nil || minutes <= 0 {
+		return
+	}
+	h.importPoll.Start(id, time.Duration(minutes)*time.Minute, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		updated, total, err := h.runImportPoll(ctx, id)
+		if err != nil {
+			log.Error().Err(err).Str("connection_id", id).Msg("automatischer abruf fehlgeschlagen")
+			return
+		}
+		log.Info().Str("connection_id", id).Int("updated", updated).Int("total", total).Msg("automatischer abruf erfolgreich")
+	})
+}
+
+// StartEnabledImportPolls baut beim Serverstart die Abruf-Intervalle
+// aller bereits aktivierten Web-/REST-API-Import-Verbindungen wieder auf.
+func (h *Handler) StartEnabledImportPolls(ctx context.Context) {
+	rows, err := h.db.Query(ctx,
+		`SELECT id::text, kind, config FROM import_export_connections WHERE direction='import' AND enabled=true AND kind IN ('web','rest_api')`)
+	if err != nil {
+		log.Error().Err(err).Msg("abruf-intervalle konnten beim start nicht geladen werden")
+		return
+	}
+	defer rows.Close()
+	type pending struct {
+		id, kind string
+		config   map[string]string
+	}
+	var items []pending
+	for rows.Next() {
+		var id, kind string
+		var configBytes []byte
+		if err := rows.Scan(&id, &kind, &configBytes); err != nil {
+			continue
+		}
+		config := map[string]string{}
+		_ = json.Unmarshal(configBytes, &config)
+		items = append(items, pending{id: id, kind: kind, config: config})
+	}
+	rows.Close()
+	for _, it := range items {
+		h.reconcileImportPoll(it.id, "import", it.kind, true, it.config)
+	}
+}
+
+// StopImportPolls beendet alle laufenden Abruf-Intervalle - beim
+// geordneten Herunterfahren des PDH-Prozesses aufgerufen.
+func (h *Handler) StopImportPolls() {
+	h.importPoll.StopAll()
 }

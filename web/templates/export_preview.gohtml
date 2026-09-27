@@ -18,6 +18,7 @@
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
     <dt style="color:var(--muted)">Typ</dt><dd style="margin:0">{{.KindLabel}}</dd>
     <dt style="color:var(--muted)">Ziel</dt><dd style="margin:0;word-break:break-all">{{if .DestinationLabel}}{{.DestinationLabel}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+    <dt style="color:var(--muted)">Automatisch</dt><dd style="margin:0">{{if .ScheduleCron}}<span class="badge" style="background:var(--green)">aktiv</span> {{.ScheduleCron}}{{else}}nur manuell (kein Zeitplan konfiguriert){{end}}</dd>
   </dl>
   {{if .CanWrite}}
   <form method="POST" action="/export/connections/{{.ConnectionID}}/preview/run" style="margin-top:12px">
