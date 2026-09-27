@@ -55,6 +55,10 @@ var importKindOptions = []KindOption{
 var exportKindOptions = []KindOption{
 	{"pdf", "PDF"},
 	{"excel", "Excel"},
+	{"sqlite", "SQLite"},
+	{"mysql", "MySQL"},
+	{"opcua", "OPC UA"},
+	{"modbus", "Modbus TCP"},
 }
 
 var importKindFields = map[string][]string{
@@ -78,8 +82,12 @@ var importKindFields = map[string][]string{
 }
 
 var exportKindFields = map[string][]string{
-	"pdf":   {"template_name", "destination_path", "schedule_cron"},
-	"excel": {"sheet_name", "destination_path", "schedule_cron"},
+	"pdf":    {"template_id", "destination_path", "schedule_cron"},
+	"excel":  {"template_id", "destination_path", "schedule_cron"},
+	"sqlite": {"file_path", "table_name"},
+	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name"},
+	"opcua":  {"endpoint_url", "auth_mode", "username", "password"},
+	"modbus": {"host", "port", "unit_id"},
 }
 
 var booleanConfigFields = map[string]bool{
@@ -128,12 +136,14 @@ type ConnectionView struct {
 
 type ConnectionsPageData struct {
 	BaseData
-	Direction   string
-	Connections []ConnectionView
-	Kinds       []KindOption
-	CanWrite    bool
-	CanExecute  bool
-	Notice      string
+	Direction      string
+	Connections    []ConnectionView
+	Kinds          []KindOption
+	CanWrite       bool
+	CanExecute     bool
+	PDFTemplates   []ExportTemplateView
+	ExcelTemplates []ExportTemplateView
+	Notice         string
 }
 
 func (h *Handler) importExportConnections(ctx context.Context, direction string) ([]ConnectionView, error) {
@@ -199,6 +209,14 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 		CanWrite:    h.canConnectionWrite(r, direction),
 		CanExecute:  h.canConnectionExecute(r, direction),
 		Notice:      r.URL.Query().Get("notice"),
+	}
+	if direction == "export" {
+		if tpls, err := h.exportTemplates(r.Context(), "pdf"); err == nil {
+			data.PDFTemplates = tpls
+		}
+		if tpls, err := h.exportTemplates(r.Context(), "excel"); err == nil {
+			data.ExcelTemplates = tpls
+		}
 	}
 	h.render(w, page, data)
 }

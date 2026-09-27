@@ -2,7 +2,7 @@
 {{define "content"}}
 <div style="margin-bottom:18px">
   <h1 style="font-size:19px;font-weight:600">Export</h1>
-  <p style="font-size:12px;color:var(--muted);margin-top:3px">Verbindungen für PDF- und Excel-Export verwalten</p>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Verbindungen für PDF-, Excel-, Datenbank- und weitere Exporte verwalten · <a href="/export/templates">Vorlagen verwalten</a></p>
 </div>
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
@@ -28,18 +28,77 @@
 
     <div class="kind-fields" id="fields-pdf" hidden>
       <div class="grid2" style="gap:10px">
-        <div class="form-group"><label class="form-label">Vorlage</label><input name="f_pdf_template_name" class="form-input" placeholder="z.B. Standardbericht"></div>
+        <div class="form-group"><label class="form-label">Vorlage <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <select name="f_pdf_template_id" class="form-input">
+            <option value="">– Standard –</option>
+            {{range .PDFTemplates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
         <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_pdf_destination_path" class="form-input" placeholder="Pfad/Freigabe für die PDF-Ausgabe"></div>
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_pdf_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Vorlagen (Titel/Ausrichtung) werden unter <a href="/export/templates">Vorlagen verwalten</a> angelegt.</p>
     </div>
 
     <div class="kind-fields" id="fields-excel" hidden>
       <div class="grid2" style="gap:10px">
-        <div class="form-group"><label class="form-label">Tabellenblatt</label><input name="f_excel_sheet_name" class="form-input" placeholder="z.B. Export"></div>
+        <div class="form-group"><label class="form-label">Vorlage <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+          <select name="f_excel_template_id" class="form-input">
+            <option value="">– Standard –</option>
+            {{range .ExcelTemplates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
         <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_excel_destination_path" class="form-input" placeholder="Pfad/Freigabe für die Excel-Ausgabe"></div>
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_excel_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Vorlagen (Tabellenblattname) werden unter <a href="/export/templates">Vorlagen verwalten</a> angelegt.</p>
+    </div>
+
+    <div class="kind-fields" id="fields-sqlite" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Dateipfad</label><input name="f_sqlite_file_path" class="form-input" placeholder="Pfad zur .sqlite/.db-Datei"></div>
+        <div class="form-group"><label class="form-label">Zieltabelle</label><input name="f_sqlite_table_name" class="form-input" placeholder="z.B. export_log"></div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
+    </div>
+
+    <div class="kind-fields" id="fields-mysql" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Host</label><input name="f_mysql_host" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Port</label><input type="number" name="f_mysql_port" class="form-input" value="3306"></div>
+        <div class="form-group"><label class="form-label">Datenbank</label><input name="f_mysql_database" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Zieltabelle</label><input name="f_mysql_table_name" class="form-input" placeholder="z.B. export_log"></div>
+        <div class="form-group"><label class="form-label">Benutzername</label><input name="f_mysql_username" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_mysql_password" class="form-input" autocomplete="new-password"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_mysql_use_tls"> TLS-Verschlüsselung</label>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Die Tabelle wird bei Bedarf automatisch angelegt (field_name, value, source, exported_at) - jeder Export hängt neue Zeilen an.</p>
+    </div>
+
+    <div class="kind-fields" id="fields-opcua" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Endpunkt-URL</label><input name="f_opcua_endpoint_url" class="form-input" placeholder="opc.tcp://host:4840"></div>
+        <div class="form-group"><label class="form-label">Anmeldung</label>
+          <select id="f_opcua_auth_mode" name="f_opcua_auth_mode" class="form-input" onchange="opcuaAuthModeChanged()">
+            <option value="anonymous">Anonym</option>
+            <option value="username">Benutzername/Passwort</option>
+          </select>
+        </div>
+      </div>
+      <div id="opcua-auth-username" hidden class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Benutzername</label><input name="f_opcua_username" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Passwort</label><input type="password" name="f_opcua_password" class="form-input" autocomplete="new-password"></div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Schreibt auf bestehende, beschreibbare Knoten (NodeID als Zielfeldname bei der Zuordnung) - nur unverschlüsselte Verbindung (SecurityPolicy "None").</p>
+    </div>
+
+    <div class="kind-fields" id="fields-modbus" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Host</label><input name="f_modbus_host" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Port</label><input type="number" name="f_modbus_port" class="form-input" value="502"></div>
+        <div class="form-group"><label class="form-label">Unit-ID (Slave)</label><input type="number" min="1" max="255" name="f_modbus_unit_id" class="form-input" value="1"></div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Schreibt auf Coils/Holding Register (Registertyp:Adresse:Datentyp als Zielfeldname bei der Zuordnung).</p>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -91,6 +150,12 @@ function connFormKindChanged(){
   if(target) target.hidden = false;
 }
 
+function opcuaAuthModeChanged(){
+  const el = document.getElementById('f_opcua_auth_mode');
+  if(!el) return;
+  document.getElementById('opcua-auth-username').hidden = el.value !== 'username';
+}
+
 function resetConnForm(){
   const form = document.getElementById('conn-form');
   form.reset();
@@ -101,12 +166,14 @@ function resetConnForm(){
   document.getElementById('conn-submit').innerHTML = '<i class="ti ti-plus"></i> Verbindung anlegen';
   document.getElementById('conn-cancel').hidden = true;
   connFormKindChanged();
+  opcuaAuthModeChanged();
 }
 
-function fillConnField(kind, field, value){
+function fillConnField(kind, field, value, isCheckbox){
   const el = document.querySelector('[name="f_' + kind + '_' + field + '"]');
   if(!el) return;
-  el.value = value || '';
+  if(isCheckbox) el.checked = value === 'true';
+  else el.value = value || '';
 }
 
 function editConnFromRow(row){
@@ -121,12 +188,15 @@ function editConnFromRow(row){
   document.getElementById('conn-kind').value = kind;
   document.getElementById('conn-kind').disabled = true;
   connFormKindChanged();
+  opcuaAuthModeChanged();
   document.getElementById('conn-name').value = name;
   document.getElementById('conn-id').value = id;
 
+  const booleanFields = ['use_tls'];
   Object.keys(config).forEach(function(field){
-    fillConnField(kind, field, config[field]);
+    fillConnField(kind, field, config[field], booleanFields.indexOf(field) !== -1);
   });
+  if(kind === 'opcua') opcuaAuthModeChanged();
 
   form.action = form.action.replace(/\/connections.*/, '/connections/' + id + '/edit-web');
   document.getElementById('conn-form-title').textContent = 'Verbindung bearbeiten';
@@ -175,6 +245,7 @@ function connContextItems(row, direction){
 
 if(document.getElementById('conn-form')){
   connFormKindChanged();
+  opcuaAuthModeChanged();
 }
 </script>
 {{end}}

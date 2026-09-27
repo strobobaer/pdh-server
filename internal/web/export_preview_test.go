@@ -62,7 +62,7 @@ func TestWriteExcelExportDefaultSheetName(t *testing.T) {
 
 func TestWritePDFExport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "export.pdf")
-	if err := writePDFExport(path, "Monatsbericht", testExportMappings()); err != nil {
+	if err := writePDFExport(path, "Monatsbericht", "P", testExportMappings()); err != nil {
 		t.Fatalf("writePDFExport: %v", err)
 	}
 	info, err := os.Stat(path)
@@ -88,7 +88,17 @@ func TestWritePDFExport(t *testing.T) {
 
 func TestWritePDFExportDefaultTitle(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "export.pdf")
-	if err := writePDFExport(path, "", testExportMappings()); err != nil {
+	if err := writePDFExport(path, "", "P", testExportMappings()); err != nil {
+		t.Fatalf("writePDFExport: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+}
+
+func TestWritePDFExportLandscape(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "export.pdf")
+	if err := writePDFExport(path, "Bericht", "L", testExportMappings()); err != nil {
 		t.Fatalf("writePDFExport: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {

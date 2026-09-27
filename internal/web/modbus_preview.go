@@ -39,6 +39,14 @@ var modbusDataTypes = []KindOption{
 	{"float32", "Float32 (2 Register, big-endian)"},
 }
 
+// modbusWritableRegisterTypes: nur Coils und Holding Register lassen
+// sich per Modbus beschreiben (Discrete Input/Input Register sind laut
+// Spezifikation nur lesbar) - fuer den Export-Markieren-Dialog.
+var modbusWritableRegisterTypes = []KindOption{
+	{"coil", "Coil (1 Bit)"},
+	{"holding", "Holding Register (16 Bit)"},
+}
+
 type modbusReading struct {
 	RegisterType string
 	Address      uint16

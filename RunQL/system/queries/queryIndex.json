@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T15:25:10.454Z",
+  "generatedAt": "2026-09-27T18:39:28.717Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -644,6 +644,17 @@
       "sqlHash": "fffac965f94ea96f044a661abe00a622d38c795dcc2c77a27b417add0d41bc6d",
       "title": "060_export_mappings.up.sql",
       "updatedAt": "2026-09-27T15:25:09.832Z"
+    },
+    {
+      "createdAt": "2026-09-27T18:39:28.093Z",
+      "path": "migrations/061_export_templates.up.sql",
+      "catalogContext": null,
+      "searchText": "061_export_templates.up.sql migrations/061_export_templates.up.sql -- 061_export_templates.up.sql\n--\n-- echte vorlagenverwaltung fuer pdf-/excel-exporte: ersetzt das bisherige\n-- freie \"vorlage\"-textfeld (nur als pdf-titel genutzt) durch benannte,\n-- wiederverwendbare vorlagen mit tatsaechlichem einfluss auf die ausgabe\n-- (pdf: titel/ausrichtung; excel: tabellenblattname). eine export-\n-- verbindung waehlt per template_id (statt freitext) eine vorlage aus -\n-- fehlt sie, greifen standardwerte (kein bruch fuer bestehende\n-- verbindungen ohne auswahl).\n\ncreate table if not exists export_templates (\n    id          uuid primary key default gen_random_uuid(),\n    kind        varchar(20) not null check (kind in ('pdf', 'excel')),\n    name        varchar(150) not null,\n    title       varchar(200) not null default '',\n    sheet_name  varchar(100) not null default '',\n    orientation varchar(10) not null default 'p',\n    created_by  uuid references users(id),\n    created_at  timestamptz not null default now(),\n    updated_at  timestamptz not null default now()\n);\n\ncreate index if not exists idx_export_templates_kind on export_templates (kind);\n",
+      "searchUpdatedAt": "2026-09-27T18:39:28.192Z",
+      "schemaContext": null,
+      "sqlHash": "4d8de31438da8d9a0b389ef37219a6051482f2e327466b78802b4871c2e5e614",
+      "title": "061_export_templates.up.sql",
+      "updatedAt": "2026-09-27T18:39:28.093Z"
     }
   ]
 }

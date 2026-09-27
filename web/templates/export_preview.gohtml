@@ -9,7 +9,7 @@
 
 {{if not .Applicable}}
 <div class="card" role="status">
-  Diese Verbindung ist kein Excel-/PDF-Export.
+  Diese Verbindung ist kein unterstützter Export-Konnektor.
 </div>
 {{else}}
 
@@ -17,7 +17,7 @@
   <div class="card-title">Ziel</div>
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
     <dt style="color:var(--muted)">Typ</dt><dd style="margin:0">{{.KindLabel}}</dd>
-    <dt style="color:var(--muted)">Zielpfad</dt><dd style="margin:0;word-break:break-all">{{if .DestinationPath}}{{.DestinationPath}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+    <dt style="color:var(--muted)">Ziel</dt><dd style="margin:0;word-break:break-all">{{if .DestinationLabel}}{{.DestinationLabel}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
   </dl>
   {{if .CanWrite}}
   <form method="POST" action="/export/connections/{{.ConnectionID}}/preview/run" style="margin-top:12px">
@@ -67,10 +67,34 @@
     <input id="mark-source-label" class="form-input" readonly>
     <input type="hidden" id="mark-import-mapping-id">
   </div>
-  <div class="form-group">
-    <label class="form-label">Zielfeldname</label>
-    <input id="mark-field-name" class="form-input" maxlength="150" placeholder="z.B. Temperatur_Halle_1" required>
+  {{if eq .Kind "modbus"}}
+  <div class="grid2" style="gap:10px">
+    <div class="form-group">
+      <label class="form-label">Registertyp</label>
+      <select id="mark-register-type" class="form-input" onchange="modbusExportRegisterTypeChanged()" required>
+        <option value="">– wählen –</option>
+        {{range .RegisterTypes}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Adresse</label>
+      <input type="number" min="0" max="65535" id="mark-register-address" class="form-input" required>
+    </div>
+    <div class="form-group" id="mark-register-datatype-field">
+      <label class="form-label">Datentyp</label>
+      <select id="mark-register-datatype" class="form-input">
+        {{range .DataTypes}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+      </select>
+    </div>
   </div>
+  <input type="hidden" id="mark-field-name">
+  {{else}}
+  <div class="form-group">
+    <label class="form-label">{{.FieldNameLabel}}</label>
+    <input id="mark-field-name" class="form-input" maxlength="150"
+           placeholder="{{if eq .Kind "opcua"}}z.B. ns=2;s=SetPoint{{else}}z.B. Temperatur_Halle_1{{end}}" required>
+  </div>
+  {{end}}
   <div class="form-group">
     <label class="form-label">Zuordnung / Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
     <textarea id="mark-note" class="form-input" maxlength="500" placeholder="z.B. Spaltenreihenfolge, Format"></textarea>
@@ -118,12 +142,25 @@
 
 {{define "scripts"}}
 <script>
+const EXPORT_KIND = {{.Kind}};
+
+function modbusExportRegisterTypeChanged(){
+  const type = document.getElementById('mark-register-type').value;
+  const dataTypeField = document.getElementById('mark-register-datatype-field');
+  if(dataTypeField) dataTypeField.hidden = (type === 'coil');
+}
+
 function markSource(importMappingId, label, value){
   const panel = document.getElementById('mark-panel');
   if(!panel) return;
   document.getElementById('mark-import-mapping-id').value = importMappingId;
   document.getElementById('mark-source-label').value = label + (value ? ' (' + value + ')' : '');
   document.getElementById('mark-field-name').value = '';
+  if(EXPORT_KIND === 'modbus'){
+    document.getElementById('mark-register-type').value = '';
+    document.getElementById('mark-register-address').value = '';
+    modbusExportRegisterTypeChanged();
+  }
   document.getElementById('mark-note').value = '';
   document.getElementById('mark-error').textContent = '';
   panel.hidden = false;
@@ -139,9 +176,17 @@ document.addEventListener('DOMContentLoaded', function(){
   if(submitBtn) submitBtn.addEventListener('click', async function(){
     const errorEl = document.getElementById('mark-error');
     errorEl.textContent = '';
+    let fieldName = document.getElementById('mark-field-name').value.trim();
+    if(EXPORT_KIND === 'modbus'){
+      const type = document.getElementById('mark-register-type').value;
+      const address = document.getElementById('mark-register-address').value;
+      const dataType = type === 'coil' ? 'bool' : document.getElementById('mark-register-datatype').value;
+      if(!type || address === ''){ errorEl.textContent = 'Bitte Registertyp und Adresse angeben'; return; }
+      fieldName = type + ':' + address + ':' + dataType;
+    }
     const payload = {
       import_mapping_id: document.getElementById('mark-import-mapping-id').value,
-      field_name: document.getElementById('mark-field-name').value.trim(),
+      field_name: fieldName,
       note: document.getElementById('mark-note').value.trim()
     };
     if(!payload.import_mapping_id){ errorEl.textContent = 'Bitte einen Wert auswählen'; return; }

@@ -98,6 +98,25 @@ func openSqliteDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// openSqliteDBWritable oeffnet (und legt bei Bedarf an) eine SQLite-
+// Datei beschreibbar - fuer den Export, anders als openSqliteDB (lesend,
+// fuer Import-Vorschau/Browsing), das bewusst read-only oeffnet und eine
+// noch nicht existierende Datei daher nicht anlegen wuerde.
+func openSqliteDBWritable(path string) (*sql.DB, error) {
+	if path == "" {
+		return nil, fmt.Errorf("kein Dateipfad konfiguriert")
+	}
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		return nil, fmt.Errorf("Datei konnte nicht geöffnet werden: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("Datei nicht erreichbar oder keine gültige SQLite-Datenbank: %w", err)
+	}
+	return db, nil
+}
+
 func openMysqlDB(config map[string]string) (*sql.DB, error) {
 	host := strings.TrimSpace(config["host"])
 	if host == "" {

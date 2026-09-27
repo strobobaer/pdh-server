@@ -1,17 +1,24 @@
 package web
 
 import (
+	"context"
+	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-pdf/fpdf"
+	"github.com/goburrow/modbus"
+	"github.com/gopcua/opcua/ua"
 	"github.com/rs/zerolog/log"
 	"github.com/xuri/excelize/v2"
 )
@@ -19,20 +26,53 @@ import (
 // Export-Vorschau: das Gegenstueck zu den Import-Vorschauseiten. Statt
 // eine externe Quelle zu erkunden, zeigt diese Seite den System-weiten
 // Pool bereits importierter Werte (import_mappings) zur Auswahl an -
-// "Fuer Export markieren" legt eine export_mappings-Zeile mit freiem
-// Zielfeldnamen an. "Jetzt exportieren" schreibt die aktuellen Werte
-// aller Zuordnungen dieser Verbindung in die konfigurierte Zieldatei
-// (Excel oder PDF).
+// "Fuer Export markieren" legt eine export_mappings-Zeile an. Was
+// "field_name" dabei bedeutet, haengt vom Konnektortyp ab (siehe
+// exportFieldNameLabel): Spalten-/Feldname bei Excel/PDF/SQL, Ziel-NodeID
+// bei OPC UA, "registertyp:adresse:datentyp" bei Modbus (gleiche Notation
+// wie auf der Import-Seite). "Jetzt exportieren" schreibt die aktuellen
+// Werte aller Zuordnungen dieser Verbindung ins Ziel.
 
 func exportableKind(kind string) bool {
-	return kind == "excel" || kind == "pdf"
+	switch kind {
+	case "excel", "pdf", "sqlite", "mysql", "opcua", "modbus":
+		return true
+	default:
+		return false
+	}
 }
 
 func exportKindLabel(kind string) string {
-	if kind == "pdf" {
+	switch kind {
+	case "pdf":
 		return "PDF"
+	case "excel":
+		return "Excel"
+	case "sqlite":
+		return "SQLite"
+	case "mysql":
+		return "MySQL"
+	case "opcua":
+		return "OPC UA"
+	case "modbus":
+		return "Modbus TCP"
+	default:
+		return kind
 	}
-	return "Excel"
+}
+
+// exportFieldNameLabel beschreibt, was im "Zielfeldname"-Feld des
+// Markieren-Dialogs erwartet wird - je nach Konnektortyp ein freier
+// Name, eine NodeID oder eine Registeradresse.
+func exportFieldNameLabel(kind string) string {
+	switch kind {
+	case "opcua":
+		return "Ziel-NodeID"
+	case "modbus":
+		return "Zielregister"
+	default:
+		return "Zielfeldname"
+	}
 }
 
 type ExportPreviewPageData struct {
@@ -41,11 +81,33 @@ type ExportPreviewPageData struct {
 	ConnectionName   string
 	Applicable       bool
 	CanWrite         bool
+	Kind             string
 	KindLabel        string
-	DestinationPath  string
+	FieldNameLabel   string
+	DestinationLabel string
+	RegisterTypes    []KindOption
+	DataTypes        []KindOption
 	AvailableSources []ImportMappingView
 	Mappings         []ExportMappingView
 	Notice           string
+}
+
+func exportDestinationLabel(kind string, config map[string]string) string {
+	switch kind {
+	case "excel", "pdf":
+		return strings.TrimSpace(config["destination_path"])
+	case "sqlite":
+		return strings.TrimSpace(config["file_path"]) + " · Tabelle " + strings.TrimSpace(config["table_name"])
+	case "mysql":
+		host := strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "3306") + "/" + strings.TrimSpace(config["database"])
+		return host + " · Tabelle " + strings.TrimSpace(config["table_name"])
+	case "opcua":
+		return strings.TrimSpace(config["endpoint_url"])
+	case "modbus":
+		return strings.TrimSpace(config["host"]) + ":" + firstNonEmpty(strings.TrimSpace(config["port"]), "502")
+	default:
+		return ""
+	}
 }
 
 func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
@@ -66,14 +128,18 @@ func (h *Handler) ExportPreviewPage(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(configBytes, &config)
 
 	data := ExportPreviewPageData{
-		BaseData:        h.baseData(r, "export", "Export-Vorschau", name),
-		ConnectionID:    id,
-		ConnectionName:  name,
-		Applicable:      exportableKind(kind),
-		CanWrite:        h.canConnectionWrite(r, "export"),
-		KindLabel:       exportKindLabel(kind),
-		DestinationPath: strings.TrimSpace(config["destination_path"]),
-		Notice:          r.URL.Query().Get("notice"),
+		BaseData:         h.baseData(r, "export", "Export-Vorschau", name),
+		ConnectionID:     id,
+		ConnectionName:   name,
+		Applicable:       exportableKind(kind),
+		CanWrite:         h.canConnectionWrite(r, "export"),
+		Kind:             kind,
+		KindLabel:        exportKindLabel(kind),
+		FieldNameLabel:   exportFieldNameLabel(kind),
+		DestinationLabel: exportDestinationLabel(kind, config),
+		RegisterTypes:    modbusWritableRegisterTypes,
+		DataTypes:        modbusDataTypes,
+		Notice:           r.URL.Query().Get("notice"),
 	}
 	if !data.Applicable {
 		h.render(w, "export_preview", data)
@@ -119,18 +185,31 @@ func (h *Handler) ExportRunWeb(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Keine Zuordnungen zum Exportieren vorhanden"), http.StatusSeeOther)
 		return
 	}
-	destPath := strings.TrimSpace(config["destination_path"])
-	if destPath == "" {
-		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Kein Zielpfad konfiguriert"), http.StatusSeeOther)
-		return
-	}
-
 	var writeErr error
+	destLabel := exportDestinationLabel(kind, config)
 	switch kind {
 	case "excel":
-		writeErr = writeExcelExport(destPath, strings.TrimSpace(config["sheet_name"]), mappings)
+		destPath := strings.TrimSpace(config["destination_path"])
+		if destPath == "" {
+			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
+		} else {
+			tpl := h.resolveExportTemplate(r.Context(), "excel", config["template_id"])
+			writeErr = writeExcelExport(destPath, tpl.SheetName, mappings)
+		}
 	case "pdf":
-		writeErr = writePDFExport(destPath, strings.TrimSpace(config["template_name"]), mappings)
+		destPath := strings.TrimSpace(config["destination_path"])
+		if destPath == "" {
+			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
+		} else {
+			tpl := h.resolveExportTemplate(r.Context(), "pdf", config["template_id"])
+			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings)
+		}
+	case "sqlite", "mysql":
+		writeErr = writeSQLExport(kind, config, mappings)
+	case "opcua":
+		writeErr = writeOPCUAExport(r.Context(), config, mappings)
+	case "modbus":
+		writeErr = writeModbusExport(config, mappings)
 	}
 	if writeErr != nil {
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Export fehlgeschlagen: "+writeErr.Error()), http.StatusSeeOther)
@@ -146,7 +225,21 @@ func (h *Handler) ExportRunWeb(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Str("connection_id", id).Msg("export: exportzeitpunkt konnte nicht gespeichert werden")
 	}
 
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d Feld(er) nach %s exportiert", len(mappings), destPath)), http.StatusSeeOther)
+	http.Redirect(w, r, base+"?notice="+url.QueryEscape(fmt.Sprintf("%d Feld(er) nach %s exportiert", len(mappings), destLabel)), http.StatusSeeOther)
+}
+
+// resolveExportTemplate laedt die gewaehlte Vorlage - ohne Auswahl (oder
+// bei geloeschter Vorlage) greifen dieselben Standardwerte wie vor der
+// Vorlagenverwaltung, damit bestehende Verbindungen ohne template_id
+// weiterhin funktionieren.
+func (h *Handler) resolveExportTemplate(ctx context.Context, kind, templateID string) ExportTemplateView {
+	templateID = strings.TrimSpace(templateID)
+	if templateID != "" {
+		if tpl, ok := h.exportTemplateByID(ctx, templateID); ok && tpl.Kind == kind {
+			return tpl
+		}
+	}
+	return ExportTemplateView{Kind: kind, Title: "Export", SheetName: "Export", Orientation: "P"}
 }
 
 func writeExcelExport(path, sheetName string, mappings []ExportMappingView) error {
@@ -175,11 +268,14 @@ func writeExcelExport(path, sheetName string, mappings []ExportMappingView) erro
 	return f.SaveAs(path)
 }
 
-func writePDFExport(path, title string, mappings []ExportMappingView) error {
+func writePDFExport(path, title, orientation string, mappings []ExportMappingView) error {
 	if title == "" {
 		title = "Export"
 	}
-	pdf := fpdf.New("P", "mm", "A4", "")
+	if orientation != "L" {
+		orientation = "P"
+	}
+	pdf := fpdf.New(orientation, "mm", "A4", "")
 	tr := pdf.UnicodeTranslatorFromDescriptor("cp1252")
 	pdf.AddPage()
 	pdf.SetFont("Helvetica", "B", 16)
@@ -210,4 +306,241 @@ func writePDFExport(path, title string, mappings []ExportMappingView) error {
 		return fmt.Errorf("Zielverzeichnis konnte nicht angelegt werden: %w", err)
 	}
 	return pdf.OutputFileAndClose(path)
+}
+
+// writeSQLExport haengt fuer jede Zuordnung eine Zeile an eine feste
+// Log-Tabelle (field_name, value, source, exported_at) an - bewusst ein
+// einfaches, immer gleiches Schema statt dynamischer Spalten je
+// Zielfeldname, damit ein Export nie an einem Typkonflikt einer
+// bestehenden Spalte scheitert. Funktioniert identisch fuer SQLite und
+// MySQL (siehe sql_preview.go fuer die gemeinsame Verbindungs-/
+// Quoting-Logik).
+func writeSQLExport(kind string, config map[string]string, mappings []ExportMappingView) error {
+	var db *sql.DB
+	var err error
+	switch kind {
+	case "sqlite":
+		db, err = openSqliteDBWritable(strings.TrimSpace(config["file_path"]))
+	case "mysql":
+		db, err = openMysqlDB(config)
+	default:
+		return fmt.Errorf("nicht unterstützter Verbindungstyp")
+	}
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	table := strings.TrimSpace(config["table_name"])
+	if table == "" {
+		return fmt.Errorf("keine Zieltabelle konfiguriert")
+	}
+
+	createSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (field_name TEXT, value TEXT, source TEXT, exported_at TIMESTAMP)`, quoteIdent(kind, table))
+	if _, err := db.Exec(createSQL); err != nil {
+		return fmt.Errorf("Zieltabelle konnte nicht angelegt werden: %w", err)
+	}
+
+	insertSQL := fmt.Sprintf(`INSERT INTO %s (field_name, value, source, exported_at) VALUES (?, ?, ?, ?)`, quoteIdent(kind, table))
+	now := time.Now()
+	for _, m := range mappings {
+		source := strings.TrimSpace(m.InfrastructureName + " · " + m.SourceName)
+		if _, err := db.Exec(insertSQL, m.FieldName, m.SourceValue, source, now); err != nil {
+			return fmt.Errorf("Zeile für '%s' konnte nicht geschrieben werden: %w", m.FieldName, err)
+		}
+	}
+	return nil
+}
+
+// writeOPCUAExport schreibt fuer jede Zuordnung den Quellwert auf die
+// als Zielfeldname hinterlegte NodeID eines bestehenden, beschreibbaren
+// Knotens. Der aktuelle Werttyp des Zielknotens wird vorher gelesen, um
+// den (immer als Text gespeicherten) Quellwert typgerecht umzuwandeln -
+// ein OPC-UA-Server lehnt sonst meist Typkonflikte ab.
+func writeOPCUAExport(ctx context.Context, config map[string]string, mappings []ExportMappingView) error {
+	client, err := openOPCUAClient(ctx, config)
+	if err != nil {
+		return err
+	}
+	defer client.Close(ctx)
+
+	for _, m := range mappings {
+		nodeID, err := ua.ParseNodeID(strings.TrimSpace(m.FieldName))
+		if err != nil {
+			return fmt.Errorf("ungültige NodeID '%s': %w", m.FieldName, err)
+		}
+		node := client.Node(nodeID)
+		current, err := node.Value(ctx)
+		if err != nil {
+			return fmt.Errorf("Zielknoten '%s' konnte nicht gelesen werden: %w", m.FieldName, err)
+		}
+		variant, err := coerceOPCUAVariant(current, m.SourceValue)
+		if err != nil {
+			return fmt.Errorf("Wert für '%s' konnte nicht umgewandelt werden: %w", m.FieldName, err)
+		}
+		resp, err := client.Write(ctx, &ua.WriteRequest{
+			NodesToWrite: []*ua.WriteValue{
+				{
+					NodeID:      nodeID,
+					AttributeID: ua.AttributeIDValue,
+					Value: &ua.DataValue{
+						EncodingMask: ua.DataValueValue,
+						Value:        variant,
+					},
+				},
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("Schreiben nach '%s' fehlgeschlagen: %w", m.FieldName, err)
+		}
+		if len(resp.Results) == 0 || resp.Results[0] != ua.StatusOK {
+			return fmt.Errorf("Schreiben nach '%s' vom Server abgelehnt", m.FieldName)
+		}
+	}
+	return nil
+}
+
+// coerceOPCUAVariant wandelt den (als Text gespeicherten) Quellwert in
+// denselben Go-Typ um, den der Zielknoten aktuell traegt - einfache,
+// best-effort Typanpassung fuer die gaengigsten Faelle (Zahl/Bool/Text).
+func coerceOPCUAVariant(current *ua.Variant, value string) (*ua.Variant, error) {
+	switch current.Value().(type) {
+	case float32:
+		f, err := strconv.ParseFloat(value, 32)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(float32(f))
+	case float64:
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(f)
+	case int16:
+		n, err := strconv.ParseInt(value, 10, 16)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(int16(n))
+	case int32:
+		n, err := strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(int32(n))
+	case int64:
+		n, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(n)
+	case uint16:
+		n, err := strconv.ParseUint(value, 10, 16)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(uint16(n))
+	case uint32:
+		n, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(uint32(n))
+	case bool:
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return nil, err
+		}
+		return ua.NewVariant(b)
+	default:
+		return ua.NewVariant(value)
+	}
+}
+
+// writeModbusExport schreibt fuer jede Zuordnung den Quellwert auf das
+// als Zielfeldname hinterlegte Register ("registertyp:adresse:datentyp",
+// gleiche Notation wie auf der Import-Seite). Nur Coils und Holding
+// Register sind beschreibbar.
+func writeModbusExport(config map[string]string, mappings []ExportMappingView) error {
+	handler, client, err := openModbusClient(config)
+	if err != nil {
+		return err
+	}
+	defer handler.Close()
+
+	for _, m := range mappings {
+		reading, err := parseModbusReading(m.FieldName)
+		if err != nil {
+			return fmt.Errorf("ungültiges Zielregister '%s': %w", m.FieldName, err)
+		}
+		if err := writeModbusValue(client, reading, m.SourceValue); err != nil {
+			return fmt.Errorf("Schreiben nach '%s' fehlgeschlagen: %w", m.FieldName, err)
+		}
+	}
+	return nil
+}
+
+func writeModbusValue(client modbus.Client, reading modbusReading, value string) error {
+	switch reading.RegisterType {
+	case "coil":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("ungültiger Bool-Wert: %w", err)
+		}
+		v := uint16(0)
+		if b {
+			v = 0xFF00
+		}
+		_, err = client.WriteSingleCoil(reading.Address, v)
+		return err
+	case "holding":
+		switch reading.DataType {
+		case "uint16":
+			n, err := strconv.ParseUint(value, 10, 16)
+			if err != nil {
+				return fmt.Errorf("ungültiger Wert: %w", err)
+			}
+			_, err = client.WriteSingleRegister(reading.Address, uint16(n))
+			return err
+		case "int16":
+			n, err := strconv.ParseInt(value, 10, 16)
+			if err != nil {
+				return fmt.Errorf("ungültiger Wert: %w", err)
+			}
+			_, err = client.WriteSingleRegister(reading.Address, uint16(int16(n)))
+			return err
+		case "uint32":
+			n, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return fmt.Errorf("ungültiger Wert: %w", err)
+			}
+			data := make([]byte, 4)
+			binary.BigEndian.PutUint32(data, uint32(n))
+			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
+			return err
+		case "int32":
+			n, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				return fmt.Errorf("ungültiger Wert: %w", err)
+			}
+			data := make([]byte, 4)
+			binary.BigEndian.PutUint32(data, uint32(int32(n)))
+			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
+			return err
+		case "float32":
+			f, err := strconv.ParseFloat(value, 32)
+			if err != nil {
+				return fmt.Errorf("ungültiger Wert: %w", err)
+			}
+			data := make([]byte, 4)
+			binary.BigEndian.PutUint32(data, math.Float32bits(float32(f)))
+			_, err = client.WriteMultipleRegisters(reading.Address, 2, data)
+			return err
+		default:
+			return fmt.Errorf("unbekannter Datentyp")
+		}
+	default:
+		return fmt.Errorf("registertyp '%s' ist nicht beschreibbar (nur coil/holding)", reading.RegisterType)
+	}
 }

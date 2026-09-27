@@ -426,6 +426,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/export/connections/{id}/preview/run", h.ExportRunWeb)
 	r.Post("/export/connections/{id}/mappings", h.ExportMappingCreateWeb)
 	r.Post("/export/connections/{id}/mappings/{mappingId}/delete-web", h.ExportMappingDeleteWeb)
+	r.Get("/export/templates", h.ExportTemplatesPage)
+	r.Post("/export/templates", h.ExportTemplateCreateWeb)
+	r.Post("/export/templates/{id}/edit-web", h.ExportTemplateEditWeb)
+	r.Post("/export/templates/{id}/delete-web", h.ExportTemplateDeleteWeb)
 
 	// Override-Anmeldung an Systemnutzer-Terminals
 	r.Post("/override-login", h.OverrideLoginWeb)
