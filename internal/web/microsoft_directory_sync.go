@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -22,6 +23,22 @@ type MicrosoftAdminPageData struct {
 	Matched    string
 	Unmatched  string
 	Notice     string
+	Users      []MicrosoftDirectoryUserRow
+}
+
+// MicrosoftDirectoryUserRow ist ein aktiver PDH-Benutzer mit seiner
+// (eventuell leeren) Microsoft-Verzeichniszuordnung - Grundlage fuer die
+// manuelle Zuordnung, die den automatischen E-Mail-Abgleich ergaenzt
+// (z.B. wenn PDH- und Microsoft-E-Mail-Adresse voneinander abweichen).
+type MicrosoftDirectoryUserRow struct {
+	PDHUserID       string
+	PDHUserName     string
+	PDHUserEmail    string
+	MicrosoftUserID string
+	MicrosoftEmail  string
+	DisplayName     string
+	Department      string
+	Assigned        bool
 }
 
 type microsoftDirectoryUser struct {
@@ -52,7 +69,87 @@ func (h *Handler) MicrosoftAdminPage(w http.ResponseWriter, r *http.Request) {
 		Unmatched:  h.getUpdateSetting(r.Context(), "microsoft_directory_last_unmatched", "0"),
 		Notice:     r.URL.Query().Get("notice"),
 	}
+	rows, err := h.db.Query(r.Context(), `
+		SELECT u.id::text, u.first_name || ' ' || u.last_name, u.email,
+		       COALESCE(m.microsoft_user_id, ''), COALESCE(m.email, ''), COALESCE(m.display_name, ''), COALESCE(m.department, ''),
+		       (m.pdh_user_id IS NOT NULL)
+		FROM users u
+		LEFT JOIN microsoft_directory_users m ON m.pdh_user_id = u.id AND m.tenant_id = $1
+		WHERE u.active = true
+		ORDER BY u.last_name, u.first_name`, h.microsoft.TenantID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var row MicrosoftDirectoryUserRow
+			if rows.Scan(&row.PDHUserID, &row.PDHUserName, &row.PDHUserEmail,
+				&row.MicrosoftUserID, &row.MicrosoftEmail, &row.DisplayName, &row.Department, &row.Assigned) == nil {
+				data.Users = append(data.Users, row)
+			}
+		}
+	}
 	h.render(w, "microsoft_admin", data)
+}
+
+// MicrosoftDirectoryAssignWeb ordnet einem PDH-Benutzer manuell eine
+// Microsoft-Verzeichnis-ID zu - Ergaenzung zum automatischen
+// E-Mail-Abgleich, fuer Faelle, in denen die PDH- und die
+// Microsoft-E-Mail-Adresse nicht uebereinstimmen. Es werden keine
+// OAuth-Tokens ausgestellt; die Zuordnung dient nur dem Verzeichnis
+// (z.B. Teams-Empfaenger-Auflösung), nicht dem persoenlichen
+// Kalendersync, der weiterhin die eigene Verknuepfung unter "Mein Konto"
+// voraussetzt.
+func (h *Handler) MicrosoftDirectoryAssignWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if strings.TrimSpace(h.microsoft.TenantID) == "" {
+		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("PDH_MICROSOFT_TENANT_ID ist nicht konfiguriert"), http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	pdhUserID := strings.TrimSpace(r.FormValue("pdh_user_id"))
+	microsoftUserID := strings.TrimSpace(r.FormValue("microsoft_user_id"))
+	email := strings.TrimSpace(r.FormValue("email"))
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+	department := strings.TrimSpace(r.FormValue("department"))
+	if pdhUserID == "" || microsoftUserID == "" {
+		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("PDH-Benutzer und Microsoft-Objekt-ID sind Pflichtfelder"), http.StatusSeeOther)
+		return
+	}
+	_, err := h.db.Exec(r.Context(), `
+		INSERT INTO microsoft_directory_users (tenant_id, microsoft_user_id, pdh_user_id, email, display_name, department, account_enabled, synced_at)
+		VALUES ($1, $2, $3::uuid, $4, $5, $6, true, NOW())
+		ON CONFLICT (tenant_id, pdh_user_id) DO UPDATE SET
+			microsoft_user_id=EXCLUDED.microsoft_user_id,
+			email=EXCLUDED.email,
+			display_name=EXCLUDED.display_name,
+			department=EXCLUDED.department,
+			account_enabled=true,
+			synced_at=NOW()`,
+		h.microsoft.TenantID, microsoftUserID, pdhUserID, email, displayName, department)
+	if err != nil {
+		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("Zuordnung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/core/settings/microsoft?notice=Zuordnung+gespeichert", http.StatusSeeOther)
+}
+
+func (h *Handler) MicrosoftDirectoryUnassignWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	pdhUserID := chi.URLParam(r, "id")
+	_, err := h.db.Exec(r.Context(), `DELETE FROM microsoft_directory_users WHERE tenant_id=$1 AND pdh_user_id=$2::uuid`, h.microsoft.TenantID, pdhUserID)
+	if err != nil {
+		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("Zuordnung konnte nicht entfernt werden: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/core/settings/microsoft?notice=Zuordnung+entfernt", http.StatusSeeOther)
 }
 
 func (h *Handler) MicrosoftDirectorySyncWeb(w http.ResponseWriter, r *http.Request) {

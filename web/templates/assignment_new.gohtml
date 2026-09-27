@@ -1,0 +1,173 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Neue Zuweisung</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Ticket, Aufgabe, Wartung oder Störung anlegen und direkt einem Mitarbeiter zuweisen</p>
+</div>
+
+<div class="card" style="max-width:720px">
+  <div class="card-title">Art des Vorgangs</div>
+  <div id="assign-type-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <button type="button" class="btn btn-primary" data-assign-type="ticket" onclick="setAssignType('ticket')"><i class="ti ti-ticket"></i> Ticket</button>
+    <button type="button" class="btn" data-assign-type="task" onclick="setAssignType('task')"><i class="ti ti-list-check"></i> Aufgabe</button>
+    <button type="button" class="btn" data-assign-type="maintenance" onclick="setAssignType('maintenance')"><i class="ti ti-tool"></i> Wartung</button>
+    <button type="button" class="btn" data-assign-type="fault" onclick="setAssignType('fault')"><i class="ti ti-alert-triangle"></i> Störung</button>
+  </div>
+
+  <form id="assign-form" onsubmit="return submitAssignment(event)">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Titel</label>
+        <input id="assign-title" class="form-input" placeholder="Kurzbeschreibung" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="assign-priority-label">Priorität</label>
+        <select id="assign-priority" class="form-input">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zugewiesen an</label>
+        <select id="assign-assigned-to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fällig am</label>
+        <input id="assign-due-date" type="date" class="form-input">
+      </div>
+      <div class="form-group" id="assign-start-date-field" style="display:none">
+        <label class="form-label">Start</label>
+        <input id="assign-start-date" type="date" class="form-input">
+      </div>
+      <div class="form-group" id="assign-plan-type-field" style="display:none">
+        <label class="form-label">Wartungstyp</label>
+        <select id="assign-plan-type" class="form-input">
+          <option value="preventive">Vorbeugend</option>
+          <option value="inspection">Inspektion</option>
+          <option value="calibration">Kalibrierung</option>
+          <option value="cleaning">Reinigung</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Beschreibung</label>
+      <input id="assign-description" class="form-input" placeholder="Details">
+    </div>
+
+    <div class="form-group" id="assign-symptoms-field" style="display:none">
+      <label class="form-label">Symptome</label>
+      <input id="assign-symptoms" class="form-input" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
+    </div>
+
+    {{template "infra-tree-picker" (dict "TargetID" "assign-infra-id" "SelectedLabelID" "assign-infra-selected" "Label" "Infrastruktur")}}
+
+    <p id="assign-result" style="font-size:12px;margin:14px 0 0"></p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+      <button type="submit" class="btn btn-primary" id="assign-submit"><i class="ti ti-device-floppy"></i> Anlegen und zuweisen</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+let assignType = 'ticket';
+
+function setAssignType(type){
+  assignType = type;
+  document.querySelectorAll('#assign-type-tabs [data-assign-type]').forEach(function(btn){
+    btn.className = btn.dataset.assignType === type ? 'btn btn-primary' : 'btn';
+  });
+  document.getElementById('assign-start-date-field').style.display = type === 'task' ? 'block' : 'none';
+  document.getElementById('assign-plan-type-field').style.display = type === 'maintenance' ? 'block' : 'none';
+  document.getElementById('assign-symptoms-field').style.display = type === 'fault' ? 'block' : 'none';
+  document.getElementById('assign-priority-label').textContent = type === 'fault' ? 'Schweregrad' : 'Priorität';
+  const infraHidden = document.getElementById('assign-infra-id');
+  if(infraHidden) infraHidden.required = type === 'maintenance';
+  document.getElementById('assign-result').textContent = '';
+}
+
+const assignEndpoints = {
+  ticket: '/api/v1/tickets/',
+  task: '/api/v1/tasks/',
+  maintenance: '/api/v1/maintenance/tasks',
+  fault: '/api/v1/faults/'
+};
+const assignRedirects = {
+  ticket: '/tickets',
+  task: '/tasks',
+  maintenance: '/maintenance',
+  fault: '/faults'
+};
+
+function buildAssignPayload(){
+  const title = document.getElementById('assign-title').value.trim();
+  const description = document.getElementById('assign-description').value.trim();
+  const priority = document.getElementById('assign-priority').value;
+  const assignedTo = document.getElementById('assign-assigned-to').value;
+  const dueDate = document.getElementById('assign-due-date').value;
+  const infraID = document.getElementById('assign-infra-id').value;
+
+  if(assignType === 'ticket'){
+    const payload = {title: title, description: description, priority: priority};
+    if(assignedTo) payload.assigned_to = assignedTo;
+    if(infraID) payload.infrastructure_id = infraID;
+    return payload;
+  }
+  if(assignType === 'task'){
+    const payload = {title: title, description: description, priority: priority, due_date: dueDate, start_date: document.getElementById('assign-start-date').value};
+    if(assignedTo) payload.assigned_to = assignedTo;
+    return payload;
+  }
+  if(assignType === 'maintenance'){
+    return {
+      title: title, description: description, priority: priority,
+      type: document.getElementById('assign-plan-type').value,
+      infrastructure_id: infraID,
+      due_date: dueDate,
+      assigned_to: assignedTo || null
+    };
+  }
+  const symptoms = String(document.getElementById('assign-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  const payload = {title: title, description: description, severity: priority, symptoms: symptoms};
+  if(assignedTo) payload.assigned_to = assignedTo;
+  if(infraID) payload.infrastructure_id = infraID;
+  return payload;
+}
+
+async function submitAssignment(event){
+  event.preventDefault();
+  if(assignType === 'maintenance' && !document.getElementById('assign-infra-id').value){
+    document.getElementById('assign-result').innerHTML = '<span style="color:var(--red)">Für Wartungsaufträge ist eine Infrastruktur Pflicht.</span>';
+    return false;
+  }
+  const button = document.getElementById('assign-submit');
+  const result = document.getElementById('assign-result');
+  button.disabled = true;
+  result.textContent = 'Speichere...';
+  try{
+    const res = await fetch(assignEndpoints[assignType], {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + pdhToken()},
+      body: JSON.stringify(buildAssignPayload())
+    });
+    const json = await res.json().catch(function(){return {};});
+    if(!res.ok || !json.success) throw new Error((json && json.error) || 'Anlegen fehlgeschlagen');
+    window.location.href = assignRedirects[assignType];
+  }catch(error){
+    result.innerHTML = '<span style="color:var(--red)">Fehler: ' + escapeHtml(error.message) + '</span>';
+  }finally{
+    button.disabled = false;
+  }
+  return false;
+}
+
+setAssignType('ticket');
+</script>
+{{end}}

@@ -293,6 +293,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Use(h.authMiddleware)
 
 	r.Get("/", h.Dashboard)
+	r.Get("/assignments/new", h.AssignmentNewPage)
 	r.Get("/account", h.AccountPage)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
@@ -372,6 +373,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/core/settings", h.CoreSettingsPage)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
 	r.Post("/core/settings/microsoft/sync", h.MicrosoftDirectorySyncWeb)
+	r.Post("/core/settings/microsoft/assign", h.MicrosoftDirectoryAssignWeb)
+	r.Post("/core/settings/microsoft/{id}/unassign", h.MicrosoftDirectoryUnassignWeb)
 	r.Post("/core/settings", h.SaveCoreSettings)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)

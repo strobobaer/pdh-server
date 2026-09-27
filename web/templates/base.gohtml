@@ -270,6 +270,7 @@ select.form-input option{background:var(--bg2)}
   <nav>
     <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">Dashboard</span></a>
     <a href="/global/" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-layout-dashboard"></i><span class="nav-label">Leitstand</span></a>
+    <a href="/assignments/new" class="nav-item {{if eq .Page "assignments-new"}}active{{end}}"><i class="ti ti-square-rounded-plus"></i><span class="nav-label">Neue Zuweisung</span></a>
 
     <div class="nav-section">Module</div>
     <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i><span class="nav-label">Tickets</span></a>

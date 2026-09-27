@@ -24,4 +24,86 @@
   {{end}}
   <p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Abgleich verknüpft bestehende aktive PDH-Konten per E-Mail. Er legt keine Konten an, ändert keine Rollen und deaktiviert niemanden.</p>
 </div>
+
+{{if .TenantID}}
+<div class="card" style="margin-top:14px">
+  <div class="card-title">Manuelle Zuordnung</div>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Ergänzt den automatischen Abgleich für Konten, deren Microsoft- und PDH-E-Mail-Adresse voneinander abweichen. Die Microsoft-Objekt-ID findest du in Entra unter „Benutzer" → betroffener Benutzer → „Objekt-ID". Es wird keine Anmeldung ausgelöst; Kalendersync bleibt weiterhin an die eigene Verknüpfung unter „Mein Konto" gebunden.</p>
+  <div style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">PDH-Benutzer</th>
+        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Microsoft-Zuordnung</th>
+        <th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Users}}
+      <tr>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">
+          <div style="font-weight:500">{{.PDHUserName}}</div>
+          <div style="font-size:11px;color:var(--muted)">{{.PDHUserEmail}}</div>
+        </td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--muted)">
+          {{if .Assigned}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.MicrosoftEmail}}{{end}} <span style="font-size:11px">({{.MicrosoftUserID}})</span>{{else}}Nicht zugeordnet{{end}}
+        </td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap">
+          <button type="button" class="btn-icon" title="Zuordnen/Bearbeiten" onclick="openMsAssignModal(this)"
+            data-pdh-id="{{.PDHUserID}}" data-pdh-name="{{.PDHUserName}}"
+            data-microsoft-id="{{.MicrosoftUserID}}" data-microsoft-email="{{.MicrosoftEmail}}"
+            data-display-name="{{.DisplayName}}" data-department="{{.Department}}"><i class="ti ti-edit"></i></button>
+          {{if .Assigned}}
+          <form method="POST" action="/core/settings/microsoft/{{.PDHUserID}}/unassign" style="display:inline" onsubmit="return confirm('Zuordnung für {{.PDHUserName}} entfernen?')">
+            <button type="submit" class="btn-icon" title="Zuordnung entfernen"><i class="ti ti-unlink"></i></button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">Keine aktiven Benutzer gefunden</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div id="ms-assign-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:18px" onclick="if(event.target===this)closeMsAssignModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(480px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h2 id="ms-assign-title" style="font-size:16px;margin:0">Microsoft-Zuordnung</h2>
+      <button type="button" class="btn-icon" aria-label="Schließen" onclick="closeMsAssignModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <form method="POST" action="/core/settings/microsoft/assign">
+      <input type="hidden" name="pdh_user_id" id="ms-pdh-id">
+      <div class="form-group"><label class="form-label">Microsoft-Objekt-ID</label><input name="microsoft_user_id" id="ms-microsoft-id" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Microsoft-E-Mail</label><input name="email" type="email" id="ms-microsoft-email" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Anzeigename</label><input name="display_name" id="ms-display-name" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Abteilung</label><input name="department" id="ms-department" class="form-input"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+        <button type="button" class="btn" onclick="closeMsAssignModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function openMsAssignModal(button){
+  const data = button.dataset;
+  document.getElementById('ms-assign-title').textContent = 'Microsoft-Zuordnung · ' + (data.pdhName || '');
+  document.getElementById('ms-pdh-id').value = data.pdhId || '';
+  document.getElementById('ms-microsoft-id').value = data.microsoftId || '';
+  document.getElementById('ms-microsoft-email').value = data.microsoftEmail || '';
+  document.getElementById('ms-display-name').value = data.displayName || '';
+  document.getElementById('ms-department').value = data.department || '';
+  document.getElementById('ms-assign-modal').style.display = 'flex';
+}
+function closeMsAssignModal(){
+  document.getElementById('ms-assign-modal').style.display = 'none';
+}
+</script>
 {{end}}
