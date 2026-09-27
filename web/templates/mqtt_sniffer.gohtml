@@ -90,7 +90,7 @@
       {{range .Mappings}}
       <tr data-mapping-id="{{.ID}}" data-mapping-name="{{.Name}}"
           {{if $.CanWrite}}oncontextmenu="showContextMenu(event, mappingContextItems(this)); return false;"{{end}}>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-all">{{.Topic}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-all">{{.SourceRef}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Note}}</td>
@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function(){
     const errorEl = document.getElementById('mark-error');
     errorEl.textContent = '';
     const payload = {
-      topic: document.getElementById('mark-topic').value,
+      source_ref: document.getElementById('mark-topic').value,
       infrastructure_id: document.getElementById('mark-infra-id').value,
       name: document.getElementById('mark-name').value.trim(),
       note: document.getElementById('mark-note').value.trim()

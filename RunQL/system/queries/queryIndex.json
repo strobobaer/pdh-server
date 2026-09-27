@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T13:54:24.278Z",
+  "generatedAt": "2026-09-27T14:02:27.060Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -622,6 +622,17 @@
       "sqlHash": "2981bc09c4f2b6cf809dbadb4ceab1d7e7a38da34d9ad8859adf1522e3d5eae4",
       "title": "058_mqtt_mapping_values.up.sql",
       "updatedAt": "2026-09-27T13:54:23.650Z"
+    },
+    {
+      "createdAt": "2026-09-27T14:02:26.425Z",
+      "path": "migrations/059_generalize_import_mappings.up.sql",
+      "catalogContext": null,
+      "searchText": "059_generalize_import_mappings.up.sql migrations/059_generalize_import_mappings.up.sql -- 059_generalize_import_mappings.up.sql\n--\n-- die wertzuordnung (quellwert -> infrastruktur -> freie bezeichnung/\n-- notiz) ist nicht mehr mqtt-spezifisch, sondern das einheitliche muster\n-- fuer alle import-konnektoren (mqtt-topic, excel-spalte, db-spalte,\n-- rest-json-pfad, ...). tabelle/spalte entsprechend umbenannt - daten\n-- und fremdschluessel bleiben erhalten.\n\nalter table mqtt_import_mappings rename to import_mappings;\nalter table import_mappings rename column topic to source_ref;\nalter index if exists idx_mqtt_import_mappings_connection rename to idx_import_mappings_connection;\n",
+      "searchUpdatedAt": "2026-09-27T14:02:26.528Z",
+      "schemaContext": null,
+      "sqlHash": "55fb8c5068e30b5c95ce5821c292626141fae596ea3715a85e522cbdf76d439e",
+      "title": "059_generalize_import_mappings.up.sql",
+      "updatedAt": "2026-09-27T14:02:26.425Z"
     }
   ]
 }

@@ -288,6 +288,11 @@ function connContextItems(row, direction){
       }});
     }
   }
+  if(direction === 'import' && row.dataset.connKind === 'excel'){
+    items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
+      window.location = '/import/connections/' + row.dataset.connId + '/preview';
+    }});
+  }
   if(canWrite){
     items.push({separator: true});
     items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }});

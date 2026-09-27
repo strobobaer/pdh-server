@@ -106,13 +106,13 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 		return
 	}
 
-	mappings, err := h.mqttMappings(context.Background(), connectionID)
+	mappings, err := h.importMappings(context.Background(), connectionID)
 	if err != nil || len(mappings) == 0 {
 		return
 	}
 	topics := make([]string, 0, len(mappings))
 	for _, mp := range mappings {
-		topics = append(topics, mp.Topic)
+		topics = append(topics, mp.SourceRef)
 	}
 	handler := func(topic string, payload []byte) {
 		h.recordMqttValue(connectionID, topic, payload)
@@ -168,8 +168,8 @@ func (h *Handler) recordMqttValue(connectionID, topic string, payload []byte) {
 		value = value[:2000]
 	}
 	if _, err := h.db.Exec(context.Background(), `
-		UPDATE mqtt_import_mappings SET last_value=$1, last_received_at=NOW()
-		WHERE connection_id=$2 AND topic=$3`, value, connectionID, topic); err != nil {
+		UPDATE import_mappings SET last_value=$1, last_received_at=NOW()
+		WHERE connection_id=$2 AND source_ref=$3`, value, connectionID, topic); err != nil {
 		log.Error().Err(err).Str("connection_id", connectionID).Str("topic", topic).Msg("mqtt-wert konnte nicht gespeichert werden")
 	}
 }
