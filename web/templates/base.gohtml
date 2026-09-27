@@ -320,6 +320,16 @@ select.form-input option{background:var(--bg2)}
     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
     <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">Infrastruktur</span></a>
+
+    {{if .CanImport}}
+    <div class="nav-section">Import</div>
+    <a href="/import" class="nav-item {{if eq .Page "import"}}active{{end}}"><i class="ti ti-database-import"></i><span class="nav-label">Import</span></a>
+    {{end}}
+
+    {{if .CanExport}}
+    <div class="nav-section">Export</div>
+    <a href="/export" class="nav-item {{if eq .Page "export"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">Export</span></a>
+    {{end}}
   </nav>
 </aside>
 

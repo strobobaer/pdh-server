@@ -49,6 +49,8 @@ type BaseData struct {
 	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
 	CanManageUsers         bool // Benutzerverwaltung anzeigen
 	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
+	CanImport              bool // Nav-Link "Import" anzeigen
+	CanExport              bool // Nav-Link "Export" anzeigen
 }
 
 type DashboardData struct {
@@ -387,6 +389,18 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
 	r.Post("/admin/settings", h.SettingsWeb)
 
+	// Import & Export
+	r.Get("/import", h.ImportPage)
+	r.Post("/import/connections", h.ImportConnectionCreateWeb)
+	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
+	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
+	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
+	r.Get("/export", h.ExportPage)
+	r.Post("/export/connections", h.ExportConnectionCreateWeb)
+	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
+	r.Post("/export/connections/{id}/delete-web", h.ExportConnectionDeleteWeb)
+	r.Post("/export/connections/{id}/toggle-web", h.ExportConnectionToggleWeb)
+
 	// Override-Anmeldung an Systemnutzer-Terminals
 	r.Post("/override-login", h.OverrideLoginWeb)
 	r.Post("/override-login/rfid", h.OverrideLoginRFIDWeb)
@@ -578,6 +592,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
 		CanManageUsers:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
+		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
+		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 	}
 }
 

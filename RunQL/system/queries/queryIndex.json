@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T11:12:52.978Z",
+  "generatedAt": "2026-09-27T12:20:43.901Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -589,6 +589,17 @@
       "sqlHash": "43ca4f45439fbe557f159a6b0fe58674f239e09ae215a829d2bba63f1fd1d906",
       "title": "055_user_manager_hierarchy.up.sql",
       "updatedAt": "2026-09-27T10:29:15.758Z"
+    },
+    {
+      "createdAt": "2026-09-27T12:20:43.263Z",
+      "path": "migrations/056_import_export.up.sql",
+      "catalogContext": null,
+      "searchText": "056_import_export.up.sql migrations/056_import_export.up.sql -- 056_import_export.up.sql\n--\n-- grundgeruest fuer die neuen top-level-funktionen \"import\" und \"export\"\n-- (neben global/core/module): eigene berechtigungskategorien mit\n-- lesen/schreiben/ausfuehren sowie eine generische tabelle fuer\n-- verbindungsprofile (excel, sqlite, mysql, mssql, mqtt inkl. optional\n-- integriertem broker, web/rest-api fuer import; pdf/excel fuer export).\n-- die eigentliche datenuebertragung je konnektortyp folgt in einer\n-- spaeteren ausbaustufe - hier entsteht zunaechst nur die rechte- und\n-- verwaltungsgrundlage (verbindungen anlegen/bearbeiten/loeschen).\n\ninsert into permissions (key, label, category) values\n    ('import.read',    'import ansehen',        'import'),\n    ('import.write',   'import verwalten',      'import'),\n    ('import.execute', 'import ausführen',      'import'),\n    ('export.read',    'export ansehen',        'export'),\n    ('export.write',   'export verwalten',      'export'),\n    ('export.execute', 'export ausführen',      'export')\non conflict (key) do nothing;\n\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere r.key = 'admin' and p.category in ('import', 'export')\non conflict do nothing;\n\ncreate table if not exists import_export_connections (\n    id         uuid primary key default gen_random_uuid(),\n    direction  varchar(10) not null check (direction in ('import', 'export')),\n    kind       varchar(30) not null,\n    name       varchar(150) not null,\n    config     jsonb not null default '{}'::jsonb,\n    enabled    boolean not null default true,\n    created_by uuid references users(id),\n    created_at timestamptz not null default now(),\n    updated_at timestamptz not null default now()\n);\n\ncreate index if not exists idx_import_export_connections_direction_kind\n    on import_export_connections (direction, kind);\n",
+      "searchUpdatedAt": "2026-09-27T12:20:43.364Z",
+      "schemaContext": null,
+      "sqlHash": "f2a146268d2969ef5ed115ed7c66defe1a74854e8490264379a1f7fbedf84ec5",
+      "title": "056_import_export.up.sql",
+      "updatedAt": "2026-09-27T12:20:43.266Z"
     }
   ]
 }
