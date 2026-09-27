@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/goburrow/modbus v0.1.0
 	github.com/golang-jwt/jwt/v5 v5.2.1

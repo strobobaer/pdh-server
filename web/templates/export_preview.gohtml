@@ -1,0 +1,178 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Export-Vorschau · {{.ConnectionName}}</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/export">← zurück zu Export</a></p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+
+{{if not .Applicable}}
+<div class="card" role="status">
+  Diese Verbindung ist kein Excel-/PDF-Export.
+</div>
+{{else}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Ziel</div>
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
+    <dt style="color:var(--muted)">Typ</dt><dd style="margin:0">{{.KindLabel}}</dd>
+    <dt style="color:var(--muted)">Zielpfad</dt><dd style="margin:0;word-break:break-all">{{if .DestinationPath}}{{.DestinationPath}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+  </dl>
+  {{if .CanWrite}}
+  <form method="POST" action="/export/connections/{{.ConnectionID}}/preview/run" style="margin-top:12px">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-file-export"></i> Jetzt exportieren</button>
+  </form>
+  <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Schreibt die aktuellen Werte aller unten zugeordneten Felder in die Zieldatei.</p>
+  {{end}}
+</div>
+
+{{if .CanWrite}}
+<div class="card" style="overflow-x:auto;margin-bottom:14px">
+  <div class="card-title">Verfügbare Werte (aus allen Import-Verbindungen)</div>
+  {{if .AvailableSources}}
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Infrastruktur</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Bezeichnung</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Letzter Wert</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Empfangen</th>
+        <th style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .AvailableSources}}
+      <tr>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-all">{{if .LastValue}}{{.LastValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);white-space:nowrap">{{if .LastReceivedAt}}{{.LastReceivedAt}}{{else}}<span style="color:var(--muted)">noch kein Wert</span>{{end}}</td>
+        <td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:center">
+          <button type="button" class="btn-icon" style="width:22px;height:22px;min-width:22px" onclick="markSource('{{.ID}}', '{{.InfrastructureName}} · {{.Name}}', '{{.LastValue}}')" title="Für Export markieren"><i class="ti ti-map-pin" style="font-size:12px"></i></button>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine importierten Werte vorhanden - zuerst im Import-Bereich Werte markieren.</div>
+  {{end}}
+</div>
+
+<div class="card" id="mark-panel" style="margin-bottom:14px" hidden>
+  <div class="card-title">Für Export markieren</div>
+  <div class="form-group">
+    <label class="form-label">Quelle</label>
+    <input id="mark-source-label" class="form-input" readonly>
+    <input type="hidden" id="mark-import-mapping-id">
+  </div>
+  <div class="form-group">
+    <label class="form-label">Zielfeldname</label>
+    <input id="mark-field-name" class="form-input" maxlength="150" placeholder="z.B. Temperatur_Halle_1" required>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Zuordnung / Notiz <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+    <textarea id="mark-note" class="form-input" maxlength="500" placeholder="z.B. Spaltenreihenfolge, Format"></textarea>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button type="button" class="btn" id="mark-cancel">Abbrechen</button>
+    <button type="button" class="btn btn-primary" id="mark-submit"><i class="ti ti-map-pin"></i> Zuordnung speichern</button>
+  </div>
+  <p id="mark-error" role="alert" style="font-size:12px;color:var(--red);margin:10px 0 0"></p>
+</div>
+{{end}}
+
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Zuordnungen · {{len .Mappings}}</div>
+  {{if .Mappings}}
+  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Zielfeld</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Quelle</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Zuordnung</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Wert</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Exportiert</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Mappings}}
+      <tr data-mapping-id="{{.ID}}" data-mapping-name="{{.FieldName}}"
+          {{if $.CanWrite}}oncontextmenu="showContextMenu(event, mappingContextItems(this)); return false;"{{end}}>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);word-break:break-all">{{.FieldName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.InfrastructureName}} · {{.SourceName}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Note}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-all">{{if .SourceValue}}{{.SourceValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">{{if .LastExportedAt}}{{.LastExportedAt}}{{else}}<span style="color:var(--muted)">noch nicht exportiert</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine Felder für den Export markiert.</div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function markSource(importMappingId, label, value){
+  const panel = document.getElementById('mark-panel');
+  if(!panel) return;
+  document.getElementById('mark-import-mapping-id').value = importMappingId;
+  document.getElementById('mark-source-label').value = label + (value ? ' (' + value + ')' : '');
+  document.getElementById('mark-field-name').value = '';
+  document.getElementById('mark-note').value = '';
+  document.getElementById('mark-error').textContent = '';
+  panel.hidden = false;
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  const cancelBtn = document.getElementById('mark-cancel');
+  const submitBtn = document.getElementById('mark-submit');
+  if(cancelBtn) cancelBtn.addEventListener('click', function(){
+    document.getElementById('mark-panel').hidden = true;
+  });
+  if(submitBtn) submitBtn.addEventListener('click', async function(){
+    const errorEl = document.getElementById('mark-error');
+    errorEl.textContent = '';
+    const payload = {
+      import_mapping_id: document.getElementById('mark-import-mapping-id').value,
+      field_name: document.getElementById('mark-field-name').value.trim(),
+      note: document.getElementById('mark-note').value.trim()
+    };
+    if(!payload.import_mapping_id){ errorEl.textContent = 'Bitte einen Wert auswählen'; return; }
+    if(payload.field_name.length < 2){ errorEl.textContent = 'Bitte einen Zielfeldnamen eingeben'; return; }
+    submitBtn.disabled = true;
+    try{
+      const response = await fetch('/export/connections/{{.ConnectionID}}/mappings', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(function(){ return {}; });
+      if(!response.ok) throw new Error(result.error || 'Zuordnung konnte nicht gespeichert werden');
+      location.reload();
+    }catch(e){
+      errorEl.textContent = e.message;
+      submitBtn.disabled = false;
+    }
+  });
+});
+
+function mappingContextItems(row){
+  return [
+    {heading: row.dataset.mappingName},
+    {label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){
+      if(!confirm('Zuordnung "' + row.dataset.mappingName + '" wirklich löschen?')) return;
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/export/connections/{{.ConnectionID}}/mappings/' + row.dataset.mappingId + '/delete-web';
+      document.body.appendChild(form);
+      form.submit();
+    }}
+  ];
+}
+</script>
+{{end}}

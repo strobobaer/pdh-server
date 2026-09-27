@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T14:02:27.060Z",
+  "generatedAt": "2026-09-27T15:25:10.454Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -633,6 +633,17 @@
       "sqlHash": "55fb8c5068e30b5c95ce5821c292626141fae596ea3715a85e522cbdf76d439e",
       "title": "059_generalize_import_mappings.up.sql",
       "updatedAt": "2026-09-27T14:02:26.425Z"
+    },
+    {
+      "createdAt": "2026-09-27T15:25:09.832Z",
+      "path": "migrations/060_export_mappings.up.sql",
+      "catalogContext": null,
+      "searchText": "060_export_mappings.up.sql migrations/060_export_mappings.up.sql -- 060_export_mappings.up.sql\n--\n-- export im selben prinzip wie import, nur umgekehrt: statt einen extern\n-- beobachteten wert einer infrastruktur zuzuordnen, wird ein bereits\n-- importierter wert (import_mappings - die \"zuordnungen\" jeder\n-- import-verbindung) fuer eine export-verbindung ausgewaehlt und bekommt\n-- einen freien zielfeldnamen (spaltenname/platzhalter im export) sowie\n-- eine optionale notiz. \"jetzt exportieren\" schreibt die aktuellen werte\n-- aller so markierten felder in die konfigurierte zieldatei.\n\ncreate table if not exists export_mappings (\n    id                uuid primary key default gen_random_uuid(),\n    connection_id     uuid not null references import_export_connections(id) on delete cascade,\n    import_mapping_id uuid not null references import_mappings(id) on delete cascade,\n    field_name        varchar(150) not null,\n    note              varchar(500) not null default '',\n    last_exported_at  timestamptz,\n    created_by        uuid references users(id),\n    created_at        timestamptz not null default now(),\n    updated_at        timestamptz not null default now()\n);\n\ncreate index if not exists idx_export_mappings_connection on export_mappings (connection_id);\n",
+      "searchUpdatedAt": "2026-09-27T15:25:09.934Z",
+      "schemaContext": null,
+      "sqlHash": "fffac965f94ea96f044a661abe00a622d38c795dcc2c77a27b417add0d41bc6d",
+      "title": "060_export_mappings.up.sql",
+      "updatedAt": "2026-09-27T15:25:09.832Z"
     }
   ]
 }

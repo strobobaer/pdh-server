@@ -65,8 +65,8 @@
     </thead>
     <tbody>
       {{range .Connections}}
-      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}}
-          {{if $.CanWrite}}oncontextmenu="showContextMenu(event, connContextItems(this, 'export')); return false;"{{end}}>
+      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}} data-conn-can-write="{{$.CanWrite}}"
+          {{if or $.CanWrite $.CanExecute}}oncontextmenu="showContextMenu(event, connContextItems(this, 'export')); return false;"{{end}}>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.KindLabel}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}</td>
@@ -155,13 +155,22 @@ function deleteConnFromRow(row, direction){
 }
 
 function connContextItems(row, direction){
-  return [
-    {heading: row.dataset.connName},
-    {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }},
-    {label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }},
-    {separator: true},
-    {label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }}
-  ];
+  const canWrite = row.dataset.connCanWrite === 'true';
+  const items = [{heading: row.dataset.connName}];
+  if(canWrite){
+    items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }});
+    items.push({label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }});
+  }
+  if(row.dataset.connKind === 'excel' || row.dataset.connKind === 'pdf'){
+    items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
+      window.location = '/export/connections/' + row.dataset.connId + '/preview';
+    }});
+  }
+  if(canWrite){
+    items.push({separator: true});
+    items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }});
+  }
+  return items;
 }
 
 if(document.getElementById('conn-form')){
