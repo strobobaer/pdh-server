@@ -459,7 +459,12 @@ Einige Migrationen koennen `CREATE TABLE`-Statements ohne `IF NOT EXISTS` enthal
 
 ## Lizenz
 
-Noch keine Lizenzdatei gefunden. Falls das Repository oeffentlich bleibt, sollte eine Lizenzdatei ergaenzt werden.
+SPDX-License-Identifier: GPL-3.0-only
+
+This project is licensed under the GNU General Public License v3.0 only.
+
+The complete license text is available at:
+https://www.gnu.org/licenses/gpl-3.0.txt
 
 ## Added an Ubuntu Docker deployment for PDH:
 

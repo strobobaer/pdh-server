@@ -19,7 +19,12 @@
           <label class="form-label">Anzeigename</label>
           <input name="label" class="form-input" placeholder="z.B. Einkauf" required>
         </div>
+        <div class="form-group">
+          <label class="form-label">Rang (Hierarchie)</label>
+          <input type="number" min="0" name="level" class="form-input" value="{{.NextRoleLevel}}" required>
+        </div>
       </div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Höherer Rang = mehr Befugnis. Eine Rolle kann nur Benutzer und Rollen mit echt niedrigerem Rang verwalten.</p>
       <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Rolle anlegen</button>
     </form>
   </div>
@@ -54,7 +59,8 @@
         {{range .Roles}}
         <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">
           {{.Label}}
-          {{if not .IsBuiltin}}
+          <div style="font-size:10px;font-weight:400;color:var(--muted)" title="Rangstufe in der Hierarchie">Rang {{.Level}}</div>
+          {{if and (not .IsBuiltin) .CanManage}}
           <form method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
             <button type="submit" class="btn-icon" style="width:20px;height:20px;vertical-align:middle" title="Rolle löschen"><i class="ti ti-trash" style="font-size:12px"></i></button>
           </form>
@@ -75,7 +81,7 @@
         {{range $roles}}
         {{$role := .}}
         <td style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border)">
-          <input type="checkbox" {{if index $matrix $role.ID $perm.ID}}checked{{end}}
+          <input type="checkbox" {{if index $matrix $role.ID $perm.ID}}checked{{end}} {{if not $role.CanManage}}disabled title="Rang zu niedrig, um diese Rolle zu bearbeiten"{{end}}
                  onchange="saveMatrixCell(this,'{{$role.ID}}','{{$perm.ID}}')">
         </td>
         {{end}}

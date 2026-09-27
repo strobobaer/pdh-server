@@ -21,22 +21,21 @@ const (
 
 // User - Hauptmodell
 type User struct {
-	ID           string    `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
-	PasswordHash string    `json:"-"`
-	FirstName    string    `json:"first_name"`
-	LastName     string    `json:"last_name"`
-	Role         Role      `json:"role"`
-	Department   string    `json:"department"`
-	Phone        string    `json:"phone"`
-	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
-	Active       bool      `json:"active"`
-	IsSystemUser bool      `json:"is_system_user"`
-	RFIDUID      *string   `json:"rfid_uid,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Username        string    `json:"username"`
+	Email           string    `json:"email"`
+	NextcloudUserID string    `json:"nextcloud_user_id,omitempty"`
+	PasswordHash    string    `json:"-"`
+	FirstName       string    `json:"first_name"`
+	LastName        string    `json:"last_name"`
+	Role            Role      `json:"role"`
+	Department      string    `json:"department"`
+	Phone           string    `json:"phone"`
+	Active          bool      `json:"active"`
+	IsSystemUser    bool      `json:"is_system_user"`
+	RFIDUID         *string   `json:"rfid_uid,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 
 	// Schicht-Qualifikationen (Kennzeichen, sichtbar im Schichtplan)
 	OnCallDuty      bool `json:"on_call_duty"`
@@ -49,24 +48,23 @@ type User struct {
 
 // CreateUserInput - Eingabe für neuen User
 type CreateUserInput struct {
-	Username     string  `json:"username"`
-	Email        string  `json:"email"`
-	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
-	Password     string  `json:"password"`
-	FirstName    string  `json:"first_name"`
-	LastName     string  `json:"last_name"`
-	Role         Role    `json:"role"`
-	Department   string  `json:"department"`
-	Phone        string  `json:"phone"`
-	NextcloudUserID string `json:"nextcloud_user_id,omitempty"`
-	IsSystemUser bool    `json:"is_system_user"`
-	RFIDUID      *string `json:"rfid_uid,omitempty"`
-	OnCallDuty      bool `json:"on_call_duty"`
-	ShiftLocksmith1 bool `json:"shift_locksmith_1"`
-	ShiftLocksmith2 bool `json:"shift_locksmith_2"`
-	Sharpening      bool `json:"sharpening"`
-	HeatingFill     bool `json:"heating_fill"`
-	ShiftLeader     bool `json:"shift_leader"`
+	Username        string  `json:"username"`
+	Email           string  `json:"email"`
+	NextcloudUserID string  `json:"nextcloud_user_id,omitempty"`
+	Password        string  `json:"password"`
+	FirstName       string  `json:"first_name"`
+	LastName        string  `json:"last_name"`
+	Role            Role    `json:"role"`
+	Department      string  `json:"department"`
+	Phone           string  `json:"phone"`
+	IsSystemUser    bool    `json:"is_system_user"`
+	RFIDUID         *string `json:"rfid_uid,omitempty"`
+	OnCallDuty      bool    `json:"on_call_duty"`
+	ShiftLocksmith1 bool    `json:"shift_locksmith_1"`
+	ShiftLocksmith2 bool    `json:"shift_locksmith_2"`
+	Sharpening      bool    `json:"sharpening"`
+	HeatingFill     bool    `json:"heating_fill"`
+	ShiftLeader     bool    `json:"shift_leader"`
 }
 
 // Repository - Datenbankzugriff

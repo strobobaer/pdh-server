@@ -233,23 +233,23 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	db        *pgxpool.Pool
-	tmpl      *template.Template
-	users     *users.Service
-	shifts    *shifts.Service
-	storage   *storage.Service
-	infra     *infrastructure.Service
-	tickets   *tickets.Service
-	faults    *faults.Service
-	maint     *maintenance.Service
-	inv       *inventory.Service
-	it        *it.Service
-	time      *timetracking.Service
-	checks    *checklists.Service
-	tasks     *tasks.Service
-	projects  *projects.Service
-	rbac      *rbac.Service
-	jwtSecret string
+	db               *pgxpool.Pool
+	tmpl             *template.Template
+	users            *users.Service
+	shifts           *shifts.Service
+	storage          *storage.Service
+	infra            *infrastructure.Service
+	tickets          *tickets.Service
+	faults           *faults.Service
+	maint            *maintenance.Service
+	inv              *inventory.Service
+	it               *it.Service
+	time             *timetracking.Service
+	checks           *checklists.Service
+	tasks            *tasks.Service
+	projects         *projects.Service
+	rbac             *rbac.Service
+	jwtSecret        string
 	updateAgentURL   string
 	updateAgentToken string
 	buildCommit      string
@@ -362,10 +362,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/users", h.Users)
-	r.Post("/users/create-web", h.UserCreateWeb)
 	r.Post("/users/save-web", h.UserSaveWeb)
-	r.Post("/users/{id}/update-web", h.UserUpdateWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
-	r.Post("/users/{id}/role-web", h.UserRoleWeb)     // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
 	r.Get("/time", h.TimeTracking)
 
@@ -2807,32 +2805,34 @@ type ITAssetDetailView struct {
 
 type UsersPageData struct {
 	BaseData
-	Users       []UserView
-	TotalUsers  int
-	ActiveUsers int
-	Filter      string
-	RoleStats   []RoleStat
-	Roles       []*rbac.Role
+	Users           []UserView
+	TotalUsers      int
+	ActiveUsers     int
+	Filter          string
+	RoleStats       []RoleStat
+	Roles           []*rbac.Role
+	CanPromoteAdmin bool
 }
 
 type UserView struct {
-	ID           string
-	Username     string
-	Email        string
+	ID              string
+	Username        string
+	Email           string
 	NextcloudUserID string
-	FirstName    string
-	LastName     string
-	FullName     string
-	Initials     string
-	AvatarBg     string
-	RoleValue    string
-	RoleLabel    string
-	RoleClass    string
-	IsSystemUser bool
-	RFIDUID      string
-	Department   string
-	Phone        string
-	Active       bool
+	FirstName       string
+	LastName        string
+	FullName        string
+	Initials        string
+	AvatarBg        string
+	RoleValue       string
+	RoleLabel       string
+	RoleClass       string
+	IsSystemUser    bool
+	RFIDUID         string
+	Department      string
+	Phone           string
+	Active          bool
+	CanManage       bool // ob der angemeldete Benutzer diesen Nutzer laut Rollenhierarchie verwalten darf
 
 	OnCallDuty      bool
 	ShiftLocksmith1 bool
@@ -2859,7 +2859,7 @@ func (h *Handler) roleLabelMap(ctx context.Context) map[string]string {
 	return m
 }
 
-func userView(u *users.User, roleLabels map[string]string) UserView {
+func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels map[string]string) UserView {
 	roleClasses := map[users.Role]string{
 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
 		"worker": "b-gray", "viewer": "b-gray",
@@ -2882,7 +2882,7 @@ func userView(u *users.User, roleLabels map[string]string) UserView {
 	return UserView{
 		ID: u.ID, Username: u.Username, Email: u.Email,
 		NextcloudUserID: u.NextcloudUserID,
-		FirstName: u.FirstName, LastName: u.LastName,
+		FirstName:       u.FirstName, LastName: u.LastName,
 		FullName: u.FirstName + " " + u.LastName,
 		Initials: initials, AvatarBg: bg,
 		RoleValue:    string(u.Role),
@@ -2891,6 +2891,7 @@ func userView(u *users.User, roleLabels map[string]string) UserView {
 		IsSystemUser: u.IsSystemUser,
 		RFIDUID:      derefOr(u.RFIDUID, ""),
 		Department:   u.Department, Phone: u.Phone, Active: u.Active,
+		CanManage:  h.rbac.Outranks(actorRoleKey, string(u.Role)),
 		OnCallDuty: u.OnCallDuty, ShiftLocksmith1: u.ShiftLocksmith1, ShiftLocksmith2: u.ShiftLocksmith2,
 		Sharpening: u.Sharpening, HeatingFill: u.HeatingFill, ShiftLeader: u.ShiftLeader,
 	}
@@ -2903,13 +2904,19 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	filter := r.URL.Query().Get("role")
+	actorRoleKey := string(getUser(r).Role)
 	data := UsersPageData{
-		BaseData: h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
-		Filter:   filter,
+		BaseData:        h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
+		Filter:          filter,
+		CanPromoteAdmin: h.rbac.Outranks(actorRoleKey, "admin"),
 	}
 
 	roles, _ := h.rbac.ListRoles(ctx)
-	data.Roles = roles
+	for _, ro := range roles {
+		if h.rbac.Outranks(actorRoleKey, ro.Key) {
+			data.Roles = append(data.Roles, ro)
+		}
+	}
 	roleLabelByKey := h.roleLabelMap(ctx)
 
 	allUsers, err := h.users.List(ctx)
@@ -2922,7 +2929,7 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 			data.ActiveUsers++
 			roleCounts[string(u.Role)]++
 			if filter == "" || string(u.Role) == filter {
-				data.Users = append(data.Users, userView(u, roleLabelByKey))
+				data.Users = append(data.Users, h.userView(actorRoleKey, u, roleLabelByKey))
 			}
 		}
 		data.TotalUsers = len(allUsers)
@@ -2938,89 +2945,6 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.render(w, "users", data)
-}
-
-func (h *Handler) UserCreateWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageUsers(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
-	r.ParseForm()
-	role := users.Role(strings.TrimSpace(r.FormValue("role")))
-	if role == "" {
-		role = users.RoleWorker
-	}
-	if role != users.RoleWorker && !h.canManageRoles(r) {
-		http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
-		return
-	}
-	in := &users.CreateUserInput{
-		Username:     r.FormValue("username"),
-		Email:        r.FormValue("email"),
-		Password:     r.FormValue("password"),
-		FirstName:    r.FormValue("first_name"),
-		LastName:     r.FormValue("last_name"),
-		Role:         role,
-		Department:   r.FormValue("department"),
-		Phone:        r.FormValue("phone"),
-		IsSystemUser: r.FormValue("is_system_user") == "on",
-		RFIDUID:      optionalID(r.FormValue("rfid_uid")),
-	}
-	u, err := h.users.Register(r.Context(), in)
-	w.Header().Set("Content-Type", "text/html")
-	if err != nil {
-		fmt.Fprintf(w, `<tr><td colspan="6" style="color:var(--red);padding:10px">Fehler: `+esc(err.Error())+`</td></tr>`)
-		return
-	}
-	v := userView(u, h.roleLabelMap(r.Context()))
-	fmt.Fprintf(w, `<tr id="user-row-%s">
-		<td><div style="display:flex;align-items:center;gap:10px">
-			<div style="width:34px;height:34px;border-radius:50%%;background:%s;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff">%s</div>
-			<div><div style="font-weight:500">%s</div><div style="font-size:11px;color:var(--muted)">@%s</div></div></div></td>
-		<td><span class="badge %s">%s</span></td>
-		<td style="font-size:13px;color:var(--muted)">%s</td>
-		<td style="font-size:12px">%s</td>
-		<td><span style="font-size:12px;color:var(--green)">● Aktiv</span></td>
-		<td></td></tr>`,
-		esc(v.ID), esc(v.AvatarBg), esc(v.Initials), esc(v.FullName), esc(v.Username),
-		esc(v.RoleClass), esc(v.RoleLabel), esc(v.Department), esc(v.Email))
-}
-
-func (h *Handler) UserUpdateWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageUsers(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	r.ParseForm()
-	current, err := h.users.GetByID(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
-		return
-	}
-	newRole := users.Role(r.FormValue("role"))
-	if newRole != current.Role && !h.canManageRoles(r) {
-		http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
-		return
-	}
-	u := &users.User{
-		ID:              id,
-		FirstName:       r.FormValue("first_name"),
-		LastName:        r.FormValue("last_name"),
-		Role:            users.Role(r.FormValue("role")),
-		Department:      r.FormValue("department"),
-		Phone:           r.FormValue("phone"),
-		IsSystemUser:    r.FormValue("is_system_user") == "on",
-		RFIDUID:         optionalID(r.FormValue("rfid_uid")),
-		OnCallDuty:      r.FormValue("on_call_duty") == "on",
-		ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on",
-		ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
-		Sharpening:      r.FormValue("sharpening") == "on",
-		HeatingFill:     r.FormValue("heating_fill") == "on",
-		ShiftLeader:     r.FormValue("shift_leader") == "on",
-	}
-	h.users.Update(r.Context(), u)
-	h.Users(w, r)
 }
 
 func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
@@ -3047,10 +2971,13 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bitte eine Rolle auswählen", http.StatusBadRequest)
 		return
 	}
+	// Hierarchie: eine Rolle darf nur Benutzer und Rollen mit echt
+	// niedrigerem Rang verwalten (Ausnahme: die ranghoechste Rolle darf
+	// auch Gleichrangige verwalten) - siehe rbac.Service.Outranks.
 	var currentUser *users.User
 	if userID == "" {
-		if role != users.RoleWorker && !h.canManageRoles(r) {
-			http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+		if !h.outranksRole(r, string(role)) {
+			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
 			return
 		}
 	} else {
@@ -3060,8 +2987,12 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
 			return
 		}
-		if role != currentUser.Role && !h.canManageRoles(r) {
-			http.Error(w, "keine berechtigung zum ändern von rollen", http.StatusForbidden)
+		if userID != getUser(r).ID && !h.outranksRole(r, string(currentUser.Role)) {
+			http.Error(w, "keine berechtigung, diesen Benutzer zu bearbeiten", http.StatusForbidden)
+			return
+		}
+		if role != currentUser.Role && !h.outranksRole(r, string(role)) {
+			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
 			return
 		}
 	}
@@ -3077,6 +3008,8 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		u.IsSystemUser = r.FormValue("is_system_user") == "on"
 		u.RFIDUID = optionalID(r.FormValue("rfid_uid"))
 		u.OnCallDuty = r.FormValue("on_call_duty") == "on"
+		u.ShiftLocksmith1 = r.FormValue("shift_locksmith_1") == "on"
+		u.ShiftLocksmith2 = r.FormValue("shift_locksmith_2") == "on"
 		u.Sharpening = r.FormValue("sharpening") == "on"
 		u.HeatingFill = r.FormValue("heating_fill") == "on"
 		u.ShiftLeader = r.FormValue("shift_leader") == "on"
@@ -3089,12 +3022,13 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		in := &users.CreateUserInput{
 			Username: username, Email: email, Password: password,
 			NextcloudUserID: strings.TrimSpace(r.FormValue("nextcloud_user_id")),
-			FirstName: firstName, LastName: lastName, Role: role,
-			Department: strings.TrimSpace(r.FormValue("department")),
-			Phone: strings.TrimSpace(r.FormValue("phone")),
+			FirstName:       firstName, LastName: lastName, Role: role,
+			Department:   strings.TrimSpace(r.FormValue("department")),
+			Phone:        strings.TrimSpace(r.FormValue("phone")),
 			IsSystemUser: r.FormValue("is_system_user") == "on", RFIDUID: optionalID(r.FormValue("rfid_uid")),
 			OnCallDuty: r.FormValue("on_call_duty") == "on", Sharpening: r.FormValue("sharpening") == "on",
 			HeatingFill: r.FormValue("heating_fill") == "on", ShiftLeader: r.FormValue("shift_leader") == "on",
+			ShiftLocksmith1: r.FormValue("shift_locksmith_1") == "on", ShiftLocksmith2: r.FormValue("shift_locksmith_2") == "on",
 		}
 		if _, err := h.users.Register(r.Context(), in); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -3116,6 +3050,15 @@ func (h *Handler) UserDeactivateWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
+	target, err := h.users.GetByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Benutzer nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.outranksRole(r, string(target.Role)) {
+		http.Error(w, "keine berechtigung, diesen Benutzer zu deaktivieren", http.StatusForbidden)
+		return
+	}
 	h.users.Deactivate(r.Context(), id)
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<tr id="user-row-%s" style="opacity:.5">
@@ -3135,7 +3078,12 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nicht gefunden", 404)
 		return
 	}
-	u.Role = users.Role(r.FormValue("role"))
+	newRole := users.Role(r.FormValue("role"))
+	if !h.outranksRole(r, string(u.Role)) || !h.outranksRole(r, string(newRole)) {
+		http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
+		return
+	}
+	u.Role = newRole
 	h.users.Update(r.Context(), u)
 	h.Users(w, r)
 }
@@ -3144,11 +3092,20 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
 
 type RolesPageData struct {
 	BaseData
-	Roles                  []*rbac.Role
+	Roles                  []RoleColumn
 	PermissionGroups       []PermissionGroup
 	Matrix                 map[string]map[string]bool // roleID -> permissionID -> granted
 	IdleTimeoutMinutes     int
 	OverrideTimeoutMinutes int
+	NextRoleLevel          int
+}
+
+// RoleColumn ist eine Rollen-Spalte der Berechtigungs-Matrix, angereichert
+// um CanManage - ob der angemeldete Benutzer diese Rolle laut Hierarchie
+// loeschen bzw. ihre Berechtigungen bearbeiten darf.
+type RoleColumn struct {
+	*rbac.Role
+	CanManage bool
 }
 
 type PermissionGroup struct {
@@ -3162,6 +3119,15 @@ func (h *Handler) canManageRoles(r *http.Request) bool {
 
 func (h *Handler) canManageUsers(r *http.Request) bool {
 	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_users")
+}
+
+// outranksRole prueft, ob der angemeldete Benutzer die uebergebene Rolle
+// in der Hierarchie verwalten darf (siehe rbac.Service.Outranks) - die
+// zusaetzliche Schranke zu canManageUsers/canManageRoles, damit z.B. ein
+// Manager mit "Benutzer verwalten" keine Admins bearbeiten oder befoerdern
+// kann.
+func (h *Handler) outranksRole(r *http.Request, roleKey string) bool {
+	return h.rbac.Outranks(string(getUser(r).Role), roleKey)
 }
 
 func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
@@ -3185,13 +3151,24 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 		last.Permissions = append(last.Permissions, p)
 	}
 
+	actorRoleKey := string(getUser(r).Role)
+	roleColumns := make([]RoleColumn, 0, len(roles))
+	for _, ro := range roles {
+		roleColumns = append(roleColumns, RoleColumn{Role: ro, CanManage: h.rbac.Outranks(actorRoleKey, ro.Key)})
+	}
+	nextRoleLevel := h.rbac.RoleLevel(actorRoleKey) - 1
+	if nextRoleLevel < 0 {
+		nextRoleLevel = 0
+	}
+
 	data := RolesPageData{
 		BaseData:               h.baseData(r, "roles", "Rollen & Berechtigungen", "Auto-Logout"),
-		Roles:                  roles,
+		Roles:                  roleColumns,
 		PermissionGroups:       groups,
 		Matrix:                 matrix,
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
+		NextRoleLevel:          nextRoleLevel,
 	}
 	h.render(w, "roles", data)
 }
@@ -3204,8 +3181,27 @@ func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	key := strings.TrimSpace(r.FormValue("key"))
 	label := strings.TrimSpace(r.FormValue("label"))
+	level, err := strconv.Atoi(strings.TrimSpace(r.FormValue("level")))
+	if err != nil {
+		level = 0
+	}
+	// Hierarchie: eine neue Rolle darf nicht ranghoeher oder gleichrangig
+	// zur anlegenden Rolle sein - ausser die anlegende Rolle ist selbst
+	// die ranghoechste im System.
+	actorRoleKey := string(getUser(r).Role)
+	actorLevel := h.rbac.RoleLevel(actorRoleKey)
+	maxLevel := h.rbac.MaxRoleLevel()
+	if level > actorLevel {
+		level = actorLevel // niemand darf eine Rolle ueber der eigenen Rangstufe anlegen
+	}
+	if actorLevel < maxLevel && level >= actorLevel {
+		level = actorLevel - 1 // unterhalb der ranghoechsten Rolle: nur echt niedrigerer Rang erlaubt
+	}
+	if level < 0 {
+		level = 0
+	}
 	if key != "" && label != "" {
-		h.rbac.CreateRole(r.Context(), key, label)
+		h.rbac.CreateRole(r.Context(), key, label, level)
 	}
 	http.Redirect(w, r, "/admin/roles", http.StatusFound)
 }
@@ -3215,7 +3211,17 @@ func (h *Handler) RoleDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	h.rbac.DeleteRole(r.Context(), chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	role, err := h.rbac.GetRoleByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Rolle nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.outranksRole(r, role.Key) {
+		http.Error(w, "keine berechtigung, diese Rolle zu löschen", http.StatusForbidden)
+		return
+	}
+	h.rbac.DeleteRole(r.Context(), id)
 	http.Redirect(w, r, "/admin/roles", http.StatusFound)
 }
 
@@ -3230,6 +3236,15 @@ func (h *Handler) RoleMatrixWeb(w http.ResponseWriter, r *http.Request) {
 	roleID := r.FormValue("role_id")
 	permID := r.FormValue("permission_id")
 	granted := r.FormValue("granted") == "true"
+	role, err := h.rbac.GetRoleByID(r.Context(), roleID)
+	if err != nil {
+		http.Error(w, "Rolle nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.outranksRole(r, role.Key) {
+		http.Error(w, "keine berechtigung, diese Rolle zu bearbeiten", http.StatusForbidden)
+		return
+	}
 	if err := h.rbac.SetRolePermission(r.Context(), roleID, permID, granted); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

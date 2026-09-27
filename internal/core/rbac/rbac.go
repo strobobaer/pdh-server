@@ -15,11 +15,16 @@ import (
 
 // ── Typen ────────────────────────────────────────────────────
 
+// Level bildet die Hierarchie der Rollen ab: je hoeher die Zahl, desto
+// ranghoeher die Rolle. Eine Rolle darf nur Benutzer und Rollen mit
+// echt niedrigerem Level verwalten - die ranghoechste Rolle im System
+// ist davon ausgenommen und darf auch gleichrangige Rollen verwalten.
 type Role struct {
 	ID        string    `json:"id"`
 	Key       string    `json:"key"`
 	Label     string    `json:"label"`
 	IsBuiltin bool      `json:"is_builtin"`
+	Level     int       `json:"level"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -37,7 +42,7 @@ type Repository struct{ db *pgxpool.Pool }
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 func (r *Repository) ListRoles(ctx context.Context) ([]*Role, error) {
-	rows, err := r.db.Query(ctx, `SELECT id, key, label, is_builtin, created_at FROM roles ORDER BY is_builtin DESC, label`)
+	rows, err := r.db.Query(ctx, `SELECT id, key, label, is_builtin, level, created_at FROM roles ORDER BY level DESC, label`)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +50,7 @@ func (r *Repository) ListRoles(ctx context.Context) ([]*Role, error) {
 	var list []*Role
 	for rows.Next() {
 		role := &Role{}
-		if err := rows.Scan(&role.ID, &role.Key, &role.Label, &role.IsBuiltin, &role.CreatedAt); err != nil {
+		if err := rows.Scan(&role.ID, &role.Key, &role.Label, &role.IsBuiltin, &role.Level, &role.CreatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, role)
@@ -53,11 +58,21 @@ func (r *Repository) ListRoles(ctx context.Context) ([]*Role, error) {
 	return list, nil
 }
 
-func (r *Repository) CreateRole(ctx context.Context, key, label string) (*Role, error) {
-	role := &Role{Key: key, Label: label}
+func (r *Repository) GetRoleByID(ctx context.Context, id string) (*Role, error) {
+	role := &Role{}
+	err := r.db.QueryRow(ctx, `SELECT id, key, label, is_builtin, level, created_at FROM roles WHERE id=$1`, id).
+		Scan(&role.ID, &role.Key, &role.Label, &role.IsBuiltin, &role.Level, &role.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return role, nil
+}
+
+func (r *Repository) CreateRole(ctx context.Context, key, label string, level int) (*Role, error) {
+	role := &Role{Key: key, Label: label, Level: level}
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO roles (key, label, is_builtin) VALUES ($1, $2, false) RETURNING id, created_at`,
-		key, label).Scan(&role.ID, &role.CreatedAt)
+		`INSERT INTO roles (key, label, is_builtin, level) VALUES ($1, $2, false, $3) RETURNING id, created_at`,
+		key, label, level).Scan(&role.ID, &role.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +171,26 @@ func (r *Repository) RolePermissionKeysByRoleKey(ctx context.Context) (map[strin
 	return out, nil
 }
 
+// RoleLevelsByKey liefert die Rangstufe je Rollen-Key - Grundlage fuer
+// den in-memory Hierarchie-Cache.
+func (r *Repository) RoleLevelsByKey(ctx context.Context) (map[string]int, error) {
+	rows, err := r.db.Query(ctx, `SELECT key, level FROM roles`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var key string
+		var level int
+		if err := rows.Scan(&key, &level); err != nil {
+			return nil, err
+		}
+		out[key] = level
+	}
+	return out, nil
+}
+
 func (r *Repository) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := r.db.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&value)
@@ -176,12 +211,14 @@ type Service struct {
 
 	mu               sync.RWMutex
 	permCache        map[string]map[string]bool // roleKey -> Set(permissionKey)
+	roleLevels       map[string]int             // roleKey -> Rangstufe
+	maxRoleLevel     int
 	idleTimeoutMin   int
 	overrideTimeoutM int
 }
 
 func NewService(repo *Repository) *Service {
-	s := &Service{repo: repo, permCache: map[string]map[string]bool{}, idleTimeoutMin: 30, overrideTimeoutM: 10}
+	s := &Service{repo: repo, permCache: map[string]map[string]bool{}, roleLevels: map[string]int{}, idleTimeoutMin: 30, overrideTimeoutM: 10}
 	return s
 }
 
@@ -195,6 +232,16 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 	m, err := s.repo.RolePermissionKeysByRoleKey(ctx)
 	if err != nil {
 		return err
+	}
+	levels, err := s.repo.RoleLevelsByKey(ctx)
+	if err != nil {
+		return err
+	}
+	maxLevel := 0
+	for _, level := range levels {
+		if level > maxLevel {
+			maxLevel = level
+		}
 	}
 	idleStr, err := s.repo.GetSetting(ctx, "idle_timeout_minutes")
 	idleMin := 30
@@ -213,6 +260,8 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 
 	s.mu.Lock()
 	s.permCache = m
+	s.roleLevels = levels
+	s.maxRoleLevel = maxLevel
 	s.idleTimeoutMin = idleMin
 	s.overrideTimeoutM = overrideMin
 	s.mu.Unlock()
@@ -232,6 +281,35 @@ func (s *Service) HasPermission(roleKey, permissionKey string) bool {
 	return perms[permissionKey]
 }
 
+// RoleLevel liefert die Rangstufe einer Rolle (per key). Unbekannte
+// Rollen gelten als Rang 0 (niedrigste Stufe).
+func (s *Service) RoleLevel(roleKey string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.roleLevels[roleKey]
+}
+
+// Outranks prueft, ob actorRoleKey targetRoleKey in der Hierarchie
+// verwalten darf: echt hoeherer Rang, oder actorRoleKey ist die
+// ranghoechste Rolle im System (die darf auch Gleichrangige verwalten).
+func (s *Service) Outranks(actorRoleKey, targetRoleKey string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	actorLevel := s.roleLevels[actorRoleKey]
+	if actorLevel > 0 && actorLevel >= s.maxRoleLevel {
+		return true
+	}
+	return actorLevel > s.roleLevels[targetRoleKey]
+}
+
+// MaxRoleLevel liefert die hoechste aktuell vergebene Rangstufe -
+// Grundlage, um zu erkennen, ob eine Rolle ranghoechst ist.
+func (s *Service) MaxRoleLevel() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.maxRoleLevel
+}
+
 func (s *Service) IdleTimeoutMinutes() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -245,6 +323,9 @@ func (s *Service) OverrideTimeoutMinutes() int {
 }
 
 func (s *Service) ListRoles(ctx context.Context) ([]*Role, error) { return s.repo.ListRoles(ctx) }
+func (s *Service) GetRoleByID(ctx context.Context, id string) (*Role, error) {
+	return s.repo.GetRoleByID(ctx, id)
+}
 func (s *Service) ListPermissions(ctx context.Context) ([]*Permission, error) {
 	return s.repo.ListPermissions(ctx)
 }
@@ -270,8 +351,8 @@ func (s *Service) RequirePermission(permissionKey string) func(http.Handler) htt
 	}
 }
 
-func (s *Service) CreateRole(ctx context.Context, key, label string) (*Role, error) {
-	role, err := s.repo.CreateRole(ctx, key, label)
+func (s *Service) CreateRole(ctx context.Context, key, label string, level int) (*Role, error) {
+	role, err := s.repo.CreateRole(ctx, key, label, level)
 	if err != nil {
 		return nil, err
 	}
