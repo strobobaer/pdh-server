@@ -86,12 +86,24 @@ func (rb *runningBroker) publish(event ActivityEvent) {
 // Manager haelt alle aktuell laufenden integrierten Broker, je einen pro
 // import_export_connections-Zeile (ID als Schluessel).
 type Manager struct {
-	mu      sync.Mutex
-	brokers map[string]*runningBroker
+	mu         sync.Mutex
+	brokers    map[string]*runningBroker
+	lastErrors map[string]string
 }
 
 func NewManager() *Manager {
-	return &Manager{brokers: map[string]*runningBroker{}}
+	return &Manager{brokers: map[string]*runningBroker{}, lastErrors: map[string]string{}}
+}
+
+// LastError liefert die Fehlermeldung des letzten fehlgeschlagenen
+// Start-Versuchs fuer eine Verbindungs-ID (leer, falls keiner
+// fehlgeschlagen ist oder der Broker aktuell laeuft) - fuer die
+// Diagnose auf der Broker-Status-Seite, wenn "aktiviert" aber nicht
+// "laeuft" auseinanderfallen (z.B. Port bereits belegt).
+func (m *Manager) LastError(id string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastErrors[id]
 }
 
 func (m *Manager) IsRunning(id string) bool {
@@ -103,8 +115,21 @@ func (m *Manager) IsRunning(id string) bool {
 
 // Start startet einen Broker fuer die angegebene Verbindungs-ID. Laeuft
 // bereits einer, ist der Aufruf ein No-Op (idempotent, damit z.B.
-// wiederholtes "Aktivieren" nichts kaputt macht).
+// wiederholtes "Aktivieren" nichts kaputt macht). Das Ergebnis (Erfolg
+// oder Fehlertext) wird zusaetzlich unter der ID gemerkt, siehe LastError.
 func (m *Manager) Start(id string, cfg Config) error {
+	err := m.start(id, cfg)
+	m.mu.Lock()
+	if err != nil {
+		m.lastErrors[id] = err.Error()
+	} else {
+		delete(m.lastErrors, id)
+	}
+	m.mu.Unlock()
+	return err
+}
+
+func (m *Manager) start(id string, cfg Config) error {
 	m.mu.Lock()
 	if _, exists := m.brokers[id]; exists {
 		m.mu.Unlock()

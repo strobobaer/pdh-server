@@ -1,4 +1,5 @@
 {{template "base" .}}
+{{define "copy-btn"}}<button type="button" class="btn-icon" style="width:22px;height:22px;min-width:22px;vertical-align:middle" onclick="copyValue('{{.}}')" title="Kopieren"><i class="ti ti-copy" style="font-size:12px"></i></button>{{end}}
 {{define "content"}}
 <div style="margin-bottom:18px">
   <h1 style="font-size:19px;font-weight:600">Broker-Status · {{.ConnectionName}}</h1>
@@ -16,20 +17,20 @@
   <div class="card-title">Client-Einstellungen</div>
   <p style="font-size:11px;color:var(--muted);margin:0 0 10px">Diese Werte in einem MQTT-Client/Gerät eintragen, um sich mit diesem Broker zu verbinden.</p>
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
-    <dt style="color:var(--muted)">Host</dt><dd style="margin:0"><code id="cs-host">{{.SuggestedHost}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-host')" title="Kopieren"><i class="ti ti-copy"></i></button> <span style="font-size:11px;color:var(--muted)">(Adresse, unter der dieser PDH-Server erreichbar ist - bei eigener Portweiterleitung ggf. abweichend)</span></dd>
-    <dt style="color:var(--muted)">Port (TCP)</dt><dd style="margin:0"><code id="cs-port">{{.ListenPort}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-port')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>
-    {{if .WebsocketPort}}<dt style="color:var(--muted)">Port (WebSocket)</dt><dd style="margin:0"><code id="cs-ws-port">{{.WebsocketPort}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-ws-port')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>{{end}}
+    <dt style="color:var(--muted)">Host</dt><dd style="margin:0"><code id="cs-host">{{.SuggestedHost}}</code> {{template "copy-btn" "cs-host"}} <span style="font-size:11px;color:var(--muted)">(Adresse, unter der dieser PDH-Server erreichbar ist - bei eigener Portweiterleitung ggf. abweichend)</span></dd>
+    <dt style="color:var(--muted)">Port (TCP)</dt><dd style="margin:0"><code id="cs-port">{{.ListenPort}}</code> {{template "copy-btn" "cs-port"}}</dd>
+    {{if .WebsocketPort}}<dt style="color:var(--muted)">Port (WebSocket)</dt><dd style="margin:0"><code id="cs-ws-port">{{.WebsocketPort}}</code> {{template "copy-btn" "cs-ws-port"}}</dd>{{end}}
     <dt style="color:var(--muted)">Verschlüsselung</dt><dd style="margin:0">{{if .TLSEnabled}}TLS aktiv (mqtts/wss){{else}}Keine (mqtt/ws){{end}}</dd>
     <dt style="color:var(--muted)">Anmeldung</dt>
     {{if .AllowAnonymous}}
     <dd style="margin:0">Anonym erlaubt - kein Benutzername/Passwort nötig</dd>
     {{else}}
     <dd style="margin:0">
-      Benutzername <code id="cs-user">{{.BrokerUsername}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-user')" title="Kopieren"><i class="ti ti-copy"></i></button>
-      · Passwort <code id="cs-pass">{{.BrokerPassword}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-pass')" title="Kopieren"><i class="ti ti-copy"></i></button>
+      Benutzername <code id="cs-user">{{.BrokerUsername}}</code> {{template "copy-btn" "cs-user"}}
+      · Passwort <code id="cs-pass">{{.BrokerPassword}}</code> {{template "copy-btn" "cs-pass"}}
     </dd>
     {{end}}
-    {{if .TopicFilter}}<dt style="color:var(--muted)">Empfohlenes Topic</dt><dd style="margin:0"><code id="cs-topic">{{.TopicFilter}}</code> <button type="button" class="btn-icon" onclick="copyValue('cs-topic')" title="Kopieren"><i class="ti ti-copy"></i></button></dd>{{end}}
+    {{if .TopicFilter}}<dt style="color:var(--muted)">Empfohlenes Topic</dt><dd style="margin:0"><code id="cs-topic">{{.TopicFilter}}</code> {{template "copy-btn" "cs-topic"}}</dd>{{end}}
     <dt style="color:var(--muted)">QoS</dt><dd style="margin:0">{{if .QoS}}{{.QoS}}{{else}}0{{end}}</dd>
     <dt style="color:var(--muted)">Retained Messages</dt><dd style="margin:0">{{if .RetainEnabled}}erlaubt{{else}}nicht erlaubt{{end}}</dd>
   </dl>
@@ -41,8 +42,9 @@
   Diese Verbindung ist deaktiviert, der integrierte Broker läuft daher nicht. Über den Import-Bereich (Rechtsklick → Aktivieren/Deaktivieren) aktivieren.
 </div>
 {{else if not .Running}}
-<div class="card" role="status">
-  Der Broker sollte laufen, ist aber aktuell nicht aktiv - vermutlich ist der Start fehlgeschlagen (z.B. Port bereits belegt). Verbindung bearbeiten und erneut speichern, um einen Neustart auszulösen.
+<div class="card" role="alert">
+  Der Broker sollte laufen, ist aber aktuell nicht aktiv. Verbindung bearbeiten und erneut speichern, um einen Neustart auszulösen.
+  {{if .StartError}}<p style="margin:8px 0 0;font-size:12px;color:var(--red);font-family:monospace">{{.StartError}}</p>{{else}}<p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Keine Fehlermeldung hinterlegt - PDH wurde vermutlich seit dem letzten Aktivieren neu gestartet und der Broker noch nicht erneut versucht.</p>{{end}}
 </div>
 {{else}}
 <div class="card" style="margin-bottom:14px">

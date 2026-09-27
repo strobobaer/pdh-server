@@ -124,6 +124,7 @@ type MqttBrokerPageData struct {
 	Applicable       bool
 	Enabled          bool
 	Running          bool
+	StartError       string
 	ListenAddr       string
 	WebsocketAddr    string
 	StartedAt        string
@@ -207,6 +208,8 @@ func (h *Handler) MqttBrokerPage(w http.ResponseWriter, r *http.Request) {
 			data.BytesReceived = status.BytesReceived
 			data.BytesSent = status.BytesSent
 			data.Subscriptions = status.Subscriptions
+		} else {
+			data.StartError = h.mqttBrokers.LastError(id)
 		}
 		if recentJSON, err := json.Marshal(h.mqttBrokers.Recent(id)); err == nil {
 			data.RecentJSON = string(recentJSON)
