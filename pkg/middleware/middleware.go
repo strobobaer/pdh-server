@@ -29,6 +29,18 @@ func (rec *statusRecorder) WriteHeader(status int) {
 	rec.ResponseWriter.WriteHeader(status)
 }
 
+// Flush reicht an http.Flusher des eingebetteten ResponseWriter durch -
+// eingebettete Interfaces geben nur ihre eigenen Methoden (Write,
+// WriteHeader, Header) weiter, nicht zusaetzliche Fähigkeiten wie Flush,
+// die der zugrunde liegende Writer eigentlich hat. Ohne das schlagen alle
+// Server-Sent-Events-Endpunkte (Type-Assertion auf http.Flusher) hinter
+// diesem Middleware fehl, obwohl der echte ResponseWriter Flush kann.
+func (rec *statusRecorder) Flush() {
+	if flusher, ok := rec.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // Logger - loggt jeden Request
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
