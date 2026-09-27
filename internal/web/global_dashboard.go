@@ -13,16 +13,16 @@ import (
 )
 
 type GlobalBoardItem struct {
-	ID          string `json:"id"`
-	TypeKey     string `json:"type_key"`
-	Type        string `json:"type"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	LastAction  string `json:"last_action"`
-	Priority    string `json:"priority"`
-	DueDate     string `json:"due_date"`
-	Assignee    string `json:"assignee"`
-	DetailURL   string `json:"detail_url"`
+	ID         string `json:"id"`
+	TypeKey    string `json:"type_key"`
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	Status     string `json:"status"`
+	LastAction string `json:"last_action"`
+	Priority   string `json:"priority"`
+	DueDate    string `json:"due_date"`
+	Assignee   string `json:"assignee"`
+	DetailURL  string `json:"detail_url"`
 }
 
 type GlobalDashboardData struct {
@@ -38,6 +38,14 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	return r
 }
 
+// GlobalDashboardPageData steuert, ob der Leitstand einen Weg zurueck in
+// den normalen PDH-Modus zeigt: die Seite liegt bewusst ausserhalb von
+// authMiddleware (oeffentliches Wandmonitor-Board), daher muss sie selbst
+// pruefen, ob bereits eine gueltige Sitzung besteht.
+type GlobalDashboardPageData struct {
+	LoggedIn bool
+}
+
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	tmpl, err := template.ParseFiles("web/templates/global_dashboard.gohtml")
@@ -46,7 +54,8 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", nil); err != nil {
+	data := GlobalDashboardPageData{LoggedIn: h.sessionUserID(r) != ""}
+	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
 	}
 }

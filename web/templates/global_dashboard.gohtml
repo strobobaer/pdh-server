@@ -50,7 +50,11 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
   <div class="brand"><div class="brand-mark">P</div><div><h1>PDH · Leitstand</h1><div class="subtitle">Störungen · Tickets · Wartungen · Aufgaben</div></div></div>
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
+    {{if .LoggedIn}}
+    <a class="header-button" href="/" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
+    {{else}}
     <a class="header-button" href="/login" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
+    {{end}}
   </div>
 </header>
 <main>

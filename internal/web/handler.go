@@ -1504,33 +1504,39 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/global/", http.StatusFound)
 }
 
+// sessionUserID liest die pdh_token-Cookie und validiert das JWT, ohne wie
+// authMiddleware bei fehlender/ungueltiger Anmeldung umzuleiten - fuer
+// Stellen (z.B. die oeffentliche Leitstand-Seite), die nur wissen muessen,
+// ob bereits eine gueltige Sitzung besteht.
+func (h *Handler) sessionUserID(r *http.Request) string {
+	cookie, err := r.Cookie("pdh_token")
+	if err != nil || cookie.Value == "" {
+		return ""
+	}
+	token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unerwartete signaturmethode")
+		}
+		return []byte(h.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return ""
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return ""
+	}
+	userID, _ := claims["sub"].(string)
+	return userID
+}
+
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/login" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		cookie, err := r.Cookie("pdh_token")
-		tokenStr := ""
-		if err == nil {
-			tokenStr = cookie.Value
-		}
-
-		userID := ""
-		if tokenStr != "" {
-			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-				if t.Method != jwt.SigningMethodHS256 {
-					return nil, fmt.Errorf("unerwartete signaturmethode")
-				}
-				return []byte(h.jwtSecret), nil
-			})
-			if err == nil && token.Valid {
-				if claims, ok := token.Claims.(jwt.MapClaims); ok {
-					userID, _ = claims["sub"].(string)
-				}
-			}
-		}
-
+		userID := h.sessionUserID(r)
 		if userID == "" {
 			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
