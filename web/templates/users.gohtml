@@ -93,7 +93,7 @@
     </thead>
     <tbody id="user-tbody">
     {{range .Users}}
-    <tr id="user-row-{{.ID}}">
+    <tr id="user-row-{{.ID}}" data-active="{{.Active}}" data-can-manage="{{.CanManage}}" {{if .CanEditProfile}}oncontextmenu="showContextMenu(event, userRowContextItems(this)); return false;"{{end}}>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
@@ -181,6 +181,40 @@ document.addEventListener('click',e=>{
   if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id^="umenu-"]'))
     document.querySelectorAll('[id^="umenu-"]').forEach(m=>m.style.display='none');
 });
+
+const PDH_CAN_PROMOTE_ADMIN = {{if .CanPromoteAdmin}}true{{else}}false{{end}};
+const PDH_CAN_MANAGE_ROLES = {{if .CanManageRoles}}true{{else}}false{{end}};
+
+function userRowContextItems(row){
+  const trigger = row.querySelector('[data-id]');
+  if(!trigger) return [];
+  const data = trigger.dataset;
+  const active = row.dataset.active === 'true';
+  const canManage = row.dataset.canManage === 'true';
+  const fullName = ((data.firstName || '') + ' ' + (data.lastName || '')).trim();
+  const items = [
+    {heading: fullName},
+    {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editUser(trigger); }}
+  ];
+  if(PDH_CAN_PROMOTE_ADMIN && canManage){
+    items.push({label: 'Admin machen', icon: 'ti-crown', onClick: async function(){
+      const response = await fetch('/users/' + data.id + '/role-web', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'role=admin'});
+      if(response.ok) location.reload();
+    }});
+  }
+  if(PDH_CAN_MANAGE_ROLES){
+    items.push({label: 'Einzelrechte', icon: 'ti-shield-lock', onClick: function(){ openPermissionsModal(data.id, fullName); }});
+  }
+  if(active && canManage){
+    items.push({separator: true});
+    items.push({label: 'Deaktivieren', icon: 'ti-user-off', danger: true, onClick: async function(){
+      if(!confirm('Benutzer deaktivieren?')) return;
+      const response = await fetch('/users/' + data.id + '/deactivate-web', {method:'DELETE', credentials:'same-origin'});
+      if(response.ok) location.reload();
+    }});
+  }
+  return items;
+}
 
 const userForm = document.getElementById('user-form');
 const userModal = document.getElementById('user-modal');

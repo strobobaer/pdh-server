@@ -57,11 +57,20 @@
       <tr>
         <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Berechtigung</th>
         {{range .Roles}}
-        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">
+        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap"
+            {{if .CanManage}}oncontextmenu="showContextMenu(event, roleColumnContextItems('{{.ID}}','{{.Label}}',{{.IsBuiltin}})); return false;"{{end}}>
           {{.Label}}
-          <div style="font-size:10px;font-weight:400;color:var(--muted)" title="Rangstufe in der Hierarchie">Rang {{.Level}}</div>
+          <div style="font-size:10px;font-weight:400;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:3px" title="Rangstufe in der Hierarchie">
+            Rang
+            {{if .CanManage}}
+            <input type="number" min="0" value="{{.Level}}" id="role-level-{{.ID}}" style="width:42px;font-size:10px;padding:1px 3px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);text-align:center"
+                   onchange="saveRoleLevel(this,'{{.ID}}')">
+            {{else}}
+            {{.Level}}
+            {{end}}
+          </div>
           {{if and (not .IsBuiltin) .CanManage}}
-          <form method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
+          <form id="role-delete-form-{{.ID}}" method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
             <button type="submit" class="btn-icon" style="width:20px;height:20px;vertical-align:middle" title="Rolle löschen"><i class="ti ti-trash" style="font-size:12px"></i></button>
           </form>
           {{end}}
@@ -95,6 +104,42 @@
 
 {{define "scripts"}}
 <script>
+function roleColumnContextItems(roleId, roleLabel, isBuiltin){
+  const items = [
+    {heading: roleLabel},
+    {label: 'Rang ändern', icon: 'ti-arrows-sort', onClick: function(){
+      const input = document.getElementById('role-level-' + roleId);
+      if(input){ input.focus(); input.select(); }
+    }}
+  ];
+  if(!isBuiltin){
+    items.push({separator: true});
+    items.push({label: 'Rolle löschen', icon: 'ti-trash', danger: true, onClick: function(){
+      const form = document.getElementById('role-delete-form-' + roleId);
+      if(form) form.requestSubmit();
+    }});
+  }
+  return items;
+}
+
+async function saveRoleLevel(input, roleId){
+  const previous = input.defaultValue;
+  input.disabled = true;
+  try{
+    const res = await fetch('/admin/roles/' + roleId + '/level-web', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'level=' + encodeURIComponent(input.value)
+    });
+    if(!res.ok) throw new Error((await res.text()) || ('HTTP ' + res.status));
+    location.reload();
+  }catch(e){
+    alert('Rang konnte nicht gespeichert werden: ' + e.message);
+    input.value = previous;
+    input.disabled = false;
+  }
+}
+
 async function saveMatrixCell(checkbox, roleId, permId){
   checkbox.disabled = true;
   try{

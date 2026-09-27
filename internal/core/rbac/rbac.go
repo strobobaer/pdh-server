@@ -79,6 +79,14 @@ func (r *Repository) CreateRole(ctx context.Context, key, label string, level in
 	return role, nil
 }
 
+// UpdateRoleLevel aendert die Rangstufe einer bestehenden Rolle (auch
+// eingebaute Rollen - nur das Loeschen ist auf benutzerdefinierte Rollen
+// beschraenkt).
+func (r *Repository) UpdateRoleLevel(ctx context.Context, id string, level int) error {
+	_, err := r.db.Exec(ctx, `UPDATE roles SET level=$1 WHERE id=$2`, level, id)
+	return err
+}
+
 // DeleteRole loescht nur benutzerdefinierte Rollen. Eingebaute Rollen
 // (admin/manager/technician/worker/viewer) koennen nicht geloescht werden,
 // weil zahlreiche RequireRole()-Aufrufe im Code fest darauf verweisen.
@@ -453,6 +461,13 @@ func (s *Service) CreateRole(ctx context.Context, key, label string, level int) 
 	}
 	_ = s.RefreshCache(ctx)
 	return role, nil
+}
+
+func (s *Service) UpdateRoleLevel(ctx context.Context, id string, level int) error {
+	if err := s.repo.UpdateRoleLevel(ctx, id, level); err != nil {
+		return err
+	}
+	return s.RefreshCache(ctx)
 }
 
 func (s *Service) DeleteRole(ctx context.Context, id string) error {

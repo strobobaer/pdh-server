@@ -35,7 +35,7 @@
       <div class="orgchart-role-node">
         <div class="orgchart-role-box" data-role-key="{{.Key}}" data-can-assign="{{.CanAssign}}"
              style="{{if not .CanAssign}}opacity:.55{{end}};cursor:pointer" title="Klicken, um die Berechtigungen dieser Rolle zu bearbeiten"
-             onclick="location.href='/admin/roles'"
+             onclick="location.href='/admin/roles'" oncontextmenu="showContextMenu(event, roleBoxContextItems('{{.Label}}')); return false;"
              ondragover="orgchartDragOver(event, this)" ondragleave="orgchartDragLeave(event, this)" ondrop="orgchartDrop(event, this)">
           <div class="orgchart-role-label">{{.Label}}</div>
           <div class="orgchart-role-meta" title="Rangstufe in der Hierarchie">Rang {{.Level}} · {{len .Users}} Benutzer</div>
@@ -46,6 +46,7 @@
           {{range .Users}}
           <div class="orgchart-card" {{if .CanManage}}draggable="true" ondragstart="orgchartDragStart(event,'{{.ID}}')" ondragend="orgchartDragEnd(event)"{{end}}
                style="cursor:pointer" onclick="location.href='/users?edit={{.ID}}'"
+               oncontextmenu="showContextMenu(event, userCardContextItems('{{.ID}}','{{.FullName}}')); return false;"
                title="{{.FullName}} · klicken zum Bearbeiten{{if .CanManage}} · ziehen, um die Rolle zu ändern{{end}}">
             <div style="width:22px;height:22px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
             <span style="max-width:130px;overflow:hidden;text-overflow:ellipsis">{{.FullName}}</span>
@@ -67,6 +68,27 @@
 
 {{define "scripts"}}
 <script>
+const PDH_CAN_MANAGE_ROLES = {{if .CanManageRoles}}true{{else}}false{{end}};
+
+function roleBoxContextItems(roleLabel){
+  return [
+    {heading: roleLabel},
+    {label: 'Berechtigungen bearbeiten', icon: 'ti-shield-lock', onClick: function(){ location.href = '/admin/roles'; }},
+    {label: 'Rang ändern', icon: 'ti-arrows-sort', onClick: function(){ location.href = '/admin/roles'; }}
+  ];
+}
+
+function userCardContextItems(userID, fullName){
+  const items = [
+    {heading: fullName},
+    {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ location.href = '/users?edit=' + userID; }}
+  ];
+  if(PDH_CAN_MANAGE_ROLES){
+    items.push({label: 'Einzelrechte', icon: 'ti-shield-lock', onClick: function(){ location.href = '/users?permissions=' + userID; }});
+  }
+  return items;
+}
+
 let orgchartDraggedUserID = null;
 
 function orgchartDragStart(event, userID){

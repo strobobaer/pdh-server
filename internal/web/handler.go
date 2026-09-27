@@ -383,6 +383,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
 	r.Post("/admin/roles/{id}/delete-web", h.RoleDeleteWeb)
+	r.Post("/admin/roles/{id}/level-web", h.RoleUpdateLevelWeb)
 	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
 	r.Post("/admin/settings", h.SettingsWeb)
 
@@ -3347,6 +3348,26 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "roles", data)
 }
 
+// clampRoleLevel verhindert Rang-Eskalation: niemand darf eine Rolle auf
+// einen Rang ueber der eigenen Rangstufe anlegen/setzen; unterhalb der
+// ranghoechsten Rolle im System ist zusaetzlich nur ein echt niedrigerer
+// Rang erlaubt (nicht gleichrangig).
+func (h *Handler) clampRoleLevel(r *http.Request, level int) int {
+	actorRoleKey := string(getUser(r).Role)
+	actorLevel := h.rbac.RoleLevel(actorRoleKey)
+	maxLevel := h.rbac.MaxRoleLevel()
+	if level > actorLevel {
+		level = actorLevel
+	}
+	if actorLevel < maxLevel && level >= actorLevel {
+		level = actorLevel - 1
+	}
+	if level < 0 {
+		level = 0
+	}
+	return level
+}
+
 func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageRoles(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -3359,25 +3380,44 @@ func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		level = 0
 	}
-	// Hierarchie: eine neue Rolle darf nicht ranghoeher oder gleichrangig
-	// zur anlegenden Rolle sein - ausser die anlegende Rolle ist selbst
-	// die ranghoechste im System.
-	actorRoleKey := string(getUser(r).Role)
-	actorLevel := h.rbac.RoleLevel(actorRoleKey)
-	maxLevel := h.rbac.MaxRoleLevel()
-	if level > actorLevel {
-		level = actorLevel // niemand darf eine Rolle ueber der eigenen Rangstufe anlegen
-	}
-	if actorLevel < maxLevel && level >= actorLevel {
-		level = actorLevel - 1 // unterhalb der ranghoechsten Rolle: nur echt niedrigerer Rang erlaubt
-	}
-	if level < 0 {
-		level = 0
-	}
+	level = h.clampRoleLevel(r, level)
 	if key != "" && label != "" {
 		h.rbac.CreateRole(r.Context(), key, label, level)
 	}
 	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+}
+
+// RoleUpdateLevelWeb aendert die Rangstufe einer bestehenden Rolle
+// (eingebaut oder benutzerdefiniert - nur das Loeschen ist auf
+// benutzerdefinierte Rollen beschraenkt). Instant-Save-Feld auf der
+// Rollen-Seite.
+func (h *Handler) RoleUpdateLevelWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	role, err := h.rbac.GetRoleByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Rolle nicht gefunden", http.StatusNotFound)
+		return
+	}
+	if !h.outranksRole(r, role.Key) {
+		http.Error(w, "keine berechtigung, diese Rolle zu bearbeiten", http.StatusForbidden)
+		return
+	}
+	r.ParseForm()
+	level, err := strconv.Atoi(strings.TrimSpace(r.FormValue("level")))
+	if err != nil {
+		http.Error(w, "ungültiger Rang", http.StatusBadRequest)
+		return
+	}
+	level = h.clampRoleLevel(r, level)
+	if err := h.rbac.UpdateRoleLevel(r.Context(), id, level); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) RoleDeleteWeb(w http.ResponseWriter, r *http.Request) {

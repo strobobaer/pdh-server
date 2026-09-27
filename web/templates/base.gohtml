@@ -254,6 +254,26 @@ select.form-input option{background:var(--bg2)}
 .blink-red{animation:blink-red-anim 1.2s ease-in-out infinite;border-radius:6px}
 .blink-yellow{animation:blink-yellow-anim 1.2s ease-in-out infinite;border-radius:6px}
 .blink-purple{animation:blink-purple-anim 1.2s ease-in-out infinite;border-radius:6px}
+
+/* ── Rechtsklick-Kontextmenü (Win11-Stil): projektweite Komponente, ── */
+/* ── siehe showContextMenu() im globalen Script weiter unten.       ── */
+@keyframes win11-menu-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.win11-menu{position:fixed;z-index:500;min-width:200px;max-width:280px;padding:4px;border-radius:8px;
+  background:color-mix(in srgb, var(--bg2) 88%, transparent);backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+  border:1px solid var(--border);box-shadow:0 8px 28px rgba(0,0,0,.32),0 1px 3px rgba(0,0,0,.22);
+  font-size:13px;transform-origin:0 0;animation:win11-menu-in .12s ease-out}
+.win11-menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border-radius:5px;background:transparent;border:0;color:var(--text);text-align:left;cursor:pointer;line-height:1.3}
+.win11-menu-item i{font-size:15px;width:16px;flex-shrink:0;color:var(--muted)}
+.win11-menu-item span.win11-menu-shortcut{margin-left:auto;font-size:11px;color:var(--muted)}
+.win11-menu-item:hover:not(:disabled),.win11-menu-item:focus-visible:not(:disabled){background:color-mix(in srgb, var(--text) 8%, transparent)}
+.win11-menu-item:active:not(:disabled){background:color-mix(in srgb, var(--text) 13%, transparent)}
+.win11-menu-item:disabled{color:var(--muted);cursor:default}
+.win11-menu-item:disabled i{opacity:.5}
+.win11-menu-item.danger{color:var(--red)}
+.win11-menu-item.danger i{color:var(--red)}
+.win11-menu-item.danger:hover:not(:disabled){background:color-mix(in srgb, var(--red) 12%, transparent)}
+.win11-menu-separator{height:1px;margin:4px 6px;background:var(--border)}
+.win11-menu-label{padding:6px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 </style>
 {{block "head" .}}{{end}}
 </head>
@@ -596,6 +616,96 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
 function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+
+/* ── Rechtsklick-Kontextmenü (Win11-Stil), projektweit nutzbar ──
+   showContextMenu(event, items) öffnet direkt an der Mausposition.
+   items: [{label, icon, onClick, danger, disabled, shortcut}] oder
+   {separator:true} oder {heading:'...'}.
+   bindContextMenu(el, event => items) hängt den Rechtsklick-Handler an
+   ein Element, itemsFn wird bei jedem Rechtsklick neu ausgewertet. */
+let win11ActiveMenu = null;
+function closeContextMenu(){
+  if(!win11ActiveMenu) return;
+  win11ActiveMenu.remove();
+  win11ActiveMenu = null;
+  document.removeEventListener('click', closeContextMenu, true);
+  document.removeEventListener('contextmenu', win11CloseOnOutsideContext, true);
+  document.removeEventListener('keydown', win11CloseOnEscape, true);
+  document.removeEventListener('scroll', closeContextMenu, true);
+}
+function win11CloseOnEscape(e){ if(e.key === 'Escape') closeContextMenu(); }
+function win11CloseOnOutsideContext(e){ if(win11ActiveMenu && !win11ActiveMenu.contains(e.target)) closeContextMenu(); }
+
+function showContextMenu(event, items){
+  event.preventDefault();
+  event.stopPropagation();
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'win11-menu';
+  (items || []).forEach(function(item){
+    if(item.separator){
+      const sep = document.createElement('div');
+      sep.className = 'win11-menu-separator';
+      menu.appendChild(sep);
+      return;
+    }
+    if(item.heading){
+      const heading = document.createElement('div');
+      heading.className = 'win11-menu-label';
+      heading.textContent = item.heading;
+      menu.appendChild(heading);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'win11-menu-item' + (item.danger ? ' danger' : '');
+    btn.disabled = !!item.disabled;
+    if(item.icon){
+      const icon = document.createElement('i');
+      icon.className = 'ti ' + item.icon;
+      btn.appendChild(icon);
+    }
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    btn.appendChild(label);
+    if(item.shortcut){
+      const sc = document.createElement('span');
+      sc.className = 'win11-menu-shortcut';
+      sc.textContent = item.shortcut;
+      btn.appendChild(sc);
+    }
+    if(!item.disabled){
+      btn.addEventListener('click', function(){
+        closeContextMenu();
+        if(item.onClick) item.onClick();
+      });
+    }
+    menu.appendChild(btn);
+  });
+  document.body.appendChild(menu);
+  win11ActiveMenu = menu;
+
+  const menuRect = menu.getBoundingClientRect();
+  let x = event.clientX, y = event.clientY;
+  if(x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 6;
+  if(y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 6;
+  menu.style.left = Math.max(4, x) + 'px';
+  menu.style.top = Math.max(4, y) + 'px';
+
+  setTimeout(function(){
+    document.addEventListener('click', closeContextMenu, true);
+    document.addEventListener('contextmenu', win11CloseOnOutsideContext, true);
+    document.addEventListener('keydown', win11CloseOnEscape, true);
+    document.addEventListener('scroll', closeContextMenu, true);
+  }, 0);
+}
+
+function bindContextMenu(el, itemsFn){
+  if(!el) return;
+  el.addEventListener('contextmenu', function(event){
+    showContextMenu(event, itemsFn(event));
+  });
+}
 function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
 function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
 function selectInfra(btn){
