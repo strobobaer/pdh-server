@@ -34,15 +34,38 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Get("/", h.GlobalDashboard)
 	r.Get("/data", h.GlobalDashboardData)
 	r.Post("/actions", h.GlobalDashboardAction)
+	r.Post("/settings", h.GlobalDashboardSettingsWeb)
 	return r
 }
 
+const (
+	globalDashboardDefaultTitle    = "PDH · Leitstand"
+	globalDashboardDefaultSubtitle = "Störungen · Tickets · Wartungen · Aufgaben"
+)
+
 // GlobalDashboardPageData steuert, ob der Leitstand einen Weg zurueck in
-// den normalen PDH-Modus zeigt: die Seite liegt bewusst ausserhalb von
-// authMiddleware (oeffentliches Wandmonitor-Board), daher muss sie selbst
-// pruefen, ob bereits eine gueltige Sitzung besteht.
+// den normalen PDH-Modus zeigt und ob die Ueberschrift bearbeitet werden
+// darf: die Seite liegt bewusst ausserhalb von authMiddleware
+// (oeffentliches Wandmonitor-Board), daher muss sie selbst pruefen, ob
+// bereits eine gueltige, ausreichend berechtigte Sitzung besteht.
 type GlobalDashboardPageData struct {
-	LoggedIn bool
+	LoggedIn       bool
+	Title          string
+	Subtitle       string
+	CanEditHeading bool
+}
+
+// canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
+// uebrigen Core-Einstellungen (system.manage_roles) - die Leitstand-Seite
+// selbst ist oeffentlich, daher wird hier explizit ueber sessionUser()
+// geprueft statt ueber den (auf dieser Route nie gesetzten) Request-
+// Context von authMiddleware.
+func (h *Handler) canEditGlobalDashboardHeading(r *http.Request) bool {
+	user := h.sessionUser(r)
+	if user == nil {
+		return false
+	}
+	return h.rbac.HasPermissionForUser(user.ID, string(user.Role), "system.manage_roles")
 }
 
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
@@ -53,10 +76,53 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := GlobalDashboardPageData{LoggedIn: h.sessionUser(r) != nil}
+	ctx := r.Context()
+	data := GlobalDashboardPageData{
+		LoggedIn:       h.sessionUser(r) != nil,
+		Title:          h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
+		Subtitle:       h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
+		CanEditHeading: h.canEditGlobalDashboardHeading(r),
+	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
 	}
+}
+
+// GlobalDashboardSettingsWeb speichert die Ueberschrift/den Untertitel
+// des Leitstands (app_settings, wie die uebrigen Core-Einstellungen) -
+// gilt fuer alle Betrachter, auch nicht angemeldete.
+func (h *Handler) GlobalDashboardSettingsWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canEditGlobalDashboardHeading(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" {
+		title = globalDashboardDefaultTitle
+	}
+	if len([]rune(title)) > 120 {
+		http.Error(w, "Überschrift darf höchstens 120 Zeichen lang sein", http.StatusBadRequest)
+		return
+	}
+	subtitle := strings.TrimSpace(r.FormValue("subtitle"))
+	if len([]rune(subtitle)) > 200 {
+		http.Error(w, "Untertitel darf höchstens 200 Zeichen lang sein", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	if err := h.setUpdateSetting(ctx, "global_dashboard_title", title); err != nil {
+		http.Error(w, "Überschrift konnte nicht gespeichert werden", http.StatusInternalServerError)
+		return
+	}
+	if err := h.setUpdateSetting(ctx, "global_dashboard_subtitle", subtitle); err != nil {
+		http.Error(w, "Untertitel konnte nicht gespeichert werden", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {

@@ -14,10 +14,19 @@ button,input,textarea,select{font:inherit}
 select{color-scheme:dark}
 button{color:inherit}
 header{min-height:74px;padding:12px 20px;display:flex;align-items:center;gap:16px;background:var(--surface);border-bottom:1px solid var(--border)}
-.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
 .brand-mark{width:42px;height:42px;display:grid;place-items:center;background:var(--green);color:#fff;font-size:20px;font-weight:800;border-radius:7px;flex:none}
 h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .subtitle{margin-top:4px;color:var(--muted);font-size:13px}
+.heading-edit-btn{flex:none;width:34px;height:34px;min-height:0;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.heading-edit-btn:hover{color:var(--text);filter:brightness(1.14)}
+#heading-form{display:flex;flex-direction:column;gap:6px}
+#heading-form input{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 9px;min-height:0}
+#heading-title-input{font-size:18px;font-weight:700;width:min(360px,60vw)}
+#heading-subtitle-input{font-size:12.5px;width:min(420px,70vw)}
+.heading-form-actions{display:flex;gap:6px;margin-top:2px}
+.heading-form-actions button{min-height:30px;padding:0 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text);cursor:pointer}
+.heading-form-actions button:hover{filter:brightness(1.14)}
 .header-meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 .header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
 .header-button:hover,.action-button:hover{filter:brightness(1.14)}
@@ -49,7 +58,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
 .tl-ray-chip{white-space:nowrap;font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;display:none;color:var(--text)}
 .tl-ray:hover .tl-ray-chip,.tl-ray.selected .tl-ray-chip{display:block}
-.tl-ray-stem{width:3px;border-radius:2px 2px 0 0;background:var(--muted)}
+.tl-ray-stem{width:6px;border-radius:3px 3px 0 0;background:var(--muted)}
 .tl-ray-dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
 .tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:#3fae86}
 .tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:#4b9fc4}
@@ -92,7 +101,21 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 </head>
 <body>
 <header>
-  <div class="brand"><div class="brand-mark">P</div><div><h1>PDH · Leitstand</h1><div class="subtitle">Störungen · Tickets · Wartungen · Aufgaben</div></div></div>
+  <div class="brand">
+    <div class="brand-mark">P</div>
+    <div id="heading-view"><h1 id="heading-title">{{.Title}}</h1><div class="subtitle" id="heading-subtitle">{{if .Subtitle}}{{.Subtitle}}{{end}}</div></div>
+    {{if .CanEditHeading}}
+    <form id="heading-form" class="hidden">
+      <input id="heading-title-input" name="title" maxlength="120" required value="{{.Title}}" placeholder="Überschrift">
+      <input id="heading-subtitle-input" name="subtitle" maxlength="200" value="{{.Subtitle}}" placeholder="Untertitel (optional)">
+      <div class="heading-form-actions">
+        <button type="submit">Speichern</button>
+        <button type="button" id="heading-cancel">Abbrechen</button>
+      </div>
+    </form>
+    <button type="button" class="heading-edit-btn" id="heading-edit-btn" title="Überschrift bearbeiten" aria-label="Überschrift bearbeiten">✎</button>
+    {{end}}
+  </div>
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
     {{if .LoggedIn}}
@@ -474,6 +497,49 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     if(document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen().catch(function(){});
   });
+
+  const headingEditBtn = document.getElementById('heading-edit-btn');
+  if(headingEditBtn){
+    const headingView = document.getElementById('heading-view');
+    const headingForm = document.getElementById('heading-form');
+    const titleInput = document.getElementById('heading-title-input');
+    const subtitleInput = document.getElementById('heading-subtitle-input');
+    headingEditBtn.addEventListener('click', function(){
+      headingView.classList.add('hidden');
+      headingEditBtn.classList.add('hidden');
+      headingForm.classList.remove('hidden');
+      titleInput.focus();
+      titleInput.select();
+    });
+    function closeHeadingForm(){
+      headingForm.classList.add('hidden');
+      headingView.classList.remove('hidden');
+      headingEditBtn.classList.remove('hidden');
+    }
+    document.getElementById('heading-cancel').addEventListener('click', function(){
+      titleInput.value = document.getElementById('heading-title').textContent;
+      subtitleInput.value = document.getElementById('heading-subtitle').textContent;
+      closeHeadingForm();
+    });
+    headingForm.addEventListener('submit', async function(event){
+      event.preventDefault();
+      if(!headingForm.reportValidity()) return;
+      try{
+        const response = await fetch('/global/settings', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'title=' + encodeURIComponent(titleInput.value.trim()) + '&subtitle=' + encodeURIComponent(subtitleInput.value.trim())
+        });
+        if(!response.ok) throw new Error((await response.text()) || ('HTTP ' + response.status));
+        document.getElementById('heading-title').textContent = titleInput.value.trim();
+        document.getElementById('heading-subtitle').textContent = subtitleInput.value.trim();
+        closeHeadingForm();
+      }catch(error){
+        loadState.textContent = 'Überschrift konnte nicht gespeichert werden: ' + error.message;
+      }
+    });
+  }
+
   refresh();
   window.setInterval(function(){ if(editPanel.classList.contains('hidden')) refresh(); }, 30000);
 })();

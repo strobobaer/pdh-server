@@ -148,7 +148,7 @@ function dashGanttColor(t){
   var isDueSoon = (!t.done && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
 
   if(t.done) return {fill:'#10b981', stroke:'#10b981', opacity:1};
-  if(isOverdue) return {fill:t.color, stroke:'#ef4444', opacity: t.provisional ? 0.4 : 1};
+  if(isOverdue) return {fill:t.color, stroke:'#e05a5a', opacity: t.provisional ? 0.4 : 1}; // synchron mit dem Leitstand-Zeitstrahl
   if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b', opacity: t.provisional ? 0.4 : 1};
   return {fill:t.color, stroke:t.color, opacity: t.provisional ? 0.4 : 1};
 }
@@ -163,7 +163,7 @@ function applyDashGanttStyling(){
     if(bar){
       bar.style.fill = colors.fill;
       bar.style.stroke = colors.stroke;
-      bar.style.strokeWidth = (colors.stroke === '#ef4444') ? '3px' : '1px';
+      bar.style.strokeWidth = (colors.stroke === '#e05a5a') ? '3px' : '1px';
     }
     if(barProgress) barProgress.style.fill = colors.fill;
     wrapper.style.opacity = colors.opacity;

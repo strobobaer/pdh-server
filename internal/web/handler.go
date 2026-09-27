@@ -957,7 +957,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			}
 			color := t.Color
 			if color == "" {
-				color = "#4f6ef7"
+				color = "#9d7fc9" // Aufgabe (Standardfarbe) - synchron mit dem Leitstand-Zeitstrahl
 			}
 			items = append(items, GanttItem{
 				ID: t.ID, RefType: "task", Title: t.Title,
@@ -992,7 +992,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: t.ID, RefType: "ticket", Title: t.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: provisional, IsDone: isDone, Color: "#8b5cf6",
+				IsProvisional: provisional, IsDone: isDone, Color: "#4b9fc4", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/tickets/" + t.ID,
 				DueDateEndpoint: "/api/v1/tickets/" + t.ID + "/due-date",
 			})
@@ -1019,7 +1019,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: m.ID, RefType: "maintenance", Title: m.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: false, IsDone: isDone, Color: "#14b8a6",
+				IsProvisional: false, IsDone: isDone, Color: "#c99a3c", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/maintenance/tasks/" + m.ID,
 				DueDateEndpoint: "/api/v1/maintenance/tasks/" + m.ID + "/due-date",
 			})
@@ -1049,7 +1049,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: f.ID, RefType: "fault", Title: f.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: provisional, IsDone: isDone, Color: "#f97316",
+				IsProvisional: provisional, IsDone: isDone, Color: "#3fae86", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/faults/" + f.ID,
 				DueDateEndpoint: "/api/v1/faults/" + f.ID + "/due-date",
 			})
