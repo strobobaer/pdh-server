@@ -395,6 +395,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/edit-web", h.ImportConnectionEditWeb)
 	r.Post("/import/connections/{id}/delete-web", h.ImportConnectionDeleteWeb)
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
+	r.Get("/import/connections/{id}/sniffer", h.MqttSnifferPage)
+	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)

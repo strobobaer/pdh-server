@@ -127,6 +127,7 @@ type ConnectionsPageData struct {
 	Connections []ConnectionView
 	Kinds       []KindOption
 	CanWrite    bool
+	CanExecute  bool
 	Notice      string
 }
 
@@ -185,6 +186,7 @@ func (h *Handler) connectionsPage(w http.ResponseWriter, r *http.Request, direct
 		Connections: conns,
 		Kinds:       connectionKindOptions(direction),
 		CanWrite:    h.canConnectionWrite(r, direction),
+		CanExecute:  h.canConnectionExecute(r, direction),
 		Notice:      r.URL.Query().Get("notice"),
 	}
 	h.render(w, page, data)

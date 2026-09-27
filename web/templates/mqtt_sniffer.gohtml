@@ -1,0 +1,128 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">MQTT-Sniffer · {{.ConnectionName}}</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a></p>
+</div>
+
+{{if .Integrated}}
+<div class="card" role="status">
+  Der integrierte Broker dieser Verbindung läuft noch nicht - der Sniffer ist aktuell nur für Verbindungen mit externem Broker verfügbar.
+</div>
+{{else if not .CanExecute}}
+<div class="card" role="status">
+  Zum Ausführen des Sniffers fehlt die Berechtigung "Import ausführen".
+</div>
+{{else}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Verbindung</div>
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
+    <dt style="color:var(--muted)">Broker</dt><dd style="margin:0">{{.Target}}</dd>
+    <dt style="color:var(--muted)">Topic-Filter</dt><dd style="margin:0">{{.Topic}}</dd>
+  </dl>
+  <p style="font-size:11px;color:var(--muted);margin:10px 0 0">Der Sniffer verbindet sich rein lesend (Subscribe) und beendet sich automatisch nach 15 Minuten oder beim Schließen dieser Seite.</p>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+    <button type="button" class="btn btn-primary" id="sniffer-start"><i class="ti ti-player-play"></i> Sniffer starten</button>
+    <button type="button" class="btn" id="sniffer-stop" hidden><i class="ti ti-player-stop"></i> Stoppen</button>
+    <span id="sniffer-status" style="font-size:12px;color:var(--muted)">Nicht verbunden</span>
+  </div>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Empfangene Nachrichten · <span id="sniffer-count">0</span></div>
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Zeit</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Topic</th>
+        <th style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">QoS</th>
+        <th style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Retained</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Payload</th>
+      </tr>
+    </thead>
+    <tbody id="sniffer-log"></tbody>
+  </table>
+  <div id="sniffer-empty" style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine Nachrichten empfangen.</div>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function(){
+  const startBtn = document.getElementById('sniffer-start');
+  const stopBtn = document.getElementById('sniffer-stop');
+  const statusEl = document.getElementById('sniffer-status');
+  const logBody = document.getElementById('sniffer-log');
+  const emptyEl = document.getElementById('sniffer-empty');
+  const countEl = document.getElementById('sniffer-count');
+  if(!startBtn) return;
+
+  let source = null;
+  let count = 0;
+  const MAX_ROWS = 300;
+
+  function escapeHTML(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function addMessage(msg){
+    count++;
+    countEl.textContent = String(count);
+    emptyEl.hidden = true;
+    const row = document.createElement('tr');
+    const payload = escapeHTML(msg.payload) + (msg.truncated ? ' …' : '');
+    row.innerHTML =
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);white-space:nowrap">' + escapeHTML(msg.time) + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all">' + escapeHTML(msg.topic) + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:center">' + msg.qos + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);text-align:center">' + (msg.retained ? 'ja' : '') + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all;font-family:monospace">' + payload + '</td>';
+    logBody.insertBefore(row, logBody.firstChild);
+    while(logBody.children.length > MAX_ROWS) logBody.removeChild(logBody.lastChild);
+  }
+
+  function stopSniffer(message){
+    if(source){ source.close(); source = null; }
+    startBtn.hidden = false;
+    stopBtn.hidden = true;
+    statusEl.textContent = message || 'Nicht verbunden';
+  }
+
+  function startSniffer(){
+    logBody.innerHTML = '';
+    count = 0;
+    countEl.textContent = '0';
+    emptyEl.hidden = false;
+    startBtn.hidden = true;
+    stopBtn.hidden = false;
+    statusEl.textContent = 'Verbinde …';
+
+    source = new EventSource('/import/connections/{{.ConnectionID}}/sniffer/stream');
+    source.addEventListener('connected', function(event){
+      const data = JSON.parse(event.data);
+      statusEl.textContent = 'Verbunden mit ' + data.broker + ' · Topic ' + data.topic;
+    });
+    source.addEventListener('message', function(event){
+      addMessage(JSON.parse(event.data));
+    });
+    source.addEventListener('error', function(event){
+      let message = 'Verbindung unterbrochen';
+      if(event.data){
+        try{ message = JSON.parse(event.data).message || message; }catch(e){}
+      }
+      stopSniffer(message);
+    });
+    source.onerror = function(){
+      if(source && source.readyState === EventSource.CLOSED) stopSniffer('Verbindung getrennt');
+    };
+  }
+
+  startBtn.addEventListener('click', startSniffer);
+  stopBtn.addEventListener('click', function(){ stopSniffer('Gestoppt'); });
+  window.addEventListener('beforeunload', function(){ if(source) source.close(); });
+})();
+</script>
+{{end}}
