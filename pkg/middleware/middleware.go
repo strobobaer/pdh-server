@@ -17,15 +17,29 @@ type contextKey string
 const UserIDKey contextKey = "userID"
 const RoleKey contextKey = "role"
 
+// statusRecorder merkt sich den geschriebenen HTTP-Statuscode, damit
+// Logger() ihn mitloggen kann - net/http gibt ihn sonst nicht her.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rec *statusRecorder) WriteHeader(status int) {
+	rec.status = status
+	rec.ResponseWriter.WriteHeader(status)
+}
+
 // Logger - loggt jeden Request
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
 		log.Info().
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Str("ip", r.RemoteAddr).
+			Int("status", rec.status).
 			Dur("dauer", time.Since(start)).
 			Msg("request")
 	})
