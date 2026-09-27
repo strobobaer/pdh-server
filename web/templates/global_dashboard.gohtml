@@ -118,13 +118,23 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .edit-actions{display:flex;gap:8px;flex-wrap:wrap}
 .edit-actions .action-button{min-width:110px}
 .accept{background:var(--accept-bg);border-color:var(--accept-border)}.finish{background:var(--finish-bg);border-color:var(--finish-border)}.discard{background:var(--discard-bg);border-color:var(--discard-border)}.wait{background:var(--wait-bg);border-color:var(--wait-border)}
-#action-form{display:grid;gap:13px;border-top:1px solid var(--border);padding-top:13px}
-#action-form label{display:grid;gap:6px;font-size:13px;font-weight:650}
-#action-form input,#action-form textarea,#action-form select{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
-#action-form textarea{min-height:96px;resize:vertical}
+#action-form,#create-form{display:grid;gap:13px;border-top:1px solid var(--border);padding-top:13px}
+#action-form label,#create-form label{display:grid;gap:6px;font-size:13px;font-weight:650}
+#action-form input,#action-form textarea,#action-form select,#create-form input,#create-form textarea,#create-form select{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+#action-form textarea,#create-form textarea{min-height:96px;resize:vertical}
 .required-hint{color:var(--muted);font-weight:400;font-size:12px}
 .form-actions{display:flex;justify-content:flex-end;gap:8px}
 .form-actions .action-button{min-width:110px}
+
+/* ── Touch-Felder zum Anlegen ── */
+#create-tiles{flex:none;display:flex;gap:10px;flex-wrap:wrap}
+.create-tile{flex:1;min-width:150px;min-height:64px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:14px;font-weight:650}
+.create-tile:hover{filter:brightness(1.12)}
+.create-tile-icon{font-size:22px}
+.create-tile.fault{border-color:var(--type-fault);color:var(--type-fault-fg,var(--text))}
+.create-tile.ticket{border-color:var(--type-ticket)}
+.create-tile.task{border-color:var(--type-task)}
+#create-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
 .kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:var(--type-fault-bg);color:var(--type-fault-fg);font-weight:700;font-size:12px}
 .kind.ticket{background:var(--type-ticket-bg);color:var(--type-ticket-fg)}.kind.maintenance{background:var(--type-maintenance-bg);color:var(--type-maintenance-fg)}.kind.task{background:var(--type-task-bg);color:var(--type-task-fg)}
 .item-sub{font-size:12px;color:var(--muted);margin-top:5px}
@@ -172,6 +182,45 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <span><span class="legend-dot overdue"></span>Überfällig</span>
     </span>
     <span id="load-state" role="status" aria-live="polite"></span>
+  </div>
+
+  <div id="create-tiles">
+    <button type="button" class="create-tile fault" data-type="fault"><span class="create-tile-icon" aria-hidden="true">⚠</span><span>Neue Störung</span></button>
+    <button type="button" class="create-tile ticket" data-type="ticket"><span class="create-tile-icon" aria-hidden="true">🎫</span><span>Neues Ticket</span></button>
+    <button type="button" class="create-tile task" data-type="task"><span class="create-tile-icon" aria-hidden="true">✓</span><span>Neue Aufgabe</span></button>
+  </div>
+
+  <div id="create-panel" class="hidden">
+    <div class="edit-panel-head">
+      <h2 id="create-panel-title" style="font-size:17px;margin:0">Neuer Vorgang</h2>
+      <button type="button" class="header-button" id="create-close">Schließen</button>
+    </div>
+    <form id="create-form">
+      <label>Titel <span class="required-hint">Pflichtfeld</span>
+        <input id="create-title" name="title" required minlength="3" maxlength="255" placeholder="Kurzbeschreibung">
+      </label>
+      <label>Beschreibung
+        <textarea id="create-description" name="description" maxlength="2000" placeholder="Details (optional)"></textarea>
+      </label>
+      <label id="create-priority-field">Priorität
+        <select id="create-priority" name="priority">
+          <option value="low">Niedrig</option>
+          <option value="medium" selected>Mittel</option>
+          <option value="high">Hoch</option>
+          <option value="critical">Kritisch</option>
+        </select>
+      </label>
+      <label id="create-symptoms-field" class="hidden">Symptome
+        <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
+      </label>
+      <label>RFID-Karte zur Bestätigung <span class="required-hint">Pflichtfeld</span>
+        <input id="create-rfid" name="rfid_uid" type="password" autocomplete="off" required placeholder="Karte scannen">
+      </label>
+      <div class="form-actions">
+        <button type="button" class="action-button" id="create-cancel">Abbrechen</button>
+        <button type="submit" class="action-button finish" id="create-submit">Anlegen</button>
+      </div>
+    </form>
   </div>
 
   <div id="timeline-card">
@@ -445,6 +494,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   }
 
   function selectItem(item){
+    closeCreatePanel();
     selectedKey = itemKey(item);
     current = null;
     document.getElementById('edit-kind').textContent = item.type;
@@ -507,6 +557,66 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     editActions.classList.remove('hidden');
   });
   document.getElementById('edit-close').addEventListener('click', closeEditPanel);
+
+  const createTileNames = {fault:'Neue Störung', ticket:'Neues Ticket', task:'Neue Aufgabe'};
+  const createPanel = document.getElementById('create-panel');
+  const createForm = document.getElementById('create-form');
+  const createSymptomsField = document.getElementById('create-symptoms-field');
+  const createTitleInput = document.getElementById('create-title');
+  let createType = null;
+
+  function openCreatePanel(type){
+    createType = type;
+    closeEditPanel();
+    document.getElementById('create-panel-title').textContent = createTileNames[type] || 'Neuer Vorgang';
+    createSymptomsField.classList.toggle('hidden', type !== 'fault');
+    createForm.reset();
+    document.getElementById('create-priority').value = 'medium';
+    createPanel.classList.remove('hidden');
+    createPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+    createTitleInput.focus();
+  }
+  function closeCreatePanel(){
+    createType = null;
+    createPanel.classList.add('hidden');
+    createForm.reset();
+  }
+  document.querySelectorAll('#create-tiles [data-type]').forEach(function(tile){
+    tile.addEventListener('click', function(){ openCreatePanel(tile.dataset.type); });
+  });
+  document.getElementById('create-close').addEventListener('click', closeCreatePanel);
+  document.getElementById('create-cancel').addEventListener('click', closeCreatePanel);
+
+  createForm.addEventListener('submit', async function(event){
+    event.preventDefault();
+    if(!createType || !createForm.reportValidity()) return;
+    const payload = {
+      type: createType,
+      title: createTitleInput.value.trim(),
+      description: document.getElementById('create-description').value.trim(),
+      priority: document.getElementById('create-priority').value,
+      rfid_uid: document.getElementById('create-rfid').value.trim()
+    };
+    if(createType === 'fault'){
+      payload.symptoms = String(document.getElementById('create-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    }
+    const submit = document.getElementById('create-submit');
+    submit.disabled = true;
+    try{
+      const response = await fetch('/global/create', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+      });
+      const result = await response.json().catch(function(){return {};});
+      if(!response.ok) throw new Error(result.error || 'Vorgang konnte nicht angelegt werden');
+      closeCreatePanel();
+      await refresh();
+    }catch(error){
+      loadState.textContent = error.message;
+    }finally{
+      submit.disabled = false;
+      document.getElementById('create-rfid').value = '';
+    }
+  });
 
   function render(data){
     latestData = data;
