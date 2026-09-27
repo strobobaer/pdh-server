@@ -5,13 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>PDH · Übersicht</title>
+<script>
+(function(){
+  var mode = localStorage.getItem('pdh_theme') || 'system';
+  var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
+  document.documentElement.dataset.themeMode = mode;
+})();
+</script>
 <style>
-:root{color-scheme:dark;--bg:#101512;--surface:#19211c;--surface-2:#222d26;--border:#35443a;--text:#f1f5f2;--muted:#a2b0a6;--green:#2b8a57;--blue:#277da1;--red:#bd4747;--amber:#c48b22;--focus:#b6e3c6;font-family:"Aptos","Segoe UI",sans-serif}
+:root{
+  color-scheme:dark;font-family:"Aptos","Segoe UI",sans-serif;
+  --bg:#101512;--surface:#19211c;--surface-2:#222d26;--border:#35443a;--text:#f1f5f2;--muted:#a2b0a6;
+  --accent:#4f6ef7;--green:#2b8a57;--amber:#c48b22;--red:#bd4747;--focus:#b6e3c6;--overdue:#e05a5a;
+  --type-fault:#3fae86;--type-ticket:#4b9fc4;--type-maintenance:#c99a3c;--type-task:#9d7fc9;
+  --type-fault-bg:#254b43;--type-fault-fg:#bce8d5;
+  --type-ticket-bg:#214b61;--type-ticket-fg:#b7e4f5;
+  --type-maintenance-bg:#614719;--type-maintenance-fg:#f3dcaa;
+  --type-task-bg:#493d5a;--type-task-fg:#e1d1f4;
+  --accept-bg:#24583d;--accept-border:#397b55;
+  --finish-bg:#20576a;--finish-border:#347890;
+  --discard-bg:#5b3030;--discard-border:#854545;
+  --wait-bg:#594817;--wait-border:#856e2a;
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f5f7fb;--surface:#ffffff;--surface-2:#eef2f7;--border:#d7dee8;--text:#111827;--muted:#64748b;
+  --accent:#3457d5;--green:#059669;--amber:#d97706;--red:#dc2626;--focus:#1d4ed8;--overdue:#dc2626;
+  --type-fault:#0f9d6b;--type-ticket:#1f7fae;--type-maintenance:#b3801e;--type-task:#7c5bc7;
+  --type-fault-bg:#d6f3e7;--type-fault-fg:#0b6b49;
+  --type-ticket-bg:#dbeefb;--type-ticket-fg:#155d85;
+  --type-maintenance-bg:#faedd2;--type-maintenance-fg:#8a5f10;
+  --type-task-bg:#ece3fa;--type-task-fg:#5b3fa3;
+  --accept-bg:#dcf3e6;--accept-border:#8fd1ac;
+  --finish-bg:#daeef8;--finish-border:#8dc4dd;
+  --discard-bg:#fbe0e0;--discard-border:#e2a3a3;
+  --wait-bg:#faedd0;--wait-border:#e0bf78;
+}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text)}
 body{display:flex;flex-direction:column;overflow:hidden}
 button,input,textarea,select{font:inherit}
-select{color-scheme:dark}
+select{color-scheme:inherit}
 button{color:inherit}
 header{min-height:74px;padding:12px 20px;display:flex;align-items:center;gap:16px;background:var(--surface);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:10px;min-width:0}
@@ -36,7 +71,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #load-state{margin-left:auto}
 .legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
-.legend-dot.fault{background:#3fae86}.legend-dot.ticket{background:#4b9fc4}.legend-dot.maintenance{background:#c99a3c}.legend-dot.task{background:#9d7fc9}.legend-dot.overdue{background:#e05a5a}
+.legend-dot.fault{background:var(--type-fault)}.legend-dot.ticket{background:var(--type-ticket)}.legend-dot.maintenance{background:var(--type-maintenance)}.legend-dot.task{background:var(--type-task)}.legend-dot.overdue{background:var(--overdue)}
 
 /* ── Zeitstrahl ── */
 #timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:300px}
@@ -53,18 +88,18 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .tl-lane{flex:1;position:relative;border-bottom:1px solid var(--border)}
 .tl-lane:last-child{border-bottom:0}
 .tl-lane.weekend-cols{background-image:none}
-.tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:#e05a5a;z-index:2;pointer-events:none}
-.tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:#e05a5a;white-space:nowrap}
+.tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--overdue);z-index:2;pointer-events:none}
+.tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:var(--overdue);white-space:nowrap}
 .tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
 .tl-ray-chip{white-space:nowrap;font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;display:none;color:var(--text)}
 .tl-ray:hover .tl-ray-chip,.tl-ray.selected .tl-ray-chip{display:block}
 .tl-ray-stem{width:6px;border-radius:3px 3px 0 0;background:var(--muted)}
-.tl-ray-dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
-.tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:#3fae86}
-.tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:#4b9fc4}
-.tl-ray.maintenance .tl-ray-stem,.tl-ray.maintenance .tl-ray-dot{background:#c99a3c}
-.tl-ray.task .tl-ray-stem,.tl-ray.task .tl-ray-dot{background:#9d7fc9}
-.tl-ray.overdue .tl-ray-stem,.tl-ray.overdue .tl-ray-dot{background:#e05a5a}
+.tl-ray-dot{height:14px;border-radius:7px;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
+.tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:var(--type-fault)}
+.tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:var(--type-ticket)}
+.tl-ray.maintenance .tl-ray-stem,.tl-ray.maintenance .tl-ray-dot{background:var(--type-maintenance)}
+.tl-ray.task .tl-ray-stem,.tl-ray.task .tl-ray-dot{background:var(--type-task)}
+.tl-ray.overdue .tl-ray-stem,.tl-ray.overdue .tl-ray-dot{background:var(--overdue)}
 .tl-ray.selected .tl-ray-dot{outline:3px solid var(--focus);outline-offset:1px}
 .tl-empty{padding:30px;text-align:center;color:var(--muted)}
 
@@ -74,7 +109,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .nd-chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 12px 6px 8px;cursor:pointer;font-size:12.5px}
 .nd-chip:hover,.nd-chip.selected{border-color:var(--muted)}
 .nd-chip .kind-dot{width:9px;height:9px;border-radius:50%;flex:none}
-.nd-chip.fault .kind-dot{background:#3fae86}.nd-chip.ticket .kind-dot{background:#4b9fc4}.nd-chip.maintenance .kind-dot{background:#c99a3c}.nd-chip.task .kind-dot{background:#9d7fc9}
+.nd-chip.fault .kind-dot{background:var(--type-fault)}.nd-chip.ticket .kind-dot{background:var(--type-ticket)}.nd-chip.maintenance .kind-dot{background:var(--type-maintenance)}.nd-chip.task .kind-dot{background:var(--type-task)}
 
 /* ── Bearbeitungsfenster (unterhalb) ── */
 #edit-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
@@ -82,7 +117,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .edit-panel-head h2{font-size:17px;margin:0}
 .edit-actions{display:flex;gap:8px;flex-wrap:wrap}
 .edit-actions .action-button{min-width:110px}
-.accept{background:#24583d;border-color:#397b55}.finish{background:#20576a;border-color:#347890}.discard{background:#5b3030;border-color:#854545}.wait{background:#594817;border-color:#856e2a}
+.accept{background:var(--accept-bg);border-color:var(--accept-border)}.finish{background:var(--finish-bg);border-color:var(--finish-border)}.discard{background:var(--discard-bg);border-color:var(--discard-border)}.wait{background:var(--wait-bg);border-color:var(--wait-border)}
 #action-form{display:grid;gap:13px;border-top:1px solid var(--border);padding-top:13px}
 #action-form label{display:grid;gap:6px;font-size:13px;font-weight:650}
 #action-form input,#action-form textarea,#action-form select{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
@@ -90,8 +125,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .required-hint{color:var(--muted);font-weight:400;font-size:12px}
 .form-actions{display:flex;justify-content:flex-end;gap:8px}
 .form-actions .action-button{min-width:110px}
-.kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:#254b43;color:#bce8d5;font-weight:700;font-size:12px}
-.kind.ticket{background:#214b61;color:#b7e4f5}.kind.maintenance{background:#614719;color:#f3dcaa}.kind.task{background:#493d5a;color:#e1d1f4}
+.kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:var(--type-fault-bg);color:var(--type-fault-fg);font-weight:700;font-size:12px}
+.kind.ticket{background:var(--type-ticket-bg);color:var(--type-ticket-fg)}.kind.maintenance{background:var(--type-maintenance-bg);color:var(--type-maintenance-fg)}.kind.task{background:var(--type-task-bg);color:var(--type-task-fg)}
 .item-sub{font-size:12px;color:var(--muted);margin-top:5px}
 .empty,.error{padding:30px;text-align:center;color:var(--muted)}
 .hidden{display:none!important}
@@ -117,6 +152,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     {{end}}
   </div>
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
+    <button class="header-button" type="button" id="theme-toggle" onclick="cycleThemeMode()" title="Darstellung wechseln" aria-label="Darstellung wechseln"><span aria-hidden="true" id="theme-toggle-icon">🖥️</span> <span id="theme-toggle-label">System</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
     {{if .LoggedIn}}
     <a class="header-button" href="/" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
@@ -206,10 +242,44 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 </main>
 <script>
 (function(){
+  const THEME_MODES = ['system','light','dark'];
+  const THEME_META = {system:{label:'System',icon:'🖥️'},light:{label:'Hell',icon:'☀️'},dark:{label:'Dunkel',icon:'🌙'}};
+  function resolveTheme(mode){
+    if(mode === 'light' || mode === 'dark') return mode;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyThemeMode(mode){
+    const selected = THEME_MODES.includes(mode) ? mode : 'system';
+    localStorage.setItem('pdh_theme', selected);
+    document.documentElement.dataset.themeMode = selected;
+    document.documentElement.dataset.theme = resolveTheme(selected);
+    const meta = THEME_META[selected];
+    const icon = document.getElementById('theme-toggle-icon');
+    const label = document.getElementById('theme-toggle-label');
+    const btn = document.getElementById('theme-toggle');
+    if(icon) icon.textContent = meta.icon;
+    if(label) label.textContent = meta.label;
+    if(btn) btn.title = 'Darstellung: ' + meta.label;
+  }
+  window.cycleThemeMode = function(){
+    const current = localStorage.getItem('pdh_theme') || 'system';
+    const index = THEME_MODES.indexOf(current);
+    applyThemeMode(THEME_MODES[(index + 1) % THEME_MODES.length]);
+  };
+  applyThemeMode(localStorage.getItem('pdh_theme') || 'system');
+  if(window.matchMedia){
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+      if((localStorage.getItem('pdh_theme') || 'system') === 'system') applyThemeMode('system');
+    });
+  }
+})();
+
+(function(){
   const DAY_MS = 86400000;
   const WINDOW_BEFORE = 14;
   const WINDOW_AFTER = 60;
   const DAY_WIDTH = 26;
+  const MIN_DAYS_WIDE = 2; // nicht beendete Strahlen werden mindestens so viele Tage breit dargestellt
   const LANE_TYPES = ['fault','ticket','maintenance','task'];
 
   const axisEl = document.getElementById('timeline-axis');
@@ -283,7 +353,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     return 20;
   }
 
-  function makeRay(item, x, todayStr){
+  function makeRay(item, x, todayStr, stack){
     const ray = document.createElement('button');
     ray.type = 'button';
     ray.className = 'tl-ray ' + item.type_key;
@@ -297,9 +367,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     chip.textContent = item.title;
     const stem = document.createElement('span');
     stem.className = 'tl-ray-stem';
-    stem.style.height = stemHeight(item.priority) + 'px';
+    stem.style.height = (stemHeight(item.priority) + (stack || 0)*20) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
     const dot = document.createElement('span');
     dot.className = 'tl-ray-dot';
+    dot.style.width = (MIN_DAYS_WIDE * DAY_WIDTH) + 'px'; // nicht beendete Vorgänge werden mindestens 2 Tage breit dargestellt
     ray.appendChild(chip);
     ray.appendChild(dot);
     ray.appendChild(stem);
@@ -339,8 +410,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       const stackKey = item.type_key + '|' + idx;
       const stack = dayCounts[stackKey] || 0;
       dayCounts[stackKey] = stack + 1;
-      const x = idx*DAY_WIDTH + (stack % 3) * 7;
-      lane.appendChild(makeRay(item, x, todayStr));
+      const x = idx*DAY_WIDTH;
+      lane.appendChild(makeRay(item, x, todayStr, stack));
     });
 
     Object.keys(laneEls).forEach(function(t){
