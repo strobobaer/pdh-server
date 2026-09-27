@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,14 +14,17 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Excel-Vorschau: das Excel-Gegenstueck zum MQTT-Sniffer im selben Muster
-// (Vorschau der Quelle -> Spalte markieren -> Infrastruktur-Picker ->
-// freie Bezeichnung/Notiz). Da Excel-Dateien statisch sind (kein Push wie
-// bei MQTT), gibt es hier keinen dauerhaften Hintergrund-Consumer,
-// sondern einen manuellen "Jetzt aktualisieren"-Knopf, der die Datei neu
-// liest und fuer jede Zuordnung den Wert der letzten Zeile in der
-// markierten Spalte uebernimmt (die Datei wird als fortlaufendes Log
-// behandelt: neue Zeilen = neue Werte).
+// Excel-/CSV-Vorschau: das Excel-/CSV-Gegenstueck zum MQTT-Sniffer im
+// selben Muster (Vorschau der Quelle -> Spalte markieren ->
+// Infrastruktur-Picker -> freie Bezeichnung/Notiz). Beide Dateiformate
+// sind statisch (kein Push wie bei MQTT), daher kein dauerhafter
+// Hintergrund-Consumer, sondern ein manueller "Jetzt aktualisieren"-
+// Knopf, der die Datei neu liest und fuer jede Zuordnung den Wert der
+// letzten Zeile in der markierten Spalte uebernimmt (die Datei wird als
+// fortlaufendes Log behandelt: neue Zeilen = neue Werte). Excel und CSV
+// teilen sich dieselbe Seite/Route, da die Vorschau-/Markier-/
+// Aktualisieren-Logik identisch ist - nur das Einlesen der Datei
+// unterscheidet sich (excelize vs. encoding/csv).
 
 const excelPreviewMaxRows = 20
 
@@ -35,8 +39,11 @@ type ExcelPreviewPageData struct {
 	ConnectionName string
 	Applicable     bool
 	CanWrite       bool
+	Kind           string
+	KindLabel      string
 	SourcePath     string
 	SheetName      string
+	Delimiter      string
 	HasHeader      bool
 	Error          string
 	Columns        []ExcelColumn
@@ -119,6 +126,89 @@ func readExcelPreview(path, sheet string, hasHeader bool) ([]ExcelColumn, [][]st
 	return columns, dataRows, nil
 }
 
+// csvDelimiterRune wandelt das konfigurierte Trennzeichen in ein rune um -
+// deutsche CSV-Dateien nutzen haeufig Semikolon (Komma ist dort das
+// Dezimaltrennzeichen), daher kein hart codiertes Komma.
+func csvDelimiterRune(delimiter string) rune {
+	if delimiter == "" {
+		return ','
+	}
+	return []rune(delimiter)[0]
+}
+
+func readCSVPreview(path, delimiter string, hasHeader bool) ([]ExcelColumn, [][]string, error) {
+	if path == "" {
+		return nil, nil, fmt.Errorf("kein Quellpfad konfiguriert")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Datei nicht erreichbar: %s", err.Error())
+	}
+	defer f.Close()
+
+	reader := csv.NewReader(f)
+	reader.Comma = csvDelimiterRune(delimiter)
+	reader.FieldsPerRecord = -1
+	allRows, err := reader.ReadAll()
+	if err != nil {
+		return nil, nil, fmt.Errorf("Datei konnte nicht gelesen werden: %s", err.Error())
+	}
+	if len(allRows) == 0 {
+		return nil, nil, fmt.Errorf("Datei ist leer")
+	}
+
+	colCount := 0
+	for _, row := range allRows {
+		if len(row) > colCount {
+			colCount = len(row)
+		}
+	}
+
+	columns := make([]ExcelColumn, colCount)
+	dataRows := allRows
+	if hasHeader {
+		header := allRows[0]
+		for i := 0; i < colCount; i++ {
+			label := columnLetter(i)
+			if i < len(header) && strings.TrimSpace(header[i]) != "" {
+				label = strings.TrimSpace(header[i])
+			}
+			columns[i] = ExcelColumn{Index: i, Label: label}
+		}
+		if len(allRows) > 1 {
+			dataRows = allRows[1:]
+		} else {
+			dataRows = nil
+		}
+	} else {
+		for i := 0; i < colCount; i++ {
+			columns[i] = ExcelColumn{Index: i, Label: columnLetter(i)}
+		}
+	}
+
+	if len(dataRows) > excelPreviewMaxRows {
+		dataRows = dataRows[:excelPreviewMaxRows]
+	}
+	return columns, dataRows, nil
+}
+
+// readTabularPreview waehlt je nach Konnektortyp den passenden Datei-
+// Reader (excelize fuer Excel, encoding/csv fuer CSV) - Vorschau-,
+// Markier- und Aktualisieren-Logik danach ist fuer beide identisch.
+func readTabularPreview(kind, path, sheet, delimiter string, hasHeader bool) ([]ExcelColumn, [][]string, error) {
+	if kind == "csv" {
+		return readCSVPreview(path, delimiter, hasHeader)
+	}
+	return readExcelPreview(path, sheet, hasHeader)
+}
+
+func tabularKindLabel(kind string) string {
+	if kind == "csv" {
+		return "CSV"
+	}
+	return "Excel"
+}
+
 func (h *Handler) ExcelPreviewPage(w http.ResponseWriter, r *http.Request) {
 	if !h.canConnectionRead(r, "import") {
 		http.Redirect(w, r, "/", http.StatusFound)
@@ -137,18 +227,21 @@ func (h *Handler) ExcelPreviewPage(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(configBytes, &config)
 
 	data := ExcelPreviewPageData{
-		BaseData:       h.baseData(r, "import", "Excel-Vorschau", name),
+		BaseData:       h.baseData(r, "import", tabularKindLabel(kind)+"-Vorschau", name),
 		ConnectionID:   id,
 		ConnectionName: name,
-		Applicable:     kind == "excel",
+		Applicable:     kind == "excel" || kind == "csv",
 		CanWrite:       h.canConnectionWrite(r, "import"),
+		Kind:           kind,
+		KindLabel:      tabularKindLabel(kind),
 		SourcePath:     strings.TrimSpace(config["source_path"]),
 		SheetName:      strings.TrimSpace(config["sheet_name"]),
+		Delimiter:      strings.TrimSpace(config["delimiter"]),
 		HasHeader:      config["has_header"] == "true",
 		Notice:         r.URL.Query().Get("notice"),
 	}
 	if data.Applicable {
-		cols, rows, err := readExcelPreview(data.SourcePath, data.SheetName, data.HasHeader)
+		cols, rows, err := readTabularPreview(kind, data.SourcePath, data.SheetName, data.Delimiter, data.HasHeader)
 		if err != nil {
 			data.Error = err.Error()
 		} else {
@@ -179,14 +272,14 @@ func (h *Handler) ExcelRefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 	var configBytes []byte
 	if err := h.db.QueryRow(r.Context(),
 		`SELECT kind, config FROM import_export_connections WHERE id=$1 AND direction='import'`, id).
-		Scan(&kind, &configBytes); err != nil || kind != "excel" {
+		Scan(&kind, &configBytes); err != nil || (kind != "excel" && kind != "csv") {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
 	config := map[string]string{}
 	_ = json.Unmarshal(configBytes, &config)
 
-	columns, rows, err := readExcelPreview(strings.TrimSpace(config["source_path"]), strings.TrimSpace(config["sheet_name"]), config["has_header"] == "true")
+	columns, rows, err := readTabularPreview(kind, strings.TrimSpace(config["source_path"]), strings.TrimSpace(config["sheet_name"]), strings.TrimSpace(config["delimiter"]), config["has_header"] == "true")
 	if err != nil {
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Aktualisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return

@@ -2,6 +2,8 @@ package web
 
 import (
 	"database/sql"
+	"encoding/csv"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -80,6 +82,74 @@ func TestWriteSQLExportNoTable(t *testing.T) {
 	config := map[string]string{"file_path": path}
 	if err := writeSQLExport("sqlite", config, testExportMappingsForSQL()); err == nil {
 		t.Fatal("expected error for missing table_name")
+	}
+}
+
+func TestWriteCSVExportDefaultComma(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "export.csv")
+	if err := writeCSVExport(path, "", testExportMappingsForSQL()); err != nil {
+		t.Fatalf("writeCSVExport: %v", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	rows, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected header + 2 data rows, got %d", len(rows))
+	}
+	if rows[0][0] != "Feld" || rows[0][1] != "Wert" {
+		t.Fatalf("unexpected header: %+v", rows[0])
+	}
+	if rows[1][0] != "temp" || rows[1][1] != "21.4" {
+		t.Fatalf("unexpected row: %+v", rows[1])
+	}
+}
+
+func TestWriteCSVExportSemicolonDelimiter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "export.csv")
+	if err := writeCSVExport(path, ";", testExportMappingsForSQL()); err != nil {
+		t.Fatalf("writeCSVExport: %v", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	reader := csv.NewReader(f)
+	reader.Comma = ';'
+	rows, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 3 || rows[1][0] != "temp" {
+		t.Fatalf("unexpected rows: %+v", rows)
+	}
+}
+
+func TestWriteCSVExportOverwritesExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "export.csv")
+	if err := writeCSVExport(path, "", testExportMappingsForSQL()); err != nil {
+		t.Fatalf("writeCSVExport (1st run): %v", err)
+	}
+	if err := writeCSVExport(path, "", testExportMappingsForSQL()[:1]); err != nil {
+		t.Fatalf("writeCSVExport (2nd run): %v", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer f.Close()
+	rows, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected the 2nd run to overwrite (header + 1 row), got %d rows", len(rows))
 	}
 }
 

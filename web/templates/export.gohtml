@@ -54,6 +54,14 @@
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Vorlagen (Tabellenblattname) werden unter <a href="/export/templates">Vorlagen verwalten</a> angelegt.</p>
     </div>
 
+    <div class="kind-fields" id="fields-csv" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_csv_destination_path" class="form-input" placeholder="Pfad/Freigabe für die CSV-Ausgabe"></div>
+        <div class="form-group"><label class="form-label">Trennzeichen</label><input name="f_csv_delimiter" class="form-input" placeholder="," maxlength="1"></div>
+        <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_csv_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
+      </div>
+    </div>
+
     <div class="kind-fields" id="fields-sqlite" hidden>
       <div class="grid2" style="gap:10px">
         <div class="form-group"><label class="form-label">Dateipfad</label><input name="f_sqlite_file_path" class="form-input" placeholder="Pfad zur .sqlite/.db-Datei"></div>
@@ -250,7 +258,7 @@ function connContextItems(row, direction){
     items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }});
     items.push({label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }});
   }
-  const exportableKinds = ['excel', 'pdf', 'sqlite', 'mysql', 'mssql', 'opcua', 'modbus'];
+  const exportableKinds = ['excel', 'csv', 'pdf', 'sqlite', 'mysql', 'mssql', 'opcua', 'modbus'];
   if(exportableKinds.indexOf(row.dataset.connKind) !== -1){
     items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
       window.location = '/export/connections/' + row.dataset.connId + '/preview';

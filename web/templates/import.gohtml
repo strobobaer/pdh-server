@@ -34,6 +34,14 @@
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_excel_has_header"> Erste Zeile enthält Spaltenüberschriften</label>
     </div>
 
+    <div class="kind-fields" id="fields-csv" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Quellpfad</label><input name="f_csv_source_path" class="form-input" placeholder="Pfad/Freigabe der CSV-Datei"></div>
+        <div class="form-group"><label class="form-label">Trennzeichen</label><input name="f_csv_delimiter" class="form-input" placeholder="," maxlength="1"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_csv_has_header"> Erste Zeile enthält Spaltenüberschriften</label>
+    </div>
+
     <div class="kind-fields" id="fields-sqlite" hidden>
       <div class="form-group"><label class="form-label">Dateipfad</label><input name="f_sqlite_file_path" class="form-input" placeholder="Pfad zur .sqlite/.db-Datei"></div>
     </div>
@@ -321,7 +329,7 @@ function connContextItems(row, direction){
       }});
     }
   }
-  if(direction === 'import' && row.dataset.connKind === 'excel'){
+  if(direction === 'import' && (row.dataset.connKind === 'excel' || row.dataset.connKind === 'csv')){
     items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
       window.location = '/import/connections/' + row.dataset.connId + '/preview';
     }});

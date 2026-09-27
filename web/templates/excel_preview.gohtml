@@ -1,7 +1,7 @@
 {{template "base" .}}
 {{define "content"}}
 <div style="margin-bottom:18px">
-  <h1 style="font-size:19px;font-weight:600">Excel-Vorschau · {{.ConnectionName}}</h1>
+  <h1 style="font-size:19px;font-weight:600">{{.KindLabel}}-Vorschau · {{.ConnectionName}}</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a></p>
 </div>
 
@@ -9,7 +9,7 @@
 
 {{if not .Applicable}}
 <div class="card" role="status">
-  Diese Verbindung ist kein Excel-Import.
+  Diese Verbindung ist kein Excel-/CSV-Import.
 </div>
 {{else}}
 
@@ -17,7 +17,11 @@
   <div class="card-title">Quelle</div>
   <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0">
     <dt style="color:var(--muted)">Pfad</dt><dd style="margin:0;word-break:break-all">{{if .SourcePath}}{{.SourcePath}}{{else}}<span style="color:var(--red)">nicht konfiguriert</span>{{end}}</dd>
+    {{if eq .Kind "csv"}}
+    <dt style="color:var(--muted)">Trennzeichen</dt><dd style="margin:0">{{if .Delimiter}}{{.Delimiter}}{{else}}, (Komma){{end}}</dd>
+    {{else}}
     <dt style="color:var(--muted)">Tabellenblatt</dt><dd style="margin:0">{{if .SheetName}}{{.SheetName}}{{else}}erstes Blatt{{end}}</dd>
+    {{end}}
     <dt style="color:var(--muted)">Kopfzeile</dt><dd style="margin:0">{{if .HasHeader}}ja{{else}}nein - Spalten nach Buchstabe{{end}}</dd>
   </dl>
   {{if .CanWrite}}

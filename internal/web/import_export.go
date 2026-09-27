@@ -44,6 +44,7 @@ type KindOption struct {
 
 var importKindOptions = []KindOption{
 	{"excel", "Excel-Datei"},
+	{"csv", "CSV-Datei"},
 	{"sqlite", "SQLite"},
 	{"mysql", "MySQL"},
 	{"mssql", "MSSQL"},
@@ -57,6 +58,7 @@ var importKindOptions = []KindOption{
 var exportKindOptions = []KindOption{
 	{"pdf", "PDF"},
 	{"excel", "Excel"},
+	{"csv", "CSV"},
 	{"sqlite", "SQLite"},
 	{"mysql", "MySQL"},
 	{"mssql", "MSSQL"},
@@ -66,6 +68,7 @@ var exportKindOptions = []KindOption{
 
 var importKindFields = map[string][]string{
 	"excel":  {"source_path", "sheet_name", "has_header"},
+	"csv":    {"source_path", "delimiter", "has_header"},
 	"sqlite": {"file_path"},
 	"mysql":  {"host", "port", "database", "username", "password", "use_tls"},
 	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls"},
@@ -87,6 +90,7 @@ var importKindFields = map[string][]string{
 var exportKindFields = map[string][]string{
 	"pdf":    {"template_id", "destination_path", "schedule_cron"},
 	"excel":  {"template_id", "destination_path", "schedule_cron"},
+	"csv":    {"destination_path", "delimiter", "schedule_cron"},
 	"sqlite": {"file_path", "table_name", "schedule_cron"},
 	"mysql":  {"host", "port", "database", "username", "password", "use_tls", "table_name", "schedule_cron"},
 	"mssql":  {"host", "port", "database", "instance_name", "username", "password", "use_tls", "table_name", "schedule_cron"},

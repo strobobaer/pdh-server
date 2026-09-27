@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -35,7 +36,7 @@ import (
 
 func exportableKind(kind string) bool {
 	switch kind {
-	case "excel", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus":
+	case "excel", "csv", "pdf", "sqlite", "mysql", "mssql", "opcua", "modbus":
 		return true
 	default:
 		return false
@@ -48,6 +49,8 @@ func exportKindLabel(kind string) string {
 		return "PDF"
 	case "excel":
 		return "Excel"
+	case "csv":
+		return "CSV"
 	case "sqlite":
 		return "SQLite"
 	case "mysql":
@@ -97,7 +100,7 @@ type ExportPreviewPageData struct {
 
 func exportDestinationLabel(kind string, config map[string]string) string {
 	switch kind {
-	case "excel", "pdf":
+	case "excel", "csv", "pdf":
 		return strings.TrimSpace(config["destination_path"])
 	case "sqlite":
 		return strings.TrimSpace(config["file_path"]) + " · Tabelle " + strings.TrimSpace(config["table_name"])
@@ -226,6 +229,13 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 		} else {
 			tpl := h.resolveExportTemplate(ctx, "pdf", config["template_id"])
 			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings)
+		}
+	case "csv":
+		destPath := strings.TrimSpace(config["destination_path"])
+		if destPath == "" {
+			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
+		} else {
+			writeErr = writeCSVExport(destPath, strings.TrimSpace(config["delimiter"]), mappings)
 		}
 	case "sqlite", "mysql", "mssql":
 		writeErr = writeSQLExport(kind, config, mappings)
@@ -357,6 +367,36 @@ func writeExcelExport(path, sheetName string, mappings []ExportMappingView) erro
 		return fmt.Errorf("Zielverzeichnis konnte nicht angelegt werden: %w", err)
 	}
 	return f.SaveAs(path)
+}
+
+// writeCSVExport schreibt dieselben vier Spalten (Feld, Wert, Quelle,
+// Zuletzt aktualisiert) wie writeExcelExport, nur als CSV-Datei -
+// deutsche CSV-Dateien nutzen haeufig Semikolon als Trennzeichen (Komma
+// ist dort das Dezimaltrennzeichen), daher konfigurierbar statt hart
+// codiert.
+func writeCSVExport(path, delimiter string, mappings []ExportMappingView) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("Zielverzeichnis konnte nicht angelegt werden: %w", err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("Zieldatei konnte nicht angelegt werden: %w", err)
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	w.Comma = csvDelimiterRune(delimiter)
+	if err := w.Write([]string{"Feld", "Wert", "Quelle", "Zuletzt aktualisiert"}); err != nil {
+		return err
+	}
+	for _, m := range mappings {
+		row := []string{m.FieldName, m.SourceValue, strings.TrimSpace(m.InfrastructureName + " · " + m.SourceName), m.SourceReceivedAt}
+		if err := w.Write(row); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
 }
 
 func writePDFExport(path, title, orientation string, mappings []ExportMappingView) error {

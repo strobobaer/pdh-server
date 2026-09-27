@@ -32,7 +32,7 @@ func importConnectionDetailPath(kind string) string {
 	switch {
 	case kind == "mqtt":
 		return "sniffer"
-	case kind == "excel":
+	case kind == "excel", kind == "csv":
 		return "preview"
 	case sqlBrowsableKind(kind):
 		return "browse"
