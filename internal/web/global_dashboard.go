@@ -9,7 +9,6 @@ import (
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
-	coreusers "pdh/internal/core/users"
 )
 
 type GlobalBoardItem struct {
@@ -131,21 +130,19 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userRows, err := h.db.Query(ctx, `SELECT id::text, first_name, last_name, department, role FROM users WHERE active = true AND is_system_user = false ORDER BY last_name, first_name`)
+	userRows, err := h.db.Query(ctx, `SELECT id::text, first_name, last_name FROM users WHERE active = true AND is_system_user = false ORDER BY last_name, first_name`)
 	if err != nil {
 		http.Error(w, "Mitarbeiter konnten nicht geladen werden", http.StatusInternalServerError)
 		return
 	}
 	defer userRows.Close()
 	for userRows.Next() {
-		var id, firstName, lastName, department, role string
-		if err := userRows.Scan(&id, &firstName, &lastName, &department, &role); err != nil {
+		var id, firstName, lastName string
+		if err := userRows.Scan(&id, &firstName, &lastName); err != nil {
 			http.Error(w, "Mitarbeiter konnten nicht gelesen werden", http.StatusInternalServerError)
 			return
 		}
-		if isGlobalBoardDepartment(department) && role != string(coreusers.RoleViewer) {
-			data.Workers = append(data.Workers, UserOption{ID: id, Name: strings.TrimSpace(firstName + " " + lastName)})
-		}
+		data.Workers = append(data.Workers, UserOption{ID: id, Name: strings.TrimSpace(firstName + " " + lastName)})
 	}
 	if err := userRows.Err(); err != nil {
 		http.Error(w, "Mitarbeiter konnten nicht gelesen werden", http.StatusInternalServerError)
@@ -158,6 +155,11 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// isGlobalBoardDepartment entscheidet, wer das Leitstand-Terminal per
+// RFID-Karte tatsaechlich bedienen darf (Annehmen/Fertig/Verwerfen/
+// Warten) - bewusst weiterhin auf Instandhaltung/IT beschraenkt, anders
+// als die Zuweisung selbst (die aktuell noch fuer alle Mitarbeiter offen
+// ist, siehe GlobalDashboardData).
 func isGlobalBoardDepartment(department string) bool {
 	if strings.Contains(strings.ToLower(department), "instandhaltung") {
 		return true

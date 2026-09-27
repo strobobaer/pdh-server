@@ -21,28 +21,73 @@ h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .header-meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 .header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
 .header-button:hover,.action-button:hover{filter:brightness(1.14)}
-.header-button:focus-visible,.action-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
-main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18px;gap:10px}
-.toolbar{min-height:40px;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+.header-button:focus-visible,.action-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.tl-ray:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18px;gap:10px;overflow:auto}
+.toolbar{min-height:40px;flex:none;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 #load-state{margin-left:auto}
-#board-wrap{min-height:0;flex:1;overflow:auto;border:1px solid var(--border);border-radius:7px;background:var(--surface);overscroll-behavior:contain}
-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px}
-thead{position:sticky;top:0;z-index:2;background:var(--surface-2)}
-th{text-align:left;color:var(--muted);font-size:12px;font-weight:700;padding:12px 10px;border-bottom:1px solid var(--border)}
-td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;overflow-wrap:anywhere}
-tr:last-child td{border-bottom:0}
-tbody tr:hover{background:rgba(255,255,255,.035)}
-th:nth-child(1){width:110px}th:nth-child(2){width:120px}th:nth-child(4){width:120px}th:nth-child(5){width:170px}th:nth-child(6){width:380px}
+.legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+.legend-dot.fault{background:#3fae86}.legend-dot.ticket{background:#4b9fc4}.legend-dot.maintenance{background:#c99a3c}.legend-dot.task{background:#9d7fc9}.legend-dot.overdue{background:#e05a5a}
+
+/* ── Zeitstrahl ── */
+#timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:300px}
+.tl-labels{flex:none;width:98px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)}
+.tl-corner{height:34px;flex:none;border-bottom:1px solid var(--border)}
+.tl-lane-label{flex:1;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
+.tl-lane-label:last-child{border-bottom:0}
+.tl-scroll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative}
+.tl-content{position:relative;height:100%;display:flex;flex-direction:column}
+.tl-axis{height:34px;flex:none;position:relative;background:var(--surface-2);border-bottom:1px solid var(--border)}
+.tl-axis-tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--border)}
+.tl-axis-label{position:absolute;top:0;height:100%;display:flex;align-items:center;font-size:11px;color:var(--muted);padding-left:5px;white-space:nowrap}
+.tl-lanes{flex:1;display:flex;flex-direction:column}
+.tl-lane{flex:1;position:relative;border-bottom:1px solid var(--border)}
+.tl-lane:last-child{border-bottom:0}
+.tl-lane.weekend-cols{background-image:none}
+.tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:#e05a5a;z-index:2;pointer-events:none}
+.tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:#e05a5a;white-space:nowrap}
+.tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
+.tl-ray-chip{white-space:nowrap;font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;display:none;color:var(--text)}
+.tl-ray:hover .tl-ray-chip,.tl-ray.selected .tl-ray-chip{display:block}
+.tl-ray-stem{width:3px;border-radius:2px 2px 0 0;background:var(--muted)}
+.tl-ray-dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
+.tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:#3fae86}
+.tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:#4b9fc4}
+.tl-ray.maintenance .tl-ray-stem,.tl-ray.maintenance .tl-ray-dot{background:#c99a3c}
+.tl-ray.task .tl-ray-stem,.tl-ray.task .tl-ray-dot{background:#9d7fc9}
+.tl-ray.overdue .tl-ray-stem,.tl-ray.overdue .tl-ray-dot{background:#e05a5a}
+.tl-ray.selected .tl-ray-dot{outline:3px solid var(--focus);outline-offset:1px}
+.tl-empty{padding:30px;text-align:center;color:var(--muted)}
+
+/* ── Ohne Termin ── */
+#noduedate-wrap{flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 2px}
+#noduedate-label{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.nd-chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 12px 6px 8px;cursor:pointer;font-size:12.5px}
+.nd-chip:hover,.nd-chip.selected{border-color:var(--muted)}
+.nd-chip .kind-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.nd-chip.fault .kind-dot{background:#3fae86}.nd-chip.ticket .kind-dot{background:#4b9fc4}.nd-chip.maintenance .kind-dot{background:#c99a3c}.nd-chip.task .kind-dot{background:#9d7fc9}
+
+/* ── Bearbeitungsfenster (unterhalb) ── */
+#edit-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
+.edit-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.edit-panel-head h2{font-size:17px;margin:0}
+.edit-actions{display:flex;gap:8px;flex-wrap:wrap}
+.edit-actions .action-button{min-width:110px}
+.accept{background:#24583d;border-color:#397b55}.finish{background:#20576a;border-color:#347890}.discard{background:#5b3030;border-color:#854545}.wait{background:#594817;border-color:#856e2a}
+#action-form{display:grid;gap:13px;border-top:1px solid var(--border);padding-top:13px}
+#action-form label{display:grid;gap:6px;font-size:13px;font-weight:650}
+#action-form input,#action-form textarea,#action-form select{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
+#action-form textarea{min-height:96px;resize:vertical}
+.required-hint{color:var(--muted);font-weight:400;font-size:12px}
+.form-actions{display:flex;justify-content:flex-end;gap:8px}
+.form-actions .action-button{min-width:110px}
 .kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:#254b43;color:#bce8d5;font-weight:700;font-size:12px}
 .kind.ticket{background:#214b61;color:#b7e4f5}.kind.maintenance{background:#614719;color:#f3dcaa}.kind.task{background:#493d5a;color:#e1d1f4}
-.item-title{font-weight:700}.item-sub{font-size:12px;color:var(--muted);margin-top:3px}.date{white-space:nowrap;font-weight:650}.date.overdue{color:#ff8989}.date.none{color:var(--muted);font-weight:400}
-.status{color:var(--muted)}.priority{font-size:12px;font-weight:700;text-transform:uppercase}.priority.critical,.priority.high{color:#ff9999}.priority.medium{color:#f0cf81}.priority.low{color:#a9c9b6}
-.action-set{display:flex;gap:6px;flex-wrap:wrap}.action-button{min-height:46px;padding:0 11px;font-size:13px}.accept{background:#24583d;border-color:#397b55}.finish{background:#20576a;border-color:#347890}.discard{background:#5b3030;border-color:#854545}.wait{background:#594817;border-color:#856e2a}
+.item-sub{font-size:12px;color:var(--muted);margin-top:5px}
 .empty,.error{padding:30px;text-align:center;color:var(--muted)}
-dialog{width:min(520px,calc(100vw - 28px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);box-shadow:0 18px 60px #0008}
-dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1px solid var(--border)}.dialog-head h2{font-size:18px;margin:0}.dialog-body{padding:17px 19px;display:grid;gap:13px;overflow:auto}.dialog-body label{display:grid;gap:6px;font-size:13px;font-weight:650}.dialog-body input,.dialog-body textarea,.dialog-body select{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}.dialog-body textarea{min-height:96px;resize:vertical}.required-hint{color:var(--muted);font-weight:400;font-size:12px}.dialog-actions{padding:12px 19px 17px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border)}.dialog-actions .action-button{min-width:110px}.hidden{display:none!important}
-@media(max-width:1050px){main{padding:10px}header{padding:10px 12px}table{font-size:13px}th:nth-child(5){width:140px}th:nth-child(6){width:330px}.action-button{font-size:12px;padding:0 8px}}
-@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}table{min-width:980px}}
+.hidden{display:none!important}
+@media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
+@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}#timeline-card{height:260px}.tl-labels{width:76px}}
 </style>
 </head>
 <body>
@@ -58,20 +103,62 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
   </div>
 </header>
 <main>
-  <div class="toolbar"><strong>Offene Vorgänge</strong><span id="item-count">0 Einträge</span><span id="load-state" role="status" aria-live="polite"></span></div>
-  <div id="board-wrap">
-    <table aria-label="Chronologische Übersicht aller offenen Vorgänge">
-      <thead><tr><th>Bereich</th><th>Fälligkeit</th><th>Vorgang</th><th>Priorität</th><th>Status</th><th>Aktion</th></tr></thead>
-      <tbody id="board-body"><tr><td colspan="6" class="empty">Übersicht wird geladen …</td></tr></tbody>
-    </table>
+  <div class="toolbar">
+    <strong>Offene Vorgänge</strong><span id="item-count">0 Einträge</span>
+    <span class="legend">
+      <span><span class="legend-dot fault"></span>Störung</span>
+      <span><span class="legend-dot ticket"></span>Ticket</span>
+      <span><span class="legend-dot maintenance"></span>Wartung</span>
+      <span><span class="legend-dot task"></span>Aufgabe</span>
+      <span><span class="legend-dot overdue"></span>Überfällig</span>
+    </span>
+    <span id="load-state" role="status" aria-live="polite"></span>
   </div>
-</main>
-<dialog id="action-dialog">
-  <form id="action-form">
-    <div class="dialog-head"><h2 id="dialog-title">Vorgang bearbeiten</h2></div>
-    <div class="dialog-body">
-      <p id="dialog-item" class="item-sub"></p>
-      <label id="worker-field" class="hidden">Zuständiger Mitarbeiter <span class="required-hint">Pflichtfeld</span>
+
+  <div id="timeline-card">
+    <div class="tl-labels">
+      <div class="tl-corner"></div>
+      <div class="tl-lane-label">Störung</div>
+      <div class="tl-lane-label">Ticket</div>
+      <div class="tl-lane-label">Wartung</div>
+      <div class="tl-lane-label">Aufgabe</div>
+    </div>
+    <div class="tl-scroll" id="timeline-scroll">
+      <div class="tl-content" id="timeline-content">
+        <div class="tl-axis" id="timeline-axis"></div>
+        <div class="tl-lanes" id="timeline-lanes">
+          <div class="tl-lane" data-type="fault"></div>
+          <div class="tl-lane" data-type="ticket"></div>
+          <div class="tl-lane" data-type="maintenance"></div>
+          <div class="tl-lane" data-type="task"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="noduedate-wrap">
+    <span id="noduedate-label">Ohne Termin</span>
+    <div id="noduedate-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div>
+
+  <div id="edit-panel" class="hidden">
+    <div class="edit-panel-head">
+      <div>
+        <span id="edit-kind" class="kind"></span>
+        <strong id="edit-title" style="font-size:15px"></strong>
+        <div class="item-sub" id="edit-meta"></div>
+      </div>
+      <button type="button" class="header-button" id="edit-close">Schließen</button>
+    </div>
+    <div class="edit-actions" id="edit-action-buttons">
+      <button type="button" class="action-button accept" data-action="accept">Annehmen</button>
+      <button type="button" class="action-button finish" data-action="done">Fertig</button>
+      <button type="button" class="action-button discard" data-action="discard">Verwerfen</button>
+      <button type="button" class="action-button wait" data-action="wait">Warten</button>
+    </div>
+    <form id="action-form" class="hidden">
+      <p id="dialog-item" class="item-sub" style="margin:0"></p>
+      <label id="worker-field" class="hidden">Zuständiger Mitarbeiter <span class="required-hint">Pflichtfeld · aktuell jeder Mitarbeiter wählbar</span>
         <select id="assigned-to" name="assigned_to" required><option value="">Mitarbeiter auswählen …</option></select>
       </label>
       <label id="date-field" class="hidden">Wiedervorlage am <span class="required-hint">Pflichtfeld</span>
@@ -87,17 +174,27 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
       <label>RFID-Karte zur Bestätigung <span class="required-hint">Pflichtfeld</span>
         <input id="rfid-uid" name="rfid_uid" type="password" autocomplete="off" required placeholder="Karte scannen">
       </label>
-    </div>
-    <div class="dialog-actions">
-      <button class="action-button" type="button" id="cancel-action">Abbrechen</button>
-      <button class="action-button finish" type="submit" id="submit-action">Bestätigen</button>
-    </div>
-  </form>
-</dialog>
+      <div class="form-actions">
+        <button class="action-button" type="button" id="cancel-action">Abbrechen</button>
+        <button class="action-button finish" type="submit" id="submit-action">Bestätigen</button>
+      </div>
+    </form>
+  </div>
+</main>
 <script>
 (function(){
-  const body = document.getElementById('board-body');
-  const dialog = document.getElementById('action-dialog');
+  const DAY_MS = 86400000;
+  const WINDOW_BEFORE = 14;
+  const WINDOW_AFTER = 60;
+  const DAY_WIDTH = 26;
+  const LANE_TYPES = ['fault','ticket','maintenance','task'];
+
+  const axisEl = document.getElementById('timeline-axis');
+  const lanesEl = document.getElementById('timeline-lanes');
+  const contentEl = document.getElementById('timeline-content');
+  const noDueList = document.getElementById('noduedate-list');
+  const editPanel = document.getElementById('edit-panel');
+  const editActions = document.getElementById('edit-action-buttons');
   const form = document.getElementById('action-form');
   const workerField = document.getElementById('worker-field');
   const dateField = document.getElementById('date-field');
@@ -108,25 +205,194 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
   const rfidInput = document.getElementById('rfid-uid');
   const loadState = document.getElementById('load-state');
   const actionNames = {accept:'Annehmen',done:'Fertig',discard:'Verwerfen',wait:'Warten'};
-  let current = null;
-  let workers = [];
+  let current = null; // {item, action}
+  let selectedKey = null; // type_key:id
+  let latestData = {items:[], workers:[]};
+
+  function localMidnight(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function todayMidnight(){ return localMidnight(new Date()); }
+  function parseISODate(s){
+    const parts = String(s || '').split('-').map(Number);
+    if(parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(parts[0], parts[1]-1, parts[2]);
+  }
+  function fmtAxisDate(d){ return d.getDate() + '.' + (d.getMonth()+1) + '.'; }
+  function fmtDisplayDate(d){ return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); }
+
+  function itemKey(item){ return item.type_key + ':' + item.id; }
 
   function setOptions(options){
     workerSelect.replaceChildren(new Option('Mitarbeiter auswählen …',''));
     options.forEach(function(worker){workerSelect.add(new Option(worker.name,worker.id));});
   }
 
-  function createCell(text, className){
-    const cell = document.createElement('td');
-    if(className) cell.className = className;
-    cell.textContent = text;
-    return cell;
+  function renderAxis(windowStart, totalDays){
+    axisEl.replaceChildren();
+    const today = todayMidnight();
+    for(let i=0;i<=totalDays;i++){
+      const d = new Date(windowStart.getTime() + i*DAY_MS);
+      const x = i*DAY_WIDTH;
+      if(d.getDay()===1 || i===0){
+        const tick = document.createElement('div');
+        tick.className = 'tl-axis-tick';
+        tick.style.left = x + 'px';
+        axisEl.appendChild(tick);
+        const label = document.createElement('div');
+        label.className = 'tl-axis-label';
+        label.style.left = (x+4) + 'px';
+        label.textContent = fmtAxisDate(d);
+        axisEl.appendChild(label);
+      }
+    }
+    const todayIdx = Math.round((today - windowStart)/DAY_MS);
+    if(todayIdx >= 0 && todayIdx <= totalDays){
+      const line = document.createElement('div');
+      line.className = 'tl-today-line';
+      line.style.left = (todayIdx*DAY_WIDTH) + 'px';
+      axisEl.appendChild(line);
+    }
   }
 
+  function stemHeight(priority){
+    const p = String(priority || '').toLowerCase();
+    if(p === 'critical' || p === 'high') return 54;
+    if(p === 'medium') return 36;
+    return 20;
+  }
+
+  function makeRay(item, x, todayStr){
+    const ray = document.createElement('button');
+    ray.type = 'button';
+    ray.className = 'tl-ray ' + item.type_key;
+    const overdue = item.due_date && item.due_date < todayStr;
+    if(overdue) ray.className += ' overdue';
+    if(itemKey(item) === selectedKey) ray.className += ' selected';
+    ray.style.left = x + 'px';
+    ray.setAttribute('aria-label', item.type + ': ' + item.title);
+    const chip = document.createElement('span');
+    chip.className = 'tl-ray-chip';
+    chip.textContent = item.title;
+    const stem = document.createElement('span');
+    stem.className = 'tl-ray-stem';
+    stem.style.height = stemHeight(item.priority) + 'px';
+    const dot = document.createElement('span');
+    dot.className = 'tl-ray-dot';
+    ray.appendChild(chip);
+    ray.appendChild(dot);
+    ray.appendChild(stem);
+    ray.addEventListener('click', function(){ selectItem(item); });
+    return ray;
+  }
+
+  function renderTimeline(items){
+    const today = todayMidnight();
+    const windowStart = new Date(today.getTime() - WINDOW_BEFORE*DAY_MS);
+    const totalDays = WINDOW_BEFORE + WINDOW_AFTER;
+    const todayStr = today.toISOString().slice(0,10);
+    contentEl.style.width = ((totalDays+1)*DAY_WIDTH) + 'px';
+    renderAxis(windowStart, totalDays);
+
+    const laneEls = {};
+    LANE_TYPES.forEach(function(t){ laneEls[t] = lanesEl.querySelector('[data-type="' + t + '"]'); laneEls[t].replaceChildren(); });
+
+    const todayIdx = Math.max(0, Math.min(totalDays, Math.round((today - windowStart)/DAY_MS)));
+    LANE_TYPES.forEach(function(t){
+      const line = document.createElement('div');
+      line.className = 'tl-today-line';
+      line.style.left = (todayIdx*DAY_WIDTH) + 'px';
+      laneEls[t].appendChild(line);
+    });
+
+    const dayCounts = {}; // "type|dayIdx" -> stacked count, spreads rays slightly so same-day items don't fully overlap
+    let anyDated = false;
+    items.forEach(function(item){
+      const lane = laneEls[item.type_key];
+      if(!lane) return;
+      const due = parseISODate(item.due_date);
+      if(!due) return;
+      anyDated = true;
+      let idx = Math.round((due - windowStart)/DAY_MS);
+      idx = Math.max(0, Math.min(totalDays, idx));
+      const stackKey = item.type_key + '|' + idx;
+      const stack = dayCounts[stackKey] || 0;
+      dayCounts[stackKey] = stack + 1;
+      const x = idx*DAY_WIDTH + (stack % 3) * 7;
+      lane.appendChild(makeRay(item, x, todayStr));
+    });
+
+    Object.keys(laneEls).forEach(function(t){
+      if(!laneEls[t].querySelector('.tl-ray')){
+        const empty = document.createElement('div');
+        empty.className = 'item-sub';
+        empty.style.cssText = 'position:absolute;left:8px;top:50%;transform:translateY(-50%)';
+        empty.textContent = '—';
+        laneEls[t].appendChild(empty);
+      }
+    });
+
+    if(!items.length){
+      lanesEl.insertAdjacentHTML('beforeend', '<div class="tl-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">Keine offenen Vorgänge vorhanden.</div>');
+    }
+  }
+
+  function renderNoDueDate(items){
+    noDueList.replaceChildren();
+    const undated = items.filter(function(item){ return !parseISODate(item.due_date); });
+    document.getElementById('noduedate-wrap').classList.toggle('hidden', undated.length === 0);
+    undated.forEach(function(item){
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'nd-chip ' + item.type_key + (itemKey(item) === selectedKey ? ' selected' : '');
+      chip.innerHTML = '<span class="kind-dot"></span>';
+      chip.appendChild(document.createTextNode(item.title));
+      chip.addEventListener('click', function(){ selectItem(item); });
+      noDueList.appendChild(chip);
+    });
+  }
+
+  function selectItem(item){
+    selectedKey = itemKey(item);
+    current = null;
+    document.getElementById('edit-kind').textContent = item.type;
+    document.getElementById('edit-kind').className = 'kind ' + item.type_key;
+    document.getElementById('edit-title').textContent = item.title;
+    const metaParts = [item.status];
+    if(item.priority) metaParts.push('Priorität ' + item.priority);
+    if(item.due_date) metaParts.push('Fällig ' + fmtDisplayDate(parseISODate(item.due_date)));
+    if(item.assignee) metaParts.push('Zuständig: ' + item.assignee);
+    document.getElementById('edit-meta').textContent = metaParts.join(' · ');
+    form.classList.add('hidden');
+    editActions.classList.remove('hidden');
+    editPanel.classList.remove('hidden');
+    editPanel.dataset.itemKey = selectedKey;
+    editPanel.dataset.item = JSON.stringify(item);
+    renderTimeline(latestData.items);
+    renderNoDueDate(latestData.items);
+    editPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+
+  function closeEditPanel(){
+    selectedKey = null;
+    current = null;
+    editPanel.classList.add('hidden');
+    form.classList.add('hidden');
+    editActions.classList.remove('hidden');
+    delete editPanel.dataset.itemKey;
+    renderTimeline(latestData.items);
+    renderNoDueDate(latestData.items);
+  }
+
+  editActions.addEventListener('click', function(event){
+    const button = event.target.closest('[data-action]');
+    if(!button) return;
+    const item = JSON.parse(editPanel.dataset.item || 'null');
+    if(!item) return;
+    openAction(item, button.dataset.action);
+  });
+
   function openAction(item, action){
-    current = {item:item,action:action};
-    document.getElementById('dialog-title').textContent = actionNames[action] + ' · ' + item.type;
-    document.getElementById('dialog-item').textContent = item.title;
+    current = {item:item, action:action};
+    document.getElementById('dialog-item').textContent = actionNames[action] + ' · ' + item.title;
     workerField.classList.toggle('hidden', action !== 'accept');
     workerSelect.required = action === 'accept';
     dateField.classList.toggle('hidden', action !== 'wait');
@@ -136,60 +402,28 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
     form.reset();
     workerSelect.required = action === 'accept';
     dateInput.required = action === 'wait';
-    dialog.showModal();
+    editActions.classList.add('hidden');
+    form.classList.remove('hidden');
     commentInput.focus();
   }
 
+  document.getElementById('cancel-action').addEventListener('click', function(){
+    current = null;
+    form.classList.add('hidden');
+    editActions.classList.remove('hidden');
+  });
+  document.getElementById('edit-close').addEventListener('click', closeEditPanel);
+
   function render(data){
-    workers = data.workers || [];
-    setOptions(workers);
-    body.replaceChildren();
+    latestData = data;
+    setOptions(data.workers || []);
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
-    if(!data.items.length){
-      const row = document.createElement('tr');
-      const cell = createCell('Keine offenen Vorgänge vorhanden.', 'empty');
-      cell.colSpan = 6;
-      row.appendChild(cell);
-      body.appendChild(row);
-      return;
+    renderTimeline(data.items);
+    renderNoDueDate(data.items);
+    if(selectedKey){
+      const still = data.items.find(function(item){ return itemKey(item) === selectedKey; });
+      if(still) selectItem(still); else closeEditPanel();
     }
-    data.items.forEach(function(item){
-      const row = document.createElement('tr');
-      const kind = createCell('', '');
-      const kindLabel = document.createElement('span');
-      kindLabel.className = 'kind ' + item.type.toLowerCase();
-      kindLabel.textContent = item.type;
-      kind.appendChild(kindLabel);
-      row.appendChild(kind);
-
-      const due = createCell(item.due_date || 'Ohne Termin', 'date' + (item.due_date && item.due_date < new Date().toISOString().slice(0,10) ? ' overdue' : '') + (!item.due_date ? ' none' : ''));
-      row.appendChild(due);
-      const title = createCell(item.title, 'item-title');
-      if(item.assignee){
-        const sub = document.createElement('div');
-        sub.className = 'item-sub';
-        sub.textContent = 'Zuständig: ' + item.assignee;
-        title.appendChild(sub);
-      }
-      row.appendChild(title);
-      row.appendChild(createCell(item.priority || '—', 'priority ' + (item.priority || '').toLowerCase()));
-      row.appendChild(createCell(item.status, 'status'));
-
-      const actions = createCell('', '');
-      const actionSet = document.createElement('div');
-      actionSet.className = 'action-set';
-      [['accept','Annehmen','accept'],['done','Fertig','finish'],['discard','Verwerfen','discard'],['wait','Warten','wait']].forEach(function(def){
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'action-button ' + def[2];
-        button.textContent = def[1];
-        button.addEventListener('click', function(){openAction(item,def[0]);});
-        actionSet.appendChild(button);
-      });
-      actions.appendChild(actionSet);
-      row.appendChild(actions);
-      body.appendChild(row);
-    });
   }
 
   async function refresh(){
@@ -226,7 +460,7 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
       });
       const result = await response.json().catch(function(){return {};});
       if(!response.ok) throw new Error(result.error || 'Aktion konnte nicht gespeichert werden');
-      dialog.close();
+      closeEditPanel();
       await refresh();
     }catch(error){
       loadState.textContent = error.message;
@@ -236,13 +470,12 @@ dialog::backdrop{background:#0009}.dialog-head{padding:17px 19px;border-bottom:1
     }
   });
 
-  document.getElementById('cancel-action').addEventListener('click', function(){dialog.close();});
   document.getElementById('fullscreen-button').addEventListener('click', function(){
     if(document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen().catch(function(){});
   });
   refresh();
-  window.setInterval(function(){if(!dialog.open) refresh();},30000);
+  window.setInterval(function(){ if(editPanel.classList.contains('hidden')) refresh(); }, 30000);
 })();
 </script>
 </body>

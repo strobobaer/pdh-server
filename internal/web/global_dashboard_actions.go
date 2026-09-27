@@ -57,9 +57,12 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 
 	var assignedTo *string
 	if in.Action == "accept" {
-		department, role, err := h.globalBoardWorkerDepartment(r, in.AssignedTo)
-		if err != nil || !isGlobalBoardDepartment(department) || role == string(coreusers.RoleViewer) {
-			writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen aktiven Mitarbeiter aus Instandhaltung oder IT auswählen")
+		// Zuweisung ist momentan noch fuer jeden aktiven Mitarbeiter offen
+		// (anders als die RFID-Bedienung des Terminals oben) - nur
+		// pruefen, dass es sich um ein existierendes, aktives Konto
+		// handelt.
+		if err := h.globalBoardWorkerActive(r, in.AssignedTo); err != nil {
+			writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen aktiven Mitarbeiter auswählen")
 			return
 		}
 		assignedTo = &in.AssignedTo
@@ -111,12 +114,14 @@ func (h *Handler) globalBoardRecordActive(r *http.Request, refType, id string) b
 	return h.db.QueryRow(r.Context(), query, id).Scan(&active) == nil && active
 }
 
-func (h *Handler) globalBoardWorkerDepartment(r *http.Request, id string) (string, string, error) {
-	var department, role string
-	err := h.db.QueryRow(r.Context(), `
-		SELECT department, role FROM users
-		WHERE id=$1::uuid AND active=true AND is_system_user=false`, id).Scan(&department, &role)
-	return department, role, err
+// globalBoardWorkerActive prueft, ob id ein existierendes, aktives,
+// nicht-System-Konto ist - Grundlage fuer die (aktuell noch fuer jeden
+// Mitarbeiter offene) Zuweisung ueber den Leitstand.
+func (h *Handler) globalBoardWorkerActive(r *http.Request, id string) error {
+	var userID string
+	return h.db.QueryRow(r.Context(), `
+		SELECT id::text FROM users
+		WHERE id=$1::uuid AND active=true AND is_system_user=false`, id).Scan(&userID)
 }
 
 func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionInput, actorID string, followUpDate *time.Time) error {
