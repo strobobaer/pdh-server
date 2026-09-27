@@ -411,6 +411,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/preview/refresh", h.ExcelRefreshValuesWeb)
 	r.Get("/import/connections/{id}/browse", h.SQLBrowsePage)
 	r.Post("/import/connections/{id}/browse/refresh", h.SQLRefreshValuesWeb)
+	r.Get("/import/connections/{id}/response", h.ImportResponsePage)
+	r.Post("/import/connections/{id}/response/refresh", h.ImportResponseRefreshWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)

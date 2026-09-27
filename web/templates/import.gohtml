@@ -298,6 +298,11 @@ function connContextItems(row, direction){
       window.location = '/import/connections/' + row.dataset.connId + '/browse';
     }});
   }
+  if(direction === 'import' && (row.dataset.connKind === 'web' || row.dataset.connKind === 'rest_api')){
+    items.push({label: 'Antwort öffnen', icon: 'ti-api', onClick: function(){
+      window.location = '/import/connections/' + row.dataset.connId + '/response';
+    }});
+  }
   if(canWrite){
     items.push({separator: true});
     items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }});

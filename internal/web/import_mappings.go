@@ -142,6 +142,8 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 		returnPath = "preview"
 	case sqlBrowsableKind(kind):
 		returnPath = "browse"
+	case webBrowsableKind(kind):
+		returnPath = "response"
 	}
 	http.Redirect(w, r, "/import/connections/"+connectionID+"/"+returnPath+"?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
 }
