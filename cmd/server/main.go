@@ -187,6 +187,7 @@ func main() {
 		TeamsChannelID:    cfg.Microsoft.TeamsChannelID,
 	})
 	webHandler.StartUpdateChecker(context.Background())
+	webHandler.StartEnabledMqttBrokers(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
@@ -417,5 +418,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	webHandler.StopMqttBrokers()
 	log.Info().Msg("PDH gestoppt")
 }

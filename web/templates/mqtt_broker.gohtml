@@ -1,0 +1,140 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Broker-Status · {{.ConnectionName}}</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px"><a href="/import">← zurück zu Import</a></p>
+</div>
+
+{{if not .Applicable}}
+<div class="card" role="status">
+  Diese Verbindung nutzt keinen integrierten Broker (kein MQTT-Konnektor mit "Integrierter Broker").
+</div>
+{{else if not .Enabled}}
+<div class="card" role="status">
+  Diese Verbindung ist deaktiviert, der integrierte Broker läuft daher nicht. Über den Import-Bereich (Rechtsklick → Aktivieren/Deaktivieren) aktivieren.
+</div>
+{{else if not .Running}}
+<div class="card" role="status">
+  Der Broker sollte laufen, ist aber aktuell nicht aktiv - vermutlich ist der Start fehlgeschlagen (z.B. Port bereits belegt). Verbindung bearbeiten und erneut speichern, um einen Neustart auszulösen.
+</div>
+{{else}}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Broker</div>
+  <dl style="display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;font-size:13px;margin:0" id="broker-info">
+    <dt style="color:var(--muted)">Status</dt><dd style="margin:0" id="info-status"><span class="badge" style="background:var(--green)">Aktiv</span></dd>
+    <dt style="color:var(--muted)">TCP-Listener</dt><dd style="margin:0">{{.ListenAddr}}</dd>
+    {{if .WebsocketAddr}}<dt style="color:var(--muted)">WebSocket-Listener</dt><dd style="margin:0">{{.WebsocketAddr}}</dd>{{end}}
+    <dt style="color:var(--muted)">Gestartet</dt><dd style="margin:0">{{.StartedAt}}</dd>
+  </dl>
+</div>
+
+<div class="stats" style="margin-bottom:14px">
+  <div class="stat s-blue">
+    <div class="stat-label">Clients verbunden</div>
+    <div class="stat-val" id="stat-clients">{{.ClientsConnected}}</div>
+    <div class="stat-sub">Maximum <span id="stat-clients-max">{{.ClientsMaximum}}</span></div>
+  </div>
+  <div class="stat s-green">
+    <div class="stat-label">Nachrichten empfangen</div>
+    <div class="stat-val" id="stat-msg-recv">{{.MessagesReceived}}</div>
+  </div>
+  <div class="stat s-amber">
+    <div class="stat-label">Nachrichten gesendet</div>
+    <div class="stat-val" id="stat-msg-sent">{{.MessagesSent}}</div>
+  </div>
+  <div class="stat s-red">
+    <div class="stat-label">Abonnements</div>
+    <div class="stat-val" id="stat-subs">{{.Subscriptions}}</div>
+    <div class="stat-sub"><span id="stat-bytes">{{.BytesReceived}}</span> B empfangen</div>
+  </div>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <div class="card-title">Aktivität (live) <span id="activity-live-indicator" style="font-size:10px;color:var(--muted)">verbinde …</span></div>
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Zeit</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Ereignis</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Client</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Topic / Details</th>
+      </tr>
+    </thead>
+    <tbody id="activity-log"></tbody>
+  </table>
+  <div id="activity-empty" style="font-size:12px;color:var(--muted);padding:10px 0">Noch keine Aktivität.</div>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function(){
+  if(!{{if .Running}}true{{else}}false{{end}}) return;
+
+  const recent = JSON.parse({{.RecentJSON}});
+  const logBody = document.getElementById('activity-log');
+  const emptyEl = document.getElementById('activity-empty');
+  const liveIndicator = document.getElementById('activity-live-indicator');
+  const MAX_ROWS = 300;
+  let count = 0;
+
+  const kindLabels = {connect: 'Verbunden', disconnect: 'Getrennt', subscribe: 'Abonniert', publish: 'Publiziert', error: 'Fehler'};
+
+  function escapeHTML(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function addActivity(event){
+    count++;
+    emptyEl.hidden = true;
+    const row = document.createElement('tr');
+    const label = kindLabels[event.kind] || event.kind;
+    row.innerHTML =
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);white-space:nowrap">' + escapeHTML(event.time) + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border)">' + escapeHTML(label) + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all">' + escapeHTML(event.client_id || '') + '</td>' +
+      '<td style="padding:5px 10px;border-bottom:1px solid var(--border);word-break:break-all">' + escapeHTML(event.topic || event.detail || '') + '</td>';
+    logBody.insertBefore(row, logBody.firstChild);
+    while(logBody.children.length > MAX_ROWS) logBody.removeChild(logBody.lastChild);
+  }
+
+  recent.slice().reverse().forEach(addActivity);
+
+  function updateStats(status){
+    document.getElementById('stat-clients').textContent = status.clients_connected;
+    document.getElementById('stat-clients-max').textContent = status.clients_maximum;
+    document.getElementById('stat-msg-recv').textContent = status.messages_received;
+    document.getElementById('stat-msg-sent').textContent = status.messages_sent;
+    document.getElementById('stat-subs').textContent = status.subscriptions;
+    document.getElementById('stat-bytes').textContent = status.bytes_received;
+  }
+
+  function markStopped(message){
+    liveIndicator.textContent = message || 'getrennt';
+    document.getElementById('info-status').innerHTML = '<span class="badge" style="background:var(--muted)">Gestoppt</span>';
+  }
+
+  const source = new EventSource('/import/connections/{{.ConnectionID}}/broker/stream');
+  source.addEventListener('status', function(event){
+    liveIndicator.textContent = 'live';
+    updateStats(JSON.parse(event.data));
+  });
+  source.addEventListener('activity', function(event){
+    addActivity(JSON.parse(event.data));
+  });
+  source.addEventListener('stopped', function(event){
+    let message = 'gestoppt';
+    try{ message = JSON.parse(event.data).message || message; }catch(e){}
+    markStopped(message);
+    source.close();
+  });
+  source.onerror = function(){
+    if(source.readyState === EventSource.CLOSED) markStopped('Verbindung getrennt');
+  };
+  window.addEventListener('beforeunload', function(){ source.close(); });
+})();
+</script>
+{{end}}

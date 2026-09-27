@@ -111,14 +111,15 @@ func connectionKindLabel(direction, kind string) string {
 // ── Seiten-Daten ─────────────────────────────────────────────
 
 type ConnectionView struct {
-	ID         string
-	Kind       string
-	KindLabel  string
-	Name       string
-	Enabled    bool
-	ConfigJSON string
-	CreatedBy  string
-	CreatedAt  string
+	ID                 string
+	Kind               string
+	KindLabel          string
+	Name               string
+	Enabled            bool
+	ConfigJSON         string
+	IsIntegratedBroker bool
+	CreatedBy          string
+	CreatedAt          string
 }
 
 type ConnectionsPageData struct {
@@ -152,6 +153,12 @@ func (h *Handler) importExportConnections(ctx context.Context, direction string)
 		}
 		v.KindLabel = connectionKindLabel(direction, v.Kind)
 		v.ConfigJSON = string(configBytes)
+		if v.Kind == "mqtt" {
+			var config map[string]string
+			if json.Unmarshal(configBytes, &config) == nil {
+				v.IsIntegratedBroker = config["broker_mode"] == "integrated"
+			}
+		}
 		list = append(list, v)
 	}
 	return list, rows.Err()
@@ -264,19 +271,22 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Name muss 2 bis 150 Zeichen lang sein"), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(buildConnectionConfig(r, kind, fields))
+	config := buildConnectionConfig(r, kind, fields)
+	configJSON, err := json.Marshal(config)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
 		return
 	}
 	u := getUser(r)
-	_, err = h.db.Exec(r.Context(), `
+	var id string
+	err = h.db.QueryRow(r.Context(), `
 		INSERT INTO import_export_connections (direction, kind, name, config, created_by)
-		VALUES ($1, $2, $3, $4, $5)`, direction, kind, name, configJSON, u.ID)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id::text`, direction, kind, name, configJSON, u.ID).Scan(&id)
 	if err != nil {
 		http.Error(w, "Verbindung konnte nicht angelegt werden", http.StatusInternalServerError)
 		return
 	}
+	h.reconcileMqttBroker(id, direction, kind, true, config)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung angelegt"), http.StatusSeeOther)
 }
 
@@ -288,8 +298,9 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	}
 	id := chi.URLParam(r, "id")
 	var kind string
+	var enabled bool
 	if err := h.db.QueryRow(r.Context(),
-		`SELECT kind FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind); err != nil {
+		`SELECT kind, enabled FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction).Scan(&kind, &enabled); err != nil {
 		http.Error(w, "Verbindung nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -307,7 +318,8 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Redirect(w, r, base+"?notice="+url.QueryEscape("Name muss 2 bis 150 Zeichen lang sein"), http.StatusSeeOther)
 		return
 	}
-	configJSON, err := json.Marshal(buildConnectionConfig(r, kind, fields))
+	config := buildConnectionConfig(r, kind, fields)
+	configJSON, err := json.Marshal(config)
 	if err != nil {
 		http.Error(w, "Konfiguration ungültig", http.StatusInternalServerError)
 		return
@@ -319,6 +331,7 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 		http.Error(w, "Verbindung konnte nicht gespeichert werden", http.StatusInternalServerError)
 		return
 	}
+	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"), http.StatusSeeOther)
 }
 
@@ -334,6 +347,7 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
 		return
 	}
+	h.mqttBrokers.Stop(id)
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gelöscht"), http.StatusSeeOther)
 }
 
@@ -343,10 +357,18 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	id := chi.URLParam(r, "id")
-	if _, err := h.db.Exec(r.Context(),
-		`UPDATE import_export_connections SET enabled = NOT enabled, updated_at=NOW() WHERE id=$1 AND direction=$2`, id, direction); err != nil {
+	var kind string
+	var enabled bool
+	var configBytes []byte
+	if err := h.db.QueryRow(r.Context(), `
+		UPDATE import_export_connections SET enabled = NOT enabled, updated_at=NOW()
+		WHERE id=$1 AND direction=$2 RETURNING kind, enabled, config`, id, direction).
+		Scan(&kind, &enabled, &configBytes); err != nil {
 		http.Error(w, "Verbindung konnte nicht geändert werden", http.StatusInternalServerError)
 		return
 	}
+	config := map[string]string{}
+	_ = json.Unmarshal(configBytes, &config)
+	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	w.WriteHeader(http.StatusNoContent)
 }

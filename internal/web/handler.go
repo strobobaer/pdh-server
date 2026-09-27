@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"pdh/internal/core/infrastructure"
+	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
 	"pdh/internal/core/storage"
@@ -257,6 +258,7 @@ type Handler struct {
 	buildCommit      string
 	microsoft        MicrosoftOAuthConfig
 	microsoftSyncMu  sync.Mutex
+	mqttBrokers      *mqttbroker.Manager
 }
 
 func NewHandler(
@@ -282,11 +284,12 @@ func NewHandler(
 		db:   db,
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
-		checks:    ch,
-		tasks:     tk,
-		projects:  pj,
-		rbac:      rb,
-		jwtSecret: jwtSecret,
+		checks:      ch,
+		tasks:       tk,
+		projects:    pj,
+		rbac:        rb,
+		jwtSecret:   jwtSecret,
+		mqttBrokers: mqttbroker.NewManager(),
 	}
 }
 
@@ -397,6 +400,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/import/connections/{id}/toggle-web", h.ImportConnectionToggleWeb)
 	r.Get("/import/connections/{id}/sniffer", h.MqttSnifferPage)
 	r.Get("/import/connections/{id}/sniffer/stream", h.MqttSnifferStream)
+	r.Get("/import/connections/{id}/broker", h.MqttBrokerPage)
+	r.Get("/import/connections/{id}/broker/stream", h.MqttBrokerStream)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)

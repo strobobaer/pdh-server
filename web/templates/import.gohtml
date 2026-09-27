@@ -163,7 +163,7 @@
     </thead>
     <tbody>
       {{range .Connections}}
-      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" data-conn-config='{{.ConfigJSON}}' data-conn-can-write="{{$.CanWrite}}"
+      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}} data-conn-can-write="{{$.CanWrite}}" data-conn-broker-integrated="{{.IsIntegratedBroker}}"
           {{if or $.CanWrite $.CanExecute}}oncontextmenu="showContextMenu(event, connContextItems(this, 'import')); return false;"{{end}}>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.KindLabel}}</td>
@@ -282,6 +282,11 @@ function connContextItems(row, direction){
     items.push({label: 'Sniffer öffnen', icon: 'ti-antenna', onClick: function(){
       window.location = '/import/connections/' + row.dataset.connId + '/sniffer';
     }});
+    if(row.dataset.connBrokerIntegrated === 'true'){
+      items.push({label: 'Broker-Status öffnen', icon: 'ti-server-2', onClick: function(){
+        window.location = '/import/connections/' + row.dataset.connId + '/broker';
+      }});
+    }
   }
   if(canWrite){
     items.push({separator: true});

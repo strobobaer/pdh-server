@@ -65,7 +65,7 @@
     </thead>
     <tbody>
       {{range .Connections}}
-      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" data-conn-config='{{.ConfigJSON}}'
+      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}}
           {{if $.CanWrite}}oncontextmenu="showContextMenu(event, connContextItems(this, 'export')); return false;"{{end}}>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.KindLabel}}</td>
