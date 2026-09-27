@@ -1,5 +1,30 @@
 {{template "base" .}}
 
+{{define "head"}}
+<style>
+/* frappe-gantt liefert ein helles Standard-Theme mit - an PDHs dunkles
+   Farbschema angeglichen, damit der Zeitstrahl nicht wie ein heller
+   Fremdkörper in der dunklen Karte wirkt. */
+.gantt-container{background:transparent}
+.gantt .grid-header{fill:var(--bg2);stroke:var(--border)}
+.gantt .grid-row{fill:var(--bg2)}
+.gantt .grid-row:nth-child(even){fill:var(--bg3)}
+.gantt .row-line{stroke:var(--border)}
+.gantt .tick{stroke:var(--border)}
+.gantt .tick.thick{stroke:var(--border)}
+.gantt .today-highlight{fill:var(--accent);opacity:.14}
+.gantt .arrow{stroke:var(--muted)}
+.gantt .bar-label{fill:#fff}
+.gantt .bar-label.big{fill:var(--text)}
+.gantt .upper-text{fill:var(--muted)}
+.gantt .lower-text{fill:var(--text)}
+.gantt-container .popup-wrapper{background:var(--bg2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.gantt-container .popup-wrapper .title{border-bottom:2px solid var(--accent);color:var(--text)}
+.gantt-container .popup-wrapper .subtitle{color:var(--muted)}
+.gantt-container .popup-wrapper .pointer{border-top-color:var(--bg2)}
+</style>
+{{end}}
+
 {{define "content"}}
 <div style="margin-bottom:18px">
   <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">Guten {{.Greeting}}, {{.UserFirstName}}</h1>
@@ -34,10 +59,11 @@
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <span>Zeitstrahl</span>
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
-      <span><i class="ti ti-square-filled" style="color:#4f6ef7"></i> Aufgaben</span>
-      <span><i class="ti ti-square-filled" style="color:#8b5cf6"></i> Tickets</span>
-      <span><i class="ti ti-square-filled" style="color:#14b8a6"></i> Wartung</span>
-      <span><i class="ti ti-square-filled" style="color:#f97316"></i> Störungen</span>
+      <span><i class="ti ti-square-filled" style="color:#3fae86"></i> Störungen</span>
+      <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> Tickets</span>
+      <span><i class="ti ti-square-filled" style="color:#c99a3c"></i> Wartung</span>
+      <span><i class="ti ti-square-filled" style="color:#9d7fc9"></i> Aufgaben</span>
+      <span><i class="ti ti-square-filled" style="color:#e05a5a"></i> Überfällig</span>
       <span style="opacity:.5"><i class="ti ti-square-filled"></i> ausgeblasst = kein Termin, +30 Tage geschätzt</span>
     </div>
   </div>
