@@ -28,7 +28,7 @@
       <div class="grid2">
         <div class="form-group"><label class="form-label" for="uf-first">Vorname</label><input id="uf-first" name="first_name" class="form-input" required></div>
         <div class="form-group"><label class="form-label" for="uf-last">Nachname</label><input id="uf-last" name="last_name" class="form-input" required></div>
-        <div class="form-group"><label class="form-label" for="uf-username">Benutzername</label><input id="uf-username" name="username" class="form-input" required autocomplete="username"></div>
+        <div class="form-group"><label class="form-label" for="uf-username">Benutzername <span id="username-help" style="color:var(--muted);font-weight:400"></span></label><input id="uf-username" name="username" class="form-input" required autocomplete="username"></div>
         <div class="form-group"><label class="form-label" for="uf-email">E-Mail</label><input id="uf-email" name="email" type="email" class="form-input" required autocomplete="email"></div>
         <div class="form-group"><label class="form-label" for="uf-nextcloud">Nextcloud-Benutzer-ID</label><input id="uf-nextcloud" name="nextcloud_user_id" class="form-input" placeholder="Optional, für SSO-Verknüpfung"></div>
         <div class="form-group"><label class="form-label" for="uf-password">Passwort <span id="password-help" style="color:var(--muted);font-weight:400">(Pflichtfeld)</span></label><input id="uf-password" name="password" type="password" class="form-input" minlength="8" autocomplete="new-password"></div>
@@ -125,6 +125,9 @@
             {{if $.CanPromoteAdmin}}
             <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
             {{end}}
+            {{if $.CanManageRoles}}
+            <button type="button" class="menu-item" onclick="openPermissionsModal('{{.ID}}','{{.FullName}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-shield-lock"></i>Einzelrechte</button>
+            {{end}}
             {{if .Active}}
             <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
             {{end}}
@@ -138,6 +141,18 @@
     {{end}}
     </tbody>
   </table>
+</div>
+
+<!-- Einzelberechtigungen -->
+<div id="permissions-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:18px" onclick="if(event.target===this)closePermissionsModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(620px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h2 id="permissions-modal-title" style="font-size:16px;margin:0">Einzelrechte</h2>
+      <button type="button" class="btn-icon" aria-label="Schließen" onclick="closePermissionsModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px">Weicht ein Recht von der Rolle ab, gilt für diesen Benutzer ausschließlich die hier gesetzte Abweichung.</p>
+    <div id="permissions-list" style="display:grid;gap:2px;font-size:13px"></div>
+  </div>
 </div>
 
 {{end}}
@@ -170,6 +185,8 @@ function openNewUserModal(){
   userForm.reset();
   userForm.elements.namedItem('user_id').value = '';
   userForm.elements.namedItem('role').value = userForm.elements.namedItem('role').options[0]?.value || '';
+  userForm.elements.namedItem('username').readOnly = false;
+  document.getElementById('username-help').textContent = '';
   userPassword.required = true;
   userPasswordHelp.textContent = '(Pflichtfeld, mindestens 8 Zeichen)';
   document.getElementById('user-modal-title').textContent = 'Benutzer anlegen';
@@ -186,6 +203,8 @@ function editUser(button){
   userForm.elements.namedItem('first_name').value = data.firstName || '';
   userForm.elements.namedItem('last_name').value = data.lastName || '';
   userForm.elements.namedItem('username').value = data.username || '';
+  userForm.elements.namedItem('username').readOnly = true;
+  document.getElementById('username-help').textContent = '(nicht änderbar)';
   userForm.elements.namedItem('email').value = data.email || '';
   userForm.elements.namedItem('nextcloud_user_id').value = data.nextcloudUserId || '';
   userForm.elements.namedItem('role').value = data.role || '';
@@ -236,5 +255,88 @@ async function submitUserForm(event){
   }
   return false;
 }
+
+let permissionsUserID = null;
+
+async function openPermissionsModal(userID, userName){
+  permissionsUserID = userID;
+  document.getElementById('permissions-modal-title').textContent = 'Einzelrechte · ' + userName;
+  const list = document.getElementById('permissions-list');
+  list.textContent = 'Wird geladen…';
+  document.getElementById('permissions-modal').style.display = 'flex';
+  try{
+    const response = await fetch('/users/' + userID + '/permissions', {credentials:'same-origin'});
+    if(!response.ok) throw new Error('HTTP ' + response.status);
+    const rows = await response.json();
+    renderPermissionsList(rows || []);
+  }catch(error){
+    list.innerHTML = '<span style="color:var(--red)">Konnte nicht geladen werden: ' + error.message + '</span>';
+  }
+}
+
+function renderPermissionsList(rows){
+  const list = document.getElementById('permissions-list');
+  list.replaceChildren();
+  let currentCategory = null;
+  rows.forEach(function(row){
+    if(row.category !== currentCategory){
+      currentCategory = row.category;
+      const heading = document.createElement('div');
+      heading.textContent = currentCategory;
+      heading.style.cssText = 'padding:10px 4px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px';
+      list.appendChild(heading);
+    }
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px;border-bottom:1px solid var(--border)';
+    const label = document.createElement('span');
+    label.textContent = row.label;
+    label.title = row.role_granted ? 'Von der Rolle gewährt' : 'Von der Rolle nicht gewährt';
+    const select = document.createElement('select');
+    select.className = 'form-input';
+    select.style.cssText = 'width:auto;font-size:12px;padding:5px 8px';
+    const optRole = new Option('Rolle (' + (row.role_granted ? 'erlaubt' : 'verboten') + ')', 'clear');
+    const optAllow = new Option('Erlaubt', 'allow');
+    const optDeny = new Option('Verboten', 'deny');
+    select.add(optRole); select.add(optAllow); select.add(optDeny);
+    select.value = row.override === true ? 'allow' : row.override === false ? 'deny' : 'clear';
+    select.addEventListener('change', function(){ setUserPermission(row.id, select); });
+    line.appendChild(label);
+    line.appendChild(select);
+    list.appendChild(line);
+  });
+  if(!rows.length) list.textContent = 'Keine Berechtigungen definiert.';
+}
+
+async function setUserPermission(permissionID, select){
+  select.disabled = true;
+  try{
+    const response = await fetch('/users/' + permissionsUserID + '/permissions', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'permission_id=' + encodeURIComponent(permissionID) + '&mode=' + encodeURIComponent(select.value)
+    });
+    if(!response.ok) throw new Error('HTTP ' + response.status);
+  }catch(error){
+    alert('Konnte nicht gespeichert werden: ' + error.message);
+  }finally{
+    select.disabled = false;
+  }
+}
+
+function closePermissionsModal(){
+  document.getElementById('permissions-modal').style.display = 'none';
+  permissionsUserID = null;
+}
+
+(function(){
+  const params = new URLSearchParams(location.search);
+  const openID = params.get('permissions');
+  if(!openID) return;
+  const trigger = document.querySelector('[data-id="' + CSS.escape(openID) + '"]');
+  if(!trigger) return;
+  const name = ((trigger.dataset.firstName || '') + ' ' + (trigger.dataset.lastName || '')).trim();
+  openPermissionsModal(openID, name);
+  history.replaceState({}, '', location.pathname);
+})();
 </script>
 {{end}}

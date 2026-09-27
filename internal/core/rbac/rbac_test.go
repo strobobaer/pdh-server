@@ -65,3 +65,39 @@ func TestMaxRoleLevel(t *testing.T) {
 		t.Errorf("MaxRoleLevel() = %d, want 100", got)
 	}
 }
+
+func newOverrideService() *Service {
+	s := newHierarchyService()
+	s.permCache = map[string]map[string]bool{
+		"worker": {"tickets.view": true},
+	}
+	s.userOverrides = map[string]map[string]bool{
+		"user-allow": {"tickets.edit": true},  // Einzelrecht zusaetzlich zur Rolle erlaubt
+		"user-deny":  {"tickets.view": false}, // Rollen-Recht fuer diesen Nutzer entzogen
+	}
+	return s
+}
+
+func TestHasPermissionForUserFallsBackToRoleWithoutOverride(t *testing.T) {
+	s := newOverrideService()
+	if !s.HasPermissionForUser("user-none", "worker", "tickets.view") {
+		t.Error("ohne Override sollte das Rollen-Recht gelten")
+	}
+	if s.HasPermissionForUser("user-none", "worker", "tickets.edit") {
+		t.Error("ohne Rollen-Recht und ohne Override sollte kein Zugriff bestehen")
+	}
+}
+
+func TestHasPermissionForUserAllowOverrideGrantsBeyondRole(t *testing.T) {
+	s := newOverrideService()
+	if !s.HasPermissionForUser("user-allow", "worker", "tickets.edit") {
+		t.Error("Allow-Override sollte ein Recht gewaehren, das die Rolle nicht hat")
+	}
+}
+
+func TestHasPermissionForUserDenyOverrideRevokesRolePermission(t *testing.T) {
+	s := newOverrideService()
+	if s.HasPermissionForUser("user-deny", "worker", "tickets.view") {
+		t.Error("Deny-Override sollte ein von der Rolle gewaehrtes Recht entziehen")
+	}
+}

@@ -366,10 +366,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
+	r.Get("/users/{id}/permissions", h.UserPermissionsWeb)
+	r.Post("/users/{id}/permissions", h.UserPermissionSetWeb)
 	r.Get("/time", h.TimeTracking)
 
 	// Rollen & Berechtigungen
 	r.Get("/admin/roles", h.RolesPage)
+	r.Get("/admin/orgchart", h.OrgChartPage)
 	r.Get("/core/settings", h.CoreSettingsPage)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
 	r.Post("/core/settings/microsoft/sync", h.MicrosoftDirectorySyncWeb)
@@ -572,8 +575,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsOverrideSession:      isOverride,
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
-		CanManageUsers:         h.rbac.HasPermission(string(u.Role), "system.manage_users"),
-		CanManageRoles:         h.rbac.HasPermission(string(u.Role), "system.manage_roles"),
+		CanManageUsers:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
+		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 	}
 }
 
@@ -2894,20 +2897,28 @@ func (h *Handler) roleLabelMap(ctx context.Context) map[string]string {
 	return m
 }
 
+// avatarFor liefert Initialen und eine stabile (namensabhaengige)
+// Hintergrundfarbe fuer die runden Avatar-Kreise - gemeinsam genutzt von
+// Benutzerverwaltung und Organigramm, damit dieselbe Person ueberall
+// gleich aussieht.
+func avatarFor(firstName, lastName string) (initials, bg string) {
+	avatarBgs := []string{"#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899"}
+	if len(firstName) > 0 {
+		initials += string([]rune(firstName)[:1])
+	}
+	if len(lastName) > 0 {
+		initials += string([]rune(lastName)[:1])
+	}
+	bg = avatarBgs[(len(firstName)+len(lastName))%len(avatarBgs)]
+	return initials, bg
+}
+
 func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels map[string]string) UserView {
 	roleClasses := map[users.Role]string{
 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
 		"worker": "b-gray", "viewer": "b-gray",
 	}
-	avatarBgs := []string{"#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899"}
-	initials := ""
-	if len(u.FirstName) > 0 {
-		initials += string([]rune(u.FirstName)[:1])
-	}
-	if len(u.LastName) > 0 {
-		initials += string([]rune(u.LastName)[:1])
-	}
-	bg := avatarBgs[(len(u.FirstName)+len(u.LastName))%len(avatarBgs)]
+	initials, bg := avatarFor(u.FirstName, u.LastName)
 
 	label := roleLabels[string(u.Role)]
 	if label == "" {
@@ -3031,8 +3042,10 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Benutzername ist nach dem Anlegen nicht mehr aenderbar (u.Username
+	// bleibt hier bewusst unangetastet) - RFID-Karten, Nextcloud-Sync und
+	// Microsoft-Verzeichnisabgleich koennen darauf verweisen.
 	common := func(u *users.User) {
-		u.Username = username
 		u.Email = email
 		u.NextcloudUserID = strings.TrimSpace(r.FormValue("nextcloud_user_id"))
 		u.FirstName = firstName
@@ -3149,11 +3162,13 @@ type PermissionGroup struct {
 }
 
 func (h *Handler) canManageRoles(r *http.Request) bool {
-	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_roles")
+	u := getUser(r)
+	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles")
 }
 
 func (h *Handler) canManageUsers(r *http.Request) bool {
-	return h.rbac.HasPermission(string(getUser(r).Role), "system.manage_users")
+	u := getUser(r)
+	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users")
 }
 
 // outranksRole prueft, ob der angemeldete Benutzer die uebergebene Rolle
@@ -3336,7 +3351,7 @@ func (h *Handler) OverrideLoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?override_error=unbekannte_karte", http.StatusFound)
 		return
 	}
-	if !h.rbac.HasPermission(string(overrideUser.Role), "system.override") {
+	if !h.rbac.HasPermissionForUser(overrideUser.ID, string(overrideUser.Role), "system.override") {
 		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
 		return
 	}
@@ -3375,7 +3390,7 @@ func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?override_error=zugangsdaten", http.StatusFound)
 		return
 	}
-	if !h.rbac.HasPermission(string(overrideUser.Role), "system.override") {
+	if !h.rbac.HasPermissionForUser(overrideUser.ID, string(overrideUser.Role), "system.override") {
 		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
 		return
 	}

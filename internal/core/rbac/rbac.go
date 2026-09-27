@@ -191,6 +191,74 @@ func (r *Repository) RoleLevelsByKey(ctx context.Context) (map[string]int, error
 	return out, nil
 }
 
+// UserPermissionOverridesByUserID liefert alle Einzelberechtigungs-
+// Abweichungen (userID -> permissionKey -> granted) - Grundlage fuer den
+// in-memory Override-Cache. true = zusaetzlich erlaubt, false = trotz
+// Rolle entzogen.
+func (r *Repository) UserPermissionOverridesByUserID(ctx context.Context) (map[string]map[string]bool, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT up.user_id::text, p.key, up.granted
+		FROM user_permissions up
+		JOIN permissions p ON p.id = up.permission_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]map[string]bool{}
+	for rows.Next() {
+		var userID, permKey string
+		var granted bool
+		if err := rows.Scan(&userID, &permKey, &granted); err != nil {
+			return nil, err
+		}
+		if out[userID] == nil {
+			out[userID] = map[string]bool{}
+		}
+		out[userID][permKey] = granted
+	}
+	return out, nil
+}
+
+// UserPermissionOverrides liefert die Einzelberechtigungs-Abweichungen
+// eines einzelnen Benutzers (permissionID -> granted) - fuer die
+// Bearbeitungsansicht.
+func (r *Repository) UserPermissionOverrides(ctx context.Context, userID string) (map[string]bool, error) {
+	rows, err := r.db.Query(ctx, `SELECT permission_id::text, granted FROM user_permissions WHERE user_id=$1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var permID string
+		var granted bool
+		if err := rows.Scan(&permID, &granted); err != nil {
+			return nil, err
+		}
+		out[permID] = granted
+	}
+	return out, nil
+}
+
+// SetUserPermission setzt eine Einzelberechtigungs-Abweichung fuer einen
+// Benutzer (erlauben oder entziehen, unabhaengig vom Rollen-Standard).
+func (r *Repository) SetUserPermission(ctx context.Context, userID, permissionID string, granted bool) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO user_permissions (user_id, permission_id, granted, updated_at)
+		VALUES ($1::uuid, $2::uuid, $3, NOW())
+		ON CONFLICT (user_id, permission_id) DO UPDATE SET granted=EXCLUDED.granted, updated_at=NOW()`,
+		userID, permissionID, granted)
+	return err
+}
+
+// ClearUserPermission entfernt eine Einzelberechtigungs-Abweichung - der
+// Benutzer faellt fuer diese Berechtigung wieder auf den Rollen-Standard
+// zurueck.
+func (r *Repository) ClearUserPermission(ctx context.Context, userID, permissionID string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM user_permissions WHERE user_id=$1::uuid AND permission_id=$2::uuid`, userID, permissionID)
+	return err
+}
+
 func (r *Repository) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := r.db.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&value)
@@ -211,6 +279,7 @@ type Service struct {
 
 	mu               sync.RWMutex
 	permCache        map[string]map[string]bool // roleKey -> Set(permissionKey)
+	userOverrides    map[string]map[string]bool // userID -> permissionKey -> granted (Allow/Deny)
 	roleLevels       map[string]int             // roleKey -> Rangstufe
 	maxRoleLevel     int
 	idleTimeoutMin   int
@@ -218,7 +287,10 @@ type Service struct {
 }
 
 func NewService(repo *Repository) *Service {
-	s := &Service{repo: repo, permCache: map[string]map[string]bool{}, roleLevels: map[string]int{}, idleTimeoutMin: 30, overrideTimeoutM: 10}
+	s := &Service{
+		repo: repo, permCache: map[string]map[string]bool{}, userOverrides: map[string]map[string]bool{},
+		roleLevels: map[string]int{}, idleTimeoutMin: 30, overrideTimeoutM: 10,
+	}
 	return s
 }
 
@@ -234,6 +306,10 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 		return err
 	}
 	levels, err := s.repo.RoleLevelsByKey(ctx)
+	if err != nil {
+		return err
+	}
+	overrides, err := s.repo.UserPermissionOverridesByUserID(ctx)
 	if err != nil {
 		return err
 	}
@@ -260,6 +336,7 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 
 	s.mu.Lock()
 	s.permCache = m
+	s.userOverrides = overrides
 	s.roleLevels = levels
 	s.maxRoleLevel = maxLevel
 	s.idleTimeoutMin = idleMin
@@ -279,6 +356,23 @@ func (s *Service) HasPermission(roleKey, permissionKey string) bool {
 		return false
 	}
 	return perms[permissionKey]
+}
+
+// HasPermissionForUser prueft eine Berechtigung fuer einen konkreten
+// Benutzer: eine Einzelberechtigungs-Abweichung (Allow/Deny) hat immer
+// Vorrang vor der Rollen-Matrix; ohne Abweichung gilt die Rolle wie
+// gewohnt (HasPermission).
+func (s *Service) HasPermissionForUser(userID, roleKey, permissionKey string) bool {
+	s.mu.RLock()
+	overrides, ok := s.userOverrides[userID]
+	if ok {
+		if granted, hasOverride := overrides[permissionKey]; hasOverride {
+			s.mu.RUnlock()
+			return granted
+		}
+	}
+	s.mu.RUnlock()
+	return s.HasPermission(roleKey, permissionKey)
 }
 
 // RoleLevel liefert die Rangstufe einer Rolle (per key). Unbekannte
@@ -342,7 +436,8 @@ func (s *Service) RequirePermission(permissionKey string) func(http.Handler) htt
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			roleKey, _ := r.Context().Value(middleware.RoleKey).(string)
-			if !s.HasPermission(roleKey, permissionKey) {
+			userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+			if !s.HasPermissionForUser(userID, roleKey, permissionKey) {
 				response.Error(w, http.StatusForbidden, "keine berechtigung")
 				return
 			}
@@ -369,6 +464,24 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 
 func (s *Service) SetRolePermission(ctx context.Context, roleID, permissionID string, granted bool) error {
 	if err := s.repo.SetRolePermission(ctx, roleID, permissionID, granted); err != nil {
+		return err
+	}
+	return s.RefreshCache(ctx)
+}
+
+func (s *Service) UserPermissionOverrides(ctx context.Context, userID string) (map[string]bool, error) {
+	return s.repo.UserPermissionOverrides(ctx, userID)
+}
+
+func (s *Service) SetUserPermission(ctx context.Context, userID, permissionID string, granted bool) error {
+	if err := s.repo.SetUserPermission(ctx, userID, permissionID, granted); err != nil {
+		return err
+	}
+	return s.RefreshCache(ctx)
+}
+
+func (s *Service) ClearUserPermission(ctx context.Context, userID, permissionID string) error {
+	if err := s.repo.ClearUserPermission(ctx, userID, permissionID); err != nil {
 		return err
 	}
 	return s.RefreshCache(ctx)
