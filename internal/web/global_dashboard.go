@@ -54,7 +54,7 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	data := GlobalDashboardPageData{LoggedIn: h.sessionUserID(r) != ""}
+	data := GlobalDashboardPageData{LoggedIn: h.sessionUser(r) != nil}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
 	}

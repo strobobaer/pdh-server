@@ -1530,22 +1530,38 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 	return userID
 }
 
+// sessionUser validiert die Sitzung vollstaendig: gueltiges JWT UND ein
+// dazu ladbarer, aktiver Benutzer. Ein syntaktisch gueltiges JWT reicht
+// nicht - das Konto kann zwischenzeitlich deaktiviert oder geloescht
+// worden sein (GetByID liefert dann keinen Treffer). Liefert nil, wenn
+// keine gueltige Sitzung besteht.
+func (h *Handler) sessionUser(r *http.Request) *users.User {
+	userID := h.sessionUserID(r)
+	if userID == "" {
+		return nil
+	}
+	user, err := h.users.GetByID(r.Context(), userID)
+	if err != nil {
+		return nil
+	}
+	return user
+}
+
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/login" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		userID := h.sessionUserID(r)
-		if userID == "" {
+		user := h.sessionUser(r)
+		if user == nil {
+			// Cookie in jedem Fall loeschen - auch wenn das JWT selbst noch
+			// gueltig war, aber der Benutzer nicht mehr geladen werden kann
+			// (deaktiviert/geloescht). Sonst haengt der Browser dauerhaft an
+			// einem Token fest, das nie wieder zu "/" durchkommt.
 			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
-			http.Redirect(w, r, "/global/", http.StatusFound)
-			return
-		}
-		user, err := h.users.GetByID(r.Context(), userID)
-		if err != nil {
 			http.Redirect(w, r, "/global/", http.StatusFound)
 			return
 		}
