@@ -118,6 +118,7 @@ function buildAssignPayload(){
     const payload = {title: title, description: description, priority: priority};
     if(assignedTo) payload.assigned_to = assignedTo;
     if(infraID) payload.infrastructure_id = infraID;
+    if(dueDate) payload.due_date = dueDate + 'T00:00:00Z';
     return payload;
   }
   if(assignType === 'task'){

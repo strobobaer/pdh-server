@@ -48,6 +48,7 @@
           {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
         </select>
       </div>
+      <div class="form-group"><label class="form-label">Termin</label><input name="due_date" type="date" class="form-input"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
@@ -175,6 +176,7 @@ async function submitTicketForm(form){
   if(fd.get('cost_center_id')) payload.cost_center_id=fd.get('cost_center_id');
   if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
   if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
+  if(fd.get('due_date')) payload.due_date=fd.get('due_date')+'T00:00:00Z';
   const result=document.getElementById('ticket-create-result'); result.textContent='Speichere...';
   try{
     const res=await fetch('/api/v1/tickets/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});

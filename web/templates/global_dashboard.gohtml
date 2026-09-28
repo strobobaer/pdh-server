@@ -218,6 +218,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label id="create-symptoms-field" class="hidden">Symptome
         <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
       </label>
+      <label id="create-duedate-field" class="hidden">Termin <span class="required-hint">Optional, Fälligkeitsdatum</span>
+        <input id="create-duedate" type="date" name="due_date">
+      </label>
       <label>Ersteller/in <span class="required-hint">Pflichtfeld</span>
         <select id="create-reporter" name="reporter_id" required>
           <option value="">Mitarbeiter/in auswählen …</option>
@@ -580,6 +583,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   const createSymptomsField = document.getElementById('create-symptoms-field');
   const createInfraField = document.getElementById('create-infra-field');
   const createInfraSelect = document.getElementById('create-infra');
+  const createDueDateField = document.getElementById('create-duedate-field');
   const createDescriptionInput = document.getElementById('create-description');
   const createTitleInput = document.getElementById('create-title');
   let createType = null;
@@ -592,6 +596,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     const needsInfra = type !== 'task';
     createInfraField.classList.toggle('hidden', !needsInfra);
     createInfraSelect.required = needsInfra;
+    createDueDateField.classList.toggle('hidden', type === 'fault');
     createForm.reset();
     document.getElementById('create-priority').value = 'medium';
     createPanel.classList.remove('hidden');
@@ -624,7 +629,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       priority: document.getElementById('create-priority').value,
       infrastructure_id: createInfraSelect.value,
       reporter_id: document.getElementById('create-reporter').value,
-      reporter_name: document.getElementById('create-reporter-name').value.trim()
+      reporter_name: document.getElementById('create-reporter-name').value.trim(),
+      due_date: document.getElementById('create-duedate').value
     };
     if(createType === 'fault'){
       payload.symptoms = String(document.getElementById('create-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);

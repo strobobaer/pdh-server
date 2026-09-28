@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/tasks"
@@ -30,6 +31,7 @@ type globalBoardCreateInput struct {
 	InfrastructureID string   `json:"infrastructure_id"`
 	ReporterID       string   `json:"reporter_id"`
 	ReporterName     string   `json:"reporter_name"`
+	DueDate          string   `json:"due_date"`
 }
 
 func globalBoardCreateTypeAllowed(t string) bool {
@@ -66,6 +68,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	in.InfrastructureID = strings.TrimSpace(in.InfrastructureID)
 	in.ReporterID = strings.TrimSpace(in.ReporterID)
 	in.ReporterName = strings.TrimSpace(in.ReporterName)
+	in.DueDate = strings.TrimSpace(in.DueDate)
 	if !globalBoardCreateTypeAllowed(in.Type) {
 		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannter Vorgangstyp")
 		return
@@ -101,6 +104,15 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannte/r Ersteller/in")
 		return
 	}
+	var dueDate *time.Time
+	if in.DueDate != "" {
+		parsed, parseErr := time.Parse("2006-01-02", in.DueDate)
+		if parseErr != nil {
+			writeGlobalBoardError(w, http.StatusBadRequest, "Ungültiger Termin")
+			return
+		}
+		dueDate = &parsed
+	}
 	description := in.Description
 	if in.ReporterName != "" {
 		description = "Gemeldet von: " + in.ReporterName + "\n\n" + description
@@ -114,11 +126,12 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	case "ticket":
 		_, err = h.tickets.Create(r.Context(), &tickets.CreateInput{
 			Title: in.Title, Description: description, Priority: tickets.Priority(in.Priority),
-			InfrastructureID: infrastructureID,
+			InfrastructureID: infrastructureID, DueDate: dueDate,
 		}, reporter.ID)
 	case "task":
 		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
 			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
+			DueDate: in.DueDate,
 		}, reporter.ID)
 	case "fault":
 		symptoms := make([]string, 0, len(in.Symptoms))
