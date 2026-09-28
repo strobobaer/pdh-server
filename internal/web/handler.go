@@ -32,6 +32,7 @@ import (
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
+	"pdh/pkg/appsettings"
 )
 
 // ── Template-Daten ───────────────────────────────────────────
@@ -202,6 +203,7 @@ type TicketsPageData struct {
 	Tickets         []TicketView
 	CriticalTickets []TicketView
 	Users           []UserOption
+	DefaultDueDays  int
 }
 
 type InventoryPageData struct {
@@ -392,6 +394,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/microsoft/assign", h.MicrosoftDirectoryAssignWeb)
 	r.Post("/core/settings/microsoft/{id}/unassign", h.MicrosoftDirectoryUnassignWeb)
 	r.Post("/core/settings", h.SaveCoreSettings)
+	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
@@ -1150,9 +1153,10 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("status")
 
 	data := TicketsPageData{
-		BaseData: h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
-		Filter:   filter,
-		Users:    h.userOptions(ctx),
+		BaseData:       h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
+		Filter:         filter,
+		Users:          h.userOptions(ctx),
+		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 	}
 
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {

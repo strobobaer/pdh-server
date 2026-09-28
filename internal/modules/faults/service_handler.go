@@ -12,6 +12,7 @@ import (
 	"pdh/internal/core/addins"
 	"pdh/internal/core/synclink"
 	"pdh/internal/modules/inventory"
+	"pdh/pkg/appsettings"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -76,6 +77,9 @@ func (s *Service) Create(ctx context.Context, in *CreateFaultInput, userID strin
 		CreatedBy:        userID,
 		CostCenterID:     in.CostCenterID,
 	}
+	days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback)
+	due := time.Now().AddDate(0, 0, days)
+	f.DueDate = &due
 	if err := s.repo.Create(ctx, f); err != nil {
 		return f, err
 	}

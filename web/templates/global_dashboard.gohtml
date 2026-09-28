@@ -218,7 +218,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label id="create-symptoms-field" class="hidden">Symptome
         <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
       </label>
-      <label id="create-duedate-field" class="hidden">Termin <span class="required-hint">Optional, Fälligkeitsdatum</span>
+      <label id="create-duedate-field" class="hidden">Termin <span class="required-hint" id="create-duedate-hint">Optional, Fälligkeitsdatum</span>
         <input id="create-duedate" type="date" name="due_date">
       </label>
       <label>Ersteller/in <span class="required-hint">Pflichtfeld</span>
@@ -578,6 +578,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   document.getElementById('edit-close').addEventListener('click', closeEditPanel);
 
   const createTileNames = {fault:'Neue Störung', ticket:'Neues Ticket', task:'Neue Aufgabe'};
+  const createDefaultDueDays = {ticket: {{.DefaultDueDaysTicket}}, task: {{.DefaultDueDaysTask}}};
   const createPanel = document.getElementById('create-panel');
   const createForm = document.getElementById('create-form');
   const createSymptomsField = document.getElementById('create-symptoms-field');
@@ -597,6 +598,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     createInfraField.classList.toggle('hidden', !needsInfra);
     createInfraSelect.required = needsInfra;
     createDueDateField.classList.toggle('hidden', type === 'fault');
+    if(createDefaultDueDays[type] !== undefined){
+      document.getElementById('create-duedate-hint').textContent = 'Optional, leer = ' + createDefaultDueDays[type] + ' Tage nach Anlage';
+    }
     createForm.reset();
     document.getElementById('create-priority').value = 'medium';
     createPanel.classList.remove('hidden');

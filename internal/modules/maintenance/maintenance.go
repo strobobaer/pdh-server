@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"pdh/internal/core/addins"
+	"pdh/pkg/appsettings"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -587,7 +588,8 @@ func (s *Service) DuplicatePlan(ctx context.Context, id, userID string) (*Mainte
 func (s *Service) CreateTask(ctx context.Context, in *CreateTaskInput, userID string) (*MaintenanceTask, error) {
 	dueDate, _ := time.Parse("2006-01-02", in.DueDate)
 	if dueDate.IsZero() {
-		dueDate = time.Now().AddDate(0, 0, 7)
+		days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback)
+		dueDate = time.Now().AddDate(0, 0, days)
 	}
 
 	t := &MaintenanceTask{

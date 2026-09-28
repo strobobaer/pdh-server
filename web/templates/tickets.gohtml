@@ -48,7 +48,7 @@
           {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Termin</label><input name="due_date" type="date" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Termin <span style="color:var(--muted);font-weight:400">(leer = {{.DefaultDueDays}} Tage nach Anlage)</span></label><input name="due_date" type="date" class="form-input"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Beschreibung</label>

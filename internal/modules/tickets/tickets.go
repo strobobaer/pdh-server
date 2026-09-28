@@ -14,6 +14,7 @@ import (
 	"pdh/internal/core/addins"
 	"pdh/internal/core/synclink"
 	"pdh/internal/integrations/nextcloud"
+	"pdh/pkg/appsettings"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -312,6 +313,12 @@ func notifyTicketLinkerStatus(ctx context.Context, ticketID, status, userID stri
 }
 
 func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string) (*Ticket, error) {
+	dueDate := in.DueDate
+	if dueDate == nil {
+		days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback)
+		due := time.Now().AddDate(0, 0, days)
+		dueDate = &due
+	}
 	t := &Ticket{
 		Title:            in.Title,
 		Description:      in.Description,
@@ -321,7 +328,7 @@ func (s *Service) Create(ctx context.Context, in *CreateInput, createdBy string)
 		CreatedBy:        createdBy,
 		InfrastructureID: in.InfrastructureID,
 		Tags:             in.Tags,
-		DueDate:          in.DueDate,
+		DueDate:          dueDate,
 		CostCenterID:     in.CostCenterID,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {

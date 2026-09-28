@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/pkg/appsettings"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
 )
@@ -27,6 +29,11 @@ func (s *Service) Create(ctx context.Context, in *CreateTaskInput, userID string
 		if due, err := parseDate(in.DueDate); err == nil {
 			t.DueDate = &due
 		}
+	}
+	if t.DueDate == nil {
+		days := appsettings.GetInt(ctx, s.repo.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback)
+		due := time.Now().AddDate(0, 0, days)
+		t.DueDate = &due
 	}
 	if in.StartDate != "" {
 		if start, err := parseDate(in.StartDate); err == nil {
@@ -245,4 +252,3 @@ func (h *Handler) GetPartsUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	response.JSON(w, 200, usage)
 }
-

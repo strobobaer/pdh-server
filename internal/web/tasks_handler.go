@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/timetracking"
+	"pdh/pkg/appsettings"
 )
 
 type TaskView struct {
@@ -77,6 +78,7 @@ type TasksPageData struct {
 	Open           int
 	Users          []UserOption
 	ProjectOptions []ProjectOption
+	DefaultDueDays int
 }
 
 type ProjectOption struct {
@@ -90,9 +92,10 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 	unassigned := r.URL.Query().Get("unassigned") == "true"
 
 	data := TasksPageData{
-		BaseData: h.baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
-		Filter:   filter,
-		Users:    h.userOptions(ctx),
+		BaseData:       h.baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
+		Filter:         filter,
+		Users:          h.userOptions(ctx),
+		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
 
 	list, err := h.tasks.List(ctx, tasks.Status(filter), "", unassigned)

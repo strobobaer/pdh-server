@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"pdh/pkg/appsettings"
 )
 
 const updateRepository = "strobobaer/pdh-server"
@@ -31,6 +33,11 @@ type CoreSettingsPageData struct {
 	AgentStatus         string
 	AgentOutput         string
 	Notice              string
+
+	DefaultDueDaysFault       int
+	DefaultDueDaysTicket      int
+	DefaultDueDaysTask        int
+	DefaultDueDaysMaintenance int
 }
 
 type UpdateCommitView struct {
@@ -110,6 +117,11 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		LastCheckError:   h.getUpdateSetting(ctx, "update_last_check_error", ""),
 		AgentConfigured:  h.updateAgentURL != "" && h.updateAgentToken != "",
 		Notice:           r.URL.Query().Get("notice"),
+
+		DefaultDueDaysFault:       appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysFault, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 	}
 	_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
 	data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
@@ -166,6 +178,45 @@ func (h *Handler) SaveCoreSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/core/settings?notice=Einstellungen+gespeichert", http.StatusSeeOther)
+}
+
+// SaveDueDateSettings speichert die vier Standard-Fristen (Tage nach
+// Anlage), die greifen, wenn beim Anlegen einer Störung/eines Tickets/
+// einer Aufgabe/einer Wartung kein eigener Termin angegeben wird.
+func (h *Handler) SaveDueDateSettings(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Einstellungen konnten nicht gelesen werden", http.StatusBadRequest)
+		return
+	}
+	fields := []struct {
+		formName string
+		key      string
+	}{
+		{"due_days_fault", appsettings.KeyDefaultDueDaysFault},
+		{"due_days_ticket", appsettings.KeyDefaultDueDaysTicket},
+		{"due_days_task", appsettings.KeyDefaultDueDaysTask},
+		{"due_days_maintenance", appsettings.KeyDefaultDueDaysMaintenance},
+	}
+	values := make(map[string]int, len(fields))
+	for _, f := range fields {
+		days, err := strconv.Atoi(r.FormValue(f.formName))
+		if err != nil || days < 1 || days > 365 {
+			http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Standard-Fristen müssen zwischen 1 und 365 Tagen liegen"), http.StatusSeeOther)
+			return
+		}
+		values[f.key] = days
+	}
+	for _, f := range fields {
+		if err := h.setUpdateSetting(r.Context(), f.key, strconv.Itoa(values[f.key])); err != nil {
+			http.Error(w, "Einstellungen konnten nicht gespeichert werden", http.StatusInternalServerError)
+			return
+		}
+	}
+	http.Redirect(w, r, "/core/settings?notice=Standard-Fristen+gespeichert", http.StatusSeeOther)
 }
 
 func (h *Handler) CheckUpdateWeb(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,8 @@ import (
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
+
+	"pdh/pkg/appsettings"
 )
 
 type GlobalBoardItem struct {
@@ -51,10 +53,12 @@ const (
 // (oeffentliches Wandmonitor-Board), daher muss sie selbst pruefen, ob
 // bereits eine gueltige, ausreichend berechtigte Sitzung besteht.
 type GlobalDashboardPageData struct {
-	LoggedIn       bool
-	Title          string
-	Subtitle       string
-	CanEditHeading bool
+	LoggedIn             bool
+	Title                string
+	Subtitle             string
+	CanEditHeading       bool
+	DefaultDueDaysTicket int
+	DefaultDueDaysTask   int
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -80,10 +84,12 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	data := GlobalDashboardPageData{
-		LoggedIn:       h.sessionUser(r) != nil,
-		Title:          h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
-		Subtitle:       h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
-		CanEditHeading: h.canEditGlobalDashboardHeading(r),
+		LoggedIn:             h.sessionUser(r) != nil,
+		Title:                h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
+		Subtitle:             h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
+		CanEditHeading:       h.canEditGlobalDashboardHeading(r),
+		DefaultDueDaysTicket: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysTask:   appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)

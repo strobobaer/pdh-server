@@ -43,6 +43,20 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Standard-Fälligkeiten</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Greift, wenn beim Anlegen kein eigener Termin angegeben wird - Anzahl Tage nach Erstellung.</p>
+    <form method="POST" action="/core/settings/due-dates">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="due_days_fault">Störungen</label><input id="due_days_fault" type="number" min="1" max="365" name="due_days_fault" class="form-input" value="{{.DefaultDueDaysFault}}" required></div>
+        <div class="form-group"><label class="form-label" for="due_days_ticket">Tickets</label><input id="due_days_ticket" type="number" min="1" max="365" name="due_days_ticket" class="form-input" value="{{.DefaultDueDaysTicket}}" required></div>
+        <div class="form-group"><label class="form-label" for="due_days_task">Aufgaben</label><input id="due_days_task" type="number" min="1" max="365" name="due_days_task" class="form-input" value="{{.DefaultDueDaysTask}}" required></div>
+        <div class="form-group"><label class="form-label" for="due_days_maintenance">Wartungen</label><input id="due_days_maintenance" type="number" min="1" max="365" name="due_days_maintenance" class="form-input" value="{{.DefaultDueDaysMaintenance}}" required></div>
+      </div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+
+  <div class="card">
     <div class="card-title">Automatische Update-Prüfung</div>
     <form method="POST" action="/core/settings">
       <div class="form-group" style="margin-bottom:12px">
