@@ -10,7 +10,7 @@
   const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.themeMode = mode;
-  if(localStorage.getItem('pdh_sidebar_left') === 'collapsed') document.documentElement.classList.add('sidebar-left-collapsed');
+  if(localStorage.getItem('pdh_sidebar_left') !== 'expanded') document.documentElement.classList.add('sidebar-left-collapsed');
   if(localStorage.getItem('pdh_sidebar_right') === 'collapsed') document.documentElement.classList.add('sidebar-right-collapsed');
 })();
 </script>
@@ -545,14 +545,16 @@ if(window.matchMedia) {
 }
 
 function applySidebarState() {
-  const left = localStorage.getItem('pdh_sidebar_left') === 'collapsed';
+  const left = localStorage.getItem('pdh_sidebar_left') !== 'expanded';
   const right = localStorage.getItem('pdh_sidebar_right') === 'collapsed';
   document.documentElement.classList.toggle('sidebar-left-collapsed', left);
   document.documentElement.classList.toggle('sidebar-right-collapsed', right);
 }
 function toggleSidebar(side) {
   const key = side === 'right' ? 'pdh_sidebar_right' : 'pdh_sidebar_left';
-  const collapsed = localStorage.getItem(key) === 'collapsed';
+  const collapsed = side === 'right'
+    ? localStorage.getItem(key) === 'collapsed'
+    : localStorage.getItem(key) !== 'expanded';
   localStorage.setItem(key, collapsed ? 'expanded' : 'collapsed');
   applySidebarState();
 }
