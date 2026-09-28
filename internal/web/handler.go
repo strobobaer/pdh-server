@@ -140,6 +140,8 @@ type TicketView struct {
 	CostCenterNumber string
 	CostCenterName   string
 	BlinkClass       string
+	DueDate          string
+	DueDateISO       string
 }
 
 type UserOption struct {
@@ -1711,6 +1713,8 @@ type FaultDetailView struct {
 	CostCenterID     string
 	CostCenterNumber string
 	CostCenterName   string
+	DueDate          string
+	DueDateISO       string
 }
 
 type SimilarFaultView struct {
@@ -1772,6 +1776,10 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if fault.RootCause != nil {
 		data.Fault.RootCause = *fault.RootCause
+	}
+	if fault.DueDate != nil {
+		data.Fault.DueDate = fault.DueDate.Format("02.01.2006")
+		data.Fault.DueDateISO = fault.DueDate.Format("2006-01-02")
 	}
 
 	// Analyse laden
@@ -2482,6 +2490,10 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if t.CostCenterID != nil {
 		data.Ticket.CostCenterID = *t.CostCenterID
+	}
+	if t.DueDate != nil {
+		data.Ticket.DueDate = t.DueDate.Format("02.01.2006")
+		data.Ticket.DueDateISO = t.DueDate.Format("2006-01-02")
 	}
 	people := h.recordPeople(ctx, "ticket", id)
 	data.Ticket.AssignedID = people.AssignedID

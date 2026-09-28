@@ -326,9 +326,17 @@ func (h *Handler) UpdateDueDate(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		DueDate string `json:"due_date"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
-		return
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			response.Error(w, http.StatusBadRequest, "ungueltige eingabe")
+			return
+		}
+		in.DueDate = r.FormValue("due_date")
 	}
 	var dueDate *time.Time
 	if in.DueDate != "" {

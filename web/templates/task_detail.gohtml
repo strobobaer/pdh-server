@@ -122,8 +122,15 @@
       <div class="card-title">Details</div>
       <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Task.PriorityClass}}">{{.Task.Priority}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title"><span class="badge {{.Task.StatusClass}}">{{.Task.StatusLabel}}</span></div></div></div>
-      {{if .Task.DueDate}}<div class="li"><div class="li-text"><div class="li-sub">Fällig am</div><div class="li-title">{{.Task.DueDate}}</div></div></div>{{end}}
       {{if .Task.StartDate}}<div class="li"><div class="li-text"><div class="li-sub">Start</div><div class="li-title">{{.Task.StartDate}}</div></div></div>{{end}}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <label class="form-label">Termin</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="date" id="ta-duedate-picker" class="form-input" value="{{.Task.DueDateISO}}">
+          <button type="button" class="btn" style="font-size:11px" onclick="saveTaskDueDate()">Speichern</button>
+        </div>
+        <div id="task-duedate-result" style="font-size:11px;margin-top:6px"></div>
+      </div>
       {{if .Task.AssigneeName}}<div class="li"><div class="li-text"><div class="li-sub">Zugewiesen</div><div class="li-title">{{.Task.AssigneeName}}</div></div></div>{{end}}
       {{if .Task.ResponsibleName}}<div class="li"><div class="li-text"><div class="li-sub">Verantwortlich</div><div class="li-title">{{.Task.ResponsibleName}}</div></div></div>{{end}}
       {{if .Task.ProjectName}}<div class="li"><div class="li-text"><div class="li-sub">Projekt</div><div class="li-title"><a href="/projects/{{.Task.ProjectID}}" style="color:var(--accent)">{{.Task.ProjectName}}</a></div></div></div>{{end}}
@@ -343,6 +350,21 @@ async function stopTaskTime(entryID){
     var text = await res.text();
     result.innerHTML = text;
     setTimeout(function(){ location.reload(); }, 800);
+  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
+}
+
+async function saveTaskDueDate(){
+  var due = document.getElementById('ta-duedate-picker').value;
+  var result = document.getElementById('task-duedate-result');
+  result.textContent = 'Speichere...';
+  try{
+    var res = await fetch('/api/v1/tasks/'+TASK_ID+'/edit', {
+      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({due_date: due})
+    });
+    var json = await res.json();
+    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
+    result.innerHTML = '<span style="color:var(--green)">Gespeichert</span>';
   }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
 }
 

@@ -198,6 +198,13 @@
       {{end}}
       <div class="li"><div class="li-text"><div class="li-sub">Schweregrad</div><div class="li-title"><span class="badge {{.Fault.SeverityClass}}">{{.Fault.Severity}}</span></div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title"><span class="badge {{.Fault.StatusClass}}">{{.Fault.StatusLabel}}</span></div></div></div>
+      <form hx-post="/api/v1/faults/{{.Fault.ID}}/due-date" hx-swap="none" hx-on::after-request="if(event.detail.successful) location.reload()" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="form-group">
+          <label class="form-label">Termin</label>
+          <input name="due_date" type="date" class="form-input" value="{{.Fault.DueDateISO}}">
+        </div>
+        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
+      </form>
       <form hx-put="/faults/{{.Fault.ID}}/infrastructure-web" hx-target="#fault-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         {{template "infra-tree-picker" (dict "TargetID" "fault-detail-infra-id" "SelectedLabelID" "fault-detail-infra-selected" "Label" "Infrastruktur" "Value" .Fault.InfraID "SelectedLabel" .Fault.InfraName)}}
         <div id="fault-infra-result" style="font-size:12px;margin-bottom:8px"></div>
