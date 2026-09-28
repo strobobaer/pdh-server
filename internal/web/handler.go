@@ -75,16 +75,16 @@ type DashboardData struct {
 // GanttItem ist ein vereinheitlichter Zeitstrahl-Eintrag fürs Dashboard,
 // zusammengeführt aus Aufgaben, Tickets, Wartungsaufträgen und Störungen.
 type GanttItem struct {
-	ID              string
-	RefType         string // "task" | "ticket" | "maintenance" | "fault"
-	Title           string
-	StartISO        string // YYYY-MM-DD
-	EndISO          string // YYYY-MM-DD (echt oder vorläufig)
-	IsProvisional   bool   // kein echtes Fälligkeitsdatum -> +30 Tage Platzhalter
-	IsDone          bool
-	Color           string
-	DetailURL       string
-	DueDateEndpoint string // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
+	ID              string `json:"id"`
+	RefType         string `json:"ref_type"` // "task" | "ticket" | "maintenance" | "fault"
+	Title           string `json:"title"`
+	StartISO        string `json:"start_iso"`      // YYYY-MM-DD
+	EndISO          string `json:"end_iso"`        // YYYY-MM-DD (echt oder vorläufig)
+	IsProvisional   bool   `json:"is_provisional"` // kein echtes Fälligkeitsdatum -> +30 Tage Platzhalter
+	IsDone          bool   `json:"is_done"`
+	Color           string `json:"color"`
+	DetailURL       string `json:"detail_url"`
+	DueDateEndpoint string `json:"due_date_endpoint"` // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
 }
 
 type DashStats struct {

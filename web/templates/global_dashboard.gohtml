@@ -65,7 +65,7 @@ h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .header-meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 .header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
 .header-button:hover,.action-button:hover{filter:brightness(1.14)}
-.header-button:focus-visible,.action-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.tl-ray:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.header-button:focus-visible,.action-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18px;gap:10px;overflow:auto}
 .toolbar{min-height:40px;flex:none;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 #load-state{margin-left:auto}
@@ -73,47 +73,28 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
 .legend-dot.fault{background:var(--type-fault)}.legend-dot.ticket{background:var(--type-ticket)}.legend-dot.maintenance{background:var(--type-maintenance)}.legend-dot.task{background:var(--type-task)}.legend-dot.overdue{background:var(--overdue)}
 
-/* ── Anzeigebereich ── */
-#timeline-range{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-#timeline-range input[type="date"]{min-height:36px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
-
-/* ── Zeitstrahl ── */
-#timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:200px}
-.tl-labels{flex:none;width:98px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)}
-.tl-corner{height:34px;flex:none;border-bottom:1px solid var(--border)}
-.tl-lane-label{flex:1;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
-.tl-lane-label:last-child{border-bottom:0}
-.tl-scroll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative}
-.tl-content{position:relative;height:100%;display:flex;flex-direction:column}
-.tl-axis{height:34px;flex:none;position:relative;background:var(--surface-2);border-bottom:1px solid var(--border)}
-.tl-axis-tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--border)}
-.tl-axis-label{position:absolute;top:0;height:100%;display:flex;align-items:center;font-size:11px;color:var(--muted);padding-left:5px;white-space:nowrap}
-.tl-lanes{flex:1;display:flex;flex-direction:column}
-.tl-lane{flex:1;position:relative;border-bottom:1px solid var(--border)}
-.tl-lane:last-child{border-bottom:0}
-.tl-lane.weekend-cols{background-image:none}
-.tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--overdue);z-index:2;pointer-events:none}
-.tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:var(--overdue);white-space:nowrap}
-.tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
-.tl-ray-chip{display:none;flex-direction:column;align-items:center;gap:1px;white-space:nowrap;font-size:11px;line-height:1.2;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;color:var(--text)}
-.tl-ray:hover .tl-ray-chip,.tl-ray.selected .tl-ray-chip{display:flex}
-.tl-ray-title{font-weight:700}
-.tl-ray-assignee{font-weight:400;font-size:11px;color:var(--muted)}
-.tl-ray-stem{width:6px;border-radius:3px 3px 0 0;background:var(--muted)}
-.tl-ray-dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
-.tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:var(--type-fault)}
-.tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:var(--type-ticket)}
-.tl-ray.maintenance .tl-ray-stem,.tl-ray.maintenance .tl-ray-dot{background:var(--type-maintenance)}
-.tl-ray.task .tl-ray-stem,.tl-ray.task .tl-ray-dot{background:var(--type-task)}
-.tl-ray.overdue .tl-ray-stem,.tl-ray.overdue .tl-ray-dot{background:var(--overdue)}
-.tl-ray.selected .tl-ray-dot{outline:3px solid var(--focus);outline-offset:1px}
-.tl-ray-bar{position:absolute;bottom:0;height:8px;border-radius:4px;opacity:.35;pointer-events:none}
-.tl-ray-bar.fault{background:var(--type-fault)}
-.tl-ray-bar.ticket{background:var(--type-ticket)}
-.tl-ray-bar.maintenance{background:var(--type-maintenance)}
-.tl-ray-bar.task{background:var(--type-task)}
-.tl-ray-bar.overdue{background:var(--overdue)}
-.tl-empty{padding:30px;text-align:center;color:var(--muted)}
+/* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
+#timeline-card{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:12px}
+#timeline-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+#dash-gantt-target{overflow-x:auto}
+#dash-gantt-empty{display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center}
+.gantt-container{background:transparent}
+.gantt .grid-header{fill:var(--surface);stroke:var(--border)}
+.gantt .grid-row{fill:var(--surface)}
+.gantt .grid-row:nth-child(even){fill:var(--surface-2)}
+.gantt .row-line{stroke:var(--border)}
+.gantt .tick{stroke:var(--border)}
+.gantt .tick.thick{stroke:var(--border)}
+.gantt .today-highlight{fill:var(--accent);opacity:.14}
+.gantt .arrow{stroke:var(--muted)}
+.gantt .bar-label{fill:#fff}
+.gantt .bar-label.big{fill:var(--text)}
+.gantt .upper-text{fill:var(--muted)}
+.gantt .lower-text{fill:var(--text)}
+.gantt-container .popup-wrapper{background:var(--surface-2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.gantt-container .popup-wrapper .title{border-bottom:2px solid var(--accent);color:var(--text)}
+.gantt-container .popup-wrapper .subtitle{color:var(--muted)}
+.gantt-container .popup-wrapper .pointer{border-top-color:var(--surface-2)}
 
 /* ── Tabelle ── */
 #entries-table-wrap{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
@@ -124,14 +105,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #entries-table tbody tr:hover{background:var(--surface-2)}
 #entries-table tbody tr.selected{background:var(--surface-2);outline:2px solid var(--focus);outline-offset:-2px}
 #entries-table td.overdue{color:var(--overdue);font-weight:700}
-
-/* ── Ohne Termin ── */
-#noduedate-wrap{flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 2px}
-#noduedate-label{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
-.nd-chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:6px 12px 6px 8px;cursor:pointer;font-size:12.5px}
-.nd-chip:hover,.nd-chip.selected{border-color:var(--muted)}
-.nd-chip .kind-dot{width:9px;height:9px;border-radius:50%;flex:none}
-.nd-chip.fault .kind-dot{background:var(--type-fault)}.nd-chip.ticket .kind-dot{background:var(--type-ticket)}.nd-chip.maintenance .kind-dot{background:var(--type-maintenance)}.nd-chip.task .kind-dot{background:var(--type-task)}
 
 /* ── Bearbeitungsfenster (unterhalb) ── */
 #edit-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
@@ -163,8 +136,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .empty,.error{padding:30px;text-align:center;color:var(--muted)}
 .hidden{display:none!important}
 @media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
-@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}#timeline-card{height:174px}.tl-labels{width:76px}}
+@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}}
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 </head>
 <body>
 <header>
@@ -258,32 +232,20 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     </form>
   </div>
 
-  <div id="timeline-range">
-    <label for="timeline-range-from">Anzeigebereich von</label>
-    <input type="date" id="timeline-range-from">
-    <label for="timeline-range-to">bis</label>
-    <input type="date" id="timeline-range-to">
-  </div>
-
   <div id="timeline-card">
-    <div class="tl-labels">
-      <div class="tl-corner"></div>
-      <div class="tl-lane-label">Störung</div>
-      <div class="tl-lane-label">Ticket</div>
-      <div class="tl-lane-label">Wartung</div>
-      <div class="tl-lane-label">Aufgabe</div>
-    </div>
-    <div class="tl-scroll" id="timeline-scroll">
-      <div class="tl-content" id="timeline-content">
-        <div class="tl-axis" id="timeline-axis"></div>
-        <div class="tl-lanes" id="timeline-lanes">
-          <div class="tl-lane" data-type="fault"></div>
-          <div class="tl-lane" data-type="ticket"></div>
-          <div class="tl-lane" data-type="maintenance"></div>
-          <div class="tl-lane" data-type="task"></div>
-        </div>
+    <div id="timeline-card-head">
+      <strong>Zeitstrahl</strong>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
+        <span><i class="ti ti-square-filled" style="color:var(--type-fault)"></i> Störungen</span>
+        <span><i class="ti ti-square-filled" style="color:var(--type-ticket)"></i> Tickets</span>
+        <span><i class="ti ti-square-filled" style="color:var(--type-maintenance)"></i> Wartung</span>
+        <span><i class="ti ti-square-filled" style="color:var(--type-task)"></i> Aufgaben</span>
+        <span><i class="ti ti-square-filled" style="color:var(--overdue)"></i> Überfällig</span>
+        <span style="opacity:.5"><i class="ti ti-square-filled"></i> ausgeblasst = kein Termin, +30 Tage geschätzt</span>
       </div>
     </div>
+    <div id="dash-gantt-target"></div>
+    <div id="dash-gantt-empty">Keine Einträge mit Terminen vorhanden.</div>
   </div>
 
   <div id="entries-table-wrap">
@@ -294,11 +256,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <tbody id="entries-table-body"></tbody>
     </table>
     <div id="entries-empty" class="empty hidden">Keine offenen Vorgänge vorhanden.</div>
-  </div>
-
-  <div id="noduedate-wrap">
-    <span id="noduedate-label">Ohne Termin</span>
-    <div id="noduedate-list" style="display:flex;gap:8px;flex-wrap:wrap"></div>
   </div>
 
   <div id="edit-panel" class="hidden">
@@ -342,6 +299,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     </form>
   </div>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script>
 (function(){
   const THEME_MODES = ['system','light','dark'];
@@ -377,17 +335,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 })();
 
 (function(){
-  const DAY_MS = 86400000;
-  const WINDOW_BEFORE = 14;
-  const WINDOW_AFTER = 60;
-  const DAY_WIDTH = 26;
-  const MIN_DAYS_WIDE = 2; // Laufbalken nicht beendeter Vorgänge sind mindestens so viele Tage breit
-  const LANE_TYPES = ['fault','ticket','maintenance','task'];
-
-  const axisEl = document.getElementById('timeline-axis');
-  const lanesEl = document.getElementById('timeline-lanes');
-  const contentEl = document.getElementById('timeline-content');
-  const noDueList = document.getElementById('noduedate-list');
   const editPanel = document.getElementById('edit-panel');
   const editActions = document.getElementById('edit-action-buttons');
   const form = document.getElementById('action-form');
@@ -400,51 +347,19 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   const rfidInput = document.getElementById('rfid-uid');
   const loadState = document.getElementById('load-state');
   const actionNames = {accept:'Annehmen',done:'Fertig',discard:'Verwerfen',wait:'Warten'};
-  const rangeFromInput = document.getElementById('timeline-range-from');
-  const rangeToInput = document.getElementById('timeline-range-to');
   let current = null; // {item, action}
   let selectedKey = null; // type_key:id
-  let latestData = {items:[], workers:[]};
+  let latestData = {items:[], workers:[], gantt_items:[]};
 
-  function localMidnight(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-  function todayMidnight(){ return localMidnight(new Date()); }
+  function todayMidnight(){ const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
   function parseISODate(s){
     const parts = String(s || '').split('-').map(Number);
     if(parts.length !== 3 || parts.some(isNaN)) return null;
     return new Date(parts[0], parts[1]-1, parts[2]);
   }
-  function isoDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
-  function fmtAxisDate(d){ return d.getDate() + '.' + (d.getMonth()+1) + '.'; }
   function fmtDisplayDate(d){ return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); }
 
   function itemKey(item){ return item.type_key + ':' + item.id; }
-
-  // Anzeigebereich des Zeitstrahls: per Von/Bis-Feld einstellbar, Voreinstellung ist stets der Beginn der aktuellen Woche.
-  function currentWeekStart(){
-    const today = todayMidnight();
-    const day = today.getDay(); // 0=So, 1=Mo, ...
-    const diffToMonday = (day === 0 ? -6 : 1 - day);
-    return new Date(today.getTime() + diffToMonday*DAY_MS);
-  }
-  function defaultDisplayWindow(){
-    const start = currentWeekStart();
-    const end = new Date(start.getTime() + (WINDOW_BEFORE + WINDOW_AFTER)*DAY_MS);
-    return {start:start, end:end};
-  }
-  function getDisplayWindow(){
-    const defaults = defaultDisplayWindow();
-    let start = parseISODate(rangeFromInput.value) || defaults.start;
-    let end = parseISODate(rangeToInput.value) || defaults.end;
-    if(end <= start) end = new Date(start.getTime() + DAY_MS);
-    return {start:start, totalDays:Math.round((end - start)/DAY_MS)};
-  }
-  (function initDisplayWindowInputs(){
-    const defaults = defaultDisplayWindow();
-    rangeFromInput.value = isoDate(defaults.start);
-    rangeToInput.value = isoDate(defaults.end);
-  })();
-  rangeFromInput.addEventListener('change', function(){ renderTimeline(latestData.items); });
-  rangeToInput.addEventListener('change', function(){ renderTimeline(latestData.items); });
 
   function fillSelect(select, options, placeholder){
     if(!select) return;
@@ -457,137 +372,115 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     fillSelect(workerSelect, options, 'Mitarbeiter auswählen …');
   }
 
-  function renderAxis(windowStart, totalDays){
-    axisEl.replaceChildren();
+  // ── Zeitstrahl: frappe-gantt, identisch zum Dashboard der angemeldeten
+  // Nutzer (dashboard.gohtml) - inklusive Drag-to-Reschedule und
+  // Überfällig-/Bald-fällig-Einfärbung. Anders als dort liefert der
+  // Leitstand seine Daten per periodischem /global/data-Poll statt
+  // einmalig beim Seitenaufruf, daher wird der Gantt bei jedem Refresh
+  // neu instanziiert statt einmalig aufgebaut.
+  let dashGanttItems = [];
+  let dashGanttInstance = null;
+
+  function dashGanttColor(t){
     const today = todayMidnight();
-    for(let i=0;i<=totalDays;i++){
-      const d = new Date(windowStart.getTime() + i*DAY_MS);
-      const x = i*DAY_WIDTH;
-      if(d.getDay()===1 || i===0){
-        const tick = document.createElement('div');
-        tick.className = 'tl-axis-tick';
-        tick.style.left = x + 'px';
-        axisEl.appendChild(tick);
-        const label = document.createElement('div');
-        label.className = 'tl-axis-label';
-        label.style.left = (x+4) + 'px';
-        label.textContent = fmtAxisDate(d);
-        axisEl.appendChild(label);
+    const due = t.end ? new Date(t.end+'T00:00:00') : null;
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const isOverdue = (!t.done && due && due < today);
+    const isDueSoon = (!t.done && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
+
+    if(t.done) return {fill:'#10b981', stroke:'#10b981', opacity:1};
+    if(isOverdue) return {fill:t.color, stroke:'#e05a5a', opacity: t.provisional ? 0.4 : 1};
+    if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b', opacity: t.provisional ? 0.4 : 1};
+    return {fill:t.color, stroke:t.color, opacity: t.provisional ? 0.4 : 1};
+  }
+
+  function applyDashGanttStyling(){
+    dashGanttItems.forEach(function(t){
+      const wrapper = document.querySelector('#dash-gantt-target .bar-wrapper[data-id="' + t.id + '"]');
+      if(!wrapper) return;
+      const colors = dashGanttColor(t);
+      const bar = wrapper.querySelector('.bar');
+      const barProgress = wrapper.querySelector('.bar-progress');
+      if(bar){
+        bar.style.fill = colors.fill;
+        bar.style.stroke = colors.stroke;
+        bar.style.strokeWidth = (colors.stroke === '#e05a5a') ? '3px' : '1px';
       }
-    }
-    const todayIdx = Math.round((today - windowStart)/DAY_MS);
-    if(todayIdx >= 0 && todayIdx <= totalDays){
-      const line = document.createElement('div');
-      line.className = 'tl-today-line';
-      line.style.left = (todayIdx*DAY_WIDTH) + 'px';
-      axisEl.appendChild(line);
-    }
-  }
-
-  function stemHeight(priority){
-    const p = String(priority || '').toLowerCase();
-    if(p === 'critical' || p === 'high') return 28;
-    if(p === 'medium') return 18;
-    return 10;
-  }
-
-  function makeRangeBar(item, barLeft, barWidth, overdue){
-    const bar = document.createElement('span');
-    bar.className = 'tl-ray-bar ' + item.type_key + (overdue ? ' overdue' : '');
-    bar.style.left = barLeft + 'px';
-    bar.style.width = barWidth + 'px';
-    return bar;
-  }
-
-  function makeRay(item, x, todayStr, stack){
-    const ray = document.createElement('button');
-    ray.type = 'button';
-    ray.className = 'tl-ray ' + item.type_key;
-    const overdue = item.due_date && item.due_date < todayStr;
-    if(overdue) ray.className += ' overdue';
-    if(itemKey(item) === selectedKey) ray.className += ' selected';
-    ray.style.left = x + 'px';
-    ray.setAttribute('aria-label', item.type + ': ' + item.title + (item.assignee ? ' · ' + item.assignee : ''));
-    const chip = document.createElement('span');
-    chip.className = 'tl-ray-chip';
-    const chipTitle = document.createElement('span');
-    chipTitle.className = 'tl-ray-title';
-    chipTitle.textContent = item.title;
-    chip.appendChild(chipTitle);
-    if(item.assignee){
-      const chipAssignee = document.createElement('span');
-      chipAssignee.className = 'tl-ray-assignee';
-      chipAssignee.textContent = item.assignee;
-      chip.appendChild(chipAssignee);
-    }
-    const stem = document.createElement('span');
-    stem.className = 'tl-ray-stem';
-    stem.style.height = (stemHeight(item.priority) + (stack || 0)*10) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
-    const dot = document.createElement('span');
-    dot.className = 'tl-ray-dot';
-    ray.appendChild(chip);
-    ray.appendChild(dot);
-    ray.appendChild(stem);
-    ray.addEventListener('click', function(){ selectItem(item); });
-    return ray;
-  }
-
-  function renderTimeline(items){
-    const today = todayMidnight();
-    const range = getDisplayWindow();
-    const windowStart = range.start;
-    const totalDays = range.totalDays;
-    const todayStr = today.toISOString().slice(0,10);
-    contentEl.style.width = ((totalDays+1)*DAY_WIDTH) + 'px';
-    renderAxis(windowStart, totalDays);
-
-    const laneEls = {};
-    LANE_TYPES.forEach(function(t){ laneEls[t] = lanesEl.querySelector('[data-type="' + t + '"]'); laneEls[t].replaceChildren(); });
-
-    const todayIdx = Math.max(0, Math.min(totalDays, Math.round((today - windowStart)/DAY_MS)));
-    LANE_TYPES.forEach(function(t){
-      const line = document.createElement('div');
-      line.className = 'tl-today-line';
-      line.style.left = (todayIdx*DAY_WIDTH) + 'px';
-      laneEls[t].appendChild(line);
-    });
-
-    const dayCounts = {}; // "type|dayIdx" -> stacked count, spreads rays slightly so same-day items don't fully overlap
-    let anyDated = false;
-    items.forEach(function(item){
-      const lane = laneEls[item.type_key];
-      if(!lane) return;
-      const due = parseISODate(item.due_date);
-      if(!due) return;
-      anyDated = true;
-      let idx = Math.round((due - windowStart)/DAY_MS);
-      idx = Math.max(0, Math.min(totalDays, idx));
-      const stackKey = item.type_key + '|' + idx;
-      const stack = dayCounts[stackKey] || 0;
-      dayCounts[stackKey] = stack + 1;
-      const x = idx*DAY_WIDTH;
-      const overdue = item.due_date && item.due_date < todayStr;
-      // Noch nicht beendete Vorgänge spannen einen Laufbalken zwischen heute und Fälligkeit auf
-      // und nutzen so dynamisch den verfügbaren Anzeigebereich statt einer festen Breite.
-      const barStartIdx = Math.min(idx, todayIdx);
-      const barEndIdx = Math.max(idx, todayIdx);
-      const barDays = Math.max(MIN_DAYS_WIDE, barEndIdx - barStartIdx);
-      lane.appendChild(makeRangeBar(item, barStartIdx*DAY_WIDTH, barDays*DAY_WIDTH, overdue));
-      lane.appendChild(makeRay(item, x, todayStr, stack));
-    });
-
-    Object.keys(laneEls).forEach(function(t){
-      if(!laneEls[t].querySelector('.tl-ray')){
-        const empty = document.createElement('div');
-        empty.className = 'item-sub';
-        empty.style.cssText = 'position:absolute;left:8px;top:50%;transform:translateY(-50%)';
-        empty.textContent = '—';
-        laneEls[t].appendChild(empty);
+      if(barProgress) barProgress.style.fill = colors.fill;
+      wrapper.style.opacity = colors.opacity;
+      wrapper.style.cursor = 'pointer';
+      let titleEl = wrapper.querySelector('title');
+      const hint = t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Doppelklick zum Öffnen';
+      if(!titleEl){
+        titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        wrapper.appendChild(titleEl);
       }
+      titleEl.textContent = t.name + hint;
+
+      wrapper.addEventListener('dblclick', function(e){
+        e.preventDefault();
+        window.location = t.url;
+      });
+    });
+  }
+
+  function formatDateISO(d){
+    const year = d.getFullYear();
+    const month = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return year + '-' + month + '-' + day;
+  }
+
+  async function saveDashGanttDate(item, end){
+    const dueStr = formatDateISO(end);
+    try{
+      const res = await fetch(item.dueEndpoint, {
+        method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({due_date: dueStr})
+      });
+      if(!res.ok){
+        let j = null; try{ j = await res.json(); }catch(e){}
+        throw new Error((j && j.error) || ('HTTP ' + res.status));
+      }
+      await refresh();
+    }catch(e){
+      alert('Termin konnte nicht gespeichert werden: ' + e.message);
+      await refresh();
+    }
+  }
+
+  function renderDashGantt(){
+    const target = document.getElementById('dash-gantt-target');
+    const empty = document.getElementById('dash-gantt-empty');
+    if(!dashGanttItems.length){
+      target.style.display = 'none';
+      empty.style.display = 'block';
+      return;
+    }
+    target.style.display = 'block';
+    empty.style.display = 'none';
+
+    const byId = {};
+    dashGanttItems.forEach(function(t){ byId[t.id] = t; });
+
+    const tasks = dashGanttItems.map(function(t){
+      return {id: t.id, name: t.name, start: t.start, end: t.end, progress: t.done ? 100 : 0};
     });
 
-    if(!items.length){
-      lanesEl.insertAdjacentHTML('beforeend', '<div class="tl-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">Keine offenen Vorgänge vorhanden.</div>');
+    try{
+      dashGanttInstance = new Gantt('#dash-gantt-target', tasks, {
+        on_date_change: function(task, start, end){
+          const item = byId[task.id];
+          if(item) saveDashGanttDate(item, end);
+        },
+        view_mode: 'Week'
+      });
+      setTimeout(applyDashGanttStyling, 100);
+    }catch(e){
+      console.warn('Leitstand-Zeitstrahl konnte nicht gerendert werden', e);
+      target.style.display = 'none';
+      empty.style.display = 'block';
+      empty.textContent = 'Zeitstrahl konnte nicht geladen werden.';
     }
   }
 
@@ -632,21 +525,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     entriesEmpty.classList.toggle('hidden', items.length !== 0);
   }
 
-  function renderNoDueDate(items){
-    noDueList.replaceChildren();
-    const undated = items.filter(function(item){ return !parseISODate(item.due_date); });
-    document.getElementById('noduedate-wrap').classList.toggle('hidden', undated.length === 0);
-    undated.forEach(function(item){
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'nd-chip ' + item.type_key + (itemKey(item) === selectedKey ? ' selected' : '');
-      chip.innerHTML = '<span class="kind-dot"></span>';
-      chip.appendChild(document.createTextNode(item.title));
-      chip.addEventListener('click', function(){ selectItem(item); });
-      noDueList.appendChild(chip);
-    });
-  }
-
   function selectItem(item){
     closeCreatePanel();
     selectedKey = itemKey(item);
@@ -667,8 +545,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     editPanel.classList.remove('hidden');
     editPanel.dataset.itemKey = selectedKey;
     editPanel.dataset.item = JSON.stringify(item);
-    renderTimeline(latestData.items);
-    renderNoDueDate(latestData.items);
     renderEntriesTable(latestData.items);
     editPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
@@ -680,8 +556,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     form.classList.add('hidden');
     editActions.classList.remove('hidden');
     delete editPanel.dataset.itemKey;
-    renderTimeline(latestData.items);
-    renderNoDueDate(latestData.items);
     renderEntriesTable(latestData.items);
   }
 
@@ -802,8 +676,11 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     fillSelect(document.getElementById('create-reporter'), data.workers || [], 'Mitarbeiter/in auswählen …');
     fillSelect(document.getElementById('create-infra'), data.infrastructure || [], 'Infrastruktur auswählen …');
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
-    renderTimeline(data.items);
-    renderNoDueDate(data.items);
+    dashGanttItems = (data.gantt_items || []).map(function(t){
+      return {id: t.id, refType: t.ref_type, name: t.title, start: t.start_iso, end: t.end_iso,
+        provisional: !!t.is_provisional, done: !!t.is_done, color: t.color, url: t.detail_url, dueEndpoint: t.due_date_endpoint};
+    });
+    renderDashGantt();
     renderEntriesTable(data.items);
     if(selectedKey){
       const still = data.items.find(function(item){ return itemKey(item) === selectedKey; });

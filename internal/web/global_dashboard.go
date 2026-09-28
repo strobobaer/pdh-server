@@ -32,6 +32,7 @@ type GlobalDashboardData struct {
 	Items          []GlobalBoardItem `json:"items"`
 	Workers        []UserOption      `json:"workers"`
 	Infrastructure []UserOption      `json:"infrastructure"`
+	GanttItems     []GanttItem       `json:"gantt_items"`
 }
 
 func (h *Handler) GlobalDashboardRoutes() chi.Router {
@@ -157,6 +158,10 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		Items:          make([]GlobalBoardItem, 0),
 		Workers:        make([]UserOption, 0),
 		Infrastructure: make([]UserOption, 0),
+		GanttItems:     h.buildDashboardGantt(ctx, time.Now()),
+	}
+	if data.GanttItems == nil {
+		data.GanttItems = make([]GanttItem, 0)
 	}
 
 	rows, err := h.db.Query(ctx, `
