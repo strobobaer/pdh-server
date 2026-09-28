@@ -73,6 +73,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
 .legend-dot.fault{background:var(--type-fault)}.legend-dot.ticket{background:var(--type-ticket)}.legend-dot.maintenance{background:var(--type-maintenance)}.legend-dot.task{background:var(--type-task)}.legend-dot.overdue{background:var(--overdue)}
 
+/* ── Anzeigebereich ── */
+#timeline-range{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+#timeline-range input[type="date"]{min-height:36px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+
 /* ── Zeitstrahl ── */
 #timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:600px}
 .tl-labels{flex:none;width:98px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)}
@@ -109,6 +113,16 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .tl-ray-bar.task{background:var(--type-task)}
 .tl-ray-bar.overdue{background:var(--overdue)}
 .tl-empty{padding:30px;text-align:center;color:var(--muted)}
+
+/* ── Tabelle ── */
+#entries-table-wrap{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
+#entries-table{width:100%;border-collapse:collapse;font-size:13px}
+#entries-table th,#entries-table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+#entries-table th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);font-weight:700;font-size:12px}
+#entries-table tbody tr{cursor:pointer}
+#entries-table tbody tr:hover{background:var(--surface-2)}
+#entries-table tbody tr.selected{background:var(--surface-2);outline:2px solid var(--focus);outline-offset:-2px}
+#entries-table td.overdue{color:var(--overdue);font-weight:700}
 
 /* ── Ohne Termin ── */
 #noduedate-wrap{flex:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 2px}
@@ -243,6 +257,13 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     </form>
   </div>
 
+  <div id="timeline-range">
+    <label for="timeline-range-from">Anzeigebereich von</label>
+    <input type="date" id="timeline-range-from">
+    <label for="timeline-range-to">bis</label>
+    <input type="date" id="timeline-range-to">
+  </div>
+
   <div id="timeline-card">
     <div class="tl-labels">
       <div class="tl-corner"></div>
@@ -262,6 +283,16 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
         </div>
       </div>
     </div>
+  </div>
+
+  <div id="entries-table-wrap">
+    <table id="entries-table">
+      <thead>
+        <tr><th>Art</th><th>Titel</th><th>Priorität</th><th>Fällig</th><th>Zuständig</th><th>Status</th></tr>
+      </thead>
+      <tbody id="entries-table-body"></tbody>
+    </table>
+    <div id="entries-empty" class="empty hidden">Keine offenen Vorgänge vorhanden.</div>
   </div>
 
   <div id="noduedate-wrap">
@@ -367,6 +398,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   const rfidInput = document.getElementById('rfid-uid');
   const loadState = document.getElementById('load-state');
   const actionNames = {accept:'Annehmen',done:'Fertig',discard:'Verwerfen',wait:'Warten'};
+  const rangeFromInput = document.getElementById('timeline-range-from');
+  const rangeToInput = document.getElementById('timeline-range-to');
   let current = null; // {item, action}
   let selectedKey = null; // type_key:id
   let latestData = {items:[], workers:[]};
@@ -378,10 +411,38 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     if(parts.length !== 3 || parts.some(isNaN)) return null;
     return new Date(parts[0], parts[1]-1, parts[2]);
   }
+  function isoDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function fmtAxisDate(d){ return d.getDate() + '.' + (d.getMonth()+1) + '.'; }
   function fmtDisplayDate(d){ return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear(); }
 
   function itemKey(item){ return item.type_key + ':' + item.id; }
+
+  // Anzeigebereich des Zeitstrahls: per Von/Bis-Feld einstellbar, Voreinstellung ist stets der Beginn der aktuellen Woche.
+  function currentWeekStart(){
+    const today = todayMidnight();
+    const day = today.getDay(); // 0=So, 1=Mo, ...
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
+    return new Date(today.getTime() + diffToMonday*DAY_MS);
+  }
+  function defaultDisplayWindow(){
+    const start = currentWeekStart();
+    const end = new Date(start.getTime() + (WINDOW_BEFORE + WINDOW_AFTER)*DAY_MS);
+    return {start:start, end:end};
+  }
+  function getDisplayWindow(){
+    const defaults = defaultDisplayWindow();
+    let start = parseISODate(rangeFromInput.value) || defaults.start;
+    let end = parseISODate(rangeToInput.value) || defaults.end;
+    if(end <= start) end = new Date(start.getTime() + DAY_MS);
+    return {start:start, totalDays:Math.round((end - start)/DAY_MS)};
+  }
+  (function initDisplayWindowInputs(){
+    const defaults = defaultDisplayWindow();
+    rangeFromInput.value = isoDate(defaults.start);
+    rangeToInput.value = isoDate(defaults.end);
+  })();
+  rangeFromInput.addEventListener('change', function(){ renderTimeline(latestData.items); });
+  rangeToInput.addEventListener('change', function(){ renderTimeline(latestData.items); });
 
   function fillSelect(select, options, placeholder){
     if(!select) return;
@@ -471,8 +532,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   function renderTimeline(items){
     const today = todayMidnight();
-    const windowStart = new Date(today.getTime() - WINDOW_BEFORE*DAY_MS);
-    const totalDays = WINDOW_BEFORE + WINDOW_AFTER;
+    const range = getDisplayWindow();
+    const windowStart = range.start;
+    const totalDays = range.totalDays;
     const todayStr = today.toISOString().slice(0,10);
     contentEl.style.width = ((totalDays+1)*DAY_WIDTH) + 'px';
     renderAxis(windowStart, totalDays);
@@ -527,6 +589,47 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     }
   }
 
+  const entriesBody = document.getElementById('entries-table-body');
+  const entriesEmpty = document.getElementById('entries-empty');
+
+  function makeCell(text, className){
+    const td = document.createElement('td');
+    if(className) td.className = className;
+    td.textContent = text;
+    return td;
+  }
+
+  function renderEntriesTable(items){
+    entriesBody.replaceChildren();
+    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const sorted = items.slice().sort(function(a, b){
+      const da = parseISODate(a.due_date), db = parseISODate(b.due_date);
+      if(da && db) return da - db;
+      if(da) return -1;
+      if(db) return 1;
+      return 0;
+    });
+    sorted.forEach(function(item){
+      const tr = document.createElement('tr');
+      if(itemKey(item) === selectedKey) tr.className = 'selected';
+      const kindCell = document.createElement('td');
+      const kindSpan = document.createElement('span');
+      kindSpan.className = 'kind ' + item.type_key;
+      kindSpan.textContent = item.type;
+      kindCell.appendChild(kindSpan);
+      tr.appendChild(kindCell);
+      tr.appendChild(makeCell(item.title));
+      tr.appendChild(makeCell(item.priority || '—'));
+      const overdue = item.due_date && item.due_date < todayStr;
+      tr.appendChild(makeCell(item.due_date ? fmtDisplayDate(parseISODate(item.due_date)) : '—', overdue ? 'overdue' : ''));
+      tr.appendChild(makeCell(item.assignee || '—'));
+      tr.appendChild(makeCell(item.status || '—'));
+      tr.addEventListener('click', function(){ selectItem(item); });
+      entriesBody.appendChild(tr);
+    });
+    entriesEmpty.classList.toggle('hidden', items.length !== 0);
+  }
+
   function renderNoDueDate(items){
     noDueList.replaceChildren();
     const undated = items.filter(function(item){ return !parseISODate(item.due_date); });
@@ -561,6 +664,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     editPanel.dataset.item = JSON.stringify(item);
     renderTimeline(latestData.items);
     renderNoDueDate(latestData.items);
+    renderEntriesTable(latestData.items);
     editPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
 
@@ -573,6 +677,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     delete editPanel.dataset.itemKey;
     renderTimeline(latestData.items);
     renderNoDueDate(latestData.items);
+    renderEntriesTable(latestData.items);
   }
 
   editActions.addEventListener('click', function(event){
@@ -694,6 +799,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     renderTimeline(data.items);
     renderNoDueDate(data.items);
+    renderEntriesTable(data.items);
     if(selectedKey){
       const still = data.items.find(function(item){ return itemKey(item) === selectedKey; });
       if(still) selectItem(still); else closeEditPanel();
