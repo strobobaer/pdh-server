@@ -40,15 +40,25 @@ func (h *Handler) notifyMicrosoftTeamsBoardAction(in GlobalBoardActionInput, ass
 	if !hasMicrosoftScope(grantedScopes, "Chat.ReadWrite") {
 		return
 	}
-	recipientID := ""
+	var recipientIDs []string
 	if assignedTo != nil {
-		recipientID = *assignedTo
+		recipientIDs = []string{*assignedTo}
 	} else {
-		recipientID, err = h.globalBoardAssignee(ctx, in.Type, in.ID)
-		if err != nil || recipientID == "" {
+		recipientIDs, err = h.globalBoardAssignees(ctx, in.Type, in.ID)
+		if err != nil || len(recipientIDs) == 0 {
 			return
 		}
 	}
+	senderObjectID := h.microsoftSenderObjectID(ctx)
+	for _, recipientID := range recipientIDs {
+		h.sendMicrosoftTeamsDirectMessage(ctx, token, senderObjectID, recipientID, message)
+	}
+}
+
+// sendMicrosoftTeamsDirectMessage schickt message per 1:1-Chat an einen
+// einzelnen Empfaenger - ausgelagert aus notifyMicrosoftTeamsBoardAction,
+// da eine Aufgabe jetzt mehrere Zugewiesene gleichzeitig haben kann.
+func (h *Handler) sendMicrosoftTeamsDirectMessage(ctx context.Context, token, senderObjectID, recipientID, message string) {
 	var graphUserID string
 	if err := h.db.QueryRow(ctx, `
 		SELECT microsoft_user_id FROM microsoft_directory_users
@@ -56,7 +66,7 @@ func (h *Handler) notifyMicrosoftTeamsBoardAction(in GlobalBoardActionInput, ass
 		h.microsoft.TenantID, recipientID).Scan(&graphUserID); err != nil || graphUserID == "" {
 		return
 	}
-	if graphUserID == h.microsoftSenderObjectID(ctx) {
+	if graphUserID == senderObjectID {
 		return
 	}
 	var chat struct {
@@ -65,8 +75,8 @@ func (h *Handler) notifyMicrosoftTeamsBoardAction(in GlobalBoardActionInput, ass
 	chatPayload := map[string]interface{}{
 		"chatType": "oneOnOne",
 		"members": []interface{}{map[string]interface{}{
-			"@odata.type":      "#microsoft.graph.aadUserConversationMember",
-			"roles":            []string{"owner"},
+			"@odata.type":     "#microsoft.graph.aadUserConversationMember",
+			"roles":           []string{"owner"},
 			"user@odata.bind": "https://graph.microsoft.com/v1.0/users('" + graphUserID + "')",
 		}},
 	}
@@ -124,27 +134,36 @@ func (h *Handler) globalBoardTitle(ctx context.Context, refType, id string) (str
 	return title, err
 }
 
-func (h *Handler) globalBoardAssignee(ctx context.Context, refType, id string) (string, error) {
-	var table string
-	switch refType {
-	case "fault":
-		table = "faults"
-	case "ticket":
-		table = "tickets"
-	case "maintenance":
-		table = "maintenance_tasks"
-	case "task":
-		table = "tasks"
-	default:
-		return "", fmt.Errorf("unsupported board type")
+// globalBoardAssignees liefert die aktuell zugewiesenen Konten eines
+// Vorgangs - bei Störung/Ticket/Wartung hoechstens eines (einzelne
+// assigned_to-Spalte), bei Aufgaben moeglicherweise mehrere (task_assignees).
+func (h *Handler) globalBoardAssignees(ctx context.Context, refType, id string) ([]string, error) {
+	tables := map[string]string{"fault": "faults", "ticket": "tickets", "maintenance": "maintenance_tasks"}
+	if table, ok := tables[refType]; ok {
+		var assignedTo *string
+		query := "SELECT assigned_to::text FROM " + table + " WHERE id=$1::uuid"
+		if err := h.db.QueryRow(ctx, query, id).Scan(&assignedTo); err != nil || assignedTo == nil {
+			return nil, err
+		}
+		return []string{*assignedTo}, nil
 	}
-	var assignedTo *string
-	query := "SELECT assigned_to::text FROM " + table + " WHERE id=$1::uuid"
-	err := h.db.QueryRow(ctx, query, id).Scan(&assignedTo)
-	if err != nil || assignedTo == nil {
-		return "", err
+	if refType != "task" {
+		return nil, fmt.Errorf("unsupported board type")
 	}
-	return *assignedTo, nil
+	rows, err := h.db.Query(ctx, `SELECT user_id::text FROM task_assignees WHERE task_id=$1::uuid`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		ids = append(ids, uid)
+	}
+	return ids, rows.Err()
 }
 
 func microsoftActionLabel(action string) string {

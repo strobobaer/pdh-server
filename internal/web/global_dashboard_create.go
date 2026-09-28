@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"pdh/internal/modules/faults"
+	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/tickets"
 )
@@ -32,15 +33,23 @@ type globalBoardCreateInput struct {
 	ReporterID       string   `json:"reporter_id"`
 	ReporterName     string   `json:"reporter_name"`
 	DueDate          string   `json:"due_date"`
+	MaintenanceType  string   `json:"maintenance_type"`
 }
 
 func globalBoardCreateTypeAllowed(t string) bool {
 	switch t {
-	case "ticket", "task", "fault":
+	case "ticket", "task", "fault", "maintenance":
 		return true
 	default:
 		return false
 	}
+}
+
+// globalBoardCreateTypeRestricted gilt fuer Aufgaben und Wartungen: deren
+// Anlegen im Leitstand obliegt Administratoren und Managern, anders als
+// Ticket/Störung, die bewusst fuer jeden ohne Anmeldung moeglich bleiben.
+func globalBoardCreateTypeRestricted(t string) bool {
+	return t == "task" || t == "maintenance"
 }
 
 // globalBoardDescriptionWordCount liefert die Anzahl durch Leerraum
@@ -73,6 +82,10 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannter Vorgangstyp")
 		return
 	}
+	if globalBoardCreateTypeRestricted(in.Type) && !h.isGlobalBoardAdminOrManager(r) {
+		writeGlobalBoardError(w, http.StatusForbidden, "Aufgaben und Wartungen können im Leitstand nur von Administratoren und Managern angelegt werden")
+		return
+	}
 	if titleLen := len([]rune(in.Title)); titleLen < 3 || titleLen > 255 {
 		writeGlobalBoardError(w, http.StatusBadRequest, "Der Titel muss 3 bis 255 Zeichen lang sein")
 		return
@@ -97,6 +110,15 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	default:
 		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Priorität")
 		return
+	}
+	in.MaintenanceType = strings.TrimSpace(in.MaintenanceType)
+	if in.Type == "maintenance" {
+		switch in.MaintenanceType {
+		case "preventive", "inspection", "calibration", "cleaning":
+		default:
+			writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen gültigen Wartungstyp auswählen")
+			return
+		}
 	}
 
 	reporter, err := h.users.GetByID(r.Context(), in.ReporterID)
@@ -131,6 +153,12 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	case "task":
 		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
 			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
+			DueDate: in.DueDate,
+		}, reporter.ID)
+	case "maintenance":
+		_, err = h.maint.CreateTask(r.Context(), &maintenance.CreateTaskInput{
+			Title: in.Title, Description: description, Type: maintenance.PlanType(in.MaintenanceType),
+			InfrastructureID: in.InfrastructureID, Priority: maintenance.Priority(in.Priority),
 			DueDate: in.DueDate,
 		}, reporter.ID)
 	case "fault":

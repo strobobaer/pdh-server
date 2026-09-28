@@ -33,21 +33,21 @@ type microsoftCalendarSource struct {
 }
 
 type microsoftCalendarView struct {
-	ID        string `json:"id"`
-	Start     struct {
+	ID    string `json:"id"`
+	Start struct {
 		DateTime string `json:"dateTime"`
 	} `json:"start"`
 	End struct {
 		DateTime string `json:"dateTime"`
 	} `json:"end"`
-	ShowAs     string `json:"showAs"`
-	IsAllDay   bool   `json:"isAllDay"`
-	IsCancelled bool  `json:"isCancelled"`
+	ShowAs      string `json:"showAs"`
+	IsAllDay    bool   `json:"isAllDay"`
+	IsCancelled bool   `json:"isCancelled"`
 }
 
 type microsoftCalendarPage struct {
 	Events   []microsoftCalendarView `json:"value"`
-	NextLink string                   `json:"@odata.nextLink"`
+	NextLink string                  `json:"@odata.nextLink"`
 }
 
 type microsoftGraphEvent struct {
@@ -242,10 +242,10 @@ func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, accessTo
 			return 0, err
 		}
 		payload := map[string]interface{}{
-			"subject": source.Title,
-			"body": map[string]string{"contentType": "text", "content": "PDH synchronisierter Termin"},
-			"start": map[string]string{"dateTime": source.Start.UTC().Format("2006-01-02T15:04:05"), "timeZone": "UTC"},
-			"end":   map[string]string{"dateTime": source.End.UTC().Format("2006-01-02T15:04:05"), "timeZone": "UTC"},
+			"subject":  source.Title,
+			"body":     map[string]string{"contentType": "text", "content": "PDH synchronisierter Termin"},
+			"start":    map[string]string{"dateTime": source.Start.UTC().Format("2006-01-02T15:04:05"), "timeZone": "UTC"},
+			"end":      map[string]string{"dateTime": source.End.UTC().Format("2006-01-02T15:04:05"), "timeZone": "UTC"},
 			"isAllDay": source.AllDay,
 		}
 		method := http.MethodPost
@@ -319,8 +319,9 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 	}
 	if preferences.Tasks {
 		rows, err := h.db.Query(ctx, `
-			SELECT id::text, title, due_date::text FROM tasks
-			WHERE assigned_to=$1::uuid AND status IN ('open','in_progress') AND due_date BETWEEN CURRENT_DATE-30 AND CURRENT_DATE+365`, userID)
+			SELECT t.id::text, t.title, t.due_date::text FROM tasks t
+			WHERE EXISTS(SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id=$1::uuid)
+			  AND t.status IN ('open','in_progress') AND t.due_date BETWEEN CURRENT_DATE-30 AND CURRENT_DATE+365`, userID)
 		if err != nil {
 			return nil, err
 		}

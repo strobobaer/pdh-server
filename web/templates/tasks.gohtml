@@ -21,9 +21,8 @@
           <option value="critical">Critical</option>
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Zugewiesen</label>
-        <select name="assigned_to" class="form-input">
-          <option value="">Nicht zugewiesen</option>
+      <div class="form-group"><label class="form-label">Zugewiesen <span style="color:var(--muted);font-weight:400">(Mehrfachauswahl möglich)</span></label>
+        <select name="assigned_to" class="form-input" multiple size="4">
           {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
         </select>
       </div>
@@ -99,7 +98,8 @@
 async function submitTaskForm(form){
   const fd=new FormData(form);
   const payload={title:fd.get('title'),description:fd.get('description'),priority:fd.get('priority'),due_date:fd.get('due_date'),start_date:fd.get('start_date')};
-  if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
+  const assignedIds = Array.from(form.querySelector('[name="assigned_to"]').selectedOptions).map(function(o){return o.value;});
+  if(assignedIds.length) payload.assigned_to_ids=assignedIds;
   if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
   if(fd.get('project_id')) payload.project_id=fd.get('project_id');
   const result=document.getElementById('task-create-result'); result.textContent='Speichere...';

@@ -22,7 +22,7 @@ func NewService(repo *Repository) *Service {
 func (s *Service) Create(ctx context.Context, in *CreateTaskInput, userID string) (*Task, error) {
 	t := &Task{
 		Title: in.Title, Description: in.Description, Priority: in.Priority,
-		AssignedTo: in.AssignedTo, ResponsibleTo: in.ResponsibleTo, ProjectID: in.ProjectID,
+		AssignedToIDs: in.AssignedToIDs, ResponsibleTo: in.ResponsibleTo, ProjectID: in.ProjectID,
 		CreatedBy: userID, Color: in.Color,
 	}
 	if in.DueDate != "" {
@@ -55,7 +55,13 @@ func (s *Service) List(ctx context.Context, status Status, projectID string, una
 }
 
 func (s *Service) Update(ctx context.Context, id string, in *UpdateTaskInput) error {
-	return s.repo.Update(ctx, id, in)
+	if err := s.repo.Update(ctx, id, in); err != nil {
+		return err
+	}
+	if in.AssignedToIDs != nil {
+		return s.repo.SetAssignees(ctx, id, in.AssignedToIDs)
+	}
+	return nil
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {

@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-27T18:39:28.717Z",
+  "generatedAt": "2026-09-28T15:56:41.874Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -655,6 +655,17 @@
       "sqlHash": "4d8de31438da8d9a0b389ef37219a6051482f2e327466b78802b4871c2e5e614",
       "title": "061_export_templates.up.sql",
       "updatedAt": "2026-09-27T18:39:28.093Z"
+    },
+    {
+      "createdAt": "2026-09-28T15:56:41.256Z",
+      "path": "migrations/062_task_multiple_assignees.up.sql",
+      "catalogContext": null,
+      "searchText": "062_task_multiple_assignees.up.sql migrations/062_task_multiple_assignees.up.sql -- 062_task_multiple_assignees.up.sql\n--\n-- aufgaben koennen jetzt mehreren mitarbeitern gleichzeitig zugewiesen\n-- werden (z.b. mehrere arbeiten gemeinsam daran) - die verantwortung\n-- (tasks.responsible_to) bleibt bewusst auf eine person beschraenkt und\n-- unveraendert. ersetzt die bisherige einzelspalte tasks.assigned_to.\n\ncreate table if not exists task_assignees (\n    task_id    uuid not null references tasks(id) on delete cascade,\n    user_id    uuid not null references users(id),\n    created_at timestamptz not null default now(),\n    primary key (task_id, user_id)\n);\ncreate index if not exists idx_task_assignees_user on task_assignees(user_id);\n\n-- bestehende einzelzuweisungen uebernehmen, bevor die alte spalte faellt.\ninsert into task_assignees (task_id, user_id)\nselect id, assigned_to from tasks where assigned_to is not null\non conflict do nothing;\n\nalter table tasks drop column if exists assigned_to;\n",
+      "searchUpdatedAt": "2026-09-28T15:56:41.347Z",
+      "schemaContext": null,
+      "sqlHash": "b716c147e679985be0fde90852aefbdfd95da92efc43bfae77ed99ea9d53f8b9",
+      "title": "062_task_multiple_assignees.up.sql",
+      "updatedAt": "2026-09-28T15:56:41.256Z"
     }
   ]
 }

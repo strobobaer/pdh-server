@@ -3,12 +3,18 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/timetracking"
 	"pdh/pkg/appsettings"
 )
+
+type AssigneeView struct {
+	ID   string
+	Name string
+}
 
 type TaskView struct {
 	ID              string
@@ -26,9 +32,10 @@ type TaskView struct {
 	StartDateISO    string
 	ProjectID       string
 	ProjectName     string
-	AssignedID      string
+	Assignees       []AssigneeView
+	AssigneeNames   string
+	AssignedIDSet   map[string]bool
 	ResponsibleID   string
-	AssigneeName    string
 	ResponsibleName string
 	Resolution      string
 	RootCause       string
@@ -44,12 +51,20 @@ func taskView(t *tasks.Task) TaskView {
 		StatusClass: statusClass(string(t.Status)),
 		Priority:    string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 		PriorityDot: priorityDot(string(t.Priority)),
-		ProjectName: t.ProjectName, AssigneeName: t.AssigneeName, ResponsibleName: t.ResponsibleName,
+		ProjectName: t.ProjectName, ResponsibleName: t.ResponsibleName,
 		Resolution: t.Resolution, RootCause: t.RootCause,
 		CreatedAgo: timeAgo(t.CreatedAt),
 		CanResolve: t.Status == "open" || t.Status == "in_progress",
 		Color:      t.Color,
 	}
+	names := make([]string, 0, len(t.Assignees))
+	v.AssignedIDSet = make(map[string]bool, len(t.Assignees))
+	for _, a := range t.Assignees {
+		v.Assignees = append(v.Assignees, AssigneeView{ID: a.ID, Name: a.Name})
+		names = append(names, a.Name)
+		v.AssignedIDSet[a.ID] = true
+	}
+	v.AssigneeNames = strings.Join(names, ", ")
 	if t.DueDate != nil {
 		v.DueDate = t.DueDate.Format("02.01.2006")
 		v.DueDateISO = t.DueDate.Format("2006-01-02")
@@ -60,9 +75,6 @@ func taskView(t *tasks.Task) TaskView {
 	}
 	if t.ProjectID != nil {
 		v.ProjectID = *t.ProjectID
-	}
-	if t.AssignedTo != nil {
-		v.AssignedID = *t.AssignedTo
 	}
 	if t.ResponsibleTo != nil {
 		v.ResponsibleID = *t.ResponsibleTo

@@ -95,6 +95,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .gantt-container .popup-wrapper .title{border-bottom:2px solid var(--accent);color:var(--text)}
 .gantt-container .popup-wrapper .subtitle{color:var(--muted)}
 .gantt-container .popup-wrapper .pointer{border-top-color:var(--surface-2)}
+.gantt .bar-wrapper.gantt-selected .bar{filter:drop-shadow(0 0 4px var(--focus))}
 
 /* ── Tabelle ── */
 #entries-table-wrap{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
@@ -129,6 +130,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .create-tile.fault{border-color:var(--type-fault);color:var(--type-fault-fg,var(--text))}
 .create-tile.ticket{border-color:var(--type-ticket)}
 .create-tile.task{border-color:var(--type-task)}
+.create-tile.maintenance{border-color:var(--type-maintenance)}
 #create-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
 .kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:var(--type-fault-bg);color:var(--type-fault-fg);font-weight:700;font-size:12px}
 .kind.ticket{background:var(--type-ticket-bg);color:var(--type-ticket-fg)}.kind.maintenance{background:var(--type-maintenance-bg);color:var(--type-maintenance-fg)}.kind.task{background:var(--type-task-bg);color:var(--type-task-fg)}
@@ -183,7 +185,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   <div id="create-tiles">
     <button type="button" class="create-tile fault" data-type="fault"><span class="create-tile-icon" aria-hidden="true">⚠</span><span>Neue Störung</span></button>
     <button type="button" class="create-tile ticket" data-type="ticket"><span class="create-tile-icon" aria-hidden="true">🎫</span><span>Neues Ticket</span></button>
+    {{if .CanCreatePrivileged}}
     <button type="button" class="create-tile task" data-type="task"><span class="create-tile-icon" aria-hidden="true">✓</span><span>Neue Aufgabe</span></button>
+    <button type="button" class="create-tile maintenance" data-type="maintenance"><span class="create-tile-icon" aria-hidden="true">🔧</span><span>Neue Wartung</span></button>
+    {{end}}
   </div>
 
   <div id="create-panel" class="hidden">
@@ -213,6 +218,14 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       </label>
       <label id="create-symptoms-field" class="hidden">Symptome
         <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
+      </label>
+      <label id="create-maintenance-type-field" class="hidden">Wartungstyp <span class="required-hint">Pflichtfeld</span>
+        <select id="create-maintenance-type" name="maintenance_type">
+          <option value="preventive">Vorbeugend</option>
+          <option value="inspection">Inspektion</option>
+          <option value="calibration">Kalibrierung</option>
+          <option value="cleaning">Reinigung</option>
+        </select>
       </label>
       <label id="create-duedate-field" class="hidden">Termin <span class="required-hint" id="create-duedate-hint">Optional, Fälligkeitsdatum</span>
         <input id="create-duedate" type="date" name="due_date">
@@ -394,6 +407,27 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     return {fill:t.color, stroke:t.color, opacity: t.provisional ? 0.4 : 1};
   }
 
+  function ganttItemKey(t){ return t.refType + ':' + t.id; }
+
+  // updateDashGanttSelection hebt den zur aktuellen Tabellen-/Panel-
+  // Auswahl gehoerenden Balken hervor - eigenstaendig von
+  // applyDashGanttStyling, damit ein Auswahlwechsel (Tabelle anklicken)
+  // nur die Umrandung aktualisiert statt Event-Listener erneut auf die
+  // bestehenden Balken zu haengen.
+  function updateDashGanttSelection(){
+    dashGanttItems.forEach(function(t){
+      const wrapper = document.querySelector('#dash-gantt-target .bar-wrapper[data-id="' + t.id + '"]');
+      if(!wrapper) return;
+      const bar = wrapper.querySelector('.bar');
+      if(!bar) return;
+      const colors = dashGanttColor(t);
+      const isSelected = ganttItemKey(t) === selectedKey;
+      bar.style.stroke = isSelected ? 'var(--focus)' : colors.stroke;
+      bar.style.strokeWidth = isSelected ? '4px' : ((colors.stroke === '#e05a5a') ? '3px' : '1px');
+      wrapper.classList.toggle('gantt-selected', isSelected);
+    });
+  }
+
   function applyDashGanttStyling(){
     dashGanttItems.forEach(function(t){
       const wrapper = document.querySelector('#dash-gantt-target .bar-wrapper[data-id="' + t.id + '"]');
@@ -410,18 +444,26 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       wrapper.style.opacity = colors.opacity;
       wrapper.style.cursor = 'pointer';
       let titleEl = wrapper.querySelector('title');
-      const hint = t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Doppelklick zum Öffnen';
+      const hint = t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Klick zum Auswählen, Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Klick zum Auswählen, Doppelklick zum Öffnen';
       if(!titleEl){
         titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
         wrapper.appendChild(titleEl);
       }
       titleEl.textContent = t.name + hint;
 
+      // Einfacher Klick markiert den Vorgang wie ein Klick in der Tabelle
+      // (öffnet das Bearbeitungsfenster); Doppelklick navigiert weiterhin
+      // direkt zur Detailseite (wie im normalen Dashboard).
+      wrapper.addEventListener('click', function(){
+        const item = latestData.items.find(function(it){ return it.type_key === t.refType && it.id === t.id; });
+        if(item) selectItem(item);
+      });
       wrapper.addEventListener('dblclick', function(e){
         e.preventDefault();
         window.location = t.url;
       });
     });
+    updateDashGanttSelection();
   }
 
   function formatDateISO(d){
@@ -546,6 +588,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     editPanel.dataset.itemKey = selectedKey;
     editPanel.dataset.item = JSON.stringify(item);
     renderEntriesTable(latestData.items);
+    updateDashGanttSelection();
     editPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
 
@@ -557,6 +600,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     editActions.classList.remove('hidden');
     delete editPanel.dataset.itemKey;
     renderEntriesTable(latestData.items);
+    updateDashGanttSelection();
   }
 
   editActions.addEventListener('click', function(event){
@@ -591,11 +635,12 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   });
   document.getElementById('edit-close').addEventListener('click', closeEditPanel);
 
-  const createTileNames = {fault:'Neue Störung', ticket:'Neues Ticket', task:'Neue Aufgabe'};
-  const createDefaultDueDays = {ticket: {{.DefaultDueDaysTicket}}, task: {{.DefaultDueDaysTask}}};
+  const createTileNames = {fault:'Neue Störung', ticket:'Neues Ticket', task:'Neue Aufgabe', maintenance:'Neue Wartung'};
+  const createDefaultDueDays = {ticket: {{.DefaultDueDaysTicket}}, task: {{.DefaultDueDaysTask}}, maintenance: {{.DefaultDueDaysMaintenance}}};
   const createPanel = document.getElementById('create-panel');
   const createForm = document.getElementById('create-form');
   const createSymptomsField = document.getElementById('create-symptoms-field');
+  const createMaintenanceTypeField = document.getElementById('create-maintenance-type-field');
   const createInfraField = document.getElementById('create-infra-field');
   const createInfraSelect = document.getElementById('create-infra');
   const createDueDateField = document.getElementById('create-duedate-field');
@@ -608,6 +653,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     closeEditPanel();
     document.getElementById('create-panel-title').textContent = createTileNames[type] || 'Neuer Vorgang';
     createSymptomsField.classList.toggle('hidden', type !== 'fault');
+    createMaintenanceTypeField.classList.toggle('hidden', type !== 'maintenance');
     const needsInfra = type !== 'task';
     createInfraField.classList.toggle('hidden', !needsInfra);
     createInfraSelect.required = needsInfra;
@@ -652,6 +698,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     };
     if(createType === 'fault'){
       payload.symptoms = String(document.getElementById('create-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    }
+    if(createType === 'maintenance'){
+      payload.maintenance_type = document.getElementById('create-maintenance-type').value;
     }
     const submit = document.getElementById('create-submit');
     submit.disabled = true;

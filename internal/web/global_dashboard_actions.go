@@ -128,6 +128,20 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 	ctx := r.Context()
 	switch in.Action {
 	case "accept":
+		if in.Type == "task" {
+			// Aufgaben erlauben mehrere Zugewiesene (task_assignees) -
+			// "Annehmen" fuegt den annehmenden Mitarbeiter hinzu statt eine
+			// bestehende Zuweisung zu ersetzen.
+			result, err := h.db.Exec(ctx, `UPDATE tasks SET status='in_progress',updated_at=NOW() WHERE id=$1::uuid AND status IN ('open','in_progress')`, in.ID)
+			if err != nil {
+				return err
+			}
+			if result.RowsAffected() != 1 {
+				return fmt.Errorf("Der Vorgang wurde zwischenzeitlich geändert")
+			}
+			_, err = h.db.Exec(ctx, `INSERT INTO task_assignees (task_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, in.ID, in.AssignedTo)
+			return err
+		}
 		var query string
 		switch in.Type {
 		case "fault":
@@ -136,8 +150,6 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			query = `UPDATE tickets SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`
 		case "maintenance":
 			query = `UPDATE maintenance_tasks SET assigned_to=$1::uuid,status='in_progress' WHERE id=$2::uuid AND status IN ('open','in_progress')`
-		case "task":
-			query = `UPDATE tasks SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress')`
 		}
 		result, err := h.db.Exec(ctx, query, in.AssignedTo, in.ID)
 		if err != nil {

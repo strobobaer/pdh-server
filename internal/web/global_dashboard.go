@@ -56,13 +56,15 @@ const (
 // (oeffentliches Wandmonitor-Board), daher muss sie selbst pruefen, ob
 // bereits eine gueltige, ausreichend berechtigte Sitzung besteht.
 type GlobalDashboardPageData struct {
-	LoggedIn             bool
-	Title                string
-	Subtitle             string
-	CanEditHeading       bool
-	CanDiscard           bool
-	DefaultDueDaysTicket int
-	DefaultDueDaysTask   int
+	LoggedIn                  bool
+	Title                     string
+	Subtitle                  string
+	CanEditHeading            bool
+	CanDiscard                bool
+	CanCreatePrivileged       bool // Aufgaben/Wartungen anlegen - Administratoren und Manager
+	DefaultDueDaysTicket      int
+	DefaultDueDaysTask        int
+	DefaultDueDaysMaintenance int
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -78,12 +80,13 @@ func (h *Handler) canEditGlobalDashboardHeading(r *http.Request) bool {
 	return h.rbac.HasPermissionForUser(user.ID, string(user.Role), "system.manage_roles")
 }
 
-// canDiscardGlobalBoardItems gilt fuer den Verwerfen-Button im Leitstand -
+// isGlobalBoardAdminOrManager gilt sowohl fuer den Verwerfen-Button im
+// Leitstand als auch fuer das Anlegen von Aufgaben/Wartungen dort -
 // bewusst per direktem Rollenvergleich statt RBAC-Permission, analog zu
-// isFullAdmin in handler.go, da Verwerfen keine ueber die Rollen-Verwaltung
+// isFullAdmin in handler.go, da beides keine ueber die Rollen-Verwaltung
 // konfigurierbare Berechtigung ist, sondern Admins/Managern vorbehalten
 // bleibt.
-func (h *Handler) canDiscardGlobalBoardItems(r *http.Request) bool {
+func (h *Handler) isGlobalBoardAdminOrManager(r *http.Request) bool {
 	user := h.sessionUser(r)
 	if user == nil {
 		return false
@@ -101,13 +104,15 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
 	data := GlobalDashboardPageData{
-		LoggedIn:             h.sessionUser(r) != nil,
-		Title:                h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
-		Subtitle:             h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
-		CanEditHeading:       h.canEditGlobalDashboardHeading(r),
-		CanDiscard:           h.canDiscardGlobalBoardItems(r),
-		DefaultDueDaysTicket: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
-		DefaultDueDaysTask:   appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
+		LoggedIn:                  h.sessionUser(r) != nil,
+		Title:                     h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
+		Subtitle:                  h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
+		CanEditHeading:            h.canEditGlobalDashboardHeading(r),
+		CanDiscard:                h.isGlobalBoardAdminOrManager(r),
+		CanCreatePrivileged:       h.isGlobalBoardAdminOrManager(r),
+		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
