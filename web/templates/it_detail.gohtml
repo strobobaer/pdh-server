@@ -30,7 +30,7 @@
         <div><div style="color:var(--muted);font-size:11px">IP-Adresse</div>{{if .Asset.IPAddress}}{{.Asset.IPAddress}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">MAC-Adresse</div>{{if .Asset.MACAddress}}{{.Asset.MACAddress}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Betriebssystem</div>{{if .Asset.OS}}{{.Asset.OS}}{{else}}—{{end}}</div>
-        <div><div style="color:var(--muted);font-size:11px">Hersteller</div>{{if .Asset.Manufacturer}}{{.Asset.Manufacturer}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Hersteller</div>{{if .Asset.ManufacturerName}}{{.Asset.ManufacturerName}}{{else if .Asset.Manufacturer}}{{.Asset.Manufacturer}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Modell</div>{{if .Asset.Model}}{{.Asset.Model}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Seriennummer</div>{{if .Asset.SerialNo}}{{.Asset.SerialNo}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Standort</div>{{if .Asset.Location}}{{.Asset.Location}}{{else}}—{{end}}</div>
@@ -90,10 +90,7 @@
           </div>
         </div>
         <div class="grid2" style="gap:10px">
-          <div class="form-group">
-            <label class="form-label">Hersteller</label>
-            <input name="manufacturer" class="form-input" value="{{.Asset.Manufacturer}}">
-          </div>
+          {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "it-edit-manufacturer-id" "Value" .Asset.ManufacturerID "LegacyValue" .Asset.Manufacturer)}}
           <div class="form-group">
             <label class="form-label">Modell</label>
             <input name="model" class="form-input" value="{{.Asset.Model}}">

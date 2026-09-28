@@ -39,6 +39,8 @@ type Asset struct {
 	IPAddress        string      `json:"ip_address,omitempty"`
 	MACAddress       string      `json:"mac_address,omitempty"`
 	Manufacturer     string      `json:"manufacturer,omitempty"`
+	ManufacturerID   *string     `json:"manufacturer_id,omitempty"`
+	ManufacturerName string      `json:"manufacturer_name,omitempty"`
 	Model            string      `json:"model,omitempty"`
 	SerialNo         string      `json:"serial_no,omitempty"`
 	Location         string      `json:"location,omitempty"`
@@ -61,6 +63,7 @@ type CreateAssetInput struct {
 	Hostname         string    `json:"hostname"`
 	IPAddress        string    `json:"ip_address"`
 	Manufacturer     string    `json:"manufacturer"`
+	ManufacturerID   *string   `json:"manufacturer_id,omitempty"`
 	Model            string    `json:"model"`
 	SerialNo         string    `json:"serial_no"`
 	Location         string    `json:"location"`
@@ -77,11 +80,11 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, a *Asset) error {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO it_assets (id, name, type, status, hostname, ip_address, mac_address,
-		  manufacturer, model, serial_no, location, os, assigned_to, infrastructure_id, notes, created_by)
-		VALUES (gen_random_uuid(), $1, $2, 'active', $3, $4, '', $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		  manufacturer, manufacturer_id, model, serial_no, location, os, assigned_to, infrastructure_id, notes, created_by)
+		VALUES (gen_random_uuid(), $1, $2, 'active', $3, $4, '', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at, updated_at`,
 		a.Name, a.Type, a.Hostname, a.IPAddress,
-		a.Manufacturer, a.Model, a.SerialNo, a.Location, a.OS,
+		a.Manufacturer, a.ManufacturerID, a.Model, a.SerialNo, a.Location, a.OS,
 		a.AssignedTo, a.InfrastructureID, a.Notes, a.CreatedBy,
 	).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
@@ -100,7 +103,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
 	var purchasedAt, warrantyUntil *time.Time
 	err := r.db.QueryRow(ctx, `SELECT a.id, a.name, a.type, a.status,
 		COALESCE(a.hostname,''), COALESCE(a.ip_address,''), COALESCE(a.mac_address,''),
-		COALESCE(a.manufacturer,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
+		COALESCE(a.manufacturer,''), a.manufacturer_id, COALESCE(bp.name,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
 		COALESCE(a.location,''), COALESCE(a.os,''), a.purchased_at, a.warranty_until,
 		a.assigned_to, a.infrastructure_id,
 		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
@@ -108,9 +111,10 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
 		FROM it_assets a
 		LEFT JOIN users u ON a.assigned_to = u.id
 		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
+		LEFT JOIN business_partners bp ON a.manufacturer_id = bp.id
 		WHERE a.id=$1`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Status,
 		&a.Hostname, &a.IPAddress, &a.MACAddress,
-		&a.Manufacturer, &a.Model, &a.SerialNo,
+		&a.Manufacturer, &a.ManufacturerID, &a.ManufacturerName, &a.Model, &a.SerialNo,
 		&a.Location, &a.OS, &purchasedAt, &warrantyUntil,
 		&a.AssignedTo, &a.InfrastructureID,
 		&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName)
@@ -139,6 +143,7 @@ type UpdateDetailsInput struct {
 	IPAddress        string
 	MACAddress       string
 	Manufacturer     string
+	ManufacturerID   *string
 	Model            string
 	SerialNo         string
 	Location         string
@@ -154,12 +159,12 @@ func (r *Repository) UpdateDetails(ctx context.Context, id string, in *UpdateDet
 	_, err := r.db.Exec(ctx, `
 		UPDATE it_assets SET
 			name=$1, type=$2, hostname=$3, ip_address=$4, mac_address=$5,
-			manufacturer=$6, model=$7, serial_no=$8, location=$9, os=$10,
-			purchased_at=$11, warranty_until=$12, assigned_to=$13, infrastructure_id=$14,
-			notes=$15, updated_at=NOW()
-		WHERE id=$16`,
+			manufacturer=$6, manufacturer_id=$7, model=$8, serial_no=$9, location=$10, os=$11,
+			purchased_at=$12, warranty_until=$13, assigned_to=$14, infrastructure_id=$15,
+			notes=$16, updated_at=NOW()
+		WHERE id=$17`,
 		in.Name, in.Type, in.Hostname, in.IPAddress, in.MACAddress,
-		in.Manufacturer, in.Model, in.SerialNo, in.Location, in.OS,
+		in.Manufacturer, in.ManufacturerID, in.Model, in.SerialNo, in.Location, in.OS,
 		in.PurchasedAt, in.WarrantyUntil, in.AssignedTo, in.InfrastructureID,
 		in.Notes, id)
 	return err
@@ -168,13 +173,14 @@ func (r *Repository) UpdateDetails(ctx context.Context, id string, in *UpdateDet
 func (r *Repository) List(ctx context.Context, assetType AssetType, status AssetStatus) ([]*Asset, error) {
 	query := `SELECT a.id, a.name, a.type, a.status,
 		COALESCE(a.hostname,''), COALESCE(a.ip_address,''), COALESCE(a.mac_address,''),
-		COALESCE(a.manufacturer,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
+		COALESCE(a.manufacturer,''), a.manufacturer_id, COALESCE(bp.name,''), COALESCE(a.model,''), COALESCE(a.serial_no,''),
 		COALESCE(a.location,''), COALESCE(a.os,''), a.assigned_to, a.infrastructure_id,
 		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
 		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,'')
 		FROM it_assets a
 		LEFT JOIN users u ON a.assigned_to = u.id
 		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
+		LEFT JOIN business_partners bp ON a.manufacturer_id = bp.id
 		WHERE 1=1`
 	args := []interface{}{}
 	n := 1
@@ -198,7 +204,7 @@ func (r *Repository) List(ctx context.Context, assetType AssetType, status Asset
 		a := &Asset{}
 		rows.Scan(&a.ID, &a.Name, &a.Type, &a.Status,
 			&a.Hostname, &a.IPAddress, &a.MACAddress,
-			&a.Manufacturer, &a.Model, &a.SerialNo,
+			&a.Manufacturer, &a.ManufacturerID, &a.ManufacturerName, &a.Model, &a.SerialNo,
 			&a.Location, &a.OS, &a.AssignedTo, &a.InfrastructureID,
 			&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName)
 		list = append(list, a)
@@ -225,7 +231,7 @@ type Service struct{ repo *Repository }
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 func (s *Service) Create(ctx context.Context, in *CreateAssetInput, userID string) (*Asset, error) {
 	a := &Asset{Name: in.Name, Type: in.Type, Hostname: in.Hostname,
-		IPAddress: in.IPAddress, Manufacturer: in.Manufacturer, Model: in.Model,
+		IPAddress: in.IPAddress, Manufacturer: in.Manufacturer, ManufacturerID: in.ManufacturerID, Model: in.Model,
 		SerialNo: in.SerialNo, Location: in.Location, OS: in.OS,
 		AssignedTo: in.AssignedTo, InfrastructureID: in.InfrastructureID, Notes: in.Notes, CreatedBy: userID}
 	return a, s.repo.Create(ctx, a)

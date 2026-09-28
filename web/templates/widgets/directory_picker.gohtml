@@ -1,0 +1,111 @@
+{{/*
+Reusable manufacturer picker widget (Hersteller-/Lieferantenverzeichnis) -
+Dropdown + "+"-Button zum schnellen Anlegen eines neuen Verzeichnis-
+eintrags, analog zum Kostenstellen-Picker.
+
+Usage:
+{{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "part-manufacturer-id" "Value" .Part.ManufacturerID "LegacyValue" .Part.Manufacturer)}}
+*/}}
+{{define "directory-picker"}}
+<div class="widget-field directory-picker-widget form-group">
+  <label class="form-label">{{.Label}}</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <select name="manufacturer_id" id="{{.TargetID}}" class="form-input" data-directory-picker data-selected="{{.Value}}" style="flex:1">
+      <option value="">– kein Hersteller –</option>
+    </select>
+    <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" onclick="openDirectoryPickerModal('{{.TargetID}}')" title="Neuen Hersteller anlegen">
+      <i class="ti ti-plus"></i>
+    </button>
+  </div>
+  {{if .LegacyValue}}<p style="font-size:11px;color:var(--muted);margin:4px 0 0">Bisheriger Freitext-Wert: {{.LegacyValue}} (wird nur angezeigt, solange kein Verzeichniseintrag ausgewählt ist)</p>{{end}}
+</div>
+
+<div id="dp-modal-{{.TargetID}}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:360px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Neuer Hersteller</div>
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input id="dp-modal-name-{{.TargetID}}" class="form-input" placeholder="z.B. Siemens">
+    </div>
+    <div id="dp-modal-error-{{.TargetID}}" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn" onclick="closeDirectoryPickerModal('{{.TargetID}}')">Abbrechen</button>
+      <button type="button" class="btn btn-primary" onclick="submitDirectoryPickerModal('{{.TargetID}}')">Anlegen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openDirectoryPickerModal(targetId){
+  const modal = document.getElementById('dp-modal-'+targetId);
+  if(modal) modal.style.display='flex';
+}
+function closeDirectoryPickerModal(targetId){
+  const modal = document.getElementById('dp-modal-'+targetId);
+  if(modal) modal.style.display='none';
+  const err = document.getElementById('dp-modal-error-'+targetId);
+  if(err) err.style.display='none';
+}
+async function submitDirectoryPickerModal(targetId){
+  const nameInput = document.getElementById('dp-modal-name-'+targetId);
+  const errEl = document.getElementById('dp-modal-error-'+targetId);
+  const name = nameInput.value.trim();
+  if(!name){
+    errEl.textContent = 'Name ist Pflicht';
+    errEl.style.display = 'block';
+    return;
+  }
+  try{
+    const headers = {'Content-Type':'application/json'};
+    if(typeof pdhToken === 'function'){ headers['Authorization'] = 'Bearer '+pdhToken(); }
+    const res = await fetch('/api/v1/directory/', {
+      method: 'POST', headers: headers, credentials: 'same-origin',
+      body: JSON.stringify({name: name, kind: 'manufacturer'})
+    });
+    const json = await res.json();
+    if(!res.ok) throw new Error((json && json.error) || 'Fehler beim Anlegen');
+    const p = json.data || json;
+    const select = document.getElementById(targetId);
+    if(select){
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+    nameInput.value = '';
+    closeDirectoryPickerModal(targetId);
+  }catch(e){
+    errEl.textContent = 'Fehler: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function populateDirectorySelects(){
+  const selects = document.querySelectorAll('[data-directory-picker]');
+  if(selects.length===0) return;
+  try{
+    const headers = {};
+    if(typeof pdhToken === 'function'){ headers['Authorization'] = 'Bearer '+pdhToken(); }
+    const res = await fetch('/api/v1/directory/?kind=manufacturer', {headers: headers, credentials: 'same-origin'});
+    const json = await res.json();
+    const items = json.data || json || [];
+    selects.forEach(function(sel){
+      const selected = sel.dataset.selected || '';
+      items.forEach(function(p){
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if(p.id === selected) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    });
+  }catch(e){ console.warn('Herstellerverzeichnis laden fehlgeschlagen', e); }
+}
+if(!window.__directoryPickerInitialized){
+  window.__directoryPickerInitialized = true;
+  if(document.readyState !== 'loading') populateDirectorySelects();
+  else document.addEventListener('DOMContentLoaded', populateDirectorySelects);
+}
+</script>
+{{end}}

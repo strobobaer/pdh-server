@@ -39,7 +39,7 @@
       </div>
       <div class="form-group"><label class="form-label">Hostname</label><input name="hostname" class="form-input" placeholder="z.B. pdh-srv-01"></div>
       <div class="form-group"><label class="form-label">IP-Adresse</label><input name="ip_address" class="form-input" placeholder="z.B. 10.10.0.100"></div>
-      <div class="form-group"><label class="form-label">Hersteller</label><input name="manufacturer" class="form-input"></div>
+      {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "it-new-manufacturer-id")}}
       <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
       <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input"></div>
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" placeholder="z.B. Serverraum"></div>

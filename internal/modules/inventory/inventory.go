@@ -41,6 +41,8 @@ type SparePart struct {
 	Description      string      `json:"description,omitempty"`
 	Category         string      `json:"category,omitempty"`
 	Manufacturer     string      `json:"manufacturer,omitempty"`
+	ManufacturerID   *string     `json:"manufacturer_id,omitempty"`
+	ManufacturerName string      `json:"manufacturer_name,omitempty"`
 	ManufacturerPart string      `json:"manufacturer_part,omitempty"`
 	Unit             string      `json:"unit"`
 	StockQty         float64     `json:"stock_qty"`
@@ -67,24 +69,24 @@ type PartStock struct {
 }
 
 type StockMovement struct {
-	ID            string       `json:"id"`
-	PartID        string       `json:"part_id"`
-	Type          MovementType `json:"type"`
-	Qty           float64      `json:"qty"`
-	QtyBefore     float64      `json:"qty_before"`
-	QtyAfter      float64      `json:"qty_after"`
-	StorageNodeID string       `json:"storage_node_id,omitempty"`
-	StorageName   string       `json:"storage_name,omitempty"`
-	Reference     string       `json:"reference,omitempty"`
-	Notes         string       `json:"notes,omitempty"`
-	FaultID            string  `json:"fault_id,omitempty"`
-	TicketID           string  `json:"ticket_id,omitempty"`
-	MaintenanceTaskID  string  `json:"maintenance_task_id,omitempty"`
-	TaskID             string  `json:"task_id,omitempty"`
-	CreatedBy          string  `json:"created_by"`
-	CreatedAt     time.Time    `json:"created_at"`
-	PartName      string       `json:"part_name,omitempty"`
-	UserName      string       `json:"user_name,omitempty"`
+	ID                string       `json:"id"`
+	PartID            string       `json:"part_id"`
+	Type              MovementType `json:"type"`
+	Qty               float64      `json:"qty"`
+	QtyBefore         float64      `json:"qty_before"`
+	QtyAfter          float64      `json:"qty_after"`
+	StorageNodeID     string       `json:"storage_node_id,omitempty"`
+	StorageName       string       `json:"storage_name,omitempty"`
+	Reference         string       `json:"reference,omitempty"`
+	Notes             string       `json:"notes,omitempty"`
+	FaultID           string       `json:"fault_id,omitempty"`
+	TicketID          string       `json:"ticket_id,omitempty"`
+	MaintenanceTaskID string       `json:"maintenance_task_id,omitempty"`
+	TaskID            string       `json:"task_id,omitempty"`
+	CreatedBy         string       `json:"created_by"`
+	CreatedAt         time.Time    `json:"created_at"`
+	PartName          string       `json:"part_name,omitempty"`
+	UserName          string       `json:"user_name,omitempty"`
 }
 
 type CustomFieldDef struct {
@@ -112,6 +114,7 @@ type CreatePartInput struct {
 	Description      string  `json:"description"`
 	Category         string  `json:"category"`
 	Manufacturer     string  `json:"manufacturer"`
+	ManufacturerID   *string `json:"manufacturer_id,omitempty"`
 	ManufacturerPart string  `json:"manufacturer_part"`
 	Unit             string  `json:"unit"`
 	MinQty           float64 `json:"min_qty"`
@@ -127,6 +130,7 @@ type UpdatePartInput struct {
 	Description      string  `json:"description"`
 	Category         string  `json:"category"`
 	Manufacturer     string  `json:"manufacturer"`
+	ManufacturerID   *string `json:"manufacturer_id,omitempty"`
 	ManufacturerPart string  `json:"manufacturer_part"`
 	Unit             string  `json:"unit"`
 	MinQty           float64 `json:"min_qty"`
@@ -139,16 +143,16 @@ type UpdatePartInput struct {
 // BookMovementInput - StorageNodeID ist Pflicht: jede Buchung passiert an
 // einem konkreten Lagerort (aus dem storage_nodes-Baum).
 type BookMovementInput struct {
-	PartID        string       `json:"part_id"`
-	Type          MovementType `json:"type"`
-	Qty           float64      `json:"qty"`
-	StorageNodeID string       `json:"storage_node_id"`
-	Reference     string       `json:"reference"`
-	Notes         string       `json:"notes"`
-	FaultID           string `json:"fault_id,omitempty"`
-	TicketID          string `json:"ticket_id,omitempty"`
-	MaintenanceTaskID string `json:"maintenance_task_id,omitempty"`
-	TaskID            string `json:"task_id,omitempty"`
+	PartID            string       `json:"part_id"`
+	Type              MovementType `json:"type"`
+	Qty               float64      `json:"qty"`
+	StorageNodeID     string       `json:"storage_node_id"`
+	Reference         string       `json:"reference"`
+	Notes             string       `json:"notes"`
+	FaultID           string       `json:"fault_id,omitempty"`
+	TicketID          string       `json:"ticket_id,omitempty"`
+	MaintenanceTaskID string       `json:"maintenance_task_id,omitempty"`
+	TaskID            string       `json:"task_id,omitempty"`
 }
 
 type CreateFieldDefInput struct {
@@ -189,10 +193,10 @@ func (r *Repository) ensureCustomFieldTables(ctx context.Context) error {
 
 func (r *Repository) Create(ctx context.Context, p *SparePart) error {
 	return r.db.QueryRow(ctx, `
-		INSERT INTO spare_parts (id, part_number, name, description, category, manufacturer, manufacturer_part, unit, stock_qty, min_qty, critical_qty, reorder_qty, price, infrastructure_id, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $13)
+		INSERT INTO spare_parts (id, part_number, name, description, category, manufacturer, manufacturer_id, manufacturer_part, unit, stock_qty, min_qty, critical_qty, reorder_qty, price, infrastructure_id, created_by)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11, $12, $13, $14)
 		RETURNING id, active, created_at, updated_at`,
-		p.PartNumber, p.Name, p.Description, p.Category, p.Manufacturer, p.ManufacturerPart, p.Unit,
+		p.PartNumber, p.Name, p.Description, p.Category, p.Manufacturer, p.ManufacturerID, p.ManufacturerPart, p.Unit,
 		p.MinQty, p.CriticalQty, p.ReorderQty, p.Price, p.InfrastructureID, p.CreatedBy,
 	).Scan(&p.ID, &p.Active, &p.CreatedAt, &p.UpdatedAt)
 }
@@ -200,10 +204,10 @@ func (r *Repository) Create(ctx context.Context, p *SparePart) error {
 func (r *Repository) Update(ctx context.Context, id string, p *SparePart) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE spare_parts SET part_number=$1, name=$2, description=$3, category=$4, manufacturer=$5,
-			manufacturer_part=$6, unit=$7, min_qty=$8, critical_qty=$9, reorder_qty=$10, price=$11,
-			infrastructure_id=$12, updated_at=NOW()
-		WHERE id=$13 AND active=true`,
-		p.PartNumber, p.Name, p.Description, p.Category, p.Manufacturer, p.ManufacturerPart, p.Unit,
+			manufacturer_id=$6, manufacturer_part=$7, unit=$8, min_qty=$9, critical_qty=$10, reorder_qty=$11, price=$12,
+			infrastructure_id=$13, updated_at=NOW()
+		WHERE id=$14 AND active=true`,
+		p.PartNumber, p.Name, p.Description, p.Category, p.Manufacturer, p.ManufacturerID, p.ManufacturerPart, p.Unit,
 		p.MinQty, p.CriticalQty, p.ReorderQty, p.Price, p.InfrastructureID, id)
 	return err
 }
@@ -211,7 +215,7 @@ func (r *Repository) Update(ctx context.Context, id string, p *SparePart) error 
 func scanPart(row interface{ Scan(...interface{}) error }) (*SparePart, error) {
 	p := &SparePart{}
 	err := row.Scan(&p.ID, &p.PartNumber, &p.Name, &p.Description, &p.Category, &p.Manufacturer,
-		&p.ManufacturerPart, &p.Unit, &p.StockQty, &p.MinQty, &p.CriticalQty, &p.ReorderQty,
+		&p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerPart, &p.Unit, &p.StockQty, &p.MinQty, &p.CriticalQty, &p.ReorderQty,
 		&p.Price, &p.InfrastructureID, &p.Active, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &p.InfraName)
 	if err != nil {
 		return nil, err
@@ -221,10 +225,10 @@ func scanPart(row interface{ Scan(...interface{}) error }) (*SparePart, error) {
 }
 
 const partSelect = `SELECT sp.id, sp.part_number, sp.name, COALESCE(sp.description,''), COALESCE(sp.category,''),
-	COALESCE(sp.manufacturer,''), COALESCE(sp.manufacturer_part,''), sp.unit, sp.stock_qty, sp.min_qty,
+	COALESCE(sp.manufacturer,''), sp.manufacturer_id, COALESCE(bp.name,''), COALESCE(sp.manufacturer_part,''), sp.unit, sp.stock_qty, sp.min_qty,
 	sp.critical_qty, sp.reorder_qty, sp.price, sp.infrastructure_id, sp.active, sp.created_by, sp.created_at,
 	sp.updated_at, COALESCE(i.name,'')
-	FROM spare_parts sp LEFT JOIN infrastructure i ON sp.infrastructure_id = i.id`
+	FROM spare_parts sp LEFT JOIN infrastructure i ON sp.infrastructure_id = i.id LEFT JOIN business_partners bp ON sp.manufacturer_id = bp.id`
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*SparePart, error) {
 	return scanPart(r.db.QueryRow(ctx, partSelect+` WHERE sp.id=$1 AND sp.active=true`, id))
@@ -497,7 +501,7 @@ func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 func (s *Service) Create(ctx context.Context, in *CreatePartInput, userID string) (*SparePart, error) {
 	p := &SparePart{
 		PartNumber: in.PartNumber, Name: in.Name, Description: in.Description, Category: in.Category,
-		Manufacturer: in.Manufacturer, ManufacturerPart: in.ManufacturerPart, Unit: in.Unit,
+		Manufacturer: in.Manufacturer, ManufacturerID: in.ManufacturerID, ManufacturerPart: in.ManufacturerPart, Unit: in.Unit,
 		MinQty: in.MinQty, CriticalQty: in.CriticalQty, ReorderQty: in.ReorderQty,
 		Price: in.Price, InfrastructureID: in.InfrastructureID, CreatedBy: userID,
 	}
@@ -510,7 +514,7 @@ func (s *Service) Create(ctx context.Context, in *CreatePartInput, userID string
 func (s *Service) Update(ctx context.Context, id string, in *UpdatePartInput) error {
 	p := &SparePart{
 		PartNumber: in.PartNumber, Name: in.Name, Description: in.Description, Category: in.Category,
-		Manufacturer: in.Manufacturer, ManufacturerPart: in.ManufacturerPart, Unit: in.Unit,
+		Manufacturer: in.Manufacturer, ManufacturerID: in.ManufacturerID, ManufacturerPart: in.ManufacturerPart, Unit: in.Unit,
 		MinQty: in.MinQty, CriticalQty: in.CriticalQty, ReorderQty: in.ReorderQty,
 		Price: in.Price, InfrastructureID: in.InfrastructureID,
 	}
@@ -520,16 +524,24 @@ func (s *Service) Update(ctx context.Context, id string, in *UpdatePartInput) er
 	return s.repo.Update(ctx, id, p)
 }
 
-func (s *Service) GetByID(ctx context.Context, id string) (*SparePart, error) { return s.repo.GetByID(ctx, id) }
+func (s *Service) GetByID(ctx context.Context, id string) (*SparePart, error) {
+	return s.repo.GetByID(ctx, id)
+}
 func (s *Service) List(ctx context.Context, cat, status, q string) ([]*SparePart, error) {
 	return s.repo.List(ctx, cat, status, q)
 }
-func (s *Service) GetLowStock(ctx context.Context) ([]*SparePart, error) { return s.repo.GetLowStock(ctx) }
+func (s *Service) GetLowStock(ctx context.Context) ([]*SparePart, error) {
+	return s.repo.GetLowStock(ctx)
+}
 func (s *Service) GetMovements(ctx context.Context, partID string) ([]*StockMovement, error) {
 	return s.repo.GetMovements(ctx, partID)
 }
-func (s *Service) GetStats(ctx context.Context) (map[string]interface{}, error) { return s.repo.GetStats(ctx) }
-func (s *Service) ListFieldDefs(ctx context.Context) ([]*CustomFieldDef, error) { return s.repo.ListFieldDefs(ctx) }
+func (s *Service) GetStats(ctx context.Context) (map[string]interface{}, error) {
+	return s.repo.GetStats(ctx)
+}
+func (s *Service) ListFieldDefs(ctx context.Context) ([]*CustomFieldDef, error) {
+	return s.repo.ListFieldDefs(ctx)
+}
 func (s *Service) CreateFieldDef(ctx context.Context, in *CreateFieldDefInput) (*CustomFieldDef, error) {
 	d := &CustomFieldDef{Name: in.Name, FieldType: in.FieldType, SortOrder: in.SortOrder}
 	return d, s.repo.CreateFieldDef(ctx, d)
@@ -645,10 +657,19 @@ func f64(r *http.Request, name string) float64 {
 	return v
 }
 
+func optionalFormID(r *http.Request, name string) *string {
+	v := strings.TrimSpace(r.FormValue(name))
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 func partInputFromForm(r *http.Request) CreatePartInput {
 	return CreatePartInput{
 		PartNumber: r.FormValue("part_number"), Name: r.FormValue("name"), Description: r.FormValue("description"),
 		Category: r.FormValue("category"), Manufacturer: r.FormValue("manufacturer"),
+		ManufacturerID:   optionalFormID(r, "manufacturer_id"),
 		ManufacturerPart: r.FormValue("manufacturer_part"), Unit: r.FormValue("unit"),
 		MinQty: f64(r, "min_qty"), CriticalQty: f64(r, "critical_qty"), ReorderQty: f64(r, "reorder_qty"),
 		Price: f64(r, "price"),
@@ -659,7 +680,7 @@ func updateInputFromForm(r *http.Request) UpdatePartInput {
 	c := partInputFromForm(r)
 	return UpdatePartInput{
 		PartNumber: c.PartNumber, Name: c.Name, Description: c.Description, Category: c.Category,
-		Manufacturer: c.Manufacturer, ManufacturerPart: c.ManufacturerPart, Unit: c.Unit,
+		Manufacturer: c.Manufacturer, ManufacturerID: c.ManufacturerID, ManufacturerPart: c.ManufacturerPart, Unit: c.Unit,
 		MinQty: c.MinQty, CriticalQty: c.CriticalQty, ReorderQty: c.ReorderQty, Price: c.Price,
 	}
 }

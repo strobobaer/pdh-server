@@ -1,0 +1,194 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Hersteller & Lieferanten</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px" id="directory-count">Wird geladen…</p>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="openDirectoryModal()"><i class="ti ti-plus"></i> Neuer Eintrag</button>
+</div>
+
+<div class="widget-icon-toolbar compact" style="margin-bottom:14px">
+  <a class="btn btn-primary" href="#" data-kind-filter="" onclick="setDirectoryFilter('', this); return false;">Alle</a>
+  <a class="btn" href="#" data-kind-filter="manufacturer" onclick="setDirectoryFilter('manufacturer', this); return false;">Hersteller</a>
+  <a class="btn" href="#" data-kind-filter="supplier" onclick="setDirectoryFilter('supplier', this); return false;">Lieferanten</a>
+</div>
+
+<div class="card" style="padding:0">
+  <table>
+    <thead><tr><th>Name</th><th>Art</th><th>Kontakt</th><th>Telefon / E-Mail</th><th>Website</th></tr></thead>
+    <tbody id="directory-table-body">
+      <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Wird geladen…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Anlegen/Bearbeiten -->
+<div id="directory-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:18px" onclick="if(event.target===this)closeDirectoryModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(560px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h2 id="directory-modal-title" style="font-size:17px;margin:0">Eintrag anlegen</h2>
+      <button type="button" class="btn-icon" aria-label="Schließen" title="Schließen" onclick="closeDirectoryModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="directory-form" onsubmit="return submitDirectoryForm(event)">
+      <input type="hidden" id="df-id">
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">Name</label><input id="df-name" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Art</label>
+          <select id="df-kind" class="form-input">
+            <option value="manufacturer">Hersteller</option>
+            <option value="supplier">Lieferant</option>
+            <option value="both">Hersteller & Lieferant</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Kontaktperson</label><input id="df-contact-name" class="form-input"></div>
+        <div class="form-group"><label class="form-label">E-Mail</label><input id="df-email" type="email" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Telefon</label><input id="df-phone" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Website</label><input id="df-website" class="form-input" placeholder="https://..."></div>
+      </div>
+      <div class="form-group"><label class="form-label">Adresse</label><input id="df-address" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Notizen</label><textarea id="df-notes" class="form-input" rows="3"></textarea></div>
+      <p id="directory-form-error" role="alert" style="display:none;color:var(--red);font-size:12px;margin:12px 0 0"></p>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+        <button type="button" class="btn" onclick="closeDirectoryModal()">Abbrechen</button>
+        <button type="submit" class="btn btn-primary" id="directory-save-button"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+let directoryItems = [];
+let directoryFilter = '';
+const kindLabels = {manufacturer: 'Hersteller', supplier: 'Lieferant', both: 'Hersteller & Lieferant'};
+
+function setDirectoryFilter(kind, el){
+  directoryFilter = kind;
+  document.querySelectorAll('[data-kind-filter]').forEach(function(a){ a.className = a === el ? 'btn btn-primary' : 'btn'; });
+  loadDirectory();
+}
+
+async function loadDirectory(){
+  const body = document.getElementById('directory-table-body');
+  try{
+    const url = '/api/v1/directory/?all=true' + (directoryFilter ? '&kind=' + directoryFilter : '');
+    const res = await fetch(url, {headers:{Authorization:'Bearer '+pdhToken()}});
+    const json = await res.json();
+    if(!res.ok) throw new Error(json.error || 'Fehler');
+    directoryItems = json.data || json || [];
+    renderDirectoryTable();
+  }catch(e){
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:24px">Fehler beim Laden: '+escapeHtml(e.message)+'</td></tr>';
+  }
+}
+
+function renderDirectoryTable(){
+  const body = document.getElementById('directory-table-body');
+  document.getElementById('directory-count').textContent = directoryItems.length + (directoryItems.length === 1 ? ' Eintrag' : ' Einträge');
+  if(!directoryItems.length){
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Einträge vorhanden</td></tr>';
+    return;
+  }
+  body.innerHTML = directoryItems.map(function(p){
+    const inactive = p.active === false ? ' style="opacity:.5"' : '';
+    return '<tr'+inactive+' data-id="'+p.id+'" oncontextmenu="showContextMenu(event, directoryContextItems(this)); return false;" style="cursor:pointer" onclick="editDirectoryEntry(\''+p.id+'\')">'
+      + '<td><div style="font-weight:500">'+escapeHtml(p.name)+'</div></td>'
+      + '<td><span class="badge b-blue">'+ (kindLabels[p.kind] || p.kind) +'</span></td>'
+      + '<td style="font-size:12px;color:var(--muted)">'+escapeHtml(p.contact_name||'–')+'</td>'
+      + '<td style="font-size:12px;color:var(--muted)">'+escapeHtml(p.phone||'')+(p.phone&&p.email?' · ':'')+escapeHtml(p.email||'')+'</td>'
+      + '<td style="font-size:12px;color:var(--muted)">'+(p.website?('<a href="'+escapeHtml(p.website)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+escapeHtml(p.website)+'</a>'):'–')+'</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function directoryContextItems(row){
+  const id = row.dataset.id;
+  const item = directoryItems.find(function(p){ return p.id === id; });
+  const items = [{heading: item ? item.name : ''}];
+  items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editDirectoryEntry(id); }});
+  items.push({separator: true});
+  items.push({label: 'Deaktivieren', icon: 'ti-trash', danger: true, onClick: function(){ deactivateDirectoryEntry(id); }});
+  return items;
+}
+
+function openDirectoryModal(){
+  document.getElementById('directory-form').reset();
+  document.getElementById('df-id').value = '';
+  document.getElementById('directory-modal-title').textContent = 'Eintrag anlegen';
+  document.getElementById('directory-form-error').style.display = 'none';
+  document.getElementById('directory-modal').style.display = 'flex';
+  document.getElementById('df-name').focus();
+}
+
+function closeDirectoryModal(){
+  document.getElementById('directory-modal').style.display = 'none';
+}
+
+function editDirectoryEntry(id){
+  const item = directoryItems.find(function(p){ return p.id === id; });
+  if(!item) return;
+  document.getElementById('df-id').value = item.id;
+  document.getElementById('df-name').value = item.name || '';
+  document.getElementById('df-kind').value = item.kind || 'manufacturer';
+  document.getElementById('df-contact-name').value = item.contact_name || '';
+  document.getElementById('df-email').value = item.email || '';
+  document.getElementById('df-phone').value = item.phone || '';
+  document.getElementById('df-website').value = item.website || '';
+  document.getElementById('df-address').value = item.address || '';
+  document.getElementById('df-notes').value = item.notes || '';
+  document.getElementById('directory-modal-title').textContent = 'Eintrag bearbeiten';
+  document.getElementById('directory-form-error').style.display = 'none';
+  document.getElementById('directory-modal').style.display = 'flex';
+}
+
+async function deactivateDirectoryEntry(id){
+  const item = directoryItems.find(function(p){ return p.id === id; });
+  if(!confirm('"'+(item?item.name:'')+'" wirklich deaktivieren?')) return;
+  try{
+    const res = await fetch('/api/v1/directory/'+id, {method:'DELETE', headers:{Authorization:'Bearer '+pdhToken()}});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    loadDirectory();
+  }catch(e){ alert('Fehler: '+e.message); }
+}
+
+async function submitDirectoryForm(event){
+  event.preventDefault();
+  const button = document.getElementById('directory-save-button');
+  const errorBox = document.getElementById('directory-form-error');
+  button.disabled = true;
+  errorBox.style.display = 'none';
+  const id = document.getElementById('df-id').value;
+  const payload = {
+    name: document.getElementById('df-name').value.trim(),
+    kind: document.getElementById('df-kind').value,
+    contact_name: document.getElementById('df-contact-name').value.trim(),
+    email: document.getElementById('df-email').value.trim(),
+    phone: document.getElementById('df-phone').value.trim(),
+    website: document.getElementById('df-website').value.trim(),
+    address: document.getElementById('df-address').value.trim(),
+    notes: document.getElementById('df-notes').value.trim()
+  };
+  try{
+    const url = id ? '/api/v1/directory/'+id : '/api/v1/directory/';
+    const res = await fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+pdhToken()},
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json().catch(function(){ return {}; });
+    if(!res.ok) throw new Error(json.error || ('HTTP '+res.status));
+    closeDirectoryModal();
+    loadDirectory();
+  }catch(e){
+    errorBox.textContent = 'Speichern fehlgeschlagen: ' + e.message;
+    errorBox.style.display = 'block';
+  }finally{
+    button.disabled = false;
+  }
+  return false;
+}
+
+loadDirectory();
+</script>
+{{end}}

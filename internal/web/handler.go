@@ -224,19 +224,21 @@ type InventoryStats struct {
 }
 
 type PartView struct {
-	ID           string
-	PartNumber   string
-	Name         string
-	Manufacturer string
-	Category     string
-	Unit         string
-	StockQty     string
-	MinQty       string
-	Price        string
-	Status       string
-	StatusLabel  string
-	StatusClass  string
-	StatusDot    string
+	ID               string
+	PartNumber       string
+	Name             string
+	Manufacturer     string
+	ManufacturerID   string
+	ManufacturerName string
+	Category         string
+	Unit             string
+	StockQty         string
+	MinQty           string
+	Price            string
+	Status           string
+	StatusLabel      string
+	StatusClass      string
+	StatusDot        string
 }
 
 // ── Handler ──────────────────────────────────────────────────
@@ -379,6 +381,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/time/{id}/edit-web", h.TimeEditWeb)
 	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
+	r.Get("/directory", h.DirectoryPage)
 	r.Get("/users", h.Users)
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -1221,12 +1224,15 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 			st := string(p.Status)
 			pv := PartView{
 				ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
-				Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
+				Manufacturer: p.Manufacturer, ManufacturerName: p.ManufacturerName, Category: p.Category, Unit: p.Unit,
 				StockQty:    strconv.FormatFloat(p.StockQty, 'f', 1, 64),
 				MinQty:      strconv.FormatFloat(p.MinQty, 'f', 1, 64),
 				Price:       fmt.Sprintf("%.2f", p.Price),
 				Status:      st,
 				StatusLabel: statusLabels[st], StatusClass: statusClasses[st], StatusDot: statusDots[st],
+			}
+			if p.ManufacturerID != nil {
+				pv.ManufacturerID = *p.ManufacturerID
 			}
 			data.Parts = append(data.Parts, pv)
 			if st == "low" || st == "critical" || st == "empty" {
@@ -2686,6 +2692,8 @@ type InfraNodeView struct {
 	TypeBg           string
 	Location         string
 	Manufacturer     string
+	ManufacturerID   string
+	ManufacturerName string
 	SerialNo         string
 	CostCenterID     string
 	CostCenterNumber string
@@ -2708,12 +2716,15 @@ func infraNodeView(i *infrastructure.Infrastructure) InfraNodeView {
 		ID: i.ID, Name: i.Name,
 		TypeLabel: labels[i.Type], TypeIcon: icons[i.Type],
 		TypeBg:   bgs[i.Type],
-		Location: i.Location, Manufacturer: i.Manufacturer,
+		Location: i.Location, Manufacturer: i.Manufacturer, ManufacturerName: i.ManufacturerName,
 		SerialNo:         i.SerialNo,
 		CostCenterNumber: i.CostCenterNumber, CostCenterName: i.CostCenterName,
 	}
 	if i.CostCenterID != nil {
 		v.CostCenterID = *i.CostCenterID
+	}
+	if i.ManufacturerID != nil {
+		v.ManufacturerID = *i.ManufacturerID
 	}
 	for _, c := range i.Children {
 		v.Children = append(v.Children, infraNodeView(c))
@@ -2754,13 +2765,14 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	parentID := r.FormValue("parent_id")
 	in := &infrastructure.CreateInput{
-		Name:         r.FormValue("name"),
-		Type:         infrastructure.InfraType(r.FormValue("type")),
-		Location:     r.FormValue("location"),
-		Manufacturer: r.FormValue("manufacturer"),
-		SerialNo:     r.FormValue("serial_no"),
-		Description:  r.FormValue("description"),
-		CostCenterID: optionalID(r.FormValue("cost_center_id")),
+		Name:           r.FormValue("name"),
+		Type:           infrastructure.InfraType(r.FormValue("type")),
+		Location:       r.FormValue("location"),
+		Manufacturer:   r.FormValue("manufacturer"),
+		ManufacturerID: optionalID(r.FormValue("manufacturer_id")),
+		SerialNo:       r.FormValue("serial_no"),
+		Description:    r.FormValue("description"),
+		CostCenterID:   optionalID(r.FormValue("cost_center_id")),
 	}
 	if parentID != "" {
 		in.ParentID = &parentID
@@ -2927,6 +2939,8 @@ type ITAssetDetailView struct {
 	IPAddress        string
 	MACAddress       string
 	Manufacturer     string
+	ManufacturerID   string
+	ManufacturerName string
 	Model            string
 	SerialNo         string
 	Location         string
@@ -3845,14 +3859,61 @@ func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "checklist_builder", data)
 }
 
+// InfraHistoryItem ist ein Eintrag der Stammkarten-Historie (Stoerungen/
+// Tickets/Aufgaben einer Infrastruktur-Anlage) - bewusst schlank (nur
+// Titel/Status/Datum/Link), da die Stammkarte nur einen Ueberblick bietet
+// und fuer Details auf die jeweilige Detailseite verweist.
+type InfraHistoryItem struct {
+	ID          string
+	Title       string
+	StatusLabel string
+	StatusClass string
+	DateLabel   string
+	DetailURL   string
+}
+
+const infraHistoryLimit = 20
+
+// infraHistoryFor liefert die juengsten Eintraege einer Tabelle
+// (faults/tickets/tasks) fuer eine Infrastruktur-Anlage - gemeinsame
+// Abfrage fuer alle drei, da sie bis auf Tabellenname/Ziel-URL identisch
+// aufgebaut sind.
+func (h *Handler) infraHistoryFor(ctx context.Context, table, detailPrefix, infraID string) []InfraHistoryItem {
+	query := fmt.Sprintf(`
+		SELECT id::text, title, status::text, to_char(created_at, 'DD.MM.YYYY')
+		FROM %s WHERE infrastructure_id=$1
+		ORDER BY created_at DESC LIMIT %d`, table, infraHistoryLimit)
+	rows, err := h.db.Query(ctx, query, infraID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var list []InfraHistoryItem
+	for rows.Next() {
+		var it InfraHistoryItem
+		var status string
+		if err := rows.Scan(&it.ID, &it.Title, &status, &it.DateLabel); err != nil {
+			continue
+		}
+		it.StatusLabel = statusLabel(status)
+		it.StatusClass = statusClass(status)
+		it.DetailURL = detailPrefix + it.ID
+		list = append(list, it)
+	}
+	return list
+}
+
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	type InfraDetailData struct {
 		BaseData
-		Node     InfraNodeView
-		Children []InfraNodeView
-		Parent   *InfraNodeView
+		Node          InfraNodeView
+		Children      []InfraNodeView
+		Parent        *InfraNodeView
+		FaultHistory  []InfraHistoryItem
+		TicketHistory []InfraHistoryItem
+		TaskHistory   []InfraHistoryItem
 	}
 	node, err := h.infra.GetByID(ctx, id)
 	if err != nil {
@@ -3860,8 +3921,11 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := InfraDetailData{
-		BaseData: h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
-		Node:     infraNodeView(node),
+		BaseData:      h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
+		Node:          infraNodeView(node),
+		FaultHistory:  h.infraHistoryFor(ctx, "faults", "/faults/", id),
+		TicketHistory: h.infraHistoryFor(ctx, "tickets", "/tickets/", id),
+		TaskHistory:   h.infraHistoryFor(ctx, "tasks", "/tasks/", id),
 	}
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
 		for _, c := range children {
@@ -3884,8 +3948,9 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	in := &infrastructure.UpdateInput{
 		Name: r.FormValue("name"), Location: r.FormValue("location"),
-		Manufacturer: r.FormValue("manufacturer"), SerialNo: r.FormValue("serial_no"),
-		Model: r.FormValue("model"), CostCenterID: optionalID(r.FormValue("cost_center_id")),
+		Manufacturer: r.FormValue("manufacturer"), ManufacturerID: optionalID(r.FormValue("manufacturer_id")),
+		SerialNo: r.FormValue("serial_no"),
+		Model:    r.FormValue("model"), CostCenterID: optionalID(r.FormValue("cost_center_id")),
 	}
 	err := h.infra.Update(r.Context(), id, in)
 	w.Header().Set("Content-Type", "text/html")
@@ -3929,7 +3994,7 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 	in := &it.CreateAssetInput{
 		Name: r.FormValue("name"), Type: it.AssetType(r.FormValue("type")),
 		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
-		Manufacturer: r.FormValue("manufacturer"), Model: r.FormValue("model"),
+		Manufacturer: r.FormValue("manufacturer"), ManufacturerID: optionalID(r.FormValue("manufacturer_id")), Model: r.FormValue("model"),
 		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
 		OS: r.FormValue("os"), InfrastructureID: optionalID(r.FormValue("infrastructure_id")), Notes: r.FormValue("notes"),
 	}
@@ -3967,7 +4032,7 @@ func itAssetDetailView(a *it.Asset) ITAssetDetailView {
 		TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
 		Status: string(a.Status), StatusLabel: statusLabels[string(a.Status)], StatusClass: statusClasses[string(a.Status)],
 		Hostname: a.Hostname, IPAddress: a.IPAddress, MACAddress: a.MACAddress,
-		Manufacturer: a.Manufacturer, Model: a.Model, SerialNo: a.SerialNo,
+		Manufacturer: a.Manufacturer, ManufacturerName: a.ManufacturerName, Model: a.Model, SerialNo: a.SerialNo,
 		Location: a.Location, OS: a.OS,
 		AssigneeName: a.AssigneeName, InfraName: a.InfraName,
 		Notes: a.Notes, CreatedAgo: timeAgo(a.CreatedAt),
@@ -3983,6 +4048,9 @@ func itAssetDetailView(a *it.Asset) ITAssetDetailView {
 	}
 	if a.InfrastructureID != nil {
 		v.InfrastructureID = *a.InfrastructureID
+	}
+	if a.ManufacturerID != nil {
+		v.ManufacturerID = *a.ManufacturerID
 	}
 	return v
 }
@@ -4018,9 +4086,11 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 	in := &it.UpdateDetailsInput{
 		Name: r.FormValue("name"), Type: it.AssetType(r.FormValue("type")),
 		Hostname: r.FormValue("hostname"), IPAddress: r.FormValue("ip_address"),
-		MACAddress:   r.FormValue("mac_address"),
-		Manufacturer: r.FormValue("manufacturer"), Model: r.FormValue("model"),
-		SerialNo: r.FormValue("serial_no"), Location: r.FormValue("location"),
+		MACAddress:     r.FormValue("mac_address"),
+		Manufacturer:   r.FormValue("manufacturer"),
+		ManufacturerID: optionalID(r.FormValue("manufacturer_id")),
+		Model:          r.FormValue("model"),
+		SerialNo:       r.FormValue("serial_no"), Location: r.FormValue("location"),
 		OS:               r.FormValue("os"),
 		PurchasedAt:      optionalID(r.FormValue("purchased_at")),
 		WarrantyUntil:    optionalID(r.FormValue("warranty_until")),

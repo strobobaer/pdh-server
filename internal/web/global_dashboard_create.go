@@ -153,7 +153,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	case "task":
 		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
 			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
-			DueDate: in.DueDate,
+			DueDate: in.DueDate, InfrastructureID: infrastructureID,
 		}, reporter.ID)
 	case "maintenance":
 		_, err = h.maint.CreateTask(r.Context(), &maintenance.CreateTaskInput{

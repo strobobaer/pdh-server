@@ -19,6 +19,7 @@ import (
 
 	"pdh/internal/core/addins"
 	"pdh/internal/core/costcenters"
+	"pdh/internal/core/directory"
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
@@ -96,6 +97,10 @@ func main() {
 	costCenterRepo := costcenters.NewRepository(db.Pool)
 	costCenterSvc := costcenters.NewService(costCenterRepo)
 	costCenterHandler := costcenters.NewHandler(costCenterSvc)
+
+	directoryRepo := directory.NewRepository(db.Pool)
+	directorySvc := directory.NewService(directoryRepo)
+	directoryHandler := directory.NewHandler(directorySvc)
 
 	ticketRepo := tickets.NewRepository(db.Pool)
 	ticketSvc := tickets.NewService(ticketRepo)
@@ -178,10 +183,10 @@ func main() {
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
-		ClientID:     cfg.Microsoft.ClientID,
-		ClientSecret: cfg.Microsoft.ClientSecret,
-		RedirectURL:  cfg.Microsoft.RedirectURL,
-		TenantID:     cfg.Microsoft.TenantID,
+		ClientID:          cfg.Microsoft.ClientID,
+		ClientSecret:      cfg.Microsoft.ClientSecret,
+		RedirectURL:       cfg.Microsoft.RedirectURL,
+		TenantID:          cfg.Microsoft.TenantID,
 		TeamsSenderUserID: cfg.Microsoft.TeamsSenderUserID,
 		TeamsID:           cfg.Microsoft.TeamsID,
 		TeamsChannelID:    cfg.Microsoft.TeamsChannelID,
@@ -218,6 +223,7 @@ func main() {
 		r.Mount("/shifts", shiftHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/costcenters", costCenterHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/directory", directoryHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tasks", taskHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/projects", projectHandler.Routes(cfg.Auth.JWTSecret))

@@ -37,6 +37,8 @@ type TaskView struct {
 	AssignedIDSet   map[string]bool
 	ResponsibleID   string
 	ResponsibleName string
+	InfraID         string
+	InfraName       string
 	Resolution      string
 	RootCause       string
 	CreatedAgo      string
@@ -51,7 +53,7 @@ func taskView(t *tasks.Task) TaskView {
 		StatusClass: statusClass(string(t.Status)),
 		Priority:    string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
 		PriorityDot: priorityDot(string(t.Priority)),
-		ProjectName: t.ProjectName, ResponsibleName: t.ResponsibleName,
+		ProjectName: t.ProjectName, ResponsibleName: t.ResponsibleName, InfraName: t.InfrastructureName,
 		Resolution: t.Resolution, RootCause: t.RootCause,
 		CreatedAgo: timeAgo(t.CreatedAt),
 		CanResolve: t.Status == "open" || t.Status == "in_progress",
@@ -75,6 +77,9 @@ func taskView(t *tasks.Task) TaskView {
 	}
 	if t.ProjectID != nil {
 		v.ProjectID = *t.ProjectID
+	}
+	if t.InfrastructureID != nil {
+		v.InfraID = *t.InfrastructureID
 	}
 	if t.ResponsibleTo != nil {
 		v.ResponsibleID = *t.ResponsibleTo

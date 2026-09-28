@@ -131,6 +131,7 @@ function buildAssignPayload(){
   if(assignType === 'task'){
     const payload = {title: title, description: description, priority: priority, due_date: dueDate, start_date: document.getElementById('assign-start-date').value};
     if(assignedTo) payload.assigned_to_ids = [assignedTo];
+    if(infraID) payload.infrastructure_id = infraID;
     return payload;
   }
   if(assignType === 'maintenance'){

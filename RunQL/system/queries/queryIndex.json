@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-09-28T15:56:41.874Z",
+  "generatedAt": "2026-09-28T16:17:10.659Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -666,6 +666,28 @@
       "sqlHash": "b716c147e679985be0fde90852aefbdfd95da92efc43bfae77ed99ea9d53f8b9",
       "title": "062_task_multiple_assignees.up.sql",
       "updatedAt": "2026-09-28T15:56:41.256Z"
+    },
+    {
+      "createdAt": "2026-09-28T16:10:10.645Z",
+      "path": "migrations/063_task_infrastructure.up.sql",
+      "catalogContext": null,
+      "searchText": "063_task_infrastructure.up.sql migrations/063_task_infrastructure.up.sql -- 063_task_infrastructure.up.sql\n--\n-- aufgaben koennen jetzt optional einer infrastruktur-anlage zugeordnet\n-- werden - grundlage fuer die stammkarten-historie (stoerungs-, ticket-\n-- und aufgabenhistorie einer anlage). anders als bei stoerung/ticket/\n-- wartung ist die zuordnung bewusst optional, da aufgaben primaer an\n-- projekten haengen.\n\nalter table tasks add column if not exists infrastructure_id uuid references infrastructure(id);\ncreate index if not exists idx_tasks_infrastructure on tasks(infrastructure_id);\n",
+      "searchUpdatedAt": "2026-09-28T16:10:10.742Z",
+      "schemaContext": null,
+      "sqlHash": "86dea43cdca886b11fc655d69cf068ad67d3cf36f38980f7f99c605511790645",
+      "title": "063_task_infrastructure.up.sql",
+      "updatedAt": "2026-09-28T16:10:10.645Z"
+    },
+    {
+      "createdAt": "2026-09-28T16:17:10.039Z",
+      "path": "migrations/064_business_partners.up.sql",
+      "catalogContext": null,
+      "searchText": "064_business_partners.up.sql migrations/064_business_partners.up.sql -- 064_business_partners.up.sql\n--\n-- systemweites hersteller-/lieferantenverzeichnis. ein eintrag kann\n-- hersteller, lieferant oder beides sein (kind), da ein unternehmen oft\n-- beide rollen gleichzeitig einnimmt. ersatzteile, infrastruktur und\n-- it-geraete bekommen ein neues manufacturer_id-feld, das hierher zeigt -\n-- das bisherige freitextfeld \"manufacturer\" bleibt als fallback fuer\n-- altbestand erhalten (wird nur noch angezeigt, wenn keine verzeichnis-\n-- verknuepfung gesetzt ist).\n\ncreate table if not exists business_partners (\n    id           uuid primary key default gen_random_uuid(),\n    name         varchar(200) not null,\n    kind         varchar(20) not null default 'manufacturer' check (kind in ('manufacturer', 'supplier', 'both')),\n    contact_name varchar(150) not null default '',\n    email        varchar(150) not null default '',\n    phone        varchar(50)  not null default '',\n    website      varchar(200) not null default '',\n    address      varchar(300) not null default '',\n    notes        varchar(1000) not null default '',\n    active       boolean not null default true,\n    created_by   uuid references users(id),\n    created_at   timestamptz not null default now(),\n    updated_at   timestamptz not null default now()\n);\n\ncreate index if not exists idx_business_partners_active on business_partners(active);\ncreate index if not exists idx_business_partners_kind on business_partners(kind);\n\nalter table spare_parts add column if not exists manufacturer_id uuid references business_partners(id);\nalter table infrastructure add column if not exists manufacturer_id uuid references business_partners(id);\nalter table it_assets add column if not exists manufacturer_id uuid references business_partners(id);\n",
+      "searchUpdatedAt": "2026-09-28T16:17:10.142Z",
+      "schemaContext": null,
+      "sqlHash": "99f804fd56dcc87bef80263fd768a3c93a80b3366a9035472d913fcc4b161d94",
+      "title": "064_business_partners.up.sql",
+      "updatedAt": "2026-09-28T16:17:10.039Z"
     }
   ]
 }

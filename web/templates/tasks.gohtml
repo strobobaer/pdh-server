@@ -41,6 +41,7 @@
         </select>
       </div>
     </div>
+    {{template "infra-tree-picker" (dict "TargetID" "task-infra-id" "SelectedLabelID" "task-infra-selected" "Label" "Infrastruktur (optional)")}}
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
       <input name="description" class="form-input" placeholder="Details">
@@ -102,6 +103,7 @@ async function submitTaskForm(form){
   if(assignedIds.length) payload.assigned_to_ids=assignedIds;
   if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
   if(fd.get('project_id')) payload.project_id=fd.get('project_id');
+  if(fd.get('infrastructure_id')) payload.infrastructure_id=fd.get('infrastructure_id');
   const result=document.getElementById('task-create-result'); result.textContent='Speichere...';
   try{
     const res=await fetch('/api/v1/tasks/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});

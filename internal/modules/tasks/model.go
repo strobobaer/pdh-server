@@ -34,46 +34,49 @@ type Assignee struct {
 }
 
 type Task struct {
-	ID             string     `json:"id"`
-	Title          string     `json:"title"`
-	Description    string     `json:"description,omitempty"`
-	Status         Status     `json:"status"`
-	Priority       Priority   `json:"priority"`
-	ResponsibleTo  *string    `json:"responsible_to,omitempty"`
-	DueDate        *time.Time `json:"due_date,omitempty"`
-	StartDate      *time.Time `json:"start_date,omitempty"`
-	ProjectID      *string    `json:"project_id,omitempty"`
-	Color          string     `json:"color,omitempty"`
-	LinkedFaultID  *string    `json:"linked_fault_id,omitempty"`
-	LinkedTicketID *string    `json:"linked_ticket_id,omitempty"`
-	Resolution     string     `json:"resolution,omitempty"`
-	RootCause      string     `json:"root_cause,omitempty"`
-	NoPartsNeeded  bool       `json:"no_parts_needed"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
-	CreatedBy      string     `json:"created_by"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID               string     `json:"id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description,omitempty"`
+	Status           Status     `json:"status"`
+	Priority         Priority   `json:"priority"`
+	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
+	DueDate          *time.Time `json:"due_date,omitempty"`
+	StartDate        *time.Time `json:"start_date,omitempty"`
+	ProjectID        *string    `json:"project_id,omitempty"`
+	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
+	Color            string     `json:"color,omitempty"`
+	LinkedFaultID    *string    `json:"linked_fault_id,omitempty"`
+	LinkedTicketID   *string    `json:"linked_ticket_id,omitempty"`
+	Resolution       string     `json:"resolution,omitempty"`
+	RootCause        string     `json:"root_cause,omitempty"`
+	NoPartsNeeded    bool       `json:"no_parts_needed"`
+	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+	CreatedBy        string     `json:"created_by"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 
 	// AssignedToIDs ist reines Schreib-Eingabefeld fuer Create/SetAssignees
 	// (vom Aufrufer gesetzt), Assignees das beim Lesen befuellte Ergebnis.
 	AssignedToIDs []string `json:"assigned_to_ids,omitempty"`
 
 	// Joined
-	Assignees       []Assignee `json:"assignees,omitempty"`
-	ResponsibleName string     `json:"responsible_name,omitempty"`
-	ProjectName     string     `json:"project_name,omitempty"`
+	Assignees          []Assignee `json:"assignees,omitempty"`
+	ResponsibleName    string     `json:"responsible_name,omitempty"`
+	ProjectName        string     `json:"project_name,omitempty"`
+	InfrastructureName string     `json:"infrastructure_name,omitempty"`
 }
 
 type CreateTaskInput struct {
-	Title         string   `json:"title"`
-	Description   string   `json:"description"`
-	Priority      Priority `json:"priority"`
-	AssignedToIDs []string `json:"assigned_to_ids,omitempty"`
-	ResponsibleTo *string  `json:"responsible_to,omitempty"`
-	DueDate       string   `json:"due_date"`
-	StartDate     string   `json:"start_date"`
-	ProjectID     *string  `json:"project_id,omitempty"`
-	Color         string   `json:"color,omitempty"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description"`
+	Priority         Priority `json:"priority"`
+	AssignedToIDs    []string `json:"assigned_to_ids,omitempty"`
+	ResponsibleTo    *string  `json:"responsible_to,omitempty"`
+	DueDate          string   `json:"due_date"`
+	StartDate        string   `json:"start_date"`
+	ProjectID        *string  `json:"project_id,omitempty"`
+	InfrastructureID *string  `json:"infrastructure_id,omitempty"`
+	Color            string   `json:"color,omitempty"`
 }
 
 type UpdateTaskInput struct {
@@ -89,6 +92,10 @@ type UpdateTaskInput struct {
 	// (Zuweisung unveraendert) - ein leeres, aber nicht-nil Array leert
 	// die Zuweisung bewusst.
 	AssignedToIDs []string `json:"assigned_to_ids"`
+	// InfrastructureID: nil = unveraendert, leerer String = Verknuepfung
+	// entfernen (siehe ClearInfrastructure), sonst neue Anlage setzen.
+	InfrastructureID    *string `json:"infrastructure_id,omitempty"`
+	ClearInfrastructure bool    `json:"clear_infrastructure,omitempty"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
@@ -98,11 +105,11 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, t *Task) error {
 	if err := r.db.QueryRow(ctx, `
 		INSERT INTO tasks (id, title, description, priority, responsible_to,
-			due_date, start_date, project_id, created_by, color)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9,''))
+			due_date, start_date, project_id, infrastructure_id, created_by, color)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''))
 		RETURNING id, status, created_at, updated_at`,
 		t.Title, t.Description, t.Priority, t.ResponsibleTo,
-		t.DueDate, t.StartDate, t.ProjectID, t.CreatedBy, t.Color,
+		t.DueDate, t.StartDate, t.ProjectID, t.InfrastructureID, t.CreatedBy, t.Color,
 	).Scan(&t.ID, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return err
 	}
@@ -127,10 +134,10 @@ func scanTask(row interface{ Scan(...interface{}) error }) (*Task, error) {
 	t := &Task{}
 	var assigneesJSON []byte
 	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.Priority,
-		&t.ResponsibleTo, &t.DueDate, &t.StartDate, &t.ProjectID,
+		&t.ResponsibleTo, &t.DueDate, &t.StartDate, &t.ProjectID, &t.InfrastructureID,
 		&t.LinkedFaultID, &t.LinkedTicketID, &t.Resolution, &t.RootCause, &t.NoPartsNeeded,
 		&t.ResolvedAt, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt,
-		&t.ResponsibleName, &t.ProjectName, &t.Color, &assigneesJSON)
+		&t.ResponsibleName, &t.ProjectName, &t.InfrastructureName, &t.Color, &assigneesJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -140,11 +147,11 @@ func scanTask(row interface{ Scan(...interface{}) error }) (*Task, error) {
 
 const selectTaskColumns = `
 	t.id, t.title, COALESCE(t.description,''), t.status, t.priority,
-	t.responsible_to, t.due_date, t.start_date, t.project_id,
+	t.responsible_to, t.due_date, t.start_date, t.project_id, t.infrastructure_id,
 	t.linked_fault_id, t.linked_ticket_id, COALESCE(t.resolution,''), COALESCE(t.root_cause,''), t.no_parts_needed,
 	t.resolved_at, t.created_by, t.created_at, t.updated_at,
 	COALESCE(ur.first_name || ' ' || ur.last_name, ''),
-	COALESCE(p.name, ''), COALESCE(t.color, ''),
+	COALESCE(p.name, ''), COALESCE(i.name, ''), COALESCE(t.color, ''),
 	COALESCE((
 		SELECT json_agg(json_build_object('id', au.id::text, 'name', au.first_name || ' ' || au.last_name) ORDER BY au.last_name, au.first_name)
 		FROM task_assignees ta JOIN users au ON au.id = ta.user_id WHERE ta.task_id = t.id
@@ -153,7 +160,8 @@ const selectTaskColumns = `
 const taskJoins = `
 	FROM tasks t
 	LEFT JOIN users ur ON t.responsible_to = ur.id
-	LEFT JOIN projects p ON t.project_id = p.id`
+	LEFT JOIN projects p ON t.project_id = p.id
+	LEFT JOIN infrastructure i ON t.infrastructure_id = i.id`
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Task, error) {
 	query := "SELECT " + selectTaskColumns + " " + taskJoins + " WHERE t.id=$1"
@@ -219,10 +227,12 @@ func (r *Repository) Update(ctx context.Context, id string, in *UpdateTaskInput)
 			due_date=COALESCE($4, due_date),
 			start_date=COALESCE($5, start_date),
 			project_id=CASE WHEN $6::uuid IS NOT NULL OR $8 THEN $6 ELSE project_id END,
+			infrastructure_id=CASE WHEN $10::uuid IS NOT NULL OR $11 THEN $10 ELSE infrastructure_id END,
 			color=COALESCE(NULLIF($9,''), color),
 			updated_at=NOW()
 		WHERE id=$7`,
-		in.Title, in.Description, in.Priority, nullDate(in.DueDate), nullDate(in.StartDate), in.ProjectID, id, in.ClearProject, in.Color)
+		in.Title, in.Description, in.Priority, nullDate(in.DueDate), nullDate(in.StartDate), in.ProjectID, id, in.ClearProject, in.Color,
+		in.InfrastructureID, in.ClearInfrastructure)
 	return err
 }
 

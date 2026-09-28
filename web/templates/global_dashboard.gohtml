@@ -203,7 +203,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label>Beschreibung <span class="required-hint">Pflichtfeld, mehr als drei Wörter</span>
         <textarea id="create-description" name="description" maxlength="2000" required placeholder="Was ist los? Bitte in ganzen Sätzen beschreiben."></textarea>
       </label>
-      <label id="create-infra-field">Infrastruktur <span class="required-hint">Pflichtfeld</span>
+      <label id="create-infra-field">Infrastruktur <span class="required-hint" id="create-infra-hint">Pflichtfeld</span>
         <select id="create-infra" name="infrastructure_id" required>
           <option value="">Infrastruktur auswählen …</option>
         </select>
@@ -282,6 +282,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <button type="button" class="header-button" id="edit-close">Schließen</button>
     </div>
     <div class="edit-actions" id="edit-action-buttons">
+      <button type="button" class="action-button" id="edit-info-button" hidden>ℹ Info</button>
       <button type="button" class="action-button accept" data-action="accept">Annehmen</button>
       <button type="button" class="action-button finish" data-action="done">Fertig</button>
       {{if .CanDiscard}}<button type="button" class="action-button discard" data-action="discard">Verwerfen</button>{{end}}
@@ -582,6 +583,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     const descriptionEl = document.getElementById('edit-description');
     descriptionEl.textContent = item.description || '';
     descriptionEl.classList.toggle('hidden', !item.description);
+    const infoButton = document.getElementById('edit-info-button');
+    infoButton.hidden = !item.infrastructure_id;
+    infoButton.onclick = item.infrastructure_id ? function(){ window.location = '/infrastructure/' + item.infrastructure_id; } : null;
     form.classList.add('hidden');
     editActions.classList.remove('hidden');
     editPanel.classList.remove('hidden');
@@ -655,8 +659,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     createSymptomsField.classList.toggle('hidden', type !== 'fault');
     createMaintenanceTypeField.classList.toggle('hidden', type !== 'maintenance');
     const needsInfra = type !== 'task';
-    createInfraField.classList.toggle('hidden', !needsInfra);
+    createInfraField.classList.remove('hidden');
     createInfraSelect.required = needsInfra;
+    document.getElementById('create-infra-hint').textContent = needsInfra ? 'Pflichtfeld' : 'Optional';
     createDueDateField.classList.toggle('hidden', type === 'fault');
     if(createDefaultDueDays[type] !== undefined){
       document.getElementById('create-duedate-hint').textContent = 'Optional, leer = ' + createDefaultDueDays[type] + ' Tage nach Anlage';

@@ -23,20 +23,22 @@ const (
 )
 
 type Infrastructure struct {
-	ID           string            `json:"id"`
-	ParentID     *string           `json:"parent_id,omitempty"`
-	Name         string            `json:"name"`
-	Type         InfraType         `json:"type"`
-	Description  string            `json:"description,omitempty"`
-	Location     string            `json:"location,omitempty"`
-	SerialNo     string            `json:"serial_no,omitempty"`
-	Manufacturer string            `json:"manufacturer,omitempty"`
-	Model        string            `json:"model,omitempty"`
-	InstalledAt  *string           `json:"installed_at,omitempty"`
-	Active       bool              `json:"active"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
-	Children     []*Infrastructure `json:"children,omitempty"`
+	ID               string            `json:"id"`
+	ParentID         *string           `json:"parent_id,omitempty"`
+	Name             string            `json:"name"`
+	Type             InfraType         `json:"type"`
+	Description      string            `json:"description,omitempty"`
+	Location         string            `json:"location,omitempty"`
+	SerialNo         string            `json:"serial_no,omitempty"`
+	Manufacturer     string            `json:"manufacturer,omitempty"`
+	ManufacturerID   *string           `json:"manufacturer_id,omitempty"`
+	ManufacturerName string            `json:"manufacturer_name,omitempty"`
+	Model            string            `json:"model,omitempty"`
+	InstalledAt      *string           `json:"installed_at,omitempty"`
+	Active           bool              `json:"active"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+	Children         []*Infrastructure `json:"children,omitempty"`
 
 	// Kostenstelle (strukturiert, aus der cost_centers-Liste)
 	CostCenterID     *string `json:"cost_center_id,omitempty"`
@@ -45,26 +47,28 @@ type Infrastructure struct {
 }
 
 type CreateInput struct {
-	ParentID     *string   `json:"parent_id,omitempty"`
-	Name         string    `json:"name"`
-	Type         InfraType `json:"type"`
-	Description  string    `json:"description,omitempty"`
-	Location     string    `json:"location,omitempty"`
-	SerialNo     string    `json:"serial_no,omitempty"`
-	Manufacturer string    `json:"manufacturer,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	CostCenterID *string   `json:"cost_center_id,omitempty"`
-	InstalledAt  *string   `json:"installed_at,omitempty"`
+	ParentID       *string   `json:"parent_id,omitempty"`
+	Name           string    `json:"name"`
+	Type           InfraType `json:"type"`
+	Description    string    `json:"description,omitempty"`
+	Location       string    `json:"location,omitempty"`
+	SerialNo       string    `json:"serial_no,omitempty"`
+	Manufacturer   string    `json:"manufacturer,omitempty"`
+	ManufacturerID *string   `json:"manufacturer_id,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	CostCenterID   *string   `json:"cost_center_id,omitempty"`
+	InstalledAt    *string   `json:"installed_at,omitempty"`
 }
 
 type UpdateInput struct {
-	Name         string  `json:"name"`
-	Description  string  `json:"description"`
-	Location     string  `json:"location"`
-	SerialNo     string  `json:"serial_no"`
-	Manufacturer string  `json:"manufacturer"`
-	Model        string  `json:"model"`
-	CostCenterID *string `json:"cost_center_id,omitempty"`
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	Location       string  `json:"location"`
+	SerialNo       string  `json:"serial_no"`
+	Manufacturer   string  `json:"manufacturer"`
+	ManufacturerID *string `json:"manufacturer_id,omitempty"`
+	Model          string  `json:"model"`
+	CostCenterID   *string `json:"cost_center_id,omitempty"`
 }
 
 // ── Repository ───────────────────────────────────────────────
@@ -74,12 +78,12 @@ type Repository struct{ db *pgxpool.Pool }
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 const selectCols = `i.id, i.parent_id, i.name, i.type, COALESCE(i.description,'') AS description, COALESCE(i.location,'') AS location,
-	COALESCE(i.serial_no,'') AS serial_no, COALESCE(i.manufacturer,'') AS manufacturer, COALESCE(i.model,'') AS model,
+	COALESCE(i.serial_no,'') AS serial_no, COALESCE(i.manufacturer,'') AS manufacturer, i.manufacturer_id, COALESCE(bp.name,'') AS manufacturer_name, COALESCE(i.model,'') AS model,
 	i.installed_at::text,
 	i.active, i.created_at, i.updated_at,
 	i.cost_center_id, COALESCE(cc.number,'') AS cc_number, COALESCE(cc.name,'') AS cc_name`
 
-const fromJoin = `FROM infrastructure i LEFT JOIN cost_centers cc ON i.cost_center_id = cc.id`
+const fromJoin = `FROM infrastructure i LEFT JOIN cost_centers cc ON i.cost_center_id = cc.id LEFT JOIN business_partners bp ON i.manufacturer_id = bp.id`
 
 // scanItem liest eine Zeile – Reihenfolge muss mit selectCols übereinstimmen
 func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, error) {
@@ -87,7 +91,7 @@ func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, err
 	err := row.Scan(
 		&i.ID, &i.ParentID, &i.Name, &i.Type,
 		&i.Description, &i.Location,
-		&i.SerialNo, &i.Manufacturer, &i.Model,
+		&i.SerialNo, &i.Manufacturer, &i.ManufacturerID, &i.ManufacturerName, &i.Model,
 		&i.InstalledAt,
 		&i.Active, &i.CreatedAt, &i.UpdatedAt,
 		&i.CostCenterID, &i.CostCenterNumber, &i.CostCenterName,
@@ -98,11 +102,11 @@ func scanItem(row interface{ Scan(...interface{}) error }) (*Infrastructure, err
 func (r *Repository) Create(ctx context.Context, i *Infrastructure) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO infrastructure
-		 (id, parent_id, name, type, description, location, serial_no, manufacturer, model, cost_center_id, installed_at)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 (id, parent_id, name, type, description, location, serial_no, manufacturer, manufacturer_id, model, cost_center_id, installed_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 RETURNING id, active, created_at, updated_at`,
 		i.ParentID, i.Name, i.Type, i.Description,
-		i.Location, i.SerialNo, i.Manufacturer, i.Model, i.CostCenterID, i.InstalledAt,
+		i.Location, i.SerialNo, i.Manufacturer, i.ManufacturerID, i.Model, i.CostCenterID, i.InstalledAt,
 	).Scan(&i.ID, &i.Active, &i.CreatedAt, &i.UpdatedAt)
 }
 
@@ -178,9 +182,9 @@ func (r *Repository) GetTree(ctx context.Context) ([]*Infrastructure, error) {
 func (r *Repository) Update(ctx context.Context, i *Infrastructure) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE infrastructure SET name=$1, description=$2, location=$3,
-		 serial_no=$4, manufacturer=$5, model=$6, cost_center_id=$7, updated_at=NOW() WHERE id=$8`,
+		 serial_no=$4, manufacturer=$5, manufacturer_id=$6, model=$7, cost_center_id=$8, updated_at=NOW() WHERE id=$9`,
 		i.Name, i.Description, i.Location,
-		i.SerialNo, i.Manufacturer, i.Model, i.CostCenterID, i.ID)
+		i.SerialNo, i.Manufacturer, i.ManufacturerID, i.Model, i.CostCenterID, i.ID)
 	return err
 }
 
@@ -238,7 +242,7 @@ func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 func (s *Service) Create(ctx context.Context, in *CreateInput) (*Infrastructure, error) {
 	i := &Infrastructure{ParentID: in.ParentID, Name: in.Name, Type: in.Type,
 		Description: in.Description, Location: in.Location,
-		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer,
+		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, ManufacturerID: in.ManufacturerID,
 		Model: in.Model, CostCenterID: in.CostCenterID, InstalledAt: in.InstalledAt}
 	return i, s.repo.Create(ctx, i)
 }
@@ -257,7 +261,7 @@ func (s *Service) Deactivate(ctx context.Context, id string) error      { return
 func (s *Service) Update(ctx context.Context, id string, in *UpdateInput) error {
 	return s.repo.Update(ctx, &Infrastructure{ID: id, Name: in.Name,
 		Description: in.Description, Location: in.Location,
-		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, Model: in.Model,
+		SerialNo: in.SerialNo, Manufacturer: in.Manufacturer, ManufacturerID: in.ManufacturerID, Model: in.Model,
 		CostCenterID: in.CostCenterID})
 }
 
