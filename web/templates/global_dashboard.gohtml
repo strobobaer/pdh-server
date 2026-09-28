@@ -245,6 +245,17 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     </form>
   </div>
 
+  <div id="maintenance-select-panel" class="hidden">
+    <div class="edit-panel-head">
+      <h2 style="font-size:17px;margin:0">Wartungen</h2>
+      <button type="button" class="header-button" id="maintenance-select-close">Schließen</button>
+    </div>
+    <div id="maintenance-select-list" style="display:grid;gap:8px"></div>
+    <div class="form-actions">
+      <button type="button" class="action-button finish" id="maintenance-select-new">+ Neue Wartung anlegen</button>
+    </div>
+  </div>
+
   <div id="timeline-card">
     <div id="timeline-card-head">
       <strong>Zeitstrahl</strong>
@@ -568,8 +579,104 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     entriesEmpty.classList.toggle('hidden', items.length !== 0);
   }
 
+  // ── Wartungsauswahl: der "Neue Wartung"-Klick oeffnet jetzt zuerst eine
+  // Liste der bereits im Wartungsmodul angelegten Wartungen (offen/in
+  // Arbeit), markiert die fälligen/überfälligen und startet eine per
+  // Klick auf "Start" - Neuanlage bleibt als Sekundäraktion erreichbar.
+  const maintenanceSelectPanel = document.getElementById('maintenance-select-panel');
+  const maintenanceSelectList = document.getElementById('maintenance-select-list');
+
+  function openMaintenanceSelectPanel(){
+    closeCreatePanel();
+    closeEditPanel();
+    renderMaintenanceSelectList();
+    maintenanceSelectPanel.classList.remove('hidden');
+    maintenanceSelectPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+  function closeMaintenanceSelectPanel(){
+    maintenanceSelectPanel.classList.add('hidden');
+  }
+  document.getElementById('maintenance-select-close').addEventListener('click', closeMaintenanceSelectPanel);
+  document.getElementById('maintenance-select-new').addEventListener('click', function(){
+    closeMaintenanceSelectPanel();
+    openCreatePanel('maintenance');
+  });
+
+  function renderMaintenanceSelectList(){
+    maintenanceSelectList.replaceChildren();
+    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const infraNames = {};
+    (latestData.infrastructure || []).forEach(function(i){ infraNames[i.id] = i.name; });
+    const items = (latestData.items || []).filter(function(item){ return item.type_key === 'maintenance'; });
+    if(!items.length){
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-size:12px;color:var(--muted);padding:10px 0';
+      empty.textContent = 'Keine Wartungen angelegt.';
+      maintenanceSelectList.appendChild(empty);
+      return;
+    }
+    items.slice().sort(function(a, b){
+      const da = parseISODate(a.due_date), db = parseISODate(b.due_date);
+      if(da && db) return da - db;
+      if(da) return -1;
+      if(db) return 1;
+      return 0;
+    }).forEach(function(item){
+      const overdue = item.due_date && item.due_date < todayStr;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid '
+        + (overdue ? 'var(--overdue)' : 'var(--border)') + ';border-radius:7px;background:var(--surface)';
+
+      const textBox = document.createElement('div');
+      const titleEl = document.createElement('div');
+      titleEl.style.fontWeight = '650';
+      titleEl.textContent = item.title;
+      const metaEl = document.createElement('div');
+      metaEl.style.cssText = 'font-size:12px;color:' + (overdue ? 'var(--overdue)' : 'var(--muted)');
+      const metaParts = [];
+      if(infraNames[item.infrastructure_id]) metaParts.push(infraNames[item.infrastructure_id]);
+      metaParts.push(item.due_date ? ('Fällig ' + fmtDisplayDate(parseISODate(item.due_date))) : 'Kein Termin');
+      if(overdue) metaParts.push('Überfällig');
+      metaEl.textContent = metaParts.join(' · ');
+      textBox.appendChild(titleEl);
+      textBox.appendChild(metaEl);
+      row.appendChild(textBox);
+
+      if(item.status === 'open'){
+        const startBtn = document.createElement('button');
+        startBtn.type = 'button';
+        startBtn.className = 'action-button finish';
+        startBtn.style.cssText = 'min-width:0;padding:0 14px';
+        startBtn.innerHTML = '<i class="ti ti-player-play"></i> Start';
+        startBtn.addEventListener('click', function(){ startMaintenance(item.id, startBtn); });
+        row.appendChild(startBtn);
+      } else {
+        const badge = document.createElement('span');
+        badge.className = 'kind maintenance';
+        badge.textContent = 'In Arbeit';
+        row.appendChild(badge);
+      }
+      maintenanceSelectList.appendChild(row);
+    });
+  }
+
+  async function startMaintenance(id, button){
+    if(button) button.disabled = true;
+    try{
+      const response = await fetch('/global/maintenance/' + id + '/start', {method: 'POST', credentials: 'same-origin'});
+      const result = await response.json().catch(function(){ return {}; });
+      if(!response.ok) throw new Error(result.error || 'Wartung konnte nicht gestartet werden');
+      await refresh();
+      renderMaintenanceSelectList();
+    }catch(error){
+      alert(error.message);
+      if(button) button.disabled = false;
+    }
+  }
+
   function selectItem(item){
     closeCreatePanel();
+    closeMaintenanceSelectPanel();
     selectedKey = itemKey(item);
     current = null;
     document.getElementById('edit-kind').textContent = item.type;
@@ -584,8 +691,11 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     descriptionEl.textContent = item.description || '';
     descriptionEl.classList.toggle('hidden', !item.description);
     const infoButton = document.getElementById('edit-info-button');
-    infoButton.hidden = !item.infrastructure_id;
-    infoButton.onclick = item.infrastructure_id ? function(){ window.location = '/infrastructure/' + item.infrastructure_id; } : null;
+    infoButton.hidden = false;
+    infoButton.textContent = item.infrastructure_id ? 'ℹ Info' : 'ℹ Öffnen';
+    infoButton.onclick = function(){
+      window.location = item.infrastructure_id ? ('/infrastructure/' + item.infrastructure_id) : item.detail_url;
+    };
     form.classList.add('hidden');
     editActions.classList.remove('hidden');
     editPanel.classList.remove('hidden');
@@ -655,6 +765,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   function openCreatePanel(type){
     createType = type;
     closeEditPanel();
+    closeMaintenanceSelectPanel();
     document.getElementById('create-panel-title').textContent = createTileNames[type] || 'Neuer Vorgang';
     createSymptomsField.classList.toggle('hidden', type !== 'fault');
     createMaintenanceTypeField.classList.toggle('hidden', type !== 'maintenance');
@@ -678,7 +789,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     createForm.reset();
   }
   document.querySelectorAll('#create-tiles [data-type]').forEach(function(tile){
-    tile.addEventListener('click', function(){ openCreatePanel(tile.dataset.type); });
+    tile.addEventListener('click', function(){
+      if(tile.dataset.type === 'maintenance') openMaintenanceSelectPanel();
+      else openCreatePanel(tile.dataset.type);
+    });
   });
   document.getElementById('create-close').addEventListener('click', closeCreatePanel);
   document.getElementById('create-cancel').addEventListener('click', closeCreatePanel);

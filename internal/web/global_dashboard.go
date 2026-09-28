@@ -44,6 +44,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Post("/actions", h.GlobalDashboardAction)
 	r.Post("/create", h.GlobalDashboardCreate)
 	r.Post("/settings", h.GlobalDashboardSettingsWeb)
+	r.Post("/maintenance/{id}/start", h.GlobalDashboardMaintenanceStart)
 	return r
 }
 

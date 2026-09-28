@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"pdh/internal/modules/faults"
 	"pdh/internal/modules/maintenance"
 	"pdh/internal/modules/tasks"
@@ -175,6 +177,35 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Vorgang konnte nicht angelegt werden")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// GlobalDashboardMaintenanceStart startet eine im Wartungsmodul bereits
+// angelegte, noch offene Wartung direkt aus der Wartungs-Auswahl im
+// Leitstand heraus - anders als das ad-hoc-Anlegen ueber die Touch-Felder
+// (GlobalDashboardCreate) setzt dies eine Anmeldung sowie Admin/Manager-
+// Rechte voraus, da hierueber eine bestehende Planung tatsaechlich
+// begonnen wird.
+func (h *Handler) GlobalDashboardMaintenanceStart(w http.ResponseWriter, r *http.Request) {
+	if !h.isGlobalBoardAdminOrManager(r) {
+		writeGlobalBoardError(w, http.StatusForbidden, "Wartungen können im Leitstand nur von Administratoren und Managern gestartet werden")
+		return
+	}
+	user := h.sessionUser(r)
+	if user == nil {
+		writeGlobalBoardError(w, http.StatusUnauthorized, "Bitte anmelden")
+		return
+	}
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Wartung")
+		return
+	}
+	if err := h.maint.StartTask(r.Context(), id, user.ID); err != nil {
+		writeGlobalBoardError(w, http.StatusInternalServerError, "Wartung konnte nicht gestartet werden")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
