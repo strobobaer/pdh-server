@@ -994,7 +994,11 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 	var items []GanttItem
 
 	// Aufgaben
-	if tl, err := h.tasks.List(ctx, "", "", false); err == nil {
+	tl, err := h.tasks.List(ctx, "", "", false)
+	if err != nil {
+		log.Error().Err(err).Msg("dashboard-gantt: aufgaben laden fehlgeschlagen")
+	}
+	if err == nil {
 		for _, t := range tl {
 			isDone := t.Status == tasks.StatusResolved || t.Status == tasks.StatusClosed
 			start := t.CreatedAt

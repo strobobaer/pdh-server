@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 
 	coreusers "pdh/internal/core/users"
 	"pdh/pkg/appsettings"
@@ -212,6 +213,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		) latest ON true
 		ORDER BY NULLIF(item.due_date, '') NULLS LAST, item.created_at, item.title`)
 	if err != nil {
+		log.Error().Err(err).Msg("leitstand: /global/data hauptabfrage fehlgeschlagen")
 		http.Error(w, "Aufgaben konnten nicht geladen werden", http.StatusInternalServerError)
 		return
 	}
@@ -221,6 +223,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.TypeKey, &item.Title, &item.Description, &item.Status, &item.LastAction, &item.Priority,
 			&item.DueDate, &item.Assignee, &createdAt, &item.DetailURL, &item.InfrastructureID); err != nil {
+			log.Error().Err(err).Msg("leitstand: /global/data zeile lesen fehlgeschlagen")
 			http.Error(w, "Aufgaben konnten nicht gelesen werden", http.StatusInternalServerError)
 			return
 		}
@@ -232,12 +235,14 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		data.Items = append(data.Items, item)
 	}
 	if err := rows.Err(); err != nil {
+		log.Error().Err(err).Msg("leitstand: /global/data zeilen-iteration fehlgeschlagen")
 		http.Error(w, "Aufgaben konnten nicht gelesen werden", http.StatusInternalServerError)
 		return
 	}
 
 	userRows, err := h.db.Query(ctx, `SELECT id::text, first_name, last_name FROM users WHERE active = true AND is_system_user = false ORDER BY last_name, first_name`)
 	if err != nil {
+		log.Error().Err(err).Msg("leitstand: /global/data mitarbeiter-abfrage fehlgeschlagen")
 		http.Error(w, "Mitarbeiter konnten nicht geladen werden", http.StatusInternalServerError)
 		return
 	}
