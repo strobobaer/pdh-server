@@ -3127,7 +3127,11 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	// Das Formular sendet multipart/form-data (new FormData(userForm) im
+	// Browser) - r.ParseForm() liest bei diesem Content-Type den Body
+	// NICHT (siehe net/http-Doku: nur application/x-www-form-urlencoded),
+	// wodurch jedes Feld leer ankaeme. ParseMultipartForm deckt beides ab.
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
 		return
 	}
