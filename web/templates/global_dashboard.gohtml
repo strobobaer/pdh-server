@@ -78,7 +78,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #timeline-range input[type="date"]{min-height:36px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
 
 /* ── Zeitstrahl ── */
-#timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:600px}
+#timeline-card{flex:none;display:flex;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;height:200px}
 .tl-labels{flex:none;width:98px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)}
 .tl-corner{height:34px;flex:none;border-bottom:1px solid var(--border)}
 .tl-lane-label{flex:1;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
@@ -95,18 +95,18 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--overdue);z-index:2;pointer-events:none}
 .tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:var(--overdue);white-space:nowrap}
 .tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
-.tl-ray-chip{display:flex;flex-direction:column;align-items:center;gap:2px;white-space:nowrap;font-size:22px;line-height:1.2;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:4px 10px;margin-bottom:6px;color:var(--text)}
+.tl-ray-chip{display:flex;flex-direction:column;align-items:center;gap:1px;white-space:nowrap;font-size:11px;line-height:1.2;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;color:var(--text)}
 .tl-ray-title{font-weight:700}
-.tl-ray-assignee{font-weight:400;font-size:22px;color:var(--muted)}
+.tl-ray-assignee{font-weight:400;font-size:11px;color:var(--muted)}
 .tl-ray-stem{width:6px;border-radius:3px 3px 0 0;background:var(--muted)}
-.tl-ray-dot{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface);margin-bottom:-3px;flex:none}
+.tl-ray-dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--surface);margin-bottom:-2px;flex:none}
 .tl-ray.fault .tl-ray-stem,.tl-ray.fault .tl-ray-dot{background:var(--type-fault)}
 .tl-ray.ticket .tl-ray-stem,.tl-ray.ticket .tl-ray-dot{background:var(--type-ticket)}
 .tl-ray.maintenance .tl-ray-stem,.tl-ray.maintenance .tl-ray-dot{background:var(--type-maintenance)}
 .tl-ray.task .tl-ray-stem,.tl-ray.task .tl-ray-dot{background:var(--type-task)}
 .tl-ray.overdue .tl-ray-stem,.tl-ray.overdue .tl-ray-dot{background:var(--overdue)}
 .tl-ray.selected .tl-ray-dot{outline:3px solid var(--focus);outline-offset:1px}
-.tl-ray-bar{position:absolute;bottom:0;height:16px;border-radius:8px;opacity:.35;pointer-events:none}
+.tl-ray-bar{position:absolute;bottom:0;height:8px;border-radius:4px;opacity:.35;pointer-events:none}
 .tl-ray-bar.fault{background:var(--type-fault)}
 .tl-ray-bar.ticket{background:var(--type-ticket)}
 .tl-ray-bar.maintenance{background:var(--type-maintenance)}
@@ -162,7 +162,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .empty,.error{padding:30px;text-align:center;color:var(--muted)}
 .hidden{display:none!important}
 @media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
-@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}#timeline-card{height:520px}.tl-labels{width:76px}}
+@media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}#timeline-card{height:174px}.tl-labels{width:76px}}
 </style>
 </head>
 <body>
@@ -306,13 +306,14 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
         <span id="edit-kind" class="kind"></span>
         <strong id="edit-title" style="font-size:15px"></strong>
         <div class="item-sub" id="edit-meta"></div>
+        <p class="item-sub hidden" id="edit-description" style="white-space:pre-wrap"></p>
       </div>
       <button type="button" class="header-button" id="edit-close">Schließen</button>
     </div>
     <div class="edit-actions" id="edit-action-buttons">
       <button type="button" class="action-button accept" data-action="accept">Annehmen</button>
       <button type="button" class="action-button finish" data-action="done">Fertig</button>
-      <button type="button" class="action-button discard" data-action="discard">Verwerfen</button>
+      {{if .CanDiscard}}<button type="button" class="action-button discard" data-action="discard">Verwerfen</button>{{end}}
       <button type="button" class="action-button wait" data-action="wait">Warten</button>
     </div>
     <form id="action-form" class="hidden">
@@ -484,9 +485,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   function stemHeight(priority){
     const p = String(priority || '').toLowerCase();
-    if(p === 'critical' || p === 'high') return 108;
-    if(p === 'medium') return 72;
-    return 40;
+    if(p === 'critical' || p === 'high') return 36;
+    if(p === 'medium') return 24;
+    return 14;
   }
 
   function makeRangeBar(item, barLeft, barWidth, overdue){
@@ -520,7 +521,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     }
     const stem = document.createElement('span');
     stem.className = 'tl-ray-stem';
-    stem.style.height = (stemHeight(item.priority) + (stack || 0)*40) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
+    stem.style.height = (stemHeight(item.priority) + (stack || 0)*14) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
     const dot = document.createElement('span');
     dot.className = 'tl-ray-dot';
     ray.appendChild(chip);
@@ -657,6 +658,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     if(item.due_date) metaParts.push('Fällig ' + fmtDisplayDate(parseISODate(item.due_date)));
     if(item.assignee) metaParts.push('Zuständig: ' + item.assignee);
     document.getElementById('edit-meta').textContent = metaParts.join(' · ');
+    const descriptionEl = document.getElementById('edit-description');
+    descriptionEl.textContent = item.description || '';
+    descriptionEl.classList.toggle('hidden', !item.description);
     form.classList.add('hidden');
     editActions.classList.remove('hidden');
     editPanel.classList.remove('hidden');

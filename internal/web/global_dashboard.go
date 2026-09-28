@@ -10,20 +10,22 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	coreusers "pdh/internal/core/users"
 	"pdh/pkg/appsettings"
 )
 
 type GlobalBoardItem struct {
-	ID         string `json:"id"`
-	TypeKey    string `json:"type_key"`
-	Type       string `json:"type"`
-	Title      string `json:"title"`
-	Status     string `json:"status"`
-	LastAction string `json:"last_action"`
-	Priority   string `json:"priority"`
-	DueDate    string `json:"due_date"`
-	Assignee   string `json:"assignee"`
-	DetailURL  string `json:"detail_url"`
+	ID          string `json:"id"`
+	TypeKey     string `json:"type_key"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	LastAction  string `json:"last_action"`
+	Priority    string `json:"priority"`
+	DueDate     string `json:"due_date"`
+	Assignee    string `json:"assignee"`
+	DetailURL   string `json:"detail_url"`
 }
 
 type GlobalDashboardData struct {
@@ -57,6 +59,7 @@ type GlobalDashboardPageData struct {
 	Title                string
 	Subtitle             string
 	CanEditHeading       bool
+	CanDiscard           bool
 	DefaultDueDaysTicket int
 	DefaultDueDaysTask   int
 }
@@ -74,6 +77,19 @@ func (h *Handler) canEditGlobalDashboardHeading(r *http.Request) bool {
 	return h.rbac.HasPermissionForUser(user.ID, string(user.Role), "system.manage_roles")
 }
 
+// canDiscardGlobalBoardItems gilt fuer den Verwerfen-Button im Leitstand -
+// bewusst per direktem Rollenvergleich statt RBAC-Permission, analog zu
+// isFullAdmin in handler.go, da Verwerfen keine ueber die Rollen-Verwaltung
+// konfigurierbare Berechtigung ist, sondern Admins/Managern vorbehalten
+// bleibt.
+func (h *Handler) canDiscardGlobalBoardItems(r *http.Request) bool {
+	user := h.sessionUser(r)
+	if user == nil {
+		return false
+	}
+	return user.Role == coreusers.RoleAdmin || user.Role == coreusers.RoleManager
+}
+
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	tmpl, err := template.ParseFiles("web/templates/global_dashboard.gohtml")
@@ -88,6 +104,7 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		Title:                h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
 		Subtitle:             h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
 		CanEditHeading:       h.canEditGlobalDashboardHeading(r),
+		CanDiscard:           h.canDiscardGlobalBoardItems(r),
 		DefaultDueDaysTicket: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:   appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
@@ -143,31 +160,31 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Query(ctx, `
-		SELECT item.id, item.ref_type, item.title, item.status, COALESCE(latest.action, ''), item.priority,
+		SELECT item.id, item.ref_type, item.title, item.description, item.status, COALESCE(latest.action, ''), item.priority,
 		       item.due_date, item.assignee, item.created_at, item.detail_url
 		FROM (
-			SELECT f.id::text AS id, 'fault'::text AS ref_type, f.title, f.status::text AS status,
+			SELECT f.id::text AS id, 'fault'::text AS ref_type, f.title, COALESCE(f.description, '') AS description, f.status::text AS status,
 			       f.severity::text AS priority, COALESCE(f.due_date::date::text, '') AS due_date,
 			       COALESCE(u.first_name || ' ' || u.last_name, '') AS assignee,
 			       f.created_at, '/faults/' || f.id::text AS detail_url
 			FROM faults f LEFT JOIN users u ON u.id = f.assigned_to
 			WHERE f.status IN ('detected', 'analyzing', 'in_progress')
 			UNION ALL
-			SELECT t.id::text, 'ticket', t.title, t.status::text, t.priority::text,
+			SELECT t.id::text, 'ticket', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::date::text, ''),
 			       COALESCE(u.first_name || ' ' || u.last_name, ''),
 			       t.created_at, '/tickets/' || t.id::text
 			FROM tickets t LEFT JOIN users u ON u.id = t.assigned_to
 			WHERE t.status IN ('open', 'in_progress', 'pending')
 			UNION ALL
-			SELECT m.id::text, 'maintenance', m.title, m.status::text, m.priority::text,
+			SELECT m.id::text, 'maintenance', m.title, COALESCE(m.description, ''), m.status::text, m.priority::text,
 			       m.due_date::date::text,
 			       COALESCE(u.first_name || ' ' || u.last_name, ''),
 			       m.created_at, '/maintenance/tasks/' || m.id::text
 			FROM maintenance_tasks m LEFT JOIN users u ON u.id = m.assigned_to
 			WHERE m.status IN ('open', 'in_progress')
 			UNION ALL
-			SELECT t.id::text, 'task', t.title, t.status::text, t.priority::text,
+			SELECT t.id::text, 'task', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::text, ''),
 			       COALESCE(u.first_name || ' ' || u.last_name, ''),
 			       t.created_at, '/tasks/' || t.id::text
@@ -188,7 +205,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item GlobalBoardItem
 		var createdAt time.Time
-		if err := rows.Scan(&item.ID, &item.TypeKey, &item.Title, &item.Status, &item.LastAction, &item.Priority,
+		if err := rows.Scan(&item.ID, &item.TypeKey, &item.Title, &item.Description, &item.Status, &item.LastAction, &item.Priority,
 			&item.DueDate, &item.Assignee, &createdAt, &item.DetailURL); err != nil {
 			http.Error(w, "Aufgaben konnten nicht gelesen werden", http.StatusInternalServerError)
 			return
