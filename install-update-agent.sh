@@ -66,7 +66,7 @@ RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=$repo_dir /var/cache/pdh-updater /usr/local/bin/pdh-update-agent
+ReadWritePaths=$repo_dir /var/cache/pdh-updater /usr/local/bin
 
 [Install]
 WantedBy=multi-user.target
