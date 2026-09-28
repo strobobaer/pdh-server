@@ -95,7 +95,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .tl-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--overdue);z-index:2;pointer-events:none}
 .tl-today-line::after{content:'Heute';position:absolute;top:-19px;left:4px;font-size:10px;font-weight:700;color:var(--overdue);white-space:nowrap}
 .tl-ray{position:absolute;bottom:0;display:flex;flex-direction:column;align-items:center;cursor:pointer;transform:translateX(-50%);background:none;border:0;padding:0;z-index:1}
-.tl-ray-chip{display:flex;flex-direction:column;align-items:center;gap:1px;white-space:nowrap;font-size:11px;line-height:1.2;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;color:var(--text)}
+.tl-ray-chip{display:none;flex-direction:column;align-items:center;gap:1px;white-space:nowrap;font-size:11px;line-height:1.2;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;margin-bottom:3px;color:var(--text)}
+.tl-ray:hover .tl-ray-chip,.tl-ray.selected .tl-ray-chip{display:flex}
 .tl-ray-title{font-weight:700}
 .tl-ray-assignee{font-weight:400;font-size:11px;color:var(--muted)}
 .tl-ray-stem{width:6px;border-radius:3px 3px 0 0;background:var(--muted)}
@@ -485,9 +486,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   function stemHeight(priority){
     const p = String(priority || '').toLowerCase();
-    if(p === 'critical' || p === 'high') return 36;
-    if(p === 'medium') return 24;
-    return 14;
+    if(p === 'critical' || p === 'high') return 28;
+    if(p === 'medium') return 18;
+    return 10;
   }
 
   function makeRangeBar(item, barLeft, barWidth, overdue){
@@ -521,7 +522,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     }
     const stem = document.createElement('span');
     stem.className = 'tl-ray-stem';
-    stem.style.height = (stemHeight(item.priority) + (stack || 0)*14) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
+    stem.style.height = (stemHeight(item.priority) + (stack || 0)*10) + 'px'; // mehrere Vorgänge am selben Tag staffeln sich statt zu überlappen
     const dot = document.createElement('span');
     dot.className = 'tl-ray-dot';
     ray.appendChild(chip);
