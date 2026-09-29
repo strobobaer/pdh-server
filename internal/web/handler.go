@@ -361,6 +361,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
+	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
+	r.Post("/infrastructure/{id}/comments", h.InfraCommentAddWeb)
+	r.Post("/infrastructure/{id}/comments/{commentId}/edit", h.InfraCommentEditWeb)
+	r.Post("/infrastructure/{id}/comments/{commentId}/pin", h.InfraCommentPinWeb)
+	r.Post("/infrastructure/{id}/comments/{commentId}/delete", h.InfraCommentDeleteWeb)
 	r.Post("/infrastructure", h.InfraCreate)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
@@ -560,9 +566,9 @@ func priorityDot(p string) string {
 
 func statusClass(s string) string {
 	switch s {
-	case "resolved", "closed", "done":
+	case "resolved", "closed", "done", "completed":
 		return "b-green"
-	case "in_progress":
+	case "in_progress", "active":
 		return "b-blue"
 	case "open", "detected":
 		return "b-amber"
@@ -577,6 +583,9 @@ func statusLabel(s string) string {
 		"resolved": "Gelöst", "closed": "Geschlossen",
 		"detected": "Erkannt", "analyzing": "Analysiert",
 		"pending": "Ausstehend", "archive": "Archiv",
+		"done": "Erledigt", "skipped": "Übersprungen",
+		"planning": "Planung", "active": "Aktiv",
+		"paused": "Pausiert", "completed": "Abgeschlossen",
 	}
 	if l, ok := labels[s]; ok {
 		return l
@@ -3866,61 +3875,16 @@ func (h *Handler) ChecklistsPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "checklist_builder", data)
 }
 
-// InfraHistoryItem ist ein Eintrag der Stammkarten-Historie (Stoerungen/
-// Tickets/Aufgaben einer Infrastruktur-Anlage) - bewusst schlank (nur
-// Titel/Status/Datum/Link), da die Stammkarte nur einen Ueberblick bietet
-// und fuer Details auf die jeweilige Detailseite verweist.
-type InfraHistoryItem struct {
-	ID          string
-	Title       string
-	StatusLabel string
-	StatusClass string
-	DateLabel   string
-	DetailURL   string
-}
-
-const infraHistoryLimit = 20
-
-// infraHistoryFor liefert die juengsten Eintraege einer Tabelle
-// (faults/tickets/tasks) fuer eine Infrastruktur-Anlage - gemeinsame
-// Abfrage fuer alle drei, da sie bis auf Tabellenname/Ziel-URL identisch
-// aufgebaut sind.
-func (h *Handler) infraHistoryFor(ctx context.Context, table, detailPrefix, infraID string) []InfraHistoryItem {
-	query := fmt.Sprintf(`
-		SELECT id::text, title, status::text, to_char(created_at, 'DD.MM.YYYY')
-		FROM %s WHERE infrastructure_id=$1
-		ORDER BY created_at DESC LIMIT %d`, table, infraHistoryLimit)
-	rows, err := h.db.Query(ctx, query, infraID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var list []InfraHistoryItem
-	for rows.Next() {
-		var it InfraHistoryItem
-		var status string
-		if err := rows.Scan(&it.ID, &it.Title, &status, &it.DateLabel); err != nil {
-			continue
-		}
-		it.StatusLabel = statusLabel(status)
-		it.StatusClass = statusClass(status)
-		it.DetailURL = detailPrefix + it.ID
-		list = append(list, it)
-	}
-	return list
-}
-
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	type InfraDetailData struct {
 		BaseData
-		Node          InfraNodeView
-		Children      []InfraNodeView
-		Parent        *InfraNodeView
-		FaultHistory  []InfraHistoryItem
-		TicketHistory []InfraHistoryItem
-		TaskHistory   []InfraHistoryItem
+		Node           InfraNodeView
+		Children       []InfraNodeView
+		Parent         *InfraNodeView
+		HistoryModules []infraHistoryModule
+		CommentRefs    []InfraCommentRefOption
 	}
 	node, err := h.infra.GetByID(ctx, id)
 	if err != nil {
@@ -3928,11 +3892,10 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := InfraDetailData{
-		BaseData:      h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
-		Node:          infraNodeView(node),
-		FaultHistory:  h.infraHistoryFor(ctx, "faults", "/faults/", id),
-		TicketHistory: h.infraHistoryFor(ctx, "tickets", "/tickets/", id),
-		TaskHistory:   h.infraHistoryFor(ctx, "tasks", "/tasks/", id),
+		BaseData:       h.baseData(r, "infrastructure", node.Name, "Untergeordnete Anlagen"),
+		Node:           infraNodeView(node),
+		HistoryModules: infraHistoryModules,
+		CommentRefs:    h.infraCommentRefOptions(ctx, id),
 	}
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
 		for _, c := range children {

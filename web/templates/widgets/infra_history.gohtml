@@ -1,0 +1,109 @@
+{{/*
+  Anlagen-Historie der Infrastruktur-Stammkarte (htmx-Fragment von
+  GET /infrastructure/{id}/history). Daten: InfraHistoryResult.
+*/}}
+{{define "infra-history-results"}}
+<div class="ih-chips">
+  {{range .Modules}}
+  <span class="ih-chip{{if .Active}} on{{end}}" title="{{.Label}}"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{.Count}}</b></span>
+  {{end}}
+</div>
+
+{{if .Pinned}}
+<div class="ih-pinned">
+  <div class="ih-section"><i class="ti ti-pin"></i> Angeheftete Hinweise</div>
+  {{range .Pinned}}{{template "infra-history-comment" (dict "E" . "InfraID" $.InfraID)}}{{end}}
+</div>
+{{end}}
+
+<div class="ih-section" style="display:flex;align-items:center;gap:8px">
+  <span style="flex:1"><i class="ti ti-timeline"></i> Zeitleiste · {{.Total}} Einträge{{if .Truncated}} (neueste {{len .Entries}} angezeigt){{end}}</span>
+  <a class="btn btn-small" href="{{.ExportURL}}" title="Gefilterte Historie als CSV exportieren"><i class="ti ti-file-spreadsheet"></i> CSV</a>
+</div>
+
+{{if .Entries}}
+<div class="ih-timeline">
+  {{range .Entries}}
+  {{if eq .Module "comment"}}
+    {{template "infra-history-comment" (dict "E" . "InfraID" $.InfraID)}}
+  {{else}}
+  <div class="ih-entry">
+    <div class="ih-icon {{.Dot}}"><i class="ti {{.Icon}}"></i></div>
+    <div class="ih-body">
+      <div class="ih-head">
+        <a href="{{.DetailURL}}" class="ih-title">{{if eq .Module "action"}}Maßnahme · {{.ParentTitle}}: {{.Title}}{{else}}{{.Title}}{{end}}</a>
+        {{if .QtyLabel}}<span class="badge b-amber">{{.QtyLabel}}</span>{{end}}
+        {{if .StatusLabel}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
+      </div>
+      <div class="li-sub">
+        {{.ModuleLabel}} · {{.DateLabel}} · {{.Author}}
+        {{if .ClosedLabel}} · abgeschlossen {{.ClosedLabel}}{{end}}
+        {{if and .ParentTitle (ne .Module "action")}} · {{.ParentTitle}}{{end}}
+        {{if .FromChild}} · <a href="/infrastructure/{{.InfraID}}" style="color:var(--accent)"><i class="ti ti-subtask"></i> {{.InfraName}}</a>{{end}}
+      </div>
+      {{if and .Body (ne .Module "part")}}<div class="ih-text">{{.Body}}</div>{{end}}
+    </div>
+  </div>
+  {{end}}
+  {{end}}
+</div>
+{{else}}
+<div style="font-size:12px;color:var(--muted);padding:14px 0;text-align:center">
+  {{if .IsFiltered}}Keine Einträge für diese Filter.{{else}}Für diese Anlage ist noch keine Historie vorhanden.{{end}}
+</div>
+{{end}}
+
+<div class="ih-section" style="margin-top:18px"><i class="ti ti-package"></i> Verwendete Ersatzteile{{if .Parts}} · Summe {{.PartsCost}}{{end}}</div>
+{{if .Parts}}
+<div style="overflow-x:auto">
+<table class="ih-parts">
+  <thead><tr><th>Teil</th><th style="text-align:right">Menge</th><th style="text-align:right">Vorgänge</th><th>Zuletzt</th><th style="text-align:right">Wert</th></tr></thead>
+  <tbody>
+  {{range .Parts}}
+  <tr>
+    <td><a href="/inventory/{{.PartID}}" style="color:var(--text)"><span style="font-family:monospace;color:var(--muted)">{{.PartNumber}}</span> {{.Name}}</a></td>
+    <td style="text-align:right;white-space:nowrap">{{.QtyLabel}} {{.Unit}}</td>
+    <td style="text-align:right">{{.Records}}</td>
+    <td style="white-space:nowrap">{{.LastUsed}}</td>
+    <td style="text-align:right;white-space:nowrap">{{.CostLabel}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<div style="font-size:12px;color:var(--muted);padding:6px 0">Keine Ersatzteile über Störungen, Tickets, Aufgaben oder Wartungen gebucht.</div>
+{{end}}
+{{end}}
+
+{{define "infra-history-comment"}}
+{{with .E}}
+<div class="ih-entry ih-comment{{if .Pinned}} pinned{{end}}" id="ic-{{.ID}}">
+  <div class="ih-icon d-blue"><i class="ti {{if .Pinned}}ti-pin{{else}}ti-message{{end}}"></i></div>
+  <div class="ih-body">
+    <div class="li-sub">
+      <b style="color:var(--text)">{{.Author}}</b> · {{.DateLabel}}
+      {{if .ParentTitle}} · <a href="{{.DetailURL}}" style="color:var(--accent)">{{.ParentTitle}}</a>{{end}}
+      {{if .FromChild}} · <a href="/infrastructure/{{.InfraID}}" style="color:var(--accent)"><i class="ti ti-subtask"></i> {{.InfraName}}</a>{{end}}
+    </div>
+    <div class="ih-text ih-comment-text">{{.Body}}</div>
+    {{if .CanEdit}}
+    <form class="ih-comment-edit" style="display:none" hx-post="/infrastructure/{{$.InfraID}}/comments/{{.ID}}/edit" hx-swap="none">
+      <textarea name="text" class="form-input" rows="3" required>{{.Body}}</textarea>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px">
+        <button type="button" class="btn btn-small" onclick="infraCommentEdit(this,false)">Abbrechen</button>
+        <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </div>
+    </form>
+    {{end}}
+  </div>
+  {{if .CanEdit}}
+  <div class="ih-actions">
+    <button type="button" class="ih-act" title="Bearbeiten" onclick="infraCommentEdit(this,true)"><i class="ti ti-pencil"></i></button>
+    <button type="button" class="ih-act" title="{{if .Pinned}}Lösen{{else}}Anheften{{end}}" hx-post="/infrastructure/{{$.InfraID}}/comments/{{.ID}}/pin" hx-swap="none"><i class="ti {{if .Pinned}}ti-pinned-off{{else}}ti-pin{{end}}"></i></button>
+    <button type="button" class="ih-act" title="Löschen" hx-post="/infrastructure/{{$.InfraID}}/comments/{{.ID}}/delete" hx-confirm="Kommentar löschen?" hx-swap="none"><i class="ti ti-trash"></i></button>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

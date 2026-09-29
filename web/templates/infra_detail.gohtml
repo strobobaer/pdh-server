@@ -1,21 +1,36 @@
 {{template "base" .}}
-{{define "infra-history-list"}}
-<div class="card-title" style="margin-top:12px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">{{.Title}}</div>
-{{if .Items}}
-{{range .Items}}
-<div class="li" onclick="window.location='{{.DetailURL}}'" style="cursor:pointer">
-  <div class="li-text">
-    <div class="li-title">{{.Title}}</div>
-    <div class="li-sub">{{.DateLabel}}</div>
-  </div>
-  <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
-</div>
-{{end}}
-{{else}}
-<div style="font-size:12px;color:var(--muted);padding:6px 0 10px">{{.EmptyText}}</div>
-{{end}}
-{{end}}
 {{define "content"}}
+<style>
+.ih-comment-form{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.ih-comment-row,.ih-filter-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.ih-comment-row select{flex:1;min-width:180px;width:auto}
+.ih-check{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.ih-mod{padding:5px 9px;border:1px solid var(--border);border-radius:999px;background:var(--bg3)}
+.ih-mod:has(input:checked){color:var(--text);border-color:var(--accent)}
+.ih-date{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.ih-date input{width:auto}
+.ih-filter{margin-bottom:12px}
+.ih-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.ih-chip{font-size:11px;color:var(--muted);padding:3px 8px;border-radius:999px;background:var(--bg3);opacity:.55}
+.ih-chip.on{opacity:1}
+.ih-chip b{color:var(--text);margin-left:2px}
+.ih-section{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
+.ih-pinned{margin-bottom:12px}
+.ih-entry{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px}
+.ih-entry:last-child{border-bottom:0}
+.ih-icon{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:13px}
+.ih-body{flex:1;min-width:0}
+.ih-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ih-title{font-weight:500;color:var(--text);text-decoration:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ih-title:hover{color:var(--accent)}
+.ih-text{margin-top:4px;white-space:pre-wrap;word-break:break-word;color:var(--text);opacity:.85;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.ih-comment .ih-text{-webkit-line-clamp:unset;display:block}
+.ih-comment.pinned{background:rgba(79,110,247,.06);border-radius:8px;padding:9px 8px}
+.ih-actions{display:flex;gap:2px;flex-shrink:0;align-items:flex-start}
+.ih-act{width:30px;height:30px;border:0;background:none;color:var(--muted);border-radius:6px;cursor:pointer}
+.ih-act:hover{background:var(--bg3);color:var(--text)}
+.ih-parts th,.ih-parts td{padding:6px 8px;font-size:12px}
+</style>
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
   {{template "icon-button" (dict "Action" "back" "Href" "/infrastructure")}}
   {{if .Parent}}{{template "icon-button" (dict "Action" "back" "Href" (printf "/infrastructure/%s" .Parent.ID) "ShowLabel" true "Label" (printf "%s %s" .Parent.TypeIcon .Parent.Name))}}
@@ -88,11 +103,63 @@
     </div>
 
     <!-- Historie -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-history"></i> Historie</div>
-      {{template "infra-history-list" (dict "Title" "Störungen" "Items" .FaultHistory "EmptyText" "Keine Störungen erfasst")}}
-      {{template "infra-history-list" (dict "Title" "Tickets" "Items" .TicketHistory "EmptyText" "Keine Tickets erfasst")}}
-      {{template "infra-history-list" (dict "Title" "Aufgaben" "Items" .TaskHistory "EmptyText" "Keine Aufgaben erfasst")}}
+    <div class="card" id="infra-history">
+      <div class="card-title"><span><i class="ti ti-history"></i> Anlagen-Historie</span></div>
+
+      <!-- Kommentar erfassen -->
+      <form id="infra-comment-form" class="ih-comment-form"
+            hx-post="/infrastructure/{{.Node.ID}}/comments" hx-target="#infra-comment-result" hx-swap="innerHTML"
+            hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) this.reset()">
+        <textarea name="text" class="form-input" rows="2" placeholder="Kommentar, Hinweis oder Beobachtung zur Anlage …" required></textarea>
+        <div class="ih-comment-row">
+          <select name="ref" class="form-input" title="Optional: Bezug zu einem Vorgang">
+            <option value="">Ohne Bezug (allgemein zur Anlage)</option>
+            {{range .CommentRefs}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+          </select>
+          <label class="ih-check"><input type="checkbox" name="pinned"> <i class="ti ti-pin"></i> Anheften</label>
+          <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-send"></i> Kommentieren</button>
+        </div>
+        <div id="infra-comment-result"></div>
+      </form>
+
+      <!-- Filter & Suche -->
+      <form id="infra-history-filter" class="ih-filter"
+            hx-get="/infrastructure/{{.Node.ID}}/history" hx-target="#infra-history-results" hx-swap="innerHTML"
+            hx-trigger="load, input delay:350ms, submit, infra-history-refresh from:body"
+            hx-indicator="#infra-history-loading">
+        <input type="hidden" name="filtered" value="1">
+        <div class="ih-filter-row">
+          <div class="search-box" style="flex:1;min-width:200px">
+            <i class="ti ti-search" style="color:var(--muted)"></i>
+            <input type="search" name="q" placeholder="Suche in Titel, Text, Maßnahmen, Ersatzteilen, Personen …" style="flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;font-family:var(--font)">
+          </div>
+          <label class="ih-date">Von <input type="date" name="from" class="form-input"></label>
+          <label class="ih-date">Bis <input type="date" name="to" class="form-input"></label>
+          <select name="state" class="form-input" style="width:auto" title="Status der Vorgänge">
+            <option value="">Alle Status</option>
+            <option value="open">Offen</option>
+            <option value="closed">Abgeschlossen</option>
+          </select>
+        </div>
+        <div class="ih-filter-row">
+          {{range .HistoryModules}}
+          <label class="ih-check ih-mod"><input type="checkbox" name="module" value="{{.Key}}" checked> <i class="ti {{.Icon}}"></i> {{.Label}}</label>
+          {{end}}
+        </div>
+        <div class="ih-filter-row" style="justify-content:space-between">
+          <label class="ih-check"><input type="checkbox" name="children" value="1" checked> <i class="ti ti-subtask"></i> Unteranlagen einbeziehen</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span id="infra-history-loading" class="htmx-indicator" style="font-size:11px;color:var(--muted)"><i class="ti ti-loader-2"></i> lädt …</span>
+            <button type="button" class="btn btn-small" onclick="infraHistoryPreset(30)">30 Tage</button>
+            <button type="button" class="btn btn-small" onclick="infraHistoryPreset(365)">12 Monate</button>
+            <button type="button" class="btn btn-small" onclick="infraHistoryReset()"><i class="ti ti-filter-off"></i> Zurücksetzen</button>
+          </div>
+        </div>
+      </form>
+
+      <div id="infra-history-results">
+        <div style="font-size:12px;color:var(--muted);padding:14px 0;text-align:center">Historie wird geladen …</div>
+      </div>
     </div>
 
     <!-- Anhänge -->
@@ -173,6 +240,25 @@ function toggleEdit() {
   const show = form.style.display === 'none';
   form.style.display = show ? 'block' : 'none';
   info.style.display = show ? 'none' : 'block';
+}
+// Anlagen-Historie: Kommentar inline bearbeiten und Filter-Schnellwahl
+function infraCommentEdit(btn, show) {
+  const entry = btn.closest('.ih-comment');
+  entry.querySelector('.ih-comment-edit').style.display = show ? 'block' : 'none';
+  entry.querySelector('.ih-comment-text').style.display = show ? 'none' : 'block';
+  if (show) entry.querySelector('.ih-comment-edit textarea').focus();
+}
+function infraHistoryPreset(days) {
+  const f = document.getElementById('infra-history-filter');
+  const from = new Date(Date.now() - days * 86400000);
+  f.elements['from'].value = from.toISOString().slice(0, 10);
+  f.elements['to'].value = '';
+  htmx.trigger(f, 'submit');
+}
+function infraHistoryReset() {
+  const f = document.getElementById('infra-history-filter');
+  f.reset();
+  htmx.trigger(f, 'submit');
 }
 </script>
 {{end}}
