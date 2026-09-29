@@ -1,194 +1,119 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+<style>
+.pb-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.pb-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:block}
+.pb-kpi:hover{border-color:var(--accent)}
+.pb-kpi .v{font-size:22px;font-weight:600}
+.pb-kpi .l{font-size:11px;color:var(--muted);margin-top:2px}
+.pb-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.pb-filter select{width:auto}
+.pb-counts{display:flex;gap:10px;font-size:11px;color:var(--muted);white-space:nowrap}
+.pb-counts span{display:inline-flex;align-items:center;gap:3px}
+.pb-row{cursor:pointer}
+.pb-row.inactive{opacity:.5}
+.pb-warn{color:var(--amber)}
+.pb-bad{color:var(--red)}
+.pb-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+@media (max-width:800px){.pb-hide-sm{display:none}}
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
   <div>
     <h1 style="font-size:19px;font-weight:600">Hersteller & Lieferanten</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px" id="directory-count">Wird geladen…</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Stammdaten, Ansprechpartner, Portale und Verknüpfungen zu Anlagen, Ersatzteilen, IT und Vorgängen</p>
   </div>
-  <button type="button" class="btn btn-primary" onclick="openDirectoryModal()"><i class="ti ti-plus"></i> Neuer Eintrag</button>
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="/directory/purchase-report"><i class="ti ti-shopping-cart"></i> Bestellvorschlag</a>
+    {{if .CanEdit}}<a class="btn btn-primary" href="/directory/new"><i class="ti ti-plus"></i> Neuer Partner</a>{{end}}
+  </div>
 </div>
 
-<div class="widget-icon-toolbar compact" style="margin-bottom:14px">
-  <a class="btn btn-primary" href="#" data-kind-filter="" onclick="setDirectoryFilter('', this); return false;">Alle</a>
-  <a class="btn" href="#" data-kind-filter="manufacturer" onclick="setDirectoryFilter('manufacturer', this); return false;">Hersteller</a>
-  <a class="btn" href="#" data-kind-filter="supplier" onclick="setDirectoryFilter('supplier', this); return false;">Lieferanten</a>
+{{if .Message}}<div class="pb-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="pb-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="pb-kpis">
+  <a class="pb-kpi" href="/directory"><div class="v">{{.Total}}</div><div class="l">Aktive Partner</div></a>
+  <a class="pb-kpi" href="/directory?kind=manufacturer"><div class="v">{{.Manufacturers}}</div><div class="l">Hersteller</div></a>
+  <a class="pb-kpi" href="/directory?kind=supplier"><div class="v">{{.Suppliers}}</div><div class="l">Lieferanten</div></a>
+  <a class="pb-kpi" href="/directory?status=blocked"><div class="v {{if .Blocked}}pb-bad{{end}}">{{.Blocked}}</div><div class="l">Gesperrt</div></a>
+  <a class="pb-kpi" href="/directory?status=contract"><div class="v {{if .ContractsDue}}pb-bad{{else if .ContractsSoon}}pb-warn{{end}}">{{.ContractsSoon}}{{if .ContractsDue}} <span style="font-size:13px">+{{.ContractsDue}} abgel.</span>{{end}}</div><div class="l">Verträge laufen ab (90 Tage)</div></a>
+  <div class="pb-kpi"><div class="v {{if .WithoutContacts}}pb-warn{{end}}">{{.WithoutContacts}}</div><div class="l">Ohne Ansprechpartner</div></div>
 </div>
 
-<div class="card" style="padding:0">
+<form class="pb-filter" method="get" action="/directory" id="pb-filter">
+  <div class="search-box" style="flex:1;min-width:220px">
+    <i class="ti ti-search" style="color:var(--muted)"></i>
+    <input type="search" name="q" value="{{.Filter.Query}}" placeholder="Name, Nummer, Ort, Kontakt, Kreditor-/Kundennr. …" style="flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;font-family:var(--font)">
+  </div>
+  <select name="kind" class="form-input" onchange="this.form.submit()">
+    <option value="">Alle Arten</option>
+    <option value="manufacturer" {{if eq .Filter.Kind "manufacturer"}}selected{{end}}>Hersteller</option>
+    <option value="supplier" {{if eq .Filter.Kind "supplier"}}selected{{end}}>Lieferanten</option>
+  </select>
+  <select name="status" class="form-input" onchange="this.form.submit()">
+    <option value="">Alle aktiven</option>
+    <option value="approved" {{if eq .Filter.Status "approved"}}selected{{end}}>Freigegeben</option>
+    <option value="conditional" {{if eq .Filter.Status "conditional"}}selected{{end}}>Bedingt freigegeben</option>
+    <option value="new" {{if eq .Filter.Status "new"}}selected{{end}}>Neu / in Prüfung</option>
+    <option value="blocked" {{if eq .Filter.Status "blocked"}}selected{{end}}>Gesperrt</option>
+    <option value="contract" {{if eq .Filter.Status "contract"}}selected{{end}}>Vertrag läuft ab</option>
+    <option value="inactive" {{if eq .Filter.Status "inactive"}}selected{{end}}>Deaktiviert</option>
+  </select>
+  {{if .Categories}}
+  <select name="category" class="form-input" onchange="this.form.submit()">
+    <option value="">Alle Kategorien</option>
+    {{range .Categories}}<option value="{{.}}" {{if eq $.Filter.Category .}}selected{{end}}>{{.}}</option>{{end}}
+  </select>
+  {{end}}
+  <button type="submit" class="btn btn-small"><i class="ti ti-filter"></i> Filtern</button>
+  <a class="btn btn-small" href="/directory"><i class="ti ti-filter-off"></i></a>
+</form>
+
+<div class="card" style="padding:0;overflow-x:auto">
   <table>
-    <thead><tr><th>Name</th><th>Art</th><th>Kontakt</th><th>Telefon / E-Mail</th><th>Website</th></tr></thead>
-    <tbody id="directory-table-body">
-      <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Wird geladen…</td></tr>
+    <thead><tr>
+      <th>Partner</th><th>Art / Status</th><th class="pb-hide-sm">Kontakt</th><th class="pb-hide-sm">Vertrag</th><th>Verknüpft</th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr class="pb-row{{if not .Active}} inactive{{end}}" onclick="if(!event.target.closest('a'))location='/directory/{{.ID}}'">
+      <td>
+        <a href="/directory/{{.ID}}" style="font-weight:500">{{.Name}}</a>{{if .Rating}} <span class="badge b-gray" title="Bewertung">{{.Rating}}</span>{{end}}
+        <div style="font-size:11px;color:var(--muted)">{{.PartnerNo}}{{if .ShortName}} · {{.ShortName}}{{end}}{{if .Category}} · {{.Category}}{{end}}{{if .City}} · {{.City}}{{end}}</div>
+      </td>
+      <td><span class="badge b-blue">{{.KindLabel}}</span> <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td class="pb-hide-sm" style="font-size:12px">
+        {{if .PrimaryContact}}<div>{{.PrimaryContact}}</div>{{end}}
+        <div style="color:var(--muted)">{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{end}}{{if and .Phone .Email}} · {{end}}{{if .Email}}<a href="mailto:{{.Email}}">{{.Email}}</a>{{end}}</div>
+      </td>
+      <td class="pb-hide-sm" style="font-size:12px">
+        {{if .ContractUntil}}<span class="{{if eq .ContractState "expired"}}pb-bad{{else if eq .ContractState "soon"}}pb-warn{{end}}">{{if eq .ContractState "expired"}}<i class="ti ti-alert-triangle"></i> {{end}}bis {{.ContractUntil}}</span>{{else}}<span style="color:var(--muted)">–</span>{{end}}
+      </td>
+      <td>
+        <div class="pb-counts">
+          <span title="Anlagen"><i class="ti ti-hierarchy-2"></i>{{.InfraCount}}</span>
+          <span title="Ersatzteile"><i class="ti ti-package"></i>{{.PartCount}}</span>
+          <span title="IT-Assets"><i class="ti ti-server-2"></i>{{.ITCount}}</span>
+          <span title="Vorgänge"><i class="ti ti-briefcase"></i>{{.RecordCount}}</span>
+        </div>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Partner für diese Auswahl{{if .CanEdit}} – <a href="/directory/new" style="color:var(--accent)">jetzt anlegen</a>{{end}}</td></tr>
+    {{end}}
     </tbody>
   </table>
 </div>
+{{end}}
 
-<!-- Anlegen/Bearbeiten -->
-<div id="directory-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:18px" onclick="if(event.target===this)closeDirectoryModal()">
-  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(560px,100%);max-height:calc(100dvh - 36px);overflow:auto;padding:20px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <h2 id="directory-modal-title" style="font-size:17px;margin:0">Eintrag anlegen</h2>
-      <button type="button" class="btn-icon" aria-label="Schließen" title="Schließen" onclick="closeDirectoryModal()"><i class="ti ti-x"></i></button>
-    </div>
-    <form id="directory-form" onsubmit="return submitDirectoryForm(event)">
-      <input type="hidden" id="df-id">
-      <div class="grid2">
-        <div class="form-group"><label class="form-label">Name</label><input id="df-name" class="form-input" required></div>
-        <div class="form-group"><label class="form-label">Art</label>
-          <select id="df-kind" class="form-input">
-            <option value="manufacturer">Hersteller</option>
-            <option value="supplier">Lieferant</option>
-            <option value="both">Hersteller & Lieferant</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Kontaktperson</label><input id="df-contact-name" class="form-input"></div>
-        <div class="form-group"><label class="form-label">E-Mail</label><input id="df-email" type="email" class="form-input"></div>
-        <div class="form-group"><label class="form-label">Telefon</label><input id="df-phone" class="form-input"></div>
-        <div class="form-group"><label class="form-label">Website</label><input id="df-website" class="form-input" placeholder="https://..."></div>
-      </div>
-      <div class="form-group"><label class="form-label">Adresse</label><input id="df-address" class="form-input"></div>
-      <div class="form-group"><label class="form-label">Notizen</label><textarea id="df-notes" class="form-input" rows="3"></textarea></div>
-      <p id="directory-form-error" role="alert" style="display:none;color:var(--red);font-size:12px;margin:12px 0 0"></p>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-        <button type="button" class="btn" onclick="closeDirectoryModal()">Abbrechen</button>
-        <button type="submit" class="btn btn-primary" id="directory-save-button"><i class="ti ti-device-floppy"></i> Speichern</button>
-      </div>
-    </form>
-  </div>
+{{define "context-list"}}
+{{range .Rows}}{{if eq .ContractState "expired" "soon"}}
+<div class="act-item" onclick="window.location='/directory/{{.ID}}'" style="cursor:pointer">
+  <div class="act-dot {{if eq .ContractState "expired"}}d-red{{else}}d-amber{{end}}"></div>
+  <div class="act-text">{{.Name}} · Vertrag {{.ContractUntil}}</div>
 </div>
+{{end}}{{end}}
 {{end}}
 
-{{define "scripts"}}
-<script>
-let directoryItems = [];
-let directoryFilter = '';
-const kindLabels = {manufacturer: 'Hersteller', supplier: 'Lieferant', both: 'Hersteller & Lieferant'};
-
-function setDirectoryFilter(kind, el){
-  directoryFilter = kind;
-  document.querySelectorAll('[data-kind-filter]').forEach(function(a){ a.className = a === el ? 'btn btn-primary' : 'btn'; });
-  loadDirectory();
-}
-
-async function loadDirectory(){
-  const body = document.getElementById('directory-table-body');
-  try{
-    const url = '/api/v1/directory/?all=true' + (directoryFilter ? '&kind=' + directoryFilter : '');
-    const res = await fetch(url, {headers:{Authorization:'Bearer '+pdhToken()}});
-    const json = await res.json();
-    if(!res.ok) throw new Error(json.error || 'Fehler');
-    directoryItems = json.data || json || [];
-    renderDirectoryTable();
-  }catch(e){
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:24px">Fehler beim Laden: '+escapeHtml(e.message)+'</td></tr>';
-  }
-}
-
-function renderDirectoryTable(){
-  const body = document.getElementById('directory-table-body');
-  document.getElementById('directory-count').textContent = directoryItems.length + (directoryItems.length === 1 ? ' Eintrag' : ' Einträge');
-  if(!directoryItems.length){
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Einträge vorhanden</td></tr>';
-    return;
-  }
-  body.innerHTML = directoryItems.map(function(p){
-    const inactive = p.active === false ? ' style="opacity:.5"' : '';
-    return '<tr'+inactive+' data-id="'+p.id+'" oncontextmenu="showContextMenu(event, directoryContextItems(this)); return false;" style="cursor:pointer" onclick="editDirectoryEntry(\''+p.id+'\')">'
-      + '<td><div style="font-weight:500">'+escapeHtml(p.name)+'</div></td>'
-      + '<td><span class="badge b-blue">'+ (kindLabels[p.kind] || p.kind) +'</span></td>'
-      + '<td style="font-size:12px;color:var(--muted)">'+escapeHtml(p.contact_name||'–')+'</td>'
-      + '<td style="font-size:12px;color:var(--muted)">'+escapeHtml(p.phone||'')+(p.phone&&p.email?' · ':'')+escapeHtml(p.email||'')+'</td>'
-      + '<td style="font-size:12px;color:var(--muted)">'+(p.website?('<a href="'+escapeHtml(p.website)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">'+escapeHtml(p.website)+'</a>'):'–')+'</td>'
-      + '</tr>';
-  }).join('');
-}
-
-function directoryContextItems(row){
-  const id = row.dataset.id;
-  const item = directoryItems.find(function(p){ return p.id === id; });
-  const items = [{heading: item ? item.name : ''}];
-  items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editDirectoryEntry(id); }});
-  items.push({separator: true});
-  items.push({label: 'Deaktivieren', icon: 'ti-trash', danger: true, onClick: function(){ deactivateDirectoryEntry(id); }});
-  return items;
-}
-
-function openDirectoryModal(){
-  document.getElementById('directory-form').reset();
-  document.getElementById('df-id').value = '';
-  document.getElementById('directory-modal-title').textContent = 'Eintrag anlegen';
-  document.getElementById('directory-form-error').style.display = 'none';
-  document.getElementById('directory-modal').style.display = 'flex';
-  document.getElementById('df-name').focus();
-}
-
-function closeDirectoryModal(){
-  document.getElementById('directory-modal').style.display = 'none';
-}
-
-function editDirectoryEntry(id){
-  const item = directoryItems.find(function(p){ return p.id === id; });
-  if(!item) return;
-  document.getElementById('df-id').value = item.id;
-  document.getElementById('df-name').value = item.name || '';
-  document.getElementById('df-kind').value = item.kind || 'manufacturer';
-  document.getElementById('df-contact-name').value = item.contact_name || '';
-  document.getElementById('df-email').value = item.email || '';
-  document.getElementById('df-phone').value = item.phone || '';
-  document.getElementById('df-website').value = item.website || '';
-  document.getElementById('df-address').value = item.address || '';
-  document.getElementById('df-notes').value = item.notes || '';
-  document.getElementById('directory-modal-title').textContent = 'Eintrag bearbeiten';
-  document.getElementById('directory-form-error').style.display = 'none';
-  document.getElementById('directory-modal').style.display = 'flex';
-}
-
-async function deactivateDirectoryEntry(id){
-  const item = directoryItems.find(function(p){ return p.id === id; });
-  if(!confirm('"'+(item?item.name:'')+'" wirklich deaktivieren?')) return;
-  try{
-    const res = await fetch('/api/v1/directory/'+id, {method:'DELETE', headers:{Authorization:'Bearer '+pdhToken()}});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    loadDirectory();
-  }catch(e){ alert('Fehler: '+e.message); }
-}
-
-async function submitDirectoryForm(event){
-  event.preventDefault();
-  const button = document.getElementById('directory-save-button');
-  const errorBox = document.getElementById('directory-form-error');
-  button.disabled = true;
-  errorBox.style.display = 'none';
-  const id = document.getElementById('df-id').value;
-  const payload = {
-    name: document.getElementById('df-name').value.trim(),
-    kind: document.getElementById('df-kind').value,
-    contact_name: document.getElementById('df-contact-name').value.trim(),
-    email: document.getElementById('df-email').value.trim(),
-    phone: document.getElementById('df-phone').value.trim(),
-    website: document.getElementById('df-website').value.trim(),
-    address: document.getElementById('df-address').value.trim(),
-    notes: document.getElementById('df-notes').value.trim()
-  };
-  try{
-    const url = id ? '/api/v1/directory/'+id : '/api/v1/directory/';
-    const res = await fetch(url, {
-      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+pdhToken()},
-      body: JSON.stringify(payload)
-    });
-    const json = await res.json().catch(function(){ return {}; });
-    if(!res.ok) throw new Error(json.error || ('HTTP '+res.status));
-    closeDirectoryModal();
-    loadDirectory();
-  }catch(e){
-    errorBox.textContent = 'Speichern fehlgeschlagen: ' + e.message;
-    errorBox.style.display = 'block';
-  }finally{
-    button.disabled = false;
-  }
-  return false;
-}
-
-loadDirectory();
-</script>
-{{end}}
+{{define "scripts"}}{{end}}

@@ -1,0 +1,596 @@
+{{template "base" .}}
+
+{{define "partner-role"}}{{if eq . "manufacturer"}}Hersteller{{else if eq . "supplier"}}Lieferant{{else if eq . "service"}}Servicepartner{{else}}{{.}}{{end}}{{end}}
+
+{{define "partner-field"}}{{if .V}}<div class="pd-f"><div class="pd-l">{{.L}}</div><div class="pd-v">{{if eq .T "tel"}}<a href="tel:{{.V}}">{{.V}}</a>{{else if eq .T "mail"}}<a href="mailto:{{.V}}">{{.V}}</a>{{else if eq .T "url"}}<a href="{{.V}}" target="_blank" rel="noopener">{{.V}}</a>{{else}}{{.V}}{{end}}</div></div>{{end}}{{end}}
+
+{{define "partner-unassign"}}
+<form method="post" action="/directory/{{.P}}/unassign" style="display:inline" onsubmit="return confirm('Zuweisung entfernen?')">
+  <input type="hidden" name="target" value="{{.T}}"><input type="hidden" name="role" value="{{.R}}"><input type="hidden" name="target_id" value="{{.ID}}">
+  <button type="submit" class="pd-x" title="Zuweisung entfernen"><i class="ti ti-x"></i></button>
+</form>
+{{end}}
+
+{{define "content"}}
+<style>
+.pd-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:14px}
+.pd-tab{padding:8px 12px;font-size:12.5px;color:var(--muted);border:0;background:none;border-bottom:2px solid transparent;cursor:pointer;font-family:var(--font);display:inline-flex;gap:6px;align-items:center}
+.pd-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.pd-tab b{font-weight:500;font-size:10px;background:var(--bg3);border-radius:999px;padding:1px 6px;color:var(--muted)}
+.pd-pane{display:none}.pd-pane.active{display:block}
+.pd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start}
+.pd-f{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.pd-f:last-child{border:0}
+.pd-l{width:150px;flex-shrink:0;color:var(--muted);font-size:12px}
+.pd-v{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
+.pd-v a{color:var(--accent)}
+.pd-sec{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px}
+.pd-x{border:0;background:none;color:var(--muted);cursor:pointer;width:26px;height:26px;border-radius:6px}
+.pd-x:hover{background:var(--bg3);color:var(--red)}
+.pd-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.pd-row:last-child{border:0}
+.pd-row .grow{flex:1;min-width:0}
+.pd-sub{font-size:11px;color:var(--muted)}
+.pd-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.pd-hot{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+.pd-hot a{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);font-size:12px}
+.pd-hot a:hover{border-color:var(--accent)}
+.pd-form .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
+.pd-secret{font-family:monospace;background:var(--bg3);padding:2px 6px;border-radius:4px}
+[data-frame],[data-frame-external]{cursor:pointer}
+</style>
+
+{{$p := .Partner}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <a class="btn btn-icon" href="/directory" title="Zur Übersicht"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1;min-width:200px">
+    {{if .IsNew}}
+    <h1 style="font-size:18px;font-weight:600">Neuer Hersteller / Lieferant</h1>
+    {{else}}
+    <h1 style="font-size:18px;font-weight:600">{{$p.Name}} {{if $p.Rating}}<span class="badge b-gray" title="Bewertung">{{$p.Rating}}</span>{{end}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">
+      {{$p.PartnerNo}} · <span class="badge b-blue">{{.KindLabel}}</span> <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+      {{if not $p.Active}}<span class="badge b-gray">Deaktiviert</span>{{end}}
+      {{if $p.Category}} · {{$p.Category}}{{end}}
+    </p>
+    {{end}}
+  </div>
+  {{if and .CanEdit (not .IsNew)}}
+  <form method="post" action="/directory/{{$p.ID}}/active" onsubmit="return confirm('{{if $p.Active}}Partner deaktivieren?{{else}}Partner reaktivieren?{{end}}')">
+    <input type="hidden" name="active" value="{{if $p.Active}}0{{else}}1{{end}}">
+    <button class="btn btn-small" type="submit">{{if $p.Active}}<i class="ti ti-archive"></i> Deaktivieren{{else}}<i class="ti ti-restore"></i> Reaktivieren{{end}}</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Message}}<div class="pd-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="pd-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+{{if not .IsNew}}
+<div class="pd-tabs" role="tablist">
+  <button class="pd-tab" data-tab="overview"><i class="ti ti-layout-dashboard"></i> Übersicht</button>
+  {{if .CanEdit}}<button class="pd-tab" data-tab="master"><i class="ti ti-edit"></i> Stammdaten</button>{{end}}
+  <button class="pd-tab" data-tab="contacts"><i class="ti ti-address-book"></i> Ansprechpartner <b>{{len .Contacts}}</b></button>
+  <button class="pd-tab" data-tab="portals"><i class="ti ti-world"></i> Portale & Shop <b>{{len .Links}}</b></button>
+  <button class="pd-tab" data-tab="infra"><i class="ti ti-hierarchy-2"></i> Anlagen <b>{{len .Infra}}</b></button>
+  <button class="pd-tab" data-tab="parts"><i class="ti ti-package"></i> Ersatzteile <b>{{len .Parts}}</b></button>
+  <button class="pd-tab" data-tab="it"><i class="ti ti-server-2"></i> IT <b>{{len .IT}}</b></button>
+  <button class="pd-tab" data-tab="records"><i class="ti ti-briefcase"></i> Vorgänge <b>{{len .Records}}</b></button>
+  <button class="pd-tab" data-tab="docs"><i class="ti ti-paperclip"></i> Dokumente</button>
+  <button class="pd-tab" data-tab="history"><i class="ti ti-history"></i> Historie</button>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="pd-pane" data-pane="overview">
+  <div class="pd-grid">
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-phone"></i> Erreichbarkeit</span></div>
+      {{template "partner-field" (dict "L" "Telefon Zentrale" "V" $p.Phone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Fax" "V" $p.Fax)}}
+      {{template "partner-field" (dict "L" "E-Mail" "V" $p.Email "T" "mail")}}
+      {{template "partner-field" (dict "L" "Bestellungen" "V" $p.OrderEmail "T" "mail")}}
+      {{template "partner-field" (dict "L" "Support-Hotline" "V" $p.SupportHotline "T" "tel")}}
+      {{template "partner-field" (dict "L" "Hotline erreichbar" "V" $p.SupportHours)}}
+      {{template "partner-field" (dict "L" "Support Telefon" "V" $p.SupportPhone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Support E-Mail" "V" $p.SupportEmail "T" "mail")}}
+      {{template "partner-field" (dict "L" "Service Telefon" "V" $p.ServicePhone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Service E-Mail" "V" $p.ServiceEmail "T" "mail")}}
+      {{template "partner-field" (dict "L" "Ersatzteile Telefon" "V" $p.SparePartsPhone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Ersatzteile E-Mail" "V" $p.SparePartsEmail "T" "mail")}}
+      {{template "partner-field" (dict "L" "Notfall / 24h" "V" $p.EmergencyPhone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Website" "V" $p.Website "T" "url")}}
+      {{if .Links}}
+      <div class="pd-hot">
+        {{range .Links}}<a href="{{.URL}}" {{if .Embed}}data-frame-external data-frame-title="{{$p.Name}} · {{.Label}}"{{else}}target="_blank" rel="noopener"{{end}}><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+      </div>
+      {{end}}
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-address-book"></i> Hauptansprechpartner</span></div>
+      {{range $i, $c := .Contacts}}{{if eq $i 0}}
+      <div style="font-weight:500">{{$c.Name}}</div>
+      <div class="pd-sub">{{$c.Position}}{{if and $c.Position $c.Department}} · {{end}}{{$c.Department}}</div>
+      {{template "partner-field" (dict "L" "Telefon" "V" $c.Phone "T" "tel")}}
+      {{template "partner-field" (dict "L" "Mobil" "V" $c.Mobile "T" "tel")}}
+      {{template "partner-field" (dict "L" "E-Mail" "V" $c.Email "T" "mail")}}
+      {{end}}{{else}}
+      <div class="pd-sub">Noch kein Ansprechpartner erfasst.</div>
+      {{end}}
+      <div class="pd-sec">Anschrift</div>
+      {{if or $p.Street $p.City}}
+      <div class="pd-v" style="font-size:12.5px">{{$p.Street}}
+{{$p.PostalCode}} {{$p.City}}{{if $p.Country}}
+{{$p.Country}}{{end}}</div>
+      {{else if $p.Address}}<div class="pd-v" style="font-size:12.5px">{{$p.Address}}</div>
+      {{else}}<div class="pd-sub">Keine Anschrift hinterlegt</div>{{end}}
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-receipt"></i> Kaufmännisch</span></div>
+      {{template "partner-field" (dict "L" "Kreditorennummer" "V" $p.CreditorNo)}}
+      {{template "partner-field" (dict "L" "Unsere Kundennr." "V" $p.CustomerNo)}}
+      {{template "partner-field" (dict "L" "USt-IdNr." "V" $p.VatID)}}
+      {{template "partner-field" (dict "L" "Steuernummer" "V" $p.TaxNo)}}
+      {{template "partner-field" (dict "L" "Handelsregister" "V" $p.CommercialRegister)}}
+      {{template "partner-field" (dict "L" "Bank" "V" $p.BankName)}}
+      {{template "partner-field" (dict "L" "IBAN" "V" $p.IBAN)}}
+      {{template "partner-field" (dict "L" "BIC" "V" $p.BIC)}}
+      {{template "partner-field" (dict "L" "Zahlungsbedingungen" "V" $p.PaymentTerms)}}
+      {{template "partner-field" (dict "L" "Lieferbedingungen" "V" $p.DeliveryTerms)}}
+      {{template "partner-field" (dict "L" "Währung" "V" $p.Currency)}}
+      {{template "partner-field" (dict "L" "Mindestbestellwert" "V" .MinOrderValue)}}
+      {{if .LeadTimeDays}}{{template "partner-field" (dict "L" "Lieferzeit" "V" (printf "%s Tage" .LeadTimeDays))}}{{end}}
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-certificate"></i> Vertrag & Qualität</span></div>
+      {{template "partner-field" (dict "L" "Freigabestatus" "V" .StatusLabel)}}
+      {{template "partner-field" (dict "L" "Bewertung" "V" $p.Rating)}}
+      {{template "partner-field" (dict "L" "Letzte Bewertung" "V" $p.LastEvaluationAt)}}
+      {{template "partner-field" (dict "L" "Rahmenvertrag" "V" $p.ContractNo)}}
+      {{if $p.ContractValidUntil}}
+      <div class="pd-f"><div class="pd-l">Vertrag gültig bis</div><div class="pd-v" style="{{if eq .ContractState "expired"}}color:var(--red){{else if eq .ContractState "soon"}}color:var(--amber){{end}}">{{$p.ContractValidUntil}}{{if eq .ContractState "expired"}} · abgelaufen{{else if eq .ContractState "soon"}} · läuft bald ab{{end}}</div></div>
+      {{end}}
+      {{template "partner-field" (dict "L" "Zertifikate" "V" $p.Certificates)}}
+      {{template "partner-field" (dict "L" "Notizen" "V" $p.Notes)}}
+      <div class="pd-sec">Verknüpfungen</div>
+      <div class="pd-hot">
+        <a href="#" onclick="pdTab('infra');return false"><i class="ti ti-hierarchy-2"></i> {{len .Infra}} Anlagen</a>
+        <a href="#" onclick="pdTab('parts');return false"><i class="ti ti-package"></i> {{len .Parts}} Ersatzteile</a>
+        <a href="#" onclick="pdTab('it');return false"><i class="ti ti-server-2"></i> {{len .IT}} IT-Assets</a>
+        <a href="#" onclick="pdTab('records');return false"><i class="ti ti-briefcase"></i> {{len .Records}} Vorgänge</a>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+<!-- ── Stammdaten bearbeiten / anlegen ── -->
+{{if .CanEdit}}
+<div class="pd-pane{{if .IsNew}} active{{end}}" data-pane="master">
+  <form class="card pd-form" method="post" action="{{if .IsNew}}/directory{{else}}/directory/{{$p.ID}}/edit{{end}}">
+    <div class="pd-sec" style="margin-top:0">Allgemein</div>
+    <div class="grid3">
+      <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" value="{{$p.Name}}" required maxlength="200"></div>
+      <div class="form-group"><label class="form-label">Kurzname / Suchbegriff</label><input name="short_name" class="form-input" value="{{$p.ShortName}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Partnernummer</label><input name="partner_no" class="form-input" value="{{$p.PartnerNo}}" maxlength="50" placeholder="{{if .IsNew}}wird automatisch vergeben{{end}}"></div>
+      <div class="form-group"><label class="form-label">Art</label>
+        <select name="kind" class="form-input">
+          <option value="manufacturer" {{if eq $p.Kind "manufacturer"}}selected{{end}}>Hersteller</option>
+          <option value="supplier" {{if eq $p.Kind "supplier"}}selected{{end}}>Lieferant</option>
+          <option value="both" {{if eq $p.Kind "both"}}selected{{end}}>Hersteller & Lieferant</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Kategorie / Branche</label><input name="category" class="form-input" value="{{$p.Category}}" maxlength="100" placeholder="z. B. Antriebstechnik"></div>
+      <div class="form-group"><label class="form-label">Freigabestatus</label>
+        <select name="approval_status" class="form-input">
+          <option value="approved" {{if eq $p.ApprovalStatus "approved"}}selected{{end}}>Freigegeben</option>
+          <option value="conditional" {{if eq $p.ApprovalStatus "conditional"}}selected{{end}}>Bedingt freigegeben</option>
+          <option value="new" {{if eq $p.ApprovalStatus "new"}}selected{{end}}>Neu / in Prüfung</option>
+          <option value="blocked" {{if eq $p.ApprovalStatus "blocked"}}selected{{end}}>Gesperrt</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Bewertung</label>
+        <select name="rating" class="form-input">
+          <option value="">–</option>
+          <option value="A" {{if eq $p.Rating "A"}}selected{{end}}>A – bevorzugt</option>
+          <option value="B" {{if eq $p.Rating "B"}}selected{{end}}>B – geeignet</option>
+          <option value="C" {{if eq $p.Rating "C"}}selected{{end}}>C – eingeschränkt</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Letzte Bewertung am</label><input type="date" name="last_evaluation_at" class="form-input" value="{{$p.LastEvaluationAt}}"></div>
+    </div>
+
+    <div class="pd-sec">Erreichbarkeit</div>
+    <div class="grid3">
+      <div class="form-group"><label class="form-label">Telefon Zentrale</label><input name="phone" class="form-input" value="{{$p.Phone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Fax</label><input name="fax" class="form-input" value="{{$p.Fax}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">E-Mail allgemein</label><input type="email" name="email" class="form-input" value="{{$p.Email}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">E-Mail Bestellungen</label><input type="email" name="order_email" class="form-input" value="{{$p.OrderEmail}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Support-Hotline</label><input name="support_hotline" class="form-input" value="{{$p.SupportHotline}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Hotline erreichbar</label><input name="support_hours" class="form-input" value="{{$p.SupportHours}}" maxlength="150" placeholder="z. B. Mo–Fr 7–18 Uhr"></div>
+      <div class="form-group"><label class="form-label">Support Telefon</label><input name="support_phone" class="form-input" value="{{$p.SupportPhone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Support E-Mail</label><input type="email" name="support_email" class="form-input" value="{{$p.SupportEmail}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Service / Techniker Telefon</label><input name="service_phone" class="form-input" value="{{$p.ServicePhone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Service E-Mail</label><input type="email" name="service_email" class="form-input" value="{{$p.ServiceEmail}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Ersatzteile Telefon</label><input name="spare_parts_phone" class="form-input" value="{{$p.SparePartsPhone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Ersatzteile E-Mail</label><input type="email" name="spare_parts_email" class="form-input" value="{{$p.SparePartsEmail}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Notfall / 24h</label><input name="emergency_phone" class="form-input" value="{{$p.EmergencyPhone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Website</label><input name="website" class="form-input" value="{{$p.Website}}" maxlength="200" placeholder="https://…"></div>
+      {{if .IsNew}}<div class="form-group"><label class="form-label">Hauptansprechpartner</label><input name="contact_name" class="form-input" maxlength="150"></div>{{else}}<input type="hidden" name="contact_name" value="{{$p.ContactName}}">{{end}}
+    </div>
+    <input type="hidden" name="portal_url" value="{{$p.PortalURL}}">
+
+    <div class="pd-sec">Anschrift</div>
+    <div class="grid3">
+      <div class="form-group"><label class="form-label">Straße, Nr.</label><input name="street" class="form-input" value="{{$p.Street}}" maxlength="200"></div>
+      <div class="form-group"><label class="form-label">PLZ</label><input name="postal_code" class="form-input" value="{{$p.PostalCode}}" maxlength="20"></div>
+      <div class="form-group"><label class="form-label">Ort</label><input name="city" class="form-input" value="{{$p.City}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Land</label><input name="country" class="form-input" value="{{$p.Country}}" maxlength="100"></div>
+    </div>
+    {{if $p.Address}}<div class="form-group"><label class="form-label">Adresse (bisheriger Freitext)</label><input name="address" class="form-input" value="{{$p.Address}}" maxlength="300"></div>{{end}}
+
+    <div class="pd-sec">Kaufmännisch</div>
+    <div class="grid3">
+      <div class="form-group"><label class="form-label">Kreditorennummer</label><input name="creditor_no" class="form-input" value="{{$p.CreditorNo}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Unsere Kundennummer</label><input name="customer_no" class="form-input" value="{{$p.CustomerNo}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">USt-IdNr.</label><input name="vat_id" class="form-input" value="{{$p.VatID}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Steuernummer</label><input name="tax_no" class="form-input" value="{{$p.TaxNo}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Handelsregister</label><input name="commercial_register" class="form-input" value="{{$p.CommercialRegister}}" maxlength="100" placeholder="z. B. HRB 1234, AG München"></div>
+      <div class="form-group"><label class="form-label">Bank</label><input name="bank_name" class="form-input" value="{{$p.BankName}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">IBAN</label><input name="iban" class="form-input" value="{{$p.IBAN}}" maxlength="40"></div>
+      <div class="form-group"><label class="form-label">BIC</label><input name="bic" class="form-input" value="{{$p.BIC}}" maxlength="20"></div>
+      <div class="form-group"><label class="form-label">Zahlungsbedingungen</label><input name="payment_terms" class="form-input" value="{{$p.PaymentTerms}}" maxlength="200" placeholder="z. B. 14 Tage 2 % Skonto, 30 Tage netto"></div>
+      <div class="form-group"><label class="form-label">Lieferbedingungen / Incoterms</label><input name="delivery_terms" class="form-input" value="{{$p.DeliveryTerms}}" maxlength="200" placeholder="z. B. DAP, frei Haus ab 250 €"></div>
+      <div class="form-group"><label class="form-label">Währung</label><input name="currency" class="form-input" value="{{$p.Currency}}" maxlength="3"></div>
+      <div class="form-group"><label class="form-label">Mindestbestellwert</label><input name="min_order_value" class="form-input" inputmode="decimal" value="{{with $p.MinOrderValue}}{{.}}{{end}}"></div>
+      <div class="form-group"><label class="form-label">Standard-Lieferzeit (Tage)</label><input type="number" min="0" name="lead_time_days" class="form-input" value="{{with $p.LeadTimeDays}}{{.}}{{end}}"></div>
+    </div>
+
+    <div class="pd-sec">Vertrag & Qualität</div>
+    <div class="grid3">
+      <div class="form-group"><label class="form-label">Rahmenvertrag Nr.</label><input name="contract_no" class="form-input" value="{{$p.ContractNo}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Vertrag gültig bis</label><input type="date" name="contract_valid_until" class="form-input" value="{{$p.ContractValidUntil}}"></div>
+      <div class="form-group"><label class="form-label">Zertifikate</label><input name="certificates" class="form-input" value="{{$p.Certificates}}" maxlength="500" placeholder="z. B. ISO 9001, ISO 14001"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="3">{{$p.Notes}}</textarea></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <a class="btn" href="{{if .IsNew}}/directory{{else}}/directory/{{$p.ID}}{{end}}">Abbrechen</a>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> {{if .IsNew}}Anlegen{{else}}Speichern{{end}}</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{if not .IsNew}}
+<!-- ── Ansprechpartner ── -->
+<div class="pd-pane" data-pane="contacts">
+  <div class="card">
+    {{range .Contacts}}
+    <div class="pd-row" style="align-items:flex-start">
+      <i class="ti {{if .IsPrimary}}ti-star-filled{{else}}ti-user{{end}}" style="color:{{if .IsPrimary}}var(--amber){{else}}var(--muted){{end}};margin-top:2px"></i>
+      <div class="grow">
+        <div style="font-weight:500">{{.Name}}{{if .IsPrimary}} <span class="pd-sub">(Hauptansprechpartner)</span>{{end}}</div>
+        <div class="pd-sub">{{.Position}}{{if and .Position .Department}} · {{end}}{{.Department}}</div>
+        <div style="font-size:12px;margin-top:2px">
+          {{if .Phone}}<a href="tel:{{.Phone}}"><i class="ti ti-phone"></i> {{.Phone}}</a> {{end}}
+          {{if .Mobile}}<a href="tel:{{.Mobile}}"><i class="ti ti-device-mobile"></i> {{.Mobile}}</a> {{end}}
+          {{if .Email}}<a href="mailto:{{.Email}}" style="color:var(--accent)"><i class="ti ti-mail"></i> {{.Email}}</a>{{end}}
+        </div>
+        {{if .Notes}}<div class="pd-sub" style="margin-top:2px">{{.Notes}}</div>{{end}}
+        {{if $.CanEdit}}
+        <details style="margin-top:6px"><summary class="pd-sub" style="cursor:pointer">Bearbeiten</summary>
+          {{template "partner-contact-form" (dict "P" $p.ID "C" .)}}
+        </details>
+        {{end}}
+      </div>
+      {{if $.CanEdit}}
+      <form method="post" action="/directory/{{$p.ID}}/contacts/{{.ID}}/delete" onsubmit="return confirm('Ansprechpartner entfernen?')"><button class="pd-x" title="Entfernen"><i class="ti ti-trash"></i></button></form>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="pd-sub" style="padding:10px 0">Noch keine Ansprechpartner erfasst.</div>
+    {{end}}
+  </div>
+  {{if .CanEdit}}
+  <div class="card"><div class="card-title"><span><i class="ti ti-user-plus"></i> Ansprechpartner hinzufügen</span></div>
+    {{template "partner-contact-form" (dict "P" $p.ID)}}
+  </div>
+  {{end}}
+</div>
+
+<!-- ── Portale & Onlineshop ── -->
+<div class="pd-pane" data-pane="portals">
+  <div class="card">
+    {{range .Links}}
+    <div class="pd-row" style="align-items:flex-start">
+      <i class="ti {{.Icon}}" style="font-size:18px;color:var(--accent);margin-top:2px"></i>
+      <div class="grow">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <a href="{{.URL}}" style="font-weight:500;color:var(--accent)" {{if .Embed}}data-frame-external data-frame-title="{{$p.Name}} · {{.Label}}"{{else}}target="_blank" rel="noopener"{{end}}>{{.Label}}</a>
+          <span class="badge b-gray">{{.KindLabel}}</span>
+          {{if .Embed}}<span class="badge b-blue" title="Öffnet im PDH-Viewer"><i class="ti ti-app-window"></i> eingebettet</span>{{else}}<span class="badge b-gray" title="Öffnet in neuem Tab"><i class="ti ti-external-link"></i> neuer Tab</span>{{end}}
+        </div>
+        <div class="pd-sub" style="word-break:break-all">{{.URL}}</div>
+        {{if or .Username .HasPassword .AccountNo}}
+        <div style="font-size:12px;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          {{if .AccountNo}}<span><span class="pd-sub">Kundenkonto:</span> <span class="pd-secret">{{.AccountNo}}</span></span>{{end}}
+          {{if $.CanCredentials}}
+            {{if .Username}}<span><span class="pd-sub">Benutzer:</span> <span class="pd-secret">{{.Username}}</span> <button type="button" class="pd-x" title="Kopieren" onclick="pdCopy('{{.Username}}',this)"><i class="ti ti-copy"></i></button></span>{{end}}
+            {{if .HasPassword}}<span><span class="pd-sub">Passwort:</span> <span class="pd-secret" id="pw-{{.ID}}">••••••••</span>
+              <button type="button" class="pd-x" title="Anzeigen" onclick="pdPassword('{{$p.ID}}','{{.ID}}',false,this)"><i class="ti ti-eye"></i></button>
+              <button type="button" class="pd-x" title="Kopieren" onclick="pdPassword('{{$p.ID}}','{{.ID}}',true,this)"><i class="ti ti-copy"></i></button>
+              {{if .PasswordUpdated}}<span class="pd-sub">geändert {{.PasswordUpdated}}</span>{{end}}</span>{{end}}
+          {{else if or .Username .HasPassword}}
+            <span class="pd-sub"><i class="ti ti-lock"></i> Zugangsdaten hinterlegt – Anzeige nur mit Berechtigung</span>
+          {{end}}
+        </div>
+        {{end}}
+        {{if .Notes}}<div class="pd-sub" style="margin-top:4px">{{.Notes}}</div>{{end}}
+        {{if $.CanEdit}}
+        <details style="margin-top:6px"><summary class="pd-sub" style="cursor:pointer">Bearbeiten</summary>
+          {{template "partner-link-form" (dict "P" $p.ID "L" . "Kinds" $.LinkKinds "Cred" $.CanCredentials)}}
+        </details>
+        {{end}}
+      </div>
+      {{if $.CanEdit}}
+      <form method="post" action="/directory/{{$p.ID}}/links/{{.ID}}/embed">
+        <button class="btn btn-small" title="{{if .Embed}}Einbettung deaktivieren{{else}}Einbettung aktivieren{{end}}"><i class="ti {{if .Embed}}ti-app-window-filled{{else}}ti-app-window{{end}}"></i> {{if .Embed}}Einbettung aus{{else}}Einbetten{{end}}</button>
+      </form>
+      <form method="post" action="/directory/{{$p.ID}}/links/{{.ID}}/delete" onsubmit="return confirm('Link inkl. Zugangsdaten entfernen?')"><button class="pd-x" title="Entfernen"><i class="ti ti-trash"></i></button></form>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="pd-sub" style="padding:10px 0">Noch keine Portale oder Shops hinterlegt.</div>
+    {{end}}
+  </div>
+  {{if .CanEdit}}
+  <div class="card"><div class="card-title"><span><i class="ti ti-link-plus"></i> Portal / Shop hinzufügen</span></div>
+    {{template "partner-link-form" (dict "P" $p.ID "Kinds" .LinkKinds "Cred" .CanCredentials)}}
+    <p class="pd-sub" style="margin-top:8px"><i class="ti ti-info-circle"></i> „Einbetten“ öffnet das Portal im PDH-Viewer. Viele Anbieter verbieten das technisch – dann bleibt die Ansicht leer und der Link sollte in einem neuen Tab öffnen. Passwörter werden verschlüsselt gespeichert; Anzeigen wird protokolliert.</p>
+  </div>
+  {{end}}
+</div>
+
+<!-- ── Anlagen ── -->
+<div class="pd-pane" data-pane="infra">
+  <div class="card">
+    {{range .Infra}}
+    <div class="pd-row">
+      <i class="ti ti-hierarchy-2" style="color:var(--muted)"></i>
+      <div class="grow">
+        <a href="/infrastructure/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="font-weight:500">{{.Name}}</a>
+        <div class="pd-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .OpenFaults}} · <span style="color:var(--red)">{{.OpenFaults}} offene Störung(en)</span>{{end}}</div>
+      </div>
+      {{$iid := .ID}}
+      {{range .Roles}}<span class="badge b-blue">{{template "partner-role" .}}{{if $.CanEdit}}{{template "partner-unassign" (dict "P" $p.ID "T" "infra" "R" . "ID" $iid)}}{{end}}</span>{{end}}
+    </div>
+    {{else}}<div class="pd-sub" style="padding:10px 0">Keiner Anlage zugeordnet.</div>{{end}}
+  </div>
+  {{if .InfraFaults}}
+  <div class="card"><div class="card-title"><span><i class="ti ti-alert-triangle"></i> Störungen an zugeordneten Anlagen</span></div>
+    {{range .InfraFaults}}
+    <div class="pd-row"><div class="grow"><a href="{{.URL}}" data-frame data-frame-title="{{.Title}}">{{.Title}}</a><div class="pd-sub">{{.Date}} · {{.RoleLabel}}</div></div><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></div>
+    {{end}}
+  </div>
+  {{end}}
+  {{if .CanEdit}}
+  <form class="card" method="post" action="/directory/{{$p.ID}}/assign">
+    <div class="card-title"><span><i class="ti ti-link"></i> Anlage zuweisen</span></div>
+    <input type="hidden" name="target" value="infra">
+    <div class="form-group"><label class="form-label">Rolle</label>
+      <select name="role" class="form-input"><option value="manufacturer">Hersteller</option><option value="supplier">Lieferant</option><option value="service">Servicepartner</option></select></div>
+    {{template "infra-tree-picker" (dict "TargetID" "pd-infra-id" "SelectedLabelID" "pd-infra-selected" "Label" "Anlage" "Required" true)}}
+    <div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn btn-primary" type="submit"><i class="ti ti-link"></i> Zuweisen</button></div>
+  </form>
+  {{end}}
+</div>
+
+<!-- ── Ersatzteile ── -->
+<div class="pd-pane" data-pane="parts">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Teil</th><th>Rolle</th><th>Lieferanten-Nr.</th><th style="text-align:right">EK</th><th>Lieferzeit</th><th style="text-align:right">Bestand</th></tr></thead>
+      <tbody>
+      {{range .Parts}}
+      <tr>
+        <td><a href="/inventory/{{.ID}}" data-frame data-frame-title="{{.Name}}"><span style="font-family:monospace;color:var(--muted)">{{.PartNumber}}</span> {{.Name}}</a>{{if .Notes}}<div class="pd-sub">{{.Notes}}</div>{{end}}</td>
+        <td style="white-space:nowrap">
+          {{if .IsManufacturer}}<span class="badge b-blue">Hersteller{{if $.CanEdit}}{{template "partner-unassign" (dict "P" $p.ID "T" "part" "R" "manufacturer" "ID" .ID)}}{{end}}</span>{{end}}
+          {{if .IsSupplier}}<span class="badge {{if .Preferred}}b-green{{else}}b-blue{{end}}">{{if .Preferred}}<i class="ti ti-star-filled"></i> {{end}}Lieferant{{if $.CanEdit}}{{template "partner-unassign" (dict "P" $p.ID "T" "part" "R" "supplier" "ID" .ID)}}{{end}}</span>{{end}}
+        </td>
+        <td style="font-family:monospace;font-size:12px">{{.SupplierPartNo}}</td>
+        <td style="text-align:right;white-space:nowrap">{{if .SupplierPrice}}{{.SupplierPrice}}{{else}}<span class="pd-sub">{{.Price}}</span>{{end}}{{if .MinOrderQty}}<div class="pd-sub">ab {{.MinOrderQty}} {{.Unit}}</div>{{end}}</td>
+        <td style="white-space:nowrap">{{.LeadTime}}</td>
+        <td style="text-align:right;white-space:nowrap">{{.Stock}} {{.Unit}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Keine Ersatzteile zugeordnet</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{if .Parts}}<div class="pd-sub" style="padding:8px 12px">Lagerwert der zugeordneten Teile: {{.PartSupplyCost}}</div>{{end}}
+  </div>
+  {{if .CanEdit}}
+  <form class="card" method="post" action="/directory/{{$p.ID}}/assign">
+    <div class="card-title"><span><i class="ti ti-link"></i> Ersatzteil zuweisen</span></div>
+    <input type="hidden" name="target" value="part">
+    <div class="grid3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px">
+      <div class="form-group"><label class="form-label">Rolle</label>
+        <select name="role" class="form-input" onchange="this.form.querySelector('.pd-supply').style.display=this.value==='supplier'?'contents':'none'">
+          <option value="supplier">Lieferant (mit Konditionen)</option><option value="manufacturer">Hersteller</option></select></div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Ersatzteil</label>
+        <select name="target_id" class="form-input" required><option value="">– auswählen –</option>{{range .PartOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+      <div class="pd-supply" style="display:contents">
+        <div class="form-group"><label class="form-label">Lieferanten-Artikelnr.</label><input name="supplier_part_no" class="form-input" maxlength="100"></div>
+        <div class="form-group"><label class="form-label">Einkaufspreis (€)</label><input name="supply_price" class="form-input" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Mindestmenge</label><input name="min_order_qty" class="form-input" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="supply_lead_time" class="form-input"></div>
+        <div class="form-group"><label class="form-label">Bemerkung</label><input name="supply_notes" class="form-input" maxlength="500"></div>
+        <div class="form-group" style="align-self:end"><label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="preferred"> Bevorzugter Lieferant</label></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit"><i class="ti ti-link"></i> Zuweisen</button></div>
+  </form>
+  {{end}}
+</div>
+
+<!-- ── IT ── -->
+<div class="pd-pane" data-pane="it">
+  <div class="card">
+    {{range .IT}}
+    <div class="pd-row">
+      <i class="ti ti-server-2" style="color:var(--muted)"></i>
+      <div class="grow">
+        <a href="/it/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="font-weight:500">{{.Name}}</a>
+        <div class="pd-sub">{{.TypeLabel}}{{if .Model}} · {{.Model}}{{end}}{{if .SerialNo}} · SN {{.SerialNo}}{{end}} · {{.Status}}</div>
+      </div>
+      {{$aid := .ID}}
+      {{range .Roles}}<span class="badge b-blue">{{template "partner-role" .}}{{if $.CanEdit}}{{template "partner-unassign" (dict "P" $p.ID "T" "it" "R" . "ID" $aid)}}{{end}}</span>{{end}}
+    </div>
+    {{else}}<div class="pd-sub" style="padding:10px 0">Keinem IT-Asset zugeordnet.</div>{{end}}
+  </div>
+  {{if .CanEdit}}
+  <form class="card" method="post" action="/directory/{{$p.ID}}/assign">
+    <div class="card-title"><span><i class="ti ti-link"></i> IT-Asset zuweisen</span></div>
+    <input type="hidden" name="target" value="it">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+      <div class="form-group" style="margin:0"><label class="form-label">Rolle</label><select name="role" class="form-input"><option value="manufacturer">Hersteller</option><option value="supplier">Lieferant</option></select></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:220px"><label class="form-label">IT-Asset</label>
+        <select name="target_id" class="form-input" required><option value="">– auswählen –</option>{{range .ITOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-link"></i> Zuweisen</button>
+    </div>
+  </form>
+  {{end}}
+</div>
+
+<!-- ── Vorgänge ── -->
+<div class="pd-pane" data-pane="records">
+  <div class="card">
+    {{range .Records}}
+    <div class="pd-row">
+      <div class="grow">
+        {{if .URL}}<a href="{{.URL}}" data-frame data-frame-title="{{.ModuleLabel}}: {{.Title}}" style="font-weight:500">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+        <div class="pd-sub">{{.ModuleLabel}} · {{.RoleLabel}} · seit {{.Date}}</div>
+      </div>
+      {{if .StatusLabel}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
+      {{if $.CanEdit}}{{template "partner-unassign" (dict "P" $p.ID "T" "record" "R" "" "ID" .PartyID)}}{{end}}
+    </div>
+    {{else}}<div class="pd-sub" style="padding:10px 0">Keinem Vorgang als externe Firma zugewiesen.</div>{{end}}
+  </div>
+  {{if .CanEdit}}
+  <form class="card" method="post" action="/directory/{{$p.ID}}/assign">
+    <div class="card-title"><span><i class="ti ti-link"></i> Offenem Vorgang zuweisen</span></div>
+    <input type="hidden" name="target" value="record">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+      <div class="form-group" style="margin:0"><label class="form-label">Rolle</label><select name="role" class="form-input"><option value="assigned">Zuständig</option><option value="responsible">Verantwortlich</option></select></div>
+      <div class="form-group" style="margin:0;flex:1;min-width:240px"><label class="form-label">Vorgang</label>
+        <select name="target_id" class="form-input" required><option value="">– auswählen –</option>
+          {{range .RecordOptions}}<optgroup label="{{.Label}}">{{range .Options}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
+        </select></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-link"></i> Zuweisen</button>
+    </div>
+    <p class="pd-sub" style="margin-top:8px">Der Partner erscheint im Vorgang unter „Externe Beteiligte“ – mit Hauptansprechpartner bzw. Support-Kontakt.</p>
+  </form>
+  {{end}}
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="pd-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Verträge, Zertifikate, Preislisten, Datenblätter</span></div>
+    <div id="attachments-{{$p.ID}}" data-attach-ref="business_partner:{{$p.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    {{if .CanEdit}}
+    <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument hochladen
+      <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" multiple style="display:none" onchange="uploadFiles(this,'business_partner','{{$p.ID}}')"></label>
+    {{end}}
+  </div>
+</div>
+
+<!-- ── Historie ── -->
+<div class="pd-pane" data-pane="history">
+  {{template "record-history" .History}}
+</div>
+{{end}}
+{{end}}
+
+{{define "partner-contact-form"}}
+<form method="post" action="/directory/{{.P}}/contacts" style="margin-top:8px">
+  {{with .C}}<input type="hidden" name="contact_id" value="{{.ID}}">{{end}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 10px">
+    <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="150" value="{{with .C}}{{.Name}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Funktion</label><input name="position" class="form-input" maxlength="100" value="{{with .C}}{{.Position}}{{end}}" placeholder="z. B. Vertrieb, Servicetechniker"></div>
+    <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" maxlength="100" value="{{with .C}}{{.Department}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" maxlength="50" value="{{with .C}}{{.Phone}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Mobil</label><input name="mobile" class="form-input" maxlength="50" value="{{with .C}}{{.Mobile}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">E-Mail</label><input type="email" name="email" class="form-input" maxlength="150" value="{{with .C}}{{.Email}}{{end}}"></div>
+  </div>
+  <div class="form-group"><label class="form-label">Notiz</label><input name="notes" class="form-input" maxlength="500" value="{{with .C}}{{.Notes}}{{end}}"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="is_primary" {{with .C}}{{if .IsPrimary}}checked{{end}}{{end}}> Hauptansprechpartner</label>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </div>
+</form>
+{{end}}
+
+{{define "partner-link-form"}}
+{{$l := .L}}
+<form method="post" action="/directory/{{.P}}/links" style="margin-top:8px" autocomplete="off">
+  {{with $l}}<input type="hidden" name="link_id" value="{{.ID}}">{{end}}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 10px">
+    <div class="form-group"><label class="form-label">Art</label>
+      <select name="kind" class="form-input">{{range .Kinds}}{{$k := .Key}}<option value="{{$k}}" {{if $l}}{{if eq $l.Kind $k}}selected{{end}}{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Bezeichnung</label><input name="label" class="form-input" maxlength="150" value="{{with $l}}{{.Label}}{{end}}" placeholder="z. B. Service-Portal"></div>
+    <div class="form-group" style="grid-column:span 2"><label class="form-label">Adresse (URL) *</label><input name="url" class="form-input" required maxlength="500" value="{{with $l}}{{.URL}}{{end}}" placeholder="https://…"></div>
+    <div class="form-group"><label class="form-label">Kundenkonto / Kundennr.</label><input name="account_no" class="form-input" maxlength="100" value="{{with $l}}{{.AccountNo}}{{end}}"></div>
+    {{if .Cred}}
+    <div class="form-group"><label class="form-label">Benutzername</label><input name="username" class="form-input" maxlength="150" autocomplete="off" value="{{with $l}}{{.Username}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Passwort {{with $l}}{{if .HasPassword}}<span class="pd-sub">(leer = unverändert)</span>{{end}}{{end}}</label><input type="password" name="password" class="form-input" autocomplete="new-password"></div>
+    {{end}}
+  </div>
+  <div class="form-group"><label class="form-label">Hinweis</label><input name="notes" class="form-input" maxlength="500" value="{{with $l}}{{.Notes}}{{end}}" placeholder="z. B. Login über Firmen-Account, 2FA über Handy der Instandhaltung"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="embed_enabled" {{with $l}}{{if .Embed}}checked{{end}}{{end}}> Im PDH-Viewer einbetten</label>
+      {{if .Cred}}{{with $l}}{{if .HasPassword}}<label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="clear_password"> Passwort löschen</label>{{end}}{{end}}{{end}}
+    </div>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </div>
+</form>
+{{end}}
+
+{{define "context-list"}}
+{{range .Contacts}}
+<div class="act-item"><div class="act-dot {{if .IsPrimary}}d-amber{{else}}d-blue{{end}}"></div><div class="act-text">{{.Name}}{{if .Phone}} · {{.Phone}}{{end}}</div></div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function pdTab(tab){
+  const tabs = document.querySelectorAll('.pd-tab');
+  if(!tabs.length) return;
+  if(!document.querySelector('.pd-pane[data-pane="'+tab+'"]')) tab = 'overview';
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.pd-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
+  const u = new URL(location.href);
+  u.searchParams.set('tab', tab); u.searchParams.delete('msg'); u.searchParams.delete('err');
+  history.replaceState(null, '', u);
+}
+document.querySelectorAll('.pd-tab').forEach(t => t.addEventListener('click', () => pdTab(t.dataset.tab)));
+pdTab({{.Tab}});
+function pdCopy(text, btn){
+  navigator.clipboard.writeText(text).then(() => { btn.innerHTML = '<i class="ti ti-check"></i>'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i>', 1500); });
+}
+async function pdPassword(partnerId, linkId, copy, btn){
+  try{
+    const res = await fetch('/directory/'+partnerId+'/links/'+linkId+'/password', {credentials:'same-origin', cache:'no-store'});
+    const text = await res.text();
+    if(!res.ok) throw new Error(text);
+    if(copy){ pdCopy(text, btn); return; }
+    const el = document.getElementById('pw-'+linkId);
+    el.textContent = text;
+    setTimeout(() => { el.textContent = '••••••••'; }, 20000);
+  }catch(e){ alert('Passwort nicht verfügbar: '+e.message); }
+}
+</script>
+{{end}}

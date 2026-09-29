@@ -195,6 +195,8 @@ func main() {
 	webHandler.StartEnabledMqttBrokers(context.Background())
 	webHandler.StartEnabledMqttConsumers(context.Background())
 	webHandler.StartEnabledExportSchedules(context.Background())
+	webHandler.ConfigureMail(cfg.Mail)
+	webHandler.StartPurchaseReportSchedule(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")

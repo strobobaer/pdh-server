@@ -5,24 +5,29 @@ eintrags, analog zum Kostenstellen-Picker.
 
 Usage:
 {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "part-manufacturer-id" "Value" .Part.ManufacturerID "LegacyValue" .Part.Manufacturer)}}
+
+Optional: "Name" (Feldname, Standard manufacturer_id) und "Kind"
+(manufacturer | supplier | all - Filter der Auswahl und Art beim Neuanlegen).
+Neben der Auswahl oeffnet ein Link den gewaehlten Partner im PDH-Viewer.
 */}}
 {{define "directory-picker"}}
 <div class="widget-field directory-picker-widget form-group">
   <label class="form-label">{{.Label}}</label>
   <div style="display:flex;gap:6px;align-items:center">
-    <select name="manufacturer_id" id="{{.TargetID}}" class="form-input" data-directory-picker data-selected="{{.Value}}" style="flex:1">
-      <option value="">– kein Hersteller –</option>
+    <select name="{{if .Name}}{{.Name}}{{else}}manufacturer_id{{end}}" id="{{.TargetID}}" class="form-input" data-directory-picker data-kind="{{if .Kind}}{{.Kind}}{{else}}manufacturer{{end}}" data-selected="{{.Value}}" style="flex:1">
+      <option value="">– kein Eintrag –</option>
     </select>
-    <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" onclick="openDirectoryPickerModal('{{.TargetID}}')" title="Neuen Hersteller anlegen">
+    <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" onclick="openDirectoryPickerModal('{{.TargetID}}')" title="Neu anlegen">
       <i class="ti ti-plus"></i>
     </button>
+    <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" title="Partner ansehen" onclick="var s=document.getElementById('{{.TargetID}}');if(s.value)openPdhFrame('/directory/'+s.value,s.selectedOptions[0].text)"><i class="ti ti-eye"></i></button>
   </div>
   {{if .LegacyValue}}<p style="font-size:11px;color:var(--muted);margin:4px 0 0">Bisheriger Freitext-Wert: {{.LegacyValue}} (wird nur angezeigt, solange kein Verzeichniseintrag ausgewählt ist)</p>{{end}}
 </div>
 
 <div id="dp-modal-{{.TargetID}}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:360px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Neuer Hersteller</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Neu: {{.Label}}</div>
     <div class="form-group">
       <label class="form-label">Name</label>
       <input id="dp-modal-name-{{.TargetID}}" class="form-input" placeholder="z.B. Siemens">
@@ -60,7 +65,7 @@ async function submitDirectoryPickerModal(targetId){
     if(typeof pdhToken === 'function'){ headers['Authorization'] = 'Bearer '+pdhToken(); }
     const res = await fetch('/api/v1/directory/', {
       method: 'POST', headers: headers, credentials: 'same-origin',
-      body: JSON.stringify({name: name, kind: 'manufacturer'})
+      body: JSON.stringify({name: name, kind: (document.getElementById(targetId) && document.getElementById(targetId).dataset.kind === 'supplier') ? 'supplier' : 'manufacturer'})
     });
     const json = await res.json();
     if(!res.ok) throw new Error((json && json.error) || 'Fehler beim Anlegen');
@@ -87,19 +92,28 @@ async function populateDirectorySelects(){
   try{
     const headers = {};
     if(typeof pdhToken === 'function'){ headers['Authorization'] = 'Bearer '+pdhToken(); }
-    const res = await fetch('/api/v1/directory/?kind=manufacturer', {headers: headers, credentials: 'same-origin'});
-    const json = await res.json();
-    const items = json.data || json || [];
-    selects.forEach(function(sel){
+    // je Art (manufacturer | supplier | all) nur einmal laden
+    const cache = {};
+    const load = function(kind){
+      if(!cache[kind]){
+        const q = kind === 'all' ? '' : '?kind=' + encodeURIComponent(kind);
+        cache[kind] = fetch('/api/v1/directory/' + q, {headers: headers, credentials: 'same-origin'})
+          .then(function(res){ return res.json(); })
+          .then(function(json){ return json.data || json || []; });
+      }
+      return cache[kind];
+    };
+    await Promise.all(Array.prototype.map.call(selects, async function(sel){
+      const items = await load(sel.dataset.kind || 'manufacturer');
       const selected = sel.dataset.selected || '';
       items.forEach(function(p){
         const opt = document.createElement('option');
         opt.value = p.id;
-        opt.textContent = p.name;
+        opt.textContent = p.name + (p.approval_status === 'blocked' ? ' (gesperrt)' : '');
         if(p.id === selected) opt.selected = true;
         sel.appendChild(opt);
       });
-    });
+    }));
   }catch(e){ console.warn('Herstellerverzeichnis laden fehlgeschlagen', e); }
 }
 if(!window.__directoryPickerInitialized){

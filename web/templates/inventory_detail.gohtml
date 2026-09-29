@@ -113,6 +113,62 @@
       <div class="li"><div class="li-text"><div class="li-sub">Lagerplatz</div><div class="li-title">{{.Part.StoragePlace}}</div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Preis</div><div class="li-title">{{.Part.Price}} €</div></div></div>
       <div class="li"><div class="li-text"><div class="li-sub">Kategorie</div><div class="li-title">{{.Part.Category}}</div></div></div>
+      <div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{if .Part.ManufacturerID}}<a href="/directory/{{.Part.ManufacturerID}}" data-frame data-frame-title="{{.Part.ManufacturerName}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Part.ManufacturerName}}</a>{{else}}{{.Part.Manufacturer}}{{end}}</div></div></div>
+    </div>
+
+    {{if .Error}}<div class="card" style="color:var(--red);font-size:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+    <!-- Einkauf -->
+    <div class="card" id="purchasing">
+      <div class="card-title"><span><i class="ti ti-user-dollar"></i> Einkauf</span><a href="/directory/purchase-report" class="card-action" title="Bestellvorschlag"><i class="ti ti-shopping-cart"></i></a></div>
+      {{if .CanPurchasing}}
+      <form method="post" action="/inventory/{{.Part.ID}}/purchasing" style="display:flex;gap:6px;align-items:end">
+        <div class="form-group" style="margin:0;flex:1"><label class="form-label">Verantwortlicher Einkäufer</label>
+          <select name="buyer_id" class="form-input" onchange="this.form.submit()">
+            <option value="">– Standard-Einkäufer –</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.BuyerID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select></div>
+      </form>
+      {{else}}
+      <div class="li"><div class="li-text"><div class="li-sub">Einkäufer</div><div class="li-title">{{if .BuyerName}}{{.BuyerName}}{{else}}Standard-Einkäufer{{end}}</div></div></div>
+      {{end}}
+      <p style="font-size:11px;color:var(--muted);margin-top:6px">Erhält täglich den Bestellvorschlag, sobald der Bestand den Mindestbestand erreicht.</p>
+    </div>
+
+    <!-- Lieferanten -->
+    <div class="card" id="suppliers">
+      <div class="card-title"><span><i class="ti ti-truck"></i> Lieferanten</span></div>
+      {{range .Suppliers}}
+      <div class="li" style="align-items:flex-start">
+        <div class="li-text">
+          <div class="li-title"><a href="/directory/{{.PartnerID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)">{{if .Preferred}}<i class="ti ti-star-filled" style="color:var(--amber)" title="Bevorzugt"></i> {{end}}{{.Name}}</a>{{if .Blocked}} <span class="badge b-red">gesperrt</span>{{end}}</div>
+          <div class="li-sub">{{if .SupplierPartNo}}Art.-Nr. {{.SupplierPartNo}} · {{end}}{{if .Price}}{{.Price}}{{end}}{{if .MinOrderQty}} · ab {{.MinOrderQty}}{{end}}{{if .LeadTime}} · {{.LeadTime}}{{end}}</div>
+          {{if or .OrderEmail .Phone}}<div class="li-sub">{{if .OrderEmail}}<a href="mailto:{{.OrderEmail}}">{{.OrderEmail}}</a>{{end}}{{if and .OrderEmail .Phone}} · {{end}}{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{end}}</div>{{end}}
+        </div>
+        {{if $.CanPartners}}
+        <form method="post" action="/inventory/{{$.Part.ID}}/suppliers/{{.PartnerID}}/delete" onsubmit="return confirm('Lieferant entfernen?')"><button class="btn btn-icon" style="width:28px;min-width:28px;height:28px" title="Entfernen"><i class="ti ti-x" style="font-size:14px"></i></button></form>
+        {{end}}
+      </div>
+      {{else}}
+      <div style="font-size:12px;color:var(--muted);padding:4px 0">Kein Lieferant hinterlegt – Hersteller ist nicht automatisch Lieferant.</div>
+      {{end}}
+      {{if .CanPartners}}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-plus"></i> Lieferant zuordnen</summary>
+        <form method="post" action="/inventory/{{.Part.ID}}/suppliers" style="margin-top:8px">
+          <div class="form-group"><label class="form-label">Lieferant</label>
+            <select name="partner_id" class="form-input" required><option value="">– auswählen –</option>{{range .SupplierOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+          <div class="form-group"><label class="form-label">Lieferanten-Artikelnr.</label><input name="supplier_part_no" class="form-input" maxlength="100"></div>
+          <div class="grid2" style="margin-bottom:0">
+            <div class="form-group"><label class="form-label">EK-Preis (€)</label><input name="supply_price" class="form-input" inputmode="decimal"></div>
+            <div class="form-group"><label class="form-label">Mindestmenge</label><input name="min_order_qty" class="form-input" inputmode="decimal"></div>
+            <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="supply_lead_time" class="form-input"></div>
+            <div class="form-group" style="align-self:end"><label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="preferred"> Bevorzugt</label></div>
+          </div>
+          <div class="form-group"><label class="form-label">Bemerkung</label><input name="supply_notes" class="form-input" maxlength="500"></div>
+          <button class="btn btn-primary btn-small" type="submit" style="width:100%"><i class="ti ti-link"></i> Zuordnen</button>
+        </form>
+      </details>
+      {{end}}
     </div>
   </div>
 </div>

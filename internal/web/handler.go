@@ -33,6 +33,7 @@ import (
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
 	"pdh/pkg/appsettings"
+	"pdh/pkg/config"
 )
 
 // ── Template-Daten ───────────────────────────────────────────
@@ -235,6 +236,8 @@ type PartView struct {
 	StockQty         string
 	MinQty           string
 	Price            string
+	StorageLocation  string
+	StoragePlace     string
 	Status           string
 	StatusLabel      string
 	StatusClass      string
@@ -261,6 +264,7 @@ type Handler struct {
 	projects         *projects.Service
 	rbac             *rbac.Service
 	jwtSecret        string
+	mailCfg          config.MailConfig
 	updateAgentURL   string
 	updateAgentToken string
 	buildCommit      string
@@ -391,6 +395,25 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/records/{refType}/{id}/parties/{partyId}/delete", h.RecordPartyDeleteWeb)
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/directory", h.DirectoryPage)
+	r.Get("/directory/purchase-report", h.PurchaseReportPage)
+	r.Post("/directory/purchase-report/settings", h.PurchaseReportSettingsWeb)
+	r.Post("/directory/purchase-report/send", h.PurchaseReportSendWeb)
+	r.Post("/inventory/{id}/purchasing", h.PartPurchasingWeb)
+	r.Get("/directory/new", h.PartnerNewPage)
+	r.Post("/directory", h.PartnerCreateWeb)
+	r.Get("/directory/{id}", h.PartnerDetail)
+	r.Post("/directory/{id}/edit", h.PartnerUpdateWeb)
+	r.Post("/directory/{id}/active", h.PartnerActiveWeb)
+	r.Post("/directory/{id}/contacts", h.PartnerContactSaveWeb)
+	r.Post("/directory/{id}/contacts/{contactId}/delete", h.PartnerContactDeleteWeb)
+	r.Post("/directory/{id}/links", h.PartnerLinkSaveWeb)
+	r.Post("/directory/{id}/links/{linkId}/delete", h.PartnerLinkDeleteWeb)
+	r.Post("/directory/{id}/links/{linkId}/embed", h.PartnerLinkEmbedWeb)
+	r.Get("/directory/{id}/links/{linkId}/password", h.PartnerLinkPasswordWeb)
+	r.Post("/directory/{id}/assign", h.PartnerAssignWeb)
+	r.Post("/directory/{id}/unassign", h.PartnerUnassignWeb)
+	r.Post("/inventory/{id}/suppliers", h.PartSupplierAssignWeb)
+	r.Post("/inventory/{id}/suppliers/{partnerId}/delete", h.PartSupplierRemoveWeb)
 	r.Get("/users", h.Users)
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -2616,6 +2639,14 @@ type InventoryDetailData struct {
 	Part          PartView
 	Movements     []*inventory.StockMovement
 	LowStockParts []PartView
+	Suppliers       []PartSupplierView
+	SupplierOptions []partnerOption
+	Users           []UserOption
+	BuyerID         string
+	BuyerName       string
+	CanPurchasing   bool
+	CanPartners     bool
+	Error           string
 }
 
 func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
@@ -2647,6 +2678,7 @@ func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
 		Part:     pv,
 	}
+	h.loadPartPurchasing(ctx, r, id, &data)
 
 	if mv, err := h.inv.GetMovements(ctx, id); err == nil {
 		data.Movements = mv
@@ -2938,6 +2970,8 @@ type ITAssetView struct {
 
 type ITDetailData struct {
 	BaseData
+	Supplier *PartnerLink
+	SupplierID string
 	Users []UserOption
 	Asset ITAssetDetailView
 }
@@ -3885,6 +3919,9 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		Parent         *InfraNodeView
 		HistoryModules []infraHistoryModule
 		CommentRefs    []InfraCommentRefOption
+		PartnerLinks   []PartnerLink
+		SupplierID     string
+		ServiceID      string
 	}
 	node, err := h.infra.GetByID(ctx, id)
 	if err != nil {
@@ -3897,6 +3934,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		HistoryModules: infraHistoryModules,
 		CommentRefs:    h.infraCommentRefOptions(ctx, id),
 	}
+	data.PartnerLinks, data.SupplierID, data.ServiceID = h.infraPartnerLinks(ctx, id)
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
 		for _, c := range children {
 			data.Children = append(data.Children, infraNodeView(c))
@@ -3923,6 +3961,9 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 		Model:    r.FormValue("model"), CostCenterID: optionalID(r.FormValue("cost_center_id")),
 	}
 	err := h.infra.Update(r.Context(), id, in)
+	if err == nil {
+		err = h.saveInfraPartnerRoles(r.Context(), r, id)
+	}
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
@@ -4043,6 +4084,10 @@ func (h *Handler) ITDetail(w http.ResponseWriter, r *http.Request) {
 		Users:    h.userOptions(ctx),
 		Asset:    itAssetDetailView(a),
 	}
+	data.Supplier = h.itSupplierLink(ctx, id)
+	if data.Supplier != nil {
+		data.SupplierID = data.Supplier.ID
+	}
 	h.render(w, "it_detail", data)
 }
 
@@ -4067,6 +4112,10 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 		AssignedTo:       optionalID(r.FormValue("assigned_to")),
 		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
 		Notes:            r.FormValue("notes"),
+	}
+	if err := h.saveITSupplier(r.Context(), r, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	if err := h.it.UpdateDetails(r.Context(), id, in); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

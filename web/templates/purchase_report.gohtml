@@ -1,0 +1,97 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.pr-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.pr-sup{border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.pr-sup-head{background:var(--bg3);padding:10px 14px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.pr-sup-head .grow{flex:1;min-width:200px}
+.pr-sub{font-size:11px;color:var(--muted)}
+.pr-sub a{color:var(--accent)}
+.pr-table td,.pr-table th{padding:7px 12px;font-size:12.5px}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <a class="btn btn-icon" href="/directory" title="Hersteller & Lieferanten"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:18px;font-weight:600">Bestellvorschlag</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Ersatzteile auf/unter Mindestbestand – je Einkäufer und Lieferant{{if .LastRun}} · letzter Versand: {{.LastRun}}{{end}}</p>
+  </div>
+  <a class="btn btn-small {{if .OnlyMine}}btn-primary{{end}}" href="/directory/purchase-report{{if not .OnlyMine}}?mine=1{{end}}"><i class="ti ti-user"></i> Nur meine</a>
+  {{if .CanEdit}}
+  <form method="post" action="/directory/purchase-report/send" onsubmit="return confirm('Bestellvorschläge jetzt an alle Einkäufer senden?')">
+    <button class="btn btn-small btn-primary" type="submit" {{if not .MailConfigured}}disabled title="SMTP nicht konfiguriert"{{end}}><i class="ti ti-send"></i> Jetzt senden</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Message}}<div class="pr-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="pr-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if not .MailConfigured}}<div class="pr-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-mail-off"></i> Kein SMTP konfiguriert (PDH_SMTP_HOST, PDH_SMTP_FROM …) – der tägliche Versand ist inaktiv, die Ansicht hier funktioniert trotzdem.</div>{{end}}
+
+{{range .Groups}}
+<div class="card">
+  <div class="card-title">
+    <span><i class="ti ti-user-dollar"></i> {{.BuyerName}}{{if .BuyerEmail}} <span class="pr-sub">· {{.BuyerEmail}}</span>{{end}}</span>
+    <span class="pr-sub">{{.Positions}} Position(en) · {{.Total}}</span>
+  </div>
+  {{range .Suppliers}}
+  <div class="pr-sup">
+    <div class="pr-sup-head">
+      <div class="grow">
+        {{if .PartnerID}}<a href="/directory/{{.PartnerID}}?tab=parts" data-frame data-frame-title="{{.Name}}" style="font-weight:600">{{.Name}}</a>{{else}}<span style="font-weight:600;color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.Name}}</span>{{end}}
+        <div class="pr-sub">
+          {{if .OrderEmail}}<a href="mailto:{{.OrderEmail}}">{{.OrderEmail}}</a>{{end}}
+          {{if .OrderPhone}} · <a href="tel:{{.OrderPhone}}">{{.OrderPhone}}</a>{{end}}
+          {{if .CustomerNo}} · Kundennr. {{.CustomerNo}}{{end}}
+          {{if .LeadTime}} · ca. {{.LeadTime}}{{end}}
+        </div>
+      </div>
+      {{if .ShopURL}}<a class="btn btn-small" href="{{.ShopURL}}" target="_blank" rel="noopener"><i class="ti ti-shopping-cart"></i> Shop</a>{{end}}
+      <span style="font-weight:600;font-size:13px">{{.Total}}</span>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="pr-table">
+      <thead><tr><th>Teil</th><th>Lief.-Nr.</th><th style="text-align:right">Bestand / Min.</th><th style="text-align:right">Bestellen</th><th style="text-align:right">Wert</th></tr></thead>
+      <tbody>
+      {{range .Lines}}
+      <tr>
+        <td><a href="/inventory/{{.PartID}}" data-frame data-frame-title="{{.Name}}"><span style="font-family:monospace;color:var(--muted)">{{.PartNumber}}</span> {{.Name}}</a>
+          {{if .Manufacturer}}<div class="pr-sub">Hersteller: {{.Manufacturer}}</div>{{end}}</td>
+        <td style="font-family:monospace">{{.SupplierPartNo}}</td>
+        <td style="text-align:right;white-space:nowrap">{{if .Critical}}<span class="badge b-red">kritisch</span> {{end}}{{.Stock}} / {{.MinQty}} {{.Unit}}</td>
+        <td style="text-align:right;white-space:nowrap;font-weight:600">{{.OrderQty}} {{.Unit}}</td>
+        <td style="text-align:right;white-space:nowrap">{{.LineTotal}}<div class="pr-sub">à {{.UnitPrice}}</div></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="card" style="text-align:center;color:var(--muted);padding:28px"><i class="ti ti-circle-check" style="font-size:28px;color:var(--green)"></i><div style="margin-top:6px">Aktuell muss nichts bestellt werden.</div></div>
+{{end}}
+
+{{if .CanEdit}}
+<form class="card" method="post" action="/directory/purchase-report/settings">
+  <div class="card-title"><span><i class="ti ti-settings"></i> Täglicher Versand</span></div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}> Automatisch versenden</label>
+    <div class="form-group" style="margin:0"><label class="form-label">Uhrzeit</label><input type="time" name="time" class="form-input" value="{{.Time}}" style="width:auto"></div>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="weekdays_only" {{if .WeekdaysOnly}}checked{{end}}> Nur Mo–Fr</label>
+    <div class="form-group" style="margin:0;min-width:220px"><label class="form-label">Standard-Einkäufer (Teile ohne Einkäufer)</label>
+      <select name="default_buyer" class="form-input"><option value="">– keiner –</option>
+        {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.DefaultBuyer}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </div>
+  <p class="pr-sub" style="margin-top:8px">Bestellmenge = Nachbestellmenge des Teils (bzw. Fehlmenge bis Mindestbestand + Nachbestellmenge), aufgerundet auf die Mindestabnahme des Lieferanten. Gesperrte Lieferanten werden übersprungen.</p>
+</form>
+{{end}}
+{{end}}
+
+{{define "context-list"}}
+{{range .Groups}}<div class="act-item"><div class="act-dot d-amber"></div><div class="act-text">{{.BuyerName}} · {{.Positions}} Pos.</div></div>{{end}}
+{{end}}
+
+{{define "scripts"}}{{end}}

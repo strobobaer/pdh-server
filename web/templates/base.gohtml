@@ -12,6 +12,9 @@
   document.documentElement.dataset.themeMode = mode;
   if(localStorage.getItem('pdh_sidebar_left') !== 'expanded') document.documentElement.classList.add('sidebar-left-collapsed');
   if(localStorage.getItem('pdh_sidebar_right') === 'collapsed') document.documentElement.classList.add('sidebar-right-collapsed');
+  // Eingebettete Ansicht (PDH-Viewer): window.name bleibt bei Navigation
+  // im iframe erhalten, daher bleiben auch Folgeseiten ohne Navigation.
+  if(window.name === 'pdh-embed' || /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add('pdh-embedded');
 })();
 </script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
@@ -35,6 +38,17 @@ html[data-theme="light"]{
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 a{color:inherit;text-decoration:none}
 .app{display:grid;grid-template-columns:var(--left-sidebar-w) 1fr var(--right-sidebar-w);flex:1;overflow:hidden;transition:grid-template-columns .18s ease}
+html.pdh-embedded .app{grid-template-columns:1fr}
+html.pdh-embedded .sidebar,html.pdh-embedded .context,html.pdh-embedded .topbar{display:none}
+html.pdh-embedded .main{padding:14px}
+/* ── PDH-Viewer (iframe-Overlay) ── */
+.pdh-frame{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.6);display:flex;align-items:stretch;justify-content:flex-end}
+.pdh-frame-panel{background:var(--bg);border-left:1px solid var(--border);width:min(1100px,100%);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
+.pdh-frame-panel.wide{width:100%}
+.pdh-frame-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.pdh-frame-title{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdh-frame-hint{font-size:11px;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--border);background:var(--bg3)}
+.pdh-frame iframe{flex:1;width:100%;border:0;background:var(--bg)}
 html.sidebar-left-collapsed{--left-sidebar-w:54px}
 html.sidebar-right-collapsed{--right-sidebar-w:54px}
 /* ── Sidebar ── */
@@ -320,6 +334,7 @@ select.form-input option{background:var(--bg2)}
     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
     <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">Infrastruktur</span></a>
+    <a href="/directory" class="nav-item {{if eq .Page "directory"}}active{{end}}"><i class="ti ti-building-factory-2"></i><span class="nav-label">Hersteller & Lieferanten</span></a>
 
     {{if .CanImport}}
     <div class="nav-section">Import</div>
@@ -999,6 +1014,71 @@ function sendCop() {
     msgs.innerHTML += '<div class="cop-a" style="color:var(--muted)">Copilot nicht erreichbar</div>';
   });
 }
+</script>
+<script>
+// PDH-Viewer: verknuepfte Datensaetze (data-frame) bzw. freigegebene
+// externe Portale (data-frame-external) im Overlay statt Seitenwechsel.
+// Strg/Cmd/Mittelklick oeffnen weiterhin normal im neuen Tab.
+function openPdhFrame(href, title, external){
+  closePdhFrame();
+  const wrap = document.createElement('div');
+  wrap.className = 'pdh-frame';
+  wrap.id = 'pdh-frame';
+  wrap.addEventListener('click', function(e){ if(e.target === wrap) closePdhFrame(); });
+  const panel = document.createElement('div');
+  panel.className = 'pdh-frame-panel';
+  const head = document.createElement('div');
+  head.className = 'pdh-frame-head';
+  const t = document.createElement('div');
+  t.className = 'pdh-frame-title';
+  t.textContent = title || href;
+  const btn = function(icon, label, fn){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-small'; b.title = label;
+    b.innerHTML = '<i class="ti '+icon+'"></i>';
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const frame = document.createElement('iframe');
+  frame.name = external ? 'pdh-external' : 'pdh-embed';
+  if(external){
+    frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads');
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+  }
+  frame.src = href;
+  head.appendChild(t);
+  head.appendChild(btn('ti-arrows-maximize', 'Breite umschalten', function(){ panel.classList.toggle('wide'); }));
+  head.appendChild(btn('ti-external-link', 'In neuem Tab öffnen', function(){
+    let url = href;
+    try { if(!external && frame.contentWindow) url = frame.contentWindow.location.href; } catch(e) {}
+    window.open(url, '_blank', 'noopener');
+  }));
+  head.appendChild(btn('ti-x', 'Schließen', closePdhFrame));
+  panel.appendChild(head);
+  if(external){
+    const hint = document.createElement('div');
+    hint.className = 'pdh-frame-hint';
+    hint.innerHTML = '<i class="ti ti-info-circle"></i> Externes Portal. Bleibt die Ansicht leer, verbietet der Anbieter die Einbettung – dann über <i class="ti ti-external-link"></i> in neuem Tab öffnen.';
+    panel.appendChild(hint);
+  }
+  panel.appendChild(frame);
+  wrap.appendChild(panel);
+  document.body.appendChild(wrap);
+}
+function closePdhFrame(){
+  const f = document.getElementById('pdh-frame');
+  if(f) f.remove();
+}
+document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closePdhFrame(); });
+document.addEventListener('click', function(e){
+  const a = e.target.closest('[data-frame],[data-frame-external]');
+  if(!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+  // Innerhalb einer eingebetteten Ansicht normal navigieren (kein Overlay im Overlay)
+  if(document.documentElement.classList.contains('pdh-embedded') && a.hasAttribute('data-frame')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openPdhFrame(a.getAttribute('href') || a.dataset.href, a.dataset.frameTitle || a.textContent.trim(), a.hasAttribute('data-frame-external'));
+}, true);
 </script>
 {{block "scripts" .}}{{end}}
 </body>

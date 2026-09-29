@@ -41,6 +41,7 @@ type externalParty struct {
 	Name    string
 	Company string
 	Contact string
+	PartnerID string
 }
 
 // RecordPartiesWeb liefert den Block "Ersteller / Verantwortlich / Zuständig"
@@ -155,7 +156,7 @@ func partyKindLabel(kind string) string {
 
 func (h *Handler) recordExternalParties(ctx context.Context, refType, id string) []externalParty {
 	rows, err := h.db.Query(ctx, `
-		SELECT id::text, role, kind, name, company, contact
+		SELECT id::text, role, kind, name, company, contact, COALESCE(partner_id::text, '')
 		FROM record_external_parties WHERE ref_type = $1 AND ref_id = $2
 		ORDER BY created_at`, refType, id)
 	if err != nil {
@@ -165,7 +166,7 @@ func (h *Handler) recordExternalParties(ctx context.Context, refType, id string)
 	var list []externalParty
 	for rows.Next() {
 		var p externalParty
-		if err := rows.Scan(&p.ID, &p.Role, &p.Kind, &p.Name, &p.Company, &p.Contact); err == nil {
+		if err := rows.Scan(&p.ID, &p.Role, &p.Kind, &p.Name, &p.Company, &p.Contact, &p.PartnerID); err == nil {
 			list = append(list, p)
 		}
 	}
@@ -233,6 +234,10 @@ func (h *Handler) writeParties(w http.ResponseWriter, r *http.Request, refType, 
 				continue
 			}
 			icon, text := "ti-building", esc(p.Name)
+			if p.PartnerID != "" {
+				// Verknuepfter Verzeichnis-Partner: im PDH-Viewer oeffnen
+				text = `<a href="/directory/` + esc(p.PartnerID) + `" data-frame data-frame-title="` + esc(p.Name) + `" style="color:var(--accent)">` + text + `</a>`
+			}
 			if p.Kind == "person" {
 				icon = "ti-user-share"
 				if p.Company != "" {

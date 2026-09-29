@@ -13,6 +13,22 @@ type Config struct {
 	Copilot  CopilotConfig
 	Update   UpdateConfig
 	Microsoft MicrosoftConfig
+	Mail      MailConfig
+}
+
+// MailConfig: SMTP-Versand (z. B. taeglicher Bestellvorschlag). TLSMode:
+// "starttls" (Standard, Port 587), "tls" (implizit, Port 465) oder "none".
+// PublicURL wird fuer Links in E-Mails verwendet. CredentialsKey
+// verschluesselt Portal-/Shop-Passwoerter (leer = aus JWT-Secret abgeleitet).
+type MailConfig struct {
+	Host           string
+	Port           int
+	User           string
+	Password       string
+	From           string
+	TLSMode        string
+	PublicURL      string
+	CredentialsKey string
 }
 
 type ServerConfig struct {
@@ -102,6 +118,14 @@ func Load() (*Config, error) {
 	viper.BindEnv("microsoft.teamssenderuserid", "PDH_MICROSOFT_TEAMS_SENDER_USER_ID")
 	viper.BindEnv("microsoft.teamsid", "PDH_MICROSOFT_TEAMS_ID")
 	viper.BindEnv("microsoft.teamschannelid", "PDH_MICROSOFT_TEAMS_CHANNEL_ID")
+	viper.BindEnv("mail.host", "PDH_SMTP_HOST")
+	viper.BindEnv("mail.port", "PDH_SMTP_PORT")
+	viper.BindEnv("mail.user", "PDH_SMTP_USER")
+	viper.BindEnv("mail.password", "PDH_SMTP_PASSWORD")
+	viper.BindEnv("mail.from", "PDH_SMTP_FROM")
+	viper.BindEnv("mail.tlsmode", "PDH_SMTP_TLS")
+	viper.BindEnv("mail.publicurl", "PDH_PUBLIC_URL")
+	viper.BindEnv("mail.credentialskey", "PDH_CREDENTIALS_KEY")
 
 	// Standardwerte
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -115,6 +139,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("copilot.ollamaurl", "http://localhost:11434")
 	viper.SetDefault("copilot.model", "llama3.2")
 	viper.SetDefault("copilot.anthropicmodel", "claude-sonnet-4-20250514")
+	viper.SetDefault("mail.port", 587)
+	viper.SetDefault("mail.tlsmode", "starttls")
 
 	cfg := &Config{}
 	cfg.Server.Host = viper.GetString("server.host")
@@ -142,6 +168,14 @@ func Load() (*Config, error) {
 	cfg.Microsoft.TeamsSenderUserID = viper.GetString("microsoft.teamssenderuserid")
 	cfg.Microsoft.TeamsID = viper.GetString("microsoft.teamsid")
 	cfg.Microsoft.TeamsChannelID = viper.GetString("microsoft.teamschannelid")
+	cfg.Mail.Host = viper.GetString("mail.host")
+	cfg.Mail.Port = viper.GetInt("mail.port")
+	cfg.Mail.User = viper.GetString("mail.user")
+	cfg.Mail.Password = viper.GetString("mail.password")
+	cfg.Mail.From = viper.GetString("mail.from")
+	cfg.Mail.TLSMode = viper.GetString("mail.tlsmode")
+	cfg.Mail.PublicURL = viper.GetString("mail.publicurl")
+	cfg.Mail.CredentialsKey = viper.GetString("mail.credentialskey")
 
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")

@@ -1,0 +1,52 @@
+{{/*
+  E-Mail "Bestellvorschlag" an einen Einkaeufer. Daten: Group
+  (*PurchaseBuyerGroup), BaseURL (PDH_PUBLIC_URL, optional), Date.
+  Bewusst nur Inline-Styles (Mailclients ignorieren <style>).
+*/}}
+{{define "purchase-report-mail"}}
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#f5f7fb;font-family:Segoe UI,Arial,sans-serif;color:#111827;font-size:14px">
+<div style="max-width:880px;margin:0 auto;background:#ffffff;border:1px solid #d7dee8;border-radius:10px;padding:24px">
+  <h1 style="font-size:19px;margin:0 0 4px">Bestellvorschlag vom {{.Date}}</h1>
+  <p style="margin:0 0 18px;color:#64748b">Hallo {{.Group.BuyerName}}, folgende Ersatzteile liegen auf oder unter Mindestbestand. Vorgeschlagen ist jeweils der bevorzugte (sonst günstigste) freigegebene Lieferant.</p>
+  {{range .Group.Suppliers}}
+  <div style="border:1px solid #d7dee8;border-radius:8px;margin-bottom:16px;overflow:hidden">
+    <div style="background:#eef2f7;padding:10px 14px">
+      <div style="font-weight:600;font-size:15px">{{.Name}}</div>
+      <div style="color:#64748b;font-size:12px;margin-top:2px">
+        {{if .OrderEmail}}Bestellung: <a href="mailto:{{.OrderEmail}}" style="color:#3457d5">{{.OrderEmail}}</a>{{end}}
+        {{if .OrderPhone}} · Tel. {{.OrderPhone}}{{end}}
+        {{if .CustomerNo}} · Unsere Kundennr.: {{.CustomerNo}}{{end}}
+        {{if .LeadTime}} · Lieferzeit ca. {{.LeadTime}}{{end}}
+        {{if .ShopURL}} · <a href="{{.ShopURL}}" style="color:#3457d5">Onlineshop</a>{{end}}
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:#64748b;font-size:11px;text-transform:uppercase">
+        <th style="padding:8px 14px">Teil</th><th style="padding:8px">Lief.-Nr.</th>
+        <th style="padding:8px;text-align:right">Bestand / Min.</th><th style="padding:8px;text-align:right">Bestellen</th>
+        <th style="padding:8px 14px;text-align:right">Wert</th></tr></thead>
+      <tbody>
+      {{range .Lines}}
+      <tr style="border-top:1px solid #eef2f7">
+        <td style="padding:8px 14px">{{if $.BaseURL}}<a href="{{$.BaseURL}}/inventory/{{.PartID}}" style="color:#111827">{{end}}<span style="font-family:monospace;color:#64748b">{{.PartNumber}}</span> {{.Name}}{{if $.BaseURL}}</a>{{end}}
+          {{if .Manufacturer}}<div style="color:#64748b;font-size:11px">Hersteller: {{.Manufacturer}}</div>{{end}}
+          {{if .Critical}}<div style="color:#dc2626;font-size:11px;font-weight:600">kritischer Bestand</div>{{end}}</td>
+        <td style="padding:8px;font-family:monospace">{{.SupplierPartNo}}</td>
+        <td style="padding:8px;text-align:right;white-space:nowrap">{{.Stock}} / {{.MinQty}} {{.Unit}}</td>
+        <td style="padding:8px;text-align:right;white-space:nowrap;font-weight:600">{{.OrderQty}} {{.Unit}}</td>
+        <td style="padding:8px 14px;text-align:right;white-space:nowrap">{{.LineTotal}}<div style="color:#64748b;font-size:11px">à {{.UnitPrice}}</div></td>
+      </tr>
+      {{end}}
+      </tbody>
+      <tfoot><tr style="border-top:1px solid #d7dee8"><td colspan="4" style="padding:8px 14px;text-align:right;color:#64748b">Summe</td><td style="padding:8px 14px;text-align:right;font-weight:600">{{.Total}}</td></tr></tfoot>
+    </table>
+  </div>
+  {{end}}
+  <p style="margin:16px 0 0;font-weight:600">Gesamt: {{.Group.Total}} · {{.Group.Positions}} Position(en)</p>
+  {{if .BaseURL}}<p style="margin:12px 0 0"><a href="{{.BaseURL}}/directory/purchase-report?mine=1" style="color:#3457d5">Bestellvorschlag im PDH öffnen</a></p>{{end}}
+  <p style="margin:18px 0 0;color:#94a3b8;font-size:11px">Automatisch erzeugt vom PDH – Prozess Data Hub. Einkäufer und Lieferanten werden im Ersatzteilstamm gepflegt.</p>
+</div>
+</body></html>
+{{end}}
