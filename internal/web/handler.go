@@ -3097,7 +3097,7 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	data := UsersPageData{
 		BaseData:        h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
 		Filter:          filter,
-		CanPromoteAdmin: h.rbac.Outranks(actorRoleKey, "admin"),
+		CanPromoteAdmin: h.actorIsAdmin(r) && h.rbac.Outranks(actorRoleKey, "admin"),
 		ScopedToOwnTeam: !canFullyManage,
 		ManagerOptions:  h.userOptions(ctx),
 	}
@@ -3215,6 +3215,10 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
 			return
 		}
+		if role == users.RoleAdmin && !h.actorIsAdmin(r) {
+			http.Error(w, "nur Administratoren dürfen die Admin-Rolle vergeben", http.StatusForbidden)
+			return
+		}
 		if len(password) < 8 {
 			http.Error(w, "Neues Passwort muss mindestens 8 Zeichen lang sein", http.StatusBadRequest)
 			return
@@ -3273,6 +3277,10 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 		if newRole != currentUser.Role {
 			if !h.outranksRole(r, string(newRole)) {
 				http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
+				return
+			}
+			if newRole == users.RoleAdmin && !h.actorIsAdmin(r) {
+				http.Error(w, "nur Administratoren dürfen die Admin-Rolle vergeben", http.StatusForbidden)
 				return
 			}
 			role = newRole
@@ -3356,6 +3364,10 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung für diese Rolle", http.StatusForbidden)
 		return
 	}
+	if newRole == users.RoleAdmin && !h.actorIsAdmin(r) {
+		http.Error(w, "nur Administratoren dürfen die Admin-Rolle vergeben", http.StatusForbidden)
+		return
+	}
 	u.Role = newRole
 	h.users.Update(r.Context(), u)
 	h.Users(w, r)
@@ -3389,6 +3401,12 @@ type PermissionGroup struct {
 func (h *Handler) canManageRoles(r *http.Request) bool {
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles")
+}
+
+// actorIsAdmin: angemeldete Person hat die Rolle "admin" (nur Admins duerfen
+// die Admin-Rolle vergeben).
+func (h *Handler) actorIsAdmin(r *http.Request) bool {
+	return getUser(r).Role == users.RoleAdmin
 }
 
 func (h *Handler) canManageUsers(r *http.Request) bool {

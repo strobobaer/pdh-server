@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/core/rbac"
+	"pdh/internal/core/users"
 )
 
 // Benutzer-Detailseite (/users/{id}) mit Reitern: Uebersicht, Stammdaten,
@@ -60,6 +61,8 @@ type UserDetailData struct {
 	Quals               []qualGroup
 	QualWarn            int
 	QualKinds           interface{}
+	CanMakeAdmin        bool
+	CanDeactivate       bool
 }
 
 // userAccess ermittelt die Rechte des angemeldeten Benutzers auf targetID.
@@ -113,7 +116,9 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		IsSelf: self, CanEditMaster: editMaster, CanEditCore: editCore,
 		CanBroker:      h.canManageUsers(r),
 		CanPrivate:     h.canPrivateData(r, id),
-		CanPermissions: h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
+		CanPermissions: !self && h.canEditUserPermissions(r, string(u.Role)),
+		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
+		CanDeactivate:  !self && u.Active && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
 	}
 	if m, err := h.loadUserMasterErr(ctx, id); err != nil {
@@ -143,7 +148,8 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		d.CanChangeRole = h.canManageUsers(r) && (h.outranksRole(r, string(u.Role)) || self)
 		if roles, err := h.rbac.ListRoles(ctx); err == nil {
 			for _, ro := range roles {
-				if ro.Key == string(u.Role) || h.outranksRole(r, ro.Key) {
+				// Admin-Rolle nur fuer Admins waehlbar
+				if ro.Key == string(u.Role) || (h.outranksRole(r, ro.Key) && (ro.Key != string(users.RoleAdmin) || h.actorIsAdmin(r))) {
 					d.Roles = append(d.Roles, ro)
 				}
 			}

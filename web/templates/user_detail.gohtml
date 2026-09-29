@@ -14,7 +14,7 @@
     </div>
   </div>
   {{if not .IsSelf}}<a class="btn btn-small" href="#" onclick="pdhOpenDirectChat('{{$u.ID}}');return false"><i class="ti ti-message"></i> Chat</a>{{end}}
-  {{if .CanPermissions}}<a class="btn btn-small" href="/users?permissions={{$u.ID}}"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
+  {{if .CanDeactivate}}<button type="button" class="btn btn-small" style="color:var(--red)" onclick="pdhDeactivateUser('{{$u.ID}}')"><i class="ti ti-user-off"></i> Deaktivieren</button>{{end}}
   {{if .CanEditMaster}}<a class="btn btn-small btn-primary" href="?tab=master" onclick="recTab('master');return false"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}
 </div>
 
@@ -27,6 +27,7 @@
   {{if .CanPrivate}}<a class="rec-tab" data-tab="private" href="?tab=private"><i class="ti ti-lock"></i> Privat</a>{{end}}
   <a class="rec-tab" data-tab="quals" href="?tab=quals"><i class="ti ti-certificate"></i> Nachweise{{if .QualWarn}} <b style="background:var(--amber);color:#111">{{.QualWarn}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b></a>
+  {{if .CanPermissions}}<a class="rec-tab" data-tab="perms" href="?tab=perms"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
   {{if .IsSelf}}<a class="rec-tab" data-tab="account" href="?tab=account"><i class="ti ti-plug-connected"></i> Konto & Dienste</a>{{end}}
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
@@ -248,6 +249,24 @@
   </div>
 </div>
 
+<!-- ── Einzelrechte ── -->
+{{if .CanPermissions}}
+<div class="rec-pane" data-pane="perms">
+  {{if .CanMakeAdmin}}
+  <div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <i class="ti ti-crown" style="font-size:22px;color:var(--amber)"></i>
+    <div style="flex:1;min-width:200px"><div style="font-weight:600">Zum Administrator machen</div><div class="rec-sub">Nur für Administratoren sichtbar. Die Person erhält die Rolle „Administrator“ mit allen Rechten.</div></div>
+    <button type="button" class="btn btn-small" style="border-color:var(--amber);color:var(--amber)" onclick="pdhMakeAdmin('{{$u.ID}}','{{$u.FullName}}')"><i class="ti ti-crown"></i> Admin machen</button>
+  </div>
+  {{end}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-shield-lock"></i> Einzelrechte</span><span class="rec-sub">Abweichungen von der Rolle „{{$u.RoleLabel}}“</span></div>
+    <p class="rec-sub" style="margin-bottom:8px">„Rolle“ übernimmt die Einstellung der Rolle; „Erlaubt“/„Verboten“ gelten nur für diese Person und haben Vorrang. Änderungen werden sofort gespeichert.</p>
+    <div id="perm-list" data-user="{{$u.ID}}" style="font-size:13px">Wird geladen…</div>
+  </div>
+</div>
+{{end}}
+
 <!-- ── Konto & Dienste (nur eigenes Konto) ── -->
 {{if .IsSelf}}
 <div class="rec-pane" data-pane="account">
@@ -303,5 +322,82 @@ async function pdhOpenDirectChat(userId){
     else location.href = '/chat#c=' + d.id;
   } catch(e){ alert('Chat konnte nicht geöffnet werden: ' + e.message); }
 }
+
+async function pdhDeactivateUser(userId){
+  if(!confirm('Benutzer deaktivieren? Die Person kann sich danach nicht mehr anmelden.')) return;
+  const res = await fetch('/users/' + userId + '/deactivate-web', {method: 'DELETE', credentials: 'same-origin'});
+  if(res.ok) location.href = '/users/' + userId + '?msg=' + encodeURIComponent('Benutzer deaktiviert');
+  else alert('Deaktivieren fehlgeschlagen: ' + (await res.text()));
+}
+
+async function pdhMakeAdmin(userId, name){
+  if(!confirm(name + ' wirklich zum Administrator machen?')) return;
+  const res = await fetch('/users/' + userId + '/role-web', {method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'role=admin'});
+  if(res.ok) location.href = '/users/' + userId + '?tab=perms&msg=' + encodeURIComponent('Rolle auf Administrator geändert');
+  else alert('Nicht möglich: ' + (await res.text()));
+}
+
+// Einzelrechte: Liste laden (JSON) und Aenderungen sofort speichern
+(function(){
+  const box = document.getElementById('perm-list');
+  if(!box) return;
+  const userId = box.dataset.user;
+  let loaded = false;
+  async function load(){
+    if(loaded) return; loaded = true;
+    try {
+      const res = await fetch('/users/' + userId + '/permissions', {credentials: 'same-origin'});
+      if(!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
+      render(await res.json() || []);
+    } catch(e){ box.innerHTML = ''; const s = document.createElement('span'); s.style.color = 'var(--red)'; s.textContent = 'Konnte nicht geladen werden: ' + e.message; box.appendChild(s); loaded = false; }
+  }
+  function render(rows){
+    box.replaceChildren();
+    let cat = null;
+    rows.forEach(function(row){
+      if(row.category !== cat){
+        cat = row.category;
+        const h = document.createElement('div');
+        h.className = 'rec-sec'; h.textContent = cat;
+        box.appendChild(h);
+      }
+      const line = document.createElement('div');
+      line.className = 'rec-row';
+      const label = document.createElement('div');
+      label.className = 'grow';
+      label.textContent = row.label;
+      const hint = document.createElement('div');
+      hint.className = 'rec-sub';
+      hint.textContent = 'Rolle: ' + (row.role_granted ? 'erlaubt' : 'nicht erlaubt');
+      label.appendChild(hint);
+      const sel = document.createElement('select');
+      sel.className = 'form-input'; sel.style.cssText = 'width:auto;font-size:12px;padding:5px 8px';
+      sel.add(new Option('Wie Rolle (' + (row.role_granted ? 'erlaubt' : 'verboten') + ')', 'clear'));
+      sel.add(new Option('Erlaubt', 'allow'));
+      sel.add(new Option('Verboten', 'deny'));
+      sel.value = row.override === true ? 'allow' : row.override === false ? 'deny' : 'clear';
+      const mark = function(){ line.style.background = sel.value === 'clear' ? '' : 'rgba(79,110,247,.07)'; };
+      mark();
+      sel.addEventListener('change', async function(){
+        sel.disabled = true;
+        try {
+          const res = await fetch('/users/' + userId + '/permissions', {method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'permission_id=' + encodeURIComponent(row.id) + '&mode=' + encodeURIComponent(sel.value)});
+          if(!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
+          mark();
+        } catch(e){ alert('Konnte nicht gespeichert werden: ' + e.message); }
+        finally { sel.disabled = false; }
+      });
+      line.append(label, sel);
+      box.appendChild(line);
+    });
+    if(!rows.length) box.textContent = 'Keine Berechtigungen definiert.';
+  }
+  // erst laden, wenn der Reiter sichtbar ist
+  const obs = new IntersectionObserver(function(entries){ if(entries.some(function(e){ return e.isIntersecting; })) load(); });
+  obs.observe(box);
+})();
 </script>
 {{end}}

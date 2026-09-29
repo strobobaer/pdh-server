@@ -1208,6 +1208,52 @@ document.addEventListener('DOMContentLoaded', function(){
   if(document.querySelector('.rec-tab[data-tab]')) recTab(new URL(location.href).searchParams.get('tab') || '');
 });
 
+// ── Zurueck zur vorherigen Seite ─────────────────────────
+// Pro Browser-Tab (sessionStorage) wird der Seitenverlauf gefuehrt; Zurueck-
+// Knoepfe (Pfeil links / "Zurück" / data-back) springen zur vorherigen ANDEREN
+// Seite. Reiterwechsel, Speichern (Redirect auf dieselbe Seite) und Meldungen
+// zaehlen nicht als eigener Schritt. Ohne Vorgaenger gilt das feste href.
+(function(){
+  if(document.documentElement.classList.contains('pdh-embedded')) return;
+  const KEY = 'pdh_nav';
+  let stack = [];
+  try { stack = JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch(e) { stack = []; }
+  const clean = location.search.replace(/([?&])(msg|err)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace('?&', '?');
+  const here = {p: location.pathname, u: location.pathname + clean, t: document.title.replace(/^PDH – /, '')};
+  const last = stack[stack.length - 1];
+  if(last && last.p === here.p) { last.u = here.u; last.t = here.t; }
+  else if(stack.length > 1 && stack[stack.length - 2].p === here.p) { stack.pop(); stack[stack.length - 1].u = here.u; } // Browser-Zurueck
+  else { stack.push(here); if(stack.length > 40) stack = stack.slice(-40); }
+  const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(stack)); } catch(e) {} };
+  save();
+  // aktuellen Reiter (?tab=) im Verlauf mitfuehren, damit "zurueck" dort landet
+  window.addEventListener('pagehide', () => {
+    const top = stack[stack.length - 1];
+    if(top && top.p === location.pathname) { top.u = location.pathname + location.search.replace(/([?&])(msg|err)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace('?&', '?'); save(); }
+  });
+  function previous(){
+    for(let i = stack.length - 2; i >= 0; i--) if(stack[i].p !== here.p) return i;
+    return -1;
+  }
+  const isBack = a => a && a.tagName === 'A' && (a.hasAttribute('data-back') || a.getAttribute('aria-label') === 'Zurück' ||
+    (a.classList.contains('btn-icon') && a.querySelector('i.ti-arrow-left')));
+  document.addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if(!isBack(a) || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    const i = previous();
+    if(i < 0) return; // kein Vorgaenger: festes Ziel
+    e.preventDefault();
+    const target = stack[i].u;
+    stack = stack.slice(0, i + 1); save();
+    location.href = target;
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const i = previous();
+    if(i < 0) return;
+    document.querySelectorAll('a').forEach(a => { if(isBack(a)) { a.title = 'Zurück zu: ' + stack[i].t; a.setAttribute('aria-label', 'Zurück'); } });
+  });
+})();
+
 // "Im Chat teilen": aktuelle Seite (ohne embed-Parameter) an den Chat uebergeben
 // Oeffnet den Chat in der rechten Seitenleiste im Teilen-Modus (Fallback: Chat-Seite).
 function pdhShareToChat(){

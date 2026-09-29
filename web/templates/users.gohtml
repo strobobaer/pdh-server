@@ -118,27 +118,16 @@
       </td>
       <td>
         {{if .CanEditProfile}}
-        <div style="position:relative">
-          {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
-          <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-            <button type="button" class="menu-item" onclick="location.href='/users/{{.ID}}?tab=master'"
-              data-id="{{.ID}}" data-first-name="{{.FirstName}}" data-last-name="{{.LastName}}"
-              data-username="{{.Username}}" data-email="{{.Email}}" data-role="{{.RoleValue}}" data-nextcloud-user-id="{{.NextcloudUserID}}"
-              data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}" data-manager-id="{{.ManagerID}}"
-              data-system-user="{{.IsSystemUser}}" data-on-call="{{.OnCallDuty}}" data-can-change-role="{{.CanManage}}"
-              data-shift-locksmith1="{{.ShiftLocksmith1}}" data-shift-locksmith2="{{.ShiftLocksmith2}}"
-              data-sharpening="{{.Sharpening}}" data-heating-fill="{{.HeatingFill}}" data-shift-leader="{{.ShiftLeader}}"><i class="ti ti-edit"></i>Bearbeiten</button>
-            {{if $.CanPromoteAdmin}}
-            <button class="menu-item" hx-post="/users/{{.ID}}/role-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-vals='{"role":"admin"}' onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-crown"></i>Admin machen</button>
-            {{end}}
-            {{if $.CanManageRoles}}
-            <button type="button" class="menu-item" onclick="openPermissionsModal('{{.ID}}','{{.FullName}}');closeMenu('umenu-{{.ID}}')"><i class="ti ti-shield-lock"></i>Einzelrechte</button>
-            {{end}}
-            {{if and .Active .CanManage}}
-            <button class="menu-item menu-danger" hx-delete="/users/{{.ID}}/deactivate-web" hx-target="#user-row-{{.ID}}" hx-swap="outerHTML" hx-confirm="Benutzer deaktivieren?" onclick="closeMenu('umenu-{{.ID}}')"><i class="ti ti-user-off"></i>Deaktivieren</button>
-            {{end}}
-          </div>
-        </div>
+        {{/* Drei Punkte fuehren direkt in die Bearbeitung (Benutzerstamm, Reiter Stammdaten);
+             Einzelrechte, "Admin machen" und Deaktivieren liegen dort. Die data-*-Attribute
+             nutzt weiterhin ?edit=/?permissions= der Liste. */}}
+        <a class="btn btn-icon" href="/users/{{.ID}}?tab=master" title="Bearbeiten"
+          data-id="{{.ID}}" data-first-name="{{.FirstName}}" data-last-name="{{.LastName}}"
+          data-username="{{.Username}}" data-email="{{.Email}}" data-role="{{.RoleValue}}" data-nextcloud-user-id="{{.NextcloudUserID}}"
+          data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}" data-manager-id="{{.ManagerID}}"
+          data-system-user="{{.IsSystemUser}}" data-on-call="{{.OnCallDuty}}" data-can-change-role="{{.CanManage}}"
+          data-shift-locksmith1="{{.ShiftLocksmith1}}" data-shift-locksmith2="{{.ShiftLocksmith2}}"
+          data-sharpening="{{.Sharpening}}" data-heating-fill="{{.HeatingFill}}" data-shift-leader="{{.ShiftLeader}}"><i class="ti ti-dots"></i></a>
         {{end}}
       </td>
     </tr>
@@ -197,14 +186,9 @@ function userRowContextItems(row){
     {label: 'Benutzerstamm öffnen', icon: 'ti-user', onClick: function(){ location.href = '/users/' + data.id; }},
     {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ location.href = '/users/' + data.id + '?tab=master'; }}
   ];
-  if(PDH_CAN_PROMOTE_ADMIN && canManage){
-    items.push({label: 'Admin machen', icon: 'ti-crown', onClick: async function(){
-      const response = await fetch('/users/' + data.id + '/role-web', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'role=admin'});
-      if(response.ok) location.reload();
-    }});
-  }
   if(PDH_CAN_MANAGE_ROLES){
-    items.push({label: 'Einzelrechte', icon: 'ti-shield-lock', onClick: function(){ openPermissionsModal(data.id, fullName); }});
+    // Einzelrechte (und fuer Admins "Admin machen") liegen im Benutzerstamm
+    items.push({label: 'Einzelrechte', icon: 'ti-shield-lock', onClick: function(){ location.href = '/users/' + data.id + '?tab=perms'; }});
   }
   if(active && canManage){
     items.push({separator: true});
@@ -380,11 +364,8 @@ function closePermissionsModal(){
   const permissionsID = params.get('permissions');
   const editID = params.get('edit');
   if(permissionsID){
-    const trigger = document.querySelector('[data-id="' + CSS.escape(permissionsID) + '"]');
-    if(trigger){
-      const name = ((trigger.dataset.firstName || '') + ' ' + (trigger.dataset.lastName || '')).trim();
-      openPermissionsModal(permissionsID, name);
-    }
+    location.replace('/users/' + encodeURIComponent(permissionsID) + '?tab=perms');
+    return;
   } else if(editID){
     const trigger = document.querySelector('[data-id="' + CSS.escape(editID) + '"]');
     if(trigger) editUser(trigger);

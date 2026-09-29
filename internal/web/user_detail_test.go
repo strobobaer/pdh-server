@@ -120,3 +120,35 @@ func TestUserQualificationsTab(t *testing.T) {
 		t.Error("Nummernfeld mit Recht auf private Daten fehlt")
 	}
 }
+
+func TestUserPermissionsTabAndAdminButton(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := UserDetailData{User: UserView{ID: "u2", Username: "max", FullName: "Max", RoleLabel: "Techniker"},
+		Master: userMaster{Language: "de"}, CanPermissions: true}
+	out := renderPage(t, tmpl, "user_detail", d)
+	checkTabs(t, "user_detail(perms)", out, "perms")
+	if strings.Contains(out, "pdhMakeAdmin('u2'") {
+		t.Error("'Admin machen' ohne Admin-Recht sichtbar")
+	}
+	d.CanMakeAdmin = true
+	if out = renderPage(t, tmpl, "user_detail", d); !strings.Contains(out, "pdhMakeAdmin('u2'") {
+		t.Error("'Admin machen' für Admins fehlt")
+	}
+	d.CanPermissions, d.CanMakeAdmin = false, false
+	if out = renderPage(t, tmpl, "user_detail", d); strings.Contains(out, `data-pane="perms"`) {
+		t.Error("Einzelrechte ohne Berechtigung sichtbar")
+	}
+}
+
+func TestUsersListDotsOpenEditing(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "users", UsersPageData{
+		Users: []UserView{{ID: "u3", FullName: "Eva", Username: "eva", CanEditProfile: true, CanManage: true, Active: true}},
+	})
+	if !strings.Contains(out, `href="/users/u3?tab=master" title="Bearbeiten"`) {
+		t.Error("Drei-Punkte-Knopf führt nicht in die Bearbeitung")
+	}
+	if strings.Contains(out, `id="umenu-u3"`) || strings.Contains(out, "Admin machen") {
+		t.Error("altes Menü bzw. 'Admin machen' noch in der Liste")
+	}
+}
