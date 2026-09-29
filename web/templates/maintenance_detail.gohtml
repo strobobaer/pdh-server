@@ -265,6 +265,10 @@
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
     </div>
+    <div class="card">
+      <div class="card-title">Beteiligte</div>
+      <div id="record-parties" hx-get="/records/maintenance_task/{{.Task.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
+    </div>
     {{if .Task.CanComplete}}
     <div class="card">
       {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als erledigt markieren" "Style" "width:100%;justify-content:center" "OnClick" (printf "openCompleteForm('%s');window.scrollTo({top:0,behavior:'smooth'})" .Task.ID))}}

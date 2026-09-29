@@ -258,7 +258,20 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   <div id="timeline-card">
     <div id="timeline-card-head">
-      <strong>Zeitstrahl</strong>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <strong>Zeitstrahl</strong>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">Heute ±
+          <select id="dash-gantt-range" title="Anzeigebereich: Tage vor und nach heute" style="min-height:0;padding:3px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)">
+            <option value="7">7 Tage</option>
+            <option value="14">14 Tage</option>
+            <option value="30" selected>30 Tage</option>
+            <option value="60">60 Tage</option>
+            <option value="90">90 Tage</option>
+            <option value="180">180 Tage</option>
+          </select>
+        </label>
+        <span id="dash-gantt-hidden-note" style="font-size:11px;color:var(--muted)"></span>
+      </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
         <span><i class="ti ti-square-filled" style="color:var(--type-fault)"></i> Störungen</span>
         <span><i class="ti ti-square-filled" style="color:var(--type-ticket)"></i> Tickets</span>
@@ -503,33 +516,87 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     }
   }
 
+  // Anzeigebereich: heute liegt immer in der Mitte, die Auswahl legt fest,
+  // wie viele Tage davor/danach sichtbar sind (pro Browser gemerkt).
+  const rangeSelect = document.getElementById('dash-gantt-range');
+  const hiddenNote = document.getElementById('dash-gantt-hidden-note');
+  function getRangeDays(){ return parseInt(rangeSelect.value, 10) || 30; }
+  try{
+    const saved = localStorage.getItem('pdh_global_gantt_range');
+    if(saved && Array.prototype.some.call(rangeSelect.options, function(o){ return o.value === saved; })) rangeSelect.value = saved;
+  }catch(e){}
+  rangeSelect.addEventListener('change', function(){
+    try{ localStorage.setItem('pdh_global_gantt_range', rangeSelect.value); }catch(e){}
+    renderDashGantt();
+  });
+
+  function centerDashGanttOnToday(){
+    const target = document.getElementById('dash-gantt-target');
+    const scroller = target.querySelector('.gantt-container') || target;
+    const marker = target.querySelector('.today-highlight');
+    if(!marker) return;
+    const x = parseFloat(marker.getAttribute('x')) || 0;
+    const w = parseFloat(marker.getAttribute('width')) || 0;
+    scroller.scrollLeft = Math.max(0, x + w/2 - scroller.clientWidth/2);
+  }
+
   function renderDashGantt(){
     const target = document.getElementById('dash-gantt-target');
     const empty = document.getElementById('dash-gantt-empty');
-    if(!dashGanttItems.length){
+
+    const days = getRangeDays();
+    const today = todayMidnight();
+    const winStart = new Date(today); winStart.setDate(winStart.getDate() - days);
+    const winEnd = new Date(today); winEnd.setDate(winEnd.getDate() + days);
+
+    // Nur Vorgänge, die den Bereich berühren; Balken werden zur Anzeige
+    // auf den Bereich gekürzt.
+    const visible = [];
+    dashGanttItems.forEach(function(t){
+      const s = parseISODate(t.start), e = parseISODate(t.end);
+      if(!s || !e || e < winStart || s > winEnd) return;
+      visible.push({item:t, start: s < winStart ? winStart : s, end: e > winEnd ? winEnd : e});
+    });
+    const outside = dashGanttItems.length - visible.length;
+    hiddenNote.textContent = outside > 0 ? (outside + ' außerhalb des Bereichs') : '';
+
+    if(!visible.length){
       target.style.display = 'none';
       empty.style.display = 'block';
+      empty.textContent = dashGanttItems.length ? 'Keine Einträge im gewählten Zeitbereich.' : 'Keine Einträge mit Terminen vorhanden.';
       return;
     }
     target.style.display = 'block';
     empty.style.display = 'none';
 
     const byId = {};
-    dashGanttItems.forEach(function(t){ byId[t.id] = t; });
+    visible.forEach(function(v){ byId[v.item.id] = v.item; });
 
-    const tasks = dashGanttItems.map(function(t){
-      return {id: t.id, name: t.name, start: t.start, end: t.end, progress: t.done ? 100 : 0};
+    const tasks = visible.map(function(v){
+      return {id: v.item.id, name: v.item.name, start: formatDateISO(v.start), end: formatDateISO(v.end), progress: v.item.done ? 100 : 0};
     });
+    const viewMode = days <= 14 ? 'Day' : (days <= 90 ? 'Week' : 'Month');
+    const axisStart = winStart;
+    const axisEnd = new Date(winEnd); axisEnd.setDate(axisEnd.getDate() + 1);
 
     try{
+      target.replaceChildren();
       dashGanttInstance = new Gantt('#dash-gantt-target', tasks, {
         on_date_change: function(task, start, end){
           const item = byId[task.id];
           if(item) saveDashGanttDate(item, end);
         },
-        view_mode: 'Week'
+        view_mode: viewMode
       });
-      setTimeout(applyDashGanttStyling, 100);
+      // frappe-gantt leitet die Zeitachse aus den Aufgaben ab; hier wird sie
+      // fest auf [heute-N, heute+N] gesetzt, damit heute immer mittig liegt.
+      dashGanttInstance.setup_gantt_dates = function(){
+        this.gantt_start = new Date(axisStart);
+        this.gantt_end = new Date(axisEnd);
+      };
+      dashGanttInstance.change_view_mode(viewMode);
+      centerDashGanttOnToday();
+      setTimeout(function(){ applyDashGanttStyling(); centerDashGanttOnToday(); }, 100);
     }catch(e){
       console.warn('Leitstand-Zeitstrahl konnte nicht gerendert werden', e);
       target.style.display = 'none';

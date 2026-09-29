@@ -63,9 +63,17 @@ else
     mkdir -p "$repo_dir/bin"
     (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
     (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
-    install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent
+    # Zuerst die Anwendung neu starten: ein nicht ersetzbares Agent-Binary
+    # (z.B. aeltere systemd-Unit ohne /usr/local/bin in ReadWritePaths oder
+    # schreibgeschuetztes Dateisystem) darf das Update nicht halb fertig
+    # abbrechen.
     systemctl restart pdh
-    systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
+    if install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent; then
+        systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
+    else
+        echo "WARNING: /usr/local/bin/pdh-update-agent konnte nicht ersetzt werden; der Update-Agent bleibt auf der alten Version." >&2
+        echo "         Auf dem Server 'sudo ./install-update-agent.sh' im Repo-Verzeichnis ausfuehren (aktualisiert die systemd-Unit inkl. ReadWritePaths)." >&2
+    fi
 fi
 
 echo "Updated to $target."
