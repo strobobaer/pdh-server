@@ -48,6 +48,17 @@
   </div>
 </div>
 
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Änderungen</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
 <!-- Kind hinzufügen -->
 <div id="add-child" style="display:none" class="card">
   <div class="card-title">Unteranlage hinzufügen</div>
@@ -102,6 +113,51 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Bearbeiten -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">
+        <span>Bearbeiten</span>
+        {{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}
+      </div>
+      <div id="edit-form" style="display:none">
+        <form hx-post="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
+          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Node.Name}}" required></div>
+          <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Node.Location}}"></div>
+          <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{.Node.SerialNo}}"></div>
+          <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
+          {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "infra-edit-manufacturer-id" "Value" .Node.ManufacturerID "LegacyValue" .Node.Manufacturer)}}
+          {{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}
+          {{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}
+          {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-edit-cost-center-id" "Value" .Node.CostCenterID)}}
+          {{template "icon-button-toolbar" (dict
+            "Class" "end"
+            "Label" "Infrastruktur bearbeiten"
+            "Style" "width:100%;justify-content:flex-end;margin-top:8px"
+            "Items" (list
+              (dict "Action" "cancel" "ShowLabel" true "OnClick" "toggleEdit()")
+              (dict "Action" "save" "ShowLabel" true "Type" "submit")
+            )
+          )}}
+        </form>
+        <div id="edit-result"></div>
+      </div>
+      <div id="edit-info">
+        <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Node.TypeIcon}} {{.Node.TypeLabel}}</div></div></div>
+        {{if .Node.Location}}<div class="li"><div class="li-text"><div class="li-sub">Standort</div><div class="li-title">{{.Node.Location}}</div></div></div>{{end}}
+        {{if and .Node.Manufacturer (not .Node.ManufacturerName)}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
+        {{range .PartnerLinks}}<div class="li"><div class="li-text"><div class="li-sub">{{.RoleLabel}}</div><div class="li-title"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div></div>{{end}}
+        {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
+        {{if .Node.CostCenterName}}<div class="li"><div class="li-text"><div class="li-sub">Kostenstelle</div><div class="li-title">{{.Node.CostCenterNumber}} - {{.Node.CostCenterName}}</div></div></div>{{end}}
+        {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
+      </div>
+    </div>
+</div>
+</div>
+
+<!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->
+<div class="rec-pane" data-pane="events">
     <!-- Historie -->
     <div class="card" id="infra-history">
       <div class="card-title"><span><i class="ti ti-history"></i> Anlagen-Historie</span></div>
@@ -162,6 +218,15 @@
       </div>
     </div>
 
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
     <!-- Anhänge -->
     <div class="card">
       <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
@@ -178,47 +243,13 @@
         </label>
       </div>
     </div>
-  </div>
-
-  <!-- Bearbeiten -->
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">
-        <span>Bearbeiten</span>
-        {{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}
-      </div>
-      <div id="edit-form" style="display:none">
-        <form hx-post="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
-          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Node.Name}}" required></div>
-          <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Node.Location}}"></div>
-          <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{.Node.SerialNo}}"></div>
-          <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
-          {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "infra-edit-manufacturer-id" "Value" .Node.ManufacturerID "LegacyValue" .Node.Manufacturer)}}
-          {{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}
-          {{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}
-          {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-edit-cost-center-id" "Value" .Node.CostCenterID)}}
-          {{template "icon-button-toolbar" (dict
-            "Class" "end"
-            "Label" "Infrastruktur bearbeiten"
-            "Style" "width:100%;justify-content:flex-end;margin-top:8px"
-            "Items" (list
-              (dict "Action" "cancel" "ShowLabel" true "OnClick" "toggleEdit()")
-              (dict "Action" "save" "ShowLabel" true "Type" "submit")
-            )
-          )}}
-        </form>
-        <div id="edit-result"></div>
-      </div>
-      <div id="edit-info">
-        <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Node.TypeIcon}} {{.Node.TypeLabel}}</div></div></div>
-        {{if .Node.Location}}<div class="li"><div class="li-text"><div class="li-sub">Standort</div><div class="li-title">{{.Node.Location}}</div></div></div>{{end}}
-        {{if and .Node.Manufacturer (not .Node.ManufacturerName)}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
-        {{range .PartnerLinks}}<div class="li"><div class="li-text"><div class="li-sub">{{.RoleLabel}}</div><div class="li-title"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div></div>{{end}}
-        {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
-        {{if .Node.CostCenterName}}<div class="li"><div class="li-text"><div class="li-sub">Kostenstelle</div><div class="li-title">{{.Node.CostCenterNumber}} - {{.Node.CostCenterName}}</div></div></div>{{end}}
-        {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
-      </div>
-    </div>
 </div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}</div>
+
+<!-- ── Änderungen ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}</div>
 {{end}}
 
 {{define "context-list"}}

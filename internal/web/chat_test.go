@@ -118,11 +118,11 @@ func TestChatPageRenders(t *testing.T) {
 		t.Error("Teilen-Button auf der Chat-Seite")
 	}
 	other := renderPage(t, tmpl, "purchase_report", PurchaseReportData{BaseData: BaseData{Page: "directory", CanChat: true}})
-	if !strings.Contains(other, "chat-nav-badge") || !strings.Contains(other, "/chat/api/unread") || !strings.Contains(other, "Im Chat teilen") {
+	if !strings.Contains(other, "chat-nav-badge") || !strings.Contains(other, `data-context-panel="chat"`) || !strings.Contains(other, "pdhSideChat") || !strings.Contains(other, "Im Chat teilen") {
 		t.Error("Chat-Einbindung (Zähler/Teilen) fehlt auf anderen Seiten")
 	}
 	noChat := renderPage(t, tmpl, "purchase_report", PurchaseReportData{})
-	if strings.Contains(noChat, "/chat/api/unread") {
+	if strings.Contains(noChat, `id="sc-body"`) || strings.Contains(noChat, `data-context-panel="chat"`) || strings.Contains(noChat, "new EventSource") {
 		t.Error("ohne Berechtigung keine Chat-Einbindung")
 	}
 }

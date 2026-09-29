@@ -54,12 +54,7 @@
   </form>
 </div>
 
-<div class="widget-icon-toolbar compact" style="margin-bottom:14px">
-  <a class="btn {{if eq .Filter ""}}btn-primary{{end}}" href="/tasks">Alle</a>
-  <a class="btn {{if eq .Filter "open"}}btn-primary{{end}}" href="/tasks?status=open">Offen</a>
-  <a class="btn {{if eq .Filter "in_progress"}}btn-primary{{end}}" href="/tasks?status=in_progress">In Arbeit</a>
-  <a class="btn" href="/tasks?unassigned=true">Ohne Projekt</a>
-</div>
+{{template "list-tabs" .Tabs}}
 
 <div class="card" style="padding:0">
   <table>

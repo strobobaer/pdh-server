@@ -1,0 +1,6 @@
+{{/* Reiter fuer Listenansichten: {{template "list-tabs" .Tabs}} (siehe list_tabs.go) */}}
+{{define "list-tabs"}}
+<div class="list-tabs" role="tablist">
+  {{range .}}<a href="{{.URL}}" class="{{if .Active}}active{{end}}"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{.Count}}</b></a>{{end}}
+</div>
+{{end}}

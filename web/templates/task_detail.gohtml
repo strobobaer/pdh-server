@@ -12,6 +12,16 @@
   <span class="badge {{.Task.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Task.StatusLabel}}</span>
 </div>
 
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
 <div class="grid2" style="grid-template-columns:1fr 300px;gap:14px;align-items:start">
   <div>
     {{if .Task.Description}}
@@ -164,6 +174,31 @@
     </div>
   </div>
 </div>
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "task" "ID" .Task.ID)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Fotos & Dokumente</span></div>
+    <div id="attachments-{{.Task.ID}}" data-attach-ref="task:{{.Task.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'task','{{.Task.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'task','{{.Task.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'task','{{.Task.ID}}')"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "task" "ID" .Task.ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "task" "ID" .Task.ID)}}</div>
 {{end}}
 
 {{define "context-list"}}

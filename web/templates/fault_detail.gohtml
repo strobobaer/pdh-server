@@ -23,7 +23,18 @@
   </div>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="copilot" href="?tab=copilot"><i class="ti ti-brain"></i> Copilot</a>
+  <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-tool"></i> Maßnahmen & Ersatzteile</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
 
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
 <div class="grid2" style="grid-template-columns:1fr 380px;gap:14px;align-items:start">
   <div>
     <div class="card">
@@ -38,46 +49,6 @@
       {{end}}
     </div>
 
-    {{if .Analysis}}
-    <div class="card">
-      <div class="card-title">
-        <span><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot-Analyse</span>
-        <span style="font-size:11px;color:var(--muted)">Konfidenz: {{printf "%.0f" .Analysis.Confidence}}%</span>
-      </div>
-      <p style="font-size:13px;margin-bottom:14px;line-height:1.6;color:var(--muted)">{{.Analysis.Summary}}</p>
-      {{if .Analysis.PossibleCauses}}
-      <div style="margin-bottom:14px">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Mögliche Ursachen</div>
-        {{range .Analysis.PossibleCauses}}
-        <div class="li"><div class="act-dot d-amber"></div><div class="li-text">{{.}}</div></div>
-        {{end}}
-      </div>
-      {{end}}
-      {{if .Analysis.Steps}}
-      <div>
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Entstörungsschritte</div>
-        {{range .Analysis.Steps}}
-        <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">{{.Order}}</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:500">{{.Title}}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px">{{.Description}}</div>
-            {{if .Command}}<code style="display:block;margin-top:6px;background:var(--bg3);padding:4px 8px;border-radius:5px;font-size:11px;color:#6ee7b7">{{.Command}}</code>{{end}}
-          </div>
-        </div>
-        {{end}}
-      </div>
-      {{end}}
-    </div>
-    {{else}}
-    <div class="card" style="text-align:center;padding:24px">
-      <i class="ti ti-brain" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px"></i>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Noch keine Analyse vorhanden</p>
-      {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren lassen" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result")}}
-      <span id="analyze-spinner" class="htmx-indicator" style="margin-left:6px">...</span>
-      <div id="analyze-result"></div>
-    </div>
-    {{end}}
 
     {{if eq .Fault.Status "in_progress"}}
     <div id="resolve-form" style="display:none" class="card">
@@ -117,75 +88,6 @@
       {{if .Fault.RootCause}}<p style="font-size:13px;color:var(--muted)"><strong>Grundursache:</strong> {{.Fault.RootCause}}</p>{{end}}
     </div>
     {{end}}
-
-    <!-- Durchgeführte Maßnahmen -->
-    <div class="card">
-      <div class="card-title">Durchgeführte Maßnahmen</div>
-      <div id="fault-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <div style="display:flex;gap:8px">
-        <input id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
-        <button type="button" class="btn" onclick="addFaultAction()"><i class="ti ti-plus"></i></button>
-      </div>
-    </div>
-
-    <!-- Ersatzteile: Merkliste (Buchung erst beim Lösen) bzw. gebuchte Teile -->
-    <div class="card">
-      <div class="card-title">{{if .Fault.Resolution}}Verwendete Ersatzteile{{else}}Ersatzteile für die Reparatur{{end}}</div>
-      {{if not .Fault.Resolution}}<p style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen der Störung tatsächlich aus dem Lager gebucht.</p>{{end}}
-      <div id="fault-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      {{if not .Fault.Resolution}}<button type="button" class="btn" onclick="openFaultPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>{{end}}
-    </div>
-
-    {{if not .Fault.Resolution}}
-    <!-- Ersatzteil-vormerken Popup -->
-    <div id="fault-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
-        <div class="form-group">
-          <label class="form-label">Ersatzteil</label>
-          <input id="fa-part-search" class="form-input" placeholder="Suchen..." oninput="filterFaultParts()" autocomplete="off">
-          <div id="fa-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
-          <input type="hidden" id="fa-part-id">
-          <div id="fa-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Lagerort</label>
-          <select id="fa-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Menge</label>
-          <input id="fa-part-qty" type="number" step="0.001" class="form-input" value="1">
-        </div>
-        <div id="fa-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-          <button type="button" class="btn" onclick="closeFaultPartModal()">Abbrechen</button>
-          <button type="button" class="btn btn-primary" onclick="bookFaultPart()">Vormerken</button>
-        </div>
-      </div>
-    </div>
-    {{end}}
-
-    <!-- Anhänge -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
-      <div id="attachments-{{.Fault.ID}}" data-attach-ref="fault:{{.Fault.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo"></i>Galerie
-          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
-        </label>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera"></i>Kamera
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
-        </label>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload"></i>Dokument
-          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
-        </label>
-      </div>
-    </div>
-
-    {{template "record-history" .History}}
 
   </div>
 
@@ -234,16 +136,6 @@
       </form>
     </div>
 
-    <div class="card">
-      <div class="card-title"><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot Chat</div>
-      <div id="chat-messages" style="background:var(--bg3);border-radius:8px;padding:10px;min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:10px;font-size:13px">
-        <div style="color:var(--muted);font-style:italic;font-size:12px">Stelle Fragen zur Entstörung...</div>
-      </div>
-      <form hx-post="/faults/{{.Fault.ID}}/chat-web" hx-target="#chat-messages" hx-swap="beforeend" hx-on::before-request="appendUserMsg(this)" style="display:flex;gap:8px">
-        <input name="message" id="chat-input" class="form-input" placeholder="z.B. Was könnte die Ursache sein?" style="font-size:12px" autocomplete="off">
-        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
-      </form>
-    </div>
 
     <div class="card">
       <div class="card-title">Beteiligte</div>
@@ -273,6 +165,145 @@
     </div>
   </div>
 </div>
+</div>
+
+<!-- ── Copilot ── -->
+<div class="rec-pane" data-pane="copilot">
+    {{if .Analysis}}
+    <div class="card">
+      <div class="card-title">
+        <span><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot-Analyse</span>
+        <span style="font-size:11px;color:var(--muted)">Konfidenz: {{printf "%.0f" .Analysis.Confidence}}%</span>
+      </div>
+      <p style="font-size:13px;margin-bottom:14px;line-height:1.6;color:var(--muted)">{{.Analysis.Summary}}</p>
+      {{if .Analysis.PossibleCauses}}
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Mögliche Ursachen</div>
+        {{range .Analysis.PossibleCauses}}
+        <div class="li"><div class="act-dot d-amber"></div><div class="li-text">{{.}}</div></div>
+        {{end}}
+      </div>
+      {{end}}
+      {{if .Analysis.Steps}}
+      <div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Entstörungsschritte</div>
+        {{range .Analysis.Steps}}
+        <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">{{.Order}}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:500">{{.Title}}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">{{.Description}}</div>
+            {{if .Command}}<code style="display:block;margin-top:6px;background:var(--bg3);padding:4px 8px;border-radius:5px;font-size:11px;color:#6ee7b7">{{.Command}}</code>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="card" style="text-align:center;padding:24px">
+      <i class="ti ti-brain" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px"></i>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Noch keine Analyse vorhanden</p>
+      {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren lassen" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result")}}
+      <span id="analyze-spinner" class="htmx-indicator" style="margin-left:6px">...</span>
+      <div id="analyze-result"></div>
+    </div>
+    {{end}}
+    <div class="card">
+      <div class="card-title"><i class="ti ti-brain" style="color:var(--accent)"></i> Copilot Chat</div>
+      <div id="chat-messages" style="background:var(--bg3);border-radius:8px;padding:10px;min-height:180px;max-height:320px;overflow-y:auto;margin-bottom:10px;font-size:13px">
+        <div style="color:var(--muted);font-style:italic;font-size:12px">Stelle Fragen zur Entstörung...</div>
+      </div>
+      <form hx-post="/faults/{{.Fault.ID}}/chat-web" hx-target="#chat-messages" hx-swap="beforeend" hx-on::before-request="appendUserMsg(this)" style="display:flex;gap:8px">
+        <input name="message" id="chat-input" class="form-input" placeholder="z.B. Was könnte die Ursache sein?" style="font-size:12px" autocomplete="off">
+        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
+      </form>
+    </div>
+</div>
+
+<!-- ── Maßnahmen & Ersatzteile ── -->
+<div class="rec-pane" data-pane="work">
+    <!-- Durchgeführte Maßnahmen -->
+    <div class="card">
+      <div class="card-title">Durchgeführte Maßnahmen</div>
+      <div id="fault-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      <div style="display:flex;gap:8px">
+        <input id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
+        <button type="button" class="btn" onclick="addFaultAction()"><i class="ti ti-plus"></i></button>
+      </div>
+    </div>
+
+    <!-- Ersatzteile: Merkliste (Buchung erst beim Lösen) bzw. gebuchte Teile -->
+    <div class="card">
+      <div class="card-title">{{if .Fault.Resolution}}Verwendete Ersatzteile{{else}}Ersatzteile für die Reparatur{{end}}</div>
+      {{if not .Fault.Resolution}}<p style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen der Störung tatsächlich aus dem Lager gebucht.</p>{{end}}
+      <div id="fault-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      {{if not .Fault.Resolution}}<button type="button" class="btn" onclick="openFaultPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>{{end}}
+    </div>
+
+    {{if not .Fault.Resolution}}
+    <!-- Ersatzteil-vormerken Popup -->
+    <div id="fault-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
+        <div class="form-group">
+          <label class="form-label">Ersatzteil</label>
+          <input id="fa-part-search" class="form-input" placeholder="Suchen..." oninput="filterFaultParts()" autocomplete="off">
+          <div id="fa-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
+          <input type="hidden" id="fa-part-id">
+          <div id="fa-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lagerort</label>
+          <select id="fa-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Menge</label>
+          <input id="fa-part-qty" type="number" step="0.001" class="form-input" value="1">
+        </div>
+        <div id="fa-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn" onclick="closeFaultPartModal()">Abbrechen</button>
+          <button type="button" class="btn btn-primary" onclick="bookFaultPart()">Vormerken</button>
+        </div>
+      </div>
+    </div>
+    {{end}}
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "fault" "ID" .Fault.ID)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Fault.ID}}" data-attach-ref="fault:{{.Fault.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-photo"></i>Galerie
+          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-camera"></i>Kamera
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
+          <i class="ti ti-file-upload"></i>Dokument
+          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'fault','{{.Fault.ID}}')">
+        </label>
+      </div>
+    </div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "fault" "ID" .Fault.ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history" .History}}</div>
 {{end}}
 
 {{define "context-list"}}

@@ -551,4 +551,3 @@ func (h *Handler) PartPurchasingWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, withTab(back, "purchasing"), http.StatusSeeOther)
 }
-

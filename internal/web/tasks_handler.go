@@ -89,6 +89,7 @@ func taskView(t *tasks.Task) TaskView {
 
 type TasksPageData struct {
 	BaseData
+	Tabs           []ListTab
 	Tasks          []TaskView
 	Filter         string
 	Total          int
@@ -114,6 +115,10 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 		Users:          h.userOptions(ctx),
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
+	data.Tabs = h.statusTabs(ctx, "tasks", "/tasks", filter, []statusTabDef{
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
+	}, false, listTabExtra{Key: "unassigned", Label: "Ohne Projekt", Icon: "ti-folder-off", Query: "unassigned=true",
+		Cond: "project_id IS NULL", Active: unassigned})
 
 	list, err := h.tasks.List(ctx, tasks.Status(filter), "", unassigned)
 	if err == nil {

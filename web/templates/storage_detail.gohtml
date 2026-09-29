@@ -1,0 +1,124 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="{{if .ParentID}}/storage/{{.ParentID}}{{else}}/storage{{end}}" title="Zurück"><i class="ti ti-arrow-left"></i></a>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti {{.Icon}}" style="font-size:26px"></i></div>
+  <div class="t">
+    <h1>{{.Name}}</h1>
+    <div class="sub">
+      <a href="/storage" style="color:var(--accent)">Lager</a>
+      {{range .Crumbs}} › <a href="/storage/{{.ID}}" style="color:var(--accent)">{{.Name}}</a>{{end}}
+      · {{.TypeLabel}}
+    </div>
+  </div>
+  <a class="btn btn-small" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener"><i class="ti ti-printer"></i> Etiketten</a>
+</div>
+
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="stock" href="?tab=stock"><i class="ti ti-package"></i> Bestand <b>{{.PartCount}}</b></a>
+  <a class="rec-tab" data-tab="moves" href="?tab=moves"><i class="ti ti-arrows-exchange"></i> Bewegungen</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
+  <div class="kpis">
+    <div class="kpi"><div class="v">{{.PartCount}}</div><div class="l">Ersatzteile (inkl. Unterplätze)</div></div>
+    <div class="kpi"><div class="v">{{len .Children}}</div><div class="l">Unterplätze</div></div>
+    <div class="kpi"><div class="v" style="font-size:18px">{{.StockValue}}</div><div class="l">Lagerwert</div></div>
+  </div>
+  <div class="rec-grid">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-info-circle"></i> Stammdaten</span></div>
+      <div class="rec-f"><div class="rec-l">Typ</div><div class="rec-v">{{.TypeLabel}}</div></div>
+      {{if .Location}}<div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{.Location}}</div></div>{{end}}
+      {{if .Capacity}}<div class="rec-f"><div class="rec-l">Kapazität</div><div class="rec-v">{{.Capacity}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Beschreibung</div><div class="rec-v">{{if .Description}}{{.Description}}{{else}}—{{end}}</div></div>
+      <p class="rec-sub" style="margin-top:8px">Bearbeiten und Unterplätze anlegen im <a href="/storage" style="color:var(--accent)">Lagerbaum</a>.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-sitemap"></i> Unterplätze</span></div>
+      {{range .Children}}
+      <a class="rec-row" href="/storage/{{.ID}}"><i class="ti {{.Icon}}" style="color:var(--muted)"></i><div class="grow">{{.Name}}<div class="rec-sub">{{.TypeLabel}}</div></div><span class="rec-sub">{{.Parts}} Teile</span><i class="ti ti-chevron-right" style="color:var(--muted)"></i></a>
+      {{else}}<div class="rec-sub">Keine Unterplätze</div>{{end}}
+    </div>
+  </div>
+</div>
+
+<!-- ── Bestand ── -->
+<div class="rec-pane" data-pane="stock">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Teil</th><th>Platz</th><th style="text-align:right">Menge</th><th style="text-align:right">Mindestmenge</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {{range .Stock}}
+      <tr>
+        <td><a href="/inventory/{{.PartID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)"><span style="font-family:monospace;color:var(--muted)">{{.PartNumber}}</span> {{.Name}}</a></td>
+        <td style="font-size:12px">{{if .Path}}{{.Path}}{{else}}<span class="rec-sub">direkt</span>{{end}}</td>
+        <td style="text-align:right;font-weight:600">{{.Qty}} {{.Unit}}</td>
+        <td style="text-align:right">{{.MinQty}}</td>
+        <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+        <td><a class="btn btn-icon" style="width:30px;min-width:30px;height:30px" href="/inventory/labels?part={{.PartID}}&loc={{.NodeID}}" target="_blank" rel="noopener" title="Etikett"><i class="ti ti-printer" style="font-size:14px"></i></a></td>
+      </tr>
+      {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Keine Ersatzteile an diesem Lagerplatz</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Bewegungen ── -->
+<div class="rec-pane" data-pane="moves">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Datum</th><th>Art</th><th>Teil</th><th style="text-align:right">Menge</th><th>Platz</th><th>Benutzer</th></tr></thead>
+      <tbody>
+      {{range .Movements}}
+      <tr>
+        <td style="white-space:nowrap;font-size:12px">{{.Date}}</td>
+        <td><span class="badge {{if eq .TypeKey "in"}}b-green{{else if eq .TypeKey "out"}}b-red{{else}}b-gray{{end}}">{{.TypeLabel}}</span></td>
+        <td style="font-size:12px"><a href="{{.RecordURL}}" data-frame data-frame-title="{{.RecordLabel}}" style="color:var(--accent)">{{.RecordLabel}}</a>{{if .Reference}}<div class="rec-sub">{{.Reference}}</div>{{end}}</td>
+        <td style="text-align:right;font-weight:600">{{.Qty}}</td>
+        <td style="font-size:12px">{{.Path}}</td>
+        <td style="font-size:12px">{{.User}}</td>
+      </tr>
+      {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Keine Bewegungen</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "storage" "ID" .ID)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Fotos & Dokumente</span></div>
+    <div id="attachments-{{.ID}}" data-attach-ref="storage:{{.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> Foto<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'storage','{{.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument<input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none" onchange="uploadFiles(this,'storage','{{.ID}}')"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "storage" "ID" .ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "storage" "ID" .ID)}}</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Children}}<div class="act-item" onclick="location='/storage/{{.ID}}'" style="cursor:pointer"><div class="act-dot d-blue"></div><div class="act-text">{{.Name}}</div><span class="act-time">{{.Parts}}</span></div>{{end}}
+{{end}}
+
+{{define "scripts"}}{{end}}

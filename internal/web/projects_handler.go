@@ -84,6 +84,7 @@ func projectView(p *projects.Project) ProjectView {
 
 type ProjectsPageData struct {
 	BaseData
+	Tabs     []ListTab
 	Projects []ProjectView
 	Total    int
 	Users    []UserOption
@@ -91,11 +92,16 @@ type ProjectsPageData struct {
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	filter := r.URL.Query().Get("status")
 	data := ProjectsPageData{
 		BaseData: h.baseData(r, "projects", "Projektplanung", "Projekte"),
 		Users:    h.userOptions(ctx),
 	}
-	list, err := h.projects.List(ctx, "")
+	data.Tabs = h.statusTabs(ctx, "projects", "/projects", filter, []statusTabDef{
+		{"planning", "Planung", "ti-pencil"}, {"active", "Aktiv", "ti-player-play"},
+		{"paused", "Pausiert", "ti-player-pause"}, {"completed", "Abgeschlossen", "ti-check"},
+	}, false)
+	list, err := h.projects.List(ctx, projects.Status(filter))
 	if err == nil {
 		data.Total = len(list)
 		for _, p := range list {

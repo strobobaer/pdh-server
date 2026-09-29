@@ -11,7 +11,9 @@
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.themeMode = mode;
   if(localStorage.getItem('pdh_sidebar_left') !== 'expanded') document.documentElement.classList.add('sidebar-left-collapsed');
-  if(localStorage.getItem('pdh_sidebar_right') === 'collapsed') document.documentElement.classList.add('sidebar-right-collapsed');
+  // Rechte Seitenleiste startet immer eingeklappt (nur die senkrechten Reiter
+  // sind sichtbar); sie oeffnet sich per Reiter, Chat-Anforderung oder neuer Nachricht.
+  document.documentElement.classList.add('sidebar-right-collapsed');
   // Eingebettete Ansicht (PDH-Viewer): window.name bleibt bei Navigation
   // im iframe erhalten, daher bleiben auch Folgeseiten ohne Navigation.
   if(window.name === 'pdh-embed' || /[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add('pdh-embedded');
@@ -138,6 +140,44 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 html.sidebar-right-collapsed .context{grid-template-columns:54px}
 html.sidebar-right-collapsed .ctx-tabs{padding:5px}
 html.sidebar-right-collapsed .ctx-panel-wrap{display:none}
+/* Senkrechte Reiter der rechten Seitenleiste (auch im eingeklappten Zustand sichtbar) */
+.ctx-tab{height:auto;min-height:34px;flex-direction:column;gap:6px;padding:8px 0;position:relative}
+.ctx-vlabel{writing-mode:vertical-rl;font-size:11px;letter-spacing:.4px;white-space:nowrap;max-height:120px;overflow:hidden;text-overflow:ellipsis}
+.ctx-badge{position:absolute;top:-4px;right:-6px;min-width:17px;height:17px;border-radius:9px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:380px}
+/* Chat in der Seitenleiste */
+.ctx-section.sc-panel{padding:0}
+.ctx-section.sc-panel.active{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.sc-head{display:flex;align-items:center;gap:6px;padding:10px 10px 8px;border-bottom:1px solid var(--border)}
+.sc-htitle{flex:1;min-width:0;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-btn{width:30px;height:30px;border:1px solid var(--border);border-radius:7px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.sc-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sc-body{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-height:0}
+.sc-empty{color:var(--muted);font-size:12px;text-align:center;padding:24px 8px}
+.sc-item{display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:8px;cursor:pointer}
+.sc-item:hover{background:var(--bg3)}
+.sc-item.unread .sc-n{font-weight:700}
+.sc-av{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;flex-shrink:0}
+.sc-t{flex:1;min-width:0}
+.sc-n{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-p{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:10px;color:var(--muted)}
+.sc-badge{min-width:17px;height:17px;border-radius:9px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+.sc-msg{max-width:88%;align-self:flex-start;margin:3px 0}
+.sc-msg.mine{align-self:flex-end;text-align:right}
+.sc-who{font-size:10.5px;color:var(--muted);margin-bottom:1px}
+.sc-bubble{display:inline-block;text-align:left;background:var(--bg3);border:1px solid var(--border);border-radius:4px 10px 10px 10px;padding:6px 9px;font-size:12.5px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
+.sc-msg.mine .sc-bubble{background:rgba(79,110,247,.16);border-color:rgba(79,110,247,.3);border-radius:10px 4px 10px 10px}
+.sc-bubble a{color:var(--accent);text-decoration:underline}
+.sc-mention{color:var(--accent)}
+.sc-card{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:11.5px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:7px;padding:4px 8px;background:var(--bg2);text-align:left}
+.sc-time{font-size:9.5px;color:var(--muted);margin-top:1px}
+.sc-sys{align-self:center;font-size:10.5px;color:var(--muted);margin:6px 0;text-align:center}
+.sc-compose{display:flex;gap:6px;align-items:flex-end;padding:8px 10px;border-top:1px solid var(--border)}
+.sc-compose textarea{flex:1;resize:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12.5px;padding:6px 8px;max-height:120px}
+.sc-compose textarea:focus{outline:0;border-color:var(--accent)}
+.sc-send{background:var(--accent);border-color:var(--accent);color:#fff}
+.sc-share{margin:8px 10px 0;padding:8px 10px;border-radius:8px;background:rgba(79,110,247,.12);color:var(--accent);font-size:11.5px;display:flex;gap:6px;align-items:flex-start}
 .ctx-title{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .ctx-title i{font-size:14px}
 /* ── Search ── */
@@ -399,7 +439,10 @@ select.form-input option{background:var(--bg2)}
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-      {{if and .CanChat (ne .Page "chat")}}<button type="button" class="theme-toggle" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>{{end}}
+      {{if and .CanChat (ne .Page "chat")}}
+      <button type="button" class="theme-toggle" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>
+      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="Chat in der Seitenleiste" style="position:relative"><i class="ti ti-messages"></i><span>Chat</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
+      {{end}}
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="Darstellung wechseln" title="Darstellung wechseln">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
@@ -465,14 +508,32 @@ select.form-input option{background:var(--bg2)}
 <!-- ── Kontext-Spalte ── -->
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
-    <button type="button" class="ctx-tab active" data-context-tab="search" onclick="activateContextTab('search')" title="Suche" aria-label="Suche"><i class="ti ti-search"></i></button>
-    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="Copilot" aria-label="Copilot"><i class="ti ti-brain"></i></button>
-    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="Aktivitaet" aria-label="Aktivitaet"><i class="ti ti-bell"></i></button>
-    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="Auswahl" aria-label="Auswahl"><i class="ti ti-list"></i></button>
-    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="Hilfe" aria-label="Hilfe"><i class="ti ti-help"></i></button>
+    {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="Chat" aria-label="Chat"><i class="ti ti-messages"></i><span class="ctx-vlabel">Chat</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
+    <button type="button" class="ctx-tab" data-context-tab="search" onclick="activateContextTab('search')" title="Suche" aria-label="Suche"><i class="ti ti-search"></i><span class="ctx-vlabel">Suche</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="Copilot" aria-label="Copilot"><i class="ti ti-brain"></i><span class="ctx-vlabel">Copilot</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="Aktivität" aria-label="Aktivität"><i class="ti ti-bell"></i><span class="ctx-vlabel">Aktivität</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="Auswahl" aria-label="Auswahl"><i class="ti ti-list"></i><span class="ctx-vlabel">{{if .ContextTitle}}{{.ContextTitle}}{{else}}Auswahl{{end}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="Hilfe" aria-label="Hilfe"><i class="ti ti-help"></i><span class="ctx-vlabel">Hilfe</span></button>
     <button type="button" class="sidebar-toggle" onclick="toggleSidebar('right')" aria-label="Kontext einklappen" title="Kontext einklappen" style="margin-top:auto"><i class="ti ti-menu-2"></i></button>
   </div>
   <div class="ctx-panel-wrap">
+  {{if and .CanChat (ne .Page "chat")}}
+  <!-- Chat -->
+  <div class="ctx-section sc-panel" data-context-panel="chat">
+    <div class="sc-head">
+      <button type="button" class="sc-btn" id="sc-back" title="Alle Chats" style="display:none"><i class="ti ti-arrow-left"></i></button>
+      <div class="sc-htitle" id="sc-title">Chat</div>
+      <a class="sc-btn" id="sc-full" href="/chat" title="Im Vollbild öffnen"><i class="ti ti-arrows-maximize"></i></a>
+      <button type="button" class="sc-btn" onclick="setRightSidebar(false)" title="Seitenleiste schließen"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="sc-share" id="sc-share" style="display:none"></div>
+    <div class="sc-body" id="sc-body"><div class="sc-empty">Wird geladen…</div></div>
+    <div class="sc-compose" id="sc-compose" style="display:none">
+      <textarea id="sc-input" rows="2" placeholder="Nachricht… (Enter senden)"></textarea>
+      <button type="button" class="sc-btn sc-send" id="sc-send" title="Senden"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+  {{end}}
   <!-- Suche -->
   <div class="ctx-section active" data-context-panel="search">
     <div class="ctx-title"><i class="ti ti-search"></i>Suche</div>
@@ -607,16 +668,20 @@ if(window.matchMedia) {
 
 function applySidebarState() {
   const left = localStorage.getItem('pdh_sidebar_left') !== 'expanded';
-  const right = localStorage.getItem('pdh_sidebar_right') === 'collapsed';
   document.documentElement.classList.toggle('sidebar-left-collapsed', left);
-  document.documentElement.classList.toggle('sidebar-right-collapsed', right);
+}
+// Rechte Seitenleiste oeffnen/schliessen (Zustand wird bewusst nicht gespeichert).
+function setRightSidebar(open) {
+  document.documentElement.classList.toggle('sidebar-right-collapsed', !open);
+  if(open && localStorage.getItem('pdh_context_tab') === 'chat' && window.pdhSideChat) window.pdhSideChat.shown();
 }
 function toggleSidebar(side) {
-  const key = side === 'right' ? 'pdh_sidebar_right' : 'pdh_sidebar_left';
-  const collapsed = side === 'right'
-    ? localStorage.getItem(key) === 'collapsed'
-    : localStorage.getItem(key) !== 'expanded';
-  localStorage.setItem(key, collapsed ? 'expanded' : 'collapsed');
+  if(side === 'right') {
+    setRightSidebar(document.documentElement.classList.contains('sidebar-right-collapsed'));
+    return;
+  }
+  const collapsed = localStorage.getItem('pdh_sidebar_left') !== 'expanded';
+  localStorage.setItem('pdh_sidebar_left', collapsed ? 'expanded' : 'collapsed');
   applySidebarState();
 }
 // ── Menü-Umschalter (globaler Fallback; einzelne Seiten dürfen das lokal
@@ -681,19 +746,25 @@ document.addEventListener('click', function(e){
   }
 })();
 
-function activateContextTab(id) {
-  const selected = id || localStorage.getItem('pdh_context_tab') || 'search';
+// Reiter der rechten Seitenleiste waehlen. Mit id: Leiste oeffnen - ein
+// erneuter Klick auf den bereits offenen Reiter klappt sie wieder ein
+// (ausser opts.keepOpen). Ohne id: nur den gespeicherten Reiter vorwaehlen.
+function activateContextTab(id, opts) {
+  const html = document.documentElement;
+  const stored = localStorage.getItem('pdh_context_tab') || 'search';
+  let selected = id || stored;
+  if(!document.querySelector('[data-context-panel="' + selected + '"]')) selected = 'search';
+  const isOpen = !html.classList.contains('sidebar-right-collapsed');
+  if(id && isOpen && selected === stored && !(opts && opts.keepOpen)) { setRightSidebar(false); return; }
   document.querySelectorAll('[data-context-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.contextTab === selected));
   document.querySelectorAll('[data-context-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.contextPanel === selected));
   localStorage.setItem('pdh_context_tab', selected);
-  if(document.documentElement.classList.contains('sidebar-right-collapsed')) {
-    localStorage.setItem('pdh_sidebar_right', 'expanded');
-    applySidebarState();
-  }
+  html.classList.toggle('ctx-chat-open', selected === 'chat');
+  if(id) setRightSidebar(true);
 }
 document.addEventListener('DOMContentLoaded', () => {
   applySidebarState();
-  activateContextTab(localStorage.getItem('pdh_context_tab') || 'search');
+  activateContextTab(null);
 });
 
 function pdhToken(){return document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1] || localStorage.getItem('pdh_token') || ''}
@@ -1138,63 +1209,244 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 // "Im Chat teilen": aktuelle Seite (ohne embed-Parameter) an den Chat uebergeben
+// Oeffnet den Chat in der rechten Seitenleiste im Teilen-Modus (Fallback: Chat-Seite).
 function pdhShareToChat(){
-  const path = location.pathname + location.search.replace(/[?&]embed=1/, '');
-  const title = (document.querySelector('.main h1') || {}).textContent || document.title.replace(/^PDH – /, '');
-  location.href = '/chat?share=' + encodeURIComponent(path) + '&title=' + encodeURIComponent(title.trim());
+  const path = location.pathname + location.search.replace(/[?&]embed=1/, '').replace(/[?&](msg|err)=[^&]*/g, '');
+  const title = ((document.querySelector('.main h1') || {}).textContent || document.title.replace(/^PDH – /, '')).trim();
+  if(window.pdhSideChat) { window.pdhSideChat.share(location.origin + path, title); return; }
+  location.href = '/chat?share=' + encodeURIComponent(path) + '&title=' + encodeURIComponent(title);
 }
 </script>
 {{if and .CanChat (ne .Page "chat")}}
 <script>
-// Chat-Ungelesen-Zaehler und Hinweis auf neue Nachrichten (nicht in
-// eingebetteten Ansichten und nicht auf der Chat-Seite selbst).
+// Chat in der rechten Seitenleiste: Ungelesen-Zaehler, Chatliste,
+// Unterhaltung mit Antworten und automatisches Oeffnen bei neuer Nachricht
+// (nicht in eingebetteten Ansichten und nicht auf der Chat-Seite selbst).
 (function(){
   if(document.documentElement.classList.contains('pdh-embedded') || !window.EventSource) return;
-  const badge = document.getElementById('chat-nav-badge');
-  let timer = null;
-  function refresh(){
-    fetch('/chat/api/unread', {credentials:'same-origin'}).then(r => r.ok ? r.json() : null).then(d => {
-      if(!d || !badge) return;
-      badge.textContent = d.unread > 99 ? '99+' : d.unread;
-      badge.style.display = d.unread ? '' : 'none';
-      badge.style.background = d.mentions ? 'var(--red)' : 'var(--accent)';
-    }).catch(() => {});
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const S = {me: null, users: {}, convs: {}, teams: {}, current: null, msgs: [], loaded: false};
+  const COLORS = ['#4f6ef7','#10b981','#f59e0b','#ef4444','#7c3aed','#0ea5e9','#ec4899','#14b8a6'];
+  const color = id => { let h = 0; for(const c of String(id)) h = (h*31 + c.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; };
+  const userName = id => (S.users[id] && S.users[id].name) || 'Unbekannt';
+  const other = c => (c.members || []).find(id => id !== S.me);
+  function convName(c){
+    if(c.kind === 'direct'){ const o = other(c); return o ? userName(o) : 'Notizen'; }
+    if(c.kind === 'channel') return '# ' + c.name + (S.teams[c.team_id] ? ' · ' + S.teams[c.team_id] : '');
+    return c.name || (c.members || []).filter(id => id !== S.me).map(id => userName(id).split(' ')[0]).join(', ') || 'Gruppe';
   }
-  function toast(title, body, href){
-    const el = document.createElement('div');
-    el.className = 'chat-toast';
-    const b = document.createElement('b'); b.textContent = title;
-    const s = document.createElement('span'); s.textContent = body;
-    el.append(b, s);
-    el.onclick = () => { location.href = href; };
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 7000);
+  function avatar(c){
+    const id = c.kind === 'direct' ? (other(c) || S.me) : c.id;
+    let inner = '#';
+    if(c.kind === 'direct') inner = esc((S.users[id] && S.users[id].initials) || '?');
+    if(c.kind === 'group') inner = '<i class="ti ti-users"></i>';
+    return '<span class="sc-av" style="background:' + color(id) + '">' + inner + '</span>';
   }
-  refresh();
-  let me = null, users = null, muted = new Set();
-  const es = new EventSource('/chat/stream');
-  es.addEventListener('chat', e => {
-    const ev = JSON.parse(e.data);
-    if(ev.type === 'refresh') users = null; // Stummschaltungen/Mitgliedschaften neu laden
-    if(ev.type === 'message' || ev.type === 'read' || ev.type === 'refresh'){
-      clearTimeout(timer); timer = setTimeout(refresh, 300);
+  function time(ts){
+    const d = new Date(ts), t = new Date();
+    return d.toDateString() === t.toDateString()
+      ? d.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'})
+      : d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+  }
+  function renderBody(m){
+    let s = esc(m.body);
+    s = s.replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, function(u){
+      if(u.startsWith(location.origin + '/')) return '<a href="' + u + '" data-frame>' + u + '</a>';
+      return '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + u + '</a>';
+    });
+    (m.mentions || []).forEach(function(uid){
+      const n = esc('@' + userName(uid));
+      s = s.split(n).join('<b class="sc-mention">' + n + '</b>');
+    });
+    return s;
+  }
+  async function api(method, url, body){
+    const opt = {method: method, credentials: 'same-origin'};
+    if(body) opt.body = body;
+    const res = await fetch(url, opt);
+    const d = res.status === 204 ? null : await res.json().catch(function(){ return {}; });
+    if(!res.ok) throw new Error((d && d.error) || ('HTTP ' + res.status));
+    return d;
+  }
+
+  // ── Zaehler ──
+  function updateBadges(){
+    let total = 0, mention = false;
+    Object.values(S.convs).forEach(function(c){ if(!c.muted) total += c.unread; if(c.mentions) mention = true; });
+    const txt = total > 99 ? '99+' : String(total);
+    ['chat-nav-badge', 'ctx-chat-badge', 'top-chat-badge'].forEach(function(id){
+      const b = $(id); if(!b) return;
+      b.textContent = txt; b.style.display = total ? '' : 'none';
+      b.style.background = mention ? 'var(--red)' : 'var(--accent)';
+    });
+  }
+
+  // ── Laden ──
+  async function bootstrap(){
+    const d = await api('GET', '/chat/api/bootstrap');
+    S.me = d.me; S.users = {}; d.users.forEach(function(u){ S.users[u.id] = u; });
+    S.teams = {}; (d.teams || []).forEach(function(t){ S.teams[t.id] = t.name; });
+    S.convs = {}; d.conversations.forEach(function(c){ S.convs[c.id] = c; });
+    S.loaded = true;
+    updateBadges();
+    if(!S.current) renderList();
+  }
+
+  function renderList(){
+    S.current = null;
+    $('sc-title').textContent = 'Chat';
+    $('sc-back').style.display = 'none';
+    $('sc-full').href = '/chat';
+    $('sc-compose').style.display = 'none';
+    const list = Object.values(S.convs).sort(function(a, b){ return new Date(b.last_message_at) - new Date(a.last_message_at); });
+    $('sc-body').innerHTML = list.map(function(c){
+      const p = c.preview;
+      const prev = p ? ((p.user_id === S.me ? 'Du: ' : '') + (p.body || '📎 Datei')) : '';
+      let badge = '';
+      if(c.mentions) badge = '<span class="sc-badge" style="background:var(--red)">@</span>';
+      else if(c.unread) badge = '<span class="sc-badge">' + c.unread + '</span>';
+      return '<div class="sc-item' + (c.unread ? ' unread' : '') + '" data-conv="' + c.id + '">' + avatar(c) +
+        '<div class="sc-t"><div class="sc-n">' + esc(convName(c)) + '</div><div class="sc-p">' + esc(prev) + '</div></div>' +
+        '<div class="sc-meta">' + (p ? time(p.created_at) : '') + badge + '</div></div>';
+    }).join('') || '<div class="sc-empty">Noch keine Unterhaltungen.<br><a href="/chat" style="color:var(--accent)">Chat öffnen</a></div>';
+  }
+
+  async function openConv(id){
+    const c = S.convs[id]; if(!c) return;
+    S.current = id;
+    $('sc-title').textContent = convName(c);
+    $('sc-back').style.display = '';
+    $('sc-full').href = '/chat#c=' + id;
+    $('sc-compose').style.display = '';
+    $('sc-body').innerHTML = '<div class="sc-empty">Wird geladen…</div>';
+    try {
+      const d = await api('GET', '/chat/api/conversations/' + id + '/messages');
+      if(S.current !== id) return;
+      S.msgs = d.messages.slice(-60);
+      renderMsgs();
+      markRead();
+      if(S.share){
+        // Teilen: Titel und Link vorbelegen, Absenden bleibt beim Benutzer
+        $('sc-input').value = (S.share.title ? S.share.title + '\n' : '') + S.share.url;
+        S.share = null; $('sc-share').style.display = 'none';
+        $('sc-input').focus();
+      }
+    } catch(e){ $('sc-body').innerHTML = '<div class="sc-empty">' + esc(e.message) + '</div>'; }
+  }
+
+  function renderMsgs(){
+    const box = $('sc-body');
+    box.innerHTML = S.msgs.map(function(m){
+      if(m.kind === 'system') return '<div class="sc-sys">' + esc(m.body) + '</div>';
+      const mine = m.user_id === S.me;
+      const links = (m.links || []).map(function(l){
+        return '<a class="sc-card" href="' + l.url + '" data-frame data-frame-title="' + esc(l.label + ': ' + l.title) + '"><i class="ti ' + l.icon + '"></i> ' + esc(l.title) + '</a>';
+      }).join('');
+      const files = (m.files || []).map(function(f){
+        return '<a class="sc-card" href="' + f.url + '" target="_blank" rel="noopener"><i class="ti ' + (f.is_image ? 'ti-photo' : 'ti-file') + '"></i> ' + esc(f.name) + '</a>';
+      }).join('');
+      let bubble = '';
+      if(m.deleted) bubble = '<div class="sc-bubble" style="font-style:italic;opacity:.6">gelöscht</div>';
+      else if(m.body) bubble = '<div class="sc-bubble">' + renderBody(m) + '</div>';
+      const who = mine ? '' : '<div class="sc-who">' + esc(userName(m.user_id)) + (m.parent_id ? ' <i class="ti ti-arrow-back-up"></i>' : '') + '</div>';
+      return '<div class="sc-msg' + (mine ? ' mine' : '') + '">' + who + bubble + links + files + '<div class="sc-time">' + time(m.created_at) + '</div></div>';
+    }).join('') || '<div class="sc-empty">Noch keine Nachrichten</div>';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  let readTimer = null;
+  function markRead(){
+    const c = S.convs[S.current];
+    if(!c || document.hidden || document.documentElement.classList.contains('sidebar-right-collapsed')) return;
+    clearTimeout(readTimer);
+    readTimer = setTimeout(function(){
+      c.unread = 0; c.mentions = 0; updateBadges();
+      fetch('/chat/api/conversations/' + c.id + '/read', {method: 'POST', credentials: 'same-origin'}).catch(function(){});
+    }, 500);
+  }
+
+  async function send(){
+    const ta = $('sc-input'); const text = ta.value.trim();
+    if(!text || !S.current) return;
+    const fd = new FormData(); fd.append('body', text);
+    ta.disabled = true;
+    try {
+      const m = await api('POST', '/chat/api/conversations/' + S.current + '/messages', fd);
+      ta.value = '';
+      if(!S.msgs.some(function(x){ return x.id === m.id; })) S.msgs.push(m);
+      renderMsgs();
+    } catch(e){ alert('Senden fehlgeschlagen: ' + e.message); }
+    finally { ta.disabled = false; ta.focus(); }
+  }
+
+  // Laufende Eingabe irgendwo auf der Seite? Dann die Leiste nicht ungefragt umschalten.
+  function userIsTyping(){
+    const a = document.activeElement;
+    if(!a || a.value === '' || a.value === undefined) return false;
+    if(a.tagName === 'TEXTAREA') return true;
+    return a.tagName === 'INPUT' && ['checkbox', 'radio', 'button', 'submit', 'hidden'].indexOf(a.type) < 0;
+  }
+
+  function onMessage(m){
+    const c = S.convs[m.conversation_id];
+    if(!c){ bootstrap().catch(function(){}); return; }
+    c.last_message_at = m.created_at;
+    c.preview = {user_id: m.user_id, body: m.body, kind: m.kind, created_at: m.created_at};
+    const open = !document.documentElement.classList.contains('sidebar-right-collapsed') && localStorage.getItem('pdh_context_tab') === 'chat';
+    if(S.current === m.conversation_id && !S.msgs.some(function(x){ return x.id === m.id; })){
+      S.msgs.push(m); renderMsgs();
     }
-    if(ev.type === 'message' && ev.data.kind === 'text'){
-      const m = ev.data;
-      const show = () => {
-        if(m.user_id === me || muted.has(m.conversation_id)) return;
-        const u = users[m.user_id];
-        toast((u ? u.name : 'Neue Nachricht'), m.body || '📎 Datei', '/chat#c=' + m.conversation_id);
-      };
-      if(users) show();
-      else fetch('/chat/api/bootstrap', {credentials:'same-origin'}).then(r => r.json()).then(d => {
-        me = d.me; users = {}; d.users.forEach(u => users[u.id] = u);
-        muted = new Set((d.conversations || []).filter(c => c.muted).map(c => c.id));
-        show();
-      }).catch(() => {});
-    }
+    if(m.user_id === S.me || m.kind !== 'text'){ if(!S.current) renderList(); return; }
+    if(S.current === m.conversation_id && open && !document.hidden) markRead();
+    else { c.unread++; if((m.mentions || []).indexOf(S.me) >= 0) c.mentions++; }
+    updateBadges();
+    // Automatisch oeffnen (nicht bei stummgeschalteten Chats / laufender Eingabe)
+    if(!c.muted && !userIsTyping()){
+      activateContextTab('chat', {keepOpen: true});
+      if(S.current !== m.conversation_id && !$('sc-input').value) openConv(m.conversation_id);
+    } else if(!S.current) renderList();
+  }
+
+  // ── Ereignisse ──
+  document.addEventListener('DOMContentLoaded', function(){
+    if(!$('sc-body')) return;
+    $('sc-back').onclick = renderList;
+    $('sc-body').addEventListener('click', function(e){ const it = e.target.closest('[data-conv]'); if(it) openConv(it.dataset.conv); });
+    $('sc-send').onclick = send;
+    $('sc-input').addEventListener('keydown', function(e){ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+    bootstrap().catch(function(){});
+    const es = new EventSource('/chat/stream');
+    es.addEventListener('chat', function(e){
+      const ev = JSON.parse(e.data);
+      if(!S.loaded) return;
+      if(ev.type === 'message') onMessage(ev.data);
+      else if(ev.type === 'message_updated' && S.current === ev.data.conversation_id){
+        const i = S.msgs.findIndex(function(x){ return x.id === ev.data.id; });
+        if(i >= 0){ S.msgs[i] = ev.data; renderMsgs(); }
+      } else if(ev.type === 'read' && ev.data.user_id === S.me && S.convs[ev.data.conversation_id]){
+        S.convs[ev.data.conversation_id].unread = 0; S.convs[ev.data.conversation_id].mentions = 0;
+        updateBadges(); if(!S.current) renderList();
+      } else if(ev.type === 'refresh') bootstrap().catch(function(){});
+    });
+    window.addEventListener('pagehide', function(){ es.close(); });
   });
-  window.addEventListener('pagehide', () => es.close());
+  // wird von activateContextTab aufgerufen, wenn der Chat-Reiter sichtbar wird
+  window.pdhSideChat = {
+    shown: function(){ if(S.current) markRead(); else if(S.loaded) renderList(); },
+    // "Im Chat teilen": Seitenleiste oeffnen, Unterhaltung auswaehlen lassen
+    share: function(url, title){
+      S.share = {url: url, title: title};
+      const box = $('sc-share');
+      box.innerHTML = '<i class="ti ti-share"></i><span style="flex:1">Unterhaltung wählen, um <b></b> zu teilen</span><a href="#" title="Abbrechen"><i class="ti ti-x"></i></a>';
+      box.querySelector('b').textContent = title || url;
+      box.querySelector('a').onclick = function(e){ e.preventDefault(); S.share = null; box.style.display = 'none'; };
+      box.style.display = 'flex';
+      activateContextTab('chat', {keepOpen: true});
+      if(S.current) renderList();
+    }
+  };
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) markRead(); });
 })();
 </script>
 {{end}}

@@ -15,12 +15,12 @@ func TestSuggestOrderQty(t *testing.T) {
 	cases := []struct {
 		stock, min, reorder, supplierMin, want float64
 	}{
-		{2, 5, 10, 0, 10},  // Nachbestellmenge reicht
-		{0, 5, 3, 0, 8},    // Fehlmenge + Nachbestellmenge
-		{1, 2, 0, 0, 1},    // keine Nachbestellmenge -> Fehlmenge
-		{4, 5, 2, 25, 25},  // Mindestabnahme Lieferant
-		{0.5, 2, 1, 0, 3},  // aufrunden auf ganze Einheiten
-		{5, 5, 0, 0, 1},    // genau auf Mindestbestand -> mindestens 1
+		{2, 5, 10, 0, 10}, // Nachbestellmenge reicht
+		{0, 5, 3, 0, 8},   // Fehlmenge + Nachbestellmenge
+		{1, 2, 0, 0, 1},   // keine Nachbestellmenge -> Fehlmenge
+		{4, 5, 2, 25, 25}, // Mindestabnahme Lieferant
+		{0.5, 2, 1, 0, 3}, // aufrunden auf ganze Einheiten
+		{5, 5, 0, 0, 1},   // genau auf Mindestbestand -> mindestens 1
 	}
 	for _, c := range cases {
 		if got := suggestOrderQty(c.stock, c.min, c.reorder, c.supplierMin); got != c.want {

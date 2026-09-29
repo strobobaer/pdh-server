@@ -24,6 +24,15 @@
   </form>
   </div>
 </div>
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
 
 <!-- Bearbeiten -->
 <div id="edit-form" style="display:none" class="card">
@@ -276,6 +285,18 @@
     {{end}}
   </div>
 </div>
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
 {{end}}
 
 {{define "context-list"}}

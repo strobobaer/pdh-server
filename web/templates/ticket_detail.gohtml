@@ -23,35 +23,24 @@
   </div>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{.CommentCount}}</b></a>
+  <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-tool"></i> Maßnahmen & Ersatzteile</a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
 
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
 <div class="grid2" style="grid-template-columns:1fr 340px;gap:14px;align-items:start">
   <div>
     <!-- Beschreibung -->
     <div class="card">
       <div class="card-title">Beschreibung</div>
       <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if .Ticket.Description}}{{.Ticket.Description}}{{else}}Keine Beschreibung{{end}}</p>
-    </div>
-
-    <!-- Kommentare -->
-    <div class="card">
-      <div class="card-title">Kommentare <span style="font-size:11px;color:var(--muted)">{{.CommentCount}}</span></div>
-      <div id="comments-list">
-        {{range .Comments}}
-        <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">{{slice .UserName 0 1}}</div>
-          <div style="flex:1">
-            <div style="font-size:12px;font-weight:500">{{.UserName}} <span style="color:var(--muted);font-weight:400">· {{.CreatedAgo}}</span></div>
-            <div style="font-size:13px;margin-top:4px;line-height:1.5">{{.Text}}</div>
-          </div>
-        </div>
-        {{else}}
-        <div style="color:var(--muted);font-size:12px;padding:8px 0">Noch keine Kommentare</div>
-        {{end}}
-      </div>
-      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
-        <input name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
-        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
-      </form>
     </div>
 
     <!-- Ticket lösen -->
@@ -83,72 +72,6 @@
       </form>
     </div>
 
-    <!-- Durchgeführte Maßnahmen -->
-    <div class="card">
-      <div class="card-title">Durchgeführte Maßnahmen</div>
-      <div id="ticket-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <div id="ticket-actions-add" style="display:flex;gap:8px">
-        <input id="ta-new-action" class="form-input" placeholder="z.B. Ersatzteil bestellt" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTicketAction();}">
-        <button type="button" class="btn" onclick="addTicketAction()"><i class="ti ti-plus"></i></button>
-      </div>
-    </div>
-
-    <!-- Ersatzteile -->
-    <div class="card">
-      <div class="card-title" id="ticket-parts-title">Ersatzteile für die Reparatur</div>
-      <p id="ticket-parts-hint" style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen des Tickets tatsächlich aus dem Lager gebucht.</p>
-      <div id="ticket-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <button type="button" id="ticket-parts-add-btn" class="btn" onclick="openTicketPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>
-    </div>
-
-    <!-- Ersatzteil-vormerken Popup -->
-    <div id="ticket-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
-        <div class="form-group">
-          <label class="form-label">Ersatzteil</label>
-          <input id="tp-part-search" class="form-input" placeholder="Suchen..." oninput="filterTicketParts()" autocomplete="off">
-          <div id="tp-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
-          <input type="hidden" id="tp-part-id">
-          <div id="tp-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Lagerort</label>
-          <select id="tp-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Menge</label>
-          <input id="tp-part-qty" type="number" step="0.001" class="form-input" value="1">
-        </div>
-        <div id="tp-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-          <button type="button" class="btn" onclick="closeTicketPartModal()">Abbrechen</button>
-          <button type="button" class="btn btn-primary" onclick="bookTicketPart()">Vormerken</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Anhänge -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
-      <div id="attachments-{{.Ticket.ID}}" data-attach-ref="ticket:{{.Ticket.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo" style="font-size:16px"></i>Galerie
-          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera" style="font-size:16px"></i>Kamera
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload" style="font-size:16px"></i>Dokument
-          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-      </div>
-    </div>
-
-    {{template "record-history" .History}}
   </div>
 
   <!-- Rechte Spalte -->
@@ -219,6 +142,114 @@
     </div>
   </div>
 </div>
+</div>
+
+<!-- ── Kommentare ── -->
+<div class="rec-pane" data-pane="comments">
+    <!-- Kommentare -->
+    <div class="card">
+      <div class="card-title">Kommentare <span style="font-size:11px;color:var(--muted)">{{.CommentCount}}</span></div>
+      <div id="comments-list">
+        {{range .Comments}}
+        <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">{{slice .UserName 0 1}}</div>
+          <div style="flex:1">
+            <div style="font-size:12px;font-weight:500">{{.UserName}} <span style="color:var(--muted);font-weight:400">· {{.CreatedAgo}}</span></div>
+            <div style="font-size:13px;margin-top:4px;line-height:1.5">{{.Text}}</div>
+          </div>
+        </div>
+        {{else}}
+        <div style="color:var(--muted);font-size:12px;padding:8px 0">Noch keine Kommentare</div>
+        {{end}}
+      </div>
+      <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
+        <input name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
+        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
+      </form>
+    </div>
+</div>
+
+<!-- ── Maßnahmen & Ersatzteile ── -->
+<div class="rec-pane" data-pane="work">
+    <!-- Durchgeführte Maßnahmen -->
+    <div class="card">
+      <div class="card-title">Durchgeführte Maßnahmen</div>
+      <div id="ticket-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      <div id="ticket-actions-add" style="display:flex;gap:8px">
+        <input id="ta-new-action" class="form-input" placeholder="z.B. Ersatzteil bestellt" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTicketAction();}">
+        <button type="button" class="btn" onclick="addTicketAction()"><i class="ti ti-plus"></i></button>
+      </div>
+    </div>
+
+    <!-- Ersatzteile -->
+    <div class="card">
+      <div class="card-title" id="ticket-parts-title">Ersatzteile für die Reparatur</div>
+      <p id="ticket-parts-hint" style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen des Tickets tatsächlich aus dem Lager gebucht.</p>
+      <div id="ticket-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
+      <button type="button" id="ticket-parts-add-btn" class="btn" onclick="openTicketPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>
+    </div>
+
+    <!-- Ersatzteil-vormerken Popup -->
+    <div id="ticket-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
+        <div class="form-group">
+          <label class="form-label">Ersatzteil</label>
+          <input id="tp-part-search" class="form-input" placeholder="Suchen..." oninput="filterTicketParts()" autocomplete="off">
+          <div id="tp-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
+          <input type="hidden" id="tp-part-id">
+          <div id="tp-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lagerort</label>
+          <select id="tp-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Menge</label>
+          <input id="tp-part-qty" type="number" step="0.001" class="form-input" value="1">
+        </div>
+        <div id="tp-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+          <button type="button" class="btn" onclick="closeTicketPartModal()">Abbrechen</button>
+          <button type="button" class="btn btn-primary" onclick="bookTicketPart()">Vormerken</button>
+        </div>
+      </div>
+    </div>
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}</div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+    <!-- Anhänge -->
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div id="attachments-{{.Ticket.ID}}" data-attach-ref="ticket:{{.Ticket.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-photo" style="font-size:16px"></i>Galerie
+          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-camera" style="font-size:16px"></i>Kamera
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
+          <i class="ti ti-file-upload" style="font-size:16px"></i>Dokument
+          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
+        </label>
+      </div>
+    </div>
+</div>
+
+<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history" .History}}</div>
 {{end}}
 
 {{define "context-list"}}

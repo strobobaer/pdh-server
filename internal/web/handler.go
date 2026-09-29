@@ -186,6 +186,7 @@ type ShiftDay struct {
 
 type FaultsPageData struct {
 	BaseData
+	Tabs           []ListTab
 	Total          int
 	Open           int
 	Filter         string
@@ -201,6 +202,7 @@ type AnalysisView struct {
 
 type TicketsPageData struct {
 	BaseData
+	Tabs            []ListTab
 	Total           int
 	Open            int
 	Filter          string
@@ -209,7 +211,6 @@ type TicketsPageData struct {
 	Users           []UserOption
 	DefaultDueDays  int
 }
-
 
 type InventoryStats struct {
 	Total      int
@@ -380,6 +381,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/storage", h.StoragePage)
+	r.Get("/storage/{id}", h.StorageDetailPage)
 	r.Post("/storage", h.StorageCreateRoot)
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
 	r.Get("/checklists", h.ChecklistsPage)
@@ -399,6 +401,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/directory", h.DirectoryPage)
 	// Feldsaetze (gemeinsames System fuer alle Module)
 	r.Get("/records/fields/{module}/{id}", h.RecordFieldsWeb)
+	r.Get("/records/links/{module}/{id}", h.RecordLinksWeb)
+	r.Get("/records/history/{module}/{id}", h.RecordHistoryWeb)
 	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
 	r.Get("/core/fieldsets", h.FieldSetsAdminPage)
 	r.Post("/core/fieldsets/sets", h.FieldSetSaveWeb)
@@ -1210,6 +1214,10 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 		Filter:   filter,
 		Users:    h.userOptions(ctx),
 	}
+	data.Tabs = h.statusTabs(ctx, "faults", "/faults", filter, []statusTabDef{
+		{"detected", "Erkannt", "ti-alert-triangle"}, {"analyzing", "Analysiert", "ti-brain"},
+		{"in_progress", "In Bearbeitung", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
+	}, true)
 
 	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
 		data.Total = len(fl)
@@ -1244,6 +1252,10 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 		Users:          h.userOptions(ctx),
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 	}
+	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets", filter, []statusTabDef{
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Ausstehend", "ti-hourglass"},
+		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
+	}, true)
 
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
 		data.Total = len(tl)
@@ -1878,6 +1890,7 @@ func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
 
 type MaintenancePageData struct {
 	BaseData
+	Tabs         []ListTab
 	TotalPlans   int
 	OpenTasks    int
 	Today        string
@@ -1941,6 +1954,11 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		Filter:   string(status),
 		Users:    h.userOptions(ctx),
 	}
+	data.Tabs = h.statusTabs(ctx, "maintenance_tasks", "/maintenance", string(status), []statusTabDef{
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"done", "Erledigt", "ti-check"}, {"skipped", "Übersprungen", "ti-player-skip-forward"},
+	}, false)
+	data.Tabs[0].Label = "Aktuell" // ohne Filter zeigt die Seite offene und laufende Auftraege
+	data.Tabs[0].Count = data.Tabs[1].Count + data.Tabs[2].Count
 
 	if plans, err := h.maint.ListPlans(ctx, ""); err == nil {
 		data.TotalPlans = len(plans)
@@ -2896,10 +2914,10 @@ type ITAssetView struct {
 
 type ITDetailData struct {
 	BaseData
-	Supplier *PartnerLink
+	Supplier   *PartnerLink
 	SupplierID string
-	Users []UserOption
-	Asset ITAssetDetailView
+	Users      []UserOption
+	Asset      ITAssetDetailView
 }
 
 type ITAssetDetailView struct {

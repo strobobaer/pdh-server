@@ -1,0 +1,39 @@
+{{/*
+  Nachladbare Reiter-Inhalte fuer Detailseiten:
+    {{template "record-links-slot"   (dict "Module" "ticket" "ID" .Ticket.ID)}}
+    {{template "record-history-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}
+  Geladen wird erst, wenn der Reiter sichtbar wird (hx-trigger "intersect once").
+*/}}
+{{define "record-links-slot"}}
+<div hx-get="/records/links/{{.Module}}/{{.ID}}" hx-trigger="intersect once" hx-swap="innerHTML">
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">Verknüpfungen werden geladen…</div>
+</div>
+{{end}}
+
+{{define "record-history-slot"}}
+<div hx-get="/records/history/{{.Module}}/{{.ID}}" hx-trigger="intersect once" hx-swap="innerHTML">
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">Historie wird geladen…</div>
+</div>
+{{end}}
+
+{{define "record-links"}}
+<div class="rec-grid">
+{{range .}}
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Title}}</span>{{if .Items}}<span class="rec-sub">{{len .Items}}</span>{{end}}</div>
+    {{range .Items}}
+    <div class="rec-row">
+      <i class="ti {{if .Icon}}{{.Icon}}{{else}}ti-link{{end}}" style="color:var(--muted)"></i>
+      <div class="grow">
+        {{if .URL}}<a href="{{.URL}}" {{if .Frame}}data-frame data-frame-title="{{.Label}}"{{end}} style="color:var(--accent)">{{.Label}}</a>{{else}}{{.Label}}{{end}}
+        {{if .Sub}}<div class="rec-sub">{{.Sub}}</div>{{end}}
+      </div>
+      {{if .Badge}}<span class="badge {{.BadgeClass}}">{{.Badge}}</span>{{end}}
+    </div>
+    {{else}}<div class="rec-sub">{{.Empty}}</div>{{end}}
+  </div>
+{{else}}
+  <div class="rec-sub">Keine Verknüpfungen vorhanden.</div>
+{{end}}
+</div>
+{{end}}
