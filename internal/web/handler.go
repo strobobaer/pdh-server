@@ -463,6 +463,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/users/{id}", h.UserDetailPage)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
+	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
+	r.Post("/users/{id}/qualifications/{qid}/delete", h.UserQualificationDeleteWeb)
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
@@ -3086,6 +3088,10 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	if canFullyManage {
+		// Benutzerverwaltung darf das eigene Konto immer bearbeiten
+		subordinateSet[actor.ID] = true
+	}
 
 	filter := r.URL.Query().Get("role")
 	data := UsersPageData{
@@ -3246,7 +3252,9 @@ func (h *Handler) UserSaveWeb(w http.ResponseWriter, r *http.Request) {
 	// Hierarchie: eine Rolle darf nur Benutzer und Rollen mit echt
 	// niedrigerem Rang verwalten (Ausnahme: die ranghoechste Rolle darf
 	// auch Gleichrangige verwalten) - siehe rbac.Service.Outranks.
-	canManageThisUser := canFullyManage && h.outranksRole(r, string(currentUser.Role))
+	// Wer die Benutzerverwaltung hat, darf auch das eigene Konto pflegen - auch
+	// wenn die eigene Rolle nicht als ranghoechste eingetragen ist.
+	canManageThisUser := canFullyManage && (h.outranksRole(r, string(currentUser.Role)) || currentUser.ID == actor.ID)
 	if !canManageThisUser {
 		// Zweite, unabhaengige Zugriffsart: jeder darf seine direkten und
 		// indirekten Unteruser bearbeiten (Profilfelder), unabhaengig von

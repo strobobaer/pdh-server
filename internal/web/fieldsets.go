@@ -288,7 +288,7 @@ func (h *Handler) recordFieldsContext(w http.ResponseWriter, r *http.Request) (f
 		http.Error(w, "unbekanntes Modul", http.StatusNotFound)
 		return m, "", "", false
 	}
-	if !h.hasPerm(r, m.ViewPerm) && !h.hasPerm(r, m.EditPerm) {
+	if !h.canViewRecord(r, m, id) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return m, "", "", false
 	}

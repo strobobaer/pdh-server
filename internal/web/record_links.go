@@ -52,7 +52,7 @@ func (h *Handler) recordViewContext(w http.ResponseWriter, r *http.Request) (fie
 		http.Error(w, "unbekanntes Modul", http.StatusNotFound)
 		return m, "", false
 	}
-	if !h.hasPerm(r, m.ViewPerm) && !h.hasPerm(r, m.EditPerm) {
+	if !h.canViewRecord(r, m, id) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return m, "", false
 	}
@@ -299,4 +299,13 @@ func (h *Handler) linkChat(ctx context.Context, module, id, userID string) linkG
 		})
 	}
 	return g
+}
+
+// canViewRecord: Lesezugriff auf generische Reiter (Feldsaetze, Historie,
+// Verknuepfungen). Das eigene Benutzerkonto darf jede Person lesen.
+func (h *Handler) canViewRecord(r *http.Request, m fieldModule, id string) bool {
+	if m.Key == "user" && id == getUser(r).ID {
+		return true
+	}
+	return h.hasPerm(r, m.ViewPerm) || h.hasPerm(r, m.EditPerm)
 }

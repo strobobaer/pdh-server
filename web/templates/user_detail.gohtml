@@ -2,10 +2,10 @@
 {{define "content"}}
 {{$u := .User}}{{$m := .Master}}{{$p := .Private}}
 <div class="rec-head">
-  <a class="btn btn-icon" href="/users" title="Benutzerverwaltung"><i class="ti ti-arrow-left"></i></a>
+  <a class="btn btn-icon" href="{{if .IsSelf}}/{{else}}/users{{end}}" title="Zurück"><i class="ti ti-arrow-left"></i></a>
   <div class="rec-img" style="display:flex;align-items:center;justify-content:center;background:{{$u.AvatarBg}};color:#fff;font-size:20px;font-weight:600;border-radius:50%">{{$u.Initials}}</div>
   <div class="t">
-    <h1>{{$u.FullName}} {{if not $u.Active}}<span class="badge b-gray">inaktiv</span>{{end}}</h1>
+    <h1>{{$u.FullName}} {{if .IsSelf}}<span class="badge b-blue">Mein Konto</span>{{end}} {{if not $u.Active}}<span class="badge b-gray">inaktiv</span>{{end}}</h1>
     <div class="sub">
       @{{$u.Username}} · <span class="badge {{$u.RoleClass}}">{{$u.RoleLabel}}</span>
       {{if $m.JobTitle}} · {{$m.JobTitle}}{{end}}{{if $u.Department}} · {{$u.Department}}{{end}}
@@ -14,8 +14,8 @@
     </div>
   </div>
   {{if not .IsSelf}}<a class="btn btn-small" href="#" onclick="pdhOpenDirectChat('{{$u.ID}}');return false"><i class="ti ti-message"></i> Chat</a>{{end}}
-  {{if .CanEditCore}}<a class="btn btn-small" href="/users?edit={{$u.ID}}"><i class="ti ti-user-edit"></i> Grunddaten & Rolle</a>{{end}}
   {{if .CanPermissions}}<a class="btn btn-small" href="/users?permissions={{$u.ID}}"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
+  {{if .CanEditMaster}}<a class="btn btn-small btn-primary" href="?tab=master" onclick="recTab('master');return false"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}
 </div>
 
 {{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
@@ -25,7 +25,9 @@
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   {{if .CanEditMaster}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
   {{if .CanPrivate}}<a class="rec-tab" data-tab="private" href="?tab=private"><i class="ti ti-lock"></i> Privat</a>{{end}}
+  <a class="rec-tab" data-tab="quals" href="?tab=quals"><i class="ti ti-certificate"></i> Nachweise{{if .QualWarn}} <b style="background:var(--amber);color:#111">{{.QualWarn}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b></a>
+  {{if .IsSelf}}<a class="rec-tab" data-tab="account" href="?tab=account"><i class="ti ti-plug-connected"></i> Konto & Dienste</a>{{end}}
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
 </div>
@@ -36,20 +38,20 @@
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-address-book"></i> Kontakt (dienstlich)</span></div>
       <div class="rec-f"><div class="rec-l">E-Mail</div><div class="rec-v"><a href="mailto:{{$u.Email}}">{{$u.Email}}</a></div></div>
-      {{if $u.Phone}}<div class="rec-f"><div class="rec-l">Telefon</div><div class="rec-v"><a href="tel:{{$u.Phone}}">{{$u.Phone}}</a></div></div>{{end}}
-      {{if $m.PhoneInternal}}<div class="rec-f"><div class="rec-l">Durchwahl</div><div class="rec-v">{{$m.PhoneInternal}}</div></div>{{end}}
-      {{if $m.PhoneMobile}}<div class="rec-f"><div class="rec-l">Mobil</div><div class="rec-v"><a href="tel:{{$m.PhoneMobile}}">{{$m.PhoneMobile}}</a></div></div>{{end}}
-      {{if $m.WorkLocation}}<div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{$m.WorkLocation}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Telefon</div><div class="rec-v">{{if $u.Phone}}<a href="tel:{{$u.Phone}}">{{$u.Phone}}</a>{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Durchwahl</div><div class="rec-v">{{if $m.PhoneInternal}}{{$m.PhoneInternal}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Mobil</div><div class="rec-v">{{if $m.PhoneMobile}}<a href="tel:{{$m.PhoneMobile}}">{{$m.PhoneMobile}}</a>{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{if $m.WorkLocation}}{{$m.WorkLocation}}{{else}}—{{end}}</div></div>
     </div>
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-id-badge-2"></i> Organisation</span></div>
-      {{if $m.PersonnelNo}}<div class="rec-f"><div class="rec-l">Personalnummer</div><div class="rec-v" style="font-family:monospace">{{$m.PersonnelNo}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Personalnummer</div><div class="rec-v" style="font-family:monospace">{{if $m.PersonnelNo}}{{$m.PersonnelNo}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Rolle</div><div class="rec-v"><span class="badge {{$u.RoleClass}}">{{$u.RoleLabel}}</span>{{if $u.IsSystemUser}} <span class="badge b-blue">Systemnutzer</span>{{end}}</div></div>
-      {{if $m.JobTitle}}<div class="rec-f"><div class="rec-l">Funktion</div><div class="rec-v">{{$m.JobTitle}}</div></div>{{end}}
-      {{if $u.Department}}<div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{$u.Department}}</div></div>{{end}}
-      {{if $m.CostCenterName}}<div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{$m.CostCenterName}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Funktion</div><div class="rec-v">{{if $m.JobTitle}}{{$m.JobTitle}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{if $u.Department}}{{$u.Department}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{if $m.CostCenterName}}{{$m.CostCenterName}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Vorgesetzte/r</div><div class="rec-v">{{if $u.ManagerID}}<a href="/users/{{$u.ManagerID}}">{{$u.ManagerName}}</a>{{else}}—{{end}}</div></div>
-      {{if $m.EntryDate}}<div class="rec-f"><div class="rec-l">Eintritt</div><div class="rec-v">{{$m.EntryDate}}{{if $m.ExitDate}} · Austritt {{$m.ExitDate}}{{end}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Eintritt / Austritt</div><div class="rec-v">{{if $m.EntryDate}}{{$m.EntryDate}}{{else}}—{{end}}{{if $m.ExitDate}} / {{$m.ExitDate}}{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Angelegt</div><div class="rec-v">{{.CreatedAt}}</div></div>
     </div>
     <div class="card" style="margin:0">
@@ -73,37 +75,77 @@
   {{if $m.Notes}}<div class="card"><div class="card-title"><span><i class="ti ti-notes"></i> Notizen</span></div><div class="rec-v" style="font-size:13px">{{$m.Notes}}</div></div>{{end}}
 </div>
 
-<!-- ── Stammdaten ── -->
+<!-- ── Stammdaten (alles in einem Formular, wie bei den übrigen Modulen) ── -->
 {{if .CanEditMaster}}
 <div class="rec-pane" data-pane="master">
-  <form class="card rec-form" method="post" action="/users/{{$u.ID}}/master">
-    <p class="rec-sub" style="margin-bottom:10px">Name, E-Mail, Rolle, Passwort, Vorgesetzte/r und Qualifikationen: über <a href="/users?edit={{$u.ID}}" style="color:var(--accent)">Grunddaten & Rolle</a>.</p>
-    <div class="rec-sec" style="margin-top:0">Organisation</div>
+  <form class="card rec-form" method="post" action="/users/{{$u.ID}}/master" enctype="multipart/form-data" autocomplete="off">
+    <input type="hidden" name="core_submitted" value="1">
+    <input type="hidden" name="username" value="{{$u.Username}}">
+
+    <div class="rec-sec" style="margin-top:0">Person</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Vorname *</label><input name="first_name" class="form-input" value="{{$u.FirstName}}" required maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Nachname *</label><input name="last_name" class="form-input" value="{{$u.LastName}}" required maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Benutzername</label><input class="form-input" value="{{$u.Username}}" disabled title="nicht änderbar"></div>
+      <div class="form-group"><label class="form-label">E-Mail *</label><input type="email" name="email" class="form-input" value="{{$u.Email}}" required maxlength="255"></div>
+    </div>
+
+    <div class="rec-sec">Anmeldung & Rolle</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Rolle</label>
+        {{if .CanChangeRole}}
+        <select name="role" class="form-input">{{range .Roles}}<option value="{{.Key}}" {{if eq .Key $u.RoleValue}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+        {{else}}<input class="form-input" value="{{$u.RoleLabel}}" disabled><input type="hidden" name="role" value="{{$u.RoleValue}}">{{end}}
+      </div>
+      <div class="form-group"><label class="form-label">Neues Passwort <span class="rec-sub">(leer = unverändert, min. 8 Zeichen)</span></label><input type="password" name="password" class="form-input" autocomplete="new-password" minlength="8"></div>
+      <div class="form-group"><label class="form-label">Nextcloud-Benutzer</label><input name="nextcloud_user_id" class="form-input" value="{{$u.NextcloudUserID}}"></div>
+      <div class="form-group"><label class="form-label">RFID-Karte</label><input name="rfid_uid" class="form-input" value="{{$u.RFIDUID}}"></div>
+    </div>
+    <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" name="is_system_user" {{if $u.IsSystemUser}}checked{{end}}> Systemnutzer (Terminal, bleibt dauerhaft angemeldet)</label>
+
+    <div class="rec-sec">Organisation</div>
     <div class="cols">
       <div class="form-group"><label class="form-label">Personalnummer</label><input name="personnel_no" class="form-input" value="{{$m.PersonnelNo}}" maxlength="50"></div>
       <div class="form-group"><label class="form-label">Funktion / Stelle</label><input name="job_title" class="form-input" value="{{$m.JobTitle}}" maxlength="100" placeholder="z. B. Instandhalter Elektrik"></div>
+      <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" value="{{$u.Department}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Vorgesetzte/r</label>
+        <select name="manager_id" class="form-input"><option value="">– keine/r –</option>{{range .ManagerOptions}}{{if ne .ID $u.ID}}<option value="{{.ID}}" {{if eq .ID $u.ManagerID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></div>
       <div class="form-group"><label class="form-label">Arbeitsort / Standort</label><input name="work_location" class="form-input" value="{{$m.WorkLocation}}" maxlength="150"></div>
       <div class="form-group"><label class="form-label">Sprache</label>
-        <select name="language" class="form-input">
-          {{range $k := (list "de" "en" "pl" "tr" "ro" "hr" "cs" "hu" "ru" "uk")}}<option value="{{$k}}" {{if eq $k $m.Language}}selected{{end}}>{{$k}}</option>{{end}}
-        </select></div>
+        <select name="language" class="form-input">{{range $k := (list "de" "en" "pl" "tr" "ro" "hr" "cs" "hu" "ru" "uk")}}<option value="{{$k}}" {{if eq $k $m.Language}}selected{{end}}>{{$k}}</option>{{end}}</select></div>
       <div class="form-group"><label class="form-label">Eintritt</label><input type="date" name="entry_date" class="form-input" value="{{$m.EntryDate}}"></div>
       <div class="form-group"><label class="form-label">Austritt</label><input type="date" name="exit_date" class="form-input" value="{{$m.ExitDate}}"></div>
     </div>
     {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "user-cost-center" "Value" $m.CostCenterID)}}
+
     <div class="rec-sec">Erreichbarkeit (dienstlich)</div>
     <div class="cols">
+      <div class="form-group"><label class="form-label">Telefon</label><input name="phone" class="form-input" value="{{$u.Phone}}" maxlength="50"></div>
       <div class="form-group"><label class="form-label">Durchwahl</label><input name="phone_internal" class="form-input" value="{{$m.PhoneInternal}}" maxlength="30"></div>
       <div class="form-group"><label class="form-label">Mobil (dienstlich)</label><input name="phone_mobile" class="form-input" value="{{$m.PhoneMobile}}" maxlength="50"></div>
     </div>
+
+    <div class="rec-sec">Qualifikationen (Schichtplan)</div>
+    <div class="cols">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="shift_leader" {{if $u.ShiftLeader}}checked{{end}}> Schichtführer</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="on_call_duty" {{if $u.OnCallDuty}}checked{{end}}> Bereitschaft</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="shift_locksmith_1" {{if $u.ShiftLocksmith1}}checked{{end}}> Schichtschlosser 1</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="shift_locksmith_2" {{if $u.ShiftLocksmith2}}checked{{end}}> Schichtschlosser 2</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="sharpening" {{if $u.Sharpening}}checked{{end}}> Schleifen</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="heating_fill" {{if $u.HeatingFill}}checked{{end}}> Heizung füllen</label>
+    </div>
+
     <div class="rec-sec">Broker-Funktion</div>
     {{if .CanBroker}}
     <p class="rec-sub" style="margin-bottom:8px">Im Leitstand angelegte Tickets/Störungen ohne Zuweisung gehen an alle Broker des Typs – jeder erhält eine Chat-Nachricht mit dem Vorgang.</p>
-    <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" name="broker_tickets" {{if $m.BrokerTickets}}checked{{end}}> Broker für Tickets</label>
-    <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_faults" {{if $m.BrokerFaults}}checked{{end}}> Broker für Störungen</label>
+    <div class="cols">
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_tickets" {{if $m.BrokerTickets}}checked{{end}}> Broker für Tickets</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_faults" {{if $m.BrokerFaults}}checked{{end}}> Broker für Störungen</label>
+    </div>
     {{else}}
     <p class="rec-sub">Tickets: {{if $m.BrokerTickets}}ja{{else}}nein{{end}} · Störungen: {{if $m.BrokerFaults}}ja{{else}}nein{{end}} – Vergabe durch die Benutzerverwaltung.</p>
     {{end}}
+
     <div class="form-group" style="margin-top:12px"><label class="form-label">Notizen (dienstlich)</label><textarea name="notes" class="form-input" rows="3">{{$m.Notes}}</textarea></div>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <a class="btn" href="?tab=overview">Abbrechen</a>
@@ -150,6 +192,44 @@
 </div>
 {{end}}
 
+<!-- ── Nachweise: Führerschein, externe Qualifikationen, Lehrgänge ── -->
+<div class="rec-pane" data-pane="quals">
+  {{$d := .}}
+  {{if .QualWarn}}<div class="rec-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.QualWarn}} Nachweis(e) abgelaufen oder laufen in den nächsten 60 Tagen ab.</div>{{end}}
+  <div class="rec-grid">
+  {{range .Quals}}
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="rec-sub">{{len .Items}}</span></div>
+      {{range .Items}}
+      <div class="rec-row" style="align-items:flex-start">
+        <div class="grow">
+          <div style="font-weight:500">{{.Title}}{{if .Classes}} <span class="badge b-blue">{{.Classes}}</span>{{end}}</div>
+          <div class="rec-sub">
+            {{if .Issuer}}{{.Issuer}}{{end}}{{if .Number}} · Nr. {{.Number}}{{end}}
+            {{if .IssuedLabel}} · ab {{.IssuedLabel}}{{end}}{{if .Hours}} · {{.Hours}} Std.{{end}}
+          </div>
+          {{if .ValidLabel}}<div style="font-size:12px;margin-top:2px;color:{{if eq .State "expired"}}var(--red){{else if eq .State "soon"}}var(--amber){{else}}var(--muted){{end}}">
+            {{if eq .State "expired"}}<i class="ti ti-alert-circle"></i> abgelaufen am{{else if eq .State "soon"}}<i class="ti ti-alert-triangle"></i> läuft ab am{{else}}gültig bis{{end}} {{.ValidLabel}}</div>{{end}}
+          {{if .Notes}}<div class="rec-sub" style="margin-top:2px">{{.Notes}}</div>{{end}}
+          {{if $d.CanEditMaster}}
+          <details style="margin-top:6px"><summary class="rec-sub" style="cursor:pointer">Bearbeiten</summary>
+            {{template "user-qual-form" (dict "U" $d.User.ID "Q" . "Kinds" $d.QualKinds "Kind" .Kind "Number" $d.CanPrivate)}}
+          </details>
+          {{end}}
+        </div>
+        {{if $d.CanEditMaster}}<form method="post" action="/users/{{$d.User.ID}}/qualifications/{{.ID}}/delete" onsubmit="return confirm('Nachweis entfernen?')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Entfernen"><i class="ti ti-trash" style="font-size:14px"></i></button></form>{{end}}
+      </div>
+      {{else}}<div class="rec-sub">Keine Einträge</div>{{end}}
+      {{if $d.CanEditMaster}}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-plus"></i> Hinzufügen</summary>
+        {{template "user-qual-form" (dict "U" $d.User.ID "Kinds" $d.QualKinds "Kind" .Key "Number" $d.CanPrivate)}}
+      </details>
+      {{end}}
+    </div>
+  {{end}}
+  </div>
+</div>
+
 <!-- ── Zuständigkeiten ── -->
 <div class="rec-pane" data-pane="work">
   <div class="card" style="padding:0;overflow-x:auto">
@@ -168,6 +248,15 @@
   </div>
 </div>
 
+<!-- ── Konto & Dienste (nur eigenes Konto) ── -->
+{{if .IsSelf}}
+<div class="rec-pane" data-pane="account">
+  <div class="card" style="padding:0;overflow:hidden">
+    <iframe name="pdh-embed" src="/account" title="Konto & Dienste" loading="lazy" style="width:100%;height:640px;border:0;display:block;background:var(--bg)"></iframe>
+  </div>
+</div>
+{{end}}
+
 <!-- ── Feldsätze ── -->
 <div class="rec-pane" data-pane="fields">
   <div class="card">{{template "record-fields-slot" (dict "Module" "user" "ID" $u.ID)}}</div>
@@ -175,6 +264,27 @@
 
 <!-- ── Historie ── -->
 <div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "user" "ID" $u.ID)}}</div>
+{{end}}
+
+{{define "user-qual-form"}}
+{{$q := .Q}}{{$kind := .Kind}}
+<form method="post" action="/users/{{.U}}/qualifications" class="rec-form" style="margin-top:8px">
+  {{with $q}}<input type="hidden" name="qual_id" value="{{.ID}}">{{end}}
+  <div class="cols">
+    <div class="form-group"><label class="form-label">Art</label>
+      <select name="kind" class="form-input">{{range .Kinds}}<option value="{{.Key}}" {{if eq .Key $kind}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Bezeichnung *</label><input name="title" class="form-input" required maxlength="200" value="{{with $q}}{{.Title}}{{end}}"
+      placeholder="{{if eq $kind "license"}}z. B. Führerschein{{else if eq $kind "course"}}z. B. Ersthelfer-Lehrgang{{else}}z. B. Elektrofachkraft, Staplerschein{{end}}"></div>
+    <div class="form-group"><label class="form-label">{{if eq $kind "license"}}Klassen{{else}}Stufe / Umfang{{end}}</label><input name="classes" class="form-input" maxlength="100" value="{{with $q}}{{.Classes}}{{end}}" placeholder="{{if eq $kind "license"}}z. B. B, BE, C1{{end}}"></div>
+    <div class="form-group"><label class="form-label">{{if eq $kind "course"}}Anbieter{{else}}Aussteller / Prüfstelle{{end}}</label><input name="issuer" class="form-input" maxlength="200" value="{{with $q}}{{.Issuer}}{{end}}"></div>
+    {{if .Number}}<div class="form-group"><label class="form-label">Nummer <span class="rec-sub">(vertraulich)</span></label><input name="number" class="form-input" maxlength="100" value="{{with $q}}{{.Number}}{{end}}" autocomplete="off"></div>{{end}}
+    <div class="form-group"><label class="form-label">{{if eq $kind "course"}}Teilnahme am{{else}}Ausgestellt am{{end}}</label><input type="date" name="issued_on" class="form-input" value="{{with $q}}{{.IssuedOn}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Gültig bis</label><input type="date" name="valid_until" class="form-input" value="{{with $q}}{{.ValidUntil}}{{end}}"></div>
+    {{if eq $kind "course"}}<div class="form-group"><label class="form-label">Dauer (Std.)</label><input name="hours" class="form-input" inputmode="decimal" value="{{with $q}}{{.Hours}}{{end}}"></div>{{end}}
+  </div>
+  <div class="form-group"><label class="form-label">Bemerkung</label><input name="notes" class="form-input" maxlength="1000" value="{{with $q}}{{.Notes}}{{end}}"></div>
+  <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+</form>
 {{end}}
 
 {{define "context-list"}}

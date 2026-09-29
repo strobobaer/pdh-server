@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"pdh/internal/core/rbac"
 )
 
 // Benutzer-Detailseite (/users/{id}) mit Reitern: Uebersicht, Stammdaten,
@@ -53,6 +54,12 @@ type UserDetailData struct {
 	Team                []UserOption
 	Responsibilities    []userResponsibility
 	CreatedAt           string
+	Roles               []*rbac.Role // zuweisbare Rollen (inkl. aktueller)
+	CanChangeRole       bool
+	ManagerOptions      []UserOption
+	Quals               []qualGroup
+	QualWarn            int
+	QualKinds           interface{}
 }
 
 // userAccess ermittelt die Rechte des angemeldeten Benutzers auf targetID.
@@ -61,7 +68,8 @@ func (h *Handler) userAccess(r *http.Request, targetID, targetRole string) (view
 	self = actor.ID == targetID
 	full := h.canManageUsers(r)
 	sub, _ := h.users.IsSubordinate(r.Context(), actor.ID, targetID)
-	editCore = (full && h.outranksRole(r, targetRole)) || sub
+	// Benutzerverwaltung darf auch das eigene Konto voll pflegen
+	editCore = (full && (h.outranksRole(r, targetRole) || self)) || sub
 	editMaster = editCore
 	view = self || full || sub
 	return
@@ -74,6 +82,14 @@ func (h *Handler) canPrivateData(r *http.Request, targetID string) bool {
 func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+	if id == "me" { // "Mein Konto"
+		target := "/users/" + getUser(r).ID
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+		return
+	}
 	u, err := h.users.GetByID(ctx, id)
 	if err != nil || u == nil {
 		http.Redirect(w, r, "/users", http.StatusFound)
@@ -100,7 +116,11 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanPermissions: h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
 	}
-	d.Master = h.loadUserMaster(ctx, id)
+	if m, err := h.loadUserMasterErr(ctx, id); err != nil {
+		d.Error = "Die erweiterten Stammdaten sind noch nicht verfügbar – bitte den Server neu starten, damit Migration 070 ausgeführt wird (" + err.Error() + ")"
+	} else {
+		d.Master = m
+	}
 	if d.CanPrivate {
 		d.Private = h.loadUserPrivate(ctx, id)
 	}
@@ -116,12 +136,30 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	d.Responsibilities = h.userResponsibilities(ctx, id)
+	d.Quals, d.QualWarn = h.loadUserQualifications(ctx, id, d.CanPrivate)
+	d.QualKinds = qualKinds
+	if editCore {
+		d.ManagerOptions = h.userOptions(ctx)
+		d.CanChangeRole = h.canManageUsers(r) && (h.outranksRole(r, string(u.Role)) || self)
+		if roles, err := h.rbac.ListRoles(ctx); err == nil {
+			for _, ro := range roles {
+				if ro.Key == string(u.Role) || h.outranksRole(r, ro.Key) {
+					d.Roles = append(d.Roles, ro)
+				}
+			}
+		}
+	}
 	h.render(w, "user_detail", d)
 }
 
 func (h *Handler) loadUserMaster(ctx context.Context, id string) userMaster {
+	m, _ := h.loadUserMasterErr(ctx, id)
+	return m
+}
+
+func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster, error) {
 	var m userMaster
-	_ = h.db.QueryRow(ctx, `
+	err := h.db.QueryRow(ctx, `
 		SELECT u.personnel_no, u.job_title, COALESCE(u.cost_center_id::text, ''),
 		       COALESCE(cc.number || ' – ' || cc.name, ''), u.work_location, u.phone_internal, u.phone_mobile, u.language,
 		       COALESCE(to_char(u.entry_date, 'YYYY-MM-DD'), ''), COALESCE(to_char(u.exit_date, 'YYYY-MM-DD'), ''),
@@ -130,7 +168,7 @@ func (h *Handler) loadUserMaster(ctx context.Context, id string) userMaster {
 		WHERE u.id = $1::uuid`, id).Scan(&m.PersonnelNo, &m.JobTitle, &m.CostCenterID, &m.CostCenterName,
 		&m.WorkLocation, &m.PhoneInternal, &m.PhoneMobile, &m.Language, &m.EntryDate, &m.ExitDate,
 		&m.Notes, &m.BrokerTickets, &m.BrokerFaults)
-	return m
+	return m, err
 }
 
 func (h *Handler) loadUserPrivate(ctx context.Context, id string) userPrivate {
@@ -240,7 +278,21 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	r.ParseForm()
+	if err := r.ParseMultipartForm(1 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		userRedirect(w, r, id, "master", "", errors.New("Formular konnte nicht gelesen werden"))
+		return
+	}
+	// Grunddaten (Name, E-Mail, Rolle, Passwort, Vorgesetzte/r, Qualifikationen)
+	// ueber die bestehende Speicherlogik inkl. Rollen-Hierarchie.
+	if r.FormValue("core_submitted") == "1" {
+		r.Form.Set("user_id", id)
+		rec := &captureWriter{header: http.Header{}}
+		h.UserSaveWeb(rec, r)
+		if rec.status >= 400 {
+			userRedirect(w, r, id, "master", "", errors.New(strings.TrimSpace(rec.body.String())))
+			return
+		}
+	}
 	v := func(k string) string { return strings.TrimSpace(r.FormValue(k)) }
 	entry, err := optDate(v("entry_date"))
 	var exit interface{}
@@ -331,3 +383,19 @@ func (h *Handler) UserPrivateSaveWeb(w http.ResponseWriter, r *http.Request) {
 		VALUES ('user', $1::uuid, 'update', $2, 'Private Daten geändert')`, id, nullID(actor.ID))
 	userRedirect(w, r, id, "private", "Private Daten gespeichert", nil)
 }
+
+// captureWriter nimmt die Antwort eines intern aufgerufenen Handlers auf.
+type captureWriter struct {
+	header http.Header
+	status int
+	body   strings.Builder
+}
+
+func (c *captureWriter) Header() http.Header { return c.header }
+func (c *captureWriter) Write(b []byte) (int, error) {
+	if c.status == 0 {
+		c.status = http.StatusOK
+	}
+	return c.body.Write(b)
+}
+func (c *captureWriter) WriteHeader(status int) { c.status = status }

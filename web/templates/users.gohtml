@@ -121,7 +121,7 @@
         <div style="position:relative">
           {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('umenu-%s')" .ID))}}
           <div id="umenu-{{.ID}}" style="display:none;position:absolute;right:0;top:28px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-            <button type="button" class="menu-item" onclick="editUser(this);closeMenu('umenu-{{.ID}}')"
+            <button type="button" class="menu-item" onclick="location.href='/users/{{.ID}}?tab=master'"
               data-id="{{.ID}}" data-first-name="{{.FirstName}}" data-last-name="{{.LastName}}"
               data-username="{{.Username}}" data-email="{{.Email}}" data-role="{{.RoleValue}}" data-nextcloud-user-id="{{.NextcloudUserID}}"
               data-department="{{.Department}}" data-phone="{{.Phone}}" data-rfid="{{.RFIDUID}}" data-manager-id="{{.ManagerID}}"
@@ -194,7 +194,8 @@ function userRowContextItems(row){
   const fullName = ((data.firstName || '') + ' ' + (data.lastName || '')).trim();
   const items = [
     {heading: fullName},
-    {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editUser(trigger); }}
+    {label: 'Benutzerstamm öffnen', icon: 'ti-user', onClick: function(){ location.href = '/users/' + data.id; }},
+    {label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ location.href = '/users/' + data.id + '?tab=master'; }}
   ];
   if(PDH_CAN_PROMOTE_ADMIN && canManage){
     items.push({label: 'Admin machen', icon: 'ti-crown', onClick: async function(){
