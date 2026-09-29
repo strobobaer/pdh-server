@@ -21,12 +21,15 @@
 {{$p := .Part}}
 <div class="rec-head">
   <a class="btn btn-icon" href="/inventory" title="Ersatzteilliste"><i class="ti ti-arrow-left"></i></a>
-  {{if $p.ImageURL}}<img class="rec-img" src="{{$p.ImageURL}}" alt="" loading="lazy">{{else}}<div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--muted)"><i class="ti ti-package" style="font-size:24px"></i></div>{{end}}
+  <div {{if .CanEdit}}onclick="openImagePicker()" style="cursor:pointer" title="Teilebild ändern"{{end}}>
+  {{if $p.ImageURL}}<img class="rec-img" src="{{$p.ImageURL}}" alt="" loading="lazy">{{else}}<div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--muted)"><i class="ti {{if .CanEdit}}ti-photo-plus{{else}}ti-package{{end}}" style="font-size:24px"></i></div>{{end}}
+  </div>
   <div class="t">
     <h1>{{$p.Name}}</h1>
     <div class="sub"><span style="font-family:monospace">{{$p.PartNumber}}</span>{{if $p.Category}} · <a href="/inventory?cat={{$p.Category}}" style="color:var(--accent)">{{$p.Category}}</a>{{end}}{{if $p.ManufacturerName}} · {{$p.ManufacturerName}}{{end}}</div>
   </div>
   <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}</span>
+  <a class="btn btn-small" href="/inventory/labels?part={{$p.ID}}" target="_blank" rel="noopener" title="Lagerplatz-Etiketten drucken"><i class="ti ti-printer"></i> Etiketten</a>
   <a class="btn btn-small" href="#" onclick="recTab('stock');document.getElementById('book-type').focus();return false"><i class="ti ti-arrows-exchange"></i> Buchen</a>
 </div>
 
@@ -108,7 +111,12 @@
     </div>
     <datalist id="part-categories">{{range .Categories}}<option value="{{.}}">{{end}}</datalist>
     <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="2">{{$p.Description}}</textarea></div>
-    <div class="form-group"><label class="form-label">Teilebild (URL)</label><input name="image_url" class="form-input" value="{{$p.ImageURL}}" placeholder="https://…jpg/png/webp"></div>
+    <div class="form-group"><label class="form-label">Teilebild</label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        {{if $p.ImageURL}}<img src="{{$p.ImageURL}}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">{{end}}
+        <button type="button" class="btn btn-small btn-primary" onclick="openImagePicker()"><i class="ti ti-world-search"></i> Bild im Internet suchen</button>
+        <input name="image_url" class="form-input" value="{{$p.ImageURL}}" placeholder="oder Bild-URL einfügen (https://…)" style="flex:1;min-width:220px">
+      </div></div>
 
     <div class="rec-compare">
       <div>
@@ -161,7 +169,7 @@
   <div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Bestand je Lagerplatz</span></div>
-      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b><a class="btn btn-icon" style="width:30px;min-width:30px;height:30px" href="/inventory/labels?part={{$p.ID}}&loc={{.NodeID}}" target="_blank" rel="noopener" title="Etikett für diesen Lagerplatz"><i class="ti ti-printer" style="font-size:14px"></i></a></div>
       {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
     </div>
     <form class="card" style="margin:0" method="post" action="/inventory/{{$p.ID}}/book">
@@ -289,4 +297,95 @@
 {{range .Stock}}<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">{{.Path}}</div><span class="act-time">{{.Qty}}</span></div>{{end}}
 {{end}}
 
-{{define "scripts"}}{{end}}
+{{define "scripts"}}
+{{if .CanEdit}}
+{{$p := .Part}}
+<style>
+.ip-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:450;display:none;align-items:center;justify-content:center;padding:16px}
+.ip-modal.open{display:flex}
+.ip-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(900px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column}
+.ip-head{display:flex;gap:8px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
+.ip-grid{flex:1;overflow-y:auto;padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;min-height:200px}
+.ip-hit{border:2px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.ip-hit:hover{border-color:var(--accent)}
+.ip-hit img{width:100%;aspect-ratio:1/1;object-fit:contain;background:#fff}
+.ip-hit small{font-size:10px;color:#64748b;padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--bg3)}
+.ip-hit.busy::after{content:"Wird übernommen…";position:absolute;inset:0;background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:12px;color:#111}
+.ip-foot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-top:1px solid var(--border)}
+.ip-msg{grid-column:1/-1;text-align:center;color:var(--muted);font-size:13px;padding:30px}
+</style>
+<div class="ip-modal" id="ip-modal" onclick="if(event.target===this)closeImagePicker()">
+  <div class="ip-box">
+    <form class="ip-head" onsubmit="searchImages();return false">
+      <i class="ti ti-world-search" style="font-size:20px;color:var(--accent)"></i>
+      <input id="ip-q" class="form-input" style="flex:1" value="{{if $p.ManufacturerName}}{{$p.ManufacturerName}} {{end}}{{if $p.ManufacturerPart}}{{$p.ManufacturerPart}}{{else}}{{$p.Name}} {{$p.PartNumber}}{{end}}">
+      <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-search"></i> Suchen</button>
+      <button class="btn btn-icon" type="button" onclick="closeImagePicker()" title="Schließen"><i class="ti ti-x"></i></button>
+    </form>
+    <div class="ip-grid" id="ip-grid"><div class="ip-msg">Suchbegriff prüfen und „Suchen“ klicken – ein Klick auf ein Bild übernimmt es als Teilebild.</div></div>
+    <div class="ip-foot">
+      <form method="post" action="/inventory/{{$p.ID}}/image" style="display:flex;gap:6px;flex:1;min-width:260px" id="ip-url-form">
+        <input type="hidden" name="tab" value="master">
+        <input type="hidden" name="fallback" value="">
+        <input name="url" class="form-input" placeholder="Bild-URL einfügen und übernehmen" style="flex:1" required>
+        <button class="btn btn-small" type="submit"><i class="ti ti-download"></i> Übernehmen</button>
+      </form>
+      <form method="post" action="/inventory/{{$p.ID}}/image" enctype="multipart/form-data" style="display:flex;gap:6px">
+        <input type="hidden" name="tab" value="master">
+        <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-upload"></i> Datei<input type="file" name="file" accept="image/*" style="display:none" onchange="this.form.submit()"></label>
+        <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> Kamera<input type="file" name="file" accept="image/*" capture="environment" style="display:none" onchange="this.form.submit()"></label>
+      </form>
+      {{if $p.ImageURL}}
+      <form method="post" action="/inventory/{{$p.ID}}/image" onsubmit="return confirm('Teilebild entfernen? (bleibt unter Dokumente erhalten)')">
+        <input type="hidden" name="tab" value="master"><input type="hidden" name="action" value="remove">
+        <button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> Entfernen</button>
+      </form>
+      {{end}}
+      <span id="ip-source" style="font-size:11px;color:var(--muted);width:100%"></span>
+    </div>
+  </div>
+</div>
+<script>
+function openImagePicker(){
+  document.getElementById('ip-modal').classList.add('open');
+  const q = document.getElementById('ip-q'); q.focus(); q.select();
+}
+function closeImagePicker(){ document.getElementById('ip-modal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeImagePicker(); });
+async function searchImages(){
+  const grid = document.getElementById('ip-grid');
+  const q = document.getElementById('ip-q').value.trim();
+  if(q.length < 2) return;
+  grid.innerHTML = '<div class="ip-msg"><i class="ti ti-loader-2"></i> Suche läuft…</div>';
+  try {
+    const res = await fetch('/inventory/{{$p.ID}}/image-search?q=' + encodeURIComponent(q), {credentials:'same-origin'});
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+    document.getElementById('ip-source').textContent = d.results.length ? 'Quelle: ' + d.source + ' – Bildrechte des jeweiligen Anbieters beachten.' : '';
+    if(!d.results.length){ grid.innerHTML = '<div class="ip-msg">Keine Bilder gefunden – anderen Suchbegriff versuchen (z. B. nur Hersteller-Teilenummer).</div>'; return; }
+    grid.innerHTML = '';
+    d.results.forEach(hit => {
+      const el = document.createElement('div');
+      el.className = 'ip-hit';
+      el.title = hit.title || '';
+      const img = document.createElement('img');
+      img.src = hit.thumbnail; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.alt = hit.title || '';
+      img.onerror = () => el.remove();
+      const cap = document.createElement('small');
+      cap.textContent = (hit.width && hit.height ? hit.width + '×' + hit.height + ' · ' : '') + (hit.source || '');
+      el.append(img, cap);
+      el.onclick = () => takeImage(el, hit.image, hit.thumbnail);
+      grid.appendChild(el);
+    });
+  } catch(e){ grid.innerHTML = '<div class="ip-msg" style="color:var(--red)">' + e.message.replace(/</g,'&lt;') + '</div>'; }
+}
+function takeImage(el, url, thumb){
+  el.classList.add('busy');
+  const f = document.getElementById('ip-url-form');
+  f.querySelector('[name=url]').value = url;
+  f.querySelector('[name=fallback]').value = thumb || '';
+  f.submit();
+}
+</script>
+{{end}}
+{{end}}

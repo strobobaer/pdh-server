@@ -1,0 +1,97 @@
+{{define "labels-page"}}<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDH – {{.Title}}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
+.toolbar{position:sticky;top:0;z-index:5;background:#1a1d27;color:#e8eaf6;padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px}
+.toolbar b{font-size:14px;margin-right:6px}
+.toolbar select,.toolbar input{background:#222536;color:#e8eaf6;border:1px solid #2a2d3e;border-radius:6px;padding:5px 8px;font-size:13px}
+.toolbar input[type=number]{width:64px}
+.toolbar button{border:0;border-radius:6px;padding:7px 14px;font-size:13px;cursor:pointer;background:#4f6ef7;color:#fff}
+.toolbar .muted{color:#9ca3af}
+.toolbar label{display:inline-flex;gap:6px;align-items:center}
+.err{margin:16px;padding:12px;background:#fee2e2;color:#991b1b;border-radius:8px}
+.preview{padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px}
+
+/* Etikett */
+.label{width:{{.Size.W}}mm;height:{{.Size.H}}mm;background:#fff;overflow:hidden;display:flex;gap:1.5mm;padding:1.5mm 2mm;position:relative}
+.label .qr{flex-shrink:0;height:100%;aspect-ratio:1/1}
+.label .qr svg{width:100%;height:100%;display:block}
+.label .txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;line-height:1.12}
+.label .loc{font-weight:700;font-size:{{if .Size.Compact}}9pt{{else}}11pt{{end}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:.3mm solid #000;padding-bottom:.4mm}
+.label .path{font-size:5.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.label .name{font-size:{{if .Size.Compact}}7pt{{else}}8.5pt{{end}};font-weight:600;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.label .cat{font-size:5.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.label .row{display:flex;justify-content:space-between;align-items:flex-end;gap:2mm}
+.label .pn{font-family:"Courier New",monospace;font-weight:700;font-size:{{if .Size.Compact}}8pt{{else}}10pt{{end}};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.label .min{font-size:6.5pt;white-space:nowrap;text-align:right}
+.label .min b{font-size:{{if .Size.Compact}}8pt{{else}}9.5pt{{end}}}
+.label .k{font-size:5pt;color:#555;text-transform:uppercase;letter-spacing:.2px}
+
+/* A4-Bogen */
+.sheet{width:210mm;height:297mm;background:#fff;padding:{{.Size.MarginTop}}mm 0 0 {{.Size.MarginLeft}}mm;display:grid;grid-template-columns:repeat({{.Size.Cols}},{{.Size.W}}mm);grid-auto-rows:{{.Size.H}}mm;justify-content:center;align-content:start}
+.sheet .label{outline:.1mm dashed #ccc}
+.sheet .empty{background:repeating-linear-gradient(45deg,#fafafa,#fafafa 2mm,#f0f0f0 2mm,#f0f0f0 4mm)}
+.roll .label{outline:1px solid #ccc;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+
+@media print{
+  body{background:#fff}
+  .toolbar,.err{display:none}
+  .preview{padding:0;display:block}
+  .sheet .label{outline:none}
+  .sheet .empty{background:none}
+  .roll .label{outline:none;box-shadow:none;page-break-after:always;break-after:page}
+  .sheet{page-break-after:always;break-after:page}
+  {{if .Size.Sheet}}@page{size:A4;margin:0}{{else}}@page{size:{{.Size.W}}mm {{.Size.H}}mm;margin:0}{{end}}
+}
+</style>
+</head>
+<body>
+<form class="toolbar" method="get" action="/inventory/labels">
+  <b>Etiketten</b>
+  {{range .Params}}<input type="hidden" name="{{.Key}}" value="{{.Value}}">{{end}}
+  <label>Format <select name="size" onchange="this.form.submit()">{{range .Sizes}}<option value="{{.Key}}" {{if eq .Key $.Size.Key}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+  <label>Kopien <input type="number" name="copies" min="1" max="50" value="{{.Copies}}" onchange="this.form.submit()"></label>
+  {{if .Size.Sheet}}<label title="Bereits verbrauchte Felder auf einem angebrochenen Bogen überspringen">Start bei Feld <input type="number" name="start" min="0" max="40" value="{{.Start}}" onchange="this.form.submit()"></label>{{end}}
+  <label>Kategorie <select name="cat_line" onchange="this.form.submit()"><option value="1">anzeigen</option><option value="0" {{if not .ShowCat}}selected{{end}}>ausblenden</option></select></label>
+  <span class="muted">{{len .Labels}} Etikett(en){{if gt .Copies 1}} × {{.Copies}}{{end}}</span>
+  <span style="flex:1"></span>
+  <button type="button" onclick="window.print()">🖨 Drucken</button>
+</form>
+
+{{if .Error}}<div class="err">{{.Error}}</div>{{end}}
+
+<div class="preview {{if not .Size.Sheet}}roll{{end}}">
+{{range .Pages}}
+  {{if $.Size.Sheet}}<div class="sheet">{{end}}
+  {{range .}}
+    {{if .}}
+    <div class="label">
+      <div class="qr">{{.QR}}</div>
+      <div class="txt">
+        <div>
+          <div class="loc">{{if .LocationLeaf}}{{.LocationLeaf}}{{else}}ohne Lagerplatz{{end}}</div>
+          {{if and .Location (ne .Location .LocationLeaf) (not $.Size.Compact)}}<div class="path">{{.Location}}</div>{{end}}
+        </div>
+        <div class="name">{{.Name}}</div>
+        {{if and $.ShowCat .Category (not $.Size.Compact)}}<div class="cat">{{.Category}}</div>{{end}}
+        <div class="row">
+          <div style="min-width:0"><div class="k">Teile-Nr.</div><div class="pn">{{.PartNumber}}</div></div>
+          <div class="min"><div class="k">Mindestmenge</div><b>{{.MinQty}}</b> {{.Unit}}</div>
+        </div>
+      </div>
+    </div>
+    {{else}}<div class="label empty"></div>{{end}}
+  {{end}}
+  {{if $.Size.Sheet}}</div>{{end}}
+{{else}}
+  {{if not .Error}}<div class="err" style="background:#fef3c7;color:#92400e">Keine Etiketten für diese Auswahl.</div>{{end}}
+{{end}}
+</div>
+</body>
+</html>
+{{end}}

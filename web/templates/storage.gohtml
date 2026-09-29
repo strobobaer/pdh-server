@@ -76,6 +76,7 @@
       {{if .ChildType}}
       {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" .ChildTypeLabel "OnClick" (printf "showAddChild('%s')" .ID))}}
       {{end}}
+      <a class="btn btn-icon" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener" title="Etiketten für alle Teile an diesem Lagerplatz drucken"><i class="ti ti-printer"></i></a>
       {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditNode('%s')" .ID))}}
       {{template "icon-button" (dict "Action" "delete" "HxDelete" (printf "/api/v1/storage/%s" .ID) "HxConfirm" "Diesen Knoten inklusive aller Unterknoten löschen?" "HxTarget" "closest .storage-node" "HxSwap" "delete")}}
     </div>

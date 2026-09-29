@@ -9,6 +9,7 @@
   <button type="button" class="btn btn-small" onclick="openBookingModal()"><i class="ti ti-arrows-exchange"></i> Buchung</button>
   <button type="button" class="btn btn-small" onclick="openStocktakeModal()"><i class="ti ti-list-check"></i> Inventur</button>
   <a class="btn btn-small" href="/core/fieldsets?module=part"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="btn btn-small" href="/inventory/labels?list=1&cat={{.Category}}&status={{.Status}}&q={{.Query}}" target="_blank" rel="noopener" title="Etiketten für alle Teile der aktuellen Auswahl"><i class="ti ti-printer"></i> Etiketten</a>
   {{if .CanEdit}}<button type="button" class="btn btn-small btn-primary" onclick="document.getElementById('new-part-form').style.display='block'"><i class="ti ti-plus"></i> Neues Teil</button>{{end}}
 </div>
 
