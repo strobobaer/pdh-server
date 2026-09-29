@@ -11,6 +11,11 @@
   <span class="badge {{.Project.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Project.StatusLabel}}</span>
 </div>
 
+<div class="card">
+  <div class="card-title">Beteiligte</div>
+  <div id="record-parties" hx-get="/records/project/{{.Project.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
+</div>
+
 {{if .Project.Description}}
 <div class="card">
   <div class="card-title">Beschreibung</div>
