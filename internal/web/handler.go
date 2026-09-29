@@ -460,6 +460,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/inventory/{id}/suppliers", h.PartSupplierAssignWeb)
 	r.Post("/inventory/{id}/suppliers/{partnerId}/delete", h.PartSupplierRemoveWeb)
 	r.Get("/users", h.Users)
+	r.Get("/users/{id}", h.UserDetailPage)
+	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
+	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Delete("/users/{id}/deactivate-web", h.UserDeactivateWeb)
@@ -1208,6 +1211,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	filter := r.URL.Query().Get("status")
+	unassigned := r.URL.Query().Get("unassigned") == "1"
 
 	data := FaultsPageData{
 		BaseData: h.baseData(r, "faults", "Störungen", "Copilot-Analysen"),
@@ -1217,11 +1221,14 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	data.Tabs = h.statusTabs(ctx, "faults", "/faults", filter, []statusTabDef{
 		{"detected", "Erkannt", "ti-alert-triangle"}, {"analyzing", "Analysiert", "ti-brain"},
 		{"in_progress", "In Bearbeitung", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
-	}, true)
+	}, true, brokerInboxTab(unassigned))
 
 	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
 		data.Total = len(fl)
 		for _, f := range fl {
+			if unassigned && (f.AssignedTo != nil || f.Status == "resolved" || f.Status == "closed") {
+				continue
+			}
 			if f.Status == "detected" || f.Status == "in_progress" {
 				data.Open++
 			}
@@ -1245,6 +1252,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	filter := r.URL.Query().Get("status")
+	unassigned := r.URL.Query().Get("unassigned") == "1"
 
 	data := TicketsPageData{
 		BaseData:       h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
@@ -1255,11 +1263,14 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets", filter, []statusTabDef{
 		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Ausstehend", "ti-hourglass"},
 		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
-	}, true)
+	}, true, brokerInboxTab(unassigned))
 
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
 		data.Total = len(tl)
 		for _, t := range tl {
+			if unassigned && (t.AssignedTo != nil || t.Status == "resolved" || t.Status == "closed") {
+				continue
+			}
 			if t.Status == "open" || t.Status == "in_progress" {
 				data.Open++
 			}

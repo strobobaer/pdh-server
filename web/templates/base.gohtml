@@ -1434,6 +1434,13 @@ function pdhShareToChat(){
   // wird von activateContextTab aufgerufen, wenn der Chat-Reiter sichtbar wird
   window.pdhSideChat = {
     shown: function(){ if(S.current) markRead(); else if(S.loaded) renderList(); },
+    // bestimmte Unterhaltung in der Seitenleiste oeffnen (z. B. "Chat" auf der Benutzerseite)
+    open: async function(convId){
+      if(!S.convs[convId]) await bootstrap();
+      activateContextTab('chat', {keepOpen: true});
+      openConv(convId);
+      setTimeout(function(){ const i = $('sc-input'); if(i) i.focus(); }, 300);
+    },
     // "Im Chat teilen": Seitenleiste oeffnen, Unterhaltung auswaehlen lassen
     share: function(url, title){
       S.share = {url: url, title: title};

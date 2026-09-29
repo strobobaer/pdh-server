@@ -1,0 +1,197 @@
+{{template "base" .}}
+{{define "content"}}
+{{$u := .User}}{{$m := .Master}}{{$p := .Private}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="/users" title="Benutzerverwaltung"><i class="ti ti-arrow-left"></i></a>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;background:{{$u.AvatarBg}};color:#fff;font-size:20px;font-weight:600;border-radius:50%">{{$u.Initials}}</div>
+  <div class="t">
+    <h1>{{$u.FullName}} {{if not $u.Active}}<span class="badge b-gray">inaktiv</span>{{end}}</h1>
+    <div class="sub">
+      @{{$u.Username}} · <span class="badge {{$u.RoleClass}}">{{$u.RoleLabel}}</span>
+      {{if $m.JobTitle}} · {{$m.JobTitle}}{{end}}{{if $u.Department}} · {{$u.Department}}{{end}}
+      {{if $m.BrokerTickets}} <span class="badge b-amber" title="Erhält nicht zugewiesene Tickets aus dem Leitstand"><i class="ti ti-inbox"></i> Broker Tickets</span>{{end}}
+      {{if $m.BrokerFaults}} <span class="badge b-red" title="Erhält nicht zugewiesene Störungen aus dem Leitstand"><i class="ti ti-inbox"></i> Broker Störungen</span>{{end}}
+    </div>
+  </div>
+  {{if not .IsSelf}}<a class="btn btn-small" href="#" onclick="pdhOpenDirectChat('{{$u.ID}}');return false"><i class="ti ti-message"></i> Chat</a>{{end}}
+  {{if .CanEditCore}}<a class="btn btn-small" href="/users?edit={{$u.ID}}"><i class="ti ti-user-edit"></i> Grunddaten & Rolle</a>{{end}}
+  {{if .CanPermissions}}<a class="btn btn-small" href="/users?permissions={{$u.ID}}"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  {{if .CanEditMaster}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
+  {{if .CanPrivate}}<a class="rec-tab" data-tab="private" href="?tab=private"><i class="ti ti-lock"></i> Privat</a>{{end}}
+  <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b></a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
+  <div class="rec-grid">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-address-book"></i> Kontakt (dienstlich)</span></div>
+      <div class="rec-f"><div class="rec-l">E-Mail</div><div class="rec-v"><a href="mailto:{{$u.Email}}">{{$u.Email}}</a></div></div>
+      {{if $u.Phone}}<div class="rec-f"><div class="rec-l">Telefon</div><div class="rec-v"><a href="tel:{{$u.Phone}}">{{$u.Phone}}</a></div></div>{{end}}
+      {{if $m.PhoneInternal}}<div class="rec-f"><div class="rec-l">Durchwahl</div><div class="rec-v">{{$m.PhoneInternal}}</div></div>{{end}}
+      {{if $m.PhoneMobile}}<div class="rec-f"><div class="rec-l">Mobil</div><div class="rec-v"><a href="tel:{{$m.PhoneMobile}}">{{$m.PhoneMobile}}</a></div></div>{{end}}
+      {{if $m.WorkLocation}}<div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{$m.WorkLocation}}</div></div>{{end}}
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-id-badge-2"></i> Organisation</span></div>
+      {{if $m.PersonnelNo}}<div class="rec-f"><div class="rec-l">Personalnummer</div><div class="rec-v" style="font-family:monospace">{{$m.PersonnelNo}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Rolle</div><div class="rec-v"><span class="badge {{$u.RoleClass}}">{{$u.RoleLabel}}</span>{{if $u.IsSystemUser}} <span class="badge b-blue">Systemnutzer</span>{{end}}</div></div>
+      {{if $m.JobTitle}}<div class="rec-f"><div class="rec-l">Funktion</div><div class="rec-v">{{$m.JobTitle}}</div></div>{{end}}
+      {{if $u.Department}}<div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{$u.Department}}</div></div>{{end}}
+      {{if $m.CostCenterName}}<div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{$m.CostCenterName}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Vorgesetzte/r</div><div class="rec-v">{{if $u.ManagerID}}<a href="/users/{{$u.ManagerID}}">{{$u.ManagerName}}</a>{{else}}—{{end}}</div></div>
+      {{if $m.EntryDate}}<div class="rec-f"><div class="rec-l">Eintritt</div><div class="rec-v">{{$m.EntryDate}}{{if $m.ExitDate}} · Austritt {{$m.ExitDate}}{{end}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Angelegt</div><div class="rec-v">{{.CreatedAt}}</div></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-certificate"></i> Qualifikationen & Rollen</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        {{if $u.ShiftLeader}}<span class="badge b-blue">Schichtführer</span>{{end}}
+        {{if $u.OnCallDuty}}<span class="badge b-blue">Bereitschaft</span>{{end}}
+        {{if $u.ShiftLocksmith1}}<span class="badge b-blue">Schichtschlosser 1</span>{{end}}
+        {{if $u.ShiftLocksmith2}}<span class="badge b-blue">Schichtschlosser 2</span>{{end}}
+        {{if $u.Sharpening}}<span class="badge b-blue">Schleifen</span>{{end}}
+        {{if $u.HeatingFill}}<span class="badge b-blue">Heizung füllen</span>{{end}}
+        {{if $m.BrokerTickets}}<span class="badge b-amber">Broker Tickets</span>{{end}}
+        {{if $m.BrokerFaults}}<span class="badge b-red">Broker Störungen</span>{{end}}
+      </div>
+      {{if .Team}}
+      <div class="rec-sec">Team ({{len .Team}})</div>
+      {{range .Team}}<a class="rec-row" href="/users/{{.ID}}"><i class="ti ti-user" style="color:var(--muted)"></i><div class="grow">{{.Name}}</div></a>{{end}}
+      {{end}}
+    </div>
+  </div>
+  {{if $m.Notes}}<div class="card"><div class="card-title"><span><i class="ti ti-notes"></i> Notizen</span></div><div class="rec-v" style="font-size:13px">{{$m.Notes}}</div></div>{{end}}
+</div>
+
+<!-- ── Stammdaten ── -->
+{{if .CanEditMaster}}
+<div class="rec-pane" data-pane="master">
+  <form class="card rec-form" method="post" action="/users/{{$u.ID}}/master">
+    <p class="rec-sub" style="margin-bottom:10px">Name, E-Mail, Rolle, Passwort, Vorgesetzte/r und Qualifikationen: über <a href="/users?edit={{$u.ID}}" style="color:var(--accent)">Grunddaten & Rolle</a>.</p>
+    <div class="rec-sec" style="margin-top:0">Organisation</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Personalnummer</label><input name="personnel_no" class="form-input" value="{{$m.PersonnelNo}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Funktion / Stelle</label><input name="job_title" class="form-input" value="{{$m.JobTitle}}" maxlength="100" placeholder="z. B. Instandhalter Elektrik"></div>
+      <div class="form-group"><label class="form-label">Arbeitsort / Standort</label><input name="work_location" class="form-input" value="{{$m.WorkLocation}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Sprache</label>
+        <select name="language" class="form-input">
+          {{range $k := (list "de" "en" "pl" "tr" "ro" "hr" "cs" "hu" "ru" "uk")}}<option value="{{$k}}" {{if eq $k $m.Language}}selected{{end}}>{{$k}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label">Eintritt</label><input type="date" name="entry_date" class="form-input" value="{{$m.EntryDate}}"></div>
+      <div class="form-group"><label class="form-label">Austritt</label><input type="date" name="exit_date" class="form-input" value="{{$m.ExitDate}}"></div>
+    </div>
+    {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "user-cost-center" "Value" $m.CostCenterID)}}
+    <div class="rec-sec">Erreichbarkeit (dienstlich)</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Durchwahl</label><input name="phone_internal" class="form-input" value="{{$m.PhoneInternal}}" maxlength="30"></div>
+      <div class="form-group"><label class="form-label">Mobil (dienstlich)</label><input name="phone_mobile" class="form-input" value="{{$m.PhoneMobile}}" maxlength="50"></div>
+    </div>
+    <div class="rec-sec">Broker-Funktion</div>
+    {{if .CanBroker}}
+    <p class="rec-sub" style="margin-bottom:8px">Im Leitstand angelegte Tickets/Störungen ohne Zuweisung gehen an alle Broker des Typs – jeder erhält eine Chat-Nachricht mit dem Vorgang.</p>
+    <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" name="broker_tickets" {{if $m.BrokerTickets}}checked{{end}}> Broker für Tickets</label>
+    <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_faults" {{if $m.BrokerFaults}}checked{{end}}> Broker für Störungen</label>
+    {{else}}
+    <p class="rec-sub">Tickets: {{if $m.BrokerTickets}}ja{{else}}nein{{end}} · Störungen: {{if $m.BrokerFaults}}ja{{else}}nein{{end}} – Vergabe durch die Benutzerverwaltung.</p>
+    {{end}}
+    <div class="form-group" style="margin-top:12px"><label class="form-label">Notizen (dienstlich)</label><textarea name="notes" class="form-input" rows="3">{{$m.Notes}}</textarea></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <a class="btn" href="?tab=overview">Abbrechen</a>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+<!-- ── Privat ── -->
+{{if .CanPrivate}}
+<div class="rec-pane" data-pane="private">
+  <div class="rec-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-lock"></i> Vertrauliche Daten – sichtbar nur für die Person selbst und Berechtigte (Recht „Private Mitarbeiterdaten“). Änderungen werden ohne Inhalte protokolliert.</div>
+  <form class="card rec-form" method="post" action="/users/{{$u.ID}}/private" autocomplete="off">
+    <div class="rec-sec" style="margin-top:0">Person</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Geburtsdatum</label><input type="date" name="birth_date" class="form-input" value="{{$p.BirthDate}}"></div>
+    </div>
+    <div class="rec-sec">Anschrift</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Straße, Nr.</label><input name="street" class="form-input" value="{{$p.Street}}" maxlength="200"></div>
+      <div class="form-group"><label class="form-label">PLZ</label><input name="postal_code" class="form-input" value="{{$p.PostalCode}}" maxlength="20"></div>
+      <div class="form-group"><label class="form-label">Ort</label><input name="city" class="form-input" value="{{$p.City}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Land</label><input name="country" class="form-input" value="{{$p.Country}}" maxlength="100"></div>
+    </div>
+    <div class="rec-sec">Private Erreichbarkeit</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Telefon</label><input name="private_phone" class="form-input" value="{{$p.PrivatePhone}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">Mobil</label><input name="private_mobile" class="form-input" value="{{$p.PrivateMobile}}" maxlength="50"></div>
+      <div class="form-group"><label class="form-label">E-Mail</label><input type="email" name="private_email" class="form-input" value="{{$p.PrivateEmail}}" maxlength="150"></div>
+    </div>
+    <div class="rec-sec">Notfallkontakt</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Name</label><input name="emergency_name" class="form-input" value="{{$p.EmergencyName}}" maxlength="150"></div>
+      <div class="form-group"><label class="form-label">Beziehung</label><input name="emergency_relation" class="form-input" value="{{$p.EmergencyRelation}}" maxlength="100" placeholder="z. B. Ehepartner/in"></div>
+      <div class="form-group"><label class="form-label">Telefon</label><input name="emergency_phone" class="form-input" value="{{$p.EmergencyPhone}}" maxlength="50"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Vertrauliche Notizen</label><textarea name="private_notes" class="form-input" rows="3">{{$p.Notes}}</textarea></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="rec-sub">{{if $p.UpdatedAt}}Zuletzt geändert {{$p.UpdatedAt}}{{if $p.UpdatedBy}} von {{$p.UpdatedBy}}{{end}}{{end}}</span>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+<!-- ── Zuständigkeiten ── -->
+<div class="rec-pane" data-pane="work">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Vorgang</th><th>Art</th><th>Rolle</th><th>Fällig</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range .Responsibilities}}
+      <tr>
+        <td><a href="{{.URL}}" data-frame data-frame-title="{{.Module}}: {{.Title}}" style="color:var(--accent)">{{.Title}}</a></td>
+        <td>{{.Module}}</td><td>{{.Role}}</td><td style="white-space:nowrap">{{.Due}}</td>
+        <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      </tr>
+      {{else}}<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Keine offenen Vorgänge</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "user" "ID" $u.ID)}}</div>
+</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "user" "ID" $u.ID)}}</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Team}}<div class="act-item" onclick="location='/users/{{.ID}}'" style="cursor:pointer"><div class="act-dot d-blue"></div><div class="act-text">{{.Name}}</div></div>{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+// 1:1-Chat mit der Person in der Seitenleiste oeffnen (Fallback: Chat-Seite)
+async function pdhOpenDirectChat(userId){
+  try {
+    const res = await fetch('/chat/api/direct', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user_id: userId})});
+    const d = await res.json();
+    if(!res.ok) throw new Error(d.error || res.status);
+    if(window.pdhSideChat && window.pdhSideChat.open) window.pdhSideChat.open(d.id);
+    else location.href = '/chat#c=' + d.id;
+  } catch(e){ alert('Chat konnte nicht geöffnet werden: ' + e.message); }
+}
+</script>
+{{end}}

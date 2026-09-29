@@ -98,7 +98,7 @@
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
           <div>
-            <div style="font-weight:500">{{.FullName}}</div>
+            <div style="font-weight:500"><a href="/users/{{.ID}}" title="Benutzerstamm öffnen">{{.FullName}}</a></div>
             <div style="font-size:11px;color:var(--muted)">@{{.Username}}{{if .ManagerName}} · berichtet an {{.ManagerName}}{{end}}</div>
           </div>
         </div>

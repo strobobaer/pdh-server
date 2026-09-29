@@ -146,12 +146,18 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		infrastructureID = &in.InfrastructureID
 	}
 
+	// Tickets und Stoerungen aus dem Leitstand sind nie zugewiesen - sie gehen an die Broker.
+	var brokerKind, brokerID string
 	switch in.Type {
 	case "ticket":
-		_, err = h.tickets.Create(r.Context(), &tickets.CreateInput{
+		var t *tickets.Ticket
+		t, err = h.tickets.Create(r.Context(), &tickets.CreateInput{
 			Title: in.Title, Description: description, Priority: tickets.Priority(in.Priority),
 			InfrastructureID: infrastructureID, DueDate: dueDate,
 		}, reporter.ID)
+		if err == nil {
+			brokerKind, brokerID = "ticket", t.ID
+		}
 	case "task":
 		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
 			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
@@ -170,14 +176,21 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 				symptoms = append(symptoms, s)
 			}
 		}
-		_, err = h.faults.Create(r.Context(), &faults.CreateFaultInput{
+		var f *faults.Fault
+		f, err = h.faults.Create(r.Context(), &faults.CreateFaultInput{
 			Title: in.Title, Description: description, Severity: faults.Severity(in.Priority), Symptoms: symptoms,
 			InfrastructureID: infrastructureID,
 		}, reporter.ID)
+		if err == nil {
+			brokerKind, brokerID = "fault", f.ID
+		}
 	}
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Vorgang konnte nicht angelegt werden")
 		return
+	}
+	if brokerID != "" {
+		h.dispatchToBrokers(r.Context(), brokerKind, brokerID, in.Title, in.Priority, h.infraName(r.Context(), infrastructureID), reporter.ID)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

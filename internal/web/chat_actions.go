@@ -573,21 +573,10 @@ func (h *Handler) ChatDirect(w http.ResponseWriter, r *http.Request) {
 		chatError(w, http.StatusBadRequest, "Benutzer nicht gefunden")
 		return
 	}
-	ids := []string{me, in.UserID}
-	sort.Strings(ids)
-	key := ids[0] + ":" + ids[1]
-	var convID string
-	if err := h.db.QueryRow(ctx, `
-		INSERT INTO chat_conversations (kind, direct_key, created_by) VALUES ('direct', $1, $2::uuid)
-		ON CONFLICT (direct_key) DO UPDATE SET direct_key = EXCLUDED.direct_key
-		RETURNING id::text`, key, me).Scan(&convID); err != nil {
+	convID, err := h.chatEnsureDirect(ctx, me, in.UserID)
+	if err != nil {
 		chatError(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-	for _, uid := range uniqueStrings(ids) {
-		_, _ = h.db.Exec(ctx, `
-			INSERT INTO chat_members (conversation_id, user_id) VALUES ($1::uuid, $2::uuid)
-			ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL`, convID, uid)
 	}
 	h.chatRefresh([]string{me})
 	writeJSON(w, http.StatusOK, map[string]string{"id": convID})
@@ -1071,4 +1060,46 @@ func (h *Handler) ChatSearch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+// chatEnsureDirect liefert den 1:1-Chat zweier Benutzer und legt ihn bei
+// Bedarf an (beide Mitglieder werden ggf. reaktiviert).
+func (h *Handler) chatEnsureDirect(ctx context.Context, a, b string) (string, error) {
+	ids := []string{a, b}
+	sort.Strings(ids)
+	var convID string
+	if err := h.db.QueryRow(ctx, `
+		INSERT INTO chat_conversations (kind, direct_key, created_by) VALUES ('direct', $1, $2::uuid)
+		ON CONFLICT (direct_key) DO UPDATE SET direct_key = EXCLUDED.direct_key
+		RETURNING id::text`, ids[0]+":"+ids[1], a).Scan(&convID); err != nil {
+		return "", err
+	}
+	for _, uid := range uniqueStrings(ids) {
+		if _, err := h.db.Exec(ctx, `
+			INSERT INTO chat_members (conversation_id, user_id) VALUES ($1::uuid, $2::uuid)
+			ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL`, convID, uid); err != nil {
+			return "", err
+		}
+	}
+	return convID, nil
+}
+
+// chatPost schreibt eine Textnachricht im Namen eines Benutzers (z. B.
+// automatische Broker-Meldung) und verteilt sie in Echtzeit.
+func (h *Handler) chatPost(ctx context.Context, convID, userID, body string) error {
+	var msgID string
+	if err := h.db.QueryRow(ctx, `
+		INSERT INTO chat_messages (conversation_id, user_id, body) VALUES ($1::uuid, $2::uuid, $3) RETURNING id::text`,
+		convID, userID, body).Scan(&msgID); err != nil {
+		return err
+	}
+	_, _ = h.db.Exec(ctx, `UPDATE chat_conversations SET last_message_at = NOW() WHERE id = $1::uuid`, convID)
+	_, _ = h.db.Exec(ctx, `UPDATE chat_members SET last_read_at = NOW() WHERE conversation_id = $1::uuid AND user_id = $2::uuid`, convID, userID)
+	h.chatResolveLinks(ctx, msgID, body)
+	if msgs, err := h.chatLoadMessagesByID(ctx, []string{msgID}); err == nil && len(msgs) == 1 {
+		members := h.chatMemberIDs(ctx, convID)
+		h.chatRefresh(members) // neue Unterhaltung in allen Listen sichtbar machen
+		h.chat().send(members, chatEvent{Type: "message", Data: msgs[0]})
+	}
+	return nil
 }
