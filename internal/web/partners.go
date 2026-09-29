@@ -1035,6 +1035,7 @@ type PartnerLink struct {
 type PartSupplierView struct {
 	PartnerID, Name, SupplierPartNo, Price, MinOrderQty, LeadTime, Notes string
 	OrderEmail, Phone                                                    string
+	PriceRaw, MinQtyRaw, LeadDays                                        string // Eingabewerte fuer Formulare
 	Preferred, Blocked                                                   bool
 }
 
@@ -1062,6 +1063,11 @@ func (h *Handler) partSuppliers(ctx context.Context, partID string) []PartSuppli
 		}
 		s.Price = optFloat(price, formatEuro)
 		s.MinOrderQty = optFloat(minQty, formatQty)
+		s.PriceRaw = optFloat(price, func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) })
+		s.MinQtyRaw = optFloat(minQty, func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) })
+		if lead != nil {
+			s.LeadDays = strconv.Itoa(*lead)
+		}
 		if lead == nil {
 			lead = defaultLead
 		}
@@ -1155,7 +1161,7 @@ func (h *Handler) PartSupplierAssignWeb(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		back += "?err=" + url.QueryEscape(friendlyDBError(err))
 	}
-	http.Redirect(w, r, back+"#suppliers", http.StatusSeeOther)
+	http.Redirect(w, r, withTab(back, "purchasing"), http.StatusSeeOther)
 }
 
 func (h *Handler) PartSupplierRemoveWeb(w http.ResponseWriter, r *http.Request) {
@@ -1168,5 +1174,5 @@ func (h *Handler) PartSupplierRemoveWeb(w http.ResponseWriter, r *http.Request) 
 	if err := h.unassignPartner(r.Context(), partnerID, "part", "supplier", partID); err != nil {
 		back += "?err=" + url.QueryEscape(friendlyDBError(err))
 	}
-	http.Redirect(w, r, back+"#suppliers", http.StatusSeeOther)
+	http.Redirect(w, r, withTab(back, "purchasing"), http.StatusSeeOther)
 }

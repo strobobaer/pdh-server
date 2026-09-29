@@ -47,6 +47,7 @@ services:
       - "8090:8090"
     volumes:
       - pdh_uploads:/app/uploads
+      - pdh_chat_files:/app/chat_files
 
   updater:
     build:
@@ -73,3 +74,4 @@ services:
 volumes:
   pdh_database:
   pdh_uploads:
+  pdh_chat_files:

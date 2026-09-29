@@ -49,6 +49,50 @@ html.pdh-embedded .main{padding:14px}
 .pdh-frame-title{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdh-frame-hint{font-size:11px;color:var(--muted);padding:6px 12px;border-bottom:1px solid var(--border);background:var(--bg3)}
 .pdh-frame iframe{flex:1;width:100%;border:0;background:var(--bg)}
+/* ── Stammdaten-Detailseiten mit Reitern (gemeinsam fuer alle Module) ── */
+.rec-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.rec-head .t{flex:1;min-width:200px}
+.rec-head h1{font-size:18px;font-weight:600}
+.rec-head .sub{font-size:12px;color:var(--muted);margin-top:3px}
+.rec-img{width:54px;height:54px;border-radius:10px;object-fit:cover;border:1px solid var(--border);background:var(--bg3)}
+.rec-tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:14px}
+.rec-tab{padding:8px 12px;font-size:12.5px;color:var(--muted);border:0;background:none;border-bottom:2px solid transparent;cursor:pointer;font-family:var(--font);display:inline-flex;gap:6px;align-items:center;text-decoration:none}
+.rec-tab:hover{color:var(--text)}
+.rec-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.rec-tab b{font-weight:500;font-size:10px;background:var(--bg3);border-radius:999px;padding:1px 6px;color:var(--muted)}
+.rec-pane{display:none}.rec-pane.active{display:block}
+.rec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start}
+.rec-f{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.rec-f:last-child{border:0}
+.rec-l{width:150px;flex-shrink:0;color:var(--muted);font-size:12px}
+.rec-v{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
+.rec-v a{color:var(--accent)}
+.rec-sec{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px}
+.rec-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.rec-row:last-child{border:0}
+.rec-row .grow{flex:1;min-width:0}
+.rec-sub{font-size:11px;color:var(--muted)}
+.rec-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.rec-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.rec-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.rec-form .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px}
+.rec-compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:700px){.rec-compare{grid-template-columns:1fr}.rec-l{width:120px}}
+.list-tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--border);margin-bottom:12px;scrollbar-width:thin}
+.list-tabs a{padding:8px 12px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+.list-tabs a.active{color:var(--accent);border-bottom-color:var(--accent)}
+.list-tabs a b{font-weight:500;font-size:10px;background:var(--bg3);border-radius:999px;padding:1px 6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:block}
+a.kpi:hover{border-color:var(--accent)}
+.kpi .v{font-size:22px;font-weight:600}
+.kpi .l{font-size:11px;color:var(--muted);margin-top:2px}
+/* ── Chat: Ungelesen-Zaehler & Hinweis ── */
+.nav-badge{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+html.sidebar-left-collapsed .nav-badge{position:absolute;top:4px;right:6px;margin:0}
+.chat-toast{position:fixed;right:18px;bottom:18px;z-index:550;width:min(340px,calc(100vw - 32px));background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);cursor:pointer;font-size:12.5px}
+.chat-toast b{display:block;font-size:13px;margin-bottom:2px}
+.chat-toast span{color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 html.sidebar-left-collapsed{--left-sidebar-w:54px}
 html.sidebar-right-collapsed{--right-sidebar-w:54px}
 /* ── Sidebar ── */
@@ -312,6 +356,7 @@ select.form-input option{background:var(--bg2)}
   </div>
   <nav>
     <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">Dashboard</span></a>
+    {{if .CanChat}}<a href="/chat" class="nav-item {{if eq .Page "chat"}}active{{end}}" style="position:relative"><i class="ti ti-messages"></i><span class="nav-label">Chat</span><span id="chat-nav-badge" class="nav-badge" style="display:none"></span></a>{{end}}
     <a href="/global/" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-layout-dashboard"></i><span class="nav-label">Leitstand</span></a>
     <a href="/assignments/new" class="nav-item {{if eq .Page "assignments-new"}}active{{end}}"><i class="ti ti-square-rounded-plus"></i><span class="nav-label">Neue Zuweisung</span></a>
 
@@ -354,6 +399,7 @@ select.form-input option{background:var(--bg2)}
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      {{if and .CanChat (ne .Page "chat")}}<button type="button" class="theme-toggle" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>{{end}}
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="Darstellung wechseln" title="Darstellung wechseln">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
@@ -1070,6 +1116,89 @@ function closePdhFrame(){
   if(f) f.remove();
 }
 document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closePdhFrame(); });
+
+// Reiter der Stammdaten-Detailseiten (.rec-tab[data-tab] / .rec-pane[data-pane]);
+// der aktive Reiter steht in ?tab=, damit Links und Ruecksprung ihn behalten.
+function recTab(tab){
+  const tabs = document.querySelectorAll('.rec-tab[data-tab]');
+  if(!tabs.length) return;
+  if(!document.querySelector('.rec-pane[data-pane="'+tab+'"]')) tab = tabs[0].dataset.tab;
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.rec-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === tab));
+  const u = new URL(location.href);
+  u.searchParams.set('tab', tab); u.searchParams.delete('msg'); u.searchParams.delete('err');
+  history.replaceState(null, '', u);
+}
+document.addEventListener('click', function(e){
+  const t = e.target.closest('.rec-tab[data-tab]');
+  if(t){ e.preventDefault(); recTab(t.dataset.tab); }
+});
+document.addEventListener('DOMContentLoaded', function(){
+  if(document.querySelector('.rec-tab[data-tab]')) recTab(new URL(location.href).searchParams.get('tab') || '');
+});
+
+// "Im Chat teilen": aktuelle Seite (ohne embed-Parameter) an den Chat uebergeben
+function pdhShareToChat(){
+  const path = location.pathname + location.search.replace(/[?&]embed=1/, '');
+  const title = (document.querySelector('.main h1') || {}).textContent || document.title.replace(/^PDH – /, '');
+  location.href = '/chat?share=' + encodeURIComponent(path) + '&title=' + encodeURIComponent(title.trim());
+}
+</script>
+{{if and .CanChat (ne .Page "chat")}}
+<script>
+// Chat-Ungelesen-Zaehler und Hinweis auf neue Nachrichten (nicht in
+// eingebetteten Ansichten und nicht auf der Chat-Seite selbst).
+(function(){
+  if(document.documentElement.classList.contains('pdh-embedded') || !window.EventSource) return;
+  const badge = document.getElementById('chat-nav-badge');
+  let timer = null;
+  function refresh(){
+    fetch('/chat/api/unread', {credentials:'same-origin'}).then(r => r.ok ? r.json() : null).then(d => {
+      if(!d || !badge) return;
+      badge.textContent = d.unread > 99 ? '99+' : d.unread;
+      badge.style.display = d.unread ? '' : 'none';
+      badge.style.background = d.mentions ? 'var(--red)' : 'var(--accent)';
+    }).catch(() => {});
+  }
+  function toast(title, body, href){
+    const el = document.createElement('div');
+    el.className = 'chat-toast';
+    const b = document.createElement('b'); b.textContent = title;
+    const s = document.createElement('span'); s.textContent = body;
+    el.append(b, s);
+    el.onclick = () => { location.href = href; };
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 7000);
+  }
+  refresh();
+  let me = null, users = null, muted = new Set();
+  const es = new EventSource('/chat/stream');
+  es.addEventListener('chat', e => {
+    const ev = JSON.parse(e.data);
+    if(ev.type === 'refresh') users = null; // Stummschaltungen/Mitgliedschaften neu laden
+    if(ev.type === 'message' || ev.type === 'read' || ev.type === 'refresh'){
+      clearTimeout(timer); timer = setTimeout(refresh, 300);
+    }
+    if(ev.type === 'message' && ev.data.kind === 'text'){
+      const m = ev.data;
+      const show = () => {
+        if(m.user_id === me || muted.has(m.conversation_id)) return;
+        const u = users[m.user_id];
+        toast((u ? u.name : 'Neue Nachricht'), m.body || '📎 Datei', '/chat#c=' + m.conversation_id);
+      };
+      if(users) show();
+      else fetch('/chat/api/bootstrap', {credentials:'same-origin'}).then(r => r.json()).then(d => {
+        me = d.me; users = {}; d.users.forEach(u => users[u.id] = u);
+        muted = new Set((d.conversations || []).filter(c => c.muted).map(c => c.id));
+        show();
+      }).catch(() => {});
+    }
+  });
+  window.addEventListener('pagehide', () => es.close());
+})();
+</script>
+{{end}}
+<script>
 document.addEventListener('click', function(e){
   const a = e.target.closest('[data-frame],[data-frame-external]');
   if(!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;

@@ -1,0 +1,121 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.fa-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:14px}
+.fa-tab{padding:8px 12px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
+.fa-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.fa-set{border:1px solid var(--border);border-radius:10px;background:var(--bg2);margin-bottom:12px}
+.fa-set.inactive{opacity:.55}
+.fa-set-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.fa-set-head .t{flex:1;min-width:200px}
+.fa-field{display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--border);font-size:12.5px;flex-wrap:wrap}
+.fa-field.inactive{opacity:.5}
+.fa-field .t{flex:1;min-width:180px}
+.fa-opts{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.fa-opts span{background:var(--bg3);border-radius:10px;padding:1px 4px 1px 8px;font-size:11px;display:inline-flex;align-items:center;gap:2px}
+.fa-opts button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:12px}
+.fa-inline{display:flex;gap:6px;flex-wrap:wrap;align-items:end}
+.fa-inline .form-group{margin:0}
+.fa-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+details.fa-edit summary{cursor:pointer;font-size:12px;color:var(--accent);list-style:none}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+  <a class="btn btn-icon" href="/core/settings" title="Core-Einstellungen"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1">
+    <h1 style="font-size:18px;font-weight:600">Feldsätze & Stammdatenfelder</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Frei definierbare Felder je Modul – manuell zuordenbar oder automatisch nach {{if .Module.MatchLabel}}{{.Module.MatchLabel}}{{else}}Modul{{end}}.</p>
+  </div>
+</div>
+
+{{if .Message}}<div class="fa-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="fa-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="fa-tabs">
+  {{range .Modules}}<a class="fa-tab {{if eq .Key $.Module.Key}}active{{end}}" href="/core/fieldsets?module={{.Key}}">{{.Label}}</a>{{end}}
+</div>
+
+<datalist id="fa-match-values"><option value="*">* (alle Datensätze)</option>{{range .MatchValues}}<option value="{{.}}">{{end}}</datalist>
+
+{{range .Sets}}
+{{$set := .}}
+<div class="fa-set {{if not .Active}}inactive{{end}}">
+  <div class="fa-set-head">
+    <div class="t">
+      <div style="font-weight:600"><i class="ti ti-forms"></i> {{.Name}} {{if not .Active}}<span class="badge b-gray">deaktiviert</span>{{end}}</div>
+      <div style="font-size:11px;color:var(--muted)">{{if .Description}}{{.Description}} · {{end}}{{if eq .AutoMatch "*"}}gilt automatisch für alle {{$.Module.Label}}{{else if .AutoMatch}}gilt automatisch für {{$.Module.MatchLabel}} „{{.AutoMatch}}“{{else}}manuelle Zuordnung{{end}} · {{len .Fields}} Felder</div>
+    </div>
+    <details class="fa-edit"><summary><i class="ti ti-edit"></i> Bearbeiten</summary>
+      <form method="post" action="/core/fieldsets/sets/{{.ID}}" class="fa-inline" style="margin-top:8px">
+        <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required maxlength="100"></div>
+        <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{.Description}}"></div>
+        {{if ne $.Module.MatchExpr "''"}}<div class="form-group"><label class="form-label">Automatisch für {{$.Module.MatchLabel}}</label><input name="auto_match" class="form-input" list="fa-match-values" value="{{.AutoMatch}}" placeholder="leer = manuell"></div>
+        {{else}}<div class="form-group"><label class="form-label">Automatisch</label><select name="auto_match" class="form-input"><option value="">manuell</option><option value="*" {{if eq .AutoMatch "*"}}selected{{end}}>für alle</option></select></div>{{end}}
+        <div class="form-group" style="width:90px"><label class="form-label">Sortierung</label><input type="number" name="sort_order" class="form-input" value="{{.SortOrder}}"></div>
+        <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-device-floppy"></i></button>
+      </form>
+    </details>
+    <form method="post" action="/core/fieldsets/sets/{{.ID}}/toggle"><button class="btn btn-small" type="submit">{{if .Active}}<i class="ti ti-eye-off"></i> Deaktivieren{{else}}<i class="ti ti-eye"></i> Aktivieren{{end}}</button></form>
+  </div>
+
+  {{range .Fields}}
+  <div class="fa-field {{if not .Active}}inactive{{end}}">
+    <div class="t">
+      <b>{{.Name}}</b>{{if .Required}} <span style="color:var(--red)">*</span>{{end}}
+      <span class="badge b-gray">{{.TypeLabel}}{{if .Unit}} · {{.Unit}}{{end}}</span>
+      {{if not .Active}}<span class="badge b-gray">deaktiviert</span>{{end}}
+      {{if .Help}}<div style="font-size:11px;color:var(--muted)">{{.Help}}</div>{{end}}
+      {{if eq .Type "select"}}
+      <div class="fa-opts">
+        {{range .Options}}<span>{{.Value}}<form method="post" action="/core/fieldsets/options/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Auswahlwert entfernen? Bestehende Werte bleiben erhalten.')"><button title="Entfernen"><i class="ti ti-x"></i></button></form></span>{{else}}<span style="color:var(--amber)">noch keine Auswahlwerte</span>{{end}}
+      </div>
+      <form method="post" action="/core/fieldsets/fields/{{.ID}}/options" class="fa-inline" style="margin-top:6px">
+        <input name="values" class="form-input" placeholder="Neue Werte, mit ; trennen" style="width:260px">
+        <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Werte</button>
+      </form>
+      {{end}}
+    </div>
+    <details class="fa-edit"><summary><i class="ti ti-edit"></i></summary>
+      {{template "fa-field-form" (dict "Action" (printf "/core/fieldsets/fields/%s" .ID) "F" . "Types" $.TypeOrder "Labels" $.TypeLabels)}}
+    </details>
+    <form method="post" action="/core/fieldsets/fields/{{.ID}}/toggle"><button class="btn btn-small" type="submit" title="{{if .Active}}Deaktivieren{{else}}Aktivieren{{end}}"><i class="ti {{if .Active}}ti-eye-off{{else}}ti-eye{{end}}"></i></button></form>
+  </div>
+  {{end}}
+  <div style="padding:10px 14px">
+    <details class="fa-edit"><summary><i class="ti ti-plus"></i> Feld hinzufügen</summary>
+      {{template "fa-field-form" (dict "Action" (printf "/core/fieldsets/sets/%s/fields" $set.ID) "Types" $.TypeOrder "Labels" $.TypeLabels)}}
+    </details>
+  </div>
+</div>
+{{else}}
+<div class="card" style="text-align:center;color:var(--muted)">Für {{.Module.Label}} gibt es noch keine Feldsätze.</div>
+{{end}}
+
+<form class="card" method="post" action="/core/fieldsets/sets">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Neuer Feldsatz für {{.Module.Label}}</span></div>
+  <input type="hidden" name="module" value="{{.Module.Key}}">
+  <div class="fa-inline">
+    <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required maxlength="100" placeholder="z. B. Motoren, Elektrik, Sicherheit"></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
+    {{if ne .Module.MatchExpr "''"}}<div class="form-group"><label class="form-label">Automatisch für {{.Module.MatchLabel}}</label><input name="auto_match" class="form-input" list="fa-match-values" placeholder="leer = manuell, * = alle"></div>
+    {{else}}<div class="form-group"><label class="form-label">Automatisch</label><select name="auto_match" class="form-input"><option value="">manuell</option><option value="*">für alle</option></select></div>{{end}}
+    <div class="form-group" style="width:90px"><label class="form-label">Sortierung</label><input type="number" name="sort_order" class="form-input" value="100"></div>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Anlegen</button>
+  </div>
+</form>
+{{end}}
+
+{{define "fa-field-form"}}
+<form method="post" action="{{.Action}}" class="fa-inline" style="margin-top:8px">
+  <div class="form-group"><label class="form-label">Feldname</label><input name="name" class="form-input" required maxlength="100" value="{{with .F}}{{.Name}}{{end}}"></div>
+  <div class="form-group"><label class="form-label">Typ</label>
+    <select name="field_type" class="form-input">{{$cur := ""}}{{with .F}}{{$cur = .Type}}{{end}}{{$labels := .Labels}}{{range .Types}}<option value="{{.}}" {{if eq . $cur}}selected{{end}}>{{index $labels .}}</option>{{end}}</select></div>
+  <div class="form-group" style="width:90px"><label class="form-label">Einheit</label><input name="unit" class="form-input" maxlength="30" value="{{with .F}}{{.Unit}}{{end}}" placeholder="kW, mm …"></div>
+  <div class="form-group"><label class="form-label">Hinweis</label><input name="help" class="form-input" maxlength="300" value="{{with .F}}{{.Help}}{{end}}"></div>
+  <div class="form-group" style="width:90px"><label class="form-label">Sortierung</label><input type="number" name="sort_order" class="form-input" value="{{with .F}}{{.SortOrder}}{{else}}100{{end}}"></div>
+  <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" name="required" {{with .F}}{{if .Required}}checked{{end}}{{end}}> Pflichtfeld</label>
+  <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+</form>
+{{end}}
+
+{{define "scripts"}}{{end}}

@@ -549,31 +549,6 @@ func (h *Handler) PartPurchasingWeb(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(r.FormValue("buyer_id")), partID); err != nil {
 		back += "?err=" + url.QueryEscape(friendlyDBError(err))
 	}
-	http.Redirect(w, r, back+"#purchasing", http.StatusSeeOther)
+	http.Redirect(w, r, withTab(back, "purchasing"), http.StatusSeeOther)
 }
 
-// loadPartPurchasing ergaenzt die Ersatzteil-Detailseite um Einkaeufer,
-// Hersteller-Verknuepfung, Lagerort und Lieferanten mit Konditionen.
-func (h *Handler) loadPartPurchasing(ctx context.Context, r *http.Request, partID string, data *InventoryDetailData) {
-	u := getUser(r)
-	data.CanPartners = h.canEditPartners(r)
-	data.CanPurchasing = data.CanPartners || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "inventory.edit")
-	data.Error = r.URL.Query().Get("err")
-	_ = h.db.QueryRow(ctx, `
-		SELECT COALESCE(sp.buyer_id::text, ''), COALESCE(TRIM(bu.first_name || ' ' || bu.last_name), ''),
-		       COALESCE(sp.manufacturer_id::text, ''), COALESCE(bp.name, ''),
-		       COALESCE(sp.storage_location, ''), COALESCE(sp.storage_place, '')
-		FROM spare_parts sp
-		LEFT JOIN users bu ON bu.id = sp.buyer_id
-		LEFT JOIN business_partners bp ON bp.id = sp.manufacturer_id
-		WHERE sp.id = $1`, partID).
-		Scan(&data.BuyerID, &data.BuyerName, &data.Part.ManufacturerID, &data.Part.ManufacturerName,
-			&data.Part.StorageLocation, &data.Part.StoragePlace)
-	data.Suppliers = h.partSuppliers(ctx, partID)
-	if data.CanPurchasing {
-		data.Users = h.userOptions(ctx)
-	}
-	if data.CanPartners {
-		data.SupplierOptions = h.supplierOptions(ctx)
-	}
-}

@@ -167,8 +167,6 @@ func TestPartnerPagesRender(t *testing.T) {
 		t.Error("Mail ohne Teile-Link")
 	}
 
-	renderPage(t, tmpl, "inventory_detail", InventoryDetailData{CanPurchasing: true, CanPartners: true,
-		Suppliers: []PartSupplierView{{PartnerID: "p1", Name: "ACME", Preferred: true}}})
 }
 
 func TestModulePagesParse(t *testing.T) {

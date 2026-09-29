@@ -1,0 +1,102 @@
+{{/*
+  Feldsatz-Block fuer Detailseiten (gemeinsames Feldsatz-System).
+
+  Einbinden (laedt sich selbst per htmx):
+    {{template "record-fields-slot" (dict "Module" "part" "ID" .Part.ID)}}
+  Fragment von GET/POST /records/fields/{module}/{id}: "record-fields"
+  (Daten: RecordFieldsData).
+*/}}
+{{define "record-fields-slot"}}
+<div id="rf-{{.Module}}-{{.ID}}" hx-get="/records/fields/{{.Module}}/{{.ID}}" hx-trigger="load" hx-swap="innerHTML">
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">Feldsätze werden geladen…</div>
+</div>
+{{end}}
+
+{{define "record-fields"}}
+<style>
+.rf-sets{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;align-items:start}
+.rf-set{border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:12px 14px}
+.rf-set h4{font-size:13px;font-weight:600;margin:0 0 2px;display:flex;align-items:center;gap:6px}
+.rf-set .rf-desc{font-size:11px;color:var(--muted);margin-bottom:8px}
+.rf-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.rf-row:last-child{border:0}
+.rf-row .l{width:45%;color:var(--muted)}
+.rf-row .v{flex:1;min-width:0;word-break:break-word;white-space:pre-wrap}
+.rf-row .v a{color:var(--accent)}
+.rf-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.rf-assign{display:flex;flex-wrap:wrap;gap:6px;padding:10px;border:1px dashed var(--border);border-radius:10px;margin-bottom:12px}
+.rf-assign label{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg3);cursor:pointer}
+.rf-assign label.auto{opacity:.7;cursor:default}
+.rf-req{color:var(--red)}
+</style>
+{{$d := .}}
+<div class="rf-bar">
+  {{if .Message}}<span style="font-size:12px;color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</span>{{end}}
+  {{if .Error}}<span style="font-size:12px;color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</span>{{end}}
+  <span style="flex:1"></span>
+  {{if .CanManage}}<a class="btn btn-small" href="/core/fieldsets?module={{.Module}}" title="Feldsätze verwalten"><i class="ti ti-settings"></i> Verwalten</a>{{end}}
+  {{if and .CanEdit (not .Edit)}}
+  <button type="button" class="btn btn-small btn-primary" hx-get="/records/fields/{{.Module}}/{{.ID}}?edit=1" hx-target="#rf-{{.Module}}-{{.ID}}" hx-swap="innerHTML"><i class="ti ti-edit"></i> Bearbeiten</button>
+  {{end}}
+</div>
+
+{{if .Edit}}
+<form hx-post="/records/fields/{{.Module}}/{{.ID}}" hx-target="#rf-{{.Module}}-{{.ID}}" hx-swap="innerHTML">
+  <input type="hidden" name="sets_submitted" value="1">
+  {{if .AllSets}}
+  <div class="rf-assign">
+    <span style="font-size:12px;color:var(--muted);width:100%">Feldsätze für diesen Datensatz{{if .MatchLabel}} – automatisch zugeordnete gelten für {{.MatchLabel}} „{{.Match}}“{{end}}:</span>
+    {{range .AllSets}}
+    {{if .Auto}}<label class="auto" title="Gilt automatisch{{if ne .AutoMatch "*"}} für {{.AutoMatch}}{{end}}"><input type="checkbox" checked disabled> {{.Name}} <i class="ti ti-bolt"></i></label>
+    {{else}}<label><input type="checkbox" name="set_ids" value="{{.ID}}" {{if .Assigned}}checked{{end}}> {{.Name}}</label>{{end}}
+    {{end}}
+  </div>
+  {{end}}
+  <div class="rf-sets">
+    {{range .Sets}}
+    <div class="rf-set">
+      <h4><i class="ti ti-forms"></i> {{.Name}}</h4>
+      {{if .Description}}<div class="rf-desc">{{.Description}}</div>{{end}}
+      {{range .Fields}}
+      <div class="form-group" style="margin-bottom:10px">
+        <label class="form-label">{{.Name}}{{if .Unit}} ({{.Unit}}){{end}}{{if .Required}} <span class="rf-req">*</span>{{end}}</label>
+        {{if eq .Type "textarea"}}<textarea name="f_{{.ID}}" class="form-input" rows="3" {{if .Required}}required{{end}}>{{.Value}}</textarea>
+        {{else if eq .Type "select"}}
+          <select name="f_{{.ID}}" class="form-input" {{if .Required}}required{{end}}>
+            <option value="">– auswählen –</option>
+            {{$v := .Value}}{{range .Options}}<option value="{{.Value}}" {{if eq .Value $v}}selected{{end}}>{{.Value}}</option>{{end}}
+          </select>
+        {{else if eq .Type "checkbox"}}
+          <input type="hidden" name="present_{{.ID}}" value="1">
+          <label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="f_{{.ID}}" value="1" {{if eq .Value "1"}}checked{{end}}> Ja</label>
+        {{else if eq .Type "number"}}<input name="f_{{.ID}}" class="form-input" inputmode="decimal" value="{{.Value}}" {{if .Required}}required{{end}}>
+        {{else if eq .Type "date"}}<input type="date" name="f_{{.ID}}" class="form-input" value="{{.Value}}" {{if .Required}}required{{end}}>
+        {{else if eq .Type "url"}}<input type="url" name="f_{{.ID}}" class="form-input" value="{{.Value}}" placeholder="https://…" {{if .Required}}required{{end}}>
+        {{else}}<input name="f_{{.ID}}" class="form-input" value="{{.Value}}" {{if .Required}}required{{end}}>{{end}}
+        {{if .Help}}<div style="font-size:11px;color:var(--muted);margin-top:3px">{{.Help}}</div>{{end}}
+      </div>
+      {{else}}<div style="font-size:12px;color:var(--muted)">Noch keine Felder in diesem Feldsatz.</div>{{end}}
+    </div>
+    {{else}}<div style="font-size:12px;color:var(--muted)">Feldsatz auswählen und speichern – danach erscheinen die Felder zum Ausfüllen.</div>{{end}}
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+    <button type="button" class="btn btn-small" hx-get="/records/fields/{{.Module}}/{{.ID}}" hx-target="#rf-{{.Module}}-{{.ID}}" hx-swap="innerHTML">Abbrechen</button>
+    <button type="submit" class="btn btn-small btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </div>
+</form>
+{{else}}
+<div class="rf-sets">
+  {{range .Sets}}
+  <div class="rf-set">
+    <h4><i class="ti ti-forms"></i> {{.Name}}{{if .Auto}} <i class="ti ti-bolt" style="color:var(--muted);font-size:12px" title="automatisch zugeordnet"></i>{{end}}</h4>
+    {{if .Description}}<div class="rf-desc">{{.Description}}</div>{{end}}
+    {{range .Fields}}
+    <div class="rf-row"><div class="l">{{.Name}}</div><div class="v">{{if .Display}}{{if eq .Type "url"}}<a href="{{.Value}}" target="_blank" rel="noopener">{{.Value}}</a>{{else}}{{.Display}}{{end}}{{else}}<span style="color:var(--muted)">—</span>{{end}}</div></div>
+    {{else}}<div style="font-size:12px;color:var(--muted)">Keine Felder</div>{{end}}
+  </div>
+  {{else}}
+  <div style="font-size:12px;color:var(--muted);padding:6px 0">Keine Feldsätze zugeordnet{{if $d.CanEdit}} – über „Bearbeiten“ zuordnen{{end}}.</div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

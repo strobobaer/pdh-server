@@ -1,39 +1,25 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-  <div>
-    <h1 style="font-size:19px;font-weight:600">Ersatzteillager</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Stats.Total}} Teile · Wert: {{.Stats.TotalValue}}€</p>
+<div class="rec-head">
+  <div class="t">
+    <h1>Ersatzteillager</h1>
+    <div class="sub">{{.Total}} Teile · Lagerwert {{.TotalValue}}</div>
   </div>
-  {{template "icon-button-toolbar" (dict "Class" "end" "Label" "Ersatzteil-Aktionen" "Items" (list (dict "Action" "book" "ShowLabel" true "OnClick" "openBookingModal()") (dict "Action" "history" "ShowLabel" true "Label" "Inventur" "OnClick" "openStocktakeModal()") (dict "Action" "edit" "ShowLabel" true "Label" "Feldsätze" "OnClick" "toggleFieldAdmin()") (dict "Action" "new" "ShowLabel" true "Label" "Neues Teil" "OnClick" "document.getElementById('new-part-form').style.display='block'")) )}}
+  <a class="btn btn-small" href="/directory/purchase-report"><i class="ti ti-shopping-cart"></i> Bestellvorschlag</a>
+  <button type="button" class="btn btn-small" onclick="openBookingModal()"><i class="ti ti-arrows-exchange"></i> Buchung</button>
+  <button type="button" class="btn btn-small" onclick="openStocktakeModal()"><i class="ti ti-list-check"></i> Inventur</button>
+  <a class="btn btn-small" href="/core/fieldsets?module=part"><i class="ti ti-forms"></i> Feldsätze</a>
+  {{if .CanEdit}}<button type="button" class="btn btn-small btn-primary" onclick="document.getElementById('new-part-form').style.display='block'"><i class="ti ti-plus"></i> Neues Teil</button>{{end}}
 </div>
 
-<div class="stats" style="grid-template-columns:repeat(4,1fr)">
-  <div class="stat s-blue"><div class="stat-label">Gesamt</div><div class="stat-val">{{.Stats.Total}}</div></div>
-  <div class="stat s-amber"><div class="stat-label">Unter Mindest</div><div class="stat-val">{{.Stats.LowStock}}</div></div>
-  <div class="stat s-red"><div class="stat-label">Kritisch</div><div class="stat-val">{{.Stats.Critical}}</div></div>
-  <div class="stat s-green"><div class="stat-label">Lagerwert</div><div class="stat-val">{{.Stats.TotalValue}}€</div></div>
-</div>
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
 
-<div id="field-admin" class="card" style="display:none">
-  <div class="card-title">Feldsätze und Stammdatenfelder</div>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Feldsatz anlegen, z.B. Motoren, und technische Felder zuordnen. Feldtyp „Auswahlliste“ erzeugt später am Teil ein Dropdown mit Plus-Button.</p>
-  <form hx-post="/api/v1/inventory/field-sets" hx-on::after-request="if(event.detail.successful){this.reset();loadFieldSets();}">
-    <div style="display:flex;gap:8px;align-items:end;margin-bottom:10px">
-      <div class="form-group" style="flex:1"><label class="form-label">Feldsatz</label><input name="name" class="form-input" placeholder="Motoren" required></div>
-      <div class="form-group" style="flex:2"><label class="form-label">Beschreibung</label><input name="description" class="form-input" placeholder="Technische Motordaten"></div>
-      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Feldsatz anlegen")}}
-    </div>
-  </form>
-  <div style="display:flex;gap:8px;align-items:end;margin-bottom:10px">
-    <div class="form-group" style="flex:1"><label class="form-label">Aktiver Feldsatz</label><select id="admin-field-set" class="form-input" onchange="loadFieldsForSelectedSet()"></select></div>
-    <div class="form-group" style="flex:1"><label class="form-label">Feldname</label><input id="admin-field-name" class="form-input" placeholder="Spannung"></div>
-    <div class="form-group" style="width:170px"><label class="form-label">Typ</label><select id="admin-field-type" class="form-input"><option value="text">Text</option><option value="number">Zahl</option><option value="date">Datum</option><option value="select">Auswahlliste</option></select></div>
-    <div class="form-group" style="width:110px"><label class="form-label">Sortierung</label><input id="admin-field-order" type="number" class="form-input" value="100"></div>
-    <button type="button" class="btn" onclick="createFieldInSelectedSet()"><i class="ti ti-plus"></i> Feld</button>
-  </div>
-  <div id="field-set-list" style="font-size:12px;color:var(--muted)"></div>
-  <div id="field-def-list" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+<div class="kpis">
+  <a class="kpi" href="/inventory"><div class="v">{{.Total}}</div><div class="l">Teile gesamt</div></a>
+  <a class="kpi" href="/inventory?status=low"><div class="v" style="color:var(--amber)">{{.LowStock}}</div><div class="l">Unter Mindestbestand</div></a>
+  <a class="kpi" href="/inventory?status=critical"><div class="v" style="color:var(--red)">{{.Critical}}</div><div class="l">Kritisch</div></a>
+  <a class="kpi" href="/inventory?status=empty"><div class="v" style="color:var(--red)">{{.Empty}}</div><div class="l">Leer</div></a>
+  <a class="kpi" href="/inventory?status=nosupplier"><div class="v">{{.NoSupplier}}</div><div class="l">Ohne Lieferant</div></a>
 </div>
 
 <div id="booking-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:5000;align-items:center;justify-content:center">
@@ -83,12 +69,12 @@
 
 <div id="new-part-form" style="display:none" class="card">
   <div class="card-title">Teil anlegen</div>
-  <form hx-post="/api/v1/inventory" onsubmit="embedImageUrlIntoDescription(this)" hx-on::after-request="if(event.detail.successful) location.reload()">
+  <form hx-post="/api/v1/inventory" onsubmit="embedImageUrlIntoDescription(this)" hx-on::after-request="if(event.detail.successful){try{const d=JSON.parse(event.detail.xhr.responseText);location.href='/inventory/'+(d.data&&d.data.id)+'?tab=master';}catch(e){location.reload();}}">
     <div class="grid2">
       <div class="form-group"><label class="form-label">Teilenummer</label><div style="display:flex;gap:6px"><input id="new-part-number" name="part_number" class="form-input" required><input id="barcode-new-part-number" type="file" accept="image/*" capture="environment" style="display:none" onchange="scanBarcodeIntoInput(this,'new-part-number')"><button type="button" class="btn" onclick="document.getElementById('barcode-new-part-number').click()"><i class="ti ti-barcode"></i></button></div></div>
       <div class="form-group"><label class="form-label">Name</label><input id="new-part-name" name="name" class="form-input" required></div>
       {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "new-part-manufacturer-id")}}
-      <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" list="part-categories" value="{{if ne .Category "__none"}}{{.Category}}{{end}}"><datalist id="part-categories">{{range .Categories}}<option value="{{.}}">{{end}}</datalist></div>
       <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="Stück"></div>
       <div class="form-group"><label class="form-label">Preis</label><input name="price" type="number" step="0.01" class="form-input" value="0"></div>
       <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" step="0.001" class="form-input" value="1"></div>
@@ -102,42 +88,45 @@
   </form>
 </div>
 
-<div id="parts-table" class="card" style="padding:0">
+<div class="list-tabs">
+  <a href="/inventory?status={{.Status}}&q={{.Query}}" class="{{if eq .Category ""}}active{{end}}">Alle <b>{{.Total}}</b></a>
+  {{range .Tabs}}<a href="/inventory?cat={{.Key}}&status={{$.Status}}&q={{$.Query}}" class="{{if eq .Key $.Category}}active{{end}}">{{.Label}} <b>{{.Count}}</b></a>{{end}}
+</div>
+
+<form method="get" action="/inventory" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+  <input type="hidden" name="cat" value="{{.Category}}">
+  <div class="search-box" style="flex:1;min-width:220px">
+    <i class="ti ti-search" style="color:var(--muted)"></i>
+    <input type="search" name="q" value="{{.Query}}" placeholder="Teilenummer, Name, Hersteller, Lieferant, Art.-Nr. …" style="flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;font-family:var(--font)">
+  </div>
+  <select name="status" class="form-input" style="width:auto" onchange="this.form.submit()">
+    <option value="">Alle Bestände</option>
+    <option value="low" {{if eq .Status "low"}}selected{{end}}>Unter Mindestbestand</option>
+    <option value="critical" {{if eq .Status "critical"}}selected{{end}}>Kritisch</option>
+    <option value="empty" {{if eq .Status "empty"}}selected{{end}}>Leer</option>
+    <option value="nosupplier" {{if eq .Status "nosupplier"}}selected{{end}}>Ohne Lieferant</option>
+  </select>
+  <button type="submit" class="btn btn-small"><i class="ti ti-filter"></i> Filtern</button>
+  {{if or .Query .Status .Category}}<a class="btn btn-small" href="/inventory"><i class="ti ti-filter-off"></i></a>{{end}}
+</form>
+
+<div id="parts-table" class="card" style="padding:0;overflow-x:auto">
   <table>
-    <thead><tr><th>Teil</th><th>Bestand</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Teil</th><th>Hersteller</th><th>Hauptlieferant</th><th style="text-align:right">Bestand / Min.</th><th>Status</th></tr></thead>
     <tbody>
-    {{range .Parts}}
-    <tr data-part-row="{{.ID}}" data-description="">
-      <td><div style="display:flex;gap:8px;align-items:center"><div id="thumb-{{.ID}}" style="width:42px;height:42px;border-radius:8px;background:var(--bg3);display:none;overflow:hidden;align-items:center;justify-content:center;flex-shrink:0"></div><div><div style="font-weight:500">{{.Name}}</div><div style="font-size:11px;color:var(--muted)">{{.PartNumber}}{{if .ManufacturerName}} · {{.ManufacturerName}}{{else if .Manufacturer}} · {{.Manufacturer}}{{end}}</div></div></div></td>
-      <td><div style="font-weight:500">{{.StockQty}} {{.Unit}}</div><div style="font-size:10px;color:var(--muted)">Min: {{.MinQty}}</div></td>
+    {{range .Rows}}
+    <tr style="cursor:pointer" onclick="if(!event.target.closest('a'))location='/inventory/{{.ID}}'">
+      <td><div style="display:flex;gap:8px;align-items:center">
+        {{if .ImageURL}}<img src="{{.ImageURL}}" alt="" loading="lazy" style="width:38px;height:38px;border-radius:8px;object-fit:cover;flex-shrink:0">{{else}}<div style="width:38px;height:38px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)"><i class="ti ti-package"></i></div>{{end}}
+        <div><a href="/inventory/{{.ID}}" style="font-weight:500">{{.Name}}</a>
+        <div style="font-size:11px;color:var(--muted)"><span style="font-family:monospace">{{.PartNumber}}</span>{{if .Category}} · {{.Category}}{{end}}{{if .Locations}} · {{.Locations}} Lagerplatz/-plätze{{end}}{{if .BuyerName}} · Einkauf: {{.BuyerName}}{{end}}</div></div>
+      </div></td>
+      <td style="font-size:12px">{{if .ManufacturerID}}<a href="/directory/{{.ManufacturerID}}" data-frame data-frame-title="{{.ManufacturerName}}" style="color:var(--accent)">{{.ManufacturerName}}</a>{{else}}{{.ManufacturerName}}{{end}}</td>
+      <td style="font-size:12px">{{if .SupplierID}}<a href="/directory/{{.SupplierID}}" data-frame data-frame-title="{{.Supplier}}" style="color:var(--accent)">{{.Supplier}}</a>{{else}}<span style="color:var(--amber)">—</span>{{end}}</td>
+      <td style="text-align:right;white-space:nowrap"><b>{{.Stock}}</b> / {{.MinQty}} {{.Unit}}</td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
-      <td style="white-space:nowrap">{{template "icon-button" (dict "Action" "edit" "OnClick" (printf "togglePartEdit('%s')" .ID))}}{{template "icon-button" (dict "Action" "history" "HxGet" (printf "/inventory/%s/movements" .ID) "HxTarget" (printf "#movements-%s" .ID) "HxSwap" "innerHTML")}}</td>
     </tr>
-    <tr id="edit-{{.ID}}" style="display:none"><td colspan="4" style="background:var(--bg3);padding:14px">
-      <form hx-post="/api/v1/inventory/{{.ID}}" onsubmit="embedImageUrlIntoDescription(this)" hx-on::after-request="if(event.detail.successful) location.reload()">
-        <div class="grid2">
-          <div class="form-group"><label class="form-label">Teilenummer</label><div style="display:flex;gap:6px"><input id="part-number-{{.ID}}" name="part_number" class="form-input" value="{{.PartNumber}}" required><input id="barcode-part-number-{{.ID}}" type="file" accept="image/*" capture="environment" style="display:none" onchange="scanBarcodeIntoInput(this,'part-number-{{.ID}}')"><button type="button" class="btn" onclick="document.getElementById('barcode-part-number-{{.ID}}').click()"><i class="ti ti-barcode"></i></button></div></div>
-          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
-          {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" (printf "part-manufacturer-id-%s" .ID) "Value" .ManufacturerID "LegacyValue" .Manufacturer)}}
-          <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" value="{{.Category}}"></div>
-          <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="{{.Unit}}"></div>
-          <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" type="number" step="0.001" class="form-input" value="{{.MinQty}}"></div>
-          <div class="form-group"><label class="form-label">Preis</label><input name="price" type="number" step="0.01" class="form-input" value="{{.Price}}"></div>
-          <div class="form-group" style="grid-column:1/-1"><label class="form-label">Feldsätze</label><div id="field-sets-{{.ID}}" data-field-set-box="{{.ID}}" style="display:flex;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">Lade Feldsätze...</div></div>
-          <div class="form-group" style="grid-column:1/-1"><label class="form-label">Teilebild URL</label><div style="display:flex;gap:6px"><input data-image-url="1" class="form-input" placeholder="https://...jpg/png/webp" oninput="previewImageUrl(this)"><button type="button" class="btn" onclick="openImageSearch(this.form)"><i class="ti ti-search"></i> Suchen</button></div><div class="image-preview" style="margin-top:6px"></div></div>
-          <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
-        </div>
-        <div id="custom-fields-{{.ID}}" data-part-id="{{.ID}}" style="margin-top:10px"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-          {{template "icon-button" (dict "Action" "edit" "ShowLabel" true "Label" "Felder neu laden" "OnClick" (printf "loadPartFields('%s')" .ID))}}
-          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Label" "Stammfelder speichern" "OnClick" (printf "savePartFields('%s')" .ID))}}
-          {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" (printf "togglePartEdit('%s')" .ID))}}
-          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Teil speichern")}}
-        </div>
-      </form>
-    </td></tr>
-    <tr id="movements-{{.ID}}" style="display:none"><td colspan="4"></td></tr>
-    {{else}}<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">Keine Teile vorhanden</td></tr>{{end}}
+    {{else}}<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile für diese Auswahl</td></tr>{{end}}
     </tbody>
   </table>
 </div>
@@ -183,14 +172,11 @@
 </div>
 {{end}}
 
-{{define "context-list"}}{{range .LowStockParts}}<div class="act-item"><div class="act-dot {{.StatusDot}}"></div><div class="act-text">{{.Name}}</div><span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span></div>{{end}}{{end}}
+{{define "context-list"}}{{range .LowStockParts}}<div class="act-item" onclick="location='/inventory/{{.ID}}'" style="cursor:pointer"><div class="act-dot {{.StatusDot}}"></div><div class="act-text">{{.Name}}</div><span style="font-size:11px;color:var(--muted)">{{.StockQty}}</span></div>{{end}}{{end}}
 
 {{block "scripts" .}}
 <script>
-let fieldSetsCache=null;
 async function apiData(url,options){const res=await fetch(url,Object.assign({credentials:'same-origin'},options||{}));let payload=null;try{payload=await res.json();}catch(e){throw new Error('Keine JSON-Antwort von '+url);}if(!res.ok||payload.success===false)throw new Error(payload.error||payload.message||('HTTP '+res.status));return Array.isArray(payload)?payload:(payload.data!==undefined?payload.data:payload);}
-function toggleFieldAdmin(){const el=document.getElementById('field-admin');el.style.display=el.style.display==='none'?'block':'none';if(el.style.display==='block')loadFieldSets();}
-function togglePartEdit(id){const el=document.getElementById('edit-'+id);el.style.display=el.style.display==='none'?'table-row':'none';if(el.style.display==='table-row'){loadPartDetails(id);initImageFields(el);loadFieldSetCheckboxes(id).then(()=>loadPartFields(id));}}
 let bookPartsCache=null;let bookStorageTreeCache=null;
 function openBookingModal(){document.getElementById('booking-modal').style.display='flex';loadBookParts();loadBookStorageTree();onBookTypeChange();}
 function closeBookingModal(){document.getElementById('booking-modal').style.display='none';document.getElementById('book-error').style.display='none';}
@@ -203,16 +189,6 @@ function renderBookStorageNodes(nodes,depth){depth=depth||0;if(!Array.isArray(no
 function selectBookStorage(id,name){document.getElementById('book-storage-node-id').value=id;document.getElementById('book-storage-selected').textContent='Ausgewählt: '+name;onBookPartOrLocationChange();}
 async function onBookPartOrLocationChange(){const partId=document.getElementById('book-part-id').value;const nodeId=document.getElementById('book-storage-node-id').value;const stockEl=document.getElementById('book-current-stock');if(!partId||!nodeId){stockEl.textContent='Aktueller Bestand: –';return;}try{const data=await apiData('/api/v1/inventory/'+partId+'/stock/'+nodeId);stockEl.textContent='Aktueller Bestand an diesem Lagerort: '+data.qty;}catch(e){stockEl.textContent='Aktueller Bestand: konnte nicht geladen werden';}}
 async function submitBooking(){const errEl=document.getElementById('book-error');errEl.style.display='none';const partId=document.getElementById('book-part-id').value;const nodeId=document.getElementById('book-storage-node-id').value;const type=document.getElementById('book-type').value;const qty=parseFloat(document.getElementById('book-qty').value)||0;const notes=document.getElementById('book-notes').value;if(!partId){errEl.textContent='Bitte ein Ersatzteil auswählen';errEl.style.display='block';return;}if(!nodeId){errEl.textContent='Bitte einen Lagerort auswählen';errEl.style.display='block';return;}try{const headers={'Content-Type':'application/json'};if(typeof pdhToken==='function'){headers['Authorization']='Bearer '+pdhToken();}const res=await fetch('/api/v1/inventory/book',{method:'POST',headers:headers,credentials:'same-origin',body:JSON.stringify({part_id:partId,type:type,qty:qty,storage_node_id:nodeId,notes:notes})});const json=await res.json();if(!res.ok||json.success===false)throw new Error((json&&json.error)||'Fehler bei der Buchung');closeBookingModal();location.reload();}catch(e){errEl.textContent='Fehler: '+e.message;errEl.style.display='block';}}
-async function loadPartDetails(id){try{const p=await apiData('/api/v1/inventory/'+id);const row=document.querySelector('[data-part-row="'+id+'"]');if(row)row.dataset.description=p.description||'';const edit=document.getElementById('edit-'+id);const desc=edit?.querySelector('[name="description"]');if(desc&&!desc.value)desc.value=p.description||'';initImageFields(edit);}catch(e){console.warn(e);}}
-async function loadFieldSets(){try{fieldSetsCache=await apiData('/api/v1/inventory/field-sets');const sel=document.getElementById('admin-field-set');sel.innerHTML=fieldSetsCache.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');document.getElementById('field-set-list').innerHTML=fieldSetsCache.length?fieldSetsCache.map(s=>`<span class="badge b-blue" style="margin-right:4px">${escapeHtml(s.name)}</span>`).join(''):'Noch keine Feldsätze angelegt';loadFieldsForSelectedSet();}catch(e){document.getElementById('field-set-list').innerHTML='<span style="color:var(--red)">'+escapeHtml(e.message)+'</span>';}}
-async function loadFieldsForSelectedSet(){const sel=document.getElementById('admin-field-set');const list=document.getElementById('field-def-list');if(!sel||!sel.value){list.innerHTML='Kein Feldsatz ausgewählt';return;}try{const fields=await apiData('/api/v1/inventory/field-sets/'+sel.value+'/fields');list.innerHTML=fields.length?fields.map(f=>`<span class="badge b-green" style="margin-right:4px">${escapeHtml(f.name)} · ${escapeHtml(f.field_type)}</span>`).join(''):'Dieser Feldsatz hat noch keine Felder';}catch(e){list.innerHTML='<span style="color:var(--red)">'+escapeHtml(e.message)+'</span>';}}
-async function createFieldInSelectedSet(){const set=document.getElementById('admin-field-set').value;if(!set){alert('Bitte Feldsatz anlegen/auswählen');return;}const body=new URLSearchParams();body.set('name',document.getElementById('admin-field-name').value);body.set('field_type',document.getElementById('admin-field-type').value);body.set('sort_order',document.getElementById('admin-field-order').value||'100');await fetch('/api/v1/inventory/field-sets/'+set+'/fields',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});document.getElementById('admin-field-name').value='';loadFieldsForSelectedSet();}
-async function loadFieldSetCheckboxes(id){if(!fieldSetsCache)fieldSetsCache=await apiData('/api/v1/inventory/field-sets');const box=document.getElementById('field-sets-'+id);if(!box)return;let assigned=[];try{const a=await apiData('/api/v1/inventory/'+id+'/field-sets');assigned=a.field_set_ids||[];}catch(e){try{const a=await apiData('/api/v1/inventory/'+id+'/field-set');assigned=a.field_set_id?[a.field_set_id]:[];}catch(_){assigned=[];}}box.innerHTML=fieldSetsCache.length?fieldSetsCache.map(s=>`<label class="badge b-blue" style="cursor:pointer;margin-right:4px"><input type="checkbox" data-field-set-id="${s.id}" ${assigned.includes(s.id)?'checked':''} onchange="assignFieldSets('${id}')"> ${escapeHtml(s.name)}</label>`).join(''):'Keine Feldsätze angelegt';}
-async function assignFieldSets(id){const box=document.getElementById('field-sets-'+id);const ids=[...box.querySelectorAll('[data-field-set-id]:checked')].map(i=>i.dataset.fieldSetId);await apiData('/api/v1/inventory/'+id+'/field-sets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field_set_ids:ids})});loadPartFields(id);}
-async function loadPartFields(id){const box=document.getElementById('custom-fields-'+id);box.innerHTML='Lade Feldsatzfelder...';try{const fields=await apiData('/api/v1/inventory/'+id+'/fields-assigned');box.innerHTML=fields.length?`<div class="grid2">${fields.map(f=>renderCustomFieldInput(id,f)).join('')}</div>`:'<div style="color:var(--muted);font-size:12px">Keine Feldsätze ausgewählt oder keine Felder in den Feldsätzen.</div>';}catch(e){box.innerHTML='<span style="color:var(--red)">Felder konnten nicht geladen werden: '+escapeHtml(e.message)+'</span>';}}
-function renderCustomFieldInput(partId,f){const type=(f.field_type||'text').toLowerCase();if(type==='select'||type==='list'||type==='choice'){const opts=(f.options||[]).map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===f.value?'selected':''}>${escapeHtml(o.value)}</option>`).join('');return `<div class="form-group"><label class="form-label">${escapeHtml(f.name)}</label><div style="display:flex;gap:6px"><select data-field-id="${f.field_id}" data-field-type="select" class="form-input custom-field-input"><option value="">-- wählen --</option>${opts}</select><button type="button" class="btn" onclick="addFieldOption('${partId}','${f.field_id}')"><i class="ti ti-plus"></i></button></div></div>`;}const inputType=type==='number'?'number':(type==='date'?'date':'text');return `<div class="form-group"><label class="form-label">${escapeHtml(f.name)}</label><input type="${inputType}" data-field-id="${f.field_id}" class="form-input custom-field-input" value="${escapeHtml(f.value||'')}"></div>`;}
-async function addFieldOption(partId,fieldId){const value=prompt('Neuen Auswahlwert eingeben:');if(!value||!value.trim())return;const body=new URLSearchParams();body.set('value',value.trim());body.set('sort_order','100');try{await fetch('/api/v1/inventory/fields/'+fieldId+'/options',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});await loadPartFields(partId);const sel=document.querySelector(`#custom-fields-${partId} [data-field-id="${fieldId}"]`);if(sel)sel.value=value.trim();}catch(e){alert('Auswahlwert konnte nicht angelegt werden: '+e.message);}}
-async function savePartFields(id){const box=document.getElementById('custom-fields-'+id);const values={};box.querySelectorAll('.custom-field-input').forEach(i=>values[i.dataset.fieldId]=i.value);try{await apiData('/api/v1/inventory/'+id+'/fields',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})});alert('Stammfelder gespeichert');}catch(e){alert('Stammfelder konnten nicht gespeichert werden: '+e.message);}}
 function imageUrlFromDescription(desc){const m=String(desc||'').match(/(?:^|\n)PDH_IMAGE_URL:\s*(\S+)/);return m?m[1]:'';}function cleanImageUrlFromDescription(desc){return String(desc||'').replace(/(?:^|\n)PDH_IMAGE_URL:\s*\S+\s*/g,'').trim();}function embedImageUrlIntoDescription(form){const input=form.querySelector('[data-image-url]');const desc=form.querySelector('[name="description"]');if(!input||!desc)return true;const clean=cleanImageUrlFromDescription(desc.value);const url=input.value.trim();desc.value=url?(clean?clean+'\n':'')+'PDH_IMAGE_URL: '+url:clean;return true;}function initImageFields(root=document){if(!root)return;root.querySelectorAll('form').forEach(form=>{const img=form.querySelector('[data-image-url]');const desc=form.querySelector('[name="description"]');if(img&&desc){img.value=imageUrlFromDescription(desc.value);desc.value=cleanImageUrlFromDescription(desc.value);previewImageUrl(img);}});}function previewImageUrl(input){const box=input.closest('.form-group')?.querySelector('.image-preview');if(!box)return;const url=input.value.trim();box.innerHTML=url?`<img src="${escapeHtml(url)}" style="max-height:90px;max-width:180px;border-radius:8px;border:1px solid var(--border);object-fit:contain" onerror="this.replaceWith(document.createTextNode('Bild konnte nicht geladen werden'))">`:'';}function openImageSearch(form){const part=form.querySelector('[name="part_number"]')?.value||'';const name=form.querySelector('[name="name"]')?.value||'';const mfrSelect=form.querySelector('[name="manufacturer_id"]');const manufacturer=(mfrSelect&&mfrSelect.value&&mfrSelect.selectedOptions[0])?mfrSelect.selectedOptions[0].textContent:'';const q=[manufacturer,part,name].filter(Boolean).join(' ').trim()||'Ersatzteil';const enc=encodeURIComponent(q);const panel=document.getElementById('image-search-panel');const content=document.getElementById('image-search-content');panel.style.display='block';content.innerHTML=`<div style="margin-bottom:10px;color:var(--fg)">Suchbegriff: <b>${escapeHtml(q)}</b></div><div style="display:grid;gap:6px"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/search?tbm=isch&q=${enc}">Google Bilder öffnen</a><a class="btn" target="_blank" rel="noopener" href="https://www.bing.com/images/search?q=${enc}">Bing Bilder öffnen</a><a class="btn" target="_blank" rel="noopener" href="https://duckduckgo.com/?iax=images&ia=images&q=${enc}">DuckDuckGo Bilder öffnen</a></div>`;}function closeImageSearch(){document.getElementById('image-search-panel').style.display='none';}
 async function scanBarcodeIntoInput(fileInput,targetInputId){const target=document.getElementById(targetInputId);if(!target||!fileInput.files||fileInput.files.length===0)return;if(!('BarcodeDetector'in window)){alert('Barcode-Erkennung wird von diesem Browser nicht unterstützt.');fileInput.value='';return;}try{const bitmap=await createImageBitmap(fileInput.files[0]);const formats=await BarcodeDetector.getSupportedFormats();const detector=new BarcodeDetector({formats:formats&&formats.length?formats:undefined});const codes=await detector.detect(bitmap);if(!codes||codes.length===0){alert('Kein Barcode erkannt.');return;}target.value=codes[0].rawValue||'';target.dispatchEvent(new Event('input',{bubbles:true}));target.focus();}catch(e){alert('Barcode konnte nicht erkannt werden: '+e.message);}finally{fileInput.value='';}}
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}function escapeJs(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}

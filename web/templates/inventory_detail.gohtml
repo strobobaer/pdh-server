@@ -1,193 +1,292 @@
 {{template "base" .}}
+
+{{define "part-partner-card"}}
+{{/* Vergleichskarte Hersteller / Hauptlieferant: .Title .Icon .C (partnerContact) .No (Teilenummer) .NoLabel .Extra .Empty */}}
+<div class="card" style="margin:0">
+  <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Title}}</span></div>
+  {{if .C}}
+  <div style="font-weight:600;font-size:14px"><a href="/directory/{{.C.ID}}" data-frame data-frame-title="{{.C.Name}}" style="color:var(--accent)">{{.C.Name}}</a></div>
+  <div class="rec-f"><div class="rec-l">{{.NoLabel}}</div><div class="rec-v" style="font-family:monospace">{{if .No}}{{.No}}{{else}}—{{end}}</div></div>
+  {{if .Extra}}{{.Extra}}{{end}}
+  <div class="rec-f"><div class="rec-l">Telefon</div><div class="rec-v">{{if .C.Phone}}<a href="tel:{{.C.Phone}}">{{.C.Phone}}</a>{{else}}—{{end}}</div></div>
+  <div class="rec-f"><div class="rec-l">E-Mail</div><div class="rec-v">{{if .C.Email}}<a href="mailto:{{.C.Email}}">{{.C.Email}}</a>{{else}}—{{end}}</div></div>
+  {{if .C.Hotline}}<div class="rec-f"><div class="rec-l">Support-Hotline</div><div class="rec-v"><a href="tel:{{.C.Hotline}}">{{.C.Hotline}}</a></div></div>{{end}}
+  {{else}}
+  <div class="rec-sub" style="padding:6px 0">{{.Empty}}</div>
+  {{end}}
+</div>
+{{end}}
+
 {{define "content"}}
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-  {{template "icon-button" (dict "Action" "back" "Href" "/inventory")}}
-  <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Part.Name}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Part.PartNumber}} · {{.Part.Manufacturer}}</p>
+{{$p := .Part}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="/inventory" title="Ersatzteilliste"><i class="ti ti-arrow-left"></i></a>
+  {{if $p.ImageURL}}<img class="rec-img" src="{{$p.ImageURL}}" alt="" loading="lazy">{{else}}<div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--muted)"><i class="ti ti-package" style="font-size:24px"></i></div>{{end}}
+  <div class="t">
+    <h1>{{$p.Name}}</h1>
+    <div class="sub"><span style="font-family:monospace">{{$p.PartNumber}}</span>{{if $p.Category}} · <a href="/inventory?cat={{$p.Category}}" style="color:var(--accent)">{{$p.Category}}</a>{{end}}{{if $p.ManufacturerName}} · {{$p.ManufacturerName}}{{end}}</div>
   </div>
-  <span class="badge {{.Part.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Part.StatusLabel}}</span>
-  <!-- ... Menü -->
-  <div style="position:relative" oncontextmenu="toggleMenu('inv-menu'); return false;">
-    {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('inv-menu')")}}
-    <div id="inv-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
-      {{template "icon-button" (dict "Action" "book" "ShowLabel" true "Label" "Buchung erfassen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('book-form').style.display='block';closeMenu('inv-menu')")}}
-      {{template "icon-button" (dict "Action" "edit" "ShowLabel" true "Label" "Bearbeiten" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "OnClick" "document.getElementById('edit-form').style.display='block';closeMenu('inv-menu')")}}
+  <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}</span>
+  <a class="btn btn-small" href="#" onclick="recTab('stock');document.getElementById('book-type').focus();return false"><i class="ti ti-arrows-exchange"></i> Buchen</a>
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  {{if .CanEdit}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="stock" href="?tab=stock"><i class="ti ti-building-warehouse"></i> Lager & Bewegungen <b>{{len .Stock}}</b></a>
+  <a class="rec-tab" data-tab="purchasing" href="?tab=purchasing"><i class="ti ti-truck"></i> Lieferanten & Einkauf <b>{{len .Suppliers}}</b></a>
+  <a class="rec-tab" data-tab="usage" href="?tab=usage"><i class="ti ti-link"></i> Verwendung <b>{{len .Usage}}</b></a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Übersicht ── -->
+<div class="rec-pane" data-pane="overview">
+  <div class="kpis">
+    <div class="kpi"><div class="v" style="color:{{if eq $p.StatusKey "ok"}}var(--green){{else if eq $p.StatusKey "low"}}var(--amber){{else}}var(--red){{end}}">{{$p.Q $p.StockQty}}</div><div class="l">Bestand ({{$p.Unit}})</div></div>
+    <div class="kpi"><div class="v">{{$p.Q $p.MinQty}}</div><div class="l">Mindestbestand</div></div>
+    <div class="kpi"><div class="v">{{$p.Q $p.CriticalQty}}</div><div class="l">Kritischer Bestand</div></div>
+    <div class="kpi"><div class="v">{{$p.Q $p.ReorderQty}}</div><div class="l">Nachbestellmenge</div></div>
+    <div class="kpi"><div class="v" style="font-size:18px">{{.StockValue}}</div><div class="l">Lagerwert ({{$p.E $p.Price}} / {{$p.Unit}})</div></div>
+  </div>
+
+  <div class="rec-compare" style="margin-bottom:12px">
+    {{template "part-partner-card" (dict "Title" "Hersteller" "Icon" "ti-building-factory-2" "C" .Manufacturer "No" $p.ManufacturerPart "NoLabel" "Hersteller-Teilenr." "Empty" (printf "%s" (or $p.ManufacturerLegacy "Kein Hersteller hinterlegt")))}}
+    {{if .MainSupplier}}
+    {{template "part-partner-card" (dict "Title" "Hauptlieferant" "Icon" "ti-truck" "C" .MainSupplierContact "No" .MainSupplier.SupplierPartNo "NoLabel" "Lieferanten-Art.-Nr." "Empty" "")}}
+    {{else}}
+    {{template "part-partner-card" (dict "Title" "Hauptlieferant" "Icon" "ti-truck" "Empty" "Kein Lieferant hinterlegt – Hersteller ist nicht automatisch Lieferant.")}}
+    {{end}}
+  </div>
+  {{if .MainSupplier}}
+  <div class="card" style="font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap">
+    <span><span class="rec-sub">EK-Preis</span> <b>{{if .MainSupplier.Price}}{{.MainSupplier.Price}}{{else}}—{{end}}</b></span>
+    <span><span class="rec-sub">Mindestmenge</span> <b>{{if .MainSupplier.MinOrderQty}}{{.MainSupplier.MinOrderQty}}{{else}}—{{end}}</b></span>
+    <span><span class="rec-sub">Lieferzeit</span> <b>{{if .MainSupplier.LeadTime}}{{.MainSupplier.LeadTime}}{{else}}—{{end}}</b></span>
+    <span><span class="rec-sub">Einkäufer</span> <b>{{if $p.BuyerName}}{{$p.BuyerName}}{{else}}Standard-Einkäufer{{end}}</b></span>
+    {{if gt (len .Suppliers) 1}}<a href="#" onclick="recTab('purchasing');return false" style="color:var(--accent)">+ {{len .Suppliers}} Lieferanten vergleichen</a>{{end}}
+  </div>
+  {{end}}
+
+  <div class="rec-grid">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Lagerplätze</span></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b></div>
+      {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-info-circle"></i> Allgemein</span></div>
+      <div class="rec-f"><div class="rec-l">Kategorie</div><div class="rec-v">{{if $p.Category}}{{$p.Category}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Einheit</div><div class="rec-v">{{$p.Unit}}</div></div>
+      <div class="rec-f"><div class="rec-l">Anlage</div><div class="rec-v">{{if $p.InfraID}}<a href="/infrastructure/{{$p.InfraID}}" data-frame data-frame-title="{{$p.InfraName}}">{{$p.InfraName}}</a>{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Beschreibung</div><div class="rec-v">{{if $p.Description}}{{$p.Description}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Angelegt / geändert</div><div class="rec-v">{{$p.CreatedAt}} / {{$p.UpdatedAt}}</div></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Letzte Bewegungen</span></div>
+      {{range $i, $m := .Movements}}{{if lt $i 5}}
+      <div class="rec-row"><div class="grow">{{$m.TypeLabel}}{{if $m.RecordLabel}} · <a href="{{$m.RecordURL}}" data-frame data-frame-title="{{$m.RecordLabel}}" style="color:var(--accent)">{{$m.RecordLabel}}</a>{{end}}<div class="rec-sub">{{$m.Date}} · {{$m.User}}</div></div><b>{{$m.Qty}}</b></div>
+      {{end}}{{else}}<div class="rec-sub">Keine Bewegungen</div>{{end}}
     </div>
   </div>
 </div>
 
-<!-- Buchungs-Form -->
-<div id="book-form" style="display:none" class="card">
-  <div class="card-title">Lagerbewegung buchen</div>
-  <form hx-post="/inventory/book-web" hx-target="#movements-list" hx-swap="afterbegin">
-    <input type="hidden" name="part_id" value="{{.Part.ID}}">
-    <div class="grid2">
-      <div class="form-group">
-        <label class="form-label">Typ</label>
-        <select name="type" class="form-input">
-          <option value="in">📦 Zugang</option>
-          <option value="out">📤 Abgang</option>
-          <option value="correction">✏️ Korrektur</option>
-        </select>
+<!-- ── Stammdaten ── -->
+{{if .CanEdit}}
+<div class="rec-pane" data-pane="master">
+  <form class="card rec-form" method="post" action="/inventory/{{$p.ID}}/master">
+    <div class="rec-sec" style="margin-top:0">Allgemein</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Teilenummer *</label><input name="part_number" class="form-input" value="{{$p.PartNumber}}" required maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" value="{{$p.Name}}" required maxlength="255"></div>
+      <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" value="{{$p.Category}}" list="part-categories" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" value="{{$p.Unit}}" maxlength="20"></div>
+    </div>
+    <datalist id="part-categories">{{range .Categories}}<option value="{{.}}">{{end}}</datalist>
+    <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="2">{{$p.Description}}</textarea></div>
+    <div class="form-group"><label class="form-label">Teilebild (URL)</label><input name="image_url" class="form-input" value="{{$p.ImageURL}}" placeholder="https://…jpg/png/webp"></div>
+
+    <div class="rec-compare">
+      <div>
+        <div class="rec-sec">Hersteller</div>
+        {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "part-manufacturer-id" "Name" "manufacturer_id" "Kind" "manufacturer" "Value" $p.ManufacturerID "LegacyValue" $p.ManufacturerLegacy)}}
+        <div class="form-group"><label class="form-label">Hersteller-Teilenummer</label><input name="manufacturer_part" class="form-input" value="{{$p.ManufacturerPart}}" maxlength="100"></div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Menge</label>
-        <input name="qty" type="number" step="0.001" class="form-input" required value="1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Referenz</label>
-        <input name="reference" class="form-input" placeholder="z.B. Störung #123">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notiz</label>
-        <input name="notes" class="form-input" placeholder="Optionale Notiz">
+      <div>
+        <div class="rec-sec">Hauptlieferant</div>
+        {{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "part-supplier-id" "Name" "main_supplier_id" "Kind" "supplier" "Value" .MainSupplierID)}}
+        <div class="cols">
+          <div class="form-group"><label class="form-label">Lieferanten-Art.-Nr.</label><input name="supplier_part_no" class="form-input" value="{{with .MainSupplier}}{{.SupplierPartNo}}{{end}}" maxlength="100"></div>
+          <div class="form-group"><label class="form-label">EK-Preis (€)</label><input name="supply_price" class="form-input" inputmode="decimal" value="{{with .MainSupplier}}{{.PriceRaw}}{{end}}"></div>
+          <div class="form-group"><label class="form-label">Mindestmenge</label><input name="min_order_qty" class="form-input" inputmode="decimal" value="{{with .MainSupplier}}{{.MinQtyRaw}}{{end}}"></div>
+          <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="supply_lead_time" class="form-input" value="{{with .MainSupplier}}{{.LeadDays}}{{end}}"></div>
+        </div>
       </div>
     </div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Lagerbewegung buchen"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('book-form').style.display='none'")
-        (dict "Action" "book" "ShowLabel" true "Type" "submit")
-      )
-    )}}
+
+    <div class="rec-sec">Bestand & Preis</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Mindestbestand</label><input name="min_qty" class="form-input" inputmode="decimal" value="{{$p.In $p.MinQty}}"></div>
+      <div class="form-group"><label class="form-label">Kritischer Bestand</label><input name="critical_qty" class="form-input" inputmode="decimal" value="{{$p.In $p.CriticalQty}}"></div>
+      <div class="form-group"><label class="form-label">Nachbestellmenge</label><input name="reorder_qty" class="form-input" inputmode="decimal" value="{{$p.In $p.ReorderQty}}"></div>
+      <div class="form-group"><label class="form-label">Standardpreis (€)</label><input name="price" class="form-input" inputmode="decimal" value="{{$p.In $p.Price}}"></div>
+    </div>
+
+    <div class="rec-sec">Zuordnung</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Verantwortlicher Einkäufer</label>
+        <select name="buyer_id" class="form-input"><option value="">– Standard-Einkäufer –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $p.BuyerID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    </div>
+    {{template "infra-tree-picker" (dict "TargetID" "part-infra-id" "SelectedLabelID" "part-infra-selected" "Label" "Anlage (Einbauort)" "Value" $p.InfraID "SelectedLabel" $p.InfraName)}}
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <a class="btn" href="?tab=overview">Abbrechen</a>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
   </form>
 </div>
+{{end}}
 
-<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
-  <div>
-    <!-- Bewegungshistorie -->
-    <div class="card">
-      <div class="card-title">Bewegungshistorie</div>
-      <div id="movements-list">
-        {{range .Movements}}
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
-            background:{{if eq .Type "in"}}rgba(16,185,129,.15){{else if eq .Type "out"}}rgba(239,68,68,.15){{else}}rgba(107,114,128,.15){{end}}">
-            <i class="ti {{if eq .Type "in"}}ti-arrow-down{{else if eq .Type "out"}}ti-arrow-up{{else}}ti-arrows-exchange{{end}}"
-              style="font-size:14px;color:{{if eq .Type "in"}}var(--green){{else if eq .Type "out"}}var(--red){{else}}var(--muted){{end}}"></i>
-          </div>
-          <div style="flex:1">
-            <div style="font-weight:500">{{if eq .Type "in"}}Zugang{{else if eq .Type "out"}}Abgang{{else}}Korrektur{{end}}
-              {{if .Reference}}<span style="color:var(--muted);font-size:11px">· {{.Reference}}</span>{{end}}</div>
-            <div style="font-size:11px;color:var(--muted)">{{.UserName}} · {{.QtyBefore}} → {{.QtyAfter}} {{$.Part.Unit}}</div>
-          </div>
-          <div style="text-align:right;font-weight:600;
-            color:{{if eq .Type "in"}}var(--green){{else if eq .Type "out"}}var(--red){{else}}var(--muted){{end}}">
-            {{if eq .Type "in"}}+{{else if eq .Type "out"}}-{{end}}{{.Qty}}
-          </div>
-        </div>
-        {{else}}
-        <div style="color:var(--muted);font-size:12px;padding:8px 0">Keine Bewegungen vorhanden</div>
-        {{end}}
-      </div>
-    </div>
+<!-- ── Feldsätze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "part" "ID" $p.ID)}}</div>
+</div>
 
-    <!-- Anhänge -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
-      <div id="attachments-{{.Part.ID}}" data-attach-ref="inventory:{{.Part.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload"></i>Dokument<input type="file" accept=".pdf,.doc,.docx" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{.Part.ID}}')">
-        </label>
-      </div>
+<!-- ── Lager & Bewegungen ── -->
+<div class="rec-pane" data-pane="stock">
+  <div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Bestand je Lagerplatz</span></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b></div>
+      {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
     </div>
+    <form class="card" style="margin:0" method="post" action="/inventory/{{$p.ID}}/book">
+      <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Buchung</span></div>
+      <div class="rec-form"><div class="cols">
+        <div class="form-group"><label class="form-label">Buchungsart</label>
+          <select id="book-type" name="type" class="form-input"><option value="in">Wareneingang</option><option value="out">Warenausgang</option><option value="correction">Korrektur (neuer Bestand)</option><option value="inventory">Inventur (gezählter Bestand)</option></select></div>
+        <div class="form-group"><label class="form-label">Menge</label><input name="qty" class="form-input" inputmode="decimal" required></div>
+      </div></div>
+      <div class="form-group"><label class="form-label">Lagerplatz</label>
+        <select name="storage_node_id" class="form-input" required><option value="">– auswählen –</option>{{range .StorageOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Referenz / Notiz</label><input name="reference" class="form-input" placeholder="z. B. Lieferschein-Nr."></div>
+      <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Buchen</button></div>
+    </form>
   </div>
+  <div class="card" style="padding:0;overflow-x:auto;margin-top:12px">
+    <table>
+      <thead><tr><th>Datum</th><th>Art</th><th style="text-align:right">Menge</th><th style="text-align:right">Bestand vorher → nachher</th><th>Lagerplatz</th><th>Bezug</th><th>Benutzer</th></tr></thead>
+      <tbody>
+      {{range .Movements}}
+      <tr>
+        <td style="white-space:nowrap;font-size:12px">{{.Date}}</td>
+        <td><span class="badge {{if eq .TypeKey "in"}}b-green{{else if eq .TypeKey "out"}}b-red{{else}}b-gray{{end}}">{{.TypeLabel}}</span></td>
+        <td style="text-align:right;font-weight:600">{{.Qty}}</td>
+        <td style="text-align:right;white-space:nowrap;font-size:12px">{{.Before}} → {{.After}}</td>
+        <td style="font-size:12px">{{.Path}}</td>
+        <td style="font-size:12px">{{if .RecordURL}}<a href="{{.RecordURL}}" data-frame data-frame-title="{{.RecordLabel}}" style="color:var(--accent)">{{.RecordLabel}}</a>{{end}}{{if .Reference}}<div class="rec-sub">{{.Reference}}</div>{{end}}{{if .Notes}}<div class="rec-sub">{{.Notes}}</div>{{end}}</td>
+        <td style="font-size:12px">{{.User}}</td>
+      </tr>
+      {{else}}<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Keine Bewegungen</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
 
-  <!-- Info-Karte -->
-  <div>
-    <div class="card">
-      <div class="card-title">Lagerinfo</div>
-      <div class="li"><div class="li-text"><div class="li-sub">Bestand</div><div class="li-title" style="font-size:20px;font-weight:600;color:{{if eq .Part.Status "ok"}}var(--green){{else}}var(--amber){{end}}">{{.Part.StockQty}} {{.Part.Unit}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Mindestbestand</div><div class="li-title">{{.Part.MinQty}} {{.Part.Unit}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Lagerort</div><div class="li-title">{{.Part.StorageLocation}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Lagerplatz</div><div class="li-title">{{.Part.StoragePlace}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Preis</div><div class="li-title">{{.Part.Price}} €</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Kategorie</div><div class="li-title">{{.Part.Category}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{if .Part.ManufacturerID}}<a href="/directory/{{.Part.ManufacturerID}}" data-frame data-frame-title="{{.Part.ManufacturerName}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Part.ManufacturerName}}</a>{{else}}{{.Part.Manufacturer}}{{end}}</div></div></div>
-    </div>
-
-    {{if .Error}}<div class="card" style="color:var(--red);font-size:12px"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
-
-    <!-- Einkauf -->
-    <div class="card" id="purchasing">
+<!-- ── Lieferanten & Einkauf ── -->
+<div class="rec-pane" data-pane="purchasing">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Lieferant</th><th>Art.-Nr.</th><th style="text-align:right">EK-Preis</th><th style="text-align:right">Mindestmenge</th><th>Lieferzeit</th><th>Bestellkontakt</th><th></th></tr></thead>
+      <tbody>
+      {{range .Suppliers}}
+      <tr>
+        <td><a href="/directory/{{.PartnerID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)">{{if .Preferred}}<i class="ti ti-star-filled" style="color:var(--amber)" title="Hauptlieferant"></i> {{end}}{{.Name}}</a>{{if .Blocked}} <span class="badge b-red">gesperrt</span>{{end}}{{if .Notes}}<div class="rec-sub">{{.Notes}}</div>{{end}}</td>
+        <td style="font-family:monospace;font-size:12px">{{.SupplierPartNo}}</td>
+        <td style="text-align:right">{{.Price}}</td>
+        <td style="text-align:right">{{.MinOrderQty}}</td>
+        <td>{{.LeadTime}}</td>
+        <td style="font-size:12px">{{if .OrderEmail}}<a href="mailto:{{.OrderEmail}}" style="color:var(--accent)">{{.OrderEmail}}</a>{{end}}{{if .Phone}}<div><a href="tel:{{.Phone}}">{{.Phone}}</a></div>{{end}}</td>
+        <td>{{if $.CanPartners}}<form method="post" action="/inventory/{{$p.ID}}/suppliers/{{.PartnerID}}/delete" onsubmit="return confirm('Lieferant entfernen?')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Entfernen"><i class="ti ti-x" style="font-size:14px"></i></button></form>{{end}}</td>
+      </tr>
+      {{else}}<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Kein Lieferant hinterlegt</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="rec-grid">
+    {{if .CanPartners}}
+    <form class="card" style="margin:0" method="post" action="/inventory/{{$p.ID}}/suppliers">
+      <div class="card-title"><span><i class="ti ti-plus"></i> Weiteren Lieferanten zuordnen</span></div>
+      <div class="form-group"><label class="form-label">Lieferant</label>
+        <select name="partner_id" class="form-input" required><option value="">– auswählen –</option>{{range .SupplierOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+      <div class="rec-form"><div class="cols">
+        <div class="form-group"><label class="form-label">Art.-Nr.</label><input name="supplier_part_no" class="form-input" maxlength="100"></div>
+        <div class="form-group"><label class="form-label">EK-Preis (€)</label><input name="supply_price" class="form-input" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Mindestmenge</label><input name="min_order_qty" class="form-input" inputmode="decimal"></div>
+        <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="supply_lead_time" class="form-input"></div>
+      </div></div>
+      <div class="form-group"><label class="form-label">Bemerkung</label><input name="supply_notes" class="form-input" maxlength="500"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="preferred"> Als Hauptlieferant</label>
+        <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-link"></i> Zuordnen</button>
+      </div>
+    </form>
+    {{end}}
+    <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-user-dollar"></i> Einkauf</span><a href="/directory/purchase-report" class="card-action" title="Bestellvorschlag"><i class="ti ti-shopping-cart"></i></a></div>
       {{if .CanPurchasing}}
-      <form method="post" action="/inventory/{{.Part.ID}}/purchasing" style="display:flex;gap:6px;align-items:end">
-        <div class="form-group" style="margin:0;flex:1"><label class="form-label">Verantwortlicher Einkäufer</label>
-          <select name="buyer_id" class="form-input" onchange="this.form.submit()">
-            <option value="">– Standard-Einkäufer –</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.BuyerID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select></div>
+      <form method="post" action="/inventory/{{$p.ID}}/purchasing">
+        <div class="form-group"><label class="form-label">Verantwortlicher Einkäufer</label>
+          <select name="buyer_id" class="form-input" onchange="this.form.submit()"><option value="">– Standard-Einkäufer –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $p.BuyerID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
       </form>
-      {{else}}
-      <div class="li"><div class="li-text"><div class="li-sub">Einkäufer</div><div class="li-title">{{if .BuyerName}}{{.BuyerName}}{{else}}Standard-Einkäufer{{end}}</div></div></div>
-      {{end}}
-      <p style="font-size:11px;color:var(--muted);margin-top:6px">Erhält täglich den Bestellvorschlag, sobald der Bestand den Mindestbestand erreicht.</p>
-    </div>
-
-    <!-- Lieferanten -->
-    <div class="card" id="suppliers">
-      <div class="card-title"><span><i class="ti ti-truck"></i> Lieferanten</span></div>
-      {{range .Suppliers}}
-      <div class="li" style="align-items:flex-start">
-        <div class="li-text">
-          <div class="li-title"><a href="/directory/{{.PartnerID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)">{{if .Preferred}}<i class="ti ti-star-filled" style="color:var(--amber)" title="Bevorzugt"></i> {{end}}{{.Name}}</a>{{if .Blocked}} <span class="badge b-red">gesperrt</span>{{end}}</div>
-          <div class="li-sub">{{if .SupplierPartNo}}Art.-Nr. {{.SupplierPartNo}} · {{end}}{{if .Price}}{{.Price}}{{end}}{{if .MinOrderQty}} · ab {{.MinOrderQty}}{{end}}{{if .LeadTime}} · {{.LeadTime}}{{end}}</div>
-          {{if or .OrderEmail .Phone}}<div class="li-sub">{{if .OrderEmail}}<a href="mailto:{{.OrderEmail}}">{{.OrderEmail}}</a>{{end}}{{if and .OrderEmail .Phone}} · {{end}}{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{end}}</div>{{end}}
-        </div>
-        {{if $.CanPartners}}
-        <form method="post" action="/inventory/{{$.Part.ID}}/suppliers/{{.PartnerID}}/delete" onsubmit="return confirm('Lieferant entfernen?')"><button class="btn btn-icon" style="width:28px;min-width:28px;height:28px" title="Entfernen"><i class="ti ti-x" style="font-size:14px"></i></button></form>
-        {{end}}
-      </div>
-      {{else}}
-      <div style="font-size:12px;color:var(--muted);padding:4px 0">Kein Lieferant hinterlegt – Hersteller ist nicht automatisch Lieferant.</div>
-      {{end}}
-      {{if .CanPartners}}
-      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-plus"></i> Lieferant zuordnen</summary>
-        <form method="post" action="/inventory/{{.Part.ID}}/suppliers" style="margin-top:8px">
-          <div class="form-group"><label class="form-label">Lieferant</label>
-            <select name="partner_id" class="form-input" required><option value="">– auswählen –</option>{{range .SupplierOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
-          <div class="form-group"><label class="form-label">Lieferanten-Artikelnr.</label><input name="supplier_part_no" class="form-input" maxlength="100"></div>
-          <div class="grid2" style="margin-bottom:0">
-            <div class="form-group"><label class="form-label">EK-Preis (€)</label><input name="supply_price" class="form-input" inputmode="decimal"></div>
-            <div class="form-group"><label class="form-label">Mindestmenge</label><input name="min_order_qty" class="form-input" inputmode="decimal"></div>
-            <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="supply_lead_time" class="form-input"></div>
-            <div class="form-group" style="align-self:end"><label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="preferred"> Bevorzugt</label></div>
-          </div>
-          <div class="form-group"><label class="form-label">Bemerkung</label><input name="supply_notes" class="form-input" maxlength="500"></div>
-          <button class="btn btn-primary btn-small" type="submit" style="width:100%"><i class="ti ti-link"></i> Zuordnen</button>
-        </form>
-      </details>
-      {{end}}
+      {{else}}<div class="rec-f"><div class="rec-l">Einkäufer</div><div class="rec-v">{{if $p.BuyerName}}{{$p.BuyerName}}{{else}}Standard-Einkäufer{{end}}</div></div>{{end}}
+      <p class="rec-sub">Der Einkäufer erhält täglich den Bestellvorschlag, sobald der Bestand den Mindestbestand ({{$p.Q $p.MinQty}} {{$p.Unit}}) erreicht. Bestellt wird beim Hauptlieferanten.</p>
     </div>
   </div>
+</div>
+
+<!-- ── Verwendung ── -->
+<div class="rec-pane" data-pane="usage">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-hierarchy-2"></i> Einbauort</span></div>
+    {{if $p.InfraID}}<a href="/infrastructure/{{$p.InfraID}}" data-frame data-frame-title="{{$p.InfraName}}" style="color:var(--accent)"><i class="ti ti-hierarchy-2"></i> {{$p.InfraName}}</a>{{else}}<div class="rec-sub">Keiner Anlage zugeordnet{{if .CanEdit}} – in den Stammdaten festlegen{{end}}.</div>{{end}}
+  </div>
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Vorgang</th><th>Art</th><th style="text-align:right">Verbraucht</th><th>Zuletzt</th></tr></thead>
+      <tbody>
+      {{range .Usage}}<tr><td><a href="{{.URL}}" data-frame data-frame-title="{{.ModuleLabel}}: {{.Title}}" style="color:var(--accent)">{{.Title}}</a></td><td>{{.ModuleLabel}}</td><td style="text-align:right">{{.Qty}} {{$p.Unit}}</td><td>{{.Date}}</td></tr>
+      {{else}}<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">Noch nicht über Störungen, Tickets, Aufgaben oder Wartungen verbraucht</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Dokumente ── -->
+<div class="rec-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Fotos, Datenblätter, Zeichnungen</span></div>
+    <div id="attachments-{{$p.ID}}" data-attach-ref="inventory:{{$p.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{$p.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'inventory','{{$p.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none" onchange="uploadFiles(this,'inventory','{{$p.ID}}')"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">
+  {{template "record-history" .History}}
 </div>
 {{end}}
 
 {{define "context-list"}}
-{{range .LowStockParts}}
-<div class="act-item">
-  <div class="act-dot {{.StatusDot}}"></div>
-  <div class="act-text">{{.Name}}</div>
-  <span style="font-size:10px;color:var(--amber)">{{.StockQty}}</span>
-</div>
-{{end}}
+{{range .Stock}}<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">{{.Path}}</div><span class="act-time">{{.Qty}}</span></div>{{end}}
 {{end}}
 
-{{block "scripts" .}}
-<script>
-function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
-function closeMenu(id){document.getElementById(id).style.display='none';}
-document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
-</script>
-{{end}}
+{{define "scripts"}}{{end}}

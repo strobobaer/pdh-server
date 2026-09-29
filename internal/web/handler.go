@@ -56,6 +56,7 @@ type BaseData struct {
 	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
 	CanImport              bool // Nav-Link "Import" anzeigen
 	CanExport              bool // Nav-Link "Export" anzeigen
+	CanChat                bool // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 }
 
 type DashboardData struct {
@@ -209,12 +210,6 @@ type TicketsPageData struct {
 	DefaultDueDays  int
 }
 
-type InventoryPageData struct {
-	BaseData
-	Stats         InventoryStats
-	Parts         []PartView
-	LowStockParts []PartView
-}
 
 type InventoryStats struct {
 	Total      int
@@ -265,6 +260,8 @@ type Handler struct {
 	rbac             *rbac.Service
 	jwtSecret        string
 	mailCfg          config.MailConfig
+	chatOnce         sync.Once
+	chatHubRef       *chatHub
 	updateAgentURL   string
 	updateAgentToken string
 	buildCommit      string
@@ -342,7 +339,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
-	r.Get("/inventory/{id}", h.InventoryDetail)
+	r.Get("/inventory/{id}", h.PartDetailPage)
+	r.Post("/inventory/{id}/master", h.PartMasterSaveWeb)
+	r.Post("/inventory/{id}/book", h.PartBookWeb)
 	r.Post("/inventory/book-web", h.InventoryBookWeb)
 	r.Get("/maintenance", h.Maintenance)
 	r.Get("/tasks", h.TasksPage)
@@ -395,6 +394,45 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/records/{refType}/{id}/parties/{partyId}/delete", h.RecordPartyDeleteWeb)
 	r.Post("/records/{refType}/{id}/archive", h.RecordArchiveWeb)
 	r.Get("/directory", h.DirectoryPage)
+	// Feldsaetze (gemeinsames System fuer alle Module)
+	r.Get("/records/fields/{module}/{id}", h.RecordFieldsWeb)
+	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
+	r.Get("/core/fieldsets", h.FieldSetsAdminPage)
+	r.Post("/core/fieldsets/sets", h.FieldSetSaveWeb)
+	r.Post("/core/fieldsets/sets/{id}", h.FieldSetSaveWeb)
+	r.Post("/core/fieldsets/sets/{id}/toggle", h.FieldSetToggleWeb)
+	r.Post("/core/fieldsets/sets/{id}/fields", h.FieldDefSaveWeb)
+	r.Post("/core/fieldsets/fields/{fieldId}", h.FieldDefSaveWeb)
+	r.Post("/core/fieldsets/fields/{fieldId}/toggle", h.FieldDefToggleWeb)
+	r.Post("/core/fieldsets/fields/{fieldId}/options", h.FieldOptionAddWeb)
+	r.Post("/core/fieldsets/options/{optionId}/delete", h.FieldOptionDeleteWeb)
+	// Chat & Teams
+	r.Get("/chat", h.ChatPage)
+	r.Get("/chat/stream", h.ChatStream)
+	r.Get("/chat/files/{id}", h.ChatFileDownload)
+	r.Get("/chat/api/bootstrap", h.ChatBootstrap)
+	r.Get("/chat/api/unread", h.ChatUnread)
+	r.Get("/chat/api/search", h.ChatSearch)
+	r.Get("/chat/api/conversations/{id}/messages", h.ChatMessages)
+	r.Post("/chat/api/conversations/{id}/messages", h.ChatSend)
+	r.Get("/chat/api/conversations/{id}/files", h.ChatFilesList)
+	r.Post("/chat/api/conversations/{id}/read", h.ChatRead)
+	r.Post("/chat/api/conversations/{id}/typing", h.ChatTyping)
+	r.Post("/chat/api/conversations/{id}/mute", h.ChatMute)
+	r.Post("/chat/api/conversations/{id}/rename", h.ChatRename)
+	r.Post("/chat/api/conversations/{id}/members", h.ChatAddMembers)
+	r.Post("/chat/api/conversations/{id}/leave", h.ChatLeave)
+	r.Post("/chat/api/channels/{id}/archive", h.ChatArchiveChannel)
+	r.Post("/chat/api/messages/{id}/edit", h.ChatEdit)
+	r.Post("/chat/api/messages/{id}/delete", h.ChatDelete)
+	r.Post("/chat/api/messages/{id}/react", h.ChatReact)
+	r.Post("/chat/api/direct", h.ChatDirect)
+	r.Post("/chat/api/groups", h.ChatCreateGroup)
+	r.Post("/chat/api/teams", h.ChatCreateTeam)
+	r.Post("/chat/api/teams/{id}/members", h.ChatTeamAddMembers)
+	r.Post("/chat/api/teams/{id}/members/{userId}/remove", h.ChatTeamRemoveMember)
+	r.Post("/chat/api/teams/{id}/leave", h.ChatTeamLeave)
+	r.Post("/chat/api/teams/{id}/channels", h.ChatCreateChannel)
 	r.Get("/directory/purchase-report", h.PurchaseReportPage)
 	r.Post("/directory/purchase-report/settings", h.PurchaseReportSettingsWeb)
 	r.Post("/directory/purchase-report/send", h.PurchaseReportSendWeb)
@@ -674,6 +712,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
+		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 	}
 }
 
@@ -1228,58 +1267,6 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.render(w, "tickets", data)
-}
-
-func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	data := InventoryPageData{
-		BaseData: h.baseData(r, "inventory", "Ersatzteillager", "Unter Mindestbestand"),
-	}
-
-	if stats, err := h.inv.GetStats(ctx); err == nil {
-		if v, ok := stats["total"].(int); ok {
-			data.Stats.Total = v
-		}
-		if v, ok := stats["low_stock"].(int); ok {
-			data.Stats.LowStock = v
-		}
-		if v, ok := stats["critical"].(int); ok {
-			data.Stats.Critical = v
-		}
-		if v, ok := stats["empty"].(int); ok {
-			data.Stats.Empty = v
-		}
-		if v, ok := stats["total_value"].(float64); ok {
-			data.Stats.TotalValue = fmt.Sprintf("%.0f", v)
-		}
-	}
-
-	statusLabels := map[string]string{"ok": "OK", "low": "Niedrig", "critical": "Kritisch", "empty": "Leer"}
-	statusClasses := map[string]string{"ok": "b-green", "low": "b-amber", "critical": "b-red", "empty": "b-red"}
-	statusDots := map[string]string{"ok": "d-green", "low": "d-amber", "critical": "d-red", "empty": "d-red"}
-
-	if parts, err := h.inv.List(ctx, "", "", ""); err == nil {
-		for _, p := range parts {
-			st := string(p.Status)
-			pv := PartView{
-				ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
-				Manufacturer: p.Manufacturer, ManufacturerName: p.ManufacturerName, Category: p.Category, Unit: p.Unit,
-				StockQty:    strconv.FormatFloat(p.StockQty, 'f', 1, 64),
-				MinQty:      strconv.FormatFloat(p.MinQty, 'f', 1, 64),
-				Price:       fmt.Sprintf("%.2f", p.Price),
-				Status:      st,
-				StatusLabel: statusLabels[st], StatusClass: statusClasses[st], StatusDot: statusDots[st],
-			}
-			if p.ManufacturerID != nil {
-				pv.ManufacturerID = *p.ManufacturerID
-			}
-			data.Parts = append(data.Parts, pv)
-			if st == "low" || st == "critical" || st == "empty" {
-				data.LowStockParts = append(data.LowStockParts, pv)
-			}
-		}
-	}
-	h.render(w, "inventory", data)
 }
 
 func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {
@@ -2633,70 +2620,6 @@ func (h *Handler) TicketStartTime(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Inventory Detail ──────────────────────────────────────────
-
-type InventoryDetailData struct {
-	BaseData
-	Part          PartView
-	Movements     []*inventory.StockMovement
-	LowStockParts []PartView
-	Suppliers       []PartSupplierView
-	SupplierOptions []partnerOption
-	Users           []UserOption
-	BuyerID         string
-	BuyerName       string
-	CanPurchasing   bool
-	CanPartners     bool
-	Error           string
-}
-
-func (h *Handler) InventoryDetail(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	id := chi.URLParam(r, "id")
-
-	p, err := h.inv.GetByID(ctx, id)
-	if err != nil {
-		http.Redirect(w, r, "/inventory", http.StatusFound)
-		return
-	}
-
-	statusLabels := map[string]string{"ok": "OK", "low": "Niedrig", "critical": "Kritisch", "empty": "Leer"}
-	statusClasses := map[string]string{"ok": "b-green", "low": "b-amber", "critical": "b-red", "empty": "b-red"}
-	statusDots := map[string]string{"ok": "d-green", "low": "d-amber", "critical": "d-red", "empty": "d-red"}
-	st := string(p.Status)
-
-	pv := PartView{
-		ID: p.ID, PartNumber: p.PartNumber, Name: p.Name,
-		Manufacturer: p.Manufacturer, Category: p.Category, Unit: p.Unit,
-		StockQty: fmt.Sprintf("%.2f", p.StockQty),
-		MinQty:   fmt.Sprintf("%.2f", p.MinQty),
-		Price:    fmt.Sprintf("%.2f", p.Price),
-		Status:   st, StatusLabel: statusLabels[st],
-		StatusClass: statusClasses[st], StatusDot: statusDots[st],
-	}
-
-	data := InventoryDetailData{
-		BaseData: h.baseData(r, "inventory", p.Name, "Unter Mindestbestand"),
-		Part:     pv,
-	}
-	h.loadPartPurchasing(ctx, r, id, &data)
-
-	if mv, err := h.inv.GetMovements(ctx, id); err == nil {
-		data.Movements = mv
-	}
-	if parts, err := h.inv.GetLowStock(ctx); err == nil {
-		for _, lp := range parts {
-			if lp.ID != id && len(data.LowStockParts) < 5 {
-				lst := string(lp.Status)
-				data.LowStockParts = append(data.LowStockParts, PartView{
-					ID: lp.ID, Name: lp.Name,
-					StockQty: fmt.Sprintf("%.1f", lp.StockQty),
-					Status:   lst, StatusDot: statusDots[lst],
-				})
-			}
-		}
-	}
-	h.render(w, "inventory_detail", data)
-}
 
 func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
