@@ -220,7 +220,7 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
 		} else {
 			tpl := h.resolveExportTemplate(ctx, "excel", config["template_id"])
-			writeErr = writeExcelExport(destPath, tpl.SheetName, mappings)
+			writeErr = writeExcelExport(destPath, tpl.SheetName, mappings, h.exportLogoFile())
 		}
 	case "pdf":
 		destPath := strings.TrimSpace(config["destination_path"])
@@ -228,7 +228,7 @@ func (h *Handler) runExport(ctx context.Context, id string) (int, string, error)
 			writeErr = fmt.Errorf("kein Zielpfad konfiguriert")
 		} else {
 			tpl := h.resolveExportTemplate(ctx, "pdf", config["template_id"])
-			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings)
+			writeErr = writePDFExport(destPath, tpl.Title, tpl.Orientation, mappings, h.exportLogoFile())
 		}
 	case "csv":
 		destPath := strings.TrimSpace(config["destination_path"])
@@ -343,7 +343,9 @@ func (h *Handler) resolveExportTemplate(ctx context.Context, kind, templateID st
 	return ExportTemplateView{Kind: kind, Title: "Export", SheetName: "Export", Orientation: "P"}
 }
 
-func writeExcelExport(path, sheetName string, mappings []ExportMappingView) error {
+// logo: optionaler Bildpfad (Erscheinungsbild -> Logo fuer Exporte); das
+// Logo schwebt rechts neben der Tabelle, die Zellen bleiben unveraendert.
+func writeExcelExport(path, sheetName string, mappings []ExportMappingView, logo string) error {
 	if sheetName == "" {
 		sheetName = "Export"
 	}
@@ -362,6 +364,17 @@ func writeExcelExport(path, sheetName string, mappings []ExportMappingView) erro
 		_ = f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), m.SourceValue)
 		_ = f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), strings.TrimSpace(m.InfrastructureName+" · "+m.SourceName))
 		_ = f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), m.SourceReceivedAt)
+	}
+	if logo != "" {
+		scale := 1.0
+		if w, h := imageSize(logo); h > 0 {
+			scale = 48.0 / float64(h) // ca. 48 px hoch
+			if float64(w)*scale > 220 {
+				scale = 220.0 / float64(w)
+			}
+		}
+		// Ein fehlerhaftes Logo verhindert den Export nicht.
+		_ = f.AddPicture(sheetName, "F1", logo, &excelize.GraphicOptions{ScaleX: scale, ScaleY: scale, Positioning: "oneCell", AltText: "Logo"})
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("Zielverzeichnis konnte nicht angelegt werden: %w", err)
@@ -399,7 +412,7 @@ func writeCSVExport(path, delimiter string, mappings []ExportMappingView) error 
 	return w.Error()
 }
 
-func writePDFExport(path, title, orientation string, mappings []ExportMappingView) error {
+func writePDFExport(path, title, orientation string, mappings []ExportMappingView, logo string) error {
 	if title == "" {
 		title = "Export"
 	}
@@ -409,6 +422,24 @@ func writePDFExport(path, title, orientation string, mappings []ExportMappingVie
 	pdf := fpdf.New(orientation, "mm", "A4", "")
 	tr := pdf.UnicodeTranslatorFromDescriptor("cp1252")
 	pdf.AddPage()
+	if logo != "" {
+		// Logo oben rechts, 14 mm hoch (Breite proportional, max. 60 mm)
+		pageW, _ := pdf.GetPageSize()
+		_, _, right, _ := pdf.GetMargins()
+		wmm, hmm := 0.0, 14.0
+		if w, h := imageSize(logo); h > 0 {
+			wmm = float64(w) * hmm / float64(h)
+			if wmm > 60 {
+				wmm, hmm = 60, 60*float64(h)/float64(w)
+			}
+		}
+		if wmm > 0 {
+			pdf.ImageOptions(logo, pageW-right-wmm, 8, wmm, hmm, false, fpdf.ImageOptions{ReadDpi: false}, 0, "")
+			if pdf.Error() != nil {
+				pdf.ClearError() // Logo nicht lesbar -> ohne Logo weiter
+			}
+		}
+	}
 	pdf.SetFont("Helvetica", "B", 16)
 	pdf.CellFormat(0, 10, tr(title), "", 1, "L", false, 0, "")
 	pdf.SetFont("Helvetica", "", 9)

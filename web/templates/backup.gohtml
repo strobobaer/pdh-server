@@ -108,6 +108,15 @@
 
 <!-- ── Zeitplaene ── -->
 <div class="rec-pane" data-pane="schedules">
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-refresh-alert"></i> Automatisch bei jedem Update</span>{{if .OnUpdate}}<span class="bk-chip" style="color:var(--green)">aktiv</span>{{else}}<span class="bk-chip">aus</span>{{end}}</div>
+  <div class="bk-sub" style="margin-bottom:8px">Startet das PDH nach einem Update zum ersten Mal (neue Programmversion oder neue Datenbank-Änderungen), sichert es <b>vorher</b> Datenbank, Anhänge und Chat-Dateien vollständig – egal ob über Core-Einstellungen, den Installer oder von Hand aktualisiert wurde. Schlägt die Sicherung fehl, wird das Update nicht angewendet.</div>
+  <form method="post" action="/admin/backup/update-settings" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="enabled" value="1" {{if .OnUpdate}}checked{{end}}> Vollsicherung vor jedem Update</label>
+    <div><label class="bk-sub">Aufbewahren (Anzahl)</label><input class="form-input" type="number" min="1" max="50" name="keep" value="{{.OnUpdateKeep}}" style="width:100px"></div>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+</div>
 {{range .Schedules}}{{$s := .}}
 <div class="card">
   <div class="card-title">

@@ -91,6 +91,19 @@ func main() {
 	defer db.Close()
 	log.Info().Msg("datenbank verbunden")
 
+	// Neue Programmversion bzw. ausstehende Datenbank-Aenderungen: vorher
+	// automatisch eine Vollsicherung des bisherigen Stands anlegen.
+	backupCtx, backupCancel := context.WithTimeout(context.Background(), 2*time.Hour)
+	if err := web.BackupBeforeUpdate(backupCtx, db.Pool, buildCommit, "migrations"); err != nil {
+		if os.Getenv("PDH_SKIP_UPDATE_BACKUP") == "1" {
+			log.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – PDH_SKIP_UPDATE_BACKUP=1, update wird trotzdem angewendet")
+		} else {
+			backupCancel()
+			log.Fatal().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – update wird NICHT angewendet (Speicherplatz/Sicherungsordner prüfen; im Notfall PDH_SKIP_UPDATE_BACKUP=1 setzen)")
+		}
+	}
+	backupCancel()
+
 	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer migrationCancel()
 	if err := database.RunMigrations(migrationCtx, db.Pool, "migrations"); err != nil {

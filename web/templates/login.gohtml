@@ -26,8 +26,8 @@ input:focus{border-color:var(--accent)}
 <body>
 <div class="card">
   <div class="logo">
-    <div class="logo-icon">P</div>
-    <div><div class="logo-text">PDH</div><div class="logo-sub">Prozess Data Hub</div></div>
+    {{if .Brand.AppLogo}}<img src="{{.Brand.AppLogo}}" alt="" style="width:38px;height:38px;object-fit:contain;border-radius:8px">{{else}}<div class="logo-icon">P</div>{{end}}
+    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-sub">Prozess Data Hub</div></div>
   </div>
   <h2>Anmelden</h2>
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}

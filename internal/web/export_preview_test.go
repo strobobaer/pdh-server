@@ -17,7 +17,7 @@ func testExportMappings() []ExportMappingView {
 
 func TestWriteExcelExport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "export.xlsx")
-	if err := writeExcelExport(path, "Werte", testExportMappings()); err != nil {
+	if err := writeExcelExport(path, "Werte", testExportMappings(), ""); err != nil {
 		t.Fatalf("writeExcelExport: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func TestWriteExcelExport(t *testing.T) {
 
 func TestWriteExcelExportDefaultSheetName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "export.xlsx")
-	if err := writeExcelExport(path, "", testExportMappings()); err != nil {
+	if err := writeExcelExport(path, "", testExportMappings(), ""); err != nil {
 		t.Fatalf("writeExcelExport: %v", err)
 	}
 	f, err := excelize.OpenFile(path)
@@ -62,7 +62,7 @@ func TestWriteExcelExportDefaultSheetName(t *testing.T) {
 
 func TestWritePDFExport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "export.pdf")
-	if err := writePDFExport(path, "Monatsbericht", "P", testExportMappings()); err != nil {
+	if err := writePDFExport(path, "Monatsbericht", "P", testExportMappings(), ""); err != nil {
 		t.Fatalf("writePDFExport: %v", err)
 	}
 	info, err := os.Stat(path)
@@ -88,7 +88,7 @@ func TestWritePDFExport(t *testing.T) {
 
 func TestWritePDFExportDefaultTitle(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "export.pdf")
-	if err := writePDFExport(path, "", "P", testExportMappings()); err != nil {
+	if err := writePDFExport(path, "", "P", testExportMappings(), ""); err != nil {
 		t.Fatalf("writePDFExport: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -98,7 +98,7 @@ func TestWritePDFExportDefaultTitle(t *testing.T) {
 
 func TestWritePDFExportLandscape(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "export.pdf")
-	if err := writePDFExport(path, "Bericht", "L", testExportMappings()); err != nil {
+	if err := writePDFExport(path, "Bericht", "L", testExportMappings(), ""); err != nil {
 		t.Fatalf("writePDFExport: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {

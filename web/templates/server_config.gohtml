@@ -37,6 +37,7 @@
 
 <div class="rec-tabs" role="tablist">
   {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+  <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
 
@@ -88,4 +89,49 @@
 </form>
 </div>
 {{end}}
+
+<!-- ── Erscheinungsbild (Logos) ── -->
+<div class="rec-pane" data-pane="branding">
+<style>
+.br-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.br-slot{border:1px solid var(--border);border-radius:10px;padding:12px}
+.br-prev{height:90px;border-radius:8px;background:repeating-conic-gradient(var(--bg3) 0 25%,transparent 0 50%) 0 0/16px 16px;display:flex;align-items:center;justify-content:center;margin:8px 0}
+.br-prev img{max-height:76px;max-width:90%;object-fit:contain}
+.br-prev .none{font-size:12px;color:var(--muted)}
+</style>
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-palette"></i> Erscheinungsbild</span><span class="sc-sub">Name und Logos für App, Exporte und Druck</span></div>
+  <form method="post" action="/admin/branding/settings" style="margin-bottom:14px">
+    <div class="sc-grid">
+      <div class="sc-f"><label>Anzeigename</label><input class="form-input" name="app_name" maxlength="40" value="{{or .Brand.AppName "PDH"}}"><div class="help">erscheint in der Seitenleiste, auf der Anmeldeseite, im Browser-Tab und auf Ausdrucken</div></div>
+      <div class="sc-f"><label>Optionen</label>
+        <label style="font-weight:400"><input type="checkbox" name="export_same" value="1" {{if .Brand.ExportSame}}checked{{end}}> Exporte verwenden das App-Logo</label>
+        <label style="font-weight:400"><input type="checkbox" name="print_same" value="1" {{if .Brand.PrintSame}}checked{{end}}> Druck verwendet das App-Logo</label>
+        <label style="font-weight:400"><input type="checkbox" name="label_logo" value="1" {{if .Brand.LabelLogo}}checked{{end}}> Logo auch auf Lagerplatz-Etiketten (nicht bei Mini-Formaten)</label>
+      </div>
+    </div>
+    <div class="sc-actions"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+  </form>
+  <div class="br-grid">
+    {{template "br-slot" (dict "Slot" "app" "Title" "App-Logo" "Help" "Seitenleiste, Anmeldung, Browser-Symbol. Am besten quadratisch, z. B. 256×256 px." "URL" .Brand.AppLogo "Same" false)}}
+    {{template "br-slot" (dict "Slot" "export" "Title" "Logo für Exporte" "Help" "PDF-Exporte (oben rechts) und Excel-Exporte (neben der Tabelle). Querformat eignet sich gut." "URL" .Brand.ExportLogo "Same" .Brand.ExportSame)}}
+    {{template "br-slot" (dict "Slot" "print" "Title" "Logo für Druck" "Help" "Kopfzeile jeder gedruckten Seite, Bestellvorschlag-E-Mail, optional Etiketten. Für Schwarzweißdruck kontrastreich wählen." "URL" .Brand.PrintLogo "Same" .Brand.PrintSame)}}
+  </div>
+  <div class="sc-sub" style="margin-top:10px">PNG, JPG oder GIF, höchstens 2 MB. SVG wird aus Sicherheitsgründen nicht angenommen. Transparenter Hintergrund (PNG) sieht in hellem und dunklem Design am besten aus.</div>
+</div>
+</div>
+{{end}}
+
+{{define "br-slot"}}
+<div class="br-slot">
+  <b style="font-size:13px">{{.Title}}</b>
+  <div class="br-prev">{{if .URL}}<img src="{{.URL}}" alt="{{.Title}}">{{else}}<span class="none">kein Logo – es wird „P“ bzw. nur der Name gezeigt</span>{{end}}</div>
+  {{if .Same}}<div class="sc-sub" style="margin-bottom:6px"><i class="ti ti-link"></i> wie App-Logo – eigenes Logo hochladen hebt das auf</div>{{end}}
+  <div class="sc-sub" style="margin-bottom:8px">{{.Help}}</div>
+  <form method="post" action="/admin/branding/{{.Slot}}/upload" enctype="multipart/form-data" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <input type="file" name="logo" accept="image/png,image/jpeg,image/gif" required style="font-size:12px;max-width:100%">
+    <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-upload"></i> Hochladen</button>
+  </form>
+  {{if and .URL (not .Same)}}<form method="post" action="/admin/branding/{{.Slot}}/delete" style="margin-top:6px" onsubmit="return confirm('Logo entfernen?')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Entfernen</button></form>{{end}}
+</div>
 {{end}}

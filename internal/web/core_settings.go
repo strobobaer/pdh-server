@@ -269,7 +269,7 @@ func (h *Handler) InstallUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusAccepted {
-		http.Redirect(w, r, "/core/settings?notice=Update+wurde+gestartet", http.StatusSeeOther)
+		http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Update wurde gestartet. Beim Neustart sichert das PDH vor den Datenbank-Änderungen automatisch den kompletten bisherigen Stand (Datensicherung → Protokoll)."), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(fmt.Sprintf("Update-Agent meldet HTTP %d", resp.StatusCode)), http.StatusSeeOther)

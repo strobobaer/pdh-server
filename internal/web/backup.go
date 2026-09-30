@@ -22,8 +22,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"pdh/pkg/config"
+	"pdh/pkg/database"
 )
 
 // Datensicherung & Wiederherstellung (Verwaltung -> Datensicherung).
@@ -913,11 +915,13 @@ type BackupPageData struct {
 	SchemaVersion int
 	Weekdays      []string
 	RestoreFile   string
+	OnUpdate      bool
+	OnUpdateKeep  int
 	Msg, Err      string
 }
 
 var backupKindLabels = map[string]string{
-	"manual": "Manuell", "scheduled": "Zeitplan", "safety": "Sicherheitskopie", "uploaded": "Hochgeladen", "restore": "Wiederherstellung",
+	"manual": "Manuell", "scheduled": "Zeitplan", "update": "Vor Update", "safety": "Sicherheitskopie", "uploaded": "Hochgeladen", "restore": "Wiederherstellung",
 }
 
 func humanSize(n int64) string {
@@ -947,6 +951,8 @@ func (h *Handler) BackupPage(w http.ResponseWriter, r *http.Request) {
 	if d.Tab == "" {
 		d.Tab = "backups"
 	}
+	d.OnUpdate = h.appSetting(ctx, keyBackupOnUpdate, "1") == "1"
+	d.OnUpdateKeep = atoiDefault(h.appSetting(ctx, keyBackupOnUpdateKeep, "5"), 5)
 	if abs, err := filepath.Abs(d.Dir); err == nil {
 		d.Dir = abs
 	}
@@ -1299,4 +1305,155 @@ func (h *Handler) StartBackupSystem(ctx context.Context) {
 	}
 	h.markStaleBackupRuns(ctx)
 	h.StartBackupSchedules(ctx)
+}
+
+// ── Automatische Vollsicherung bei jedem Update ─────────────
+//
+// Laeuft beim Start, bevor die Datenbank-Migrationen angewendet werden:
+// Ist eine neue Programmversion installiert (anderer Build-Commit) oder
+// stehen Migrationen an, wird der bisherige Stand komplett gesichert -
+// egal ob das Update ueber Core-Einstellungen, den Installer oder von Hand
+// eingespielt wurde.
+
+const (
+	keyBackupOnUpdate     = "backup.on_update"      // "1" (Standard) | "0"
+	keyBackupOnUpdateKeep = "backup.on_update_keep" // Anzahl, Standard 5
+	keyUpdateLastCommit   = "update.last_started_commit"
+)
+
+// BackupBeforeUpdate erstellt bei Bedarf die Vollsicherung. Fehler werden
+// protokolliert; ist blockOnError gesetzt, wird ein Fehler zurueckgegeben,
+// damit der Start (und damit die Migration) abbricht.
+func BackupBeforeUpdate(ctx context.Context, pool *pgxpool.Pool, commit, migrationsDir string) error {
+	h := &Handler{db: pool}
+	lg := componentLog("backup")
+	pending, initialized, err := database.PendingMigrations(ctx, pool, migrationsDir)
+	if err != nil {
+		lg.Warn().Err(err).Msg("update-sicherung: migrationsstand nicht lesbar")
+		return nil
+	}
+	if !initialized {
+		return nil // frische Installation - nichts zu sichern
+	}
+	if tableExists(ctx, pool, "server_settings") { // z. B. Sicherungsordner aus der Datenbank
+		_, _ = config.ApplyDBSettings(ctx, pool)
+	}
+	settingsOK := tableExists(ctx, pool, "app_settings")
+	get := func(k, def string) string {
+		if !settingsOK {
+			return def
+		}
+		return h.appSetting(ctx, k, def)
+	}
+	last := get(keyUpdateLastCommit, "")
+	commitChanged := commit != "" && commit != "unknown" && last != "" && last != commit
+	remember := func() {
+		if settingsOK && commit != "" && commit != "unknown" && commit != last {
+			_ = h.setAppSetting(ctx, keyUpdateLastCommit, commit)
+		}
+	}
+	if len(pending) == 0 && !commitChanged {
+		remember()
+		return nil
+	}
+	if get(keyBackupOnUpdate, "1") != "1" {
+		lg.Info().Strs("migrationen", pending).Msg("update erkannt – automatische sicherung ist ausgeschaltet")
+		remember()
+		return nil
+	}
+	reason := "neue Programmversion"
+	if last != "" && commitChanged {
+		reason = fmt.Sprintf("Update %s → %s", shortCommit(last), shortCommit(commit))
+	}
+	if len(pending) > 0 {
+		reason += fmt.Sprintf(", %d Datenbank-Änderung(en)", len(pending))
+	}
+	lg.Info().Str("grund", reason).Msg("update erkannt – erstelle vollsicherung vor dem update")
+	comps := []string{backupCompDatabase, backupCompUploads, backupCompChat}
+	backupMu.Lock()
+	defer backupMu.Unlock()
+	start := time.Now()
+	if tableExists(ctx, pool, "backup_runs") {
+		runID, name, err := h.createBackup(ctx, comps, "update", "", "")
+		if err != nil {
+			lg.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen")
+			return fmt.Errorf("Vollsicherung vor dem Update fehlgeschlagen: %w", err)
+		}
+		_, _ = pool.Exec(ctx, `UPDATE backup_runs SET message = $2 WHERE id = $1::uuid`, runID, "Automatisch vor dem Update ("+reason+")")
+		h.pruneUpdateBackups(ctx, atoiDefault(get(keyBackupOnUpdateKeep, "5"), 5))
+		lg.Info().Str("datei", name).Dur("dauer", time.Since(start)).Msg("vollsicherung vor dem update erstellt")
+	} else {
+		// Erstes Update auf eine Version mit Datensicherung: noch kein
+		// Protokoll - Sicherung trotzdem als Datei anlegen.
+		if err := os.MkdirAll(backupDir(), 0o750); err != nil {
+			return err
+		}
+		name := fmt.Sprintf("pdh-backup-%s-update.zip", time.Now().Format("20060102-150405"))
+		if _, err := h.writeBackup(ctx, filepath.Join(backupDir(), name), comps, "update", ""); err != nil {
+			lg.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen")
+			return fmt.Errorf("Vollsicherung vor dem Update fehlgeschlagen: %w", err)
+		}
+		lg.Info().Str("datei", name).Dur("dauer", time.Since(start)).Msg("vollsicherung vor dem update erstellt (ohne protokolleintrag)")
+	}
+	remember()
+	return nil
+}
+
+func atoiDefault(s string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 0 {
+		return n
+	}
+	return def
+}
+
+func tableExists(ctx context.Context, pool *pgxpool.Pool, table string) bool {
+	var ok bool
+	_ = pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&ok)
+	return ok
+}
+
+// pruneUpdateBackups behaelt nur die neuesten keep Update-Sicherungen.
+func (h *Handler) pruneUpdateBackups(ctx context.Context, keep int) {
+	rows, err := h.db.Query(ctx, `
+		SELECT id::text, file_name FROM backup_runs WHERE kind = 'update' AND status = 'ok'
+		 ORDER BY started_at DESC OFFSET $1`, keep)
+	if err != nil {
+		return
+	}
+	type old struct{ id, name string }
+	var olds []old
+	for rows.Next() {
+		var o old
+		if rows.Scan(&o.id, &o.name) == nil {
+			olds = append(olds, o)
+		}
+	}
+	rows.Close()
+	for _, o := range olds {
+		if p, err := safeBackupPath(o.name); err == nil {
+			_ = os.Remove(p)
+		}
+		_, _ = h.db.Exec(ctx, `DELETE FROM backup_runs WHERE id = $1::uuid`, o.id)
+	}
+}
+
+// BackupUpdateSettingsWeb: POST /admin/backup/update-settings
+func (h *Handler) BackupUpdateSettingsWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canBackup(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	on := "0"
+	if r.FormValue("enabled") == "1" {
+		on = "1"
+	}
+	keep := atoiDefault(r.FormValue("keep"), 5)
+	if keep > 50 {
+		keep = 50
+	}
+	err := h.setAppSetting(r.Context(), keyBackupOnUpdate, on)
+	if err == nil {
+		err = h.setAppSetting(r.Context(), keyBackupOnUpdateKeep, strconv.Itoa(keep))
+	}
+	backupRedirect(w, r, "schedules", "Einstellung für Updates gespeichert.", err)
 }

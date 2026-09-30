@@ -372,10 +372,11 @@ func (h *Handler) sendPurchaseReports(ctx context.Context) (int, []string, error
 		}
 		if err := t.ExecuteTemplate(&body, "purchase-report-mail", map[string]interface{}{
 			"Group": g, "BaseURL": strings.TrimRight(h.mailCfg.PublicURL, "/"), "Date": time.Now().Format("02.01.2006"),
+			"Logo": h.branding().PrintLogo, "BrandName": h.branding().AppName,
 		}); err != nil {
 			return sent, problems, err
 		}
-		subject := fmt.Sprintf("PDH Bestellvorschlag %s – %d Position(en)", time.Now().Format("02.01.2006"), g.Positions)
+		subject := fmt.Sprintf("%s Bestellvorschlag %s – %d Position(en)", h.branding().AppName, time.Now().Format("02.01.2006"), g.Positions)
 		if err := h.sendMail([]string{g.BuyerEmail}, subject, body.String()); err != nil {
 			problems = append(problems, g.BuyerName+": "+err.Error())
 			continue

@@ -60,6 +60,7 @@ type BaseData struct {
 	CanBackup              bool // Nav-Link "Datensicherung"
 	CanCleanup             bool // Nav-Link "Bereinigung"
 	CanServerConfig        bool // Nav-Link "Server-Einstellungen" (nur Admins)
+	Brand                  Branding // Name und Logos (Erscheinungsbild)
 }
 
 type DashboardData struct {
@@ -428,6 +429,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
+	r.Post("/admin/branding/settings", h.BrandingSettingsWeb)
+	r.Post("/admin/branding/{slot}/upload", h.BrandingUploadWeb)
+	r.Post("/admin/branding/{slot}/delete", h.BrandingDeleteWeb)
 	r.Get("/admin/server-config/logs", h.ServerLogsPage)
 	r.Get("/admin/server-config/logs/rows", h.ServerLogsRowsWeb)
 	r.Get("/admin/server-config/logs/download", h.ServerLogsDownloadWeb)
@@ -437,6 +441,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/backup/files/{id}", h.BackupDownloadWeb)
 	r.Post("/admin/backup/files/{id}/delete", h.BackupDeleteWeb)
 	r.Post("/admin/backup/files/{id}/restore", h.BackupRestoreWeb)
+	r.Post("/admin/backup/update-settings", h.BackupUpdateSettingsWeb)
 	r.Post("/admin/backup/schedules", h.BackupScheduleSaveWeb)
 	r.Post("/admin/backup/schedules/{id}/{action}", h.BackupScheduleActionWeb)
 	r.Get("/core/fieldsets", h.FieldSetsAdminPage)
@@ -762,6 +767,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
+		Brand:                  h.branding(),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
@@ -1665,7 +1671,7 @@ func (h *Handler) simplePage(w http.ResponseWriter, r *http.Request, page, title
 // ── Auth ──────────────────────────────────────────────────────
 
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login", struct{ Error string }{})
+	h.render(w, "login", h.loginData(""))
 }
 
 func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
@@ -1673,7 +1679,7 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
-		h.render(w, "login", struct{ Error string }{"Ungültige Anmeldedaten"})
+		h.render(w, "login", h.loginData("Ungültige Anmeldedaten"))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
@@ -1690,13 +1696,13 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	uid := strings.TrimSpace(r.FormValue("uid"))
 	if uid == "" {
-		h.render(w, "login", struct{ Error string }{"Keine Karte erkannt"})
+		h.render(w, "login", h.loginData("Keine Karte erkannt"))
 		return
 	}
 	token, user, err := h.users.LoginByRFID(r.Context(), uid)
 	if err != nil {
 		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
-		h.render(w, "login", struct{ Error string }{"Unbekannte Karte"})
+		h.render(w, "login", h.loginData("Unbekannte Karte"))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})

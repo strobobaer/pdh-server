@@ -232,3 +232,42 @@ func runMigration(ctx context.Context, pool *pgxpool.Pool, m migration) error {
 	}
 	return nil
 }
+
+// PendingMigrations liefert die noch nicht angewendeten Migrationen und
+// ob die Datenbank ueberhaupt schon eingerichtet ist (false = frische
+// Datenbank, dann gibt es nichts zu sichern).
+func PendingMigrations(ctx context.Context, pool *pgxpool.Pool, dir string) (pending []string, initialized bool, err error) {
+	migrations, err := loadMigrations(dir)
+	if err != nil {
+		return nil, false, err
+	}
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.schema_migrations') IS NOT NULL`).Scan(&exists); err != nil {
+		return nil, false, err
+	}
+	if !exists {
+		// aeltere Installation ohne Migrationstabelle, aber mit Daten?
+		var users bool
+		_ = pool.QueryRow(ctx, `SELECT to_regclass('public.users') IS NOT NULL`).Scan(&users)
+		if !users {
+			return nil, false, nil
+		}
+		for _, m := range migrations {
+			pending = append(pending, m.Name)
+		}
+		return pending, true, nil
+	}
+	applied, err := appliedMigrations(ctx, pool)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(applied) == 0 {
+		return nil, false, nil
+	}
+	for _, m := range migrations {
+		if !applied[m.Version] {
+			pending = append(pending, m.Name)
+		}
+	}
+	return pending, true, nil
+}

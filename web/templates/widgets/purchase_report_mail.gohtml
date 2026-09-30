@@ -8,6 +8,7 @@
 <html lang="de"><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:24px;background:#f5f7fb;font-family:Segoe UI,Arial,sans-serif;color:#111827;font-size:14px">
 <div style="max-width:880px;margin:0 auto;background:#ffffff;border:1px solid #d7dee8;border-radius:10px;padding:24px">
+  {{if and .Logo .BaseURL}}<img src="{{.BaseURL}}{{.Logo}}" alt="{{.BrandName}}" style="max-height:44px;max-width:200px;display:block;margin:0 0 14px">{{end}}
   <h1 style="font-size:19px;margin:0 0 4px">Bestellvorschlag vom {{.Date}}</h1>
   <p style="margin:0 0 18px;color:#64748b">Hallo {{.Group.BuyerName}}, folgende Ersatzteile liegen auf oder unter Mindestbestand. Vorgeschlagen ist jeweils der bevorzugte (sonst günstigste) freigegebene Lieferant.</p>
   {{range .Group.Suppliers}}

@@ -390,6 +390,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>WIEDERHERSTELLEN</b> eintippen und bestätigen.</li>
     </ol>
     PDH legt vorher automatisch eine <b>Sicherheitskopie</b> des aktuellen Stands an. Die Datenbank wird in einem Schritt zurückgespielt – geht etwas schief, bleibt der bisherige Stand unverändert. Alle Administratoren werden per Chat über Beginn und Ergebnis informiert.</div>
+  <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> Automatische Vollsicherung bei jedem Update</b>
+    Startet das PDH nach einem Update zum ersten Mal, sichert es <b>vor</b> allen Datenbank-Änderungen den kompletten bisherigen Stand (Datenbank, Anhänge, Chat-Dateien) – egal ob über <b>Core-Einstellungen → Update installieren</b>, den Installer oder von Hand aktualisiert wurde. Die Sicherung erscheint in der Liste als <b>Vor Update</b>; aufbewahrt werden die letzten 5 (einstellbar unter <b>Zeitpläne → Automatisch bei jedem Update</b>, dort auch abschaltbar). Schlägt die Sicherung fehl (z. B. Speicher voll), wird das Update <b>nicht</b> angewendet und im Server-Protokoll steht der Grund. Nur im Notfall lässt sich das mit der Umgebungsvariablen <code>PDH_SKIP_UPDATE_BACKUP=1</code> übergehen.</div>
   <p><b>Wichtig:</b> Eine Sicherung aus einer <b>neueren</b> PDH-Version kann erst nach einem Update eingespielt werden. Ältere Sicherungen werden beim Einspielen automatisch auf den aktuellen Stand gebracht. Sicherungsprotokoll und Zeitpläne selbst werden nicht überschrieben.</p>
   {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
 </section>
@@ -431,6 +433,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
     <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
   </ul>
+  <h3><i class="ti ti-palette"></i> Erscheinungsbild: Name und Logos</h3>
+  <p>Im Reiter <b>Erscheinungsbild</b> legst du den Anzeigenamen und drei Logos fest:</p>
+  <table>
+    <tr><td><b>App-Logo</b></td><td>Seitenleiste, Anmeldeseite und Symbol im Browser-Tab</td></tr>
+    <tr><td><b>Logo für Exporte</b></td><td>PDF-Exporte (oben rechts) und Excel-Exporte (neben der Tabelle)</td></tr>
+    <tr><td><b>Logo für Druck</b></td><td>Kopfzeile jeder gedruckten Seite (mit Name, Seitentitel und Druckdatum), Bestellvorschlag-E-Mail und – wenn eingeschaltet – Lagerplatz-Etiketten</td></tr>
+  </table>
+  <div class="hb-howto"><b><i class="ti ti-upload"></i> So setzt du das Firmenlogo</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Erscheinungsbild</b>.</li>
+      <li>Beim <b>App-Logo</b> eine PNG-, JPG- oder GIF-Datei wählen (max. 2 MB, am besten quadratisch mit transparentem Hintergrund) und <b>Hochladen</b>.</li>
+      <li>Exporte und Druck verwenden es automatisch mit („wie App-Logo“). Für einen anderen Ausdruck – z. B. ein breites Schwarzweiß-Logo – dort ein eigenes Logo hochladen.</li>
+    </ol>
+    SVG-Dateien werden aus Sicherheitsgründen nicht angenommen. Die Logos gehören zur Datensicherung (Bestandteil „Anhänge &amp; Bilder“).</div>
   <h3><i class="ti ti-file-analytics"></i> Protokoll ansehen und filtern</h3>
   <p>Das PDH protokolliert ausführlich: jeden Seitenaufruf mit Benutzer, Dauer und Status, An- und Abmeldungen (auch fehlgeschlagene), Fehler sowie Datensicherung, Bereinigung, Einstellungsänderungen und Benachrichtigungen. Passwörter und Tokens in Adressen werden dabei unkenntlich gemacht, von RFID-Karten stehen nur die letzten 4 Zeichen im Protokoll.</p>
   <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du einen Fehler</b>

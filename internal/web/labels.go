@@ -108,6 +108,7 @@ type LabelsPageData struct {
 	ShowCat bool
 	Params  []struct{ Key, Value string } // Auswahl fuer das Einstellungsformular
 	Title   string
+	Logo    string // Drucklogo (Erscheinungsbild: "Logo auf Etiketten")
 	Error   string
 }
 
@@ -128,6 +129,7 @@ func (h *Handler) PartLabelsPage(w http.ResponseWriter, r *http.Request) {
 		Copies: clampInt(q.Get("copies"), 1, 1, 50), Start: clampInt(q.Get("start"), 0, 0, 40),
 		ShowCat: q.Get("cat_line") != "0",
 		Title:   "Lagerplatz-Etiketten",
+		Logo:    h.labelLogo(),
 	}
 	for _, k := range []string{"part", "loc", "node", "list", "cat", "q", "status"} {
 		for _, v := range q[k] {

@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDH – {{.Title}}</title>
+<title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{end}}
 <script>
 (function(){
   const mode = localStorage.getItem('pdh_theme') || 'system';
@@ -393,6 +394,13 @@ select.form-input option{background:var(--bg2)}
 .win11-menu > .btn-danger,.win11-menu > .btn-warning{color:var(--red)}
 .win11-menu > .btn i,.win11-menu > .btn ui5-icon,.win11-menu a.menu-item i,.win11-menu button.menu-item i{font-size:15px;width:16px;height:16px;color:var(--muted);flex-shrink:0}
 .win11-menu .sr-only{position:static;width:auto;height:auto;padding:0;margin:0;overflow:visible;clip:auto;white-space:nowrap;font-size:13px}
+.logo-img{width:30px;height:30px;object-fit:contain;border-radius:6px;flex-shrink:0}
+.print-brand{display:none}
+@media print{
+  .print-brand{display:flex;align-items:center;gap:12px;border-bottom:1px solid #999;padding-bottom:6px;margin-bottom:12px;font-size:12px;color:#333}
+  .print-brand img{max-height:40px;max-width:180px;object-fit:contain}
+  .print-brand .pb-date{margin-left:auto}
+}
 </style>
 {{block "head" .}}{{end}}
 </head>
@@ -402,8 +410,8 @@ select.form-input option{background:var(--bg2)}
 <!-- ── Sidebar ── -->
 <aside class="sidebar">
   <div class="logo">
-    <div class="logo-icon">P</div>
-    <div><div class="logo-text">PDH</div><div class="logo-ver">v0.7.0</div></div>
+    {{if .Brand.AppLogo}}<img class="logo-img" src="{{.Brand.AppLogo}}" alt="{{or .Brand.AppName "PDH"}}">{{else}}<div class="logo-icon">P</div>{{end}}
+    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver">v0.7.0</div></div>
     <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="Navigation einklappen" title="Navigation einklappen"><i class="ti ti-menu-2"></i></button>
   </div>
   <nav>
@@ -486,6 +494,7 @@ select.form-input option{background:var(--bg2)}
     </div>
   </div>
   <div class="main">
+    <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{or .Brand.AppName "PDH"}} · {{.Title}}</span><span class="pb-date" data-print-date></span></div>
     {{block "content" .}}{{end}}
   </div>
 </div>
@@ -1692,4 +1701,6 @@ function initAttachmentGalleries(){
 }
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAttachmentGalleries);
 else initAttachmentGalleries();
+// Druckkopf: Datum beim Drucken eintragen
+window.addEventListener("beforeprint", function(){ document.querySelectorAll("[data-print-date]").forEach(function(el){ el.textContent = new Date().toLocaleString("de-DE"); }); });
 </script>
