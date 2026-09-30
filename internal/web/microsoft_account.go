@@ -17,7 +17,29 @@ import (
 	"time"
 )
 
-const microsoftAuthority = "https://login.microsoftonline.com/common/oauth2/v2.0"
+const (
+	microsoftAccountWork    = "work"
+	microsoftAccountPrivate = "private"
+)
+
+// microsoftAuthority liefert den Anmeldeendpunkt je Kontoart: Geschäftskonten
+// laufen wie bisher über "common", private Konten über "consumers", damit dort
+// nur persönliche Microsoft-Konten (Outlook.com, Hotmail, Live, Microsoft 365
+// Single/Family) angenommen werden.
+func microsoftAuthority(kind string) string {
+	if kind == microsoftAccountPrivate {
+		return "https://login.microsoftonline.com/consumers/oauth2/v2.0"
+	}
+	return "https://login.microsoftonline.com/common/oauth2/v2.0"
+}
+
+// microsoftAccountKind liest die Kontoart aus dem Formular (Feld "account").
+func microsoftAccountKind(r *http.Request) string {
+	if r.FormValue("account") == microsoftAccountPrivate {
+		return microsoftAccountPrivate
+	}
+	return microsoftAccountWork
+}
 
 type MicrosoftOAuthConfig struct {
 	ClientID          string
@@ -32,18 +54,26 @@ type MicrosoftOAuthConfig struct {
 type AccountPageData struct {
 	BaseData
 	MicrosoftConfigured bool
-	MicrosoftConnected  bool
-	MicrosoftAccountLabel string
-	MicrosoftTeamsPermission bool
-	SyncShifts           bool
-	SyncTasks            bool
-	SyncMaintenance      bool
-	SyncTicketsFaults    bool
-	ImportBusyEvents     bool
-	CalendarLastSync     string
-	CalendarBusyCount    int
-	CalendarBusyBlocks   []MicrosoftBusyBlockView
+	MicrosoftWork       MicrosoftAccountView
+	MicrosoftPrivate    MicrosoftAccountView
 	Notice              string
+}
+
+// MicrosoftAccountView beschreibt eine Microsoft-Verbindung eines Nutzers -
+// geschäftlich oder privat, verbunden oder noch frei.
+type MicrosoftAccountView struct {
+	Kind               string
+	Connected          bool
+	AccountLabel       string
+	TeamsPermission    bool
+	SyncShifts         bool
+	SyncTasks          bool
+	SyncMaintenance    bool
+	SyncTicketsFaults  bool
+	ImportBusyEvents   bool
+	CalendarLastSync   string
+	CalendarBusyCount  int
+	CalendarBusyBlocks []MicrosoftBusyBlockView
 }
 
 type MicrosoftBusyBlockView struct {
@@ -80,32 +110,40 @@ func (h *Handler) AccountPage(w http.ResponseWriter, r *http.Request) {
 		MicrosoftConfigured: h.microsoft.configured(),
 		Notice:              r.URL.Query().Get("notice"),
 	}
+	data.MicrosoftWork = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountWork)
+	data.MicrosoftPrivate = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountPrivate)
+	h.render(w, "account", data)
+}
+
+func (h *Handler) loadMicrosoftAccountView(ctx context.Context, userID, kind string) MicrosoftAccountView {
+	view := MicrosoftAccountView{Kind: kind}
 	var email, displayName, microsoftUserID, grantedScopes string
-	err := h.db.QueryRow(r.Context(), `
+	err := h.db.QueryRow(ctx, `
 		SELECT microsoft_email, display_name, microsoft_user_id, granted_scopes
-		FROM microsoft_user_connections WHERE user_id=$1::uuid`, getUser(r).ID,
+		FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind,
 	).Scan(&email, &displayName, &microsoftUserID, &grantedScopes)
-	if err == nil {
-		data.MicrosoftConnected = true
-		data.MicrosoftAccountLabel = email
-		if data.MicrosoftAccountLabel == "" {
-			data.MicrosoftAccountLabel = displayName
-		}
-		if data.MicrosoftAccountLabel == "" {
-			data.MicrosoftAccountLabel = microsoftUserID
-		}
-		data.MicrosoftTeamsPermission = strings.Contains(grantedScopes, "Chat.ReadWrite") && strings.Contains(grantedScopes, "ChannelMessage.Send")
+	if err != nil {
+		return view
 	}
-	_ = h.db.QueryRow(r.Context(), `
+	view.Connected = true
+	view.AccountLabel = email
+	if view.AccountLabel == "" {
+		view.AccountLabel = displayName
+	}
+	if view.AccountLabel == "" {
+		view.AccountLabel = microsoftUserID
+	}
+	view.TeamsPermission = strings.Contains(grantedScopes, "Chat.ReadWrite") && strings.Contains(grantedScopes, "ChannelMessage.Send")
+	_ = h.db.QueryRow(ctx, `
 		SELECT sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events,
 		       COALESCE(to_char(last_sync_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI'), '')
-		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid`, getUser(r).ID,
-	).Scan(&data.SyncShifts, &data.SyncTasks, &data.SyncMaintenance, &data.SyncTicketsFaults, &data.ImportBusyEvents, &data.CalendarLastSync)
-	_ = h.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM microsoft_calendar_blocks WHERE user_id=$1::uuid`, getUser(r).ID).Scan(&data.CalendarBusyCount)
-	blockRows, err := h.db.Query(r.Context(), `
+		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind,
+	).Scan(&view.SyncShifts, &view.SyncTasks, &view.SyncMaintenance, &view.SyncTicketsFaults, &view.ImportBusyEvents, &view.CalendarLastSync)
+	_ = h.db.QueryRow(ctx, `SELECT COUNT(*) FROM microsoft_calendar_blocks WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(&view.CalendarBusyCount)
+	blockRows, err := h.db.Query(ctx, `
 		SELECT starts_at, ends_at, is_all_day FROM microsoft_calendar_blocks
-		WHERE user_id=$1::uuid AND ends_at > NOW()
-		ORDER BY starts_at LIMIT 12`, getUser(r).ID)
+		WHERE user_id=$1::uuid AND account_kind=$2 AND ends_at > NOW()
+		ORDER BY starts_at LIMIT 12`, userID, kind)
 	if err == nil {
 		defer blockRows.Close()
 		for blockRows.Next() {
@@ -114,22 +152,24 @@ func (h *Handler) AccountPage(w http.ResponseWriter, r *http.Request) {
 			if blockRows.Scan(&startsAt, &endsAt, &block.AllDay) == nil {
 				block.StartsAt = startsAt.Local().Format("02.01.2006 15:04")
 				block.EndsAt = endsAt.Local().Format("02.01.2006 15:04")
-				data.CalendarBusyBlocks = append(data.CalendarBusyBlocks, block)
+				view.CalendarBusyBlocks = append(view.CalendarBusyBlocks, block)
 			}
 		}
 	}
-	h.render(w, "account", data)
+	return view
 }
 
 func (h *Handler) MicrosoftConnectStart(w http.ResponseWriter, r *http.Request) {
-	h.startMicrosoftConnect(w, r, "calendar")
+	h.startMicrosoftConnect(w, r, "calendar", microsoftAccountKind(r))
 }
 
+// MicrosoftTeamsConnectStart erweitert die Rechte des Geschäftskontos um
+// Teams - private Konten unterstützen die Teams-Schnittstellen nicht.
 func (h *Handler) MicrosoftTeamsConnectStart(w http.ResponseWriter, r *http.Request) {
-	h.startMicrosoftConnect(w, r, "teams")
+	h.startMicrosoftConnect(w, r, "teams", microsoftAccountWork)
 }
 
-func (h *Handler) startMicrosoftConnect(w http.ResponseWriter, r *http.Request, scopeMode string) {
+func (h *Handler) startMicrosoftConnect(w http.ResponseWriter, r *http.Request, scopeMode, kind string) {
 	if !h.microsoft.configured() {
 		http.Redirect(w, r, "/account?notice=Microsoft+OAuth+nicht+konfiguriert", http.StatusSeeOther)
 		return
@@ -159,24 +199,24 @@ func (h *Handler) startMicrosoftConnect(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	_, err = h.db.Exec(r.Context(), `
-		INSERT INTO microsoft_oauth_states (state_hash, code_verifier, scope_mode, user_id, expires_at)
-		VALUES ($1, $2, $3, $4::uuid, NOW() + INTERVAL '10 minutes')`, microsoftStateHash(state), encryptedVerifier, scopeMode, userID)
+		INSERT INTO microsoft_oauth_states (state_hash, code_verifier, scope_mode, account_kind, user_id, expires_at)
+		VALUES ($1, $2, $3, $4, $5::uuid, NOW() + INTERVAL '10 minutes')`, microsoftStateHash(state), encryptedVerifier, scopeMode, kind, userID)
 	if err != nil {
 		http.Error(w, "OAuth konnte nicht gestartet werden", http.StatusInternalServerError)
 		return
 	}
 	params := url.Values{
-		"client_id":     {h.microsoft.ClientID},
-		"response_type": {"code"},
-		"redirect_uri":  {h.microsoft.RedirectURL},
-		"response_mode": {"query"},
-		"scope":         {microsoftScopes(scopeMode)},
-		"state":         {state},
-		"prompt":        {"select_account"},
+		"client_id":             {h.microsoft.ClientID},
+		"response_type":         {"code"},
+		"redirect_uri":          {h.microsoft.RedirectURL},
+		"response_mode":         {"query"},
+		"scope":                 {microsoftScopes(scopeMode)},
+		"state":                 {state},
+		"prompt":                {"select_account"},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(challengeHash[:])},
 		"code_challenge_method": {"S256"},
 	}
-	http.Redirect(w, r, microsoftAuthority+"/authorize?"+params.Encode(), http.StatusFound)
+	http.Redirect(w, r, microsoftAuthority(kind)+"/authorize?"+params.Encode(), http.StatusFound)
 }
 
 func (h *Handler) MicrosoftConnectCallback(w http.ResponseWriter, r *http.Request) {
@@ -190,11 +230,11 @@ func (h *Handler) MicrosoftConnectCallback(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, "/account?notice=Ungültige+Microsoft-Antwort", http.StatusSeeOther)
 		return
 	}
-	var stateUserID, codeVerifier, scopeMode string
+	var stateUserID, codeVerifier, scopeMode, kind string
 	err := h.db.QueryRow(r.Context(), `
 		DELETE FROM microsoft_oauth_states
 		WHERE state_hash=$1 AND user_id=$2::uuid AND expires_at > NOW()
-		RETURNING user_id::text, code_verifier, scope_mode`, microsoftStateHash(state), getUser(r).ID).Scan(&stateUserID, &codeVerifier, &scopeMode)
+		RETURNING user_id::text, code_verifier, scope_mode, account_kind`, microsoftStateHash(state), getUser(r).ID).Scan(&stateUserID, &codeVerifier, &scopeMode, &kind)
 	if err != nil || stateUserID != getUser(r).ID {
 		http.Redirect(w, r, "/account?notice=Microsoft-Anmeldung+abgelaufen", http.StatusSeeOther)
 		return
@@ -204,7 +244,7 @@ func (h *Handler) MicrosoftConnectCallback(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "OAuth-Status konnte nicht geprüft werden", http.StatusInternalServerError)
 		return
 	}
-	tokens, err := h.exchangeMicrosoftCode(r.Context(), code, codeVerifier, microsoftScopes(scopeMode))
+	tokens, err := h.exchangeMicrosoftCode(r.Context(), kind, code, codeVerifier, microsoftScopes(scopeMode))
 	if err != nil {
 		http.Redirect(w, r, "/account?notice=Microsoft-Tokenaustausch+fehlgeschlagen", http.StatusSeeOther)
 		return
@@ -243,9 +283,9 @@ func (h *Handler) MicrosoftConnectCallback(w http.ResponseWriter, r *http.Reques
 	}
 	_, err = h.db.Exec(r.Context(), `
 		INSERT INTO microsoft_user_connections
-			(user_id, microsoft_user_id, microsoft_email, display_name, access_token, refresh_token, granted_scopes, expires_at, updated_at)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, NOW())
-		ON CONFLICT (user_id) DO UPDATE SET
+			(user_id, microsoft_user_id, microsoft_email, display_name, access_token, refresh_token, granted_scopes, expires_at, account_kind, updated_at)
+		VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT (user_id, account_kind) DO UPDATE SET
 			microsoft_user_id=EXCLUDED.microsoft_user_id,
 			microsoft_email=EXCLUDED.microsoft_email,
 			display_name=EXCLUDED.display_name,
@@ -253,24 +293,37 @@ func (h *Handler) MicrosoftConnectCallback(w http.ResponseWriter, r *http.Reques
 			refresh_token=EXCLUDED.refresh_token,
 			granted_scopes=EXCLUDED.granted_scopes,
 			expires_at=EXCLUDED.expires_at,
-			updated_at=NOW()`, getUser(r).ID, profile.ID, email, profile.DisplayName, accessToken, refreshToken, grantedScopes, expiresAt)
+			updated_at=NOW()`, getUser(r).ID, profile.ID, email, profile.DisplayName, accessToken, refreshToken, grantedScopes, expiresAt, kind)
 	if err != nil {
-		http.Redirect(w, r, "/account?notice=Dieses+Microsoft-Konto+konnte+nicht+verknüpft+werden", http.StatusSeeOther)
+		http.Redirect(w, r, "/account?notice=Dieses+Microsoft-Konto+konnte+nicht+verknüpft+werden+(schon+anderweitig+verbunden?)", http.StatusSeeOther)
+		return
+	}
+	if kind == microsoftAccountPrivate {
+		http.Redirect(w, r, "/account?notice=Privates+Microsoft-Konto+verbunden", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/account?notice=Microsoft-Konto+verbunden", http.StatusSeeOther)
 }
 
+// MicrosoftDisconnect trennt das gewählte Konto (Feld "account") und entfernt
+// dessen importierte Busy-Blocker, Termin-Verknüpfungen und Kalenderauswahl.
+// Bereits nach Outlook geschriebene Termine bleiben dort bestehen.
 func (h *Handler) MicrosoftDisconnect(w http.ResponseWriter, r *http.Request) {
-	_, err := h.db.Exec(r.Context(), `DELETE FROM microsoft_user_connections WHERE user_id=$1::uuid`, getUser(r).ID)
-	if err != nil {
-		http.Error(w, "Microsoft-Konto konnte nicht getrennt werden", http.StatusInternalServerError)
+	userID, kind := getUser(r).ID, microsoftAccountKind(r)
+	for _, table := range []string{"microsoft_user_connections", "microsoft_calendar_blocks", "microsoft_calendar_links", "microsoft_calendar_preferences"} {
+		if _, err := h.db.Exec(r.Context(), `DELETE FROM `+table+` WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind); err != nil {
+			http.Error(w, "Microsoft-Konto konnte nicht getrennt werden", http.StatusInternalServerError)
+			return
+		}
+	}
+	if kind == microsoftAccountPrivate {
+		http.Redirect(w, r, "/account?notice=Privates+Microsoft-Konto+getrennt", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/account?notice=Microsoft-Konto+getrennt", http.StatusSeeOther)
 }
 
-func (h *Handler) exchangeMicrosoftCode(ctx context.Context, code, codeVerifier, scopes string) (microsoftTokenResponse, error) {
+func (h *Handler) exchangeMicrosoftCode(ctx context.Context, kind, code, codeVerifier, scopes string) (microsoftTokenResponse, error) {
 	var tokens microsoftTokenResponse
 	form := url.Values{
 		"client_id":     {h.microsoft.ClientID},
@@ -281,7 +334,7 @@ func (h *Handler) exchangeMicrosoftCode(ctx context.Context, code, codeVerifier,
 		"redirect_uri":  {h.microsoft.RedirectURL},
 		"scope":         {scopes},
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, microsoftAuthority+"/token", strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, microsoftAuthority(kind)+"/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return tokens, err
 	}

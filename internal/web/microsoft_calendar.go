@@ -63,8 +63,9 @@ func (e microsoftGraphStatusError) Error() string {
 }
 
 func (h *Handler) SaveMicrosoftCalendarPreferences(w http.ResponseWriter, r *http.Request) {
+	kind := microsoftAccountKind(r)
 	var connected bool
-	if err := h.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM microsoft_user_connections WHERE user_id=$1::uuid)`, getUser(r).ID).Scan(&connected); err != nil || !connected {
+	if err := h.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind=$2)`, getUser(r).ID, kind).Scan(&connected); err != nil || !connected {
 		http.Redirect(w, r, "/account?notice=Zuerst+ein+Microsoft-Konto+verbinden", http.StatusSeeOther)
 		return
 	}
@@ -74,9 +75,9 @@ func (h *Handler) SaveMicrosoftCalendarPreferences(w http.ResponseWriter, r *htt
 	}
 	_, err := h.db.Exec(r.Context(), `
 		INSERT INTO microsoft_calendar_preferences
-			(user_id, sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events, updated_at)
-		VALUES ($1::uuid, $2, $3, $4, $5, $6, NOW())
-		ON CONFLICT (user_id) DO UPDATE SET
+			(user_id, account_kind, sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events, updated_at)
+		VALUES ($1::uuid, $7, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (user_id, account_kind) DO UPDATE SET
 			sync_shifts=EXCLUDED.sync_shifts,
 			sync_tasks=EXCLUDED.sync_tasks,
 			sync_maintenance=EXCLUDED.sync_maintenance,
@@ -87,7 +88,7 @@ func (h *Handler) SaveMicrosoftCalendarPreferences(w http.ResponseWriter, r *htt
 		r.FormValue("sync_tasks") == "on",
 		r.FormValue("sync_maintenance") == "on",
 		r.FormValue("sync_tickets_faults") == "on",
-		r.FormValue("import_busy_events") == "on")
+		r.FormValue("import_busy_events") == "on", kind)
 	if err != nil {
 		http.Error(w, "Kalendereinstellungen konnten nicht gespeichert werden", http.StatusInternalServerError)
 		return
@@ -96,13 +97,13 @@ func (h *Handler) SaveMicrosoftCalendarPreferences(w http.ResponseWriter, r *htt
 }
 
 func (h *Handler) SyncMicrosoftCalendarWeb(w http.ResponseWriter, r *http.Request) {
-	userID := getUser(r).ID
+	userID, kind := getUser(r).ID, microsoftAccountKind(r)
 	if !h.microsoftSyncMu.TryLock() {
 		http.Redirect(w, r, "/account?notice=Microsoft-Synchronisierung+läuft+bereits", http.StatusSeeOther)
 		return
 	}
 	defer h.microsoftSyncMu.Unlock()
-	preferences, err := h.loadMicrosoftCalendarPreferences(r.Context(), userID)
+	preferences, err := h.loadMicrosoftCalendarPreferences(r.Context(), userID, kind)
 	if err != nil {
 		http.Redirect(w, r, "/account?notice=Microsoft-Kalendereinstellungen+konnten+nicht+geladen+werden", http.StatusSeeOther)
 		return
@@ -111,26 +112,26 @@ func (h *Handler) SyncMicrosoftCalendarWeb(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, "/account?notice=Zuerst+mindestens+einen+Kalenderbereich+auswählen", http.StatusSeeOther)
 		return
 	}
-	accessToken, err := h.microsoftAccessToken(r.Context(), userID)
+	accessToken, err := h.microsoftAccessToken(r.Context(), userID, kind)
 	if err != nil {
 		http.Redirect(w, r, "/account?notice=Microsoft-Anmeldung+erneuern", http.StatusSeeOther)
 		return
 	}
-	created, imported, err := h.syncMicrosoftCalendar(r.Context(), userID, accessToken, preferences)
+	created, imported, err := h.syncMicrosoftCalendar(r.Context(), userID, kind, accessToken, preferences)
 	if err != nil {
 		http.Redirect(w, r, "/account?notice="+url.QueryEscape("Kalendersync fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
 	}
-	_, _ = h.db.Exec(r.Context(), `UPDATE microsoft_calendar_preferences SET last_sync_at=NOW(), updated_at=NOW() WHERE user_id=$1::uuid`, userID)
+	_, _ = h.db.Exec(r.Context(), `UPDATE microsoft_calendar_preferences SET last_sync_at=NOW(), updated_at=NOW() WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind)
 	notice := fmt.Sprintf("Outlook synchronisiert: %d PDH-Termine aktualisiert, %d Busy-Blocker importiert", created, imported)
 	http.Redirect(w, r, "/account?notice="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
-func (h *Handler) loadMicrosoftCalendarPreferences(ctx context.Context, userID string) (microsoftCalendarPreferences, error) {
+func (h *Handler) loadMicrosoftCalendarPreferences(ctx context.Context, userID, kind string) (microsoftCalendarPreferences, error) {
 	var preferences microsoftCalendarPreferences
 	err := h.db.QueryRow(ctx, `
 		SELECT sync_shifts, sync_tasks, sync_maintenance, sync_tickets_faults, import_busy_events
-		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid`, userID).Scan(
+		FROM microsoft_calendar_preferences WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(
 		&preferences.Shifts, &preferences.Tasks, &preferences.Maintenance, &preferences.TicketsFaults, &preferences.ImportBusy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return preferences, nil
@@ -138,13 +139,13 @@ func (h *Handler) loadMicrosoftCalendarPreferences(ctx context.Context, userID s
 	return preferences, err
 }
 
-func (h *Handler) microsoftAccessToken(ctx context.Context, userID string) (string, error) {
+func (h *Handler) microsoftAccessToken(ctx context.Context, userID, kind string) (string, error) {
 	var encryptedAccess, encryptedRefresh string
 	var grantedScopes string
 	var expiresAt time.Time
 	if err := h.db.QueryRow(ctx, `
 		SELECT access_token, refresh_token, granted_scopes, expires_at FROM microsoft_user_connections
-		WHERE user_id=$1::uuid`, userID).Scan(&encryptedAccess, &encryptedRefresh, &grantedScopes, &expiresAt); err != nil {
+		WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind).Scan(&encryptedAccess, &encryptedRefresh, &grantedScopes, &expiresAt); err != nil {
 		return "", err
 	}
 	if expiresAt.After(time.Now().Add(2 * time.Minute)) {
@@ -164,7 +165,7 @@ func (h *Handler) microsoftAccessToken(ctx context.Context, userID string) (stri
 		"refresh_token": {refreshToken},
 		"scope":         {grantedScopes},
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, microsoftAuthority+"/token", strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, microsoftAuthority(kind)+"/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
@@ -206,28 +207,28 @@ func (h *Handler) microsoftAccessToken(ctx context.Context, userID string) (stri
 	_, err = h.db.Exec(ctx, `
 		UPDATE microsoft_user_connections
 		SET access_token=$1, refresh_token=$2, granted_scopes=$3, expires_at=$4, updated_at=NOW()
-		WHERE user_id=$5::uuid`, encryptedAccess, encryptedRefresh, grantedScopes, time.Now().Add(time.Duration(expiresIn)*time.Second), userID)
+		WHERE user_id=$5::uuid AND account_kind=$6`, encryptedAccess, encryptedRefresh, grantedScopes, time.Now().Add(time.Duration(expiresIn)*time.Second), userID, kind)
 	if err != nil {
 		return "", err
 	}
 	return tokens.AccessToken, nil
 }
 
-func (h *Handler) syncMicrosoftCalendar(ctx context.Context, userID, accessToken string, preferences microsoftCalendarPreferences) (int, int, error) {
-	created, err := h.syncPDHEventsToMicrosoft(ctx, userID, accessToken, preferences)
+func (h *Handler) syncMicrosoftCalendar(ctx context.Context, userID, kind, accessToken string, preferences microsoftCalendarPreferences) (int, int, error) {
+	created, err := h.syncPDHEventsToMicrosoft(ctx, userID, kind, accessToken, preferences)
 	if err != nil {
 		return created, 0, err
 	}
 	imported := 0
 	if preferences.ImportBusy {
-		imported, err = h.importMicrosoftBusyEvents(ctx, userID, accessToken)
+		imported, err = h.importMicrosoftBusyEvents(ctx, userID, kind, accessToken)
 	} else {
-		_, err = h.db.Exec(ctx, `DELETE FROM microsoft_calendar_blocks WHERE user_id=$1::uuid`, userID)
+		_, err = h.db.Exec(ctx, `DELETE FROM microsoft_calendar_blocks WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind)
 	}
 	return created, imported, err
 }
 
-func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, accessToken string, preferences microsoftCalendarPreferences) (int, error) {
+func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, kind, accessToken string, preferences microsoftCalendarPreferences) (int, error) {
 	sources, err := h.microsoftCalendarSources(ctx, userID, preferences)
 	if err != nil {
 		return 0, err
@@ -237,7 +238,7 @@ func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, accessTo
 		key := source.Type + ":" + source.ID
 		active[key] = true
 		var eventID string
-		err := h.db.QueryRow(ctx, `SELECT microsoft_event_id FROM microsoft_calendar_links WHERE user_id=$1::uuid AND source_type=$2 AND source_id=$3::uuid`, userID, source.Type, source.ID).Scan(&eventID)
+		err := h.db.QueryRow(ctx, `SELECT microsoft_event_id FROM microsoft_calendar_links WHERE user_id=$1::uuid AND account_kind=$4 AND source_type=$2 AND source_id=$3::uuid`, userID, source.Type, source.ID, kind).Scan(&eventID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return 0, err
 		}
@@ -272,14 +273,14 @@ func (h *Handler) syncPDHEventsToMicrosoft(ctx context.Context, userID, accessTo
 			return 0, fmt.Errorf("Microsoft Graph returned no event id")
 		}
 		_, err = h.db.Exec(ctx, `
-			INSERT INTO microsoft_calendar_links (user_id, source_type, source_id, microsoft_event_id, updated_at)
-			VALUES ($1::uuid, $2, $3::uuid, $4, NOW())
-			ON CONFLICT (user_id, source_type, source_id) DO UPDATE SET microsoft_event_id=EXCLUDED.microsoft_event_id, updated_at=NOW()`, userID, source.Type, source.ID, event.ID)
+			INSERT INTO microsoft_calendar_links (user_id, account_kind, source_type, source_id, microsoft_event_id, updated_at)
+			VALUES ($1::uuid, $5, $2, $3::uuid, $4, NOW())
+			ON CONFLICT (user_id, account_kind, source_type, source_id) DO UPDATE SET microsoft_event_id=EXCLUDED.microsoft_event_id, updated_at=NOW()`, userID, source.Type, source.ID, event.ID, kind)
 		if err != nil {
 			return 0, err
 		}
 	}
-	deleted, err := h.removeStaleMicrosoftEvents(ctx, userID, accessToken, preferences, active)
+	deleted, err := h.removeStaleMicrosoftEvents(ctx, userID, kind, accessToken, preferences, active)
 	if err != nil {
 		return len(sources), err
 	}
@@ -405,8 +406,8 @@ func timedCalendarSource(sourceType, id, title string, due time.Time) microsoftC
 	return microsoftCalendarSource{Type: sourceType, ID: id, Title: "PDH · " + sourceType + " · " + title, Start: due.UTC(), End: due.UTC().Add(time.Hour)}
 }
 
-func (h *Handler) removeStaleMicrosoftEvents(ctx context.Context, userID, accessToken string, preferences microsoftCalendarPreferences, active map[string]bool) (int, error) {
-	rows, err := h.db.Query(ctx, `SELECT source_type, source_id::text, microsoft_event_id FROM microsoft_calendar_links WHERE user_id=$1::uuid`, userID)
+func (h *Handler) removeStaleMicrosoftEvents(ctx context.Context, userID, kind, accessToken string, preferences microsoftCalendarPreferences, active map[string]bool) (int, error) {
+	rows, err := h.db.Query(ctx, `SELECT source_type, source_id::text, microsoft_event_id FROM microsoft_calendar_links WHERE user_id=$1::uuid AND account_kind=$2`, userID, kind)
 	if err != nil {
 		return 0, err
 	}
@@ -437,14 +438,14 @@ func (h *Handler) removeStaleMicrosoftEvents(ctx context.Context, userID, access
 		if err != nil && statusErr.StatusCode != http.StatusNotFound {
 			return 0, err
 		}
-		if _, err := h.db.Exec(ctx, `DELETE FROM microsoft_calendar_links WHERE user_id=$1::uuid AND source_type=$2 AND source_id=$3::uuid`, userID, item.sourceType, item.sourceID); err != nil {
+		if _, err := h.db.Exec(ctx, `DELETE FROM microsoft_calendar_links WHERE user_id=$1::uuid AND account_kind=$4 AND source_type=$2 AND source_id=$3::uuid`, userID, item.sourceType, item.sourceID, kind); err != nil {
 			return 0, err
 		}
 	}
 	return len(stale), nil
 }
 
-func (h *Handler) importMicrosoftBusyEvents(ctx context.Context, userID, accessToken string) (int, error) {
+func (h *Handler) importMicrosoftBusyEvents(ctx context.Context, userID, kind, accessToken string) (int, error) {
 	started := time.Now().UTC()
 	windowStart := started.AddDate(0, 0, -30)
 	windowEnd := started.AddDate(0, 0, 180)
@@ -474,12 +475,12 @@ func (h *Handler) importMicrosoftBusyEvents(ctx context.Context, userID, accessT
 				continue
 			}
 			_, err = h.db.Exec(ctx, `
-				INSERT INTO microsoft_calendar_blocks (user_id, microsoft_event_id, starts_at, ends_at, show_as, is_all_day, last_seen_at)
-				VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
-				ON CONFLICT (user_id, microsoft_event_id) DO UPDATE SET
+				INSERT INTO microsoft_calendar_blocks (user_id, account_kind, microsoft_event_id, starts_at, ends_at, show_as, is_all_day, last_seen_at)
+				VALUES ($1::uuid, $8, $2, $3, $4, $5, $6, $7)
+				ON CONFLICT (user_id, account_kind, microsoft_event_id) DO UPDATE SET
 					starts_at=EXCLUDED.starts_at, ends_at=EXCLUDED.ends_at, show_as=EXCLUDED.show_as,
 					is_all_day=EXCLUDED.is_all_day, last_seen_at=EXCLUDED.last_seen_at`,
-				userID, event.ID, start, end, event.ShowAs, event.IsAllDay, started)
+				userID, event.ID, start, end, event.ShowAs, event.IsAllDay, started, kind)
 			if err != nil {
 				return count, err
 			}
@@ -489,7 +490,7 @@ func (h *Handler) importMicrosoftBusyEvents(ctx context.Context, userID, accessT
 	}
 	_, err := h.db.Exec(ctx, `
 		DELETE FROM microsoft_calendar_blocks
-		WHERE user_id=$1::uuid AND starts_at >= $2 AND starts_at < $3 AND last_seen_at < $4`, userID, windowStart, windowEnd, started)
+		WHERE user_id=$1::uuid AND account_kind=$5 AND starts_at >= $2 AND starts_at < $3 AND last_seen_at < $4`, userID, windowStart, windowEnd, started, kind)
 	return count, err
 }
 

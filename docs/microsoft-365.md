@@ -2,7 +2,9 @@
 
 ## Nutzerkonto verbinden
 
-PDH kann ein Microsoft-Geschäfts- oder Privatkonto pro angemeldetem Nutzer verknüpfen. Die Verknüpfung erfolgt unter **Mein Konto** und verwendet Microsoft OAuth mit PKCE. Die lokale PDH-Anmeldung bleibt bestehen.
+PDH kann pro angemeldetem Nutzer **ein Geschäftskonto und zusätzlich ein privates Microsoft-Konto** verknüpfen (Outlook.com, Hotmail, Live, Microsoft 365 Single/Family). Die Verknüpfung erfolgt unter **Mein Konto** in den Karten „Microsoft 365 · Geschäftlich“ und „Microsoft 365 · Privat“ und verwendet Microsoft OAuth mit PKCE. Die lokale PDH-Anmeldung bleibt bestehen.
+
+Das Geschäftskonto meldet sich über den Endpunkt `common` an, das private Konto über `consumers` – dort werden ausschließlich persönliche Microsoft-Konten angenommen. Dasselbe Microsoft-Konto kann nur einmal (bei einem Nutzer, in einer Rolle) verknüpft werden. Verknüpfungen aus Versionen vor 0.17.0 gelten als Geschäftskonto; wer dort ein privates Konto verbunden hatte, trennt es und verbindet es in der Karte „Privat“ neu.
 
 Die Nutzerverknüpfung fordert `User.Read` und `Calendars.ReadWrite` als delegierte Graph-Berechtigungen an. Access- und Refresh-Tokens werden mit AES-GCM verschlüsselt in PostgreSQL gespeichert; der Verschlüsselungsschlüssel wird aus `PDH_AUTH_JWTSECRET` abgeleitet. Eine Änderung dieses Geheimnisses macht bestehende Microsoft-Verknüpfungen unlesbar; betroffene Nutzer müssen ihr Konto erneut verbinden.
 
@@ -27,11 +29,11 @@ PDH_MICROSOFT_TEAMS_CHANNEL_ID=<Teams channel ID>
 
 Für systemd stehen die Werte in der PDH-`EnvironmentFile` (üblicherweise `.env`). In Docker Compose gehören sie in `.env.docker`; danach den App-Container neu erstellen. Client-Secrets nicht in Git einchecken oder in Support-Chats senden.
 
-Nach dem Neustart erscheint **Mein Konto** im Nutzermenü. Jeder Nutzer kann dort sein Microsoft-Konto verbinden oder trennen. Bei persönlichen Konten ohne `mail`-Attribut zeigt PDH den Anzeigenamen beziehungsweise die Microsoft-ID.
+Nach dem Neustart erscheint **Mein Konto** im Nutzermenü. Jeder Nutzer kann dort sein Geschäfts- und sein privates Microsoft-Konto unabhängig voneinander verbinden oder trennen. Für private Konten muss die App-Registrierung persönliche Microsoft-Konten zulassen (Schritt 2); eine reine Einzel-Tenant-App lehnt sie ab. Bei persönlichen Konten ohne `mail`-Attribut zeigt PDH den Anzeigenamen beziehungsweise die Microsoft-ID.
 
 ## Kalender, Verzeichnis und Teams
 
-Jeder verbundene Nutzer kann unter **Mein Konto** auswählen, ob Schichten, zugewiesene Aufgaben, Wartungen, Tickets und Störungen bei „Jetzt synchronisieren“ in seinen Outlook-Kalender geschrieben werden. Outlook-Termine mit Status „busy“, „tentative“, „out of office“ oder „working elsewhere“ werden optional als private Zeitblöcke importiert. Betreffzeilen werden nicht gespeichert; die Blocker erscheinen als Warnmarkierung im PDH-Schichtwochenplan und verhindern keine manuelle Zuweisung. PDH bleibt für seine betrieblichen Datensätze führend.
+Jeder verbundene Nutzer kann unter **Mein Konto** je Konto (geschäftlich und privat getrennt) auswählen, ob Schichten, zugewiesene Aufgaben, Wartungen, Tickets und Störungen bei „Jetzt synchronisieren“ in seinen Outlook-Kalender geschrieben werden. Outlook-Termine mit Status „busy“, „tentative“, „out of office“ oder „working elsewhere“ werden optional als private Zeitblöcke importiert. Betreffzeilen werden nicht gespeichert; die Blocker beider Konten erscheinen als Warnmarkierung im PDH-Schichtwochenplan und verhindern keine manuelle Zuweisung. PDH bleibt für seine betrieblichen Datensätze führend.
 
 Administratoren gleichen unter **Core-Einstellungen → Microsoft-365-Organisationssync** den konfigurierten Entra-Tenant ab. Der Abgleich ordnet nur bestehende aktive PDH-Nutzer anhand der E-Mail-Adresse zu; er legt niemanden an, ändert keine Rollen und deaktiviert keine Konten.
 
@@ -39,4 +41,4 @@ Für Teams muss ein Geschäfts-/Schulkonto unter **Mein Konto → Teams freigebe
 
 ## Grenzen
 
-Der Kalenderabgleich ist nutzergesteuert und wird manuell gestartet; es gibt noch keinen automatischen Hintergrund-Sync. Der Entra-Abgleich gilt nur für den konfigurierten Geschäftstenant. Private Microsoft-Konten können ihr Konto und ihren Outlook-Kalender verbinden, aber weder ein Organisationsverzeichnis synchronisieren noch Teams-Nachrichten versenden.
+Der Kalenderabgleich ist nutzergesteuert und wird manuell gestartet; es gibt noch keinen automatischen Hintergrund-Sync. Der Entra-Abgleich gilt nur für den konfigurierten Geschäftstenant. Private Microsoft-Konten können ihren Outlook-Kalender verbinden (PDH-Termine schreiben, Busy-Blocker importieren), aber weder ein Organisationsverzeichnis synchronisieren noch Teams-Nachrichten versenden. Beim Trennen eines Kontos werden dessen importierte Blocker und Terminverknüpfungen entfernt; die bereits nach Outlook geschriebenen Termine bleiben dort bestehen.

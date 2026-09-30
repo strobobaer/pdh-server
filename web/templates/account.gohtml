@@ -7,23 +7,55 @@
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
 
-<div class="card" style="max-width:680px">
-  <div class="card-title">Microsoft 365</div>
-  {{if .MicrosoftConnected}}
-  <p>Verbunden als <strong>{{.MicrosoftAccountLabel}}</strong></p>
-  {{if .MicrosoftTeamsPermission}}
+<div class="card" style="max-width:680px;margin-bottom:14px">
+  <div class="card-title"><i class="ti ti-briefcase"></i> Microsoft 365 · Geschäftlich</div>
+  {{with .MicrosoftWork}}{{if .Connected}}
+  <p>Verbunden als <strong>{{.AccountLabel}}</strong></p>
+  {{if .TeamsPermission}}
   <p style="font-size:12px;color:var(--green)">Teams-Berechtigungen erteilt</p>
   {{else}}
   <form method="POST" action="/account/microsoft/connect-teams" style="margin-bottom:10px">
     <button type="submit" class="btn"><i class="ti ti-brand-teams"></i> Teams freigeben</button>
   </form>
   {{end}}
+  {{template "account-ms-connected" .}}
+  {{else if $.MicrosoftConfigured}}
+  <p style="font-size:13px;color:var(--muted)">Verbinde dein Geschäfts- oder Schulkonto (Firmen-Microsoft-365) mit PDH – für Outlook-Kalender und Teams.</p>
+  <form method="POST" action="/account/microsoft/connect">
+    <input type="hidden" name="account" value="work">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-brand-windows"></i> Geschäftskonto verbinden</button>
+  </form>
+  {{else}}
+  <p style="font-size:13px;color:var(--muted)">Microsoft OAuth ist serverseitig noch nicht konfiguriert.</p>
+  {{end}}{{end}}
+</div>
+
+<div class="card" style="max-width:680px">
+  <div class="card-title"><i class="ti ti-home"></i> Microsoft 365 · Privat</div>
+  {{with .MicrosoftPrivate}}{{if .Connected}}
+  <p>Verbunden als <strong>{{.AccountLabel}}</strong></p>
+  {{template "account-ms-connected" .}}
+  {{else if $.MicrosoftConfigured}}
+  <p style="font-size:13px;color:var(--muted)">Zusätzlich kannst du ein privates Microsoft-Konto verbinden (Outlook.com, Hotmail, Live oder Microsoft 365 Single/Family). So landen z. B. deine Schichten im privaten Kalender, und private Termine erscheinen als Busy-Blocker im Schichtplan – ohne Betreff.</p>
+  <form method="POST" action="/account/microsoft/connect">
+    <input type="hidden" name="account" value="private">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-brand-windows"></i> Privates Konto verbinden</button>
+  </form>
+  {{else}}
+  <p style="font-size:13px;color:var(--muted)">Microsoft OAuth ist serverseitig noch nicht konfiguriert.</p>
+  {{end}}{{end}}
+</div>
+{{end}}
+
+{{define "account-ms-connected"}}
   <form method="POST" action="/account/microsoft/disconnect" onsubmit="return confirm('Microsoft-Konto wirklich trennen?')">
+    <input type="hidden" name="account" value="{{.Kind}}">
     <button type="submit" class="btn"><i class="ti ti-unlink"></i> Konto trennen</button>
   </form>
   <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
     <div style="font-size:13px;font-weight:600;margin-bottom:10px">Outlook-Kalender</div>
     <form method="POST" action="/account/microsoft/calendar">
+      <input type="hidden" name="account" value="{{.Kind}}">
       <div style="display:grid;gap:8px;font-size:13px">
         <label><input type="checkbox" name="sync_shifts" {{if .SyncShifts}}checked{{end}}> Schichten nach Outlook schreiben</label>
         <label><input type="checkbox" name="sync_tasks" {{if .SyncTasks}}checked{{end}}> Zugewiesene Aufgaben nach Outlook schreiben</label>
@@ -36,6 +68,7 @@
       </div>
     </form>
     <form method="POST" action="/account/microsoft/calendar/sync" style="margin-top:8px">
+      <input type="hidden" name="account" value="{{.Kind}}">
       <button type="submit" class="btn btn-primary"><i class="ti ti-refresh"></i> Jetzt synchronisieren</button>
     </form>
     <p style="font-size:11px;color:var(--muted)">Letzter Sync: {{if .CalendarLastSync}}{{.CalendarLastSync}}{{else}}noch keiner{{end}} · {{.CalendarBusyCount}} Busy-Blocker importiert</p>
@@ -48,13 +81,4 @@
     </div>
     {{end}}
   </div>
-  {{else if .MicrosoftConfigured}}
-  <p style="font-size:13px;color:var(--muted)">Verbinde dein Geschäfts- oder persönliches Microsoft-Konto mit PDH.</p>
-  <form method="POST" action="/account/microsoft/connect">
-    <button type="submit" class="btn btn-primary"><i class="ti ti-brand-windows"></i> Mit Microsoft verbinden</button>
-  </form>
-  {{else}}
-  <p style="font-size:13px;color:var(--muted)">Microsoft OAuth ist serverseitig noch nicht konfiguriert.</p>
-  {{end}}
-</div>
 {{end}}

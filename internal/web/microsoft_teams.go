@@ -97,20 +97,20 @@ func (h *Handler) microsoftTeamsSenderToken(ctx context.Context) (string, string
 	var email, displayName, microsoftUserID, grantedScopes string
 	if err := h.db.QueryRow(ctx, `
 		SELECT microsoft_email, display_name, microsoft_user_id, granted_scopes
-		FROM microsoft_user_connections WHERE user_id=$1::uuid`, h.microsoft.TeamsSenderUserID,
+		FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoft.TeamsSenderUserID,
 	).Scan(&email, &displayName, &microsoftUserID, &grantedScopes); err != nil {
 		return "", "", err
 	}
 	if !hasMicrosoftScope(grantedScopes, "Chat.ReadWrite") && !hasMicrosoftScope(grantedScopes, "ChannelMessage.Send") {
 		return "", grantedScopes, fmt.Errorf("Teams permissions have not been granted by the sender account")
 	}
-	token, err := h.microsoftAccessToken(ctx, h.microsoft.TeamsSenderUserID)
+	token, err := h.microsoftAccessToken(ctx, h.microsoft.TeamsSenderUserID, microsoftAccountWork)
 	return token, grantedScopes, err
 }
 
 func (h *Handler) microsoftSenderObjectID(ctx context.Context) string {
 	var id string
-	_ = h.db.QueryRow(ctx, `SELECT microsoft_user_id FROM microsoft_user_connections WHERE user_id=$1::uuid`, h.microsoft.TeamsSenderUserID).Scan(&id)
+	_ = h.db.QueryRow(ctx, `SELECT microsoft_user_id FROM microsoft_user_connections WHERE user_id=$1::uuid AND account_kind='work'`, h.microsoft.TeamsSenderUserID).Scan(&id)
 	return id
 }
 
