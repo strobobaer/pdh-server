@@ -99,7 +99,29 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><b>Historie</b></td><td>wer hat wann was geändert</td></tr>
   </table>
   <p><b>Listen</b> haben oben ebenfalls Reiter (z. B. nach Status oder Kategorie) mit der Anzahl der Einträge. Die Kennzahl-Kacheln sind anklickbar und filtern die Liste.</p>
+  <h3><i class="ti ti-hash"></i> Kopfleiste: Kategorien und Status</h3>
+  {{template "hb-fig-meta"}}
+  <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "records") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="categories" data-title="Kategorien (#)" data-pages="categories">
+  <h2><i class="ti ti-hash"></i> Kategorien (#)</h2>
+  <p>Kategorien sind Schlagworte, die quer über alle Module gelten – zum Beispiel <b>#Energie</b>, <b>#Optimierung</b>, <b>#Zufriedenheit</b>, <b>#Versuch</b>, <b>#Produktiv</b> und <b>#Efficio</b>. So findest du z. B. alle Energie-Themen auf einen Blick: Tickets, Störungen, Aufgaben, Projekte, Wartungen, Anlagen, Ersatzteile, Lagerplätze und Firmen.</p>
+  <div class="hb-howto"><b><i class="ti ti-hash"></i> So vergibst du eine Kategorie</b>
+    <ol class="hb-steps">
+      <li>Datensatz öffnen (z. B. ein Ticket).</li>
+      <li>Oben über den Reitern auf das graue Schlagwort tippen – es wird farbig und ist gesetzt.</li>
+      <li>Nochmal antippen entfernt es wieder. Mehrere Kategorien gleichzeitig sind möglich.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-list-search"></i> So findest du alles zu einer Kategorie</b>
+    <ol class="hb-steps">
+      <li>Navigation → <b>Kategorien</b>.</li>
+      <li>Links die Kategorie wählen – rechts erscheinen alle Datensätze, sortiert nach Modul.</li>
+      <li>Ein Klick öffnet den Datensatz im PDH-Viewer.</li>
+    </ol></div>
+  <p>Mit der Berechtigung <i>Kategorien verwalten</i> legst du auf derselben Seite neue Kategorien an, änderst Name, Farbe und Symbol oder deaktivierst eine Kategorie. Deaktivierte Kategorien können nicht mehr neu vergeben werden, bestehende Zuordnungen bleiben sichtbar. Jede Änderung steht in der Historie des Datensatzes.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "categories") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new">
@@ -270,6 +292,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Rechts die Unterhaltung wählen – Titel und Link sind schon eingetragen.</li>
       <li>Absenden. Die anderen sehen eine Karte, die den Datensatz öffnet.</li>
     </ol></div>
+  <h3><i class="ti ti-bell"></i> Hinweise von PDH-System</h3>
+  <p>Ändert jemand ein <b>Ticket</b>, eine <b>Störung</b>, eine <b>Aufgabe</b>, ein <b>Projekt</b> oder eine <b>Wartung</b>, schickt der Absender <b>PDH-System</b> einen kurzen Hinweis an alle Beteiligten: Ersteller/in, Verantwortliche/n und Zugewiesene. Wer die Änderung selbst gemacht hat, bekommt keinen Hinweis. Der Hinweis nennt, was sich geändert hat (z. B. „Status: offen → in Arbeit“, neuer Kommentar) und enthält eine Karte zum Vorgang. Mehrere Änderungen kurz hintereinander werden zu einer Nachricht zusammengefasst.</p>
+  <p>Die Hinweise sind nur zur Information – auf PDH-System zu antworten ist nicht nötig. Abschalten kannst du sie unter <b>Mein Konto → Konto &amp; Dienste</b>. PDH-System informiert Administratoren außerdem über <a href="#cleanup">Bereinigungsläufe</a> und <a href="#backup">Datensicherungen</a>.</p>
   {{template "hb-shots" (dict "Ref" (index $s "chat") "Can" $can)}}
 </section>
 
@@ -286,6 +311,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben rechts auf deinen Namen → <b>Mein Konto</b>.</li>
       <li>Reiter <b>Privat</b>: Anschrift, private Telefonnummer, Notfallkontakt – das sehen nur du und berechtigte Personen.</li>
       <li>Reiter <b>Nachweise</b>: Führerschein, Qualifikationen und Lehrgänge mit Ablaufdatum – das PDH warnt 60 Tage vorher.</li>
+      <li>Reiter <b>Konto &amp; Dienste</b>: Chat-Hinweise zu Änderungen an deinen Vorgängen ein- oder ausschalten, Passwort und verbundene Dienste.</li>
     </ol></div>
   <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren.</p>
   {{template "hb-shots" (dict "Ref" (index $s "users") "Can" $can)}}
@@ -302,18 +328,82 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "fieldsets") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="cleanup" data-title="Sperren, Deaktivieren &amp; Löschen" data-pages="cleanup">
+  <h2><i class="ti ti-trash-x"></i> Sperren, Deaktivieren &amp; Löschen</h2>
+  <p>Stammdaten – <b>Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten</b> – werden im PDH <b>nie direkt gelöscht</b>. Sonst würden Störungen, Buchungen und Historien plötzlich ins Leere zeigen. Stattdessen gibt es drei Stufen, alle über <b>Status</b> oben auf der Detailseite:</p>
+  <table>
+    <tr><td><b><i class="ti ti-lock"></i> Sperren</b></td><td>Der Datensatz bleibt sichtbar, kann aber nicht mehr geändert oder gebucht werden (z. B. Anlage während eines Umbaus). Kommentare sind weiter möglich.</td></tr>
+    <tr><td><b><i class="ti ti-circle-off"></i> Deaktivieren</b></td><td>Verschwindet aus Listen und Auswahlfeldern, bleibt aber vollständig erhalten und kann jederzeit wieder aktiviert werden.</td></tr>
+    <tr><td><b><i class="ti ti-trash-x"></i> Zum Löschen vormerken</b></td><td>Wird sofort deaktiviert. Beim nächsten <b>Bereinigungslauf</b> prüft PDH, ob er noch verwendet wird.</td></tr>
+  </table>
+  {{template "hb-fig-cleanup"}}
+  <div class="hb-howto"><b><i class="ti ti-trash-x"></i> So merkst du einen Datensatz zum Löschen vor</b>
+    <ol class="hb-steps">
+      <li>Datensatz öffnen → oben rechts <b>Status</b>.</li>
+      <li>Optional einen <b>Grund</b> eintragen (z. B. „Anlage verschrottet“) – er steht später in der Historie.</li>
+      <li><b>Zum Löschen vormerken</b> und bestätigen. Rückgängig machst du es über <b>Status → Löschvormerkung aufheben</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So startest du den Bereinigungslauf (Administration)</b>
+    <ol class="hb-steps">
+      <li>Navigation → <b>Bereinigung</b>. Im Reiter <b>Vormerkungen</b> steht bei jedem Datensatz schon vorab, was passieren wird: <i>wird gelöscht</i> oder <i>wird ausgeblendet</i> – mit Grund, z. B. „3 × Störungen, Lagerbestand 5“.</li>
+      <li>Einzelne Vormerkungen bei Bedarf <b>aufheben</b>.</li>
+      <li><b>Bereinigungslauf starten</b>. Unbenutzte Datensätze werden endgültig gelöscht, noch verwendete <b>ausgeblendet</b>.</li>
+      <li>Alle Administratoren bekommen von <b>PDH-System</b> eine Chat-Nachricht mit dem Ergebnis.</li>
+    </ol></div>
+  <p>Die Reiter <b>Gesperrt</b>, <b>Deaktiviert</b> und <b>Ausgeblendet</b> zeigen alle betroffenen Stammdaten – dort lassen sie sich mit einem Klick entsperren, aktivieren oder wieder einblenden. Der <b>Verlauf</b> zeigt jeden Bereinigungslauf mit Details. Ersatzteile findest du außerdem über den Listenfilter „Deaktiviert“ bzw. „Gesperrt“, Firmen über den Reiter „Inaktiv“.</p>
+  <p>Auch Schnittstellen können keine Stammdaten löschen: Eine Löschanforderung über die API wird automatisch zur Löschvormerkung.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "cleanup") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="backup" data-title="Datensicherung &amp; Wiederherstellung" data-pages="backup">
+  <h2><i class="ti ti-database-export"></i> Datensicherung &amp; Wiederherstellung</h2>
+  <p>Unter <b>Navigation → Datensicherung</b> (Berechtigung <i>Datensicherung &amp; Wiederherstellung</i>, standardmäßig nur Administratoren) sicherst du das PDH und spielst Sicherungen zurück.</p>
+  {{template "hb-fig-backup"}}
+  <table>
+    <tr><td><b>Datenbank</b></td><td>alle Stammdaten, Vorgänge, Benutzer, Rechte, Einstellungen und Chat-Nachrichten</td></tr>
+    <tr><td><b>Anhänge &amp; Bilder</b></td><td>Dokumente, Datensatz- und Ersatzteilbilder, Handbuch-Bildschirmfotos</td></tr>
+    <tr><td><b>Chat-Dateien</b></td><td>im Chat geteilte Dateien</td></tr>
+  </table>
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So erstellst du eine Sicherung</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Sicherungen</b> → unter „Jetzt sichern“ die Bestandteile anhaken.</li>
+      <li><b>Sicherung erstellen</b>. Sie läuft im Hintergrund; der Fortschritt steht im <b>Protokoll</b>.</li>
+      <li>Fertige Sicherungen kannst du <b>herunterladen</b> und extern aufbewahren (z. B. auf einem anderen Server).</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-calendar-time"></i> So richtest du eine automatische Sicherung ein</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Zeitpläne</b> → „Neuer Zeitplan“.</li>
+      <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen.</li>
+      <li>Bestandteile anhaken und festlegen, wie viele Sicherungen <b>aufbewahrt</b> werden – ältere werden automatisch entfernt.</li>
+      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich PDH-System per Chat bei allen Administratoren.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-restore"></i> So stellst du eine Sicherung wieder her</b>
+    <ol class="hb-steps">
+      <li>Bei der gewünschten Sicherung auf <b>Wiederherstellen</b> (fremde Sicherung vorher mit <b>Sicherung hochladen</b> einspielen).</li>
+      <li>Bestandteile wählen – z. B. nur die Anhänge.</li>
+      <li><b>WIEDERHERSTELLEN</b> eintippen und bestätigen.</li>
+    </ol>
+    PDH legt vorher automatisch eine <b>Sicherheitskopie</b> des aktuellen Stands an. Die Datenbank wird in einem Schritt zurückgespielt – geht etwas schief, bleibt der bisherige Stand unverändert. Alle Administratoren werden per Chat über Beginn und Ergebnis informiert.</div>
+  <p><b>Wichtig:</b> Eine Sicherung aus einer <b>neueren</b> PDH-Version kann erst nach einem Update eingespielt werden. Ältere Sicherungen werden beim Einspielen automatisch auf den aktuellen Stand gebracht. Sicherungsprotokoll und Zeitpläne selbst werden nicht überschrieben.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="admin" data-title="Administration" data-pages="roles core-settings import export">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
     <li><b>Core-Einstellungen</b> – Fristen, Updates, Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen.</li>
+    <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
+    <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
+    <li><b>Kategorien</b> – Schlagworte für alle Module anlegen und pflegen (<a href="#categories">mehr</a>).</li>
   </ul>
   <h3>Server-Einstellungen (<code>.env</code>)</h3>
   <table>
     <tr><td><code>PDH_SMTP_HOST</code>, <code>PDH_SMTP_FROM</code> …</td><td>E-Mail-Versand (Bestellvorschlag)</td></tr>
     <tr><td><code>PDH_PUBLIC_URL</code></td><td>Adresse des PDH für Links in E-Mails und QR-Codes auf Etiketten</td></tr>
     <tr><td><code>PDH_CREDENTIALS_KEY</code></td><td>Schlüssel für gespeicherte Portal-Passwörter – nach dem ersten Speichern nicht mehr ändern</td></tr>
+    <tr><td><code>PDH_BACKUP_DIR</code></td><td>Ordner für Datensicherungen (Standard <code>backups</code>; in Docker ein eigenes Volume)</td></tr>
   </table>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}
@@ -331,7 +421,11 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>Ein eingebettetes Portal bleibt leer.</h3>
   <p>Der Anbieter erlaubt das Einbetten nicht. Im Viewer über <i class="ti ti-external-link"></i> in einem neuen Tab öffnen.</p>
   <h3>Die Chat-Leiste geht zu oft auf.</h3>
-  <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst.</p>
+  <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst. Das gilt auch für die Unterhaltung mit <b>PDH-System</b>; die Änderungshinweise lassen sich unter Mein Konto → Konto &amp; Dienste ganz abschalten.</p>
+  <h3>Wie lösche ich eine Anlage, ein Ersatzteil oder einen Lagerplatz?</h3>
+  <p>Gar nicht direkt: <b>Status → Zum Löschen vormerken</b>. Der Bereinigungslauf löscht den Datensatz oder blendet ihn aus, wenn er noch verwendet wird (<a href="#cleanup">mehr</a>).</p>
+  <h3>Beim Speichern erscheint „Gesperrt“.</h3>
+  <p>Der Datensatz wurde gesperrt. Wer bearbeiten darf, hebt die Sperre über <b>Status → Sperre aufheben</b> auf.</p>
   <h3>Etiketten werden zu groß oder zu klein gedruckt.</h3>
   <p>Das passende Format wählen und im Druckdialog 100 % Skalierung und keine Ränder einstellen.</p>
   {{template "hb-shots" (dict "Ref" (index $s "faq") "Can" $can)}}

@@ -57,6 +57,8 @@ type BaseData struct {
 	CanImport              bool // Nav-Link "Import" anzeigen
 	CanExport              bool // Nav-Link "Export" anzeigen
 	CanChat                bool // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
+	CanBackup              bool // Nav-Link "Datensicherung"
+	CanCleanup             bool // Nav-Link "Bereinigung"
 }
 
 type DashboardData struct {
@@ -404,6 +406,26 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/records/links/{module}/{id}", h.RecordLinksWeb)
 	r.Get("/records/history/{module}/{id}", h.RecordHistoryWeb)
 	r.Post("/records/fields/{module}/{id}", h.RecordFieldsSaveWeb)
+	// Kopfleiste: Kategorien (#) + Stammdaten-Status (Sperren/Deaktivieren/Loeschvormerkung)
+	r.Get("/records/meta/{module}/{id}", h.RecordMetaWeb)
+	r.Post("/records/state/{module}/{id}", h.RecordStateWeb)
+	r.Post("/records/categories/{module}/{id}", h.RecordCategoryToggleWeb)
+	r.Get("/categories", h.CategoriesPage)
+	r.Post("/categories", h.CategorySaveWeb)
+	r.Post("/categories/{id}/toggle", h.CategoryToggleWeb)
+	// Loeschvormerkungen & Bereinigungslauf
+	r.Get("/admin/cleanup", h.CleanupPage)
+	r.Post("/admin/cleanup/run", h.CleanupRunWeb)
+	r.Post("/admin/cleanup/{module}/{id}", h.CleanupActionWeb)
+	// Datensicherung & Wiederherstellung
+	r.Get("/admin/backup", h.BackupPage)
+	r.Post("/admin/backup/create", h.BackupCreateWeb)
+	r.Post("/admin/backup/upload", h.BackupUploadWeb)
+	r.Get("/admin/backup/files/{id}", h.BackupDownloadWeb)
+	r.Post("/admin/backup/files/{id}/delete", h.BackupDeleteWeb)
+	r.Post("/admin/backup/files/{id}/restore", h.BackupRestoreWeb)
+	r.Post("/admin/backup/schedules", h.BackupScheduleSaveWeb)
+	r.Post("/admin/backup/schedules/{id}/{action}", h.BackupScheduleActionWeb)
 	r.Get("/core/fieldsets", h.FieldSetsAdminPage)
 	r.Post("/core/fieldsets/sets", h.FieldSetSaveWeb)
 	r.Post("/core/fieldsets/sets/{id}", h.FieldSetSaveWeb)
@@ -462,6 +484,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/inventory/{id}/suppliers/{partnerId}/delete", h.PartSupplierRemoveWeb)
 	r.Get("/users", h.Users)
 	r.Get("/users/{id}", h.UserDetailPage)
+	r.Post("/users/me/change-notifications", h.UserChangeNotificationsWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
@@ -726,6 +749,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
+		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
+		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 	}
 }
 

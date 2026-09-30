@@ -41,8 +41,8 @@ type HelpPageData struct {
 
 // helpChapterIDs muss mit den section-IDs in help.gohtml uebereinstimmen
 // (TestHelpChaptersMatch).
-var helpChapterIDs = []string{"start", "records", "dashboard", "faults", "tickets", "tasks", "maintenance",
-	"infrastructure", "inventory", "storage", "purchasing", "partners", "chat", "time", "users", "fieldsets", "admin", "faq"}
+var helpChapterIDs = []string{"start", "records", "categories", "dashboard", "faults", "tickets", "tasks", "maintenance",
+	"infrastructure", "inventory", "storage", "purchasing", "partners", "chat", "time", "users", "fieldsets", "cleanup", "backup", "admin", "faq"}
 
 // helpChapterRef liefert eine feste UUID je Kapitel (Anhaenge brauchen eine UUID als ref_id).
 func helpChapterRef(id string) string {

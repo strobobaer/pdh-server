@@ -24,6 +24,7 @@
   </form>
   </div>
 </div>
+{{template "record-meta-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>

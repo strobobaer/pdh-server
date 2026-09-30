@@ -23,6 +23,7 @@
   </div>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
+{{template "record-meta-slot" (dict "Module" "fault" "ID" .Fault.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="copilot" href="?tab=copilot"><i class="ti ti-brain"></i> Copilot</a>

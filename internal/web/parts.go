@@ -174,6 +174,10 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "sp.stock_qty <= 0")
 	case "nosupplier":
 		where = append(where, "sup.partner_id IS NULL")
+	case "inactive": // deaktiviert/vorgemerkt, aber nicht vom Bereinigungslauf ausgeblendet
+		where[0] = "NOT sp.active AND sp.hidden_at IS NULL"
+	case "locked":
+		where = append(where, "sp.locked_at IS NOT NULL")
 	default:
 		data.Status = ""
 	}

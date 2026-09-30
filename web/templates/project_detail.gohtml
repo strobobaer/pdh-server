@@ -10,6 +10,7 @@
   </div>
   <span class="badge {{.Project.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Project.StatusLabel}}</span>
 </div>
+{{template "record-meta-slot" (dict "Module" "project" "ID" .Project.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>

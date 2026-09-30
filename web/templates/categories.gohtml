@@ -1,0 +1,83 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.cat-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.cat-layout{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}
+@media(max-width:800px){.cat-layout{grid-template-columns:1fr}}
+.cat-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;color:inherit;text-decoration:none;border:1px solid transparent}
+.cat-item:hover{background:var(--bg3)}
+.cat-item.active{border-color:var(--c);background:var(--bg3)}
+.cat-item .dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--c);color:#fff;font-size:14px;flex-shrink:0}
+.cat-item.off{opacity:.5}
+.cat-item .n{flex:1;font-size:13px;font-weight:600}
+.cat-item .c{font-size:11px;color:var(--muted)}
+.cat-sub{font-size:11px;color:var(--muted)}
+.cat-form{display:grid;grid-template-columns:1fr 70px 110px 70px auto;gap:6px;align-items:end}
+@media(max-width:700px){.cat-form{grid-template-columns:1fr 1fr}}
+.cat-form label{font-size:11px;color:var(--muted);display:block}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.cat-grid .card{margin:0}
+.cat-rec{display:block;padding:5px 0;font-size:12.5px;color:var(--accent);border-bottom:1px solid var(--border)}
+.cat-rec:last-child{border-bottom:0}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600"><i class="ti ti-hash"></i> Kategorien</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Schlagworte für alle Vorgänge und Stammdaten – gesetzt oben auf jeder Detailseite, hier modulübergreifend ausgewertet.</p>
+  </div>
+</div>
+
+{{if .Msg}}<div class="cat-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="cat-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="cat-layout">
+  <div class="card" style="margin:0">
+    {{$sel := .Selected}}
+    {{range .Categories}}
+    <a class="cat-item {{if and $sel (eq $sel.ID .ID)}}active{{end}} {{if not .Active}}off{{end}}" style="--c:{{css .Color}}" href="/categories?c={{.ID}}">
+      <span class="dot"><i class="ti {{.Icon}}"></i></span>
+      <span class="n">#{{.Name}}</span>
+      <span class="c">{{.Count}}</span>
+    </a>
+    {{else}}<div class="cat-sub">Noch keine Kategorien.</div>{{end}}
+  </div>
+
+  <div>
+    {{if .CanManage}}
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-settings"></i> {{if .Selected}}#{{.Selected.Name}} bearbeiten{{else}}Kategorie anlegen{{end}}</span>
+        {{if .Selected}}<span style="display:flex;gap:6px">
+          <a class="btn btn-small" href="/categories?c=new"><i class="ti ti-plus"></i> Neu</a>
+          <form method="post" action="/categories/{{.Selected.ID}}/toggle" style="margin:0"><button class="btn btn-small">{{if .Selected.Active}}<i class="ti ti-eye-off"></i> Deaktivieren{{else}}<i class="ti ti-eye"></i> Aktivieren{{end}}</button></form>
+        </span>{{end}}
+      </div>
+      <form class="cat-form" method="post" action="/categories">
+        <input type="hidden" name="id" value="{{if .Selected}}{{.Selected.ID}}{{end}}">
+        <div><label>Name</label><input class="form-input" name="name" required maxlength="60" value="{{if .Selected}}{{.Selected.Name}}{{end}}" placeholder="z. B. Energie"></div>
+        <div><label>Farbe</label><input class="form-input" type="color" name="color" value="{{if .Selected}}{{.Selected.Color}}{{else}}#6366f1{{end}}" style="padding:2px;height:34px"></div>
+        <div><label>Symbol</label><select class="form-input" name="icon">{{$ic := ""}}{{if .Selected}}{{$ic = .Selected.Icon}}{{end}}{{range .Icons}}<option value="{{.}}" {{if eq . $ic}}selected{{end}}>{{.}}</option>{{end}}</select></div>
+        <div><label>Reihenf.</label><input class="form-input" type="number" name="sort_order" value="{{if .Selected}}{{.Selected.SortOrder}}{{else}}100{{end}}"></div>
+        <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+      </form>
+      <div class="cat-sub" style="margin-top:6px">Deaktivierte Kategorien können nicht mehr neu vergeben werden; bestehende Zuordnungen bleiben sichtbar.</div>
+    </div>
+    {{end}}
+
+    {{if .Selected}}
+    <div class="card-title" style="margin:6px 0 10px"><span style="font-size:15px">Datensätze mit <b style="color:{{css .Selected.Color}}">#{{.Selected.Name}}</b></span><span class="cat-sub">{{.Selected.Count}} insgesamt</span></div>
+    <div class="cat-grid">
+      {{range .Groups}}
+      <div class="card">
+        <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="cat-sub">{{len .Items}}</span></div>
+        {{range .Items}}<a class="cat-rec" href="{{.URL}}" data-frame data-frame-title="{{.Title}}">{{.Title}}</a>{{end}}
+      </div>
+      {{else}}
+      <div class="cat-sub">Noch keine Datensätze mit dieser Kategorie. Kategorien setzt du oben auf jeder Detailseite (Ticket, Störung, Aufgabe, Projekt, Wartung, Anlage, Ersatzteil, Lagerplatz, Hersteller/Lieferant) mit einem Klick auf das Schlagwort.</div>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

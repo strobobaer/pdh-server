@@ -106,6 +106,8 @@
     <option value="critical" {{if eq .Status "critical"}}selected{{end}}>Kritisch</option>
     <option value="empty" {{if eq .Status "empty"}}selected{{end}}>Leer</option>
     <option value="nosupplier" {{if eq .Status "nosupplier"}}selected{{end}}>Ohne Lieferant</option>
+    <option value="inactive" {{if eq .Status "inactive"}}selected{{end}}>Deaktiviert</option>
+    <option value="locked" {{if eq .Status "locked"}}selected{{end}}>Gesperrt</option>
   </select>
   <button type="submit" class="btn btn-small"><i class="ti ti-filter"></i> Filtern</button>
   {{if or .Query .Status .Category}}<a class="btn btn-small" href="/inventory"><i class="ti ti-filter-off"></i></a>{{end}}

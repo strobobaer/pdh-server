@@ -1,0 +1,131 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.cl-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.cl-table{width:100%}
+.cl-table td,.cl-table th{padding:8px 10px;font-size:12.5px;vertical-align:top}
+.cl-sub{font-size:11px;color:var(--muted)}
+.cl-ok{color:var(--green,#16a34a);font-weight:600}
+.cl-hide{color:#6366f1;font-weight:600}
+.cl-actions{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.cl-actions form{margin:0}
+.cl-run{white-space:pre-line;font-size:12px}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600">Löschvormerkungen & Bereinigung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Stammdaten werden nicht direkt gelöscht. Der Bereinigungslauf prüft jede Vormerkung: unbenutzte Datensätze werden gelöscht, noch verwendete ausgeblendet.</p>
+  </div>
+  {{if .CanRun}}
+  <form method="post" action="/admin/cleanup/run" onsubmit="return confirm('Bereinigungslauf jetzt starten? {{len .Pending}} Vormerkung(en) werden geprüft und gelöscht bzw. ausgeblendet. Alle Administratoren werden per Chat informiert.')">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-player-play"></i> Bereinigungslauf starten</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Msg}}<div class="cl-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="cl-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="kpis">
+  <a class="kpi" href="?tab=pending"><div class="v">{{len .Pending}}</div><div class="l">Zum Löschen vorgemerkt</div></a>
+  <a class="kpi" href="?tab=locked"><div class="v">{{len .Locked}}</div><div class="l">Gesperrt</div></a>
+  <a class="kpi" href="?tab=inactive"><div class="v">{{len .Inactive}}</div><div class="l">Deaktiviert</div></a>
+  <a class="kpi" href="?tab=hidden"><div class="v">{{len .Hidden}}</div><div class="l">Ausgeblendet</div></a>
+</div>
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="pending" href="?tab=pending"><i class="ti ti-trash-x"></i> Vormerkungen <b>{{len .Pending}}</b></a>
+  <a class="rec-tab" data-tab="locked" href="?tab=locked"><i class="ti ti-lock"></i> Gesperrt <b>{{len .Locked}}</b></a>
+  <a class="rec-tab" data-tab="inactive" href="?tab=inactive"><i class="ti ti-circle-off"></i> Deaktiviert <b>{{len .Inactive}}</b></a>
+  <a class="rec-tab" data-tab="hidden" href="?tab=hidden"><i class="ti ti-eye-off"></i> Ausgeblendet <b>{{len .Hidden}}</b></a>
+  <a class="rec-tab" data-tab="done" href="?tab=done"><i class="ti ti-history"></i> Verlauf</a>
+</div>
+
+<div class="rec-pane" data-pane="pending">
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-list-check"></i> Prüfergebnis je Vormerkung</span><span class="cl-sub">wird bei jedem Aufruf neu ermittelt</span></div>
+  {{if .Pending}}
+  <div style="overflow-x:auto"><table class="cl-table">
+    <thead><tr><th>Datensatz</th><th>Vorgemerkt</th><th>Ergebnis beim Bereinigungslauf</th><th></th></tr></thead>
+    <tbody>
+    {{range .Pending}}
+    <tr>
+      <td><i class="ti {{.Icon}}" style="color:var(--muted)"></i> <a href="{{.URL}}" data-frame data-frame-title="{{.Title}}" style="color:var(--accent)">{{.Title}}</a><div class="cl-sub">{{.ModuleLabel}}</div></td>
+      <td>{{.At}}<div class="cl-sub">{{.By}}{{if .Reason}} · „{{.Reason}}“{{end}}</div></td>
+      <td>{{if .Check.Deletable}}<span class="cl-ok"><i class="ti ti-trash"></i> wird gelöscht</span><div class="cl-sub">keine Verwendung gefunden</div>
+          {{else}}<span class="cl-hide"><i class="ti ti-eye-off"></i> wird ausgeblendet</span><div class="cl-sub">noch verwendet: {{range $i, $b := .Check.Blockers}}{{if $i}}, {{end}}{{$b}}{{end}}</div>{{end}}</td>
+      <td><div class="cl-actions">
+        <form method="post" action="/admin/cleanup/{{.Module}}/{{.RecordID}}"><input type="hidden" name="tab" value="pending"><button class="btn btn-small" name="action" value="unmark"><i class="ti ti-arrow-back-up"></i> Aufheben</button></form>
+      </div></td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="cl-sub" style="padding:8px 0">Keine Löschvormerkungen. Datensätze werden auf ihrer Detailseite über <b>Status → Zum Löschen vormerken</b> vorgemerkt.</div>{{end}}
+</div>
+</div>
+
+
+<div class="rec-pane" data-pane="locked"><div class="card">
+  <div class="card-title"><span><i class="ti ti-lock"></i> Gesperrte Stammdaten</span><span class="cl-sub">keine Änderungen und Buchungen möglich</span></div>
+  {{template "cl-state-table" (dict "Rows" .Locked "Tab" "locked" "Action" "unlock" "Icon" "ti-lock-open" "Label" "Entsperren" "Empty" "Keine gesperrten Datensätze.")}}
+</div></div>
+
+<div class="rec-pane" data-pane="inactive"><div class="card">
+  <div class="card-title"><span><i class="ti ti-circle-off"></i> Deaktivierte Stammdaten</span><span class="cl-sub">nicht in Listen und Auswahlen</span></div>
+  {{template "cl-state-table" (dict "Rows" .Inactive "Tab" "inactive" "Action" "activate" "Icon" "ti-circle-check" "Label" "Aktivieren" "Empty" "Keine deaktivierten Datensätze.")}}
+</div></div>
+
+<div class="rec-pane" data-pane="hidden"><div class="card">
+  <div class="card-title"><span><i class="ti ti-eye-off"></i> Ausgeblendete Stammdaten</span><span class="cl-sub">vom Bereinigungslauf ausgeblendet, weil noch in Vorgängen verwendet – die Historie bleibt vollständig</span></div>
+  {{template "cl-state-table" (dict "Rows" .Hidden "Tab" "hidden" "Action" "unhide" "Icon" "ti-eye" "Label" "Wieder einblenden" "Empty" "Keine ausgeblendeten Datensätze.")}}
+</div></div>
+
+<div class="rec-pane" data-pane="done">
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-player-play"></i> Bereinigungsläufe</span></div>
+  {{range .Runs}}
+  <div style="border-bottom:1px solid var(--border);padding:8px 0">
+    <div style="font-size:13px;font-weight:600">{{.At}} · {{.By}}</div>
+    <div class="cl-sub">{{.Deleted}} gelöscht · {{.Hidden}} ausgeblendet · {{.Failed}} Fehler</div>
+    {{if .Summary}}<details style="margin-top:4px"><summary class="cl-sub" style="cursor:pointer">Details</summary><div class="cl-run">{{.Summary}}</div></details>{{end}}
+  </div>
+  {{else}}<div class="cl-sub">Noch kein Bereinigungslauf.</div>{{end}}
+</div>
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-history"></i> Erledigte Vormerkungen</span></div>
+  {{if .Done}}
+  <div style="overflow-x:auto"><table class="cl-table">
+    <thead><tr><th>Datensatz</th><th>Ergebnis</th><th>Am</th></tr></thead>
+    <tbody>
+    {{range .Done}}
+    <tr>
+      <td><i class="ti {{.Icon}}" style="color:var(--muted)"></i> {{if eq .Status "deleted"}}{{.Title}}{{else}}<a href="{{.URL}}" data-frame data-frame-title="{{.Title}}" style="color:var(--accent)">{{.Title}}</a>{{end}}<div class="cl-sub">{{.ModuleLabel}}{{if .Reason}} · „{{.Reason}}“{{end}}</div></td>
+      <td>{{if eq .Status "deleted"}}<span class="cl-ok">gelöscht</span>{{else if eq .Status "hidden"}}<span class="cl-hide">ausgeblendet</span>{{else}}<span class="cl-sub">aufgehoben</span>{{end}}<div class="cl-sub">{{.Note}}</div></td>
+      <td>{{.At}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="cl-sub">Noch nichts erledigt.</div>{{end}}
+</div>
+</div>
+{{end}}
+{{define "cl-state-table"}}
+{{if .Rows}}
+<div style="overflow-x:auto"><table class="cl-table">
+  <thead><tr><th>Datensatz</th><th>Seit</th><th></th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+  <tr>
+    <td><i class="ti {{.Icon}}" style="color:var(--muted)"></i> <a href="{{.URL}}" data-frame data-frame-title="{{.Title}}" style="color:var(--accent)">{{.Title}}</a><div class="cl-sub">{{.ModuleLabel}}{{if .Reason}} · „{{.Reason}}“{{end}}{{if .By}} · {{.By}}{{end}}</div></td>
+    <td>{{.At}}</td>
+    <td><div class="cl-actions"><form method="post" action="/admin/cleanup/{{.Module}}/{{.RecordID}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button class="btn btn-small" name="action" value="{{$.Action}}"><i class="ti {{$.Icon}}"></i> {{$.Label}}</button></form></div></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}<div class="cl-sub" style="padding:8px 0">{{.Empty}}</div>{{end}}
+{{end}}

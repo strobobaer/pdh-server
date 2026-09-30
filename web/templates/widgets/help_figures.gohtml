@@ -174,3 +174,56 @@
 <figcaption>Chat in der rechten Seitenleiste: Liste, Unterhaltung, Karte zu einem verlinkten Datensatz und Eingabe – die Seite bleibt dabei offen.</figcaption>
 </figure>
 {{end}}
+
+{{/* Kopfleiste: Kategorien + Status */}}
+{{define "hb-fig-meta"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 120" role="img" aria-label="Kategorien und Status auf der Detailseite">
+  <rect class="bg" x="6" y="10" width="628" height="100" rx="10"/>
+  <text x="20" y="36" class="t-b">Kugellager 4711-A</text>
+  <text x="20" y="72" class="t-m">#</text>
+  <rect class="am" x="34" y="56" width="84" height="24" rx="12"/><text x="76" y="72" class="t-c">⚡ Energie</text>
+  <rect class="bg3" x="124" y="56" width="104" height="24" rx="12"/><text x="176" y="72" class="t-c t-m">Optimierung</text>
+  <rect class="gr" x="234" y="56" width="90" height="24" rx="12"/><text x="279" y="72" class="t-c">▶ Produktiv</text>
+  <rect class="bg3" x="330" y="56" width="70" height="24" rx="12"/><text x="365" y="72" class="t-c t-m">Efficio</text>
+  <rect class="rd" x="430" y="56" width="104" height="24" rx="6"/><text x="482" y="72" class="t-c">🔒 Gesperrt</text>
+  <rect class="acl" x="544" y="56" width="80" height="24" rx="6"/><text x="584" y="72" class="t-c">⚙ Status</text>
+  <text x="20" y="100" class="t-m">Farbig = gesetzt · grau = antippen zum Setzen</text>
+  <text x="430" y="100" class="t-m">nur bei Stammdaten</text>
+</svg>
+<figcaption>Über den Reitern jeder Detailseite: Kategorien mit einem Klick setzen oder entfernen; bei Stammdaten zusätzlich Status und das Menü <b>Status</b>.</figcaption>
+</figure>
+{{end}}
+
+{{/* Loeschvormerkung & Bereinigungslauf */}}
+{{define "hb-fig-cleanup"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Löschvormerkung und Bereinigungslauf">
+  <rect class="bg3" x="6" y="60" width="130" height="50" rx="8"/><text x="71" y="82" class="t-c t-b">Zum Löschen</text><text x="71" y="98" class="t-c t-m">vormerken (deaktiviert)</text>
+  <rect class="am" x="170" y="60" width="140" height="50" rx="8"/><text x="240" y="82" class="t-c t-b">Bereinigungslauf</text><text x="240" y="98" class="t-c t-m">PDH prüft Verwendungen</text>
+  <rect class="gr" x="350" y="10" width="140" height="50" rx="8"/><text x="420" y="32" class="t-c t-b">🗑 gelöscht</text><text x="420" y="48" class="t-c t-m">nirgends verwendet</text>
+  <rect class="acl" x="350" y="110" width="140" height="50" rx="8"/><text x="420" y="132" class="t-c t-b">👁 ausgeblendet</text><text x="420" y="148" class="t-c t-m">noch in Vorgängen / Bestand</text>
+  <rect class="bg3" x="520" y="60" width="114" height="50" rx="8"/><text x="577" y="82" class="t-c t-b">✉ PDH-System</text><text x="577" y="98" class="t-c t-m">an alle Admins</text>
+  <path class="ar" d="M136 85 H168"/><path class="ar" d="M310 85 C330 85,330 35,348 35"/><path class="ar" d="M310 85 C330 85,330 135,348 135"/>
+  <path class="ar" d="M490 35 C505 35,505 85,518 85"/><path class="ar" d="M490 135 C505 135,505 85,518 85"/>
+</svg>
+<figcaption>Nichts geht verloren: Was noch verwendet wird, verschwindet nur aus Listen und Auswahlen – die Historie der Vorgänge bleibt vollständig.</figcaption>
+</figure>
+{{end}}
+
+{{/* Datensicherung */}}
+{{define "hb-fig-backup"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 150" role="img" aria-label="Datensicherung">
+  <rect class="acl" x="6" y="10" width="140" height="36" rx="8"/><text x="76" y="33" class="t-c">🗄 Datenbank</text>
+  <rect class="acl" x="6" y="57" width="140" height="36" rx="8"/><text x="76" y="80" class="t-c">📎 Anhänge &amp; Bilder</text>
+  <rect class="acl" x="6" y="104" width="140" height="36" rx="8"/><text x="76" y="127" class="t-c">💬 Chat-Dateien</text>
+  <rect class="am" x="200" y="45" width="130" height="60" rx="8"/><text x="265" y="70" class="t-c t-b">Zeitplan</text><text x="265" y="86" class="t-c t-m">täglich / wöchentlich / monatlich</text>
+  <rect class="bg3" x="380" y="45" width="120" height="60" rx="8"/><text x="440" y="70" class="t-c t-b">ZIP-Sicherung</text><text x="440" y="86" class="t-c t-m">letzte N behalten</text>
+  <rect class="gr" x="540" y="45" width="94" height="60" rx="8"/><text x="587" y="70" class="t-c t-b">♻ Wieder-</text><text x="587" y="86" class="t-c t-b">herstellen</text>
+  <path class="ar" d="M146 28 C175 28,175 75,198 75"/><path class="ar" d="M146 75 H198"/><path class="ar" d="M146 122 C175 122,175 75,198 75"/>
+  <path class="ar" d="M330 75 H378"/><path class="ar" d="M500 75 H538"/>
+</svg>
+<figcaption>Du wählst, was gesichert wird. Vor jeder Wiederherstellung legt PDH automatisch eine Sicherheitskopie des aktuellen Stands an.</figcaption>
+</figure>
+{{end}}

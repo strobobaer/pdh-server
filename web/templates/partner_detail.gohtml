@@ -67,6 +67,7 @@
 {{if .Error}}<div class="pd-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
 
 {{if not .IsNew}}
+{{template "record-meta-slot" (dict "Module" "business_partner" "ID" $p.ID)}}
 <div class="pd-tabs" role="tablist">
   <button class="pd-tab" data-tab="overview"><i class="ti ti-layout-dashboard"></i> Übersicht</button>
   {{if .CanEdit}}<button class="pd-tab" data-tab="master"><i class="ti ti-edit"></i> Stammdaten</button>{{end}}

@@ -16,6 +16,7 @@
 
 {{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
 
+{{template "record-meta-slot" (dict "Module" "storage" "ID" .ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="stock" href="?tab=stock"><i class="ti ti-package"></i> Bestand <b>{{.PartCount}}</b></a>

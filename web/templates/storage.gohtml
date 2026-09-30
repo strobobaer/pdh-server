@@ -79,7 +79,7 @@
       <a class="btn btn-icon" href="/storage/{{.ID}}" title="Lagerplatz öffnen (Bestand, Bewegungen, Feldsätze)"><i class="ti ti-external-link"></i></a>
       <a class="btn btn-icon" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener" title="Etiketten für alle Teile an diesem Lagerplatz drucken"><i class="ti ti-printer"></i></a>
       {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditNode('%s')" .ID))}}
-      {{template "icon-button" (dict "Action" "delete" "HxDelete" (printf "/api/v1/storage/%s" .ID) "HxConfirm" "Diesen Knoten inklusive aller Unterknoten löschen?" "HxTarget" "closest .storage-node" "HxSwap" "delete")}}
+      {{template "icon-button" (dict "Action" "delete" "Label" "Zum Löschen vormerken" "HxPost" (printf "/records/state/storage/%s" .ID) "HxVals" "{\"action\":\"mark\"}" "HxConfirm" "Lagerplatz zum Löschen vormerken? Er wird sofort deaktiviert; der Bereinigungslauf löscht ihn oder blendet ihn aus, falls er noch verwendet wird (Bestand, Unterplätze, Buchungen)." "HxTarget" "closest .storage-node" "HxSwap" "delete")}}
     </div>
   </div>
 

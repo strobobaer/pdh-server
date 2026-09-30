@@ -147,7 +147,7 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 	}
 	switch f.Status {
 	case "inactive":
-		where = append(where, "NOT bp.active")
+		where = append(where, "NOT bp.active AND bp.hidden_at IS NULL")
 	case directory.StatusApproved, directory.StatusConditional, directory.StatusNew, directory.StatusBlocked:
 		add(`bp.active AND bp.approval_status = $?`, f.Status)
 	case "contract":

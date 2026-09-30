@@ -19,7 +19,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 pdh \
     && useradd --system --uid 10001 --gid pdh --home-dir /app --no-create-home pdh \
-    && mkdir -p /app/uploads /app/chat_files \
+    && mkdir -p /app/uploads /app/chat_files /app/backups \
     && chown -R 10001:10001 /app
 
 WORKDIR /app

@@ -1,0 +1,185 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.bk-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.bk-sub{font-size:11px;color:var(--muted)}
+.bk-comps{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-bottom:12px}
+.bk-comp{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer}
+.bk-comp:has(input:checked){border-color:var(--accent);background:var(--bg3)}
+.bk-comp i{font-size:20px;color:var(--accent)}
+.bk-comp b{font-size:13px}
+.bk-table{width:100%}
+.bk-table td,.bk-table th{padding:8px 10px;font-size:12.5px;vertical-align:top}
+.bk-chip{display:inline-block;font-size:10.5px;border:1px solid var(--border);border-radius:999px;padding:0 7px;margin:1px 2px 1px 0;color:var(--muted)}
+.bk-actions{display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap}
+.bk-actions form{margin:0}
+.bk-restore{display:none;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;margin:6px 0}
+.bk-restore.open{display:block}
+.bk-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;align-items:end}
+.bk-form label{font-size:11px;color:var(--muted);display:block}
+.bk-status-ok{color:var(--green,#16a34a);font-weight:600}
+.bk-status-failed{color:var(--red,#ef4444);font-weight:600}
+.bk-status-running{color:var(--amber,#f59e0b);font-weight:600}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600">Datensicherung & Wiederherstellung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Sicherungsordner: <code>{{.Dir}}</code> · Datenbank-Schema {{.SchemaVersion}}</p>
+  </div>
+</div>
+
+{{if .Msg}}<div class="bk-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="bk-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .Running}}<div class="bk-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-loader-2"></i> Eine Sicherung oder Wiederherstellung läuft gerade – die Seite aktualisiert sich automatisch.</div>
+<script>setTimeout(()=>location.reload(), 5000)</script>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="backups" href="?tab=backups"><i class="ti ti-archive"></i> Sicherungen <b>{{len .Files}}</b></a>
+  <a class="rec-tab" data-tab="schedules" href="?tab=schedules"><i class="ti ti-calendar-time"></i> Zeitpläne <b>{{len .Schedules}}</b></a>
+  <a class="rec-tab" data-tab="log" href="?tab=log"><i class="ti ti-list-details"></i> Protokoll</a>
+</div>
+
+<!-- ── Sicherungen ── -->
+<div class="rec-pane" data-pane="backups">
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-player-play"></i> Jetzt sichern</span><span class="bk-sub">Was soll gesichert werden?</span></div>
+  <form method="post" action="/admin/backup/create">
+    <div class="bk-comps">
+      {{range .Components}}
+      <label class="bk-comp"><input type="checkbox" name="component" value="{{.Key}}" checked><i class="ti {{.Icon}}"></i><span><b>{{.Label}}</b><div class="bk-sub">{{.Hint}}</div></span></label>
+      {{end}}
+    </div>
+    <button class="btn btn-primary" type="submit" {{if .Running}}disabled{{end}}><i class="ti ti-database-export"></i> Sicherung erstellen</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-archive"></i> Vorhandene Sicherungen</span>
+    <form method="post" action="/admin/backup/upload" enctype="multipart/form-data" style="display:flex;gap:6px;align-items:center;margin:0">
+      <input type="file" name="file" accept=".zip" required style="font-size:12px;max-width:220px">
+      <button class="btn btn-small" type="submit"><i class="ti ti-upload"></i> Sicherung hochladen</button>
+    </form>
+  </div>
+  {{if .Files}}
+  <div style="overflow-x:auto"><table class="bk-table">
+    <thead><tr><th>Erstellt</th><th>Art</th><th>Inhalt</th><th style="text-align:right">Größe</th><th></th></tr></thead>
+    <tbody>
+    {{range .Files}}{{$f := .}}
+    <tr>
+      <td>{{.At}}<div class="bk-sub">{{.Name}}{{if .By}} · {{.By}}{{end}}</div></td>
+      <td>{{.KindLabel}}</td>
+      <td>{{range .Components}}<span class="bk-chip">{{if eq . "database"}}Datenbank{{else if eq . "uploads"}}Anhänge{{else if eq . "chat_files"}}Chat-Dateien{{else}}{{.}}{{end}}</span>{{end}}</td>
+      <td style="text-align:right">{{if .Missing}}<span class="bk-status-failed">Datei fehlt</span>{{else}}{{.Size}}{{end}}</td>
+      <td><div class="bk-actions">
+        {{if not .Missing}}
+        <a class="btn btn-small" href="/admin/backup/files/{{.ID}}"><i class="ti ti-download"></i> Herunterladen</a>
+        <button class="btn btn-small" type="button" onclick="document.getElementById('rs-{{.ID}}').classList.toggle('open')"><i class="ti ti-restore"></i> Wiederherstellen</button>
+        {{end}}
+        <form method="post" action="/admin/backup/files/{{.ID}}/delete" onsubmit="return confirm('Sicherung {{.Name}} endgültig löschen?')"><button class="btn btn-small" title="Löschen"><i class="ti ti-trash"></i></button></form>
+      </div></td>
+    </tr>
+    {{if not .Missing}}
+    <tr><td colspan="5" style="padding:0 10px">
+      <form id="rs-{{.ID}}" class="bk-restore {{if eq $.RestoreFile .ID}}open{{end}}" method="post" action="/admin/backup/files/{{.ID}}/restore"
+            onsubmit="return confirm('Wirklich wiederherstellen? Die gewählten Bestandteile werden durch den Stand vom {{.At}} ersetzt.')">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> Wiederherstellen – Stand vom {{.At}}</div>
+        <div class="bk-sub" style="margin-bottom:8px">Die gewählten Bestandteile werden <b>ersetzt</b>. Vorher legt PDH automatisch eine Sicherheitskopie des aktuellen Stands an. Die Datenbank wird in einem Schritt zurückgespielt – bei einem Fehler bleibt alles unverändert. Alle Administratoren werden per Chat informiert.</div>
+        <div class="bk-comps">
+          {{range $.Components}}{{$k := .Key}}{{$in := false}}{{range $f.Components}}{{if eq . $k}}{{$in = true}}{{end}}{{end}}
+          {{if $in}}<label class="bk-comp"><input type="checkbox" name="component" value="{{.Key}}" checked><i class="ti {{.Icon}}"></i><span><b>{{.Label}}</b></span></label>{{end}}
+          {{end}}
+        </div>
+        <label class="bk-sub">Zur Bestätigung <b>WIEDERHERSTELLEN</b> eintippen</label>
+        <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <input class="form-input" name="confirm" autocomplete="off" required pattern="WIEDERHERSTELLEN" style="max-width:240px">
+          <button class="btn btn-primary" type="submit" style="background:var(--red,#ef4444);border-color:var(--red,#ef4444)"><i class="ti ti-restore"></i> Jetzt wiederherstellen</button>
+        </div>
+      </form>
+    </td></tr>
+    {{end}}
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="bk-sub">Noch keine Sicherungen vorhanden.</div>{{end}}
+</div>
+</div>
+
+<!-- ── Zeitplaene ── -->
+<div class="rec-pane" data-pane="schedules">
+{{range .Schedules}}{{$s := .}}
+<div class="card">
+  <div class="card-title">
+    <span><i class="ti ti-calendar-time"></i> {{.Name}} {{if not .Enabled}}<span class="bk-chip">pausiert</span>{{end}}</span>
+    <span class="bk-actions">
+      <form method="post" action="/admin/backup/schedules/{{.ID}}/run"><button class="btn btn-small"><i class="ti ti-player-play"></i> Jetzt ausführen</button></form>
+      <form method="post" action="/admin/backup/schedules/{{.ID}}/toggle"><button class="btn btn-small">{{if .Enabled}}<i class="ti ti-player-pause"></i> Pausieren{{else}}<i class="ti ti-player-play"></i> Aktivieren{{end}}</button></form>
+      <form method="post" action="/admin/backup/schedules/{{.ID}}/delete" onsubmit="return confirm('Zeitplan löschen? Vorhandene Sicherungen bleiben erhalten.')"><button class="btn btn-small" title="Löschen"><i class="ti ti-trash"></i></button></form>
+    </span>
+  </div>
+  <div class="bk-sub" style="margin-bottom:8px">{{.Description}} · behält die letzten {{.KeepCount}} Sicherungen
+    {{if .LastRun}} · zuletzt {{.LastRun}}: <span class="bk-status-{{.LastStatus}}">{{if eq .LastStatus "ok"}}erfolgreich{{else}}fehlgeschlagen{{end}}</span>{{if ne .LastStatus "ok"}} – {{.LastMessage}}{{end}}{{end}}</div>
+  <details><summary class="bk-sub" style="cursor:pointer">Bearbeiten</summary>
+    {{template "bk-schedule-form" (dict "S" $s "Components" $.Components "Weekdays" $.Weekdays)}}
+  </details>
+</div>
+{{end}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Neuer Zeitplan</span></div>
+  {{template "bk-schedule-form" (dict "S" nil "Components" .Components "Weekdays" .Weekdays)}}
+</div>
+</div>
+
+<!-- ── Protokoll ── -->
+<div class="rec-pane" data-pane="log">
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-list-details"></i> Protokoll</span><span class="bk-sub">Sicherungen und Wiederherstellungen</span></div>
+  {{if .Runs}}
+  <div style="overflow-x:auto"><table class="bk-table">
+    <thead><tr><th>Start</th><th>Art</th><th>Status</th><th>Datei / Hinweis</th><th>Dauer</th></tr></thead>
+    <tbody>
+    {{range .Runs}}
+    <tr>
+      <td>{{.At}}<div class="bk-sub">{{.By}}</div></td>
+      <td>{{.KindLabel}}</td>
+      <td><span class="bk-status-{{.Status}}">{{if eq .Status "ok"}}erfolgreich{{else if eq .Status "running"}}läuft …{{else}}fehlgeschlagen{{end}}</span></td>
+      <td>{{.File}}{{if .Message}}<div class="bk-sub" style="white-space:pre-line">{{.Message}}</div>{{end}}</td>
+      <td>{{.Duration}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<div class="bk-sub">Noch keine Einträge.</div>{{end}}
+</div>
+</div>
+{{end}}
+
+{{define "bk-schedule-form"}}{{$s := .S}}
+<form method="post" action="/admin/backup/schedules" style="margin-top:8px">
+  <input type="hidden" name="id" value="{{if $s}}{{$s.ID}}{{end}}">
+  <div class="bk-form">
+    <div><label>Name</label><input class="form-input" name="name" required value="{{if $s}}{{$s.Name}}{{else}}Nächtliche Sicherung{{end}}"></div>
+    <div><label>Häufigkeit</label><select class="form-input" name="frequency">
+      {{$fr := "daily"}}{{if $s}}{{$fr = $s.Frequency}}{{end}}
+      <option value="daily" {{if eq $fr "daily"}}selected{{end}}>täglich</option>
+      <option value="weekly" {{if eq $fr "weekly"}}selected{{end}}>wöchentlich</option>
+      <option value="monthly" {{if eq $fr "monthly"}}selected{{end}}>monatlich</option>
+    </select></div>
+    <div><label>Uhrzeit</label><input class="form-input" type="time" name="time_of_day" required value="{{if $s}}{{$s.TimeOfDay}}{{else}}02:00{{end}}"></div>
+    <div><label>Wochentag (wöchentlich)</label><select class="form-input" name="weekday">
+      {{$wd := 1}}{{if $s}}{{$wd = $s.Weekday}}{{end}}
+      {{range $i, $n := .Weekdays}}<option value="{{$i}}" {{if eq $i $wd}}selected{{end}}>{{$n}}</option>{{end}}
+    </select></div>
+    <div><label>Tag im Monat (monatlich)</label><input class="form-input" type="number" min="1" max="28" name="monthday" value="{{if $s}}{{$s.Monthday}}{{else}}1{{end}}"></div>
+    <div><label>Aufbewahren (Anzahl)</label><input class="form-input" type="number" min="1" max="365" name="keep_count" value="{{if $s}}{{$s.KeepCount}}{{else}}7{{end}}"></div>
+  </div>
+  <div class="bk-comps" style="margin-top:10px">
+    {{range .Components}}{{$k := .Key}}{{$on := not $s}}{{if $s}}{{range $s.Components}}{{if eq . $k}}{{$on = true}}{{end}}{{end}}{{end}}
+    <label class="bk-comp"><input type="checkbox" name="component" value="{{.Key}}" {{if $on}}checked{{end}}><i class="ti {{.Icon}}"></i><span><b>{{.Label}}</b></span></label>
+    {{end}}
+  </div>
+  <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" name="enabled" value="1" {{if or (not $s) $s.Enabled}}checked{{end}}> aktiv</label>
+  <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Zeitplan speichern</button>
+</form>
+{{end}}

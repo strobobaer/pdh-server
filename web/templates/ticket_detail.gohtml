@@ -23,6 +23,7 @@
   </div>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
+{{template "record-meta-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{.CommentCount}}</b></a>

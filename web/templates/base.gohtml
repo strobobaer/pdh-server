@@ -426,6 +426,9 @@ select.form-input option{background:var(--bg2)}
     {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">Organigramm</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">Core-Einstellungen</span></a>{{end}}
+    {{if .CanBackup}}<a href="/admin/backup" class="nav-item {{if eq .Page "backup"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">Datensicherung</span></a>{{end}}
+    {{if .CanCleanup}}<a href="/admin/cleanup" class="nav-item {{if eq .Page "cleanup"}}active{{end}}"><i class="ti ti-trash-x"></i><span class="nav-label">Bereinigung</span></a>{{end}}
+    <a href="/categories" class="nav-item {{if eq .Page "categories"}}active{{end}}"><i class="ti ti-hash"></i><span class="nav-label">Kategorien</span></a>
     <a href="/help" class="nav-item {{if eq .Page "help"}}active{{end}}"><i class="ti ti-book"></i><span class="nav-label">Handbuch</span></a>
     <a href="https://cloud.strobl-home.net" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-cloud"></i><span class="nav-label">Nextcloud</span></a>
     <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
@@ -1118,7 +1121,8 @@ if(pdhNativeFetch) {
 document.body.addEventListener('htmx:beforeRequest', () => setGlobalStatus('busy', 'Sende Anfrage...', 35, ''));
 document.body.addEventListener('htmx:afterRequest', (event) => {
   const xhr = event.detail && event.detail.xhr;
-  if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
+  if(xhr && xhr.status === 423) showGlobalError('Gesperrt', xhr.responseText || 'Datensatz gesperrt');
+  else if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
   else setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
 });
 document.body.addEventListener('htmx:responseError', (event) => {

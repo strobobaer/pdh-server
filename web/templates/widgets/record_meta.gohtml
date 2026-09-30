@@ -1,0 +1,79 @@
+{{/*
+  Kopfleiste jeder Detailseite: Kategorien (#) und - bei Stammdaten -
+  Status (gesperrt / inaktiv / ausgeblendet / zum Loeschen vorgemerkt) mit
+  Aktionen. Einbinden direkt ueber den Reitern:
+    {{template "record-meta-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}
+*/}}
+{{define "record-meta-slot"}}
+<div class="rmeta-wrap" id="rmeta-{{.ID}}" hx-get="/records/meta/{{.Module}}/{{.ID}}" hx-trigger="load" hx-swap="innerHTML"></div>
+{{end}}
+
+{{define "record-meta"}}
+<style>
+.rmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-8px 0 14px}
+.rmeta .rm-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:999px;padding:2px 10px 2px 8px;font-size:12px;background:transparent;color:var(--muted);cursor:pointer;line-height:20px}
+.rmeta .rm-chip.on{color:#fff;border-color:transparent;background:var(--c)}
+.rmeta .rm-chip.ro{cursor:default}
+.rmeta .rm-chip:not(.on).ro{display:none}
+.rmeta .rm-chip:hover:not(.ro){border-color:var(--c)}
+.rmeta .rm-sep{flex:1}
+.rmeta .rm-state{display:inline-flex;align-items:center;gap:4px;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600}
+.rmeta .rm-lock{background:rgba(239,68,68,.12);color:var(--red,#ef4444)}
+.rmeta .rm-off{background:rgba(148,163,184,.18);color:var(--muted)}
+.rmeta .rm-del{background:rgba(245,158,11,.15);color:#b45309}
+.rmeta .rm-hidden{background:rgba(99,102,241,.14);color:#6366f1}
+.rmeta details{position:relative}
+.rmeta details summary{list-style:none;cursor:pointer;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:3px 10px;display:inline-flex;gap:4px;align-items:center}
+.rmeta details summary::-webkit-details-marker{display:none}
+.rmeta .rm-menu{position:absolute;right:0;top:30px;z-index:50;background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px;width:300px}
+.rmeta .rm-menu textarea{width:100%;min-height:48px;font-size:12px;margin-bottom:8px}
+.rmeta .rm-menu button{width:100%;justify-content:flex-start;margin-bottom:4px}
+.rmeta .rm-note{width:100%;font-size:12px}
+</style>
+<div class="rmeta">
+  {{$d := .}}
+  {{if .Categories}}<i class="ti ti-hash" style="color:var(--muted)" title="Kategorien"></i>{{end}}
+  {{range .Categories}}
+    {{if $d.CanEdit}}
+    <button type="button" class="rm-chip {{if .On}}on{{end}}" style="--c:{{css .Color}}" title="{{if .On}}Kategorie entfernen{{else}}Kategorie setzen{{end}}"
+      hx-post="/records/categories/{{$d.Module}}/{{$d.ID}}" hx-vals='{"category_id":"{{.ID}}","on":"{{if .On}}0{{else}}1{{end}}"}'
+      hx-target="#rmeta-{{$d.ID}}" hx-swap="innerHTML"><i class="ti {{.Icon}}"></i>{{.Name}}</button>
+    {{else}}
+    <span class="rm-chip ro {{if .On}}on{{end}}" style="--c:{{css .Color}}"><i class="ti {{.Icon}}"></i>{{.Name}}</span>
+    {{end}}
+  {{end}}
+  <span class="rm-sep"></span>
+  {{if .Master}}{{$s := .State}}
+    {{if $s.Locked}}<span class="rm-state rm-lock" title="{{$s.LockReason}}"><i class="ti ti-lock"></i> Gesperrt{{if $s.LockedBy}} von {{$s.LockedBy}}{{end}} · {{$s.LockedAt}}</span>{{end}}
+    {{if $s.Hidden}}<span class="rm-state rm-hidden"><i class="ti ti-eye-off"></i> Ausgeblendet (noch verwendet)</span>
+    {{else if $s.Marked}}<span class="rm-state rm-del" title="{{$s.MarkReason}}"><i class="ti ti-trash-x"></i> Zum Löschen vorgemerkt{{if $s.MarkedBy}} von {{$s.MarkedBy}}{{end}} · {{$s.MarkedAt}}</span>
+    {{else if not $s.Active}}<span class="rm-state rm-off"><i class="ti ti-circle-off"></i> Deaktiviert</span>{{end}}
+    {{if .CanEdit}}
+    <details>
+      <summary><i class="ti ti-adjustments"></i> Status</summary>
+      <form class="rm-menu" hx-post="/records/state/{{.Module}}/{{.ID}}" hx-target="#rmeta-{{.ID}}" hx-swap="innerHTML">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Stammdaten werden nicht direkt gelöscht. Grund (optional, erscheint in der Historie):</div>
+        <textarea name="reason" placeholder="z. B. Anlage verschrottet, Artikel ersetzt durch …"></textarea>
+        {{if $s.Locked}}
+        <button class="btn btn-small" name="action" value="unlock"><i class="ti ti-lock-open"></i> Sperre aufheben</button>
+        {{else}}
+        <button class="btn btn-small" name="action" value="lock"><i class="ti ti-lock"></i> Sperren – keine Änderungen mehr</button>
+        {{end}}
+        {{if and $s.Active (not $s.Marked)}}
+        <button class="btn btn-small" name="action" value="deactivate"><i class="ti ti-circle-off"></i> Deaktivieren – aus Listen ausblenden</button>
+        {{else if not $s.Marked}}
+        <button class="btn btn-small" name="action" value="activate"><i class="ti ti-circle-check"></i> Wieder aktivieren</button>
+        {{end}}
+        {{if $s.Marked}}
+        <button class="btn btn-small" name="action" value="unmark"><i class="ti ti-arrow-back-up"></i> Löschvormerkung aufheben</button>
+        {{else if not $s.Hidden}}
+        <button class="btn btn-small" name="action" value="mark" onclick="return confirm('Datensatz zum Löschen vormerken? Er wird sofort deaktiviert; der Bereinigungslauf löscht ihn oder blendet ihn aus, falls er noch verwendet wird.')" style="color:var(--red,#ef4444)"><i class="ti ti-trash-x"></i> Zum Löschen vormerken</button>
+        {{end}}
+      </form>
+    </details>
+    {{end}}
+  {{end}}
+  {{if .Msg}}<div class="rm-note" style="color:var(--green,#16a34a)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="rm-note" style="color:var(--red,#ef4444)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+</div>
+{{end}}

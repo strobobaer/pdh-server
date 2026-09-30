@@ -38,3 +38,5 @@ coverage.out
 *.swo
 pdh-fixes.zip
 chat_files/
+backups/
+.gotest/

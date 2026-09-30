@@ -48,6 +48,7 @@ services:
     volumes:
       - pdh_uploads:/app/uploads
       - pdh_chat_files:/app/chat_files
+      - pdh_backups:/app/backups
 
   updater:
     build:
@@ -75,3 +76,4 @@ volumes:
   pdh_database:
   pdh_uploads:
   pdh_chat_files:
+  pdh_backups:

@@ -63,6 +63,7 @@ type UserDetailData struct {
 	QualKinds           interface{}
 	CanMakeAdmin        bool
 	CanDeactivate       bool
+	ChangeNotifications bool // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
 }
 
 // userAccess ermittelt die Rechte des angemeldeten Benutzers auf targetID.
@@ -120,6 +121,9 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
 		CanDeactivate:  !self && u.Active && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
+	}
+	if self {
+		_ = h.db.QueryRow(ctx, `SELECT change_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.ChangeNotifications)
 	}
 	if m, err := h.loadUserMasterErr(ctx, id); err != nil {
 		d.Error = "Die erweiterten Stammdaten sind noch nicht verfügbar – bitte den Server neu starten, damit Migration 070 ausgeführt wird (" + err.Error() + ")"
@@ -405,3 +409,20 @@ func (c *captureWriter) Write(b []byte) (int, error) {
 	return c.body.Write(b)
 }
 func (c *captureWriter) WriteHeader(status int) { c.status = status }
+
+// UserChangeNotificationsWeb: POST /users/me/change-notifications (on=1|0) -
+// Chat-Hinweise von PDH-System zu Aenderungen an eigenen Vorgaengen.
+func (h *Handler) UserChangeNotificationsWeb(w http.ResponseWriter, r *http.Request) {
+	u := getUser(r)
+	on := r.FormValue("on") == "1"
+	if _, err := h.db.Exec(r.Context(), `UPDATE users SET change_notifications = $2 WHERE id = $1::uuid`, u.ID, on); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if on {
+		fmt.Fprint(w, `<span style="color:var(--green)"><i class="ti ti-check"></i> Hinweise eingeschaltet</span>`)
+	} else {
+		fmt.Fprint(w, `<span style="color:var(--muted)"><i class="ti ti-bell-off"></i> Hinweise ausgeschaltet</span>`)
+	}
+}

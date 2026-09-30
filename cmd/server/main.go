@@ -197,12 +197,16 @@ func main() {
 	webHandler.StartEnabledExportSchedules(context.Background())
 	webHandler.ConfigureMail(cfg.Mail)
 	webHandler.StartPurchaseReportSchedule(context.Background())
+	webHandler.StartBackupSystem(context.Background())
+	webHandler.StartChangeNotifier(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
 	r := chi.NewRouter()
 	r.Use(chimw.Recoverer, chimw.RequestID, middleware.Logger, middleware.CORS)
+	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
+	r.Use(webHandler.ChangeTrackingMiddleware)
 
 	// API
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

@@ -43,11 +43,12 @@
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('infra-menu')")}}
     <div id="infra-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:100">
       {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Unteranlage hinzufügen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('add-child').style.display='block';closeMenu('infra-menu')")}}
-      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Löschen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxDelete" (printf "/api/v1/infrastructure/%s" .Node.ID) "HxConfirm" "Element löschen?" "OnClick" "closeMenu('infra-menu')")}}
+      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Zum Löschen vormerken" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/records/state/infrastructure/%s" .Node.ID) "HxVals" "{\"action\":\"mark\"}" "HxTarget" (printf "#rmeta-%s" .Node.ID) "HxConfirm" "Element zum Löschen vormerken? Es wird sofort deaktiviert; der Bereinigungslauf löscht es oder blendet es aus, falls es noch verwendet wird." "OnClick" "closeMenu('infra-menu')")}}
     </div>
   </div>
 </div>
 
+{{template "record-meta-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>

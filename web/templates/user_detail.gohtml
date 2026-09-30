@@ -270,6 +270,14 @@
 <!-- ── Konto & Dienste (nur eigenes Konto) ── -->
 {{if .IsSelf}}
 <div class="rec-pane" data-pane="account">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-bell"></i> Chat-Hinweise zu Änderungen</span><span id="cn-result" class="rec-sub"></span></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">
+      <input type="checkbox" {{if .ChangeNotifications}}checked{{end}} style="margin-top:3px"
+             hx-post="/users/me/change-notifications" hx-trigger="change" hx-vals='js:{on: event.target.checked ? "1" : "0"}' hx-target="#cn-result">
+      <span>PDH-System schickt mir einen Chat-Hinweis, wenn jemand ein Ticket, eine Störung, Aufgabe, Wartung oder ein Projekt ändert, das ich erfasst habe, verantworte oder dem ich zugewiesen bin.</span>
+    </label>
+  </div>
   <div class="card" style="padding:0;overflow:hidden">
     <iframe name="pdh-embed" src="/account" title="Konto & Dienste" loading="lazy" style="width:100%;height:640px;border:0;display:block;background:var(--bg)"></iframe>
   </div>
