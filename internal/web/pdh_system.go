@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/rs/zerolog/log"
 )
 
 // PDH-System: technischer Benutzer (Migration 072), der automatische
@@ -64,7 +63,7 @@ func (h *Handler) systemNotify(ctx context.Context, userIDs []string, body strin
 			err = h.chatPost(ctx, conv, pdhSystemUserID, body)
 		}
 		if err != nil {
-			log.Error().Err(err).Str("user", uid).Msg("pdh-system: hinweis nicht zugestellt")
+			componentLog("benachrichtigung").Error().Err(err).Str("user", uid).Msg("pdh-system: hinweis nicht zugestellt")
 		}
 	}
 }
@@ -275,7 +274,7 @@ func (h *Handler) StartChangeNotifier(ctx context.Context) {
 			case <-t.C:
 				runCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				if err := h.processChangeQueue(runCtx); err != nil {
-					log.Error().Err(err).Msg("aenderungshinweise fehlgeschlagen")
+					componentLog("benachrichtigung").Error().Err(err).Msg("aenderungshinweise fehlgeschlagen")
 				}
 				cancel()
 			}
@@ -321,7 +320,7 @@ func (h *Handler) processChangeQueue(ctx context.Context) error {
 			}
 		}
 		if unknown > 200 {
-			log.Info().Int("records", len(order)).Msg("aenderungshinweise: massenaenderung ohne bearbeiter - keine chat-hinweise")
+			componentLog("benachrichtigung").Info().Int("records", len(order)).Msg("aenderungshinweise: massenaenderung ohne bearbeiter - keine chat-hinweise")
 			return nil
 		}
 	}
@@ -379,7 +378,7 @@ func (h *Handler) changeRecipients(ctx context.Context, module, rec string) []st
 		SELECT u.id::text FROM users u
 		 WHERE u.id IN (`+q+`) AND u.active AND NOT u.is_bot AND u.change_notifications`, rec)
 	if err != nil {
-		log.Error().Err(err).Str("module", module).Msg("empfaenger fuer aenderungshinweis")
+		componentLog("benachrichtigung").Error().Err(err).Str("module", module).Msg("empfaenger fuer aenderungshinweis")
 		return nil
 	}
 	defer rows.Close()

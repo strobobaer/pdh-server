@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 
@@ -100,10 +101,10 @@ func Run(ctx context.Context, o Options) error {
 	go func() { errCh <- srv.ListenAndServe() }()
 
 	banner := strings.Repeat("=", 64)
-	log.Warn().Msg(banner)
-	log.Warn().Str("adresse", "http://<server>:"+portOf(o.Addr)+"/setup").Msg("PDH-EINRICHTUNGSASSISTENT aktiv")
-	log.Warn().Str("einrichtungscode", w.code).Str("datei", w.codeFile).Msg("Einrichtungscode (wird im Assistenten abgefragt)")
-	log.Warn().Msg(banner)
+	setupLog().Warn().Msg(banner)
+	setupLog().Warn().Str("adresse", "http://<server>:"+portOf(o.Addr)+"/setup").Msg("PDH-EINRICHTUNGSASSISTENT aktiv")
+	setupLog().Warn().Str("einrichtungscode", w.code).Str("datei", w.codeFile).Msg("Einrichtungscode (wird im Assistenten abgefragt)")
+	setupLog().Warn().Msg(banner)
 	fmt.Fprintf(os.Stderr, "\n%s\n  PDH-Einrichtung: http://<server>:%s/setup\n  Einrichtungscode: %s\n%s\n\n", banner, portOf(o.Addr), w.code, banner)
 
 	if o.NeedDB {
@@ -206,7 +207,7 @@ func (w *wizard) watchConfiguredDB(ctx context.Context) {
 			continue
 		}
 		if n, err := humanUsers(ctx, db.Pool); err == nil && n > 0 {
-			log.Info().Msg("einrichtung: konfigurierte datenbank jetzt erreichbar - normaler start")
+			setupLog().Info().Msg("einrichtung: konfigurierte datenbank jetzt erreichbar - normaler start")
 			db.Close()
 			w.finishOnce()
 			return
@@ -472,7 +473,7 @@ func (w *wizard) finish(rw http.ResponseWriter, r *http.Request) {
 		}
 		notes = append(notes, "Einstellungen in "+config.EnvFilePath()+" gespeichert")
 	}
-	log.Info().Strs("schritte", notes).Msg("einrichtung abgeschlossen")
+	setupLog().Info().Strs("schritte", notes).Msg("einrichtung abgeschlossen")
 	d.Done, d.DoneNotes = true, notes
 	w.render(rw, d)
 	if f, ok := rw.(http.Flusher); ok {
@@ -520,4 +521,9 @@ func createAdmin(ctx context.Context, pool *pgxpool.Pool, a adminInput) error {
 		INSERT INTO users (username, email, password_hash, first_name, last_name, role, active)
 		VALUES ($1, $2, $3, $4, $5, 'admin', true)`, a.username, a.email, string(hash), a.first, a.last)
 	return err
+}
+
+func setupLog() *zerolog.Logger {
+	l := log.With().Str("bereich", "einrichtung").Logger()
+	return &l
 }

@@ -245,7 +245,8 @@ func main() {
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
 	r := chi.NewRouter()
-	r.Use(chimw.Recoverer, chimw.RequestID, middleware.Logger, middleware.CORS)
+	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
+	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
 	r.Use(webHandler.ChangeTrackingMiddleware)
 

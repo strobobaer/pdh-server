@@ -1,0 +1,114 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.lg-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;background:rgba(239,68,68,.12);color:var(--red)}
+.lg-filter{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 10px;align-items:end}
+.lg-filter label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+.lg-filter .wide{grid-column:span 2}
+.lg-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.lg-meta{font-size:11px;color:var(--muted);margin:6px 0}
+.lg-live{color:var(--green,#16a34a)}
+.lg-table{border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:12px}
+.lg-row{display:grid;grid-template-columns:70px 64px 110px minmax(200px,1fr) 150px 56px 80px;gap:8px;padding:6px 10px;align-items:center;cursor:pointer;list-style:none}
+.lg-row::-webkit-details-marker{display:none}
+.lg-head{background:var(--bg3);font-weight:600;cursor:default;font-size:11px;color:var(--muted)}
+.lg-entry{border-top:1px solid var(--border)}
+.lg-entry:hover>summary{background:var(--bg3)}
+.lg-entry[open]>summary{background:var(--bg3)}
+.lg-entry.lg-error{box-shadow:inset 3px 0 0 var(--red,#ef4444)}
+.lg-entry.lg-warn{box-shadow:inset 3px 0 0 var(--amber,#f59e0b)}
+.lg-entry.lg-debug{opacity:.75}
+.lg-msgcol{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-lv{font-size:10px;text-transform:uppercase;border-radius:4px;padding:1px 5px;background:var(--bg3)}
+.lv-error,.lv-fatal,.lv-panic{background:rgba(239,68,68,.15);color:var(--red,#ef4444)}
+.lv-warn{background:rgba(245,158,11,.15);color:#b45309}
+.lv-info{background:rgba(59,130,246,.12);color:var(--accent)}
+.lg-link{color:var(--accent)}
+.lg-detail{padding:8px 12px 12px 88px;background:var(--bg2);font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.lg-kv{display:grid;grid-template-columns:140px 1fr;gap:8px;padding:2px 0;word-break:break-all}
+.lg-kv b{color:var(--muted);font-weight:500}
+@media(max-width:900px){.lg-row{grid-template-columns:60px 56px 1fr}.lg-row>span:nth-child(3),.lg-row>span:nth-child(5),.lg-row>span:nth-child(6),.lg-row>span:nth-child(7){display:none}.lg-detail{padding-left:12px}}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/admin/server-config")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600">Server-Protokoll</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Seitenaufrufe, Anmeldungen, Fehler, Datensicherung, Bereinigung, Einstellungen … · Ordner <code>{{.Dir}}</code></p>
+  </div>
+  {{if .CanConfig}}<a class="btn" href="/admin/server-config?tab=logging"><i class="ti ti-settings"></i> Protokoll-Einstellungen</a>{{end}}
+</div>
+
+<div class="rec-tabs">
+  <a class="rec-tab" href="/admin/server-config"><i class="ti ti-adjustments-cog"></i> Server-Einstellungen</a>
+  <a class="rec-tab active" href="/admin/server-config/logs"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="?range=24h&level=error"><div class="v" style="color:var(--red)">{{or (index .Stats "error") 0}}</div><div class="l">Fehler (24 h)</div></a>
+  <a class="kpi" href="?range=24h&level=warn"><div class="v" style="color:var(--amber)">{{or (index .Stats "warn") 0}}</div><div class="l">Warnungen (24 h)</div></a>
+  <a class="kpi" href="?range=24h&level=info"><div class="v">{{or (index .Stats "info") 0}}</div><div class="l">Info (24 h)</div></a>
+  <a class="kpi" href="?range=24h&component=auth&level=warn"><div class="v"><i class="ti ti-lock-exclamation"></i></div><div class="l">Fehlgeschlagene Anmeldungen</div></a>
+</div>
+
+<form class="card" method="get" action="/admin/server-config/logs" id="lg-form">
+  <div class="lg-filter">
+    <div><label>Zeitraum</label>
+      <select class="form-input" name="range" onchange="document.getElementById('lg-custom').hidden=this.value!=='custom'">
+        {{$r := .Filter.Range}}
+        <option value="15m" {{if eq $r "15m"}}selected{{end}}>letzte 15 Minuten</option>
+        <option value="1h" {{if eq $r "1h"}}selected{{end}}>letzte Stunde</option>
+        <option value="24h" {{if eq $r "24h"}}selected{{end}}>letzte 24 Stunden</option>
+        <option value="7d" {{if eq $r "7d"}}selected{{end}}>letzte 7 Tage</option>
+        <option value="custom" {{if eq $r "custom"}}selected{{end}}>frei wählen …</option>
+      </select></div>
+    <div id="lg-custom" class="wide" {{if ne .Filter.Range "custom"}}hidden{{end}} style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div><label>von</label><input class="form-input" type="datetime-local" name="from" value="{{.Filter.From}}"></div>
+      <div><label>bis</label><input class="form-input" type="datetime-local" name="to" value="{{.Filter.To}}"></div>
+    </div>
+    <div><label>Stufe (mindestens)</label>
+      <select class="form-input" name="level">{{$l := .Filter.Level}}
+        <option value="" {{if eq $l ""}}selected{{end}}>alle</option>
+        <option value="debug" {{if eq $l "debug"}}selected{{end}}>debug</option>
+        <option value="info" {{if eq $l "info"}}selected{{end}}>info</option>
+        <option value="warn" {{if eq $l "warn"}}selected{{end}}>Warnungen</option>
+        <option value="error" {{if eq $l "error"}}selected{{end}}>Fehler</option>
+      </select></div>
+    <div><label>Bereich</label>
+      <select class="form-input" name="component">{{$c := .Filter.Component}}
+        <option value="">alle</option>
+        {{range .Components}}<option value="{{.}}" {{if eq . $c}}selected{{end}}>{{.}}</option>{{end}}
+      </select></div>
+    <div><label>Benutzer</label><input class="form-input" name="user" value="{{.Filter.User}}" placeholder="Name oder ID"></div>
+    <div><label>Pfad enthält</label><input class="form-input" name="path" value="{{.Filter.Path}}" placeholder="/tickets"></div>
+    <div><label>HTTP-Status</label>
+      <select class="form-input" name="status">{{$s := .Filter.Status}}
+        <option value="">alle</option>
+        {{range $o := list "2xx" "3xx" "4xx" "5xx" "401" "403" "404" "500"}}<option value="{{$o}}" {{if eq $o $s}}selected{{end}}>{{$o}}</option>{{end}}
+      </select></div>
+    <div><label>Request-ID</label><input class="form-input" name="rid" value="{{.Filter.RequestID}}"></div>
+    <div class="wide"><label>Volltext (Meldung, Felder, IP …)</label><input class="form-input" name="q" value="{{.Filter.Text}}" placeholder="z. B. backup, 10.0.0.5, timeout"></div>
+    <div><label>Anzahl</label>
+      <select class="form-input" name="limit">{{$n := .Filter.Limit}}
+        {{range $o := list "100" "300" "1000" "5000"}}<option {{if eq $o (printf "%d" $n)}}selected{{end}}>{{$o}}</option>{{end}}
+      </select></div>
+  </div>
+  <div class="lg-actions">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-filter"></i> Filtern</button>
+    <a class="btn" href="/admin/server-config/logs"><i class="ti ti-filter-off"></i> Zurücksetzen</a>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="live" value="1" {{if .Filter.Live}}checked{{end}} onchange="this.form.submit()"> Live (alle 5 s)</label>
+    <span style="flex:1"></span>
+    <a class="btn btn-small" href="{{.CSVURL}}"><i class="ti ti-file-spreadsheet"></i> CSV</a>
+    <a class="btn btn-small" href="{{.JSONURL}}"><i class="ti ti-braces"></i> JSON</a>
+  </div>
+</form>
+
+<div id="lg-rows" {{if .Filter.Live}}hx-get="{{.RowsURL}}" hx-trigger="every 5s" hx-swap="innerHTML"{{end}}>
+  {{template "server-log-rows" .}}
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-files"></i> Tagesdateien</span><span class="lg-meta">komplett herunterladen (JSON-Zeilen)</span></div>
+  {{range .Days}}<a class="btn btn-small" style="margin:2px" href="/admin/server-config/logs/download?day={{.Day}}"><i class="ti ti-download"></i> {{.Day}} · {{.Size}}</a>{{else}}<div class="lg-meta">Noch keine Protokolldateien.</div>{{end}}
+</div>
+{{end}}

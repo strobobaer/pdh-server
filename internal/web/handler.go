@@ -428,6 +428,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
+	r.Get("/admin/server-config/logs", h.ServerLogsPage)
+	r.Get("/admin/server-config/logs/rows", h.ServerLogsRowsWeb)
+	r.Get("/admin/server-config/logs/download", h.ServerLogsDownloadWeb)
 	r.Get("/admin/backup", h.BackupPage)
 	r.Post("/admin/backup/create", h.BackupCreateWeb)
 	r.Post("/admin/backup/upload", h.BackupUploadWeb)
@@ -1669,11 +1672,13 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
+		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
 		h.render(w, "login", struct{ Error string }{"Ungültige Anmeldedaten"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	authLog(r, true, "passwort", r.FormValue("email"), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "")
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -1690,15 +1695,20 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	token, user, err := h.users.LoginByRFID(r.Context(), uid)
 	if err != nil {
+		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
 		h.render(w, "login", struct{ Error string }{"Unbekannte Karte"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	authLog(r, true, "rfid", "Karte "+maskUID(uid), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "")
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	if uid := h.requestActor(r); uid != "" {
+		log.Info().Str("bereich", "auth").Str("user", uid).Str("user_name", h.cachedUserName(r.Context(), uid)).Str("ip", r.RemoteAddr).Msg("abmeldung")
+	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})

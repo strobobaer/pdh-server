@@ -1,0 +1,30 @@
+{{/* Tabelle der Protokollansicht (auch per htmx nachgeladen, Live-Modus) */}}
+{{define "server-log-rows"}}
+<div class="lg-meta">{{len .Rows}} Einträge{{if .Truncated}} (Grenze erreicht – Filter eingrenzen oder Anzahl erhöhen){{end}} · {{.Scanned}} geprüft{{if .Filter.Live}} · <span class="lg-live"><i class="ti ti-point-filled"></i> live, aktualisiert {{.Now}}</span>{{end}}</div>
+{{if .Err}}<div class="lg-msg">{{.Err}}</div>{{end}}
+{{if .Rows}}
+<div class="lg-table">
+  <div class="lg-row lg-head"><span>Zeit</span><span>Stufe</span><span>Bereich</span><span>Meldung</span><span>Benutzer</span><span>Status</span><span>Dauer</span></div>
+  {{range .Rows}}
+  <details class="lg-entry {{.LevelClass}}">
+    <summary class="lg-row">
+      <span title="{{.TimeFull}}">{{.Time}}</span>
+      <span><b class="lg-lv lv-{{.Level}}">{{.Level}}</b></span>
+      <span><a href="{{.ComponentURL}}" class="lg-link" title="nur Bereich {{.Component}}">{{.Component}}</a></span>
+      <span class="lg-msgcol">{{.Msg}}</span>
+      <span>{{if .User}}<a href="{{.UserURL}}" class="lg-link" title="nur diesen Benutzer">{{.User}}</a>{{end}}</span>
+      <span>{{.Status}}</span>
+      <span>{{.Duration}}</span>
+    </summary>
+    <div class="lg-detail">
+      <div class="lg-kv"><b>Zeit</b><span>{{.TimeFull}}</span></div>
+      {{range .Details}}<div class="lg-kv"><b>{{.Key}}</b><span>{{.Value}}</span></div>{{end}}
+      {{if .RequestID}}<div style="margin-top:6px"><a class="btn btn-small" href="{{.RIDURL}}"><i class="ti ti-filter"></i> Alle Einträge dieser Anfrage</a></div>{{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+{{else}}
+<div class="lg-meta" style="padding:16px 0">Keine Einträge für diese Filter.</div>
+{{end}}
+{{end}}

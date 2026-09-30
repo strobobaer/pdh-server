@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/rs/zerolog/log"
 )
 
 // Stammdaten werden nicht direkt geloescht. Stattdessen:
@@ -411,7 +410,7 @@ func (h *Handler) cleanupOne(ctx context.Context, module, id string) (string, st
 		if err == nil {
 			return "deleted", "nicht mehr verwendet"
 		}
-		log.Warn().Err(err).Str("module", module).Str("id", id).Msg("bereinigung: loeschen nicht moeglich - wird ausgeblendet")
+		componentLog("bereinigung").Warn().Err(err).Str("module", module).Str("id", id).Msg("bereinigung: loeschen nicht moeglich - wird ausgeblendet")
 		check.Blockers = append(check.Blockers, "Datenbank verweigert das Löschen")
 	}
 	if _, err := h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET active = false, hidden_at = COALESCE(hidden_at, NOW()) WHERE id = $1::uuid`, mi.Table), id); err != nil {
@@ -459,7 +458,7 @@ func (h *Handler) masterStateRows(ctx context.Context, cond string) []cleanupRow
 			  FROM %s t LEFT JOIN users u ON u.id = t.locked_by
 			 WHERE %s ORDER BY 2 LIMIT 500`, mi.TitleExpr, mi.Table, cond))
 		if err != nil {
-			log.Error().Err(err).Str("module", module).Msg("bereinigung: liste")
+			componentLog("bereinigung").Error().Err(err).Str("module", module).Msg("bereinigung: liste")
 			continue
 		}
 		for rows.Next() {

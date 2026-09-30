@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/rs/zerolog/log"
 
 	"pdh/pkg/config"
 )
@@ -436,7 +435,7 @@ func (h *Handler) restoreBackup(ctx context.Context, name string, comps []string
 	if _, safety, err := h.createBackup(ctx, use, "safety", "", userID); err != nil {
 		return "", fmt.Errorf("Sicherheitskopie vor der Wiederherstellung fehlgeschlagen: %w", err)
 	} else {
-		log.Info().Str("file", safety).Msg("sicherheitskopie vor wiederherstellung erstellt")
+		componentLog("backup").Info().Str("file", safety).Msg("sicherheitskopie vor wiederherstellung erstellt")
 	}
 	var notes []string
 	for _, c := range use {
@@ -822,7 +821,7 @@ func (h *Handler) StartBackupSchedules(ctx context.Context) {
 	}
 	all, err := h.loadBackupSchedules(ctx, false)
 	if err != nil {
-		log.Error().Err(err).Msg("sicherungszeitplaene laden")
+		componentLog("backup").Error().Err(err).Msg("sicherungszeitplaene laden")
 		return
 	}
 	for _, s := range all {
@@ -833,7 +832,7 @@ func (h *Handler) StartBackupSchedules(ctx context.Context) {
 		}
 		sid := s.ID
 		if err := h.exportCron.Schedule(id, backupCronSpec(s), func() { h.runScheduledBackup(sid) }); err != nil {
-			log.Error().Err(err).Str("schedule", s.Name).Msg("sicherungszeitplan einplanen")
+			componentLog("backup").Error().Err(err).Str("schedule", s.Name).Msg("sicherungszeitplan einplanen")
 		}
 	}
 }
@@ -852,7 +851,7 @@ func (h *Handler) runScheduledBackup(scheduleID string) {
 	status, msg := "ok", name
 	if err != nil {
 		status, msg = "failed", err.Error()
-		log.Error().Err(err).Str("schedule", s.Name).Msg("geplante sicherung fehlgeschlagen")
+		componentLog("backup").Error().Err(err).Str("schedule", s.Name).Msg("geplante sicherung fehlgeschlagen")
 		h.notifyAdmins(ctx, fmt.Sprintf("⚠️ **Datensicherung fehlgeschlagen**\nZeitplan: %s\nFehler: %s\nBitte unter Verwaltung → Datensicherung prüfen.", s.Name, err.Error()))
 	} else {
 		h.pruneScheduleBackups(ctx, scheduleID, s.KeepCount)
@@ -1031,7 +1030,7 @@ func (h *Handler) BackupCreateWeb(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
 		if _, _, err := h.createBackup(ctx, comps, "manual", "", uid); err != nil {
-			log.Error().Err(err).Msg("manuelle sicherung fehlgeschlagen")
+			componentLog("backup").Error().Err(err).Msg("manuelle sicherung fehlgeschlagen")
 		}
 	}()
 	backupRedirect(w, r, "log", "Sicherung gestartet – sie erscheint nach Abschluss in der Liste.", nil)
@@ -1174,14 +1173,14 @@ func (h *Handler) BackupRestoreWeb(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		runID, err := h.startBackupRun(ctx, name, comps, "restore", "", u.ID)
 		if err != nil {
-			log.Error().Err(err).Msg("wiederherstellung: protokoll")
+			componentLog("backup").Error().Err(err).Msg("wiederherstellung: protokoll")
 			return
 		}
 		h.notifyAdmins(ctx, fmt.Sprintf("♻️ **Wiederherstellung gestartet** von %s\nSicherung: %s\nBestandteile: %s", who, name, strings.Join(componentLabels(comps), ", ")))
 		notes, err := h.restoreBackup(ctx, name, comps, u.ID)
 		h.finishBackupRun(runID, 0, err, notes)
 		if err != nil {
-			log.Error().Err(err).Str("file", name).Msg("wiederherstellung fehlgeschlagen")
+			componentLog("backup").Error().Err(err).Str("file", name).Msg("wiederherstellung fehlgeschlagen")
 			h.notifyAdmins(ctx, "⚠️ **Wiederherstellung fehlgeschlagen** – der bisherige Datenbestand ist unverändert.\nFehler: "+err.Error())
 			return
 		}

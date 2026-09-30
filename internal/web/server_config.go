@@ -12,9 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
-
 	"pdh/pkg/config"
+	"pdh/pkg/logger"
 	"pdh/pkg/database"
 )
 
@@ -92,6 +91,12 @@ var envGroups = []envGroup{
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_FAULTS_ID", Label: "Deck: Stapel Störungen", Type: "number", Restart: true},
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_MAINTENANCE_ID", Label: "Deck: Stapel Wartung", Type: "number", Restart: true},
 	}},
+	{"logging", "Protokoll", "ti-file-analytics", "Wie ausführlich das PDH protokolliert. Das Protokoll selbst findest du im Reiter „Protokoll ansehen“.", []envField{
+		{Key: "PDH_LOG_LEVEL", Label: "Protokollstufe", Help: "debug = sehr ausführlich (auch statische Dateien), info = Normalbetrieb, warn/error = nur Probleme.", Type: "select", Options: []string{"info", "debug", "warn", "error"}, Default: "info"},
+		{Key: "PDH_LOG_REQUESTS", Label: "Seitenaufrufe protokollieren", Help: "all = jede Anfrage mit Benutzer, Dauer und Status; errors = nur fehlerhafte (4xx/5xx).", Type: "select", Options: []string{"all", "errors", "off"}, Default: "all"},
+		{Key: "PDH_LOG_RETENTION_DAYS", Label: "Aufbewahrung (Tage)", Type: "number", Default: "14"},
+		{Key: "PDH_LOG_DIR", Label: "Protokollordner", Help: "Tagesdateien pdh-JJJJ-MM-TT.jsonl.", Type: "text", Default: "logs"},
+	}},
 	{"system", "Updates & Sicherung", "ti-refresh", "Update-Agent und Sicherungsordner.", []envField{
 		{Key: "PDH_UPDATE_AGENT_URL", Label: "Update-Agent-Adresse", Type: "url"},
 		{Key: "PDH_UPDATE_AGENT_TOKEN", Label: "Update-Agent-Token", Type: "text", Secret: true},
@@ -145,6 +150,7 @@ type ServerConfigData struct {
 	ImportedAt     string
 	ImportedCount  int
 	CanRestart     bool
+	CanLogs        bool
 	Msg, Err       string
 }
 
@@ -158,7 +164,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	file, _ := config.ReadEnvFile(path)
 	d := ServerConfigData{
 		BaseData: h.baseData(r, "server-config", "Server-Einstellungen", "Server"),
-		Tab:      q.Get("tab"), EnvFile: path, RestartPending: h.restartPending, CanRestart: h.restartFn != nil,
+		Tab:      q.Get("tab"), EnvFile: path, RestartPending: h.restartPending, CanRestart: h.restartFn != nil, CanLogs: h.canViewLogs(r),
 		Msg: q.Get("msg"), Err: q.Get("err"),
 	}
 	if abs, err := absPath(path); err == nil {
@@ -427,7 +433,7 @@ func (h *Handler) applyEnvUpdates(ctx context.Context, updates map[string]string
 		}
 	}
 	h.reloadLiveConfig(ctx)
-	log.Info().Strs("keys", keys).Str("user", userID).Msg("server-einstellungen geaendert")
+	componentLog("konfiguration").Info().Strs("keys", keys).Str("user", userID).Msg("server-einstellungen geaendert")
 	if h.db != nil { // Sicherheits-Hinweis an alle Admins (ohne Werte)
 		h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen geändert** von "+h.chatUserName(ctx, userID)+": "+strings.Join(keys, ", "))
 	}
@@ -444,9 +450,10 @@ func (h *Handler) applyEnvUpdates(ctx context.Context, updates map[string]string
 func (h *Handler) reloadLiveConfig(ctx context.Context) {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Warn().Err(err).Msg("server-einstellungen: neu laden")
+		componentLog("konfiguration").Warn().Err(err).Msg("server-einstellungen: neu laden")
 		return
 	}
+	logger.Init(cfg.Server.Env) // Protokollstufe/-ordner sofort uebernehmen
 	h.ConfigureMail(cfg.Mail)
 	h.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, h.buildCommit)
 	h.ConfigureMicrosoft(MicrosoftOAuthConfig{
@@ -550,7 +557,7 @@ func (h *Handler) ServerRestartWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := getUser(r)
-	log.Warn().Str("user", u.ID).Msg("neustart ueber server-einstellungen angefordert")
+	componentLog("konfiguration").Warn().Str("user", u.ID).Msg("neustart ueber server-einstellungen angefordert")
 	if h.db != nil {
 		h.notifyAdmins(r.Context(), "🔄 **Server-Neustart** angefordert von "+strings.TrimSpace(u.FirstName+" "+u.LastName)+" – das PDH ist gleich wieder erreichbar.")
 	}

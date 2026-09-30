@@ -394,7 +394,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config">
+<section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config server-logs">
   <h2><i class="ti ti-adjustments-cog"></i> Server-Einstellungen &amp; Ersteinrichtung</h2>
   <h3><i class="ti ti-rocket"></i> Ersteinrichtung</h3>
   {{template "hb-fig-setup"}}
@@ -430,6 +430,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Datenbank</b>: Änderungen werden vor dem Speichern getestet. Nur wenn du sicher bist, „Trotzdem speichern“ anhaken.</li>
     <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
     <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
+  </ul>
+  <h3><i class="ti ti-file-analytics"></i> Protokoll ansehen und filtern</h3>
+  <p>Das PDH protokolliert ausführlich: jeden Seitenaufruf mit Benutzer, Dauer und Status, An- und Abmeldungen (auch fehlgeschlagene), Fehler sowie Datensicherung, Bereinigung, Einstellungsänderungen und Benachrichtigungen. Passwörter und Tokens in Adressen werden dabei unkenntlich gemacht, von RFID-Karten stehen nur die letzten 4 Zeichen im Protokoll.</p>
+  <div class="hb-howto"><b><i class="ti ti-filter"></i> So findest du einen Fehler</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Protokoll ansehen</b> (Berechtigung <i>Server-Protokoll ansehen</i>, standardmäßig nur Administratoren).</li>
+      <li>Oben die Kachel <b>Fehler (24 h)</b> antippen – oder Zeitraum, Stufe, Bereich, Benutzer, Pfad, HTTP-Status, Request-ID oder einen Suchbegriff wählen und <b>Filtern</b>.</li>
+      <li>Eine Zeile antippen zeigt alle Details (IP, Browser, Abfrage, Fehlermeldung …). <b>Alle Einträge dieser Anfrage</b> zeigt, was während genau dieses Aufrufs passiert ist.</li>
+      <li>Bereich oder Benutzer in einer Zeile antippen filtert direkt danach. <b>Live</b> aktualisiert die Liste alle 5 Sekunden.</li>
+    </ol></div>
+  <ul>
+    <li><b>Bereiche:</b> <code>http</code> (Seitenaufrufe), <code>auth</code> (Anmeldungen), <code>backup</code>, <code>bereinigung</code>, <code>konfiguration</code>, <code>benachrichtigung</code>, <code>einrichtung</code>, <code>system</code> (Rest).</li>
+    <li><b>Herunterladen:</b> die gefilterte Liste als CSV (für Excel) oder JSON, oder eine ganze Tagesdatei.</li>
+    <li><b>Einstellungen</b> im Reiter <b>Protokoll</b>: Stufe (debug/info/warn/error), ob alle oder nur fehlerhafte Seitenaufrufe protokolliert werden, Aufbewahrung in Tagen und Ordner – sofort wirksam.</li>
   </ul>
   {{template "hb-shots" (dict "Ref" (index $s "server") "Can" $can)}}
 </section>

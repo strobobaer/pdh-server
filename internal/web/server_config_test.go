@@ -111,3 +111,37 @@ func TestServerConfigPageRenders(t *testing.T) {
 		t.Error("Geheimnis im Klartext ausgegeben")
 	}
 }
+
+func TestRedactQuery(t *testing.T) {
+	q := url.Values{"token": {"abc"}, "tab": {"stock"}, "api_key": {"x"}}
+	got := redactQuery(q)
+	if strings.Contains(got, "abc") || strings.Contains(got, "=x") || !strings.Contains(got, "tab=stock") {
+		t.Errorf("%s", got)
+	}
+	if maskUID("04A1B2C3") != "…B2C3" || maskUID("12") != "****" {
+		t.Error("maskUID")
+	}
+	if csvSafe([]string{"=SUM(A1)"})[0] != "'=SUM(A1)" {
+		t.Error("csvSafe")
+	}
+}
+
+func TestServerLogsPageRenders(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ServerLogsData{
+		Filter: logFilterView{Range: "1h", Limit: 300, Live: true}, Components: []string{"auth", "http"},
+		Stats: map[string]int{"error": 2}, Dir: "logs", RowsURL: "/admin/server-config/logs/rows?live=1", CSVURL: "/x.csv", JSONURL: "/x.json", Now: "12:00:00",
+		Days: []logDayView{{"2026-09-30", "1.2 MB"}}, CanConfig: true,
+		Rows: []logRowView{{Time: "10:00:01", TimeFull: "30.09.2026 10:00:01.000", Level: "error", LevelClass: "lg-error", Component: "http",
+			Msg: "POST /inventory/1/book", User: "Max", Status: "500", Duration: "12.5 ms", RequestID: "abc/1",
+			ComponentURL: "/admin/server-config/logs?component=http", UserURL: "/admin/server-config/logs?user=Max", RIDURL: "/admin/server-config/logs?rid=abc%2F1",
+			Details: []logDetail{{"ip", "10.0.0.5"}}}},
+	}
+	out := renderPage(t, tmpl, "server_logs", d)
+	for _, want := range []string{"Server-Protokoll", "POST /inventory/1/book", "10.0.0.5", "every 5s", "live, aktualisiert 12:00:00",
+		"2026-09-30", "Alle Einträge dieser Anfrage", `name="rid"`, "Fehler (24 h)", "/x.csv", "?component=http"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Protokollseite enthält %q nicht", want)
+		}
+	}
+}

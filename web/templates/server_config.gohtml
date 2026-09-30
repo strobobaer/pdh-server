@@ -37,6 +37,7 @@
 
 <div class="rec-tabs" role="tablist">
   {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+  {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
 
 {{range .Groups}}{{$g := .}}

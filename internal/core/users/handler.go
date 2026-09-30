@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 	"pdh/internal/core/rbac"
 	"pdh/pkg/middleware"
 	"pdh/pkg/response"
@@ -82,9 +83,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, user, err := h.svc.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
+		log.Warn().Str("bereich", "auth").Str("verfahren", "api").Str("login", in.Email).Str("ip", r.RemoteAddr).Str("grund", err.Error()).Msg("anmeldung fehlgeschlagen")
 		response.Error(w, http.StatusUnauthorized, err.Error())
 		return
 	}
+	log.Info().Str("bereich", "auth").Str("verfahren", "api").Str("login", in.Email).Str("user", user.ID).Str("ip", r.RemoteAddr).Msg("anmeldung erfolgreich")
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"token": token,

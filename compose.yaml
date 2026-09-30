@@ -52,6 +52,7 @@ services:
       - pdh_chat_files:/app/chat_files
       - pdh_backups:/app/backups
       - pdh_config:/app/config
+      - pdh_logs:/app/logs
 
   updater:
     build:
@@ -81,3 +82,4 @@ volumes:
   pdh_chat_files:
   pdh_backups:
   pdh_config:
+  pdh_logs:
