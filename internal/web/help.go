@@ -6,12 +6,14 @@ import (
 	"html/template"
 	"net/http"
 	"sort"
+
+	"pdh"
 )
 
 // Handbuch (/help): redaktionelle Kapitel in web/templates/help.gohtml plus
 // automatisch aktuelle Abschnitte, die bei jedem Aufruf aus Code und
 // Datenbank erzeugt werden (Berechtigungen, Feldsatz-Module,
-// Etikettenformate, Versionsstand) und daher nicht veralten koennen.
+// Etikettenformate, Versionsstand, Aenderungsprotokoll) und daher nicht veralten koennen.
 // /help?fragment=1 liefert nur die Kapitel - fuer die Kontexthilfe im
 // Hilfe-Reiter der Seitenleiste.
 //
@@ -27,22 +29,24 @@ type helpPerm struct{ Key, Label string }
 
 type HelpPageData struct {
 	BaseData
-	PermGroups   []helpPermGroup
-	FieldModules []fieldModule
-	LabelSizes   []labelSize
-	Version      string
-	FieldTypes   []string
-	TypeLabels   map[string]string
-	Shots        map[string]string // Kapitel -> Anhang-Ref fuer eigene Bildschirmfotos
-	CanShots     bool              // darf Bildschirmfotos hochladen
-	SampleQR     template.HTML     // QR-Code fuer das Muster-Etikett
-	SampleURL    string
+	PermGroups     []helpPermGroup
+	FieldModules   []fieldModule
+	LabelSizes     []labelSize
+	Version        string
+	CurrentVersion string             // Versionsnummer, z. B. "0.15.0"
+	Releases       []ChangelogRelease // Aenderungsprotokoll (CHANGELOG.md)
+	FieldTypes     []string
+	TypeLabels     map[string]string
+	Shots          map[string]string // Kapitel -> Anhang-Ref fuer eigene Bildschirmfotos
+	CanShots       bool              // darf Bildschirmfotos hochladen
+	SampleQR       template.HTML     // QR-Code fuer das Muster-Etikett
+	SampleURL      string
 }
 
 // helpChapterIDs muss mit den section-IDs in help.gohtml uebereinstimmen
 // (TestHelpChaptersMatch).
 var helpChapterIDs = []string{"start", "records", "categories", "dashboard", "faults", "tickets", "tasks", "maintenance",
-	"infrastructure", "inventory", "storage", "purchasing", "partners", "chat", "time", "users", "fieldsets", "cleanup", "backup", "server", "admin", "faq"}
+	"infrastructure", "inventory", "storage", "purchasing", "partners", "chat", "time", "users", "fieldsets", "cleanup", "backup", "server", "versions", "admin", "faq"}
 
 // helpChapterRef liefert eine feste UUID je Kapitel (Anhaenge brauchen eine UUID als ref_id).
 func helpChapterRef(id string) string {
@@ -54,12 +58,14 @@ func helpChapterRef(id string) string {
 
 func (h *Handler) helpData(r *http.Request) HelpPageData {
 	d := HelpPageData{
-		BaseData:     h.baseData(r, "help", "Handbuch", "Kapitel"),
-		FieldModules: fieldModules,
-		LabelSizes:   labelSizes,
-		Version:      shortCommit(h.buildCommit),
-		FieldTypes:   fieldTypeOrder,
-		TypeLabels:   fieldTypeLabels,
+		BaseData:       h.baseData(r, "help", "Handbuch", "Kapitel"),
+		FieldModules:   fieldModules,
+		LabelSizes:     labelSizes,
+		Version:        versionLabel(h.buildCommit),
+		CurrentVersion: pdh.Version(),
+		Releases:       installedChangelog(),
+		FieldTypes:     fieldTypeOrder,
+		TypeLabels:     fieldTypeLabels,
 	}
 	d.Shots = map[string]string{}
 	for _, id := range helpChapterIDs {

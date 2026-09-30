@@ -464,11 +464,34 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "server") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles core-settings import export">
+<section class="hb-ch" id="versions" data-title="Versionen &amp; Updates" data-pages="core-settings">
+  <h2><i class="ti ti-versions"></i> Versionen &amp; Updates</h2>
+  <p>Die installierte Version steht links oben unter dem Namen (z. B. <b>v{{.CurrentVersion}}</b>). Jede Version hat eine Nummer <b>Haupt.Neben.Korrektur</b>: Die mittlere Zahl steigt mit neuen Funktionen, die letzte bei reinen Fehlerkorrekturen.</p>
+  {{template "hb-fig-update"}}
+  <div class="hb-howto"><b><i class="ti ti-download"></i> So installierst du ein Update</b>
+    <ol class="hb-steps">
+      <li><b>Core-Einstellungen</b> öffnen. Im Kasten <b>GitHub-Updates</b> siehst du die <b>installierte Version</b> und die <b>Version auf GitHub</b>. PDH prüft regelmäßig selbst (einstellbar); sofort geht es mit <b>Commit-Vergleich</b>.</li>
+      <li>Ist ein Update da, listet <b>Neu in … Version(en)</b> alle Änderungen seit deiner Version – lies sie vor dem Installieren.</li>
+      <li><b>Update installieren</b> klicken und bestätigen. Der Dienst startet neu; nach einer Minute die Seite neu laden.</li>
+    </ol>
+    Vor den Datenbank-Änderungen legt PDH automatisch eine Vollsicherung an (<a href="#backup">mehr</a>). Danach steht die neue Nummer in der Kopfzeile.</div>
+  <p><b>Ohne Versionsnummer auf GitHub:</b> Zeigt <b>Version auf GitHub</b> „nicht angegeben“, stammt der Stand auf GitHub aus der Zeit vor der Versionierung. Ob ein Update da ist, entscheidet dann weiter der Commit-Vergleich.</p>
+  <h3>Änderungsprotokoll <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
+  <p class="rec-sub">Was sich in welcher Version geändert hat – neueste zuerst. {{if .CurrentVersion}}Installiert ist Version {{.CurrentVersion}}.{{end}}</p>
+  {{range $i, $r := .Releases}}
+  <details class="hb-release"{{if lt $i 2}} open{{end}}>
+    <summary><b>Version {{$r.Version}}</b>{{if $r.Date}} <span class="rec-sub">· {{$r.Date}}</span>{{end}}{{if eq $r.Version $.CurrentVersion}} <span class="hb-badge">installiert</span>{{end}}</summary>
+    {{range $r.Sections}}<p style="margin:6px 0 2px"><b>{{.Title}}</b></p><ul>{{range .Items}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  </details>
+  {{else}}<p class="rec-sub">Kein Änderungsprotokoll vorhanden.</p>{{end}}
+  {{template "hb-shots" (dict "Ref" (index $s "versions") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles import export">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
-    <li><b>Core-Einstellungen</b> – Fristen, Updates, Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
+    <li><b>Core-Einstellungen</b> – Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen.</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>

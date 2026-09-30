@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"pdh"
 	"pdh/pkg/appsettings"
 )
 
@@ -19,6 +20,9 @@ type CoreSettingsPageData struct {
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
+	CurrentVersion      string
+	LatestVersion       string
+	NewReleases         []ChangelogRelease
 	CurrentCommit       string
 	LatestCommit        string
 	ComparisonURL       string
@@ -111,6 +115,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		BaseData:         h.baseData(r, "core-settings", "Core-Einstellungen", "Systemverwaltung"),
 		AutoCheckEnabled: enabled,
 		CheckInterval:    interval,
+		CurrentVersion:   pdh.Version(),
 		CurrentCommit:    shortCommit(h.buildCommit),
 		LatestCommit:     shortCommit(latestCommit),
 		ComparisonStatus: h.getUpdateSetting(ctx, "update_comparison_status", ""),
@@ -124,6 +129,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 	}
 	_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
+	data.LatestVersion, data.NewReleases = h.availableReleases(ctx)
 	data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
 	if latestCommit != "" && h.buildCommit != "" && h.buildCommit != "unknown" {
 		data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "...main"
@@ -381,6 +387,7 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	if err := h.setUpdateSetting(ctx, "update_comparison_commit_count", strconv.Itoa(commitCount)); err != nil {
 		return err
 	}
+	h.checkGitHubVersion(requestCtx)
 	_ = h.setUpdateSetting(ctx, "update_last_check_error", "")
 	return h.setUpdateSetting(ctx, "update_last_checked_at", time.Now().UTC().Format(time.RFC3339))
 }

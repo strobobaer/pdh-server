@@ -3,14 +3,17 @@ package web
 import (
 	"fmt"
 	"html/template"
+
+	"pdh"
 )
 
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"css":    templateCSS,
-		"dict":   templateDict,
-		"list":   templateList,
-		"safeJS": templateJS,
+		"appVersion": pdh.Version,
+		"css":        templateCSS,
+		"dict":       templateDict,
+		"list":       templateList,
+		"safeJS":     templateJS,
 	}
 }
 

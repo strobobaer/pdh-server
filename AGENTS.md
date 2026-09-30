@@ -55,3 +55,22 @@ Entfallenes oder Veraltetes bereinigen (entfernen).**
   (`.hb-howto` / `.hb-steps`) statt Funktionslisten.
 - `TestHelpCoversAllPages` schlägt fehl, wenn eine neue Seite kein Kapitel hat;
   `TestHelpChaptersMatch` prüft Kapitel-IDs und Bildschirmfoto-Bereiche.
+
+## Versionierung mitpflegen
+
+Die Versionsnummer steht **nur** in `VERSION` (x.y.z), die Änderungen in
+`CHANGELOG.md`. Beide werden ins Programm eingebettet (`version.go`) und
+erscheinen in der Kopfzeile, unter `/health`, in Sicherungen, im
+Server-Protokoll, im Handbuch-Kapitel „Versionen & Updates“ und bei der
+Update-Prüfung (Core-Einstellungen liest `VERSION`/`CHANGELOG.md` von GitHub main).
+
+- Jede für Anwender sichtbare Änderung bekommt einen Stichpunkt in
+  `CHANGELOG.md` unter `### Neu`, `### Geändert`, `### Behoben` oder
+  `### Sicherheit` – in Anwendersprache, ein Satz je Punkt.
+- Ist die aktuelle Version schon auf GitHub (`git show origin/main:VERSION`
+  gleich `VERSION`), eine neue Version anlegen: neue Funktionen → Nebenversion
+  (0.15.0 → 0.16.0), nur Fehlerkorrekturen → Korrekturversion (0.15.0 → 0.15.1).
+  Sonst in den obersten, noch nicht veröffentlichten Eintrag ergänzen.
+- Neuer Eintrag: `## [x.y.z] – JJJJ-MM-TT` ganz oben, `VERSION` gleichzeitig ändern.
+- `TestChangelogMatchesVersion` prüft, dass `VERSION` und oberster Eintrag
+  übereinstimmen und die Versionen absteigend sortiert sind.

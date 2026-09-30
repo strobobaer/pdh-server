@@ -24,11 +24,20 @@
     <div class="card-title">GitHub-Updates</div>
     <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Repository: strobobaer/pdh-server · Branch: main</p>
     <dl style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;font-size:13px">
+      <dt style="color:var(--muted)">Installierte Version</dt><dd style="margin:0"><b>{{.CurrentVersion}}</b> · <a href="/help#versions">Änderungen</a></dd>
+      <dt style="color:var(--muted)">Version auf GitHub</dt><dd style="margin:0">{{if .LatestVersion}}{{.LatestVersion}}{{else}}{{if .LatestCommit}}nicht angegeben{{else}}Noch nicht geprüft{{end}}{{end}}</dd>
       <dt style="color:var(--muted)">Installierter Commit</dt><dd style="margin:0">{{if .CurrentCommit}}{{.CurrentCommit}}{{else}}unbekannt{{end}}</dd>
       <dt style="color:var(--muted)">GitHub-Commit</dt><dd style="margin:0">{{if .LatestCommit}}{{.LatestCommit}}{{else}}Noch nicht geprüft{{end}}</dd>
       <dt style="color:var(--muted)">Letzte Prüfung</dt><dd style="margin:0">{{if .LastChecked}}{{.LastChecked}}{{else}}Noch nicht geprüft{{end}}</dd>
     </dl>
     {{if eq .CurrentCommit "unknown"}}<p role="status" style="color:var(--muted);font-size:12px">Build-Commit unbekannt; Update-Verfügbarkeit ist nicht vergleichbar.</p>{{else if .UpdateAvailable}}<p role="status" style="color:var(--amber);font-size:13px;font-weight:600">Ein Update ist verfügbar.</p>{{else if eq .ComparisonStatus "diverged"}}<p role="alert" style="color:var(--red);font-size:13px">Lokaler Stand ist abweichend; Fast-Forward ist nicht möglich.</p>{{else if eq .ComparisonStatus "behind"}}<p role="status" style="color:var(--muted);font-size:13px">Der installierte Stand liegt vor GitHub main.</p>{{else if eq .ComparisonStatus "identical"}}<p role="status" style="color:var(--green);font-size:13px">PDH ist aktuell.</p>{{else if .LatestCommit}}<p role="status" style="color:var(--muted);font-size:13px">Vergleich nicht verfügbar.</p>{{end}}
+    {{if .NewReleases}}
+    <div class="upd-releases" style="margin:10px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;max-height:260px;overflow:auto;font-size:13px">
+      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-sparkles"></i> Neu in {{len .NewReleases}} Version(en) seit {{.CurrentVersion}}</div>
+      {{range .NewReleases}}<div style="margin-top:8px"><b>Version {{.Version}}</b>{{if .Date}} <span style="color:var(--muted)">· {{.Date}}</span>{{end}}
+        {{range .Sections}}<div style="margin-top:4px;color:var(--muted);font-size:12px">{{.Title}}</div><ul style="margin:2px 0 0 18px;padding:0">{{range .Items}}<li>{{.}}</li>{{end}}</ul>{{end}}</div>{{end}}
+    </div>
+    {{end}}
     {{if .LastCheckError}}<p role="alert" style="color:var(--red);font-size:12px">{{.LastCheckError}}</p>{{end}}
     {{if and .CurrentCommit (ne .CurrentCommit "unknown")}}<p style="font-size:13px"><a href="https://github.com/strobobaer/pdh-server/compare/{{.CurrentCommit}}...main" target="_blank" rel="noopener">Vollständigen Commit-Vergleich auf GitHub öffnen</a></p>{{end}}
     {{if .AgentStatus}}<p role="status" style="font-size:12px">{{.AgentStatus}}</p>{{end}}

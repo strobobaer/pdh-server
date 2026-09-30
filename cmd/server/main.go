@@ -17,6 +17,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
 
+	"pdh"
 	"pdh/internal/core/addins"
 	"pdh/internal/core/costcenters"
 	"pdh/internal/core/directory"
@@ -68,7 +69,7 @@ func main() {
 	}
 
 	logger.Init(cfg.Server.Env)
-	log.Info().Str("env", cfg.Server.Env).Str("einstellungen", envPath).Msg("PDH startet")
+	log.Info().Str("version", pdh.Version()).Str("commit", buildCommit).Str("env", cfg.Server.Env).Str("einstellungen", envPath).Msg("PDH startet")
 	if keyCreated {
 		log.Info().Str("datei", envPath).Msg("schlüssel für verschlüsselte server-einstellungen erzeugt (PDH_SETTINGS_KEY) – datei mitsichern!")
 	}
@@ -274,7 +275,7 @@ func main() {
 		response.JSON(w, http.StatusOK, map[string]string{
 			"status":  "ok",
 			"service": "pdh",
-			"version": "0.8.0",
+			"version": pdh.Version(),
 		})
 	})
 

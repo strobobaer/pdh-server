@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"pdh"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 )
@@ -32,7 +33,7 @@ import (
 //
 // Eine Sicherung ist eine ZIP-Datei im Sicherungsordner (PDH_BACKUP_DIR,
 // Standard ./backups) mit:
-//   manifest.json          - Version, Schema-Stand, Tabellen, Sequenzen
+//   manifest.json          - Programmversion, Schema-Stand, Tabellen, Sequenzen
 //   db/<tabelle>.csv       - jede Tabelle als CSV (COPY, konsistenter Schnappschuss)
 //   files/uploads/...      - Anhaenge, Bilder, Handbuch-Bildschirmfotos
 //   files/chat_files/...   - Chat-Dateien
@@ -81,6 +82,7 @@ func backupDir() string {
 type backupManifest struct {
 	App           string            `json:"app"`
 	Format        int               `json:"format"`
+	AppVersion    string            `json:"app_version,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`
 	CreatedBy     string            `json:"created_by,omitempty"`
 	Kind          string            `json:"kind"`
@@ -176,7 +178,7 @@ func (h *Handler) writeBackup(ctx context.Context, path string, comps []string, 
 		}
 	}()
 	zw := zip.NewWriter(f)
-	man := backupManifest{App: "PDH-Server", Format: 1, CreatedAt: time.Now(), Kind: kind, Components: comps, Files: map[string]int{}}
+	man := backupManifest{App: "PDH-Server", AppVersion: pdh.Version(), Format: 1, CreatedAt: time.Now(), Kind: kind, Components: comps, Files: map[string]int{}}
 	if userID != "" {
 		man.CreatedBy = h.chatUserName(ctx, userID)
 	}
@@ -1319,6 +1321,7 @@ const (
 	keyBackupOnUpdate     = "backup.on_update"      // "1" (Standard) | "0"
 	keyBackupOnUpdateKeep = "backup.on_update_keep" // Anzahl, Standard 5
 	keyUpdateLastCommit   = "update.last_started_commit"
+	keyUpdateLastVersion  = "update.last_started_version"
 )
 
 // BackupBeforeUpdate erstellt bei Bedarf die Vollsicherung. Fehler werden
@@ -1347,12 +1350,17 @@ func BackupBeforeUpdate(ctx context.Context, pool *pgxpool.Pool, commit, migrati
 	}
 	last := get(keyUpdateLastCommit, "")
 	commitChanged := commit != "" && commit != "unknown" && last != "" && last != commit
+	lastVersion := get(keyUpdateLastVersion, "")
+	versionChanged := lastVersion != "" && lastVersion != pdh.Version()
 	remember := func() {
 		if settingsOK && commit != "" && commit != "unknown" && commit != last {
 			_ = h.setAppSetting(ctx, keyUpdateLastCommit, commit)
 		}
+		if settingsOK && lastVersion != pdh.Version() {
+			_ = h.setAppSetting(ctx, keyUpdateLastVersion, pdh.Version())
+		}
 	}
-	if len(pending) == 0 && !commitChanged {
+	if len(pending) == 0 && !commitChanged && !versionChanged {
 		remember()
 		return nil
 	}
@@ -1362,7 +1370,12 @@ func BackupBeforeUpdate(ctx context.Context, pool *pgxpool.Pool, commit, migrati
 		return nil
 	}
 	reason := "neue Programmversion"
-	if last != "" && commitChanged {
+	switch {
+	case versionChanged && commitChanged:
+		reason = fmt.Sprintf("Update %s → %s (%s → %s)", lastVersion, pdh.Version(), shortCommit(last), shortCommit(commit))
+	case versionChanged:
+		reason = fmt.Sprintf("Update %s → %s", lastVersion, pdh.Version())
+	case commitChanged:
 		reason = fmt.Sprintf("Update %s → %s", shortCommit(last), shortCommit(commit))
 	}
 	if len(pending) > 0 {

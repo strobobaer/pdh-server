@@ -411,7 +411,7 @@ select.form-input option{background:var(--bg2)}
 <aside class="sidebar">
   <div class="logo">
     {{if .Brand.AppLogo}}<img class="logo-img" src="{{.Brand.AppLogo}}" alt="{{or .Brand.AppName "PDH"}}">{{else}}<div class="logo-icon">P</div>{{end}}
-    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver">v0.7.0</div></div>
+    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver" title="Änderungen: Handbuch → Versionen">v{{appVersion}}</div></div>
     <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="Navigation einklappen" title="Navigation einklappen"><i class="ti ti-menu-2"></i></button>
   </div>
   <nav>

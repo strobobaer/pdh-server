@@ -30,6 +30,9 @@
 .hb-howto{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:12px 0;background:var(--bg)}
 .hb-howto > b{display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:4px}
 .hb-howto > b i{color:var(--accent)}
+.hb-release{border:1px solid var(--border);border-radius:8px;padding:6px 12px;margin:8px 0;background:var(--bg)}
+.hb-release summary{cursor:pointer;padding:2px 0}
+.hb-badge{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:9px;background:rgba(16,185,129,.18);color:var(--green);margin-left:4px}
 </style>
 <svg width="0" height="0" style="position:absolute"><defs>
   <marker id="hb-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
@@ -240,5 +243,20 @@
   <path class="ar" d="M118 55 H134"/><path class="ar" d="M248 55 H264"/><path class="ar" d="M382 55 H398"/><path class="ar" d="M512 55 H528"/>
 </svg>
 <figcaption>Alles im Browser: Der Assistent speichert die Werte selbst in der Einstellungsdatei.</figcaption>
+</figure>
+{{end}}
+
+{{/* Versionen & Updates */}}
+{{define "hb-fig-update"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 120" role="img" aria-label="Ablauf eines Updates">
+  <rect class="acl" x="6" y="30" width="112" height="56" rx="8"/><text x="62" y="53" class="t-c t-b">🔍 Prüfen</text><text x="62" y="70" class="t-c t-m">GitHub main</text>
+  <rect class="am" x="134" y="30" width="112" height="56" rx="8"/><text x="190" y="53" class="t-c t-b">✨ Neu in 0.x</text><text x="190" y="70" class="t-c t-m">Änderungen lesen</text>
+  <rect class="acl" x="262" y="30" width="112" height="56" rx="8"/><text x="318" y="53" class="t-c t-b">⬇ Installieren</text><text x="318" y="70" class="t-c t-m">Update-Agent</text>
+  <rect class="bg3" x="390" y="30" width="112" height="56" rx="8"/><text x="446" y="53" class="t-c t-b">🗄 Vollsicherung</text><text x="446" y="70" class="t-c t-m">„Vor Update“</text>
+  <rect class="gr" x="518" y="30" width="116" height="56" rx="8"/><text x="576" y="53" class="t-c t-b">✔ Neue Version</text><text x="576" y="70" class="t-c t-m">läuft, Kopfzeile v…</text>
+  <path class="ar" d="M118 58 H132"/><path class="ar" d="M246 58 H260"/><path class="ar" d="M374 58 H388"/><path class="ar" d="M502 58 H516"/>
+</svg>
+<figcaption>Erst lesen, was neu ist, dann installieren. Vor den Datenbank-Änderungen sichert PDH automatisch den bisherigen Stand.</figcaption>
 </figure>
 {{end}}

@@ -86,12 +86,12 @@ func TestHelpPageRenders(t *testing.T) {
 	qr, _ := qrSVG("https://pdh/inventory/beispiel")
 	d := HelpPageData{
 		FieldModules: fieldModules, LabelSizes: labelSizes, FieldTypes: fieldTypeOrder, TypeLabels: fieldTypeLabels,
-		Shots: shots, CanShots: true, SampleQR: qr, Version: "abc1234",
+		Shots: shots, CanShots: true, SampleQR: qr, Version: "abc1234", CurrentVersion: "0.15.0", Releases: installedChangelog(),
 		PermGroups: []helpPermGroup{{Category: "Chat", Items: []helpPerm{{"chat.use", "Chat & Teams nutzen"}}}},
 	}
 	out := renderPage(t, tmpl, "help", d)
 	for _, want := range []string{"PDH-Handbuch", "Stand Version abc1234", `id="faults"`, "chat.use", labelSizes[0].Label,
-		"<svg", "hb-arrow", "Bildschirmfoto zu diesem Kapitel", `data-attach-ref="help:` + shots["faults"] + `"`, "4711-A"} {
+		"<svg", "hb-arrow", `id="versions"`, "Version 0.15.0", "installiert", "Einrichtungsassistent", "Bildschirmfoto zu diesem Kapitel", `data-attach-ref="help:` + shots["faults"] + `"`, "4711-A"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Handbuch enthält %q nicht", want)
 		}

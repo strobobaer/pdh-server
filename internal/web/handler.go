@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
+	"pdh"
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/mqttbroker"
 	"pdh/internal/core/mqttimport"
@@ -1423,8 +1424,8 @@ func (h *Handler) ActivityFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `
 <div class="act-item"><div class="act-dot d-green"></div><div class="act-text">Server läuft</div><div class="act-time">jetzt</div></div>
-<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">PDH v0.7.0</div><div class="act-time">aktiv</div></div>
-`)
+<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">PDH v%s</div><div class="act-time">aktiv</div></div>
+`, template.HTMLEscapeString(pdh.Version()))
 }
 
 func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
