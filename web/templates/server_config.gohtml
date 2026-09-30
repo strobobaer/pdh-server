@@ -1,0 +1,86 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.sc-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.sc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px 16px}
+.sc-f label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin-bottom:4px}
+.sc-f .help{font-size:11px;color:var(--muted);margin-top:3px}
+.sc-src{font-size:10px;font-weight:500;border-radius:999px;padding:0 6px;border:1px solid var(--border);color:var(--muted)}
+.sc-src.env{border-color:transparent;background:rgba(99,102,241,.15);color:#6366f1}
+.sc-src.file{border-color:transparent;background:rgba(16,185,129,.15);color:var(--green,#16a34a)}
+.sc-restart{color:var(--amber,#f59e0b)}
+.sc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.sc-sub{font-size:11px;color:var(--muted)}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600">Server-Einstellungen</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Werte der Einstellungsdatei <code>{{.EnvFile}}</code> – bisher nur per Hand in der <code>.env</code> zu pflegen.</p>
+  </div>
+  {{if .CanRestart}}
+  <form method="post" action="/admin/server-config/restart" onsubmit="return confirm('PDH jetzt neu starten? Alle Benutzer sind für einige Sekunden getrennt; laufende Eingaben gehen nicht verloren, wenn sie gespeichert sind.')">
+    <button class="btn {{if .RestartPending}}btn-primary{{end}}" type="submit"><i class="ti ti-refresh"></i> Server neu starten</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Msg}}<div class="sc-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
+{{if .Err}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if .RestartPending}}<div class="sc-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-refresh-alert"></i> Geändert, wirkt erst nach einem <b>Neustart</b>: {{range $i, $l := .RestartPending}}{{if $i}}, {{end}}{{$l}}{{end}}</div>{{end}}
+{{if not .FileWritable}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-lock"></i> Die Einstellungsdatei ist für den PDH-Dienst nicht beschreibbar – Änderungen können nicht gespeichert werden. Dateirechte prüfen (Eigentümer = Dienstbenutzer) oder <code>PDH_ENV_FILE</code> auf einen beschreibbaren Ort setzen.</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+</div>
+
+{{range .Groups}}{{$g := .}}
+<div class="rec-pane" data-pane="{{.Key}}">
+<form class="card" method="post" action="/admin/server-config/save" id="sc-{{.Key}}" autocomplete="off">
+  <input type="hidden" name="group" value="{{.Key}}">
+  <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="sc-sub">{{.Intro}}</span></div>
+  {{if .External}}<div class="sc-sub" style="margin-bottom:10px"><span class="sc-src env">Umgebung</span> {{.External}} Wert(e) kommen von außen (Docker <code>.env.docker</code>, systemd oder Shell) und haben Vorrang – sie lassen sich nur dort ändern.</div>{{end}}
+  <div class="sc-grid">
+  {{range .Fields}}
+    <div class="sc-f">
+      <label for="f-{{.Key}}">{{.Label}}
+        {{if eq .Source "env"}}<span class="sc-src env" title="von außen gesetzt">Umgebung</span>{{else if eq .Source "file"}}<span class="sc-src file" title="in der Einstellungsdatei">Datei</span>{{else}}<span class="sc-src" title="Standardwert">Standard</span>{{end}}
+        {{if .Restart}}<i class="ti ti-refresh sc-restart" title="wirkt nach Neustart"></i>{{end}}
+      </label>
+      {{if .Secret}}
+        <input class="form-input" id="f-{{.Key}}" type="password" name="{{.Key}}" autocomplete="new-password" {{if .ReadOnly}}disabled{{end}}
+               placeholder="{{if .IsSet}}•••••••• gesetzt – leer lassen = unverändert{{else}}nicht gesetzt{{end}}">
+        {{if and .IsSet (not .ReadOnly)}}<label style="font-weight:400;font-size:11px;margin-top:3px"><input type="checkbox" name="clear_{{.Key}}" value="1"> Wert entfernen</label>{{end}}
+      {{else if eq .Type "select"}}
+        <select class="form-input" id="f-{{.Key}}" name="{{.Key}}" {{if .ReadOnly}}disabled{{end}}>
+          {{$v := .Value}}{{range .Options}}<option value="{{.}}" {{if eq . $v}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      {{else if eq .Type "bool"}}
+        <label style="font-weight:400"><input type="checkbox" id="f-{{.Key}}" name="{{.Key}}" value="true" {{if or (eq .Value "true") (eq .Value "1")}}checked{{end}} {{if .ReadOnly}}disabled{{end}}> aktiv</label>
+      {{else}}
+        <input class="form-input" id="f-{{.Key}}" name="{{.Key}}" value="{{.Value}}" {{if eq .Type "number"}}inputmode="numeric"{{end}} {{if .ReadOnly}}disabled{{end}} placeholder="{{.Default}}">
+      {{end}}
+      <div class="help"><code>{{.Key}}</code>{{if .Help}} – {{.Help}}{{end}}</div>
+    </div>
+  {{end}}
+  </div>
+  <div class="sc-actions">
+    <button class="btn btn-primary" type="submit" {{if not $.FileWritable}}disabled{{end}}><i class="ti ti-device-floppy"></i> Speichern</button>
+    {{if eq .Key "database"}}
+      <button class="btn" type="button" hx-post="/admin/server-config/test?what=database" hx-include="#sc-database" hx-target="#test-database"><i class="ti ti-plug-connected"></i> Verbindung testen</button>
+      <label class="sc-sub"><input type="checkbox" name="force" value="1"> Trotzdem speichern, auch wenn der Test fehlschlägt</label>
+      <span id="test-database" class="sc-sub"></span>
+    {{end}}
+    {{if eq .Key "mail"}}
+      <button class="btn" type="button" hx-post="/admin/server-config/test?what=mail" hx-target="#test-mail"><i class="ti ti-send"></i> Testmail an mich</button>
+      <span id="test-mail" class="sc-sub"></span>
+    {{end}}
+    {{if eq .Key "security"}}
+      <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>
+    {{end}}
+  </div>
+</form>
+</div>
+{{end}}
+{{end}}

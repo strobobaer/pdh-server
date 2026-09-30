@@ -26,7 +26,8 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 
 	// Öffentliche Routen
 	r.Post("/login", h.Login)
-	r.Post("/register", h.Register)
+	// /register ist NICHT mehr oeffentlich: den ersten Administrator legt der
+	// Einrichtungsassistent an, weitere Benutzer die Benutzerverwaltung.
 
 	// Geschützte Routen
 	r.Group(func(r chi.Router) {
@@ -42,6 +43,7 @@ func (h *Handler) Routes(jwtSecret string) chi.Router {
 		r.Group(func(r chi.Router) {
 			r.Use(h.rbac.RequirePermission("system.manage_users"))
 			r.Delete("/{id}", h.Deactivate)
+			r.Post("/register", h.Register)
 		})
 	})
 
@@ -94,6 +96,11 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var in CreateUserInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.Error(w, http.StatusBadRequest, "ungültige eingabe")
+		return
+	}
+	// Die Admin-Rolle darf nur ein Administrator vergeben.
+	if actorRole, _ := r.Context().Value(middleware.RoleKey).(string); in.Role == RoleAdmin && actorRole != string(RoleAdmin) {
+		response.Error(w, http.StatusForbidden, "nur administratoren dürfen die admin-rolle vergeben")
 		return
 	}
 

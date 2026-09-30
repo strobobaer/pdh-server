@@ -426,6 +426,7 @@ select.form-input option{background:var(--bg2)}
     {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">Organigramm</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">Core-Einstellungen</span></a>{{end}}
+    {{if .CanServerConfig}}<a href="/admin/server-config" class="nav-item {{if eq .Page "server-config"}}active{{end}}"><i class="ti ti-adjustments-cog"></i><span class="nav-label">Server-Einstellungen</span></a>{{end}}
     {{if .CanBackup}}<a href="/admin/backup" class="nav-item {{if eq .Page "backup"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">Datensicherung</span></a>{{end}}
     {{if .CanCleanup}}<a href="/admin/cleanup" class="nav-item {{if eq .Page "cleanup"}}active{{end}}"><i class="ti ti-trash-x"></i><span class="nav-label">Bereinigung</span></a>{{end}}
     <a href="/categories" class="nav-item {{if eq .Page "categories"}}active{{end}}"><i class="ti ti-hash"></i><span class="nav-label">Kategorien</span></a>

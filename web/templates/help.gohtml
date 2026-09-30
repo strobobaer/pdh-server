@@ -394,6 +394,42 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config">
+  <h2><i class="ti ti-adjustments-cog"></i> Server-Einstellungen &amp; Ersteinrichtung</h2>
+  <h3><i class="ti ti-rocket"></i> Ersteinrichtung</h3>
+  {{template "hb-fig-setup"}}
+  <p>Beim allerersten Start braucht das PDH keine vorbereitete <code>.env</code>-Datei. Der Anmelde-Schlüssel wird automatisch erzeugt. Findet das PDH keine Datenbank oder noch keinen Benutzer, öffnet sich im Browser unter <code>http://&lt;server&gt;:8090/setup</code> der <b>Einrichtungsassistent</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-list-numbers"></i> So richtest du das PDH ein</b>
+    <ol class="hb-steps">
+      <li><b>Einrichtungscode</b> eingeben. Er schützt die Einrichtung vor Unbefugten und steht im Server-Protokoll (<code>docker compose logs app</code> bzw. <code>journalctl -u pdh</code>) und in der Datei <code>setup-code.txt</code>.</li>
+      <li><b>Datenbank</b> (nur wenn keine erreichbar ist): <i>Automatisch anlegen</i> – mit dem PostgreSQL-Administrator (meist <code>postgres</code>) legt das PDH einen eigenen Datenbank-Benutzer mit sicherem Zufallspasswort und die Datenbank an. Oder <i>vorhandene Zugangsdaten</i> eintragen; fehlt nur die Datenbank, legt das PDH sie an. <b>Verbindung testen</b> prüft die Angaben vorab.</li>
+      <li><b>Administrator</b> anlegen (Passwort mindestens 10 Zeichen) und die <b>öffentliche Adresse</b> bestätigen.</li>
+      <li><b>Einrichtung abschließen</b> – das PDH legt die Datenbankstruktur an, startet und leitet zur Anmeldung weiter.</li>
+    </ol></div>
+  <p>Startet die Datenbank nur etwas später (z. B. nach einem Neustart des Servers), wartet der Assistent und macht von selbst weiter.</p>
+  <h3><i class="ti ti-adjustments-cog"></i> Server-Einstellungen im Betrieb</h3>
+  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Microsoft 365, Nextcloud, Updates &amp; Sicherung.</p>
+  <table>
+    <tr><td><span class="rec-sub">Datei</span></td><td>in der Einstellungsdatei gespeichert – hier änderbar</td></tr>
+    <tr><td><span class="rec-sub">Standard</span></td><td>nicht gesetzt, es gilt der Standardwert</td></tr>
+    <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang und ist hier nur lesbar</td></tr>
+    <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>
+  </table>
+  <div class="hb-howto"><b><i class="ti ti-mail"></i> Beispiel: E-Mail-Versand einrichten</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>E-Mail</b>: SMTP-Server, Port, Verschlüsselung, Benutzer, Passwort und Absender eintragen.</li>
+      <li><b>Speichern</b> – E-Mail-Einstellungen gelten sofort.</li>
+      <li><b>Testmail an mich</b> schickt eine Nachricht an deine eigene Adresse.</li>
+    </ol></div>
+  <ul>
+    <li><b>Passwörter und Schlüssel</b> werden nie angezeigt. Feld leer lassen = unverändert; „Wert entfernen“ löscht ihn.</li>
+    <li><b>Datenbank</b>: Änderungen werden vor dem Speichern getestet. Nur wenn du sicher bist, „Trotzdem speichern“ anhaken.</li>
+    <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
+    <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
+  </ul>
+  {{template "hb-shots" (dict "Ref" (index $s "server") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="admin" data-title="Administration" data-pages="roles core-settings import export">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
@@ -404,13 +440,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
     <li><b>Kategorien</b> – Schlagworte für alle Module anlegen und pflegen (<a href="#categories">mehr</a>).</li>
   </ul>
-  <h3>Server-Einstellungen (<code>.env</code>)</h3>
-  <table>
-    <tr><td><code>PDH_SMTP_HOST</code>, <code>PDH_SMTP_FROM</code> …</td><td>E-Mail-Versand (Bestellvorschlag)</td></tr>
-    <tr><td><code>PDH_PUBLIC_URL</code></td><td>Adresse des PDH für Links in E-Mails und QR-Codes auf Etiketten</td></tr>
-    <tr><td><code>PDH_CREDENTIALS_KEY</code></td><td>Schlüssel für gespeicherte Portal-Passwörter – nach dem ersten Speichern nicht mehr ändern</td></tr>
-    <tr><td><code>PDH_BACKUP_DIR</code></td><td>Ordner für Datensicherungen (Standard <code>backups</code>; in Docker ein eigenes Volume)</td></tr>
-  </table>
+  <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}
   <p style="margin-top:8px"><b>{{.Category}}</b></p>

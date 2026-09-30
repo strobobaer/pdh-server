@@ -36,6 +36,7 @@ import (
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
+	"pdh/internal/setup"
 	"pdh/internal/web"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
@@ -47,6 +48,18 @@ import (
 var buildCommit = "unknown"
 
 func main() {
+	// Erstinstallation: Einstellungsdatei laden und fehlendes JWT-Secret
+	// automatisch erzeugen (statt mit Fehler abzubrechen).
+	envPath := config.EnvFilePath()
+	if err := config.ApplyEnvFile(envPath); err != nil {
+		fmt.Fprintf(os.Stderr, "einstellungsdatei %s: %v\n", envPath, err)
+		os.Exit(1)
+	}
+	jwtCreated, err := config.EnsureJWTSecret(envPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(1)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
@@ -54,11 +67,25 @@ func main() {
 	}
 
 	logger.Init(cfg.Server.Env)
-	log.Info().Str("env", cfg.Server.Env).Msg("PDH startet")
+	log.Info().Str("env", cfg.Server.Env).Str("einstellungen", envPath).Msg("PDH startet")
+	if jwtCreated {
+		log.Info().Str("datei", envPath).Msg("neues JWT-Secret erzeugt und gespeichert")
+	}
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
-	db, err := database.New(&cfg.Database)
+	db, err := openDatabase(&cfg.Database)
 	if err != nil {
-		log.Fatal().Err(err).Msg("datenbank")
+		// Datenbank fehlt/unerreichbar -> Einrichtungsassistent im Browser
+		log.Warn().Err(err).Msg("datenbank nicht verfügbar – starte Einrichtungsassistent")
+		if err := setup.Run(context.Background(), setup.Options{Addr: addr, NeedDB: true, DBError: err.Error()}); err != nil {
+			log.Fatal().Err(err).Msg("einrichtung")
+		}
+		if cfg, err = config.Load(); err != nil {
+			log.Fatal().Err(err).Msg("config")
+		}
+		if db, err = openDatabase(&cfg.Database); err != nil {
+			log.Fatal().Err(err).Msg("datenbank")
+		}
 	}
 	defer db.Close()
 	log.Info().Msg("datenbank verbunden")
@@ -69,6 +96,19 @@ func main() {
 		log.Fatal().Err(err).Msg("migrationen")
 	}
 	log.Info().Msg("migrationen geprüft")
+
+	// Noch kein Benutzer (frische Datenbank, z. B. Docker): ersten
+	// Administrator im Browser anlegen lassen.
+	var humans int
+	if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err == nil && humans == 0 {
+		log.Warn().Msg("noch kein benutzer vorhanden – starte Einrichtungsassistent")
+		if err := setup.Run(context.Background(), setup.Options{Addr: addr, Pool: db.Pool}); err != nil {
+			log.Fatal().Err(err).Msg("einrichtung")
+		}
+		if cfg, err = config.Load(); err != nil { // z. B. neue oeffentliche Adresse
+			log.Fatal().Err(err).Msg("config")
+		}
+	}
 
 	// Services
 	userRepo := users.NewRepository(db.Pool)
@@ -416,25 +456,66 @@ func main() {
 	// Web UI
 	r.Mount("/", webHandler.Routes())
 
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{Addr: addr, Handler: r,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	// Neustart aus Verwaltung -> Server-Einstellungen
+	restart := make(chan struct{}, 1)
+	webHandler.SetRestartFunc(func() {
+		select {
+		case restart <- struct{}{}:
+		default:
+		}
+	})
 	go func() {
 		log.Info().Str("addr", addr).Msg("server läuft")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("server fehler")
 		}
 	}()
-	<-quit
-	log.Info().Msg("PDH wird gestoppt...")
+	doRestart := false
+	select {
+	case <-quit:
+	case <-restart:
+		doRestart = true
+	}
+	log.Info().Bool("neustart", doRestart).Msg("PDH wird gestoppt...")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
 	webHandler.StopMqttBrokers()
 	webHandler.StopExportSchedules()
 	webHandler.StopImportPolls()
+	if doRestart {
+		db.Close()
+		log.Info().Msg("PDH startet neu")
+		if err := execSelf(); err != nil {
+			log.Error().Err(err).Msg("neustart fehlgeschlagen – bitte den Dienst manuell starten")
+			os.Exit(1)
+		}
+	}
 	log.Info().Msg("PDH gestoppt")
+}
+
+// openDatabase verbindet sich; fehlt nur die Datenbank selbst (Benutzer
+// darf sich anmelden), wird sie automatisch angelegt.
+func openDatabase(cfg *config.DatabaseConfig) (*database.DB, error) {
+	if cfg.User == "" || cfg.Name == "" {
+		return nil, fmt.Errorf("keine Datenbank-Zugangsdaten konfiguriert")
+	}
+	db, err := database.New(cfg)
+	if err != nil && database.IsMissingDatabase(err) {
+		log.Warn().Str("datenbank", cfg.Name).Msg("datenbank fehlt – versuche sie anzulegen")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if cerr := database.CreateDatabaseAsOwner(ctx, cfg); cerr != nil {
+			log.Warn().Err(cerr).Msg("datenbank konnte nicht automatisch angelegt werden")
+			return nil, err
+		}
+		log.Info().Str("datenbank", cfg.Name).Msg("datenbank angelegt")
+		db, err = database.New(cfg)
+	}
+	return db, err
 }

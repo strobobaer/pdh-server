@@ -59,6 +59,7 @@ type BaseData struct {
 	CanChat                bool // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool // Nav-Link "Datensicherung"
 	CanCleanup             bool // Nav-Link "Bereinigung"
+	CanServerConfig        bool // Nav-Link "Server-Einstellungen" (nur Admins)
 }
 
 type DashboardData struct {
@@ -268,6 +269,8 @@ type Handler struct {
 	updateAgentURL   string
 	updateAgentToken string
 	buildCommit      string
+	restartFn        func() // Neustart nach Aenderung der Server-Einstellungen (main.go)
+	restartPending   []string
 	microsoft        MicrosoftOAuthConfig
 	microsoftSyncMu  sync.Mutex
 	mqttBrokers      *mqttbroker.Manager
@@ -419,6 +422,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/cleanup/run", h.CleanupRunWeb)
 	r.Post("/admin/cleanup/{module}/{id}", h.CleanupActionWeb)
 	// Datensicherung & Wiederherstellung
+	// Server-Einstellungen (.env) - nur Administratoren
+	r.Get("/admin/server-config", h.ServerConfigPage)
+	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
+	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
+	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Get("/admin/backup", h.BackupPage)
 	r.Post("/admin/backup/create", h.BackupCreateWeb)
 	r.Post("/admin/backup/upload", h.BackupUploadWeb)
@@ -752,6 +760,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
+		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
 	}
 }
 

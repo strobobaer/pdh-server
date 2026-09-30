@@ -1,0 +1,152 @@
+{{define "setup"}}<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDH – Ersteinrichtung</title>
+<style>
+:root{--bg:#0f172a;--card:#111827;--bg3:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--border:#334155;--accent:#3b82f6;--green:#22c55e;--red:#ef4444;--amber:#f59e0b}
+@media (prefers-color-scheme: light){:root{--bg:#f1f5f9;--card:#fff;--bg3:#f8fafc;--text:#0f172a;--muted:#64748b;--border:#e2e8f0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:780px;margin:0 auto;padding:28px 16px 60px}
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo b{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:var(--accent);color:#fff;font-size:20px}
+h1{font-size:20px;margin:0}
+.sub{color:var(--muted);font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+.card h2 .n{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;align-items:center;justify-content:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 14px;margin-top:12px}
+label{display:block;font-size:12px;font-weight:600;margin-bottom:4px}
+input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font:inherit}
+input:focus,select:focus{outline:2px solid var(--accent);border-color:transparent}
+.help{font-size:11px;color:var(--muted);margin-top:3px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+@media(max-width:600px){.modes{grid-template-columns:1fr}}
+.mode{border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-weight:400}
+.mode:has(input:checked){border-color:var(--accent);background:var(--bg3)}
+.mode input{width:auto;margin-top:3px}
+.mode b{display:block;font-size:13px}
+.msg{padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px}
+.err{background:rgba(239,68,68,.12);color:var(--red)}
+.ok{background:rgba(34,197,94,.12);color:var(--green)}
+.warn{background:rgba(245,158,11,.12);color:var(--amber)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font:inherit;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+code{background:var(--bg3);padding:1px 5px;border-radius:4px}
+.code{font-size:18px;letter-spacing:2px;text-transform:uppercase;max-width:220px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><b>P</b><div><h1>PDH – Ersteinrichtung</h1><div class="sub">In wenigen Schritten ist das PDH startklar.</div></div></div>
+
+{{if .Done}}
+  <div class="card">
+    <h2>✅ Einrichtung abgeschlossen</h2>
+    <ul>{{range .DoneNotes}}<li>{{.}}</li>{{end}}</ul>
+    <p id="wait" class="sub">Das PDH startet jetzt … Du wirst automatisch zur Anmeldung weitergeleitet.</p>
+    <p class="sub">Weitere Einstellungen (E-Mail, Microsoft 365, Nextcloud, KI …) findest du nach der Anmeldung unter <b>Server-Einstellungen</b>.</p>
+  </div>
+  <script>
+  let tries=0;(function poll(){fetch('/health',{cache:'no-store'}).then(r=>{if(r.ok){location.href='/login'}else{throw 0}}).catch(()=>{if(++tries>120){document.getElementById('wait').textContent='Der Server braucht ungewöhnlich lange – bitte das Server-Protokoll prüfen und die Seite /login später aufrufen.'}else setTimeout(poll,1500)})})();
+  </script>
+{{else}}
+  {{if .Err}}<div class="msg err">⚠ {{.Err}}</div>{{end}}
+  {{if .Notice}}<div class="msg ok">✔ {{.Notice}}</div>{{end}}
+
+  <form method="post" action="/setup/finish" id="setup" autocomplete="off">
+  <div class="card">
+    <h2><span class="n">1</span> Einrichtungscode</h2>
+    <div class="sub">Schützt die Einrichtung vor Unbefugten. Der Code steht im Server-Protokoll (z. B. <code>docker compose logs app</code> oder <code>journalctl -u pdh</code>) und in der Datei <code>setup-code.txt</code> im Programmordner.</div>
+    <div class="grid"><div><label for="code">Code</label><input class="code" id="code" name="code" required placeholder="XXXX-XXXX" value="{{index .Form "code"}}"></div></div>
+  </div>
+
+  {{if .NeedDB}}
+  <div class="card">
+    <h2><span class="n">2</span> Datenbank</h2>
+    {{if .DBError}}<div class="msg warn" style="margin-top:8px">Die konfigurierte Datenbank ist nicht erreichbar: <small>{{.DBError}}</small><br>Startet die Datenbank nur später (z. B. nach einem Neustart), geht es von selbst weiter – diese Seite prüft das alle 5 Sekunden.</div>{{end}}
+    {{if .DBFromEnv}}
+      <div class="msg warn">Die Datenbank-Zugangsdaten werden von außen vorgegeben (Docker <code>.env.docker</code> oder systemd). Bitte dort prüfen und den Dienst neu starten.</div>
+    {{else}}
+    <div class="sub">PostgreSQL ab Version 13. Wähle, ob PDH eine vorhandene Datenbank nutzt oder alles selbst anlegt.</div>
+    <div class="modes">
+      <label class="mode"><input type="radio" name="db_mode" value="auto" {{if ne (index .Form "db_mode") "existing"}}checked{{end}} onchange="dbMode()"><span><b>Automatisch anlegen</b><span class="sub">Mit dem PostgreSQL-Administrator (z. B. <code>postgres</code>) legt PDH einen eigenen Benutzer mit sicherem Zufallspasswort und die Datenbank an.</span></span></label>
+      <label class="mode"><input type="radio" name="db_mode" value="existing" {{if eq (index .Form "db_mode") "existing"}}checked{{end}} onchange="dbMode()"><span><b>Vorhandene Zugangsdaten</b><span class="sub">Benutzer und Datenbank gibt es schon (fehlt nur die Datenbank, legt PDH sie an).</span></span></label>
+    </div>
+    <div class="grid">
+      <div><label>Server</label><input name="db_host" value="{{with index .Form "db_host"}}{{.}}{{else}}{{.DefaultDBHost}}{{end}}" required></div>
+      <div><label>Port</label><input name="db_port" inputmode="numeric" value="{{with index .Form "db_port"}}{{.}}{{else}}{{with index .Form "PDH_DATABASE_PORT"}}{{.}}{{else}}5432{{end}}{{end}}"></div>
+      <div><label>SSL</label><select name="db_sslmode">{{$s := index .Form "db_sslmode"}}{{range $o := list "disable" "prefer" "require" "verify-full"}}<option {{if eq $o $s}}selected{{end}}>{{$o}}</option>{{end}}</select></div>
+    </div>
+    <div id="db-auto" class="grid">
+      <div><label>PostgreSQL-Administrator</label><input name="admin_user" value="{{with index .Form "admin_user"}}{{.}}{{else}}postgres{{end}}"></div>
+      <div><label>Administrator-Passwort</label><input type="password" name="admin_password" autocomplete="off"><div class="help">Wird nicht gespeichert.</div></div>
+      <div><label>Neuer PDH-Benutzer</label><input name="new_role" value="{{with index .Form "new_role"}}{{.}}{{else}}pdh{{end}}" pattern="[a-z_][a-z0-9_]*"></div>
+      <div><label>Neue Datenbank</label><input name="new_db" value="{{with index .Form "new_db"}}{{.}}{{else}}pdh{{end}}" pattern="[a-z_][a-z0-9_]*"></div>
+    </div>
+    <div id="db-existing" class="grid">
+      <div><label>Benutzer</label><input name="db_user" value="{{with index .Form "db_user"}}{{.}}{{else}}{{index .Form "PDH_DATABASE_USER"}}{{end}}"></div>
+      <div><label>Passwort</label><input type="password" name="db_password" autocomplete="off"></div>
+      <div><label>Datenbank</label><input name="db_name" value="{{with index .Form "db_name"}}{{.}}{{else}}{{with index .Form "PDH_DATABASE_NAME"}}{{.}}{{else}}pdh{{end}}{{end}}"></div>
+    </div>
+    <div class="row"><button class="btn" type="button" onclick="testDB()">🔌 Verbindung testen</button><span id="db-result" class="sub"></span></div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <div class="card">
+    <h2><span class="n">{{if .NeedDB}}3{{else}}2{{end}}</span> Administrator</h2>
+    <div class="sub">Das erste Benutzerkonto mit allen Rechten. Weitere Benutzer legst du danach in der Benutzerverwaltung an.</div>
+    <div class="grid">
+      <div><label>Vorname</label><input name="first_name" required value="{{index .Form "first_name"}}"></div>
+      <div><label>Nachname</label><input name="last_name" required value="{{index .Form "last_name"}}"></div>
+      <div><label>Benutzername</label><input name="username" required minlength="3" value="{{with index .Form "username"}}{{.}}{{else}}admin{{end}}"></div>
+      <div><label>E-Mail</label><input type="email" name="email" required value="{{index .Form "email"}}"></div>
+      <div><label>Passwort</label><input type="password" name="password" required minlength="10" autocomplete="new-password"><div class="help">mindestens 10 Zeichen</div></div>
+      <div><label>Passwort wiederholen</label><input type="password" name="password2" required minlength="10" autocomplete="new-password"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">{{if .NeedDB}}4{{else}}3{{end}}</span> Adresse</h2>
+    <div class="grid"><div style="grid-column:1/-1"><label>Öffentliche Adresse des PDH</label><input name="public_url" value="{{with index .Form "public_url"}}{{.}}{{else}}{{.PublicURL}}{{end}}"><div class="help">Für Links in E-Mails und QR-Codes auf Etiketten, z. B. https://pdh.firma.de</div></div></div>
+    <div class="row">
+      <button class="btn primary" type="submit" id="go">Einrichtung abschließen</button>
+      <span class="sub">Einstellungen werden in <code>{{.EnvFile}}</code> gespeichert.</span>
+    </div>
+  </div>
+  </form>
+{{end}}
+</div>
+<script>
+function dbMode(){
+  const m=document.querySelector('input[name=db_mode]:checked');
+  if(!m) return;
+  document.getElementById('db-auto').hidden = m.value!=='auto';
+  document.getElementById('db-existing').hidden = m.value!=='existing';
+}
+function testDB(){
+  const out=document.getElementById('db-result');
+  out.textContent='Teste …';
+  fetch('/setup/test-db',{method:'POST',body:new URLSearchParams(new FormData(document.getElementById('setup')))})
+    .then(r=>r.json()).then(d=>{out.textContent=(d.ok?'✔ ':'✖ ')+d.message;out.style.color=d.ok?'var(--green)':'var(--red)'})
+    .catch(e=>{out.textContent='✖ '+e;out.style.color='var(--red)'});
+}
+dbMode();
+const f=document.getElementById('setup');
+if(f) f.addEventListener('submit',()=>{const b=document.getElementById('go');b.disabled=true;b.textContent='Richte ein … (kann eine Minute dauern)';});
+{{if .NeedDB}}{{if not .Done}}
+// Datenbank spaeter verfuegbar? Seite neu laden, sobald der Server weiterlaeuft.
+setInterval(()=>fetch('/health',{cache:'no-store'}).then(r=>{
+  if(r.ok){ location.href='/login'; return; }
+  return r.json().then(d=>{ if(d && d.needdb===false) location.href='/setup'; });
+}).catch(()=>{}),5000);
+{{end}}{{end}}
+</script>
+</body>
+</html>
+{{end}}

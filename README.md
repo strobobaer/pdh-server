@@ -112,12 +112,28 @@ Abhaengigkeiten laden:
 go mod tidy
 ```
 
-Konfiguration vorbereiten:
+Konfiguration vorbereiten – entweder von Hand:
 
 ```bash
 cp .env.example .env
 nano .env
 ```
+
+**oder per Einrichtungsassistent:** PDH einfach ohne `.env` starten. Fehlt das
+JWT-Secret, wird es automatisch erzeugt. Ist keine Datenbank erreichbar oder gibt
+es noch keinen Benutzer, öffnet sich unter `http://<server>:8090/setup` der
+Einrichtungsassistent:
+
+1. Einrichtungscode eingeben – er steht im Server-Protokoll und in `setup-code.txt`.
+2. Datenbank: *Automatisch anlegen* (mit dem PostgreSQL-Administrator, z. B. `postgres`,
+   legt PDH einen eigenen Benutzer mit Zufallspasswort und die Datenbank an) oder
+   *vorhandene Zugangsdaten* eintragen (eine fehlende Datenbank wird angelegt).
+3. Ersten Administrator und öffentliche Adresse angeben – fertig.
+
+Die Werte landen in `.env` (bzw. `PDH_ENV_FILE`). Danach lassen sich alle Einstellungen
+unter **Verwaltung → Server-Einstellungen** pflegen; von außen gesetzte Umgebungsvariablen
+(Docker `.env.docker`, systemd) haben Vorrang und sind dort nur lesbar. In Docker liegt die
+Datei unter `/app/config/pdh.env` im Volume `pdh_config`.
 
 ## Konfiguration
 
@@ -247,7 +263,7 @@ Registrierte Routen:
 GET  /health
 
 POST /api/v1/users/login
-POST /api/v1/users/register
+POST /api/v1/users/register   (nur mit Berechtigung system.manage_users)
 GET  /api/v1/users/
 GET  /api/v1/users/{id}
 PUT  /api/v1/users/{id}

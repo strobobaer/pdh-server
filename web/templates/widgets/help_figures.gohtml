@@ -227,3 +227,18 @@
 <figcaption>Du wählst, was gesichert wird. Vor jeder Wiederherstellung legt PDH automatisch eine Sicherheitskopie des aktuellen Stands an.</figcaption>
 </figure>
 {{end}}
+
+{{/* Ersteinrichtung */}}
+{{define "hb-fig-setup"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 110" role="img" aria-label="Ablauf der Ersteinrichtung">
+  <rect class="bg3" x="6" y="30" width="112" height="50" rx="8"/><text x="62" y="52" class="t-c t-b">PDH starten</text><text x="62" y="68" class="t-c t-m">ohne .env</text>
+  <rect class="acl" x="136" y="30" width="112" height="50" rx="8"/><text x="192" y="52" class="t-c t-b">🔑 Code</text><text x="192" y="68" class="t-c t-m">aus Protokoll</text>
+  <rect class="am" x="266" y="30" width="116" height="50" rx="8"/><text x="324" y="52" class="t-c t-b">🗄 Datenbank</text><text x="324" y="68" class="t-c t-m">prüfen / anlegen</text>
+  <rect class="acl" x="400" y="30" width="112" height="50" rx="8"/><text x="456" y="52" class="t-c t-b">👤 Administrator</text><text x="456" y="68" class="t-c t-m">erstes Konto</text>
+  <rect class="gr" x="530" y="30" width="104" height="50" rx="8"/><text x="582" y="52" class="t-c t-b">✔ Anmelden</text><text x="582" y="68" class="t-c t-m">PDH läuft</text>
+  <path class="ar" d="M118 55 H134"/><path class="ar" d="M248 55 H264"/><path class="ar" d="M382 55 H398"/><path class="ar" d="M512 55 H528"/>
+</svg>
+<figcaption>Alles im Browser: Der Assistent speichert die Werte selbst in der Einstellungsdatei.</figcaption>
+</figure>
+{{end}}

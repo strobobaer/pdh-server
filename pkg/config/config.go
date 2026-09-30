@@ -75,11 +75,11 @@ type MicrosoftConfig struct {
 }
 
 func Load() (*Config, error) {
-	// .env Datei laden
-	viper.SetConfigName(".env")
-	viper.SetConfigType("env")
-	viper.AddConfigPath(".")
-	viper.ReadInConfig()
+	// Einstellungsdatei (.env bzw. PDH_ENV_FILE) in die Prozessumgebung
+	// uebernehmen - echte Umgebungsvariablen haben Vorrang (siehe envfile.go).
+	if err := ApplyEnvFile(EnvFilePath()); err != nil {
+		return nil, fmt.Errorf("einstellungsdatei %s: %w", EnvFilePath(), err)
+	}
 
 	// config.yaml laden (überschreibt .env falls vorhanden)
 	viper.SetConfigName("config")

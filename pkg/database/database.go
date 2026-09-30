@@ -14,12 +14,7 @@ type DB struct {
 }
 
 func New(cfg *config.DatabaseConfig) (*DB, error) {
-	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
-	)
-
-	poolCfg, err := pgxpool.ParseConfig(dsn)
+	poolCfg, err := pgxpool.ParseConfig(dsn(cfg, cfg.Name))
 	if err != nil {
 		return nil, fmt.Errorf("fehler beim parsen der DB-Config: %w", err)
 	}
