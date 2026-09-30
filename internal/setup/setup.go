@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -35,6 +36,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 
+	"pdh"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 )
@@ -86,6 +88,10 @@ func Run(ctx context.Context, o Options) error {
 	mux.HandleFunc("/setup", w.page)
 	mux.HandleFunc("/setup/test-db", w.testDB)
 	mux.HandleFunc("/setup/finish", w.finish)
+	if icons, err := fs.Sub(pdh.Static, "web/static"); err == nil {
+		mux.Handle("/favicon.ico", http.FileServer(http.FS(icons)))
+		mux.Handle("/favicon.svg", http.FileServer(http.FS(icons)))
+	}
 	mux.HandleFunc("/health", func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusServiceUnavailable)
 		w.mu.Lock()

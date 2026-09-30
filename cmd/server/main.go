@@ -460,6 +460,12 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// App-Symbole (Favicon, Apple-Touch-Icon, Manifest) - oeffentlich
+	icons := web.AppIconHandler()
+	for _, name := range web.AppIconFiles {
+		r.Handle("/"+name, icons)
+	}
+
 	// Static uploads
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
