@@ -414,6 +414,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/fieldsets/fields/{fieldId}/options", h.FieldOptionAddWeb)
 	r.Post("/core/fieldsets/options/{optionId}/delete", h.FieldOptionDeleteWeb)
 	// Chat & Teams
+	r.Get("/help", h.HelpPage)
 	r.Get("/chat", h.ChatPage)
 	r.Get("/chat/stream", h.ChatStream)
 	r.Get("/chat/files/{id}", h.ChatFileDownload)

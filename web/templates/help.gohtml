@@ -1,0 +1,385 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.hb{display:grid;grid-template-columns:240px 1fr;gap:18px;align-items:start}
+.hb-toc{position:sticky;top:0;max-height:calc(100vh - 140px);overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px}
+.hb-toc a{display:block;padding:5px 8px;border-radius:6px;font-size:12.5px;color:var(--muted)}
+.hb-toc a:hover,.hb-toc a.active{background:var(--bg3);color:var(--accent)}
+.hb-toc .n{display:inline-block;width:22px;color:var(--muted)}
+.hb-body{min-width:0}
+.hb-ch{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:14px;scroll-margin-top:12px}
+.hb-ch h2{font-size:17px;font-weight:600;margin-bottom:10px;display:flex;gap:8px;align-items:center}
+.hb-ch h2 i{color:var(--accent)}
+.hb-ch h3{font-size:13.5px;font-weight:600;margin:16px 0 6px;display:flex;gap:6px;align-items:center}
+.hb-ch p,.hb-ch li{font-size:13px;line-height:1.6}
+.hb-ch p{margin:6px 0}
+.hb-ch ul,.hb-ch ol{margin:6px 0 6px 20px}
+.hb-ch li{margin:2px 0}
+.hb-ch code{font-family:monospace;background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px}
+.hb-ch kbd{font-family:monospace;font-size:11.5px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--bg3)}
+.hb-ch table{font-size:12.5px;margin:8px 0}
+.hb-ch td,.hb-ch th{padding:5px 8px;vertical-align:top}
+.hb-hide{display:none}
+mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
+@media (max-width:900px){.hb{grid-template-columns:1fr}.hb-toc{position:static;max-height:none}}
+@media print{
+  .sidebar,.context,.topbar,.hb-toc,.hb-tools,.global-footer,.hb-shot-tools{display:none!important}
+  .app{display:block!important}.main{overflow:visible!important;padding:0!important}
+  body{height:auto!important;overflow:visible!important;background:#fff;color:#000}
+  .hb{display:block}.hb-ch{border:0;padding:0 0 12px}
+  .hb-fig,.hb-howto{break-inside:avoid}
+  .hb-hide{display:block!important}
+}
+</style>
+
+<div class="rec-head hb-tools">
+  <div class="t">
+    <h1><i class="ti ti-book"></i> PDH-Handbuch</h1>
+    <div class="sub">Schritt für Schritt durch alle Module{{if .Version}} · Stand Version {{.Version}}{{end}} · Abschnitte mit <i class="ti ti-refresh"></i> erzeugt das System automatisch</div>
+  </div>
+  <div class="search-box" style="min-width:260px">
+    <i class="ti ti-search" style="color:var(--muted)"></i>
+    <input id="hb-q" type="search" placeholder="Im Handbuch suchen …" style="flex:1;background:none;border:0;outline:0;color:var(--text);font-size:13px;font-family:var(--font)">
+  </div>
+  <button type="button" class="btn btn-small" onclick="window.print()"><i class="ti ti-printer"></i> Drucken / PDF</button>
+</div>
+
+<div class="hb">
+  <nav class="hb-toc hb-tools" id="hb-toc" aria-label="Inhaltsverzeichnis"></nav>
+  <div class="hb-body" id="hb-body">
+    {{template "help-chapters" .}}
+    <div id="hb-none" class="hb-ch" style="display:none;text-align:center;color:var(--muted)">Keine Treffer.</div>
+  </div>
+</div>
+{{end}}
+
+{{/* Eigene Bildschirmfotos je Kapitel (Anhaenge mit fester Kapitel-UUID) */}}
+{{define "hb-shots"}}
+<div class="hb-shots">
+  <div data-attach-ref="help:{{.Ref}}" style="display:flex;flex-wrap:wrap;gap:8px;min-height:0"></div>
+  {{if .Can}}
+  <label class="btn btn-small hb-shot-tools" style="cursor:pointer;margin-top:6px"><i class="ti ti-photo-plus"></i> Bildschirmfoto zu diesem Kapitel hinzufügen
+    <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'help','{{.Ref}}')"></label>
+  {{end}}
+</div>
+{{end}}
+
+{{define "help-chapters"}}
+{{template "hb-fig-style"}}
+{{$s := .Shots}}{{$can := .CanShots}}
+
+<section class="hb-ch" id="start" data-title="Erste Schritte" data-pages="dashboard account">
+  <h2><i class="ti ti-rocket"></i> Erste Schritte</h2>
+  <p>Der <b>PDH – Prozess Data Hub</b> ist das gemeinsame Werkzeug für Instandhaltung, Lager und Einkauf: Hier werden Störungen gemeldet und gelöst, Wartungen geplant, Ersatzteile verwaltet und im Team gechattet.</p>
+  {{template "hb-fig-layout"}}
+  <h3><i class="ti ti-map"></i> So findest du dich zurecht</h3>
+  <ul>
+    <li><b>Links</b> wählst du das Modul, z. B. Störungen oder Ersatzteile.</li>
+    <li><b>Oben</b> findest du den Chat, „Im Chat teilen“ und dein Konto.</li>
+    <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
+    <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-arrow-back-up"></i> Zurück zur vorherigen Seite</b>
+    Der Pfeil <i class="ti ti-arrow-left"></i> oben links bringt dich immer dorthin zurück, woher du gekommen bist. Fährst du mit der Maus darüber, siehst du das Ziel.</div>
+  <div class="hb-howto"><b><i class="ti ti-app-window"></i> Verknüpfungen öffnen, ohne die Seite zu verlassen</b>
+    Klickst du z. B. in einem Ticket auf die Anlage, öffnet sie sich rechts im <b>PDH-Viewer</b>. Mit <kbd>Esc</kbd> schließt du ihn wieder. <kbd>Strg</kbd>+Klick öffnet stattdessen einen neuen Tab.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "start") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="records" data-title="Arbeiten mit Datensätzen" data-pages="">
+  <h2><i class="ti ti-layout-dashboard"></i> Arbeiten mit Datensätzen</h2>
+  <p>Egal ob Störung, Ersatzteil oder Anlage – jeder Datensatz ist gleich aufgebaut. Wer ein Modul kennt, kennt alle.</p>
+  {{template "hb-fig-detail"}}
+  <table>
+    <tr><td><b>Übersicht</b></td><td>das Wichtigste auf einen Blick</td></tr>
+    <tr><td><b>Stammdaten</b></td><td>hier wird bearbeitet – alles in einem Formular, unten rechts <b>Speichern</b></td></tr>
+    <tr><td><b>Feldsätze</b></td><td>zusätzliche Felder, die eure Administration festlegt (<a href="#fieldsets">mehr</a>)</td></tr>
+    <tr><td><b>Dokumente</b></td><td>Fotos (Galerie oder Kamera) und Dateien</td></tr>
+    <tr><td><b>Verknüpfungen</b></td><td>alles, was mit dem Datensatz zusammenhängt – Anlage, Vorgänge, Ersatzteile, Firmen, Chat</td></tr>
+    <tr><td><b>Historie</b></td><td>wer hat wann was geändert</td></tr>
+  </table>
+  <p><b>Listen</b> haben oben ebenfalls Reiter (z. B. nach Status oder Kategorie) mit der Anzahl der Einträge. Die Kennzahl-Kacheln sind anklickbar und filtern die Liste.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "records") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new">
+  <h2><i class="ti ti-layout-dashboard"></i> Leitstand &amp; Meldungen</h2>
+  <p>Am <b>Leitstand</b> (z. B. am Terminal in der Halle) meldet jede und jeder schnell ein Problem – ohne sich lange durchzuklicken.</p>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung am Leitstand</b>
+    <ol class="hb-steps">
+      <li>„Störung“ oder „Ticket“ antippen.</li>
+      <li>Kurzen <b>Titel</b> und eine <b>Beschreibung</b> mit mehr als drei Wörtern eingeben.</li>
+      <li><b>Anlage</b> und <b>Priorität</b> wählen, dich als Ersteller/in auswählen.</li>
+      <li>Absenden – fertig. Die Meldung geht automatisch an die zuständigen Broker.</li>
+    </ol></div>
+  <h3><i class="ti ti-inbox"></i> Was danach passiert: Broker</h3>
+  {{template "hb-fig-broker"}}
+  <p>Meldungen aus dem Leitstand sind noch niemandem zugewiesen. Jeder <b>Broker</b> bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen. Offene, unzugewiesene Vorgänge findest du in der Ticket- bzw. Störungsliste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist, steht im <a href="#users">Benutzerstamm</a>.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "dashboard") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="faults" data-title="Störungen" data-pages="faults">
+  <h2><i class="ti ti-alert-triangle"></i> Störungen</h2>
+  <p>Eine Störung ist ein technisches Problem an einer Anlage. Sie durchläuft fünf Schritte:</p>
+  {{template "hb-fig-fault"}}
+  <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
+    <ol class="hb-steps">
+      <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
+      <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> festhalten, was gemacht wurde, und benötigte Teile <b>vormerken</b>.</li>
+      <li>In der <b>Übersicht</b> auf „Lösen“: Lösung und Ursache eintragen.</li>
+      <li>Speichern – die vorgemerkten Teile werden jetzt vom Lager abgebucht, die Störung wandert ins Archiv.</li>
+    </ol></div>
+  <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="tickets" data-title="Tickets" data-pages="tickets">
+  <h2><i class="ti ti-ticket"></i> Tickets</h2>
+  <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte.</p>
+  <ul>
+    <li><b>Kommentare</b> (eigener Reiter) – für die Abstimmung im Team.</li>
+    <li><b>Maßnahmen &amp; Ersatzteile</b> – wie bei Störungen.</li>
+    <li><b>Status ändern oder archivieren</b> – über das Menü <i class="ti ti-dots"></i> oben rechts im Ticket.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
+    Der Listen-Reiter <b>Ohne Zuweisung</b> ist dein Eingang: Hier stehen alle offenen Tickets, die noch niemandem gehören.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="tasks" data-title="Aufgaben &amp; Projekte" data-pages="tasks projects">
+  <h2><i class="ti ti-list-check"></i> Aufgaben &amp; Projekte</h2>
+  <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge.</p>
+  <p><b>Projekte</b> bündeln Aufgaben und zeigen sie im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
+  <h2><i class="ti ti-tool"></i> Wartung</h2>
+  <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird (täglich bis jährlich). Wird er fällig, entsteht ein <b>Wartungsauftrag</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-clipboard-check"></i> So führst du eine Wartung aus</b>
+    <ol class="hb-steps">
+      <li>In der Wartungsliste den Auftrag öffnen (Reiter <b>Aktuell</b>).</li>
+      <li><b>Starten</b> und die Checkliste Punkt für Punkt abhaken.</li>
+      <li>Maßnahmen und verwendete Ersatzteile erfassen.</li>
+      <li><b>Abschließen</b> – der nächste Termin des Plans wird automatisch berechnet.</li>
+    </ol></div>
+  {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it">
+  <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
+  <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Zu jeder Anlage gibt es:</p>
+  <ul>
+    <li><b>Übersicht</b> – Unteranlagen, Hersteller, Lieferant und Servicepartner (anklickbar).</li>
+    <li><b>Anlagen-Historie</b> – das „Lebenslauf-Buch“ der Anlage: alle Störungen, Tickets, Wartungen, Maßnahmen, verbrauchten Ersatzteile und Kommentare. Mit Filter, Suche und <b>CSV-Export</b>. Wichtige Hinweise lassen sich als Kommentar <b>anheften</b>.</li>
+    <li><b>Verknüpfungen</b> – offene Vorgänge, passende Ersatzteile, Firmen.</li>
+  </ul>
+  <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="inventory" data-title="Ersatzteile" data-pages="inventory">
+  <h2><i class="ti ti-package"></i> Ersatzteile</h2>
+  <p>Die Ersatzteilliste hat oben Reiter je <b>Kategorie</b> und Kacheln für „unter Mindestbestand“, „kritisch“, „leer“ und „ohne Lieferant“.</p>
+  <h3><i class="ti ti-building-factory-2"></i> Hersteller und Lieferant sind zwei verschiedene Dinge</h3>
+  {{template "hb-fig-partner"}}
+  <div class="hb-howto"><b><i class="ti ti-photo"></i> So bekommt ein Teil ein Bild</b>
+    <ol class="hb-steps">
+      <li>Teil öffnen → Reiter <b>Stammdaten</b> → <b>Bild im Internet suchen</b>.</li>
+      <li>Der Suchbegriff ist schon ausgefüllt (Hersteller + Teilenummer) – bei Bedarf anpassen.</li>
+      <li>Auf das passende Bild klicken – es wird übernommen und im PDH gespeichert.</li>
+    </ol>
+    Alternativ: Bild-URL einfügen, Datei hochladen oder mit der Kamera fotografieren.</div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So buchst du Ware</b>
+    <ol class="hb-steps">
+      <li>Im Teil oben auf <b>Buchen</b> (oder in der Liste auf „Buchung“).</li>
+      <li>Buchungsart wählen: <b>Wareneingang</b>/<b>Warenausgang</b> (Menge wird zu-/abgebucht) oder <b>Korrektur</b>/<b>Inventur</b> (Menge ist der neue Bestand).</li>
+      <li>Menge und <b>Lagerplatz</b> angeben, optional Lieferschein-Nr. – Buchen.</li>
+    </ol></div>
+  {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="storage" data-title="Lager, Lagerplätze &amp; Etiketten" data-pages="storage">
+  <h2><i class="ti ti-building-warehouse"></i> Lager, Lagerplätze &amp; Etiketten</h2>
+  <p>Das Lager ist gegliedert in Lagerort → Regal → Fach → Platz. Über <i class="ti ti-external-link"></i> öffnest du einen Platz mit Bestand, Bewegungen und Dokumenten.</p>
+  <h3><i class="ti ti-printer"></i> Etiketten</h3>
+  <p>So sieht ein Etikett aus – der QR-Code führt direkt zum Teil im PDH (mit dem Handy scannen):</p>
+  <figure class="hb-fig" style="display:flex;justify-content:center">
+    <div style="width:62mm;height:29mm;background:#fff;color:#111;display:flex;gap:1.5mm;padding:1.5mm 2mm;border:1px solid #ccc;border-radius:2px;text-align:left;font-family:Arial,sans-serif">
+      <div style="height:100%;aspect-ratio:1/1;flex-shrink:0">{{.SampleQR}}</div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;line-height:1.12">
+        <div style="font-weight:700;font-size:9pt;border-bottom:.3mm solid #000">Fach 3</div>
+        <div style="font-size:7pt;font-weight:600">Rillenkugellager 6205</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div><div style="font-size:5pt;color:#555">TEILE-NR.</div><div style="font-family:monospace;font-weight:700;font-size:8pt">4711-A</div></div>
+          <div style="text-align:right;font-size:6.5pt"><div style="font-size:5pt;color:#555">MINDESTMENGE</div><b style="font-size:8pt">4</b> Stück</div>
+        </div>
+      </div>
+    </div>
+  </figure>
+  <div class="hb-howto"><b><i class="ti ti-printer"></i> So druckst du Etiketten</b>
+    <ol class="hb-steps">
+      <li>Im Teil auf <b>Etiketten</b> (alle Lagerplätze) oder auf das Drucker-Symbol an einem Lagerplatz – oder am Lagerplatz selbst für alle Teile dort.</li>
+      <li>Oben das <b>Format</b> deines Etikettendruckers wählen, ggf. Kopien.</li>
+      <li><b>Drucken</b>: im Druckdialog Skalierung 100 % und keine Ränder einstellen.</li>
+    </ol></div>
+  <p>Verfügbare Formate <i class="ti ti-refresh" title="automatisch aus dem System"></i>:</p>
+  <ul>{{range .LabelSizes}}<li>{{.Label}}</li>{{end}}</ul>
+  <p>Bei A4-Bögen kannst du mit „Start bei Feld“ bereits benutzte Etiketten überspringen.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "storage") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="purchasing" data-title="Einkauf &amp; Bestellvorschlag" data-pages="">
+  <h2><i class="ti ti-shopping-cart"></i> Einkauf &amp; Bestellvorschlag</h2>
+  {{template "hb-fig-purchase"}}
+  <p>Sinkt der Bestand eines Teils auf oder unter den Mindestbestand, erscheint es im <b>Bestellvorschlag</b> (Ersatzteile → Bestellvorschlag) – sortiert nach Einkäufer und Lieferant, mit Menge und Wert. Jeder Einkäufer bekommt ihn zusätzlich jeden Morgen per E-Mail.</p>
+  <ul>
+    <li>Den <b>Einkäufer</b> legst du im Teil fest (Reiter Lieferanten &amp; Einkauf).</li>
+    <li>Die Menge ist die Nachbestellmenge, aufgerundet auf die Mindestabnahme des Lieferanten.</li>
+    <li>Gesperrte Lieferanten werden übersprungen.</li>
+  </ul>
+  {{template "hb-shots" (dict "Ref" (index $s "purchasing") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="partners" data-title="Hersteller &amp; Lieferanten" data-pages="directory">
+  <h2><i class="ti ti-building-factory-2"></i> Hersteller &amp; Lieferanten</h2>
+  <p>Hier stehen alle Firmen, mit denen ihr arbeitet – mit Ansprechpartnern, Telefonnummern und Verträgen.</p>
+  <ul>
+    <li><b>Übersicht</b> – alle Nummern auf einen Blick: Zentrale, <b>Support-Hotline</b> (mit Zeiten), Service, <b>Ersatzteile</b>, Notfall.</li>
+    <li><b>Portale &amp; Shop</b> – Links zu Kundenportalen und Onlineshops. Mit „Einbetten“ öffnen sie sich im PDH. Hinterlegte Zugangsdaten sieht nur, wer die Berechtigung hat.</li>
+    <li><b>Anlagen, Ersatzteile, IT</b> – wofür die Firma Hersteller, Lieferant oder Servicepartner ist.</li>
+    <li><b>Vorgänge</b> – wo die Firma als externe Firma beteiligt ist.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-phone"></i> Schnell die richtige Nummer finden</b>
+    Firma öffnen → <b>Übersicht</b> → Karte „Erreichbarkeit“. Für Ersatzteile gibt es eine eigene Telefonnummer und E-Mail.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "partners") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="chat" data-title="Chat &amp; Teams" data-pages="chat">
+  <h2><i class="ti ti-messages"></i> Chat &amp; Teams</h2>
+  {{template "hb-fig-chat"}}
+  <p>Chatten kannst du auf jeder Seite über den <b>Chat-Reiter</b> rechts. Kommt eine neue Nachricht, öffnet sich die Leiste von selbst – außer du tippst gerade etwas oder hast den Chat stummgeschaltet.</p>
+  <ul>
+    <li><b>Chats</b> – mit einer Person oder einer Gruppe. <b>Teams</b> haben Kanäle mit Beiträgen und Antworten.</li>
+    <li><b>@Name</b> erwähnt jemanden, <kbd>Enter</kbd> sendet, <kbd>Shift</kbd>+<kbd>Enter</kbd> macht eine neue Zeile, <kbd>↑</kbd> bearbeitet deine letzte Nachricht.</li>
+    <li>Dateien und Fotos per Büroklammer oder einfach ins Fenster ziehen.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-share"></i> Eine Seite mit Kollegen teilen</b>
+    <ol class="hb-steps">
+      <li>Auf der Seite (z. B. einer Störung) oben <b>Im Chat teilen</b> klicken.</li>
+      <li>Rechts die Unterhaltung wählen – Titel und Link sind schon eingetragen.</li>
+      <li>Absenden. Die anderen sehen eine Karte, die den Datensatz öffnet.</li>
+    </ol></div>
+  {{template "hb-shots" (dict "Ref" (index $s "chat") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="time" data-title="Zeiterfassung &amp; Schichtplan" data-pages="time shifts">
+  <h2><i class="ti ti-clock"></i> Zeiterfassung &amp; Schichtplan</h2>
+  <p>In Störungen, Tickets, Aufgaben und Wartungen startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
+  {{template "hb-shots" (dict "Ref" (index $s "time") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="users" data-title="Benutzer &amp; Mein Konto" data-pages="users account orgchart">
+  <h2><i class="ti ti-users"></i> Benutzer &amp; Mein Konto</h2>
+  <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Eigene Daten pflegen</b>
+    <ol class="hb-steps">
+      <li>Oben rechts auf deinen Namen → <b>Mein Konto</b>.</li>
+      <li>Reiter <b>Privat</b>: Anschrift, private Telefonnummer, Notfallkontakt – das sehen nur du und berechtigte Personen.</li>
+      <li>Reiter <b>Nachweise</b>: Führerschein, Qualifikationen und Lehrgänge mit Ablaufdatum – das PDH warnt 60 Tage vorher.</li>
+    </ol></div>
+  <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "users") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="fieldsets" data-title="Feldsätze" data-pages="">
+  <h2><i class="ti ti-forms"></i> Feldsätze</h2>
+  <p>Feldsätze sind Zusatzfelder, die eure Administration festlegt – z. B. bei Motoren „Leistung“ und „Schutzart“. Sie erscheinen im Reiter <b>Feldsätze</b>; dort auf <b>Bearbeiten</b> klicken, ausfüllen, speichern.</p>
+  <p>Ein Feldsatz gilt entweder für einzelne ausgewählte Datensätze oder automatisch (für alle oder eine bestimmte Kategorie).</p>
+  <h3>Module <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
+  <ul>{{range .FieldModules}}<li>{{.Label}}{{if .MatchLabel}} – automatisch nach {{.MatchLabel}}{{end}}</li>{{end}}</ul>
+  <h3>Feldtypen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
+  <p>{{$tl := .TypeLabels}}{{range $i, $t := .FieldTypes}}{{if $i}}, {{end}}{{index $tl $t}}{{end}}</p>
+  {{template "hb-shots" (dict "Ref" (index $s "fieldsets") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles core-settings import export">
+  <h2><i class="ti ti-settings"></i> Administration</h2>
+  <ul>
+    <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
+    <li><b>Core-Einstellungen</b> – Fristen, Updates, Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
+    <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen.</li>
+  </ul>
+  <h3>Server-Einstellungen (<code>.env</code>)</h3>
+  <table>
+    <tr><td><code>PDH_SMTP_HOST</code>, <code>PDH_SMTP_FROM</code> …</td><td>E-Mail-Versand (Bestellvorschlag)</td></tr>
+    <tr><td><code>PDH_PUBLIC_URL</code></td><td>Adresse des PDH für Links in E-Mails und QR-Codes auf Etiketten</td></tr>
+    <tr><td><code>PDH_CREDENTIALS_KEY</code></td><td>Schlüssel für gespeicherte Portal-Passwörter – nach dem ersten Speichern nicht mehr ändern</td></tr>
+  </table>
+  <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
+  {{range .PermGroups}}
+  <p style="margin-top:8px"><b>{{.Category}}</b></p>
+  <ul>{{range .Items}}<li>{{.Label}} <code>{{.Key}}</code></li>{{end}}</ul>
+  {{else}}<p class="rec-sub">Berechtigungen konnten nicht geladen werden.</p>{{end}}
+  {{if $can}}<p class="rec-sub hb-shot-tools"><i class="ti ti-photo-plus"></i> Als Administrator kannst du unter jedem Kapitel eigene Bildschirmfotos hinzufügen – so wird das Handbuch zu eurem Handbuch.</p>{{end}}
+  {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">
+  <h2><i class="ti ti-help-circle"></i> Tipps &amp; häufige Fragen</h2>
+  <h3>Ich sehe einen Reiter oder Knopf nicht.</h3>
+  <p>Viele Funktionen hängen von Berechtigungen ab. Frag eure Administration.</p>
+  <h3>Ein eingebettetes Portal bleibt leer.</h3>
+  <p>Der Anbieter erlaubt das Einbetten nicht. Im Viewer über <i class="ti ti-external-link"></i> in einem neuen Tab öffnen.</p>
+  <h3>Die Chat-Leiste geht zu oft auf.</h3>
+  <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst.</p>
+  <h3>Etiketten werden zu groß oder zu klein gedruckt.</h3>
+  <p>Das passende Format wählen und im Druckdialog 100 % Skalierung und keine Ränder einstellen.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "faq") "Can" $can)}}
+</section>
+{{end}}
+
+{{define "context-list"}}{{end}}
+
+{{define "scripts"}}
+<script>
+(function(){
+  const body = document.getElementById('hb-body');
+  const toc = document.getElementById('hb-toc');
+  const sections = [...body.querySelectorAll('.hb-ch[id]')];
+  toc.innerHTML = sections.map((s, i) => '<a href="#' + s.id + '"><span class="n">' + (i + 1) + '</span>' + s.dataset.title + '</a>').join('');
+  const links = [...toc.querySelectorAll('a')];
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if(e.isIntersecting) links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id)); });
+  }, {rootMargin: '0px 0px -70% 0px'});
+  sections.forEach(s => obs.observe(s));
+  // Volltextsuche: Kapitel filtern und Treffer markieren (Bilder/Grafiken bleiben unveraendert)
+  const q = document.getElementById('hb-q');
+  let t;
+  q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(search, 200); });
+  function unmark(root){ root.querySelectorAll('mark.hb-m').forEach(m => m.replaceWith(document.createTextNode(m.textContent))); root.normalize(); }
+  function search(){
+    const term = q.value.trim().toLowerCase();
+    let hits = 0;
+    sections.forEach(s => {
+      unmark(s);
+      const match = !term || s.textContent.toLowerCase().includes(term);
+      s.classList.toggle('hb-hide', !match);
+      if(match){ hits++; if(term) mark(s, term); }
+    });
+    links.forEach(a => { const s = document.querySelector(a.getAttribute('href')); a.style.display = s && s.classList.contains('hb-hide') ? 'none' : ''; });
+    document.getElementById('hb-none').style.display = hits ? 'none' : '';
+  }
+  function mark(root, term){
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {acceptNode: n => n.parentElement.closest('svg,script,style') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
+    const nodes = [];
+    while(walker.nextNode()) if(walker.currentNode.nodeValue.toLowerCase().includes(term)) nodes.push(walker.currentNode);
+    nodes.forEach(n => {
+      const i = n.nodeValue.toLowerCase().indexOf(term);
+      const m = document.createElement('mark'); m.className = 'hb-m';
+      const hit = n.splitText(i); hit.splitText(term.length);
+      m.textContent = hit.nodeValue; hit.replaceWith(m);
+    });
+  }
+})();
+</script>
+{{end}}

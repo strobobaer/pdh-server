@@ -178,6 +178,18 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:380px}
 .sc-compose textarea:focus{outline:0;border-color:var(--accent)}
 .sc-send{background:var(--accent);border-color:var(--accent);color:#fff}
 .sc-share{margin:8px 10px 0;padding:8px 10px;border-radius:8px;background:rgba(79,110,247,.12);color:var(--accent);font-size:11.5px;display:flex;gap:6px;align-items:flex-start}
+/* Kontexthilfe (Handbuchkapitel in der Seitenleiste) */
+.ctx-section[data-context-panel="help"].active{flex:1;overflow-y:auto}
+.ctx-help{font-size:12px;line-height:1.55}
+.ctx-help h2{font-size:13px;font-weight:600;margin:0 0 6px;display:flex;gap:6px;align-items:center}
+.ctx-help h3{font-size:12px;font-weight:600;margin:10px 0 4px}
+.ctx-help p{margin:4px 0}
+.ctx-help ul,.ctx-help ol{margin:4px 0 4px 16px}
+.ctx-help table{font-size:11.5px}
+.ctx-help td{padding:3px 4px;vertical-align:top}
+.ctx-help code,.ctx-help kbd{font-size:11px;background:var(--bg3);padding:0 4px;border-radius:3px}
+.ctx-help .hb-tip,.ctx-help .hb-warn{border-left:3px solid var(--accent);background:rgba(79,110,247,.08);padding:6px 8px;border-radius:6px;margin:8px 0}
+.ctx-help .hb-auto{font-size:10px;color:var(--muted);font-weight:400}
 .ctx-title{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .ctx-title i{font-size:14px}
 /* ── Search ── */
@@ -414,6 +426,7 @@ select.form-input option{background:var(--bg2)}
     {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">Organigramm</span></a>{{end}}
     {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">Core-Einstellungen</span></a>{{end}}
+    <a href="/help" class="nav-item {{if eq .Page "help"}}active{{end}}"><i class="ti ti-book"></i><span class="nav-label">Handbuch</span></a>
     <a href="https://cloud.strobl-home.net" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-cloud"></i><span class="nav-label">Nextcloud</span></a>
     <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
     <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
@@ -461,6 +474,7 @@ select.form-input option{background:var(--bg2)}
         <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>Mein Konto</a>
+          <a href="/help" class="menu-item"><i class="ti ti-book"></i>Handbuch</a>
           <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>Abmelden</a>
         </div>
       </div>
@@ -584,8 +598,11 @@ select.form-input option{background:var(--bg2)}
   </div>
   <div class="ctx-section" data-context-panel="help">
     <div class="ctx-title"><i class="ti ti-help"></i>Hilfe</div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.6">
-      Eintrag in einer Liste markieren und danach die Aktionsbuttons oben nutzen. Bilder und Dokumente erscheinen im Datensatz unten in der Galerie.
+    <!-- Kontexthilfe: passendes Handbuchkapitel zur aktuellen Seite (geladen aus /help) -->
+    <div id="ctx-help" class="ctx-help" data-page="{{.Page}}"><div style="color:var(--muted)">Hilfe wird geladen…</div></div>
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <a class="btn btn-small" id="ctx-help-chapter" href="/help"><i class="ti ti-book"></i> Im Handbuch öffnen</a>
+      <a class="btn btn-small" href="/help"><i class="ti ti-list"></i> Inhalt</a>
     </div>
   </div>
   </div>
@@ -761,6 +778,7 @@ function activateContextTab(id, opts) {
   localStorage.setItem('pdh_context_tab', selected);
   html.classList.toggle('ctx-chat-open', selected === 'chat');
   if(id) setRightSidebar(true);
+  if(selected === 'help' && id) pdhLoadContextHelp();
 }
 document.addEventListener('DOMContentLoaded', () => {
   applySidebarState();
@@ -1207,6 +1225,33 @@ document.addEventListener('click', function(e){
 document.addEventListener('DOMContentLoaded', function(){
   if(document.querySelector('.rec-tab[data-tab]')) recTab(new URL(location.href).searchParams.get('tab') || '');
 });
+
+// ── Kontexthilfe: Handbuchkapitel zur aktuellen Seite ────
+// Kapitel in /help tragen data-pages="<BaseData.Page …>"; ohne Treffer
+// wird das allgemeine Kapitel "Arbeiten mit Datensaetzen" gezeigt.
+let pdhHelpLoaded = false;
+async function pdhLoadContextHelp(){
+  const box = document.getElementById('ctx-help');
+  if(!box || pdhHelpLoaded) return;
+  pdhHelpLoaded = true;
+  try {
+    const res = await fetch('/help?fragment=1', {credentials: 'same-origin'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const page = box.dataset.page;
+    const sections = [...doc.querySelectorAll('section[data-pages]')];
+    const sec = sections.find(s => (s.dataset.pages || '').split(/\s+/).includes(page)) || doc.getElementById('records') || sections[0];
+    if(!sec) throw new Error('kein Kapitel');
+    // Styles und SVG-Definitionen der Illustrationen mitnehmen
+    const extras = [...doc.querySelectorAll('style'), ...doc.querySelectorAll('body > svg')].map(e => e.outerHTML).join('');
+    box.innerHTML = extras + sec.innerHTML;
+    if(typeof initAttachmentGalleries === 'function') initAttachmentGalleries();
+    const link = document.getElementById('ctx-help-chapter');
+    if(link) link.href = '/help#' + sec.id;
+    // Kapitel-interne Links (#…) ins Handbuch umleiten
+    box.querySelectorAll('a[href^="#"]').forEach(a => a.href = '/help' + a.getAttribute('href'));
+  } catch(e){ pdhHelpLoaded = false; box.textContent = 'Hilfe konnte nicht geladen werden (' + e.message + ').'; }
+}
 
 // ── Zurueck zur vorherigen Seite ─────────────────────────
 // Pro Browser-Tab (sessionStorage) wird der Seitenverlauf gefuehrt; Zurueck-

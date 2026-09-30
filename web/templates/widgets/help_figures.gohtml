@@ -1,0 +1,176 @@
+{{/*
+  Illustrationen fuer das Handbuch (help.gohtml). Schematische SVGs, die die
+  Designfarben (CSS-Variablen) nutzen und daher in Hell und Dunkel passen.
+  Bei Oberflaechen-Aenderungen die passende Skizze mit anpassen.
+*/}}
+
+{{define "hb-fig-style"}}
+<style>
+.hb-fig{margin:12px 0;border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:12px;text-align:center}
+.hb-fig svg{width:100%;height:auto;max-height:340px}
+.hb-fig figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}
+.hb-fig .bg{fill:var(--bg2);stroke:var(--border)}
+.hb-fig .bg3{fill:var(--bg3);stroke:var(--border)}
+.hb-fig .ac{fill:var(--accent)}
+.hb-fig .acs{fill:none;stroke:var(--accent);stroke-width:2}
+.hb-fig .acl{fill:rgba(79,110,247,.15);stroke:var(--accent)}
+.hb-fig .gr{fill:rgba(16,185,129,.18);stroke:var(--green)}
+.hb-fig .am{fill:rgba(245,158,11,.18);stroke:var(--amber)}
+.hb-fig .rd{fill:rgba(239,68,68,.16);stroke:var(--red)}
+.hb-fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.hb-fig .ar{stroke:var(--accent);stroke-width:2;fill:none;marker-end:url(#hb-arrow)}
+.hb-fig text{font-family:var(--font);fill:var(--text);font-size:11px}
+.hb-fig .t-m{fill:var(--muted);font-size:9.5px}
+.hb-fig .t-b{font-weight:600}
+.hb-fig .t-w{fill:#fff;font-weight:600}
+.hb-fig .t-c{text-anchor:middle}
+.hb-steps{counter-reset:hbs;list-style:none;margin:10px 0!important;padding:0}
+.hb-steps li{counter-increment:hbs;position:relative;padding:4px 0 8px 36px!important;margin:0!important}
+.hb-steps li::before{content:counter(hbs);position:absolute;left:0;top:2px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.hb-howto{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:12px 0;background:var(--bg)}
+.hb-howto > b{display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:4px}
+.hb-howto > b i{color:var(--accent)}
+</style>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <marker id="hb-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+</defs></svg>
+{{end}}
+
+{{/* Aufbau der Oberflaeche */}}
+{{define "hb-fig-layout"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 300" role="img" aria-label="Aufbau der Oberfläche">
+  <rect class="bg" x="1" y="1" width="638" height="298" rx="8"/>
+  <!-- Navigation -->
+  <rect class="bg3" x="10" y="10" width="110" height="280" rx="6"/>
+  <text x="22" y="32" class="t-b">PDH</text>
+  <g class="t-m"><text x="22" y="56">▣ Dashboard</text><text x="22" y="74">✉ Chat</text><text x="22" y="92">⚠ Störungen</text><text x="22" y="110">▤ Tickets</text><text x="22" y="128">☑ Aufgaben</text><text x="22" y="146">⚙ Wartung</text><text x="22" y="164">▦ Ersatzteile</text><text x="22" y="182">⌂ Infrastruktur</text><text x="22" y="200">📖 Handbuch</text></g>
+  <!-- Kopfleiste -->
+  <rect class="bg3" x="130" y="10" width="440" height="34" rx="6"/>
+  <text x="142" y="31" class="t-m">PDH / Ersatzteile</text>
+  <rect class="acl" x="330" y="17" width="82" height="20" rx="5"/><text x="371" y="31" class="t-c" font-size="9.5">↗ Im Chat teilen</text>
+  <rect class="acl" x="418" y="17" width="48" height="20" rx="5"/><text x="442" y="31" class="t-c" font-size="9.5">✉ Chat</text>
+  <rect class="bg" x="472" y="17" width="90" height="20" rx="5"/><text x="517" y="31" class="t-c" font-size="9.5">👤 Mein Konto</text>
+  <!-- Inhalt -->
+  <rect class="bg" x="130" y="52" width="440" height="238" rx="6"/>
+  <text x="146" y="76" class="t-b" font-size="13">Seiteninhalt</text>
+  <rect class="acl" x="146" y="88" width="408" height="20" rx="4"/><text x="152" y="102" font-size="9.5">Reiter: Übersicht · Stammdaten · Feldsätze · Dokumente · Verknüpfungen · Historie</text>
+  <rect class="bg3" x="146" y="118" width="200" height="80" rx="6"/><rect class="bg3" x="354" y="118" width="200" height="80" rx="6"/>
+  <rect class="bg3" x="146" y="206" width="408" height="70" rx="6"/>
+  <!-- Seitenleiste mit senkrechten Reitern -->
+  <rect class="bg3" x="580" y="10" width="50" height="280" rx="6"/>
+  <g font-size="10"><text transform="translate(610,34) rotate(90)">Chat</text><text transform="translate(610,80) rotate(90)">Suche</text><text transform="translate(610,130) rotate(90)">Copilot</text><text transform="translate(610,186) rotate(90)">Aktivität</text><text transform="translate(610,246) rotate(90)">Hilfe</text></g>
+  <circle class="ac" cx="620" cy="22" r="7"/><text x="620" y="25.5" class="t-w t-c" font-size="9">3</text>
+  <!-- Beschriftungen -->
+  <g class="t-m"><text x="18" y="284">① Navigation</text><text x="138" y="284">② Inhalt mit Reitern</text><text x="484" y="62">③ Kopfleiste</text></g>
+  <text x="596" y="284" class="t-m t-c">④</text>
+</svg>
+<figcaption>① Navigation · ② Seiteninhalt mit Reitern · ③ Kopfleiste mit Chat und Mein Konto · ④ rechte Seitenleiste mit senkrechten Reitern (eingeklappt; Zahl = ungelesene Chat-Nachrichten)</figcaption>
+</figure>
+{{end}}
+
+{{/* Aufbau einer Detailseite */}}
+{{define "hb-fig-detail"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Aufbau einer Detailseite">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <text x="18" y="30" font-size="16">←</text><rect class="bg3" x="40" y="14" width="30" height="30" rx="6"/>
+  <text x="80" y="28" class="t-b" font-size="13">Rillenkugellager 6205</text><text x="80" y="42" class="t-m">4711-A · Lager · SKF</text>
+  <rect class="gr" x="470" y="18" width="70" height="20" rx="10"/><text x="505" y="32" class="t-c" font-size="9.5">OK · 12 Stück</text>
+  <rect class="acl" x="548" y="18" width="78" height="20" rx="5"/><text x="587" y="32" class="t-c" font-size="9.5">✎ Bearbeiten</text>
+  <line class="ln" x1="16" y1="68" x2="624" y2="68"/>
+  <g font-size="10.5">
+    <text x="20" y="62" fill="var(--accent)" class="t-b">Übersicht</text><line x1="18" y1="67" x2="78" y2="67" stroke="var(--accent)" stroke-width="2.5"/>
+    <text x="96" y="62" class="t-m">Stammdaten</text><text x="170" y="62" class="t-m">Feldsätze</text><text x="236" y="62" class="t-m">Lager</text><text x="282" y="62" class="t-m">Lieferanten</text><text x="354" y="62" class="t-m">Verwendung</text><text x="428" y="62" class="t-m">Dokumente</text><text x="496" y="62" class="t-m">Verknüpfungen</text><text x="580" y="62" class="t-m">Historie</text>
+  </g>
+  <rect class="bg3" x="16" y="80" width="196" height="100" rx="6"/><text x="26" y="98" class="t-b">Hersteller</text><text x="26" y="116" class="t-m">SKF · Teilenr. 6205-2RSH</text><text x="26" y="132" class="t-m">☎ 0800 …</text>
+  <rect class="bg3" x="222" y="80" width="196" height="100" rx="6"/><text x="232" y="98" class="t-b">Hauptlieferant</text><text x="232" y="116" class="t-m">Muster GmbH · Art. 88123</text><text x="232" y="132" class="t-m">EK 12,40 € · 3 Tage</text>
+  <rect class="bg3" x="428" y="80" width="196" height="100" rx="6"/><text x="438" y="98" class="t-b">Lagerplätze</text><text x="438" y="116" class="t-m">Halle 1 › Regal A › Fach 3</text><text x="438" y="132" class="t-m">Werkstatt › Schrank 2</text>
+</svg>
+<figcaption>Jede Detailseite: Kopf mit Status und Aktionen, darunter die Reiter. Der aktive Reiter ist unterstrichen.</figcaption>
+</figure>
+{{end}}
+
+{{/* Ablauf einer Stoerung */}}
+{{define "hb-fig-fault"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 110" role="img" aria-label="Ablauf einer Störung">
+  <g font-size="10.5">
+    <rect class="rd" x="6" y="30" width="110" height="50" rx="8"/><text x="61" y="52" class="t-c t-b">1 Erfassen</text><text x="61" y="67" class="t-c t-m">Symptome, Anlage</text>
+    <rect class="acl" x="136" y="30" width="110" height="50" rx="8"/><text x="191" y="52" class="t-c t-b">2 Analysieren</text><text x="191" y="67" class="t-c t-m">Copilot</text>
+    <rect class="am" x="266" y="30" width="110" height="50" rx="8"/><text x="321" y="52" class="t-c t-b">3 Maßnahmen</text><text x="321" y="67" class="t-c t-m">Teile vormerken</text>
+    <rect class="gr" x="396" y="30" width="110" height="50" rx="8"/><text x="451" y="52" class="t-c t-b">4 Lösen</text><text x="451" y="67" class="t-c t-m">Teile werden gebucht</text>
+    <rect class="bg3" x="526" y="30" width="108" height="50" rx="8"/><text x="580" y="52" class="t-c t-b">5 Archiv</text><text x="580" y="67" class="t-c t-m">Historie der Anlage</text>
+  </g>
+  <path class="ar" d="M116 55 H134"/><path class="ar" d="M246 55 H264"/><path class="ar" d="M376 55 H394"/><path class="ar" d="M506 55 H524"/>
+</svg>
+<figcaption>Ablauf einer Störung – Ersatzteile werden erst beim Lösen tatsächlich aus dem Lager gebucht.</figcaption>
+</figure>
+{{end}}
+
+{{/* Broker-Verteilung */}}
+{{define "hb-fig-broker"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Broker-Verteilung">
+  <rect class="bg3" x="10" y="55" width="130" height="60" rx="8"/><text x="75" y="80" class="t-c t-b">Leitstand</text><text x="75" y="96" class="t-c t-m">Meldung ohne Zuweisung</text>
+  <rect class="am" x="190" y="55" width="130" height="60" rx="8"/><text x="255" y="80" class="t-c t-b">Ticket / Störung</text><text x="255" y="96" class="t-c t-m">Reiter „Ohne Zuweisung“</text>
+  <rect class="acl" x="380" y="10" width="120" height="40" rx="8"/><text x="440" y="34" class="t-c">✉ Broker A</text>
+  <rect class="acl" x="380" y="65" width="120" height="40" rx="8"/><text x="440" y="89" class="t-c">✉ Broker B</text>
+  <rect class="acl" x="380" y="120" width="120" height="40" rx="8"/><text x="440" y="144" class="t-c">✉ Broker C</text>
+  <rect class="gr" x="530" y="55" width="104" height="60" rx="8"/><text x="582" y="80" class="t-c t-b">Übernehmen</text><text x="582" y="96" class="t-c t-m">oder zuweisen</text>
+  <path class="ar" d="M140 85 H188"/><path class="ar" d="M320 85 C350 85,350 30,378 30"/><path class="ar" d="M320 85 H378"/><path class="ar" d="M320 85 C350 85,350 140,378 140"/>
+  <path class="ar" d="M500 85 H528"/>
+</svg>
+<figcaption>Jeder Broker erhält eine Chat-Nachricht vom Melder mit Karte zum Vorgang – einer übernimmt oder weist zu.</figcaption>
+</figure>
+{{end}}
+
+{{/* Hersteller vs. Lieferant */}}
+{{define "hb-fig-partner"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 150" role="img" aria-label="Hersteller und Lieferanten">
+  <rect class="bg3" x="250" y="50" width="140" height="50" rx="8"/><text x="320" y="72" class="t-c t-b">Ersatzteil</text><text x="320" y="88" class="t-c t-m">4711-A Kugellager</text>
+  <rect class="acl" x="20" y="50" width="160" height="50" rx="8"/><text x="100" y="72" class="t-c t-b">Hersteller (1)</text><text x="100" y="88" class="t-c t-m">SKF · Hersteller-Teilenr.</text>
+  <rect class="gr" x="460" y="10" width="160" height="40" rx="8"/><text x="540" y="34" class="t-c">★ Hauptlieferant · 12,40 €</text>
+  <rect class="bg" x="460" y="60" width="160" height="40" rx="8"/><text x="540" y="84" class="t-c">Lieferant B · 13,10 €</text>
+  <rect class="bg" x="460" y="110" width="160" height="30" rx="8"/><text x="540" y="129" class="t-c t-m">weitere …</text>
+  <path class="ar" d="M180 75 H248"/><path class="ar" d="M390 75 C425 75,425 30,458 30"/><path class="ar" d="M390 75 H458"/><path class="ar" d="M390 75 C425 75,425 125,458 125"/>
+</svg>
+<figcaption>Ein Teil hat genau einen Hersteller, aber beliebig viele Lieferanten mit eigenen Konditionen – bestellt wird beim Hauptlieferanten.</figcaption>
+</figure>
+{{end}}
+
+{{/* Bestellvorschlag */}}
+{{define "hb-fig-purchase"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 100" role="img" aria-label="Bestellvorschlag">
+  <rect class="rd" x="6" y="25" width="140" height="50" rx="8"/><text x="76" y="47" class="t-c t-b">Bestand ≤ Mindest</text><text x="76" y="62" class="t-c t-m">z. B. 2 von 5 Stück</text>
+  <rect class="acl" x="170" y="25" width="140" height="50" rx="8"/><text x="240" y="47" class="t-c t-b">Einkäufer</text><text x="240" y="62" class="t-c t-m">aus dem Ersatzteilstamm</text>
+  <rect class="am" x="334" y="25" width="140" height="50" rx="8"/><text x="404" y="47" class="t-c t-b">Lieferant + Menge</text><text x="404" y="62" class="t-c t-m">Hauptlieferant, Mindestabnahme</text>
+  <rect class="gr" x="498" y="25" width="136" height="50" rx="8"/><text x="566" y="47" class="t-c t-b">✉ täglich 06:00</text><text x="566" y="62" class="t-c t-m">E-Mail + Web-Ansicht</text>
+  <path class="ar" d="M146 50 H168"/><path class="ar" d="M310 50 H332"/><path class="ar" d="M474 50 H496"/>
+</svg>
+<figcaption>So entsteht der tägliche Bestellvorschlag.</figcaption>
+</figure>
+{{end}}
+
+{{/* Chat in der Seitenleiste */}}
+{{define "hb-fig-chat"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 220" role="img" aria-label="Chat in der Seitenleiste">
+  <rect class="bg" x="1" y="1" width="638" height="218" rx="8"/>
+  <rect class="bg3" x="10" y="10" width="330" height="200" rx="6"/><text x="175" y="110" class="t-c t-m">aktuelle Seite bleibt sichtbar</text>
+  <rect class="bg" x="350" y="10" width="230" height="200" rx="6"/>
+  <text x="362" y="30" class="t-b">← Eva Muster</text><text x="560" y="30" class="t-m">⤢ ✕</text>
+  <rect class="bg3" x="362" y="44" width="150" height="34" rx="8"/><text x="370" y="60" font-size="10">Pumpe 2 läuft wieder?</text><text x="370" y="72" class="t-m">08:14</text>
+  <rect class="acl" x="410" y="86" width="158" height="34" rx="8"/><text x="418" y="102" font-size="10">Ja, Lager getauscht 👍</text><text x="418" y="114" class="t-m">08:16</text>
+  <rect class="bg3" x="362" y="128" width="190" height="26" rx="6"/><text x="370" y="145" font-size="10">⚠ Störung: Pumpe 2 heiß</text>
+  <rect class="bg3" x="362" y="170" width="170" height="30" rx="6"/><text x="370" y="189" class="t-m">Nachricht… (Enter senden)</text>
+  <circle class="ac" cx="556" cy="185" r="12"/><text x="556" y="189" class="t-w t-c">➤</text>
+  <rect class="bg3" x="590" y="10" width="40" height="200" rx="6"/>
+  <rect class="acl" x="596" y="16" width="28" height="60" rx="6"/><text transform="translate(614,26) rotate(90)" font-size="10">Chat</text>
+  <text transform="translate(614,90) rotate(90)" font-size="10" class="t-m">Suche</text><text transform="translate(614,140) rotate(90)" font-size="10" class="t-m">Hilfe</text>
+</svg>
+<figcaption>Chat in der rechten Seitenleiste: Liste, Unterhaltung, Karte zu einem verlinkten Datensatz und Eingabe – die Seite bleibt dabei offen.</figcaption>
+</figure>
+{{end}}

@@ -33,3 +33,24 @@ Useful paths:
 
 Secrets are stored in VS Code SecretStorage and are not present in these files.
 <!-- RUNQL:END -->
+
+## Handbuch (In-App-Hilfe) mitpflegen
+
+Das Benutzerhandbuch liegt in der Anwendung unter `/help` (Navigation → Handbuch;
+Kontexthilfe im Hilfe-Reiter der rechten Seitenleiste). **Jede Änderung an
+Funktionen, Oberfläche oder Abläufen muss im selben Schritt im Handbuch
+nachgezogen werden.**
+
+- Texte: `web/templates/help.gohtml` – ein `<section class="hb-ch" id="…" data-pages="…">`
+  je Kapitel. `data-pages` listet die `BaseData.Page`-Kennungen, für die das
+  Kapitel als Kontexthilfe erscheint. Neue Kapitel zusätzlich in
+  `helpChapterIDs` (`internal/web/help.go`) eintragen.
+- Illustrationen: `web/templates/widgets/help_figures.gohtml` (schematische SVGs) –
+  bei geänderter Oberfläche die passende Skizze anpassen.
+- Automatisch aktuelle Abschnitte (Berechtigungen, Feldsatz-Module, Feldtypen,
+  Etikettenformate, Version) kommen aus `internal/web/help.go` und müssen nicht
+  von Hand gepflegt werden.
+- Schreibstil: für Anwender im Betrieb, kurze Sätze, „So geht's“-Schritte
+  (`.hb-howto` / `.hb-steps`) statt Funktionslisten.
+- `TestHelpCoversAllPages` schlägt fehl, wenn eine neue Seite kein Kapitel hat;
+  `TestHelpChaptersMatch` prüft Kapitel-IDs und Bildschirmfoto-Bereiche.
