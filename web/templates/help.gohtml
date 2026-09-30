@@ -409,8 +409,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Startet die Datenbank nur etwas später (z. B. nach einem Neustart des Servers), wartet der Assistent und macht von selbst weiter.</p>
   <h3><i class="ti ti-adjustments-cog"></i> Server-Einstellungen im Betrieb</h3>
   <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Microsoft 365, Nextcloud, Updates &amp; Sicherung.</p>
+  <p><b>Gespeichert wird in der Datenbank</b> – Passwörter, Schlüssel und Tokens verschlüsselt. In der <code>.env</code> bleiben nur der <b>Datenbank-Zugang</b> und der Schlüssel <code>PDH_SETTINGS_KEY</code>, ohne die das PDH die Datenbank nicht erreichen bzw. die Geheimnisse nicht entschlüsseln kann. <b>Diese Datei deshalb unbedingt mitsichern</b> – eine Datenbank-Sicherung allein genügt für die verschlüsselten Werte nicht.</p>
+  <div class="hb-howto"><b><i class="ti ti-database-import"></i> Übernahme einer bestehenden .env</b>
+    Beim Start überträgt das PDH alle Werte der <code>.env</code>, die noch nicht in der Datenbank stehen, automatisch dorthin und kommentiert sie in der Datei aus (daneben liegt eine Sicherungskopie <code>.env.bak-…</code>, die die alten Werte im Klartext enthält – nach Prüfung löschen). Trägt jemand später wieder einen Wert in die <code>.env</code> ein, zeigt die Seite einen Hinweis mit <b>jetzt übernehmen</b>. Werte, die Docker (<code>.env.docker</code>) oder systemd von außen setzen, bleiben dort und haben weiter Vorrang.</div>
   <table>
-    <tr><td><span class="rec-sub">Datei</span></td><td>in der Einstellungsdatei gespeichert – hier änderbar</td></tr>
+    <tr><td><span class="rec-sub">Datenbank</span></td><td>in der Datenbank gespeichert – hier änderbar</td></tr>
+    <tr><td><span class="rec-sub">Datei</span></td><td>steht (noch) in der Einstellungsdatei – beim Datenbank-Zugang immer so</td></tr>
     <tr><td><span class="rec-sub">Standard</span></td><td>nicht gesetzt, es gilt der Standardwert</td></tr>
     <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang und ist hier nur lesbar</td></tr>
     <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>

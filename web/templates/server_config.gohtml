@@ -7,6 +7,7 @@
 .sc-f .help{font-size:11px;color:var(--muted);margin-top:3px}
 .sc-src{font-size:10px;font-weight:500;border-radius:999px;padding:0 6px;border:1px solid var(--border);color:var(--muted)}
 .sc-src.env{border-color:transparent;background:rgba(99,102,241,.15);color:#6366f1}
+.sc-src.db{border-color:transparent;background:rgba(59,130,246,.15);color:var(--accent)}
 .sc-src.file{border-color:transparent;background:rgba(16,185,129,.15);color:var(--green,#16a34a)}
 .sc-restart{color:var(--amber,#f59e0b)}
 .sc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
@@ -17,7 +18,7 @@
   {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
   <div style="flex:1;min-width:220px">
     <h1 style="font-size:18px;font-weight:600">Server-Einstellungen</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Werte der Einstellungsdatei <code>{{.EnvFile}}</code> – bisher nur per Hand in der <code>.env</code> zu pflegen.</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Gespeichert in der <b>Datenbank</b> (Geheimnisse verschlüsselt). Nur Datenbank-Zugang und Schlüssel stehen in <code>{{.EnvFile}}</code>.{{if .ImportedAt}} · {{.ImportedCount}} Wert(e) am {{.ImportedAt}} aus der <code>.env</code> übernommen.{{end}}</p>
   </div>
   {{if .CanRestart}}
   <form method="post" action="/admin/server-config/restart" onsubmit="return confirm('PDH jetzt neu starten? Alle Benutzer sind für einige Sekunden getrennt; laufende Eingaben gehen nicht verloren, wenn sie gespeichert sind.')">
@@ -29,6 +30,9 @@
 {{if .Msg}}<div class="sc-msg" style="background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Msg}}</div>{{end}}
 {{if .Err}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
 {{if .RestartPending}}<div class="sc-msg" style="background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-refresh-alert"></i> Geändert, wirkt erst nach einem <b>Neustart</b>: {{range $i, $l := .RestartPending}}{{if $i}}, {{end}}{{$l}}{{end}}</div>{{end}}
+{{if .PendingImport}}<div class="sc-msg" style="background:rgba(59,130,246,.12);color:var(--accent)"><i class="ti ti-database-import"></i> In der Einstellungsdatei stehen {{len .PendingImport}} Wert(e), die noch nicht in der Datenbank sind: <code>{{range $i, $k := .PendingImport}}{{if $i}}, {{end}}{{$k}}{{end}}</code>. Sie werden beim nächsten Start automatisch übernommen –
+  <form method="post" action="/admin/server-config/import" style="display:inline;margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-arrow-right"></i> jetzt übernehmen</button></form></div>{{end}}
+{{if .Undecryptable}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-key-off"></i> Nicht entschlüsselbar (anderer <code>PDH_SETTINGS_KEY</code>, z. B. nach Wiederherstellung auf einem anderen Server): <code>{{range $i, $k := .Undecryptable}}{{if $i}}, {{end}}{{$k}}{{end}}</code> – bitte neu eingeben.</div>{{end}}
 {{if not .FileWritable}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-lock"></i> Die Einstellungsdatei ist für den PDH-Dienst nicht beschreibbar – Änderungen können nicht gespeichert werden. Dateirechte prüfen (Eigentümer = Dienstbenutzer) oder <code>PDH_ENV_FILE</code> auf einen beschreibbaren Ort setzen.</div>{{end}}
 
 <div class="rec-tabs" role="tablist">
@@ -45,7 +49,7 @@
   {{range .Fields}}
     <div class="sc-f">
       <label for="f-{{.Key}}">{{.Label}}
-        {{if eq .Source "env"}}<span class="sc-src env" title="von außen gesetzt">Umgebung</span>{{else if eq .Source "file"}}<span class="sc-src file" title="in der Einstellungsdatei">Datei</span>{{else}}<span class="sc-src" title="Standardwert">Standard</span>{{end}}
+        {{if eq .Source "env"}}<span class="sc-src env" title="von außen gesetzt">Umgebung</span>{{else if eq .Source "db"}}<span class="sc-src db" title="in der Datenbank gespeichert">Datenbank</span>{{else if eq .Source "file"}}<span class="sc-src file" title="in der Einstellungsdatei">Datei</span>{{else}}<span class="sc-src" title="Standardwert">Standard</span>{{end}}
         {{if .Restart}}<i class="ti ti-refresh sc-restart" title="wirkt nach Neustart"></i>{{end}}
       </label>
       {{if .Secret}}

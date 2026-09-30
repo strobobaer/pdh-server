@@ -427,6 +427,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
+	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Get("/admin/backup", h.BackupPage)
 	r.Post("/admin/backup/create", h.BackupCreateWeb)
 	r.Post("/admin/backup/upload", h.BackupUploadWeb)

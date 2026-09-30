@@ -41,3 +41,4 @@ chat_files/
 backups/
 .gotest/
 setup-code.txt
+.env.bak-*

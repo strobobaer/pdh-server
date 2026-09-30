@@ -23,6 +23,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
+
+	"pdh/pkg/config"
 )
 
 // Datensicherung & Wiederherstellung (Verwaltung -> Datensicherung).
@@ -610,6 +612,10 @@ func (h *Handler) restoreDatabase(ctx context.Context, zr *zip.Reader, man *back
 	}
 	if h.rbac != nil {
 		_ = h.rbac.RefreshCache(context.Background())
+	}
+	// Server-Einstellungen aus der Sicherung sofort uebernehmen
+	if _, err := config.ApplyDBSettings(context.Background(), h.db); err == nil {
+		h.reloadLiveConfig(context.Background())
 	}
 	notes = append([]string{fmt.Sprintf("Datenbank: %d Tabellen, %d Datensätze zurückgespielt", len(tables), total)}, notes...)
 	return notes, nil

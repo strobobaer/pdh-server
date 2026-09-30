@@ -116,7 +116,7 @@ code{background:var(--bg3);padding:1px 5px;border-radius:4px}
     <div class="grid"><div style="grid-column:1/-1"><label>Öffentliche Adresse des PDH</label><input name="public_url" value="{{with index .Form "public_url"}}{{.}}{{else}}{{.PublicURL}}{{end}}"><div class="help">Für Links in E-Mails und QR-Codes auf Etiketten, z. B. https://pdh.firma.de</div></div></div>
     <div class="row">
       <button class="btn primary" type="submit" id="go">Einrichtung abschließen</button>
-      <span class="sub">Einstellungen werden in <code>{{.EnvFile}}</code> gespeichert.</span>
+      <span class="sub">Der Datenbank-Zugang wird in <code>{{.EnvFile}}</code> gespeichert, alle übrigen Einstellungen in der Datenbank.</span>
     </div>
   </div>
   </form>

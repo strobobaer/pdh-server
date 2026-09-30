@@ -140,6 +140,10 @@ type ServerConfigData struct {
 	EnvFile        string
 	FileWritable   bool
 	RestartPending []string
+	PendingImport  []string // Werte in der Datei, noch nicht in der Datenbank
+	Undecryptable  []string
+	ImportedAt     string
+	ImportedCount  int
 	CanRestart     bool
 	Msg, Err       string
 }
@@ -161,16 +165,49 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.EnvFile = abs
 	}
 	d.FileWritable = fileWritable(path)
+	dbVals := map[string]config.DBSetting{}
+	if h.db != nil {
+		if v, err := config.LoadDBSettings(r.Context(), h.db); err == nil {
+			dbVals = v
+		}
+	}
+	for k := range file {
+		if strings.HasPrefix(k, "PDH_") && !config.BootstrapKey(k) && !config.FromProcessEnv(k) {
+			if _, ok := dbVals[k]; !ok {
+				d.PendingImport = append(d.PendingImport, k)
+			}
+		}
+	}
+	sort.Strings(d.PendingImport)
+	var firstImport time.Time
+	for _, s := range dbVals {
+		if s.DecryptErr != nil {
+			d.Undecryptable = append(d.Undecryptable, s.Key)
+		}
+		if s.Source == "env_import" {
+			d.ImportedCount++
+			if firstImport.IsZero() || s.UpdatedAt.Before(firstImport) {
+				firstImport = s.UpdatedAt
+			}
+		}
+	}
+	if !firstImport.IsZero() {
+		d.ImportedAt = firstImport.Local().Format("02.01.2006 15:04")
+	}
+	sort.Strings(d.Undecryptable)
 	for _, g := range envGroups {
 		gv := envGroupView{Key: g.Key, Label: g.Label, Icon: g.Icon, Intro: g.Intro}
 		for _, f := range g.Fields {
 			v := envFieldView{envField: f}
 			cur := os.Getenv(f.Key)
 			_, inFile := file[f.Key]
+			dbv, inDB := dbVals[f.Key]
 			switch {
 			case config.FromProcessEnv(f.Key):
 				v.Source, v.ReadOnly = "env", true
 				gv.External++
+			case inDB && dbv.DecryptErr == nil:
+				v.Source = "db"
 			case inFile:
 				v.Source = "file"
 			default:
@@ -188,6 +225,36 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, gv)
 	}
 	h.render(w, "server_config", d)
+}
+
+// ServerConfigImportWeb: POST /admin/server-config/import - Werte aus der
+// Einstellungsdatei, die noch nicht in der Datenbank stehen, uebernehmen.
+func (h *Handler) ServerConfigImportWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canServerConfig(r) || h.db == nil {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	ctx := r.Context()
+	keys, err := config.ImportEnvFileToDB(ctx, h.db, config.EnvFilePath(), IsSecretSetting)
+	if err == nil {
+		_, err = config.ApplyDBSettings(ctx, h.db)
+	}
+	if err != nil {
+		serverConfigRedirect(w, r, "server", "", err)
+		return
+	}
+	if len(keys) == 0 {
+		serverConfigRedirect(w, r, "server", "Alle Werte der Einstellungsdatei stehen bereits in der Datenbank.", nil)
+		return
+	}
+	for _, k := range keys {
+		if f, ok := envFieldByKey(k); ok && f.Restart && !containsStr(h.restartPending, f.Label) {
+			h.restartPending = append(h.restartPending, f.Label)
+		}
+	}
+	h.reloadLiveConfig(ctx)
+	h.notifyAdmins(ctx, "⚙️ **Server-Einstellungen** aus der .env in die Datenbank übernommen von "+h.chatUserName(ctx, getUser(r).ID)+": "+strings.Join(keys, ", "))
+	serverConfigRedirect(w, r, "server", fmt.Sprintf("%d Wert(e) aus der Einstellungsdatei in die Datenbank übernommen; in der Datei auskommentiert (Sicherungskopie *.bak-… daneben).", len(keys)), nil)
 }
 
 func serverConfigRedirect(w http.ResponseWriter, r *http.Request, tab, msg string, err error) {
@@ -318,12 +385,32 @@ func (h *Handler) ServerConfigSaveWeb(w http.ResponseWriter, r *http.Request) {
 // applyEnvUpdates schreibt die Datei, uebernimmt die Werte sofort, soweit
 // moeglich, und merkt sich, was erst nach einem Neustart wirkt.
 func (h *Handler) applyEnvUpdates(ctx context.Context, updates map[string]string, userID string) (string, error) {
-	path := config.EnvFilePath()
-	if err := config.WriteEnvFile(path, updates); err != nil {
-		return "", fmt.Errorf("Einstellungsdatei %s nicht beschreibbar: %w", path, err)
+	// Datenbank-Zugang und Schluessel bleiben in der Datei, alles andere
+	// liegt in der Datenbank (server_settings).
+	fileUpd, dbUpd := map[string]string{}, map[string]string{}
+	for k, v := range updates {
+		if config.BootstrapKey(k) || h.db == nil {
+			fileUpd[k] = v
+		} else {
+			dbUpd[k] = v
+		}
 	}
-	if err := config.ApplyEnvFile(path); err != nil {
-		return "", err
+	path := config.EnvFilePath()
+	if len(fileUpd) > 0 {
+		if err := config.WriteEnvFile(path, fileUpd); err != nil {
+			return "", fmt.Errorf("Einstellungsdatei %s nicht beschreibbar: %w", path, err)
+		}
+		if err := config.ApplyEnvFile(path); err != nil {
+			return "", err
+		}
+	}
+	if len(dbUpd) > 0 {
+		if err := config.SaveDBSettings(ctx, h.db, dbUpd, IsSecretSetting, "ui", userID); err != nil {
+			return "", fmt.Errorf("Speichern in der Datenbank: %w", err)
+		}
+		if _, err := config.ApplyDBSettings(ctx, h.db); err != nil {
+			return "", err
+		}
 	}
 	var keys, restart []string
 	for k := range updates {
@@ -516,4 +603,12 @@ func fileWritable(path string) bool {
 	tmp.Close()
 	os.Remove(name)
 	return true
+}
+
+// IsSecretSetting: geheimer Wert laut Katalog (bzw. Namens-Heuristik).
+func IsSecretSetting(key string) bool {
+	if f, ok := envFieldByKey(key); ok {
+		return f.Secret
+	}
+	return config.SecretKey(key)
 }

@@ -48,14 +48,15 @@ import (
 var buildCommit = "unknown"
 
 func main() {
-	// Erstinstallation: Einstellungsdatei laden und fehlendes JWT-Secret
-	// automatisch erzeugen (statt mit Fehler abzubrechen).
+	// Erstinstallation: Einstellungsdatei laden. Sie enthaelt mindestens den
+	// Datenbank-Zugang und den Schluessel fuer verschluesselte Einstellungen
+	// (wird automatisch erzeugt); alles andere liegt in der Datenbank.
 	envPath := config.EnvFilePath()
 	if err := config.ApplyEnvFile(envPath); err != nil {
 		fmt.Fprintf(os.Stderr, "einstellungsdatei %s: %v\n", envPath, err)
 		os.Exit(1)
 	}
-	jwtCreated, err := config.EnsureJWTSecret(envPath)
+	keyCreated, err := config.EnsureSettingsKey(envPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		os.Exit(1)
@@ -68,8 +69,8 @@ func main() {
 
 	logger.Init(cfg.Server.Env)
 	log.Info().Str("env", cfg.Server.Env).Str("einstellungen", envPath).Msg("PDH startet")
-	if jwtCreated {
-		log.Info().Str("datei", envPath).Msg("neues JWT-Secret erzeugt und gespeichert")
+	if keyCreated {
+		log.Info().Str("datei", envPath).Msg("schlüssel für verschlüsselte server-einstellungen erzeugt (PDH_SETTINGS_KEY) – datei mitsichern!")
 	}
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
@@ -96,6 +97,7 @@ func main() {
 		log.Fatal().Err(err).Msg("migrationen")
 	}
 	log.Info().Msg("migrationen geprüft")
+	cfg = loadServerSettings(db, envPath)
 
 	// Noch kein Benutzer (frische Datenbank, z. B. Docker): ersten
 	// Administrator im Browser anlegen lassen.
@@ -105,10 +107,9 @@ func main() {
 		if err := setup.Run(context.Background(), setup.Options{Addr: addr, Pool: db.Pool}); err != nil {
 			log.Fatal().Err(err).Msg("einrichtung")
 		}
-		if cfg, err = config.Load(); err != nil { // z. B. neue oeffentliche Adresse
-			log.Fatal().Err(err).Msg("config")
-		}
+		cfg = loadServerSettings(db, envPath) // z. B. neue oeffentliche Adresse
 	}
+	addr = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port) // Port/Host koennen aus der Datenbank kommen
 
 	// Services
 	userRepo := users.NewRepository(db.Pool)
@@ -518,4 +519,46 @@ func openDatabase(cfg *config.DatabaseConfig) (*database.DB, error) {
 		db, err = database.New(cfg)
 	}
 	return db, err
+}
+
+// loadServerSettings uebertraegt noch nicht uebernommene Werte aus der
+// Einstellungsdatei in die Datenbank, laedt die Datenbank-Einstellungen,
+// erzeugt ein fehlendes JWT-Secret und liefert die fertige Konfiguration.
+func loadServerSettings(db *database.DB, envPath string) *config.Config {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	imported, err := config.ImportEnvFileToDB(ctx, db.Pool, envPath, web.IsSecretSetting)
+	if err != nil {
+		log.Error().Err(err).Msg("server-einstellungen: übernahme aus der einstellungsdatei")
+	}
+	if len(imported) > 0 {
+		log.Info().Strs("werte", imported).Str("datei", envPath).Msg("server-einstellungen aus der einstellungsdatei in die datenbank übernommen")
+	}
+	bad, err := config.ApplyDBSettings(ctx, db.Pool)
+	if err != nil {
+		log.Fatal().Err(err).Msg("server-einstellungen laden")
+	}
+	if len(bad) > 0 {
+		log.Warn().Strs("werte", bad).Msg("server-einstellungen nicht entschlüsselbar (anderer PDH_SETTINGS_KEY?) – bitte unter Server-Einstellungen neu eingeben")
+	}
+	if s := os.Getenv("PDH_AUTH_JWTSECRET"); len(s) < 32 || strings.Contains(s, "AENDERN") {
+		if config.FromProcessEnv("PDH_AUTH_JWTSECRET") {
+			log.Fatal().Msg("PDH_AUTH_JWTSECRET ist von außen gesetzt, aber ungültig (mind. 32 Zeichen)")
+		}
+		secret := config.RandomSecret(32)
+		if err := config.SaveDBSettings(ctx, db.Pool, map[string]string{"PDH_AUTH_JWTSECRET": secret}, web.IsSecretSetting, "generated", ""); err != nil {
+			log.Fatal().Err(err).Msg("jwt-secret speichern")
+		}
+		os.Setenv("PDH_AUTH_JWTSECRET", secret)
+		log.Info().Msg("neues JWT-Secret erzeugt und in der datenbank gespeichert")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal().Err(err).Msg("config")
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatal().Err(err).Msg("config")
+	}
+	logger.Init(cfg.Server.Env)
+	return cfg
 }

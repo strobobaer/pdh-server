@@ -7,11 +7,11 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Auth     AuthConfig
-	Copilot  CopilotConfig
-	Update   UpdateConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Auth      AuthConfig
+	Copilot   CopilotConfig
+	Update    UpdateConfig
 	Microsoft MicrosoftConfig
 	Mail      MailConfig
 }
@@ -177,9 +177,14 @@ func Load() (*Config, error) {
 	cfg.Mail.PublicURL = viper.GetString("mail.publicurl")
 	cfg.Mail.CredentialsKey = viper.GetString("mail.credentialskey")
 
-	if len(cfg.Auth.JWTSecret) < 32 {
-		return nil, fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")
-	}
-
 	return cfg, nil
+}
+
+// Validate prueft Pflichtwerte - erst nach dem Laden der Datenbank-
+// Einstellungen aufrufen (das JWT-Secret kann dort liegen).
+func (c *Config) Validate() error {
+	if len(c.Auth.JWTSecret) < 32 {
+		return fmt.Errorf("auth.jwtsecret muss gesetzt und mindestens 32 zeichen lang sein")
+	}
+	return nil
 }

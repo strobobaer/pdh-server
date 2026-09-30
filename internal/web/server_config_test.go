@@ -83,7 +83,8 @@ func TestCollectEnvUpdatesSecretsKept(t *testing.T) {
 
 func TestServerConfigPageRenders(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	d := ServerConfigData{EnvFile: "/app/config/pdh.env", FileWritable: true, CanRestart: true, RestartPending: []string{"Port"}}
+	d := ServerConfigData{EnvFile: "/app/config/pdh.env", FileWritable: true, CanRestart: true, RestartPending: []string{"Port"},
+		PendingImport: []string{"PDH_SMTP_FROM"}, Undecryptable: []string{"PDH_NEXTCLOUD_PASSWORD"}, ImportedAt: "30.09.2026 10:00", ImportedCount: 5}
 	for _, g := range envGroups {
 		gv := envGroupView{Key: g.Key, Label: g.Label, Icon: g.Icon, Intro: g.Intro}
 		for _, f := range g.Fields {
@@ -93,7 +94,7 @@ func TestServerConfigPageRenders(t *testing.T) {
 				gv.External = 1
 			}
 			if f.Key == "PDH_SMTP_PASSWORD" {
-				v.Source, v.IsSet = "file", true
+				v.Source, v.IsSet = "db", true
 			}
 			gv.Fields = append(gv.Fields, v)
 		}
@@ -101,7 +102,7 @@ func TestServerConfigPageRenders(t *testing.T) {
 	}
 	out := renderPage(t, tmpl, "server_config", d)
 	for _, want := range []string{"Server-Einstellungen", "/app/config/pdh.env", "Server neu starten", "Neustart", "PDH_SMTP_PASSWORD",
-		"gesetzt – leer lassen", "clear_PDH_SMTP_PASSWORD", "Umgebung", "Verbindung testen", "Testmail an mich", "Neuen Anmelde-Schlüssel"} {
+		"gesetzt – leer lassen", "clear_PDH_SMTP_PASSWORD", "Umgebung", "Verbindung testen", "Testmail an mich", "Neuen Anmelde-Schlüssel", "Datenbank", "/admin/server-config/import", "PDH_SMTP_FROM", "Nicht entschlüsselbar", "am 30.09.2026 10:00"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Seite enthält %q nicht", want)
 		}

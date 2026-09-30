@@ -130,10 +130,16 @@ Einrichtungsassistent:
    *vorhandene Zugangsdaten* eintragen (eine fehlende Datenbank wird angelegt).
 3. Ersten Administrator und öffentliche Adresse angeben – fertig.
 
-Die Werte landen in `.env` (bzw. `PDH_ENV_FILE`). Danach lassen sich alle Einstellungen
-unter **Verwaltung → Server-Einstellungen** pflegen; von außen gesetzte Umgebungsvariablen
-(Docker `.env.docker`, systemd) haben Vorrang und sind dort nur lesbar. In Docker liegt die
-Datei unter `/app/config/pdh.env` im Volume `pdh_config`.
+In der `.env` (bzw. `PDH_ENV_FILE`) bleiben nur der Datenbank-Zugang und der automatisch
+erzeugte Schlüssel `PDH_SETTINGS_KEY`. Alle übrigen Einstellungen liegen in der Datenbank
+(Tabelle `server_settings`, Geheimnisse AES-verschlüsselt) und werden unter
+**Verwaltung → Server-Einstellungen** gepflegt. Eine bestehende `.env` wird beim Start
+automatisch übernommen: Werte, die noch nicht in der Datenbank stehen, werden übertragen und
+in der Datei auskommentiert (Sicherungskopie `.env.bak-…`). Von außen gesetzte
+Umgebungsvariablen (Docker `.env.docker`, systemd) haben Vorrang und sind dort nur lesbar. In
+Docker liegt die Datei unter `/app/config/pdh.env` im Volume `pdh_config`. **Die Datei mit
+`PDH_SETTINGS_KEY` gehört in jede Sicherung** – ohne sie sind verschlüsselte Werte nach einer
+Wiederherstellung auf einem anderen Server nicht lesbar.
 
 ## Konfiguration
 

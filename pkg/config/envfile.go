@@ -23,7 +23,8 @@ import (
 
 var (
 	origOnce sync.Once
-	origEnv  map[string]bool // Variablen, die schon vor dem Laden der Datei gesetzt waren
+	origEnv  map[string]bool     // Variablen, die schon vor dem Laden der Datei gesetzt waren
+	dbKeys   = map[string]bool{} // Schluessel, die in der Datenbank verwaltet werden (unter envMu)
 	envMu    sync.Mutex
 )
 
@@ -157,7 +158,7 @@ func ApplyEnvFile(path string) error {
 	envMu.Lock()
 	defer envMu.Unlock()
 	for k, v := range vals {
-		if origEnv[k] {
+		if origEnv[k] || dbKeys[k] { // Datenbank-Werte haben Vorrang vor der Datei
 			continue
 		}
 		if v == "" {
@@ -238,26 +239,6 @@ func RandomSecret(n int) string {
 		panic(err)
 	}
 	return hex.EncodeToString(b)
-}
-
-// EnsureJWTSecret erzeugt bei der Erstinstallation automatisch ein sicheres
-// JWT-Secret und speichert es in der Einstellungsdatei.
-func EnsureJWTSecret(path string) (bool, error) {
-	snapshotEnv()
-	if s := os.Getenv("PDH_AUTH_JWTSECRET"); len(s) >= 32 && !strings.Contains(s, "AENDERN") {
-		return false, nil
-	}
-	if origEnv["PDH_AUTH_JWTSECRET"] {
-		return false, fmt.Errorf("PDH_AUTH_JWTSECRET ist von außen gesetzt, aber kürzer als 32 Zeichen")
-	}
-	secret := RandomSecret(32)
-	if err := WriteEnvFile(path, map[string]string{"PDH_AUTH_JWTSECRET": secret}); err != nil {
-		return false, err
-	}
-	envMu.Lock()
-	os.Setenv("PDH_AUTH_JWTSECRET", secret)
-	envMu.Unlock()
-	return true, nil
 }
 
 // ExternalEnviron liefert nur die von aussen gesetzten Variablen - fuer
