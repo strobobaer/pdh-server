@@ -98,7 +98,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><b>Verknüpfungen</b></td><td>alles, was mit dem Datensatz zusammenhängt – Anlage, Vorgänge, Ersatzteile, Firmen, Chat</td></tr>
     <tr><td><b>Historie</b></td><td>wer hat wann was geändert</td></tr>
   </table>
-  <p><b>Listen</b> haben oben ebenfalls Reiter (z. B. nach Status oder Kategorie) mit der Anzahl der Einträge. Die Kennzahl-Kacheln sind anklickbar und filtern die Liste.</p>
+  <p><b>Listen</b> haben oben ebenfalls Reiter (z. B. nach Status oder Kategorie) mit der Anzahl der Einträge. Die Kennzahl-Kacheln sind anklickbar und filtern die Liste. Darunter filtern die <b>#-Schlagworte</b> nach <a href="#categories">Kategorie</a>.</p>
   <h3><i class="ti ti-hash"></i> Kopfleiste: Kategorien und Status</h3>
   {{template "hb-fig-meta"}}
   <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
@@ -119,6 +119,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Navigation → <b>Kategorien</b>.</li>
       <li>Links die Kategorie wählen – rechts erscheinen alle Datensätze, sortiert nach Modul.</li>
       <li>Ein Klick öffnet den Datensatz im PDH-Viewer.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-filter"></i> So filterst du eine Liste nach Kategorie</b>
+    <ol class="hb-steps">
+      <li>Jede Liste (Tickets, Störungen, Aufgaben, Projekte, Wartung, Ersatzteile, Hersteller &amp; Lieferanten) und die Bäume von Infrastruktur und Lager zeigen oben eine Zeile mit <b>#-Schlagworten</b> und der Anzahl der Treffer.</li>
+      <li>Schlagwort antippen – die Liste zeigt nur noch diese Kategorie. Status- und Suchfilter bleiben erhalten; im Baum bleibt der Weg zu den Treffern sichtbar.</li>
+      <li>Nochmal antippen oder <b>× alle</b> hebt den Filter auf.</li>
     </ol></div>
   <p>Mit der Berechtigung <i>Kategorien verwalten</i> legst du auf derselben Seite neue Kategorien an, änderst Name, Farbe und Symbol oder deaktivierst eine Kategorie. Deaktivierte Kategorien können nicht mehr neu vergeben werden, bestehende Zuordnungen bleiben sichtbar. Jede Änderung steht in der Historie des Datensatzes.</p>
   {{template "hb-shots" (dict "Ref" (index $s "categories") "Can" $can)}}
@@ -332,7 +338,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-trash-x"></i> Sperren, Deaktivieren &amp; Löschen</h2>
   <p>Stammdaten – <b>Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten</b> – werden im PDH <b>nie direkt gelöscht</b>. Sonst würden Störungen, Buchungen und Historien plötzlich ins Leere zeigen. Stattdessen gibt es drei Stufen, alle über <b>Status</b> oben auf der Detailseite:</p>
   <table>
-    <tr><td><b><i class="ti ti-lock"></i> Sperren</b></td><td>Der Datensatz bleibt sichtbar, kann aber nicht mehr geändert oder gebucht werden (z. B. Anlage während eines Umbaus). Kommentare sind weiter möglich.</td></tr>
+    <tr><td><b><i class="ti ti-lock"></i> Sperren</b></td><td>Der Datensatz bleibt sichtbar, kann aber nicht mehr geändert werden (z. B. Anlage während eines Umbaus). Kommentare sind weiter möglich. Auf gesperrte Ersatzteile und Lagerplätze kann <b>nichts gebucht</b> werden – weder in der Ersatzteilliste noch bei der Materialentnahme in Vorgängen oder über Schnittstellen.</td></tr>
     <tr><td><b><i class="ti ti-circle-off"></i> Deaktivieren</b></td><td>Verschwindet aus Listen und Auswahlfeldern, bleibt aber vollständig erhalten und kann jederzeit wieder aktiviert werden.</td></tr>
     <tr><td><b><i class="ti ti-trash-x"></i> Zum Löschen vormerken</b></td><td>Wird sofort deaktiviert. Beim nächsten <b>Bereinigungslauf</b> prüft PDH, ob er noch verwendet wird.</td></tr>
   </table>
@@ -424,8 +430,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst. Das gilt auch für die Unterhaltung mit <b>PDH-System</b>; die Änderungshinweise lassen sich unter Mein Konto → Konto &amp; Dienste ganz abschalten.</p>
   <h3>Wie lösche ich eine Anlage, ein Ersatzteil oder einen Lagerplatz?</h3>
   <p>Gar nicht direkt: <b>Status → Zum Löschen vormerken</b>. Der Bereinigungslauf löscht den Datensatz oder blendet ihn aus, wenn er noch verwendet wird (<a href="#cleanup">mehr</a>).</p>
-  <h3>Beim Speichern erscheint „Gesperrt“.</h3>
-  <p>Der Datensatz wurde gesperrt. Wer bearbeiten darf, hebt die Sperre über <b>Status → Sperre aufheben</b> auf.</p>
+  <h3>Beim Speichern oder Buchen erscheint „gesperrt“.</h3>
+  <p>Der Datensatz – bei Buchungen das Ersatzteil oder der Lagerplatz – wurde gesperrt. Wer bearbeiten darf, hebt die Sperre über <b>Status → Sperre aufheben</b> auf.</p>
   <h3>Etiketten werden zu groß oder zu klein gedruckt.</h3>
   <p>Das passende Format wählen und im Druckdialog 100 % Skalierung und keine Ränder einstellen.</p>
   {{template "hb-shots" (dict "Ref" (index $s "faq") "Can" $can)}}

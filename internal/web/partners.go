@@ -160,6 +160,9 @@ func (h *Handler) DirectoryPage(w http.ResponseWriter, r *http.Request) {
 		add(`bp.category = $?`, f.Category)
 	}
 
+	if tag := q.Get("tag"); tag != "" {
+		add(`bp.id IN (SELECT record_id FROM record_categories WHERE module = 'business_partner' AND category_id::text = $?)`, tag)
+	}
 	rows, err := h.db.Query(ctx, `
 		SELECT bp.id::text, bp.partner_no, bp.name, bp.short_name, bp.kind, bp.category, bp.approval_status, bp.rating,
 		       bp.city, bp.phone, bp.email, bp.active,

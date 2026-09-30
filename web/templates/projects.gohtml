@@ -35,6 +35,7 @@
 </div>
 
 {{template "list-tabs" .Tabs}}
+{{template "category-filter-slot" (dict "Module" "project")}}
 
 <div class="grid2">
 {{range .Projects}}

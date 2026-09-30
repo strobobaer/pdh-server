@@ -121,9 +121,13 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 		Cond: "project_id IS NULL", Active: unassigned})
 
 	list, err := h.tasks.List(ctx, tasks.Status(filter), "", unassigned)
+	tagIDs := h.categoryFilterIDs(r, "task")
 	if err == nil {
 		data.Total = len(list)
 		for _, t := range list {
+			if tagIDs != nil && !tagIDs[t.ID] {
+				continue
+			}
 			if t.Status == "open" || t.Status == "in_progress" {
 				data.Open++
 			}

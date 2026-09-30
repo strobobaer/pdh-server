@@ -18,6 +18,8 @@
   )}}
 </div>
 
+{{template "category-filter-slot" (dict "Module" "storage")}}
+
 <div id="new-root" style="display:none" class="card">
   <div class="card-title">Lagerort anlegen</div>
   <form hx-post="/storage" hx-on::after-request="if(event.detail.successful) location.reload()">

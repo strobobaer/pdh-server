@@ -1,0 +1,30 @@
+{{/*
+  Kategorie-Filter (#) ueber Listen:
+    {{template "category-filter-slot" (dict "Module" "ticket")}}
+  Filtert per ?tag=<Kategorie-ID>; die Chips behalten alle anderen Parameter.
+*/}}
+{{define "category-filter-slot"}}
+<div class="catf-wrap" hx-get="/categories/filter/{{.Module}}" hx-trigger="load" hx-swap="innerHTML"
+     hx-vals='js:{url: location.pathname + location.search}'></div>
+{{end}}
+
+{{define "category-filter"}}
+{{if .Chips}}
+<style>
+.catf{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px}
+.catf a{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:999px;padding:2px 10px 2px 8px;font-size:12px;color:var(--muted);line-height:20px;text-decoration:none}
+.catf a:hover{border-color:var(--c,var(--accent))}
+.catf a.on{background:var(--c);border-color:transparent;color:#fff}
+.catf a.zero{opacity:.55}
+.catf b{font-weight:600;font-size:11px}
+</style>
+<div class="catf">
+  <i class="ti ti-hash" style="color:var(--muted)" title="Nach Kategorie filtern"></i>
+  {{range .Chips}}
+  <a href="{{.URL}}" class="{{if .Active}}on{{end}} {{if not .Count}}zero{{end}}" style="--c:{{css .Color}}" title="{{if .Active}}Filter aufheben{{else}}Nur #{{.Name}} anzeigen{{end}}"><i class="ti {{.Icon}}"></i>{{.Name}} <b>{{.Count}}</b></a>
+  {{end}}
+  {{if .Filtered}}<a href="{{.AllURL}}" title="Filter aufheben"><i class="ti ti-x"></i> alle</a>
+  <script>setTimeout(function(){ if(window.expandAll) expandAll(); if(window.expandStorageTree) expandStorageTree(); }, 50)</script>{{end}}
+</div>
+{{end}}
+{{end}}

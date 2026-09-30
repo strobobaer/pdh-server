@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
 )
 
@@ -597,4 +598,23 @@ func (h *Handler) CleanupActionWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin/cleanup?tab="+tab+"&msg="+url.QueryEscape("Erledigt."), http.StatusSeeOther)
+}
+
+// triggerError macht Meldungen aus Datenbank-Triggern (RAISE EXCEPTION,
+// z. B. Buchung auf gesperrtes Teil) fuer Anwender lesbar.
+func triggerError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "P0001" {
+		return errors.New(pe.Message)
+	}
+	if s := err.Error(); strings.Contains(s, "SQLSTATE P0001") {
+		if i := strings.Index(s, "ERROR: "); i >= 0 {
+			s = s[i+len("ERROR: "):]
+		}
+		return errors.New(strings.TrimSpace(strings.Split(s, " (SQLSTATE")[0]))
+	}
+	return err
 }

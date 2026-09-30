@@ -104,7 +104,11 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	list, err := h.projects.List(ctx, projects.Status(filter))
 	if err == nil {
 		data.Total = len(list)
+		tagIDs := h.categoryFilterIDs(r, "project")
 		for _, p := range list {
+			if tagIDs != nil && !tagIDs[p.ID] {
+				continue
+			}
 			data.Projects = append(data.Projects, projectView(p))
 		}
 	}

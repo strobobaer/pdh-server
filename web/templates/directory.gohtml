@@ -41,6 +41,7 @@
   <div class="pb-kpi"><div class="v {{if .WithoutContacts}}pb-warn{{end}}">{{.WithoutContacts}}</div><div class="l">Ohne Ansprechpartner</div></div>
 </div>
 
+{{template "category-filter-slot" (dict "Module" "business_partner")}}
 <form class="pb-filter" method="get" action="/directory" id="pb-filter">
   <div class="search-box" style="flex:1;min-width:220px">
     <i class="ti ti-search" style="color:var(--muted)"></i>

@@ -224,3 +224,112 @@ func (h *Handler) CategoryToggleWeb(w http.ResponseWriter, r *http.Request) {
 	_, _ = h.db.Exec(r.Context(), `UPDATE categories SET active = NOT active WHERE id = $1::uuid`, id)
 	http.Redirect(w, r, "/categories?c="+url.QueryEscape(id), http.StatusSeeOther)
 }
+
+// ── Listenfilter ─────────────────────────────────────────────
+//
+// Jede Liste kann per ?tag=<Kategorie-ID> gefiltert werden. Die Chip-Leiste
+// dazu laedt das Widget "category-filter-slot" von /categories/filter/{module}.
+
+// categoryFilterIDs liefert die Datensatz-IDs des Moduls mit der Kategorie
+// aus ?tag= - oder nil, wenn nicht gefiltert wird.
+func (h *Handler) categoryFilterIDs(r *http.Request, module string) map[string]bool {
+	tag := r.URL.Query().Get("tag")
+	if tag == "" || h.db == nil {
+		return nil
+	}
+	ids := map[string]bool{}
+	rows, err := h.db.Query(r.Context(), `SELECT record_id::text FROM record_categories WHERE module = $1 AND category_id::text = $2`, module, tag)
+	if err != nil {
+		return ids
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids[id] = true
+		}
+	}
+	return ids
+}
+
+type categoryFilterChip struct {
+	Name, Color, Icon, URL string
+	Count                  int
+	Active                 bool
+}
+
+type categoryFilterData struct {
+	Chips    []categoryFilterChip
+	AllURL   string
+	Filtered bool
+}
+
+// CategoryFilterWeb: GET /categories/filter/{module}?url=<aktuelle Liste>
+func (h *Handler) CategoryFilterWeb(w http.ResponseWriter, r *http.Request) {
+	module := chi.URLParam(r, "module")
+	if _, ok := recordModules[module]; !ok {
+		http.Error(w, "unbekanntes Modul", http.StatusNotFound)
+		return
+	}
+	u, err := url.Parse(r.URL.Query().Get("url"))
+	if err != nil || u.IsAbs() || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		u = &url.URL{Path: "/"}
+	}
+	current := u.Query().Get("tag")
+	link := func(tag string) string {
+		q := u.Query()
+		if tag == "" {
+			q.Del("tag")
+		} else {
+			q.Set("tag", tag)
+		}
+		out := url.URL{Path: u.Path, RawQuery: q.Encode()}
+		return out.String()
+	}
+	d := categoryFilterData{AllURL: link(""), Filtered: current != ""}
+	rows, err := h.db.Query(r.Context(), `
+		SELECT c.id::text, c.name, c.color, c.icon, COUNT(rc.record_id)
+		  FROM categories c
+		  LEFT JOIN record_categories rc ON rc.category_id = c.id AND rc.module = $1
+		 WHERE c.active OR c.id::text = $2
+		 GROUP BY c.id ORDER BY c.sort_order, lower(c.name)`, module, current)
+	if err == nil {
+		for rows.Next() {
+			var id string
+			var c categoryFilterChip
+			if rows.Scan(&id, &c.Name, &c.Color, &c.Icon, &c.Count) == nil {
+				c.Active = id == current
+				if c.Active {
+					c.URL = link("")
+				} else {
+					c.URL = link(id)
+				}
+				d.Chips = append(d.Chips, c)
+			}
+		}
+		rows.Close()
+	}
+	h.renderFragment(w, "category-filter", d)
+}
+
+func pruneInfraTree(nodes []InfraNodeView, ids map[string]bool) []InfraNodeView {
+	var out []InfraNodeView
+	for _, n := range nodes {
+		n.Children = pruneInfraTree(n.Children, ids)
+		if ids[n.ID] || len(n.Children) > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func pruneStorageTree(nodes []StorageNodeView, ids map[string]bool) []StorageNodeView {
+	var out []StorageNodeView
+	for _, n := range nodes {
+		n.Children = pruneStorageTree(n.Children, ids)
+		if ids[n.ID] || len(n.Children) > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
+}

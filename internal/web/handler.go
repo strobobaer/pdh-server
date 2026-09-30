@@ -413,6 +413,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/categories", h.CategoriesPage)
 	r.Post("/categories", h.CategorySaveWeb)
 	r.Post("/categories/{id}/toggle", h.CategoryToggleWeb)
+	r.Get("/categories/filter/{module}", h.CategoryFilterWeb)
 	// Loeschvormerkungen & Bereinigungslauf
 	r.Get("/admin/cleanup", h.CleanupPage)
 	r.Post("/admin/cleanup/run", h.CleanupRunWeb)
@@ -1251,9 +1252,13 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 		{"in_progress", "In Bearbeitung", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))
 
+	tagIDs := h.categoryFilterIDs(r, "fault")
 	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
 		data.Total = len(fl)
 		for _, f := range fl {
+			if tagIDs != nil && !tagIDs[f.ID] {
+				continue
+			}
 			if unassigned && (f.AssignedTo != nil || f.Status == "resolved" || f.Status == "closed") {
 				continue
 			}
@@ -1293,9 +1298,13 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))
 
+	tagIDs := h.categoryFilterIDs(r, "ticket")
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
 		data.Total = len(tl)
 		for _, t := range tl {
+			if tagIDs != nil && !tagIDs[t.ID] {
+				continue
+			}
 			if unassigned && (t.AssignedTo != nil || t.Status == "resolved" || t.Status == "closed") {
 				continue
 			}
@@ -2025,8 +2034,12 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	tagIDs := h.categoryFilterIDs(r, "maintenance_task")
 	if tasks, err := h.maint.ListTasks(ctx, status, ""); err == nil {
 		for _, t := range tasks {
+			if tagIDs != nil && !tagIDs[t.ID] {
+				continue
+			}
 			if t.Status == "open" {
 				data.OpenTasks++
 			}
@@ -2039,6 +2052,9 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 
 	if due, err := h.maint.GetDueToday(ctx); err == nil {
 		for _, t := range due {
+			if tagIDs != nil && !tagIDs[t.ID] {
+				continue
+			}
 			data.DueTasks = append(data.DueTasks, maintTaskView(t))
 		}
 	}
@@ -2694,9 +2710,10 @@ func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 		Notes:         r.FormValue("notes"),
 	}
 	mv, err := h.inv.Book(r.Context(), in, u.ID)
+	err = triggerError(err)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red)">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	typeLabel := map[inventory.MovementType]string{"in": "Zugang", "out": "Abgang", "correction": "Korrektur", "inventory": "Inventur"}
@@ -2783,6 +2800,9 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 			data.Tree = append(data.Tree, infraNodeView(i))
 		}
 		data.AllNodes = flattenNodes(data.Tree)
+		if tagIDs := h.categoryFilterIDs(r, "infrastructure"); tagIDs != nil {
+			data.Tree = pruneInfraTree(data.Tree, tagIDs) // Pfad zu Treffern bleibt sichtbar
+		}
 	}
 
 	if stats, err := h.infra.GetStats(ctx); err == nil {
@@ -2890,6 +2910,9 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 	if tree, err := h.storage.GetTree(r.Context()); err == nil {
 		for _, n := range tree {
 			data.Tree = append(data.Tree, storageNodeView(n))
+		}
+		if tagIDs := h.categoryFilterIDs(r, "storage"); tagIDs != nil {
+			data.Tree = pruneStorageTree(data.Tree, tagIDs)
 		}
 	}
 	if stats, err := h.storage.GetStats(r.Context()); err == nil {

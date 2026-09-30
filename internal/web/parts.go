@@ -186,6 +186,9 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 		      COALESCE(mf.name, sp.manufacturer, '') || ' ' || COALESCE(sb.name, '') || ' ' || COALESCE(sup.supplier_part_no, '')) ILIKE $?`,
 			likePattern(data.Query))
 	}
+	if tag := q.Get("tag"); tag != "" {
+		add(`sp.id IN (SELECT record_id FROM record_categories WHERE module = 'part' AND category_id::text = $?)`, tag)
+	}
 	rows, err := h.db.Query(ctx, `
 		SELECT sp.id::text, sp.part_number, sp.name, COALESCE(sp.category, ''), COALESCE(sp.description, ''),
 		       COALESCE(sp.manufacturer_id::text, ''), COALESCE(NULLIF(mf.name, ''), sp.manufacturer, ''),
@@ -610,7 +613,7 @@ func (h *Handler) PartBookWeb(w http.ResponseWriter, r *http.Request) {
 			Reference:     strings.TrimSpace(r.FormValue("reference")), Notes: strings.TrimSpace(r.FormValue("notes")),
 		}, getUser(r).ID)
 	}
-	partRedirect(w, r, id, "stock", fmt.Sprintf("Buchung erfasst (%s)", movementTypeLabels[r.FormValue("type")]), err)
+	partRedirect(w, r, id, "stock", fmt.Sprintf("Buchung erfasst (%s)", movementTypeLabels[r.FormValue("type")]), triggerError(err))
 }
 
 // withTab haengt den aktiven Reiter an eine (ggf. schon parametrisierte) URL.

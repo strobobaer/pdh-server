@@ -94,6 +94,7 @@
   {{range .Tabs}}<a href="/inventory?cat={{.Key}}&status={{$.Status}}&q={{$.Query}}" class="{{if eq .Key $.Category}}active{{end}}">{{.Label}} <b>{{.Count}}</b></a>{{end}}
 </div>
 
+{{template "category-filter-slot" (dict "Module" "part")}}
 <form method="get" action="/inventory" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
   <input type="hidden" name="cat" value="{{.Category}}">
   <div class="search-box" style="flex:1;min-width:220px">

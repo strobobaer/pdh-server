@@ -3,6 +3,7 @@ package web
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,5 +200,41 @@ func TestBackupCleanupCategoryPagesRender(t *testing.T) {
 	_ = c.ExecuteTemplate(&buf, "record-meta", recordMetaData{Module: "ticket", ID: "t1", Categories: []categoryChip{{ID: "c1", Name: "Energie", Color: "#f59e0b", Icon: "ti-bolt", On: true}}})
 	if strings.Contains(buf.String(), "hx-post") {
 		t.Error("Kopfleiste ohne Recht bietet Aktionen an")
+	}
+}
+
+func TestCategoryListFilter(t *testing.T) {
+	tree := []InfraNodeView{{ID: "halle", Children: []InfraNodeView{{ID: "linie1", Children: []InfraNodeView{{ID: "presse"}}}, {ID: "linie2"}}}, {ID: "buero"}}
+	got := pruneInfraTree(tree, map[string]bool{"presse": true})
+	if len(got) != 1 || got[0].ID != "halle" || len(got[0].Children) != 1 || got[0].Children[0].Children[0].ID != "presse" {
+		t.Errorf("Baum falsch gefiltert: %+v", got)
+	}
+	st := pruneStorageTree([]StorageNodeView{{ID: "a", Children: []StorageNodeView{{ID: "b"}}}}, map[string]bool{"x": true})
+	if len(st) != 0 {
+		t.Errorf("Lagerbaum: %+v", st)
+	}
+
+	tmpl := loadTestTemplates(t)
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "category-filter", categoryFilterData{
+		Filtered: true, AllURL: "/tickets?status=open",
+		Chips: []categoryFilterChip{{Name: "Energie", Color: "#f59e0b", Icon: "ti-bolt", URL: "/tickets?status=open", Count: 3, Active: true}, {Name: "Versuch", Color: "#8b5cf6", Icon: "ti-flask", URL: "/tickets?status=open&tag=c2"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Energie", "tag=c2", "alle", "zero"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("Filterleiste enthält %q nicht", want)
+		}
+	}
+}
+
+func TestTriggerError(t *testing.T) {
+	e := triggerError(errors.New(`buchen: ERROR: Ersatzteil „4711“ ist gesperrt – keine Buchung möglich (SQLSTATE P0001)`))
+	if e.Error() != "Ersatzteil „4711“ ist gesperrt – keine Buchung möglich" {
+		t.Errorf("%q", e.Error())
+	}
+	if triggerError(nil) != nil {
+		t.Error("nil")
 	}
 }
