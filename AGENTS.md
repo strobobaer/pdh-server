@@ -37,9 +37,10 @@ Secrets are stored in VS Code SecretStorage and are not present in these files.
 ## Handbuch (In-App-Hilfe) mitpflegen
 
 Das Benutzerhandbuch liegt in der Anwendung unter `/help` (Navigation → Handbuch;
-Kontexthilfe im Hilfe-Reiter der rechten Seitenleiste). **Jede Änderung an
-Funktionen, Oberfläche oder Abläufen muss im selben Schritt im Handbuch
-nachgezogen werden.**
+Kontexthilfe im Hilfe-Reiter der rechten Seitenleiste). **Jede Anpassung oder
+Änderung an Funktionen, Oberfläche oder Abläufen muss im selben Schritt in
+Handbuch und Hilfe nachgezogen werden: Neues ergänzen, Geändertes anpassen,
+Entfallenes oder Veraltetes bereinigen (entfernen).**
 
 - Texte: `web/templates/help.gohtml` – ein `<section class="hb-ch" id="…" data-pages="…">`
   je Kapitel. `data-pages` listet die `BaseData.Page`-Kennungen, für die das
