@@ -1,29 +1,5 @@
 {{template "base" .}}
 
-{{define "head"}}
-<style>
-/* frappe-gantt liefert ein helles Standard-Theme mit - an PDHs dunkles
-   Farbschema angeglichen, damit der Zeitstrahl nicht wie ein heller
-   Fremdkörper in der dunklen Karte wirkt. */
-.gantt-container{background:transparent}
-.gantt .grid-header{fill:var(--bg2);stroke:var(--border)}
-.gantt .grid-row{fill:var(--bg2)}
-.gantt .grid-row:nth-child(even){fill:var(--bg3)}
-.gantt .row-line{stroke:var(--border)}
-.gantt .tick{stroke:var(--border)}
-.gantt .tick.thick{stroke:var(--border)}
-.gantt .today-highlight{fill:var(--accent);opacity:.14}
-.gantt .arrow{stroke:var(--muted)}
-.gantt .bar-label{fill:#fff}
-.gantt .bar-label.big{fill:var(--text)}
-.gantt .upper-text{fill:var(--muted)}
-.gantt .lower-text{fill:var(--text)}
-.gantt-container .popup-wrapper{background:var(--bg2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35)}
-.gantt-container .popup-wrapper .title{border-bottom:2px solid var(--accent);color:var(--text)}
-.gantt-container .popup-wrapper .subtitle{color:var(--muted)}
-.gantt-container .popup-wrapper .pointer{border-top-color:var(--bg2)}
-</style>
-{{end}}
 
 {{define "content"}}
 <div style="margin-bottom:18px">

@@ -14,6 +14,7 @@
   document.documentElement.dataset.themeMode = mode;
 })();
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 <style>
 :root{
   color-scheme:dark;font-family:"Aptos","Segoe UI",sans-serif;
@@ -80,6 +81,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #dash-gantt-target{overflow-x:auto}
 #dash-gantt-empty{display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center}
 .gantt-container{background:transparent}
+.gantt .grid-background{fill:none}
 .gantt .grid-header{fill:var(--surface);stroke:var(--border)}
 .gantt .grid-row{fill:var(--surface)}
 .gantt .grid-row:nth-child(even){fill:var(--surface-2)}
@@ -141,7 +143,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 @media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
 @media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}}
 </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 </head>
 <body>
 <header>

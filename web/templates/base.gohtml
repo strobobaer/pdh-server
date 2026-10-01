@@ -103,6 +103,25 @@ a.kpi:hover{border-color:var(--accent)}
 /* ── Chat: Ungelesen-Zaehler & Hinweis ── */
 .nav-badge{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
 html.sidebar-left-collapsed .nav-badge{position:absolute;top:4px;right:6px;margin:0}
+/* Zeitstrahl (frappe-gantt): dessen CSS wird erst spaeter auf der Seite geladen
+   und ist fest hell - daher mit .gantt-container vorneweg, damit diese Regeln
+   gewinnen und der Zeitstrahl Hell/Dunkel folgt. */
+.gantt-container{background:transparent}
+.gantt-container .gantt .grid-background{fill:none}
+.gantt-container .gantt .grid-header{fill:var(--bg2);stroke:var(--border)}
+.gantt-container .gantt .grid-row{fill:var(--bg2)}
+.gantt-container .gantt .grid-row:nth-child(even){fill:var(--bg3)}
+.gantt-container .gantt .row-line,.gantt-container .gantt .tick,.gantt-container .gantt .tick.thick{stroke:var(--border)}
+.gantt-container .gantt .today-highlight{fill:var(--accent);opacity:.14}
+.gantt-container .gantt .arrow{stroke:var(--muted)}
+.gantt-container .gantt .bar-label{fill:#fff}
+.gantt-container .gantt .bar-label.big{fill:var(--text)}
+.gantt-container .gantt .upper-text{fill:var(--muted)}
+.gantt-container .gantt .lower-text{fill:var(--text)}
+.gantt-container .popup-wrapper{background:var(--bg2);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.gantt-container .popup-wrapper .title{border-bottom:2px solid var(--accent);color:var(--text)}
+.gantt-container .popup-wrapper .subtitle{color:var(--muted)}
+.gantt-container .popup-wrapper .pointer{border-top-color:var(--bg2)}
 .chat-toast{position:fixed;right:18px;bottom:18px;z-index:550;width:min(340px,calc(100vw - 32px));background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.3);cursor:pointer;font-size:12.5px}
 .chat-toast b{display:block;font-size:13px;margin-bottom:2px}
 .chat-toast span{color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
