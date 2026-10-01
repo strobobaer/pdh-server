@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -22,6 +23,38 @@ type createChecklistTemplateItemInput struct {
 	Required     bool   `json:"required"`
 	IntervalDays int    `json:"interval_days"`
 	SortOrder    int    `json:"sort_order"`
+	// nur Messwert: Einheit sowie Soll/Min/Max (null = nicht aktiviert)
+	Unit        string   `json:"unit"`
+	TargetValue *float64 `json:"target_value"`
+	MinValue    *float64 `json:"min_value"`
+	MaxValue    *float64 `json:"max_value"`
+}
+
+// checklistItemTypes: Checkbox, Messwert, Freitext.
+var checklistItemTypes = map[string]bool{"checkbox": true, "number": true, "text": true}
+
+// errChecklistInput kennzeichnet Eingabefehler (HTTP 400 statt 500).
+var errChecklistInput = errors.New("ungültige eingabe")
+
+// toTemplateItem prueft die Eingabe und setzt Vorgaben; Soll/Min/Max gibt es nur beim Messwert.
+func (in createChecklistTemplateItemInput) toTemplateItem() (*ChecklistTemplateItem, error) {
+	item := &ChecklistTemplateItem{
+		Label: strings.TrimSpace(in.Label), Description: strings.TrimSpace(in.Description),
+		ItemType: in.ItemType, Required: in.Required, IntervalDays: in.IntervalDays, SortOrder: in.SortOrder,
+	}
+	if item.ItemType == "" { item.ItemType = "checkbox" }
+	if !checklistItemTypes[item.ItemType] { return nil, errors.New("typ muss checkbox, number oder text sein") }
+	if item.IntervalDays <= 0 { item.IntervalDays = 1 }
+	if item.SortOrder == 0 { item.SortOrder = 100 }
+	if item.ItemType == "number" {
+		item.Unit = strings.TrimSpace(in.Unit)
+		if len([]rune(item.Unit)) > 20 { return nil, errors.New("einheit höchstens 20 zeichen") }
+		item.TargetValue, item.MinValue, item.MaxValue = in.TargetValue, in.MinValue, in.MaxValue
+		if item.MinValue != nil && item.MaxValue != nil && *item.MinValue > *item.MaxValue {
+			return nil, errors.New("min darf nicht größer als max sein")
+		}
+	}
+	return item, nil
 }
 
 type assignChecklistTemplateInput struct {
@@ -52,14 +85,9 @@ func (s *Service) ListChecklistTemplateItemsForAPI(r *http.Request, templateID s
 }
 
 func (s *Service) CreateChecklistTemplateItemForAPI(r *http.Request, templateID string, in createChecklistTemplateItemInput) (*ChecklistTemplateItem, error) {
-	item := &ChecklistTemplateItem{
-		TemplateID: templateID,
-		Label: strings.TrimSpace(in.Label), Description: strings.TrimSpace(in.Description),
-		ItemType: in.ItemType, Required: in.Required, IntervalDays: in.IntervalDays, SortOrder: in.SortOrder,
-	}
-	if item.ItemType == "" { item.ItemType = "checkbox" }
-	if item.IntervalDays <= 0 { item.IntervalDays = 1 }
-	if item.SortOrder == 0 { item.SortOrder = 100 }
+	item, err := in.toTemplateItem()
+	if err != nil { return nil, errors.Join(errChecklistInput, err) }
+	item.TemplateID = templateID
 	if err := s.repo.CreateChecklistTemplateItem(r.Context(), item); err != nil { return nil, err }
 	return item, nil
 }
@@ -69,13 +97,8 @@ func (s *Service) DeleteChecklistTemplateItemForAPI(r *http.Request, itemID stri
 }
 
 func (s *Service) UpdateChecklistTemplateItemForAPI(r *http.Request, itemID string, in createChecklistTemplateItemInput) (*ChecklistTemplateItem, error) {
-	item := &ChecklistTemplateItem{
-		Label: strings.TrimSpace(in.Label), Description: strings.TrimSpace(in.Description),
-		ItemType: in.ItemType, Required: in.Required, IntervalDays: in.IntervalDays, SortOrder: in.SortOrder,
-	}
-	if item.ItemType == "" { item.ItemType = "checkbox" }
-	if item.IntervalDays <= 0 { item.IntervalDays = 1 }
-	if item.SortOrder == 0 { item.SortOrder = 100 }
+	item, err := in.toTemplateItem()
+	if err != nil { return nil, errors.Join(errChecklistInput, err) }
 	if err := s.repo.UpdateChecklistTemplateItem(r.Context(), itemID, item); err != nil { return nil, err }
 	item.ID = itemID
 	return item, nil
@@ -109,6 +132,14 @@ func (s *Service) SaveTaskChecklistForAPI(r *http.Request, taskID, userID string
 	return s.repo.SaveTaskChecklistResults(r.Context(), taskID, userID, in.Values, in.Done)
 }
 
+func (s *Service) EnsureTaskChecklistResultForAPI(r *http.Request, taskID, itemID string) (string, error) {
+	return s.repo.EnsureTaskChecklistResult(r.Context(), taskID, itemID)
+}
+
+func (s *Service) TaskChecklistResultsForAPI(r *http.Request, taskID string) ([]*TaskChecklistItem, error) {
+	return s.repo.TaskChecklistResults(r.Context(), taskID)
+}
+
 func (s *Service) DefaultDurationForTaskForAPI(r *http.Request, taskID string) int {
 	return s.repo.DefaultDurationForTask(r.Context(), taskID)
 }
@@ -128,6 +159,8 @@ func (h *Handler) ChecklistRoutes(jwtSecret string) chi.Router {
 	r.Delete("/plans/{planID}", h.DeactivatePlan)
 	r.Get("/tasks/{taskID}/due-checklist", h.DueChecklistItemsForTask)
 	r.Post("/tasks/{taskID}/checklist-results", h.SaveTaskChecklistResults)
+	r.Get("/tasks/{taskID}/checklist-results", h.TaskChecklistResults)
+	r.Post("/tasks/{taskID}/items/{itemID}/result", h.EnsureTaskChecklistResult)
 	r.Get("/tasks/{taskID}/default-duration", h.DefaultDurationForTask)
 	return r
 }
@@ -164,7 +197,7 @@ func (h *Handler) CreateChecklistTemplateItem(w http.ResponseWriter, r *http.Req
 	if strings.TrimSpace(in.Label) == "" { response.Error(w, 400, "label ist pflicht"); return }
 	if in.IntervalDays <= 0 { response.Error(w, 400, "intervall ist pflicht"); return }
 	item, err := h.svc.CreateChecklistTemplateItemForAPI(r, chi.URLParam(r, "templateID"), in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil { checklistError(w, err); return }
 	response.JSON(w, 201, item)
 }
 
@@ -179,7 +212,7 @@ func (h *Handler) UpdateChecklistTemplateItem(w http.ResponseWriter, r *http.Req
 	if strings.TrimSpace(in.Label) == "" { response.Error(w, 400, "label ist pflicht"); return }
 	if in.IntervalDays <= 0 { response.Error(w, 400, "intervall ist pflicht"); return }
 	item, err := h.svc.UpdateChecklistTemplateItemForAPI(r, chi.URLParam(r, "itemID"), in)
-	if err != nil { response.Error(w, 500, err.Error()); return }
+	if err != nil { checklistError(w, err); return }
 	response.JSON(w, 200, item)
 }
 
@@ -210,10 +243,34 @@ func (h *Handler) DueChecklistItemsForTask(w http.ResponseWriter, r *http.Reques
 func (h *Handler) SaveTaskChecklistResults(w http.ResponseWriter, r *http.Request) {
 	var in saveTaskChecklistInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
-	if err := h.svc.SaveTaskChecklistForAPI(r, chi.URLParam(r, "taskID"), uid(r), in); err != nil { response.Error(w, 500, err.Error()); return }
+	if err := h.svc.SaveTaskChecklistForAPI(r, chi.URLParam(r, "taskID"), uid(r), in); err != nil { response.Error(w, 400, err.Error()); return }
 	response.JSON(w, 200, map[string]string{"status":"gespeichert"})
 }
 
 func (h *Handler) DefaultDurationForTask(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, 200, map[string]int{"default_duration_min": h.svc.DefaultDurationForTaskForAPI(r, chi.URLParam(r, "taskID"))})
+}
+
+func (h *Handler) TaskChecklistResults(w http.ResponseWriter, r *http.Request) {
+	items, err := h.svc.TaskChecklistResultsForAPI(r, chi.URLParam(r, "taskID"))
+	if err != nil { response.Error(w, 500, err.Error()); return }
+	if items == nil { items = []*TaskChecklistItem{} }
+	response.JSON(w, 200, items)
+}
+
+// EnsureTaskChecklistResult: liefert die Ergebnis-ID eines Punkts (fuer Dokumentationsfotos).
+func (h *Handler) EnsureTaskChecklistResult(w http.ResponseWriter, r *http.Request) {
+	id, err := h.svc.EnsureTaskChecklistResultForAPI(r, chi.URLParam(r, "taskID"), chi.URLParam(r, "itemID"))
+	if err != nil { response.Error(w, 500, err.Error()); return }
+	response.JSON(w, 200, map[string]string{"id": id})
+}
+
+func checklistError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errChecklistInput) {
+		msg := err.Error()
+		if i := strings.LastIndex(msg, "\n"); i >= 0 { msg = msg[i+1:] }
+		response.Error(w, 400, msg)
+		return
+	}
+	response.Error(w, 500, err.Error())
 }

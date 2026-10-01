@@ -161,7 +161,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
   <ul>
-    <li>Bei <b>Wartungen</b> mit fälligen Checklistenpunkten füllst du zuerst die Messwerte aus; <b>Weiter zum Abschluss</b> öffnet dann den Assistenten.</li>
+    <li>Bei <b>Wartungen</b> mit fälligen Checklistenpunkten füllst du zuerst die Checkliste aus (Checkbox, Messwert, Freitext, Fotos); <b>Weiter zum Abschluss</b> öffnet dann den Assistenten.</li>
     <li>Kann der Vorgang nicht geschlossen werden (z. B. fehlt dir die Berechtigung zum Abschließen), wird das Erfasste trotzdem gespeichert und der Grund angezeigt.</li>
     <li><b>Administration:</b> Die vorgeschlagenen Abteilungen stellst du unter <b>Core-Einstellungen → Abschluss-Assistent: Wer war dabei?</b> ein (Teilwort genügt, „Elektro“ passt auf „Elektrowerkstatt“).</li>
   </ul>
@@ -254,9 +254,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-clipboard-check"></i> So führst du eine Wartung aus</b>
     <ol class="hb-steps">
       <li>In der Wartungsliste den Auftrag öffnen (Reiter <b>Aktuell</b>).</li>
-      <li><b>Starten</b> und die Checkliste Punkt für Punkt abhaken.</li>
-      <li>Grüner Haken <b>Abschließen</b>: Fällige Checklistenpunkte (Messwerte) ausfüllen und <b>Weiter zum Abschluss</b> – dann fragt der <a href="#completion">Abschluss-Assistent</a> Material, Zeit, wer dabei war und den Kommentar ab.</li>
-      <li><b>Fertig</b> – der nächste Termin des Plans wird automatisch berechnet.</li>
+      <li><b>Starten</b> und die fälligen Checklistenpunkte ausfüllen: Checkbox abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Freitext schreiben. Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du an jeden Punkt Fotos zur Dokumentation – am Handy öffnet sich direkt die Kamera.</li>
+      <li>Grüner Haken <b>Abschließen</b>: Pflichtpunkte (✱) müssen ausgefüllt sein; Messwerte außerhalb von Min/Max fragt PDH noch einmal nach. <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a> (Material, Zeit, wer dabei war, Kommentar).</li>
+      <li><b>Fertig</b> – der nächste Termin des Plans wird automatisch berechnet. Das <b>Checklisten-Protokoll</b> im Auftrag zeigt danach alle Werte, wer sie wann erfasst hat und die Fotos.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-checklist"></i> Checklisten-Vorlagen einrichten</b>
+    <ol class="hb-steps">
+      <li>In der Wartung oben <b>Checklisten</b> öffnen und eine <b>Vorlage</b> anlegen.</li>
+      <li>Punkte hinzufügen – je Punkt ein <b>Intervall in Tagen</b> (abgefragt wird nur, was fällig ist) und eine Art:
+        <ul>
+          <li><b>Checkbox</b> – erledigt / nicht erledigt.</li>
+          <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>; jede Vorgabe wird per Häkchen einzeln aktiviert. Soll ist der Richtwert, Min/Max die Grenzen für „im Bereich“.</li>
+          <li><b>Freitext</b> – Beobachtungen, Zählerstände o. Ä.</li>
+        </ul></li>
+      <li>Unter jedem Punkt mit <i class="ti ti-photo-plus"></i> <b>Bild</b> Fotos oder Skizzen zur <b>Darstellung</b> hinterlegen (z. B. wo der Messpunkt sitzt). Sie erscheinen bei der Durchführung über dem Eingabefeld.</li>
+      <li>Die Vorlage im <b>Wartungsplan</b> unter „Checklisten-Vorlagen“ ankreuzen.</li>
     </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>

@@ -67,45 +67,17 @@
   </form>
 </div>
 
+<!-- Checklisten-Protokoll -->
+<div id="checklist-protocol" class="card" style="display:none">
+  <div class="card-title"><i class="ti ti-list-check" style="color:var(--accent)"></i> Checklisten-Protokoll</div>
+  <div id="checklist-protocol-body"></div>
+</div>
+
 <!-- Ausführungsformular -->
 {{if .Task.CanComplete}}
 <div id="complete-form" class="card">
   <div class="card-title"><i class="ti ti-clipboard-check" style="color:var(--accent)"></i> Ausführungsformular</div>
   <form onsubmit="return submitMaintenanceCompletion(this,'{{.Task.ID}}')">
-
-    {{if .ChecklistItems}}
-    <div style="margin-bottom:16px">
-      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Checkliste</div>
-      {{range .ChecklistItems}}
-      <div class="li" style="flex-direction:column;align-items:stretch;gap:6px;padding:10px 0">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="font-size:13px;font-weight:500;flex:1">
-            {{if .Required}}<span style="color:var(--red);font-size:10px">✱</span> {{end}}{{.Label}}
-          </div>
-          <span style="font-size:10px;color:var(--muted)">{{.Type}}</span>
-        </div>
-        {{if eq .Type "checkbox"}}
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
-          <input type="checkbox" name="item_{{.ID}}" value="1" style="width:16px;height:16px">
-          <span style="color:var(--muted)">Erledigt</span>
-        </label>
-        {{else if eq .Type "number"}}
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="number" name="item_{{.ID}}" class="form-input" style="max-width:160px" placeholder="Messwert eingeben" {{if .CompareValue}}step="0.01"{{end}}>
-          {{if .CompareUnit}}<span style="font-size:12px;color:var(--muted)">{{.CompareUnit}}</span>{{end}}
-        </div>
-        {{else if eq .Type "image"}}
-        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera"></i>Foto aufnehmen
-          <input type="file" accept="image/*" capture="environment" name="item_{{.ID}}" style="display:none">
-        </label>
-        {{else}}
-        <input type="text" name="item_{{.ID}}" class="form-input" placeholder="{{.Label}}">
-        {{end}}
-      </div>
-      {{end}}
-    </div>
-    {{end}}
 
     <div id="due-checklist-box" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Fällige Checklistenpunkte werden geladen...</div>
 
@@ -299,20 +271,153 @@
 {{end}}
 
 {{block "scripts" .}}
+<style>
+.dck{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg2)}
+.dck.missing{border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.dck-head{display:flex;gap:8px;align-items:flex-start}
+.dck-label{flex:1;font-weight:500;font-size:13px}
+.dck-desc{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:pre-wrap}
+.dck-spec{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.dck-spec span{font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.dck-spec b{color:var(--text);font-weight:600}
+.dck-in{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.dck-in .form-input{max-width:180px}
+.dck-in textarea.form-input{max-width:none;width:100%;min-height:60px;resize:vertical}
+.dck-state{font-size:11.5px;font-weight:600}
+.dck-state.ok{color:var(--green)}.dck-state.bad{color:var(--red)}
+.dck-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.dck-imgs .lbl{font-size:10.5px;color:var(--muted);width:100%}
+.dck-img{position:relative;display:inline-block}
+.dck-img img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block}
+.dck-img button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-size:11px}
+.dck-ref img{width:120px;height:90px}
+.dck-add{height:64px;min-width:64px;padding:0 10px;border:1px dashed var(--border);border-radius:6px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10.5px;color:var(--muted);cursor:pointer}
+.dck-add:hover{border-color:var(--accent);color:var(--accent)}
+.dck-add i{font-size:20px}
+.dck-add.busy{opacity:.5;pointer-events:none}
+.cp-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:4px 12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.cp-row:last-child{border-bottom:0}
+.cp-row .m{font-size:11px;color:var(--muted)}
+@media(max-width:700px){.cp-row{grid-template-columns:1fr}}
+</style>
 <script>
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){const el=document.getElementById(id); if(el) el.style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
 function toggleEdit(){const f=document.getElementById('edit-form');f.style.display=f.style.display==='none'?'block':'none';if(f.style.display==='block')f.scrollIntoView({behavior:'smooth',block:'nearest'});}
 async function apiData(url, options){const res=await fetch(url,Object.assign({credentials:'same-origin'},options||{}));let payload=null;try{payload=await res.json();}catch(e){payload=null;}if(!res.ok)throw new Error((payload&&(payload.error||payload.message))||('HTTP '+res.status));return payload&&payload.data!==undefined?payload.data:payload;}
-async function openCompleteForm(taskID){const box=document.getElementById('complete-form');const due=await loadDueChecklist(taskID);
+// auto=true: beim Laden der Seite nur die faelligen Punkte vorbereiten (kein Assistent)
+async function openCompleteForm(taskID, auto){const box=document.getElementById('complete-form');const due=await loadDueChecklist(taskID);
   // Abschluss-Assistent (Material, Zeit, wer war dabei, Kommentar); fällige Checklistenpunkte vorher hier ausfüllen
-  if(!due && !box.querySelector('[name^="item_"]')){box.style.display='none';pdhComplete('maintenance',taskID);return;}
-  box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  if(!due){box.style.display='none';if(!auto)pdhComplete('maintenance',taskID);return;}
+  box.style.display='block';if(!auto)box.scrollIntoView({behavior:'smooth',block:'nearest'});}
 async function loadDefaultDuration(taskID){try{const d=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/default-duration');const input=document.getElementById('complete-duration');if(input && !input.value && d && d.default_duration_min>0)input.value=d.default_duration_min;}catch(e){console.warn(e);}}
-async function loadDueChecklist(taskID){const box=document.getElementById('due-checklist-box');try{const items=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/due-checklist');if(!items||items.length===0){box.innerHTML='<div style="padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--muted)">Keine fälligen Vorlagen-Checklistenpunkte.</div>';return 0;}box.innerHTML='<div class="card-title" style="margin:0 0 8px 0"><i class="ti ti-checklist"></i> Fällige Checklistenpunkte</div>'+items.map(renderDueChecklistItem).join('');return items.length;}catch(e){box.innerHTML='<div style="color:var(--red)">Fällige Checkliste konnte nicht geladen werden: '+escapeHtml(e.message)+'</div>';}}
-function renderDueChecklistItem(item){const req=item.required?'<span style="color:var(--red);font-size:10px">✱</span> ':'';const last=item.last_done_at?'<div style="font-size:10px;color:var(--muted)">Zuletzt: '+escapeHtml(item.last_done_at)+'</div>':'';let input='';if(item.item_type==='number'){input='<input type="number" step="0.01" class="form-input due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" placeholder="Messwert">';}else if(item.item_type==='text'){input='<input type="text" class="form-input due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" placeholder="Wert / Notiz">';}else{input='<label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)"><input type="checkbox" class="due-check-done" data-item-id="'+escapeHtml(item.template_item_id)+'"> erledigt</label><input type="hidden" class="due-check-value" data-item-id="'+escapeHtml(item.template_item_id)+'" value="erledigt">';}return '<div class="li" style="flex-direction:column;align-items:stretch;gap:6px"><div style="display:flex;gap:8px"><div style="flex:1;font-weight:500;font-size:13px">'+req+escapeHtml(item.label)+'</div><span class="badge b-gray" style="font-size:10px">'+escapeHtml(item.interval_days)+' Tage</span></div>'+last+input+'</div>';}
-async function submitMaintenanceCompletion(form,taskID){const result=document.getElementById('complete-result');result.textContent='Speichere Checkliste...';try{const values={};const done={};document.querySelectorAll('#due-checklist-box .due-check-value').forEach(i=>{values[i.dataset.itemId]=i.value||'';});document.querySelectorAll('#due-checklist-box .due-check-done').forEach(i=>{done[i.dataset.itemId]=i.checked;});if(Object.keys(values).length>0){await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values,done})});}result.textContent='';document.getElementById('complete-form').style.display='none';pdhComplete('maintenance',taskID);}catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';}return false;}
+
+// ── Checkliste: Checkbox, Messwert (Soll/Min/Max), Freitext; Bilder zur Darstellung + Fotos zur Dokumentation
+var dckItems = {};
+function dckNum(v){return (v===null||v===undefined)?'':String(v).replace('.',',');}
+function dckParse(v){v=String(v||'').trim().replace(',','.');if(v==='')return null;const n=Number(v);return isFinite(n)?n:NaN;}
+function dckSpecHtml(item){
+  if(item.item_type!=='number')return '';
+  const u=item.unit?' '+escapeHtml(item.unit):'';const p=[];
+  if(item.target_value!==null&&item.target_value!==undefined)p.push('<span>Soll <b>'+escapeHtml(dckNum(item.target_value))+u+'</b></span>');
+  if(item.min_value!==null&&item.min_value!==undefined)p.push('<span>Min <b>'+escapeHtml(dckNum(item.min_value))+u+'</b></span>');
+  if(item.max_value!==null&&item.max_value!==undefined)p.push('<span>Max <b>'+escapeHtml(dckNum(item.max_value))+u+'</b></span>');
+  return p.length?'<div class="dck-spec">'+p.join('')+'</div>':'';
+}
+// Bewertung gegen Min/Max: null = keine Grenzen oder kein Wert
+function dckRange(item,value){
+  const hasMin=item.min_value!==null&&item.min_value!==undefined, hasMax=item.max_value!==null&&item.max_value!==undefined;
+  const n=dckParse(value);
+  if(n===null)return null;
+  if(isNaN(n))return 'nan';
+  if(!hasMin&&!hasMax)return null;
+  return (!hasMin||n>=item.min_value)&&(!hasMax||n<=item.max_value);
+}
+function dckCheckMeasure(input){
+  const item=dckItems[input.dataset.itemId];const st=input.parentNode.querySelector('.dck-state');if(!item||!st)return;
+  const r=dckRange(item,input.value);
+  if(r===null){st.textContent='';st.className='dck-state';}
+  else if(r==='nan'){st.textContent='keine Zahl';st.className='dck-state bad';}
+  else if(r){st.innerHTML='<i class="ti ti-circle-check"></i> im Bereich';st.className='dck-state ok';}
+  else{st.innerHTML='<i class="ti ti-alert-triangle"></i> außerhalb '+(item.min_value!==null&&item.min_value!==undefined?escapeHtml(dckNum(item.min_value)):'…')+' – '+(item.max_value!==null&&item.max_value!==undefined?escapeHtml(dckNum(item.max_value)):'…')+(item.unit?' '+escapeHtml(item.unit):'');st.className='dck-state bad';}
+  input.closest('.dck').classList.remove('missing');
+}
+function dckImg(img,removable){return '<span class="dck-img"><a href="'+escapeHtml(img.url)+'" target="_blank" rel="noopener"><img src="'+escapeHtml(img.url)+'" alt="'+escapeHtml(img.filename)+'" loading="lazy"></a>'+(removable?'<button type="button" title="Foto entfernen" aria-label="Foto entfernen" onclick="dckDeletePhoto(\''+escapeHtml(img.id)+'\',this)"><i class="ti ti-x"></i></button>':'')+'</span>';}
+async function loadDueChecklist(taskID){const box=document.getElementById('due-checklist-box');try{const items=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/due-checklist');if(!items||items.length===0){box.innerHTML='<div style="padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--muted)">Keine fälligen Vorlagen-Checklistenpunkte.</div>';return 0;}dckItems={};items.forEach(i=>{dckItems[i.template_item_id]=i;});box.innerHTML='<div class="card-title" style="margin:0 0 8px 0"><i class="ti ti-checklist"></i> Fällige Checklistenpunkte</div>'+items.map(renderDueChecklistItem).join('');box.querySelectorAll('.due-check-value[data-measure]').forEach(dckCheckMeasure);return items.length;}catch(e){box.innerHTML='<div style="color:var(--red)">Fällige Checkliste konnte nicht geladen werden: '+escapeHtml(e.message)+'</div>';return 0;}}
+function renderDueChecklistItem(item){
+  const id=escapeHtml(item.template_item_id);
+  const req=item.required?'<span style="color:var(--red);font-size:10px" title="Pflichtpunkt">✱</span> ':'';
+  const last=item.last_done_at?'<div class="dck-desc">Zuletzt: '+escapeHtml(new Date(item.last_done_at).toLocaleDateString('de-DE'))+'</div>':'';
+  const desc=item.description?'<div class="dck-desc">'+escapeHtml(item.description)+'</div>':'';
+  const refs=(item.ref_images||[]);
+  const refHtml=refs.length?'<div class="dck-imgs dck-ref"><span class="lbl">Darstellung</span>'+refs.map(i=>dckImg(i,false)).join('')+'</div>':'';
+  let input='';
+  if(item.item_type==='number'){
+    input='<div class="dck-in"><input type="text" inputmode="decimal" class="form-input due-check-value" data-measure="1" data-item-id="'+id+'" value="'+escapeHtml(item.value||'')+'" placeholder="Messwert" oninput="dckCheckMeasure(this)">'+(item.unit?'<span style="font-size:12px;color:var(--muted)">'+escapeHtml(item.unit)+'</span>':'')+'<span class="dck-state"></span></div>';
+  }else if(item.item_type==='text'){
+    input='<div class="dck-in"><textarea class="form-input due-check-value" data-item-id="'+id+'" placeholder="Freitext" oninput="this.closest(\'.dck\').classList.remove(\'missing\')">'+escapeHtml(item.value||'')+'</textarea></div>';
+  }else{
+    input='<div class="dck-in"><label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="due-check-done" data-item-id="'+id+'" style="width:18px;height:18px"'+(item.done?' checked':'')+' onchange="this.closest(\'.dck\').classList.remove(\'missing\')"> erledigt</label></div>';
+  }
+  const docs=(item.doc_images||[]);
+  const docHtml='<div class="dck-imgs dck-docs" data-item-id="'+id+'"><span class="lbl">Fotos zur Dokumentation</span>'+docs.map(i=>dckImg(i,true)).join('')
+    +'<label class="dck-add" title="Foto aufnehmen oder auswählen"><i class="ti ti-camera-plus"></i><span>Foto</span><input type="file" accept="image/*" capture="environment" multiple hidden onchange="dckUploadPhotos(\''+id+'\',this)"></label></div>';
+  return '<div class="dck" data-item-id="'+id+'" data-type="'+escapeHtml(item.item_type)+'" data-required="'+(item.required?'1':'')+'"><div class="dck-head"><div class="dck-label">'+req+escapeHtml(item.label)+desc+last+'</div><span class="badge b-gray" style="font-size:10px">'+escapeHtml(item.interval_days)+' Tage</span></div>'+dckSpecHtml(item)+refHtml+input+docHtml+'</div>';
+}
+// Dokumentationsfotos haengen am Ergebnis des Punkts (wird bei Bedarf angelegt)
+async function dckUploadPhotos(itemID,input){
+  if(!input.files||!input.files.length)return;
+  const add=input.closest('.dck-add');add.classList.add('busy');
+  try{
+    const r=await apiData('/api/v1/maintenance-checklists/tasks/'+MAINT_TASK_ID+'/items/'+encodeURIComponent(itemID)+'/result',{method:'POST'});
+    const fd=new FormData();[...input.files].forEach(f=>fd.append('files',f));
+    const saved=await apiData('/api/v1/attachments/maint_check_result/'+encodeURIComponent(r.id),{method:'POST',body:fd})||[];
+    if(saved.length<input.files.length)alert('Nicht alle Dateien wurden übernommen (nur Bilder bis 20 MB).');
+    saved.filter(a=>a.is_image).forEach(a=>add.insertAdjacentHTML('beforebegin',dckImg({id:a.id,url:a.url,filename:a.filename},true)));
+  }catch(e){alert('Foto konnte nicht gespeichert werden: '+e.message);}
+  input.value='';add.classList.remove('busy');
+}
+async function dckDeletePhoto(id,btn){
+  if(!confirm('Foto entfernen?'))return;
+  try{await apiData('/api/v1/attachments/'+encodeURIComponent(id),{method:'DELETE'});btn.closest('.dck-img').remove();}
+  catch(e){alert('Fehler: '+e.message);}
+}
+async function submitMaintenanceCompletion(form,taskID){
+  const result=document.getElementById('complete-result');
+  const values={};const done={};const missing=[];
+  document.querySelectorAll('#due-checklist-box .dck').forEach(card=>{
+    const id=card.dataset.itemId, type=card.dataset.type;
+    card.classList.remove('missing');
+    let filled;
+    if(type==='checkbox'){const cb=card.querySelector('.due-check-done');done[id]=cb.checked;values[id]=cb.checked?'erledigt':'';filled=cb.checked;}
+    else{const v=card.querySelector('.due-check-value').value.trim();values[id]=v;filled=v!=='';
+      if(type==='number'&&filled&&isNaN(dckParse(v))){card.classList.add('missing');missing.push(dckItems[id].label+' (keine Zahl)');return;}}
+    if(card.dataset.required&&!filled){card.classList.add('missing');missing.push(dckItems[id].label);}
+  });
+  if(missing.length){result.innerHTML='<span style="color:var(--red)">Bitte ausfüllen: '+escapeHtml(missing.join(', '))+'</span>';const first=document.querySelector('#due-checklist-box .dck.missing');if(first)first.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  const out=Object.keys(values).filter(id=>dckRange(dckItems[id],values[id])===false).map(id=>dckItems[id].label);
+  if(out.length&&!confirm('Außerhalb von Min/Max:\n– '+out.join('\n– ')+'\n\nTrotzdem so übernehmen?'))return false;
+  result.textContent='Speichere Checkliste...';
+  try{if(Object.keys(values).length>0){await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values,done})});}result.textContent='';document.getElementById('complete-form').style.display='none';loadChecklistProtocol(taskID);pdhComplete('maintenance',taskID);}catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';}return false;}
+// Protokoll der erfassten Punkte (inkl. Dokumentationsfotos)
+async function loadChecklistProtocol(taskID){
+  const card=document.getElementById('checklist-protocol');if(!card)return;
+  try{
+    const items=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results')||[];
+    if(!items.length){card.style.display='none';return;}
+    document.getElementById('checklist-protocol-body').innerHTML=items.map(it=>{
+      const u=it.unit?' '+escapeHtml(it.unit):'';let val;
+      if(it.item_type==='checkbox')val=it.done?'<span style="color:var(--green)"><i class="ti ti-square-check"></i> erledigt</span>':'<span class="m">nicht erledigt</span>';
+      else if(it.item_type==='number')val=it.value?'<b>'+escapeHtml(it.value)+'</b>'+u+(it.in_range===true?' <span style="color:var(--green)" title="im Bereich"><i class="ti ti-circle-check"></i></span>':it.in_range===false?' <span style="color:var(--red)" title="außerhalb Min/Max"><i class="ti ti-alert-triangle"></i> außerhalb</span>':''):'<span class="m">–</span>';
+      else val=it.value?'<span style="white-space:pre-wrap">'+escapeHtml(it.value)+'</span>':'<span class="m">–</span>';
+      const who=it.checked_at?'<div class="m">'+escapeHtml(it.checked_by||'')+(it.checked_by?' · ':'')+escapeHtml(new Date(it.checked_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'}))+'</div>':'';
+      const docs=(it.doc_images||[]).length?'<div class="dck-imgs">'+it.doc_images.map(i=>dckImg(i,false)).join('')+'</div>':'';
+      return '<div class="cp-row"><div>'+escapeHtml(it.label)+who+'</div><div>'+val+dckSpecHtml(it)+'</div><div>'+docs+'</div></div>';
+    }).join('');
+    card.style.display='';
+  }catch(e){card.style.display='none';console.warn('Checklisten-Protokoll',e);}
+}
 function escapeHtml(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 
 // ── Durchgeführte Maßnahmen + Ersatzteile (Ausführungsformular) ─────────
@@ -449,8 +554,10 @@ async function bookMaintPart(){
 }
 
 if({{if .Task.CanComplete}}true{{else}}false{{end}}){
-  if(document.readyState !== 'loading'){ loadMaintActions(); loadMaintPartsList(); openCompleteForm(MAINT_TASK_ID); }
-  else document.addEventListener('DOMContentLoaded', function(){ loadMaintActions(); loadMaintPartsList(); openCompleteForm(MAINT_TASK_ID); });
+  if(document.readyState !== 'loading'){ loadMaintActions(); loadMaintPartsList(); openCompleteForm(MAINT_TASK_ID, true); }
+  else document.addEventListener('DOMContentLoaded', function(){ loadMaintActions(); loadMaintPartsList(); openCompleteForm(MAINT_TASK_ID, true); });
 }
+if(document.readyState !== 'loading') loadChecklistProtocol(MAINT_TASK_ID);
+else document.addEventListener('DOMContentLoaded', function(){ loadChecklistProtocol(MAINT_TASK_ID); });
 </script>
 {{end}}

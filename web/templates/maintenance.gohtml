@@ -44,7 +44,7 @@
 
 <div id="maintenance-checklist-admin" style="display:none" class="card">
   <div class="card-title">Wartungs-Checklisten-Vorlagen</div>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Jeder Punkt hat ein Pflicht-Intervall. Bei der Durchführung werden nur fällige Punkte angezeigt.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Jeder Punkt hat ein Pflicht-Intervall. Bei der Durchführung werden nur fällige Punkte angezeigt. Punktarten: <b>Checkbox</b>, <b>Messwert</b> (optional mit Soll, Min und Max) und <b>Freitext</b>. Zu jedem Punkt lassen sich Bilder zur Darstellung hinterlegen; bei der Durchführung kommen Fotos zur Dokumentation dazu.</p>
   <div class="grid2">
     <form onsubmit="return createMaintenanceChecklistTemplate(this)">
       <div class="form-group"><label class="form-label">Vorlagenname</label><input name="name" class="form-input" placeholder="Optipress Wartung" required></div>
@@ -55,14 +55,16 @@
       <div class="form-group"><label class="form-label">Vorlage</label><select name="template_id" id="checklist-template-select" class="form-input" required></select></div>
       <div class="form-group"><label class="form-label">Punkt</label><input name="label" class="form-input" placeholder="Riemenspannung prüfen" required></div>
       <div class="grid2" style="grid-template-columns:1fr 1fr">
-        <div class="form-group"><label class="form-label">Typ</label><select name="item_type" class="form-input"><option value="checkbox">Checkbox</option><option value="number">Messwert</option><option value="text">Text</option></select></div>
+        <div class="form-group"><label class="form-label">Typ</label><select name="item_type" class="form-input" onchange="mciTypeChanged(this)"><option value="checkbox">Checkbox</option><option value="number">Messwert</option><option value="text">Freitext</option></select></div>
         <div class="form-group"><label class="form-label">Intervall Tage *</label><input name="interval_days" type="number" min="1" class="form-input" value="30" required></div>
       </div>
       <div class="grid2" style="grid-template-columns:1fr 1fr">
         <div class="form-group"><label class="form-label">Sortierung</label><input name="sort_order" type="number" class="form-input" value="100"></div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding-top:22px"><input name="required" type="checkbox" checked> Pflichtpunkt</label>
       </div>
+      <div class="mci-measure-slot"></div>
       <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Bilder zur Darstellung fügst du nach dem Anlegen direkt am Punkt in der Liste unten hinzu.</p>
       <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Punkt anlegen</button>
     </form>
   </div>
@@ -146,8 +148,89 @@
 {{end}}
 
 {{define "scripts"}}
+<style>
+.mci-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mci-img{position:relative;display:inline-block}
+.mci-img img{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block}
+.mci-img button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-size:11px}
+.mci-img-add{width:56px;height:56px;border:1px dashed var(--border);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;color:var(--muted);cursor:pointer}
+.mci-img-add:hover{border-color:var(--accent);color:var(--accent)}
+.mci-img-add i{font-size:18px}
+.mci-img-add.busy{opacity:.5;pointer-events:none}
+</style>
 <script>
 let maintenanceChecklistTemplates = [];
+const MCI_TYPES = {checkbox:'Checkbox', number:'Messwert', text:'Freitext'};
+function mciNum(v){ return (v===null || v===undefined) ? '' : String(v).replace('.', ','); }
+// Messwert-Vorgaben: Einheit + aktivierbare Soll/Min/Max-Felder
+function measureFieldsHtml(i){
+  i = i || {};
+  const row = (key, label, val) => {
+    const on = val !== null && val !== undefined;
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" class="mci-on" data-key="'+key+'"'+(on?' checked':'')+' onchange="this.parentNode.querySelector(\'.mci-val\').disabled=!this.checked;if(this.checked)this.parentNode.querySelector(\'.mci-val\').focus()"> <span style="width:34px">'+label+'</span>'
+      +'<input type="text" inputmode="decimal" class="form-input mci-val" data-key="'+key+'" value="'+escapeHtml(mciNum(val))+'"'+(on?'':' disabled')+' style="max-width:110px;padding:6px 8px"></label>';
+  };
+  return '<div class="mci-measure" style="'+(i.item_type==='number'?'':'display:none;')+'border:1px dashed var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px">'
+    +'<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Messwert-Vorgaben (Häkchen = aktiv)</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">Einheit <input class="form-input mci-unit" maxlength="20" value="'+escapeHtml(i.unit||'')+'" placeholder="z. B. bar" style="max-width:90px;padding:6px 8px"></label>'
+    +row('target_value','Soll',i.target_value)+row('min_value','Min',i.min_value)+row('max_value','Max',i.max_value)
+    +'</div></div>';
+}
+function mciTypeChanged(sel){
+  const box = sel.closest('form, [id^="mci-edit-"]').querySelector('.mci-measure');
+  if(box) box.style.display = sel.value === 'number' ? '' : 'none';
+}
+// liest Einheit/Soll/Min/Max; nicht aktivierte Felder werden null
+function readMeasure(box){
+  const out = {unit:'', target_value:null, min_value:null, max_value:null};
+  const m = box && box.querySelector('.mci-measure');
+  if(!m) return out;
+  out.unit = m.querySelector('.mci-unit').value.trim();
+  for(const cb of m.querySelectorAll('.mci-on')){
+    if(!cb.checked) continue;
+    const raw = m.querySelector('.mci-val[data-key="'+cb.dataset.key+'"]').value.trim().replace(',', '.');
+    if(raw === '') throw new Error('Bitte einen Wert eintragen oder das Häkchen entfernen');
+    const n = Number(raw);
+    if(!isFinite(n)) throw new Error('„'+raw+'“ ist keine Zahl');
+    out[cb.dataset.key] = n;
+  }
+  return out;
+}
+function measureSummary(i){
+  if(i.item_type !== 'number') return '';
+  const u = i.unit ? ' '+i.unit : '';
+  const parts = [];
+  if(i.target_value !== null && i.target_value !== undefined) parts.push('Soll '+mciNum(i.target_value)+u);
+  if(i.min_value !== null && i.min_value !== undefined && i.max_value !== null && i.max_value !== undefined) parts.push(mciNum(i.min_value)+' – '+mciNum(i.max_value)+u);
+  else if(i.min_value !== null && i.min_value !== undefined) parts.push('min. '+mciNum(i.min_value)+u);
+  else if(i.max_value !== null && i.max_value !== undefined) parts.push('max. '+mciNum(i.max_value)+u);
+  return parts.length ? ' - '+parts.join(', ') : (u ? ' - in'+u : '');
+}
+// Bilder zur Darstellung am Vorlagenpunkt
+function itemImagesHtml(i){
+  const imgs = asArray(i.images);
+  return '<div class="mci-imgs">'
+    + imgs.map(img => '<span class="mci-img"><a href="'+escapeHtml(img.url)+'" target="_blank" rel="noopener"><img src="'+escapeHtml(img.url)+'" alt="'+escapeHtml(img.filename)+'" loading="lazy"></a><button type="button" title="Bild entfernen" aria-label="Bild entfernen" onclick="deleteChecklistImage(\''+escapeJs(img.id)+'\')"><i class="ti ti-x"></i></button></span>').join('')
+    + '<label class="mci-img-add" title="Bild zur Darstellung hinzufügen"><i class="ti ti-photo-plus"></i><span>Bild</span><input type="file" accept="image/*" multiple hidden onchange="uploadChecklistItemImages(\''+escapeJs(i.id)+'\', this)"></label>'
+    + '</div>';
+}
+async function uploadChecklistItemImages(itemID, input){
+  if(!input.files || !input.files.length) return;
+  const fd = new FormData();
+  [...input.files].forEach(f => fd.append('files', f));
+  input.closest('.mci-img-add').classList.add('busy');
+  try{
+    const saved = asArray(await maintenanceJSON('/api/v1/attachments/maint_check_item/'+encodeURIComponent(itemID), {method:'POST', body: fd}));
+    if(saved.length < input.files.length) alert('Nicht alle Dateien wurden übernommen (nur Bilder bis 20 MB).');
+    await loadMaintenanceChecklistTemplates();
+  }catch(e){ alert('Bild konnte nicht hochgeladen werden: '+e.message); input.closest('.mci-img-add').classList.remove('busy'); }
+}
+async function deleteChecklistImage(id){
+  if(!confirm('Bild entfernen?')) return;
+  try{ await maintenanceJSON('/api/v1/attachments/'+encodeURIComponent(id), {method:'DELETE'}); await loadMaintenanceChecklistTemplates(); }
+  catch(e){ alert('Fehler: '+e.message); }
+}
 async function maintenanceJSON(url, options){
   const res = await fetch(url, Object.assign({credentials:'same-origin'}, options||{}));
   let payload = null;
@@ -198,14 +281,16 @@ async function renderMaintenanceChecklistTemplateList(){
 function renderMaintenanceChecklistItemRow(i){
   const viewId = 'mci-view-'+i.id;
   const editId = 'mci-edit-'+i.id;
-  const view = '<div id="'+viewId+'" class="li"><div class="li-text"><div class="li-title" style="font-size:12px">'+escapeHtml(i.label)+'</div><div class="li-sub">'+escapeHtml(i.item_type)+' - Intervall '+escapeHtml(i.interval_days)+' Tage'+(i.required?' - Pflicht':'')+'</div></div><button type="button" class="btn" onclick="toggleMaintenanceChecklistItemEdit(\''+escapeJs(i.id)+'\')"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" onclick="deleteMaintenanceChecklistItem(\''+escapeJs(i.id)+'\')"><i class="ti ti-trash"></i></button></div>';
+  const view = '<div id="'+viewId+'" class="li" style="flex-wrap:wrap"><div class="li-text"><div class="li-title" style="font-size:12px">'+escapeHtml(i.label)+'</div><div class="li-sub">'+escapeHtml(MCI_TYPES[i.item_type]||i.item_type)+escapeHtml(measureSummary(i))+' - Intervall '+escapeHtml(i.interval_days)+' Tage'+(i.required?' - Pflicht':'')+'</div>'+(i.description?'<div class="li-sub">'+escapeHtml(i.description)+'</div>':'')+'</div><button type="button" class="btn" onclick="toggleMaintenanceChecklistItemEdit(\''+escapeJs(i.id)+'\')"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" onclick="deleteMaintenanceChecklistItem(\''+escapeJs(i.id)+'\')"><i class="ti ti-trash"></i></button><div style="flex-basis:100%">'+itemImagesHtml(i)+'</div></div>';
   const edit = '<div id="'+editId+'" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">'
     +'<div class="grid2" style="grid-template-columns:1fr 1fr;gap:8px">'
     +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Punkt</label><input class="form-input mci-label" value="'+escapeHtml(i.label)+'"></div>'
-    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Typ</label><select class="form-input mci-type"><option value="checkbox"'+(i.item_type==='checkbox'?' selected':'')+'>Checkbox</option><option value="number"'+(i.item_type==='number'?' selected':'')+'>Messwert</option><option value="text"'+(i.item_type==='text'?' selected':'')+'>Text</option></select></div>'
+    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Typ</label><select class="form-input mci-type" onchange="mciTypeChanged(this)"><option value="checkbox"'+(i.item_type==='checkbox'?' selected':'')+'>Checkbox</option><option value="number"'+(i.item_type==='number'?' selected':'')+'>Messwert</option><option value="text"'+(i.item_type==='text'?' selected':'')+'>Freitext</option></select></div>'
     +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Intervall Tage</label><input type="number" min="1" class="form-input mci-interval" value="'+escapeHtml(i.interval_days)+'"></div>'
     +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Sortierung</label><input type="number" class="form-input mci-sort" value="'+escapeHtml(i.sort_order||100)+'"></div>'
+    +'<div class="form-group" style="margin-bottom:6px;grid-column:1/-1"><label class="form-label">Beschreibung</label><input class="form-input mci-desc" value="'+escapeHtml(i.description||'')+'"></div>'
     +'</div>'
+    +measureFieldsHtml(i)
     +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:8px"><input type="checkbox" class="mci-required" '+(i.required?'checked':'')+'> Pflichtpunkt</label>'
     +'<div style="display:flex;justify-content:flex-end;gap:6px">'
     +'<button type="button" class="btn" onclick="toggleMaintenanceChecklistItemEdit(\''+escapeJs(i.id)+'\')">Abbrechen</button>'
@@ -224,15 +309,15 @@ function toggleMaintenanceChecklistItemEdit(itemID){
 async function updateMaintenanceChecklistItem(itemID){
   const editBox = document.getElementById('mci-edit-'+itemID);
   if(!editBox) return;
-  const payload = {
-    label: editBox.querySelector('.mci-label').value,
-    item_type: editBox.querySelector('.mci-type').value,
-    interval_days: Number(editBox.querySelector('.mci-interval').value || 0),
-    sort_order: Number(editBox.querySelector('.mci-sort').value || 100),
-    required: editBox.querySelector('.mci-required').checked,
-    description: ''
-  };
   try{
+    const payload = Object.assign({
+      label: editBox.querySelector('.mci-label').value,
+      item_type: editBox.querySelector('.mci-type').value,
+      interval_days: Number(editBox.querySelector('.mci-interval').value || 0),
+      sort_order: Number(editBox.querySelector('.mci-sort').value || 100),
+      required: editBox.querySelector('.mci-required').checked,
+      description: editBox.querySelector('.mci-desc').value
+    }, readMeasure(editBox));
     await maintenanceJSON('/api/v1/maintenance-checklists/items/'+encodeURIComponent(itemID), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     await loadMaintenanceChecklistTemplates();
   }catch(e){ alert('Fehler beim Speichern: '+e.message); }
@@ -250,7 +335,7 @@ async function createMaintenanceChecklistTemplate(form){
 }
 async function createMaintenanceChecklistItem(form){
   const result=document.getElementById('maintenance-checklist-admin-result'); result.textContent='Speichere Punkt...';
-  try{ const templateID=form.template_id.value; await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(templateID)+'/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:form.label.value, description:form.description.value, item_type:form.item_type.value, required:form.required.checked, interval_days:Number(form.interval_days.value||0), sort_order:Number(form.sort_order.value||100)})}); form.label.value=''; form.description.value=''; await loadMaintenanceChecklistTemplates(); result.innerHTML='<span style="color:var(--green)">Punkt angelegt</span>'; }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
+  try{ const templateID=form.template_id.value; const payload=Object.assign({label:form.label.value, description:form.description.value, item_type:form.item_type.value, required:form.required.checked, interval_days:Number(form.interval_days.value||0), sort_order:Number(form.sort_order.value||100)}, readMeasure(form)); await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(templateID)+'/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); form.label.value=''; form.description.value=''; await loadMaintenanceChecklistTemplates(); result.innerHTML='<span style="color:var(--green)">Punkt angelegt</span>'; }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
   return false;
 }
 async function deleteMaintenanceChecklistTemplate(id){ if(!confirm('Checklisten-Vorlage löschen?')) return; await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(id),{method:'DELETE'}); await loadMaintenanceChecklistTemplates(); }
@@ -284,7 +369,10 @@ async function submitMaintenancePlanEdit(form,id){
 }
 async function duplicateMaintenancePlan(id,btn){ if(btn) btn.disabled=true; try{ const res=await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/duplicate-web',{method:'POST',headers:{'HX-Request':'true'}}); const text=await res.text(); if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Duplizieren'); window.location.href='/maintenance'; }catch(e){ alert('Fehler: '+e.message); if(btn) btn.disabled=false; } }
 async function deleteMaintenancePlan(id){ if(!confirm('Wartungsplan deaktivieren/vormerken?')) return; await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/delete-web',{method:'DELETE',credentials:'same-origin'}); window.location.href='/maintenance'; }
-document.addEventListener('DOMContentLoaded', function(){ loadMaintenanceChecklistTemplates().catch(()=>{}); });
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.mci-measure-slot').forEach(slot => { slot.innerHTML = measureFieldsHtml({}); });
+  loadMaintenanceChecklistTemplates().catch(()=>{});
+});
 function escapeHtml(s){ return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function escapeJs(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 </script>
