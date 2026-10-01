@@ -61,7 +61,9 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 .dw-qa .q-accent i{color:var(--accent)}.dw-qa .q-red i{color:var(--red)}.dw-qa .q-blue i{color:#60a5fa}.dw-qa .q-green i{color:var(--green)}.dw-qa .q-amber i{color:var(--amber)}.dw-qa .q-muted i{color:var(--muted)}
 .dw-links a{display:flex;align-items:center;gap:8px;padding:6px 0;color:var(--accent);text-decoration:none;border-bottom:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dw-links a:last-child{border-bottom:0}
-.dw-note{white-space:pre-wrap;line-height:1.5;background:rgba(245,158,11,.10);border-left:3px solid var(--amber);border-radius:6px;padding:8px 10px;min-height:60px}
+.dw-note{display:block;width:100%;box-sizing:border-box;resize:vertical;font:inherit;color:var(--text);line-height:1.5;background:rgba(245,158,11,.10);border:0;border-left:3px solid var(--amber);border-radius:6px;padding:8px 10px;min-height:90px}
+.dw-note:focus{outline:2px solid var(--amber);outline-offset:1px}
+.dw-note-st{font-size:10.5px;color:var(--muted);text-align:right;min-height:14px;margin-top:2px}
 .dw-chart{display:flex;align-items:flex-end;gap:4px;height:110px;padding-top:6px}
 .dw-chart .d{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;height:100%}
 .dw-chart .bars{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px}
@@ -163,7 +165,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     ['dw-reset-btn','dw-cancel-btn','dw-save-btn','dw-hint'].forEach(id => document.getElementById(id).style.display = on ? '' : 'none');
     document.getElementById('dw-edit-btn').style.display = on ? 'none' : '';
     if(!on || !window.Sortable) return;
-    sortGrid = Sortable.create(grid, {group: {name: 'dw', pull: false, put: true}, animation: 150, ghostClass: 'dw-ghost', delay: 180, delayOnTouchOnly: true, filter: '.dw-tools button, .dw-cfg', preventOnFilter: false,
+    sortGrid = Sortable.create(grid, {group: {name: 'dw', pull: false, put: true}, animation: 150, ghostClass: 'dw-ghost', delay: 180, delayOnTouchOnly: true, filter: '.dw-tools button, .dw-cfg, .dw-note', preventOnFilter: false,
       onAdd: function(e){
         const el = makeCard(e.item); e.item.replaceWith(el); load(el);
         const empty = document.getElementById('dw-empty'); if(empty) empty.remove();
@@ -178,7 +180,29 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     if(act === 'size') el.dataset.size = String((+el.dataset.size % 4) + 1);
     if(act === 'cfg') el.classList.toggle('cfg-open');
   });
+  // Notizzettel: immer beschreibbar, speichert kurz nach der letzten Eingabe
+  function saveNote(el, ta){
+    const st = el.querySelector('.dw-note-st');
+    if(el.dataset.saved !== '1'){ if(st) st.textContent = 'Wird mit „Fertig“ gespeichert'; return; }
+    if(st) st.textContent = 'Speichert…';
+    fetch('/dashboard/w/' + encodeURIComponent(el.dataset.id) + '/note', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({note: ta.value}), credentials: 'same-origin'})
+      .then(r => r.json().then(j => { if(!r.ok || !j.success) throw new Error(j.error || 'Speichern fehlgeschlagen'); }))
+      .then(() => { if(st) st.textContent = 'Gespeichert'; })
+      .catch(err => { if(st) st.textContent = '⚠ ' + err.message; });
+  }
+  // beim Verlassen des Feldes sofort speichern, statt auf den Timer zu warten
+  grid.addEventListener('focusout', function(e){
+    const ta = e.target; if(!ta.matches || !ta.matches('.dw-note') || !ta._t) return;
+    clearTimeout(ta._t); ta._t = null; saveNote(ta.closest('.dw'), ta);
+  });
   grid.addEventListener('input', function(e){
+    if(e.target.matches('.dw-note')){
+      const el = e.target.closest('.dw'), ta = e.target;
+      const store = el.querySelector('[data-cfg="note"]'); if(store) store.value = ta.value;
+      const st = el.querySelector('.dw-note-st'); if(st) st.textContent = '';
+      clearTimeout(ta._t); ta._t = setTimeout(() => { ta._t = null; saveNote(el, ta); }, 800);
+      return;
+    }
     if(e.target.matches('[data-cfg="title"]')){
       const t = e.target.closest('.dw').querySelector('.dw-title');
       t.textContent = e.target.value.trim() || t.dataset.default;
@@ -227,7 +251,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-cfg">
     <label>Überschrift (leer = Standard)</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
     <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code></label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
-    <div data-cfg-kind="note" style="display:flex;flex-direction:column;gap:4px"><label>Notiz (nur für dich sichtbar)</label><textarea class="form-input" data-cfg="note" maxlength="2000">{{with .Config}}{{index . "note"}}{{end}}</textarea></div>
+    <div data-cfg-kind="note" class="dw-note-store"><textarea data-cfg="note" maxlength="2000" hidden>{{with .Config}}{{index . "note"}}{{end}}</textarea></div>
   </div>
   <div class="dw-body"><span class="dw-loading">Lädt…</span></div>
 </div>
@@ -247,7 +271,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-links">{{range .Data}}<a href="{{.URL}}"{{if not (hasPrefix .URL "/")}} target="_blank" rel="noopener"{{end}}><i class="ti {{if hasPrefix .URL "/"}}ti-arrow-right{{else}}ti-external-link{{end}}"></i>{{.Name}}</a>
   {{else}}<div class="dw-none">Noch keine Links – unter <b>Dashboard anpassen</b> → <i class="ti ti-settings"></i> eintragen.</div>{{end}}</div>
 {{else if eq .Def.Type "note"}}
-  {{if .Data}}<div class="dw-note">{{.Data}}</div>{{else}}<div class="dw-none">Leerer Zettel – unter <b>Dashboard anpassen</b> → <i class="ti ti-settings"></i> beschreiben.</div>{{end}}
+  <textarea class="dw-note" maxlength="2000" placeholder="Hier schreiben – wird automatisch gespeichert" aria-label="Notizzettel">{{.Data}}</textarea><div class="dw-note-st"></div>
 {{else if eq .Def.Type "chart_trend"}}
   {{with .Data}}<div class="dw-chart">{{range .Days}}<div class="d" title="{{.Label}}: {{.Tickets}} Tickets, {{.Faults}} Störungen"><div class="bars">{{if $.Data.ShowTickets}}<span class="b bt" style="height:{{.HT}}%"></span>{{end}}{{if $.Data.ShowFaults}}<span class="b bf" style="height:{{.HF}}%"></span>{{end}}</div><span class="l">{{.Label}}</span></div>{{end}}</div>
   <div class="dw-legend">{{if .ShowTickets}}<span class="lt">Tickets ({{.SumTickets}})</span>{{end}}{{if .ShowFaults}}<span class="lf">Störungen ({{.SumFaults}})</span>{{end}}</div>{{end}}

@@ -529,6 +529,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/complete/{type}/{id}", h.CompletionWeb)
 	r.Post("/time/{id}/confirm", h.TimeConfirmWeb)
 	r.Post("/dashboard/widgets", h.DashboardWidgetsSaveWeb)
+	r.Post("/dashboard/w/{id}/note", h.DashboardNoteSaveWeb)
 
 	// Rollen & Berechtigungen
 	r.Get("/admin/roles", h.RolesPage)

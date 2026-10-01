@@ -336,6 +336,56 @@ func (h *Handler) DashboardWidgetsSaveWeb(w http.ResponseWriter, r *http.Request
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
 }
 
+// DashboardNoteSaveWeb: POST /dashboard/w/{id}/note – Text eines Notizzettels
+// direkt aus dem Widget speichern (ohne "Dashboard anpassen").
+func (h *Handler) DashboardNoteSaveWeb(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	uid := getUser(r).ID
+	w.Header().Set("Content-Type", "application/json")
+	fail := func(code int, msg string) {
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "error": msg})
+	}
+	if uid == "" {
+		fail(http.StatusUnauthorized, "nicht angemeldet")
+		return
+	}
+	var req struct {
+		Note string `json:"note"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+		fail(http.StatusBadRequest, "ungültige Daten")
+		return
+	}
+	list := h.userWidgets(r.Context(), uid)
+	found := false
+	for i := range list {
+		if list[i].ID == id && list[i].Type == "note" {
+			if list[i].Config == nil {
+				list[i].Config = map[string]string{}
+			}
+			list[i].Config["note"] = req.Note
+			found = true
+			break
+		}
+	}
+	if !found {
+		fail(http.StatusNotFound, "Notizzettel nicht gefunden – bitte Seite neu laden")
+		return
+	}
+	list, err := sanitizeWidgets(list)
+	if err != nil {
+		fail(http.StatusBadRequest, err.Error())
+		return
+	}
+	data, _ := json.Marshal(list)
+	if _, err := h.db.Exec(r.Context(), `UPDATE users SET dashboard_widgets = $1::jsonb WHERE id = $2::uuid`, string(data), uid); err != nil {
+		fail(http.StatusInternalServerError, "Speichern fehlgeschlagen")
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": true})
+}
+
 // ── Inhalte ─────────────────────────────────────────────────
 
 // statData: Kennzahl mit Zusatzzeile.
