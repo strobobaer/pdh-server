@@ -219,6 +219,18 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+	// Abteilungsrechte: nur fuer angemeldete, eingeschraenkte Personen (die
+	// oeffentliche Tafel ohne Anmeldung bleibt vollstaendig)
+	var scopeIDs map[string]map[string]bool
+	if u := h.sessionUser(r); u != nil {
+		if sc := h.deptScopeFor(ctx, u.ID, string(u.Role)); sc != nil {
+			scopeIDs = map[string]map[string]bool{
+				"fault": h.allowedIDsFor(ctx, sc, "fault"), "ticket": h.allowedIDsFor(ctx, sc, "ticket"),
+				"maintenance": h.allowedIDsFor(ctx, sc, "maintenance_task"), "task": h.allowedIDsFor(ctx, sc, "task"),
+			}
+			data.GanttItems = h.scopeGantt(ctx, sc, data.GanttItems)
+		}
+	}
 	for rows.Next() {
 		var item GlobalBoardItem
 		var createdAt time.Time
@@ -227,6 +239,11 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			log.Error().Err(err).Msg("leitstand: /global/data zeile lesen fehlgeschlagen")
 			http.Error(w, "Aufgaben konnten nicht gelesen werden", http.StatusInternalServerError)
 			return
+		}
+		if scopeIDs != nil {
+			if allowed := scopeIDs[item.TypeKey]; allowed != nil && !allowed[item.ID] {
+				continue
+			}
 		}
 		item.Status = globalStatusLabel(item.Status)
 		if item.LastAction == "wait" && item.DueDate > time.Now().Format("2006-01-02") {

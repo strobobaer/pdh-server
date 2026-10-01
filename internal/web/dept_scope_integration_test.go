@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +161,47 @@ func TestDeptScopeIntegration(t *testing.T) {
 		t.Fatalf("API-Einzelabruf fremd: %d", rec.Code)
 	}
 
+	// Dashboard-Kennzahlen und Verlauf: fremde Vorgaenge zaehlen nicht mit
+	var expected int
+	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM tickets WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL AND id::text = ANY($1)`,
+		keys(h.allowedIDsFor(ctx, s, "ticket"))).Scan(&expected))
+	stat, err := loadStatTickets(h, ctx, pUser, WidgetInstance{}, nil)
+	must(err)
+	if got := stat.(statData).Value; got != itoa(expected) {
+		t.Fatalf("Kennzahl Tickets: %s statt %d", got, expected)
+	}
+	full, err := loadChartTrend(h, ctx, admin, WidgetInstance{}, func(string) bool { return true })
+	must(err)
+	mine, err := loadChartTrend(h, ctx, pUser, WidgetInstance{}, func(string) bool { return true })
+	must(err)
+	if full.(trendData).SumTickets-mine.(trendData).SumTickets < 1 {
+		t.Fatalf("Verlauf zählt fremde Tickets: %d / %d", full.(trendData).SumTickets, mine.(trendData).SumTickets)
+	}
+	for _, fn := range []func(*Handler, context.Context, string, WidgetInstance, func(string) bool) (any, error){loadStatFaults, loadStatMaintenance, loadListFaults, loadListMaintenance} {
+		if _, err := fn(h, ctx, pUser, WidgetInstance{}, nil); err != nil {
+			t.Fatalf("Widget mit Abteilungsfilter: %v", err)
+		}
+	}
+
+	// Zeitstrahl
+	g := h.scopeGantt(ctx, s, []GanttItem{{DetailURL: "/tickets/" + tHalleB}, {DetailURL: "/tickets/" + tGeraet}, {DetailURL: "/sonstiges"}})
+	if len(g) != 2 || g[0].DetailURL != "/tickets/"+tGeraet {
+		t.Fatalf("Zeitstrahl: %+v", g)
+	}
+
+	// Anlagen-Historie der fremden Halle: nur der eigene (zugewiesene) Vorgang
+	hreq := httptest.NewRequest(http.MethodGet, "/infrastructure/"+halleB+"/history", nil).WithContext(context.WithValue(ctx, "user", asP))
+	hist, err := h.loadInfraHistory(ctx, hreq, halleB, parseInfraHistoryFilter(hreq), 50)
+	must(err)
+	var urls []string
+	for _, e := range hist.Entries {
+		urls = append(urls, e.DetailURL)
+	}
+	joined := strings.Join(urls, " ")
+	if strings.Contains(joined, tHalleB) || !strings.Contains(joined, tMine) {
+		t.Fatalf("Anlagen-Historie: %v", urls)
+	}
+
 	// Organigramm-Baum
 	var found bool
 	for _, n := range h.orgDeptTree(ctx) {
@@ -171,3 +213,13 @@ func TestDeptScopeIntegration(t *testing.T) {
 		t.Fatal("Linie 1 nicht unter Produktion A im Organigramm")
 	}
 }
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }

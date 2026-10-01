@@ -405,22 +405,25 @@ func count(ctx context.Context, h *Handler, q string, args ...any) int {
 
 func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var open, crit int
-	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE priority = 'critical') FROM tickets
-		WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL`).Scan(&open, &crit)
+	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "ticket", "r", 0)
+	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE priority = 'critical') FROM tickets r
+		WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&open, &crit)
 	return statData{Value: fmt.Sprint(open), Sub: fmt.Sprintf("%d kritisch", crit), Color: "blue", URL: "/tickets", Alert: crit > 0}, err
 }
 
 func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var active, fresh int
-	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults
-		WHERE status IN ('detected','analyzing','in_progress') AND archived_at IS NULL`).Scan(&active, &fresh)
+	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "r", 0)
+	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults r
+		WHERE status IN ('detected','analyzing','in_progress') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
 	return statData{Value: fmt.Sprint(active), Sub: fmt.Sprintf("%d neu gemeldet", fresh), Color: "red", URL: "/faults", Alert: fresh > 0}, err
 }
 
 func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var due, overdue int
-	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date < CURRENT_DATE) FROM maintenance_tasks
-		WHERE status::text IN ('open','in_progress') AND due_date <= CURRENT_DATE AND archived_at IS NULL`).Scan(&due, &overdue)
+	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "maintenance_task", "r", 0)
+	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date < CURRENT_DATE) FROM maintenance_tasks r
+		WHERE status::text IN ('open','in_progress') AND due_date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
 	return statData{Value: fmt.Sprint(due), Sub: fmt.Sprintf("%d überfällig", overdue), Color: "amber", URL: "/maintenance", Alert: overdue > 0}, err
 }
 
@@ -470,11 +473,14 @@ type trendData struct {
 
 func loadChartTrend(h *Handler, ctx context.Context, uid string, _ WidgetInstance, can func(string) bool) (any, error) {
 	d := trendData{ShowTickets: can("tickets.view"), ShowFaults: can("faults.view")}
+	sc := h.scopeForUserID(ctx, uid)
+	tCond, args := scopeSQL(sc, "ticket", "tk", 0)
+	fCond, _ := scopeSQL(sc, "fault", "fl", 0) // gleiche Platzhalter $1/$2
 	rows, err := h.db.Query(ctx, `
 		SELECT g::date,
-		       (SELECT COUNT(*) FROM tickets WHERE created_at::date = g::date)::int,
-		       (SELECT COUNT(*) FROM faults WHERE COALESCE(detected_at, created_at)::date = g::date)::int
-		FROM generate_series(CURRENT_DATE - 13, CURRENT_DATE, interval '1 day') g ORDER BY 1`)
+		       (SELECT COUNT(*) FROM tickets tk WHERE tk.created_at::date = g::date`+tCond+`)::int,
+		       (SELECT COUNT(*) FROM faults fl WHERE COALESCE(fl.detected_at, fl.created_at)::date = g::date`+fCond+`)::int
+		FROM generate_series(CURRENT_DATE - 13, CURRENT_DATE, interval '1 day') g ORDER BY 1`, args...)
 	if err != nil {
 		return d, err
 	}
@@ -566,11 +572,12 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 }
 
 func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "f", 0)
 	rows, err := h.db.Query(ctx, `
 		SELECT f.id::text, f.title, f.severity::text, f.status::text, COALESCE(i.name, ''), COALESCE(f.detected_at, f.created_at)
 		FROM faults f LEFT JOIN infrastructure i ON i.id = f.infrastructure_id
-		WHERE f.status IN ('detected','analyzing','in_progress') AND f.archived_at IS NULL
-		ORDER BY COALESCE(f.detected_at, f.created_at) DESC LIMIT 6`)
+		WHERE f.status IN ('detected','analyzing','in_progress') AND f.archived_at IS NULL`+cond+`
+		ORDER BY COALESCE(f.detected_at, f.created_at) DESC LIMIT 6`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -592,11 +599,12 @@ func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 }
 
 func loadListMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
+	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "maintenance_task", "m", 0)
 	rows, err := h.db.Query(ctx, `
 		SELECT m.id::text, m.title, COALESCE(i.name, ''), m.due_date::date
 		FROM maintenance_tasks m LEFT JOIN infrastructure i ON i.id = m.infrastructure_id
-		WHERE m.status::text IN ('open','in_progress') AND m.archived_at IS NULL AND m.due_date <= CURRENT_DATE + 7
-		ORDER BY m.due_date LIMIT 6`)
+		WHERE m.status::text IN ('open','in_progress') AND m.archived_at IS NULL AND m.due_date <= CURRENT_DATE + 7`+cond+`
+		ORDER BY m.due_date LIMIT 6`, args...)
 	if err != nil {
 		return nil, err
 	}

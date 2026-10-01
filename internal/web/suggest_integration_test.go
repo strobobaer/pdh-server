@@ -53,7 +53,7 @@ func TestSuggestAndSimilarIntegration(t *testing.T) {
 	}
 
 	// Gelöste Stoerungen als Wissen
-	word := "Zahnriemen" + sfx[len(sfx)-4:]
+	word := "Zahnriemen" + sfx
 	addFault := func(title, desc, res string, symptoms string) string {
 		var id string
 		must(pool.QueryRow(ctx, `INSERT INTO faults (title, description, severity, status, created_by, resolution, root_cause, resolved_at, symptoms)
@@ -78,13 +78,13 @@ func TestSuggestAndSimilarIntegration(t *testing.T) {
 	delete(suggestions.idx, "action")
 	suggestions.mu.Unlock()
 	rec := httptest.NewRecorder()
-	h.SuggestWeb(rec, httptest.NewRequest(http.MethodGet, "/suggest?k=action&q="+url.QueryEscape(word[:8]), nil))
+	h.SuggestWeb(rec, httptest.NewRequest(http.MethodGet, "/suggest?k=action&q="+url.QueryEscape(word+" g"), nil))
 	var res struct {
 		Ghost string
 		Items []string
 	}
 	must(json.Unmarshal(rec.Body.Bytes(), &res))
-	if !strings.HasSuffix(word[:8]+res.Ghost, "getauscht und gespannt") {
+	if res.Ghost != "etauscht und gespannt" {
 		t.Fatalf("Vorschlag Maßnahme: %+v", res)
 	}
 	form := url.Values{"k": {"action"}, "text": {word + " geprüft " + sfx}}

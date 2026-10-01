@@ -49,11 +49,35 @@ var scopeTables = map[string]scopeTable{
 }
 
 // scopeWhere: Bedingung "Vorgang r sichtbar" ($1 = Benutzer, $2 = erlaubte Abteilungen).
-func scopeWhere(st scopeTable) string {
-	return `(r.infrastructure_id IS NULL
-	   OR NOT EXISTS (SELECT 1 FROM infrastructure_department idp WHERE idp.infrastructure_id = r.infrastructure_id)
-	   OR EXISTS (SELECT 1 FROM infrastructure_department idp WHERE idp.infrastructure_id = r.infrastructure_id AND idp.department_id::text = ANY($2))
-	   OR ` + st.people + `)`
+func scopeWhere(st scopeTable) string { return scopeCond(st, "r", 1, 2) }
+
+// scopeCond: dieselbe Bedingung fuer einen beliebigen Tabellen-Alias und
+// beliebige Platzhalter (pUser = Benutzer-ID, pDeps = Abteilungsliste).
+func scopeCond(st scopeTable, alias string, pUser, pDeps int) string {
+	people := strings.NewReplacer("r.", alias+".", "$1", fmt.Sprintf("$%d", pUser)).Replace(st.people)
+	return fmt.Sprintf(`(%[1]s.infrastructure_id IS NULL
+	   OR NOT EXISTS (SELECT 1 FROM infrastructure_department idp WHERE idp.infrastructure_id = %[1]s.infrastructure_id)
+	   OR EXISTS (SELECT 1 FROM infrastructure_department idp WHERE idp.infrastructure_id = %[1]s.infrastructure_id AND idp.department_id::text = ANY($%[2]d))
+	   OR %[3]s)`, alias, pDeps, people)
+}
+
+// scopeForUserID: Einschraenkung fuer eine Benutzer-ID (Rolle aus der Datenbank).
+func (h *Handler) scopeForUserID(ctx context.Context, uid string) *deptScope {
+	var role string
+	if h.db == nil || uid == "" || h.db.QueryRow(ctx, `SELECT role FROM users WHERE id = $1::uuid`, uid).Scan(&role) != nil {
+		return nil
+	}
+	return h.deptScopeFor(ctx, uid, role)
+}
+
+// scopeSQL: zusaetzliche WHERE-Bedingung (" AND …") samt Argumenten fuer eine
+// Abfrage, die schon n Platzhalter nutzt; leer, wenn nicht eingeschraenkt.
+func scopeSQL(s *deptScope, refType, alias string, n int) (string, []any) {
+	st, ok := scopeTables[refType]
+	if s == nil || !ok {
+		return "", nil
+	}
+	return " AND " + scopeCond(st, alias, n+1, n+2), []any{s.UserID, s.Departments}
 }
 
 // deptScopeFor ermittelt die Einschraenkung fuer eine Person (nil = keine).
@@ -96,13 +120,16 @@ func (h *Handler) requestScope(r *http.Request) *deptScope {
 // scopeAllowedIDs: sichtbare IDs eines Moduls (nil = keine Einschraenkung) –
 // fuer Listen, analog zu categoryFilterIDs.
 func (h *Handler) scopeAllowedIDs(r *http.Request, refType string) map[string]bool {
-	s := h.requestScope(r)
+	return h.allowedIDsFor(r.Context(), h.requestScope(r), refType)
+}
+
+func (h *Handler) allowedIDsFor(ctx context.Context, s *deptScope, refType string) map[string]bool {
 	st, ok := scopeTables[refType]
 	if s == nil || !ok {
 		return nil
 	}
 	out := map[string]bool{}
-	rows, err := h.db.Query(r.Context(), `SELECT r.id::text FROM `+st.table+` r WHERE `+scopeWhere(st), s.UserID, s.Departments)
+	rows, err := h.db.Query(ctx, `SELECT r.id::text FROM `+st.table+` r WHERE `+scopeWhere(st), s.UserID, s.Departments)
 	if err != nil {
 		componentLog("rechte").Error().Err(err).Str("modul", refType).Msg("abteilungsfilter")
 		return out // im Fehlerfall lieber nichts zeigen
@@ -325,4 +352,43 @@ func (h *Handler) SessionDepartmentScope(next http.Handler) http.Handler {
 		}
 		h.DepartmentScopeMiddleware(next).ServeHTTP(w, r)
 	})
+}
+
+// filterScoped: welche Eintraege (per Detail-URL) sichtbar sind – eine
+// Abfrage je Vorgangsart statt je Eintrag.
+func (h *Handler) filterScoped(ctx context.Context, s *deptScope, urls []string) []bool {
+	keep := make([]bool, len(urls))
+	sets := map[string]map[string]bool{}
+	for i, u := range urls {
+		refType, id, ok := scopeTarget(u)
+		if s == nil || !ok {
+			keep[i] = true
+			continue
+		}
+		set, loaded := sets[refType]
+		if !loaded {
+			set = h.allowedIDsFor(ctx, s, refType)
+			sets[refType] = set
+		}
+		keep[i] = set == nil || set[id]
+	}
+	return keep
+}
+
+func (h *Handler) scopeGantt(ctx context.Context, s *deptScope, items []GanttItem) []GanttItem {
+	if s == nil {
+		return items
+	}
+	urls := make([]string, len(items))
+	for i, it := range items {
+		urls[i] = it.DetailURL
+	}
+	keep := h.filterScoped(ctx, s, urls)
+	out := items[:0]
+	for i, it := range items {
+		if keep[i] {
+			out = append(out, it)
+		}
+	}
+	return out
 }

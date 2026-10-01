@@ -411,6 +411,42 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// Abteilungsrechte: Vorgaenge (und deren Massnahmen/Teile/Kommentare)
+	// fremder Abteilungen ausblenden; Zaehler dann aus den sichtbaren Eintraegen
+	if s := h.requestScope(r); s != nil {
+		allowed := map[string]bool{}
+		kept := res.Entries[:0]
+		removed := 0
+		for _, e := range res.Entries {
+			if refType, rid, ok := scopeTarget(e.DetailURL); ok {
+				key := refType + "|" + rid
+				ok2, seen := allowed[key]
+				if !seen {
+					ok2 = h.recordInScope(ctx, s, refType, rid)
+					allowed[key] = ok2
+				}
+				if !ok2 {
+					removed++
+					continue
+				}
+			}
+			kept = append(kept, e)
+		}
+		res.Entries = kept
+		if removed > 0 {
+			vis := map[string]int{}
+			for _, e := range kept {
+				vis[e.Module]++
+			}
+			res.Total = 0
+			for i := range res.Modules {
+				res.Modules[i].Count = vis[res.Modules[i].Key]
+				if res.Modules[i].Active {
+					res.Total += res.Modules[i].Count
+				}
+			}
+		}
+	}
 	if limit > 0 && res.Total > len(res.Entries) {
 		res.Truncated = true
 	}

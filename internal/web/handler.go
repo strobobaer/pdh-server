@@ -1172,7 +1172,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Kombinierter Zeitstrahl (Aufgaben, Tickets, Wartung, Störungen) ──
-	data.GanttItems = h.buildDashboardGantt(ctx, now)
+	data.GanttItems = h.scopeGantt(ctx, h.requestScope(r), h.buildDashboardGantt(ctx, now))
 
 	h.render(w, "dashboard", data)
 }
