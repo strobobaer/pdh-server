@@ -2086,10 +2086,10 @@ func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
 	entry, err := h.time.Start(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-top:8px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-top:8px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
-	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: `+entry.ID[:8]+`...)</div>`)
+	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, esc(entry.ID[:8]))
 }
 
 // ── Maintenance Page ─────────────────────────────────────────
@@ -2331,7 +2331,7 @@ func (h *Handler) MaintenanceGenerate(w http.ResponseWriter, r *http.Request) {
 	count, err := h.maint.GenerateTasks(r.Context(), u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;padding:8px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;padding:8px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;padding:8px;background:rgba(16,185,129,.1);border-radius:8px;margin-bottom:12px"><i class="ti ti-check"></i> %d Aufträge generiert</div>`, count)
@@ -2494,7 +2494,7 @@ func (h *Handler) MaintenanceTaskEditWeb(w http.ResponseWriter, r *http.Request)
 	}
 	if err := h.maint.UpdateTask(r.Context(), chi.URLParam(r, "id"), in); err != nil {
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
@@ -2520,7 +2520,7 @@ func (h *Handler) MaintenanceTaskStartTime(w http.ResponseWriter, r *http.Reques
 	entry, err := h.time.Start(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Zeit gestartet (%s)</div>`, entry.ID[:8])
@@ -2875,7 +2875,7 @@ func (h *Handler) TicketStartTime(w http.ResponseWriter, r *http.Request) {
 	entry, err := h.time.Start(r.Context(), in, u.ID)
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px">⏱ Zeit gestartet (%s)</div>`, entry.ID[:8])
@@ -4016,7 +4016,7 @@ func (h *Handler) FaultChatWeb(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-bottom:10px"><i class="ti ti-alert-circle"></i> Copilot: %s</div>`, esc(err.Error()))
 		return
 	}
-	fmt.Fprintf(w, `<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Copilot</div><div style="color:var(--text);line-height:1.5;font-size:12px">`+esc(reply)+`</div></div>`)
+	fmt.Fprintf(w, `<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Copilot</div><div style="color:var(--text);line-height:1.5;font-size:12px;white-space:pre-wrap">%s</div></div>`, esc(reply))
 }
 
 func (h *Handler) TimeStopWeb(w http.ResponseWriter, r *http.Request) {
@@ -4235,7 +4235,7 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: %s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;padding:8px 0"><i class="ti ti-check"></i> Gespeichert</div>`)

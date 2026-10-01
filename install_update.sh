@@ -60,6 +60,15 @@ if [[ "$mode" == "docker" ]]; then
     "${compose[@]}" build --build-arg "PDH_BUILD_COMMIT=$target" app updater
     "${compose[@]}" up -d --no-deps app updater
 else
+    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
+    # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
+    # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
+    export GOTOOLCHAIN=auto
+    go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+    if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
+        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+        exit 1
+    fi
     mkdir -p "$repo_dir/bin"
     (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
     (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)

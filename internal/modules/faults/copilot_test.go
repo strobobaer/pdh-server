@@ -37,6 +37,7 @@ func TestAnthropicChat(t *testing.T) {
 		lastBody = nil
 		_ = json.NewDecoder(r.Body).Decode(&lastBody)
 		lastBeta = r.Header.Get("anthropic-beta")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(reply))
 	}))

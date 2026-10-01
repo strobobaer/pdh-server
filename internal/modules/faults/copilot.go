@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 )
 
 type CopilotBackend string
@@ -24,7 +29,7 @@ type Copilot struct {
 	ollamaURL      string
 	model          string
 	anthropicModel string
-	anthropicURL   string // Messages-Endpunkt (Tests koennen ihn umlenken)
+	anthropicURL   string // Basis-URL der API ("" = Standard; Tests lenken sie um)
 	httpClient     *http.Client
 	repo           *Repository
 }
@@ -49,7 +54,6 @@ func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repositor
 		ollamaURL:      ollamaURL,
 		model:          model,
 		anthropicModel: anthropicModel,
-		anthropicURL:   "https://api.anthropic.com/v1/messages",
 		// Aktuelle Modelle denken vor der Antwort – Analysen brauchen Zeit
 		httpClient: &http.Client{Timeout: 300 * time.Second},
 		repo:       repo,
@@ -125,133 +129,110 @@ func (c *Copilot) ollamaChat(ctx context.Context, system, userMsg string, jsonMo
 // keines eingetragen ist.
 const DefaultAnthropicModel = "claude-opus-5-5"
 
-type anthropicRequest struct {
-	Model        string             `json:"model"`
-	MaxTokens    int                `json:"max_tokens"`
-	System       string             `json:"system,omitempty"`
-	Messages     []anthropicMessage `json:"messages"`
-	OutputConfig map[string]any     `json:"output_config,omitempty"`
-	Fallbacks    any                `json:"fallbacks,omitempty"`
-}
-
+// anthropicMessage: Chat-Verlauf (Rolle + Text).
 type anthropicMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type anthropicResponse struct {
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-	StopReason  string `json:"stop_reason"`
-	StopDetails *struct {
-		Category    string `json:"category"`
-		Explanation string `json:"explanation"`
-	} `json:"stop_details"`
-	Error *struct {
-		Type    string `json:"type"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// anthropicGen: Modelle, die Effort und serverseitige Ausweichmodelle kennen.
+// anthropicCurrent: Modelle, die Effort bzw. serverseitige Ausweichmodelle kennen.
 func anthropicCurrent(model string) (effort, fallbacks bool) {
-	for _, p := range []string{"claude-opus-5", "claude-fable-5", "claude-sonnet-5", "claude-mythos-5"} {
+	for _, p := range []string{"claude-opus-5", "claude-fable-5", "claude-sonnet-5", "claude-mythos-5",
+		"claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"} {
 		if strings.HasPrefix(model, p) {
 			effort = true
 		}
 	}
-	for _, m := range []string{"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"} {
-		if model == m {
-			fallbacks = true
-		}
-	}
-	if strings.HasPrefix(model, "claude-opus-4-6") || strings.HasPrefix(model, "claude-opus-4-7") || strings.HasPrefix(model, "claude-opus-4-8") {
-		effort = true
+	switch model {
+	case "claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5":
+		fallbacks = true
 	}
 	return
 }
 
-// anthropicChat ruft die Messages API auf. Aktuelle Modelle denken immer
-// zuerst: die Antwort enthaelt dann Denk-Bloecke vor dem Text, und das
-// Denken zaehlt in max_tokens – daher genug Spielraum und nur Textbloecke lesen.
+func (c *Copilot) anthropicClient() anthropic.Client {
+	opts := []option.RequestOption{option.WithAPIKey(c.apiKey), option.WithMaxRetries(2)}
+	if c.anthropicURL != "" {
+		opts = append(opts, option.WithBaseURL(c.anthropicURL))
+	}
+	return anthropic.NewClient(opts...)
+}
+
+// anthropicChat ruft die Messages API ueber das offizielle SDK auf. Aktuelle
+// Modelle denken immer zuerst: die Antwort enthaelt Denk-Bloecke vor dem Text,
+// und das Denken zaehlt in max_tokens – daher genug Spielraum und nur
+// Textbloecke lesen.
 func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg, effort string) (string, error) {
-	req := anthropicRequest{
-		Model:     c.anthropicModel,
+	params := anthropic.BetaMessageNewParams{
+		Model:     anthropic.Model(c.anthropicModel),
 		MaxTokens: 16000,
-		System:    system,
-		Messages:  []anthropicMessage{{Role: "user", Content: userMsg}},
+		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(userMsg))},
+	}
+	if system != "" {
+		params.System = []anthropic.BetaTextBlockParam{{Text: system}}
 	}
 	withEffort, withFallbacks := anthropicCurrent(c.anthropicModel)
 	if withEffort && effort != "" {
-		req.OutputConfig = map[string]any{"effort": effort}
+		params.OutputConfig = anthropic.BetaOutputConfigParam{Effort: anthropic.BetaOutputConfigEffort(effort)}
 	}
 	if withFallbacks {
 		// bei einer Ablehnung durch die Sicherheitsfilter beantwortet ein
 		// passendes Ausweichmodell die Anfrage im selben Aufruf
-		req.Fallbacks = "default"
+		params.Betas = []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01}
+		params.Fallbacks = anthropic.BetaFallbacksParamUnion{OfDefault: constant.ValueOf[constant.Default]()}
 	}
-	body, _ := json.Marshal(req)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.anthropicURL, bytes.NewBuffer(body))
+	client := c.anthropicClient()
+	resp, err := client.Beta.Messages.New(ctx, params)
 	if err != nil {
-		return "", err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	if withFallbacks {
-		httpReq.Header.Set("anthropic-beta", "server-side-fallback-2026-07-01")
-	}
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
+		var apiErr *anthropic.Error
+		if errors.As(err, &apiErr) {
+			hint := ""
+			switch apiErr.StatusCode {
+			case 401:
+				hint = " (API-Schlüssel prüfen)"
+			case 404:
+				hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
+			case 429:
+				hint = " (Ratenlimit – kurz warten)"
+			case 529:
+				hint = " (Dienst überlastet – später erneut versuchen)"
+			}
+			return "", fmt.Errorf("anthropic: HTTP %d – %s%s", apiErr.StatusCode, apiErrorMessage(apiErr), hint)
+		}
 		return "", fmt.Errorf("anthropic nicht erreichbar: %w", err)
 	}
-	defer resp.Body.Close()
-	var result anthropicResponse
-	decErr := json.NewDecoder(resp.Body).Decode(&result)
-	if resp.StatusCode >= 300 {
-		msg := http.StatusText(resp.StatusCode)
-		if result.Error != nil && result.Error.Message != "" {
-			msg = result.Error.Type + ": " + result.Error.Message
-		}
-		hint := ""
-		switch resp.StatusCode {
-		case 401:
-			hint = " (API-Schlüssel prüfen)"
-		case 404:
-			hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
-		case 429:
-			hint = " (Ratenlimit – kurz warten)"
-		case 529:
-			hint = " (Dienst überlastet – später erneut versuchen)"
-		}
-		return "", fmt.Errorf("anthropic: HTTP %d – %s%s", resp.StatusCode, msg, hint)
-	}
-	if decErr != nil {
-		return "", fmt.Errorf("anthropic antwort parsen: %w", decErr)
-	}
-	if result.StopReason == "refusal" {
+	if resp.StopReason == anthropic.BetaStopReasonRefusal {
 		why := ""
-		if result.StopDetails != nil && result.StopDetails.Explanation != "" {
-			why = ": " + result.StopDetails.Explanation
+		if resp.StopDetails.Explanation != "" {
+			why = ": " + resp.StopDetails.Explanation
 		}
 		return "", fmt.Errorf("anthropic hat die Anfrage abgelehnt%s", why)
 	}
 	var text strings.Builder
-	for _, b := range result.Content {
-		if b.Type == "text" { // Denk-Bloecke ueberspringen
-			text.WriteString(b.Text)
+	for _, block := range resp.Content {
+		if tb, ok := block.AsAny().(anthropic.BetaTextBlock); ok { // Denk-Bloecke ueberspringen
+			text.WriteString(tb.Text)
 		}
 	}
 	out := strings.TrimSpace(text.String())
 	if out == "" {
-		if result.StopReason == "max_tokens" {
+		if resp.StopReason == anthropic.BetaStopReasonMaxTokens {
 			return "", fmt.Errorf("anthropic: Antwortlimit erreicht, bevor Text kam")
 		}
-		return "", fmt.Errorf("anthropic: keine Textantwort (stop_reason %s)", result.StopReason)
+		return "", fmt.Errorf("anthropic: keine Textantwort (stop_reason %s)", resp.StopReason)
 	}
 	return out, nil
+}
+
+// apiErrorMessage: Typ und Text aus dem Fehlerobjekt der API.
+func apiErrorMessage(e *anthropic.Error) string {
+	var body struct {
+		Error struct{ Type, Message string } `json:"error"`
+	}
+	if json.Unmarshal([]byte(e.RawJSON()), &body) == nil && body.Error.Message != "" {
+		return body.Error.Type + ": " + body.Error.Message
+	}
+	return http.StatusText(e.StatusCode)
 }
 
 // ── Unified ──────────────────────────────────────────────────

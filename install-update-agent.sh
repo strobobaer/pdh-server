@@ -39,6 +39,16 @@ fi
 set_env_value PDH_UPDATE_AGENT_TOKEN "$token"
 set_env_value PDH_UPDATE_AGENT_URL "http://127.0.0.1:8091"
 
+# Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
+# Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
+# laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
+export GOTOOLCHAIN=auto
+go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
+    echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+    exit 1
+fi
+
 build_commit="$(git -C "$repo_dir" rev-parse HEAD)"
 install -d -m 0750 /var/cache/pdh-updater
 mkdir -p "$repo_dir/bin"

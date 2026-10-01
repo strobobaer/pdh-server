@@ -43,7 +43,7 @@ Aktuell registrierte Module:
 
 ## Technik-Stack
 
-- Go `1.22.2`
+- Go `1.24`
 - PostgreSQL
 - `github.com/go-chi/chi/v5` fuer Routing
 - `github.com/jackc/pgx/v5` fuer PostgreSQL
@@ -51,6 +51,7 @@ Aktuell registrierte Module:
 - `github.com/rs/zerolog` fuer Logging
 - `github.com/spf13/viper` fuer Konfiguration
 - `golang.org/x/crypto/bcrypt` fuer Passwort-Hashes
+- `github.com/anthropics/anthropic-sdk-go` fuer den Copilot (Claude)
 - Go HTML Templates fuer die Web-UI
 
 ## Projektstruktur
@@ -78,7 +79,7 @@ Aktuell registrierte Module:
 Auf dem Zielsystem werden benoetigt:
 
 - Linux-Server oder Entwicklungsmaschine
-- Go `1.22.2` oder neuer
+- Go `1.24` oder neuer – ab Go 1.21 laedt `go build` die passende Version selbst nach (`GOTOOLCHAIN=auto`, nutzen auch die Update-Skripte)
 - PostgreSQL
 - Git
 - Make
