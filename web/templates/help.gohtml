@@ -79,6 +79,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
     <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
   </ul>
+  <div class="hb-howto"><b><i class="ti ti-palette"></i> So stellst du Farben und Hell/Dunkel ein</b>
+    <ol class="hb-steps">
+      <li>Oben rechts der Knopf <b>System / Hell / Dunkel</b> schaltet bei jedem Klick weiter. „System“ folgt der Einstellung deines Geräts.</li>
+      <li>Für andere Farben oben rechts auf deinen Namen → unter <b>Farbschema</b> einen Farbkreis antippen. Die Farben wechseln sofort.</li>
+      <li>Das Gebäude-Symbol <i class="ti ti-building"></i> stellt wieder den <b>Firmenstandard</b> ein.</li>
+    </ol>
+    Beides merkt sich dein Browser – auf einem anderen Gerät stellst du es dort neu ein. Fehlt „Farbschema“ im Menü, hat der Administrator die eigene Wahl abgeschaltet.</div>
   <div class="hb-howto"><b><i class="ti ti-arrow-back-up"></i> Zurück zur vorherigen Seite</b>
     Der Pfeil <i class="ti ti-arrow-left"></i> oben links bringt dich immer dorthin zurück, woher du gekommen bist. Fährst du mit der Maus darüber, siehst du das Ziel.</div>
   <div class="hb-howto"><b><i class="ti ti-app-window"></i> Verknüpfungen öffnen, ohne die Seite zu verlassen</b>
@@ -441,8 +448,30 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
     <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
   </ul>
+  <h3><i class="ti ti-color-swatch"></i> Erscheinungsbild: Farbschema</h3>
+  <p>Im Reiter <b>Erscheinungsbild</b> legst du oben das <b>Farbschema</b> für alle fest. Hell oder Dunkel wählt trotzdem jeder selbst – jedes Schema hat Farben für beide.</p>
+  {{template "hb-fig-theme"}}
+  <table>
+    <tr><td><b>Vorlagen</b></td><td>PDH-Blau (Standard), Petrol, Industriegrün, Signalorange, Bordeaux, Violett, Anthrazit – geprüft gut lesbar in Hell und Dunkel</td></tr>
+    <tr><td><b>Firmenfarbe</b></td><td>eine eigene Farbe (z. B. aus dem Firmenlogo). Das PDH passt die Helligkeit je Modus automatisch an, damit Schrift und Schaltflächen lesbar bleiben.</td></tr>
+    <tr><td><b>Home Assistant</b></td><td>aus Home Assistant übernommene Themes (z. B. Nordic) – mit Hintergrund-, Karten-, Text- und Rahmenfarben</td></tr>
+  </table>
+  <div class="hb-howto"><b><i class="ti ti-color-swatch"></i> So stellst du das Firmen-Farbschema ein</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Erscheinungsbild</b>, Karte <b>Farbschema</b>.</li>
+      <li>Ein Schema antippen – oder bei <b>Firmenfarbe</b> auf das Farbfeld klicken und eine Farbe wählen. Die Seite zeigt die Farben sofort zur Probe.</li>
+      <li>Mit <b>Benutzer dürfen … ein eigenes Farbschema wählen</b> legst du fest, ob jeder im Benutzermenü umstellen darf.</li>
+      <li><b>Speichern</b> – ab dem nächsten Seitenaufruf sehen alle das neue Schema (auch auf der Anmeldeseite).</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-home"></i> So übernimmst du ein Theme aus Home Assistant (z. B. Nordic)</b>
+    <ol class="hb-steps">
+      <li>In Home Assistant die Theme-Datei holen: im Konfigurationsordner unter <code>themes/</code>, z. B. <code>themes/nordic/nordic.yaml</code> (per Datei-Editor, Samba oder Studio Code Server).</li>
+      <li>Im PDH unter <b>Erscheinungsbild → Theme aus Home Assistant übernehmen</b> die Datei wählen – oder ihren Inhalt in das Textfeld einfügen – und <b>Übernehmen</b>.</li>
+      <li>Das Theme erscheint oben bei den Farbschemata (Hinweis „aus Home Assistant“). Antippen und <b>Speichern</b>, um es zum Firmenstandard zu machen.</li>
+    </ol>
+    Hat das Theme getrennte Farben für Hell und Dunkel (<code>modes: light/dark</code>), werden beide übernommen. Hat es nur einen Satz Farben, gilt er für den passenden Modus; im anderen Modus kommen nur die Akzentfarben mit. Schriften, Rundungen, Zustandsfarben und card-mod werden nicht übernommen. Eine erneute Übernahme mit gleichem Namen ersetzt das Theme; <b>Entfernen</b> löscht es (war es Firmenstandard, gilt wieder PDH-Blau).</div>
   <h3><i class="ti ti-palette"></i> Erscheinungsbild: Name und Logos</h3>
-  <p>Im Reiter <b>Erscheinungsbild</b> legst du den Anzeigenamen und drei Logos fest:</p>
+  <p>Darunter legst du den Anzeigenamen und drei Logos fest:</p>
   <table>
     <tr><td><b>App-Logo</b></td><td>Seitenleiste, Anmeldeseite und Symbol im Browser-Tab (ohne eigenes Logo erscheint dort das blaue PDH-Symbol <img src="/favicon.svg" alt="" width="16" height="16" style="vertical-align:-3px">)</td></tr>
     <tr><td><b>Logo für Exporte</b></td><td>PDF-Exporte (oben rechts) und Excel-Exporte (neben der Tabelle)</td></tr>

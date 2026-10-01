@@ -19,7 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Erscheinungsbild: Firmenname und Logos fuer
+// Erscheinungsbild: Firmenname, Farbschema (theme.go) und Logos fuer
 //   - die App (Seitenleiste, Anmeldung, Browser-Symbol),
 //   - Exporte (PDF, Excel),
 //   - Druck (jede gedruckte Seite, Bestellvorschlag, optional Etiketten).
@@ -43,7 +43,11 @@ type Branding struct {
 	AppLogo, ExportLogo, PrintLogo string // URL (/uploads/branding/...) oder leer
 	ExportSame, PrintSame          bool
 	LabelLogo                      bool
-	appFile, exportFile, printFile string // Dateipfade (fuer PDF/Excel)
+	Theme                          string         // Firmenstandard-Farbschema (theme.go)
+	ThemeColor                     string         // eigene Firmenfarbe #rrggbb oder leer
+	ThemeUserChoice                bool           // Benutzer duerfen ein eigenes Schema waehlen
+	HAThemes                       []ThemePalette // aus Home Assistant importiert
+	appFile, exportFile, printFile string         // Dateipfade (fuer PDF/Excel)
 }
 
 var (
@@ -66,7 +70,7 @@ func (h *Handler) branding() Branding {
 	if c != nil {
 		return *c
 	}
-	b := Branding{AppName: "PDH", ExportSame: true, PrintSame: true}
+	b := Branding{AppName: "PDH", ExportSame: true, PrintSame: true, Theme: defaultTheme, ThemeUserChoice: true}
 	if h.db != nil {
 		ctx := context.Background()
 		b.AppName = h.appSetting(ctx, keyBrandName, "PDH")
@@ -76,6 +80,10 @@ func (h *Handler) branding() Branding {
 		b.ExportSame = h.appSetting(ctx, keyBrandExportSame, "1") == "1"
 		b.PrintSame = h.appSetting(ctx, keyBrandPrintSame, "1") == "1"
 		b.LabelLogo = h.appSetting(ctx, keyBrandLabelLogo, "0") == "1"
+		b.Theme = h.appSetting(ctx, keyBrandTheme, defaultTheme)
+		b.ThemeColor = h.appSetting(ctx, keyBrandThemeColor, "")
+		b.ThemeUserChoice = h.appSetting(ctx, keyBrandThemeUser, "1") == "1"
+		b.HAThemes = h.loadHAThemes(ctx)
 	}
 	if strings.TrimSpace(b.AppName) == "" {
 		b.AppName = "PDH"

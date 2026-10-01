@@ -273,7 +273,7 @@
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .type-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 6px;cursor:pointer;text-align:center;color:var(--text);transition:all .15s;font-family:var(--font)}
 .type-btn:hover{border-color:var(--muted)}
-.type-btn.active{border-color:var(--accent);background:rgba(79,110,247,.12)}
+.type-btn.active{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
 .s-gray .stat-val{color:var(--muted)}
 </style>
 <script>
@@ -433,7 +433,7 @@ function renderTimeGantt(){
     bar.style.height = (rowHeight - 12) + 'px';
     bar.style.left = left + 'px';
     bar.style.width = width + 'px';
-    bar.style.background = entry.running ? 'rgba(16,185,129,.8)' : 'rgba(79,110,247,.8)';
+    bar.style.background = entry.running ? 'rgba(16,185,129,.8)' : 'rgba(var(--accent-rgb),.8)';
     bar.style.borderRadius = '5px';
     bar.style.cursor = 'grab';
     bar.style.display = 'flex';

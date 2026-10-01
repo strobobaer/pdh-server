@@ -385,7 +385,7 @@ async function pdhMakeAdmin(userId, name){
       sel.add(new Option('Erlaubt', 'allow'));
       sel.add(new Option('Verboten', 'deny'));
       sel.value = row.override === true ? 'allow' : row.override === false ? 'deny' : 'clear';
-      const mark = function(){ line.style.background = sel.value === 'clear' ? '' : 'rgba(79,110,247,.07)'; };
+      const mark = function(){ line.style.background = sel.value === 'clear' ? '' : 'rgba(var(--accent-rgb),.07)'; };
       mark();
       sel.addEventListener('change', async function(){
         sel.disabled = true;

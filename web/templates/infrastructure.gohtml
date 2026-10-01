@@ -156,7 +156,7 @@ function expandAll() {
 
 function scrollToNode(id) {
   const el = document.querySelector('[data-id="'+id+'"]');
-  if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('.infra-row').style.background='rgba(79,110,247,.2)'; setTimeout(()=>el.querySelector('.infra-row').style.background='',1500); }
+  if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('.infra-row').style.background='rgba(var(--accent-rgb),.2)'; setTimeout(()=>el.querySelector('.infra-row').style.background='',1500); }
 }
 
 function addChildNode(parentId, parentName) {

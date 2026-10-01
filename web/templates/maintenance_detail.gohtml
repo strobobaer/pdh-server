@@ -189,9 +189,9 @@
     </div>
     {{end}}
     {{if eq .Task.Status "in_progress"}}
-    <div class="card" style="border-color:rgba(79,110,247,.3)">
+    <div class="card" style="border-color:rgba(var(--accent-rgb),.3)">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;background:rgba(79,110,247,.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-loader" style="color:var(--accent);font-size:18px"></i></div>
+        <div style="width:32px;height:32px;background:rgba(var(--accent-rgb),.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-loader" style="color:var(--accent);font-size:18px"></i></div>
         <div><div style="font-weight:500;color:var(--accent)">In Bearbeitung{{if .Task.StartedAt}} seit {{.Task.StartedAt}}{{end}}</div></div>
       </div>
     </div>

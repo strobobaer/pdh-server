@@ -13,7 +13,7 @@
 .hb-fig .bg3{fill:var(--bg3);stroke:var(--border)}
 .hb-fig .ac{fill:var(--accent)}
 .hb-fig .acs{fill:none;stroke:var(--accent);stroke-width:2}
-.hb-fig .acl{fill:rgba(79,110,247,.15);stroke:var(--accent)}
+.hb-fig .acl{fill:rgba(var(--accent-rgb),.15);stroke:var(--accent)}
 .hb-fig .gr{fill:rgba(16,185,129,.18);stroke:var(--green)}
 .hb-fig .am{fill:rgba(245,158,11,.18);stroke:var(--amber)}
 .hb-fig .rd{fill:rgba(239,68,68,.16);stroke:var(--red)}
@@ -22,11 +22,11 @@
 .hb-fig text{font-family:var(--font);fill:var(--text);font-size:11px}
 .hb-fig .t-m{fill:var(--muted);font-size:9.5px}
 .hb-fig .t-b{font-weight:600}
-.hb-fig .t-w{fill:#fff;font-weight:600}
+.hb-fig .t-w{fill:var(--on-accent,#fff);font-weight:600}
 .hb-fig .t-c{text-anchor:middle}
 .hb-steps{counter-reset:hbs;list-style:none;margin:10px 0!important;padding:0}
 .hb-steps li{counter-increment:hbs;position:relative;padding:4px 0 8px 36px!important;margin:0!important}
-.hb-steps li::before{content:counter(hbs);position:absolute;left:0;top:2px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.hb-steps li::before{content:counter(hbs);position:absolute;left:0;top:2px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--on-accent,#fff);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .hb-howto{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:12px 0;background:var(--bg)}
 .hb-howto > b{display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:4px}
 .hb-howto > b i{color:var(--accent)}
@@ -243,6 +243,30 @@
   <path class="ar" d="M118 55 H134"/><path class="ar" d="M248 55 H264"/><path class="ar" d="M382 55 H398"/><path class="ar" d="M512 55 H528"/>
 </svg>
 <figcaption>Alles im Browser: Der Assistent speichert die Werte selbst in der Einstellungsdatei.</figcaption>
+</figure>
+{{end}}
+
+{{/* Farbschema / Theming */}}
+{{define "hb-fig-theme"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 150" role="img" aria-label="Farbschema wählen">
+  <rect class="bg" x="1" y="1" width="638" height="148" rx="8"/>
+  <text x="16" y="24" class="t-b">Farbschema</text>
+  <g font-size="10">
+    <rect class="bg3" x="16" y="36" width="140" height="34" rx="8"/><circle cx="34" cy="53" r="10" fill="#4f6ef7"/><text x="52" y="57">PDH-Blau</text>
+    <rect class="bg3" x="164" y="36" width="140" height="34" rx="8"/><circle cx="182" cy="53" r="10" fill="#14939a"/><text x="200" y="57">Petrol</text>
+    <rect class="acl" x="312" y="36" width="150" height="34" rx="8"/><circle cx="330" cy="53" r="10" fill="#8fbcbb"/><path d="M330 43 A10 10 0 0 0 330 63 Z" fill="#3b4252"/><text x="348" y="51" class="t-b">Nordic</text><text x="348" y="63" class="t-m">aus Home Assistant</text>
+    <rect class="bg3" x="470" y="36" width="154" height="34" rx="8"/><rect x="480" y="44" width="20" height="18" rx="3" fill="#e30613"/><text x="508" y="51">Firmenfarbe</text><text x="508" y="63" class="t-m">wird angepasst</text>
+  </g>
+  <rect class="bg3" x="16" y="84" width="608" height="52" rx="8"/>
+  <text x="28" y="104" class="t-m">Vorschau:</text>
+  <rect class="ac" x="84" y="94" width="92" height="22" rx="6"/><text x="130" y="109" class="t-w t-c" font-size="10">✓ Schaltfläche</text>
+  <rect class="acl" x="186" y="94" width="88" height="22" rx="11"/><text x="230" y="109" class="t-c" font-size="10">Hervorhebung</text>
+  <text x="290" y="109" font-size="10" style="fill:var(--accent)">Verknüpfung</text>
+  <text x="28" y="128" class="t-m">☑ Benutzer dürfen im Benutzermenü ein eigenes Farbschema wählen</text>
+  <rect class="ac" x="540" y="94" width="72" height="22" rx="6"/><text x="576" y="109" class="t-w t-c" font-size="10">Speichern</text>
+</svg>
+<figcaption>Schema antippen (die Seite zeigt es sofort zur Probe), dann Speichern. Hell/Dunkel bleibt die Wahl jedes Benutzers.</figcaption>
 </figure>
 {{end}}
 

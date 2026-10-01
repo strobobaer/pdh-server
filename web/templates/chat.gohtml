@@ -17,7 +17,7 @@
 .chat-sec button{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;font-size:14px}
 .chat-item{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:8px;cursor:pointer;position:relative}
 .chat-item:hover{background:var(--bg3)}
-.chat-item.active{background:rgba(79,110,247,.14)}
+.chat-item.active{background:rgba(var(--accent-rgb),.14)}
 .chat-item .t{flex:1;min-width:0}
 .chat-item .n{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-item.unread .n{font-weight:700}
@@ -60,7 +60,7 @@
 .msg.mine{flex-direction:row-reverse}
 .msg.mine .b{display:flex;flex-direction:column;align-items:flex-end}
 .msg.mine .who{justify-content:flex-end}
-.msg.mine .bubble{background:rgba(79,110,247,.16);border-color:rgba(79,110,247,.3);border-radius:10px 4px 10px 10px}
+.msg.mine .bubble{background:rgba(var(--accent-rgb),.16);border-color:rgba(var(--accent-rgb),.3);border-radius:10px 4px 10px 10px}
 .msg.mentioned .bubble{border-left:3px solid var(--red)}
 .msg.deleted .bubble{font-style:italic;color:var(--muted)}
 .bubble code{font-family:monospace;background:var(--bg3);padding:0 4px;border-radius:4px;font-size:12.5px}
@@ -75,7 +75,7 @@
 .msg-actions button:hover{background:var(--bg3)}
 .reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 .react{border:1px solid var(--border);background:var(--bg2);border-radius:12px;padding:1px 7px;font-size:12px;cursor:pointer;color:var(--text)}
-.react.mine{border-color:var(--accent);background:rgba(79,110,247,.14)}
+.react.mine{border-color:var(--accent);background:rgba(var(--accent-rgb),.14)}
 .cards{display:flex;flex-direction:column;gap:4px;margin-top:4px;width:100%}
 .card-link{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--bg2);border-radius:8px;padding:6px 10px;font-size:12.5px;max-width:420px}
 .card-link:hover{border-color:var(--accent)}
@@ -130,8 +130,8 @@
 .pick-list label{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:13px;cursor:pointer}
 .pick-list label:hover{background:var(--bg3)}
 .pick-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
-.pick-chips span{background:rgba(79,110,247,.15);color:var(--accent);border-radius:12px;padding:2px 8px;font-size:12px;cursor:pointer}
-.chat-share{margin:0 12px 8px;padding:8px 10px;border-radius:8px;background:rgba(79,110,247,.12);font-size:12px;color:var(--accent)}
+.pick-chips span{background:rgba(var(--accent-rgb),.15);color:var(--accent);border-radius:12px;padding:2px 8px;font-size:12px;cursor:pointer}
+.chat-share{margin:0 12px 8px;padding:8px 10px;border-radius:8px;background:rgba(var(--accent-rgb),.12);font-size:12px;color:var(--accent)}
 @media (max-width:900px){
   .chat-app,.chat-app.side-open{grid-template-columns:1fr}
   .chat-app .chat-main{display:none}

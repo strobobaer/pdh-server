@@ -18,6 +18,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/xuri/excelize/v2 v2.8.0
 	golang.org/x/crypto v0.31.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.1
 	rsc.io/qr v0.2.0
 )
@@ -64,7 +65,6 @@ require (
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect

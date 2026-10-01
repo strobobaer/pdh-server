@@ -7,11 +7,11 @@
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--red:#ef4444;--font:'DM Sans',system-ui,sans-serif}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--accent2:#7c3aed;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--red:#ef4444;--font:'DM Sans',system-ui,sans-serif}
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:380px}
 .logo{display:flex;align-items:center;gap:12px;margin-bottom:28px}
-.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),#7c3aed);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#fff}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#fff}
 .logo-text{font-size:18px;font-weight:600}
 .logo-sub{font-size:12px;color:var(--muted)}
 h2{font-size:16px;font-weight:500;margin-bottom:20px}
@@ -19,10 +19,19 @@ h2{font-size:16px;font-weight:500;margin-bottom:20px}
 label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
 input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 13px;color:var(--text);font-size:14px;font-family:var(--font);outline:0}
 input:focus{border-color:var(--accent)}
-.btn{width:100%;background:var(--accent);border:0;border-radius:8px;padding:10px;color:#fff;font-size:14px;font-family:var(--font);cursor:pointer;margin-top:4px}
+.btn{width:100%;background:var(--accent);border:0;border-radius:8px;padding:10px;color:var(--on-accent);font-size:14px;font-family:var(--font);cursor:pointer;margin-top:4px}
 .btn:hover{opacity:.9}
 .error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:10px;border-radius:8px;font-size:12px;margin-bottom:14px}
 </style>
+<style>{{.Brand.ThemeCSS}}</style>
+<script>
+// Farbschema wie in der App (Anmeldeseite immer dunkel)
+(function(){
+  var pal = {{.Brand.ThemeID}}, ids = {{.Brand.PaletteIDs}}, own = null;
+  try { if({{.Brand.ThemeUserChoice}}) own = localStorage.getItem('pdh_palette'); } catch(e) {}
+  document.documentElement.dataset.palette = (own && ids.indexOf(own) >= 0) ? own : pal;
+})();
+</script>
 </head>
 <body>
 <div class="card">
