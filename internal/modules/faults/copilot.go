@@ -24,6 +24,7 @@ type Copilot struct {
 	ollamaURL      string
 	model          string
 	anthropicModel string
+	anthropicURL   string // Messages-Endpunkt (Tests koennen ihn umlenken)
 	httpClient     *http.Client
 	repo           *Repository
 }
@@ -37,7 +38,7 @@ func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repositor
 		model = "llama3.2"
 	}
 	if anthropicModel == "" {
-		anthropicModel = "claude-sonnet-4-20250514"
+		anthropicModel = DefaultAnthropicModel
 	}
 	if apiKey != "" && strings.HasPrefix(apiKey, "sk-ant-") {
 		backend = BackendAnthropic
@@ -48,8 +49,10 @@ func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repositor
 		ollamaURL:      ollamaURL,
 		model:          model,
 		anthropicModel: anthropicModel,
-		httpClient:     &http.Client{Timeout: 120 * time.Second},
-		repo:           repo,
+		anthropicURL:   "https://api.anthropic.com/v1/messages",
+		// Aktuelle Modelle denken vor der Antwort – Analysen brauchen Zeit
+		httpClient: &http.Client{Timeout: 300 * time.Second},
+		repo:       repo,
 	}
 }
 
@@ -70,6 +73,7 @@ type ollamaMessage struct {
 
 type ollamaChatResponse struct {
 	Message ollamaMessage `json:"message"`
+	Error   string        `json:"error"`
 }
 
 func (c *Copilot) ollamaChat(ctx context.Context, system, userMsg string, jsonMode bool) (string, error) {
@@ -97,23 +101,37 @@ func (c *Copilot) ollamaChat(ctx context.Context, system, userMsg string, jsonMo
 		return "", fmt.Errorf("ollama nicht erreichbar (läuft ollama?): %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("ollama: HTTP %d", resp.StatusCode)
-	}
 	var result ollamaChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("ollama antwort parsen: %w", err)
+	decErr := json.NewDecoder(resp.Body).Decode(&result)
+	if resp.StatusCode >= 300 || result.Error != "" {
+		msg := result.Error
+		if msg == "" {
+			msg = http.StatusText(resp.StatusCode)
+		}
+		return "", fmt.Errorf("ollama (Modell %s): HTTP %d – %s", c.model, resp.StatusCode, msg)
+	}
+	if decErr != nil {
+		return "", fmt.Errorf("ollama antwort parsen: %w", decErr)
+	}
+	if strings.TrimSpace(result.Message.Content) == "" {
+		return "", fmt.Errorf("ollama (Modell %s) hat eine leere Antwort geliefert", c.model)
 	}
 	return result.Message.Content, nil
 }
 
 // ── Anthropic ────────────────────────────────────────────────
 
+// DefaultAnthropicModel: Standardmodell, wenn in den Server-Einstellungen
+// keines eingetragen ist.
+const DefaultAnthropicModel = "claude-opus-5-5"
+
 type anthropicRequest struct {
-	Model     string             `json:"model"`
-	MaxTokens int                `json:"max_tokens"`
-	System    string             `json:"system"`
-	Messages  []anthropicMessage `json:"messages"`
+	Model        string             `json:"model"`
+	MaxTokens    int                `json:"max_tokens"`
+	System       string             `json:"system,omitempty"`
+	Messages     []anthropicMessage `json:"messages"`
+	OutputConfig map[string]any     `json:"output_config,omitempty"`
+	Fallbacks    any                `json:"fallbacks,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -123,60 +141,139 @@ type anthropicMessage struct {
 
 type anthropicResponse struct {
 	Content []struct {
+		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
+	StopReason  string `json:"stop_reason"`
+	StopDetails *struct {
+		Category    string `json:"category"`
+		Explanation string `json:"explanation"`
+	} `json:"stop_details"`
+	Error *struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
-func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg string) (string, error) {
+// anthropicGen: Modelle, die Effort und serverseitige Ausweichmodelle kennen.
+func anthropicCurrent(model string) (effort, fallbacks bool) {
+	for _, p := range []string{"claude-opus-5", "claude-fable-5", "claude-sonnet-5", "claude-mythos-5"} {
+		if strings.HasPrefix(model, p) {
+			effort = true
+		}
+	}
+	for _, m := range []string{"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"} {
+		if model == m {
+			fallbacks = true
+		}
+	}
+	if strings.HasPrefix(model, "claude-opus-4-6") || strings.HasPrefix(model, "claude-opus-4-7") || strings.HasPrefix(model, "claude-opus-4-8") {
+		effort = true
+	}
+	return
+}
+
+// anthropicChat ruft die Messages API auf. Aktuelle Modelle denken immer
+// zuerst: die Antwort enthaelt dann Denk-Bloecke vor dem Text, und das
+// Denken zaehlt in max_tokens – daher genug Spielraum und nur Textbloecke lesen.
+func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg, effort string) (string, error) {
 	req := anthropicRequest{
-		Model:     c.anthropicModel, // FIX: war hardcoded "claude-sonnet-4-20250514"
-		MaxTokens: 1500,
+		Model:     c.anthropicModel,
+		MaxTokens: 16000,
 		System:    system,
 		Messages:  []anthropicMessage{{Role: "user", Content: userMsg}},
 	}
+	withEffort, withFallbacks := anthropicCurrent(c.anthropicModel)
+	if withEffort && effort != "" {
+		req.OutputConfig = map[string]any{"effort": effort}
+	}
+	if withFallbacks {
+		// bei einer Ablehnung durch die Sicherheitsfilter beantwortet ein
+		// passendes Ausweichmodell die Anfrage im selben Aufruf
+		req.Fallbacks = "default"
+	}
 	body, _ := json.Marshal(req)
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		"https://api.anthropic.com/v1/messages", bytes.NewBuffer(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.anthropicURL, bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	if withFallbacks {
+		httpReq.Header.Set("anthropic-beta", "server-side-fallback-2026-07-01")
+	}
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("anthropic nicht erreichbar: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		var e struct {
-			Error struct{ Message string } `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&e)
-		return "", fmt.Errorf("anthropic: HTTP %d %s", resp.StatusCode, e.Error.Message)
-	}
 	var result anthropicResponse
-	json.NewDecoder(resp.Body).Decode(&result)
-	if len(result.Content) == 0 {
-		return "", fmt.Errorf("leere antwort von anthropic")
+	decErr := json.NewDecoder(resp.Body).Decode(&result)
+	if resp.StatusCode >= 300 {
+		msg := http.StatusText(resp.StatusCode)
+		if result.Error != nil && result.Error.Message != "" {
+			msg = result.Error.Type + ": " + result.Error.Message
+		}
+		hint := ""
+		switch resp.StatusCode {
+		case 401:
+			hint = " (API-Schlüssel prüfen)"
+		case 404:
+			hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
+		case 429:
+			hint = " (Ratenlimit – kurz warten)"
+		case 529:
+			hint = " (Dienst überlastet – später erneut versuchen)"
+		}
+		return "", fmt.Errorf("anthropic: HTTP %d – %s%s", resp.StatusCode, msg, hint)
 	}
-	return result.Content[0].Text, nil
+	if decErr != nil {
+		return "", fmt.Errorf("anthropic antwort parsen: %w", decErr)
+	}
+	if result.StopReason == "refusal" {
+		why := ""
+		if result.StopDetails != nil && result.StopDetails.Explanation != "" {
+			why = ": " + result.StopDetails.Explanation
+		}
+		return "", fmt.Errorf("anthropic hat die Anfrage abgelehnt%s", why)
+	}
+	var text strings.Builder
+	for _, b := range result.Content {
+		if b.Type == "text" { // Denk-Bloecke ueberspringen
+			text.WriteString(b.Text)
+		}
+	}
+	out := strings.TrimSpace(text.String())
+	if out == "" {
+		if result.StopReason == "max_tokens" {
+			return "", fmt.Errorf("anthropic: Antwortlimit erreicht, bevor Text kam")
+		}
+		return "", fmt.Errorf("anthropic: keine Textantwort (stop_reason %s)", result.StopReason)
+	}
+	return out, nil
 }
 
 // ── Unified ──────────────────────────────────────────────────
 
 func (c *Copilot) chat(ctx context.Context, system, userMsg string) (string, error) {
 	if c.backend == BackendAnthropic {
-		return c.anthropicChat(ctx, system, userMsg)
+		return c.anthropicChat(ctx, system, userMsg, "low")
 	}
 	return c.ollamaChat(ctx, system, userMsg, false)
 }
 
 func (c *Copilot) chatJSON(ctx context.Context, system, userMsg string) (string, error) {
 	if c.backend == BackendAnthropic {
-		return c.anthropicChat(ctx, system, userMsg)
+		return c.anthropicChat(ctx, system, userMsg, "medium")
 	}
 	return c.ollamaChat(ctx, system, userMsg, true)
+}
+
+// Ask: allgemeine Frage an den Copilot (ohne bestimmte Stoerung).
+func (c *Copilot) Ask(ctx context.Context, question string) (string, error) {
+	return c.chat(ctx, `Du bist der Instandhaltungs-Copilot eines Industriebetriebs. Antworte knapp, praxisnah und auf Deutsch.
+Arbeitssicherheit zuerst (Freischalten, Sichern). Wenn dir Angaben fehlen, frag nach statt zu raten.`, question)
 }
 
 func (c *Copilot) Analyze(ctx context.Context, fault *Fault) (*CopilotAnalysis, error) {

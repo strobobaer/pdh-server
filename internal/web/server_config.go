@@ -67,7 +67,7 @@ var envGroups = []envGroup{
 		{Key: "PDH_COPILOT_OLLAMAURL", Label: "Ollama-Adresse", Type: "url", Default: "http://localhost:11434", Restart: true},
 		{Key: "PDH_COPILOT_MODEL", Label: "Ollama-Modell", Type: "text", Default: "llama3.2", Restart: true},
 		{Key: "PDH_COPILOT_ANTHROPICKEY", Label: "Anthropic-API-Schlüssel", Type: "text", Secret: true, Restart: true},
-		{Key: "PDH_COPILOT_ANTHROPICMODEL", Label: "Anthropic-Modell", Type: "text", Default: "claude-sonnet-4-20250514", Restart: true},
+		{Key: "PDH_COPILOT_ANTHROPICMODEL", Label: "Anthropic-Modell", Type: "text", Default: "claude-opus-5-5", Restart: true},
 	}},
 	{"microsoft", "Microsoft 365", "ti-brand-windows", "Anmeldung mit Microsoft, Teams-Benachrichtigungen und Organisationsabgleich.", []envField{
 		{Key: "PDH_MICROSOFT_TENANT_ID", Label: "Tenant-ID", Type: "text"},

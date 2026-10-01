@@ -115,6 +115,11 @@ func (s *Service) Analyze(ctx context.Context, faultID string) (*CopilotAnalysis
 	return analysis, nil
 }
 
+// Ask: allgemeine Copilot-Frage ohne Stoerungsbezug.
+func (s *Service) Ask(ctx context.Context, question string) (string, error) {
+	return s.copilot.Ask(ctx, question)
+}
+
 func (s *Service) GetAnalysis(ctx context.Context, faultID string) (*CopilotAnalysis, error) {
 	return s.repo.GetAnalysis(ctx, faultID)
 }

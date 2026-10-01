@@ -1437,25 +1437,23 @@ document.body.addEventListener('htmx:sendError', () => showGlobalError('HTMX-Sen
 window.addEventListener('error', (event) => showGlobalError('JavaScript-Fehler', event.message || 'Unbekannter Fehler'));
 window.addEventListener('unhandledrejection', (event) => showGlobalError('Promise-Fehler', event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unbekannter Fehler')));
 
-function sendCop() {
-  const q = document.getElementById('cop-in').value.trim();
+// Copilot in der Seitenleiste: auf einer Stoerung mit deren Kontext, sonst allgemein
+async function sendCop() {
+  const input = document.getElementById('cop-in');
+  const q = input.value.trim();
   if(!q) return;
   const msgs = document.getElementById('cop-msgs');
-  msgs.innerHTML += '<div class="cop-q">Du: ' + q + '</div>';
-  document.getElementById('cop-in').value = '';
-  msgs.scrollTop = msgs.scrollHeight;
-  fetch(API + '/api/v1/faults/{{.FaultID}}/chat', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
-    body: JSON.stringify({message:q, history:[]})
-  }).then(r=>r.json()).then(d=>{
-    if(d.data?.reply) {
-      msgs.innerHTML += '<div class="cop-a">Copilot: ' + d.data.reply + '</div>';
-      msgs.scrollTop = msgs.scrollHeight;
-    }
-  }).catch(()=>{
-    msgs.innerHTML += '<div class="cop-a" style="color:var(--muted)">Copilot nicht erreichbar</div>';
-  });
+  const add = (cls, text, style) => { const d = document.createElement('div'); d.className = cls; if(style) d.style.cssText = style; d.textContent = text; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
+  add('cop-q', 'Du: ' + q);
+  input.value = '';
+  const wait = add('cop-a', 'Copilot denkt nach …', 'color:var(--muted)');
+  try{
+    const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}'})});
+    const j = await res.json().catch(() => ({}));
+    wait.remove();
+    if(!res.ok || !j.reply) add('cop-a', 'Copilot: ' + (j.error || ('HTTP ' + res.status)), 'color:var(--red)');
+    else add('cop-a', 'Copilot: ' + j.reply);
+  }catch(e){ wait.remove(); add('cop-a', 'Copilot nicht erreichbar: ' + e.message, 'color:var(--red)'); }
 }
 </script>
 <script>

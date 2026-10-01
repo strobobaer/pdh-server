@@ -138,7 +138,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("copilot.backend", "ollama")
 	viper.SetDefault("copilot.ollamaurl", "http://localhost:11434")
 	viper.SetDefault("copilot.model", "llama3.2")
-	viper.SetDefault("copilot.anthropicmodel", "claude-sonnet-4-20250514")
+	viper.SetDefault("copilot.anthropicmodel", "claude-opus-5-5")
 	viper.SetDefault("mail.port", 587)
 	viper.SetDefault("mail.tlsmode", "starttls")
 

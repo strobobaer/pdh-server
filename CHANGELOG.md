@@ -32,6 +32,7 @@ im Kapitel „Versionen & Updates“ an.
 - Core-Einstellungen: Abteilungen, deren Mitarbeitende im Assistenten vorgeschlagen werden (Standard: Instandhaltung, Elektro, Mechanik)
 
 ### Geändert
+- Copilot: Standardmodell für Anthropic ist jetzt claude-opus-5-5 (mit serverseitigem Ausweichmodell bei Ablehnungen); bereits eingetragene Modelle bleiben
 - Copilot: ähnliche Fälle werden jetzt inhaltlich gesucht (Titel, Beschreibung, Symptome; Wortformen und Umlaute egal, seltene Fachbegriffe gewichtet; gleiche Anlage/Linie bevorzugt) statt einfach die zuletzt gelösten zu nehmen; die Analyse bekommt Ursachen, Lösungen, Maßnahmen und den Anlagenpfad mit, Ollama liefert erzwungen JSON, die Konfidenz wird auf 0–100 % begrenzt und Fehler der KI-Dienste werden klar gemeldet
 - Notizzettel auf dem Dashboard ist jetzt immer direkt beschreibbar und speichert automatisch; der Umweg über „Dashboard anpassen“ → Einstellungen entfällt
 - Zeitstrahl (Dashboard, Leitstand, Projekte) folgt jetzt dem Dunkelmodus statt hell zu bleiben
@@ -42,6 +43,9 @@ im Kapitel „Versionen & Updates“ an.
 - Unbestätigte Zeiten zählen nicht in Wochen-/Monatssummen, Diagrammen, Export und im Dashboard-Widget „Meine Stunden“
 
 ### Behoben
+- Copilot: Analyse und Chat lieferten mit aktuellen Claude-Modellen keine oder unbrauchbare Antworten – das Antwortlimit (1500 Tokens) wurde vom Denken aufgebraucht und es wurde der erste statt des Text-Blocks gelesen; jetzt genug Spielraum, nur Textblöcke, Ablehnungen und API-Fehler werden mit Grund angezeigt
+- Copilot-Analyse lief unsichtbar im Hintergrund, Fehler gingen verloren; jetzt sichtbar mit Ergebnis bzw. genauer Fehlermeldung
+- Copilot in der Seitenleiste funktionierte außerhalb von Störungen nicht und zeigte Antworten ungeschützt als HTML an
 - Copilot: Die angezeigte Ähnlichkeit der Vergleichsfälle war ein fester Platzhalterwert (80/70/60 %)
 - Dashboard-Widgets „Mir zugewiesen“ und „Meine Aufgaben“ konnten nicht laden (Abfrage auf eine nicht mehr vorhandene Spalte der Aufgaben)
 - Wartungsplan bearbeiten: Die zugewiesene Person wurde bisher nicht gespeichert

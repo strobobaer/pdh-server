@@ -525,6 +525,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/org-units", h.OrgUnitsPage)
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
+	r.Post("/copilot/ask", h.CopilotAskWeb)
 	r.Post("/suggest/accept", h.SuggestAcceptWeb)
 	r.Post("/trainings/topics", h.TrainingTopicSaveWeb)
 	r.Post("/trainings/topics/{id}/delete", h.TrainingTopicDeleteWeb)
@@ -1437,11 +1438,51 @@ func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {
 	h.Faults(w, r)
 }
 
+// AnalyzeFault: Copilot-Analyse ausfuehren und das Ergebnis bzw. den genauen
+// Fehler anzeigen (frueher lief sie unsichtbar im Hintergrund, Fehler gingen verloren).
 func (h *Handler) AnalyzeFault(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	go h.faults.Analyze(context.Background(), id)
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<tr><td colspan="5" style="text-align:center;color:var(--accent);padding:12px"><i class="ti ti-brain"></i> Copilot analysiert...</td></tr>`)
+	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
+	defer cancel()
+	_, err := h.faults.Analyze(ctx, id)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err != nil {
+		componentLog("copilot").Error().Err(err).Str("stoerung", id).Msg("analyse fehlgeschlagen")
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-top:8px;text-align:left"><i class="ti ti-alert-circle"></i> Analyse fehlgeschlagen: %s</div>`, esc(err.Error()))
+		return
+	}
+	w.Header().Set("HX-Refresh", "true")
+	fmt.Fprint(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Analyse fertig</div>`)
+}
+
+// CopilotAskWeb: POST /copilot/ask (q, fault) – Fragen aus der Copilot-Seitenleiste.
+// Mit Stoerungs-ID im Kontext dieser Stoerung, sonst allgemein.
+func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	q := strings.TrimSpace(r.FormValue("q"))
+	if q == "" || len([]rune(q)) > 2000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Bitte eine Frage eingeben (höchstens 2000 Zeichen)."})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
+	defer cancel()
+	var reply string
+	var err error
+	if fid := strings.TrimSpace(r.FormValue("fault")); fid != "" {
+		if s := h.requestScope(r); s != nil && !h.recordInScope(ctx, s, "fault", fid) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Störung."})
+			return
+		}
+		reply, err = h.faults.Chat(ctx, fid, getUser(r).ID, q, nil)
+	} else {
+		reply, err = h.faults.Ask(ctx, q)
+	}
+	if err != nil {
+		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"reply": reply})
 }
 
 func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
@@ -3968,10 +4009,11 @@ func (h *Handler) FaultChatWeb(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "")
 		return
 	}
-	reply, err := h.faults.Chat(r.Context(), id, "", message, nil)
-	w.Header().Set("Content-Type", "text/html")
+	reply, err := h.faults.Chat(r.Context(), id, getUser(r).ID, message, nil)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err != nil {
-		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Copilot nicht erreichbar</div>`)
+		componentLog("copilot").Error().Err(err).Str("stoerung", id).Msg("chat fehlgeschlagen")
+		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px;margin-bottom:10px"><i class="ti ti-alert-circle"></i> Copilot: %s</div>`, esc(err.Error()))
 		return
 	}
 	fmt.Fprintf(w, `<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Copilot</div><div style="color:var(--text);line-height:1.5;font-size:12px">`+esc(reply)+`</div></div>`)
