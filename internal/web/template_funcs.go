@@ -3,6 +3,8 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"strings"
+	"time"
 
 	"pdh"
 )
@@ -14,6 +16,9 @@ func TemplateFuncs() template.FuncMap {
 		"dict":       templateDict,
 		"list":       templateList,
 		"safeJS":     templateJS,
+		"hasPrefix":  strings.HasPrefix,
+		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
+		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
 	}
 }
 

@@ -31,28 +31,7 @@
   <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
 </div>
 
-<div class="stats">
-  <div class="stat s-blue">
-    <div class="stat-label">Offene Tickets</div>
-    <div class="stat-val">{{.Stats.OpenTickets}}</div>
-    <div class="stat-sub">{{.Stats.CriticalTickets}} kritisch</div>
-  </div>
-  <div class="stat s-red">
-    <div class="stat-label">Störungen</div>
-    <div class="stat-val">{{.Stats.ActiveFaults}}</div>
-    <div class="stat-sub">{{.Stats.AnalyzingFaults}} analysiert</div>
-  </div>
-  <div class="stat s-amber">
-    <div class="stat-label">Wartung fällig</div>
-    <div class="stat-val">{{.Stats.MaintenanceDue}}</div>
-    <div class="stat-sub">diese Woche</div>
-  </div>
-  <div class="stat s-green">
-    <div class="stat-label">Lagerwert</div>
-    <div class="stat-val">{{.Stats.InventoryValue}}€</div>
-    <div class="stat-sub">{{.Stats.LowStock}} unter Mindest</div>
-  </div>
-</div>
+{{template "dw-grid" .}}
 
 <!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen -->
 <div class="card">

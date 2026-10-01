@@ -133,6 +133,11 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 .topbar-path{font-size:12px;color:var(--muted)}
 .topbar-cur{font-size:13px;font-weight:500}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);margin-left:auto;box-shadow:0 0 0 3px rgba(16,185,129,.2)}
+.topbar-clock{display:inline-flex;align-items:center;gap:7px;height:44px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.topbar-clock:hover{border-color:var(--accent)}
+.topbar-clock i{font-size:16px;color:var(--accent)}
+.topbar-clock .clk-day,.topbar-clock .clk-date{color:var(--muted)}
+.topbar-clock .clk-time{font-weight:600;font-size:13.5px}
 .topbar-user{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--muted)}
 .topbar-user i{font-size:15px}
 /* ── Main ── */
@@ -443,6 +448,7 @@ select.form-input option{background:var(--bg2)}
   html:not(.sidebar-right-collapsed) .context{transform:none}
   html:not(.sidebar-right-collapsed) .pdh-backdrop{display:block}
   .topbar-ctx{display:inline-flex}
+  .topbar-clock .clk-date{display:none}
 }
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
@@ -458,6 +464,9 @@ select.form-input option{background:var(--bg2)}
   .topbar > div{gap:6px!important;margin-left:0!important}
   .theme-toggle{padding:0 10px;height:40px}
   .theme-toggle > span:not(.ctx-badge){display:none}
+  .topbar-clock{height:40px;padding:0 8px;gap:4px}
+  .topbar-clock i,.topbar-clock .clk-day{display:none}
+  .topbar-clock .clk-time{font-size:13px}
   .topbar-user{padding:9px 10px}
   .main{padding:12px}
   .card{padding:12px}
@@ -556,6 +565,9 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="Zeiterfassung öffnen" aria-label="Uhrzeit – Zeiterfassung öffnen">
+        <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>
+      </a>
       {{if and .CanChat (ne .Page "chat")}}
       <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>
       <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="Chat in der Seitenleiste" style="position:relative"><i class="ti ti-messages"></i><span>Chat</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
@@ -818,6 +830,31 @@ async function lookSave() {
     if(msg) msg.textContent = 'Gespeichert – gilt jetzt auf allen Geräten';
   } catch(e) { if(msg) msg.textContent = 'Nicht gespeichert: ' + e.message; }
 }
+// ── Uhr in der Kopfleiste: Serverzeit, tickt genau zum Sekundenwechsel ──
+(function(){
+  const el = document.getElementById('pdh-clock');
+  if(!el) return;
+  // Abstand Geraeteuhr ↔ Serveruhr; so zeigen alle Terminals dieselbe Zeit
+  const offset = (parseInt(el.dataset.serverMs, 10) || Date.now()) - Date.now();
+  const fDay = new Intl.DateTimeFormat('de-DE', {weekday: 'long'});
+  const fDate = new Intl.DateTimeFormat('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
+  const fTime = new Intl.DateTimeFormat('de-DE', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  const day = el.querySelector('.clk-day'), date = el.querySelector('.clk-date'), time = el.querySelector('.clk-time');
+  function kw(d) { // ISO-Kalenderwoche
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const n = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - n);
+    return Math.ceil(((t - new Date(Date.UTC(t.getUTCFullYear(), 0, 1))) / 86400000 + 1) / 7);
+  }
+  function tick() {
+    const now = new Date(Date.now() + offset);
+    day.textContent = fDay.format(now) + ',';
+    date.textContent = fDate.format(now);
+    time.textContent = fTime.format(now);
+    el.title = fDay.format(now) + ', ' + fDate.format(now) + ' · KW ' + kw(now) + ' – Zeiterfassung öffnen';
+    setTimeout(tick, 1000 - ((Date.now() + offset) % 1000) + 5);
+  }
+  tick();
+})();
 // aktueller Zoom-Faktor (fuer pixelgenaue Positionierung von Menues)
 function pdhZoom() { return parseFloat(getComputedStyle(document.body).zoom) || 1; }
 document.addEventListener('DOMContentLoaded', lookApply);

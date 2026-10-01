@@ -80,6 +80,8 @@ type DashboardData struct {
 	WeekPlan       bool
 	WeekDays       []ShiftDay
 	GanttItems     []GanttItem
+	Widgets        []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
+	WidgetCatalog  []WidgetCatalogGroup
 }
 
 // GanttItem ist ein vereinheitlichter Zeitstrahl-Eintrag fürs Dashboard,
@@ -522,6 +524,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/users/{id}/permissions", h.UserPermissionsWeb)
 	r.Post("/users/{id}/permissions", h.UserPermissionSetWeb)
 	r.Get("/time", h.TimeTracking)
+	r.Get("/dashboard/w/{id}", h.DashboardWidgetWeb)
+	r.Post("/dashboard/widgets", h.DashboardWidgetsSaveWeb)
 
 	// Rollen & Berechtigungen
 	r.Get("/admin/roles", h.RolesPage)
@@ -1030,6 +1034,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 			now.AddDate(0, 0, -int(now.Weekday())+1).Format("02.01"),
 			now.AddDate(0, 0, 7-int(now.Weekday())).Format("02.01")),
 	}
+	data.Widgets, data.WidgetCatalog, _ = h.dashboardWidgetViews(r)
 
 	// Störungen
 	if fl, err := h.faults.List(ctx, ""); err == nil {
