@@ -301,8 +301,9 @@ function openAssignPopup(userID, date, cellEl){
   popup.style.minWidth = '160px';
 
   var rect = cellEl.getBoundingClientRect();
-  popup.style.top = (rect.bottom + window.scrollY + 4) + 'px';
-  popup.style.left = (rect.left + window.scrollX) + 'px';
+  var z = (typeof pdhZoom === 'function') ? pdhZoom() : 1; // Darstellungsgroesse
+  popup.style.top = (rect.bottom + window.scrollY + 4) / z + 'px';
+  popup.style.left = (rect.left + window.scrollX) / z + 'px';
 
   SHIFT_DEFS.forEach(function(def){
     var btn = document.createElement('button');

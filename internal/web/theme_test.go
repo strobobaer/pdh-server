@@ -177,11 +177,13 @@ func TestThemeInLayout(t *testing.T) {
 	d := ServerConfigData{EnvFile: ".env", FileWritable: true}
 	d.Brand = Branding{Theme: "ha-test-dark", ThemeUserChoice: true, HAThemes: ha}
 	d.Title = "Server-Einstellungen"
+	d.Look = d.Brand.DefaultLook()
 	out := renderPage(t, tmpl, "server_config", d)
 	for _, want := range []string{
 		`<style id="pdh-theme">html[data-palette="blau"]`, `html[data-palette="ha-test-dark"]:not([data-theme="light"]){--accent:#8fbcbb`,
-		`window.PDH_PALETTE_DEFAULT = "ha-test-dark"`, `"petrol"`, // Kopf-Skript
-		`class="pal-menu"`, `data-palette-pick="ha-zwei-modi"`, // Benutzermenue
+		`window.PDH_LOOK_DEFAULT = {palette: "ha-test-dark"`, `"petrol"`, `dataset.palette = "ha-test-dark"`, // Kopf-Skript
+		`class="pal-menu look-menu"`, `data-palette-pick="ha-zwei-modi"`, `id="look-font"`, "lookStep(10)", // Benutzermenue
+		`<style id="pdh-ui">:root{--font:'DM Sans'`, "--ui-scale:1.00", `id="pdh-font"`, // Schrift & Groesse
 		`action="/admin/branding/theme"`, `value="ha-test-dark" checked`, "aus Home Assistant", // Auswahl
 		`action="/admin/branding/ha-import"`, `/admin/branding/ha/ha-test-dark/delete`, "Firmenstandard",
 	} {
@@ -191,7 +193,12 @@ func TestThemeInLayout(t *testing.T) {
 	}
 	// Benutzerwahl abgeschaltet: kein Farbschema im Benutzermenue
 	d.Brand.ThemeUserChoice = false
-	if out := renderPage(t, tmpl, "server_config", d); strings.Contains(out, `class="pal-menu"`) {
-		t.Error("Farbschema-Auswahl trotz Sperre angeboten")
+	d.Look = d.Brand.DefaultLook()
+	out = renderPage(t, tmpl, "server_config", d)
+	if strings.Contains(out, `data-palette-pick="ha-zwei-modi"`) || strings.Contains(out, `id="look-font"`) {
+		t.Error("Farbschema-/Schriftauswahl trotz Sperre angeboten")
+	}
+	if !strings.Contains(out, "lookStep(10)") {
+		t.Error("Größe muss immer einstellbar sein")
 	}
 }

@@ -283,7 +283,7 @@ func main() {
 		r.Mount("/users", userHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/storage", storageHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/shifts", shiftHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret))
+		r.Mount("/infrastructure", infraHandler.Routes(cfg.Auth.JWTSecret, rbacSvc.RequirePermission("infrastructure.edit")))
 		r.Mount("/costcenters", costCenterHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/directory", directoryHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/tickets", ticketHandler.Routes(cfg.Auth.JWTSecret))

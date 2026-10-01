@@ -79,13 +79,34 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
     <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
   </ul>
-  <div class="hb-howto"><b><i class="ti ti-palette"></i> So stellst du Farben und Hell/Dunkel ein</b>
+  <div class="hb-howto"><b><i class="ti ti-palette"></i> So stellst du Farben, Schrift, Größe und Hell/Dunkel ein</b>
+    {{template "hb-fig-look"}}
     <ol class="hb-steps">
       <li>Oben rechts der Knopf <b>System / Hell / Dunkel</b> schaltet bei jedem Klick weiter. „System“ folgt der Einstellung deines Geräts.</li>
-      <li>Für andere Farben oben rechts auf deinen Namen → unter <b>Farbschema</b> einen Farbkreis antippen. Die Farben wechseln sofort.</li>
-      <li>Das Gebäude-Symbol <i class="ti ti-building"></i> stellt wieder den <b>Firmenstandard</b> ein.</li>
+      <li>Oben rechts auf deinen Namen → Bereich <b>Darstellung</b>: einen Farbkreis antippen, eine <b>Schriftart</b> wählen und mit <b>−</b> / <b>+</b> alles kleiner oder größer machen (70 bis 160 %). Du siehst die Änderung sofort.</li>
+      <li><b>Speichern</b> – dann gilt deine Darstellung ab jetzt immer, auf allen Geräten, an denen du dich anmeldest. Ohne Speichern ist beim nächsten Seitenaufruf wieder die gespeicherte Einstellung da.</li>
+      <li><b>Standard</b> (dann Speichern) stellt alles auf den Firmenstandard zurück. Das Gebäude-Symbol <i class="ti ti-building"></i> setzt nur das Farbschema zurück.</li>
     </ol>
-    Beides merkt sich dein Browser – auf einem anderen Gerät stellst du es dort neu ein. Fehlt „Farbschema“ im Menü, hat der Administrator die eigene Wahl abgeschaltet.</div>
+    Hell/Dunkel merkt sich nur dein Browser. Fehlen Farbkreise und Schriftart im Menü, hat der Administrator die eigene Wahl abgeschaltet – die Größe kannst du trotzdem ändern. Am Terminal gilt die Einstellung für alle, die das Terminal benutzen.</div>
+  <h3><i class="ti ti-device-mobile"></i> Am Smartphone und Tablet</h3>
+  {{template "hb-fig-mobile"}}
+  <p>Das PDH passt sich der Bildschirmgröße an – es gibt keine eigene App, der Browser genügt.</p>
+  <div class="hb-howto"><b><i class="ti ti-device-mobile"></i> So bedienst du das PDH am Smartphone</b>
+    <ol class="hb-steps">
+      <li><b>☰</b> oben links öffnet die Navigation. Ein Modul antippen – oder daneben auf die abgedunkelte Fläche tippen, um sie zu schließen.</li>
+      <li>Oben rechts: <i class="ti ti-messages"></i> Chat, <i class="ti ti-device-desktop"></i> Hell/Dunkel, <i class="ti ti-layout-sidebar-right"></i> Suche, Copilot, Aktivität und Hilfe, <i class="ti ti-user"></i> dein Menü (dort auch <b>Im Chat teilen</b> und die Darstellung).</li>
+      <li>Breite Tabellen kannst du <b>seitlich wischen</b>. Reiter auf Detailseiten ebenso.</li>
+      <li>Wo es am PC ein Rechtsklick-Menü gibt, <b>lange drücken</b> (etwa eine halbe Sekunde).</li>
+      <li>Ist dir alles zu klein: Menü → Darstellung → <b>+</b> und <b>Speichern</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-device-tablet"></i> Am Tablet</b>
+    Die Navigation bleibt links. Chat, Suche und Hilfe öffnen sich als Leiste von rechts über dem Inhalt (Knopf <i class="ti ti-layout-sidebar-right"></i> oder Chat), damit genug Platz bleibt. Neue Chat-Nachrichten öffnen die Leiste dort nicht von selbst – du siehst die Zahl am Chat-Knopf.</div>
+  <div class="hb-howto"><b><i class="ti ti-apps"></i> So legst du das PDH wie eine App auf den Startbildschirm</b>
+    <ol class="hb-steps">
+      <li>PDH im Browser öffnen und anmelden.</li>
+      <li><b>iPhone/iPad (Safari):</b> Teilen-Symbol → <b>Zum Home-Bildschirm</b>. <b>Android (Chrome):</b> Menü ⋮ → <b>App installieren</b> bzw. <b>Zum Startbildschirm hinzufügen</b>.</li>
+      <li>Das PDH-Symbol startet jetzt ohne Adressleiste, wie eine App.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-arrow-back-up"></i> Zurück zur vorherigen Seite</b>
     Der Pfeil <i class="ti ti-arrow-left"></i> oben links bringt dich immer dorthin zurück, woher du gekommen bist. Fährst du mit der Maus darüber, siehst du das Ziel.</div>
   <div class="hb-howto"><b><i class="ti ti-app-window"></i> Verknüpfungen öffnen, ohne die Seite zu verlassen</b>
@@ -210,6 +231,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Verknüpfungen</b> – offene Vorgänge, passende Ersatzteile, Firmen.</li>
   </ul>
   <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
+  <div class="hb-howto"><b><i class="ti ti-lock"></i> Wer darf den Anlagenbaum ändern?</b>Anlegen, Bearbeiten und Deaktivieren von Gebäuden, Linien, Anlagen und Geräten braucht die Berechtigung <b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> (Kategorie „Infrastruktur“). Standardmäßig haben sie Administratoren und Manager; weiteren Rollen gibst du sie unter <b>Rollen &amp; Berechtigungen</b>. Ohne sie fehlen die Knöpfe „Hinzufügen“ und „Bearbeiten“ – ansehen, kommentieren und Vorgänge zuordnen geht weiterhin.</div>
+  <h3><i class="ti ti-device-desktop-pin"></i> Terminal-Standort: Auswahl öffnet sich am richtigen Ort</h3>
+  {{template "hb-fig-terminal"}}
+  <p>Steht ein Terminal (Systembenutzer) fest in einer Halle oder an einer Linie, kannst du ihm diesen Standort geben. Wer dort ein Ticket, eine Störung oder eine Wartung anlegt, sieht die Infrastruktur-Auswahl schon bis zu diesem Standort aufgeklappt und hervorgehoben – die genaue Anlage wählt man dann mit einem Klick. Das gilt auch, wenn sich jemand kurz mit dem eigenen Konto am Terminal anmeldet.</p>
+  <div class="hb-howto"><b><i class="ti ti-map-pin"></i> So stellst du den Standort eines Terminals ein</b>
+    <ol class="hb-steps">
+      <li><b>Benutzer</b> → den Systembenutzer des Terminals öffnen → Reiter <b>Stammdaten</b> (Berechtigung <i>Benutzer verwalten</i>).</li>
+      <li>Unter <b>Systemnutzer</b> erscheint <b>Standort des Terminals</b>: im Baum Gebäude, Linie oder Anlage antippen.</li>
+      <li><b>Speichern</b>. Auf der Übersicht steht jetzt „Terminal-Standort“; die Änderung erscheint in der Historie.</li>
+    </ol>
+    Wird die Anlage später gelöscht, ist der Standort automatisch wieder leer – dann klappt der Baum wie gewohnt ganz auf.</div>
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
@@ -448,22 +480,31 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
     <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
   </ul>
-  <h3><i class="ti ti-color-swatch"></i> Erscheinungsbild: Farbschema</h3>
-  <p>Im Reiter <b>Erscheinungsbild</b> legst du oben das <b>Farbschema</b> für alle fest. Hell oder Dunkel wählt trotzdem jeder selbst – jedes Schema hat Farben für beide.</p>
+  <h3><i class="ti ti-color-swatch"></i> Erscheinungsbild: Farbschema, Schrift &amp; Größe</h3>
+  <p>Im Reiter <b>Erscheinungsbild</b> legst du oben den <b>Firmenstandard</b> fest: Farbschema, Schriftart und Größe. Jeder Benutzer kann im Benutzermenü davon abweichen und das an seinem Konto speichern; Hell oder Dunkel wählt ohnehin jeder selbst – jedes Schema hat Farben für beide.</p>
   {{template "hb-fig-theme"}}
   <table>
     <tr><td><b>Vorlagen</b></td><td>PDH-Blau (Standard), Petrol, Industriegrün, Signalorange, Bordeaux, Violett, Anthrazit – geprüft gut lesbar in Hell und Dunkel</td></tr>
     <tr><td><b>Firmenfarbe</b></td><td>eine eigene Farbe (z. B. aus dem Firmenlogo). Das PDH passt die Helligkeit je Modus automatisch an, damit Schrift und Schaltflächen lesbar bleiben.</td></tr>
-    <tr><td><b>Home Assistant</b></td><td>aus Home Assistant übernommene Themes (z. B. Nordic) – mit Hintergrund-, Karten-, Text- und Rahmenfarben</td></tr>
+    <tr><td><b>Home Assistant</b></td><td>aus der Theme-Galerie oder per Datei übernommene Themes (z. B. Nordic, Metro, iOS) – mit Hintergrund-, Karten-, Text- und Rahmenfarben</td></tr>
+    <tr><td><b>Schriftart</b></td><td>DM Sans (Standard), System, Inter, Roboto (wie Home Assistant), Atkinson Hyperlegible (besonders gut lesbar), Source Sans 3, Verdana</td></tr>
+    <tr><td><b>Größe</b></td><td>70 bis 160 % – vergrößert die ganze Oberfläche, z. B. 120 % für Terminals oder Tablets in der Halle</td></tr>
   </table>
   <div class="hb-howto"><b><i class="ti ti-color-swatch"></i> So stellst du das Firmen-Farbschema ein</b>
     <ol class="hb-steps">
-      <li><b>Server-Einstellungen → Erscheinungsbild</b>, Karte <b>Farbschema</b>.</li>
-      <li>Ein Schema antippen – oder bei <b>Firmenfarbe</b> auf das Farbfeld klicken und eine Farbe wählen. Die Seite zeigt die Farben sofort zur Probe.</li>
-      <li>Mit <b>Benutzer dürfen … ein eigenes Farbschema wählen</b> legst du fest, ob jeder im Benutzermenü umstellen darf.</li>
-      <li><b>Speichern</b> – ab dem nächsten Seitenaufruf sehen alle das neue Schema (auch auf der Anmeldeseite).</li>
+      <li><b>Server-Einstellungen → Erscheinungsbild</b>, Karte <b>Farbschema &amp; Schrift</b>.</li>
+      <li>Ein Schema antippen – oder bei <b>Firmenfarbe</b> auf das Farbfeld klicken und eine Farbe wählen. Darunter <b>Schriftart</b> und <b>Größe</b> wählen. Die Seite zeigt alles sofort zur Probe.</li>
+      <li>Mit <b>Benutzer dürfen … ein eigenes Farbschema und eine eigene Schrift wählen</b> legst du fest, ob jeder im Benutzermenü umstellen darf. Die Größe darf jeder anpassen.</li>
+      <li><b>Speichern</b> – ab dem nächsten Seitenaufruf sehen alle, die nichts Eigenes gespeichert haben, den neuen Standard (auch auf der Anmeldeseite).</li>
     </ol></div>
-  <div class="hb-howto"><b><i class="ti ti-home"></i> So übernimmst du ein Theme aus Home Assistant (z. B. Nordic)</b>
+  <div class="hb-howto"><b><i class="ti ti-layout-grid"></i> So nimmst du ein Theme aus der Galerie (am einfachsten)</b>
+    <ol class="hb-steps">
+      <li><b>Erscheinungsbild</b> → Karte <b>Theme-Galerie aus Home Assistant</b>. Dort liegen bekannte Community-Themes bereit: <b>Nordic</b>, <b>Caule Themes Pack</b>, <b>iOS Themes</b> und <b>Metro &amp; Fluent</b>.</li>
+      <li>Eine Familie aufklappen. Jede Kachel zeigt links die dunkle, rechts die helle Variante.</li>
+      <li><b>Übernehmen</b> legt das Theme oben bei den Farbschemata ab (für die Auswahl der Benutzer). <b>Als Standard</b> übernimmt es und macht es sofort zum Firmenstandard.</li>
+    </ol>
+    Die Farben sind bereits ausgelesen – es wird nichts aus dem Internet geladen. Urheber und Quelle stehen bei jeder Familie.</div>
+  <div class="hb-howto"><b><i class="ti ti-home"></i> So übernimmst du ein eigenes Theme aus Home Assistant</b>
     <ol class="hb-steps">
       <li>In Home Assistant die Theme-Datei holen: im Konfigurationsordner unter <code>themes/</code>, z. B. <code>themes/nordic/nordic.yaml</code> (per Datei-Editor, Samba oder Studio Code Server).</li>
       <li>Im PDH unter <b>Erscheinungsbild → Theme aus Home Assistant übernehmen</b> die Datei wählen – oder ihren Inhalt in das Textfeld einfügen – und <b>Übernehmen</b>.</li>

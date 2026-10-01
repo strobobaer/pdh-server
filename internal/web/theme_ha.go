@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -103,11 +104,19 @@ func haColors(vars map[string]string) themeColors {
 	} else {
 		c.Accent2 = c.Accent
 	}
-	// Eingabefelder/Hover (bg3): etwas zur Schrift hin gemischte Kartenfarbe
+	// Unsichtbare Rahmen (flache Themes) wuerden im PDH Eingabefelder und
+	// Karten verschwinden lassen – dann lieber ableiten.
+	if b := strings.ToLower(c.Border); b == "transparent" || b == "none" {
+		c.Border = ""
+	}
+	// Eingabefelder/Hover (bg3) und ggf. Rahmen: zur Schrift hin gemischte Kartenfarbe
 	b2, okB := hexOf(c.Bg2)
 	tx, okT := hexOf(c.Text)
 	if okB && okT {
 		c.Bg3 = mixHex(b2, tx, 0.06)
+		if c.Border == "" {
+			c.Border = mixHex(b2, tx, 0.14)
+		}
 	}
 	return c
 }
@@ -132,9 +141,21 @@ func isDark(c themeColors) (dark, ok bool) {
 // parseHAThemes liest eine HA-Theme-Datei. Themes ohne verwertbare Farben
 // (z. B. reine Basis-Themes) werden uebersprungen.
 func parseHAThemes(data []byte) ([]ThemePalette, error) {
-	var doc map[string]any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("Die Datei ist kein gültiges YAML: %v", err)
+	// Mehrere YAML-Dokumente (getrennt durch ---) zusammenfassen
+	doc := map[string]any{}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	for {
+		var part map[string]any
+		err := dec.Decode(&part)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("Die Datei ist kein gültiges YAML: %v", err)
+		}
+		for k, v := range part {
+			doc[k] = v
+		}
 	}
 	names := make([]string, 0, len(doc))
 	for k := range doc {
@@ -144,8 +165,8 @@ func parseHAThemes(data []byte) ([]ThemePalette, error) {
 	var out []ThemePalette
 	for _, name := range names {
 		body, ok := doc[name].(map[string]any)
-		if !ok {
-			continue
+		if !ok || strings.Contains(strings.ToLower(name), "do not use") {
+			continue // Basis-Themes, die nur per Anker eingebunden werden
 		}
 		base := haScalars(body)
 		merged := func(mode string) map[string]string {
@@ -162,7 +183,13 @@ func parseHAThemes(data []byte) ([]ThemePalette, error) {
 			}
 			return vars
 		}
-		_, hasModes := body["modes"].(map[string]any)
+		// "Echte" Modi nur, wenn hell UND dunkel eigene Werte haben
+		hasModes := false
+		if modes, ok := body["modes"].(map[string]any); ok {
+			l, _ := modes["light"].(map[string]any)
+			d, _ := modes["dark"].(map[string]any)
+			hasModes = len(l) > 0 && len(d) > 0
+		}
 		dark, light := haColors(merged("dark")), haColors(merged("light"))
 		if dark.Accent == "" && light.Accent == "" {
 			continue // kein Akzent → nichts Brauchbares

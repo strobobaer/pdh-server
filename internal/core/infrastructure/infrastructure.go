@@ -271,18 +271,23 @@ type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-func (h *Handler) Routes(jwtSecret string) chi.Router {
+// Routes: Lesen fuer alle Angemeldeten; Anlegen, Aendern und Deaktivieren
+// nur mit editGuard (Berechtigung "infrastructure.edit").
+func (h *Handler) Routes(jwtSecret string, editGuard func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
 	r.Get("/", h.List)
-	r.Post("/", h.Create)
 	r.Get("/tree", h.GetTree)
 	r.Get("/search", h.Search)
 	r.Get("/stats", h.Stats)
 	r.Get("/{id}", h.GetByID)
-	r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
-	r.Delete("/{id}", h.Deactivate)
 	r.Get("/{id}/children", h.GetChildren)
+	r.Group(func(r chi.Router) {
+		r.Use(editGuard)
+		r.Post("/", h.Create)
+		r.Post("/{id}", h.Update) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
+		r.Delete("/{id}", h.Deactivate)
+	})
 	return r
 }
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -47,6 +48,8 @@ type Branding struct {
 	ThemeColor                     string         // eigene Firmenfarbe #rrggbb oder leer
 	ThemeUserChoice                bool           // Benutzer duerfen ein eigenes Schema waehlen
 	HAThemes                       []ThemePalette // aus Home Assistant importiert
+	Font                           string         // Firmenstandard-Schrift (appearance.go)
+	Scale                          int            // Firmenstandard-Groesse in %
 	appFile, exportFile, printFile string         // Dateipfade (fuer PDF/Excel)
 }
 
@@ -84,6 +87,8 @@ func (h *Handler) branding() Branding {
 		b.ThemeColor = h.appSetting(ctx, keyBrandThemeColor, "")
 		b.ThemeUserChoice = h.appSetting(ctx, keyBrandThemeUser, "1") == "1"
 		b.HAThemes = h.loadHAThemes(ctx)
+		b.Font = h.appSetting(ctx, keyBrandFont, defaultFont)
+		b.Scale, _ = strconv.Atoi(h.appSetting(ctx, keyBrandScale, "100"))
 	}
 	if strings.TrimSpace(b.AppName) == "" {
 		b.AppName = "PDH"

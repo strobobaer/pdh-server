@@ -26,6 +26,7 @@ type userMaster struct {
 	WorkLocation, PhoneInternal, PhoneMobile, Language  string
 	EntryDate, ExitDate, Notes                          string
 	BrokerTickets, BrokerFaults                         bool
+	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
 }
 
 type userPrivate struct {
@@ -178,6 +179,10 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 		WHERE u.id = $1::uuid`, id).Scan(&m.PersonnelNo, &m.JobTitle, &m.CostCenterID, &m.CostCenterName,
 		&m.WorkLocation, &m.PhoneInternal, &m.PhoneMobile, &m.Language, &m.EntryDate, &m.ExitDate,
 		&m.Notes, &m.BrokerTickets, &m.BrokerFaults)
+	if err == nil {
+		_ = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, '') FROM users WHERE id = $1::uuid`, id).Scan(&m.TerminalInfraID)
+		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
+	}
 	return m, err
 }
 
@@ -328,6 +333,15 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		userRedirect(w, r, id, "master", "", err)
 		return
 	}
+	// Terminal-Standort: nur Benutzerverwaltung, nur fuer Systembenutzer
+	if _, sent := r.Form["terminal_infrastructure_id"]; sent && h.canManageUsers(r) {
+		if _, err := h.db.Exec(ctx, `
+			UPDATE users SET terminal_infrastructure_id = CASE WHEN is_system_user THEN NULLIF($1, '')::uuid END
+			WHERE id = $2::uuid`, v("terminal_infrastructure_id"), id); err != nil {
+			userRedirect(w, r, id, "master", "", err)
+			return
+		}
+	}
 	n := h.loadUserMaster(ctx, id)
 	yes := func(b bool) string {
 		if b {
@@ -341,6 +355,7 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		{"Durchwahl", old.PhoneInternal, n.PhoneInternal}, {"Mobil (dienstlich)", old.PhoneMobile, n.PhoneMobile},
 		{"Eintritt", old.EntryDate, n.EntryDate}, {"Austritt", old.ExitDate, n.ExitDate}, {"Sprache", old.Language, n.Language},
 		{"Broker Tickets", yes(old.BrokerTickets), yes(n.BrokerTickets)}, {"Broker Störungen", yes(old.BrokerFaults), yes(n.BrokerFaults)},
+		{"Terminal-Standort", old.TerminalInfraPath, n.TerminalInfraPath},
 	}
 	actor := getUser(r)
 	for _, c := range changes {

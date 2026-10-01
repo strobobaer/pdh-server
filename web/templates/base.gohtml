@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f1117">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <script>
@@ -11,14 +13,15 @@
   const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.themeMode = mode;
-  // Farbschema: eigene Wahl (falls erlaubt und noch vorhanden), sonst Firmenstandard
-  window.PDH_PALETTE_DEFAULT = {{.Brand.ThemeID}};
+  window.PDH_TERMINAL_INFRA = {{.TerminalInfraID}}; // Standort dieses Terminals (Infra-Picker)
+  // Darstellung: am Benutzerkonto gespeichert (leer/0 = Firmenstandard)
+  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, scale: {{.Brand.ScaleValue}}};
+  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, scale: {{.Look.User.Scale}}};
+  window.PDH_LOOK_ALLOW = {{.Look.Allow}};
   window.PDH_PALETTES = {{.Brand.PaletteIDs}};
-  window.PDH_PALETTE_USER = {{.Brand.ThemeUserChoice}};
-  let ownPalette = null;
-  try { if(window.PDH_PALETTE_USER) ownPalette = localStorage.getItem('pdh_palette'); } catch(e) {}
-  document.documentElement.dataset.palette = (ownPalette && window.PDH_PALETTES.indexOf(ownPalette) >= 0) ? ownPalette : window.PDH_PALETTE_DEFAULT;
-  if(localStorage.getItem('pdh_sidebar_left') !== 'expanded') document.documentElement.classList.add('sidebar-left-collapsed');
+  document.documentElement.dataset.palette = {{.Look.PaletteID}};
+  try { localStorage.removeItem('pdh_palette'); } catch(e) {} // frueher im Browser gespeichert
+  if(localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches) document.documentElement.classList.add('sidebar-left-collapsed');
   // Rechte Seitenleiste startet immer eingeklappt (nur die senkrechten Reiter
   // sind sichtbar); sie oeffnet sich per Reiter, Chat-Anforderung oder neuer Nachricht.
   document.documentElement.classList.add('sidebar-right-collapsed');
@@ -133,7 +136,7 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 .topbar-user{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--bg3);border-radius:8px;font-size:12px;color:var(--muted)}
 .topbar-user i{font-size:15px}
 /* ── Main ── */
-.main-wrap{display:flex;flex-direction:column;overflow:hidden}
+.main-wrap{display:flex;flex-direction:column;overflow:hidden;min-width:0} /* min-width:0: breite Tabellen duerfen die Spalte nicht aufblaehen */
 .main{flex:1;overflow-y:auto;padding:22px}
 /* ── Context ── */
 .context{background:var(--bg2);border-left:1px solid var(--border);display:grid;grid-template-columns:44px 1fr;overflow:hidden;min-width:0}
@@ -338,6 +341,7 @@ html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justi
 .infra-picker-empty{font-size:12px;color:var(--muted);padding:8px}
 .infra-picker-node{margin-left:var(--depth,0)}
 .infra-picker-row{display:flex;align-items:center;gap:4px}
+.infra-picker-row.is-focus .infra-picker-select{background:rgba(var(--accent-rgb),.12);box-shadow:inset 3px 0 0 var(--accent);font-weight:600}
 .infra-picker-toggle{width:24px;height:24px;border:0;background:transparent;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
 .infra-picker-toggle i{font-size:14px;transition:transform .15s}
 .infra-picker-toggle[aria-expanded="true"] i{transform:rotate(90deg)}
@@ -380,7 +384,16 @@ select.form-input option{background:var(--bg2)}
   background:color-mix(in srgb, var(--bg2) 88%, transparent);backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
   border:1px solid var(--border);box-shadow:0 8px 28px rgba(0,0,0,.32),0 1px 3px rgba(0,0,0,.22);
   font-size:13px;transform-origin:0 0;animation:win11-menu-in .12s ease-out}
-.pal-menu{border-top:1px solid var(--border);margin-top:4px;padding:8px 10px 6px;min-width:210px}
+.pal-menu{border-top:1px solid var(--border);margin-top:4px;padding:8px 10px 6px;min-width:230px;cursor:default}
+.look-row{display:flex;align-items:center;gap:6px;margin:6px 0}
+.look-row select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;font-size:12px;padding:4px 6px}
+.look-step{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:15px;line-height:1}
+.look-pct{min-width:48px;text-align:center;font-size:12.5px;font-weight:600}
+.look-actions{display:flex;gap:6px;margin-top:8px}
+.look-actions button{flex:1;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-family:var(--font)}
+.look-actions .look-save{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.look-actions .look-save:disabled{opacity:.45;cursor:default}
+.look-msg{font-size:11px;color:var(--muted);margin-top:4px;min-height:14px}
 .pal-menu-t{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:6px}
 .pal-row{display:flex;flex-wrap:wrap;gap:6px;max-width:220px}
 .pal-dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--muted);font-size:12px}
@@ -400,7 +413,7 @@ select.form-input option{background:var(--bg2)}
 .win11-menu-label{padding:6px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 /* Bestehende, ueber die Seite verteilte "..."-Dropdowns (Detail-Menues,
    Konto-Menue) bekommen dieselbe Win11-Optik, sobald sie zusaetzlich
-   class="win11-menu" tragen - ohne ihre hx-*/onclick-Logik anzufassen. */
+   class="win11-menu" tragen - ohne ihre hx- und onclick-Logik anzufassen. */
 .win11-menu > .btn,.win11-menu a.menu-item,.win11-menu button.menu-item{display:flex;min-height:32px;padding:6px 10px;border-radius:5px;border:0;background:transparent;color:var(--text);justify-content:flex-start;align-items:center;gap:10px;font-size:13px;margin-bottom:0!important;text-decoration:none}
 .win11-menu > .btn:hover,.win11-menu a.menu-item:hover,.win11-menu button.menu-item:hover{background:color-mix(in srgb, var(--text) 8%, transparent);border-color:transparent;opacity:1}
 .win11-menu > .btn-primary{color:var(--accent)}
@@ -415,7 +428,71 @@ select.form-input option{background:var(--bg2)}
   .print-brand .pb-date{margin-left:auto}
 }
 </style>
+<style id="pdh-mobile">
+/* ── Tablet & Smartphone ──────────────────────────────────────
+   Tablet (≤1180px): Kontextleiste (Chat, Suche, Hilfe …) als Overlay von
+   rechts, damit der Inhalt Platz hat. Smartphone (≤760px): zusaetzlich
+   Navigation als ausfahrbares Menue (☰), kompakte Kopfzeile, einspaltige
+   Raster, wischbare Tabellen. Touch-Geraete: groessere Tippflaechen. */
+.topbar-burger,.topbar-ctx,.pdh-backdrop,.win11-menu a.tb-share-menu{display:none}
+.pdh-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:440}
+[oncontextmenu]{-webkit-touch-callout:none}
+@media (max-width:1180px){
+  .app{grid-template-columns:var(--left-sidebar-w) 1fr}
+  .context{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:450;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .2s ease}
+  html:not(.sidebar-right-collapsed) .context{transform:none}
+  html:not(.sidebar-right-collapsed) .pdh-backdrop{display:block}
+  .topbar-ctx{display:inline-flex}
+}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:min(290px,86vw);z-index:450;transform:translateX(-102%);transition:transform .2s ease;box-shadow:12px 0 40px rgba(0,0,0,.35)}
+  html.nav-open .sidebar{transform:none}
+  html.nav-open .pdh-backdrop{display:block}
+  .sidebar .logo .sidebar-toggle{display:none}
+  .topbar-burger{display:inline-flex;width:40px;min-width:40px;height:40px}
+  .topbar{padding:0 8px;gap:6px;height:52px}
+  .topbar-path,.status-dot,.tb-label,.tu-name,.tb-share{display:none}
+  .win11-menu a.tb-share-menu{display:flex}
+  .topbar-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
+  .topbar > div{gap:6px!important;margin-left:0!important}
+  .theme-toggle{padding:0 10px;height:40px}
+  .theme-toggle > span:not(.ctx-badge){display:none}
+  .topbar-user{padding:9px 10px}
+  .main{padding:12px}
+  .card{padding:12px}
+  .card-title{flex-wrap:wrap;gap:4px 8px}
+  .grid2,.rec-compare,.cat-layout,.cat-form,.chat-app,.chat-app.side-open,.hb,.lg-kv,.modes{grid-template-columns:1fr!important}
+  .main [style*="grid-template-columns"]:not([style*="auto-fit"]):not([style*="auto-fill"]){grid-template-columns:1fr!important}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .global-footer{grid-template-columns:1fr}
+  .main table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .rec-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+  /* Seitenkopf mit Aktionsknoepfen: Knoepfe umbrechen statt ueberlaufen */
+  .main [style*="justify-content:space-between"],.main [style*="justify-content: space-between"]{flex-wrap:wrap;gap:8px}
+  .widget-icon-toolbar{flex-wrap:wrap}
+  .rec-tab{white-space:nowrap}
+  .rec-head h1{font-size:16px}
+  input,select,textarea{font-size:16px!important} /* iOS zoomt sonst beim Antippen */
+  .win11-menu{max-width:calc(100vw - 16px)}
+  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh - 70px);overflow-y:auto}
+  .context{width:100vw}
+  .pdh-frame-panel{width:100%}
+}
+@media (pointer:coarse){
+  .btn,.nav-item,.menu-item,.win11-menu-item{min-height:40px}
+  .nav-item{padding-top:10px;padding-bottom:10px}
+  .infra-picker-select{padding:9px 6px}
+  .infra-picker-tree{max-height:45vh}
+  .pal-dot{width:28px;height:28px}
+  .look-step{width:36px;height:36px}
+}
+</style>
 <style id="pdh-theme">{{.Brand.ThemeCSS}}</style>
+{{with .Look.FontHref}}<link rel="stylesheet" id="pdh-font" href="{{.}}">{{end}}
+<style id="pdh-ui">{{.Look.CSS}}
+/* Groesse: zoom auf die ganze Seite; Hoehe ausgleichen, damit 100vh passt */
+body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dvh / var(--ui-scale))}</style>
 {{block "head" .}}{{end}}
 </head>
 <body>
@@ -475,11 +552,12 @@ select.form-input option{background:var(--bg2)}
 <!-- ── Hauptbereich ── -->
 <div class="main-wrap">
   <div class="topbar">
+    <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="Navigation öffnen" title="Navigation"><i class="ti ti-menu-2"></i></button>
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
       {{if and .CanChat (ne .Page "chat")}}
-      <button type="button" class="theme-toggle" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>
+      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>
       <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="Chat in der Seitenleiste" style="position:relative"><i class="ti ti-messages"></i><span>Chat</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
       {{end}}
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="Darstellung wechseln" title="Darstellung wechseln">
@@ -488,26 +566,41 @@ select.form-input option{background:var(--bg2)}
       </button>
       {{if .IsOverrideSession}}
       <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="Zurück zum Systemnutzer">
-        <i class="ti ti-corner-up-left"></i> Zurück zum Systemnutzer
+        <i class="ti ti-corner-up-left"></i><span class="tb-label"> Zurück zum Systemnutzer</span>
       </button>
       <form id="override-logout-form" method="POST" action="/override-logout" style="display:none"></form>
       {{else if .IsSystemUser}}
       <button type="button" class="btn btn-small" onclick="document.getElementById('override-login-modal').style.display='flex'" title="Kurz mit eigenem Konto anmelden">
-        <i class="ti ti-user-plus"></i> Anmelden zur Erledigung
+        <i class="ti ti-user-plus"></i><span class="tb-label"> Anmelden zur Erledigung</span>
       </button>
       {{end}}
+      <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="Suche, Hilfe und mehr" title="Suche, Hilfe &amp; mehr"><i class="ti ti-layout-sidebar-right"></i></button>
       <div style="position:relative">
-        <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')"><i class="ti ti-user"></i>{{.UserName}}<i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
+        <button type="button" class="topbar-user" style="cursor:pointer;border:none" onclick="toggleMenu('user-menu')" aria-label="Benutzermenü"><i class="ti ti-user"></i><span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>Mein Konto</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>Handbuch</a>
-          {{if .Brand.ThemeUserChoice}}<div class="pal-menu">
-            <div class="pal-menu-t"><i class="ti ti-palette"></i>Farbschema</div>
-            <div class="pal-row">
-              <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="pickPalette('')" title="Firmenstandard ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
-              {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="pickPalette('{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
+          {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>Im Chat teilen</a>{{end}}
+          <div class="pal-menu look-menu">
+            <div class="pal-menu-t"><i class="ti ti-palette"></i>Darstellung</div>
+            {{if .Look.Allow}}<div class="pal-row">
+              <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="lookSet('palette','')" title="Firmenstandard ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
+              {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="lookSet('palette','{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
             </div>
-          </div>{{end}}
+            <div class="look-row"><i class="ti ti-typography" title="Schriftart"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="Schriftart">
+              <option value="">Firmenstandard</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+            </select></div>{{end}}
+            <div class="look-row"><i class="ti ti-text-size" title="Größe"></i>
+              <button type="button" class="look-step" onclick="lookStep(-10)" aria-label="Kleiner">−</button>
+              <span class="look-pct" id="look-pct">100 %</span>
+              <button type="button" class="look-step" onclick="lookStep(10)" aria-label="Größer">+</button>
+            </div>
+            <div class="look-actions">
+              <button type="button" onclick="lookReset()" title="Firmenstandard verwenden">Standard</button>
+              <button type="button" class="look-save" id="look-save" onclick="lookSave()" disabled>Speichern</button>
+            </div>
+            <div class="look-msg" id="look-msg"></div>
+          </div>
           <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>Abmelden</a>
         </div>
       </div>
@@ -554,6 +647,7 @@ select.form-input option{background:var(--bg2)}
 {{end}}{{end}}
 
 <!-- ── Kontext-Spalte ── -->
+<div class="pdh-backdrop" onclick="pdhCloseOverlays()" aria-hidden="true"></div>
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
     {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="Chat" aria-label="Chat"><i class="ti ti-messages"></i><span class="ctx-vlabel">Chat</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
@@ -682,19 +776,51 @@ function applyThemeMode(mode) {
   if(label) label.textContent = meta.label;
   if(btn) btn.title = 'Darstellung: ' + meta.label;
 }
-// Farbschema des Benutzers (leer = Firmenstandard), im Browser gespeichert
-function pickPalette(id) {
-  try { if(id) localStorage.setItem('pdh_palette', id); else localStorage.removeItem('pdh_palette'); } catch(e) {}
-  document.documentElement.dataset.palette = id || window.PDH_PALETTE_DEFAULT;
-  markPalette();
+// Darstellung (Farbschema, Schrift, Groesse): sofort sichtbar, mit
+// „Speichern“ am Konto abgelegt. Leer/0 = Firmenstandard.
+const lookDraft = Object.assign({}, window.PDH_LOOK_SAVED);
+const PDH_FONTS = {{.Look.FontsJS}};
+function lookEffective(k) { return lookDraft[k] || window.PDH_LOOK_DEFAULT[k]; }
+function lookApply() {
+  const root = document.documentElement;
+  const pal = window.PDH_LOOK_ALLOW && window.PDH_PALETTES.indexOf(lookDraft.palette) >= 0 ? lookDraft.palette : window.PDH_LOOK_DEFAULT.palette;
+  root.dataset.palette = pal;
+  const font = PDH_FONTS[window.PDH_LOOK_ALLOW && lookDraft.font ? lookDraft.font : window.PDH_LOOK_DEFAULT.font];
+  if(font) {
+    root.style.setProperty('--font', font[0]);
+    let link = document.getElementById('pdh-font');
+    if(font[1]) {
+      if(!link) { link = document.createElement('link'); link.rel = 'stylesheet'; link.id = 'pdh-font'; document.head.appendChild(link); }
+      if(link.href !== font[1]) link.href = font[1];
+    }
+  }
+  const scale = lookEffective('scale');
+  root.style.setProperty('--ui-scale', (scale / 100).toFixed(2));
+  const pct = document.getElementById('look-pct'); if(pct) pct.textContent = scale + ' %';
+  const sel = document.getElementById('look-font'); if(sel) sel.value = lookDraft.font || '';
+  document.querySelectorAll('[data-palette-pick]').forEach(b => b.classList.toggle('on', b.dataset.palettePick === (lookDraft.palette || '')));
+  const dirty = ['palette','font','scale'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
+  const save = document.getElementById('look-save'); if(save) save.disabled = !dirty;
+  const msg = document.getElementById('look-msg'); if(msg && dirty) msg.textContent = 'Vorschau – zum Behalten speichern';
 }
-function markPalette() {
-  let own = null;
-  try { own = localStorage.getItem('pdh_palette'); } catch(e) {}
-  if(!own || (window.PDH_PALETTES || []).indexOf(own) < 0) own = '';
-  document.querySelectorAll('[data-palette-pick]').forEach(b => b.classList.toggle('on', b.dataset.palettePick === own));
+function lookSet(k, v) { lookDraft[k] = v; lookApply(); }
+function lookStep(d) { lookDraft.scale = Math.max(70, Math.min(160, lookEffective('scale') + d)); lookApply(); }
+function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.scale = 0; lookApply(); }
+async function lookSave() {
+  const msg = document.getElementById('look-msg');
+  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', scale: String(lookDraft.scale || 0)});
+  try {
+    const res = await fetch('/account/appearance', {method: 'POST', body, credentials: 'same-origin'});
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
+    window.PDH_LOOK_SAVED = Object.assign({}, lookDraft);
+    lookApply();
+    if(msg) msg.textContent = 'Gespeichert – gilt jetzt auf allen Geräten';
+  } catch(e) { if(msg) msg.textContent = 'Nicht gespeichert: ' + e.message; }
 }
-document.addEventListener('DOMContentLoaded', markPalette);
+// aktueller Zoom-Faktor (fuer pixelgenaue Positionierung von Menues)
+function pdhZoom() { return parseFloat(getComputedStyle(document.body).zoom) || 1; }
+document.addEventListener('DOMContentLoaded', lookApply);
 function cycleThemeMode() {
   const current = localStorage.getItem('pdh_theme') || 'system';
   const index = THEME_MODES.indexOf(current);
@@ -731,7 +857,8 @@ if(window.matchMedia) {
 }
 
 function applySidebarState() {
-  const left = localStorage.getItem('pdh_sidebar_left') !== 'expanded';
+  // Auf dem Smartphone ist die Navigation ein ausfahrbares Menue – dort immer mit Beschriftung
+  const left = localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches;
   document.documentElement.classList.toggle('sidebar-left-collapsed', left);
 }
 // Rechte Seitenleiste oeffnen/schliessen (Zustand wird bewusst nicht gespeichert).
@@ -739,6 +866,49 @@ function setRightSidebar(open) {
   document.documentElement.classList.toggle('sidebar-right-collapsed', !open);
   if(open && localStorage.getItem('pdh_context_tab') === 'chat' && window.pdhSideChat) window.pdhSideChat.shown();
 }
+// ── Smartphone/Tablet: Navigation (☰) und Kontextleiste als Overlay ──
+const PDH_PHONE = window.matchMedia('(max-width:760px)');
+const PDH_NARROW = window.matchMedia('(max-width:1180px)');
+function pdhNav(open) {
+  const h = document.documentElement;
+  h.classList.toggle('nav-open', open === undefined ? !h.classList.contains('nav-open') : open);
+}
+function pdhCloseOverlays() {
+  pdhNav(false);
+  if(PDH_NARROW.matches) setRightSidebar(false);
+}
+document.addEventListener('keydown', e => {
+  const h = document.documentElement;
+  if(e.key === 'Escape' && (h.classList.contains('nav-open') || (PDH_NARROW.matches && !h.classList.contains('sidebar-right-collapsed')))) pdhCloseOverlays();
+});
+PDH_PHONE.addEventListener('change', () => { pdhNav(false); applySidebarState(); });
+// Lange druecken = Rechtsklick (iPhone/iPad kennen kein contextmenu-Ereignis;
+// Android liefert es selbst – dann wird hier nichts doppelt ausgeloest).
+(function(){
+  if(!('ontouchstart' in window)) return;
+  let timer = null, start = null, nativeFired = false, suppressClick = false;
+  document.addEventListener('contextmenu', e => { if(e.isTrusted) nativeFired = true; }, true);
+  document.addEventListener('touchstart', e => {
+    if(e.touches.length !== 1) { clearTimeout(timer); start = null; return; }
+    const t = e.touches[0];
+    start = {x: t.clientX, y: t.clientY, target: e.target};
+    nativeFired = false;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if(nativeFired || !start) return;
+      const ev = new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: start.x, clientY: start.y, button: 2});
+      if(!start.target.dispatchEvent(ev)) { suppressClick = true; if(navigator.vibrate) navigator.vibrate(15); }
+      start = null;
+    }, 550);
+  }, {passive: true});
+  document.addEventListener('touchmove', e => {
+    if(!start) return;
+    const t = e.touches[0];
+    if(Math.hypot(t.clientX - start.x, t.clientY - start.y) > 10) { clearTimeout(timer); start = null; }
+  }, {passive: true});
+  document.addEventListener('touchend', () => { clearTimeout(timer); start = null; }, {passive: true});
+  document.addEventListener('click', e => { if(suppressClick) { suppressClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+})();
 function toggleSidebar(side) {
   if(side === 'right') {
     setRightSidebar(document.documentElement.classList.contains('sidebar-right-collapsed'));
@@ -759,7 +929,7 @@ function closeMenu(id){
   if(m) m.style.display = 'none';
 }
 document.addEventListener('click', function(e){
-  if(!e.target.closest('[onclick*="toggleMenu"]')){
+  if(!e.target.closest('[onclick*="toggleMenu"]') && !e.target.closest('.look-menu')){
     document.querySelectorAll('[id$="-menu"]').forEach(function(m){ m.style.display = 'none'; });
   }
 });
@@ -907,8 +1077,9 @@ function showContextMenu(event, items){
   let x = event.clientX, y = event.clientY;
   if(x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 6;
   if(y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 6;
-  menu.style.left = Math.max(4, x) + 'px';
-  menu.style.top = Math.max(4, y) + 'px';
+  const z = pdhZoom();
+  menu.style.left = Math.max(4, x) / z + 'px';
+  menu.style.top = Math.max(4, y) / z + 'px';
 
   setTimeout(function(){
     document.addEventListener('click', closeContextMenu, true);
@@ -933,6 +1104,9 @@ function selectInfra(btn){
   const label=document.getElementById(root.dataset.selectedLabel);
   if(target) target.value=btn.dataset.infraId || '';
   if(label) label.textContent=btn.dataset.infraName || 'Keine Infrastruktur ausgewählt';
+  root.__infraFocus=btn.dataset.infraId || '';
+  root.querySelectorAll('.infra-picker-row.is-focus').forEach(r=>r.classList.remove('is-focus'));
+  btn.closest('.infra-picker-row')?.classList.add('is-focus');
 }
 function clearInfraPicker(root){
   if(!root) return;
@@ -951,8 +1125,15 @@ async function loadInfraPicker(root){
     if(!res.ok || !json.success) throw new Error(json.error || 'Infrastruktur konnte nicht geladen werden');
     root.__infraTree=json.data||[];
     root.__infraExpanded=new Set();
-    collectInfraBranches(root.__infraTree, root.__infraExpanded);
+    // Aufklappen bis zur aktuellen Auswahl, sonst bis zum Terminal-Standort;
+    // ohne beides wie bisher alles aufgeklappt.
+    const target=document.getElementById(root.dataset.target);
+    const focus=(target && target.value) || window.PDH_TERMINAL_INFRA || '';
+    const path=focus ? findInfraPath(root.__infraTree, focus) : null;
+    if(path){ path.forEach(id=>root.__infraExpanded.add(id)); root.__infraFocus=focus; }
+    else collectInfraBranches(root.__infraTree, root.__infraExpanded);
     renderInfraPicker(root, root.__infraTree);
+    if(path) scrollInfraFocus(root);
   }catch(e){
     if(box) box.innerHTML='<div class="infra-picker-empty" style="color:var(--red)">Infrastruktur konnte nicht geladen werden</div>';
   }
@@ -963,6 +1144,19 @@ function renderInfraPicker(root, nodes){
   if(!nodes.length){box.innerHTML='<div class="infra-picker-empty">Keine Infrastruktur vorhanden</div>'; return}
   box.innerHTML=renderInfraNodes(root, nodes, 0);
 }
+function findInfraPath(nodes, id){
+  for(const n of (nodes||[])){
+    if(n.id===id) return [n.id];
+    const sub=findInfraPath(n.children, id);
+    if(sub) return [n.id, ...sub];
+  }
+  return null;
+}
+function scrollInfraFocus(root){
+  const box=root.querySelector('[data-infra-tree]');
+  const row=box && box.querySelector('.infra-picker-row.is-focus');
+  if(row) box.scrollTop=Math.max(0, row.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 40);
+}
 function renderInfraNodes(root, nodes, depth){
   const expanded=root.__infraExpanded||new Set();
   return (nodes||[]).map(n=>{
@@ -972,7 +1166,7 @@ function renderInfraNodes(root, nodes, depth){
     const toggle=hasChildren
       ? `<button type="button" class="infra-picker-toggle" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}"><i class="ti ti-chevron-right"></i></button>`
       : `<span class="infra-picker-spacer"></span>`;
-    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)">${infraIcon(n.type)} ${escapeHtml(n.name)} <span class="infra-picker-type">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
+    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row${root.__infraFocus===n.id?' is-focus':''}">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)">${infraIcon(n.type)} ${escapeHtml(n.name)} <span class="infra-picker-type">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
   }).join('');
 }
 function toggleInfraBranch(event, btn){
@@ -1540,8 +1734,9 @@ function pdhShareToChat(){
     if(S.current === m.conversation_id && open && !document.hidden) markRead();
     else { c.unread++; if((m.mentions || []).indexOf(S.me) >= 0) c.mentions++; }
     updateBadges();
-    // Automatisch oeffnen (nicht bei stummgeschalteten Chats / laufender Eingabe)
-    if(!c.muted && !userIsTyping()){
+    // Automatisch oeffnen (nicht bei stummgeschalteten Chats / laufender Eingabe;
+    // auf Smartphone/Tablet nur Zaehler, damit das Overlay nicht die Arbeit verdeckt)
+    if(!c.muted && !userIsTyping() && !(typeof PDH_NARROW !== 'undefined' && PDH_NARROW.matches)){
       activateContextTab('chat', {keepOpen: true});
       if(S.current !== m.conversation_id && !$('sc-input').value) openConv(m.conversation_id);
     } else if(!S.current) renderList();

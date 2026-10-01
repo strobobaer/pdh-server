@@ -42,7 +42,7 @@
   <div style="position:relative" oncontextmenu="toggleMenu('infra-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('infra-menu')")}}
     <div id="infra-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:100">
-      {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Unteranlage hinzufügen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('add-child').style.display='block';closeMenu('infra-menu')")}}
+      {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Unteranlage hinzufügen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('add-child').style.display='block';closeMenu('infra-menu')")}}{{end}}
       {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Zum Löschen vormerken" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/records/state/infrastructure/%s" .Node.ID) "HxVals" "{\"action\":\"mark\"}" "HxTarget" (printf "#rmeta-%s" .Node.ID) "HxConfirm" "Element zum Löschen vormerken? Es wird sofort deaktiviert; der Bereinigungslauf löscht es oder blendet es aus, falls es noch verwendet wird." "OnClick" "closeMenu('infra-menu')")}}
     </div>
   </div>
@@ -96,7 +96,7 @@
     <div class="card">
       <div class="card-title">
         <span>Untergeordnete Anlagen</span>
-        {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "Class" "btn-small" "OnClick" "document.getElementById('add-child').style.display='block'")}}
+        {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "Class" "btn-small" "OnClick" "document.getElementById('add-child').style.display='block'")}}{{end}}
       </div>
       <div id="children-list">
         {{range .Children}}
@@ -120,7 +120,7 @@
     <div class="card" style="margin-top:14px">
       <div class="card-title">
         <span>Bearbeiten</span>
-        {{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}
+        {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}{{end}}
       </div>
       <div id="edit-form" style="display:none">
         <form hx-post="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">

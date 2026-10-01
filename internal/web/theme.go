@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -252,16 +253,24 @@ func (h *Handler) BrandingThemeWeb(w http.ResponseWriter, r *http.Request) {
 	if r.FormValue("theme_user") == "1" {
 		user = "1"
 	}
+	font := r.FormValue("font")
+	if _, ok := uiFont(font); !ok {
+		font = defaultFont
+	}
+	scale, _ := strconv.Atoi(r.FormValue("scale"))
+	if !validScale(scale) {
+		scale = defaultScale
+	}
 	ctx := r.Context()
 	var err error
-	for k, v := range map[string]string{keyBrandTheme: theme, keyBrandThemeColor: color, keyBrandThemeUser: user} {
+	for k, v := range map[string]string{keyBrandTheme: theme, keyBrandThemeColor: color, keyBrandThemeUser: user, keyBrandFont: font, keyBrandScale: strconv.Itoa(scale)} {
 		if e := h.setAppSetting(ctx, k, v); e != nil {
 			err = e
 		}
 	}
 	resetBrandingCache()
 	componentLog("konfiguration").Info().Str("farbschema", theme).Str("user", getUser(r).ID).Msg("farbschema gespeichert")
-	brandingRedirect(w, r, "Farbschema gespeichert.", err)
+	brandingRedirect(w, r, "Farbschema und Schrift gespeichert.", err)
 }
 
 // ── Farbrechnung ────────────────────────────────────────────

@@ -501,17 +501,21 @@ function tlMakeDraggable(bar, row, entry, rasterMin, durationMin, leftHandle, ri
     e.stopPropagation();
   }
 
-  bar.addEventListener('mousedown', function(e){
+  bar.addEventListener('pointerdown', function(e){
     if(e.target === leftHandle || e.target === rightHandle) return;
     bar.style.cursor = 'grabbing';
     beginDrag(e, 'move');
   });
-  if(leftHandle) leftHandle.addEventListener('mousedown', function(e){ beginDrag(e, 'resize-left'); });
-  if(rightHandle) rightHandle.addEventListener('mousedown', function(e){ beginDrag(e, 'resize-right'); });
+  if(leftHandle) leftHandle.addEventListener('pointerdown', function(e){ beginDrag(e, 'resize-left'); });
+  if(rightHandle) rightHandle.addEventListener('pointerdown', function(e){ beginDrag(e, 'resize-right'); });
+  // Pointer-Events: Maus, Finger und Stift; touch-action verhindert Scrollen beim Ziehen
+  bar.style.touchAction = 'none';
+  if(leftHandle) leftHandle.style.touchAction = 'none';
+  if(rightHandle) rightHandle.style.touchAction = 'none';
 
-  document.addEventListener('mousemove', function(e){
+  document.addEventListener('pointermove', function(e){
     if(!mode) return;
-    var deltaX = e.clientX - startX;
+    var deltaX = (e.clientX - startX) / ((typeof pdhZoom === 'function') ? pdhZoom() : 1); // Darstellungsgroesse
     if(mode === 'move'){
       var newLeft = origLeft + deltaX;
       if(newLeft < 0) newLeft = 0;
@@ -530,7 +534,7 @@ function tlMakeDraggable(bar, row, entry, rasterMin, durationMin, leftHandle, ri
     }
   });
 
-  document.addEventListener('mouseup', function(e){
+  document.addEventListener('pointerup', function(e){
     if(!mode) return;
     var finishedMode = mode;
     mode = null;

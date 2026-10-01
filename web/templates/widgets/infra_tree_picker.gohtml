@@ -9,6 +9,10 @@ Usage:
   "Label" "Infrastruktur"
 }}
 
+Optional: "Name" (Feldname, Standard infrastructure_id), "Value"/"SelectedLabel"
+(Vorbelegung), "Required". Der Baum klappt bis zur Auswahl auf – ohne Auswahl
+bis zum Terminal-Standort (BaseData.TerminalInfraID), sonst ganz.
+
 The widget is configured via data attributes so it can be embedded in tickets,
 faults, maintenance plans and future dashboard widgets without custom JS per form.
 */}}
@@ -16,7 +20,7 @@ faults, maintenance plans and future dashboard widgets without custom JS per for
 {{define "infra-tree-picker"}}
 <div class="widget-field infra-picker-widget">
   <label class="form-label">{{.Label}}</label>
-  <input type="hidden" id="{{.TargetID}}" name="infrastructure_id" value="{{.Value}}" {{if .Required}}required{{end}}>
+  <input type="hidden" id="{{.TargetID}}" name="{{or .Name "infrastructure_id"}}" value="{{.Value}}" {{if .Required}}required{{end}}>
   <div class="infra-picker"
        data-infra-picker
        data-target="{{.TargetID}}"

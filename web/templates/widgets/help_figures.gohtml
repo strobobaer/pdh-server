@@ -246,6 +246,91 @@
 </figure>
 {{end}}
 
+{{/* Smartphone und Tablet */}}
+{{define "hb-fig-mobile"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 230" role="img" aria-label="PDH auf Smartphone und Tablet">
+  <rect class="bg" x="1" y="1" width="638" height="228" rx="8"/>
+  <!-- Smartphone -->
+  <rect class="bg3" x="24" y="14" width="120" height="204" rx="14"/>
+  <rect class="bg" x="30" y="26" width="108" height="20" rx="4"/>
+  <text x="38" y="40" font-size="11">☰</text><text x="52" y="40" class="t-b" font-size="8.5">Tickets</text>
+  <circle class="acl" cx="100" cy="36" r="6"/><circle class="acl" cx="114" cy="36" r="6"/><circle class="acl" cx="128" cy="36" r="6"/>
+  <rect class="ac" x="34" y="54" width="22" height="14" rx="3"/><rect class="bg" x="60" y="54" width="22" height="14" rx="3"/>
+  <rect class="bg" x="34" y="74" width="100" height="22" rx="4"/><rect class="bg" x="34" y="100" width="100" height="22" rx="4"/><rect class="bg" x="34" y="126" width="100" height="22" rx="4"/>
+  <text x="84" y="166" class="t-c t-m">⇠ wischen ⇢</text>
+  <text x="84" y="205" class="t-c t-b">Smartphone</text>
+  <!-- Smartphone mit offenem Menue -->
+  <rect class="bg3" x="166" y="14" width="120" height="204" rx="14"/>
+  <rect x="172" y="26" width="108" height="170" rx="4" fill="rgba(0,0,0,.35)"/>
+  <rect class="bg" x="172" y="26" width="72" height="170" rx="4"/>
+  <g font-size="8.5"><text x="180" y="44" class="t-b">PDH</text><text x="180" y="62">▣ Dashboard</text><text x="180" y="78">✉ Chat</text>
+  <rect class="acl" x="176" y="84" width="64" height="14" rx="3"/><text x="180" y="94">▤ Tickets</text><text x="180" y="110">⚠ Störungen</text><text x="180" y="126">⚙ Wartung</text><text x="180" y="142">▦ Ersatzteile</text></g>
+  <text x="226" y="205" class="t-c t-b">☰ Navigation</text>
+  <!-- Tablet -->
+  <rect class="bg3" x="316" y="14" width="300" height="204" rx="14"/>
+  <rect class="bg" x="326" y="26" width="34" height="180" rx="4"/>
+  <g font-size="9"><text x="336" y="46">▣</text><text x="336" y="66">✉</text><text x="336" y="86">▤</text><text x="336" y="106">⚠</text></g>
+  <rect class="bg" x="366" y="26" width="240" height="20" rx="4"/><text x="374" y="40" class="t-b" font-size="9">Tickets</text>
+  <rect class="bg" x="366" y="52" width="150" height="154" rx="4"/>
+  <rect class="acl" x="486" y="52" width="120" height="154" rx="4"/>
+  <text x="546" y="74" class="t-c t-b" font-size="9">Chat / Hilfe</text><text x="546" y="90" class="t-c t-m">fährt von rechts</text><text x="546" y="104" class="t-c t-m">über den Inhalt</text>
+  <text x="466" y="230" class="t-c t-b" font-size="10"> </text>
+</svg>
+<figcaption>Smartphone: Navigation hinter ☰, Tabellen seitlich wischen, lange drücken statt Rechtsklick. Tablet: Navigation links, Chat und Hilfe als Leiste von rechts.</figcaption>
+</figure>
+{{end}}
+
+{{/* Darstellung im Benutzermenue */}}
+{{define "hb-fig-look"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Darstellung im Benutzermenü">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <rect class="bg3" x="400" y="10" width="120" height="24" rx="6"/><text x="460" y="26" class="t-c" font-size="10">👤 Mein Name ▾</text>
+  <rect class="bg" x="330" y="40" width="290" height="150" rx="8"/>
+  <text x="346" y="60" class="t-m">🎨 Darstellung</text>
+  <circle cx="356" cy="80" r="9" class="bg3"/><text x="356" y="84" class="t-c" font-size="9">🏢</text>
+  <circle cx="380" cy="80" r="9" fill="#4f6ef7"/><circle cx="404" cy="80" r="9" fill="#14939a"/><circle cx="428" cy="80" r="9" fill="#2b8f52"/>
+  <circle cx="452" cy="80" r="9" fill="#8fbcbb" stroke="var(--text)" stroke-width="2"/><circle cx="476" cy="80" r="9" fill="#d4570c"/>
+  <rect class="bg3" x="346" y="98" width="258" height="22" rx="5"/><text x="356" y="113" font-size="10">Aa  Atkinson Hyperlegible ▾</text>
+  <rect class="bg3" x="346" y="128" width="26" height="22" rx="5"/><text x="359" y="143" class="t-c">−</text>
+  <text x="400" y="143" class="t-c t-b">120 %</text>
+  <rect class="bg3" x="428" y="128" width="26" height="22" rx="5"/><text x="441" y="143" class="t-c">+</text>
+  <rect class="bg3" x="346" y="158" width="124" height="22" rx="5"/><text x="408" y="173" class="t-c" font-size="10">Standard</text>
+  <rect class="ac" x="480" y="158" width="124" height="22" rx="5"/><text x="542" y="173" class="t-w t-c" font-size="10">Speichern</text>
+  <g class="t-m"><text x="20" y="84">① Farbschema antippen</text><text x="20" y="114">② Schriftart wählen</text><text x="20" y="144">③ kleiner / größer (70–160 %)</text><text x="20" y="174">④ Speichern = gilt auf allen Geräten</text></g>
+  <path class="ar" d="M190 80 H330"/><path class="ar" d="M170 110 H340"/><path class="ar" d="M220 140 H340"/><path class="ar" d="M270 170 H476"/>
+</svg>
+<figcaption>Sofort sichtbar, mit „Speichern“ an deinem Konto abgelegt. „Standard“ übernimmt wieder die Firmeneinstellung.</figcaption>
+</figure>
+{{end}}
+
+{{/* Terminal-Standort im Infra-Picker */}}
+{{define "hb-fig-terminal"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Infrastruktur-Auswahl am Terminal">
+  <rect class="bg" x="1" y="1" width="638" height="168" rx="8"/>
+  <rect class="bg3" x="16" y="16" width="170" height="138" rx="8"/>
+  <text x="101" y="62" class="t-c t-b" font-size="13">🖥 Terminal</text>
+  <text x="101" y="82" class="t-c t-m">Systembenutzer</text>
+  <text x="101" y="100" class="t-c t-m">Standort: Halle 2 › Linie 3</text>
+  <path class="ar" d="M190 85 H232"/>
+  <rect class="bg3" x="240" y="16" width="384" height="138" rx="8"/>
+  <text x="254" y="36" class="t-b">Infrastruktur</text>
+  <g font-size="10.5">
+    <text x="258" y="58">▸ 🏭 Halle 1</text>
+    <text x="258" y="76">▾ 🏭 Halle 2</text>
+    <text x="276" y="94">▸ 🔄 Linie 2</text>
+    <rect class="acl" x="270" y="100" width="340" height="18" rx="4"/>
+    <text x="276" y="113" class="t-b">▾ 🔄 Linie 3  ← hier geht die Auswahl auf</text>
+    <text x="300" y="132">⚙️ Presse 3.1   ⚙️ Roboter 3.2   🔌 Förderband</text>
+    <text x="258" y="150" class="t-m">▸ 🏭 Halle 3 (zugeklappt)</text>
+  </g>
+</svg>
+<figcaption>Am Terminal ist der Baum bis zum Standort aufgeklappt und markiert – die genaue Anlage nur noch antippen.</figcaption>
+</figure>
+{{end}}
+
 {{/* Farbschema / Theming */}}
 {{define "hb-fig-theme"}}
 <figure class="hb-fig">

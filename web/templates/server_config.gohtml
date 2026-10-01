@@ -109,9 +109,21 @@
 .th-list{display:grid;gap:6px;margin-top:12px}
 .th-row{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px}
 .th-row .grow{flex:1}
+.th-fam{border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-top:8px}
+.th-fam summary{cursor:pointer;font-size:13px;padding:2px 0}
+.th-fam summary a{color:var(--accent)}
+.th-gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin:10px 0 4px}
+.th-gitem{border:1px solid var(--border);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.th-gitem .acts{display:flex;gap:6px;flex-wrap:wrap}
+.th-prev{display:flex;height:46px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.th-prev span{flex:1;position:relative;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
+.th-prev .d{background:var(--db);color:var(--dt)}.th-prev .l{background:var(--lb);color:var(--lt)}
+.th-prev span::before{content:"";position:absolute;inset:8px 10px 8px 10px;border-radius:5px}
+.th-prev .d::before{background:var(--dc);border-left:4px solid var(--da)}.th-prev .l::before{background:var(--lc);border-left:4px solid var(--la)}
+.th-prev b{position:relative}
 </style>
 <div class="card" style="margin-bottom:14px">
-  <div class="card-title"><span><i class="ti ti-color-swatch"></i> Farbschema</span><span class="sc-sub">Farben der Oberfläche für alle – Hell/Dunkel stellt jeder selbst ein</span></div>
+  <div class="card-title"><span><i class="ti ti-color-swatch"></i> Farbschema &amp; Schrift</span><span class="sc-sub">Firmenstandard für alle – jeder kann im Benutzermenü abweichen; Hell/Dunkel stellt jeder selbst ein</span></div>
   <form method="post" action="/admin/branding/theme" id="th-form">
     <div class="th-grid">
       {{range .Brand.Palettes}}{{if ne .ID "eigen"}}
@@ -120,7 +132,15 @@
       <label class="th-opt"><input type="radio" name="theme" value="eigen" {{if eq .Brand.ThemeID "eigen"}}checked{{end}}><input type="color" name="theme_color" id="th-color" value="{{or .Brand.ThemeColor "#0a7cc1"}}" title="Firmenfarbe wählen"><span>Firmenfarbe<small>wird für Hell und Dunkel lesbar angepasst</small></span></label>
     </div>
     <div class="th-demo"><span>Vorschau:</span><button type="button" class="btn btn-primary btn-small"><i class="ti ti-check"></i> Schaltfläche</button><span class="badge" style="background:rgba(var(--accent-rgb),.15);color:var(--accent)">Hervorhebung</span><a style="color:var(--accent)">Verknüpfung</a><span>– wirkt sofort auf dieser Seite, gespeichert wird erst mit „Speichern“.</span></div>
-    <label style="font-weight:400;font-size:13px"><input type="checkbox" name="theme_user" value="1" {{if .Brand.ThemeUserChoice}}checked{{end}}> Benutzer dürfen im Benutzermenü ein eigenes Farbschema wählen</label>
+    <div class="sc-grid" style="margin-bottom:10px">
+      <div class="sc-f"><label>Schriftart</label>
+        <select class="form-input" name="font" id="th-font">{{range .Brand.Fonts}}<option value="{{.ID}}" {{if eq .ID $.Brand.FontID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+        <div class="help">Webschriften werden von Google Fonts geladen; „System“ und „Verdana“ nutzen die Schrift des Geräts.</div></div>
+      <div class="sc-f"><label>Größe</label>
+        <select class="form-input" name="scale" id="th-scale">{{range .Brand.ScaleSteps}}<option value="{{.}}" {{if eq . $.Brand.ScaleValue}}selected{{end}}>{{.}} %{{if eq . 100}} (normal){{end}}</option>{{end}}</select>
+        <div class="help">vergrößert oder verkleinert die ganze Oberfläche – z. B. 120 % für Terminals in der Halle</div></div>
+    </div>
+    <label style="font-weight:400;font-size:13px"><input type="checkbox" name="theme_user" value="1" {{if .Brand.ThemeUserChoice}}checked{{end}}> Benutzer dürfen im Benutzermenü ein eigenes Farbschema und eine eigene Schrift wählen <span class="sc-sub">(die Größe darf jeder anpassen)</span></label>
     <div class="sc-actions"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
   </form>
 </div>
@@ -140,6 +160,24 @@
       <form method="post" action="/admin/branding/ha/{{.ID}}/delete" onsubmit="return confirm('Theme „{{.Name}}“ entfernen?')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Entfernen</button></form></div>{{end}}
   </div>{{end}}
 </div>
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-layout-grid"></i> Theme-Galerie aus Home Assistant</span><span class="sc-sub">{{.Brand.GalleryCount}} bekannte Community-Themes, Farben schon ausgelesen</span></div>
+  <p class="sc-sub" style="margin-bottom:6px">Ohne Datei-Upload: <b>Übernehmen</b> legt das Theme oben bei den Farbschemata ab, <b>Als Standard</b> setzt es zusätzlich gleich für alle. Kachel links = Dunkel, rechts = Hell.</p>
+  {{range .Brand.Gallery}}{{$imp := .Imported}}
+  <details class="th-fam">
+    <summary><b>{{.Name}}</b> · {{len .Themes}} Themes · von <a href="{{.URL}}" target="_blank" rel="noopener">{{.Author}}</a></summary>
+    <div class="th-gal">{{range .Themes}}
+      <div class="th-gitem">
+        <div class="th-prev" style="{{.Preview}}"><span class="d"><b>Aa</b></span><span class="l"><b>Aa</b></span></div>
+        <div>{{.Name}}{{if index $imp .ID}} <span class="badge b-green">übernommen</span>{{end}}</div>
+        <div class="acts">
+          {{if not (index $imp .ID)}}<form method="post" action="/admin/branding/gallery/{{.ID}}"><button class="btn btn-small" type="submit"><i class="ti ti-download"></i> Übernehmen</button></form>{{end}}
+          <form method="post" action="/admin/branding/gallery/{{.ID}}"><input type="hidden" name="default" value="1"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-star"></i> Als Standard</button></form>
+        </div>
+      </div>{{end}}
+    </div>
+  </details>{{end}}
+</div>
 <script>
 // Live-Vorschau des gewaehlten Farbschemas (nur diese Seite, bis gespeichert)
 (function(){
@@ -157,6 +195,18 @@
     } else root.dataset.palette = sel.value;
   }
   form.addEventListener('change', preview);
+  // Schrift und Groesse zur Probe (PDH_FONTS aus dem Seitenkopf)
+  const fontSel = document.getElementById('th-font'), scaleSel = document.getElementById('th-scale');
+  function previewText(){
+    const f = (typeof PDH_FONTS !== 'undefined') && PDH_FONTS[fontSel.value];
+    if(f){
+      root.style.setProperty('--font', f[0]);
+      if(f[1]){ let l = document.getElementById('pdh-font'); if(!l){ l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'pdh-font'; document.head.appendChild(l); } l.href = f[1]; }
+    }
+    root.style.setProperty('--ui-scale', (parseInt(scaleSel.value, 10) / 100).toFixed(2));
+  }
+  fontSel.addEventListener('change', previewText);
+  scaleSel.addEventListener('change', previewText);
   color.addEventListener('input', () => { form.querySelector('input[value=eigen]').checked = true; preview(); });
   // Firmenfarbe nur mitsenden, wenn sie gewaehlt ist
   form.addEventListener('submit', () => { const sel = form.querySelector('input[name=theme]:checked'); color.disabled = !sel || sel.value !== 'eigen'; });

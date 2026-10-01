@@ -48,6 +48,7 @@
       <div class="card-title"><span><i class="ti ti-id-badge-2"></i> Organisation</span></div>
       <div class="rec-f"><div class="rec-l">Personalnummer</div><div class="rec-v" style="font-family:monospace">{{if $m.PersonnelNo}}{{$m.PersonnelNo}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Rolle</div><div class="rec-v"><span class="badge {{$u.RoleClass}}">{{$u.RoleLabel}}</span>{{if $u.IsSystemUser}} <span class="badge b-blue">Systemnutzer</span>{{end}}</div></div>
+      {{if $u.IsSystemUser}}<div class="rec-f"><div class="rec-l">Terminal-Standort</div><div class="rec-v">{{if $m.TerminalInfraID}}<a href="/infrastructure/{{$m.TerminalInfraID}}">{{$m.TerminalInfraPath}}</a>{{else}}—{{end}}</div></div>{{end}}
       <div class="rec-f"><div class="rec-l">Funktion</div><div class="rec-v">{{if $m.JobTitle}}{{$m.JobTitle}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{if $u.Department}}{{$u.Department}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{if $m.CostCenterName}}{{$m.CostCenterName}}{{else}}—{{end}}</div></div>
@@ -102,7 +103,11 @@
       <div class="form-group"><label class="form-label">Nextcloud-Benutzer</label><input name="nextcloud_user_id" class="form-input" value="{{$u.NextcloudUserID}}"></div>
       <div class="form-group"><label class="form-label">RFID-Karte</label><input name="rfid_uid" class="form-input" value="{{$u.RFIDUID}}"></div>
     </div>
-    <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" name="is_system_user" {{if $u.IsSystemUser}}checked{{end}}> Systemnutzer (Terminal, bleibt dauerhaft angemeldet)</label>
+    <label style="font-size:13px;display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" name="is_system_user" id="ud-system-user" {{if $u.IsSystemUser}}checked{{end}} onchange="var t=document.getElementById('ud-terminal-loc'); if(t) t.style.display=this.checked?'':'none'"> Systemnutzer (Terminal, bleibt dauerhaft angemeldet)</label>
+    {{if .CanBroker}}<div id="ud-terminal-loc" style="{{if not $u.IsSystemUser}}display:none;{{end}}margin:4px 0 10px">
+      {{template "infra-tree-picker" (dict "TargetID" "ud-terminal-infra" "SelectedLabelID" "ud-terminal-infra-label" "Label" "Standort des Terminals" "Name" "terminal_infrastructure_id" "Value" $m.TerminalInfraID "SelectedLabel" $m.TerminalInfraPath)}}
+      <div class="rec-sub" style="margin-top:4px">Beim Anlegen von Tickets, Störungen &amp; Co. an diesem Terminal klappt die Infrastruktur-Auswahl bis hierhin auf.</div>
+    </div>{{end}}
 
     <div class="rec-sec">Organisation</div>
     <div class="cols">

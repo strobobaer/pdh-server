@@ -11,7 +11,7 @@
     "Label" "Infrastruktur-Aktionen"
     "Items" (list
       (dict "Action" "expand" "ShowLabel" true "Label" "Alle aufklappen" "OnClick" "expandAll()")
-      (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "OnClick" "document.getElementById('new-node-form').style.display='block'")
+      (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "OnClick" (or (and .CanEditInfra "document.getElementById('new-node-form').style.display='block'") "alert('Zum Anlegen fehlt die Berechtigung „Infrastruktur anlegen, bearbeiten & deaktivieren“.')"))
     )
   )}}
 </div>

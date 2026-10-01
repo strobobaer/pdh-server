@@ -62,6 +62,9 @@ type BaseData struct {
 	CanCleanup             bool // Nav-Link "Bereinigung"
 	CanServerConfig        bool // Nav-Link "Server-Einstellungen" (nur Admins)
 	Brand                  Branding // Name und Logos (Erscheinungsbild)
+	CanEditInfra           bool     // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
+	TerminalInfraID        string   // Standort des Terminals: Infra-Picker klappt bis hierhin auf
+	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
 }
 
 type DashboardData struct {
@@ -323,6 +326,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
 	r.Get("/account", h.AccountPage)
+	r.Post("/account/appearance", h.AppearanceSaveWeb)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
 	r.Get("/account/microsoft/callback", h.MicrosoftConnectCallback)
@@ -434,6 +438,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/branding/theme", h.BrandingThemeWeb)
 	r.Post("/admin/branding/ha-import", h.BrandingHAImportWeb)
 	r.Post("/admin/branding/ha/{id}/delete", h.BrandingHADeleteWeb)
+	r.Post("/admin/branding/gallery/{id}", h.BrandingGalleryWeb)
 	r.Post("/admin/branding/{slot}/upload", h.BrandingUploadWeb)
 	r.Post("/admin/branding/{slot}/delete", h.BrandingDeleteWeb)
 	r.Get("/admin/server-config/logs", h.ServerLogsPage)
@@ -755,7 +760,9 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	if c, err := r.Cookie("pdh_return_token"); err == nil && c.Value != "" {
 		isOverride = true
 	}
+	brand := h.branding()
 	return BaseData{
+		Look:  h.appearance(r, brand),
 		Title: title, Page: page,
 		ContextTitle:  ctxTitle,
 		UserName:      u.FirstName + " " + u.LastName,
@@ -771,7 +778,9 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
-		Brand:                  h.branding(),
+		Brand:                  brand,
+		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
+		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
@@ -2843,6 +2852,10 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
+	if !h.canEditInfra(r) {
+		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+		return
+	}
 	r.ParseForm()
 	parentID := r.FormValue("parent_id")
 	in := &infrastructure.CreateInput{
@@ -4012,6 +4025,10 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
+	if !h.canEditInfra(r) {
+		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	in := &infrastructure.UpdateInput{

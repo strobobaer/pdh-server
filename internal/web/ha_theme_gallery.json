@@ -1,0 +1,1281 @@
+[
+ {
+  "Name": "Nordic",
+  "Author": "Colton Dick",
+  "URL": "https://github.com/coltondick/nordic-theme",
+  "Themes": [
+   {
+    "ID": "ha-nordic",
+    "Name": "nordic",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#8fbcbb",
+     "Accent2": "#81a1c1",
+     "Bg": "#2e3440",
+     "Bg2": "#3B4252",
+     "Bg3": "#464c5c",
+     "Text": "#eceff4",
+     "Muted": "#e5e9f0",
+     "Border": "#4c566a",
+     "Green": "#a3be8c",
+     "Amber": "#d08770",
+     "Red": "#c6767f"
+    },
+    "Light": {
+     "Accent": "#8fbcbb",
+     "Accent2": "#81a1c1",
+     "Bg": "#eceff4",
+     "Bg2": "#fafeff",
+     "Bg3": "#eff3f5",
+     "Text": "#3B4252",
+     "Muted": "#4c566a",
+     "Border": "#d8dee9",
+     "Green": "#74876e",
+     "Amber": "#9f6e62",
+     "Red": "#bf616a"
+    }
+   },
+   {
+    "ID": "ha-nordic-blue",
+    "Name": "nordic-blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#5e81ac",
+     "Accent2": "#88c0d0",
+     "Bg": "#2e3440",
+     "Bg2": "#3B4252",
+     "Bg3": "#464c5c",
+     "Text": "#eceff4",
+     "Muted": "#e5e9f0",
+     "Border": "#4c566a",
+     "Green": "#a3be8c",
+     "Amber": "#d08770",
+     "Red": "#c6767f"
+    },
+    "Light": {
+     "Accent": "#5e81ac",
+     "Accent2": "#88c0d0",
+     "Bg": "#eceff4",
+     "Bg2": "#fafeff",
+     "Bg3": "#eff3f5",
+     "Text": "#3B4252",
+     "Muted": "#4c566a",
+     "Border": "#d8dee9",
+     "Green": "#74876e",
+     "Amber": "#9f6e62",
+     "Red": "#bf616a"
+    }
+   }
+  ]
+ },
+ {
+  "Name": "Caule Themes Pack",
+  "Author": "Ricardo Correia (Home Assistant Brasil)",
+  "URL": "https://github.com/orickcorreia",
+  "Themes": [
+   {
+    "ID": "ha-caule-black-aqua",
+    "Name": "Caule Black Aqua",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8"
+    }
+   },
+   {
+    "ID": "ha-caule-black-aqua-glass",
+    "Name": "Caule Black Aqua Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8"
+    }
+   },
+   {
+    "ID": "ha-caule-black-blue",
+    "Name": "Caule Black Blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb"
+    }
+   },
+   {
+    "ID": "ha-caule-black-blue-glass",
+    "Name": "Caule Black Blue Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb"
+    }
+   },
+   {
+    "ID": "ha-caule-black-coral",
+    "Name": "Caule Black Coral",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792"
+    }
+   },
+   {
+    "ID": "ha-caule-black-coral-glass",
+    "Name": "Caule Black Coral Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792"
+    }
+   },
+   {
+    "ID": "ha-caule-black-gray",
+    "Name": "Caule Black Gray",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2"
+    }
+   },
+   {
+    "ID": "ha-caule-black-gray-glass",
+    "Name": "Caule Black Gray Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2"
+    }
+   },
+   {
+    "ID": "ha-caule-black-green",
+    "Name": "Caule Black Green",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b"
+    }
+   },
+   {
+    "ID": "ha-caule-black-green-glass",
+    "Name": "Caule Black Green Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b"
+    }
+   },
+   {
+    "ID": "ha-caule-black-orange",
+    "Name": "Caule Black Orange",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568"
+    }
+   },
+   {
+    "ID": "ha-caule-black-orange-glass",
+    "Name": "Caule Black Orange Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568"
+    }
+   },
+   {
+    "ID": "ha-caule-black-pink",
+    "Name": "Caule Black Pink",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9"
+    }
+   },
+   {
+    "ID": "ha-caule-black-pink-glass",
+    "Name": "Caule Black Pink Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9"
+    }
+   },
+   {
+    "ID": "ha-caule-black-purple",
+    "Name": "Caule Black Purple",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4"
+    }
+   },
+   {
+    "ID": "ha-caule-black-purple-glass",
+    "Name": "Caule Black Purple Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4"
+    }
+   },
+   {
+    "ID": "ha-caule-black-rose",
+    "Name": "Caule Black Rose",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d"
+    }
+   },
+   {
+    "ID": "ha-caule-black-rose-glass",
+    "Name": "Caule Black Rose Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d"
+    }
+   },
+   {
+    "ID": "ha-caule-black-yellow",
+    "Name": "Caule Black Yellow",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#393939",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979"
+    }
+   },
+   {
+    "ID": "ha-caule-black-yellow-glass",
+    "Name": "Caule Black Yellow Glass",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979",
+     "Bg": "#0c0c0c",
+     "Bg2": "#0c0c0c",
+     "Bg3": "#191919",
+     "Text": "#e5e5e5",
+     "Muted": "#5b5b5b",
+     "Border": "#2c2c2c"
+    },
+    "Light": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-aqua",
+    "Name": "Caule Dark Aqua",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-blue",
+    "Name": "Caule Dark Blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-coral",
+    "Name": "Caule Dark Coral",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-gray",
+    "Name": "Caule Dark Gray",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#acacac",
+     "Accent2": "#e2e2e2"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-green",
+    "Name": "Caule Dark Green",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-orange",
+    "Name": "Caule Dark Orange",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-pink",
+    "Name": "Caule Dark Pink",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-purple",
+    "Name": "Caule Dark Purple",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-rose",
+    "Name": "Caule Dark Rose",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d"
+    }
+   },
+   {
+    "ID": "ha-caule-dark-yellow",
+    "Name": "Caule Dark Yellow",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979",
+     "Bg": "#1D1B1E",
+     "Bg2": "#1D1B1E",
+     "Bg3": "#29272a",
+     "Text": "#e5e5e5",
+     "Muted": "#666666",
+     "Border": "#37373D"
+    },
+    "Light": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979"
+    }
+   },
+   {
+    "ID": "ha-caule-light-aqua",
+    "Name": "Caule Light Aqua",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8"
+    },
+    "Light": {
+     "Accent": "#11ab93",
+     "Accent2": "#62e3c8",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-blue",
+    "Name": "Caule Light Blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb"
+    },
+    "Light": {
+     "Accent": "#009bb5",
+     "Accent2": "#5ed1eb",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-coral",
+    "Name": "Caule Light Coral",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792"
+    },
+    "Light": {
+     "Accent": "#fa6e5e",
+     "Accent2": "#ffa792",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-gray",
+    "Name": "Caule Light Gray",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#666666",
+     "Accent2": "#989898"
+    },
+    "Light": {
+     "Accent": "#666666",
+     "Accent2": "#989898",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-green",
+    "Name": "Caule Light Green",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b"
+    },
+    "Light": {
+     "Accent": "#6ca049",
+     "Accent2": "#a1d77b",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-orange",
+    "Name": "Caule Light Orange",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568"
+    },
+    "Light": {
+     "Accent": "#d25f36",
+     "Accent2": "#ff9568",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-pink",
+    "Name": "Caule Light Pink",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9"
+    },
+    "Light": {
+     "Accent": "#f36f92",
+     "Accent2": "#ffa8c9",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-purple",
+    "Name": "Caule Light Purple",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4"
+    },
+    "Light": {
+     "Accent": "#904eab",
+     "Accent2": "#c983e4",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-rose",
+    "Name": "Caule Light Rose",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d"
+    },
+    "Light": {
+     "Accent": "#aa3151",
+     "Accent2": "#b8536d",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   },
+   {
+    "ID": "ha-caule-light-yellow",
+    "Name": "Caule Light Yellow",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979"
+    },
+    "Light": {
+     "Accent": "#d6a245",
+     "Accent2": "#ffd979",
+     "Bg": "#f2f2f2",
+     "Bg2": "#f2f2f2",
+     "Bg3": "#ebebeb",
+     "Text": "#7f7f7f",
+     "Muted": "#ababab",
+     "Border": "#ababab"
+    }
+   }
+  ]
+ },
+ {
+  "Name": "iOS Themes",
+  "Author": "Bas Nijholt",
+  "URL": "https://github.com/basnijholt/lovelace-ios-themes",
+  "Themes": [
+   {
+    "ID": "ha-ios-dark-mode",
+    "Name": "ios-dark-mode",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#FF9F09",
+     "Accent2": "rgba(255, 159, 9, 1)",
+     "Bg": "#2c2c2e",
+     "Bg2": "rgba(25, 25, 25, 0.7)",
+     "Bg3": "#272727",
+     "Text": "#FFFFFF",
+     "Muted": "#d3d3d3",
+     "Border": "#98989d"
+    },
+    "Light": {
+     "Accent": "#FF9F09",
+     "Accent2": "rgba(255, 159, 9, 1)"
+    }
+   },
+   {
+    "ID": "ha-ios-dark-mode-blue-red",
+    "Name": "ios-dark-mode-blue-red",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#ff9f09",
+     "Accent2": "rgba(255, 159, 9, 1)",
+     "Bg": "#2c2c2e",
+     "Bg2": "rgba(25, 25, 25, 0.9)",
+     "Bg3": "#272727",
+     "Text": "#FFF",
+     "Muted": "#d3d3d3",
+     "Border": "rgba(152, 152, 157, 0.3)"
+    },
+    "Light": {
+     "Accent": "#ff9f09",
+     "Accent2": "rgba(255, 159, 9, 1)"
+    }
+   },
+   {
+    "ID": "ha-ios-light-mode-blue-red",
+    "Name": "ios-light-mode-blue-red",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#ff9409",
+     "Accent2": "rgba(255, 159, 9, 1)"
+    },
+    "Light": {
+     "Accent": "#ff9409",
+     "Accent2": "rgba(255, 159, 9, 1)",
+     "Bg": "#e5e5ea",
+     "Bg2": "rgba(255, 255, 255, 0.9)",
+     "Bg3": "#f4f4f4",
+     "Text": "#464a47",
+     "Muted": "#000000",
+     "Border": "rgba(142, 142, 147, 0.3)"
+    }
+   }
+  ]
+ },
+ {
+  "Name": "Metro \u0026 Fluent",
+  "Author": "Madelena Mak",
+  "URL": "https://github.com/Madelena/Metrology-for-Hass",
+  "Themes": [
+   {
+    "ID": "ha-fluent-blue",
+    "Name": "Fluent Blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#0078d7",
+     "Accent2": "#008dfd",
+     "Bg": "rgb(24,26,27)",
+     "Bg2": "rgb(36,38,40)",
+     "Bg3": "#313335",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#434446",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#0078d7",
+     "Accent2": "#008dfd",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(239,243,245)",
+     "Bg3": "#e1e4e6",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#ced1d3",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-fluent-green",
+    "Name": "Fluent Green",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#00cb6a",
+     "Accent2": "#00f17d",
+     "Bg": "rgb(24,27,26)",
+     "Bg2": "rgb(36,40,38)",
+     "Bg3": "#313533",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#434644",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#00cb6a",
+     "Accent2": "#00f17d",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(239,245,243)",
+     "Bg3": "#e1e6e4",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#ced3d1",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-fluent-orange",
+    "Name": "Fluent Orange",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#ff8c00",
+     "Accent2": "#ff9d00",
+     "Bg": "rgb(27,26,24)",
+     "Bg2": "rgb(40,38,36)",
+     "Bg3": "#353331",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#464443",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#ff8c00",
+     "Accent2": "#ff9d00",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(245,243,239)",
+     "Bg3": "#e6e4e1",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d3d1ce",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-fluent-purple",
+    "Name": "Fluent Purple",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6a00cb",
+     "Accent2": "#A94DFF",
+     "Bg": "rgb(26,24,27)",
+     "Bg2": "rgb(38,36,40)",
+     "Bg3": "#333135",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#444346",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#6a00cb",
+     "Accent2": "#A94DFF",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(242,239,245)",
+     "Bg3": "#e3e1e6",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d0ced3",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-fluent-red",
+    "Name": "Fluent Red",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#C30052",
+     "Accent2": "#e90062",
+     "Bg": "rgb(27,24,25)",
+     "Bg2": "rgb(40,36,38)",
+     "Bg3": "#353133",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#464344",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#C30052",
+     "Accent2": "#e90062",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(245,239,242)",
+     "Bg3": "#e6e1e3",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d3ced0",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-fluent-slate",
+    "Name": "Fluent Slate",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#4f5a68",
+     "Accent2": "#677385",
+     "Bg": "rgb(24,25,27)",
+     "Bg2": "rgb(36,38,40)",
+     "Bg3": "#313335",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#434446",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#4f5a68",
+     "Accent2": "#677385",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgb(240,242,244)",
+     "Bg3": "#e2e3e5",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#ced0d2",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-blue",
+    "Name": "Metro Blue",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#0078d7",
+     "Accent2": "#008dfd",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#0078d7",
+     "Accent2": "#008dfd",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-green",
+    "Name": "Metro Green",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#00cb6a",
+     "Accent2": "#00f17d",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#00cb6a",
+     "Accent2": "#00f17d",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-orange",
+    "Name": "Metro Orange",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#ff8c00",
+     "Accent2": "#ff9d00",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#ff8c00",
+     "Accent2": "#ff9d00",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-purple",
+    "Name": "Metro Purple",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#6a00cb",
+     "Accent2": "#A94DFF",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#6a00cb",
+     "Accent2": "#A94DFF",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-red",
+    "Name": "Metro Red",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#C30052",
+     "Accent2": "#e90062",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#C30052",
+     "Accent2": "#e90062",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   },
+   {
+    "ID": "ha-metro-slate",
+    "Name": "Metro Slate",
+    "Source": "ha",
+    "Dark": {
+     "Accent": "#4f5a68",
+     "Accent2": "#677385",
+     "Bg": "rgb(0,0,0)",
+     "Bg2": "rgb(19,19,19)",
+     "Bg3": "#212121",
+     "Text": "rgb(255,255,255)",
+     "Muted": "rgba(255,255,255,.75)",
+     "Border": "#343434",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    },
+    "Light": {
+     "Accent": "#4f5a68",
+     "Accent2": "#677385",
+     "Bg": "rgb(255,255,255)",
+     "Bg2": "rgba(247,247,247)",
+     "Bg3": "#e8e8e8",
+     "Text": "rgba(0,0,0,.95)",
+     "Muted": "rgba(0,0,0,.66)",
+     "Border": "#d4d4d4",
+     "Green": "#008a17",
+     "Amber": "#ffa600",
+     "Red": "#FF4400"
+    }
+   }
+  ]
+ }
+]

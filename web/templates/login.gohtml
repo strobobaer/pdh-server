@@ -24,14 +24,10 @@ input:focus{border-color:var(--accent)}
 .error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:10px;border-radius:8px;font-size:12px;margin-bottom:14px}
 </style>
 <style>{{.Brand.ThemeCSS}}</style>
-<script>
-// Farbschema wie in der App (Anmeldeseite immer dunkel)
-(function(){
-  var pal = {{.Brand.ThemeID}}, ids = {{.Brand.PaletteIDs}}, own = null;
-  try { if({{.Brand.ThemeUserChoice}}) own = localStorage.getItem('pdh_palette'); } catch(e) {}
-  document.documentElement.dataset.palette = (own && ids.indexOf(own) >= 0) ? own : pal;
-})();
-</script>
+{{with .Brand.DefaultLook.FontHref}}<link rel="stylesheet" href="{{.}}">{{end}}
+<style>{{.Brand.DefaultLook.CSS}} body{zoom:var(--ui-scale)}</style>
+<!-- Farbschema: Firmenstandard (Anmeldeseite immer dunkel) -->
+<script>document.documentElement.dataset.palette = {{.Brand.ThemeID}};</script>
 </head>
 <body>
 <div class="card">
