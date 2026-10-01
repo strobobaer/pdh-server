@@ -148,6 +148,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-hash"></i> Kopfleiste: Kategorien und Status</h3>
   {{template "hb-fig-meta"}}
   <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
+  <h3 id="completion"><i class="ti ti-circle-check"></i> Vorgänge abschließen: der Abschluss-Assistent</h3>
+  <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste über <b>Auswahl erledigen</b>. Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
+  {{template "hb-fig-completion"}}
+  <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du einen Vorgang ab</b>
+    <ol class="hb-steps">
+      <li><b>Material:</b> Verwendete Ersatzteile suchen, Lagerort und Menge wählen, <b>Vormerken</b>. Ohne Teile: <b>Kein Material verwendet</b> ankreuzen. <b>OK – weiter</b>.</li>
+      <li><b>Zeit:</b> Beginn und Dauer angeben (Schnellwahl 15 min bis 8 h). Läuft dein Timer für diesen Vorgang, wird er automatisch gestoppt. Hast du schon Zeit erfasst, ist weitere Zeit freiwillig.</li>
+      <li><b>Wer war dabei?</b> Mitarbeitende ankreuzen, die mitgearbeitet haben. Vorgeschlagen werden die Abteilungen aus den Core-Einstellungen (z. B. Instandhaltung, Elektro); <b>Alle Abteilungen anzeigen</b> zeigt alle. Niemand? Einfach weiter.</li>
+      <li><b>Kommentar:</b> kurz, was gemacht wurde – erscheint als Maßnahme im Verlauf. Bei Tickets, Störungen und Aufgaben optional die <b>Ursache</b>.</li>
+      <li><b>Fertig</b> bucht das Material und schließt ab. <b>Geht noch weiter</b> speichert Zeit, Material-Vormerkung und Kommentar – der Vorgang bleibt <i>in Bearbeitung</i>, z. B. bei Schichtende oder wenn Teile fehlen.</li>
+    </ol>
+    Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
+  <ul>
+    <li>Bei <b>Wartungen</b> mit fälligen Checklistenpunkten füllst du zuerst die Messwerte aus; <b>Weiter zum Abschluss</b> öffnet dann den Assistenten.</li>
+    <li>Kann der Vorgang nicht geschlossen werden (z. B. fehlt dir die Berechtigung zum Abschließen), wird das Erfasste trotzdem gespeichert und der Grund angezeigt.</li>
+    <li><b>Administration:</b> Die vorgeschlagenen Abteilungen stellst du unter <b>Core-Einstellungen → Abschluss-Assistent: Wer war dabei?</b> ein (Teilwort genügt, „Elektro“ passt auf „Elektrowerkstatt“).</li>
+  </ul>
   {{template "hb-shots" (dict "Ref" (index $s "records") "Can" $can)}}
 </section>
 
@@ -199,9 +216,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
-      <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> festhalten, was gemacht wurde, und benötigte Teile <b>vormerken</b>.</li>
-      <li>In der <b>Übersicht</b> auf „Lösen“: Lösung und Ursache eintragen.</li>
-      <li>Speichern – die vorgemerkten Teile werden jetzt vom Lager abgebucht, die Störung wandert ins Archiv.</li>
+      <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>vormerken</b>.</li>
+      <li>Grüner Haken <b>Abschließen</b> (oben rechts oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
+      <li><b>Fertig</b> – die vorgemerkten Teile werden vom Lager abgebucht, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
@@ -213,8 +230,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>Kommentare</b> (eigener Reiter) – für die Abstimmung im Team.</li>
     <li><b>Maßnahmen &amp; Ersatzteile</b> – wie bei Störungen.</li>
-    <li><b>Status ändern oder archivieren</b> – über das Menü <i class="ti ti-dots"></i> oben rechts im Ticket.</li>
+    <li><b>Status ändern</b> – über das Menü <i class="ti ti-dots"></i> oben rechts im Ticket.</li>
   </ul>
+  <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
+    Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste über „Auswahl erledigen“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
     Der Listen-Reiter <b>Ohne Zuweisung</b> ist dein Eingang: Hier stehen alle offenen Tickets, die noch niemandem gehören.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
@@ -223,6 +242,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="tasks" data-title="Aufgaben &amp; Projekte" data-pages="tasks projects">
   <h2><i class="ti ti-list-check"></i> Aufgaben &amp; Projekte</h2>
   <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge.</p>
+  <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du eine Aufgabe ab</b>
+    Grüner Haken <b>Abschließen</b> (in der Übersicht „Aufgabe abschließen …“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <p><b>Projekte</b> bündeln Aufgaben und zeigen sie im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung.</p>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
 </section>
@@ -234,8 +255,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>In der Wartungsliste den Auftrag öffnen (Reiter <b>Aktuell</b>).</li>
       <li><b>Starten</b> und die Checkliste Punkt für Punkt abhaken.</li>
-      <li>Maßnahmen und verwendete Ersatzteile erfassen.</li>
-      <li><b>Abschließen</b> – der nächste Termin des Plans wird automatisch berechnet.</li>
+      <li>Grüner Haken <b>Abschließen</b>: Fällige Checklistenpunkte (Messwerte) ausfüllen und <b>Weiter zum Abschluss</b> – dann fragt der <a href="#completion">Abschluss-Assistent</a> Material, Zeit, wer dabei war und den Kommentar ab.</li>
+      <li><b>Fertig</b> – der nächste Termin des Plans wird automatisch berechnet.</li>
     </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>
@@ -364,6 +385,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="time" data-title="Zeiterfassung &amp; Schichtplan" data-pages="time shifts">
   <h2><i class="ti ti-clock"></i> Zeiterfassung &amp; Schichtplan</h2>
   <p>In Störungen, Tickets, Aufgaben und Wartungen startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
+  <div class="hb-howto"><b><i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> So bestätigst du Zeiten, die Kollegen für dich eingetragen haben</b>
+    <ol class="hb-steps">
+      <li>Hat dich jemand beim Abschluss eines Vorgangs als „dabei“ eingetragen, bekommst du einen Chat-Hinweis von PDH-System.</li>
+      <li>In der <b>Zeiterfassung</b> steht oben die gelbe Karte <b>Zu bestätigen</b>; in der Liste ist der Eintrag gelb hinterlegt.</li>
+      <li>Stimmt die Zeit: grüner Haken <b>Bestätigen</b>. Passt sie nicht: <i class="ti ti-edit"></i> korrigieren und dann bestätigen. Warst du nicht dabei: <i class="ti ti-trash"></i> löschen.</li>
+    </ol>
+    Unbestätigte Zeiten zählen noch nicht – weder in den Wochen- und Monatssummen noch im Export.</div>
   {{template "hb-shots" (dict "Ref" (index $s "time") "Can" $can)}}
 </section>
 

@@ -64,6 +64,21 @@
   </div>
 </div>
 
+{{if .PendingEntries}}
+<div class="card te-confirm-card" id="te-confirm-card">
+  <div class="card-title"><span><i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> Zu bestätigen ({{len .PendingEntries}})</span><span style="font-size:11px;color:var(--muted);font-weight:400">Kollegen haben dich beim Abschluss eines Vorgangs als beteiligt eingetragen</span></div>
+  {{range .PendingEntries}}
+  <div class="te-confirm-row" id="pend-{{.ID}}">
+    <div class="act-dot {{.RefTypeDot}}"></div>
+    <div style="flex:1;min-width:0"><div style="font-weight:500">{{.Description}}</div><div style="font-size:11px;color:var(--muted)">{{.RefTypeLabel}} · {{.StartedStr}} – {{.EndedStr}} · <b>{{.DurationStr}}</b>{{if .PendingFrom}} · eingetragen von {{.PendingFrom}}{{end}}</div></div>
+    <button type="button" class="btn te-ok" onclick="confirmTimeEntry('{{.ID}}')" title="Stimmt – bestätigen"><i class="ti ti-check"></i> Bestätigen</button>
+    <button type="button" class="btn btn-icon" style="width:36px;height:36px" title="Bearbeiten" onclick="openEditEntry('{{.ID}}','{{.Description}}','{{.StartedISO}}','{{.EndedISO}}')"><i class="ti ti-edit"></i></button>
+    <button type="button" class="btn btn-icon" style="width:36px;height:36px;color:var(--muted)" title="Nicht dabei gewesen – löschen" onclick="if(confirm('Eintrag löschen? Du warst nicht dabei.')){fetch('/time/{{.ID}}/delete-web',{method:'DELETE'}).then(()=>{document.getElementById('pend-{{.ID}}')?.remove();document.getElementById('entry-{{.ID}}')?.remove();})}"><i class="ti ti-trash"></i></button>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
 <div class="card" style="padding:0">
   <table>
     <thead>
@@ -71,8 +86,8 @@
     </thead>
     <tbody>
     {{range .Entries}}
-    <tr id="entry-{{.ID}}">
-      <td><div style="font-weight:500">{{.Description}}</div></td>
+    <tr id="entry-{{.ID}}"{{if .Pending}} class="te-pending" title="Unbestätigt{{if .PendingFrom}} – eingetragen von {{.PendingFrom}}{{end}}"{{end}}>
+      <td><div style="font-weight:500">{{.Description}}</div>{{if .Pending}}<div style="font-size:11px;color:var(--amber)"><i class="ti ti-clock-exclamation"></i> unbestätigt{{if .PendingFrom}} · von {{.PendingFrom}}{{end}}</div>{{end}}</td>
       {{if $.IsAdmin}}<td style="font-size:12px;color:var(--muted)">{{.UserName}}</td>{{end}}
       <td><div style="display:flex;align-items:center;gap:6px"><div class="act-dot {{.RefTypeDot}}"></div><span style="font-size:12px;color:var(--muted)">{{.RefTypeLabel}}</span></div></td>
       <td style="font-size:12px;color:var(--muted)">{{if .InfraName}}{{.InfraName}}{{else}}–{{end}}</td>
@@ -80,6 +95,7 @@
       <td style="font-family:monospace;font-size:12px">{{if .Running}}<span style="color:var(--green)">läuft…</span>{{else}}{{.EndedStr}}{{end}}</td>
       <td><span style="font-size:12px;font-weight:500">{{if .Running}}<span style="color:var(--green)">aktiv</span>{{else}}{{.DurationStr}}{{end}}</span></td>
       <td style="white-space:nowrap">
+        {{if and .Pending .Mine}}<button type="button" class="btn btn-icon te-ok" style="width:32px;height:32px" title="Bestätigen" onclick="confirmTimeEntry('{{.ID}}')"><i class="ti ti-check"></i></button>{{end}}
         {{if not .Running}}
         <button type="button" class="btn btn-icon" style="width:32px;height:32px" title="Bearbeiten" onclick="openEditEntry('{{.ID}}','{{.Description}}','{{.StartedISO}}','{{.EndedISO}}')"><i class="ti ti-edit"></i></button>
         {{template "icon-button" (dict "Action" "delete" "Style" "color:var(--muted)" "Label" "Löschen" "OnClick" (printf "if(confirm('Eintrag löschen?')){this.disabled=true;fetch('/time/%s/delete-web',{method:'DELETE'}).then(()=>document.getElementById('entry-%s')?.remove())}" .ID .ID))}}
@@ -271,6 +287,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* unbestaetigte Zeiten (Abschluss-Assistent: "wer war dabei") */
+tr.te-pending td{background:rgba(245,158,11,.14)}
+tr.te-pending td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.te-confirm-card{border-color:var(--amber);background:color-mix(in srgb, var(--amber) 8%, var(--bg2));margin-bottom:14px}
+.te-confirm-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap}
+.te-ok{background:var(--green)!important;border-color:var(--green)!important;color:#fff!important}
 .type-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 6px;cursor:pointer;text-align:center;color:var(--text);transition:all .15s;font-family:var(--font)}
 .type-btn:hover{border-color:var(--muted)}
 .type-btn.active{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
@@ -278,6 +300,20 @@
 </style>
 <script>
 const tok = () => document.cookie.split(';').find(c=>c.trim().startsWith('pdh_token='))?.split('=')[1]||'';
+
+// Unbestaetigte Zeit bestaetigen (gruener Haken)
+async function confirmTimeEntry(id){
+  try{
+    const res = await fetch('/time/' + id + '/confirm', {method: 'POST', credentials: 'same-origin'});
+    const json = await res.json();
+    if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
+    document.getElementById('pend-' + id)?.remove();
+    const row = document.getElementById('entry-' + id);
+    if(row){ row.classList.remove('te-pending'); row.removeAttribute('title'); row.querySelectorAll('.te-ok').forEach(b => b.remove()); const hint = row.querySelector('td:first-child div + div'); if(hint) hint.remove(); }
+    const card = document.getElementById('te-confirm-card');
+    if(card && !card.querySelector('.te-confirm-row')) card.remove();
+  }catch(e){ alert('Nicht bestätigt: ' + e.message); }
+}
 
 // ── Monatsauswertung (Balken- & Tortendiagramm) ─────────────
 let chartYear, chartMonth, monthBarChart, monthPieChart;

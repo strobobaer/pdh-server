@@ -1,0 +1,324 @@
+{{/*
+  Abschluss-Assistent (completion.go). Jeder gruene Haken zum Fertigsetzen
+  ruft pdhComplete(typ, id) auf: ticket | fault | task | maintenance.
+  Schritte: Material → Zeit → Wer war dabei? → Kommentar → Fertig / geht weiter.
+*/}}
+{{define "completion-wizard"}}
+<style>
+.cw-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:none;align-items:center;justify-content:center;padding:16px}
+.cw-overlay.open{display:flex}
+.cw{background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:min(640px,100%);max-height:calc(100dvh - 32px);display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+.cw-head{padding:14px 18px 10px;border-bottom:1px solid var(--border)}
+.cw-head h2{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.cw-head h2 i{color:var(--green)}
+.cw-head .sub{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cw-steps{display:flex;gap:4px;margin-top:12px}
+.cw-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;color:var(--muted);min-width:0}
+.cw-step b{width:26px;height:26px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--bg3)}
+.cw-step.on{color:var(--text)}.cw-step.on b{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.cw-step.ok b{border-color:var(--green);background:var(--green);color:#fff}
+.cw-step span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cw-body{padding:16px 18px;overflow-y:auto;flex:1;font-size:13px}
+.cw-pane{display:none}.cw-pane.on{display:block}
+.cw-pane h3{font-size:14px;font-weight:600;margin-bottom:4px;display:flex;gap:8px;align-items:center}
+.cw-pane h3 i{color:var(--accent)}
+.cw-pane p.hint{font-size:12px;color:var(--muted);margin-bottom:12px}
+.cw-list{border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
+.cw-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border)}
+.cw-row:last-child{border-bottom:0}
+.cw-row .grow{flex:1;min-width:0}
+.cw-row small{color:var(--muted);display:block}
+.cw-empty{padding:10px;color:var(--muted);font-size:12px}
+.cw-add{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:8px;align-items:end;margin-bottom:10px}
+.cw-results{border:1px solid var(--border);border-radius:8px;max-height:180px;overflow:auto;margin:-4px 0 10px;display:none}
+.cw-results div{padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px}
+.cw-results div:hover{background:var(--bg3)}
+.cw-check{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-weight:500}
+.cw-check input{width:18px;height:18px;accent-color:var(--accent)}
+.cw-info{padding:10px 12px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);margin-bottom:12px;font-size:12.5px}
+.cw-info.run{border-color:var(--green);background:rgba(16,185,129,.1)}
+.cw-time{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.cw-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cw-chips button{border:1px solid var(--border);background:var(--bg3);color:var(--text);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:var(--font)}
+.cw-chips button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.15)}
+.cw-people{max-height:280px;overflow:auto}
+.cw-people label{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer}
+.cw-people label:last-child{border-bottom:0}
+.cw-people input{width:18px;height:18px;accent-color:var(--accent)}
+.cw-people .dept{margin-left:auto;font-size:11px;color:var(--muted)}
+.cw-sum{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:12.5px;margin-bottom:14px}
+.cw-sum dt{color:var(--muted)}
+.cw-sum dd{white-space:pre-wrap}
+.cw-msg{font-size:12.5px;margin-top:8px;min-height:18px}
+.cw-msg.err{color:var(--red)}.cw-msg.ok{color:var(--green)}.cw-msg.warn{color:var(--amber)}
+.cw-foot{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border);flex-wrap:wrap}
+.cw-foot .grow{flex:1}
+.cw-foot .btn{min-height:40px}
+.cw-finish{background:var(--green)!important;border-color:var(--green)!important;color:#fff!important}
+.cw-more{background:rgba(245,158,11,.15)!important;border-color:var(--amber)!important;color:var(--amber)!important}
+@media (max-width:760px){
+  .cw-overlay{padding:0}
+  .cw{width:100%;max-height:100dvh;height:100dvh;border-radius:0}
+  .cw-add{grid-template-columns:1fr 1fr}
+  .cw-step span{display:none}
+}
+</style>
+<div class="cw-overlay" id="cw" role="dialog" aria-modal="true" aria-labelledby="cw-title">
+  <div class="cw">
+    <div class="cw-head">
+      <h2 id="cw-title"><i class="ti ti-circle-check"></i> <span id="cw-label">Abschließen</span></h2>
+      <div class="sub" id="cw-sub"></div>
+      <div class="cw-steps" id="cw-steps">
+        <div class="cw-step"><b>1</b><span>Material</span></div>
+        <div class="cw-step"><b>2</b><span>Zeit</span></div>
+        <div class="cw-step"><b>3</b><span>Wer war dabei?</span></div>
+        <div class="cw-step"><b>4</b><span>Kommentar</span></div>
+        <div class="cw-step"><b>5</b><span>Abschluss</span></div>
+      </div>
+    </div>
+    <div class="cw-body">
+      <!-- 1 Material -->
+      <div class="cw-pane" data-step="0">
+        <h3><i class="ti ti-package"></i> Welches Material wurde verwendet?</h3>
+        <p class="hint">Vorgemerkte Teile werden beim Abschluss aus dem Lager gebucht.</p>
+        <div class="cw-list" id="cw-parts"><div class="cw-empty">Lädt…</div></div>
+        <div class="cw-add">
+          <div><label class="form-label">Ersatzteil suchen</label><input class="form-input" id="cw-part-q" placeholder="Name oder Teilenummer" autocomplete="off"></div>
+          <div><label class="form-label">Lagerort</label><select class="form-input" id="cw-part-loc"><option value="">Lädt…</option></select></div>
+          <div><label class="form-label">Menge</label><input class="form-input" id="cw-part-qty" type="number" min="0.01" step="any" value="1"></div>
+          <button type="button" class="btn btn-primary" onclick="cwAddPart()"><i class="ti ti-plus"></i> Vormerken</button>
+        </div>
+        <div class="cw-results" id="cw-part-results"></div>
+        <div class="sc-sub" id="cw-part-sel" style="font-size:12px;margin:-4px 0 10px;color:var(--accent)"></div>
+        <label class="cw-check"><input type="checkbox" id="cw-noparts"> Kein Material verwendet</label>
+      </div>
+      <!-- 2 Zeit -->
+      <div class="cw-pane" data-step="1">
+        <h3><i class="ti ti-clock"></i> Wie lange wurde gearbeitet?</h3>
+        <p class="hint">Deine Arbeitszeit für diesen Vorgang. Mitarbeitende aus dem nächsten Schritt bekommen denselben Zeitraum.</p>
+        <div class="cw-info" id="cw-booked"></div>
+        <div class="cw-info run" id="cw-running" style="display:none"></div>
+        <div id="cw-time-inputs">
+          <div class="cw-time">
+            <div><label class="form-label">Beginn</label><input class="form-input" id="cw-start" type="datetime-local"></div>
+            <div><label class="form-label">Dauer (Minuten)</label><input class="form-input" id="cw-min" type="number" min="0" max="1440" step="5" value="0"></div>
+          </div>
+          <div class="cw-chips" id="cw-quick"><button type="button" data-min="15">15 min</button><button type="button" data-min="30">30 min</button><button type="button" data-min="45">45 min</button><button type="button" data-min="60">1 h</button><button type="button" data-min="90">1½ h</button><button type="button" data-min="120">2 h</button><button type="button" data-min="180">3 h</button><button type="button" data-min="240">4 h</button><button type="button" data-min="480">8 h</button></div>
+        </div>
+      </div>
+      <!-- 3 Team -->
+      <div class="cw-pane" data-step="2">
+        <h3><i class="ti ti-users"></i> Wer war noch dabei?</h3>
+        <p class="hint">Ausgewählte bekommen die Zeit als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und bestätigen ihn dort mit dem grünen Haken. Niemand? Einfach weiter.</p>
+        <input class="form-input" id="cw-people-q" placeholder="Name suchen…" style="margin-bottom:8px" autocomplete="off">
+        <div class="cw-chips" id="cw-depts"></div>
+        <div class="cw-list cw-people" id="cw-people"></div>
+        <label style="font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center"><input type="checkbox" id="cw-all-depts"> Alle Abteilungen anzeigen</label>
+      </div>
+      <!-- 4 Kommentar -->
+      <div class="cw-pane" data-step="3">
+        <h3><i class="ti ti-message"></i> Was wurde gemacht?</h3>
+        <p class="hint">Kurz und konkret – erscheint als Maßnahme im Verlauf.</p>
+        <textarea class="form-input" id="cw-comment" rows="5" maxlength="4000" placeholder="z. B. Lichtschranke gereinigt und neu justiert, Funktionstest OK"></textarea>
+        <div id="cw-cause-box" style="margin-top:10px"><label class="form-label">Ursache (optional)</label><input class="form-input" id="cw-cause" maxlength="500" placeholder="z. B. Verschmutzung durch Kühlschmierstoff"></div>
+      </div>
+      <!-- 5 Abschluss -->
+      <div class="cw-pane" data-step="4">
+        <h3><i class="ti ti-flag-check"></i> Fertig – oder geht's noch weiter?</h3>
+        <dl class="cw-sum" id="cw-sum"></dl>
+        <p class="hint"><b>Fertig</b> bucht das Material und schließt den Vorgang ab. <b>Geht noch weiter</b> speichert Zeit und Kommentar, der Vorgang bleibt in Bearbeitung.</p>
+      </div>
+      <div class="cw-msg" id="cw-msg"></div>
+    </div>
+    <div class="cw-foot">
+      <button type="button" class="btn" onclick="cwClose()">Abbrechen</button>
+      <span class="grow"></span>
+      <button type="button" class="btn" id="cw-back" onclick="cwGo(-1)"><i class="ti ti-arrow-left"></i> Zurück</button>
+      <button type="button" class="btn btn-primary" id="cw-next" onclick="cwGo(1)">OK – weiter <i class="ti ti-arrow-right"></i></button>
+      <button type="button" class="btn cw-more" id="cw-more" onclick="cwSubmit(false)" style="display:none"><i class="ti ti-player-pause"></i> Geht noch weiter</button>
+      <button type="button" class="btn cw-finish" id="cw-finish" onclick="cwSubmit(true)" style="display:none"><i class="ti ti-check"></i> Fertig</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const hm = m => Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0') + ' h';
+  let S = null; // Zustand des offenen Assistenten
+  let partsCache = null;
+
+  window.pdhComplete = async function(type, id, done){
+    S = {type, id, step: 0, info: null, parts: [], picked: '', done: done || null, busy: false};
+    $('cw-msg').textContent = ''; $('cw-msg').className = 'cw-msg';
+    $('cw-noparts').checked = false; $('cw-comment').value = ''; $('cw-cause').value = '';
+    $('cw-min').value = '0'; $('cw-part-q').value = ''; $('cw-part-sel').textContent = ''; $('cw-people-q').value = ''; $('cw-all-depts').checked = false;
+    $('cw-sub').textContent = 'Lädt…';
+    $('cw').classList.add('open');
+    show(0);
+    try{
+      const res = await fetch('/complete/' + type + '/' + id, {credentials: 'same-origin'});
+      const json = await res.json();
+      if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
+      S.info = json.data;
+    }catch(e){ msg('err', e.message); $('cw-sub').textContent = ''; return; }
+    const i = S.info;
+    $('cw-label').textContent = i.Label + ' abschließen';
+    $('cw-sub').textContent = i.Title;
+    $('cw-cause-box').style.display = i.root_cause ? '' : 'none';
+    $('cw-start').value = i.suggest_start;
+    $('cw-booked').innerHTML = i.booked_min > 0 ? '<i class="ti ti-history"></i> Von dir bereits erfasst: <b>' + hm(i.booked_min) + '</b> – weitere Zeit ist optional.' : '<i class="ti ti-info-circle"></i> Für diesen Vorgang hast du noch keine Zeit erfasst.';
+    if(i.running_since){
+      $('cw-running').style.display = '';
+      $('cw-running').innerHTML = '<i class="ti ti-player-play"></i> Dein Timer läuft seit <b>' + esc(i.running_since) + '</b> (≈ ' + hm(i.running_min) + ') und wird beim Speichern gestoppt.';
+      $('cw-time-inputs').style.display = 'none';
+    } else { $('cw-running').style.display = 'none'; $('cw-time-inputs').style.display = ''; }
+    renderPeople();
+    loadLocations();
+    await loadParts(); // vor dem ersten "weiter" muessen die vorgemerkten Teile bekannt sein
+  };
+  window.cwClose = function(){ $('cw').classList.remove('open'); S = null; };
+  function msg(kind, text){ const m = $('cw-msg'); m.className = 'cw-msg ' + kind; m.textContent = text || ''; }
+
+  function show(step){
+    S.step = step;
+    document.querySelectorAll('#cw .cw-pane').forEach(p => p.classList.toggle('on', +p.dataset.step === step));
+    document.querySelectorAll('#cw-steps .cw-step').forEach((s, n) => { s.classList.toggle('on', n === step); s.classList.toggle('ok', n < step); });
+    $('cw-back').style.display = step > 0 ? '' : 'none';
+    $('cw-next').style.display = step < 4 ? '' : 'none';
+    $('cw-more').style.display = step === 4 ? '' : 'none';
+    $('cw-finish').style.display = step === 4 ? '' : 'none';
+    $('cw-finish').disabled = !!(S.info && !S.info.can_finish);
+    $('cw-finish').title = S.info && !S.info.can_finish ? 'Zum Abschließen fehlt dir die Berechtigung' : '';
+    if(step === 4) renderSummary();
+    msg('', '');
+  }
+  // Pruefung je Schritt, bevor es weitergeht
+  function check(step){
+    const i = S.info;
+    if(!i) return 'Daten werden noch geladen…';
+    if(step === 0 && !S.parts.length && !$('cw-noparts').checked) return 'Bitte Material vormerken oder „Kein Material verwendet“ ankreuzen.';
+    if(step === 1){
+      const min = +$('cw-min').value || 0;
+      if(min < 0 || min > 1440) return 'Die Dauer muss zwischen 0 und 1440 Minuten liegen.';
+      if(!i.running_since && min === 0 && i.booked_min === 0) return 'Bitte die Arbeitszeit angeben.';
+    }
+    if(step === 2){
+      const min = +$('cw-min').value || 0;
+      if(picked().length && !i.running_since && min === 0) return 'Für die Mitarbeitenden bitte im Schritt „Zeit“ die gemeinsame Dauer angeben.';
+    }
+    if(step === 3 && $('cw-comment').value.trim().length < 3) return 'Bitte kurz beschreiben, was gemacht wurde.';
+    return '';
+  }
+  window.cwGo = function(d){
+    if(!S) return;
+    if(d > 0){ const err = check(S.step); if(err){ msg('err', err); return; } }
+    show(Math.max(0, Math.min(4, S.step + d)));
+    if(S.step === 3) $('cw-comment').focus();
+  };
+
+  // ── Material ──
+  async function loadParts(){
+    try{
+      const res = await fetch(S.info.parts_url, {credentials: 'same-origin'});
+      const json = await res.json();
+      S.parts = json.data || [];
+    }catch(e){ S.parts = []; }
+    $('cw-parts').innerHTML = S.parts.length ? S.parts.map(p => '<div class="cw-row"><i class="ti ti-package"></i><div class="grow">' + esc(p.part_name) + '<small>' + esc(p.part_number || '') + (p.storage_name ? ' · ' + esc(p.storage_name) : '') + '</small></div><b>' + esc(p.qty) + '</b><button type="button" class="btn btn-icon" style="width:32px;height:32px" title="Entfernen" onclick="cwDelPart(\'' + esc(p.id) + '\')"><i class="ti ti-x"></i></button></div>').join('') : '<div class="cw-empty">Noch kein Material vorgemerkt.</div>';
+    if(S.parts.length) $('cw-noparts').checked = false;
+  }
+  window.cwDelPart = async function(pid){
+    await fetch(S.info.parts_url + '/' + encodeURIComponent(pid), {method: 'DELETE', credentials: 'same-origin'});
+    loadParts();
+  };
+  async function loadLocations(){
+    const sel = $('cw-part-loc');
+    try{
+      const res = await fetch('/api/v1/storage/', {credentials: 'same-origin'});
+      const json = await res.json(); const tree = json.data || json; const out = [];
+      (function walk(nodes, prefix){ (nodes || []).forEach(n => { const l = prefix ? prefix + ' › ' + n.name : n.name; out.push([n.id, l]); walk(n.children, l); }); })(Array.isArray(tree) ? tree : (tree.children || []), '');
+      sel.innerHTML = '<option value="">Lagerort wählen…</option>' + out.map(o => '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>').join('');
+    }catch(e){ sel.innerHTML = '<option value="">Lagerorte nicht verfügbar</option>'; }
+  }
+  $('cw-part-q').addEventListener('input', async function(){
+    const q = this.value.trim().toLowerCase(), box = $('cw-part-results');
+    if(q.length < 2){ box.style.display = 'none'; return; }
+    if(!partsCache){ try{ const r = await fetch('/api/v1/inventory/', {credentials: 'same-origin'}); const j = await r.json(); partsCache = j.data || j || []; }catch(e){ partsCache = []; } }
+    const hits = partsCache.filter(p => (p.name || '').toLowerCase().includes(q) || (p.part_number || '').toLowerCase().includes(q)).slice(0, 20);
+    box.innerHTML = hits.length ? hits.map(p => '<div data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">' + esc(p.name) + ' <span style="color:var(--muted)">' + esc(p.part_number || '') + ' · Bestand ' + esc(p.stock_qty) + '</span></div>').join('') : '<div style="color:var(--muted)">Keine Treffer</div>';
+    box.style.display = 'block';
+  });
+  $('cw-part-results').addEventListener('click', function(e){
+    const d = e.target.closest('[data-id]'); if(!d) return;
+    S.picked = d.dataset.id; $('cw-part-sel').textContent = 'Ausgewählt: ' + d.dataset.name;
+    this.style.display = 'none'; $('cw-part-q').value = '';
+  });
+  window.cwAddPart = async function(){
+    const qty = parseFloat($('cw-part-qty').value), loc = $('cw-part-loc').value;
+    if(!S.picked) return msg('err', 'Bitte zuerst ein Ersatzteil suchen und antippen.');
+    if(!loc) return msg('err', 'Bitte den Lagerort wählen.');
+    if(!(qty > 0)) return msg('err', 'Bitte eine gültige Menge angeben.');
+    try{
+      const res = await fetch(S.info.parts_url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({part_id: S.picked, storage_node_id: loc, qty})});
+      const json = await res.json().catch(() => ({}));
+      if(!res.ok || json.success === false) throw new Error(json.error || 'HTTP ' + res.status);
+      S.picked = ''; $('cw-part-sel').textContent = ''; $('cw-part-qty').value = '1'; msg('ok', 'Vorgemerkt.');
+      loadParts();
+    }catch(e){ msg('err', 'Nicht vorgemerkt: ' + e.message); }
+  };
+
+  // ── Zeit ──
+  $('cw-quick').addEventListener('click', e => { const b = e.target.closest('[data-min]'); if(!b) return; $('cw-min').value = b.dataset.min; syncQuick(); });
+  $('cw-min').addEventListener('input', syncQuick);
+  function syncQuick(){ document.querySelectorAll('#cw-quick button').forEach(b => b.classList.toggle('on', b.dataset.min === $('cw-min').value)); }
+
+  // ── Wer war dabei? ──
+  let deptFilter = '';
+  function picked(){ return [...document.querySelectorAll('#cw-people input:checked')].map(i => i.value); }
+  function renderPeople(){
+    const i = S.info; if(!i) return;
+    const all = $('cw-all-depts').checked, q = $('cw-people-q').value.trim().toLowerCase();
+    const sel = new Set(picked());
+    const list = (i.colleagues || []).filter(c => (all || c.suggested || sel.has(c.id)) && (!deptFilter || c.department === deptFilter) && (!q || c.name.toLowerCase().includes(q)));
+    const depts = [...new Set((i.colleagues || []).filter(c => all || c.suggested).map(c => c.department).filter(Boolean))];
+    $('cw-depts').innerHTML = depts.length > 1 ? '<button type="button" data-dept="" class="' + (deptFilter ? '' : 'on') + '">Alle</button>' + depts.map(d => '<button type="button" data-dept="' + esc(d) + '" class="' + (deptFilter === d ? 'on' : '') + '">' + esc(d) + '</button>').join('') : '';
+    $('cw-people').innerHTML = list.length ? list.map(c => '<label><input type="checkbox" value="' + esc(c.id) + '"' + (sel.has(c.id) ? ' checked' : '') + '> ' + esc(c.name) + '<span class="dept">' + esc(c.department || '–') + '</span></label>').join('')
+      : '<div class="cw-empty">' + (i.departments && i.departments.length && !all ? 'Niemand aus ' + esc(i.departments.join(', ')) + ' gefunden – „Alle Abteilungen anzeigen“ ankreuzen.' : 'Keine Mitarbeitenden gefunden.') + '</div>';
+  }
+  $('cw-depts').addEventListener('click', e => { const b = e.target.closest('[data-dept]'); if(!b) return; deptFilter = b.dataset.dept; renderPeople(); });
+  $('cw-people-q').addEventListener('input', renderPeople);
+  $('cw-all-depts').addEventListener('change', () => { deptFilter = ''; renderPeople(); });
+
+  // ── Zusammenfassung & Absenden ──
+  function renderSummary(){
+    const i = S.info, min = +$('cw-min').value || 0;
+    const names = [...document.querySelectorAll('#cw-people input:checked')].map(x => x.parentElement.textContent.replace(x.parentElement.querySelector('.dept').textContent, '').trim());
+    const time = i.running_since ? 'Timer seit ' + i.running_since + ' (wird gestoppt)' : (min ? hm(min) + ' ab ' + $('cw-start').value.replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$3.$2.$1 ') : 'keine weitere (bisher ' + hm(i.booked_min) + ')');
+    $('cw-sum').innerHTML = '<dt>Material</dt><dd>' + (S.parts.length ? S.parts.map(p => esc(p.qty + ' × ' + p.part_name)).join('<br>') : 'kein Material') + '</dd>'
+      + '<dt>Zeit</dt><dd>' + esc(time) + '</dd>'
+      + '<dt>Dabei</dt><dd>' + (names.length ? esc(names.join(', ')) + ' <span style="color:var(--amber)">(gelb, zur Bestätigung)</span>' : 'nur du') + '</dd>'
+      + '<dt>Kommentar</dt><dd>' + esc($('cw-comment').value.trim()) + '</dd>'
+      + ($('cw-cause').value.trim() ? '<dt>Ursache</dt><dd>' + esc($('cw-cause').value.trim()) + '</dd>' : '');
+  }
+  window.cwSubmit = async function(finish){
+    if(!S || S.busy) return;
+    for(let s = 0; s < 4; s++){ const err = check(s); if(err && !(s === 0 && !finish)){ show(s); msg('err', err); return; } }
+    S.busy = true; $('cw-finish').disabled = true; $('cw-more').disabled = true; msg('', 'Speichere…');
+    const body = {no_parts: $('cw-noparts').checked, start: $('cw-start').value, minutes: S.info.running_since ? 0 : (+$('cw-min').value || 0),
+      colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish};
+    try{
+      const res = await fetch('/complete/' + S.type + '/' + S.id, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const json = await res.json();
+      if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
+      if(json.warning){ msg('warn', json.warning); }
+      else { msg('ok', json.message); }
+      const done = S.done;
+      setTimeout(() => { cwClose(); if(typeof done === 'function') done(json); else location.reload(); }, json.warning ? 3500 : 900);
+    }catch(e){
+      msg('err', e.message); S.busy = false; $('cw-finish').disabled = !S.info.can_finish; $('cw-more').disabled = false;
+    }
+  };
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && S) cwClose(); });
+})();
+</script>
+{{end}}

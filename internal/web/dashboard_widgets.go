@@ -400,7 +400,7 @@ func loadStatMyHours(h *Handler, ctx context.Context, uid string, _ WidgetInstan
 		SELECT COALESCE(SUM(m), 0)::int, COALESCE(SUM(m) FILTER (WHERE d = CURRENT_DATE), 0)::int FROM (
 			SELECT started_at::date AS d,
 			       COALESCE(duration_min, EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int / 60) AS m
-			FROM time_entries WHERE user_id = $1::uuid AND started_at >= date_trunc('week', NOW())
+			FROM time_entries WHERE user_id = $1::uuid AND NOT pending AND started_at >= date_trunc('week', NOW())
 		) x`, uid).Scan(&week, &today)
 	return statData{Value: fmtHours(week), Sub: "heute " + fmtHours(today), Color: "blue", URL: "/time"}, err
 }

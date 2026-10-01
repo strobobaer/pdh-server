@@ -525,6 +525,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/permissions", h.UserPermissionSetWeb)
 	r.Get("/time", h.TimeTracking)
 	r.Get("/dashboard/w/{id}", h.DashboardWidgetWeb)
+	r.Get("/complete/{type}/{id}", h.CompletionInfoWeb)
+	r.Post("/complete/{type}/{id}", h.CompletionWeb)
+	r.Post("/time/{id}/confirm", h.TimeConfirmWeb)
 	r.Post("/dashboard/widgets", h.DashboardWidgetsSaveWeb)
 
 	// Rollen & Berechtigungen
@@ -537,6 +540,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/microsoft/{id}/unassign", h.MicrosoftDirectoryUnassignWeb)
 	r.Post("/core/settings", h.SaveCoreSettings)
 	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
+	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
@@ -1479,6 +1483,9 @@ type TimePageData struct {
 	FilterRaster string
 	RangeFromISO string
 	RangeToISO   string
+	// Von Kollegen eingetragene, noch zu bestaetigende eigene Zeiten
+	// (Abschluss-Assistent, "wer war dabei") – unabhaengig vom Zeitraum
+	PendingEntries []TimeEntryView
 }
 
 type TimeEntryView struct {
@@ -1495,6 +1502,10 @@ type TimeEntryView struct {
 	InfraName    string
 	UserName     string
 	CanEdit      bool
+	Pending      bool   // unbestaetigt (gelb)
+	PendingFrom  string // eingetragen von
+	Mine         bool   // eigener Eintrag (darf bestaetigt werden)
+	userID       string
 }
 
 func timeRefLabel(t timetracking.RefType) string {
@@ -1546,6 +1557,9 @@ func timeEntryView(e *timetracking.TimeEntry) TimeEntryView {
 		Running:      e.EndedAt == nil,
 		InfraName:    e.InfraName,
 		UserName:     e.UserName,
+		Pending:      e.Pending,
+		PendingFrom:  e.PendingFrom,
+		userID:       e.UserID,
 	}
 	if e.EndedAt != nil {
 		endedLocal := e.EndedAt.In(time.Local)
@@ -1672,6 +1686,17 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 					data.Running = &running
 				}
 			}
+		}
+	}
+
+	for i := range data.Entries {
+		data.Entries[i].Mine = data.Entries[i].userID == u.ID
+	}
+	if pending, err := h.time.ListPending(ctx, u.ID); err == nil {
+		for _, e := range pending {
+			v := timeEntryView(e)
+			v.Mine = true
+			data.PendingEntries = append(data.PendingEntries, v)
 		}
 	}
 

@@ -17,6 +17,8 @@ import (
 const updateRepository = "strobobaer/pdh-server"
 
 type CoreSettingsPageData struct {
+	CompletionDepartments string   // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
+	DepartmentOptions     []string // vorhandene Abteilungen (Vorschlaege)
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
@@ -127,6 +129,16 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
+	}
+	data.CompletionDepartments = strings.Join(h.completionDepartments(ctx), ", ")
+	if rows, err := h.db.Query(ctx, `SELECT DISTINCT TRIM(department) FROM users WHERE active AND TRIM(COALESCE(department, '')) <> '' ORDER BY 1`); err == nil {
+		for rows.Next() {
+			var d string
+			if rows.Scan(&d) == nil {
+				data.DepartmentOptions = append(data.DepartmentOptions, d)
+			}
+		}
+		rows.Close()
 	}
 	_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
 	data.LatestVersion, data.NewReleases = h.availableReleases(ctx)

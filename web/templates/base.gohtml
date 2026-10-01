@@ -660,6 +660,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 
 <!-- ── Kontext-Spalte ── -->
 <div class="pdh-backdrop" onclick="pdhCloseOverlays()" aria-hidden="true"></div>
+{{template "completion-wizard"}}
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
     {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="Chat" aria-label="Chat"><i class="ti ti-messages"></i><span class="ctx-vlabel">Chat</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
@@ -1348,6 +1349,12 @@ async function runSelectedItemAction(action) {
     }
     if(action === 'refresh') {
       location.reload();
+      return false;
+    }
+    // Erledigen von Vorgaengen: immer ueber den Abschluss-Assistenten
+    if(action === 'done' && item.dataset.complete) {
+      const [type, id] = item.dataset.complete.split(':');
+      pdhComplete(type, id);
       return false;
     }
     if(['analyze','done','activate','deactivate','delete','start','stop'].includes(action)) {

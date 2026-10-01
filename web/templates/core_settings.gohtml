@@ -68,6 +68,18 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Abschluss-Assistent: Wer war dabei?</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Beim Abschließen von Tickets, Störungen, Aufgaben und Wartungen fragt das PDH, wer mitgearbeitet hat. Vorgeschlagen werden Mitarbeitende dieser Abteilungen (Teilwort genügt, z. B. „Elektro“ passt auf „Elektrowerkstatt“); alle anderen lassen sich im Assistenten zuschalten.</p>
+    <form method="POST" action="/core/settings/completion">
+      <div class="form-group"><label class="form-label" for="completion_departments">Abteilungen (durch Komma getrennt)</label>
+        <input id="completion_departments" name="departments" class="form-input" value="{{.CompletionDepartments}}" placeholder="Instandhaltung, Elektro, Mechanik">
+        {{if .DepartmentOptions}}<div style="font-size:11px;color:var(--muted);margin-top:6px">Vorhandene Abteilungen: {{range $i, $d := .DepartmentOptions}}{{if $i}}, {{end}}<a href="#" style="color:var(--accent)" onclick="const f=document.getElementById('completion_departments');f.value=(f.value.trim()?f.value.trim().replace(/,\s*$/,'')+', ':'')+this.textContent;return false;">{{$d}}</a>{{end}}</div>{{end}}
+      </div>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+
+  <div class="card">
     <div class="card-title">Automatische Update-Prüfung</div>
     <form method="POST" action="/core/settings">
       <div class="form-group" style="margin-bottom:12px">

@@ -8,7 +8,7 @@
   </div>
   <span class="badge {{.Ticket.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.Priority}}</span>
   <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
-  {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/ticket/%s/archive" .Ticket.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/tickets?status=archive',700)")}}
+  {{if not (or (eq .Ticket.Status "resolved") (eq .Ticket.Status "closed"))}}{{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Abschließen" "OnClick" (printf "pdhComplete('ticket','%s')" .Ticket.ID))}}{{end}}
   <!-- ... Menü -->
   <div style="position:relative" oncontextmenu="toggleMenu('ticket-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('ticket-menu')")}}
@@ -46,31 +46,9 @@
 
     <!-- Ticket lösen -->
     <div id="ticket-resolve-card" class="card" style="display:none">
-      <div class="card-title">Ticket lösen</div>
-      <form hx-post="/tickets/{{.Ticket.ID}}/resolve-web" hx-target="#ticket-resolve-result" hx-swap="innerHTML" hx-on::after-request="if(!event.detail.xhr.responseText.includes('var(--red)')) setTimeout(function(){location.reload();}, 1200)">
-        <div class="form-group">
-          <label class="form-label">Lösung / Maßnahme</label>
-          <textarea name="resolution" class="form-input" rows="3" placeholder="Was wurde gemacht?" required style="resize:vertical"></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Grundursache</label>
-          <input name="root_cause" class="form-input" placeholder="Warum ist es passiert?">
-        </div>
-        <div class="form-group">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="no_parts_needed"> Keine Ersatzteile benötigt
-          </label>
-        </div>
-        <div id="ticket-resolve-result" style="font-size:12px;margin-bottom:8px"></div>
-        {{template "icon-button-toolbar" (dict
-          "Class" "end"
-          "Label" "Ticket lösen"
-          "Style" "width:100%;justify-content:flex-end"
-          "Items" (list
-            (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Ticket lösen")
-          )
-        )}}
-      </form>
+      <div class="card-title">Ticket abschließen</div>
+<p style="font-size:12px;color:var(--muted);margin-bottom:10px">Der Abschluss führt Schritt für Schritt durch: <b>Material</b> → <b>Zeit</b> → <b>wer war dabei</b> → <b>Kommentar</b> → <b>Fertig</b> oder <b>geht noch weiter</b>.</p>
+      <button type="button" class="btn cw-finish" style="width:100%;justify-content:center;min-height:44px" onclick="pdhComplete('ticket','{{.Ticket.ID}}')"><i class="ti ti-circle-check"></i> Ticket abschließen …</button>
     </div>
 
   </div>

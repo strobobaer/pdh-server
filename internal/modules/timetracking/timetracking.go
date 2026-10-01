@@ -42,6 +42,11 @@ type TimeEntry struct {
 	// Kostenstelle (Infrastruktur-Knoten), optional
 	InfrastructureID *string `json:"infrastructure_id,omitempty"`
 
+	// Unbestaetigt: von einem Kollegen beim Abschluss eines Vorgangs
+	// eingetragen ("wer war dabei"); zaehlt erst nach Bestaetigung.
+	Pending     bool   `json:"pending"`
+	PendingFrom string `json:"pending_from,omitempty"` // Name des Eintragenden
+
 	// Joined
 	UserName  string `json:"user_name,omitempty"`
 	InfraName string `json:"infra_name,omitempty"`
@@ -118,14 +123,16 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*TimeEntry, error)
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       u.first_name || ' ' || u.last_name
+		       u.first_name || ' ' || u.last_name,
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
 		WHERE te.id = $1`, id).Scan(
 		&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 		&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-		&e.InfrastructureID, &e.InfraName, &e.UserName,
+		&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom,
 	)
 	return e, err
 }
@@ -134,9 +141,11 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 	rows, err := r.db.Query(ctx, `
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
-		       te.infrastructure_id, COALESCE(i.name, '')
+		       te.infrastructure_id, COALESCE(i.name, ''),
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
 		FROM time_entries te
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
 		WHERE te.user_id=$1 AND te.started_at::date BETWEEN $2 AND $3
 		ORDER BY te.started_at DESC`,
 		userID, from, to)
@@ -150,10 +159,40 @@ func (r *Repository) ListByUser(ctx context.Context, userID, from, to string) ([
 		e := &TimeEntry{}
 		rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName)
+			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom)
 		entries = append(entries, e)
 	}
 	return entries, nil
+}
+
+// ListPending: unbestaetigte Eintraege eines Nutzers (von Kollegen beim
+// Abschluss eines Vorgangs eingetragen), unabhaengig vom Zeitraum.
+func (r *Repository) ListPending(ctx context.Context, userID string) ([]*TimeEntry, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
+		       te.started_at, te.ended_at, te.duration_min, te.created_at,
+		       te.infrastructure_id, COALESCE(i.name, ''),
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
+		FROM time_entries te
+		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
+		WHERE te.user_id=$1 AND te.pending
+		ORDER BY te.started_at DESC LIMIT 200`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []*TimeEntry
+	for rows.Next() {
+		e := &TimeEntry{}
+		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
+			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
+			&e.InfrastructureID, &e.InfraName, &e.Pending, &e.PendingFrom); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }
 
 // ListAll: alle Zeiteintraege aller Nutzer im Zeitraum (nur fuer Admin/Manager-Ansicht).
@@ -162,10 +201,12 @@ func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       u.first_name || ' ' || u.last_name
+		       u.first_name || ' ' || u.last_name,
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
 		WHERE te.started_at::date BETWEEN $1 AND $2
 		ORDER BY te.started_at DESC`,
 		from, to)
@@ -179,7 +220,7 @@ func (r *Repository) ListAll(ctx context.Context, from, to string) ([]*TimeEntry
 		e := &TimeEntry{}
 		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName); err != nil {
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -198,10 +239,12 @@ func (r *Repository) ListByUserIDs(ctx context.Context, userIDs []string, from, 
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       u.first_name || ' ' || u.last_name
+		       u.first_name || ' ' || u.last_name,
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
 		WHERE te.user_id = ANY($1) AND te.started_at::date BETWEEN $2 AND $3
 		ORDER BY te.started_at DESC`,
 		userIDs, from, to)
@@ -215,7 +258,7 @@ func (r *Repository) ListByUserIDs(ctx context.Context, userIDs []string, from, 
 		e := &TimeEntry{}
 		if err := rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName); err != nil {
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom); err != nil {
 			return nil, err
 		}
 		entries = append(entries, e)
@@ -258,10 +301,12 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 		SELECT te.id, te.user_id, te.ref_type, te.ref_id, te.description,
 		       te.started_at, te.ended_at, te.duration_min, te.created_at,
 		       te.infrastructure_id, COALESCE(i.name, ''),
-		       u.first_name || ' ' || u.last_name
+		       u.first_name || ' ' || u.last_name,
+		       te.pending, COALESCE(pf.first_name || ' ' || pf.last_name, '')
 		FROM time_entries te
 		JOIN users u ON te.user_id = u.id
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
+		LEFT JOIN users pf ON pf.id = te.pending_from
 		WHERE te.ref_type=$1 AND te.ref_id=$2
 		ORDER BY te.started_at DESC`,
 		refType, refID)
@@ -275,7 +320,7 @@ func (r *Repository) ListByRef(ctx context.Context, refType RefType, refID strin
 		e := &TimeEntry{}
 		rows.Scan(&e.ID, &e.UserID, &e.RefType, &e.RefID, &e.Description,
 			&e.StartedAt, &e.EndedAt, &e.DurationMin, &e.CreatedAt,
-			&e.InfrastructureID, &e.InfraName, &e.UserName)
+			&e.InfrastructureID, &e.InfraName, &e.UserName, &e.Pending, &e.PendingFrom)
 		entries = append(entries, e)
 	}
 	return entries, nil
@@ -305,7 +350,7 @@ func (r *Repository) Summary(ctx context.Context, userID, from, to string) ([]*S
 		FROM time_entries
 		WHERE user_id=$1
 		  AND started_at::date BETWEEN $2 AND $3
-		  AND ended_at IS NOT NULL
+		  AND ended_at IS NOT NULL AND NOT pending
 		GROUP BY ref_type, ref_id
 		ORDER BY total_min DESC`,
 		userID, from, to)
@@ -329,7 +374,7 @@ func (r *Repository) MonthlyByDay(ctx context.Context, userID, from, to string) 
 	rows, err := r.db.Query(ctx, `
 		SELECT started_at::date::text AS day, COALESCE(SUM(duration_min), 0) AS total_min
 		FROM time_entries
-		WHERE user_id=$1 AND started_at::date BETWEEN $2 AND $3 AND ended_at IS NOT NULL
+		WHERE user_id=$1 AND started_at::date BETWEEN $2 AND $3 AND ended_at IS NOT NULL AND NOT pending
 		GROUP BY started_at::date
 		ORDER BY started_at::date`,
 		userID, from, to)
@@ -363,7 +408,7 @@ func (r *Repository) MonthlyByCategory(ctx context.Context, userID, from, to str
 			COALESCE(SUM(te.duration_min), 0) AS total_min
 		FROM time_entries te
 		LEFT JOIN infrastructure i ON te.infrastructure_id = i.id
-		WHERE te.user_id=$1 AND te.started_at::date BETWEEN $2 AND $3 AND te.ended_at IS NOT NULL
+		WHERE te.user_id=$1 AND te.started_at::date BETWEEN $2 AND $3 AND te.ended_at IS NOT NULL AND NOT te.pending
 		GROUP BY label
 		ORDER BY total_min DESC`,
 		userID, from, to)
@@ -480,7 +525,19 @@ func (s *Service) MonthlyByCategory(ctx context.Context, userID string, year, mo
 
 func (s *Service) ExportMonth(ctx context.Context, userID string, year, month int) ([]*TimeEntry, error) {
 	from, to := monthRange(year, month)
-	return s.repo.ListByUser(ctx, userID, from, to)
+	all, err := s.repo.ListByUser(ctx, userID, from, to)
+	// unbestaetigte Eintraege gehoeren (noch) nicht in den Export
+	var out []*TimeEntry
+	for _, e := range all {
+		if !e.Pending {
+			out = append(out, e)
+		}
+	}
+	return out, err
+}
+
+func (s *Service) ListPending(ctx context.Context, userID string) ([]*TimeEntry, error) {
+	return s.repo.ListPending(ctx, userID)
 }
 
 func (s *Service) Delete(ctx context.Context, id, userID string, isAdmin bool) error {

@@ -80,7 +80,7 @@
     <thead><tr style="cursor:pointer"><th>Ticket</th><th>Priorität</th><th>Status</th><th>Erstellt</th><th>Aktionen</th></tr></thead>
     <tbody>
     {{range .Tickets}}
-    <tr class="selectable-item" data-selectable data-title="{{.Title}}" data-view-href="/tickets/{{.ID}}" data-copy-text="{{.Title}} {{.Description}}" data-done-url="/tickets/{{.ID}}/status-web" data-done-method="PUT" data-done-body="status=resolved" style="cursor:pointer">
+    <tr class="selectable-item" data-selectable data-title="{{.Title}}" data-view-href="/tickets/{{.ID}}" data-complete="ticket:{{.ID}}" data-copy-text="{{.Title}} {{.Description}}" data-done-url="/tickets/{{.ID}}/status-web" data-done-method="PUT" data-done-body="status=resolved" style="cursor:pointer">
       <td>
         <a href="/tickets/{{.ID}}" style="display:block;color:inherit;text-decoration:none">
           <div style="font-weight:500">{{.Title}}</div>

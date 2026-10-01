@@ -10,6 +10,22 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.21.0] – 2026-10-01
+
+### Neu
+- Abschluss-Assistent: Der grüne Haken zum Fertigsetzen von Tickets, Störungen, Aufgaben und Wartungen führt Schritt für Schritt durch Material (vormerken oder „kein Material“), Zeit (laufender Timer wird gestoppt), „Wer war dabei?“, Kommentar und Ursache – am Ende „Fertig“ oder „Geht noch weiter“ (bleibt in Bearbeitung)
+- Wer beim Abschluss als „dabei“ ausgewählt wird, bekommt denselben Zeitraum als gelben, unbestätigten Eintrag in die Zeiterfassung und einen Chat-Hinweis; bestätigt wird mit dem grünen Haken (Karte „Zu bestätigen“ in der Zeiterfassung)
+- Core-Einstellungen: Abteilungen, deren Mitarbeitende im Assistenten vorgeschlagen werden (Standard: Instandhaltung, Elektro, Mechanik)
+
+### Geändert
+- Abschließen verlangt jetzt auch eine erfasste Arbeitszeit; Material und Kommentar waren schon Pflicht
+- „Auswahl erledigen“ in den Listen von Tickets und Störungen öffnet den Assistenten
+- Bei Wartungen mit fälligen Checklistenpunkten werden zuerst die Messwerte erfasst, dann geht es im Assistenten weiter
+- Unbestätigte Zeiten zählen nicht in Wochen-/Monatssummen, Diagrammen, Export und im Dashboard-Widget „Meine Stunden“
+
+### Behoben
+- Der grüne Haken „Archivieren“ auf den Detailseiten von Tickets und Störungen schloss Vorgänge ohne Maßnahme und ohne Material-Angabe ab; er ist durch den Abschluss-Assistenten ersetzt
+
 ## [0.20.0] – 2026-10-01
 
 ### Neu

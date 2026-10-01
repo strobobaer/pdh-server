@@ -9,7 +9,7 @@
   </div>
   <span class="badge {{.Fault.SeverityClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.Severity}}</span>
   <span class="badge {{.Fault.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Fault.StatusLabel}}</span>
-  {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Archivieren" "HxPost" (printf "/records/fault/%s/archive" .Fault.ID) "HxTarget" "#archive-result" "HxOnAfterRequest" "setTimeout(()=>window.location='/faults?status=archive',700)")}}
+  {{if not (or (eq .Fault.Status "resolved") (eq .Fault.Status "closed"))}}{{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Abschließen" "OnClick" (printf "pdhComplete('fault','%s')" .Fault.ID))}}{{end}}
   <div style="position:relative" oncontextmenu="toggleMenu('fault-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('fault-menu')")}}
     <div id="fault-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
@@ -17,7 +17,7 @@
       {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result" "OnClick" "closeMenu('fault-menu')")}}
       {{end}}
       {{if eq .Fault.Status "in_progress"}}
-      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als gelöst markieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "OnClick" "document.getElementById('resolve-form').style.display='block';closeMenu('fault-menu')")}}
+      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als gelöst markieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "OnClick" (printf "closeMenu('fault-menu');pdhComplete('fault','%s')" .Fault.ID))}}
       {{end}}
     </div>
   </div>
@@ -54,30 +54,8 @@
     {{if eq .Fault.Status "in_progress"}}
     <div id="resolve-form" style="display:none" class="card">
       <div class="card-title">Störung lösen</div>
-      <form hx-post="/faults/{{.Fault.ID}}/resolve" hx-target="#resolve-result">
-        <div class="form-group">
-          <label class="form-label">Lösung / Maßnahmen</label>
-          <textarea name="resolution" class="form-input" rows="3" placeholder="Was wurde gemacht?" required style="resize:vertical"></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Grundursache</label>
-          <input name="root_cause" class="form-input" placeholder="Warum ist es passiert?">
-        </div>
-        <div class="form-group">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" name="no_parts_needed"> Keine Ersatzteile benötigt
-          </label>
-        </div>
-        {{template "icon-button-toolbar" (dict
-          "Class" "end"
-          "Label" "Störung lösen"
-          "Style" "width:100%;justify-content:flex-end"
-          "Items" (list
-            (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('resolve-form').style.display='none'")
-            (dict "Action" "done" "ShowLabel" true "Type" "submit" "Label" "Gelöst")
-          )
-        )}}
-      </form>
+<p style="font-size:12px;color:var(--muted);margin-bottom:10px">Der Abschluss führt Schritt für Schritt durch: <b>Material</b> → <b>Zeit</b> → <b>wer war dabei</b> → <b>Kommentar</b> → <b>Fertig</b> oder <b>geht noch weiter</b>.</p>
+      <button type="button" class="btn cw-finish" style="width:100%;justify-content:center;min-height:44px" onclick="pdhComplete('fault','{{.Fault.ID}}')"><i class="ti ti-circle-check"></i> Störung abschließen …</button>
       <div id="resolve-result"></div>
     </div>
     {{end}}

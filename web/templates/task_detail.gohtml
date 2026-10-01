@@ -57,22 +57,12 @@
         <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Ersatzteile</div>
         <div id="task-parts-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
         <button type="button" class="btn" onclick="openTaskPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>
-        <label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px">
-          <input type="checkbox" id="ta-no-parts"> Keine Ersatzteile benötigt
-        </label>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Lösung / Maßnahmen-Zusammenfassung</label>
-        <textarea id="ta-resolution" class="form-input" rows="3" placeholder="Was wurde gemacht?" style="resize:vertical"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Grundursache</label>
-        <input id="ta-rootcause" class="form-input" placeholder="Warum ist es passiert?">
-      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Der Abschluss führt Schritt für Schritt durch: <b>Material</b> → <b>Zeit</b> → <b>wer war dabei</b> → <b>Kommentar</b> → <b>Fertig</b> oder <b>geht noch weiter</b>.</p>
       <div id="task-resolve-result" style="font-size:12px;margin-bottom:8px"></div>
       <div style="display:flex;justify-content:flex-end">
-        <button type="button" class="btn btn-primary" onclick="resolveTask()"><i class="ti ti-check"></i> Aufgabe lösen</button>
+        <button type="button" class="btn cw-finish" onclick="pdhComplete('task', TASK_ID)"><i class="ti ti-circle-check"></i> Aufgabe abschließen …</button>
       </div>
     </div>
 
@@ -366,24 +356,6 @@ async function bookTaskPart(){
   }catch(e){ errEl.textContent='Fehler: '+e.message; errEl.style.display='block'; }
 }
 
-async function resolveTask(){
-  var result = document.getElementById('task-resolve-result');
-  var payload = {
-    resolution: document.getElementById('ta-resolution').value,
-    root_cause: document.getElementById('ta-rootcause').value,
-    no_parts_needed: document.getElementById('ta-no-parts').checked
-  };
-  result.textContent = 'Speichere...';
-  try{
-    var res = await fetch('/api/v1/tasks/'+TASK_ID+'/resolve', {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    var json = await res.json();
-    if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
-    location.reload();
-  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escTa(e.message)+'</span>'; }
-}
 
 async function startTaskTime(){
   var result = document.getElementById('task-time-result');
