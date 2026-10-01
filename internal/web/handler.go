@@ -1479,7 +1479,9 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		// bewusst 200: Reverse-Proxys (Cloudflare, Nginx) ersetzen 502-Antworten
+		// durch eigene Fehlerseiten – dann ginge der eigentliche Grund verloren
+		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"reply": reply})

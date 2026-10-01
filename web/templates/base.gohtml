@@ -1449,9 +1449,18 @@ async function sendCop() {
   const wait = add('cop-a', 'Copilot denkt nach …', 'color:var(--muted)');
   try{
     const res = await fetch('/copilot/ask', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({q, fault: '{{.FaultID}}'})});
-    const j = await res.json().catch(() => ({}));
+    const raw = await res.text();
+    let j = {};
+    try{ j = JSON.parse(raw); }catch(e){}
     wait.remove();
-    if(!res.ok || !j.reply) add('cop-a', 'Copilot: ' + (j.error || ('HTTP ' + res.status)), 'color:var(--red)');
+    if(!j.reply){
+      // keine JSON-Antwort: meist Zeitlimit oder Fehlerseite eines Proxys davor
+      let why = j.error;
+      if(!why) why = 'HTTP ' + res.status + (res.status === 502 || res.status === 504 || res.status === 524
+        ? ' – die Antwort kam nicht durch (Zeitlimit oder Proxy vor PDH). Details im Server-Protokoll unter „copilot“.'
+        : (raw ? ' – ' + raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) : ''));
+      add('cop-a', 'Copilot: ' + why, 'color:var(--red)');
+    }
     else add('cop-a', 'Copilot: ' + j.reply);
   }catch(e){ wait.remove(); add('cop-a', 'Copilot nicht erreichbar: ' + e.message, 'color:var(--red)'); }
 }
