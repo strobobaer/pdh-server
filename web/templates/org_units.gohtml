@@ -1,0 +1,110 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px">
+  <h1 style="font-size:19px;font-weight:600">Abteilungen &amp; Gruppen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{len .Departments}} Abteilungen · {{len .Groups}} Gruppen</p>
+</div>
+{{if .Message}}<div class="rec-msg" style="background:rgba(16,185,129,.12);color:var(--green);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg" style="background:rgba(239,68,68,.12);color:var(--red);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+{{$d := .}}
+<div class="rec-grid">
+  <!-- ── Abteilungen ── -->
+  <div class="card" id="departments" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-building"></i> Abteilungen</span></div>
+    <p class="rec-sub" style="margin-bottom:8px">Jede Person gehört zu höchstens einer Abteilung (Benutzerstamm → Stammdaten). Rollen lassen sich unter <a href="/admin/roles" style="color:var(--accent)">Rollen &amp; Rechte</a> einer Abteilung zuordnen – sie sehen dann nur Vorgänge, deren Anlage zu dieser Abteilung oder einer Unterabteilung gehört. <b>Übergeordnete</b> Abteilungen sehen alles. Die Struktur steht auch im <a href="/admin/orgchart" style="color:var(--accent)">Organigramm</a>.</p>
+    {{range .Departments}}
+    <div class="rec-row" style="align-items:flex-start">
+      <div class="grow">
+        <div style="font-weight:500">{{if .Depth}}<span style="color:var(--muted)">{{.Indent}}</span>{{end}}{{.Name}}{{if .IsGlobal}} <span class="badge b-blue" title="Rollen dieser Abteilung sehen die Vorgänge aller Abteilungen">übergeordnet</span>{{end}}</div>
+        <div class="rec-sub">{{.MemberCount}} Mitarbeitende{{if .RoleCount}} · {{.RoleCount}} Rolle(n){{end}}{{if .ManagerName}} · Leitung: {{.ManagerName}}{{end}}</div>
+        {{if .Description}}<div class="rec-sub">{{.Description}}</div>{{end}}
+        <details style="margin-top:6px"><summary class="rec-sub" style="cursor:pointer">Bearbeiten</summary>
+          {{template "org-dept-form" (dict "D" . "Users" $d.Users "All" $d.Departments)}}
+        </details>
+      </div>
+      <form method="post" action="/admin/departments/{{.ID}}/delete" onsubmit="return confirm('Abteilung {{.Name}} entfernen? Mitarbeitende, Rollen und Gruppen verlieren nur die Zuordnung.')">
+        <button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Entfernen" aria-label="Abteilung entfernen"><i class="ti ti-trash" style="font-size:14px"></i></button>
+      </form>
+    </div>
+    {{else}}<div class="rec-sub">Noch keine Abteilungen</div>{{end}}
+    <details style="margin-top:10px"{{if not .Departments}} open{{end}}><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-plus"></i> Abteilung anlegen</summary>
+      {{template "org-dept-form" (dict "D" nil "Users" .Users "All" .Departments)}}
+    </details>
+  </div>
+
+  <!-- ── Gruppen ── -->
+  <div class="card" id="groups" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-users-group"></i> Gruppen</span></div>
+    <p class="rec-sub" style="margin-bottom:8px">Gruppen bündeln Personen quer zu Abteilungen – z. B. „Elektro Frühschicht“ oder „Ersthelfer“. Eine Person kann in mehreren Gruppen sein.</p>
+    {{range .Groups}}
+    <div class="rec-row" style="align-items:flex-start">
+      <div class="grow">
+        <div style="font-weight:500">{{.Name}}{{if .DepartmentName}} <span class="badge b-blue">{{.DepartmentName}}</span>{{end}}</div>
+        <div class="rec-sub">{{len .MemberNames}} Mitglieder{{if .LeadName}} · Leitung: {{.LeadName}}{{end}}</div>
+        {{if .MemberNames}}<div class="rec-sub" style="margin-top:2px">{{join .MemberNames ", "}}</div>{{end}}
+        {{if .Description}}<div class="rec-sub">{{.Description}}</div>{{end}}
+        <details style="margin-top:6px"><summary class="rec-sub" style="cursor:pointer">Bearbeiten</summary>
+          {{template "org-group-form" (dict "G" . "Users" $d.Users "Departments" $d.Departments)}}
+        </details>
+      </div>
+      <form method="post" action="/admin/groups/{{.ID}}/delete" onsubmit="return confirm('Gruppe {{.Name}} entfernen?')">
+        <button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Entfernen" aria-label="Gruppe entfernen"><i class="ti ti-trash" style="font-size:14px"></i></button>
+      </form>
+    </div>
+    {{else}}<div class="rec-sub">Noch keine Gruppen</div>{{end}}
+    <details style="margin-top:10px"{{if not .Groups}} open{{end}}><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-plus"></i> Gruppe anlegen</summary>
+      {{template "org-group-form" (dict "G" nil "Users" .Users "Departments" .Departments)}}
+    </details>
+  </div>
+</div>
+{{end}}
+
+{{define "org-dept-form"}}
+{{$did := ""}}{{$pid := ""}}{{$glob := false}}{{with .D}}{{$did = .ID}}{{$pid = .ParentID}}{{$glob = .IsGlobal}}{{end}}
+<form method="post" action="/admin/departments" style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+  {{with .D}}<input type="hidden" name="id" value="{{.ID}}">{{end}}
+  <div class="form-group" style="margin:0"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="100" required value="{{with .D}}{{.Name}}{{end}}" placeholder="z. B. Instandhaltung"></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Leitung</label>
+    <select name="manager_id" class="form-input"><option value="">– keine –</option>{{$mid := ""}}{{with .D}}{{$mid = .ManagerID}}{{end}}{{range .Users}}<option value="{{.ID}}" {{if eq .ID $mid}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Übergeordnete Abteilung</label>
+    <select name="parent_id" class="form-input"><option value="">– oberste Ebene –</option>{{range .All}}{{if ne .ID $did}}<option value="{{.ID}}" {{if eq .ID $pid}}selected{{end}}>{{.Indent}}{{.Name}}</option>{{end}}{{end}}</select></div>
+  <label style="display:flex;gap:8px;align-items:center;font-size:12.5px"><input type="checkbox" name="is_global" value="1" {{if $glob}}checked{{end}}> Übergeordnet – Rollen dieser Abteilung sehen die Vorgänge aller Abteilungen</label>
+  <div class="form-group" style="margin:0"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{with .D}}{{.Description}}{{end}}"></div>
+  <div><button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+</form>
+{{end}}
+
+{{define "org-group-form"}}
+{{$gid := ""}}{{$dep := ""}}{{$lead := ""}}{{$members := dict}}
+{{with .G}}{{$gid = .ID}}{{$dep = .DepartmentID}}{{$lead = .LeadID}}{{$members = .MemberIDs}}{{end}}
+<form method="post" action="/admin/groups" style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+  {{if $gid}}<input type="hidden" name="id" value="{{$gid}}">{{end}}
+  <div class="form-group" style="margin:0"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="100" required value="{{with .G}}{{.Name}}{{end}}" placeholder="z. B. Elektro Frühschicht"></div>
+  <div class="grid2" style="gap:8px">
+    <div class="form-group" style="margin:0"><label class="form-label">Abteilung</label>
+      <select name="department_id" class="form-input"><option value="">– keine –</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $dep}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Leitung</label>
+      <select name="lead_id" class="form-input"><option value="">– keine –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $lead}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  </div>
+  <div class="form-group" style="margin:0"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{with .G}}{{.Description}}{{end}}"></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Mitglieder</label>
+    <input type="search" class="form-input" placeholder="Filtern…" oninput="orgFilterMembers(this)" style="margin-bottom:6px">
+    <div class="org-members">{{range .Users}}<label><input type="checkbox" name="member_ids" value="{{.ID}}" {{if index $members .ID}}checked{{end}}> {{.Name}}</label>{{end}}</div>
+  </div>
+  <div><button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+</form>
+{{end}}
+
+{{define "scripts"}}
+<style>
+.org-members{max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 10px;background:var(--bg)}
+.org-members label{display:flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;cursor:pointer}
+</style>
+<script>
+function orgFilterMembers(input){
+  const q = input.value.trim().toLowerCase();
+  input.parentNode.querySelectorAll('.org-members label').forEach(l => { l.style.display = !q || l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+</script>
+{{end}}

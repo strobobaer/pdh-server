@@ -1,0 +1,37 @@
+{{/* Reiter "Schulungen" im Benutzerstamm (GET /trainings/user/{id}, trainings.go) */}}
+{{define "training-user"}}
+<div class="rec-grid">
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-table"></i> Stand je Schulung</span></div>
+    {{range .Items}}
+    <div class="rec-row">
+      <div class="grow">
+        <div style="font-weight:500">{{.Topic.Name}} <span class="rec-sub">{{.Topic.KindLabel}} · {{.Topic.IntervalLabel}}{{if .Cell.Required}} · Pflicht{{end}}</span></div>
+        <div class="rec-sub">{{if .Cell.Title}}{{.Cell.Title}}{{end}}</div>
+      </div>
+      {{if eq .Cell.State "ok"}}<span class="badge b-green">gültig</span>
+      {{else if eq .Cell.State "extra"}}<span class="badge b-green">vorhanden</span>
+      {{else if eq .Cell.State "soon"}}<span class="badge b-amber">läuft bald ab</span>
+      {{else if eq .Cell.State "expired"}}<span class="badge b-red">abgelaufen</span>
+      {{else if eq .Cell.State "missing"}}<span class="badge b-red">fehlt</span>
+      {{else if eq .Cell.State "planned"}}<span class="badge b-blue">Termin geplant</span>{{end}}
+    </div>
+    {{else}}<div class="rec-sub">Keine Pflichtschulungen und noch keine Nachweise.</div>{{end}}
+  </div>
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-signature"></i> Nachweise</span></div>
+    {{range .Open}}
+    <a class="rec-row" href="/trainings/sessions/{{.ID}}" style="color:var(--text);text-decoration:none">
+      <div class="grow"><div style="font-weight:500">{{.TopicName}}</div><div class="rec-sub">{{if .Date}}{{.Date}}{{else}}Termin offen{{end}} · offen</div></div>
+      <span class="badge b-amber">{{.Signed}}/{{.Participants}}</span>
+    </a>
+    {{end}}
+    {{range .Sessions}}
+    <a class="rec-row" href="/trainings/sessions/{{.ID}}" style="color:var(--text);text-decoration:none">
+      <div class="grow"><div style="font-weight:500">{{.TopicName}}</div><div class="rec-sub">{{.Date}}{{if .Trainer}} · {{.Trainer}}{{end}}</div></div>
+      <i class="ti ti-lock" title="archiviert" style="color:var(--green)"></i>
+    </a>
+    {{else}}{{if not .Open}}<div class="rec-sub">Noch keine Nachweise.</div>{{end}}{{end}}
+  </div>
+</div>
+{{end}}

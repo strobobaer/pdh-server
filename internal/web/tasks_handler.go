@@ -122,10 +122,11 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 
 	list, err := h.tasks.List(ctx, tasks.Status(filter), "", unassigned)
 	tagIDs := h.categoryFilterIDs(r, "task")
+	scopeIDs := h.scopeAllowedIDs(r, "task")
 	if err == nil {
 		data.Total = len(list)
 		for _, t := range list {
-			if tagIDs != nil && !tagIDs[t.ID] {
+			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
 				continue
 			}
 			if t.Status == "open" || t.Status == "in_progress" {

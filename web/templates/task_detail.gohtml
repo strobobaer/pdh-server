@@ -48,7 +48,7 @@
         <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Durchgeführte Maßnahmen</div>
         <div id="task-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
         <div style="display:flex;gap:8px">
-          <input id="ta-new-action" class="form-input" placeholder="z.B. Ursache behoben" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskAction();}">
+          <input data-suggest="action" id="ta-new-action" class="form-input" placeholder="z.B. Ursache behoben" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskAction();}">
           <button type="button" class="btn" onclick="addTaskAction()"><i class="ti ti-plus"></i></button>
         </div>
       </div>
@@ -145,6 +145,12 @@
         <button type="button" class="btn" style="font-size:11px;margin-top:6px" onclick="saveTaskAssignees()">Speichern</button>
         <div id="task-assignees-result" style="font-size:11px;margin-top:6px"></div>
       </div>
+      <form hx-put="/records/task/{{.Task.ID}}/group" hx-target="#task-group-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <label class="form-label">Zugewiesene Gruppe</label>
+        <select name="assigned_group_id" class="form-input" hx-get="/records/task/{{.Task.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
+        <button type="submit" class="btn" style="font-size:11px;margin-top:6px">Speichern</button>
+        <div id="task-group-result" style="font-size:11px;margin-top:6px"></div>
+      </form>
       {{if .Task.ResponsibleName}}<div class="li"><div class="li-text"><div class="li-sub">Verantwortlich</div><div class="li-title">{{.Task.ResponsibleName}}</div></div></div>{{end}}
       {{if .Task.ProjectName}}<div class="li"><div class="li-text"><div class="li-sub">Projekt</div><div class="li-title"><a href="/projects/{{.Task.ProjectID}}" style="color:var(--accent)">{{.Task.ProjectName}}</a></div></div></div>{{end}}
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">

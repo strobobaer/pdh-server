@@ -65,6 +65,9 @@ type UserDetailData struct {
 	CanMakeAdmin        bool
 	CanDeactivate       bool
 	ChangeNotifications bool // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
+	Departments         []string       // Auswahl fuer das Feld Abteilung
+	Groups              []UserGroupRef // Gruppen der Person
+	AllGroups           []groupView    // Auswahl (nur mit Bearbeitungsrecht)
 }
 
 // userAccess ermittelt die Rechte des angemeldeten Benutzers auf targetID.
@@ -159,6 +162,11 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	}
+	d.Departments = h.departmentNames(ctx)
+	d.Groups = h.userGroups(ctx, d.User.ID)
+	if d.CanEditMaster {
+		d.AllGroups = h.loadGroups(ctx)
 	}
 	h.render(w, "user_detail", d)
 }

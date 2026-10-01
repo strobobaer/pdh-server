@@ -54,6 +54,8 @@ type Asset struct {
 	CreatedAt        time.Time   `json:"created_at"`
 	UpdatedAt        time.Time   `json:"updated_at"`
 	AssigneeName     string      `json:"assignee_name,omitempty"`
+	ResponsibleTo    *string     `json:"responsible_to,omitempty"`
+	ResponsibleName  string      `json:"responsible_name,omitempty"`
 	InfraName        string      `json:"infra_name,omitempty"`
 }
 
@@ -107,9 +109,11 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
 		COALESCE(a.location,''), COALESCE(a.os,''), a.purchased_at, a.warranty_until,
 		a.assigned_to, a.infrastructure_id,
 		COALESCE(a.notes,''), a.created_by, a.created_at, a.updated_at,
-		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,'')
+		COALESCE(u.first_name||' '||u.last_name,''), COALESCE(i.name,''),
+		a.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,'')
 		FROM it_assets a
 		LEFT JOIN users u ON a.assigned_to = u.id
+		LEFT JOIN users ru ON a.responsible_to = ru.id
 		LEFT JOIN infrastructure i ON a.infrastructure_id = i.id
 		LEFT JOIN business_partners bp ON a.manufacturer_id = bp.id
 		WHERE a.id=$1`, id).Scan(&a.ID, &a.Name, &a.Type, &a.Status,
@@ -117,7 +121,8 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Asset, error) {
 		&a.Manufacturer, &a.ManufacturerID, &a.ManufacturerName, &a.Model, &a.SerialNo,
 		&a.Location, &a.OS, &purchasedAt, &warrantyUntil,
 		&a.AssignedTo, &a.InfrastructureID,
-		&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName)
+		&a.Notes, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt, &a.AssigneeName, &a.InfraName,
+		&a.ResponsibleTo, &a.ResponsibleName)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +156,7 @@ type UpdateDetailsInput struct {
 	PurchasedAt      *string
 	WarrantyUntil    *string
 	AssignedTo       *string
+	ResponsibleTo    *string
 	InfrastructureID *string
 	Notes            string
 }
@@ -161,12 +167,12 @@ func (r *Repository) UpdateDetails(ctx context.Context, id string, in *UpdateDet
 			name=$1, type=$2, hostname=$3, ip_address=$4, mac_address=$5,
 			manufacturer=$6, manufacturer_id=$7, model=$8, serial_no=$9, location=$10, os=$11,
 			purchased_at=$12, warranty_until=$13, assigned_to=$14, infrastructure_id=$15,
-			notes=$16, updated_at=NOW()
+			notes=$16, responsible_to=$18, updated_at=NOW()
 		WHERE id=$17`,
 		in.Name, in.Type, in.Hostname, in.IPAddress, in.MACAddress,
 		in.Manufacturer, in.ManufacturerID, in.Model, in.SerialNo, in.Location, in.OS,
 		in.PurchasedAt, in.WarrantyUntil, in.AssignedTo, in.InfrastructureID,
-		in.Notes, id)
+		in.Notes, id, in.ResponsibleTo)
 	return err
 }
 

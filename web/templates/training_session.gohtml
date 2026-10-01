@@ -1,0 +1,199 @@
+{{template "base" .}}
+{{define "content"}}
+{{$s := .Session}}{{$d := .}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap" class="no-print-flex">
+  <a href="/trainings?tab={{if $s.Archived}}archive{{else}}sessions{{end}}" class="btn btn-icon no-print" title="Zurück" aria-label="Zurück"><i class="ti ti-arrow-left"></i></a>
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:18px;font-weight:600">{{if eq $s.TopicKind "qualification"}}Qualifikationsnachweis{{else}}Schulungsnachweis{{end}}: {{$s.TopicName}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">
+      {{if $s.Archived}}<span class="badge b-green"><i class="ti ti-lock"></i> archiviert {{$s.ArchivedAt}}{{if $s.ArchivedBy}} von {{$s.ArchivedBy}}{{end}}</span>{{else}}<span class="badge b-amber">offen</span>{{if $s.AutoCreated}} · automatisch angelegt (Personen fällig){{end}}{{end}}
+      · angelegt {{$s.CreatedAt}}{{if $s.ValidUntil}} · gültig bis {{$s.ValidUntil}}{{end}}
+    </p>
+  </div>
+  <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap">
+    <button type="button" class="btn" onclick="window.print()"><i class="ti ti-printer"></i> Drucken</button>
+    {{if or .CanEdit (and $s.Archived .CanManage)}}
+    <form method="post" action="/trainings/sessions/{{$s.ID}}/reuse" onsubmit="return confirm('Leeres Formular für einen neuen Termin anlegen? Schulung, Ort, Schulende/r und Teilnehmende werden übernommen – Datum, Inhalt und Unterschriften bleiben leer.')">
+      <button class="btn" type="submit"><i class="ti ti-copy"></i> Wiedervorlage (leeres Formular)</button>
+    </form>
+    {{end}}
+  </div>
+</div>
+{{if .Message}}<div class="rec-msg no-print" style="background:rgba(16,185,129,.12);color:var(--green);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg no-print" style="background:rgba(239,68,68,.12);color:var(--red);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="grid2 ts-grid">
+  <!-- Angaben + Inhalt -->
+  <div class="card">
+    <div class="card-title">Was wurde geschult?</div>
+    {{if .CanEdit}}
+    <form method="post" action="/trainings/sessions/{{$s.ID}}" class="no-print">
+      <div class="grid2" style="gap:8px">
+        <div class="form-group"><label class="form-label">Datum *</label><input type="date" name="session_date" class="form-input" value="{{$s.DateISO}}"></div>
+        <div class="form-group"><label class="form-label">Ort</label><input name="location" class="form-input" maxlength="200" value="{{$s.Location}}" placeholder="z. B. Werkstatt Halle 2"></div>
+        <div class="form-group"><label class="form-label">Schulende/r *</label>
+          <select name="trainer_id" class="form-input" onchange="document.getElementById('ts-ext').style.display=this.value?'none':''">
+            <option value="">– extern (Name rechts) –</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $s.TrainerID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select></div>
+        <div class="form-group" id="ts-ext" {{if $s.TrainerID}}style="display:none"{{end}}><label class="form-label">Externe/r Schulende/r</label><input name="trainer_name" class="form-input" maxlength="200" value="{{$s.TrainerName}}" placeholder="Name, Firma"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" style="display:flex;justify-content:space-between;gap:8px;align-items:center">Inhalt – ein Stichpunkt je Zeile *
+          {{if .LastContent}}<button type="button" class="btn" style="font-size:11px;padding:3px 8px" onclick="tsTakeLast()" title="Stichpunkte des letzten archivierten Termins übernehmen"><i class="ti ti-history"></i> vom letzten Termin</button>{{end}}
+        </label>
+        <textarea data-suggest="training" name="content" id="ts-content" class="form-input" rows="8" placeholder="- Gefahren beim Rangieren&#10;- Lastdiagramm lesen&#10;- Tägliche Sichtprüfung">{{$s.Content}}</textarea>
+      </div>
+      <div class="form-group"><label class="form-label">Bemerkungen</label><input name="notes" class="form-input" value="{{$s.Notes}}"></div>
+      {{if or $s.SignedCount $s.TrainerSigned}}<p class="rec-sub" style="color:var(--amber);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> Ändern sich Datum, Inhalt oder Schulende/r, verfallen die bisherigen Unterschriften.</p>{{end}}
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </form>
+    {{end}}
+    <div class="{{if .CanEdit}}print-only{{end}}">
+      <div class="ts-kv"><span>Datum</span><b>{{if $s.Date}}{{$s.Date}}{{else}}—{{end}}</b></div>
+      <div class="ts-kv"><span>Ort</span><b>{{if $s.Location}}{{$s.Location}}{{else}}—{{end}}</b></div>
+      <div class="ts-kv"><span>Schulende/r</span><b>{{if $s.TrainerDisplay}}{{$s.TrainerDisplay}}{{else}}—{{end}}</b></div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">Inhalt</div>
+      {{with $s.Bullets}}<ul class="ts-bullets">{{range .}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="rec-sub">Noch keine Stichpunkte.</p>{{end}}
+      {{if $s.Notes}}<div class="rec-sub" style="margin-top:6px">Bemerkungen: {{$s.Notes}}</div>{{end}}
+    </div>
+  </div>
+
+  <!-- Teilnehmende + Unterschriften -->
+  <div class="card">
+    <div class="card-title"><span>Wer wurde geschult?</span><span class="rec-sub">{{$s.SignedCount}}/{{len $s.Participants}} unterschrieben</span></div>
+    <p class="rec-sub no-print" style="margin-bottom:8px">Mit der Unterschrift bestätigt jede Person die Teilnahme an der oben beschriebenen Schulung.</p>
+    {{range $s.Participants}}
+    <div class="ts-p">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500">{{.Name}}</div>
+        <div class="rec-sub">{{if .Department}}{{.Department}}{{end}}{{if .Signed}}{{if .Department}} · {{end}}unterschrieben {{.SignedAt}}{{end}}</div>
+      </div>
+      {{if .Signed}}<img class="ts-sig" src="{{.SigURL}}" alt="Unterschrift {{.Name}}">
+      {{else if not $s.Archived}}{{if or $d.CanEdit (eq .UserID $d.MyUserID)}}<button type="button" class="btn btn-primary no-print" onclick="tsSign('{{.UserID}}', '{{.Name}}')"><i class="ti ti-signature"></i> Unterschreiben</button>{{else}}<span class="rec-sub">offen</span>{{end}}{{end}}
+      {{if and $d.CanEdit (not .Signed)}}<form method="post" action="/trainings/sessions/{{$s.ID}}/participants/{{.UserID}}/remove" class="no-print" onsubmit="return confirm('{{.Name}} entfernen (nicht teilgenommen)?')"><button class="btn btn-icon" title="Entfernen – nicht teilgenommen" aria-label="{{.Name}} entfernen"><i class="ti ti-user-minus"></i></button></form>{{end}}
+    </div>
+    {{else}}<p class="rec-sub">Noch niemand eingetragen.</p>{{end}}
+
+    {{if .CanEdit}}
+    <details class="no-print" style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)"><i class="ti ti-user-plus"></i> Teilnehmende hinzufügen</summary>
+      <form method="post" action="/trainings/sessions/{{$s.ID}}/participants" style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        <select name="user_ids" class="form-input" multiple size="6" aria-label="Personen">{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+        <div class="grid2" style="gap:8px">
+          <select name="group_id" class="form-input" aria-label="ganze Gruppe"><option value="">+ ganze Gruppe…</option>{{range .Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+          <select name="department_id" class="form-input" aria-label="ganze Abteilung"><option value="">+ ganze Abteilung…</option>{{range .Departments}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+        </div>
+        <div><button class="btn" type="submit"><i class="ti ti-plus"></i> Hinzufügen</button></div>
+      </form>
+    </details>
+    {{end}}
+
+    <div class="ts-p" style="margin-top:14px;border-top:2px solid var(--border);padding-top:12px">
+      <div style="flex:1">
+        <div style="font-weight:500">Schulende/r: {{if $s.TrainerDisplay}}{{$s.TrainerDisplay}}{{else}}—{{end}}</div>
+        <div class="rec-sub">{{if $s.TrainerSigned}}unterschrieben {{$s.TrainerSignedAt}}{{else}}bestätigt die Durchführung{{end}}</div>
+      </div>
+      {{if $s.TrainerSigned}}<img class="ts-sig" src="{{$s.TrainerSigURL}}" alt="Unterschrift Schulende/r">
+      {{else if and (not $s.Archived) (or .CanEdit (eq $s.TrainerID .MyUserID))}}<button type="button" class="btn btn-primary no-print" onclick="tsSign('trainer', 'Schulende/r')"><i class="ti ti-signature"></i> Unterschreiben</button>{{end}}
+    </div>
+  </div>
+</div>
+
+{{if .CanEdit}}
+<div class="card no-print">
+  {{with $s.Missing}}
+  <div style="color:var(--muted);font-size:12.5px"><i class="ti ti-list-check"></i> Zum Abschließen fehlt noch: <b style="color:var(--text)">{{join . ", "}}</b></div>
+  {{else}}
+  <form method="post" action="/trainings/sessions/{{$s.ID}}/archive" onsubmit="return confirm('Nachweis abschließen und archivieren? Danach ist er unveränderlich.')">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-archive"></i> Abschließen &amp; archivieren</button>
+    <span class="rec-sub" style="margin-left:8px">Alle Angaben und Unterschriften sind vollständig.</span>
+  </form>
+  {{end}}
+  {{if .CanManage}}
+  <form method="post" action="/trainings/sessions/{{$s.ID}}/delete" style="margin-top:10px" onsubmit="return confirm('Offenen Nachweis löschen?')">
+    <button class="btn" type="submit" style="font-size:11px"><i class="ti ti-trash"></i> Offenen Nachweis löschen</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+<!-- Unterschrift -->
+<div id="ts-modal" class="no-print" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;width:min(560px,calc(100vw - 24px))">
+    <div style="font-size:15px;font-weight:600;margin-bottom:4px">Unterschrift: <span id="ts-who-name"></span></div>
+    <p class="rec-sub" style="margin-bottom:8px">Ich bestätige die Teilnahme an „{{$s.TopicName}}“{{if $s.Date}} am {{$s.Date}}{{end}} mit den oben aufgeführten Inhalten.</p>
+    <canvas id="ts-pad" width="1040" height="360" style="width:100%;height:180px;background:#fff;border-radius:8px;touch-action:none;cursor:crosshair;border:1px solid var(--border)"></canvas>
+    <div id="ts-sign-err" style="color:var(--red);font-size:12px;min-height:16px;margin-top:6px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button type="button" class="btn" onclick="tsClear()"><i class="ti ti-eraser"></i> Löschen</button>
+      <button type="button" class="btn" onclick="tsClose()">Abbrechen</button>
+      <button type="button" class="btn btn-primary" id="ts-save" onclick="tsSave()"><i class="ti ti-check"></i> Unterschrift speichern</button>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<style>
+.ts-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+.ts-kv{display:flex;gap:10px;font-size:13px;padding:3px 0}.ts-kv span{color:var(--muted);width:110px;flex-shrink:0}
+.ts-bullets{margin:6px 0 0 18px;font-size:13px;line-height:1.6}
+.ts-p{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.ts-sig{height:46px;max-width:180px;background:#fff;border-radius:6px;border:1px solid var(--border);object-fit:contain}
+.print-only{display:none}
+@media (max-width:900px){.ts-grid{grid-template-columns:1fr}}
+@media print{
+  .sidebar,.topbar,.context,.no-print,.rec-tabs,.chat-toast,.pdh-backdrop,.global-footer{display:none!important}
+  .print-only{display:block!important}
+  .app{display:block!important}.main-wrap,.main{margin:0!important;padding:0!important;overflow:visible!important}
+  body{height:auto!important;overflow:visible!important;background:#fff!important;color:#000!important}
+  .card{border:1px solid #999!important;background:#fff!important;break-inside:avoid}
+  .ts-grid{grid-template-columns:1fr!important}
+}
+</style>
+<script>
+const TS_ID = '{{.Session.ID}}';
+const TS_LAST = {{.LastContent}};
+let tsWho = null, tsDrawn = false;
+function tsTakeLast(){
+  const ta = document.getElementById('ts-content');
+  if(ta.value.trim() && !confirm('Vorhandene Stichpunkte ersetzen?')) return;
+  ta.value = TS_LAST;
+}
+function tsSign(who, name){
+  tsWho = who;
+  document.getElementById('ts-who-name').textContent = name;
+  document.getElementById('ts-sign-err').textContent = '';
+  document.getElementById('ts-modal').style.display = 'flex';
+  tsClear();
+}
+function tsClose(){ document.getElementById('ts-modal').style.display = 'none'; }
+function tsClear(){
+  const c = document.getElementById('ts-pad'), x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+  x.strokeStyle = '#111'; x.lineWidth = 4; x.lineCap = 'round'; x.lineJoin = 'round';
+  tsDrawn = false;
+}
+(function(){
+  const c = document.getElementById('ts-pad'); if(!c) return;
+  const x = c.getContext('2d'); let down = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+  c.addEventListener('pointerdown', e => { down = true; c.setPointerCapture(e.pointerId); const [px, py] = pos(e); x.beginPath(); x.moveTo(px, py); });
+  c.addEventListener('pointermove', e => { if(!down) return; const [px, py] = pos(e); x.lineTo(px, py); x.stroke(); tsDrawn = true; });
+  const up = () => { down = false; };
+  c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+})();
+async function tsSave(){
+  const err = document.getElementById('ts-sign-err');
+  if(!tsDrawn){ err.textContent = 'Bitte im weißen Feld unterschreiben.'; return; }
+  const btn = document.getElementById('ts-save'); btn.disabled = true;
+  try{
+    const body = new URLSearchParams({who: tsWho, signature: document.getElementById('ts-pad').toDataURL('image/png')});
+    const res = await fetch('/trainings/sessions/' + TS_ID + '/sign', {method: 'POST', credentials: 'same-origin', body});
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok || !j.success) throw new Error(j.error || ('HTTP ' + res.status));
+    location.reload();
+  }catch(e){ err.textContent = e.message; btn.disabled = false; }
+}
+</script>
+{{end}}

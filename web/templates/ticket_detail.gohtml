@@ -94,6 +94,10 @@
             {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesene Gruppe</label>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/ticket/{{.Ticket.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
+        </div>
         <div id="people-result-ticket" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
@@ -142,7 +146,7 @@
         {{end}}
       </div>
       <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
-        <input name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
+        <input data-suggest="comment" name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
         {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
       </form>
     </div>
@@ -155,7 +159,7 @@
       <div class="card-title">Durchgeführte Maßnahmen</div>
       <div id="ticket-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
       <div id="ticket-actions-add" style="display:flex;gap:8px">
-        <input id="ta-new-action" class="form-input" placeholder="z.B. Ersatzteil bestellt" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTicketAction();}">
+        <input data-suggest="action" id="ta-new-action" class="form-input" placeholder="z.B. Ersatzteil bestellt" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addTicketAction();}">
         <button type="button" class="btn" onclick="addTicketAction()"><i class="ti ti-plus"></i></button>
       </div>
     </div>

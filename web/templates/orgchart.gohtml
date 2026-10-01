@@ -15,6 +15,14 @@
 .orgchart-user-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:280px;padding-top:2px}
 .orgchart-card{display:flex;align-items:center;gap:6px;padding:4px 9px 4px 4px;border:1px solid var(--border);border-radius:20px;background:var(--bg3);font-size:11.5px;color:var(--muted);white-space:nowrap}
 .orgchart-empty{font-size:11px;color:var(--muted);padding-top:2px;font-style:italic}
+.od-tree{display:flex;gap:28px;flex-wrap:wrap;justify-content:center;padding:14px 6px}
+.od-node{display:flex;flex-direction:column;align-items:center}
+.od-box{min-width:170px;border:1px solid var(--border);border-top:3px solid var(--muted);border-radius:10px;background:var(--bg2);padding:10px 14px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.od-box.global{border-top-color:var(--accent)}
+.od-name{font-weight:700;font-size:14px}
+.od-meta{font-size:11px;color:var(--muted);margin-top:3px}
+.od-kids{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;border-top:2px solid var(--border);padding-top:14px;margin-top:0}
+.od-stem{width:2px;height:14px;background:var(--border)}
 @media(max-width:900px){.orgchart-tree{align-items:flex-start}.orgchart-tier-row{width:auto;flex-wrap:wrap;justify-content:flex-start;margin:0}.orgchart-tier-row.multi{border-top:none;padding-top:0}.orgchart-role-node::before{display:none}.orgchart-tier-connector{display:none}}
 </style>
 {{end}}
@@ -39,6 +47,7 @@
              ondragover="orgchartDragOver(event, this)" ondragleave="orgchartDragLeave(event, this)" ondrop="orgchartDrop(event, this)">
           <div class="orgchart-role-label">{{.Label}}</div>
           <div class="orgchart-role-meta" title="Rangstufe in der Hierarchie">Rang {{.Level}} · {{len .Users}} Benutzer</div>
+          {{if .Dept}}<div style="margin-top:4px"><span class="badge b-gray" title="Abteilung der Rolle"><i class="ti ti-building"></i> {{.Dept}}</span></div>{{end}}
         </div>
         {{if .Users}}
         <div class="orgchart-role-stem"></div>
@@ -63,6 +72,13 @@
     </div>
     {{end}}
   </div>
+</div>
+
+<div class="card" style="overflow-x:auto;margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-building"></i> Abteilungen</span><a href="/admin/org-units" style="font-size:12px;color:var(--accent)">bearbeiten</a></div>
+  <p class="rec-sub">Die Abteilung einer Anlage bestimmt, wer ihre Vorgänge sieht: Rollen einer Abteilung sehen ihre Vorgänge und die der Unterabteilungen. <span class="badge b-blue">übergeordnet</span> = sieht alle Abteilungen.</p>
+  {{if .Departments}}<div class="od-tree">{{range .Departments}}{{template "orgchart-dept" .}}{{end}}</div>
+  {{else}}<p class="rec-sub" style="padding:10px 0">Noch keine Abteilungen.</p>{{end}}
 </div>
 {{end}}
 
@@ -133,4 +149,20 @@ async function orgchartDrop(event, box){
   }
 }
 </script>
+{{end}}
+
+
+{{define "orgchart-dept"}}
+<div class="od-node">
+  <div class="od-box{{if .IsGlobal}} global{{end}}">
+    <div class="od-name">{{.Name}}</div>
+    {{if .IsGlobal}}<div style="margin-top:3px"><span class="badge b-blue">übergeordnet</span></div>{{end}}
+    <div class="od-meta">{{if .ManagerName}}Leitung: {{.ManagerName}} · {{end}}{{.MemberCount}} Mitarbeitende</div>
+    {{if .Roles}}<div class="od-meta"><i class="ti ti-shield-lock"></i> {{join .Roles ", "}}</div>{{end}}
+  </div>
+  {{if .Children}}
+  <div class="od-stem"></div>
+  <div class="od-kids">{{range .Children}}{{template "orgchart-dept" .}}{{end}}</div>
+  {{end}}
+</div>
 {{end}}

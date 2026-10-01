@@ -254,6 +254,7 @@ func main() {
 	webHandler.StartPurchaseReportSchedule(context.Background())
 	webHandler.StartBackupSystem(context.Background())
 	webHandler.StartChangeNotifier(context.Background())
+	webHandler.StartTrainingScheduler(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
@@ -280,6 +281,7 @@ func main() {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(webHandler.APIDepartmentScope)
 		r.Mount("/users", userHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/storage", storageHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/shifts", shiftHandler.Routes(cfg.Auth.JWTSecret))
@@ -339,9 +341,10 @@ func main() {
 		cmd, err := db.Pool.Exec(r.Context(), `
 			INSERT INTO maintenance_plans
 			  (id, name, description, type, infrastructure_id, interval_type, interval_days,
-			   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id)
+			   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id, responsible_to, assigned_group_id)
 			VALUES (gen_random_uuid(), $1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
-				0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid, NULLIF($11,'')::uuid)`,
+				0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid, NULLIF($11,'')::uuid, NULLIF($12,'')::uuid,
+				NULLIF(NULLIF($13,''),'__keep__')::uuid)`,
 			name,
 			strings.TrimSpace(r.FormValue("description")),
 			r.FormValue("type"),
@@ -353,6 +356,8 @@ func main() {
 			firstDue,
 			createdBy,
 			strings.TrimSpace(r.FormValue("cost_center_id")),
+			strings.TrimSpace(r.FormValue("responsible_to")),
+			strings.TrimSpace(r.FormValue("assigned_group_id")),
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("maintenance plan create failed")
@@ -370,7 +375,7 @@ func main() {
 
 	// FIX: war r.Put(...) - PUT wird von Cloudflare/Nginx blockiert, siehe gleiches
 	// Problem bei users/tickets/shifts. Frontend muss ggf. auf POST umgestellt werden.
-	r.Post("/maintenance/plans/{id}/edit-web", func(w http.ResponseWriter, r *http.Request) {
+	r.With(webHandler.SessionDepartmentScope).Post("/maintenance/plans/{id}/edit-web", func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
 			return
@@ -406,6 +411,9 @@ func main() {
 			    priority=$9::maintenance_priority,
 			    next_due_at=CASE WHEN NULLIF($10,'') IS NULL THEN next_due_at ELSE $10::date END,
 			    cost_center_id=NULLIF($11,'')::uuid,
+			    assigned_to=CASE WHEN $13 THEN NULLIF($14,'')::uuid ELSE assigned_to END,
+			    responsible_to=CASE WHEN $15 THEN NULLIF($16,'')::uuid ELSE responsible_to END,
+			    assigned_group_id=CASE WHEN $17 THEN NULLIF($18,'')::uuid ELSE assigned_group_id END,
 			active=true
 			WHERE id=$12`,
 			name,
@@ -420,6 +428,12 @@ func main() {
 			strings.TrimSpace(r.FormValue("next_due_at")),
 			strings.TrimSpace(r.FormValue("cost_center_id")),
 			planID,
+			r.Form["assigned_to"] != nil,
+			strings.TrimSpace(r.FormValue("assigned_to")),
+			r.Form["responsible_to"] != nil,
+			strings.TrimSpace(r.FormValue("responsible_to")),
+			r.Form["assigned_group_id"] != nil && r.FormValue("assigned_group_id") != "__keep__",
+			strings.TrimSpace(r.FormValue("assigned_group_id")),
 		)
 		if err != nil {
 			log.Error().Err(err).Str("plan_id", planID).Msg("maintenance plan edit failed")
@@ -452,7 +466,7 @@ func main() {
 		http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
 	})
 
-	r.Delete("/maintenance/plans/{id}/delete-web", func(w http.ResponseWriter, r *http.Request) {
+	r.With(webHandler.SessionDepartmentScope).Delete("/maintenance/plans/{id}/delete-web", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := db.Pool.Exec(r.Context(), `UPDATE maintenance_plans SET active=false WHERE id=$1`, chi.URLParam(r, "id")); err != nil {
 			http.Error(w, "Wartungsplan konnte nicht vorgemerkt werden: "+err.Error(), http.StatusInternalServerError)
 			return

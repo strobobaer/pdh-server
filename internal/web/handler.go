@@ -49,21 +49,22 @@ type BaseData struct {
 	FaultID       string
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
-	IsSystemUser           bool // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
-	IsOverrideSession      bool // aktuell per Override auf einem Systemnutzer angemeldet
-	IdleTimeoutMinutes     int  // globale Auto-Logout-Zeit (Minuten)
-	OverrideTimeoutMinutes int  // Zeit bis zur automatischen Rückkehr zum Systemnutzer
-	CanManageUsers         bool // Benutzerverwaltung anzeigen
-	CanManageRoles         bool // Nav-Link "Rollen & Berechtigungen" anzeigen
-	CanImport              bool // Nav-Link "Import" anzeigen
-	CanExport              bool // Nav-Link "Export" anzeigen
-	CanChat                bool // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
-	CanBackup              bool // Nav-Link "Datensicherung"
-	CanCleanup             bool // Nav-Link "Bereinigung"
-	CanServerConfig        bool // Nav-Link "Server-Einstellungen" (nur Admins)
-	Brand                  Branding // Name und Logos (Erscheinungsbild)
-	CanEditInfra           bool     // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
-	TerminalInfraID        string   // Standort des Terminals: Infra-Picker klappt bis hierhin auf
+	IsSystemUser           bool       // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
+	IsOverrideSession      bool       // aktuell per Override auf einem Systemnutzer angemeldet
+	IdleTimeoutMinutes     int        // globale Auto-Logout-Zeit (Minuten)
+	OverrideTimeoutMinutes int        // Zeit bis zur automatischen Rückkehr zum Systemnutzer
+	CanManageUsers         bool       // Benutzerverwaltung anzeigen
+	CanManageRoles         bool       // Nav-Link "Rollen & Berechtigungen" anzeigen
+	CanImport              bool       // Nav-Link "Import" anzeigen
+	CanExport              bool       // Nav-Link "Export" anzeigen
+	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
+	CanBackup              bool       // Nav-Link "Datensicherung"
+	CanCleanup             bool       // Nav-Link "Bereinigung"
+	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
+	Brand                  Branding   // Name und Logos (Erscheinungsbild)
+	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
+	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
+	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
 }
 
@@ -324,6 +325,7 @@ func NewHandler(
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(h.authMiddleware)
+	r.Use(h.DepartmentScopeMiddleware)
 
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
@@ -407,6 +409,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Delete("/time/{id}/delete-web", h.TimeDeleteWeb)
 	r.Post("/time/{id}/edit-web", h.TimeEditWeb)
 	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
+	r.Get("/records/{refType}/{id}/group-options", h.RecordGroupOptionsWeb)
+	r.Put("/records/{refType}/{id}/group", h.RecordGroupWeb)
 	r.Get("/records/{refType}/{id}/parties", h.RecordPartiesWeb)
 	r.Post("/records/{refType}/{id}/parties", h.RecordPartyAddWeb)
 	r.Post("/records/{refType}/{id}/parties/{partyId}/delete", h.RecordPartyDeleteWeb)
@@ -517,6 +521,27 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
+	r.Post("/users/{id}/groups", h.UserGroupsSaveWeb)
+	r.Get("/admin/org-units", h.OrgUnitsPage)
+	r.Get("/trainings", h.TrainingsPage)
+	r.Get("/suggest", h.SuggestWeb)
+	r.Post("/suggest/accept", h.SuggestAcceptWeb)
+	r.Post("/trainings/topics", h.TrainingTopicSaveWeb)
+	r.Post("/trainings/topics/{id}/delete", h.TrainingTopicDeleteWeb)
+	r.Post("/trainings/sessions", h.TrainingSessionCreateWeb)
+	r.Get("/trainings/sessions/{id}", h.TrainingSessionPage)
+	r.Post("/trainings/sessions/{id}", h.TrainingSessionSaveWeb)
+	r.Post("/trainings/sessions/{id}/participants", h.TrainingParticipantsAddWeb)
+	r.Post("/trainings/sessions/{id}/participants/{uid}/remove", h.TrainingParticipantRemoveWeb)
+	r.Post("/trainings/sessions/{id}/sign", h.TrainingSignWeb)
+	r.Post("/trainings/sessions/{id}/archive", h.TrainingArchiveWeb)
+	r.Post("/trainings/sessions/{id}/reuse", h.TrainingReuseWeb)
+	r.Post("/trainings/sessions/{id}/delete", h.TrainingSessionDeleteWeb)
+	r.Get("/trainings/user/{id}", h.TrainingUserFragment)
+	r.Post("/admin/departments", h.DepartmentSaveWeb)
+	r.Post("/admin/departments/{id}/delete", h.DepartmentDeleteWeb)
+	r.Post("/admin/groups", h.GroupSaveWeb)
+	r.Post("/admin/groups/{id}/delete", h.GroupDeleteWeb)
 	r.Post("/users/{id}/qualifications/{qid}/delete", h.UserQualificationDeleteWeb)
 	r.Post("/users/save-web", h.UserSaveWeb)
 	r.Post("/users/{id}/role-web", h.UserRoleWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -547,6 +572,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/roles", h.RoleCreateWeb)
 	r.Post("/admin/roles/{id}/delete-web", h.RoleDeleteWeb)
 	r.Post("/admin/roles/{id}/level-web", h.RoleUpdateLevelWeb)
+	r.Post("/admin/roles/{id}/department-web", h.RoleDepartmentWeb)
 	r.Post("/admin/roles/matrix-web", h.RoleMatrixWeb)
 	r.Post("/admin/settings", h.SettingsWeb)
 
@@ -789,6 +815,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
+		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
@@ -856,8 +883,16 @@ func (h *Handler) userOptions(ctx context.Context) []UserOption {
 	return opts
 }
 
+// peopleTable: Datensatztypen mit den Spalten assigned_to und responsible_to.
+func peopleTable(refType string) (string, bool) {
+	if refType == "project" {
+		return "projects", true
+	}
+	return recordTable(refType)
+}
+
 func (h *Handler) recordPeople(ctx context.Context, refType, id string) RecordPeople {
-	table, ok := recordTable(refType)
+	table, ok := peopleTable(refType)
 	if !ok || h.db == nil {
 		return RecordPeople{}
 	}
@@ -972,7 +1007,7 @@ func (h *Handler) addHistory(ctx context.Context, refType, id, action, field, ol
 func (h *Handler) RecordPeopleWeb(w http.ResponseWriter, r *http.Request) {
 	refType := chi.URLParam(r, "refType")
 	id := chi.URLParam(r, "id")
-	table, ok := recordTable(refType)
+	table, ok := peopleTable(refType)
 	if !ok {
 		http.Error(w, "unbekannter datensatztyp", http.StatusBadRequest)
 		return
@@ -994,6 +1029,10 @@ func (h *Handler) RecordPeopleWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if old.ResponsibleID != responsible {
 		h.addHistory(r.Context(), refType, id, "people", "responsible_to", old.ResponsibleID, responsible, "Verantwortlicher Mitarbeiter geändert", u.ID)
+	}
+	if err := h.setRecordGroup(r, refType, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, `<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Zuständigkeit gespeichert</span>`)
@@ -1295,10 +1334,11 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	}, true, brokerInboxTab(unassigned))
 
 	tagIDs := h.categoryFilterIDs(r, "fault")
+	scopeIDs := h.scopeAllowedIDs(r, "fault")
 	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
 		data.Total = len(fl)
 		for _, f := range fl {
-			if tagIDs != nil && !tagIDs[f.ID] {
+			if tagIDs != nil && !tagIDs[f.ID] || scopeIDs != nil && !scopeIDs[f.ID] {
 				continue
 			}
 			if unassigned && (f.AssignedTo != nil || f.Status == "resolved" || f.Status == "closed") {
@@ -1341,10 +1381,11 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 	}, true, brokerInboxTab(unassigned))
 
 	tagIDs := h.categoryFilterIDs(r, "ticket")
+	scopeIDs := h.scopeAllowedIDs(r, "ticket")
 	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
 		data.Total = len(tl)
 		for _, t := range tl {
-			if tagIDs != nil && !tagIDs[t.ID] {
+			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
 				continue
 			}
 			if unassigned && (t.AssignedTo != nil || t.Status == "resolved" || t.Status == "closed") {
@@ -1886,6 +1927,7 @@ type SimilarFaultView struct {
 	ID         string
 	Title      string
 	Resolution string
+	Percent    int // berechnete Aehnlichkeit
 }
 
 func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
@@ -1948,13 +1990,18 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Analyse laden
+	var similar []faults.SimilarFault
 	if a, err := h.faults.GetAnalysis(ctx, id); err == nil {
 		data.Analysis = a
-		for _, s := range a.SimilarFaults {
-			data.SimilarFaults = append(data.SimilarFaults, SimilarFaultView{
-				ID: s.ID, Title: s.Title, Resolution: s.Resolution,
-			})
-		}
+		similar = a.SimilarFaults
+	}
+	if len(similar) == 0 { // auch ohne Copilot-Analyse aehnliche geloeste Faelle zeigen
+		similar, _ = h.faults.SimilarFaults(ctx, id, 5)
+	}
+	for _, s := range similar {
+		data.SimilarFaults = append(data.SimilarFaults, SimilarFaultView{
+			ID: s.ID, Title: s.Title, Resolution: s.Resolution, Percent: int(s.Similarity*100 + 0.5),
+		})
 	}
 
 	// Zeiteinträge
@@ -2023,19 +2070,23 @@ type MaintenancePageData struct {
 type InfraOption struct{ ID, Name string }
 
 type MaintPlanView struct {
-	ID            string
-	Name          string
-	InfraID       string
-	InfraName     string
-	TypeValue     string
-	TypeLabel     string
-	IntervalValue string
-	IntervalDays  int
-	IntervalLabel string
-	NextDue       string
-	NextDueISO    string
-	Priority      string
-	PriorityDot   string
+	ID              string
+	Name            string
+	InfraID         string
+	InfraName       string
+	TypeValue       string
+	TypeLabel       string
+	IntervalValue   string
+	IntervalDays    int
+	IntervalLabel   string
+	NextDue         string
+	NextDueISO      string
+	Priority        string
+	PriorityDot     string
+	AssignedID      string
+	AssigneeName    string
+	ResponsibleID   string
+	ResponsibleName string
 }
 
 type MaintTaskView struct {
@@ -2088,26 +2139,35 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 			"preventive": "Vorbeugend", "inspection": "Inspektion",
 			"calibration": "Kalibrierung", "cleaning": "Reinigung",
 		}
+		planScope := h.scopeAllowedIDs(r, "maintenance_plan")
 		for _, p := range plans {
+			if planScope != nil && !planScope[p.ID] {
+				continue
+			}
 			data.Plans = append(data.Plans, MaintPlanView{
 				ID: p.ID, Name: p.Name, InfraID: p.InfrastructureID, InfraName: p.InfraName,
-				TypeValue:     string(p.Type),
-				TypeLabel:     typeLabels[p.Type],
-				IntervalValue: string(p.Interval),
-				IntervalDays:  p.IntervalDays,
-				IntervalLabel: intervalLabels[p.Interval],
-				NextDue:       p.NextDueAt.Format("02.01.2006"),
-				NextDueISO:    p.NextDueAt.Format("2006-01-02"),
-				Priority:      string(p.Priority),
-				PriorityDot:   priorityDot(string(p.Priority)),
+				TypeValue:       string(p.Type),
+				TypeLabel:       typeLabels[p.Type],
+				IntervalValue:   string(p.Interval),
+				IntervalDays:    p.IntervalDays,
+				IntervalLabel:   intervalLabels[p.Interval],
+				NextDue:         p.NextDueAt.Format("02.01.2006"),
+				NextDueISO:      p.NextDueAt.Format("2006-01-02"),
+				Priority:        string(p.Priority),
+				PriorityDot:     priorityDot(string(p.Priority)),
+				AssignedID:      derefOr(p.AssignedTo, ""),
+				AssigneeName:    p.AssigneeName,
+				ResponsibleID:   derefOr(p.ResponsibleTo, ""),
+				ResponsibleName: p.ResponsibleName,
 			})
 		}
 	}
 
 	tagIDs := h.categoryFilterIDs(r, "maintenance_task")
+	scopeIDs := h.scopeAllowedIDs(r, "maintenance_task")
 	if tasks, err := h.maint.ListTasks(ctx, status, ""); err == nil {
 		for _, t := range tasks {
-			if tagIDs != nil && !tagIDs[t.ID] {
+			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
 				continue
 			}
 			if t.Status == "open" {
@@ -2157,12 +2217,15 @@ func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) 
 		Interval:         maintenance.Interval(r.FormValue("interval")),
 		Priority:         maintenance.Priority(r.FormValue("priority")),
 		AssignedTo:       optionalID(r.FormValue("assigned_to")),
+		ResponsibleTo:    optionalID(r.FormValue("responsible_to")),
 		FirstDueAt:       r.FormValue("first_due_at"),
 	}
-	if _, err := h.maint.CreatePlan(r.Context(), in, u.ID); err != nil {
+	plan, err := h.maint.CreatePlan(r.Context(), in, u.ID)
+	if err != nil {
 		http.Error(w, "Wartungsplan konnte nicht angelegt werden: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	_ = h.setRecordGroup(r, "maintenance_plan", plan.ID)
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/maintenance")
 		w.WriteHeader(http.StatusNoContent)
@@ -2189,12 +2252,24 @@ func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request)
 		Priority:         maintenance.Priority(r.FormValue("priority")),
 		NextDueAt:        r.FormValue("next_due_at"),
 	}
+	if _, ok := r.Form["assigned_to"]; ok {
+		v := strings.TrimSpace(r.FormValue("assigned_to"))
+		in.AssignedTo = &v
+	}
+	if _, ok := r.Form["responsible_to"]; ok {
+		v := strings.TrimSpace(r.FormValue("responsible_to"))
+		in.ResponsibleTo = &v
+	}
 	if in.Name == "" {
 		http.Error(w, "Name ist Pflicht", http.StatusBadRequest)
 		return
 	}
 	if err := h.maint.UpdatePlan(r.Context(), chi.URLParam(r, "id"), in); err != nil {
 		http.Error(w, "Wartungsplan konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := h.setRecordGroup(r, "maintenance_plan", chi.URLParam(r, "id")); err != nil {
+		http.Error(w, "Gruppe konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -3079,6 +3154,8 @@ type ITAssetDetailView struct {
 	WarrantyUntil    string
 	AssignedID       string
 	AssigneeName     string
+	ResponsibleID    string
+	ResponsibleName  string
 	InfrastructureID string
 	InfraName        string
 	Notes            string
@@ -3096,6 +3173,10 @@ type UsersPageData struct {
 	CanPromoteAdmin bool
 	ScopedToOwnTeam bool         // Betrachter hat kein system.manage_users, sieht/bearbeitet nur eigene (indirekte) Unteruser
 	ManagerOptions  []UserOption // fuer die "Vorgesetzter"-Auswahl im Bearbeiten-Formular
+	Departments     []string     // Auswahl fuer das Feld Abteilung
+	DeptFilter      string       // ?dept=
+	GroupFilter     string       // ?group=
+	GroupOptions    []UserOption // Gruppen fuer den Filter
 }
 
 type UserView struct {
@@ -3217,6 +3298,17 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := r.URL.Query().Get("role")
+	deptFilter := r.URL.Query().Get("dept")
+	groupFilter := r.URL.Query().Get("group")
+	var groupMembers map[string]bool
+	if groupFilter != "" {
+		groupMembers = map[string]bool{}
+		for _, g := range h.loadGroups(ctx) {
+			if g.ID == groupFilter {
+				groupMembers = g.MemberIDs
+			}
+		}
+	}
 	data := UsersPageData{
 		BaseData:        h.baseData(r, "users", "Benutzerverwaltung", "Rollen"),
 		Filter:          filter,
@@ -3251,7 +3343,9 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 			}
 			data.ActiveUsers++
 			roleCounts[string(u.Role)]++
-			if filter == "" || string(u.Role) == filter {
+			if (filter == "" || string(u.Role) == filter) &&
+				(deptFilter == "" || strings.EqualFold(strings.TrimSpace(u.Department), deptFilter)) &&
+				(groupMembers == nil || groupMembers[u.ID]) {
 				data.Users = append(data.Users, h.userView(actorRoleKey, u, roleLabelByKey, userNames, subordinateSet))
 			}
 		}
@@ -3270,6 +3364,11 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 				data.RoleStats = append(data.RoleStats, RoleStat{Icon: icon, Label: ro.Label, Count: roleCounts[ro.Key]})
 			}
 		}
+	}
+	data.Departments = h.departmentNames(r.Context())
+	data.DeptFilter, data.GroupFilter = deptFilter, groupFilter
+	for _, g := range h.loadGroups(ctx) {
+		data.GroupOptions = append(data.GroupOptions, UserOption{ID: g.ID, Name: g.Name})
 	}
 	h.render(w, "users", data)
 }
@@ -3506,6 +3605,9 @@ type RolesPageData struct {
 	IdleTimeoutMinutes     int
 	OverrideTimeoutMinutes int
 	NextRoleLevel          int
+	Departments            []deptView
+	RoleDepartments        map[string]string   // roleID -> departmentID
+	RoleTrainings          map[string][]string // roleKey -> Pflichtschulungen
 }
 
 // RoleColumn ist eine Rollen-Spalte der Berechtigungs-Matrix, angereichert
@@ -3585,6 +3687,9 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
 		NextRoleLevel:          nextRoleLevel,
+		Departments:            h.loadDepartments(ctx),
+		RoleDepartments:        h.roleDepartments(ctx),
+		RoleTrainings:          h.roleTrainings(ctx),
 	}
 	h.render(w, "roles", data)
 }
@@ -4026,6 +4131,10 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		PartnerLinks   []PartnerLink
 		SupplierID     string
 		ServiceID      string
+		Departments    []deptView
+		DepartmentID   string // eigene Abteilung der Anlage
+		EffectiveDept  string // wirksame Abteilung (ggf. geerbt)
+		DeptInherited  bool
 	}
 	node, err := h.infra.GetByID(ctx, id)
 	if err != nil {
@@ -4039,6 +4148,13 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		CommentRefs:    h.infraCommentRefOptions(ctx, id),
 	}
 	data.PartnerLinks, data.SupplierID, data.ServiceID = h.infraPartnerLinks(ctx, id)
+	data.Departments = h.loadDepartments(ctx)
+	var effID string
+	_ = h.db.QueryRow(ctx, `SELECT COALESCE((SELECT department_id::text FROM infrastructure WHERE id = $1::uuid), ''),
+		COALESCE((SELECT d.id::text FROM infrastructure_department x JOIN departments d ON d.id = x.department_id WHERE x.infrastructure_id = $1::uuid), ''),
+		COALESCE((SELECT d.name FROM infrastructure_department x JOIN departments d ON d.id = x.department_id WHERE x.infrastructure_id = $1::uuid), '')`, id).
+		Scan(&data.DepartmentID, &effID, &data.EffectiveDept)
+	data.DeptInherited = effID != "" && effID != data.DepartmentID
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
 		for _, c := range children {
 			data.Children = append(data.Children, infraNodeView(c))
@@ -4072,6 +4188,9 @@ func (h *Handler) InfraUpdate(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = h.saveInfraPartnerRoles(r.Context(), r, id)
 	}
+	if _, ok := r.Form["department_id"]; ok && err == nil {
+		_, err = h.db.Exec(r.Context(), `UPDATE infrastructure SET department_id = $1 WHERE id = $2::uuid`, nullID(r.FormValue("department_id")), id)
+	}
 	w.Header().Set("Content-Type", "text/html")
 	if err != nil {
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">Fehler: `+err.Error()+`</div>`)
@@ -4090,7 +4209,11 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
+		scopeIDs := h.scopeAllowedIDs(r, "it_asset")
 		for _, a := range list {
+			if scopeIDs != nil && !scopeIDs[a.ID] {
+				continue
+			}
 			data.Assets = append(data.Assets, ITAssetView{
 				ID: a.ID, Name: a.Name,
 				TypeLabel: typeLabels[string(a.Type)], TypeIcon: typeIcons[string(a.Type)],
@@ -4165,6 +4288,10 @@ func itAssetDetailView(a *it.Asset) ITAssetDetailView {
 	if a.AssignedTo != nil {
 		v.AssignedID = *a.AssignedTo
 	}
+	v.ResponsibleName = a.ResponsibleName
+	if a.ResponsibleTo != nil {
+		v.ResponsibleID = *a.ResponsibleTo
+	}
 	if a.InfrastructureID != nil {
 		v.InfrastructureID = *a.InfrastructureID
 	}
@@ -4218,6 +4345,7 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 		PurchasedAt:      optionalID(r.FormValue("purchased_at")),
 		WarrantyUntil:    optionalID(r.FormValue("warranty_until")),
 		AssignedTo:       optionalID(r.FormValue("assigned_to")),
+		ResponsibleTo:    optionalID(r.FormValue("responsible_to")),
 		InfrastructureID: optionalID(r.FormValue("infrastructure_id")),
 		Notes:            r.FormValue("notes"),
 	}

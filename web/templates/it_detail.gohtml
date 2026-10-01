@@ -37,6 +37,7 @@
         <div><div style="color:var(--muted);font-size:11px">Standort</div>{{if .Asset.Location}}{{.Asset.Location}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Gekauft am</div>{{if .Asset.PurchasedAt}}{{.Asset.PurchasedAt}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Garantie bis</div>{{if .Asset.WarrantyUntil}}{{.Asset.WarrantyUntil}}{{else}}—{{end}}</div>
+        <div><div style="color:var(--muted);font-size:11px">Verantwortlich</div>{{if .Asset.ResponsibleName}}{{.Asset.ResponsibleName}}{{else}}—{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Zugewiesen an</div>{{if .Asset.AssigneeName}}{{.Asset.AssigneeName}}{{else}}Niemand{{end}}</div>
         <div><div style="color:var(--muted);font-size:11px">Infrastruktur</div>{{if .Asset.InfraName}}{{.Asset.InfraName}}{{else}}—{{end}}</div>
       </div>
@@ -117,6 +118,13 @@
             <label class="form-label">Garantie bis</label>
             <input type="date" name="warranty_until" class="form-input" value="{{.Asset.WarrantyUntil}}">
           </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Verantwortlich</label>
+          <select name="responsible_to" class="form-input">
+            <option value="">Nicht gesetzt</option>
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Asset.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Zugewiesen an</label>

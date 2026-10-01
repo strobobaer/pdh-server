@@ -370,9 +370,13 @@ func (h *Handler) changeRecipients(ctx context.Context, module, rec string) []st
 		q = `SELECT unnest(ARRAY[created_by, responsible_to]) FROM tasks WHERE id = $1::uuid
 		     UNION SELECT user_id FROM task_assignees WHERE task_id = $1::uuid`
 	case "project":
-		q = `SELECT unnest(ARRAY[created_by, responsible_to]) FROM projects WHERE id = $1::uuid`
+		q = `SELECT unnest(ARRAY[created_by, responsible_to, assigned_to]) FROM projects WHERE id = $1::uuid`
 	default:
 		return nil
+	}
+	// Mitglieder der zugewiesenen Gruppe
+	if table, ok := groupTable(module); ok {
+		q += ` UNION SELECT gm.user_id FROM user_group_members gm WHERE gm.group_id = (SELECT assigned_group_id FROM ` + table + ` WHERE id = $1::uuid)`
 	}
 	rows, err := h.db.Query(ctx, `
 		SELECT u.id::text FROM users u

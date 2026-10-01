@@ -135,6 +135,11 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="records" data-title="Arbeiten mit Datensätzen" data-pages="">
   <h2><i class="ti ti-layout-dashboard"></i> Arbeiten mit Datensätzen</h2>
   <p>Egal ob Störung, Ersatzteil oder Anlage – jeder Datensatz ist gleich aufgebaut. Wer ein Modul kennt, kennt alle.</p>
+  <div class="hb-howto"><b><i class="ti ti-keyboard"></i> Text-Vorschläge beim Tippen</b>In Titeln, Beschreibungen, Maßnahmen, Ursachen, Lösungen, Kommentaren, Schulungsinhalten und Freitext-Punkten von Checklisten schlägt PDH vor, wie es weitergehen könnte – gelernt aus allem, was im Betrieb schon geschrieben wurde. Grau angezeigt wird die Ergänzung der aktuellen Zeile (ganze Formulierung, nächstes Wort oder Wortende), darunter weitere passende Formulierungen.
+    <ul>
+      <li><b>Tab</b> übernimmt den markierten Vorschlag, <b>↑ ↓</b> wählen, <b>Esc</b> schließt; ein Klick geht auch. <b>Enter</b> bleibt Enter (außer du hast mit den Pfeilen gewählt).</li>
+      <li>Was übernommen wird, rückt künftig weiter nach oben; neue Texte lernt PDH spätestens nach 10 Minuten dazu.</li>
+    </ul></div>
   {{template "hb-fig-detail"}}
   <table>
     <tr><td><b>Übersicht</b></td><td>das Wichtigste auf einen Blick</td></tr>
@@ -221,6 +226,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Fertig</b> – die vorgemerkten Teile werden vom Lager abgebucht, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
+  <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
+    Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.</div>
+  <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat.</div>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
 </section>
 
@@ -407,7 +415,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "time") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="users" data-title="Benutzer &amp; Mein Konto" data-pages="users account orgchart">
+<section class="hb-ch" id="users" data-title="Benutzer &amp; Mein Konto" data-pages="users account orgchart org_units">
   <h2><i class="ti ti-users"></i> Benutzer &amp; Mein Konto</h2>
   <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Eigene Daten pflegen</b>
     <ol class="hb-steps">
@@ -425,7 +433,40 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
   <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren.</p>
+  <div class="hb-howto"><b><i class="ti ti-users-group"></i> Abteilungen &amp; Gruppen</b>Unter <b>Abteilungen &amp; Gruppen</b> (Navigation, Recht „Benutzer verwalten“) pflegst du beide zentral:
+    <ul>
+      <li><b>Abteilungen</b> mit Leitung. Jede Person gehört zu höchstens einer – im Benutzerstamm unter <b>Stammdaten → Abteilung</b> auswählen. Umbenennen wirkt sofort bei allen Mitarbeitenden. Kommt aus dem Microsoft-Abgleich eine neue Abteilung, legt PDH sie automatisch an.</li>
+      <li><b>Gruppen</b> bündeln Personen quer zu Abteilungen (z. B. „Elektro Frühschicht“, „Ersthelfer“), optional mit Abteilung und Leitung. Mitglieder wählst du in der Gruppe oder im Benutzerstamm unter <b>Stammdaten → Gruppen</b>; eine Person kann in mehreren Gruppen sein. Vorgänge lassen sich einer Gruppe zuweisen; in der <b>Benutzerliste</b> filterst du nach Abteilung und Gruppe.</li>
+      <li>Abteilungen bilden eine <b>Hierarchie</b>: Jede kann eine <b>übergeordnete Abteilung</b> haben. Die Struktur steht im <b>Organigramm</b> unter den Rollen.</li>
+      <li><b>Rollen</b> ordnest du unter <b>Rollen &amp; Rechte</b> einer Abteilung zu (Auswahl im Kopf jeder Rollenspalte).</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-lock-access"></i> Rechte je Abteilung</b>Die Abteilung eines Vorgangs ergibt sich aus seiner <b>Anlage</b>: Im Anlagenbaum trägst du unter <b>Bearbeiten → Abteilung</b> ein, zu welcher Abteilung eine Anlage gehört. Unteranlagen ohne eigene Angabe <b>erben</b> sie von oben (in der Übersicht als „geerbt“ markiert).
+    <ul>
+      <li>Hat eine <b>Rolle eine Abteilung</b>, sehen ihre Benutzer nur Tickets, Störungen, Wartungen, Aufgaben, Projekte und IT-Assets dieser Abteilung und ihrer Unterabteilungen – in Listen, Detailseiten und über die Schnittstelle.</li>
+      <li>Immer sichtbar bleiben Vorgänge <b>ohne Anlage</b> oder ohne Abteilung sowie alles, woran man <b>selbst beteiligt</b> ist (erstellt, verantwortlich, zugewiesen – auch über eine Gruppe).</li>
+      <li><b>Übergeordnete</b> Abteilungen – vorbelegt Instandhaltung, IT, Office und GL – und Rollen <b>ohne Abteilung</b> (z. B. Administrator) sehen alles. Das Kennzeichen setzt du unter <b>Abteilungen &amp; Gruppen</b>.</li>
+    </ul></div>
   {{template "hb-shots" (dict "Ref" (index $s "users") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="trainings" data-title="Schulungen &amp; Qualifikationen" data-pages="trainings">
+  <h2><i class="ti ti-school"></i> Schulungen &amp; Qualifikationen</h2>
+  <p>Die <b>Schulungsmatrix</b> zeigt je Person, welche Schulungen und Qualifikationen sie braucht und ob ein gültiger, unterschriebener Nachweis vorliegt: <span style="color:var(--green)">gültig</span>, <span style="color:var(--amber)">läuft bald ab</span>, <span style="color:var(--red)">abgelaufen</span> bzw. <span style="color:var(--red)">fehlt</span>, oder <b>Termin geplant</b>. Pflichtfelder sind umrandet; in der Zelle steht, bis wann der Nachweis gilt. Jede Person sieht ihren eigenen Stand unter <b>Meine Schulungen</b> und im Benutzerstamm im Reiter <b>Schulungen</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-books"></i> Katalog einrichten</b> (Recht „Schulungen &amp; Qualifikationen verwalten“)
+    <ol class="hb-steps">
+      <li><b>Schulungen</b> → Reiter <b>Katalog</b> → <b>Neu im Katalog</b>: Bezeichnung, Art (Schulung/Unterweisung oder Qualifikation), <b>Verantwortlich</b>, Wiederholung in Monaten (0 = einmalig) und wie viele Tage vor Ablauf sie fällig wird.</li>
+      <li>Unter <b>Pflicht für</b> ankreuzen, wer sie braucht: Rollen, Abteilungen, Gruppen oder einzelne Personen. Die Pflichtschulungen einer Rolle stehen auch unter <b>Rollen &amp; Rechte</b> im Kopf der Rollenspalte.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-signature"></i> So entsteht ein Nachweis</b>
+    <ol class="hb-steps">
+      <li><b>Automatisch bei Fälligkeit:</b> Braucht jemand die Schulung und hat keinen gültigen Nachweis mehr (oder bald nicht mehr), legt PDH einen offenen Nachweis mit allen Fälligen an und schreibt dem/der Verantwortlichen im Chat. Ist schon ein offener Nachweis da, kommen neu Fällige dazu. Ohne Verantwortliche/n geht der Hinweis an die Administratoren. Manuell geht es über <b>Neuer Nachweis</b>.</li>
+      <li>Im Nachweis <b>Datum</b>, <b>Schulende/n</b> und den <b>Inhalt in Stichpunkten</b> eintragen (eine Zeile je Punkt) und speichern. Teilnehmende einzeln, als ganze Gruppe oder Abteilung hinzufügen; wer nicht da war, mit <i class="ti ti-user-minus"></i> entfernen.</li>
+      <li>Jede/r Teilnehmende <b>unterschreibt am Bildschirm</b> (Finger, Stift oder Maus) – am gemeinsamen Tablet der/des Schulenden oder am eigenen Gerät. Zum Schluss unterschreibt die/der Schulende.</li>
+      <li><b>Abschließen &amp; archivieren</b> erscheint erst, wenn alles vollständig ist. Danach ist der Nachweis unveränderlich und zählt in der Matrix. <b>Drucken</b> erzeugt das Nachweisblatt mit allen Unterschriften.</li>
+    </ol></div>
+  <p>Ändern sich nach dem Unterschreiben Datum, Inhalt oder Schulende/r, verfallen die Unterschriften – unterschrieben wird immer genau das, was geschult wurde. Für den nächsten Termin legt <b>Wiedervorlage (leeres Formular)</b> einen neuen Nachweis mit gleicher Schulung, Ort, Schulende/r und Teilnehmenden an; Datum, Inhalt und Unterschriften sind leer. Mit <b>vom letzten Termin</b> übernimmst du bei Bedarf die Stichpunkte des letzten archivierten Termins.</p>
+  <p>Die Ja/Nein-Fähigkeiten für den Schichtplan (Rufbereitschaft, Schlüsseldienst usw.) und die Nachweise im Benutzerstamm (Führerschein, externe Zertifikate) bleiben davon unabhängig.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "trainings") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="fieldsets" data-title="Feldsätze" data-pages="">

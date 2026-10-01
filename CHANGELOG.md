@@ -13,6 +13,17 @@ im Kapitel „Versionen & Updates“ an.
 ## [0.21.0] – 2026-10-01
 
 ### Neu
+- Lernende Text-Vorschläge: In Titeln, Beschreibungen, Maßnahmen, Ursachen, Lösungen, Kommentaren, Schulungsinhalten und Checklisten-Freitext schlägt PDH beim Tippen ganze Formulierungen, das nächste Wort oder das Wortende vor – gelernt aus den gespeicherten Texten; übernommene Vorschläge rücken nach oben (Tab übernimmt)
+- Störungen zeigen ähnliche gelöste Fälle mit Ähnlichkeit in Prozent auch ohne Copilot-Analyse
+- Rechte je Abteilung: Anlagen bekommen eine Abteilung (Unteranlagen erben sie); Rollen mit Abteilung sehen nur Vorgänge ihrer Abteilung und der Unterabteilungen (Listen, Detailseiten, Bearbeiten und Schnittstelle) – plus Vorgänge ohne Anlage und alles, woran man beteiligt ist. Instandhaltung, IT, Office und GL sind als übergeordnet vorbelegt und sehen alles
+- Abteilungen mit übergeordneter Abteilung (Hierarchie); das Organigramm zeigt den Abteilungsbaum mit Leitung, Mitarbeitenden und Rollen, Rollen zeigen ihre Abteilung
+- Schulungs- und Qualifikationsmatrix: Katalog mit Wiederholungsintervall, Vorlauf und Verantwortlichem; Pflicht je Rolle, Abteilung, Gruppe oder Person; Matrix je Person (gültig, läuft bald ab, abgelaufen, fehlt, geplant) mit Filtern; eigener Stand unter „Meine Schulungen“ und im Benutzerstamm (Reiter Schulungen); Pflichtschulungen auch auf der Rollenseite
+- Schulungsnachweise: je Termin ein eigener Nachweis mit Inhalt in Stichpunkten, Schulende/r und Teilnehmenden, die am Bildschirm unterschreiben; vollständig unterschrieben wird er archiviert und ist danach unveränderlich; Druckansicht; Wiedervorlage als leeres Formular für den nächsten Termin
+- Bei Fälligkeit legt PDH automatisch einen Schulungsnachweis mit allen Fälligen an und benachrichtigt den/die Verantwortliche/n im Chat
+- Vorgänge (Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben, Projekte) lassen sich zusätzlich einer Gruppe zuweisen: Mitglieder sehen sie unter „Mir zugewiesen“, bekommen die Änderungshinweise, und die Gruppe steht bei den Beteiligten; Benutzerliste filtert nach Abteilung und Gruppe
+- Personalstamm: Abteilungen als Stammdaten mit Leitung (statt Freitext; vorhandene Angaben werden übernommen, Umbenennen wirkt bei allen, Microsoft-Abgleich legt fehlende an) und Gruppen mit Mitgliedern, Abteilung und Leitung – neue Seite „Abteilungen & Gruppen“, Auswahl im Benutzerstamm
+- Rollen lassen sich einer Abteilung zuordnen (Rollen & Rechte)
+- Einheitlich zwei Zuständigkeiten in allen Modulen („Verantwortlich“ und „Zugewiesen“): neu bei Wartungsplänen (Verantwortlich), Projekten (Zugewiesen, inkl. Bearbeiten auf der Projektseite und Änderungshinweisen) und IT-Assets (Verantwortlich); Aufträge aus einem Wartungsplan übernehmen den Verantwortlichen des Plans
 - Wartungs-Checklisten: Messwerte mit Einheit und einzeln aktivierbaren Vorgaben Soll, Min und Max; bei der Durchführung zeigt PDH sofort, ob der Wert im Bereich liegt, und fragt bei Abweichungen nach
 - Wartungs-Checklisten: an jedem Punkt Bilder zur Darstellung (in der Vorlage) und Fotos zur Dokumentation (bei der Durchführung, am Handy direkt mit der Kamera)
 - Wartungsauftrag: Checklisten-Protokoll mit allen erfassten Werten, Bewertung, wer/wann und Fotos
@@ -21,6 +32,7 @@ im Kapitel „Versionen & Updates“ an.
 - Core-Einstellungen: Abteilungen, deren Mitarbeitende im Assistenten vorgeschlagen werden (Standard: Instandhaltung, Elektro, Mechanik)
 
 ### Geändert
+- Copilot: ähnliche Fälle werden jetzt inhaltlich gesucht (Titel, Beschreibung, Symptome; Wortformen und Umlaute egal, seltene Fachbegriffe gewichtet; gleiche Anlage/Linie bevorzugt) statt einfach die zuletzt gelösten zu nehmen; die Analyse bekommt Ursachen, Lösungen, Maßnahmen und den Anlagenpfad mit, Ollama liefert erzwungen JSON, die Konfidenz wird auf 0–100 % begrenzt und Fehler der KI-Dienste werden klar gemeldet
 - Notizzettel auf dem Dashboard ist jetzt immer direkt beschreibbar und speichert automatisch; der Umweg über „Dashboard anpassen“ → Einstellungen entfällt
 - Zeitstrahl (Dashboard, Leitstand, Projekte) folgt jetzt dem Dunkelmodus statt hell zu bleiben
 - Kopfzeile: Die Benutzer-Schaltfläche hat jetzt dieselbe Höhe, Schrift und Umrandung wie die übrigen Knöpfe
@@ -30,6 +42,9 @@ im Kapitel „Versionen & Updates“ an.
 - Unbestätigte Zeiten zählen nicht in Wochen-/Monatssummen, Diagrammen, Export und im Dashboard-Widget „Meine Stunden“
 
 ### Behoben
+- Copilot: Die angezeigte Ähnlichkeit der Vergleichsfälle war ein fester Platzhalterwert (80/70/60 %)
+- Dashboard-Widgets „Mir zugewiesen“ und „Meine Aufgaben“ konnten nicht laden (Abfrage auf eine nicht mehr vorhandene Spalte der Aufgaben)
+- Wartungsplan bearbeiten: Die zugewiesene Person wurde bisher nicht gespeichert
 - Wartungs-Checklisten: Pflichtpunkte werden beim Abschluss wirklich geprüft (Browser und Server); Messwerte mit Komma werden akzeptiert
 - Wartungs-Checklisten: Bearbeiten eines Punkts löscht die Beschreibung nicht mehr
 - Wartungsauftrag: Der Abschluss-Assistent öffnet sich nicht mehr von selbst beim Aufrufen eines Auftrags ohne fällige Checklistenpunkte

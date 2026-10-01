@@ -110,6 +110,10 @@
             {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Fault.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesene Gruppe</label>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/fault/{{.Fault.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
+        </div>
         <div id="people-result-fault" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
@@ -207,7 +211,7 @@
       <div class="card-title">Durchgeführte Maßnahmen</div>
       <div id="fault-actions-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
       <div style="display:flex;gap:8px">
-        <input id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
+        <input data-suggest="action" id="fa-new-action" class="form-input" placeholder="z.B. Sicherung getauscht" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addFaultAction();}">
         <button type="button" class="btn" onclick="addFaultAction()"><i class="ti ti-plus"></i></button>
       </div>
     </div>
@@ -287,11 +291,11 @@
 
 {{define "context-list"}}
 {{range .SimilarFaults}}
-<div class="act-item">
+<a class="act-item" href="/faults/{{.ID}}" title="{{if .Resolution}}Lösung: {{.Resolution}}{{else}}gelöst{{end}}" style="color:inherit;text-decoration:none">
   <div class="act-dot d-blue"></div>
   <div class="act-text">{{.Title}}</div>
-  <span style="font-size:10px;color:var(--green)">gelöst</span>
-</div>
+  <span style="font-size:10px;color:var(--green)" title="Ähnlichkeit">{{if .Percent}}{{.Percent}} %{{else}}gelöst{{end}}</span>
+</a>
 {{end}}
 {{end}}
 

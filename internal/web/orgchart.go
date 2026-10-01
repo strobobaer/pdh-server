@@ -1,6 +1,9 @@
 package web
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 // OrgChartPageData zeigt die Rollen-Hierarchie als klassisches
 // Organigramm: eine Stufe (Tier) pro Rangstufe, ranghöchste zuerst,
@@ -12,7 +15,41 @@ import "net/http"
 // dafür.
 type OrgChartPageData struct {
 	BaseData
-	Tiers []OrgChartTier
+	Tiers       []OrgChartTier
+	Departments []*orgDeptNode // Abteilungsbaum (oberste Ebene)
+}
+
+// orgDeptNode: Abteilung im Organigramm mit Unterabteilungen.
+type orgDeptNode struct {
+	deptView
+	Roles    []string
+	Children []*orgDeptNode
+}
+
+// orgDeptTree baut aus den Abteilungen (Baumreihenfolge) die verschachtelte Struktur.
+func (h *Handler) orgDeptTree(ctx context.Context) []*orgDeptNode {
+	roles := map[string][]string{}
+	if rows, err := h.db.Query(ctx, `SELECT department_id::text, label FROM roles WHERE department_id IS NOT NULL ORDER BY level DESC, label`); err == nil {
+		for rows.Next() {
+			var d, l string
+			if rows.Scan(&d, &l) == nil {
+				roles[d] = append(roles[d], l)
+			}
+		}
+		rows.Close()
+	}
+	nodes := map[string]*orgDeptNode{}
+	var top []*orgDeptNode
+	for _, d := range h.loadDepartments(ctx) {
+		n := &orgDeptNode{deptView: d, Roles: roles[d.ID]}
+		nodes[d.ID] = n
+		if p, ok := nodes[d.ParentID]; ok && d.Depth > 0 {
+			p.Children = append(p.Children, n)
+		} else {
+			top = append(top, n)
+		}
+	}
+	return top
 }
 
 // OrgChartTier fasst alle Rollen mit derselben Rangstufe zu einer Ebene
@@ -27,7 +64,8 @@ type OrgChartRole struct {
 	Key       string
 	Label     string
 	Level     int
-	CanAssign bool // Rang des angemeldeten Benutzers reicht, um hierher zuzuweisen
+	CanAssign bool   // Rang des angemeldeten Benutzers reicht, um hierher zuzuweisen
+	Dept      string // Abteilung der Rolle
 	Users     []OrgChartUser
 }
 
@@ -50,11 +88,17 @@ func (h *Handler) OrgChartPage(w http.ResponseWriter, r *http.Request) {
 	roles, _ := h.rbac.ListRoles(ctx) // bereits sortiert: level DESC, label
 	allUsers, _ := h.users.List(ctx)
 
+	deptNames := map[string]string{}
+	for _, d := range h.loadDepartments(ctx) {
+		deptNames[d.ID] = d.Name
+	}
+	roleDept := h.roleDepartments(ctx)
 	var tiers []OrgChartTier
 	for _, ro := range roles {
 		role := OrgChartRole{
 			ID: ro.ID, Key: ro.Key, Label: ro.Label, Level: ro.Level,
 			CanAssign: h.rbac.Outranks(actorRoleKey, ro.Key),
+			Dept:      deptNames[roleDept[ro.ID]],
 		}
 		for _, u := range allUsers {
 			if !u.Active || string(u.Role) != ro.Key {
@@ -75,8 +119,9 @@ func (h *Handler) OrgChartPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := OrgChartPageData{
-		BaseData: h.baseData(r, "orgchart", "Organigramm", "Rollen & Zuweisung"),
-		Tiers:    tiers,
+		BaseData:    h.baseData(r, "orgchart", "Organigramm", "Rollen & Zuweisung"),
+		Tiers:       tiers,
+		Departments: h.orgDeptTree(ctx),
 	}
 	h.render(w, "orgchart", data)
 }

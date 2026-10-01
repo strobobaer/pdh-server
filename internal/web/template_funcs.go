@@ -17,6 +17,7 @@ func TemplateFuncs() template.FuncMap {
 		"list":       templateList,
 		"safeJS":     templateJS,
 		"hasPrefix":  strings.HasPrefix,
+		"join":       strings.Join,
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
 	}

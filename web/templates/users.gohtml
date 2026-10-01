@@ -46,7 +46,7 @@
             {{range .ManagerOptions}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
           </select>
         </div>
-        <div class="form-group"><label class="form-label" for="uf-department">Abteilung</label><input id="uf-department" name="department" class="form-input"></div>
+        <div class="form-group"><label class="form-label" for="uf-department">Abteilung</label><select id="uf-department" name="department" class="form-input"><option value="">– keine –</option>{{range .Departments}}<option value="{{.}}">{{.}}</option>{{end}}</select></div>
         <div class="form-group"><label class="form-label" for="uf-rfid">RFID-Karte</label><input id="uf-rfid" name="rfid_uid" class="form-input" placeholder="UID oder Karte scannen"></div>
         <label class="form-group" style="display:flex;align-items:center;gap:8px;margin:0"><input type="checkbox" name="is_system_user"> Systemnutzer (dauerhaft angemeldet)</label>
       </div>
@@ -76,6 +76,17 @@
   <a href="/users?role=manager" class="btn {{if eq .Filter "manager"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">📋 Manager</a>
   <a href="/users?role=worker" class="btn {{if eq .Filter "worker"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">👷 Mitarbeiter</a>
   <a href="/users?role=admin" class="btn {{if eq .Filter "admin"}}btn-primary{{end}}" style="font-size:12px;padding:5px 12px">👑 Admin</a>
+  <form method="get" action="/users" style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap">
+    {{if .Filter}}<input type="hidden" name="role" value="{{.Filter}}">{{end}}
+    <select name="dept" class="form-input" style="font-size:12px;padding:5px 8px;width:auto" onchange="this.form.submit()" aria-label="Nach Abteilung filtern">
+      <option value="">Alle Abteilungen</option>
+      {{range .Departments}}<option value="{{.}}" {{if eq . $.DeptFilter}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+    {{if .GroupOptions}}<select name="group" class="form-input" style="font-size:12px;padding:5px 8px;width:auto" onchange="this.form.submit()" aria-label="Nach Gruppe filtern">
+      <option value="">Alle Gruppen</option>
+      {{range .GroupOptions}}<option value="{{.ID}}" {{if eq .ID $.GroupFilter}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select>{{end}}
+  </form>
 </div>
 
 <!-- Benutzer Tabelle -->

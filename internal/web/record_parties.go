@@ -12,8 +12,7 @@ import (
 // partiesRecord beschreibt, woher die internen Beteiligten eines
 // Datensatztyps stammen. Alle fuenf Typen haben created_by und
 // responsible_to; "Zustaendig" liegt bei Tickets/Stoerungen/Wartungen in
-// assigned_to, bei Aufgaben in task_assignees (mehrere) und bei Projekten
-// gibt es intern keine Zustaendigkeit.
+// assigned_to (ebenso bei Projekten) und bei Aufgaben in task_assignees (mehrere).
 type partiesRecord struct {
 	table         string
 	label         string
@@ -31,7 +30,8 @@ var partiesRecords = map[string]partiesRecord{
 	"task": {table: "tasks", label: "Aufgabe",
 		assignedExpr: `COALESCE((SELECT string_agg(tu.first_name || ' ' || tu.last_name, ', ' ORDER BY tu.last_name, tu.first_name)
 			FROM task_assignees ta JOIN users tu ON tu.id = ta.user_id WHERE ta.task_id = r.id), '')`},
-	"project": {table: "projects", label: "Projekt"},
+	"project": {table: "projects", label: "Projekt",
+		assignedExpr: "COALESCE(au.first_name || ' ' || au.last_name, '')", assignedJoins: "LEFT JOIN users au ON au.id = r.assigned_to"},
 }
 
 type externalParty struct {
@@ -181,17 +181,18 @@ func (h *Handler) writeParties(w http.ResponseWriter, r *http.Request, refType, 
 	if rec.assignedExpr != "" {
 		assignedSel = rec.assignedExpr
 	}
-	var creator, responsible, assigned string
+	var creator, responsible, assigned, group string
 	query := fmt.Sprintf(`
 		SELECT COALESCE(cu.first_name || ' ' || cu.last_name, ''),
 		       COALESCE(ru.first_name || ' ' || ru.last_name, ''),
-		       %s
+		       %s,
+		       COALESCE((SELECT g.name FROM user_groups g WHERE g.id = r.assigned_group_id), '')
 		FROM %s r
 		LEFT JOIN users cu ON cu.id = r.created_by
 		LEFT JOIN users ru ON ru.id = r.responsible_to
 		%s
 		WHERE r.id = $1`, assignedSel, rec.table, rec.assignedJoins)
-	if err := h.db.QueryRow(ctx, query, id).Scan(&creator, &responsible, &assigned); err != nil {
+	if err := h.db.QueryRow(ctx, query, id).Scan(&creator, &responsible, &assigned, &group); err != nil {
 		http.Error(w, "Datensatz nicht gefunden", http.StatusNotFound)
 		return
 	}
@@ -229,6 +230,9 @@ func (h *Handler) writeParties(w http.ResponseWriter, r *http.Request, refType, 
 		if strings.TrimSpace(internal) != "" {
 			items = append(items, `<div><i class="ti ti-user" title="Interner Mitarbeiter"></i> `+esc(internal)+` `+muted("(intern)")+`</div>`)
 		}
+		if role == "assigned" && group != "" {
+			items = append(items, `<div><i class="ti ti-users-group" title="Gruppe"></i> `+esc(group)+` `+muted("(Gruppe)")+`</div>`)
+		}
 		for _, p := range externals {
 			if p.Role != role {
 				continue
@@ -259,12 +263,7 @@ func (h *Handler) writeParties(w http.ResponseWriter, r *http.Request, refType, 
 		writeRow(label, strings.Join(items, ""))
 	}
 	section("Verantwortlich", "responsible", responsible)
-	if refType == "project" {
-		// Projekte haben intern keine Zuständigkeit, extern aber schon.
-		section("Zuständig", "assigned", "")
-	} else {
-		section("Zuständig", "assigned", assigned)
-	}
+	section("Zuständig", "assigned", assigned)
 
 	// Formular: externe Firma / externen Mitarbeiter eintragen
 	openAttr := ""

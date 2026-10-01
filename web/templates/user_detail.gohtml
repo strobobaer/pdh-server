@@ -26,6 +26,7 @@
   {{if .CanEditMaster}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
   {{if .CanPrivate}}<a class="rec-tab" data-tab="private" href="?tab=private"><i class="ti ti-lock"></i> Privat</a>{{end}}
   <a class="rec-tab" data-tab="quals" href="?tab=quals"><i class="ti ti-certificate"></i> Nachweise{{if .QualWarn}} <b style="background:var(--amber);color:#111">{{.QualWarn}}</b>{{end}}</a>
+  <a class="rec-tab" data-tab="trainings" href="?tab=trainings"><i class="ti ti-school"></i> Schulungen</a>
   <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b></a>
   {{if .CanPermissions}}<a class="rec-tab" data-tab="perms" href="?tab=perms"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
   {{if .IsSelf}}<a class="rec-tab" data-tab="account" href="?tab=account"><i class="ti ti-plug-connected"></i> Konto & Dienste</a>{{end}}
@@ -51,6 +52,7 @@
       {{if $u.IsSystemUser}}<div class="rec-f"><div class="rec-l">Terminal-Standort</div><div class="rec-v">{{if $m.TerminalInfraID}}<a href="/infrastructure/{{$m.TerminalInfraID}}">{{$m.TerminalInfraPath}}</a>{{else}}—{{end}}</div></div>{{end}}
       <div class="rec-f"><div class="rec-l">Funktion</div><div class="rec-v">{{if $m.JobTitle}}{{$m.JobTitle}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{if $u.Department}}{{$u.Department}}{{else}}—{{end}}</div></div>
+      <div class="rec-f"><div class="rec-l">Gruppen</div><div class="rec-v">{{range $i, $g := .Groups}}{{if $i}}, {{end}}{{$g.Name}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{if $m.CostCenterName}}{{$m.CostCenterName}}{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Vorgesetzte/r</div><div class="rec-v">{{if $u.ManagerID}}<a href="/users/{{$u.ManagerID}}">{{$u.ManagerName}}</a>{{else}}—{{end}}</div></div>
       <div class="rec-f"><div class="rec-l">Eintritt / Austritt</div><div class="rec-v">{{if $m.EntryDate}}{{$m.EntryDate}}{{else}}—{{end}}{{if $m.ExitDate}} / {{$m.ExitDate}}{{end}}</div></div>
@@ -113,7 +115,8 @@
     <div class="cols">
       <div class="form-group"><label class="form-label">Personalnummer</label><input name="personnel_no" class="form-input" value="{{$m.PersonnelNo}}" maxlength="50"></div>
       <div class="form-group"><label class="form-label">Funktion / Stelle</label><input name="job_title" class="form-input" value="{{$m.JobTitle}}" maxlength="100" placeholder="z. B. Instandhalter Elektrik"></div>
-      <div class="form-group"><label class="form-label">Abteilung</label><input name="department" class="form-input" value="{{$u.Department}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Abteilung</label>
+        <select name="department" class="form-input"><option value="">– keine –</option>{{$hasDep := false}}{{range .Departments}}<option value="{{.}}" {{if eq . $u.Department}}selected{{$hasDep = true}}{{end}}>{{.}}</option>{{end}}{{if and $u.Department (not $hasDep)}}<option value="{{$u.Department}}" selected>{{$u.Department}}</option>{{end}}</select></div>
       <div class="form-group"><label class="form-label">Vorgesetzte/r</label>
         <select name="manager_id" class="form-input"><option value="">– keine/r –</option>{{range .ManagerOptions}}{{if ne .ID $u.ID}}<option value="{{.ID}}" {{if eq .ID $u.ManagerID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></div>
       <div class="form-group"><label class="form-label">Arbeitsort / Standort</label><input name="work_location" class="form-input" value="{{$m.WorkLocation}}" maxlength="150"></div>
@@ -157,6 +160,16 @@
       <a class="btn" href="?tab=overview">Abbrechen</a>
       <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
     </div>
+  </form>
+  <form class="card rec-form" method="post" action="/users/{{$u.ID}}/groups" style="margin-top:12px">
+    <div class="rec-sec" style="margin-top:0">Gruppen</div>
+    {{if .AllGroups}}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px">
+      {{$mine := .Groups}}
+      {{range .AllGroups}}{{$gid := .ID}}<label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="group_ids" value="{{.ID}}" {{range $mine}}{{if eq .ID $gid}}checked{{end}}{{end}}> {{.Name}}{{if .DepartmentName}} <span class="rec-sub">({{.DepartmentName}})</span>{{end}}</label>{{end}}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Gruppen speichern</button></div>
+    {{else}}<p class="rec-sub">Noch keine Gruppen angelegt{{if .CanManageUsers}} – unter <a href="/admin/org-units#groups" style="color:var(--accent)">Abteilungen &amp; Gruppen</a>{{end}}.</p>{{end}}
   </form>
 </div>
 {{end}}
@@ -234,6 +247,12 @@
     </div>
   {{end}}
   </div>
+</div>
+
+<!-- ── Schulungen ── -->
+<div class="rec-pane" data-pane="trainings">
+  <div hx-get="/trainings/user/{{$u.ID}}" hx-trigger="load" hx-swap="innerHTML"><span class="rec-sub">Lädt…</span></div>
+  <p class="rec-sub" style="margin-top:8px"><a href="/trainings" style="color:var(--accent)">Zur Schulungsmatrix</a></p>
 </div>
 
 <!-- ── Zuständigkeiten ── -->

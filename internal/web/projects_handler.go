@@ -20,6 +20,8 @@ type ProjectView struct {
 	StatusClass      string
 	ResponsibleID    string
 	ResponsibleName  string
+	AssignedID       string
+	AssigneeName     string
 	InfraID          string
 	InfraName        string
 	CostCenterID     string
@@ -58,6 +60,7 @@ func projectView(p *projects.Project) ProjectView {
 		Status: string(p.Status), StatusLabel: projectStatusLabel(string(p.Status)),
 		StatusClass:      projectStatusClass(string(p.Status)),
 		ResponsibleName:  p.ResponsibleName,
+		AssigneeName:     p.AssigneeName,
 		InfraName:        p.InfraName,
 		CostCenterNumber: p.CostCenterNumber, CostCenterName: p.CostCenterName,
 		TaskCount: p.TaskCount,
@@ -72,6 +75,9 @@ func projectView(p *projects.Project) ProjectView {
 	}
 	if p.ResponsibleTo != nil {
 		v.ResponsibleID = *p.ResponsibleTo
+	}
+	if p.AssignedTo != nil {
+		v.AssignedID = *p.AssignedTo
 	}
 	if p.InfrastructureID != nil {
 		v.InfraID = *p.InfrastructureID
@@ -105,8 +111,9 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		data.Total = len(list)
 		tagIDs := h.categoryFilterIDs(r, "project")
+		scopeIDs := h.scopeAllowedIDs(r, "project")
 		for _, p := range list {
-			if tagIDs != nil && !tagIDs[p.ID] {
+			if tagIDs != nil && !tagIDs[p.ID] || scopeIDs != nil && !scopeIDs[p.ID] {
 				continue
 			}
 			data.Projects = append(data.Projects, projectView(p))

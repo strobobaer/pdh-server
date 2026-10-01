@@ -132,6 +132,9 @@
           {{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}
           {{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}
           {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-edit-cost-center-id" "Value" .Node.CostCenterID)}}
+          <div class="form-group"><label class="form-label">Abteilung</label>
+            <select name="department_id" class="form-input"><option value="">– von übergeordneter Anlage erben –</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $.DepartmentID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">Bestimmt, welche Abteilung die Vorgänge dieser Anlage sieht. Gilt auch für alle Unteranlagen ohne eigene Abteilung.</div></div>
           {{template "icon-button-toolbar" (dict
             "Class" "end"
             "Label" "Infrastruktur bearbeiten"
@@ -150,6 +153,7 @@
         {{if and .Node.Manufacturer (not .Node.ManufacturerName)}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
         {{range .PartnerLinks}}<div class="li"><div class="li-text"><div class="li-sub">{{.RoleLabel}}</div><div class="li-title"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div></div>{{end}}
         {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
+        {{if .EffectiveDept}}<div class="li"><div class="li-text"><div class="li-sub">Abteilung</div><div class="li-title">{{.EffectiveDept}}{{if .DeptInherited}} <span style="font-size:11px;color:var(--muted);font-weight:400">(geerbt)</span>{{end}}</div></div></div>{{end}}
         {{if .Node.CostCenterName}}<div class="li"><div class="li-text"><div class="li-sub">Kostenstelle</div><div class="li-title">{{.Node.CostCenterNumber}} - {{.Node.CostCenterName}}</div></div></div>{{end}}
         {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
       </div>

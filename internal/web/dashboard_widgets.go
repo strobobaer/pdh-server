@@ -431,7 +431,8 @@ func loadStatStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance
 	return statData{Value: fmt.Sprint(low), Sub: fmt.Sprintf("%d kritisch", crit), Color: "green", URL: "/inventory", Alert: crit > 0}, err
 }
 
-const myTasksWhere = `(t.assigned_to = $1::uuid OR EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $1::uuid))
+const myTasksWhere = `(EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $1::uuid)
+	     OR t.assigned_group_id IN ` + myGroupIDs + `)
 	AND t.status IN ('open','in_progress') AND t.archived_at IS NULL`
 
 func loadStatMyTasks(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -518,15 +519,15 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 	rows, err := h.db.Query(ctx, `
 		SELECT * FROM (
 			SELECT 'ticket' AS k, id::text, title::text, priority::text AS priority, due_date::date AS due_date, status::text FROM tickets
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid) AND status IN ('open','in_progress','pending') AND archived_at IS NULL
+			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('open','in_progress','pending') AND archived_at IS NULL
 			UNION ALL
 			SELECT 'fault', id::text, title::text, severity::text, due_date::date, status::text FROM faults
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid) AND status IN ('detected','analyzing','in_progress') AND archived_at IS NULL
+			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('detected','analyzing','in_progress') AND archived_at IS NULL
 			UNION ALL
 			SELECT 'task', t.id::text, t.title::text, t.priority::text, t.due_date::date, t.status::text FROM tasks t WHERE `+myTasksWhere+`
 			UNION ALL
 			SELECT 'maintenance', id::text, title::text, priority::text, due_date::date, status::text FROM maintenance_tasks
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid) AND status::text IN ('open','in_progress') AND archived_at IS NULL
+			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status::text IN ('open','in_progress') AND archived_at IS NULL
 		) x ORDER BY (due_date IS NULL), due_date, (priority = 'critical') DESC LIMIT 8`, uid)
 	if err != nil {
 		return nil, err

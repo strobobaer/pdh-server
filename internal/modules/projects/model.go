@@ -24,6 +24,7 @@ type Project struct {
 	EndDate          *time.Time `json:"end_date,omitempty"`
 	Status           Status     `json:"status"`
 	ResponsibleTo    *string    `json:"responsible_to,omitempty"`
+	AssignedTo       *string    `json:"assigned_to,omitempty"`
 	InfrastructureID *string    `json:"infrastructure_id,omitempty"`
 	CostCenterID     *string    `json:"cost_center_id,omitempty"`
 	CreatedBy        string     `json:"created_by"`
@@ -32,6 +33,7 @@ type Project struct {
 
 	// Joined
 	ResponsibleName  string `json:"responsible_name,omitempty"`
+	AssigneeName     string `json:"assignee_name,omitempty"`
 	InfraName        string `json:"infra_name,omitempty"`
 	CostCenterNumber string `json:"cost_center_number,omitempty"`
 	CostCenterName   string `json:"cost_center_name,omitempty"`
@@ -44,6 +46,7 @@ type CreateProjectInput struct {
 	StartDate        string  `json:"start_date"`
 	EndDate          string  `json:"end_date"`
 	ResponsibleTo    *string `json:"responsible_to,omitempty"`
+	AssignedTo       *string `json:"assigned_to,omitempty"`
 	InfrastructureID *string `json:"infrastructure_id,omitempty"`
 	CostCenterID     *string `json:"cost_center_id,omitempty"`
 }
@@ -66,11 +69,11 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, p *Project) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO projects (id, name, description, start_date, end_date, responsible_to,
-			infrastructure_id, cost_center_id, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
+			infrastructure_id, cost_center_id, created_by, assigned_to)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, status, created_at, updated_at`,
 		p.Name, p.Description, p.StartDate, p.EndDate, p.ResponsibleTo,
-		p.InfrastructureID, p.CostCenterID, p.CreatedBy,
+		p.InfrastructureID, p.CostCenterID, p.CreatedBy, p.AssignedTo,
 	).Scan(&p.ID, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 }
 
@@ -79,11 +82,13 @@ const selectProjectColumns = `
 	p.responsible_to, p.infrastructure_id, p.cost_center_id, p.created_by, p.created_at, p.updated_at,
 	COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(i.name, ''),
 	COALESCE(cc.number, ''), COALESCE(cc.name, ''),
-	(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id)`
+	(SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id),
+	p.assigned_to, COALESCE(au.first_name || ' ' || au.last_name, '')`
 
 const projectJoins = `
 	FROM projects p
 	LEFT JOIN users u ON p.responsible_to = u.id
+	LEFT JOIN users au ON p.assigned_to = au.id
 	LEFT JOIN infrastructure i ON p.infrastructure_id = i.id
 	LEFT JOIN cost_centers cc ON p.cost_center_id = cc.id`
 
@@ -91,7 +96,8 @@ func scanProject(row interface{ Scan(...interface{}) error }) (*Project, error) 
 	p := &Project{}
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.StartDate, &p.EndDate, &p.Status,
 		&p.ResponsibleTo, &p.InfrastructureID, &p.CostCenterID, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt,
-		&p.ResponsibleName, &p.InfraName, &p.CostCenterNumber, &p.CostCenterName, &p.TaskCount)
+		&p.ResponsibleName, &p.InfraName, &p.CostCenterNumber, &p.CostCenterName, &p.TaskCount,
+		&p.AssignedTo, &p.AssigneeName)
 	return p, err
 }
 

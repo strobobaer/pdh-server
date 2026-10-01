@@ -25,6 +25,30 @@
 <div class="card">
   <div class="card-title">Beteiligte</div>
   <div id="record-parties" hx-get="/records/project/{{.Project.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
+  <form hx-put="/records/project/{{.Project.ID}}/people" hx-target="#people-result-project" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+    <div class="grid2">
+      <div class="form-group">
+        <label class="form-label">Verantwortlich</label>
+        <select name="responsible_to" class="form-input">
+          <option value="">Nicht gesetzt</option>
+          {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Project.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Project.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+    </div>
+        <div class="form-group">
+          <label class="form-label">Zugewiesene Gruppe</label>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/project/{{.Project.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
+        </div>
+    <div id="people-result-project" style="font-size:12px;margin-bottom:8px"></div>
+    {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+  </form>
 </div>
 
 {{if .Project.Description}}

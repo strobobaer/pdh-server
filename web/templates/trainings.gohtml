@@ -1,0 +1,186 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:19px;font-weight:600">Schulungen &amp; Qualifikationen</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">
+      {{if .CanManage}}{{len .Topics}} im Katalog · {{len .Rows}} Personen · {{len .OpenSessions}} offene Nachweise{{else}}Deine Schulungen und Nachweise{{end}}
+    </p>
+  </div>
+  {{if and .CanManage .Topics}}
+  <form method="post" action="/trainings/sessions" style="display:flex;gap:6px;align-items:center">
+    <select name="topic_id" class="form-input" style="width:auto" required aria-label="Schulung für neuen Nachweis">
+      <option value="">Schulung wählen…</option>
+      {{range .Topics}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+    </select>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-file-plus"></i> Neuer Nachweis</button>
+  </form>
+  {{end}}
+</div>
+{{if .Message}}<div class="rec-msg" style="background:rgba(16,185,129,.12);color:var(--green);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg" style="background:rgba(239,68,68,.12);color:var(--red);margin-bottom:12px;padding:8px 12px;border-radius:8px"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="matrix" href="?tab=matrix"><i class="ti ti-table"></i> Matrix</a>
+  {{if .CanManage}}<a class="rec-tab" data-tab="topics" href="?tab=topics"><i class="ti ti-books"></i> Katalog <b>{{len .Topics}}</b></a>{{end}}
+  <a class="rec-tab" data-tab="sessions" href="?tab=sessions"><i class="ti ti-signature"></i> Offene Nachweise <b>{{len .OpenSessions}}</b></a>
+  <a class="rec-tab" data-tab="archive" href="?tab=archive"><i class="ti ti-archive"></i> Archiv <b>{{len .Archived}}</b></a>
+</div>
+
+<!-- ── Matrix ── -->
+<div class="rec-pane" data-pane="matrix">
+  {{if .CanManage}}
+  <form method="get" action="/trainings" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <input type="hidden" name="tab" value="matrix">
+    <select name="dept" class="form-input" style="width:auto" onchange="this.form.submit()" aria-label="Abteilung"><option value="">Alle Abteilungen</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $d.Filter.Dept}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <select name="group" class="form-input" style="width:auto" onchange="this.form.submit()" aria-label="Gruppe"><option value="">Alle Gruppen</option>{{range .Groups}}<option value="{{.ID}}" {{if eq .ID $d.Filter.Group}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <select name="role" class="form-input" style="width:auto" onchange="this.form.submit()" aria-label="Rolle"><option value="">Alle Rollen</option>{{range .Roles}}<option value="{{.ID}}" {{if eq .ID $d.Filter.Role}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  </form>
+  {{end}}
+  <div class="tm-legend">
+    <span><i class="tm-dot ok"></i> gültig ({{index .MatrixStats "ok"}})</span>
+    <span><i class="tm-dot soon"></i> läuft bald ab ({{index .MatrixStats "soon"}})</span>
+    <span><i class="tm-dot expired"></i> abgelaufen ({{index .MatrixStats "expired"}})</span>
+    <span><i class="tm-dot missing"></i> fehlt ({{index .MatrixStats "missing"}})</span>
+    <span><i class="tm-dot planned"></i> Termin geplant ({{index .MatrixStats "planned"}})</span>
+    <span><i class="tm-dot extra"></i> vorhanden, nicht Pflicht</span>
+  </div>
+  {{if not .Topics}}
+  <div class="card" style="text-align:center;color:var(--muted);padding:30px"><i class="ti ti-books" style="font-size:32px;display:block;margin-bottom:8px"></i>Noch keine Schulungen im Katalog.{{if .CanManage}} Lege sie im Reiter <a href="?tab=topics" style="color:var(--accent)">Katalog</a> an.{{end}}</div>
+  {{else}}
+  <div class="card tm-wrap" style="padding:0">
+    <table class="tm">
+      <thead><tr>
+        <th class="tm-name">Person</th>
+        {{range .Topics}}<th class="tm-h" title="{{.Name}} · {{.KindLabel}} · {{.IntervalLabel}}"><span>{{if eq .Kind "qualification"}}<i class="ti ti-certificate"></i>{{else}}<i class="ti ti-school"></i>{{end}} {{.Name}}</span></th>{{end}}
+        <th class="tm-h"><span>offen</span></th>
+      </tr></thead>
+      <tbody>
+      {{range .Rows}}
+        <tr>
+          <td class="tm-name"><a href="/users/{{.UserID}}?tab=trainings">{{.Name}}</a>{{if .Department}}<div class="rec-sub">{{.Department}}</div>{{end}}</td>
+          {{range .Cells}}<td class="tm-c {{.State}}{{if .Required}} req{{end}}" title="{{.Title}}">{{.Label}}</td>{{end}}
+          <td class="tm-c" style="font-weight:600;{{if .Open}}color:var(--red){{else}}color:var(--muted){{end}}">{{.Open}}</td>
+        </tr>
+      {{else}}<tr><td colspan="99" style="padding:20px;text-align:center;color:var(--muted)">Keine Personen für diesen Filter</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="rec-sub" style="margin-top:6px">Datum in der Zelle = gültig bis (Monat/Jahr). Fett umrandet = Pflicht. Fällige Personen bekommen automatisch einen Schulungsnachweis; der/die Verantwortliche wird benachrichtigt.</p>
+  {{end}}
+</div>
+
+<!-- ── Katalog ── -->
+{{if .CanManage}}
+<div class="rec-pane" data-pane="topics">
+  <div class="rec-grid">
+  {{range .Topics}}
+    <div class="card" style="margin:0">
+      <div class="card-title"><span>{{if eq .Kind "qualification"}}<i class="ti ti-certificate"></i>{{else}}<i class="ti ti-school"></i>{{end}} {{.Name}}</span><span class="badge b-gray">{{.KindLabel}}</span></div>
+      <div class="rec-sub">{{.IntervalLabel}}{{if .IntervalMonths}} · fällig {{.LeadDays}} Tage vor Ablauf{{end}} · Verantwortlich: {{if .ResponsibleName}}{{.ResponsibleName}}{{else}}<span style="color:var(--amber)">niemand</span>{{end}}</div>
+      {{if .Description}}<div class="rec-sub" style="margin-top:4px">{{.Description}}</div>{{end}}
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+        {{range .Reqs}}<span class="badge {{if eq .Kind "role"}}b-blue{{else if eq .Kind "department"}}b-green{{else if eq .Kind "group"}}b-amber{{else}}b-gray{{end}}" title="Pflicht für {{if eq .Kind "role"}}Rolle{{else if eq .Kind "department"}}Abteilung{{else if eq .Kind "group"}}Gruppe{{else}}Person{{end}}">{{.Label}}</span>{{else}}<span class="rec-sub">Für niemanden Pflicht</span>{{end}}
+      </div>
+      <details style="margin-top:8px"><summary class="rec-sub" style="cursor:pointer">Bearbeiten</summary>
+        {{template "training-topic-form" (dict "T" . "D" $d)}}
+      </details>
+      <form method="post" action="/trainings/topics/{{.ID}}/delete" style="margin-top:6px" onsubmit="return confirm('{{.Name}} aus dem Katalog entfernen? Archivierte Nachweise bleiben erhalten.')">
+        <button class="btn" type="submit" style="font-size:11px"><i class="ti ti-trash"></i> Entfernen</button>
+      </form>
+    </div>
+  {{end}}
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-plus"></i> Neu im Katalog</span></div>
+      {{template "training-topic-form" (dict "T" nil "D" $d)}}
+    </div>
+  </div>
+</div>
+{{end}}
+
+<!-- ── Offene Nachweise ── -->
+<div class="rec-pane" data-pane="sessions">
+  {{template "training-session-list" (dict "List" .OpenSessions "Empty" "Keine offenen Nachweise")}}
+</div>
+
+<!-- ── Archiv ── -->
+<div class="rec-pane" data-pane="archive">
+  {{template "training-session-list" (dict "List" .Archived "Empty" "Noch keine archivierten Nachweise")}}
+</div>
+{{end}}
+
+{{define "training-topic-form"}}
+{{$t := .T}}{{$d := .D}}
+<form method="post" action="/trainings/topics" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+  {{with $t}}<input type="hidden" name="id" value="{{.ID}}">{{end}}
+  <div class="form-group" style="margin:0"><label class="form-label">Bezeichnung</label><input name="name" class="form-input" maxlength="150" required value="{{with $t}}{{.Name}}{{end}}" placeholder="z. B. Unterweisung Gabelstapler"></div>
+  <div class="grid2" style="gap:8px">
+    <div class="form-group" style="margin:0"><label class="form-label">Art</label>
+      <select name="kind" class="form-input"><option value="training">Schulung / Unterweisung</option><option value="qualification" {{with $t}}{{if eq .Kind "qualification"}}selected{{end}}{{end}}>Qualifikation</option></select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Verantwortlich</label>
+      <select name="responsible_id" class="form-input"><option value="">– niemand –</option>{{$rid := ""}}{{with $t}}{{$rid = .ResponsibleID}}{{end}}{{range $d.Users}}<option value="{{.ID}}" {{if eq .ID $rid}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Wiederholen alle … Monate</label><input type="number" name="interval_months" min="0" max="240" class="form-input" value="{{with $t}}{{.IntervalMonths}}{{else}}12{{end}}"><div class="rec-sub">0 = einmalig, läuft nicht ab</div></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Fällig … Tage vor Ablauf</label><input type="number" name="lead_days" min="0" max="365" class="form-input" value="{{with $t}}{{.LeadDays}}{{else}}30{{end}}"></div>
+  </div>
+  <div class="form-group" style="margin:0"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{with $t}}{{.Description}}{{end}}"></div>
+  <div class="form-group" style="margin:0"><label class="form-label">Pflicht für</label>
+    <div class="tm-req">
+      <div><b>Rollen</b>{{range $d.Roles}}<label><input type="checkbox" name="req_role" value="{{.ID}}" {{if $t}}{{if $t.HasReq "role" .ID}}checked{{end}}{{end}}> {{.Name}}</label>{{end}}</div>
+      <div><b>Abteilungen</b>{{range $d.Departments}}<label><input type="checkbox" name="req_department" value="{{.ID}}" {{if $t}}{{if $t.HasReq "department" .ID}}checked{{end}}{{end}}> {{.Name}}</label>{{else}}<span class="rec-sub">keine angelegt</span>{{end}}</div>
+      <div><b>Gruppen</b>{{range $d.Groups}}<label><input type="checkbox" name="req_group" value="{{.ID}}" {{if $t}}{{if $t.HasReq "group" .ID}}checked{{end}}{{end}}> {{.Name}}</label>{{else}}<span class="rec-sub">keine angelegt</span>{{end}}</div>
+      <div><b>Einzelne Personen</b>
+        <select name="req_user" class="form-input" multiple size="4">{{range $d.Users}}<option value="{{.ID}}" {{if $t}}{{if $t.HasReq "user" .ID}}selected{{end}}{{end}}>{{.Name}}</option>{{end}}</select>
+        <span class="rec-sub">Strg/⌘ für Mehrfachauswahl</span></div>
+    </div>
+  </div>
+  <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+</form>
+{{end}}
+
+{{define "training-session-list"}}
+<div class="card" style="padding:0">
+  {{range .List}}
+  <a class="tm-sess" href="/trainings/sessions/{{.ID}}">
+    <i class="ti {{if eq .TopicKind "qualification"}}ti-certificate{{else}}ti-school{{end}}"></i>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:500">{{.TopicName}}{{if .AutoCreated}} <span class="badge b-amber" title="automatisch angelegt, weil Personen fällig sind">fällig</span>{{end}}</div>
+      <div class="rec-sub">{{if .Date}}{{.Date}}{{else}}Termin offen{{end}}{{if .Trainer}} · {{.Trainer}}{{end}}{{if .ArchivedAt}} · archiviert {{.ArchivedAt}}{{end}}</div>
+    </div>
+    <span class="badge {{if eq .Signed .Participants}}b-green{{else}}b-gray{{end}}" title="Unterschriften">{{.Signed}}/{{.Participants}} <i class="ti ti-signature"></i></span>
+  </a>
+  {{else}}<div style="padding:20px;text-align:center;color:var(--muted)">{{.Empty}}</div>{{end}}
+</div>
+{{end}}
+
+{{define "scripts"}}
+<style>
+.tm-wrap{overflow:auto;max-height:70vh}
+.tm{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%}
+.tm th,.tm td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:0}
+.tm thead th{position:sticky;top:0;background:var(--bg2);z-index:2}
+.tm .tm-name{position:sticky;left:0;background:var(--bg2);z-index:1;text-align:left;padding:6px 10px;min-width:170px;white-space:nowrap}
+.tm thead .tm-name{z-index:3}
+.tm-h{height:150px;vertical-align:bottom;width:44px;min-width:44px}
+.tm-h span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);padding:8px 4px;white-space:nowrap;font-weight:500;max-height:140px;overflow:hidden;text-overflow:ellipsis}
+.tm-c{text-align:center;width:44px;height:30px;font-size:10.5px;font-variant-numeric:tabular-nums}
+.tm-c.ok{background:rgba(16,185,129,.18);color:var(--green)}
+.tm-c.soon{background:rgba(245,158,11,.22);color:var(--amber)}
+.tm-c.expired{background:rgba(239,68,68,.22);color:var(--red);font-weight:600}
+.tm-c.missing{background:rgba(239,68,68,.10);color:var(--red)}
+.tm-c.planned{background:rgba(96,165,250,.20);color:#60a5fa}
+.tm-c.extra{background:rgba(16,185,129,.07);color:var(--muted)}
+.tm-c.req{box-shadow:inset 0 0 0 1.5px currentColor}
+.tm-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--muted);margin-bottom:8px}
+.tm-dot{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px}
+.tm-dot.ok{background:var(--green)}.tm-dot.soon{background:var(--amber)}.tm-dot.expired{background:var(--red)}
+.tm-dot.missing{background:transparent;box-shadow:inset 0 0 0 2px var(--red)}.tm-dot.planned{background:#60a5fa}.tm-dot.extra{background:rgba(16,185,129,.35)}
+.tm-req{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.tm-req b{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.tm-req label{display:flex;gap:6px;align-items:center;font-size:12.5px;padding:2px 0}
+.tm-sess{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);text-decoration:none}
+.tm-sess:last-child{border-bottom:0}
+.tm-sess:hover{background:var(--bg3)}
+.tm-sess > i{font-size:18px;color:var(--accent)}
+</style>
+{{end}}

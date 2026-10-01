@@ -119,6 +119,15 @@ func (s *Service) GetAnalysis(ctx context.Context, faultID string) (*CopilotAnal
 	return s.repo.GetAnalysis(ctx, faultID)
 }
 
+// SimilarFaults: geloeste Stoerungen, die der angegebenen aehneln.
+func (s *Service) SimilarFaults(ctx context.Context, faultID string, limit int) ([]SimilarFault, error) {
+	f, err := s.repo.GetByID(ctx, faultID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.SimilarFaults(ctx, f, limit)
+}
+
 func (s *Service) Chat(ctx context.Context, faultID, userID, message string, history []anthropicMessage) (string, error) {
 	fault, err := s.repo.GetByID(ctx, faultID)
 	if err != nil {

@@ -17,7 +17,7 @@ func NewService(repo *Repository) *Service { return &Service{repo: repo} }
 func (s *Service) Create(ctx context.Context, in *CreateProjectInput, userID string) (*Project, error) {
 	p := &Project{
 		Name: in.Name, Description: in.Description,
-		ResponsibleTo: in.ResponsibleTo, InfrastructureID: in.InfrastructureID,
+		ResponsibleTo: in.ResponsibleTo, AssignedTo: in.AssignedTo, InfrastructureID: in.InfrastructureID,
 		CostCenterID: in.CostCenterID, CreatedBy: userID,
 	}
 	if in.StartDate != "" {

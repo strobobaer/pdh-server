@@ -12,7 +12,7 @@
   <div class="card-title">Aufgabe erstellen</div>
   <form onsubmit="return submitTaskForm(this)">
     <div class="grid2">
-      <div class="form-group"><label class="form-label">Titel</label><input name="title" class="form-input" placeholder="Kurzbeschreibung" required></div>
+      <div class="form-group"><label class="form-label">Titel</label><input data-suggest="title" name="title" class="form-input" placeholder="Kurzbeschreibung" required></div>
       <div class="form-group"><label class="form-label">Priorität</label>
         <select name="priority" class="form-input">
           <option value="low">Low</option>
@@ -44,7 +44,7 @@
     {{template "infra-tree-picker" (dict "TargetID" "task-infra-id" "SelectedLabelID" "task-infra-selected" "Label" "Infrastruktur (optional)")}}
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
-      <input name="description" class="form-input" placeholder="Details">
+      <input data-suggest="description" name="description" class="form-input" placeholder="Details">
     </div>
     <div id="task-create-result" style="font-size:12px;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">

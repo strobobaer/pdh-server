@@ -21,6 +21,12 @@
           {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
         </select>
       </div>
+      <div class="form-group"><label class="form-label">Zugewiesen</label>
+        <select name="assigned_to" class="form-input">
+          <option value="">Nicht zugewiesen</option>
+          {{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Beschreibung</label>
@@ -73,6 +79,7 @@ async function submitProjectForm(form){
   const fd=new FormData(form);
   const payload={name:fd.get('name'),description:fd.get('description'),start_date:fd.get('start_date'),end_date:fd.get('end_date')};
   if(fd.get('responsible_to')) payload.responsible_to=fd.get('responsible_to');
+  if(fd.get('assigned_to')) payload.assigned_to=fd.get('assigned_to');
   const result=document.getElementById('project-create-result'); result.textContent='Speichere...';
   try{
     const res=await fetch('/api/v1/projects/',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+pdhToken()},body:JSON.stringify(payload)});
