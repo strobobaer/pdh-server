@@ -146,7 +146,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><b>Übersicht</b></td><td>das Wichtigste auf einen Blick</td></tr>
     <tr><td><b>Stammdaten</b></td><td>hier wird bearbeitet – alles in einem Formular, unten rechts <b>Speichern</b></td></tr>
     <tr><td><b>Feldsätze</b></td><td>zusätzliche Felder, die eure Administration festlegt (<a href="#fieldsets">mehr</a>)</td></tr>
-    <tr><td><b>Dokumente</b></td><td>Fotos (Galerie oder Kamera) und Dateien</td></tr>
+    <tr><td><b>Dokumente</b></td><td>Fotos (Galerie oder Kamera) und Dateien – bei Ersatzteilen auch Datenblatt und Benutzerhandbuch aus dem Internet (<a href="#part-docs">siehe Ersatzteile</a>)</td></tr>
     <tr><td><b>Verknüpfungen</b></td><td>alles, was mit dem Datensatz zusammenhängt – Anlage, Vorgänge, Ersatzteile, Firmen, Chat</td></tr>
     <tr><td><b>Historie</b></td><td>wer hat wann was geändert</td></tr>
   </table>
@@ -340,6 +340,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Auf das passende Bild klicken – es wird übernommen und im PDH gespeichert.</li>
     </ol>
     Alternativ: Bild-URL einfügen, Datei hochladen oder mit der Kamera fotografieren.</div>
+  <h3 id="part-docs"><i class="ti ti-file-search"></i> Datenblatt und Benutzerhandbuch</h3>
+  <p>Zu jedem Teil kann PDH das <b>aktuelle Datenblatt</b> und das <b>Benutzerhandbuch</b> aus dem Internet holen und unter <b>Dokumente</b> ablegen. Die Dateien liegen danach im PDH – sie sind auch dann da, wenn der Hersteller seine Seite umbaut.</p>
+  {{template "hb-fig-partdocs"}}
+  <div class="hb-howto"><b><i class="ti ti-file-search"></i> So holst du Datenblatt und Handbuch</b>
+    <ol class="hb-steps">
+      <li>Teil öffnen → Reiter <b>Dokumente</b> → <b>Datenblatt &amp; Handbuch suchen</b>.</li>
+      <li>Hersteller und Typ sind schon eingetragen (aus den Stammdaten). Am besten findet PDH mit <b>Hersteller + Hersteller-Teilenummer</b> – bei Bedarf anpassen und <b>Suchen</b>. Die Suche dauert bis zu einer Minute.</li>
+      <li>Die Treffer stehen getrennt nach <b>Datenblatt</b> und <b>Benutzerhandbuch</b>. <span class="badge b-green">Hersteller</span> heißt: direkt vom Hersteller. Mit <b>Ansehen</b> öffnest du das PDF vorher im Browser.</li>
+      <li><b>Übernehmen</b> lädt das PDF herunter. Es erscheint unter Dokumente mit dem Etikett <b>Datenblatt</b> oder <b>Benutzerhandbuch</b>, dem Stand und einem Link zur Quelle.</li>
+    </ol>
+    Du hast das PDF schon selbst gefunden? Die Adresse unten im Fenster einfügen, Art wählen, <b>Übernehmen</b>.</div>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> So bleibt es aktuell</b>
+    <ol class="hb-steps">
+      <li>Beim Dokument auf <b>Aktualisieren</b> – oder oben auf <b>Alle aktualisieren</b> für alle Dokumente des Teils.</li>
+      <li>PDH lädt das Dokument erneut von der Quelle. Hat der Anbieter eine <b>neue Fassung</b>, wird die alte Datei ersetzt und im Verlauf vermerkt. Sonst ändert sich nur das Datum bei „Stand“.</li>
+    </ol></div>
+  <p><b>Wie wird gesucht?</b> Ist unter Server-Einstellungen → Copilot ein Anthropic-Schlüssel hinterlegt, sucht <b>Claude</b> im Internet – zuerst beim Hersteller, dann bei seriösen Händlern. Sonst sucht PDH über DuckDuckGo. Angezeigt werden in beiden Fällen nur Adressen, hinter denen PDH wirklich ein PDF gefunden hat. Manche Anbieter geben Dokumente nur nach Anmeldung heraus – dann das PDF selbst herunterladen und über <b>Dokument</b> hochladen. Nutzungsrechte des Anbieters beachten. Suchen und übernehmen kann, wer Ersatzteile bearbeiten darf.</p>
   <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So buchst du Ware</b>
     <ol class="hb-steps">
       <li>Im Teil oben auf <b>Buchen</b> (oder in der Liste auf „Buchung“).</li>

@@ -379,6 +379,9 @@ html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justi
 .attachment-actions{display:flex;gap:6px;flex-wrap:wrap}
 .attachment-actions .btn{min-height:34px;padding:0 9px;font-size:11px}
 .attachment-badge{position:absolute;left:6px;top:6px;background:rgba(16,185,129,.92);color:#fff;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:700}
+.attachment-badge.doc{background:rgba(var(--accent-rgb),.92);color:var(--on-accent)}
+.attachment-src{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.attachment-src a{color:var(--accent)}
 .widget-field{margin-bottom:14px}
 .infra-picker-widget{grid-column:1/-1}
 .infra-picker{border:1px solid var(--border);border-radius:8px;background:var(--bg3);padding:8px}
@@ -2041,7 +2044,15 @@ function attachmentCard(a, refType, refId){
   const url = escapeAttr(a.url || ('/uploads/' + (a.filepath || '')));
   const isImage = !!a.is_image;
   const recordBadge = a.record_image ? '<span class="attachment-badge">Datensatzbild</span>' : '';
-  const preview = isImage ? `<img src="${url}" alt="${name}">${recordBadge}` : `<i class="ti ti-file-description"></i>`;
+  // aus dem Internet uebernommene Dokumente: Art, Stand und Quelle
+  const docLabel = ({datasheet: 'Datenblatt', manual: 'Benutzerhandbuch'})[a.doc_kind] || '';
+  const docBadge = docLabel ? `<span class="attachment-badge doc">${docLabel}</span>` : '';
+  const preview = isImage ? `<img src="${url}" alt="${name}">${recordBadge}` : `<i class="ti ${a.doc_kind === 'manual' ? 'ti-book' : 'ti-file-description'}"></i>${docBadge}`;
+  const checked = a.source_checked_at ? new Date(a.source_checked_at).toLocaleDateString(PDH_LOCALE) : '';
+  const srcLine = a.source_url ? `<div class="attachment-src" title="${escapeAttr(a.source_url)}">Stand ${checked} · <a href="${escapeAttr(a.source_url)}" target="_blank" rel="noopener noreferrer">Quelle</a></div>` : '';
+  const refreshButton = a.source_url && refType === 'inventory'
+    ? `<button type="button" class="btn" onclick="pdhRefreshDoc('${refId}','${a.id}',this)" title="Beim Anbieter nach einer neueren Fassung schauen"><i class="ti ti-refresh"></i> Aktualisieren</button>`
+    : '';
   const imageButton = isImage && !a.record_image
     ? `<button type="button" class="btn" onclick="setRecordImage('${refType}','${refId}','${a.id}')"><i class="ti ti-photo-check"></i> Aktivieren</button>`
     : '';
@@ -2049,8 +2060,9 @@ function attachmentCard(a, refType, refId){
     <a class="attachment-preview" href="${url}" target="_blank" rel="noopener">${preview}</a>
     <div class="attachment-meta">
       <div class="attachment-name" title="${name}">${name}</div>
+      ${srcLine}
       <div class="attachment-actions">
-        ${imageButton}
+        ${imageButton}${refreshButton}
         <button type="button" class="btn btn-danger" onclick="deleteAttachment('${a.id}','${refType}','${refId}')"><i class="ti ti-trash"></i> Entfernen</button>
       </div>
     </div>
@@ -2112,6 +2124,21 @@ async function setRecordImage(refType, refId, id) {
   } catch(err) {
     showGlobalError('Datensatzbild fehlgeschlagen', err.message || String(err));
   }
+}
+// Dokument (oder 'all') erneut von der Quelle laden – ersetzt nur bei neuer Fassung
+async function pdhRefreshDoc(partId, attId, btn) {
+  if(btn) btn.disabled = true;
+  setGlobalStatus('busy', 'Prüfe auf neue Fassung…', 40, '');
+  try {
+    const res = await fetch('/inventory/' + partId + '/documents/' + attId + '/refresh', {method: 'POST', credentials: 'same-origin'});
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok || !json.success) throw new Error(json.error || ('HTTP ' + res.status));
+    await loadAttachmentGallery('inventory', partId);
+    setGlobalStatus(json.failed ? 'error' : 'ok', json.message, 100, json.failed ? 'Teilweise fehlgeschlagen' : 'Keine Fehler');
+  } catch(err) {
+    showGlobalError('Aktualisieren fehlgeschlagen', err.message || String(err));
+  }
+  if(btn) btn.disabled = false;
 }
 function initAttachmentGalleries(){
   document.querySelectorAll('[data-attach-ref]').forEach(el => {

@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.24.0] – 2026-10-02
+
+### Neu
+- Ersatzteile: Datenblatt und Benutzerhandbuch aus dem Internet holen – im Reiter Dokumente auf „Datenblatt & Handbuch suchen“. Gesucht wird zuerst beim Hersteller (mit Claude-Websuche, wenn ein Anthropic-Schlüssel hinterlegt ist, sonst über DuckDuckGo); angezeigt werden nur Adressen, hinter denen wirklich ein PDF liegt
+- Übernommene Dokumente werden im PDH gespeichert und tragen das Etikett „Datenblatt“ oder „Benutzerhandbuch“, den Stand und einen Link zur Quelle; eine PDF-Adresse lässt sich auch direkt einfügen
+- „Aktualisieren“ (je Dokument oder „Alle aktualisieren“) lädt die Dokumente erneut von der Quelle und ersetzt sie nur, wenn der Anbieter eine neue Fassung hat – vermerkt im Verlauf des Teils
+
+### Behoben
+- Copilot: Ein Anthropic-Schlüssel aus einer Umgebungs- bzw. .env-Datei mit Leerzeichen, Windows-Zeilenende oder Anführungszeichen wurde unverändert gesendet und von Anthropic mit „HTTP 401 – API key is invalid“ abgelehnt; diese Zeichen werden jetzt entfernt. Die Fehlermeldung bei 401 sagt genauer, wo der Schlüssel zu prüfen und einzutragen ist
+
 ## [0.23.0] – 2026-10-02
 
 ### Neu

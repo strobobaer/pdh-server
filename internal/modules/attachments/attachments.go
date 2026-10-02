@@ -36,6 +36,10 @@ type Attachment struct {
 	NextcloudPath string    `json:"nextcloud_path,omitempty"`
 	IsImage       bool      `json:"is_image"`
 	RecordImage   bool      `json:"record_image"`
+	// aus dem Internet uebernommene Dokumente (Ersatzteile: Datenblatt/Handbuch)
+	DocKind         string     `json:"doc_kind,omitempty"`
+	SourceURL       string     `json:"source_url,omitempty"`
+	SourceCheckedAt *time.Time `json:"source_checked_at,omitempty"`
 }
 
 type Repository struct{ db *pgxpool.Pool }
@@ -56,7 +60,8 @@ func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attach
 	recordImageID, _ := r.RecordImageID(ctx, refType, refID)
 	rows, err := r.db.Query(ctx, `
 		SELECT id, ref_type, ref_id, filename, filepath, mimetype,
-		       size_bytes, COALESCE(caption,''), created_by, created_at
+		       size_bytes, COALESCE(caption,''), created_by, created_at,
+		       COALESCE(doc_kind,''), COALESCE(source_url,''), source_checked_at
 		FROM attachments WHERE ref_type=$1 AND ref_id=$2
 		ORDER BY created_at DESC`, refType, refID)
 	if err != nil {
@@ -69,7 +74,8 @@ func (r *Repository) List(ctx context.Context, refType, refID string) ([]*Attach
 		a := &Attachment{}
 		rows.Scan(&a.ID, &a.RefType, &a.RefID, &a.Filename,
 			&a.Filepath, &a.Mimetype, &a.SizeBytes,
-			&a.Caption, &a.CreatedBy, &a.CreatedAt)
+			&a.Caption, &a.CreatedBy, &a.CreatedAt,
+			&a.DocKind, &a.SourceURL, &a.SourceCheckedAt)
 		a.URL = "/uploads/" + a.Filepath
 		a.NextcloudPath = nextcloudRemotePath(a.RefType, a.RefID, a.Filename)
 		a.IsImage = strings.HasPrefix(strings.ToLower(a.Mimetype), "image/")

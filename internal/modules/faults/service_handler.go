@@ -120,6 +120,14 @@ func (s *Service) Ask(ctx context.Context, question string) (string, error) {
 	return s.copilot.Ask(ctx, question)
 }
 
+// FindPartDocuments: Datenblatt und Handbuch eines Ersatzteils ueber Claude suchen.
+func (s *Service) FindPartDocuments(ctx context.Context, q PartDocQuery) ([]PartDocHit, error) {
+	if s == nil || s.copilot == nil {
+		return nil, ErrNoWebSearch
+	}
+	return s.copilot.FindPartDocuments(ctx, q)
+}
+
 func (s *Service) GetAnalysis(ctx context.Context, faultID string) (*CopilotAnalysis, error) {
 	return s.repo.GetAnalysis(ctx, faultID)
 }

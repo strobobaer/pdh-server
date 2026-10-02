@@ -37,6 +37,7 @@ type Copilot struct {
 
 func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repository) *Copilot {
 	backend := BackendOllama
+	apiKey = cleanAPIKey(apiKey)
 	if ollamaURL == "" {
 		ollamaURL = "http://localhost:11434"
 	}
@@ -59,6 +60,16 @@ func NewCopilot(apiKey, ollamaURL, model, anthropicModel string, repo *Repositor
 		httpClient: &http.Client{Timeout: 300 * time.Second},
 		repo:       repo,
 	}
+}
+
+// cleanAPIKey entfernt, was beim Eintragen in Umgebungs- oder .env-Dateien
+// haeufig mitkommt: Leerzeichen, Windows-Zeilenende, Anfuehrungszeichen.
+func cleanAPIKey(k string) string {
+	k = strings.TrimSpace(k)
+	if len(k) >= 2 && (k[0] == '"' || k[0] == '\'') && k[len(k)-1] == k[0] {
+		k = strings.TrimSpace(k[1 : len(k)-1])
+	}
+	return k
 }
 
 // ── Ollama ───────────────────────────────────────────────────
@@ -193,28 +204,7 @@ func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg, effort str
 	client := c.anthropicClient()
 	resp, err := client.Beta.Messages.New(ctx, params)
 	if err != nil {
-		var apiErr *anthropic.Error
-		if errors.As(err, &apiErr) {
-			hint := ""
-			switch {
-			case strings.Contains(apiErrorMessage(apiErr), "anthropic-workspace-id"):
-				if c.anthropicWS == "" {
-					hint = " (Server-Einstellungen → Copilot: „Anthropic-Workspace-ID“ eintragen – zu finden in der Claude Console unter Settings → Workspaces – oder einen Workspace-gebundenen API-Schlüssel verwenden)"
-				} else {
-					hint = " (die eingetragene Anthropic-Workspace-ID „" + c.anthropicWS + "“ prüfen)"
-				}
-			case apiErr.StatusCode == 401:
-				hint = " (API-Schlüssel prüfen)"
-			case apiErr.StatusCode == 404:
-				hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
-			case apiErr.StatusCode == 429:
-				hint = " (Ratenlimit – kurz warten)"
-			case apiErr.StatusCode == 529:
-				hint = " (Dienst überlastet – später erneut versuchen)"
-			}
-			return "", fmt.Errorf("anthropic: HTTP %d – %s%s", apiErr.StatusCode, apiErrorMessage(apiErr), hint)
-		}
-		return "", fmt.Errorf("anthropic nicht erreichbar: %w", err)
+		return "", c.anthropicError(err)
 	}
 	if resp.StopReason == anthropic.BetaStopReasonRefusal {
 		why := ""
@@ -237,6 +227,33 @@ func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg, effort str
 		return "", fmt.Errorf("anthropic: keine Textantwort (stop_reason %s)", resp.StopReason)
 	}
 	return out, nil
+}
+
+// anthropicError macht Fehler der API fuer Anwender verstaendlich (mit Hinweis,
+// was in den Server-Einstellungen zu pruefen ist).
+func (c *Copilot) anthropicError(err error) error {
+	var apiErr *anthropic.Error
+	if errors.As(err, &apiErr) {
+		hint := ""
+		switch {
+		case strings.Contains(apiErrorMessage(apiErr), "anthropic-workspace-id"):
+			if c.anthropicWS == "" {
+				hint = " (Server-Einstellungen → Copilot: „Anthropic-Workspace-ID“ eintragen – zu finden in der Claude Console unter Settings → Workspaces – oder einen Workspace-gebundenen API-Schlüssel verwenden)"
+			} else {
+				hint = " (die eingetragene Anthropic-Workspace-ID „" + c.anthropicWS + "“ prüfen)"
+			}
+		case apiErr.StatusCode == 401:
+			hint = " (API-Schlüssel ungültig, widerrufen oder unvollständig kopiert – in der Claude Console unter API Keys prüfen bzw. neu erzeugen und unter Server-Einstellungen → Copilot → „Anthropic-API-Schlüssel“ eintragen, danach Server neu starten)"
+		case apiErr.StatusCode == 404:
+			hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
+		case apiErr.StatusCode == 429:
+			hint = " (Ratenlimit – kurz warten)"
+		case apiErr.StatusCode == 529:
+			hint = " (Dienst überlastet – später erneut versuchen)"
+		}
+		return fmt.Errorf("anthropic: HTTP %d – %s%s", apiErr.StatusCode, apiErrorMessage(apiErr), hint)
+	}
+	return fmt.Errorf("anthropic nicht erreichbar: %w", err)
 }
 
 // apiErrorMessage: Typ und Text aus dem Fehlerobjekt der API.

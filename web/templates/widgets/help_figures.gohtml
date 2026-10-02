@@ -144,6 +144,23 @@
 </figure>
 {{end}}
 
+{{/* Datenblatt & Handbuch eines Ersatzteils */}}
+{{define "hb-fig-partdocs"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Datenblatt und Handbuch aus dem Internet">
+  <rect class="bg3" x="10" y="55" width="130" height="60" rx="8"/><text x="75" y="80" class="t-c t-b">Ersatzteil</text><text x="75" y="96" class="t-c t-m">Festo DSBC-32-100</text>
+  <rect class="acl" x="180" y="55" width="130" height="60" rx="8"/><text x="245" y="80" class="t-c t-b">🔍 Suchen</text><text x="245" y="96" class="t-c t-m">Hersteller zuerst</text>
+  <rect class="bg" x="350" y="15" width="130" height="40" rx="8"/><text x="415" y="39" class="t-c">📄 Datenblatt.pdf</text>
+  <rect class="bg" x="350" y="115" width="130" height="40" rx="8"/><text x="415" y="139" class="t-c">📘 Handbuch.pdf</text>
+  <rect class="gr" x="520" y="55" width="110" height="60" rx="8"/><text x="575" y="80" class="t-c t-b">Dokumente</text><text x="575" y="96" class="t-c t-m">Stand · Quelle</text>
+  <path class="ar" d="M140 85 H178"/><path class="ar" d="M310 85 C330 85,330 35,348 35"/><path class="ar" d="M310 85 C330 85,330 135,348 135"/>
+  <path class="ar" d="M480 35 C500 35,500 85,518 85"/><path class="ar" d="M480 135 C500 135,500 85,518 85"/>
+  <path class="ar" d="M575 115 C575 160,245 160,245 117"/><text x="410" y="166" class="t-c t-m">↻ Aktualisieren: neue Fassung? Dann wird ersetzt</text>
+</svg>
+<figcaption>PDH sucht beim Hersteller (sonst beim Händler), zeigt nur echte PDFs und legt das gewählte Dokument unter Dokumente ab – mit Stand und Quelle, damit es sich später aktualisieren lässt.</figcaption>
+</figure>
+{{end}}
+
 {{/* Bestellvorschlag */}}
 {{define "hb-fig-purchase"}}
 <figure class="hb-fig">
