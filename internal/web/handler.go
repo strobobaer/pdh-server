@@ -100,6 +100,8 @@ type GanttItem struct {
 	EndISO          string `json:"end_iso"`        // YYYY-MM-DD (echt oder vorläufig)
 	IsProvisional   bool   `json:"is_provisional"` // kein echtes Fälligkeitsdatum -> +30 Tage Platzhalter
 	IsDone          bool   `json:"is_done"`
+	IsRunning       bool   `json:"is_running"`    // in Bearbeitung
+	IsUnassigned    bool   `json:"is_unassigned"` // weder Person noch Gruppe zugewiesen
 	Color           string `json:"color"`
 	DetailURL       string `json:"detail_url"`
 	DueDateEndpoint string `json:"due_date_endpoint"` // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
@@ -449,6 +451,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/branding/settings", h.BrandingSettingsWeb)
 	r.Post("/admin/branding/theme", h.BrandingThemeWeb)
+	r.Post("/admin/branding/timeline", h.BrandingTimelineWeb)
 	r.Post("/admin/branding/ha-import", h.BrandingHAImportWeb)
 	r.Post("/admin/branding/ha/{id}/delete", h.BrandingHADeleteWeb)
 	r.Post("/admin/branding/gallery/{id}", h.BrandingGalleryWeb)
@@ -1238,7 +1241,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: t.ID, RefType: "task", Title: t.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: provisional, IsDone: isDone, Color: color,
+				IsProvisional: provisional, IsDone: isDone, IsRunning: t.Status == "in_progress", Color: color,
 				DetailURL:       "/tasks/" + t.ID,
 				DueDateEndpoint: "/api/v1/tasks/" + t.ID + "/edit",
 			})
@@ -1268,7 +1271,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: t.ID, RefType: "ticket", Title: t.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: provisional, IsDone: isDone, Color: "#4b9fc4", // synchron mit dem Leitstand-Zeitstrahl
+				IsProvisional: provisional, IsDone: isDone, IsRunning: t.Status == "in_progress", Color: "#4b9fc4", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/tickets/" + t.ID,
 				DueDateEndpoint: "/api/v1/tickets/" + t.ID + "/due-date",
 			})
@@ -1295,7 +1298,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: m.ID, RefType: "maintenance", Title: m.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: false, IsDone: isDone, Color: "#c99a3c", // synchron mit dem Leitstand-Zeitstrahl
+				IsProvisional: false, IsDone: isDone, IsRunning: m.Status == maintenance.TaskInProgress, Color: "#c99a3c", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/maintenance/tasks/" + m.ID,
 				DueDateEndpoint: "/api/v1/maintenance/tasks/" + m.ID + "/due-date",
 			})
@@ -1325,13 +1328,22 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 			items = append(items, GanttItem{
 				ID: f.ID, RefType: "fault", Title: f.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
-				IsProvisional: provisional, IsDone: isDone, Color: "#3fae86", // synchron mit dem Leitstand-Zeitstrahl
+				IsProvisional: provisional, IsDone: isDone, IsRunning: f.Status == "in_progress", Color: "#3fae86", // synchron mit dem Leitstand-Zeitstrahl
 				DetailURL:       "/faults/" + f.ID,
 				DueDateEndpoint: "/api/v1/faults/" + f.ID + "/due-date",
 			})
 		}
 	}
 
+
+	// nicht zugewiesen: weder Person noch Gruppe (Aufgaben: keine Beteiligten)
+	if open := h.unassignedRecords(ctx); len(open) > 0 {
+		for i := range items {
+			if !items[i].IsDone && open[items[i].RefType+":"+items[i].ID] {
+				items[i].IsUnassigned = true
+			}
+		}
+	}
 	return items
 }
 
@@ -4419,4 +4431,30 @@ func (h *Handler) ITEditWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/it/"+id, http.StatusFound)
+}
+
+// unassignedRecords: offene Vorgaenge ohne Zuweisung als "art:id" (Arten wie
+// GanttItem.RefType). Fehler ergeben eine leere Menge.
+func (h *Handler) unassignedRecords(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	if h.db == nil {
+		return out
+	}
+	rows, err := h.db.Query(ctx, `
+		SELECT 'ticket:' || id FROM tickets WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
+		UNION ALL SELECT 'fault:' || id FROM faults WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
+		UNION ALL SELECT 'maintenance:' || id FROM maintenance_tasks WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status IN ('open', 'in_progress')
+		UNION ALL SELECT 'task:' || t.id FROM tasks t WHERE t.assigned_group_id IS NULL AND t.status NOT IN ('resolved', 'closed')
+			AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id)`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		if rows.Scan(&k) == nil {
+			out[k] = true
+		}
+	}
+	return out
 }

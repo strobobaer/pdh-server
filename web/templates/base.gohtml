@@ -541,6 +541,7 @@ select.form-input option{background:var(--bg2)}
 }
 </style>
 <style id="pdh-theme">{{.Brand.ThemeCSS}}</style>
+{{template "timeline-style" .Brand.Timeline}}
 {{with .Look.FontHref}}<link rel="stylesheet" id="pdh-font" href="{{.}}">{{end}}
 <style id="pdh-ui">{{.Look.CSS}}
 /* Groesse: zoom auf die ganze Seite; Hoehe ausgleichen, damit 100vh passt */

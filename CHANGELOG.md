@@ -18,6 +18,8 @@ im Kapitel „Versionen & Updates“ an.
 - Nicht benötigte Mengen lassen sich zurückbuchen, ganz oder teilweise, an der Position im Vorgang, im Abschluss-Assistenten oder beim Teil in der neuen Karte „Reservierungen“ (Reiter Lager & Bewegungen)
 - Beim Abschluss wird die Reservierung zum Verbrauch des Vorgangs, ohne doppelte Abbuchung. Wird ein Vorgang verworfen, archiviert oder gelöscht, gehen offene Reservierungen automatisch an ihren Lagerplatz zurück
 - Neue Bewegungsarten „Reservierung“ und „Rückbuchung Reservierung“ in der Bewegungsliste. Bei den Verknüpfungen eines Vorgangs stehen reservierte Teile als „reserviert“
+- Zeitstrahlen (Dashboard, Leitstand, Projekte) zeigen den Zustand am Rand der Balken: laufend gelb, fällig rot, überfällig rot blinkend, nicht zugewiesen lila, beendet grün umrandet und ausgegraut; Legende unter jedem Zeitstrahl, Zustand auch im Tooltip
+- Theming: neue Karte „Zeitstrahl“ unter Server-Einstellungen → Erscheinungsbild – Farbe je Zustand, Ausgrau-Farbe, Randstärke, Randhelligkeit, Balkenhöhe und ab wann „fällig“ gilt, mit Live-Vorschau
 - Broker auch für Aufgaben und Wartungen: im Benutzerstamm „Broker für Aufgaben“ und „Broker für Wartungen“; im Leitstand angelegte Aufgaben und Wartungen gehen wie Tickets und Störungen an diese Broker
 - Mehrsprachigkeit, Stufe 2: Dashboard und alle Dashboard-Widgets sind übersetzt (Begrüßung, Kennzahlen, Listen, Status, Schweregrad, Wochentage, Schnellaktionen, Widget-Katalog)
 

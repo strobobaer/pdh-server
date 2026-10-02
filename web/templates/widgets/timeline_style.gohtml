@@ -1,0 +1,42 @@
+{{/*
+  Zeitstrahl-Darstellung (timeline_style.go) fuer Dashboard, Leitstand und
+  Projekte: CSS-Variablen aus dem Theming und die Zustandslogik je Balken.
+  Aufruf mit einem TimelineStyle, z. B. template "timeline-style" .Brand.Timeline.
+  pdhTimelineApply(wrapper, t) setzt die Klasse tl-<zustand> am Balken;
+  t: {done, running, unassigned, end: 'JJJJ-MM-TT'}.
+  Vorrang: beendet > ueberfaellig > faellig > nicht zugewiesen > laufend.
+*/}}
+{{define "timeline-style"}}{{with .Safe}}
+<style id="pdh-timeline">{{.CSS}}</style>
+<script>
+window.PDH_TL = {dueDays: {{.DueDays}}, barHeight: {{.BarHeight}}};
+window.pdhTimelineState = function(t){
+  if(!t) return '';
+  if(t.done) return 'done';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = t.end ? new Date(t.end + 'T00:00:00') : null;
+  if(due && !t.provisional){
+    if(due < today) return 'overdue';
+    const limit = new Date(today); limit.setDate(limit.getDate() + (window.PDH_TL.dueDays || 0));
+    if(due <= limit) return 'due';
+  }
+  if(t.unassigned) return 'unassigned';
+  if(t.running) return 'running';
+  return '';
+};
+window.pdhTimelineApply = function(wrapper, t){
+  const st = window.pdhTimelineState(t);
+  ['done', 'overdue', 'due', 'unassigned', 'running'].forEach(k => wrapper.classList.remove('tl-' + k));
+  if(st) wrapper.classList.add('tl-' + st);
+  return st;
+};
+window.PDH_TL_LABEL = {done: 'beendet', overdue: 'überfällig', due: 'fällig', unassigned: 'nicht zugewiesen', running: 'läuft'};
+</script>
+{{end}}{{end}}
+
+{{define "timeline-legend"}}
+<div class="tl-legend" aria-label="Legende Zeitstrahl">
+  <span class="tl-running"><i></i>läuft</span><span class="tl-due"><i></i>fällig</span><span class="tl-overdue"><i></i>überfällig</span>
+  <span class="tl-unassigned"><i></i>nicht zugewiesen</span><span class="tl-done"><i></i>beendet</span>
+</div>
+{{end}}

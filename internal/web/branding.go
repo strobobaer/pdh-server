@@ -50,6 +50,7 @@ type Branding struct {
 	HAThemes                       []ThemePalette // aus Home Assistant importiert
 	Font                           string         // Firmenstandard-Schrift (appearance.go)
 	Scale                          int            // Firmenstandard-Groesse in %
+	Timeline                       TimelineStyle  // Zeitstrahl-Darstellung (timeline_style.go)
 	appFile, exportFile, printFile string         // Dateipfade (fuer PDF/Excel)
 }
 
@@ -73,7 +74,7 @@ func (h *Handler) branding() Branding {
 	if c != nil {
 		return *c
 	}
-	b := Branding{AppName: "PDH", ExportSame: true, PrintSame: true, Theme: defaultTheme, ThemeUserChoice: true}
+	b := Branding{AppName: "PDH", ExportSame: true, PrintSame: true, Theme: defaultTheme, ThemeUserChoice: true, Timeline: defaultTimelineStyle}
 	if h.db != nil {
 		ctx := context.Background()
 		b.AppName = h.appSetting(ctx, keyBrandName, "PDH")
@@ -89,6 +90,7 @@ func (h *Handler) branding() Branding {
 		b.HAThemes = h.loadHAThemes(ctx)
 		b.Font = h.appSetting(ctx, keyBrandFont, defaultFont)
 		b.Scale, _ = strconv.Atoi(h.appSetting(ctx, keyBrandScale, "100"))
+		b.Timeline = h.loadTimelineStyle(ctx)
 	}
 	if strings.TrimSpace(b.AppName) == "" {
 		b.AppName = "PDH"

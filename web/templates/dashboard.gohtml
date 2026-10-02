@@ -23,6 +23,7 @@
     </div>
   </div>
   <div id="dash-gantt-target" style="overflow-x:auto"></div>
+  {{template "timeline-legend"}}
   <div id="dash-gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">
     {{t "Keine Einträge mit Terminen vorhanden."}}
   </div>
@@ -117,21 +118,15 @@ var dashGanttItems = [
 {{range .GanttItems}}
   {id:'{{.ID}}', refType:'{{.RefType}}', name:'{{.Title}}', start:'{{.StartISO}}', end:'{{.EndISO}}',
    provisional: {{if .IsProvisional}}true{{else}}false{{end}}, done: {{if .IsDone}}true{{else}}false{{end}},
+   running: {{if .IsRunning}}true{{else}}false{{end}}, unassigned: {{if .IsUnassigned}}true{{else}}false{{end}},
    color:'{{.Color}}', url:'{{.DetailURL}}', dueEndpoint:'{{.DueDateEndpoint}}'},
 {{end}}
 ];
 
+// Fuellung = Farbe der Vorgangsart; Rand und Ausgrauen je Zustand kommen aus
+// dem Theming (widgets/timeline_style: pdhTimelineApply)
 function dashGanttColor(t){
-  var today = new Date(); today.setHours(0,0,0,0);
-  var due = t.end ? new Date(t.end+'T00:00:00') : null;
-  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
-  var isOverdue = (!t.done && due && due < today);
-  var isDueSoon = (!t.done && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
-
-  if(t.done) return {fill:'#10b981', stroke:'#10b981', opacity:1};
-  if(isOverdue) return {fill:t.color, stroke:'#e05a5a', opacity: t.provisional ? 0.4 : 1}; // synchron mit dem Leitstand-Zeitstrahl
-  if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b', opacity: t.provisional ? 0.4 : 1};
-  return {fill:t.color, stroke:t.color, opacity: t.provisional ? 0.4 : 1};
+  return {fill: t.color, opacity: t.provisional && !t.done ? 0.4 : 1};
 }
 
 function applyDashGanttStyling(){
@@ -141,16 +136,13 @@ function applyDashGanttStyling(){
     var colors = dashGanttColor(t);
     var bar = wrapper.querySelector('.bar');
     var barProgress = wrapper.querySelector('.bar-progress');
-    if(bar){
-      bar.style.fill = colors.fill;
-      bar.style.stroke = colors.stroke;
-      bar.style.strokeWidth = (colors.stroke === '#e05a5a') ? '3px' : '1px';
-    }
+    if(bar){ bar.style.fill = colors.fill; bar.style.stroke = colors.fill; }
     if(barProgress) barProgress.style.fill = colors.fill;
+    var state = pdhTimelineApply(wrapper, t);
     wrapper.style.opacity = colors.opacity;
     wrapper.style.cursor = 'pointer';
     var titleEl = wrapper.querySelector('title');
-    var hint = t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Doppelklick zum Öffnen';
+    var hint = (state ? ' — ' + PDH_TL_LABEL[state] : '') + (t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Doppelklick zum Öffnen');
     if(!titleEl){
       titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
       wrapper.appendChild(titleEl);
@@ -213,7 +205,8 @@ function renderDashGantt(){
         var item = byId[task.id];
         if(item) saveDashGanttDate(item, end);
       },
-      view_mode: 'Week'
+      view_mode: 'Week',
+      bar_height: PDH_TL.barHeight
     });
     setTimeout(applyDashGanttStyling, 100);
   }catch(e){

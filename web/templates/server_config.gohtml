@@ -144,6 +144,81 @@
     <div class="sc-actions"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
   </form>
 </div>
+{{with .Brand.Timeline.Safe}}
+<style>
+.tl-form .tl-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:12px}
+.tl-form .tl-colors label{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:400}
+.tl-form .tl-colors input[type=color]{width:38px;height:30px;border:0;background:none;padding:0;cursor:pointer}
+.tl-form .tl-colors small{display:block;color:var(--muted);font-size:11px}
+.tl-form output{font-weight:600;margin-left:6px}
+.tl-prev{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:4px 0 12px;background:var(--bg3)}
+.tl-prev svg{width:100%;display:block}
+.tl-prev text{fill:var(--text);font-size:11px}
+</style>
+<div class="card tl-form" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-timeline"></i> Zeitstrahl</span><span class="sc-sub">Rand der Balken je Zustand – Dashboard, Leitstand und Projekte</span></div>
+  <form method="post" action="/admin/branding/timeline" id="tl-form">
+    <div class="tl-colors">
+      {{$s := .}}{{range .States}}
+      <label><input type="color" name="{{.Key}}" value="{{$s.Color .Key}}" data-tl="{{.Key}}"><span>{{.Label}}<small>{{.Hint}}</small></span></label>
+      {{end}}
+      <label><input type="color" name="done_fill" value="{{.DoneFill}}" data-tl="done-fill"><span>Beendet – Balken<small>Farbe zum Ausgrauen</small></span></label>
+    </div>
+    <div class="sc-grid" style="margin-bottom:6px">
+      <div class="sc-f"><label>Randstärke <output id="tl-w-out">{{.WidthStr}} px</output></label>
+        <input type="range" name="width" min="0.5" max="6" step="0.5" value="{{.WidthStr}}" id="tl-w" style="width:100%"></div>
+      <div class="sc-f"><label>Randhelligkeit <output id="tl-b-out">{{.Brightness}} %</output></label>
+        <input type="range" name="brightness" min="-50" max="50" step="5" value="{{.Brightness}}" id="tl-b" style="width:100%">
+        <div class="help">minus = dunkler, plus = heller</div></div>
+      <div class="sc-f"><label>Balkenhöhe <output id="tl-h-out">{{.BarHeight}} px</output></label>
+        <input type="range" name="bar_height" min="12" max="48" step="2" value="{{.BarHeight}}" id="tl-h" style="width:100%"></div>
+      <div class="sc-f"><label>„Fällig“ ab</label>
+        <select class="form-input" name="due_days">{{$d := .DueDays}}{{range $i := .DueDayOptions}}<option value="{{$i}}" {{if eq $i $d}}selected{{end}}>{{if eq $i 0}}am Termin selbst{{else if eq $i 1}}1 Tag vorher (heute und morgen){{else}}{{$i}} Tage vorher{{end}}</option>{{end}}</select>
+        <div class="help">ab wann ein Vorgang rot umrandet wird; danach blinkt er als überfällig</div></div>
+    </div>
+    <div class="tl-prev" id="tl-prev"><svg class="gantt" id="tl-prev-svg" viewBox="0 0 520 210" preserveAspectRatio="xMinYMin meet"></svg></div>
+    <div class="sc-actions">
+      <button class="btn" type="submit" name="reset" value="1" onclick="return confirm('Zeitstrahl-Darstellung auf Standard zurücksetzen?')"><i class="ti ti-restore"></i> Standard</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
+  </form>
+</div>
+<script>
+// Live-Vorschau der Zeitstrahl-Raender (nur diese Seite, bis gespeichert)
+(function(){
+  const form = document.getElementById('tl-form'); if(!form) return;
+  const svg = document.getElementById('tl-prev-svg'), box = document.getElementById('tl-prev');
+  const rows = [['running', 'Laufend', '#4b9fc4'], ['due', 'Fällig', '#3fae86'], ['overdue', 'Überfällig', '#c99a3c'],
+    ['unassigned', 'Nicht zugewiesen', '#9d7fc9'], ['done', 'Beendet', '#4b9fc4'], ['', 'Ohne Zustand', '#3fae86']];
+  const mix = (hex, to, t) => {
+    const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
+    const c = [16, 8, 0].map(s => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t));
+    return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+  };
+  function draw(){
+    const w = form.width.value, b = +form.brightness.value, h = +form.bar_height.value;
+    document.getElementById('tl-w-out').textContent = w + ' px';
+    document.getElementById('tl-b-out').textContent = b + ' %';
+    document.getElementById('tl-h-out').textContent = h + ' px';
+    box.style.setProperty('--tl-w', w + 'px');
+    form.querySelectorAll('[data-tl]').forEach(i => {
+      const k = i.dataset.tl;
+      const v = k === 'done-fill' ? i.value : (b > 0 ? mix(i.value, '#ffffff', b / 100) : b < 0 ? mix(i.value, '#000000', -b / 100) : i.value);
+      box.style.setProperty('--tl-' + k, v);
+    });
+    const gap = h + 12;
+    svg.setAttribute('viewBox', '0 0 520 ' + (rows.length * gap + 8));
+    svg.innerHTML = rows.map((r, i) => {
+      const y = 6 + i * gap;
+      return '<g class="bar-wrapper' + (r[0] ? ' tl-' + r[0] : '') + '"><g class="bar-group"><rect class="bar" x="150" y="' + y + '" width="' + (190 + (i % 3) * 50) + '" height="' + h + '" rx="3" style="fill:' + r[2] + ';stroke:' + r[2] + '"></rect></g></g>'
+        + '<text x="0" y="' + (y + h / 2 + 4) + '">' + r[1] + '</text>';
+    }).join('');
+  }
+  form.addEventListener('input', draw);
+  draw();
+})();
+</script>
+{{end}}
 <div class="card" style="margin-bottom:14px">
   <div class="card-title"><span><i class="ti ti-home"></i> Theme aus Home Assistant übernehmen</span><span class="sc-sub">z. B. Nordic, Caule, iOS Dark Mode, Metro</span></div>
   <p class="sc-sub" style="margin-bottom:10px">Theme-Datei aus dem Home-Assistant-Ordner <code>themes/</code> hochladen oder ihren Inhalt einfügen. Übernommen werden Akzent-, Hintergrund-, Karten-, Text-, Rahmen- und Statusfarben – getrennt für Hell und Dunkel, wenn das Theme <code>modes: light/dark</code> hat. Schriften, Rundungen und card-mod werden ignoriert. Eine Datei mit mehreren Themes ergibt mehrere Farbschemata.</p>

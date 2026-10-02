@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
 {{template "wizard-styles"}}
+{{template "timeline-style" .Timeline}}
 <style>
 /* Erstellungs-Assistent im Leitstand: gleiche Optik wie im PDH, Farben aus dem Leitstand */
 #crw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
@@ -247,6 +248,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       </div>
     </div>
     <div id="dash-gantt-target"></div>
+    {{template "timeline-legend"}}
     <div id="dash-gantt-empty">Keine Einträge mit Terminen vorhanden.</div>
   </div>
 
@@ -384,17 +386,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   let dashGanttItems = [];
   let dashGanttInstance = null;
 
+  // Fuellung = Farbe der Vorgangsart; Rand und Ausgrauen je Zustand kommen aus
+  // dem Theming (widgets/timeline_style: pdhTimelineApply)
   function dashGanttColor(t){
-    const today = todayMidnight();
-    const due = t.end ? new Date(t.end+'T00:00:00') : null;
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
-    const isOverdue = (!t.done && due && due < today);
-    const isDueSoon = (!t.done && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
-
-    if(t.done) return {fill:'#10b981', stroke:'#10b981', opacity:1};
-    if(isOverdue) return {fill:t.color, stroke:'#e05a5a', opacity: t.provisional ? 0.4 : 1};
-    if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b', opacity: t.provisional ? 0.4 : 1};
-    return {fill:t.color, stroke:t.color, opacity: t.provisional ? 0.4 : 1};
+    return {fill: t.color, opacity: t.provisional && !t.done ? 0.4 : 1};
   }
 
   function ganttItemKey(t){ return t.refType + ':' + t.id; }
@@ -408,13 +403,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     dashGanttItems.forEach(function(t){
       const wrapper = document.querySelector('#dash-gantt-target .bar-wrapper[data-id="' + t.id + '"]');
       if(!wrapper) return;
-      const bar = wrapper.querySelector('.bar');
-      if(!bar) return;
-      const colors = dashGanttColor(t);
-      const isSelected = ganttItemKey(t) === selectedKey;
-      bar.style.stroke = isSelected ? 'var(--focus)' : colors.stroke;
-      bar.style.strokeWidth = isSelected ? '4px' : ((colors.stroke === '#e05a5a') ? '3px' : '1px');
-      wrapper.classList.toggle('gantt-selected', isSelected);
+      // Rand der Auswahl kommt aus dem Theming-CSS (.gantt-selected)
+      wrapper.classList.toggle('gantt-selected', ganttItemKey(t) === selectedKey);
     });
   }
 
@@ -425,16 +415,13 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       const colors = dashGanttColor(t);
       const bar = wrapper.querySelector('.bar');
       const barProgress = wrapper.querySelector('.bar-progress');
-      if(bar){
-        bar.style.fill = colors.fill;
-        bar.style.stroke = colors.stroke;
-        bar.style.strokeWidth = (colors.stroke === '#e05a5a') ? '3px' : '1px';
-      }
+      if(bar){ bar.style.fill = colors.fill; bar.style.stroke = colors.fill; }
       if(barProgress) barProgress.style.fill = colors.fill;
+      const state = pdhTimelineApply(wrapper, t);
       wrapper.style.opacity = colors.opacity;
       wrapper.style.cursor = 'pointer';
       let titleEl = wrapper.querySelector('title');
-      const hint = t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Klick zum Auswählen, Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Klick zum Auswählen, Doppelklick zum Öffnen';
+      const hint = (state ? ' — ' + PDH_TL_LABEL[state] : '') + (t.provisional ? ' — kein Termin, geschätzt (+30 Tage). Klick zum Auswählen, Doppelklick zum Öffnen, Ziehen zum Eintragen eines echten Termins.' : ' — Klick zum Auswählen, Doppelklick zum Öffnen');
       if(!titleEl){
         titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'title');
         wrapper.appendChild(titleEl);
@@ -551,7 +538,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
           const item = byId[task.id];
           if(item) saveDashGanttDate(item, end);
         },
-        view_mode: viewMode
+        view_mode: viewMode,
+        bar_height: PDH_TL.barHeight
       });
       // frappe-gantt leitet die Zeitachse aus den Aufgaben ab; hier wird sie
       // fest auf [heute-N, heute+N] gesetzt, damit heute immer mittig liegt.
@@ -816,7 +804,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     dashGanttItems = (data.gantt_items || []).map(function(t){
       return {id: t.id, refType: t.ref_type, name: t.title, start: t.start_iso, end: t.end_iso,
-        provisional: !!t.is_provisional, done: !!t.is_done, color: t.color, url: t.detail_url, dueEndpoint: t.due_date_endpoint};
+        provisional: !!t.is_provisional, done: !!t.is_done, running: !!t.is_running, unassigned: !!t.is_unassigned,
+        color: t.color, url: t.detail_url, dueEndpoint: t.due_date_endpoint};
     });
     renderDashGantt();
     renderEntriesTable(data.items);

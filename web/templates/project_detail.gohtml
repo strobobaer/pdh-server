@@ -61,6 +61,7 @@
 <div class="card">
   <div class="card-title">Zeitstrahl</div>
   <div id="gantt-target" style="overflow-x:auto"></div>
+  {{template "timeline-legend"}}
   <div id="gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">
     Keine Aufgaben mit Start-/Fälligkeitsdatum vorhanden.
   </div>
@@ -178,22 +179,15 @@ var ganttTasks = [
 {{range .Tasks}}{{if and .StartDateISO .DueDateISO}}
   {id:'{{.ID}}', name:'{{.Title}}', start:'{{.StartDateISO}}', end:'{{.DueDateISO}}',
    progress: {{if eq .Status "resolved"}}100{{else if eq .Status "closed"}}100{{else if eq .Status "in_progress"}}50{{else}}0{{end}},
-   status: '{{.Status}}', dueDateISO: '{{.DueDateISO}}', color: '{{.Color}}' },
+   status: '{{.Status}}', dueDateISO: '{{.DueDateISO}}', color: '{{.Color}}',
+   done: {{if or (eq .Status "resolved") (eq .Status "closed")}}true{{else}}false{{end}}, running: {{if eq .Status "in_progress"}}true{{else}}false{{end}},
+   unassigned: {{if .Assignees}}false{{else}}true{{end}} },
 {{end}}{{end}}
 ];
 
+// Fuellung = Aufgabenfarbe; Rand/Ausgrauen je Zustand aus dem Theming (pdhTimelineApply)
 function ganttTaskColor(t){
-  var today = new Date(); today.setHours(0,0,0,0);
-  var due = t.dueDateISO ? new Date(t.dueDateISO+'T00:00:00') : null;
-  var isDone = (t.status === 'resolved' || t.status === 'closed');
-  var isOverdue = (!isDone && due && due < today);
-  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
-  var isDueSoon = (!isDone && due && (due.getTime() === today.getTime() || due.getTime() === tomorrow.getTime()));
-
-  if(isDone) return {fill:'#10b981', stroke:'#10b981'};
-  if(isOverdue) return {fill: t.color || '#4f6ef7', stroke:'#ef4444'};
-  if(isDueSoon) return {fill:'#f59e0b', stroke:'#f59e0b'};
-  return {fill: t.color || '#4f6ef7', stroke: t.color || '#4f6ef7'};
+  return {fill: t.color || '#4f6ef7'};
 }
 
 function applyGanttColors(){
@@ -203,14 +197,11 @@ function applyGanttColors(){
     if(!wrapper) return;
     var bar = wrapper.querySelector('.bar');
     var barProgress = wrapper.querySelector('.bar-progress');
-    if(bar){
-      bar.style.fill = colors.fill;
-      bar.style.stroke = colors.stroke;
-      bar.style.strokeWidth = (colors.stroke === '#ef4444') ? '3px' : '1px';
-    }
+    if(bar){ bar.style.fill = colors.fill; bar.style.stroke = colors.fill; }
     if(barProgress){
       barProgress.style.fill = colors.fill;
     }
+    pdhTimelineApply(wrapper, {done: t.done, running: t.running, unassigned: t.unassigned, end: t.dueDateISO});
   });
 }
 
@@ -266,7 +257,8 @@ function renderGantt(){
     new Gantt('#gantt-target', ganttTasks, {
       on_click: handleGanttBarClick,
       on_date_change: function(task, start, end){ saveTaskDates(task.id, start, end); },
-      view_mode: 'Week'
+      view_mode: 'Week',
+      bar_height: PDH_TL.barHeight
     });
     setTimeout(applyGanttColors, 100);
   }catch(e){

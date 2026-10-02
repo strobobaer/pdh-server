@@ -276,7 +276,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du eine Aufgabe ab</b>
     Grüner Haken <b>Abschließen</b> (in der Übersicht „Aufgabe abschließen …“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
-  <p><b>Projekte</b> bündeln Aufgaben und zeigen sie im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung.</p>
+  <p><b>Projekte</b> bündeln Aufgaben und zeigen sie im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
 </section>
 
@@ -647,6 +647,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Das Theme erscheint oben bei den Farbschemata (Hinweis „aus Home Assistant“). Antippen und <b>Speichern</b>, um es zum Firmenstandard zu machen.</li>
     </ol>
     Hat das Theme getrennte Farben für Hell und Dunkel (<code>modes: light/dark</code>), werden beide übernommen. Hat es nur einen Satz Farben, gilt er für den passenden Modus; im anderen Modus kommen nur die Akzentfarben mit. Schriften, Rundungen, Zustandsfarben und card-mod werden nicht übernommen. Eine erneute Übernahme mit gleichem Namen ersetzt das Theme; <b>Entfernen</b> löscht es (war es Firmenstandard, gilt wieder PDH-Blau).</div>
+  <h3 id="timeline-style"><i class="ti ti-timeline"></i> Erscheinungsbild: Zeitstrahl</h3>
+  <p>In allen Zeitstrahlen – <b>Dashboard</b>, <b>Leitstand</b> und <b>Projekte</b> – zeigt der Rand eines Balkens, wie es um den Vorgang steht. Die Füllfarbe bleibt die Farbe der Vorgangsart bzw. der Aufgabe.</p>
+  <div class="tl-legend" style="margin:6px 0 10px">
+    <span class="tl-running"><i></i>läuft (in Bearbeitung) – gelb</span><span class="tl-due"><i></i>fällig – rot</span><span class="tl-overdue"><i></i>überfällig – roter, blinkender Rand</span>
+    <span class="tl-unassigned"><i></i>nicht zugewiesen – lila</span><span class="tl-done"><i></i>beendet – grüner Rand, Balken ausgegraut</span>
+  </div>
+  <p>Treffen mehrere Zustände zu, gilt der wichtigste: <b>beendet</b> vor <b>überfällig</b> vor <b>fällig</b> vor <b>nicht zugewiesen</b> vor <b>läuft</b>. „Nicht zugewiesen“ heißt: weder eine Person noch eine Gruppe (bei Aufgaben: keine Beteiligten). Balken ohne echten Termin (geschätzt, blass) werden nie fällig oder überfällig. Wer Bewegung nicht verträgt (Systemeinstellung „Bewegung reduzieren“), sieht den überfälligen Rand ohne Blinken.</p>
+  <div class="hb-howto"><b><i class="ti ti-timeline"></i> So stellst du den Zeitstrahl ein</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Erscheinungsbild</b>, Karte <b>Zeitstrahl</b>.</li>
+      <li>Je Zustand die <b>Farbe</b> wählen, dazu die Farbe, mit der beendete Balken <b>ausgegraut</b> werden.</li>
+      <li><b>Randstärke</b> (0,5 – 6 px), <b>Randhelligkeit</b> (dunkler bis heller, wirkt auf alle Ränder) und <b>Balkenhöhe</b> (12 – 48 px) mit den Schiebern einstellen.</li>
+      <li>Bei <b>„Fällig“ ab</b> festlegen, wie viele Tage vor dem Termin der rote Rand beginnt (Standard: heute und morgen).</li>
+      <li>Die <b>Vorschau</b> zeigt sofort, wie es aussieht. <b>Speichern</b> – gilt für alle Benutzer und den Leitstand. <b>Standard</b> stellt die Vorgabe wieder her.</li>
+    </ol></div>
   <h3><i class="ti ti-palette"></i> Erscheinungsbild: Name und Logos</h3>
   <p>Darunter legst du den Anzeigenamen und drei Logos fest:</p>
   <table>
