@@ -139,6 +139,12 @@ html.sidebar-right-collapsed{--right-sidebar-w:54px}
 .sidebar-toggle i{font-size:18px}
 nav{padding:12px 0;flex:1}
 .nav-section{padding:12px 16px 4px;font-size:10px;font-weight:600;letter-spacing:1.4px;color:var(--muted);text-transform:uppercase}
+.nav-fold{display:flex;align-items:center;width:100%;background:none;border:0;cursor:pointer;font-family:inherit;text-align:left}
+.nav-fold:hover{color:var(--text)}
+.nav-fold i{margin-left:auto;font-size:13px;transition:transform .15s}
+.nav-fold[aria-expanded="false"] i{transform:rotate(-90deg)}
+.nav-group.folded{display:none}
+html.sidebar-left-collapsed .nav-group.folded{display:block}
 .nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:var(--muted);border-left:2px solid transparent;transition:all .15s}
 .nav-item:hover{color:var(--text);background:var(--bg3)}
 .nav-item.active{color:var(--accent);background:rgba(var(--accent-rgb),.08);border-left-color:var(--accent)}
@@ -550,7 +556,8 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i><span class="nav-label">{{t "Ersatzteile"}}</span></a>
     <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">{{t "Zeiterfassung"}}</span></a>
 
-    <div class="nav-section">Core</div>
+    <button type="button" class="nav-section nav-fold" data-fold="core" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Core"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+    <div class="nav-group" data-fold-group="core">
     {{if .CanManageUsers}}<a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">{{t "Benutzer"}}</span></a>{{end}}
     <a href="/trainings" class="nav-item {{if eq .Page "trainings"}}active{{end}}"><i class="ti ti-school"></i><span class="nav-label">{{if .CanTrainings}}{{t "Schulungen"}}{{else}}{{t "Meine Schulungen"}}{{end}}</span></a>
     {{if .CanManageUsers}}<a href="/admin/org-units" class="nav-item {{if eq .Page "org_units"}}active{{end}}"><i class="ti ti-users-group"></i><span class="nav-label">{{t "Abteilungen & Gruppen"}}</span></a>{{end}}
@@ -568,17 +575,46 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">{{t "Schichtplan"}}</span></a>
     <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">{{t "Infrastruktur"}}</span></a>
     <a href="/directory" class="nav-item {{if eq .Page "directory"}}active{{end}}"><i class="ti ti-building-factory-2"></i><span class="nav-label">{{t "Hersteller & Lieferanten"}}</span></a>
+    </div>
 
     {{if .CanImport}}
-    <div class="nav-section">Import</div>
-    <a href="/import" class="nav-item {{if eq .Page "import"}}active{{end}}"><i class="ti ti-database-import"></i><span class="nav-label">Import</span></a>
+    <button type="button" class="nav-section nav-fold" data-fold="import" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Import"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+    <div class="nav-group" data-fold-group="import">
+    <a href="/import" class="nav-item {{if eq .Page "import"}}active{{end}}"><i class="ti ti-database-import"></i><span class="nav-label">{{t "Import"}}</span></a>
+    </div>
     {{end}}
 
     {{if .CanExport}}
-    <div class="nav-section">Export</div>
-    <a href="/export" class="nav-item {{if eq .Page "export"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">Export</span></a>
+    <button type="button" class="nav-section nav-fold" data-fold="export" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Export"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+    <div class="nav-group" data-fold-group="export">
+    <a href="/export" class="nav-item {{if eq .Page "export"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">{{t "Export"}}</span></a>
+    </div>
     {{end}}
   </nav>
+  <script>
+  // Einklappbare Navigationsbereiche (Core, Import, Export): Zustand je Browser;
+  // der Bereich mit der geoeffneten Seite bleibt immer offen.
+  (function(){
+    let st = {};
+    try{ st = JSON.parse(localStorage.getItem('pdh_nav_fold') || '{}'); }catch(e){}
+    document.querySelectorAll('.nav-fold').forEach(function(b){
+      const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
+      const folded = !!st[b.dataset.fold] && !(g && g.querySelector('.nav-item.active'));
+      b.setAttribute('aria-expanded', folded ? 'false' : 'true');
+      if(g) g.classList.toggle('folded', folded);
+    });
+  })();
+  function pdhFold(b){
+    const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
+    const fold = b.getAttribute('aria-expanded') === 'true';
+    b.setAttribute('aria-expanded', fold ? 'false' : 'true');
+    if(g) g.classList.toggle('folded', fold);
+    let st = {};
+    try{ st = JSON.parse(localStorage.getItem('pdh_nav_fold') || '{}'); }catch(e){}
+    st[b.dataset.fold] = fold;
+    try{ localStorage.setItem('pdh_nav_fold', JSON.stringify(st)); }catch(e){}
+  }
+  </script>
 </aside>
 
 <!-- ── Hauptbereich ── -->

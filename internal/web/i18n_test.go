@@ -126,3 +126,17 @@ func TestBaseRendersInLanguage(t *testing.T) {
 		t.Error("Sprachmenü fehlt")
 	}
 }
+
+func TestNavFoldGroups(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "org_units", OrgUnitsData{BaseData: BaseData{CanImport: true, CanExport: true, Page: "import"}})
+	nav := out[strings.Index(out, "<nav>"):strings.Index(out, "</nav>")]
+	for _, k := range []string{"core", "import", "export"} {
+		if !strings.Contains(nav, `data-fold="`+k+`"`) || !strings.Contains(nav, `data-fold-group="`+k+`"`) {
+			t.Errorf("Bereich %s fehlt", k)
+		}
+	}
+	if o, c := strings.Count(nav, "<div"), strings.Count(nav, "</div>"); o != c {
+		t.Errorf("Navigation: %d <div> vs %d </div>", o, c)
+	}
+}
