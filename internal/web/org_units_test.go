@@ -95,3 +95,16 @@ func TestRolesPageDepartmentSelect(t *testing.T) {
 		t.Error("nicht verwaltbare Rolle darf keine Auswahl haben")
 	}
 }
+
+func TestAssignmentNewOffersGroups(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "assignment_new", AssignmentNewPageData{
+		Users:  []UserOption{{ID: "u1", Name: "Eva"}},
+		Groups: []groupView{{ID: "g1", Name: "Elektro Früh", DepartmentName: "Elektro", MemberNames: []string{"Eva", "Max"}}},
+	})
+	for _, want := range []string{`<optgroup label="Personen">`, `<option value="u1">Eva</option>`, `<optgroup label="Gruppen">`, `value="g:g1"`, "Elektro Früh (Elektro) · 2 Mitglieder"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Neue Zuweisung enthält %q nicht", want)
+		}
+	}
+}

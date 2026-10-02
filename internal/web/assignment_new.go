@@ -15,6 +15,7 @@ import (
 type AssignmentNewPageData struct {
 	BaseData
 	Users                     []UserOption
+	Groups                    []groupView // zuweisbare Gruppen (migrations/085)
 	DefaultDueDaysTicket      int
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
@@ -26,6 +27,7 @@ func (h *Handler) AssignmentNewPage(w http.ResponseWriter, r *http.Request) {
 	data := AssignmentNewPageData{
 		BaseData:                  h.baseData(r, "assignments-new", "Neue Zuweisung", "Auftrag anlegen und zuweisen"),
 		Users:                     h.userOptions(ctx),
+		Groups:                    h.loadGroups(ctx),
 		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
