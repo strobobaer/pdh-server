@@ -80,7 +80,7 @@ func TestWidgetBodies(t *testing.T) {
 		{widgetBody{Def: def("stat_faults"), Data: statData{Value: "7", Sub: "2 neu gemeldet", Color: "red", URL: "/faults", Alert: true}}, []string{`class="dw-stat c-red" href="/faults"`, ">7<", "s alert"}},
 		{widgetBody{Def: def("list_mine"), Data: []listItem{{Icon: "ti-ticket", Title: "Presse prüfen", Sub: "Ticket · Offen", URL: "/tickets/1", Badge: "überfällig", BadgeClass: "b-red"}}}, []string{`href="/tickets/1"`, "Presse prüfen", "badge b-red"}},
 		{widgetBody{Def: def("list_faults"), Data: []listItem(nil)}, []string{"Nichts offen"}},
-		{widgetBody{Def: def("quick_actions"), Data: []quickAction{{"Zeit erfassen", "ti-clock-play", "/time", "green"}}}, []string{`class="q-green" href="/time"`}},
+		{widgetBody{Def: def("quick_actions"), Data: []quickAction{{"Zeit erfassen", "ti-clock-play", "/time", "green", ""}, {"Störung melden", "ti-alert-triangle", "/faults?create=fault", "red", "fault"}}}, []string{`class="q-green" href="/time">`, `href="/faults?create=fault" data-create="fault"`}},
 		{widgetBody{Def: def("quick_links"), Data: []widgetLink{{"Intern", "/tickets"}, {"Extern", "https://example.com"}}}, []string{`href="/tickets"><i class="ti ti-arrow-right">`, `href="https://example.com" target="_blank" rel="noopener"`}},
 		{widgetBody{Def: def("note"), Data: "<b>Hallo</b>"}, []string{"&lt;b&gt;Hallo&lt;/b&gt;"}},
 		{widgetBody{Def: def("chart_trend"), Data: trendData{ShowTickets: true, Days: []trendDay{{Label: "Mo 05.", Tickets: 3, HT: 100}}, SumTickets: 3}}, []string{"height:100%", "Tickets (3)"}},

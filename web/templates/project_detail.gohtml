@@ -69,7 +69,7 @@
 <div class="card">
   <div class="card-title">
     Aufgaben
-    <button type="button" class="btn btn-icon" style="font-size:11px" onclick="document.getElementById('new-project-task-form').style.display='block'" title="Neue Aufgabe"><i class="ti ti-plus"></i></button>
+    <button type="button" class="btn btn-icon" style="font-size:11px" onclick="pdhCreate('task', {project_id: PROJECT_ID, project_label: {{.Project.Name}}, stay: true})" title="Neue Aufgabe"><i class="ti ti-plus"></i></button>
   </div>
 
   <div style="display:flex;gap:8px;margin-bottom:12px">
@@ -78,26 +78,6 @@
   </div>
   <div id="assign-task-result" style="font-size:12px;margin-bottom:10px"></div>
 
-  <div id="new-project-task-form" style="display:none;background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:12px">
-    <form onsubmit="return submitProjectTaskForm(this)">
-      <div class="grid2">
-        <div class="form-group"><label class="form-label">Titel</label><input name="title" class="form-input" required></div>
-        <div class="form-group"><label class="form-label">Priorität</label>
-          <select name="priority" class="form-input">
-            <option value="low">Low</option><option value="medium" selected>Medium</option>
-            <option value="high">High</option><option value="critical">Critical</option>
-          </select>
-        </div>
-        <div class="form-group"><label class="form-label">Start</label><input name="start_date" type="date" class="form-input"></div>
-        <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input"></div>
-      </div>
-      <div id="project-task-create-result" style="font-size:12px;margin-bottom:8px"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="button" class="btn" onclick="document.getElementById('new-project-task-form').style.display='none'">Abbrechen</button>
-        <button type="submit" class="btn btn-primary">Hinzufügen</button>
-      </div>
-    </form>
-  </div>
 
   {{range .Tasks}}
   <div class="li" style="cursor:pointer" onclick="window.location='/tasks/{{.ID}}'">
@@ -389,26 +369,6 @@ async function assignExistingTask(){
 if(document.readyState !== 'loading'){ renderGantt(); loadUnassignedTasks(); }
 else document.addEventListener('DOMContentLoaded', function(){ renderGantt(); loadUnassignedTasks(); });
 
-async function submitProjectTaskForm(form){
-  var fd = new FormData(form);
-  var payload = {
-    title: fd.get('title'), priority: fd.get('priority'),
-    start_date: fd.get('start_date'), due_date: fd.get('due_date'),
-    project_id: PROJECT_ID
-  };
-  var result = document.getElementById('project-task-create-result');
-  result.textContent = 'Speichere...';
-  try{
-    var res = await fetch('/api/v1/tasks/', {
-      method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json', Authorization:'Bearer '+pdhToken()},
-      body: JSON.stringify(payload)
-    });
-    var json = await res.json();
-    if(!res.ok || !json.success) throw new Error(json.error || 'Fehler');
-    location.reload();
-  }catch(e){ result.innerHTML = '<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
-  return false;
-}
 </script>
 {{end}}
 

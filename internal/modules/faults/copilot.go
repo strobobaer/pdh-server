@@ -30,6 +30,7 @@ type Copilot struct {
 	model          string
 	anthropicModel string
 	anthropicURL   string // Basis-URL der API ("" = Standard; Tests lenken sie um)
+	anthropicWS    string // Workspace-ID (Header anthropic-workspace-id), "" = nicht senden
 	httpClient     *http.Client
 	repo           *Repository
 }
@@ -150,8 +151,16 @@ func anthropicCurrent(model string) (effort, fallbacks bool) {
 	return
 }
 
+// SetAnthropicWorkspace setzt die Workspace-ID fuer API-Schluessel, die
+// keinem Workspace zugeordnet sind (Anthropic verlangt dann den Header
+// anthropic-workspace-id).
+func (c *Copilot) SetAnthropicWorkspace(id string) { c.anthropicWS = strings.TrimSpace(id) }
+
 func (c *Copilot) anthropicClient() anthropic.Client {
 	opts := []option.RequestOption{option.WithAPIKey(c.apiKey), option.WithMaxRetries(2)}
+	if c.anthropicWS != "" {
+		opts = append(opts, option.WithHeader("anthropic-workspace-id", c.anthropicWS))
+	}
 	if c.anthropicURL != "" {
 		opts = append(opts, option.WithBaseURL(c.anthropicURL))
 	}
@@ -187,14 +196,20 @@ func (c *Copilot) anthropicChat(ctx context.Context, system, userMsg, effort str
 		var apiErr *anthropic.Error
 		if errors.As(err, &apiErr) {
 			hint := ""
-			switch apiErr.StatusCode {
-			case 401:
+			switch {
+			case strings.Contains(apiErrorMessage(apiErr), "anthropic-workspace-id"):
+				if c.anthropicWS == "" {
+					hint = " (Server-Einstellungen → Copilot: „Anthropic-Workspace-ID“ eintragen – zu finden in der Claude Console unter Settings → Workspaces – oder einen Workspace-gebundenen API-Schlüssel verwenden)"
+				} else {
+					hint = " (die eingetragene Anthropic-Workspace-ID „" + c.anthropicWS + "“ prüfen)"
+				}
+			case apiErr.StatusCode == 401:
 				hint = " (API-Schlüssel prüfen)"
-			case 404:
+			case apiErr.StatusCode == 404:
 				hint = " (Modell \"" + c.anthropicModel + "\" unbekannt – in den Server-Einstellungen ein aktuelles Modell eintragen, z. B. " + DefaultAnthropicModel + ")"
-			case 429:
+			case apiErr.StatusCode == 429:
 				hint = " (Ratenlimit – kurz warten)"
-			case 529:
+			case apiErr.StatusCode == 529:
 				hint = " (Dienst überlastet – später erneut versuchen)"
 			}
 			return "", fmt.Errorf("anthropic: HTTP %d – %s%s", apiErr.StatusCode, apiErrorMessage(apiErr), hint)

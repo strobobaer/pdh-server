@@ -18,13 +18,17 @@ im Kapitel „Versionen & Updates“ an.
 - Nicht benötigte Mengen lassen sich zurückbuchen, ganz oder teilweise, an der Position im Vorgang, im Abschluss-Assistenten oder beim Teil in der neuen Karte „Reservierungen“ (Reiter Lager & Bewegungen)
 - Beim Abschluss wird die Reservierung zum Verbrauch des Vorgangs, ohne doppelte Abbuchung. Wird ein Vorgang verworfen, archiviert oder gelöscht, gehen offene Reservierungen automatisch an ihren Lagerplatz zurück
 - Neue Bewegungsarten „Reservierung“ und „Rückbuchung Reservierung“ in der Bewegungsliste. Bei den Verknüpfungen eines Vorgangs stehen reservierte Teile als „reserviert“
+- Broker auch für Aufgaben und Wartungen: im Benutzerstamm „Broker für Aufgaben“ und „Broker für Wartungen“; im Leitstand angelegte Aufgaben und Wartungen gehen wie Tickets und Störungen an diese Broker
 - Mehrsprachigkeit, Stufe 2: Dashboard und alle Dashboard-Widgets sind übersetzt (Begrüßung, Kennzahlen, Listen, Status, Schweregrad, Wochentage, Schnellaktionen, Widget-Katalog)
 
 ### Geändert
+- Alle Wege zum Anlegen von Tickets, Störungen, Aufgaben und Wartungsaufträgen öffnen jetzt den Erstellungs-Assistenten: auch die Dashboard-Schnellaktionen „Störung melden“ und „Ticket anlegen“, das + bei den Aufgaben eines Projekts (Aufgabe gehört gleich zum Projekt) und Links mit `?create=`. Die alten Eingabeformulare der Listen sind entfernt; die Kostenstelle kommt wie bisher aus der Anlage
+- Leitstand: Anlegen über denselben Assistenten im Leitstand-Modus – Art → Was? → Wo? → Wer meldet? → Wann? → Anlegen. Es wird dort nichts zugewiesen; der Vorgang geht an die Broker, und der Assistent zeigt, an wen
 - „Ersatzteil vormerken“ heißt jetzt „Ersatzteil reservieren“. Bereits vorgemerkte Teile sind noch nicht abgebucht und werden wie bisher erst beim Abschluss gebucht
 - Manuelle Buchungen können keine Reservierungsarten buchen; Reservierungen entstehen nur über Vorgänge
 
 ### Behoben
+- Copilot mit Anthropic-Schlüsseln ohne Workspace-Bindung brach mit „HTTP 400 – … must include the anthropic-workspace-id header“ ab. Neue Einstellung „Anthropic-Workspace-ID“ (Server-Einstellungen → Copilot, `PDH_COPILOT_ANTHROPICWORKSPACE`) sendet die ID mit; die Fehlermeldung verweist jetzt direkt darauf
 - Dashboard-Kopfzeile: Das Datum zeigte immer „Mo“ und den englischen Monatsnamen; jetzt mit richtigem Wochentag in der eingestellten Sprache
 
 ## [0.21.0] – 2026-10-01

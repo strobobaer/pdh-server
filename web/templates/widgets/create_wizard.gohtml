@@ -1,7 +1,16 @@
 {{/*
   Erstellungs-Assistent (create_wizard.go) – gleicher Aufbau und Stil wie der
   Abschluss-Assistent (cw-*-Klassen). Aufruf: pdhCreate() oder
-  pdhCreate('ticket' | 'fault' | 'task' | 'maintenance').
+  pdhCreate('ticket' | 'fault' | 'task' | 'maintenance', vorbelegung?).
+  Vorbelegung: {project_id, project_label, infra_id, infra_label, stay}
+  (stay: nach dem Anlegen auf der Seite bleiben und neu laden).
+  Links mit data-create="art" (oder "any") und Seitenaufrufe mit ?create=art
+  oeffnen den Assistenten ebenfalls.
+
+  Leitstand-Modus (Aufruf mit dict "Board" true): ohne
+  Anmeldung, statt "Wer kuemmert sich?" der Schritt "Wer meldet?" – es wird
+  nicht zugewiesen, der Vorgang geht an die Broker (POST /global/create).
+  Die Seite stellt window.PDH_CREATE_BOARD = {options(), onCreated()} bereit.
   Schritte: Art → Was? → Wo? → Wer? → Wann? → Anlegen.
 */}}
 {{define "create-wizard"}}
@@ -34,7 +43,7 @@
         <div class="cw-step" data-s="0"><b>1</b><span>Art</span></div>
         <div class="cw-step" data-s="1"><b>2</b><span>Was?</span></div>
         <div class="cw-step" data-s="2"><b>3</b><span>Wo?</span></div>
-        <div class="cw-step" data-s="3"><b>4</b><span>Wer?</span></div>
+        <div class="cw-step" data-s="3"><b>4</b><span>{{if .Board}}Melder{{else}}Wer?{{end}}</span></div>
         <div class="cw-step" data-s="4"><b>5</b><span>Wann?</span></div>
         <div class="cw-step" data-s="5"><b>6</b><span>Anlegen</span></div>
       </div>
@@ -56,7 +65,7 @@
         <h3><i class="ti ti-pencil"></i> Worum geht es?</h3>
         <p class="hint">Ein kurzer, eindeutiger Titel – die Details in die Beschreibung.</p>
         <div class="form-group"><label class="form-label">Titel *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="z. B. Presse 3 – Hydraulik verliert Öl"></div>
-        <div class="form-group"><label class="form-label">Beschreibung</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="Was genau ist los? Seit wann? Was wurde schon versucht?"></textarea></div>
+        <div class="form-group"><label class="form-label">Beschreibung{{if .Board}} * <small style="color:var(--muted)">(mehr als drei Wörter)</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="Was genau ist los? Seit wann? Was wurde schon versucht?"></textarea></div>
         <div id="crw-sym-box" class="form-group"><label class="form-label">Symptome (mit Komma trennen)</label><input class="form-input" id="crw-sym" placeholder="z. B. Ölaustritt, Druckabfall, Geräusch"></div>
         <label class="form-label" id="crw-prio-label">Priorität</label>
         <div class="cw-chips" id="crw-prio">
@@ -71,9 +80,24 @@
       <div class="cw-pane" data-step="2">
         <h3><i class="ti ti-hierarchy-2"></i> Wo? Welche Anlage ist betroffen?</h3>
         <p class="hint" id="crw-where-hint">Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter.</p>
+        {{if .Board}}
+        <input type="hidden" id="crw-infra-id"><div class="sc-sub" id="crw-infra-label" style="font-size:12.5px;margin-bottom:8px;color:var(--accent)"></div>
+        <input class="form-input" id="crw-infra-q" placeholder="Anlage suchen: Gebäude, Linie, Anlage …" style="margin-bottom:8px" autocomplete="off">
+        <div class="cw-list cw-people crw-pick" id="crw-infra-list" style="max-height:300px;overflow:auto"></div>
+        {{else}}
         {{template "infra-tree-picker" (dict "TargetID" "crw-infra-id" "SelectedLabelID" "crw-infra-label" "Label" "Anlage")}}
+        {{end}}
       </div>
-      <!-- 4 Wer? -->
+      <!-- 4 Wer? (Leitstand: Wer meldet?) -->
+      {{if .Board}}
+      <div class="cw-pane" data-step="3">
+        <h3><i class="ti ti-user-question"></i> Wer meldet?</h3>
+        <p class="hint">Im Leitstand wird nicht zugewiesen: Der Vorgang geht an die <b>Broker</b>, die ihn übernehmen oder verteilen. Bitte dich selbst auswählen.</p>
+        <input class="form-input" id="crw-rep-q" placeholder="Namen suchen…" style="margin-bottom:8px" autocomplete="off">
+        <div class="cw-list cw-people crw-pick" id="crw-rep" style="max-height:260px;overflow:auto"></div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Abweichender Melder (optional)</label><input class="form-input" id="crw-rep-name" maxlength="120" placeholder="z. B. Besucher ohne PDH-Konto"></div>
+      </div>
+      {{else}}
       <div class="cw-pane" data-step="3">
         <h3><i class="ti ti-users"></i> Wer kümmert sich darum?</h3>
         <p class="hint">Eine Person oder eine ganze Gruppe zuweisen – oder offen lassen, dann verteilt es jemand später.</p>
@@ -82,6 +106,7 @@
         <div class="cw-list cw-people crw-pick" id="crw-people"></div>
         <div class="form-group" style="margin-top:10px"><label class="form-label">Verantwortlich (optional)</label><select class="form-input" id="crw-resp"><option value="">– niemand –</option></select></div>
       </div>
+      {{end}}
       <!-- 5 Wann? -->
       <div class="cw-pane" data-step="4">
         <h3><i class="ti ti-calendar"></i> Bis wann?</h3>
@@ -96,7 +121,8 @@
       <div class="cw-pane" data-step="5">
         <h3><i class="ti ti-flag-check"></i> Alles richtig?</h3>
         <dl class="cw-sum" id="crw-sum"></dl>
-        <p class="hint"><b>Anlegen</b> erstellt den Vorgang und öffnet ihn. <b>Anlegen &amp; nächster</b> erstellt ihn und beginnt gleich den nächsten derselben Art.</p>
+        {{if .Board}}<p class="hint"><b>Anlegen</b> erstellt den Vorgang und verteilt ihn an die Broker. <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</p>
+        {{else}}<p class="hint"><b>Anlegen</b> erstellt den Vorgang und öffnet ihn. <b>Anlegen &amp; nächster</b> erstellt ihn und beginnt gleich den nächsten derselben Art.</p>{{end}}
       </div>
       <div class="cw-msg" id="crw-msg"></div>
     </div>
@@ -134,8 +160,20 @@
   const iso = d => d.toISOString().slice(0, 10);
   const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
   function msg(text, cls){ const m = $('crw-msg'); m.textContent = text || ''; m.className = 'cw-msg' + (cls ? ' ' + cls : ''); }
+  // Leitstand-Modus: keine Zuweisung, Melder statt Zustaendigem, Verteilung an die Broker
+  const BOARD = {{.Board}};
+  const escapeHtml = window.escapeHtml || (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c])));
+  const words = s => s.trim().split(/\s+/).filter(Boolean).length;
 
   async function loadOpts(){
+    if(BOARD){
+      // Listen kommen von der Leitstand-Seite (ohne Anmeldung, /global/data)
+      const b = window.PDH_CREATE_BOARD;
+      opts = b && b.options ? b.options() : null;
+      if(!opts || !(opts.people || []).length) throw new Error('Die Auswahllisten sind noch nicht geladen – bitte kurz warten.');
+      opts.groups = [];
+      return opts;
+    }
     if(opts) return opts;
     const res = await fetch('/create/options', {credentials: 'same-origin'});
     if(!res.ok) throw new Error('Auswahllisten konnten nicht geladen werden (HTTP ' + res.status + ')');
@@ -146,7 +184,12 @@
   }
 
   // Schritte je Art: 0 Art wird uebersprungen, wenn die Art vorgegeben ist
-  function steps(){ return st.fixedType ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5]; }
+  function steps(){
+    let l = [0, 1, 2, 3, 4, 5];
+    if(st.fixedType) l = l.filter(x => x !== 0);
+    if(BOARD && st.type === 'fault') l = l.filter(x => x !== 4); // Stoerungen ohne Termin
+    return l;
+  }
 
   function render(){
     const list = steps(), cur = list[st.i];
@@ -174,7 +217,12 @@
     $('crw-where-hint').textContent = st.type === 'maintenance'
       ? 'Für einen Wartungsauftrag ist die Anlage Pflicht.'
       : 'Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter.';
-    if(cur === 3) renderPeople();
+    if(BOARD){
+      document.querySelectorAll('#crw-types button').forEach(b => { b.style.display = opts && (opts.types || []).includes(b.dataset.type) ? '' : 'none'; });
+      $('crw-where-hint').textContent = st.type === 'task' ? 'Für eine Aufgabe ist die Anlage optional.' : 'Bitte die betroffene Anlage auswählen – Pflicht.';
+      if(cur === 2) renderInfra();
+      if(cur === 3) renderReporters();
+    } else if(cur === 3) renderPeople();
     if(cur === 4) renderDue();
     if(cur === 5) renderSum();
     if(cur === 1) setTimeout(() => $('crw-title-in').focus(), 30);
@@ -209,7 +257,41 @@
     const p = opts.people.find(x => x.id === st.who); return p ? p.name : st.who;
   }
 
+  function renderInfra(){
+    const q = $('crw-infra-q').value.trim().toLowerCase(), cur = $('crw-infra-id').value;
+    const list = (opts.infra || []).filter(x => !q || x.name.toLowerCase().includes(q)).slice(0, 300);
+    $('crw-infra-list').innerHTML = list.map(x => '<label><input type="radio" name="crw-infra" value="' + escapeHtml(x.id) + '"' + (x.id === cur ? ' checked' : '') + '><span>' + escapeHtml(x.name) + '</span></label>').join('')
+      || '<div class="cw-empty">Keine Anlage gefunden</div>';
+  }
+
+  function renderReporters(){
+    const q = $('crw-rep-q').value.trim().toLowerCase();
+    const list = (opts.people || []).filter(p => !q || p.name.toLowerCase().includes(q));
+    $('crw-rep').innerHTML = list.map(p => '<label><input type="radio" name="crw-rep" value="' + escapeHtml(p.id) + '"' + (p.id === st.rep ? ' checked' : '') + '><span>' + escapeHtml(p.name) + '</span></label>').join('')
+      || '<div class="cw-empty">Niemand gefunden</div>';
+  }
+
+  function repLabel(){
+    const p = (opts.people || []).find(x => x.id === st.rep), other = $('crw-rep-name').value.trim();
+    return (p ? p.name : '–') + (other ? ' · gemeldet von ' + other : '');
+  }
+
   function renderSum(){
+    if(BOARD){
+      const rows = [
+        ['Art', TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
+        ['Titel', $('crw-title-in').value.trim()],
+        ['Beschreibung', $('crw-desc').value.trim()],
+        [st.type === 'fault' ? 'Schweregrad' : 'Priorität', PRIO[chipVal('crw-prio')]],
+        ['Anlage', $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
+        ['Melder', repLabel()],
+        ['Zuweisung', 'keine – geht an die Broker']
+      ];
+      if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, ['Symptome', $('crw-sym').value.trim()]);
+      if(st.type !== 'fault') rows.push(['Fällig', $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString('de-DE') : 'Standard']);
+      $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
+      return;
+    }
     const sel = $('crw-resp'), resp = sel.value ? sel.options[sel.selectedIndex].textContent : '–';
     const rows = [
       ['Art', TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
@@ -222,13 +304,14 @@
       ['Fällig', $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString(window.PDH_LOCALE || 'de-DE') : '–']
     ];
     if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, ['Symptome', $('crw-sym').value.trim()]);
+    if(st.type === 'task' && st.preset.project_label) rows.splice(1, 0, ['Projekt', st.preset.project_label]);
     $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
   }
 
   // aehnliche geloeste Stoerungen schon waehrend der Erfassung
   async function similar(){
     const box = $('crw-similar');
-    if(st.type !== 'fault'){ box.style.display = 'none'; return; }
+    if(BOARD || st.type !== 'fault'){ box.style.display = 'none'; return; }
     const title = $('crw-title-in').value.trim(), desc = $('crw-desc').value.trim();
     if((title + desc).length < 4){ box.style.display = 'none'; return; }
     try{
@@ -243,6 +326,15 @@
   }
 
   function validate(cur){
+    if(BOARD){
+      // gleiche Regeln wie der Leitstand-Server (GlobalDashboardCreate)
+      if(cur === 0 && !st.type) return 'Bitte eine Art wählen.';
+      if(cur === 1 && $('crw-title-in').value.trim().length < 3) return 'Der Titel muss mindestens 3 Zeichen lang sein.';
+      if(cur === 1 && words($('crw-desc').value) <= 3) return 'Bitte die Beschreibung in mehr als drei Wörtern – was ist los?';
+      if(cur === 2 && st.type !== 'task' && !$('crw-infra-id').value) return 'Bitte eine Anlage auswählen.';
+      if(cur === 3 && !st.rep) return 'Bitte auswählen, wer meldet.';
+      return '';
+    }
     if(cur === 0 && !st.type) return 'Bitte eine Art wählen.';
     if(cur === 1 && !$('crw-title-in').value.trim()) return 'Bitte einen Titel eingeben.';
     if(cur === 2 && st.type === 'maintenance' && !$('crw-infra-id').value) return 'Für einen Wartungsauftrag ist die Anlage Pflicht.';
@@ -258,10 +350,11 @@
 
   window.crwClose = function(){ $('crw').classList.remove('open'); };
 
-  function reset(type){
-    st = {type: type || '', fixedType: !!type, i: 0, who: '', due: '', dueTouched: false};
-    ['crw-title-in', 'crw-desc', 'crw-sym', 'crw-people-q', 'crw-start'].forEach(id => $(id).value = '');
-    $('crw-resp').value = '';
+  function reset(type, preset){
+    st = {type: type || '', fixedType: !!type, i: 0, who: '', rep: '', due: '', dueTouched: false, preset: preset || {}};
+    ['crw-title-in', 'crw-desc', 'crw-sym', 'crw-people-q', 'crw-start', 'crw-infra-q', 'crw-rep-q', 'crw-rep-name'].forEach(id => { if($(id)) $(id).value = ''; });
+    if($('crw-resp')) $('crw-resp').value = '';
+    if(BOARD) $('crw-infra-label').textContent = '';
     $('crw-similar').style.display = 'none';
     document.querySelectorAll('#crw-types button').forEach(b => b.classList.toggle('on', b.dataset.type === type));
     $('crw-prio').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === 'medium'));
@@ -269,15 +362,53 @@
     const picker = document.querySelector('#crw [data-infra-picker]');
     if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
     $('crw-infra-id').value = '';
+    if(st.preset.infra_id){
+      $('crw-infra-id').value = st.preset.infra_id;
+      if(st.preset.infra_label) $('crw-infra-label').textContent = st.preset.infra_label;
+    }
   }
 
-  window.pdhCreate = async function(type){
+  window.pdhCreate = async function(type, preset){
     if(type && !TYPES[type]) type = '';
-    reset(type);
+    reset(type, preset);
     $('crw').classList.add('open');
+    if(BOARD){
+      // Arten und Listen muessen vor dem ersten Schritt feststehen
+      try{ await loadOpts(); }catch(e){ render(); msg(e.message, 'err'); return; }
+      if(st.type && !opts.types.includes(st.type)){ st.type = ''; st.fixedType = false; }
+      render();
+      return;
+    }
     render();
     try{ await loadOpts(); }catch(e){ msg(e.message, 'err'); }
   };
+
+  async function boardSubmit(again){
+    const t = TYPES[st.type];
+    const payload = {type: st.type, title: $('crw-title-in').value.trim(), description: $('crw-desc').value.trim(),
+      priority: chipVal('crw-prio'), infrastructure_id: $('crw-infra-id').value, reporter_id: st.rep,
+      reporter_name: $('crw-rep-name').value.trim(), due_date: st.type === 'fault' ? '' : $('crw-due').value};
+    if(st.type === 'fault') payload.symptoms = $('crw-sym').value.split(',').map(s => s.trim()).filter(Boolean);
+    if(st.type === 'maintenance') payload.maintenance_type = chipVal('crw-mtype');
+    ['crw-create', 'crw-again'].forEach(id => $(id).disabled = true);
+    msg('Lege an …');
+    try{
+      const res = await fetch('/global/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      const b = window.PDH_CREATE_BOARD;
+      if(b && b.onCreated) b.onCreated();
+      const done = t.label + ' angelegt' + (j.broker ? ' – ' + j.broker : '');
+      if(again){
+        reset(st.type); st.fixedType = true; render();
+        msg(done + ' – jetzt der nächste.', 'ok');
+      } else {
+        msg(done, 'ok');
+        setTimeout(crwClose, 1800);
+      }
+    }catch(e){ msg('Nicht angelegt: ' + e.message, 'err'); }
+    ['crw-create', 'crw-again'].forEach(id => $(id).disabled = false);
+  }
 
   async function post(url, body, method){
     const res = await fetch(url, {method: method || 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
@@ -287,6 +418,7 @@
   }
 
   window.crwSubmit = async function(again){
+    if(BOARD) return boardSubmit(again);
     const t = TYPES[st.type];
     const title = $('crw-title-in').value.trim(), description = $('crw-desc').value.trim();
     const prio = chipVal('crw-prio'), infra = $('crw-infra-id').value, due = $('crw-due').value, resp = $('crw-resp').value;
@@ -298,6 +430,15 @@
     else if(st.type === 'task') payload = {title, description, priority: prio, due_date: due, start_date: $('crw-start').value};
     else payload = {title, description, priority: prio, type: chipVal('crw-mtype'), infrastructure_id: infra, due_date: due};
     if(infra) payload.infrastructure_id = infra;
+    if(st.type === 'task' && st.preset.project_id) payload.project_id = st.preset.project_id;
+    // Kostenstelle wie bisher aus der Anlage uebernehmen
+    if(infra && (st.type === 'ticket' || st.type === 'fault')){
+      try{
+        const r = await fetch('/api/v1/infrastructure/' + encodeURIComponent(infra), {credentials: 'same-origin'});
+        const j = await r.json();
+        if(j && j.data && j.data.cost_center_id) payload.cost_center_id = j.data.cost_center_id;
+      }catch(e){}
+    }
     if(st.type === 'ticket' && due) payload.due_date = due + 'T00:00:00Z';
     if(st.type === 'task'){ if(person) payload.assigned_to_ids = [person]; if(resp) payload.responsible_to = resp; }
     else if(st.type !== 'maintenance'){ if(person) payload.assigned_to = person; if(resp) payload.responsible_to = resp; }
@@ -315,8 +456,10 @@
       const results = await Promise.all(extra);
       const failed = results.filter(r => !r.ok).length;
       if(again){
-        reset(st.type); st.fixedType = true; render();
+        reset(st.type, st.preset); st.fixedType = true; render();
         msg(t.label + ' angelegt' + (failed ? ' (Zusatzangaben teilweise nicht gespeichert)' : '') + ' – jetzt der nächste.', failed ? 'warn' : 'ok');
+      } else if(st.preset.stay){
+        location.reload();
       } else {
         location.href = t.url + encodeURIComponent(id);
       }
@@ -334,23 +477,48 @@
   chips('crw-prio'); chips('crw-mtype');
   chips('crw-due-quick', b => { st.due = b.dataset.d; st.dueTouched = true; $('crw-due').value = st.due; });
   $('crw-due').addEventListener('input', e => { st.due = e.target.value; st.dueTouched = true; $('crw-due-quick').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === st.due)); });
-  $('crw-people-q').addEventListener('input', renderPeople);
-  $('crw-people').addEventListener('change', e => { if(e.target.name === 'crw-who') st.who = e.target.value; });
-  $('crw-who-quick').addEventListener('click', e => {
-    const b = e.target.closest('button'); if(!b) return;
-    st.who = b.dataset.q === 'me' ? (opts && opts.me) || '' : '';
-    renderPeople();
-  });
+  if(BOARD){
+    $('crw-infra-q').addEventListener('input', renderInfra);
+    $('crw-infra-list').addEventListener('change', e => {
+      if(e.target.name !== 'crw-infra') return;
+      $('crw-infra-id').value = e.target.value;
+      $('crw-infra-label').textContent = e.target.closest('label').textContent.trim();
+    });
+    $('crw-rep-q').addEventListener('input', renderReporters);
+    $('crw-rep').addEventListener('change', e => { if(e.target.name === 'crw-rep') st.rep = e.target.value; });
+  } else {
+    $('crw-people-q').addEventListener('input', renderPeople);
+    $('crw-people').addEventListener('change', e => { if(e.target.name === 'crw-who') st.who = e.target.value; });
+    $('crw-who-quick').addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b) return;
+      st.who = b.dataset.q === 'me' ? (opts && opts.me) || '' : '';
+      renderPeople();
+    });
+  }
   ['crw-title-in', 'crw-desc'].forEach(id => $(id).addEventListener('input', () => { clearTimeout(simTimer); simTimer = setTimeout(similar, 500); }));
   $('crw').addEventListener('keydown', e => {
     if(e.key === 'Escape') crwClose();
     if(e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'radio'){ e.preventDefault(); crwGo(1); }
   });
-  // "Neue Zuweisung" in der Navigation oeffnet den Assistenten
+  if(BOARD) return; // im Leitstand oeffnen nur die Kacheln den Assistenten
+  // "Neue Zuweisung" in der Navigation und Links mit data-create oeffnen den Assistenten
   document.addEventListener('click', e => {
-    const a = e.target.closest('a[data-nav="assign"], a[href="/assignments/new"]');
-    if(a && !document.documentElement.classList.contains('nav-editing') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); pdhCreate(); }
+    const a = e.target.closest('a[data-nav="assign"], a[href="/assignments/new"], [data-create]');
+    if(a && !document.documentElement.classList.contains('nav-editing') && !e.ctrlKey && !e.metaKey){
+      e.preventDefault();
+      const k = a.dataset.create || '';
+      pdhCreate(k === 'any' ? '' : k);
+    }
   });
+  // Seitenaufruf mit ?create=art (z. B. aus Schnellaktionen ohne Skript)
+  function openFromURL(){
+    const q = new URLSearchParams(location.search), k = q.get('create');
+    if(k === null) return;
+    q.delete('create');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    pdhCreate(TYPES[k] ? k : '');
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openFromURL); else openFromURL();
 })();
 </script>
 {{end}}

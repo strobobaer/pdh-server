@@ -155,7 +155,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-meta"}}
   <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
   <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
-  <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du im gleichen Stil wie beim Abschließen Schritt für Schritt an – über <b>Neue Zuweisung</b> in der Navigation bzw. auf dem Dashboard, über <b>Neu</b> in der Ticket- oder Störungsliste, <b>Neue Aufgabe</b> oder in der Wartung <b>Neuer Auftrag</b>.</p>
+  <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du überall im gleichen Stil wie beim Abschließen Schritt für Schritt an. Jeder Weg zum Anlegen öffnet diesen Assistenten:</p>
+  <ul>
+    <li><b>Neue Zuweisung</b> in der Navigation und als Schnellaktion auf dem Dashboard,</li>
+    <li>die Schnellaktionen <b>Störung melden</b> und <b>Ticket anlegen</b>,</li>
+    <li><b>Neu</b> in der Ticket- und Störungsliste, <b>Neue Aufgabe</b>, in der Wartung <b>Neuer Auftrag</b>,</li>
+    <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
+    <li>im <a href="#dashboard">Leitstand</a> die Kacheln – dort ohne Zuweisung, siehe unten.</li>
+  </ul>
+  <p>Die <b>Kostenstelle</b> übernimmt PDH bei Tickets und Störungen wie bisher aus der gewählten Anlage.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-plus"></i> So legst du einen Vorgang an</b>
     <ol class="hb-steps">
       <li><b>Art</b> wählen (entfällt, wenn du aus einer Liste startest).</li>
@@ -213,16 +221,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new">
   <h2><i class="ti ti-layout-dashboard"></i> Leitstand &amp; Meldungen</h2>
   <p>Am <b>Leitstand</b> (z. B. am Terminal in der Halle) meldet jede und jeder schnell ein Problem – ohne sich lange durchzuklicken.</p>
+  <p>Auch hier legst du mit dem <a href="#creation">Erstellungs-Assistenten</a> an, groß und fingerfreundlich – nur <b>ohne Zuweisung</b>: Statt „Wer kümmert sich?“ fragt der Leitstand <b>Wer meldet?</b>. Den Vorgang verteilen danach die Broker.</p>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung am Leitstand</b>
     <ol class="hb-steps">
-      <li>„Störung“ oder „Ticket“ antippen.</li>
-      <li>Kurzen <b>Titel</b> und eine <b>Beschreibung</b> mit mehr als drei Wörtern eingeben.</li>
-      <li><b>Anlage</b> und <b>Priorität</b> wählen, dich als Ersteller/in auswählen.</li>
-      <li>Absenden – fertig. Die Meldung geht automatisch an die zuständigen Broker.</li>
+      <li>Die Kachel <b>Neue Störung</b> oder <b>Neues Ticket</b> antippen. Administratoren und Manager sehen auch <b>Neue Aufgabe</b> und <b>Neue Wartung</b>; bei Wartungen zeigt der Leitstand zuerst die geplanten zum Starten, „+ Neue Wartung anlegen“ öffnet den Assistenten.</li>
+      <li><b>Was?</b> Kurzen <b>Titel</b> und eine <b>Beschreibung</b> mit mehr als drei Wörtern, Priorität bzw. Schweregrad (bei Störungen auch Symptome, bei Wartungen die Art).</li>
+      <li><b>Wo?</b> Die <b>Anlage</b> suchen und antippen – Pflicht, nur bei Aufgaben optional.</li>
+      <li><b>Wer meldet?</b> Dich selbst auswählen. Meldet jemand ohne PDH-Konto (z. B. Besucher), zusätzlich den Namen unter „Abweichender Melder“ eintragen.</li>
+      <li><b>Wann?</b> (nicht bei Störungen) Fälligkeit per Schnellwahl oder Datum.</li>
+      <li><b>Anlegen</b> – der Assistent zeigt, an welche Broker die Meldung ging, und schließt sich. <b>Anlegen &amp; nächster</b> beginnt gleich die nächste Meldung derselben Art.</li>
     </ol></div>
   <h3><i class="ti ti-inbox"></i> Was danach passiert: Broker</h3>
   {{template "hb-fig-broker"}}
-  <p>Meldungen aus dem Leitstand sind noch niemandem zugewiesen. Jeder <b>Broker</b> bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen. Offene, unzugewiesene Vorgänge findest du in der Ticket- bzw. Störungsliste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist, steht im <a href="#users">Benutzerstamm</a>.</p>
+  <p>Meldungen aus dem Leitstand sind nie zugewiesen – das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen; im Verlauf des Vorgangs steht, an wen er verteilt wurde. Offene, unzugewiesene Tickets und Störungen findest du in der Liste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen und der Leitstand weist darauf hin.</p>
   {{template "hb-shots" (dict "Ref" (index $s "dashboard") "Can" $can)}}
 </section>
 
@@ -240,7 +251,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
-    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Den Copilot in der rechten Seitenleiste kannst du überall fragen; auf einer Störung antwortet er mit deren Kontext.</div>
+    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten. Den Copilot in der rechten Seitenleiste kannst du überall fragen; auf einer Störung antwortet er mit deren Kontext.</div>
   <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat. Auf der Seite <b>Neue Zuweisung</b> stehen im Feld „Zugewiesen an“ unter den Personen auch die <b>Gruppen</b> – so landet ein neuer Auftrag direkt bei einem Team.</div>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
 </section>

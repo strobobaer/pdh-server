@@ -68,6 +68,7 @@ var envGroups = []envGroup{
 		{Key: "PDH_COPILOT_MODEL", Label: "Ollama-Modell", Type: "text", Default: "llama3.2", Restart: true},
 		{Key: "PDH_COPILOT_ANTHROPICKEY", Label: "Anthropic-API-Schlüssel", Type: "text", Secret: true, Restart: true},
 		{Key: "PDH_COPILOT_ANTHROPICMODEL", Label: "Anthropic-Modell", Type: "text", Default: "claude-opus-5-5", Restart: true},
+		{Key: "PDH_COPILOT_ANTHROPICWORKSPACE", Label: "Anthropic-Workspace-ID", Help: "Nur nötig, wenn der API-Schlüssel keinem Workspace zugeordnet ist (Fehler „anthropic-workspace-id header“). Die ID steht in der Claude Console unter Settings → Workspaces.", Type: "text", Restart: true},
 	}},
 	{"microsoft", "Microsoft 365", "ti-brand-windows", "Anmeldung mit Microsoft, Teams-Benachrichtigungen und Organisationsabgleich.", []envField{
 		{Key: "PDH_MICROSOFT_TENANT_ID", Label: "Tenant-ID", Type: "text"},

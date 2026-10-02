@@ -99,7 +99,7 @@ func (h *Handler) isGlobalBoardAdminOrManager(r *http.Request) bool {
 
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	tmpl, err := template.ParseFiles("web/templates/global_dashboard.gohtml")
+	tmpl, err := h.globalDashboardTemplate(r)
 	if err != nil {
 		http.Error(w, "Dashboard-Vorlage konnte nicht geladen werden", http.StatusInternalServerError)
 		return
@@ -120,6 +120,25 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
 	}
+}
+
+// globalDashboardTemplate: Leitstand-Seite mit den gemeinsamen Widgets (u. a.
+// Erstellungs-Assistent und Assistenten-Optik) und den Template-Funktionen.
+func (h *Handler) globalDashboardTemplate(r *http.Request) (*template.Template, error) {
+	var t *template.Template
+	if h.tmpl != nil {
+		c, err := h.tmpl.Clone()
+		if err != nil {
+			return nil, err
+		}
+		t = bindLang(c, h.requestLang(r))
+	} else {
+		var err error
+		if t, err = template.New("global").Funcs(TemplateFuncs()).ParseGlob("web/templates/widgets/*.gohtml"); err != nil {
+			return nil, err
+		}
+	}
+	return t.ParseFiles("web/templates/global_dashboard.gohtml")
 }
 
 // GlobalDashboardSettingsWeb speichert die Ueberschrift/den Untertitel

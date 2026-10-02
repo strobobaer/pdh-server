@@ -710,21 +710,22 @@ func loadQuickLinks(_ *Handler, _ context.Context, _ string, inst WidgetInstance
 }
 
 // quickAction: Knopf im Widget "Schnellaktionen".
-type quickAction struct{ Name, Icon, URL, Color string }
+// Create: Art fuer den Erstellungs-Assistenten (oeffnet ihn statt URL)
+type quickAction struct{ Name, Icon, URL, Color, Create string }
 
 func loadQuickActions(_ *Handler, ctx context.Context, _ string, _ WidgetInstance, can func(string) bool) (any, error) {
 	all := []struct {
 		quickAction
 		perm string
 	}{
-		{quickAction{"Neue Zuweisung", "ti-square-rounded-plus", "/assignments/new", "accent"}, ""},
-		{quickAction{"Störung melden", "ti-alert-triangle", "/faults", "red"}, "faults.view"},
-		{quickAction{"Ticket anlegen", "ti-ticket", "/tickets", "blue"}, "tickets.view"},
-		{quickAction{"Zeit erfassen", "ti-clock-play", "/time", "green"}, ""},
-		{quickAction{"Ersatzteil suchen", "ti-package", "/inventory", "amber"}, "inventory.view"},
-		{quickAction{"Wartung", "ti-tool", "/maintenance", "amber"}, "maintenance.view"},
-		{quickAction{"Chat", "ti-messages", "/chat", "blue"}, "chat.use"},
-		{quickAction{"Handbuch", "ti-book", "/help", "muted"}, ""},
+		{quickAction{"Neue Zuweisung", "ti-square-rounded-plus", "/assignments/new", "accent", "any"}, ""},
+		{quickAction{"Störung melden", "ti-alert-triangle", "/faults?create=fault", "red", "fault"}, "faults.view"},
+		{quickAction{"Ticket anlegen", "ti-ticket", "/tickets?create=ticket", "blue", "ticket"}, "tickets.view"},
+		{quickAction{"Zeit erfassen", "ti-clock-play", "/time", "green", ""}, ""},
+		{quickAction{"Ersatzteil suchen", "ti-package", "/inventory", "amber", ""}, "inventory.view"},
+		{quickAction{"Wartung", "ti-tool", "/maintenance", "amber", ""}, "maintenance.view"},
+		{quickAction{"Chat", "ti-messages", "/chat", "blue", ""}, "chat.use"},
+		{quickAction{"Handbuch", "ti-book", "/help", "muted", ""}, ""},
 	}
 	var out []quickAction
 	lang := ctxLang(ctx)

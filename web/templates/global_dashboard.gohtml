@@ -15,6 +15,23 @@
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+{{template "wizard-styles"}}
+<style>
+/* Erstellungs-Assistent im Leitstand: gleiche Optik wie im PDH, Farben aus dem Leitstand */
+#crw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
+#crw .cw{font-size:14px}
+#crw .form-group{margin-bottom:14px}
+#crw .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:400}
+#crw .form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:0;min-height:44px}
+#crw .form-input:focus{border-color:var(--accent)}
+#crw textarea.form-input{min-height:96px;resize:vertical}
+#crw .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:8px;font-size:14px;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text)}
+#crw .btn:disabled{opacity:.55;cursor:default}
+#crw .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#crw .cw-chips button{min-height:40px;font-size:13px}
+#crw .crw-pick label{min-height:44px}
+</style>
 <style>
 :root{
   color-scheme:dark;font-family:"Aptos","Segoe UI",sans-serif;
@@ -191,60 +208,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     <button type="button" class="create-tile task" data-type="task"><span class="create-tile-icon" aria-hidden="true">✓</span><span>Neue Aufgabe</span></button>
     <button type="button" class="create-tile maintenance" data-type="maintenance"><span class="create-tile-icon" aria-hidden="true">🔧</span><span>Neue Wartung</span></button>
     {{end}}
-  </div>
-
-  <div id="create-panel" class="hidden">
-    <div class="edit-panel-head">
-      <h2 id="create-panel-title" style="font-size:17px;margin:0">Neuer Vorgang</h2>
-      <button type="button" class="header-button" id="create-close">Schließen</button>
-    </div>
-    <form id="create-form">
-      <label>Titel <span class="required-hint">Pflichtfeld</span>
-        <input id="create-title" name="title" required minlength="3" maxlength="255" placeholder="Kurzbeschreibung">
-      </label>
-      <label>Beschreibung <span class="required-hint">Pflichtfeld, mehr als drei Wörter</span>
-        <textarea id="create-description" name="description" maxlength="2000" required placeholder="Was ist los? Bitte in ganzen Sätzen beschreiben."></textarea>
-      </label>
-      <label id="create-infra-field">Infrastruktur <span class="required-hint" id="create-infra-hint">Pflichtfeld</span>
-        <select id="create-infra" name="infrastructure_id" required>
-          <option value="">Infrastruktur auswählen …</option>
-        </select>
-      </label>
-      <label>Priorität
-        <select id="create-priority" name="priority">
-          <option value="low">Niedrig</option>
-          <option value="medium" selected>Mittel</option>
-          <option value="high">Hoch</option>
-          <option value="critical">Kritisch</option>
-        </select>
-      </label>
-      <label id="create-symptoms-field" class="hidden">Symptome
-        <input id="create-symptoms" name="symptoms" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
-      </label>
-      <label id="create-maintenance-type-field" class="hidden">Wartungstyp <span class="required-hint">Pflichtfeld</span>
-        <select id="create-maintenance-type" name="maintenance_type">
-          <option value="preventive">Vorbeugend</option>
-          <option value="inspection">Inspektion</option>
-          <option value="calibration">Kalibrierung</option>
-          <option value="cleaning">Reinigung</option>
-        </select>
-      </label>
-      <label id="create-duedate-field" class="hidden">Termin <span class="required-hint" id="create-duedate-hint">Optional, Fälligkeitsdatum</span>
-        <input id="create-duedate" type="date" name="due_date">
-      </label>
-      <label>Ersteller/in <span class="required-hint">Pflichtfeld</span>
-        <select id="create-reporter" name="reporter_id" required>
-          <option value="">Mitarbeiter/in auswählen …</option>
-        </select>
-      </label>
-      <label>Abweichender Melder <span class="required-hint">Optional, z.B. Besucher ohne PDH-Konto</span>
-        <input id="create-reporter-name" name="reporter_name" maxlength="120" placeholder="Nur ausfüllen, falls jemand anderes gemeldet hat">
-      </label>
-      <div class="form-actions">
-        <button type="button" class="action-button" id="create-cancel">Abbrechen</button>
-        <button type="submit" class="action-button finish" id="create-submit">Anlegen</button>
-      </div>
-    </form>
   </div>
 
   <div id="maintenance-select-panel" class="hidden">
@@ -818,44 +781,27 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   });
   document.getElementById('edit-close').addEventListener('click', closeEditPanel);
 
-  const createTileNames = {fault:'Neue Störung', ticket:'Neues Ticket', task:'Neue Aufgabe', maintenance:'Neue Wartung'};
-  const createDefaultDueDays = {ticket: {{.DefaultDueDaysTicket}}, task: {{.DefaultDueDaysTask}}, maintenance: {{.DefaultDueDaysMaintenance}}};
-  const createPanel = document.getElementById('create-panel');
-  const createForm = document.getElementById('create-form');
-  const createSymptomsField = document.getElementById('create-symptoms-field');
-  const createMaintenanceTypeField = document.getElementById('create-maintenance-type-field');
-  const createInfraField = document.getElementById('create-infra-field');
-  const createInfraSelect = document.getElementById('create-infra');
-  const createDueDateField = document.getElementById('create-duedate-field');
-  const createDescriptionInput = document.getElementById('create-description');
-  const createTitleInput = document.getElementById('create-title');
-  let createType = null;
-
+  // Anlegen ueber den Erstellungs-Assistenten im Leitstand-Modus: ohne
+  // Zuweisung, der Vorgang geht an die Broker (siehe widgets/create_wizard).
+  window.PDH_CREATE_BOARD = {
+    options: function(){
+      return {
+        people: latestData.workers || [],
+        infra: latestData.infrastructure || [],
+        types: {{if .CanCreatePrivileged}}['fault', 'ticket', 'task', 'maintenance']{{else}}['fault', 'ticket']{{end}},
+        due_days: {ticket: {{.DefaultDueDaysTicket}}, task: {{.DefaultDueDaysTask}}, maintenance: {{.DefaultDueDaysMaintenance}}}
+      };
+    },
+    onCreated: function(){ refresh(); }
+  };
   function openCreatePanel(type){
-    createType = type;
     closeEditPanel();
     closeMaintenanceSelectPanel();
-    document.getElementById('create-panel-title').textContent = createTileNames[type] || 'Neuer Vorgang';
-    createSymptomsField.classList.toggle('hidden', type !== 'fault');
-    createMaintenanceTypeField.classList.toggle('hidden', type !== 'maintenance');
-    const needsInfra = type !== 'task';
-    createInfraField.classList.remove('hidden');
-    createInfraSelect.required = needsInfra;
-    document.getElementById('create-infra-hint').textContent = needsInfra ? 'Pflichtfeld' : 'Optional';
-    createDueDateField.classList.toggle('hidden', type === 'fault');
-    if(createDefaultDueDays[type] !== undefined){
-      document.getElementById('create-duedate-hint').textContent = 'Optional, leer = ' + createDefaultDueDays[type] + ' Tage nach Anlage';
-    }
-    createForm.reset();
-    document.getElementById('create-priority').value = 'medium';
-    createPanel.classList.remove('hidden');
-    createPanel.scrollIntoView({behavior:'smooth', block:'nearest'});
-    createTitleInput.focus();
+    pdhCreate(type);
   }
   function closeCreatePanel(){
-    createType = null;
-    createPanel.classList.add('hidden');
-    createForm.reset();
+    const w = document.getElementById('crw');
+    if(w && w.classList.contains('open') && window.crwClose) crwClose();
   }
   document.querySelectorAll('#create-tiles [data-type]').forEach(function(tile){
     tile.addEventListener('click', function(){
@@ -863,55 +809,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       else openCreatePanel(tile.dataset.type);
     });
   });
-  document.getElementById('create-close').addEventListener('click', closeCreatePanel);
-  document.getElementById('create-cancel').addEventListener('click', closeCreatePanel);
-
-  createDescriptionInput.addEventListener('input', function(){
-    const wordCount = createDescriptionInput.value.trim().split(/\s+/).filter(Boolean).length;
-    createDescriptionInput.setCustomValidity(wordCount > 3 ? '' : 'Bitte mehr als drei Wörter eingeben');
-  });
-
-  createForm.addEventListener('submit', async function(event){
-    event.preventDefault();
-    if(!createType || !createForm.reportValidity()) return;
-    const payload = {
-      type: createType,
-      title: createTitleInput.value.trim(),
-      description: createDescriptionInput.value.trim(),
-      priority: document.getElementById('create-priority').value,
-      infrastructure_id: createInfraSelect.value,
-      reporter_id: document.getElementById('create-reporter').value,
-      reporter_name: document.getElementById('create-reporter-name').value.trim(),
-      due_date: document.getElementById('create-duedate').value
-    };
-    if(createType === 'fault'){
-      payload.symptoms = String(document.getElementById('create-symptoms').value || '').split(',').map(function(s){return s.trim();}).filter(Boolean);
-    }
-    if(createType === 'maintenance'){
-      payload.maintenance_type = document.getElementById('create-maintenance-type').value;
-    }
-    const submit = document.getElementById('create-submit');
-    submit.disabled = true;
-    try{
-      const response = await fetch('/global/create', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
-      });
-      const result = await response.json().catch(function(){return {};});
-      if(!response.ok) throw new Error(result.error || 'Vorgang konnte nicht angelegt werden');
-      closeCreatePanel();
-      await refresh();
-    }catch(error){
-      loadState.textContent = error.message;
-    }finally{
-      submit.disabled = false;
-    }
-  });
 
   function render(data){
     latestData = data;
     setOptions(data.workers || []);
-    fillSelect(document.getElementById('create-reporter'), data.workers || [], 'Mitarbeiter/in auswählen …');
-    fillSelect(document.getElementById('create-infra'), data.infrastructure || [], 'Infrastruktur auswählen …');
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     dashGanttItems = (data.gantt_items || []).map(function(t){
       return {id: t.id, refType: t.ref_type, name: t.title, start: t.start_iso, end: t.end_iso,
@@ -1020,5 +921,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   window.setInterval(function(){ if(editPanel.classList.contains('hidden')) refresh(); }, 30000);
 })();
 </script>
+{{template "create-wizard" (dict "Board" true)}}
 </body>
 </html>

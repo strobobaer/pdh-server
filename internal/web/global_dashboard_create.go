@@ -146,7 +146,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		infrastructureID = &in.InfrastructureID
 	}
 
-	// Tickets und Stoerungen aus dem Leitstand sind nie zugewiesen - sie gehen an die Broker.
+	// Vorgaenge aus dem Leitstand sind nie zugewiesen - sie gehen an die Broker.
 	var brokerKind, brokerID string
 	switch in.Type {
 	case "ticket":
@@ -159,16 +159,24 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 			brokerKind, brokerID = "ticket", t.ID
 		}
 	case "task":
-		_, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
+		var tk *tasks.Task
+		tk, err = h.tasks.Create(r.Context(), &tasks.CreateTaskInput{
 			Title: in.Title, Description: description, Priority: tasks.Priority(in.Priority),
 			DueDate: in.DueDate, InfrastructureID: infrastructureID,
 		}, reporter.ID)
+		if err == nil && tk != nil {
+			brokerKind, brokerID = "task", tk.ID
+		}
 	case "maintenance":
-		_, err = h.maint.CreateTask(r.Context(), &maintenance.CreateTaskInput{
+		var mt *maintenance.MaintenanceTask
+		mt, err = h.maint.CreateTask(r.Context(), &maintenance.CreateTaskInput{
 			Title: in.Title, Description: description, Type: maintenance.PlanType(in.MaintenanceType),
 			InfrastructureID: in.InfrastructureID, Priority: maintenance.Priority(in.Priority),
 			DueDate: in.DueDate,
 		}, reporter.ID)
+		if err == nil && mt != nil {
+			brokerKind, brokerID = "maintenance_task", mt.ID
+		}
 	case "fault":
 		symptoms := make([]string, 0, len(in.Symptoms))
 		for _, s := range in.Symptoms {
@@ -189,11 +197,12 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		writeGlobalBoardError(w, http.StatusInternalServerError, "Vorgang konnte nicht angelegt werden")
 		return
 	}
+	broker := ""
 	if brokerID != "" {
-		h.dispatchToBrokers(r.Context(), brokerKind, brokerID, in.Title, in.Priority, h.infraName(r.Context(), infrastructureID), reporter.ID)
+		broker = h.dispatchToBrokers(r.Context(), brokerKind, brokerID, in.Title, in.Priority, h.infraName(r.Context(), infrastructureID), reporter.ID)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "broker": broker})
 }
 
 // GlobalDashboardMaintenanceStart startet eine im Wartungsmodul bereits

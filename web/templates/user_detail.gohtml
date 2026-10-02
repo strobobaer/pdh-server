@@ -11,6 +11,8 @@
       {{if $m.JobTitle}} · {{$m.JobTitle}}{{end}}{{if $u.Department}} · {{$u.Department}}{{end}}
       {{if $m.BrokerTickets}} <span class="badge b-amber" title="Erhält nicht zugewiesene Tickets aus dem Leitstand"><i class="ti ti-inbox"></i> Broker Tickets</span>{{end}}
       {{if $m.BrokerFaults}} <span class="badge b-red" title="Erhält nicht zugewiesene Störungen aus dem Leitstand"><i class="ti ti-inbox"></i> Broker Störungen</span>{{end}}
+      {{if $m.BrokerTasks}} <span class="badge b-blue" title="Erhält im Leitstand angelegte Aufgaben"><i class="ti ti-inbox"></i> Broker Aufgaben</span>{{end}}
+      {{if $m.BrokerMaintenance}} <span class="badge b-amber" title="Erhält im Leitstand angelegte Wartungen"><i class="ti ti-inbox"></i> Broker Wartungen</span>{{end}}
     </div>
   </div>
   {{if not .IsSelf}}<a class="btn btn-small" href="#" onclick="pdhOpenDirectChat('{{$u.ID}}');return false"><i class="ti ti-message"></i> Chat</a>{{end}}
@@ -69,6 +71,8 @@
         {{if $u.HeatingFill}}<span class="badge b-blue">Heizung füllen</span>{{end}}
         {{if $m.BrokerTickets}}<span class="badge b-amber">Broker Tickets</span>{{end}}
         {{if $m.BrokerFaults}}<span class="badge b-red">Broker Störungen</span>{{end}}
+        {{if $m.BrokerTasks}}<span class="badge b-blue">Broker Aufgaben</span>{{end}}
+        {{if $m.BrokerMaintenance}}<span class="badge b-amber">Broker Wartungen</span>{{end}}
       </div>
       {{if .Team}}
       <div class="rec-sec">Team ({{len .Team}})</div>
@@ -147,13 +151,15 @@
 
     <div class="rec-sec">Broker-Funktion</div>
     {{if .CanBroker}}
-    <p class="rec-sub" style="margin-bottom:8px">Im Leitstand angelegte Tickets/Störungen ohne Zuweisung gehen an alle Broker des Typs – jeder erhält eine Chat-Nachricht mit dem Vorgang.</p>
+    <p class="rec-sub" style="margin-bottom:8px">Im Leitstand angelegte Vorgänge werden nicht zugewiesen, sondern gehen an alle Broker des Typs – jeder erhält eine Chat-Nachricht mit dem Vorgang und übernimmt oder verteilt ihn.</p>
     <div class="cols">
       <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_tickets" {{if $m.BrokerTickets}}checked{{end}}> Broker für Tickets</label>
       <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_faults" {{if $m.BrokerFaults}}checked{{end}}> Broker für Störungen</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_tasks" {{if $m.BrokerTasks}}checked{{end}}> Broker für Aufgaben</label>
+      <label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="broker_maintenance" {{if $m.BrokerMaintenance}}checked{{end}}> Broker für Wartungen</label>
     </div>
     {{else}}
-    <p class="rec-sub">Tickets: {{if $m.BrokerTickets}}ja{{else}}nein{{end}} · Störungen: {{if $m.BrokerFaults}}ja{{else}}nein{{end}} – Vergabe durch die Benutzerverwaltung.</p>
+    <p class="rec-sub">Tickets: {{if $m.BrokerTickets}}ja{{else}}nein{{end}} · Störungen: {{if $m.BrokerFaults}}ja{{else}}nein{{end}} · Aufgaben: {{if $m.BrokerTasks}}ja{{else}}nein{{end}} · Wartungen: {{if $m.BrokerMaintenance}}ja{{else}}nein{{end}} – Vergabe durch die Benutzerverwaltung.</p>
     {{end}}
 
     <div class="form-group" style="margin-top:12px"><label class="form-label">Notizen (dienstlich)</label><textarea name="notes" class="form-input" rows="3">{{$m.Notes}}</textarea></div>

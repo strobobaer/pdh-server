@@ -26,6 +26,7 @@ type userMaster struct {
 	WorkLocation, PhoneInternal, PhoneMobile, Language  string
 	EntryDate, ExitDate, Notes                          string
 	BrokerTickets, BrokerFaults                         bool
+	BrokerTasks, BrokerMaintenance                      bool
 	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
 }
 
@@ -182,11 +183,11 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 		SELECT u.personnel_no, u.job_title, COALESCE(u.cost_center_id::text, ''),
 		       COALESCE(cc.number || ' – ' || cc.name, ''), u.work_location, u.phone_internal, u.phone_mobile, u.language,
 		       COALESCE(to_char(u.entry_date, 'YYYY-MM-DD'), ''), COALESCE(to_char(u.exit_date, 'YYYY-MM-DD'), ''),
-		       u.master_notes, u.broker_tickets, u.broker_faults
+		       u.master_notes, u.broker_tickets, u.broker_faults, u.broker_tasks, u.broker_maintenance
 		FROM users u LEFT JOIN cost_centers cc ON cc.id = u.cost_center_id
 		WHERE u.id = $1::uuid`, id).Scan(&m.PersonnelNo, &m.JobTitle, &m.CostCenterID, &m.CostCenterName,
 		&m.WorkLocation, &m.PhoneInternal, &m.PhoneMobile, &m.Language, &m.EntryDate, &m.ExitDate,
-		&m.Notes, &m.BrokerTickets, &m.BrokerFaults)
+		&m.Notes, &m.BrokerTickets, &m.BrokerFaults, &m.BrokerTasks, &m.BrokerMaintenance)
 	if err == nil {
 		_ = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, '') FROM users WHERE id = $1::uuid`, id).Scan(&m.TerminalInfraID)
 		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
@@ -327,17 +328,18 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	old := h.loadUserMaster(ctx, id)
-	brokerT, brokerF := old.BrokerTickets, old.BrokerFaults
+	brokerT, brokerF, brokerA, brokerM := old.BrokerTickets, old.BrokerFaults, old.BrokerTasks, old.BrokerMaintenance
 	if h.canManageUsers(r) {
 		brokerT, brokerF = r.FormValue("broker_tickets") == "on", r.FormValue("broker_faults") == "on"
+		brokerA, brokerM = r.FormValue("broker_tasks") == "on", r.FormValue("broker_maintenance") == "on"
 	}
 	if _, err := h.db.Exec(ctx, `
 		UPDATE users SET personnel_no=$1, job_title=$2, cost_center_id=NULLIF($3, '')::uuid, work_location=$4,
 		       phone_internal=$5, phone_mobile=$6, entry_date=$7::date, exit_date=$8::date, language=$9, master_notes=$10,
-		       broker_tickets=$11, broker_faults=$12, updated_at=NOW()
+		       broker_tickets=$11, broker_faults=$12, broker_tasks=$14, broker_maintenance=$15, updated_at=NOW()
 		WHERE id=$13::uuid`,
 		v("personnel_no"), v("job_title"), v("cost_center_id"), v("work_location"), v("phone_internal"), v("phone_mobile"),
-		entry, exit, v("language"), v("notes"), brokerT, brokerF, id); err != nil {
+		entry, exit, v("language"), v("notes"), brokerT, brokerF, id, brokerA, brokerM); err != nil {
 		userRedirect(w, r, id, "master", "", err)
 		return
 	}
@@ -363,6 +365,7 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		{"Durchwahl", old.PhoneInternal, n.PhoneInternal}, {"Mobil (dienstlich)", old.PhoneMobile, n.PhoneMobile},
 		{"Eintritt", old.EntryDate, n.EntryDate}, {"Austritt", old.ExitDate, n.ExitDate}, {"Sprache", old.Language, n.Language},
 		{"Broker Tickets", yes(old.BrokerTickets), yes(n.BrokerTickets)}, {"Broker Störungen", yes(old.BrokerFaults), yes(n.BrokerFaults)},
+		{"Broker Aufgaben", yes(old.BrokerTasks), yes(n.BrokerTasks)}, {"Broker Wartungen", yes(old.BrokerMaintenance), yes(n.BrokerMaintenance)},
 		{"Terminal-Standort", old.TerminalInfraPath, n.TerminalInfraPath},
 	}
 	actor := getUser(r)

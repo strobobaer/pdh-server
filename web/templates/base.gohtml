@@ -775,7 +775,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 <!-- ── Kontext-Spalte ── -->
 <div class="pdh-backdrop" onclick="pdhCloseOverlays()" aria-hidden="true"></div>
 {{template "completion-wizard"}}
-{{template "create-wizard" .}}
+{{template "create-wizard" (dict "Board" false)}}
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
     {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="{{t "Chat"}}" aria-label="{{t "Chat"}}"><i class="ti ti-messages"></i><span class="ctx-vlabel">{{t "Chat"}}</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}

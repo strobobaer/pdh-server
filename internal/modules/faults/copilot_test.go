@@ -91,3 +91,29 @@ func TestOllamaError(t *testing.T) {
 		t.Fatalf("Ollama-Fehler: %v", err)
 	}
 }
+
+func TestAnthropicWorkspaceHeader(t *testing.T) {
+	var ws string
+	status, reply := 400, `{"type":"error","error":{"type":"invalid_request_error","message":"This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use."}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws = r.Header.Get("anthropic-workspace-id")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(reply))
+	}))
+	defer srv.Close()
+	c := NewCopilot("sk-ant-test", "", "", "", nil)
+	c.anthropicURL = srv.URL
+	// ohne Workspace-ID: kein Header, Fehler mit Hinweis auf die Einstellung
+	_, err := c.anthropicChat(context.Background(), "s", "f", "")
+	if ws != "" || err == nil || !strings.Contains(err.Error(), "Anthropic-Workspace-ID") {
+		t.Fatalf("ohne Workspace: Header %q, Fehler %v", ws, err)
+	}
+	// mit Workspace-ID: Header wird gesendet
+	c.SetAnthropicWorkspace("  wrkspc_01ABC ")
+	status, reply = 200, `{"content":[{"type":"text","text":"Verbindung steht."}],"stop_reason":"end_turn"}`
+	out, err := c.anthropicChat(context.Background(), "s", "f", "")
+	if err != nil || out != "Verbindung steht." || ws != "wrkspc_01ABC" {
+		t.Fatalf("mit Workspace: %q %v, Header %q", out, err, ws)
+	}
+}

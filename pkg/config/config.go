@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -57,6 +58,9 @@ type CopilotConfig struct {
 	Model          string
 	AnthropicKey   string
 	AnthropicModel string // FIX: war hardcoded in copilot.go
+	// AnthropicWorkspace: Workspace-ID fuer Schluessel ohne Workspace-Bindung
+	// (Header anthropic-workspace-id); leer = nicht senden
+	AnthropicWorkspace string
 }
 
 type UpdateConfig struct {
@@ -109,6 +113,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("copilot.model", "PDH_COPILOT_MODEL")
 	viper.BindEnv("copilot.anthropickey", "PDH_COPILOT_ANTHROPICKEY")
 	viper.BindEnv("copilot.anthropicmodel", "PDH_COPILOT_ANTHROPICMODEL")
+	viper.BindEnv("copilot.anthropicworkspace", "PDH_COPILOT_ANTHROPICWORKSPACE")
 	viper.BindEnv("update.agenturl", "PDH_UPDATE_AGENT_URL")
 	viper.BindEnv("update.agenttoken", "PDH_UPDATE_AGENT_TOKEN")
 	viper.BindEnv("microsoft.clientid", "PDH_MICROSOFT_CLIENT_ID")
@@ -159,6 +164,7 @@ func Load() (*Config, error) {
 	cfg.Copilot.Model = viper.GetString("copilot.model")
 	cfg.Copilot.AnthropicKey = viper.GetString("copilot.anthropickey")
 	cfg.Copilot.AnthropicModel = viper.GetString("copilot.anthropicmodel")
+	cfg.Copilot.AnthropicWorkspace = strings.TrimSpace(viper.GetString("copilot.anthropicworkspace"))
 	cfg.Update.AgentURL = viper.GetString("update.agenturl")
 	cfg.Update.AgentToken = viper.GetString("update.agenttoken")
 	cfg.Microsoft.ClientID = viper.GetString("microsoft.clientid")

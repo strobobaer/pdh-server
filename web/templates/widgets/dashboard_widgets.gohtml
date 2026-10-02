@@ -266,7 +266,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     <a class="dw-li" href="{{.URL}}"><i class="ti {{.Icon}}"></i><span class="tx"><span class="t">{{.Title}}</span>{{if .Sub}}<span class="s">{{.Sub}}</span>{{end}}</span>{{if .Badge}}<span class="badge {{.BadgeClass}}">{{.Badge}}</span>{{end}}</a>
   {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{t "Nichts offen – alles erledigt."}}</div>{{end}}</div>
 {{else if eq .Def.Type "quick_actions"}}
-  <div class="dw-qa">{{range .Data}}<a class="q-{{.Color}}" href="{{.URL}}"><i class="ti {{.Icon}}"></i>{{.Name}}</a>{{end}}</div>
+  <div class="dw-qa">{{range .Data}}<a class="q-{{.Color}}" href="{{.URL}}"{{if .Create}} data-create="{{.Create}}"{{end}}><i class="ti {{.Icon}}"></i>{{.Name}}</a>{{end}}</div>
 {{else if eq .Def.Type "quick_links"}}
   <div class="dw-links">{{range .Data}}<a href="{{.URL}}"{{if not (hasPrefix .URL "/")}} target="_blank" rel="noopener"{{end}}><i class="ti {{if hasPrefix .URL "/"}}ti-arrow-right{{else}}ti-external-link{{end}}"></i>{{.Name}}</a>
   {{else}}<div class="dw-none">{{th "Noch keine Links – unter <b>Dashboard anpassen</b> → <i class='ti ti-settings'></i> eintragen."}}</div>{{end}}</div>

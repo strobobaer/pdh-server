@@ -172,6 +172,7 @@ func main() {
 	faultRepo := faults.NewRepository(db.Pool)
 	// FIX: AnthropicModel wird jetzt aus der Config übergeben statt hardcoded (copilot.go)
 	copilot := faults.NewCopilot(cfg.Copilot.AnthropicKey, cfg.Copilot.OllamaURL, cfg.Copilot.Model, cfg.Copilot.AnthropicModel, faultRepo)
+	copilot.SetAnthropicWorkspace(cfg.Copilot.AnthropicWorkspace)
 	faultSvc := faults.NewService(faultRepo, copilot)
 	faultHandler := faults.NewHandler(faultSvc)
 
