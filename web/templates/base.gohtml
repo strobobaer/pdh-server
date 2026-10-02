@@ -574,14 +574,15 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     </div>
   </nav>
   <script>
-  // Einklappbare Navigationsbereiche (Core, Import, Export): Zustand je Browser;
-  // der Bereich mit der geoeffneten Seite bleibt immer offen.
+  // Einklappbare Navigationsgruppen: standardmaessig zu, Zustand je Browser;
+  // die Gruppe mit der geoeffneten Seite bleibt immer offen.
   (function(){
     let st = {};
     try{ st = JSON.parse(localStorage.getItem('pdh_nav_fold') || '{}'); }catch(e){}
     document.querySelectorAll('.nav-fold').forEach(function(b){
       const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
-      const folded = !!st[b.dataset.fold] && !(g && g.querySelector('.nav-item.active'));
+      // Standard: zugeklappt – bis man die Gruppe selbst aufklappt
+      const folded = (b.dataset.fold in st ? !!st[b.dataset.fold] : true) && !(g && g.querySelector('.nav-item.active'));
       b.setAttribute('aria-expanded', folded ? 'false' : 'true');
       if(g) g.classList.toggle('folded', folded);
     });
