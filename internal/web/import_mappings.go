@@ -136,6 +136,10 @@ func (h *Handler) ImportMappingDeleteWeb(w http.ResponseWriter, r *http.Request)
 	}
 	h.reconcileMqttConsumer(connectionID)
 
+	if r.FormValue("back") == "page" {
+		http.Redirect(w, r, connectionBackPath("import", connectionID, "mappings", "Zuordnung gelöscht", ""), http.StatusSeeOther)
+		return
+	}
 	returnPath := importConnectionDetailPath(kind)
 	http.Redirect(w, r, "/import/connections/"+connectionID+"/"+returnPath+"?notice="+"Zuordnung+gelöscht", http.StatusSeeOther)
 }

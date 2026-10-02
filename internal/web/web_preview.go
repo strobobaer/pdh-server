@@ -295,6 +295,9 @@ func (h *Handler) runImportPoll(ctx context.Context, id string) (updated, total 
 		return 0, 0, fmt.Errorf("Zuordnungen konnten nicht geladen werden")
 	}
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) {
+			continue
+		}
 		value, ok := values[mp.SourceRef]
 		if !ok {
 			continue

@@ -206,6 +206,9 @@ func (h *Handler) OPCUARefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 	}
 	updated := 0
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) {
+			continue
+		}
 		nodeID, err := ua.ParseNodeID(mp.SourceRef)
 		if err != nil {
 			continue

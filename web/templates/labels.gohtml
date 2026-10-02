@@ -64,6 +64,12 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
   <span class="muted">{{len .Labels}} Etikett(en){{if gt .Copies 1}} × {{.Copies}}{{end}}</span>
   <span style="flex:1"></span>
   <button type="button" onclick="window.print()">🖨 Drucken</button>
+  {{if .Printers}}
+  <span class="muted">oder direkt:</span>
+  <select id="lp-printer" title="Eingerichtete Drucker (Verwaltung → Drucker)">{{range .Printers}}<option value="{{.ID}}" data-kind="{{.Kind}}" {{if and .IsDefault (ne .Kind "network")}}selected{{end}}>{{.Name}}{{if .Location}} · {{.Location}}{{end}}</option>{{end}}</select>
+  <button type="button" id="lp-go" onclick="lpPrint()" style="background:#10b981">⇢ Direkt drucken</button>
+  <span id="lp-msg" class="muted" style="width:100%;text-align:right"></span>
+  {{end}}
 </form>
 
 {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
@@ -96,6 +102,32 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
   {{if not .Error}}<div class="err" style="background:#fef3c7;color:#92400e">Keine Etiketten für diese Auswahl.</div>{{end}}
 {{end}}
 </div>
+{{if .Printers}}
+{{template "dymo-connect-js"}}
+<script>
+async function lpPrint(){
+  const form = document.querySelector('form.toolbar'), sel = document.getElementById('lp-printer');
+  const msg = document.getElementById('lp-msg'), btn = document.getElementById('lp-go');
+  const body = new URLSearchParams(new FormData(form));
+  body.set('printer', sel.value);
+  btn.disabled = true; msg.style.color = ''; msg.textContent = 'Wird gesendet …';
+  try{
+    const res = await fetch('/inventory/labels/print', {method: 'POST', credentials: 'same-origin', body: body});
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok || !j.success) throw new Error(j.error || ('HTTP ' + res.status));
+    if(j.dymo){
+      let n = 0;
+      for(const xml of j.labels){ await pdhDymo.print(j.service_port, j.printer_name, xml); n++; msg.textContent = n + ' von ' + j.labels.length + ' an DYMO gesendet …'; }
+      msg.textContent = n + ' Etikett(en) an „' + j.printer_name + '“ gesendet';
+    } else {
+      msg.textContent = j.message;
+    }
+    msg.style.color = '#34d399';
+  }catch(e){ msg.textContent = e.message; msg.style.color = '#f87171'; }
+  btn.disabled = false;
+}
+</script>
+{{end}}
 </body>
 </html>
 {{end}}

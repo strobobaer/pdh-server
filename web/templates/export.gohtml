@@ -11,6 +11,7 @@
 <div class="card" style="margin-bottom:14px">
   <div class="card-title" id="conn-form-title">Neue Verbindung anlegen</div>
   <form id="conn-form" method="POST" action="/export/connections">
+    <input type="hidden" name="return_to" id="conn-return" value="">
     <input type="hidden" name="_id" id="conn-id" value="">
     <div class="grid2" style="gap:10px">
       <div class="form-group">
@@ -153,7 +154,7 @@
       {{range .Connections}}
       <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}} data-conn-can-write="{{$.CanWrite}}"
           {{if or $.CanWrite $.CanExecute}}oncontextmenu="showContextMenu(event, connContextItems(this, 'export')); return false;"{{end}}>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Name}}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid var(--border)"><a href="/export/connections/{{.ID}}" style="color:var(--accent);font-weight:600"><i class="ti ti-chevron-right"></i> {{.Name}}</a></td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.KindLabel}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}</td>
         <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.CreatedBy}}</td>
@@ -254,6 +255,9 @@ function deleteConnFromRow(row, direction){
 function connContextItems(row, direction){
   const canWrite = row.dataset.connCanWrite === 'true';
   const items = [{heading: row.dataset.connName}];
+  items.push({label: 'Verbindungsseite öffnen', icon: 'ti-layout-dashboard', onClick: function(){
+    window.location = '/' + direction + '/connections/' + row.dataset.connId;
+  }});
   if(canWrite){
     items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }});
     items.push({label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }});
@@ -271,6 +275,18 @@ function connContextItems(row, direction){
   return items;
 }
 
+// Aufruf von der Verbindungsseite: /export?edit=<id> oeffnet das Formular und kehrt danach dorthin zurueck
+(function(){
+  const id = new URLSearchParams(location.search).get('edit');
+  if(!id) return;
+  const run = function(){
+    const row = document.querySelector('tr[data-conn-id="' + id + '"]');
+    if(!row || typeof editConnFromRow !== 'function') return;
+    editConnFromRow(row);
+    const ret = document.getElementById('conn-return'); if(ret) ret.value = 'detail';
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else setTimeout(run, 0);
+})();
 if(document.getElementById('conn-form')){
   connFormKindChanged();
   opcuaAuthModeChanged();

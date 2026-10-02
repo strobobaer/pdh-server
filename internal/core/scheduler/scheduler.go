@@ -6,6 +6,7 @@
 package scheduler
 
 import (
+	"strings"
 	"fmt"
 	"sync"
 	"time"
@@ -47,6 +48,18 @@ func (m *CronManager) Schedule(id, spec string, job func()) error {
 	}
 	m.entries[id] = entryID
 	return nil
+}
+
+// Next: naechste geplante Ausfuehrung fuer id (false = kein Zeitplan).
+func (m *CronManager) Next(id string) (time.Time, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	entryID, ok := m.entries[id]
+	if !ok {
+		return time.Time{}, false
+	}
+	e := m.cron.Entry(entryID)
+	return e.Next, !e.Next.IsZero()
 }
 
 func (m *CronManager) Unschedule(id string) {
@@ -122,6 +135,27 @@ func (m *IntervalManager) Stop(id string) {
 		close(stop)
 		delete(m.stops, id)
 	}
+}
+
+// Running: laeuft fuer id ein Intervall?
+func (m *IntervalManager) Running(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.tickers[id]
+	return ok
+}
+
+// IDsWithPrefix: laufende Intervalle, deren id mit prefix beginnt.
+func (m *IntervalManager) IDsWithPrefix(prefix string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var ids []string
+	for id := range m.tickers {
+		if strings.HasPrefix(id, prefix) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func (m *IntervalManager) StopAll() {

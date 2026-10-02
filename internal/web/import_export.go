@@ -323,7 +323,12 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request, direc
 	h.reconcileMqttBroker(id, direction, kind, true, config)
 	h.reconcileExportSchedule(id, direction, true, config)
 	h.reconcileImportPoll(id, direction, kind, true, config)
-	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung angelegt"), http.StatusSeeOther)
+	// gleich auf die eigene Seite der Verbindung: Pruefen, Abfragen, Zuordnen
+	next := "checks"
+	if direction == "import" && queryKindSupported(kind) {
+		next = "queries"
+	}
+	http.Redirect(w, r, connectionBackPath(direction, id, next, "Verbindung angelegt – jetzt prüfen und Abfragen anlegen", ""), http.StatusSeeOther)
 }
 
 func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, direction string) {
@@ -374,6 +379,13 @@ func (h *Handler) editConnection(w http.ResponseWriter, r *http.Request, directi
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	h.reconcileExportSchedule(id, direction, enabled, config)
 	h.reconcileImportPoll(id, direction, kind, enabled, config)
+	if direction == "import" {
+		h.reconcileQueryPolls(r.Context(), id)
+	}
+	if r.FormValue("return_to") == "detail" {
+		http.Redirect(w, r, connectionBackPath(direction, id, "overview", "Einstellungen gespeichert", ""), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, base+"?notice="+url.QueryEscape("Verbindung gespeichert"), http.StatusSeeOther)
 }
 
@@ -384,6 +396,11 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request, direc
 		return
 	}
 	id := chi.URLParam(r, "id")
+	if qs, err := h.loadConnQueries(r.Context(), id); err == nil {
+		for _, q := range qs {
+			h.importPoll.Stop(queryPollID(q.ID))
+		}
+	}
 	if _, err := h.db.Exec(r.Context(),
 		`DELETE FROM import_export_connections WHERE id=$1 AND direction=$2`, id, direction); err != nil {
 		http.Error(w, "Verbindung konnte nicht gelöscht werden", http.StatusInternalServerError)
@@ -417,5 +434,8 @@ func (h *Handler) toggleConnection(w http.ResponseWriter, r *http.Request, direc
 	h.reconcileMqttBroker(id, direction, kind, enabled, config)
 	h.reconcileExportSchedule(id, direction, enabled, config)
 	h.reconcileImportPoll(id, direction, kind, enabled, config)
+	if direction == "import" {
+		h.reconcileQueryPolls(r.Context(), id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

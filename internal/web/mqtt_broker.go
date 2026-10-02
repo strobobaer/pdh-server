@@ -112,6 +112,9 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 	}
 	topics := make([]string, 0, len(mappings))
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) {
+			continue
+		}
 		topics = append(topics, mp.SourceRef)
 	}
 	handler := func(topic string, payload []byte) {

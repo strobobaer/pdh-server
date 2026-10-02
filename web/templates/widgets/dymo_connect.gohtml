@@ -1,0 +1,54 @@
+{{/*
+  DYMO Connect im Browser (Druckerseite, Etiketten-Druckansicht): DYMO Connect
+  bringt auf dem PC einen Webdienst mit (https://127.0.0.1:41951, bei belegtem
+  Port die naechsten bis 41960). Er druckt Etiketten im DYMO-XML-Format, das
+  der PDH-Server erzeugt (printer_dymo.go).
+  window.pdhDymo.status(port) / .printers(port) / .print(port, druckername, xml)
+*/}}
+{{define "dymo-connect-js"}}
+<script>
+window.pdhDymo = (function(){
+  let found = null; // erfolgreicher Basis-Pfad
+  async function tryFetch(url, opt){
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 2500);
+    try{ return await fetch(url, Object.assign({signal: ctl.signal}, opt || {})); } finally { clearTimeout(t); }
+  }
+  // base: sucht den laufenden Dienst (bevorzugt den eingestellten Port)
+  async function base(port){
+    if(found) return found;
+    const ports = [Number(port) || 41951];
+    for(let p = 41951; p <= 41960; p++) if(!ports.includes(p)) ports.push(p);
+    for(const p of ports){
+      for(const host of ['127.0.0.1', 'localhost']){
+        const b = 'https://' + host + ':' + p + '/DYMO/DLS/Printing/';
+        try{
+          const r = await tryFetch(b + 'StatusConnected');
+          if(r.ok && (await r.text()).trim().toLowerCase().includes('true')){ found = b; return b; }
+        }catch(e){}
+      }
+    }
+    throw new Error('DYMO Connect ist auf diesem PC nicht erreichbar. Ist DYMO Connect installiert und gestartet? Beim ersten Mal ggf. https://127.0.0.1:41951/DYMO/DLS/Printing/StatusConnected im Browser öffnen und dem Zertifikat vertrauen.');
+  }
+  async function status(port){ const b = await base(port); return b; }
+  async function printers(port){
+    const b = await base(port);
+    const r = await tryFetch(b + 'GetPrinters');
+    const xml = new DOMParser().parseFromString(await r.text(), 'text/xml');
+    return Array.from(xml.getElementsByTagName('LabelWriterPrinter')).map(n => ({
+      name: (n.getElementsByTagName('Name')[0] || {}).textContent || '',
+      model: (n.getElementsByTagName('ModelName')[0] || {}).textContent || '',
+      connected: ((n.getElementsByTagName('IsConnected')[0] || {}).textContent || '').toLowerCase() === 'true'
+    }));
+  }
+  async function print(port, printerName, labelXml){
+    const b = await base(port);
+    const body = new URLSearchParams({printerName: printerName, printParamsXml: '', labelXml: labelXml, labelSetXml: ''});
+    const r = await fetch(b + 'PrintLabel', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body});
+    const txt = (await r.text()).trim();
+    if(!r.ok || txt.toLowerCase().indexOf('true') < 0) throw new Error('DYMO Connect: ' + (txt || ('HTTP ' + r.status)));
+    return true;
+  }
+  return {status, printers, print};
+})();
+</script>
+{{end}}

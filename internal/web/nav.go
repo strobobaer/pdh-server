@@ -68,6 +68,7 @@ var navDefs = []navDef{
 	{navItem{"serverconfig", "/admin/server-config", "ti-adjustments-cog", "Server-Einstellungen", "server-config", false}, "admin", func(b *BaseData) bool { return b.CanServerConfig }},
 	{navItem{"backup", "/admin/backup", "ti-database-export", "Datensicherung", "backup", false}, "admin", func(b *BaseData) bool { return b.CanBackup }},
 	{navItem{"cleanup", "/admin/cleanup", "ti-trash-x", "Bereinigung", "cleanup", false}, "admin", func(b *BaseData) bool { return b.CanCleanup }},
+	{navItem{"printers", "/admin/printers", "ti-printer", "Drucker", "printers", false}, "admin", func(b *BaseData) bool { return b.CanPrinters }},
 
 	{navItem{"import", "/import", "ti-database-import", "Import", "import", false}, "data", func(b *BaseData) bool { return b.CanImport }},
 	{navItem{"export", "/export", "ti-database-export", "Export", "export", false}, "data", func(b *BaseData) bool { return b.CanExport }},

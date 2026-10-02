@@ -110,6 +110,8 @@ type LabelsPageData struct {
 	Title   string
 	Logo    string // Drucklogo (Erscheinungsbild: "Logo auf Etiketten")
 	Error   string
+	// direkt drucken (printers.go): eingerichtete, aktive Drucker
+	Printers []labelPrintOption
 }
 
 // PartLabelsPage erzeugt die Druckansicht. Auswahl (kombinierbar):
@@ -139,6 +141,9 @@ func (h *Handler) PartLabelsPage(w http.ResponseWriter, r *http.Request) {
 	items, err := h.loadLabelItems(ctx, q)
 	if err != nil {
 		data.Error = err.Error()
+	}
+	if h.hasPerm(r, "printers.use") {
+		data.Printers = h.usablePrinters(ctx)
 	}
 	base := h.publicBaseURL(r)
 	for i := range items {

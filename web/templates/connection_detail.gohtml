@@ -1,0 +1,352 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.cd-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.cd-head h1{font-size:19px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cd-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.cd-kv{display:grid;grid-template-columns:minmax(140px,auto) 1fr;gap:6px 14px;font-size:12.5px}
+.cd-kv dt{color:var(--muted)}
+.cd-kv dd{word-break:break-all}
+.cd-st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
+.cd-st.ok{color:var(--green)}.cd-st.warn{color:var(--amber)}.cd-st.fail{color:var(--red)}.cd-st.info{color:var(--muted)}
+.cd-tbl{border-collapse:collapse;width:100%;font-size:12.5px}
+.cd-tbl th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.cd-tbl td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.cd-tbl td.mono{font-family:monospace;word-break:break-all}
+.cd-q{border:1px solid var(--border);border-radius:10px;margin-bottom:12px;background:var(--bg2)}
+.cd-q-head{display:flex;gap:10px;align-items:center;padding:10px 12px;flex-wrap:wrap}
+.cd-q-head b{font-size:13.5px}
+.cd-q-head .meta{font-size:11.5px;color:var(--muted)}
+.cd-q-body{border-top:1px solid var(--border);padding:10px 12px;overflow-x:auto}
+.cd-q pre{font-size:11.5px;background:var(--bg3);border-radius:6px;padding:8px;white-space:pre-wrap;word-break:break-word;margin:0 0 8px}
+.cd-col-btn{border:0;background:none;color:var(--accent);cursor:pointer;font-size:11px;padding:0 0 0 4px}
+.cd-tpl{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.cd-tpl > div{border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg3);display:flex;flex-direction:column;gap:6px}
+.cd-tpl small{color:var(--muted);font-size:11.5px}
+.cd-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.cd-tools a{border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg3);display:flex;gap:10px;align-items:flex-start}
+.cd-tools a:hover{border-color:var(--accent)}
+.cd-tools i{font-size:22px;color:var(--accent)}
+.cd-tools small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.cd-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
+.cd-modal.open{display:flex}
+.cd-modal > div{background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(560px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:16px}
+</style>
+
+<div class="cd-head">
+  <div>
+    <div class="rec-sub" style="font-size:12px"><a href="/{{.Direction}}" style="color:var(--accent)"><i class="ti ti-arrow-left"></i> {{if eq .Direction "import"}}Import{{else}}Export{{end}}</a> · Verbindung</div>
+    <h1><i class="ti {{if eq .Direction "import"}}ti-database-import{{else}}ti-database-export{{end}}"></i> {{.Name}}
+      <span class="badge" style="background:var(--bg3);color:var(--text);border:1px solid var(--border)">{{.KindLabel}}</span>
+      {{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}
+      {{with .Check}}<span class="cd-st {{.Overall}}" title="Letzte Prüfung {{$d.CheckAt}}"><i class="ti {{if eq .Overall "ok"}}ti-circle-check{{else if eq .Overall "warn"}}ti-alert-triangle{{else}}ti-alert-circle{{end}}"></i>{{if eq .Overall "ok"}}geprüft{{else if eq .Overall "warn"}}{{.Warn}} Hinweis(e){{else}}{{.Fail}} Fehler{{end}}</span>{{end}}
+    </h1>
+  </div>
+  <div class="cd-actions">
+    {{if or .CanWrite .CanExecute}}
+    <form method="POST" action="/{{.Direction}}/connections/{{.ID}}/checks" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').innerHTML='<i class=\'ti ti-loader-2\'></i> Prüfe…'">
+      <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-stethoscope"></i> Jetzt prüfen</button>
+    </form>
+    {{if and (eq .Direction "import") .Queries}}
+    <form method="POST" action="/import/connections/{{.ID}}/queries/run-all"><input type="hidden" name="tab" value="queries">
+      <button class="btn btn-small" type="submit"><i class="ti ti-player-play"></i> Alle Abfragen ausführen</button>
+    </form>
+    {{end}}
+    {{end}}
+    {{if .CanWrite}}
+    <a class="btn btn-small" href="/{{.Direction}}?edit={{.ID}}"><i class="ti ti-edit"></i> Einstellungen bearbeiten</a>
+    <button class="btn btn-small" type="button" onclick="cdToggle()"><i class="ti ti-power"></i> {{if .Enabled}}Deaktivieren{{else}}Aktivieren{{end}}</button>
+    <form method="POST" action="/{{.Direction}}/connections/{{.ID}}/delete-web" onsubmit="return confirm('Verbindung „{{.Name}}“ mit allen Abfragen und Zuordnungen löschen?')">
+      <button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i></button>
+    </form>
+    {{end}}
+  </div>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="rec-tabs">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-info-circle"></i> Übersicht</a>
+  <a class="rec-tab" data-tab="checks" href="?tab=checks"><i class="ti ti-stethoscope"></i> Prüfungen{{with .Check}}{{if .Fail}} <b style="background:var(--red);color:#fff">{{.Fail}}</b>{{else if .Warn}} <b style="background:var(--amber);color:#fff">{{.Warn}}</b>{{end}}{{end}}</a>
+  {{if eq .Direction "import"}}<a class="rec-tab" data-tab="queries" href="?tab=queries"><i class="ti ti-database-search"></i> Abfragen <b>{{len .Queries}}</b></a>{{end}}
+  <a class="rec-tab" data-tab="mappings" href="?tab=mappings"><i class="ti ti-map-pin"></i> {{if eq .Direction "import"}}Zuordnungen <b>{{len .Mappings}}</b>{{else}}Felder <b>{{len .ExportMappings}}</b>{{end}}</a>
+  <a class="rec-tab" data-tab="templates" href="?tab=templates"><i class="ti ti-template"></i> Vorlagen</a>
+  <a class="rec-tab" data-tab="tools" href="?tab=tools"><i class="ti ti-tool"></i> Werkzeuge</a>
+</div>
+
+<!-- Uebersicht -->
+<div class="rec-pane" data-pane="overview">
+  <div class="grid2" style="gap:14px;align-items:start">
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-settings"></i> Einstellungen</span>{{if .CanWrite}}<a class="btn btn-small" href="/{{.Direction}}?edit={{.ID}}"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}</div>
+      {{if .Config}}<dl class="cd-kv">{{range .Config}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>
+      {{else}}<div class="rec-sub">Noch nichts eingetragen.</div>{{end}}
+      <div class="rec-sub" style="margin-top:10px;font-size:11.5px">Passwörter und Schlüssel werden nie angezeigt.</div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title"><span><i class="ti ti-stethoscope"></i> Zustand</span><a class="btn btn-small" href="?tab=checks">Details</a></div>
+        {{with .Check}}
+          <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
+            <span class="cd-st ok"><i class="ti ti-circle-check"></i> {{.OK}} in Ordnung</span>
+            <span class="cd-st warn"><i class="ti ti-alert-triangle"></i> {{.Warn}} Hinweis(e)</span>
+            <span class="cd-st fail"><i class="ti ti-alert-circle"></i> {{.Fail}} Fehler</span>
+          </div>
+          <div class="rec-sub" style="margin-top:6px;font-size:11.5px">Geprüft am {{$d.CheckAt}}</div>
+          {{range .Items}}{{if eq .Status "fail"}}<div style="font-size:12px;color:var(--red);margin-top:6px"><i class="ti ti-alert-circle"></i> {{.Name}}: {{.Detail}}</div>{{end}}{{end}}
+        {{else}}
+          <div class="rec-sub">Noch nicht geprüft. „Jetzt prüfen“ testet Einstellungen, Erreichbarkeit, Anmeldung, Abfragen und Zuordnungen.</div>
+        {{end}}
+      </div>
+      <div class="card">
+        <div class="card-title"><span><i class="ti ti-clock-play"></i> Läuft im Hintergrund</span></div>
+        {{if .Background}}<dl class="cd-kv">{{range .Background}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>
+        {{else}}<div class="rec-sub">Nichts – Werte werden nur von Hand aktualisiert. {{if eq .Direction "import"}}Bei einer Abfrage ein Intervall eintragen, dann holt PDH die Werte selbst.{{else}}Mit einem Zeitplan (Cron) exportiert PDH selbst.{{end}}</div>{{end}}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pruefungen -->
+<div class="rec-pane" data-pane="checks">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-stethoscope"></i> Prüfungen {{if .CheckAt}}<span class="rec-sub" style="font-weight:400;font-size:11.5px">vom {{.CheckAt}}</span>{{end}}</span>
+      {{if or .CanWrite .CanExecute}}<form method="POST" action="/{{.Direction}}/connections/{{.ID}}/checks"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-refresh"></i> Erneut prüfen</button></form>{{end}}</div>
+    {{with .Check}}
+    <div style="overflow-x:auto"><table class="cd-tbl">
+      <thead><tr><th></th><th>Bereich</th><th>Prüfung</th><th>Ergebnis</th><th style="text-align:right">Zeit</th></tr></thead>
+      <tbody>{{range .Items}}<tr>
+        <td><span class="cd-st {{.Status}}"><i class="ti {{if eq .Status "ok"}}ti-circle-check{{else if eq .Status "warn"}}ti-alert-triangle{{else if eq .Status "fail"}}ti-alert-circle{{else}}ti-info-circle{{end}}"></i></span></td>
+        <td style="white-space:nowrap;color:var(--muted)">{{.Group}}</td><td>{{.Name}}</td><td>{{.Detail}}</td>
+        <td style="text-align:right;white-space:nowrap;color:var(--muted)">{{if .Ms}}{{.Ms}} ms{{end}}</td></tr>{{end}}</tbody>
+    </table></div>
+    {{else}}<div class="rec-sub">Noch keine Prüfung. Geprüft werden: Pflichtangaben, Name und Port im Netz, TLS-Zertifikat, Anmeldung bzw. Datei, jede Abfrage, Zuordnungen ohne oder mit veraltetem Wert und ob die Hintergrund-Abrufe laufen. Abfragen werden dabei ausgeführt und Werte aktualisiert.</div>{{end}}
+  </div>
+</div>
+
+{{if eq .Direction "import"}}
+<!-- Abfragen -->
+<div class="rec-pane" data-pane="queries">
+  {{if not .QueriesSupported}}
+  <div class="card"><div class="rec-sub"><i class="ti ti-info-circle"></i> MQTT liefert Werte von selbst (Push) – hier gibt es keine Abfragen. Werte ordnest du im <a href="/import/connections/{{.ID}}/sniffer" style="color:var(--accent)">Sniffer</a> zu, je Topic eine Zuordnung.</div></div>
+  {{else}}
+  {{range .Queries}}{{$q := .}}
+  <div class="cd-q" id="q-{{.ID}}">
+    <div class="cd-q-head">
+      <i class="ti ti-database-search" style="color:var(--accent)"></i><b>{{.Name}}</b>
+      {{if not .Enabled}}<span class="badge" style="background:var(--muted)">aus</span>{{end}}
+      {{if .Ran}}{{if .Succeeded}}<span class="cd-st ok"><i class="ti ti-circle-check"></i> {{.LastMessage}}</span>{{else}}<span class="cd-st fail"><i class="ti ti-alert-circle"></i> {{.LastMessage}}</span>{{end}}{{else}}<span class="meta">noch nicht ausgeführt</span>{{end}}
+      <span class="meta">{{if .LastRunAt}}· {{.LastRunAt}}{{end}} · {{if .IntervalMinutes}}alle {{.IntervalMinutes}} Min.{{else}}nur von Hand{{end}}</span>
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+        {{if or $d.CanWrite $d.CanExecute}}<form method="POST" action="/import/connections/{{$d.ID}}/queries/{{.ID}}/run"><button class="btn btn-small" type="submit"><i class="ti ti-player-play"></i> Ausführen</button></form>{{end}}
+        <button class="btn btn-small" type="button" onclick="cdToggleBody('{{.ID}}')"><i class="ti ti-table"></i> Ergebnis</button>
+        {{if $d.CanWrite}}
+        <button class="btn btn-small" type="button" data-q-edit='{{.SpecJSON}}' data-q-id="{{.ID}}" data-q-name="{{.Name}}" data-q-interval="{{.IntervalMinutes}}" data-q-enabled="{{.Enabled}}" onclick="cdEditQuery(this)"><i class="ti ti-edit"></i></button>
+        <form method="POST" action="/import/connections/{{$d.ID}}/queries/{{.ID}}/delete" onsubmit="return cdDeleteQuery(this, '{{.Name}}')"><input type="hidden" name="with_mappings" value="0"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i></button></form>
+        {{end}}
+      </span>
+    </div>
+    <div class="cd-q-body" id="qb-{{.ID}}" {{if and (ne $d.OpenQuery .ID) (gt (len $d.Queries) 1)}}hidden{{end}}>
+      {{if index .Spec "sql"}}<pre>{{index .Spec "sql"}}</pre>{{end}}
+      {{if index .Spec "nodes"}}<pre>{{index .Spec "nodes"}}</pre>{{end}}
+      {{if index .Spec "path"}}<pre>{{index .Spec "path"}}{{with index .Spec "items_path"}} · Liste: {{.}}{{end}}</pre>{{end}}
+      {{if index .Spec "area"}}<pre>{{index .Spec "area"}} ab {{index .Spec "start"}}, {{index .Spec "count"}} × {{index .Spec "type"}}</pre>{{end}}
+      {{with .LastResult}}
+        <div class="rec-sub" style="font-size:11.5px;margin-bottom:6px">Zugeordnet wird die <b>{{if eq (index $q.Spec "row") "last"}}letzte{{else}}erste{{end}} Zeile</b>{{if .Truncated}} · Ergebnis gekürzt{{end}}.{{if $d.CanWrite}} Auf <i class="ti ti-map-pin"></i> neben einer Spalte klicken, um sie einer Anlage zuzuordnen.{{end}}</div>
+        <table class="cd-tbl"><thead><tr>{{range .Columns}}<th>{{.}}{{if $d.CanWrite}}<button type="button" class="cd-col-btn" title="Spalte zuordnen" onclick="cdMap('{{$q.ID}}', '{{$q.Name}}', this.dataset.col)" data-col="{{.}}"><i class="ti ti-map-pin"></i></button>{{end}}</th>{{end}}</tr></thead>
+        <tbody>{{range .Rows}}<tr>{{range .}}<td class="mono">{{.}}</td>{{end}}</tr>{{else}}<tr><td class="rec-sub" colspan="{{len .Columns}}">keine Zeilen</td></tr>{{end}}</tbody></table>
+      {{else}}<div class="rec-sub">Noch kein Ergebnis – „Ausführen“.</div>{{end}}
+    </div>
+  </div>
+  {{else}}
+  <div class="card" style="margin-bottom:12px"><div class="rec-sub"><i class="ti ti-info-circle"></i> Noch keine Abfragen. Eine Verbindung kann beliebig viele Abfragen haben – z. B. je Maschine, je Tabelle oder je Endpunkt. Unten eine Vorlage wählen oder selbst anlegen.</div></div>
+  {{end}}
+
+  {{if .CanWrite}}
+  <div class="card" id="q-form-card">
+    <div class="card-title"><span id="q-form-title"><i class="ti ti-plus"></i> Neue Abfrage</span><button class="btn btn-small" type="button" id="q-form-reset" hidden onclick="cdResetQuery()">Abbrechen</button></div>
+    <form method="POST" action="/import/connections/{{.ID}}/queries" id="q-form">
+      <input type="hidden" name="query_id" id="q-id">
+      <input type="hidden" name="run" value="1">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Name *</label><input class="form-input" name="name" id="q-name" maxlength="150" required placeholder="z. B. Presse 3 – Zählerstand"></div>
+        <div class="form-group"><label class="form-label">Automatisch alle … Minuten</label><input class="form-input" type="number" min="0" max="1440" name="interval_minutes" id="q-interval" value="0"><small class="rec-sub" style="font-size:11px">0 = nur von Hand bzw. bei „Jetzt prüfen“</small></div>
+      </div>
+      {{range .QueryFields}}
+      <div class="form-group">
+        <label class="form-label">{{.Label}}</label>
+        {{if eq .Type "textarea"}}<textarea class="form-input" name="s_{{.Key}}" id="q-s-{{.Key}}" rows="{{if eq .Key "sql"}}6{{else}}4{{end}}" placeholder="{{.Placeholder}}" style="font-family:monospace;font-size:12px"></textarea>
+        {{else if eq .Type "select"}}<select class="form-input" name="s_{{.Key}}" id="q-s-{{.Key}}">{{range .Options}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select>
+        {{else}}<input class="form-input" {{if eq .Type "number"}}type="number" min="0"{{end}} name="s_{{.Key}}" id="q-s-{{.Key}}" placeholder="{{.Placeholder}}">{{end}}
+        {{if .Help}}<small class="rec-sub" style="font-size:11px">{{.Help}}</small>{{end}}
+      </div>
+      {{end}}
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-bottom:10px"><input type="checkbox" name="enabled" id="q-enabled" checked> Aktiv</label>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-player-play"></i> Speichern &amp; ausführen</button>
+    </form>
+  </div>
+  {{if .Builtins}}
+  <div class="card" style="margin-top:14px">
+    <div class="card-title"><span><i class="ti ti-template"></i> Vorlagen für {{.KindLabel}}</span></div>
+    <div class="rec-sub" style="font-size:11.5px;margin-bottom:10px">„Übernehmen“ füllt das Formular oben – Platzhalter in &lt;spitzen Klammern&gt; durch eure Namen ersetzen, dann speichern.</div>
+    <div class="cd-tpl">{{range .Builtins}}<div><b>{{.Name}}</b><small>{{.Desc}}</small><button class="btn btn-small" type="button" data-tpl='{{.SpecJSON}}' onclick="cdUseTemplate(this)" style="align-self:flex-start"><i class="ti ti-arrow-up"></i> Übernehmen</button></div>{{end}}</div>
+  </div>
+  {{end}}
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
+<!-- Zuordnungen -->
+<div class="rec-pane" data-pane="mappings">
+  <div class="card" style="overflow-x:auto">
+  {{if eq .Direction "import"}}
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Zuordnungen</span>{{if .QueriesSupported}}<a class="btn btn-small" href="?tab=queries"><i class="ti ti-plus"></i> Aus einer Abfrage zuordnen</a>{{end}}</div>
+    {{if .Mappings}}
+    <table class="cd-tbl"><thead><tr><th>Quelle</th><th>Bezeichnung</th><th>Anlage</th><th>Notiz</th><th>Letzter Wert</th><th>Aktualisiert</th><th></th></tr></thead>
+    <tbody>{{range .Mappings}}<tr>
+      <td>{{if .QueryName}}<b>{{.QueryName}}</b> › {{.Column}}{{else}}<span class="mono" style="font-family:monospace">{{.SourceRef}}</span>{{end}}</td>
+      <td>{{.Name}}</td><td>{{.InfrastructureName}}</td><td>{{.Note}}</td>
+      <td class="mono">{{if .LastValue}}{{.LastValue}}{{else}}<span style="color:var(--muted)">–</span>{{end}}</td>
+      <td style="white-space:nowrap">{{if .LastReceivedAt}}{{.LastReceivedAt}}{{else}}<span style="color:var(--amber)">noch kein Wert</span>{{end}}</td>
+      <td>{{if $d.CanWrite}}<form method="POST" action="/import/connections/{{$d.ID}}/mappings/{{.ID}}/delete-web" onsubmit="return confirm('Zuordnung „{{.Name}}“ löschen?')"><input type="hidden" name="back" value="page"><button class="btn btn-icon" type="submit" title="Löschen" style="width:30px;height:30px;color:var(--red)"><i class="ti ti-trash"></i></button></form>{{end}}</td>
+    </tr>{{end}}</tbody></table>
+    {{else}}<div class="rec-sub">Noch keine Zuordnungen. Eine Zuordnung verbindet einen Wert (Spalte einer Abfrage, Topic, Register …) mit einer Anlage – erst dann übernimmt PDH ihn.</div>{{end}}
+  {{else}}
+    <div class="card-title"><span><i class="ti ti-map-pin"></i> Felder im Export</span><a class="btn btn-small" href="/export/connections/{{.ID}}/preview"><i class="ti ti-plus"></i> Felder auswählen</a></div>
+    {{if .ExportMappings}}
+    <table class="cd-tbl"><thead><tr><th>Zielfeld</th><th>Quelle</th><th>Anlage</th><th>Aktueller Wert</th><th>Zuletzt exportiert</th><th>Notiz</th></tr></thead>
+    <tbody>{{range .ExportMappings}}<tr><td><b>{{.FieldName}}</b></td><td>{{.SourceName}}</td><td>{{.InfrastructureName}}</td>
+      <td class="mono">{{if .SourceValue}}{{.SourceValue}}{{else}}<span style="color:var(--amber)">kein Wert</span>{{end}}</td>
+      <td style="white-space:nowrap">{{if .LastExportedAt}}{{.LastExportedAt}}{{else}}<span style="color:var(--muted)">noch nie</span>{{end}}</td><td>{{.Note}}</td></tr>{{end}}</tbody></table>
+    {{else}}<div class="rec-sub">Noch keine Felder. Unter „Felder auswählen“ legst du fest, welche importierten Werte in den Export kommen und wie die Spalte heißt.</div>{{end}}
+  {{end}}
+  </div>
+</div>
+
+<!-- Vorlagen -->
+<div class="rec-pane" data-pane="templates">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-bookmarks"></i> Eigene Vorlagen für {{.KindLabel}}</span></div>
+    <div class="rec-sub" style="font-size:11.5px;margin-bottom:10px">Eine Vorlage enthält {{if eq .Direction "import"}}alle Abfragen und Zuordnungen{{else}}alle Felder{{end}} einer Verbindung. Auf eine andere Verbindung desselben Typs angewendet, entsteht dort dasselbe – praktisch bei mehreren gleichen Maschinen. Schon Vorhandenes wird nicht doppelt angelegt.</div>
+    {{if .OwnTemplates}}
+    <table class="cd-tbl"><thead><tr><th>Name</th><th>Inhalt</th><th>Von</th><th></th></tr></thead><tbody>
+    {{range .OwnTemplates}}<tr><td><b>{{.Name}}</b>{{if .Description}}<div class="rec-sub" style="font-size:11.5px">{{.Description}}</div>{{end}}</td>
+      <td>{{if eq $d.Direction "import"}}{{.Queries}} Abfrage(n), {{end}}{{.Mappings}} {{if eq $d.Direction "import"}}Zuordnung(en){{else}}Feld(er){{end}}</td><td style="white-space:nowrap">{{.CreatedBy}} · {{.CreatedAt}}</td>
+      <td style="white-space:nowrap">{{if $d.CanWrite}}
+        <form method="POST" action="/{{$d.Direction}}/connections/{{$d.ID}}/templates/{{.ID}}/apply" style="display:inline" onsubmit="return confirm('Vorlage „{{.Name}}“ auf diese Verbindung anwenden?')"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-download"></i> Anwenden</button></form>
+        <form method="POST" action="/{{$d.Direction}}/connections/{{$d.ID}}/templates/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Vorlage löschen?')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i></button></form>{{end}}</td></tr>{{end}}
+    </tbody></table>
+    {{else}}<div class="rec-sub">Noch keine eigenen Vorlagen für diesen Verbindungstyp.</div>{{end}}
+  </div>
+  {{if .CanWrite}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-device-floppy"></i> Diese Verbindung als Vorlage speichern</span></div>
+    <form method="POST" action="/{{.Direction}}/connections/{{.ID}}/templates/save" class="grid2" style="gap:10px;align-items:end">
+      <div class="form-group"><label class="form-label">Name *</label><input class="form-input" name="name" required maxlength="150" placeholder="z. B. Spritzgussmaschine Engel"></div>
+      <div class="form-group"><label class="form-label">Beschreibung</label><input class="form-input" name="description" maxlength="500" placeholder="wofür, was ist anzupassen"></div>
+      <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Als Vorlage speichern</button></div>
+    </form>
+  </div>
+  {{end}}
+  {{if and (eq .Direction "import") .Builtins}}
+  <div class="rec-sub" style="margin-top:12px;font-size:12px"><i class="ti ti-info-circle"></i> Eingebaute Abfrage-Vorlagen findest du unter <a href="?tab=queries" style="color:var(--accent)">Abfragen</a>.</div>
+  {{end}}
+</div>
+
+<!-- Werkzeuge -->
+<div class="rec-pane" data-pane="tools">
+  <div class="cd-tools">{{range .Tools}}<a href="{{.Href}}"><i class="ti {{.Icon}}"></i><div><b>{{.Label}}</b><small>{{.Help}}</small></div></a>{{end}}</div>
+</div>
+
+{{if and (eq .Direction "import") .CanWrite}}
+<div class="cd-modal" id="cd-map" onclick="if(event.target===this)cdMapClose()">
+  <div>
+    <h3 style="font-size:15px;margin-bottom:10px"><i class="ti ti-map-pin" style="color:var(--accent)"></i> Spalte zuordnen</h3>
+    <div class="form-group"><label class="form-label">Quelle</label><input class="form-input" id="map-source" readonly></div>
+    {{template "infra-tree-picker" (dict "TargetID" "map-infra-id" "SelectedLabelID" "map-infra-selected" "Label" "Anlage" "Required" true)}}
+    <div class="form-group"><label class="form-label">Bezeichnung *</label><input class="form-input" id="map-name" maxlength="150" placeholder="z. B. Öltemperatur"></div>
+    <div class="form-group"><label class="form-label">Notiz</label><input class="form-input" id="map-note" maxlength="500" placeholder="z. B. Einheit °C"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" onclick="cdMapClose()">Abbrechen</button><button class="btn btn-primary" type="button" id="map-save" onclick="cdMapSave()"><i class="ti ti-check"></i> Zuordnen</button></div>
+    <p id="map-err" role="alert" style="color:var(--red);font-size:12px;margin-top:8px"></p>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function(){
+  const DIR = '{{.Direction}}', ID = '{{.ID}}';
+  window.cdToggle = async function(){
+    const res = await fetch('/' + DIR + '/connections/' + ID + '/toggle-web', {method: 'POST', credentials: 'same-origin'});
+    if(res.ok) location.reload(); else alert('Status konnte nicht geändert werden (HTTP ' + res.status + ')');
+  };
+  window.cdToggleBody = function(id){ const b = document.getElementById('qb-' + id); if(b) b.hidden = !b.hidden; };
+  window.cdDeleteQuery = function(form, name){
+    if(!confirm('Abfrage „' + name + '“ löschen?')) return false;
+    form.querySelector('[name=with_mappings]').value = confirm('Auch die Zuordnungen dieser Abfrage löschen?\nOK = mitlöschen, Abbrechen = behalten') ? '1' : '0';
+    return true;
+  };
+  function fill(name, spec, interval, enabled){
+    const set = (id, v) => { const el = document.getElementById(id); if(el) el.value = v == null ? '' : v; };
+    set('q-name', name || '');
+    set('q-interval', interval || 0);
+    document.querySelectorAll('[id^="q-s-"]').forEach(el => {
+      const k = el.id.slice(4);
+      if(el.tagName === 'SELECT') el.value = (spec && spec[k]) || el.options[0].value;
+      else el.value = (spec && spec[k]) || '';
+    });
+    const en = document.getElementById('q-enabled'); if(en) en.checked = enabled !== false;
+    const card = document.getElementById('q-form-card');
+    if(card){ card.scrollIntoView({behavior: 'smooth', block: 'start'}); const n = document.getElementById('q-name'); if(n) setTimeout(() => n.focus(), 300); }
+  }
+  window.cdUseTemplate = function(btn){
+    let t = {}; try{ t = JSON.parse(btn.dataset.tpl); }catch(e){}
+    cdResetQuery();
+    fill(t.name, t.spec, t.interval, true);
+  };
+  window.cdEditQuery = function(btn){
+    let spec = {}; try{ spec = JSON.parse(btn.dataset.qEdit); }catch(e){}
+    document.getElementById('q-id').value = btn.dataset.qId;
+    document.getElementById('q-form-title').innerHTML = '<i class="ti ti-edit"></i> Abfrage bearbeiten';
+    document.getElementById('q-form-reset').hidden = false;
+    fill(btn.dataset.qName, spec, btn.dataset.qInterval, btn.dataset.qEnabled === 'true');
+  };
+  window.cdResetQuery = function(){
+    const f = document.getElementById('q-form'); if(!f) return;
+    f.reset();
+    document.getElementById('q-id').value = '';
+    document.getElementById('q-form-title').innerHTML = '<i class="ti ti-plus"></i> Neue Abfrage';
+    document.getElementById('q-form-reset').hidden = true;
+  };
+  let mapRef = '';
+  window.cdMap = function(qid, qname, col){
+    mapRef = 'q:' + qid + ':' + col;
+    document.getElementById('map-source').value = qname + ' › ' + col;
+    document.getElementById('map-name').value = col;
+    document.getElementById('map-note').value = '';
+    document.getElementById('map-err').textContent = '';
+    const picker = document.querySelector('.infra-picker[data-target="map-infra-id"]');
+    if(picker && typeof clearInfraPicker === 'function') clearInfraPicker(picker);
+    document.getElementById('cd-map').classList.add('open');
+  };
+  window.cdMapClose = function(){ const m = document.getElementById('cd-map'); if(m) m.classList.remove('open'); };
+  window.cdMapSave = async function(){
+    const err = document.getElementById('map-err');
+    const body = {source_ref: mapRef, infrastructure_id: document.getElementById('map-infra-id').value, name: document.getElementById('map-name').value, note: document.getElementById('map-note').value};
+    if(!body.infrastructure_id){ err.textContent = 'Bitte eine Anlage wählen.'; return; }
+    document.getElementById('map-save').disabled = true;
+    try{
+      const res = await fetch('/import/connections/' + ID + '/mappings', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      location.href = '/import/connections/' + ID + '?tab=mappings&notice=' + encodeURIComponent('Zuordnung „' + body.name + '“ angelegt – der Wert kommt mit der nächsten Ausführung');
+    }catch(e){ err.textContent = e.message; document.getElementById('map-save').disabled = false; }
+  };
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') cdMapClose(); });
+})();
+</script>
+{{end}}

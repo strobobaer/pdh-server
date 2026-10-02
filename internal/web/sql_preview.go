@@ -485,6 +485,9 @@ func (h *Handler) SQLRefreshValuesWeb(w http.ResponseWriter, r *http.Request) {
 
 	byTable := map[string][]ImportMappingView{}
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) { // Werte aus Abfragen: connection_queries.go
+			continue
+		}
 		table, _, ok := strings.Cut(mp.SourceRef, ".")
 		if !ok {
 			continue

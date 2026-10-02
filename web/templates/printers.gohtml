@@ -1,0 +1,209 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.pr-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px}
+.pr-type h3{font-size:14.5px;display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.pr-type h3 i{font-size:22px;color:var(--accent)}
+.pr-type ol{font-size:12px;color:var(--muted);padding-left:18px;display:flex;flex-direction:column;gap:3px;margin:8px 0}
+.pr-card{border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:12px;scroll-margin-top:80px}
+.pr-card:target{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.25)}
+.pr-head{display:flex;gap:12px;align-items:center;padding:12px 14px;flex-wrap:wrap}
+.pr-head .ico{width:40px;height:40px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:21px;color:var(--accent);flex-shrink:0}
+.pr-head b{font-size:14px}
+.pr-head .sub{font-size:11.5px;color:var(--muted)}
+.pr-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.pr-body{border-top:1px solid var(--border);padding:10px 14px;overflow-x:auto}
+.pr-st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
+.pr-st.ok{color:var(--green)}.pr-st.warn{color:var(--amber)}.pr-st.fail{color:var(--red)}.pr-st.info{color:var(--muted)}
+.pr-tbl{border-collapse:collapse;width:100%;font-size:12.5px}
+.pr-tbl td{padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.pr-fields[hidden]{display:none}
+</style>
+
+<div style="margin-bottom:14px">
+  <h1 style="font-size:19px;font-weight:600"><i class="ti ti-printer"></i> Drucker</h1>
+  <p class="rec-sub" style="margin-top:3px">Etikettendrucker und Netzwerkdrucker einrichten, prüfen und testen. Eingerichtete Drucker stehen in der Etiketten-Druckansicht zum <b>direkten Drucken</b> bereit – ohne Druckdialog.</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="pr-types">
+  <div class="card pr-type">
+    <h3><i class="ti ti-barcode"></i> Zebra ZT4xx</h3>
+    <div class="rec-sub" style="font-size:12px">ZT410, ZT411, ZT420, ZT421 – Industrie-Etikettendrucker. PDH schickt die Etiketten als ZPL direkt an den Drucker (Port 9100) und fragt seinen Zustand ab.</div>
+    <ol><li>Drucker ans Netz, am Drucker <b>Menü → Netzwerk</b> die IP-Adresse ablesen (am besten fest vergeben).</li><li>Etikettengröße, Auflösung (steht am Typenschild, z. B. 203 dpi) und Material eintragen.</li><li>„Prüfen“ – dann „Testdruck“.</li></ol>
+    <button class="btn btn-small btn-primary" type="button" onclick="prNew('zebra')"><i class="ti ti-plus"></i> Zebra hinzufügen</button>
+  </div>
+  <div class="card pr-type">
+    <h3><i class="ti ti-tag"></i> Dymo LabelWriter</h3>
+    <div class="rec-sub" style="font-size:12px">LabelWriter 450, 550, 5XL, Wireless – meist per USB am PC. Gedruckt wird über <b>DYMO Connect</b> auf diesem PC; PDH liefert das fertige Etikett.</div>
+    <ol><li>Auf dem PC am Drucker <b>DYMO Connect</b> installieren und starten.</li><li>Den Druckernamen genau wie in DYMO Connect eintragen und den Etikettentyp wählen.</li><li>An diesem PC „Prüfen“ und „Testdruck“.</li></ol>
+    <button class="btn btn-small btn-primary" type="button" onclick="prNew('dymo')"><i class="ti ti-plus"></i> Dymo hinzufügen</button>
+  </div>
+  <div class="card pr-type">
+    <h3><i class="ti ti-printer"></i> Netzwerkdrucker</h3>
+    <div class="rec-sub" style="font-size:12px">Bürodrucker und Multifunktionsgeräte. PDH druckt PDF über <b>IPP</b> (Standard, mit Zustand und Tonerstand) oder <b>RAW 9100</b> – z. B. Etiketten auf A4-Bögen und Testseiten.</div>
+    <ol><li>IP-Adresse des Druckers (Konfigurationsseite des Druckers oder Router).</li><li>Protokoll IPP lassen; Pfad meist <code>/ipp/print</code>.</li><li>„Prüfen“ zeigt Zustand, Toner und ob PDF geht – dann „Testdruck“.</li></ol>
+    <button class="btn btn-small btn-primary" type="button" onclick="prNew('network')"><i class="ti ti-plus"></i> Netzwerkdrucker hinzufügen</button>
+  </div>
+</div>
+
+{{range .Printers}}{{$p := .}}
+<div class="pr-card" id="p-{{.ID}}">
+  <div class="pr-head">
+    <div class="ico"><i class="ti {{if eq .Kind "zebra"}}ti-barcode{{else if eq .Kind "dymo"}}ti-tag{{else}}ti-printer{{end}}"></i></div>
+    <div>
+      <b>{{.Name}}</b> {{if .IsDefault}}<span class="badge" style="background:var(--accent)">Standard</span>{{end}} {{if not .Enabled}}<span class="badge" style="background:var(--muted)">aus</span>{{end}}
+      <div class="sub">{{.KindLabel}} · {{.Summary}}{{if .Location}} · {{.Location}}{{end}}</div>
+      <div class="sub">
+        {{with .Check}}<span class="pr-st {{.Overall}}"><i class="ti {{if eq .Overall "ok"}}ti-circle-check{{else if eq .Overall "warn"}}ti-alert-triangle{{else}}ti-alert-circle{{end}}"></i> {{if eq .Overall "ok"}}geprüft{{else if eq .Overall "warn"}}{{.Warn}} Hinweis(e){{else}}{{.Fail}} Fehler{{end}}</span> am {{$p.CheckAt}}{{else}}noch nicht geprüft{{end}}
+        {{if .LastPrintAt}} · zuletzt gedruckt {{.LastPrintAt}}{{end}}
+      </div>
+    </div>
+    <div class="pr-actions">
+      {{if eq .Kind "dymo"}}
+      <button class="btn btn-small" type="button" onclick="prDymoCheck(this)" data-id="{{.ID}}" data-name="{{index .Config "printer_name"}}" data-port="{{index .Config "service_port"}}"><i class="ti ti-stethoscope"></i> Prüfen (an diesem PC)</button>
+      <button class="btn btn-small" type="button" onclick="prDymoTest(this)" data-id="{{.ID}}"><i class="ti ti-printer"></i> Testdruck</button>
+      {{else}}
+      <form method="POST" action="/admin/printers/{{.ID}}/check" onsubmit="prBusy(this,'Prüfe…')"><button class="btn btn-small" type="submit"><i class="ti ti-stethoscope"></i> Prüfen</button></form>
+      <form method="POST" action="/admin/printers/{{.ID}}/test" onsubmit="prBusy(this,'Sende…')"><button class="btn btn-small" type="submit"><i class="ti ti-printer"></i> Testdruck</button></form>
+      {{end}}
+      <button class="btn btn-small" type="button" onclick="prEdit(this)" data-p='{{.ConfigJSON}}' data-id="{{.ID}}" data-kind="{{.Kind}}" data-name="{{.Name}}" data-location="{{.Location}}" data-enabled="{{.Enabled}}"><i class="ti ti-edit"></i></button>
+      {{if not .IsDefault}}<form method="POST" action="/admin/printers/{{.ID}}/default"><button class="btn btn-small" type="submit" title="Standard für {{.KindLabel}}"><i class="ti ti-star"></i></button></form>{{end}}
+      <form method="POST" action="/admin/printers/{{.ID}}/delete" onsubmit="return confirm('Drucker „{{.Name}}“ löschen?')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i></button></form>
+    </div>
+  </div>
+  <div class="pr-body" id="pb-{{.ID}}" {{if not .Check}}hidden{{end}}>
+    <div class="rec-sub" id="pm-{{.ID}}" style="font-size:12px;margin-bottom:6px"></div>
+    {{with .Check}}<table class="pr-tbl">{{range .Items}}<tr>
+      <td style="width:22px"><span class="pr-st {{.Status}}"><i class="ti {{if eq .Status "ok"}}ti-circle-check{{else if eq .Status "warn"}}ti-alert-triangle{{else if eq .Status "fail"}}ti-alert-circle{{else}}ti-info-circle{{end}}"></i></span></td>
+      <td style="white-space:nowrap;color:var(--muted)">{{.Group}}</td><td style="white-space:nowrap">{{.Name}}</td><td>{{.Detail}}</td></tr>{{end}}</table>{{end}}
+  </div>
+</div>
+{{else}}
+<div class="card" style="margin-bottom:14px"><div class="rec-sub"><i class="ti ti-info-circle"></i> Noch keine Drucker eingerichtet. Oben den passenden Typ wählen.</div></div>
+{{end}}
+
+<div class="card" id="pr-form-card" hidden>
+  <div class="card-title"><span id="pr-form-title">Drucker hinzufügen</span><button class="btn btn-small" type="button" onclick="prClose()">Abbrechen</button></div>
+  <form method="POST" action="/admin/printers" id="pr-form">
+    <input type="hidden" name="printer_id" id="pr-id">
+    <div class="grid2" style="gap:10px">
+      <div class="form-group"><label class="form-label">Typ</label><select class="form-input" name="kind" id="pr-kind" onchange="prKind()">{{range .Kinds}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Name *</label><input class="form-input" name="name" id="pr-name" required maxlength="150" placeholder="z. B. Zebra Lager Halle 2"></div>
+      <div class="form-group"><label class="form-label">Standort</label><input class="form-input" name="location" id="pr-location" maxlength="200" placeholder="z. B. Ersatzteillager, Ausgabe"></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-top:20px"><input type="checkbox" name="enabled" id="pr-enabled" checked> Aktiv (beim Etikettendruck anbieten)</label>
+    </div>
+
+    <div class="pr-fields" data-kind="zebra">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">IP-Adresse / Name *</label><input class="form-input" name="zebra_host" placeholder="192.168.1.50"></div>
+        <div class="form-group"><label class="form-label">Port</label><input class="form-input" name="zebra_port" placeholder="9100"></div>
+        <div class="form-group"><label class="form-label">Auflösung</label><select class="form-input" name="zebra_dpi"><option value="203">203 dpi</option><option value="300">300 dpi</option><option value="600">600 dpi</option></select></div>
+        <div class="form-group"><label class="form-label">Material</label><select class="form-input" name="zebra_media"><option value="transfer">Thermotransfer (mit Farbband)</option><option value="direct">Thermodirekt (ohne Farbband)</option></select></div>
+        <div class="form-group"><label class="form-label">Etikettenbreite (mm)</label><input class="form-input" name="zebra_label_width_mm" placeholder="100"></div>
+        <div class="form-group"><label class="form-label">Etikettenhöhe (mm)</label><input class="form-input" name="zebra_label_height_mm" placeholder="50"></div>
+        <div class="form-group"><label class="form-label">Schwärzung 0–30</label><input class="form-input" type="number" min="0" max="30" name="zebra_darkness" placeholder="15"></div>
+        <div class="form-group"><label class="form-label">Geschwindigkeit (Zoll/s, 2–12)</label><input class="form-input" type="number" min="2" max="12" name="zebra_speed" placeholder="4"></div>
+      </div>
+      <div class="rec-sub" style="font-size:11.5px">Schwärzung und Geschwindigkeit setzt PDH bei jedem Druck. Blasser Druck → Schwärzung erhöhen, verschmiert → senken oder langsamer.</div>
+    </div>
+
+    <div class="pr-fields" data-kind="dymo" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Druckername in DYMO Connect *</label><input class="form-input" name="dymo_printer_name" placeholder="DYMO LabelWriter 450"></div>
+        <div class="form-group"><label class="form-label">Etikettentyp</label><select class="form-input" name="dymo_label_type">{{range .DymoLabelTypes}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Papiername (nur bei Sonderetiketten)</label><input class="form-input" name="dymo_paper_name" placeholder="leer = passend zum Etikettentyp"></div>
+        <div class="form-group"><label class="form-label">Port des DYMO-Webdienstes</label><input class="form-input" name="dymo_service_port" placeholder="41951"></div>
+      </div>
+      <div class="rec-sub" style="font-size:11.5px">Der Druck läuft am PC über DYMO Connect. „Prüfen“ zeigt die dort angeschlossenen Drucker mit ihrem genauen Namen.</div>
+    </div>
+
+    <div class="pr-fields" data-kind="network" hidden>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label">IP-Adresse / Name *</label><input class="form-input" name="network_host" placeholder="192.168.1.20"></div>
+        <div class="form-group"><label class="form-label">Protokoll</label><select class="form-input" name="network_protocol"><option value="ipp">IPP (empfohlen)</option><option value="ipps">IPPS (verschlüsselt)</option><option value="raw">RAW / JetDirect 9100</option></select></div>
+        <div class="form-group"><label class="form-label">Port</label><input class="form-input" name="network_port" placeholder="631 bzw. 9100"></div>
+        <div class="form-group"><label class="form-label">IPP-Pfad</label><input class="form-input" name="network_ipp_path" placeholder="/ipp/print"></div>
+        <div class="form-group"><label class="form-label">Papier</label><select class="form-input" name="network_paper"><option value="A4">A4</option><option value="A5">A5</option><option value="Letter">Letter</option></select></div>
+        <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-top:20px"><input type="checkbox" name="network_tls_insecure"> IPPS: selbst signiertes Zertifikat zulassen</label>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+</div>
+{{end}}
+
+{{define "scripts"}}
+{{template "dymo-connect-js"}}
+<script>
+function prBusy(form, text){ const b = form.querySelector('button'); b.disabled = true; b.innerHTML = '<i class="ti ti-loader-2"></i> ' + text; }
+function prKind(){
+  const k = document.getElementById('pr-kind').value;
+  document.querySelectorAll('.pr-fields').forEach(el => el.hidden = el.dataset.kind !== k);
+}
+function prOpen(title){
+  const c = document.getElementById('pr-form-card');
+  document.getElementById('pr-form-title').textContent = title;
+  c.hidden = false; c.scrollIntoView({behavior: 'smooth', block: 'start'});
+  setTimeout(() => document.getElementById('pr-name').focus(), 250);
+}
+function prClose(){ document.getElementById('pr-form-card').hidden = true; }
+function prNew(kind){
+  const f = document.getElementById('pr-form'); f.reset();
+  document.getElementById('pr-id').value = '';
+  const k = document.getElementById('pr-kind'); k.value = kind; k.disabled = false;
+  prKind(); prOpen('Drucker hinzufügen');
+}
+function prEdit(btn){
+  const f = document.getElementById('pr-form'); f.reset();
+  const kind = btn.dataset.kind;
+  let cfg = {}; try{ cfg = JSON.parse(btn.dataset.p); }catch(e){}
+  document.getElementById('pr-id').value = btn.dataset.id;
+  const k = document.getElementById('pr-kind'); k.value = kind; k.disabled = true;
+  document.getElementById('pr-name').value = btn.dataset.name;
+  document.getElementById('pr-location').value = btn.dataset.location;
+  document.getElementById('pr-enabled').checked = btn.dataset.enabled === 'true';
+  Object.keys(cfg).forEach(key => {
+    const el = f.querySelector('[name="' + kind + '_' + key + '"]'); if(!el) return;
+    if(el.type === 'checkbox') el.checked = cfg[key] === 'true'; else el.value = cfg[key];
+  });
+  prKind(); prOpen('Drucker bearbeiten');
+}
+// Dymo: Pruefung und Testdruck im Browser (DYMO Connect auf diesem PC)
+function prShow(id, html, color){
+  const b = document.getElementById('pb-' + id); if(b) b.hidden = false;
+  const m = document.getElementById('pm-' + id); if(m){ m.innerHTML = html; m.style.color = color || ''; }
+}
+async function prDymoCheck(btn){
+  const id = btn.dataset.id, want = btn.dataset.name, items = [];
+  btn.disabled = true; prShow(id, 'Prüfe DYMO Connect auf diesem PC …');
+  try{
+    await pdhDymo.status(btn.dataset.port);
+    items.push({group: 'PC', name: 'DYMO Connect', status: 'ok', detail: 'Webdienst erreichbar'});
+    const list = await pdhDymo.printers(btn.dataset.port);
+    const names = list.map(p => p.name + (p.connected ? '' : ' (nicht verbunden)')).join(', ') || 'keine';
+    const hit = list.find(p => p.name.toLowerCase() === (want || '').toLowerCase());
+    if(!hit) items.push({group: 'Drucker', name: 'Drucker „' + want + '“', status: 'fail', detail: 'nicht gefunden – an diesem PC gibt es: ' + names + '. Namen genau so eintragen.'});
+    else if(!hit.connected) items.push({group: 'Drucker', name: hit.name, status: 'fail', detail: 'eingerichtet, aber nicht verbunden – USB-Kabel und Strom prüfen'});
+    else items.push({group: 'Drucker', name: hit.name, status: 'ok', detail: 'verbunden' + (hit.model ? ' (' + hit.model + ')' : '')});
+  }catch(e){ items.push({group: 'PC', name: 'DYMO Connect', status: 'fail', detail: e.message}); }
+  try{ await fetch('/admin/printers/' + id + '/client-check', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({items})}); }catch(e){}
+  location.href = '/admin/printers?notice=' + encodeURIComponent('Dymo geprüft') + '#p-' + id;
+}
+async function prDymoTest(btn){
+  const id = btn.dataset.id;
+  btn.disabled = true; prShow(id, 'Testetikett wird gedruckt …');
+  try{
+    const res = await fetch('/admin/printers/' + id + '/dymo-test', {credentials: 'same-origin'});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+    await pdhDymo.print(j.service_port, j.printer_name, j.labels[0]);
+    prShow(id, '<i class="ti ti-circle-check"></i> Testetikett an „' + j.printer_name + '“ gesendet', 'var(--green)');
+  }catch(e){ prShow(id, '<i class="ti ti-alert-circle"></i> ' + e.message.replace(/</g, '&lt;'), 'var(--red)'); }
+  btn.disabled = false;
+}
+</script>
+{{end}}

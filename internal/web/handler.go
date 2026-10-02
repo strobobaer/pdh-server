@@ -59,6 +59,8 @@ type BaseData struct {
 	CanExport              bool       // Nav-Link "Export" anzeigen
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
 	CanBackup              bool       // Nav-Link "Datensicherung"
+	CanPrinters            bool       // Nav-Link "Drucker" (printers.manage)
+	CanPrint               bool       // direkt auf eingerichtete Drucker drucken (printers.use)
 	CanCleanup             bool       // Nav-Link "Bereinigung"
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
@@ -365,6 +367,16 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
 	r.Get("/inventory/labels", h.PartLabelsPage)
+	r.Post("/inventory/labels/print", h.PartLabelsPrintWeb)
+	// Druckerintegration (printers.go)
+	r.Get("/admin/printers", h.PrintersPage)
+	r.Post("/admin/printers", h.PrinterSaveWeb)
+	r.Post("/admin/printers/{id}/delete", h.PrinterDeleteWeb)
+	r.Post("/admin/printers/{id}/default", h.PrinterDefaultWeb)
+	r.Post("/admin/printers/{id}/check", h.PrinterCheckWeb)
+	r.Post("/admin/printers/{id}/client-check", h.PrinterClientCheckWeb)
+	r.Post("/admin/printers/{id}/test", h.PrinterTestWeb)
+	r.Get("/admin/printers/{id}/dymo-test", h.PrinterDymoTestWeb)
 	r.Get("/inventory/{id}", h.PartDetailPage)
 	r.Get("/inventory/{id}/image-search", h.PartImageSearchWeb)
 	r.Post("/inventory/{id}/image", h.PartImageSetWeb)
@@ -616,6 +628,21 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/import/connections/{id}/nodes", h.OPCUABrowsePage)
 	r.Post("/import/connections/{id}/nodes/refresh", h.OPCUARefreshValuesWeb)
 	r.Get("/import/mappings", h.ImportMappingsOverviewPage)
+	// Verbindungsseiten (connection_detail.go)
+	r.Get("/import/connections/{id}", h.ImportConnectionPage)
+	r.Get("/export/connections/{id}", h.ExportConnectionPage)
+	r.Post("/import/connections/{id}/checks", h.ImportConnectionChecksWeb)
+	r.Post("/export/connections/{id}/checks", h.ExportConnectionChecksWeb)
+	r.Post("/import/connections/{id}/queries", h.ConnectionQuerySaveWeb)
+	r.Post("/import/connections/{id}/queries/run-all", h.ConnectionQueriesRunAllWeb)
+	r.Post("/import/connections/{id}/queries/{qid}/run", h.ConnectionQueryRunWeb)
+	r.Post("/import/connections/{id}/queries/{qid}/delete", h.ConnectionQueryDeleteWeb)
+	r.Post("/import/connections/{id}/templates/save", h.ImportConnectionTemplateSaveWeb)
+	r.Post("/export/connections/{id}/templates/save", h.ExportConnectionTemplateSaveWeb)
+	r.Post("/import/connections/{id}/templates/{tid}/apply", h.ImportConnectionTemplateApplyWeb)
+	r.Post("/export/connections/{id}/templates/{tid}/apply", h.ExportConnectionTemplateApplyWeb)
+	r.Post("/import/connections/{id}/templates/{tid}/delete", h.ImportConnectionTemplateDeleteWeb)
+	r.Post("/export/connections/{id}/templates/{tid}/delete", h.ExportConnectionTemplateDeleteWeb)
 	r.Get("/export", h.ExportPage)
 	r.Post("/export/connections", h.ExportConnectionCreateWeb)
 	r.Post("/export/connections/{id}/edit-web", h.ExportConnectionEditWeb)
@@ -839,6 +866,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
+		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
+		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
 	}

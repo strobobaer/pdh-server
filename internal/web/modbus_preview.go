@@ -280,6 +280,9 @@ func (h *Handler) ModbusRefreshValuesWeb(w http.ResponseWriter, r *http.Request)
 	}
 	updated := 0
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) {
+			continue
+		}
 		reading, err := parseModbusReading(mp.SourceRef)
 		if err != nil {
 			continue

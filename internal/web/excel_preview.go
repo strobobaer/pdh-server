@@ -62,6 +62,12 @@ func columnLetter(n int) string {
 }
 
 func readExcelPreview(path, sheet string, hasHeader bool) ([]ExcelColumn, [][]string, error) {
+	return readExcelTable(path, sheet, hasHeader, excelPreviewMaxRows)
+}
+
+// readExcelTable liest ein Tabellenblatt; maxRows 0 = alle Zeilen (Abfragen
+// brauchen z. B. wirklich die letzte Zeile, nicht die letzte der Vorschau).
+func readExcelTable(path, sheet string, hasHeader bool, maxRows int) ([]ExcelColumn, [][]string, error) {
 	if path == "" {
 		return nil, nil, fmt.Errorf("kein Quellpfad konfiguriert")
 	}
@@ -120,8 +126,8 @@ func readExcelPreview(path, sheet string, hasHeader bool) ([]ExcelColumn, [][]st
 		}
 	}
 
-	if len(dataRows) > excelPreviewMaxRows {
-		dataRows = dataRows[:excelPreviewMaxRows]
+	if maxRows > 0 && len(dataRows) > maxRows {
+		dataRows = dataRows[:maxRows]
 	}
 	return columns, dataRows, nil
 }
@@ -137,6 +143,10 @@ func csvDelimiterRune(delimiter string) rune {
 }
 
 func readCSVPreview(path, delimiter string, hasHeader bool) ([]ExcelColumn, [][]string, error) {
+	return readCSVTable(path, delimiter, hasHeader, excelPreviewMaxRows)
+}
+
+func readCSVTable(path, delimiter string, hasHeader bool, maxRows int) ([]ExcelColumn, [][]string, error) {
 	if path == "" {
 		return nil, nil, fmt.Errorf("kein Quellpfad konfiguriert")
 	}
@@ -186,8 +196,8 @@ func readCSVPreview(path, delimiter string, hasHeader bool) ([]ExcelColumn, [][]
 		}
 	}
 
-	if len(dataRows) > excelPreviewMaxRows {
-		dataRows = dataRows[:excelPreviewMaxRows]
+	if maxRows > 0 && len(dataRows) > maxRows {
+		dataRows = dataRows[:maxRows]
 	}
 	return columns, dataRows, nil
 }
@@ -302,6 +312,9 @@ func (h *Handler) ExcelRefreshValuesWeb(w http.ResponseWriter, r *http.Request) 
 
 	updated := 0
 	for _, mp := range mappings {
+		if isQueryRef(mp.SourceRef) {
+			continue
+		}
 		idx, ok := labelToIndex[mp.SourceRef]
 		if !ok || idx >= len(lastRow) {
 			continue

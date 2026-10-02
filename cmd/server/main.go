@@ -257,6 +257,7 @@ func main() {
 	webHandler.StartChangeNotifier(context.Background())
 	webHandler.StartTrainingScheduler(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
+	webHandler.StartEnabledQueryPolls(context.Background())
 
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
 
