@@ -37,102 +37,102 @@
 <div class="cw-overlay" id="crw" role="dialog" aria-modal="true" aria-labelledby="crw-title">
   <div class="cw">
     <div class="cw-head">
-      <h2 id="crw-title"><i class="ti ti-circle-plus" style="color:var(--accent)"></i> <span id="crw-label">Neu anlegen</span></h2>
-      <div class="sub" id="crw-sub">Schritt für Schritt – mit „OK – weiter“ durch die Angaben.</div>
+      <h2 id="crw-title"><i class="ti ti-circle-plus" style="color:var(--accent)"></i> <span id="crw-label">{{t "Neu anlegen"}}</span></h2>
+      <div class="sub" id="crw-sub">{{t "Schritt für Schritt – mit „OK – weiter“ durch die Angaben."}}</div>
       <div class="cw-steps" id="crw-steps">
-        <div class="cw-step" data-s="0"><b>1</b><span>Art</span></div>
-        <div class="cw-step" data-s="1"><b>2</b><span>Was?</span></div>
-        <div class="cw-step" data-s="2"><b>3</b><span>Wo?</span></div>
-        <div class="cw-step" data-s="3"><b>4</b><span>{{if .Board}}Melder{{else}}Wer?{{end}}</span></div>
-        <div class="cw-step" data-s="4"><b>5</b><span>Wann?</span></div>
-        <div class="cw-step" data-s="5"><b>6</b><span>Anlegen</span></div>
+        <div class="cw-step" data-s="0"><b>1</b><span>{{t "Art"}}</span></div>
+        <div class="cw-step" data-s="1"><b>2</b><span>{{t "Was?"}}</span></div>
+        <div class="cw-step" data-s="2"><b>3</b><span>{{t "Wo?"}}</span></div>
+        <div class="cw-step" data-s="3"><b>4</b><span>{{if .Board}}{{t "Melder"}}{{else}}{{t "Wer?"}}{{end}}</span></div>
+        <div class="cw-step" data-s="4"><b>5</b><span>{{t "Wann?"}}</span></div>
+        <div class="cw-step" data-s="5"><b>6</b><span>{{t "Anlegen"}}</span></div>
       </div>
     </div>
     <div class="cw-body">
       <!-- 1 Art -->
       <div class="cw-pane" data-step="0">
-        <h3><i class="ti ti-category"></i> Was möchtest du anlegen?</h3>
-        <p class="hint">Wähle die Art des Vorgangs.</p>
+        <h3><i class="ti ti-category"></i> {{t "Was möchtest du anlegen?"}}</h3>
+        <p class="hint">{{t "Wähle die Art des Vorgangs."}}</p>
         <div class="crw-types" id="crw-types">
-          <button type="button" data-type="fault"><i class="ti ti-alert-triangle" style="color:var(--red)"></i><b>Störung</b><small>Etwas ist kaputt oder läuft nicht</small></button>
-          <button type="button" data-type="ticket"><i class="ti ti-ticket" style="color:#60a5fa"></i><b>Ticket</b><small>Anliegen, Auftrag oder Anfrage</small></button>
-          <button type="button" data-type="task"><i class="ti ti-list-check" style="color:var(--accent)"></i><b>Aufgabe</b><small>To-do mit Termin, auch für mehrere</small></button>
-          <button type="button" data-type="maintenance"><i class="ti ti-tool" style="color:var(--amber)"></i><b>Wartungsauftrag</b><small>Einmalige Wartung an einer Anlage</small></button>
+          <button type="button" data-type="fault"><i class="ti ti-alert-triangle" style="color:var(--red)"></i><b>{{t "Störung"}}</b><small>{{t "Etwas ist kaputt oder läuft nicht"}}</small></button>
+          <button type="button" data-type="ticket"><i class="ti ti-ticket" style="color:#60a5fa"></i><b>{{t "Ticket"}}</b><small>{{t "Anliegen, Auftrag oder Anfrage"}}</small></button>
+          <button type="button" data-type="task"><i class="ti ti-list-check" style="color:var(--accent)"></i><b>{{t "Aufgabe"}}</b><small>{{t "To-do mit Termin, auch für mehrere"}}</small></button>
+          <button type="button" data-type="maintenance"><i class="ti ti-tool" style="color:var(--amber)"></i><b>{{t "Wartungsauftrag"}}</b><small>{{t "Einmalige Wartung an einer Anlage"}}</small></button>
         </div>
       </div>
       <!-- 2 Was? -->
       <div class="cw-pane" data-step="1">
-        <h3><i class="ti ti-pencil"></i> Worum geht es?</h3>
-        <p class="hint">Ein kurzer, eindeutiger Titel – die Details in die Beschreibung.</p>
-        <div class="form-group"><label class="form-label">Titel *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="z. B. Presse 3 – Hydraulik verliert Öl"></div>
-        <div class="form-group"><label class="form-label">Beschreibung{{if .Board}} * <small style="color:var(--muted)">(mehr als drei Wörter)</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="Was genau ist los? Seit wann? Was wurde schon versucht?"></textarea></div>
-        <div id="crw-sym-box" class="form-group"><label class="form-label">Symptome (mit Komma trennen)</label><input class="form-input" id="crw-sym" placeholder="z. B. Ölaustritt, Druckabfall, Geräusch"></div>
-        <label class="form-label" id="crw-prio-label">Priorität</label>
+        <h3><i class="ti ti-pencil"></i> {{t "Worum geht es?"}}</h3>
+        <p class="hint">{{t "Ein kurzer, eindeutiger Titel – die Details in die Beschreibung."}}</p>
+        <div class="form-group"><label class="form-label">{{t "Titel"}} *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="{{t "z. B. Presse 3 – Hydraulik verliert Öl"}}"></div>
+        <div class="form-group"><label class="form-label">{{t "Beschreibung"}}{{if .Board}} * <small style="color:var(--muted)">({{t "mehr als drei Wörter"}})</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="{{t "Was genau ist los? Seit wann? Was wurde schon versucht?"}}"></textarea></div>
+        <div id="crw-sym-box" class="form-group"><label class="form-label">{{t "Symptome (mit Komma trennen)"}}</label><input class="form-input" id="crw-sym" placeholder="{{t "z. B. Ölaustritt, Druckabfall, Geräusch"}}"></div>
+        <label class="form-label" id="crw-prio-label">{{t "Priorität"}}</label>
         <div class="cw-chips" id="crw-prio">
-          <button type="button" data-v="low">Niedrig</button><button type="button" data-v="medium" class="on">Mittel</button><button type="button" data-v="high">Hoch</button><button type="button" data-v="critical">Kritisch</button>
+          <button type="button" data-v="low">{{t "Niedrig"}}</button><button type="button" data-v="medium" class="on">{{t "Mittel"}}</button><button type="button" data-v="high">{{t "Hoch"}}</button><button type="button" data-v="critical">{{t "Kritisch"}}</button>
         </div>
-        <div id="crw-mtype-box"><label class="form-label">Art der Wartung</label>
-          <div class="cw-chips" id="crw-mtype"><button type="button" data-v="preventive" class="on">Vorbeugend</button><button type="button" data-v="inspection">Inspektion</button><button type="button" data-v="calibration">Kalibrierung</button><button type="button" data-v="cleaning">Reinigung</button></div>
+        <div id="crw-mtype-box"><label class="form-label">{{t "Art der Wartung"}}</label>
+          <div class="cw-chips" id="crw-mtype"><button type="button" data-v="preventive" class="on">{{t "Vorbeugend"}}</button><button type="button" data-v="inspection">{{t "Inspektion"}}</button><button type="button" data-v="calibration">{{t "Kalibrierung"}}</button><button type="button" data-v="cleaning">{{t "Reinigung"}}</button></div>
         </div>
         <div class="cw-list crw-similar" id="crw-similar" style="display:none"></div>
       </div>
       <!-- 3 Wo? -->
       <div class="cw-pane" data-step="2">
-        <h3><i class="ti ti-hierarchy-2"></i> Wo? Welche Anlage ist betroffen?</h3>
-        <p class="hint" id="crw-where-hint">Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter.</p>
+        <h3><i class="ti ti-hierarchy-2"></i> {{t "Wo? Welche Anlage ist betroffen?"}}</h3>
+        <p class="hint" id="crw-where-hint">{{t "Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter."}}</p>
         {{if .Board}}
         <input type="hidden" id="crw-infra-id"><div class="sc-sub" id="crw-infra-label" style="font-size:12.5px;margin-bottom:8px;color:var(--accent)"></div>
-        <input class="form-input" id="crw-infra-q" placeholder="Anlage suchen: Gebäude, Linie, Anlage …" style="margin-bottom:8px" autocomplete="off">
+        <input class="form-input" id="crw-infra-q" placeholder="{{t "Anlage suchen: Gebäude, Linie, Anlage …"}}" style="margin-bottom:8px" autocomplete="off">
         <div class="cw-list cw-people crw-pick" id="crw-infra-list" style="max-height:300px;overflow:auto"></div>
         {{else}}
-        {{template "infra-tree-picker" (dict "TargetID" "crw-infra-id" "SelectedLabelID" "crw-infra-label" "Label" "Anlage")}}
+        {{template "infra-tree-picker" (dict "TargetID" "crw-infra-id" "SelectedLabelID" "crw-infra-label" "Label" (t "Anlage"))}}
         {{end}}
       </div>
       <!-- 4 Wer? (Leitstand: Wer meldet?) -->
       {{if .Board}}
       <div class="cw-pane" data-step="3">
-        <h3><i class="ti ti-user-question"></i> Wer meldet?</h3>
-        <p class="hint">Im Leitstand wird nicht zugewiesen: Der Vorgang geht an die <b>Broker</b>, die ihn übernehmen oder verteilen. Bitte dich selbst auswählen.</p>
-        <input class="form-input" id="crw-rep-q" placeholder="Namen suchen…" style="margin-bottom:8px" autocomplete="off">
+        <h3><i class="ti ti-user-question"></i> {{t "Wer meldet?"}}</h3>
+        <p class="hint">{{th "Im Leitstand wird nicht zugewiesen: Der Vorgang geht an die <b>Broker</b>, die ihn übernehmen oder verteilen. Bitte dich selbst auswählen."}}</p>
+        <input class="form-input" id="crw-rep-q" placeholder="{{t "Namen suchen…"}}" style="margin-bottom:8px" autocomplete="off">
         <div class="cw-list cw-people crw-pick" id="crw-rep" style="max-height:260px;overflow:auto"></div>
-        <div class="form-group" style="margin-top:10px"><label class="form-label">Abweichender Melder (optional)</label><input class="form-input" id="crw-rep-name" maxlength="120" placeholder="z. B. Besucher ohne PDH-Konto"></div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">{{t "Abweichender Melder (optional)"}}</label><input class="form-input" id="crw-rep-name" maxlength="120" placeholder="{{t "z. B. Besucher ohne PDH-Konto"}}"></div>
       </div>
       {{else}}
       <div class="cw-pane" data-step="3">
-        <h3><i class="ti ti-users"></i> Wer kümmert sich darum?</h3>
-        <p class="hint">Eine Person oder eine ganze Gruppe zuweisen – oder offen lassen, dann verteilt es jemand später.</p>
-        <div class="cw-chips" id="crw-who-quick"><button type="button" data-q="me"><i class="ti ti-user"></i> Ich selbst</button><button type="button" data-q="none">Niemand (offen)</button></div>
-        <input class="form-input" id="crw-people-q" placeholder="Name oder Gruppe suchen…" style="margin-bottom:8px" autocomplete="off">
+        <h3><i class="ti ti-users"></i> {{t "Wer kümmert sich darum?"}}</h3>
+        <p class="hint">{{t "Eine Person oder eine ganze Gruppe zuweisen – oder offen lassen, dann verteilt es jemand später."}}</p>
+        <div class="cw-chips" id="crw-who-quick"><button type="button" data-q="me"><i class="ti ti-user"></i> {{t "Ich selbst"}}</button><button type="button" data-q="none">{{t "Niemand (offen)"}}</button></div>
+        <input class="form-input" id="crw-people-q" placeholder="{{t "Name oder Gruppe suchen…"}}" style="margin-bottom:8px" autocomplete="off">
         <div class="cw-list cw-people crw-pick" id="crw-people"></div>
-        <div class="form-group" style="margin-top:10px"><label class="form-label">Verantwortlich (optional)</label><select class="form-input" id="crw-resp"><option value="">– niemand –</option></select></div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">{{t "Verantwortlich (optional)"}}</label><select class="form-input" id="crw-resp"><option value="">– {{t "niemand"}} –</option></select></div>
       </div>
       {{end}}
       <!-- 5 Wann? -->
       <div class="cw-pane" data-step="4">
-        <h3><i class="ti ti-calendar"></i> Bis wann?</h3>
-        <p class="hint" id="crw-when-hint">Fälligkeit wählen – oder ein Datum eintragen.</p>
+        <h3><i class="ti ti-calendar"></i> {{t "Bis wann?"}}</h3>
+        <p class="hint" id="crw-when-hint">{{t "Fälligkeit wählen – oder ein Datum eintragen."}}</p>
         <div class="cw-chips" id="crw-due-quick"></div>
         <div class="cw-time">
-          <div><label class="form-label">Fällig am</label><input class="form-input" id="crw-due" type="date"></div>
-          <div id="crw-start-box"><label class="form-label">Start (Aufgabe)</label><input class="form-input" id="crw-start" type="date"></div>
+          <div><label class="form-label">{{t "Fällig am"}}</label><input class="form-input" id="crw-due" type="date"></div>
+          <div id="crw-start-box"><label class="form-label">{{t "Start (Aufgabe)"}}</label><input class="form-input" id="crw-start" type="date"></div>
         </div>
       </div>
       <!-- 6 Anlegen -->
       <div class="cw-pane" data-step="5">
-        <h3><i class="ti ti-flag-check"></i> Alles richtig?</h3>
+        <h3><i class="ti ti-flag-check"></i> {{t "Alles richtig?"}}</h3>
         <dl class="cw-sum" id="crw-sum"></dl>
-        {{if .Board}}<p class="hint"><b>Anlegen</b> erstellt den Vorgang und verteilt ihn an die Broker. <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</p>
-        {{else}}<p class="hint"><b>Anlegen</b> erstellt den Vorgang und öffnet ihn. <b>Anlegen &amp; nächster</b> erstellt ihn und beginnt gleich den nächsten derselben Art.</p>{{end}}
+        {{if .Board}}<p class="hint">{{th "<b>Anlegen</b> erstellt den Vorgang und verteilt ihn an die Broker. <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art."}}</p>
+        {{else}}<p class="hint">{{th "<b>Anlegen</b> erstellt den Vorgang und öffnet ihn. <b>Anlegen &amp; nächster</b> erstellt ihn und beginnt gleich den nächsten derselben Art."}}</p>{{end}}
       </div>
       <div class="cw-msg" id="crw-msg"></div>
     </div>
     <div class="cw-foot">
-      <button type="button" class="btn" onclick="crwClose()">Abbrechen</button>
+      <button type="button" class="btn" onclick="crwClose()">{{t "Abbrechen"}}</button>
       <span class="grow"></span>
-      <button type="button" class="btn" id="crw-back" onclick="crwGo(-1)"><i class="ti ti-arrow-left"></i> Zurück</button>
-      <button type="button" class="btn btn-primary" id="crw-next" onclick="crwGo(1)">OK – weiter <i class="ti ti-arrow-right"></i></button>
-      <button type="button" class="btn cw-more" id="crw-again" onclick="crwSubmit(true)" style="display:none"><i class="ti ti-repeat"></i> Anlegen &amp; nächster</button>
-      <button type="button" class="btn cw-finish" id="crw-create" onclick="crwSubmit(false)" style="display:none"><i class="ti ti-check"></i> Anlegen</button>
+      <button type="button" class="btn" id="crw-back" onclick="crwGo(-1)"><i class="ti ti-arrow-left"></i> {{t "Zurück"}}</button>
+      <button type="button" class="btn btn-primary" id="crw-next" onclick="crwGo(1)">{{t "OK – weiter"}} <i class="ti ti-arrow-right"></i></button>
+      <button type="button" class="btn cw-more" id="crw-again" onclick="crwSubmit(true)" style="display:none"><i class="ti ti-repeat"></i> {{t "Anlegen & nächster"}}</button>
+      <button type="button" class="btn cw-finish" id="crw-create" onclick="crwSubmit(false)" style="display:none"><i class="ti ti-check"></i> {{t "Anlegen"}}</button>
     </div>
   </div>
 </div>
@@ -140,13 +140,16 @@
 (function(){
   const $ = id => document.getElementById(id);
   const TYPES = {
-    fault:       {label: 'Störung',         icon: 'ti-alert-triangle', api: '/api/v1/faults/',           ref: 'fault',            url: '/faults/'},
-    ticket:      {label: 'Ticket',          icon: 'ti-ticket',         api: '/api/v1/tickets/',          ref: 'ticket',           url: '/tickets/'},
-    task:        {label: 'Aufgabe',         icon: 'ti-list-check',     api: '/api/v1/tasks/',            ref: 'task',             url: '/tasks/'},
-    maintenance: {label: 'Wartungsauftrag', icon: 'ti-tool',           api: '/api/v1/maintenance/tasks', ref: 'maintenance_task', url: '/maintenance/tasks/'}
+    fault:       {label: {{t "Störung"}},         icon: 'ti-alert-triangle', api: '/api/v1/faults/',           ref: 'fault',            url: '/faults/'},
+    ticket:      {label: {{t "Ticket"}},          icon: 'ti-ticket',         api: '/api/v1/tickets/',          ref: 'ticket',           url: '/tickets/'},
+    task:        {label: {{t "Aufgabe"}},         icon: 'ti-list-check',     api: '/api/v1/tasks/',            ref: 'task',             url: '/tasks/'},
+    maintenance: {label: {{t "Wartungsauftrag"}}, icon: 'ti-tool',           api: '/api/v1/maintenance/tasks', ref: 'maintenance_task', url: '/maintenance/tasks/'}
   };
-  const PRIO = {low: 'Niedrig', medium: 'Mittel', high: 'Hoch', critical: 'Kritisch'};
-  const MTYPE = {preventive: 'Vorbeugend', inspection: 'Inspektion', calibration: 'Kalibrierung', cleaning: 'Reinigung'};
+  const PRIO = {low: {{t "Niedrig"}}, medium: {{t "Mittel"}}, high: {{t "Hoch"}}, critical: {{t "Kritisch"}}};
+  const MTYPE = {preventive: {{t "Vorbeugend"}}, inspection: {{t "Inspektion"}}, calibration: {{t "Kalibrierung"}}, cleaning: {{t "Reinigung"}}};
+  // F: Platzhalter %s/%d der uebersetzten Texte der Reihe nach fuellen
+  const F = (s, ...a) => { let n = 0; return s.replace(/%[sd]/g, () => a[n++]); };
+  const LOCALE = window.PDH_LOCALE || ({de: 'de-DE', en: 'en-GB', ro: 'ro-RO', tr: 'tr-TR', mk: 'mk-MK'})[document.documentElement.lang] || 'de-DE';
   let st = null, opts = null, simTimer = null;
 
   function chips(id, onPick){
@@ -170,13 +173,13 @@
       // Listen kommen von der Leitstand-Seite (ohne Anmeldung, /global/data)
       const b = window.PDH_CREATE_BOARD;
       opts = b && b.options ? b.options() : null;
-      if(!opts || !(opts.people || []).length) throw new Error('Die Auswahllisten sind noch nicht geladen – bitte kurz warten.');
+      if(!opts || !(opts.people || []).length) throw new Error({{t "Die Auswahllisten sind noch nicht geladen – bitte kurz warten."}});
       opts.groups = [];
       return opts;
     }
     if(opts) return opts;
     const res = await fetch('/create/options', {credentials: 'same-origin'});
-    if(!res.ok) throw new Error('Auswahllisten konnten nicht geladen werden (HTTP ' + res.status + ')');
+    if(!res.ok) throw new Error(F({{t "Auswahllisten konnten nicht geladen werden (HTTP %d)"}}, res.status));
     opts = await res.json();
     const sel = $('crw-resp');
     opts.people.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + (p.department ? ' (' + p.department + ')' : ''); sel.appendChild(o); });
@@ -202,7 +205,7 @@
       if(pos >= 0) s.querySelector('b').textContent = pos + 1;
     });
     const t = TYPES[st.type];
-    $('crw-label').textContent = t ? t.label + ' anlegen' : 'Neu anlegen';
+    $('crw-label').textContent = t ? F({{t "%s anlegen"}}, t.label) : {{t "Neu anlegen"}};
     $('crw-title').querySelector('i').className = 'ti ' + (t ? t.icon : 'ti-circle-plus');
     $('crw-back').style.visibility = st.i > 0 ? '' : 'hidden';
     const last = cur === 5;
@@ -212,14 +215,14 @@
     // artabhaengige Felder
     $('crw-sym-box').style.display = st.type === 'fault' ? '' : 'none';
     $('crw-mtype-box').style.display = st.type === 'maintenance' ? '' : 'none';
-    $('crw-prio-label').textContent = st.type === 'fault' ? 'Schweregrad' : 'Priorität';
+    $('crw-prio-label').textContent = st.type === 'fault' ? {{t "Schweregrad"}} : {{t "Priorität"}};
     $('crw-start-box').style.display = st.type === 'task' ? '' : 'none';
     $('crw-where-hint').textContent = st.type === 'maintenance'
-      ? 'Für einen Wartungsauftrag ist die Anlage Pflicht.'
-      : 'Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter.';
+      ? {{t "Für einen Wartungsauftrag ist die Anlage Pflicht."}}
+      : {{t "Die Anlage bestimmt auch, welche Abteilung den Vorgang sieht. Ohne Anlage einfach weiter."}};
     if(BOARD){
       document.querySelectorAll('#crw-types button').forEach(b => { b.style.display = opts && (opts.types || []).includes(b.dataset.type) ? '' : 'none'; });
-      $('crw-where-hint').textContent = st.type === 'task' ? 'Für eine Aufgabe ist die Anlage optional.' : 'Bitte die betroffene Anlage auswählen – Pflicht.';
+      $('crw-where-hint').textContent = st.type === 'task' ? {{t "Für eine Aufgabe ist die Anlage optional."}} : {{t "Bitte die betroffene Anlage auswählen – Pflicht."}};
       if(cur === 2) renderInfra();
       if(cur === 3) renderReporters();
     } else if(cur === 3) renderPeople();
@@ -235,15 +238,15 @@
     const match = s => !q || s.toLowerCase().includes(q);
     const rows = [];
     (opts.groups || []).filter(g => match(g.name + ' ' + g.department)).forEach(g => rows.push(
-      '<label><input type="radio" name="crw-who" value="g:' + g.id + '"' + (st.who === 'g:' + g.id ? ' checked' : '') + '><span class="grp"><i class="ti ti-users-group"></i> ' + escapeHtml(g.name) + '</span><span class="dept">' + escapeHtml(g.department || '') + ' · ' + g.members + ' Mitglieder</span></label>'));
+      '<label><input type="radio" name="crw-who" value="g:' + g.id + '"' + (st.who === 'g:' + g.id ? ' checked' : '') + '><span class="grp"><i class="ti ti-users-group"></i> ' + escapeHtml(g.name) + '</span><span class="dept">' + escapeHtml(g.department || '') + ' · ' + F({{t "%d Mitglieder"}}, g.members) + '</span></label>'));
     opts.people.filter(p => match(p.name + ' ' + p.department)).forEach(p => rows.push(
       '<label><input type="radio" name="crw-who" value="' + p.id + '"' + (st.who === p.id ? ' checked' : '') + '><span>' + escapeHtml(p.name) + '</span><span class="dept">' + escapeHtml(p.department || '') + '</span></label>'));
-    box.innerHTML = rows.join('') || '<div class="cw-empty">Niemand gefunden</div>';
+    box.innerHTML = rows.join('') || '<div class="cw-empty">' + {{t "Niemand gefunden"}} + '</div>';
   }
 
   function renderDue(){
     const def = (opts.due_days || {})[st.type] || 7;
-    const quick = [['Heute', 0], ['Morgen', 1], ['In 3 Tagen', 3], ['In 1 Woche', 7], ['In 2 Wochen', 14], ['Standard (' + def + ' Tage)', def]];
+    const quick = [[{{t "Heute"}}, 0], [{{t "Morgen"}}, 1], [{{t "In 3 Tagen"}}, 3], [{{t "In 1 Woche"}}, 7], [{{t "In 2 Wochen"}}, 14], [F({{t "Standard (%d Tage)"}}, def), def]];
     $('crw-due-quick').innerHTML = quick.map(q => '<button type="button" data-d="' + addDays(q[1]) + '"' + (st.due === addDays(q[1]) ? ' class="on"' : '') + '>' + q[0] + '</button>').join('');
     if(!st.dueTouched && !st.due){ st.due = addDays(def); }
     $('crw-due').value = st.due || '';
@@ -252,8 +255,8 @@
   }
 
   function whoLabel(){
-    if(!st.who) return 'niemand (offen)';
-    if(st.who.startsWith('g:')){ const g = opts.groups.find(x => 'g:' + x.id === st.who); return g ? 'Gruppe ' + g.name : st.who; }
+    if(!st.who) return {{t "niemand (offen)"}};
+    if(st.who.startsWith('g:')){ const g = opts.groups.find(x => 'g:' + x.id === st.who); return g ? F({{t "Gruppe %s"}}, g.name) : st.who; }
     const p = opts.people.find(x => x.id === st.who); return p ? p.name : st.who;
   }
 
@@ -261,50 +264,50 @@
     const q = $('crw-infra-q').value.trim().toLowerCase(), cur = $('crw-infra-id').value;
     const list = (opts.infra || []).filter(x => !q || x.name.toLowerCase().includes(q)).slice(0, 300);
     $('crw-infra-list').innerHTML = list.map(x => '<label><input type="radio" name="crw-infra" value="' + escapeHtml(x.id) + '"' + (x.id === cur ? ' checked' : '') + '><span>' + escapeHtml(x.name) + '</span></label>').join('')
-      || '<div class="cw-empty">Keine Anlage gefunden</div>';
+      || '<div class="cw-empty">' + {{t "Keine Anlage gefunden"}} + '</div>';
   }
 
   function renderReporters(){
     const q = $('crw-rep-q').value.trim().toLowerCase();
     const list = (opts.people || []).filter(p => !q || p.name.toLowerCase().includes(q));
     $('crw-rep').innerHTML = list.map(p => '<label><input type="radio" name="crw-rep" value="' + escapeHtml(p.id) + '"' + (p.id === st.rep ? ' checked' : '') + '><span>' + escapeHtml(p.name) + '</span></label>').join('')
-      || '<div class="cw-empty">Niemand gefunden</div>';
+      || '<div class="cw-empty">' + {{t "Niemand gefunden"}} + '</div>';
   }
 
   function repLabel(){
     const p = (opts.people || []).find(x => x.id === st.rep), other = $('crw-rep-name').value.trim();
-    return (p ? p.name : '–') + (other ? ' · gemeldet von ' + other : '');
+    return (p ? p.name : '–') + (other ? ' · ' + F({{t "gemeldet von %s"}}, other) : '');
   }
 
   function renderSum(){
     if(BOARD){
       const rows = [
-        ['Art', TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
-        ['Titel', $('crw-title-in').value.trim()],
-        ['Beschreibung', $('crw-desc').value.trim()],
-        [st.type === 'fault' ? 'Schweregrad' : 'Priorität', PRIO[chipVal('crw-prio')]],
-        ['Anlage', $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
-        ['Melder', repLabel()],
-        ['Zuweisung', 'keine – geht an die Broker']
+        [{{t "Art"}}, TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
+        [{{t "Titel"}}, $('crw-title-in').value.trim()],
+        [{{t "Beschreibung"}}, $('crw-desc').value.trim()],
+        [st.type === 'fault' ? {{t "Schweregrad"}} : {{t "Priorität"}}, PRIO[chipVal('crw-prio')]],
+        [{{t "Anlage"}}, $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
+        [{{t "Melder"}}, repLabel()],
+        [{{t "Zuweisung"}}, {{t "keine – geht an die Broker"}}]
       ];
-      if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, ['Symptome', $('crw-sym').value.trim()]);
-      if(st.type !== 'fault') rows.push(['Fällig', $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString('de-DE') : 'Standard']);
+      if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, [{{t "Symptome"}}, $('crw-sym').value.trim()]);
+      if(st.type !== 'fault') rows.push([{{t "Fällig"}}, $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString(LOCALE) : {{t "Standard"}}]);
       $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
       return;
     }
     const sel = $('crw-resp'), resp = sel.value ? sel.options[sel.selectedIndex].textContent : '–';
     const rows = [
-      ['Art', TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
-      ['Titel', $('crw-title-in').value.trim()],
-      ['Beschreibung', $('crw-desc').value.trim() || '–'],
-      [st.type === 'fault' ? 'Schweregrad' : 'Priorität', PRIO[chipVal('crw-prio')]],
-      ['Anlage', $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
-      ['Zugewiesen', whoLabel()],
-      ['Verantwortlich', resp],
-      ['Fällig', $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString(window.PDH_LOCALE || 'de-DE') : '–']
+      [{{t "Art"}}, TYPES[st.type].label + (st.type === 'maintenance' ? ' · ' + MTYPE[chipVal('crw-mtype')] : '')],
+      [{{t "Titel"}}, $('crw-title-in').value.trim()],
+      [{{t "Beschreibung"}}, $('crw-desc').value.trim() || '–'],
+      [st.type === 'fault' ? {{t "Schweregrad"}} : {{t "Priorität"}}, PRIO[chipVal('crw-prio')]],
+      [{{t "Anlage"}}, $('crw-infra-id').value ? $('crw-infra-label').textContent.trim() : '–'],
+      [{{t "Zugewiesen"}}, whoLabel()],
+      [{{t "Verantwortlich"}}, resp],
+      [{{t "Fällig"}}, $('crw-due').value ? new Date($('crw-due').value + 'T00:00:00').toLocaleDateString(LOCALE) : '–']
     ];
-    if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, ['Symptome', $('crw-sym').value.trim()]);
-    if(st.type === 'task' && st.preset.project_label) rows.splice(1, 0, ['Projekt', st.preset.project_label]);
+    if(st.type === 'fault' && $('crw-sym').value.trim()) rows.splice(3, 0, [{{t "Symptome"}}, $('crw-sym').value.trim()]);
+    if(st.type === 'task' && st.preset.project_label) rows.splice(1, 0, [{{t "Projekt"}}, st.preset.project_label]);
     $('crw-sum').innerHTML = rows.map(r => '<dt>' + escapeHtml(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('');
   }
 
@@ -318,9 +321,9 @@
       const res = await fetch('/create/similar?' + new URLSearchParams({title, description: desc, infra: $('crw-infra-id').value}), {credentials: 'same-origin'});
       const list = await res.json();
       if(!Array.isArray(list) || !list.length){ box.style.display = 'none'; return; }
-      box.innerHTML = '<div class="cw-row" style="font-size:11.5px;color:var(--muted)"><i class="ti ti-brain"></i> Ähnliche gelöste Störungen – vielleicht hilft die Lösung schon:</div>' +
+      box.innerHTML = '<div class="cw-row" style="font-size:11.5px;color:var(--muted)"><i class="ti ti-brain"></i> ' + {{t "Ähnliche gelöste Störungen – vielleicht hilft die Lösung schon:"}} + '</div>' +
         list.map(f => '<a href="/faults/' + encodeURIComponent(f.id) + '" target="_blank" rel="noopener">' + escapeHtml(f.title) + ' <span style="color:var(--green);font-size:11px">' + f.percent + ' %</span>' +
-          (f.resolution ? '<small>Lösung: ' + escapeHtml(f.resolution) + '</small>' : '') + '</a>').join('');
+          (f.resolution ? '<small>' + escapeHtml(F({{t "Lösung: %s"}}, f.resolution)) + '</small>' : '') + '</a>').join('');
       box.style.display = '';
     }catch(e){ box.style.display = 'none'; }
   }
@@ -328,16 +331,16 @@
   function validate(cur){
     if(BOARD){
       // gleiche Regeln wie der Leitstand-Server (GlobalDashboardCreate)
-      if(cur === 0 && !st.type) return 'Bitte eine Art wählen.';
-      if(cur === 1 && $('crw-title-in').value.trim().length < 3) return 'Der Titel muss mindestens 3 Zeichen lang sein.';
-      if(cur === 1 && words($('crw-desc').value) <= 3) return 'Bitte die Beschreibung in mehr als drei Wörtern – was ist los?';
-      if(cur === 2 && st.type !== 'task' && !$('crw-infra-id').value) return 'Bitte eine Anlage auswählen.';
-      if(cur === 3 && !st.rep) return 'Bitte auswählen, wer meldet.';
+      if(cur === 0 && !st.type) return {{t "Bitte eine Art wählen."}};
+      if(cur === 1 && $('crw-title-in').value.trim().length < 3) return {{t "Der Titel muss mindestens 3 Zeichen lang sein."}};
+      if(cur === 1 && words($('crw-desc').value) <= 3) return {{t "Bitte die Beschreibung in mehr als drei Wörtern – was ist los?"}};
+      if(cur === 2 && st.type !== 'task' && !$('crw-infra-id').value) return {{t "Bitte eine Anlage auswählen."}};
+      if(cur === 3 && !st.rep) return {{t "Bitte auswählen, wer meldet."}};
       return '';
     }
-    if(cur === 0 && !st.type) return 'Bitte eine Art wählen.';
-    if(cur === 1 && !$('crw-title-in').value.trim()) return 'Bitte einen Titel eingeben.';
-    if(cur === 2 && st.type === 'maintenance' && !$('crw-infra-id').value) return 'Für einen Wartungsauftrag ist die Anlage Pflicht.';
+    if(cur === 0 && !st.type) return {{t "Bitte eine Art wählen."}};
+    if(cur === 1 && !$('crw-title-in').value.trim()) return {{t "Bitte einen Titel eingeben."}};
+    if(cur === 2 && st.type === 'maintenance' && !$('crw-infra-id').value) return {{t "Für einen Wartungsauftrag ist die Anlage Pflicht."}};
     return '';
   }
 
@@ -391,22 +394,22 @@
     if(st.type === 'fault') payload.symptoms = $('crw-sym').value.split(',').map(s => s.trim()).filter(Boolean);
     if(st.type === 'maintenance') payload.maintenance_type = chipVal('crw-mtype');
     ['crw-create', 'crw-again'].forEach(id => $(id).disabled = true);
-    msg('Lege an …');
+    msg({{t "Lege an …"}});
     try{
       const res = await fetch('/global/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
       const j = await res.json().catch(() => ({}));
       if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
       const b = window.PDH_CREATE_BOARD;
       if(b && b.onCreated) b.onCreated();
-      const done = t.label + ' angelegt' + (j.broker ? ' – ' + j.broker : '');
+      const done = F({{t "%s angelegt"}}, t.label) + (j.broker ? ' – ' + j.broker : '');
       if(again){
         reset(st.type); st.fixedType = true; render();
-        msg(done + ' – jetzt der nächste.', 'ok');
+        msg(done + ' – ' + {{t "jetzt der nächste."}}, 'ok');
       } else {
         msg(done, 'ok');
         setTimeout(crwClose, 1800);
       }
-    }catch(e){ msg('Nicht angelegt: ' + e.message, 'err'); }
+    }catch(e){ msg(F({{t "Nicht angelegt: %s"}}, e.message), 'err'); }
     ['crw-create', 'crw-again'].forEach(id => $(id).disabled = false);
   }
 
@@ -444,11 +447,11 @@
     else if(st.type !== 'maintenance'){ if(person) payload.assigned_to = person; if(resp) payload.responsible_to = resp; }
     else if(person) payload.assigned_to = person;
     ['crw-create', 'crw-again'].forEach(id => $(id).disabled = true);
-    msg('Lege an …');
+    msg({{t "Lege an …"}});
     try{
       const j = await post(t.api, payload);
       const id = j.data && j.data.id;
-      if(!id) throw new Error('Keine ID in der Antwort');
+      if(!id) throw new Error({{t "Keine ID in der Antwort"}});
       const extra = [];
       if(group) extra.push(fetch('/records/' + t.ref + '/' + encodeURIComponent(id) + '/group', {method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({assigned_group_id: group})}));
       if(st.type === 'maintenance' && resp) extra.push(fetch('/records/maintenance_task/' + encodeURIComponent(id) + '/people', {method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({assigned_to: person, responsible_to: resp})}));
@@ -457,13 +460,13 @@
       const failed = results.filter(r => !r.ok).length;
       if(again){
         reset(st.type, st.preset); st.fixedType = true; render();
-        msg(t.label + ' angelegt' + (failed ? ' (Zusatzangaben teilweise nicht gespeichert)' : '') + ' – jetzt der nächste.', failed ? 'warn' : 'ok');
+        msg(F({{t "%s angelegt"}}, t.label) + (failed ? ' ' + {{t "(Zusatzangaben teilweise nicht gespeichert)"}} : '') + ' – ' + {{t "jetzt der nächste."}}, failed ? 'warn' : 'ok');
       } else if(st.preset.stay){
         location.reload();
       } else {
         location.href = t.url + encodeURIComponent(id);
       }
-    }catch(e){ msg('Nicht angelegt: ' + e.message, 'err'); }
+    }catch(e){ msg(F({{t "Nicht angelegt: %s"}}, e.message), 'err'); }
     ['crw-create', 'crw-again'].forEach(id => $(id).disabled = false);
   };
 

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -94,6 +95,11 @@ func tr(lang, s string, args ...any) string {
 	}
 	return out
 }
+
+// uiError: Fehlermeldung fuer Anwender; der deutsche Text ist zugleich der
+// Uebersetzungsschluessel und wird beim Ausgeben mit tr(lang, err.Error())
+// uebersetzt (der i18n-Test sammelt die Texte aus den uiError-Aufrufen).
+func uiError(s string) error { return errors.New(s) }
 
 type langCtxKey struct{}
 

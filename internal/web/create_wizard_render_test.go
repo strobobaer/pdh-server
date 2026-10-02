@@ -80,3 +80,64 @@ func checkScripts(t *testing.T, name, html string) {
 	}
 }
 
+
+// Mehrsprachigkeit Stufe 3: beide Assistenten erscheinen in der gewaehlten
+// Sprache – auch die Texte im Skript – und bleiben gueltiges JavaScript.
+func TestWizardsTranslated(t *testing.T) {
+	i18nDir = filepath.Join("..", "..", "web", "i18n")
+	c, err := loadTestTemplates(t).Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := renderPage(t, bindLang(c, "en"), "tickets", TicketsPageData{})
+	for _, want := range []string{"What would you like to create?", "Who takes care of it?", `F("Create %s", t.label)`,
+		"Which material was used?", "How long was the work?", `F("Complete %s", i.Label)`, "<b>Done</b> books the material"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("englische Seite enthält %q nicht", want)
+		}
+	}
+	for _, bad := range []string{"Was möchtest du anlegen?", "Welches Material wurde verwendet?", "' anlegen'", "' abschließen'"} {
+		if strings.Contains(page, bad) {
+			t.Errorf("englische Seite enthält noch %q", bad)
+		}
+	}
+	checkScripts(t, "tickets-en", page)
+
+	b, err := loadTestTemplates(t).Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = bindLang(b, "tr")
+	if _, err := b.ParseFiles(filepath.Join("..", "..", "web", "templates", "global_dashboard.gohtml")); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := b.ExecuteTemplate(&buf, "global_dashboard.gohtml", GlobalDashboardPageData{}); err != nil {
+		t.Fatal(err)
+	}
+	board := buf.String()
+	for _, want := range []string{`<html lang="tr">`, "Kim bildiriyor?", "<b>brokerlara</b>"} {
+		if !strings.Contains(board, want) {
+			t.Errorf("türkischer Leitstand enthält %q nicht", want)
+		}
+	}
+	checkScripts(t, "leitstand-tr", board)
+}
+
+func TestCompletionMessagesTranslated(t *testing.T) {
+	i18nDir = filepath.Join("..", "..", "web", "i18n")
+	in := completionRequest{Comment: "ok"}
+	err := validateCompletion(&in, 0, 0, false)
+	if err == nil {
+		t.Fatal("kurzer Kommentar wurde angenommen")
+	}
+	if got := tr("en", err.Error()); got != "Please briefly describe what was done (comment)." {
+		t.Errorf("Meldung nicht übersetzt: %q", got)
+	}
+	if got := brokerMessage("ro", "An Broker verteilt: Ana, Ion"); got != "Distribuit brokerilor: Ana, Ion" {
+		t.Errorf("Broker-Meldung: %q", got)
+	}
+	if got := brokerMessage("de", ""); got != "" {
+		t.Errorf("leere Broker-Meldung: %q", got)
+	}
+}

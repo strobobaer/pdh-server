@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.23.0] – 2026-10-02
+
+### Neu
+- Mehrsprachigkeit, Stufe 3: Erstellungs-Assistent und Abschluss-Assistent sind übersetzt – alle Schritte, Hinweise, Schnellwahlen, Zusammenfassung und Prüfmeldungen, auch im Leitstand-Modus
+- Rückmeldungen des Servers beim Abschließen (z. B. „Bitte die Arbeitszeit erfassen.“, „Ticket abgeschlossen.“) und beim Anlegen im Leitstand (Prüffehler, Verteilung an die Broker) kommen in der eingestellten Sprache
+
+### Geändert
+- Der Leitstand übernimmt die Sprache des Browsers bzw. der zuletzt gewählten Flagge und setzt sie auch für Datumsangaben im Assistenten
+
 ## [0.22.0] – 2026-10-02
 
 ### Neu

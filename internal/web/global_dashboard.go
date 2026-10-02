@@ -40,6 +40,7 @@ type GlobalDashboardData struct {
 
 func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r := chi.NewRouter()
+	r.Use(h.LangMiddleware) // Sprache fuer Meldungen des Erstellungs-Assistenten
 	r.Get("/", h.GlobalDashboard)
 	r.Get("/data", h.GlobalDashboardData)
 	r.Post("/actions", h.GlobalDashboardAction)

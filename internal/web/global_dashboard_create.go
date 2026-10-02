@@ -68,9 +68,10 @@ func globalBoardDescriptionWordCount(s string) int {
 // verwertbarer Information ankommt.
 func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	lang := ctxLang(r.Context())
 	var in globalBoardCreateInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Eingabe")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Ungültige Eingabe"))
 		return
 	}
 	in.Title = strings.TrimSpace(in.Title)
@@ -81,27 +82,27 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	in.ReporterName = strings.TrimSpace(in.ReporterName)
 	in.DueDate = strings.TrimSpace(in.DueDate)
 	if !globalBoardCreateTypeAllowed(in.Type) {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannter Vorgangstyp")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Unbekannter Vorgangstyp"))
 		return
 	}
 	if globalBoardCreateTypeRestricted(in.Type) && !h.isGlobalBoardAdminOrManager(r) {
-		writeGlobalBoardError(w, http.StatusForbidden, "Aufgaben und Wartungen können im Leitstand nur von Administratoren und Managern angelegt werden")
+		writeGlobalBoardError(w, http.StatusForbidden, tr(lang, "Aufgaben und Wartungen können im Leitstand nur von Administratoren und Managern angelegt werden"))
 		return
 	}
 	if titleLen := len([]rune(in.Title)); titleLen < 3 || titleLen > 255 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Der Titel muss 3 bis 255 Zeichen lang sein")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Der Titel muss 3 bis 255 Zeichen lang sein"))
 		return
 	}
 	if globalBoardDescriptionWordCount(in.Description) <= 3 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Die Beschreibung muss aus mehr als drei Wörtern bestehen")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Die Beschreibung muss aus mehr als drei Wörtern bestehen"))
 		return
 	}
 	if in.Type != "task" && in.InfrastructureID == "" {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte eine Infrastruktur auswählen")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Bitte eine Infrastruktur auswählen"))
 		return
 	}
 	if in.ReporterID == "" {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte den/die Ersteller/in auswählen")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Bitte den/die Ersteller/in auswählen"))
 		return
 	}
 	if in.Priority == "" {
@@ -110,7 +111,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	switch in.Priority {
 	case "low", "medium", "high", "critical":
 	default:
-		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Priorität")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Ungültige Priorität"))
 		return
 	}
 	in.MaintenanceType = strings.TrimSpace(in.MaintenanceType)
@@ -118,21 +119,21 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		switch in.MaintenanceType {
 		case "preventive", "inspection", "calibration", "cleaning":
 		default:
-			writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen gültigen Wartungstyp auswählen")
+			writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Bitte einen gültigen Wartungstyp auswählen"))
 			return
 		}
 	}
 
 	reporter, err := h.users.GetByID(r.Context(), in.ReporterID)
 	if err != nil || reporter == nil {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannte/r Ersteller/in")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Unbekannte/r Ersteller/in"))
 		return
 	}
 	var dueDate *time.Time
 	if in.DueDate != "" {
 		parsed, parseErr := time.Parse("2006-01-02", in.DueDate)
 		if parseErr != nil {
-			writeGlobalBoardError(w, http.StatusBadRequest, "Ungültiger Termin")
+			writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Ungültiger Termin"))
 			return
 		}
 		dueDate = &parsed
@@ -194,7 +195,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	if err != nil {
-		writeGlobalBoardError(w, http.StatusInternalServerError, "Vorgang konnte nicht angelegt werden")
+		writeGlobalBoardError(w, http.StatusInternalServerError, tr(lang, "Vorgang konnte nicht angelegt werden"))
 		return
 	}
 	broker := ""
@@ -202,7 +203,7 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		broker = h.dispatchToBrokers(r.Context(), brokerKind, brokerID, in.Title, in.Priority, h.infraName(r.Context(), infrastructureID), reporter.ID)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "broker": broker})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "broker": brokerMessage(lang, broker)})
 }
 
 // GlobalDashboardMaintenanceStart startet eine im Wartungsmodul bereits
@@ -212,24 +213,37 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 // Rechte voraus, da hierueber eine bestehende Planung tatsaechlich
 // begonnen wird.
 func (h *Handler) GlobalDashboardMaintenanceStart(w http.ResponseWriter, r *http.Request) {
+	lang := ctxLang(r.Context())
 	if !h.isGlobalBoardAdminOrManager(r) {
-		writeGlobalBoardError(w, http.StatusForbidden, "Wartungen können im Leitstand nur von Administratoren und Managern gestartet werden")
+		writeGlobalBoardError(w, http.StatusForbidden, tr(lang, "Wartungen können im Leitstand nur von Administratoren und Managern gestartet werden"))
 		return
 	}
 	user := h.sessionUser(r)
 	if user == nil {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "Bitte anmelden")
+		writeGlobalBoardError(w, http.StatusUnauthorized, tr(lang, "Bitte anmelden"))
 		return
 	}
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Wartung")
+		writeGlobalBoardError(w, http.StatusBadRequest, tr(lang, "Ungültige Wartung"))
 		return
 	}
 	if err := h.maint.StartTask(r.Context(), id, user.ID); err != nil {
-		writeGlobalBoardError(w, http.StatusInternalServerError, "Wartung konnte nicht gestartet werden")
+		writeGlobalBoardError(w, http.StatusInternalServerError, tr(lang, "Wartung konnte nicht gestartet werden"))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// brokerMessage uebersetzt die Rueckmeldung von dispatchToBrokers fuer den
+// Assistenten (im Verlauf bleibt sie deutsch).
+func brokerMessage(lang, msg string) string {
+	if names, ok := strings.CutPrefix(msg, "An Broker verteilt: "); ok {
+		return tr(lang, "An Broker verteilt: %s", names)
+	}
+	if msg == "Kein Broker hinterlegt – Vorgang bleibt unzugewiesen" {
+		return tr(lang, "Kein Broker hinterlegt – Vorgang bleibt unzugewiesen")
+	}
+	return msg
 }

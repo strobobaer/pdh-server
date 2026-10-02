@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -94,7 +93,7 @@ func deptMatches(dept string, wanted []string) bool {
 func (h *Handler) completionRecord(ctx context.Context, k completionKind, id string) (title, status string, err error) {
 	err = h.db.QueryRow(ctx, fmt.Sprintf(`SELECT title::text, status::text FROM %s WHERE id = $1::uuid`, k.Table), id).Scan(&title, &status)
 	if err != nil {
-		err = errors.New("Vorgang nicht gefunden")
+		err = uiError("Vorgang nicht gefunden")
 	}
 	return
 }
@@ -102,12 +101,13 @@ func (h *Handler) completionRecord(ctx context.Context, k completionKind, id str
 func (h *Handler) completionKind(w http.ResponseWriter, r *http.Request) (completionKind, string, bool) {
 	k, ok := completionKinds[chi.URLParam(r, "type")]
 	id := chi.URLParam(r, "id")
+	lang := ctxLang(r.Context())
 	if !ok || !uuidInPathRe.MatchString(id) {
-		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "unbekannter Vorgang"})
+		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": tr(lang, "unbekannter Vorgang")})
 		return k, "", false
 	}
 	if !h.canFn(r)(k.EditPerm) {
-		completionJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "Keine Berechtigung, diesen Vorgang zu bearbeiten."})
+		completionJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": tr(lang, "Keine Berechtigung, diesen Vorgang zu bearbeiten.")})
 		return k, "", false
 	}
 	return k, id, true
@@ -127,12 +127,13 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	u := getUser(r)
+	lang := ctxLang(ctx)
 	title, status, err := h.completionRecord(ctx, k, id)
 	if err != nil {
-		completionJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+		completionJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": tr(lang, err.Error())})
 		return
 	}
-	info := completionInfo{Type: k.Type, Label: k.Label, Title: title, Status: status, PartsURL: k.PartsAPI + id + "/pending-parts",
+	info := completionInfo{Type: k.Type, Label: tr(lang, k.Label), Title: title, Status: status, PartsURL: k.PartsAPI + id + "/pending-parts",
 		RootCause: k.RootCause, CanFinish: h.canFn(r)(k.DonePerm), Departments: h.completionDepartments(ctx)}
 	_ = h.db.QueryRow(ctx, `SELECT COALESCE(SUM(duration_min), 0)::int FROM time_entries
 		WHERE user_id = $1::uuid AND ref_type::text = $2 AND ref_id = $3::uuid AND ended_at IS NOT NULL AND NOT pending`, u.ID, k.RefType, id).Scan(&info.BookedMin)
@@ -186,23 +187,23 @@ type completionRequest struct {
 func validateCompletion(in *completionRequest, parts int, booked int, running bool) error {
 	in.Comment = strings.TrimSpace(in.Comment)
 	if len([]rune(in.Comment)) < 3 {
-		return errors.New("Bitte kurz beschreiben, was gemacht wurde (Kommentar).")
+		return uiError("Bitte kurz beschreiben, was gemacht wurde (Kommentar).")
 	}
 	if in.Minutes < 0 || in.Minutes > 24*60 {
-		return errors.New("Die Arbeitszeit muss zwischen 1 Minute und 24 Stunden liegen.")
+		return uiError("Die Arbeitszeit muss zwischen 1 Minute und 24 Stunden liegen.")
 	}
 	if in.Finish && parts == 0 && !in.NoParts {
-		return errors.New(`Bitte das verwendete Material erfassen oder „Kein Material verwendet“ bestätigen.`)
+		return uiError("Bitte das verwendete Material erfassen oder „Kein Material verwendet“ bestätigen.")
 	}
 	session := running || in.Minutes > 0
 	if !session && booked == 0 {
-		return errors.New("Bitte die Arbeitszeit erfassen.")
+		return uiError("Bitte die Arbeitszeit erfassen.")
 	}
 	if len(in.Colleagues) > 0 && !session {
-		return errors.New("Für die Mitarbeitenden bitte die gemeinsame Arbeitszeit angeben.")
+		return uiError("Für die Mitarbeitenden bitte die gemeinsame Arbeitszeit angeben.")
 	}
 	if len(in.Colleagues) > 50 {
-		return errors.New("Zu viele Mitarbeitende ausgewählt.")
+		return uiError("Zu viele Mitarbeitende ausgewählt.")
 	}
 	return nil
 }
@@ -262,17 +263,18 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	u := getUser(r)
+	lang := ctxLang(ctx)
 	fail := func(status int, err error) {
-		completionJSON(w, status, map[string]any{"success": false, "error": err.Error()})
+		completionJSON(w, status, map[string]any{"success": false, "error": tr(lang, err.Error())})
 	}
 	var in completionRequest
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
 	if err := json.Unmarshal(body, &in); err != nil {
-		fail(http.StatusBadRequest, errors.New("ungültige Daten"))
+		fail(http.StatusBadRequest, uiError("ungültige Daten"))
 		return
 	}
 	if in.Finish && !h.canFn(r)(k.DonePerm) {
-		fail(http.StatusForbidden, errors.New("Keine Berechtigung, diesen Vorgang abzuschließen."))
+		fail(http.StatusForbidden, uiError("Keine Berechtigung, diesen Vorgang abzuschließen."))
 		return
 	}
 	title, status, err := h.completionRecord(ctx, k, id)
@@ -281,7 +283,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if closedStatus[status] {
-		fail(http.StatusConflict, errors.New("Der Vorgang ist bereits abgeschlossen."))
+		fail(http.StatusConflict, uiError("Der Vorgang ist bereits abgeschlossen."))
 		return
 	}
 	parts, err := h.completionPendingParts(ctx, k, id)
@@ -360,15 +362,15 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		_, _ = h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = 'in_progress', updated_at = NOW()
 			WHERE id = $1::uuid AND status::text IN ('open','detected','analyzing','pending')`, k.Table), id)
 		h.addHistory(ctx, k.Type, id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
-		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung."})
+		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": tr(lang, "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung.")})
 		return
 	}
 	if err := h.completionFinish(ctx, k, id, &in, u.ID, sessionMin); err != nil {
 		// Zeit, Material-Vormerkung und Kommentar sind gespeichert – nur der Abschluss fehlt
-		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "warning": "Gespeichert, aber noch nicht abgeschlossen: " + err.Error()})
+		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "warning": tr(lang, "Gespeichert, aber noch nicht abgeschlossen: %s", tr(lang, err.Error()))})
 		return
 	}
-	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": k.Label + " abgeschlossen."})
+	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": tr(lang, "%s abgeschlossen.", tr(lang, k.Label))})
 }
 
 // completionValidColleagues: nur aktive, echte Benutzer (nicht man selbst).
@@ -382,7 +384,7 @@ func (h *Handler) completionValidColleagues(ctx context.Context, ids []string, s
 		seen[id] = true
 		var name string
 		if err := h.db.QueryRow(ctx, `SELECT TRIM(first_name || ' ' || last_name) FROM users WHERE id = $1::uuid AND active AND NOT is_bot`, id).Scan(&name); err != nil {
-			return nil, nil, errors.New("Ein ausgewählter Mitarbeiter wurde nicht gefunden.")
+			return nil, nil, uiError("Ein ausgewählter Mitarbeiter wurde nicht gefunden.")
 		}
 		valid = append(valid, id)
 		names = append(names, name)

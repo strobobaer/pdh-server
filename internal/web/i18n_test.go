@@ -37,6 +37,8 @@ func i18nKeys(t *testing.T) map[string][]string {
 	})
 	// tr(…, "Text", …) mit woertlichem Text im Go-Code
 	trRe := regexp.MustCompile(`\btr\([^,()]+(?:\([^()]*\))?, "((?:[^"\\]|\\.)*)"`)
+	// uiError("Text"): Fehlermeldungen, die beim Ausgeben uebersetzt werden
+	errRe := regexp.MustCompile(`\buiError\("((?:[^"\\]|\\.)*)"\)`)
 	goRe := regexp.MustCompile(`h\.baseData\(r, "[^"]*", "((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"\)`)
 	files, _ := filepath.Glob("*.go")
 	for _, f := range files {
@@ -49,6 +51,9 @@ func i18nKeys(t *testing.T) map[string][]string {
 			add(m[2], f)
 		}
 		for _, m := range trRe.FindAllStringSubmatch(string(b), -1) {
+			add(strings.ReplaceAll(m[1], `\"`, `"`), f)
+		}
+		for _, m := range errRe.FindAllStringSubmatch(string(b), -1) {
 			add(strings.ReplaceAll(m[1], `\"`, `"`), f)
 		}
 	}
