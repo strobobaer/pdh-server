@@ -154,6 +154,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-hash"></i> Kopfleiste: Kategorien und Status</h3>
   {{template "hb-fig-meta"}}
   <p>Direkt über den Reitern stehen die <a href="#categories">Kategorien</a> (#Energie, #Optimierung …) – antippen setzt oder entfernt sie. Bei <b>Stammdaten</b> (Anlagen, Ersatzteile, Lagerplätze, Hersteller &amp; Lieferanten) zeigt die Leiste außerdem, ob der Datensatz <b>gesperrt</b>, <b>deaktiviert</b> oder <b>zum Löschen vorgemerkt</b> ist. Über <b>Status</b> änderst du das (<a href="#cleanup">mehr</a>).</p>
+  <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
+  <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du im gleichen Stil wie beim Abschließen Schritt für Schritt an – über <b>Neue Zuweisung</b> in der Navigation bzw. auf dem Dashboard, über <b>Neu</b> in der Ticket- oder Störungsliste, <b>Neue Aufgabe</b> oder in der Wartung <b>Neuer Auftrag</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-circle-plus"></i> So legst du einen Vorgang an</b>
+    <ol class="hb-steps">
+      <li><b>Art</b> wählen (entfällt, wenn du aus einer Liste startest).</li>
+      <li><b>Was?</b> Titel, Beschreibung und Priorität (bei Störungen Schweregrad und Symptome, bei Wartungen die Art). Bei einer Störung zeigt PDH schon beim Tippen <b>ähnliche gelöste Fälle</b> mit ihrer Lösung.</li>
+      <li><b>Wo?</b> die Anlage – sie bestimmt auch, welche Abteilung den Vorgang sieht; bei Wartungsaufträgen Pflicht.</li>
+      <li><b>Wer?</b> eine Person oder eine ganze <b>Gruppe</b> zuweisen, „Ich selbst“ oder offen lassen; optional Verantwortliche/n.</li>
+      <li><b>Wann?</b> Fälligkeit per Schnellwahl (heute, morgen, 3 Tage, 1–2 Wochen, Standardfrist) oder Datum; bei Aufgaben auch der Start.</li>
+      <li>Zusammenfassung prüfen – <b>Anlegen</b> öffnet den neuen Vorgang, <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</li>
+    </ol></div>
   <h3 id="completion"><i class="ti ti-circle-check"></i> Vorgänge abschließen: der Abschluss-Assistent</h3>
   <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste über <b>Auswahl erledigen</b>. Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
   {{template "hb-fig-completion"}}

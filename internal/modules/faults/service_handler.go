@@ -399,3 +399,10 @@ func (h *Handler) UpdateCostCenter(w http.ResponseWriter, r *http.Request) {
 	}
 	response.JSON(w, http.StatusOK, map[string]string{"status": "aktualisiert"})
 }
+
+// SimilarForText: geloeste Stoerungen, die einer erst entstehenden Meldung
+// aehneln (Erstellungs-Assistent).
+func (s *Service) SimilarForText(ctx context.Context, title, description string, infraID *string, limit int) ([]SimilarFault, error) {
+	f := &Fault{ID: "00000000-0000-0000-0000-000000000000", Title: title, Description: description, InfrastructureID: infraID}
+	return s.repo.SimilarFaults(ctx, f, limit)
+}

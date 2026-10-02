@@ -533,6 +533,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
+	r.Get("/create/options", h.CreateOptionsWeb)
+	r.Get("/create/similar", h.CreateSimilarWeb)
 	r.Post("/suggest/accept", h.SuggestAcceptWeb)
 	r.Post("/trainings/topics", h.TrainingTopicSaveWeb)
 	r.Post("/trainings/topics/{id}/delete", h.TrainingTopicDeleteWeb)

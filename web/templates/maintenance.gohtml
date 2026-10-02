@@ -7,6 +7,7 @@
     <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TotalPlans}} Pläne · {{.OpenTasks}} Aufträge offen</p>
   </div>
   <div class="widget-icon-toolbar compact">
+    <button type="button" class="btn btn-primary" onclick="pdhCreate('maintenance')"><i class="ti ti-plus"></i> Neuer Auftrag</button>
     <button type="button" class="btn" onclick="document.getElementById('new-plan-form').style.display='block'"><i class="ti ti-plus"></i> Neuer Plan</button>
     <button type="button" class="btn" onclick="toggleMaintenanceChecklistAdmin()"><i class="ti ti-checklist"></i> Checklisten</button>
     <button type="button" class="btn" hx-post="/maintenance/generate" hx-target="#generate-result"><i class="ti ti-refresh"></i> Erzeugen</button>
