@@ -115,7 +115,9 @@ func TestBaseRendersInLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	if err := c.ExecuteTemplate(&b, "base.gohtml", OrgUnitsData{BaseData: BaseData{Lang: "tr"}}); err != nil {
+	bd := BaseData{Lang: "tr"}
+	bd.Nav = buildNav(&bd, nil)
+	if err := c.ExecuteTemplate(&b, "base.gohtml", OrgUnitsData{BaseData: bd}); err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
@@ -129,12 +131,20 @@ func TestBaseRendersInLanguage(t *testing.T) {
 
 func TestNavFoldGroups(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	out := renderPage(t, tmpl, "org_units", OrgUnitsData{BaseData: BaseData{CanImport: true, CanExport: true, Page: "import"}})
-	nav := out[strings.Index(out, "<nav>"):strings.Index(out, "</nav>")]
-	for _, k := range []string{"core", "import", "export"} {
+	bd := BaseData{CanImport: true, CanExport: true, CanManageUsers: true, Page: "import"}
+	bd.Nav = buildNav(&bd, nil)
+	out := renderPage(t, tmpl, "org_units", OrgUnitsData{BaseData: bd})
+	nav := out[strings.Index(out, `<nav id="pdh-nav">`):strings.Index(out, "</nav>")]
+	for _, k := range []string{"work", "material", "people", "admin", "data", "links"} {
 		if !strings.Contains(nav, `data-fold="`+k+`"`) || !strings.Contains(nav, `data-fold-group="`+k+`"`) {
-			t.Errorf("Bereich %s fehlt", k)
+			t.Errorf("Gruppe %s fehlt", k)
 		}
+	}
+	if !strings.Contains(nav, `data-nav="import"`) || !strings.Contains(nav, `class="nav-item active" data-nav="import"`) {
+		t.Error("aktiver Eintrag Import fehlt")
+	}
+	if strings.Contains(nav, `data-nav="roles"`) {
+		t.Error("Rollen ohne Recht sichtbar")
 	}
 	if o, c := strings.Count(nav, "<div"), strings.Count(nav, "</div>"); o != c {
 		t.Errorf("Navigation: %d <div> vs %d </div>", o, c)

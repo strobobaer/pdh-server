@@ -67,6 +67,7 @@ type BaseData struct {
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
 	Lang                   string     // Sprache der Oberflaeche (i18n.go)
+	Nav                    []navGroup // linke Navigation (nav.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -336,6 +337,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/assignments/new", h.AssignmentNewPage)
 	r.Get("/account", h.AccountPage)
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
+	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
 	r.Post("/account/microsoft/connect-teams", h.MicrosoftTeamsConnectStart)
 	r.Get("/account/microsoft/callback", h.MicrosoftConnectCallback)
@@ -805,7 +807,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	}
 	brand := h.branding()
 	lang := h.requestLang(r)
-	return BaseData{
+	b := BaseData{
 		Look:  h.appearance(r, brand),
 		Lang:  lang,
 		Title: tr(lang, title), Page: page,
@@ -831,6 +833,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
 	}
+	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
+	return b
 }
 
 func recordTable(refType string) (string, bool) {

@@ -144,6 +144,21 @@ nav{padding:12px 0;flex:1}
 .nav-fold i{margin-left:auto;font-size:13px;transition:transform .15s}
 .nav-fold[aria-expanded="false"] i{transform:rotate(-90deg)}
 .nav-group.folded{display:none}
+.nav-edit-bar{padding:10px 12px 14px;border-top:1px solid var(--border);margin-top:8px}
+.nav-edit-btn{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;padding:4px}
+.nav-edit-btn:hover{color:var(--text)}
+.nav-edit-tools{display:flex;gap:4px;flex-wrap:wrap}
+.nav-edit-tools button{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;font-size:11px;padding:5px 6px;cursor:pointer;white-space:nowrap}
+.nav-edit-tools button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff)}
+.nav-edit-hint{font-size:10.5px;color:var(--muted);margin-top:6px}
+html.nav-editing .nav-group{display:block!important;min-height:26px;border:1px dashed var(--border);border-radius:6px;margin:2px 8px 6px;padding:2px 0}
+html.nav-editing .nav-group[data-fold-group="top"]{border-style:dotted}
+html.nav-editing .nav-item{cursor:grab}
+html.nav-editing .nav-fold i{display:none}
+.nav-gl-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;font-size:11px;padding:2px 6px;text-transform:none;letter-spacing:0}
+.nav-gdel{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 0 0 6px}
+.nav-ghost{opacity:.4}
+html.sidebar-left-collapsed .nav-edit-bar{display:none}
 html.sidebar-left-collapsed .nav-group.folded{display:block}
 .nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:var(--muted);border-left:2px solid transparent;transition:all .15s}
 .nav-item:hover{color:var(--text);background:var(--bg3)}
@@ -541,55 +556,22 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver" title="{{t "Änderungen: Handbuch → Versionen"}}">v{{appVersion}}</div></div>
     <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="{{t "Navigation einklappen"}}" title="{{t "Navigation einklappen"}}"><i class="ti ti-menu-2"></i></button>
   </div>
-  <nav>
-    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">{{t "Dashboard"}}</span></a>
-    {{if .CanChat}}<a href="/chat" class="nav-item {{if eq .Page "chat"}}active{{end}}" style="position:relative"><i class="ti ti-messages"></i><span class="nav-label">Chat</span><span id="chat-nav-badge" class="nav-badge" style="display:none"></span></a>{{end}}
-    <a href="/global/" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-layout-dashboard"></i><span class="nav-label">{{t "Leitstand"}}</span></a>
-    <a href="/assignments/new" class="nav-item {{if eq .Page "assignments-new"}}active{{end}}"><i class="ti ti-square-rounded-plus"></i><span class="nav-label">{{t "Neue Zuweisung"}}</span></a>
-
-    <div class="nav-section">{{t "Module"}}</div>
-    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i><span class="nav-label">{{t "Tickets"}}</span></a>
-    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i><span class="nav-label">{{t "Störungen"}}</span></a>
-    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i><span class="nav-label">{{t "Wartung"}}</span></a>
-    <a href="/tasks" class="nav-item {{if eq .Page "tasks"}}active{{end}}"><i class="ti ti-list-check"></i><span class="nav-label">{{t "Aufgaben"}}</span></a>
-    <a href="/projects" class="nav-item {{if eq .Page "projects"}}active{{end}}"><i class="ti ti-timeline"></i><span class="nav-label">{{t "Projekte"}}</span></a>
-    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i><span class="nav-label">{{t "Ersatzteile"}}</span></a>
-    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">{{t "Zeiterfassung"}}</span></a>
-
-    <button type="button" class="nav-section nav-fold" data-fold="core" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Core"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
-    <div class="nav-group" data-fold-group="core">
-    {{if .CanManageUsers}}<a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">{{t "Benutzer"}}</span></a>{{end}}
-    <a href="/trainings" class="nav-item {{if eq .Page "trainings"}}active{{end}}"><i class="ti ti-school"></i><span class="nav-label">{{if .CanTrainings}}{{t "Schulungen"}}{{else}}{{t "Meine Schulungen"}}{{end}}</span></a>
-    {{if .CanManageUsers}}<a href="/admin/org-units" class="nav-item {{if eq .Page "org_units"}}active{{end}}"><i class="ti ti-users-group"></i><span class="nav-label">{{t "Abteilungen & Gruppen"}}</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">{{t "Rollen & Rechte"}}</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">{{t "Organigramm"}}</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">{{t "Core-Einstellungen"}}</span></a>{{end}}
-    {{if .CanServerConfig}}<a href="/admin/server-config" class="nav-item {{if eq .Page "server-config"}}active{{end}}"><i class="ti ti-adjustments-cog"></i><span class="nav-label">{{t "Server-Einstellungen"}}</span></a>{{end}}
-    {{if .CanBackup}}<a href="/admin/backup" class="nav-item {{if eq .Page "backup"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">{{t "Datensicherung"}}</span></a>{{end}}
-    {{if .CanCleanup}}<a href="/admin/cleanup" class="nav-item {{if eq .Page "cleanup"}}active{{end}}"><i class="ti ti-trash-x"></i><span class="nav-label">{{t "Bereinigung"}}</span></a>{{end}}
-    <a href="/categories" class="nav-item {{if eq .Page "categories"}}active{{end}}"><i class="ti ti-hash"></i><span class="nav-label">{{t "Kategorien"}}</span></a>
-    <a href="/help" class="nav-item {{if eq .Page "help"}}active{{end}}"><i class="ti ti-book"></i><span class="nav-label">{{t "Handbuch"}}</span></a>
-    <a href="https://cloud.strobl-home.net" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-cloud"></i><span class="nav-label">Nextcloud</span></a>
-    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">{{t "IT-Assets"}}</span></a>
-    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">{{t "Lager"}}</span></a>
-    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">{{t "Schichtplan"}}</span></a>
-    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">{{t "Infrastruktur"}}</span></a>
-    <a href="/directory" class="nav-item {{if eq .Page "directory"}}active{{end}}"><i class="ti ti-building-factory-2"></i><span class="nav-label">{{t "Hersteller & Lieferanten"}}</span></a>
-    </div>
-
-    {{if .CanImport}}
-    <button type="button" class="nav-section nav-fold" data-fold="import" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Import"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
-    <div class="nav-group" data-fold-group="import">
-    <a href="/import" class="nav-item {{if eq .Page "import"}}active{{end}}"><i class="ti ti-database-import"></i><span class="nav-label">{{t "Import"}}</span></a>
+  <nav id="pdh-nav">
+    {{range .Nav}}
+    {{if .Label}}<button type="button" class="nav-section nav-fold" data-fold="{{.Key}}" aria-expanded="true" onclick="pdhFold(this)"><span class="nav-gl">{{.Label}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>{{end}}
+    <div class="nav-group" data-fold-group="{{.Key}}" data-label="{{.Label}}">
+      {{range .Items}}<a href="{{.Href}}" class="nav-item{{if and .Page (eq .Page $.Page)}} active{{end}}" data-nav="{{.Key}}"{{if .External}} target="_blank" rel="noopener"{{end}}{{if eq .Key "chat"}} style="position:relative"{{end}}><i class="ti {{.Icon}}"></i><span class="nav-label">{{.Label}}</span>{{if eq .Key "chat"}}<span id="chat-nav-badge" class="nav-badge" style="display:none"></span>{{end}}</a>{{end}}
     </div>
     {{end}}
-
-    {{if .CanExport}}
-    <button type="button" class="nav-section nav-fold" data-fold="export" aria-expanded="true" onclick="pdhFold(this)"><span>{{t "Export"}}</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>
-    <div class="nav-group" data-fold-group="export">
-    <a href="/export" class="nav-item {{if eq .Page "export"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">{{t "Export"}}</span></a>
+    <div class="nav-edit-bar">
+      <button type="button" class="nav-edit-btn" id="nav-edit-start" onclick="pdhNavEdit(true)"><i class="ti ti-adjustments-horizontal"></i><span class="nav-label">{{t "Navigation anpassen"}}</span></button>
+      <div class="nav-edit-tools" style="display:none">
+        <button type="button" onclick="pdhNavAddGroup()"><i class="ti ti-folder-plus"></i> {{t "Gruppe"}}</button>
+        <button type="button" onclick="pdhNavReset()" title="{{t "Vorgabe wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
+        <button type="button" class="on" onclick="pdhNavSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
+      </div>
+      <div class="nav-edit-hint" style="display:none">{{t "Einträge ziehen, Gruppennamen anklicken zum Umbenennen."}}</div>
     </div>
-    {{end}}
   </nav>
   <script>
   // Einklappbare Navigationsbereiche (Core, Import, Export): Zustand je Browser;
@@ -604,6 +586,76 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
       if(g) g.classList.toggle('folded', folded);
     });
   })();
+  // Navigation anpassen: Gruppen umbenennen/anlegen/loeschen, Eintraege ziehen (nav.go)
+  let pdhNavSortables = [];
+  function pdhNavEdit(on){
+    const html = document.documentElement;
+    if(on && html.classList.contains('sidebar-left-collapsed')) toggleSidebar('left');
+    html.classList.toggle('nav-editing', on);
+    document.getElementById('nav-edit-start').style.display = on ? 'none' : '';
+    document.querySelectorAll('.nav-edit-tools,.nav-edit-hint').forEach(e => e.style.display = on ? '' : 'none');
+    if(!on){ pdhNavSortables.forEach(s => s.destroy()); pdhNavSortables = []; return; }
+    document.querySelectorAll('#pdh-nav .nav-fold').forEach(pdhNavHeaderEdit);
+    const start = () => document.querySelectorAll('#pdh-nav .nav-group').forEach(g => pdhNavSortables.push(Sortable.create(g, {group: 'pdh-nav', animation: 150, ghostClass: 'nav-ghost', draggable: '.nav-item'})));
+    if(window.Sortable) start();
+    else { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js'; sc.onload = start; document.head.appendChild(sc); }
+    document.querySelectorAll('#pdh-nav .nav-item').forEach(a => a.addEventListener('click', pdhNavNoClick));
+  }
+  function pdhNavNoClick(e){ if(document.documentElement.classList.contains('nav-editing')) e.preventDefault(); }
+  function pdhNavHeaderEdit(btn){
+    if(btn.querySelector('input')) return;
+    const span = btn.querySelector('.nav-gl');
+    const inp = document.createElement('input');
+    inp.className = 'nav-gl-input'; inp.maxLength = 40; inp.value = span.textContent;
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('keydown', e => { if(e.key === ' ' || e.key === 'Enter') e.stopPropagation(); });
+    span.style.display = 'none'; btn.insertBefore(inp, span);
+    const del = document.createElement('span');
+    del.className = 'nav-gdel'; del.title = {{t "Gruppe löschen (Einträge wandern nach oben)"}}; del.innerHTML = '<i class="ti ti-trash"></i>';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      const g = document.querySelector('[data-fold-group="' + btn.dataset.fold + '"]');
+      const top = document.querySelector('[data-fold-group="top"]');
+      if(g && top) g.querySelectorAll('.nav-item').forEach(a => top.appendChild(a));
+      if(g) g.remove(); btn.remove();
+    });
+    btn.appendChild(del);
+    btn.onclick = null;
+  }
+  function pdhNavAddGroup(){
+    const key = 'g' + Date.now().toString(36);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'nav-section nav-fold'; btn.dataset.fold = key; btn.setAttribute('aria-expanded', 'true');
+    btn.innerHTML = '<span class="nav-gl"></span><i class="ti ti-chevron-down"></i>';
+    btn.querySelector('.nav-gl').textContent = {{t "Neue Gruppe"}};
+    const g = document.createElement('div');
+    g.className = 'nav-group'; g.dataset.foldGroup = key;
+    const bar = document.querySelector('#pdh-nav .nav-edit-bar');
+    bar.parentNode.insertBefore(btn, bar); bar.parentNode.insertBefore(g, bar);
+    pdhNavHeaderEdit(btn);
+    pdhNavSortables.push(Sortable.create(g, {group: 'pdh-nav', animation: 150, ghostClass: 'nav-ghost', draggable: '.nav-item'}));
+    btn.querySelector('input').select();
+  }
+  async function pdhNavPost(body){
+    const res = await fetch('/account/nav-layout', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok || !j.success) throw new Error(j.error || ('HTTP ' + res.status));
+  }
+  async function pdhNavSave(){
+    const groups = [...document.querySelectorAll('#pdh-nav .nav-group')].map(g => {
+      const key = g.dataset.foldGroup;
+      const btn = document.querySelector('#pdh-nav .nav-fold[data-fold="' + key + '"]');
+      const inp = btn && btn.querySelector('input');
+      return {key, label: key === 'top' ? '' : (inp ? inp.value.trim() : (g.dataset.label || '')), items: [...g.querySelectorAll('.nav-item')].map(a => a.dataset.nav)};
+    });
+    try{ await pdhNavPost({groups}); location.reload(); }
+    catch(e){ alert({{t "Navigation konnte nicht gespeichert werden:"}} + ' ' + e.message); }
+  }
+  async function pdhNavReset(){
+    if(!confirm({{t "Eigene Anordnung verwerfen und die Vorgabe wiederherstellen?"}})) return;
+    try{ await pdhNavPost({reset: true}); location.reload(); }
+    catch(e){ alert(e.message); }
+  }
   function pdhFold(b){
     const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
     const fold = b.getAttribute('aria-expanded') === 'true';

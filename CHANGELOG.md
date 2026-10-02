@@ -34,7 +34,7 @@ im Kapitel „Versionen & Updates“ an.
 - Core-Einstellungen: Abteilungen, deren Mitarbeitende im Assistenten vorgeschlagen werden (Standard: Instandhaltung, Elektro, Mechanik)
 
 ### Geändert
-- Navigation: Die Bereiche Core, Import und Export lassen sich ein- und ausklappen (Zustand bleibt im Browser gespeichert, der Bereich der geöffneten Seite bleibt offen)
+- Navigation: Einträge in einklappbaren Gruppen (Instandhaltung, Material & Anlagen, Personal, Verwaltung, Daten, Hilfe & Links); „Navigation anpassen“ erlaubt eigene Gruppen, Umbenennen und Verschieben per Ziehen – gespeichert am Benutzerkonto, „Standard“ stellt die Vorgabe wieder her; Klappzustand bleibt im Browser, die Gruppe der geöffneten Seite bleibt offen
 - Copilot spricht Claude jetzt über das offizielle Anthropic-SDK für Go (automatische Wiederholung bei Überlast, typisierte Fehler); dafür braucht der Build Go 1.24: Docker-Image `golang:1.24`, die Update-Skripte laden auf Servern mit älterem Go (ab 1.21, z. B. Ubuntu 24.04) die passende Version automatisch nach
 - Copilot: Standardmodell für Anthropic ist jetzt claude-opus-5-5 (mit serverseitigem Ausweichmodell bei Ablehnungen); bereits eingetragene Modelle bleiben
 - Copilot: ähnliche Fälle werden jetzt inhaltlich gesucht (Titel, Beschreibung, Symptome; Wortformen und Umlaute egal, seltene Fachbegriffe gewichtet; gleiche Anlage/Linie bevorzugt) statt einfach die zuletzt gelösten zu nehmen; die Analyse bekommt Ursachen, Lösungen, Maßnahmen und den Anlagenpfad mit, Ollama liefert erzwungen JSON, die Konfidenz wird auf 0–100 % begrenzt und Fehler der KI-Dienste werden klar gemeldet
