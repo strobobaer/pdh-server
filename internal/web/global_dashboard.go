@@ -21,7 +21,8 @@ type GlobalBoardItem struct {
 	Type             string `json:"type"`
 	Title            string `json:"title"`
 	Description      string `json:"description"`
-	Status           string `json:"status"`
+	Status           string `json:"status"`     // Anzeige (deutsch)
+	StatusKey        string `json:"status_key"` // Code (open, in_progress, …) fuer die Logik im Browser
 	LastAction       string `json:"last_action"`
 	Priority         string `json:"priority"`
 	DueDate          string `json:"due_date"`
@@ -266,6 +267,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		item.StatusKey = item.Status
 		item.Status = globalStatusLabel(item.Status)
 		if item.LastAction == "wait" && item.DueDate > time.Now().Format("2006-01-02") {
 			item.Status = "Wartet"

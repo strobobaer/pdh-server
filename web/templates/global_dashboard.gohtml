@@ -662,7 +662,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       textBox.appendChild(metaEl);
       row.appendChild(textBox);
 
-      if(item.status === 'open'){
+      // Code statt Anzeige vergleichen (status ist das deutsche Wort)
+      if(item.status_key === 'open'){
         const startBtn = document.createElement('button');
         startBtn.type = 'button';
         startBtn.className = 'action-button finish';

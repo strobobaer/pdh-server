@@ -30,6 +30,7 @@ im Kapitel „Versionen & Updates“ an.
 - Manuelle Buchungen können keine Reservierungsarten buchen; Reservierungen entstehen nur über Vorgänge
 
 ### Behoben
+- Leitstand: In der Wartungsauswahl fehlte bei offenen Wartungen der Knopf „Start“ – alle wurden als „In Arbeit“ angezeigt, weil der angezeigte Status („Offen“) statt des Statuscodes verglichen wurde
 - Copilot mit Anthropic-Schlüsseln ohne Workspace-Bindung brach mit „HTTP 400 – … must include the anthropic-workspace-id header“ ab. Neue Einstellung „Anthropic-Workspace-ID“ (Server-Einstellungen → Copilot, `PDH_COPILOT_ANTHROPICWORKSPACE`) sendet die ID mit; die Fehlermeldung verweist jetzt direkt darauf
 - Dashboard-Kopfzeile: Das Datum zeigte immer „Mo“ und den englischen Monatsnamen; jetzt mit richtigem Wochentag in der eingestellten Sprache
 
