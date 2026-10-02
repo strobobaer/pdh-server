@@ -167,15 +167,15 @@
     <!-- Ersatzteile -->
     <div class="card">
       <div class="card-title" id="ticket-parts-title">Ersatzteile für die Reparatur</div>
-      <p id="ticket-parts-hint" style="font-size:11px;color:var(--muted);margin-bottom:8px">Wird erst beim Lösen des Tickets tatsächlich aus dem Lager gebucht.</p>
+      <p id="ticket-parts-hint" style="font-size:11px;color:var(--muted);margin-bottom:8px">Reservierte Teile werden sofort vom Lagerplatz abgebucht und beim Lösen zum Verbrauch. Nicht benötigte Mengen zurückbuchen.</p>
       <div id="ticket-parts-usage-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <button type="button" id="ticket-parts-add-btn" class="btn" onclick="openTicketPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>
+      <button type="button" id="ticket-parts-add-btn" class="btn" onclick="openTicketPartModal()"><i class="ti ti-package"></i> Ersatzteil reservieren</button>
     </div>
 
     <!-- Ersatzteil-vormerken Popup -->
     <div id="ticket-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil reservieren</div>
         <div class="form-group">
           <label class="form-label">Ersatzteil</label>
           <input id="tp-part-search" class="form-input" placeholder="Suchen..." oninput="filterTicketParts()" autocomplete="off">
@@ -194,7 +194,7 @@
         <div id="tp-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
           <button type="button" class="btn" onclick="closeTicketPartModal()">Abbrechen</button>
-          <button type="button" class="btn btn-primary" onclick="bookTicketPart()">Vormerken</button>
+          <button type="button" class="btn btn-primary" onclick="bookTicketPart()">Reservieren</button>
         </div>
       </div>
     </div>
@@ -359,9 +359,9 @@ async function loadTicketPartsUsage(){
     const json = await res.json();
     const pending = json.data || json || [];
     box.innerHTML = pending.length ? pending.map(function(p){
-      const row = '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escTk(p.part_name)+' <span style="color:var(--muted)">('+escTk(p.part_number)+')</span></div><div class="li-sub">'+p.qty+' Stk · '+escTk(p.storage_name)+'</div></div><button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="removeTicketPendingPart(PID)"><i class="ti ti-x"></i></button></div>';
+      const row = '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escTk(p.part_name)+' <span style="color:var(--muted)">('+escTk(p.part_number)+')</span></div><div class="li-sub">'+p.qty+' Stk · '+escTk(p.storage_name)+''+pdhReservedTag(p,'ticket',TICKET_ID,'loadTicketPartsUsage')+'</div></div><button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="removeTicketPendingPart(PID)"><i class="ti ti-x"></i></button></div>';
       return row.replace('PID', "'"+p.id+"'");
-    }).join('') : '<div style="padding:4px 0">Noch keine Ersatzteile vorgemerkt</div>';
+    }).join('') : '<div style="padding:4px 0">Noch keine Ersatzteile reserviert</div>';
   }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
 }
 

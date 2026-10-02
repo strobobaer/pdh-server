@@ -85,6 +85,7 @@ type PendingPart struct {
 	StorageNodeID string    `json:"storage_node_id"`
 	StorageName   string    `json:"storage_name"`
 	Qty           float64   `json:"qty"`
+	Reserved      bool      `json:"reserved"` // bereits vom Lager abgebucht
 	CreatedBy     string    `json:"created_by"`
 	CreatedByName string    `json:"created_by_name"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -109,7 +110,7 @@ func (r *Repository) AddPendingPart(ctx context.Context, taskID, partID, storage
 
 func (r *Repository) GetPendingParts(ctx context.Context, taskID string) ([]*PendingPart, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT tp.id, tp.task_id, tp.part_id, sp.name, sp.part_number,
+		SELECT tp.id, tp.task_id, tp.part_id, sp.name, sp.part_number, tp.reserved,
 			tp.storage_node_id, sn.name, tp.qty, tp.created_by, u.first_name || ' ' || u.last_name, tp.created_at
 		FROM task_pending_parts tp
 		JOIN spare_parts sp ON tp.part_id = sp.id
@@ -124,7 +125,7 @@ func (r *Repository) GetPendingParts(ctx context.Context, taskID string) ([]*Pen
 	var out []*PendingPart
 	for rows.Next() {
 		p := &PendingPart{}
-		if err := rows.Scan(&p.ID, &p.TaskID, &p.PartID, &p.PartName, &p.PartNumber,
+		if err := rows.Scan(&p.ID, &p.TaskID, &p.PartID, &p.PartName, &p.PartNumber, &p.Reserved,
 			&p.StorageNodeID, &p.StorageName, &p.Qty, &p.CreatedBy, &p.CreatedByName, &p.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -271,6 +272,14 @@ func (s *Service) AddPendingPart(ctx context.Context, taskID string, in *AddPend
 	if in.Qty <= 0 {
 		return nil, fmt.Errorf("menge muss größer als 0 sein")
 	}
+	if invService != nil {
+		// Reservierung: Menge wird sofort vom Lagerort abgebucht
+		id, err := invService.Reserve(ctx, "task", taskID, in.PartID, in.StorageNodeID, in.Qty, userID)
+		if err != nil {
+			return nil, err
+		}
+		return &PendingPart{ID: id, TaskID: taskID, PartID: in.PartID, StorageNodeID: in.StorageNodeID, Qty: in.Qty, Reserved: true, CreatedBy: userID}, nil
+	}
 	return s.repo.AddPendingPart(ctx, taskID, in.PartID, in.StorageNodeID, in.Qty, userID)
 }
 func (s *Service) GetPendingParts(ctx context.Context, taskID string) ([]*PendingPart, error) {
@@ -322,7 +331,14 @@ func (s *Service) Resolve(ctx context.Context, taskID, resolution, rootCause, us
 		return fmt.Errorf(`bitte verwendete ersatzteile erfassen oder "keine teile benötigt" bestätigen`)
 	}
 	if invService != nil {
+		// Reservierungen sind bereits abgebucht und werden nur noch zum Verbrauch
+		if err := invService.ConsumeReservations(ctx, "task", taskID); err != nil {
+			return fmt.Errorf("reservierungen konnten nicht verbucht werden: %w", err)
+		}
 		for _, pp := range pendingParts {
+			if pp.Reserved {
+				continue
+			}
 			_, bookErr := invService.Book(ctx, &inventory.BookMovementInput{
 				PartID: pp.PartID, Type: inventory.MovementOut, Qty: pp.Qty,
 				StorageNodeID: pp.StorageNodeID, Reference: "Aufgabe " + taskID, TaskID: taskID,

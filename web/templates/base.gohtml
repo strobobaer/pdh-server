@@ -289,6 +289,7 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:380px}
 .badge{display:inline-flex;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:500;white-space:nowrap}
 .b-red{background:rgba(239,68,68,.15);color:#fca5a5}
 .b-amber{background:rgba(245,158,11,.15);color:#fcd34d}
+.res-q{color:var(--amber);font-weight:600;font-size:.92em}
 .b-green{background:rgba(16,185,129,.15);color:#6ee7b7}
 .b-blue{background:rgba(var(--accent-rgb),.15);color:#a5b4fc}
 .b-gray{background:rgba(107,114,128,.15);color:#9ca3af}
@@ -1966,6 +1967,30 @@ document.addEventListener('click', function(e){
   e.stopPropagation();
   openPdhFrame(a.getAttribute('href') || a.dataset.href, a.dataset.frameTitle || a.textContent.trim(), a.hasAttribute('data-frame-external'));
 }, true);
+</script>
+<script>
+// Ersatzteil-Reservierung: (teilweise) zurueck an den Lagerplatz buchen.
+// reload: Funktion zum Neuladen der Liste (sonst ganze Seite).
+async function pdhReturnReservation(kind, ref, id, max, reload){
+  const v = prompt({{t "Wie viel zurückbuchen? (reserviert: %s)" "#"}}.replace('#', max), String(max));
+  if(v === null) return;
+  const qty = parseFloat(String(v).replace(',', '.'));
+  if(!(qty > 0)){ alert({{t "Bitte eine Menge größer 0 angeben."}}); return; }
+  try{
+    const res = await fetch('/reservations/' + encodeURIComponent(kind) + '/' + encodeURIComponent(ref) + '/' + encodeURIComponent(id) + '/return',
+      {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({qty: Math.min(qty, max)})});
+    const j = await res.json();
+    if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
+    if(typeof reload === 'function') reload(); else location.reload();
+  }catch(e){ alert({{t "Fehler"}} + ': ' + e.message); }
+}
+// Kennzeichnung + Rueckbuchen-Knopf fuer eine vorgemerkte Position (p aus .../pending-parts)
+function pdhReservedTag(p, kind, ref, reloadName){
+  if(!p || !p.reserved) return '';
+  const a = [kind, ref, p.id].map(x => "'" + String(x).replace(/[^\w-]/g, '') + "'").join(',');
+  return ' · <span class="res-q" title="' + {{t "bereits vom Lager abgebucht"}} + '">' + {{t "reserviert"}} + '</span>'
+    + ' <button type="button" class="btn btn-small" style="font-size:11px;padding:2px 8px" title="' + {{t "Nicht benötigte Menge zurück an den Lagerplatz buchen"}} + '" onclick="pdhReturnReservation(' + a + ',' + Number(p.qty) + ',' + reloadName + ')"><i class="ti ti-arrow-back-up"></i> ' + {{t "Zurückbuchen"}} + '</button>';
+}
 </script>
 {{block "scripts" .}}{{end}}
 </body>

@@ -127,7 +127,7 @@
       </div></td>
       <td style="font-size:12px">{{if .ManufacturerID}}<a href="/directory/{{.ManufacturerID}}" data-frame data-frame-title="{{.ManufacturerName}}" style="color:var(--accent)">{{.ManufacturerName}}</a>{{else}}{{.ManufacturerName}}{{end}}</td>
       <td style="font-size:12px">{{if .SupplierID}}<a href="/directory/{{.SupplierID}}" data-frame data-frame-title="{{.Supplier}}" style="color:var(--accent)">{{.Supplier}}</a>{{else}}<span style="color:var(--amber)">—</span>{{end}}</td>
-      <td style="text-align:right;white-space:nowrap"><b>{{.Stock}}</b> / {{.MinQty}} {{.Unit}}</td>
+      <td style="text-align:right;white-space:nowrap"><b>{{.Stock}}</b>{{if .Reserved}} <span class="res-q" title="reserviert (bereits abgebucht)">({{.Reserved}})</span>{{end}} / {{.MinQty}} {{.Unit}}</td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
     </tr>
     {{else}}<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine Teile für diese Auswahl</td></tr>{{end}}

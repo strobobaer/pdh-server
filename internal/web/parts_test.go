@@ -96,6 +96,21 @@ func TestPartPagesRender(t *testing.T) {
 			t.Errorf("Liste enthält %q nicht", want)
 		}
 	}
+	// Reservierte Menge in Klammern neben dem Bestand
+	rl := renderPage(t, tmpl, "inventory", InventoryListData{Rows: []PartListRow{{ID: "r1", Name: "Lager 6204", Stock: "6", MinQty: "2", Unit: "Stk", Reserved: "4"}}})
+	if !strings.Contains(rl, `<b>6</b> <span class="res-q"`) || !strings.Contains(rl, ">(4)</span>") {
+		t.Error("Liste zeigt die reservierte Menge nicht in Klammern")
+	}
+	rp := PartMaster{ID: "s2", Name: "Lager", Unit: "Stk", StatusKey: "ok", StatusClass: "b-green", StatusLabel: "OK", StockQty: 6, ReservedQty: 4}
+	rd := renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: rp, Tab: "stock",
+		Stock:        []PartStockRow{{NodeID: "n1", Path: "Regal R", Qty: "6", Reserved: "4"}},
+		Reservations: []PartReservationRow{{ID: "pp1", Kind: "fault", RefID: "f1", RefLabel: "Störung: Lagerschaden", RefURL: "/faults/f1", Path: "Regal R", Qty: "4", QtyRaw: 4}},
+	})
+	for _, want := range []string{"6 Stk (4 reserviert)", ">(4)</span>", "Störung: Lagerschaden", "pdhReturnReservation('fault','f1','pp1', 4 ,pdhPartReload)", "function pdhReservedTag"} {
+		if !strings.Contains(rd, want) {
+			t.Errorf("Detail (Reservierung) enthält %q nicht", want)
+		}
+	}
 	// ohne Hauptlieferant / Hersteller darf nichts an nil scheitern
 	p := PartMaster{ID: "s1", Name: "Kugellager", PartNumber: "4711", Unit: "Stück", StatusKey: "ok", StatusClass: "b-green", StatusLabel: "OK"}
 	renderPage(t, tmpl, "inventory_detail", PartDetailData{Part: p, CanEdit: true, Tab: "overview"})

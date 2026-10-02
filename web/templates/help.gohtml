@@ -170,11 +170,11 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-completion"}}
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du einen Vorgang ab</b>
     <ol class="hb-steps">
-      <li><b>Material:</b> Verwendete Ersatzteile suchen, Lagerort und Menge wählen, <b>Vormerken</b>. Ohne Teile: <b>Kein Material verwendet</b> ankreuzen. <b>OK – weiter</b>.</li>
+      <li><b>Material:</b> Verwendete Ersatzteile suchen, Lagerort und Menge wählen, <b>Reservieren</b> – die Menge wird sofort vom Lagerplatz abgebucht (<a href="#reservation">Reservierung</a>). Zu viel reserviert? <b>Zurückbuchen</b> an der Position. Ohne Teile: <b>Kein Material verwendet</b> ankreuzen. <b>OK – weiter</b>.</li>
       <li><b>Zeit:</b> Beginn und Dauer angeben (Schnellwahl 15 min bis 8 h). Läuft dein Timer für diesen Vorgang, wird er automatisch gestoppt. Hast du schon Zeit erfasst, ist weitere Zeit freiwillig.</li>
       <li><b>Wer war dabei?</b> Mitarbeitende ankreuzen, die mitgearbeitet haben. Vorgeschlagen werden die Abteilungen aus den Core-Einstellungen (z. B. Instandhaltung, Elektro); <b>Alle Abteilungen anzeigen</b> zeigt alle. Niemand? Einfach weiter.</li>
       <li><b>Kommentar:</b> kurz, was gemacht wurde – erscheint als Maßnahme im Verlauf. Bei Tickets, Störungen und Aufgaben optional die <b>Ursache</b>.</li>
-      <li><b>Fertig</b> bucht das Material und schließt ab. <b>Geht noch weiter</b> speichert Zeit, Material-Vormerkung und Kommentar – der Vorgang bleibt <i>in Bearbeitung</i>, z. B. bei Schichtende oder wenn Teile fehlen.</li>
+      <li><b>Fertig</b> macht die Reservierungen zum Verbrauch und schließt ab. <b>Geht noch weiter</b> speichert Zeit, Reservierung und Kommentar – der Vorgang bleibt <i>in Bearbeitung</i>, z. B. bei Schichtende oder wenn Teile fehlen.</li>
     </ol>
     Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
   <ul>
@@ -233,9 +233,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
-      <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>vormerken</b>.</li>
+      <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>reservieren</b> – sie sind damit sofort für dich aus dem Lager gebucht.</li>
       <li>Grüner Haken <b>Abschließen</b> (oben rechts oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
-      <li><b>Fertig</b> – die vorgemerkten Teile werden vom Lager abgebucht, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
+      <li><b>Fertig</b> – die reservierten Teile werden zum Verbrauch der Störung, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
@@ -335,6 +335,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Buchungsart wählen: <b>Wareneingang</b>/<b>Warenausgang</b> (Menge wird zu-/abgebucht) oder <b>Korrektur</b>/<b>Inventur</b> (Menge ist der neue Bestand).</li>
       <li>Menge und <b>Lagerplatz</b> angeben, optional Lieferschein-Nr. – Buchen.</li>
     </ol></div>
+  <h3 id="reservation"><i class="ti ti-bookmark"></i> Ersatzteile reservieren</h3>
+  <p>Teile für eine Störung, ein Ticket, eine Aufgabe oder eine Wartung werden <b>reserviert</b>: Die Menge wird sofort vom gewählten Lagerplatz <b>abgebucht</b>. So kann sie niemand anderes mehr verplanen. Der Bestand zeigt dann nur noch die freie Menge, die reservierte steht <b>in Klammern</b> daneben – z. B. <b>6 <span class="res-q">(4)</span></b> / 2 Stk: 6 frei, 4 reserviert, Mindestbestand 2. Das gilt in der Ersatzteilliste, beim Teil, je Lagerplatz und bei der Teilesuche im Abschluss-Assistenten.</p>
+  <div class="hb-howto"><b><i class="ti ti-bookmark"></i> So reservierst du und buchst zurück</b>
+    <ol class="hb-steps">
+      <li>Im Vorgang bei <b>Ersatzteile</b> auf <b>Ersatzteil reservieren</b> (oder im Abschluss-Assistenten beim Schritt Material): Teil suchen, Lagerplatz und Menge wählen, <b>Reservieren</b>. Liegt dort nicht genug, lehnt PDH ab und nennt die freie Menge.</li>
+      <li>Die Position trägt jetzt die Kennzeichnung <span class="res-q">reserviert</span>.</li>
+      <li>Nicht alles gebraucht? An der Position <b>Zurückbuchen</b> und die Menge angeben – auch teilweise. Das <i class="ti ti-x"></i> bucht die ganze Position zurück.</li>
+      <li>Beim <b>Fertig</b> im Abschluss-Assistenten wird der Rest zum <b>Verbrauch</b> des Vorgangs. Doppelt abgebucht wird nichts.</li>
+    </ol>
+    Wird ein Vorgang <b>verworfen, archiviert oder gelöscht</b>, ohne dass das Material verbucht wurde, gehen offene Reservierungen automatisch an ihren Lagerplatz zurück.</div>
+  <p>Beim Teil zeigt der Reiter <b>Lager &amp; Bewegungen</b> die Karte <b>Reservierungen</b>: für welchen Vorgang, an welchem Lagerplatz, von wem. Mit <b>Zurückbuchen</b> lässt sich dort direkt zurückbuchen. In den Bewegungen erscheinen <span class="badge b-amber">Reservierung</span> und <span class="badge b-blue">Rückbuchung Reservierung</span>. Nach dem Abschluss wird daraus <i>Abgang</i>, eine vorherige Teil-Rückbuchung zählt als <i>Zugang</i>. Reservierungen entstehen nur über Vorgänge, nicht über die manuelle Buchung. Vor dieser Version vorgemerkte Teile sind noch nicht abgebucht und werden wie bisher erst beim Abschluss gebucht.</p>
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
 </section>
 

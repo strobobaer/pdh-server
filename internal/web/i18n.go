@@ -147,6 +147,7 @@ func langOf(data any) string {
 func bindLang(t *template.Template, lang string) *template.Template {
 	return t.Funcs(template.FuncMap{
 		"t":     func(s string, args ...any) string { return tr(lang, s, args...) },
+		"th":    func(s string, args ...any) template.HTML { return template.HTML(tr(lang, s, args...)) },
 		"lang":  func() string { return lang },
 		"langs": func() []langInfo { return supportedLangs },
 	})
@@ -156,6 +157,9 @@ func bindLang(t *template.Template, lang string) *template.Template {
 func i18nFuncs() template.FuncMap {
 	return template.FuncMap{
 		"t":     func(s string, args ...any) string { return tr(defaultLang, s, args...) },
+		// th: wie t, fuer Saetze mit eigener Auszeichnung (<b>, <i class=…>, <code>);
+		// die Uebersetzungsdateien gehoeren zum Projekt und sind vertrauenswuerdig
+		"th": func(s string, args ...any) template.HTML { return template.HTML(tr(defaultLang, s, args...)) },
 		"lang":  func() string { return defaultLang },
 		"langs": func() []langInfo { return supportedLangs },
 	}
@@ -178,4 +182,62 @@ func (h *Handler) LangSwitchWeb(w http.ResponseWriter, r *http.Request) {
 		back = "/"
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// Wochentage (Sonntag zuerst) und Monate je Sprache fuer longDate.
+var langWeekdays = map[string][7]string{
+	"de": {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"},
+	"en": {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"},
+	"ro": {"duminică", "luni", "marți", "miercuri", "joi", "vineri", "sâmbătă"},
+	"tr": {"Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"},
+	"mk": {"недела", "понеделник", "вторник", "среда", "четврток", "петок", "сабота"},
+}
+
+var langMonths = map[string][12]string{
+	"de": {"Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"},
+	"en": {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"},
+	"ro": {"ianuarie", "februarie", "martie", "aprilie", "mai", "iunie", "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"},
+	"tr": {"Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"},
+	"mk": {"јануари", "февруари", "март", "април", "мај", "јуни", "јули", "август", "септември", "октомври", "ноември", "декември"},
+}
+
+// longDate: z. B. "Donnerstag, 1. Oktober 2026" bzw. "Thursday, 1 October 2026".
+func longDate(lang string, t time.Time) string {
+	wd, ok := langWeekdays[lang]
+	if !ok {
+		lang = defaultLang
+		wd = langWeekdays[lang]
+	}
+	m := langMonths[lang][t.Month()-1]
+	switch lang {
+	case "de":
+		return fmt.Sprintf("%s, %d. %s %d", wd[t.Weekday()], t.Day(), m, t.Year())
+	case "tr":
+		return fmt.Sprintf("%d %s %d %s", t.Day(), m, t.Year(), wd[t.Weekday()])
+	}
+	return fmt.Sprintf("%s, %d %s %d", wd[t.Weekday()], t.Day(), m, t.Year())
+}
+
+// ctxLang: Sprache aus dem Request-Kontext (LangMiddleware), sonst Deutsch.
+func ctxLang(ctx context.Context) string {
+	if v, ok := ctx.Value(langCtxKey{}).(string); ok && v != "" {
+		return v
+	}
+	return defaultLang
+}
+
+// shortWeekday: Wochentag kurz (So=0) in der Sprache.
+var langShortWeekdays = map[string][7]string{
+	"de": {"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"},
+	"en": {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
+	"ro": {"Dum", "Lun", "Mar", "Mie", "Joi", "Vin", "Sâm"},
+	"tr": {"Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"},
+	"mk": {"Нед", "Пон", "Вто", "Сре", "Чет", "Пет", "Саб"},
+}
+
+func shortWeekday(lang string, wd time.Weekday) string {
+	if d, ok := langShortWeekdays[lang]; ok {
+		return d[wd]
+	}
+	return langShortWeekdays[defaultLang][wd]
 }

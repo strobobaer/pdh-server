@@ -3,7 +3,7 @@
 
 {{define "content"}}
 <div style="margin-bottom:18px">
-  <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">Guten {{.Greeting}}, {{.UserFirstName}}</h1>
+  <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">{{if eq .Greeting "Morgen"}}{{t "Guten Morgen"}}{{else if eq .Greeting "Abend"}}{{t "Guten Abend"}}{{else}}{{t "Guten Tag"}}{{end}}, {{.UserFirstName}}</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
 </div>
 
@@ -12,19 +12,19 @@
 <!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen -->
 <div class="card">
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-    <span>Zeitstrahl</span>
+    <span>{{t "Zeitstrahl"}}</span>
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
-      <span><i class="ti ti-square-filled" style="color:#3fae86"></i> Störungen</span>
-      <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> Tickets</span>
-      <span><i class="ti ti-square-filled" style="color:#c99a3c"></i> Wartung</span>
-      <span><i class="ti ti-square-filled" style="color:#9d7fc9"></i> Aufgaben</span>
-      <span><i class="ti ti-square-filled" style="color:#e05a5a"></i> Überfällig</span>
-      <span style="opacity:.5"><i class="ti ti-square-filled"></i> ausgeblasst = kein Termin, +30 Tage geschätzt</span>
+      <span><i class="ti ti-square-filled" style="color:#3fae86"></i> {{t "Störungen"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> {{t "Tickets"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#c99a3c"></i> {{t "Wartung"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#9d7fc9"></i> {{t "Aufgaben"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#e05a5a"></i> {{t "Überfällig"}}</span>
+      <span style="opacity:.5"><i class="ti ti-square-filled"></i> {{t "ausgeblasst = kein Termin, +30 Tage geschätzt"}}</span>
     </div>
   </div>
   <div id="dash-gantt-target" style="overflow-x:auto"></div>
   <div id="dash-gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">
-    Keine Einträge mit Terminen vorhanden.
+    {{t "Keine Einträge mit Terminen vorhanden."}}
   </div>
 </div>
 
@@ -32,8 +32,8 @@
   <!-- Störungen -->
   <div class="card">
     <div class="card-title">
-      Aktive Störungen
-      <a href="/faults" class="card-action">alle anzeigen →</a>
+      {{t "Aktive Störungen"}}
+      <a href="/faults" class="card-action">{{t "alle anzeigen →"}}</a>
     </div>
     {{if .Faults}}
     {{range .Faults}}
@@ -46,14 +46,14 @@
     </div>
     {{end}}
     {{else}}
-    <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine aktiven Störungen</div>
+    <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine aktiven Störungen"}}</div>
     {{end}}
   </div>
 
   <!-- Schichtplan -->
   <div class="card">
     <div class="card-title">
-      Schichtplan KW {{.WeekNumber}}
+      {{t "Schichtplan KW %d" .WeekNumber}}
       <span style="font-size:11px;color:var(--muted)">{{.WeekRange}}</span>
     </div>
     {{if .WeekPlan}}
@@ -67,12 +67,12 @@
       {{end}}
     </div>
     <div style="margin-top:10px;font-size:10px;color:var(--muted);display:flex;gap:10px">
-      <span style="color:#6ee7b7">■ Früh</span>
-      <span style="color:#fcd34d">■ Spät</span>
-      <span style="color:#a5b4fc">■ Nacht</span>
+      <span style="color:#6ee7b7">{{t "■ Früh"}}</span>
+      <span style="color:#fcd34d">{{t "■ Spät"}}</span>
+      <span style="color:#a5b4fc">{{t "■ Nacht"}}</span>
     </div>
     {{else}}
-    <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Schichten diese Woche</div>
+    <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine Schichten diese Woche"}}</div>
     {{end}}
   </div>
 </div>
@@ -80,8 +80,8 @@
 <!-- Wartung heute -->
 <div class="card">
   <div class="card-title">
-    Wartung fällig
-    <a href="/maintenance" class="card-action">alle anzeigen →</a>
+    {{t "Wartung fällig"}}
+    <a href="/maintenance" class="card-action">{{t "alle anzeigen →"}}</a>
   </div>
   {{if .MaintenanceDue}}
   {{range .MaintenanceDue}}
@@ -94,7 +94,7 @@
   </div>
   {{end}}
   {{else}}
-  <div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Wartung fällig</div>
+  <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine Wartung fällig"}}</div>
   {{end}}
 </div>
 {{end}}

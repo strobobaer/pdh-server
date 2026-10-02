@@ -80,13 +80,13 @@
       <!-- 1 Material -->
       <div class="cw-pane" data-step="0">
         <h3><i class="ti ti-package"></i> Welches Material wurde verwendet?</h3>
-        <p class="hint">Vorgemerkte Teile werden beim Abschluss aus dem Lager gebucht.</p>
+        <p class="hint">Reservierte Teile sind bereits vom Lagerplatz abgebucht und werden beim Abschluss zum Verbrauch. Nicht benötigte Mengen vorher zurückbuchen.</p>
         <div class="cw-list" id="cw-parts"><div class="cw-empty">Lädt…</div></div>
         <div class="cw-add">
           <div><label class="form-label">Ersatzteil suchen</label><input class="form-input" id="cw-part-q" placeholder="Name oder Teilenummer" autocomplete="off"></div>
           <div><label class="form-label">Lagerort</label><select class="form-input" id="cw-part-loc"><option value="">Lädt…</option></select></div>
           <div><label class="form-label">Menge</label><input class="form-input" id="cw-part-qty" type="number" min="0.01" step="any" value="1"></div>
-          <button type="button" class="btn btn-primary" onclick="cwAddPart()"><i class="ti ti-plus"></i> Vormerken</button>
+          <button type="button" class="btn btn-primary" onclick="cwAddPart()"><i class="ti ti-plus"></i> Reservieren</button>
         </div>
         <div class="cw-results" id="cw-part-results"></div>
         <div class="sc-sub" id="cw-part-sel" style="font-size:12px;margin:-4px 0 10px;color:var(--accent)"></div>
@@ -197,7 +197,7 @@
   function check(step){
     const i = S.info;
     if(!i) return 'Daten werden noch geladen…';
-    if(step === 0 && !S.parts.length && !$('cw-noparts').checked) return 'Bitte Material vormerken oder „Kein Material verwendet“ ankreuzen.';
+    if(step === 0 && !S.parts.length && !$('cw-noparts').checked) return 'Bitte Material reservieren oder „Kein Material verwendet“ ankreuzen.';
     if(step === 1){
       const min = +$('cw-min').value || 0;
       if(min < 0 || min > 1440) return 'Die Dauer muss zwischen 0 und 1440 Minuten liegen.';
@@ -224,9 +224,10 @@
       const json = await res.json();
       S.parts = json.data || [];
     }catch(e){ S.parts = []; }
-    $('cw-parts').innerHTML = S.parts.length ? S.parts.map(p => '<div class="cw-row"><i class="ti ti-package"></i><div class="grow">' + esc(p.part_name) + '<small>' + esc(p.part_number || '') + (p.storage_name ? ' · ' + esc(p.storage_name) : '') + '</small></div><b>' + esc(p.qty) + '</b><button type="button" class="btn btn-icon" style="width:32px;height:32px" title="Entfernen" onclick="cwDelPart(\'' + esc(p.id) + '\')"><i class="ti ti-x"></i></button></div>').join('') : '<div class="cw-empty">Noch kein Material vorgemerkt.</div>';
+    $('cw-parts').innerHTML = S.parts.length ? S.parts.map(p => '<div class="cw-row"><i class="ti ti-package"></i><div class="grow">' + esc(p.part_name) + '<small>' + esc(p.part_number || '') + (p.storage_name ? ' · ' + esc(p.storage_name) : '') + pdhReservedTag(p, S.type, S.id, 'cwReloadParts') + '</small></div><b>' + esc(p.qty) + '</b><button type="button" class="btn btn-icon" style="width:32px;height:32px" title="Entfernen" onclick="cwDelPart(\'' + esc(p.id) + '\')"><i class="ti ti-x"></i></button></div>').join('') : '<div class="cw-empty">Noch kein Material reserviert.</div>';
     if(S.parts.length) $('cw-noparts').checked = false;
   }
+  window.cwReloadParts = function(){ loadParts(); };
   window.cwDelPart = async function(pid){
     await fetch(S.info.parts_url + '/' + encodeURIComponent(pid), {method: 'DELETE', credentials: 'same-origin'});
     loadParts();
@@ -245,7 +246,7 @@
     if(q.length < 2){ box.style.display = 'none'; return; }
     if(!partsCache){ try{ const r = await fetch('/api/v1/inventory/', {credentials: 'same-origin'}); const j = await r.json(); partsCache = j.data || j || []; }catch(e){ partsCache = []; } }
     const hits = partsCache.filter(p => (p.name || '').toLowerCase().includes(q) || (p.part_number || '').toLowerCase().includes(q)).slice(0, 20);
-    box.innerHTML = hits.length ? hits.map(p => '<div data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">' + esc(p.name) + ' <span style="color:var(--muted)">' + esc(p.part_number || '') + ' · Bestand ' + esc(p.stock_qty) + '</span></div>').join('') : '<div style="color:var(--muted)">Keine Treffer</div>';
+    box.innerHTML = hits.length ? hits.map(p => '<div data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">' + esc(p.name) + ' <span style="color:var(--muted)">' + esc(p.part_number || '') + ' · Bestand ' + esc(p.stock_qty) + (p.reserved_qty > 0 ? ' (' + esc(p.reserved_qty) + ')' : '') + '</span></div>').join('') : '<div style="color:var(--muted)">Keine Treffer</div>';
     box.style.display = 'block';
   });
   $('cw-part-results').addEventListener('click', function(e){
@@ -262,9 +263,9 @@
       const res = await fetch(S.info.parts_url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({part_id: S.picked, storage_node_id: loc, qty})});
       const json = await res.json().catch(() => ({}));
       if(!res.ok || json.success === false) throw new Error(json.error || 'HTTP ' + res.status);
-      S.picked = ''; $('cw-part-sel').textContent = ''; $('cw-part-qty').value = '1'; msg('ok', 'Vorgemerkt.');
+      S.picked = ''; $('cw-part-sel').textContent = ''; $('cw-part-qty').value = '1'; msg('ok', 'Reserviert und vom Lager abgebucht.');
       loadParts();
-    }catch(e){ msg('err', 'Nicht vorgemerkt: ' + e.message); }
+    }catch(e){ msg('err', 'Nicht reserviert: ' + e.message); }
   };
 
   // ── Zeit ──

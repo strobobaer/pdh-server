@@ -93,7 +93,7 @@
     <div style="margin-bottom:16px">
       <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">Ersatzteile</div>
       <div id="maint-parts-list" style="margin-bottom:10px;font-size:12px;color:var(--muted)">Lade...</div>
-      <button type="button" class="btn" onclick="openMaintPartModal()"><i class="ti ti-package"></i> Ersatzteil vormerken</button>
+      <button type="button" class="btn" onclick="openMaintPartModal()"><i class="ti ti-package"></i> Ersatzteil reservieren</button>
       <label style="display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px">
         <input type="checkbox" name="no_parts_needed"> Keine Ersatzteile benötigt
       </label>
@@ -115,7 +115,7 @@
 <!-- Ersatzteil-vormerken Popup -->
 <div id="maint-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
-    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil vormerken</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil reservieren</div>
     <div class="form-group">
       <label class="form-label">Ersatzteil</label>
       <input id="ma-part-search" class="form-input" placeholder="Suchen..." oninput="filterMaintParts()" autocomplete="off">
@@ -134,7 +134,7 @@
     <div id="ma-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <button type="button" class="btn" onclick="closeMaintPartModal()">Abbrechen</button>
-      <button type="button" class="btn btn-primary" onclick="bookMaintPart()">Vormerken</button>
+      <button type="button" class="btn btn-primary" onclick="bookMaintPart()">Reservieren</button>
     </div>
   </div>
 </div>
@@ -467,8 +467,8 @@ async function loadMaintPartsList(){
     var json = await res.json();
     var pending = json.data || json || [];
     box.innerHTML = pending.length ? pending.map(function(p){
-      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escMa(p.part_name)+' <span style="color:var(--muted)">('+escMa(p.part_number)+')</span></div><div class="li-sub">'+p.qty+' Stk · '+escMa(p.storage_name)+'</div></div><button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="removeMaintPendingPart(THISID)"><i class="ti ti-x"></i></button></div>'.replace('THISID', "'"+p.id+"'");
-    }).join('') : '<div style="padding:4px 0">Noch keine Ersatzteile vorgemerkt</div>';
+      return '<div class="li"><div class="li-text"><div class="li-title" style="font-size:13px">'+escMa(p.part_name)+' <span style="color:var(--muted)">('+escMa(p.part_number)+')</span></div><div class="li-sub">'+p.qty+' Stk · '+escMa(p.storage_name)+''+pdhReservedTag(p,'maintenance_task',MAINT_TASK_ID,'loadMaintPartsList')+'</div></div><button type="button" class="btn" style="font-size:11px;color:var(--red)" onclick="removeMaintPendingPart(THISID)"><i class="ti ti-x"></i></button></div>'.replace('THISID', "'"+p.id+"'");
+    }).join('') : '<div style="padding:4px 0">Noch keine Ersatzteile reserviert</div>';
   }catch(e){ box.innerHTML = '<span style="color:var(--red)">Fehler beim Laden</span>'; }
 }
 async function removeMaintPendingPart(id){

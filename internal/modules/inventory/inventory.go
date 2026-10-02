@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"pdh/internal/core/addins"
 	"pdh/pkg/middleware"
@@ -25,6 +26,8 @@ const (
 	MovementTransfer  MovementType = "transfer"
 	MovementCorrect   MovementType = "correction"
 	MovementInventory MovementType = "inventory"
+	MovementReserve   MovementType = "reserve"   // Reservierung: vorab ausgebucht
+	MovementUnreserve MovementType = "unreserve" // Rueckbuchung einer Reservierung
 
 	StatusOK       StockStatus = "ok"
 	StatusLow      StockStatus = "low"
@@ -46,6 +49,7 @@ type SparePart struct {
 	ManufacturerPart string      `json:"manufacturer_part,omitempty"`
 	Unit             string      `json:"unit"`
 	StockQty         float64     `json:"stock_qty"`
+	ReservedQty      float64     `json:"reserved_qty"` // bereits abgebuchte, noch nicht verbrauchte Menge
 	MinQty           float64     `json:"min_qty"`
 	CriticalQty      float64     `json:"critical_qty"`
 	ReorderQty       float64     `json:"reorder_qty"`
@@ -66,6 +70,7 @@ type PartStock struct {
 	StorageName   string  `json:"storage_name"`
 	StorageType   string  `json:"storage_type"`
 	Qty           float64 `json:"qty"`
+	ReservedQty   float64 `json:"reserved_qty"`
 }
 
 type StockMovement struct {
@@ -83,6 +88,7 @@ type StockMovement struct {
 	TicketID          string       `json:"ticket_id,omitempty"`
 	MaintenanceTaskID string       `json:"maintenance_task_id,omitempty"`
 	TaskID            string       `json:"task_id,omitempty"`
+	ReservationID     string       `json:"reservation_id,omitempty"`
 	CreatedBy         string       `json:"created_by"`
 	CreatedAt         time.Time    `json:"created_at"`
 	PartName          string       `json:"part_name,omitempty"`
@@ -216,7 +222,7 @@ func scanPart(row interface{ Scan(...interface{}) error }) (*SparePart, error) {
 	p := &SparePart{}
 	err := row.Scan(&p.ID, &p.PartNumber, &p.Name, &p.Description, &p.Category, &p.Manufacturer,
 		&p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerPart, &p.Unit, &p.StockQty, &p.MinQty, &p.CriticalQty, &p.ReorderQty,
-		&p.Price, &p.InfrastructureID, &p.Active, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &p.InfraName)
+		&p.Price, &p.InfrastructureID, &p.Active, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt, &p.InfraName, &p.ReservedQty)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +233,8 @@ func scanPart(row interface{ Scan(...interface{}) error }) (*SparePart, error) {
 const partSelect = `SELECT sp.id, sp.part_number, sp.name, COALESCE(sp.description,''), COALESCE(sp.category,''),
 	COALESCE(sp.manufacturer,''), sp.manufacturer_id, COALESCE(bp.name,''), COALESCE(sp.manufacturer_part,''), sp.unit, sp.stock_qty, sp.min_qty,
 	sp.critical_qty, sp.reorder_qty, sp.price, sp.infrastructure_id, sp.active, sp.created_by, sp.created_at,
-	sp.updated_at, COALESCE(i.name,'')
+	sp.updated_at, COALESCE(i.name,''),
+	COALESCE((SELECT SUM(rv.qty) FROM spare_part_reservations rv WHERE rv.part_id = sp.id), 0)::float8
 	FROM spare_parts sp LEFT JOIN infrastructure i ON sp.infrastructure_id = i.id LEFT JOIN business_partners bp ON sp.manufacturer_id = bp.id`
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*SparePart, error) {
@@ -284,10 +291,11 @@ func (r *Repository) GetStockAtLocation(ctx context.Context, partID, storageNode
 // GetStockLocations: an welchen Lagerorten liegt dieses Teil aktuell.
 func (r *Repository) GetStockLocations(ctx context.Context, partID string) ([]*PartStock, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT sps.part_id, sps.storage_node_id, sn.name, sn.type::text, sps.qty
+		SELECT sps.part_id, sps.storage_node_id, sn.name, sn.type::text, sps.qty,
+			COALESCE((SELECT SUM(rv.qty) FROM spare_part_reservations rv WHERE rv.part_id = sps.part_id AND rv.storage_node_id = sps.storage_node_id), 0)::float8
 		FROM spare_part_stock sps
 		JOIN storage_nodes sn ON sps.storage_node_id = sn.id
-		WHERE sps.part_id=$1 AND sps.qty <> 0
+		WHERE sps.part_id=$1 AND (sps.qty <> 0 OR EXISTS (SELECT 1 FROM spare_part_reservations rv WHERE rv.part_id = sps.part_id AND rv.storage_node_id = sps.storage_node_id))
 		ORDER BY sn.name`, partID)
 	if err != nil {
 		return nil, err
@@ -296,7 +304,7 @@ func (r *Repository) GetStockLocations(ctx context.Context, partID string) ([]*P
 	var out []*PartStock
 	for rows.Next() {
 		ps := &PartStock{}
-		if err := rows.Scan(&ps.PartID, &ps.StorageNodeID, &ps.StorageName, &ps.StorageType, &ps.Qty); err != nil {
+		if err := rows.Scan(&ps.PartID, &ps.StorageNodeID, &ps.StorageName, &ps.StorageType, &ps.Qty, &ps.ReservedQty); err != nil {
 			return nil, err
 		}
 		out = append(out, ps)
@@ -313,7 +321,15 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := bookTx(ctx, tx, m); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
+// bookTx: Buchung innerhalb einer bestehenden Transaktion (auch fuer
+// Reservierungen genutzt).
+func bookTx(ctx context.Context, tx pgx.Tx, m *StockMovement) error {
 	var current float64
 	tx.QueryRow(ctx, `SELECT COALESCE(qty,0) FROM spare_part_stock WHERE part_id=$1 AND storage_node_id=$2`,
 		m.PartID, m.StorageNodeID).Scan(&current)
@@ -323,8 +339,10 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 	switch m.Type {
 	case MovementIn:
 		newQty = current + m.Qty
-	case MovementOut, MovementTransfer:
+	case MovementOut, MovementTransfer, MovementReserve:
 		newQty = current - m.Qty
+	case MovementUnreserve:
+		newQty = current + m.Qty
 	case MovementCorrect, MovementInventory:
 		newQty = m.Qty
 		m.Qty = newQty - current
@@ -352,11 +370,15 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 	if m.TaskID != "" {
 		taskIDArg = m.TaskID
 	}
+	var reservationArg interface{}
+	if m.ReservationID != "" {
+		reservationArg = m.ReservationID
+	}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id, reservation_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at`,
-		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg,
+		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg, reservationArg,
 	).Scan(&m.ID, &m.CreatedAt); err != nil {
 		return err
 	}
@@ -366,8 +388,7 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 		WHERE id=$1`, m.PartID); err != nil {
 		return err
 	}
-
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (r *Repository) GetMovements(ctx context.Context, partID string) ([]*StockMovement, error) {
@@ -574,6 +595,9 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 	}
 	if locked {
 		return nil, fmt.Errorf("dieser lagerort ist aktuell durch eine laufende inventur gesperrt")
+	}
+	if in.Type == MovementReserve || in.Type == MovementUnreserve {
+		return nil, fmt.Errorf("reservierungen werden über den vorgang gebucht")
 	}
 	if (in.Type == MovementIn || in.Type == MovementOut) && in.Qty <= 0 {
 		return nil, fmt.Errorf("menge muss größer als 0 sein")

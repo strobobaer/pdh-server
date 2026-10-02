@@ -533,6 +533,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
+	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
 	r.Get("/create/options", h.CreateOptionsWeb)
 	r.Get("/create/similar", h.CreateSimilarWeb)
 	r.Post("/suggest/accept", h.SuggestAcceptWeb)
@@ -1088,7 +1089,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	data := DashboardData{
 		BaseData:   h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
 		Greeting:   greeting(),
-		DateStr:    now.Format("Mo 02. January 2006"),
+		DateStr:    longDate(h.requestLang(r), now),
 		WeekNumber: week,
 		WeekRange: fmt.Sprintf("%s–%s",
 			now.AddDate(0, 0, -int(now.Weekday())+1).Format("02.01"),

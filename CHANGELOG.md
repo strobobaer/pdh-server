@@ -10,6 +10,23 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.22.0] – 2026-10-02
+
+### Neu
+- Ersatzteil-Reservierung: Teile für Störungen, Tickets, Aufgaben und Wartungen werden reserviert und dabei sofort vom gewählten Lagerplatz abgebucht. Liegt dort nicht genug, wird abgelehnt und die freie Menge genannt
+- Reservierte Mengen stehen in Klammern neben dem Bestand: in der Ersatzteilliste, beim Teil (Kopf, Kennzahl, je Lagerplatz), in der Seitenleiste und bei der Teilesuche im Abschluss-Assistenten
+- Nicht benötigte Mengen lassen sich zurückbuchen, ganz oder teilweise, an der Position im Vorgang, im Abschluss-Assistenten oder beim Teil in der neuen Karte „Reservierungen“ (Reiter Lager & Bewegungen)
+- Beim Abschluss wird die Reservierung zum Verbrauch des Vorgangs, ohne doppelte Abbuchung. Wird ein Vorgang verworfen, archiviert oder gelöscht, gehen offene Reservierungen automatisch an ihren Lagerplatz zurück
+- Neue Bewegungsarten „Reservierung“ und „Rückbuchung Reservierung“ in der Bewegungsliste. Bei den Verknüpfungen eines Vorgangs stehen reservierte Teile als „reserviert“
+- Mehrsprachigkeit, Stufe 2: Dashboard und alle Dashboard-Widgets sind übersetzt (Begrüßung, Kennzahlen, Listen, Status, Schweregrad, Wochentage, Schnellaktionen, Widget-Katalog)
+
+### Geändert
+- „Ersatzteil vormerken“ heißt jetzt „Ersatzteil reservieren“. Bereits vorgemerkte Teile sind noch nicht abgebucht und werden wie bisher erst beim Abschluss gebucht
+- Manuelle Buchungen können keine Reservierungsarten buchen; Reservierungen entstehen nur über Vorgänge
+
+### Behoben
+- Dashboard-Kopfzeile: Das Datum zeigte immer „Mo“ und den englischen Monatsnamen; jetzt mit richtigem Wochentag in der eingestellten Sprache
+
 ## [0.21.0] – 2026-10-01
 
 ### Neu

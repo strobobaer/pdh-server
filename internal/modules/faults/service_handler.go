@@ -163,7 +163,14 @@ func (s *Service) Resolve(ctx context.Context, faultID, resolution, rootCause, u
 	// entfernt, damit ein Wiederholungsversuch nach einem Fehler nicht
 	// bereits gebuchte Teile doppelt bucht.
 	if invService != nil {
+		// Reservierungen sind bereits abgebucht und werden nur noch zum Verbrauch
+		if err := invService.ConsumeReservations(ctx, "fault", faultID); err != nil {
+			return fmt.Errorf("reservierungen konnten nicht verbucht werden: %w", err)
+		}
 		for _, pp := range pendingParts {
+			if pp.Reserved {
+				continue
+			}
 			_, bookErr := invService.Book(ctx, &inventory.BookMovementInput{
 				PartID: pp.PartID, Type: inventory.MovementOut, Qty: pp.Qty,
 				StorageNodeID: pp.StorageNodeID, Reference: "Störung " + faultID, FaultID: faultID,

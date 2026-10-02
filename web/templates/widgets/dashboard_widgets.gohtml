@@ -95,28 +95,28 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 <div id="dw-root">
   <div class="dw-bar">
     <span class="grow"></span>
-    <span id="dw-hint" class="sc-sub" style="display:none;font-size:12px;color:var(--muted)">Widgets aus dem Katalog ins Raster ziehen (oder <b>+</b>), im Raster verschieben · <i class="ti ti-arrows-horizontal"></i> Breite · <i class="ti ti-settings"></i> Einstellungen · <i class="ti ti-x"></i> entfernen</span>
-    <button type="button" class="btn btn-small" id="dw-edit-btn" onclick="dwEdit(true)"><i class="ti ti-layout-dashboard"></i> Dashboard anpassen</button>
-    <button type="button" class="btn btn-small" id="dw-reset-btn" style="display:none" onclick="dwReset()" title="Standard-Zusammenstellung wiederherstellen"><i class="ti ti-restore"></i> Standard</button>
-    <button type="button" class="btn btn-small" id="dw-cancel-btn" style="display:none" onclick="location.reload()">Abbrechen</button>
-    <button type="button" class="btn btn-small btn-primary" id="dw-save-btn" style="display:none" onclick="dwSave()"><i class="ti ti-check"></i> Fertig</button>
+    <span id="dw-hint" class="sc-sub" style="display:none;font-size:12px;color:var(--muted)">{{th "Widgets aus dem Katalog ins Raster ziehen (oder <b>+</b>), im Raster verschieben · <i class='ti ti-arrows-horizontal'></i> Breite · <i class='ti ti-settings'></i> Einstellungen · <i class='ti ti-x'></i> entfernen"}}</span>
+    <button type="button" class="btn btn-small" id="dw-edit-btn" onclick="dwEdit(true)"><i class="ti ti-layout-dashboard"></i> {{t "Dashboard anpassen"}}</button>
+    <button type="button" class="btn btn-small" id="dw-reset-btn" style="display:none" onclick="dwReset()" title="{{t "Standard-Zusammenstellung wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
+    <button type="button" class="btn btn-small" id="dw-cancel-btn" style="display:none" onclick="location.reload()">{{t "Abbrechen"}}</button>
+    <button type="button" class="btn btn-small btn-primary" id="dw-save-btn" style="display:none" onclick="dwSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
   </div>
 
   <div class="dw-cat" id="dw-cat">
-    <div style="font-size:13px;font-weight:600"><i class="ti ti-apps"></i> Widget-Katalog</div>
+    <div style="font-size:13px;font-weight:600"><i class="ti ti-apps"></i> {{t "Widget-Katalog"}}</div>
     {{range .WidgetCatalog}}
     <h4>{{.Name}}</h4>
     <div class="dw-cat-list" data-dw-catalog>
       {{range .Items}}<div class="dw-cat-item" data-type="{{.Type}}" data-name="{{.Name}}" data-icon="{{.Icon}}" data-size="{{.Size}}" data-refresh="{{.Refresh}}" data-config="{{.Config}}">
         <i class="ti {{.Icon}}"></i><div><b>{{.Name}}</b><small>{{.Desc}}</small></div>
-        <button type="button" class="add" onclick="dwAddFromCatalog(this.closest('.dw-cat-item'))" title="Hinzufügen" aria-label="{{.Name}} hinzufügen"><i class="ti ti-plus" style="font-size:15px;margin:0"></i></button>
+        <button type="button" class="add" onclick="dwAddFromCatalog(this.closest('.dw-cat-item'))" title="{{t "Hinzufügen"}}" aria-label="{{t "%s hinzufügen" .Name}}"><i class="ti ti-plus" style="font-size:15px;margin:0"></i></button>
       </div>{{end}}
     </div>
     {{end}}
   </div>
 
   <div class="dw-grid" id="dw-grid">
-    {{range .Widgets}}{{template "dw-card" .}}{{else}}<div class="dw-empty" id="dw-empty">Noch keine Widgets. Über <b>Dashboard anpassen</b> stellst du dir dein Dashboard zusammen.</div>{{end}}
+    {{range .Widgets}}{{template "dw-card" .}}{{else}}<div class="dw-empty" id="dw-empty">{{th "Noch keine Widgets. Über <b>Dashboard anpassen</b> stellst du dir dein Dashboard zusammen."}}</div>{{end}}
   </div>
 </div>
 
@@ -243,17 +243,17 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-head">
     <i class="ti {{.Def.Icon}}"></i><span class="dw-title" data-default="{{.Def.Name}}">{{.Title}}</span>
     <span class="dw-tools">
-      <button type="button" data-dw-act="size" title="Breite ändern" aria-label="Breite ändern"><i class="ti ti-arrows-horizontal"></i></button>
-      <button type="button" data-dw-act="cfg" title="Einstellungen" aria-label="Einstellungen"><i class="ti ti-settings"></i></button>
-      <button type="button" data-dw-act="remove" title="Entfernen" aria-label="Entfernen"><i class="ti ti-x"></i></button>
+      <button type="button" data-dw-act="size" title="{{t "Breite ändern"}}" aria-label="{{t "Breite ändern"}}"><i class="ti ti-arrows-horizontal"></i></button>
+      <button type="button" data-dw-act="cfg" title="{{t "Einstellungen"}}" aria-label="{{t "Einstellungen"}}"><i class="ti ti-settings"></i></button>
+      <button type="button" data-dw-act="remove" title="{{t "Entfernen"}}" aria-label="{{t "Entfernen"}}"><i class="ti ti-x"></i></button>
     </span>
   </div>
   <div class="dw-cfg">
-    <label>Überschrift (leer = Standard)</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
-    <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code></label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
+    <label>{{t "Überschrift (leer = Standard)"}}</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
+    <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>{{th "Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code>"}}</label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
     <div data-cfg-kind="note" class="dw-note-store"><textarea data-cfg="note" maxlength="2000" hidden>{{with .Config}}{{index . "note"}}{{end}}</textarea></div>
   </div>
-  <div class="dw-body"><span class="dw-loading">Lädt…</span></div>
+  <div class="dw-body"><span class="dw-loading">{{t "Lädt…"}}</span></div>
 </div>
 {{end}}
 
@@ -264,18 +264,18 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 {{else if eq .Def.Type "list_mine" "list_faults" "list_maintenance" "list_stock"}}
   <div class="dw-list">{{range .Data}}
     <a class="dw-li" href="{{.URL}}"><i class="ti {{.Icon}}"></i><span class="tx"><span class="t">{{.Title}}</span>{{if .Sub}}<span class="s">{{.Sub}}</span>{{end}}</span>{{if .Badge}}<span class="badge {{.BadgeClass}}">{{.Badge}}</span>{{end}}</a>
-  {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> Nichts offen – alles erledigt.</div>{{end}}</div>
+  {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{t "Nichts offen – alles erledigt."}}</div>{{end}}</div>
 {{else if eq .Def.Type "quick_actions"}}
   <div class="dw-qa">{{range .Data}}<a class="q-{{.Color}}" href="{{.URL}}"><i class="ti {{.Icon}}"></i>{{.Name}}</a>{{end}}</div>
 {{else if eq .Def.Type "quick_links"}}
   <div class="dw-links">{{range .Data}}<a href="{{.URL}}"{{if not (hasPrefix .URL "/")}} target="_blank" rel="noopener"{{end}}><i class="ti {{if hasPrefix .URL "/"}}ti-arrow-right{{else}}ti-external-link{{end}}"></i>{{.Name}}</a>
-  {{else}}<div class="dw-none">Noch keine Links – unter <b>Dashboard anpassen</b> → <i class="ti ti-settings"></i> eintragen.</div>{{end}}</div>
+  {{else}}<div class="dw-none">{{th "Noch keine Links – unter <b>Dashboard anpassen</b> → <i class='ti ti-settings'></i> eintragen."}}</div>{{end}}</div>
 {{else if eq .Def.Type "note"}}
-  <textarea class="dw-note" maxlength="2000" placeholder="Hier schreiben – wird automatisch gespeichert" aria-label="Notizzettel">{{.Data}}</textarea><div class="dw-note-st"></div>
+  <textarea class="dw-note" maxlength="2000" placeholder="{{t "Hier schreiben – wird automatisch gespeichert"}}" aria-label="{{t "Notizzettel"}}">{{.Data}}</textarea><div class="dw-note-st"></div>
 {{else if eq .Def.Type "chart_trend"}}
-  {{with .Data}}<div class="dw-chart">{{range .Days}}<div class="d" title="{{.Label}}: {{.Tickets}} Tickets, {{.Faults}} Störungen"><div class="bars">{{if $.Data.ShowTickets}}<span class="b bt" style="height:{{.HT}}%"></span>{{end}}{{if $.Data.ShowFaults}}<span class="b bf" style="height:{{.HF}}%"></span>{{end}}</div><span class="l">{{.Label}}</span></div>{{end}}</div>
-  <div class="dw-legend">{{if .ShowTickets}}<span class="lt">Tickets ({{.SumTickets}})</span>{{end}}{{if .ShowFaults}}<span class="lf">Störungen ({{.SumFaults}})</span>{{end}}</div>{{end}}
+  {{with .Data}}<div class="dw-chart">{{range .Days}}<div class="d" title="{{t "%s: %d Tickets, %d Störungen" .Label .Tickets .Faults}}"><div class="bars">{{if $.Data.ShowTickets}}<span class="b bt" style="height:{{.HT}}%"></span>{{end}}{{if $.Data.ShowFaults}}<span class="b bf" style="height:{{.HF}}%"></span>{{end}}</div><span class="l">{{.Label}}</span></div>{{end}}</div>
+  <div class="dw-legend">{{if .ShowTickets}}<span class="lt">{{t "Tickets (%d)" .SumTickets}}</span>{{end}}{{if .ShowFaults}}<span class="lf">{{t "Störungen (%d)" .SumFaults}}</span>{{end}}</div>{{end}}
 {{else if eq .Def.Type "my_shifts"}}
-  <div class="dw-shifts">{{range .Data}}<div class="d{{if .Today}} today{{end}}"><div>{{.Day}} {{.Date}}</div><div class="sh" {{if .Color}}style="color:{{css .Color}}"{{end}} title="{{.Name}}">{{if .Short}}{{.Short}}{{else}}–{{end}}</div><div class="tm">{{if .Time}}{{.Time}}{{else}}frei{{end}}</div></div>{{end}}</div>
+  <div class="dw-shifts">{{range .Data}}<div class="d{{if .Today}} today{{end}}"><div>{{.Day}} {{.Date}}</div><div class="sh" {{if .Color}}style="color:{{css .Color}}"{{end}} title="{{.Name}}">{{if .Short}}{{.Short}}{{else}}–{{end}}</div><div class="tm">{{if .Time}}{{.Time}}{{else}}{{t "frei"}}{{end}}</div></div>{{end}}</div>
 {{end}}
 {{end}}

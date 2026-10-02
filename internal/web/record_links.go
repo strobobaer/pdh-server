@@ -207,7 +207,7 @@ func (h *Handler) linkParts(ctx context.Context, module, id string) linkGroup {
 		WHERE sm.%s = $1::uuid AND sm.type IN ('out', 'in')
 		GROUP BY sp.id, sp.part_number, sp.name, sp.unit
 		UNION ALL
-		SELECT sp.part_number || ' · ' || sp.name, 'vorgemerkt: ' || rtrim(to_char(pp.qty, 'FM999999990.###'), '.') || ' ' || sp.unit,
+		SELECT sp.part_number || ' · ' || sp.name, CASE WHEN pp.reserved THEN 'reserviert: ' ELSE 'vorgemerkt: ' END || rtrim(to_char(pp.qty, 'FM999999990.###'), '.') || ' ' || sp.unit,
 		       '/inventory/' || sp.id, '', 'ti-bookmark'
 		FROM %s pp JOIN spare_parts sp ON sp.id = pp.part_id WHERE pp.%s = $1::uuid`, col, pending, pendingCol), id)
 	return g

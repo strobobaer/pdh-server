@@ -223,6 +223,8 @@ func (h *Handler) dashboardWidgetViews(r *http.Request) ([]DashboardWidgetView, 
 		if !ok || !can(d.Perm) {
 			continue
 		}
+		lang := h.requestLang(r)
+		d.Name, d.Desc = tr(lang, d.Name), tr(lang, d.Desc)
 		title := d.Name
 		if t := w.Config["title"]; t != "" {
 			title = t
@@ -231,9 +233,11 @@ func (h *Handler) dashboardWidgetViews(r *http.Request) ([]DashboardWidgetView, 
 	}
 	var cat []WidgetCatalogGroup
 	for _, c := range widgetCategories {
-		g := WidgetCatalogGroup{Name: c}
+		lang := h.requestLang(r)
+		g := WidgetCatalogGroup{Name: tr(lang, c)}
 		for _, d := range widgetDefs {
 			if d.Category == c && can(d.Perm) {
+				d.Name, d.Desc = tr(lang, d.Name), tr(lang, d.Desc)
 				g.Items = append(g.Items, d)
 			}
 		}
@@ -251,7 +255,10 @@ type widgetBody struct {
 	Inst WidgetInstance
 	Data any
 	Err  string
+	Lang string
 }
+
+func (b widgetBody) Language() string { return b.Lang }
 
 // DashboardWidgetWeb: GET /dashboard/w/{id} – Inhalt eines Widgets.
 func (h *Handler) DashboardWidgetWeb(w http.ResponseWriter, r *http.Request) {
@@ -273,18 +280,18 @@ func (h *Handler) DashboardWidgetWeb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if inst == nil {
-		h.renderFragment(w, "dw-body", widgetBody{Err: "Widget nicht gefunden – bitte Seite neu laden."})
+		h.renderFragment(w, "dw-body", widgetBody{Err: tr(h.requestLang(r), "Widget nicht gefunden – bitte Seite neu laden."), Lang: h.requestLang(r)})
 		return
 	}
 	d, _ := widgetDef(inst.Type)
 	if !can(d.Perm) {
-		h.renderFragment(w, "dw-body", widgetBody{Def: d, Err: "Keine Berechtigung."})
+		h.renderFragment(w, "dw-body", widgetBody{Def: d, Err: tr(h.requestLang(r), "Keine Berechtigung."), Lang: h.requestLang(r)})
 		return
 	}
 	data, err := d.load(h, r.Context(), uid, *inst, can)
-	b := widgetBody{Def: d, Inst: *inst, Data: data}
+	b := widgetBody{Def: d, Inst: *inst, Data: data, Lang: h.requestLang(r)}
 	if err != nil {
-		b.Err = "Konnte nicht geladen werden."
+		b.Err = tr(b.Lang, "Konnte nicht geladen werden.")
 		componentLog("system").Warn().Err(err).Str("widget", inst.Type).Msg("dashboard-widget")
 	}
 	h.renderFragment(w, "dw-body", b)
@@ -408,7 +415,7 @@ func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstan
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "ticket", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE priority = 'critical') FROM tickets r
 		WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&open, &crit)
-	return statData{Value: fmt.Sprint(open), Sub: fmt.Sprintf("%d kritisch", crit), Color: "blue", URL: "/tickets", Alert: crit > 0}, err
+	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets", Alert: crit > 0}, err
 }
 
 func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -416,7 +423,7 @@ func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults r
 		WHERE status IN ('detected','analyzing','in_progress') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
-	return statData{Value: fmt.Sprint(active), Sub: fmt.Sprintf("%d neu gemeldet", fresh), Color: "red", URL: "/faults", Alert: fresh > 0}, err
+	return statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults", Alert: fresh > 0}, err
 }
 
 func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -424,14 +431,14 @@ func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetIn
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "maintenance_task", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date < CURRENT_DATE) FROM maintenance_tasks r
 		WHERE status::text IN ('open','in_progress') AND due_date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
-	return statData{Value: fmt.Sprint(due), Sub: fmt.Sprintf("%d überfällig", overdue), Color: "amber", URL: "/maintenance", Alert: overdue > 0}, err
+	return statData{Value: fmt.Sprint(due), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "amber", URL: "/maintenance", Alert: overdue > 0}, err
 }
 
 func loadStatStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var low, crit int
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*) FILTER (WHERE stock_qty <= min_qty), COUNT(*) FILTER (WHERE critical_qty > 0 AND stock_qty <= critical_qty)
 		FROM spare_parts WHERE active AND hidden_at IS NULL AND min_qty > 0`).Scan(&low, &crit)
-	return statData{Value: fmt.Sprint(low), Sub: fmt.Sprintf("%d kritisch", crit), Color: "green", URL: "/inventory", Alert: crit > 0}, err
+	return statData{Value: fmt.Sprint(low), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "green", URL: "/inventory", Alert: crit > 0}, err
 }
 
 const myTasksWhere = `(EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $1::uuid)
@@ -441,7 +448,7 @@ const myTasksWhere = `(EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = 
 func loadStatMyTasks(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var open, overdue int
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE) FROM tasks t WHERE `+myTasksWhere, uid).Scan(&open, &overdue)
-	return statData{Value: fmt.Sprint(open), Sub: fmt.Sprintf("%d überfällig", overdue), Color: "accent", URL: "/tasks", Alert: overdue > 0}, err
+	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "accent", URL: "/tasks", Alert: overdue > 0}, err
 }
 
 func fmtHours(min int) string {
@@ -456,7 +463,7 @@ func loadStatMyHours(h *Handler, ctx context.Context, uid string, _ WidgetInstan
 			       COALESCE(duration_min, EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int / 60) AS m
 			FROM time_entries WHERE user_id = $1::uuid AND NOT pending AND started_at >= date_trunc('week', NOW())
 		) x`, uid).Scan(&week, &today)
-	return statData{Value: fmtHours(week), Sub: "heute " + fmtHours(today), Color: "blue", URL: "/time"}, err
+	return statData{Value: fmtHours(week), Sub: tr(ctxLang(ctx), "heute %s", fmtHours(today)), Color: "blue", URL: "/time"}, err
 }
 
 // trendData: Saeulen je Tag (Tickets/Stoerungen).
@@ -486,7 +493,7 @@ func loadChartTrend(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	}
 	defer rows.Close()
 	max := 1
-	wd := []string{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"}
+	lang := ctxLang(ctx)
 	for rows.Next() {
 		var day time.Time
 		var t, f int
@@ -507,7 +514,7 @@ func loadChartTrend(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 		if f > max {
 			max = f
 		}
-		d.Days = append(d.Days, trendDay{Label: wd[day.Weekday()] + " " + day.Format("02."), Tickets: t, Faults: f})
+		d.Days = append(d.Days, trendDay{Label: shortWeekday(lang, day.Weekday()) + " " + day.Format("02."), Tickets: t, Faults: f})
 	}
 	for i := range d.Days {
 		d.Days[i].HT = d.Days[i].Tickets * 100 / max
@@ -556,14 +563,15 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 			continue
 		}
 		m := meta[k]
-		it := listItem{Icon: m[0], Kind: m[1], Title: title, URL: m[2] + id, Sub: m[1] + " · " + statusLabel(status)}
+		lang := ctxLang(ctx)
+		it := listItem{Icon: m[0], Kind: tr(lang, m[1]), Title: title, URL: m[2] + id, Sub: tr(lang, m[1]) + " · " + tr(lang, statusLabel(status))}
 		if due != nil {
 			it.Badge = due.Format("02.01.")
 			it.BadgeClass = "b-gray"
 			if due.Before(today) {
-				it.Badge, it.BadgeClass = "überfällig", "b-red"
+				it.Badge, it.BadgeClass = tr(ctxLang(ctx), "überfällig"), "b-red"
 			} else if due.Equal(today) || due.Format("2006-01-02") == today.Format("2006-01-02") {
-				it.Badge, it.BadgeClass = "heute", "b-amber"
+				it.Badge, it.BadgeClass = tr(ctxLang(ctx), "heute"), "b-amber"
 			}
 		}
 		out = append(out, it)
@@ -589,7 +597,9 @@ func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 		if err := rows.Scan(&id, &title, &sev, &status, &infra, &at); err != nil {
 			return nil, err
 		}
-		sub := statusLabel(status) + " · " + timeAgo(at)
+		lang := ctxLang(ctx)
+		sub := tr(lang, statusLabel(status)) + " · " + timeAgo(at)
+		sev = tr(lang, severityWord(sev))
 		if infra != "" {
 			sub = infra + " · " + sub
 		}
@@ -619,9 +629,9 @@ func loadListMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetIn
 		}
 		it := listItem{Icon: "ti-tool", Title: title, Sub: infra, URL: "/maintenance/tasks/" + id, Badge: due.Format("02.01."), BadgeClass: "b-gray"}
 		if d := due.Format("2006-01-02"); d < today {
-			it.Badge, it.BadgeClass = "überfällig", "b-red"
+			it.Badge, it.BadgeClass = tr(ctxLang(ctx), "überfällig"), "b-red"
 		} else if d == today {
-			it.Badge, it.BadgeClass = "heute", "b-amber"
+			it.Badge, it.BadgeClass = tr(ctxLang(ctx), "heute"), "b-amber"
 		}
 		out = append(out, it)
 	}
@@ -673,7 +683,7 @@ func loadMyShifts(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		return nil, err
 	}
 	defer rows.Close()
-	wd := []string{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"}
+	lang := ctxLang(ctx)
 	var out []shiftDayView
 	today := time.Now().Format("2006-01-02")
 	for rows.Next() {
@@ -685,7 +695,7 @@ func loadMyShifts(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		if !hexColorRe.MatchString(v.Color) {
 			v.Color = ""
 		}
-		v.Day, v.Date, v.Today = wd[day.Weekday()], day.Format("02.01."), day.Format("2006-01-02") == today
+		v.Day, v.Date, v.Today = shortWeekday(lang, day.Weekday()), day.Format("02.01."), day.Format("2006-01-02") == today
 		out = append(out, v)
 	}
 	return out, rows.Err()
@@ -702,7 +712,7 @@ func loadQuickLinks(_ *Handler, _ context.Context, _ string, inst WidgetInstance
 // quickAction: Knopf im Widget "Schnellaktionen".
 type quickAction struct{ Name, Icon, URL, Color string }
 
-func loadQuickActions(_ *Handler, _ context.Context, _ string, _ WidgetInstance, can func(string) bool) (any, error) {
+func loadQuickActions(_ *Handler, ctx context.Context, _ string, _ WidgetInstance, can func(string) bool) (any, error) {
 	all := []struct {
 		quickAction
 		perm string
@@ -717,10 +727,27 @@ func loadQuickActions(_ *Handler, _ context.Context, _ string, _ WidgetInstance,
 		{quickAction{"Handbuch", "ti-book", "/help", "muted"}, ""},
 	}
 	var out []quickAction
+	lang := ctxLang(ctx)
 	for _, a := range all {
+		a.Name = tr(lang, a.Name)
 		if can(a.perm) {
 			out = append(out, a.quickAction)
 		}
 	}
 	return out, nil
+}
+
+// severityWord: Schweregrad als deutsches Wort (wird dann uebersetzt).
+func severityWord(s string) string {
+	switch s {
+	case "low":
+		return "Niedrig"
+	case "medium":
+		return "Mittel"
+	case "high":
+		return "Hoch"
+	case "critical":
+		return "Kritisch"
+	}
+	return s
 }

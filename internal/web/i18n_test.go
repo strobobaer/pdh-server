@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // i18nKeys sammelt alle uebersetzbaren Texte: {{t "…"}} in den Vorlagen und
@@ -21,7 +23,7 @@ func i18nKeys(t *testing.T) map[string][]string {
 			keys[k] = append(keys[k], where)
 		}
 	}
-	tplRe := regexp.MustCompile(`\{\{-?\s*t\s+"((?:[^"\\]|\\.)*)"`)
+	tplRe := regexp.MustCompile(`\{\{-?\s*th?\s+"((?:[^"\\]|\\.)*)"`)
 	root := filepath.Join("..", "..", "web", "templates")
 	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".gohtml") {
@@ -33,6 +35,8 @@ func i18nKeys(t *testing.T) map[string][]string {
 		}
 		return nil
 	})
+	// tr(…, "Text", …) mit woertlichem Text im Go-Code
+	trRe := regexp.MustCompile(`\btr\([^,()]+(?:\([^()]*\))?, "((?:[^"\\]|\\.)*)"`)
 	goRe := regexp.MustCompile(`h\.baseData\(r, "[^"]*", "((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"\)`)
 	files, _ := filepath.Glob("*.go")
 	for _, f := range files {
@@ -44,6 +48,37 @@ func i18nKeys(t *testing.T) map[string][]string {
 			add(m[1], f)
 			add(m[2], f)
 		}
+		for _, m := range trRe.FindAllStringSubmatch(string(b), -1) {
+			add(strings.ReplaceAll(m[1], `\"`, `"`), f)
+		}
+	}
+	// zur Laufzeit uebersetzte Texte (tr mit Variable)
+	for _, d := range widgetDefs {
+		add(d.Name, "widgetDefs")
+		add(d.Desc, "widgetDefs")
+	}
+	for _, c := range widgetCategories {
+		add(c, "widgetCategories")
+	}
+	if qa, err := loadQuickActions(nil, context.Background(), "", WidgetInstance{}, func(string) bool { return true }); err == nil {
+		for _, a := range qa.([]quickAction) {
+			add(a.Name, "quickActions")
+		}
+	}
+	for _, code := range []string{"open", "in_progress", "resolved", "closed", "detected", "analyzing", "pending", "archive", "done", "skipped", "planning", "active", "paused", "completed"} {
+		add(statusLabel(code), "statusLabel")
+	}
+	for _, code := range []string{"low", "medium", "high", "critical"} {
+		add(severityWord(code), "severityWord")
+	}
+	for _, k := range []string{"Ticket", "Störung", "Aufgabe", "Wartung"} { // Arten in "Mir zugewiesen"
+		add(k, "listMine")
+	}
+	for _, g := range navDefaultGroups {
+		add(g.Label, "navDefaultGroups")
+	}
+	for _, d := range navDefs {
+		add(d.Label, "navDefs")
 	}
 	return keys
 }
@@ -148,5 +183,32 @@ func TestNavFoldGroups(t *testing.T) {
 	}
 	if o, c := strings.Count(nav, "<div"), strings.Count(nav, "</div>"); o != c {
 		t.Errorf("Navigation: %d <div> vs %d </div>", o, c)
+	}
+}
+
+func TestDashboardWidgetsInEnglish(t *testing.T) {
+	i18nDir = filepath.Join("..", "..", "web", "i18n")
+	tmpl := loadTestTemplates(t)
+	c, _ := tmpl.Clone()
+	c = bindLang(c, "en")
+	var b strings.Builder
+	d, _ := widgetDef("chart_trend")
+	if err := c.ExecuteTemplate(&b, "dw-body", widgetBody{Def: d, Lang: "en", Data: trendData{ShowTickets: true, ShowFaults: true, SumTickets: 3, SumFaults: 1, Days: []trendDay{{Label: "Mon 05.", Tickets: 3, Faults: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"Tickets (3)", "Faults (1)", "Mon 05.: 3 tickets, 1 faults"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("englisches Widget enthält %q nicht: %s", want, out)
+		}
+	}
+	b.Reset()
+	d, _ = widgetDef("quick_links")
+	_ = c.ExecuteTemplate(&b, "dw-body", widgetBody{Def: d, Lang: "en"})
+	if !strings.Contains(b.String(), "<b>Customize dashboard</b>") {
+		t.Errorf("HTML-Satz nicht als HTML: %s", b.String())
+	}
+	if longDate("de", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) != "Donnerstag, 1. Oktober 2026" || longDate("en", time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) != "Thursday, 1 October 2026" {
+		t.Error("longDate")
 	}
 }

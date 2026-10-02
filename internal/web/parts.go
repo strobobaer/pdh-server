@@ -87,6 +87,7 @@ type PartListRow struct {
 	Stock, MinQty, Unit, StatusKey, StatusLabel, StatusClass string
 	Locations                                                int
 	BuyerName                                                string
+	Reserved                                                 string // reservierte Menge ("" = keine)
 }
 
 type partCategoryTab struct {
@@ -195,7 +196,8 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(sup.partner_id::text, ''), COALESCE(sb.name, ''),
 		       sp.stock_qty::float8, sp.min_qty::float8, sp.critical_qty::float8, sp.unit,
 		       (SELECT COUNT(*) FROM spare_part_stock st WHERE st.part_id = sp.id AND st.qty <> 0),
-		       COALESCE(TRIM(bu.first_name || ' ' || bu.last_name), '')
+		       COALESCE(TRIM(bu.first_name || ' ' || bu.last_name), ''),
+		       COALESCE((SELECT SUM(rv.qty) FROM spare_part_reservations rv WHERE rv.part_id = sp.id), 0)::float8
 		FROM spare_parts sp
 		LEFT JOIN business_partners mf ON mf.id = sp.manufacturer_id
 		LEFT JOIN LATERAL (SELECT s.partner_id, s.supplier_part_no FROM spare_part_suppliers s
@@ -210,10 +212,13 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var p PartListRow
 			var desc string
-			var stock, min, crit float64
+			var stock, min, crit, reserved float64
 			if rows.Scan(&p.ID, &p.PartNumber, &p.Name, &p.Category, &desc, &p.ManufacturerID, &p.ManufacturerName,
-				&p.SupplierID, &p.Supplier, &stock, &min, &crit, &p.Unit, &p.Locations, &p.BuyerName) != nil {
+				&p.SupplierID, &p.Supplier, &stock, &min, &crit, &p.Unit, &p.Locations, &p.BuyerName, &reserved) != nil {
 				continue
+			}
+			if reserved > 0 {
+				p.Reserved = formatQty(reserved)
 			}
 			_, p.ImageURL = splitPartImage(desc)
 			p.Stock, p.MinQty = formatQty(stock), formatQty(min)
@@ -236,6 +241,7 @@ type PartMaster struct {
 	ManufacturerID, ManufacturerName, ManufacturerLegacy        string
 	ManufacturerPart                                            string
 	MinQty, CriticalQty, ReorderQty, Price, StockQty            float64
+	ReservedQty                                                 float64 // abgebucht, noch nicht verbraucht
 	InfraID, InfraName, BuyerID, BuyerName                      string
 	StatusKey, StatusLabel, StatusClass                         string
 	CreatedAt, UpdatedAt                                        string
@@ -254,6 +260,13 @@ type partnerContact struct {
 
 type PartStockRow struct {
 	NodeID, Path, Qty string
+	Reserved          string // reservierte Menge an diesem Lagerplatz ("" = keine)
+}
+
+// PartReservationRow: aktive Reservierung eines Teils fuer einen Vorgang.
+type PartReservationRow struct {
+	ID, Kind, RefID, RefLabel, RefURL, Path, Qty, User, Date string
+	QtyRaw                                                   float64
 }
 
 type PartMovementRow struct {
@@ -277,6 +290,7 @@ type PartDetailData struct {
 	MainSupplierContact  *partnerContact
 	Suppliers            []PartSupplierView
 	Stock                []PartStockRow
+	Reservations         []PartReservationRow
 	StockValue           string
 	Movements            []PartMovementRow
 	Usage                []PartUsageRow
@@ -289,6 +303,7 @@ type PartDetailData struct {
 
 var movementTypeLabels = map[string]string{
 	"in": "Zugang", "out": "Abgang", "transfer": "Umlagerung", "correction": "Korrektur", "inventory": "Inventur",
+	"reserve": "Reservierung", "unreserve": "Rückbuchung Reservierung",
 }
 
 func (h *Handler) loadPartMaster(ctx context.Context, id string) (PartMaster, error) {
@@ -300,6 +315,7 @@ func (h *Handler) loadPartMaster(ctx context.Context, id string) (PartMaster, er
 		       COALESCE(sp.manufacturer_id::text, ''), COALESCE(mf.name, ''), COALESCE(sp.manufacturer, ''),
 		       COALESCE(sp.manufacturer_part, ''),
 		       sp.min_qty::float8, sp.critical_qty::float8, sp.reorder_qty::float8, sp.price::float8, sp.stock_qty::float8,
+		       COALESCE((SELECT SUM(rv.qty) FROM spare_part_reservations rv WHERE rv.part_id = sp.id), 0)::float8,
 		       COALESCE(sp.infrastructure_id::text, ''), COALESCE(i.name, ''),
 		       COALESCE(sp.buyer_id::text, ''), COALESCE(TRIM(bu.first_name || ' ' || bu.last_name), ''),
 		       sp.created_at, sp.updated_at
@@ -309,7 +325,7 @@ func (h *Handler) loadPartMaster(ctx context.Context, id string) (PartMaster, er
 		LEFT JOIN users bu ON bu.id = sp.buyer_id
 		WHERE sp.id = $1::uuid`, id).Scan(&p.ID, &p.PartNumber, &p.Name, &desc, &p.Category, &p.Unit,
 		&p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerLegacy, &p.ManufacturerPart,
-		&p.MinQty, &p.CriticalQty, &p.ReorderQty, &p.Price, &p.StockQty,
+		&p.MinQty, &p.CriticalQty, &p.ReorderQty, &p.Price, &p.StockQty, &p.ReservedQty,
 		&p.InfraID, &p.InfraName, &p.BuyerID, &p.BuyerName, &created, &updated)
 	if err != nil {
 		return p, err
@@ -367,12 +383,19 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	storageOpts, paths := h.storagePaths(ctx)
-	if rows, err := h.db.Query(ctx, `SELECT storage_node_id::text, qty::float8 FROM spare_part_stock WHERE part_id = $1::uuid AND qty <> 0`, id); err == nil {
+	if rows, err := h.db.Query(ctx, `
+		SELECT COALESCE(st.storage_node_id, rv.storage_node_id)::text, COALESCE(st.qty, 0)::float8, COALESCE(rv.qty, 0)::float8
+		FROM (SELECT storage_node_id, qty FROM spare_part_stock WHERE part_id = $1::uuid AND qty <> 0) st
+		FULL JOIN (SELECT storage_node_id, SUM(qty) AS qty FROM spare_part_reservations WHERE part_id = $1::uuid GROUP BY storage_node_id) rv
+		  ON rv.storage_node_id = st.storage_node_id`, id); err == nil {
 		for rows.Next() {
 			var s PartStockRow
-			var qty float64
-			if rows.Scan(&s.NodeID, &qty) == nil {
+			var qty, res float64
+			if rows.Scan(&s.NodeID, &qty, &res) == nil {
 				s.Path, s.Qty = paths[s.NodeID], formatQty(qty)
+				if res > 0 {
+					s.Reserved = formatQty(res)
+				}
 				if s.Path == "" {
 					s.Path = "(Lagerplatz nicht mehr aktiv)"
 				}
@@ -382,6 +405,15 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	data.StockValue = formatEuro(p.StockQty * p.Price)
+	if res, err := h.inv.Reservations(ctx, id); err == nil {
+		for _, rv := range res {
+			data.Reservations = append(data.Reservations, PartReservationRow{
+				ID: rv.ID, Kind: rv.Kind, RefID: rv.RefID, RefLabel: rv.KindLabel + ": " + rv.RefTitle, RefURL: rv.RefURL,
+				Path: paths[rv.StorageNodeID], Qty: formatQty(rv.Qty), QtyRaw: rv.Qty, User: rv.CreatedByName,
+				Date: rv.CreatedAt.Local().Format("02.01.2006 15:04"),
+			})
+		}
+	}
 
 	if rows, err := h.db.Query(ctx, `
 		SELECT sm.created_at, sm.type::text, sm.qty::float8, sm.qty_before::float8, sm.qty_after::float8,

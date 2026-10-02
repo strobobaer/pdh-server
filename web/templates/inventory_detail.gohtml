@@ -28,7 +28,7 @@
     <h1>{{$p.Name}}</h1>
     <div class="sub"><span style="font-family:monospace">{{$p.PartNumber}}</span>{{if $p.Category}} · <a href="/inventory?cat={{$p.Category}}" style="color:var(--accent)">{{$p.Category}}</a>{{end}}{{if $p.ManufacturerName}} · {{$p.ManufacturerName}}{{end}}</div>
   </div>
-  <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}</span>
+  <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}{{if $p.ReservedQty}} ({{$p.Q $p.ReservedQty}} reserviert){{end}}</span>
   <a class="btn btn-small" href="/inventory/labels?part={{$p.ID}}" target="_blank" rel="noopener" title="Lagerplatz-Etiketten drucken"><i class="ti ti-printer"></i> Etiketten</a>
   <a class="btn btn-small" href="#" onclick="recTab('stock');document.getElementById('book-type').focus();return false"><i class="ti ti-arrows-exchange"></i> Buchen</a>
 </div>
@@ -51,7 +51,7 @@
 <!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
   <div class="kpis">
-    <div class="kpi"><div class="v" style="color:{{if eq $p.StatusKey "ok"}}var(--green){{else if eq $p.StatusKey "low"}}var(--amber){{else}}var(--red){{end}}">{{$p.Q $p.StockQty}}</div><div class="l">Bestand ({{$p.Unit}})</div></div>
+    <div class="kpi"><div class="v" style="color:{{if eq $p.StatusKey "ok"}}var(--green){{else if eq $p.StatusKey "low"}}var(--amber){{else}}var(--red){{end}}">{{$p.Q $p.StockQty}}{{if $p.ReservedQty}} <span class="res-q" title="reserviert (bereits abgebucht)">({{$p.Q $p.ReservedQty}})</span>{{end}}</div><div class="l">Bestand ({{$p.Unit}}){{if $p.ReservedQty}} · in Klammern reserviert{{end}}</div></div>
     <div class="kpi"><div class="v">{{$p.Q $p.MinQty}}</div><div class="l">Mindestbestand</div></div>
     <div class="kpi"><div class="v">{{$p.Q $p.CriticalQty}}</div><div class="l">Kritischer Bestand</div></div>
     <div class="kpi"><div class="v">{{$p.Q $p.ReorderQty}}</div><div class="l">Nachbestellmenge</div></div>
@@ -79,7 +79,7 @@
   <div class="rec-grid">
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Lagerplätze</span></div>
-      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}{{if .Reserved}} <span class="res-q" title="davon reserviert (bereits abgebucht)">({{.Reserved}})</span>{{end}}</b></div>
       {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
     </div>
     <div class="card" style="margin:0">
@@ -170,8 +170,15 @@
   <div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Bestand je Lagerplatz</span></div>
-      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b><a class="btn btn-icon" style="width:30px;min-width:30px;height:30px" href="/inventory/labels?part={{$p.ID}}&loc={{.NodeID}}" target="_blank" rel="noopener" title="Etikett für diesen Lagerplatz"><i class="ti ti-printer" style="font-size:14px"></i></a></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}{{if .Reserved}} <span class="res-q" title="davon reserviert (bereits abgebucht)">({{.Reserved}})</span>{{end}}</b><a class="btn btn-icon" style="width:30px;min-width:30px;height:30px" href="/inventory/labels?part={{$p.ID}}&loc={{.NodeID}}" target="_blank" rel="noopener" title="Etikett für diesen Lagerplatz"><i class="ti ti-printer" style="font-size:14px"></i></a></div>
       {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
+    </div>
+    <div class="card" style="margin:0" id="part-reservations">
+      <div class="card-title"><span><i class="ti ti-bookmark"></i> Reservierungen</span>{{if $p.ReservedQty}}<span class="badge b-amber">{{$p.Q $p.ReservedQty}} {{$p.Unit}}</span>{{end}}</div>
+      <p class="rec-sub" style="margin:0 0 8px">Reservierte Teile sind bereits vom Lagerplatz abgebucht. Beim Abschluss des Vorgangs werden sie zum Verbrauch, nicht benötigte Mengen bitte zurückbuchen.</p>
+      {{range .Reservations}}<div class="rec-row"><div class="grow"><a href="{{.RefURL}}" data-frame data-frame-title="{{.RefLabel}}" style="color:var(--accent)">{{.RefLabel}}</a><div class="rec-sub">{{.Path}} · {{.Date}} · {{.User}}</div></div><b>{{.Qty}} {{$p.Unit}}</b>
+        <button type="button" class="btn btn-small" title="Nicht benötigte Menge zurück an den Lagerplatz buchen" onclick="pdhReturnReservation('{{.Kind}}','{{.RefID}}','{{.ID}}',{{.QtyRaw}},pdhPartReload)"><i class="ti ti-arrow-back-up"></i> Zurückbuchen</button></div>
+      {{else}}<div class="rec-sub">Keine offenen Reservierungen</div>{{end}}
     </div>
     <form class="card" style="margin:0" method="post" action="/inventory/{{$p.ID}}/book">
       <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Buchung</span></div>
@@ -193,7 +200,7 @@
       {{range .Movements}}
       <tr>
         <td style="white-space:nowrap;font-size:12px">{{.Date}}</td>
-        <td><span class="badge {{if eq .TypeKey "in"}}b-green{{else if eq .TypeKey "out"}}b-red{{else}}b-gray{{end}}">{{.TypeLabel}}</span></td>
+        <td><span class="badge {{if eq .TypeKey "in"}}b-green{{else if eq .TypeKey "out"}}b-red{{else if eq .TypeKey "reserve"}}b-amber{{else if eq .TypeKey "unreserve"}}b-blue{{else}}b-gray{{end}}">{{.TypeLabel}}</span></td>
         <td style="text-align:right;font-weight:600">{{.Qty}}</td>
         <td style="text-align:right;white-space:nowrap;font-size:12px">{{.Before}} → {{.After}}</td>
         <td style="font-size:12px">{{.Path}}</td>
@@ -295,7 +302,7 @@
 {{end}}
 
 {{define "context-list"}}
-{{range .Stock}}<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">{{.Path}}</div><span class="act-time">{{.Qty}}</span></div>{{end}}
+{{range .Stock}}<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">{{.Path}}</div><span class="act-time">{{.Qty}}{{if .Reserved}} <span class="res-q" title="davon reserviert (bereits abgebucht)">({{.Reserved}})</span>{{end}}</span></div>{{end}}
 {{end}}
 
 {{define "scripts"}}
@@ -347,6 +354,7 @@
   </div>
 </div>
 <script>
+function pdhPartReload(){ location.href = location.pathname + '?tab=stock&msg=' + encodeURIComponent('Reservierung zurückgebucht'); }
 function openImagePicker(){
   document.getElementById('ip-modal').classList.add('open');
   const q = document.getElementById('ip-q'); q.focus(); q.select();
