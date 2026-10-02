@@ -13,6 +13,7 @@ im Kapitel „Versionen & Updates“ an.
 ## [0.21.0] – 2026-10-01
 
 ### Neu
+- Mehrsprachigkeit (erste Stufe): Deutsch, Englisch, Rumänisch, Türkisch und Mazedonisch; Umschalten über eine Flagge in der Kopfzeile und auf der Anmeldeseite, Vorwahl im Benutzerstamm (Stammdaten → Sprache), sonst Browsersprache; übersetzt sind Navigation, Kopfzeile, Menüs, Seitenleiste, Anmeldung und Seitentitel, Datum/Uhrzeit folgen der Sprache – weitere Seiten folgen schrittweise und erscheinen bis dahin auf Deutsch
 - Lernende Text-Vorschläge: In Titeln, Beschreibungen, Maßnahmen, Ursachen, Lösungen, Kommentaren, Schulungsinhalten und Checklisten-Freitext schlägt PDH beim Tippen ganze Formulierungen, das nächste Wort oder das Wortende vor – gelernt aus den gespeicherten Texten; übernommene Vorschläge rücken nach oben (Tab übernimmt)
 - Störungen zeigen ähnliche gelöste Fälle mit Ähnlichkeit in Prozent auch ohne Copilot-Analyse
 - Rechte je Abteilung: Anlagen bekommen eine Abteilung (Unteranlagen erben sie); Rollen mit Abteilung sehen nur Vorgänge ihrer Abteilung und der Unterabteilungen (Listen, Detailseiten, Bearbeiten, Dashboard-Kennzahlen, -Verlauf, -Listen und Zeitstrahl, Anlagen-Historie samt CSV, Leitstand bei Anmeldung und Schnittstelle) – plus Vorgänge ohne Anlage und alles, woran man beteiligt ist. Instandhaltung, IT, Office und GL sind als übergeordnet vorbelegt und sehen alles

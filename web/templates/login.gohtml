@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{lang}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PDH – Anmelden</title>
+<title>PDH – {{t "Anmelden"}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -21,6 +21,10 @@ input{width:100%;background:var(--bg3);border:1px solid var(--border);border-rad
 input:focus{border-color:var(--accent)}
 .btn{width:100%;background:var(--accent);border:0;border-radius:8px;padding:10px;color:var(--on-accent);font-size:14px;font-family:var(--font);cursor:pointer;margin-top:4px}
 .btn:hover{opacity:.9}
+.langs{display:flex;gap:6px;justify-content:flex-end;margin:-14px -10px 14px 0}
+.langs button{background:none;border:1px solid transparent;border-radius:6px;padding:4px;cursor:pointer;line-height:0}
+.langs button.on,.langs button:hover{border-color:var(--accent)}
+.lang-flag{width:24px;height:16px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:10px;border-radius:8px;font-size:12px;margin-bottom:14px}
 </style>
 <style>{{.Brand.ThemeCSS}}</style>
@@ -31,30 +35,34 @@ input:focus{border-color:var(--accent)}
 </head>
 <body>
 <div class="card">
+  <form class="langs" method="post" action="/lang" aria-label="{{t "Sprache"}}">
+    <input type="hidden" name="back" value="/login">
+    {{$cur := lang}}{{range langs}}<button type="submit" name="lang" value="{{.Code}}" title="{{.Name}}" aria-label="{{.Name}}"{{if eq .Code $cur}} class="on" aria-current="true"{{end}}>{{template "lang-flag" .Code}}</button>{{end}}
+  </form>
   <div class="logo">
     {{if .Brand.AppLogo}}<img src="{{.Brand.AppLogo}}" alt="" style="width:38px;height:38px;object-fit:contain;border-radius:8px">{{else}}<div class="logo-icon">P</div>{{end}}
     <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-sub">Prozess Data Hub</div></div>
   </div>
-  <h2>Anmelden</h2>
+  <h2>{{t "Anmelden"}}</h2>
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
   <form method="POST" action="/login">
     <div class="form-group">
-      <label>E-Mail oder Benutzername</label>
-      <input type="text" name="email" placeholder="name@beispiel.de oder Benutzername" required autofocus>
+      <label>{{t "E-Mail oder Benutzername"}}</label>
+      <input type="text" name="email" placeholder="{{t "name@beispiel.de oder Benutzername"}}" required autofocus>
     </div>
     <div class="form-group">
-      <label>Passwort</label>
+      <label>{{t "Passwort"}}</label>
       <input type="password" name="password" placeholder="••••••••" required>
     </div>
-    <button type="submit" class="btn">Anmelden →</button>
+    <button type="submit" class="btn">{{t "Anmelden"}} →</button>
   </form>
   <div style="display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--muted);font-size:11px">
-    <div style="flex:1;height:1px;background:var(--border)"></div>ODER<div style="flex:1;height:1px;background:var(--border)"></div>
+    <div style="flex:1;height:1px;background:var(--border)"></div>{{t "ODER"}}<div style="flex:1;height:1px;background:var(--border)"></div>
   </div>
   <form method="POST" action="/login/rfid" onsubmit="return true">
     <div class="form-group">
-      <label>RFID-Karte</label>
-      <input type="text" name="uid" id="rfid-input" placeholder="Karte an den Leser halten..." autocomplete="off">
+      <label>{{t "RFID-Karte"}}</label>
+      <input type="text" name="uid" id="rfid-input" placeholder="{{t "Karte an den Leser halten …"}}" autocomplete="off">
     </div>
   </form>
   <script>

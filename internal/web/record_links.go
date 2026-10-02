@@ -68,7 +68,7 @@ func (h *Handler) renderFragment(w http.ResponseWriter, name string, data interf
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()
 	if err == nil {
-		err = t.ExecuteTemplate(w, name, data)
+		err = bindLang(t, langOf(data)).ExecuteTemplate(w, name, data)
 	}
 	if err != nil {
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))

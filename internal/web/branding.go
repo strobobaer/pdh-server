@@ -273,10 +273,19 @@ func (h *Handler) BrandingSettingsWeb(w http.ResponseWriter, r *http.Request) {
 type LoginData struct {
 	Error string
 	Brand Branding
+	Lang  string
 }
 
+func (d LoginData) Language() string { return d.Lang }
+
 func (h *Handler) loginData(errMsg string) LoginData {
-	return LoginData{Error: errMsg, Brand: h.branding()}
+	return LoginData{Error: errMsg, Brand: h.branding(), Lang: defaultLang}
+}
+
+// loginDataFor: Anmeldeseite in der Sprache der Anfrage.
+func (h *Handler) loginDataFor(r *http.Request, errMsg string) LoginData {
+	lang := h.requestLang(r)
+	return LoginData{Error: tr(lang, errMsg), Brand: h.branding(), Lang: lang}
 }
 
 // imageSize liefert Breite/Hoehe einer Bilddatei (0, 0 bei Fehler).

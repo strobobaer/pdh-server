@@ -66,7 +66,11 @@ type BaseData struct {
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
+	Lang                   string     // Sprache der Oberflaeche (i18n.go)
 }
+
+// Language: Sprache fuer die Template-Funktion t (siehe bindLang).
+func (b BaseData) Language() string { return b.Lang }
 
 type DashboardData struct {
 	BaseData
@@ -325,6 +329,7 @@ func NewHandler(
 func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(h.authMiddleware)
+	r.Use(h.LangMiddleware)
 	r.Use(h.DepartmentScopeMiddleware)
 
 	r.Get("/", h.Dashboard)
@@ -626,6 +631,7 @@ func (h *Handler) Routes() chi.Router {
 
 	// Auth
 	r.Get("/login", h.LoginPage)
+	r.Post("/lang", h.LangSwitchWeb)
 	r.Post("/login", h.LoginPost)
 	r.Post("/login/rfid", h.LoginRFIDWeb)
 	r.Get("/logout", h.Logout)
@@ -642,6 +648,7 @@ func (h *Handler) render(w http.ResponseWriter, tmpl string, data interface{}) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	t = bindLang(t, langOf(data))
 	if tmpl == "login" {
 		lt, _ := t.ParseFiles("web/templates/login.gohtml")
 		lt.ExecuteTemplate(w, "login.gohtml", data)
@@ -797,10 +804,12 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		isOverride = true
 	}
 	brand := h.branding()
+	lang := h.requestLang(r)
 	return BaseData{
 		Look:  h.appearance(r, brand),
-		Title: title, Page: page,
-		ContextTitle:  ctxTitle,
+		Lang:  lang,
+		Title: tr(lang, title), Page: page,
+		ContextTitle:  tr(lang, ctxTitle),
 		UserName:      u.FirstName + " " + u.LastName,
 		UserFirstName: u.FirstName,
 		UserLastName:  u.LastName,
@@ -1799,7 +1808,7 @@ func (h *Handler) simplePage(w http.ResponseWriter, r *http.Request, page, title
 // ── Auth ──────────────────────────────────────────────────────
 
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login", h.loginData(""))
+	h.render(w, "login", h.loginDataFor(r, ""))
 }
 
 func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
@@ -1807,7 +1816,7 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
-		h.render(w, "login", h.loginData("Ungültige Anmeldedaten"))
+		h.render(w, "login", h.loginDataFor(r, "Ungültige Anmeldedaten"))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
@@ -1824,13 +1833,13 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	uid := strings.TrimSpace(r.FormValue("uid"))
 	if uid == "" {
-		h.render(w, "login", h.loginData("Keine Karte erkannt"))
+		h.render(w, "login", h.loginDataFor(r, "Keine Karte erkannt"))
 		return
 	}
 	token, user, err := h.users.LoginByRFID(r.Context(), uid)
 	if err != nil {
 		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
-		h.render(w, "login", h.loginData("Unbekannte Karte"))
+		h.render(w, "login", h.loginDataFor(r, "Unbekannte Karte"))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
@@ -1904,7 +1913,7 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/login" {
+		if r.URL.Path == "/login" || r.URL.Path == "/lang" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -4211,6 +4220,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	t, _ := h.tmpl.Clone()
+	t = bindLang(t, data.Lang)
 	t.ParseFiles("web/templates/infra_detail.gohtml")
 	t.ExecuteTemplate(w, "base.gohtml", data)
 }

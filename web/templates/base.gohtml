@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{lang}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,7 @@
 <title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <script>
+window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'})[document.documentElement.lang] || 'de-DE';
 (function(){
   const mode = localStorage.getItem('pdh_theme') || 'system';
   const systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -531,42 +532,42 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 <aside class="sidebar">
   <div class="logo">
     {{if .Brand.AppLogo}}<img class="logo-img" src="{{.Brand.AppLogo}}" alt="{{or .Brand.AppName "PDH"}}">{{else}}<div class="logo-icon">P</div>{{end}}
-    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver" title="Änderungen: Handbuch → Versionen">v{{appVersion}}</div></div>
-    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="Navigation einklappen" title="Navigation einklappen"><i class="ti ti-menu-2"></i></button>
+    <div><div class="logo-text">{{or .Brand.AppName "PDH"}}</div><div class="logo-ver" title="{{t "Änderungen: Handbuch → Versionen"}}">v{{appVersion}}</div></div>
+    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('left')" aria-label="{{t "Navigation einklappen"}}" title="{{t "Navigation einklappen"}}"><i class="ti ti-menu-2"></i></button>
   </div>
   <nav>
-    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">Dashboard</span></a>
+    <a href="/" class="nav-item {{if eq .Page "dashboard"}}active{{end}}"><i class="ti ti-dashboard"></i><span class="nav-label">{{t "Dashboard"}}</span></a>
     {{if .CanChat}}<a href="/chat" class="nav-item {{if eq .Page "chat"}}active{{end}}" style="position:relative"><i class="ti ti-messages"></i><span class="nav-label">Chat</span><span id="chat-nav-badge" class="nav-badge" style="display:none"></span></a>{{end}}
-    <a href="/global/" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-layout-dashboard"></i><span class="nav-label">Leitstand</span></a>
-    <a href="/assignments/new" class="nav-item {{if eq .Page "assignments-new"}}active{{end}}"><i class="ti ti-square-rounded-plus"></i><span class="nav-label">Neue Zuweisung</span></a>
+    <a href="/global/" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-layout-dashboard"></i><span class="nav-label">{{t "Leitstand"}}</span></a>
+    <a href="/assignments/new" class="nav-item {{if eq .Page "assignments-new"}}active{{end}}"><i class="ti ti-square-rounded-plus"></i><span class="nav-label">{{t "Neue Zuweisung"}}</span></a>
 
-    <div class="nav-section">Module</div>
-    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i><span class="nav-label">Tickets</span></a>
-    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i><span class="nav-label">Störungen</span></a>
-    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i><span class="nav-label">Wartung</span></a>
-    <a href="/tasks" class="nav-item {{if eq .Page "tasks"}}active{{end}}"><i class="ti ti-list-check"></i><span class="nav-label">Aufgaben</span></a>
-    <a href="/projects" class="nav-item {{if eq .Page "projects"}}active{{end}}"><i class="ti ti-timeline"></i><span class="nav-label">Projekte</span></a>
-    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i><span class="nav-label">Ersatzteile</span></a>
-    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">Zeiterfassung</span></a>
+    <div class="nav-section">{{t "Module"}}</div>
+    <a href="/tickets" class="nav-item {{if eq .Page "tickets"}}active{{end}}"><i class="ti ti-ticket"></i><span class="nav-label">{{t "Tickets"}}</span></a>
+    <a href="/faults" class="nav-item {{if eq .Page "faults"}}active{{end}}"><i class="ti ti-alert-triangle"></i><span class="nav-label">{{t "Störungen"}}</span></a>
+    <a href="/maintenance" class="nav-item {{if eq .Page "maintenance"}}active{{end}}"><i class="ti ti-tool"></i><span class="nav-label">{{t "Wartung"}}</span></a>
+    <a href="/tasks" class="nav-item {{if eq .Page "tasks"}}active{{end}}"><i class="ti ti-list-check"></i><span class="nav-label">{{t "Aufgaben"}}</span></a>
+    <a href="/projects" class="nav-item {{if eq .Page "projects"}}active{{end}}"><i class="ti ti-timeline"></i><span class="nav-label">{{t "Projekte"}}</span></a>
+    <a href="/inventory" class="nav-item {{if eq .Page "inventory"}}active{{end}}"><i class="ti ti-package"></i><span class="nav-label">{{t "Ersatzteile"}}</span></a>
+    <a href="/time" class="nav-item {{if eq .Page "time"}}active{{end}}"><i class="ti ti-clock"></i><span class="nav-label">{{t "Zeiterfassung"}}</span></a>
 
     <div class="nav-section">Core</div>
-    {{if .CanManageUsers}}<a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">Benutzer</span></a>{{end}}
-    <a href="/trainings" class="nav-item {{if eq .Page "trainings"}}active{{end}}"><i class="ti ti-school"></i><span class="nav-label">{{if .CanTrainings}}Schulungen{{else}}Meine Schulungen{{end}}</span></a>
-    {{if .CanManageUsers}}<a href="/admin/org-units" class="nav-item {{if eq .Page "org_units"}}active{{end}}"><i class="ti ti-users-group"></i><span class="nav-label">Abteilungen &amp; Gruppen</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">Rollen & Rechte</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">Organigramm</span></a>{{end}}
-    {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">Core-Einstellungen</span></a>{{end}}
-    {{if .CanServerConfig}}<a href="/admin/server-config" class="nav-item {{if eq .Page "server-config"}}active{{end}}"><i class="ti ti-adjustments-cog"></i><span class="nav-label">Server-Einstellungen</span></a>{{end}}
-    {{if .CanBackup}}<a href="/admin/backup" class="nav-item {{if eq .Page "backup"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">Datensicherung</span></a>{{end}}
-    {{if .CanCleanup}}<a href="/admin/cleanup" class="nav-item {{if eq .Page "cleanup"}}active{{end}}"><i class="ti ti-trash-x"></i><span class="nav-label">Bereinigung</span></a>{{end}}
-    <a href="/categories" class="nav-item {{if eq .Page "categories"}}active{{end}}"><i class="ti ti-hash"></i><span class="nav-label">Kategorien</span></a>
-    <a href="/help" class="nav-item {{if eq .Page "help"}}active{{end}}"><i class="ti ti-book"></i><span class="nav-label">Handbuch</span></a>
+    {{if .CanManageUsers}}<a href="/users" class="nav-item {{if eq .Page "users"}}active{{end}}"><i class="ti ti-users"></i><span class="nav-label">{{t "Benutzer"}}</span></a>{{end}}
+    <a href="/trainings" class="nav-item {{if eq .Page "trainings"}}active{{end}}"><i class="ti ti-school"></i><span class="nav-label">{{if .CanTrainings}}{{t "Schulungen"}}{{else}}{{t "Meine Schulungen"}}{{end}}</span></a>
+    {{if .CanManageUsers}}<a href="/admin/org-units" class="nav-item {{if eq .Page "org_units"}}active{{end}}"><i class="ti ti-users-group"></i><span class="nav-label">{{t "Abteilungen & Gruppen"}}</span></a>{{end}}
+    {{if .CanManageRoles}}<a href="/admin/roles" class="nav-item {{if eq .Page "roles"}}active{{end}}"><i class="ti ti-shield-lock"></i><span class="nav-label">{{t "Rollen & Rechte"}}</span></a>{{end}}
+    {{if .CanManageRoles}}<a href="/admin/orgchart" class="nav-item {{if eq .Page "orgchart"}}active{{end}}"><i class="ti ti-sitemap"></i><span class="nav-label">{{t "Organigramm"}}</span></a>{{end}}
+    {{if .CanManageRoles}}<a href="/core/settings" class="nav-item {{if eq .Page "core-settings"}}active{{end}}"><i class="ti ti-settings"></i><span class="nav-label">{{t "Core-Einstellungen"}}</span></a>{{end}}
+    {{if .CanServerConfig}}<a href="/admin/server-config" class="nav-item {{if eq .Page "server-config"}}active{{end}}"><i class="ti ti-adjustments-cog"></i><span class="nav-label">{{t "Server-Einstellungen"}}</span></a>{{end}}
+    {{if .CanBackup}}<a href="/admin/backup" class="nav-item {{if eq .Page "backup"}}active{{end}}"><i class="ti ti-database-export"></i><span class="nav-label">{{t "Datensicherung"}}</span></a>{{end}}
+    {{if .CanCleanup}}<a href="/admin/cleanup" class="nav-item {{if eq .Page "cleanup"}}active{{end}}"><i class="ti ti-trash-x"></i><span class="nav-label">{{t "Bereinigung"}}</span></a>{{end}}
+    <a href="/categories" class="nav-item {{if eq .Page "categories"}}active{{end}}"><i class="ti ti-hash"></i><span class="nav-label">{{t "Kategorien"}}</span></a>
+    <a href="/help" class="nav-item {{if eq .Page "help"}}active{{end}}"><i class="ti ti-book"></i><span class="nav-label">{{t "Handbuch"}}</span></a>
     <a href="https://cloud.strobl-home.net" class="nav-item" target="_blank" rel="noopener"><i class="ti ti-cloud"></i><span class="nav-label">Nextcloud</span></a>
-    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">IT-Assets</span></a>
-    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">Lager</span></a>
-    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">Schichtplan</span></a>
-    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">Infrastruktur</span></a>
-    <a href="/directory" class="nav-item {{if eq .Page "directory"}}active{{end}}"><i class="ti ti-building-factory-2"></i><span class="nav-label">Hersteller & Lieferanten</span></a>
+    <a href="/it" class="nav-item {{if eq .Page "it"}}active{{end}}"><i class="ti ti-server-2"></i><span class="nav-label">{{t "IT-Assets"}}</span></a>
+    <a href="/storage" class="nav-item {{if eq .Page "storage"}}active{{end}}"><i class="ti ti-building-warehouse"></i><span class="nav-label">{{t "Lager"}}</span></a>
+    <a href="/shifts" class="nav-item {{if eq .Page "shifts"}}active{{end}}"><i class="ti ti-calendar-time"></i><span class="nav-label">{{t "Schichtplan"}}</span></a>
+    <a href="/infrastructure" class="nav-item {{if eq .Page "infrastructure"}}active{{end}}"><i class="ti ti-hierarchy-2"></i><span class="nav-label">{{t "Infrastruktur"}}</span></a>
+    <a href="/directory" class="nav-item {{if eq .Page "directory"}}active{{end}}"><i class="ti ti-building-factory-2"></i><span class="nav-label">{{t "Hersteller & Lieferanten"}}</span></a>
 
     {{if .CanImport}}
     <div class="nav-section">Import</div>
@@ -583,62 +584,63 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 <!-- ── Hauptbereich ── -->
 <div class="main-wrap">
   <div class="topbar">
-    <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="Navigation öffnen" title="Navigation"><i class="ti ti-menu-2"></i></button>
+    <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="{{t "Navigation öffnen"}}" title="{{t "Navigation"}}"><i class="ti ti-menu-2"></i></button>
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
     <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-      <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="Zeiterfassung öffnen" aria-label="Uhrzeit – Zeiterfassung öffnen">
+      <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="{{t "Zeiterfassung öffnen"}}" aria-label="{{t "Uhrzeit – Zeiterfassung öffnen"}}">
         <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>
       </a>
       {{if and .CanChat (ne .Page "chat")}}
-      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="Diese Seite im Chat teilen"><i class="ti ti-share"></i><span>Im Chat teilen</span></button>
-      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="Chat in der Seitenleiste" style="position:relative"><i class="ti ti-messages"></i><span>Chat</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
+      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
+      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="{{t "Chat in der Seitenleiste"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
       {{end}}
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="Darstellung wechseln" title="Darstellung wechseln">
+      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="{{t "Darstellung wechseln"}}" title="{{t "Darstellung wechseln"}}">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
       {{if .IsOverrideSession}}
-      <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="Zurück zum Systemnutzer">
-        <i class="ti ti-corner-up-left"></i><span class="tb-label"> Zurück zum Systemnutzer</span>
+      <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="{{t "Zurück zum Systemnutzer"}}">
+        <i class="ti ti-corner-up-left"></i><span class="tb-label"> {{t "Zurück zum Systemnutzer"}}</span>
       </button>
       <form id="override-logout-form" method="POST" action="/override-logout" style="display:none"></form>
       {{else if .IsSystemUser}}
-      <button type="button" class="btn btn-small" onclick="document.getElementById('override-login-modal').style.display='flex'" title="Kurz mit eigenem Konto anmelden">
-        <i class="ti ti-user-plus"></i><span class="tb-label"> Anmelden zur Erledigung</span>
+      <button type="button" class="btn btn-small" onclick="document.getElementById('override-login-modal').style.display='flex'" title="{{t "Kurz mit eigenem Konto anmelden"}}">
+        <i class="ti ti-user-plus"></i><span class="tb-label"> {{t "Anmelden zur Erledigung"}}</span>
       </button>
       {{end}}
-      <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="Suche, Hilfe und mehr" title="Suche, Hilfe &amp; mehr"><i class="ti ti-layout-sidebar-right"></i></button>
+      <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
+      {{template "lang-switch"}}
       <div style="position:relative">
-        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="Benutzermenü"><i class="ti ti-user"></i><span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
+        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}"><i class="ti ti-user"></i><span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
-          <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>Mein Konto</a>
-          <a href="/help" class="menu-item"><i class="ti ti-book"></i>Handbuch</a>
-          {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>Im Chat teilen</a>{{end}}
+          <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
+          <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
+          {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>{{t "Im Chat teilen"}}</a>{{end}}
           <div class="pal-menu look-menu">
-            <div class="pal-menu-t"><i class="ti ti-palette"></i>Darstellung</div>
+            <div class="pal-menu-t"><i class="ti ti-palette"></i>{{t "Darstellung"}}</div>
             {{if .Look.Allow}}<div class="pal-row">
-              <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="lookSet('palette','')" title="Firmenstandard ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
+              <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="lookSet('palette','')" title="{{t "Firmenstandard"}} ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
               {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="lookSet('palette','{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
             </div>
-            <div class="look-row"><i class="ti ti-typography" title="Schriftart"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="Schriftart">
-              <option value="">Firmenstandard</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+            <div class="look-row"><i class="ti ti-typography" title="{{t "Schriftart"}}"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="{{t "Schriftart"}}">
+              <option value="">{{t "Firmenstandard"}}</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
             </select></div>{{end}}
-            <div class="look-row"><i class="ti ti-text-size" title="Größe"></i>
-              <button type="button" class="look-step" onclick="lookStep(-10)" aria-label="Kleiner">−</button>
+            <div class="look-row"><i class="ti ti-text-size" title="{{t "Größe"}}"></i>
+              <button type="button" class="look-step" onclick="lookStep(-10)" aria-label="{{t "Kleiner"}}">−</button>
               <span class="look-pct" id="look-pct">100 %</span>
-              <button type="button" class="look-step" onclick="lookStep(10)" aria-label="Größer">+</button>
+              <button type="button" class="look-step" onclick="lookStep(10)" aria-label="{{t "Größer"}}">+</button>
             </div>
             <div class="look-actions">
-              <button type="button" onclick="lookReset()" title="Firmenstandard verwenden">Standard</button>
-              <button type="button" class="look-save" id="look-save" onclick="lookSave()" disabled>Speichern</button>
+              <button type="button" onclick="lookReset()" title="{{t "Firmenstandard verwenden"}}">{{t "Standard"}}</button>
+              <button type="button" class="look-save" id="look-save" onclick="lookSave()" disabled>{{t "Speichern"}}</button>
             </div>
             <div class="look-msg" id="look-msg"></div>
           </div>
-          <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>Abmelden</a>
+          <a href="/logout" class="menu-item"><i class="ti ti-logout"></i>{{t "Abmelden"}}</a>
         </div>
       </div>
-      <div class="status-dot" title="API online"></div>
+      <div class="status-dot" title="{{t "API online"}}"></div>
     </div>
   </div>
   <div class="main">
@@ -651,29 +653,29 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 <!-- Override-Anmeldung: kurzzeitig mit eigenem Konto an einem Systemnutzer-Terminal anmelden -->
 <div id="override-login-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:380px;margin:20px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-    <div style="font-size:15px;font-weight:600;margin-bottom:6px">Anmelden zur Erledigung</div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach {{.OverrideTimeoutMinutes}} Minuten Inaktivität (oder per Klick auf "Zurück") kehrt das Terminal automatisch zum Systemnutzer zurück.</p>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">{{t "Anmelden zur Erledigung"}}</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">{{t "Du meldest dich kurz mit deinem eigenen Konto an diesem Systemnutzer-Terminal an. Nach %d Minuten Inaktivität (oder per Klick auf „Zurück“) kehrt das Terminal automatisch zum Systemnutzer zurück." .OverrideTimeoutMinutes}}</p>
     <form method="POST" action="/override-login">
       <div class="form-group">
-        <label class="form-label">E-Mail oder Benutzername</label>
+        <label class="form-label">{{t "E-Mail oder Benutzername"}}</label>
         <input type="text" name="email" class="form-input" required autofocus>
       </div>
       <div class="form-group">
-        <label class="form-label">Passwort</label>
+        <label class="form-label">{{t "Passwort"}}</label>
         <input type="password" name="password" class="form-input" required>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-        <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">Abbrechen</button>
-        <button type="submit" class="btn btn-primary">Anmelden</button>
+        <button type="button" class="btn" onclick="document.getElementById('override-login-modal').style.display='none'">{{t "Abbrechen"}}</button>
+        <button type="submit" class="btn btn-primary">{{t "Anmelden"}}</button>
       </div>
     </form>
     <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--muted);font-size:11px">
-      <div style="flex:1;height:1px;background:var(--border)"></div>ODER<div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>{{t "ODER"}}<div style="flex:1;height:1px;background:var(--border)"></div>
     </div>
     <form method="POST" action="/override-login/rfid">
       <div class="form-group">
-        <label class="form-label">RFID-Karte</label>
-        <input type="text" name="uid" class="form-input" placeholder="Karte an den Leser halten..." autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();this.form.submit();}">
+        <label class="form-label">{{t "RFID-Karte"}}</label>
+        <input type="text" name="uid" class="form-input" placeholder="{{t "Karte an den Leser halten …"}}" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();this.form.submit();}">
       </div>
     </form>
   </div>
@@ -685,38 +687,38 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 {{template "completion-wizard"}}
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
-    {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="Chat" aria-label="Chat"><i class="ti ti-messages"></i><span class="ctx-vlabel">Chat</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
-    <button type="button" class="ctx-tab" data-context-tab="search" onclick="activateContextTab('search')" title="Suche" aria-label="Suche"><i class="ti ti-search"></i><span class="ctx-vlabel">Suche</span></button>
-    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="Copilot" aria-label="Copilot"><i class="ti ti-brain"></i><span class="ctx-vlabel">Copilot</span></button>
-    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="Aktivität" aria-label="Aktivität"><i class="ti ti-bell"></i><span class="ctx-vlabel">Aktivität</span></button>
-    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="Auswahl" aria-label="Auswahl"><i class="ti ti-list"></i><span class="ctx-vlabel">{{if .ContextTitle}}{{.ContextTitle}}{{else}}Auswahl{{end}}</span></button>
-    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="Hilfe" aria-label="Hilfe"><i class="ti ti-help"></i><span class="ctx-vlabel">Hilfe</span></button>
-    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('right')" aria-label="Kontext einklappen" title="Kontext einklappen" style="margin-top:auto"><i class="ti ti-menu-2"></i></button>
+    {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="{{t "Chat"}}" aria-label="{{t "Chat"}}"><i class="ti ti-messages"></i><span class="ctx-vlabel">{{t "Chat"}}</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
+    <button type="button" class="ctx-tab" data-context-tab="search" onclick="activateContextTab('search')" title="{{t "Suche"}}" aria-label="{{t "Suche"}}"><i class="ti ti-search"></i><span class="ctx-vlabel">{{t "Suche"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="copilot" onclick="activateContextTab('copilot')" title="{{t "Copilot"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span class="ctx-vlabel">{{t "Copilot"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="activity" onclick="activateContextTab('activity')" title="{{t "Aktivität"}}" aria-label="{{t "Aktivität"}}"><i class="ti ti-bell"></i><span class="ctx-vlabel">{{t "Aktivität"}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="list" onclick="activateContextTab('list')" title="{{t "Auswahl"}}" aria-label="{{t "Auswahl"}}"><i class="ti ti-list"></i><span class="ctx-vlabel">{{if .ContextTitle}}{{.ContextTitle}}{{else}}{{t "Auswahl"}}{{end}}</span></button>
+    <button type="button" class="ctx-tab" data-context-tab="help" onclick="activateContextTab('help')" title="{{t "Hilfe"}}" aria-label="{{t "Hilfe"}}"><i class="ti ti-help"></i><span class="ctx-vlabel">{{t "Hilfe"}}</span></button>
+    <button type="button" class="sidebar-toggle" onclick="toggleSidebar('right')" aria-label="{{t "Kontext einklappen"}}" title="{{t "Kontext einklappen"}}" style="margin-top:auto"><i class="ti ti-menu-2"></i></button>
   </div>
   <div class="ctx-panel-wrap">
   {{if and .CanChat (ne .Page "chat")}}
   <!-- Chat -->
   <div class="ctx-section sc-panel" data-context-panel="chat">
     <div class="sc-head">
-      <button type="button" class="sc-btn" id="sc-back" title="Alle Chats" style="display:none"><i class="ti ti-arrow-left"></i></button>
-      <div class="sc-htitle" id="sc-title">Chat</div>
-      <a class="sc-btn" id="sc-full" href="/chat" title="Im Vollbild öffnen"><i class="ti ti-arrows-maximize"></i></a>
-      <button type="button" class="sc-btn" onclick="setRightSidebar(false)" title="Seitenleiste schließen"><i class="ti ti-x"></i></button>
+      <button type="button" class="sc-btn" id="sc-back" title="{{t "Alle Chats"}}" style="display:none"><i class="ti ti-arrow-left"></i></button>
+      <div class="sc-htitle" id="sc-title">{{t "Chat"}}</div>
+      <a class="sc-btn" id="sc-full" href="/chat" title="{{t "Im Vollbild öffnen"}}"><i class="ti ti-arrows-maximize"></i></a>
+      <button type="button" class="sc-btn" onclick="setRightSidebar(false)" title="{{t "Seitenleiste schließen"}}"><i class="ti ti-x"></i></button>
     </div>
     <div class="sc-share" id="sc-share" style="display:none"></div>
-    <div class="sc-body" id="sc-body"><div class="sc-empty">Wird geladen…</div></div>
+    <div class="sc-body" id="sc-body"><div class="sc-empty">{{t "Wird geladen …"}}</div></div>
     <div class="sc-compose" id="sc-compose" style="display:none">
-      <textarea id="sc-input" rows="2" placeholder="Nachricht… (Enter senden)"></textarea>
-      <button type="button" class="sc-btn sc-send" id="sc-send" title="Senden"><i class="ti ti-send"></i></button>
+      <textarea id="sc-input" rows="2" placeholder="{{t "Nachricht … (Enter = senden)"}}"></textarea>
+      <button type="button" class="sc-btn sc-send" id="sc-send" title="{{t "Senden"}}"><i class="ti ti-send"></i></button>
     </div>
   </div>
   {{end}}
   <!-- Suche -->
   <div class="ctx-section active" data-context-panel="search">
-    <div class="ctx-title"><i class="ti ti-search"></i>Suche</div>
+    <div class="ctx-title"><i class="ti ti-search"></i>{{t "Suche"}}</div>
     <div class="search-box">
       <i class="ti ti-search"></i>
-      <input placeholder="Anlage, Ticket, Teil..."
+      <input placeholder="{{t "Anlage, Ticket, Teil …"}}"
         hx-get="/api/search"
         hx-trigger="keyup changed delay:400ms"
         hx-target="#search-results"
@@ -729,24 +731,24 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 
   <!-- Copilot -->
   <div class="ctx-section" data-context-panel="copilot">
-    <div class="ctx-title"><i class="ti ti-brain"></i>Copilot</div>
+    <div class="ctx-title"><i class="ti ti-brain"></i>{{t "Copilot"}}</div>
     <div class="copilot-msgs" id="cop-msgs">
-      <div class="cop-hint">KI-Copilot für Entstörung und Analyse...</div>
+      <div class="cop-hint">{{t "KI-Copilot für Entstörung und Analyse …"}}</div>
     </div>
     <div class="copilot-input">
-      <input placeholder="Frage stellen..." id="cop-in"
+      <input placeholder="{{t "Frage stellen …"}}" id="cop-in"
         onkeydown="if(event.key==='Enter')sendCop()">
-      <button class="cop-btn" onclick="sendCop()">Senden</button>
+      <button class="cop-btn" onclick="sendCop()">{{t "Senden"}}</button>
     </div>
   </div>
 
   <!-- Aktivität -->
   <div class="ctx-section grow" data-context-panel="activity">
-    <div class="ctx-title"><i class="ti ti-bell"></i>Aktivität</div>
+    <div class="ctx-title"><i class="ti ti-bell"></i>{{t "Aktivität"}}</div>
     <div id="activity-feed"
       hx-get="/api/activity"
       hx-trigger="load, every 30s">
-      <div style="font-size:11px;color:var(--muted)">Lädt...</div>
+      <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
     </div>
   </div>
 
@@ -755,16 +757,16 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <div class="ctx-title"><i class="ti ti-list"></i>{{.ContextTitle}}</div>
     <div id="ctx-list">
       {{block "context-list" .}}
-      <div style="font-size:11px;color:var(--muted)">Keine Einträge</div>
+      <div style="font-size:11px;color:var(--muted)">{{t "Keine Einträge"}}</div>
       {{end}}
     </div>
   </div>
   <div class="ctx-section" data-context-panel="help">
-    <div class="ctx-title"><i class="ti ti-help"></i>Hilfe</div>
+    <div class="ctx-title"><i class="ti ti-help"></i>{{t "Hilfe"}}</div>
     <!-- Kontexthilfe: passendes Handbuchkapitel zur aktuellen Seite (geladen aus /help) -->
-    <div id="ctx-help" class="ctx-help" data-page="{{.Page}}"><div style="color:var(--muted)">Hilfe wird geladen…</div></div>
+    <div id="ctx-help" class="ctx-help" data-page="{{.Page}}"><div style="color:var(--muted)">{{t "Hilfe wird geladen …"}}</div></div>
     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-      <a class="btn btn-small" id="ctx-help-chapter" href="/help"><i class="ti ti-book"></i> Im Handbuch öffnen</a>
+      <a class="btn btn-small" id="ctx-help-chapter" href="/help"><i class="ti ti-book"></i> {{t "Im Handbuch öffnen"}}</a>
       <a class="btn btn-small" href="/help"><i class="ti ti-list"></i> Inhalt</a>
     </div>
   </div>
@@ -859,9 +861,9 @@ async function lookSave() {
   if(!el) return;
   // Abstand Geraeteuhr ↔ Serveruhr; so zeigen alle Terminals dieselbe Zeit
   const offset = (parseInt(el.dataset.serverMs, 10) || Date.now()) - Date.now();
-  const fDay = new Intl.DateTimeFormat('de-DE', {weekday: 'long'});
-  const fDate = new Intl.DateTimeFormat('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
-  const fTime = new Intl.DateTimeFormat('de-DE', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  const fDay = new Intl.DateTimeFormat(PDH_LOCALE, {weekday: 'long'});
+  const fDate = new Intl.DateTimeFormat(PDH_LOCALE, {day: '2-digit', month: '2-digit', year: 'numeric'});
+  const fTime = new Intl.DateTimeFormat(PDH_LOCALE, {hour: '2-digit', minute: '2-digit', second: '2-digit'});
   const day = el.querySelector('.clk-day'), date = el.querySelector('.clk-date'), time = el.querySelector('.clk-time');
   function kw(d) { // ISO-Kalenderwoche
     const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -1652,8 +1654,8 @@ function pdhShareToChat(){
   function time(ts){
     const d = new Date(ts), t = new Date();
     return d.toDateString() === t.toDateString()
-      ? d.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'})
-      : d.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit'});
+      ? d.toLocaleTimeString(PDH_LOCALE, {hour: '2-digit', minute: '2-digit'})
+      : d.toLocaleDateString(PDH_LOCALE, {day: '2-digit', month: '2-digit'});
   }
   function renderBody(m){
     let s = esc(m.body);
@@ -2004,7 +2006,7 @@ function initAttachmentGalleries(){
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAttachmentGalleries);
 else initAttachmentGalleries();
 // Druckkopf: Datum beim Drucken eintragen
-window.addEventListener("beforeprint", function(){ document.querySelectorAll("[data-print-date]").forEach(function(el){ el.textContent = new Date().toLocaleString("de-DE"); }); });
+window.addEventListener("beforeprint", function(){ document.querySelectorAll("[data-print-date]").forEach(function(el){ el.textContent = new Date().toLocaleString(PDH_LOCALE); }); });
 </script>
 <style>
 .pdh-sg{position:fixed;z-index:7000;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:12.5px;max-width:min(560px,calc(100vw - 16px));overflow:hidden}

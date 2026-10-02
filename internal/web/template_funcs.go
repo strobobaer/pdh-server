@@ -10,7 +10,7 @@ import (
 )
 
 func TemplateFuncs() template.FuncMap {
-	return template.FuncMap{
+	m := template.FuncMap{
 		"appVersion": pdh.Version,
 		"css":        templateCSS,
 		"dict":       templateDict,
@@ -21,6 +21,10 @@ func TemplateFuncs() template.FuncMap {
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
 	}
+	for k, v := range i18nFuncs() { // t, lang, langs (Sprache wird je Ausgabe gebunden)
+		m[k] = v
+	}
+	return m
 }
 
 func templateCSS(value interface{}) template.CSS {

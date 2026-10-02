@@ -121,7 +121,8 @@
         <select name="manager_id" class="form-input"><option value="">– keine/r –</option>{{range .ManagerOptions}}{{if ne .ID $u.ID}}<option value="{{.ID}}" {{if eq .ID $u.ManagerID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select></div>
       <div class="form-group"><label class="form-label">Arbeitsort / Standort</label><input name="work_location" class="form-input" value="{{$m.WorkLocation}}" maxlength="150"></div>
       <div class="form-group"><label class="form-label">Sprache</label>
-        <select name="language" class="form-input">{{range $k := (list "de" "en" "pl" "tr" "ro" "hr" "cs" "hu" "ru" "uk")}}<option value="{{$k}}" {{if eq $k $m.Language}}selected{{end}}>{{$k}}</option>{{end}}</select></div>
+        <select name="language" class="form-input">{{$known := false}}{{range langs}}<option value="{{.Code}}" {{if eq .Code $m.Language}}selected{{$known = true}}{{end}}>{{.Name}}</option>{{end}}{{if and $m.Language (not $known)}}<option value="{{$m.Language}}" selected>{{$m.Language}}</option>{{end}}</select>
+        <div class="rec-sub" style="margin-top:3px">{{t "Sprache der Oberfläche – wird beim Anmelden verwendet; umstellen geht jederzeit über die Flagge oben rechts."}}</div></div>
       <div class="form-group"><label class="form-label">Eintritt</label><input type="date" name="entry_date" class="form-input" value="{{$m.EntryDate}}"></div>
       <div class="form-group"><label class="form-label">Austritt</label><input type="date" name="exit_date" class="form-input" value="{{$m.ExitDate}}"></div>
     </div>

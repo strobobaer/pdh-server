@@ -59,7 +59,7 @@ func TestGalleryOnServerConfig(t *testing.T) {
 
 func TestLoginUsesCompanyLook(t *testing.T) {
 	root := filepath.Join("..", "..", "web", "templates")
-	tmpl, err := template.New("login.gohtml").Funcs(TemplateFuncs()).ParseFiles(filepath.Join(root, "login.gohtml"))
+	tmpl, err := template.New("login.gohtml").Funcs(TemplateFuncs()).ParseFiles(filepath.Join(root, "login.gohtml"), filepath.Join(root, "widgets", "lang_switch.gohtml"))
 	if err != nil {
 		t.Fatal(err)
 	}

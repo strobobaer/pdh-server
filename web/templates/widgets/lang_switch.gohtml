@@ -1,0 +1,28 @@
+{{/* Flaggen (SVG, weil Windows Flaggen-Emojis nur als Buchstaben zeigt) und
+     Sprachmenue – i18n.go. Aufruf: {{template "lang-flag" "de"}} bzw.
+     {{template "lang-switch"}} – kehrt nach dem Umstellen auf die aktuelle Seite zurueck */}}
+
+{{define "lang-flag"}}<svg class="lang-flag" viewBox="0 0 30 20" aria-hidden="true">
+{{- if eq . "de"}}<rect width="30" height="20" fill="#FFCE00"/><rect width="30" height="13.34" fill="#DD0000"/><rect width="30" height="6.67" fill="#000"/>
+{{- else if eq . "en"}}<rect width="30" height="20" fill="#012169"/><path d="M0,0 30,20 M30,0 0,20" stroke="#fff" stroke-width="4"/><path d="M0,0 30,20 M30,0 0,20" stroke="#C8102E" stroke-width="1.6"/><path d="M15,0 v20 M0,10 h30" stroke="#fff" stroke-width="6"/><path d="M15,0 v20 M0,10 h30" stroke="#C8102E" stroke-width="3.4"/>
+{{- else if eq . "ro"}}<rect width="10" height="20" fill="#002B7F"/><rect x="10" width="10" height="20" fill="#FCD116"/><rect x="20" width="10" height="20" fill="#CE1126"/>
+{{- else if eq . "tr"}}<rect width="30" height="20" fill="#E30A17"/><circle cx="10.6" cy="10" r="5" fill="#fff"/><circle cx="11.9" cy="10" r="4" fill="#E30A17"/><polygon fill="#fff" points="13.80,10.00 15.55,9.38 15.60,7.53 16.72,9.00 18.50,8.47 17.45,10.00 18.50,11.53 16.72,11.00 15.60,12.47 15.55,10.62"/>
+{{- else if eq . "mk"}}<rect width="30" height="20" fill="#D20000"/><g fill="#FFE600"><polygon points="0,0 4,0 15,10"/><polygon points="30,0 26,0 15,10"/><polygon points="0,20 4,20 15,10"/><polygon points="30,20 26,20 15,10"/><polygon points="13.5,0 16.5,0 15,10"/><polygon points="13.5,20 16.5,20 15,10"/><polygon points="0,8.5 0,11.5 15,10"/><polygon points="30,8.5 30,11.5 15,10"/></g><circle cx="15" cy="10" r="3.4" fill="#FFE600" stroke="#D20000" stroke-width="0.8"/>
+{{- end}}</svg>{{end}}
+
+{{define "lang-switch"}}
+<style>
+.lang-btn{padding:0 12px}
+.lang-flag{width:22px;height:15px;border-radius:2px;flex-shrink:0;box-shadow:0 0 0 1px rgba(0,0,0,.18);display:block}
+.lang-menu button.menu-item{width:100%;background:none;border:0;font:inherit;color:inherit;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px}
+.lang-menu button.menu-item.active{font-weight:600}
+</style>
+<div class="lang-switch" style="position:relative">
+  <button type="button" class="theme-toggle lang-btn" onclick="toggleMenu('lang-menu')" aria-haspopup="true" aria-label="{{t "Sprache"}}" title="{{t "Sprache"}}">{{template "lang-flag" lang}}</button>
+  <form id="lang-menu" class="win11-menu lang-menu" method="post" action="/lang" onsubmit="this.back.value=location.pathname+location.search" style="display:none;position:absolute;right:0;top:50px;min-width:170px;z-index:210">
+    <input type="hidden" name="back" value="/">
+    {{$cur := lang}}
+    {{range langs}}<button type="submit" name="lang" value="{{.Code}}" class="menu-item{{if eq .Code $cur}} active{{end}}" lang="{{.Code}}">{{template "lang-flag" .Code}}<span>{{.Name}}</span>{{if eq .Code $cur}}<i class="ti ti-check" style="margin-left:auto"></i>{{end}}</button>{{end}}
+  </form>
+</div>
+{{end}}
