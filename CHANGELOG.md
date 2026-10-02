@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.25.0] – 2026-10-02
+
+### Neu
+- Navigation und rechte Seitenleiste lassen sich am Innenrand per Ziehen in der Breite ändern; der Browser merkt sich die Breite, Doppelklick stellt den Standard wieder her, mit der Tastatur über die Pfeiltasten
+
 ## [0.24.0] – 2026-10-02
 
 ### Neu

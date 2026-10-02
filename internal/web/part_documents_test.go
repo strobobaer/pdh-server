@@ -71,3 +71,14 @@ func TestPartDocumentsUI(t *testing.T) {
 		t.Error("ohne Bearbeitungsrecht ist die Dokumentsuche sichtbar")
 	}
 }
+
+// Seitenleisten in der Breite ziehbar: Griffe, Variablen, frueh geladene Breite.
+func TestSidebarResizers(t *testing.T) {
+	page := renderPage(t, loadTestTemplates(t), "tickets", TicketsPageData{})
+	for _, want := range []string{`class="pdh-resizer left"`, `class="pdh-resizer right"`, `role="separator"`, "--left-open-w", "pdh_sidebar_left_w", "pdh_sidebar_right_w", "max(380px, var(--right-open-w))"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Seite enthält %q nicht", want)
+		}
+	}
+	checkScripts(t, "resizer", page)
+}

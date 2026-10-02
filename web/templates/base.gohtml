@@ -23,6 +23,12 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   document.documentElement.dataset.palette = {{.Look.PaletteID}};
   try { localStorage.removeItem('pdh_palette'); } catch(e) {} // frueher im Browser gespeichert
   if(localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches) document.documentElement.classList.add('sidebar-left-collapsed');
+  // per Ziehen eingestellte Breiten der Seitenleisten (pdhResizer)
+  try {
+    const wl = parseInt(localStorage.getItem('pdh_sidebar_left_w'), 10), wr = parseInt(localStorage.getItem('pdh_sidebar_right_w'), 10);
+    if(wl >= 160 && wl <= 480) document.documentElement.style.setProperty('--left-open-w', wl + 'px');
+    if(wr >= 220 && wr <= 760) document.documentElement.style.setProperty('--right-open-w', wr + 'px');
+  } catch(e) {}
   // Rechte Seitenleiste startet immer eingeklappt (nur die senkrechten Reiter
   // sind sichtbar); sie oeffnet sich per Reiter, Chat-Anforderung oder neuer Nachricht.
   document.documentElement.classList.add('sidebar-right-collapsed');
@@ -41,7 +47,8 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   --text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;
   --green:#10b981;--amber:#f59e0b;--red:#ef4444;
   --font:'DM Sans',system-ui,sans-serif;
-  --left-sidebar-w:200px;--right-sidebar-w:260px
+  --left-open-w:200px;--right-open-w:260px;
+  --left-sidebar-w:var(--left-open-w);--right-sidebar-w:var(--right-open-w)
 }
 html[data-theme="light"]{
   --bg:#f5f7fb;--bg2:#ffffff;--bg3:#eef2f7;
@@ -51,7 +58,17 @@ html[data-theme="light"]{
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
 a{color:inherit;text-decoration:none}
-.app{display:grid;grid-template-columns:var(--left-sidebar-w) 1fr var(--right-sidebar-w);flex:1;overflow:hidden;transition:grid-template-columns .18s ease}
+.app{display:grid;grid-template-columns:var(--left-sidebar-w) 1fr var(--right-sidebar-w);flex:1;overflow:hidden;transition:grid-template-columns .18s ease;position:relative}
+/* Breite der Seitenleisten per Ziehen (pdhResizer) */
+.pdh-resizer{position:absolute;top:0;bottom:0;width:8px;z-index:60;cursor:col-resize;touch-action:none;outline:none}
+.pdh-resizer::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:transparent;transition:background .12s}
+.pdh-resizer:hover::after,.pdh-resizer:focus-visible::after,html.pdh-resizing .pdh-resizer.on::after{background:var(--accent)}
+.pdh-resizer.left{left:calc(var(--left-sidebar-w) - 4px)}
+.pdh-resizer.right{right:calc(var(--right-sidebar-w) - 4px)}
+html.sidebar-left-collapsed .pdh-resizer.left,html.sidebar-right-collapsed .pdh-resizer.right,html.pdh-embedded .pdh-resizer{display:none}
+html.pdh-resizing,html.pdh-resizing *{cursor:col-resize!important;user-select:none!important}
+html.pdh-resizing .app{transition:none}
+html.pdh-resizing iframe{pointer-events:none}
 html.pdh-embedded .app{grid-template-columns:1fr}
 html.pdh-embedded .sidebar,html.pdh-embedded .context,html.pdh-embedded .topbar{display:none}
 html.pdh-embedded .main{padding:14px}
@@ -202,7 +219,7 @@ html.sidebar-right-collapsed .ctx-panel-wrap{display:none}
 .ctx-tab{height:auto;min-height:34px;flex-direction:column;gap:6px;padding:8px 0;position:relative}
 .ctx-vlabel{writing-mode:vertical-rl;font-size:11px;letter-spacing:.4px;white-space:nowrap;max-height:120px;overflow:hidden;text-overflow:ellipsis}
 .ctx-badge{position:absolute;top:-4px;right:-6px;min-width:17px;height:17px;border-radius:9px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
-html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:380px}
+html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, var(--right-open-w))}
 /* Chat in der Seitenleiste */
 .ctx-section.sc-panel{padding:0}
 .ctx-section.sc-panel.active{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
@@ -490,6 +507,7 @@ select.form-input option{background:var(--bg2)}
 [oncontextmenu]{-webkit-touch-callout:none}
 @media (max-width:1180px){
   .app{grid-template-columns:var(--left-sidebar-w) 1fr}
+  .pdh-resizer.right{display:none}
   .context{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:450;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .2s ease}
   html:not(.sidebar-right-collapsed) .context{transform:none}
   html:not(.sidebar-right-collapsed) .pdh-backdrop{display:block}
@@ -553,6 +571,8 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 </head>
 <body>
 <div class="app">
+<div class="pdh-resizer left" role="separator" aria-orientation="vertical" tabindex="0" aria-label="{{t "Breite der Navigation"}}" title="{{t "Ziehen ändert die Breite – Doppelklick: Standard"}}"></div>
+<div class="pdh-resizer right" role="separator" aria-orientation="vertical" tabindex="0" aria-label="{{t "Breite der Seitenleiste"}}" title="{{t "Ziehen ändert die Breite – Doppelklick: Standard"}}"></div>
 
 <!-- ── Sidebar ── -->
 <aside class="sidebar">
@@ -2125,6 +2145,52 @@ async function setRecordImage(refType, refId, id) {
     showGlobalError('Datensatzbild fehlgeschlagen', err.message || String(err));
   }
 }
+// Seitenleisten in der Breite ziehen: Griff am Innenrand, Breite bleibt im
+// Browser gespeichert; Doppelklick = Standard, Pfeiltasten = 16 px.
+(function(){
+  const root = document.documentElement, app = document.querySelector('.app');
+  if(!app) return;
+  const LIM = {left: [160, 480, 200], right: [220, 760, 260]}; // min, max, Standard
+  const MAIN_MIN = 420; // Inhalt in der Mitte bleibt bedienbar
+  function cur(side){ return parseInt(getComputedStyle(root).getPropertyValue('--' + side + '-open-w'), 10) || LIM[side][2]; }
+  function set(side, w, save){
+    const other = side === 'left' ? 'right' : 'left';
+    const otherW = root.classList.contains('sidebar-' + other + '-collapsed') ? 54 : (parseInt(getComputedStyle(root).getPropertyValue('--' + other + '-sidebar-w'), 10) || 0);
+    const max = Math.min(LIM[side][1], app.clientWidth - otherW - MAIN_MIN);
+    w = Math.round(Math.max(LIM[side][0], Math.min(max, w)));
+    root.style.setProperty('--' + side + '-open-w', w + 'px');
+    if(save){ try{ localStorage.setItem('pdh_sidebar_' + side + '_w', String(w)); }catch(e){} window.dispatchEvent(new Event('resize')); }
+    return w;
+  }
+  document.querySelectorAll('.pdh-resizer').forEach(el => {
+    const side = el.classList.contains('left') ? 'left' : 'right';
+    el.addEventListener('pointerdown', e => {
+      if(e.button !== 0) return;
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('on'); root.classList.add('pdh-resizing');
+      const r = app.getBoundingClientRect();
+      const move = ev => set(side, side === 'left' ? ev.clientX - r.left : r.right - ev.clientX, false);
+      const up = () => {
+        el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+        el.classList.remove('on'); root.classList.remove('pdh-resizing');
+        set(side, cur(side), true);
+      };
+      el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    });
+    el.addEventListener('dblclick', () => {
+      root.style.removeProperty('--' + side + '-open-w');
+      try{ localStorage.removeItem('pdh_sidebar_' + side + '_w'); }catch(e){}
+      window.dispatchEvent(new Event('resize'));
+    });
+    el.addEventListener('keydown', e => {
+      if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const grow = (e.key === 'ArrowRight') === (side === 'left');
+      set(side, cur(side) + (grow ? 16 : -16), true);
+    });
+  });
+})();
 // Dokument (oder 'all') erneut von der Quelle laden – ersetzt nur bei neuer Fassung
 async function pdhRefreshDoc(partId, attId, btn) {
   if(btn) btn.disabled = true;
