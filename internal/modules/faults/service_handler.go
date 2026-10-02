@@ -128,6 +128,14 @@ func (s *Service) FindPartDocuments(ctx context.Context, q PartDocQuery) ([]Part
 	return s.copilot.FindPartDocuments(ctx, q)
 }
 
+// Copilot: der laufende Copilot (fuer die Diagnose in den Server-Einstellungen).
+func (s *Service) Copilot() *Copilot {
+	if s == nil {
+		return nil
+	}
+	return s.copilot
+}
+
 func (s *Service) GetAnalysis(ctx context.Context, faultID string) (*CopilotAnalysis, error) {
 	return s.repo.GetAnalysis(ctx, faultID)
 }

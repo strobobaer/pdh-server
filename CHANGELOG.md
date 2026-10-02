@@ -16,8 +16,10 @@ im Kapitel „Versionen & Updates“ an.
 - Ersatzteile: Datenblatt und Benutzerhandbuch aus dem Internet holen – im Reiter Dokumente auf „Datenblatt & Handbuch suchen“. Gesucht wird zuerst beim Hersteller (mit Claude-Websuche, wenn ein Anthropic-Schlüssel hinterlegt ist, sonst über DuckDuckGo); angezeigt werden nur Adressen, hinter denen wirklich ein PDF liegt
 - Übernommene Dokumente werden im PDH gespeichert und tragen das Etikett „Datenblatt“ oder „Benutzerhandbuch“, den Stand und einen Link zur Quelle; eine PDF-Adresse lässt sich auch direkt einfügen
 - „Aktualisieren“ (je Dokument oder „Alle aktualisieren“) lädt die Dokumente erneut von der Quelle und ersetzt sie nur, wenn der Anbieter eine neue Fassung hat – vermerkt im Verlauf des Teils
+- Server-Einstellungen → Copilot: „Verbindung testen“ zeigt, mit welchem Anthropic-Schlüssel der Server gerade läuft und welcher eingestellt ist (maskiert, mit Quelle), ob ein Neustart fehlt, ob eine Umgebungsvariable den Schlüssel aus der Datenbank verdeckt – und prüft kostenlos, ob Anthropic den Schlüssel annimmt und das Modell verfügbar ist
 
 ### Behoben
+- Server-Einstellungen: Leere Einträge von außen (z. B. `PDH_COPILOT_ANTHROPICKEY=` in `.env.docker` aus dem Installationsskript) verdeckten den in der Datenbank gespeicherten Wert; sie zählen jetzt nicht mehr als gesetzt
 - Copilot: Ein Anthropic-Schlüssel aus einer Umgebungs- bzw. .env-Datei mit Leerzeichen, Windows-Zeilenende oder Anführungszeichen wurde unverändert gesendet und von Anthropic mit „HTTP 401 – API key is invalid“ abgelehnt; diese Zeichen werden jetzt entfernt. Die Fehlermeldung bei 401 sagt genauer, wo der Schlüssel zu prüfen und einzutragen ist
 
 ## [0.23.0] – 2026-10-02

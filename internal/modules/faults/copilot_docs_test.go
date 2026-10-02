@@ -1,6 +1,9 @@
 package faults
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParsePartDocs(t *testing.T) {
 	text := "Hier die Treffer:\n```json\n" + `{"documents":[
@@ -43,5 +46,27 @@ func TestCleanAPIKey(t *testing.T) {
 	}
 	if !NewCopilot("\"sk-ant-x\"\r", "", "", "", nil).CanSearchWeb() {
 		t.Error("Schlüssel in Anführungszeichen wird nicht als Anthropic erkannt")
+	}
+}
+
+func TestMaskAPIKey(t *testing.T) {
+	k := "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ-wxyz"
+	got := MaskAPIKey(" " + k + "\r\n")
+	if got != "sk-ant-api03…wxyz (44 Zeichen)" {
+		t.Errorf("MaskAPIKey = %q", got)
+	}
+	if strings.Contains(got, "ABCDEFG") {
+		t.Error("Schlüssel nicht maskiert")
+	}
+	if MaskAPIKey("") != "–" {
+		t.Error("leerer Schlüssel")
+	}
+	c := NewCopilot(`"`+k+`"`, "", "", "", nil)
+	if !c.SameKey(k) || c.SameKey("sk-ant-anders") || c.ActiveKeyHint() != got {
+		t.Error("SameKey/ActiveKeyHint falsch")
+	}
+	var nilC *Copilot
+	if nilC.ActiveKeyHint() != "" || nilC.SameKey(k) {
+		t.Error("nil-Copilot")
 	}
 }

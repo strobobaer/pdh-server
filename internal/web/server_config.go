@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"pdh/internal/modules/faults"
 	"pdh/pkg/config"
 	"pdh/pkg/logger"
 	"pdh/pkg/database"
@@ -546,8 +547,83 @@ func (h *Handler) ServerConfigTestWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok("Testnachricht an " + to + " gesendet.")
+	case "copilot":
+		h.copilotDiagnose(w, r)
 	default:
 		fail(errors.New("unbekannter Test"))
+	}
+}
+
+// nextStartValue: Wert und Herkunft, mit denen der Server beim naechsten
+// Start laeuft (von aussen gesetzt > Datenbank > Einstellungsdatei).
+func (h *Handler) nextStartValue(ctx context.Context, key string) (string, string) {
+	if config.FromProcessEnv(key) {
+		return os.Getenv(key), "Umgebung (Docker .env.docker, systemd oder Shell)"
+	}
+	if h.db != nil {
+		if vals, err := config.LoadDBSettings(ctx, h.db); err == nil {
+			if s, ok := vals[key]; ok {
+				if s.DecryptErr != nil {
+					return "", "Datenbank – nicht entschlüsselbar (" + s.DecryptErr.Error() + ")"
+				}
+				return s.Value, "Datenbank"
+			}
+		}
+	}
+	if file, err := config.ReadEnvFile(config.EnvFilePath()); err == nil {
+		if v, ok := file[key]; ok {
+			return v, "Einstellungsdatei"
+		}
+	}
+	return "", "nicht gesetzt"
+}
+
+// copilotDiagnose: welcher Anthropic-Schluessel laeuft, woher kommt er, ist
+// ein Neustart faellig, und nimmt Anthropic ihn an?
+func (h *Handler) copilotDiagnose(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	line := func(icon, color, html string) {
+		fmt.Fprintf(w, `<div style="color:%s"><i class="ti %s"></i> %s</div>`, color, icon, html)
+	}
+	cp := h.faults.Copilot()
+	key, src := h.nextStartValue(ctx, "PDH_COPILOT_ANTHROPICKEY")
+	ws, _ := h.nextStartValue(ctx, "PDH_COPILOT_ANTHROPICWORKSPACE")
+	model, _ := h.nextStartValue(ctx, "PDH_COPILOT_ANTHROPICMODEL")
+	fmt.Fprint(w, `<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">`)
+	defer fmt.Fprint(w, `</div>`)
+	active := cp.ActiveKeyHint()
+	if active == "" {
+		active = "keiner (Copilot läuft mit Ollama)"
+	}
+	line("ti-player-play", "var(--text)", "Läuft gerade mit: <code>"+esc(active)+"</code>")
+	line("ti-database", "var(--text)", "Eingestellt: <code>"+esc(faults.MaskAPIKey(key))+"</code> – Quelle: <b>"+esc(src)+"</b>")
+	if strings.HasPrefix(src, "Umgebung") && h.db != nil {
+		if vals, err := config.LoadDBSettings(ctx, h.db); err == nil {
+			if s, ok := vals["PDH_COPILOT_ANTHROPICKEY"]; ok && s.DecryptErr == nil && s.Value != "" && strings.TrimSpace(s.Value) != strings.TrimSpace(key) {
+				line("ti-alert-triangle", "var(--amber)", "In der Datenbank steht ein <b>anderer</b> Schlüssel (<code>"+esc(faults.MaskAPIKey(s.Value))+"</code>), er wird aber <b>nicht verwendet</b>: Die Umgebungsvariable hat Vorrang. Den Eintrag <code>PDH_COPILOT_ANTHROPICKEY</code> in <code>.env.docker</code> bzw. der systemd-Unit entfernen und den Server neu starten.")
+			}
+		}
+	}
+	if cp.ActiveKeyHint() != "" && key != "" && !cp.SameKey(key) {
+		line("ti-refresh-alert", "var(--amber)", "Der eingestellte Schlüssel ist <b>noch nicht aktiv</b> – Server neu starten.")
+	}
+	if cp.ActiveKeyHint() != "" {
+		if msg, err := cp.CheckActive(ctx); err != nil {
+			line("ti-alert-circle", "var(--red)", "Aktiver Schlüssel: "+esc(err.Error()))
+		} else {
+			line("ti-circle-check", "var(--green)", "Aktiver Schlüssel: "+esc(msg))
+		}
+	}
+	if key != "" && !cp.SameKey(key) {
+		if msg, err := faults.CheckAnthropicKey(ctx, key, ws, model); err != nil {
+			line("ti-alert-circle", "var(--red)", "Eingestellter Schlüssel: "+esc(err.Error()))
+		} else {
+			line("ti-circle-check", "var(--green)", "Eingestellter Schlüssel: "+esc(msg)+" Nach dem Neustart aktiv.")
+		}
+	}
+	if key == "" && cp.ActiveKeyHint() == "" {
+		line("ti-info-circle", "var(--muted)", "Kein Anthropic-Schlüssel hinterlegt.")
 	}
 }
 

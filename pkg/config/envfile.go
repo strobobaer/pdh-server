@@ -41,6 +41,12 @@ func snapshotEnv() {
 			if !ok || k == "PDH_ENV_FILE" {
 				continue
 			}
+			// leer von aussen (z. B. "PDH_COPILOT_ANTHROPICKEY=" in .env.docker
+			// aus dem Installationsskript) ist kein bewusster Wert und darf die
+			// Datenbank nicht verdecken
+			if v == "" {
+				continue
+			}
 			if fv, inFile := file[k]; inFile && fv == v {
 				continue
 			}

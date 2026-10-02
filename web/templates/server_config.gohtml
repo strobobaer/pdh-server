@@ -78,6 +78,10 @@
       <label class="sc-sub"><input type="checkbox" name="force" value="1"> Trotzdem speichern, auch wenn der Test fehlschlägt</label>
       <span id="test-database" class="sc-sub"></span>
     {{end}}
+    {{if eq .Key "copilot"}}
+      <button class="btn" type="button" hx-post="/admin/server-config/test?what=copilot" hx-target="#test-copilot"><i class="ti ti-plug-connected"></i> Verbindung testen</button>
+      <span id="test-copilot" class="sc-sub" style="width:100%"></span>
+    {{end}}
     {{if eq .Key "mail"}}
       <button class="btn" type="button" hx-post="/admin/server-config/test?what=mail" hx-target="#test-mail"><i class="ti ti-send"></i> Testmail an mich</button>
       <span id="test-mail" class="sc-sub"></span>

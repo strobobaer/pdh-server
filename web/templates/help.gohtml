@@ -251,7 +251,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
-    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten. Den Copilot in der rechten Seitenleiste kannst du überall fragen; auf einer Störung antwortet er mit deren Kontext.</div>
+    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Dort prüft <b>Verbindung testen</b>, welcher Schlüssel aktiv ist und ob Anthropic ihn annimmt. Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten. Den Copilot in der rechten Seitenleiste kannst du überall fragen; auf einer Störung antwortet er mit deren Kontext.</div>
   <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat. Auf der Seite <b>Neue Zuweisung</b> stehen im Feld „Zugewiesen an“ unter den Personen auch die <b>Gruppen</b> – so landet ein neuer Auftrag direkt bei einem Team.</div>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
 </section>
@@ -618,7 +618,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><span class="rec-sub">Datenbank</span></td><td>in der Datenbank gespeichert – hier änderbar</td></tr>
     <tr><td><span class="rec-sub">Datei</span></td><td>steht (noch) in der Einstellungsdatei – beim Datenbank-Zugang immer so</td></tr>
     <tr><td><span class="rec-sub">Standard</span></td><td>nicht gesetzt, es gilt der Standardwert</td></tr>
-    <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang und ist hier nur lesbar</td></tr>
+    <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang vor der Datenbank und ist hier nur lesbar. Leere Einträge wie <code>PDH_COPILOT_ANTHROPICKEY=</code> zählen nicht, dann gilt der Wert aus der Datenbank</td></tr>
     <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>
   </table>
   <div class="hb-howto"><b><i class="ti ti-mail"></i> Beispiel: E-Mail-Versand einrichten</b>
@@ -627,6 +627,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b> – E-Mail-Einstellungen gelten sofort.</li>
       <li><b>Testmail an mich</b> schickt eine Nachricht an deine eigene Adresse.</li>
     </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So prüfst du den Copilot-Zugang</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Copilot</b> → <b>Verbindung testen</b>.</li>
+      <li>Oben steht, mit welchem Schlüssel der Server <b>gerade läuft</b> und welcher <b>eingestellt</b> ist, mit Quelle (Datenbank oder Umgebung). Angezeigt werden nur Anfang, Ende und Länge des Schlüssels.</li>
+      <li>Darunter steht, ob Anthropic den Schlüssel annimmt und ob das eingestellte Modell verfügbar ist. Der Test kostet nichts.</li>
+    </ol>
+    Typische Ursachen für <i>„API key is invalid“</i>: Der neue Schlüssel ist gespeichert, aber der Server wurde <b>nicht neu gestartet</b>. Oder in <code>.env.docker</code> steht noch ein <b>alter Schlüssel</b>, der Vorrang vor der Datenbank hat – der Test zeigt das an. Oder der Schlüssel wurde in der Claude Console widerrufen bzw. unvollständig kopiert – dann einen neuen erzeugen und eintragen.</div>
   <ul>
     <li><b>Passwörter und Schlüssel</b> werden nie angezeigt. Feld leer lassen = unverändert; „Wert entfernen“ löscht ihn.</li>
     <li><b>Datenbank</b>: Änderungen werden vor dem Speichern getestet. Nur wenn du sicher bist, „Trotzdem speichern“ anhaken.</li>

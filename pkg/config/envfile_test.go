@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -72,5 +73,19 @@ func TestRandomSecret(t *testing.T) {
 	a, b := RandomSecret(32), RandomSecret(32)
 	if len(a) != 64 || a == b {
 		t.Errorf("Secret %q / %q", a, b)
+	}
+}
+
+func TestEmptyProcessEnvDoesNotOverride(t *testing.T) {
+	t.Setenv("PDH_TEST_EMPTY_FROM_OUTSIDE", "")
+	t.Setenv("PDH_TEST_SET_FROM_OUTSIDE", "x")
+	t.Setenv("PDH_ENV_FILE", filepath.Join(t.TempDir(), "pdh.env"))
+	origOnce = sync.Once{}
+	t.Cleanup(func() { origOnce = sync.Once{} })
+	if FromProcessEnv("PDH_TEST_EMPTY_FROM_OUTSIDE") {
+		t.Error("leere Variable von außen verdeckt die Datenbank")
+	}
+	if !FromProcessEnv("PDH_TEST_SET_FROM_OUTSIDE") {
+		t.Error("gesetzte Variable von außen hat keinen Vorrang mehr")
 	}
 }
