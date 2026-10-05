@@ -145,7 +145,7 @@
         <button type="button" class="btn" style="font-size:11px;margin-top:6px" onclick="saveTaskAssignees()">Speichern</button>
         <div id="task-assignees-result" style="font-size:11px;margin-top:6px"></div>
       </div>
-      <form hx-put="/records/task/{{.Task.ID}}/group" hx-target="#task-group-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <form hx-post="/records/task/{{.Task.ID}}/group" hx-target="#task-group-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <label class="form-label">Zugewiesene Gruppe</label>
         <select name="assigned_group_id" class="form-input" hx-get="/records/task/{{.Task.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
         <button type="submit" class="btn" style="font-size:11px;margin-top:6px">Speichern</button>

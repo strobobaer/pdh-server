@@ -5,7 +5,6 @@ Icons are rendered with OpenUI5 Web Components Icons via <ui5-icon>.
 The loader is guarded so pages with many toolbars only import OpenUI5 once.
 */}}
 
-{{define "action-button"}}{{template "icon-button" .}}{{end}}
 
 {{define "ui5-icon-loader"}}
 <script>
@@ -60,7 +59,6 @@ The loader is guarded so pages with many toolbars only import OpenUI5 once.
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
-   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
    {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
    {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
    {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
@@ -77,7 +75,6 @@ The loader is guarded so pages with many toolbars only import OpenUI5 once.
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}
    {{if .HxGet}}hx-get="{{.HxGet}}"{{end}}
    {{if .HxPost}}hx-post="{{.HxPost}}"{{end}}
-   {{if .HxPut}}hx-put="{{.HxPut}}"{{end}}
    {{if .HxDelete}}hx-delete="{{.HxDelete}}"{{end}}
    {{if .HxTarget}}hx-target="{{.HxTarget}}"{{end}}
    {{if .HxSwap}}hx-swap="{{.HxSwap}}"{{end}}
@@ -98,36 +95,3 @@ The loader is guarded so pages with many toolbars only import OpenUI5 once.
 </div>
 {{end}}
 
-{{define "button-new"}}{{template "action-button" .}}{{end}}
-{{define "button-refresh"}}{{template "action-button" .}}{{end}}
-{{define "button-edit"}}{{template "action-button" .}}{{end}}
-{{define "button-copy"}}{{template "action-button" .}}{{end}}
-{{define "button-delete"}}{{template "action-button" .}}{{end}}
-{{define "button-delete-mark"}}{{template "action-button" .}}{{end}}
-{{define "button-activate"}}{{template "action-button" .}}{{end}}
-{{define "button-deactivate"}}{{template "action-button" .}}{{end}}
-{{define "button-done"}}{{template "action-button" .}}{{end}}
-{{define "button-cancel"}}{{template "action-button" .}}{{end}}
-{{define "button-save"}}{{template "action-button" .}}{{end}}
-{{define "icon-button-new"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-refresh"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-expand"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-filter"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-analyze"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-edit"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-view"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-copy"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-history"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-more"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-start"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-stop"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-book"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-delete"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-delete-mark"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-activate"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-deactivate"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-done"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-cancel"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-save"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-back"}}{{template "icon-button" .}}{{end}}
-{{define "icon-button-send"}}{{template "icon-button" .}}{{end}}

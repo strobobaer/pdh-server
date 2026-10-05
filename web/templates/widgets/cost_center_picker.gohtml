@@ -39,6 +39,31 @@ Usage:
 </div>
 
 <script>
+// Kostenstellen einmal laden und in alle Auswahlfelder der Seite eintragen –
+// auch wenn der Baustein mehrfach auf der Seite steht. Ohne das blieb das Feld
+// leer, und Speichern loeschte die hinterlegte Kostenstelle.
+if(!window.__pdhCostCenters){
+  window.__pdhCostCenters = true;
+  const fill = async function(){
+    const selects = [...document.querySelectorAll('[data-cost-center-picker]')].filter(s => !s.dataset.ccLoaded);
+    if(!selects.length) return;
+    selects.forEach(s => { s.dataset.ccLoaded = '1'; });
+    try{
+      const res = await fetch('/api/v1/costcenters', {credentials: 'same-origin'});
+      const json = await res.json();
+      (json.data || []).forEach(function(cc){
+        selects.forEach(function(sel){
+          const opt = document.createElement('option');
+          opt.value = cc.id;
+          opt.textContent = cc.number + ' - ' + cc.name;
+          if(cc.id === (sel.dataset.selected || '')) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      });
+    }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
+  };
+  if(document.readyState !== 'loading') setTimeout(fill, 0); else document.addEventListener('DOMContentLoaded', fill);
+}
 function openCostCenterModal(targetId){
   const modal = document.getElementById('cc-modal-'+targetId);
   if(modal) modal.style.display='flex';

@@ -453,8 +453,8 @@
       const id = j.data && j.data.id;
       if(!id) throw new Error({{t "Keine ID in der Antwort"}});
       const extra = [];
-      if(group) extra.push(fetch('/records/' + t.ref + '/' + encodeURIComponent(id) + '/group', {method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({assigned_group_id: group})}));
-      if(st.type === 'maintenance' && resp) extra.push(fetch('/records/maintenance_task/' + encodeURIComponent(id) + '/people', {method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({assigned_to: person, responsible_to: resp})}));
+      if(group) extra.push(fetch('/records/' + t.ref + '/' + encodeURIComponent(id) + '/group', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({assigned_group_id: group})}));
+      if(st.type === 'maintenance' && resp) extra.push(fetch('/records/maintenance_task/' + encodeURIComponent(id) + '/people', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({assigned_to: person, responsible_to: resp})}));
       if(st.type === 'fault' && due) extra.push(fetch('/api/v1/faults/' + encodeURIComponent(id) + '/due-date', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({due_date: due})}));
       const results = await Promise.all(extra);
       const failed = results.filter(r => !r.ok).length;

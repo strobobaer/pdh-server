@@ -25,7 +25,7 @@
 <div class="card">
   <div class="card-title">Beteiligte</div>
   <div id="record-parties" hx-get="/records/project/{{.Project.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
-  <form hx-put="/records/project/{{.Project.ID}}/people" hx-target="#people-result-project" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+  <form hx-post="/records/project/{{.Project.ID}}/people" hx-target="#people-result-project" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
     <div class="grid2">
       <div class="form-group">
         <label class="form-label">Verantwortlich</label>

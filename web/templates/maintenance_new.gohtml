@@ -198,27 +198,6 @@
 .cl-icon{width:26px;height:26px;border-radius:6px;background:rgba(var(--accent-rgb),.15);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
 </style>
 <script>
-async function populateCostCenterSelects(){
-  const selects = document.querySelectorAll('[data-cost-center-picker]');
-  if(selects.length===0) return;
-  try{
-    const res = await fetch('/api/v1/costcenters', {credentials:'same-origin'});
-    const json = await res.json();
-    const items = json.data || [];
-    selects.forEach(function(sel){
-      const selected = sel.dataset.selected || '';
-      items.forEach(function(cc){
-        const opt = document.createElement('option');
-        opt.value = cc.id;
-        opt.textContent = cc.number + ' - ' + cc.name;
-        if(cc.id === selected) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    });
-  }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
-}
-if(document.readyState !== 'loading') populateCostCenterSelects();
-else document.addEventListener('DOMContentLoaded', populateCostCenterSelects);
 
 function watchInfraForCostCenter(hiddenInfraInputId, costCenterSelectId){
   const hidden = document.getElementById(hiddenInfraInputId);

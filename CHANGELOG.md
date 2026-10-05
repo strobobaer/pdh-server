@@ -34,8 +34,14 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Die Anmeldung mit RFID-Karte auf der Anmeldeseite leitete ohne bestehende Sitzung zum Leitstand um, statt anzumelden
+- Kostenstelle: Auf der Anlagen-Detailseite, beim Anlegen von Anlagen und im Benutzerstamm war die Auswahl leer – Speichern löschte dort die hinterlegte Kostenstelle. Die Liste wird jetzt überall geladen
+- Ticket-Liste: Den Status über die Auswahl in der Zeile zu ändern schlug fehl und ersetzte danach die ganze Zeile; jetzt wird der Status gespeichert und nur die Statusanzeige aktualisiert
+- Wartungsauftrag bearbeiten: Speichern auf der Detailseite schlug fehl
+- Anlage, Beteiligte und Gruppe an Tickets, Störungen, Wartungen, Aufgaben und Projekten ließen sich hinter manchen Proxys (Cloudflare, Nginx) nicht speichern
+- Neu angelegte Wartungspläne trugen als Ersteller den ältesten Benutzer statt der Person, die sie angelegt hat
 
 ### Sicherheit
+- Wartungspläne anlegen, bearbeiten, vormerken und „alle wiederherstellen“ war ohne Anmeldung möglich; diese Aktionen erfordern jetzt eine Anmeldung und beachten die Abteilungs-Sicht
 - Die Karte für die Fertigmeldung am Leitstand gilt nur für den gewählten Vorgang und höchstens 20 Minuten; sie ist keine Anmeldung am Terminal
 - Links zum Zurücksetzen des Passworts werden nur aus der eingestellten öffentlichen Adresse gebaut, sind nur als Prüfsumme gespeichert und pro Konto und Adresse begrenzt; die Seite verrät nicht, ob ein Konto existiert
 

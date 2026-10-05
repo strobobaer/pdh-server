@@ -182,14 +182,14 @@ async function submitAssignment(event){
     if(groupID && newID){
       const refType = {ticket: 'ticket', task: 'task', maintenance: 'maintenance_task', fault: 'fault'}[assignType];
       const gres = await fetch('/records/' + refType + '/' + encodeURIComponent(newID) + '/group', {
-        method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({assigned_group_id: groupID})
+        method: 'POST', credentials: 'same-origin', body: new URLSearchParams({assigned_group_id: groupID})
       });
       if(!gres.ok) throw new Error('Angelegt, aber die Gruppe konnte nicht zugewiesen werden: ' + (await gres.text()));
     }
     if(itAssetID && newID){
       const refType = {ticket: 'ticket', task: 'task', maintenance: 'maintenance_task', fault: 'fault'}[assignType];
       const ires = await fetch('/records/' + refType + '/' + encodeURIComponent(newID) + '/it-asset', {
-        method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({it_asset_id: itAssetID})
+        method: 'POST', credentials: 'same-origin', body: new URLSearchParams({it_asset_id: itAssetID})
       });
       if(!ires.ok) throw new Error('Angelegt, aber das Gerät konnte nicht zugeordnet werden: ' + (await ires.text()));
     }

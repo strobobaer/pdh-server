@@ -352,10 +352,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/tickets", h.Tickets)
 	r.Post("/tickets", h.CreateTicket)
 	r.Get("/tickets/{id}", h.TicketDetail)
-	r.Put("/tickets/{id}/status", h.UpdateTicketStatus)
 	r.Post("/tickets/{id}/status-web", h.TicketStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/tickets/{id}/resolve-web", h.TicketResolve)
-	r.Put("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb)
+	r.Post("/tickets/{id}/infrastructure-web", h.TicketInfrastructureWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/tickets/{id}/comment", h.TicketAddComment)
 	r.Post("/tickets/{id}/time/start", h.TicketStartTime)
 	r.Get("/faults", h.Faults)
@@ -363,7 +362,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/faults/{id}", h.FaultDetail)
 	r.Post("/faults/{id}/analyze", h.AnalyzeFault)
 	r.Post("/faults/{id}/resolve", h.FaultResolve)
-	r.Put("/faults/{id}/infrastructure-web", h.FaultInfrastructureWeb)
+	r.Post("/faults/{id}/infrastructure-web", h.FaultInfrastructureWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
 	r.Post("/inventory", h.CreatePart)
@@ -393,8 +392,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/tasks/{id}/time/start", h.TaskStartTime)
 	r.Get("/projects", h.ProjectsPage)
 	r.Get("/projects/{id}", h.ProjectDetail)
-	r.Post("/maintenance/plans", h.MaintenanceCreatePlan)
-	r.Put("/maintenance/plans/{id}/edit-web", h.MaintenancePlanEditWeb)
+	// Wartungsplaene (maintenance_plans_web.go) – frueher ungeschuetzt in main.go
+	r.Post("/maintenance/plans", h.MaintenancePlanCreateWeb)
+	r.Post("/maintenance/plans/restore-all-web", h.MaintenancePlansRestoreAllWeb)
+	r.Post("/maintenance/plans/{id}/edit-web", h.MaintenancePlanEditWeb)
+	r.Delete("/maintenance/plans/{id}/delete-web", h.MaintenancePlanDeleteWeb)
 	r.Post("/maintenance/plans/{id}/duplicate-web", h.MaintenancePlanDuplicateWeb)
 	r.Post("/maintenance/generate", h.MaintenanceGenerate)
 	r.Get("/maintenance/tasks/{id}", h.MaintenanceTaskDetail)
@@ -422,7 +424,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/a/labels", h.AssetLabelsPage)
 	r.Post("/a/labels/print", h.AssetLabelsPrintWeb)
 	r.Get("/a/{id}", h.AssetInfoPage)
-	r.Put("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
+	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/storage", h.StoragePage)
@@ -438,9 +440,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/time/{id}/stop-web", h.TimeStopWeb)
 	r.Delete("/time/{id}/delete-web", h.TimeDeleteWeb)
 	r.Post("/time/{id}/edit-web", h.TimeEditWeb)
-	r.Put("/records/{refType}/{id}/people", h.RecordPeopleWeb)
+	r.Post("/records/{refType}/{id}/people", h.RecordPeopleWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/records/{refType}/{id}/group-options", h.RecordGroupOptionsWeb)
-	r.Put("/records/{refType}/{id}/group", h.RecordGroupWeb)
+	r.Post("/records/{refType}/{id}/group", h.RecordGroupWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/records/{refType}/{id}/parties", h.RecordPartiesWeb)
 	r.Post("/records/{refType}/{id}/parties", h.RecordPartyAddWeb)
 	r.Post("/records/{refType}/{id}/parties/{partyId}/delete", h.RecordPartyDeleteWeb)
@@ -1571,16 +1573,6 @@ func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 	h.Tickets(w, r)
 }
 
-func (h *Handler) UpdateTicketStatus(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	r.ParseForm()
-	status := tickets.Status(r.FormValue("status"))
-	u := getUser(r)
-	h.tickets.UpdateStatus(r.Context(), id, status, u.ID)
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<tr><td colspan="5" style="color:var(--green);padding:8px 12px"><i class="ti ti-check"></i> Status aktualisiert</td></tr>`)
-}
-
 func (h *Handler) CreatePart(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	u := getUser(r)
@@ -2350,84 +2342,6 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, "maintenance", data)
-}
-
-func (h *Handler) MaintenanceCreatePlan(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
-		return
-	}
-	name := strings.TrimSpace(r.FormValue("name"))
-	infraID := strings.TrimSpace(r.FormValue("infrastructure_id"))
-	if name == "" || infraID == "" {
-		http.Error(w, "Name und Infrastruktur sind Pflicht", http.StatusBadRequest)
-		return
-	}
-	u := getUser(r)
-	in := &maintenance.CreatePlanInput{
-		Name:             name,
-		Type:             maintenance.PlanType(r.FormValue("type")),
-		InfrastructureID: infraID,
-		Interval:         maintenance.Interval(r.FormValue("interval")),
-		Priority:         maintenance.Priority(r.FormValue("priority")),
-		AssignedTo:       optionalID(r.FormValue("assigned_to")),
-		ResponsibleTo:    optionalID(r.FormValue("responsible_to")),
-		FirstDueAt:       r.FormValue("first_due_at"),
-	}
-	plan, err := h.maint.CreatePlan(r.Context(), in, u.ID)
-	if err != nil {
-		http.Error(w, "Wartungsplan konnte nicht angelegt werden: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	_ = h.setRecordGroup(r, "maintenance_plan", plan.ID)
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/maintenance")
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
-}
-
-func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Formular konnte nicht gelesen werden", http.StatusBadRequest)
-		return
-	}
-	intervalDays, _ := strconv.Atoi(r.FormValue("interval_days"))
-	estimatedMin, _ := strconv.Atoi(r.FormValue("estimated_min"))
-	in := &maintenance.UpdatePlanInput{
-		Name:             strings.TrimSpace(r.FormValue("name")),
-		Description:      strings.TrimSpace(r.FormValue("description")),
-		Type:             maintenance.PlanType(r.FormValue("type")),
-		InfrastructureID: strings.TrimSpace(r.FormValue("infrastructure_id")),
-		Interval:         maintenance.Interval(r.FormValue("interval")),
-		IntervalDays:     intervalDays,
-		EstimatedMin:     estimatedMin,
-		Priority:         maintenance.Priority(r.FormValue("priority")),
-		NextDueAt:        r.FormValue("next_due_at"),
-	}
-	if _, ok := r.Form["assigned_to"]; ok {
-		v := strings.TrimSpace(r.FormValue("assigned_to"))
-		in.AssignedTo = &v
-	}
-	if _, ok := r.Form["responsible_to"]; ok {
-		v := strings.TrimSpace(r.FormValue("responsible_to"))
-		in.ResponsibleTo = &v
-	}
-	if in.Name == "" {
-		http.Error(w, "Name ist Pflicht", http.StatusBadRequest)
-		return
-	}
-	if err := h.maint.UpdatePlan(r.Context(), chi.URLParam(r, "id"), in); err != nil {
-		http.Error(w, "Wartungsplan konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := h.setRecordGroup(r, "maintenance_plan", chi.URLParam(r, "id")); err != nil {
-		http.Error(w, "Gruppe konnte nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(`<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Gespeichert</span>`))
 }
 
 func (h *Handler) MaintenancePlanDuplicateWeb(w http.ResponseWriter, r *http.Request) {

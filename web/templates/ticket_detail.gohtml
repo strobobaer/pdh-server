@@ -70,7 +70,7 @@
         </div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
-      <form hx-put="/tickets/{{.Ticket.ID}}/infrastructure-web" hx-target="#ticket-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <form hx-post="/tickets/{{.Ticket.ID}}/infrastructure-web" hx-target="#ticket-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         {{template "infra-tree-picker" (dict "TargetID" "ticket-detail-infra-id" "SelectedLabelID" "ticket-detail-infra-selected" "Label" "Infrastruktur" "Value" .Ticket.InfraID "SelectedLabel" .Ticket.InfraName)}}
         <div id="ticket-infra-result" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
@@ -79,7 +79,7 @@
         {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" .Ticket.CostCenterID)}}
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
-      <form hx-put="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <form hx-post="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="form-group">
           <label class="form-label">Verantwortlich</label>
           <select name="responsible_to" class="form-input">
@@ -247,27 +247,6 @@
 
 {{block "scripts" .}}
 <script>
-async function populateCostCenterSelects(){
-  const selects = document.querySelectorAll('[data-cost-center-picker]');
-  if(selects.length===0) return;
-  try{
-    const res = await fetch('/api/v1/costcenters', {credentials:'same-origin'});
-    const json = await res.json();
-    const items = json.data || [];
-    selects.forEach(function(sel){
-      const selected = sel.dataset.selected || '';
-      items.forEach(function(cc){
-        const opt = document.createElement('option');
-        opt.value = cc.id;
-        opt.textContent = cc.number + ' - ' + cc.name;
-        if(cc.id === selected) opt.selected = true;
-        sel.appendChild(opt);
-      });
-    });
-  }catch(e){ console.warn('Kostenstellen laden fehlgeschlagen', e); }
-}
-if(document.readyState !== 'loading') populateCostCenterSelects();
-else document.addEventListener('DOMContentLoaded', populateCostCenterSelects);
 
 function toggleMenu(id) {
   const m = document.getElementById(id);

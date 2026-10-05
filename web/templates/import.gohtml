@@ -183,46 +183,13 @@
 </div>
 {{end}}
 
-<div class="card">
-  <div class="card-title">Bestehende Verbindungen · {{len .Connections}}</div>
-  {{if .Connections}}
-  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
-    <thead>
-      <tr>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Name</th>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Typ</th>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Status</th>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Angelegt von</th>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Am</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Connections}}
-      <tr data-conn-id="{{.ID}}" data-conn-kind="{{.Kind}}" data-conn-name="{{.Name}}" {{if $.CanWrite}}data-conn-config='{{.ConfigJSON}}'{{end}} data-conn-can-write="{{$.CanWrite}}" data-conn-broker-integrated="{{.IsIntegratedBroker}}"
-          {{if or $.CanWrite $.CanExecute}}oncontextmenu="showContextMenu(event, connContextItems(this, 'import')); return false;"{{end}}>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)"><a href="/import/connections/{{.ID}}" style="color:var(--accent);font-weight:600"><i class="ti ti-chevron-right"></i> {{.Name}}</a></td>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.KindLabel}}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{if .Enabled}}<span class="badge" style="background:var(--green)">Aktiv</span>{{else}}<span class="badge" style="background:var(--muted)">Deaktiviert</span>{{end}}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.CreatedBy}}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.CreatedAt}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-  {{else}}
-  <div style="font-size:12px;color:var(--muted);padding:8px 0">Noch keine Verbindungen angelegt</div>
-  {{end}}
-</div>
+{{template "connection-list" (dict "Direction" "import" "Connections" .Connections "CanWrite" .CanWrite "CanExecute" .CanExecute)}}
 {{end}}
 
 {{define "scripts"}}
 <script>
-function connFormKindChanged(){
-  document.querySelectorAll('.kind-fields').forEach(function(el){ el.hidden = true; });
-  const kind = document.getElementById('conn-kind').value;
-  const target = document.getElementById('fields-' + kind);
-  if(target) target.hidden = false;
-}
+// Import-spezifisch; Tabelle, Bearbeiten & Co. kommen aus widgets/connection_list.gohtml
+const CONN_BOOL_FIELDS = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled'];
 function mqttModeChanged(){
   const mode = document.getElementById('f_mqtt_broker_mode').value;
   document.getElementById('mqtt-mode-external').hidden = mode !== 'external';
@@ -234,154 +201,26 @@ function restAuthMethodChanged(){
     document.getElementById('rest-auth-' + m).hidden = method !== m;
   });
 }
-function opcuaAuthModeChanged(){
-  const mode = document.getElementById('f_opcua_auth_mode').value;
-  document.getElementById('opcua-auth-username').hidden = mode !== 'username';
-}
-
-function resetConnForm(){
-  const form = document.getElementById('conn-form');
-  form.reset();
-  form.action = '/import/connections';
-  document.getElementById('conn-id').value = '';
-  document.getElementById('conn-kind').disabled = false;
-  document.getElementById('conn-form-title').textContent = 'Neue Verbindung anlegen';
-  document.getElementById('conn-submit').innerHTML = '<i class="ti ti-plus"></i> Verbindung anlegen';
-  document.getElementById('conn-cancel').hidden = true;
-  connFormKindChanged();
+function connFormSync(){
   mqttModeChanged();
   restAuthMethodChanged();
   opcuaAuthModeChanged();
 }
-
-function fillConnField(kind, field, value, isCheckbox){
-  const el = document.querySelector('[name="f_' + kind + '_' + field + '"]');
-  if(!el) return;
-  if(isCheckbox) el.checked = value === 'true';
-  else el.value = value || '';
-}
-
-function editConnFromRow(row){
-  const form = document.getElementById('conn-form');
-  const id = row.dataset.connId;
-  const kind = row.dataset.connKind;
-  const name = row.dataset.connName;
-  let config = {};
-  try{ config = JSON.parse(row.dataset.connConfig || '{}'); }catch(e){}
-
-  form.reset();
-  document.getElementById('conn-kind').value = kind;
-  document.getElementById('conn-kind').disabled = true;
-  connFormKindChanged();
-  mqttModeChanged();
-  restAuthMethodChanged();
-  opcuaAuthModeChanged();
-  document.getElementById('conn-name').value = name;
-  document.getElementById('conn-id').value = id;
-
-  const booleanFields = ['has_header','use_tls','ext_use_tls','int_allow_anonymous','int_persistence_enabled','int_retain_enabled'];
-  Object.keys(config).forEach(function(field){
-    fillConnField(kind, field, config[field], booleanFields.indexOf(field) !== -1);
-  });
-  if(kind === 'mqtt') mqttModeChanged();
-  if(kind === 'rest_api') restAuthMethodChanged();
-  if(kind === 'opcua') opcuaAuthModeChanged();
-
-  form.action = form.action.replace(/\/connections.*/, '/connections/' + id + '/edit-web');
-  document.getElementById('conn-form-title').textContent = 'Verbindung bearbeiten';
-  document.getElementById('conn-submit').innerHTML = '<i class="ti ti-device-floppy"></i> Speichern';
-  document.getElementById('conn-cancel').hidden = false;
-  form.scrollIntoView({behavior:'smooth', block:'start'});
-}
-
-async function toggleConnFromRow(row, direction){
-  try{
-    const res = await fetch('/' + direction + '/connections/' + row.dataset.connId + '/toggle-web', {method:'POST', credentials:'same-origin'});
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    location.reload();
-  }catch(e){
-    alert('Status konnte nicht geändert werden: ' + e.message);
+// Werkzeuge je Verbindungstyp im Kontextmenue
+function connPageItems(row){
+  const id = row.dataset.connId, kind = row.dataset.connKind, items = [];
+  const go = function(label, icon, path){ items.push({label: label, icon: icon, onClick: function(){ window.location = '/import/connections/' + id + path; }}); };
+  if(kind === 'mqtt'){
+    go('Sniffer öffnen', 'ti-antenna', '/sniffer');
+    if(row.dataset.connBrokerIntegrated === 'true') go('Broker-Status öffnen', 'ti-server-2', '/broker');
   }
-}
-
-function deleteConnFromRow(row, direction){
-  if(!confirm('Verbindung "' + row.dataset.connName + '" wirklich löschen?')) return;
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/' + direction + '/connections/' + row.dataset.connId + '/delete-web';
-  document.body.appendChild(form);
-  form.submit();
-}
-
-function connContextItems(row, direction){
-  const canWrite = row.dataset.connCanWrite === 'true';
-  const items = [{heading: row.dataset.connName}];
-  items.push({label: 'Verbindungsseite öffnen', icon: 'ti-layout-dashboard', onClick: function(){
-    window.location = '/' + direction + '/connections/' + row.dataset.connId;
-  }});
-  if(canWrite){
-    items.push({label: 'Bearbeiten', icon: 'ti-edit', onClick: function(){ editConnFromRow(row); }});
-    items.push({label: 'Aktivieren/Deaktivieren', icon: 'ti-power', onClick: function(){ toggleConnFromRow(row, direction); }});
-  }
-  if(direction === 'import' && row.dataset.connKind === 'mqtt'){
-    items.push({label: 'Sniffer öffnen', icon: 'ti-antenna', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/sniffer';
-    }});
-    if(row.dataset.connBrokerIntegrated === 'true'){
-      items.push({label: 'Broker-Status öffnen', icon: 'ti-server-2', onClick: function(){
-        window.location = '/import/connections/' + row.dataset.connId + '/broker';
-      }});
-    }
-  }
-  if(direction === 'import' && (row.dataset.connKind === 'excel' || row.dataset.connKind === 'csv')){
-    items.push({label: 'Vorschau öffnen', icon: 'ti-table', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/preview';
-    }});
-  }
-  if(direction === 'import' && (row.dataset.connKind === 'sqlite' || row.dataset.connKind === 'mysql' || row.dataset.connKind === 'mssql')){
-    items.push({label: 'Datenbank durchsuchen', icon: 'ti-table', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/browse';
-    }});
-  }
-  if(direction === 'import' && (row.dataset.connKind === 'web' || row.dataset.connKind === 'rest_api')){
-    items.push({label: 'Antwort öffnen', icon: 'ti-api', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/response';
-    }});
-  }
-  if(direction === 'import' && row.dataset.connKind === 'modbus'){
-    items.push({label: 'Register lesen', icon: 'ti-plug', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/read';
-    }});
-  }
-  if(direction === 'import' && row.dataset.connKind === 'opcua'){
-    items.push({label: 'Namespace durchsuchen', icon: 'ti-sitemap', onClick: function(){
-      window.location = '/import/connections/' + row.dataset.connId + '/nodes';
-    }});
-  }
-  if(canWrite){
-    items.push({separator: true});
-    items.push({label: 'Löschen', icon: 'ti-trash', danger: true, onClick: function(){ deleteConnFromRow(row, direction); }});
-  }
+  if(kind === 'excel' || kind === 'csv') go('Vorschau öffnen', 'ti-table', '/preview');
+  if(kind === 'sqlite' || kind === 'mysql' || kind === 'mssql') go('Datenbank durchsuchen', 'ti-table', '/browse');
+  if(kind === 'web' || kind === 'rest_api') go('Antwort öffnen', 'ti-api', '/response');
+  if(kind === 'modbus') go('Register lesen', 'ti-plug', '/read');
+  if(kind === 'opcua') go('Namespace durchsuchen', 'ti-sitemap', '/nodes');
   return items;
 }
-
-// Aufruf von der Verbindungsseite: /import?edit=<id> oeffnet das Formular und kehrt danach dorthin zurueck
-(function(){
-  const id = new URLSearchParams(location.search).get('edit');
-  if(!id) return;
-  const run = function(){
-    const row = document.querySelector('tr[data-conn-id="' + id + '"]');
-    if(!row || typeof editConnFromRow !== 'function') return;
-    editConnFromRow(row);
-    const ret = document.getElementById('conn-return'); if(ret) ret.value = 'detail';
-  };
-  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else setTimeout(run, 0);
-})();
-if(document.getElementById('conn-form')){
-  connFormKindChanged();
-  mqttModeChanged();
-  restAuthMethodChanged();
-  opcuaAuthModeChanged();
-}
 </script>
+{{template "connection-list-js" (dict "Direction" "import")}}
 {{end}}
