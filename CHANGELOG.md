@@ -21,9 +21,17 @@ im Kapitel „Versionen & Updates“ an.
 - „Jetzt prüfen“ auf der Verbindungsseite testet Einstellungen, Erreichbarkeit, TLS, Anmeldung, Abfragen, Zuordnungen und Hintergrund-Abrufe und zeigt jedes Ergebnis mit Grund
 - Import-Verbindungen können mehrere benannte Abfragen haben (SQL, Web-Endpunkt, Modbus-Register, OPC-UA-Knoten, Excel-/CSV-Zeile), jede mit eigenem Intervall und Ergebnistabelle; Spalten lassen sich direkt einer Anlage zuordnen
 - Eingebaute Abfrage-Vorlagen je Verbindungstyp sowie eigene Vorlagen, die Abfragen und Zuordnungen auf eine gleichartige Verbindung übertragen
+- Anmeldeseite: „Passwort vergessen?“ schickt einen Link an die hinterlegte E-Mail-Adresse, mit dem man ein neues Passwort vergibt – er gilt eine Stunde und nur einmal
+- Mein Konto → Konto & Dienste: eigenes Passwort ändern (mit dem aktuellen Passwort) bzw. ein erstes Passwort festlegen, wenn man sich bisher nur per Karte oder Microsoft anmeldet
 
 ### Geändert
 - Handbuch: neue Kapitel „Drucker“ und „Import, Export & Verbindungsseite“; die Kontexthilfe auf Import und Export zeigt jetzt das neue Kapitel
+
+### Behoben
+- Die Anmeldung mit RFID-Karte auf der Anmeldeseite leitete ohne bestehende Sitzung zum Leitstand um, statt anzumelden
+
+### Sicherheit
+- Links zum Zurücksetzen des Passworts werden nur aus der eingestellten öffentlichen Adresse gebaut, sind nur als Prüfsumme gespeichert und pro Konto und Adresse begrenzt; die Seite verrät nicht, ob ein Konto existiert
 
 ## [0.25.0] – 2026-10-02
 

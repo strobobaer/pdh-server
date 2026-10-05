@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -191,6 +192,15 @@ func (r *Repository) Update(ctx context.Context, u *User) error {
 		u.OnCallDuty, u.ShiftLocksmith1, u.ShiftLocksmith2, u.Sharpening, u.HeatingFill, u.ShiftLeader,
 		u.ManagerID, u.ID,
 	)
+	return err
+}
+
+// SetPasswordHash setzt nur das Passwort (Passwort aendern / zuruecksetzen).
+func (r *Repository) SetPasswordHash(ctx context.Context, id, hash string) error {
+	tag, err := r.db.Exec(ctx, `UPDATE users SET password_hash=$2, updated_at=NOW() WHERE id=$1 AND active = true`, id, hash)
+	if err == nil && tag.RowsAffected() == 0 {
+		return fmt.Errorf("benutzer nicht gefunden")
+	}
 	return err
 }
 

@@ -309,6 +309,22 @@
       <span>PDH-System schickt mir einen Chat-Hinweis, wenn jemand ein Ticket, eine Störung, Aufgabe, Wartung oder ein Projekt ändert, das ich erfasst habe, verantworte oder dem ich zugewiesen bin.</span>
     </label>
   </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-key"></i> {{if .HasPassword}}Passwort ändern{{else}}Passwort festlegen{{end}}</span></div>
+    {{if not .HasPassword}}<p class="rec-sub" style="margin-bottom:10px">Dein Konto hat noch kein Passwort (z. B. Anmeldung nur per Karte oder Microsoft). Hier legst du eines fest, um dich auch mit Benutzername und Passwort anzumelden.</p>{{end}}
+    <form hx-post="/users/me/password" hx-target="#pw-result" hx-on::after-request="if(event.detail.successful && event.detail.xhr.responseText.indexOf('ti-check') > -1){ this.reset(); {{if not .HasPassword}}setTimeout(function(){ location.reload(); }, 1500);{{end}} }" autocomplete="off">
+      <div class="grid2" style="gap:10px">
+        {{if .HasPassword}}<div class="form-group"><label class="form-label">Aktuelles Passwort</label><input type="password" name="current" class="form-input" required autocomplete="current-password"></div><div></div>{{end}}
+        <div class="form-group"><label class="form-label">Neues Passwort <span class="rec-sub">(mind. 8 Zeichen)</span></label><input type="password" name="password" class="form-input" required minlength="8" maxlength="72" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label">Neues Passwort wiederholen</label><input type="password" name="password2" class="form-input" required minlength="8" maxlength="72" autocomplete="new-password"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Passwort speichern</button>
+        <span id="pw-result" class="rec-sub" role="status"></span>
+      </div>
+    </form>
+    <p class="rec-sub" style="margin-top:8px;font-size:11.5px">Passwort vergessen? Melde dich ab und wähle auf der Anmeldeseite „Passwort vergessen?“.</p>
+  </div>
   <div class="card" style="padding:0;overflow:hidden">
     <iframe name="pdh-embed" src="/account" title="Konto & Dienste" loading="lazy" style="width:100%;height:640px;border:0;display:block;background:var(--bg)"></iframe>
   </div>

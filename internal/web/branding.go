@@ -276,6 +276,10 @@ type LoginData struct {
 	Error string
 	Brand Branding
 	Lang  string
+	// Passwort vergessen (password.go): "" = Anmelden, "forgot", "reset"
+	Mode   string
+	Notice string
+	Token  string
 }
 
 func (d LoginData) Language() string { return d.Lang }

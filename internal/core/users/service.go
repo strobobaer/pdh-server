@@ -169,10 +169,57 @@ func (s *Service) UpdateWithPassword(ctx context.Context, u *User, password stri
 	return s.repo.Update(ctx, u)
 }
 
+// ValidatePassword: Mindestregeln fuer neue Passwoerter (bcrypt nutzt hoechstens 72 Bytes).
+func ValidatePassword(password string) error {
+	if len([]rune(password)) < 8 {
+		return fmt.Errorf("Das Passwort muss mindestens 8 Zeichen lang sein.")
+	}
+	if len(password) > 72 {
+		return fmt.Errorf("Das Passwort darf höchstens 72 Zeichen lang sein.")
+	}
+	return nil
+}
+
+// SetPassword setzt ein neues Passwort (nach geprueftem Ruecksetz-Link).
+func (s *Service) SetPassword(ctx context.Context, id, password string) error {
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("passwort hash: %w", err)
+	}
+	return s.repo.SetPasswordHash(ctx, id, string(hash))
+}
+
+// ErrWrongPassword: aktuelles Passwort stimmt nicht (Passwort aendern).
+var ErrWrongPassword = fmt.Errorf("Das aktuelle Passwort stimmt nicht.")
+
+// ChangePassword aendert das eigene Passwort; das aktuelle muss stimmen.
+// Konten ohne Passwort (nur Microsoft/Nextcloud/RFID) setzen ein erstes.
+func (s *Service) ChangePassword(ctx context.Context, id, current, password string) error {
+	u, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("benutzer nicht gefunden")
+	}
+	if u.PasswordHash != "" && bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(current)) != nil {
+		return ErrWrongPassword
+	}
+	if current != "" && current == password {
+		return fmt.Errorf("Das neue Passwort muss sich vom aktuellen unterscheiden.")
+	}
+	return s.SetPassword(ctx, id, password)
+}
+
 func (s *Service) Deactivate(ctx context.Context, id string) error {
 	return s.repo.Deactivate(ctx, id)
 }
 
 func (s *Service) SetLocksmithSlot(ctx context.Context, slot int, userID string) error {
 	return s.repo.SetLocksmithSlot(ctx, slot, userID)
+}
+
+// GetByIdentifier: aktives Konto per E-Mail oder Benutzername (Passwort vergessen).
+func (s *Service) GetByIdentifier(ctx context.Context, identifier string) (*User, error) {
+	return s.repo.GetByIdentifier(ctx, identifier)
 }

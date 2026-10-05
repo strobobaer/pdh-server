@@ -543,6 +543,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/users", h.Users)
 	r.Get("/users/{id}", h.UserDetailPage)
 	r.Post("/users/me/change-notifications", h.UserChangeNotificationsWeb)
+	r.Post("/users/me/password", h.AccountPasswordWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
@@ -672,6 +673,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/lang", h.LangSwitchWeb)
 	r.Post("/login", h.LoginPost)
 	r.Post("/login/rfid", h.LoginRFIDWeb)
+	r.Get("/login/forgot", h.LoginForgotPage)
+	r.Post("/login/forgot", h.LoginForgotPost)
+	r.Get("/login/reset", h.LoginResetPage)
+	r.Post("/login/reset", h.LoginResetPost)
 	r.Get("/logout", h.Logout)
 
 	return r
@@ -1963,7 +1968,8 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 
 func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/login" || r.URL.Path == "/lang" {
+		// Anmeldeseite samt RFID-Anmeldung und Passwort vergessen/zuruecksetzen sind oeffentlich
+		if r.URL.Path == "/login" || strings.HasPrefix(r.URL.Path, "/login/") || r.URL.Path == "/lang" {
 			next.ServeHTTP(w, r)
 			return
 		}

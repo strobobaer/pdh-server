@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-05T17:15:48.700Z",
+  "generatedAt": "2026-10-05T17:26:10.337Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1018,6 +1018,17 @@
       "sqlHash": "ae6b20950ec7aa89e529af7df3f2b94c783f131dfdb9dc60fa7e427671aac754",
       "title": "094_connection_pages_printers.up.sql",
       "updatedAt": "2026-10-02T16:36:50.632Z"
+    },
+    {
+      "createdAt": "2026-10-05T17:26:09.700Z",
+      "path": "migrations/095_password_resets.up.sql",
+      "catalogContext": null,
+      "searchText": "095_password_resets.up.sql migrations/095_password_resets.up.sql -- 095_password_resets.up.sql\n--\n-- \"passwort vergessen\": einmalige ruecksetz-links per e-mail. gespeichert\n-- wird nur der sha-256-hash des tokens; der link gilt eine stunde und nur\n-- einmal. requested_ip dient der nachvollziehbarkeit und begrenzung.\n\ncreate table if not exists password_resets (\n    id           uuid primary key default gen_random_uuid(),\n    user_id      uuid not null references users(id) on delete cascade,\n    token_hash   varchar(64) not null unique,\n    expires_at   timestamptz not null,\n    used_at      timestamptz,\n    requested_ip varchar(64) not null default '',\n    created_at   timestamptz not null default now()\n);\ncreate index if not exists idx_password_resets_user on password_resets (user_id, created_at);\n",
+      "searchUpdatedAt": "2026-10-05T17:26:09.802Z",
+      "schemaContext": null,
+      "sqlHash": "f63c2c79d0750b66b646844e9fe89a97578c70f307698f264bc715753156c1e9",
+      "title": "095_password_resets.up.sql",
+      "updatedAt": "2026-10-05T17:26:09.700Z"
     }
   ]
 }

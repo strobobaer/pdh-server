@@ -49,6 +49,7 @@ type UserDetailData struct {
 	Master              userMaster
 	Private             userPrivate
 	IsSelf              bool
+	HasPassword         bool // eigenes Konto hat ein Passwort (Passwort ändern fragt das aktuelle ab)
 	CanEditMaster       bool
 	CanEditCore         bool // Grunddaten-Dialog in der Benutzerliste
 	CanBroker           bool // Broker-Rollen vergeben (nur Benutzerverwaltung)
@@ -119,7 +120,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		BaseData: h.baseData(r, "users", strings.TrimSpace(u.FirstName+" "+u.LastName), "Team"),
 		Tab:      q.Get("tab"), Message: q.Get("msg"), Error: q.Get("err"),
 		User:   h.userView(string(actor.Role), u, h.roleLabelMap(ctx), userNames, map[string]bool{}),
-		IsSelf: self, CanEditMaster: editMaster, CanEditCore: editCore,
+		IsSelf: self, HasPassword: self && u.PasswordHash != "", CanEditMaster: editMaster, CanEditCore: editCore,
 		CanBroker:      h.canManageUsers(r),
 		CanPrivate:     h.canPrivateData(r, id),
 		CanPermissions: !self && h.canEditUserPermissions(r, string(u.Role)),
