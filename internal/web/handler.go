@@ -1526,17 +1526,16 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 290*time.Second)
 	defer cancel()
-	var reply string
-	var err error
-	if fid := strings.TrimSpace(r.FormValue("fault")); fid != "" {
-		if s := h.requestScope(r); s != nil && !h.recordInScope(ctx, s, "fault", fid) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Störung."})
-			return
-		}
-		reply, err = h.faults.Chat(ctx, fid, getUser(r).ID, q, nil)
-	} else {
-		reply, err = h.faults.Ask(ctx, q)
+	u := getUser(r)
+	scope := h.requestScope(r)
+	fid := strings.TrimSpace(r.FormValue("fault"))
+	if fid != "" && (!uuidInPathRe.MatchString(fid) || (scope != nil && !h.recordInScope(ctx, scope, "fault", fid))) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Kein Zugriff auf diese Störung."})
+		return
 	}
+	// Copilot mit PDH-Daten (copilot_data.go): liest mit den Rechten der fragenden Person
+	d := &copilotData{h: h, userID: u.ID, scope: scope, can: func(p string) bool { return h.hasPerm(r, p) }}
+	reply, sources, err := h.askCopilot(ctx, d, strings.TrimSpace(u.FirstName+" "+u.LastName), q, fid)
 	if err != nil {
 		componentLog("copilot").Error().Err(err).Msg("frage fehlgeschlagen")
 		// bewusst 200: Reverse-Proxys (Cloudflare, Nginx) ersetzen 502-Antworten
@@ -1544,7 +1543,7 @@ func (h *Handler) CopilotAskWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"reply": reply})
+	writeJSON(w, http.StatusOK, map[string]any{"reply": reply, "sources": sources})
 }
 
 func (h *Handler) CreateTicket(w http.ResponseWriter, r *http.Request) {

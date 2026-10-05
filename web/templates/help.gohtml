@@ -252,7 +252,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
-    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Dort prüft <b>Verbindung testen</b>, welcher Schlüssel aktiv ist und ob Anthropic ihn annimmt. Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten. Den Copilot in der rechten Seitenleiste kannst du überall fragen; auf einer Störung antwortet er mit deren Kontext.</div>
+    <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Dort prüft <b>Verbindung testen</b>, welcher Schlüssel aktiv ist und ob Anthropic ihn annimmt. Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten.</div>
+  <div class="hb-howto"><b><i class="ti ti-message-question"></i> Den Copilot nach euren Daten fragen</b>Den Copilot in der rechten Seitenleiste kannst du auf jeder Seite fragen – z. B. „Welche Störungen hatte Presse 3 in den letzten 30 Tagen?“, „Haben wir noch Lager 6205 und wo liegen sie?“ oder „Welche Wartungen sind diese Woche fällig?“. Er sucht dafür selbst in Störungen, Tickets, Aufgaben, Wartungen, Projekten, Anlagen, Ersatzteilen und den Messwerten aus dem Import. Links in der Antwort öffnen den Vorgang; darunter steht, welche PDH-Daten er benutzt hat. Auf einer Störung bezieht er deren Kontext mit ein.
+    <br>Der Copilot sieht nur, was du auch sehen darfst (deine Rechte und Abteilungs-Sicht), und ändert nichts. Er hat keinen Internetzugang; allgemeines Fachwissen kennzeichnet er als solches. Das selbstständige Nachschlagen gibt es mit Claude (Anthropic-Schlüssel); mit Ollama bekommt er vorab die Suchtreffer zur Frage.</div>
   <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat. Auf der Seite <b>Neue Zuweisung</b> stehen im Feld „Zugewiesen an“ unter den Personen auch die <b>Gruppen</b> – so landet ein neuer Auftrag direkt bei einem Team.</div>
   {{template "hb-shots" (dict "Ref" (index $s "faults") "Can" $can)}}
 </section>
@@ -401,11 +403,33 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Im Teil auf <b>Etiketten</b> (alle Lagerplätze) oder auf das Drucker-Symbol an einem Lagerplatz – oder am Lagerplatz selbst für alle Teile dort.</li>
       <li>Oben das <b>Format</b> deines Etikettendruckers wählen, ggf. Kopien.</li>
       <li><b>Drucken</b>: im Druckdialog Skalierung 100 % und keine Ränder einstellen.</li>
+      <li>Oder ohne Druckdialog: rechts oben einen eingerichteten Drucker wählen und <b>Direkt drucken</b> (<a href="#printers">Drucker einrichten</a>).</li>
     </ol></div>
   <p>Verfügbare Formate <i class="ti ti-refresh" title="automatisch aus dem System"></i>:</p>
   <ul>{{range .LabelSizes}}<li>{{.Label}}</li>{{end}}</ul>
   <p>Bei A4-Bögen kannst du mit „Start bei Feld“ bereits benutzte Etiketten überspringen.</p>
   {{template "hb-shots" (dict "Ref" (index $s "storage") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="printers" data-title="Drucker" data-pages="printers">
+  <h2><i class="ti ti-printer"></i> Drucker</h2>
+  <p>Unter <b>Navigation → Drucker</b> richtet ein Administrator Etiketten- und Netzwerkdrucker ein. Eingerichtete, aktive Drucker erscheinen danach in der Etiketten-Druckansicht unter <b>Direkt drucken</b> – ohne Druckdialog und ohne Skalierungsprobleme.</p>
+  <ul>
+    <li><b>Zebra ZT4xx</b> (ZT410/411/420/421) – im Netzwerk. PDH schickt die Etiketten als ZPL an Port 9100 und fragt den Druckerzustand ab.</li>
+    <li><b>Dymo LabelWriter</b> – meist per USB am PC. Gedruckt wird über <b>DYMO Connect</b> auf dem PC, an dem du gerade sitzt.</li>
+    <li><b>Netzwerkdrucker</b> – Büro- und Multifunktionsgeräte über IPP (empfohlen, mit Zustand und Tonerstand) oder RAW 9100, z. B. für Etiketten auf A4-Bögen.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So richtest du einen Drucker ein</b>
+    <ol class="hb-steps">
+      <li><b>Navigation → Drucker</b>, beim passenden Typ auf <b>… hinzufügen</b>.</li>
+      <li>Name und Standort eintragen. Zebra und Netzwerkdrucker: IP-Adresse (am besten fest vergeben). Zebra zusätzlich Etikettengröße, Auflösung (Typenschild, z. B. 203 dpi) und Material. Dymo: den Druckernamen genau wie in DYMO Connect und den Etikettentyp.</li>
+      <li><b>Speichern</b>, dann <b>Prüfen</b>. Die Prüfung zeigt, ob der Drucker erreichbar ist, seinen Zustand (z. B. Papier oder Farbband leer, Kopf offen) und beim Netzwerkdrucker den Tonerstand.</li>
+      <li><b>Testdruck</b> – passt das Etikett, ist der Drucker fertig.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-tag"></i> Dymo: an welchem PC?</b>Dymo-Drucker hängen am PC, nicht im Netz. „Prüfen“ und „Testdruck“ laufen deshalb an dem PC, an dem du die Seite geöffnet hast – dort muss DYMO Connect installiert sein und laufen. „Prüfen“ listet die angeschlossenen Dymo-Drucker mit ihrem genauen Namen.</div>
+  <div class="hb-howto"><b><i class="ti ti-adjustments"></i> Druckbild stimmt nicht?</b>Zebra: blasser Druck → <b>Schwärzung</b> erhöhen; verschmiert → Schwärzung senken oder <b>Geschwindigkeit</b> verringern. Beides setzt PDH bei jedem Druck neu. Der Stern <i class="ti ti-star"></i> macht einen Drucker zum Standard seines Typs; ein Standard-Etikettendrucker (Zebra oder Dymo) ist in der Druckansicht vorausgewählt.</div>
+  <p>Rechte: Einrichten und prüfen dürfen Personen mit <code>printers.manage</code> (Administratoren). Direkt drucken dürfen alle mit <code>printers.use</code> – das haben alle Rollen.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "printers") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="purchasing" data-title="Einkauf &amp; Bestellvorschlag" data-pages="">
@@ -741,12 +765,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "versions") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles import export">
+<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
     <li><b>Core-Einstellungen</b> – Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
-    <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen.</li>
+    <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
+    <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>
     <li><b>Bereinigung</b> – Löschvormerkungen prüfen und den Bereinigungslauf starten (<a href="#cleanup">mehr</a>).</li>
     <li><b>Kategorien</b> – Schlagworte für alle Module anlegen und pflegen (<a href="#categories">mehr</a>).</li>
@@ -759,6 +784,29 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{else}}<p class="rec-sub">Berechtigungen konnten nicht geladen werden.</p>{{end}}
   {{if $can}}<p class="rec-sub hb-shot-tools"><i class="ti ti-photo-plus"></i> Als Administrator kannst du unter jedem Kapitel eigene Bildschirmfotos hinzufügen – so wird das Handbuch zu eurem Handbuch.</p>{{end}}
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="connections" data-title="Import, Export &amp; Verbindungsseite" data-pages="import export">
+  <h2><i class="ti ti-database-import"></i> Import, Export &amp; Verbindungsseite</h2>
+  <p>Eine <b>Verbindung</b> ist der Zugang zu einer Maschine oder einem System (MQTT, OPC UA, Modbus, SQL, Excel/CSV, Web/REST). Ein Klick auf den Namen in der Liste unter <b>Import</b> bzw. <b>Export</b> öffnet ihre eigene Seite mit den Reitern:</p>
+  <ul>
+    <li><b>Übersicht</b> – Einstellungen (Passwörter und Schlüssel werden nie angezeigt), Zustand der letzten Prüfung und was im Hintergrund läuft.</li>
+    <li><b>Prüfungen</b> – <b>Jetzt prüfen</b> testet Pflichtangaben, Erreichbarkeit im Netz, TLS-Zertifikat, Anmeldung bzw. Datei, jede Abfrage, Zuordnungen ohne oder mit veraltetem Wert und ob die Hintergrund-Abrufe laufen. Fehler stehen mit Grund in der Tabelle.</li>
+    <li><b>Abfragen</b> (nur Import) – beliebig viele benannte Abfragen je Verbindung: ein SQL-SELECT, ein Web-Endpunkt, ein Modbus-Registerblock, eine OPC-UA-Knotenliste oder eine Excel-/CSV-Zeile. Jede kann <b>automatisch alle … Minuten</b> laufen. MQTT liefert Werte von selbst und braucht keine Abfragen.</li>
+    <li><b>Zuordnungen</b> bzw. <b>Felder</b> – welcher Wert zu welcher Anlage gehört, mit letztem Wert und Zeitpunkt.</li>
+    <li><b>Vorlagen</b> – Abfragen und Zuordnungen einer Verbindung als Vorlage speichern und auf eine andere Verbindung desselben Typs anwenden.</li>
+    <li><b>Werkzeuge</b> – Vorschau, Sniffer, Knoten-Browser usw. der Verbindung.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-database-search"></i> So holst du einen Wert per Abfrage</b>
+    <ol class="hb-steps">
+      <li>Verbindung öffnen, Reiter <b>Abfragen</b>.</li>
+      <li>Unten eine <b>Vorlage</b> „Übernehmen“ oder die Abfrage selbst eintragen. Platzhalter in &lt;spitzen Klammern&gt; durch eure Namen ersetzen.</li>
+      <li>Ein Intervall eintragen (0 = nur von Hand) und <b>Speichern &amp; ausführen</b>. Das Ergebnis erscheint als Tabelle.</li>
+      <li>Neben der gewünschten Spalte auf <i class="ti ti-map-pin"></i> klicken und die Anlage wählen. Zugeordnet wird die erste bzw. letzte Zeile des Ergebnisses.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-copy"></i> Mehrere gleiche Maschinen</b>Eine Maschine fertig einrichten, im Reiter <b>Vorlagen</b> als Vorlage speichern und auf der Verbindungsseite der nächsten Maschine <b>anwenden</b>. Abfragen und Zuordnungen entstehen dort genauso; schon Vorhandenes wird nicht doppelt angelegt.</div>
+  <p>Ansehen darf, wer Import bzw. Export sehen darf; prüfen und ausführen, wer ausführen darf; ändern, wer bearbeiten darf.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">

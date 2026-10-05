@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.26.0] – 2026-10-05
+
+### Neu
+- Copilot in der Seitenleiste beantwortet Fragen zu euren Daten: Er sucht selbst in Störungen, Tickets, Aufgaben, Wartungen, Projekten, Anlagen, Ersatzteilen und Messwerten – nur mit den Rechten der fragenden Person, ohne etwas zu ändern und ohne Internet
+- Copilot-Antworten enthalten anklickbare Links zu den gefundenen Vorgängen, Anlagen und Teilen; darunter steht, welche PDH-Daten benutzt wurden
+- Drucker (Navigation → Drucker): Zebra ZT4xx, Dymo LabelWriter (über DYMO Connect am PC) und Netzwerkdrucker (IPP oder RAW 9100) einrichten, prüfen – mit Zustand, Papier, Farbband bzw. Toner – und einen Testdruck senden
+- Etiketten-Druckansicht: „Direkt drucken“ schickt die Etiketten ohne Druckdialog an einen eingerichteten Drucker
+- Jede Import- und Export-Verbindung hat eine eigene Seite mit Übersicht, Prüfungen, Zuordnungen, Vorlagen und Werkzeugen – erreichbar per Klick auf den Namen in der Liste
+- „Jetzt prüfen“ auf der Verbindungsseite testet Einstellungen, Erreichbarkeit, TLS, Anmeldung, Abfragen, Zuordnungen und Hintergrund-Abrufe und zeigt jedes Ergebnis mit Grund
+- Import-Verbindungen können mehrere benannte Abfragen haben (SQL, Web-Endpunkt, Modbus-Register, OPC-UA-Knoten, Excel-/CSV-Zeile), jede mit eigenem Intervall und Ergebnistabelle; Spalten lassen sich direkt einer Anlage zuordnen
+- Eingebaute Abfrage-Vorlagen je Verbindungstyp sowie eigene Vorlagen, die Abfragen und Zuordnungen auf eine gleichartige Verbindung übertragen
+
+### Geändert
+- Handbuch: neue Kapitel „Drucker“ und „Import, Export & Verbindungsseite“; die Kontexthilfe auf Import und Export zeigt jetzt das neue Kapitel
+
 ## [0.25.0] – 2026-10-02
 
 ### Neu

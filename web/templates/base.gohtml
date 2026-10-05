@@ -272,10 +272,10 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, va
 .search-box input{background:none;border:0;outline:0;color:var(--text);font-size:12px;width:100%;font-family:var(--font)}
 .search-box i{color:var(--muted);font-size:15px}
 /* ── Copilot ── */
-.copilot-msgs{background:var(--bg3);border:1px solid var(--border);border-radius:8px;min-height:70px;max-height:140px;overflow-y:auto;padding:10px;margin-bottom:8px;font-size:12px;line-height:1.5}
+.copilot-msgs{background:var(--bg3);border:1px solid var(--border);border-radius:8px;min-height:70px;max-height:320px;overflow-y:auto;padding:10px;margin-bottom:8px;font-size:12px;line-height:1.5}
 .cop-hint{color:var(--muted);font-style:italic;font-size:11px}
 .cop-q{color:var(--accent);margin-bottom:4px}
-.cop-a{color:var(--text)}
+.cop-a{color:var(--text);white-space:pre-wrap;margin-bottom:6px}
 .copilot-input{display:flex;gap:6px}
 .copilot-input input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:11px;outline:0;font-family:var(--font)}
 .cop-btn{background:var(--accent);border:0;border-radius:6px;padding:5px 10px;color:var(--on-accent);font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap}
@@ -848,7 +848,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
   <div class="ctx-section" data-context-panel="copilot">
     <div class="ctx-title"><i class="ti ti-brain"></i>{{t "Copilot"}}</div>
     <div class="copilot-msgs" id="cop-msgs">
-      <div class="cop-hint">{{t "KI-Copilot für Entstörung und Analyse …"}}</div>
+      <div class="cop-hint">{{t "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …"}}</div>
     </div>
     <div class="copilot-input">
       <input placeholder="{{t "Frage stellen …"}}" id="cop-in"
@@ -1578,7 +1578,15 @@ async function sendCop() {
         : (raw ? ' – ' + raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) : ''));
       add('cop-a', 'Copilot: ' + why, 'color:var(--red)');
     }
-    else add('cop-a', 'Copilot: ' + j.reply);
+    else {
+      // Antwort als Text; PDH-Pfade (/faults/…, /inventory/…) werden zu Links
+      const a = add('cop-a', 'Copilot: ');
+      String(j.reply).split(/(\/(?:faults|tickets|tasks|maintenance\/tasks|projects|infrastructure|inventory)\/[0-9a-fA-F-]{36})/).forEach(function(part, i){
+        if(i % 2){ const l = document.createElement('a'); l.href = part; l.textContent = part; l.style.color = 'var(--accent)'; a.appendChild(l); }
+        else a.appendChild(document.createTextNode(part));
+      });
+      if(j.sources && j.sources.length) add('cop-a', 'Aus dem PDH: ' + j.sources.filter((s, i, all) => all.indexOf(s) === i).join(', '), 'color:var(--muted);font-size:11px');
+    }
   }catch(e){ wait.remove(); add('cop-a', 'Copilot nicht erreichbar: ' + e.message, 'color:var(--red)'); }
 }
 </script>
