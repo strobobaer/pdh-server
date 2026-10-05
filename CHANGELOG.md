@@ -27,6 +27,7 @@ im Kapitel „Versionen & Updates“ an.
 - QR-Etiketten für Anlagen und IT-Assets drucken – einzeln, für eine Anlage samt Unteranlagen oder für den ganzen Bestand, in allen Etikettenformaten und direkt auf eingerichtete Drucker
 - Vorgänge können einem IT-Asset zugeordnet werden; das Gerät steht im Reiter Verknüpfungen
 - Wer ohne Anmeldung einen QR-Code scannt, kommt nach der Anmeldung direkt auf die gescannte Seite
+- Leitstand: „Fertig“ startet nach dem Scannen der RFID-Karte den geführten Abschluss-Assistenten (Material, Zeit, wer war dabei, Kommentar) im Namen der Person mit der Karte – statt nur eines Kommentarfelds
 
 ### Geändert
 - Handbuch: neue Kapitel „Drucker“ und „Import, Export & Verbindungsseite“; die Kontexthilfe auf Import und Export zeigt jetzt das neue Kapitel
@@ -35,6 +36,7 @@ im Kapitel „Versionen & Updates“ an.
 - Die Anmeldung mit RFID-Karte auf der Anmeldeseite leitete ohne bestehende Sitzung zum Leitstand um, statt anzumelden
 
 ### Sicherheit
+- Die Karte für die Fertigmeldung am Leitstand gilt nur für den gewählten Vorgang und höchstens 20 Minuten; sie ist keine Anmeldung am Terminal
 - Links zum Zurücksetzen des Passworts werden nur aus der eingestellten öffentlichen Adresse gebaut, sind nur als Prüfsumme gespeichert und pro Konto und Adresse begrenzt; die Seite verrät nicht, ob ein Konto existiert
 
 ## [0.25.0] – 2026-10-02

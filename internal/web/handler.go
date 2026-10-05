@@ -1969,6 +1969,11 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt-claims unlesbar")
 		return ""
 	}
+	if scope, _ := claims["scope"].(string); scope != "" {
+		// zweckgebundene Tokens (z. B. Fertigmeldung im Leitstand) sind keine Sitzung
+		log.Warn().Str("path", r.URL.Path).Str("scope", scope).Msg("sitzung: zweckgebundenes token als cookie abgelehnt")
+		return ""
+	}
 	userID, _ := claims["sub"].(string)
 	if userID == "" {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt ohne sub-claim")
@@ -1999,6 +2004,14 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		// Anmeldeseite samt RFID-Anmeldung und Passwort vergessen/zuruecksetzen sind oeffentlich
 		if r.URL.Path == "/login" || strings.HasPrefix(r.URL.Path, "/login/") || r.URL.Path == "/lang" {
 			next.ServeHTTP(w, r)
+			return
+		}
+		// Fertigmeldung aus dem Leitstand: RFID-Token nur fuer /complete/{type}/{id}
+		// (global_dashboard_complete.go) – hat Vorrang vor einer evtl. Sitzung am Terminal
+		if bu := h.boardCompleteUser(r); bu != nil {
+			ctx := context.WithValue(r.Context(), "user", bu)
+			ctx = context.WithValue(ctx, boardCompleteKey{}, true)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 		user := h.sessionUser(r)

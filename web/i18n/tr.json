@@ -482,5 +482,6 @@
  "Zurück zur Anmeldung": "Girişe dön",
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "%s hesabınız için yeni bir şifre istendi. Bağlantı ile yeni bir şifre belirleyebilirsiniz. Bağlantı bir saat ve yalnızca bir kez geçerlidir.",
  "mindestens 8 Zeichen": "en az 8 karakter",
- "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "Giriş yaptıktan sonra doğrudan taranan sayfaya geçersiniz."
+ "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "Giriş yaptıktan sonra doğrudan taranan sayfaya geçersiniz.",
+ "%s · Fertigmeldung von %s": "%s · %s tarafından tamamlama"
 }

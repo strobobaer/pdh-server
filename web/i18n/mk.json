@@ -482,5 +482,6 @@
  "Zurück zur Anmeldung": "Назад кон најавата",
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "за вашата сметка на %s е побарана нова лозинка. Преку врската поставувате нова лозинка. Важи еден час и само еднаш.",
  "mindestens 8 Zeichen": "најмалку 8 знаци",
- "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "По најавата одите директно на скенираната страница."
+ "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "По најавата одите директно на скенираната страница.",
+ "%s · Fertigmeldung von %s": "%s · завршување од %s"
 }

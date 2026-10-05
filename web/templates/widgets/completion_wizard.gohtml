@@ -154,9 +154,23 @@
   const F = (s, ...a) => { let n = 0; return s.replace(/%[sd]/g, () => a[n++]); };
   let S = null; // Zustand des offenen Assistenten
   let partsCache = null;
+  // Anfragen des Assistenten: mit Sitzung – oder im Leitstand mit dem
+  // zweckgebundenen RFID-Token (opts.token, gilt nur fuer diesen Vorgang)
+  function api(url, o){
+    o = Object.assign({credentials: 'same-origin'}, o || {});
+    if(S && S.token) o.headers = Object.assign({}, o.headers || {}, {'Authorization': 'Bearer ' + S.token});
+    return fetch(url, o);
+  }
+  function reservedTag(p){
+    if(typeof pdhReservedTag === 'function' && !(S && S.token)) return pdhReservedTag(p, S.type, S.id, 'cwReloadParts');
+    return p && p.reserved ? ' · ' + {{t "reserviert"}} : '';
+  }
 
-  window.pdhComplete = async function(type, id, done){
-    S = {type, id, step: 0, info: null, parts: [], picked: '', done: done || null, busy: false};
+  // pdhComplete(type, id, done, opts) – opts (Leitstand): {token, who}
+  window.pdhComplete = async function(type, id, done, opts){
+    opts = opts || {};
+    if(opts.token) partsCache = null; // andere Person, andere Sicht
+    S = {type, id, step: 0, info: null, parts: [], picked: '', done: done || null, busy: false, token: opts.token || '', who: opts.who || ''};
     $('cw-msg').textContent = ''; $('cw-msg').className = 'cw-msg';
     $('cw-noparts').checked = false; $('cw-comment').value = ''; $('cw-cause').value = '';
     $('cw-min').value = '0'; $('cw-part-q').value = ''; $('cw-part-sel').textContent = ''; $('cw-people-q').value = ''; $('cw-all-depts').checked = false;
@@ -164,14 +178,14 @@
     $('cw').classList.add('open');
     show(0);
     try{
-      const res = await fetch('/complete/' + type + '/' + id, {credentials: 'same-origin'});
+      const res = await api('/complete/' + type + '/' + id);
       const json = await res.json();
       if(!res.ok || !json.success) throw new Error(json.error || {{t "Fehler"}});
       S.info = json.data;
     }catch(e){ msg('err', e.message); $('cw-sub').textContent = ''; return; }
     const i = S.info;
     $('cw-label').textContent = F({{t "%s abschließen"}}, i.Label);
-    $('cw-sub').textContent = i.Title;
+    $('cw-sub').textContent = S.who ? F({{t "%s · Fertigmeldung von %s"}}, i.Title, S.who) : i.Title;
     $('cw-cause-box').style.display = i.root_cause ? '' : 'none';
     $('cw-start').value = i.suggest_start;
     $('cw-booked').innerHTML = i.booked_min > 0 ? '<i class="ti ti-history"></i> ' + F({{t "Von dir bereits erfasst: %s – weitere Zeit ist optional."}}, '<b>' + hm(i.booked_min) + '</b>') : '<i class="ti ti-info-circle"></i> ' + {{t "Für diesen Vorgang hast du noch keine Zeit erfasst."}};
@@ -227,22 +241,22 @@
   // ── Material ──
   async function loadParts(){
     try{
-      const res = await fetch(S.info.parts_url, {credentials: 'same-origin'});
+      const res = await api(S.info.parts_url);
       const json = await res.json();
       S.parts = json.data || [];
     }catch(e){ S.parts = []; }
-    $('cw-parts').innerHTML = S.parts.length ? S.parts.map(p => '<div class="cw-row"><i class="ti ti-package"></i><div class="grow">' + esc(p.part_name) + '<small>' + esc(p.part_number || '') + (p.storage_name ? ' · ' + esc(p.storage_name) : '') + pdhReservedTag(p, S.type, S.id, 'cwReloadParts') + '</small></div><b>' + esc(p.qty) + '</b><button type="button" class="btn btn-icon" style="width:32px;height:32px" title="' + {{t "Entfernen"}} + '" onclick="cwDelPart(\'' + esc(p.id) + '\')"><i class="ti ti-x"></i></button></div>').join('') : '<div class="cw-empty">' + {{t "Noch kein Material reserviert."}} + '</div>';
+    $('cw-parts').innerHTML = S.parts.length ? S.parts.map(p => '<div class="cw-row"><i class="ti ti-package"></i><div class="grow">' + esc(p.part_name) + '<small>' + esc(p.part_number || '') + (p.storage_name ? ' · ' + esc(p.storage_name) : '') + reservedTag(p) + '</small></div><b>' + esc(p.qty) + '</b><button type="button" class="btn btn-icon" style="width:32px;height:32px" title="' + {{t "Entfernen"}} + '" onclick="cwDelPart(\'' + esc(p.id) + '\')"><i class="ti ti-x"></i></button></div>').join('') : '<div class="cw-empty">' + {{t "Noch kein Material reserviert."}} + '</div>';
     if(S.parts.length) $('cw-noparts').checked = false;
   }
   window.cwReloadParts = function(){ loadParts(); };
   window.cwDelPart = async function(pid){
-    await fetch(S.info.parts_url + '/' + encodeURIComponent(pid), {method: 'DELETE', credentials: 'same-origin'});
+    await api(S.info.parts_url + '/' + encodeURIComponent(pid), {method: 'DELETE'});
     loadParts();
   };
   async function loadLocations(){
     const sel = $('cw-part-loc');
     try{
-      const res = await fetch('/api/v1/storage/', {credentials: 'same-origin'});
+      const res = await api('/api/v1/storage/');
       const json = await res.json(); const tree = json.data || json; const out = [];
       (function walk(nodes, prefix){ (nodes || []).forEach(n => { const l = prefix ? prefix + ' › ' + n.name : n.name; out.push([n.id, l]); walk(n.children, l); }); })(Array.isArray(tree) ? tree : (tree.children || []), '');
       sel.innerHTML = '<option value="">' + {{t "Lagerort wählen…"}} + '</option>' + out.map(o => '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>').join('');
@@ -251,7 +265,7 @@
   $('cw-part-q').addEventListener('input', async function(){
     const q = this.value.trim().toLowerCase(), box = $('cw-part-results');
     if(q.length < 2){ box.style.display = 'none'; return; }
-    if(!partsCache){ try{ const r = await fetch('/api/v1/inventory/', {credentials: 'same-origin'}); const j = await r.json(); partsCache = j.data || j || []; }catch(e){ partsCache = []; } }
+    if(!partsCache){ try{ const r = await api('/api/v1/inventory/'); const j = await r.json(); partsCache = j.data || j || []; }catch(e){ partsCache = []; } }
     const hits = partsCache.filter(p => (p.name || '').toLowerCase().includes(q) || (p.part_number || '').toLowerCase().includes(q)).slice(0, 20);
     box.innerHTML = hits.length ? hits.map(p => '<div data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">' + esc(p.name) + ' <span style="color:var(--muted)">' + esc(p.part_number || '') + ' · ' + {{t "Bestand"}} + ' ' + esc(p.stock_qty) + (p.reserved_qty > 0 ? ' (' + esc(p.reserved_qty) + ')' : '') + '</span></div>').join('') : '<div style="color:var(--muted)">' + {{t "Keine Treffer"}} + '</div>';
     box.style.display = 'block';
@@ -267,7 +281,7 @@
     if(!loc) return msg('err', {{t "Bitte den Lagerort wählen."}});
     if(!(qty > 0)) return msg('err', {{t "Bitte eine gültige Menge angeben."}});
     try{
-      const res = await fetch(S.info.parts_url, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({part_id: S.picked, storage_node_id: loc, qty})});
+      const res = await api(S.info.parts_url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({part_id: S.picked, storage_node_id: loc, qty})});
       const json = await res.json().catch(() => ({}));
       if(!res.ok || json.success === false) throw new Error(json.error || 'HTTP ' + res.status);
       S.picked = ''; $('cw-part-sel').textContent = ''; $('cw-part-qty').value = '1'; msg('ok', {{t "Reserviert und vom Lager abgebucht."}});
@@ -304,7 +318,7 @@
     const time = i.running_since ? F({{t "Timer seit %s (wird gestoppt)"}}, i.running_since) : (min ? F({{t "%s ab %s"}}, hm(min), $('cw-start').value.replace(/^(\d{4})-(\d{2})-(\d{2})T/, '$3.$2.$1 ')) : F({{t "keine weitere (bisher %s)"}}, hm(i.booked_min)));
     $('cw-sum').innerHTML = '<dt>' + {{t "Material"}} + '</dt><dd>' + (S.parts.length ? S.parts.map(p => esc(p.qty + ' × ' + p.part_name)).join('<br>') : {{t "kein Material"}}) + '</dd>'
       + '<dt>' + {{t "Zeit"}} + '</dt><dd>' + esc(time) + '</dd>'
-      + '<dt>' + {{t "Dabei"}} + '</dt><dd>' + (names.length ? esc(names.join(', ')) + ' <span style="color:var(--amber)">(' + {{t "gelb, zur Bestätigung"}} + ')</span>' : {{t "nur du"}}) + '</dd>'
+      + '<dt>' + {{t "Dabei"}} + '</dt><dd>' + (names.length ? esc(names.join(', ')) + ' <span style="color:var(--amber)">(' + {{t "gelb, zur Bestätigung"}} + ')</span>' : (S.who ? esc(S.who) : {{t "nur du"}})) + '</dd>'
       + '<dt>' + {{t "Kommentar"}} + '</dt><dd>' + esc($('cw-comment').value.trim()) + '</dd>'
       + ($('cw-cause').value.trim() ? '<dt>' + {{t "Ursache"}} + '</dt><dd>' + esc($('cw-cause').value.trim()) + '</dd>' : '');
   }
@@ -315,7 +329,7 @@
     const body = {no_parts: $('cw-noparts').checked, start: $('cw-start').value, minutes: S.info.running_since ? 0 : (+$('cw-min').value || 0),
       colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish};
     try{
-      const res = await fetch('/complete/' + S.type + '/' + S.id, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const res = await api('/complete/' + S.type + '/' + S.id, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const json = await res.json();
       if(!res.ok || !json.success) throw new Error(json.error || {{t "Fehler"}});
       if(json.warning){ msg('warn', json.warning); }

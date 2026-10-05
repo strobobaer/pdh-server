@@ -19,7 +19,19 @@
 {{template "wizard-styles"}}
 {{template "timeline-style" .Timeline}}
 <style>
-/* Erstellungs-Assistent im Leitstand: gleiche Optik wie im PDH, Farben aus dem Leitstand */
+/* Erstellungs- und Abschluss-Assistent im Leitstand: gleiche Optik wie im PDH, Farben aus dem Leitstand */
+#cw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
+#cw .cw{font-size:14px}
+#cw .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:400}
+#cw .form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:0;min-height:44px}
+#cw .form-input:focus{border-color:var(--accent)}
+#cw textarea.form-input{min-height:96px;resize:vertical}
+#cw .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border-radius:8px;font-size:14px;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text)}
+#cw .btn:disabled{opacity:.55;cursor:default}
+#cw .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+#cw .btn-icon{min-height:32px;padding:0}
+#cw .cw-chips button{min-height:40px;font-size:13px}
+#cw .cw-people label,#cw .cw-check{min-height:44px}
 #crw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
 #crw .cw{font-size:14px}
 #crw .form-group{margin-bottom:14px}
@@ -287,7 +299,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <label id="date-field" class="hidden">Wiedervorlage am <span class="required-hint">Pflichtfeld</span>
         <input id="follow-up-date" type="date" name="follow_up_date">
       </label>
-      <label>Kommentar <span class="required-hint">Pflichtfeld, mindestens 8 Zeichen</span>
+      <p id="done-hint" class="item-sub hidden" style="margin:0">Karte scannen – danach führt der Abschluss-Assistent Schritt für Schritt durch die Fertigmeldung: Material, Zeit, wer dabei war, Kommentar.</p>
+      <label id="comment-field">Kommentar <span class="required-hint">Pflichtfeld, mindestens 8 Zeichen</span>
         <textarea id="comment" name="comment" minlength="8" maxlength="1000" required placeholder="Was wurde entschieden oder erledigt?"></textarea>
       </label>
       <label id="parts-field" class="hidden" style="display:flex;align-items:center;gap:10px">
@@ -753,14 +766,33 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     workerSelect.required = action === 'accept';
     dateField.classList.toggle('hidden', action !== 'wait');
     dateInput.required = action === 'wait';
-    partsField.classList.toggle('hidden', action !== 'done');
-    document.getElementById('submit-action').textContent = actionNames[action];
+    // "Fertig" laeuft ueber den Abschluss-Assistenten: hier nur die Karte
+    const guided = action === 'done';
+    partsField.classList.add('hidden');
+    document.getElementById('comment-field').classList.toggle('hidden', guided);
+    document.getElementById('done-hint').classList.toggle('hidden', !guided);
+    document.getElementById('submit-action').textContent = guided ? 'Fertigmeldung starten' : actionNames[action];
     form.reset();
     workerSelect.required = action === 'accept';
     dateInput.required = action === 'wait';
+    commentInput.required = !guided;
     editActions.classList.add('hidden');
     form.classList.remove('hidden');
-    commentInput.focus();
+    (guided ? rfidInput : commentInput).focus();
+  }
+
+  // Fertig: Karte pruefen lassen, dann den Assistenten mit dem Token dieser Person oeffnen
+  async function startGuidedDone(item){
+    const response = await fetch('/global/complete-start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:item.type_key, id:item.id, rfid_uid:rfidInput.value.trim()})
+    });
+    const result = await response.json().catch(function(){return {};});
+    if(!response.ok || !result.token) throw new Error(result.error || 'Fertigmeldung konnte nicht gestartet werden');
+    form.classList.add('hidden');
+    editActions.classList.remove('hidden');
+    current = null;
+    pdhComplete(item.type_key, item.id, function(){ closeEditPanel(); refresh(); }, {token: result.token, who: result.name});
   }
 
   document.getElementById('cancel-action').addEventListener('click', function(){
@@ -832,6 +864,14 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   form.addEventListener('submit', async function(event){
     event.preventDefault();
     if(!current || !form.reportValidity()) return;
+    if(current.action === 'done'){
+      const submitDone = document.getElementById('submit-action');
+      submitDone.disabled = true;
+      try{ await startGuidedDone(current.item); loadState.textContent = ''; }
+      catch(error){ loadState.textContent = error.message; }
+      finally{ submitDone.disabled = false; rfidInput.value = ''; }
+      return;
+    }
     const payload = {
       type: current.item.type_key,
       id: current.item.id,
@@ -912,5 +952,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 })();
 </script>
 {{template "create-wizard" (dict "Board" true)}}
+{{template "completion-wizard"}}
 </body>
 </html>

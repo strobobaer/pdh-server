@@ -370,6 +370,9 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "warning": tr(lang, "Gespeichert, aber noch nicht abgeschlossen: %s", tr(lang, err.Error()))})
 		return
 	}
+	if boardCompleteFrom(ctx) {
+		h.logBoardCompletion(context.WithoutCancel(ctx), k.Type, id, in.Comment, u.ID)
+	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": tr(lang, "%s abgeschlossen.", tr(lang, k.Label))})
 }
 

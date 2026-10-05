@@ -108,11 +108,49 @@ func Auth(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			if scope, _ := claims["scope"].(string); scope != "" {
+				ref, _ := claims["ref"].(string)
+				if !ScopedTokenAllows(scope, ref, r.Method, r.URL.Path) {
+					response.Error(w, http.StatusForbidden, "token nur für einen bestimmten vorgang gültig")
+					return
+				}
+			}
+
 			ctx := context.WithValue(r.Context(), UserIDKey, claims["sub"])
 			ctx = context.WithValue(ctx, RoleKey, claims["role"])
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// ScopedTokenAllows: zweckgebundene Tokens (Claim "scope") duerfen nur
+// bestimmte API-Pfade nutzen. "board-complete" (Fertigmeldung im Leitstand,
+// ref = "<typ>:<id>"): Material genau dieses Vorgangs sowie Lagerorte und
+// Ersatzteilliste lesen. Unbekannte Zwecke duerfen nichts.
+func ScopedTokenAllows(scope, ref, method, path string) bool {
+	if scope != "board-complete" {
+		return false
+	}
+	if method == http.MethodGet && (path == "/api/v1/storage/" || path == "/api/v1/inventory/") {
+		return true
+	}
+	typ, id, ok := strings.Cut(ref, ":")
+	if !ok || id == "" || strings.ContainsAny(id, "/?#") {
+		return false
+	}
+	base := map[string]string{"ticket": "/api/v1/tickets/", "fault": "/api/v1/faults/", "task": "/api/v1/tasks/", "maintenance": "/api/v1/maintenance/tasks/"}[typ]
+	if base == "" {
+		return false
+	}
+	p := base + id + "/pending-parts"
+	switch method {
+	case http.MethodGet, http.MethodPost:
+		return path == p
+	case http.MethodDelete:
+		rest, found := strings.CutPrefix(path, p+"/")
+		return found && rest != "" && !strings.Contains(rest, "/")
+	}
+	return false
 }
 
 func bearerToken(r *http.Request) string {
