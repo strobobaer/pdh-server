@@ -1,0 +1,122 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.ai{max-width:860px}
+.ai-head{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+.ai-ico{width:48px;height:48px;border-radius:12px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--accent);flex-shrink:0}
+.ai-head h1{font-size:20px;font-weight:600;line-height:1.25;word-break:break-word}
+.ai-path{font-size:12px;color:var(--muted);margin-top:3px}
+.ai-path a{color:var(--accent)}
+.ai-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;font-size:12.5px}
+.ai-kv dt{color:var(--muted);font-size:11px}
+.ai-kv dd{margin:0;font-weight:500;word-break:break-word}
+.ai-new{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px}
+.ai-new a,.ai-new span{display:flex;gap:8px;align-items:center;justify-content:center;padding:14px 10px;border-radius:12px;border:1px solid var(--border);background:var(--bg2);font-size:14px;font-weight:600;color:var(--text);text-decoration:none;text-align:center;min-height:52px}
+.ai-new a:hover{border-color:var(--accent)}
+.ai-new a.fault{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.45);color:var(--text)}
+.ai-new a i{font-size:20px;color:var(--accent)}
+.ai-new a.fault i{color:var(--red)}
+.ai-new span{color:var(--muted);font-weight:400;font-size:12px}
+.ai-group{margin-bottom:12px}
+.ai-group .card-title b{background:var(--bg3);border-radius:20px;padding:1px 8px;font-size:11px;margin-left:6px}
+.ai-item{display:flex;gap:10px;align-items:center;padding:11px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none;min-height:48px}
+.ai-item:last-child{border-bottom:0}
+.ai-item:hover{background:var(--bg3)}
+.ai-item .t{flex:1;min-width:0}
+.ai-item .t b{display:block;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.ai-item .t small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.ai-item .t small.late{color:var(--red)}
+.ai-item>i{color:var(--muted);font-size:18px}
+.ai-empty{font-size:12.5px;color:var(--muted);padding:6px 0}
+.ai-children{display:flex;flex-wrap:wrap;gap:6px}
+.ai-children a{display:inline-flex;gap:6px;align-items:center;padding:7px 11px;border:1px solid var(--border);border-radius:20px;font-size:12.5px;color:var(--text);text-decoration:none;background:var(--bg2)}
+.ai-children a:hover{border-color:var(--accent)}
+.ai-qr{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.ai-qr .code{width:150px;height:150px;background:#fff;border-radius:8px;padding:4px;flex-shrink:0}
+.ai-qr .code svg{width:100%;height:100%;display:block}
+.ai-qr code{font-size:11.5px;word-break:break-all}
+@media (max-width:600px){.ai-head h1{font-size:18px}.ai-new{grid-template-columns:1fr 1fr}}
+</style>
+
+<div class="ai">
+  <div class="ai-head">
+    <div class="ai-ico"><i class="ti {{.Asset.TypeIcon}}"></i></div>
+    <div style="min-width:0;flex:1">
+      <div class="rec-sub" style="font-size:11.5px">{{if eq .Asset.Kind "it"}}IT-Asset{{else}}Infrastruktur{{end}} · {{.Asset.TypeLabel}}{{if .Asset.StatusLabel}} · <span class="badge {{.Asset.StatusClass}}">{{.Asset.StatusLabel}}</span>{{end}}</div>
+      <h1>{{.Asset.Name}}</h1>
+      {{if eq .Asset.Kind "infra"}}
+        {{if .Asset.ParentID}}<div class="ai-path"><a href="/a/{{.Asset.ParentID}}"><i class="ti ti-arrow-up"></i> {{.Asset.ParentName}}</a> · {{.Asset.Path}}</div>{{end}}
+      {{else if .Asset.InfraID}}
+        <div class="ai-path">Steht bei: <a href="/a/{{.Asset.InfraID}}">{{.Asset.InfraName}}</a></div>
+      {{end}}
+    </div>
+    <a class="btn btn-small" href="{{.Asset.DetailURL}}" title="Alle Stammdaten bearbeiten"><i class="ti ti-file-description"></i> Stammdaten</a>
+  </div>
+
+  <div class="ai-new" aria-label="Neuen Vorgang anlegen">
+    {{range .Groups}}
+      {{if .NewURL}}<a href="{{.NewURL}}" class="{{if eq .Key "fault"}}fault{{end}}"><i class="ti {{if eq .Key "fault"}}ti-alert-triangle{{else}}ti-plus{{end}}"></i> {{.NewLabel}}</a>
+      {{else if .NewHint}}<span title="{{.NewHint}}"><i class="ti ti-info-circle"></i> {{.NewHint}}</span>{{end}}
+    {{end}}
+  </div>
+
+  {{if eq .Total 0}}
+  <div class="card" style="margin-bottom:12px"><div class="ai-empty"><i class="ti ti-circle-check" style="color:var(--green)"></i> Keine offenen Vorgänge{{if eq .Asset.Kind "infra"}}{{if .Sub}} an dieser Anlage und ihren Unteranlagen{{else}} an dieser Anlage{{end}}{{else}} an diesem Gerät{{end}}.</div></div>
+  {{end}}
+
+  {{range .Groups}}{{if .Items}}
+  <div class="card ai-group">
+    <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{len .Items}}{{if .More}}+{{end}}</b></span>{{if .More}}<a class="btn btn-small" href="{{.ListURL}}">Alle</a>{{end}}</div>
+    {{range .Items}}
+    <a class="ai-item" href="{{.URL}}">
+      <span class="t"><b>{{.Title}}</b>
+        <small class="{{if .Overdue}}late{{end}}">{{if .Prio}}{{.Prio}} · {{end}}{{if .Due}}{{if .Overdue}}überfällig seit{{else}}fällig{{end}} {{.Due}}{{else}}ohne Termin{{end}}{{if .Where}} · {{.Where}}{{end}}</small></span>
+      <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+      <i class="ti ti-chevron-right"></i>
+    </a>
+    {{end}}
+  </div>
+  {{end}}{{end}}
+
+  {{if eq .Asset.Kind "infra"}}
+  {{if .Asset.SubCount}}
+  <div class="rec-sub" style="font-size:12px;margin:-4px 0 12px">
+    {{if .Sub}}Mit Vorgängen der Unteranlagen · <a href="?sub=0" style="color:var(--accent)">nur diese Anlage</a>{{else}}Nur diese Anlage · <a href="?sub=1" style="color:var(--accent)">mit Unteranlagen</a>{{end}}
+  </div>
+  {{end}}
+  {{if .Children}}
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-title"><span><i class="ti ti-hierarchy-2"></i> Unteranlagen</span></div>
+    <div class="ai-children">{{range .Children}}<a href="/a/{{.ID}}"><i class="ti {{.TypeIcon}}"></i> {{.Name}}</a>{{end}}</div>
+  </div>
+  {{end}}
+  {{end}}
+
+  <div class="card" style="margin-bottom:12px">
+    <div class="card-title"><span><i class="ti ti-info-circle"></i> Stammdaten</span></div>
+    <dl class="ai-kv">
+      {{if .Asset.Manufacturer}}<div><dt>Hersteller</dt><dd>{{.Asset.Manufacturer}}</dd></div>{{end}}
+      {{if .Asset.Model}}<div><dt>Modell</dt><dd>{{.Asset.Model}}</dd></div>{{end}}
+      {{if .Asset.Serial}}<div><dt>Seriennummer</dt><dd>{{.Asset.Serial}}</dd></div>{{end}}
+      {{if .Asset.Location}}<div><dt>Standort</dt><dd>{{.Asset.Location}}</dd></div>{{end}}
+      {{if .Asset.Hostname}}<div><dt>Hostname</dt><dd>{{.Asset.Hostname}}</dd></div>{{end}}
+      {{if .Asset.IP}}<div><dt>IP-Adresse</dt><dd>{{.Asset.IP}}</dd></div>{{end}}
+      {{if eq .Asset.Kind "infra"}}<div><dt>Pfad</dt><dd>{{.Asset.Path}}</dd></div>{{end}}
+    </dl>
+  </div>
+
+  <details class="card" style="margin-bottom:12px">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px"><i class="ti ti-qrcode"></i> QR-Code dieser Seite</summary>
+    <div class="ai-qr" style="margin-top:12px">
+      <div class="code">{{.QR}}</div>
+      <div style="min-width:0;flex:1">
+        <code>{{.URL}}</code>
+        <p class="rec-sub" style="font-size:12px;margin:8px 0">Mit dem Handy scannen – die Seite öffnet sich direkt (nach der Anmeldung).</p>
+        {{if .CanLabel}}<a class="btn btn-small btn-primary" href="/a/labels?{{if eq .Asset.Kind "it"}}it{{else}}infra{{end}}={{.Asset.ID}}" target="_blank" rel="noopener"><i class="ti ti-printer"></i> Etikett drucken</a>
+        {{if and (eq .Asset.Kind "infra") .Asset.SubCount}}<a class="btn btn-small" href="/a/labels?infra={{.Asset.ID}}&amp;sub=1" target="_blank" rel="noopener"><i class="ti ti-printer"></i> mit allen Unteranlagen</a>{{end}}{{end}}
+      </div>
+    </div>
+  </details>
+</div>
+{{end}}

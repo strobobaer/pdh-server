@@ -5,6 +5,12 @@
   <p style="font-size:12px;color:var(--muted);margin-top:3px">Ticket, Aufgabe, Wartung oder Störung anlegen und direkt einem Mitarbeiter zuweisen</p>
 </div>
 
+{{if or .PresetITID .Back}}
+<div class="card" style="max-width:720px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+  {{if .PresetITID}}<span><i class="ti ti-device-desktop" style="color:var(--accent)"></i> Gerät: <b>{{.ITName}}</b> – der neue Vorgang wird diesem IT-Asset zugeordnet.</span>{{end}}
+  {{if .Back}}<a class="btn btn-small" href="{{.Back}}" style="margin-left:auto"><i class="ti ti-arrow-left"></i> Zurück zur Infoseite</a>{{end}}
+</div>
+{{end}}
 <div class="card" style="max-width:720px">
   <div class="card-title">Art des Vorgangs</div>
   <div id="assign-type-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
@@ -66,7 +72,7 @@
       <input id="assign-symptoms" class="form-input" placeholder="Kommagetrennt, z.B. Rauch, ungewöhnliches Geräusch">
     </div>
 
-    {{template "infra-tree-picker" (dict "TargetID" "assign-infra-id" "SelectedLabelID" "assign-infra-selected" "Label" "Infrastruktur")}}
+    {{template "infra-tree-picker" (dict "TargetID" "assign-infra-id" "SelectedLabelID" "assign-infra-selected" "Label" "Infrastruktur" "Value" .PresetInfraID "SelectedLabel" .InfraPath)}}
 
     <p id="assign-result" style="font-size:12px;margin:14px 0 0"></p>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
@@ -180,7 +186,14 @@ async function submitAssignment(event){
       });
       if(!gres.ok) throw new Error('Angelegt, aber die Gruppe konnte nicht zugewiesen werden: ' + (await gres.text()));
     }
-    window.location.href = assignRedirects[assignType];
+    if(itAssetID && newID){
+      const refType = {ticket: 'ticket', task: 'task', maintenance: 'maintenance_task', fault: 'fault'}[assignType];
+      const ires = await fetch('/records/' + refType + '/' + encodeURIComponent(newID) + '/it-asset', {
+        method: 'PUT', credentials: 'same-origin', body: new URLSearchParams({it_asset_id: itAssetID})
+      });
+      if(!ires.ok) throw new Error('Angelegt, aber das Gerät konnte nicht zugeordnet werden: ' + (await ires.text()));
+    }
+    window.location.href = assignBack || assignRedirects[assignType];
   }catch(error){
     result.innerHTML = '<span style="color:var(--red)">Fehler: ' + escapeHtml(error.message) + '</span>';
   }finally{
@@ -189,6 +202,8 @@ async function submitAssignment(event){
   return false;
 }
 
-setAssignType('ticket');
+const itAssetID = {{.PresetITID}};
+const assignBack = {{.Back}};
+setAssignType({{or .PresetType "ticket"}});
 </script>
 {{end}}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -417,6 +418,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
 	r.Get("/it/{id}", h.ITDetail)
+	// QR-Infoseiten fuer Anlagen und IT-Assets (asset_info.go)
+	r.Get("/a/labels", h.AssetLabelsPage)
+	r.Post("/a/labels/print", h.AssetLabelsPrintWeb)
+	r.Get("/a/{id}", h.AssetInfoPage)
+	r.Put("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/storage", h.StoragePage)
@@ -1863,7 +1869,21 @@ func (h *Handler) simplePage(w http.ResponseWriter, r *http.Request, page, title
 // ── Auth ──────────────────────────────────────────────────────
 
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login", h.loginDataFor(r, ""))
+	d := h.loginDataFor(r, "")
+	if n := loginNext(r.URL.Query().Get("next")); n != "/" {
+		d.Next = n
+	}
+	h.render(w, "login", d)
+}
+
+// loginNext: Ziel nach der Anmeldung – nur Pfade im PDH (kein "//host",
+// kein "/\host"), sonst die Startseite.
+func loginNext(next string) string {
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") ||
+		strings.ContainsAny(next, "\\\r\n") || strings.HasPrefix(next, "/login") || len(next) > 500 {
+		return "/"
+	}
+	return next
 }
 
 func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
@@ -1871,13 +1891,17 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
-		h.render(w, "login", h.loginDataFor(r, "Ungültige Anmeldedaten"))
+		d := h.loginDataFor(r, "Ungültige Anmeldedaten")
+		if n := loginNext(r.FormValue("next")); n != "/" {
+			d.Next = n
+		}
+		h.render(w, "login", d)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	authLog(r, true, "passwort", r.FormValue("email"), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "")
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, loginNext(r.FormValue("next")), http.StatusFound)
 }
 
 // LoginRFIDWeb meldet per RFID-Karten-UID an (kein Passwort - der Besitz
@@ -1894,13 +1918,17 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 	token, user, err := h.users.LoginByRFID(r.Context(), uid)
 	if err != nil {
 		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
-		h.render(w, "login", h.loginDataFor(r, "Unbekannte Karte"))
+		d := h.loginDataFor(r, "Unbekannte Karte")
+		if n := loginNext(r.FormValue("next")); n != "/" {
+			d.Next = n
+		}
+		h.render(w, "login", d)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	authLog(r, true, "rfid", "Karte "+maskUID(uid), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "")
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, loginNext(r.FormValue("next")), http.StatusFound)
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -1982,6 +2010,11 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+			// QR-Code gescannt: erst anmelden, dann zurueck auf die Infoseite
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/a/") {
+				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+				return
+			}
 			http.Redirect(w, r, "/global/", http.StatusFound)
 			return
 		}

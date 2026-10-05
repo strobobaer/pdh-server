@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-05T17:26:10.337Z",
+  "generatedAt": "2026-10-05T17:39:12.633Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1029,6 +1029,17 @@
       "sqlHash": "f63c2c79d0750b66b646844e9fe89a97578c70f307698f264bc715753156c1e9",
       "title": "095_password_resets.up.sql",
       "updatedAt": "2026-10-05T17:26:09.700Z"
+    },
+    {
+      "createdAt": "2026-10-05T17:39:12.001Z",
+      "path": "migrations/096_record_it_asset.up.sql",
+      "catalogContext": null,
+      "searchText": "096_record_it_asset.up.sql migrations/096_record_it_asset.up.sql -- 096_record_it_asset.up.sql\n--\n-- qr-infoseiten (/a/<id>): vorgaenge koennen zusaetzlich zur anlage einem\n-- it-asset zugeordnet werden, damit die infoseite eines geraets genau seine\n-- offenen tickets, stoerungen, aufgaben und wartungen zeigt.\n\nalter table tickets           add column if not exists it_asset_id uuid references it_assets(id) on delete set null;\nalter table faults            add column if not exists it_asset_id uuid references it_assets(id) on delete set null;\nalter table tasks             add column if not exists it_asset_id uuid references it_assets(id) on delete set null;\nalter table maintenance_tasks add column if not exists it_asset_id uuid references it_assets(id) on delete set null;\n\ncreate index if not exists idx_tickets_it_asset           on tickets (it_asset_id) where it_asset_id is not null;\ncreate index if not exists idx_faults_it_asset            on faults (it_asset_id) where it_asset_id is not null;\ncreate index if not exists idx_tasks_it_asset             on tasks (it_asset_id) where it_asset_id is not null;\ncreate index if not exists idx_maintenance_tasks_it_asset on maintenance_tasks (it_asset_id) where it_asset_id is not null;\n",
+      "searchUpdatedAt": "2026-10-05T17:39:12.097Z",
+      "schemaContext": null,
+      "sqlHash": "cee5c0a572e10c414109100b6ff99a30b711d584281538ac2d5dd0cc8be64296",
+      "title": "096_record_it_asset.up.sql",
+      "updatedAt": "2026-10-05T17:39:12.001Z"
     }
   ]
 }

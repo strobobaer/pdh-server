@@ -481,5 +481,6 @@
  "Wenn es ein Konto mit diesen Angaben und einer hinterlegten E-Mail-Adresse gibt, haben wir dir einen Link zum Zurücksetzen geschickt. Er gilt eine Stunde. Schau auch im Spam-Ordner nach.": "Dacă există un cont cu aceste date și o adresă de e-mail salvată, ți-am trimis un link de resetare. Este valabil o oră. Verifică și dosarul de spam.",
  "Zurück zur Anmeldung": "Înapoi la autentificare",
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "pentru contul tău la %s a fost solicitată o parolă nouă. Prin link îți setezi o parolă nouă. Este valabil o oră și o singură dată.",
- "mindestens 8 Zeichen": "cel puțin 8 caractere"
+ "mindestens 8 Zeichen": "cel puțin 8 caractere",
+ "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "După autentificare ajungi direct la pagina scanată."
 }

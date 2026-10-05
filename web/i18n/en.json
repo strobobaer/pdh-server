@@ -481,5 +481,6 @@
  "Wenn es ein Konto mit diesen Angaben und einer hinterlegten E-Mail-Adresse gibt, haben wir dir einen Link zum Zurücksetzen geschickt. Er gilt eine Stunde. Schau auch im Spam-Ordner nach.": "If there is an account with these details and a stored email address, we have sent you a reset link. It is valid for one hour. Please also check your spam folder.",
  "Zurück zur Anmeldung": "Back to sign-in",
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "a new password was requested for your account at %s. Use the link to set a new password. It is valid for one hour and can be used only once.",
- "mindestens 8 Zeichen": "at least 8 characters"
+ "mindestens 8 Zeichen": "at least 8 characters",
+ "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "After signing in you will go straight to the scanned page."
 }

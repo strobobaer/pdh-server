@@ -460,7 +460,7 @@ func drawLabelPDF(p *fpdf.Fpdf, it labelItem, x, y float64, size labelSize, show
 		}
 		return normal
 	}
-	loc := firstNonEmpty(it.LocationLeaf, "ohne Lagerplatz")
+	loc := it.headText()
 	p.SetFont("Helvetica", "B", fs(9, 11))
 	p.SetXY(tx, y+pad)
 	p.CellFormat(tw, fs(3.6, 4.4), pdfText(p, fitPDF(p, loc, tw)), "B", 1, "L", false, 0, "")
@@ -478,7 +478,7 @@ func drawLabelPDF(p *fpdf.Fpdf, it labelItem, x, y float64, size labelSize, show
 	p.CellFormat(tw*0.6, fs(3.2, 3.8), pdfText(p, fitPDF(p, it.PartNumber, tw*0.6)), "", 0, "L", false, 0, "")
 	p.SetFont("Helvetica", "B", fs(7.5, 9))
 	p.SetXY(tx+tw*0.6, by)
-	p.CellFormat(tw*0.4, fs(3.2, 3.8), pdfText(p, "Min "+it.MinQty+" "+it.Unit), "", 0, "R", false, 0, "")
+	p.CellFormat(tw*0.4, fs(3.2, 3.8), pdfText(p, fitPDF(p, it.rightText(), tw*0.4)), "", 0, "R", false, 0, "")
 }
 
 // fitPDF kuerzt Text auf die verfuegbare Breite (mit "…" als "...").

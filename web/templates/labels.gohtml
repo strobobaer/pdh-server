@@ -54,13 +54,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
 </style>
 </head>
 <body>
-<form class="toolbar" method="get" action="/inventory/labels">
+<form class="toolbar" method="get" action="{{.Action}}">
   <b>Etiketten</b>
   {{range .Params}}<input type="hidden" name="{{.Key}}" value="{{.Value}}">{{end}}
   <label>Format <select name="size" onchange="this.form.submit()">{{range .Sizes}}<option value="{{.Key}}" {{if eq .Key $.Size.Key}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
   <label>Kopien <input type="number" name="copies" min="1" max="50" value="{{.Copies}}" onchange="this.form.submit()"></label>
   {{if .Size.Sheet}}<label title="Bereits verbrauchte Felder auf einem angebrochenen Bogen überspringen">Start bei Feld <input type="number" name="start" min="0" max="40" value="{{.Start}}" onchange="this.form.submit()"></label>{{end}}
-  <label>Kategorie <select name="cat_line" onchange="this.form.submit()"><option value="1">anzeigen</option><option value="0" {{if not .ShowCat}}selected{{end}}>ausblenden</option></select></label>
+  <label>{{if .Assets}}Pfad{{else}}Kategorie{{end}} <select name="cat_line" onchange="this.form.submit()"><option value="1">anzeigen</option><option value="0" {{if not .ShowCat}}selected{{end}}>ausblenden</option></select></label>
   <span class="muted">{{len .Labels}} Etikett(en){{if gt .Copies 1}} × {{.Copies}}{{end}}</span>
   <span style="flex:1"></span>
   <button type="button" onclick="window.print()">🖨 Drucken</button>
@@ -90,8 +90,13 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
         <div class="name">{{.Name}}</div>
         {{if and $.ShowCat .Category (not $.Size.Compact)}}<div class="cat">{{.Category}}</div>{{end}}
         <div class="row">
+          {{if .Asset}}
+          <div style="min-width:0">{{if .PartNumber}}<div class="k">{{.NumKey}}</div><div class="pn">{{.PartNumber}}</div>{{end}}</div>
+          <div class="min">{{if .RightKey}}<div class="k">{{.RightKey}}</div>{{end}}<b>{{.Right}}</b></div>
+          {{else}}
           <div style="min-width:0"><div class="k">Teile-Nr.</div><div class="pn">{{.PartNumber}}</div></div>
           <div class="min"><div class="k">Mindestmenge</div><b>{{.MinQty}}</b> {{.Unit}}</div>
+          {{end}}
         </div>
       </div>
     </div>
@@ -112,7 +117,7 @@ async function lpPrint(){
   body.set('printer', sel.value);
   btn.disabled = true; msg.style.color = ''; msg.textContent = 'Wird gesendet …';
   try{
-    const res = await fetch('/inventory/labels/print', {method: 'POST', credentials: 'same-origin', body: body});
+    const res = await fetch({{.PrintURL}}, {method: 'POST', credentials: 'same-origin', body: body});
     const j = await res.json().catch(() => ({}));
     if(!res.ok || !j.success) throw new Error(j.error || ('HTTP ' + res.status));
     if(j.dymo){

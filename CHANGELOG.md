@@ -23,6 +23,10 @@ im Kapitel „Versionen & Updates“ an.
 - Eingebaute Abfrage-Vorlagen je Verbindungstyp sowie eigene Vorlagen, die Abfragen und Zuordnungen auf eine gleichartige Verbindung übertragen
 - Anmeldeseite: „Passwort vergessen?“ schickt einen Link an die hinterlegte E-Mail-Adresse, mit dem man ein neues Passwort vergibt – er gilt eine Stunde und nur einmal
 - Mein Konto → Konto & Dienste: eigenes Passwort ändern (mit dem aktuellen Passwort) bzw. ein erstes Passwort festlegen, wenn man sich bisher nur per Karte oder Microsoft anmeldet
+- QR-Codes für jede Anlage und jedes IT-Asset: Scannen öffnet eine Infoseite fürs Handy mit allen offenen Störungen, Tickets, Aufträgen und Wartungen – antippen zum Bearbeiten – und Knöpfen zum Neuanlegen mit vorbelegter Anlage bzw. vorbelegtem Gerät
+- QR-Etiketten für Anlagen und IT-Assets drucken – einzeln, für eine Anlage samt Unteranlagen oder für den ganzen Bestand, in allen Etikettenformaten und direkt auf eingerichtete Drucker
+- Vorgänge können einem IT-Asset zugeordnet werden; das Gerät steht im Reiter Verknüpfungen
+- Wer ohne Anmeldung einen QR-Code scannt, kommt nach der Anmeldung direkt auf die gescannte Seite
 
 ### Geändert
 - Handbuch: neue Kapitel „Drucker“ und „Import, Export & Verbindungsseite“; die Kontexthilfe auf Import und Export zeigt jetzt das neue Kapitel

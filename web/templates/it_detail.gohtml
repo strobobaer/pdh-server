@@ -8,6 +8,8 @@
   </div>
   <span id="status-badge" class="badge {{.Asset.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Asset.StatusLabel}}</span>
 
+  <a class="btn btn-small" href="/a/{{.Asset.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>
+  <a class="btn btn-small" href="/a/labels?it={{.Asset.ID}}" target="_blank" rel="noopener" title="QR-Etikett drucken"><i class="ti ti-printer"></i></a>
   <div style="position:relative" oncontextmenu="toggleMenu('it-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('it-menu')")}}
     <div id="it-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">

@@ -481,5 +481,6 @@
  "Wenn es ein Konto mit diesen Angaben und einer hinterlegten E-Mail-Adresse gibt, haben wir dir einen Link zum Zurücksetzen geschickt. Er gilt eine Stunde. Schau auch im Spam-Ordner nach.": "Ако постои сметка со овие податоци и зачувана е-пошта, ви испративме врска за ресетирање. Важи еден час. Проверете ја и папката за спам.",
  "Zurück zur Anmeldung": "Назад кон најавата",
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "за вашата сметка на %s е побарана нова лозинка. Преку врската поставувате нова лозинка. Важи еден час и само еднаш.",
- "mindestens 8 Zeichen": "најмалку 8 знаци"
+ "mindestens 8 Zeichen": "најмалку 8 знаци",
+ "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "По најавата одите директно на скенираната страница."
 }

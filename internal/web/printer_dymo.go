@@ -84,7 +84,7 @@ func dymoPartLabel(it labelItem, t dymoLabelType, paperName string, showCat bool
 	}
 	tw := W - x - m
 	small := t.ShortMM < 30
-	loc := firstNonEmpty(it.LocationLeaf, "ohne Lagerplatz")
+	loc := it.headText()
 	lh := H / 4
 	b.WriteString(dymoText("LAGERPLATZ", loc, map[bool]float64{true: 10, false: 12}[small], true, x, m, tw, lh, "Left"))
 	nameH := H / 3
@@ -93,8 +93,8 @@ func dymoPartLabel(it labelItem, t dymoLabelType, paperName string, showCat bool
 		b.WriteString(dymoText("KATEGORIE", it.Category, 6, false, x, m+lh+nameH, tw, H/8, "Left"))
 	}
 	by := H - m - H/5
-	b.WriteString(dymoText("TEILENR", "Nr. "+it.PartNumber, map[bool]float64{true: 7, false: 9}[small], true, x, by, tw*6/10, H/5, "Left"))
-	b.WriteString(dymoText("MIN", strings.TrimSpace("Min "+it.MinQty+" "+it.Unit), map[bool]float64{true: 7, false: 9}[small], true, x+tw*6/10, by, tw*4/10, H/5, "Right"))
+	b.WriteString(dymoText("TEILENR", it.numText(), map[bool]float64{true: 7, false: 9}[small], true, x, by, tw*6/10, H/5, "Left"))
+	b.WriteString(dymoText("MIN", it.rightText(), map[bool]float64{true: 7, false: 9}[small], true, x+tw*6/10, by, tw*4/10, H/5, "Right"))
 	b.WriteString(`</DieCutLabel>`)
 	return b.String()
 }

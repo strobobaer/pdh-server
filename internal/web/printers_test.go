@@ -256,6 +256,7 @@ func TestLabelsPageDirectPrint(t *testing.T) {
 	}
 	item := testLabel
 	data := LabelsPageData{Size: labelSizeByKey("62x29"), Sizes: labelSizes, Labels: []labelItem{item}, Copies: 1, Pages: [][]*labelItem{{&item}},
+		Action: "/inventory/labels", PrintURL: "/inventory/labels/print",
 		Printers: []labelPrintOption{{ID: "z1", Name: "Zebra Lager", Kind: "zebra", IsDefault: true}, {ID: "d1", Name: "Dymo", Kind: "dymo"}}}
 	var buf bytes.Buffer
 	if err := c.ExecuteTemplate(&buf, "labels-page", data); err != nil {

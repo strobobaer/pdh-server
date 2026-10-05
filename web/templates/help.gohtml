@@ -331,6 +331,26 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "infrastructure") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="qrcodes" data-title="QR-Codes an Anlagen &amp; Geräten" data-pages="asset-info">
+  <h2><i class="ti ti-qrcode"></i> QR-Codes an Anlagen &amp; Geräten</h2>
+  <p>Jede Anlage der Infrastruktur und jedes IT-Asset hat einen eigenen QR-Code. Er führt auf eine <b>Infoseite</b>, die fürs Handy gebaut ist: Stammdaten, alle <b>offenen Störungen, Tickets, Aufträge/Aufgaben und Wartungen</b> und große Knöpfe zum Neuanlegen.</p>
+  <div class="hb-howto"><b><i class="ti ti-scan"></i> So arbeitest du mit dem QR-Code an der Maschine</b>
+    <ol class="hb-steps">
+      <li>QR-Code mit der Handy-Kamera scannen. Bist du nicht angemeldet, meldest du dich kurz an – danach geht es direkt auf die Infoseite.</li>
+      <li>Einen offenen Vorgang antippen: Er öffnet sich wie gewohnt und du kannst ihn bearbeiten, Maßnahmen erfassen oder abschließen.</li>
+      <li>Oder oben <b>Störung melden</b>, <b>Ticket</b>, <b>Aufgabe</b> bzw. <b>Wartung</b> antippen. Anlage (und beim IT-Asset das Gerät) sind schon eingetragen. Nach dem Speichern kommst du zurück auf die Infoseite.</li>
+    </ol></div>
+  <p>Bei Anlagen mit Unteranlagen zeigt die Seite auch die Vorgänge der Unteranlagen (mit deren Namen); „nur diese Anlage“ blendet sie aus. Über <b>Unteranlagen</b> und den Pfeil zur übergeordneten Anlage wechselst du direkt zur nächsten Infoseite. Ein IT-Asset zeigt die Vorgänge, die diesem Gerät zugeordnet sind, und verweist auf die Anlage, bei der es steht. Wartungen für ein IT-Asset gehen nur, wenn es einer Anlage zugeordnet ist.</p>
+  <div class="hb-howto"><b><i class="ti ti-printer"></i> So druckst du QR-Etiketten</b>
+    <ol class="hb-steps">
+      <li>Einzeln: in der Anlage bzw. im IT-Asset oben auf <i class="ti ti-printer"></i> – oder auf der Infoseite unter <b>QR-Code dieser Seite → Etikett drucken</b>.</li>
+      <li>Für eine Anlage samt allen Unteranlagen: im Menü <i class="ti ti-dots"></i> der Anlage <b>QR-Etiketten inkl. Unteranlagen</b>. Für den ganzen Bestand: in der Liste Infrastruktur bzw. IT oben <b>QR-Etiketten</b>.</li>
+      <li>Format wählen und <b>Drucken</b> – oder ohne Druckdialog <b>Direkt drucken</b> auf einen eingerichteten Drucker (<a href="#printers">Drucker</a>). Die Formate sind dieselben wie bei den <a href="#storage">Lager-Etiketten</a>.</li>
+    </ol></div>
+  <p>Auf der Infoseite und auf dem Etikett erscheint nur, was die Person sehen darf (Modulrechte und Abteilungs-Sicht). Der Link im QR-Code nutzt die <b>öffentliche Adresse</b> aus den Server-Einstellungen – damit er auch vom Handy aus funktioniert.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "qrcodes") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="inventory" data-title="Ersatzteile" data-pages="inventory">
   <h2><i class="ti ti-package"></i> Ersatzteile</h2>
   <p>Die Ersatzteilliste hat oben Reiter je <b>Kategorie</b> und Kacheln für „unter Mindestbestand“, „kritisch“, „leer“ und „ohne Lieferant“.</p>

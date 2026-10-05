@@ -102,10 +102,7 @@ func zplPartLabel(it labelItem, z zebraSettings, showCat bool, copies int) strin
 	mid := int(float64(h) * 0.12)
 	small := int(float64(h) * 0.085)
 	y := m
-	loc := it.LocationLeaf
-	if loc == "" {
-		loc = "ohne Lagerplatz"
-	}
+	loc := it.headText()
 	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, y, big, big, tw, zplText(loc))
 	y += big + m/2
 	fmt.Fprintf(&b, "^FO%d,%d^GB%d,%d,%d^FS", x, y, tw, 2, 2)
@@ -116,12 +113,8 @@ func zplPartLabel(it labelItem, z zebraSettings, showCat bool, copies int) strin
 		fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, y, small, small, tw, zplText(it.Category))
 	}
 	by := h - m - mid
-	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FDNr. %s^FS", x, by, mid, mid, tw/2+tw/6, zplText(it.PartNumber))
-	minTxt := "Min " + it.MinQty
-	if it.Unit != "" {
-		minTxt += " " + it.Unit
-	}
-	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS", x, by, mid, mid, tw, zplText(minTxt))
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, by, mid, mid, tw/2+tw/6, zplText(it.numText()))
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS", x, by, mid, mid, tw, zplText(it.rightText()))
 	b.WriteString("^XZ\n")
 	return b.String()
 }

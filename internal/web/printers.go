@@ -586,14 +586,7 @@ func (h *Handler) PartLabelsPrintWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-	defer cancel()
-	p, err := h.loadPrinter(ctx, r.FormValue("printer"))
-	if err != nil || !p.Enabled {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen aktiven Drucker wählen")
-		return
-	}
-	items, err := h.loadLabelItems(ctx, r.Form)
+	items, err := h.loadLabelItems(r.Context(), r.Form)
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusBadRequest, err.Error())
 		return
@@ -605,6 +598,20 @@ func (h *Handler) PartLabelsPrintWeb(w http.ResponseWriter, r *http.Request) {
 	base := h.publicBaseURL(r)
 	for i := range items {
 		items[i].URL = base + "/inventory/" + items[i].PartID
+	}
+	h.printLabelItems(w, r, items)
+}
+
+// printLabelItems schickt fertige Etiketten an den gewaehlten Drucker
+// (Ersatzteile und Anlagen/IT-Assets). Dymo: das Etikett-XML geht an den
+// Browser, der es an DYMO Connect auf dem PC weitergibt.
+func (h *Handler) printLabelItems(w http.ResponseWriter, r *http.Request, items []labelItem) {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	p, err := h.loadPrinter(ctx, r.FormValue("printer"))
+	if err != nil || !p.Enabled {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Bitte einen aktiven Drucker wählen")
+		return
 	}
 	copies := clampInt(r.FormValue("copies"), 1, 1, 50)
 	showCat := r.FormValue("cat_line") != "0"

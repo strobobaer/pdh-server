@@ -96,6 +96,32 @@ type labelItem struct {
 	Location, LocationLeaf                           string
 	URL                                              string
 	QR                                               template.HTML
+	// Anlagen-/IT-Etiketten (asset_info.go): Nummer ohne "Nr."-Praefix,
+	// rechts unten ein Hinweis statt der Mindestmenge
+	Asset            bool
+	NumKey, RightKey string
+	Right            string
+}
+
+// numText: Nummer unten links (Teile-Nr. bzw. Serien-/Inventarnummer).
+func (it labelItem) numText() string {
+	if it.Asset {
+		return it.PartNumber
+	}
+	return "Nr. " + it.PartNumber
+}
+
+// rightText: unten rechts – Mindestmenge bzw. Hinweis auf Anlagen-Etiketten.
+func (it labelItem) rightText() string {
+	if it.Asset {
+		return it.Right
+	}
+	return strings.TrimSpace("Min " + it.MinQty + " " + it.Unit)
+}
+
+// headText: oberste Zeile – Lagerplatz bzw. Name der Anlage.
+func (it labelItem) headText() string {
+	return firstNonEmpty(it.LocationLeaf, "ohne Lagerplatz")
 }
 
 type LabelsPageData struct {
@@ -112,6 +138,10 @@ type LabelsPageData struct {
 	Error   string
 	// direkt drucken (printers.go): eingerichtete, aktive Drucker
 	Printers []labelPrintOption
+	// Formular- und Druckadresse (Ersatzteile: /inventory/labels, Anlagen: /a/labels)
+	Action, PrintURL string
+	Assets           bool // Anlagen-/IT-Etiketten: keine Kategorie-Auswahl
+
 }
 
 // PartLabelsPage erzeugt die Druckansicht. Auswahl (kombinierbar):
@@ -142,12 +172,23 @@ func (h *Handler) PartLabelsPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.Error = err.Error()
 	}
-	if h.hasPerm(r, "printers.use") {
-		data.Printers = h.usablePrinters(ctx)
-	}
 	base := h.publicBaseURL(r)
 	for i := range items {
 		items[i].URL = base + "/inventory/" + items[i].PartID
+	}
+	h.renderLabelsPage(w, r, data, items)
+}
+
+// renderLabelsPage: Druckansicht (QR-Codes, Kopien, A4-Seiten) fuer fertige Etiketten.
+func (h *Handler) renderLabelsPage(w http.ResponseWriter, r *http.Request, data LabelsPageData, items []labelItem) {
+	ctx := r.Context()
+	if data.Action == "" {
+		data.Action, data.PrintURL = "/inventory/labels", "/inventory/labels/print"
+	}
+	if h.hasPerm(r, "printers.use") {
+		data.Printers = h.usablePrinters(ctx)
+	}
+	for i := range items {
 		if svg, err := qrSVG(items[i].URL); err == nil {
 			items[i].QR = svg
 		}

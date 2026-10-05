@@ -84,7 +84,9 @@ input:focus{border-color:var(--accent)}
   <h2>{{t "Anmelden"}}</h2>
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
   {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  {{if .Next}}<div class="notice">{{t "Nach der Anmeldung geht es direkt weiter zur gescannten Seite."}}</div>{{end}}
   <form method="POST" action="/login">
+    {{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
     <div class="form-group">
       <label>{{t "E-Mail oder Benutzername"}}</label>
       <input type="text" name="email" placeholder="{{t "name@beispiel.de oder Benutzername"}}" required autofocus>
@@ -100,6 +102,7 @@ input:focus{border-color:var(--accent)}
     <div style="flex:1;height:1px;background:var(--border)"></div>{{t "ODER"}}<div style="flex:1;height:1px;background:var(--border)"></div>
   </div>
   <form method="POST" action="/login/rfid" onsubmit="return true">
+    {{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
     <div class="form-group">
       <label>{{t "RFID-Karte"}}</label>
       <input type="text" name="uid" id="rfid-input" placeholder="{{t "Karte an den Leser halten …"}}" autocomplete="off">
