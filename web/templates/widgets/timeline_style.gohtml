@@ -5,6 +5,8 @@
   pdhTimelineApply(wrapper, t) setzt die Klasse tl-<zustand> am Balken;
   t: {done, running, unassigned, end: 'JJJJ-MM-TT'}.
   Vorrang: beendet > ueberfaellig > faellig > nicht zugewiesen > laufend.
+  pdhTimelineCollect / pdhTimelineCollectorBind: Erledigte als ein Sammler
+  „✓ Erledigt (N)“; Klick klappt sie als Einzelbalken auf und wieder zu.
 */}}
 {{define "timeline-style"}}{{with .Safe}}
 <style id="pdh-timeline">{{.CSS}}</style>
@@ -31,6 +33,50 @@ window.pdhTimelineApply = function(wrapper, t){
   return st;
 };
 window.PDH_TL_LABEL = {done: 'beendet', overdue: 'überfällig', due: 'fällig', unassigned: 'nicht zugewiesen', running: 'läuft'};
+// Erledigte als Sammler: offene und laufende bleiben Einzelbalken, die
+// erledigten werden zu einem Balken „✓ Erledigt (N)“ oben zusammengefasst.
+// tasks: frappe-Aufgaben mit done-Flag; key: je Zeitstrahl (Auf-/Zuklappen merken)
+window.PDH_TL_COLLECTOR = '__pdh_done__';
+// Zustand im Browser merken; ohne Speicher (privates Fenster) nur fuer diese Seite
+window.pdhTimelineCollectorOpen = (function(){
+  const mem = {};
+  return function(key, set){
+    if(set !== undefined){
+      mem[key] = !!set;
+      try{ localStorage.setItem('pdh_tl_done_open:' + key, set ? '1' : '0'); }catch(e){}
+    }
+    if(key in mem) return mem[key];
+    try{ return localStorage.getItem('pdh_tl_done_open:' + key) === '1'; }catch(e){ return false; }
+  };
+})();
+window.pdhTimelineCollect = function(tasks, key){
+  const done = tasks.filter(t => t.done), active = tasks.filter(t => !t.done);
+  if(!done.length) return tasks;
+  const open = window.pdhTimelineCollectorOpen(key);
+  const iso = d => typeof d === 'string' ? d : d.toISOString().slice(0, 10);
+  const starts = done.map(t => iso(t.start)).sort(), ends = done.map(t => iso(t.end)).sort();
+  const collector = {id: window.PDH_TL_COLLECTOR, name: '✓ Erledigt (' + done.length + ')' + (open ? ' – einklappen' : ''),
+    start: starts[0], end: ends[ends.length - 1], progress: 100, done: true, custom_class: 'tl-collector', count: done.length};
+  return [collector].concat(active, open ? done : []);
+};
+// nach dem Zeichnen: Sammler nicht verschiebbar, Klick klappt auf/zu
+window.pdhTimelineCollectorBind = function(scope, key, rerender){
+  const w = document.querySelector(scope + ' .bar-wrapper[data-id="' + window.PDH_TL_COLLECTOR + '"]');
+  if(!w) return;
+  w.classList.add('tl-done');
+  w.style.cursor = 'pointer';
+  w.querySelectorAll('.handle').forEach(h => h.remove());
+  const open = window.pdhTimelineCollectorOpen(key);
+  let title = w.querySelector('title');
+  if(!title){ title = document.createElementNS('http://www.w3.org/2000/svg', 'title'); w.appendChild(title); }
+  title.textContent = open ? 'Erledigte einklappen' : 'Erledigte einzeln anzeigen';
+  w.addEventListener('mousedown', e => e.stopPropagation()); // nicht ziehen
+  w.addEventListener('click', e => {
+    e.stopPropagation();
+    window.pdhTimelineCollectorOpen(key, !open);
+    rerender();
+  });
+};
 </script>
 {{end}}{{end}}
 

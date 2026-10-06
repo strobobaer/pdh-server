@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-06T10:13:18.768Z",
+  "generatedAt": "2026-10-06T11:46:00.470Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1073,6 +1073,17 @@
       "sqlHash": "63f7b0a2fd299653f188da6d4a0dcf197b32eaf0207155e183377caee09eca92",
       "title": "099_status_pending_backfill.up.sql",
       "updatedAt": "2026-10-06T10:13:18.085Z"
+    },
+    {
+      "createdAt": "2026-10-06T11:45:59.828Z",
+      "path": "migrations/100_maintenance_schedule_mode.up.sql",
+      "catalogContext": null,
+      "searchText": "100_maintenance_schedule_mode.up.sql migrations/100_maintenance_schedule_mode.up.sql -- 100_maintenance_schedule_mode.up.sql\n--\n-- wartungsplaene: wie der naechste termin nach dem abschluss berechnet wird.\n--   completion – ab durchfuehrung (abschlussdatum + intervall), wie bisher\n--   fixed      – fester rhythmus ab dem faelligkeitstag (verschiebt sich nicht,\n--                wenn frueher oder spaeter erledigt wird)\n-- intervalle werden kalendergenau gerechnet (monat, quartal, jahr).\n\nalter table maintenance_plans\n    add column if not exists schedule_mode text not null default 'completion'\n        check (schedule_mode in ('completion', 'fixed'));\n",
+      "searchUpdatedAt": "2026-10-06T11:45:59.925Z",
+      "schemaContext": null,
+      "sqlHash": "430f2be5a28b4554a302fb84a7dc619474dbe9367bee6855b6ac76a262e922db",
+      "title": "100_maintenance_schedule_mode.up.sql",
+      "updatedAt": "2026-10-06T11:45:59.856Z"
     }
   ]
 }

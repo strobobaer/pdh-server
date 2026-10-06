@@ -195,11 +195,12 @@ function renderDashGantt(){
   var byId = {};
   dashGanttItems.forEach(function(t){ byId[t.id] = t; });
 
-  var tasks = dashGanttItems.map(function(t){
-    return {id: t.id, name: t.name, start: t.start, end: t.end, progress: t.done ? 100 : 0};
-  });
+  var tasks = pdhTimelineCollect(dashGanttItems.map(function(t){
+    return {id: t.id, name: t.name, start: t.start, end: t.end, progress: t.done ? 100 : 0, done: t.done};
+  }), 'dashboard');
 
   try{
+    target.replaceChildren();
     new Gantt('#dash-gantt-target', tasks, {
       on_date_change: function(task, start, end){
         var item = byId[task.id];
@@ -208,7 +209,7 @@ function renderDashGantt(){
       view_mode: 'Week',
       bar_height: PDH_TL.barHeight
     });
-    setTimeout(applyDashGanttStyling, 100);
+    setTimeout(function(){ applyDashGanttStyling(); pdhTimelineCollectorBind('#dash-gantt-target', 'dashboard', renderDashGantt); }, 100);
   }catch(e){
     console.warn('Dashboard-Zeitstrahl konnte nicht gerendert werden', e);
     target.style.display = 'none';

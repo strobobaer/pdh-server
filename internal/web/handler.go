@@ -2237,6 +2237,7 @@ type MaintPlanView struct {
 	AssigneeName    string
 	ResponsibleID   string
 	ResponsibleName string
+	ScheduleMode    string // completion | fixed
 }
 
 type MaintTaskView struct {
@@ -2277,7 +2278,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"done", "Erledigt", "ti-check"}, {"skipped", "Übersprungen", "ti-player-skip-forward"},
 	}, false)
 	data.Tabs[0].Label = "Aktuell" // ohne Filter zeigt die Seite offene und laufende Auftraege
-	data.Tabs[0].Count = data.Tabs[1].Count + data.Tabs[2].Count
+	data.Tabs[0].Count += data.Tabs[1].Count + data.Tabs[2].Count // Aktuell = offen + in Arbeit + wartet
 
 	if plans, err := h.maint.ListPlans(ctx, ""); err == nil {
 		data.TotalPlans = len(plans)
@@ -2309,6 +2310,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 				AssigneeName:    p.AssigneeName,
 				ResponsibleID:   derefOr(p.ResponsibleTo, ""),
 				ResponsibleName: p.ResponsibleName,
+				ScheduleMode:    p.ScheduleMode,
 			})
 		}
 	}
@@ -2376,6 +2378,9 @@ type MaintenanceTaskDetailData struct {
 	ChecklistItems []struct{}
 	Users          []UserOption
 	History        []HistoryView
+	// erledigter Auftrag eines Plans: Folgeauftrag (naechster Termin)
+	NextTaskID  string
+	NextTaskDue string
 }
 
 type MaintenanceTaskDetailView struct {
@@ -2473,6 +2478,14 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 	data.Task.AssigneeName = people.AssignedName
 	data.Task.ResponsibleName = people.ResponsibleName
 	data.Task.RecordImageURL = h.recordImageURL(r.Context(), "maintenance_task", id)
+	if task.PlanID != nil && task.Status != maintenance.TaskOpen && task.Status != maintenance.TaskInProgress && task.Status != maintenance.TaskPending {
+		var due time.Time
+		if h.db.QueryRow(r.Context(), `SELECT id::text, due_date FROM maintenance_tasks
+			WHERE plan_id = $1::uuid AND id <> $2::uuid AND status IN ('open','in_progress','pending') ORDER BY due_date LIMIT 1`,
+			*task.PlanID, id).Scan(&data.NextTaskID, &due) == nil {
+			data.NextTaskDue = due.Local().Format("02.01.2006")
+		}
+	}
 	if entries, err := h.time.ListByRef(r.Context(), timetracking.RefMaintenance, id); err == nil {
 		data.TimeEntries = entries
 	}

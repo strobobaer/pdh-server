@@ -10,6 +10,26 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.32.0] – 2026-10-06
+
+### Neu
+- Wartungspläne legen ihren Auftrag selbst an: Zu jedem aktiven Plan gibt es immer genau einen offenen Auftrag – nach dem Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt
+- Wartungsplan: „Nächster Termin nach Durchführung“ wählbar – ab Durchführung (Erledigt-Datum + Intervall) oder fester Rhythmus (Fälligkeit + Intervall); Monate, Quartale und Jahre werden kalendergenau gerechnet
+- Automatische Rückmeldung nach jeder erledigten Wartung: Verantwortliche, Zugewiesene und Ersteller bekommen eine Chat-Nachricht mit Ergebnis, Abweichungen der Checkliste, Bemerkung, nächstem Termin und Link zum Protokoll
+- Nach „Fertig“ zeigt der Abschluss-Assistent den nächsten Termin; im erledigten Auftrag führt ein Link zum Folgeauftrag
+- Der Abschluss-Assistent schlägt bei Wartungen die geplante Dauer des Plans als Arbeitszeit vor
+- Zeitstrahlen (Dashboard, Leitstand, Projekte): Erledigte erscheinen als ein Sammler „✓ Erledigt (Anzahl)“, offene und laufende als einzelne Balken; Klick auf den Sammler zeigt die Erledigten einzeln
+
+### Geändert
+- Wartungsauftrag: Die doppelte Erfassung von Maßnahmen und Ersatzteilen im Ausführungsformular entfällt – Material und Kommentar (als Maßnahme) fragt der Abschluss-Assistent ab
+- Wartung: Der Knopf „Erzeugen“ heißt „Fehlende Aufträge anlegen“ und legt keine doppelten Aufträge mehr an
+- Ändert man die nächste Fälligkeit eines Plans, zieht der noch nicht begonnene Auftrag mit
+
+### Behoben
+- „Aufträge erzeugen“ legte bei jedem Klick erneut Aufträge für alle fälligen Pläne an (Duplikate), und nach dem Abschluss konnte ein zweiter Auftrag für denselben Termin entstehen
+- Am Leitstand verworfene Wartungen ließen den Plan ohne nächsten Termin
+- Wartungsliste: Der Zähler „Aktuell“ zählt jetzt offene, laufende und wartende Aufträge
+
 ## [0.31.2] – 2026-10-06
 
 ### Behoben

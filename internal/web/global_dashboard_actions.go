@@ -240,6 +240,10 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			if result.RowsAffected() != 1 {
 				return fmt.Errorf("Der Vorgang wurde zwischenzeitlich geändert")
 			}
+			// uebersprungen: der Plan bekommt trotzdem seinen naechsten Termin
+			if _, err := h.maint.TaskSkipped(ctx, in.ID, actorID); err != nil {
+				componentLog("wartung").Warn().Err(err).Str("task", in.ID).Msg("folgetermin nach ueberspringen nicht geplant")
+			}
 		case "task":
 			return h.tasks.Discard(ctx, in.ID, actorID)
 		}

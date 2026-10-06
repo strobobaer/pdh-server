@@ -59,8 +59,11 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 	must(pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone, rfid_uid)
 		VALUES ($1::text, $1::text || '@x', 'x', 'Tim', 'Technik', 'technician', 'Instandhaltung', '', $2) RETURNING id::text`, "fl"+sfx, card).Scan(&userID))
 	must(pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type) VALUES ('Presse '||$1::text, 'plant') RETURNING id::text`, sfx).Scan(&infraID))
+	var bossID string // Verantwortliche(r) des Plans bekommt die Rueckmeldung
+	must(pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, department, phone)
+		VALUES ($1::text, $1::text || '@x', 'x', 'Vera', 'Verantwortlich', 'Instandhaltung', '') RETURNING id::text`, "vb"+sfx).Scan(&bossID))
 	plan := &maintenance.MaintenancePlan{Name: "Plan " + sfx, Type: "inspection", InfrastructureID: infraID, Interval: maintenance.IntervalMonthly,
-		IntervalDays: 30, Priority: maintenance.PrioMedium, NextDueAt: time.Now(), CreatedBy: userID}
+		IntervalDays: 30, Priority: maintenance.PrioMedium, NextDueAt: time.Now(), CreatedBy: userID, ResponsibleTo: &bossID}
 	must(mrepo.CreatePlan(ctx, plan))
 	tpl, err := mrepo.CreateChecklistTemplate(ctx, "Prüfung "+sfx, "", userID)
 	must(err)
@@ -118,8 +121,20 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 
 	// 4) Fertig mit Checkliste
 	code, out = call("POST", `{`+base+`,"checklist":{"values":{"`+item.ID+`":"erledigt"},"done":{"`+item.ID+`":true}}}`)
-	if code != 200 || out["closed"] != true {
+	if code != 200 || out["closed"] != true || !strings.Contains(out["message"].(string), "Nächster Termin") {
 		t.Fatalf("Fertig: %d %v", code, out)
+	}
+	// Folgeauftrag und automatische Rueckmeldung an die Verantwortliche
+	var followUps int
+	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM maintenance_tasks WHERE plan_id=$1::uuid AND status='open'`, plan.ID).Scan(&followUps))
+	if followUps != 1 {
+		t.Fatalf("Folgeaufträge: %d", followUps)
+	}
+	var feedback string
+	_ = pool.QueryRow(ctx, `SELECT m.body FROM chat_messages m JOIN chat_members cm ON cm.conversation_id = m.conversation_id
+		WHERE cm.user_id = $1::uuid AND m.body LIKE '%Wartung erledigt%' ORDER BY m.created_at DESC LIMIT 1`, bossID).Scan(&feedback)
+	if !strings.Contains(feedback, "Tim Technik") || !strings.Contains(feedback, "Nächster Termin") || !strings.Contains(feedback, "Protokoll: /uploads/") {
+		t.Fatalf("Rückmeldung: %q", feedback)
 	}
 	var status string
 	must(pool.QueryRow(ctx, `SELECT status::text FROM maintenance_tasks WHERE id=$1::uuid`, task.ID).Scan(&status))

@@ -502,5 +502,6 @@
  "„%s“ ist ein Pflichtpunkt.": "„%s“ е задолжителна точка.",
  "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?": "„%s“: %s е надвор од мин/макс. Сепак да се зачува?",
  "„%s“: bitte eine Zahl eingeben.": "„%s“: внесете број.",
- "Wartet": "Чека"
+ "Wartet": "Чека",
+ "Nächster Termin: %s": "Следен термин: %s"
 }

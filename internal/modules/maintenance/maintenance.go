@@ -66,6 +66,8 @@ type MaintenancePlan struct {
 	NextDueAt        time.Time  `json:"next_due_at"`
 	CreatedBy        string     `json:"created_by"`
 	CreatedAt        time.Time  `json:"created_at"`
+	// ScheduleMode: naechster Termin ab Durchfuehrung („completion“) oder fester Rhythmus („fixed“)
+	ScheduleMode string `json:"schedule_mode"`
 
 	// Joined
 	InfraName       string `json:"infra_name,omitempty"`
@@ -206,7 +208,7 @@ func (r *Repository) ListPlans(ctx context.Context, infraID string) ([]*Maintena
 		       mp.last_executed_at, mp.next_due_at, mp.created_by, mp.created_at,
 		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
 		       mp.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''),
-		       mp.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,'')
+		       mp.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,''), mp.schedule_mode
 		FROM maintenance_plans mp
 		LEFT JOIN infrastructure i ON mp.infrastructure_id = i.id
 		LEFT JOIN users u ON mp.assigned_to = u.id
@@ -235,7 +237,7 @@ func (r *Repository) ListPlans(ctx context.Context, infraID string) ([]*Maintena
 			&p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 			&p.InfraName, &p.AssigneeName,
 			&p.CostCenterID, &p.CostCenterNumber, &p.CostCenterName,
-			&p.ResponsibleTo, &p.ResponsibleName)
+			&p.ResponsibleTo, &p.ResponsibleName, &p.ScheduleMode)
 		plans = append(plans, p)
 	}
 	return plans, nil
@@ -250,7 +252,7 @@ func (r *Repository) GetPlanByID(ctx context.Context, id string) (*MaintenancePl
 		       mp.last_executed_at, mp.next_due_at, mp.created_by, mp.created_at,
 		       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''),
 		       mp.cost_center_id, COALESCE(cc.number,''), COALESCE(cc.name,''),
-		       mp.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,'')
+		       mp.responsible_to, COALESCE(ru.first_name||' '||ru.last_name,''), mp.schedule_mode
 		FROM maintenance_plans mp
 		LEFT JOIN infrastructure i ON mp.infrastructure_id = i.id
 		LEFT JOIN users u ON mp.assigned_to = u.id
@@ -263,7 +265,7 @@ func (r *Repository) GetPlanByID(ctx context.Context, id string) (*MaintenancePl
 		&p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 		&p.InfraName, &p.AssigneeName,
 		&p.CostCenterID, &p.CostCenterNumber, &p.CostCenterName,
-		&p.ResponsibleTo, &p.ResponsibleName,
+		&p.ResponsibleTo, &p.ResponsibleName, &p.ScheduleMode,
 	)
 	if err != nil {
 		return nil, err
@@ -421,14 +423,9 @@ func (r *Repository) CompleteTask(ctx context.Context, id, userID, notes string,
 	if err != nil {
 		return err
 	}
-	// Plan aktualisieren falls vorhanden
-	_, err = r.db.Exec(ctx, `
-		UPDATE maintenance_plans mp
-		SET last_executed_at=NOW(),
-		    next_due_at=NOW() + (interval_days || ' days')::interval
-		FROM maintenance_tasks mt
-		WHERE mt.id=$1 AND mt.plan_id=mp.id`, id)
-	return err
+	// Plan: naechster Termin und Folgeauftrag (schedule.go)
+	r.scheduleNextLogged(ctx, id, userID)
+	return nil
 }
 
 func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error) {
@@ -467,39 +464,6 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 func (r *Repository) DeleteTask(ctx context.Context, id string) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM maintenance_tasks WHERE id=$1`, id)
 	return err
-}
-
-func (r *Repository) GenerateTasksFromPlans(ctx context.Context, createdBy string) (int, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, name, type, infrastructure_id, priority, assigned_to, interval_days, next_due_at, cost_center_id
-		FROM maintenance_plans
-		WHERE active=true AND next_due_at::date <= NOW()::date`)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	count := 0
-	for rows.Next() {
-		var planID, name, infraID, priority string
-		var assigned *string
-		var costCenterID *string
-		var intervalDays int
-		var nextDue time.Time
-		var planType PlanType
-		rows.Scan(&planID, &name, &planType, &infraID, &priority, &assigned, &intervalDays, &nextDue, &costCenterID)
-
-		t := &MaintenanceTask{
-			PlanID: &planID, Title: name, Type: planType,
-			InfrastructureID: infraID, Priority: Priority(priority),
-			AssignedTo: assigned, DueDate: nextDue, CreatedBy: createdBy,
-			CostCenterID: costCenterID,
-		}
-		if err := r.CreateTask(ctx, t); err == nil {
-			count++
-		}
-	}
-	return count, nil
 }
 
 // ── Service ──────────────────────────────────────────────────
@@ -699,8 +663,9 @@ func (s *Service) DeleteTask(ctx context.Context, id string) error {
 	return s.repo.DeleteTask(ctx, id)
 }
 
+// GenerateTasks: fehlende Auftraege fuer aktive Plaene anlegen (je Plan genau einer).
 func (s *Service) GenerateTasks(ctx context.Context, userID string) (int, error) {
-	return s.repo.GenerateTasksFromPlans(ctx, userID)
+	return s.repo.EnsurePlanTasks(ctx)
 }
 
 // ── Handler ──────────────────────────────────────────────────

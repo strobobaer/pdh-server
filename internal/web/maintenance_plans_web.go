@@ -28,6 +28,22 @@ func planForm(r *http.Request) error {
 	return r.ParseForm()
 }
 
+// scheduleModeForm: Berechnungsart des naechsten Termins (Standard: ab Durchfuehrung).
+func scheduleModeForm(r *http.Request) string {
+	if r.FormValue("schedule_mode") == maintenance.ScheduleFixed {
+		return maintenance.ScheduleFixed
+	}
+	return maintenance.ScheduleFromCompletion
+}
+
+// scheduleModeFormOrKeep: beim Bearbeiten ohne Feld bleibt die bisherige Art.
+func scheduleModeFormOrKeep(r *http.Request) string {
+	if r.Form["schedule_mode"] == nil {
+		return ""
+	}
+	return scheduleModeForm(r)
+}
+
 func planIntervalDays(interval string) int {
 	switch interval {
 	case "daily":
@@ -68,15 +84,15 @@ func (h *Handler) MaintenancePlanCreateWeb(w http.ResponseWriter, r *http.Reques
 	err := h.db.QueryRow(r.Context(), `
 		INSERT INTO maintenance_plans
 		  (id, name, description, type, infrastructure_id, interval_type, interval_days,
-		   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id, responsible_to, assigned_group_id)
+		   estimated_min, priority, assigned_to, active, next_due_at, created_by, cost_center_id, responsible_to, assigned_group_id, schedule_mode)
 		VALUES (gen_random_uuid(), $1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
 			0, $7::maintenance_priority, NULLIF($8,'')::uuid, true, $9::date, $10::uuid, NULLIF($11,'')::uuid, NULLIF($12,'')::uuid,
-			NULLIF(NULLIF($13,''),$14)::uuid)
+			NULLIF(NULLIF($13,''),$14)::uuid, $15)
 		RETURNING id::text`,
 		name, strings.TrimSpace(r.FormValue("description")), r.FormValue("type"), infraID, interval, planIntervalDays(interval),
 		r.FormValue("priority"), strings.TrimSpace(r.FormValue("assigned_to")), firstDue, u.ID,
 		strings.TrimSpace(r.FormValue("cost_center_id")), strings.TrimSpace(r.FormValue("responsible_to")),
-		strings.TrimSpace(r.FormValue("assigned_group_id")), groupKeep,
+		strings.TrimSpace(r.FormValue("assigned_group_id")), groupKeep, scheduleModeForm(r),
 	).Scan(&planID)
 	if err != nil {
 		componentLog("wartung").Error().Err(err).Msg("wartungsplan anlegen fehlgeschlagen")
@@ -84,6 +100,10 @@ func (h *Handler) MaintenancePlanCreateWeb(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	componentLog("wartung").Info().Str("plan_id", planID).Str("user", u.ID).Msg("wartungsplan angelegt")
+	// erster Auftrag sofort – nicht erst nach „Aufträge generieren“
+	if err := h.maint.EnsurePlanTask(r.Context(), planID, u.ID); err != nil {
+		componentLog("wartung").Warn().Err(err).Str("plan_id", planID).Msg("erster auftrag nicht angelegt")
+	}
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/maintenance")
 		w.WriteHeader(http.StatusNoContent)
@@ -144,6 +164,7 @@ func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request)
 		    assigned_to=CASE WHEN $13 THEN NULLIF($14,'')::uuid ELSE assigned_to END,
 		    responsible_to=CASE WHEN $15 THEN NULLIF($16,'')::uuid ELSE responsible_to END,
 		    assigned_group_id=CASE WHEN $17 THEN NULLIF($18,'')::uuid ELSE assigned_group_id END,
+		    schedule_mode=CASE WHEN $19 = '' THEN schedule_mode ELSE $19 END,
 		    active=true
 		WHERE id=$12`,
 		name, strings.TrimSpace(r.FormValue("description")), r.FormValue("type"), infraID, r.FormValue("interval"),
@@ -152,6 +173,7 @@ func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request)
 		r.Form["assigned_to"] != nil, strings.TrimSpace(r.FormValue("assigned_to")),
 		r.Form["responsible_to"] != nil, strings.TrimSpace(r.FormValue("responsible_to")),
 		r.Form["assigned_group_id"] != nil && r.FormValue("assigned_group_id") != groupKeep, strings.TrimSpace(r.FormValue("assigned_group_id")),
+		scheduleModeFormOrKeep(r),
 	)
 	if err != nil {
 		componentLog("wartung").Error().Err(err).Str("plan_id", planID).Msg("wartungsplan speichern fehlgeschlagen")
@@ -161,6 +183,14 @@ func (h *Handler) MaintenancePlanEditWeb(w http.ResponseWriter, r *http.Request)
 	if err := maintenance.NewRepository(h.db).AssignChecklistTemplatesToPlan(r.Context(), planID, templateIDs, defaultDurationMin); err != nil {
 		http.Error(w, "Checklisten konnten nicht gespeichert werden: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// neuer Termin am Plan: der noch nicht begonnene Auftrag zieht mit
+	if strings.TrimSpace(r.FormValue("next_due_at")) != "" {
+		_, _ = h.db.Exec(r.Context(), `UPDATE maintenance_tasks mt SET due_date = mp.next_due_at
+			FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mt.plan_id = mp.id AND mt.status = 'open'`, planID)
+	}
+	if err := h.maint.EnsurePlanTask(r.Context(), planID, getUser(r).ID); err != nil {
+		componentLog("wartung").Warn().Err(err).Str("plan_id", planID).Msg("auftrag zum plan nicht angelegt")
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(`<span style="color:var(--green);font-size:12px"><i class="ti ti-check"></i> Gespeichert</span>`))
@@ -174,6 +204,7 @@ func (h *Handler) MaintenancePlansRestoreAllWeb(w http.ResponseWriter, r *http.R
 		return
 	}
 	componentLog("wartung").Info().Int64("anzahl", cmd.RowsAffected()).Str("user", getUser(r).ID).Msg("wartungsplaene wiederhergestellt")
+	_, _ = h.maint.GenerateTasks(r.Context(), getUser(r).ID) // wiederhergestellte Plaene bekommen ihren Auftrag
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Redirect", "/maintenance")
 		w.WriteHeader(http.StatusNoContent)

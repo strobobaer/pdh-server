@@ -315,16 +315,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
-  <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird (täglich bis jährlich). Wird er fällig, entsteht ein <b>Wartungsauftrag</b>.</p>
+  <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird (täglich bis jährlich). Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Wartungsauftrag</b> – den nächsten Termin. PDH legt ihn selbst an: beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
+  <div class="hb-howto"><b><i class="ti ti-calendar-repeat"></i> So plant PDH den nächsten Termin</b>
+    <ul>
+      <li><b>ab Durchführung</b> (Standard): Erledigt-Datum + Intervall. Wer am 9. statt am 1. fertig wird, bekommt den nächsten Termin einen Monat nach dem 9.</li>
+      <li><b>fester Rhythmus</b>: Fälligkeit + Intervall – der Termin wandert nicht, egal wann erledigt wurde (z. B. Prüffristen). War ein Auftrag weit überfällig, rechnet PDH bis heute weiter, damit kein Stapel überfälliger Termine entsteht.</li>
+      <li>Monate, Quartale und Jahre rechnet PDH kalendergenau (15.01. → 15.02.), nicht in 30 oder 365 Tagen.</li>
+      <li>Einstellen im Wartungsplan unter <b>Nächster Termin nach Durchführung</b>. Änderst du dort die <b>nächste Fälligkeit</b>, zieht der noch nicht begonnene Auftrag mit.</li>
+      <li>Auch ein am Leitstand <b>verworfener</b> (übersprungener) Auftrag bekommt sofort seinen Nachfolger.</li>
+    </ul></div>
   <div class="hb-howto"><b><i class="ti ti-clipboard-check"></i> So führst du eine Wartung aus</b>
     <ol class="hb-steps">
       <li>In der Wartungsliste den Auftrag öffnen (Reiter <b>Aktuell</b>).</li>
       <li><b>Starten</b>. Oben steht, welche <b>Checkliste</b> abgearbeitet wird: <i class="ti ti-lock"></i> die am Wartungsplan hinterlegten. Über <b>+ Checkliste hinzufügen</b> wählst du eine weitere Vorlage für diesen Auftrag aus – so bekommen auch Aufträge ohne Plan eine Checkliste.</li>
       <li>Die Punkte <b>Schritt für Schritt</b> abarbeiten – immer einer auf einmal, mit „Punkt 2 von 8“ und Fortschrittsbalken: Checkbox abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Freitext schreiben. Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du an den Punkt Fotos zur Dokumentation – am Handy öffnet sich direkt die Kamera.</li>
       <li><b>Weiter</b> prüft den Punkt und speichert ihn sofort: Pflichtpunkte (✱) müssen ausgefüllt sein, Messwerte außerhalb von Min/Max fragt PDH noch einmal nach. <b>Zurück</b> oder ein Klick auf eine Nummer springt zu einem anderen Punkt. Wirst du unterbrochen, geht es beim nächsten Öffnen am offenen Punkt weiter.</li>
-      <li>Nach dem letzten Punkt <b>Checkliste fertig</b>: Die Übersicht zeigt alle Werte (antippen zum Ändern), darunter erfasst du Maßnahmen und Ersatzteile. <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a>.</li>
-      <li>Im Assistenten kommt bei Wartungen <b>als Erstes die Checkliste</b> – sind schon alle Punkte erfasst, siehst du die Übersicht zum Kontrollieren, sonst geht es am offenen Punkt weiter. Danach Material, Zeit, wer dabei war, Kommentar. Ohne ausgefüllte Pflichtpunkte lässt sich nicht abschließen. So wird die Checkliste auch beim Fertigmelden am <a href="#dashboard">Leitstand</a> abgefragt.</li>
-      <li><b>Fertig</b> – der nächste Termin des Plans wird automatisch berechnet. Das <b>Checklisten-Protokoll</b> im Auftrag zeigt danach alle Werte, wer sie wann erfasst hat und die Fotos.</li>
+      <li>Nach dem letzten Punkt <b>Checkliste fertig</b>: Die Übersicht zeigt alle Werte (antippen zum Ändern). <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a>.</li>
+      <li>Im Assistenten kommt bei Wartungen <b>als Erstes die Checkliste</b> – sind schon alle Punkte erfasst, siehst du die Übersicht zum Kontrollieren, sonst geht es am offenen Punkt weiter. Danach Material, Zeit (vorgeschlagen ist die geplante Dauer des Plans), wer dabei war und der Kommentar – er wird als Maßnahme gespeichert. Ohne ausgefüllte Pflichtpunkte lässt sich nicht abschließen. So wird die Checkliste auch beim Fertigmelden am <a href="#dashboard">Leitstand</a> abgefragt.</li>
+      <li><b>Fertig</b> – PDH berechnet den nächsten Termin, legt den Folgeauftrag an und zeigt „Nächster Termin: …“ an. Im erledigten Auftrag steht der Link zum Folgeauftrag; das <b>Checklisten-Protokoll</b> zeigt alle Werte, wer sie wann erfasst hat und die Fotos.</li>
+      <li><b>Automatische Rückmeldung</b>: Verantwortliche (Plan und Auftrag), Zugewiesene und wer den Auftrag angelegt hat, bekommen eine Chat-Nachricht von PDH-System – wer erledigt hat, Checkliste („alles in Ordnung“ oder ⚠ Werte außerhalb von Min/Max bzw. nicht erledigte Punkte), Bemerkung, nächster Termin und Links zu Protokoll und Auftrag. Wer selbst erledigt hat, bekommt keine Nachricht.</li>
       <li>Gleichzeitig legt PDH das <b>Wartungsprotokoll als PDF</b> an der Anlage ab (Reiter <b>Dokumente</b>): oben das Firmenlogo (Logo für Exporte), Datum, Ausführende(r) und Beteiligte, darunter die Checkliste mit Werten, Vorgaben und Bewertung samt Fotos, die Maßnahmen, verwendete Ersatzteile und die Bemerkung. Im Verlauf des Auftrags steht „Wartungsprotokoll (PDF) an der Anlage abgelegt“.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-checklist"></i> Checklisten-Vorlagen einrichten</b>
@@ -791,7 +800,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Hat das Theme getrennte Farben für Hell und Dunkel (<code>modes: light/dark</code>), werden beide übernommen. Hat es nur einen Satz Farben, gilt er für den passenden Modus; im anderen Modus kommen nur die Akzentfarben mit. Schriften, Rundungen, Zustandsfarben und card-mod werden nicht übernommen. Eine erneute Übernahme mit gleichem Namen ersetzt das Theme; <b>Entfernen</b> löscht es (war es Firmenstandard, gilt wieder PDH-Blau).</div>
   <h3 id="timeline-style"><i class="ti ti-timeline"></i> Erscheinungsbild: Zeitstrahl</h3>
-  <p>In allen Zeitstrahlen – <b>Dashboard</b>, <b>Leitstand</b> und <b>Projekte</b> – zeigt der Rand eines Balkens, wie es um den Vorgang steht. Die Füllfarbe bleibt die Farbe der Vorgangsart bzw. der Aufgabe.</p>
+  <p>In allen Zeitstrahlen – <b>Dashboard</b>, <b>Leitstand</b> und <b>Projekte</b> – stehen offene und laufende Vorgänge als einzelne Balken. Erledigte fasst ein <b>Sammler „✓ Erledigt (Anzahl)“</b> ganz oben zusammen; ein Klick darauf zeigt sie einzeln, ein weiterer Klick klappt sie wieder zu (der Browser merkt sich das je Zeitstrahl).</p>
+  <p>Der Rand eines Balkens zeigt, wie es um den Vorgang steht. Die Füllfarbe bleibt die Farbe der Vorgangsart bzw. der Aufgabe.</p>
   <div class="tl-legend" style="margin:6px 0 10px">
     <span class="tl-running"><i></i>läuft (in Bearbeitung) – gelb</span><span class="tl-due"><i></i>fällig – rot</span><span class="tl-overdue"><i></i>überfällig – roter, blinkender Rand</span>
     <span class="tl-unassigned"><i></i>nicht zugewiesen – lila</span><span class="tl-done"><i></i>beendet – grüner Rand, Balken ausgegraut</span>

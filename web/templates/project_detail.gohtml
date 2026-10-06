@@ -231,6 +231,7 @@ async function saveTaskDates(taskId, start, end){
 // Bearbeiten-Modal direkt hier im Zeitstrahl.
 var ganttClickTimer = null;
 function handleGanttBarClick(task){
+  if(task.id === PDH_TL_COLLECTOR) return; // Sammler klappt selbst auf/zu
   if(ganttClickTimer){
     clearTimeout(ganttClickTimer);
     ganttClickTimer = null;
@@ -254,13 +255,14 @@ function renderGantt(){
   target.style.display = 'block';
   empty.style.display = 'none';
   try{
-    new Gantt('#gantt-target', ganttTasks, {
+    target.replaceChildren();
+    new Gantt('#gantt-target', pdhTimelineCollect(ganttTasks, 'project:' + PROJECT_ID), {
       on_click: handleGanttBarClick,
-      on_date_change: function(task, start, end){ saveTaskDates(task.id, start, end); },
+      on_date_change: function(task, start, end){ if(task.id !== PDH_TL_COLLECTOR) saveTaskDates(task.id, start, end); },
       view_mode: 'Week',
       bar_height: PDH_TL.barHeight
     });
-    setTimeout(applyGanttColors, 100);
+    setTimeout(function(){ applyGanttColors(); pdhTimelineCollectorBind('#gantt-target', 'project:' + PROJECT_ID, renderGantt); }, 100);
   }catch(e){
     console.warn('Gantt-Rendering fehlgeschlagen', e);
     target.style.display = 'none';

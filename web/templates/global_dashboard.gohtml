@@ -624,9 +624,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     const byId = {};
     visible.forEach(function(v){ byId[v.item.id] = v.item; });
 
-    const tasks = visible.map(function(v){
-      return {id: v.item.id, name: v.item.name, start: formatDateISO(v.start), end: formatDateISO(v.end), progress: v.item.done ? 100 : 0};
-    });
+    const tasks = pdhTimelineCollect(visible.map(function(v){
+      return {id: v.item.id, name: v.item.name, start: formatDateISO(v.start), end: formatDateISO(v.end), progress: v.item.done ? 100 : 0, done: v.item.done};
+    }), 'leitstand');
     const viewMode = days <= 14 ? 'Day' : (days <= 90 ? 'Week' : 'Month');
     const axisStart = winStart;
     const axisEnd = new Date(winEnd); axisEnd.setDate(axisEnd.getDate() + 1);
@@ -649,7 +649,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       };
       dashGanttInstance.change_view_mode(viewMode);
       centerDashGanttOnToday();
-      setTimeout(function(){ applyDashGanttStyling(); centerDashGanttOnToday(); }, 100);
+      setTimeout(function(){ applyDashGanttStyling(); pdhTimelineCollectorBind('#dash-gantt-target', 'leitstand', renderDashGantt); centerDashGanttOnToday(); }, 100);
     }catch(e){
       console.warn('Leitstand-Zeitstrahl konnte nicht gerendert werden', e);
       target.style.display = 'none';

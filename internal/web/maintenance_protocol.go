@@ -41,19 +41,26 @@ type maintProtocolLine struct{ Text, Meta string }
 
 var maintTypeLabels = map[string]string{"preventive": "Vorbeugende Wartung", "inspection": "Inspektion", "calibration": "Kalibrierung", "cleaning": "Reinigung"}
 
-// saveMaintenanceProtocol: Hook nach dem Abschluss – Fehler nur protokollieren,
-// der Abschluss selbst ist dann schon gespeichert.
+// saveMaintenanceProtocol: Hook nach dem Abschluss – Protokoll (PDF) an der
+// Anlage ablegen und die automatische Rueckmeldung schicken. Fehler nur
+// protokollieren, der Abschluss selbst ist dann schon gespeichert.
 func (h *Handler) saveMaintenanceProtocol(ctx context.Context, taskID, userID string) {
-	log := componentLog("wartungsprotokoll").With().Str("task", taskID).Logger()
 	p, err := h.loadMaintProtocol(ctx, taskID, userID)
 	if err != nil {
-		log.Warn().Err(err).Msg("daten fuer protokoll nicht ladbar")
+		componentLog("wartungsprotokoll").Warn().Err(err).Str("task", taskID).Msg("daten fuer protokoll nicht ladbar")
 		return
 	}
+	url := h.storeMaintProtocol(ctx, p, taskID, userID)
+	h.notifyMaintenanceDone(ctx, p, taskID, userID, url)
+}
+
+// storeMaintProtocol erzeugt das PDF und legt es ab; liefert die Adresse (leer bei Fehler).
+func (h *Handler) storeMaintProtocol(ctx context.Context, p *maintProtocol, taskID, userID string) string {
+	log := componentLog("wartungsprotokoll").With().Str("task", taskID).Logger()
 	data, err := renderMaintProtocolPDF(p)
 	if err != nil {
 		log.Warn().Err(err).Msg("pdf nicht erzeugt")
-		return
+		return ""
 	}
 	refType, refID := "infrastructure", p.InfraID
 	if refID == "" { // Auftrag ohne Anlage: Protokoll am Auftrag
@@ -64,11 +71,11 @@ func (h *Handler) saveMaintenanceProtocol(ctx context.Context, taskID, userID st
 	abs := filepath.Join("uploads", rel)
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		log.Warn().Err(err).Msg("ordner nicht anlegbar")
-		return
+		return ""
 	}
 	if err := os.WriteFile(abs, data, 0o644); err != nil {
 		log.Warn().Err(err).Msg("datei nicht schreibbar")
-		return
+		return ""
 	}
 	name := "Wartungsprotokoll " + date + " " + safeFileName(p.Title) + ".pdf"
 	if _, err := h.db.Exec(ctx, `INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
@@ -76,10 +83,87 @@ func (h *Handler) saveMaintenanceProtocol(ctx context.Context, taskID, userID st
 		refType, refID, name, filepath.ToSlash(rel), len(data), "Wartungsprotokoll: "+p.Title, userID); err != nil {
 		_ = os.Remove(abs)
 		log.Warn().Err(err).Msg("anhang nicht gespeichert")
-		return
+		return ""
 	}
 	h.addHistory(ctx, "maintenance", taskID, "document", "", "", "", "Wartungsprotokoll (PDF) an der Anlage abgelegt", userID)
 	log.Info().Str("datei", rel).Msg("wartungsprotokoll gespeichert")
+	return "/uploads/" + filepath.ToSlash(rel)
+}
+
+// notifyMaintenanceDone: automatische Rueckmeldung nach dem Abschluss an
+// Verantwortliche, Zugewiesene und den Ersteller (nicht an die ausfuehrende
+// Person) – mit Ergebnis, Abweichungen, Protokoll und naechstem Termin.
+func (h *Handler) notifyMaintenanceDone(ctx context.Context, p *maintProtocol, taskID, userID, pdfURL string) {
+	rows, err := h.db.Query(ctx, `SELECT DISTINCT u.id::text FROM maintenance_tasks mt
+		LEFT JOIN maintenance_plans mp ON mp.id = mt.plan_id
+		JOIN users u ON u.id IN (mt.responsible_to, mt.assigned_to, mt.created_by, mp.responsible_to)
+		WHERE mt.id = $1::uuid AND u.active AND NOT u.is_bot AND NOT u.is_system_user
+		  AND u.id <> COALESCE(NULLIF($2, '')::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`, taskID, userID)
+	if err != nil {
+		componentLog("wartung").Warn().Err(err).Str("task", taskID).Msg("rueckmeldung: empfaenger nicht ladbar")
+		return
+	}
+	var to []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			to = append(to, id)
+		}
+	}
+	rows.Close()
+	if len(to) == 0 {
+		return
+	}
+	h.systemNotify(ctx, to, maintDoneMessage(p, taskID, pdfURL, h.maintNextDue(ctx, taskID)))
+}
+
+// maintDoneMessage: Text der Rueckmeldung.
+func maintDoneMessage(p *maintProtocol, taskID, pdfURL string, next *time.Time) string {
+	var b strings.Builder
+	b.WriteString("✅ Wartung erledigt: „" + p.Title + "“")
+	if p.InfraPath != "" {
+		b.WriteString(" · " + p.InfraPath)
+	}
+	b.WriteString("\nErledigt")
+	if p.Executor != "" {
+		b.WriteString(" von " + p.Executor)
+	}
+	b.WriteString(" am " + p.CompletedAt.Format("02.01.2006, 15:04 Uhr"))
+	if len(p.Participants) > 0 {
+		b.WriteString(" (mit " + strings.Join(p.Participants, ", ") + ")")
+	}
+	if n := len(p.Checklist); n > 0 {
+		var out, open []string
+		for _, it := range p.Checklist {
+			switch {
+			case it.InRange != nil && !*it.InRange:
+				out = append(out, strings.TrimSpace(it.Label+" "+it.Value+" "+it.Unit))
+			case it.ItemType == "checkbox" && !it.Done:
+				open = append(open, it.Label)
+			}
+		}
+		b.WriteString(fmt.Sprintf("\nCheckliste: %d Punkte", n))
+		if len(out) == 0 && len(open) == 0 {
+			b.WriteString(" – alles in Ordnung")
+		}
+		if len(out) > 0 {
+			b.WriteString("\n⚠ Außerhalb von Min/Max: " + strings.Join(out, "; "))
+		}
+		if len(open) > 0 {
+			b.WriteString("\n⚠ Nicht erledigt: " + strings.Join(open, "; "))
+		}
+	}
+	if strings.TrimSpace(p.Notes) != "" {
+		b.WriteString("\nBemerkung: " + strings.TrimSpace(p.Notes))
+	}
+	if next != nil {
+		b.WriteString("\n📅 Nächster Termin: " + next.Local().Format("02.01.2006"))
+	}
+	if pdfURL != "" {
+		b.WriteString("\nProtokoll: " + pdfURL)
+	}
+	b.WriteString("\nAuftrag: /maintenance/tasks/" + taskID)
+	return b.String()
 }
 
 var protocolNameChars = regexp.MustCompile(`[^\p{L}\p{N} ._-]+`)

@@ -67,6 +67,8 @@ type completionInfo struct {
 	Colleagues                 []completionColleague `json:"colleagues"`
 	// Wartung: faellige Checklistenpunkte – der Assistent fragt sie als Erstes ab
 	Checklist []*maintenance.TaskChecklistItem `json:"checklist,omitempty"`
+	// Wartung: geplante Dauer laut Plan (Minuten) – Vorschlag im Schritt Zeit
+	DefaultMin int `json:"default_min,omitempty"`
 }
 
 func (h *Handler) completionDepartments(ctx context.Context) []string {
@@ -155,6 +157,7 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 	info.Colleagues = h.completionColleagues(ctx, u.ID, info.Departments)
 	if k.Type == "maintenance" {
 		info.Checklist, _ = maintenance.NewRepository(h.db).DueChecklistItemsForTask(ctx, id)
+		info.DefaultMin = maintenance.NewRepository(h.db).DefaultDurationForTask(ctx, id)
 	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "data": info})
 }
@@ -392,7 +395,13 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	if boardCompleteFrom(ctx) {
 		h.logBoardCompletion(context.WithoutCancel(ctx), k.Type, id, in.Comment, u.ID)
 	}
-	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": tr(lang, "%s abgeschlossen.", tr(lang, k.Label))})
+	msg := tr(lang, "%s abgeschlossen.", tr(lang, k.Label))
+	if k.Type == "maintenance" {
+		if next := h.maintNextDue(ctx, id); next != nil {
+			msg += " " + tr(lang, "Nächster Termin: %s", next.Local().Format("02.01.2006"))
+		}
+	}
+	completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": true, "message": msg})
 }
 
 // completionValidColleagues: nur aktive, echte Benutzer (nicht man selbst).
@@ -506,4 +515,12 @@ func (h *Handler) completionChecklist(ctx context.Context, taskID, userID string
 // uebrigen Leitstand-Aktionen).
 func (h *Handler) canFinish(r *http.Request, k completionKind) bool {
 	return h.canFn(r)(k.DonePerm) || boardCompleteFrom(r.Context())
+}
+
+// maintNextDue: naechster Termin des Plans (nil ohne Plan oder ohne Wartungsdienst).
+func (h *Handler) maintNextDue(ctx context.Context, taskID string) *time.Time {
+	if h.maint == nil {
+		return nil
+	}
+	return h.maint.NextDueForTask(ctx, taskID)
 }

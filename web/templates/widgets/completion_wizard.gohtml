@@ -220,6 +220,8 @@
       $('cw-running').innerHTML = '<i class="ti ti-player-play"></i> ' + F({{t "Dein Timer läuft seit %s (≈ %s) und wird beim Speichern gestoppt."}}, '<b>' + esc(i.running_since) + '</b>', hm(i.running_min));
       $('cw-time-inputs').style.display = 'none';
     } else { $('cw-running').style.display = 'none'; $('cw-time-inputs').style.display = ''; }
+    // Wartung: geplante Dauer vorschlagen, wenn noch keine Zeit erfasst ist
+    if(!i.running_since && !i.booked_min && i.default_min > 0) $('cw-min').value = String(i.default_min);
     if(i.checklist && i.checklist.length){
       const items = i.checklist.map(c => Object.assign({}, c, {confirmed: c.value}));
       let idx = items.findIndex(c => c.required && !ckFilled(c));
