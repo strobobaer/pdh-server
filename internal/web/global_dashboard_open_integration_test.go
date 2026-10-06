@@ -40,8 +40,8 @@ func TestBoardVisitIntegration(t *testing.T) {
 	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
 	card := "card" + sfx
 	var userID string
-	if err := pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, rfid_uid)
-		VALUES ($1::text, $1::text || '@x', 'x', 'Kurt', 'Karte', $2) RETURNING id::text`, "bv"+sfx, card).Scan(&userID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, department, phone, rfid_uid)
+		VALUES ($1::text, $1::text || '@x', 'x', 'Kurt', 'Karte', '', '', $2) RETURNING id::text`, "bv"+sfx, card).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
 

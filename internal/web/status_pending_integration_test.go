@@ -39,8 +39,10 @@ func TestBoardWaitingSetsPendingIntegration(t *testing.T) {
 		VALUES ($1::text, $1::text || '@x', 'x', 'Wa', 'Rte') RETURNING id::text`, "wt"+sfx).Scan(&userID))
 	must(pool.QueryRow(ctx, `INSERT INTO faults (title, description, severity, status, created_by)
 		VALUES ('Wartet '||$1::text, 'x', 'medium', 'in_progress', $2::uuid) RETURNING id::text`, sfx, userID).Scan(&faultID))
-	must(pool.QueryRow(ctx, `INSERT INTO maintenance_tasks (title, type, priority, status, due_date, created_by)
-		VALUES ('Wartet '||$1::text, 'inspection', 'medium', 'open', NOW(), $2::uuid) RETURNING id::text`, sfx, userID).Scan(&maintID))
+	var infraID string
+	must(pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type) VALUES ('Anlage '||$1::text, 'plant') RETURNING id::text`, sfx).Scan(&infraID))
+	must(pool.QueryRow(ctx, `INSERT INTO maintenance_tasks (title, type, priority, status, due_date, created_by, infrastructure_id)
+		VALUES ('Wartet '||$1::text, 'inspection', 'medium', 'open', NOW(), $2::uuid, $3::uuid) RETURNING id::text`, sfx, userID, infraID).Scan(&maintID))
 
 	r := httptest.NewRequest("POST", "/global/actions", nil)
 	until := time.Now().AddDate(0, 0, 3)

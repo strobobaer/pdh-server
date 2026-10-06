@@ -662,8 +662,9 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   // (Vorgangsarten, nur überfällige, nur ohne Zuständigen), im Browser gemerkt.
   const VIEW_TYPES = [['fault','Störungen'],['ticket','Tickets'],['maintenance','Wartung'],['task','Aufgaben']];
   const VIEW_FLAGS = [['overdue','Nur überfällig'],['unassigned','Nur ohne Zuständigen']];
-  function viewFilter(boxId, storageKey, onChange){
-    const state = {fault:true, ticket:true, maintenance:true, task:true, overdue:false, unassigned:false};
+  // withUpcoming: Knopf „Geplante Wartungen“ (Folgeauftraege eines Plans, noch nicht faellig)
+  function viewFilter(boxId, storageKey, onChange, withUpcoming){
+    const state = {fault:true, ticket:true, maintenance:true, task:true, overdue:false, unassigned:false, upcoming:false};
     try{ Object.assign(state, JSON.parse(localStorage.getItem(storageKey) || '{}')); }catch(e){}
     const box = document.getElementById(boxId);
     function chip(key, label, dotClass){
@@ -684,15 +685,17 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     const sep = document.createElement('span'); sep.className = 'view-sep'; box.appendChild(sep);
     chip('overdue', VIEW_FLAGS[0][1], 'overdue');
     chip('unassigned', VIEW_FLAGS[1][1], '');
-    // match(typ, ueberfaellig, ohneZustaendigen)
-    return function(type, overdue, unassigned){
+    if(withUpcoming) chip('upcoming', 'Geplante Wartungen', 'maintenance');
+    // match(typ, ueberfaellig, ohneZustaendigen, geplant)
+    return function(type, overdue, unassigned, upcoming){
       if(state[type] === false) return false;
+      if(upcoming && !state.upcoming) return false;
       if(state.overdue && !overdue) return false;
       if(state.unassigned && !unassigned) return false;
       return true;
     };
   }
-  const tableMatch = viewFilter('table-filter', 'pdh_global_table_filter', function(){ renderEntriesTable(latestData.items || []); });
+  const tableMatch = viewFilter('table-filter', 'pdh_global_table_filter', function(){ renderEntriesTable(latestData.items || []); }, true);
   const ganttMatch = viewFilter('gantt-filter', 'pdh_global_gantt_filter', function(){ renderDashGantt(); });
 
   const entriesBody = document.getElementById('entries-table-body');
@@ -711,7 +714,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     entriesBody.replaceChildren();
     const todayStr = todayMidnight().toISOString().slice(0,10);
     const items = all.filter(function(item){
-      return tableMatch(item.type_key, !!(item.due_date && item.due_date < todayStr), !item.assignee);
+      return tableMatch(item.type_key, !!(item.due_date && item.due_date < todayStr), !item.assignee, !!item.upcoming);
     });
     document.getElementById('table-count').textContent = items.length === all.length ? '' : (items.length + ' von ' + all.length);
     const sorted = items.slice().sort(function(a, b){

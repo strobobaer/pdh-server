@@ -237,6 +237,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben steht die <b>Tabelle</b> der offenen Vorgänge – mit Art, Titel, Priorität, Fälligkeit, <b>Ersteller</b> (wer gemeldet bzw. angelegt hat), Zuständigem und Status –, darunter der <b>Zeitstrahl</b>. Beide haben eine eigene Auswahl.</li>
       <li>Die Knöpfe <b>Störungen</b>, <b>Tickets</b>, <b>Wartung</b> und <b>Aufgaben</b> antippen, um eine Art ein- oder auszublenden.</li>
       <li><b>Nur überfällig</b> bzw. <b>Nur ohne Zuständigen</b> zeigt nur diese Vorgänge.</li>
+      <li>Geplante Wartungen, die erst in mehr als 7 Tagen fällig sind, blendet die Tabelle aus – z. B. den nächsten Auftrag, den ein Wartungsplan direkt nach dem Fertigmelden anlegt. <b>Geplante Wartungen</b> zeigt sie an; im Zeitstrahl und unter „Neue Wartung“ stehen sie immer.</li>
       <li>Rechts über der Tabelle steht, wie viele Vorgänge gerade angezeigt werden (z. B. „4 von 9“); im Zeitstrahl steht die Zahl der ausgeblendeten. Die Auswahl merkt sich der Browser am Leitstand.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-id-badge-2"></i> So öffnest du einen Vorgang am Leitstand</b>
@@ -329,7 +330,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-checklist"></i> Checklisten-Vorlagen einrichten</b>
     <ol class="hb-steps">
       <li>In der Wartung oben <b>Checklisten</b> öffnen und eine <b>Vorlage</b> anlegen.</li>
-      <li>Punkte hinzufügen – je Punkt ein <b>Intervall in Tagen</b> (abgefragt wird nur, was fällig ist) und eine Art:
+      <li>Punkte hinzufügen – je Punkt ein <b>Intervall in Tagen</b> (abgefragt wird nur, was bis zum Fälligkeitstag des Auftrags wieder fällig ist – der nächste Auftrag eines Plans fragt die Punkte also wieder ab) und eine Art:
         <ul>
           <li><b>Checkbox</b> – erledigt / nicht erledigt.</li>
           <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>; jede Vorgabe wird per Häkchen einzeln aktiviert. Soll ist der Richtwert, Min/Max die Grenzen für „im Bereich“.</li>

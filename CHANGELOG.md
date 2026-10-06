@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.31.2] – 2026-10-06
+
+### Behoben
+- Leitstand: Nach dem Fertigmelden einer Wartung erschien sofort der nächste Auftrag des Wartungsplans mit gleichem Namen als „Offen“ – es sah aus, als wäre nicht abgeschlossen worden. Geplante Wartungen, die erst in mehr als 7 Tagen fällig sind, blendet die Tabelle jetzt aus (Knopf „Geplante Wartungen“ zeigt sie)
+- Wartung: Der nächste Auftrag eines Plans fragt die Checkliste wieder ab – fällig ist ein Punkt, wenn sein Intervall bis zum Fälligkeitstag des Auftrags abgelaufen ist, nicht erst ab heute gerechnet
+
 ## [0.31.1] – 2026-10-06
 
 ### Behoben

@@ -151,6 +151,13 @@ func TestChecklistAndPlanResponsibleIntegration(t *testing.T) {
 	if len(due) != 0 {
 		t.Fatalf("nach Erledigung noch %d fällig", len(due))
 	}
+	// Folgeauftrag des Plans mit spaeterem Termin: Punkte sind zum Termin wieder faellig
+	later := &MaintenanceTask{PlanID: &plan.ID, Title: plan.Name, Type: "preventive", InfrastructureID: infraID,
+		Priority: PrioMedium, DueDate: time.Now().AddDate(0, 0, 30), CreatedBy: userID}
+	must(repo.CreateTask(ctx, later))
+	if due, err = repo.DueChecklistItemsForTask(ctx, later.ID); err != nil || len(due) != 3 {
+		t.Fatalf("Folgeauftrag in 30 Tagen: %d fällig / %v", len(due), err)
+	}
 
 	// Auftrag ohne Plan: ausgewaehlte Checkliste wird abgearbeitet und bleibt danach haengen
 	tpl2, err := repo.CreateChecklistTemplate(ctx, "Sonder "+suffix, "", userID)

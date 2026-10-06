@@ -257,7 +257,8 @@ func (r *Repository) DeletePlanSoft(ctx context.Context, planID string) error {
 
 // DueChecklistItemsForTask liefert die faelligen Punkte der Checklisten eines Auftrags:
 // die am Wartungsplan hinterlegten, die schon an diesem Auftrag bearbeiteten und die
-// zusaetzlich ausgewaehlten (extraTemplateIDs). Eigene Ergebnisse dieses Auftrags zaehlen
+// zusaetzlich ausgewaehlten (extraTemplateIDs). Faellig ist ein Punkt, wenn sein Intervall
+// bis zum Faelligkeitstag des Auftrags abgelaufen ist. Eigene Ergebnisse dieses Auftrags zaehlen
 // nicht als "zuletzt erledigt" – so bleiben Punkte beim schrittweisen Abarbeiten sichtbar.
 func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string, extraTemplateIDs ...string) ([]*TaskChecklistItem, error) {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return nil, err }
@@ -305,7 +306,10 @@ func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string
 		JOIN maintenance_checklist_template_items i ON i.template_id=ti.template_id AND i.active=true
 		LEFT JOIN maintenance_task_checklist_results r ON r.task_id=$1 AND r.template_item_id=i.id
 		LEFT JOIN last_done ld ON ld.template_item_id=i.id
-		WHERE ld.last_done_at IS NULL OR ld.last_done_at + (i.interval_days || ' days')::interval <= NOW()
+		-- faellig zum Termin des Auftrags (Ende des Faelligkeitstags), mindestens heute:
+		-- der Folgeauftrag eines Plans fragt die Punkte wieder ab, auch wenn er frueh erledigt wird
+		WHERE ld.last_done_at IS NULL OR ld.last_done_at + (i.interval_days || ' days')::interval <= GREATEST(NOW(),
+			(SELECT (mt.due_date::date + 1)::timestamptz FROM maintenance_tasks mt WHERE mt.id = $1))
 		ORDER BY NOT ti.assigned, lower(t.name), t.id, i.sort_order, i.label`, taskID, extra)
 	if err != nil { return nil, err }
 	defer rows.Close()
