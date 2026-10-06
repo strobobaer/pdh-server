@@ -6,7 +6,7 @@
 <div class="mt-head">
   <div>
     <h1>Wartung</h1>
-    <p>{{if eq .View "due"}}{{.OpenCount}} anstehend{{if .LaterCount}} · {{.LaterCount}} später geplant{{end}}{{else if eq .View "year"}}Jahresplan {{.Year}}{{else if eq .View "plans"}}{{len .Plans}} Pläne{{else if eq .View "rounds"}}{{len .Plans}} Kontrollrundgänge{{else if eq .View "done"}}zuletzt erledigt{{else}}Checklisten-Vorlagen{{end}}</p>
+    <p>{{if eq .View "due"}}{{.OpenCount}} anstehend{{if .LaterCount}} · {{.LaterCount}} später geplant{{end}}{{else if eq .View "year"}}Jahresplan {{.Year}}{{else if eq .View "plans"}}{{len .Plans}} Pläne{{else if eq .View "rounds"}}{{len .Plans}} Kontrollrundgänge{{else if eq .View "archive"}}{{.Archive.Total}} abgeschlossene Wartungen{{if .Archive.Filtered}} (gefiltert){{end}}{{else}}Checklisten-Vorlagen{{end}}</p>
   </div>
   <div class="widget-icon-toolbar compact">
     <button type="button" class="btn" onclick="pdhCreate('maintenance')"><i class="ti ti-plus"></i> Einzelauftrag</button>
@@ -20,7 +20,7 @@
   <a class="rec-tab {{if eq .View "year"}}active{{end}}" href="/maintenance?view=year"><i class="ti ti-calendar-month"></i> Jahresplan</a>
   <a class="rec-tab {{if eq .View "plans"}}active{{end}}" href="/maintenance?view=plans"><i class="ti ti-repeat"></i> Pläne</a>
   <a class="rec-tab {{if eq .View "rounds"}}active{{end}}" href="/maintenance?view=rounds"><i class="ti ti-route"></i> Rundgänge</a>
-  <a class="rec-tab {{if eq .View "done"}}active{{end}}" href="/maintenance?view=done"><i class="ti ti-circle-check"></i> Erledigt</a>
+  <a class="rec-tab {{if eq .View "archive"}}active{{end}}" href="/maintenance?view=archive"><i class="ti ti-archive"></i> Archiv</a>
   <a class="rec-tab {{if eq .View "checklists"}}active{{end}}" href="/maintenance?view=checklists"><i class="ti ti-list-check"></i> Checklisten</a>
 </nav>
 
@@ -137,25 +137,101 @@
 {{else}}<div class="mt-empty"><i class="ti ti-route"></i><div>Noch keine Kontrollrundgänge.</div><a href="/maintenance/plans/new?round=1">Ersten Rundgang anlegen</a></div>{{end}}
 {{end}}
 
-{{if eq .View "done"}}
+{{if eq .View "archive"}}
+<form class="mt-arch-filter" method="get" action="/maintenance">
+  <input type="hidden" name="view" value="archive">
+  <input type="search" name="q" class="form-input mt-arch-q" value="{{.Archive.Q}}" placeholder="Suche: Titel, Anlage, Plan, Bemerkung" aria-label="Suche">
+  <select name="infra" class="form-input" aria-label="Anlage"><option value="">Alle Anlagen</option>{{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $.Archive.Infra}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <select name="plan" class="form-input" aria-label="Plan"><option value="">Alle Pläne</option>{{range .Archive.PlanOptions}}<option value="{{.ID}}" {{if eq .ID $.Archive.Plan}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <label class="mt-arch-date">von <input type="date" name="from" class="form-input" value="{{.Archive.From}}"></label>
+  <label class="mt-arch-date">bis <input type="date" name="to" class="form-input" value="{{.Archive.To}}"></label>
+  <select name="status" class="form-input" aria-label="Status">
+    <option value="">erledigt &amp; übersprungen</option>
+    <option value="done" {{if eq .Archive.Status "done"}}selected{{end}}>nur erledigt</option>
+    <option value="skipped" {{if eq .Archive.Status "skipped"}}selected{{end}}>nur übersprungen</option>
+  </select>
+  <label class="mt-chip {{if .Archive.Deviations}}on{{end}}"><input type="checkbox" name="dev" value="1" {{if .Archive.Deviations}}checked{{end}}> <i class="ti ti-alert-triangle"></i> nur mit Abweichungen</label>
+  <button type="submit" class="btn btn-primary"><i class="ti ti-filter"></i> Filtern</button>
+  {{if .Archive.Filtered}}<a class="btn" href="/maintenance?view=archive"><i class="ti ti-x"></i> Zurücksetzen</a>{{end}}
+</form>
 {{if .Done}}
 <div class="card" style="padding:0">
   {{range .Done}}
-  <div class="mt-done">
-    <a href="/maintenance/tasks/{{.Task.ID}}" class="mt-done-main">
-      <b>{{.Task.Title}}</b>
-      <small>{{.Task.InfraName}} · {{if eq .Task.Status "skipped"}}übersprungen{{else}}erledigt{{end}} {{.Completed}}{{if .Duration}} · {{.Duration}}{{end}}</small>
-    </a>
-    <div class="mt-done-flags">
-      {{if .OutOfRange}}<span class="badge b-red" title="Messwerte außerhalb von Min/Max"><i class="ti ti-alert-triangle"></i> {{.OutOfRange}} außerhalb</span>{{end}}
-      {{if .Unchecked}}<span class="badge b-amber" title="nicht abgehakte Punkte">{{.Unchecked}} offen</span>{{end}}
-      {{if .Points}}<span class="badge b-gray">{{.Points}} Punkte</span>{{end}}
-      {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener" title="Wartungsprotokoll (PDF)"><i class="ti ti-file-type-pdf"></i></a>{{end}}
+  <div class="mt-done mt-arch" data-task="{{.Task.ID}}">
+    <div class="mt-done-row">
+      <button type="button" class="mt-arch-toggle" onclick="mtArchToggle(this)" aria-expanded="false" title="Checkliste ansehen"{{if not .Points}} disabled{{end}}><i class="ti ti-chevron-right"></i></button>
+      <a href="/maintenance/tasks/{{.Task.ID}}" class="mt-done-main">
+        <b>{{.Task.Title}}</b>
+        <small>{{.Task.InfraName}} · {{if eq .Task.Status "skipped"}}übersprungen{{else}}erledigt{{end}} {{.Completed}}{{if .Duration}} · {{.Duration}}{{end}}{{if .Executors}} · <i class="ti ti-user"></i> {{.Executors}}{{end}}</small>
+      </a>
+      <div class="mt-done-flags">
+        {{if .OutOfRange}}<span class="badge b-red" title="Messwerte außerhalb von Min/Max"><i class="ti ti-alert-triangle"></i> {{.OutOfRange}} außerhalb</span>{{end}}
+        {{if .Unchecked}}<span class="badge b-amber" title="nicht abgehakte Punkte">{{.Unchecked}} offen</span>{{end}}
+        {{if .Photos}}<span class="badge b-gray" title="Fotos zur Dokumentation"><i class="ti ti-photo"></i> {{.Photos}}</span>{{end}}
+        {{if .Points}}<button type="button" class="badge b-blue mt-arch-btn" onclick="mtArchToggle(this)"><i class="ti ti-list-check"></i> {{.Points}} Punkte</button>{{end}}
+        {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener" title="Wartungsprotokoll (PDF)"><i class="ti ti-file-type-pdf"></i></a>{{end}}
+      </div>
     </div>
+    <div class="mt-arch-body" hidden></div>
   </div>
   {{end}}
 </div>
-{{else}}<div class="mt-empty"><i class="ti ti-history"></i><div>Noch nichts erledigt.</div></div>{{end}}
+{{if gt .Archive.Pages 1}}
+<nav class="mt-arch-pages" aria-label="Seiten">
+  {{if .Archive.PrevURL}}<a class="btn" href="{{.Archive.PrevURL}}"><i class="ti ti-chevron-left"></i> Neuere</a>{{end}}
+  <span>Seite {{.Archive.Page}} von {{.Archive.Pages}}</span>
+  {{if .Archive.NextURL}}<a class="btn" href="{{.Archive.NextURL}}">Ältere <i class="ti ti-chevron-right"></i></a>{{end}}
+</nav>
+{{end}}
+{{else}}<div class="mt-empty"><i class="ti ti-archive"></i><div>{{if .Archive.Filtered}}Keine Wartung passt zu diesem Filter.{{else}}Noch nichts abgeschlossen.{{end}}</div></div>{{end}}
+<script>
+// Archiv: Checkliste eines abgeschlossenen Auftrags aufklappen (nur lesen)
+const maEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const maNum = v => v == null ? '' : String(v).replace('.', ',');
+function maSpec(s){
+  if(s.item_type !== 'number') return '';
+  const u = s.unit ? ' ' + s.unit : '', p = [];
+  if(s.target_value != null) p.push('Soll ' + maNum(s.target_value) + u);
+  if(s.min_value != null) p.push('Min ' + maNum(s.min_value) + u);
+  if(s.max_value != null) p.push('Max ' + maNum(s.max_value) + u);
+  return p.join(' · ');
+}
+function maStepHTML(s){
+  const filled = s.item_type === 'checkbox' ? s.done : s.value !== '';
+  const bad = s.in_range === false || (s.item_type === 'checkbox' && !s.done);
+  const val = s.item_type === 'checkbox' ? (s.done ? 'erledigt' : 'nicht erledigt') : (s.value ? s.value + (s.item_type === 'number' && s.unit ? ' ' + s.unit : '') : '–');
+  const when = s.checked_at ? new Date(s.checked_at).toLocaleString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+  const imgs = (s.doc_images || []).map(i => '<a href="' + maEsc(i.url) + '" target="_blank" rel="noopener"><img src="' + maEsc(i.url) + '" alt="' + maEsc(i.filename) + '" loading="lazy"></a>').join('');
+  return '<div class="mt-arch-step' + (bad ? ' bad' : '') + '"><i class="ti ti-' + (bad ? 'alert-triangle' : filled ? 'circle-check' : 'circle-dashed') + '"></i>'
+    + '<div><div class="l">' + maEsc(s.label) + (s.required ? ' <span title="Pflichtpunkt" style="color:var(--red)">✱</span>' : '') + '</div>'
+    + (maSpec(s) ? '<small>' + maEsc(maSpec(s)) + '</small>' : '')
+    + (imgs ? '<div class="mt-arch-imgs">' + imgs + '</div>' : '') + '</div>'
+    + '<div class="v"><b>' + maEsc(val) + '</b>' + (s.in_range === false ? '<small style="color:var(--red)">außerhalb Min/Max</small>' : '')
+    + (s.checked_by ? '<small>' + maEsc(s.checked_by) + (when ? ' · ' + when : '') + '</small>' : '') + '</div></div>';
+}
+async function mtArchToggle(btn){
+  const row = btn.closest('.mt-arch'), body = row.querySelector('.mt-arch-body'), tog = row.querySelector('.mt-arch-toggle');
+  const open = body.hidden;
+  body.hidden = !open; tog.setAttribute('aria-expanded', open); row.classList.toggle('open', open);
+  if(!open || body.dataset.loaded) return;
+  body.innerHTML = '<div class="mt-muted" style="padding:8px 0">Wird geladen …</div>';
+  try{
+    const res = await fetch('/api/v1/maintenance/tasks/' + encodeURIComponent(row.dataset.task) + '/steps', {credentials: 'same-origin'});
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok || json.success === false) throw new Error(json.error || ('HTTP ' + res.status));
+    const steps = json.data || [];
+    let html = '', grp = null;
+    steps.forEach(s => {
+      const g = s.station_name ? s.station_name + ' · ' + s.checklist_name : s.checklist_name;
+      if(g !== grp){ html += '<div class="mt-arch-grp">' + (s.station_name ? '<i class="ti ti-map-pin"></i> ' : '<i class="ti ti-list-check"></i> ') + maEsc(g || 'Checkliste') + '</div>'; grp = g; }
+      html += maStepHTML(s);
+    });
+    body.innerHTML = (html || '<div class="mt-muted">Keine Checklistenpunkte.</div>')
+      + '<div class="mt-arch-foot"><a href="/maintenance/tasks/' + maEsc(row.dataset.task) + '"><i class="ti ti-external-link"></i> Auftrag öffnen</a></div>';
+    body.dataset.loaded = '1';
+  }catch(e){ body.innerHTML = '<span style="color:var(--red)">Checkliste nicht ladbar: ' + maEsc(e.message) + '</span>'; }
+}
+</script>
 {{end}}
 
 {{if eq .View "checklists"}}
@@ -231,6 +307,27 @@
 .mt-plan-head{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px}
 .mt-plan-lists{font-size:12px;margin-top:8px;color:var(--text)}
 .mt-done{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}
+.mt-arch{display:block}
+.mt-done-row{display:flex;gap:10px;align-items:center}
+.mt-arch-toggle{border:0;background:none;color:var(--muted);cursor:pointer;padding:2px;font-size:16px;transition:transform .15s}
+.mt-arch-toggle:disabled{opacity:.25;cursor:default}
+.mt-arch.open .mt-arch-toggle{transform:rotate(90deg);color:var(--accent)}
+.mt-arch-btn{border:0;cursor:pointer;font-family:var(--font)}
+.mt-arch-body{margin:10px 0 2px 30px;border-left:2px solid var(--border);padding-left:12px}
+.mt-arch-grp{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin:8px 0 4px;display:flex;gap:5px;align-items:center}
+.mt-arch-step{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:start;padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.mt-arch-step > i{color:var(--green);margin-top:2px}
+.mt-arch-step.bad > i{color:var(--red)}
+.mt-arch-step small{display:block;font-size:11.5px;color:var(--muted)}
+.mt-arch-step .v{text-align:right}
+.mt-arch-imgs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.mt-arch-imgs img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+.mt-arch-foot{font-size:12px;padding:8px 0 4px}
+.mt-arch-filter{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.mt-arch-filter .form-input{width:auto;max-width:240px}
+.mt-arch-filter .mt-arch-q{flex:1;min-width:200px;max-width:none}
+.mt-arch-date{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.mt-arch-pages{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;font-size:12.5px;color:var(--muted)}
 .mt-done:last-child{border-bottom:0}
 .mt-done-main{flex:1;min-width:0;color:var(--text);text-decoration:none}
 .mt-done-main small{display:block;color:var(--muted);font-size:12px}
@@ -250,7 +347,11 @@
 .mt-item-imgs img{width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border)}
 .mt-item-edit{display:grid;grid-template-columns:1fr 140px 90px;gap:6px;margin-top:6px}
 .mt-item-edit .wide{grid-column:1/-1}
-.mt-add{padding:10px 12px;display:grid;grid-template-columns:1fr 150px auto;gap:6px}
+.mt-add{padding:10px 12px;display:grid;grid-template-columns:1fr 150px auto auto;gap:6px;align-items:center}
+.mt-add .mt-add-req{display:flex;gap:5px;align-items:center;font-size:12px;white-space:nowrap}
+.mt-add .mt-add-num{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.mt-add .mt-add-num[hidden]{display:none}
+.mt-add .mt-add-ok{grid-column:1/-1;font-size:12px;color:var(--green)}
 @media(max-width:700px){.mt-cards,.mt-plans{grid-template-columns:1fr}.mt-item-edit,.mt-add{grid-template-columns:1fr}}
 </style>
 {{if eq .View "checklists"}}
@@ -305,8 +406,11 @@ function mtListHTML(t){
     + '<button type="button" class="btn btn-danger" title="Checkliste löschen" onclick="mtDelList(\'' + t.id + '\',' + (t.plan_count || 0) + ')"><i class="ti ti-trash"></i></button></div>'
     + (items.length ? items.map((i, k) => mtItemHTML(t, i, k, items.length)).join('') : '<div class="mt-item-sub" style="padding:10px 12px">Noch keine Punkte.</div>')
     + '<form class="mt-add" onsubmit="return mtAddItem(\'' + t.id + '\',this)"><input name="label" class="form-input" placeholder="Neuer Punkt, z. B. „Ölstand prüfen“" required>'
-    + '<select name="item_type" class="form-input">' + Object.keys(MT_TYPES).map(k => '<option value="' + k + '">' + MT_TYPES[k] + '</option>').join('') + '</select>'
-    + '<button type="submit" class="btn"><i class="ti ti-plus"></i> Punkt</button></form></div>';
+    + '<select name="item_type" class="form-input" onchange="mtAddType(this.form)">' + Object.keys(MT_TYPES).map(k => '<option value="' + k + '">' + MT_TYPES[k] + '</option>').join('') + '</select>'
+    + '<label class="mt-add-req"><input type="checkbox" name="required" checked> Pflicht</label>'
+    + '<button type="submit" class="btn"><i class="ti ti-plus"></i> Punkt</button>'
+    + '<div class="mt-add-num" hidden><input name="unit" class="form-input" placeholder="Einheit, z. B. bar"><input name="target_value" class="form-input" inputmode="decimal" placeholder="Soll"><input name="min_value" class="form-input" inputmode="decimal" placeholder="Min"><input name="max_value" class="form-input" inputmode="decimal" placeholder="Max"></div>'
+    + '<div class="mt-add-ok" aria-live="polite"></div></form></div>';
 }
 let mtCache = {};
 async function mtLoad(){
@@ -329,8 +433,29 @@ async function mtDelList(id, plans){
   if(!confirm(plans ? 'Diese Checkliste hängt an ' + plans + ' Plan/Plänen und wird dort entfernt. Löschen?' : 'Checkliste löschen?')) return;
   try{ await mtJSON(MT_API + '/checklists/' + id, {method:'DELETE'}); mtLoad(); }catch(e){ alert(e.message); }
 }
+function mtAddType(f){ f.querySelector('.mt-add-num').hidden = f.elements.item_type.value !== 'number'; }
+// „+ Punkt“: Punkt speichern, Liste aktualisieren und im Anlegemodus bleiben –
+// Art, Pflicht und Einheit bleiben stehen, der Cursor steht wieder im Namensfeld.
 async function mtAddItem(id, f){
-  try{ mtRedraw(await mtSend(MT_API + '/checklists/' + id + '/items', 'POST', {label: f.label.value, item_type: f.item_type.value, required: true})); }catch(e){ alert(e.message); }
+  const el = n => f.elements[n];
+  const keep = {type: el('item_type').value, required: el('required').checked, unit: el('unit').value}, label = el('label').value.trim();
+  if(!label) return false;
+  const body = {label, item_type: keep.type, required: keep.required};
+  if(keep.type === 'number'){
+    body.unit = keep.unit;
+    ['target_value', 'min_value', 'max_value'].forEach(k => { const v = num(el(k).value); if(v !== null && !isNaN(v)) body[k] = v; });
+  }
+  const y = window.scrollY;
+  try{ mtRedraw(await mtSend(MT_API + '/checklists/' + id + '/items', 'POST', body)); }
+  catch(e){ alert(e.message); return false; }
+  const nf = document.querySelector('#list-' + id + ' .mt-add');
+  if(nf){
+    const ne = n => nf.elements[n];
+    ne('item_type').value = keep.type; ne('required').checked = keep.required; ne('unit').value = keep.unit; mtAddType(nf);
+    nf.querySelector('.mt-add-ok').innerHTML = '<i class="ti ti-check"></i> „' + mtEsc(label) + '“ hinzugefügt – nächster Punkt:';
+    window.scrollTo(0, y);
+    ne('label').focus({preventScroll: true});
+  }
   return false;
 }
 async function mtSaveItem(tid, iid, btn){

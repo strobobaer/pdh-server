@@ -664,6 +664,7 @@ func (h *Handler) Routes() chi.Router {
 
 	// HTMX partials
 	r.Get("/api/activity", h.ActivityFeed)
+	r.Get("/api/presence", h.PresenceWeb)
 	r.Get("/api/search", h.Search)
 
 	// Auth
@@ -2017,6 +2018,7 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), "user", user)
 		r = r.WithContext(ctx)
+		h.presenceTouch(user.ID) // Anwesenheit (Seitenleiste „Aktivität“)
 		next.ServeHTTP(w, r)
 	})
 }

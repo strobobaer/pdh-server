@@ -8,6 +8,7 @@
 <style>
 .dw-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .dw-bar .grow{flex:1}
+#dw-root:not(.dw-edit-on) .dw-bar{display:none} /* „Dashboard anpassen“ steht im Benutzermenue */
 .dw-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;min-height:60px}
 .dw{background:var(--bg2);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;min-width:0;min-height:110px;overflow:hidden}
 .dw[data-size="1"]{grid-column:span 1}.dw[data-size="2"]{grid-column:span 2}.dw[data-size="3"]{grid-column:span 3}.dw[data-size="4"]{grid-column:span 4}
@@ -96,7 +97,6 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-bar">
     <span class="grow"></span>
     <span id="dw-hint" class="sc-sub" style="display:none;font-size:12px;color:var(--muted)">{{th "Widgets aus dem Katalog ins Raster ziehen (oder <b>+</b>), im Raster verschieben · <i class='ti ti-arrows-horizontal'></i> Breite · <i class='ti ti-settings'></i> Einstellungen · <i class='ti ti-x'></i> entfernen"}}</span>
-    <button type="button" class="btn btn-small" id="dw-edit-btn" onclick="dwEdit(true)"><i class="ti ti-layout-dashboard"></i> {{t "Dashboard anpassen"}}</button>
     <button type="button" class="btn btn-small" id="dw-reset-btn" style="display:none" onclick="dwReset()" title="{{t "Standard-Zusammenstellung wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
     <button type="button" class="btn btn-small" id="dw-cancel-btn" style="display:none" onclick="location.reload()">{{t "Abbrechen"}}</button>
     <button type="button" class="btn btn-small btn-primary" id="dw-save-btn" style="display:none" onclick="dwSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
@@ -163,7 +163,6 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   window.dwEdit = function(on){
     root.classList.toggle('dw-edit-on', on); grid.classList.toggle('dw-edit', on);
     ['dw-reset-btn','dw-cancel-btn','dw-save-btn','dw-hint'].forEach(id => document.getElementById(id).style.display = on ? '' : 'none');
-    document.getElementById('dw-edit-btn').style.display = on ? 'none' : '';
     if(!on || !window.Sortable) return;
     sortGrid = Sortable.create(grid, {group: {name: 'dw', pull: false, put: true}, animation: 150, ghostClass: 'dw-ghost', delay: 180, delayOnTouchOnly: true, filter: '.dw-tools button, .dw-cfg, .dw-note', preventOnFilter: false,
       onAdd: function(e){
@@ -172,6 +171,10 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
       }});
     document.querySelectorAll('[data-dw-catalog]').forEach(list => sortCats.push(Sortable.create(list, {group: {name: 'dw', pull: 'clone', put: false}, sort: false, animation: 150, delay: 180, delayOnTouchOnly: true, filter: '.add', preventOnFilter: false})));
   };
+  if(new URLSearchParams(location.search).get('dwedit') === '1'){
+    history.replaceState(null, '', location.pathname);
+    setTimeout(() => window.dwEdit(true), 0);
+  }
   // Werkzeuge im Widget
   grid.addEventListener('click', function(e){
     const btn = e.target.closest('[data-dw-act]'); if(!btn) return;

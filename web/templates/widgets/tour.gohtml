@@ -64,18 +64,18 @@
   const TOURS = {
     basics: {title: {{t "Rundgang durch PDH"}}, steps: [
       {url: '/', h: {{t "Willkommen im PDH"}}, p: {{t "In zwei Minuten zeigen wir dir das Wichtigste. „Weiter“ geht Schritt für Schritt, Esc beendet den Rundgang jederzeit."}}},
-      {url: '/', sel: ['#pdh-nav', '.topbar-burger'], h: {{t "Navigation"}}, p: {{t "Links findest du alle Bereiche – Störungen, Tickets, Aufgaben, Wartung, Ersatzteile, Infrastruktur und mehr. Mit „Navigation anpassen“ sortierst du sie nach deinem Bedarf."}}},
-      {url: '/', sel: ['#dw-root'], h: {{t "Dein Dashboard"}}, p: {{t "Kennzahlen und Listen auf einen Blick. „Mir zugewiesen“ zeigt, was als Nächstes zu tun ist. Mit „Dashboard anpassen“ stellst du dir die Kacheln selbst zusammen."}}},
+      {url: '/', sel: ['#pdh-nav', '.topbar-burger'], h: {{t "Navigation"}}, p: {{t "Links findest du alle Bereiche – Störungen, Tickets, Aufgaben, Wartung, Ersatzteile, Infrastruktur und mehr. Mit „Navigation anpassen“ im Benutzermenü sortierst du sie nach deinem Bedarf."}}},
+      {url: '/', sel: ['#dw-root'], h: {{t "Dein Dashboard"}}, p: {{t "Kennzahlen und Listen auf einen Blick. „Mir zugewiesen“ zeigt, was als Nächstes zu tun ist. Mit „Dashboard anpassen“ im Benutzermenü stellst du dir die Kacheln selbst zusammen."}}},
       {url: '/', sel: ['[data-nav="faults"]', '.topbar-burger'], h: {{t "Etwas melden"}}, p: {{t "Eine Störung meldest du unter „Störungen“ mit „Neu“. Ein Assistent fragt Schritt für Schritt: Was? Wo? Wer? – und zeigt ähnliche, schon gelöste Fälle."}}},
       {url: '/', sel: ['.ctx-tabs', '.topbar-ctx'], h: {{t "Die Seitenleiste"}}, p: {{t "Rechts liegen Chat, Suche, Copilot, Aktivität und Hilfe. Den Copilot kannst du alles zu euren Daten fragen, z. B. „Welche Wartungen sind diese Woche fällig?“"}}},
       {url: '/', sel: ['[data-context-tab="help"]', '.topbar-ctx'], h: {{t "Hilfe auf jeder Seite"}}, p: {{t "Der Hilfe-Reiter zeigt das passende Kapitel aus dem Handbuch – und startet den Rundgang für die Seite, auf der du gerade bist."}}},
       {url: '/', sel: ['#pdh-clock'], h: {{t "Uhr und Zeiterfassung"}}, p: {{t "Ein Klick auf die Uhr öffnet deine Zeiterfassung."}}},
-      {url: '/', sel: ['#user-menu'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dein Konto"}}, p: {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe) und diesen Rundgang zum erneuten Starten."}}},
+      {url: '/', sel: ['#user-menu'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dein Konto"}}, p: {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe), „Dashboard anpassen“, „Navigation anpassen“ und diesen Rundgang zum erneuten Starten."}}},
       {url: '/', h: {{t "Geschafft!"}}, p: {{t "Auf vielen Seiten gibt es einen eigenen Rundgang: rechts im Hilfe-Reiter „Rundgang für diese Seite“. Alles Weitere steht im Handbuch."}}}
     ]},
     dashboard: {title: {{t "Rundgang: Dashboard"}}, steps: [
       {url: '/', sel: ['#dw-root'], h: {{t "Kacheln"}}, p: {{t "Jede Kachel zeigt einen Ausschnitt – Kennzahlen, „Mir zugewiesen“, aktuelle Störungen, fällige Wartungen. Ein Klick öffnet den Vorgang."}}},
-      {url: '/', sel: ['#dw-edit-btn'], h: {{t "Dashboard anpassen"}}, p: {{t "Kacheln hinzufügen, verschieben, breiter machen oder entfernen. Deine Zusammenstellung wird für dich gespeichert."}}},
+      {url: '/', sel: ['#um-dw-edit'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dashboard anpassen"}}, p: {{t "Kacheln hinzufügen, verschieben, breiter machen oder entfernen. Deine Zusammenstellung wird für dich gespeichert."}}},
       {url: '/', sel: ['#dash-gantt-target', '#dash-gantt-empty'], h: {{t "Zeitstrahl"}}, p: {{t "Störungen, Tickets, Wartungen und Aufgaben auf einer Zeitachse. Rot heißt überfällig."}}}
     ]},
     faults: {title: {{t "Rundgang: Störungen"}}, steps: [
@@ -85,7 +85,7 @@
       {url: '/faults', sel: ['[onclick="runSelectedItemAction(\'done\')"]'], h: {{t "Abschließen"}}, p: {{t "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar."}}}
     ]},
     maintenance: {title: {{t "Rundgang: Wartung"}}, steps: [
-      {url: '/maintenance', sel: ['.mt-tabs'], h: {{t "Die Wartung"}}, p: {{t "Die Reiter: Anstehend, Jahresplan, Pläne, Rundgänge, Erledigt und Checklisten."}}},
+      {url: '/maintenance', sel: ['.mt-tabs'], h: {{t "Die Wartung"}}, p: {{t "Die Reiter: Anstehend, Jahresplan, Pläne, Rundgänge, Archiv und Checklisten."}}},
       {url: '/maintenance', sel: ['.mt-go', '.mt-empty'], h: {{t "Durchführen"}}, p: {{t "„Durchführen“ startet den Assistenten: zuerst die Checkliste Punkt für Punkt mit Foto, dann Material, Zeit und Kommentar. Nach „Fertig“ legt PDH den nächsten Termin selbst an."}}},
       {url: '/maintenance', sel: ['.mt-tabs a[href="/maintenance?view=year"]'], h: {{t "Jahresplan"}}, p: {{t "Alle Termine des Jahres je Plan: ✓ erledigt, ● offen, ○ geplant."}}},
       {url: '/maintenance', sel: ['.mt-tabs a[href="/maintenance?view=rounds"]'], h: {{t "Kontrollrundgänge"}}, p: {{t "Ein Rundgang führt nacheinander über mehrere Anlagen – je Station eine kurze Checkliste, mit „Mangel melden“ direkt vor Ort."}}},

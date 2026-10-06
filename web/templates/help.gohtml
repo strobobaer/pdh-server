@@ -81,9 +81,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-map"></i> So findest du dich zurecht</h3>
   <ul>
     <li><b>Links</b> wählst du das Modul, z. B. Störungen oder Ersatzteile. Die Einträge sind in Gruppen sortiert (Instandhaltung, Material &amp; Anlagen, Personal, Verwaltung, Daten, Hilfe &amp; Links); die Gruppen sind zunächst zugeklappt – ein Klick auf die Überschrift klappt sie auf und zu, PDH merkt sich das; die Gruppe der geöffneten Seite ist immer offen.</li>
-    <li><b>Navigation anpassen</b> (ganz unten in der Navigation): Einträge per Ziehen in andere Gruppen oder eine andere Reihenfolge bringen, Gruppennamen anklicken zum Umbenennen, mit <b>Gruppe</b> eigene Gruppen anlegen, mit <i class="ti ti-trash"></i> löschen (die Einträge wandern nach oben). <b>Fertig</b> speichert die Anordnung an deinem Konto – sie gilt auf jedem Gerät; <b>Standard</b> stellt die Vorgabe wieder her. Neue Funktionen erscheinen automatisch in ihrer Vorgabe-Gruppe.</li>
+    <li><b>Navigation anpassen</b> (oben im Benutzermenü): Einträge per Ziehen in andere Gruppen oder eine andere Reihenfolge bringen, Gruppennamen anklicken zum Umbenennen, mit <b>Gruppe</b> eigene Gruppen anlegen, mit <i class="ti ti-trash"></i> löschen (die Einträge wandern nach oben). <b>Fertig</b> speichert die Anordnung an deinem Konto – sie gilt auf jedem Gerät; <b>Standard</b> stellt die Vorgabe wieder her. Neue Funktionen erscheinen automatisch in ihrer Vorgabe-Gruppe.</li>
     <li><b>Oben</b> findest du die <b>Uhr</b> mit Wochentag und Datum, den Chat, „Im Chat teilen“ und dein Konto. Ein Klick auf die Uhr öffnet die <b>Zeiterfassung</b>; fährst du mit der Maus darüber, siehst du auch die Kalenderwoche.</li>
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
+    <li><b>Wer ist online?</b> Der Reiter <b>Aktivität</b> zeigt oben alle, die PDH gerade geöffnet haben (grüner Punkt), darunter aufklappbar die übrigen mit „zuletzt gesehen“ (z. B. „vor 20 Min.“, „gestern 14:10“). Die Liste aktualisiert sich alle 30 Sekunden; Terminals (Systembenutzer) erscheinen nicht.</li>
     <li><b>Breite ändern:</b> Mit der Maus an den Innenrand der Navigation oder der aufgeklappten rechten Seitenleiste fahren – der Rand färbt sich, der Mauszeiger wird zu <b>↔</b>. Dann ziehen. Dein Browser merkt sich die Breite. <b>Doppelklick</b> auf den Rand stellt die Standardbreite wieder her. Mit der Tastatur: Rand mit Tab anwählen, dann Pfeiltasten. Auf Smartphone und Tablet entfällt das, dort fahren die Leisten über den Inhalt.</li>
     <li>Der <b>Hilfe-Reiter</b> rechts zeigt dir immer das passende Kapitel zur Seite, auf der du gerade bist.</li>
   </ul>
@@ -101,7 +102,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-widgets"}}
   <div class="hb-howto"><b><i class="ti ti-layout-dashboard"></i> So stellst du dein Dashboard zusammen</b>
     <ol class="hb-steps">
-      <li>Auf dem Dashboard oben rechts <b>Dashboard anpassen</b>. Der <b>Widget-Katalog</b> öffnet sich, die Widgets bekommen einen gestrichelten Rahmen.</li>
+      <li>Oben im Benutzermenü <b>Dashboard anpassen</b> (von jeder Seite aus – PDH wechselt dafür aufs Dashboard). Der <b>Widget-Katalog</b> öffnet sich, die Widgets bekommen einen gestrichelten Rahmen.</li>
       <li>Ein Widget aus dem Katalog <b>ins Raster ziehen</b> – oder auf <b>+</b> tippen, dann landet es am Ende.</li>
       <li>Widgets im Raster an die gewünschte Stelle <b>ziehen</b> (am Handy kurz halten, dann ziehen). <i class="ti ti-arrows-horizontal"></i> ändert die Breite (1 bis 4 Spalten), <i class="ti ti-x"></i> entfernt das Widget.</li>
       <li><i class="ti ti-settings"></i> öffnet die Einstellungen: eigene Überschrift, bei <b>Eigene Links</b> je Zeile <code>Name | Adresse</code>.</li>
@@ -164,7 +165,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
   <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du überall im gleichen Stil wie beim Abschließen Schritt für Schritt an. Jeder Weg zum Anlegen öffnet diesen Assistenten:</p>
   <ul>
-    <li><b>Neue Zuweisung</b> in der Navigation und als Schnellaktion auf dem Dashboard,</li>
+    <li><b>Neue Zuweisung</b> in der Navigation und als Schnellaktion auf dem Dashboard – Aufgaben und Wartungen legen dort nur <b>Administratoren und Manager</b> an, alle anderen Tickets und Störungen,</li>
     <li>die Schnellaktionen <b>Störung melden</b> und <b>Ticket anlegen</b>,</li>
     <li><b>Neu</b> in der Ticket- und Störungsliste, <b>Neue Aufgabe</b>, in der Wartung <b>Einzelauftrag</b>,</li>
     <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
@@ -272,6 +273,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-broker"}}
   <p>Meldungen aus dem Leitstand sind nie zugewiesen – das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen; im Verlauf des Vorgangs steht, an wen er verteilt wurde. Offene, unzugewiesene Tickets und Störungen findest du in der Liste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen und der Leitstand weist darauf hin.</p>
   {{template "hb-shots" (dict "Ref" (index $s "dashboard") "Can" $can)}}
+  <div class="hb-howto"><b><i class="ti ti-inbox"></i> Schnelleinstieg für Broker: noch nicht zugewiesen</b>Bist du Broker (Benutzerstamm), zeigt <b>Neue Zuweisung</b> unter dem Formular je Art, für die du Broker bist, die offenen Vorgänge <b>ohne Zuweisung</b> – neueste zuerst, mit Priorität, Anlage und wie lange sie schon warten. Wartungen erscheinen, sobald ihr Vorlauf begonnen hat.
+    <ol class="hb-steps">
+      <li><b>Neue Zuweisung</b> öffnen – die Liste steht unter dem Formular („Noch nicht zugewiesen“).</li>
+      <li>Einen Eintrag antippen: Der Vorgang öffnet sich, dort weist du ihn einer Person oder Gruppe zu.</li>
+      <li><b>alle anzeigen</b> führt zur Liste der Art (bei Tickets und Störungen gleich im Reiter „Ohne Zuweisung“).</li>
+    </ol></div>
 </section>
 
 <section class="hb-ch" id="faults" data-title="Störungen" data-pages="faults">
@@ -328,7 +335,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Jahresplan</b> – je Plan eine Zeile, je Monat eine Spalte: ✓ erledigt, ● offen (rot, wenn überfällig), ○ geplant. Ein Klick öffnet den Auftrag bzw. den Plan.</li>
     <li><b>Pläne</b> – alle Pläne mit Intervall, Checklisten samt Takt und nächstem Termin.</li>
     <li><b>Rundgänge</b> – die Kontrollrundgänge mit ihren Stationen und dem Knopf <b>Rundgang starten</b> (siehe unten).</li>
-    <li><b>Erledigt</b> – die letzten Wartungen mit Protokoll-PDF; Abweichungen (Werte außerhalb Min/Max) sind markiert.</li>
+    <li><b>Archiv</b> – alle abgeschlossenen Wartungen, siehe unten.</li>
     <li><b>Checklisten</b> – die Vorlagen bearbeiten.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So führst du eine Wartung durch</b>
@@ -358,6 +365,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b>. Der erste Auftrag ist sofort da. Änderungen am Plan übernimmt der offene Auftrag, solange daran noch nichts erfasst ist.</li>
     </ol>
     Ein Plan, der eine Zeit nicht gebraucht wird, lässt sich <b>ruhen lassen</b> – sein offener Auftrag verschwindet, beim <b>Aktivieren</b> kommt er wieder. Aufträge ohne Plan legst du mit <b>Einzelauftrag</b> an.</div>
+  <div class="hb-howto"><b><i class="ti ti-archive"></i> Erledigte Checklisten im Archiv ansehen</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Archiv</b> öffnen. Die neuesten Wartungen stehen oben, je Seite 50 – mit „Ältere“ blätterst du weiter.</li>
+      <li>Eingrenzen mit <b>Suche</b> (Titel, Anlage, Plan, Bemerkung), <b>Anlage</b> (inklusive Unteranlagen und Rundgang-Stationen), <b>Plan</b>, Zeitraum <b>von/bis</b>, <b>erledigt/übersprungen</b> und <b>nur mit Abweichungen</b> – dann <b>Filtern</b>.</li>
+      <li>Jede Zeile zeigt, wer die Wartung ausgeführt hat, Abweichungen (⚠ außerhalb Min/Max, nicht abgehakt), die Zahl der Fotos und das Protokoll-PDF.</li>
+      <li>Auf <i class="ti ti-chevron-right"></i> oder <b>Punkte</b> tippen: Die Checkliste klappt auf – jeder Punkt mit Wert, Vorgabe, wer ihn wann erfasst hat und den Fotos. Bei Rundgängen nach Stationen gegliedert.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-route"></i> Kontrollrundgang</b>Ein Kontrollrundgang führt nacheinander über mehrere Anlagen – z. B. der Schichtrundgang durch Halle 2. Jede <b>Station</b> ist eine Anlage mit einer kurzen Checkliste. Termine, Anstehend, Jahresplan, Leitstand, Protokoll-PDF und Rückmeldung laufen wie bei jedem Wartungsplan.
     <ol class="hb-steps">
       <li>Reiter <b>Rundgänge</b> → <b>Neuer Rundgang</b>.</li>
@@ -371,10 +385,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-list-check"></i> Checklisten einrichten</b>
     <ol class="hb-steps">
       <li>Reiter <b>Checklisten</b> öffnen und eine Checkliste anlegen – am besten je Takt eine eigene, z. B. „Säge – jedes Mal“ und „Säge – monatlich“.</li>
-      <li>Punkte hinzufügen, jeweils mit einer Art:
+      <li>Punkte hinzufügen: Name eintragen, Art wählen und <b>+ Punkt</b>. Du bleibst danach im Anlegen – Art, Pflicht und Einheit bleiben stehen, der Cursor steht wieder im Namensfeld, so legst du mehrere Punkte hintereinander an. Die Arten:
         <ul>
           <li><b>Abhaken</b> – erledigt / nicht erledigt.</li>
-          <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>.</li>
+          <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>; die Felder erscheinen beim Anlegen direkt, sobald „Messwert“ gewählt ist.</li>
           <li><b>Freitext</b> – Beobachtungen, Zählerstände o. Ä.</li>
         </ul>
         <b>Pflicht</b> (✱) heißt: ohne diesen Punkt kein Abschluss.</li>

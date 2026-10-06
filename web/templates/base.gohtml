@@ -176,6 +176,7 @@ html.nav-editing .nav-fold i{display:none}
 .nav-gdel{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 0 0 6px}
 .nav-ghost{opacity:.4}
 html.sidebar-left-collapsed .nav-edit-bar{display:none}
+html:not(.nav-editing) .nav-edit-bar{display:none}
 html.sidebar-left-collapsed .nav-group.folded{display:block}
 .nav-item{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:var(--muted);border-left:2px solid transparent;transition:all .15s}
 .nav-item:hover{color:var(--text);background:var(--bg3)}
@@ -589,7 +590,6 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     </div>
     {{end}}
     <div class="nav-edit-bar">
-      <button type="button" class="nav-edit-btn" id="nav-edit-start" onclick="pdhNavEdit(true)"><i class="ti ti-adjustments-horizontal"></i><span class="nav-label">{{t "Navigation anpassen"}}</span></button>
       <div class="nav-edit-tools" style="display:none">
         <button type="button" onclick="pdhNavAddGroup()"><i class="ti ti-folder-plus"></i> {{t "Gruppe"}}</button>
         <button type="button" onclick="pdhNavReset()" title="{{t "Vorgabe wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
@@ -617,8 +617,8 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
   function pdhNavEdit(on){
     const html = document.documentElement;
     if(on && html.classList.contains('sidebar-left-collapsed')) toggleSidebar('left');
+    if(on && typeof pdhNav === 'function') pdhNav(true); // schmale Ansicht: Navigation einblenden
     html.classList.toggle('nav-editing', on);
-    document.getElementById('nav-edit-start').style.display = on ? 'none' : '';
     document.querySelectorAll('.nav-edit-tools,.nav-edit-hint').forEach(e => e.style.display = on ? '' : 'none');
     if(!on){ pdhNavSortables.forEach(s => s.destroy()); pdhNavSortables = []; return; }
     document.querySelectorAll('#pdh-nav .nav-fold').forEach(pdhNavHeaderEdit);
@@ -626,6 +626,11 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     if(window.Sortable) start();
     else { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js'; sc.onload = start; document.head.appendChild(sc); }
     document.querySelectorAll('#pdh-nav .nav-item').forEach(a => a.addEventListener('click', pdhNavNoClick));
+  }
+  // Dashboard anpassen (Benutzermenue): auf dem Dashboard direkt, sonst dorthin wechseln
+  function pdhDashboardEdit(){
+    if(typeof window.dwEdit === 'function' && document.getElementById('dw-root')){ window.dwEdit(true); document.getElementById('dw-root').scrollIntoView({block: 'start'}); }
+    else location.href = '/?dwedit=1';
   }
   function pdhNavNoClick(e){ if(document.documentElement.classList.contains('nav-editing')) e.preventDefault(); }
   function pdhNavHeaderEdit(btn){
@@ -735,6 +740,8 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
           <a href="#" class="menu-item" onclick="pdhTour.start('basics'); return false;"><i class="ti ti-map-2"></i>{{t "Rundgang durch PDH"}}</a>
+          <a href="#" class="menu-item" id="um-dw-edit" onclick="closeMenu('user-menu'); pdhDashboardEdit(); return false;"><i class="ti ti-layout-dashboard"></i>{{t "Dashboard anpassen"}}</a>
+          <a href="#" class="menu-item" id="um-nav-edit" onclick="closeMenu('user-menu'); pdhNavEdit(true); return false;"><i class="ti ti-adjustments-horizontal"></i>{{t "Navigation anpassen"}}</a>
           {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>{{t "Im Chat teilen"}}</a>{{end}}
           <div class="pal-menu look-menu">
             <div class="pal-menu-t"><i class="ti ti-palette"></i>{{t "Darstellung"}}</div>
@@ -866,6 +873,10 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
   <!-- Aktivität -->
   <div class="ctx-section grow" data-context-panel="activity">
     <div class="ctx-title"><i class="ti ti-bell"></i>{{t "Aktivität"}}</div>
+    {{template "presence-style"}}
+    <div id="pres-box" hx-get="/api/presence" hx-trigger="load, every 30s" aria-live="polite">
+      <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
+    </div>
     <div id="activity-feed"
       hx-get="/api/activity"
       hx-trigger="load, every 30s">

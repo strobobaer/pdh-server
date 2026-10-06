@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-06T15:28:08.366Z",
+  "generatedAt": "2026-10-06T16:16:54.816Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1106,6 +1106,17 @@
       "sqlHash": "2c37cd9cee6c44f86000b4c7d37d618c9d618bf6d91c0b119563342f93d057eb",
       "title": "Kontrollrundgang: ein Wartungsplan, der nacheinander mehrere Anlagen",
       "updatedAt": "2026-10-06T15:28:07.722Z"
+    },
+    {
+      "createdAt": "2026-10-06T16:16:08.447Z",
+      "path": "migrations/103_users_last_seen.up.sql",
+      "catalogContext": null,
+      "searchText": "anwesenheit: wann war ein benutzer zuletzt in pdh aktiv (seitenleiste „aktivität“). migrations/103_users_last_seen.up.sql -- anwesenheit: wann war ein benutzer zuletzt in pdh aktiv (seitenleiste „aktivität“).\nalter table users add column if not exists last_seen_at timestamptz;\n",
+      "searchUpdatedAt": "2026-10-06T16:16:54.280Z",
+      "schemaContext": null,
+      "sqlHash": "8b0e7a809558286541582f183ed67b3ea5a8e8409aa2dabceee14dc36210a7c6",
+      "title": "Anwesenheit: wann war ein Benutzer zuletzt in PDH aktiv (Seitenleiste „Aktivität“).",
+      "updatedAt": "2026-10-06T16:16:54.187Z"
     }
   ]
 }

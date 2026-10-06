@@ -10,6 +10,22 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.35.0] – 2026-10-06
+
+### Neu
+- Wartung: neuer Reiter „Archiv“ (ersetzt „Erledigt“) mit Suche, Filter nach Anlage (inkl. Unteranlagen und Rundgang-Stationen), Plan, Zeitraum, Status und „nur mit Abweichungen“, seitenweise
+- Im Archiv klappt die erledigte Checkliste direkt auf – jeder Punkt mit Wert, Vorgabe, wer ihn wann erfasst hat und den Fotos; dazu Ausführende, Fotozahl und Protokoll-PDF je Wartung
+- Seitenleiste „Aktivität“: wer gerade online ist und wer nicht – mit „zuletzt gesehen“
+- Neue Zuweisung: Broker sehen je Art die offenen, noch nicht zugewiesenen Vorgänge als Schnelleinstieg
+
+### Geändert
+- Checklisten: Nach „+ Punkt“ bleibt das Anlegen offen – Art, Pflicht und Einheit bleiben stehen, der Cursor steht im Namensfeld; Messwert-Vorgaben (Einheit, Soll, Min, Max) gibt man gleich beim Anlegen ein
+- „Dashboard anpassen“ und „Navigation anpassen“ stehen jetzt im Benutzermenü
+- Neue Zuweisung: Aufgaben und Wartungen legen dort nur Administratoren und Manager an
+
+### Behoben
+- Übersprungene Wartungen erscheinen im Archiv mit dem Datum des Überspringens statt mit dem Fälligkeitsdatum
+
 ## [0.34.0] – 2026-10-06
 
 ### Neu

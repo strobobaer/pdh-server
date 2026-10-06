@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,7 +117,21 @@ type doneRow struct {
 	Points, OutOfRange   int
 	Unchecked            int
 	ProtocolURL, Skipped string
+	Executors            string
+	Photos               int
 }
+
+// maintArchive: Filter und Seite des Archivs (Reiter „Archiv“).
+type maintArchive struct {
+	Q, Infra, Plan, From, To, Status string
+	Deviations                       bool
+	Total, Page, Pages               int
+	PrevURL, NextURL                 string
+	PlanOptions                      []UserOption
+	Filtered                         bool
+}
+
+const maintArchivePageSize = 50
 
 type MaintenancePageData struct {
 	BaseData
@@ -135,14 +150,18 @@ type MaintenancePageData struct {
 	Months       []string
 	YearRows     []yearRow
 	Done         []doneRow
+	Archive      maintArchive
 }
 
 func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
 	view := q.Get("view")
+	if view == "done" {
+		view = "archive" // fruehere Adresse des Reiters „Erledigt“
+	}
 	switch view {
-	case "year", "plans", "rounds", "done", "checklists":
+	case "year", "plans", "rounds", "archive", "checklists":
 	default:
 		view = "due"
 	}
@@ -215,35 +234,86 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	case "done":
-		tasks, _ := repo.FindTasks(ctx, maintenance.TaskFilter{Closed: true, Limit: 200})
-		var ids []string
-		for _, t := range tasks {
-			if taskScope == nil || taskScope[t.ID] {
-				ids = append(ids, t.ID)
-			}
-		}
-		sums, _ := repo.StepSummaries(ctx, ids)
-		pdfs := h.maintProtocolURLs(ctx, ids)
-		for _, t := range tasks {
-			if taskScope != nil && !taskScope[t.ID] {
-				continue
-			}
-			row := doneRow{Task: t, ProtocolURL: pdfs[t.ID]}
-			if t.CompletedAt != nil {
-				row.Completed = t.CompletedAt.Local().Format("02.01.2006 15:04")
-			} else {
-				row.Completed = deDate(t.DueDate)
-			}
-			if t.DurationMin != nil && *t.DurationMin > 0 {
-				row.Duration = durationText(*t.DurationMin)
-			}
-			s := sums[t.ID]
-			row.Points, row.OutOfRange, row.Unchecked = s.Total, s.OutOfRange, s.Unchecked
-			data.Done = append(data.Done, row)
-		}
+	case "archive":
+		h.maintArchiveRows(ctx, r, &data, taskScope)
 	}
 	h.render(w, "maintenance", data)
+}
+
+// maintArchiveRows: abgeschlossene Auftraege mit Filtern, seitenweise (neueste zuerst).
+func (h *Handler) maintArchiveRows(ctx context.Context, r *http.Request, data *MaintenancePageData, scope map[string]bool) {
+	q := r.URL.Query()
+	a := &data.Archive
+	a.Q, a.Infra, a.Plan = strings.TrimSpace(q.Get("q")), q.Get("infra"), q.Get("plan")
+	a.From, a.To, a.Status, a.Deviations = q.Get("from"), q.Get("to"), q.Get("status"), q.Get("dev") == "1"
+	a.Filtered = a.Q != "" || a.Infra != "" || a.Plan != "" || a.From != "" || a.To != "" || a.Status != "" || a.Deviations
+	a.Page = 1
+	if p, err := strconv.Atoi(q.Get("page")); err == nil && p > 1 {
+		a.Page = p
+	}
+	f := maintenance.ArchiveFilter{Query: a.Q, InfraID: a.Infra, PlanID: a.Plan, Status: a.Status, Deviations: a.Deviations,
+		Limit: maintArchivePageSize, Offset: (a.Page - 1) * maintArchivePageSize}
+	if d, err := time.ParseInLocation("2006-01-02", a.From, time.Local); err == nil {
+		f.From = &d
+	}
+	if d, err := time.ParseInLocation("2006-01-02", a.To, time.Local); err == nil {
+		f.To = &d
+	}
+	if scope != nil {
+		f.OnlyIDs = []string{}
+		for id, ok := range scope {
+			if ok {
+				f.OnlyIDs = append(f.OnlyIDs, id)
+			}
+		}
+	}
+	entries, total, err := h.maint.Repo().ArchiveTasks(ctx, f)
+	if err != nil {
+		componentLog("wartung").Warn().Err(err).Msg("archiv nicht ladbar")
+	}
+	a.Total = total
+	a.Pages = (total + maintArchivePageSize - 1) / maintArchivePageSize
+	pageURL := func(p int) string {
+		v := r.URL.Query()
+		v.Set("view", "archive")
+		v.Set("page", strconv.Itoa(p))
+		return "/maintenance?" + v.Encode()
+	}
+	if a.Page > 1 {
+		a.PrevURL = pageURL(a.Page - 1)
+	}
+	if a.Page < a.Pages {
+		a.NextURL = pageURL(a.Page + 1)
+	}
+	var ids []string
+	for _, e := range entries {
+		ids = append(ids, e.Task.ID)
+	}
+	pdfs := h.maintProtocolURLs(ctx, ids)
+	for _, e := range entries {
+		t := e.Task
+		row := doneRow{Task: t, ProtocolURL: pdfs[t.ID], Executors: e.Executors, Photos: e.Photos,
+			Completed: e.Closed.Local().Format("02.01.2006 15:04")}
+		if t.DurationMin != nil && *t.DurationMin > 0 {
+			row.Duration = durationText(*t.DurationMin)
+		}
+		row.Points, row.OutOfRange, row.Unchecked = e.Summary.Total, e.Summary.OutOfRange, e.Summary.Unchecked
+		data.Done = append(data.Done, row)
+	}
+	// Auswahllisten: Anlagen (mit Pfad) und Plaene
+	for _, o := range h.maintInfraList(ctx) {
+		data.InfraOptions = append(data.InfraOptions, UserOption{ID: o.ID, Name: o.Path})
+	}
+	if plans, err := h.maint.Repo().ListPlans(ctx, "", true); err == nil {
+		for _, p := range plans {
+			name := p.Name
+			if p.IsRound {
+				name += " (Rundgang)"
+			}
+			a.PlanOptions = append(a.PlanOptions, UserOption{ID: p.ID, Name: name})
+		}
+		sort.Slice(a.PlanOptions, func(i, j int) bool { return a.PlanOptions[i].Name < a.PlanOptions[j].Name })
+	}
 }
 
 // maintDueGroups: offene Auftraege nach Dringlichkeit; spaetere (vor dem Vorlauf) nur gezaehlt.
@@ -499,15 +569,22 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "maintenance_plan", data)
 }
 
+type maintInfraOpt struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
+	Path     string `json:"path"`
+}
+
 // maintInfraOptions: aktive Anlagen mit Pfad („Halle 2 › Linie 1 › Presse 3“) fuer die Stationen eines Rundgangs.
 func (h *Handler) maintInfraOptions(ctx context.Context) template.JS {
-	type opt struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		ParentID string `json:"parent_id"`
-		Path     string `json:"path"`
-	}
-	out := []opt{}
+	b, _ := json.Marshal(h.maintInfraList(ctx))
+	return template.JS(b)
+}
+
+// maintInfraList: aktive Anlagen mit Pfad, nach Pfad sortiert.
+func (h *Handler) maintInfraList(ctx context.Context) []maintInfraOpt {
+	out := []maintInfraOpt{}
 	rows, err := h.db.Query(ctx, `WITH RECURSIVE t AS (
 			SELECT id, parent_id, name, name::text AS path, 0 AS depth FROM infrastructure WHERE parent_id IS NULL AND active
 			UNION ALL
@@ -517,14 +594,13 @@ func (h *Handler) maintInfraOptions(ctx context.Context) template.JS {
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
-			var o opt
+			var o maintInfraOpt
 			if rows.Scan(&o.ID, &o.ParentID, &o.Name, &o.Path) == nil {
 				out = append(out, o)
 			}
 		}
 	}
-	b, _ := json.Marshal(out)
-	return template.JS(b)
+	return out
 }
 
 func (h *Handler) MaintenancePlanDuplicateWeb(w http.ResponseWriter, r *http.Request) {

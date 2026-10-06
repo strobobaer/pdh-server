@@ -15,8 +15,8 @@
   <div class="card-title">Art des Vorgangs</div>
   <div id="assign-type-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <button type="button" class="btn btn-primary" data-assign-type="ticket" onclick="setAssignType('ticket')"><i class="ti ti-ticket"></i> Ticket</button>
-    <button type="button" class="btn" data-assign-type="task" onclick="setAssignType('task')"><i class="ti ti-list-check"></i> Aufgabe</button>
-    <button type="button" class="btn" data-assign-type="maintenance" onclick="setAssignType('maintenance')"><i class="ti ti-tool"></i> Wartung</button>
+    {{if .CanCreateRestricted}}<button type="button" class="btn" data-assign-type="task" onclick="setAssignType('task')"><i class="ti ti-list-check"></i> Aufgabe</button>
+    <button type="button" class="btn" data-assign-type="maintenance" onclick="setAssignType('maintenance')"><i class="ti ti-tool"></i> Wartung</button>{{end}}
     <button type="button" class="btn" data-assign-type="fault" onclick="setAssignType('fault')"><i class="ti ti-alert-triangle"></i> Störung</button>
   </div>
 
@@ -79,7 +79,45 @@
       <button type="submit" class="btn btn-primary" id="assign-submit"><i class="ti ti-device-floppy"></i> Anlegen und zuweisen</button>
     </div>
   </form>
+  {{if not .CanCreateRestricted}}<p class="as-note"><i class="ti ti-lock"></i> Aufgaben und Wartungen legen hier nur Administratoren und Manager an.</p>{{end}}
 </div>
+
+{{if .Unassigned}}
+<div class="card as-unassigned" style="max-width:720px;margin-top:12px">
+  <div class="card-title"><i class="ti ti-inbox"></i> Noch nicht zugewiesen <span class="as-sub">– Schnelleinstieg für dich als Broker</span></div>
+  {{range .Unassigned}}
+  <div class="as-group">
+    <div class="as-group-head"><i class="ti {{.Icon}}"></i> {{.Label}} <span class="badge {{if .Items}}b-amber{{else}}b-gray{{end}}">{{len .Items}}{{if .More}}+{{.More}}{{end}}</span>
+      <a class="as-all" href="{{.ListURL}}">alle anzeigen <i class="ti ti-arrow-right"></i></a></div>
+    {{if .Items}}
+    <ul class="as-list">
+      {{range .Items}}<li><a href="{{.Href}}">
+        <span class="act-dot {{if eq .Priority "critical"}}d-red{{else if eq .Priority "high"}}d-amber{{else}}d-blue{{end}}" title="{{.PrioLabel}}"></span>
+        <span class="as-title">{{.Title}}</span>
+        <span class="as-meta">{{if .Infra}}{{.Infra}} · {{end}}{{.Age}}</span>
+        <i class="ti ti-chevron-right"></i></a></li>{{end}}
+    </ul>
+    {{else}}<div class="as-empty"><i class="ti ti-check"></i> Alles zugewiesen.</div>{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+<style>
+.as-note{font-size:12px;color:var(--muted);margin:12px 0 0;display:flex;gap:6px;align-items:center}
+.as-sub{font-weight:400;color:var(--muted);font-size:12px}
+.as-group{margin-top:10px}
+.as-group-head{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px}
+.as-group-head .as-all{margin-left:auto;font-size:12px;font-weight:400;color:var(--accent)}
+.as-list{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.as-list li + li{border-top:1px solid var(--border)}
+.as-list a{display:flex;align-items:center;gap:8px;padding:8px 10px;color:var(--text);text-decoration:none;font-size:13px}
+.as-list a:hover{background:var(--bg3)}
+.as-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-meta{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.as-list .ti-chevron-right{color:var(--muted)}
+.as-empty{font-size:12px;color:var(--muted);padding:2px 0}
+@media(max-width:600px){.as-meta{display:none}}
+</style>
 {{end}}
 
 {{define "scripts"}}
