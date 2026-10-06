@@ -122,8 +122,9 @@ func (s *Service) DeactivatePlanForAPI(r *http.Request, planID string) error {
 	return s.repo.DeletePlanSoft(r.Context(), planID)
 }
 
+// DueChecklistItemsForTaskForAPI: ?template_ids=a,b nimmt zusaetzlich ausgewaehlte Checklisten auf.
 func (s *Service) DueChecklistItemsForTaskForAPI(r *http.Request, taskID string) ([]*TaskChecklistItem, error) {
-	return s.repo.DueChecklistItemsForTask(r.Context(), taskID)
+	return s.repo.DueChecklistItemsForTask(r.Context(), taskID, strings.Split(r.URL.Query().Get("template_ids"), ",")...)
 }
 
 func (s *Service) SaveTaskChecklistForAPI(r *http.Request, taskID, userID string, in saveTaskChecklistInput) error {
@@ -237,6 +238,7 @@ func (h *Handler) DeactivatePlan(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DueChecklistItemsForTask(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.DueChecklistItemsForTaskForAPI(r, chi.URLParam(r, "taskID"))
 	if err != nil { response.Error(w, 500, err.Error()); return }
+	if items == nil { items = []*TaskChecklistItem{} }
 	response.JSON(w, 200, items)
 }
 

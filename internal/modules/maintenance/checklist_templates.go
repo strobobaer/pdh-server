@@ -56,6 +56,11 @@ type ChecklistTemplateItem struct {
 type TaskChecklistItem struct {
 	ID             string     `json:"id"`
 	TemplateItemID string     `json:"template_item_id"`
+	// Checkliste (Vorlage), zu der der Punkt gehoert – fuer die Auswahl beim Abarbeiten
+	TemplateID     string     `json:"template_id"`
+	TemplateName   string     `json:"template_name"`
+	// Assigned: Vorlage haengt am Wartungsplan (sonst am Auftrag ausgewaehlt)
+	Assigned       bool       `json:"assigned"`
 	Label          string     `json:"label"`
 	Description    string     `json:"description"`
 	ItemType       string     `json:"item_type"`
@@ -250,14 +255,22 @@ func (r *Repository) DeletePlanSoft(ctx context.Context, planID string) error {
 	return err
 }
 
-func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string) ([]*TaskChecklistItem, error) {
+// DueChecklistItemsForTask liefert die faelligen Punkte der Checklisten eines Auftrags:
+// die am Wartungsplan hinterlegten, die schon an diesem Auftrag bearbeiteten und die
+// zusaetzlich ausgewaehlten (extraTemplateIDs). Eigene Ergebnisse dieses Auftrags zaehlen
+// nicht als "zuletzt erledigt" – so bleiben Punkte beim schrittweisen Abarbeiten sichtbar.
+func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string, extraTemplateIDs ...string) ([]*TaskChecklistItem, error) {
 	if err := r.ensureChecklistTemplateTables(ctx); err != nil { return nil, err }
+	extra := []string{}
+	for _, id := range extraTemplateIDs {
+		if id = strings.TrimSpace(id); id != "" { extra = append(extra, id) }
+	}
 	rows, err := r.db.Query(ctx, `
 		WITH task_plan AS (
 			SELECT mt.id AS task_id, mt.plan_id
 			FROM maintenance_tasks mt
 			WHERE mt.id=$1 AND mt.plan_id IS NOT NULL
-		), template_ids AS (
+		), plan_templates AS (
 			SELECT pct.template_id
 			FROM task_plan tp
 			JOIN maintenance_plan_checklist_templates pct ON pct.plan_id=tp.plan_id
@@ -266,28 +279,41 @@ func (r *Repository) DueChecklistItemsForTask(ctx context.Context, taskID string
 			FROM task_plan tp
 			JOIN maintenance_plans mp ON mp.id=tp.plan_id
 			WHERE mp.checklist_template_id IS NOT NULL
+		), template_ids AS (
+			SELECT template_id, true AS assigned FROM plan_templates
+			UNION
+			SELECT ci.template_id, false
+			FROM maintenance_task_checklist_results cr
+			JOIN maintenance_checklist_template_items ci ON ci.id=cr.template_item_id
+			WHERE cr.task_id=$1 AND ci.template_id NOT IN (SELECT template_id FROM plan_templates)
+			UNION
+			SELECT t.id, false
+			FROM maintenance_checklist_templates t
+			WHERE t.active=true AND t.id::text = ANY($2::text[]) AND t.id NOT IN (SELECT template_id FROM plan_templates)
 		), last_done AS (
 			SELECT template_item_id, max(checked_at) AS last_done_at
 			FROM maintenance_task_checklist_results
-			WHERE done=true AND checked_at IS NOT NULL
+			WHERE done=true AND checked_at IS NOT NULL AND task_id<>$1
 			GROUP BY template_item_id
 		)
-		SELECT COALESCE(r.id::text,''), i.id::text, i.label, i.description, i.item_type, i.required, i.interval_days,
+		SELECT COALESCE(r.id::text,''), i.id::text, t.id::text, t.name, ti.assigned,
+		       i.label, i.description, i.item_type, i.required, i.interval_days,
 		       COALESCE(r.value,''), COALESCE(r.done,false), ld.last_done_at,
 		       i.unit, i.target_value::float8, i.min_value::float8, i.max_value::float8, r.in_range
-		FROM template_ids ti
+		FROM (SELECT DISTINCT ON (template_id) template_id, assigned FROM template_ids ORDER BY template_id, assigned DESC) ti
+		JOIN maintenance_checklist_templates t ON t.id=ti.template_id
 		JOIN maintenance_checklist_template_items i ON i.template_id=ti.template_id AND i.active=true
 		LEFT JOIN maintenance_task_checklist_results r ON r.task_id=$1 AND r.template_item_id=i.id
 		LEFT JOIN last_done ld ON ld.template_item_id=i.id
 		WHERE ld.last_done_at IS NULL OR ld.last_done_at + (i.interval_days || ' days')::interval <= NOW()
-		ORDER BY i.sort_order, i.label`, taskID)
+		ORDER BY NOT ti.assigned, lower(t.name), t.id, i.sort_order, i.label`, taskID, extra)
 	if err != nil { return nil, err }
 	defer rows.Close()
 	var out []*TaskChecklistItem
 	for rows.Next() {
 		item := &TaskChecklistItem{}
 		var resultID string
-		if err := rows.Scan(&resultID, &item.TemplateItemID, &item.Label, &item.Description, &item.ItemType, &item.Required, &item.IntervalDays, &item.Value, &item.Done, &item.LastDoneAt, &item.Unit, &item.TargetValue, &item.MinValue, &item.MaxValue, &item.InRange); err != nil { return nil, err }
+		if err := rows.Scan(&resultID, &item.TemplateItemID, &item.TemplateID, &item.TemplateName, &item.Assigned, &item.Label, &item.Description, &item.ItemType, &item.Required, &item.IntervalDays, &item.Value, &item.Done, &item.LastDoneAt, &item.Unit, &item.TargetValue, &item.MinValue, &item.MaxValue, &item.InRange); err != nil { return nil, err }
 		item.ID = resultID
 		out = append(out, item)
 	}

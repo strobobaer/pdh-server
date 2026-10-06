@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.27.0] – 2026-10-06
+
+### Neu
+- Wartung abschließen: Die Checklistenpunkte werden Schritt für Schritt abgearbeitet – ein Punkt auf einmal mit Fortschritt, Zurück/Weiter und Übersicht am Ende
+- Jeder Checklisten-Schritt wird beim „Weiter“ gespeichert; nach einer Unterbrechung geht es am offenen Punkt weiter
+- Zu einem Wartungsauftrag lässt sich eine weitere Checklisten-Vorlage auswählen – auch bei Aufträgen ohne Wartungsplan
+
 ## [0.26.0] – 2026-10-05
 
 ### Neu

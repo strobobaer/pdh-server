@@ -94,7 +94,8 @@ func TestChecklistAndPlanResponsibleIntegration(t *testing.T) {
 
 	due, err := repo.DueChecklistItemsForTask(ctx, task.ID)
 	must(err)
-	if len(due) != 3 || due[0].MaxValue == nil || *due[0].MaxValue != 7 || len(due[0].RefImages) != 1 {
+	if len(due) != 3 || due[0].MaxValue == nil || *due[0].MaxValue != 7 || len(due[0].RefImages) != 1 ||
+		due[0].TemplateID != tpl.ID || due[0].TemplateName != tpl.Name || !due[0].Assigned {
 		t.Fatalf("fällige Punkte: %+v", due)
 	}
 
@@ -135,11 +136,41 @@ func TestChecklistAndPlanResponsibleIntegration(t *testing.T) {
 	if !proto[1].Done || proto[2].Value != "leichte Leckage" {
 		t.Fatalf("Checkbox/Freitext: %+v / %+v", proto[1], proto[2])
 	}
-	// erledigt -> heute nicht mehr faellig
+	// am selben Auftrag bleiben die Punkte samt Werten sichtbar (schrittweises Abarbeiten)
 	due, err = repo.DueChecklistItemsForTask(ctx, task.ID)
+	must(err)
+	if len(due) != 3 || due[0].Value != "8,5" || !due[1].Done {
+		t.Fatalf("eigene Ergebnisse am Auftrag: %+v", due)
+	}
+	// erledigt -> fuer den naechsten Auftrag heute nicht mehr faellig
+	next := &MaintenanceTask{PlanID: &plan.ID, Title: plan.Name, Type: "preventive", InfrastructureID: infraID,
+		Priority: PrioMedium, DueDate: time.Now(), CreatedBy: userID}
+	must(repo.CreateTask(ctx, next))
+	due, err = repo.DueChecklistItemsForTask(ctx, next.ID)
 	must(err)
 	if len(due) != 0 {
 		t.Fatalf("nach Erledigung noch %d fällig", len(due))
+	}
+
+	// Auftrag ohne Plan: ausgewaehlte Checkliste wird abgearbeitet und bleibt danach haengen
+	tpl2, err := repo.CreateChecklistTemplate(ctx, "Sonder "+suffix, "", userID)
+	must(err)
+	extra := &ChecklistTemplateItem{TemplateID: tpl2.ID, Label: "Öl prüfen", ItemType: "checkbox", IntervalDays: 1, SortOrder: 1}
+	must(repo.CreateChecklistTemplateItem(ctx, extra))
+	adhoc := &MaintenanceTask{Title: "Sonder " + suffix, Type: "inspection", InfrastructureID: infraID,
+		Priority: PrioMedium, DueDate: time.Now(), CreatedBy: userID}
+	must(repo.CreateTask(ctx, adhoc))
+	if due, err = repo.DueChecklistItemsForTask(ctx, adhoc.ID); err != nil || len(due) != 0 {
+		t.Fatalf("ohne Plan und Auswahl: %d / %v", len(due), err)
+	}
+	due, err = repo.DueChecklistItemsForTask(ctx, adhoc.ID, tpl2.ID)
+	must(err)
+	if len(due) != 1 || due[0].TemplateID != tpl2.ID || due[0].Assigned {
+		t.Fatalf("ausgewählte Checkliste: %+v", due)
+	}
+	must(repo.SaveTaskChecklistResults(ctx, adhoc.ID, userID, map[string]string{extra.ID: "erledigt"}, map[string]bool{extra.ID: true}))
+	if due, err = repo.DueChecklistItemsForTask(ctx, adhoc.ID); err != nil || len(due) != 1 || !due[0].Done {
+		t.Fatalf("bearbeitete Checkliste bleibt am Auftrag: %+v / %v", due, err)
 	}
 }
 
