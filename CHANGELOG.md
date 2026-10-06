@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.31.1] – 2026-10-06
+
+### Behoben
+- Leitstand: Wartungen (und andere Vorgänge) lassen sich per Karte wieder fertig melden, auch wenn die Rolle der Person kein Bearbeiten-Recht für diese Vorgangsart hat – bisher brach der Abschluss-Assistent mit „Keine Berechtigung“ ab
+
 ## [0.31.0] – 2026-10-06
 
 ### Neu

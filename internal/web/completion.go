@@ -108,7 +108,10 @@ func (h *Handler) completionKind(w http.ResponseWriter, r *http.Request) (comple
 		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": tr(lang, "unbekannter Vorgang")})
 		return k, "", false
 	}
-	if !h.canFn(r)(k.EditPerm) {
+	// Fertigmeldung per Karte am Leitstand: das Token gilt nur fuer genau diesen
+	// Vorgang und die Person ist schon als Instandhaltung/IT geprueft – das
+	// Bearbeiten-Recht der Rolle (z. B. maintenance.edit) ist dort nicht noetig.
+	if !h.canFn(r)(k.EditPerm) && !boardCompleteFrom(r.Context()) {
 		completionJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": tr(lang, "Keine Berechtigung, diesen Vorgang zu bearbeiten.")})
 		return k, "", false
 	}
