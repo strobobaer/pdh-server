@@ -196,7 +196,7 @@ func (h *Handler) linkRecords(ctx context.Context, module, id string) linkGroup 
 			UNION ALL ` + ticket + ` WHERE t.infrastructure_id = $1::uuid AND t.status NOT IN ('resolved', 'closed')
 			UNION ALL ` + task + ` WHERE a.infrastructure_id = $1::uuid AND a.status NOT IN ('resolved', 'closed')
 			UNION ALL SELECT 'Wartung: ' || m.title, 'fällig ' || to_char(m.due_date, 'DD.MM.YYYY'), '/maintenance/tasks/' || m.id, m.status::text, 'ti-tool'
-			FROM maintenance_tasks m WHERE m.infrastructure_id = $1::uuid AND m.status IN ('open', 'in_progress')`
+			FROM maintenance_tasks m WHERE m.infrastructure_id = $1::uuid AND m.status IN ('open', 'in_progress', 'pending')`
 	default:
 		return g
 	}

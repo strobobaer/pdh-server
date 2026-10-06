@@ -241,7 +241,7 @@ func (h *Handler) userResponsibilities(ctx context.Context, id string) []userRes
 			SELECT 'Wartung', m.title, '/maintenance/tasks/' || m.id,
 			       CASE WHEN m.assigned_to = $1::uuid THEN 'Zuständig' ELSE 'Verantwortlich' END,
 			       m.status::text, to_char(m.due_date, 'DD.MM.YYYY'), m.created_at
-			FROM maintenance_tasks m WHERE $1::uuid IN (m.assigned_to, m.responsible_to) AND m.status IN ('open', 'in_progress') AND m.archived_at IS NULL
+			FROM maintenance_tasks m WHERE $1::uuid IN (m.assigned_to, m.responsible_to) AND m.status IN ('open', 'in_progress', 'pending') AND m.archived_at IS NULL
 			UNION ALL
 			SELECT 'Projekt', p.name, '/projects/' || p.id, 'Verantwortlich', p.status, COALESCE(to_char(p.end_date, 'DD.MM.YYYY'), ''), p.created_at
 			FROM projects p WHERE p.responsible_to = $1::uuid AND p.status <> 'completed'

@@ -56,7 +56,7 @@ func taskView(t *tasks.Task) TaskView {
 		ProjectName: t.ProjectName, ResponsibleName: t.ResponsibleName, InfraName: t.InfrastructureName,
 		Resolution: t.Resolution, RootCause: t.RootCause,
 		CreatedAgo: timeAgo(t.CreatedAt),
-		CanResolve: t.Status == "open" || t.Status == "in_progress",
+		CanResolve: t.Status == "open" || t.Status == "in_progress" || t.Status == "pending",
 		Color:      t.Color,
 	}
 	names := make([]string, 0, len(t.Assignees))
@@ -116,7 +116,7 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
 	data.Tabs = h.statusTabs(ctx, "tasks", "/tasks", filter, []statusTabDef{
-		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, false, listTabExtra{Key: "unassigned", Label: "Ohne Projekt", Icon: "ti-folder-off", Query: "unassigned=true",
 		Cond: "project_id IS NULL", Active: unassigned})
 
@@ -129,7 +129,7 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
 				continue
 			}
-			if t.Status == "open" || t.Status == "in_progress" {
+			if t.Status == "open" || t.Status == "in_progress" || t.Status == "pending" {
 				data.Open++
 			}
 			data.Tasks = append(data.Tasks, taskView(t))

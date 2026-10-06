@@ -100,13 +100,13 @@ func (h *Handler) globalBoardRecordActive(r *http.Request, refType, id string) b
 	var query string
 	switch refType {
 	case "fault":
-		query = `SELECT EXISTS(SELECT 1 FROM faults WHERE id=$1::uuid AND status IN ('detected','analyzing','in_progress'))`
+		query = `SELECT EXISTS(SELECT 1 FROM faults WHERE id=$1::uuid AND status IN ('detected','analyzing','in_progress','pending'))`
 	case "ticket":
 		query = `SELECT EXISTS(SELECT 1 FROM tickets WHERE id=$1::uuid AND status IN ('open','in_progress','pending'))`
 	case "maintenance":
-		query = `SELECT EXISTS(SELECT 1 FROM maintenance_tasks WHERE id=$1::uuid AND status IN ('open','in_progress'))`
+		query = `SELECT EXISTS(SELECT 1 FROM maintenance_tasks WHERE id=$1::uuid AND status IN ('open','in_progress','pending'))`
 	case "task":
-		query = `SELECT EXISTS(SELECT 1 FROM tasks WHERE id=$1::uuid AND status IN ('open','in_progress'))`
+		query = `SELECT EXISTS(SELECT 1 FROM tasks WHERE id=$1::uuid AND status IN ('open','in_progress','pending'))`
 	default:
 		return false
 	}
@@ -132,7 +132,7 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			// Aufgaben erlauben mehrere Zugewiesene (task_assignees) -
 			// "Annehmen" fuegt den annehmenden Mitarbeiter hinzu statt eine
 			// bestehende Zuweisung zu ersetzen.
-			result, err := h.db.Exec(ctx, `UPDATE tasks SET status='in_progress',updated_at=NOW() WHERE id=$1::uuid AND status IN ('open','in_progress')`, in.ID)
+			result, err := h.db.Exec(ctx, `UPDATE tasks SET status='in_progress',updated_at=NOW() WHERE id=$1::uuid AND status IN ('open','in_progress','pending')`, in.ID)
 			if err != nil {
 				return err
 			}
@@ -145,11 +145,11 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 		var query string
 		switch in.Type {
 		case "fault":
-			query = `UPDATE faults SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('detected','analyzing','in_progress')`
+			query = `UPDATE faults SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('detected','analyzing','in_progress','pending')`
 		case "ticket":
 			query = `UPDATE tickets SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`
 		case "maintenance":
-			query = `UPDATE maintenance_tasks SET assigned_to=$1::uuid,status='in_progress' WHERE id=$2::uuid AND status IN ('open','in_progress')`
+			query = `UPDATE maintenance_tasks SET assigned_to=$1::uuid,status='in_progress' WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`
 		}
 		result, err := h.db.Exec(ctx, query, in.AssignedTo, in.ID)
 		if err != nil {
@@ -159,17 +159,22 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			return fmt.Errorf("Der Vorgang wurde zwischenzeitlich geändert")
 		}
 	case "wait":
+		// Wiedervorlage: Termin verschieben und Status „Wartet“ setzen
+		var err error
 		switch in.Type {
 		case "fault":
-			return h.faults.UpdateDueDate(ctx, in.ID, followUpDate)
+			err = h.faults.UpdateDueDate(ctx, in.ID, followUpDate)
 		case "ticket":
-			return h.tickets.UpdateDueDate(ctx, in.ID, followUpDate)
+			err = h.tickets.UpdateDueDate(ctx, in.ID, followUpDate)
 		case "maintenance":
-			return h.maint.UpdateDueDate(ctx, in.ID, *followUpDate)
+			err = h.maint.UpdateDueDate(ctx, in.ID, *followUpDate)
 		case "task":
-			_, err := h.db.Exec(ctx, `UPDATE tasks SET due_date=$1::date,updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress')`, followUpDate.Format("2006-01-02"), in.ID)
+			_, err = h.db.Exec(ctx, `UPDATE tasks SET due_date=$1::date,updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`, followUpDate.Format("2006-01-02"), in.ID)
+		}
+		if err != nil {
 			return err
 		}
+		return h.setBoardWaiting(r, in.Type, in.ID, actorID, *followUpDate)
 	case "done":
 		switch in.Type {
 		case "fault":
@@ -228,7 +233,7 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 		case "ticket":
 			return h.tickets.QuickResolve(ctx, in.ID, "Verworfen: "+in.Comment, "", actorID)
 		case "maintenance":
-			result, err := h.db.Exec(ctx, `UPDATE maintenance_tasks SET status='skipped' WHERE id=$1::uuid AND status IN ('open','in_progress')`, in.ID)
+			result, err := h.db.Exec(ctx, `UPDATE maintenance_tasks SET status='skipped' WHERE id=$1::uuid AND status IN ('open','in_progress','pending')`, in.ID)
 			if err != nil {
 				return err
 			}
@@ -274,4 +279,30 @@ func writeGlobalBoardError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// setBoardWaiting: nach „Warten“ am Leitstand steht der Vorgang auf „Wartet“
+// (pending) – in allen Listen, nicht nur am Leitstand. Annehmen, „Geht noch
+// weiter“ oder Starten setzen ihn wieder auf „In Arbeit“.
+func (h *Handler) setBoardWaiting(r *http.Request, refType, id, actorID string, until time.Time) error {
+	table := map[string]string{"fault": "faults", "ticket": "tickets", "maintenance": "maintenance_tasks", "task": "tasks"}[refType]
+	if table == "" {
+		return fmt.Errorf("Unbekannter Vorgang")
+	}
+	ctx := r.Context()
+	var old string
+	if err := h.db.QueryRow(ctx, "SELECT status::text FROM "+table+" WHERE id = $1::uuid", id).Scan(&old); err != nil {
+		return err
+	}
+	if old != "pending" {
+		q := "UPDATE " + table + " SET status = 'pending'"
+		if table != "maintenance_tasks" { // Wartungsauftraege haben kein updated_at
+			q += ", updated_at = NOW()"
+		}
+		if _, err := h.db.Exec(ctx, q+" WHERE id = $1::uuid", id); err != nil {
+			return err
+		}
+	}
+	h.addHistory(ctx, refType, id, "status", "status", old, "pending", "Wartet bis "+until.Format("02.01.2006")+" (Leitstand)", actorID)
+	return nil
 }

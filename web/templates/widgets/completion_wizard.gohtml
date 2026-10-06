@@ -1,7 +1,7 @@
 {{/*
   Abschluss-Assistent (completion.go). Jeder gruene Haken zum Fertigsetzen
   ruft pdhComplete(typ, id) auf: ticket | fault | task | maintenance.
-  Schritte: Material → Zeit → Wer war dabei? → Kommentar → Fertig / geht weiter.
+  Schritte: (Wartung: Checkliste →) Material → Zeit → Wer war dabei? → Kommentar → Fertig / geht weiter.
 */}}
 {{/* Gemeinsame Optik der Assistenten (Abschluss, Anlegen) – auch im Leitstand */}}
 {{define "wizard-styles"}}
@@ -57,6 +57,24 @@
 .cw-foot .btn{min-height:40px}
 .cw-finish{background:var(--green)!important;border-color:var(--green)!important;color:#fff!important}
 .cw-more{background:rgba(245,158,11,.15)!important;border-color:var(--amber)!important;color:var(--amber)!important}
+.cw-ck-prog{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+.cw-ck-bar{height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;margin-bottom:12px;border:1px solid var(--border)}
+.cw-ck-bar i{display:block;height:100%;background:var(--green)}
+.cw-ck-item{border:1px solid var(--border);border-radius:10px;padding:12px}
+.cw-ck-item .lbl{font-size:15px;font-weight:600}
+.cw-ck-item .desc{font-size:12px;color:var(--muted);margin-top:3px;white-space:pre-wrap}
+.cw-ck-spec{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.cw-ck-spec span{font-size:11.5px;background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted)}
+.cw-ck-spec b{color:var(--text)}
+.cw-ck-imgs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.cw-ck-imgs img{height:80px;border-radius:6px;border:1px solid var(--border)}
+.cw-ck-in{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.cw-ck-in .form-input{max-width:200px}
+.cw-ck-in textarea.form-input{max-width:none;width:100%;min-height:80px}
+.cw-ck-state{font-size:12px;font-weight:600}.cw-ck-state.ok{color:var(--green)}.cw-ck-state.bad{color:var(--red)}
+.cw-ck-sum button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:8px 10px;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)}
+.cw-ck-sum button:last-child{border-bottom:0}
+.cw-ck-sum .v{margin-left:auto;color:var(--muted);max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:760px){
   .cw-overlay{padding:0}
   .cw{width:100%;max-height:100dvh;height:100dvh;border-radius:0}
@@ -74,14 +92,21 @@
       <h2 id="cw-title"><i class="ti ti-circle-check"></i> <span id="cw-label">{{t "Abschließen"}}</span></h2>
       <div class="sub" id="cw-sub"></div>
       <div class="cw-steps" id="cw-steps">
-        <div class="cw-step"><b>1</b><span>{{t "Material"}}</span></div>
-        <div class="cw-step"><b>2</b><span>{{t "Zeit"}}</span></div>
-        <div class="cw-step"><b>3</b><span>{{t "Wer war dabei?"}}</span></div>
-        <div class="cw-step"><b>4</b><span>{{t "Kommentar"}}</span></div>
-        <div class="cw-step"><b>5</b><span>{{t "Abschluss"}}</span></div>
+        <div class="cw-step" data-step="-1" id="cw-step-ck" style="display:none"><b>1</b><span>{{t "Checkliste"}}</span></div>
+        <div class="cw-step" data-step="0"><b>1</b><span>{{t "Material"}}</span></div>
+        <div class="cw-step" data-step="1"><b>2</b><span>{{t "Zeit"}}</span></div>
+        <div class="cw-step" data-step="2"><b>3</b><span>{{t "Wer war dabei?"}}</span></div>
+        <div class="cw-step" data-step="3"><b>4</b><span>{{t "Kommentar"}}</span></div>
+        <div class="cw-step" data-step="4"><b>5</b><span>{{t "Abschluss"}}</span></div>
       </div>
     </div>
     <div class="cw-body">
+      <!-- 0 Checkliste (nur Wartung mit faelligen Punkten) – ein Punkt je Schritt -->
+      <div class="cw-pane" data-step="-1">
+        <h3><i class="ti ti-list-check"></i> {{t "Checkliste"}}</h3>
+        <p class="hint">{{t "Erst die Checkliste – Punkt für Punkt. Fotos zur Dokumentation hängst du auf der Wartungsseite an."}}</p>
+        <div id="cw-ck"></div>
+      </div>
       <!-- 1 Material -->
       <div class="cw-pane" data-step="0">
         <h3><i class="ti ti-package"></i> {{t "Welches Material wurde verwendet?"}}</h3>
@@ -176,6 +201,7 @@
     $('cw-min').value = '0'; $('cw-part-q').value = ''; $('cw-part-sel').textContent = ''; $('cw-people-q').value = ''; $('cw-all-depts').checked = false;
     $('cw-sub').textContent = {{t "Lädt…"}};
     $('cw').classList.add('open');
+    S.ck = null; $('cw-step-ck').style.display = 'none'; numberSteps();
     show(0);
     try{
       const res = await api('/complete/' + type + '/' + id);
@@ -194,6 +220,14 @@
       $('cw-running').innerHTML = '<i class="ti ti-player-play"></i> ' + F({{t "Dein Timer läuft seit %s (≈ %s) und wird beim Speichern gestoppt."}}, '<b>' + esc(i.running_since) + '</b>', hm(i.running_min));
       $('cw-time-inputs').style.display = 'none';
     } else { $('cw-running').style.display = 'none'; $('cw-time-inputs').style.display = ''; }
+    if(i.checklist && i.checklist.length){
+      const items = i.checklist.map(c => Object.assign({}, c, {confirmed: c.value}));
+      let idx = items.findIndex(c => c.required && !ckFilled(c));
+      if(idx < 0) idx = items.findIndex(c => !ckFilled(c));
+      S.ck = {items, idx: idx < 0 ? items.length : idx};
+      $('cw-step-ck').style.display = ''; numberSteps();
+      show(-1);
+    }
     renderPeople();
     loadLocations();
     await loadParts(); // vor dem ersten "weiter" muessen die vorgemerkten Teile bekannt sein
@@ -204,8 +238,9 @@
   function show(step){
     S.step = step;
     document.querySelectorAll('#cw .cw-pane').forEach(p => p.classList.toggle('on', +p.dataset.step === step));
-    document.querySelectorAll('#cw-steps .cw-step').forEach((s, n) => { s.classList.toggle('on', n === step); s.classList.toggle('ok', n < step); });
-    $('cw-back').style.display = step > 0 ? '' : 'none';
+    document.querySelectorAll('#cw-steps .cw-step').forEach(s => { const n = +s.dataset.step; s.classList.toggle('on', n === step); s.classList.toggle('ok', n < step); });
+    $('cw-back').style.display = (step > 0 || (step === 0 && S.ck) || (step === -1 && S.ck && S.ck.idx > 0)) ? '' : 'none';
+    if(step === -1) ckRender();
     $('cw-next').style.display = step < 4 ? '' : 'none';
     $('cw-more').style.display = step === 4 ? '' : 'none';
     $('cw-finish').style.display = step === 4 ? '' : 'none';
@@ -233,6 +268,8 @@
   }
   window.cwGo = function(d){
     if(!S) return;
+    if(S.step === -1 && S.ck){ ckGo(d); return; }
+    if(d < 0 && S.step === 0 && S.ck){ S.ck.idx = S.ck.items.length; show(-1); return; }
     if(d > 0){ const err = check(S.step); if(err){ msg('err', err); return; } }
     show(Math.max(0, Math.min(4, S.step + d)));
     if(S.step === 3) $('cw-comment').focus();
@@ -311,6 +348,97 @@
   $('cw-people-q').addEventListener('input', renderPeople);
   $('cw-all-depts').addEventListener('change', () => { deptFilter = ''; renderPeople(); });
 
+  // ── Checkliste (Wartung) ──
+  function numberSteps(){ let n = 1; document.querySelectorAll('#cw-steps .cw-step').forEach(s => { if(s.style.display !== 'none') s.querySelector('b').textContent = n++; }); }
+  const ckNum = v => (v === null || v === undefined) ? '' : String(v).replace('.', ',');
+  const ckParse = v => { v = String(v || '').trim().replace(',', '.'); if(v === '') return null; const n = Number(v); return isFinite(n) ? n : NaN; };
+  const ckHas = v => v !== null && v !== undefined;
+  function ckFilled(c){ return c.item_type === 'checkbox' ? !!c.done : String(c.value || '').trim() !== ''; }
+  // Bewertung gegen Min/Max: null = keine Grenzen oder kein Wert
+  function ckRange(c){
+    if(c.item_type !== 'number') return null;
+    const n = ckParse(c.value);
+    if(n === null || isNaN(n) || (!ckHas(c.min_value) && !ckHas(c.max_value))) return null;
+    return (!ckHas(c.min_value) || n >= c.min_value) && (!ckHas(c.max_value) || n <= c.max_value);
+  }
+  function ckError(c){
+    if(c.item_type === 'number' && ckFilled(c) && isNaN(ckParse(c.value))) return F({{t "„%s“: bitte eine Zahl eingeben."}}, c.label);
+    if(c.required && !ckFilled(c)) return F({{t "„%s“ ist ein Pflichtpunkt."}}, c.label);
+    return '';
+  }
+  function ckRead(){
+    const c = S.ck && S.ck.items[S.ck.idx]; if(!c) return;
+    if(c.item_type === 'checkbox'){ const cb = $('cw-ck-done'); if(cb){ c.done = cb.checked; c.value = cb.checked ? 'erledigt' : ''; } }
+    else { const v = $('cw-ck-val'); if(v){ c.value = v.value.trim(); c.done = c.value !== ''; } }
+  }
+  function ckSpec(c){
+    if(c.item_type !== 'number') return '';
+    const u = c.unit ? ' ' + esc(c.unit) : '', p = [];
+    if(ckHas(c.target_value)) p.push('<span>' + {{t "Soll"}} + ' <b>' + esc(ckNum(c.target_value)) + u + '</b></span>');
+    if(ckHas(c.min_value)) p.push('<span>Min <b>' + esc(ckNum(c.min_value)) + u + '</b></span>');
+    if(ckHas(c.max_value)) p.push('<span>Max <b>' + esc(ckNum(c.max_value)) + u + '</b></span>');
+    return p.length ? '<div class="cw-ck-spec">' + p.join('') + '</div>' : '';
+  }
+  function ckState(){
+    const c = S.ck.items[S.ck.idx], st = $('cw-ck-state'); if(!c || !st) return;
+    ckRead(); const r = ckRange(c);
+    st.className = 'cw-ck-state' + (r === true ? ' ok' : r === false ? ' bad' : '');
+    st.textContent = r === true ? {{t "im Bereich"}} : r === false ? {{t "außerhalb von Min/Max"}} : (c.item_type === 'number' && ckFilled(c) && isNaN(ckParse(c.value)) ? {{t "keine Zahl"}} : '');
+  }
+  window.cwCkState = ckState;
+  function ckValue(c){
+    if(c.item_type === 'checkbox') return c.done ? {{t "erledigt"}} : '–';
+    if(!ckFilled(c)) return '–';
+    return esc(c.value) + (c.item_type === 'number' && c.unit ? ' ' + esc(c.unit) : '') + (ckRange(c) === false ? ' <span style="color:var(--red)"><i class="ti ti-alert-triangle"></i></span>' : '');
+  }
+  function ckRender(){
+    const box = $('cw-ck'), ck = S.ck; if(!ck) return;
+    const n = ck.items.length, filled = ck.items.filter(ckFilled).length;
+    let html = '<div class="cw-ck-prog"><b>' + (ck.idx < n ? esc(F({{t "Punkt %d von %d"}}, ck.idx + 1, n)) : esc({{t "Übersicht"}})) + '</b><span>' + esc(F({{t "%d von %d erfasst"}}, filled, n)) + '</span></div>'
+      + '<div class="cw-ck-bar"><i style="width:' + Math.round(filled * 100 / n) + '%"></i></div>';
+    if(ck.idx < n){
+      const c = ck.items[ck.idx];
+      const imgs = (c.ref_images || []).map(i => '<a href="' + esc(i.url) + '" target="_blank" rel="noopener"><img src="' + esc(i.url) + '" alt="' + esc(i.filename) + '" loading="lazy"></a>').join('');
+      let input;
+      if(c.item_type === 'checkbox') input = '<label class="cw-check" style="width:100%"><input type="checkbox" id="cw-ck-done"' + (c.done ? ' checked' : '') + '> ' + {{t "erledigt"}} + '</label>';
+      else if(c.item_type === 'number') input = '<input class="form-input" id="cw-ck-val" inputmode="decimal" placeholder="' + {{t "Messwert"}} + '" value="' + esc(c.value || '') + '" oninput="cwCkState()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();cwGo(1);}">' + (c.unit ? '<span>' + esc(c.unit) + '</span>' : '') + '<span class="cw-ck-state" id="cw-ck-state"></span>';
+      else input = '<textarea class="form-input" id="cw-ck-val" placeholder="' + {{t "Freitext"}} + '">' + esc(c.value || '') + '</textarea>';
+      html += '<div class="cw-ck-item"><div class="lbl">' + (c.required ? '<span style="color:var(--red)" title="' + {{t "Pflichtpunkt"}} + '">✱</span> ' : '') + esc(c.label) + '</div>'
+        + (c.description ? '<div class="desc">' + esc(c.description) + '</div>' : '') + ckSpec(c)
+        + (imgs ? '<div class="cw-ck-imgs">' + imgs + '</div>' : '') + '<div class="cw-ck-in">' + input + '</div></div>';
+    } else {
+      html += '<p class="hint" style="margin:0 0 8px">' + {{t "Alle Punkte durchgegangen – zum Ändern antippen."}} + '</p><div class="cw-list cw-ck-sum">'
+        + ck.items.map((c, k) => '<button type="button" data-ck="' + k + '"><i class="ti ti-' + (ckFilled(c) ? 'circle-check' : c.required ? 'alert-circle' : 'circle-dashed') + '" style="color:var(--' + (ckFilled(c) ? 'green' : c.required ? 'red' : 'muted') + ')"></i><span>' + (k + 1) + '. ' + esc(c.label) + '</span><span class="v">' + ckValue(c) + '</span></button>').join('') + '</div>';
+    }
+    box.innerHTML = html;
+    ckState();
+    const inp = $('cw-ck-val'); if(inp) inp.focus();
+  }
+  $('cw-ck').addEventListener('click', e => { const b = e.target.closest('[data-ck]'); if(!b || !S || !S.ck) return; S.ck.idx = +b.dataset.ck; show(-1); });
+  function ckGo(d){
+    const ck = S.ck;
+    ckRead();
+    if(d < 0){ if(ck.idx > 0){ ck.idx--; show(-1); } return; }
+    if(ck.idx < ck.items.length){
+      const c = ck.items[ck.idx], err = ckError(c);
+      if(err){ msg('err', err); return; }
+      if(ckRange(c) === false && c.confirmed !== c.value){
+        if(!confirm(F({{t "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?"}}, c.label, c.value + (c.unit ? ' ' + c.unit : '')))) return;
+        c.confirmed = c.value;
+      }
+      ck.idx++; show(-1); return;
+    }
+    const bad = ck.items.findIndex(c => ckError(c));
+    if(bad >= 0){ ck.idx = bad; show(-1); msg('err', ckError(ck.items[bad])); return; }
+    show(0);
+  }
+  function ckPayload(){
+    if(!S.ck) return null;
+    const values = {}, done = {};
+    S.ck.items.forEach(c => { const id = c.template_item_id; values[id] = c.item_type === 'checkbox' ? (c.done ? 'erledigt' : '') : String(c.value || '').trim(); done[id] = c.item_type === 'checkbox' ? !!c.done : values[id] !== ''; });
+    return {values, done};
+  }
+
   // ── Zusammenfassung & Absenden ──
   function renderSummary(){
     const i = S.info, min = +$('cw-min').value || 0;
@@ -319,15 +447,21 @@
     $('cw-sum').innerHTML = '<dt>' + {{t "Material"}} + '</dt><dd>' + (S.parts.length ? S.parts.map(p => esc(p.qty + ' × ' + p.part_name)).join('<br>') : {{t "kein Material"}}) + '</dd>'
       + '<dt>' + {{t "Zeit"}} + '</dt><dd>' + esc(time) + '</dd>'
       + '<dt>' + {{t "Dabei"}} + '</dt><dd>' + (names.length ? esc(names.join(', ')) + ' <span style="color:var(--amber)">(' + {{t "gelb, zur Bestätigung"}} + ')</span>' : (S.who ? esc(S.who) : {{t "nur du"}})) + '</dd>'
+      + (S.ck ? '<dt>' + {{t "Checkliste"}} + '</dt><dd>' + esc(F({{t "%d von %d erfasst"}}, S.ck.items.filter(ckFilled).length, S.ck.items.length)) + '</dd>' : '')
       + '<dt>' + {{t "Kommentar"}} + '</dt><dd>' + esc($('cw-comment').value.trim()) + '</dd>'
       + ($('cw-cause').value.trim() ? '<dt>' + {{t "Ursache"}} + '</dt><dd>' + esc($('cw-cause').value.trim()) + '</dd>' : '');
   }
   window.cwSubmit = async function(finish){
     if(!S || S.busy) return;
+    if(S.ck){
+      ckRead();
+      const bad = finish ? S.ck.items.findIndex(c => ckError(c)) : S.ck.items.findIndex(c => ckFilled(c) && ckError(c));
+      if(bad >= 0){ S.ck.idx = bad; show(-1); msg('err', ckError(S.ck.items[bad])); return; }
+    }
     for(let s = 0; s < 4; s++){ const err = check(s); if(err && !(s === 0 && !finish)){ show(s); msg('err', err); return; } }
     S.busy = true; $('cw-finish').disabled = true; $('cw-more').disabled = true; msg('', {{t "Speichere…"}});
     const body = {no_parts: $('cw-noparts').checked, start: $('cw-start').value, minutes: S.info.running_since ? 0 : (+$('cw-min').value || 0),
-      colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish};
+      colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish, checklist: ckPayload()};
     try{
       const res = await api('/complete/' + S.type + '/' + S.id, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const json = await res.json();

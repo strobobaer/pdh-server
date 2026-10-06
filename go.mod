@@ -11,6 +11,7 @@ require (
 	github.com/goburrow/modbus v0.1.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/gopcua/opcua v0.6.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/microsoft/go-mssqldb v1.7.2
 	github.com/mochi-mqtt/server/v2 v2.7.9
@@ -34,7 +35,6 @@ require (
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect

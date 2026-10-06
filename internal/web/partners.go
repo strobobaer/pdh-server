@@ -585,7 +585,7 @@ func (h *Handler) partnerRecordOptions(ctx context.Context) []partnerOptionGroup
 			UNION ALL SELECT 'ticket', id::text, title, created_at FROM tickets
 			 WHERE status NOT IN ('resolved', 'closed') AND archived_at IS NULL
 			UNION ALL SELECT 'maintenance_task', id::text, title, created_at FROM maintenance_tasks
-			 WHERE status IN ('open', 'in_progress') AND archived_at IS NULL
+			 WHERE status IN ('open', 'in_progress', 'pending') AND archived_at IS NULL
 			UNION ALL SELECT 'task', id::text, title, created_at FROM tasks
 			 WHERE status NOT IN ('resolved', 'closed') AND archived_at IS NULL
 			UNION ALL SELECT 'project', id::text, name, created_at FROM projects WHERE status <> 'completed'

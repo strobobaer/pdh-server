@@ -236,6 +236,7 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
+	webHandler.RegisterMaintenanceProtocol() // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
 		ClientID:          cfg.Microsoft.ClientID,

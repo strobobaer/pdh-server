@@ -1,0 +1,101 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{/* HMI-Fernzugriff (VNC) – noVNC im Browser, Verbindung nur über den PDH-Server (hmi.go) */}}
+<div class="hmi-bar">
+  {{template "icon-button" (dict "Action" "back" "Href" (printf "/infrastructure/%s?tab=hmi" .HMI.InfraID))}}
+  <div style="min-width:0;flex:1">
+    <h1 style="font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.HMI.Name}}</h1>
+    <p style="font-size:12px;color:var(--muted)">{{.HMI.InfraName}}</p>
+  </div>
+  {{if eq .Mode "control"}}<span class="badge b-amber" title="Tastatur und Maus werden an das HMI übertragen"><i class="ti ti-hand-click"></i> Bedienen</span>
+  {{else}}<span class="badge b-blue" title="Eingaben werden nicht übertragen"><i class="ti ti-eye"></i> Nur ansehen</span>{{end}}
+  <span id="hmi-status" class="hmi-status">Verbinde…</span>
+  <div class="hmi-tools">
+    {{if .CanControl}}{{if eq .Mode "control"}}
+    <a class="btn" href="?mode=view" title="Auf nur ansehen umschalten"><i class="ti ti-eye"></i><span class="tb-label"> Nur ansehen</span></a>
+    <button type="button" class="btn" id="hmi-cad" title="Strg+Alt+Entf an das HMI senden"><i class="ti ti-keyboard"></i><span class="tb-label"> Strg+Alt+Entf</span></button>
+    {{else}}
+    <a class="btn" href="?mode=control" title="Bedienen (Tastatur & Maus)"><i class="ti ti-hand-click"></i><span class="tb-label"> Bedienen</span></a>
+    {{end}}{{end}}
+    <button type="button" class="btn" id="hmi-scale" aria-pressed="true" title="An Fenster anpassen / Originalgröße"><i class="ti ti-arrows-minimize"></i><span class="tb-label"> Anpassen</span></button>
+    <button type="button" class="btn" id="hmi-full" title="Vollbild"><i class="ti ti-maximize"></i><span class="tb-label"> Vollbild</span></button>
+    <button type="button" class="btn" id="hmi-reconnect" title="Neu verbinden"><i class="ti ti-refresh"></i></button>
+  </div>
+</div>
+<div id="hmi-screen" class="hmi-screen{{if eq .Mode "view"}} view{{end}}" tabindex="-1"></div>
+<p class="hmi-hint">{{if eq .Mode "control"}}Achtung: Deine Eingaben wirken direkt auf die Anlage. Der Zugriff wird mit deinem Namen protokolliert.{{else}}Nur ansehen – Tastatur, Maus und Zwischenablage werden vom Server verworfen. Der Zugriff wird protokolliert.{{end}}</p>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted)">HMI</div>
+<div class="act-item"><div class="act-text">{{.HMI.Name}}</div></div>
+{{end}}
+
+{{block "scripts" .}}
+<style>
+.hmi-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.hmi-status{font-size:12px;color:var(--muted)}
+.hmi-status.ok{color:var(--green)}.hmi-status.err{color:var(--red)}
+.hmi-tools{display:flex;gap:6px;flex-wrap:wrap}
+.hmi-screen{height:calc(100dvh - 190px);min-height:320px;background:#000;border:1px solid var(--border);border-radius:10px;overflow:auto;position:relative}
+.hmi-screen.view{border-color:var(--accent)}
+.hmi-screen:fullscreen{border-radius:0;height:100vh}
+.hmi-hint{font-size:11.5px;color:var(--muted);margin-top:6px}
+@media(max-width:700px){.hmi-screen{height:calc(100dvh - 230px)}}
+</style>
+<script type="module">
+import { RFB } from '/vendor/novnc/rfb.min.js';
+
+const INFRA = '{{.HMI.InfraID}}', HMI = '{{.HMI.ID}}', MODE = '{{.Mode}}';
+const screen = document.getElementById('hmi-screen');
+const status = document.getElementById('hmi-status');
+let rfb = null, scale = true;
+
+function setStatus(text, kind){ status.textContent = text; status.className = 'hmi-status' + (kind ? ' ' + kind : ''); }
+
+// Grund eines Abbruchs steht im Zugriffsprotokoll (der Server meldet ihn dort)
+async function lastError(){
+  try{
+    const res = await fetch('/infrastructure/' + INFRA + '/hmis/' + HMI + '/sessions', {credentials:'same-origin'});
+    const rows = await res.json();
+    const s = rows && rows[0];
+    if(s && s.error && s.ended_at && Date.now() - new Date(s.ended_at) < 60000) return s.error;
+  }catch(e){}
+  return '';
+}
+
+function connect(){
+  if(rfb){ try{ rfb.disconnect(); }catch(e){} }
+  screen.replaceChildren();
+  setStatus('Verbinde…');
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/infrastructure/' + INFRA + '/hmi/' + HMI + '/ws?mode=' + MODE;
+  rfb = new RFB(screen, url, {shared: true, wsProtocols: ['binary']});
+  rfb.viewOnly = MODE !== 'control';
+  rfb.showDotCursor = MODE !== 'control';
+  rfb.scaleViewport = scale;
+  rfb.resizeSession = false;
+  rfb.focusOnClick = MODE === 'control';
+  rfb.addEventListener('connect', () => { setStatus('Verbunden', 'ok'); if(MODE === 'control') rfb.focus(); });
+  rfb.addEventListener('disconnect', async e => {
+    const why = await lastError();
+    setStatus(why ? 'Getrennt: ' + why : (e.detail && e.detail.clean ? 'Getrennt' : 'Verbindung unterbrochen'), 'err');
+  });
+  rfb.addEventListener('securityfailure', e => setStatus('Anmeldung fehlgeschlagen' + (e.detail && e.detail.reason ? ': ' + e.detail.reason : ''), 'err'));
+  rfb.addEventListener('desktopname', e => { if(e.detail && e.detail.name) screen.title = e.detail.name; });
+}
+
+document.getElementById('hmi-reconnect').addEventListener('click', connect);
+document.getElementById('hmi-scale').addEventListener('click', ev => {
+  scale = !scale; if(rfb) rfb.scaleViewport = scale;
+  ev.currentTarget.setAttribute('aria-pressed', scale ? 'true' : 'false');
+});
+document.getElementById('hmi-full').addEventListener('click', () => {
+  if(document.fullscreenElement) document.exitFullscreen(); else screen.requestFullscreen().catch(() => {});
+});
+const cad = document.getElementById('hmi-cad');
+if(cad) cad.addEventListener('click', () => { if(rfb) rfb.sendCtrlAltDel(); });
+window.addEventListener('beforeunload', () => { if(rfb) rfb.disconnect(); });
+connect();
+</script>
+{{end}}

@@ -1,7 +1,10 @@
 package web
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -44,6 +47,16 @@ func (r *logRecorder) Flush() {
 }
 
 func (r *logRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
+// Hijack: fuer WebSockets (HMI-Fernzugriff) – Status 101 Protocol Switch.
+func (r *logRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijack nicht unterstützt")
+	}
+	r.status = http.StatusSwitchingProtocols
+	return hj.Hijack()
+}
 
 var sensitiveParams = []string{"token", "password", "passwort", "secret", "code", "key", "auth", "session"}
 

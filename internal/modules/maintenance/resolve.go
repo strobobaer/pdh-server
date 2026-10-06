@@ -209,7 +209,7 @@ func (r *Repository) GenerateNextTaskAfterCompletion(ctx context.Context, taskID
 	}
 
 	var existing int
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM maintenance_tasks WHERE plan_id=$1 AND status IN ('open','in_progress')`, *planID).Scan(&existing); err != nil {
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM maintenance_tasks WHERE plan_id=$1 AND status IN ('open','in_progress','pending')`, *planID).Scan(&existing); err != nil {
 		return err
 	}
 	if existing > 0 {
@@ -289,6 +289,7 @@ func (s *Service) CompleteTaskValidated(ctx context.Context, taskID, userID stri
 	if err := s.repo.CompleteTaskWithFlag(ctx, taskID, userID, in.Notes, in.DurationMin, noPartsNeeded); err != nil {
 		return err
 	}
+	runCompletedHooks(ctx, taskID, userID)
 	if eventBus != nil {
 		eventBus.Publish("maintenance.task_completed", map[string]interface{}{
 			"id": taskID, "completed_by": userID, "notes": in.Notes, "duration_min": in.DurationMin,
@@ -301,6 +302,9 @@ func (s *Service) CompleteTaskValidated(ctx context.Context, taskID, userID stri
 // generischen Archivieren-Weg (falls vorhanden) bzw. Altbestand.
 func (s *Service) QuickComplete(ctx context.Context, taskID, userID string, in *CompleteTaskInput) error {
 	err := s.repo.CompleteTaskWithFlag(ctx, taskID, userID, in.Notes, in.DurationMin, true)
+	if err == nil {
+		runCompletedHooks(ctx, taskID, userID)
+	}
 	if err == nil && eventBus != nil {
 		eventBus.Publish("maintenance.task_completed", map[string]interface{}{
 			"id": taskID, "completed_by": userID, "notes": in.Notes, "duration_min": in.DurationMin,

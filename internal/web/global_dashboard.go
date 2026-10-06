@@ -215,7 +215,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = f.created_by), '') AS creator,
 			       f.created_at, '/faults/' || f.id::text AS detail_url, f.infrastructure_id
 			FROM faults f LEFT JOIN users u ON u.id = f.assigned_to
-			WHERE f.status IN ('detected', 'analyzing', 'in_progress')
+			WHERE f.status IN ('detected', 'analyzing', 'in_progress', 'pending')
 			UNION ALL
 			SELECT t.id::text, 'ticket', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::date::text, ''),
@@ -231,7 +231,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = m.created_by), ''),
 			       m.created_at, '/maintenance/tasks/' || m.id::text, m.infrastructure_id
 			FROM maintenance_tasks m LEFT JOIN users u ON u.id = m.assigned_to
-			WHERE m.status IN ('open', 'in_progress')
+			WHERE m.status IN ('open', 'in_progress', 'pending')
 			UNION ALL
 			SELECT t.id::text, 'task', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::text, ''),
@@ -242,7 +242,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = t.created_by), ''),
 			       t.created_at, '/tasks/' || t.id::text, t.infrastructure_id
 			FROM tasks t
-			WHERE t.status IN ('open', 'in_progress')
+			WHERE t.status IN ('open', 'in_progress', 'pending')
 		) item
 		LEFT JOIN LATERAL (
 			SELECT action FROM global_dashboard_actions a
@@ -284,9 +284,6 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		}
 		item.StatusKey = item.Status
 		item.Status = globalStatusLabel(item.Status)
-		if item.LastAction == "wait" && item.DueDate > time.Now().Format("2006-01-02") {
-			item.Status = "Wartet"
-		}
 		item.Type = globalTypeLabel(item.TypeKey)
 		data.Items = append(data.Items, item)
 	}

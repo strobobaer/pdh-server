@@ -422,7 +422,7 @@ func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	var active, fresh int
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults r
-		WHERE status IN ('detected','analyzing','in_progress') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
+		WHERE status IN ('detected','analyzing','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
 	return statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults", Alert: fresh > 0}, err
 }
 
@@ -430,7 +430,7 @@ func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetIn
 	var due, overdue int
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "maintenance_task", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date < CURRENT_DATE) FROM maintenance_tasks r
-		WHERE status::text IN ('open','in_progress') AND due_date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
+		WHERE status::text IN ('open','in_progress','pending') AND due_date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
 	return statData{Value: fmt.Sprint(due), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "amber", URL: "/maintenance", Alert: overdue > 0}, err
 }
 
@@ -443,7 +443,7 @@ func loadStatStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance
 
 const myTasksWhere = `(EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $1::uuid)
 	     OR t.assigned_group_id IN ` + myGroupIDs + `)
-	AND t.status IN ('open','in_progress') AND t.archived_at IS NULL`
+	AND t.status IN ('open','in_progress','pending') AND t.archived_at IS NULL`
 
 func loadStatMyTasks(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var open, overdue int
@@ -535,12 +535,12 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('open','in_progress','pending') AND archived_at IS NULL
 			UNION ALL
 			SELECT 'fault', id::text, title::text, severity::text, due_date::date, status::text FROM faults
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('detected','analyzing','in_progress') AND archived_at IS NULL
+			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status IN ('detected','analyzing','in_progress','pending') AND archived_at IS NULL
 			UNION ALL
 			SELECT 'task', t.id::text, t.title::text, t.priority::text, t.due_date::date, t.status::text FROM tasks t WHERE `+myTasksWhere+`
 			UNION ALL
 			SELECT 'maintenance', id::text, title::text, priority::text, due_date::date, status::text FROM maintenance_tasks
-			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status::text IN ('open','in_progress') AND archived_at IS NULL
+			 WHERE (assigned_to = $1::uuid OR responsible_to = $1::uuid OR assigned_group_id IN `+myGroupIDs+`) AND status::text IN ('open','in_progress','pending') AND archived_at IS NULL
 		) x ORDER BY (due_date IS NULL), due_date, (priority = 'critical') DESC LIMIT 8`, uid)
 	if err != nil {
 		return nil, err
@@ -584,7 +584,7 @@ func loadListFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	rows, err := h.db.Query(ctx, `
 		SELECT f.id::text, f.title, f.severity::text, f.status::text, COALESCE(i.name, ''), COALESCE(f.detected_at, f.created_at)
 		FROM faults f LEFT JOIN infrastructure i ON i.id = f.infrastructure_id
-		WHERE f.status IN ('detected','analyzing','in_progress') AND f.archived_at IS NULL`+cond+`
+		WHERE f.status IN ('detected','analyzing','in_progress','pending') AND f.archived_at IS NULL`+cond+`
 		ORDER BY COALESCE(f.detected_at, f.created_at) DESC LIMIT 6`, args...)
 	if err != nil {
 		return nil, err
@@ -613,7 +613,7 @@ func loadListMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetIn
 	rows, err := h.db.Query(ctx, `
 		SELECT m.id::text, m.title, COALESCE(i.name, ''), m.due_date::date
 		FROM maintenance_tasks m LEFT JOIN infrastructure i ON i.id = m.infrastructure_id
-		WHERE m.status::text IN ('open','in_progress') AND m.archived_at IS NULL AND m.due_date <= CURRENT_DATE + 7`+cond+`
+		WHERE m.status::text IN ('open','in_progress','pending') AND m.archived_at IS NULL AND m.due_date <= CURRENT_DATE + 7`+cond+`
 		ORDER BY m.due_date LIMIT 6`, args...)
 	if err != nil {
 		return nil, err

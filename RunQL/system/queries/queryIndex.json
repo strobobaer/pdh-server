@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-06T07:56:51.627Z",
+  "generatedAt": "2026-10-06T10:13:18.768Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1040,6 +1040,39 @@
       "sqlHash": "cee5c0a572e10c414109100b6ff99a30b711d584281538ac2d5dd0cc8be64296",
       "title": "096_record_it_asset.up.sql",
       "updatedAt": "2026-10-05T17:39:12.001Z"
+    },
+    {
+      "createdAt": "2026-10-06T09:16:16.872Z",
+      "path": "migrations/097_infrastructure_hmi.up.sql",
+      "catalogContext": null,
+      "searchText": "097_infrastructure_hmi.up.sql migrations/097_infrastructure_hmi.up.sql -- 097_infrastructure_hmi.up.sql\n--\n-- hmi-fernzugriff (vnc) direkt aus der anlage: je anlage beliebig viele\n-- hmis (bediengeraete) mit adresse und vnc-passwort. der browser verbindet\n-- sich nur ueber den pdh-server (websocket-proxy); das passwort verlaesst\n-- den server nie. stufen ueber berechtigungen:\n--   hmi.view    – bild ansehen (eingaben werden serverseitig verworfen)\n--   hmi.control – bedienen (tastatur/maus), sofern am hmi erlaubt\n--   hmi.manage  – hmis einer anlage einrichten\n-- jeder zugriff wird in infrastructure_hmi_sessions protokolliert.\n\ncreate table if not exists infrastructure_hmis (\n    id                uuid primary key default gen_random_uuid(),\n    infrastructure_id uuid not null references infrastructure(id) on delete cascade,\n    name              text not null,\n    host              text not null,\n    port              integer not null default 5900 check (port between 1 and 65535),\n    password_enc      text not null default '',\n    allow_control     boolean not null default true,\n    notes             text not null default '',\n    sort_order        integer not null default 100,\n    created_by        uuid references users(id) on delete set null,\n    created_at        timestamptz not null default now(),\n    updated_at        timestamptz not null default now()\n);\ncreate index if not exists idx_infrastructure_hmis_infra on infrastructure_hmis (infrastructure_id, sort_order);\n\ncreate table if not exists infrastructure_hmi_sessions (\n    id         uuid primary key default gen_random_uuid(),\n    hmi_id     uuid not null references infrastructure_hmis(id) on delete cascade,\n    user_id    uuid references users(id) on delete set null,\n    mode       text not null check (mode in ('view', 'control')),\n    started_at timestamptz not null default now(),\n    ended_at   timestamptz,\n    error      text not null default ''\n);\ncreate index if not exists idx_infrastructure_hmi_sessions_hmi on infrastructure_hmi_sessions (hmi_id, started_at desc);\n\ninsert into permissions (key, label, category) values\n    ('hmi.view',    'hmi ansehen (fernzugriff, nur bild)', 'infrastruktur'),\n    ('hmi.control', 'hmi bedienen (fernzugriff mit tastatur & maus)', 'infrastruktur'),\n    ('hmi.manage',  'hmi-verbindungen einrichten', 'infrastruktur')\non conflict (key) do nothing;\n\n-- startbelegung: ansehen fuer admin/manager/techniker, bedienen und\n-- einrichten nur admin (weitere rollen ueber die rollen-matrix).\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere (p.key = 'hmi.view' and r.key in ('admin', 'manager', 'technician'))\n   or (p.key in ('hmi.control', 'hmi.manage') and r.key = 'admin')\non conflict do nothing;\n",
+      "searchUpdatedAt": "2026-10-06T09:16:16.969Z",
+      "schemaContext": null,
+      "sqlHash": "ae7700a44b0e4f7d9f988c5174eaf93f9920730ba373535062303d80ca5639dd",
+      "title": "097_infrastructure_hmi.up.sql",
+      "updatedAt": "2026-10-06T09:16:16.872Z"
+    },
+    {
+      "createdAt": "2026-10-06T10:13:17.963Z",
+      "path": "migrations/098_status_pending.up.sql",
+      "catalogContext": null,
+      "searchText": "098_status_pending.up.sql migrations/098_status_pending.up.sql -- 098_status_pending.up.sql\n--\n-- status „wartet“ (pending) auch fuer stoerungen und wartungsauftraege\n-- (tickets haben ihn schon, aufgaben speichern den status als text).\n-- gesetzt u. a. durch „warten“ am leitstand. der neue wert darf in derselben\n-- transaktion noch nicht benutzt werden – die umstellung folgt in 099.\n\nalter type fault_status add value if not exists 'pending';\nalter type maintenance_status add value if not exists 'pending';\n",
+      "searchUpdatedAt": "2026-10-06T10:13:18.057Z",
+      "schemaContext": null,
+      "sqlHash": "286f3d89feca2ef65f4fe29c93ad9c507b66aeb8f878fe0b52e24ecfc54b2ce6",
+      "title": "098_status_pending.up.sql",
+      "updatedAt": "2026-10-06T10:13:17.990Z"
+    },
+    {
+      "createdAt": "2026-10-06T10:13:18.056Z",
+      "path": "migrations/099_status_pending_backfill.up.sql",
+      "catalogContext": null,
+      "searchText": "099_status_pending_backfill.up.sql migrations/099_status_pending_backfill.up.sql -- 099_status_pending_backfill.up.sql\n--\n-- vorgaenge, die am leitstand auf „warten“ gesetzt wurden und deren\n-- wiedervorlage noch aussteht, bekommen den echten status „wartet“.\n-- bisher stand „wartet“ nur in der leitstand-tabelle.\n\nwith last as (\n    select distinct on (ref_type, ref_id) ref_type, ref_id, action, follow_up_date\n    from global_dashboard_actions order by ref_type, ref_id, created_at desc\n)\nupdate faults x set status = 'pending', updated_at = now() from last\nwhere last.ref_type = 'fault' and last.ref_id = x.id and last.action = 'wait'\n  and last.follow_up_date > current_date and x.status in ('detected', 'analyzing', 'in_progress');\n\nwith last as (\n    select distinct on (ref_type, ref_id) ref_type, ref_id, action, follow_up_date\n    from global_dashboard_actions order by ref_type, ref_id, created_at desc\n)\nupdate tickets x set status = 'pending', updated_at = now() from last\nwhere last.ref_type = 'ticket' and last.ref_id = x.id and last.action = 'wait'\n  and last.follow_up_date > current_date and x.status in ('open', 'in_progress');\n\nwith last as (\n    select distinct on (ref_type, ref_id) ref_type, ref_id, action, follow_up_date\n    from global_dashboard_actions order by ref_type, ref_id, created_at desc\n)\nupdate maintenance_tasks x set status = 'pending' from last\nwhere last.ref_type = 'maintenance' and last.ref_id = x.id and last.action = 'wait'\n  and last.follow_up_date > current_date and x.status in ('open', 'in_progress');\n\nwith last as (\n    select distinct on (ref_type, ref_id) ref_type, ref_id, action, follow_up_date\n    from global_dashboard_actions order by ref_type, ref_id, created_at desc\n)\nupdate tasks x set status = 'pending', updated_at = now() from last\nwhere last.ref_type = 'task' and last.ref_id = x.id and last.action = 'wait'\n  and last.follow_up_date > current_date and x.status in ('open', 'in_progress');\n",
+      "searchUpdatedAt": "2026-10-06T10:13:18.229Z",
+      "schemaContext": null,
+      "sqlHash": "63f7b0a2fd299653f188da6d4a0dcf197b32eaf0207155e183377caee09eca92",
+      "title": "099_status_pending_backfill.up.sql",
+      "updatedAt": "2026-10-06T10:13:18.085Z"
     }
   ]
 }

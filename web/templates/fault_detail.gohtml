@@ -16,7 +16,7 @@
       {{if eq .Fault.Status "detected"}}
       {{template "icon-button" (dict "Action" "analyze" "ShowLabel" true "Label" "Copilot analysieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/faults/%s/analyze" .Fault.ID) "HxTarget" "#analyze-result" "OnClick" "closeMenu('fault-menu')")}}
       {{end}}
-      {{if eq .Fault.Status "in_progress"}}
+      {{if or (eq .Fault.Status "in_progress") (eq .Fault.Status "pending")}}
       {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als gelöst markieren" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "OnClick" (printf "closeMenu('fault-menu');pdhComplete('fault','%s')" .Fault.ID))}}
       {{end}}
     </div>
@@ -51,7 +51,7 @@
     </div>
 
 
-    {{if eq .Fault.Status "in_progress"}}
+    {{if or (eq .Fault.Status "in_progress") (eq .Fault.Status "pending")}}
     <div id="resolve-form" style="display:none" class="card">
       <div class="card-title">Störung lösen</div>
 <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Der Abschluss führt Schritt für Schritt durch: <b>Material</b> → <b>Zeit</b> → <b>wer war dabei</b> → <b>Kommentar</b> → <b>Fertig</b> oder <b>geht noch weiter</b>.</p>

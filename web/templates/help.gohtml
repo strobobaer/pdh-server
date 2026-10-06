@@ -187,7 +187,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
   <ul>
-    <li>Bei <b>Wartungen</b> mit Checkliste gehst du zuerst die Punkte Schritt für Schritt durch (Checkbox, Messwert, Freitext, Fotos); <b>Weiter zum Abschluss</b> öffnet dann den Assistenten (<a href="#maintenance">mehr</a>).</li>
+    <li>Bei <b>Wartungen</b> mit Checkliste ist die <b>Checkliste der erste Schritt</b> des Assistenten – Punkt für Punkt, auch am Leitstand. Beim Abschluss entsteht das Wartungsprotokoll als PDF an der Anlage (<a href="#maintenance">mehr</a>).</li>
     <li>Kann der Vorgang nicht geschlossen werden (z. B. fehlt dir die Berechtigung zum Abschließen), wird das Erfasste trotzdem gespeichert und der Grund angezeigt.</li>
     <li><b>Administration:</b> Die vorgeschlagenen Abteilungen stellst du unter <b>Core-Einstellungen → Abschluss-Assistent: Wer war dabei?</b> ein (Teilwort genügt, „Elektro“ passt auf „Elektrowerkstatt“).</li>
   </ul>
@@ -250,9 +250,17 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Den Vorgang in der Tabelle antippen – die Zeile klappt auf und zeigt darunter die Werkzeuge (<b>Annehmen</b>, <b>Fertig</b>, <b>Verwerfen</b>, <b>Warten</b>, <b>Info</b>). Nochmal antippen klappt sie wieder zu. Ein Balken im Zeitstrahl öffnet dieselben Werkzeuge. <b>Fertig</b> wählen.</li>
       <li><b>RFID-Karte scannen</b> und <b>Fertigmeldung starten</b>. Fertig melden können Mitarbeitende aus Instandhaltung und IT.</li>
       <li>Der <a href="#completion">Abschluss-Assistent</a> führt durch Material, Zeit, wer dabei war, und Kommentar – genau wie im PDH, nur in deinem Namen. Oben steht, für wen die Fertigmeldung läuft.</li>
-      <li><b>Fertig</b> schließt den Vorgang ab. <b>Geht noch weiter</b> speichert Zeit und Kommentar, der Vorgang bleibt offen.</li>
+      <li><b>Fertig</b> schließt den Vorgang ab (Status „Gelöst“ bzw. „Erledigt“). <b>Geht noch weiter</b> speichert Zeit und Kommentar, der Vorgang steht dann auf <i>In Arbeit</i>.</li>
     </ol>
-    Die Karte gilt nur für diesen einen Vorgang und höchstens 20 Minuten. Danach oder für den nächsten Vorgang die Karte erneut scannen. Was du im Assistenten darfst (z. B. abschließen), richtet sich nach deinen Rechten.</div>
+    Die Karte gilt nur für diesen einen Vorgang und höchstens 20 Minuten. Danach oder für den nächsten Vorgang die Karte erneut scannen. Wer am Leitstand per Karte fertig melden darf (Instandhaltung und IT), darf dort auch abschließen – unabhängig vom Abschluss-Recht seiner Rolle.</div>
+  <div class="hb-howto"><b><i class="ti ti-hourglass"></i> Was die Karten-Aktionen am Status ändern</b>
+    <ul>
+      <li><b>Annehmen</b> – Vorgang wird zugewiesen und steht auf <i>In Arbeit</i>.</li>
+      <li><b>Warten</b> – Termin wird auf den Wiedervorlage-Tag verschoben, der Status wird <i>Wartet</i>. Das sieht man in allen Listen, nicht nur am Leitstand; der Vorgang bleibt offen.</li>
+      <li><b>Geht noch weiter</b> (im Assistenten) bzw. erneutes <b>Annehmen</b> – zurück auf <i>In Arbeit</i>.</li>
+      <li><b>Fertig</b> – <i>Gelöst</i> (Störung, Ticket, Aufgabe) bzw. <i>Erledigt</i> (Wartung); der Vorgang verschwindet vom Leitstand.</li>
+      <li><b>Verwerfen</b> – Störungen und Tickets werden ohne Maßnahme geschlossen, Wartungen übersprungen, Aufgaben geschlossen.</li>
+    </ul></div>
   <h3><i class="ti ti-inbox"></i> Was danach passiert: Broker</h3>
   {{template "hb-fig-broker"}}
   <p>Meldungen aus dem Leitstand sind nie zugewiesen – das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen; im Verlauf des Vorgangs steht, an wen er verteilt wurde. Offene, unzugewiesene Tickets und Störungen findest du in der Liste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen und der Leitstand weist darauf hin.</p>
@@ -313,8 +321,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Starten</b>. Oben steht, welche <b>Checkliste</b> abgearbeitet wird: <i class="ti ti-lock"></i> die am Wartungsplan hinterlegten. Über <b>+ Checkliste hinzufügen</b> wählst du eine weitere Vorlage für diesen Auftrag aus – so bekommen auch Aufträge ohne Plan eine Checkliste.</li>
       <li>Die Punkte <b>Schritt für Schritt</b> abarbeiten – immer einer auf einmal, mit „Punkt 2 von 8“ und Fortschrittsbalken: Checkbox abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Freitext schreiben. Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du an den Punkt Fotos zur Dokumentation – am Handy öffnet sich direkt die Kamera.</li>
       <li><b>Weiter</b> prüft den Punkt und speichert ihn sofort: Pflichtpunkte (✱) müssen ausgefüllt sein, Messwerte außerhalb von Min/Max fragt PDH noch einmal nach. <b>Zurück</b> oder ein Klick auf eine Nummer springt zu einem anderen Punkt. Wirst du unterbrochen, geht es beim nächsten Öffnen am offenen Punkt weiter.</li>
-      <li>Nach dem letzten Punkt <b>Checkliste fertig</b>: Die Übersicht zeigt alle Werte (antippen zum Ändern), darunter erfasst du Maßnahmen und Ersatzteile. <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a> (Material, Zeit, wer dabei war, Kommentar).</li>
+      <li>Nach dem letzten Punkt <b>Checkliste fertig</b>: Die Übersicht zeigt alle Werte (antippen zum Ändern), darunter erfasst du Maßnahmen und Ersatzteile. <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a>.</li>
+      <li>Im Assistenten kommt bei Wartungen <b>als Erstes die Checkliste</b> – sind schon alle Punkte erfasst, siehst du die Übersicht zum Kontrollieren, sonst geht es am offenen Punkt weiter. Danach Material, Zeit, wer dabei war, Kommentar. Ohne ausgefüllte Pflichtpunkte lässt sich nicht abschließen. So wird die Checkliste auch beim Fertigmelden am <a href="#dashboard">Leitstand</a> abgefragt.</li>
       <li><b>Fertig</b> – der nächste Termin des Plans wird automatisch berechnet. Das <b>Checklisten-Protokoll</b> im Auftrag zeigt danach alle Werte, wer sie wann erfasst hat und die Fotos.</li>
+      <li>Gleichzeitig legt PDH das <b>Wartungsprotokoll als PDF</b> an der Anlage ab (Reiter <b>Dokumente</b>): oben das Firmenlogo (Logo für Exporte), Datum, Ausführende(r) und Beteiligte, darunter die Checkliste mit Werten, Vorgaben und Bewertung samt Fotos, die Maßnahmen, verwendete Ersatzteile und die Bemerkung. Im Verlauf des Auftrags steht „Wartungsprotokoll (PDF) an der Anlage abgelegt“.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-checklist"></i> Checklisten-Vorlagen einrichten</b>
     <ol class="hb-steps">
@@ -331,16 +341,41 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it">
+<section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it hmi">
   <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
   <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Zu jeder Anlage gibt es:</p>
   <ul>
     <li><b>Übersicht</b> – Unteranlagen, Hersteller, Lieferant und Servicepartner (anklickbar).</li>
     <li><b>Anlagen-Historie</b> – das „Lebenslauf-Buch“ der Anlage: alle Störungen, Tickets, Wartungen, Maßnahmen, verbrauchten Ersatzteile und Kommentare. Mit Filter, Suche und <b>CSV-Export</b>. Wichtige Hinweise lassen sich als Kommentar <b>anheften</b>.</li>
     <li><b>Verknüpfungen</b> – offene Vorgänge, passende Ersatzteile, Firmen.</li>
+    <li><b>HMI</b> – Fernzugriff auf die Bediengeräte der Anlage (VNC), je nach Berechtigung nur ansehen oder bedienen.</li>
   </ul>
   <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> Wer darf den Anlagenbaum ändern?</b>Anlegen, Bearbeiten und Deaktivieren von Gebäuden, Linien, Anlagen und Geräten braucht die Berechtigung <b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> (Kategorie „Infrastruktur“). Standardmäßig haben sie Administratoren und Manager; weiteren Rollen gibst du sie unter <b>Rollen &amp; Berechtigungen</b>. Ohne sie fehlen die Knöpfe „Hinzufügen“ und „Bearbeiten“ – ansehen, kommentieren und Vorgänge zuordnen geht weiterhin.</div>
+  <h3 id="hmi"><i class="ti ti-device-desktop-analytics"></i> HMI-Fernzugriff</h3>
+  <p>Über den Reiter <b>HMI</b> einer Anlage siehst du den Bildschirm ihrer Bediengeräte direkt im Browser – ohne eigenes VNC-Programm. Die Verbindung läuft immer über den PDH-Server; das VNC-Passwort bleibt dort und wird nie an den Browser gegeben. Jeder Zugriff wird mit Name, Zeit, Art und Dauer protokolliert („Letzte Zugriffe“).</p>
+  <ul>
+    <li><b>HMI ansehen</b> – nur zuschauen. Tastatur, Maus und Zwischenablage verwirft der Server, auch wenn der Browser sie schicken würde.</li>
+    <li><b>HMI bedienen</b> – mit Tastatur und Maus arbeiten, sofern am HMI „Bedienen erlaubt“ ist. Deine Eingaben wirken direkt auf die Anlage.</li>
+    <li><b>HMI-Verbindungen einrichten</b> – HMIs anlegen, ändern, löschen.</li>
+  </ul>
+  <p>Standardmäßig dürfen Administratoren, Manager und Techniker ansehen; bedienen und einrichten nur Administratoren. Weitere Rollen bekommen die Rechte unter <b>Rollen &amp; Berechtigungen</b> (Kategorie „Infrastruktur“).</p>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein HMI ein</b>
+    <ol class="hb-steps">
+      <li>Anlage öffnen → Reiter <b>HMI</b> → <b>HMI hinzufügen</b>.</li>
+      <li><b>Name</b>, <b>Adresse</b> (IP oder Rechnername im Anlagennetz), <b>Port</b> (meist 5900) und das <b>VNC-Passwort</b> des Panels eintragen. Der PDH-Server muss das HMI im Netz erreichen können.</li>
+      <li><b>Bedienen erlaubt</b> abwählen, wenn an diesem HMI niemand aus der Ferne eingreifen soll – dann ist für alle nur Ansehen möglich.</li>
+      <li><b>Speichern</b>. Beim Ändern bleibt das Passwort, wenn du das Feld leer lässt.</li>
+    </ol>
+    Unterstützt werden VNC ohne Anmeldung und mit VNC-Passwort. Verlangt das HMI ein anderes Verfahren (z. B. VeNCrypt/TLS oder Benutzer + Passwort), meldet der Viewer das.</div>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> So greifst du auf ein HMI zu</b>
+    <ol class="hb-steps">
+      <li>Anlage öffnen → Reiter <b>HMI</b> → <b>Ansehen</b> oder <b>Bedienen</b>. Der Viewer öffnet sich in einem neuen Tab.</li>
+      <li>Oben stehen Modus und Verbindungsstatus. <b>Anpassen</b> schaltet zwischen Fenstergröße und Originalgröße um, <b>Vollbild</b> nutzt den ganzen Bildschirm, <b>Strg+Alt+Entf</b> (nur beim Bedienen) sendet die Tastenkombination ans HMI.</li>
+      <li>Mit <b>Bedienen</b> bzw. <b>Nur ansehen</b> wechselst du den Modus; die Verbindung wird dafür neu aufgebaut.</li>
+      <li>Tab schließen oder Zurück beendet die Verbindung. Auch die automatische Abmeldung bei Inaktivität trennt sie.</li>
+    </ol>
+    Am HMI bleibt eine laufende Sitzung bestehen – der Zugriff aus PDH verbindet immer „geteilt“.</div>
   <h3><i class="ti ti-device-desktop-pin"></i> Terminal-Standort: Auswahl öffnet sich am richtigen Ort</h3>
   {{template "hb-fig-terminal"}}
   <p>Steht ein Terminal (Systembenutzer) fest in einer Halle oder an einer Linie, kannst du ihm diesen Standort geben. Wer dort ein Ticket, eine Störung oder eine Wartung anlegt, sieht die Infrastruktur-Auswahl schon bis zu diesem Standort aufgeklappt und hervorgehoben – die genaue Anlage wählt man dann mit einem Klick. Das gilt auch, wenn sich jemand kurz mit dem eigenen Konto am Terminal anmeldet.</p>

@@ -57,6 +57,7 @@
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
+  {{if or .HMI.View .HMI.Manage}}<a class="rec-tab" data-tab="hmi" href="?tab=hmi"><i class="ti ti-device-desktop-analytics"></i> HMI</a>{{end}}
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Änderungen</a>
 </div>
@@ -253,6 +254,42 @@
     </div>
 </div>
 
+<!-- ── HMI-Fernzugriff (VNC) ── -->
+{{if or .HMI.View .HMI.Manage}}
+<div class="rec-pane" data-pane="hmi">
+  <div class="card">
+    <div class="card-title" style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-device-desktop-analytics" style="color:var(--accent)"></i> HMI-Fernzugriff
+      {{if .HMI.Manage}}<button type="button" class="btn" style="margin-left:auto;font-size:12px" onclick="hmiEdit()"><i class="ti ti-plus"></i> HMI hinzufügen</button>{{end}}
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:-4px 0 12px">
+      {{if .HMI.Control}}Du darfst HMIs ansehen und – wo freigegeben – bedienen.{{else if .HMI.View}}Du darfst HMIs nur ansehen; Tastatur und Maus werden nicht übertragen.{{else}}Du darfst HMIs einrichten, aber nicht öffnen.{{end}}
+      Jeder Zugriff wird protokolliert.
+    </p>
+    {{if .HMI.Manage}}
+    <form id="hmi-form" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg3)" onsubmit="return hmiSave(this)">
+      <input type="hidden" name="id">
+      <div class="grid2">
+        <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="120" required placeholder="z. B. Bedienpanel Presse 1"></div>
+        <div class="form-group"><label class="form-label">Adresse (IP oder Rechnername)</label><input name="host" class="form-input" required placeholder="192.168.10.21" autocomplete="off"></div>
+        <div class="form-group"><label class="form-label">Port</label><input name="port" type="number" min="1" max="65535" class="form-input" value="5900"></div>
+        <div class="form-group"><label class="form-label">VNC-Passwort</label><input name="password" type="password" class="form-input" maxlength="64" autocomplete="new-password" placeholder="leer = ohne Passwort">
+          <label id="hmi-clear-pw" style="display:none;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin-top:4px"><input type="checkbox" name="clear_password"> gespeichertes Passwort entfernen</label></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Hinweis</label><input name="notes" class="form-input" maxlength="500" placeholder="optional, z. B. nur bei Stillstand bedienen"></div>
+        <label style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="allow_control" checked style="width:18px;height:18px"> Bedienen erlaubt (sonst für alle nur ansehen)</label>
+      </div>
+      <div id="hmi-form-msg" style="font-size:12px;margin:8px 0"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="document.getElementById('hmi-form').style.display='none'">Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </div>
+    </form>
+    {{end}}
+    <div id="hmi-list" style="font-size:12px;color:var(--muted)">Lade HMIs…</div>
+  </div>
+</div>
+{{end}}
+
 <!-- ── Verknüpfungen ── -->
 <div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}</div>
 
@@ -301,6 +338,89 @@ function infraHistoryReset() {
   const f = document.getElementById('infra-history-filter');
   f.reset();
   htmx.trigger(f, 'submit');
+}
+// ── HMI-Fernzugriff: Liste, Einrichten, letzte Zugriffe ──
+const HMI_INFRA = '{{.Node.ID}}';
+let hmiItems = [];
+async function hmiJSON(url, opts){
+  const res = await fetch(url, Object.assign({credentials:'same-origin'}, opts||{}));
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+  return json;
+}
+function hmiEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function hmiLoad(){
+  const box = document.getElementById('hmi-list'); if(!box) return;
+  try{
+    const data = await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis');
+    hmiItems = data.hmis || []; const p = data.perms || {};
+    if(!hmiItems.length){ box.innerHTML = '<div style="padding:10px;border:1px dashed var(--border);border-radius:8px">Für diese Anlage ist noch kein HMI eingerichtet.</div>'; return; }
+    box.innerHTML = hmiItems.map(x => {
+      const base = '/infrastructure/' + HMI_INFRA + '/hmi/' + encodeURIComponent(x.id);
+      const btns = (p.View ? '<a class="btn" href="' + base + '?mode=view" target="_blank" rel="noopener"><i class="ti ti-eye"></i> Ansehen</a>' : '')
+        + (x.can_control ? '<a class="btn btn-primary" href="' + base + '?mode=control" target="_blank" rel="noopener"><i class="ti ti-hand-click"></i> Bedienen</a>' : '')
+        + (p.Manage ? '<button type="button" class="btn" data-hmi-edit="' + hmiEsc(x.id) + '" title="Bearbeiten"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" data-hmi-del="' + hmiEsc(x.id) + '" title="Löschen"><i class="ti ti-trash"></i></button>' : '');
+      const meta = [p.Manage ? hmiEsc(x.host + ':' + x.port) : '', x.allow_control ? '' : 'nur ansehen', p.Manage && !x.has_password ? 'ohne Passwort' : ''].filter(Boolean).join(' · ');
+      return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg2)">'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><i class="ti ti-device-desktop" style="color:var(--accent);font-size:18px"></i>'
+        + '<div style="flex:1;min-width:160px"><div style="font-weight:600;font-size:13px;color:var(--text)">' + hmiEsc(x.name) + '</div>'
+        + (meta ? '<div style="font-size:11.5px;color:var(--muted)">' + meta + '</div>' : '')
+        + (x.notes ? '<div style="font-size:11.5px;color:var(--muted)">' + hmiEsc(x.notes) + '</div>' : '') + '</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + btns + '</div></div>'
+        + '<details data-hmi-log="' + hmiEsc(x.id) + '" style="margin-top:6px"><summary style="font-size:11.5px;color:var(--muted);cursor:pointer">Letzte Zugriffe</summary><div style="font-size:11.5px;color:var(--muted);padding-top:4px">Lade…</div></details></div>';
+    }).join('');
+  }catch(e){ box.innerHTML = '<span style="color:var(--red)">' + hmiEsc(e.message) + '</span>'; }
+}
+document.addEventListener('click', async e => {
+  const ed = e.target.closest('[data-hmi-edit]'); if(ed){ hmiEdit(ed.dataset.hmiEdit); return; }
+  const del = e.target.closest('[data-hmi-del]');
+  if(del){
+    const x = hmiItems.find(i => i.id === del.dataset.hmiDel);
+    if(!x || !confirm('HMI „' + x.name + '“ löschen? Das Zugriffsprotokoll wird mitgelöscht.')) return;
+    try{ await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis/' + encodeURIComponent(x.id) + '/delete', {method:'POST'}); hmiLoad(); }
+    catch(err){ alert(err.message); }
+  }
+});
+document.addEventListener('toggle', async e => {
+  const d = e.target; if(!d.matches || !d.matches('details[data-hmi-log]') || !d.open) return;
+  const out = d.querySelector('div');
+  try{
+    const rows = await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis/' + encodeURIComponent(d.dataset.hmiLog) + '/sessions');
+    const fmt = s => new Date(s).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'});
+    out.innerHTML = rows.length ? rows.map(s => '<div>' + fmt(s.started_at) + ' · ' + hmiEsc(s.user || '–') + ' · ' + (s.mode === 'control' ? 'bedient' : 'angesehen')
+      + (s.ended_at ? ' · ' + Math.max(1, Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 60000)) + ' min' : ' · läuft')
+      + (s.error ? ' · <span style="color:var(--red)">' + hmiEsc(s.error) + '</span>' : '') + '</div>').join('') : 'Noch keine Zugriffe.';
+  }catch(err){ out.textContent = err.message; }
+}, true);
+function hmiEdit(id){
+  const f = document.getElementById('hmi-form'); if(!f) return;
+  const x = hmiItems.find(i => i.id === id) || {port: 5900, allow_control: true};
+  f.reset();
+  f.elements.id.value = x.id || '';
+  f.elements.name.value = x.name || '';
+  f.elements.host.value = x.host || '';
+  f.elements.port.value = x.port || 5900;
+  f.elements.notes.value = x.notes || '';
+  f.elements.allow_control.checked = x.allow_control !== false;
+  f.elements.password.placeholder = x.has_password ? 'unverändert lassen' : 'leer = ohne Passwort';
+  document.getElementById('hmi-clear-pw').style.display = x.has_password ? 'flex' : 'none';
+  document.getElementById('hmi-form-msg').textContent = '';
+  f.style.display = 'block'; f.elements.name.focus();
+}
+async function hmiSave(f){
+  const msg = document.getElementById('hmi-form-msg');
+  const id = f.elements.id.value;
+  const body = {name: f.elements.name.value, host: f.elements.host.value, port: parseInt(f.elements.port.value, 10) || 5900,
+    password: f.elements.password.value, clear_password: f.elements.clear_password.checked,
+    allow_control: f.elements.allow_control.checked, notes: f.elements.notes.value};
+  try{
+    await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis' + (id ? '/' + encodeURIComponent(id) : ''), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    f.style.display = 'none'; hmiLoad();
+  }catch(e){ msg.innerHTML = '<span style="color:var(--red)">' + hmiEsc(e.message) + '</span>'; }
+  return false;
+}
+if(document.getElementById('hmi-list')){
+  if(document.readyState !== 'loading') hmiLoad(); else document.addEventListener('DOMContentLoaded', hmiLoad);
 }
 </script>
 {{end}}

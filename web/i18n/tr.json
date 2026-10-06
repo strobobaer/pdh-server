@@ -485,5 +485,22 @@
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "%s hesabınız için yeni bir şifre istendi. Bağlantı ile yeni bir şifre belirleyebilirsiniz. Bağlantı bir saat ve yalnızca bir kez geçerlidir.",
  "mindestens 8 Zeichen": "en az 8 karakter",
  "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "Giriş yaptıktan sonra doğrudan taranan sayfaya geçersiniz.",
- "%s · Fertigmeldung von %s": "%s · %s tarafından tamamlama"
+ "%s · Fertigmeldung von %s": "%s · %s tarafından tamamlama",
+ "%d von %d erfasst": "%d / %d kaydedildi",
+ "Alle Punkte durchgegangen – zum Ändern antippen.": "Tüm maddeler tamamlandı – değiştirmek için dokunun.",
+ "Checkliste": "Kontrol listesi",
+ "Erst die Checkliste – Punkt für Punkt. Fotos zur Dokumentation hängst du auf der Wartungsseite an.": "Önce kontrol listesi – madde madde. Belgeleme fotoğraflarını bakım sayfasında ekleyin.",
+ "Freitext": "Serbest metin",
+ "Messwert": "Ölçüm değeri",
+ "Pflichtpunkt": "Zorunlu madde",
+ "Punkt %d von %d": "Madde %d / %d",
+ "Soll": "Hedef",
+ "außerhalb von Min/Max": "min/maks dışında",
+ "erledigt": "tamamlandı",
+ "im Bereich": "aralıkta",
+ "keine Zahl": "sayı değil",
+ "„%s“ ist ein Pflichtpunkt.": "“%s” zorunlu bir maddedir.",
+ "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?": "“%s”: %s min/maks dışında. Yine de kaydedilsin mi?",
+ "„%s“: bitte eine Zahl eingeben.": "“%s”: lütfen bir sayı girin.",
+ "Wartet": "Bekliyor"
 }

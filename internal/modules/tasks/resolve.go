@@ -302,7 +302,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status Status, us
 func (s *Service) Discard(ctx context.Context, id, userID string) error {
 	result, err := s.repo.db.Exec(ctx, `
 		UPDATE tasks SET status='closed', archived_at=NOW(), updated_at=NOW()
-		WHERE id=$1::uuid AND status IN ('open','in_progress')`, id)
+		WHERE id=$1::uuid AND status IN ('open','in_progress','pending')`, id)
 	if err != nil {
 		return err
 	}

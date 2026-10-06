@@ -328,7 +328,7 @@ async function loadUnassignedTasks(){
     var res = await fetch('/api/v1/tasks/?unassigned=true', {credentials:'same-origin'});
     var json = await res.json();
     var all = json.data || json || [];
-    var open = all.filter(function(t){ return t.status === 'open' || t.status === 'in_progress'; });
+    var open = all.filter(function(t){ return t.status === 'open' || t.status === 'in_progress' || t.status === 'pending'; });
     if(open.length === 0){
       sel.innerHTML = '<option value="">Keine offenen, nicht zugeordneten Aufgaben</option>';
       return;

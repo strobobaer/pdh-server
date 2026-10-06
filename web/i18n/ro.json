@@ -485,5 +485,22 @@
  "für dein Konto bei %s wurde ein neues Passwort angefordert. Über den Link vergibst du ein neues Passwort. Er gilt eine Stunde und nur einmal.": "pentru contul tău la %s a fost solicitată o parolă nouă. Prin link îți setezi o parolă nouă. Este valabil o oră și o singură dată.",
  "mindestens 8 Zeichen": "cel puțin 8 caractere",
  "Nach der Anmeldung geht es direkt weiter zur gescannten Seite.": "După autentificare ajungi direct la pagina scanată.",
- "%s · Fertigmeldung von %s": "%s · finalizare de %s"
+ "%s · Fertigmeldung von %s": "%s · finalizare de %s",
+ "%d von %d erfasst": "%d din %d completate",
+ "Alle Punkte durchgegangen – zum Ändern antippen.": "Toate punctele parcurse – atingeți pentru a modifica.",
+ "Checkliste": "Listă de verificare",
+ "Erst die Checkliste – Punkt für Punkt. Fotos zur Dokumentation hängst du auf der Wartungsseite an.": "Mai întâi lista de verificare – punct cu punct. Fotografiile de documentare le adăugați pe pagina de mentenanță.",
+ "Freitext": "Text liber",
+ "Messwert": "Valoare măsurată",
+ "Pflichtpunkt": "Punct obligatoriu",
+ "Punkt %d von %d": "Punctul %d din %d",
+ "Soll": "Țintă",
+ "außerhalb von Min/Max": "în afara min/max",
+ "erledigt": "efectuat",
+ "im Bereich": "în interval",
+ "keine Zahl": "nu este un număr",
+ "„%s“ ist ein Pflichtpunkt.": "„%s” este un punct obligatoriu.",
+ "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?": "„%s”: %s este în afara min/max. Se preia totuși?",
+ "„%s“: bitte eine Zahl eingeben.": "„%s”: introduceți un număr.",
+ "Wartet": "În așteptare"
 }

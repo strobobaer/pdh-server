@@ -245,7 +245,7 @@ var changeShowValues = map[string]bool{"status": true, "priority": true, "severi
 
 var changeValueLabels = map[string]string{
 	"open": "offen", "in_progress": "in Arbeit", "resolved": "erledigt", "closed": "geschlossen", "done": "erledigt",
-	"waiting": "wartend", "pending": "ausstehend", "cancelled": "abgebrochen", "planned": "geplant", "active": "aktiv",
+	"waiting": "wartend", "pending": "wartet", "cancelled": "abgebrochen", "planned": "geplant", "active": "aktiv",
 	"completed": "abgeschlossen", "on_hold": "pausiert", "overdue": "überfällig", "todo": "zu erledigen",
 	"low": "niedrig", "medium": "mittel", "high": "hoch", "critical": "kritisch",
 }

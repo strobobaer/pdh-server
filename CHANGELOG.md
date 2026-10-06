@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.31.0] – 2026-10-06
+
+### Neu
+- Anlagen haben einen Reiter „HMI“: Bediengeräte per VNC direkt im Browser ansehen oder bedienen – ohne eigenes VNC-Programm, auch ohne Internet
+- Drei Stufen über Berechtigungen: HMI ansehen, HMI bedienen und HMI-Verbindungen einrichten; je HMI lässt sich das Bedienen ganz sperren
+- Jeder HMI-Zugriff wird mit Name, Zeit, Modus und Dauer protokolliert und ist unter „Letzte Zugriffe“ sichtbar
+- Wartung fertig melden: Im Abschluss-Assistenten ist die Checkliste jetzt der erste Schritt – Punkt für Punkt, auch beim Fertigmelden per Karte am Leitstand; ohne ausgefüllte Pflichtpunkte kein Abschluss
+- Beim Abschluss einer Wartung legt PDH das Wartungsprotokoll als PDF an der Anlage ab (Dokumente) – mit Firmenlogo, Datum, Ausführenden, Checkliste samt Bewertung und Fotos, Maßnahmen und Ersatzteilen
+- Neuer Status „Wartet“ auch für Störungen, Wartungen und Aufgaben (bei Tickets bisher „Ausstehend“); wartende Vorgänge bleiben in allen Listen offen
+
+### Geändert
+- Leitstand: „Warten“ per Karte setzt den Vorgang jetzt wirklich auf „Wartet“ – sichtbar in allen Listen, nicht nur am Leitstand; bestehende Wartestellungen werden beim Update übernommen
+- Leitstand: Nach „Geht noch weiter“ steht der Vorgang wieder auf „In Arbeit“ statt weiter „Wartet“ anzuzeigen
+- Leitstand: Wer per Karte fertig meldet (Instandhaltung/IT), kann im Abschluss-Assistenten auch abschließen – der Knopf „Fertig“ ist nicht mehr gesperrt, wenn der Rolle das Abschluss-Recht fehlt
+
+### Sicherheit
+- Beim HMI-Fernzugriff bleibt das VNC-Passwort auf dem Server; im Modus „ansehen“ verwirft der Server Tastatur, Maus und Zwischenablage
+
 ## [0.30.0] – 2026-10-06
 
 ### Neu

@@ -65,6 +65,8 @@ type completionInfo struct {
 	SuggestStart               string                `json:"suggest_start"` // YYYY-MM-DDTHH:MM
 	Departments                []string              `json:"departments"`
 	Colleagues                 []completionColleague `json:"colleagues"`
+	// Wartung: faellige Checklistenpunkte – der Assistent fragt sie als Erstes ab
+	Checklist []*maintenance.TaskChecklistItem `json:"checklist,omitempty"`
 }
 
 func (h *Handler) completionDepartments(ctx context.Context) []string {
@@ -134,7 +136,7 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info := completionInfo{Type: k.Type, Label: tr(lang, k.Label), Title: title, Status: status, PartsURL: k.PartsAPI + id + "/pending-parts",
-		RootCause: k.RootCause, CanFinish: h.canFn(r)(k.DonePerm), Departments: h.completionDepartments(ctx)}
+		RootCause: k.RootCause, CanFinish: h.canFinish(r, k), Departments: h.completionDepartments(ctx)}
 	_ = h.db.QueryRow(ctx, `SELECT COALESCE(SUM(duration_min), 0)::int FROM time_entries
 		WHERE user_id = $1::uuid AND ref_type::text = $2 AND ref_id = $3::uuid AND ended_at IS NOT NULL AND NOT pending`, u.ID, k.RefType, id).Scan(&info.BookedMin)
 	var running *time.Time
@@ -148,6 +150,9 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	info.SuggestStart = start.Local().Format("2006-01-02T15:04")
 	info.Colleagues = h.completionColleagues(ctx, u.ID, info.Departments)
+	if k.Type == "maintenance" {
+		info.Checklist, _ = maintenance.NewRepository(h.db).DueChecklistItemsForTask(ctx, id)
+	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "data": info})
 }
 
@@ -181,6 +186,11 @@ type completionRequest struct {
 	Comment    string   `json:"comment"`
 	RootCause  string   `json:"root_cause"`
 	Finish     bool     `json:"finish"` // false = "geht noch weiter"
+	// Wartung: Checklistenwerte (template_item_id → Wert / erledigt)
+	Checklist *struct {
+		Values map[string]string `json:"values"`
+		Done   map[string]bool   `json:"done"`
+	} `json:"checklist"`
 }
 
 // validateCompletion prueft die Eingaben ohne Datenbank.
@@ -273,7 +283,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, uiError("ungültige Daten"))
 		return
 	}
-	if in.Finish && !h.canFn(r)(k.DonePerm) {
+	if in.Finish && !h.canFinish(r, k) {
 		fail(http.StatusForbidden, uiError("Keine Berechtigung, diesen Vorgang abzuschließen."))
 		return
 	}
@@ -301,6 +311,12 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	if err := validateCompletion(&in, parts, booked, runID != ""); err != nil {
 		fail(http.StatusBadRequest, err)
 		return
+	}
+	if k.Type == "maintenance" {
+		if err := h.completionChecklist(ctx, id, u.ID, &in); err != nil {
+			fail(http.StatusBadRequest, err)
+			return
+		}
 	}
 	colleagues, names, err := h.completionValidColleagues(ctx, in.Colleagues, u.ID)
 	if err != nil {
@@ -432,4 +448,59 @@ func (h *Handler) CompletionSettingsWeb(w http.ResponseWriter, r *http.Request) 
 		notice = "Fehler: " + err.Error()
 	}
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(notice), http.StatusSeeOther)
+}
+
+// completionChecklist speichert die Checkliste aus dem Assistenten (Wartung).
+// Fertig: alle Werte, Pflichtpunkte muessen ausgefuellt sein – auch die, die
+// der Browser nicht mitgeschickt hat. Geht noch weiter: nur Ausgefuelltes.
+func (h *Handler) completionChecklist(ctx context.Context, taskID, userID string, in *completionRequest) error {
+	repo := maintenance.NewRepository(h.db)
+	if in.Checklist != nil && len(in.Checklist.Values) > 0 {
+		values, done := in.Checklist.Values, in.Checklist.Done
+		if done == nil {
+			done = map[string]bool{}
+		}
+		if !in.Finish {
+			v2 := map[string]string{}
+			for id, v := range values {
+				if strings.TrimSpace(v) != "" || done[id] {
+					v2[id] = v
+				}
+			}
+			values = v2
+		}
+		if len(values) > 0 {
+			if err := repo.SaveTaskChecklistResults(ctx, taskID, userID, values, done); err != nil {
+				return uiError("Checkliste: " + err.Error())
+			}
+		}
+	}
+	if !in.Finish {
+		return nil
+	}
+	due, err := repo.DueChecklistItemsForTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for _, it := range due {
+		filled := strings.TrimSpace(it.Value) != ""
+		if it.ItemType == "checkbox" {
+			filled = it.Done
+		}
+		if it.Required && !filled {
+			missing = append(missing, it.Label)
+		}
+	}
+	if len(missing) > 0 {
+		return uiError("Bitte zuerst die Checkliste ausfüllen: " + strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// canFinish: Abschluss-Recht der Person – oder Fertigmeldung per Karte am
+// Leitstand (dort ist sie schon als Instandhaltung/IT geprueft, wie bei den
+// uebrigen Leitstand-Aktionen).
+func (h *Handler) canFinish(r *http.Request, k completionKind) bool {
+	return h.canFn(r)(k.DonePerm) || boardCompleteFrom(r.Context())
 }

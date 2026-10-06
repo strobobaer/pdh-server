@@ -19,6 +19,7 @@ const (
 
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
+	StatusPending    Status = "pending" // wartet
 	StatusResolved   Status = "resolved"
 	StatusClosed     Status = "closed"
 )

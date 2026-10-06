@@ -44,6 +44,7 @@
           hx-target="previous .t-status">
           <option value="open" {{if eq .Status "open"}}selected{{end}}>Offen</option>
           <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>In Arbeit</option>
+          <option value="pending" {{if eq .Status "pending"}}selected{{end}}>Wartet</option>
           <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Gelöst</option>
           <option value="closed" {{if eq .Status "closed"}}selected{{end}}>Geschlossen</option>
         </select>

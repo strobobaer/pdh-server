@@ -14,6 +14,7 @@ const (
 	StatusDetected   FaultStatus = "detected"
 	StatusAnalyzing  FaultStatus = "analyzing"
 	StatusInProgress FaultStatus = "in_progress"
+	StatusPending    FaultStatus = "pending" // wartet
 	StatusResolved   FaultStatus = "resolved"
 	StatusClosed     FaultStatus = "closed"
 )

@@ -78,6 +78,8 @@ func faultStatusToOther(status string) string {
 		return "open"
 	case "analyzing", "in_progress":
 		return "in_progress"
+	case "pending":
+		return "pending"
 	case "resolved":
 		return "resolved"
 	case "closed":
@@ -90,8 +92,10 @@ func otherStatusToFault(status string) string {
 	switch status {
 	case "open":
 		return "detected"
-	case "in_progress", "pending":
+	case "in_progress":
 		return "in_progress"
+	case "pending":
+		return "pending"
 	case "resolved":
 		return "resolved"
 	case "closed":
@@ -102,7 +106,7 @@ func otherStatusToFault(status string) string {
 
 func passthroughStatus(status string) string {
 	switch status {
-	case "open", "in_progress", "resolved", "closed":
+	case "open", "in_progress", "pending", "resolved", "closed":
 		return status
 	}
 	return ""

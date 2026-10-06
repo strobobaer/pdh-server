@@ -322,7 +322,7 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 		rows, err := h.db.Query(ctx, `
 			SELECT t.id::text, t.title, t.due_date::text FROM tasks t
 			WHERE EXISTS(SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id=$1::uuid)
-			  AND t.status IN ('open','in_progress') AND t.due_date BETWEEN CURRENT_DATE-30 AND CURRENT_DATE+365`, userID)
+			  AND t.status IN ('open','in_progress','pending') AND t.due_date BETWEEN CURRENT_DATE-30 AND CURRENT_DATE+365`, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -341,7 +341,7 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 	if preferences.Maintenance {
 		rows, err := h.db.Query(ctx, `
 			SELECT id::text, title, due_date FROM maintenance_tasks
-			WHERE assigned_to=$1::uuid AND status IN ('open','in_progress') AND due_date BETWEEN NOW()-INTERVAL '30 days' AND NOW()+INTERVAL '365 days'`, userID)
+			WHERE assigned_to=$1::uuid AND status IN ('open','in_progress','pending') AND due_date BETWEEN NOW()-INTERVAL '30 days' AND NOW()+INTERVAL '365 days'`, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -375,7 +375,7 @@ func (h *Handler) microsoftCalendarSources(ctx context.Context, userID string, p
 		rows.Close()
 		rows, err = h.db.Query(ctx, `
 			SELECT id::text, title, due_date FROM faults
-			WHERE assigned_to=$1::uuid AND status IN ('detected','analyzing','in_progress') AND due_date BETWEEN NOW()-INTERVAL '30 days' AND NOW()+INTERVAL '365 days'`, userID)
+			WHERE assigned_to=$1::uuid AND status IN ('detected','analyzing','in_progress','pending') AND due_date BETWEEN NOW()-INTERVAL '30 days' AND NOW()+INTERVAL '365 days'`, userID)
 		if err != nil {
 			return nil, err
 		}

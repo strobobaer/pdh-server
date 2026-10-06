@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -36,6 +37,7 @@ const (
 
 	TaskOpen       TaskStatus = "open"
 	TaskInProgress TaskStatus = "in_progress"
+	TaskPending    TaskStatus = "pending" // wartet (z. B. auf Teile, Leitstand „Warten“)
 	TaskDone       TaskStatus = "done"
 	TaskSkipped    TaskStatus = "skipped"
 
@@ -441,7 +443,7 @@ func (r *Repository) GetDueToday(ctx context.Context) ([]*MaintenanceTask, error
 		LEFT JOIN infrastructure i ON mt.infrastructure_id = i.id
 		LEFT JOIN users u ON mt.assigned_to = u.id
 		LEFT JOIN cost_centers cc ON mt.cost_center_id = cc.id
-		WHERE mt.due_date::date <= (NOW() + INTERVAL '2 days')::date AND mt.status IN ('open','in_progress')
+		WHERE mt.due_date::date <= (NOW() + INTERVAL '2 days')::date AND mt.status IN ('open','in_progress','pending')
 		ORDER BY mt.priority, mt.due_date`)
 	if err != nil {
 		return nil, err
@@ -652,8 +654,35 @@ var eventBus *addins.EventBus
 // SetEventBus verbindet dieses Modul mit dem Add-in-Ereignis-Bus (wird in main.go gesetzt).
 func SetEventBus(b *addins.EventBus) { eventBus = b }
 
+// completedHooks laufen nach jedem erfolgreichen Abschluss eines Auftrags –
+// egal ueber welchen Weg (Detailseite, Abschluss-Assistent, Leitstand, API).
+// Genutzt fuer das Wartungsprotokoll (PDF) an der Anlage.
+var (
+	completedHooksMu sync.RWMutex
+	completedHooks   []func(ctx context.Context, taskID, userID string)
+)
+
+// OnTaskCompleted meldet eine Funktion fuer abgeschlossene Auftraege an.
+func OnTaskCompleted(fn func(ctx context.Context, taskID, userID string)) {
+	completedHooksMu.Lock()
+	defer completedHooksMu.Unlock()
+	completedHooks = append(completedHooks, fn)
+}
+
+func runCompletedHooks(ctx context.Context, taskID, userID string) {
+	completedHooksMu.RLock()
+	hooks := append([]func(context.Context, string, string){}, completedHooks...)
+	completedHooksMu.RUnlock()
+	for _, fn := range hooks {
+		fn(context.WithoutCancel(ctx), taskID, userID)
+	}
+}
+
 func (s *Service) CompleteTask(ctx context.Context, id, userID string, in *CompleteTaskInput) error {
 	err := s.repo.CompleteTask(ctx, id, userID, in.Notes, in.DurationMin)
+	if err == nil {
+		runCompletedHooks(ctx, id, userID)
+	}
 	if err == nil && eventBus != nil {
 		eventBus.Publish("maintenance.task_completed", map[string]interface{}{
 			"id": id, "completed_by": userID, "notes": in.Notes, "duration_min": in.DurationMin,

@@ -410,6 +410,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/shifts", h.Shifts)
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
+	h.hmiRoutes(r) // HMI-Fernzugriff (VNC) aus der Anlage
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
@@ -789,7 +790,7 @@ func statusClass(s string) string {
 		return "b-green"
 	case "in_progress", "active":
 		return "b-blue"
-	case "open", "detected":
+	case "open", "detected", "pending":
 		return "b-amber"
 	default:
 		return "b-gray"
@@ -801,7 +802,7 @@ func statusLabel(s string) string {
 		"open": "Offen", "in_progress": "In Arbeit",
 		"resolved": "Gelöst", "closed": "Geschlossen",
 		"detected": "Erkannt", "analyzing": "Analysiert",
-		"pending": "Ausstehend", "archive": "Archiv",
+		"pending": "Wartet", "archive": "Archiv",
 		"done": "Erledigt", "skipped": "Übersprungen",
 		"planning": "Planung", "active": "Aktiv",
 		"paused": "Pausiert", "completed": "Abgeschlossen",
@@ -1150,13 +1151,13 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Störungen
 	if fl, err := h.faults.List(ctx, ""); err == nil {
 		for _, f := range fl {
-			if f.Status == "detected" || f.Status == "in_progress" || f.Status == "analyzing" {
+			if f.Status == "detected" || f.Status == "in_progress" || f.Status == "analyzing" || f.Status == "pending" {
 				data.Stats.ActiveFaults++
 				if f.Status == "analyzing" {
 					data.Stats.AnalyzingFaults++
 				}
 			}
-			if len(data.Faults) < 4 && (f.Status == "detected" || f.Status == "in_progress") {
+			if len(data.Faults) < 4 && (f.Status == "detected" || f.Status == "in_progress" || f.Status == "pending") {
 				data.Faults = append(data.Faults, FaultView{
 					ID: f.ID, Title: f.Title,
 					Status: string(f.Status), StatusLabel: statusLabel(string(f.Status)),
@@ -1172,7 +1173,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	// Tickets
 	if tl, err := h.tickets.List(ctx, ""); err == nil {
 		for _, t := range tl {
-			if t.Status == "open" || t.Status == "in_progress" {
+			if t.Status == "open" || t.Status == "in_progress" || t.Status == "pending" {
 				data.Stats.OpenTickets++
 				if t.Priority == "critical" {
 					data.Stats.CriticalTickets++
@@ -1406,7 +1407,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Tabs = h.statusTabs(ctx, "faults", "/faults", filter, []statusTabDef{
 		{"detected", "Erkannt", "ti-alert-triangle"}, {"analyzing", "Analysiert", "ti-brain"},
-		{"in_progress", "In Bearbeitung", "ti-tool"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
+		{"in_progress", "In Bearbeitung", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))
 
 	tagIDs := h.categoryFilterIDs(r, "fault")
@@ -1420,7 +1421,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 			if unassigned && (f.AssignedTo != nil || f.Status == "resolved" || f.Status == "closed") {
 				continue
 			}
-			if f.Status == "detected" || f.Status == "in_progress" {
+			if f.Status == "detected" || f.Status == "in_progress" || f.Status == "pending" {
 				data.Open++
 			}
 			fv := FaultView{
@@ -1452,7 +1453,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 	}
 	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets", filter, []statusTabDef{
-		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Ausstehend", "ti-hourglass"},
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"},
 		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))
 
@@ -2273,7 +2274,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 		Users:    h.userOptions(ctx),
 	}
 	data.Tabs = h.statusTabs(ctx, "maintenance_tasks", "/maintenance", string(status), []statusTabDef{
-		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"done", "Erledigt", "ti-check"}, {"skipped", "Übersprungen", "ti-player-skip-forward"},
+		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"done", "Erledigt", "ti-check"}, {"skipped", "Übersprungen", "ti-player-skip-forward"},
 	}, false)
 	data.Tabs[0].Label = "Aktuell" // ohne Filter zeigt die Seite offene und laufende Auftraege
 	data.Tabs[0].Count = data.Tabs[1].Count + data.Tabs[2].Count
@@ -2322,7 +2323,7 @@ func (h *Handler) Maintenance(w http.ResponseWriter, r *http.Request) {
 			if t.Status == "open" {
 				data.OpenTasks++
 			}
-			if status == "" && t.Status != "open" && t.Status != "in_progress" {
+			if status == "" && t.Status != "open" && t.Status != "in_progress" && t.Status != "pending" {
 				continue
 			}
 			data.Tasks = append(data.Tasks, maintTaskView(t))
@@ -2436,8 +2437,8 @@ func maintenanceTaskDetailView(t *maintenance.MaintenanceTask) MaintenanceTaskDe
 		Notes:         t.Notes,
 		AssigneeName:  t.AssigneeName,
 		CreatedAt:     t.CreatedAt.Format("02.01.2006 15:04"),
-		CanStart:      t.Status == maintenance.TaskOpen,
-		CanComplete:   t.Status == maintenance.TaskOpen || t.Status == maintenance.TaskInProgress,
+		CanStart:      t.Status == maintenance.TaskOpen || t.Status == maintenance.TaskPending,
+		CanComplete:   t.Status == maintenance.TaskOpen || t.Status == maintenance.TaskInProgress || t.Status == maintenance.TaskPending,
 	}
 	if t.StartedAt != nil {
 		v.StartedAt = t.StartedAt.Format("02.01.2006 15:04")
@@ -2805,7 +2806,7 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 			CostCenterName:   t.CostCenterName,
 		},
 		StatusOptions: []StatusOption{
-			{"open", "Offen"}, {"in_progress", "In Arbeit"},
+			{"open", "Offen"}, {"in_progress", "In Arbeit"}, {"pending", "Wartet"},
 			{"resolved", "Gelöst"}, {"closed", "Geschlossen"},
 		},
 	}
@@ -4207,6 +4208,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		DepartmentID   string // eigene Abteilung der Anlage
 		EffectiveDept  string // wirksame Abteilung (ggf. geerbt)
 		DeptInherited  bool
+		HMI            hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
 	}
 	node, err := h.infra.GetByID(ctx, id)
 	if err != nil {
@@ -4218,6 +4220,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		Node:           infraNodeView(node),
 		HistoryModules: infraHistoryModules,
 		CommentRefs:    h.infraCommentRefOptions(ctx, id),
+		HMI:            h.hmiPermsFor(r),
 	}
 	data.PartnerLinks, data.SupplierID, data.ServiceID = h.infraPartnerLinks(ctx, id)
 	data.Departments = h.loadDepartments(ctx)
@@ -4443,7 +4446,7 @@ func (h *Handler) unassignedRecords(ctx context.Context) map[string]bool {
 	rows, err := h.db.Query(ctx, `
 		SELECT 'ticket:' || id FROM tickets WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
 		UNION ALL SELECT 'fault:' || id FROM faults WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
-		UNION ALL SELECT 'maintenance:' || id FROM maintenance_tasks WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status IN ('open', 'in_progress')
+		UNION ALL SELECT 'maintenance:' || id FROM maintenance_tasks WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status IN ('open', 'in_progress', 'pending')
 		UNION ALL SELECT 'task:' || t.id FROM tasks t WHERE t.assigned_group_id IS NULL AND t.status NOT IN ('resolved', 'closed')
 			AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id)`)
 	if err != nil {
