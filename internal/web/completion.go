@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/modules/attachments"
 	"pdh/internal/modules/maintenance"
 )
 
@@ -66,7 +67,7 @@ type completionInfo struct {
 	Departments                []string              `json:"departments"`
 	Colleagues                 []completionColleague `json:"colleagues"`
 	// Wartung: faellige Checklistenpunkte – der Assistent fragt sie als Erstes ab
-	Checklist []*maintenance.TaskChecklistItem `json:"checklist,omitempty"`
+	Checklist []*maintenance.TaskStep `json:"checklist,omitempty"`
 	// Wartung: geplante Dauer laut Plan (Minuten) – Vorschlag im Schritt Zeit
 	DefaultMin int `json:"default_min,omitempty"`
 }
@@ -155,9 +156,10 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	info.SuggestStart = start.Local().Format("2006-01-02T15:04")
 	info.Colleagues = h.completionColleagues(ctx, u.ID, info.Departments)
-	if k.Type == "maintenance" {
-		info.Checklist, _ = maintenance.NewRepository(h.db).DueChecklistItemsForTask(ctx, id)
-		info.DefaultMin = maintenance.NewRepository(h.db).DefaultDurationForTask(ctx, id)
+	if k.Type == "maintenance" && h.maint != nil {
+		// Schritte aus den faelligen Checklisten des Plans (zusammengefuehrt)
+		info.Checklist, _ = h.maint.Steps(ctx, id)
+		info.DefaultMin = h.maint.Repo().PlannedMinutes(ctx, id)
 	}
 	completionJSON(w, http.StatusOK, map[string]any{"success": true, "data": info})
 }
@@ -192,11 +194,6 @@ type completionRequest struct {
 	Comment    string   `json:"comment"`
 	RootCause  string   `json:"root_cause"`
 	Finish     bool     `json:"finish"` // false = "geht noch weiter"
-	// Wartung: Checklistenwerte (template_item_id → Wert / erledigt)
-	Checklist *struct {
-		Values map[string]string `json:"values"`
-		Done   map[string]bool   `json:"done"`
-	} `json:"checklist"`
 }
 
 // validateCompletion prueft die Eingaben ohne Datenbank.
@@ -318,8 +315,8 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, err)
 		return
 	}
-	if k.Type == "maintenance" {
-		if err := h.completionChecklist(ctx, id, u.ID, &in); err != nil {
+	if k.Type == "maintenance" && in.Finish {
+		if err := h.completionChecklistDone(ctx, id); err != nil {
 			fail(http.StatusBadRequest, err)
 			return
 		}
@@ -383,7 +380,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 	if !in.Finish {
 		_, _ = h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET status = 'in_progress', updated_at = NOW()
 			WHERE id = $1::uuid AND status::text IN ('open','detected','analyzing','pending')`, k.Table), id)
-		h.addHistory(ctx, k.Type, id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
+		h.addHistory(ctx, historyRef(k.Type), id, "work", "", "", "", "Arbeitsschritt erfasst (geht noch weiter)", u.ID)
 		completionJSON(w, http.StatusOK, map[string]any{"success": true, "closed": false, "message": tr(lang, "Arbeitsschritt gespeichert – der Vorgang bleibt in Bearbeitung.")})
 		return
 	}
@@ -462,52 +459,77 @@ func (h *Handler) CompletionSettingsWeb(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
-// completionChecklist speichert die Checkliste aus dem Assistenten (Wartung).
-// Fertig: alle Werte, Pflichtpunkte muessen ausgefuellt sein – auch die, die
-// der Browser nicht mitgeschickt hat. Geht noch weiter: nur Ausgefuelltes.
-func (h *Handler) completionChecklist(ctx context.Context, taskID, userID string, in *completionRequest) error {
-	repo := maintenance.NewRepository(h.db)
-	if in.Checklist != nil && len(in.Checklist.Values) > 0 {
-		values, done := in.Checklist.Values, in.Checklist.Done
-		if done == nil {
-			done = map[string]bool{}
-		}
-		if !in.Finish {
-			v2 := map[string]string{}
-			for id, v := range values {
-				if strings.TrimSpace(v) != "" || done[id] {
-					v2[id] = v
-				}
-			}
-			values = v2
-		}
-		if len(values) > 0 {
-			if err := repo.SaveTaskChecklistResults(ctx, taskID, userID, values, done); err != nil {
-				return uiError("Checkliste: " + err.Error())
-			}
-		}
-	}
-	if !in.Finish {
+// completionChecklistDone: vor „Fertig“ muessen alle Pflichtpunkte erfasst
+// sein (die Werte speichert der Assistent je Schritt sofort).
+func (h *Handler) completionChecklistDone(ctx context.Context, taskID string) error {
+	if h.maint == nil {
 		return nil
 	}
-	due, err := repo.DueChecklistItemsForTask(ctx, taskID)
-	if err != nil {
+	if _, err := h.maint.Repo().BuildSteps(ctx, taskID, false); err != nil {
 		return err
 	}
-	var missing []string
-	for _, it := range due {
-		filled := strings.TrimSpace(it.Value) != ""
-		if it.ItemType == "checkbox" {
-			filled = it.Done
-		}
-		if it.Required && !filled {
-			missing = append(missing, it.Label)
-		}
+	missing, err := h.maint.Repo().MissingRequired(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	if len(missing) > 0 {
 		return uiError("Bitte zuerst die Checkliste ausfüllen: " + strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// CompletionStepWeb: POST /complete/maintenance/{id}/steps/{stepID} {value, done}
+// – ein Checklistenpunkt, sofort gespeichert (auch per Karte am Leitstand).
+func (h *Handler) CompletionStepWeb(w http.ResponseWriter, r *http.Request) {
+	k, id, ok := h.completionKind(w, r)
+	if !ok {
+		return
+	}
+	lang := ctxLang(r.Context())
+	if k.Type != "maintenance" || h.maint == nil {
+		completionJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": tr(lang, "unbekannter Vorgang")})
+		return
+	}
+	var in struct {
+		Value string `json:"value"`
+		Done  bool   `json:"done"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
+		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": tr(lang, "ungültige Daten")})
+		return
+	}
+	step, err := h.maint.SaveStep(r.Context(), id, chi.URLParam(r, "stepID"), in.Value, in.Done, getUser(r).ID)
+	if err != nil {
+		msg := err.Error()
+		if maintenance.IsInputError(err) {
+			msg = maintenance.InputMessage(err)
+		}
+		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": msg})
+		return
+	}
+	completionJSON(w, http.StatusOK, map[string]any{"success": true, "data": step})
+}
+
+// CompletionStepPhotoWeb: POST /complete/maintenance/{id}/steps/{stepID}/photo
+// (multipart „files“) – Dokumentationsfoto am Punkt, auch per Karte am Leitstand.
+func (h *Handler) CompletionStepPhotoWeb(w http.ResponseWriter, r *http.Request) {
+	k, id, ok := h.completionKind(w, r)
+	if !ok {
+		return
+	}
+	lang := ctxLang(r.Context())
+	stepID := chi.URLParam(r, "stepID")
+	if k.Type != "maintenance" || h.maint == nil || !h.maint.Repo().StepBelongsToTask(r.Context(), id, stepID) {
+		completionJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": tr(lang, "unbekannter Vorgang")})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<20)
+	saved, err := attachments.NewService(attachments.NewRepository(h.db)).Upload(r.Context(), maintenance.RefChecklistResultImage, stepID, getUser(r).ID, r)
+	if err != nil {
+		completionJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	completionJSON(w, http.StatusOK, map[string]any{"success": true, "data": saved})
 }
 
 // canFinish: Abschluss-Recht der Person – oder Fertigmeldung per Karte am
@@ -549,4 +571,12 @@ func (h *Handler) maintNextDue(ctx context.Context, taskID string) *time.Time {
 		return nil
 	}
 	return h.maint.NextDueForTask(ctx, taskID)
+}
+
+// historyRef: ref_type im Verlauf (Wartungsauftraege stehen unter maintenance_task).
+func historyRef(kind string) string {
+	if kind == "maintenance" {
+		return "maintenance_task"
+	}
+	return kind
 }

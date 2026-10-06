@@ -297,7 +297,6 @@ func main() {
 		r.Mount("/faults", faultHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/time", timeHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/maintenance", maintHandler.Routes(cfg.Auth.JWTSecret))
-		r.Mount("/maintenance-checklists", maintHandler.ChecklistRoutes(cfg.Auth.JWTSecret))
 		r.Mount("/it", itHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/inventory", invHandler.Routes(cfg.Auth.JWTSecret))
 		r.Mount("/attachments", attachHandler.Routes(cfg.Auth.JWTSecret))

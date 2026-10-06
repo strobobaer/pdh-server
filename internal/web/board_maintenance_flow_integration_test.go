@@ -9,6 +9,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -62,17 +65,22 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 	var bossID string // Verantwortliche(r) des Plans bekommt die Rueckmeldung
 	must(pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, department, phone)
 		VALUES ($1::text, $1::text || '@x', 'x', 'Vera', 'Verantwortlich', 'Instandhaltung', '') RETURNING id::text`, "vb"+sfx).Scan(&bossID))
-	plan := &maintenance.MaintenancePlan{Name: "Plan " + sfx, Type: "inspection", InfrastructureID: infraID, Interval: maintenance.IntervalMonthly,
-		IntervalDays: 30, Priority: maintenance.PrioMedium, NextDueAt: time.Now(), CreatedBy: userID, ResponsibleTo: &bossID}
-	must(mrepo.CreatePlan(ctx, plan))
-	tpl, err := mrepo.CreateChecklistTemplate(ctx, "Prüfung "+sfx, "", userID)
+	// Plan mit einer Checkliste; der erste Auftrag entsteht beim Anlegen
+	tpl, err := mrepo.CreateTemplate(ctx, "Prüfung "+sfx, "", userID)
 	must(err)
-	item := &maintenance.ChecklistTemplateItem{TemplateID: tpl.ID, Label: "Ölstand", ItemType: "checkbox", Required: true, IntervalDays: 1, SortOrder: 1}
-	must(mrepo.CreateChecklistTemplateItem(ctx, item))
-	must(mrepo.AssignChecklistTemplatesToPlan(ctx, plan.ID, []string{tpl.ID}, 30))
-	task := &maintenance.MaintenanceTask{PlanID: &plan.ID, Title: "Prüfung Presse " + sfx, Type: "inspection", InfrastructureID: infraID,
-		Priority: maintenance.PrioMedium, DueDate: time.Now(), CreatedBy: userID}
-	must(mrepo.CreateTask(ctx, task))
+	_, err = mrepo.AddTemplateItem(ctx, tpl.ID, &maintenance.ChecklistItemInput{Label: "Ölstand", ItemType: "checkbox", Required: true})
+	must(err)
+	planID, err := h.maint.CreatePlan(ctx, &maintenance.PlanInput{Name: "Plan " + sfx, Type: "inspection", InfrastructureID: infraID,
+		IntervalUnit: maintenance.UnitMonth, IntervalCount: 1, NextDueAt: time.Now().Format("2006-01-02"), ResponsibleTo: &bossID,
+		Checklists: []maintenance.PlanChecklistInput{{TemplateID: tpl.ID}}}, userID)
+	must(err)
+	plan := struct{ ID string }{planID}
+	open, err := mrepo.FindTasks(ctx, maintenance.TaskFilter{PlanID: planID, Open: true})
+	must(err)
+	if len(open) != 1 {
+		t.Fatalf("offene Aufträge nach Anlegen: %d", len(open))
+	}
+	task := open[0]
 
 	// 1) Karte scannen → Token
 	rec := httptest.NewRecorder()
@@ -88,6 +96,20 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 	router.Use(h.authMiddleware)
 	router.Get("/complete/{type}/{id}", h.CompletionInfoWeb)
 	router.Post("/complete/{type}/{id}", h.CompletionWeb)
+	router.Post("/complete/{type}/{id}/steps/{stepID}", h.CompletionStepWeb)
+	router.Post("/complete/{type}/{id}/steps/{stepID}/photo", h.CompletionStepPhotoWeb)
+	callPath := func(method, path, ctype string, body *bytes.Buffer) (int, map[string]any) {
+		req := httptest.NewRequest(method, "/complete/maintenance/"+task.ID+path, body)
+		req.Header.Set("Authorization", "Bearer "+start["token"])
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
 	call := func(method, body string) (int, map[string]any) {
 		req := httptest.NewRequest(method, "/complete/maintenance/"+task.ID, bytes.NewBufferString(body))
 		req.Header.Set("Authorization", "Bearer "+start["token"])
@@ -111,16 +133,36 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 	if len(cl) != 1 || data["can_finish"] != true {
 		t.Fatalf("Checkliste %d Punkte, can_finish %v", len(cl), data["can_finish"])
 	}
+	stepID := cl[0].(map[string]any)["id"].(string)
 
 	// 3) Ohne Pflichtpunkt kein Abschluss
 	base := `"no_parts":true,"minutes":30,"start":"` + time.Now().Add(-time.Hour).Format("2006-01-02T15:04") + `","comment":"Ölstand geprüft","finish":true`
-	code, out := call("POST", `{`+base+`,"checklist":{"values":{"`+item.ID+`":""},"done":{"`+item.ID+`":false}}}`)
+	code, out := call("POST", `{`+base+`}`)
 	if code != 400 || !strings.Contains(out["error"].(string), "Ölstand") {
 		t.Fatalf("Pflichtpunkt fehlt: %d %v", code, out)
 	}
 
-	// 4) Fertig mit Checkliste
-	code, out = call("POST", `{`+base+`,"checklist":{"values":{"`+item.ID+`":"erledigt"},"done":{"`+item.ID+`":true}}}`)
+	// 4) Punkt per Karte abhaken und ein Foto anhaengen (gleicher Token, Unterpfade)
+	code, out = callPath("POST", "/steps/"+stepID, "application/json", bytes.NewBufferString(`{"done":true}`))
+	if code != 200 || out["success"] != true {
+		t.Fatalf("Punkt speichern: %d %v", code, out)
+	}
+	var mp bytes.Buffer
+	mw := multipart.NewWriter(&mp)
+	fw, _ := mw.CreateFormFile("files", "oel.png")
+	_ = png.Encode(fw, image.NewRGBA(image.Rect(0, 0, 4, 4)))
+	_ = mw.Close()
+	code, out = callPath("POST", "/steps/"+stepID+"/photo", mw.FormDataContentType(), &mp)
+	if code != 200 || out["success"] != true {
+		t.Fatalf("Foto per Karte: %d %v", code, out)
+	}
+	// fremder Schritt ueber den Token: abgelehnt
+	if code, _ = callPath("POST", "/steps/00000000-0000-0000-0000-000000000000", "application/json", bytes.NewBufferString(`{"done":true}`)); code != 400 {
+		t.Fatalf("fremder Punkt: %d", code)
+	}
+
+	// 5) Fertig
+	code, out = call("POST", `{`+base+`}`)
 	if code != 200 || out["closed"] != true || !strings.Contains(out["message"].(string), "Nächster Termin") {
 		t.Fatalf("Fertig: %d %v", code, out)
 	}
@@ -146,10 +188,20 @@ func TestBoardMaintenanceFlowIntegration(t *testing.T) {
 	if docs != 1 {
 		t.Fatalf("Wartungsprotokoll an der Anlage: %d", docs)
 	}
-	var protoItems int
-	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM maintenance_task_checklist_results WHERE task_id=$1::uuid AND done`, task.ID).Scan(&protoItems))
-	if protoItems != 1 {
-		t.Fatalf("Checkliste gespeichert: %d", protoItems)
+	steps, err := mrepo.Steps(ctx, task.ID)
+	must(err)
+	if len(steps) != 1 || !steps[0].Done || len(steps[0].DocImages) != 1 || steps[0].CheckedBy != "Tim Technik" {
+		t.Fatalf("Schritt im Protokoll: %d Schritte, erster %+v", len(steps), *steps[0])
+	}
+	var taskPDF int
+	must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM attachments WHERE ref_type='maintenance_task' AND ref_id=$1::uuid AND mimetype='application/pdf'`, task.ID).Scan(&taskPDF))
+	if taskPDF != 1 {
+		t.Fatalf("Wartungsprotokoll am Auftrag: %d", taskPDF)
+	}
+	var lastDone *time.Time
+	must(pool.QueryRow(ctx, `SELECT last_done_at FROM maintenance_plan_checklists WHERE plan_id=$1::uuid`, planID).Scan(&lastDone))
+	if lastDone == nil {
+		t.Fatal("Takt der Plan-Checkliste nicht fortgeschrieben")
 	}
 	_ = http.StatusOK
 }

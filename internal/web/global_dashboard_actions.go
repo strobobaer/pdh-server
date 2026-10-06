@@ -142,14 +142,15 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 			_, err = h.db.Exec(ctx, `INSERT INTO task_assignees (task_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING`, in.ID, in.AssignedTo)
 			return err
 		}
+		if in.Type == "maintenance" {
+			return h.maint.Accept(ctx, in.ID, in.AssignedTo)
+		}
 		var query string
 		switch in.Type {
 		case "fault":
 			query = `UPDATE faults SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('detected','analyzing','in_progress','pending')`
 		case "ticket":
 			query = `UPDATE tickets SET assigned_to=$1::uuid,status='in_progress',updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`
-		case "maintenance":
-			query = `UPDATE maintenance_tasks SET assigned_to=$1::uuid,status='in_progress' WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`
 		}
 		result, err := h.db.Exec(ctx, query, in.AssignedTo, in.ID)
 		if err != nil {
@@ -167,7 +168,7 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 		case "ticket":
 			err = h.tickets.UpdateDueDate(ctx, in.ID, followUpDate)
 		case "maintenance":
-			err = h.maint.UpdateDueDate(ctx, in.ID, *followUpDate)
+			return h.setBoardWaiting(r, in.Type, in.ID, actorID, *followUpDate)
 		case "task":
 			_, err = h.db.Exec(ctx, `UPDATE tasks SET due_date=$1::date,updated_at=NOW() WHERE id=$2::uuid AND status IN ('open','in_progress','pending')`, followUpDate.Format("2006-01-02"), in.ID)
 		}
@@ -233,16 +234,12 @@ func (h *Handler) applyGlobalBoardAction(r *http.Request, in GlobalBoardActionIn
 		case "ticket":
 			return h.tickets.QuickResolve(ctx, in.ID, "Verworfen: "+in.Comment, "", actorID)
 		case "maintenance":
-			result, err := h.db.Exec(ctx, `UPDATE maintenance_tasks SET status='skipped' WHERE id=$1::uuid AND status IN ('open','in_progress','pending')`, in.ID)
-			if err != nil {
+			// uebersprungen: der Plan bekommt sofort seinen naechsten Termin
+			if _, err := h.maint.Skip(ctx, in.ID, actorID); err != nil {
+				if maintenance.IsInputError(err) {
+					return fmt.Errorf("%s", maintenance.InputMessage(err))
+				}
 				return err
-			}
-			if result.RowsAffected() != 1 {
-				return fmt.Errorf("Der Vorgang wurde zwischenzeitlich geändert")
-			}
-			// uebersprungen: der Plan bekommt trotzdem seinen naechsten Termin
-			if _, err := h.maint.TaskSkipped(ctx, in.ID, actorID); err != nil {
-				componentLog("wartung").Warn().Err(err).Str("task", in.ID).Msg("folgetermin nach ueberspringen nicht geplant")
 			}
 		case "task":
 			return h.tasks.Discard(ctx, in.ID, actorID)
@@ -289,7 +286,14 @@ func writeGlobalBoardError(w http.ResponseWriter, status int, message string) {
 // (pending) – in allen Listen, nicht nur am Leitstand. Annehmen, „Geht noch
 // weiter“ oder Starten setzen ihn wieder auf „In Arbeit“.
 func (h *Handler) setBoardWaiting(r *http.Request, refType, id, actorID string, until time.Time) error {
-	table := map[string]string{"fault": "faults", "ticket": "tickets", "maintenance": "maintenance_tasks", "task": "tasks"}[refType]
+	if refType == "maintenance" { // Wartung: Termin + Status ueber das Wartungsmodul
+		if err := h.maint.Wait(r.Context(), id, until); err != nil {
+			return err
+		}
+		h.addHistory(r.Context(), "maintenance_task", id, "status", "status", "", "pending", "Wartet bis "+until.Format("02.01.2006")+" (Leitstand)", actorID)
+		return nil
+	}
+	table := map[string]string{"fault": "faults", "ticket": "tickets", "task": "tasks"}[refType]
 	if table == "" {
 		return fmt.Errorf("Unbekannter Vorgang")
 	}
@@ -299,11 +303,7 @@ func (h *Handler) setBoardWaiting(r *http.Request, refType, id, actorID string, 
 		return err
 	}
 	if old != "pending" {
-		q := "UPDATE " + table + " SET status = 'pending'"
-		if table != "maintenance_tasks" { // Wartungsauftraege haben kein updated_at
-			q += ", updated_at = NOW()"
-		}
-		if _, err := h.db.Exec(ctx, q+" WHERE id = $1::uuid", id); err != nil {
+		if _, err := h.db.Exec(ctx, "UPDATE "+table+" SET status = 'pending', updated_at = NOW() WHERE id = $1::uuid", id); err != nil {
 			return err
 		}
 	}

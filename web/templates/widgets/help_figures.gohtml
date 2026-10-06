@@ -453,3 +453,29 @@
 <figcaption>Erst lesen, was neu ist, dann installieren. Vor den Datenbank-Änderungen sichert PDH automatisch den bisherigen Stand.</figcaption>
 </figure>
 {{end}}
+
+{{/* Wartung: Checklisten mit eigenem Takt werden zu einer Liste zusammengefuehrt */}}
+{{define "hb-fig-maintenance"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Checklisten mit eigenem Takt werden zusammengeführt">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <text x="16" y="24" class="t-b">Wartungsplan „Säge“ · alle 2 Wochen</text>
+  <rect class="acl" x="16" y="36" width="200" height="40" rx="7"/><text x="28" y="53" class="t-b">Säge – jedes Mal</text><text x="28" y="68" class="t-m">bei jedem Termin · 2 Punkte</text>
+  <rect class="am" x="16" y="84" width="200" height="40" rx="7"/><text x="28" y="101" class="t-b">Säge – monatlich</text><text x="28" y="116" class="t-m">alle 1 Monate · zuletzt 06.09.</text>
+  <rect class="bg3" x="16" y="132" width="200" height="40" rx="7"/><text x="28" y="149" class="t-b">Säge – jährlich</text><text x="28" y="164" class="t-m">alle 1 Jahre · zuletzt 10.03.</text>
+  <path class="ar" d="M218 56 C 270 56, 270 90, 298 96"/><path class="ar" d="M218 104 H298"/>
+  <path class="ln" d="M218 152 C 250 152, 260 140, 280 132" stroke-dasharray="4 3"/><text x="226" y="186" class="t-m">noch nicht fällig</text>
+  <rect class="bg3" x="302" y="36" width="190" height="140" rx="8"/>
+  <text x="314" y="54" class="t-b">Auftrag 06.10. · Checkliste</text>
+  <text x="314" y="74" class="t-m">Säge – jedes Mal</text>
+  <text x="322" y="90">☑ Sichtprüfung</text><text x="322" y="106">☑ Spannung 231 V ✓</text>
+  <text x="314" y="126" class="t-m">Säge – monatlich</text>
+  <text x="322" y="142">☐ Sägeblatt schärfen</text><text x="452" y="142" font-size="12">📷</text>
+  <text x="314" y="166" class="t-m">Punkt 3 von 3</text>
+  <path class="ar" d="M494 104 H520"/>
+  <rect class="gr" x="524" y="70" width="104" height="34" rx="8"/><text x="576" y="92" class="t-c t-b">✔ Fertig</text>
+  <text x="576" y="122" class="t-c t-m">Protokoll (PDF)</text><text x="576" y="137" class="t-c t-m">+ Folgeauftrag 20.10.</text>
+</svg>
+<figcaption>Jede Checkliste hat ihren eigenen Takt. Fällige Checklisten werden beim Termin zu einer Liste zusammengeführt – mit Foto je Punkt.</figcaption>
+</figure>
+{{end}}

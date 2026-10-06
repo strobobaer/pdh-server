@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"pdh/internal/modules/maintenance"
 )
 
 func TestBoardWaitingSetsPendingIntegration(t *testing.T) {
@@ -26,7 +27,7 @@ func TestBoardWaitingSetsPendingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	h := &Handler{db: pool}
+	h := &Handler{db: pool, maint: maintenance.NewService(maintenance.NewRepository(pool))}
 	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
 	var userID, faultID, maintID string
 	must := func(err error) {

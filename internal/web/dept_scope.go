@@ -172,8 +172,6 @@ var scopePaths = []struct {
 	{regexp.MustCompile(`^/faults/` + uuidRe), "fault"},
 	{regexp.MustCompile(`^/maintenance/tasks/` + uuidRe), "maintenance_task"},
 	{regexp.MustCompile(`^/maintenance/plans/` + uuidRe), "maintenance_plan"},
-	{regexp.MustCompile(`^/maintenance-checklists/tasks/` + uuidRe), "maintenance_task"},
-	{regexp.MustCompile(`^/maintenance-checklists/plans/` + uuidRe), "maintenance_plan"},
 	{regexp.MustCompile(`^/tasks/` + uuidRe), "task"},
 	{regexp.MustCompile(`^/projects/` + uuidRe), "project"},
 	{regexp.MustCompile(`^/it/` + uuidRe), "it_asset"},

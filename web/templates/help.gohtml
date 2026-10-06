@@ -160,7 +160,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>Neue Zuweisung</b> in der Navigation und als Schnellaktion auf dem Dashboard,</li>
     <li>die Schnellaktionen <b>Störung melden</b> und <b>Ticket anlegen</b>,</li>
-    <li><b>Neu</b> in der Ticket- und Störungsliste, <b>Neue Aufgabe</b>, in der Wartung <b>Neuer Auftrag</b>,</li>
+    <li><b>Neu</b> in der Ticket- und Störungsliste, <b>Neue Aufgabe</b>, in der Wartung <b>Einzelauftrag</b>,</li>
     <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
     <li>im <a href="#dashboard">Leitstand</a> die Kacheln – dort ohne Zuweisung, siehe unten.</li>
   </ul>
@@ -187,7 +187,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
   <ul>
-    <li>Bei <b>Wartungen</b> mit Checkliste ist die <b>Checkliste der erste Schritt</b> des Assistenten – Punkt für Punkt, auch am Leitstand. Beim Abschluss entsteht das Wartungsprotokoll als PDF an der Anlage (<a href="#maintenance">mehr</a>).</li>
+    <li>Bei <b>Wartungen</b> mit Checkliste ist die <b>Checkliste der erste Schritt</b> des Assistenten – Punkt für Punkt mit Foto je Punkt, auch am Leitstand. Beim Abschluss entsteht das Wartungsprotokoll als PDF an Auftrag und Anlage (<a href="#maintenance">mehr</a>).</li>
     <li>Kann der Vorgang nicht geschlossen werden (z. B. fehlt dir die Berechtigung zum Abschließen), wird das Erfasste trotzdem gespeichert und der Grund angezeigt.</li>
     <li><b>Administration:</b> Die vorgeschlagenen Abteilungen stellst du unter <b>Core-Einstellungen → Abschluss-Assistent: Wer war dabei?</b> ein (Teilwort genügt, „Elektro“ passt auf „Elektrowerkstatt“).</li>
   </ul>
@@ -237,7 +237,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben steht die <b>Tabelle</b> der offenen Vorgänge – mit Art, Titel, Priorität, Fälligkeit, <b>Ersteller</b> (wer gemeldet bzw. angelegt hat), Zuständigem und Status –, darunter der <b>Zeitstrahl</b>. Beide haben eine eigene Auswahl.</li>
       <li>Die Knöpfe <b>Störungen</b>, <b>Tickets</b>, <b>Wartung</b> und <b>Aufgaben</b> antippen, um eine Art ein- oder auszublenden.</li>
       <li><b>Nur überfällig</b> bzw. <b>Nur ohne Zuständigen</b> zeigt nur diese Vorgänge.</li>
-      <li>Wartungen, die erst nach heute fällig sind, blendet die Tabelle aus – z. B. den nächsten Auftrag, den ein Wartungsplan direkt nach dem Fertigmelden anlegt (bei wöchentlichen Plänen sonst sofort wieder sichtbar). <b>Geplante Wartungen</b> zeigt sie an; im Zeitstrahl und unter „Neue Wartung“ stehen sie immer.</li>
+      <li>Wartungen, die noch nicht anstehen (Fälligkeit minus Vorlauf des Plans liegt nach heute), blendet die Tabelle aus – z. B. den nächsten Auftrag, den ein Wartungsplan direkt nach dem Fertigmelden anlegt. <b>Geplante Wartungen</b> zeigt sie an; im Zeitstrahl und unter „Neue Wartung“ stehen sie immer.</li>
       <li>Rechts über der Tabelle steht, wie viele Vorgänge gerade angezeigt werden (z. B. „4 von 9“); im Zeitstrahl steht die Zahl der ausgeblendeten. Die Auswahl merkt sich der Browser am Leitstand.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-id-badge-2"></i> So öffnest du einen Vorgang am Leitstand</b>
@@ -315,39 +315,54 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
-  <div class="hb-howto"><b><i class="ti ti-lock-open"></i> Wer darf eine Wartung fertig melden?</b>Wer dem Auftrag <b>zugewiesen</b> ist, ihn <b>verantwortet</b> oder zur <b>zugewiesenen Gruppe</b> gehört – auch ohne die Rollenrechte „Wartung bearbeiten/abschließen“. Ist niemand zugewiesen, darf ihn jeder übernehmen (außer Betrachtern). Andere brauchen die Rollenrechte. Am Leitstand genügt die Karte (Instandhaltung/IT). Die Arbeitszeit fragt der Abschluss-Assistent ab – eine eigene Zeiterfassung im Auftrag gibt es nicht mehr.</div>
-  <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird (täglich bis jährlich). Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Wartungsauftrag</b> – den nächsten Termin. PDH legt ihn selbst an: beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
-  <div class="hb-howto"><b><i class="ti ti-calendar-repeat"></i> So plant PDH den nächsten Termin</b>
-    <ul>
-      <li><b>ab Durchführung</b> (Standard): Erledigt-Datum + Intervall. Wer am 9. statt am 1. fertig wird, bekommt den nächsten Termin einen Monat nach dem 9.</li>
-      <li><b>fester Rhythmus</b>: Fälligkeit + Intervall – der Termin wandert nicht, egal wann erledigt wurde (z. B. Prüffristen). War ein Auftrag weit überfällig, rechnet PDH bis heute weiter, damit kein Stapel überfälliger Termine entsteht.</li>
-      <li>Monate, Quartale und Jahre rechnet PDH kalendergenau (15.01. → 15.02.), nicht in 30 oder 365 Tagen.</li>
-      <li>Einstellen im Wartungsplan unter <b>Nächster Termin nach Durchführung</b>. Änderst du dort die <b>nächste Fälligkeit</b>, zieht der noch nicht begonnene Auftrag mit.</li>
-      <li>Auch ein am Leitstand <b>verworfener</b> (übersprungener) Auftrag bekommt sofort seinen Nachfolger.</li>
-    </ul></div>
-  <div class="hb-howto"><b><i class="ti ti-clipboard-check"></i> So führst du eine Wartung aus</b>
+  <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird – z. B. „alle 2 Wochen“ oder „alle 6 Monate“. Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Auftrag</b>: den nächsten Termin. PDH legt ihn selbst an – beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
+  <p>Die Wartung hat fünf Reiter:</p>
+  <ul>
+    <li><b>Anstehend</b> – was jetzt zu tun ist, sortiert nach <b>Überfällig</b>, <b>Heute</b>, <b>Nächste 7 Tage</b> und <b>Demnächst (im Vorlauf)</b>. Jede Karte zeigt Anlage, Termin, Zuständige und den Stand der Checklisten (z. B. „2 Listen · 0/14“). „Nur meine“ und die Anlagen-Auswahl filtern.</li>
+    <li><b>Jahresplan</b> – je Plan eine Zeile, je Monat eine Spalte: ✓ erledigt, ● offen (rot, wenn überfällig), ○ geplant. Ein Klick öffnet den Auftrag bzw. den Plan.</li>
+    <li><b>Pläne</b> – alle Pläne mit Intervall, Checklisten samt Takt und nächstem Termin.</li>
+    <li><b>Erledigt</b> – die letzten Wartungen mit Protokoll-PDF; Abweichungen (Werte außerhalb Min/Max) sind markiert.</li>
+    <li><b>Checklisten</b> – die Vorlagen bearbeiten.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So führst du eine Wartung durch</b>
     <ol class="hb-steps">
-      <li>In der Wartungsliste den Auftrag öffnen (Reiter <b>Aktuell</b>).</li>
-      <li><b>Starten</b>. Oben steht, welche <b>Checkliste</b> abgearbeitet wird: <i class="ti ti-lock"></i> die am Wartungsplan hinterlegten. Über <b>+ Checkliste hinzufügen</b> wählst du eine weitere Vorlage für diesen Auftrag aus – so bekommen auch Aufträge ohne Plan eine Checkliste.</li>
-      <li>Die Punkte <b>Schritt für Schritt</b> abarbeiten – immer einer auf einmal, mit „Punkt 2 von 8“ und Fortschrittsbalken: Checkbox abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Freitext schreiben. Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du an den Punkt Fotos zur Dokumentation – am Handy öffnet sich direkt die Kamera.</li>
-      <li><b>Weiter</b> prüft den Punkt und speichert ihn sofort: Pflichtpunkte (✱) müssen ausgefüllt sein, Messwerte außerhalb von Min/Max fragt PDH noch einmal nach. <b>Zurück</b> oder ein Klick auf eine Nummer springt zu einem anderen Punkt. Wirst du unterbrochen, geht es beim nächsten Öffnen am offenen Punkt weiter.</li>
-      <li>Nach dem letzten Punkt <b>Checkliste fertig</b>: Die Übersicht zeigt alle Werte (antippen zum Ändern). <b>Weiter zum Abschluss</b> öffnet den <a href="#completion">Abschluss-Assistenten</a>.</li>
-      <li>Im Assistenten kommt bei Wartungen <b>als Erstes die Checkliste</b> – sind schon alle Punkte erfasst, siehst du die Übersicht zum Kontrollieren, sonst geht es am offenen Punkt weiter. Danach Material, Zeit (vorgeschlagen ist die geplante Dauer des Plans), wer dabei war und der Kommentar – er wird als Maßnahme gespeichert. Ohne ausgefüllte Pflichtpunkte lässt sich nicht abschließen. So wird die Checkliste auch beim Fertigmelden am <a href="#dashboard">Leitstand</a> abgefragt.</li>
-      <li><b>Fertig</b> – PDH berechnet den nächsten Termin, legt den Folgeauftrag an und zeigt „Nächster Termin: …“ an. Im erledigten Auftrag steht der Link zum Folgeauftrag; das <b>Checklisten-Protokoll</b> zeigt alle Werte, wer sie wann erfasst hat und die Fotos.</li>
-      <li><b>Automatische Rückmeldung</b>: Verantwortliche (Plan und Auftrag), Zugewiesene und wer den Auftrag angelegt hat, bekommen eine Chat-Nachricht von PDH-System – wer erledigt hat, Checkliste („alles in Ordnung“ oder ⚠ Werte außerhalb von Min/Max bzw. nicht erledigte Punkte), Bemerkung, nächster Termin und Links zu Protokoll und Auftrag. Wer selbst erledigt hat, bekommt keine Nachricht.</li>
-      <li>Gleichzeitig legt PDH das <b>Wartungsprotokoll als PDF</b> an der Anlage ab (Reiter <b>Dokumente</b>): oben das Firmenlogo (Logo für Exporte), Datum, Ausführende(r) und Beteiligte, darunter die Checkliste mit Werten, Vorgaben und Bewertung samt Fotos, die Maßnahmen, verwendete Ersatzteile und die Bemerkung. Im Verlauf des Auftrags steht „Wartungsprotokoll (PDF) an der Anlage abgelegt“.</li>
+      <li>Unter <b>Anstehend</b> bei der Karte <b>Durchführen</b> antippen – oder im Auftrag den großen Knopf <b>Wartung durchführen</b>. Am <a href="#dashboard">Leitstand</a> geht es genauso über <b>Fertig</b> und die Karte.</li>
+      <li>Zuerst kommt die <b>Checkliste</b>: ein Punkt nach dem anderen, darüber der Name der Checkliste. Abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Text schreiben. Jeder Punkt wird beim <b>Weiter</b> sofort gespeichert – wirst du unterbrochen, geht es später am offenen Punkt weiter.</li>
+      <li>Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du Bilder direkt an den Punkt – am Handy öffnet sich die Kamera. Das geht überall gleich, auch am Leitstand.</li>
+      <li>Danach Material (oder „kein Material“), Zeit (vorgeschlagen ist die geplante Dauer), wer dabei war und ein Kommentar – er wird als Maßnahme gespeichert. Ohne ausgefüllte Pflichtpunkte (✱) lässt sich nicht abschließen.</li>
+      <li><b>Fertig</b>: PDH zeigt „Nächster Termin: …“ und legt den Folgeauftrag an. <b>Geht noch weiter</b> speichert alles und lässt den Auftrag offen.</li>
     </ol></div>
-  <div class="hb-howto"><b><i class="ti ti-checklist"></i> Checklisten-Vorlagen einrichten</b>
+  <div class="hb-howto"><b><i class="ti ti-file-check"></i> Was nach dem Fertigmelden passiert</b>
+    <ul>
+      <li><b>Wartungsprotokoll als PDF</b> – am Auftrag und als Kopie an der Anlage (Reiter <b>Dokumente</b>): Firmenlogo, Datum, Ausführende(r) und Beteiligte, die Checklisten mit Werten, Vorgaben und Fotos, Maßnahmen, Ersatzteile und Bemerkung.</li>
+      <li><b>Rückmeldung im Chat</b> an Verantwortliche, Zugewiesene und wer den Auftrag angelegt hat: wer erledigt hat, ob alles in Ordnung war (⚠ bei Abweichungen), nächster Termin und Links. Wer selbst erledigt hat, bekommt keine Nachricht.</li>
+      <li>Der Auftrag zeigt danach das Ergebnis je Checkliste mit Werten, Fotos, Protokoll und dem Link zum Folgeauftrag.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-lock-open"></i> Wer darf eine Wartung fertig melden?</b>Wer dem Auftrag <b>zugewiesen</b> ist, ihn <b>verantwortet</b> oder zur <b>zugewiesenen Gruppe</b> gehört – auch ohne die Rollenrechte „Wartung bearbeiten/abschließen“. Ist niemand zugewiesen, darf ihn jeder übernehmen (außer Betrachtern). Andere brauchen die Rollenrechte. Am Leitstand genügt die Karte (Instandhaltung/IT). Die Arbeitszeit fragt der Assistent ab – eine eigene Zeiterfassung im Auftrag gibt es nicht.</div>
+  {{template "hb-fig-maintenance"}}
+  <div class="hb-howto"><b><i class="ti ti-calendar-plus"></i> So legst du einen Wartungsplan an</b>
     <ol class="hb-steps">
-      <li>In der Wartung oben <b>Checklisten</b> öffnen und eine <b>Vorlage</b> anlegen.</li>
-      <li>Punkte hinzufügen – je Punkt ein <b>Intervall in Tagen</b> (abgefragt wird nur, was bis zum Fälligkeitstag des Auftrags wieder fällig ist – der nächste Auftrag eines Plans fragt die Punkte also wieder ab) und eine Art:
+      <li><b>Neuer Plan</b> antippen (oder in einem Plan <i class="ti ti-copy"></i> zum Kopieren).</li>
+      <li><b>Was</b>: Anlage, Name und Art.</li>
+      <li><b>Wann</b>: „alle N Tage / Wochen / Monate / Jahre“ und der <b>nächste Termin</b>. Der <b>Vorlauf (Tage)</b> legt fest, ab wann der Auftrag unter Anstehend und am Leitstand erscheint – bei 0 erst am Fälligkeitstag.</li>
+      <li><b>Nach der Durchführung</b>: <b>ab Durchführung</b> (Erledigt-Datum + Intervall) oder <b>fester Rhythmus</b> (die Termine bleiben im Takt, z. B. für Prüffristen; nach langer Überfälligkeit rechnet PDH bis heute weiter). Monate und Jahre rechnet PDH kalendergenau (15.01. → 15.02.).</li>
+      <li><b>Wer</b>: Zugewiesen, Gruppe, Verantwortlich (bekommt die Rückmeldung) und die geplante Dauer.</li>
+      <li><b>Checklisten</b> hinzufügen und je Checkliste den <b>Takt</b> wählen – „bei jedem Termin“ oder z. B. „alle 1 Monate“. Darunter steht, wann sie zuletzt abgefragt wurde. Die Vorschau zeigt die nächsten Termine.</li>
+      <li><b>Speichern</b>. Der erste Auftrag ist sofort da. Änderungen am Plan übernimmt der offene Auftrag, solange daran noch nichts erfasst ist.</li>
+    </ol>
+    Ein Plan, der eine Zeit nicht gebraucht wird, lässt sich <b>ruhen lassen</b> – sein offener Auftrag verschwindet, beim <b>Aktivieren</b> kommt er wieder. Aufträge ohne Plan legst du mit <b>Einzelauftrag</b> an.</div>
+  <div class="hb-howto"><b><i class="ti ti-list-check"></i> Checklisten einrichten</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Checklisten</b> öffnen und eine Checkliste anlegen – am besten je Takt eine eigene, z. B. „Säge – jedes Mal“ und „Säge – monatlich“.</li>
+      <li>Punkte hinzufügen, jeweils mit einer Art:
         <ul>
-          <li><b>Checkbox</b> – erledigt / nicht erledigt.</li>
-          <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>; jede Vorgabe wird per Häkchen einzeln aktiviert. Soll ist der Richtwert, Min/Max die Grenzen für „im Bereich“.</li>
+          <li><b>Abhaken</b> – erledigt / nicht erledigt.</li>
+          <li><b>Messwert</b> – mit Einheit und den Vorgaben <b>Soll</b>, <b>Min</b> und <b>Max</b>.</li>
           <li><b>Freitext</b> – Beobachtungen, Zählerstände o. Ä.</li>
-        </ul></li>
-      <li>Unter jedem Punkt mit <i class="ti ti-photo-plus"></i> <b>Bild</b> Fotos oder Skizzen zur <b>Darstellung</b> hinterlegen (z. B. wo der Messpunkt sitzt). Sie erscheinen bei der Durchführung über dem Eingabefeld.</li>
-      <li>Die Vorlage im <b>Wartungsplan</b> unter „Checklisten-Vorlagen“ ankreuzen – sie wird dann bei jedem Auftrag des Plans abgefragt. Die Reihenfolge der Schritte folgt der Sortierung der Punkte.</li>
+        </ul>
+        <b>Pflicht</b> (✱) heißt: ohne diesen Punkt kein Abschluss.</li>
+      <li>Mit <i class="ti ti-photo-plus"></i> <b>Bild</b> Fotos oder Skizzen zur <b>Darstellung</b> hinterlegen (z. B. wo der Messpunkt sitzt). Sie erscheinen bei der Durchführung über dem Eingabefeld.</li>
+      <li>Die Reihenfolge der Punkte lässt sich ändern. Eine Checkliste kann in mehreren Plänen stecken.</li>
     </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "maintenance") "Can" $can)}}
 </section>
@@ -570,7 +585,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="time" data-title="Zeiterfassung &amp; Schichtplan" data-pages="time shifts">
   <h2><i class="ti ti-clock"></i> Zeiterfassung &amp; Schichtplan</h2>
-  <p>In Störungen, Tickets, Aufgaben und Wartungen startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
+  <p>In Störungen, Tickets und Aufgaben startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>; bei Wartungen fragt der Assistent die Zeit ab. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
   <div class="hb-howto"><b><i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> So bestätigst du Zeiten, die Kollegen für dich eingetragen haben</b>
     <ol class="hb-steps">
       <li>Hat dich jemand beim Abschluss eines Vorgangs als „dabei“ eingetragen, bekommst du einen Chat-Hinweis von PDH-System.</li>

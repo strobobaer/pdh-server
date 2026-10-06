@@ -503,5 +503,13 @@
  "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?": "„%s”: %s este în afara min/max. Se preia totuși?",
  "„%s“: bitte eine Zahl eingeben.": "„%s”: introduceți un număr.",
  "Wartet": "În așteptare",
- "Nächster Termin: %s": "Următorul termen: %s"
+ "Nächster Termin: %s": "Următorul termen: %s",
+ "Anstehend": "Scadente",
+ "Wartungsplan": "Plan de mentenanță",
+ "Plan": "Plan",
+ "Auftrag": "Comandă",
+ "Foto": "Fotografie",
+ "Foto aufnehmen oder auswählen": "Faceți sau alegeți o fotografie",
+ "„%s“: %s": "„%s”: %s",
+ "Erst die Checkliste – Punkt für Punkt. Jeder Punkt wird beim Weitergehen gespeichert; mit „Foto“ dokumentierst du ihn.": "Mai întâi lista – punct cu punct. Fiecare punct se salvează la continuare; documentați-l cu „Fotografie”."
 }

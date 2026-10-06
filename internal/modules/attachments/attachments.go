@@ -218,8 +218,13 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 		}
 
 		mime := fh.Header.Get("Content-Type")
-		if mime == "" {
-			mime = "application/octet-stream"
+		if mime == "" || mime == "application/octet-stream" {
+			// manche Apps/Kameras schicken keinen Typ – dann nach Dateiendung
+			if byExt := mimeByExt(ext); byExt != "" {
+				mime = byExt
+			} else {
+				mime = "application/octet-stream"
+			}
 		}
 
 		caption := r.FormValue("caption")
@@ -364,4 +369,23 @@ func nextcloudRemotePath(refType, refID, filename string) string {
 		module = refType
 	}
 	return strings.Trim(root, "/") + "/" + module + "/" + refID + "/" + filename
+}
+
+// mimeByExt: Dateityp nach Endung fuer Uploads ohne Content-Type.
+func mimeByExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".heic":
+		return "image/heic"
+	case ".pdf":
+		return "application/pdf"
+	}
+	return ""
 }

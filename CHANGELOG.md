@@ -10,6 +10,27 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.33.0] – 2026-10-06
+
+### Neu
+- Wartung neu aufgebaut mit den Reitern Anstehend, Jahresplan, Pläne, Erledigt und Checklisten
+- Anstehend zeigt die Wartungen nach Überfällig, Heute, Nächste 7 Tage und Demnächst, jeweils mit Knopf „Durchführen“ und dem Stand der Checklisten
+- Jahresplan: je Plan eine Zeile mit allen erledigten, offenen und geplanten Terminen des Jahres
+- Ein Wartungsplan kann mehrere Checklisten mit eigenem Takt haben (z. B. „bei jedem Termin“, „alle 2 Wochen“, „monatlich“); fällige Checklisten werden bei der Durchführung zu einer Liste zusammengeführt
+- Neuer Plan-Editor auf eigener Seite: Intervall frei wählbar („alle N Tage/Wochen/Monate/Jahre“), Vorlauf in Tagen, Vorschau der nächsten Termine und „zuletzt abgefragt“ je Checkliste
+- Foto je Checklistenpunkt direkt im Abschluss-Assistenten – in der App, am Handy und am Leitstand
+- Das Wartungsprotokoll (PDF) liegt jetzt auch am Auftrag und in der Liste „Erledigt“
+
+### Geändert
+- Der Wartungsauftrag ist schlanker: ein Knopf „Wartung durchführen“ öffnet den Assistenten, darunter das Ergebnis je Checkliste mit Werten, Fotos und Protokoll
+- Bestehende Pläne, Checklisten und offene Aufträge wurden übernommen; Checklistenpunkte mit eigenem Intervall wurden zu eigenen Checklisten mit diesem Takt
+- Leitstand: Wartungen erscheinen ab „Fälligkeit minus Vorlauf“ des Plans
+- Ruhende Pläne haben keinen offenen Auftrag mehr; beim Aktivieren wird er wieder angelegt
+
+### Behoben
+- Ein beschädigtes Foto lässt das Fertigmelden nicht mehr scheitern – es fehlt dann nur im Protokoll
+- Verlaufseinträge aus der Wartungsausführung erscheinen jetzt im Verlauf des Auftrags
+
 ## [0.32.1] – 2026-10-06
 
 ### Behoben

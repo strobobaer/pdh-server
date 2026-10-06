@@ -1,0 +1,206 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{/* Plan-Editor (maintenance_web.go MaintenancePlanPage) – speichert über /api/v1/maintenance/plans */}}
+<div class="mp-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/maintenance?view=plans")}}
+  <div style="flex:1;min-width:0">
+    <h1>{{if .IsNew}}Neuer Wartungsplan{{else}}{{.Plan.Name}}{{end}}</h1>
+    <p>{{if .IsNew}}Was wird wie oft an welcher Anlage gemacht?{{else}}{{.Plan.InfraName}}{{if not .Plan.Active}} · <span class="badge b-gray">ruht</span>{{end}}{{end}}</p>
+  </div>
+  {{if not .IsNew}}
+  <div class="widget-icon-toolbar compact">
+    {{if .OpenTask}}<a class="btn" href="/maintenance/tasks/{{.OpenTask.ID}}"><i class="ti ti-clipboard-check"></i> Nächster Auftrag</a>{{end}}
+    <form method="post" action="/maintenance/plans/{{.Plan.ID}}/duplicate-web" style="display:inline"><button type="submit" class="btn" title="Plan kopieren"><i class="ti ti-copy"></i></button></form>
+    <button type="button" class="btn" onclick="mpActive({{if .Plan.Active}}false{{else}}true{{end}})">{{if .Plan.Active}}<i class="ti ti-player-pause"></i> Ruhen lassen{{else}}<i class="ti ti-player-play"></i> Aktivieren{{end}}</button>
+  </div>
+  {{end}}
+</div>
+
+<form id="mp-form" onsubmit="return mpSave()" autocomplete="off">
+<div class="mp-grid">
+  <div class="card">
+    <div class="card-title"><i class="ti ti-info-circle"></i> Was &amp; wo</div>
+    <div class="form-group"><label class="form-label">Name</label><input id="mp-name" class="form-input" maxlength="255" required value="{{.Plan.Name}}" placeholder="z. B. Presse 3 – Inspektion"></div>
+    {{template "infra-tree-picker" (dict "TargetID" "mp-infra" "SelectedLabelID" "mp-infra-label" "Label" "Anlage" "Required" true "Value" .Plan.InfrastructureID "SelectedLabel" .Plan.InfraName)}}
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Art</label>
+        <select id="mp-type" class="form-input">{{range $k, $v := .TypeLabels}}<option value="{{$k}}" {{if eq $k $.Plan.Type}}selected{{end}}>{{$v}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Priorität</label>
+        <select id="mp-priority" class="form-input">
+          <option value="low" {{if eq .Plan.Priority "low"}}selected{{end}}>niedrig</option>
+          <option value="medium" {{if eq .Plan.Priority "medium"}}selected{{end}}>mittel</option>
+          <option value="high" {{if eq .Plan.Priority "high"}}selected{{end}}>hoch</option>
+          <option value="critical" {{if eq .Plan.Priority "critical"}}selected{{end}}>kritisch</option>
+        </select></div>
+    </div>
+    <div class="form-group"><label class="form-label">Beschreibung (optional)</label><textarea id="mp-desc" class="form-input" rows="2" maxlength="4000">{{.Plan.Description}}</textarea></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="ti ti-calendar-repeat"></i> Wann</div>
+    <div class="mp-interval">
+      <span>alle</span>
+      <input id="mp-count" type="number" min="1" max="1000" class="form-input" value="{{.Plan.IntervalCount}}" oninput="mpPreview()">
+      <select id="mp-unit" class="form-input" onchange="mpPreview()">
+        <option value="day" {{if eq .Plan.IntervalUnit "day"}}selected{{end}}>Tage</option>
+        <option value="week" {{if eq .Plan.IntervalUnit "week"}}selected{{end}}>Wochen</option>
+        <option value="month" {{if eq .Plan.IntervalUnit "month"}}selected{{end}}>Monate</option>
+        <option value="year" {{if eq .Plan.IntervalUnit "year"}}selected{{end}}>Jahre</option>
+      </select>
+    </div>
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Nächster Termin</label><input id="mp-next" type="date" class="form-input" value="{{.NextDueISO}}" oninput="mpPreview()"></div>
+      <div class="form-group"><label class="form-label">Vorlauf (Tage)</label><input id="mp-lead" type="number" min="0" max="365" class="form-input" value="{{.Plan.LeadDays}}" title="So viele Tage vor dem Termin erscheint der Auftrag als anstehend"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Nach der Durchführung</label>
+      <label class="mp-radio"><input type="radio" name="mp-mode" value="completion" {{if ne .Plan.ScheduleMode "fixed"}}checked{{end}}> <span><b>ab Durchführung</b> – nächster Termin = Erledigt-Datum + Intervall</span></label>
+      <label class="mp-radio"><input type="radio" name="mp-mode" value="fixed" {{if eq .Plan.ScheduleMode "fixed"}}checked{{end}}> <span><b>fester Rhythmus</b> – Termine bleiben im Takt, egal wann erledigt (z. B. Prüffristen)</span></label>
+    </div>
+    <div class="mp-preview"><i class="ti ti-calendar-event"></i> <span id="mp-preview"></span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><i class="ti ti-users"></i> Wer</div>
+    <div class="grid2">
+      <div class="form-group"><label class="form-label">Zugewiesen</label>
+        <select id="mp-assigned" class="form-input"><option value="">– niemand –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Gruppe</label><select id="mp-group" class="form-input">{{.GroupOptions}}</select></div>
+      <div class="form-group"><label class="form-label">Verantwortlich (bekommt die Rückmeldung)</label>
+        <select id="mp-responsible" class="form-input"><option value="">– niemand –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Geplante Dauer (Minuten)</label><input id="mp-minutes" type="number" min="0" max="10080" step="5" class="form-input" value="{{.Plan.EstimatedMin}}"></div>
+    </div>
+    {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "mp-cost" "Value" .CostCenterID)}}
+  </div>
+
+  <div class="card mp-lists-card">
+    <div class="card-title"><i class="ti ti-list-check"></i> Checklisten
+      <a href="/maintenance?view=checklists" target="_blank" rel="noopener" class="mp-link">Checklisten bearbeiten <i class="ti ti-external-link"></i></a></div>
+    <p class="mp-hint">Jede Checkliste hat ihren eigenen Takt. Bei der Durchführung werden alle fälligen zu einer Liste zusammengeführt – z. B. „Sichtprüfung“ bei jedem Termin, „Filter“ 14-tägig, „Keilriemen“ monatlich.</p>
+    <div id="mp-lists"></div>
+    <div class="mp-addlist">
+      <select id="mp-add-tpl" class="form-input"></select>
+      <button type="button" class="btn" onclick="mpAddList()"><i class="ti ti-plus"></i> Checkliste hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<div class="mp-save">
+  <span id="mp-msg"></span>
+  <a class="btn" href="/maintenance?view=plans">Abbrechen</a>
+  <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> {{if .IsNew}}Plan anlegen{{else}}Speichern{{end}}</button>
+</div>
+</form>
+{{end}}
+
+{{define "context-list"}}{{end}}
+
+{{block "scripts" .}}
+<style>
+.mp-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.mp-head h1{font-size:18px;font-weight:600}
+.mp-head p{font-size:12px;color:var(--muted);margin-top:2px}
+.mp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.mp-lists-card{grid-column:1/-1}
+.mp-interval{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.mp-interval .form-input{max-width:130px}
+.mp-radio{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:6px 0;cursor:pointer}
+.mp-radio input{margin-top:3px}
+.mp-preview{font-size:12px;color:var(--muted);background:var(--bg3);border-radius:8px;padding:8px 10px}
+.mp-hint{font-size:12px;color:var(--muted);margin:-4px 0 10px}
+.mp-link{margin-left:auto;font-size:12px;font-weight:400;color:var(--accent)}
+.card-title{display:flex;align-items:center;gap:6px}
+.mp-list{display:grid;grid-template-columns:22px minmax(0,1fr) 210px auto;gap:8px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--bg2)}
+.mp-list .name b{display:block}
+.mp-list .name small{color:var(--muted);font-size:11.5px}
+.mp-rhythm{display:flex;gap:6px;align-items:center}
+.mp-rhythm .form-input{padding:6px 8px}
+.mp-rhythm input{width:64px}
+.mp-move{display:flex;flex-direction:column}
+.mp-move button{border:0;background:none;color:var(--muted);cursor:pointer;padding:0}
+.mp-addlist{display:flex;gap:8px;margin-top:6px}
+.mp-addlist .form-input{max-width:360px}
+.mp-save{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px;position:sticky;bottom:0;background:var(--bg);padding:10px 0}
+#mp-msg{font-size:12px;margin-right:auto}
+@media(max-width:800px){.mp-grid{grid-template-columns:1fr}.mp-list{grid-template-columns:22px 1fr}.mp-list .mp-rhythm,.mp-list .mp-del{grid-column:2}}
+</style>
+<script>
+const MP_PLAN = {{.PlanJSON}};
+const MP_TEMPLATES = {{.Templates}} || [];
+const MP_NEW = {{if .IsNew}}true{{else}}false{{end}};
+const mpEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mpDate = d => String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
+function mpAdd(unit, n, d){
+  d = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if(unit === 'day') d.setDate(d.getDate() + n);
+  else if(unit === 'week') d.setDate(d.getDate() + 7 * n);
+  else if(unit === 'year') d.setFullYear(d.getFullYear() + n);
+  else { const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); }
+  return d;
+}
+function mpPreview(){
+  const v = document.getElementById('mp-next').value, unit = document.getElementById('mp-unit').value, n = Math.max(1, +document.getElementById('mp-count').value || 1);
+  if(!v){ document.getElementById('mp-preview').textContent = ''; return; }
+  let d = new Date(v + 'T00:00:00'); const out = [];
+  for(let i = 0; i < 5; i++){ out.push(mpDate(d)); d = mpAdd(unit, n, d); }
+  document.getElementById('mp-preview').textContent = 'Termine: ' + out.join(' · ') + ' …';
+}
+// Checklisten des Plans
+let mpLists = (MP_PLAN.checklists || []).map(c => ({template_id: c.template_id, rhythm_unit: c.rhythm_unit || 'always', rhythm_count: c.rhythm_count || 1, last_done_at: c.last_done_at, next_from: c.next_from}));
+const tplName = id => (MP_TEMPLATES.find(t => t.id === id) || {}).name || '(gelöschte Checkliste)';
+const tplCount = id => (MP_TEMPLATES.find(t => t.id === id) || {}).item_count || 0;
+function mpRenderLists(){
+  const box = document.getElementById('mp-lists');
+  box.innerHTML = mpLists.length ? mpLists.map((c, k) => {
+    const info = [tplCount(c.template_id) + ' Punkte'];
+    if(c.last_done_at) info.push('zuletzt ' + mpDate(new Date(c.last_done_at)));
+    if(c.next_from && c.rhythm_unit !== 'always') info.push('wieder fällig ab ' + mpDate(new Date(c.next_from)));
+    return '<div class="mp-list">'
+      + '<div class="mp-move"><button type="button" title="nach oben" onclick="mpMove(' + k + ',-1)"' + (k === 0 ? ' disabled' : '') + '><i class="ti ti-chevron-up"></i></button><button type="button" title="nach unten" onclick="mpMove(' + k + ',1)"' + (k === mpLists.length - 1 ? ' disabled' : '') + '><i class="ti ti-chevron-down"></i></button></div>'
+      + '<div class="name"><b>' + mpEsc(tplName(c.template_id)) + '</b><small>' + mpEsc(info.join(' · ')) + '</small></div>'
+      + '<div class="mp-rhythm">' + (c.rhythm_unit === 'always' ? '' : '<span>alle</span><input type="number" min="1" max="1000" class="form-input" value="' + c.rhythm_count + '" onchange="mpLists[' + k + '].rhythm_count=Math.max(1,+this.value||1)">')
+      + '<select class="form-input" onchange="mpLists[' + k + '].rhythm_unit=this.value;mpRenderLists()">'
+      + [['always','bei jedem Termin'],['day','Tage'],['week','Wochen'],['month','Monate'],['year','Jahre']].map(o => '<option value="' + o[0] + '"' + (o[0] === c.rhythm_unit ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>'
+      + '<button type="button" class="btn btn-danger mp-del" title="Checkliste vom Plan entfernen" onclick="mpLists.splice(' + k + ',1);mpRenderLists()"><i class="ti ti-x"></i></button>'
+      + '</div>';
+  }).join('') : '<div class="mp-hint" style="margin:0 0 8px">Noch keine Checkliste – der Auftrag hat dann nur Material, Zeit und Kommentar.</div>';
+  const sel = document.getElementById('mp-add-tpl');
+  const free = MP_TEMPLATES.filter(t => !mpLists.some(c => c.template_id === t.id));
+  sel.innerHTML = free.length ? free.map(t => '<option value="' + mpEsc(t.id) + '">' + mpEsc(t.name) + ' (' + t.item_count + ' Punkte)</option>').join('') : '<option value="">– alle Checklisten zugeordnet –</option>';
+}
+function mpAddList(){ const id = document.getElementById('mp-add-tpl').value; if(!id) return; mpLists.push({template_id: id, rhythm_unit: 'always', rhythm_count: 1}); mpRenderLists(); }
+function mpMove(k, d){ const j = k + d; if(j < 0 || j >= mpLists.length) return; [mpLists[k], mpLists[j]] = [mpLists[j], mpLists[k]]; mpRenderLists(); }
+async function mpSave(){
+  const msg = document.getElementById('mp-msg'), $ = id => document.getElementById(id);
+  const body = {
+    name: $('mp-name').value, description: $('mp-desc').value, type: $('mp-type').value, priority: $('mp-priority').value,
+    infrastructure_id: $('mp-infra').value, interval_unit: $('mp-unit').value, interval_count: +$('mp-count').value || 1,
+    schedule_mode: (document.querySelector('input[name="mp-mode"]:checked') || {}).value || 'completion',
+    lead_days: +$('mp-lead').value || 0, estimated_min: +$('mp-minutes').value || 0, next_due_at: $('mp-next').value,
+    assigned_to: $('mp-assigned').value, responsible_to: $('mp-responsible').value, assigned_group_id: $('mp-group').value,
+    cost_center_id: $('mp-cost').value,
+    checklists: mpLists.map(c => ({template_id: c.template_id, rhythm_unit: c.rhythm_unit, rhythm_count: +c.rhythm_count || 1}))
+  };
+  if(!body.infrastructure_id){ msg.innerHTML = '<span style="color:var(--red)">Bitte eine Anlage wählen.</span>'; return false; }
+  msg.textContent = 'Speichere…';
+  try{
+    const res = await fetch('/api/v1/maintenance/plans' + (MP_NEW ? '' : '/' + MP_PLAN.id), {method: MP_NEW ? 'POST' : 'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok || json.success === false) throw new Error(json.error || ('HTTP ' + res.status));
+    const id = (json.data || json).id;
+    location.href = '/maintenance/plans/' + id + '?saved=1';
+  }catch(e){ msg.innerHTML = '<span style="color:var(--red)">' + mpEsc(e.message) + '</span>'; }
+  return false;
+}
+async function mpActive(on){
+  if(!on && !confirm('Plan ruhen lassen? Der noch nicht begonnene Auftrag wird entfernt, es entstehen keine neuen Termine.')) return;
+  try{
+    const res = await fetch('/api/v1/maintenance/plans/' + MP_PLAN.id + '/active', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({active: on})});
+    if(!res.ok){ const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
+    location.reload();
+  }catch(e){ alert(e.message); }
+}
+if(new URLSearchParams(location.search).get('saved')) document.getElementById('mp-msg').innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> Gespeichert – der Auftrag ist angepasst.</span>';
+mpRenderLists(); mpPreview();
+</script>
+{{end}}

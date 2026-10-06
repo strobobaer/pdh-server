@@ -61,6 +61,13 @@
 .cw-ck-bar{height:5px;border-radius:999px;background:var(--bg3);overflow:hidden;margin-bottom:12px;border:1px solid var(--border)}
 .cw-ck-bar i{display:block;height:100%;background:var(--green)}
 .cw-ck-item{border:1px solid var(--border);border-radius:10px;padding:12px}
+.cw-ck-list{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin:0 0 6px;display:flex;gap:6px;align-items:center}
+.cw-ck-sum .grp{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:8px 10px 4px;border-bottom:1px solid var(--border)}
+.cw-ck-docs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.cw-ck-docs img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border)}
+.cw-ck-photo{height:64px;min-width:64px;padding:0 10px;border:1px dashed var(--border);border-radius:6px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--muted);cursor:pointer}
+.cw-ck-photo:hover{border-color:var(--accent);color:var(--accent)}
+.cw-ck-photo.busy{opacity:.5;pointer-events:none}
 .cw-ck-item .lbl{font-size:15px;font-weight:600}
 .cw-ck-item .desc{font-size:12px;color:var(--muted);margin-top:3px;white-space:pre-wrap}
 .cw-ck-spec{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
@@ -104,7 +111,7 @@
       <!-- 0 Checkliste (nur Wartung mit faelligen Punkten) – ein Punkt je Schritt -->
       <div class="cw-pane" data-step="-1">
         <h3><i class="ti ti-list-check"></i> {{t "Checkliste"}}</h3>
-        <p class="hint">{{t "Erst die Checkliste – Punkt für Punkt. Fotos zur Dokumentation hängst du auf der Wartungsseite an."}}</p>
+        <p class="hint">{{t "Erst die Checkliste – Punkt für Punkt. Jeder Punkt wird beim Weitergehen gespeichert; mit „Foto“ dokumentierst du ihn."}}</p>
         <div id="cw-ck"></div>
       </div>
       <!-- 1 Material -->
@@ -223,7 +230,7 @@
     // Wartung: geplante Dauer vorschlagen, wenn noch keine Zeit erfasst ist
     if(!i.running_since && !i.booked_min && i.default_min > 0) $('cw-min').value = String(i.default_min);
     if(i.checklist && i.checklist.length){
-      const items = i.checklist.map(c => Object.assign({}, c, {confirmed: c.value}));
+      const items = i.checklist.map(c => Object.assign({}, c, {confirmed: c.value, saved: ckKey(c)}));
       let idx = items.findIndex(c => c.required && !ckFilled(c));
       if(idx < 0) idx = items.findIndex(c => !ckFilled(c));
       S.ck = {items, idx: idx < 0 ? items.length : idx};
@@ -356,6 +363,36 @@
   const ckParse = v => { v = String(v || '').trim().replace(',', '.'); if(v === '') return null; const n = Number(v); return isFinite(n) ? n : NaN; };
   const ckHas = v => v !== null && v !== undefined;
   function ckFilled(c){ return c.item_type === 'checkbox' ? !!c.done : String(c.value || '').trim() !== ''; }
+  const ckKey = c => (c.item_type === 'checkbox' ? (c.done ? '1' : '0') : String(c.value || '').trim());
+  // Punkt sofort speichern (auch per Karte am Leitstand: gleicher Token-Pfad)
+  async function ckSave(c){
+    if(c.saved === ckKey(c)) return '';
+    try{
+      const res = await api('/complete/' + S.type + '/' + S.id + '/steps/' + encodeURIComponent(c.id), {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: c.item_type === 'checkbox' ? '' : String(c.value || '').trim(), done: !!c.done})});
+      const json = await res.json();
+      if(!res.ok || !json.success) return json.error || {{t "Fehler"}};
+      c.saved = ckKey(c); c.in_range = json.data ? json.data.in_range : c.in_range;
+      return '';
+    }catch(e){ return e.message; }
+  }
+  async function ckFlush(){
+    for(const c of (S.ck ? S.ck.items : [])){ const err = await ckSave(c); if(err) return F({{t "„%s“: %s"}}, c.label, err); }
+    return '';
+  }
+  window.cwCkPhoto = async function(input){
+    const c = S && S.ck && S.ck.items[S.ck.idx]; if(!c || !input.files || !input.files.length) return;
+    const lbl = input.closest('.cw-ck-photo'); lbl.classList.add('busy');
+    try{
+      const fd = new FormData(); [...input.files].forEach(f => fd.append('files', f));
+      const res = await api('/complete/' + S.type + '/' + S.id + '/steps/' + encodeURIComponent(c.id) + '/photo', {method: 'POST', body: fd});
+      const json = await res.json();
+      if(!res.ok || !json.success) throw new Error(json.error || {{t "Fehler"}});
+      (json.data || []).filter(a => a.is_image).forEach(a => (c.doc_images = c.doc_images || []).push({id: a.id, url: a.url, filename: a.filename}));
+      ckRender();
+    }catch(e){ msg('err', e.message); }
+    lbl.classList.remove('busy');
+  };
   // Bewertung gegen Min/Max: null = keine Grenzen oder kein Wert
   function ckRange(c){
     if(c.item_type !== 'number') return null;
@@ -405,22 +442,26 @@
       if(c.item_type === 'checkbox') input = '<label class="cw-check" style="width:100%"><input type="checkbox" id="cw-ck-done"' + (c.done ? ' checked' : '') + '> ' + {{t "erledigt"}} + '</label>';
       else if(c.item_type === 'number') input = '<input class="form-input" id="cw-ck-val" inputmode="decimal" placeholder="' + {{t "Messwert"}} + '" value="' + esc(c.value || '') + '" oninput="cwCkState()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();cwGo(1);}">' + (c.unit ? '<span>' + esc(c.unit) + '</span>' : '') + '<span class="cw-ck-state" id="cw-ck-state"></span>';
       else input = '<textarea class="form-input" id="cw-ck-val" placeholder="' + {{t "Freitext"}} + '">' + esc(c.value || '') + '</textarea>';
-      html += '<div class="cw-ck-item"><div class="lbl">' + (c.required ? '<span style="color:var(--red)" title="' + {{t "Pflichtpunkt"}} + '">✱</span> ' : '') + esc(c.label) + '</div>'
+      const docs = (c.doc_images || []).map(i => '<a href="' + esc(i.url) + '" target="_blank" rel="noopener"><img src="' + esc(i.url) + '" alt="' + esc(i.filename) + '"></a>').join('');
+      html += (c.checklist_name ? '<div class="cw-ck-list"><i class="ti ti-list-check"></i>' + esc(c.checklist_name) + '</div>' : '')
+        + '<div class="cw-ck-item"><div class="lbl">' + (c.required ? '<span style="color:var(--red)" title="' + {{t "Pflichtpunkt"}} + '">✱</span> ' : '') + esc(c.label) + '</div>'
         + (c.description ? '<div class="desc">' + esc(c.description) + '</div>' : '') + ckSpec(c)
-        + (imgs ? '<div class="cw-ck-imgs">' + imgs + '</div>' : '') + '<div class="cw-ck-in">' + input + '</div></div>';
+        + (imgs ? '<div class="cw-ck-imgs">' + imgs + '</div>' : '') + '<div class="cw-ck-in">' + input + '</div>'
+        + '<div class="cw-ck-docs">' + docs + '<label class="cw-ck-photo" title="' + {{t "Foto aufnehmen oder auswählen"}} + '"><i class="ti ti-camera-plus"></i><span>' + {{t "Foto"}} + '</span><input type="file" accept="image/*" capture="environment" multiple hidden onchange="cwCkPhoto(this)"></label></div></div>';
     } else {
       html += '<p class="hint" style="margin:0 0 8px">' + {{t "Alle Punkte durchgegangen – zum Ändern antippen."}} + '</p><div class="cw-list cw-ck-sum">'
-        + ck.items.map((c, k) => '<button type="button" data-ck="' + k + '"><i class="ti ti-' + (ckFilled(c) ? 'circle-check' : c.required ? 'alert-circle' : 'circle-dashed') + '" style="color:var(--' + (ckFilled(c) ? 'green' : c.required ? 'red' : 'muted') + ')"></i><span>' + (k + 1) + '. ' + esc(c.label) + '</span><span class="v">' + ckValue(c) + '</span></button>').join('') + '</div>';
+        + ck.items.map((c, k) => (k === 0 || c.checklist_name !== ck.items[k - 1].checklist_name ? '<div class="grp">' + esc(c.checklist_name || '') + '</div>' : '')
+          + '<button type="button" data-ck="' + k + '"><i class="ti ti-' + (ckFilled(c) ? 'circle-check' : c.required ? 'alert-circle' : 'circle-dashed') + '" style="color:var(--' + (ckFilled(c) ? 'green' : c.required ? 'red' : 'muted') + ')"></i><span>' + (k + 1) + '. ' + esc(c.label) + '</span><span class="v">' + ckValue(c) + ((c.doc_images || []).length ? ' <i class="ti ti-photo"></i>' : '') + '</span></button>').join('') + '</div>';
     }
     box.innerHTML = html;
     ckState();
     const inp = $('cw-ck-val'); if(inp) inp.focus();
   }
   $('cw-ck').addEventListener('click', e => { const b = e.target.closest('[data-ck]'); if(!b || !S || !S.ck) return; S.ck.idx = +b.dataset.ck; show(-1); });
-  function ckGo(d){
+  async function ckGo(d){
     const ck = S.ck;
     ckRead();
-    if(d < 0){ if(ck.idx > 0){ ck.idx--; show(-1); } return; }
+    if(d < 0){ if(ck.idx > 0){ await ckSave(ck.items[ck.idx]); ck.idx--; show(-1); } return; }
     if(ck.idx < ck.items.length){
       const c = ck.items[ck.idx], err = ckError(c);
       if(err){ msg('err', err); return; }
@@ -428,17 +469,13 @@
         if(!confirm(F({{t "„%s“: %s liegt außerhalb von Min/Max. Trotzdem so übernehmen?"}}, c.label, c.value + (c.unit ? ' ' + c.unit : '')))) return;
         c.confirmed = c.value;
       }
+      const saveErr = await ckSave(c);
+      if(saveErr){ msg('err', saveErr); return; }
       ck.idx++; show(-1); return;
     }
     const bad = ck.items.findIndex(c => ckError(c));
     if(bad >= 0){ ck.idx = bad; show(-1); msg('err', ckError(ck.items[bad])); return; }
     show(0);
-  }
-  function ckPayload(){
-    if(!S.ck) return null;
-    const values = {}, done = {};
-    S.ck.items.forEach(c => { const id = c.template_item_id; values[id] = c.item_type === 'checkbox' ? (c.done ? 'erledigt' : '') : String(c.value || '').trim(); done[id] = c.item_type === 'checkbox' ? !!c.done : values[id] !== ''; });
-    return {values, done};
   }
 
   // ── Zusammenfassung & Absenden ──
@@ -457,13 +494,15 @@
     if(!S || S.busy) return;
     if(S.ck){
       ckRead();
+      const flushErr = await ckFlush();
+      if(flushErr){ show(-1); msg('err', flushErr); return; }
       const bad = finish ? S.ck.items.findIndex(c => ckError(c)) : S.ck.items.findIndex(c => ckFilled(c) && ckError(c));
       if(bad >= 0){ S.ck.idx = bad; show(-1); msg('err', ckError(S.ck.items[bad])); return; }
     }
     for(let s = 0; s < 4; s++){ const err = check(s); if(err && !(s === 0 && !finish)){ show(s); msg('err', err); return; } }
     S.busy = true; $('cw-finish').disabled = true; $('cw-more').disabled = true; msg('', {{t "Speichere…"}});
     const body = {no_parts: $('cw-noparts').checked, start: $('cw-start').value, minutes: S.info.running_since ? 0 : (+$('cw-min').value || 0),
-      colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish, checklist: ckPayload()};
+      colleagues: picked(), comment: $('cw-comment').value, root_cause: $('cw-cause').value, finish};
     try{
       const res = await api('/complete/' + S.type + '/' + S.id, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
       const json = await res.json();

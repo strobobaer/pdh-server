@@ -1,389 +1,322 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+{{/* Wartung v2 (maintenance_web.go): Anstehend · Jahresplan · Pläne · Erledigt · Checklisten.
+     Durchgeführt wird immer im Abschluss-Assistenten: pdhComplete('maintenance', id). */}}
+<div class="mt-head">
   <div>
-    <h1 style="font-size:19px;font-weight:600">Wartungsplanung</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.TotalPlans}} Pläne · {{.OpenTasks}} Aufträge offen</p>
+    <h1>Wartung</h1>
+    <p>{{if eq .View "due"}}{{.OpenCount}} anstehend{{if .LaterCount}} · {{.LaterCount}} später geplant{{end}}{{else if eq .View "year"}}Jahresplan {{.Year}}{{else if eq .View "plans"}}{{len .Plans}} Pläne{{else if eq .View "done"}}zuletzt erledigt{{else}}Checklisten-Vorlagen{{end}}</p>
   </div>
   <div class="widget-icon-toolbar compact">
-    <button type="button" class="btn btn-primary" onclick="pdhCreate('maintenance')"><i class="ti ti-plus"></i> Neuer Auftrag</button>
-    <button type="button" class="btn" onclick="document.getElementById('new-plan-form').style.display='block'"><i class="ti ti-plus"></i> Neuer Plan</button>
-    <button type="button" class="btn" onclick="toggleMaintenanceChecklistAdmin()"><i class="ti ti-checklist"></i> Checklisten</button>
-    <button type="button" class="btn" hx-post="/maintenance/generate" hx-target="#generate-result"><i class="ti ti-refresh"></i> Fehlende Aufträge anlegen</button>
+    <button type="button" class="btn" onclick="pdhCreate('maintenance')"><i class="ti ti-plus"></i> Einzelauftrag</button>
+    <a class="btn btn-primary" href="/maintenance/plans/new"><i class="ti ti-calendar-plus"></i> Neuer Plan</a>
   </div>
 </div>
-<div id="generate-result"></div>
 
-<div id="new-plan-form" style="display:none" class="card">
-  <div class="card-title">Wartungsplan anlegen</div>
-  <form onsubmit="return submitMaintenancePlanForm(this)">
-    <div class="grid2">
-      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">Typ</label>
-        <select name="type" class="form-input">
-          <option value="preventive">Vorbeugend</option><option value="inspection">Inspektion</option><option value="calibration">Kalibrierung</option><option value="cleaning">Reinigung</option>
-        </select>
-      </div>
-      {{template "infra-tree-picker" (dict "TargetID" "maintenance-infra-id" "SelectedLabelID" "maintenance-infra-selected" "Label" "Infrastruktur" "Required" true)}}
-      <div class="form-group"><label class="form-label">Intervall</label>
-        <select name="interval" class="form-input"><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option><option value="monthly" selected>Monatlich</option><option value="quarterly">Quartalsweise</option><option value="yearly">Jährlich</option></select>
-      </div>
-      <div class="form-group"><label class="form-label">Erstes Fälligkeitsdatum</label><input name="first_due_at" type="date" class="form-input" value="{{.Today}}"></div>
-      <div class="form-group"><label class="form-label">Nächster Termin nach Durchführung</label>
-        <select name="schedule_mode" class="form-input"><option value="completion" selected>ab Durchführung (Erledigt-Datum + Intervall)</option><option value="fixed">fester Rhythmus (Fälligkeit + Intervall)</option></select>
-      </div>
-      <div class="form-group"><label class="form-label">Priorität</label>
-        <select name="priority" class="form-input"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
-      </div>
-      <div class="form-group"><label class="form-label">Verantwortlich</label><select name="responsible_to" class="form-input"><option value="">Nicht gesetzt</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
-      <div class="form-group"><label class="form-label">Zugewiesen</label><select name="assigned_to" class="form-input"><option value="">Nicht zugewiesen</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
-      <div class="form-group"><label class="form-label">Zugewiesene Gruppe</label><select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_plan/new/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
-    </div>
-    <div id="maintenance-create-result" style="font-size:12px;margin-bottom:8px"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px">
-      <button type="button" class="btn" onclick="document.getElementById('new-plan-form').style.display='none'"><i class="ti ti-x"></i> Abbrechen</button>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Anlegen</button>
-    </div>
-  </form>
-</div>
+<nav class="rec-tabs mt-tabs" aria-label="Ansicht">
+  <a class="rec-tab {{if eq .View "due"}}active{{end}}" href="/maintenance"><i class="ti ti-player-play"></i> Anstehend</a>
+  <a class="rec-tab {{if eq .View "year"}}active{{end}}" href="/maintenance?view=year"><i class="ti ti-calendar-month"></i> Jahresplan</a>
+  <a class="rec-tab {{if eq .View "plans"}}active{{end}}" href="/maintenance?view=plans"><i class="ti ti-repeat"></i> Pläne</a>
+  <a class="rec-tab {{if eq .View "done"}}active{{end}}" href="/maintenance?view=done"><i class="ti ti-circle-check"></i> Erledigt</a>
+  <a class="rec-tab {{if eq .View "checklists"}}active{{end}}" href="/maintenance?view=checklists"><i class="ti ti-list-check"></i> Checklisten</a>
+</nav>
 
-<div id="maintenance-checklist-admin" style="display:none" class="card">
-  <div class="card-title">Wartungs-Checklisten-Vorlagen</div>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Jeder Punkt hat ein Pflicht-Intervall. Bei der Durchführung werden nur fällige Punkte angezeigt. Punktarten: <b>Checkbox</b>, <b>Messwert</b> (optional mit Soll, Min und Max) und <b>Freitext</b>. Zu jedem Punkt lassen sich Bilder zur Darstellung hinterlegen; bei der Durchführung kommen Fotos zur Dokumentation dazu.</p>
-  <div class="grid2">
-    <form onsubmit="return createMaintenanceChecklistTemplate(this)">
-      <div class="form-group"><label class="form-label">Vorlagenname</label><input name="name" class="form-input" placeholder="Optipress Wartung" required></div>
-      <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Vorlage anlegen</button>
-    </form>
-    <form onsubmit="return createMaintenanceChecklistItem(this)">
-      <div class="form-group"><label class="form-label">Vorlage</label><select name="template_id" id="checklist-template-select" class="form-input" required></select></div>
-      <div class="form-group"><label class="form-label">Punkt</label><input name="label" class="form-input" placeholder="Riemenspannung prüfen" required></div>
-      <div class="grid2" style="grid-template-columns:1fr 1fr">
-        <div class="form-group"><label class="form-label">Typ</label><select name="item_type" class="form-input" onchange="mciTypeChanged(this)"><option value="checkbox">Checkbox</option><option value="number">Messwert</option><option value="text">Freitext</option></select></div>
-        <div class="form-group"><label class="form-label">Intervall Tage *</label><input name="interval_days" type="number" min="1" class="form-input" value="30" required></div>
-      </div>
-      <div class="grid2" style="grid-template-columns:1fr 1fr">
-        <div class="form-group"><label class="form-label">Sortierung</label><input name="sort_order" type="number" class="form-input" value="100"></div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding-top:22px"><input name="required" type="checkbox" checked> Pflichtpunkt</label>
-      </div>
-      <div class="mci-measure-slot"></div>
-      <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input"></div>
-      <p style="font-size:11px;color:var(--muted);margin:-4px 0 8px">Bilder zur Darstellung fügst du nach dem Anlegen direkt am Punkt in der Liste unten hinzu.</p>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Punkt anlegen</button>
-    </form>
+{{if eq .View "due"}}
+<form class="mt-filter" method="get" action="/maintenance">
+  <label class="mt-chip {{if .Mine}}on{{end}}"><input type="checkbox" name="mine" value="1" {{if .Mine}}checked{{end}} onchange="this.form.submit()"> Nur meine</label>
+  <select name="infra" class="form-input" onchange="this.form.submit()" aria-label="Anlage">
+    <option value="">Alle Anlagen</option>
+    {{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $.InfraFilter}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+</form>
+{{range .Groups}}
+<section class="mt-group mt-{{.Key}}">
+  <h2><i class="ti {{.Icon}}"></i> {{.Label}} <span>{{len .Cards}}</span></h2>
+  <div class="mt-cards">
+    {{range .Cards}}
+    <article class="mt-card {{if .Overdue}}overdue{{end}}">
+      <a class="mt-card-main" href="/maintenance/tasks/{{.ID}}">
+        <div class="mt-card-title"><span class="act-dot {{.PriorityDot}}"></span>{{.Title}}</div>
+        <div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.InfraName}}</div>
+        <div class="mt-card-meta">
+          <span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> {{.Due}}</span>
+          {{if .Who}}<span><i class="ti ti-user"></i> {{.Who}}</span>{{end}}
+          {{if .Points}}<span title="Checklistenpunkte"><i class="ti ti-list-check"></i> {{if gt .Lists 1}}{{.Lists}} Listen · {{end}}{{.Filled}}/{{.Points}}</span>{{end}}
+          {{if ne .Status "open"}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
+        </div>
+      </a>
+      <button type="button" class="btn cw-finish mt-go" onclick="pdhComplete('maintenance','{{.ID}}')"><i class="ti ti-player-play"></i> Durchführen</button>
+    </article>
+    {{end}}
   </div>
-  <div id="maintenance-checklist-admin-result" style="font-size:12px;margin-bottom:8px"></div>
-  <div id="maintenance-checklist-template-list" style="font-size:12px;color:var(--muted)">Noch nicht geladen</div>
-</div>
+</section>
+{{else}}
+<div class="mt-empty"><i class="ti ti-mood-happy"></i><div>Keine Wartung anstehend.</div>{{if .LaterCount}}<a href="/maintenance?view=year">{{.LaterCount}} später geplante im Jahresplan</a>{{end}}</div>
+{{end}}
+{{end}}
 
-{{if .DueTasks}}
-<div class="card" style="border-color:rgba(245,158,11,.3);margin-bottom:14px">
-  <div class="card-title"><i class="ti ti-alert-circle" style="color:var(--amber)"></i> Heute fällig</div>
-  {{range .DueTasks}}
-  <div class="li" style="gap:10px">
-    <div class="act-dot {{.PriorityDot}}"></div>
-    <div class="li-text"><div class="li-title">{{.Title}}</div><div class="li-sub">{{.InfraName}} · fällig {{.DueDate}}</div></div>
-    <span class="badge {{.PriorityClass}}">{{.Priority}}</span>
-    <div class="widget-icon-toolbar compact"><a class="btn" href="/maintenance/tasks/{{.ID}}"><i class="ti ti-eye"></i></a><a class="btn" href="/maintenance/tasks/{{.ID}}"><i class="ti ti-check"></i></a></div>
+{{if eq .View "year"}}
+<div class="mt-yearnav">
+  <a class="btn" href="/maintenance?view=year&year={{.PrevYear}}"><i class="ti ti-chevron-left"></i> {{.PrevYear}}</a>
+  <b>{{.Year}}</b>
+  <a class="btn" href="/maintenance?view=year&year={{.NextYear}}">{{.NextYear}} <i class="ti ti-chevron-right"></i></a>
+  <span class="mt-legend"><i class="mk done"></i> erledigt <i class="mk open"></i> offen <i class="mk overdue"></i> überfällig <i class="mk planned"></i> geplant <i class="mk skipped"></i> übersprungen</span>
+</div>
+{{if .YearRows}}
+<div class="mt-year-wrap">
+<table class="mt-year">
+  <thead><tr><th>Plan</th>{{range .Months}}<th>{{.}}</th>{{end}}</tr></thead>
+  <tbody>
+  {{range .YearRows}}
+  <tr>
+    <th><a href="/maintenance/plans/{{.PlanID}}">{{.Name}}</a><small>{{.InfraName}} · {{.IntervalLabel}}</small></th>
+    {{range .Months}}<td>{{range .}}{{if .TaskID}}<a class="mk {{.Kind}}" href="/maintenance/tasks/{{.TaskID}}" title="{{.Date}}"></a>{{else}}<i class="mk {{.Kind}}" title="{{.Date}} (geplant)"></i>{{end}}{{end}}</td>{{end}}
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}<div class="mt-empty"><i class="ti ti-calendar-off"></i><div>Noch keine Wartungspläne.</div><a href="/maintenance/plans/new">Ersten Plan anlegen</a></div>{{end}}
+{{end}}
+
+{{if eq .View "plans"}}
+<div class="mt-filter">
+  <a class="mt-chip {{if .ShowInactive}}on{{end}}" href="/maintenance?view=plans{{if not .ShowInactive}}&inactive=1{{end}}"><i class="ti ti-eye"></i> Ruhende Pläne zeigen</a>
+  <button type="button" class="btn" hx-post="/maintenance/generate" hx-target="#generate-result" title="Normalerweise unnötig – PDH legt Aufträge selbst an"><i class="ti ti-refresh"></i> Fehlende Aufträge anlegen</button>
+  <span id="generate-result"></span>
+</div>
+{{if .Plans}}
+<div class="mt-plans">
+  {{range .Plans}}
+  <a class="mt-plan {{if not .Plan.Active}}inactive{{end}}" href="/maintenance/plans/{{.Plan.ID}}">
+    <div class="mt-plan-head"><b>{{.Plan.Name}}</b>{{if not .Plan.Active}}<span class="badge b-gray">ruht</span>{{end}}</div>
+    <div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.Plan.InfraName}}</div>
+    <div class="mt-card-meta">
+      <span><i class="ti ti-repeat"></i> {{.IntervalLabel}} · {{.ModeLabel}}</span>
+      <span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> nächste {{.NextDue}}</span>
+      {{if .Plan.AssigneeName}}<span><i class="ti ti-user"></i> {{.Plan.AssigneeName}}</span>{{else if .Plan.GroupName}}<span><i class="ti ti-users"></i> {{.Plan.GroupName}}</span>{{end}}
+    </div>
+    {{if .Checklists}}<div class="mt-plan-lists"><i class="ti ti-list-check"></i> {{.Checklists}}</div>{{else}}<div class="mt-plan-lists mt-muted">ohne Checkliste</div>{{end}}
+  </a>
+  {{end}}
+</div>
+{{else}}<div class="mt-empty"><i class="ti ti-repeat-off"></i><div>Noch keine Wartungspläne.</div><a href="/maintenance/plans/new">Ersten Plan anlegen</a></div>{{end}}
+{{end}}
+
+{{if eq .View "done"}}
+{{if .Done}}
+<div class="card" style="padding:0">
+  {{range .Done}}
+  <div class="mt-done">
+    <a href="/maintenance/tasks/{{.Task.ID}}" class="mt-done-main">
+      <b>{{.Task.Title}}</b>
+      <small>{{.Task.InfraName}} · {{if eq .Task.Status "skipped"}}übersprungen{{else}}erledigt{{end}} {{.Completed}}{{if .Duration}} · {{.Duration}}{{end}}</small>
+    </a>
+    <div class="mt-done-flags">
+      {{if .OutOfRange}}<span class="badge b-red" title="Messwerte außerhalb von Min/Max"><i class="ti ti-alert-triangle"></i> {{.OutOfRange}} außerhalb</span>{{end}}
+      {{if .Unchecked}}<span class="badge b-amber" title="nicht abgehakte Punkte">{{.Unchecked}} offen</span>{{end}}
+      {{if .Points}}<span class="badge b-gray">{{.Points}} Punkte</span>{{end}}
+      {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener" title="Wartungsprotokoll (PDF)"><i class="ti ti-file-type-pdf"></i></a>{{end}}
+    </div>
   </div>
   {{end}}
 </div>
+{{else}}<div class="mt-empty"><i class="ti ti-history"></i><div>Noch nichts erledigt.</div></div>{{end}}
 {{end}}
 
-{{template "list-tabs" .Tabs}}
-{{template "category-filter-slot" (dict "Module" "maintenance_task")}}
-
-<div class="grid2">
-  <div class="card" id="plans-list">
-    <div class="card-title">Wartungspläne <span style="font-size:11px;color:var(--muted)">{{.TotalPlans}} aktiv</span></div>
-    {{range $plan := .Plans}}
-    <div class="li" style="flex-direction:column;align-items:stretch;gap:8px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div class="act-dot {{.PriorityDot}}"></div>
-        <div class="li-text"><div class="li-title">{{.Name}}</div><div class="li-sub">{{.InfraName}} · {{.IntervalLabel}} ({{if eq .ScheduleMode "fixed"}}fester Rhythmus{{else}}ab Durchführung{{end}}) · nächste: {{.NextDue}}{{if .ResponsibleName}} · <i class="ti ti-user-star" title="Verantwortlich"></i> {{.ResponsibleName}}{{end}}{{if .AssigneeName}} · <i class="ti ti-user" title="Zugewiesen"></i> {{.AssigneeName}}{{end}}</div></div>
-        <span class="badge b-gray" style="font-size:10px">{{.TypeLabel}}</span>
-        <div class="widget-icon-toolbar compact">
-          <button type="button" class="btn" onclick="toggleMaintenancePlanEdit('edit-plan-{{.ID}}')"><i class="ti ti-edit"></i> Bearbeiten</button>
-          <button type="button" class="btn" onclick="duplicateMaintenancePlan('{{.ID}}', this)"><i class="ti ti-copy"></i></button>
-          <button type="button" class="btn btn-danger" onclick="deleteMaintenancePlan('{{.ID}}')"><i class="ti ti-trash"></i></button>
-        </div>
-      </div>
-      <div id="edit-plan-{{.ID}}" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px">
-        <form onsubmit="return submitMaintenancePlanEdit(this, '{{.ID}}')">
-          {{template "infra-tree-picker" (dict "TargetID" (printf "plan-infra-id-%s" .ID) "SelectedLabelID" (printf "plan-infra-selected-%s" .ID) "Label" "Infrastruktur" "Value" .InfraID "SelectedLabel" .InfraName "Required" true)}}
-          <input type="hidden" name="interval_days" value="{{.IntervalDays}}">
-          <div class="grid2">
-            <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
-            <div class="form-group"><label class="form-label">Typ</label><select name="type" class="form-input"><option value="preventive" {{if eq .TypeValue "preventive"}}selected{{end}}>Vorbeugend</option><option value="inspection" {{if eq .TypeValue "inspection"}}selected{{end}}>Inspektion</option><option value="calibration" {{if eq .TypeValue "calibration"}}selected{{end}}>Kalibrierung</option><option value="cleaning" {{if eq .TypeValue "cleaning"}}selected{{end}}>Reinigung</option></select></div>
-            <div class="form-group"><label class="form-label">Intervall</label><select name="interval" class="form-input"><option value="daily" {{if eq .IntervalValue "daily"}}selected{{end}}>Täglich</option><option value="weekly" {{if eq .IntervalValue "weekly"}}selected{{end}}>Wöchentlich</option><option value="monthly" {{if eq .IntervalValue "monthly"}}selected{{end}}>Monatlich</option><option value="quarterly" {{if eq .IntervalValue "quarterly"}}selected{{end}}>Quartalsweise</option><option value="yearly" {{if eq .IntervalValue "yearly"}}selected{{end}}>Jährlich</option></select></div>
-            <div class="form-group"><label class="form-label">Nächste Fälligkeit</label><input name="next_due_at" type="date" class="form-input" value="{{.NextDueISO}}"></div>
-            <div class="form-group"><label class="form-label">Nächster Termin nach Durchführung</label><select name="schedule_mode" class="form-input"><option value="completion" {{if ne .ScheduleMode "fixed"}}selected{{end}}>ab Durchführung</option><option value="fixed" {{if eq .ScheduleMode "fixed"}}selected{{end}}>fester Rhythmus</option></select></div>
-            <div class="form-group"><label class="form-label">Priorität</label><select name="priority" class="form-input"><option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option><option value="medium" {{if eq .Priority "medium"}}selected{{end}}>Medium</option><option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option><option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option></select></div>
-            <div class="form-group"><label class="form-label">Verantwortlich</label><select name="responsible_to" class="form-input"><option value="">Nicht gesetzt</option>{{range $.Users}}<option value="{{.ID}}" {{if eq .ID $plan.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
-            <div class="form-group"><label class="form-label">Zugewiesen</label><select name="assigned_to" class="form-input"><option value="">Nicht zugewiesen</option>{{range $.Users}}<option value="{{.ID}}" {{if eq .ID $plan.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
-            <div class="form-group"><label class="form-label">Zugewiesene Gruppe</label><select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_plan/{{.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
-            <div class="form-group"><label class="form-label">Standarddauer Minuten</label><input name="default_duration_min" type="number" min="0" class="form-input maintenance-default-duration" placeholder="z.B. 45"></div>
-            <div class="form-group" style="grid-column:1/-1"><label class="form-label">Checklisten-Vorlagen</label><div class="maintenance-template-box" data-plan-id="{{.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">Lade Vorlagen...</div></div>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Diese Checkboxen haben echte Formularnamen und werden direkt serverseitig mitgespeichert.</div>
-          <div id="plan-edit-result-{{.ID}}" style="font-size:12px;margin-bottom:8px"></div>
-          <div style="display:flex;justify-content:flex-end;gap:8px">
-            <button type="button" class="btn" onclick="toggleMaintenancePlanEdit('edit-plan-{{.ID}}')"><i class="ti ti-x"></i> Abbrechen</button>
-            <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    {{else}}<div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Pläne vorhanden</div>{{end}}
-  </div>
-
-  <div class="card">
-    <div class="card-title">Offene Aufträge</div>
-    {{range .Tasks}}
-    <div class="li" style="gap:10px">
-      <div class="act-dot {{.PriorityDot}}"></div>
-      <div class="li-text"><div class="li-title">{{.Title}}</div><div class="li-sub">{{.InfraName}} · fällig {{.DueDate}}</div></div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span><span class="badge {{.PriorityClass}}" style="font-size:9px">{{.Priority}}</span></div>
-      <div class="widget-icon-toolbar compact"><a class="btn" href="/maintenance/tasks/{{.ID}}"><i class="ti ti-eye"></i></a><button type="button" class="btn" hx-post="/maintenance/tasks/{{.ID}}/start-web" hx-on::after-request="window.location.href='/maintenance/tasks/{{.ID}}'"><i class="ti ti-player-play"></i></button><a class="btn" href="/maintenance/tasks/{{.ID}}"><i class="ti ti-check"></i></a></div>
-    </div>
-    {{else}}<div style="font-size:12px;color:var(--muted);padding:8px 0">Keine Aufträge offen</div>{{end}}
-  </div>
+{{if eq .View "checklists"}}
+<div class="mt-filter">
+  <form onsubmit="return mtNewList(this)" class="mt-newlist">
+    <input name="name" class="form-input" placeholder="Neue Checkliste, z. B. „Presse – monatlich“" required maxlength="120">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Anlegen</button>
+  </form>
 </div>
+<p class="mt-hint">Checklisten sind Vorlagen. Im Wartungsplan legst du fest, welche Checkliste wie oft drankommt (z. B. „bei jedem Termin“, „14-tägig“, „monatlich“) – fällige Listen werden bei der Durchführung zusammengeführt.</p>
+<div id="mt-lists">Lädt…</div>
+{{end}}
 {{end}}
 
-{{define "context-list"}}
-{{range .DueTasks}}<div class="act-item"><div class="act-dot {{.PriorityDot}}"></div><div class="act-text">{{.Title}}</div><span class="badge {{.StatusClass}}" style="font-size:9px">{{.StatusLabel}}</span></div>{{end}}
-{{end}}
+{{define "context-list"}}{{end}}
 
-{{define "scripts"}}
+{{block "scripts" .}}
 <style>
-.mci-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.mci-img{position:relative;display:inline-block}
-.mci-img img{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block}
-.mci-img button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-size:11px}
-.mci-img-add{width:56px;height:56px;border:1px dashed var(--border);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;color:var(--muted);cursor:pointer}
-.mci-img-add:hover{border-color:var(--accent);color:var(--accent)}
-.mci-img-add i{font-size:18px}
-.mci-img-add.busy{opacity:.5;pointer-events:none}
+.mt-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.mt-head h1{font-size:19px;font-weight:600}
+.mt-head p{font-size:12px;color:var(--muted);margin-top:3px}
+.mt-tabs{margin-bottom:14px;overflow-x:auto}
+.mt-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.mt-filter .form-input{max-width:260px}
+.mt-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:12.5px;cursor:pointer;color:var(--text);text-decoration:none;background:var(--bg2)}
+.mt-chip.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.mt-chip input{display:none}
+.mt-group{margin-bottom:18px}
+.mt-group h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px;display:flex;gap:6px;align-items:center}
+.mt-group h2 span{background:var(--bg3);border-radius:999px;padding:0 8px;font-size:11px}
+.mt-overdue h2{color:var(--red)}
+.mt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.mt-card{border:1px solid var(--border);border-radius:12px;background:var(--bg2);display:flex;flex-direction:column}
+.mt-card.overdue{border-color:rgba(239,68,68,.55)}
+.mt-card-main{padding:12px 14px;color:var(--text);text-decoration:none;flex:1}
+.mt-card-title{font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center}
+.mt-card-sub{font-size:12px;color:var(--muted);margin-top:3px}
+.mt-card-meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-top:8px;align-items:center}
+.mt-red{color:var(--red);font-weight:600}
+.mt-muted{color:var(--muted)}
+.mt-go{margin:0 12px 12px;justify-content:center;min-height:42px}
+.mt-empty{text-align:center;color:var(--muted);padding:40px 10px;display:grid;gap:8px;justify-items:center}
+.mt-empty i{font-size:34px;opacity:.5}
+.mt-empty a{color:var(--accent)}
+.mt-yearnav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.mt-legend{margin-left:auto;font-size:11.5px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.mt-year-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}
+.mt-year{border-collapse:collapse;width:100%;min-width:760px;font-size:12px}
+.mt-year th,.mt-year td{border-bottom:1px solid var(--border);padding:6px 4px;text-align:center;vertical-align:middle}
+.mt-year thead th{font-size:11px;color:var(--muted);font-weight:600;background:var(--bg3)}
+.mt-year tbody th{text-align:left;padding-left:12px;min-width:200px;font-weight:500}
+.mt-year tbody th a{color:var(--text);text-decoration:none;font-weight:600}
+.mt-year tbody th small{display:block;color:var(--muted);font-weight:400}
+.mk{display:inline-block;width:12px;height:12px;border-radius:50%;margin:1px;vertical-align:middle;border:2px solid transparent}
+.mk.done{background:var(--green)}
+.mk.open{background:var(--accent)}
+.mk.overdue{background:var(--red)}
+.mk.planned{border-color:var(--accent);background:transparent}
+.mk.skipped{background:var(--bg3);border-color:var(--border)}
+.mt-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.mt-plan{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px 14px;color:var(--text);text-decoration:none}
+.mt-plan:hover,.mt-card-main:hover{background:var(--bg3)}
+.mt-plan.inactive{opacity:.6}
+.mt-plan-head{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px}
+.mt-plan-lists{font-size:12px;margin-top:8px;color:var(--text)}
+.mt-done{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}
+.mt-done:last-child{border-bottom:0}
+.mt-done-main{flex:1;min-width:0;color:var(--text);text-decoration:none}
+.mt-done-main small{display:block;color:var(--muted);font-size:12px}
+.mt-done-flags{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.mt-hint{font-size:12px;color:var(--muted);margin:-4px 0 12px}
+.mt-newlist{display:flex;gap:8px;flex:1}
+.mt-newlist .form-input{max-width:420px}
+.mt-list{border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:12px}
+.mt-list-head{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}
+.mt-list-head input{flex:1;font-weight:600}
+.mt-item{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:start;padding:8px 12px;border-bottom:1px solid var(--border)}
+.mt-item:last-child{border-bottom:0}
+.mt-item .grip{color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.mt-item .grip button{border:0;background:none;color:var(--muted);cursor:pointer;padding:0;line-height:1}
+.mt-item-sub{font-size:11.5px;color:var(--muted)}
+.mt-item-imgs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.mt-item-imgs img{width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border)}
+.mt-item-edit{display:grid;grid-template-columns:1fr 140px 90px;gap:6px;margin-top:6px}
+.mt-item-edit .wide{grid-column:1/-1}
+.mt-add{padding:10px 12px;display:grid;grid-template-columns:1fr 150px auto;gap:6px}
+@media(max-width:700px){.mt-cards,.mt-plans{grid-template-columns:1fr}.mt-item-edit,.mt-add{grid-template-columns:1fr}}
 </style>
+{{if eq .View "checklists"}}
 <script>
-let maintenanceChecklistTemplates = [];
-const MCI_TYPES = {checkbox:'Checkbox', number:'Messwert', text:'Freitext'};
-function mciNum(v){ return (v===null || v===undefined) ? '' : String(v).replace('.', ','); }
-// Messwert-Vorgaben: Einheit + aktivierbare Soll/Min/Max-Felder
-function measureFieldsHtml(i){
-  i = i || {};
-  const row = (key, label, val) => {
-    const on = val !== null && val !== undefined;
-    return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><input type="checkbox" class="mci-on" data-key="'+key+'"'+(on?' checked':'')+' onchange="this.parentNode.querySelector(\'.mci-val\').disabled=!this.checked;if(this.checked)this.parentNode.querySelector(\'.mci-val\').focus()"> <span style="width:34px">'+label+'</span>'
-      +'<input type="text" inputmode="decimal" class="form-input mci-val" data-key="'+key+'" value="'+escapeHtml(mciNum(val))+'"'+(on?'':' disabled')+' style="max-width:110px;padding:6px 8px"></label>';
-  };
-  return '<div class="mci-measure" style="'+(i.item_type==='number'?'':'display:none;')+'border:1px dashed var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px">'
-    +'<div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px">Messwert-Vorgaben (Häkchen = aktiv)</div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">'
-    +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">Einheit <input class="form-input mci-unit" maxlength="20" value="'+escapeHtml(i.unit||'')+'" placeholder="z. B. bar" style="max-width:90px;padding:6px 8px"></label>'
-    +row('target_value','Soll',i.target_value)+row('min_value','Min',i.min_value)+row('max_value','Max',i.max_value)
-    +'</div></div>';
+// Checklisten-Vorlagen (API /api/v1/maintenance/checklists)
+const MT_API = '/api/v1/maintenance';
+const mtEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MT_TYPES = {checkbox: 'Abhaken', number: 'Messwert', text: 'Freitext'};
+async function mtJSON(url, opts){
+  const res = await fetch(url, Object.assign({credentials:'same-origin'}, opts || {}));
+  const json = await res.json().catch(() => ({}));
+  if(!res.ok || json.success === false) throw new Error(json.error || ('HTTP ' + res.status));
+  return json.data !== undefined ? json.data : json;
 }
-function mciTypeChanged(sel){
-  const box = sel.closest('form, [id^="mci-edit-"]').querySelector('.mci-measure');
-  if(box) box.style.display = sel.value === 'number' ? '' : 'none';
-}
-// liest Einheit/Soll/Min/Max; nicht aktivierte Felder werden null
-function readMeasure(box){
-  const out = {unit:'', target_value:null, min_value:null, max_value:null};
-  const m = box && box.querySelector('.mci-measure');
-  if(!m) return out;
-  out.unit = m.querySelector('.mci-unit').value.trim();
-  for(const cb of m.querySelectorAll('.mci-on')){
-    if(!cb.checked) continue;
-    const raw = m.querySelector('.mci-val[data-key="'+cb.dataset.key+'"]').value.trim().replace(',', '.');
-    if(raw === '') throw new Error('Bitte einen Wert eintragen oder das Häkchen entfernen');
-    const n = Number(raw);
-    if(!isFinite(n)) throw new Error('„'+raw+'“ ist keine Zahl');
-    out[cb.dataset.key] = n;
-  }
-  return out;
-}
-function measureSummary(i){
+const mtSend = (url, method, body) => mtJSON(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {})});
+const num = v => { v = String(v || '').trim().replace(',', '.'); return v === '' ? null : Number(v); };
+const fmt = v => v === null || v === undefined ? '' : String(v).replace('.', ',');
+function mtSpec(i){
   if(i.item_type !== 'number') return '';
-  const u = i.unit ? ' '+i.unit : '';
-  const parts = [];
-  if(i.target_value !== null && i.target_value !== undefined) parts.push('Soll '+mciNum(i.target_value)+u);
-  if(i.min_value !== null && i.min_value !== undefined && i.max_value !== null && i.max_value !== undefined) parts.push(mciNum(i.min_value)+' – '+mciNum(i.max_value)+u);
-  else if(i.min_value !== null && i.min_value !== undefined) parts.push('min. '+mciNum(i.min_value)+u);
-  else if(i.max_value !== null && i.max_value !== undefined) parts.push('max. '+mciNum(i.max_value)+u);
-  return parts.length ? ' - '+parts.join(', ') : (u ? ' - in'+u : '');
+  const u = i.unit ? ' ' + i.unit : '', p = [];
+  if(i.target_value != null) p.push('Soll ' + fmt(i.target_value) + u);
+  if(i.min_value != null) p.push('Min ' + fmt(i.min_value) + u);
+  if(i.max_value != null) p.push('Max ' + fmt(i.max_value) + u);
+  return p.length ? ' · ' + p.join(' · ') : (i.unit ? ' · ' + i.unit : '');
 }
-// Bilder zur Darstellung am Vorlagenpunkt
-function itemImagesHtml(i){
-  const imgs = asArray(i.images);
-  return '<div class="mci-imgs">'
-    + imgs.map(img => '<span class="mci-img"><a href="'+escapeHtml(img.url)+'" target="_blank" rel="noopener"><img src="'+escapeHtml(img.url)+'" alt="'+escapeHtml(img.filename)+'" loading="lazy"></a><button type="button" title="Bild entfernen" aria-label="Bild entfernen" onclick="deleteChecklistImage(\''+escapeJs(img.id)+'\')"><i class="ti ti-x"></i></button></span>').join('')
-    + '<label class="mci-img-add" title="Bild zur Darstellung hinzufügen"><i class="ti ti-photo-plus"></i><span>Bild</span><input type="file" accept="image/*" multiple hidden onchange="uploadChecklistItemImages(\''+escapeJs(i.id)+'\', this)"></label>'
+function mtItemHTML(t, i, k, n){
+  const imgs = (i.images || []).map(im => '<a href="' + mtEsc(im.url) + '" target="_blank" rel="noopener"><img src="' + mtEsc(im.url) + '" alt=""></a>').join('');
+  return '<div class="mt-item" data-item="' + mtEsc(i.id) + '">'
+    + '<div class="grip"><button type="button" title="nach oben" ' + (k === 0 ? 'disabled' : '') + ' onclick="mtMove(\'' + t.id + '\',' + k + ',-1)"><i class="ti ti-chevron-up"></i></button><button type="button" title="nach unten" ' + (k === n - 1 ? 'disabled' : '') + ' onclick="mtMove(\'' + t.id + '\',' + k + ',1)"><i class="ti ti-chevron-down"></i></button></div>'
+    + '<div><div>' + (i.required ? '<span style="color:var(--red)" title="Pflichtpunkt">✱</span> ' : '') + mtEsc(i.label) + '</div>'
+    + '<div class="mt-item-sub">' + MT_TYPES[i.item_type] + mtEsc(mtSpec(i)) + (i.description ? ' · ' + mtEsc(i.description) : '') + '</div>'
+    + '<div class="mt-item-imgs">' + imgs + '<label class="btn" style="font-size:11px;padding:3px 8px;cursor:pointer" title="Bild zur Darstellung (z. B. wo der Messpunkt sitzt)"><i class="ti ti-photo-plus"></i><input type="file" accept="image/*" multiple hidden onchange="mtUpload(\'' + i.id + '\',this)"></label></div>'
+    + '<div class="mt-item-edit" hidden>'
+    + '<input class="form-input wide" data-f="label" value="' + mtEsc(i.label) + '">'
+    + '<select class="form-input" data-f="item_type">' + Object.keys(MT_TYPES).map(k => '<option value="' + k + '"' + (k === i.item_type ? ' selected' : '') + '>' + MT_TYPES[k] + '</option>').join('') + '</select>'
+    + '<input class="form-input" data-f="unit" placeholder="Einheit" value="' + mtEsc(i.unit) + '">'
+    + '<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" data-f="required"' + (i.required ? ' checked' : '') + '> Pflicht</label>'
+    + '<input class="form-input" data-f="target_value" placeholder="Soll" value="' + fmt(i.target_value) + '">'
+    + '<input class="form-input" data-f="min_value" placeholder="Min" value="' + fmt(i.min_value) + '">'
+    + '<input class="form-input" data-f="max_value" placeholder="Max" value="' + fmt(i.max_value) + '">'
+    + '<input class="form-input wide" data-f="description" placeholder="Hinweis (optional)" value="' + mtEsc(i.description) + '">'
+    + '<div class="wide" style="display:flex;gap:6px;justify-content:flex-end"><button type="button" class="btn" onclick="this.closest(\'.mt-item-edit\').hidden=true">Abbrechen</button><button type="button" class="btn btn-primary" onclick="mtSaveItem(\'' + t.id + '\',\'' + i.id + '\',this)">Speichern</button></div>'
+    + '</div></div>'
+    + '<div style="display:flex;gap:4px"><button type="button" class="btn" title="Bearbeiten" onclick="this.closest(\'.mt-item\').querySelector(\'.mt-item-edit\').hidden=false"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" title="Entfernen" onclick="mtDelItem(\'' + t.id + '\',\'' + i.id + '\')"><i class="ti ti-trash"></i></button></div>'
     + '</div>';
 }
-async function uploadChecklistItemImages(itemID, input){
+function mtListHTML(t){
+  const items = t.items || [];
+  return '<div class="mt-list" id="list-' + t.id + '">'
+    + '<div class="mt-list-head"><i class="ti ti-list-check" style="color:var(--accent)"></i><input class="form-input" value="' + mtEsc(t.name) + '" onchange="mtRename(\'' + t.id + '\',this.value)" aria-label="Name">'
+    + '<span class="badge b-gray" title="in aktiven Plänen">' + (t.plan_count || 0) + ' Pläne</span>'
+    + '<button type="button" class="btn btn-danger" title="Checkliste löschen" onclick="mtDelList(\'' + t.id + '\',' + (t.plan_count || 0) + ')"><i class="ti ti-trash"></i></button></div>'
+    + (items.length ? items.map((i, k) => mtItemHTML(t, i, k, items.length)).join('') : '<div class="mt-item-sub" style="padding:10px 12px">Noch keine Punkte.</div>')
+    + '<form class="mt-add" onsubmit="return mtAddItem(\'' + t.id + '\',this)"><input name="label" class="form-input" placeholder="Neuer Punkt, z. B. „Ölstand prüfen“" required>'
+    + '<select name="item_type" class="form-input">' + Object.keys(MT_TYPES).map(k => '<option value="' + k + '">' + MT_TYPES[k] + '</option>').join('') + '</select>'
+    + '<button type="submit" class="btn"><i class="ti ti-plus"></i> Punkt</button></form></div>';
+}
+let mtCache = {};
+async function mtLoad(){
+  const box = document.getElementById('mt-lists');
+  try{
+    const lists = await mtJSON(MT_API + '/checklists');
+    if(!lists.length){ box.innerHTML = '<div class="mt-empty"><i class="ti ti-list-check"></i><div>Noch keine Checklisten.</div></div>'; return; }
+    const full = await Promise.all(lists.map(l => mtJSON(MT_API + '/checklists/' + l.id).then(t => Object.assign(t, {plan_count: l.plan_count}))));
+    mtCache = {}; full.forEach(t => mtCache[t.id] = t);
+    box.innerHTML = full.map(mtListHTML).join('');
+  }catch(e){ box.innerHTML = '<span style="color:var(--red)">' + mtEsc(e.message) + '</span>'; }
+}
+function mtRedraw(t){ t.plan_count = (mtCache[t.id] || {}).plan_count; mtCache[t.id] = t; const el = document.getElementById('list-' + t.id); if(el) el.outerHTML = mtListHTML(t); }
+async function mtNewList(f){
+  try{ await mtSend(MT_API + '/checklists', 'POST', {name: f.name.value}); f.reset(); mtLoad(); }catch(e){ alert(e.message); }
+  return false;
+}
+async function mtRename(id, name){ try{ mtRedraw(await mtSend(MT_API + '/checklists/' + id, 'PUT', {name})); }catch(e){ alert(e.message); } }
+async function mtDelList(id, plans){
+  if(!confirm(plans ? 'Diese Checkliste hängt an ' + plans + ' Plan/Plänen und wird dort entfernt. Löschen?' : 'Checkliste löschen?')) return;
+  try{ await mtJSON(MT_API + '/checklists/' + id, {method:'DELETE'}); mtLoad(); }catch(e){ alert(e.message); }
+}
+async function mtAddItem(id, f){
+  try{ mtRedraw(await mtSend(MT_API + '/checklists/' + id + '/items', 'POST', {label: f.label.value, item_type: f.item_type.value, required: true})); }catch(e){ alert(e.message); }
+  return false;
+}
+async function mtSaveItem(tid, iid, btn){
+  const box = btn.closest('.mt-item-edit'), v = f => box.querySelector('[data-f="' + f + '"]');
+  const body = {label: v('label').value, item_type: v('item_type').value, unit: v('unit').value, required: v('required').checked, description: v('description').value,
+    target_value: num(v('target_value').value), min_value: num(v('min_value').value), max_value: num(v('max_value').value)};
+  try{ await mtSend(MT_API + '/checklist-items/' + iid, 'PUT', body); mtRedraw(await mtJSON(MT_API + '/checklists/' + tid)); }catch(e){ alert(e.message); }
+}
+async function mtDelItem(tid, iid){
+  if(!confirm('Punkt entfernen? Bereits erfasste Ergebnisse bleiben erhalten.')) return;
+  try{ await mtJSON(MT_API + '/checklist-items/' + iid, {method:'DELETE'}); mtRedraw(await mtJSON(MT_API + '/checklists/' + tid)); }catch(e){ alert(e.message); }
+}
+async function mtMove(tid, k, d){
+  const ids = (mtCache[tid].items || []).map(i => i.id);
+  const j = k + d; if(j < 0 || j >= ids.length) return;
+  [ids[k], ids[j]] = [ids[j], ids[k]];
+  try{ mtRedraw(await mtSend(MT_API + '/checklists/' + tid + '/order', 'POST', {ids})); }catch(e){ alert(e.message); }
+}
+async function mtUpload(iid, input){
   if(!input.files || !input.files.length) return;
-  const fd = new FormData();
-  [...input.files].forEach(f => fd.append('files', f));
-  input.closest('.mci-img-add').classList.add('busy');
+  const fd = new FormData(); [...input.files].forEach(f => fd.append('files', f));
   try{
-    const saved = asArray(await maintenanceJSON('/api/v1/attachments/maint_check_item/'+encodeURIComponent(itemID), {method:'POST', body: fd}));
-    if(saved.length < input.files.length) alert('Nicht alle Dateien wurden übernommen (nur Bilder bis 20 MB).');
-    await loadMaintenanceChecklistTemplates();
-  }catch(e){ alert('Bild konnte nicht hochgeladen werden: '+e.message); input.closest('.mci-img-add').classList.remove('busy'); }
+    await mtJSON('/api/v1/attachments/maint_check_item/' + encodeURIComponent(iid), {method:'POST', body: fd});
+    const tid = Object.keys(mtCache).find(k => (mtCache[k].items || []).some(i => i.id === iid));
+    if(tid) mtRedraw(await mtJSON(MT_API + '/checklists/' + tid));
+  }catch(e){ alert('Bild konnte nicht gespeichert werden: ' + e.message); }
 }
-async function deleteChecklistImage(id){
-  if(!confirm('Bild entfernen?')) return;
-  try{ await maintenanceJSON('/api/v1/attachments/'+encodeURIComponent(id), {method:'DELETE'}); await loadMaintenanceChecklistTemplates(); }
-  catch(e){ alert('Fehler: '+e.message); }
-}
-async function maintenanceJSON(url, options){
-  const res = await fetch(url, Object.assign({credentials:'same-origin'}, options||{}));
-  let payload = null;
-  try{ payload = await res.json(); }catch(e){ payload = null; }
-  if(!res.ok || (payload && payload.success === false)) throw new Error((payload && (payload.error||payload.message)) || ('HTTP '+res.status));
-  return payload && payload.data !== undefined ? payload.data : payload;
-}
-function asArray(v){ return Array.isArray(v) ? v : []; }
-async function loadMaintenanceChecklistTemplates(){
-  maintenanceChecklistTemplates = asArray(await maintenanceJSON('/api/v1/maintenance-checklists/templates'));
-  const opts = '<option value="">Keine Vorlage</option>' + maintenanceChecklistTemplates.map(t => '<option value="'+escapeHtml(t.id)+'">'+escapeHtml(t.name)+'</option>').join('');
-  document.querySelectorAll('#checklist-template-select').forEach(sel => { sel.innerHTML = opts; });
-  document.querySelectorAll('.maintenance-template-box').forEach(box => renderPlanTemplateCheckboxes(box, []));
-  await renderMaintenanceChecklistTemplateList();
-}
-function renderPlanTemplateCheckboxes(box, assignedIds){
-  assignedIds = asArray(assignedIds);
-  if(!box) return;
-  if(!maintenanceChecklistTemplates.length){ box.innerHTML='Keine Vorlagen vorhanden'; return; }
-  box.innerHTML = maintenanceChecklistTemplates.map(t => '<label class="badge b-blue" style="cursor:pointer;margin-right:4px"><input type="checkbox" name="checklist_template_ids" value="'+escapeHtml(t.id)+'" data-template-id="'+escapeHtml(t.id)+'" '+(assignedIds.includes(t.id)?'checked':'')+'> '+escapeHtml(t.name)+'</label>').join('');
-}
-async function loadPlanChecklistAssignment(planID, form){
-  try{
-    const data = await maintenanceJSON('/api/v1/maintenance-checklists/plans/'+encodeURIComponent(planID)+'/template') || {};
-    const ids = asArray(data.template_ids);
-    const box = form.querySelector('.maintenance-template-box');
-    renderPlanTemplateCheckboxes(box, ids);
-    const duration = form.querySelector('[name="default_duration_min"]');
-    if(duration) duration.value = data.default_duration_min || '';
-  }catch(e){
-    const box = form.querySelector('.maintenance-template-box');
-    if(box) box.innerHTML='<span style="color:var(--red)">Zuordnung konnte nicht geladen werden: '+escapeHtml(e.message)+'</span>';
-  }
-}
-async function renderMaintenanceChecklistTemplateList(){
-  const box = document.getElementById('maintenance-checklist-template-list');
-  if(!box) return;
-  if(!maintenanceChecklistTemplates.length){ box.innerHTML='Noch keine Vorlagen vorhanden'; return; }
-  const blocks = [];
-  for(const t of maintenanceChecklistTemplates){
-    let items = [];
-    try{ items = asArray(await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(t.id)+'/items')); }catch(e){ items = []; }
-    const itemHtml = items.length ? items.map(i => renderMaintenanceChecklistItemRow(i)).join('') : '<div style="font-size:11px;color:var(--muted)">Keine Punkte</div>';
-    blocks.push('<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg3)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-weight:600;color:var(--text);flex:1">'+escapeHtml(t.name)+'</div><button type="button" class="btn btn-danger" onclick="deleteMaintenanceChecklistTemplate(\''+escapeJs(t.id)+'\')"><i class="ti ti-trash"></i></button></div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+escapeHtml(t.description||'')+'</div>'+itemHtml+'</div>');
-  }
-  box.innerHTML = blocks.join('');
-}
-function renderMaintenanceChecklistItemRow(i){
-  const viewId = 'mci-view-'+i.id;
-  const editId = 'mci-edit-'+i.id;
-  const view = '<div id="'+viewId+'" class="li" style="flex-wrap:wrap"><div class="li-text"><div class="li-title" style="font-size:12px">'+escapeHtml(i.label)+'</div><div class="li-sub">'+escapeHtml(MCI_TYPES[i.item_type]||i.item_type)+escapeHtml(measureSummary(i))+' - Intervall '+escapeHtml(i.interval_days)+' Tage'+(i.required?' - Pflicht':'')+'</div>'+(i.description?'<div class="li-sub">'+escapeHtml(i.description)+'</div>':'')+'</div><button type="button" class="btn" onclick="toggleMaintenanceChecklistItemEdit(\''+escapeJs(i.id)+'\')"><i class="ti ti-edit"></i></button><button type="button" class="btn btn-danger" onclick="deleteMaintenanceChecklistItem(\''+escapeJs(i.id)+'\')"><i class="ti ti-trash"></i></button><div style="flex-basis:100%">'+itemImagesHtml(i)+'</div></div>';
-  const edit = '<div id="'+editId+'" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">'
-    +'<div class="grid2" style="grid-template-columns:1fr 1fr;gap:8px">'
-    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Punkt</label><input class="form-input mci-label" value="'+escapeHtml(i.label)+'"></div>'
-    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Typ</label><select class="form-input mci-type" onchange="mciTypeChanged(this)"><option value="checkbox"'+(i.item_type==='checkbox'?' selected':'')+'>Checkbox</option><option value="number"'+(i.item_type==='number'?' selected':'')+'>Messwert</option><option value="text"'+(i.item_type==='text'?' selected':'')+'>Freitext</option></select></div>'
-    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Intervall Tage</label><input type="number" min="1" class="form-input mci-interval" value="'+escapeHtml(i.interval_days)+'"></div>'
-    +'<div class="form-group" style="margin-bottom:6px"><label class="form-label">Sortierung</label><input type="number" class="form-input mci-sort" value="'+escapeHtml(i.sort_order||100)+'"></div>'
-    +'<div class="form-group" style="margin-bottom:6px;grid-column:1/-1"><label class="form-label">Beschreibung</label><input class="form-input mci-desc" value="'+escapeHtml(i.description||'')+'"></div>'
-    +'</div>'
-    +measureFieldsHtml(i)
-    +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:8px"><input type="checkbox" class="mci-required" '+(i.required?'checked':'')+'> Pflichtpunkt</label>'
-    +'<div style="display:flex;justify-content:flex-end;gap:6px">'
-    +'<button type="button" class="btn" onclick="toggleMaintenanceChecklistItemEdit(\''+escapeJs(i.id)+'\')">Abbrechen</button>'
-    +'<button type="button" class="btn btn-primary" onclick="updateMaintenanceChecklistItem(\''+escapeJs(i.id)+'\')">Speichern</button>'
-    +'</div></div>';
-  return view + edit;
-}
-function toggleMaintenanceChecklistItemEdit(itemID){
-  const v = document.getElementById('mci-view-'+itemID);
-  const e = document.getElementById('mci-edit-'+itemID);
-  if(!v || !e) return;
-  const showEdit = e.style.display === 'none' || !e.style.display;
-  e.style.display = showEdit ? 'block' : 'none';
-  v.style.display = showEdit ? 'none' : 'flex';
-}
-async function updateMaintenanceChecklistItem(itemID){
-  const editBox = document.getElementById('mci-edit-'+itemID);
-  if(!editBox) return;
-  try{
-    const payload = Object.assign({
-      label: editBox.querySelector('.mci-label').value,
-      item_type: editBox.querySelector('.mci-type').value,
-      interval_days: Number(editBox.querySelector('.mci-interval').value || 0),
-      sort_order: Number(editBox.querySelector('.mci-sort').value || 100),
-      required: editBox.querySelector('.mci-required').checked,
-      description: editBox.querySelector('.mci-desc').value
-    }, readMeasure(editBox));
-    await maintenanceJSON('/api/v1/maintenance-checklists/items/'+encodeURIComponent(itemID), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
-    await loadMaintenanceChecklistTemplates();
-  }catch(e){ alert('Fehler beim Speichern: '+e.message); }
-}
-function toggleMaintenanceChecklistAdmin(){
-  const el=document.getElementById('maintenance-checklist-admin');
-  if(!el) return;
-  el.style.display=el.style.display==='none'||!el.style.display?'block':'none';
-  if(el.style.display==='block') loadMaintenanceChecklistTemplates().catch(e => { document.getElementById('maintenance-checklist-admin-result').innerHTML='<span style="color:var(--red)">'+escapeHtml(e.message)+'</span>'; });
-}
-async function createMaintenanceChecklistTemplate(form){
-  const result=document.getElementById('maintenance-checklist-admin-result'); result.textContent='Speichere Vorlage...';
-  try{ await maintenanceJSON('/api/v1/maintenance-checklists/templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:form.name.value, description:form.description.value})}); form.reset(); await loadMaintenanceChecklistTemplates(); result.innerHTML='<span style="color:var(--green)">Vorlage angelegt</span>'; }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
-  return false;
-}
-async function createMaintenanceChecklistItem(form){
-  const result=document.getElementById('maintenance-checklist-admin-result'); result.textContent='Speichere Punkt...';
-  try{ const templateID=form.template_id.value; const payload=Object.assign({label:form.label.value, description:form.description.value, item_type:form.item_type.value, required:form.required.checked, interval_days:Number(form.interval_days.value||0), sort_order:Number(form.sort_order.value||100)}, readMeasure(form)); await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(templateID)+'/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); form.label.value=''; form.description.value=''; await loadMaintenanceChecklistTemplates(); result.innerHTML='<span style="color:var(--green)">Punkt angelegt</span>'; }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
-  return false;
-}
-async function deleteMaintenanceChecklistTemplate(id){ if(!confirm('Checklisten-Vorlage löschen?')) return; await maintenanceJSON('/api/v1/maintenance-checklists/templates/'+encodeURIComponent(id),{method:'DELETE'}); await loadMaintenanceChecklistTemplates(); }
-async function deleteMaintenanceChecklistItem(id){ if(!confirm('Checklistenpunkt löschen?')) return; await maintenanceJSON('/api/v1/maintenance-checklists/items/'+encodeURIComponent(id),{method:'DELETE'}); await loadMaintenanceChecklistTemplates(); }
-async function submitMaintenancePlanForm(form){
-  const result=document.getElementById('maintenance-create-result'); result.textContent='Speichere...';
-  try{ const res=await fetch('/maintenance/plans',{method:'POST',headers:{'HX-Request':'true'},body:new FormData(form)}); const text=await res.text(); if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Anlegen'); window.location.href='/maintenance'; }catch(e){ result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
-  return false;
-}
-function toggleMaintenancePlanEdit(id){
-  const el=document.getElementById(id); if(!el) return;
-  el.style.display=el.style.display==='none'||!el.style.display?'block':'none';
-  if(el.style.display==='block'){
-    loadMaintenanceChecklistTemplates().then(()=>{ const form=el.querySelector('form'); if(form) loadPlanChecklistAssignment(id.replace('edit-plan-',''), form); }).catch(()=>{});
-    el.scrollIntoView({behavior:'smooth',block:'nearest'});
-  }
-}
-async function submitMaintenancePlanEdit(form,id){
-  const result=document.getElementById('plan-edit-result-'+id); if(result) result.textContent='Speichere...';
-  try{
-    const formData = new FormData(form);
-    const checked = [...form.querySelectorAll('.maintenance-template-box [name="checklist_template_ids"]:checked')].map(i => i.value);
-    formData.delete('checklist_template_ids');
-    checked.forEach(id => formData.append('checklist_template_ids', id));
-    const res=await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/edit-web',{method:'POST',headers:{'HX-Request':'true'},body:formData,credentials:'same-origin'});
-    const text=await res.text();
-    if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Speichern');
-    window.location.href='/maintenance';
-  }catch(e){ if(result) result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>'; }
-  return false;
-}
-async function duplicateMaintenancePlan(id,btn){ if(btn) btn.disabled=true; try{ const res=await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/duplicate-web',{method:'POST',headers:{'HX-Request':'true'}}); const text=await res.text(); if(!res.ok) throw new Error(text.replace(/<[^>]*>/g,'').trim()||'Fehler beim Duplizieren'); window.location.href='/maintenance'; }catch(e){ alert('Fehler: '+e.message); if(btn) btn.disabled=false; } }
-async function deleteMaintenancePlan(id){ if(!confirm('Wartungsplan deaktivieren/vormerken?')) return; await fetch('/maintenance/plans/'+encodeURIComponent(id)+'/delete-web',{method:'DELETE',credentials:'same-origin'}); window.location.href='/maintenance'; }
-document.addEventListener('DOMContentLoaded', function(){
-  document.querySelectorAll('.mci-measure-slot').forEach(slot => { slot.innerHTML = measureFieldsHtml({}); });
-  loadMaintenanceChecklistTemplates().catch(()=>{});
-});
-function escapeHtml(s){ return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-function escapeJs(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+mtLoad();
 </script>
+{{end}}
 {{end}}

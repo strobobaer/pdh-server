@@ -1,27 +1,21 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+{{/* Wartungsauftrag (maintenance_web.go MaintenanceTaskDetail). „Wartung durchführen“ öffnet den
+     Abschluss-Assistenten: Checkliste → Material → Zeit → wer war dabei → Kommentar → Fertig. */}}
+<div class="md-head">
   {{template "icon-button" (dict "Action" "back" "Href" "/maintenance")}}
-  <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Task.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">
-      {{.Task.TypeLabel}} · fällig {{.Task.DueDate}}{{if .Task.InfraName}} · {{.Task.InfraName}}{{end}}
-    </p>
+  <div style="flex:1;min-width:0">
+    <h1>{{.Task.Title}}</h1>
+    <p>{{.Task.TypeLabel}} · fällig <span class="{{if .Task.Overdue}}md-red{{end}}">{{.Task.DueDate}}</span>{{if .Task.InfraName}} · {{.Task.InfraName}}{{end}}</p>
   </div>
-  <span class="badge {{.Task.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Task.Priority}}</span>
-  <span class="badge {{.Task.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Task.StatusLabel}}</span>
+  <span class="badge {{.Task.PriorityClass}}">{{.Task.Priority}}</span>
+  <span class="badge {{.Task.StatusClass}}">{{.Task.StatusLabel}}</span>
   <div class="widget-icon-toolbar compact">
-    {{template "icon-button" (dict "Action" "edit" "OnClick" "toggleEdit();closeMenu('maint-menu')")}}
-    {{if .Task.CanComplete}}
-    {{template "icon-button" (dict "Action" "done" "Label" "Abschließen" "OnClick" (printf "openCompleteForm('%s')" .Task.ID))}}
-    {{end}}
-    {{if .Task.CanStart}}
-    {{template "icon-button" (dict "Action" "start" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
-    {{end}}
-  <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag löschen?')">
-    {{template "icon-button" (dict "Action" "delete" "Type" "submit" "Label" "Löschen")}}
-  </form>
+    {{template "icon-button" (dict "Action" "edit" "OnClick" "mdToggleEdit()")}}
+    <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag löschen?')" style="display:inline">
+      {{template "icon-button" (dict "Action" "delete" "Type" "submit" "Label" "Löschen")}}
+    </form>
   </div>
 </div>
 {{template "record-meta-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}
@@ -32,488 +26,195 @@
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
 </div>
 
-<!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
-
-<!-- Bearbeiten -->
-<div id="edit-form" style="display:none" class="card">
+<div id="md-edit" class="card" style="display:none">
   <div class="card-title">Auftrag bearbeiten</div>
-  <form hx-post="/maintenance/tasks/{{.Task.ID}}/edit-web" hx-target="#edit-result" hx-swap="innerHTML">
+  <form hx-post="/maintenance/tasks/{{.Task.ID}}/edit-web" hx-target="#md-edit-result" hx-swap="innerHTML">
     <div class="grid2">
       <div class="form-group" style="grid-column:1/-1"><label class="form-label">Titel</label><input name="title" class="form-input" value="{{.Task.Title}}" required></div>
       <div class="form-group"><label class="form-label">Priorität</label>
         <select name="priority" class="form-input">
-          <option value="low" {{if eq .Task.Priority "low"}}selected{{end}}>Low</option>
-          <option value="medium" {{if eq .Task.Priority "medium"}}selected{{end}}>Medium</option>
-          <option value="high" {{if eq .Task.Priority "high"}}selected{{end}}>High</option>
-          <option value="critical" {{if eq .Task.Priority "critical"}}selected{{end}}>Critical</option>
-        </select>
-      </div>
+          <option value="low" {{if eq .Task.Priority "low"}}selected{{end}}>niedrig</option>
+          <option value="medium" {{if eq .Task.Priority "medium"}}selected{{end}}>mittel</option>
+          <option value="high" {{if eq .Task.Priority "high"}}selected{{end}}>hoch</option>
+          <option value="critical" {{if eq .Task.Priority "critical"}}selected{{end}}>kritisch</option>
+        </select></div>
       <div class="form-group"><label class="form-label">Fällig am</label><input name="due_date" type="date" class="form-input" value="{{.Task.DueDateISO}}"></div>
-      {{template "infra-tree-picker" (dict "TargetID" "task-infra-id" "SelectedLabelID" "task-infra-selected" "Label" "Infrastruktur" "Value" .Task.InfraID "SelectedLabel" .Task.InfraName)}}
-      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="3" style="resize:vertical">{{.Task.Description}}</textarea></div>
-      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="2" style="resize:vertical">{{.Task.Notes}}</textarea></div>
+      {{template "infra-tree-picker" (dict "TargetID" "md-infra" "SelectedLabelID" "md-infra-label" "Label" "Anlage" "Value" .Task.InfraID "SelectedLabel" .Task.InfraName)}}
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="3">{{.Task.Description}}</textarea></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label">Bemerkung</label><textarea name="notes" class="form-input" rows="2">{{.Task.Notes}}</textarea></div>
     </div>
-    <div id="edit-result" style="margin-bottom:8px"></div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Auftrag bearbeiten"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "cancel" "ShowLabel" true "OnClick" "toggleEdit()")
-        (dict "Action" "save" "ShowLabel" true "Type" "submit")
-      )
-    )}}
+    <div id="md-edit-result" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="btn" onclick="mdToggleEdit()">Abbrechen</button><button type="submit" class="btn btn-primary">Speichern</button></div>
   </form>
 </div>
 
-<!-- Checklisten-Protokoll -->
-<div id="checklist-protocol" class="card" style="display:none">
-  <div class="card-title"><i class="ti ti-list-check" style="color:var(--accent)"></i> Checklisten-Protokoll</div>
-  <div id="checklist-protocol-body"></div>
-</div>
-
-<!-- Ausführungsformular -->
-{{if .Task.CanComplete}}
-<div id="complete-form" class="card">
-  <div class="card-title"><i class="ti ti-clipboard-check" style="color:var(--accent)"></i> Ausführungsformular</div>
-  <form onsubmit="return submitMaintenanceCompletion(this,'{{.Task.ID}}')">
-
-    <!-- Checkliste Schritt für Schritt (loadDueChecklist / dckRender) -->
-    <div id="due-checklist-box" style="margin-bottom:16px;font-size:12px;color:var(--muted)">Fällige Checklistenpunkte werden geladen...</div>
-
-    <!-- erst sichtbar, wenn alle Checklistenpunkte durchgegangen sind -->
-    <div id="complete-rest" style="display:none">
-    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Weiter geht es im Abschluss-Assistenten: Material → Zeit → wer war dabei → Kommentar (wird als Maßnahme gespeichert) → Fertig. Danach plant PDH den nächsten Termin und schickt die Rückmeldung.</p>
-    <div id="complete-result" style="font-size:12px;margin-bottom:8px"></div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Auftrag abschließen"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "done" "ShowLabel" true "Type" "submit" "Label" "Weiter zum Abschluss")
-      )
-    )}}
-    </div>
-  </form>
-</div>
-
-{{end}}
-
-<div class="grid2" style="grid-template-columns:1fr 300px;gap:14px;align-items:start">
+<div class="md-grid">
   <div>
-    {{if eq .Task.Status "done"}}
-    <div class="card" style="border-color:rgba(16,185,129,.3)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;background:rgba(16,185,129,.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="color:var(--green);font-size:18px"></i></div>
-        <div><div style="font-weight:500;color:var(--green)">Abgeschlossen {{.Task.CompletedAt}}</div>
-        {{if .Task.DurationStr}}<div style="font-size:12px;color:var(--muted)">Dauer: {{.Task.DurationStr}}</div>{{end}}
-        {{if .NextTaskID}}<div style="font-size:12px;margin-top:2px"><i class="ti ti-calendar-repeat"></i> Nächster Termin: <a href="/maintenance/tasks/{{.NextTaskID}}" style="color:var(--accent)">{{.NextTaskDue}}</a></div>{{end}}</div>
+    {{if .Task.IsOpen}}
+    <div class="card md-do">
+      <div class="md-do-text">
+        <b>Wartung durchführen</b>
+        <span>{{if .StepCount}}{{.FilledCount}} von {{.StepCount}} Checklistenpunkten erfasst · {{end}}Checkliste → Material → Zeit → wer war dabei → Kommentar → Fertig</span>
+        {{if .StepCount}}<div class="md-bar"><i style="width:{{.Progress}}%"></i></div>{{end}}
       </div>
-      {{if .Task.Notes}}<p style="font-size:13px;color:var(--muted);margin-top:10px;line-height:1.6">{{.Task.Notes}}</p>{{end}}
+      <button type="button" class="btn cw-finish md-do-btn" onclick="pdhComplete('maintenance','{{.Task.ID}}')"><i class="ti ti-player-play"></i> {{if .FilledCount}}Weiter durchführen{{else}}Wartung durchführen{{end}}</button>
     </div>
-    {{end}}
-    {{if eq .Task.Status "in_progress"}}
-    <div class="card" style="border-color:rgba(var(--accent-rgb),.3)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;background:rgba(var(--accent-rgb),.15);border-radius:8px;display:flex;align-items:center;justify-content:center"><i class="ti ti-loader" style="color:var(--accent);font-size:18px"></i></div>
-        <div><div style="font-weight:500;color:var(--accent)">In Bearbeitung{{if .Task.StartedAt}} seit {{.Task.StartedAt}}{{end}}</div></div>
+    {{else}}
+    <div class="card md-done">
+      <div class="md-done-head"><i class="ti ti-{{if eq .Task.Status "skipped"}}player-skip-forward{{else}}circle-check{{end}}"></i>
+        <div><b>{{if eq .Task.Status "skipped"}}Übersprungen{{else}}Erledigt {{.Task.CompletedAt}}{{end}}</b>
+        <span>{{if .Task.DurationStr}}Dauer {{.Task.DurationStr}}{{end}}{{if .NextTaskID}}{{if .Task.DurationStr}} · {{end}}nächster Termin <a href="/maintenance/tasks/{{.NextTaskID}}">{{.NextTaskDue}}</a>{{end}}</span></div>
+        {{if .ProtocolURL}}<a class="btn" href="{{.ProtocolURL}}" target="_blank" rel="noopener"><i class="ti ti-file-type-pdf"></i> Protokoll</a>{{end}}
       </div>
+      {{if .Task.Notes}}<p class="md-notes">{{.Task.Notes}}</p>{{end}}
+      {{if .Actions}}<div class="md-sub">Maßnahmen</div>{{range .Actions}}<div class="md-line"><span>{{.Description}}</span><small>{{.CreatedByName}} · {{.CreatedAt.Format "02.01. 15:04"}}</small></div>{{end}}{{end}}
+      {{if .PartsUsed}}<div class="md-sub">Verwendetes Material</div>{{range .PartsUsed}}<div class="md-line"><span>{{.PartName}} <small>{{.PartNumber}}</small></span><b>{{.Qty}}</b></div>{{end}}{{end}}
     </div>
     {{end}}
-    {{if .Task.Description}}
-    <div class="card">
-      <div class="card-title"><i class="ti ti-file-description" style="color:var(--accent)"></i> Beschreibung</div>
-      <p style="font-size:13px;line-height:1.7;color:var(--muted)">{{.Task.Description}}</p>
-    </div>
-    {{end}}
-    {{if .Task.CanStart}}
-    <div class="card" style="text-align:center;padding:24px">
-      <i class="ti ti-player-play" style="font-size:32px;color:var(--muted);display:block;margin-bottom:10px;opacity:.5"></i>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Auftrag noch nicht gestartet</p>
-      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Auftrag starten" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
-    </div>
-    {{end}}
-    <!-- Arbeitszeit fragt der Abschluss-Assistent ab (Schritt „Zeit“) -->
 
-    <!-- Anhänge -->
     <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
+      <div class="card-title"><i class="ti ti-list-check"></i> Checkliste
+        {{if .StepCount}}<span class="badge b-gray" style="margin-left:auto">{{.FilledCount}}/{{.StepCount}}</span>{{end}}</div>
+      {{range .StepGroups}}
+      <div class="md-group">{{if .Name}}<div class="md-group-name">{{.Name}}</div>{{end}}
+        {{range .Steps}}
+        <div class="md-step">
+          <i class="ti ti-{{if .Filled}}circle-check md-ok{{else if .Required}}circle-dashed md-req{{else}}circle-dashed md-muted{{end}}"></i>
+          <div class="md-step-text">
+            <div>{{if .Required}}<span class="md-red" title="Pflichtpunkt">✱</span> {{end}}{{.Label}}</div>
+            {{if .CheckedBy}}<small>{{.CheckedBy}}{{if .CheckedAt}} · {{.CheckedAt.Format "02.01. 15:04"}}{{end}}</small>{{end}}
+            {{if .DocImages}}<div class="md-imgs">{{range .DocImages}}<a href="{{.URL}}" target="_blank" rel="noopener"><img src="{{.URL}}" alt="{{.Filename}}" loading="lazy"></a>{{end}}</div>{{end}}
+          </div>
+          <div class="md-step-val">
+            {{if eq .ItemType "checkbox"}}{{if .Done}}erledigt{{else}}–{{end}}
+            {{else if .Value}}<b>{{.Value}}</b>{{if .Unit}} {{.Unit}}{{end}}{{with .InRange}}{{if .}} <i class="ti ti-circle-check md-ok" title="im Bereich"></i>{{else}} <i class="ti ti-alert-triangle md-red" title="außerhalb von Min/Max"></i>{{end}}{{end}}
+            {{else}}–{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="md-muted" style="font-size:12.5px">Keine Checkliste an diesem Auftrag.</p>
+      {{end}}
+      {{if and .Task.IsOpen .Templates}}
+      <div class="md-addlist">
+        <select id="md-add-tpl" class="form-input" aria-label="Checkliste ergänzen">{{range .Templates}}<option value="{{.ID}}">{{.Name}} ({{.ItemCount}} Punkte)</option>{{end}}</select>
+        <button type="button" class="btn" onclick="mdAddList()"><i class="ti ti-plus"></i> Checkliste ergänzen</button>
+      </div>
+      {{end}}
+    </div>
+
+    {{if .Task.Description}}
+    <div class="card"><div class="card-title"><i class="ti ti-file-description"></i> Beschreibung</div><p class="md-notes">{{.Task.Description}}</p></div>
+    {{end}}
+
+    {{if and .Task.IsOpen .Pending}}
+    <div class="card"><div class="card-title"><i class="ti ti-package"></i> Reserviertes Material</div>
+      {{range .Pending}}<div class="md-line"><span>{{.PartName}} <small>{{.PartNumber}} · {{.StorageName}}</small></span><b>{{.Qty}}</b></div>{{end}}
+    </div>
+    {{end}}
+
+    <div class="card">
+      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos &amp; Dokumente</div>
       <div id="attachments-{{.Task.ID}}" data-attach-ref="maintenance_task:{{.Task.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)"><i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)"><i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
+        <label class="md-upload"><i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple hidden onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
+        <label class="md-upload"><i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" hidden onchange="uploadFiles(this,'maintenance_task','{{.Task.ID}}')"></label>
       </div>
     </div>
-
-    {{template "record-history" .History}}
   </div>
-  <!-- Details -->
+
   <div>
     <div class="card">
       <div class="card-title">Details</div>
-      {{if .Task.RecordImageURL}}
-      <img src="{{.Task.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px">
-      {{end}}
-      <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Task.TypeLabel}}</div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Task.PriorityClass}}">{{.Task.Priority}}</span></div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title"><span class="badge {{.Task.StatusClass}}">{{.Task.StatusLabel}}</span></div></div></div>
-      {{if .Task.InfraName}}<div class="li"><div class="li-text"><div class="li-sub">Infrastruktur</div><div class="li-title"><a href="/infrastructure/{{.Task.InfraID}}" style="color:var(--accent)">{{.Task.InfraName}}</a></div></div></div>{{end}}
-      <div class="li"><div class="li-text"><div class="li-sub">Fällig am</div><div class="li-title" style="{{if eq .Task.Status "open"}}color:var(--amber){{end}}">{{.Task.DueDate}}</div></div></div>
-      {{if .Task.AssigneeName}}<div class="li"><div class="li-text"><div class="li-sub">Zugewiesen</div><div class="li-title">{{.Task.AssigneeName}}</div></div></div>{{end}}
-      {{if .Task.DurationStr}}<div class="li"><div class="li-text"><div class="li-sub">Dauer</div><div class="li-title" style="font-weight:600;color:var(--green)">{{.Task.DurationStr}}</div></div></div>{{end}}
-      <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px;color:var(--muted)">{{.Task.CreatedAt}}</div></div></div>
-      <form hx-post="/records/maintenance_task/{{.Task.ID}}/people" hx-target="#people-result-task" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div class="form-group">
-          <label class="form-label">Verantwortlich</label>
-          <select name="responsible_to" class="form-input">
-            <option value="">Nicht gesetzt</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Task.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Zugewiesen</label>
-          <select name="assigned_to" class="form-input">
-            <option value="">Nicht zugewiesen</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Task.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Zugewiesene Gruppe</label>
-          <select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_task/{{.Task.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
-        </div>
-        <div id="people-result-task" style="font-size:12px;margin-bottom:8px"></div>
+      {{if .Task.RecordImageURL}}<img src="{{.Task.RecordImageURL}}" alt="Datensatzbild" class="md-recimg">{{end}}
+      {{if .Task.InfraName}}<div class="li"><div class="li-text"><div class="li-sub">Anlage</div><div class="li-title"><a href="/infrastructure/{{.Task.InfraID}}">{{.Task.InfraName}}</a></div></div></div>{{end}}
+      {{if .Task.PlanID}}<div class="li"><div class="li-text"><div class="li-sub">Wartungsplan</div><div class="li-title"><a href="/maintenance/plans/{{.Task.PlanID}}">{{.Task.PlanName}}</a>{{if .Task.PlanInterval}} <small class="md-muted">· {{.Task.PlanInterval}}</small>{{end}}</div></div></div>
+      {{else}}<div class="li"><div class="li-text"><div class="li-sub">Wartungsplan</div><div class="li-title md-muted">Einzelauftrag</div></div></div>{{end}}
+      <div class="li"><div class="li-text"><div class="li-sub">Fällig am</div><div class="li-title {{if .Task.Overdue}}md-red{{end}}">{{.Task.DueDate}}</div></div></div>
+      {{if .Task.StartedAt}}<div class="li"><div class="li-text"><div class="li-sub">Begonnen</div><div class="li-title">{{.Task.StartedAt}}</div></div></div>{{end}}
+      <div class="li"><div class="li-text"><div class="li-sub">Angelegt</div><div class="li-title md-muted" style="font-size:12px">{{.Task.CreatedAt}}</div></div></div>
+      <form hx-post="/records/maintenance_task/{{.Task.ID}}/people" hx-target="#md-people-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="form-group"><label class="form-label">Zugewiesen</label>
+          <select name="assigned_to" class="form-input"><option value="">Nicht zugewiesen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Task.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Verantwortlich</label>
+          <select name="responsible_to" class="form-input"><option value="">Nicht gesetzt</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Task.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Zugewiesene Gruppe</label>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_task/{{.Task.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
+        <div id="md-people-result" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
     </div>
-    <div class="card">
-      <div class="card-title">Beteiligte</div>
-      <div id="record-parties" hx-get="/records/maintenance_task/{{.Task.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
-    </div>
-    {{if .Task.CanComplete}}
-    <div class="card">
-      {{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Als erledigt markieren" "Style" "width:100%;justify-content:center" "OnClick" (printf "openCompleteForm('%s');window.scrollTo({top:0,behavior:'smooth'})" .Task.ID))}}
-    </div>
-    {{end}}
+    <div class="card"><div class="card-title">Beteiligte</div>
+      <div hx-get="/records/maintenance_task/{{.Task.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div></div>
   </div>
 </div>
 </div>
 
-<!-- ── Feldsätze ── -->
-<div class="rec-pane" data-pane="fields">
-  <div class="card">{{template "record-fields-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
-</div>
-
-<!-- ── Verknüpfungen ── -->
+<div class="rec-pane" data-pane="fields"><div class="card">{{template "record-fields-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div></div>
 <div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
-
-<!-- ── Historie ── -->
 <div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}</div>
 {{end}}
 
 {{define "context-list"}}
 <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Auftrag</div>
 <div class="act-item"><div class="act-dot {{.Task.PriorityDot}}"></div><div class="act-text">{{.Task.Title}}</div><span class="badge {{.Task.StatusClass}}" style="font-size:9px">{{.Task.StatusLabel}}</span></div>
-{{range .TimeEntries}}<div class="act-item"><div class="act-dot d-green"></div><div class="act-text">{{.UserName}}</div><span style="font-size:10px;color:var(--muted)">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft{{end}}</span></div>{{end}}
 {{end}}
 
 {{block "scripts" .}}
 <style>
-.dck{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg2)}
-.dck.missing{border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
-.dck-head{display:flex;gap:8px;align-items:flex-start}
-.dck-label{flex:1;font-weight:500;font-size:13px}
-.dck-desc{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:pre-wrap}
-.dck-spec{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
-.dck-spec span{font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted)}
-.dck-spec b{color:var(--text);font-weight:600}
-.dck-in{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
-.dck-in .form-input{max-width:180px}
-.dck-in textarea.form-input{max-width:none;width:100%;min-height:60px;resize:vertical}
-.dck-state{font-size:11.5px;font-weight:600}
-.dck-state.ok{color:var(--green)}.dck-state.bad{color:var(--red)}
-.dck-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
-.dck-imgs .lbl{font-size:10.5px;color:var(--muted);width:100%}
-.dck-img{position:relative;display:inline-block}
-.dck-img img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);display:block}
-.dck-img button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-size:11px}
-.dck-ref img{width:120px;height:90px}
-.dck-add{height:64px;min-width:64px;padding:0 10px;border:1px dashed var(--border);border-radius:6px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10.5px;color:var(--muted);cursor:pointer}
-.dck-add:hover{border-color:var(--accent);color:var(--accent)}
-.dck-add i{font-size:20px}
-.dck-add.busy{opacity:.5;pointer-events:none}
-.dck-pick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px}
-.dck-pick-lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-right:4px}
-.dck-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;border:1px solid var(--border);background:var(--bg3);border-radius:999px;padding:3px 10px;color:var(--text)}
-.dck-chip small{color:var(--muted)}
-.dck-chip button{border:0;background:none;color:var(--muted);cursor:pointer;padding:0;display:flex}
-.dck-addsel{max-width:240px;font-size:12px;padding:4px 8px}
-.dck-prog{margin-bottom:10px}
-.dck-prog-txt{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--text);margin-bottom:6px}
-.dck-prog-txt span{color:var(--muted);font-size:12px}
-.dck-bar{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;border:1px solid var(--border)}
-.dck-bar i{display:block;height:100%;background:var(--green);transition:width .2s}
-.dck-dots{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-.dck-dot{min-width:26px;height:26px;border-radius:13px;border:2px solid var(--border);background:var(--bg3);color:var(--muted);font-size:11px;cursor:pointer;padding:0 4px;font-family:var(--font)}
-.dck-dot.ok{border-color:var(--green);background:var(--green);color:#fff}
-.dck-dot.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.35);color:var(--text)}
-.dck-dot.ok.on{color:#fff}
-.dck-tpl{font-size:11.5px;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
-.dck-step .dck{padding:14px 16px;color:var(--text)}
-.dck-step .dck-label{font-size:15px}
-.dck-step .dck-in label{font-size:14px!important;padding:6px 0}
-.dck-nav{display:flex;align-items:center;gap:8px;margin-top:4px}
-.dck-nav .btn{min-height:40px}
-.dck-msg{flex:1;font-size:12px;color:var(--red);text-align:center}
-.dck-done{font-size:12.5px;color:var(--green);margin-bottom:8px;display:flex;gap:6px;align-items:center}
-.dck-sum{border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.dck-sum-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:8px 12px;border:0;border-bottom:1px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer;font-size:12.5px;font-family:var(--font)}
-.dck-sum-row:last-child{border-bottom:0}
-.dck-sum-row:hover{background:var(--bg3)}
-.dck-sum-row .v{margin-left:auto;color:var(--muted);text-align:right;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dck-empty{padding:10px;border:1px solid var(--border);border-radius:8px;color:var(--muted)}
-.cp-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:4px 12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
-.cp-row:last-child{border-bottom:0}
-.cp-row .m{font-size:11px;color:var(--muted)}
-@media(max-width:700px){.cp-row{grid-template-columns:1fr}}
+.md-head{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.md-head h1{font-size:18px;font-weight:600}
+.md-head p{font-size:12px;color:var(--muted);margin-top:2px}
+.md-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.md-red{color:var(--red);font-weight:600}
+.md-ok{color:var(--green)}
+.md-req{color:var(--amber)}
+.md-muted{color:var(--muted)}
+.md-do{display:flex;gap:14px;align-items:center;border-color:rgba(16,185,129,.4)}
+.md-do-text{flex:1;display:grid;gap:4px}
+.md-do-text b{font-size:15px}
+.md-do-text span{font-size:12px;color:var(--muted)}
+.md-do-btn{min-height:48px;font-size:15px;padding:0 20px;justify-content:center}
+.md-bar{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;border:1px solid var(--border)}
+.md-bar i{display:block;height:100%;background:var(--green)}
+.md-done{border-color:rgba(16,185,129,.3)}
+.md-done-head{display:flex;gap:10px;align-items:center}
+.md-done-head > i{font-size:22px;color:var(--green)}
+.md-done-head > div{flex:1;display:grid;gap:2px}
+.md-done-head span{font-size:12px;color:var(--muted)}
+.md-done-head a{color:var(--accent)}
+.md-notes{font-size:13px;color:var(--muted);line-height:1.6;white-space:pre-wrap;margin-top:8px}
+.md-sub{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:12px 0 4px}
+.md-line{display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)}
+.md-line:last-child{border-bottom:0}
+.md-line small{color:var(--muted);font-size:11.5px}
+.md-group{margin-bottom:8px}
+.md-group-name{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin:8px 0 2px}
+.md-step{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.md-step:last-child{border-bottom:0}
+.md-step small{color:var(--muted);font-size:11.5px}
+.md-step-val{text-align:right;color:var(--muted)}
+.md-step-val b{color:var(--text)}
+.md-imgs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.md-imgs img{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--border)}
+.md-addlist{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.md-addlist .form-input{max-width:340px}
+.md-upload{cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)}
+.md-recimg{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px}
+@media(max-width:900px){.md-grid{grid-template-columns:1fr}.md-do{flex-direction:column;align-items:stretch}}
 </style>
 <script>
-function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
-function closeMenu(id){const el=document.getElementById(id); if(el) el.style.display='none';}
-document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
-function toggleEdit(){const f=document.getElementById('edit-form');f.style.display=f.style.display==='none'?'block':'none';if(f.style.display==='block')f.scrollIntoView({behavior:'smooth',block:'nearest'});}
-async function apiData(url, options){const res=await fetch(url,Object.assign({credentials:'same-origin'},options||{}));let payload=null;try{payload=await res.json();}catch(e){payload=null;}if(!res.ok)throw new Error((payload&&(payload.error||payload.message))||('HTTP '+res.status));return payload&&payload.data!==undefined?payload.data:payload;}
-// auto=true: beim Laden der Seite nur die faelligen Punkte vorbereiten (kein Assistent)
-async function openCompleteForm(taskID, auto){const box=document.getElementById('complete-form');
-  if(!dckReady)dckReady=await loadDueChecklist(taskID);
-  // Abschluss-Assistent (Material, Zeit, wer war dabei, Kommentar); fällige Checklistenpunkte vorher hier Schritt für Schritt abarbeiten
-  if(!dckList.length&&!(auto&&dckReady&&dckTemplates.length)){if(!dckReady||!dckTemplates.length)box.style.display='none';if(!auto)pdhComplete('maintenance',taskID);return;}
-  box.style.display='block';if(!auto)box.scrollIntoView({behavior:'smooth',block:'nearest'});}
-async function loadDefaultDuration(taskID){try{const d=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/default-duration');const input=document.getElementById('complete-duration');if(input && !input.value && d && d.default_duration_min>0)input.value=d.default_duration_min;}catch(e){console.warn(e);}}
-
-// ── Checkliste: Checkbox, Messwert (Soll/Min/Max), Freitext; Bilder zur Darstellung + Fotos zur Dokumentation
-// Schritt für Schritt: ein Punkt je Schritt; „Weiter“ prüft und speichert ihn sofort (Fortsetzen nach Neuladen).
-// Am Plan hinterlegte Checklisten sind gesetzt, weitere lassen sich für diesen Auftrag hinzufügen.
-var dckItems = {};      // template_item_id -> Punkt samt aktuellem Wert
-var dckList = [];       // abzuarbeitende Punkte in Reihenfolge
-var dckTemplates = [];  // alle Vorlagen (Auswahl „Checkliste hinzufügen“)
-var dckAdded = [];      // für diesen Auftrag zusätzlich ausgewählte Vorlagen
-var dckStep = 0;        // Index in dckList; dckList.length = Übersicht
-var dckReady = false;
-function dckKey(){return 'pdh-maint-checklists:'+MAINT_TASK_ID;}
-function dckLoadAdded(){try{const v=JSON.parse(localStorage.getItem(dckKey())||'[]');return Array.isArray(v)?v:[];}catch(e){return [];}}
-function dckSaveAdded(){try{localStorage.setItem(dckKey(),JSON.stringify(dckAdded));}catch(e){}}
-function dckFilled(it){return it.item_type==='checkbox'?!!it.done:String(it.value||'').trim()!=='';}
-function dckNum(v){return (v===null||v===undefined)?'':String(v).replace('.',',');}
-function dckParse(v){v=String(v||'').trim().replace(',','.');if(v==='')return null;const n=Number(v);return isFinite(n)?n:NaN;}
-function dckSpecHtml(item){
-  if(item.item_type!=='number')return '';
-  const u=item.unit?' '+escapeHtml(item.unit):'';const p=[];
-  if(item.target_value!==null&&item.target_value!==undefined)p.push('<span>Soll <b>'+escapeHtml(dckNum(item.target_value))+u+'</b></span>');
-  if(item.min_value!==null&&item.min_value!==undefined)p.push('<span>Min <b>'+escapeHtml(dckNum(item.min_value))+u+'</b></span>');
-  if(item.max_value!==null&&item.max_value!==undefined)p.push('<span>Max <b>'+escapeHtml(dckNum(item.max_value))+u+'</b></span>');
-  return p.length?'<div class="dck-spec">'+p.join('')+'</div>':'';
-}
-// Bewertung gegen Min/Max: null = keine Grenzen oder kein Wert
-function dckRange(item,value){
-  const hasMin=item.min_value!==null&&item.min_value!==undefined, hasMax=item.max_value!==null&&item.max_value!==undefined;
-  const n=dckParse(value);
-  if(n===null)return null;
-  if(isNaN(n))return 'nan';
-  if(!hasMin&&!hasMax)return null;
-  return (!hasMin||n>=item.min_value)&&(!hasMax||n<=item.max_value);
-}
-function dckCheckMeasure(input){
-  const item=dckItems[input.dataset.itemId];const st=input.parentNode.querySelector('.dck-state');if(!item||!st)return;
-  const r=dckRange(item,input.value);
-  if(r===null){st.textContent='';st.className='dck-state';}
-  else if(r==='nan'){st.textContent='keine Zahl';st.className='dck-state bad';}
-  else if(r){st.innerHTML='<i class="ti ti-circle-check"></i> im Bereich';st.className='dck-state ok';}
-  else{st.innerHTML='<i class="ti ti-alert-triangle"></i> außerhalb '+(item.min_value!==null&&item.min_value!==undefined?escapeHtml(dckNum(item.min_value)):'…')+' – '+(item.max_value!==null&&item.max_value!==undefined?escapeHtml(dckNum(item.max_value)):'…')+(item.unit?' '+escapeHtml(item.unit):'');st.className='dck-state bad';}
-  input.closest('.dck').classList.remove('missing');
-}
-function dckImg(img,removable){return '<span class="dck-img"><a href="'+escapeHtml(img.url)+'" target="_blank" rel="noopener"><img src="'+escapeHtml(img.url)+'" alt="'+escapeHtml(img.filename)+'" loading="lazy"></a>'+(removable?'<button type="button" title="Foto entfernen" aria-label="Foto entfernen" onclick="dckDeletePhoto(\''+escapeHtml(img.id)+'\',this)"><i class="ti ti-x"></i></button>':'')+'</span>';}
-async function loadDueChecklist(taskID){const box=document.getElementById('due-checklist-box');
-  dckAdded=dckLoadAdded();
-  const keep={};Object.values(dckItems).forEach(i=>{keep[i.template_item_id]=i;});
+function mdToggleEdit(){ const f = document.getElementById('md-edit'); f.style.display = f.style.display === 'none' ? 'block' : 'none'; }
+async function mdAddList(){
+  const id = document.getElementById('md-add-tpl').value; if(!id) return;
   try{
-    const q=dckAdded.length?'?template_ids='+encodeURIComponent(dckAdded.join(',')):'';
-    const res=await Promise.all([apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/due-checklist'+q),apiData('/api/v1/maintenance-checklists/templates').catch(()=>[])]);
-    dckList=res[0]||[];dckTemplates=res[1]||[];dckItems={};
-    dckList.forEach(i=>{const k=keep[i.template_item_id];if(k){i.value=k.value;i.done=k.done;i.saved=k.saved;i.confirmed=k.confirmed;i.doc_images=k.doc_images;}else i.confirmed=i.value;dckItems[i.template_item_id]=i;});
-    // Start: erster offener Pflichtpunkt, sonst hinter dem zuletzt erfassten Punkt
-    let start=dckList.findIndex(i=>i.required&&!dckFilled(i));
-    if(start<0){start=0;dckList.forEach((i,n)=>{if(dckFilled(i))start=n+1;});}
-    dckStep=Math.min(start,dckList.length);
-    dckRender();return true;
-  }catch(e){box.innerHTML='<div style="color:var(--red)">Fällige Checkliste konnte nicht geladen werden: '+escapeHtml(e.message)+'</div>';dckList=[];document.getElementById('complete-rest').style.display='';return false;}}
-function dckPickerHtml(){
-  const tpl={};dckList.forEach(i=>{const t=tpl[i.template_id]||(tpl[i.template_id]={name:i.template_name,assigned:i.assigned,n:0,sticky:false});t.n++;if(i.id||i.saved)t.sticky=true;});
-  const chips=Object.keys(tpl).map(id=>{const t=tpl[id];
-    const rm=!t.assigned&&!t.sticky&&dckAdded.includes(id)?'<button type="button" title="Checkliste wieder entfernen" aria-label="Checkliste entfernen" onclick="dckRemoveTemplate(\''+escapeHtml(id)+'\')"><i class="ti ti-x"></i></button>':'';
-    return '<span class="dck-chip" title="'+(t.assigned?'Am Wartungsplan hinterlegt':'Für diesen Auftrag ausgewählt')+'"><i class="ti ti-'+(t.assigned?'lock':'checklist')+'"></i>'+escapeHtml(t.name)+' <small>'+t.n+'</small>'+rm+'</span>';});
-  const others=dckTemplates.filter(t=>!tpl[t.id]);
-  const sel=others.length?'<select class="form-input dck-addsel" onchange="dckAddTemplate(this.value)"><option value="">+ Checkliste hinzufügen…</option>'+others.map(t=>'<option value="'+escapeHtml(t.id)+'">'+escapeHtml(t.name)+'</option>').join('')+'</select>':'';
-  if(!chips.length&&!sel)return '';
-  return '<div class="dck-pick"><span class="dck-pick-lbl">Checkliste</span>'+chips.join('')+sel+'</div>';
+    const res = await fetch('/api/v1/maintenance/tasks/{{.Task.ID}}/checklists', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({template_id: id})});
+    const json = await res.json().catch(() => ({}));
+    if(!res.ok || json.success === false) throw new Error(json.error || ('HTTP ' + res.status));
+    location.reload();
+  }catch(e){ alert(e.message); }
 }
-function dckSumValue(it){
-  const u=it.unit?' '+escapeHtml(it.unit):'';
-  if(it.item_type==='checkbox')return it.done?'erledigt':'–';
-  if(!dckFilled(it))return '–';
-  if(it.item_type==='number')return escapeHtml(it.value)+u+(dckRange(it,it.value)===false?' <span style="color:var(--red)"><i class="ti ti-alert-triangle"></i></span>':'');
-  return escapeHtml(it.value);
-}
-function dckRender(){
-  const box=document.getElementById('due-checklist-box'),rest=document.getElementById('complete-rest');
-  const n=dckList.length;let html=dckPickerHtml();
-  if(!n){box.innerHTML=html+'<div class="dck-empty">Keine fälligen Checklistenpunkte.</div>';rest.style.display='';return;}
-  const filled=dckList.filter(dckFilled).length;
-  html+='<div class="dck-prog"><div class="dck-prog-txt"><b>'+(dckStep<n?'Punkt '+(dckStep+1)+' von '+n:'Alle '+n+' Punkte durchgegangen')+'</b><span>'+filled+' von '+n+' erfasst</span></div>'
-    +'<div class="dck-bar"><i style="width:'+Math.round(filled*100/n)+'%"></i></div>'
-    +'<div class="dck-dots">'+dckList.map((it,k)=>'<button type="button" class="dck-dot'+(k===dckStep?' on':'')+(dckFilled(it)?' ok':'')+'" title="'+escapeHtml((k+1)+'. '+it.label)+'" onclick="dckGo('+k+')">'+(k+1)+'</button>').join('')
-    +'<button type="button" class="dck-dot'+(dckStep>=n?' on':'')+'" title="Übersicht" aria-label="Übersicht" onclick="dckGo('+n+')"><i class="ti ti-list"></i></button></div></div>';
-  if(dckStep<n){
-    const it=dckList[dckStep];
-    html+='<div class="dck-step"><div class="dck-tpl"><i class="ti ti-checklist"></i>'+escapeHtml(it.template_name)+'</div>'+renderDueChecklistItem(it)
-      +'<div class="dck-nav"><button type="button" class="btn" onclick="dckGo('+(dckStep-1)+')"'+(dckStep===0?' disabled':'')+'><i class="ti ti-chevron-left"></i> Zurück</button><span class="dck-msg" id="dck-msg"></span>'
-      +'<button type="button" class="btn btn-primary" id="dck-next" onclick="dckNext()">'+(dckStep===n-1?'<i class="ti ti-check"></i> Checkliste fertig':'Weiter <i class="ti ti-chevron-right"></i>')+'</button></div></div>';
-  }else{
-    const open=dckList.filter(i=>i.required&&!dckFilled(i)).length;
-    html+=(open?'<div class="dck-done" style="color:var(--red)"><i class="ti ti-alert-triangle"></i> '+open+' Pflichtpunkt(e) noch offen – antippen zum Ausfüllen.</div>':'<div class="dck-done"><i class="ti ti-circle-check"></i> Checkliste durchgegangen. Zum Ändern einen Punkt antippen.</div>')
-      +'<div class="dck-sum">'+dckList.map((it,k)=>{const ok=dckFilled(it);
-        return '<button type="button" class="dck-sum-row" onclick="dckGo('+k+')"><i class="ti ti-'+(ok?'circle-check':it.required?'alert-circle':'circle-dashed')+'" style="color:var(--'+(ok?'green':it.required?'red':'muted')+')"></i><span>'+(k+1)+'. '+escapeHtml(it.label)+'</span><span class="v">'+dckSumValue(it)+'</span></button>';}).join('')+'</div>';
-  }
-  box.innerHTML=html;
-  rest.style.display=dckStep>=n?'':'none';
-  box.querySelectorAll('.due-check-value[data-measure]').forEach(dckCheckMeasure);
-}
-// Eingabe des angezeigten Punkts in den Zustand übernehmen
-function dckRead(){
-  const card=document.querySelector('#due-checklist-box .dck');if(!card)return null;
-  const it=dckItems[card.dataset.itemId];if(!it)return null;
-  if(it.item_type==='checkbox'){it.done=card.querySelector('.due-check-done').checked;it.value=it.done?'erledigt':'';}
-  else{it.value=card.querySelector('.due-check-value').value.trim();it.done=it.value!=='';}
-  return it;
-}
-function dckError(it){
-  if(it.item_type==='number'&&dckFilled(it)&&isNaN(dckParse(it.value)))return 'Bitte eine Zahl eingeben.';
-  if(it.required&&!dckFilled(it))return it.item_type==='checkbox'?'Pflichtpunkt – bitte abhaken.':'Pflichtpunkt – bitte ausfüllen.';
-  return '';
-}
-function dckGo(k){
-  dckRead();dckStep=Math.max(0,Math.min(k,dckList.length));dckRender();
-  const box=document.getElementById('due-checklist-box');box.scrollIntoView({behavior:'smooth',block:'nearest'});
-  const inp=box.querySelector('.due-check-value');if(inp)inp.focus({preventScroll:true});
-}
-async function dckNext(){
-  const it=dckRead();if(!it)return;
-  const msg=document.getElementById('dck-msg'),err=dckError(it);
-  if(err){document.querySelector('#due-checklist-box .dck').classList.add('missing');msg.textContent=err;return;}
-  if(dckRange(it,it.value)===false&&it.confirmed!==it.value){
-    if(!confirm('„'+it.label+'“: '+it.value+(it.unit?' '+it.unit:'')+' liegt außerhalb von Min/Max.\n\nTrotzdem so übernehmen?'))return;
-    it.confirmed=it.value;
-  }
-  const btn=document.getElementById('dck-next');btn.disabled=true;msg.textContent='';
-  try{
-    const id=it.template_item_id,values={},done={};values[id]=it.value;done[id]=!!it.done;
-    await apiData('/api/v1/maintenance-checklists/tasks/'+MAINT_TASK_ID+'/checklist-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values,done})});
-    it.saved=true;
-  }catch(e){btn.disabled=false;msg.textContent='Fehler: '+e.message;return;}
-  dckGo(dckStep+1);
-}
-async function dckAddTemplate(id){
-  if(!id)return;dckRead();
-  const name=(dckTemplates.find(t=>t.id===id)||{}).name||'';
-  if(!dckAdded.includes(id))dckAdded.push(id);dckSaveAdded();
-  await loadDueChecklist(MAINT_TASK_ID);
-  const first=dckList.findIndex(i=>i.template_id===id);
-  if(first<0){dckAdded=dckAdded.filter(x=>x!==id);dckSaveAdded();alert('In „'+name+'“ ist derzeit kein Punkt fällig.');dckRender();return;}
-  document.getElementById('complete-form').style.display='block';
-  dckGo(first);
-}
-async function dckRemoveTemplate(id){
-  dckRead();dckAdded=dckAdded.filter(x=>x!==id);dckSaveAdded();
-  await loadDueChecklist(MAINT_TASK_ID);
-}
-function renderDueChecklistItem(item){
-  const id=escapeHtml(item.template_item_id);
-  const req=item.required?'<span style="color:var(--red);font-size:10px" title="Pflichtpunkt">✱</span> ':'';
-  const last=item.last_done_at?'<div class="dck-desc">Zuletzt: '+escapeHtml(new Date(item.last_done_at).toLocaleDateString('de-DE'))+'</div>':'';
-  const desc=item.description?'<div class="dck-desc">'+escapeHtml(item.description)+'</div>':'';
-  const refs=(item.ref_images||[]);
-  const refHtml=refs.length?'<div class="dck-imgs dck-ref"><span class="lbl">Darstellung</span>'+refs.map(i=>dckImg(i,false)).join('')+'</div>':'';
-  let input='';
-  if(item.item_type==='number'){
-    input='<div class="dck-in"><input type="text" inputmode="decimal" class="form-input due-check-value" data-measure="1" data-item-id="'+id+'" value="'+escapeHtml(item.value||'')+'" placeholder="Messwert" oninput="dckCheckMeasure(this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();dckNext();}">'+(item.unit?'<span style="font-size:12px;color:var(--muted)">'+escapeHtml(item.unit)+'</span>':'')+'<span class="dck-state"></span></div>';
-  }else if(item.item_type==='text'){
-    input='<div class="dck-in"><textarea class="form-input due-check-value" data-suggest="check" data-item-id="'+id+'" placeholder="Freitext" oninput="this.closest(\'.dck\').classList.remove(\'missing\')">'+escapeHtml(item.value||'')+'</textarea></div>';
-  }else{
-    input='<div class="dck-in"><label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer"><input type="checkbox" class="due-check-done" data-item-id="'+id+'" style="width:18px;height:18px"'+(item.done?' checked':'')+' onchange="this.closest(\'.dck\').classList.remove(\'missing\')"> erledigt</label></div>';
-  }
-  const docs=(item.doc_images||[]);
-  const docHtml='<div class="dck-imgs dck-docs" data-item-id="'+id+'"><span class="lbl">Fotos zur Dokumentation</span>'+docs.map(i=>dckImg(i,true)).join('')
-    +'<label class="dck-add" title="Foto aufnehmen oder auswählen"><i class="ti ti-camera-plus"></i><span>Foto</span><input type="file" accept="image/*" capture="environment" multiple hidden onchange="dckUploadPhotos(\''+id+'\',this)"></label></div>';
-  return '<div class="dck" data-item-id="'+id+'" data-type="'+escapeHtml(item.item_type)+'" data-required="'+(item.required?'1':'')+'"><div class="dck-head"><div class="dck-label">'+req+escapeHtml(item.label)+desc+last+'</div><span class="badge b-gray" style="font-size:10px">'+escapeHtml(item.interval_days)+' Tage</span></div>'+dckSpecHtml(item)+refHtml+input+docHtml+'</div>';
-}
-// Dokumentationsfotos haengen am Ergebnis des Punkts (wird bei Bedarf angelegt)
-async function dckUploadPhotos(itemID,input){
-  if(!input.files||!input.files.length)return;
-  const add=input.closest('.dck-add');add.classList.add('busy');
-  try{
-    const r=await apiData('/api/v1/maintenance-checklists/tasks/'+MAINT_TASK_ID+'/items/'+encodeURIComponent(itemID)+'/result',{method:'POST'});
-    const fd=new FormData();[...input.files].forEach(f=>fd.append('files',f));
-    const saved=await apiData('/api/v1/attachments/maint_check_result/'+encodeURIComponent(r.id),{method:'POST',body:fd})||[];
-    if(saved.length<input.files.length)alert('Nicht alle Dateien wurden übernommen (nur Bilder bis 20 MB).');
-    const it=dckItems[itemID];if(it){it.saved=true;it.doc_images=it.doc_images||[];}
-    saved.filter(a=>a.is_image).forEach(a=>{const img={id:a.id,url:a.url,filename:a.filename};if(it)it.doc_images.push(img);add.insertAdjacentHTML('beforebegin',dckImg(img,true));});
-  }catch(e){alert('Foto konnte nicht gespeichert werden: '+e.message);}
-  input.value='';add.classList.remove('busy');
-}
-async function dckDeletePhoto(id,btn){
-  if(!confirm('Foto entfernen?'))return;
-  try{await apiData('/api/v1/attachments/'+encodeURIComponent(id),{method:'DELETE'});btn.closest('.dck-img').remove();
-    Object.values(dckItems).forEach(it=>{if(it.doc_images)it.doc_images=it.doc_images.filter(i=>i.id!==id);});}
-  catch(e){alert('Fehler: '+e.message);}
-}
-async function submitMaintenanceCompletion(form,taskID){
-  const result=document.getElementById('complete-result');
-  dckRead();
-  const values={},done={},missing=[];let first=-1;
-  dckList.forEach((it,k)=>{const id=it.template_item_id;values[id]=it.item_type==='checkbox'?(it.done?'erledigt':''):String(it.value||'').trim();done[id]=it.item_type==='checkbox'?!!it.done:values[id]!=='';
-    if(dckError(it)){missing.push(it.label);if(first<0)first=k;}});
-  if(missing.length){dckGo(first);result.innerHTML='<span style="color:var(--red)">Bitte ausfüllen: '+escapeHtml(missing.join(', '))+'</span>';return false;}
-  const out=dckList.filter(it=>dckRange(it,it.value)===false&&it.confirmed!==it.value).map(it=>it.label);
-  if(out.length&&!confirm('Außerhalb von Min/Max:\n– '+out.join('\n– ')+'\n\nTrotzdem so übernehmen?'))return false;
-  result.textContent='Speichere Checkliste...';
-  try{if(Object.keys(values).length>0){await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values,done})});}result.textContent='';document.getElementById('complete-form').style.display='none';loadChecklistProtocol(taskID);pdhComplete('maintenance',taskID);}catch(e){result.innerHTML='<span style="color:var(--red)">Fehler: '+escapeHtml(e.message)+'</span>';}return false;}
-// Protokoll der erfassten Punkte (inkl. Dokumentationsfotos)
-async function loadChecklistProtocol(taskID){
-  const card=document.getElementById('checklist-protocol');if(!card)return;
-  try{
-    const items=await apiData('/api/v1/maintenance-checklists/tasks/'+taskID+'/checklist-results')||[];
-    if(!items.length){card.style.display='none';return;}
-    document.getElementById('checklist-protocol-body').innerHTML=items.map(it=>{
-      const u=it.unit?' '+escapeHtml(it.unit):'';let val;
-      if(it.item_type==='checkbox')val=it.done?'<span style="color:var(--green)"><i class="ti ti-square-check"></i> erledigt</span>':'<span class="m">nicht erledigt</span>';
-      else if(it.item_type==='number')val=it.value?'<b>'+escapeHtml(it.value)+'</b>'+u+(it.in_range===true?' <span style="color:var(--green)" title="im Bereich"><i class="ti ti-circle-check"></i></span>':it.in_range===false?' <span style="color:var(--red)" title="außerhalb Min/Max"><i class="ti ti-alert-triangle"></i> außerhalb</span>':''):'<span class="m">–</span>';
-      else val=it.value?'<span style="white-space:pre-wrap">'+escapeHtml(it.value)+'</span>':'<span class="m">–</span>';
-      const who=it.checked_at?'<div class="m">'+escapeHtml(it.checked_by||'')+(it.checked_by?' · ':'')+escapeHtml(new Date(it.checked_at).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'}))+'</div>':'';
-      const docs=(it.doc_images||[]).length?'<div class="dck-imgs">'+it.doc_images.map(i=>dckImg(i,false)).join('')+'</div>':'';
-      return '<div class="cp-row"><div>'+escapeHtml(it.label)+who+'</div><div>'+val+dckSpecHtml(it)+'</div><div>'+docs+'</div></div>';
-    }).join('');
-    card.style.display='';
-  }catch(e){card.style.display='none';console.warn('Checklisten-Protokoll',e);}
-}
-function escapeHtml(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-
-// ── Durchgeführte Maßnahmen + Ersatzteile (Ausführungsformular) ─────────
-var MAINT_TASK_ID = '{{.Task.ID}}';
-if({{if .Task.CanComplete}}true{{else}}false{{end}}){
-  if(document.readyState !== 'loading'){ openCompleteForm(MAINT_TASK_ID, true); }
-  else document.addEventListener('DOMContentLoaded', function(){ openCompleteForm(MAINT_TASK_ID, true); });
-}
-if(document.readyState !== 'loading') loadChecklistProtocol(MAINT_TASK_ID);
-else document.addEventListener('DOMContentLoaded', function(){ loadChecklistProtocol(MAINT_TASK_ID); });
 </script>
 {{end}}

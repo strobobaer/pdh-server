@@ -30,7 +30,7 @@ type maintProtocol struct {
 	Notes                              string
 	Executor                           string
 	Participants                       []string
-	Checklist                          []*maintenance.TaskChecklistItem
+	Checklist                          []*maintenance.TaskStep
 	Actions                            []maintProtocolLine
 	Parts                              []maintProtocolLine
 	Company                            string
@@ -62,32 +62,42 @@ func (h *Handler) storeMaintProtocol(ctx context.Context, p *maintProtocol, task
 		log.Warn().Err(err).Msg("pdf nicht erzeugt")
 		return ""
 	}
-	refType, refID := "infrastructure", p.InfraID
-	if refID == "" { // Auftrag ohne Anlage: Protokoll am Auftrag
-		refType, refID = "maintenance_task", taskID
-	}
+	// am Auftrag (Erledigt-Liste, Auftragsseite) und als Kopie an der Anlage (Dokumente)
 	date := p.CompletedAt.Format("2006-01-02")
-	rel := filepath.Join(refType, refID, "wartungsprotokoll-"+date+"-"+randomHex(4)+".pdf")
-	abs := filepath.Join("uploads", rel)
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		log.Warn().Err(err).Msg("ordner nicht anlegbar")
-		return ""
-	}
-	if err := os.WriteFile(abs, data, 0o644); err != nil {
-		log.Warn().Err(err).Msg("datei nicht schreibbar")
-		return ""
-	}
 	name := "Wartungsprotokoll " + date + " " + safeFileName(p.Title) + ".pdf"
-	if _, err := h.db.Exec(ctx, `INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
-		VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4, 'application/pdf', $5, $6, NULLIF($7,'')::uuid)`,
-		refType, refID, name, filepath.ToSlash(rel), len(data), "Wartungsprotokoll: "+p.Title, userID); err != nil {
-		_ = os.Remove(abs)
-		log.Warn().Err(err).Msg("anhang nicht gespeichert")
+	targets := [][2]string{{"maintenance_task", taskID}}
+	if p.InfraID != "" {
+		targets = append(targets, [2]string{"infrastructure", p.InfraID})
+	}
+	url := ""
+	for _, tg := range targets {
+		rel := filepath.Join(tg[0], tg[1], "wartungsprotokoll-"+date+"-"+randomHex(4)+".pdf")
+		abs := filepath.Join("uploads", rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			log.Warn().Err(err).Msg("ordner nicht anlegbar")
+			continue
+		}
+		if err := os.WriteFile(abs, data, 0o644); err != nil {
+			log.Warn().Err(err).Msg("datei nicht schreibbar")
+			continue
+		}
+		if _, err := h.db.Exec(ctx, `INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
+			VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4, 'application/pdf', $5, $6, NULLIF($7,'')::uuid)`,
+			tg[0], tg[1], name, filepath.ToSlash(rel), len(data), "Wartungsprotokoll: "+p.Title, userID); err != nil {
+			_ = os.Remove(abs)
+			log.Warn().Err(err).Msg("anhang nicht gespeichert")
+			continue
+		}
+		if url == "" {
+			url = "/uploads/" + filepath.ToSlash(rel)
+		}
+	}
+	if url == "" {
 		return ""
 	}
-	h.addHistory(ctx, "maintenance", taskID, "document", "", "", "", "Wartungsprotokoll (PDF) an der Anlage abgelegt", userID)
-	log.Info().Str("datei", rel).Msg("wartungsprotokoll gespeichert")
-	return "/uploads/" + filepath.ToSlash(rel)
+	h.addHistory(ctx, "maintenance_task", taskID, "document", "", "", "", "Wartungsprotokoll (PDF) am Auftrag und an der Anlage abgelegt", userID)
+	log.Info().Str("datei", url).Msg("wartungsprotokoll gespeichert")
+	return url
 }
 
 // notifyMaintenanceDone: automatische Rueckmeldung nach dem Abschluss an
@@ -239,7 +249,7 @@ func (h *Handler) loadMaintProtocol(ctx context.Context, taskID, userID string) 
 		}
 		rows.Close()
 	}
-	items, err := maintenance.NewRepository(h.db).TaskChecklistResults(ctx, taskID)
+	items, err := maintenance.NewRepository(h.db).Steps(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -313,10 +323,7 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 				if wmm > 50 {
 					wmm, hmm = 50, 50*float64(h)/float64(w)
 				}
-				pdf.ImageOptions(p.Logo, left, y, wmm, hmm, false, fpdf.ImageOptions{ReadDpi: false}, 0, "")
-				if pdf.Error() != nil {
-					pdf.ClearError()
-				} else {
+				if pdfImage(pdf, p.Logo, left, y, wmm, hmm) {
 					logoH = hmm
 				}
 			}
@@ -407,7 +414,24 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 			pdf.Ln(-1)
 		}
 		header()
+		lists := map[string]bool{}
+		for _, it := range p.Checklist {
+			lists[it.ChecklistName] = true
+		}
+		prevList := ""
 		for n, it := range p.Checklist {
+			// mehrere Checklisten (z. B. „immer“ + „monatlich“): Zwischenzeile je Liste
+			if len(lists) > 1 && it.ChecklistName != prevList {
+				if pdf.GetY()+14 > pageH-20 {
+					pdf.AddPage()
+					header()
+				}
+				pdf.SetFont("Helvetica", "B", 9)
+				pdf.SetFillColor(250, 246, 232)
+				pdf.SetTextColor(60, 60, 60)
+				pdf.CellFormat(contentW, 6.5, tr(it.ChecklistName), "1", 1, "L", true, 0, "")
+				prevList = it.ChecklistName
+			}
 			result, rating := "", ""
 			ok := true
 			switch it.ItemType {
@@ -505,9 +529,7 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 					if ix+iw > pageW-right {
 						break
 					}
-					pdf.ImageOptions(path, ix, iy, iw, 0, false, fpdf.ImageOptions{ReadDpi: false}, 0, "")
-					if pdf.Error() != nil {
-						pdf.ClearError()
+					if !pdfImage(pdf, path, ix, iy, iw, 0) {
 						continue
 					}
 					ix += iw + 3
@@ -574,4 +596,21 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 // RegisterMaintenanceProtocol haengt das Protokoll an jeden Wartungsabschluss (main.go).
 func (h *Handler) RegisterMaintenanceProtocol() {
 	maintenance.OnTaskCompleted(h.saveMaintenanceProtocol)
+}
+
+// pdfImage bettet ein Bild ein. Beschaedigte Dateien (z. B. abgebrochener
+// Handy-Upload) lassen fpdf teils abstuerzen – dann wird das Bild uebersprungen
+// statt das ganze Protokoll zu verlieren.
+func pdfImage(pdf *fpdf.Fpdf, path string, x, y, w, h float64) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+		if pdf.Error() != nil {
+			pdf.ClearError()
+			ok = false
+		}
+	}()
+	pdf.ImageOptions(path, x, y, w, h, false, fpdf.ImageOptions{ReadDpi: false}, 0, "")
+	return true
 }

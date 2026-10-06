@@ -38,7 +38,7 @@ var suggestKinds = map[string]suggestKind{
 		UNION ALL SELECT resolution, updated_at FROM tasks WHERE COALESCE(resolution, '') <> ''`},
 	"comment":  {sql: `SELECT text, created_at FROM ticket_comments UNION ALL SELECT text, created_at FROM infrastructure_comments`},
 	"training": {sql: `SELECT content, created_at FROM training_sessions WHERE content <> ''`, lines: true},
-	"check":    {sql: `SELECT r.value, r.updated_at FROM maintenance_task_checklist_results r JOIN maintenance_checklist_template_items i ON i.id = r.template_item_id WHERE i.item_type = 'text' AND r.value <> ''`},
+	"check":    {sql: `SELECT s.value, s.updated_at FROM maintenance_task_steps s WHERE s.item_type = 'text' AND s.value <> ''`},
 }
 
 const suggestTTL = 10 * time.Minute

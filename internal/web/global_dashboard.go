@@ -275,7 +275,20 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			data.GanttItems = h.scopeGantt(ctx, sc, data.GanttItems)
 		}
 	}
-	upcomingFrom := time.Now().Format("2006-01-02")
+	// Vorlauf der Plaene: eine Wartung gilt ab (Faelligkeit − Vorlauf) als anstehend
+	leadDays := map[string]int{}
+	if lrows, err := h.db.Query(ctx, `SELECT mt.id::text, COALESCE(mp.lead_days, 0) FROM maintenance_tasks mt
+		LEFT JOIN maintenance_plans mp ON mp.id = mt.plan_id WHERE mt.status = 'open'`); err == nil {
+		for lrows.Next() {
+			var id string
+			var d int
+			if lrows.Scan(&id, &d) == nil {
+				leadDays[id] = d
+			}
+		}
+		lrows.Close()
+	}
+	today := time.Now()
 	for rows.Next() {
 		var item GlobalBoardItem
 		var createdAt time.Time
@@ -293,7 +306,11 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		item.StatusKey = item.Status
 		item.Status = globalStatusLabel(item.Status)
 		item.Type = globalTypeLabel(item.TypeKey)
-		item.Upcoming = item.TypeKey == "maintenance" && item.StatusKey == "open" && item.DueDate > upcomingFrom
+		if item.TypeKey == "maintenance" && item.StatusKey == "open" {
+			if due, err := time.ParseInLocation("2006-01-02", item.DueDate, time.Local); err == nil {
+				item.Upcoming = due.AddDate(0, 0, -leadDays[item.ID]).After(today)
+			}
+		}
 		data.Items = append(data.Items, item)
 	}
 	if err := rows.Err(); err != nil {

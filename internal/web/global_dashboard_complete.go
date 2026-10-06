@@ -102,7 +102,9 @@ func (h *Handler) boardCompleteUser(r *http.Request) *coreusers.User {
 	}
 	ref, _ := claims["ref"].(string)
 	typ, id, ok := strings.Cut(ref, ":")
-	if !ok || r.URL.Path != "/complete/"+typ+"/"+id {
+	// der Vorgang selbst und seine Unterpfade (Checklistenpunkte, Fotos)
+	base := "/complete/" + typ + "/" + id
+	if !ok || (r.URL.Path != base && !strings.HasPrefix(r.URL.Path, base+"/steps/")) {
 		return nil
 	}
 	sub, _ := claims["sub"].(string)

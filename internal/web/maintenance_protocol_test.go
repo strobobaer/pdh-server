@@ -54,7 +54,7 @@ func TestRenderMaintProtocolPDF(t *testing.T) {
 		Notes:   "Leichte Leckage am Zylinder, Nachkontrolle in 2 Wochen.",
 		Actions: []maintProtocolLine{{Text: "Öl nachgefüllt", Meta: "06.10.2026 09:40 · Jürgen Müller"}},
 		Parts:   []maintProtocolLine{{Text: "HY-100 · Hydrauliköl 5 l", Meta: "2.000"}},
-		Checklist: []*maintenance.TaskChecklistItem{
+		Checklist: []*maintenance.TaskStep{
 			{Label: "Systemdruck", ItemType: "number", Value: "7,8", Unit: "bar", TargetValue: &six, MinValue: &five, MaxValue: &seven, InRange: &out,
 				CheckedBy: "Jürgen Müller", CheckedAt: &checked, DocImages: []maintenance.ChecklistImage{{URL: "/uploads/maint_check_result/x/foto.png"}}},
 			{Label: "Sichtprüfung Schläuche", ItemType: "checkbox", Done: true, Value: "erledigt"},
@@ -62,7 +62,7 @@ func TestRenderMaintProtocolPDF(t *testing.T) {
 		},
 	}
 	for i := 0; i < 25; i++ { // Seitenumbruch erzwingen
-		p.Checklist = append(p.Checklist, &maintenance.TaskChecklistItem{Label: "Schraubverbindung prüfen", ItemType: "checkbox", Done: i%2 == 0})
+		p.Checklist = append(p.Checklist, &maintenance.TaskStep{ChecklistName: "Monatlich", Label: "Schraubverbindung prüfen", ItemType: "checkbox", Done: i%2 == 0})
 	}
 	data, err := renderMaintProtocolPDF(p)
 	if err != nil {
