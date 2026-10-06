@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.28.0] – 2026-10-06
+
+### Neu
+- Leitstand: Tabelle und Zeitstrahl haben je eine eigene Auswahl, was angezeigt wird – Störungen, Tickets, Wartung, Aufgaben, nur überfällige oder nur Vorgänge ohne Zuständigen
+
+### Geändert
+- Leitstand: Die Tabelle der offenen Vorgänge steht jetzt über dem Zeitstrahl
+
 ## [0.27.0] – 2026-10-06
 
 ### Neu

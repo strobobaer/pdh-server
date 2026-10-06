@@ -122,3 +122,29 @@ func TestGlobalDashboardStartsGuidedCompletion(t *testing.T) {
 	}
 	checkScripts(t, "leitstand", out)
 }
+
+// Tabelle steht über dem Zeitstrahl; beide haben eine eigene Anzeige-Auswahl.
+func TestGlobalDashboardTableAboveTimelineWithFilters(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c, err := tmpl.Clone()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ParseFiles(filepath.Join("..", "..", "web", "templates", "global_dashboard.gohtml")); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := c.ExecuteTemplate(&buf, "global_dashboard.gohtml", GlobalDashboardPageData{}); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	table, timeline := strings.Index(out, `id="entries-card"`), strings.Index(out, `id="timeline-card"`)
+	if table < 0 || timeline < 0 || table > timeline {
+		t.Fatalf("Tabelle (%d) muss vor dem Zeitstrahl (%d) stehen", table, timeline)
+	}
+	for _, want := range []string{`id="table-filter"`, `id="gantt-filter"`, "pdh_global_table_filter", "pdh_global_gantt_filter"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Leitstand enthält %q nicht", want)
+		}
+	}
+}

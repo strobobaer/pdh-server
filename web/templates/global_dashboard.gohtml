@@ -130,8 +130,20 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .gantt-container .popup-wrapper .pointer{border-top-color:var(--surface-2)}
 .gantt .bar-wrapper.gantt-selected .bar{filter:drop-shadow(0 0 4px var(--focus))}
 
+/* ── Anzeige-Auswahl je Ansicht (Tabelle, Zeitstrahl) ── */
+.view-card{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:12px}
+.view-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.view-count{margin-left:auto;font-size:12px;color:var(--muted)}
+.view-filter{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.view-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 11px;border-radius:16px;border:1px solid var(--border);background:var(--surface-2);color:var(--muted);font-size:12px;font-family:inherit;cursor:pointer}
+.view-chip[aria-pressed="true"]{color:var(--text);border-color:var(--focus);font-weight:650}
+.view-chip .legend-dot{margin:0}
+.view-chip[aria-pressed="false"] .legend-dot{opacity:.35}
+.view-sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+#timeline-card-head .view-filter{flex-basis:100%}
+
 /* ── Tabelle ── */
-#entries-table-wrap{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
+#entries-table-wrap{border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
 #entries-table{width:100%;border-collapse:collapse;font-size:13px}
 #entries-table th,#entries-table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
 #entries-table th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);font-weight:700;font-size:12px}
@@ -234,6 +246,23 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     </div>
   </div>
 
+  <div id="entries-card" class="view-card">
+    <div class="view-head">
+      <strong>Tabelle</strong>
+      <div class="view-filter" id="table-filter" role="group" aria-label="Was in der Tabelle angezeigt wird"></div>
+      <span class="view-count" id="table-count"></span>
+    </div>
+    <div id="entries-table-wrap">
+      <table id="entries-table">
+        <thead>
+          <tr><th>Art</th><th>Titel</th><th>Priorität</th><th>Fällig</th><th>Zuständig</th><th>Status</th></tr>
+        </thead>
+        <tbody id="entries-table-body"></tbody>
+      </table>
+      <div id="entries-empty" class="empty hidden">Keine offenen Vorgänge vorhanden.</div>
+    </div>
+  </div>
+
   <div id="timeline-card">
     <div id="timeline-card-head">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -250,6 +279,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
         </label>
         <span id="dash-gantt-hidden-note" style="font-size:11px;color:var(--muted)"></span>
       </div>
+      <div class="view-filter" id="gantt-filter" role="group" aria-label="Was im Zeitstrahl angezeigt wird"></div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
         <span><i class="ti ti-square-filled" style="color:var(--type-fault)"></i> Störungen</span>
         <span><i class="ti ti-square-filled" style="color:var(--type-ticket)"></i> Tickets</span>
@@ -264,15 +294,6 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     <div id="dash-gantt-empty">Keine Einträge mit Terminen vorhanden.</div>
   </div>
 
-  <div id="entries-table-wrap">
-    <table id="entries-table">
-      <thead>
-        <tr><th>Art</th><th>Titel</th><th>Priorität</th><th>Fällig</th><th>Zuständig</th><th>Status</th></tr>
-      </thead>
-      <tbody id="entries-table-body"></tbody>
-    </table>
-    <div id="entries-empty" class="empty hidden">Keine offenen Vorgänge vorhanden.</div>
-  </div>
 
   <div id="edit-panel" class="hidden">
     <div class="edit-panel-head">
@@ -517,18 +538,20 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     // Nur Vorgänge, die den Bereich berühren; Balken werden zur Anzeige
     // auf den Bereich gekürzt.
     const visible = [];
+    let filtered = 0;
     dashGanttItems.forEach(function(t){
       const s = parseISODate(t.start), e = parseISODate(t.end);
+      if(!ganttMatch(t.refType, !!(e && e < today && !t.done && !t.provisional), t.unassigned)){ filtered++; return; }
       if(!s || !e || e < winStart || s > winEnd) return;
       visible.push({item:t, start: s < winStart ? winStart : s, end: e > winEnd ? winEnd : e});
     });
-    const outside = dashGanttItems.length - visible.length;
-    hiddenNote.textContent = outside > 0 ? (outside + ' außerhalb des Bereichs') : '';
+    const outside = dashGanttItems.length - filtered - visible.length;
+    hiddenNote.textContent = [outside > 0 ? outside + ' außerhalb des Bereichs' : '', filtered > 0 ? filtered + ' ausgeblendet' : ''].filter(Boolean).join(' · ');
 
     if(!visible.length){
       target.style.display = 'none';
       empty.style.display = 'block';
-      empty.textContent = dashGanttItems.length ? 'Keine Einträge im gewählten Zeitbereich.' : 'Keine Einträge mit Terminen vorhanden.';
+      empty.textContent = !dashGanttItems.length ? 'Keine Einträge mit Terminen vorhanden.' : (filtered === dashGanttItems.length ? 'Keine Einträge für die gewählte Anzeige.' : 'Keine Einträge im gewählten Zeitbereich.');
       return;
     }
     target.style.display = 'block';
@@ -571,6 +594,43 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     }
   }
 
+  // ── Anzeige-Auswahl: Tabelle und Zeitstrahl haben je eine eigene Auswahl
+  // (Vorgangsarten, nur überfällige, nur ohne Zuständigen), im Browser gemerkt.
+  const VIEW_TYPES = [['fault','Störungen'],['ticket','Tickets'],['maintenance','Wartung'],['task','Aufgaben']];
+  const VIEW_FLAGS = [['overdue','Nur überfällig'],['unassigned','Nur ohne Zuständigen']];
+  function viewFilter(boxId, storageKey, onChange){
+    const state = {fault:true, ticket:true, maintenance:true, task:true, overdue:false, unassigned:false};
+    try{ Object.assign(state, JSON.parse(localStorage.getItem(storageKey) || '{}')); }catch(e){}
+    const box = document.getElementById(boxId);
+    function chip(key, label, dotClass){
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'view-chip';
+      b.setAttribute('aria-pressed', state[key] ? 'true' : 'false');
+      if(dotClass){ const d = document.createElement('span'); d.className = 'legend-dot ' + dotClass; b.appendChild(d); }
+      b.appendChild(document.createTextNode(label));
+      b.addEventListener('click', function(){
+        state[key] = !state[key];
+        b.setAttribute('aria-pressed', state[key] ? 'true' : 'false');
+        try{ localStorage.setItem(storageKey, JSON.stringify(state)); }catch(e){}
+        onChange();
+      });
+      box.appendChild(b);
+    }
+    VIEW_TYPES.forEach(function(t){ chip(t[0], t[1], t[0]); });
+    const sep = document.createElement('span'); sep.className = 'view-sep'; box.appendChild(sep);
+    chip('overdue', VIEW_FLAGS[0][1], 'overdue');
+    chip('unassigned', VIEW_FLAGS[1][1], '');
+    // match(typ, ueberfaellig, ohneZustaendigen)
+    return function(type, overdue, unassigned){
+      if(state[type] === false) return false;
+      if(state.overdue && !overdue) return false;
+      if(state.unassigned && !unassigned) return false;
+      return true;
+    };
+  }
+  const tableMatch = viewFilter('table-filter', 'pdh_global_table_filter', function(){ renderEntriesTable(latestData.items || []); });
+  const ganttMatch = viewFilter('gantt-filter', 'pdh_global_gantt_filter', function(){ renderDashGantt(); });
+
   const entriesBody = document.getElementById('entries-table-body');
   const entriesEmpty = document.getElementById('entries-empty');
 
@@ -581,9 +641,13 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     return td;
   }
 
-  function renderEntriesTable(items){
+  function renderEntriesTable(all){
     entriesBody.replaceChildren();
     const todayStr = todayMidnight().toISOString().slice(0,10);
+    const items = all.filter(function(item){
+      return tableMatch(item.type_key, !!(item.due_date && item.due_date < todayStr), !item.assignee);
+    });
+    document.getElementById('table-count').textContent = items.length === all.length ? '' : (items.length + ' von ' + all.length);
     const sorted = items.slice().sort(function(a, b){
       const da = parseISODate(a.due_date), db = parseISODate(b.due_date);
       if(da && db) return da - db;
@@ -609,6 +673,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       tr.addEventListener('click', function(){ selectItem(item); });
       entriesBody.appendChild(tr);
     });
+    entriesEmpty.textContent = all.length ? 'Keine Vorgänge für die gewählte Anzeige.' : 'Keine offenen Vorgänge vorhanden.';
     entriesEmpty.classList.toggle('hidden', items.length !== 0);
   }
 
