@@ -713,7 +713,11 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
-      {{if .IsOverrideSession}}
+      {{if .IsBoardVisit}}
+      <a class="btn btn-small" href="/logout" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" title="{{t "Kurzzugang beenden und zurück zum Leitstand"}}">
+        <i class="ti ti-corner-up-left"></i><span class="tb-label"> {{t "Zurück zum Leitstand"}}</span>
+      </a>
+      {{else if .IsOverrideSession}}
       <button type="button" class="btn btn-small" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" onclick="document.getElementById('override-logout-form').submit()" title="{{t "Zurück zum Systemnutzer"}}">
         <i class="ti ti-corner-up-left"></i><span class="tb-label"> {{t "Zurück zum Systemnutzer"}}</span>
       </button>
@@ -1114,7 +1118,8 @@ document.addEventListener('click', function(e){
 // ── Auto-Logout nach Inaktivität, mit Systemnutzer-/Override-Ausnahme ──
 (function(){
   var isSystemUser = {{if .IsSystemUser}}true{{else}}false{{end}};
-  var isOverride    = {{if .IsOverrideSession}}true{{else}}false{{end}};
+  // Kurzzugang aus dem Leitstand verhaelt sich wie eine Override-Sitzung
+  var isOverride    = {{if or .IsOverrideSession .IsBoardVisit}}true{{else}}false{{end}};
   var idleMinutes     = {{.IdleTimeoutMinutes}};
   var overrideMinutes = {{.OverrideTimeoutMinutes}};
 

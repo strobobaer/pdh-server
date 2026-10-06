@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.30.0] – 2026-10-06
+
+### Neu
+- Leitstand: Wer ohne Anmeldung einen Vorgang oder eine Anlage öffnet (Info/Öffnen, Doppelklick im Zeitstrahl), scannt seine RFID-Karte und wird nur kurz angemeldet
+- Der Kurzzugang endet bei Inaktivität nach der Override-Zeit, mit „Zurück zum Leitstand“, beim Schließen des Browsers oder sobald der Leitstand wieder aufgerufen wird
+
 ## [0.29.0] – 2026-10-06
 
 ### Neu

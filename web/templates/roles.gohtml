@@ -43,7 +43,7 @@
           <input type="number" min="1" name="override_timeout_minutes" class="form-input" value="{{.OverrideTimeoutMinutes}}" required>
         </div>
       </div>
-      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Systemnutzer (Häkchen in der Benutzerverwaltung) sind von der Auto-Logout-Zeit ausgenommen und bleiben dauerhaft eingeloggt.</p>
+      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Systemnutzer (Häkchen in der Benutzerverwaltung) sind von der Auto-Logout-Zeit ausgenommen und bleiben dauerhaft eingeloggt. Die Override-Zeit gilt auch für den Kurzzugang per Karte aus dem Leitstand.</p>
       {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
     </form>
   </div>

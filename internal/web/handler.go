@@ -52,6 +52,7 @@ type BaseData struct {
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
 	IsSystemUser           bool       // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
 	IsOverrideSession      bool       // aktuell per Override auf einem Systemnutzer angemeldet
+	IsBoardVisit           bool       // Kurzsitzung per Karte aus dem Leitstand (endet nach der Override-Zeit)
 	IdleTimeoutMinutes     int        // globale Auto-Logout-Zeit (Minuten)
 	OverrideTimeoutMinutes int        // Zeit bis zur automatischen Rückkehr zum Systemnutzer
 	CanManageUsers         bool       // Benutzerverwaltung anzeigen
@@ -867,6 +868,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 
 		IsSystemUser:           u.IsSystemUser,
 		IsOverrideSession:      isOverride,
+		IsBoardVisit:           isBoardVisit(r),
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
 		CanManageUsers:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
@@ -1930,6 +1932,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: boardVisitCookie, Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/global/", http.StatusFound)
 }
 

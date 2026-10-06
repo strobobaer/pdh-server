@@ -46,6 +46,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Get("/data", h.GlobalDashboardData)
 	r.Post("/actions", h.GlobalDashboardAction)
 	r.Post("/complete-start", h.GlobalDashboardCompleteStart)
+	r.Post("/open", h.GlobalDashboardOpen)
 	r.Post("/create", h.GlobalDashboardCreate)
 	r.Post("/settings", h.GlobalDashboardSettingsWeb)
 	r.Post("/maintenance/{id}/start", h.GlobalDashboardMaintenanceStart)
@@ -111,8 +112,15 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ctx := r.Context()
+	// Zurueck am Leitstand: eine Kurzsitzung (Oeffnen per Karte) endet hier,
+	// damit die naechste Person nicht unter fremdem Namen weiterarbeitet.
+	loggedIn := h.sessionUser(r) != nil
+	if isBoardVisit(r) {
+		endBoardVisit(w)
+		loggedIn = false
+	}
 	data := GlobalDashboardPageData{
-		LoggedIn:                  h.sessionUser(r) != nil,
+		LoggedIn:                  loggedIn,
 		Title:                     h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
 		Subtitle:                  h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
 		CanEditHeading:            h.canEditGlobalDashboardHeading(r),
