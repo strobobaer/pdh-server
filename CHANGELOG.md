@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.35.1] – 2026-10-06
+
+### Behoben
+- Checklisten: „+ Punkt“ lud die Seite neu und sprang zurück auf „Anstehend“ – jetzt bleibt die Checkliste offen und man legt Punkt für Punkt weiter an
+- Checklisten: „Anlegen“ einer neuen Checkliste brach mit „Bitte einen Namen angeben“ ab, obwohl ein Name eingetragen war
+- Wartungsplan-Editor, HMI-Zugang an der Anlage und „Neues Projekt“: Speichern lud die Seite nicht mehr zusätzlich neu (konnte Eingaben verwerfen)
+
 ## [0.35.0] – 2026-10-06
 
 ### Neu

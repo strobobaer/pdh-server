@@ -267,7 +267,7 @@
       Jeder Zugriff wird protokolliert.
     </p>
     {{if .HMI.Manage}}
-    <form id="hmi-form" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg3)" onsubmit="return hmiSave(this)">
+    <form id="hmi-form" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg3)" onsubmit="hmiSave(this); return false">
       <input type="hidden" name="id">
       <div class="grid2">
         <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="120" required placeholder="z. B. Bedienpanel Presse 1"></div>

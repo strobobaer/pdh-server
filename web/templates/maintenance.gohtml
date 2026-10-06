@@ -236,7 +236,7 @@ async function mtArchToggle(btn){
 
 {{if eq .View "checklists"}}
 <div class="mt-filter">
-  <form onsubmit="return mtNewList(this)" class="mt-newlist">
+  <form onsubmit="mtNewList(this); return false" class="mt-newlist">
     <input name="name" class="form-input" placeholder="Neue Checkliste, z. B. „Presse – monatlich“" required maxlength="120">
     <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Anlegen</button>
   </form>
@@ -405,7 +405,7 @@ function mtListHTML(t){
     + '<span class="badge b-gray" title="in aktiven Plänen">' + (t.plan_count || 0) + ' Pläne</span>'
     + '<button type="button" class="btn btn-danger" title="Checkliste löschen" onclick="mtDelList(\'' + t.id + '\',' + (t.plan_count || 0) + ')"><i class="ti ti-trash"></i></button></div>'
     + (items.length ? items.map((i, k) => mtItemHTML(t, i, k, items.length)).join('') : '<div class="mt-item-sub" style="padding:10px 12px">Noch keine Punkte.</div>')
-    + '<form class="mt-add" onsubmit="return mtAddItem(\'' + t.id + '\',this)"><input name="label" class="form-input" placeholder="Neuer Punkt, z. B. „Ölstand prüfen“" required>'
+    + '<form class="mt-add" onsubmit="mtAddItem(\'' + t.id + '\',this); return false"><input name="label" class="form-input" placeholder="Neuer Punkt, z. B. „Ölstand prüfen“" required>'
     + '<select name="item_type" class="form-input" onchange="mtAddType(this.form)">' + Object.keys(MT_TYPES).map(k => '<option value="' + k + '">' + MT_TYPES[k] + '</option>').join('') + '</select>'
     + '<label class="mt-add-req"><input type="checkbox" name="required" checked> Pflicht</label>'
     + '<button type="submit" class="btn"><i class="ti ti-plus"></i> Punkt</button>'
@@ -425,7 +425,7 @@ async function mtLoad(){
 }
 function mtRedraw(t){ t.plan_count = (mtCache[t.id] || {}).plan_count; mtCache[t.id] = t; const el = document.getElementById('list-' + t.id); if(el) el.outerHTML = mtListHTML(t); }
 async function mtNewList(f){
-  try{ await mtSend(MT_API + '/checklists', 'POST', {name: f.name.value}); f.reset(); mtLoad(); }catch(e){ alert(e.message); }
+  try{ await mtSend(MT_API + '/checklists', 'POST', {name: f.elements.name.value}); f.reset(); mtLoad(); }catch(e){ alert(e.message); }
   return false;
 }
 async function mtRename(id, name){ try{ mtRedraw(await mtSend(MT_API + '/checklists/' + id, 'PUT', {name})); }catch(e){ alert(e.message); } }
