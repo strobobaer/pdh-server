@@ -134,25 +134,7 @@
       {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Auftrag starten" "HxPost" (printf "/maintenance/tasks/%s/start-web" .Task.ID) "HxOnAfterRequest" "location.reload()")}}
     </div>
     {{end}}
-    <!-- Zeiterfassung -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-clock"></i> Zeiterfassung</div>
-      {{if .Running}}
-      <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.Running.StartedAt.Format "15:04"}}</div>
-      </div>
-      {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Label" "Zeit stoppen" "Style" "width:100%;justify-content:center;margin-bottom:8px" "HxPost" (printf "/time/%s/stop-web" .Running.ID) "HxOnAfterRequest" "location.reload()")}}
-      {{else}}
-      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Zeit erfassen" "Style" "width:100%;justify-content:center;margin-bottom:8px" "HxPost" (printf "/maintenance/tasks/%s/time/start" .Task.ID) "HxTarget" "#time-result")}}
-      {{end}}
-      <div id="time-result"></div>
-      {{range .TimeEntries}}
-      <div class="li">
-        <div class="li-text"><div class="li-title" style="font-size:12px">{{.Description}}</div><div class="li-sub">{{.UserName}} · {{.StartedAt.Format "02.01. 15:04"}}</div></div>
-        <span style="font-size:12px;color:var(--green);font-weight:500">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft…{{end}}</span>
-      </div>
-      {{else}}<div style="font-size:12px;color:var(--muted);padding:4px 0">Keine Zeiteinträge</div>{{end}}
-    </div>
+    <!-- Arbeitszeit fragt der Abschluss-Assistent ab (Schritt „Zeit“) -->
 
     <!-- Anhänge -->
     <div class="card">

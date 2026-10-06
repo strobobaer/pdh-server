@@ -24,11 +24,11 @@ func TestCanFinishViaBoardCard(t *testing.T) {
 	h := &Handler{}
 	k := completionKinds["maintenance"]
 	req := httptest.NewRequest("POST", "/complete/maintenance/x", nil)
-	if h.canFinish(req, k) {
+	if h.canFinish(req, k, "x") {
 		t.Fatal("ohne Recht und ohne Karte darf nicht abgeschlossen werden")
 	}
 	req = req.WithContext(context.WithValue(req.Context(), boardCompleteKey{}, true))
-	if !h.canFinish(req, k) {
+	if !h.canFinish(req, k, "x") {
 		t.Fatal("Fertigmeldung per Karte am Leitstand muss abschließen dürfen")
 	}
 }

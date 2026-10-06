@@ -471,7 +471,8 @@
       if(json.warning){ msg('warn', json.warning); }
       else { msg('ok', json.message); }
       const done = S.done;
-      setTimeout(() => { cwClose(); if(typeof done === 'function') done(json); else location.reload(); }, json.warning ? 3500 : 900);
+      // Erfolg kurz stehen lassen – mit „Nächster Termin“ etwas laenger zum Lesen
+      setTimeout(() => { cwClose(); if(typeof done === 'function') done(json); else location.reload(); }, json.warning ? 3500 : (json.closed && /\d\d\.\d\d\.\d{4}/.test(json.message || '') ? 2500 : 900));
     }catch(e){
       msg('err', e.message); S.busy = false; $('cw-finish').disabled = !S.info.can_finish; $('cw-more').disabled = false;
     }

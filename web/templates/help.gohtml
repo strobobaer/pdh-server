@@ -237,7 +237,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben steht die <b>Tabelle</b> der offenen Vorgänge – mit Art, Titel, Priorität, Fälligkeit, <b>Ersteller</b> (wer gemeldet bzw. angelegt hat), Zuständigem und Status –, darunter der <b>Zeitstrahl</b>. Beide haben eine eigene Auswahl.</li>
       <li>Die Knöpfe <b>Störungen</b>, <b>Tickets</b>, <b>Wartung</b> und <b>Aufgaben</b> antippen, um eine Art ein- oder auszublenden.</li>
       <li><b>Nur überfällig</b> bzw. <b>Nur ohne Zuständigen</b> zeigt nur diese Vorgänge.</li>
-      <li>Geplante Wartungen, die erst in mehr als 7 Tagen fällig sind, blendet die Tabelle aus – z. B. den nächsten Auftrag, den ein Wartungsplan direkt nach dem Fertigmelden anlegt. <b>Geplante Wartungen</b> zeigt sie an; im Zeitstrahl und unter „Neue Wartung“ stehen sie immer.</li>
+      <li>Wartungen, die erst nach heute fällig sind, blendet die Tabelle aus – z. B. den nächsten Auftrag, den ein Wartungsplan direkt nach dem Fertigmelden anlegt (bei wöchentlichen Plänen sonst sofort wieder sichtbar). <b>Geplante Wartungen</b> zeigt sie an; im Zeitstrahl und unter „Neue Wartung“ stehen sie immer.</li>
       <li>Rechts über der Tabelle steht, wie viele Vorgänge gerade angezeigt werden (z. B. „4 von 9“); im Zeitstrahl steht die Zahl der ausgeblendeten. Die Auswahl merkt sich der Browser am Leitstand.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-id-badge-2"></i> So öffnest du einen Vorgang am Leitstand</b>
@@ -315,6 +315,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
+  <div class="hb-howto"><b><i class="ti ti-lock-open"></i> Wer darf eine Wartung fertig melden?</b>Wer dem Auftrag <b>zugewiesen</b> ist, ihn <b>verantwortet</b> oder zur <b>zugewiesenen Gruppe</b> gehört – auch ohne die Rollenrechte „Wartung bearbeiten/abschließen“. Ist niemand zugewiesen, darf ihn jeder übernehmen (außer Betrachtern). Andere brauchen die Rollenrechte. Am Leitstand genügt die Karte (Instandhaltung/IT). Die Arbeitszeit fragt der Abschluss-Assistent ab – eine eigene Zeiterfassung im Auftrag gibt es nicht mehr.</div>
   <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird (täglich bis jährlich). Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Wartungsauftrag</b> – den nächsten Termin. PDH legt ihn selbst an: beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
   <div class="hb-howto"><b><i class="ti ti-calendar-repeat"></i> So plant PDH den nächsten Termin</b>
     <ul>

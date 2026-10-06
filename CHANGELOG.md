@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.32.1] – 2026-10-06
+
+### Behoben
+- Fertigmelden ging in der App nicht für Mitarbeitende ohne die Rollenrechte „Wartung bearbeiten/abschließen“ (der Assistent brach mit „Keine Berechtigung“ ab): Wer zugewiesen, verantwortlich oder in der zugewiesenen Gruppe ist, darf jetzt fertig melden; Aufträge ohne Zuweisung darf jeder übernehmen (außer Betrachtern). Gilt auch für Tickets, Störungen und Aufgaben
+- Leitstand: Bei täglichen und wöchentlichen Plänen erschien der Folgeauftrag sofort wieder als „Offen“, als wäre nicht abgeschlossen worden – die Tabelle blendet Wartungen jetzt aus, bis sie fällig sind (Knopf „Geplante Wartungen“ zeigt sie)
+
+### Geändert
+- Wartungsauftrag: Die eigene Zeiterfassung im Auftrag entfällt – die Arbeitszeit fragt der Abschluss-Assistent ab
+- Abschluss-Assistent: Die Meldung „… abgeschlossen. Nächster Termin: …“ bleibt länger stehen
+
 ## [0.32.0] – 2026-10-06
 
 ### Neu

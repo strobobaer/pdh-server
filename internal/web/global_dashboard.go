@@ -30,7 +30,7 @@ type GlobalBoardItem struct {
 	Creator          string `json:"creator"` // wer den Vorgang angelegt bzw. gemeldet hat
 	DetailURL        string `json:"detail_url"`
 	InfrastructureID string `json:"infrastructure_id"`
-	// Upcoming: geplante Wartung (offen, faellig erst in mehr als 7 Tagen) – z. B. der
+	// Upcoming: geplante Wartung (offen, faellig erst nach heute) – z. B. der
 	// Folgeauftrag eines Plans direkt nach dem Abschluss; die Tabelle blendet sie aus
 	Upcoming bool `json:"upcoming"`
 }
@@ -56,8 +56,9 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	return r
 }
 
-// globalUpcomingDays: Wartungen, die spaeter faellig sind, gelten am Leitstand als „geplant“.
-const globalUpcomingDays = 7
+// Geplante Wartungen: offene Wartungsauftraege, die erst nach heute faellig
+// sind (z. B. der Folgeauftrag eines Plans direkt nach dem Abschluss). Die
+// Leitstand-Tabelle zeigt sie nur mit dem Knopf „Geplante Wartungen“.
 
 const (
 	globalDashboardDefaultTitle    = "PDH · Leitstand"
@@ -274,7 +275,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			data.GanttItems = h.scopeGantt(ctx, sc, data.GanttItems)
 		}
 	}
-	upcomingFrom := time.Now().AddDate(0, 0, globalUpcomingDays).Format("2006-01-02")
+	upcomingFrom := time.Now().Format("2006-01-02")
 	for rows.Next() {
 		var item GlobalBoardItem
 		var createdAt time.Time

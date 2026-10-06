@@ -113,7 +113,7 @@ func (h *Handler) completionKind(w http.ResponseWriter, r *http.Request) (comple
 	// Fertigmeldung per Karte am Leitstand: das Token gilt nur fuer genau diesen
 	// Vorgang und die Person ist schon als Instandhaltung/IT geprueft – das
 	// Bearbeiten-Recht der Rolle (z. B. maintenance.edit) ist dort nicht noetig.
-	if !h.canFn(r)(k.EditPerm) && !boardCompleteFrom(r.Context()) {
+	if !h.canFn(r)(k.EditPerm) && !boardCompleteFrom(r.Context()) && !h.completionInvolved(r, k, id) {
 		completionJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": tr(lang, "Keine Berechtigung, diesen Vorgang zu bearbeiten.")})
 		return k, "", false
 	}
@@ -141,7 +141,7 @@ func (h *Handler) CompletionInfoWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info := completionInfo{Type: k.Type, Label: tr(lang, k.Label), Title: title, Status: status, PartsURL: k.PartsAPI + id + "/pending-parts",
-		RootCause: k.RootCause, CanFinish: h.canFinish(r, k), Departments: h.completionDepartments(ctx)}
+		RootCause: k.RootCause, CanFinish: h.canFinish(r, k, id), Departments: h.completionDepartments(ctx)}
 	_ = h.db.QueryRow(ctx, `SELECT COALESCE(SUM(duration_min), 0)::int FROM time_entries
 		WHERE user_id = $1::uuid AND ref_type::text = $2 AND ref_id = $3::uuid AND ended_at IS NOT NULL AND NOT pending`, u.ID, k.RefType, id).Scan(&info.BookedMin)
 	var running *time.Time
@@ -289,7 +289,7 @@ func (h *Handler) CompletionWeb(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, uiError("ungültige Daten"))
 		return
 	}
-	if in.Finish && !h.canFinish(r, k) {
+	if in.Finish && !h.canFinish(r, k, id) {
 		fail(http.StatusForbidden, uiError("Keine Berechtigung, diesen Vorgang abzuschließen."))
 		return
 	}
@@ -513,8 +513,34 @@ func (h *Handler) completionChecklist(ctx context.Context, taskID, userID string
 // canFinish: Abschluss-Recht der Person – oder Fertigmeldung per Karte am
 // Leitstand (dort ist sie schon als Instandhaltung/IT geprueft, wie bei den
 // uebrigen Leitstand-Aktionen).
-func (h *Handler) canFinish(r *http.Request, k completionKind) bool {
-	return h.canFn(r)(k.DonePerm) || boardCompleteFrom(r.Context())
+func (h *Handler) canFinish(r *http.Request, k completionKind, id string) bool {
+	return h.canFn(r)(k.DonePerm) || boardCompleteFrom(r.Context()) || h.completionInvolved(r, k, id)
+}
+
+// completionInvolved: Wer einem Vorgang zugewiesen ist, ihn verantwortet oder
+// zur zugewiesenen Gruppe gehoert, darf ihn auch ohne Rollenrecht bearbeiten
+// und fertig melden. Ist niemand zugewiesen (keine Person, keine Gruppe),
+// darf ihn jeder angemeldete Mitarbeitende uebernehmen – ausser Betrachtern.
+func (h *Handler) completionInvolved(r *http.Request, k completionKind, id string) bool {
+	u := getUser(r)
+	if h.db == nil || u == nil || u.ID == "" || u.Role == "viewer" {
+		return false
+	}
+	var q string
+	if k.Type == "task" {
+		q = `SELECT EXISTS (SELECT 1 FROM tasks x WHERE x.id = $1::uuid AND (
+			x.responsible_to = $2::uuid
+			OR EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = x.id AND a.user_id = $2::uuid)
+			OR EXISTS (SELECT 1 FROM user_group_members g WHERE g.group_id = x.assigned_group_id AND g.user_id = $2::uuid)
+			OR (x.assigned_group_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = x.id))))`
+	} else {
+		q = fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s x WHERE x.id = $1::uuid AND (
+			x.assigned_to = $2::uuid OR x.responsible_to = $2::uuid
+			OR EXISTS (SELECT 1 FROM user_group_members g WHERE g.group_id = x.assigned_group_id AND g.user_id = $2::uuid)
+			OR (x.assigned_to IS NULL AND x.assigned_group_id IS NULL)))`, k.Table)
+	}
+	var ok bool
+	return h.db.QueryRow(r.Context(), q, id, u.ID).Scan(&ok) == nil && ok
 }
 
 // maintNextDue: naechster Termin des Plans (nil ohne Plan oder ohne Wartungsdienst).
