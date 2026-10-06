@@ -62,6 +62,12 @@
 .cw-ck-bar i{display:block;height:100%;background:var(--green)}
 .cw-ck-item{border:1px solid var(--border);border-radius:10px;padding:12px}
 .cw-ck-list{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin:0 0 6px;display:flex;gap:6px;align-items:center}
+.cw-ck-station{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(var(--accent-rgb),.10);border:1px solid rgba(var(--accent-rgb),.35)}
+.cw-ck-station i{color:var(--accent);font-size:18px}
+.cw-ck-station b{font-size:14px}
+.cw-ck-station small{display:block;font-size:11px;color:var(--muted)}
+.cw-ck-station .cw-ck-defect{margin-left:auto;font-size:12px;padding:5px 9px;border-radius:8px;border:1px solid var(--red);color:var(--red);background:transparent;cursor:pointer;font-family:var(--font);display:inline-flex;gap:4px;align-items:center;white-space:nowrap}
+.cw-ck-station .cw-ck-defect i{color:var(--red);font-size:14px}
 .cw-ck-sum .grp{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:8px 10px 4px;border-bottom:1px solid var(--border)}
 .cw-ck-docs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 .cw-ck-docs img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border)}
@@ -430,6 +436,21 @@
     if(!ckFilled(c)) return '–';
     return esc(c.value) + (c.item_type === 'number' && c.unit ? ' ' + esc(c.unit) : '') + (ckRange(c) === false ? ' <span style="color:var(--red)"><i class="ti ti-alert-triangle"></i></span>' : '');
   }
+  // Rundgang: Gruppe = „Station · Checkliste“; Stationen in Reihenfolge
+  const ckGroup = c => c.station_name ? c.station_name + ' · ' + (c.checklist_name || '') : (c.checklist_name || '');
+  function ckStations(items){
+    const out = [];
+    items.forEach(c => { if(c.station_infra_id && !out.includes(c.station_infra_id)) out.push(c.station_infra_id); });
+    return out;
+  }
+  // „Mangel melden“ an der Station: Stoerung zur Anlage anlegen, danach weiter im Rundgang
+  window.cwReportDefect = function(){
+    const c = S && S.ck && S.ck.items[S.ck.idx]; if(!c || typeof pdhCreate !== 'function') return;
+    ckRead();
+    pdhCreate('fault', {infra_id: c.station_infra_id, infra_label: c.station_name, onDone: () => {
+      $('cw').classList.add('open'); show(-1); msg('ok', F({{t "Störung zu „%s“ gemeldet – weiter im Rundgang."}}, c.station_name));
+    }});
+  };
   function ckRender(){
     const box = $('cw-ck'), ck = S.ck; if(!ck) return;
     const n = ck.items.length, filled = ck.items.filter(ckFilled).length;
@@ -443,6 +464,9 @@
       else if(c.item_type === 'number') input = '<input class="form-input" id="cw-ck-val" inputmode="decimal" placeholder="' + {{t "Messwert"}} + '" value="' + esc(c.value || '') + '" oninput="cwCkState()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();cwGo(1);}">' + (c.unit ? '<span>' + esc(c.unit) + '</span>' : '') + '<span class="cw-ck-state" id="cw-ck-state"></span>';
       else input = '<textarea class="form-input" id="cw-ck-val" placeholder="' + {{t "Freitext"}} + '">' + esc(c.value || '') + '</textarea>';
       const docs = (c.doc_images || []).map(i => '<a href="' + esc(i.url) + '" target="_blank" rel="noopener"><img src="' + esc(i.url) + '" alt="' + esc(i.filename) + '"></a>').join('');
+      const stations = ckStations(ck.items), sn = stations.indexOf(c.station_infra_id);
+      if(c.station_name) html += '<div class="cw-ck-station"><i class="ti ti-map-pin"></i><div><small>' + esc(F({{t "Station %d von %d"}}, sn + 1, stations.length)) + '</small><b>' + esc(c.station_name) + '</b></div>'
+        + (!S.token && typeof pdhCreate === 'function' ? '<button type="button" class="cw-ck-defect" onclick="cwReportDefect()"><i class="ti ti-alert-triangle"></i>' + {{t "Mangel melden"}} + '</button>' : '') + '</div>';
       html += (c.checklist_name ? '<div class="cw-ck-list"><i class="ti ti-list-check"></i>' + esc(c.checklist_name) + '</div>' : '')
         + '<div class="cw-ck-item"><div class="lbl">' + (c.required ? '<span style="color:var(--red)" title="' + {{t "Pflichtpunkt"}} + '">✱</span> ' : '') + esc(c.label) + '</div>'
         + (c.description ? '<div class="desc">' + esc(c.description) + '</div>' : '') + ckSpec(c)
@@ -450,7 +474,7 @@
         + '<div class="cw-ck-docs">' + docs + '<label class="cw-ck-photo" title="' + {{t "Foto aufnehmen oder auswählen"}} + '"><i class="ti ti-camera-plus"></i><span>' + {{t "Foto"}} + '</span><input type="file" accept="image/*" capture="environment" multiple hidden onchange="cwCkPhoto(this)"></label></div></div>';
     } else {
       html += '<p class="hint" style="margin:0 0 8px">' + {{t "Alle Punkte durchgegangen – zum Ändern antippen."}} + '</p><div class="cw-list cw-ck-sum">'
-        + ck.items.map((c, k) => (k === 0 || c.checklist_name !== ck.items[k - 1].checklist_name ? '<div class="grp">' + esc(c.checklist_name || '') + '</div>' : '')
+        + ck.items.map((c, k) => (k === 0 || ckGroup(c) !== ckGroup(ck.items[k - 1]) ? '<div class="grp">' + (c.station_name ? '<i class="ti ti-map-pin"></i> ' : '') + esc(ckGroup(c)) + '</div>' : '')
           + '<button type="button" data-ck="' + k + '"><i class="ti ti-' + (ckFilled(c) ? 'circle-check' : c.required ? 'alert-circle' : 'circle-dashed') + '" style="color:var(--' + (ckFilled(c) ? 'green' : c.required ? 'red' : 'muted') + ')"></i><span>' + (k + 1) + '. ' + esc(c.label) + '</span><span class="v">' + ckValue(c) + ((c.doc_images || []).length ? ' <i class="ti ti-photo"></i>' : '') + '</span></button>').join('') + '</div>';
     }
     box.innerHTML = html;

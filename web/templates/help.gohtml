@@ -71,6 +71,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="start" data-title="Erste Schritte" data-pages="dashboard account">
   <h2><i class="ti ti-rocket"></i> Erste Schritte</h2>
   <p>Der <b>PDH – Prozess Data Hub</b> ist das gemeinsame Werkzeug für Instandhaltung, Lager und Einkauf: Hier werden Störungen gemeldet und gelöst, Wartungen geplant, Ersatzteile verwaltet und im Team gechattet.</p>
+  <div class="hb-howto"><b><i class="ti ti-map-2"></i> Rundgang durch PDH</b>Ein geführter Rundgang zeigt dir in zwei Minuten das Wichtigste – Sprechblasen erklären Navigation, Dashboard, Melden, Seitenleiste und dein Konto.
+    <ol class="hb-steps">
+      <li>Starten: <button type="button" class="btn btn-small btn-primary" onclick="pdhTour.start('basics')"><i class="ti ti-map-2"></i> Rundgang starten</button> – oder oben im Benutzermenü <b>Rundgang durch PDH</b>. Beim ersten Besuch bietet das Dashboard ihn einmal von selbst an.</li>
+      <li><b>Weiter</b> (oder Pfeil rechts) führt zum nächsten Schritt, <b>Zurück</b> (Pfeil links) zum vorigen. <b>Beenden</b> oder Esc bricht jederzeit ab.</li>
+      <li>Für einzelne Seiten gibt es eigene Rundgänge – <b>Dashboard</b>, <b>Störungen</b> und <b>Wartung</b>: rechts im Hilfe-Reiter <b>Rundgang für diese Seite</b>. Auf Seiten ohne eigenen Rundgang startet dort der allgemeine.</li>
+    </ol></div>
   {{template "hb-fig-layout"}}
   <h3><i class="ti ti-map"></i> So findest du dich zurecht</h3>
   <ul>
@@ -316,11 +322,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
   <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird – z. B. „alle 2 Wochen“ oder „alle 6 Monate“. Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Auftrag</b>: den nächsten Termin. PDH legt ihn selbst an – beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
-  <p>Die Wartung hat fünf Reiter:</p>
+  <p>Die Wartung hat sechs Reiter:</p>
   <ul>
     <li><b>Anstehend</b> – was jetzt zu tun ist, sortiert nach <b>Überfällig</b>, <b>Heute</b>, <b>Nächste 7 Tage</b> und <b>Demnächst (im Vorlauf)</b>. Jede Karte zeigt Anlage, Termin, Zuständige und den Stand der Checklisten (z. B. „2 Listen · 0/14“). „Nur meine“ und die Anlagen-Auswahl filtern.</li>
     <li><b>Jahresplan</b> – je Plan eine Zeile, je Monat eine Spalte: ✓ erledigt, ● offen (rot, wenn überfällig), ○ geplant. Ein Klick öffnet den Auftrag bzw. den Plan.</li>
     <li><b>Pläne</b> – alle Pläne mit Intervall, Checklisten samt Takt und nächstem Termin.</li>
+    <li><b>Rundgänge</b> – die Kontrollrundgänge mit ihren Stationen und dem Knopf <b>Rundgang starten</b> (siehe unten).</li>
     <li><b>Erledigt</b> – die letzten Wartungen mit Protokoll-PDF; Abweichungen (Werte außerhalb Min/Max) sind markiert.</li>
     <li><b>Checklisten</b> – die Vorlagen bearbeiten.</li>
   </ul>
@@ -351,6 +358,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b>. Der erste Auftrag ist sofort da. Änderungen am Plan übernimmt der offene Auftrag, solange daran noch nichts erfasst ist.</li>
     </ol>
     Ein Plan, der eine Zeit nicht gebraucht wird, lässt sich <b>ruhen lassen</b> – sein offener Auftrag verschwindet, beim <b>Aktivieren</b> kommt er wieder. Aufträge ohne Plan legst du mit <b>Einzelauftrag</b> an.</div>
+  <div class="hb-howto"><b><i class="ti ti-route"></i> Kontrollrundgang</b>Ein Kontrollrundgang führt nacheinander über mehrere Anlagen – z. B. der Schichtrundgang durch Halle 2. Jede <b>Station</b> ist eine Anlage mit einer kurzen Checkliste. Termine, Anstehend, Jahresplan, Leitstand, Protokoll-PDF und Rückmeldung laufen wie bei jedem Wartungsplan.
+    <ol class="hb-steps">
+      <li>Reiter <b>Rundgänge</b> → <b>Neuer Rundgang</b>.</li>
+      <li>Name und <b>Bereich</b> wählen (Halle, Linie …) – die Stationen liegen darunter. Intervall, Vorlauf und Zuständige wie bei einem Plan.</li>
+      <li>Stationen hinzufügen: <b>Anlage</b> und <b>Checkliste</b> wählen, <b>Station hinzufügen</b>. <b>Alle Unteranlagen</b> übernimmt alle Anlagen direkt unter dem Bereich mit der gewählten Checkliste auf einmal. Die gleiche Checkliste darf an vielen Anlagen stehen.</li>
+      <li>Mit den Pfeilen die <b>Reihenfolge</b> festlegen – so wird der Rundgang abgefragt. Jede Station kann ihren eigenen Takt haben (z. B. der Kran nur monatlich); nicht fällige Stationen fallen beim Termin weg.</li>
+      <li>Durchführen: im Reiter <b>Rundgänge</b> auf <b>Rundgang starten</b> (oder unter Anstehend, am Leitstand). Oben steht <b>Station 2 von 5</b> mit dem Namen der Anlage.</li>
+      <li>Ist an einer Station etwas nicht in Ordnung: <i class="ti ti-alert-triangle"></i> <b>Mangel melden</b>. Die Störung wird mit dieser Anlage angelegt, danach geht es im Rundgang weiter.</li>
+      <li>Unterbrochen? Alles Erfasste ist gespeichert – <b>Rundgang fortsetzen</b> macht beim offenen Punkt weiter. Im Protokoll und im Auftrag stehen die Ergebnisse je Station.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-list-check"></i> Checklisten einrichten</b>
     <ol class="hb-steps">
       <li>Reiter <b>Checklisten</b> öffnen und eine Checkliste anlegen – am besten je Takt eine eigene, z. B. „Säge – jedes Mal“ und „Säge – monatlich“.</li>

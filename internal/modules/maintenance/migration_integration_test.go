@@ -131,7 +131,7 @@ func TestMigration101WithOldData(t *testing.T) {
 	must(err)
 
 	// ── Migration 101 ──
-	copyMigrations(t, dir, 101)
+	copyMigrations(t, dir, 102) // inkl. 102 (Rundgang), das Repository braucht die neuen Spalten
 	must(database.RunMigrations(ctx, pool, dir))
 
 	var unit string

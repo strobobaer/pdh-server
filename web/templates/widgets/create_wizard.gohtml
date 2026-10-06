@@ -2,7 +2,7 @@
   Erstellungs-Assistent (create_wizard.go) – gleicher Aufbau und Stil wie der
   Abschluss-Assistent (cw-*-Klassen). Aufruf: pdhCreate() oder
   pdhCreate('ticket' | 'fault' | 'task' | 'maintenance', vorbelegung?).
-  Vorbelegung: {project_id, project_label, infra_id, infra_label, stay}
+  Vorbelegung: {project_id, project_label, infra_id, infra_label, stay, onDone(id)}
   (stay: nach dem Anlegen auf der Seite bleiben und neu laden).
   Links mit data-create="art" (oder "any") und Seitenaufrufe mit ?create=art
   oeffnen den Assistenten ebenfalls.
@@ -461,6 +461,9 @@
       if(again){
         reset(st.type, st.preset); st.fixedType = true; render();
         msg(F({{t "%s angelegt"}}, t.label) + (failed ? ' ' + {{t "(Zusatzangaben teilweise nicht gespeichert)"}} : '') + ' – ' + {{t "jetzt der nächste."}}, failed ? 'warn' : 'ok');
+      } else if(typeof st.preset.onDone === 'function'){
+        // z. B. „Mangel melden“ im Rundgang: Fenster schliessen, Aufrufer macht weiter
+        const done = st.preset.onDone; crwClose(); done(id);
       } else if(st.preset.stay){
         location.reload();
       } else {

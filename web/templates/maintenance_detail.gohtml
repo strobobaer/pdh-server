@@ -77,7 +77,7 @@
       <div class="card-title"><i class="ti ti-list-check"></i> Checkliste
         {{if .StepCount}}<span class="badge b-gray" style="margin-left:auto">{{.FilledCount}}/{{.StepCount}}</span>{{end}}</div>
       {{range .StepGroups}}
-      <div class="md-group">{{if .Name}}<div class="md-group-name">{{.Name}}</div>{{end}}
+      <div class="md-group">{{if .Name}}<div class="md-group-name">{{if .Station}}<i class="ti ti-map-pin"></i> {{end}}{{.Name}}</div>{{end}}
         {{range .Steps}}
         <div class="md-step">
           <i class="ti ti-{{if .Filled}}circle-check md-ok{{else if .Required}}circle-dashed md-req{{else}}circle-dashed md-muted{{end}}"></i>

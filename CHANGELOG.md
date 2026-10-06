@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.34.0] – 2026-10-06
+
+### Neu
+- Kontrollrundgang: ein Wartungsplan, der nacheinander mehrere Anlagen (Stationen) mit je einer Checkliste abfragt – neuer Reiter „Rundgänge“ in der Wartung
+- Rundgang anlegen mit Bereich, Stationen in fester Reihenfolge und „Alle Unteranlagen“ zum schnellen Übernehmen; jede Station kann ihren eigenen Takt haben
+- Im Rundgang zeigt der Assistent „Station 2 von 5“ mit Anlagenname; „Mangel melden“ legt direkt eine Störung zu dieser Anlage an und kehrt in den Rundgang zurück
+- Auftrag und Wartungsprotokoll (PDF) gliedern die Ergebnisse eines Rundgangs nach Stationen
+- Einführungs-Rundgang durch PDH: Sprechblasen erklären Navigation, Dashboard, Melden, Seitenleiste und Konto – Start im Benutzermenü, im Handbuch und beim ersten Besuch auf dem Dashboard
+- Eigene Rundgänge für Dashboard, Störungen und Wartung über „Rundgang für diese Seite“ im Hilfe-Reiter
+
 ## [0.33.0] – 2026-10-06
 
 ### Neu

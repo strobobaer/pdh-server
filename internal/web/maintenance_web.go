@@ -92,6 +92,11 @@ type maintPlanRow struct {
 	NextDue       string
 	Overdue       bool
 	Checklists    string
+	// Rundgang: Stationen in Reihenfolge und Stand des offenen Auftrags
+	Stations      []string
+	Filled, Total int
+	Percent       int
+	OpenStatus    string
 }
 
 type yearMark struct {
@@ -137,7 +142,7 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	view := q.Get("view")
 	switch view {
-	case "year", "plans", "done", "checklists":
+	case "year", "plans", "rounds", "done", "checklists":
 	default:
 		view = "due"
 	}
@@ -159,18 +164,29 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.PrevYear, data.NextYear = data.Year-1, data.Year+1
 		h.maintYearRows(ctx, &data, planScope)
-	case "plans":
+	case "plans", "rounds":
 		data.ShowInactive = q.Get("inactive") == "1"
 		plans, _ := repo.ListPlans(ctx, "", data.ShowInactive)
 		today := time.Now()
+		var openIDs []string
 		for _, p := range plans {
 			if planScope != nil && !planScope[p.ID] {
 				continue
 			}
+			if view == "rounds" && !p.IsRound {
+				continue
+			}
 			lists, _ := repo.PlanChecklists(ctx, p.ID)
-			var names []string
+			var names, stations []string
 			for _, c := range lists {
-				names = append(names, c.TemplateName+" ("+intervalLabel(c.RhythmUnit, c.RhythmCount)+")")
+				name := c.TemplateName + " (" + intervalLabel(c.RhythmUnit, c.RhythmCount) + ")"
+				if p.IsRound && c.InfraName != "" {
+					name = c.InfraName + ": " + name
+					if len(stations) == 0 || stations[len(stations)-1] != c.InfraName {
+						stations = append(stations, c.InfraName)
+					}
+				}
+				names = append(names, name)
 			}
 			mode := "ab Durchführung"
 			if p.ScheduleMode == maintenance.ScheduleFixed {
@@ -178,7 +194,26 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 			}
 			data.Plans = append(data.Plans, maintPlanRow{Plan: p, IntervalLabel: intervalLabel(p.IntervalUnit, p.IntervalCount),
 				ModeLabel: mode, NextDue: deDate(p.NextDueAt), Overdue: p.Active && p.NextDueAt.Before(today.Truncate(24*time.Hour)),
-				Checklists: strings.Join(names, " · ")})
+				Checklists: strings.Join(names, " · "), Stations: stations})
+			if p.OpenTaskID != "" {
+				openIDs = append(openIDs, p.OpenTaskID)
+			}
+		}
+		if view == "rounds" && len(openIDs) > 0 {
+			// Stand des offenen Rundgangs (z. B. unterbrochen bei Station 3)
+			sums, _ := repo.StepSummaries(ctx, openIDs)
+			for i := range data.Plans {
+				pr := &data.Plans[i]
+				if s, ok := sums[pr.Plan.OpenTaskID]; ok {
+					pr.Filled, pr.Total = s.Filled, s.Total
+					if s.Total > 0 {
+						pr.Percent = s.Filled * 100 / s.Total
+					}
+				}
+				if t, err := repo.GetTaskByID(ctx, pr.Plan.OpenTaskID); err == nil && t != nil {
+					pr.OpenStatus = string(t.Status)
+				}
+			}
 		}
 	case "done":
 		tasks, _ := repo.FindTasks(ctx, maintenance.TaskFilter{Closed: true, Limit: 200})
@@ -401,6 +436,7 @@ type MaintenancePlanPageData struct {
 	OpenTask     *maintenance.MaintenanceTask
 	Today        string
 	TypeLabels   map[maintenance.PlanType]string
+	Infras       template.JS // Rundgang: Anlagen fuer die Stationen {id,name,parent_id,path}
 	// Vorbelegung der Auswahlfelder
 	AssignedID, ResponsibleID, CostCenterID, NextDueISO string
 }
@@ -431,9 +467,22 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 		for _, d := range maintenance.PlannedDates(p.IntervalUnit, p.IntervalCount, p.NextDueAt, p.NextDueAt.AddDate(5, 0, 0), 5) {
 			data.Preview = append(data.Preview, deDate(d))
 		}
-	} else if infra := r.URL.Query().Get("infra"); infra != "" {
-		plan.InfrastructureID = infra
-		_ = h.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id=$1::uuid`, infra).Scan(&plan.InfraName)
+	} else {
+		plan.IsRound = r.URL.Query().Get("round") == "1"
+		if plan.IsRound {
+			plan.Type, plan.Name, plan.IntervalUnit, plan.EstimatedMin = maintenance.PlanInspection, "", maintenance.UnitWeek, 30
+		}
+		if infra := r.URL.Query().Get("infra"); infra != "" {
+			plan.InfrastructureID = infra
+			_ = h.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id=$1::uuid`, infra).Scan(&plan.InfraName)
+		}
+	}
+	if plan.IsRound {
+		data.Title = "Kontrollrundgang"
+		if !data.IsNew {
+			data.Title = plan.Name
+		}
+		data.Infras = h.maintInfraOptions(ctx)
 	}
 	if plan.Checklists == nil {
 		plan.Checklists = []*maintenance.PlanChecklist{}
@@ -450,6 +499,34 @@ func (h *Handler) MaintenancePlanPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "maintenance_plan", data)
 }
 
+// maintInfraOptions: aktive Anlagen mit Pfad („Halle 2 › Linie 1 › Presse 3“) fuer die Stationen eines Rundgangs.
+func (h *Handler) maintInfraOptions(ctx context.Context) template.JS {
+	type opt struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		ParentID string `json:"parent_id"`
+		Path     string `json:"path"`
+	}
+	out := []opt{}
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE t AS (
+			SELECT id, parent_id, name, name::text AS path, 0 AS depth FROM infrastructure WHERE parent_id IS NULL AND active
+			UNION ALL
+			SELECT i.id, i.parent_id, i.name, t.path || ' › ' || i.name, t.depth + 1
+			FROM infrastructure i JOIN t ON i.parent_id = t.id WHERE i.active AND t.depth < 20)
+		SELECT id::text, COALESCE(parent_id::text,''), name, path FROM t ORDER BY path`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var o opt
+			if rows.Scan(&o.ID, &o.ParentID, &o.Name, &o.Path) == nil {
+				out = append(out, o)
+			}
+		}
+	}
+	b, _ := json.Marshal(out)
+	return template.JS(b)
+}
+
 func (h *Handler) MaintenancePlanDuplicateWeb(w http.ResponseWriter, r *http.Request) {
 	id, err := h.maint.DuplicatePlan(r.Context(), chi.URLParam(r, "id"), getUser(r).ID)
 	if err != nil {
@@ -462,8 +539,9 @@ func (h *Handler) MaintenancePlanDuplicateWeb(w http.ResponseWriter, r *http.Req
 // ── Auftrag ──────────────────────────────────────────────────
 
 type maintStepGroup struct {
-	Name  string
-	Steps []*maintenance.TaskStep
+	Name    string
+	Station bool // Rundgang: Gruppe ist eine Station
+	Steps   []*maintenance.TaskStep
 }
 
 type MaintenanceTaskDetailData struct {
@@ -535,8 +613,8 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 	}
 	steps, _ := h.maint.Steps(ctx, id)
 	for _, s := range steps {
-		if len(data.StepGroups) == 0 || data.StepGroups[len(data.StepGroups)-1].Name != s.ChecklistName {
-			data.StepGroups = append(data.StepGroups, maintStepGroup{Name: s.ChecklistName})
+		if len(data.StepGroups) == 0 || data.StepGroups[len(data.StepGroups)-1].Name != s.GroupName() {
+			data.StepGroups = append(data.StepGroups, maintStepGroup{Name: s.GroupName(), Station: s.StationName != ""})
 		}
 		g := &data.StepGroups[len(data.StepGroups)-1]
 		g.Steps = append(g.Steps, s)

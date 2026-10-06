@@ -91,6 +91,7 @@ type MaintenancePlan struct {
 	NextDueAt        time.Time  `json:"next_due_at"`
 	CreatedBy        string     `json:"created_by"`
 	CreatedAt        time.Time  `json:"created_at"`
+	IsRound          bool       `json:"is_round"` // Kontrollrundgang: Stationen = Checklisten mit eigener Anlage
 
 	// Altfelder (fuer andere Programmteile weiter gefuellt)
 	Interval     Interval `json:"interval"`
@@ -192,6 +193,9 @@ type PlanChecklist struct {
 	LastDoneAt   *time.Time `json:"last_done_at,omitempty"`
 	NextFrom     *time.Time `json:"next_from,omitempty"` // ab wann wieder faellig (nil = immer)
 	ItemCount    int        `json:"item_count"`
+	// Station eines Rundgangs (leer = Anlage des Plans)
+	InfrastructureID string `json:"infrastructure_id,omitempty"`
+	InfraName        string `json:"infra_name,omitempty"`
 }
 
 // TaskStep: ein Punkt am Auftrag (Momentaufnahme aus der Checkliste) samt Ergebnis.
@@ -202,6 +206,8 @@ type TaskStep struct {
 	TemplateID      string           `json:"template_id,omitempty"`
 	TemplateItemID  string           `json:"template_item_id,omitempty"`
 	ChecklistName   string           `json:"checklist_name"`
+	StationInfraID  string           `json:"station_infra_id,omitempty"` // Rundgang: Anlage der Station
+	StationName     string           `json:"station_name,omitempty"`
 	SortOrder       int              `json:"sort_order"`
 	Label           string           `json:"label"`
 	Description     string           `json:"description"`
@@ -218,6 +224,14 @@ type TaskStep struct {
 	CheckedBy       string           `json:"checked_by,omitempty"` // Name
 	RefImages       []ChecklistImage `json:"ref_images"`
 	DocImages       []ChecklistImage `json:"doc_images"`
+}
+
+// GroupName: Ueberschrift im Ablauf und Protokoll – bei Rundgaengen „Station · Checkliste“.
+func (s *TaskStep) GroupName() string {
+	if s.StationName != "" {
+		return s.StationName + " · " + s.ChecklistName
+	}
+	return s.ChecklistName
 }
 
 // Filled: Schritt ist erfasst (abgehakt bzw. Wert eingetragen).
@@ -292,6 +306,7 @@ type PlanInput struct {
 	CostCenterID     *string              `json:"cost_center_id,omitempty"`
 	NextDueAt        string               `json:"next_due_at"` // JJJJ-MM-TT
 	Checklists       []PlanChecklistInput `json:"checklists"`
+	IsRound          bool                 `json:"is_round"`
 	// Altform der API: interval (daily…yearly) statt Einheit/Anzahl
 	Interval   Interval `json:"interval,omitempty"`
 	FirstDueAt string   `json:"first_due_at,omitempty"`
@@ -302,6 +317,8 @@ type PlanChecklistInput struct {
 	TemplateID  string `json:"template_id"`
 	RhythmUnit  string `json:"rhythm_unit"`
 	RhythmCount int    `json:"rhythm_count"`
+	// Station eines Rundgangs
+	InfrastructureID string `json:"infrastructure_id,omitempty"`
 }
 
 // CreatePlanInput: Name der bisherigen API (gleiche Felder).

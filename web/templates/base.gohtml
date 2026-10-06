@@ -569,7 +569,7 @@ select.form-input option{background:var(--bg2)}
 body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dvh / var(--ui-scale))}</style>
 {{block "head" .}}{{end}}
 </head>
-<body>
+<body{{if and (eq .Page "dashboard") (not .IsSystemUser) (not .IsBoardVisit) (not .IsOverrideSession)}} data-tour-offer="1"{{end}}>
 <div class="app">
 <div class="pdh-resizer left" role="separator" aria-orientation="vertical" tabindex="0" aria-label="{{t "Breite der Navigation"}}" title="{{t "Ziehen ändert die Breite – Doppelklick: Standard"}}"></div>
 <div class="pdh-resizer right" role="separator" aria-orientation="vertical" tabindex="0" aria-label="{{t "Breite der Seitenleiste"}}" title="{{t "Ziehen ändert die Breite – Doppelklick: Standard"}}"></div>
@@ -734,6 +734,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
+          <a href="#" class="menu-item" onclick="pdhTour.start('basics'); return false;"><i class="ti ti-map-2"></i>{{t "Rundgang durch PDH"}}</a>
           {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>{{t "Im Chat teilen"}}</a>{{end}}
           <div class="pal-menu look-menu">
             <div class="pal-menu-t"><i class="ti ti-palette"></i>{{t "Darstellung"}}</div>
@@ -804,6 +805,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
 <div class="pdh-backdrop" onclick="pdhCloseOverlays()" aria-hidden="true"></div>
 {{template "completion-wizard"}}
 {{template "create-wizard" (dict "Board" false)}}
+{{template "app-tour"}}
 <aside class="context">
   <div class="ctx-tabs" aria-label="Kontextauswahl">
     {{if and .CanChat (ne .Page "chat")}}<button type="button" class="ctx-tab" data-context-tab="chat" onclick="activateContextTab('chat')" title="{{t "Chat"}}" aria-label="{{t "Chat"}}"><i class="ti ti-messages"></i><span class="ctx-vlabel">{{t "Chat"}}</span><span class="ctx-badge" id="ctx-chat-badge" style="display:none"></span></button>{{end}}
@@ -885,6 +887,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
     <!-- Kontexthilfe: passendes Handbuchkapitel zur aktuellen Seite (geladen aus /help) -->
     <div id="ctx-help" class="ctx-help" data-page="{{.Page}}"><div style="color:var(--muted)">{{t "Hilfe wird geladen …"}}</div></div>
     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-small btn-primary" id="ctx-help-tour" onclick="pdhTour.startPage()"><i class="ti ti-map-2"></i> {{t "Rundgang für diese Seite"}}</button>
       <a class="btn btn-small" id="ctx-help-chapter" href="/help"><i class="ti ti-book"></i> {{t "Im Handbuch öffnen"}}</a>
       <a class="btn btn-small" href="/help"><i class="ti ti-list"></i> Inhalt</a>
     </div>

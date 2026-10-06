@@ -239,13 +239,16 @@ func (r *Repository) BuildSteps(ctx context.Context, taskID string, force bool) 
 	}
 	for k, c := range lists {
 		// jede Checkliste in ihrem eigenen Tausenderblock (Reihenfolge wie am Plan)
+		// Rundgang: jede Station merkt sich ihre Anlage (Name als Momentaufnahme)
 		if _, err := tx.Exec(ctx, `INSERT INTO maintenance_task_steps (task_id, plan_checklist_id, template_id, template_item_id,
-				checklist_name, sort_order, label, description, item_type, required, unit, target_value, min_value, max_value)
-			SELECT $1::uuid, $2::uuid, t.id, i.id, t.name, $3 + ROW_NUMBER() OVER (ORDER BY i.sort_order, i.label),
+				checklist_name, station_infra_id, station_name, sort_order, label, description, item_type, required, unit,
+				target_value, min_value, max_value)
+			SELECT $1::uuid, $2::uuid, t.id, i.id, t.name, $5::uuid, $6, $3 + ROW_NUMBER() OVER (ORDER BY i.sort_order, i.label),
 				i.label, i.description, CASE WHEN i.item_type IN ('checkbox','number','text') THEN i.item_type ELSE 'checkbox' END,
 				i.required, i.unit, i.target_value, i.min_value, i.max_value
 			FROM maintenance_checklist_template_items i JOIN maintenance_checklist_templates t ON t.id = i.template_id
-			WHERE i.template_id = $4::uuid AND i.active`, taskID, c.ID, (k+1)*1000, c.TemplateID); err != nil {
+			WHERE i.template_id = $4::uuid AND i.active`, taskID, c.ID, (k+1)*1000, c.TemplateID,
+			nullID(&c.InfrastructureID), c.InfraName); err != nil {
 			return 0, err
 		}
 	}
@@ -291,7 +294,7 @@ func (r *Repository) RemoveTemplateSteps(ctx context.Context, taskID, templateID
 // Steps: Schritte eines Auftrags mit Ergebnissen und Bildern.
 func (r *Repository) Steps(ctx context.Context, taskID string) ([]*TaskStep, error) {
 	rows, err := r.db.Query(ctx, `SELECT s.id::text, s.task_id::text, COALESCE(s.plan_checklist_id::text,''), COALESCE(s.template_id::text,''),
-			COALESCE(s.template_item_id::text,''), s.checklist_name, s.sort_order, s.label, s.description, s.item_type, s.required,
+			COALESCE(s.template_item_id::text,''), s.checklist_name, COALESCE(s.station_infra_id::text,''), s.station_name, s.sort_order, s.label, s.description, s.item_type, s.required,
 			s.unit, s.target_value::float8, s.min_value::float8, s.max_value::float8, s.value, s.done, s.in_range, s.checked_at,
 			COALESCE(TRIM(u.first_name||' '||u.last_name),'')
 		FROM maintenance_task_steps s LEFT JOIN users u ON u.id = s.checked_by
@@ -304,7 +307,8 @@ func (r *Repository) Steps(ctx context.Context, taskID string) ([]*TaskStep, err
 	itemIDs, stepIDs := []string{}, []string{}
 	for rows.Next() {
 		s := &TaskStep{}
-		if err := rows.Scan(&s.ID, &s.TaskID, &s.PlanChecklistID, &s.TemplateID, &s.TemplateItemID, &s.ChecklistName, &s.SortOrder,
+		if err := rows.Scan(&s.ID, &s.TaskID, &s.PlanChecklistID, &s.TemplateID, &s.TemplateItemID, &s.ChecklistName,
+			&s.StationInfraID, &s.StationName, &s.SortOrder,
 			&s.Label, &s.Description, &s.ItemType, &s.Required, &s.Unit, &s.TargetValue, &s.MinValue, &s.MaxValue,
 			&s.Value, &s.Done, &s.InRange, &s.CheckedAt, &s.CheckedBy); err != nil {
 			return nil, err

@@ -416,12 +416,12 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 		header()
 		lists := map[string]bool{}
 		for _, it := range p.Checklist {
-			lists[it.ChecklistName] = true
+			lists[it.GroupName()] = true
 		}
 		prevList := ""
 		for n, it := range p.Checklist {
 			// mehrere Checklisten (z. B. „immer“ + „monatlich“): Zwischenzeile je Liste
-			if len(lists) > 1 && it.ChecklistName != prevList {
+			if (len(lists) > 1 || it.StationName != "") && it.GroupName() != prevList {
 				if pdf.GetY()+14 > pageH-20 {
 					pdf.AddPage()
 					header()
@@ -429,8 +429,8 @@ func renderMaintProtocolPDF(p *maintProtocol) ([]byte, error) {
 				pdf.SetFont("Helvetica", "B", 9)
 				pdf.SetFillColor(250, 246, 232)
 				pdf.SetTextColor(60, 60, 60)
-				pdf.CellFormat(contentW, 6.5, tr(it.ChecklistName), "1", 1, "L", true, 0, "")
-				prevList = it.ChecklistName
+				pdf.CellFormat(contentW, 6.5, tr(it.GroupName()), "1", 1, "L", true, 0, "")
+				prevList = it.GroupName()
 			}
 			result, rating := "", ""
 			ok := true

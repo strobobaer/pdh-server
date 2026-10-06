@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-06T14:10:39.617Z",
+  "generatedAt": "2026-10-06T15:28:08.366Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1095,6 +1095,17 @@
       "sqlHash": "89b34112abcc6db2dc2e0a0a1187c7513d8d390de6b3d47587eeab6e3f3ca805",
       "title": "101_maintenance_v2.up.sql",
       "updatedAt": "2026-10-06T14:10:38.951Z"
+    },
+    {
+      "createdAt": "2026-10-06T15:28:07.722Z",
+      "path": "migrations/102_maintenance_rounds.up.sql",
+      "catalogContext": null,
+      "searchText": "kontrollrundgang: ein wartungsplan, der nacheinander mehrere anlagen migrations/102_maintenance_rounds.up.sql -- kontrollrundgang: ein wartungsplan, der nacheinander mehrere anlagen\n-- (stationen) mit je einer checkliste abfragt. termine, auftrag, assistent,\n-- protokoll und leitstand laufen ueber die normale wartung.\n\nalter table maintenance_plans add column if not exists is_round boolean not null default false;\n\n-- station = plan-checkliste mit eigener anlage (leer = anlage des plans)\nalter table maintenance_plan_checklists\n    add column if not exists infrastructure_id uuid references infrastructure(id) on delete cascade;\n\n-- dieselbe checkliste darf an mehreren stationen stehen\nalter table maintenance_plan_checklists drop constraint if exists maintenance_plan_checklists_plan_id_template_id_key;\ncreate unique index if not exists uq_maintenance_plan_checklists_station\n    on maintenance_plan_checklists (plan_id, template_id, coalesce(infrastructure_id, '00000000-0000-0000-0000-000000000000'::uuid));\n\n-- schritte merken sich ihre station (name als momentaufnahme fuer das protokoll)\nalter table maintenance_task_steps\n    add column if not exists station_infra_id uuid references infrastructure(id) on delete set null,\n    add column if not exists station_name text not null default '';\n",
+      "searchUpdatedAt": "2026-10-06T15:28:07.835Z",
+      "schemaContext": null,
+      "sqlHash": "2c37cd9cee6c44f86000b4c7d37d618c9d618bf6d91c0b119563342f93d057eb",
+      "title": "Kontrollrundgang: ein Wartungsplan, der nacheinander mehrere Anlagen",
+      "updatedAt": "2026-10-06T15:28:07.722Z"
     }
   ]
 }

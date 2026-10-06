@@ -3,10 +3,10 @@
 {{define "content"}}
 {{/* Plan-Editor (maintenance_web.go MaintenancePlanPage) – speichert über /api/v1/maintenance/plans */}}
 <div class="mp-head">
-  {{template "icon-button" (dict "Action" "back" "Href" "/maintenance?view=plans")}}
+  {{template "icon-button" (dict "Action" "back" "Href" (print "/maintenance?view=" (or (and .Plan.IsRound "rounds") "plans")))}}
   <div style="flex:1;min-width:0">
-    <h1>{{if .IsNew}}Neuer Wartungsplan{{else}}{{.Plan.Name}}{{end}}</h1>
-    <p>{{if .IsNew}}Was wird wie oft an welcher Anlage gemacht?{{else}}{{.Plan.InfraName}}{{if not .Plan.Active}} · <span class="badge b-gray">ruht</span>{{end}}{{end}}</p>
+    <h1>{{if .IsNew}}{{if .Plan.IsRound}}Neuer Kontrollrundgang{{else}}Neuer Wartungsplan{{end}}{{else}}{{if .Plan.IsRound}}<i class="ti ti-route"></i> {{end}}{{.Plan.Name}}{{end}}</h1>
+    <p>{{if .IsNew}}{{if .Plan.IsRound}}Welche Anlagen werden wie oft nacheinander kontrolliert?{{else}}Was wird wie oft an welcher Anlage gemacht?{{end}}{{else}}{{.Plan.InfraName}}{{if not .Plan.Active}} · <span class="badge b-gray">ruht</span>{{end}}{{end}}</p>
   </div>
   {{if not .IsNew}}
   <div class="widget-icon-toolbar compact">
@@ -21,8 +21,13 @@
 <div class="mp-grid">
   <div class="card">
     <div class="card-title"><i class="ti ti-info-circle"></i> Was &amp; wo</div>
+    {{if .Plan.IsRound}}
+    <div class="form-group"><label class="form-label">Name</label><input id="mp-name" class="form-input" maxlength="255" required value="{{.Plan.Name}}" placeholder="z. B. Schichtrundgang Halle 2"></div>
+    {{template "infra-tree-picker" (dict "TargetID" "mp-infra" "SelectedLabelID" "mp-infra-label" "Label" "Bereich (Halle, Linie …) – die Stationen liegen darunter" "Required" true "Value" .Plan.InfrastructureID "SelectedLabel" .Plan.InfraName)}}
+    {{else}}
     <div class="form-group"><label class="form-label">Name</label><input id="mp-name" class="form-input" maxlength="255" required value="{{.Plan.Name}}" placeholder="z. B. Presse 3 – Inspektion"></div>
     {{template "infra-tree-picker" (dict "TargetID" "mp-infra" "SelectedLabelID" "mp-infra-label" "Label" "Anlage" "Required" true "Value" .Plan.InfrastructureID "SelectedLabel" .Plan.InfraName)}}
+    {{end}}
     <div class="grid2">
       <div class="form-group"><label class="form-label">Art</label>
         <select id="mp-type" class="form-input">{{range $k, $v := .TypeLabels}}<option value="{{$k}}" {{if eq $k $.Plan.Type}}selected{{end}}>{{$v}}</option>{{end}}</select></div>
@@ -74,21 +79,29 @@
   </div>
 
   <div class="card mp-lists-card">
+    {{if .Plan.IsRound}}
+    <div class="card-title"><i class="ti ti-route"></i> Stationen
+      <a href="/maintenance?view=checklists" target="_blank" rel="noopener" class="mp-link">Checklisten bearbeiten <i class="ti ti-external-link"></i></a></div>
+    <p class="mp-hint">In dieser Reihenfolge wird der Rundgang abgefragt. Je Station eine Anlage und eine Checkliste – die gleiche Checkliste darf an vielen Anlagen stehen. Jede Station kann ihren eigenen Takt haben (z. B. eine Anlage nur monatlich).</p>
+    {{else}}
     <div class="card-title"><i class="ti ti-list-check"></i> Checklisten
       <a href="/maintenance?view=checklists" target="_blank" rel="noopener" class="mp-link">Checklisten bearbeiten <i class="ti ti-external-link"></i></a></div>
     <p class="mp-hint">Jede Checkliste hat ihren eigenen Takt. Bei der Durchführung werden alle fälligen zu einer Liste zusammengeführt – z. B. „Sichtprüfung“ bei jedem Termin, „Filter“ 14-tägig, „Keilriemen“ monatlich.</p>
+    {{end}}
     <div id="mp-lists"></div>
     <div class="mp-addlist">
-      <select id="mp-add-tpl" class="form-input"></select>
-      <button type="button" class="btn" onclick="mpAddList()"><i class="ti ti-plus"></i> Checkliste hinzufügen</button>
+      {{if .Plan.IsRound}}<select id="mp-add-infra" class="form-input" aria-label="Anlage der Station" onfocus="mpStationOpts()"></select>{{end}}
+      <select id="mp-add-tpl" class="form-input" aria-label="Checkliste"></select>
+      <button type="button" class="btn" onclick="mpAddList()"><i class="ti ti-plus"></i> {{if .Plan.IsRound}}Station hinzufügen{{else}}Checkliste hinzufügen{{end}}</button>
+      {{if .Plan.IsRound}}<button type="button" class="btn" onclick="mpAddAll()" title="Alle Anlagen direkt unter dem Bereich mit der gewählten Checkliste als Stationen übernehmen"><i class="ti ti-list-tree"></i> Alle Unteranlagen</button>{{end}}
     </div>
   </div>
 </div>
 
 <div class="mp-save">
   <span id="mp-msg"></span>
-  <a class="btn" href="/maintenance?view=plans">Abbrechen</a>
-  <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> {{if .IsNew}}Plan anlegen{{else}}Speichern{{end}}</button>
+  <a class="btn" href="/maintenance?view={{if .Plan.IsRound}}rounds{{else}}plans{{end}}">Abbrechen</a>
+  <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> {{if .IsNew}}{{if .Plan.IsRound}}Rundgang anlegen{{else}}Plan anlegen{{end}}{{else}}Speichern{{end}}</button>
 </div>
 </form>
 {{end}}
@@ -119,7 +132,9 @@
 .mp-move{display:flex;flex-direction:column}
 .mp-move button{border:0;background:none;color:var(--muted);cursor:pointer;padding:0}
 .mp-addlist{display:flex;gap:8px;margin-top:6px}
+.mp-addlist{flex-wrap:wrap}
 .mp-addlist .form-input{max-width:360px}
+.mp-list .name .st{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--on-accent,#fff);font-size:11px;font-weight:700;margin-right:6px}
 .mp-save{display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px;position:sticky;bottom:0;background:var(--bg);padding:10px 0}
 #mp-msg{font-size:12px;margin-right:auto}
 @media(max-width:800px){.mp-grid{grid-template-columns:1fr}.mp-list{grid-template-columns:22px 1fr}.mp-list .mp-rhythm,.mp-list .mp-del{grid-column:2}}
@@ -128,6 +143,9 @@
 const MP_PLAN = {{.PlanJSON}};
 const MP_TEMPLATES = {{.Templates}} || [];
 const MP_NEW = {{if .IsNew}}true{{else}}false{{end}};
+const MP_ROUND = {{if .Plan.IsRound}}true{{else}}false{{end}};
+const MP_INFRAS = {{if .Infras}}{{.Infras}}{{else}}[]{{end}};
+const infraOf = id => MP_INFRAS.find(i => i.id === id) || {};
 const mpEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const mpDate = d => String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
 function mpAdd(unit, n, d){
@@ -146,7 +164,25 @@ function mpPreview(){
   document.getElementById('mp-preview').textContent = 'Termine: ' + out.join(' · ') + ' …';
 }
 // Checklisten des Plans
-let mpLists = (MP_PLAN.checklists || []).map(c => ({template_id: c.template_id, rhythm_unit: c.rhythm_unit || 'always', rhythm_count: c.rhythm_count || 1, last_done_at: c.last_done_at, next_from: c.next_from}));
+let mpLists = (MP_PLAN.checklists || []).map(c => ({template_id: c.template_id, infrastructure_id: c.infrastructure_id || '', infra_name: c.infra_name || '', rhythm_unit: c.rhythm_unit || 'always', rhythm_count: c.rhythm_count || 1, last_done_at: c.last_done_at, next_from: c.next_from}));
+// Rundgang: Anlagen unterhalb des Bereichs (inkl. Bereich) zuerst, sonst alle
+function mpBelow(){
+  const area = document.getElementById('mp-infra').value;
+  if(!area) return MP_INFRAS;
+  const ids = new Set([area]);
+  let grew = true;
+  while(grew){ grew = false; MP_INFRAS.forEach(i => { if(!ids.has(i.id) && ids.has(i.parent_id)){ ids.add(i.id); grew = true; } }); }
+  const sub = MP_INFRAS.filter(i => ids.has(i.id));
+  return sub.length > 1 ? sub : MP_INFRAS;
+}
+function mpStationOpts(){
+  const sel = document.getElementById('mp-add-infra'); if(!sel) return;
+  const cur = sel.value, area = infraOf(document.getElementById('mp-infra').value).path || '';
+  sel.innerHTML = '<option value="">– Anlage der Station –</option>' + mpBelow().map(i => {
+    const p = area && i.path.startsWith(area + ' › ') ? i.path.slice(area.length + 3) : i.path;
+    return '<option value="' + mpEsc(i.id) + '"' + (i.id === cur ? ' selected' : '') + '>' + mpEsc(p) + '</option>';
+  }).join('');
+}
 const tplName = id => (MP_TEMPLATES.find(t => t.id === id) || {}).name || '(gelöschte Checkliste)';
 const tplCount = id => (MP_TEMPLATES.find(t => t.id === id) || {}).item_count || 0;
 function mpRenderLists(){
@@ -155,20 +191,50 @@ function mpRenderLists(){
     const info = [tplCount(c.template_id) + ' Punkte'];
     if(c.last_done_at) info.push('zuletzt ' + mpDate(new Date(c.last_done_at)));
     if(c.next_from && c.rhythm_unit !== 'always') info.push('wieder fällig ab ' + mpDate(new Date(c.next_from)));
+    const station = MP_ROUND ? (c.infra_name || infraOf(c.infrastructure_id).name || '–') : '';
+    if(MP_ROUND) info.unshift(tplName(c.template_id));
     return '<div class="mp-list">'
       + '<div class="mp-move"><button type="button" title="nach oben" onclick="mpMove(' + k + ',-1)"' + (k === 0 ? ' disabled' : '') + '><i class="ti ti-chevron-up"></i></button><button type="button" title="nach unten" onclick="mpMove(' + k + ',1)"' + (k === mpLists.length - 1 ? ' disabled' : '') + '><i class="ti ti-chevron-down"></i></button></div>'
-      + '<div class="name"><b>' + mpEsc(tplName(c.template_id)) + '</b><small>' + mpEsc(info.join(' · ')) + '</small></div>'
+      + '<div class="name"><b>' + (MP_ROUND ? '<span class="st">' + (k + 1) + '</span>' + mpEsc(station) : mpEsc(tplName(c.template_id))) + '</b><small>' + mpEsc(info.join(' · ')) + '</small></div>'
       + '<div class="mp-rhythm">' + (c.rhythm_unit === 'always' ? '' : '<span>alle</span><input type="number" min="1" max="1000" class="form-input" value="' + c.rhythm_count + '" onchange="mpLists[' + k + '].rhythm_count=Math.max(1,+this.value||1)">')
       + '<select class="form-input" onchange="mpLists[' + k + '].rhythm_unit=this.value;mpRenderLists()">'
       + [['always','bei jedem Termin'],['day','Tage'],['week','Wochen'],['month','Monate'],['year','Jahre']].map(o => '<option value="' + o[0] + '"' + (o[0] === c.rhythm_unit ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></div>'
-      + '<button type="button" class="btn btn-danger mp-del" title="Checkliste vom Plan entfernen" onclick="mpLists.splice(' + k + ',1);mpRenderLists()"><i class="ti ti-x"></i></button>'
+      + '<button type="button" class="btn btn-danger mp-del" title="' + (MP_ROUND ? 'Station entfernen' : 'Checkliste vom Plan entfernen') + '" onclick="mpLists.splice(' + k + ',1);mpRenderLists()"><i class="ti ti-x"></i></button>'
       + '</div>';
-  }).join('') : '<div class="mp-hint" style="margin:0 0 8px">Noch keine Checkliste – der Auftrag hat dann nur Material, Zeit und Kommentar.</div>';
+  }).join('') : '<div class="mp-hint" style="margin:0 0 8px">' + (MP_ROUND ? 'Noch keine Station – unten Anlage und Checkliste wählen.' : 'Noch keine Checkliste – der Auftrag hat dann nur Material, Zeit und Kommentar.') + '</div>';
   const sel = document.getElementById('mp-add-tpl');
-  const free = MP_TEMPLATES.filter(t => !mpLists.some(c => c.template_id === t.id));
-  sel.innerHTML = free.length ? free.map(t => '<option value="' + mpEsc(t.id) + '">' + mpEsc(t.name) + ' (' + t.item_count + ' Punkte)</option>').join('') : '<option value="">– alle Checklisten zugeordnet –</option>';
+  const keep = sel.value;
+  const free = MP_ROUND ? MP_TEMPLATES : MP_TEMPLATES.filter(t => !mpLists.some(c => c.template_id === t.id));
+  sel.innerHTML = free.length ? free.map(t => '<option value="' + mpEsc(t.id) + '"' + (t.id === keep ? ' selected' : '') + '>' + mpEsc(t.name) + ' (' + t.item_count + ' Punkte)</option>').join('') : '<option value="">– alle Checklisten zugeordnet –</option>';
+  mpStationOpts();
 }
-function mpAddList(){ const id = document.getElementById('mp-add-tpl').value; if(!id) return; mpLists.push({template_id: id, rhythm_unit: 'always', rhythm_count: 1}); mpRenderLists(); }
+function mpMsg(t){ document.getElementById('mp-msg').innerHTML = t ? '<span style="color:var(--red)">' + mpEsc(t) + '</span>' : ''; }
+function mpAddStation(infra, tpl){
+  if(mpLists.some(c => c.template_id === tpl && c.infrastructure_id === infra)) return false;
+  mpLists.push({template_id: tpl, infrastructure_id: infra, infra_name: infraOf(infra).name || '', rhythm_unit: 'always', rhythm_count: 1});
+  return true;
+}
+function mpAddList(){
+  const id = document.getElementById('mp-add-tpl').value; if(!id) return;
+  if(MP_ROUND){
+    const infra = document.getElementById('mp-add-infra').value;
+    if(!infra){ mpMsg('Bitte die Anlage der Station wählen.'); return; }
+    if(!mpAddStation(infra, id)){ mpMsg('Diese Station gibt es schon.'); return; }
+    mpMsg('');
+  } else mpLists.push({template_id: id, rhythm_unit: 'always', rhythm_count: 1});
+  mpRenderLists();
+}
+// alle Anlagen direkt unter dem Bereich als Stationen (gewaehlte Checkliste)
+function mpAddAll(){
+  const area = document.getElementById('mp-infra').value, tpl = document.getElementById('mp-add-tpl').value;
+  if(!area){ mpMsg('Bitte zuerst den Bereich wählen.'); return; }
+  if(!tpl){ mpMsg('Bitte eine Checkliste wählen.'); return; }
+  const kids = MP_INFRAS.filter(i => i.parent_id === area);
+  if(!kids.length){ mpMsg('Unter diesem Bereich gibt es keine Anlagen.'); return; }
+  let n = 0; kids.forEach(i => { if(mpAddStation(i.id, tpl)) n++; });
+  mpMsg(''); mpRenderLists();
+  document.getElementById('mp-msg').innerHTML = '<span style="color:var(--green)">' + n + ' Station(en) übernommen.</span>';
+}
 function mpMove(k, d){ const j = k + d; if(j < 0 || j >= mpLists.length) return; [mpLists[k], mpLists[j]] = [mpLists[j], mpLists[k]]; mpRenderLists(); }
 async function mpSave(){
   const msg = document.getElementById('mp-msg'), $ = id => document.getElementById(id);
@@ -179,9 +245,11 @@ async function mpSave(){
     lead_days: +$('mp-lead').value || 0, estimated_min: +$('mp-minutes').value || 0, next_due_at: $('mp-next').value,
     assigned_to: $('mp-assigned').value, responsible_to: $('mp-responsible').value, assigned_group_id: $('mp-group').value,
     cost_center_id: $('mp-cost').value,
-    checklists: mpLists.map(c => ({template_id: c.template_id, rhythm_unit: c.rhythm_unit, rhythm_count: +c.rhythm_count || 1}))
+    checklists: mpLists.map(c => ({template_id: c.template_id, infrastructure_id: c.infrastructure_id || '', rhythm_unit: c.rhythm_unit, rhythm_count: +c.rhythm_count || 1})),
+    is_round: MP_ROUND
   };
-  if(!body.infrastructure_id){ msg.innerHTML = '<span style="color:var(--red)">Bitte eine Anlage wählen.</span>'; return false; }
+  if(!body.infrastructure_id){ msg.innerHTML = '<span style="color:var(--red)">' + (MP_ROUND ? 'Bitte einen Bereich wählen.' : 'Bitte eine Anlage wählen.') + '</span>'; return false; }
+  if(MP_ROUND && !mpLists.length){ mpMsg('Bitte mindestens eine Station hinzufügen.'); return false; }
   msg.textContent = 'Speichere…';
   try{
     const res = await fetch('/api/v1/maintenance/plans' + (MP_NEW ? '' : '/' + MP_PLAN.id), {method: MP_NEW ? 'POST' : 'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});

@@ -28,7 +28,8 @@ const planSelect = `
 	       COALESCE(i.name,''), COALESCE(u.first_name||' '||u.last_name,''), COALESCE(ru.first_name||' '||ru.last_name,''),
 	       COALESCE(g.name,''), COALESCE(cc.number,''), COALESCE(cc.name,''),
 	       COALESCE((SELECT mt.id::text FROM maintenance_tasks mt WHERE mt.plan_id = mp.id
-	                 AND mt.status IN ('open','in_progress','pending') ORDER BY mt.due_date LIMIT 1), '')
+	                 AND mt.status IN ('open','in_progress','pending') ORDER BY mt.due_date LIMIT 1), ''),
+	       mp.is_round
 	FROM maintenance_plans mp
 	LEFT JOIN infrastructure i ON i.id = mp.infrastructure_id
 	LEFT JOIN users u ON u.id = mp.assigned_to
@@ -44,7 +45,7 @@ func scanPlan(row interface{ Scan(...interface{}) error }) (*MaintenancePlan, er
 		&p.Active, &p.LastExecutedAt, &p.NextDueAt, &p.CreatedBy, &p.CreatedAt,
 		&p.Interval, &p.IntervalDays,
 		&p.InfraName, &p.AssigneeName, &p.ResponsibleName, &p.GroupName, &p.CostCenterNumber, &p.CostCenterName,
-		&p.OpenTaskID)
+		&p.OpenTaskID, &p.IsRound)
 	return p, err
 }
 
@@ -130,8 +131,18 @@ func normalizePlan(in *PlanInput) error {
 	if in.NextDueAt == "" {
 		in.NextDueAt = in.FirstDueAt
 	}
+	stations := 0
 	for i := range in.Checklists {
 		c := &in.Checklists[i]
+		c.InfrastructureID = strings.TrimSpace(c.InfrastructureID)
+		if !in.IsRound {
+			c.InfrastructureID = "" // nur Rundgaenge haben Stationen
+		} else if c.InfrastructureID == "" {
+			c.InfrastructureID = in.InfrastructureID
+		}
+		if strings.TrimSpace(c.TemplateID) != "" {
+			stations++
+		}
 		switch c.RhythmUnit {
 		case RhythmAlways, UnitDay, UnitWeek, UnitMonth, UnitYear:
 		case "":
@@ -142,6 +153,9 @@ func normalizePlan(in *PlanInput) error {
 		if c.RhythmCount < 1 {
 			c.RhythmCount = 1
 		}
+	}
+	if in.IsRound && stations == 0 {
+		return inputErr("Ein Rundgang braucht mindestens eine Station (Anlage mit Checkliste)")
 	}
 	return nil
 }
@@ -168,14 +182,14 @@ func (r *Repository) CreatePlan(ctx context.Context, in *PlanInput, userID strin
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_plans (name, description, type, infrastructure_id, interval_type, interval_days,
 			interval_unit, interval_count, schedule_mode, lead_days, estimated_min, priority,
-			assigned_to, responsible_to, assigned_group_id, cost_center_id, active, next_due_at, created_by)
+			assigned_to, responsible_to, assigned_group_id, cost_center_id, active, next_due_at, created_by, is_round)
 		VALUES ($1, $2, $3::maintenance_type, $4::uuid, $5::maintenance_interval, $6,
 			$7, $8, $9, $10, $11, $12::maintenance_priority,
-			$13::uuid, $14::uuid, $15::uuid, $16::uuid, true, $17, $18::uuid)
+			$13::uuid, $14::uuid, $15::uuid, $16::uuid, true, $17, $18::uuid, $19)
 		RETURNING id::text`,
 		in.Name, in.Description, in.Type, in.InfrastructureID, iv, days,
 		in.IntervalUnit, in.IntervalCount, in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
-		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, userID).Scan(&id)
+		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, userID, in.IsRound).Scan(&id)
 	if err != nil {
 		return "", err
 	}
@@ -198,11 +212,11 @@ func (r *Repository) UpdatePlan(ctx context.Context, id string, in *PlanInput) e
 			interval_type=$6::maintenance_interval, interval_days=$7, interval_unit=$8, interval_count=$9,
 			schedule_mode=$10, lead_days=$11, estimated_min=$12, priority=$13::maintenance_priority,
 			assigned_to=$14::uuid, responsible_to=$15::uuid, assigned_group_id=$16::uuid, cost_center_id=$17::uuid,
-			next_due_at=COALESCE($18, next_due_at)
+			next_due_at=COALESCE($18, next_due_at), is_round=$19
 		WHERE id=$1::uuid`,
 		id, in.Name, in.Description, in.Type, in.InfrastructureID, iv, days, in.IntervalUnit, in.IntervalCount,
 		in.ScheduleMode, in.LeadDays, in.EstimatedMin, in.Priority,
-		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next)
+		nullID(in.AssignedTo), nullID(in.ResponsibleTo), nullID(in.AssignedGroupID), nullID(in.CostCenterID), next, in.IsRound)
 	if err != nil {
 		return err
 	}
@@ -254,9 +268,11 @@ func (r *Repository) DuplicatePlan(ctx context.Context, id, userID string) (stri
 	in := &PlanInput{Name: p.Name + " Kopie", Description: p.Description, Type: p.Type, InfrastructureID: p.InfrastructureID,
 		IntervalUnit: p.IntervalUnit, IntervalCount: p.IntervalCount, ScheduleMode: p.ScheduleMode, LeadDays: p.LeadDays,
 		EstimatedMin: p.EstimatedMin, Priority: p.Priority, AssignedTo: p.AssignedTo, ResponsibleTo: p.ResponsibleTo,
-		AssignedGroupID: p.AssignedGroupID, CostCenterID: p.CostCenterID, NextDueAt: p.NextDueAt.Local().Format("2006-01-02")}
+		AssignedGroupID: p.AssignedGroupID, CostCenterID: p.CostCenterID, NextDueAt: p.NextDueAt.Local().Format("2006-01-02"),
+		IsRound: p.IsRound}
 	for _, c := range p.Checklists {
-		in.Checklists = append(in.Checklists, PlanChecklistInput{TemplateID: c.TemplateID, RhythmUnit: c.RhythmUnit, RhythmCount: c.RhythmCount})
+		in.Checklists = append(in.Checklists, PlanChecklistInput{TemplateID: c.TemplateID, RhythmUnit: c.RhythmUnit, RhythmCount: c.RhythmCount,
+			InfrastructureID: c.InfrastructureID})
 	}
 	return r.CreatePlan(ctx, in, userID)
 }
@@ -265,8 +281,10 @@ func (r *Repository) DuplicatePlan(ctx context.Context, id, userID string) (stri
 func (r *Repository) PlanChecklists(ctx context.Context, planID string) ([]*PlanChecklist, error) {
 	rows, err := r.db.Query(ctx, `SELECT pc.id::text, pc.plan_id::text, pc.template_id::text, t.name, pc.sort_order,
 			pc.rhythm_unit, pc.rhythm_count, pc.last_done_at,
-			(SELECT COUNT(*) FROM maintenance_checklist_template_items i WHERE i.template_id = t.id AND i.active)
+			(SELECT COUNT(*) FROM maintenance_checklist_template_items i WHERE i.template_id = t.id AND i.active),
+			COALESCE(pc.infrastructure_id::text,''), COALESCE(inf.name,'')
 		FROM maintenance_plan_checklists pc JOIN maintenance_checklist_templates t ON t.id = pc.template_id
+		LEFT JOIN infrastructure inf ON inf.id = pc.infrastructure_id
 		WHERE pc.plan_id = $1::uuid ORDER BY pc.sort_order, t.name`, planID)
 	if err != nil {
 		return nil, err
@@ -276,7 +294,7 @@ func (r *Repository) PlanChecklists(ctx context.Context, planID string) ([]*Plan
 	for rows.Next() {
 		c := &PlanChecklist{}
 		if err := rows.Scan(&c.ID, &c.PlanID, &c.TemplateID, &c.TemplateName, &c.SortOrder,
-			&c.RhythmUnit, &c.RhythmCount, &c.LastDoneAt, &c.ItemCount); err != nil {
+			&c.RhythmUnit, &c.RhythmCount, &c.LastDoneAt, &c.ItemCount, &c.InfrastructureID, &c.InfraName); err != nil {
 			return nil, err
 		}
 		if c.RhythmUnit != RhythmAlways && c.LastDoneAt != nil {
@@ -290,6 +308,7 @@ func (r *Repository) PlanChecklists(ctx context.Context, planID string) ([]*Plan
 
 // SetPlanChecklists ersetzt die Checklisten eines Plans (Reihenfolge = Liste).
 // „Zuletzt erledigt“ bleibt fuer weiter zugeordnete Vorlagen erhalten.
+// Bei Rundgaengen ist jede Station (Anlage + Checkliste) ein Eintrag.
 func (r *Repository) SetPlanChecklists(ctx context.Context, planID string, list []PlanChecklistInput) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -297,20 +316,27 @@ func (r *Repository) SetPlanChecklists(ctx context.Context, planID string, list 
 	}
 	defer tx.Rollback(ctx)
 	keep := []string{}
+	seen := map[string]bool{}
 	for i, c := range list {
 		if strings.TrimSpace(c.TemplateID) == "" {
 			continue
 		}
-		keep = append(keep, c.TemplateID)
-		if _, err := tx.Exec(ctx, `INSERT INTO maintenance_plan_checklists (plan_id, template_id, sort_order, rhythm_unit, rhythm_count)
-			VALUES ($1::uuid, $2::uuid, $3, $4, $5)
-			ON CONFLICT (plan_id, template_id) DO UPDATE SET sort_order=EXCLUDED.sort_order,
-				rhythm_unit=EXCLUDED.rhythm_unit, rhythm_count=EXCLUDED.rhythm_count`,
-			planID, c.TemplateID, (i+1)*10, c.RhythmUnit, c.RhythmCount); err != nil {
+		key := c.TemplateID + ":" + c.InfrastructureID
+		if seen[key] {
+			return inputErr("Diese Checkliste steht an derselben Anlage schon im Plan")
+		}
+		seen[key] = true
+		keep = append(keep, key)
+		if _, err := tx.Exec(ctx, `INSERT INTO maintenance_plan_checklists (plan_id, template_id, infrastructure_id, sort_order, rhythm_unit, rhythm_count)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)
+			ON CONFLICT (plan_id, template_id, (COALESCE(infrastructure_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+			DO UPDATE SET sort_order=EXCLUDED.sort_order, rhythm_unit=EXCLUDED.rhythm_unit, rhythm_count=EXCLUDED.rhythm_count`,
+			planID, c.TemplateID, nullID(&c.InfrastructureID), (i+1)*10, c.RhythmUnit, c.RhythmCount); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM maintenance_plan_checklists WHERE plan_id=$1::uuid AND NOT (template_id::text = ANY($2))`, planID, keep); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM maintenance_plan_checklists WHERE plan_id=$1::uuid
+		AND NOT (template_id::text || ':' || COALESCE(infrastructure_id::text,'') = ANY($2))`, planID, keep); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

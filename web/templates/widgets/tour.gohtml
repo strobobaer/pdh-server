@@ -1,0 +1,200 @@
+{{/* Einfuehrungs-Rundgang: Sprechblasen fuehren durch die Oberflaeche.
+  pdhTour.start(name) – „basics“ (Grundlagen, seitenuebergreifend) oder eine
+  Seiten-Tour (dashboard, faults, maintenance). Ein Schritt mit url wechselt
+  bei Bedarf die Seite; der Stand liegt in sessionStorage und laeuft nach dem
+  Laden weiter. sel: Liste von Selektoren, der erste sichtbare wird markiert –
+  sonst steht die Sprechblase in der Mitte (z. B. Navigation am Handy).
+  Neue Seiten-Touren in TOURS und PAGE_TOUR eintragen und im Handbuch
+  (Kapitel „Erste Schritte“) erwaehnen. */}}
+{{define "app-tour"}}
+<style>
+.tour{position:fixed;inset:0;z-index:900;pointer-events:none}
+.tour[hidden]{display:none}
+.tour-shade{position:fixed;inset:0;background:rgba(0,0,0,.55);pointer-events:auto}
+.tour-spot{position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.55),0 0 0 3px var(--accent);transition:all .2s ease;pointer-events:none}
+.tour.has-spot .tour-shade{background:transparent}
+.tour-tip{position:fixed;width:min(340px,calc(100vw - 32px));background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.45);padding:14px 16px 12px;pointer-events:auto;transition:top .2s ease,left .2s ease}
+.tour-count{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.tour-count i{color:var(--accent)}
+.tour-tip h3{font-size:15px;font-weight:600;margin:0 0 6px}
+.tour-tip p{font-size:13px;line-height:1.5;margin:0;color:var(--text)}
+.tour-dots{display:flex;gap:4px;margin:12px 0 10px}
+.tour-dots i{flex:1;height:3px;border-radius:2px;background:var(--bg3)}
+.tour-dots i.on{background:var(--accent)}
+.tour-btns{display:flex;gap:6px;align-items:center}
+.tour-btns .grow{flex:1}
+.tour-btns button{font-family:var(--font);font-size:12.5px;border-radius:8px;padding:6px 12px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text)}
+.tour-btns button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff);font-weight:600}
+.tour-btns button.link{background:none;border:0;color:var(--muted);padding:6px 4px}
+.tour-offer{position:fixed;right:16px;bottom:52px;z-index:880;width:min(330px,calc(100vw - 32px));background:var(--bg2);border:1px solid var(--accent);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.35);padding:14px 16px}
+.tour-offer b{display:flex;gap:6px;align-items:center;font-size:14px;margin-bottom:4px}
+.tour-offer b i{color:var(--accent)}
+.tour-offer p{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+@media (prefers-reduced-motion:reduce){.tour-spot,.tour-tip{transition:none}}
+</style>
+<div class="tour" id="tour" hidden>
+  <div class="tour-shade" id="tour-shade"></div>
+  <div class="tour-spot" id="tour-spot" hidden></div>
+  <div class="tour-tip" id="tour-tip" role="dialog" aria-modal="true" aria-labelledby="tour-h" aria-describedby="tour-p">
+    <div class="tour-count"><i class="ti ti-map-2"></i><span id="tour-count"></span></div>
+    <h3 id="tour-h"></h3>
+    <p id="tour-p"></p>
+    <div class="tour-dots" id="tour-dots"></div>
+    <div class="tour-btns">
+      <button type="button" class="link" id="tour-end">{{t "Beenden"}}</button>
+      <span class="grow"></span>
+      <button type="button" id="tour-prev"><i class="ti ti-arrow-left"></i> {{t "Zurück"}}</button>
+      <button type="button" class="primary" id="tour-next">{{t "Weiter"}} <i class="ti ti-arrow-right"></i></button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const KEY = 'pdh_tour', OFFER = 'pdh_tour_offer';
+  const store = {
+    get(k, s){ try{ return JSON.parse((s ? sessionStorage : localStorage).getItem(k) || 'null'); }catch(e){ return null; } },
+    set(k, v, s){ try{ (s ? sessionStorage : localStorage).setItem(k, JSON.stringify(v)); }catch(e){} },
+    del(k, s){ try{ (s ? sessionStorage : localStorage).removeItem(k); }catch(e){} }
+  };
+  const openHelp = () => { if(typeof activateContextTab === 'function') activateContextTab('help', {keepOpen: true}); };
+  const userMenu = on => { const m = $('user-menu'); if(m) m.style.display = on ? 'block' : 'none'; };
+
+  // Touren – Texte laufen ueber die Uebersetzung (t)
+  const TOURS = {
+    basics: {title: {{t "Rundgang durch PDH"}}, steps: [
+      {url: '/', h: {{t "Willkommen im PDH"}}, p: {{t "In zwei Minuten zeigen wir dir das Wichtigste. „Weiter“ geht Schritt für Schritt, Esc beendet den Rundgang jederzeit."}}},
+      {url: '/', sel: ['#pdh-nav', '.topbar-burger'], h: {{t "Navigation"}}, p: {{t "Links findest du alle Bereiche – Störungen, Tickets, Aufgaben, Wartung, Ersatzteile, Infrastruktur und mehr. Mit „Navigation anpassen“ sortierst du sie nach deinem Bedarf."}}},
+      {url: '/', sel: ['#dw-root'], h: {{t "Dein Dashboard"}}, p: {{t "Kennzahlen und Listen auf einen Blick. „Mir zugewiesen“ zeigt, was als Nächstes zu tun ist. Mit „Dashboard anpassen“ stellst du dir die Kacheln selbst zusammen."}}},
+      {url: '/', sel: ['[data-nav="faults"]', '.topbar-burger'], h: {{t "Etwas melden"}}, p: {{t "Eine Störung meldest du unter „Störungen“ mit „Neu“. Ein Assistent fragt Schritt für Schritt: Was? Wo? Wer? – und zeigt ähnliche, schon gelöste Fälle."}}},
+      {url: '/', sel: ['.ctx-tabs', '.topbar-ctx'], h: {{t "Die Seitenleiste"}}, p: {{t "Rechts liegen Chat, Suche, Copilot, Aktivität und Hilfe. Den Copilot kannst du alles zu euren Daten fragen, z. B. „Welche Wartungen sind diese Woche fällig?“"}}},
+      {url: '/', sel: ['[data-context-tab="help"]', '.topbar-ctx'], h: {{t "Hilfe auf jeder Seite"}}, p: {{t "Der Hilfe-Reiter zeigt das passende Kapitel aus dem Handbuch – und startet den Rundgang für die Seite, auf der du gerade bist."}}},
+      {url: '/', sel: ['#pdh-clock'], h: {{t "Uhr und Zeiterfassung"}}, p: {{t "Ein Klick auf die Uhr öffnet deine Zeiterfassung."}}},
+      {url: '/', sel: ['#user-menu'], before: () => userMenu(true), after: () => userMenu(false), h: {{t "Dein Konto"}}, p: {{t "Hier findest du „Mein Konto“, das Handbuch, die Darstellung (Farben, Schrift, Größe) und diesen Rundgang zum erneuten Starten."}}},
+      {url: '/', h: {{t "Geschafft!"}}, p: {{t "Auf vielen Seiten gibt es einen eigenen Rundgang: rechts im Hilfe-Reiter „Rundgang für diese Seite“. Alles Weitere steht im Handbuch."}}}
+    ]},
+    dashboard: {title: {{t "Rundgang: Dashboard"}}, steps: [
+      {url: '/', sel: ['#dw-root'], h: {{t "Kacheln"}}, p: {{t "Jede Kachel zeigt einen Ausschnitt – Kennzahlen, „Mir zugewiesen“, aktuelle Störungen, fällige Wartungen. Ein Klick öffnet den Vorgang."}}},
+      {url: '/', sel: ['#dw-edit-btn'], h: {{t "Dashboard anpassen"}}, p: {{t "Kacheln hinzufügen, verschieben, breiter machen oder entfernen. Deine Zusammenstellung wird für dich gespeichert."}}},
+      {url: '/', sel: ['#dash-gantt-target', '#dash-gantt-empty'], h: {{t "Zeitstrahl"}}, p: {{t "Störungen, Tickets, Wartungen und Aufgaben auf einer Zeitachse. Rot heißt überfällig."}}}
+    ]},
+    faults: {title: {{t "Rundgang: Störungen"}}, steps: [
+      {url: '/faults', sel: ['[onclick="pdhCreate(\'fault\')"]'], h: {{t "Störung melden"}}, p: {{t "„Neu“ öffnet den Assistenten: Titel und Beschreibung, Anlage, Zuständige. Zum Schluss siehst du alles noch einmal."}}},
+      {url: '/faults', sel: ['.list-tabs'], h: {{t "Reiter"}}, p: {{t "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind."}}},
+      {url: '/faults', sel: ['#faults-list'], h: {{t "Die Liste"}}, p: {{t "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab."}}},
+      {url: '/faults', sel: ['[onclick="runSelectedItemAction(\'done\')"]'], h: {{t "Abschließen"}}, p: {{t "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar."}}}
+    ]},
+    maintenance: {title: {{t "Rundgang: Wartung"}}, steps: [
+      {url: '/maintenance', sel: ['.mt-tabs'], h: {{t "Die Wartung"}}, p: {{t "Die Reiter: Anstehend, Jahresplan, Pläne, Rundgänge, Erledigt und Checklisten."}}},
+      {url: '/maintenance', sel: ['.mt-go', '.mt-empty'], h: {{t "Durchführen"}}, p: {{t "„Durchführen“ startet den Assistenten: zuerst die Checkliste Punkt für Punkt mit Foto, dann Material, Zeit und Kommentar. Nach „Fertig“ legt PDH den nächsten Termin selbst an."}}},
+      {url: '/maintenance', sel: ['.mt-tabs a[href="/maintenance?view=year"]'], h: {{t "Jahresplan"}}, p: {{t "Alle Termine des Jahres je Plan: ✓ erledigt, ● offen, ○ geplant."}}},
+      {url: '/maintenance', sel: ['.mt-tabs a[href="/maintenance?view=rounds"]'], h: {{t "Kontrollrundgänge"}}, p: {{t "Ein Rundgang führt nacheinander über mehrere Anlagen – je Station eine kurze Checkliste, mit „Mangel melden“ direkt vor Ort."}}},
+      {url: '/maintenance', sel: ['a[href="/maintenance/plans/new"]', 'a[href="/maintenance/plans/new?round=1"]'], h: {{t "Neuer Plan"}}, p: {{t "Ein Plan legt fest, was wie oft an welcher Anlage gemacht wird – mit Checklisten im eigenen Takt. Den ersten Auftrag legt PDH sofort an."}}}
+    ]}
+  };
+  // Seite (BaseData.Page) → Seiten-Tour
+  const PAGE_TOUR = {dashboard: 'dashboard', faults: 'faults', maintenance: 'maintenance'};
+  let cur = null; // {name, i}
+
+  function visible(el){ if(!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; }
+  function target(step){ for(const s of step.sel || []){ const el = document.querySelector(s); if(visible(el)) return el; } return null; }
+  function onPage(url){
+    const u = new URL(url, location.origin);
+    if(u.pathname !== location.pathname) return false;
+    for(const [k, v] of u.searchParams) if(new URLSearchParams(location.search).get(k) !== v) return false;
+    return true;
+  }
+  function place(el){
+    const tip = $('tour-tip'), spot = $('tour-spot'), pad = 6, gap = 12, vw = innerWidth, vh = innerHeight;
+    if(!el){
+      spot.hidden = true; $('tour').classList.remove('has-spot');
+      tip.style.left = Math.max(16, (vw - tip.offsetWidth) / 2) + 'px'; tip.style.top = Math.max(16, (vh - tip.offsetHeight) / 2) + 'px';
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    const box = {l: Math.max(4, r.left - pad), t: Math.max(4, r.top - pad), r: Math.min(vw - 4, r.right + pad), b: Math.min(vh - 4, r.bottom + pad)};
+    spot.hidden = false; $('tour').classList.add('has-spot');
+    Object.assign(spot.style, {left: box.l + 'px', top: box.t + 'px', width: (box.r - box.l) + 'px', height: (box.b - box.t) + 'px'});
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left, top;
+    if(vh - box.b >= th + gap){ top = box.b + gap; left = box.l; }            // darunter
+    else if(box.t >= th + gap){ top = box.t - th - gap; left = box.l; }       // darueber
+    else if(vw - box.r >= tw + gap){ left = box.r + gap; top = box.t; }       // rechts
+    else if(box.l >= tw + gap){ left = box.l - tw - gap; top = box.t; }       // links
+    else { left = (vw - tw) / 2; top = vh - th - 16; }                        // gross: unten mittig
+    tip.style.left = Math.min(Math.max(16, left), vw - tw - 16) + 'px';
+    tip.style.top = Math.min(Math.max(16, top), vh - th - 16) + 'px';
+  }
+  function render(){
+    const tour = TOURS[cur.name], step = tour.steps[cur.i], n = tour.steps.length;
+    if(step.url && !onPage(step.url)){ store.set(KEY, cur, true); location.href = step.url; return; }
+    if(step.before) try{ step.before(); }catch(e){}
+    $('tour').hidden = false;
+    $('tour-count').textContent = tour.title + ' · ' + (cur.i + 1) + ' / ' + n;
+    $('tour-h').textContent = step.h; $('tour-p').textContent = step.p;
+    $('tour-dots').innerHTML = tour.steps.map((s, k) => '<i' + (k <= cur.i ? ' class="on"' : '') + '></i>').join('');
+    $('tour-prev').style.visibility = cur.i > 0 ? 'visible' : 'hidden';
+    $('tour-next').innerHTML = cur.i === n - 1 ? {{t "Fertig"}} + ' <i class="ti ti-check"></i>' : {{t "Weiter"}} + ' <i class="ti ti-arrow-right"></i>';
+    const el = target(step);
+    if(el){ try{ el.scrollIntoView({block: 'nearest', inline: 'nearest'}); }catch(e){} }
+    place(el);
+    store.set(KEY, cur, true);
+    $('tour-next').focus({preventScroll: true});
+  }
+  function leave(){ const step = cur && TOURS[cur.name].steps[cur.i]; if(step && step.after) try{ step.after(); }catch(e){} }
+  function go(d){
+    if(!cur) return;
+    leave();
+    const n = TOURS[cur.name].steps.length;
+    if(cur.i + d >= n){ end(); return; }
+    cur.i = Math.max(0, cur.i + d);
+    render();
+  }
+  function end(){
+    leave(); cur = null; store.del(KEY, true); store.set(OFFER, 'done');
+    $('tour').hidden = true; $('tour-spot').hidden = true;
+    const o = $('tour-offer'); if(o) o.remove();
+  }
+  window.pdhTour = {
+    start(name, i){ if(!TOURS[name]) name = 'basics'; const o = $('tour-offer'); if(o) o.remove(); if(cur) leave(); userMenu(false); cur = {name, i: i || 0}; if(typeof pdhNav === 'function') pdhNav(false); render(); },
+    // Tour fuer die aktuelle Seite, sonst die Grundlagen
+    startPage(){ this.start(PAGE_TOUR[document.getElementById('ctx-help') ? document.getElementById('ctx-help').dataset.page : ''] || 'basics'); },
+    hasPage(page){ return !!PAGE_TOUR[page]; },
+    end, next: () => go(1), prev: () => go(-1), tours: TOURS
+  };
+  $('tour-next').addEventListener('click', () => go(1));
+  $('tour-prev').addEventListener('click', () => go(-1));
+  $('tour-end').addEventListener('click', end);
+  $('tour-shade').addEventListener('click', () => go(1));
+  document.addEventListener('keydown', e => {
+    if(!cur) return;
+    if(e.key === 'Escape'){ e.preventDefault(); end(); }
+    else if(e.key === 'ArrowRight' || e.key === 'Enter'){ if(e.target.tagName !== 'BUTTON' || e.key !== 'Enter'){ e.preventDefault(); go(1); } }
+    else if(e.key === 'ArrowLeft'){ e.preventDefault(); go(-1); }
+  });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if(cur) place(target(TOURS[cur.name].steps[cur.i])); }, 80); });
+  addEventListener('scroll', () => { if(cur) place(target(TOURS[cur.name].steps[cur.i])); }, true);
+
+  // laufende Tour nach Seitenwechsel fortsetzen; ?tour=name startet direkt
+  function boot(){
+    const q = new URLSearchParams(location.search).get('tour');
+    const saved = store.get(KEY, true);
+    if(q && TOURS[q]){ window.pdhTour.start(q); return; }
+    if(saved && TOURS[saved.name]){ cur = saved; setTimeout(render, 250); return; }
+    // neue Benutzer: Rundgang einmal anbieten (nur Dashboard, nicht an Terminals)
+    const offer = document.body.dataset.tourOffer === '1';
+    if(offer && store.get(OFFER) === null){
+      const box = document.createElement('div');
+      box.className = 'tour-offer'; box.id = 'tour-offer'; box.setAttribute('role', 'dialog');
+      box.innerHTML = '<b><i class="ti ti-map-2"></i>' + {{t "Neu im PDH?"}} + '</b><p>' + {{t "Ein kurzer Rundgang zeigt dir in zwei Minuten das Wichtigste."}} + '</p>'
+        + '<div class="tour-btns"><button type="button" class="link" id="tour-offer-no">' + {{t "Nein, danke"}} + '</button><span class="grow"></span>'
+        + '<button type="button" class="primary" id="tour-offer-go"><i class="ti ti-player-play"></i> ' + {{t "Rundgang starten"}} + '</button></div>';
+      document.body.appendChild(box);
+      $('tour-offer-no').onclick = () => { store.set(OFFER, 'no'); box.remove(); };
+      $('tour-offer-go').onclick = () => { store.set(OFFER, 'done'); window.pdhTour.start('basics'); };
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+{{end}}
