@@ -27,6 +27,7 @@ type GlobalBoardItem struct {
 	Priority         string `json:"priority"`
 	DueDate          string `json:"due_date"`
 	Assignee         string `json:"assignee"`
+	Creator          string `json:"creator"` // wer den Vorgang angelegt bzw. gemeldet hat
 	DetailURL        string `json:"detail_url"`
 	InfrastructureID string `json:"infrastructure_id"`
 }
@@ -198,11 +199,12 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.db.Query(ctx, `
 		SELECT item.id, item.ref_type, item.title, item.description, item.status, COALESCE(latest.action, ''), item.priority,
-		       item.due_date, item.assignee, item.created_at, item.detail_url, COALESCE(item.infrastructure_id::text, '')
+		       item.due_date, item.assignee, item.creator, item.created_at, item.detail_url, COALESCE(item.infrastructure_id::text, '')
 		FROM (
 			SELECT f.id::text AS id, 'fault'::text AS ref_type, f.title, COALESCE(f.description, '') AS description, f.status::text AS status,
 			       f.severity::text AS priority, COALESCE(f.due_date::date::text, '') AS due_date,
 			       COALESCE(u.first_name || ' ' || u.last_name, '') AS assignee,
+			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = f.created_by), '') AS creator,
 			       f.created_at, '/faults/' || f.id::text AS detail_url, f.infrastructure_id
 			FROM faults f LEFT JOIN users u ON u.id = f.assigned_to
 			WHERE f.status IN ('detected', 'analyzing', 'in_progress')
@@ -210,6 +212,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			SELECT t.id::text, 'ticket', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::date::text, ''),
 			       COALESCE(u.first_name || ' ' || u.last_name, ''),
+			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = t.created_by), ''),
 			       t.created_at, '/tickets/' || t.id::text, t.infrastructure_id
 			FROM tickets t LEFT JOIN users u ON u.id = t.assigned_to
 			WHERE t.status IN ('open', 'in_progress', 'pending')
@@ -217,6 +220,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			SELECT m.id::text, 'maintenance', m.title, COALESCE(m.description, ''), m.status::text, m.priority::text,
 			       m.due_date::date::text,
 			       COALESCE(u.first_name || ' ' || u.last_name, ''),
+			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = m.created_by), ''),
 			       m.created_at, '/maintenance/tasks/' || m.id::text, m.infrastructure_id
 			FROM maintenance_tasks m LEFT JOIN users u ON u.id = m.assigned_to
 			WHERE m.status IN ('open', 'in_progress')
@@ -227,6 +231,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			           SELECT string_agg(au.first_name || ' ' || au.last_name, ', ' ORDER BY au.last_name, au.first_name)
 			           FROM task_assignees ta JOIN users au ON au.id = ta.user_id WHERE ta.task_id = t.id
 			       ), ''),
+			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = t.created_by), ''),
 			       t.created_at, '/tasks/' || t.id::text, t.infrastructure_id
 			FROM tasks t
 			WHERE t.status IN ('open', 'in_progress')
@@ -259,7 +264,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		var item GlobalBoardItem
 		var createdAt time.Time
 		if err := rows.Scan(&item.ID, &item.TypeKey, &item.Title, &item.Description, &item.Status, &item.LastAction, &item.Priority,
-			&item.DueDate, &item.Assignee, &createdAt, &item.DetailURL, &item.InfrastructureID); err != nil {
+			&item.DueDate, &item.Assignee, &item.Creator, &createdAt, &item.DetailURL, &item.InfrastructureID); err != nil {
 			log.Error().Err(err).Msg("leitstand: /global/data zeile lesen fehlgeschlagen")
 			http.Error(w, "Aufgaben konnten nicht gelesen werden", http.StatusInternalServerError)
 			return

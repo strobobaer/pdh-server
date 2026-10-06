@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.29.0] – 2026-10-06
+
+### Neu
+- Leitstand: Die Tabelle zeigt bei allen Vorgängen den Ersteller bzw. Melder (zwischen „Fällig“ und „Zuständig“)
+
+### Geändert
+- Leitstand: Jede zweite Tabellenzeile ist farblich abgesetzt, damit sich die Zeilen leichter lesen lassen
+- Leitstand: Ein Klick auf eine Tabellenzeile klappt die Werkzeuge (Annehmen, Fertig, Verwerfen, Warten, Info) direkt unter der Zeile auf statt unterhalb des Zeitstrahls; erneuter Klick klappt sie zu
+
 ## [0.28.0] – 2026-10-06
 
 ### Neu
