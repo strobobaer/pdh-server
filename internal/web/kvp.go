@@ -758,9 +758,7 @@ type KVPPageData struct {
 	Chips               []kvpChip
 	Statuses            []kvpStatusDef
 	Categories          []kvpCategoryDef
-	Users               []UserOption
 	FeedbackDays        int
-	OpenCreate          bool
 	MyUserID            string
 	BoardCols           []kvpStatusDef
 }
@@ -781,9 +779,7 @@ func (h *Handler) KVPPage(w http.ResponseWriter, r *http.Request) {
 		CanManage:    h.canManageKVP(r),
 		Statuses:     kvpStatuses,
 		Categories:   kvpCategories,
-		Users:        h.userOptions(ctx),
 		FeedbackDays: h.kvpFeedbackDays(ctx),
-		OpenCreate:   q.Get("create") != "",
 		MyUserID:     getUser(r).ID,
 		Filter:       kvpFilter{Status: q.Get("status"), Category: q.Get("category"), Query: strings.TrimSpace(q.Get("q"))},
 	}
@@ -855,6 +851,23 @@ func (h *Handler) listKVPAll(ctx context.Context, f kvpFilter) []kvpIdea {
 }
 
 // KVPCreateWeb: POST /kvp – neuen Vorschlag einreichen.
+// KVPOptionsWeb: GET /kvp/options – Auswahl fuer den Einreich-Assistenten
+// (widgets/kvp_wizard.gohtml): Themen, Personen, Rueckmeldefrist.
+func (h *Handler) KVPOptionsWeb(w http.ResponseWriter, r *http.Request) {
+	out := struct {
+		Me           string           `json:"me"`
+		CanManage    bool             `json:"can_manage"`
+		FeedbackDays int              `json:"feedback_days"`
+		Categories   []kvpCategoryDef `json:"categories"`
+		People       []UserOption     `json:"people"`
+	}{Me: getUser(r).ID, CanManage: h.canManageKVP(r), FeedbackDays: h.kvpFeedbackDays(r.Context()),
+		Categories: kvpCategories, People: h.userOptions(r.Context())}
+	if out.People == nil {
+		out.People = []UserOption{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (h *Handler) KVPCreateWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	ctx := r.Context()

@@ -25,21 +25,184 @@
 {{end}}
 {{if $k.FeedbackOverdue}}<div class="kvp-msg err"><i class="ti ti-alarm"></i> Rückmeldefrist überschritten (fällig {{$k.FeedbackDueLabel}}) – die Einreichenden warten auf eine Entscheidung.</div>{{end}}
 
-<!-- Naechste Schritte -->
-{{if .Next}}
-<div class="card kvp-next">
-  <div class="card-title"><span><i class="ti ti-arrow-right-circle"></i> Nächster Schritt</span>{{if $k.Undecided}}<span class="card-action">Rückmeldung bis {{$k.FeedbackDueLabel}}</span>{{end}}</div>
-  <div style="display:flex;flex-wrap:wrap;gap:10px">
-  {{range .Next}}
-    <form method="post" action="/kvp/{{$k.ID}}/status" class="kvp-tr">
-      <input type="hidden" name="to" value="{{.To}}">
-      {{if .NeedsNote}}<textarea name="note" class="form-input" rows="2" placeholder="{{.Hint}}" required></textarea>{{end}}
-      <button class="btn {{.Class}}" type="submit" {{if .Missing}}disabled title="Es fehlt noch etwas"{{end}}><i class="ti {{.Icon}}"></i> {{.Label}}</button>
-      {{if .Missing}}<div class="rec-sub" style="color:var(--amber)">Es fehlt: {{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}</div>{{end}}
-    </form>
-  {{end}}
+<!-- Naechster Schritt: Weiterschalt-Assistent (wie Abschluss-Assistent) -->
+{{if or .Next (and .CanWork $k.InPDCA)}}
+<div class="card md-do kvp-next">
+  <div class="md-do-text">
+    <b><i class="ti ti-arrow-right-circle"></i> Nächster Schritt: {{range $i, $t := .Next}}{{if $i}} · {{end}}{{$t.Label}}{{end}}</b>
+    <span>{{if $k.Undecided}}Bewerten → entscheiden mit Begründung{{if $k.FeedbackDueLabel}} · Rückmeldung bis {{$k.FeedbackDueLabel}}{{end}}{{else if eq $k.Status "plan"}}Ursache, Ziel, Termin → Maßnahmen → Umsetzung starten{{else if eq $k.Status "do"}}Maßnahmen abhaken → Wirksamkeit prüfen{{else if eq $k.Status "check"}}Wirksam? → standardisieren oder neuer PDCA-Zyklus{{else if eq $k.Status "act"}}Standard &amp; Ergebnis → abschließen{{else}}Entscheiden, wie es weitergeht{{end}}</span>
+  </div>
+  <button type="button" class="btn cw-finish md-do-btn" onclick="kfOpen()"><i class="ti ti-player-play"></i> Weiter</button>
+</div>
+
+<div class="cw-overlay" id="kf" role="dialog" aria-modal="true" aria-labelledby="kf-title">
+  <div class="cw">
+    <div class="cw-head">
+      <h2 id="kf-title"><i class="ti ti-refresh" style="color:var(--accent)"></i> {{$k.Code}} weiterbringen</h2>
+      <div class="sub">{{$k.Title}} · jetzt: {{$k.StatusLabel}}</div>
+      <div class="cw-steps" id="kf-steps"></div>
+    </div>
+    <div class="cw-body">
+      {{if and .CanWork $k.Undecided}}
+      <form class="cw-pane" data-label="Bewertung" data-post="/kvp/{{$k.ID}}/assess" onsubmit="return false">
+        <h3><i class="ti ti-scale"></i> Wie viel bringt es, wie viel kostet es?</h3>
+        <p class="hint">Nutzen und Aufwand von 1 (gering) bis 5 (sehr hoch) – daraus ergibt sich die Einordnung (Quick Win, Großprojekt …).</p>
+        <label class="form-label">Nutzen</label>
+        <div class="kvp-score">{{range .Scores}}<label><input type="radio" name="benefit_score" value="{{.}}" {{if eq . $k.BenefitScore}}checked{{end}}><span>{{.}}</span></label>{{end}}</div>
+        <label class="form-label">Aufwand</label>
+        <div class="kvp-score">{{range .Scores}}<label><input type="radio" name="effort_score" value="{{.}}" {{if eq . $k.EffortScore}}checked{{end}}><span>{{.}}</span></label>{{end}}</div>
+        <div class="grid2" style="gap:10px;margin:0">
+          <div class="form-group"><label class="form-label">Einsparung geschätzt (€/Jahr)</label><input name="est_savings" type="number" min="0" step="0.01" class="form-input" value="{{$k.EstSavingsVal}}"></div>
+          <div class="form-group"><label class="form-label">Kosten geschätzt (€ einmalig)</label><input name="est_cost" type="number" min="0" step="0.01" class="form-input" value="{{$k.EstCostVal}}"></div>
+        </div>
+        {{if .CanManage}}
+        <div class="grid2" style="gap:10px;margin:0">
+          <div class="form-group"><label class="form-label">Bewertet von</label><select name="reviewer_id" class="form-input"><option value="">–</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $k.ReviewerID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+          <div class="form-group"><label class="form-label">Setzt um (verantwortlich) – nötig zum Annehmen</label><select name="responsible_to" class="form-input"><option value="">–</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $k.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        </div>
+        {{end}}
+      </form>
+      {{end}}
+      {{if and .CanWork (eq $k.Status "plan")}}
+      <form class="cw-pane" data-label="Plan" data-post="/kvp/{{$k.ID}}/plan" onsubmit="return false">
+        <h3><i class="ti ti-target"></i> Plan – Ursache, Ziel, Termin</h3>
+        <p class="hint">5×Warum: „Warum tritt das Problem auf?“ fünfmal fragen. Das Ziel muss messbar sein.</p>
+        <div class="form-group"><label class="form-label">Ursache *</label><textarea name="root_cause" class="form-input" rows="3">{{$k.RootCause}}</textarea></div>
+        <div class="form-group"><label class="form-label">Messbares Ziel *</label><textarea name="target" class="form-input" rows="2">{{$k.Target}}</textarea></div>
+        <div class="form-group"><label class="form-label">Umsetzung bis *</label><input type="date" name="due_date" class="form-input" value="{{$k.DueISO}}"></div>
+      </form>
+      <div class="cw-pane" data-label="Maßnahmen" data-kind="actions-add">
+        <h3><i class="ti ti-list-check"></i> Maßnahmen – wer · was · bis wann?</h3>
+        <p class="hint">Mindestens eine Maßnahme. Jede hat eine/n Verantwortliche/n und einen Termin.</p>
+        {{range .Actions}}<div class="kvp-act{{if .Done}} done{{end}}"><i class="ti {{if .Done}}ti-square-check{{else}}ti-square{{end}}"></i><div style="flex:1">{{.Description}}<div class="rec-sub">{{.ResponsibleName}}{{if .DueLabel}} · bis {{.DueLabel}}{{end}}</div></div></div>{{end}}
+        {{range (list 1 2 3)}}
+        <div class="kvp-act-add kf-act-row">
+          <input data-f="description" class="form-input" placeholder="Was ist zu tun?" style="flex:2;min-width:160px">
+          <select data-f="responsible_id" class="form-input" style="flex:1;min-width:140px" aria-label="Verantwortlich"><option value="">Wer?</option>{{range $d.Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+          <input data-f="due_date" type="date" class="form-input" style="width:auto" aria-label="Bis wann">
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+      {{if and (eq $k.Status "do") .Actions}}
+      <div class="cw-pane" data-label="Maßnahmen" data-kind="actions-toggle">
+        <h3><i class="ti ti-checkbox"></i> Was ist erledigt?</h3>
+        <p class="hint">Haken setzen bei allem, was umgesetzt ist. Wirksamkeit prüfen geht erst, wenn alle Maßnahmen erledigt sind.</p>
+        <div class="cw-list crw-pick">
+        {{range .Actions}}<label><input type="checkbox" data-url="/kvp/{{$k.ID}}/actions/{{.ID}}/toggle" data-was="{{.Done}}" {{if .Done}}checked{{end}} {{if not (or $d.CanWork (eq .ResponsibleID $d.MyUserID))}}disabled{{end}}> {{.Description}} <span class="dept">{{.ResponsibleName}}{{if .DueLabel}} · bis {{.DueLabel}}{{end}}</span></label>{{end}}
+        </div>
+      </div>
+      {{end}}
+      {{if and .CanWork (eq $k.Status "check")}}
+      <form class="cw-pane" data-label="Wirksam?" data-post="/kvp/{{$k.ID}}/check" onsubmit="return false">
+        <h3><i class="ti ti-checkup-list"></i> Check – ist es wirksam?</h3>
+        <p class="hint">Ziel: {{if $k.Target}}{{$k.Target}}{{else}}–{{end}}. Woran wurde gemessen?</p>
+        <div class="kvp-score wide">
+          <label><input type="radio" name="check_result" value="effective" {{if eq $k.CheckResult "effective"}}checked{{end}}><span><i class="ti ti-circle-check"></i> wirksam – Ziel erreicht</span></label>
+          <label><input type="radio" name="check_result" value="not_effective" {{if eq $k.CheckResult "not_effective"}}checked{{end}}><span><i class="ti ti-circle-x"></i> nicht wirksam</span></label>
+        </div>
+        <div class="form-group"><label class="form-label">Ergebnis / Messung *</label><textarea name="check_note" class="form-input" rows="3">{{$k.CheckNote}}</textarea></div>
+      </form>
+      {{end}}
+      {{if and .CanWork (eq $k.Status "act")}}
+      <form class="cw-pane" data-label="Standard" data-post="/kvp/{{$k.ID}}/act" onsubmit="return false">
+        <h3><i class="ti ti-repeat"></i> Act – Gutes wird Standard</h3>
+        <p class="hint">Was wird dauerhaft geändert? Arbeitsanweisung, Checkliste, Schulung, Wartungsplan …</p>
+        <div class="form-group"><label class="form-label">Standardisierung *</label><textarea name="standardization" class="form-input" rows="3">{{$k.Standardization}}</textarea></div>
+        <div class="grid2" style="gap:10px;margin:0">
+          <div class="form-group"><label class="form-label">Einsparung tatsächlich (€/Jahr)</label><input name="actual_savings" type="number" min="0" step="0.01" class="form-input" value="{{$k.ActualSavingsVal}}"></div>
+          <div class="form-group"><label class="form-label">Kosten tatsächlich (€)</label><input name="actual_cost" type="number" min="0" step="0.01" class="form-input" value="{{$k.ActualCostVal}}"></div>
+          {{if .CanManage}}<div class="form-group"><label class="form-label">Prämie für die Ideengeber (€)</label><input name="bonus" type="number" min="0" step="0.01" class="form-input" value="{{$k.BonusVal}}"></div>{{end}}
+        </div>
+      </form>
+      {{end}}
+      {{if .Next}}
+      <div class="cw-pane" data-label="Weiter?" data-kind="decide">
+        <h3><i class="ti ti-arrow-right-circle"></i> Wie geht es weiter?</h3>
+        <p class="hint">KVP-Regel: Jede Entscheidung wird begründet – die Einreichenden bekommen sie im Chat.</p>
+        <div class="cw-list crw-pick">
+          {{range .Next}}<label><input type="radio" name="kf-to" value="{{.To}}" data-note="{{.NeedsNote}}" data-hint="{{.Hint}}"> <i class="ti {{.Icon}}"></i> <b>{{.Label}}</b>{{if .Missing}}<span class="dept" style="color:var(--amber)">nötig: {{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}</span>{{end}}</label>{{end}}
+          <label><input type="radio" name="kf-to" value="" checked> <i class="ti ti-device-floppy"></i> Nur speichern – geht noch weiter</label>
+        </div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Begründung / Notiz</label><textarea class="form-input" id="kf-note" rows="3" placeholder="Warum? Was ist der Stand?"></textarea></div>
+      </div>
+      {{end}}
+      <div class="cw-msg" id="kf-msg"></div>
+    </div>
+    <div class="cw-foot">
+      <button type="button" class="btn" onclick="kfClose()">Abbrechen</button>
+      <span class="grow"></span>
+      <button type="button" class="btn" id="kf-back" onclick="kfGo(-1)"><i class="ti ti-arrow-left"></i> Zurück</button>
+      <button type="button" class="btn btn-primary" id="kf-next" onclick="kfGo(1)">OK – weiter <i class="ti ti-arrow-right"></i></button>
+      <button type="button" class="btn cw-finish" id="kf-done" onclick="kfSubmit()" style="display:none"><i class="ti ti-check"></i> Fertig</button>
+    </div>
   </div>
 </div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const panes = () => Array.from(document.querySelectorAll('#kf .cw-pane'));
+  let i = 0;
+  function msg(t, cls){ const m = $('kf-msg'); m.textContent = t || ''; m.className = 'cw-msg' + (cls ? ' ' + cls : ''); }
+  function render(){
+    const ps = panes();
+    ps.forEach((p, n) => p.classList.toggle('on', n === i));
+    $('kf-steps').innerHTML = ps.map((p, n) => '<div class="cw-step' + (n === i ? ' on' : n < i ? ' ok' : '') + '"><b>' + (n + 1) + '</b><span>' + p.dataset.label + '</span></div>').join('');
+    $('kf-back').style.visibility = i > 0 ? '' : 'hidden';
+    const last = i === ps.length - 1;
+    $('kf-next').style.display = last ? 'none' : '';
+    $('kf-done').style.display = last ? '' : 'none';
+    syncDone();
+  }
+  function chosen(){ const r = document.querySelector('#kf input[name="kf-to"]:checked'); return r ? r : null; }
+  function syncDone(){
+    const r = chosen();
+    const b = $('kf-done');
+    b.innerHTML = r && r.value ? '<i class="ti ti-check"></i> Fertig – ' + r.closest('label').querySelector('b').textContent : '<i class="ti ti-device-floppy"></i> Speichern';
+    if(r && $('kf-note')) $('kf-note').placeholder = r.dataset.hint || 'Warum? Was ist der Stand?';
+  }
+  window.kfOpen = function(){ i = 0; msg(''); $('kf').classList.add('open'); render(); };
+  window.kfClose = function(){ $('kf').classList.remove('open'); };
+  window.kfGo = function(dir){ msg(''); i = Math.max(0, Math.min(panes().length - 1, i + dir)); render(); };
+  async function post(url, body){
+    const res = await fetch(url, {method: 'POST', body: body, credentials: 'same-origin'});
+    const to = new URL(res.url, location.href), err = to.searchParams.get('err');
+    if(!res.ok || err) throw new Error(err || ('Fehler ' + res.status));
+    return to;
+  }
+  window.kfSubmit = async function(){
+    const r = chosen(), to = r ? r.value : '', note = $('kf-note') ? $('kf-note').value.trim() : '';
+    if(to && r.dataset.note === 'true' && !note){ msg('KVP-Regel: Bitte eine Begründung eintragen.', 'err'); return; }
+    $('kf-done').disabled = true; msg('Wird gespeichert…');
+    let last = null;
+    try{
+      for(const p of panes()){
+        if(p.dataset.post){ last = await post(p.dataset.post, new URLSearchParams(new FormData(p))); }
+        if(p.dataset.kind === 'actions-add'){
+          for(const row of p.querySelectorAll('.kf-act-row')){
+            const v = f => row.querySelector('[data-f="' + f + '"]').value.trim();
+            if(!v('description')) continue;
+            if(!v('responsible_id') || !v('due_date')) throw new Error('Jede Maßnahme braucht „Wer?“ und „Bis wann?“');
+            last = await post('/kvp/{{$k.ID}}/actions', new URLSearchParams({description: v('description'), responsible_id: v('responsible_id'), due_date: v('due_date')}));
+          }
+        }
+        if(p.dataset.kind === 'actions-toggle'){
+          for(const c of p.querySelectorAll('input[type=checkbox][data-url]')){
+            if(!c.disabled && String(c.checked) !== c.dataset.was) last = await post(c.dataset.url, new URLSearchParams());
+          }
+        }
+      }
+      if(to) last = await post('/kvp/{{$k.ID}}/status', new URLSearchParams({to: to, note: note}));
+      location.href = last ? last.pathname + last.search : location.pathname;
+    }catch(e){
+      msg('Nicht weitergeschaltet: ' + e.message + ' – Bereits Eingegebenes ist gespeichert.', 'err');
+      $('kf-done').disabled = false;
+    }
+  };
+  $('kf').addEventListener('change', e => { if(e.target.name === 'kf-to') syncDone(); });
+  $('kf').addEventListener('keydown', e => { if(e.key === 'Escape') kfClose(); });
+})();
+</script>
 {{end}}
 
 {{template "record-meta-slot" (dict "Module" "kvp" "ID" $k.ID)}}
@@ -248,4 +411,5 @@
 
 {{define "scripts"}}
 {{template "kvp-style"}}
+{{template "work-style"}}
 {{end}}

@@ -47,7 +47,7 @@ func TestGlobalDashboardUsesBoardWizard(t *testing.T) {
 	checkScripts(t, "leitstand", out)
 
 	// normale Seiten: Assistent mit Zuweisung
-	page := renderPage(t, loadTestTemplates(t), "tickets", TicketsPageData{})
+	page := renderPage(t, loadTestTemplates(t), "work_board", WorkBoardData{Area: workArea{Kind: workKinds["ticket"], Tab: "dashboard"}})
 	for _, want := range []string{`const BOARD =  false `, `id="crw-people"`, "Wer kümmert sich darum?", "openFromURL", "[data-create]"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Seite enthält %q nicht", want)
@@ -89,7 +89,7 @@ func TestWizardsTranslated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := renderPage(t, bindLang(c, "en"), "tickets", TicketsPageData{})
+	page := renderPage(t, bindLang(c, "en"), "work_board", WorkBoardData{Area: workArea{Kind: workKinds["ticket"], Tab: "dashboard"}})
 	for _, want := range []string{"What would you like to create?", "Who takes care of it?", `F("Create %s", t.label)`,
 		"Which material was used?", "How long was the work?", `F("Complete %s", i.Label)`, "<b>Done</b> books the material"} {
 		if !strings.Contains(page, want) {

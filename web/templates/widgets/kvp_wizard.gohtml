@@ -1,0 +1,205 @@
+{{/*
+  KVP-Einreich-Assistent – gleicher Aufbau wie der Erstellungs-Assistent
+  (cw-*-Klassen, „OK – weiter“). Aufruf: pdhKVP(). Die Kachel „KVP-Idee“ im
+  Erstellungs-Assistenten, „Idee einreichen“ im KVP und /kvp?create=1 oeffnen ihn.
+  Schritte: Thema → Was stört? → Vorschlag → Wo? → Team → Einreichen.
+  Eingereicht wird ueber POST /kvp (KVPCreateWeb), die Auswahl kommt von GET /kvp/options.
+*/}}
+{{define "kvp-wizard"}}
+<style>
+.kw-cats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.kw-cats button{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--bg3);color:var(--text);cursor:pointer;font-family:var(--font);text-align:left;font-size:13px}
+.kw-cats button:hover{border-color:var(--accent)}
+.kw-cats button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.kw-cats i{font-size:20px;color:var(--amber)}
+@media (max-width:760px){.kw-cats{grid-template-columns:1fr}}
+</style>
+<div class="cw-overlay" id="kw" role="dialog" aria-modal="true" aria-labelledby="kw-title">
+  <div class="cw">
+    <div class="cw-head">
+      <h2 id="kw-title"><i class="ti ti-bulb" style="color:var(--amber)"></i> Idee einreichen</h2>
+      <div class="sub">Jede Idee zählt – Schritt für Schritt mit „OK – weiter“. Rückmeldung spätestens nach <b id="kw-days">…</b> Tagen.</div>
+      <div class="cw-steps" id="kw-steps">
+        <div class="cw-step" data-s="0"><b>1</b><span>Thema</span></div>
+        <div class="cw-step" data-s="1"><b>2</b><span>Was stört?</span></div>
+        <div class="cw-step" data-s="2"><b>3</b><span>Vorschlag</span></div>
+        <div class="cw-step" data-s="3"><b>4</b><span>Wo?</span></div>
+        <div class="cw-step" data-s="4"><b>5</b><span>Team</span></div>
+        <div class="cw-step" data-s="5"><b>6</b><span>Einreichen</span></div>
+      </div>
+    </div>
+    <div class="cw-body">
+      <div class="cw-pane" data-step="0">
+        <h3><i class="ti ti-category"></i> Worum geht es?</h3>
+        <p class="hint">Wähle das Thema, das am besten passt.</p>
+        <div class="kw-cats" id="kw-cats"></div>
+      </div>
+      <div class="cw-pane" data-step="1">
+        <h3><i class="ti ti-alert-circle"></i> Was stört heute?</h3>
+        <p class="hint">Erst das Problem, dann die Lösung: Beschreibe den Ist-Zustand so, dass jede/r ihn versteht.</p>
+        <div class="form-group"><label class="form-label">Titel *</label><input class="form-input" id="kw-title-in" maxlength="200" autocomplete="off" placeholder="Kurz: Was soll besser werden?"></div>
+        <div class="form-group"><label class="form-label">Ist-Zustand *</label><textarea class="form-input" id="kw-problem" rows="4" placeholder="Was passiert heute? Wie oft? Was kostet es (Zeit, Material, Ärger)?"></textarea></div>
+      </div>
+      <div class="cw-pane" data-step="2">
+        <h3><i class="ti ti-bulb"></i> Wie geht es besser?</h3>
+        <p class="hint">Dein Vorschlag – und was er bringt (Zeit, Sicherheit, Qualität, Kosten …).</p>
+        <div class="form-group"><label class="form-label">Vorschlag *</label><textarea class="form-input" id="kw-proposal" rows="4"></textarea></div>
+        <div class="form-group"><label class="form-label">Nutzen</label><textarea class="form-input" id="kw-benefit" rows="2" placeholder="z. B. 10 Minuten weniger Rüstzeit je Schicht"></textarea></div>
+      </div>
+      <div class="cw-pane" data-step="3">
+        <h3><i class="ti ti-hierarchy-2"></i> Wo? Welche Anlage oder welcher Bereich?</h3>
+        <p class="hint">Optional – ohne Anlage einfach weiter.</p>
+        {{template "infra-tree-picker" (dict "TargetID" "kw-infra-id" "SelectedLabelID" "kw-infra-label" "Label" "Anlage / Bereich")}}
+      </div>
+      <div class="cw-pane" data-step="4">
+        <h3><i class="ti ti-users"></i> Wer ist noch dabei?</h3>
+        <p class="hint">Hast du die Idee mit anderen zusammen? Sie werden Miteinreichende und bekommen jede Rückmeldung.</p>
+        <input class="form-input" id="kw-people-q" placeholder="Namen suchen…" style="margin-bottom:8px" autocomplete="off">
+        <div class="cw-list cw-people crw-pick" id="kw-people" style="max-height:240px;overflow:auto"></div>
+        <div class="form-group" id="kw-submitter-box" style="margin-top:10px;display:none"><label class="form-label">Eingereicht von (für jemand anderen erfassen)</label>
+          <select class="form-input" id="kw-submitter"><option value="">mir selbst</option></select></div>
+      </div>
+      <div class="cw-pane" data-step="5">
+        <h3><i class="ti ti-flag-check"></i> Alles richtig?</h3>
+        <dl class="cw-sum" id="kw-sum"></dl>
+        <p class="hint"><b>Einreichen</b> legt den Vorschlag an und öffnet ihn. <b>Einreichen &amp; nächste</b> beginnt gleich die nächste Idee. Jede Entscheidung bekommst du per Chat von PDH-System.</p>
+      </div>
+      <div class="cw-msg" id="kw-msg"></div>
+    </div>
+    <div class="cw-foot">
+      <button type="button" class="btn" onclick="kwClose()">Abbrechen</button>
+      <span class="grow"></span>
+      <button type="button" class="btn" id="kw-back" onclick="kwGo(-1)"><i class="ti ti-arrow-left"></i> Zurück</button>
+      <button type="button" class="btn btn-primary" id="kw-next" onclick="kwGo(1)">OK – weiter <i class="ti ti-arrow-right"></i></button>
+      <button type="button" class="btn cw-more" id="kw-again" onclick="kwSubmit(true)" style="display:none"><i class="ti ti-repeat"></i> Einreichen &amp; nächste</button>
+      <button type="button" class="btn cw-finish" id="kw-send" onclick="kwSubmit(false)" style="display:none"><i class="ti ti-send"></i> Einreichen</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let opts = null, st = {i: 0, cat: '', members: new Set()};
+  const LAST = 5;
+
+  async function load(){
+    if(opts) return opts;
+    const res = await fetch('/kvp/options', {credentials: 'same-origin'});
+    if(!res.ok) throw new Error('Auswahl nicht ladbar');
+    opts = await res.json();
+    $('kw-days').textContent = opts.feedback_days;
+    $('kw-cats').innerHTML = opts.categories.map(c => '<button type="button" data-cat="' + esc(c.Key) + '"><i class="ti ' + esc(c.Icon) + '"></i>' + esc(c.Label) + '</button>').join('');
+    if(opts.can_manage){
+      $('kw-submitter-box').style.display = '';
+      opts.people.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; $('kw-submitter').appendChild(o); });
+    }
+    return opts;
+  }
+  function renderPeople(){
+    if(!opts) return;
+    const q = $('kw-people-q').value.trim().toLowerCase();
+    $('kw-people').innerHTML = opts.people.filter(p => p.id !== opts.me && (!q || p.name.toLowerCase().includes(q))).slice(0, 80)
+      .map(p => '<label><input type="checkbox" value="' + esc(p.id) + '"' + (st.members.has(p.id) ? ' checked' : '') + '> ' + esc(p.name) + '</label>').join('')
+      || '<div class="hint" style="padding:8px">Niemand gefunden.</div>';
+  }
+  function msg(t, cls){ const m = $('kw-msg'); m.textContent = t || ''; m.className = 'cw-msg' + (cls ? ' ' + cls : ''); }
+  function catLabel(){ const c = opts && opts.categories.find(x => x.Key === st.cat); return c ? c.Label : '–'; }
+  function summary(){
+    const names = opts ? opts.people.filter(p => st.members.has(p.id)).map(p => p.name) : [];
+    const rows = [['Thema', catLabel()], ['Titel', $('kw-title-in').value], ['Ist-Zustand', $('kw-problem').value], ['Vorschlag', $('kw-proposal').value],
+      ['Nutzen', $('kw-benefit').value || '–'], ['Anlage', $('kw-infra-id').value ? $('kw-infra-label').textContent.trim() : '–'], ['Team', names.join(', ') || '–']];
+    if(opts && opts.can_manage && $('kw-submitter').value) rows.push(['Eingereicht von', $('kw-submitter').selectedOptions[0].textContent]);
+    $('kw-sum').innerHTML = rows.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('');
+  }
+  function render(){
+    document.querySelectorAll('#kw .cw-pane').forEach(p => p.classList.toggle('on', +p.dataset.step === st.i));
+    document.querySelectorAll('#kw-steps .cw-step').forEach(s => { const n = +s.dataset.s; s.classList.toggle('on', n === st.i); s.classList.toggle('ok', n < st.i); });
+    document.querySelectorAll('#kw-cats button').forEach(b => b.classList.toggle('on', b.dataset.cat === st.cat));
+    $('kw-back').style.visibility = st.i > 0 ? '' : 'hidden';
+    const last = st.i === LAST;
+    $('kw-next').style.display = last ? 'none' : '';
+    $('kw-send').style.display = last ? '' : 'none';
+    $('kw-again').style.display = last ? '' : 'none';
+    if(last) summary();
+    if(st.i === 4) renderPeople();
+    const f = document.querySelector('#kw .cw-pane.on input:not([type=hidden]), #kw .cw-pane.on textarea');
+    if(f && st.i > 0 && st.i !== 3) setTimeout(() => f.focus(), 30);
+  }
+  // Pflichtangaben je Schritt (KVP-Regel: Problem und Loesung)
+  function check(){
+    if(st.i === 0 && !st.cat){ msg('Bitte ein Thema wählen.', 'err'); return false; }
+    if(st.i === 1){
+      const t = $('kw-title-in').value.trim();
+      if(!t){ msg('Bitte einen Titel angeben.', 'err'); return false; }
+      if(!$('kw-problem').value.trim()){ msg('Bitte beschreiben, was heute stört.', 'err'); return false; }
+    }
+    if(st.i === 2 && !$('kw-proposal').value.trim()){ msg('Bitte den Vorschlag beschreiben – wie geht es besser?', 'err'); return false; }
+    return true;
+  }
+  window.kwGo = function(dir){
+    if(dir > 0 && !check()) return;
+    msg('');
+    st.i = Math.max(0, Math.min(LAST, st.i + dir));
+    render();
+  };
+  function reset(){
+    st = {i: 0, cat: '', members: new Set()};
+    ['kw-title-in', 'kw-problem', 'kw-proposal', 'kw-benefit', 'kw-people-q'].forEach(id => $(id).value = '');
+    $('kw-infra-id').value = '';
+    $('kw-infra-label').textContent = 'Keine Infrastruktur ausgewählt';
+    if($('kw-submitter')) $('kw-submitter').value = '';
+  }
+  window.pdhKVP = async function(){
+    reset(); msg('');
+    $('kw').classList.add('open');
+    render();
+    try{ await load(); render(); }catch(e){ msg(e.message, 'err'); }
+  };
+  window.kwClose = function(){ $('kw').classList.remove('open'); };
+  window.kwSubmit = async function(again){
+    const fd = new FormData();
+    fd.set('category', st.cat); fd.set('title', $('kw-title-in').value.trim());
+    fd.set('problem', $('kw-problem').value.trim()); fd.set('proposal', $('kw-proposal').value.trim());
+    fd.set('benefit', $('kw-benefit').value.trim()); fd.set('infrastructure_id', $('kw-infra-id').value);
+    st.members.forEach(id => fd.append('member_ids', id));
+    if(opts && opts.can_manage && $('kw-submitter').value) fd.set('submitter_id', $('kw-submitter').value);
+    ['kw-send', 'kw-again'].forEach(id => $(id).disabled = true);
+    msg('Wird eingereicht…');
+    try{
+      const res = await fetch('/kvp', {method: 'POST', body: new URLSearchParams(fd), credentials: 'same-origin'});
+      const to = new URL(res.url, location.href), err = to.searchParams.get('err');
+      if(!res.ok || err) throw new Error(err || ('Fehler ' + res.status));
+      if(again){ reset(); render(); msg('Eingereicht – danke! Jetzt die nächste Idee.', 'ok'); }
+      else location.href = to.pathname + to.search;
+    }catch(e){ msg('Nicht eingereicht: ' + e.message, 'err'); }
+    ['kw-send', 'kw-again'].forEach(id => $(id).disabled = false);
+  };
+  $('kw-cats').addEventListener('click', e => {
+    const b = e.target.closest('button[data-cat]'); if(!b) return;
+    st.cat = b.dataset.cat; render();
+    setTimeout(() => kwGo(1), 120);
+  });
+  $('kw-people-q').addEventListener('input', renderPeople);
+  $('kw-people').addEventListener('change', e => { if(e.target.checked) st.members.add(e.target.value); else st.members.delete(e.target.value); });
+  $('kw').addEventListener('keydown', e => {
+    if(e.key === 'Escape') kwClose();
+    if(e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox'){ e.preventDefault(); kwGo(1); }
+  });
+  // Links mit data-kvp="new" und Seitenaufrufe mit ?create=kvp oeffnen den Assistenten
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-kvp="new"]');
+    if(a && !e.ctrlKey && !e.metaKey){ e.preventDefault(); pdhKVP(); }
+  });
+  function openFromURL(){
+    const q = new URLSearchParams(location.search);
+    const kvpPage = location.pathname === '/kvp' && q.get('create') !== null;
+    if(q.get('create') !== 'kvp' && !kvpPage) return;
+    q.delete('create');
+    history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+    pdhKVP();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openFromURL); else openFromURL();
+})();
+</script>
+{{end}}

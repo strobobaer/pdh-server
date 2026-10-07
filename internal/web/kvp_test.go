@@ -65,15 +65,36 @@ func TestKVPPagesRender(t *testing.T) {
 	out := renderPage(t, tmpl, "kvp_detail", KVPDetailData{Idea: k, CanWork: true, Scores: []int{1, 2, 3, 4, 5},
 		Next: []kvpTransition{{To: "do", Label: "Umsetzung starten (Do)", Missing: []string{"mindestens eine Maßnahme"}}}})
 	checkTabs(t, "kvp_detail", out, "overview", "assess", "pdca", "comments", "fields", "docs", "links", "history")
-	for _, want := range []string{"KVP-0001", "Es fehlt: mindestens eine Maßnahme", `data-attach-ref="kvp:`, "Maßnahme"} {
+	for _, want := range []string{"KVP-0001", "nötig: mindestens eine Maßnahme", `data-attach-ref="kvp:`, "Maßnahme",
+		`id="kf"`, "kfOpen()", `data-post="/kvp/00000000-0000-0000-0000-000000000001/plan"`, `data-kind="actions-add"`, `value="do"`, "Nur speichern – geht noch weiter"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("kvp_detail enthält %q nicht", want)
 		}
 	}
+	// Entscheidung: Bewertung und Begruendung im Assistenten
+	k.Status = "review"
+	rev := renderPage(t, tmpl, "kvp_detail", KVPDetailData{Idea: k, CanWork: true, CanManage: true, Scores: []int{1, 2, 3, 4, 5},
+		Next: []kvpTransition{{To: "plan", Label: "Annehmen", NeedsNote: true, Hint: "Begründung an die Einreichenden"}}})
+	for _, want := range []string{`data-post="/kvp/00000000-0000-0000-0000-000000000001/assess"`, `name="benefit_score"`, `name="responsible_to"`, `data-note="true"`} {
+		if !strings.Contains(rev, want) {
+			t.Errorf("Entscheidungs-Assistent enthält %q nicht", want)
+		}
+	}
+	checkScripts(t, "kvp_detail", rev)
+	checkScripts(t, "kvp_detail_plan", out)
+	k.Status = "plan"
 	list := renderPage(t, tmpl, "kvp", KVPPageData{Ideas: []kvpIdea{*k}, Statuses: kvpStatuses, Categories: kvpCategories,
 		BoardCols: kvpStatuses[2:6], Dash: kvpDashboard{Board: map[string][]kvpIdea{"plan": {*k}}}})
 	checkTabs(t, "kvp", list, "dashboard", "ideas", "board", "rules")
 	if !strings.Contains(list, "Regal sichern") {
 		t.Error("Vorschlag fehlt in Liste/Board")
+	}
+	if !strings.Contains(list, "pdhKVP()") || strings.Contains(list, `id="kvp-create"`) {
+		t.Error("„Idee einreichen“ öffnet nicht den Assistenten")
+	}
+	for _, want := range []string{`id="kw"`, "window.pdhKVP", "/kvp/options", "Was stört heute?", "Einreichen &amp; nächste"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("Einreich-Assistent: %q fehlt", want)
+		}
 	}
 }

@@ -111,8 +111,8 @@ func TestAssignmentNewOffersGroups(t *testing.T) {
 
 func TestCreateWizardInBase(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	out := renderPage(t, tmpl, "tickets", TicketsPageData{})
-	for _, want := range []string{`id="crw"`, `data-type="maintenance"`, `id="crw-infra-id"`, `window.pdhCreate`, `pdhCreate(&#39;ticket&#39;)`} {
+	out := renderPage(t, tmpl, "work_board", WorkBoardData{Area: workArea{Kind: workKinds["ticket"], Tab: "dashboard"}})
+	for _, want := range []string{`id="crw"`, `data-type="maintenance"`, `id="crw-infra-id"`, `window.pdhCreate`, `pdhCreate('ticket')`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Erstellungs-Assistent: %q fehlt", want)
 		}

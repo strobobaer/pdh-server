@@ -1,16 +1,246 @@
 {{/*
-  Gemeinsame Bausteine der Arbeitsansicht (work_board.go) fuer Tickets,
-  Stoerungen und Aufgaben – Optik wie die Wartung (maintenance.gohtml).
-    {{template "work-nav" .Nav}}   Ansichts-Reiter Anstehend · Liste · Archiv
-    {{template "work-style"}}      Karten, Gruppen, Archiv
+  Arbeitsbereich (work_board.go) fuer Tickets, Stoerungen, Aufgaben und
+  Wartungen – aufgebaut wie der KVP. Alle Bausteine bekommen .Area (workArea).
+    {{template "wa-nav" .Area}}     Reiter Dashboard · Vorgaenge · Board · (weitere) · Regeln
+    {{template "wa-pane" .Area}}    Inhalt des gewaehlten Reiters
+    {{template "wa-chips" .Area}}   Filter-Chips (auch ueber dem Wartungs-Archiv)
+    {{template "work-style"}}       Karten, Archiv;  {{template "kvp-style"}} Dashboard
 */}}
-{{define "work-nav"}}
+{{define "wa-nav"}}
 <nav class="rec-tabs mt-tabs" aria-label="Ansicht">
-  <a class="rec-tab {{if eq .View "due"}}active{{end}}" href="{{.Base}}?view=due"><i class="ti ti-player-play"></i> Anstehend</a>
-  <a class="rec-tab {{if eq .View "list"}}active{{end}}" href="{{.Base}}?view=list"><i class="ti ti-list-details"></i> Liste</a>
-  <a class="rec-tab {{if eq .View "archive"}}active{{end}}" href="{{.Base}}?view=archive"><i class="ti ti-archive"></i> Archiv</a>
-  {{range .Extra}}<a class="rec-tab" href="{{.Href}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+  <a class="rec-tab {{if and (eq .Tab "dashboard") (not .ExtraActive)}}active{{end}}" href="{{.Kind.Base}}?tab=dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+  <a class="rec-tab {{if and (eq .Tab "items") (not .ExtraActive)}}active{{end}}" href="{{.Kind.Base}}?tab=items"><i class="ti ti-list-details"></i> {{.Kind.Items}} <b>{{.OpenCount}}</b></a>
+  <a class="rec-tab {{if and (eq .Tab "board") (not .ExtraActive)}}active{{end}}" href="{{.Kind.Base}}?tab=board"><i class="ti ti-layout-kanban"></i> Board</a>
+  {{$x := .ExtraActive}}{{range .Extra}}<a class="rec-tab {{if eq .Key $x}}active{{end}}" href="{{.Href}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+  <a class="rec-tab {{if and (eq .Tab "rules") (not .ExtraActive)}}active{{end}}" href="{{.Kind.Base}}?tab=rules"><i class="ti ti-book-2"></i> Regeln &amp; Einstellungen</a>
 </nav>
+{{if .Notice}}<div class="kvp-msg info"><i class="ti ti-info-circle"></i> {{.Notice}}</div>{{end}}
+{{end}}
+
+{{define "wa-pane"}}
+{{if eq .Tab "dashboard"}}{{template "wa-dash" .}}{{end}}
+{{if eq .Tab "items"}}{{template "wa-chips" .}}{{if eq .Chip "archive"}}{{template "wa-archive" .}}{{else}}{{template "wa-items" .}}{{end}}{{end}}
+{{if eq .Tab "board"}}{{template "wa-board" .}}{{end}}
+{{if eq .Tab "rules"}}{{template "wa-rules" .}}{{end}}
+{{end}}
+
+{{define "wa-dash"}}
+{{$a := .}}{{with .Dash}}
+<div class="wa-year">
+  <a class="btn btn-small" href="{{$a.Kind.Base}}?tab=dashboard&amp;year={{.PrevYear}}"><i class="ti ti-chevron-left"></i> {{.PrevYear}}</a>
+  <b>{{.Year}}</b>
+  <a class="btn btn-small" href="{{$a.Kind.Base}}?tab=dashboard&amp;year={{.NextYear}}">{{.NextYear}} <i class="ti ti-chevron-right"></i></a>
+</div>
+<div class="kvp-kpis wa-kpis">
+  {{range .KPIs}}
+  {{if .URL}}<a class="stat {{.Class}} kvp-kpi" href="{{.URL}}">{{else}}<div class="stat {{.Class}} kvp-kpi">{{end}}
+    <div class="stat-label">{{.Label}}</div>
+    <div class="stat-val">{{.Value}}</div>
+    <div class="stat-sub">{{.Sub}}</div>
+  {{if .URL}}</a>{{else}}</div>{{end}}
+  {{end}}
+</div>
+<div class="kvp-grid">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-filter"></i> Ablauf – wo stehen die {{$a.Kind.Plural}}?</span></div>
+    {{range .Funnel}}<a class="kvp-bar" href="{{.URL}}"><span class="l"><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="b"><span class="f {{.Class}}" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></a>{{end}}
+    <p class="rec-sub" style="margin-top:6px">Offene nach Status plus Abschlüsse im Jahr {{.Year}}.</p>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-chart-bar"></i> Letzte 12 Monate</span></div>
+    <div class="kvp-chart">
+      {{range .Months}}<div class="m" title="{{.Label}}: {{.Created}} angelegt, {{.Done}} erledigt"><div class="bars"><span class="s" style="height:{{.HCreated}}%"></span><span class="d" style="height:{{.HDone}}%"></span></div><span class="lb">{{.Label}}</span></div>{{end}}
+    </div>
+    <div class="kvp-legend"><span class="s">angelegt ({{.SumCreated}})</span><span class="d">erledigt ({{.SumDone}})</span></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-alarm"></i> Braucht Aufmerksamkeit</span></div>
+    {{range .Attention}}
+    <a class="kvp-li" href="{{$a.Kind.Detail}}{{.ID}}"><span class="badge {{if .Overdue}}b-red{{else}}b-amber{{end}}">{{if .Overdue}}überfällig{{else}}ohne Zuweisung{{end}}</span><span class="t">{{.Title}}</span>
+      <span class="s"{{if .Overdue}} style="color:var(--red)"{{end}}>{{if .Overdue}}seit {{.Due}}{{else}}{{.PriorityLabel}} · {{.CreatedAgo}}{{end}}</span></a>
+    {{else}}<div class="rec-sub"><i class="ti ti-circle-check" style="color:var(--green)"></i> Nichts überfällig, alles Dringende ist zugewiesen.</div>{{end}}
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-building-factory-2"></i> Anlagen {{.Year}}</span><span class="card-action">meiste {{$a.Kind.Plural}}</span></div>
+    {{range .Infra}}<a class="kvp-bar" href="{{.URL}}"><span class="l">{{.Label}}</span><span class="b"><span class="f b-blue" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></a>
+    {{else}}<div class="rec-sub">Noch keine {{$a.Kind.Plural}} mit Anlage in diesem Jahr.</div>{{end}}
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-trophy"></i> Erledigt von {{.Year}}</span></div>
+    {{range .People}}<div class="kvp-bar"><span class="l">{{.Label}}</span><span class="b"><span class="f b-green" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></div>
+    {{else}}<div class="rec-sub">Noch nichts erledigt in diesem Jahr.</div>{{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "wa-chips"}}
+<div class="kvp-chips">
+  {{range .Chips}}<a class="kvp-chip{{if .Active}} on{{end}}" href="{{.URL}}"><i class="ti {{.Icon}}"></i> {{.Label}}{{if ge .Count 0}} <b>{{.Count}}</b>{{end}}</a>{{end}}
+</div>
+{{end}}
+
+{{define "wa-filter"}}
+{{$a := .}}{{$k := .Kind}}
+  <select name="prio" class="form-input" onchange="this.form.submit()" aria-label="{{if eq $k.Key "fault"}}Schweregrad{{else}}Priorität{{end}}">
+    <option value="">{{if eq $k.Key "fault"}}Jeder Schweregrad{{else}}Jede Priorität{{end}}</option>
+    <option value="critical" {{if eq .Prio "critical"}}selected{{end}}>kritisch</option>
+    <option value="high" {{if eq .Prio "high"}}selected{{end}}>hoch</option>
+    <option value="medium" {{if eq .Prio "medium"}}selected{{end}}>mittel</option>
+    <option value="low" {{if eq .Prio "low"}}selected{{end}}>niedrig</option>
+  </select>
+  <select name="infra" class="form-input" onchange="this.form.submit()" aria-label="Anlage">
+    <option value="">Alle Anlagen</option>
+    {{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $a.Infra}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{if eq $k.Key "task"}}
+  <select name="project" class="form-input" onchange="this.form.submit()" aria-label="Projekt">
+    <option value="">Alle Projekte</option>
+    {{range .ProjectOptions}}<option value="{{.ID}}" {{if eq .ID $a.Project}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{end}}
+{{end}}
+
+{{define "wa-items"}}
+{{$k := .Kind}}
+<form class="mt-filter" method="get" action="{{$k.Base}}">
+  <input type="hidden" name="tab" value="items"><input type="hidden" name="chip" value="{{.Chip}}">
+  <input type="search" name="q" class="form-input wa-q" value="{{.Q}}" placeholder="Suchen: Titel, Beschreibung, Anlage, Zuständige …" aria-label="Suchen">
+  {{template "wa-filter" .}}
+  <button class="btn" type="submit" aria-label="Suchen"><i class="ti ti-search"></i></button>
+  {{if .Filtered}}<a class="btn" href="{{$k.Base}}?tab=items&amp;chip={{.Chip}}"><i class="ti ti-x"></i> Zurücksetzen</a>{{end}}
+  {{template "category-filter-slot" (dict "Module" $k.Module)}}
+</form>
+{{template "icon-button-toolbar" (dict
+  "Class" "start"
+  "Label" (printf "%s-Aktionen" $k.Label)
+  "Items" (list
+      (dict "Action" "view" "ShowLabel" true "Label" "Auswahl öffnen" "OnClick" "runSelectedItemAction('view')")
+      (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl kopieren" "OnClick" "runSelectedItemAction('copy')")
+      (dict "Action" "done" "ShowLabel" true "Label" "Auswahl erledigen" "OnClick" "runSelectedItemAction('done')")
+  )
+)}}
+<div class="card" style="padding:0;margin-top:8px">
+  <table class="wa-table">
+    <thead><tr><th>{{$k.Label}}</th><th>Zuständig</th><th>Status</th><th>{{if eq $k.Key "fault"}}Schweregrad{{else}}Priorität{{end}}</th><th>Termin</th><th></th></tr></thead>
+    <tbody>
+    {{range .Items}}
+    <tr class="selectable-item{{if .Overdue}} wa-overdue{{end}}{{if .New}} wa-new{{end}}" data-selectable data-title="{{.Title}}" data-view-href="{{$k.Detail}}{{.ID}}" data-complete="{{$k.Key}}:{{.ID}}" data-copy-text="{{.Title}} {{.Description}}">
+      <td><a href="{{$k.Detail}}{{.ID}}" class="wa-main">
+        <div class="wa-title"><span class="act-dot {{.PriorityDot}}"></span>{{.Title}}</div>
+        <div class="rec-sub">{{if .InfraName}}<span style="color:var(--accent)">{{.InfraName}}</span> · {{end}}{{if .ProjectName}}<i class="ti ti-timeline"></i> {{.ProjectName}} · {{end}}{{.CreatedAgo}}</div></a></td>
+      <td style="font-size:12px">{{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)"><i class="ti ti-inbox"></i> niemand</span>{{end}}</td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <td><span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span></td>
+      <td style="font-size:12px;white-space:nowrap">{{if .Due}}<span class="{{if .Overdue}}mt-red{{end}}">{{.Due}}</span>{{else}}<span class="mt-muted">–</span>{{end}}</td>
+      <td style="text-align:right"><button type="button" class="btn btn-small cw-finish" onclick="event.stopPropagation();pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Keine {{$k.Plural}} für diesen Filter.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "wa-archive"}}
+{{$a := .}}{{$k := .Kind}}
+<form class="mt-arch-filter" method="get" action="{{$k.Base}}">
+  <input type="hidden" name="tab" value="items"><input type="hidden" name="chip" value="archive">
+  <input type="search" name="q" class="form-input mt-arch-q" value="{{.Archive.Q}}" placeholder="Suche: Titel, Beschreibung, Anlage, Lösung" aria-label="Suche">
+  <select name="infra" class="form-input" aria-label="Anlage"><option value="">Alle Anlagen</option>{{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $a.Archive.Infra}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <label class="mt-arch-date">von <input type="date" name="from" class="form-input" value="{{.Archive.From}}"></label>
+  <label class="mt-arch-date">bis <input type="date" name="to" class="form-input" value="{{.Archive.To}}"></label>
+  {{if .Project}}<input type="hidden" name="project" value="{{.Project}}">{{end}}
+  <button type="submit" class="btn btn-primary"><i class="ti ti-filter"></i> Filtern</button>
+  {{if .Archive.Filtered}}<a class="btn" href="{{$k.Base}}?tab=items&amp;chip=archive"><i class="ti ti-x"></i> Zurücksetzen</a>{{end}}
+</form>
+<p class="rec-sub" style="margin:-4px 0 8px">{{.Archive.Total}} abgeschlossen{{if .Archive.Filtered}} (gefiltert){{end}}</p>
+{{if .Archive.Rows}}
+<div class="card" style="padding:0">
+  {{range .Archive.Rows}}
+  <div class="mt-done">
+    <div class="mt-done-row">
+      <i class="ti {{if eq .Status "closed"}}ti-lock{{else}}ti-circle-check{{end}}" style="font-size:18px;color:var(--green)"></i>
+      <a href="{{$k.Detail}}{{.ID}}" class="mt-done-main">
+        <b>{{.Title}}</b>
+        <small>{{if .InfraName}}{{.InfraName}} · {{end}}{{if .ProjectName}}{{.ProjectName}} · {{end}}{{.StatusLabel}} {{.Closed}}{{if .Who}} · <i class="ti ti-user"></i> {{.Who}}{{end}}</small>
+      </a>
+      <div class="mt-done-flags"><span class="badge {{.PriorityClass}}">{{.Priority}}</span></div>
+    </div>
+    {{if or .Resolution .RootCause}}
+    <details><summary>Lösung &amp; Ursache</summary>
+      {{if .RootCause}}<div class="res"><b>Ursache:</b> {{.RootCause}}</div>{{end}}
+      {{if .Resolution}}<div class="res"><b>Lösung:</b> {{.Resolution}}</div>{{end}}
+    </details>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{if gt .Archive.Pages 1}}
+<nav class="mt-arch-pages" aria-label="Seiten">
+  {{if .Archive.PrevURL}}<a class="btn" href="{{.Archive.PrevURL}}"><i class="ti ti-chevron-left"></i> Neuere</a>{{end}}
+  <span>Seite {{.Archive.Page}} von {{.Archive.Pages}}</span>
+  {{if .Archive.NextURL}}<a class="btn" href="{{.Archive.NextURL}}">Ältere <i class="ti ti-chevron-right"></i></a>{{end}}
+</nav>
+{{end}}
+{{else}}<div class="mt-empty"><i class="ti ti-archive"></i><div>{{if .Archive.Filtered}}Nichts passt zu diesem Filter.{{else}}Noch nichts abgeschlossen.{{end}}</div></div>{{end}}
+{{end}}
+
+{{define "wa-board"}}
+{{$k := .Kind}}
+<form class="mt-filter" method="get" action="{{$k.Base}}">
+  <input type="hidden" name="tab" value="board">
+  {{template "wa-filter" .}}
+</form>
+<div class="kvp-board wa-board">
+  {{range .Board}}
+  <div class="col">
+    <div class="ch"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{len .Cards}}{{if .More}}+{{.More}}{{end}}</b><div class="rec-sub">{{.Hint}}</div></div>
+    {{range .Cards}}
+    <div class="kvp-card wa-card{{if .Overdue}} overdue{{end}}{{if .New}} new{{end}}">
+      <a href="{{$k.Detail}}{{.ID}}" class="wa-card-link">
+        <div class="rec-sub"><span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span>{{if .InfraName}} · {{.InfraName}}{{end}}</div>
+        <div class="t">{{.Title}}</div>
+        <div class="rec-sub"><i class="ti ti-user"></i> {{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)">niemand</span>{{end}}{{if .Due}} · <span {{if .Overdue}}style="color:var(--red)"{{end}}>bis {{.Due}}</span>{{end}}</div>
+      </a>
+      <button type="button" class="btn btn-small cw-finish" onclick="pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button>
+    </div>
+    {{else}}<div class="rec-sub" style="padding:8px">–</div>{{end}}
+    {{if .More}}<a class="rec-sub" style="padding:6px 8px;display:block;color:var(--accent)" href="{{$k.Base}}?tab=items&amp;chip=s:{{.Key}}">… {{.More}} weitere in der Liste</a>{{end}}
+  </div>
+  {{end}}
+  <div class="col wa-done-col">
+    <div class="ch"><i class="ti ti-circle-check"></i> Erledigt <b>{{len .RecentDone}}</b><div class="rec-sub">letzte 7 Tage</div></div>
+    {{range .RecentDone}}
+    <a class="kvp-card" href="{{$k.Detail}}{{.ID}}"><div class="t">{{.Title}}</div><div class="rec-sub">{{if .InfraName}}{{.InfraName}} · {{end}}{{.StatusLabel}} {{.Due}}</div></a>
+    {{else}}<div class="rec-sub" style="padding:8px">–</div>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "wa-rules"}}
+{{$k := .Kind}}
+<div class="kvp-grid">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-book-2"></i> Unsere Regeln für {{$k.Plural}}</span></div>
+    <ol class="kvp-rules">{{range $k.Rules}}<li>{{.}}</li>{{end}}</ol>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-settings"></i> Einstellungen</span></div>
+    {{if .CanSettings}}
+    <form method="post" action="/work/{{$k.Key}}/settings" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="form-group" style="margin:0"><label class="form-label">Standard-Frist (Tage nach Anlage)</label>
+        <input type="number" name="due_days" min="1" max="365" class="form-input" value="{{.DueDays}}" style="width:120px"></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </form>
+    {{else}}<p style="font-size:13px">Standard-Frist: <b>{{.DueDays}} Tage</b> nach Anlage.</p>{{end}}
+    <p class="rec-sub" style="margin-top:8px">Gilt, wenn beim Anlegen kein Termin angegeben wird. Ändern dürfen alle mit dem Recht „Rollen &amp; Rechte verwalten“.</p>
+    <div class="card-title" style="margin-top:14px"><span><i class="ti ti-inbox"></i> Broker für {{$k.Plural}}</span></div>
+    <p style="font-size:13px">{{if .Brokers}}{{.Brokers}}{{else}}<span style="color:var(--amber)">Kein Broker hinterlegt – ohne Zuweisung angelegte {{$k.Plural}} bleiben unverteilt.</span>{{end}}</p>
+    <p class="rec-sub">Broker verteilen {{$k.Plural}} ohne Zuständigen über die Seite <a href="/assignments" style="color:var(--accent)">Zuweisung</a>. Wer Broker ist, steht im Benutzerstamm.</p>
+  </div>
+</div>
 {{end}}
 
 {{define "work-style"}}
@@ -65,6 +295,22 @@
 .mt-arch-filter .mt-arch-q{flex:1;min-width:200px;max-width:none}
 .mt-arch-date{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
 .mt-arch-pages{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;font-size:12.5px;color:var(--muted)}
+/* Arbeitsbereich wie im KVP */
+.wa-year{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-bottom:8px;font-size:13px}
+.kvp-kpis.wa-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.wa-q{flex:1;min-width:200px;max-width:none!important}
+.wa-table td{vertical-align:middle}
+.wa-main{display:block;color:inherit;text-decoration:none}
+.wa-title{font-weight:500;display:flex;gap:8px;align-items:center}
+.wa-overdue td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.wa-new td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.kvp-board.wa-board{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.wa-card{display:flex;flex-direction:column;gap:6px}
+.wa-card .wa-card-link{color:inherit;text-decoration:none}
+.wa-card.overdue{border-color:rgba(239,68,68,.55)}
+.wa-card.new{box-shadow:inset 3px 0 0 var(--amber)}
+.wa-card .btn{align-self:flex-start}
+.wa-done-col{opacity:.85}
 /* Detailseiten: „Durchfuehren“-Karte wie beim Wartungsauftrag */
 .md-do{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-color:rgba(var(--accent-rgb),.45)}
 .md-do-text{flex:1;min-width:220px;display:grid;gap:3px}

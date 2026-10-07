@@ -166,7 +166,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3 id="creation"><i class="ti ti-circle-plus"></i> Vorgänge anlegen: der Erstellungs-Assistent</h3>
   <p>Neue Tickets, Störungen, Aufgaben und Wartungsaufträge legst du überall im gleichen Stil wie beim Abschließen Schritt für Schritt an. Jeder Weg zum Anlegen öffnet diesen Assistenten:</p>
   <ul>
-    <li><b>Neu anlegen</b> in der Navigation und als Schnellaktion auf dem Dashboard (im Auswahlschritt auch „KVP-Idee“ für alle, öffnet das Ideenformular) – Aufgaben und Wartungen legen dort nur <b>Administratoren und Manager</b> an, alle anderen Tickets und Störungen,</li>
+    <li><b>Neu anlegen</b> in der Navigation und als Schnellaktion auf dem Dashboard (im Auswahlschritt auch „KVP-Idee“ für alle, öffnet den <a href="#kvp">Einreich-Assistenten</a>) – Aufgaben und Wartungen legen dort nur <b>Administratoren und Manager</b> an, alle anderen Tickets und Störungen,</li>
     <li>die Schnellaktionen <b>Störung melden</b> und <b>Ticket anlegen</b>,</li>
     <li><b>Neu</b> in der Ticket- und Störungsliste, <b>Neue Aufgabe</b>, in der Wartung <b>Einzelauftrag</b>,</li>
     <li>auf einer Projektseite das <b>+</b> bei den Aufgaben – die Aufgabe gehört dann gleich zum Projekt, danach bleibst du auf der Projektseite,</li>
@@ -288,13 +288,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="faults" data-title="Störungen" data-pages="faults">
   <h2><i class="ti ti-alert-triangle"></i> Störungen</h2>
-  <p>Eine Störung ist ein technisches Problem an einer Anlage. Unter <b>Störungen</b> siehst du sie wie Wartungen in den Ansichten <b>Anstehend</b>, <b>Liste</b> und <b>Archiv</b> (siehe <a href="#work-views">Tickets</a>); frisch gemeldete Störungen sind gelb markiert. Sie durchläuft fünf Schritte:</p>
+  <p>Eine Störung ist ein technisches Problem an einer Anlage. Die Seite <b>Störungen</b> ist aufgebaut wie der KVP – mit <b>Dashboard</b>, <b>Störungen</b>, <b>Board</b> und <b>Regeln &amp; Einstellungen</b> (siehe <a href="#work-views">Tickets</a>); frisch gemeldete Störungen sind gelb markiert. Sie durchläuft fünf Schritte:</p>
   {{template "hb-fig-fault"}}
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
       <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>reservieren</b> – sie sind damit sofort für dich aus dem Lager gebucht.</li>
-      <li><b>Beheben &amp; abschließen</b> (Karte oben in der Übersicht, auf der Karte in „Anstehend“ oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
+      <li><b>Beheben &amp; abschließen</b> (Karte oben in der Übersicht, in der Liste, auf dem Board oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
       <li><b>Fertig</b> – die reservierten Teile werden zum Verbrauch der Störung, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
@@ -310,13 +310,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="tickets" data-title="Tickets" data-pages="tickets">
   <h2><i class="ti ti-ticket"></i> Tickets</h2>
   <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte.</p>
-  <p id="work-views">Tickets, Störungen und Aufgaben arbeitest du ab wie Wartungen – drei Ansichten oben auf der Seite:</p>
+  <p id="work-views">Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der <a href="#kvp">KVP</a> – mit diesen Reitern oben auf der Seite:</p>
   {{template "hb-fig-workboard"}}
   <ul>
-    <li><b>Anstehend</b> (Start): alle offenen Vorgänge als Karten, sortiert nach <b>Überfällig</b>, <b>Heute</b>, <b>Nächste 7 Tage</b>, <b>Später</b> und <b>Ohne Termin</b>; innerhalb einer Gruppe das Wichtigste zuerst. Filter: <b>Nur meine</b>, <b>Ohne Zuweisung</b>, Priorität, Anlage (bei Aufgaben auch Projekt) und Kategorien. Der große Knopf auf der Karte startet direkt den <a href="#completion">Abschluss-Assistenten</a>.</li>
-    <li><b>Liste</b>: die Tabelle mit Status-Reitern und Mehrfachauswahl („Auswahl öffnen / kopieren / erledigen“).</li>
-    <li><b>Archiv</b>: alles Abgeschlossene mit Suche (auch in der Lösung), Anlage und Zeitraum, seitenweise; <b>Lösung &amp; Ursache</b> klappt direkt auf.</li>
+    <li><b>Dashboard</b> (Start): Kennzahlen des Jahres – offen, überfällig, ohne Zuweisung, angelegt, erledigt (mit Anteil termingerecht) und Ø Durchlaufzeit. Dazu der <b>Ablauf</b> nach Status, die <b>letzten 12 Monate</b> (angelegt/erledigt), die Anlagen mit den meisten Vorgängen, wer am meisten erledigt hat und <b>Braucht Aufmerksamkeit</b> (Überfälliges und Dringendes ohne Zuständigen). Mit den Pfeilen wechselst du das Jahr. Jede Kennzahl führt in die passende Liste.</li>
+    <li><b>Tickets</b> (bzw. Störungen, Aufgaben, Aufträge): die Liste mit <b>Filter-Chips</b> und Anzahl – <b>Alle offenen</b>, <b>Meine</b>, <b>Ohne Zuweisung</b>, je Status, <b>Überfällig</b> (Aufgaben: <b>Ohne Projekt</b>, Wartung: <b>Geplant</b>) und <b>Archiv</b>. Dazu Suche, Priorität, Anlage (bei Aufgaben auch Projekt) und Kategorien. Zeile antippen und <b>Auswahl öffnen / kopieren / erledigen</b>, oder rechts direkt <b>Bearbeiten</b>, <b>Beheben</b>, <b>Erledigen</b> bzw. <b>Durchführen</b>.</li>
+    <li><b>Board</b>: eine Spalte je Status, Überfälliges und Wichtiges oben, rechts die in den letzten 7 Tagen erledigten. Jede Karte hat den Knopf zum <a href="#completion">Abschluss-Assistenten</a>.</li>
+    <li><b>Archiv</b> (Chip): alles Abgeschlossene mit Suche (auch in der Lösung), Anlage und Zeitraum, seitenweise; <b>Lösung &amp; Ursache</b> klappt direkt auf.</li>
+    <li><b>Regeln &amp; Einstellungen</b>: die Regeln des Moduls, die <b>Standard-Frist</b> (Tage nach Anlage, wenn kein Termin angegeben ist – ändern darf, wer Rollen &amp; Rechte verwaltet) und die <b>Broker</b>.</li>
   </ul>
+  <p>Angelegt wird weiterhin mit dem <a href="#creation">Erstellungs-Assistenten</a> (<b>Neu</b>), abgeschlossen mit dem <a href="#completion">Abschluss-Assistenten</a>.</p>
   <p>Auf der Detailseite steht oben die Karte <b>Ticket bearbeiten</b> (bei Störungen <b>Störung beheben</b>, bei Aufgaben <b>Aufgabe erledigen</b>) – wie beim Wartungsauftrag. Ist der Vorgang abgeschlossen, zeigt sie das an und führt ins Archiv.</p>
   <ul>
     <li><b>Kommentare</b> (eigener Reiter) – für die Abstimmung im Team.</li>
@@ -332,15 +335,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="tasks" data-title="Aufgaben &amp; Projekte" data-pages="tasks projects">
   <h2><i class="ti ti-list-check"></i> Aufgaben &amp; Projekte</h2>
-  <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge. Die Seite <b>Aufgaben</b> hat dieselben Ansichten <b>Anstehend</b>, <b>Liste</b> und <b>Archiv</b> wie Tickets (siehe <a href="#work-views">Tickets</a>); jede Karte zeigt auch das Projekt.</p>
+  <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge. Die Seite <b>Aufgaben</b> hat dieselben Reiter wie Tickets (siehe <a href="#work-views">Tickets</a>); jede Zeile zeigt auch das Projekt, der Reiter <b>Projekte</b> führt zur Projektübersicht.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du eine Aufgabe ab</b>
-    <b>Erledigen</b> (auf der Karte in „Anstehend“, im Projekt oder oben in der Aufgabe) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
+    <b>Erledigen</b> (in der Liste, auf dem Board, im Projekt oder oben in der Aufgabe) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <p><b>Projekte</b> sind das übergeordnete Aufgabenmanagement – so wie ein Wartungsplan seine Aufträge bündelt. Die Projektübersicht zeigt je Projekt eine Karte mit <b>Fortschrittsbalken</b> (erledigte von allen Aufgaben), überfälligen Aufgaben und dem nächsten Termin.</p>
   <div class="hb-howto"><b><i class="ti ti-timeline"></i> So arbeitest du mit einem Projekt</b>
     <ol class="hb-steps">
       <li>Projekt öffnen: oben steht <b>Aufgaben im Projekt</b> mit Fortschritt. <b>Neue Aufgabe</b> legt eine Aufgabe direkt im Projekt an; unter <b>Bestehende Aufgabe zuordnen</b> holst du vorhandene dazu.</li>
       <li>Die Aufgaben stehen darunter als Karten, gruppiert nach <b>Überfällig</b>, <b>In Arbeit</b>, <b>Offen</b>, <b>Wartet</b> und <b>Erledigt</b> – jede mit <b>Erledigen</b>.</li>
-      <li><b>Anstehend</b> öffnet die Aufgaben-Ansicht gefiltert auf dieses Projekt.</li>
+      <li><b>Anstehend</b> öffnet die Aufgaben-Liste gefiltert auf dieses Projekt.</li>
     </ol></div>
   <p>Zusätzlich zeigt das Projekt seine Aufgaben im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
@@ -352,25 +355,28 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-kvp"}}
   <div class="hb-howto"><b><i class="ti ti-bulb"></i> So reichst du eine Idee ein</b>
     <ol class="hb-steps">
-      <li><b>KVP</b> → <b>Idee einreichen</b> (oder Schnellaktion „Idee einreichen“ im Dashboard).</li>
-      <li><b>Titel</b>, <b>Thema</b> und <b>Ist-Zustand</b> (was stört heute?) und <b>Vorschlag</b> (wie geht es besser?) ausfüllen – beides ist Pflicht. Nutzen, Anlage und Team (Miteinreichende) sind freiwillig.</li>
-      <li><b>Einreichen</b>. Im Reiter <b>Vorher/Nachher</b> ein Foto vom Ist-Zustand anhängen. Jede Entscheidung bekommst du per Chat von PDH-System.</li>
+      <li><b>KVP</b> → <b>Idee einreichen</b> – oder <b>Neu anlegen</b> → Kachel <b>KVP-Idee</b>, oder die Schnellaktion „Idee einreichen“ im Dashboard. Es öffnet sich der Einreich-Assistent; mit <b>OK – weiter</b> geht es Schritt für Schritt.</li>
+      <li><b>Thema</b> antippen.</li>
+      <li><b>Was stört?</b> Titel und Ist-Zustand – beides Pflicht.</li>
+      <li><b>Vorschlag</b>: wie geht es besser (Pflicht) und was bringt es (Nutzen).</li>
+      <li><b>Wo?</b> Anlage oder Bereich – freiwillig. <b>Team</b>: Miteinreichende ankreuzen. Mit dem Recht „KVP steuern“ kannst du hier für jemand anderen einreichen.</li>
+      <li><b>Einreichen</b> öffnet den Vorschlag; <b>Einreichen &amp; nächste</b> beginnt gleich die nächste Idee. Im Reiter <b>Vorher/Nachher</b> ein Foto vom Ist-Zustand anhängen. Jede Entscheidung bekommst du per Chat von PDH-System.</li>
     </ol>
     Solange der Vorschlag noch nicht bewertet wird, kannst du ihn unter <b>Vorschlag bearbeiten</b> ändern.</div>
   <div class="hb-howto"><b><i class="ti ti-scale"></i> So wird bewertet und entschieden</b> (Recht „KVP steuern“)
     <ol class="hb-steps">
-      <li>Im Vorschlag <b>Bewertung beginnen</b>. Im Reiter <b>Bewertung</b> Nutzen und Aufwand (je 1–5), geschätzte Einsparung und Kosten sowie <b>Setzt um</b> eintragen. PDH ordnet den Vorschlag in die Matrix ein: <b>Quick Win</b>, <b>Großprojekt</b>, <b>Lückenfüller</b> oder <b>Fragwürdig</b>.</li>
-      <li>Unter <b>Nächster Schritt</b> <b>Annehmen</b>, <b>Zurückstellen</b> oder <b>Ablehnen</b> – immer mit Begründung. Die Einreichenden werden benachrichtigt; bei Annahme auch die/der Umsetzungsverantwortliche.</li>
+      <li>Im Vorschlag oben bei <b>Nächster Schritt</b> auf <b>Weiter</b> tippen. Der Assistent fragt zuerst die <b>Bewertung</b> ab: Nutzen und Aufwand (je 1–5), geschätzte Einsparung und Kosten sowie <b>Setzt um</b>. PDH ordnet den Vorschlag in die Matrix ein: <b>Quick Win</b>, <b>Großprojekt</b>, <b>Lückenfüller</b> oder <b>Fragwürdig</b>.</li>
+      <li>Dann <b>Wie geht es weiter?</b> – <b>Bewertung beginnen</b>, <b>Annehmen</b>, <b>Zurückstellen</b> oder <b>Ablehnen</b>, immer mit Begründung – und <b>Fertig</b>. <b>Nur speichern</b> hält die Bewertung fest, ohne zu entscheiden. Die Einreichenden werden benachrichtigt; bei Annahme auch die/der Umsetzungsverantwortliche.</li>
     </ol>
     Ist die Frist überschritten, steht der Vorschlag rot im Dashboard und PDH erinnert die Bewertenden täglich.</div>
-  <div class="hb-howto"><b><i class="ti ti-refresh"></i> So wird umgesetzt (PDCA)</b> – Reiter <b>PDCA &amp; Maßnahmen</b>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> So wird umgesetzt (PDCA)</b> – mit dem Assistenten unter <b>Nächster Schritt</b> → <b>Weiter</b>
     <ol class="hb-steps">
-      <li><b>Plan:</b> Ursache (5×Warum), messbares Ziel und Termin eintragen und Maßnahmen anlegen – jede mit <b>wer</b> und <b>bis wann</b>. Dann <b>Umsetzung starten</b>.</li>
-      <li><b>Do:</b> Maßnahmen abhaken (das darf auch, wer für die Maßnahme eingetragen ist). Erst wenn alle erledigt sind, geht es weiter.</li>
-      <li><b>Check:</b> Wirkt es? <b>wirksam</b> oder <b>nicht wirksam</b> mit Ergebnis festhalten. Nicht wirksam → <b>neuer PDCA-Zyklus</b> zurück in Plan.</li>
-      <li><b>Act:</b> beschreiben, was zum Standard wurde (Arbeitsanweisung, Checkliste, Schulung …), tatsächliche Einsparung und ggf. Prämie eintragen, dann <b>Abschließen</b>.</li>
+      <li><b>Plan:</b> Ursache (5×Warum), messbares Ziel und Termin, dann Maßnahmen – jede mit <b>wer</b> und <b>bis wann</b>. Zum Schluss <b>Umsetzung starten</b>.</li>
+      <li><b>Do:</b> erledigte Maßnahmen abhaken (das darf auch, wer für die Maßnahme eingetragen ist). Erst wenn alle erledigt sind, geht es zu <b>Wirksamkeit prüfen</b>.</li>
+      <li><b>Check:</b> <b>wirksam</b> oder <b>nicht wirksam</b> mit Ergebnis festhalten. Wirksam → <b>Standardisieren</b>; nicht wirksam → <b>neuer PDCA-Zyklus</b> zurück in Plan.</li>
+      <li><b>Act:</b> beschreiben, was zum Standard wurde (Arbeitsanweisung, Checkliste, Schulung …), tatsächliche Einsparung und ggf. Prämie – dann <b>Abschließen</b>.</li>
     </ol>
-    Fehlt für einen Schritt noch etwas, zeigt PDH es unter dem Knopf an. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
+    Wie im Abschluss-Assistenten: <b>Fertig</b> schaltet weiter, <b>Nur speichern – geht noch weiter</b> sichert nur die Angaben. Fehlt für einen Schritt noch etwas, nennt PDH es bei der Auswahl und schaltet nicht weiter; das bereits Eingegebene bleibt gespeichert. Einzelne Angaben lassen sich auch direkt in den Reitern <b>Bewertung</b> und <b>PDCA &amp; Maßnahmen</b> ändern. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
   <p>Das <b>Dashboard</b> zeigt Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Ø Zeit bis zur Entscheidung, Beteiligung, Einsparungen und Prämien), den Ablauf, die letzten 12 Monate, die Themen, die Nutzen-Aufwand-Matrix und alles Überfällige. Das <b>PDCA-Board</b> zeigt die Vorschläge in Umsetzung als Karten. Unter <b>Regeln &amp; Vorlagen</b> stehen die KVP-Regeln; dort stellt die KVP-Steuerung die Rückmeldefrist ein.</p>
   {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
 </section>
@@ -378,18 +384,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
   <h2><i class="ti ti-tool"></i> Wartung</h2>
   <p>Ein <b>Wartungsplan</b> sagt, was wie oft an welcher Anlage gemacht wird – z. B. „alle 2 Wochen“ oder „alle 6 Monate“. Zu jedem aktiven Plan gibt es immer <b>genau einen offenen Auftrag</b>: den nächsten Termin. PDH legt ihn selbst an – beim Anlegen des Plans, nach jedem Abschluss oder Überspringen und stündlich für Pläne, denen einer fehlt. Doppelte Aufträge entstehen nicht.</p>
-  <p>Die Wartung hat sechs Reiter:</p>
+  <p>Die Wartung ist aufgebaut wie Tickets und der KVP (siehe <a href="#work-views">Tickets</a>):</p>
   <ul>
-    <li><b>Anstehend</b> – was jetzt zu tun ist, sortiert nach <b>Überfällig</b>, <b>Heute</b>, <b>Nächste 7 Tage</b> und <b>Demnächst (im Vorlauf)</b>. Jede Karte zeigt Anlage, Termin, Zuständige und den Stand der Checklisten (z. B. „2 Listen · 0/14“). „Nur meine“ und die Anlagen-Auswahl filtern.</li>
+    <li><b>Dashboard</b>, <b>Aufträge</b> und <b>Board</b> – Kennzahlen, Liste mit Filter-Chips und Status-Spalten. Unter <b>Alle offenen</b> stehen die Aufträge, deren Vorlauf begonnen hat oder die in den nächsten 7 Tagen fällig sind; der Chip <b>Geplant</b> zeigt die späteren.</li>
     <li><b>Jahresplan</b> – je Plan eine Zeile, je Monat eine Spalte: ✓ erledigt, ● offen (rot, wenn überfällig), ○ geplant. Ein Klick öffnet den Auftrag bzw. den Plan.</li>
     <li><b>Pläne</b> – alle Pläne mit Intervall, Checklisten samt Takt und nächstem Termin.</li>
     <li><b>Rundgänge</b> – die Kontrollrundgänge mit ihren Stationen und dem Knopf <b>Rundgang starten</b> (siehe unten).</li>
-    <li><b>Archiv</b> – alle abgeschlossenen Wartungen, siehe unten.</li>
     <li><b>Checklisten</b> – die Vorlagen bearbeiten.</li>
+    <li><b>Regeln &amp; Einstellungen</b> – Regeln, Standard-Frist und Broker für Wartungen.</li>
   </ul>
+  <p>Das <b>Archiv</b> ist der Chip <b>Archiv</b> unter <b>Aufträge</b> – mit den erledigten Checklisten, siehe unten.</p>
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So führst du eine Wartung durch</b>
     <ol class="hb-steps">
-      <li>Unter <b>Anstehend</b> bei der Karte <b>Durchführen</b> antippen – oder im Auftrag den großen Knopf <b>Wartung durchführen</b>. Am <a href="#dashboard">Leitstand</a> geht es genauso über <b>Fertig</b> und die Karte.</li>
+      <li>Unter <b>Aufträge</b> oder auf dem <b>Board</b> bei der Wartung <b>Durchführen</b> antippen – oder im Auftrag den großen Knopf <b>Wartung durchführen</b>. Am <a href="#dashboard">Leitstand</a> geht es genauso über <b>Fertig</b> und die Karte.</li>
       <li>Zuerst kommt die <b>Checkliste</b>: ein Punkt nach dem anderen, darüber der Name der Checkliste. Abhaken, Messwert eintragen (PDH zeigt sofort, ob er zwischen Min und Max liegt) oder Text schreiben. Jeder Punkt wird beim <b>Weiter</b> sofort gespeichert – wirst du unterbrochen, geht es später am offenen Punkt weiter.</li>
       <li>Mit <i class="ti ti-camera-plus"></i> <b>Foto</b> hängst du Bilder direkt an den Punkt – am Handy öffnet sich die Kamera. Das geht überall gleich, auch am Leitstand.</li>
       <li>Danach Material (oder „kein Material“), Zeit (vorgeschlagen ist die geplante Dauer), wer dabei war und ein Kommentar – er wird als Maßnahme gespeichert. Ohne ausgefüllte Pflichtpunkte (✱) lässt sich nicht abschließen.</li>
@@ -407,7 +414,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li><b>Neuer Plan</b> antippen (oder in einem Plan <i class="ti ti-copy"></i> zum Kopieren).</li>
       <li><b>Was</b>: Anlage, Name und Art.</li>
-      <li><b>Wann</b>: „alle N Tage / Wochen / Monate / Jahre“ und der <b>nächste Termin</b>. Der <b>Vorlauf (Tage)</b> legt fest, ab wann der Auftrag unter Anstehend und am Leitstand erscheint – bei 0 erst am Fälligkeitstag.</li>
+      <li><b>Wann</b>: „alle N Tage / Wochen / Monate / Jahre“ und der <b>nächste Termin</b>. Der <b>Vorlauf (Tage)</b> legt fest, ab wann der Auftrag unter Aufträge („Alle offenen“) und am Leitstand erscheint – bei 0 erst am Fälligkeitstag.</li>
       <li><b>Nach der Durchführung</b>: <b>ab Durchführung</b> (Erledigt-Datum + Intervall) oder <b>fester Rhythmus</b> (die Termine bleiben im Takt, z. B. für Prüffristen; nach langer Überfälligkeit rechnet PDH bis heute weiter). Monate und Jahre rechnet PDH kalendergenau (15.01. → 15.02.).</li>
       <li><b>Wer</b>: Zugewiesen, Gruppe, Verantwortlich (bekommt die Rückmeldung) und die geplante Dauer.</li>
       <li><b>Checklisten</b> hinzufügen und je Checkliste den <b>Takt</b> wählen – „bei jedem Termin“ oder z. B. „alle 1 Monate“. Darunter steht, wann sie zuletzt abgefragt wurde. Die Vorschau zeigt die nächsten Termine.</li>
@@ -416,7 +423,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Ein Plan, der eine Zeit nicht gebraucht wird, lässt sich <b>ruhen lassen</b> – sein offener Auftrag verschwindet, beim <b>Aktivieren</b> kommt er wieder. Aufträge ohne Plan legst du mit <b>Einzelauftrag</b> an.</div>
   <div class="hb-howto"><b><i class="ti ti-archive"></i> Erledigte Checklisten im Archiv ansehen</b>
     <ol class="hb-steps">
-      <li>Reiter <b>Archiv</b> öffnen. Die neuesten Wartungen stehen oben, je Seite 50 – mit „Ältere“ blätterst du weiter.</li>
+      <li>Unter <b>Aufträge</b> den Chip <b>Archiv</b> öffnen. Die neuesten Wartungen stehen oben, je Seite 50 – mit „Ältere“ blätterst du weiter.</li>
       <li>Eingrenzen mit <b>Suche</b> (Titel, Anlage, Plan, Bemerkung), <b>Anlage</b> (inklusive Unteranlagen und Rundgang-Stationen), <b>Plan</b>, Zeitraum <b>von/bis</b>, <b>erledigt/übersprungen</b> und <b>nur mit Abweichungen</b> – dann <b>Filtern</b>.</li>
       <li>Jede Zeile zeigt, wer die Wartung ausgeführt hat, Abweichungen (⚠ außerhalb Min/Max, nicht abgehakt), die Zahl der Fotos und das Protokoll-PDF.</li>
       <li>Auf <i class="ti ti-chevron-right"></i> oder <b>Punkte</b> tippen: Die Checkliste klappt auf – jeder Punkt mit Wert, Vorgabe, wer ihn wann erfasst hat und den Fotos. Bei Rundgängen nach Stationen gegliedert.</li>
@@ -427,7 +434,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Name und <b>Bereich</b> wählen (Halle, Linie …) – die Stationen liegen darunter. Intervall, Vorlauf und Zuständige wie bei einem Plan.</li>
       <li>Stationen hinzufügen: <b>Anlage</b> und <b>Checkliste</b> wählen, <b>Station hinzufügen</b>. <b>Alle Unteranlagen</b> übernimmt alle Anlagen direkt unter dem Bereich mit der gewählten Checkliste auf einmal. Die gleiche Checkliste darf an vielen Anlagen stehen.</li>
       <li>Mit den Pfeilen die <b>Reihenfolge</b> festlegen – so wird der Rundgang abgefragt. Jede Station kann ihren eigenen Takt haben (z. B. der Kran nur monatlich); nicht fällige Stationen fallen beim Termin weg.</li>
-      <li>Durchführen: im Reiter <b>Rundgänge</b> auf <b>Rundgang starten</b> (oder unter Anstehend, am Leitstand). Oben steht <b>Station 2 von 5</b> mit dem Namen der Anlage.</li>
+      <li>Durchführen: im Reiter <b>Rundgänge</b> auf <b>Rundgang starten</b> (oder unter Aufträge, am Leitstand). Oben steht <b>Station 2 von 5</b> mit dem Namen der Anlage.</li>
       <li>Ist an einer Station etwas nicht in Ordnung: <i class="ti ti-alert-triangle"></i> <b>Mangel melden</b>. Die Störung wird mit dieser Anlage angelegt, danach geht es im Rundgang weiter.</li>
       <li>Unterbrochen? Alles Erfasste ist gespeichert – <b>Rundgang fortsetzen</b> macht beim offenen Punkt weiter. Im Protokoll und im Auftrag stehen die Ergebnisse je Station.</li>
     </ol></div>

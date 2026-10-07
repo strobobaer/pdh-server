@@ -34,7 +34,6 @@ import (
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/tickets"
 	"pdh/internal/modules/timetracking"
-	"pdh/pkg/appsettings"
 	"pdh/pkg/config"
 )
 
@@ -207,32 +206,9 @@ type ShiftDay struct {
 	Class string
 }
 
-type FaultsPageData struct {
-	BaseData
-	Tabs           []ListTab
-	Total          int
-	Open           int
-	Filter         string
-	Faults         []FaultView
-	RecentAnalyses []AnalysisView
-	Users          []UserOption
-}
-
 type AnalysisView struct {
 	FaultTitle string
 	Confidence float64
-}
-
-type TicketsPageData struct {
-	BaseData
-	Tabs            []ListTab
-	Total           int
-	Open            int
-	Filter          string
-	Tickets         []TicketView
-	CriticalTickets []TicketView
-	Users           []UserOption
-	DefaultDueDays  int
 }
 
 type InventoryStats struct {
@@ -344,6 +320,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/assignments/new", h.AssignmentNewPage)
 	r.Get("/assignments", h.AssignmentBoardPage)
 	r.Post("/assignments/{ref}/{id}", h.AssignmentBoardAssign)
+	r.Post("/work/{kind}/settings", h.WorkSettingsWeb) // Standard-Frist im Reiter „Regeln & Einstellungen“
 	r.Get("/account", h.AccountPage)
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
@@ -569,6 +546,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/trainings/user/{id}", h.TrainingUserFragment)
 	r.Get("/kvp", h.KVPPage)
 	r.Post("/kvp", h.KVPCreateWeb)
+	r.Get("/kvp/options", h.KVPOptionsWeb) // Einreich-Assistent
 	r.Post("/kvp/settings", h.KVPSettingsWeb)
 	r.Get("/kvp/{id}", h.KVPDetailPage)
 	r.Post("/kvp/{id}", h.KVPSaveWeb)
@@ -1410,108 +1388,11 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 }
 
 func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
-	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
-		h.WorkBoardPage(w, r, "fault", v)
-		return
-	}
-	ctx := r.Context()
-	filter := r.URL.Query().Get("status")
-	unassigned := r.URL.Query().Get("unassigned") == "1"
-
-	data := FaultsPageData{
-		BaseData: h.baseData(r, "faults", "Störungen", "Copilot-Analysen"),
-		Filter:   filter,
-		Users:    h.userOptions(ctx),
-	}
-	data.Tabs = h.statusTabs(ctx, "faults", "/faults?view=list", filter, []statusTabDef{
-		{"detected", "Erkannt", "ti-alert-triangle"}, {"analyzing", "Analysiert", "ti-brain"},
-		{"in_progress", "In Bearbeitung", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
-	}, true, brokerInboxTab(unassigned))
-
-	tagIDs := h.categoryFilterIDs(r, "fault")
-	scopeIDs := h.scopeAllowedIDs(r, "fault")
-	if fl, err := h.faults.List(ctx, faults.FaultStatus(filter)); err == nil {
-		data.Total = len(fl)
-		for _, f := range fl {
-			if tagIDs != nil && !tagIDs[f.ID] || scopeIDs != nil && !scopeIDs[f.ID] {
-				continue
-			}
-			if unassigned && (f.AssignedTo != nil || f.Status == "resolved" || f.Status == "closed") {
-				continue
-			}
-			if f.Status == "detected" || f.Status == "in_progress" || f.Status == "pending" {
-				data.Open++
-			}
-			fv := FaultView{
-				ID: f.ID, Title: f.Title, Description: f.Description,
-				Status: string(f.Status), StatusLabel: statusLabel(string(f.Status)),
-				StatusClass: statusClass(string(f.Status)),
-				Severity:    string(f.Severity), SeverityClass: severityClass(string(f.Severity)),
-				DetectedAgo: timeAgo(f.DetectedAt),
-				InfraName:   h.infraName(ctx, f.InfrastructureID),
-			}
-			if f.InfrastructureID != nil {
-				fv.InfraID = *f.InfrastructureID
-			}
-			data.Faults = append(data.Faults, fv)
-		}
-	}
-	h.render(w, "faults", data)
+	h.WorkBoardPage(w, r, "fault") // Arbeitsbereich wie der KVP (work_board.go)
 }
 
 func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
-	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
-		h.WorkBoardPage(w, r, "ticket", v)
-		return
-	}
-	ctx := r.Context()
-	filter := r.URL.Query().Get("status")
-	unassigned := r.URL.Query().Get("unassigned") == "1"
-
-	data := TicketsPageData{
-		BaseData:       h.baseData(r, "tickets", "Tickets", "Kritische Tickets"),
-		Filter:         filter,
-		Users:          h.userOptions(ctx),
-		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
-	}
-	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets?view=list", filter, []statusTabDef{
-		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"},
-		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
-	}, true, brokerInboxTab(unassigned))
-
-	tagIDs := h.categoryFilterIDs(r, "ticket")
-	scopeIDs := h.scopeAllowedIDs(r, "ticket")
-	if tl, err := h.tickets.List(ctx, tickets.Status(filter)); err == nil {
-		data.Total = len(tl)
-		for _, t := range tl {
-			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
-				continue
-			}
-			if unassigned && (t.AssignedTo != nil || t.Status == "resolved" || t.Status == "closed") {
-				continue
-			}
-			if t.Status == "open" || t.Status == "in_progress" {
-				data.Open++
-			}
-			tv := TicketView{
-				ID: t.ID, Title: t.Title, Description: t.Description,
-				InfraName: h.infraName(ctx, t.InfrastructureID),
-				Priority:  string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
-				PriorityDot: priorityDot(string(t.Priority)),
-				Status:      string(t.Status), StatusLabel: statusLabel(string(t.Status)),
-				StatusClass: statusClass(string(t.Status)),
-				CreatedAgo:  timeAgo(t.CreatedAt),
-			}
-			if t.InfrastructureID != nil {
-				tv.InfraID = *t.InfrastructureID
-			}
-			data.Tickets = append(data.Tickets, tv)
-			if t.Priority == "critical" {
-				data.CriticalTickets = append(data.CriticalTickets, tv)
-			}
-		}
-	}
-	h.render(w, "tickets", data)
+	h.WorkBoardPage(w, r, "ticket") // Arbeitsbereich wie der KVP (work_board.go)
 }
 
 func (h *Handler) CreateFault(w http.ResponseWriter, r *http.Request) {

@@ -74,9 +74,6 @@ func TestListTabsWidget(t *testing.T) {
 		name string
 		data interface{}
 	}{
-		{"tickets", TicketsPageData{Tabs: []ListTab{{Label: "Alle", URL: "/tickets", Active: true, Count: 3}, {Key: "open", Label: "Offen", URL: "/tickets?status=open", Count: 2}}}},
-		{"faults", FaultsPageData{Tabs: []ListTab{{Label: "Alle", URL: "/faults", Active: true}}}},
-		{"tasks", TasksPageData{Tabs: []ListTab{{Label: "Alle", URL: "/tasks", Active: true}}}},
 		{"projects", ProjectsPageData{Tabs: []ListTab{{Label: "Alle", URL: "/projects", Active: true}}}},
 	} {
 		out := renderPage(t, tmpl, page.name, page.data)

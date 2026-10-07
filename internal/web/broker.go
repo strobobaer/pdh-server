@@ -98,13 +98,3 @@ func (h *Handler) dispatchToBrokers(ctx context.Context, kind, recordID, title, 
 	}
 	return msg
 }
-
-// brokerInboxTab: Listen-Reiter "Ohne Zuweisung" (Broker-Eingang) fuer
-// Tickets und Stoerungen.
-func brokerInboxTab(active bool) listTabExtra {
-	return listTabExtra{
-		Key: "unassigned", Label: "Ohne Zuweisung", Icon: "ti-inbox", Query: "unassigned=1",
-		Cond:   "assigned_to IS NULL AND status NOT IN ('resolved', 'closed')",
-		Active: active,
-	}
-}

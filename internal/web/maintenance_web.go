@@ -75,17 +75,6 @@ func deDate(t time.Time) string { return t.Local().Format("02.01.2006") }
 
 // ── Uebersicht ───────────────────────────────────────────────
 
-type maintCard struct {
-	ID, Title, InfraName, PlanID, PlanName, Due, Status, StatusLabel, StatusClass, Priority, PriorityDot, Who string
-	Overdue                                                                                                   bool
-	Lists, Points, Filled                                                                                     int
-}
-
-type maintGroup struct {
-	Key, Label, Icon string
-	Cards            []maintCard
-}
-
 type maintPlanRow struct {
 	Plan          *maintenance.MaintenancePlan
 	IntervalLabel string
@@ -135,13 +124,9 @@ const maintArchivePageSize = 50
 
 type MaintenancePageData struct {
 	BaseData
-	View         string
-	Mine         bool
-	InfraFilter  string
+	View         string // area (Dashboard · Auftraege · Board · Regeln) | year | plans | rounds | archive | checklists
+	Area         workArea
 	InfraOptions []UserOption
-	Groups       []maintGroup
-	OpenCount    int
-	LaterCount   int
 	Plans        []maintPlanRow
 	ShowInactive bool
 	Year         int
@@ -163,19 +148,41 @@ func (h *Handler) MaintenancePage(w http.ResponseWriter, r *http.Request) {
 	switch view {
 	case "year", "plans", "rounds", "archive", "checklists":
 	default:
-		view = "due"
+		view = "area"
 	}
 	data := MaintenancePageData{
 		BaseData: h.baseData(r, "maintenance", "Wartung", "Anstehend"),
-		View:     view, Mine: q.Get("mine") == "1", InfraFilter: q.Get("infra"),
-		Months: []string{"Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"},
+		View:     view,
+		Months:   []string{"Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"},
+	}
+	// Arbeitsbereich wie der KVP (work_board.go); Plaene & Co. sind weitere Reiter
+	tab := ""
+	if view != "area" && view != "archive" {
+		tab = "extra" // nur Zaehler fuer die Reiter
+	}
+	data.Area = h.buildWorkArea(r, workKinds["maintenance"], tab)
+	if view == "area" && data.Area.Tab == "items" && data.Area.Chip == "archive" {
+		view, data.View = "archive", "archive" // Chip „Archiv“ = Archiv mit Checklisten
+	}
+	if view == "archive" {
+		data.Area.Tab, data.Area.Chip = "items", "archive"
+		if len(data.Area.Chips) == 0 {
+			data.Area.buildChips(h.workOpenCards(r, workKinds["maintenance"]))
+		}
+	}
+	data.Area.Extra = []workLink{
+		{"year", "/maintenance?view=year", "ti-calendar-month", "Jahresplan"},
+		{"plans", "/maintenance?view=plans", "ti-repeat", "Pläne"},
+		{"rounds", "/maintenance?view=rounds", "ti-route", "Rundgänge"},
+		{"checklists", "/maintenance?view=checklists", "ti-list-check", "Checklisten"},
+	}
+	if tab == "extra" {
+		data.Area.ExtraActive = view
 	}
 	repo := h.maint.Repo()
 	taskScope := h.scopeAllowedIDs(r, "maintenance_task")
 	planScope := h.scopeAllowedIDs(r, "maintenance_plan")
 	switch view {
-	case "due":
-		h.maintDueGroups(ctx, r, &data, taskScope)
 	case "year":
 		data.Year = time.Now().Year()
 		if y, err := time.Parse("2006", q.Get("year")); err == nil && y.Year() > 2000 && y.Year() < 2200 {
@@ -317,86 +324,6 @@ func (h *Handler) maintArchiveRows(ctx context.Context, r *http.Request, data *M
 }
 
 // maintDueGroups: offene Auftraege nach Dringlichkeit; spaetere (vor dem Vorlauf) nur gezaehlt.
-func (h *Handler) maintDueGroups(ctx context.Context, r *http.Request, data *MaintenancePageData, scope map[string]bool) {
-	repo := h.maint.Repo()
-	tasks, _ := repo.FindTasks(ctx, maintenance.TaskFilter{Open: true, InfraID: data.InfraFilter})
-	u := getUser(r)
-	groups := map[string]bool{}
-	for _, g := range h.userGroups(ctx, u.ID) {
-		groups[g.ID] = true
-	}
-	today := time.Now()
-	todayStart := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.Local)
-	weekEnd := todayStart.AddDate(0, 0, 7)
-	infra := map[string]string{}
-	keys := []maintGroup{
-		{Key: "overdue", Label: "Überfällig", Icon: "ti-alert-triangle"},
-		{Key: "today", Label: "Heute", Icon: "ti-calendar-event"},
-		{Key: "week", Label: "Nächste 7 Tage", Icon: "ti-calendar-week"},
-		{Key: "soon", Label: "Demnächst (im Vorlauf)", Icon: "ti-calendar-time"},
-	}
-	idx := map[string]int{"overdue": 0, "today": 1, "week": 2, "soon": 3}
-	var visible []*maintenance.MaintenanceTask
-	for _, t := range tasks {
-		if scope != nil && !scope[t.ID] {
-			continue
-		}
-		infra[t.InfrastructureID] = t.InfraName
-		if data.Mine && !(derefOr(t.AssignedTo, "") == u.ID || derefOr(t.ResponsibleTo, "") == u.ID || groups[derefOr(t.AssignedGroupID, "")]) {
-			continue
-		}
-		due := t.DueDate.Local()
-		started := t.Status != maintenance.TaskOpen
-		inLead := !due.AddDate(0, 0, -t.LeadDays).After(todayStart.AddDate(0, 0, 1).Add(-time.Second))
-		if !started && due.After(weekEnd) && !inLead {
-			data.LaterCount++
-			continue
-		}
-		visible = append(visible, t)
-	}
-	var ids []string
-	for _, t := range visible {
-		if t.PlanID != nil {
-			_, _ = repo.BuildSteps(ctx, t.ID, false) // Checklisten-Hinweis auf der Karte
-		}
-		ids = append(ids, t.ID)
-	}
-	sums, _ := repo.StepSummaries(ctx, ids)
-	for _, t := range visible {
-		due := t.DueDate.Local()
-		key := "soon"
-		switch {
-		case due.Before(todayStart):
-			key = "overdue"
-		case due.Before(todayStart.AddDate(0, 0, 1)):
-			key = "today"
-		case due.Before(weekEnd):
-			key = "week"
-		}
-		who := t.AssigneeName
-		if who == "" {
-			who = t.GroupName
-		}
-		s := sums[t.ID]
-		keys[idx[key]].Cards = append(keys[idx[key]].Cards, maintCard{
-			ID: t.ID, Title: t.Title, InfraName: t.InfraName, PlanID: derefOr(t.PlanID, ""), PlanName: t.PlanName,
-			Due: deDate(t.DueDate), Status: string(t.Status), StatusLabel: statusLabel(string(t.Status)), StatusClass: statusClass(string(t.Status)),
-			Priority: string(t.Priority), PriorityDot: priorityDot(string(t.Priority)), Who: who, Overdue: key == "overdue",
-			Lists: s.Lists, Points: s.Total, Filled: s.Filled,
-		})
-		data.OpenCount++
-	}
-	for _, g := range keys {
-		if len(g.Cards) > 0 {
-			data.Groups = append(data.Groups, g)
-		}
-	}
-	for id, name := range infra {
-		data.InfraOptions = append(data.InfraOptions, UserOption{ID: id, Name: name})
-	}
-	sort.Slice(data.InfraOptions, func(i, j int) bool { return data.InfraOptions[i].Name < data.InfraOptions[j].Name })
-}
-
 // maintYearRows: je Plan die Termine des Jahres (erledigt, offen, geplant).
 func (h *Handler) maintYearRows(ctx context.Context, data *MaintenancePageData, scope map[string]bool) {
 	repo := h.maint.Repo()

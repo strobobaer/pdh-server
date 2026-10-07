@@ -6,7 +6,7 @@
     <h1 style="font-size:19px;font-weight:600"><i class="ti ti-bulb" style="color:var(--amber)"></i> KVP – Kontinuierliche Verbesserung</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">Jede Idee zählt · Rückmeldung binnen {{.FeedbackDays}} Tagen · Umsetzung nach PDCA</p>
   </div>
-  <button type="button" class="btn btn-primary" onclick="kvpOpenCreate()"><i class="ti ti-bulb"></i> Idee einreichen</button>
+  <button type="button" class="btn btn-primary" onclick="pdhKVP()"><i class="ti ti-bulb"></i> Idee einreichen</button>
 </div>
 {{if .Message}}<div class="kvp-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
 {{if .Error}}<div class="kvp-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
@@ -125,7 +125,7 @@
         <td style="font-size:11px;color:var(--muted)">{{.CreatedDate}}</td>
       </tr>
       {{else}}
-      <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Keine Vorschläge für diesen Filter – <a href="#" onclick="kvpOpenCreate();return false" style="color:var(--accent)">jetzt eine Idee einreichen</a></td></tr>
+      <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Keine Vorschläge für diesen Filter – <a href="#" onclick="pdhKVP();return false" style="color:var(--accent)">jetzt eine Idee einreichen</a></td></tr>
       {{end}}
       </tbody>
     </table>
@@ -173,7 +173,7 @@
     </div>
     <div class="card">
       <div class="card-title"><span><i class="ti ti-template"></i> Vorlagen</span></div>
-      <div class="kvp-tpl"><b><i class="ti ti-file-text"></i> Vorschlagsformular</b> – Titel, Thema, Ist-Zustand, Vorschlag, Nutzen, Team. <a href="#" onclick="kvpOpenCreate();return false" style="color:var(--accent)">Jetzt ausfüllen</a></div>
+      <div class="kvp-tpl"><b><i class="ti ti-file-text"></i> Vorschlagsformular</b> – Titel, Thema, Ist-Zustand, Vorschlag, Nutzen, Team. <a href="#" onclick="pdhKVP();return false" style="color:var(--accent)">Jetzt ausfüllen</a></div>
       <div class="kvp-tpl"><b><i class="ti ti-scale"></i> Bewertungsbogen</b> – Nutzen und Aufwand (1–5), geschätzte Einsparung und Kosten, Amortisation, Quadrant der Matrix.</div>
       <div class="kvp-tpl"><b><i class="ti ti-refresh"></i> PDCA-Blatt</b> – Ursache (5×Warum), messbares Ziel, Maßnahmenplan, Wirksamkeitsprüfung, Standardisierung.</div>
       <div class="kvp-tpl"><b><i class="ti ti-printer"></i> A3-Report</b> – der ganze Vorschlag auf einer Seite zum Aushängen: in jedem Vorschlag über <b>A3-Report</b>.</div>
@@ -194,30 +194,6 @@
   </div>
 </div>
 
-<!-- ── Idee einreichen ── -->
-<div id="kvp-create" class="kvp-modal" {{if .OpenCreate}}style="display:flex"{{end}}>
-  <form method="post" action="/kvp" class="kvp-dlg">
-    <div style="display:flex;align-items:center;margin-bottom:10px"><b style="flex:1;font-size:15px"><i class="ti ti-bulb" style="color:var(--amber)"></i> Idee einreichen</b>
-      <button type="button" class="btn" onclick="kvpCloseCreate()" aria-label="Schließen"><i class="ti ti-x"></i></button></div>
-    <div class="form-group"><label class="form-label">Titel *</label><input name="title" class="form-input" maxlength="200" required placeholder="Kurz: Was soll besser werden?"></div>
-    <div class="form-group"><label class="form-label">Thema</label>
-      <select name="category" class="form-input">{{range .Categories}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></div>
-    <div class="form-group"><label class="form-label">Ist-Zustand – was stört heute? *</label><textarea name="problem" class="form-input" rows="3" required></textarea></div>
-    <div class="form-group"><label class="form-label">Vorschlag – wie geht es besser? *</label><textarea name="proposal" class="form-input" rows="3" required></textarea></div>
-    <div class="form-group"><label class="form-label">Nutzen – was bringt es? (Zeit, Sicherheit, Qualität, Kosten …)</label><textarea name="benefit" class="form-input" rows="2"></textarea></div>
-    {{template "infra-tree-picker" (dict "TargetID" "kvp-new-infra" "SelectedLabelID" "kvp-new-infra-label" "Label" "Anlage / Bereich (optional)" "Value" "" "SelectedLabel" "")}}
-    <div class="form-group"><label class="form-label">Team – Miteinreichende (optional)</label>
-      <select name="member_ids" class="form-input" multiple size="4">{{range .Users}}{{if ne .ID $d.MyUserID}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}</select>
-      <span class="rec-sub">Strg/⌘ für Mehrfachauswahl</span></div>
-    {{if .CanManage}}<div class="form-group"><label class="form-label">Eingereicht von (für jemand anderen erfassen)</label>
-      <select name="submitter_id" class="form-input"><option value="">mir selbst</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>{{end}}
-    <p class="rec-sub">Du bekommst innerhalb von {{.FeedbackDays}} Tagen eine begründete Rückmeldung im Chat.</p>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-      <button type="button" class="btn" onclick="kvpCloseCreate()">Abbrechen</button>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-send"></i> Einreichen</button>
-    </div>
-  </form>
-</div>
 {{end}}
 
 {{define "context-list"}}
@@ -228,9 +204,4 @@
 
 {{define "scripts"}}
 {{template "kvp-style"}}
-<script>
-function kvpOpenCreate(){ document.getElementById('kvp-create').style.display = 'flex'; }
-function kvpCloseCreate(){ document.getElementById('kvp-create').style.display = 'none'; }
-document.addEventListener('keydown', function(e){ if(e.key === 'Escape') kvpCloseCreate(); });
-</script>
 {{end}}

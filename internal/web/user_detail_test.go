@@ -51,10 +51,6 @@ func TestUserDetailPrivacy(t *testing.T) {
 }
 
 func TestBrokerInboxTab(t *testing.T) {
-	tab := brokerInboxTab(true)
-	if tab.Query != "unassigned=1" || !tab.Active || !strings.Contains(tab.Cond, "assigned_to IS NULL") {
-		t.Errorf("brokerInboxTab: %+v", tab)
-	}
 	for _, k := range []string{"ticket", "fault"} {
 		if _, ok := brokerKinds[k]; !ok {
 			t.Errorf("Broker-Typ %s fehlt", k)

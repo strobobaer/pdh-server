@@ -16,9 +16,20 @@ im Kapitel „Versionen & Updates“ an.
 - Neue Seite „Zuweisung“ nur für Broker: Alle offenen Vorgänge ohne Zuweisung ihrer Arten laufen hier auf und lassen sich direkt einer Person, einer Gruppe oder sich selbst zuweisen
 - Wer etwas anlegt (Ticket, Störung, Aufgabe, Projekt, Wartung, KVP-Vorschlag), bekommt von PDH-System eine Bestätigung im Chat – mit dem Zuständigen oder den Brokern, an die der Vorgang ging
 - Wer beim Anlegen als Zuständige/r, Verantwortliche/r oder über eine Gruppe eingetragen wird, bekommt den Hinweis „Neu für dich“
+- KVP: Ideen reicht man jetzt Schritt für Schritt im Einreich-Assistenten ein (Thema → Was stört? → Vorschlag → Wo? → Team → Einreichen), auch über „Neu anlegen“ → „KVP-Idee“
+- KVP: „Nächster Schritt“ öffnet einen Assistenten, der durch Bewertung, Entscheidung, Plan, Maßnahmen, Wirksamkeit und Standardisierung führt und weiterschaltet – oder nur speichert („geht noch weiter“)
+- Tickets, Störungen, Aufgaben und Wartungen haben einen Reiter „Regeln & Einstellungen“ mit den Regeln des Moduls, der Standard-Frist und den Brokern
+
+### Geändert
+- Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der KVP: Dashboard mit Kennzahlen des Jahres, Ablauf, 12-Monats-Verlauf und „Braucht Aufmerksamkeit“, Liste mit Filter-Chips und Anzahl, Board nach Status
+- Die Ansichten „Anstehend“ und „Liste“ sind in der neuen Liste mit Filter-Chips aufgegangen; das Archiv ist dort der Chip „Archiv“ – alte Links führen in den passenden Chip
+- Wartung: „Anstehend“ heißt jetzt „Aufträge“; Aufträge vor dem Vorlauf stehen unter dem Chip „Geplant“, Jahresplan, Pläne, Rundgänge und Checklisten bleiben eigene Reiter
 
 ### Behoben
 - Ohne Zuweisung angelegte Tickets, Störungen, Aufgaben und Wartungen gingen nur aus dem Leitstand an die Broker – jetzt auch über „Neu anlegen“, die Modulseiten und die Schnittstelle
+- Aufgaben: Die Ansichten „Anstehend“ und „Archiv“ blieben leer, weil sie nach einer nicht mehr vorhandenen Einzelzuweisung fragten – jetzt mit allen Zuständigen und der Gruppe
+- Tickets und Störungen: „Ohne Zuweisung“ zeigte auch Vorgänge, die einer Gruppe zugewiesen sind
+- Leitstand: Vorgänge, die einer Gruppe zugewiesen sind, zeigen die Gruppe als zuständig und gelten bei „Nur ohne Zuständigen“ nicht mehr als frei
 
 ## [0.36.0] – 2026-10-07
 

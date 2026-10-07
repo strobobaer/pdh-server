@@ -1,12 +1,13 @@
 {{template "base" .}}
 
 {{define "content"}}
-{{/* Wartung v2 (maintenance_web.go): Anstehend · Jahresplan · Pläne · Erledigt · Checklisten.
+{{/* Wartung (maintenance_web.go): Dashboard · Aufträge · Board · Jahresplan · Pläne · Rundgänge ·
+     Checklisten · Regeln – wie der KVP (Bausteine in widgets/work_board.gohtml).
      Durchgeführt wird immer im Abschluss-Assistenten: pdhComplete('maintenance', id). */}}
 <div class="mt-head">
   <div>
     <h1>Wartung</h1>
-    <p>{{if eq .View "due"}}{{.OpenCount}} anstehend{{if .LaterCount}} · {{.LaterCount}} später geplant{{end}}{{else if eq .View "year"}}Jahresplan {{.Year}}{{else if eq .View "plans"}}{{len .Plans}} Pläne{{else if eq .View "rounds"}}{{len .Plans}} Kontrollrundgänge{{else if eq .View "archive"}}{{.Archive.Total}} abgeschlossene Wartungen{{if .Archive.Filtered}} (gefiltert){{end}}{{else}}Checklisten-Vorlagen{{end}}</p>
+    <p>{{if eq .View "area"}}{{.Area.OpenCount}} anstehend{{if .Area.OverdueCount}} · <span class="mt-red">{{.Area.OverdueCount}} überfällig</span>{{end}}{{if .Area.UnassignedCount}} · {{.Area.UnassignedCount}} ohne Zuweisung{{end}}{{else if eq .View "year"}}Jahresplan {{.Year}}{{else if eq .View "plans"}}{{len .Plans}} Pläne{{else if eq .View "rounds"}}{{len .Plans}} Kontrollrundgänge{{else if eq .View "archive"}}{{.Archive.Total}} abgeschlossene Wartungen{{if .Archive.Filtered}} (gefiltert){{end}}{{else}}Checklisten-Vorlagen{{end}}</p>
   </div>
   <div class="widget-icon-toolbar compact">
     <button type="button" class="btn" onclick="pdhCreate('maintenance')"><i class="ti ti-plus"></i> Einzelauftrag</button>
@@ -15,48 +16,9 @@
   </div>
 </div>
 
-<nav class="rec-tabs mt-tabs" aria-label="Ansicht">
-  <a class="rec-tab {{if eq .View "due"}}active{{end}}" href="/maintenance"><i class="ti ti-player-play"></i> Anstehend</a>
-  <a class="rec-tab {{if eq .View "year"}}active{{end}}" href="/maintenance?view=year"><i class="ti ti-calendar-month"></i> Jahresplan</a>
-  <a class="rec-tab {{if eq .View "plans"}}active{{end}}" href="/maintenance?view=plans"><i class="ti ti-repeat"></i> Pläne</a>
-  <a class="rec-tab {{if eq .View "rounds"}}active{{end}}" href="/maintenance?view=rounds"><i class="ti ti-route"></i> Rundgänge</a>
-  <a class="rec-tab {{if eq .View "archive"}}active{{end}}" href="/maintenance?view=archive"><i class="ti ti-archive"></i> Archiv</a>
-  <a class="rec-tab {{if eq .View "checklists"}}active{{end}}" href="/maintenance?view=checklists"><i class="ti ti-list-check"></i> Checklisten</a>
-</nav>
+{{template "wa-nav" .Area}}
 
-{{if eq .View "due"}}
-<form class="mt-filter" method="get" action="/maintenance">
-  <label class="mt-chip {{if .Mine}}on{{end}}"><input type="checkbox" name="mine" value="1" {{if .Mine}}checked{{end}} onchange="this.form.submit()"> Nur meine</label>
-  <select name="infra" class="form-input" onchange="this.form.submit()" aria-label="Anlage">
-    <option value="">Alle Anlagen</option>
-    {{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $.InfraFilter}}selected{{end}}>{{.Name}}</option>{{end}}
-  </select>
-</form>
-{{range .Groups}}
-<section class="mt-group mt-{{.Key}}">
-  <h2><i class="ti {{.Icon}}"></i> {{.Label}} <span>{{len .Cards}}</span></h2>
-  <div class="mt-cards">
-    {{range .Cards}}
-    <article class="mt-card {{if .Overdue}}overdue{{end}}">
-      <a class="mt-card-main" href="/maintenance/tasks/{{.ID}}">
-        <div class="mt-card-title"><span class="act-dot {{.PriorityDot}}"></span>{{.Title}}</div>
-        <div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.InfraName}}</div>
-        <div class="mt-card-meta">
-          <span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> {{.Due}}</span>
-          {{if .Who}}<span><i class="ti ti-user"></i> {{.Who}}</span>{{end}}
-          {{if .Points}}<span title="Checklistenpunkte"><i class="ti ti-list-check"></i> {{if gt .Lists 1}}{{.Lists}} Listen · {{end}}{{.Filled}}/{{.Points}}</span>{{end}}
-          {{if ne .Status "open"}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{end}}
-        </div>
-      </a>
-      <button type="button" class="btn cw-finish mt-go" onclick="pdhComplete('maintenance','{{.ID}}')"><i class="ti ti-player-play"></i> Durchführen</button>
-    </article>
-    {{end}}
-  </div>
-</section>
-{{else}}
-<div class="mt-empty"><i class="ti ti-mood-happy"></i><div>Keine Wartung anstehend.</div>{{if .LaterCount}}<a href="/maintenance?view=year">{{.LaterCount}} später geplante im Jahresplan</a>{{end}}</div>
-{{end}}
-{{end}}
+{{if eq .View "area"}}{{template "wa-pane" .Area}}{{end}}
 
 {{if eq .View "year"}}
 <div class="mt-yearnav">
@@ -138,6 +100,7 @@
 {{end}}
 
 {{if eq .View "archive"}}
+{{template "wa-chips" .Area}}
 <form class="mt-arch-filter" method="get" action="/maintenance">
   <input type="hidden" name="view" value="archive">
   <input type="search" name="q" class="form-input mt-arch-q" value="{{.Archive.Q}}" placeholder="Suche: Titel, Anlage, Plan, Bemerkung" aria-label="Suche">
@@ -249,6 +212,8 @@ async function mtArchToggle(btn){
 {{define "context-list"}}{{end}}
 
 {{block "scripts" .}}
+{{template "kvp-style"}}
+{{template "work-style"}}
 <style>
 .mt-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .mt-head h1{font-size:19px;font-weight:600}

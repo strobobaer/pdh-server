@@ -102,8 +102,7 @@ func TestNoBypassCompletion(t *testing.T) {
 		"fault_detail.gohtml":       "pdhComplete('fault'",
 		"task_detail.gohtml":        "pdhComplete('task'",
 		"maintenance_detail.gohtml": "pdhComplete('maintenance'",
-		"tickets.gohtml":            `data-complete="ticket:`,
-		"faults.gohtml":             `data-complete="fault:`,
+		"widgets/work_board.gohtml": `data-complete="{{$k.Key}}:`,
 	} {
 		s := read(file)
 		if !strings.Contains(s, want) {

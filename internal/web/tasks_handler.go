@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/modules/tasks"
 	"pdh/internal/modules/timetracking"
-	"pdh/pkg/appsettings"
 )
 
 type AssigneeView struct {
@@ -87,66 +86,13 @@ func taskView(t *tasks.Task) TaskView {
 	return v
 }
 
-type TasksPageData struct {
-	BaseData
-	Tabs           []ListTab
-	Tasks          []TaskView
-	Filter         string
-	Total          int
-	Open           int
-	Users          []UserOption
-	ProjectOptions []ProjectOption
-	DefaultDueDays int
-}
-
 type ProjectOption struct {
 	ID   string
 	Name string
 }
 
 func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
-	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
-		h.WorkBoardPage(w, r, "task", v)
-		return
-	}
-	ctx := r.Context()
-	filter := r.URL.Query().Get("status")
-	unassigned := r.URL.Query().Get("unassigned") == "true"
-
-	data := TasksPageData{
-		BaseData:       h.baseData(r, "tasks", "Aufgaben", "Offene Aufgaben"),
-		Filter:         filter,
-		Users:          h.userOptions(ctx),
-		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
-	}
-	data.Tabs = h.statusTabs(ctx, "tasks", "/tasks?view=list", filter, []statusTabDef{
-		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
-	}, false, listTabExtra{Key: "unassigned", Label: "Ohne Projekt", Icon: "ti-folder-off", Query: "unassigned=true",
-		Cond: "project_id IS NULL", Active: unassigned})
-
-	list, err := h.tasks.List(ctx, tasks.Status(filter), "", unassigned)
-	tagIDs := h.categoryFilterIDs(r, "task")
-	scopeIDs := h.scopeAllowedIDs(r, "task")
-	if err == nil {
-		data.Total = len(list)
-		for _, t := range list {
-			if tagIDs != nil && !tagIDs[t.ID] || scopeIDs != nil && !scopeIDs[t.ID] {
-				continue
-			}
-			if t.Status == "open" || t.Status == "in_progress" || t.Status == "pending" {
-				data.Open++
-			}
-			data.Tasks = append(data.Tasks, taskView(t))
-		}
-	}
-
-	if projs, err := h.projects.List(ctx, ""); err == nil {
-		for _, p := range projs {
-			data.ProjectOptions = append(data.ProjectOptions, ProjectOption{ID: p.ID, Name: p.Name})
-		}
-	}
-
-	h.render(w, "tasks", data)
+	h.WorkBoardPage(w, r, "task") // Arbeitsbereich wie der KVP (work_board.go)
 }
 
 type TaskDetailData struct {

@@ -58,7 +58,7 @@
           <button type="button" data-type="ticket"><i class="ti ti-ticket" style="color:#60a5fa"></i><b>{{t "Ticket"}}</b><small>{{t "Anliegen, Auftrag oder Anfrage"}}</small></button>
           <button type="button" data-type="task"><i class="ti ti-list-check" style="color:var(--accent)"></i><b>{{t "Aufgabe"}}</b><small>{{t "To-do mit Termin, auch für mehrere"}}</small></button>
           <button type="button" data-type="maintenance"><i class="ti ti-tool" style="color:var(--amber)"></i><b>{{t "Wartungsauftrag"}}</b><small>{{t "Einmalige Wartung an einer Anlage"}}</small></button>
-          {{if not .Board}}<button type="button" data-href="/kvp?tab=ideas&amp;create=1"><i class="ti ti-bulb" style="color:var(--green)"></i><b>{{t "KVP-Idee"}}</b><small>{{t "Verbesserungsvorschlag schnell einreichen"}}</small></button>{{end}}
+          {{if not .Board}}<button type="button" data-kvp="new"><i class="ti ti-bulb" style="color:var(--green)"></i><b>{{t "KVP-Idee"}}</b><small>{{t "Verbesserungsvorschlag schnell einreichen"}}</small></button>{{end}}
         </div>
       </div>
       <!-- 2 Was? -->
@@ -476,6 +476,7 @@
 
   // Ereignisse
   $('crw-types').addEventListener('click', e => {
+    if(e.target.closest('[data-kvp]')){ crwClose(); return; } // KVP: eigener Assistent (kvp_wizard.gohtml)
     const k = e.target.closest('button[data-href]');
     if(k){ location.href = k.dataset.href; return; }
     const b = e.target.closest('button[data-type]'); if(!b) return;
@@ -522,7 +523,7 @@
   // Seitenaufruf mit ?create=art (z. B. aus Schnellaktionen ohne Skript)
   function openFromURL(){
     const q = new URLSearchParams(location.search), k = q.get('create');
-    if(k === null) return;
+    if(k === null || k === 'kvp' || location.pathname === '/kvp') return; // KVP: kvp_wizard.gohtml
     q.delete('create');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
     pdhCreate(TYPES[k] ? k : '');
