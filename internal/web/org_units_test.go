@@ -104,7 +104,7 @@ func TestAssignmentNewOffersGroups(t *testing.T) {
 	})
 	for _, want := range []string{`<optgroup label="Personen">`, `<option value="u1">Eva</option>`, `<optgroup label="Gruppen">`, `value="g:g1"`, "Elektro Früh (Elektro) · 2 Mitglieder"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("Neue Zuweisung enthält %q nicht", want)
+			t.Errorf("Neu anlegen enthält %q nicht", want)
 		}
 	}
 }

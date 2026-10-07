@@ -218,6 +218,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
     <button class="header-button" type="button" id="theme-toggle" onclick="cycleThemeMode()" title="Darstellung wechseln" aria-label="Darstellung wechseln"><span aria-hidden="true" id="theme-toggle-icon">🖥️</span> <span id="theme-toggle-label">System</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
+    {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
     {{if .LoggedIn}}
     <a class="header-button" href="/" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
     {{else}}

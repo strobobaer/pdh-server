@@ -77,7 +77,8 @@ type GlobalDashboardPageData struct {
 	CanEditHeading            bool
 	CanDiscard                bool
 	CanCreatePrivileged       bool // Aufgaben/Wartungen anlegen - Administratoren und Manager
-	DefaultDueDaysTicket      int
+	CanChat                   bool // angemeldet mit Chat-Berechtigung: Chat-Knopf im Kopf
+	DefaultDueDaysTicket     int
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
 	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
@@ -110,6 +111,12 @@ func (h *Handler) isGlobalBoardAdminOrManager(r *http.Request) bool {
 	return user.Role == coreusers.RoleAdmin || user.Role == coreusers.RoleManager
 }
 
+// canUseChat: Sitzungsperson darf den Chat nutzen (Leitstand liegt ausserhalb von authMiddleware).
+func (h *Handler) canUseChat(r *http.Request) bool {
+	user := h.sessionUser(r)
+	return user != nil && h.rbac.HasPermissionForUser(user.ID, string(user.Role), "chat.use")
+}
+
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	tmpl, err := h.globalDashboardTemplate(r)
@@ -133,7 +140,8 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		CanEditHeading:            h.canEditGlobalDashboardHeading(r),
 		CanDiscard:                h.isGlobalBoardAdminOrManager(r),
 		CanCreatePrivileged:       h.isGlobalBoardAdminOrManager(r),
-		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
+		CanChat:                   loggedIn && h.canUseChat(r),
+		DefaultDueDaysTicket:     appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		Timeline:                  h.branding().Timeline,

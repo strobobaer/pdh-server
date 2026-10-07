@@ -131,7 +131,7 @@ func unassignedAge(d time.Duration) string {
 func (h *Handler) AssignmentNewPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	data := AssignmentNewPageData{
-		BaseData:                  h.baseData(r, "assignments-new", "Neue Zuweisung", "Auftrag anlegen und zuweisen"),
+		BaseData:                  h.baseData(r, "assignments-new", "Neu anlegen", "Auftrag anlegen und zuweisen"),
 		Users:                     h.userOptions(ctx),
 		Groups:                    h.loadGroups(ctx),
 		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),

@@ -39,10 +39,10 @@ func always(*BaseData) bool { return true }
 // navDefs: alle Eintraege in Vorgabe-Reihenfolge.
 var navDefs = []navDef{
 	{navItem{"dashboard", "/", "ti-dashboard", "Dashboard", "dashboard", false}, navTopKey, always},
-	{navItem{"chat", "/chat", "ti-messages", "Chat", "chat", false}, navTopKey, func(b *BaseData) bool { return b.CanChat }},
 	{navItem{"leitstand", "/global/", "ti-layout-dashboard", "Leitstand", "", true}, navTopKey, always},
-	{navItem{"assign", "/assignments/new", "ti-square-rounded-plus", "Neue Zuweisung", "assignments-new", false}, navTopKey, always},
+	{navItem{"assign", "/assignments/new", "ti-square-rounded-plus", "Neu anlegen", "assignments-new", false}, navTopKey, always},
 
+	{navItem{"chat", "/chat", "ti-messages", "Chat", "chat", false}, "work", func(b *BaseData) bool { return b.CanChat }},
 	{navItem{"tickets", "/tickets", "ti-ticket", "Tickets", "tickets", false}, "work", always},
 	{navItem{"faults", "/faults", "ti-alert-triangle", "Störungen", "faults", false}, "work", always},
 	{navItem{"maintenance", "/maintenance", "ti-tool", "Wartung", "maintenance", false}, "work", always},

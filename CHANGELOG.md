@@ -19,6 +19,8 @@ im Kapitel „Versionen & Updates“ an.
 - KVP-Regeln werden eingehalten: Rückmeldung binnen Frist (einstellbar, mit täglicher Erinnerung), jede Entscheidung mit Begründung, nächster Schritt erst, wenn alles Nötige erfasst ist; Einreichende bekommen jede Entscheidung im Chat
 - KVP-Vorschlag als A3-Report drucken; Vorher/Nachher-Fotos, Kommentare, Kategorien, Feldsätze, Verknüpfungen und Historie wie bei Tickets
 - Dashboard-Kachel „KVP-Vorschläge“ und Schnellaktion „Idee einreichen“; neues Recht „KVP steuern“
+- „Neue Zuweisung“ heißt jetzt „Neu anlegen“; im Auswahlschritt gibt es zusätzlich die Kachel „KVP-Idee“ zum schnellen Einreichen (für alle)
+- Chat steht jetzt in der Gruppe „Instandhaltung“ und als Knopf im Leitstand (neben dem Chat-Schnellzugriff im persönlichen Dashboard)
 - Netzlaufwerke (Core-Einstellungen): SMB/CIFS- und NFS-Freigaben oder bereits eingebundene Pfade einbinden, testen und durchsuchen; Passwörter verschlüsselt, automatisches Wiederverbinden mit Hinweis an die Administratoren
 - Netzlaufwerk als globaler Datenspeicher, für Import & Export (Pfad-Vorschläge), für die Datensicherung und als Dokumentenablage, die alle Anhänge nach Vorgang sortiert ablegt
 

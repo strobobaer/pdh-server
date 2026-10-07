@@ -719,7 +719,7 @@ func loadQuickActions(_ *Handler, ctx context.Context, _ string, _ WidgetInstanc
 		quickAction
 		perm string
 	}{
-		{quickAction{"Neue Zuweisung", "ti-square-rounded-plus", "/assignments/new", "accent", "any"}, ""},
+		{quickAction{"Neu anlegen", "ti-square-rounded-plus", "/assignments/new", "accent", "any"}, ""},
 		{quickAction{"Störung melden", "ti-alert-triangle", "/faults?create=fault", "red", "fault"}, "faults.view"},
 		{quickAction{"Ticket anlegen", "ti-ticket", "/tickets?create=ticket", "blue", "ticket"}, "tickets.view"},
 		{quickAction{"Idee einreichen", "ti-bulb", "/kvp?tab=ideas&create=1", "green", ""}, ""},
