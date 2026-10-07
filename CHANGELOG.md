@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.37.0] – 2026-10-07
+
+### Neu
+- Neue Seite „Zuweisung“ nur für Broker: Alle offenen Vorgänge ohne Zuweisung ihrer Arten laufen hier auf und lassen sich direkt einer Person, einer Gruppe oder sich selbst zuweisen
+- Wer etwas anlegt (Ticket, Störung, Aufgabe, Projekt, Wartung, KVP-Vorschlag), bekommt von PDH-System eine Bestätigung im Chat – mit dem Zuständigen oder den Brokern, an die der Vorgang ging
+- Wer beim Anlegen als Zuständige/r, Verantwortliche/r oder über eine Gruppe eingetragen wird, bekommt den Hinweis „Neu für dich“
+
+### Behoben
+- Ohne Zuweisung angelegte Tickets, Störungen, Aufgaben und Wartungen gingen nur aus dem Leitstand an die Broker – jetzt auch über „Neu anlegen“, die Modulseiten und die Schnittstelle
+
 ## [0.36.0] – 2026-10-07
 
 ### Neu

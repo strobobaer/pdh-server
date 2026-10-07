@@ -8,8 +8,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Broker-Verteilung: Vorgaenge, die im globalen Dashboard (Leitstand) angelegt
-// werden, sind nie zugewiesen und gehen an alle Broker des jeweiligen Typs
+// Broker-Verteilung: Vorgaenge, die ohne Zuweisung angelegt werden (immer im
+// Leitstand, sonst ueber den Anlegen-Hinweis in record_created.go), gehen an
+// alle Broker des jeweiligen Typs
 // (users.broker_tickets / broker_faults / broker_tasks / broker_maintenance). Jeder Broker erhaelt eine
 // Direktnachricht vom Melder mit Datensatz-Karte - dadurch oeffnet sich bei
 // ihm die Chat-Seitenleiste und er kann dem Melder direkt antworten.

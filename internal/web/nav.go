@@ -41,6 +41,7 @@ var navDefs = []navDef{
 	{navItem{"dashboard", "/", "ti-dashboard", "Dashboard", "dashboard", false}, navTopKey, always},
 	{navItem{"leitstand", "/global/", "ti-layout-dashboard", "Leitstand", "", true}, navTopKey, always},
 	{navItem{"assign", "/assignments/new", "ti-square-rounded-plus", "Neu anlegen", "assignments-new", false}, navTopKey, always},
+	{navItem{"assignments", "/assignments", "ti-inbox", "Zuweisung", "assignments", false}, navTopKey, func(b *BaseData) bool { return b.IsBroker }},
 
 	{navItem{"chat", "/chat", "ti-messages", "Chat", "chat", false}, "work", func(b *BaseData) bool { return b.CanChat }},
 	{navItem{"tickets", "/tickets", "ti-ticket", "Tickets", "tickets", false}, "work", always},

@@ -341,6 +341,14 @@ func (h *Handler) notifyRecordChange(ctx context.Context, changes []queuedChange
 	if !ok {
 		return
 	}
+	// Neu angelegt: Bestaetigung, Zugewiesene und Broker statt „geändert“
+	// (Nacharbeiten beim Anlegen wie Gruppe oder Zuständige gehören dazu).
+	for _, c := range changes {
+		if c.kind == "created" {
+			h.notifyRecordCreated(ctx, module, rec)
+			return
+		}
+	}
 	actor := changeActors.actor(rec)
 	recipients := h.changeRecipients(ctx, module, rec)
 	var to []string

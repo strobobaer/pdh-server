@@ -68,6 +68,7 @@ type BaseData struct {
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
+	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
 	Lang                   string     // Sprache der Oberflaeche (i18n.go)
@@ -341,6 +342,8 @@ func (h *Handler) Routes() chi.Router {
 
 	r.Get("/", h.Dashboard)
 	r.Get("/assignments/new", h.AssignmentNewPage)
+	r.Get("/assignments", h.AssignmentBoardPage)
+	r.Post("/assignments/{ref}/{id}", h.AssignmentBoardAssign)
 	r.Get("/account", h.AccountPage)
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
@@ -897,6 +900,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),
+		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	return b

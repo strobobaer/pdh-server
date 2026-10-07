@@ -1,0 +1,62 @@
+{{template "base" .}}
+{{define "content"}}
+<div style="margin-bottom:18px;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+  <div>
+    <h1 style="font-size:19px;font-weight:600">Zuweisung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Alle offenen Vorgänge ohne Zuweisung, für die du Broker bist – direkt einer Person, einer Gruppe oder dir selbst zuweisen</p>
+  </div>
+  <span class="badge {{if .Total}}b-amber{{else}}b-gray{{end}}" style="margin-left:auto">{{.Total}} offen</span>
+  <a class="btn btn-small" href="/assignments"><i class="ti ti-refresh"></i> Aktualisieren</a>
+</div>
+
+{{$users := .Users}}{{$teams := .Teams}}
+{{range .Groups}}
+<div class="card ab-card">
+  <div class="card-title"><i class="ti {{.Icon}}"></i> {{.Label}}
+    <span class="badge {{if .Items}}b-amber{{else}}b-gray{{end}}">{{len .Items}}{{if .More}}+{{.More}}{{end}}</span>
+    <a class="ab-all" href="{{.ListURL}}">Liste <i class="ti ti-arrow-right"></i></a></div>
+  {{if .Items}}
+  <ul class="ab-list">
+    {{range .Items}}
+    <li class="ab-row">
+      <a class="ab-main" href="{{.Href}}">
+        <span class="act-dot {{if eq .Priority "critical"}}d-red{{else if eq .Priority "high"}}d-amber{{else}}d-blue{{end}}" title="{{.PrioLabel}}"></span>
+        <span class="ab-text"><span class="ab-title">{{.Title}}</span>
+          <span class="ab-meta">{{if .PrioLabel}}{{.PrioLabel}} · {{end}}{{if .Infra}}{{.Infra}} · {{end}}{{if .Creator}}von {{.Creator}} · {{end}}{{.Age}}</span></span>
+      </a>
+      <form class="ab-action" hx-post="/assignments/{{.Ref}}/{{.ID}}" hx-target="this" hx-swap="innerHTML">
+        <select name="target" required>
+          <option value="">Zuweisen an …</option>
+          <option value="me">Mir selbst</option>
+          <optgroup label="Personen">{{range $users}}<option value="u:{{.ID}}">{{.Name}}</option>{{end}}</optgroup>
+          {{if $teams}}<optgroup label="Gruppen">{{range $teams}}<option value="g:{{.ID}}">{{.Name}}{{if .DepartmentName}} ({{.DepartmentName}}){{end}}</option>{{end}}</optgroup>{{end}}
+        </select>
+        <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-user-check"></i> Zuweisen</button>
+      </form>
+    </li>
+    {{end}}
+  </ul>
+  {{if .More}}<div class="ab-empty">… und {{.More}} weitere – in der <a href="{{.ListURL}}">Liste</a>.</div>{{end}}
+  {{else}}<div class="ab-empty"><i class="ti ti-check"></i> Alles zugewiesen.</div>{{end}}
+</div>
+{{end}}
+<style>
+.ab-card{max-width:980px;margin-bottom:12px}
+.ab-card .card-title{display:flex;align-items:center;gap:6px}
+.ab-all{margin-left:auto;font-size:12px;font-weight:400;color:var(--accent)}
+.ab-list{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.ab-row{display:flex;align-items:center;gap:10px;padding:8px 10px;flex-wrap:wrap}
+.ab-row + .ab-row{border-top:1px solid var(--border)}
+.ab-main{display:flex;align-items:center;gap:8px;flex:1;min-width:220px;color:var(--text);text-decoration:none}
+.ab-main:hover .ab-title{color:var(--accent)}
+.ab-text{display:flex;flex-direction:column;min-width:0}
+.ab-title{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ab-meta{font-size:11.5px;color:var(--muted)}
+.ab-action{display:flex;gap:6px;align-items:center}
+.ab-action select{max-width:240px}
+.ab-done{color:var(--green);font-size:12.5px;display:flex;gap:6px;align-items:center}
+.ab-err{color:var(--red);font-size:12.5px;display:flex;gap:6px;align-items:center}
+.ab-empty{font-size:12px;color:var(--muted);padding:4px 0}
+@media(max-width:600px){.ab-action{width:100%}.ab-action select{flex:1;max-width:none}}
+</style>
+{{end}}

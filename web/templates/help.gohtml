@@ -227,7 +227,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "categories") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new">
+<section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new assignments">
   <h2><i class="ti ti-layout-dashboard"></i> Leitstand &amp; Meldungen</h2>
   <p>Am <b>Leitstand</b> (z. B. am Terminal in der Halle) meldet jede und jeder schnell ein Problem – ohne sich lange durchzuklicken.</p>
   <p>Auch hier legst du mit dem <a href="#creation">Erstellungs-Assistenten</a> an, groß und fingerfreundlich – nur <b>ohne Zuweisung</b>: Statt „Wer kümmert sich?“ fragt der Leitstand <b>Wer meldet?</b>. Den Vorgang verteilen danach die Broker.</p>
@@ -272,14 +272,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul></div>
   <h3><i class="ti ti-inbox"></i> Was danach passiert: Broker</h3>
   {{template "hb-fig-broker"}}
-  <p>Meldungen aus dem Leitstand sind nie zugewiesen – das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen; im Verlauf des Vorgangs steht, an wen er verteilt wurde. Offene, unzugewiesene Tickets und Störungen findest du in der Liste im Reiter <b>Ohne Zuweisung</b>. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen und der Leitstand weist darauf hin.</p>
+  <p>Meldungen aus dem Leitstand sind nie zugewiesen. Auch sonst kann jeder Vorgang ohne Zuständigen angelegt werden, egal ob über <b>Neu anlegen</b>, die Modulseite oder die Schnittstelle. Das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt dann eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen. Im Verlauf des Vorgangs steht, an wen er verteilt wurde. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen. Der Leitstand und die Bestätigung im Chat weisen darauf hin.</p>
+  <p>Aus Wartungsplänen automatisch erzeugte Aufträge lösen keine Chat-Nachricht aus. Sie erscheinen auf der Seite <b>Zuweisung</b>, sobald ihr Vorlauf begonnen hat.</p>
   {{template "hb-shots" (dict "Ref" (index $s "dashboard") "Can" $can)}}
-  <div class="hb-howto"><b><i class="ti ti-inbox"></i> Schnelleinstieg für Broker: noch nicht zugewiesen</b>Bist du Broker (Benutzerstamm), zeigt <b>Neu anlegen</b> unter dem Formular je Art, für die du Broker bist, die offenen Vorgänge <b>ohne Zuweisung</b> – neueste zuerst, mit Priorität, Anlage und wie lange sie schon warten. Wartungen erscheinen, sobald ihr Vorlauf begonnen hat.
+  <div class="hb-howto"><b><i class="ti ti-user-check"></i> So weist du als Broker zu</b>Bist du Broker (Benutzerstamm), steht in der Navigation oben <b>Zuweisung</b>. Andere sehen diese Seite nicht. Dort laufen alle offenen Vorgänge <b>ohne Zuweisung</b> auf, für die du Broker bist. Sie sind nach Art sortiert, die neuesten zuerst. Zu jedem Vorgang stehen Priorität, Anlage, Ersteller und Wartezeit dabei. Wartungen erscheinen, sobald ihr Vorlauf begonnen hat.
     <ol class="hb-steps">
-      <li><b>Neu anlegen</b> öffnen – die Liste steht unter dem Formular („Noch nicht zugewiesen“).</li>
-      <li>Einen Eintrag antippen: Der Vorgang öffnet sich, dort weist du ihn einer Person oder Gruppe zu.</li>
-      <li><b>alle anzeigen</b> führt zur Liste der Art (bei Tickets und Störungen gleich im Reiter „Ohne Zuweisung“).</li>
-    </ol></div>
+      <li><b>Zuweisung</b> in der Navigation öffnen.</li>
+      <li>Beim Vorgang unter <b>Zuweisen an …</b> eine Person, eine Gruppe oder <b>Mir selbst</b> wählen.</li>
+      <li><b>Zuweisen</b> – die Zeile zeigt „Zugewiesen an …“. Der neue Zuständige bekommt einen Hinweis im Chat.</li>
+      <li>War ein anderer Broker schneller, steht dort „Schon vergeben“. Es wird dann nichts überschrieben.</li>
+      <li>Ein Klick auf den Titel öffnet den Vorgang. Dort kannst du auch Verantwortliche und weitere Angaben setzen.</li>
+    </ol>
+    Unter <b>Neu anlegen</b> stehen dieselben Vorgänge kurz als Schnelleinstieg. <b>Zur Zuweisung</b> führt von dort auf die Seite.</div>
 </section>
 
 <section class="hb-ch" id="faults" data-title="Störungen" data-pages="faults">
@@ -322,7 +326,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
     Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste über „Auswahl erledigen“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
-    <b>Ohne Zuweisung</b> (Filter in „Anstehend“ oder Reiter in der Liste) ist dein Eingang: Hier stehen alle offenen Tickets, die noch niemandem gehören.</div>
+    Dein Eingang ist die Seite <b>Zuweisung</b> (Navigation oben). Dort weist du direkt zu (<a href="#dashboard">mehr</a>). In der Ticketliste zeigt der Filter <b>Ohne Zuweisung</b> dieselben Tickets.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
 </section>
 
@@ -654,6 +658,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Absenden. Die anderen sehen eine Karte, die den Datensatz öffnet.</li>
     </ol></div>
   <h3><i class="ti ti-bell"></i> Hinweise von PDH-System</h3>
+  <p><b>Beim Anlegen</b> eines Tickets, einer Störung, einer Aufgabe, eines Projekts, einer Wartung oder eines KVP-Vorschlags bestätigt PDH-System dir das im Chat. Die Nachricht nennt, wer zuständig ist oder an welche Broker der Vorgang ging. Wer als Zuständige/r, Verantwortliche/r oder über eine Gruppe eingetragen wurde, bekommt „Neu für dich“. Aus Wartungsplänen automatisch erzeugte Aufträge melden sich nicht.</p>
   <p>Ändert jemand ein <b>Ticket</b>, eine <b>Störung</b>, eine <b>Aufgabe</b>, ein <b>Projekt</b> oder eine <b>Wartung</b>, schickt der Absender <b>PDH-System</b> einen kurzen Hinweis an alle Beteiligten: Ersteller/in, Verantwortliche/n und Zugewiesene. Wer die Änderung selbst gemacht hat, bekommt keinen Hinweis. Der Hinweis nennt, was sich geändert hat (z. B. „Status: offen → in Arbeit“, neuer Kommentar) und enthält eine Karte zum Vorgang. Mehrere Änderungen kurz hintereinander werden zu einer Nachricht zusammengefasst.</p>
   <p>Die Hinweise sind nur zur Information – auf PDH-System zu antworten ist nicht nötig. Abschalten kannst du sie unter <b>Mein Konto → Konto &amp; Dienste</b>. PDH-System informiert Administratoren außerdem über <a href="#cleanup">Bereinigungsläufe</a> und <a href="#backup">Datensicherungen</a>.</p>
   {{template "hb-shots" (dict "Ref" (index $s "chat") "Can" $can)}}

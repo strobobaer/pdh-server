@@ -84,7 +84,8 @@
 
 {{if .Unassigned}}
 <div class="card as-unassigned" style="max-width:720px;margin-top:12px">
-  <div class="card-title"><i class="ti ti-inbox"></i> Noch nicht zugewiesen <span class="as-sub">– Schnelleinstieg für dich als Broker</span></div>
+  <div class="card-title" style="display:flex;align-items:center;gap:6px"><i class="ti ti-inbox"></i> Noch nicht zugewiesen <span class="as-sub">– Schnelleinstieg für dich als Broker</span>
+    <a class="btn btn-small" href="/assignments" style="margin-left:auto"><i class="ti ti-user-check"></i> Zur Zuweisung</a></div>
   {{range .Unassigned}}
   <div class="as-group">
     <div class="as-group-head"><i class="ti {{.Icon}}"></i> {{.Label}} <span class="badge {{if .Items}}b-amber{{else}}b-gray{{end}}">{{len .Items}}{{if .More}}+{{.More}}{{end}}</span>
