@@ -9,10 +9,42 @@
 
 {{template "dw-grid" .}}
 
+<style>
+.dv-filter{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-weight:400}
+.dv-chip{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 11px;border-radius:16px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);font-size:12px;font-family:inherit;cursor:pointer}
+.dv-chip[aria-pressed="true"]{color:var(--text);border-color:var(--accent);font-weight:600}
+.dv-chip i{font-size:10px}
+.dv-chip[aria-pressed="false"] i{opacity:.35}
+.dv-sep{width:1px;align-self:stretch;background:var(--border);margin:0 2px}
+.dv-table{width:100%;border-collapse:collapse;font-size:13px}
+.dv-table th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2,var(--bg3))}
+.dv-table td{padding:7px 8px;border-bottom:1px solid var(--border)}
+.dv-table tr.dv-row{cursor:pointer}
+.dv-table tr.dv-row:hover{background:var(--bg3)}
+.dv-table .dv-over{color:var(--red);font-weight:600}
+</style>
+
+<!-- Tabelle der offenen Vorgänge (gleiche Auswahl wie im Leitstand) -->
+<div class="card" id="dash-table-card">
+  <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span>{{t "Tabelle"}}</span>
+    <div class="dv-filter" id="dash-table-filter" role="group" aria-label="{{t "Was in der Tabelle angezeigt wird"}}"></div>
+    <span id="dash-table-count" style="margin-left:auto;font-size:12px;color:var(--muted);font-weight:400"></span>
+  </div>
+  <div style="overflow:auto;max-height:340px">
+    <table class="dv-table">
+      <thead><tr><th>{{t "Art"}}</th><th>{{t "Titel"}}</th><th>{{t "Fällig"}}</th><th>{{t "Status"}}</th></tr></thead>
+      <tbody id="dash-table-body"></tbody>
+    </table>
+    <div id="dash-table-empty" style="display:none;font-size:12px;color:var(--muted);padding:14px;text-align:center">{{t "Keine offenen Vorgänge vorhanden."}}</div>
+  </div>
+</div>
+
 <!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen -->
 <div class="card">
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <span>{{t "Zeitstrahl"}}</span>
+    <div class="dv-filter" id="dash-gantt-filter" role="group" aria-label="{{t "Was im Zeitstrahl angezeigt wird"}}" style="flex-basis:100%;order:3"></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
       <span><i class="ti ti-square-filled" style="color:#3fae86"></i> {{t "Störungen"}}</span>
       <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> {{t "Tickets"}}</span>
@@ -181,10 +213,71 @@ async function saveDashGanttDate(item, end){
   }
 }
 
+// ── Anzeige-Auswahl wie im Leitstand: je Tabelle und Zeitstrahl eigene Chips
+// (Vorgangsarten, nur überfällig, nur ohne Zuständigen), im Browser gemerkt.
+var DV_TYPES = [['fault','Störungen','#3fae86'],['ticket','Tickets','#4b9fc4'],['maintenance','Wartung','#c99a3c'],['task','Aufgaben','#9d7fc9']];
+var DV_LABEL = {fault:'Störung', ticket:'Ticket', maintenance:'Wartung', task:'Aufgabe'};
+function dvToday(){ return formatDateISO(new Date()); }
+function dvOverdue(t){ return !t.done && !t.provisional && t.end < dvToday(); }
+function dvFilter(boxId, storageKey, onChange){
+  var state = {fault:true, ticket:true, maintenance:true, task:true, overdue:false, unassigned:false};
+  try{ Object.assign(state, JSON.parse(localStorage.getItem(storageKey) || '{}')); }catch(e){}
+  var box = document.getElementById(boxId);
+  function chip(key, label, color){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'dv-chip';
+    b.setAttribute('aria-pressed', state[key] ? 'true' : 'false');
+    if(color){ var d = document.createElement('i'); d.className = 'ti ti-square-filled'; d.style.color = color; b.appendChild(d); }
+    b.appendChild(document.createTextNode(label));
+    b.addEventListener('click', function(){
+      state[key] = !state[key];
+      b.setAttribute('aria-pressed', state[key] ? 'true' : 'false');
+      try{ localStorage.setItem(storageKey, JSON.stringify(state)); }catch(e){}
+      onChange();
+    });
+    box.appendChild(b);
+  }
+  DV_TYPES.forEach(function(t){ chip(t[0], t[1], t[2]); });
+  var sep = document.createElement('span'); sep.className = 'dv-sep'; box.appendChild(sep);
+  chip('overdue', 'Nur überfällig', '#e05a5a');
+  chip('unassigned', 'Nur ohne Zuständigen', '');
+  return function(t){
+    if(state[t.refType] === false) return false;
+    if(state.overdue && !dvOverdue(t)) return false;
+    if(state.unassigned && !t.unassigned) return false;
+    return true;
+  };
+}
+var dvTableMatch = dvFilter('dash-table-filter', 'pdh_dash_table_filter', function(){ renderDashTable(); });
+var dvGanttMatch = dvFilter('dash-gantt-filter', 'pdh_dash_gantt_filter', function(){ renderDashGantt(); });
+
+function renderDashTable(){
+  var body = document.getElementById('dash-table-body');
+  var open = dashGanttItems.filter(function(t){ return !t.done; });
+  var items = open.filter(dvTableMatch).sort(function(a, b){
+    if(a.provisional !== b.provisional) return a.provisional ? 1 : -1;
+    return a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+  });
+  document.getElementById('dash-table-count').textContent = items.length === open.length ? '' : (items.length + ' von ' + open.length);
+  document.getElementById('dash-table-empty').style.display = items.length ? 'none' : 'block';
+  body.replaceChildren();
+  items.forEach(function(t){
+    var tr = document.createElement('tr'); tr.className = 'dv-row';
+    function td(text, cls){ var c = document.createElement('td'); if(cls) c.className = cls; c.textContent = text; tr.appendChild(c); }
+    td(DV_LABEL[t.refType] || t.refType);
+    td(t.name);
+    td(t.provisional ? '—' : t.end.split('-').reverse().join('.'), dvOverdue(t) ? 'dv-over' : '');
+    td((t.running ? 'In Arbeit' : 'Offen') + (t.unassigned ? ' · ohne Zuständigen' : ''));
+    tr.addEventListener('click', function(){ window.location = t.url; });
+    body.appendChild(tr);
+  });
+}
+
 function renderDashGantt(){
   var target = document.getElementById('dash-gantt-target');
   var empty = document.getElementById('dash-gantt-empty');
-  if(!dashGanttItems.length){
+  var shown = dashGanttItems.filter(dvGanttMatch);
+  if(!shown.length){
     target.style.display = 'none';
     empty.style.display = 'block';
     return;
@@ -193,9 +286,9 @@ function renderDashGantt(){
   empty.style.display = 'none';
 
   var byId = {};
-  dashGanttItems.forEach(function(t){ byId[t.id] = t; });
+  shown.forEach(function(t){ byId[t.id] = t; });
 
-  var tasks = pdhTimelineCollect(dashGanttItems.map(function(t){
+  var tasks = pdhTimelineCollect(shown.map(function(t){
     return {id: t.id, name: t.name, start: t.start, end: t.end, progress: t.done ? 100 : 0, done: t.done};
   }), 'dashboard');
 
@@ -218,7 +311,8 @@ function renderDashGantt(){
   }
 }
 
-if(document.readyState !== 'loading'){ renderDashGantt(); }
-else document.addEventListener('DOMContentLoaded', renderDashGantt);
+function dashInit(){ renderDashTable(); renderDashGantt(); }
+if(document.readyState !== 'loading'){ dashInit(); }
+else document.addEventListener('DOMContentLoaded', dashInit);
 </script>
 {{end}}

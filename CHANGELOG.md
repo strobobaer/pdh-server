@@ -21,6 +21,7 @@ im Kapitel „Versionen & Updates“ an.
 - Dashboard-Kachel „KVP-Vorschläge“ und Schnellaktion „Idee einreichen“; neues Recht „KVP steuern“
 - „Neue Zuweisung“ heißt jetzt „Neu anlegen“; im Auswahlschritt gibt es zusätzlich die Kachel „KVP-Idee“ zum schnellen Einreichen (für alle)
 - Chat steht jetzt in der Gruppe „Instandhaltung“ und als Knopf im Leitstand (neben dem Chat-Schnellzugriff im persönlichen Dashboard)
+- Persönliches Dashboard: neue Tabelle der offenen Vorgänge oberhalb des Zeitstrahls; Tabelle und Zeitstrahl haben wie im Leitstand eine eigene Auswahl (Vorgangsarten, nur überfällig, nur ohne Zuständigen), die der Browser sich merkt
 - Netzlaufwerke (Core-Einstellungen): SMB/CIFS- und NFS-Freigaben oder bereits eingebundene Pfade einbinden, testen und durchsuchen; Passwörter verschlüsselt, automatisches Wiederverbinden mit Hinweis an die Administratoren
 - Netzlaufwerk als globaler Datenspeicher, für Import & Export (Pfad-Vorschläge), für die Datensicherung und als Dokumentenablage, die alle Anhänge nach Vorgang sortiert ablegt
 
