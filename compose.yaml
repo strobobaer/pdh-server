@@ -53,6 +53,13 @@ services:
       - pdh_backups:/app/backups
       - pdh_config:/app/config
       - pdh_logs:/app/logs
+      # Netzlaufwerke: vom Updater eingebunden, hier sichtbar (Core-Einstellungen -> Netzlaufwerke)
+      - type: bind
+        source: ${PDH_MOUNT_HOST_DIR:-/srv/pdh-mounts}
+        target: /mnt/pdh
+        bind:
+          propagation: rslave
+          create_host_path: true
 
   updater:
     build:
@@ -67,9 +74,21 @@ services:
       PDH_UPDATE_REPO_DIR: /repo
       PDH_COMPOSE_PROJECT_NAME: ${PDH_COMPOSE_PROJECT_NAME:-pdh-server}
       PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
+      PDH_MOUNT_ROOT: /mnt/pdh
+      PDH_MOUNT_UID: "10001"
+      PDH_MOUNT_GID: "10001"
+    # Netzlaufwerke einbinden (mount braucht CAP_SYS_ADMIN); der Dienst hat
+    # ueber docker.sock ohnehin Root-Rechte auf dem Host.
+    privileged: true
     volumes:
       - ${PDH_UPDATE_HOST_REPO_DIR:-.}:/repo
       - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${PDH_MOUNT_HOST_DIR:-/srv/pdh-mounts}
+        target: /mnt/pdh
+        bind:
+          propagation: rshared
+          create_host_path: true
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8091/health"]
       interval: 30s

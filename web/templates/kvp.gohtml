@@ -1,0 +1,236 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-bulb" style="color:var(--amber)"></i> KVP – Kontinuierliche Verbesserung</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Jede Idee zählt · Rückmeldung binnen {{.FeedbackDays}} Tagen · Umsetzung nach PDCA</p>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="kvpOpenCreate()"><i class="ti ti-bulb"></i> Idee einreichen</button>
+</div>
+{{if .Message}}<div class="kvp-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="kvp-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="dashboard" href="?tab=dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+  <a class="rec-tab" data-tab="ideas" href="?tab=ideas"><i class="ti ti-list-details"></i> Vorschläge <b>{{len .Ideas}}</b></a>
+  <a class="rec-tab" data-tab="board" href="?tab=board"><i class="ti ti-layout-kanban"></i> PDCA-Board</a>
+  <a class="rec-tab" data-tab="rules" href="?tab=rules"><i class="ti ti-book-2"></i> Regeln &amp; Vorlagen</a>
+</div>
+
+<!-- ── Dashboard ── -->
+<div class="rec-pane" data-pane="dashboard">
+  {{with .Dash}}
+  <div class="kvp-kpis">
+    {{range .KPIs}}
+    {{if .URL}}<a class="stat {{.Class}} kvp-kpi" href="{{.URL}}">{{else}}<div class="stat {{.Class}} kvp-kpi">{{end}}
+      <div class="stat-label">{{.Label}}</div>
+      <div class="stat-val">{{.Value}}</div>
+      <div class="stat-sub">{{.Sub}}</div>
+    {{if .URL}}</a>{{else}}</div>{{end}}
+    {{end}}
+  </div>
+
+  <div class="kvp-grid">
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-filter"></i> Ablauf – wo stehen die Vorschläge?</span></div>
+      {{range .Funnel}}
+      <a class="kvp-bar" href="{{.URL}}"><span class="l"><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="b"><span class="f {{.Class}}" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></a>
+      {{end}}
+      <p class="rec-sub" style="margin-top:6px">Offene Vorschläge plus Abschlüsse im Jahr {{.Year}}.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-chart-bar"></i> Letzte 12 Monate</span></div>
+      <div class="kvp-chart">
+        {{range .Months}}<div class="m" title="{{.Label}}: {{.Submitted}} eingereicht, {{.Done}} umgesetzt"><div class="bars"><span class="s" style="height:{{.HSubmitted}}%"></span><span class="d" style="height:{{.HDone}}%"></span></div><span class="lb">{{.Label}}</span></div>{{end}}
+      </div>
+      <div class="kvp-legend"><span class="s">eingereicht ({{.SumSubmitted}})</span><span class="d">umgesetzt ({{.SumDone}})</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-category"></i> Themen {{.Year}}</span></div>
+      {{range .Categories}}
+      <a class="kvp-bar" href="{{.URL}}"><span class="l"><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="b"><span class="f b-blue" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></a>
+      {{end}}
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-grid-dots"></i> Nutzen-Aufwand-Matrix</span><span class="card-action">offene, bewertete Vorschläge</span></div>
+      <div class="kvp-matrix">
+        <div class="ax-y">Nutzen ↑</div>
+        {{range .Quads}}
+        <div class="q {{.Class}}">
+          <div class="qh"><b>{{.Label}}</b><span>{{.Count}}</span></div>
+          <div class="qs">{{.Hint}}</div>
+          {{range .Items}}<a href="/kvp/{{.ID}}">{{.Code}} {{.Title}}</a>{{end}}
+        </div>
+        {{end}}
+        <div class="ax-x">Aufwand →</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-alarm"></i> Braucht Aufmerksamkeit</span></div>
+      {{range .Attention}}
+      <a class="kvp-li" href="/kvp/{{.ID}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span><span class="t">{{.Code}} {{.Title}}</span>
+        <span class="s" style="color:var(--red)">{{if .FeedbackOverdue}}Rückmeldung fällig seit {{.FeedbackDueLabel}}{{else}}Termin {{.DueLabel}}{{end}}</span></a>
+      {{end}}
+      {{range .OverdueActions}}
+      <a class="kvp-li" href="/kvp/{{.IdeaID}}?tab=pdca"><span class="badge b-red">Maßnahme</span><span class="t">{{.Description}}</span><span class="s">{{.ResponsibleName}} · seit {{.DueLabel}}</span></a>
+      {{end}}
+      {{if and (not .Attention) (not .OverdueActions)}}<div class="rec-sub"><i class="ti ti-circle-check" style="color:var(--green)"></i> Alle Fristen eingehalten.</div>{{end}}
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-trophy"></i> Ideengeber {{.Year}}</span></div>
+      {{range .TopSubmitters}}<div class="kvp-bar"><span class="l">{{.Name}}</span><span class="b"><span class="f b-green" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></div>{{else}}<div class="rec-sub">Noch keine Vorschläge in diesem Jahr.</div>{{end}}
+      {{if .TopDepartments}}<div class="rec-sub" style="margin:10px 0 4px">nach Abteilung</div>{{end}}
+      {{range .TopDepartments}}<div class="kvp-bar"><span class="l">{{.Name}}</span><span class="b"><span class="f b-blue" style="width:{{.Pct}}%"></span></span><span class="n">{{.Count}}</span></div>{{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+
+<!-- ── Vorschlaege ── -->
+<div class="rec-pane" data-pane="ideas">
+  <div class="kvp-chips">
+    {{range .Chips}}<a class="kvp-chip{{if .Active}} on{{end}}" href="{{.URL}}"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{.Count}}</b></a>{{end}}
+  </div>
+  <form method="get" action="/kvp" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <input type="hidden" name="tab" value="ideas">
+    {{if .Filter.Status}}<input type="hidden" name="status" value="{{.Filter.Status}}">{{end}}
+    <input name="q" class="form-input" style="flex:1;min-width:180px" placeholder="Suchen: Nummer, Titel, Inhalt …" value="{{.Filter.Query}}" aria-label="Suchen">
+    <select name="category" class="form-input" style="width:auto" onchange="this.form.submit()" aria-label="Thema">
+      <option value="">Alle Themen</option>
+      {{range .Categories}}<option value="{{.Key}}" {{if eq .Key $d.Filter.Category}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    <button class="btn" type="submit"><i class="ti ti-search"></i></button>
+  </form>
+  <div class="card" style="padding:0">
+    <table>
+      <thead><tr><th>Vorschlag</th><th>Ideengeber</th><th>Status</th><th>Bewertung</th><th>Einsparung/Jahr</th><th>Eingereicht</th></tr></thead>
+      <tbody>
+      {{range .Ideas}}
+      <tr style="cursor:pointer" onclick="location.href='/kvp/{{.ID}}'">
+        <td><a href="/kvp/{{.ID}}" style="color:inherit;text-decoration:none;display:block">
+          <div style="font-weight:500"><span class="rec-sub">{{.Code}}</span> {{.Title}}</div>
+          <div style="font-size:11px;color:var(--muted)"><i class="ti {{.CategoryIcon}}"></i> {{.CategoryLabel}}{{if .InfraName}} · <span style="color:var(--accent)">{{.InfraName}}</span>{{end}}</div></a></td>
+        <td style="font-size:12px">{{.MemberNames}}</td>
+        <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+          {{if .FeedbackOverdue}}<div style="font-size:10.5px;color:var(--red)">Rückmeldung überfällig</div>{{else if .DueOverdue}}<div style="font-size:10.5px;color:var(--red)">Termin überschritten</div>{{end}}
+          {{if .InPDCA}}{{if .ActionsTotal}}<div class="rec-sub">{{.ActionsDone}}/{{.ActionsTotal}} Maßnahmen</div>{{end}}{{end}}</td>
+        <td><span class="badge {{.QuadrantClass}}">{{.QuadrantLabel}}</span></td>
+        <td style="font-size:12px">{{if eq .Status "done"}}{{.ActualSavingsLabel}}{{else}}{{.EstSavingsLabel}}{{end}}</td>
+        <td style="font-size:11px;color:var(--muted)">{{.CreatedDate}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Keine Vorschläge für diesen Filter – <a href="#" onclick="kvpOpenCreate();return false" style="color:var(--accent)">jetzt eine Idee einreichen</a></td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── PDCA-Board ── -->
+<div class="rec-pane" data-pane="board">
+  <div class="kvp-board">
+    {{range .BoardCols}}
+    {{$items := index $d.Dash.Board .Key}}
+    <div class="col">
+      <div class="ch"><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{len $items}}</b>
+        <div class="rec-sub">{{if eq .Key "plan"}}Ursache, Ziel, Maßnahmen{{else if eq .Key "do"}}Maßnahmen umsetzen{{else if eq .Key "check"}}Wirksamkeit prüfen{{else}}Standardisieren{{end}}</div></div>
+      {{range $items}}
+      <a class="kvp-card" href="/kvp/{{.ID}}?tab=pdca">
+        <div class="rec-sub">{{.Code}} · <i class="ti {{.CategoryIcon}}"></i> {{.CategoryLabel}}</div>
+        <div class="t">{{.Title}}</div>
+        <div class="rec-sub"><i class="ti ti-user"></i> {{if .ResponsibleName}}{{.ResponsibleName}}{{else}}<span style="color:var(--amber)">niemand</span>{{end}}{{if .DueLabel}} · <span {{if .DueOverdue}}style="color:var(--red)"{{end}}>bis {{.DueLabel}}</span>{{end}}</div>
+        {{if .ActionsTotal}}<div class="kvp-prog"><span style="width:{{.ActionsPct}}%"></span></div><div class="rec-sub">{{.ActionsDone}}/{{.ActionsTotal}} Maßnahmen erledigt</div>{{end}}
+      </a>
+      {{else}}<div class="rec-sub" style="padding:8px">–</div>{{end}}
+    </div>
+    {{end}}
+  </div>
+</div>
+
+<!-- ── Regeln & Vorlagen ── -->
+<div class="rec-pane" data-pane="rules">
+  <div class="kvp-grid">
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-book-2"></i> Unsere KVP-Regeln</span></div>
+      <ol class="kvp-rules">
+        <li><b>Jede/r darf, jede Idee zählt.</b> Auch kleine Verbesserungen – am besten am eigenen Arbeitsplatz.</li>
+        <li><b>Erst das Problem, dann die Lösung.</b> Ist-Zustand und Vorschlag gehören in jeden Vorschlag.</li>
+        <li><b>Schnelle Rückmeldung.</b> Spätestens nach {{.FeedbackDays}} Tagen wird entschieden – PDH erinnert täglich.</li>
+        <li><b>Jede Entscheidung wird begründet</b> – Annahme, Ablehnung und Zurückstellung.</li>
+        <li><b>Bewerten nach Nutzen und Aufwand.</b> Quick Wins zuerst.</li>
+        <li><b>Umsetzen nach PDCA:</b> Plan (Ursache, Ziel, Maßnahmen) → Do → Check (Wirksamkeit) → Act (Standard).</li>
+        <li><b>Wer macht was bis wann?</b> Jede Maßnahme hat eine/n Verantwortliche/n und einen Termin.</li>
+        <li><b>Erst wirksam, dann fertig.</b> Wirkt es nicht, beginnt ein neuer PDCA-Zyklus.</li>
+        <li><b>Gutes wird Standard</b> – Arbeitsanweisung, Checkliste oder Schulung anpassen.</li>
+        <li><b>Transparenz und Anerkennung.</b> Alle sehen alle Vorschläge; Umsetzungen werden gewürdigt.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-template"></i> Vorlagen</span></div>
+      <div class="kvp-tpl"><b><i class="ti ti-file-text"></i> Vorschlagsformular</b> – Titel, Thema, Ist-Zustand, Vorschlag, Nutzen, Team. <a href="#" onclick="kvpOpenCreate();return false" style="color:var(--accent)">Jetzt ausfüllen</a></div>
+      <div class="kvp-tpl"><b><i class="ti ti-scale"></i> Bewertungsbogen</b> – Nutzen und Aufwand (1–5), geschätzte Einsparung und Kosten, Amortisation, Quadrant der Matrix.</div>
+      <div class="kvp-tpl"><b><i class="ti ti-refresh"></i> PDCA-Blatt</b> – Ursache (5×Warum), messbares Ziel, Maßnahmenplan, Wirksamkeitsprüfung, Standardisierung.</div>
+      <div class="kvp-tpl"><b><i class="ti ti-printer"></i> A3-Report</b> – der ganze Vorschlag auf einer Seite zum Aushängen: in jedem Vorschlag über <b>A3-Report</b>.</div>
+      <div class="kvp-tpl"><b><i class="ti ti-help"></i> 5×Warum</b> – „Warum tritt das Problem auf?“ fünfmal nacheinander fragen; die letzte Antwort ist meist die eigentliche Ursache.</div>
+      <div class="kvp-tpl"><b><i class="ti ti-layout-grid"></i> 5S</b> – Sortieren, Systematisieren, Säubern, Standardisieren, Selbstdisziplin.</div>
+    </div>
+    {{if .CanManage}}
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-settings"></i> Einstellungen</span></div>
+      <form method="post" action="/kvp/settings" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-group" style="margin:0"><label class="form-label">Rückmeldefrist (Tage)</label>
+          <input type="number" name="feedback_days" min="1" max="90" class="form-input" value="{{.FeedbackDays}}" style="width:120px"></div>
+        <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </form>
+      <p class="rec-sub" style="margin-top:8px">Wer Vorschläge bewertet und entscheidet, legt das Recht <b>„KVP steuern“</b> unter Rollen &amp; Rechte fest.</p>
+    </div>
+    {{end}}
+  </div>
+</div>
+
+<!-- ── Idee einreichen ── -->
+<div id="kvp-create" class="kvp-modal" {{if .OpenCreate}}style="display:flex"{{end}}>
+  <form method="post" action="/kvp" class="kvp-dlg">
+    <div style="display:flex;align-items:center;margin-bottom:10px"><b style="flex:1;font-size:15px"><i class="ti ti-bulb" style="color:var(--amber)"></i> Idee einreichen</b>
+      <button type="button" class="btn" onclick="kvpCloseCreate()" aria-label="Schließen"><i class="ti ti-x"></i></button></div>
+    <div class="form-group"><label class="form-label">Titel *</label><input name="title" class="form-input" maxlength="200" required placeholder="Kurz: Was soll besser werden?"></div>
+    <div class="form-group"><label class="form-label">Thema</label>
+      <select name="category" class="form-input">{{range .Categories}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Ist-Zustand – was stört heute? *</label><textarea name="problem" class="form-input" rows="3" required></textarea></div>
+    <div class="form-group"><label class="form-label">Vorschlag – wie geht es besser? *</label><textarea name="proposal" class="form-input" rows="3" required></textarea></div>
+    <div class="form-group"><label class="form-label">Nutzen – was bringt es? (Zeit, Sicherheit, Qualität, Kosten …)</label><textarea name="benefit" class="form-input" rows="2"></textarea></div>
+    {{template "infra-tree-picker" (dict "TargetID" "kvp-new-infra" "SelectedLabelID" "kvp-new-infra-label" "Label" "Anlage / Bereich (optional)" "Value" "" "SelectedLabel" "")}}
+    <div class="form-group"><label class="form-label">Team – Miteinreichende (optional)</label>
+      <select name="member_ids" class="form-input" multiple size="4">{{range .Users}}{{if ne .ID $d.MyUserID}}<option value="{{.ID}}">{{.Name}}</option>{{end}}{{end}}</select>
+      <span class="rec-sub">Strg/⌘ für Mehrfachauswahl</span></div>
+    {{if .CanManage}}<div class="form-group"><label class="form-label">Eingereicht von (für jemand anderen erfassen)</label>
+      <select name="submitter_id" class="form-input"><option value="">mir selbst</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>{{end}}
+    <p class="rec-sub">Du bekommst innerhalb von {{.FeedbackDays}} Tagen eine begründete Rückmeldung im Chat.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <button type="button" class="btn" onclick="kvpCloseCreate()">Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-send"></i> Einreichen</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "context-list"}}
+{{range .Dash.Attention}}
+<div class="act-item"><div class="act-dot d-red"></div><div class="act-text">{{.Code}} {{.Title}}</div></div>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+{{template "kvp-style"}}
+<script>
+function kvpOpenCreate(){ document.getElementById('kvp-create').style.display = 'flex'; }
+function kvpCloseCreate(){ document.getElementById('kvp-create').style.display = 'none'; }
+document.addEventListener('keydown', function(e){ if(e.key === 'Escape') kvpCloseCreate(); });
+</script>
+{{end}}

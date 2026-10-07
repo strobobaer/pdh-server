@@ -84,6 +84,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func openSqliteDB(path string) (*sql.DB, error) {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if path == "" {
 		return nil, fmt.Errorf("kein Dateipfad konfiguriert")
 	}
@@ -103,6 +104,7 @@ func openSqliteDB(path string) (*sql.DB, error) {
 // fuer Import-Vorschau/Browsing), das bewusst read-only oeffnet und eine
 // noch nicht existierende Datei daher nicht anlegen wuerde.
 func openSqliteDBWritable(path string) (*sql.DB, error) {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if path == "" {
 		return nil, fmt.Errorf("kein Dateipfad konfiguriert")
 	}

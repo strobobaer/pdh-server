@@ -283,13 +283,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="faults" data-title="Störungen" data-pages="faults">
   <h2><i class="ti ti-alert-triangle"></i> Störungen</h2>
-  <p>Eine Störung ist ein technisches Problem an einer Anlage. Sie durchläuft fünf Schritte:</p>
+  <p>Eine Störung ist ein technisches Problem an einer Anlage. Unter <b>Störungen</b> siehst du sie wie Wartungen in den Ansichten <b>Anstehend</b>, <b>Liste</b> und <b>Archiv</b> (siehe <a href="#work-views">Tickets</a>); frisch gemeldete Störungen sind gelb markiert. Sie durchläuft fünf Schritte:</p>
   {{template "hb-fig-fault"}}
   <div class="hb-howto"><b><i class="ti ti-check"></i> So löst du eine Störung</b>
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
       <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>reservieren</b> – sie sind damit sofort für dich aus dem Lager gebucht.</li>
-      <li>Grüner Haken <b>Abschließen</b> (oben rechts oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
+      <li><b>Beheben &amp; abschließen</b> (Karte oben in der Übersicht, auf der Karte in „Anstehend“ oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
       <li><b>Fertig</b> – die reservierten Teile werden zum Verbrauch der Störung, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
@@ -305,6 +305,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="tickets" data-title="Tickets" data-pages="tickets">
   <h2><i class="ti ti-ticket"></i> Tickets</h2>
   <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte.</p>
+  <p id="work-views">Tickets, Störungen und Aufgaben arbeitest du ab wie Wartungen – drei Ansichten oben auf der Seite:</p>
+  {{template "hb-fig-workboard"}}
+  <ul>
+    <li><b>Anstehend</b> (Start): alle offenen Vorgänge als Karten, sortiert nach <b>Überfällig</b>, <b>Heute</b>, <b>Nächste 7 Tage</b>, <b>Später</b> und <b>Ohne Termin</b>; innerhalb einer Gruppe das Wichtigste zuerst. Filter: <b>Nur meine</b>, <b>Ohne Zuweisung</b>, Priorität, Anlage (bei Aufgaben auch Projekt) und Kategorien. Der große Knopf auf der Karte startet direkt den <a href="#completion">Abschluss-Assistenten</a>.</li>
+    <li><b>Liste</b>: die Tabelle mit Status-Reitern und Mehrfachauswahl („Auswahl öffnen / kopieren / erledigen“).</li>
+    <li><b>Archiv</b>: alles Abgeschlossene mit Suche (auch in der Lösung), Anlage und Zeitraum, seitenweise; <b>Lösung &amp; Ursache</b> klappt direkt auf.</li>
+  </ul>
+  <p>Auf der Detailseite steht oben die Karte <b>Ticket bearbeiten</b> (bei Störungen <b>Störung beheben</b>, bei Aufgaben <b>Aufgabe erledigen</b>) – wie beim Wartungsauftrag. Ist der Vorgang abgeschlossen, zeigt sie das an und führt ins Archiv.</p>
   <ul>
     <li><b>Kommentare</b> (eigener Reiter) – für die Abstimmung im Team.</li>
     <li><b>Maßnahmen &amp; Ersatzteile</b> – wie bei Störungen.</li>
@@ -313,17 +321,53 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
     Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste über „Auswahl erledigen“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
-    Der Listen-Reiter <b>Ohne Zuweisung</b> ist dein Eingang: Hier stehen alle offenen Tickets, die noch niemandem gehören.</div>
+    <b>Ohne Zuweisung</b> (Filter in „Anstehend“ oder Reiter in der Liste) ist dein Eingang: Hier stehen alle offenen Tickets, die noch niemandem gehören.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="tasks" data-title="Aufgaben &amp; Projekte" data-pages="tasks projects">
   <h2><i class="ti ti-list-check"></i> Aufgaben &amp; Projekte</h2>
-  <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge.</p>
+  <p><b>Aufgaben</b> sind To-dos mit Zuständigen, Termin und Priorität. Sie können zu einem Projekt oder einer Anlage gehören oder aus einer Störung entstehen – der Reiter <b>Verknüpfungen</b> zeigt die Zusammenhänge. Die Seite <b>Aufgaben</b> hat dieselben Ansichten <b>Anstehend</b>, <b>Liste</b> und <b>Archiv</b> wie Tickets (siehe <a href="#work-views">Tickets</a>); jede Karte zeigt auch das Projekt.</p>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du eine Aufgabe ab</b>
-    Grüner Haken <b>Abschließen</b> (in der Übersicht „Aufgabe abschließen …“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
-  <p><b>Projekte</b> bündeln Aufgaben und zeigen sie im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
+    <b>Erledigen</b> (auf der Karte in „Anstehend“, im Projekt oder oben in der Aufgabe) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
+  <p><b>Projekte</b> sind das übergeordnete Aufgabenmanagement – so wie ein Wartungsplan seine Aufträge bündelt. Die Projektübersicht zeigt je Projekt eine Karte mit <b>Fortschrittsbalken</b> (erledigte von allen Aufgaben), überfälligen Aufgaben und dem nächsten Termin.</p>
+  <div class="hb-howto"><b><i class="ti ti-timeline"></i> So arbeitest du mit einem Projekt</b>
+    <ol class="hb-steps">
+      <li>Projekt öffnen: oben steht <b>Aufgaben im Projekt</b> mit Fortschritt. <b>Neue Aufgabe</b> legt eine Aufgabe direkt im Projekt an; unter <b>Bestehende Aufgabe zuordnen</b> holst du vorhandene dazu.</li>
+      <li>Die Aufgaben stehen darunter als Karten, gruppiert nach <b>Überfällig</b>, <b>In Arbeit</b>, <b>Offen</b>, <b>Wartet</b> und <b>Erledigt</b> – jede mit <b>Erledigen</b>.</li>
+      <li><b>Anstehend</b> öffnet die Aufgaben-Ansicht gefiltert auf dieses Projekt.</li>
+    </ol></div>
+  <p>Zusätzlich zeigt das Projekt seine Aufgaben im <b>Zeitstrahl</b>. Ein Doppelklick auf eine Aufgabe im Zeitstrahl öffnet sie zur Bearbeitung. Der Rand der Balken zeigt, ob eine Aufgabe läuft, fällig, überfällig, nicht zugewiesen oder beendet ist (<a href="#timeline-style">Zeitstrahl-Darstellung</a>).</p>
   {{template "hb-shots" (dict "Ref" (index $s "tasks") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="kvp" data-title="KVP – Verbesserungen" data-pages="kvp">
+  <h2><i class="ti ti-bulb"></i> KVP – Kontinuierliche Verbesserung</h2>
+  <p>Im <b>KVP</b> reicht jede/r Verbesserungsideen ein – vom wackeligen Regal bis zur schnelleren Rüstzeit. Alle sehen alle Vorschläge. Jede Idee bekommt innerhalb der <b>Rückmeldefrist</b> (Vorgabe 14 Tage) eine begründete Entscheidung und wird danach im <b>PDCA-Zyklus</b> umgesetzt: <b>Plan</b> → <b>Do</b> → <b>Check</b> → <b>Act</b>.</p>
+  {{template "hb-fig-kvp"}}
+  <div class="hb-howto"><b><i class="ti ti-bulb"></i> So reichst du eine Idee ein</b>
+    <ol class="hb-steps">
+      <li><b>KVP</b> → <b>Idee einreichen</b> (oder Schnellaktion „Idee einreichen“ im Dashboard).</li>
+      <li><b>Titel</b>, <b>Thema</b> und <b>Ist-Zustand</b> (was stört heute?) und <b>Vorschlag</b> (wie geht es besser?) ausfüllen – beides ist Pflicht. Nutzen, Anlage und Team (Miteinreichende) sind freiwillig.</li>
+      <li><b>Einreichen</b>. Im Reiter <b>Vorher/Nachher</b> ein Foto vom Ist-Zustand anhängen. Jede Entscheidung bekommst du per Chat von PDH-System.</li>
+    </ol>
+    Solange der Vorschlag noch nicht bewertet wird, kannst du ihn unter <b>Vorschlag bearbeiten</b> ändern.</div>
+  <div class="hb-howto"><b><i class="ti ti-scale"></i> So wird bewertet und entschieden</b> (Recht „KVP steuern“)
+    <ol class="hb-steps">
+      <li>Im Vorschlag <b>Bewertung beginnen</b>. Im Reiter <b>Bewertung</b> Nutzen und Aufwand (je 1–5), geschätzte Einsparung und Kosten sowie <b>Setzt um</b> eintragen. PDH ordnet den Vorschlag in die Matrix ein: <b>Quick Win</b>, <b>Großprojekt</b>, <b>Lückenfüller</b> oder <b>Fragwürdig</b>.</li>
+      <li>Unter <b>Nächster Schritt</b> <b>Annehmen</b>, <b>Zurückstellen</b> oder <b>Ablehnen</b> – immer mit Begründung. Die Einreichenden werden benachrichtigt; bei Annahme auch die/der Umsetzungsverantwortliche.</li>
+    </ol>
+    Ist die Frist überschritten, steht der Vorschlag rot im Dashboard und PDH erinnert die Bewertenden täglich.</div>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> So wird umgesetzt (PDCA)</b> – Reiter <b>PDCA &amp; Maßnahmen</b>
+    <ol class="hb-steps">
+      <li><b>Plan:</b> Ursache (5×Warum), messbares Ziel und Termin eintragen und Maßnahmen anlegen – jede mit <b>wer</b> und <b>bis wann</b>. Dann <b>Umsetzung starten</b>.</li>
+      <li><b>Do:</b> Maßnahmen abhaken (das darf auch, wer für die Maßnahme eingetragen ist). Erst wenn alle erledigt sind, geht es weiter.</li>
+      <li><b>Check:</b> Wirkt es? <b>wirksam</b> oder <b>nicht wirksam</b> mit Ergebnis festhalten. Nicht wirksam → <b>neuer PDCA-Zyklus</b> zurück in Plan.</li>
+      <li><b>Act:</b> beschreiben, was zum Standard wurde (Arbeitsanweisung, Checkliste, Schulung …), tatsächliche Einsparung und ggf. Prämie eintragen, dann <b>Abschließen</b>.</li>
+    </ol>
+    Fehlt für einen Schritt noch etwas, zeigt PDH es unter dem Knopf an. <b>A3-Report</b> druckt den ganzen Vorschlag auf einer Seite zum Aushängen.</div>
+  <p>Das <b>Dashboard</b> zeigt Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Ø Zeit bis zur Entscheidung, Beteiligung, Einsparungen und Prämien), den Ablauf, die letzten 12 Monate, die Themen, die Nutzen-Aufwand-Matrix und alles Überfällige. Das <b>PDCA-Board</b> zeigt die Vorschläge in Umsetzung als Karten. Unter <b>Regeln &amp; Vorlagen</b> stehen die KVP-Regeln; dort stellt die KVP-Steuerung die Rückmeldefrist ein.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "kvp") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="maintenance" data-title="Wartung" data-pages="maintenance checklists">
@@ -768,6 +812,27 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Startet das PDH nach einem Update zum ersten Mal, sichert es <b>vor</b> allen Datenbank-Änderungen den kompletten bisherigen Stand (Datenbank, Anhänge, Chat-Dateien) – egal ob über <b>Core-Einstellungen → Update installieren</b>, den Installer oder von Hand aktualisiert wurde. Die Sicherung erscheint in der Liste als <b>Vor Update</b>; aufbewahrt werden die letzten 5 (einstellbar unter <b>Zeitpläne → Automatisch bei jedem Update</b>, dort auch abschaltbar). Schlägt die Sicherung fehl (z. B. Speicher voll), wird das Update <b>nicht</b> angewendet und im Server-Protokoll steht der Grund. Nur im Notfall lässt sich das mit der Umgebungsvariablen <code>PDH_SKIP_UPDATE_BACKUP=1</code> übergehen.</div>
   <p><b>Wichtig:</b> Eine Sicherung aus einer <b>neueren</b> PDH-Version kann erst nach einem Update eingespielt werden. Ältere Sicherungen werden beim Einspielen automatisch auf den aktuellen Stand gebracht. Sicherungsprotokoll und Zeitpläne selbst werden nicht überschrieben.</p>
   {{template "hb-shots" (dict "Ref" (index $s "backup") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="drives" data-title="Netzlaufwerke" data-pages="core-settings">
+  <h2><i class="ti ti-server-2"></i> Netzlaufwerke</h2>
+  <p>Unter <b>Core-Einstellungen → Netzlaufwerke</b> bindet PDH Freigaben aus dem Firmennetz ein – Windows-Freigaben und NAS (<b>SMB/CIFS</b>), <b>NFS</b> oder ein Verzeichnis, das der Server schon eingebunden hat (<b>Lokaler Pfad</b>). Jedes Laufwerk liegt danach unter <code>/mnt/pdh/&lt;name&gt;</code>.</p>
+  {{template "hb-fig-drives"}}
+  <div class="hb-howto"><b><i class="ti ti-plug"></i> So bindest du ein Laufwerk ein</b> (Recht „Rollen &amp; Rechte verwalten“)
+    <ol class="hb-steps">
+      <li><b>Laufwerk hinzufügen</b>: Name, Art und Freigabe eintragen – z. B. <code>\\nas\instandhaltung</code> oder <code>nas:/export/pdh</code>.</li>
+      <li>Bei SMB Benutzername, Passwort und ggf. Domäne angeben. Das Passwort wird verschlüsselt gespeichert. Klappt es nicht, unter Optionen z. B. <code>vers=3.0</code> oder <code>vers=2.1</code> eintragen.</li>
+      <li>Ankreuzen, wofür das Laufwerk dient (siehe unten), dann <b>Speichern &amp; einbinden</b>. <b>Testen</b> prüft, ob PDH lesen und schreiben darf; <b>Durchsuchen</b> zeigt die Ordner und kopiert Pfade.</li>
+    </ol>
+    Mit „automatisch einbinden“ verbindet PDH das Laufwerk nach jedem Neustart und alle 5 Minuten wieder, falls die Verbindung abbricht. Fällt ein Laufwerk aus, bekommen die Administratoren eine Chat-Nachricht und PDH arbeitet lokal weiter.</div>
+  <table>
+    <tr><td><b><i class="ti ti-database"></i> Globaler Datenspeicher</b></td><td>Die Standardablage: Import- und Export-Pfade <b>ohne</b> führenden Schrägstrich (z. B. <code>Exporte/zaehler.xlsx</code>) liegen hier. Sicherungen und Dokumente landen ebenfalls hier, wenn dafür kein eigenes Laufwerk gewählt ist.</td></tr>
+    <tr><td><b><i class="ti ti-database-import"></i> Import &amp; Export</b></td><td>Das Laufwerk erscheint als Vorschlag in den Feldern <b>Quellpfad</b> und <b>Zielpfad</b> der Import- und Export-Verbindungen.</td></tr>
+    <tr><td><b><i class="ti ti-database-export"></i> Datensicherung</b></td><td>Neue Sicherungen werden im Ordner <code>PDH-Sicherungen</code> des Laufwerks gespeichert. Ältere Sicherungen bleiben im lokalen Ordner.</td></tr>
+    <tr><td><b><i class="ti ti-files"></i> Dokumentenablage</b></td><td>Jeder neue Anhang (Foto, Dokument) wird zusätzlich nach Vorgang sortiert abgelegt: <code>PDH-Dokumente/Tickets/Tür klemmt (a1b2c3d4)/Foto.jpg</code>. <b>Vorhandene Dokumente übertragen</b> legt einmalig alle bisherigen Anhänge ab. PDH behält seine eigene Kopie.</td></tr>
+  </table>
+  <p>Datenspeicher, Datensicherung und Dokumentenablage gibt es je einmal. Ein schreibgeschütztes Laufwerk eignet sich nur für Import &amp; Export. Eingebunden wird über den Update-Agenten: bei Docker-Installationen ist das ab dieser Version eingerichtet (nach dem Update einmal <code>docker compose up -d</code>); bei Installationen ohne Docker <code>sudo ./install-update-agent.sh</code> erneut ausführen, damit die Mount-Werkzeuge installiert werden.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "drives") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config server-logs">

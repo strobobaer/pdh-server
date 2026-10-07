@@ -23,6 +23,7 @@
 
 <!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
+{{template "work-do" (dict "Kind" "task" "ID" .Task.ID "Open" .Task.CanResolve "Title" "Aufgabe erledigen" "Label" "Erledigen" "Icon" "ti-circle-check" "Due" .Task.DueDate "DoneTitle" .Task.StatusLabel "ArchiveURL" "/tasks?view=archive")}}
 <div class="grid2" style="grid-template-columns:1fr 300px;gap:14px;align-items:start">
   <div>
     {{if .Task.Description}}
@@ -204,6 +205,7 @@
 {{end}}
 
 {{define "scripts"}}
+{{template "work-style"}}
 <script>
 var TASK_ID = '{{.Task.ID}}';
 var taPartsCache = null;

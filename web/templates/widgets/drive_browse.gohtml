@@ -1,0 +1,16 @@
+{{/* Ordnerinhalt eines Netzlaufwerks (GET /core/settings/drives/{id}/browse, drives.go) */}}
+{{define "drive-browse"}}
+<div class="drv-browse">
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+    <code style="flex:1;word-break:break-all">{{.Full}}</code>
+    <button type="button" class="btn" style="font-size:11px" onclick="drvCopy('{{.Full}}')" title="Pfad kopieren – z. B. für Import/Export"><i class="ti ti-copy"></i> Pfad</button>
+  </div>
+  {{if .Err}}<div style="color:var(--red)">{{.Err}}</div>{{end}}
+  {{if .Up}}<a class="e" href="#" hx-get="/core/settings/drives/{{.ID}}/browse?dir={{.Up}}" hx-target="closest div[id^='browse-']"><i class="ti ti-arrow-up"></i><span>..</span></a>{{end}}
+  {{range .Entries}}
+    {{if .Dir}}<a class="e" href="#" hx-get="/core/settings/drives/{{$.ID}}/browse?dir={{.Rel}}" hx-target="closest div[id^='browse-']"><i class="ti ti-folder" style="color:var(--amber)"></i><span>{{.Name}}</span><small>{{.Modified}}</small></a>
+    {{else}}<div class="e"><i class="ti ti-file"></i><span>{{.Name}}</span><small>{{.Size}} · {{.Modified}}</small></div>{{end}}
+  {{else}}{{if not .Err}}<div class="rec-sub" style="padding:4px 0">Ordner ist leer</div>{{end}}{{end}}
+  {{if .More}}<div class="rec-sub">… nur die ersten 500 Einträge</div>{{end}}
+</div>
+{{end}}

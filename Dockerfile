@@ -41,7 +41,7 @@ FROM ubuntu:24.04 AS updater
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git util-linux docker.io docker-compose-v2 \
+    && apt-get install -y --no-install-recommends ca-certificates curl git util-linux docker.io docker-compose-v2 cifs-utils nfs-common \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/update-agent /usr/local/bin/update-agent
 ENV PDH_UPDATE_REPO_DIR=/repo

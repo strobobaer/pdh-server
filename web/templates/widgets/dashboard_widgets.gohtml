@@ -262,7 +262,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 
 {{define "dw-body"}}
 {{if .Err}}<div class="dw-none"><i class="ti ti-alert-circle"></i> {{.Err}}</div>
-{{else if eq .Def.Type "stat_tickets" "stat_faults" "stat_maintenance" "stat_stock" "stat_my_tasks" "stat_my_hours"}}
+{{else if eq .Def.Type "stat_tickets" "stat_faults" "stat_maintenance" "stat_stock" "stat_my_tasks" "stat_my_hours" "stat_kvp"}}
   {{with .Data}}<a class="dw-stat c-{{.Color}}" href="{{.URL}}"><span class="v">{{.Value}}</span><span class="s{{if .Alert}} alert{{end}}">{{.Sub}}</span></a>{{end}}
 {{else if eq .Def.Type "list_mine" "list_faults" "list_maintenance" "list_stock"}}
   <div class="dw-list">{{range .Data}}

@@ -48,6 +48,7 @@ var navDefs = []navDef{
 	{navItem{"maintenance", "/maintenance", "ti-tool", "Wartung", "maintenance", false}, "work", always},
 	{navItem{"tasks", "/tasks", "ti-list-check", "Aufgaben", "tasks", false}, "work", always},
 	{navItem{"projects", "/projects", "ti-timeline", "Projekte", "projects", false}, "work", always},
+	{navItem{"kvp", "/kvp", "ti-bulb", "KVP", "kvp", false}, "work", always},
 	{navItem{"time", "/time", "ti-clock", "Zeiterfassung", "time", false}, "work", always},
 	{navItem{"shifts", "/shifts", "ti-calendar-time", "Schichtplan", "shifts", false}, "work", always},
 

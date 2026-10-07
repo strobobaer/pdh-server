@@ -396,7 +396,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/shifts", h.Shifts)
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
-	h.hmiRoutes(r) // HMI-Fernzugriff (VNC) aus der Anlage
+	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/infrastructure/{id}/history", h.InfraHistoryWeb)
 	r.Get("/infrastructure/{id}/history.csv", h.InfraHistoryCSV)
@@ -564,6 +564,22 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/trainings/sessions/{id}/reuse", h.TrainingReuseWeb)
 	r.Post("/trainings/sessions/{id}/delete", h.TrainingSessionDeleteWeb)
 	r.Get("/trainings/user/{id}", h.TrainingUserFragment)
+	r.Get("/kvp", h.KVPPage)
+	r.Post("/kvp", h.KVPCreateWeb)
+	r.Post("/kvp/settings", h.KVPSettingsWeb)
+	r.Get("/kvp/{id}", h.KVPDetailPage)
+	r.Post("/kvp/{id}", h.KVPSaveWeb)
+	r.Get("/kvp/{id}/print", h.KVPPrintPage)
+	r.Post("/kvp/{id}/assess", h.KVPAssessWeb)
+	r.Post("/kvp/{id}/plan", h.KVPPlanWeb)
+	r.Post("/kvp/{id}/check", h.KVPCheckWeb)
+	r.Post("/kvp/{id}/act", h.KVPActWeb)
+	r.Post("/kvp/{id}/status", h.KVPAdvanceWeb)
+	r.Post("/kvp/{id}/actions", h.KVPActionAddWeb)
+	r.Post("/kvp/{id}/actions/{aid}/toggle", h.KVPActionToggleWeb)
+	r.Post("/kvp/{id}/actions/{aid}/delete", h.KVPActionDeleteWeb)
+	r.Post("/kvp/{id}/comment", h.KVPCommentWeb)
+	r.Post("/kvp/{id}/delete", h.KVPDeleteWeb)
 	r.Post("/admin/departments", h.DepartmentSaveWeb)
 	r.Post("/admin/departments/{id}/delete", h.DepartmentDeleteWeb)
 	r.Post("/admin/groups", h.GroupSaveWeb)
@@ -589,6 +605,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/orgchart", h.OrgChartPage)
 	r.Get("/core/settings", h.CoreSettingsPage)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
+	r.Get("/core/settings/drives", h.DrivesPage)
+	r.Post("/core/settings/drives", h.DriveSaveWeb)
+	r.Post("/core/settings/drives/sync-documents", h.DriveSyncDocumentsWeb)
+	r.Get("/core/settings/drives/{id}/browse", h.DriveBrowseWeb)
+	r.Post("/core/settings/drives/{id}/{action}", h.DriveActionWeb)
+	r.Get("/drives/paths", h.DrivePathsWeb)
 	r.Post("/core/settings/microsoft/sync", h.MicrosoftDirectorySyncWeb)
 	r.Post("/core/settings/microsoft/assign", h.MicrosoftDirectoryAssignWeb)
 	r.Post("/core/settings/microsoft/{id}/unassign", h.MicrosoftDirectoryUnassignWeb)
@@ -1372,7 +1394,6 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 		}
 	}
 
-
 	// nicht zugewiesen: weder Person noch Gruppe (Aufgaben: keine Beteiligten)
 	if open := h.unassignedRecords(ctx); len(open) > 0 {
 		for i := range items {
@@ -1385,6 +1406,10 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 }
 
 func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
+	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
+		h.WorkBoardPage(w, r, "fault", v)
+		return
+	}
 	ctx := r.Context()
 	filter := r.URL.Query().Get("status")
 	unassigned := r.URL.Query().Get("unassigned") == "1"
@@ -1394,7 +1419,7 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 		Filter:   filter,
 		Users:    h.userOptions(ctx),
 	}
-	data.Tabs = h.statusTabs(ctx, "faults", "/faults", filter, []statusTabDef{
+	data.Tabs = h.statusTabs(ctx, "faults", "/faults?view=list", filter, []statusTabDef{
 		{"detected", "Erkannt", "ti-alert-triangle"}, {"analyzing", "Analysiert", "ti-brain"},
 		{"in_progress", "In Bearbeitung", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))
@@ -1431,6 +1456,10 @@ func (h *Handler) Faults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
+	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
+		h.WorkBoardPage(w, r, "ticket", v)
+		return
+	}
 	ctx := r.Context()
 	filter := r.URL.Query().Get("status")
 	unassigned := r.URL.Query().Get("unassigned") == "1"
@@ -1441,7 +1470,7 @@ func (h *Handler) Tickets(w http.ResponseWriter, r *http.Request) {
 		Users:          h.userOptions(ctx),
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 	}
-	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets", filter, []statusTabDef{
+	data.Tabs = h.statusTabs(ctx, "tickets", "/tickets?view=list", filter, []statusTabDef{
 		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"},
 		{"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, true, brokerInboxTab(unassigned))

@@ -68,6 +68,7 @@ func readExcelPreview(path, sheet string, hasHeader bool) ([]ExcelColumn, [][]st
 // readExcelTable liest ein Tabellenblatt; maxRows 0 = alle Zeilen (Abfragen
 // brauchen z. B. wirklich die letzte Zeile, nicht die letzte der Vorschau).
 func readExcelTable(path, sheet string, hasHeader bool, maxRows int) ([]ExcelColumn, [][]string, error) {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if path == "" {
 		return nil, nil, fmt.Errorf("kein Quellpfad konfiguriert")
 	}
@@ -147,6 +148,7 @@ func readCSVPreview(path, delimiter string, hasHeader bool) ([]ExcelColumn, [][]
 }
 
 func readCSVTable(path, delimiter string, hasHeader bool, maxRows int) ([]ExcelColumn, [][]string, error) {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if path == "" {
 		return nil, nil, fmt.Errorf("kein Quellpfad konfiguriert")
 	}

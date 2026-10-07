@@ -1,0 +1,102 @@
+{{/*
+  Gemeinsame Bausteine der Arbeitsansicht (work_board.go) fuer Tickets,
+  Stoerungen und Aufgaben – Optik wie die Wartung (maintenance.gohtml).
+    {{template "work-nav" .Nav}}   Ansichts-Reiter Anstehend · Liste · Archiv
+    {{template "work-style"}}      Karten, Gruppen, Archiv
+*/}}
+{{define "work-nav"}}
+<nav class="rec-tabs mt-tabs" aria-label="Ansicht">
+  <a class="rec-tab {{if eq .View "due"}}active{{end}}" href="{{.Base}}?view=due"><i class="ti ti-player-play"></i> Anstehend</a>
+  <a class="rec-tab {{if eq .View "list"}}active{{end}}" href="{{.Base}}?view=list"><i class="ti ti-list-details"></i> Liste</a>
+  <a class="rec-tab {{if eq .View "archive"}}active{{end}}" href="{{.Base}}?view=archive"><i class="ti ti-archive"></i> Archiv</a>
+  {{range .Extra}}<a class="rec-tab" href="{{.Href}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+</nav>
+{{end}}
+
+{{define "work-style"}}
+<style>
+.mt-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.mt-head h1{font-size:19px;font-weight:600}
+.mt-head p{font-size:12px;color:var(--muted);margin-top:3px}
+.mt-tabs{margin-bottom:14px;overflow-x:auto}
+.mt-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.mt-filter .form-input{max-width:240px;width:auto}
+.mt-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:12.5px;cursor:pointer;color:var(--text);text-decoration:none;background:var(--bg2)}
+.mt-chip.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.12)}
+.mt-chip input{display:none}
+.mt-chip b{font-weight:500;font-size:10.5px;background:var(--bg3);border-radius:999px;padding:0 6px}
+.mt-group{margin-bottom:18px}
+.mt-group h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px;display:flex;gap:6px;align-items:center}
+.mt-group h2 span{background:var(--bg3);border-radius:999px;padding:0 8px;font-size:11px}
+.mt-overdue h2{color:var(--red)}
+.mt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.mt-card{border:1px solid var(--border);border-radius:12px;background:var(--bg2);display:flex;flex-direction:column}
+.mt-card.overdue{border-color:rgba(239,68,68,.55)}
+.mt-card.new{box-shadow:inset 3px 0 0 var(--amber)}
+.mt-card-main{padding:12px 14px;color:var(--text);text-decoration:none;flex:1}
+.mt-card-main:hover,.mt-plan:hover{background:var(--bg3)}
+.mt-card-title{font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center}
+.mt-card-sub{font-size:12px;color:var(--muted);margin-top:3px}
+.mt-card-desc{font-size:12px;color:var(--muted);margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mt-card-meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--muted);margin-top:8px;align-items:center}
+.mt-red{color:var(--red);font-weight:600}
+.mt-muted{color:var(--muted)}
+.mt-go{margin:0 12px 12px;justify-content:center;min-height:42px}
+.mt-empty{text-align:center;color:var(--muted);padding:40px 10px;display:grid;gap:8px;justify-items:center}
+.mt-empty i{font-size:34px;opacity:.5}
+.mt-empty a{color:var(--accent)}
+.mt-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.mt-plan{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px 14px;color:var(--text);text-decoration:none;display:block}
+.mt-plan.inactive{opacity:.65}
+.mt-plan-head{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px}
+.mt-prog{height:6px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:8px}
+.mt-prog i{display:block;height:100%;background:var(--green)}
+.mt-done{display:block;padding:10px 14px;border-bottom:1px solid var(--border)}
+.mt-done:last-child{border-bottom:0}
+.mt-done-row{display:flex;gap:10px;align-items:center}
+.mt-done-main{flex:1;min-width:0;color:var(--text);text-decoration:none}
+.mt-done-main small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.mt-done-flags{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.mt-done details{margin:6px 0 0 4px}
+.mt-done summary{cursor:pointer;font-size:12px;color:var(--accent)}
+.mt-done .res{font-size:12.5px;margin:6px 0 2px;white-space:pre-wrap;border-left:2px solid var(--border);padding-left:10px}
+.mt-arch-filter{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.mt-arch-filter .form-input{width:auto;max-width:240px}
+.mt-arch-filter .mt-arch-q{flex:1;min-width:200px;max-width:none}
+.mt-arch-date{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.mt-arch-pages{display:flex;gap:10px;align-items:center;justify-content:center;margin:12px 0;font-size:12.5px;color:var(--muted)}
+/* Detailseiten: „Durchfuehren“-Karte wie beim Wartungsauftrag */
+.md-do{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-color:rgba(var(--accent-rgb),.45)}
+.md-do-text{flex:1;min-width:220px;display:grid;gap:3px}
+.md-do-text b{font-size:15px}
+.md-do-text span{font-size:12px;color:var(--muted)}
+.md-do-btn{min-height:46px;padding:0 20px;justify-content:center}
+.md-done-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.md-done-head > i{font-size:28px;color:var(--green)}
+.md-done-head div{flex:1;display:grid;gap:2px}
+.md-done-head span{font-size:12px;color:var(--muted)}
+.md-bar{height:6px;border-radius:3px;background:var(--bg3);overflow:hidden;margin-top:4px}
+.md-bar i{display:block;height:100%;background:var(--green)}
+</style>
+{{end}}
+
+{{/* „Durchfuehren“-Karte oben auf der Detailseite – wie beim Wartungsauftrag.
+     (dict "Kind" "ticket" "ID" … "Open" bool "Title" … "Label" … "Icon" … "Due" … "DoneTitle" … "ArchiveURL" …) */}}
+{{define "work-do"}}
+{{if .Open}}
+<div class="card md-do">
+  <div class="md-do-text">
+    <b>{{.Title}}</b>
+    <span>{{if .Due}}fällig {{.Due}} · {{end}}Material → Zeit → wer war dabei → Kommentar → <b>Fertig</b> oder <b>geht noch weiter</b></span>
+  </div>
+  <button type="button" class="btn cw-finish md-do-btn" onclick="pdhComplete('{{.Kind}}','{{.ID}}')"><i class="ti {{.Icon}}"></i> {{.Label}}</button>
+</div>
+{{else}}
+<div class="card md-done">
+  <div class="md-done-head"><i class="ti ti-circle-check"></i>
+    <div><b>{{.DoneTitle}}</b><span>Lösung, Material und Zeit stehen in der Historie und im Archiv.</span></div>
+    <a class="btn" href="{{.ArchiveURL}}"><i class="ti ti-archive"></i> Archiv</a>
+  </div>
+</div>
+{{end}}
+{{end}}

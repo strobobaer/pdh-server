@@ -1,0 +1,135 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
+  <div style="flex:1">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-server-2"></i> Netzlaufwerke</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Freigaben einbinden und als Datenspeicher, für Import &amp; Export, Datensicherung und Dokumentenablage nutzen</p>
+  </div>
+  <a class="btn btn-primary" href="?edit=new#drive-form"><i class="ti ti-plus"></i> Laufwerk hinzufügen</a>
+</div>
+{{if .Message}}<div class="drv-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="drv-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if not .AgentConfigured}}<div class="drv-msg warn"><i class="ti ti-alert-triangle"></i> Der Mount-Dienst (Update-Agent) ist nicht eingerichtet. SMB- und NFS-Freigaben lassen sich dann nicht aus PDH einbinden – nutze „Lokaler Pfad“ für Laufwerke, die der Server schon eingebunden hat.</div>{{end}}
+
+<div class="drv-roles">
+  <div><i class="ti ti-database"></i><b>Globaler Datenspeicher</b><span>{{if .Roles.Data}}{{.Roles.Data}}{{else}}nicht eingerichtet{{end}}</span></div>
+  <div><i class="ti ti-database-export"></i><b>Datensicherung</b><span>{{.BackupDir}}</span></div>
+  <div><i class="ti ti-files"></i><b>Dokumentenablage</b><span>{{if .Roles.Documents}}{{.Roles.Documents}}/PDH-Dokumente{{else if .Roles.Data}}{{.Roles.Data}}/PDH-Dokumente{{else}}nicht eingerichtet{{end}}</span></div>
+</div>
+
+{{range .Drives}}
+<div class="card drv">
+  <div class="drv-head">
+    <i class="ti {{if eq .Kind "local"}}ti-folder{{else}}ti-server-2{{end}} drv-ico {{if .Mounted}}on{{end}}"></i>
+    <div style="flex:1;min-width:200px">
+      <div style="font-weight:600">{{.Name}} {{if .Mounted}}<span class="badge b-green">verbunden</span>{{else if eq .LastStatus "error"}}<span class="badge b-red">Fehler</span>{{else}}<span class="badge b-gray">getrennt</span>{{end}}{{if .ReadOnly}} <span class="badge b-gray">schreibgeschützt</span>{{end}}</div>
+      <div class="rec-sub">{{.KindLabel}} · <code>{{.Source}}</code> → <code>{{.Path}}</code></div>
+      {{if .Uses}}<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">{{range .Uses}}<span class="badge b-blue">{{.}}</span>{{end}}</div>{{end}}
+      {{if and .LastError (not .Mounted)}}<div class="rec-sub" style="color:var(--red);margin-top:4px"><i class="ti ti-alert-circle"></i> {{.LastError}}{{if .LastChecked}} ({{.LastChecked}}){{end}}</div>{{end}}
+      {{if .UsageLabel}}<div class="drv-usage"><span style="width:{{.UsedPct}}%"></span></div><div class="rec-sub">{{.UsageLabel}}{{if and .Mounted (not .ReadOnly) (not .Writable)}} · <span style="color:var(--red)">nicht beschreibbar</span>{{end}}</div>{{end}}
+    </div>
+    <div class="drv-actions">
+      {{if .Mounted}}
+        <button class="btn" type="button" hx-get="/core/settings/drives/{{.ID}}/browse" hx-target="#browse-{{.ID}}" hx-swap="innerHTML"><i class="ti ti-folder-open"></i> Durchsuchen</button>
+        <form method="post" action="/core/settings/drives/{{.ID}}/test"><button class="btn" type="submit"><i class="ti ti-plug-connected"></i> Testen</button></form>
+        {{if ne .Kind "local"}}<form method="post" action="/core/settings/drives/{{.ID}}/unmount" onsubmit="return confirm('{{.Name}} trennen? PDH arbeitet danach lokal weiter.')"><button class="btn" type="submit"><i class="ti ti-plug-x"></i> Trennen</button></form>{{end}}
+      {{else}}
+        <form method="post" action="/core/settings/drives/{{.ID}}/mount"><button class="btn btn-primary" type="submit"><i class="ti ti-plug"></i> Einbinden</button></form>
+      {{end}}
+      <a class="btn" href="?edit={{.ID}}#drive-form"><i class="ti ti-edit"></i> Bearbeiten</a>
+      <form method="post" action="/core/settings/drives/{{.ID}}/delete" onsubmit="return confirm('{{.Name}} entfernen? Die Daten auf dem Laufwerk bleiben erhalten.')"><button class="btn" type="submit" aria-label="Entfernen"><i class="ti ti-trash"></i></button></form>
+    </div>
+  </div>
+  <div id="browse-{{.ID}}"></div>
+</div>
+{{else}}
+<div class="card" style="text-align:center;color:var(--muted);padding:30px"><i class="ti ti-server-2" style="font-size:32px;display:block;margin-bottom:8px"></i>Noch keine Netzlaufwerke. <a href="?edit=new#drive-form" style="color:var(--accent)">Erstes Laufwerk hinzufügen</a></div>
+{{end}}
+
+<div class="card" id="drive-form">
+  {{$e := .Edit}}
+  <div class="card-title"><span>{{if $e}}<i class="ti ti-edit"></i> {{$e.Name}} bearbeiten{{else}}<i class="ti ti-plus"></i> Laufwerk hinzufügen{{end}}</span>{{if $e}}<a class="card-action" href="/core/settings/drives">neu statt bearbeiten</a>{{end}}</div>
+  <form method="post" action="/core/settings/drives">
+    {{with $e}}<input type="hidden" name="id" value="{{.ID}}">{{end}}
+    <div class="grid2" style="gap:10px;margin:0">
+      <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" maxlength="100" required value="{{with $e}}{{.Name}}{{end}}" placeholder="z. B. NAS Instandhaltung"></div>
+      <div class="form-group"><label class="form-label">Art</label>
+        <select name="kind" class="form-input" id="drv-kind" onchange="drvKind()">
+          <option value="smb" {{with $e}}{{if eq .Kind "smb"}}selected{{end}}{{end}}>SMB/CIFS – Windows-Freigabe, NAS</option>
+          <option value="nfs" {{with $e}}{{if eq .Kind "nfs"}}selected{{end}}{{end}}>NFS</option>
+          <option value="local" {{with $e}}{{if eq .Kind "local"}}selected{{end}}{{end}}>Lokaler Pfad (bereits eingebunden)</option>
+        </select></div>
+      <div class="form-group" style="grid-column:1/-1"><label class="form-label" id="drv-src-label">Freigabe *</label>
+        <input name="source" class="form-input" required value="{{with $e}}{{.Source}}{{end}}" id="drv-src" placeholder="\\server\freigabe"></div>
+      <div class="form-group drv-cred"><label class="form-label">Benutzername</label><input name="username" class="form-input" autocomplete="off" value="{{with $e}}{{.Username}}{{end}}" placeholder="leer = Gast"></div>
+      <div class="form-group drv-cred"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" autocomplete="new-password" placeholder="{{if $e}}{{if $e.HasPassword}}gespeichert – leer lassen = unverändert{{end}}{{end}}">
+        {{if $e}}{{if $e.HasPassword}}<label class="rec-sub"><input type="checkbox" name="clear_password"> gespeichertes Passwort löschen</label>{{end}}{{end}}</div>
+      <div class="form-group drv-cred"><label class="form-label">Domäne (optional)</label><input name="domain" class="form-input" value="{{with $e}}{{.Domain}}{{end}}" placeholder="z. B. FIRMA"></div>
+      <div class="form-group drv-mnt"><label class="form-label">Mount-Optionen (optional)</label><input name="options" class="form-input" value="{{with $e}}{{.Options}}{{end}}" placeholder="z. B. vers=3.0"></div>
+    </div>
+    <div class="drv-checks">
+      <label><input type="checkbox" name="auto_mount" {{if $e}}{{if $e.AutoMount}}checked{{end}}{{else}}checked{{end}}> automatisch einbinden (beim Start und bei Verbindungsabbruch)</label>
+      <label><input type="checkbox" name="read_only" {{with $e}}{{if .ReadOnly}}checked{{end}}{{end}}> schreibgeschützt</label>
+    </div>
+    <div class="form-label" style="margin-top:8px">Verwenden als</div>
+    <div class="drv-uses">
+      <label><input type="checkbox" name="use_data" {{with $e}}{{if .UseData}}checked{{end}}{{end}}><b><i class="ti ti-database"></i> Globaler Datenspeicher</b><span>Standardablage: relative Import-/Export-Pfade, Sicherungen und Dokumente (wenn dafür kein eigenes Laufwerk gewählt ist)</span></label>
+      <label><input type="checkbox" name="use_import_export" {{with $e}}{{if .UseImportExport}}checked{{end}}{{end}}><b><i class="ti ti-database-import"></i> Import &amp; Export</b><span>Pfad-Vorschläge in den Import- und Export-Verbindungen</span></label>
+      <label><input type="checkbox" name="use_backup" {{with $e}}{{if .UseBackup}}checked{{end}}{{end}}><b><i class="ti ti-database-export"></i> Datensicherung</b><span>Sicherungen in <code>PDH-Sicherungen</code> statt im lokalen Ordner</span></label>
+      <label><input type="checkbox" name="use_documents" {{with $e}}{{if .UseDocuments}}checked{{end}}{{end}}><b><i class="ti ti-files"></i> Dokumentenablage</b><span>Anhänge zusätzlich nach Vorgang sortiert in <code>PDH-Dokumente/&lt;Modul&gt;/&lt;Vorgang&gt;</code></span></label>
+    </div>
+    <p class="rec-sub">Datenspeicher, Datensicherung und Dokumentenablage gibt es je einmal – wählst du sie hier, gibt ein anderes Laufwerk die Aufgabe ab.</p>
+    <button class="btn btn-primary" type="submit" style="margin-top:8px"><i class="ti ti-device-floppy"></i> Speichern{{if not $e}} &amp; einbinden{{end}}</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-files"></i> Dokumentenablage</span></div>
+  <p class="rec-sub">Neue Anhänge (Fotos, Dokumente) werden automatisch abgelegt. Vorhandene Anhänge überträgst du einmalig:</p>
+  <form method="post" action="/core/settings/drives/sync-documents" style="margin-top:8px"><button class="btn" type="submit" {{if .DocSyncRunning}}disabled{{end}}><i class="ti ti-transfer"></i> Vorhandene Dokumente übertragen</button></form>
+  {{if .DocSyncStatus}}<p class="rec-sub" style="margin-top:6px">{{.DocSyncStatus}}</p>{{end}}
+  <p class="rec-sub" style="margin-top:6px">PDH behält seine eigene Kopie – fällt das Laufwerk aus, bleiben alle Dokumente in PDH erreichbar. Bisherige Sicherungen im lokalen Ordner bleiben dort.</p>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<style>
+.drv-msg{margin-bottom:12px;padding:8px 12px;border-radius:8px;font-size:12.5px}
+.drv-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.drv-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.drv-msg.warn{background:rgba(245,158,11,.14);color:var(--amber)}
+.drv-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:12px}
+.drv-roles > div{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px}
+.drv-roles i{grid-row:1/3;font-size:20px;color:var(--accent)}
+.drv-roles span{color:var(--muted);word-break:break-all}
+.drv-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.drv-ico{font-size:28px;color:var(--muted)}.drv-ico.on{color:var(--green)}
+.drv-actions{display:flex;gap:6px;flex-wrap:wrap}
+.drv-usage{height:6px;background:var(--bg3);border-radius:3px;margin-top:6px;max-width:320px;overflow:hidden}
+.drv-usage span{display:block;height:100%;background:var(--accent)}
+.drv-checks{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;margin-top:4px}
+.drv-uses{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;margin-top:4px}
+.drv-uses label{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12.5px}
+.drv-uses input{grid-row:1/3;margin-top:3px}
+.drv-uses span{font-size:11px;color:var(--muted)}
+.drv-uses label:has(input:checked){border-color:var(--accent);background:rgba(var(--accent-rgb),.06)}
+.drv-browse{margin-top:10px;border-top:1px solid var(--border);padding-top:8px;font-size:12.5px}
+.drv-browse a.e,.drv-browse div.e{display:flex;gap:8px;padding:4px 2px;color:var(--text);text-decoration:none;border-bottom:1px solid var(--border)}
+.drv-browse .e span{flex:1}
+.drv-browse .e small{color:var(--muted)}
+</style>
+<script>
+function drvKind(){
+  const k = document.getElementById('drv-kind').value;
+  const src = document.getElementById('drv-src'), lab = document.getElementById('drv-src-label');
+  src.placeholder = k === 'smb' ? '\\\\server\\freigabe' : (k === 'nfs' ? 'server:/export/pfad' : '/srv/daten');
+  lab.textContent = k === 'smb' ? 'Freigabe *' : (k === 'nfs' ? 'NFS-Export *' : 'Verzeichnis auf dem Server *');
+  document.querySelectorAll('.drv-cred').forEach(e => e.style.display = k === 'smb' ? '' : 'none');
+  document.querySelectorAll('.drv-mnt').forEach(e => e.style.display = k === 'local' ? 'none' : '');
+}
+function drvCopy(p){ if(navigator.clipboard) navigator.clipboard.writeText(p); }
+document.addEventListener('DOMContentLoaded', drvKind);
+</script>
+{{end}}

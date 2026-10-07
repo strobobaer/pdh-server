@@ -17,6 +17,9 @@ missing_packages=()
 command -v git >/dev/null 2>&1 || missing_packages+=(git)
 command -v go >/dev/null 2>&1 || missing_packages+=(golang-go)
 command -v openssl >/dev/null 2>&1 || missing_packages+=(openssl)
+# Netzlaufwerke (Core-Einstellungen -> Netzlaufwerke)
+command -v mount.cifs >/dev/null 2>&1 || missing_packages+=(cifs-utils)
+command -v mount.nfs >/dev/null 2>&1 || missing_packages+=(nfs-common)
 if (( ${#missing_packages[@]} > 0 )); then
     apt-get update
     apt-get install -y "${missing_packages[@]}"
@@ -76,7 +79,7 @@ RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=$repo_dir /var/cache/pdh-updater /usr/local/bin
+ReadWritePaths=$repo_dir /var/cache/pdh-updater /usr/local/bin /run
 
 [Install]
 WantedBy=multi-user.target

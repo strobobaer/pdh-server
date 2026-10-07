@@ -6,6 +6,7 @@
 </div>
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+<datalist id="pdh-drive-paths" hx-get="/drives/paths" hx-trigger="load" hx-swap="innerHTML"></datalist>
 
 {{if .CanWrite}}
 <div class="card" style="margin-bottom:14px">
@@ -29,7 +30,7 @@
 
     <div class="kind-fields" id="fields-excel" hidden>
       <div class="grid2" style="gap:10px">
-        <div class="form-group"><label class="form-label">Quellpfad</label><input name="f_excel_source_path" class="form-input" placeholder="Pfad/Freigabe der Excel-Datei"></div>
+        <div class="form-group"><label class="form-label">Quellpfad</label><input name="f_excel_source_path" class="form-input" list="pdh-drive-paths" placeholder="Pfad/Freigabe der Excel-Datei"></div>
         <div class="form-group"><label class="form-label">Tabellenblatt</label><input name="f_excel_sheet_name" class="form-input" placeholder="z.B. Tabelle1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_excel_has_header"> Erste Zeile enthält Spaltenüberschriften</label>
@@ -37,7 +38,7 @@
 
     <div class="kind-fields" id="fields-csv" hidden>
       <div class="grid2" style="gap:10px">
-        <div class="form-group"><label class="form-label">Quellpfad</label><input name="f_csv_source_path" class="form-input" placeholder="Pfad/Freigabe der CSV-Datei"></div>
+        <div class="form-group"><label class="form-label">Quellpfad</label><input name="f_csv_source_path" class="form-input" list="pdh-drive-paths" placeholder="Pfad/Freigabe der CSV-Datei"></div>
         <div class="form-group"><label class="form-label">Trennzeichen</label><input name="f_csv_delimiter" class="form-input" placeholder="," maxlength="1"></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:6px 0 10px"><input type="checkbox" name="f_csv_has_header"> Erste Zeile enthält Spaltenüberschriften</label>

@@ -8,7 +8,7 @@
   <button type="button" class="btn btn-primary" onclick="pdhCreate('task')"><i class="ti ti-plus"></i> Neue Aufgabe</button>
 </div>
 
-
+{{template "work-nav" (dict "Base" "/tasks" "View" "list" "Extra" (list (dict "Href" "/projects" "Icon" "ti-timeline" "Label" "Projekte")))}}
 {{template "list-tabs" .Tabs}}
 {{template "category-filter-slot" (dict "Module" "task")}}
 

@@ -6,6 +6,7 @@
 </div>
 
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
+<datalist id="pdh-drive-paths" hx-get="/drives/paths" hx-trigger="load" hx-swap="innerHTML"></datalist>
 
 {{if .CanWrite}}
 <div class="card" style="margin-bottom:14px">
@@ -35,7 +36,7 @@
             {{range .PDFTemplates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_pdf_destination_path" class="form-input" placeholder="Pfad/Freigabe für die PDF-Ausgabe"></div>
+        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_pdf_destination_path" class="form-input" list="pdh-drive-paths" placeholder="Pfad/Freigabe für die PDF-Ausgabe"></div>
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_pdf_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Vorlagen (Titel/Ausrichtung) werden unter <a href="/export/templates">Vorlagen verwalten</a> angelegt.</p>
@@ -49,7 +50,7 @@
             {{range .ExcelTemplates}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
           </select>
         </div>
-        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_excel_destination_path" class="form-input" placeholder="Pfad/Freigabe für die Excel-Ausgabe"></div>
+        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_excel_destination_path" class="form-input" list="pdh-drive-paths" placeholder="Pfad/Freigabe für die Excel-Ausgabe"></div>
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_excel_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>
       <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Vorlagen (Tabellenblattname) werden unter <a href="/export/templates">Vorlagen verwalten</a> angelegt.</p>
@@ -57,7 +58,7 @@
 
     <div class="kind-fields" id="fields-csv" hidden>
       <div class="grid2" style="gap:10px">
-        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_csv_destination_path" class="form-input" placeholder="Pfad/Freigabe für die CSV-Ausgabe"></div>
+        <div class="form-group"><label class="form-label">Zielpfad</label><input name="f_csv_destination_path" class="form-input" list="pdh-drive-paths" placeholder="Pfad/Freigabe für die CSV-Ausgabe"></div>
         <div class="form-group"><label class="form-label">Trennzeichen</label><input name="f_csv_delimiter" class="form-input" placeholder="," maxlength="1"></div>
         <div class="form-group"><label class="form-label">Zeitplan (Cron, optional)</label><input name="f_csv_schedule_cron" class="form-input" placeholder="z.B. 0 6 * * 1"></div>
       </div>

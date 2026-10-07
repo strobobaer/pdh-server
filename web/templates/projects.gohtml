@@ -1,9 +1,9 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+<div class="mt-head">
   <div>
-    <h1 style="font-size:19px;font-weight:600">Projektplanung</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.Total}} Projekte</p>
+    <h1>Projekte</h1>
+    <p>{{.Total}} Projekte – jedes bündelt seine Aufgaben mit Fortschritt und Terminen</p>
   </div>
   <button type="button" class="btn btn-primary" onclick="document.getElementById('new-project-form').style.display='block'"><i class="ti ti-plus"></i> Neues Projekt</button>
 </div>
@@ -40,26 +40,31 @@
   </form>
 </div>
 
+<nav class="rec-tabs mt-tabs" aria-label="Ansicht">
+  <a class="rec-tab active" href="/projects"><i class="ti ti-timeline"></i> Projekte</a>
+  <a class="rec-tab" href="/tasks?view=due"><i class="ti ti-player-play"></i> Anstehende Aufgaben</a>
+  <a class="rec-tab" href="/tasks?view=archive"><i class="ti ti-archive"></i> Aufgaben-Archiv</a>
+</nav>
 {{template "list-tabs" .Tabs}}
 {{template "category-filter-slot" (dict "Module" "project")}}
 
-<div class="grid2">
+<div class="mt-plans">
 {{range .Projects}}
-<div class="card" style="cursor:pointer" onclick="window.location='/projects/{{.ID}}'">
-  <div class="card-title">
-    {{.Name}}
-    <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+<a class="mt-plan {{if eq .Status "completed"}}inactive{{end}}" href="/projects/{{.ID}}">
+  <div class="mt-plan-head"><b>{{.Name}}</b><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></div>
+  {{if .InfraName}}<div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.InfraName}}</div>{{end}}
+  {{if .Description}}<div class="mt-card-desc">{{.Description}}</div>{{end}}
+  <div class="mt-card-meta">
+    {{if .StartDate}}<span><i class="ti ti-calendar"></i> {{.StartDate}} – {{.EndDate}}</span>{{end}}
+    {{if .ResponsibleName}}<span><i class="ti ti-user"></i> {{.ResponsibleName}}</span>{{end}}
+    <span><i class="ti ti-list-check"></i> {{.TasksDone}}/{{.TaskCount}} erledigt</span>
+    {{if .TasksOverdue}}<span class="mt-red"><i class="ti ti-alert-triangle"></i> {{.TasksOverdue}} überfällig</span>{{end}}
+    {{if .NextDue}}<span class="{{if .NextOverdue}}mt-red{{end}}"><i class="ti ti-flag"></i> nächste {{.NextDue}}</span>{{end}}
   </div>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:8px">{{.Description}}</p>
-  <div style="font-size:11px;color:var(--muted)">
-    {{if .StartDate}}{{.StartDate}} – {{.EndDate}}{{end}} · {{.TaskCount}} Aufgaben
-  </div>
-</div>
+  <div class="mt-prog" title="{{.Progress}} % der Aufgaben erledigt"><i style="width:{{.Progress}}%"></i></div>
+</a>
 {{else}}
-<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">
-  <i class="ti ti-timeline" style="font-size:40px;display:block;margin-bottom:12px"></i>
-  Noch keine Projekte vorhanden
-</div>
+<div class="mt-empty" style="grid-column:1/-1"><i class="ti ti-timeline"></i><div>Noch keine Projekte vorhanden</div></div>
 {{end}}
 </div>
 {{end}}
@@ -74,6 +79,7 @@
 {{end}}
 
 {{define "scripts"}}
+{{template "work-style"}}
 <script>
 async function submitProjectForm(form){
   const fd=new FormData(form);

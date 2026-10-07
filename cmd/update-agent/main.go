@@ -79,12 +79,15 @@ func main() {
 	})
 	mux.Handle("GET /v1/status", agent.authorized(http.HandlerFunc(agent.statusHandler)))
 	mux.Handle("POST /v1/update", agent.authorized(http.HandlerFunc(agent.updateHandler)))
+	mux.Handle("GET /v1/mounts", agent.authorized(http.HandlerFunc(agent.mountsHandler)))
+	mux.Handle("POST /v1/mounts/mount", agent.authorized(http.HandlerFunc(agent.mountHandler)))
+	mux.Handle("POST /v1/mounts/unmount", agent.authorized(http.HandlerFunc(agent.unmountHandler)))
 
 	server := &http.Server{
 		Addr:              listen,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      60 * time.Second, // Einbinden eines Netzlaufwerks kann dauern
 	}
 	log.Printf("update agent listening on %s in %s mode", listen, mode)
 	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {

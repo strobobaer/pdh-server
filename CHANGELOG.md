@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.36.0] – 2026-10-07
+
+### Neu
+- KVP (Kontinuierliche Verbesserung): Jede/r reicht Verbesserungsideen mit Ist-Zustand, Vorschlag, Nutzen, Anlage und Team ein; alle sehen alle Vorschläge
+- KVP-Dashboard mit Kennzahlen des Jahres (Vorschläge je Mitarbeitende/n, Annahmequote, Zeit bis zur Entscheidung, Beteiligung, Einsparungen, Prämien), Ablauf, 12-Monats-Verlauf, Themen, Nutzen-Aufwand-Matrix und allem Überfälligen
+- KVP-Ablauf nach PDCA mit Bewertungsbogen (Nutzen/Aufwand, Einsparung, Amortisation), Maßnahmenplan (wer · was · bis wann), Wirksamkeitsprüfung und Standardisierung; PDCA-Board mit allen Vorschlägen in Umsetzung
+- KVP-Regeln werden eingehalten: Rückmeldung binnen Frist (einstellbar, mit täglicher Erinnerung), jede Entscheidung mit Begründung, nächster Schritt erst, wenn alles Nötige erfasst ist; Einreichende bekommen jede Entscheidung im Chat
+- KVP-Vorschlag als A3-Report drucken; Vorher/Nachher-Fotos, Kommentare, Kategorien, Feldsätze, Verknüpfungen und Historie wie bei Tickets
+- Dashboard-Kachel „KVP-Vorschläge“ und Schnellaktion „Idee einreichen“; neues Recht „KVP steuern“
+- Netzlaufwerke (Core-Einstellungen): SMB/CIFS- und NFS-Freigaben oder bereits eingebundene Pfade einbinden, testen und durchsuchen; Passwörter verschlüsselt, automatisches Wiederverbinden mit Hinweis an die Administratoren
+- Netzlaufwerk als globaler Datenspeicher, für Import & Export (Pfad-Vorschläge), für die Datensicherung und als Dokumentenablage, die alle Anhänge nach Vorgang sortiert ablegt
+
+### Geändert
+- Tickets, Störungen und Aufgaben sehen aus und arbeiten wie die Wartung: neue Startansicht „Anstehend“ mit Karten nach Dringlichkeit (Überfällig, Heute, Nächste 7 Tage, Später, Ohne Termin), Filtern „Nur meine“, „Ohne Zuweisung“, Priorität, Anlage und Projekt und einem Knopf direkt zum Abschluss-Assistenten
+- Neues Archiv für Tickets, Störungen und Aufgaben mit Suche (auch in der Lösung), Anlage, Zeitraum und aufklappbarer Lösung & Ursache; die bisherige Tabelle bleibt als Ansicht „Liste“
+- Detailseiten von Tickets, Störungen und Aufgaben zeigen oben eine „Bearbeiten/Beheben/Erledigen“-Karte wie der Wartungsauftrag
+- Projekte als übergeordnetes Aufgabenmanagement: Projektkarten mit Fortschrittsbalken, überfälligen Aufgaben und nächstem Termin; im Projekt stehen die Aufgaben gruppiert als Karten mit „Erledigen“
+
 ## [0.35.1] – 2026-10-06
 
 ### Behoben

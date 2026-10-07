@@ -73,6 +73,9 @@ var backupSkipTables = map[string]bool{
 }
 
 func backupDir() string {
+	if d := driveBackupDir(); d != "" { // Netzlaufwerk (drives.go)
+		return d
+	}
 	if d := strings.TrimSpace(os.Getenv("PDH_BACKUP_DIR")); d != "" {
 		return d
 	}

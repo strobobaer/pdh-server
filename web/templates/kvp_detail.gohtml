@@ -1,0 +1,251 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}{{$k := .Idea}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/kvp?tab=ideas")}}
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:18px;font-weight:600"><span style="color:var(--muted);font-weight:500">{{$k.Code}}</span> {{$k.Title}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px"><i class="ti {{$k.CategoryIcon}}"></i> {{$k.CategoryLabel}} · eingereicht {{$k.CreatedDate}} von {{if $k.MemberNames}}{{$k.MemberNames}}{{else}}–{{end}}{{if $k.InfraName}} · {{$k.InfraName}}{{end}}</p>
+  </div>
+  <span class="badge {{$k.QuadrantClass}}" style="font-size:12px;padding:4px 12px">{{$k.QuadrantLabel}}</span>
+  <span class="badge {{$k.StatusClass}}" style="font-size:12px;padding:4px 12px"><i class="ti {{$k.StatusIcon}}"></i>&nbsp;{{$k.StatusLabel}}</span>
+  <a class="btn" href="/kvp/{{$k.ID}}/print" target="_blank" rel="noopener"><i class="ti ti-printer"></i> A3-Report</a>
+  {{if .CanManage}}<form method="post" action="/kvp/{{$k.ID}}/delete" onsubmit="return confirm('Vorschlag {{$k.Code}} endgültig löschen?')"><button class="btn" type="submit" title="Löschen" aria-label="Löschen"><i class="ti ti-trash"></i></button></form>{{end}}
+</div>
+{{if .Message}}<div class="kvp-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="kvp-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<!-- Fortschritt im Ablauf -->
+{{if ge $k.PhaseIndex 0}}
+<div class="kvp-steps">
+  {{range $i, $s := .PDCA}}<div class="st{{if lt $i $k.PhaseIndex}} past{{else if eq $i $k.PhaseIndex}} now{{end}}"><i class="ti {{$s.Icon}}"></i><span>{{$s.Label}}</span></div>{{end}}
+</div>
+{{else}}
+<div class="kvp-msg {{if eq $k.Status "rejected"}}err{{else}}info{{end}}"><i class="ti {{$k.StatusIcon}}"></i> <b>{{$k.StatusLabel}}</b>{{if $k.DecidedAt}} am {{$k.DecidedAt}}{{if $k.DecidedBy}} von {{$k.DecidedBy}}{{end}}{{end}}{{if $k.DecisionNote}} – {{$k.DecisionNote}}{{end}}</div>
+{{end}}
+{{if $k.FeedbackOverdue}}<div class="kvp-msg err"><i class="ti ti-alarm"></i> Rückmeldefrist überschritten (fällig {{$k.FeedbackDueLabel}}) – die Einreichenden warten auf eine Entscheidung.</div>{{end}}
+
+<!-- Naechste Schritte -->
+{{if .Next}}
+<div class="card kvp-next">
+  <div class="card-title"><span><i class="ti ti-arrow-right-circle"></i> Nächster Schritt</span>{{if $k.Undecided}}<span class="card-action">Rückmeldung bis {{$k.FeedbackDueLabel}}</span>{{end}}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px">
+  {{range .Next}}
+    <form method="post" action="/kvp/{{$k.ID}}/status" class="kvp-tr">
+      <input type="hidden" name="to" value="{{.To}}">
+      {{if .NeedsNote}}<textarea name="note" class="form-input" rows="2" placeholder="{{.Hint}}" required></textarea>{{end}}
+      <button class="btn {{.Class}}" type="submit" {{if .Missing}}disabled title="Es fehlt noch etwas"{{end}}><i class="ti {{.Icon}}"></i> {{.Label}}</button>
+      {{if .Missing}}<div class="rec-sub" style="color:var(--amber)">Es fehlt: {{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}</div>{{end}}
+    </form>
+  {{end}}
+  </div>
+</div>
+{{end}}
+
+{{template "record-meta-slot" (dict "Module" "kvp" "ID" $k.ID)}}
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-bulb"></i> Vorschlag</a>
+  <a class="rec-tab" data-tab="assess" href="?tab=assess"><i class="ti ti-scale"></i> Bewertung</a>
+  <a class="rec-tab" data-tab="pdca" href="?tab=pdca"><i class="ti ti-refresh"></i> PDCA &amp; Maßnahmen <b>{{$k.ActionsDone}}/{{$k.ActionsTotal}}</b></a>
+  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{len .Comments}}</b></a>
+  <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
+  <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Vorher/Nachher</a>
+  <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
+  <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
+</div>
+
+<!-- ── Vorschlag ── -->
+<div class="rec-pane" data-pane="overview">
+<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
+  <div>
+    <div class="card"><div class="card-title"><span><i class="ti ti-alert-circle" style="color:var(--red)"></i> Ist-Zustand</span></div><p class="kvp-text">{{$k.Problem}}</p></div>
+    <div class="card"><div class="card-title"><span><i class="ti ti-bulb" style="color:var(--amber)"></i> Vorschlag</span></div><p class="kvp-text">{{$k.Proposal}}</p></div>
+    <div class="card"><div class="card-title"><span><i class="ti ti-trending-up" style="color:var(--green)"></i> Nutzen</span></div><p class="kvp-text">{{if $k.Benefit}}{{$k.Benefit}}{{else}}<span class="rec-sub">nicht angegeben</span>{{end}}</p></div>
+    {{if .CanEdit}}
+    <details class="card"><summary style="cursor:pointer;font-weight:600;font-size:12px"><i class="ti ti-edit"></i> Vorschlag bearbeiten</summary>
+      <form method="post" action="/kvp/{{$k.ID}}" style="margin-top:10px">
+        <div class="form-group"><label class="form-label">Titel *</label><input name="title" class="form-input" maxlength="200" required value="{{$k.Title}}"></div>
+        <div class="form-group"><label class="form-label">Thema</label><select name="category" class="form-input">{{range .Categories}}<option value="{{.Key}}" {{if eq .Key $k.Category}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Ist-Zustand *</label><textarea name="problem" class="form-input" rows="3" required>{{$k.Problem}}</textarea></div>
+        <div class="form-group"><label class="form-label">Vorschlag *</label><textarea name="proposal" class="form-input" rows="3" required>{{$k.Proposal}}</textarea></div>
+        <div class="form-group"><label class="form-label">Nutzen</label><textarea name="benefit" class="form-input" rows="2">{{$k.Benefit}}</textarea></div>
+        {{template "infra-tree-picker" (dict "TargetID" "kvp-infra" "SelectedLabelID" "kvp-infra-label" "Label" "Anlage / Bereich" "Value" $k.InfraID "SelectedLabel" $k.InfraName)}}
+        {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" $k.CostCenterID)}}
+        {{if .CanManage}}<div class="form-group"><label class="form-label">Eingereicht von</label><select name="submitter_id" class="form-input">{{range .Users}}<option value="{{.ID}}" {{if eq .ID $k.SubmitterID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>{{end}}
+        <div class="form-group"><label class="form-label">Team – Miteinreichende</label>
+          <select name="member_ids" class="form-input" multiple size="4">{{range .Users}}<option value="{{.ID}}" {{if $k.HasMember .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+      </form>
+    </details>
+    {{end}}
+  </div>
+  <div class="card">
+    <div class="card-title">Details</div>
+    <div class="li"><div class="li-text"><div class="li-sub">Ideengeber</div><div class="li-title">{{if $k.MemberNames}}{{$k.MemberNames}}{{else}}–{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Bewertet von</div><div class="li-title">{{if $k.ReviewerName}}{{$k.ReviewerName}}{{else}}–{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Setzt um</div><div class="li-title">{{if $k.ResponsibleName}}{{$k.ResponsibleName}}{{else}}–{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Rückmeldung bis</div><div class="li-title" {{if $k.FeedbackOverdue}}style="color:var(--red)"{{end}}>{{if $k.FeedbackDueLabel}}{{$k.FeedbackDueLabel}}{{else}}–{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Umsetzung bis</div><div class="li-title" {{if $k.DueOverdue}}style="color:var(--red)"{{end}}>{{if $k.DueLabel}}{{$k.DueLabel}}{{else}}–{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Einsparung geschätzt / tatsächlich</div><div class="li-title">{{$k.EstSavingsLabel}} / {{$k.ActualSavingsLabel}} pro Jahr</div></div></div>
+    {{if gt $k.Bonus 0.0}}<div class="li"><div class="li-text"><div class="li-sub">Prämie</div><div class="li-title" style="color:var(--green)">{{$k.BonusLabel}}</div></div></div>{{end}}
+    {{if $k.DecisionNote}}<div class="li"><div class="li-text"><div class="li-sub">Entscheidung {{$k.DecidedAt}}{{if $k.DecidedBy}} · {{$k.DecidedBy}}{{end}}</div><div class="li-title" style="font-size:12px">{{$k.DecisionNote}}</div></div></div>{{end}}
+  </div>
+</div>
+</div>
+
+<!-- ── Bewertung ── -->
+<div class="rec-pane" data-pane="assess">
+<div class="grid2" style="gap:14px;align-items:start">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-scale"></i> Bewertungsbogen</span></div>
+    {{if .CanWork}}
+    <form method="post" action="/kvp/{{$k.ID}}/assess">
+      <div class="grid2" style="gap:10px;margin:0">
+        <div class="form-group"><label class="form-label">Nutzen (1 = gering, 5 = sehr hoch)</label>
+          <div class="kvp-score">{{range .Scores}}<label><input type="radio" name="benefit_score" value="{{.}}" {{if eq . $k.BenefitScore}}checked{{end}}><span>{{.}}</span></label>{{end}}</div></div>
+        <div class="form-group"><label class="form-label">Aufwand (1 = gering, 5 = sehr hoch)</label>
+          <div class="kvp-score">{{range .Scores}}<label><input type="radio" name="effort_score" value="{{.}}" {{if eq . $k.EffortScore}}checked{{end}}><span>{{.}}</span></label>{{end}}</div></div>
+        <div class="form-group"><label class="form-label">Einsparung geschätzt (€/Jahr)</label><input name="est_savings" type="number" min="0" step="0.01" class="form-input" value="{{$k.EstSavingsVal}}"></div>
+        <div class="form-group"><label class="form-label">Kosten geschätzt (€ einmalig)</label><input name="est_cost" type="number" min="0" step="0.01" class="form-input" value="{{$k.EstCostVal}}"></div>
+        {{if .CanManage}}
+        <div class="form-group"><label class="form-label">Bewertet von</label><select name="reviewer_id" class="form-input"><option value="">–</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $k.ReviewerID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Setzt um (verantwortlich)</label><select name="responsible_to" class="form-input"><option value="">–</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $k.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        {{end}}
+      </div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Bewertung speichern</button>
+    </form>
+    {{else}}
+    <div class="li"><div class="li-text"><div class="li-sub">Nutzen / Aufwand</div><div class="li-title">{{if $k.Assessed}}{{$k.BenefitScore}} / {{$k.EffortScore}}{{else}}noch nicht bewertet{{end}}</div></div></div>
+    <div class="li"><div class="li-text"><div class="li-sub">Einsparung / Kosten geschätzt</div><div class="li-title">{{$k.EstSavingsLabel}} pro Jahr / {{$k.EstCostLabel}}</div></div></div>
+    {{end}}
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-grid-dots"></i> Einordnung</span></div>
+    <div class="kvp-mini">
+      <div class="q q-green {{if eq $k.QuadrantLabel "Quick Win"}}on{{end}}">Quick Win</div>
+      <div class="q q-blue {{if eq $k.QuadrantLabel "Großprojekt"}}on{{end}}">Großprojekt</div>
+      <div class="q q-amber {{if eq $k.QuadrantLabel "Lückenfüller"}}on{{end}}">Lückenfüller</div>
+      <div class="q q-red {{if eq $k.QuadrantLabel "Fragwürdig"}}on{{end}}">Fragwürdig</div>
+    </div>
+    <p class="rec-sub" style="margin-top:6px">oben = viel Nutzen · rechts = viel Aufwand</p>
+    <div class="li"><div class="li-text"><div class="li-sub">Amortisation geschätzt</div><div class="li-title">{{$k.EstPayback}}</div></div></div>
+    {{if eq $k.Status "done"}}<div class="li"><div class="li-text"><div class="li-sub">Amortisation tatsächlich</div><div class="li-title">{{$k.ActualPayback}}</div></div></div>{{end}}
+  </div>
+</div>
+</div>
+
+<!-- ── PDCA & Massnahmen ── -->
+<div class="rec-pane" data-pane="pdca">
+<div class="kvp-pdca">
+  <div class="card ph"><div class="card-title"><span><b class="pl">P</b> Plan – Ursache, Ziel, Termin</span></div>
+    {{if and .CanWork (or (eq $k.Status "review") (eq $k.Status "submitted") (eq $k.Status "plan") (eq $k.Status "do"))}}
+    <form method="post" action="/kvp/{{$k.ID}}/plan">
+      <div class="form-group"><label class="form-label">Ursache (5×Warum: Warum tritt das Problem auf? …)</label><textarea name="root_cause" class="form-input" rows="3">{{$k.RootCause}}</textarea></div>
+      <div class="form-group"><label class="form-label">Messbares Ziel (woran erkennen wir den Erfolg?)</label><textarea name="target" class="form-input" rows="2">{{$k.Target}}</textarea></div>
+      <div class="form-group"><label class="form-label">Umsetzung bis</label><input type="date" name="due_date" class="form-input" value="{{$k.DueISO}}"></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Plan speichern</button>
+    </form>
+    {{else}}
+    <div class="li-sub">Ursache</div><p class="kvp-text">{{if $k.RootCause}}{{$k.RootCause}}{{else}}–{{end}}</p>
+    <div class="li-sub">Ziel</div><p class="kvp-text">{{if $k.Target}}{{$k.Target}}{{else}}–{{end}}</p>
+    <div class="li-sub">Umsetzung bis</div><p class="kvp-text">{{if $k.DueLabel}}{{$k.DueLabel}}{{else}}–{{end}}</p>
+    {{end}}
+  </div>
+
+  <div class="card ph"><div class="card-title"><span><b class="do">D</b> Do – Maßnahmenplan (wer · was · bis wann)</span></div>
+    {{range .Actions}}
+    <div class="kvp-act{{if .Done}} done{{end}}">
+      <form method="post" action="/kvp/{{$k.ID}}/actions/{{.ID}}/toggle"><button class="chk" type="submit" title="{{if .Done}}wieder öffnen{{else}}erledigt{{end}}" aria-label="erledigt umschalten" {{if not (or $d.CanWork (eq .ResponsibleID $d.MyUserID))}}disabled{{end}}><i class="ti {{if .Done}}ti-square-check{{else}}ti-square{{end}}"></i></button></form>
+      <div style="flex:1"><div>{{.Description}}</div><div class="rec-sub">{{.ResponsibleName}}{{if .DueLabel}} · <span {{if .Overdue}}style="color:var(--red)"{{end}}>bis {{.DueLabel}}</span>{{end}}{{if .Done}} · erledigt {{.DoneAt}}{{if .DoneBy}} ({{.DoneBy}}){{end}}{{end}}</div></div>
+      {{if $d.CanWork}}<form method="post" action="/kvp/{{$k.ID}}/actions/{{.ID}}/delete" onsubmit="return confirm('Maßnahme entfernen?')"><button class="btn" type="submit" style="font-size:11px" aria-label="Entfernen"><i class="ti ti-x"></i></button></form>{{end}}
+    </div>
+    {{else}}<div class="rec-sub" style="padding:4px 0 8px">Noch keine Maßnahmen.</div>{{end}}
+    {{if .CanWork}}
+    <form method="post" action="/kvp/{{$k.ID}}/actions" class="kvp-act-add">
+      <input name="description" class="form-input" placeholder="Was ist zu tun?" required style="flex:2;min-width:160px">
+      <select name="responsible_id" class="form-input" required style="flex:1;min-width:140px" aria-label="Verantwortlich"><option value="">Wer?</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+      <input type="date" name="due_date" class="form-input" required style="width:auto" aria-label="Bis wann">
+      <button class="btn" type="submit"><i class="ti ti-plus"></i> Maßnahme</button>
+    </form>
+    {{end}}
+  </div>
+
+  <div class="card ph"><div class="card-title"><span><b class="ck">C</b> Check – ist es wirksam?</span>{{if $k.CheckedAt}}<span class="card-action">{{$k.CheckedAt}} · {{$k.CheckedBy}}</span>{{end}}</div>
+    {{if and .CanWork (eq $k.Status "check")}}
+    <form method="post" action="/kvp/{{$k.ID}}/check">
+      <div class="kvp-score wide">
+        <label><input type="radio" name="check_result" value="effective" {{if eq $k.CheckResult "effective"}}checked{{end}}><span><i class="ti ti-circle-check"></i> wirksam – Ziel erreicht</span></label>
+        <label><input type="radio" name="check_result" value="not_effective" {{if eq $k.CheckResult "not_effective"}}checked{{end}}><span><i class="ti ti-circle-x"></i> nicht wirksam</span></label>
+      </div>
+      <div class="form-group"><label class="form-label">Ergebnis / Messung</label><textarea name="check_note" class="form-input" rows="2">{{$k.CheckNote}}</textarea></div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Prüfung speichern</button>
+    </form>
+    {{else}}
+    <p class="kvp-text">{{if eq $k.CheckResult "effective"}}<span style="color:var(--green)"><i class="ti ti-circle-check"></i> wirksam</span>{{else if eq $k.CheckResult "not_effective"}}<span style="color:var(--red)"><i class="ti ti-circle-x"></i> nicht wirksam</span>{{else}}noch nicht geprüft{{end}}{{if $k.CheckNote}} – {{$k.CheckNote}}{{end}}</p>
+    {{end}}
+  </div>
+
+  <div class="card ph"><div class="card-title"><span><b class="ac">A</b> Act – Standard &amp; Ergebnis</span></div>
+    {{if and .CanWork (or (eq $k.Status "check") (eq $k.Status "act"))}}
+    <form method="post" action="/kvp/{{$k.ID}}/act">
+      <div class="form-group"><label class="form-label">Standardisierung (Arbeitsanweisung, Checkliste, Schulung, Wartungsplan …)</label><textarea name="standardization" class="form-input" rows="3">{{$k.Standardization}}</textarea></div>
+      <div class="grid2" style="gap:10px;margin:0">
+        <div class="form-group"><label class="form-label">Einsparung tatsächlich (€/Jahr)</label><input name="actual_savings" type="number" min="0" step="0.01" class="form-input" value="{{$k.ActualSavingsVal}}"></div>
+        <div class="form-group"><label class="form-label">Kosten tatsächlich (€)</label><input name="actual_cost" type="number" min="0" step="0.01" class="form-input" value="{{$k.ActualCostVal}}"></div>
+        {{if .CanManage}}<div class="form-group"><label class="form-label">Prämie für die Ideengeber (€)</label><input name="bonus" type="number" min="0" step="0.01" class="form-input" value="{{$k.BonusVal}}"></div>{{end}}
+      </div>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </form>
+    {{else}}
+    <p class="kvp-text">{{if $k.Standardization}}{{$k.Standardization}}{{else}}–{{end}}</p>
+    {{if eq $k.Status "done"}}<div class="rec-sub">Einsparung {{$k.ActualSavingsLabel}}/Jahr · Kosten {{$k.ActualCostLabel}} · Amortisation {{$k.ActualPayback}}</div>{{end}}
+    {{end}}
+  </div>
+</div>
+</div>
+
+<!-- ── Kommentare ── -->
+<div class="rec-pane" data-pane="comments">
+  <div class="card">
+    {{range .Comments}}
+    <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="width:30px;height:30px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;color:#fff">{{slice .UserName 0 1}}</div>
+      <div style="flex:1"><div style="font-size:12px;font-weight:500">{{.UserName}} <span style="color:var(--muted);font-weight:400">· {{.CreatedAgo}}</span></div><div style="font-size:13px;margin-top:4px;line-height:1.5;white-space:pre-wrap">{{.Text}}</div></div>
+    </div>
+    {{else}}<div class="rec-sub" style="padding:8px 0">Noch keine Kommentare – Fragen und Ideen zum Vorschlag gehören hierher.</div>{{end}}
+    <form method="post" action="/kvp/{{$k.ID}}/comment" style="margin-top:12px;display:flex;gap:8px">
+      <input data-suggest="comment" name="text" class="form-input" placeholder="Kommentar hinzufügen…" style="flex:1" required>
+      <button class="btn" type="submit" aria-label="Senden"><i class="ti ti-send"></i></button>
+    </form>
+  </div>
+</div>
+
+<!-- ── Feldsaetze ── -->
+<div class="rec-pane" data-pane="fields">
+  <div class="card">{{template "record-fields-slot" (dict "Module" "kvp" "ID" $k.ID)}}</div>
+</div>
+
+<!-- ── Vorher/Nachher ── -->
+<div class="rec-pane" data-pane="docs">
+  <div class="card">
+    <div class="card-title"><i class="ti ti-paperclip"></i> Fotos (vorher/nachher) &amp; Dokumente</div>
+    <p class="rec-sub" style="margin-bottom:8px">Tipp: ein Foto vom Ist-Zustand beim Einreichen, eins nach der Umsetzung – das zeigt die Verbesserung auf einen Blick.</p>
+    <div id="attachments-{{$k.ID}}" data-attach-ref="kvp:{{$k.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="kvp-up"><i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'kvp','{{$k.ID}}')"></label>
+      <label class="kvp-up"><i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'kvp','{{$k.ID}}')"></label>
+      <label class="kvp-up"><i class="ti ti-file-upload"></i>Dokument<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'kvp','{{$k.ID}}')"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ── Verknuepfungen ── -->
+<div class="rec-pane" data-pane="links">{{template "record-links-slot" (dict "Module" "kvp" "ID" $k.ID)}}</div>
+
+<!-- ── Historie ── -->
+<div class="rec-pane" data-pane="history">{{template "record-history" .History}}</div>
+{{end}}
+
+{{define "scripts"}}
+{{template "kvp-style"}}
+{{end}}

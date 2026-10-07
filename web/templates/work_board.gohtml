@@ -1,0 +1,128 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{/* Arbeitsansicht (work_board.go) fuer Tickets, Stoerungen und Aufgaben: Anstehend · Archiv.
+     Bearbeitet und abgeschlossen wird im Abschluss-Assistenten: pdhComplete(art, id). */}}
+{{$k := .Kind}}
+<div class="mt-head">
+  <div>
+    <h1>{{$k.Title}}{{if .ProjectName}} · {{.ProjectName}}{{end}}</h1>
+    <p>{{if eq .View "archive"}}{{.Archive.Total}} abgeschlossen{{if .Archive.Filtered}} (gefiltert){{end}}{{else}}{{.OpenCount}} offen{{if .OverdueCount}} · <span class="mt-red">{{.OverdueCount}} überfällig</span>{{end}}{{if .UnassignedCount}} · {{.UnassignedCount}} ohne Zuweisung{{end}}{{end}}</p>
+  </div>
+  <div class="widget-icon-toolbar compact">
+    {{if eq $k.Key "task"}}<a class="btn" href="/projects"><i class="ti ti-timeline"></i> Projekte</a>{{end}}
+    <button type="button" class="btn btn-primary" onclick="pdhCreate('{{$k.Key}}')"><i class="ti ti-plus"></i> {{if eq $k.Key "fault"}}Störung melden{{else}}Neu{{end}}</button>
+  </div>
+</div>
+
+<nav class="rec-tabs mt-tabs" aria-label="Ansicht">
+  <a class="rec-tab {{if eq .View "due"}}active{{end}}" href="{{$k.Base}}?view=due"><i class="ti ti-player-play"></i> Anstehend</a>
+  <a class="rec-tab" href="{{$k.Base}}?view=list"><i class="ti ti-list-details"></i> Liste</a>
+  <a class="rec-tab {{if eq .View "archive"}}active{{end}}" href="{{$k.Base}}?view=archive"><i class="ti ti-archive"></i> Archiv</a>
+  {{if eq $k.Key "task"}}<a class="rec-tab" href="/projects"><i class="ti ti-timeline"></i> Projekte</a>{{end}}
+</nav>
+
+{{if eq .View "due"}}
+<form class="mt-filter" method="get" action="{{$k.Base}}">
+  <input type="hidden" name="view" value="due">
+  <label class="mt-chip {{if .Mine}}on{{end}}"><input type="checkbox" name="mine" value="1" {{if .Mine}}checked{{end}} onchange="this.form.submit()"> <i class="ti ti-user"></i> Nur meine</label>
+  <label class="mt-chip {{if .Unassigned}}on{{end}}"><input type="checkbox" name="free" value="1" {{if .Unassigned}}checked{{end}} onchange="this.form.submit()"> <i class="ti ti-inbox"></i> Ohne Zuweisung <b>{{.UnassignedCount}}</b></label>
+  <select name="prio" class="form-input" onchange="this.form.submit()" aria-label="{{if eq $k.Key "fault"}}Schweregrad{{else}}Priorität{{end}}">
+    <option value="">{{if eq $k.Key "fault"}}Jeder Schweregrad{{else}}Jede Priorität{{end}}</option>
+    <option value="critical" {{if eq .Prio "critical"}}selected{{end}}>kritisch</option>
+    <option value="high" {{if eq .Prio "high"}}selected{{end}}>hoch</option>
+    <option value="medium" {{if eq .Prio "medium"}}selected{{end}}>mittel</option>
+    <option value="low" {{if eq .Prio "low"}}selected{{end}}>niedrig</option>
+  </select>
+  <select name="infra" class="form-input" onchange="this.form.submit()" aria-label="Anlage">
+    <option value="">Alle Anlagen</option>
+    {{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $.Infra}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{if eq $k.Key "task"}}
+  <select name="project" class="form-input" onchange="this.form.submit()" aria-label="Projekt">
+    <option value="">Alle Projekte</option>
+    {{range .ProjectOptions}}<option value="{{.ID}}" {{if eq .ID $.Project}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{end}}
+  {{template "category-filter-slot" (dict "Module" $k.Module)}}
+</form>
+{{range .Groups}}
+<section class="mt-group mt-{{.Key}}">
+  <h2><i class="ti {{.Icon}}"></i> {{.Label}} <span>{{len .Cards}}</span></h2>
+  <div class="mt-cards">
+    {{range .Cards}}
+    <article class="mt-card {{if .Overdue}}overdue{{end}} {{if .New}}new{{end}}">
+      <a class="mt-card-main" href="{{$k.Base}}/{{.ID}}">
+        <div class="mt-card-title"><span class="act-dot {{.PriorityDot}}"></span>{{.Title}}</div>
+        {{if .InfraName}}<div class="mt-card-sub"><i class="ti ti-building-factory-2"></i> {{.InfraName}}</div>{{end}}
+        {{if .ProjectName}}<div class="mt-card-sub"><i class="ti ti-timeline"></i> {{.ProjectName}}</div>{{end}}
+        {{if .Description}}<div class="mt-card-desc">{{.Description}}</div>{{end}}
+        <div class="mt-card-meta">
+          {{if .Due}}<span class="{{if .Overdue}}mt-red{{end}}"><i class="ti ti-calendar"></i> {{.Due}}</span>{{else}}<span><i class="ti ti-clock"></i> {{.CreatedAgo}}</span>{{end}}
+          {{if .Who}}<span><i class="ti ti-user"></i> {{.Who}}</span>{{else}}<span style="color:var(--amber)"><i class="ti ti-inbox"></i> niemand zugewiesen</span>{{end}}
+          <span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span>
+          {{if not (or (eq .Status "open") (eq .Status "detected"))}}<span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{else if eq .Status "detected"}}<span class="badge b-amber">neu gemeldet</span>{{end}}
+        </div>
+      </a>
+      <button type="button" class="btn cw-finish mt-go" onclick="pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button>
+    </article>
+    {{end}}
+  </div>
+</section>
+{{else}}
+<div class="mt-empty"><i class="ti ti-mood-happy"></i><div>Nichts offen{{if or .Mine .Unassigned .Infra .Prio .Project}} für diesen Filter{{end}}.</div><a href="{{$k.Base}}?view=archive">Zum Archiv</a></div>
+{{end}}
+{{end}}
+
+{{if eq .View "archive"}}
+<form class="mt-arch-filter" method="get" action="{{$k.Base}}">
+  <input type="hidden" name="view" value="archive">
+  <input type="search" name="q" class="form-input mt-arch-q" value="{{.Archive.Q}}" placeholder="Suche: Titel, Beschreibung, Anlage, Lösung" aria-label="Suche">
+  <select name="infra" class="form-input" aria-label="Anlage"><option value="">Alle Anlagen</option>{{range .InfraOptions}}<option value="{{.ID}}" {{if eq .ID $.Archive.Infra}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <label class="mt-arch-date">von <input type="date" name="from" class="form-input" value="{{.Archive.From}}"></label>
+  <label class="mt-arch-date">bis <input type="date" name="to" class="form-input" value="{{.Archive.To}}"></label>
+  {{if .Project}}<input type="hidden" name="project" value="{{.Project}}">{{end}}
+  <button type="submit" class="btn btn-primary"><i class="ti ti-filter"></i> Filtern</button>
+  {{if .Archive.Filtered}}<a class="btn" href="{{$k.Base}}?view=archive"><i class="ti ti-x"></i> Zurücksetzen</a>{{end}}
+</form>
+{{if .Archive.Rows}}
+<div class="card" style="padding:0">
+  {{range .Archive.Rows}}
+  <div class="mt-done">
+    <div class="mt-done-row">
+      <i class="ti {{if eq .Status "closed"}}ti-lock{{else}}ti-circle-check{{end}}" style="font-size:18px;color:var(--green)"></i>
+      <a href="{{$k.Base}}/{{.ID}}" class="mt-done-main">
+        <b>{{.Title}}</b>
+        <small>{{if .InfraName}}{{.InfraName}} · {{end}}{{if .ProjectName}}{{.ProjectName}} · {{end}}{{.StatusLabel}} {{.Closed}}{{if .Who}} · <i class="ti ti-user"></i> {{.Who}}{{end}}</small>
+      </a>
+      <div class="mt-done-flags"><span class="badge {{.PriorityClass}}">{{.Priority}}</span></div>
+    </div>
+    {{if or .Resolution .RootCause}}
+    <details><summary>Lösung &amp; Ursache</summary>
+      {{if .RootCause}}<div class="res"><b>Ursache:</b> {{.RootCause}}</div>{{end}}
+      {{if .Resolution}}<div class="res"><b>Lösung:</b> {{.Resolution}}</div>{{end}}
+    </details>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{if gt .Archive.Pages 1}}
+<nav class="mt-arch-pages" aria-label="Seiten">
+  {{if .Archive.PrevURL}}<a class="btn" href="{{.Archive.PrevURL}}"><i class="ti ti-chevron-left"></i> Neuere</a>{{end}}
+  <span>Seite {{.Archive.Page}} von {{.Archive.Pages}}</span>
+  {{if .Archive.NextURL}}<a class="btn" href="{{.Archive.NextURL}}">Ältere <i class="ti ti-chevron-right"></i></a>{{end}}
+</nav>
+{{end}}
+{{else}}<div class="mt-empty"><i class="ti ti-archive"></i><div>{{if .Archive.Filtered}}Nichts passt zu diesem Filter.{{else}}Noch nichts abgeschlossen.{{end}}</div></div>{{end}}
+{{end}}
+{{end}}
+
+{{define "context-list"}}
+{{range .Groups}}{{if eq .Key "overdue"}}{{range .Cards}}
+<div class="act-item"><div class="act-dot d-red"></div><div class="act-text">{{.Title}}</div></div>
+{{end}}{{end}}{{end}}
+{{end}}
+
+{{define "scripts"}}
+{{template "work-style"}}
+{{end}}

@@ -105,6 +105,10 @@ type ProjectOption struct {
 }
 
 func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
+	if v := workView(r); v != "list" { // Kartenansicht wie die Wartung (work_board.go)
+		h.WorkBoardPage(w, r, "task", v)
+		return
+	}
 	ctx := r.Context()
 	filter := r.URL.Query().Get("status")
 	unassigned := r.URL.Query().Get("unassigned") == "true"
@@ -115,7 +119,7 @@ func (h *Handler) TasksPage(w http.ResponseWriter, r *http.Request) {
 		Users:          h.userOptions(ctx),
 		DefaultDueDays: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 	}
-	data.Tabs = h.statusTabs(ctx, "tasks", "/tasks", filter, []statusTabDef{
+	data.Tabs = h.statusTabs(ctx, "tasks", "/tasks?view=list", filter, []statusTabDef{
 		{"open", "Offen", "ti-circle"}, {"in_progress", "In Arbeit", "ti-tool"}, {"pending", "Wartet", "ti-hourglass"}, {"resolved", "Gelöst", "ti-check"}, {"closed", "Geschlossen", "ti-lock"},
 	}, false, listTabExtra{Key: "unassigned", Label: "Ohne Projekt", Icon: "ti-folder-off", Query: "unassigned=true",
 		Cond: "project_id IS NULL", Active: unassigned})

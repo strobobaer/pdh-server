@@ -257,6 +257,8 @@ func main() {
 	webHandler.StartChangeNotifier(context.Background())
 	maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 	webHandler.StartTrainingScheduler(context.Background())
+	webHandler.StartKVPScheduler(context.Background())
+	webHandler.StartDriveMonitor(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
 	webHandler.StartEnabledQueryPolls(context.Background())
 

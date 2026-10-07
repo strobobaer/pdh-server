@@ -479,3 +479,66 @@
 <figcaption>Jede Checkliste hat ihren eigenen Takt. Fällige Checklisten werden beim Termin zu einer Liste zusammengeführt – mit Foto je Punkt.</figcaption>
 </figure>
 {{end}}
+
+{{define "hb-fig-kvp"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 190" role="img" aria-label="KVP-Ablauf: Einreichen, Bewerten, PDCA-Zyklus, Abschluss">
+  <rect class="bg" x="1" y="1" width="638" height="188" rx="8"/>
+  <rect class="acl" x="16" y="70" width="110" height="50" rx="8"/><text x="71" y="91" class="t-c t-b">💡 Eingereicht</text><text x="71" y="108" class="t-c t-m">Ist + Vorschlag</text>
+  <path class="ar" d="M128 95 H150"/>
+  <rect class="am" x="154" y="70" width="110" height="50" rx="8"/><text x="209" y="91" class="t-c t-b">In Bewertung</text><text x="209" y="108" class="t-c t-m">Nutzen · Aufwand</text>
+  <text x="209" y="140" class="t-c t-m">Rückmeldung ≤ 14 Tage</text>
+  <path class="ln" d="M209 70 V40 H270" stroke-dasharray="4 3"/><rect class="rd" x="272" y="24" width="140" height="30" rx="7"/><text x="342" y="43" class="t-c">Abgelehnt / Zurückgestellt</text>
+  <text x="342" y="66" class="t-c t-m">immer mit Begründung</text>
+  <path class="ar" d="M266 95 H300"/><text x="283" y="88" class="t-c t-m">✓</text>
+  <circle class="acs" cx="400" cy="105" r="62"/>
+  <rect class="acl" x="340" y="70" width="52" height="28" rx="6"/><text x="366" y="88" class="t-c t-b">Plan</text>
+  <rect class="am" x="408" y="70" width="52" height="28" rx="6"/><text x="434" y="88" class="t-c t-b">Do</text>
+  <rect class="acl" x="408" y="112" width="52" height="28" rx="6"/><text x="434" y="130" class="t-c t-b">Check</text>
+  <rect class="gr" x="340" y="112" width="52" height="28" rx="6"/><text x="366" y="130" class="t-c t-b">Act</text>
+  <text x="400" y="182" class="t-c t-m">nicht wirksam → neuer Zyklus</text>
+  <path class="ar" d="M464 105 H500"/>
+  <rect class="gr" x="504" y="76" width="122" height="58" rx="8"/><text x="565" y="98" class="t-c t-b">🏆 Abgeschlossen</text><text x="565" y="114" class="t-c t-m">Standard · Einsparung</text><text x="565" y="127" class="t-c t-m">A3-Report</text>
+</svg>
+<figcaption>Jeder Vorschlag bekommt fristgerecht eine begründete Entscheidung. Angenommene Ideen durchlaufen Plan → Do → Check → Act, bis die Verbesserung Standard ist.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-drives"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Netzlaufwerke: Freigabe wird eingebunden und für Datenspeicher, Import und Export, Sicherung und Dokumente genutzt">
+  <rect class="bg" x="1" y="1" width="638" height="168" rx="8"/>
+  <rect class="bg3" x="16" y="50" width="150" height="70" rx="8"/><text x="91" y="76" class="t-c t-b">🗄️ NAS / Server</text><text x="91" y="94" class="t-c t-m">\\nas\instandhaltung</text><text x="91" y="108" class="t-c t-m">SMB · NFS</text>
+  <path class="ar" d="M168 85 H232"/><text x="200" y="76" class="t-c t-m">einbinden</text>
+  <rect class="acl" x="236" y="50" width="140" height="70" rx="8"/><text x="306" y="76" class="t-c t-b">PDH</text><text x="306" y="94" class="t-c t-m">/mnt/pdh/instandhaltung</text><text x="306" y="108" class="t-c t-m">✓ verbunden · 412 GB frei</text>
+  <path class="ar" d="M378 70 C 400 30, 410 26, 428 26"/><path class="ar" d="M378 78 C 400 65, 410 62, 428 62"/>
+  <path class="ar" d="M378 92 C 400 105, 410 98, 428 98"/><path class="ar" d="M378 100 C 400 140, 410 134, 428 134"/>
+  <rect class="gr" x="430" y="12" width="196" height="28" rx="6"/><text x="442" y="30">🗃️ Globaler Datenspeicher</text>
+  <rect class="gr" x="430" y="48" width="196" height="28" rx="6"/><text x="442" y="66">⇄ Import &amp; Export</text>
+  <rect class="gr" x="430" y="84" width="196" height="28" rx="6"/><text x="442" y="102">💾 PDH-Sicherungen</text>
+  <rect class="gr" x="430" y="120" width="196" height="28" rx="6"/><text x="442" y="138">📁 PDH-Dokumente/Tickets/…</text>
+</svg>
+<figcaption>PDH bindet die Freigabe ein und nutzt sie je nach Auswahl als Datenspeicher, für Import &amp; Export, Sicherungen und die Dokumentenablage.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-workboard"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 180" role="img" aria-label="Ansicht Anstehend: Karten gruppiert nach Dringlichkeit mit Knopf zum Abschluss">
+  <rect class="bg" x="1" y="1" width="638" height="178" rx="8"/>
+  <text x="16" y="24" class="t-b">▶ Anstehend</text><text x="100" y="24" class="t-m">Liste</text><text x="140" y="24" class="t-m">Archiv</text>
+  <rect class="acl" x="210" y="11" width="80" height="20" rx="10"/><text x="250" y="25" class="t-c">Nur meine</text>
+  <rect class="bg3" x="296" y="11" width="110" height="20" rx="10"/><text x="351" y="25" class="t-c">Ohne Zuweisung 3</text>
+  <text x="16" y="52" class="t-b" style="fill:var(--red)">⚠ ÜBERFÄLLIG 1</text>
+  <rect class="rd" x="16" y="60" width="190" height="104" rx="8"/><text x="28" y="80" class="t-b">● Presse steht</text><text x="28" y="96" class="t-m">Presse 3 · fällig 01.10.</text>
+  <rect class="gr" x="28" y="128" width="166" height="26" rx="6"/><text x="111" y="145" class="t-c t-b">🔧 Beheben</text>
+  <text x="224" y="52" class="t-b">📅 HEUTE 2</text>
+  <rect class="bg3" x="224" y="60" width="190" height="104" rx="8"/><text x="236" y="80" class="t-b">● Tür klemmt</text><text x="236" y="96" class="t-m">Halle 2 · M. Huber</text>
+  <rect class="gr" x="236" y="128" width="166" height="26" rx="6"/><text x="319" y="145" class="t-c t-b">▶ Bearbeiten</text>
+  <text x="432" y="52" class="t-b">🗓 NÄCHSTE 7 TAGE 5</text>
+  <rect class="bg3" x="432" y="60" width="190" height="104" rx="8"/><text x="444" y="80" class="t-b">● Filter tauschen</text><text x="444" y="96" class="t-m">Projekt Umbau Halle 2</text>
+  <rect class="gr" x="444" y="128" width="166" height="26" rx="6"/><text x="527" y="145" class="t-c t-b">✔ Erledigen</text>
+</svg>
+<figcaption>„Anstehend“ zeigt Tickets, Störungen und Aufgaben wie Wartungen: nach Dringlichkeit gruppiert, das Wichtigste zuerst, mit einem Knopf direkt zum Abschluss-Assistenten.</figcaption>
+</figure>
+{{end}}

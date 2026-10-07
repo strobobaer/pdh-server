@@ -34,6 +34,7 @@ var fieldModules = []fieldModule{
 	{"fault", "Störungen", "faults", "''", "", "faults.edit", "faults.view"},
 	{"task", "Aufgaben", "tasks", "''", "", "tasks.edit", "tasks.view"},
 	{"project", "Projekte", "projects", "''", "", "projects.edit", ""},
+	{"kvp", "KVP-Vorschläge", "kvp_ideas", "category", "Kategorie", "kvp.manage", ""},
 	{"maintenance_task", "Wartungen", "maintenance_tasks", "type::text", "Wartungsart", "maintenance.edit", "maintenance.view"},
 	{"infrastructure", "Infrastruktur", "infrastructure", "type::text", "Typ", "", ""},
 	{"storage", "Lagerplätze", "storage_nodes", "type::text", "Lagertyp", "inventory.edit", ""},

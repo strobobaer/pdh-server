@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"pdh/internal/modules/projects"
@@ -28,6 +30,59 @@ type ProjectView struct {
 	CostCenterNumber string
 	CostCenterName   string
 	TaskCount        int
+
+	// Uebergeordnetes Aufgabenmanagement: Stand der Aufgaben im Projekt
+	TasksDone, TasksOpen, TasksOverdue int
+	Progress                           int
+	NextDue                            string
+	NextOverdue                        bool
+}
+
+// projectTaskStats: je Projekt erledigte/offene/ueberfaellige Aufgaben und naechster Termin.
+func (h *Handler) projectTaskStats(ctx context.Context, views []ProjectView) {
+	if h.db == nil || len(views) == 0 {
+		return
+	}
+	idx := map[string]int{}
+	ids := make([]string, 0, len(views))
+	for i, v := range views {
+		idx[v.ID] = i
+		ids = append(ids, v.ID)
+	}
+	rows, err := h.db.Query(ctx, `
+		SELECT project_id::text,
+		       COUNT(*) FILTER (WHERE status IN ('resolved','closed') OR archived_at IS NOT NULL)::int,
+		       COUNT(*) FILTER (WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL)::int,
+		       COUNT(*) FILTER (WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL AND due_date < CURRENT_DATE)::int,
+		       MIN(due_date) FILTER (WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL)
+		  FROM tasks WHERE project_id::text = ANY($1) GROUP BY project_id`, ids)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	today := time.Now().Truncate(24 * time.Hour)
+	for rows.Next() {
+		var id string
+		var done, open, overdue int
+		var next *time.Time
+		if rows.Scan(&id, &done, &open, &overdue, &next) != nil {
+			continue
+		}
+		v := &views[idx[id]]
+		v.TasksDone, v.TasksOpen, v.TasksOverdue = done, open, overdue
+		if done+open > 0 {
+			v.Progress = done * 100 / (done + open)
+		}
+		if next != nil {
+			v.NextDue, v.NextOverdue = next.Format("02.01.2006"), next.Before(today)
+		}
+	}
+}
+
+// projectTaskGroup: Aufgaben eines Projekts, gruppiert wie Wartungsauftraege.
+type projectTaskGroup struct {
+	Key, Label, Icon string
+	Tasks            []TaskView
 }
 
 func projectStatusLabel(s string) string {
@@ -118,6 +173,7 @@ func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
 			}
 			data.Projects = append(data.Projects, projectView(p))
 		}
+		h.projectTaskStats(ctx, data.Projects)
 	}
 	h.render(w, "projects", data)
 }
@@ -126,6 +182,7 @@ type ProjectDetailData struct {
 	BaseData
 	Project ProjectView
 	Tasks   []TaskView
+	Groups  []projectTaskGroup
 	Users   []UserOption
 }
 
@@ -148,6 +205,34 @@ func (h *Handler) ProjectDetail(w http.ResponseWriter, r *http.Request) {
 	if tl, err := h.tasks.List(ctx, "", id, false); err == nil {
 		for _, t := range tl {
 			data.Tasks = append(data.Tasks, taskView(t))
+		}
+	}
+	views := []ProjectView{data.Project}
+	h.projectTaskStats(ctx, views)
+	data.Project = views[0]
+	groups := []projectTaskGroup{
+		{Key: "overdue", Label: "Überfällig", Icon: "ti-alert-triangle"},
+		{Key: "in_progress", Label: "In Arbeit", Icon: "ti-tool"},
+		{Key: "open", Label: "Offen", Icon: "ti-circle"},
+		{Key: "pending", Label: "Wartet", Icon: "ti-hourglass"},
+		{Key: "done", Label: "Erledigt", Icon: "ti-circle-check"},
+	}
+	gi := map[string]int{"overdue": 0, "in_progress": 1, "open": 2, "pending": 3, "done": 4}
+	today := time.Now().Format("2006-01-02")
+	for _, t := range data.Tasks {
+		key := t.Status
+		if !t.CanResolve {
+			key = "done"
+		} else if t.DueDateISO != "" && t.DueDateISO < today {
+			key = "overdue"
+		}
+		if i, ok := gi[key]; ok {
+			groups[i].Tasks = append(groups[i].Tasks, t)
+		}
+	}
+	for _, g := range groups {
+		if len(g.Tasks) > 0 {
+			data.Groups = append(data.Groups, g)
 		}
 	}
 

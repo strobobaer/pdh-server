@@ -52,3 +52,25 @@ func TestLimitedBufferCapsOutput(t *testing.T) {
 		t.Fatalf("buffer length is %d, want %d", buffer.Len(), 64*1024)
 	}
 }
+func TestValidateMountRejectsInjection(t *testing.T) {
+	ok := mountRequest{Key: "daten", Kind: "smb", Source: "//nas.local/daten", Username: "pdh", Password: "geheim", Options: "vers=3.0"}
+	if err := validateMount(&ok); err != nil {
+		t.Fatalf("gueltige Anfrage abgelehnt: %v", err)
+	}
+	bad := []mountRequest{
+		{Key: "../etc", Kind: "smb", Source: "//nas/x"},
+		{Key: "a", Kind: "smb", Source: "//nas/x y"},
+		{Key: "a", Kind: "smb", Source: "//nas/x", Options: "uid=0"},
+		{Key: "a", Kind: "smb", Source: "//nas/x", Options: "credentials=/etc/shadow"},
+		{Key: "a", Kind: "smb", Source: "//nas/x", Options: "vers=3.0;rm"},
+		{Key: "a", Kind: "smb", Source: "//nas/x", Password: "x\nusername=root"},
+		{Key: "a", Kind: "nfs", Source: "nas:relative"},
+		{Key: "a", Kind: "ext4", Source: "/dev/sda1"},
+	}
+	for _, b := range bad {
+		b := b
+		if validateMount(&b) == nil {
+			t.Errorf("unsichere Anfrage akzeptiert: %+v", b)
+		}
+	}
+}

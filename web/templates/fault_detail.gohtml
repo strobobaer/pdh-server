@@ -36,6 +36,7 @@
 
 <!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
+{{template "work-do" (dict "Kind" "fault" "ID" .Fault.ID "Open" (not (or (eq .Fault.Status "resolved") (eq .Fault.Status "closed"))) "Title" "Störung beheben" "Label" "Beheben & abschließen" "Icon" "ti-tool" "DoneTitle" .Fault.StatusLabel "ArchiveURL" "/faults?view=archive")}}
 <div class="grid2" style="grid-template-columns:1fr 380px;gap:14px;align-items:start">
   <div>
     <div class="card">
@@ -300,6 +301,7 @@
 {{end}}
 
 {{block "scripts" .}}
+{{template "work-style"}}
 <script>
 
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}

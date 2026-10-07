@@ -1,0 +1,159 @@
+{{/*
+  KVP (internal/web/kvp.go): gemeinsames Styling der KVP-Seiten und der
+  A3-Report zum Drucken (GET /kvp/{id}/print).
+*/}}
+{{define "kvp-style"}}
+<style>
+.kvp-msg{margin-bottom:12px;padding:8px 12px;border-radius:8px;font-size:12.5px}
+.kvp-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.kvp-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.kvp-msg.info{background:var(--bg3);color:var(--text)}
+.kvp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.kvp-kpi{text-decoration:none;color:inherit;display:block}
+a.kvp-kpi:hover{border-color:var(--accent)}
+.kvp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;align-items:start}
+.kvp-grid .card{margin:0}
+.kvp-bar{display:grid;grid-template-columns:170px 1fr 34px;gap:8px;align-items:center;font-size:12px;padding:3px 0;color:var(--text);text-decoration:none}
+a.kvp-bar:hover .l{color:var(--accent)}
+.kvp-bar .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kvp-bar .b{height:10px;background:var(--bg3);border-radius:5px;overflow:hidden}
+.kvp-bar .f{display:block;height:100%;border-radius:5px;padding:0}
+.kvp-bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.kvp-chart{display:flex;gap:4px;align-items:flex-end;height:140px}
+.kvp-chart .m{flex:1;display:flex;flex-direction:column;align-items:center;height:100%}
+.kvp-chart .bars{flex:1;width:100%;display:flex;gap:2px;align-items:flex-end;justify-content:center}
+.kvp-chart .bars span{width:42%;border-radius:3px 3px 0 0;min-height:1px}
+.kvp-chart .s,.kvp-legend .s::before{background:var(--accent)}
+.kvp-chart .d,.kvp-legend .d::before{background:var(--green)}
+.kvp-chart .lb{font-size:9.5px;color:var(--muted);margin-top:3px}
+.kvp-legend{display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:8px}
+.kvp-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.kvp-matrix{display:grid;grid-template-columns:18px 1fr 1fr;grid-template-rows:1fr 1fr 18px;gap:6px}
+.kvp-matrix .ax-y{grid-row:1/3;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;color:var(--muted);text-align:center}
+.kvp-matrix .ax-x{grid-column:2/4;font-size:10px;color:var(--muted);text-align:center}
+.kvp-matrix .q:nth-of-type(2){grid-column:2;grid-row:1}
+.kvp-matrix .q:nth-of-type(3){grid-column:3;grid-row:1}
+.kvp-matrix .q:nth-of-type(4){grid-column:2;grid-row:2}
+.kvp-matrix .q:nth-of-type(5){grid-column:3;grid-row:2}
+.kvp-matrix .q,.kvp-mini .q{border-radius:8px;padding:8px;font-size:11.5px;min-height:90px;border:1px solid var(--border)}
+.kvp-matrix .qh{display:flex;justify-content:space-between}
+.kvp-matrix .qs{font-size:10px;color:var(--muted);margin-bottom:4px}
+.kvp-matrix .q a{display:block;color:var(--text);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0}
+.kvp-matrix .q a:hover{color:var(--accent)}
+.q-green{background:rgba(16,185,129,.10)}.q-blue{background:rgba(96,165,250,.12)}
+.q-amber{background:rgba(245,158,11,.10)}.q-red{background:rgba(239,68,68,.08)}
+.kvp-mini{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.kvp-mini .q{min-height:46px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.kvp-mini .q.on{color:var(--text);font-weight:600;box-shadow:inset 0 0 0 2px var(--accent)}
+.kvp-li{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);color:var(--text);text-decoration:none;font-size:12px}
+.kvp-li:last-child{border:0}
+.kvp-li .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kvp-li .s{font-size:11px;color:var(--muted);white-space:nowrap}
+.kvp-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.kvp-chip{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--border);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);text-decoration:none}
+.kvp-chip b{font-weight:500;font-size:10px;background:var(--bg3);border-radius:999px;padding:1px 6px}
+.kvp-chip.on{border-color:var(--accent);color:var(--accent)}
+.kvp-board{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:10px;overflow-x:auto}
+.kvp-board .col{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px;min-height:200px}
+.kvp-board .ch{font-weight:600;font-size:13px;padding:4px 4px 8px}
+.kvp-board .ch b{font-weight:500;font-size:10px;background:var(--bg3);border-radius:999px;padding:1px 6px}
+.kvp-card{display:block;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:8px;color:var(--text);text-decoration:none}
+.kvp-card:hover{border-color:var(--accent)}
+.kvp-card .t{font-weight:500;margin:2px 0 4px}
+.kvp-prog{height:5px;background:var(--bg3);border-radius:3px;margin-top:6px;overflow:hidden}
+.kvp-prog span{display:block;height:100%;background:var(--green)}
+.kvp-rules{margin:0;padding-left:20px;font-size:12.5px;line-height:1.6}
+.kvp-rules li{margin-bottom:4px}
+.kvp-tpl{font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--border)}
+.kvp-tpl:last-child{border:0}
+.kvp-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:6000;align-items:flex-start;justify-content:center;overflow:auto;padding:20px}
+.kvp-dlg{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:560px}
+.kvp-steps{display:flex;gap:4px;margin-bottom:12px;overflow-x:auto}
+.kvp-steps .st{flex:1;min-width:88px;text-align:center;padding:7px 4px;border-radius:8px;background:var(--bg3);color:var(--muted);font-size:11.5px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.kvp-steps .st i{font-size:16px}
+.kvp-steps .st.past{background:rgba(16,185,129,.14);color:var(--green)}
+.kvp-steps .st.now{background:var(--accent);color:var(--on-accent,#fff);font-weight:600}
+.kvp-next .kvp-tr{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1;max-width:360px}
+.kvp-text{font-size:13px;line-height:1.6;white-space:pre-wrap;margin-bottom:6px}
+.kvp-score{display:flex;gap:6px;flex-wrap:wrap}
+.kvp-score label{cursor:pointer}
+.kvp-score input{position:absolute;opacity:0}
+.kvp-score span{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:36px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font-weight:600}
+.kvp-score input:checked + span{background:var(--accent);color:var(--on-accent,#fff);border-color:var(--accent)}
+.kvp-score input:focus-visible + span{outline:2px solid var(--accent)}
+.kvp-score.wide{margin-bottom:10px}
+.kvp-pdca{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px;align-items:start}
+.kvp-pdca .card{margin:0}
+.kvp-pdca .card-title b{display:inline-flex;width:22px;height:22px;border-radius:6px;align-items:center;justify-content:center;color:#fff;margin-right:6px}
+.kvp-pdca .pl{background:#3b82f6}.kvp-pdca .do{background:#f59e0b}.kvp-pdca .ck{background:#8b5cf6}.kvp-pdca .ac{background:#10b981}
+.kvp-act{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.kvp-act.done > div:first-of-type{color:var(--muted);text-decoration:line-through}
+.kvp-act .chk{background:none;border:0;cursor:pointer;font-size:20px;color:var(--accent);padding:0;line-height:1}
+.kvp-act .chk:disabled{cursor:default;opacity:.6}
+.kvp-act-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.kvp-up{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)}
+.kvp-up i{font-size:16px}
+@media (max-width:900px){.kvp-kpis{grid-template-columns:repeat(2,1fr)}.kvp-bar{grid-template-columns:120px 1fr 30px}.kvp-pdca{grid-template-columns:1fr}}
+</style>
+{{end}}
+
+{{define "kvp-a3"}}
+{{$k := .Idea}}
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{$k.Code}} – A3-Report</title>
+<style>
+@page{size:A3 landscape;margin:12mm}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#111;background:#fff;margin:0;padding:16px;font-size:12px}
+h1{font-size:20px;margin:0}
+.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:10px}
+.meta{font-size:11px;color:#444;text-align:right;line-height:1.5}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box{border:1.5px solid #333;border-radius:4px;padding:8px 10px;min-height:110px}
+.box h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;margin:0 0 6px;display:flex;gap:6px;align-items:center}
+.box h2 b{display:inline-flex;width:20px;height:20px;border-radius:4px;background:#111;color:#fff;align-items:center;justify-content:center}
+.box p{margin:0;white-space:pre-wrap;line-height:1.5}
+table{width:100%;border-collapse:collapse}
+td,th{border:1px solid #999;padding:3px 6px;text-align:left;font-size:11px}
+th{background:#eee}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px}
+.kv span:nth-child(odd){color:#555}
+.sig{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:24px}
+.sig div{border-top:1px solid #111;padding-top:3px;font-size:10px;color:#444}
+.noprint{margin-bottom:10px}
+@media print{.noprint{display:none}body{padding:0}}
+</style></head>
+<body>
+<div class="noprint"><button onclick="window.print()">Drucken</button> <a href="/kvp/{{$k.ID}}">zurück zum Vorschlag</a></div>
+<div class="head">
+  <div><div style="font-size:11px;color:#555">KVP · A3-Report · {{$k.Code}}</div><h1>{{$k.Title}}</h1></div>
+  <div class="meta">Thema: {{$k.CategoryLabel}}{{if $k.InfraName}} · Bereich: {{$k.InfraName}}{{end}}<br>
+    Ideengeber: {{$k.MemberNames}} · eingereicht {{$k.CreatedDate}}<br>
+    Status: <b>{{$k.StatusLabel}}</b>{{if $k.ResponsibleName}} · Umsetzung: {{$k.ResponsibleName}}{{end}}{{if $k.DueLabel}} bis {{$k.DueLabel}}{{end}}</div>
+</div>
+<div class="grid">
+  <div style="display:grid;gap:10px">
+    <div class="box"><h2><b>1</b> Ist-Zustand / Problem</h2><p>{{$k.Problem}}</p></div>
+    <div class="box"><h2><b>2</b> Vorschlag / Soll-Zustand</h2><p>{{$k.Proposal}}</p>{{if $k.Benefit}}<p style="margin-top:6px"><i>Nutzen:</i> {{$k.Benefit}}</p>{{end}}</div>
+    <div class="box"><h2><b>3</b> Ursache (5×Warum)</h2><p>{{$k.RootCause}}</p></div>
+    <div class="box" style="min-height:70px"><h2><b>4</b> Ziel</h2><p>{{$k.Target}}</p></div>
+  </div>
+  <div style="display:grid;gap:10px;align-content:start">
+    <div class="box"><h2><b>5</b> Maßnahmenplan</h2>
+      <table><tr><th>Was</th><th>Wer</th><th>Bis</th><th>✓</th></tr>
+      {{range .Actions}}<tr><td>{{.Description}}</td><td>{{.ResponsibleName}}</td><td>{{.DueLabel}}</td><td>{{if .Done}}✓{{end}}</td></tr>{{else}}<tr><td colspan="4">–</td></tr>{{end}}
+      </table></div>
+    <div class="box" style="min-height:70px"><h2><b>6</b> Ergebnis / Wirksamkeit</h2>
+      <p>{{if eq $k.CheckResult "effective"}}wirksam{{else if eq $k.CheckResult "not_effective"}}nicht wirksam{{else}}noch nicht geprüft{{end}}{{if $k.CheckNote}} – {{$k.CheckNote}}{{end}}</p></div>
+    <div class="box" style="min-height:70px"><h2><b>7</b> Standardisierung</h2><p>{{$k.Standardization}}</p></div>
+    <div class="box" style="min-height:70px"><h2><b>8</b> Bewertung &amp; Wirtschaftlichkeit</h2>
+      <div class="kv"><span>Nutzen / Aufwand</span><span>{{if $k.Assessed}}{{$k.BenefitScore}} / {{$k.EffortScore}} – {{$k.QuadrantLabel}}{{else}}–{{end}}</span>
+        <span>Einsparung geschätzt</span><span>{{$k.EstSavingsLabel}} pro Jahr (Kosten {{$k.EstCostLabel}}, Amortisation {{$k.EstPayback}})</span>
+        <span>Einsparung tatsächlich</span><span>{{$k.ActualSavingsLabel}} pro Jahr (Kosten {{$k.ActualCostLabel}}, Amortisation {{$k.ActualPayback}})</span>
+        <span>Entscheidung</span><span>{{if $k.DecidedAt}}{{$k.DecidedAt}} {{$k.DecidedBy}}: {{$k.DecisionNote}}{{else}}offen{{end}}</span></div></div>
+  </div>
+</div>
+<div class="sig"><div>Ideengeber</div><div>Umsetzung</div><div>KVP-Verantwortliche/r</div></div>
+</body></html>
+{{end}}

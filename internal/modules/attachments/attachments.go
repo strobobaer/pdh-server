@@ -147,6 +147,10 @@ func (r *Repository) Delete(ctx context.Context, id, userID string) (*Attachment
 	return a, err
 }
 
+// AfterSave wird nach jedem gespeicherten Anhang aufgerufen (z. B. fuer die
+// Dokumentenablage auf einem Netzlaufwerk, internal/web/drives.go).
+var AfterSave func(a *Attachment, absPath string)
+
 // Service
 
 type Service struct{ repo *Repository }
@@ -251,6 +255,9 @@ func (s *Service) Upload(ctx context.Context, refType, refID, userID string, r *
 				INSERT INTO record_history (ref_type, ref_id, action, field_name, new_value, created_by, message)
 				VALUES ($1, $2, 'attachment', 'attachments', $3, $4, 'Anhang hinzugefügt')`,
 				refType, refID, a.Filename, userID)
+			if AfterSave != nil {
+				go AfterSave(a, absPath)
+			}
 			saved = append(saved, a)
 		} else {
 			log.Error().Err(err).Str("ref_type", refType).Str("ref_id", refID).Str("filename", fh.Filename).Msg("attachment metadaten speichern fehlgeschlagen")

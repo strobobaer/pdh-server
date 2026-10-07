@@ -346,6 +346,7 @@ func (h *Handler) resolveExportTemplate(ctx context.Context, kind, templateID st
 // logo: optionaler Bildpfad (Erscheinungsbild -> Logo fuer Exporte); das
 // Logo schwebt rechts neben der Tabelle, die Zellen bleiben unveraendert.
 func writeExcelExport(path, sheetName string, mappings []ExportMappingView, logo string) error {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if sheetName == "" {
 		sheetName = "Export"
 	}
@@ -388,6 +389,7 @@ func writeExcelExport(path, sheetName string, mappings []ExportMappingView, logo
 // ist dort das Dezimaltrennzeichen), daher konfigurierbar statt hart
 // codiert.
 func writeCSVExport(path, delimiter string, mappings []ExportMappingView) error {
+	path = resolveDataPath(path) // relative Pfade: globaler Datenspeicher (drives.go)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("Zielverzeichnis konnte nicht angelegt werden: %w", err)
 	}
