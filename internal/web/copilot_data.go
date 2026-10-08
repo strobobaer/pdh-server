@@ -366,6 +366,20 @@ func (d *copilotData) getRecord(ctx context.Context, typ, id string) (string, er
 	if cause != "" {
 		out["ursache"] = cause
 	}
+	// Störung ↔ Ticket: aus einer Störung erstelltes Ticket ist derselbe Vorgang
+	var link string
+	switch k.Key {
+	case "fault":
+		_ = d.h.db.QueryRow(ctx, `SELECT coalesce(linked_ticket_id::text,'') FROM faults WHERE id = $1::uuid`, id).Scan(&link)
+		if link != "" {
+			out["gleicher_vorgang"] = "Ticket /tickets/" + link
+		}
+	case "ticket":
+		_ = d.h.db.QueryRow(ctx, `SELECT coalesce(linked_fault_id::text,'') FROM tickets WHERE id = $1::uuid`, id).Scan(&link)
+		if link != "" {
+			out["gleicher_vorgang"] = "Störung /faults/" + link
+		}
+	}
 	if k.ActionsTable != "" {
 		rows, err := d.h.db.Query(ctx, fmt.Sprintf(`SELECT to_char(a.created_at,'DD.MM.YYYY HH24:MI'), coalesce(u.first_name||' '||u.last_name,''), a.description
 			FROM %s a LEFT JOIN users u ON u.id = a.created_by WHERE a.%s = $1::uuid ORDER BY a.created_at DESC LIMIT 15`, k.ActionsTable, k.ActionsFK), id)
@@ -780,6 +794,7 @@ Regeln:
 - Du hast keinen Internetzugang. Allgemeines Fachwissen (z. B. wie man eine Hydraulik entlüftet) darfst du nutzen, kennzeichne es dann als allgemeinen Hinweis, nicht als PDH-Daten.
 - Du siehst nur, was die fragende Person sehen darf. Ändern kannst du nichts – verweise zum Bearbeiten auf den Vorgang.
 - Nenne bei Vorgängen, Anlagen und Teilen den Link (Pfad wie /faults/…) aus den Werkzeug-Ergebnissen, damit man ihn anklicken kann.
+- Störungen und Tickets können derselbe Vorgang sein: Aus einer Störung wird oft ein Ticket erstellt (verknüpft, gleicher oder ähnlicher Titel, gleiche Anlage). Zähle solche Paare nicht doppelt, sondern behandle sie als einen Fall und nenne beide Links. Ein Datensatz zeigt das unter "gleicher_vorgang".
 - Arbeitssicherheit zuerst (Freischalten, Sichern), wenn es um Arbeiten an Anlagen geht.
 - Antworte auf Deutsch, knapp und praxisnah. Kurze Listen statt langer Absätze. Heute ist ` + time.Now().Format("Monday, 02.01.2006") + `.
 Fragende Person: ` + userName + `.` + extra

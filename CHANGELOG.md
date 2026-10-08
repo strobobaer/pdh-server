@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.44.2] – 2026-10-08
+
+### Geändert
+- Der Copilot weiß, dass eine Störung und das daraus erstellte Ticket derselbe Vorgang sind: Er zählt sie nicht doppelt und nennt beide Links
+
 ## [0.44.1] – 2026-10-08
 
 ### Geändert
