@@ -331,9 +331,12 @@ func (h *Handler) workBaseSQL(k workKind) string {
 		   AND r.due_date::date - COALESCE((SELECT mp.lead_days FROM maintenance_plans mp WHERE mp.id = r.plan_id), 0) > CURRENT_DATE)`
 	}
 	mine += `)`
+	// „meine“ und „noch nicht im Vorlauf“ mit COALESCE: bei leeren Spalten
+	// (z. B. ohne Verantwortlichen oder Termin) ergibt der Vergleich NULL, die
+	// Zeile liesse sich nicht lesen und der Vorgang fehlte in der Liste
 	return fmt.Sprintf(`
 		SELECT r.id::text, r.title, COALESCE(r.description, ''), r.status::text, %s, r.due_date,
-		       COALESCE(r.infrastructure_id::text, ''), COALESCE(i.name, ''), %s, %s, (%s), %s, r.created_at, %s
+		       COALESCE(r.infrastructure_id::text, ''), COALESCE(i.name, ''), %s, COALESCE(%s, false), (%s), %s, r.created_at, COALESCE(%s, false)
 		  FROM %s r
 		  LEFT JOIN infrastructure i ON i.id = r.infrastructure_id
 		  LEFT JOIN users u ON u.id = %s
@@ -365,8 +368,9 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 		var c workCard
 		var due *time.Time
 		var created time.Time
-		if rows.Scan(&c.ID, &c.Title, &c.Description, &c.Status, &c.Priority, &due, &c.InfraID, &c.InfraName, &c.Who, &c.Mine, &c.Unassigned,
-			&c.ProjectID, &c.ProjectName, &created, &c.Upcoming) != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.Description, &c.Status, &c.Priority, &due, &c.InfraID, &c.InfraName, &c.Who, &c.Mine, &c.Unassigned,
+			&c.ProjectID, &c.ProjectName, &created, &c.Upcoming); err != nil {
+			componentLog("arbeitsbereich").Warn().Err(err).Str("art", k.Key).Msg("vorgang lesen")
 			continue
 		}
 		if tagIDs != nil && !tagIDs[c.ID] || scopeIDs != nil && !scopeIDs[c.ID] {

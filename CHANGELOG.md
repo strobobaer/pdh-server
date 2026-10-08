@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.38.2] – 2026-10-08
+
+### Behoben
+- Tickets, Störungen, Aufgaben und Wartungen ohne verantwortliche Person (oder Wartungen ohne Termin) fehlten in der Liste, im Board und im Dashboard des Moduls, obwohl der Leitstand sie zeigte
+
 ## [0.38.1] – 2026-10-08
 
 ### Behoben
