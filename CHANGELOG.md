@@ -14,6 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Geändert
 - Der Copilot weiß, dass eine Störung und das daraus erstellte Ticket derselbe Vorgang sind: Er zählt sie nicht doppelt und nennt beide Links
+- Die automatischen Copilot-Vorschläge zeigen das aus einer Störung erstellte Ticket (und umgekehrt) nicht mehr als mögliche Dopplung, und gelöste Fälle erscheinen nicht doppelt als Störung und Ticket
 
 ## [0.44.1] – 2026-10-08
 

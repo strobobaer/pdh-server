@@ -88,3 +88,23 @@ func TestCopilotSidebarRendersSuggestionHooks(t *testing.T) {
 		}
 	}
 }
+
+// Störung und das aus ihr erstellte Ticket sind ein Vorgang, keine Dopplung.
+func TestCopilotDropLinked(t *testing.T) {
+	me := copCand("fault", "me", "Scanner liefert keine Daten", "", "saege", "", true)
+	me.link = "tme"
+	own := copCand("ticket", "tme", "Scanner liefert keine Daten", "", "saege", "", true)
+	own.link = "me"
+	f2 := copCand("fault", "f2", "Scanner ohne Daten", "", "saege", "Kabel neu gesteckt", false)
+	t2 := copCand("ticket", "t2", "Scanner ohne Daten", "", "saege", "Kabel neu gesteckt", false)
+	t2.link = "f2"
+	other := copCand("ticket", "t3", "Scanner sendet nichts", "", "saege", "", true)
+	got := copDropLinked(me, []copCandidate{own, f2, t2, other})
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.ref.ID)
+	}
+	if strings.Join(ids, ",") != "f2,t3" {
+		t.Errorf("übrig: %v, erwartet f2,t3", ids)
+	}
+}

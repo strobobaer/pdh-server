@@ -86,11 +86,12 @@ type copCandidate struct {
 	open                   bool
 	actions                []string
 	tokens                 []string
+	link                   string // verknüpftes Gegenstück (Störung ↔ aus ihr erstelltes Ticket)
 }
 
-var copKinds = map[string]struct{ table, url, perm string }{
-	"fault":  {"faults", "/faults/", "faults.view"},
-	"ticket": {"tickets", "/tickets/", "tickets.view"},
+var copKinds = map[string]struct{ table, url, perm, link string }{
+	"fault":  {"faults", "/faults/", "faults.view", "linked_ticket_id"},
+	"ticket": {"tickets", "/tickets/", "tickets.view", "linked_fault_id"},
 }
 
 // copOpenStatus: Status, in denen ein Vorgang noch bearbeitet wird.
@@ -127,6 +128,7 @@ func (h *Handler) copilotSuggestions(r *http.Request, typ, id string) (copSugges
 	}
 	out.Active = true
 	cands, err := h.copCandidates(r, typ, id)
+	cands = copDropLinked(me, cands)
 	if err != nil || len(cands) == 0 {
 		return out, err
 	}
@@ -137,6 +139,29 @@ func (h *Handler) copilotSuggestions(r *http.Request, typ, id string) (copSugges
 	out.Parts = partTotals // über alle ähnlichen Fälle gezählt
 	out.Count = len(out.Duplicates) + len(out.Cases)
 	return out, nil
+}
+
+// copDropLinked: Eine Störung und das aus ihr erstellte Ticket sind derselbe
+// Vorgang. Das Gegenstück des aktuellen Vorgangs ist keine Dopplung, und von
+// einem Paar unter den Kandidaten bleibt nur die Störung.
+func copDropLinked(me copCandidate, cands []copCandidate) []copCandidate {
+	faults := map[string]bool{}
+	for _, c := range cands {
+		if c.ref.Type == "fault" {
+			faults[c.ref.ID] = true
+		}
+	}
+	out := cands[:0]
+	for _, c := range cands {
+		if c.ref.Type != me.ref.Type && (c.ref.ID == me.link || c.link == me.ref.ID) {
+			continue
+		}
+		if c.ref.Type == "ticket" && c.link != "" && faults[c.link] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // copRank bewertet die Kandidaten gegen den aktuellen Vorgang (ohne Datenbank):
@@ -247,9 +272,10 @@ func (h *Handler) copRecord(ctx context.Context, typ, id string) (copCandidate, 
 		symptoms = `COALESCE((SELECT string_agg(s, ' ') FROM jsonb_array_elements_text(COALESCE(r.symptoms, '[]'::jsonb)) s), '')`
 	}
 	err := h.db.QueryRow(ctx, `SELECT r.title, COALESCE(r.description, ''), `+symptoms+`, r.status::text,
-		COALESCE(r.infrastructure_id::text, ''), COALESCE(i.parent_id::text, ''), r.status::text IN `+copOpenStatus+` AND r.archived_at IS NULL
+		COALESCE(r.infrastructure_id::text, ''), COALESCE(i.parent_id::text, ''), r.status::text IN `+copOpenStatus+` AND r.archived_at IS NULL,
+		COALESCE(r.`+copKinds[typ].link+`::text, '')
 		FROM `+copKinds[typ].table+` r LEFT JOIN infrastructure i ON i.id = r.infrastructure_id WHERE r.id = $1::uuid`, id).
-		Scan(&c.ref.Title, &c.desc, &c.symptoms, &c.status, &c.infra, &c.parent, &c.open)
+		Scan(&c.ref.Title, &c.desc, &c.symptoms, &c.status, &c.infra, &c.parent, &c.open, &c.link)
 	c.ref = copRef{Type: typ, ID: id, Title: c.ref.Title, URL: copKinds[typ].url + id}
 	c.tokens = copTokens(c.ref.Title, c.desc, c.symptoms)
 	return c, err
@@ -286,7 +312,7 @@ func (h *Handler) copCandidates(r *http.Request, typ, id string) ([]copCandidate
 				       COALESCE(r.resolution, ''), COALESCE(r.root_cause, ''),
 				       COALESCE(r.infrastructure_id::text, ''), COALESCE(i.parent_id::text, ''), COALESCE(i.name, ''),
 				       (r.status::text IN `+copOpenStatus+` AND r.archived_at IS NULL) AS open, `+actions+`,
-				       COALESCE(r.resolved_at, r.updated_at) AS t
+				       COALESCE(r.resolved_at, r.updated_at) AS t, COALESCE(r.`+k.link+`::text, '') AS link
 				  FROM `+k.table+` r LEFT JOIN infrastructure i ON i.id = r.infrastructure_id
 				 WHERE r.id <> $1::uuid) x
 			 WHERE x.open OR x.status IN ('resolved', 'closed')
@@ -300,7 +326,7 @@ func (h *Handler) copCandidates(r *http.Request, typ, id string) ([]copCandidate
 			var acts []byte
 			var t any
 			if err := rows.Scan(&c.ref.ID, &c.ref.Title, &c.desc, &c.symptoms, &c.status, &c.resolution, &c.rootCause,
-				&c.infra, &c.parent, &c.infraName, &c.open, &acts, &t); err != nil {
+				&c.infra, &c.parent, &c.infraName, &c.open, &acts, &t, &c.link); err != nil {
 				rows.Close()
 				return nil, err
 			}
