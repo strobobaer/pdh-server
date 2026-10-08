@@ -12,6 +12,10 @@
 .sc-restart{color:var(--amber,#f59e0b)}
 .sc-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .sc-sub{font-size:11px;color:var(--muted)}
+.sc-steps{margin:0 0 10px 18px;font-size:13px;line-height:1.55}
+.sc-steps li{margin-bottom:8px}
+.sc-cmd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.sc-cmd code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;overflow-wrap:anywhere}
 </style>
 
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -83,6 +87,10 @@
       <button class="btn" type="button" hx-post="/admin/server-config/test?what=copilot" hx-target="#test-copilot"><i class="ti ti-plug-connected"></i> Verbindung testen</button>
       <span id="test-copilot" class="sc-sub" style="width:100%"></span>
     {{end}}
+    {{if eq .Key "cloudflare"}}
+      <button class="btn" type="button" hx-post="/admin/server-config/test?what=cloudflared" hx-target="#test-cloudflared"><i class="ti ti-plug-connected"></i> Tunnel prüfen</button>
+      <span id="test-cloudflared" class="sc-sub" style="width:100%"></span>
+    {{end}}
     {{if eq .Key "mail"}}
       <button class="btn" type="button" hx-post="/admin/server-config/test?what=mail" hx-target="#test-mail"><i class="ti ti-send"></i> Testmail an mich</button>
       <span id="test-mail" class="sc-sub"></span>
@@ -92,6 +100,7 @@
     {{end}}
   </div>
 </form>
+{{if and (eq .Key "cloudflare") $.CF}}{{template "sc-cloudflare" $.CF}}{{end}}
 </div>
 {{end}}
 
@@ -345,6 +354,35 @@
   </div>
   <div class="sc-sub" style="margin-top:10px">PNG, JPG oder GIF, höchstens 2 MB. SVG wird aus Sicherheitsgründen nicht angenommen. Transparenter Hintergrund (PNG) sieht in hellem und dunklem Design am besten aus.</div>
 </div>
+</div>
+{{end}}
+
+{{define "sc-cloudflare"}}
+<div class="card" style="margin-top:12px">
+  <div class="card-title"><span><i class="ti ti-list-numbers"></i> Anleitung: Tunnel einrichten</span><span class="sc-sub">einmalig, ca. 10 Minuten</span></div>
+  <ol class="sc-steps">
+    <li>Im <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">Cloudflare-Zero-Trust-Dashboard</a> → <b>Networks → Tunnels → Create a tunnel</b> → <b>Cloudflared</b> wählen, Name z. B. <code>PDH</code>.</li>
+    <li>Auf der nächsten Seite steht ein Installationsbefehl mit einem langen Token (beginnt mit <code>eyJ</code>). Den Befehl oder nur den Token kopieren, oben bei <b>Tunnel-Token</b> einfügen und <b>Speichern</b>. Den Befehl dort <b>nicht</b> ausführen – das erledigt das Skript.</li>
+    <li>Im Dashboard weiter zu <b>Public Hostname</b>: Subdomain und Domain wählen (z. B. <code>pdh</code> · <code>firma.de</code>), <b>Service Type</b> <code>{{.OriginScheme}}</code>, <b>URL</b> <code>{{.OriginAddr}}</code>. Speichern. Den Hostnamen oben bei <b>Öffentlicher Hostname</b> eintragen.</li>
+    <li>Installationsskript herunterladen und auf den Server kopieren, auf dem das PDH läuft (bei Docker: auf den Host):
+      <div class="sc-actions" style="border:0;margin-top:6px;padding-top:0">
+        {{if .TokenSet}}
+        <a class="btn btn-primary" href="/admin/server-config/cloudflared/script?os=linux"><i class="ti ti-brand-ubuntu"></i> Skript für Linux</a>
+        <a class="btn" href="/admin/server-config/cloudflared/script?os=windows"><i class="ti ti-brand-windows"></i> Skript für Windows</a>
+        {{else}}
+        <span class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Erst den Tunnel-Token speichern – dann gibt es hier die Skripte.</span>
+        {{end}}
+      </div>
+    </li>
+    <li>Skript ausführen:
+      <div class="sc-cmd"><code>sudo bash pdh-cloudflared.sh</code><button type="button" class="btn btn-small" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)" title="Kopieren"><i class="ti ti-copy"></i></button></div>
+      <div class="sc-sub" style="margin:4px 0">Windows: PowerShell <b>als Administrator</b> öffnen:</div>
+      <div class="sc-cmd"><code>powershell -ExecutionPolicy Bypass -File .\pdh-cloudflared.ps1</code><button type="button" class="btn btn-small" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)" title="Kopieren"><i class="ti ti-copy"></i></button></div>
+      <div class="sc-sub" style="margin-top:4px">Das Skript installiert <code>cloudflared</code>, richtet den Tunnel als Dienst ein (startet automatisch mit dem Server), ersetzt einen vorhandenen Tunnel-Dienst und prüft, ob das PDH erreichbar ist. Es enthält den Token – danach löschen.</div>
+    </li>
+    <li>Im Reiter <b>Server</b> die <b>Öffentliche Adresse</b> auf <code>https://{{or .Host "pdh.firma.de"}}</code> setzen{{if and .Host .PublicURLDifferent}} <span style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> steht noch anders</span>{{end}}. Dann oben <b>Tunnel prüfen</b>.</li>
+  </ol>
+  <div class="sc-sub"><i class="ti ti-shield-lock"></i> Tipp: Mit <b>Cloudflare Access</b> (Zero Trust → Access → Applications) lässt sich vor das PDH zusätzlich eine Anmeldung schalten, z. B. nur Firmen-E-Mail-Adressen. Terminals und Etiketten-Links brauchen dann eine Ausnahme.</div>
 </div>
 {{end}}
 

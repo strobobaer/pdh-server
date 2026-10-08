@@ -451,6 +451,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config", h.ServerConfigPage)
 	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
+	r.Get("/admin/server-config/cloudflared/script", h.CloudflaredScriptWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/password-policy", h.PasswordPolicySaveWeb)

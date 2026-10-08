@@ -956,7 +956,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p>Startet die Datenbank nur etwas später (z. B. nach einem Neustart des Servers), wartet der Assistent und macht von selbst weiter.</p>
   <h3><i class="ti ti-adjustments-cog"></i> Server-Einstellungen im Betrieb</h3>
-  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Microsoft 365, Nextcloud, Updates &amp; Sicherung.</p>
+  <p>Unter <b>Navigation → Server-Einstellungen</b> (nur Administratoren) stehen alle Werte, die früher von Hand in der <code>.env</code> gepflegt wurden – in Reitern: Server, Datenbank, Sicherheit, E-Mail, Copilot, Microsoft 365, Nextcloud, Cloudflare-Tunnel, Protokoll, Updates &amp; Sicherung.</p>
   <p><b>Gespeichert wird in der Datenbank</b> – Passwörter, Schlüssel und Tokens verschlüsselt. In der <code>.env</code> bleiben nur der <b>Datenbank-Zugang</b> und der Schlüssel <code>PDH_SETTINGS_KEY</code>, ohne die das PDH die Datenbank nicht erreichen bzw. die Geheimnisse nicht entschlüsseln kann. <b>Diese Datei deshalb unbedingt mitsichern</b> – eine Datenbank-Sicherung allein genügt für die verschlüsselten Werte nicht.</p>
   <div class="hb-howto"><b><i class="ti ti-database-import"></i> Übernahme einer bestehenden .env</b>
     Beim Start überträgt das PDH alle Werte der <code>.env</code>, die noch nicht in der Datenbank stehen, automatisch dorthin und kommentiert sie in der Datei aus (daneben liegt eine Sicherungskopie <code>.env.bak-…</code>, die die alten Werte im Klartext enthält – nach Prüfung löschen). Trägt jemand später wieder einen Wert in die <code>.env</code> ein, zeigt die Seite einen Hinweis mit <b>jetzt übernehmen</b>. Werte, die Docker (<code>.env.docker</code>) oder systemd von außen setzen, bleiben dort und haben weiter Vorrang.</div>
@@ -990,6 +990,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Darunter steht, ob Anthropic den Schlüssel annimmt und ob das eingestellte Modell verfügbar ist. Der Test kostet nichts.</li>
     </ol>
     Typische Ursachen für <i>„API key is invalid“</i>: Der neue Schlüssel ist gespeichert, aber der Server wurde <b>nicht neu gestartet</b>. Oder in <code>.env.docker</code> steht noch ein <b>alter Schlüssel</b>, der Vorrang vor der Datenbank hat – der Test zeigt das an. Oder der Schlüssel wurde in der Claude Console widerrufen bzw. unvollständig kopiert – dann einen neuen erzeugen und eintragen.</div>
+  <div class="hb-howto"><b><i class="ti ti-cloud-lock"></i> So machst du das PDH über einen Cloudflare-Tunnel erreichbar</b>
+    Der Tunnel macht das PDH aus dem Internet erreichbar, ohne dass in der Firewall ein Port geöffnet wird. Du brauchst ein Cloudflare-Konto mit eurer Domain.
+    <ol class="hb-steps">
+      <li>Im Cloudflare-Zero-Trust-Dashboard <b>Networks → Tunnels → Create a tunnel → Cloudflared</b>, Name z. B. „PDH“.</li>
+      <li>Den angezeigten Installationsbefehl (oder nur den langen Token) kopieren und im Reiter <b>Cloudflare-Tunnel</b> bei <b>Tunnel-Token</b> einfügen. <b>Speichern</b>.</li>
+      <li>Im Dashboard unter <b>Public Hostname</b> die Adresse festlegen (z. B. <code>pdh.firma.de</code>) und als Service das <b>Ziel im Tunnel</b> eintragen (Standard: HTTP, <code>localhost:8090</code>). Den Hostnamen auch im PDH eintragen.</li>
+      <li><b>Skript für Linux</b> bzw. <b>Skript für Windows</b> herunterladen, auf den PDH-Server kopieren (bei Docker auf den Host) und ausführen: <code>sudo bash pdh-cloudflared.sh</code> bzw. in einer PowerShell als Administrator <code>powershell -ExecutionPolicy Bypass -File .\pdh-cloudflared.ps1</code>.</li>
+      <li>Im Reiter <b>Server</b> die <b>Öffentliche Adresse</b> auf <code>https://pdh.firma.de</code> setzen und im Reiter Cloudflare-Tunnel <b>Tunnel prüfen</b>.</li>
+    </ol>
+    Das Skript installiert <code>cloudflared</code>, richtet es als Dienst ein (startet mit dem Server) und ersetzt einen vorhandenen Tunnel-Dienst. Es enthält den Token – nach der Einrichtung löschen. Ein neuer Token (z. B. nach „Refresh token“ im Dashboard): eintragen, Skript neu herunterladen und erneut ausführen.</div>
   <ul>
     <li><b>Passwörter und Schlüssel</b> werden nie angezeigt. Feld leer lassen = unverändert; „Wert entfernen“ löscht ihn.</li>
     <li><b>Datenbank</b>: Änderungen werden vor dem Speichern getestet. Nur wenn du sicher bist, „Trotzdem speichern“ anhaken.</li>

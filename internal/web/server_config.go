@@ -94,6 +94,11 @@ var envGroups = []envGroup{
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_FAULTS_ID", Label: "Deck: Stapel Störungen", Type: "number", Restart: true},
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_MAINTENANCE_ID", Label: "Deck: Stapel Wartung", Type: "number", Restart: true},
 	}},
+	{"cloudflare", "Cloudflare-Tunnel", "ti-cloud-lock", "Das PDH sicher aus dem Internet erreichbar machen – ohne offene Ports in der Firewall. Anleitung und Installationsskript unten.", []envField{
+		{Key: "PDH_CLOUDFLARE_TUNNEL_TOKEN", Label: "Tunnel-Token", Help: "Aus dem Cloudflare-Dashboard (Networks → Tunnels → Tunnel → Configure). Der ganze Befehl „cloudflared service install …“ darf eingefügt werden.", Type: "text", Secret: true},
+		{Key: "PDH_CLOUDFLARE_HOSTNAME", Label: "Öffentlicher Hostname", Help: "Unter dieser Adresse ist das PDH erreichbar, z. B. pdh.firma.de – wie im Dashboard unter Public Hostname eingetragen.", Type: "text"},
+		{Key: "PDH_CLOUDFLARE_ORIGIN", Label: "Ziel im Tunnel", Help: "Wo cloudflared das PDH auf dem Server erreicht – im Dashboard als Service eintragen.", Type: "url", Default: "http://localhost:8090"},
+	}},
 	{"logging", "Protokoll", "ti-file-analytics", "Wie ausführlich das PDH protokolliert. Das Protokoll selbst findest du im Reiter „Protokoll ansehen“.", []envField{
 		{Key: "PDH_LOG_LEVEL", Label: "Protokollstufe", Help: "debug = sehr ausführlich (auch statische Dateien), info = Normalbetrieb, warn/error = nur Probleme.", Type: "select", Options: []string{"info", "debug", "warn", "error"}, Default: "info"},
 		{Key: "PDH_LOG_REQUESTS", Label: "Seitenaufrufe protokollieren", Help: "all = jede Anfrage mit Benutzer, Dauer und Status; errors = nur fehlerhafte (4xx/5xx).", Type: "select", Options: []string{"all", "errors", "off"}, Default: "all"},
@@ -155,6 +160,7 @@ type ServerConfigData struct {
 	CanRestart     bool
 	CanLogs        bool
 	Msg, Err       string
+	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
 	PasswordPending int
@@ -236,6 +242,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Groups = append(d.Groups, gv)
 	}
+	d.CF = h.cloudflareView(r.Context())
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p
@@ -313,6 +320,7 @@ func collectEnvUpdates(r *http.Request, g envGroup) (map[string]string, error) {
 		} else if !present {
 			continue
 		}
+		val = normalizeEnvValue(f, val)
 		if err := validateEnvValue(f, val); err != nil {
 			return nil, err
 		}
@@ -355,6 +363,9 @@ func validateEnvValue(f envField, v string) error {
 			}
 		}
 		return fmt.Errorf("%s: ungültige Auswahl", f.Label)
+	}
+	if err := validateCloudflare(f, v); err != nil {
+		return err
 	}
 	if f.Key == "PDH_AUTH_JWTSECRET" && len(v) < 32 {
 		return errors.New("Der Anmelde-Schlüssel muss mindestens 32 Zeichen lang sein")
@@ -558,6 +569,8 @@ func (h *Handler) ServerConfigTestWeb(w http.ResponseWriter, r *http.Request) {
 		ok("Testnachricht an " + to + " gesendet.")
 	case "copilot":
 		h.copilotDiagnose(w, r)
+	case "cloudflared":
+		h.cloudflaredDiagnose(w, r)
 	default:
 		fail(errors.New("unbekannter Test"))
 	}

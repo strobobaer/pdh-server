@@ -10,7 +10,10 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.44.2] – 2026-10-08
+## [0.45.0] – 2026-10-08
+
+### Neu
+- Server-Einstellungen → Cloudflare-Tunnel: Tunnel-Token und Hostname dort pflegen, mit Schritt-für-Schritt-Anleitung, Installationsskript für Linux und Windows zum Herunterladen und einer Prüfung, ob das PDH über den Tunnel erreichbar ist
 
 ### Geändert
 - Der Copilot weiß, dass eine Störung und das daraus erstellte Ticket derselbe Vorgang sind: Er zählt sie nicht doppelt und nennt beide Links
