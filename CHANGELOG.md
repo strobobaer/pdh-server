@@ -10,6 +10,20 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.41.0] – 2026-10-08
+
+### Neu
+- Der Copilot schlägt bei offenen Störungen und Tickets automatisch Lösungen aus euren Daten vor: bewährte Lösungen aus gelösten Störungen und Tickets (mit Ursache, Maßnahmen und verbauten Teilen) sowie oft benötigte Ersatzteile mit aktuellem Bestand
+- Mögliche Dopplungen: Der Copilot zeigt offene Störungen und Tickets, die vermutlich dasselbe beschreiben; gleiche Lösungen erscheinen nur einmal mit Anzahl („2× so gelöst“)
+- Gibt es Vorschläge, blinkt der Copilot-Reiter in der Seitenleiste gelb – auf der Störungs- und Ticketseite und während der Behebung; im Assistenten öffnet ein gelber Knopf die Vorschläge, ohne ihn zu schließen
+- Easy-Mode: Wer ohne Anmeldung den QR-Code einer Anlage scannt, kann in der Sprache seines Handys eine Störung oder ein Ticket melden – Name, Text, elektrisch/mechanisch, Anlage läuft/steht, fertig; die letzten 5 Meldungen der Anlage stehen darüber, oben führt „Anmelden“ in den Normalmodus
+- Meldungen aus dem Easy-Mode werden automatisch ins Deutsche übersetzt; der deutsche Text steht immer über dem Original
+- Copilot-Knopf in der Kopfleiste: klappt die Copilot-Hilfen auf und zu (wie der Chat) und blinkt gelb, wenn es Vorschläge gibt
+
+### Geändert
+- Auf der QR-Infoseite einer Anlage klappen offene Vorgänge beim Antippen auf; „Beheben“ bzw. „Abschließen“ startet direkt den Abschluss-Assistenten
+- Der Easy-Mode lässt sich unter Core-Einstellungen abschalten; dann führen QR-Codes wie bisher zur Anmeldung
+
 ## [0.40.0] – 2026-10-08
 
 ### Neu

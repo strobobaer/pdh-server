@@ -310,6 +310,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
     <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Dort prüft <b>Verbindung testen</b>, welcher Schlüssel aktiv ist und ob Anthropic ihn annimmt. Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten.</div>
+  <div class="hb-howto"><b><i class="ti ti-bulb"></i> Automatische Vorschläge bei Störungen und Tickets</b>Sobald du eine offene Störung oder ein offenes Ticket öffnest oder mit <b>Beheben</b> bzw. <b>Abschließen</b> den Assistenten startest, sucht der Copilot selbst in euren Daten. Findet er etwas, <b>blinkt der Copilot-Reiter rechts gelb</b> – im Assistenten zusätzlich der gelbe Knopf <b>„Copilot: … Vorschläge“</b>.
+    <ol class="hb-steps">
+      <li>Gelb blinkenden <b>Copilot</b>-Reiter (oder den gelben Knopf im Assistenten) anklicken – die Leiste klappt auf, das Blinken hört auf.</li>
+      <li><b>⚠ Mögliche Dopplung</b>: Diese offenen Störungen oder Tickets beschreiben vermutlich dasselbe. Vorher hineinschauen – vielleicht kümmert sich schon jemand darum.</li>
+      <li><b>💡 Bewährte Lösungen</b>: gelöste Störungen <i>und</i> Tickets mit Ursache, Lösung, Maßnahmen und verbauten Teilen, die ähnlichsten zuerst (Prozent). Gleiche Lösungen stehen nur einmal da – mit „2× so gelöst“ und den weiteren Fällen unter „auch“.</li>
+      <li><b>📦 Oft benötigte Ersatzteile</b>: was bei diesen Fällen verbaut wurde, mit aktuellem Bestand (rot = nichts da). Ein Klick öffnet Teil oder Fall in der Schnellansicht – auch über dem Assistenten.</li>
+    </ol>
+    Die Vorschläge kommen direkt aus der Datensammlung, ohne KI und sofort. Für Rückfragen unten im Copilot fragen. Du siehst nur Fälle, die du sehen darfst.</div>
   <div class="hb-howto"><b><i class="ti ti-message-question"></i> Den Copilot nach euren Daten fragen</b>Den Copilot in der rechten Seitenleiste kannst du auf jeder Seite fragen – z. B. „Welche Störungen hatte Presse 3 in den letzten 30 Tagen?“, „Haben wir noch Lager 6205 und wo liegen sie?“ oder „Welche Wartungen sind diese Woche fällig?“. Er sucht dafür selbst in Störungen, Tickets, Aufgaben, Wartungen, Projekten, Anlagen, Ersatzteilen und den Messwerten aus dem Import. Links in der Antwort öffnen den Vorgang; darunter steht, welche PDH-Daten er benutzt hat. Auf einer Störung bezieht er deren Kontext mit ein.
     <br>Der Copilot sieht nur, was du auch sehen darfst (deine Rechte und Abteilungs-Sicht), und ändert nichts. Er hat keinen Internetzugang; allgemeines Fachwissen kennzeichnet er als solches. Das selbstständige Nachschlagen gibt es mit Claude (Anthropic-Schlüssel); mit Ollama bekommt er vorab die Suchtreffer zur Frage.</div>
   <div class="hb-howto"><b><i class="ti ti-users"></i> Verantwortlich und Zugewiesen</b>Jeder Vorgang hat zwei Zuständigkeiten: <b>Verantwortlich</b> – wer dafür geradesteht und den Überblick behält – und <b>Zugewiesen</b> – wer die Arbeit macht. Das gilt einheitlich für Tickets, Störungen, Wartungspläne und -aufträge, Aufgaben (hier auch mehrere Zugewiesene), Projekte und IT-Assets. Aufträge aus einem Wartungsplan übernehmen beide Personen und die Gruppe aus dem Plan. Zusätzlich lässt sich eine <b>Gruppe</b> zuweisen (Feld „Zugewiesene Gruppe“): Alle Mitglieder sehen den Vorgang im Dashboard unter <b>Mir zugewiesen</b> und bekommen die Änderungshinweise im Chat. Auf der Seite <b>Neu anlegen</b> stehen im Feld „Zugewiesen an“ unter den Personen auch die <b>Gruppen</b> – so landet ein neuer Auftrag direkt bei einem Team.</div>
@@ -318,7 +326,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="tickets" data-title="Tickets" data-pages="tickets">
   <h2><i class="ti ti-ticket"></i> Tickets</h2>
-  <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte.</p>
+  <p>Tickets sind Aufträge und Anfragen, z. B. „Tür klemmt“ oder „Neuer Arbeitsplatz einrichten“. Sie haben Priorität, Status, Termin und Beteiligte. Wie bei Störungen schlägt der Copilot bei offenen Tickets selbst Dopplungen, bewährte Lösungen und Ersatzteile vor – der Copilot-Reiter blinkt dann gelb (siehe <a href="#faults">Störungen → Automatische Vorschläge</a>).</p>
   <p id="work-views">Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der <a href="#kvp">KVP</a> – mit diesen Reitern oben auf der Seite:</p>
   {{template "hb-fig-workboard"}}
   <ul>
@@ -530,11 +538,24 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Jede Anlage der Infrastruktur und jedes IT-Asset hat einen eigenen QR-Code. Er führt auf eine <b>Infoseite</b>, die fürs Handy gebaut ist: Stammdaten, alle <b>offenen Störungen, Tickets, Aufträge/Aufgaben und Wartungen</b> und große Knöpfe zum Neuanlegen.</p>
   <div class="hb-howto"><b><i class="ti ti-scan"></i> So arbeitest du mit dem QR-Code an der Maschine</b>
     <ol class="hb-steps">
-      <li>QR-Code mit der Handy-Kamera scannen. Bist du nicht angemeldet, meldest du dich kurz an – danach geht es direkt auf die Infoseite.</li>
-      <li>Einen offenen Vorgang antippen: Er öffnet sich wie gewohnt und du kannst ihn bearbeiten, Maßnahmen erfassen oder abschließen.</li>
+      <li>QR-Code mit der Handy-Kamera scannen. Bist du nicht angemeldet, öffnet sich bei Anlagen der <b>Easy-Mode</b> (siehe unten) – oben rechts <b>Anmelden</b>, danach geht es direkt auf die Infoseite.</li>
+      <li>Einen offenen Vorgang antippen: Er klappt auf – <b>Ansehen</b>, <b>Bearbeiten</b> oder <b>Beheben</b>/<b>Abschließen</b>/<b>Erledigen</b>/<b>Durchführen</b> startet den gewohnten Abschluss-Assistenten Schritt für Schritt.</li>
+      <li>Hilfen dazu: oben in der Kopfleiste <i class="ti ti-brain"></i> <b>Copilot</b> klappt die Vorschläge auf und zu (blinkt gelb, wenn es welche gibt), <i class="ti ti-messages"></i> <b>Chat</b> genauso.</li>
       <li>Oder oben <b>Störung melden</b>, <b>Ticket</b>, <b>Aufgabe</b> bzw. <b>Wartung</b> antippen. Anlage (und beim IT-Asset das Gerät) sind schon eingetragen. Nach dem Speichern kommst du zurück auf die Infoseite.</li>
     </ol></div>
   <p>Bei Anlagen mit Unteranlagen zeigt die Seite auch die Vorgänge der Unteranlagen (mit deren Namen); „nur diese Anlage“ blendet sie aus. Über <b>Unteranlagen</b> und den Pfeil zur übergeordneten Anlage wechselst du direkt zur nächsten Infoseite. Ein IT-Asset zeigt die Vorgänge, die diesem Gerät zugeordnet sind, und verweist auf die Anlage, bei der es steht. Wartungen für ein IT-Asset gehen nur, wenn es einer Anlage zugeordnet ist.</p>
+  <h3 id="easy-mode"><i class="ti ti-hand-finger"></i> Easy-Mode: melden ohne Anmeldung</h3>
+  <p>Damit wirklich jeder eine Störung melden kann – auch ohne Konto und in der eigenen Sprache –, öffnet der QR-Code einer Anlage für Nicht-Angemeldete eine einfache Meldeseite. Sie erscheint in der <b>Sprache des Handys</b> (Deutsch, Englisch, Rumänisch, Türkisch, Mazedonisch; oben umschaltbar) und zeigt die <b>letzten 5 Meldungen</b> der Anlage sowie zwei große Tasten <b>Störung +</b> und <b>Ticket +</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du im Easy-Mode</b>
+    <ol class="hb-steps">
+      <li>QR-Code scannen → <b>Störung +</b> (etwas ist kaputt) oder <b>Ticket +</b> (etwas wird gebraucht).</li>
+      <li><b>Wer meldet?</b> – Name eintragen (das Handy merkt ihn sich).</li>
+      <li><b>Was ist zu melden?</b> – in der eigenen Sprache schreiben.</li>
+      <li><b>Elektrisch</b> oder <b>Mechanisch</b> antippen.</li>
+      <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
+    </ol>
+    Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann wer gemeldet hat, die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „PDH System“; die meldende Person steht in der Meldung und in der Historie. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
+  <p>Der Easy-Mode lässt sich unter <b>Core-Einstellungen → Easy-Mode</b> abschalten; dann führen QR-Codes wie früher zur Anmeldung. Zum Schutz vor Missbrauch nimmt PDH je Gerät höchstens 6 Meldungen in 10 Minuten und je Anlage 30 in der Stunde an. Im Easy-Mode sieht man nur Titel, Zeitpunkt und Status der letzten Meldungen – keine Namen und keine anderen Seiten.</p>
   <div class="hb-howto"><b><i class="ti ti-printer"></i> So druckst du QR-Etiketten</b>
     <ol class="hb-steps">
       <li>Einzeln: in der Anlage bzw. im IT-Asset oben auf <i class="ti ti-printer"></i> – oder auf der Infoseite unter <b>QR-Code dieser Seite → Etikett drucken</b>.</li>

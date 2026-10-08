@@ -289,6 +289,16 @@ func (c *Copilot) Ask(ctx context.Context, question string) (string, error) {
 Arbeitssicherheit zuerst (Freischalten, Sichern). Wenn dir Angaben fehlen, frag nach statt zu raten.`, question)
 }
 
+// Translate übersetzt einen Meldetext ins Deutsche (Ausgangssprache wird
+// erkannt) – für Meldungen im Easy-Mode. Deutscher Text bleibt unverändert.
+func (c *Copilot) Translate(ctx context.Context, text string) (string, error) {
+	out, err := c.chat(ctx, `Du übersetzt Meldungen von Mitarbeitenden aus der Produktion (Störungen, Anfragen) ins Deutsche.
+Antworte NUR mit der deutschen Übersetzung – ohne Anführungszeichen, Vorbemerkung oder Erklärung.
+Fachbegriffe der Instandhaltung korrekt übersetzen, Maschinen- und Teilenamen, Nummern und Einheiten unverändert lassen.
+Ist der Text bereits deutsch, gib ihn unverändert zurück.`, text)
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(out), `"„“`)), err
+}
+
 func (c *Copilot) Analyze(ctx context.Context, fault *Fault) (*CopilotAnalysis, error) {
 	similar, err := c.repo.FindSimilar(ctx, fault, 5)
 	if err != nil {

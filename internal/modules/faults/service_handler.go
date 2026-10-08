@@ -120,6 +120,14 @@ func (s *Service) Ask(ctx context.Context, question string) (string, error) {
 	return s.copilot.Ask(ctx, question)
 }
 
+// Translate: Meldetext ins Deutsche (Easy-Mode); ohne Copilot ein Fehler.
+func (s *Service) Translate(ctx context.Context, text string) (string, error) {
+	if s == nil || s.copilot == nil {
+		return "", fmt.Errorf("Copilot nicht eingerichtet")
+	}
+	return s.copilot.Translate(ctx, text)
+}
+
 // FindPartDocuments: Datenblatt und Handbuch eines Ersatzteils ueber Claude suchen.
 func (s *Service) FindPartDocuments(ctx context.Context, q PartDocQuery) ([]PartDocHit, error) {
 	if s == nil || s.copilot == nil {

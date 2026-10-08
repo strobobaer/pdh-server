@@ -23,7 +23,7 @@ func TestListsUseExpandableRows(t *testing.T) {
 	for _, f := range []string{
 		"widgets/work_board.gohtml", "maintenance.gohtml", "inventory.gohtml", "directory.gohtml", "kvp.gohtml",
 		"it.gohtml", "users.gohtml", "timetracking.gohtml", "dashboard.gohtml", "infrastructure.gohtml",
-		"infra_detail.gohtml", "storage_detail.gohtml", "user_detail.gohtml", "widgets/training_user.gohtml",
+		"infra_detail.gohtml", "storage_detail.gohtml", "user_detail.gohtml", "widgets/training_user.gohtml", "asset_info.gohtml",
 	} {
 		s := read(f)
 		if !strings.Contains(s, "data-rx") && !strings.Contains(s, "rxView") {

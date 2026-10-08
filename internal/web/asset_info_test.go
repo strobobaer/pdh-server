@@ -66,7 +66,7 @@ func TestAssetInfoPageRenders(t *testing.T) {
 		Total:    1, Sub: true, URL: "https://pdh/a/11111111-1111-1111-1111-111111111111", CanLabel: true,
 	}
 	out := renderPage(t, tmpl, "asset_info", d)
-	for _, want := range []string{"Presse 3", "Störung melden", `href="/faults/f1"`, "überfällig seit", "Pumpe", `href="/a/22222222-2222-2222-2222-222222222222"`,
+	for _, want := range []string{"Presse 3", "Störung melden", `data-rx-edit="/faults/f1"`, `data-rx-done="fault:f1"`, `data-rx-done-label="Beheben"`, "überfällig seit", "Pumpe", `href="/a/22222222-2222-2222-2222-222222222222"`,
 		`href="/a/labels?infra=11111111-1111-1111-1111-111111111111"`, "mit allen Unteranlagen", "Für eine Wartung muss", "nur diese Anlage"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Infoseite enthält %q nicht", want)

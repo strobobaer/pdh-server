@@ -65,16 +65,19 @@
   <div class="card" style="margin-bottom:12px"><div class="ai-empty"><i class="ti ti-circle-check" style="color:var(--green)"></i> Keine offenen Vorgänge{{if eq .Asset.Kind "infra"}}{{if .Sub}} an dieser Anlage und ihren Unteranlagen{{else}} an dieser Anlage{{end}}{{else}} an diesem Gerät{{end}}.</div></div>
   {{end}}
 
-  {{range .Groups}}{{if .Items}}
+  {{range .Groups}}{{if .Items}}{{$g := .}}
   <div class="card ai-group">
     <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}} <b>{{len .Items}}{{if .More}}+{{end}}</b></span>{{if .More}}<a class="btn btn-small" href="{{.ListURL}}">Alle</a>{{end}}</div>
     {{range .Items}}
-    <a class="ai-item" href="{{.URL}}">
+    {{/* aufklappbar wie alle Listen: Ansehen / Bearbeiten / Fertigstellen (Abschluss-Assistent Schritt für Schritt) */}}
+    <div class="ai-item" data-rx data-rx-title="{{.Title}}" data-rx-view="{{.URL}}" data-rx-edit="{{.URL}}" data-rx-done="{{$g.Key}}:{{.ID}}"
+      data-rx-done-label="{{if eq $g.Key "fault"}}Beheben{{else if eq $g.Key "ticket"}}Abschließen{{else if eq $g.Key "maintenance"}}Durchführen{{else}}Erledigen{{end}}"
+      data-rx-done-icon="{{if eq $g.Key "fault"}}ti-tool{{else if eq $g.Key "maintenance"}}ti-player-play{{else}}ti-circle-check{{end}}">
       <span class="t"><b>{{.Title}}</b>
         <small class="{{if .Overdue}}late{{end}}">{{if .Prio}}{{.Prio}} · {{end}}{{if .Due}}{{if .Overdue}}überfällig seit{{else}}fällig{{end}} {{.Due}}{{else}}ohne Termin{{end}}{{if .Where}} · {{.Where}}{{end}}</small></span>
       <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
-      <i class="ti ti-chevron-right"></i>
-    </a>
+      <i class="ti ti-chevron-down"></i>
+    </div>
     {{end}}
   </div>
   {{end}}{{end}}

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>{{.AssetName}} – {{t "Meldung"}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{else}}<link rel="icon" href="/favicon.ico">{{end}}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<style>
+/* Easy-Mode (easy_mode.go): eine Seite, große Tasten, für jedermann */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#8b93a7;--border:#2a2d3e;--red:#ef4444;--amber:#f59e0b;--green:#10b981;--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media (prefers-color-scheme:light){:root{--bg:#f4f6fb;--bg2:#fff;--bg3:#eef1f7;--text:#1b2033;--muted:#5d6577;--border:#dde2ec}}
+html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.4}
+body{min-height:100vh;display:flex;flex-direction:column}
+.ez-top{display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+.ez-logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ez-logo img{width:34px;height:34px;border-radius:9px;object-fit:cover}
+.ez-mode{font-size:12px;color:var(--muted);flex:1;min-width:0}
+.ez-mode b{display:block;color:var(--text);font-size:14px}
+.ez-login{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text);text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap}
+.ez-langs{display:flex;gap:4px;justify-content:center;padding:8px 14px 0}
+.ez-langs button{background:none;border:1px solid transparent;border-radius:6px;padding:4px;cursor:pointer;line-height:0}
+.ez-langs button.on{border-color:var(--accent)}
+.lang-flag{width:26px;height:17px;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+main{flex:1;width:100%;max-width:560px;margin:0 auto;padding:14px 14px 28px}
+.ez-asset{display:flex;gap:12px;align-items:center;margin:6px 0 18px}
+.ez-asset .ic{font-size:30px;width:52px;height:52px;border-radius:14px;background:var(--bg3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ez-asset h1{font-size:22px;font-weight:700;line-height:1.2}
+.ez-asset .p{font-size:13px;color:var(--muted);margin-top:2px}
+.ez-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}
+.ez-big{border:0;border-radius:16px;padding:22px 10px;font-size:19px;font-weight:700;color:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;font-family:inherit;min-height:120px;justify-content:center}
+.ez-big i{font-size:34px}
+.ez-big.f{background:linear-gradient(160deg,#ef4444,#c2410c)}
+.ez-big.t{background:linear-gradient(160deg,#4f6ef7,#3b4fd1)}
+.ez-big:active{transform:scale(.98)}
+h2{font-size:13px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.ez-recent{display:flex;flex-direction:column;gap:8px}
+.ez-item{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.ez-item b{display:block;font-size:15px;font-weight:600}
+.ez-item small{color:var(--muted);font-size:12.5px}
+.ez-st{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:9px;background:var(--bg3);margin-left:4px}
+.ez-empty{color:var(--muted);font-size:14px;padding:10px 0}
+.ez-steps{display:flex;gap:6px;margin:4px 0 18px}
+.ez-steps i{flex:1;height:6px;border-radius:3px;background:var(--bg3)}
+.ez-steps i.on{background:var(--accent)}
+.ez-q{font-size:22px;font-weight:700;margin-bottom:6px}
+.ez-hint{font-size:14px;color:var(--muted);margin-bottom:14px}
+.ez-in{width:100%;font-size:18px;padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:inherit;outline:0}
+.ez-in:focus{border-color:var(--accent)}
+textarea.ez-in{min-height:150px;resize:vertical}
+.ez-choice{display:grid;gap:12px}
+.ez-opt{display:flex;align-items:center;gap:14px;width:100%;padding:20px 18px;border-radius:14px;border:2px solid var(--border);background:var(--bg2);color:var(--text);font-size:19px;font-weight:600;cursor:pointer;font-family:inherit;text-align:left}
+.ez-opt i{font-size:30px}
+.ez-opt.sel{border-color:var(--accent);background:rgba(79,110,247,.12)}
+.ez-opt.e i{color:var(--amber)}.ez-opt.m i{color:var(--muted)}.ez-opt.run i{color:var(--green)}.ez-opt.stop i{color:var(--red)}
+.ez-nav{display:flex;gap:10px;margin-top:20px}
+.ez-btn{flex:1;padding:16px;border-radius:12px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:17px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;gap:8px;align-items:center;justify-content:center}
+.ez-btn.go{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ez-btn:disabled{opacity:.55}
+.ez-msg{margin-top:12px;font-size:14px;color:var(--red);min-height:1em}
+.ez-done{text-align:center;padding:30px 6px}
+.ez-done i.big{font-size:72px;color:var(--green)}
+.ez-done h1{font-size:24px;margin:10px 0 6px}
+.ez-done p{color:var(--muted);margin-bottom:22px}
+.ez-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header class="ez-top">
+  <div class="ez-logo">{{if .Brand.AppLogo}}<img src="{{.Brand.AppLogo}}" alt="">{{else}}P{{end}}</div>
+  <div class="ez-mode"><b>{{or .Brand.AppName "PDH"}}</b>{{t "Easy to use mode"}}</div>
+  <a class="ez-login" href="{{.LoginURL}}"><i class="ti ti-login-2"></i> {{t "Anmelden"}}</a>
+</header>
+<form class="ez-langs" method="post" action="/lang" aria-label="{{t "Sprache"}}">
+  <input type="hidden" name="back" value="/e/{{.AssetID}}">
+  {{$cur := lang}}{{range langs}}<button type="submit" name="lang" value="{{.Code}}" title="{{.Name}}" aria-label="{{.Name}}"{{if eq .Code $cur}} class="on" aria-current="true"{{end}}>{{template "lang-flag" .Code}}</button>{{end}}
+</form>
+
+<main>
+  <!-- Start: Anlage, Melden, letzte Meldungen -->
+  <section id="ez-home">
+    <div class="ez-asset">
+      <div class="ic">{{.TypeIcon}}</div>
+      <div><h1>{{.AssetName}}</h1>{{if .AssetPath}}<div class="p">{{.AssetPath}}</div>{{end}}</div>
+    </div>
+    <div class="ez-actions">
+      <button type="button" class="ez-big f" data-start="fault"><i class="ti ti-alert-triangle"></i>{{t "Störung"}} +</button>
+      <button type="button" class="ez-big t" data-start="ticket"><i class="ti ti-ticket"></i>{{t "Ticket"}} +</button>
+    </div>
+    <h2>{{t "Letzte Meldungen"}}</h2>
+    <div class="ez-recent">
+      {{range .Recent}}<div class="ez-item"><b>{{.Title}}</b><small>{{.Type}} · {{.When}}</small><span class="ez-st">{{.Status}}</span></div>
+      {{else}}<div class="ez-empty">{{t "Noch keine Meldungen zu dieser Anlage."}}</div>{{end}}
+    </div>
+  </section>
+
+  <!-- Meldung Schritt für Schritt -->
+  <section id="ez-flow" hidden>
+    <div class="ez-steps" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="ez-pane" data-step="0">
+      <div class="ez-q">{{t "Wer meldet?"}}</div>
+      <div class="ez-hint">{{t "Dein Name, damit wir nachfragen können."}}</div>
+      <input class="ez-in" id="ez-name" autocomplete="name" maxlength="80" placeholder="{{t "Vor- und Nachname"}}">
+    </div>
+    <div class="ez-pane" data-step="1" hidden>
+      <div class="ez-q" id="ez-q-text">{{t "Was ist zu melden?"}}</div>
+      <div class="ez-hint">{{t "Schreib in deiner Sprache – die Meldung wird automatisch ins Deutsche übersetzt."}}</div>
+      <textarea class="ez-in" id="ez-text" maxlength="2000" placeholder="{{t "Was ist passiert? Wo genau?"}}"></textarea>
+    </div>
+    <div class="ez-pane" data-step="2" hidden>
+      <div class="ez-q">{{t "Art der Meldung"}}</div>
+      <div class="ez-choice" data-field="kind">
+        <button type="button" class="ez-opt e" data-value="electrical"><i class="ti ti-bolt"></i>{{t "Elektrisch"}}</button>
+        <button type="button" class="ez-opt m" data-value="mechanical"><i class="ti ti-settings"></i>{{t "Mechanisch"}}</button>
+      </div>
+    </div>
+    <div class="ez-pane" data-step="3" hidden>
+      <div class="ez-q">{{t "Zustand der Anlage"}}</div>
+      <div class="ez-choice" data-field="state">
+        <button type="button" class="ez-opt run" data-value="running"><i class="ti ti-player-play"></i>{{t "Anlage läuft"}}</button>
+        <button type="button" class="ez-opt stop" data-value="stopped"><i class="ti ti-player-stop"></i>{{t "Anlage steht"}}</button>
+      </div>
+    </div>
+    <input class="ez-hp" id="ez-website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <div class="ez-msg" id="ez-msg" role="alert"></div>
+    <div class="ez-nav">
+      <button type="button" class="ez-btn" id="ez-back"><i class="ti ti-arrow-left"></i> {{t "Zurück"}}</button>
+      <button type="button" class="ez-btn go" id="ez-next">{{t "Weiter"}} <i class="ti ti-arrow-right"></i></button>
+    </div>
+  </section>
+
+  <!-- Fertig -->
+  <section id="ez-done" class="ez-done" hidden>
+    <i class="ti ti-circle-check big"></i>
+    <h1>{{t "Danke! Deine Meldung ist eingegangen."}}</h1>
+    <p id="ez-done-title"></p>
+    <button type="button" class="ez-btn go" onclick="location.reload()"><i class="ti ti-arrow-back-up"></i> {{t "Zur Anlage"}}</button>
+  </section>
+</main>
+
+<script>
+(function(){
+  const ASSET = '{{.AssetID}}';
+  const T = {
+    name: {{t "Bitte deinen Namen angeben."}}, text: {{t "Bitte beschreiben, was los ist."}},
+    choose: {{t "Bitte eine Antwort antippen."}}, sending: {{t "Wird gesendet …"}}, send: {{t "Fertig – melden"}},
+    next: {{t "Weiter"}}, fail: {{t "Senden fehlgeschlagen – bitte nochmal versuchen."}}, many: {{t "Zu viele Meldungen – bitte kurz warten."}},
+    qFault: {{t "Was ist zu melden?"}}, qTicket: {{t "Was wird gebraucht?"}}
+  };
+  const $ = id => document.getElementById(id);
+  const S = {type: '', step: 0, kind: '', state: ''};
+  const panes = [...document.querySelectorAll('.ez-pane')];
+  try{ $('ez-name').value = localStorage.getItem('pdh_easy_name') || ''; }catch(e){}
+
+  function show(i){
+    S.step = i;
+    panes.forEach(p => p.hidden = +p.dataset.step !== i);
+    document.querySelectorAll('.ez-steps i').forEach((d, k) => d.classList.toggle('on', k <= i));
+    $('ez-msg').textContent = '';
+    const last = i === panes.length - 1;
+    $('ez-next').innerHTML = last ? '<i class="ti ti-send"></i> ' + T.send : T.next + ' <i class="ti ti-arrow-right"></i>';
+    const f = panes[i].querySelector('input,textarea');
+    if(f) setTimeout(() => f.focus(), 50);
+    window.scrollTo(0, 0);
+  }
+  function check(i){
+    if(i === 0 && $('ez-name').value.trim().length < 2) return T.name;
+    if(i === 1 && $('ez-text').value.trim().length < 3) return T.text;
+    if(i === 2 && !S.kind) return T.choose;
+    if(i === 3 && !S.state) return T.choose;
+    return '';
+  }
+  document.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => {
+    S.type = b.dataset.start; S.kind = ''; S.state = '';
+    document.querySelectorAll('.ez-opt').forEach(o => o.classList.remove('sel'));
+    $('ez-q-text').textContent = S.type === 'ticket' ? T.qTicket : T.qFault;
+    $('ez-home').hidden = true; $('ez-flow').hidden = false;
+    show($('ez-name').value.trim().length >= 2 ? 1 : 0);
+  }));
+  document.querySelectorAll('.ez-choice').forEach(c => c.addEventListener('click', e => {
+    const o = e.target.closest('.ez-opt'); if(!o) return;
+    c.querySelectorAll('.ez-opt').forEach(x => x.classList.toggle('sel', x === o));
+    S[c.dataset.field] = o.dataset.value;
+    setTimeout(next, 180); // Antippen = weiter
+  }));
+  $('ez-back').addEventListener('click', () => {
+    if(S.step === 0){ $('ez-flow').hidden = true; $('ez-home').hidden = false; return; }
+    show(S.step - 1);
+  });
+  $('ez-next').addEventListener('click', next);
+  async function next(){
+    const err = check(S.step);
+    if(err){ $('ez-msg').textContent = err; return; }
+    if(S.step < panes.length - 1){ show(S.step + 1); return; }
+    const btn = $('ez-next');
+    btn.disabled = true; btn.textContent = T.sending;
+    const name = $('ez-name').value.trim();
+    try{ localStorage.setItem('pdh_easy_name', name); }catch(e){}
+    try{
+      const res = await fetch('/e/' + ASSET + '/report', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'},
+        body: JSON.stringify({type: S.type, name, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value})});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok || !j.success) throw new Error(res.status === 429 ? T.many : T.fail);
+      $('ez-flow').hidden = true; $('ez-done').hidden = false;
+      $('ez-done-title').textContent = j.title || '';
+      $('ez-text').value = '';
+    }catch(e){
+      $('ez-msg').textContent = e.message || T.fail;
+      btn.disabled = false; show(S.step);
+    }
+  }
+})();
+</script>
+</body>
+</html>

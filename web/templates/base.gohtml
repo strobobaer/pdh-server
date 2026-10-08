@@ -278,6 +278,27 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, va
 .cop-q{color:var(--accent);margin-bottom:4px}
 .cop-a{color:var(--text);white-space:pre-wrap;margin-bottom:6px}
 .copilot-input{display:flex;gap:6px}
+/* Copilot-Vorschläge (copilot_suggest.go): gelb blinkender Reiter, solange ungelesen */
+@keyframes cop-blink{0%,100%{background:transparent;border-color:transparent}50%{background:rgba(245,158,11,.38);border-color:var(--amber)}}
+.ctx-tab.cop-alert,.topbar-ctx.cop-alert,.topbar-cop.cop-alert{color:var(--amber)!important;animation:cop-blink 1.1s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.ctx-tab.cop-alert,.topbar-ctx.cop-alert,.topbar-cop.cop-alert{animation:none;background:rgba(245,158,11,.3)}}
+html.cop-raise .context{position:relative;z-index:650}
+html.cop-raise .pdh-frame{z-index:700} /* Vorschlag aus der Seitenleiste öffnet über dem Assistenten */
+@media (max-width:1180px){html.cop-raise .context{position:fixed}}
+.cop-sug{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;max-height:52vh;overflow-y:auto;font-size:12px}
+.cop-sug h4{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:2px 0 -2px;display:flex;gap:6px;align-items:center}
+.cop-sug h4.warn{color:var(--amber)}
+.cop-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;line-height:1.45}
+.cop-card.dup{border-color:rgba(245,158,11,.55);background:rgba(245,158,11,.08)}
+.cop-card a{color:var(--accent);text-decoration:none;font-weight:600}
+.cop-card .m{color:var(--muted);font-size:11px}
+.cop-card .l{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;margin-top:4px}
+.cop-card ul{margin:2px 0 0 16px;padding:0}
+.cop-pill{display:inline-block;font-size:10.5px;padding:0 6px;border-radius:9px;background:rgba(var(--accent-rgb),.14);color:var(--accent);margin-left:4px;font-weight:600}
+.cop-pill.g{background:rgba(16,185,129,.16);color:var(--green)}
+.cop-pill.r{background:rgba(239,68,68,.16);color:var(--red)}
+.cw-cop{margin-top:8px;display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--amber);background:rgba(245,158,11,.14);color:var(--amber);cursor:pointer;font-family:inherit;animation:cop-blink 1.1s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.cw-cop{animation:none}}
 .copilot-input input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:11px;outline:0;font-family:var(--font)}
 .cop-btn{background:var(--accent);border:0;border-radius:6px;padding:5px 10px;color:var(--on-accent);font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap}
 /* ── Activity ── */
@@ -720,6 +741,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
       <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="{{t "Zeiterfassung öffnen"}}" aria-label="{{t "Uhrzeit – Zeiterfassung öffnen"}}">
         <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>
       </a>
+      <button type="button" class="theme-toggle topbar-cop" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
       {{if and .CanChat (ne .Page "chat")}}
       <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
       <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="{{t "Chat in der Seitenleiste"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
@@ -871,6 +893,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
   <!-- Copilot -->
   <div class="ctx-section" data-context-panel="copilot">
     <div class="ctx-title"><i class="ti ti-brain"></i>{{t "Copilot"}}</div>
+    <div class="cop-sug" id="cop-suggest" hidden></div>
     <div class="copilot-msgs" id="cop-msgs">
       <div class="cop-hint">{{t "Frag nach Störungen, Anlagen, Wartungen oder Ersatzteilen – der Copilot sucht in euren PDH-Daten …"}}</div>
     </div>
@@ -1202,6 +1225,7 @@ function activateContextTab(id, opts) {
   document.querySelectorAll('[data-context-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.contextPanel === selected));
   localStorage.setItem('pdh_context_tab', selected);
   html.classList.toggle('ctx-chat-open', selected === 'chat');
+  if(selected === 'copilot' && id && window.pdhCopilotSeen) window.pdhCopilotSeen();
   if(id) setRightSidebar(true);
   if(selected === 'help' && id) pdhLoadContextHelp();
 }
@@ -1720,6 +1744,130 @@ async function sendCop() {
     }
   }catch(e){ wait.remove(); add('cop-a', 'Copilot nicht erreichbar: ' + e.message, 'color:var(--red)'); }
 }
+
+// ── Copilot-Vorschläge zu aktiven Störungen und Tickets (copilot_suggest.go) ──
+// Auf der Detailseite (CopilotRef) und im Behebungs-Assistenten lädt die
+// Seitenleiste automatisch Dopplungen, bewährte Lösungen und Ersatzteile aus der
+// Datensammlung. Solange sie ungelesen sind, blinkt der Copilot-Reiter gelb.
+(function(){
+  const PAGE_REF = '{{.CopilotRef}}';
+  const cache = {};
+  let shown = '', wizard = false;
+  const KIND = {fault: 'Störung', ticket: 'Ticket'};
+  function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+  function link(r){ const a = el('a', '', r.title); a.href = r.url; a.setAttribute('data-frame', ''); a.dataset.frameTitle = r.title; return a; }
+  function pill(text, cls){ return el('span', 'cop-pill' + (cls ? ' ' + cls : ''), text); }
+  function seenKey(ref, d){ return ref + '#' + d.duplicates.length + '/' + d.cases.map(c => c.id).join(','); }
+  function isSeen(ref, d){ try{ return sessionStorage.getItem('pdh_cop_seen_' + ref) === seenKey(ref, d); }catch(e){ return false; } }
+  function copilotVisible(){
+    return !document.documentElement.classList.contains('sidebar-right-collapsed') && localStorage.getItem('pdh_context_tab') === 'copilot';
+  }
+  function setAlert(on){
+    document.querySelectorAll('[data-context-tab="copilot"], .topbar-ctx, .topbar-cop').forEach(b => b.classList.toggle('cop-alert', on));
+    const head = document.querySelector('#cw .cw-head');
+    let btn = document.getElementById('cw-cop');
+    const d = cache[shown];
+    if(wizard && head && d && d.count){
+      if(!btn){
+        btn = el('button', 'cw-cop'); btn.type = 'button'; btn.id = 'cw-cop';
+        btn.addEventListener('click', () => activateContextTab('copilot', {keepOpen: true}));
+        head.appendChild(btn);
+      }
+      btn.replaceChildren(el('i', 'ti ti-bulb'), document.createTextNode(' Copilot: ' + d.count + (d.count === 1 ? ' Vorschlag' : ' Vorschläge') + ' aus euren Daten'));
+      btn.style.display = '';
+      btn.style.animation = on ? '' : 'none';
+    } else if(btn) btn.style.display = 'none';
+  }
+  function render(ref){
+    const box = document.getElementById('cop-suggest');
+    const d = cache[ref];
+    shown = ref;
+    if(!box) return;
+    box.replaceChildren();
+    if(!d || !d.count && !d.parts.length){ box.hidden = true; setAlert(false); return; }
+    box.hidden = false;
+    const [kind] = ref.split(':');
+    if(d.duplicates.length){
+      box.appendChild(el('h4', 'warn', '⚠ Mögliche Dopplung – gibt es schon'));
+      d.duplicates.forEach(x => {
+        const c = el('div', 'cop-card dup');
+        c.append(el('span', 'm', KIND[x.type] + ' · '), link(x), pill(x.percent + ' %'));
+        c.appendChild(el('div', 'm', [x.status, x.infra, x.same_asset ? 'gleiche Anlage' : ''].filter(Boolean).join(' · ')));
+        box.appendChild(c);
+      });
+    }
+    if(d.cases.length){
+      box.appendChild(el('h4', '', '💡 Bewährte Lösungen'));
+      d.cases.forEach(x => {
+        const c = el('div', 'cop-card');
+        c.append(el('span', 'm', KIND[x.type] + ' · '), link(x), pill(x.percent + ' %'));
+        if(x.count > 1) c.appendChild(pill(x.count + '× so gelöst', 'g'));
+        if(x.same_asset) c.appendChild(pill('gleiche Anlage'));
+        else if(x.infra) c.appendChild(el('div', 'm', x.infra));
+        if(x.root_cause){ c.appendChild(el('div', 'l', 'Ursache')); c.appendChild(el('div', '', x.root_cause)); }
+        if(x.resolution){ c.appendChild(el('div', 'l', 'Lösung')); c.appendChild(el('div', '', x.resolution)); }
+        if(x.actions.length){ c.appendChild(el('div', 'l', 'Maßnahmen')); const ul = el('ul'); x.actions.forEach(a => ul.appendChild(el('li', '', a))); c.appendChild(ul); }
+        if(x.parts && x.parts.length){ c.appendChild(el('div', 'l', 'Ersatzteile')); c.appendChild(el('div', '', x.parts.join(', '))); }
+        if(x.more.length){
+          const m = el('div', 'm', 'auch: ');
+          x.more.forEach((r, i) => { if(i) m.append(', '); m.appendChild(link(r)); });
+          c.appendChild(m);
+        }
+        box.appendChild(c);
+      });
+    }
+    if(d.parts.length){
+      box.appendChild(el('h4', '', '📦 Oft benötigte Ersatzteile'));
+      const c = el('div', 'cop-card');
+      d.parts.forEach(p => {
+        const row = el('div');
+        row.append(link({title: p.name, url: p.url}), el('span', 'm', ' ' + p.number + ' · in ' + p.cases + (p.cases === 1 ? ' Fall' : ' Fällen')));
+        row.appendChild(pill('Bestand ' + (Math.round(p.stock * 1000) / 1000).toLocaleString('de-DE') + (p.unit ? ' ' + p.unit : ''), p.stock > 0 ? 'g' : 'r'));
+        c.appendChild(row);
+      });
+      box.appendChild(c);
+    }
+    box.appendChild(el('div', 'm', 'Vorschläge aus euren Daten – ' + (kind === 'ticket' ? 'Tickets' : 'Störungen') + ' und Tickets mit ähnlicher Beschreibung. Für Details unten fragen.'));
+    setAlert(d.count > 0 && !(copilotVisible() || isSeen(ref, d)));
+  }
+  async function load(ref){
+    if(!cache[ref]){
+      const [type, id] = ref.split(':');
+      try{
+        const res = await fetch('/copilot/suggest?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id), {credentials: 'same-origin'});
+        if(!res.ok) return;
+        const d = await res.json();
+        if(!d || !d.active) return;
+        cache[ref] = d;
+      }catch(e){ return; }
+    }
+    render(ref);
+  }
+  // gelesen: Copilot-Reiter geöffnet
+  window.pdhCopilotSeen = function(){
+    const d = cache[shown];
+    if(d){ try{ sessionStorage.setItem('pdh_cop_seen_' + shown, seenKey(shown, d)); }catch(e){} }
+    setAlert(false);
+  };
+  // Behebungs-Assistent: pdhCopilotFor(art, id, true) beim Öffnen, pdhCopilotFor(null) beim Schließen
+  window.pdhCopilotFor = function(type, id){
+    if(!type){
+      wizard = false;
+      document.documentElement.classList.remove('cop-raise');
+      if(PAGE_REF && cache[PAGE_REF]) render(PAGE_REF); else setAlert(false);
+      return;
+    }
+    if(!KIND[type]) return;
+    wizard = true;
+    document.documentElement.classList.add('cop-raise');
+    const ref = type + ':' + id;
+    try{ sessionStorage.removeItem('pdh_cop_seen_' + ref); }catch(e){} // in der Behebung erneut hinweisen
+    load(ref);
+  };
+  if(PAGE_REF){
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => load(PAGE_REF)); else load(PAGE_REF);
+  }
+})();
 </script>
 <script>
 // PDH-Viewer: verknuepfte Datensaetze (data-frame) bzw. freigegebene

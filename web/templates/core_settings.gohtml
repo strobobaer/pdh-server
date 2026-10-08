@@ -69,6 +69,15 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Easy-Mode: Melden per QR-Code ohne Anmeldung</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Wer den QR-Code einer Anlage scannt und nicht angemeldet ist, kommt auf eine einfache Meldeseite in der Sprache seines Handys: die letzten 5 Meldungen der Anlage und „Störung +“ / „Ticket +“. Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). Ausgeschaltet führen QR-Codes zur Anmeldung.</p>
+    <form method="POST" action="/core/settings/easy-mode">
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:10px"><input type="checkbox" name="enabled" {{if .EasyMode}}checked{{end}} style="width:18px;height:18px"> Meldungen ohne Anmeldung per QR-Code erlauben</label>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+
+  <div class="card">
     <div class="card-title">Abschluss-Assistent: Wer war dabei?</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Beim Abschließen von Tickets, Störungen, Aufgaben und Wartungen fragt das PDH, wer mitgearbeitet hat. Vorgeschlagen werden Mitarbeitende dieser Abteilungen (Teilwort genügt, z. B. „Elektro“ passt auf „Elektrowerkstatt“); alle anderen lassen sich im Assistenten zuschalten.</p>
     <form method="POST" action="/core/settings/completion">

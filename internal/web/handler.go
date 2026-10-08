@@ -47,6 +47,7 @@ type BaseData struct {
 	UserFirstName string
 	UserLastName  string
 	FaultID       string
+	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
 	IsSystemUser           bool       // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
@@ -393,6 +394,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/a/labels", h.AssetLabelsPage)
 	r.Post("/a/labels/print", h.AssetLabelsPrintWeb)
 	r.Get("/a/{id}", h.AssetInfoPage)
+	r.Get("/e/{id}", h.EasyPage) // Easy-Mode: öffentlich (authMiddleware)
+	r.Post("/e/{id}/report", h.EasyReportWeb)
 	r.Post("/records/{refType}/{id}/it-asset", h.RecordITAssetWeb)
 	r.Post("/it/{id}/edit-web", h.ITEditWeb)
 	r.Post("/it/{id}/status-web", h.ITStatusWeb) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -531,6 +534,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
+	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
 	r.Get("/create/options", h.CreateOptionsWeb)
 	r.Get("/create/similar", h.CreateSimilarWeb)
@@ -601,6 +605,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings", h.SaveCoreSettings)
 	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
+	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
@@ -1917,6 +1922,11 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Easy-Mode: Meldeseite per QR für jedermann (easy_mode.go, abschaltbar)
+		if strings.HasPrefix(r.URL.Path, "/e/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		// Fertigmeldung aus dem Leitstand: RFID-Token nur fuer /complete/{type}/{id}
 		// (global_dashboard_complete.go) – hat Vorrang vor einer evtl. Sitzung am Terminal
 		if bu := h.boardCompleteUser(r); bu != nil {
@@ -1934,7 +1944,13 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
 			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
-			// QR-Code gescannt: erst anmelden, dann zurueck auf die Infoseite
+			// QR-Code einer Anlage gescannt: Easy-Mode (melden ohne Anmeldung) …
+			if id, ok := strings.CutPrefix(r.URL.Path, "/a/"); ok && r.Method == http.MethodGet && len(id) == 36 && uuidInPathRe.MatchString(id) &&
+				h.easyModeEnabled(r.Context()) && h.assetKindOf(r.Context(), id) == "infra" {
+				http.Redirect(w, r, "/e/"+id, http.StatusFound)
+				return
+			}
+			// … sonst erst anmelden, dann zurueck auf die Infoseite
 			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/a/") {
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
@@ -2012,6 +2028,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	base := h.baseData(r, "faults", fault.Title, "Ähnliche Störungen")
 	base.Title = fault.Title // Titel der Störung nicht übersetzen
 	base.FaultID = id
+	base.CopilotRef = "fault:" + id
 	data := FaultDetailData{
 		BaseData: base,
 		Users:    h.userOptions(ctx),
@@ -2344,8 +2361,10 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tbase := h.baseData(r, "tickets", t.Title, "Ähnliche Tickets")
+	tbase.CopilotRef = "ticket:" + id
 	data := TicketDetailData{
-		BaseData: h.baseData(r, "tickets", t.Title, "Ähnliche Tickets"),
+		BaseData: tbase,
 		Users:    h.userOptions(ctx),
 		History:  h.recordHistory(ctx, "ticket", id),
 		Ticket: TicketView{

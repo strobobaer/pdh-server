@@ -214,6 +214,8 @@
     $('cw-min').value = '0'; $('cw-part-q').value = ''; $('cw-part-sel').textContent = ''; $('cw-people-q').value = ''; $('cw-all-depts').checked = false;
     $('cw-sub').textContent = {{t "Lädt…"}};
     $('cw').classList.add('open');
+    // Copilot: Vorschläge zu Störung/Ticket laden, Seitenleiste über dem Assistenten zeigen (base.gohtml)
+    if(window.pdhCopilotFor) window.pdhCopilotFor(type, id, true);
     S.ck = null; $('cw-step-ck').style.display = 'none'; numberSteps();
     show(0);
     try{
@@ -247,7 +249,7 @@
     loadLocations();
     await loadParts(); // vor dem ersten "weiter" muessen die vorgemerkten Teile bekannt sein
   };
-  window.cwClose = function(){ $('cw').classList.remove('open'); S = null; };
+  window.cwClose = function(){ $('cw').classList.remove('open'); S = null; if(window.pdhCopilotFor) window.pdhCopilotFor(null); };
   function msg(kind, text){ const m = $('cw-msg'); m.className = 'cw-msg ' + kind; m.textContent = text || ''; }
 
   function show(step){
