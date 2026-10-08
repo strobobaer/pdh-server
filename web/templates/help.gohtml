@@ -458,11 +458,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
   <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Zu jeder Anlage gibt es:</p>
   <ul>
-    <li><b>Übersicht</b> – Unteranlagen, Hersteller, Lieferant und Servicepartner (anklickbar).</li>
+    <li><b>Übersicht</b> – die wichtigsten Stammdaten auf einen Blick und die Unteranlagen (anklickbar).</li>
+    <li><b>Stammdaten</b> – alle Angaben in einem Formular: Name, Typ, übergeordnetes Element, Standort, Beschreibung, Hersteller, Modell, Seriennummer, „In Betrieb seit“, Lieferant, Servicepartner, Kostenstelle und Abteilung.</li>
     <li><b>Anlagen-Historie</b> – das „Lebenslauf-Buch“ der Anlage: alle Störungen, Tickets, Wartungen, Maßnahmen, verbrauchten Ersatzteile und Kommentare. Mit Filter, Suche und <b>CSV-Export</b>. Wichtige Hinweise lassen sich als Kommentar <b>anheften</b>.</li>
     <li><b>Verknüpfungen</b> – offene Vorgänge, passende Ersatzteile, Firmen.</li>
     <li><b>HMI</b> – Fernzugriff auf die Bediengeräte der Anlage (VNC), je nach Berechtigung nur ansehen oder bedienen.</li>
   </ul>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Anlage an</b>
+    <ol class="hb-steps">
+      <li><b>Infrastruktur</b> → <b>Hinzufügen</b>. Für eine Unteranlage geht es schneller über das <b>+</b> in der Zeile im Baum oder auf der Anlage über <b>Untergeordnete Anlagen → Hinzufügen</b>.</li>
+      <li><b>Name</b>, <b>Typ</b> und – falls nötig – <b>Übergeordnet</b> und <b>Standort</b> eintragen → <b>Anlegen &amp; weiter</b>.</li>
+      <li>Die neue Anlage öffnet sich im Reiter <b>Stammdaten</b>. Hersteller, Modell, Seriennummer, Partner, Kostenstelle und Abteilung ergänzen → <b>Speichern</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-edit"></i> So änderst du eine Anlage</b>
+    <ol class="hb-steps">
+      <li>Anlage öffnen → Reiter <b>Stammdaten</b> (oder auf der Übersicht <b>Bearbeiten</b>).</li>
+      <li>Felder ändern. Über <b>Typ</b> und <b>Übergeordnet</b> lässt sich eine Anlage auch umordnen, z. B. an eine andere Linie hängen – mit allen Unteranlagen.</li>
+      <li><b>Speichern</b>. Die Änderung steht im Reiter <b>Änderungen</b>.</li>
+    </ol>
+    Eine Anlage kann nicht unter sich selbst oder unter eine ihrer eigenen Unteranlagen gehängt werden.</div>
   <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> Wer darf den Anlagenbaum ändern?</b>Anlegen, Bearbeiten und Deaktivieren von Gebäuden, Linien, Anlagen und Geräten braucht die Berechtigung <b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> (Kategorie „Infrastruktur“). Standardmäßig haben sie Administratoren und Manager; weiteren Rollen gibst du sie unter <b>Rollen &amp; Berechtigungen</b>. Ohne sie fehlen die Knöpfe „Hinzufügen“ und „Bearbeiten“ – ansehen, kommentieren und Vorgänge zuordnen geht weiterhin.</div>
   <h3 id="hmi"><i class="ti ti-device-desktop-analytics"></i> HMI-Fernzugriff</h3>

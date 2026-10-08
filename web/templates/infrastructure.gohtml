@@ -12,65 +12,40 @@
     "Items" (list
       (dict "Action" "expand" "ShowLabel" true "Label" "Alle aufklappen" "OnClick" "expandAll()")
       (dict "Action" "view" "ShowLabel" true "Label" "QR-Etiketten" "OnClick" "window.open('/a/labels?infra_all=1', '_blank')")
-      (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "OnClick" (or (and .CanEditInfra "document.getElementById('new-node-form').style.display='block'") "alert('Zum Anlegen fehlt die Berechtigung „Infrastruktur anlegen, bearbeiten & deaktivieren“.')"))
+      (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "OnClick" (or (and .CanEditInfra "openNewNode('')") "alert('Zum Anlegen fehlt die Berechtigung „Infrastruktur anlegen, bearbeiten & deaktivieren“.')"))
     )
   )}}
 </div>
 
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
 {{template "category-filter-slot" (dict "Module" "infrastructure")}}
 
-<!-- Neuer Knoten -->
+<!-- Neues Element: nur das Nötigste – danach öffnet sich die Anlage im Reiter „Stammdaten“ -->
+{{if .CanEditInfra}}
 <div id="new-node-form" style="display:none" class="card">
-  <div class="card-title">Infrastruktur hinzufügen</div>
-  <form hx-post="/infrastructure" hx-target="#infra-tree" hx-swap="outerHTML">
-    <div class="grid2">
-      <div class="form-group">
-        <label class="form-label">Name</label>
-        <input name="name" class="form-input" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Typ</label>
-        <select name="type" class="form-input">
-          <option value="building">Gebäude</option>
-          <option value="line">Produktionslinie</option>
-          <option value="plant">Anlage</option>
-          <option value="device">Gerät</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Übergeordnet (optional)</label>
+  <div class="card-title"><span><i class="ti ti-plus"></i> Infrastruktur hinzufügen</span></div>
+  <form class="rec-form" method="post" action="/infrastructure">
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="255" placeholder="z. B. Presse 3"></div>
+      <div class="form-group"><label class="form-label">Typ *</label>
+        <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}">{{.Icon}} {{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Übergeordnet</label>
         <select name="parent_id" class="form-input">
-          <option value="">– kein übergeordnetes Element –</option>
-          {{range .AllNodes}}
-          <option value="{{.ID}}">{{.TypeLabel}} · {{.Name}}</option>
-          {{end}}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Standort</label>
-        <input name="location" class="form-input" placeholder="z.B. Halle A">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Hersteller</label>
-        <input name="manufacturer" class="form-input">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Seriennummer</label>
-        <input name="serial_no" class="form-input">
-      </div>
-      {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-cost-center-id")}}
+          <option value="">– oberste Ebene –</option>
+          {{range .AllNodes}}<option value="{{.ID}}">{{.TypeIcon}} {{.Path}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" maxlength="255" placeholder="z. B. Halle A"></div>
     </div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Formularaktionen"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('new-node-form').style.display='none'")
-        (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Hinzufügen")
-      )
-    )}}
+    <p class="rec-sub" style="margin:2px 0 10px"><i class="ti ti-info-circle"></i> Hersteller, Modell, Seriennummer, Partner, Kostenstelle und Abteilung ergänzt du direkt danach im Reiter „Stammdaten“.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button type="button" class="btn" onclick="document.getElementById('new-node-form').style.display='none'">Abbrechen</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-arrow-right"></i> Anlegen &amp; weiter</button>
+    </div>
   </form>
 </div>
+{{end}}
 
 <!-- Legende -->
 <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
@@ -102,7 +77,7 @@
     {{else}}
     <div style="width:14px;flex-shrink:0"></div>
     {{end}}
-    <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;background:{{css .TypeBg}}">{{.TypeLabel}}</div>
+    <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:{{css .TypeBg}}" title="{{.TypeLabel}}">{{.TypeIcon}}</div>
     <div style="flex:1;min-width:0">
       <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{.Name}}</div>
       <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div>
@@ -114,7 +89,7 @@
         "Label" "Knotenaktionen"
         "Items" (list
           (dict "Action" "view" "Href" (printf "/infrastructure/%s" .ID))
-          (dict "Action" "new" "Label" "Unteranlage hinzufügen" "OnClick" (printf "addChildNode('%s','%s')" .ID .Name))
+          (dict "Action" "new" "Label" "Unteranlage hinzufügen" "OnClick" (printf "addChildNode('%s')" .ID))
         )
       )}}
     </div>
@@ -160,11 +135,15 @@ function scrollToNode(id) {
   if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('.infra-row').style.background='rgba(var(--accent-rgb),.2)'; setTimeout(()=>el.querySelector('.infra-row').style.background='',1500); }
 }
 
-function addChildNode(parentId, parentName) {
-  document.getElementById('new-node-form').style.display = 'block';
-  const sel = document.querySelector('select[name="parent_id"]');
-  if(sel) sel.value = parentId;
-  document.getElementById('new-node-form').scrollIntoView({behavior:'smooth'});
+function openNewNode(parentId) {
+  const box = document.getElementById('new-node-form');
+  if(!box){ alert('Zum Anlegen fehlt die Berechtigung „Infrastruktur anlegen, bearbeiten & deaktivieren“.'); return; }
+  box.style.display = 'block';
+  const sel = box.querySelector('select[name="parent_id"]');
+  if(sel) sel.value = parentId || '';
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+  box.querySelector('input[name="name"]').focus({preventScroll:true});
 }
+function addChildNode(parentId) { openNewNode(parentId); }
 </script>
 {{end}}

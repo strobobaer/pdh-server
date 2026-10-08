@@ -42,7 +42,13 @@ func TestInfraEditControlsNeedPermission(t *testing.T) {
 		t.Error("ohne Berechtigung: Hinweis statt Formular erwartet")
 	}
 	d.CanEditInfra = true
-	if out := renderPage(t, tmpl, "infrastructure", d); !strings.Contains(out, "new-node-form&#39;).style.display") {
+	d.Types = infraTypes
+	out := renderPage(t, tmpl, "infrastructure", d)
+	if !strings.Contains(out, "openNewNode(&#39;&#39;)") || !strings.Contains(out, `id="new-node-form"`) {
 		t.Error("mit Berechtigung: Formular-Knopf erwartet")
+	}
+	// normales Formular: htmx wuerde die ganze Antwortseite in den Baum setzen
+	if !strings.Contains(out, `<form class="rec-form" method="post" action="/infrastructure">`) || strings.Contains(out, `hx-post="/infrastructure"`) {
+		t.Error("Anlegen soll per normalem POST mit Weiterleitung laufen")
 	}
 }

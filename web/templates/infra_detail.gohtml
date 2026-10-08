@@ -31,29 +31,36 @@
 .ih-act:hover{background:var(--bg3);color:var(--text)}
 .ih-parts th,.ih-parts td{padding:6px 8px;font-size:12px}
 </style>
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-  {{template "icon-button" (dict "Action" "back" "Href" "/infrastructure")}}
-  {{if .Parent}}{{template "icon-button" (dict "Action" "back" "Href" (printf "/infrastructure/%s" .Parent.ID) "ShowLabel" true "Label" (printf "%s %s" .Parent.TypeIcon .Parent.Name))}}
-  <span style="color:var(--muted)">/</span>{{end}}
-  <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Node.TypeIcon}} {{.Node.Name}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Node.TypeLabel}}{{if .Node.Location}} · {{.Node.Location}}{{end}}</p>
+{{$n := .Node}}
+<div class="rec-head">
+  {{template "icon-button" (dict "Action" "back" "Href" (or (and .Parent (printf "/infrastructure/%s" .Parent.ID)) "/infrastructure"))}}
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;font-size:24px;background:{{css $n.TypeBg}}" title="{{$n.TypeLabel}}">{{$n.TypeIcon}}</div>
+  <div class="t">
+    <h1>{{$n.Name}}</h1>
+    <div class="sub">
+      <a href="/infrastructure" style="color:var(--accent)">Infrastruktur</a>{{if .Parent}} › <a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a>{{end}}
+      · {{$n.TypeLabel}}{{if $n.Location}} · {{$n.Location}}{{end}}
+    </div>
   </div>
-  <a class="btn btn-small" href="/a/{{.Node.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>
-  <a class="btn btn-small" href="/a/labels?infra={{.Node.ID}}" target="_blank" rel="noopener" title="QR-Etikett drucken"><i class="ti ti-printer"></i></a>
+  <a class="btn btn-small" href="/a/{{$n.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>
+  <a class="btn btn-small" href="/a/labels?infra={{$n.ID}}" target="_blank" rel="noopener" title="QR-Etikett drucken"><i class="ti ti-printer"></i></a>
   <div style="position:relative" oncontextmenu="toggleMenu('infra-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('infra-menu')")}}
     <div id="infra-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:160px;z-index:100">
-      <a class="btn btn-small" href="/a/labels?infra={{.Node.ID}}&amp;sub=1" target="_blank" rel="noopener" style="width:100%;justify-content:flex-start;margin-bottom:4px"><i class="ti ti-qrcode"></i> QR-Etiketten inkl. Unteranlagen</a>
-      {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Unteranlage hinzufügen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "document.getElementById('add-child').style.display='block';closeMenu('infra-menu')")}}{{end}}
-      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Zum Löschen vormerken" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/records/state/infrastructure/%s" .Node.ID) "HxVals" "{\"action\":\"mark\"}" "HxTarget" (printf "#rmeta-%s" .Node.ID) "HxConfirm" "Element zum Löschen vormerken? Es wird sofort deaktiviert; der Bereinigungslauf löscht es oder blendet es aus, falls es noch verwendet wird." "OnClick" "closeMenu('infra-menu')")}}
+      <a class="btn btn-small" href="/a/labels?infra={{$n.ID}}&amp;sub=1" target="_blank" rel="noopener" style="width:100%;justify-content:flex-start;margin-bottom:4px"><i class="ti ti-qrcode"></i> QR-Etiketten inkl. Unteranlagen</a>
+      {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Unteranlage hinzufügen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "OnClick" "openAddChild();closeMenu('infra-menu')")}}{{end}}
+      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Zum Löschen vormerken" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/records/state/infrastructure/%s" $n.ID) "HxVals" "{\"action\":\"mark\"}" "HxTarget" (printf "#rmeta-%s" $n.ID) "HxConfirm" "Element zum Löschen vormerken? Es wird sofort deaktiviert; der Bereinigungslauf löscht es oder blendet es aus, falls es noch verwendet wird." "OnClick" "closeMenu('infra-menu')")}}
     </div>
   </div>
 </div>
 
-{{template "record-meta-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+{{template "record-meta-slot" (dict "Module" "infrastructure" "ID" $n.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
+  {{if .CanEditInfra}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
@@ -64,106 +71,112 @@
 
 <!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
-<!-- Kind hinzufügen -->
-<div id="add-child" style="display:none" class="card">
-  <div class="card-title">Unteranlage hinzufügen</div>
-  <form hx-post="/infrastructure" hx-target="#children-list" hx-swap="afterbegin">
-    <input type="hidden" name="parent_id" value="{{.Node.ID}}">
-    <div class="grid2">
-      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" required></div>
-      <div class="form-group"><label class="form-label">Typ</label>
-        <select name="type" class="form-input">
-          <option value="line">🔄 Linie</option>
-          <option value="plant">⚙️ Anlage</option>
-          <option value="device">🔌 Gerät</option>
-        </select>
+  {{if .CanEditInfra}}
+  <!-- Unteranlage anlegen: danach öffnet sich die neue Anlage im Reiter „Stammdaten“ -->
+  <div id="add-child" style="display:none" class="card">
+    <div class="card-title"><span><i class="ti ti-plus"></i> Unteranlage hinzufügen</span></div>
+    <form class="rec-form" method="post" action="/infrastructure">
+      <input type="hidden" name="parent_id" value="{{$n.ID}}">
+      <input type="hidden" name="from" value="detail">
+      <div class="cols">
+        <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="255"></div>
+        <div class="form-group"><label class="form-label">Typ *</label>
+          <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key "device"}}selected{{end}}>{{.Icon}} {{.Label}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" maxlength="255" value="{{$n.Location}}"></div>
       </div>
-      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input"></div>
-      {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "infra-child-manufacturer-id")}}
-      {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-child-cost-center-id")}}
-    </div>
-    {{template "icon-button-toolbar" (dict
-      "Class" "end"
-      "Label" "Unteranlage hinzufügen"
-      "Style" "width:100%;justify-content:flex-end"
-      "Items" (list
-        (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('add-child').style.display='none'")
-        (dict "Action" "new" "ShowLabel" true "Type" "submit" "Label" "Hinzufügen")
-      )
-    )}}
-  </form>
-</div>
+      <p class="rec-sub" style="margin:2px 0 10px"><i class="ti ti-info-circle"></i> Alle weiteren Angaben ergänzt du direkt danach im Reiter „Stammdaten“ der neuen Unteranlage.</p>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="btn" onclick="document.getElementById('add-child').style.display='none'">Abbrechen</button>
+        <button class="btn btn-primary" type="submit"><i class="ti ti-arrow-right"></i> Anlegen &amp; weiter</button>
+      </div>
+    </form>
+  </div>
+  {{end}}
 
-<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
-  <div>
-    <!-- Untergeordnete Elemente -->
-    <div class="card">
+  <div class="rec-grid">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-info-circle"></i> Stammdaten</span>
+        {{if .CanEditInfra}}<a class="btn btn-small" href="?tab=master" onclick="recTab('master');return false"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}</div>
+      <div class="rec-f"><div class="rec-l">Typ</div><div class="rec-v">{{$n.TypeIcon}} {{$n.TypeLabel}}</div></div>
+      {{if .Parent}}<div class="rec-f"><div class="rec-l">Übergeordnet</div><div class="rec-v"><a href="/infrastructure/{{.Parent.ID}}">{{.Parent.TypeIcon}} {{.Parent.Name}}</a></div></div>{{end}}
+      {{if $n.Location}}<div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{$n.Location}}</div></div>{{end}}
+      {{if $n.ManufacturerName}}<div class="rec-f"><div class="rec-l">Hersteller</div><div class="rec-v"><a href="/directory/{{$n.ManufacturerID}}" data-frame data-frame-title="{{$n.ManufacturerName}}">{{$n.ManufacturerName}}</a></div></div>
+      {{else if $n.Manufacturer}}<div class="rec-f"><div class="rec-l">Hersteller</div><div class="rec-v">{{$n.Manufacturer}}</div></div>{{end}}
+      {{if $n.Model}}<div class="rec-f"><div class="rec-l">Modell</div><div class="rec-v">{{$n.Model}}</div></div>{{end}}
+      {{if $n.SerialNo}}<div class="rec-f"><div class="rec-l">Seriennummer</div><div class="rec-v" style="font-family:monospace">{{$n.SerialNo}}</div></div>{{end}}
+      {{if $n.InstalledAt}}<div class="rec-f"><div class="rec-l">In Betrieb seit</div><div class="rec-v">{{$n.InstalledLabel}}</div></div>{{end}}
+      {{range .PartnerLinks}}{{if ne .Role "manufacturer"}}<div class="rec-f"><div class="rec-l">{{.RoleLabel}}</div><div class="rec-v"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div>{{end}}{{end}}
+      {{if $n.CostCenterName}}<div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{$n.CostCenterNumber}} - {{$n.CostCenterName}}</div></div>{{end}}
+      {{if .EffectiveDept}}<div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{.EffectiveDept}}{{if .DeptInherited}} <span class="rec-sub">(geerbt)</span>{{end}}</div></div>{{end}}
+      {{if $n.Description}}<div class="rec-f"><div class="rec-l">Beschreibung</div><div class="rec-v">{{$n.Description}}</div></div>{{end}}
+    </div>
+
+    <div class="card" style="margin:0">
       <div class="card-title">
-        <span>Untergeordnete Anlagen</span>
-        {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "Class" "btn-small" "OnClick" "document.getElementById('add-child').style.display='block'")}}{{end}}
+        <span><i class="ti ti-sitemap"></i> Untergeordnete Anlagen</span>
+        {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" "Hinzufügen" "Class" "btn-small" "OnClick" "openAddChild()")}}{{end}}
       </div>
       <div id="children-list">
         {{range .Children}}
-        <div class="li" data-href="/infrastructure/{{.ID}}" style="cursor:pointer">
-          <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{.TypeBg}};flex-shrink:0">{{.TypeIcon}}</div>
-          <div class="li-text">
-            <div class="li-title">{{.Name}}</div>
-            <div class="li-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .ManufacturerName}} · {{.ManufacturerName}}{{else if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div>
-          </div>
-          <i class="ti ti-chevron-right" style="color:var(--muted);font-size:14px"></i>
-        </div>
+        <a class="rec-row" href="/infrastructure/{{.ID}}">
+          <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{css .TypeBg}};flex-shrink:0">{{.TypeIcon}}</div>
+          <div class="grow">{{.Name}}<div class="rec-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .ManufacturerName}} · {{.ManufacturerName}}{{else if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div></div>
+          <i class="ti ti-chevron-right" style="color:var(--muted)"></i>
+        </a>
         {{else}}
-        <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">Keine untergeordneten Elemente</div>
+        <div class="rec-sub" style="padding:10px 0">Keine untergeordneten Elemente</div>
         {{end}}
       </div>
     </div>
-
   </div>
+</div>
 
-  <!-- Bearbeiten -->
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">
-        <span>Bearbeiten</span>
-        {{if $.CanEditInfra}}{{template "icon-button" (dict "Action" "edit" "Class" "btn-small" "OnClick" "toggleEdit()")}}{{end}}
-      </div>
-      <div id="edit-form" style="display:none">
-        <form hx-post="/infrastructure/{{.Node.ID}}/edit" hx-target="#edit-result" hx-swap="innerHTML">
-          <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Node.Name}}" required></div>
-          <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Node.Location}}"></div>
-          <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{.Node.SerialNo}}"></div>
-          <div class="form-group"><label class="form-label">Modell</label><input name="model" class="form-input"></div>
-          {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "infra-edit-manufacturer-id" "Value" .Node.ManufacturerID "LegacyValue" .Node.Manufacturer)}}
-          {{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}
-          {{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}
-          {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-edit-cost-center-id" "Value" .Node.CostCenterID)}}
-          <div class="form-group"><label class="form-label">Abteilung</label>
-            <select name="department_id" class="form-input"><option value="">– von übergeordneter Anlage erben –</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $.DepartmentID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
-            <div style="font-size:11px;color:var(--muted);margin-top:3px">Bestimmt, welche Abteilung die Vorgänge dieser Anlage sieht. Gilt auch für alle Unteranlagen ohne eigene Abteilung.</div></div>
-          {{template "icon-button-toolbar" (dict
-            "Class" "end"
-            "Label" "Infrastruktur bearbeiten"
-            "Style" "width:100%;justify-content:flex-end;margin-top:8px"
-            "Items" (list
-              (dict "Action" "cancel" "ShowLabel" true "OnClick" "toggleEdit()")
-              (dict "Action" "save" "ShowLabel" true "Type" "submit")
-            )
-          )}}
-        </form>
-        <div id="edit-result"></div>
-      </div>
-      <div id="edit-info">
-        <div class="li"><div class="li-text"><div class="li-sub">Typ</div><div class="li-title">{{.Node.TypeIcon}} {{.Node.TypeLabel}}</div></div></div>
-        {{if .Node.Location}}<div class="li"><div class="li-text"><div class="li-sub">Standort</div><div class="li-title">{{.Node.Location}}</div></div></div>{{end}}
-        {{if and .Node.Manufacturer (not .Node.ManufacturerName)}}<div class="li"><div class="li-text"><div class="li-sub">Hersteller</div><div class="li-title">{{.Node.Manufacturer}}</div></div></div>{{end}}
-        {{range .PartnerLinks}}<div class="li"><div class="li-text"><div class="li-sub">{{.RoleLabel}}</div><div class="li-title"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}" style="color:var(--accent)"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div></div>{{end}}
-        {{if .Node.SerialNo}}<div class="li"><div class="li-text"><div class="li-sub">Seriennummer</div><div class="li-title" style="font-family:monospace">{{.Node.SerialNo}}</div></div></div>{{end}}
-        {{if .EffectiveDept}}<div class="li"><div class="li-text"><div class="li-sub">Abteilung</div><div class="li-title">{{.EffectiveDept}}{{if .DeptInherited}} <span style="font-size:11px;color:var(--muted);font-weight:400">(geerbt)</span>{{end}}</div></div></div>{{end}}
-        {{if .Node.CostCenterName}}<div class="li"><div class="li-text"><div class="li-sub">Kostenstelle</div><div class="li-title">{{.Node.CostCenterNumber}} - {{.Node.CostCenterName}}</div></div></div>{{end}}
-        {{if .Parent}}<div class="li"><div class="li-text"><div class="li-sub">Übergeordnet</div><div class="li-title"><a href="/infrastructure/{{.Parent.ID}}" style="color:var(--accent)">{{.Parent.Name}}</a></div></div></div>{{end}}
-      </div>
+<!-- ── Stammdaten (alles in einem Formular) ── -->
+{{if .CanEditInfra}}
+<div class="rec-pane" data-pane="master">
+  <form class="card rec-form" method="post" action="/infrastructure/{{$n.ID}}/edit">
+    <div class="rec-sec" style="margin-top:0">Allgemein</div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" value="{{$n.Name}}" required maxlength="255"></div>
+      <div class="form-group"><label class="form-label">Typ *</label>
+        <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key $n.Type}}selected{{end}}>{{.Icon}} {{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Übergeordnet</label>
+        <select name="parent_id" class="form-input">
+          <option value="">– oberste Ebene –</option>
+          {{range .ParentOptions}}<option value="{{.ID}}" {{if eq .ID $n.ParentID}}selected{{end}}>{{.TypeIcon}} {{.Path}}</option>{{end}}
+        </select></div>
+      <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{$n.Location}}" maxlength="255" placeholder="z. B. Halle A"></div>
     </div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="3" placeholder="Zweck, Besonderheiten, Hinweise für die Instandhaltung …">{{$n.Description}}</textarea></div>
+
+    <div class="rec-sec">Technik</div>
+    <input type="hidden" name="manufacturer" value="{{$n.Manufacturer}}">
+    {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "infra-edit-manufacturer-id" "Kind" "manufacturer" "Value" $n.ManufacturerID "LegacyValue" $n.Manufacturer)}}
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Modell / Typbezeichnung</label><input name="model" class="form-input" value="{{$n.Model}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">Seriennummer</label><input name="serial_no" class="form-input" value="{{$n.SerialNo}}" maxlength="100"></div>
+      <div class="form-group"><label class="form-label">In Betrieb seit</label><input type="date" name="installed_at" class="form-input" value="{{$n.InstalledAt}}"></div>
+    </div>
+
+    <div class="rec-sec">Partner</div>
+    <div class="rec-compare">
+      <div>{{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}</div>
+      <div>{{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}</div>
+    </div>
+
+    <div class="rec-sec">Zuordnung</div>
+    {{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "infra-edit-cost-center-id" "Value" $n.CostCenterID)}}
+    <div class="form-group"><label class="form-label">Abteilung</label>
+      <select name="department_id" class="form-input"><option value="">– von übergeordneter Anlage erben –</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $.DepartmentID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+      <div class="rec-sub" style="margin-top:3px">Bestimmt, welche Abteilung die Vorgänge dieser Anlage sieht. Gilt auch für alle Unteranlagen ohne eigene Abteilung.</div></div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <a class="btn" href="?tab=overview">Abbrechen</a>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
+  </form>
 </div>
-</div>
+{{end}}
 
 <!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->
 <div class="rec-pane" data-pane="events">
@@ -236,22 +249,15 @@
 
 <!-- ── Dokumente ── -->
 <div class="rec-pane" data-pane="docs">
-    <!-- Anhänge -->
-    <div class="card">
-      <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
-      <div id="attachments-{{.Node.ID}}" data-attach-ref="infrastructure:{{.Node.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo"></i>Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
-        </label>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera"></i>Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
-        </label>
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload"></i>Dokument<input type="file" accept=".pdf,.doc,.docx" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')">
-        </label>
-      </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Fotos & Dokumente</span></div>
+    <div id="attachments-{{.Node.ID}}" data-attach-ref="infrastructure:{{.Node.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> Kamera<input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')"></label>
+      <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument<input type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none" onchange="uploadFiles(this,'infrastructure','{{.Node.ID}}')"></label>
     </div>
+  </div>
 </div>
 
 <!-- ── HMI-Fernzugriff (VNC) ── -->
@@ -312,13 +318,13 @@
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){document.getElementById(id).style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
-document.querySelectorAll('[data-href]').forEach(el=>el.addEventListener('click',()=>window.location=el.dataset.href));
-function toggleEdit() {
-  const form = document.getElementById('edit-form');
-  const info = document.getElementById('edit-info');
-  const show = form.style.display === 'none';
-  form.style.display = show ? 'block' : 'none';
-  info.style.display = show ? 'none' : 'block';
+function openAddChild() {
+  recTab('overview');
+  const box = document.getElementById('add-child');
+  if(!box) return;
+  box.style.display = 'block';
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+  box.querySelector('input[name="name"]').focus({preventScroll:true});
 }
 // Anlagen-Historie: Kommentar inline bearbeiten und Filter-Schnellwahl
 function infraCommentEdit(btn, show) {

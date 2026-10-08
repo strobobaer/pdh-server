@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.39.0] – 2026-10-08
+
+### Neu
+- Infrastruktur: neuer Reiter „Stammdaten“ auf jeder Anlage mit allen Angaben in einem Formular – auch Typ, übergeordnetes Element (Umhängen samt Unteranlagen), Beschreibung und „In Betrieb seit“
+- Änderungen an den Stammdaten einer Anlage stehen jetzt im Reiter „Änderungen“
+
+### Geändert
+- Die Infrastruktur-Detailseite hat den Aufbau der übrigen Stammdaten (Kopfzeile, Übersicht mit allen Angaben, einheitliche Reiter)
+- Neue Anlagen und Unteranlagen werden mit Name, Typ und Standort angelegt und öffnen sich danach direkt im Reiter „Stammdaten“ zum Vervollständigen
+- Der Anlagenbaum ist stabil sortiert (Gebäude, Linien, Anlagen, Geräte, jeweils nach Name)
+
+### Behoben
+- Beim Anlegen einer Anlage in der Infrastruktur erschien die komplette Seite noch einmal verschachtelt im Anlagenbaum
+- Speichern einer Anlage löschte Modell und Beschreibung
+
 ## [0.38.2] – 2026-10-08
 
 ### Behoben
