@@ -43,6 +43,8 @@ type unassignedGroup struct {
 	Kind, Ref, Label, Icon, ListURL string
 	Items                           []unassignedItem
 	More                            int
+	CanAssign                       bool   // Broker dieser Art oder Admin
+	Brokers                         string // wer sonst zuweist (Hinweis, wenn CanAssign fehlt)
 }
 
 // unassignedKinds: Art → Broker-Spalte, Tabelle und Darstellung (Reihenfolge der Anzeige).
@@ -87,18 +89,23 @@ func (h *Handler) brokerFlags(ctx context.Context, userID string) (flags [4]bool
 	return
 }
 
-// brokerUnassigned: fuer jede Art, fuer die der Benutzer Broker ist, die offenen
-// Vorgaenge ohne Zuweisung (Abteilungs-Sichtbarkeit beachtet), je Art hoechstens limit.
-func (h *Handler) brokerUnassigned(ctx context.Context, r *http.Request, userID string, limit int) []unassignedGroup {
+// brokerUnassigned: die offenen Vorgaenge ohne Zuweisung (Abteilungs-Sichtbarkeit
+// beachtet), je Art hoechstens limit. all=false: nur die Arten, fuer die der
+// Benutzer Broker ist; all=true: alle Arten (Zuweisungsseite), zuweisen darf
+// der Broker der Art bzw. ein Admin (admin=true).
+func (h *Handler) brokerUnassigned(ctx context.Context, r *http.Request, userID string, limit int, all, admin bool) []unassignedGroup {
 	flags := h.brokerFlags(ctx, userID)
 	now := time.Now()
 	var out []unassignedGroup
 	for k, def := range unassignedKinds {
-		if !flags[k] {
+		if !flags[k] && !all {
 			continue
 		}
 		scope := h.scopeAllowedIDs(r, def.ref)
-		g := unassignedGroup{Kind: def.kind, Ref: def.ref, Label: def.label, Icon: def.icon, ListURL: def.list}
+		g := unassignedGroup{Kind: def.kind, Ref: def.ref, Label: def.label, Icon: def.icon, ListURL: def.list, CanAssign: flags[k] || admin}
+		if !g.CanAssign {
+			g.Brokers = strings.Join(h.chatNames(ctx, h.brokerIDs(ctx, def.ref)), ", ")
+		}
 		rows, err := h.db.Query(ctx, def.query)
 		if err != nil {
 			componentLog("zuweisung").Warn().Err(err).Str("art", def.kind).Msg("nicht zugewiesene nicht ladbar")
@@ -158,7 +165,7 @@ func (h *Handler) AssignmentNewPage(w http.ResponseWriter, r *http.Request) {
 			data.PresetType = t
 		}
 	}
-	data.Unassigned = h.brokerUnassigned(ctx, r, getUser(r).ID, unassignedPerKind)
+	data.Unassigned = h.brokerUnassigned(ctx, r, getUser(r).ID, unassignedPerKind, false, false) // Schnelleinstieg: nur eigene Broker-Arten
 	if id := q.Get("infra"); uuidInPathRe.MatchString(id) && len(id) == 36 {
 		if err := h.db.QueryRow(ctx, `SELECT `+assetPathExpr("$1::uuid"), id).Scan(&data.InfraPath); err == nil && data.InfraPath != "" {
 			data.PresetInfraID = id

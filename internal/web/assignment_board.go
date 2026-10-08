@@ -45,13 +45,15 @@ func (h *Handler) isBroker(ctx context.Context, userID string) bool {
 func (h *Handler) AssignmentBoardPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := getUser(r)
-	if !h.isBroker(ctx, u.ID) {
-		http.Error(w, "Die Zuweisung steht nur Brokern zur Verfügung.", http.StatusForbidden)
+	admin := h.canManageRoles(r)
+	if !h.isBroker(ctx, u.ID) && !admin {
+		http.Error(w, "Die Zuweisung steht nur Brokern und Administratoren zur Verfügung.", http.StatusForbidden)
 		return
 	}
 	data := AssignmentBoardData{
 		BaseData: h.baseData(r, "assignments", "Zuweisung", "Offene Vorgänge ohne Zuweisung"),
-		Groups:   h.brokerUnassigned(ctx, r, u.ID, assignmentBoardLimit),
+		// alle Arten zeigen – zuweisen darf der Broker der Art bzw. ein Admin
+		Groups: h.brokerUnassigned(ctx, r, u.ID, assignmentBoardLimit, true, admin),
 		Users:    h.userOptions(ctx),
 		Teams:    h.loadGroups(ctx),
 	}
@@ -69,7 +71,7 @@ func (h *Handler) AssignmentBoardAssign(w http.ResponseWriter, r *http.Request) 
 	u := getUser(r)
 	ref, id := chi.URLParam(r, "ref"), chi.URLParam(r, "id")
 	table, ok := groupTable(ref)
-	if !ok || ref == "project" || ref == "maintenance_plan" || !h.brokerFor(ctx, u.ID, ref) {
+	if !ok || ref == "project" || ref == "maintenance_plan" || !(h.brokerFor(ctx, u.ID, ref) || h.canManageRoles(r)) {
 		http.Error(w, "Keine Berechtigung", http.StatusForbidden)
 		return
 	}

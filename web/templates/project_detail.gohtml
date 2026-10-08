@@ -239,6 +239,8 @@ async function saveTaskDates(taskId, start, end){
       method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({start_date: formatDateISO(start), due_date: formatDateISO(end)})
     });
+    // Anmelde-Cookie abgelaufen (gilt 24 h), Seite aber noch offen: neu anmelden statt „kein token“
+    if(res.status === 401){ alert('Deine Anmeldung ist abgelaufen – bitte neu anmelden. Danach geht es hier weiter.'); location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); return; }
     var json = await res.json();
     if(!res.ok || json.success===false) throw new Error(json.error || ('HTTP '+res.status));
   }catch(e){

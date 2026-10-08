@@ -203,6 +203,8 @@ async function saveDashGanttDate(item, end){
       method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({due_date: dueStr})
     });
+    // Anmelde-Cookie abgelaufen (gilt 24 h), Seite aber noch offen: neu anmelden statt „kein token“
+    if(res.status === 401){ alert('Deine Anmeldung ist abgelaufen – bitte neu anmelden. Danach geht es hier weiter.'); location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); return; }
     if(!res.ok){
       var j = null; try{ j = await res.json(); }catch(e){}
       throw new Error((j && j.error) || ('HTTP ' + res.status));

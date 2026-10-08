@@ -1,6 +1,11 @@
 package web
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestIsGlobalBoardDepartment(t *testing.T) {
 	tests := []struct {
@@ -67,5 +72,55 @@ func TestValidateGlobalParts(t *testing.T) {
 				t.Fatalf("validateGlobalParts() error = %v, wantError %t", err, test.wantError)
 			}
 		})
+	}
+}
+
+// Zeitstrahl verschieben: öffentliche Tafel nur ansehen, abgelaufene Anmeldung
+// führt zur Anmeldung statt „kein token“.
+func TestTimelineMoveNeedsLogin(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c, _ := tmpl.Clone()
+	if _, err := c.ParseFiles(filepath.Join("..", "..", "web", "templates", "global_dashboard.gohtml")); err != nil {
+		t.Fatal(err)
+	}
+	render := func(loggedIn bool) string {
+		var b strings.Builder
+		if err := c.ExecuteTemplate(&b, "global_dashboard.gohtml", GlobalDashboardPageData{LoggedIn: loggedIn}); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	anon := render(false)
+	checkScripts(t, "leitstand", anon)
+	if !strings.Contains(anon, `class="gantt-ro"`) || !strings.Contains(anon, "Termine verschieben geht nach der Anmeldung") {
+		t.Error("öffentliche Tafel: Zeitstrahl muss nur lesbar sein")
+	}
+	if strings.Contains(render(true), `class="gantt-ro"`) {
+		t.Error("angemeldet: Zeitstrahl verschiebbar")
+	}
+	for _, f := range []string{"dashboard.gohtml", "project_detail.gohtml", "global_dashboard.gohtml"} {
+		b, _ := os.ReadFile(filepath.Join("..", "..", "web", "templates", f))
+		if !strings.Contains(string(b), "res.status === 401") || !strings.Contains(string(b), "/login?next=") {
+			t.Errorf("%s: abgelaufene Anmeldung beim Verschieben nicht behandelt", f)
+		}
+	}
+}
+
+// Zuweisung zeigt alle Arten; zuweisen nur als Broker der Art oder Admin.
+func TestAssignmentBoardShowsAllKinds(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := AssignmentBoardData{Users: []UserOption{{ID: "u1", Name: "Eva"}}, Groups: []unassignedGroup{
+		{Kind: "ticket", Ref: "ticket", Label: "Tickets", CanAssign: true, Items: []unassignedItem{{ID: "t1", Ref: "ticket", Title: "Tür klemmt"}}},
+		{Kind: "task", Ref: "task", Label: "Aufgaben", Brokers: "Max Muster", Items: []unassignedItem{{ID: "a1", Ref: "task", Title: "Regal aufbauen"}}},
+		{Kind: "maintenance", Ref: "maintenance_task", Label: "Wartungen"},
+	}}
+	out := renderPage(t, tmpl, "assignment_board", d)
+	for _, want := range []string{`hx-post="/assignments/ticket/t1"`, "Regal aufbauen", "weist zu: Max Muster", "Wartungen", "Alles zugewiesen"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Zuweisung ohne %q", want)
+		}
+	}
+	if strings.Contains(out, `hx-post="/assignments/task/a1"`) {
+		t.Error("ohne Broker-Recht darf keine Zuweisung angeboten werden")
 	}
 }

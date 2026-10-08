@@ -109,6 +109,10 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #timeline-card{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:12px}
 #timeline-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 #dash-gantt-target{overflow-x:auto}
+/* ohne Anmeldung: Balken nicht verschiebbar (frappe-gantt 0.6 kennt kein readonly) –
+   Klick (Auswahl) und Doppelklick (Detail) bleiben, nur das Ziehen wird abgefangen */
+#dash-gantt-target.gantt-ro .bar-wrapper,#dash-gantt-target.gantt-ro .handle{cursor:pointer}
+.gantt-ro-hint{font-size:11px;color:var(--muted);margin:4px 0 0}
 #dash-gantt-empty{display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center}
 .gantt-container{background:transparent}
 .gantt .grid-background{fill:none}
@@ -302,7 +306,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
         <span style="opacity:.5"><i class="ti ti-square-filled"></i> ausgeblasst = kein Termin, +30 Tage geschätzt</span>
       </div>
     </div>
-    <div id="dash-gantt-target"></div>
+    <div id="dash-gantt-target"{{if not .LoggedIn}} class="gantt-ro"{{end}}></div>
+    {{if not .LoggedIn}}<p class="gantt-ro-hint"><i class="ti ti-lock"></i> Termine verschieben geht nach der Anmeldung.</p>{{end}}
     {{template "timeline-legend"}}
     <div id="dash-gantt-empty">Keine Einträge mit Terminen vorhanden.</div>
   </div>
@@ -417,6 +422,13 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   // ── Öffnen: angemeldet direkt, sonst erst RFID-Karte (Kurzzugang, /global/open)
   const LOGGED_IN = {{if .LoggedIn}}true{{else}}false{{end}};
+  // öffentliche Tafel: Ziehen im Zeitstrahl abfangen, bevor frappe-gantt es sieht
+  // (Erfassungsphase am Container); Klick und Doppelklick funktionieren weiter
+  if(!LOGGED_IN){
+    document.getElementById('dash-gantt-target').addEventListener('mousedown', function(e){
+      if(e.target.closest('.bar-wrapper, .handle')) e.stopPropagation();
+    }, true);
+  }
   const openRfid = document.getElementById('open-rfid');
   const openRfidUid = document.getElementById('open-rfid-uid');
   const openRfidError = document.getElementById('open-rfid-error');
@@ -551,11 +563,14 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   async function saveDashGanttDate(item, end){
     const dueStr = formatDateISO(end);
+    // öffentliche Tafel ohne Anmeldung: Zeitstrahl nur zum Ansehen
+    if(!LOGGED_IN){ await refresh(); return; }
     try{
       const res = await fetch(item.dueEndpoint, {
         method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({due_date: dueStr})
       });
+      if(res.status === 401){ alert('Deine Anmeldung ist abgelaufen – bitte neu anmelden. Danach geht es hier weiter.'); location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); return; }
       if(!res.ok){
         let j = null; try{ j = await res.json(); }catch(e){}
         throw new Error((j && j.error) || ('HTTP ' + res.status));

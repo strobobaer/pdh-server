@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.44.1] – 2026-10-08
+
+### Geändert
+- Die Seite „Zuweisung“ zeigt alle offenen Vorgänge ohne Zuweisung – Störungen, Tickets, Aufgaben und Wartungen; zuweisen dürfen die Broker der jeweiligen Art und Administratoren, sonst steht dort, wer zuweist
+
+### Behoben
+- Termin im Zeitstrahl verschieben meldete „kein token“, wenn die Anmeldung abgelaufen war – jetzt geht es zur Anmeldung und danach zurück auf die Seite
+- Auf der öffentlichen Leitstand-Tafel (ohne Anmeldung) lassen sich Termine im Zeitstrahl nicht mehr verschieben; ein Hinweis erklärt das, Antippen und Doppelklick funktionieren weiter
+
 ## [0.44.0] – 2026-10-08
 
 ### Neu

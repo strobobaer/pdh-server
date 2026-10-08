@@ -10,7 +10,7 @@
 </div>
 
 {{$users := .Users}}{{$teams := .Teams}}
-{{range .Groups}}
+{{range .Groups}}{{$g := .}}
 <div class="card ab-card">
   <div class="card-title"><i class="ti {{.Icon}}"></i> {{.Label}}
     <span class="badge {{if .Items}}b-amber{{else}}b-gray{{end}}">{{len .Items}}{{if .More}}+{{.More}}{{end}}</span>
@@ -24,6 +24,7 @@
         <span class="ab-text"><span class="ab-title">{{.Title}}</span>
           <span class="ab-meta">{{if .PrioLabel}}{{.PrioLabel}} · {{end}}{{if .Infra}}{{.Infra}} · {{end}}{{if .Creator}}von {{.Creator}} · {{end}}{{.Age}}</span></span>
       </a>
+      {{if $g.CanAssign}}
       <form class="ab-action" hx-post="/assignments/{{.Ref}}/{{.ID}}" hx-target="this" hx-swap="innerHTML">
         <select name="target" required>
           <option value="">Zuweisen an …</option>
@@ -33,6 +34,7 @@
         </select>
         <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-user-check"></i> Zuweisen</button>
       </form>
+      {{else}}<span class="ab-meta" title="Zuweisen dürfen die Broker für {{$g.Label}} und Administratoren"><i class="ti ti-lock"></i> {{if $g.Brokers}}weist zu: {{$g.Brokers}}{{else}}noch kein Broker für {{$g.Label}}{{end}}</span>{{end}}
     </li>
     {{end}}
   </ul>
