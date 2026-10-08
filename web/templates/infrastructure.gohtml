@@ -93,7 +93,7 @@
   <div class="infra-row" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--border)"
     data-rx data-rx-title="{{.Name}}" data-rx-view="/infrastructure/{{.ID}}" data-rx-edit="/infrastructure/{{.ID}}?tab=master">
     {{if .Children}}
-    <button type="button" class="infra-fold" onclick="toggleNode('{{.ID}}')" aria-label="Unteranlagen auf-/zuklappen" title="Unteranlagen auf-/zuklappen"><i id="toggle-{{.ID}}" class="ti ti-chevron-down"></i></button>
+    <button type="button" class="infra-fold" onclick="toggleNode('{{.ID}}')" aria-label="Unteranlagen auf-/zuklappen" title="Unteranlagen auf-/zuklappen"><i id="toggle-{{.ID}}" class="ti ti-chevron-down" style="transform:rotate(-90deg)"></i></button>
     {{else}}
     <div style="width:22px;flex-shrink:0"></div>
     {{end}}
@@ -106,7 +106,7 @@
     <template class="rx-more"><button type="button" class="btn btn-small" onclick="addChildNode('{{.ID}}')"><i class="ti ti-plus"></i> Unteranlage hinzufügen</button></template>
   </div>
   {{if .Children}}
-  <div id="children-{{.ID}}" style="margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
+  <div id="children-{{.ID}}" style="display:none;margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
     {{range .Children}}
     {{template "infra_node" .}}
     {{end}}
@@ -127,14 +127,33 @@
 
 {{block "scripts" .}}
 <script>
-function toggleNode(id) {
+// Baum startet zugeklappt; offen ist nur der zuletzt geöffnete Ast (samt
+// seiner übergeordneten Knoten) – alle anderen Äste klappen dabei zu.
+function setNodeOpen(id, open) {
   const children = document.getElementById('children-'+id);
   const icon = document.getElementById('toggle-'+id);
-  if(!children) return;
-  const open = children.style.display !== 'none';
-  children.style.display = open ? 'none' : 'block';
-  if(icon) icon.style.transform = open ? 'rotate(-90deg)' : '';
+  if(children) children.style.display = open ? 'block' : 'none';
+  if(icon) icon.style.transform = open ? '' : 'rotate(-90deg)';
 }
+function openBranch(id) {
+  const keep = new Set();
+  for(let n = document.querySelector('.infra-node[data-id="'+id+'"]'); n; n = n.parentElement.closest('.infra-node')) keep.add(n.dataset.id);
+  document.querySelectorAll('[id^="children-"]').forEach(el => { const nid = el.id.slice(9); setNodeOpen(nid, keep.has(nid)); });
+  try { sessionStorage.setItem('pdh.infra.branch', id); } catch(e) {}
+}
+function toggleNode(id) {
+  const children = document.getElementById('children-'+id);
+  if(!children) return;
+  if(children.style.display === 'none') { openBranch(id); return; }
+  setNodeOpen(id, false);
+  const parent = children.closest('.infra-node').parentElement.closest('.infra-node');
+  try { if(parent) sessionStorage.setItem('pdh.infra.branch', parent.dataset.id); else sessionStorage.removeItem('pdh.infra.branch'); } catch(e) {}
+}
+document.addEventListener('DOMContentLoaded', () => {
+  let id = null;
+  try { id = sessionStorage.getItem('pdh.infra.branch'); } catch(e) {}
+  if(id && document.querySelector('.infra-node[data-id="'+id+'"]')) openBranch(id);
+});
 
 function expandAll() {
   document.querySelectorAll('[id^="children-"]').forEach(el => el.style.display = 'block');
@@ -143,6 +162,8 @@ function expandAll() {
 
 function scrollToNode(id) {
   const el = document.querySelector('[data-id="'+id+'"]');
+  const parent = el && el.parentElement.closest('.infra-node');
+  if(parent) openBranch(parent.dataset.id);
   if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.querySelector('.infra-row').style.background='rgba(var(--accent-rgb),.2)'; setTimeout(()=>el.querySelector('.infra-row').style.background='',1500); }
 }
 

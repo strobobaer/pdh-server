@@ -1335,7 +1335,6 @@ const PDH_ICONS = {{iconMap}};
 function infraIcon(type){return '<i class="ti ' + (PDH_ICONS['infra.' + type] || 'ti-point') + '"></i>'}
 // Typ nur als Symbol im Baum; der Name steht im Tooltip (title) und für Screenreader im aria-label
 const INFRA_TYPE_LABEL = {building:'Gebäude', line:'Linie', plant:'Anlage', device:'Gerät'};
-function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
 function selectInfra(btn){
   const root=btn.closest('[data-infra-picker]');
   if(!root) return;
@@ -1365,12 +1364,11 @@ async function loadInfraPicker(root){
     root.__infraTree=json.data||[];
     root.__infraExpanded=new Set();
     // Aufklappen bis zur aktuellen Auswahl, sonst bis zum Terminal-Standort;
-    // ohne beides wie bisher alles aufgeklappt.
+    // ohne beides bleibt der Baum zugeklappt.
     const target=document.getElementById(root.dataset.target);
     const focus=(target && target.value) || window.PDH_TERMINAL_INFRA || '';
     const path=focus ? findInfraPath(root.__infraTree, focus) : null;
     if(path){ path.forEach(id=>root.__infraExpanded.add(id)); root.__infraFocus=focus; }
-    else collectInfraBranches(root.__infraTree, root.__infraExpanded);
     renderInfraPicker(root, root.__infraTree);
     if(path) scrollInfraFocus(root);
   }catch(e){
@@ -1398,10 +1396,11 @@ function scrollInfraFocus(root){
 }
 function renderInfraNodes(root, nodes, depth){
   const expanded=root.__infraExpanded||new Set();
+  const filtering=!!(root.querySelector('[data-infra-filter]')?.value||'').trim(); // Suchtreffer immer sichtbar
   return (nodes||[]).map(n=>{
     const children=n.children||[];
     const hasChildren=children.length>0;
-    const open=hasChildren && expanded.has(n.id);
+    const open=hasChildren && (filtering || expanded.has(n.id));
     const toggle=hasChildren
       ? `<button type="button" class="infra-picker-toggle" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}"><i class="ti ti-chevron-right"></i></button>`
       : `<span class="infra-picker-spacer"></span>`;
@@ -1413,7 +1412,9 @@ function toggleInfraBranch(event, btn){
   const root=btn.closest('[data-infra-picker]');
   const id=btn.dataset.infraToggle;
   root.__infraExpanded=root.__infraExpanded||new Set();
-  if(root.__infraExpanded.has(id)) root.__infraExpanded.delete(id); else root.__infraExpanded.add(id);
+  // nur ein Ast offen: beim Öffnen bleiben nur der Knoten und seine Vorfahren aufgeklappt
+  const path=findInfraPath(root.__infraTree||[], id)||[id];
+  if(root.__infraExpanded.has(id)) root.__infraExpanded=new Set(path.slice(0,-1)); else root.__infraExpanded=new Set(path);
   const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
   renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]));
 }
