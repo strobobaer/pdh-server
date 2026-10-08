@@ -65,6 +65,8 @@ textarea.ez-in{min-height:150px;resize:vertical}
 .ez-done i.big{font-size:72px;color:var(--green)}
 .ez-done h1{font-size:24px;margin:10px 0 6px}
 .ez-done p{color:var(--muted);margin-bottom:22px}
+.ez-test{background:rgba(245,158,11,.14);border:1px solid var(--amber);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13.5px;margin-bottom:14px}
+.ez-test b{display:block;color:var(--amber)}
 .ez-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 [hidden]{display:none!important}
 </style>
@@ -76,11 +78,12 @@ textarea.ez-in{min-height:150px;resize:vertical}
   <a class="ez-login" href="{{.LoginURL}}"><i class="ti ti-login-2"></i> {{t "Anmelden"}}</a>
 </header>
 <form class="ez-langs" method="post" action="/lang" aria-label="{{t "Sprache"}}">
-  <input type="hidden" name="back" value="/e/{{.AssetID}}">
+  <input type="hidden" name="back" value="/e/{{.AssetID}}{{if .Test}}?test=1{{end}}">
   {{$cur := lang}}{{range langs}}<button type="submit" name="lang" value="{{.Code}}" title="{{.Name}}" aria-label="{{.Name}}"{{if eq .Code $cur}} class="on" aria-current="true"{{end}}>{{template "lang-flag" .Code}}</button>{{end}}
 </form>
 
 <main>
+  {{if .Test}}<div class="ez-test"><b>Testansicht (Admin)</b> So sieht der Easy-Mode nach dem QR-Scan aus. Meldungen werden echt angelegt – mit „TEST:“ im Titel, damit du sie wiederfindest und löschen kannst.</div>{{end}}
   <!-- Start: Anlage, Melden, letzte Meldungen -->
   <section id="ez-home">
     <div class="ez-asset">
@@ -144,7 +147,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
 
 <script>
 (function(){
-  const ASSET = '{{.AssetID}}';
+  const ASSET = '{{.AssetID}}', TEST = {{.Test}};
   const T = {
     name: {{t "Bitte deinen Namen angeben."}}, text: {{t "Bitte beschreiben, was los ist."}},
     choose: {{t "Bitte eine Antwort antippen."}}, sending: {{t "Wird gesendet …"}}, send: {{t "Fertig – melden"}},
@@ -202,7 +205,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
     try{ localStorage.setItem('pdh_easy_name', name); }catch(e){}
     try{
       const res = await fetch('/e/' + ASSET + '/report', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'},
-        body: JSON.stringify({type: S.type, name, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value})});
+        body: JSON.stringify({type: S.type, name, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
       const j = await res.json().catch(() => ({}));
       if(!res.ok || !j.success) throw new Error(res.status === 429 ? T.many : T.fail);
       $('ez-flow').hidden = true; $('ez-done').hidden = false;

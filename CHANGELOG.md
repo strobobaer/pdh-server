@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.42.0] – 2026-10-08
+
+### Neu
+- Knopf „Easy-Mode testen“ an jeder Anlage (nur Admins): öffnet die Meldeseite wie nach einem QR-Scan, auch wenn der Easy-Mode ausgeschaltet ist; Testmeldungen beginnen mit „TEST:“
+
 ## [0.41.0] – 2026-10-08
 
 ### Neu

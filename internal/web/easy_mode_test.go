@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -114,5 +115,38 @@ func TestEasyPageRenders(t *testing.T) {
 		if strings.Contains(out, `id="pdh-nav"`) || strings.Contains(out, "/chat") {
 			t.Error("Easy-Mode zeigt interne Navigation")
 		}
+	}
+}
+
+func TestEasyTestModeForAdmins(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c, _ := tmpl.Clone()
+	c = bindLang(c, "de")
+	if _, err := c.ParseFiles(filepath.Join("..", "..", "web", "templates", "easy.gohtml")); err != nil {
+		t.Fatal(err)
+	}
+	d := EasyPageData{AssetID: "11111111-1111-4111-8111-111111111111", AssetName: "Bandsäge 2", Test: true}
+	var buf bytes.Buffer
+	if err := c.ExecuteTemplate(&buf, "easy.gohtml", d); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !regexp.MustCompile(`TEST =\s*true\b`).MatchString(out) {
+		t.Error("Test-Kennzeichen fehlt im Skript")
+	}
+	for _, want := range []string{"Testansicht (Admin)", "test: TEST", `value="/e/11111111-1111-4111-8111-111111111111?test=1"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Testansicht ohne %q", want)
+		}
+	}
+
+	// Knopf an der Anlage nur für Admins
+	d2 := InfraDetailData{Node: InfraNodeView{ID: "n1", Name: "Presse 3"}, Types: infraTypes}
+	if strings.Contains(renderPage(t, tmpl, "infra_detail", d2), "Easy-Mode testen") {
+		t.Error("Knopf ohne Admin-Recht sichtbar")
+	}
+	d2.CanManageRoles = true
+	if !strings.Contains(renderPage(t, tmpl, "infra_detail", d2), `href="/e/n1?test=1"`) {
+		t.Error("Knopf „Easy-Mode testen“ fehlt für Admins")
 	}
 }

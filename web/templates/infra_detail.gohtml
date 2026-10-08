@@ -43,6 +43,7 @@
     </div>
   </div>
   <a class="btn btn-small" href="/a/{{$n.ID}}" title="Infoseite mit offenen Vorgängen – Ziel des QR-Codes"><i class="ti ti-qrcode"></i> QR &amp; Vorgänge</a>
+  {{if .CanManageRoles}}<a class="btn btn-small" href="/e/{{$n.ID}}?test=1" target="_blank" rel="noopener" title="Öffnet die Meldeseite, die Nicht-Angemeldete nach dem QR-Scan sehen (Testmeldungen beginnen mit „TEST:“)"><i class="ti ti-hand-finger"></i> Easy-Mode testen</a>{{end}}
   <a class="btn btn-small" href="/a/labels?infra={{$n.ID}}" target="_blank" rel="noopener" title="QR-Etikett drucken"><i class="ti ti-printer"></i></a>
   <div style="position:relative" oncontextmenu="toggleMenu('infra-menu'); return false;">
     {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('infra-menu')")}}

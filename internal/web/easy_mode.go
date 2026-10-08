@@ -48,6 +48,7 @@ type EasyPageData struct {
 	AssetID, AssetName, AssetPath, TypeIcon string
 	Recent                                  []easyRecent
 	LoginURL                                string
+	Test                                    bool // Testansicht für Admins (Knopf an der Anlage)
 	CanTranslate                            bool
 }
 
@@ -71,7 +72,8 @@ func (h *Handler) EasyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	login := "/login?next=" + "/a/" + id
-	if !h.easyModeEnabled(ctx) {
+	test := r.URL.Query().Get("test") == "1" && h.easyAdmin(r)
+	if !h.easyModeEnabled(ctx) && !test {
 		http.Redirect(w, r, login, http.StatusFound)
 		return
 	}
@@ -81,7 +83,7 @@ func (h *Handler) EasyPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := EasyPageData{AssetID: id, AssetName: name, AssetPath: path, TypeIcon: infraTypeIcon(typ), LoginURL: login,
-		CanTranslate: h.faults != nil}
+		CanTranslate: h.faults != nil, Test: test}
 	lang := h.requestLang(r)
 	d.Lang, d.Title, d.Page, d.Brand = lang, name, "easy", h.branding()
 	d.Look = h.appearance(r, d.Brand)
@@ -128,6 +130,14 @@ func (h *Handler) easyRecent(ctx context.Context, lang string, ids []string) []e
 	return out
 }
 
+// easyAdmin: angemeldete Person mit Admin-Recht (Rollen verwalten) – darf den
+// Easy-Mode über den Knopf an der Anlage testen, auch wenn er ausgeschaltet ist.
+// /e/ läuft ohne authMiddleware, daher die Sitzung hier selbst prüfen.
+func (h *Handler) easyAdmin(r *http.Request) bool {
+	u := h.sessionUser(r)
+	return u != nil && h.rbac != nil && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles")
+}
+
 // ── Meldung absenden ──────────────────────────────────────────
 
 type easyReportIn struct {
@@ -137,6 +147,7 @@ type easyReportIn struct {
 	Kind    string `json:"kind"`  // electrical | mechanical
 	State   string `json:"state"` // running | stopped
 	Website string `json:"website"`
+	Test    bool   `json:"test"` // nur für Admins: Titel beginnt mit „TEST:“
 }
 
 var easyKindDE = map[string]string{"electrical": "elektrisch", "mechanical": "mechanisch"}
@@ -222,7 +233,7 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	fail := func(code int, msg string) { writeJSON(w, code, map[string]any{"success": false, "error": msg}) }
-	if !uuidInPathRe.MatchString(id) || len(id) != 36 || !h.easyModeEnabled(ctx) {
+	if !uuidInPathRe.MatchString(id) || len(id) != 36 {
 		fail(http.StatusNotFound, "not available")
 		return
 	}
@@ -238,6 +249,11 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Website != "" { // Honigtopf: Menschen sehen das Feld nicht
 		writeJSON(w, http.StatusOK, map[string]any{"success": true})
+		return
+	}
+	in.Test = in.Test && h.easyAdmin(r)
+	if !h.easyModeEnabled(ctx) && !in.Test {
+		fail(http.StatusNotFound, "not available")
 		return
 	}
 	if err := easyValidate(&in); err != nil {
@@ -273,6 +289,10 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 	title, desc := easyCompose(in, german, langName, translated || lang == "de")
+	if in.Test {
+		title = "TEST: " + title
+		desc += "\n\nTestmeldung aus der Easy-Mode-Vorschau (Admin) – kann gelöscht werden."
+	}
 	infra := id
 	tags := []string{easyKindDE[in.Kind], easyStateDE[in.State]}
 	var recID string
