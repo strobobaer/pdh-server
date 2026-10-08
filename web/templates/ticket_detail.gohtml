@@ -94,7 +94,7 @@
         </div>
         <div class="form-group">
           <label class="form-label">Zugewiesene Gruppe</label>
-          <select name="assigned_group_id" class="form-input" hx-get="/records/ticket/{{.Ticket.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/ticket/{{.Ticket.ID}}/group-options" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
         </div>
         <div id="people-result-ticket" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}

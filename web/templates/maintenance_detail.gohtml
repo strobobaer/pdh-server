@@ -141,7 +141,7 @@
         <div class="form-group"><label class="form-label">Verantwortlich</label>
           <select name="responsible_to" class="form-input"><option value="">Nicht gesetzt</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Task.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
         <div class="form-group"><label class="form-label">Zugewiesene Gruppe</label>
-          <select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_task/{{.Task.ID}}/group-options" hx-trigger="load" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/maintenance_task/{{.Task.ID}}/group-options" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
         <div id="md-people-result" style="font-size:12px;margin-bottom:8px"></div>
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>

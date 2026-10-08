@@ -111,32 +111,23 @@
   {{if .Filtered}}<a class="btn" href="{{$k.Base}}?tab=items&amp;chip={{.Chip}}"><i class="ti ti-x"></i> Zurücksetzen</a>{{end}}
   {{template "category-filter-slot" (dict "Module" $k.Module)}}
 </form>
-{{template "icon-button-toolbar" (dict
-  "Class" "start"
-  "Label" (printf "%s-Aktionen" $k.Label)
-  "Items" (list
-      (dict "Action" "view" "ShowLabel" true "Label" "Auswahl öffnen" "OnClick" "runSelectedItemAction('view')")
-      (dict "Action" "copy" "ShowLabel" true "Label" "Auswahl kopieren" "OnClick" "runSelectedItemAction('copy')")
-      (dict "Action" "done" "ShowLabel" true "Label" "Auswahl erledigen" "OnClick" "runSelectedItemAction('done')")
-  )
-)}}
 <div class="card" style="padding:0;margin-top:8px">
   <table class="wa-table">
-    <thead><tr><th>{{$k.Label}}</th><th>Zuständig</th><th>Status</th><th>{{if eq $k.Key "fault"}}Schweregrad{{else}}Priorität{{end}}</th><th>Termin</th><th></th></tr></thead>
+    <thead><tr><th>{{$k.Label}}</th><th>Zuständig</th><th>Status</th><th>{{if eq $k.Key "fault"}}Schweregrad{{else}}Priorität{{end}}</th><th>Termin</th></tr></thead>
     <tbody>
     {{range .Items}}
-    <tr class="selectable-item{{if .Overdue}} wa-overdue{{end}}{{if .New}} wa-new{{end}}" data-selectable data-title="{{.Title}}" data-view-href="{{$k.Detail}}{{.ID}}" data-complete="{{$k.Key}}:{{.ID}}" data-copy-text="{{.Title}} {{.Description}}">
-      <td><a href="{{$k.Detail}}{{.ID}}" class="wa-main">
+    <tr class="{{if .Overdue}}wa-overdue{{end}}{{if .New}} wa-new{{end}}" data-rx data-rx-title="{{.Title}}" data-rx-desc="{{.Description}}"
+        data-rx-view="{{$k.Detail}}{{.ID}}" data-rx-edit="{{$k.Detail}}{{.ID}}" data-rx-done="{{$k.Key}}:{{.ID}}" data-rx-done-label="{{$k.DoLabel}}" data-rx-done-icon="{{$k.DoIcon}}">
+      <td><div class="wa-main">
         <div class="wa-title"><span class="act-dot {{.PriorityDot}}"></span>{{.Title}}</div>
-        <div class="rec-sub">{{if .InfraName}}<span style="color:var(--accent)">{{.InfraName}}</span> · {{end}}{{if .ProjectName}}<i class="ti ti-timeline"></i> {{.ProjectName}} · {{end}}{{.CreatedAgo}}</div></a></td>
+        <div class="rec-sub">{{if .InfraName}}<span style="color:var(--accent)">{{.InfraName}}</span> · {{end}}{{if .ProjectName}}<i class="ti ti-timeline"></i> {{.ProjectName}} · {{end}}{{.CreatedAgo}}</div></div></td>
       <td style="font-size:12px">{{if .Who}}{{.Who}}{{else}}<span style="color:var(--amber)"><i class="ti ti-inbox"></i> niemand</span>{{end}}</td>
       <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
       <td><span class="badge {{.PriorityClass}}">{{.PriorityLabel}}</span></td>
       <td style="font-size:12px;white-space:nowrap">{{if .Due}}<span class="{{if .Overdue}}mt-red{{end}}">{{.Due}}</span>{{else}}<span class="mt-muted">–</span>{{end}}</td>
-      <td style="text-align:right"><button type="button" class="btn btn-small cw-finish" onclick="event.stopPropagation();pdhComplete('{{$k.Key}}','{{.ID}}')"><i class="ti {{$k.DoIcon}}"></i> {{$k.DoLabel}}</button></td>
     </tr>
     {{else}}
-    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Keine {{$k.Plural}} für diesen Filter.</td></tr>
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Keine {{$k.Plural}} für diesen Filter.</td></tr>
     {{end}}
     </tbody>
   </table>
@@ -160,12 +151,12 @@
 <div class="card" style="padding:0">
   {{range .Archive.Rows}}
   <div class="mt-done">
-    <div class="mt-done-row">
+    <div class="mt-done-row" data-rx data-rx-title="{{.Title}}" data-rx-view="{{$k.Detail}}{{.ID}}" data-rx-edit="{{$k.Detail}}{{.ID}}">
       <i class="ti {{if eq .Status "closed"}}ti-lock{{else}}ti-circle-check{{end}}" style="font-size:18px;color:var(--green)"></i>
-      <a href="{{$k.Detail}}{{.ID}}" class="mt-done-main">
+      <div class="mt-done-main">
         <b>{{.Title}}</b>
         <small>{{if .InfraName}}{{.InfraName}} · {{end}}{{if .ProjectName}}{{.ProjectName}} · {{end}}{{.StatusLabel}} {{.Closed}}{{if .Who}} · <i class="ti ti-user"></i> {{.Who}}{{end}}</small>
-      </a>
+      </div>
       <div class="mt-done-flags"><span class="badge {{.PriorityClass}}">{{.Priority}}</span></div>
     </div>
     {{if or .Resolution .RootCause}}

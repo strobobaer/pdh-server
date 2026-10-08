@@ -21,16 +21,16 @@
   <div class="card" style="margin:0">
     <div class="card-title"><span><i class="ti ti-signature"></i> Nachweise</span></div>
     {{range .Open}}
-    <a class="rec-row" href="/trainings/sessions/{{.ID}}" style="color:var(--text);text-decoration:none">
+    <div class="rec-row" data-rx data-rx-view="/trainings/sessions/{{.ID}}" data-rx-edit="/trainings/sessions/{{.ID}}">
       <div class="grow"><div style="font-weight:500">{{.TopicName}}</div><div class="rec-sub">{{if .Date}}{{.Date}}{{else}}Termin offen{{end}} · offen</div></div>
       <span class="badge b-amber">{{.Signed}}/{{.Participants}}</span>
-    </a>
+    </div>
     {{end}}
     {{range .Sessions}}
-    <a class="rec-row" href="/trainings/sessions/{{.ID}}" style="color:var(--text);text-decoration:none">
+    <div class="rec-row" data-rx data-rx-view="/trainings/sessions/{{.ID}}" data-rx-edit="/trainings/sessions/{{.ID}}">
       <div class="grow"><div style="font-weight:500">{{.TopicName}}</div><div class="rec-sub">{{.Date}}{{if .Trainer}} · {{.Trainer}}{{end}}</div></div>
       <i class="ti ti-lock" title="archiviert" style="color:var(--green)"></i>
-    </a>
+    </div>
     {{else}}{{if not .Open}}<div class="rec-sub">Noch keine Nachweise.</div>{{end}}{{end}}
   </div>
 </div>

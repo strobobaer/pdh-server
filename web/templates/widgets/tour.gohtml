@@ -80,9 +80,9 @@
     ]},
     faults: {title: {{t "Rundgang: Störungen"}}, steps: [
       {url: '/faults', sel: ['[onclick="pdhCreate(\'fault\')"]'], h: {{t "Störung melden"}}, p: {{t "„Neu“ öffnet den Assistenten: Titel und Beschreibung, Anlage, Zuständige. Zum Schluss siehst du alles noch einmal."}}},
-      {url: '/faults', sel: ['.list-tabs'], h: {{t "Reiter"}}, p: {{t "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind."}}},
-      {url: '/faults', sel: ['#faults-list'], h: {{t "Die Liste"}}, p: {{t "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab."}}},
-      {url: '/faults', sel: ['[onclick="runSelectedItemAction(\'done\')"]'], h: {{t "Abschließen"}}, p: {{t "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar."}}}
+      {url: '/faults?tab=items', sel: ['.kvp-chips', '.list-tabs'], h: {{t "Reiter"}}, p: {{t "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind."}}},
+      {url: '/faults?tab=items', sel: ['.wa-table', '#faults-list'], h: {{t "Die Liste"}}, p: {{t "Ein Klick klappt die Störung auf – darunter Ansehen, Bearbeiten und Beheben. Ein Doppelklick öffnet sie direkt."}}},
+      {url: '/faults?tab=items', sel: ['.wa-table [data-rx]', '.wa-table'], h: {{t "Abschließen"}}, p: {{t "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar."}}}
     ]},
     maintenance: {title: {{t "Rundgang: Wartung"}}, steps: [
       {url: '/maintenance', sel: ['.mt-tabs'], h: {{t "Die Wartung"}}, p: {{t "Die Reiter: Anstehend, Jahresplan, Pläne, Rundgänge, Archiv und Checklisten."}}},

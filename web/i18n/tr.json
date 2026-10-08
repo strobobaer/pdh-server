@@ -558,7 +558,7 @@
  "Reiter": "Sekmeler",
  "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind.": "Sekmeler listeyi filtreler – açık, benim, atanmamış, tamamlanmış. Sayı kaç tane olduğunu gösterir.",
  "Die Liste": "Liste",
- "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab.": "Tıklamak arızayı açar. Birkaçını işaretle, üstteki “Seçimi tamamla” hepsini birlikte kapatır.",
+ "Ein Klick klappt die Störung auf – darunter Ansehen, Bearbeiten und Beheben. Ein Doppelklick öffnet sie direkt.": "Tıklamak arızayı genişletir – altında: Görüntüle, Düzenle ve Gider. Çift tıklama doğrudan açar.",
  "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar.": "Tamamlama her zaman tamamlama sihirbazıyla yapılır: malzeme, süre, kimler vardı ve bir yorum.",
  "Rundgang: Wartung": "Tur: Bakım",
  "Die Wartung": "Bakım",
@@ -600,5 +600,10 @@
  "ein Großbuchstabe": "bir büyük harf",
  "ein Kleinbuchstabe": "bir küçük harf",
  "eine Ziffer": "bir rakam",
- "ein Sonderzeichen": "bir özel karakter"
+ "ein Sonderzeichen": "bir özel karakter",
+ "Ansehen": "Görüntüle",
+ "Bearbeiten": "Düzenle",
+ "Fertigstellen": "Tamamla",
+ "Klicken zum Aufklappen": "Genişletmek için tıkla",
+ " · Doppelklick öffnet": " · çift tıklama açar"
 }

@@ -46,7 +46,7 @@
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-sitemap"></i> Unterplätze</span></div>
       {{range .Children}}
-      <a class="rec-row" href="/storage/{{.ID}}"><i class="ti {{.Icon}}" style="color:var(--muted)"></i><div class="grow">{{.Name}}<div class="rec-sub">{{.TypeLabel}}</div></div><span class="rec-sub">{{.Parts}} Teile</span><i class="ti ti-chevron-right" style="color:var(--muted)"></i></a>
+      <div class="rec-row" data-rx data-rx-view="/storage/{{.ID}}" data-rx-edit="/storage/{{.ID}}"><i class="ti {{.Icon}}" style="color:var(--muted)"></i><div class="grow">{{.Name}}<div class="rec-sub">{{.TypeLabel}}</div></div><span class="rec-sub">{{.Parts}} Teile</span><i class="ti ti-chevron-right" style="color:var(--muted)"></i></div>
       {{else}}<div class="rec-sub">Keine Unterplätze</div>{{end}}
     </div>
   </div>

@@ -558,7 +558,7 @@
  "Reiter": "Јазичиња",
  "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind.": "Јазичињата ја филтрираат листата – отворени, мои, недоделени, завршени. Бројот покажува колку ги има.",
  "Die Liste": "Листата",
- "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab.": "Клик го отвора дефектот. Означи неколку и „Заврши го изборот“ горе ги затвора заедно.",
+ "Ein Klick klappt die Störung auf – darunter Ansehen, Bearbeiten und Beheben. Ein Doppelklick öffnet sie direkt.": "Клик го отвора дефектот во редот – подолу: Прегледај, Уреди и Поправи. Двоен клик директно го отвора.",
  "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar.": "Завршувањето секогаш оди со асистентот за завршување: материјал, време, кој учествуваше и коментар.",
  "Rundgang: Wartung": "Обиколка: Одржување",
  "Die Wartung": "Одржувањето",
@@ -600,5 +600,10 @@
  "ein Großbuchstabe": "една голема буква",
  "ein Kleinbuchstabe": "една мала буква",
  "eine Ziffer": "една цифра",
- "ein Sonderzeichen": "еден посебен знак"
+ "ein Sonderzeichen": "еден посебен знак",
+ "Ansehen": "Прегледај",
+ "Bearbeiten": "Уреди",
+ "Fertigstellen": "Заврши",
+ "Klicken zum Aufklappen": "Кликни за проширување",
+ " · Doppelklick öffnet": " · двоен клик отвора"
 }

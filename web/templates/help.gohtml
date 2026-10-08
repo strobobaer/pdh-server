@@ -145,6 +145,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="records" data-title="Arbeiten mit Datensätzen" data-pages="">
   <h2><i class="ti ti-layout-dashboard"></i> Arbeiten mit Datensätzen</h2>
   <p>Egal ob Störung, Ersatzteil oder Anlage – jeder Datensatz ist gleich aufgebaut. Wer ein Modul kennt, kennt alle.</p>
+  {{template "hb-fig-rows"}}
+  <div class="hb-howto"><b><i class="ti ti-list-details"></i> So arbeitest du mit Listen und Tabellen</b>
+    <ol class="hb-steps">
+      <li><b>Zeile anklicken</b> (oder mit Tab anwählen und Enter). Die Zeile klappt auf, darunter erscheinen die Knöpfe.</li>
+      <li><b>Ansehen</b> zeigt den Datensatz in der Schnellansicht über der Liste – die Liste bleibt, wo sie ist. <b>Bearbeiten</b> öffnet ihn. <b>Fertigstellen</b> (je nach Modul <b>Beheben</b>, <b>Abschließen</b>, <b>Erledigen</b> oder <b>Durchführen</b>) startet den Abschluss-Assistenten.</li>
+      <li>Weitere Knöpfe des Moduls stehen rechts daneben, z. B. Status bei IT-Assets oder Bestätigen und Löschen in der Zeiterfassung.</li>
+      <li>Nochmal klicken klappt die Zeile wieder zu. Ein <b>Doppelklick</b> öffnet den Datensatz direkt.</li>
+    </ol>
+    Im Anlagenbaum klappt der kleine <b>Pfeil</b> die Unteranlagen auf, ein Klick auf die Zeile zeigt die Knöpfe.</div>
   <div class="hb-howto"><b><i class="ti ti-keyboard"></i> Text-Vorschläge beim Tippen</b>In Titeln, Beschreibungen, Maßnahmen, Ursachen, Lösungen, Kommentaren, Schulungsinhalten und Freitext-Punkten von Checklisten schlägt PDH vor, wie es weitergehen könnte – gelernt aus allem, was im Betrieb schon geschrieben wurde. Grau angezeigt wird die Ergänzung der aktuellen Zeile (ganze Formulierung, nächstes Wort oder Wortende), darunter weitere passende Formulierungen.
     <ul>
       <li><b>Tab</b> übernimmt den markierten Vorschlag, <b>↑ ↓</b> wählen, <b>Esc</b> schließt; ein Klick geht auch. <b>Enter</b> bleibt Enter (außer du hast mit den Pfeilen gewählt).</li>
@@ -183,7 +192,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Zusammenfassung prüfen – <b>Anlegen</b> öffnet den neuen Vorgang, <b>Anlegen &amp; nächster</b> beginnt gleich den nächsten derselben Art.</li>
     </ol></div>
   <h3 id="completion"><i class="ti ti-circle-check"></i> Vorgänge abschließen: der Abschluss-Assistent</h3>
-  <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste über <b>Auswahl erledigen</b>. Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
+  <p>Tickets, Störungen, Aufgaben und Wartungen schließt du immer mit dem <b>grünen Haken</b> ab – auf der Detailseite oder in der Liste: Zeile anklicken → <b>Fertigstellen</b> (bzw. <b>Beheben</b>, <b>Abschließen</b>, <b>Erledigen</b>, <b>Durchführen</b>). Ein Assistent führt dich in fünf kurzen Schritten durch; erst wenn alles da ist, geht es weiter.</p>
   {{template "hb-fig-completion"}}
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du einen Vorgang ab</b>
     <ol class="hb-steps">
@@ -314,7 +323,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-workboard"}}
   <ul>
     <li><b>Dashboard</b> (Start): Kennzahlen des Jahres – offen, überfällig, ohne Zuweisung, angelegt, erledigt (mit Anteil termingerecht) und Ø Durchlaufzeit. Dazu der <b>Ablauf</b> nach Status, die <b>letzten 12 Monate</b> (angelegt/erledigt), die Anlagen mit den meisten Vorgängen, wer am meisten erledigt hat und <b>Braucht Aufmerksamkeit</b> (Überfälliges und Dringendes ohne Zuständigen). Mit den Pfeilen wechselst du das Jahr. Jede Kennzahl führt in die passende Liste.</li>
-    <li><b>Tickets</b> (bzw. Störungen, Aufgaben, Aufträge): die Liste mit <b>Filter-Chips</b> und Anzahl – <b>Alle offenen</b>, <b>Meine</b>, <b>Ohne Zuweisung</b>, je Status, <b>Überfällig</b> (Aufgaben: <b>Ohne Projekt</b>, Wartung: <b>Fällig</b> – bis einschließlich heute – und <b>Geplant</b>) und <b>Archiv</b>. Dazu Suche, Priorität, Anlage (bei Aufgaben auch Projekt) und Kategorien. Zeile antippen und <b>Auswahl öffnen / kopieren / erledigen</b>, oder rechts direkt <b>Bearbeiten</b>, <b>Beheben</b>, <b>Erledigen</b> bzw. <b>Durchführen</b>.</li>
+    <li><b>Tickets</b> (bzw. Störungen, Aufgaben, Aufträge): die Liste mit <b>Filter-Chips</b> und Anzahl – <b>Alle offenen</b>, <b>Meine</b>, <b>Ohne Zuweisung</b>, je Status, <b>Überfällig</b> (Aufgaben: <b>Ohne Projekt</b>, Wartung: <b>Fällig</b> – bis einschließlich heute – und <b>Geplant</b>) und <b>Archiv</b>. Dazu Suche, Priorität, Anlage (bei Aufgaben auch Projekt) und Kategorien. Zeile antippen – sie klappt auf mit <b>Ansehen</b>, <b>Bearbeiten</b> und <b>Abschließen</b>, <b>Beheben</b>, <b>Erledigen</b> bzw. <b>Durchführen</b> (siehe <a href="#records">Arbeiten mit Datensätzen</a>).</li>
     <li><b>Board</b>: eine Spalte je Status, Überfälliges und Wichtiges oben, rechts die in den letzten 7 Tagen erledigten. Jede Karte hat den Knopf zum <a href="#completion">Abschluss-Assistenten</a>.</li>
     <li><b>Archiv</b> (Chip): alles Abgeschlossene mit Suche (auch in der Lösung), Anlage und Zeitraum, seitenweise; <b>Lösung &amp; Ursache</b> klappt direkt auf.</li>
     <li><b>Regeln &amp; Einstellungen</b>: die Regeln des Moduls, die <b>Standard-Frist</b> (Tage nach Anlage, wenn kein Termin angegeben ist – ändern darf, wer Rollen &amp; Rechte verwaltet) und die <b>Broker</b>.</li>
@@ -327,7 +336,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Status ändern</b> – über das Menü <i class="ti ti-dots"></i> oben rechts im Ticket.</li>
   </ul>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
-    Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste über „Auswahl erledigen“) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
+    Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste: Zeile aufklappen → <b>Abschließen</b>) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
     Dein Eingang ist die Seite <b>Zuweisung</b> (Navigation oben). Dort weist du direkt zu (<a href="#dashboard">mehr</a>). In der Ticketliste zeigt der Filter <b>Ohne Zuweisung</b> dieselben Tickets.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}

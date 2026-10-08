@@ -112,10 +112,10 @@
       <thead><tr><th>Vorschlag</th><th>Ideengeber</th><th>Status</th><th>Bewertung</th><th>Einsparung/Jahr</th><th>Eingereicht</th></tr></thead>
       <tbody>
       {{range .Ideas}}
-      <tr style="cursor:pointer" onclick="location.href='/kvp/{{.ID}}'">
-        <td><a href="/kvp/{{.ID}}" style="color:inherit;text-decoration:none;display:block">
+      <tr data-rx data-rx-title="{{.Code}} {{.Title}}" data-rx-view="/kvp/{{.ID}}" data-rx-edit="/kvp/{{.ID}}">
+        <td><div>
           <div style="font-weight:500"><span class="rec-sub">{{.Code}}</span> {{.Title}}</div>
-          <div style="font-size:11px;color:var(--muted)"><i class="ti {{.CategoryIcon}}"></i> {{.CategoryLabel}}{{if .InfraName}} · <span style="color:var(--accent)">{{.InfraName}}</span>{{end}}</div></a></td>
+          <div style="font-size:11px;color:var(--muted)"><i class="ti {{.CategoryIcon}}"></i> {{.CategoryLabel}}{{if .InfraName}} · <span style="color:var(--accent)">{{.InfraName}}</span>{{end}}</div></div></td>
         <td style="font-size:12px">{{.MemberNames}}</td>
         <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
           {{if .FeedbackOverdue}}<div style="font-size:10.5px;color:var(--red)">Rückmeldung überfällig</div>{{else if .DueOverdue}}<div style="font-size:10.5px;color:var(--red)">Termin überschritten</div>{{end}}

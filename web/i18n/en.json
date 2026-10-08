@@ -558,7 +558,7 @@
  "Reiter": "Tabs",
  "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind.": "The tabs filter the list – open, mine, unassigned, done. The number shows how many there are.",
  "Die Liste": "The list",
- "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab.": "A click opens the fault. Tick several and “Complete selection” at the top closes them together.",
+ "Ein Klick klappt die Störung auf – darunter Ansehen, Bearbeiten und Beheben. Ein Doppelklick öffnet sie direkt.": "A click expands the fault – below it: View, Edit and Fix. A double-click opens it directly.",
  "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar.": "Completion always uses the completion wizard: material, time, who was involved and a comment.",
  "Rundgang: Wartung": "Tour: Maintenance",
  "Die Wartung": "Maintenance",
@@ -600,5 +600,10 @@
  "ein Großbuchstabe": "an uppercase letter",
  "ein Kleinbuchstabe": "a lowercase letter",
  "eine Ziffer": "a digit",
- "ein Sonderzeichen": "a special character"
+ "ein Sonderzeichen": "a special character",
+ "Ansehen": "View",
+ "Bearbeiten": "Edit",
+ "Fertigstellen": "Complete",
+ "Klicken zum Aufklappen": "Click to expand",
+ " · Doppelklick öffnet": " · double-click opens"
 }

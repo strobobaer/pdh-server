@@ -558,7 +558,7 @@
  "Reiter": "File",
  "Die Reiter filtern die Liste – offen, meine, ohne Zuweisung, erledigt. Die Zahl zeigt, wie viele es sind.": "Filele filtrează lista – deschise, ale mele, neatribuite, finalizate. Numărul arată câte sunt.",
  "Die Liste": "Lista",
- "Ein Klick öffnet die Störung. Mehrere ankreuzen und oben „Auswahl erledigen“ schließt sie zusammen ab.": "Un clic deschide defecțiunea. Bifează mai multe, iar „Finalizează selecția” de sus le închide împreună.",
+ "Ein Klick klappt die Störung auf – darunter Ansehen, Bearbeiten und Beheben. Ein Doppelklick öffnet sie direkt.": "Un clic extinde defecțiunea – dedesubt: Vezi, Editează și Remediază. Un dublu clic o deschide direct.",
  "Abgeschlossen wird immer mit dem Abschluss-Assistenten: Material, Zeit, wer war dabei und ein Kommentar.": "Finalizarea se face mereu cu asistentul de finalizare: material, timp, cine a participat și un comentariu.",
  "Rundgang: Wartung": "Tur: Mentenanță",
  "Die Wartung": "Mentenanța",
@@ -600,5 +600,10 @@
  "ein Großbuchstabe": "o literă mare",
  "ein Kleinbuchstabe": "o literă mică",
  "eine Ziffer": "o cifră",
- "ein Sonderzeichen": "un caracter special"
+ "ein Sonderzeichen": "un caracter special",
+ "Ansehen": "Vezi",
+ "Bearbeiten": "Editează",
+ "Fertigstellen": "Finalizează",
+ "Klicken zum Aufklappen": "Clic pentru extindere",
+ " · Doppelklick öffnet": " · dublu clic deschide"
 }

@@ -97,10 +97,15 @@ func TestWorkBoardRenders(t *testing.T) {
 	items := renderPage(t, tmpl, "work_board", WorkBoardData{Area: workArea{Kind: k, Tab: "items", Chip: "open", Items: []workCard{card},
 		Chips: []workChip{{Key: "open", Label: "Alle offenen", Icon: "ti-list", URL: "/faults?tab=items&chip=open", Count: 1, Active: true}}}})
 	checkScripts(t, "work_board", items)
-	for _, want := range []string{"Alle offenen", "Presse steht", "pdhComplete(", "Beheben", "Auswahl erledigen", `data-complete="fault:f1"`} {
+	for _, want := range []string{"Alle offenen", "Presse steht", "pdhComplete(", `data-rx-done-label="Beheben"`, `data-rx-done="fault:f1"`,
+		`data-rx-view="/faults/f1"`, `data-rx-edit="/faults/f1"`} {
 		if !strings.Contains(items, want) {
 			t.Errorf("Vorgaenge enthalten %q nicht", want)
 		}
+	}
+	// Aktionen nur noch in der aufgeklappten Zeile, nicht als Leiste über der Liste
+	if strings.Contains(items, "Auswahl erledigen") || strings.Contains(items, "runSelectedItemAction('done')") {
+		t.Error("alte Auswahl-Leiste über der Liste noch vorhanden")
 	}
 
 	arch := renderPage(t, tmpl, "work_board", WorkBoardData{Area: workArea{Kind: workKinds["task"], Tab: "items", Chip: "archive",

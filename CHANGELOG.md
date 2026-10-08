@@ -10,6 +10,20 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.40.0] – 2026-10-08
+
+### Neu
+- Alle Listen und Tabellen bedienen sich gleich: Zeile anklicken klappt sie auf, darunter erscheinen „Ansehen“ (Schnellansicht), „Bearbeiten“ und – bei Tickets, Störungen, Aufgaben und Wartungen – „Fertigstellen“; ein Doppelklick öffnet den Datensatz direkt
+
+### Geändert
+- Die Knopfleiste „Auswahl öffnen / kopieren / erledigen“ über den Listen und die Knöpfe am Zeilenende entfallen; IT-Status, Zeiteinträge bestätigen/bearbeiten/löschen und „Unteranlage hinzufügen“ stehen jetzt in der aufgeklappten Zeile
+- Im Anlagenbaum klappt der Pfeil die Unteranlagen auf, ein Klick auf die Zeile zeigt die Aktionen
+- Der Abschluss-Knopf für Tickets heißt in Listen und auf dem Board jetzt „Abschließen“ statt „Bearbeiten“
+
+### Behoben
+- Im Anlagenbaum verlor eine Zeile nach dem Anspringen aus dem Schnellzugriff ihren Hintergrund
+- Die Auswahl „Zugewiesene Gruppe“ bei Aufgaben, Tickets, Störungen, Wartungen und Projekten blieb bei „Lädt…“ stehen; eine Gruppe ließ sich nicht auswählen
+
 ## [0.39.1] – 2026-10-08
 
 ### Behoben

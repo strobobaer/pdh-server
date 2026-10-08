@@ -43,7 +43,7 @@ type workKind struct {
 var workKinds = map[string]workKind{
 	"ticket": {Key: "ticket", Module: "ticket", Table: "tickets", Base: "/tickets", Detail: "/tickets/", Page: "tickets",
 		Title: "Tickets", Context: "Kritische Tickets", Label: "Ticket", Plural: "Tickets", Items: "Tickets", Icon: "ti-ticket",
-		DoLabel: "Bearbeiten", DoIcon: "ti-player-play", PrioExpr: "r.priority::text",
+		DoLabel: "Abschließen", DoIcon: "ti-circle-check", PrioExpr: "r.priority::text",
 		ClosedExpr: "COALESCE(r.resolved_at, r.archived_at, r.updated_at)", DueKey: appsettings.KeyDefaultDueDaysTicket, BrokerColumn: "broker_tickets",
 		OpenStatuses: []string{"open", "in_progress", "pending"}, DoneStatuses: []string{"resolved", "closed"},
 		Flow: []workStatus{{"open", "Offen", "ti-circle", "neu, noch nicht begonnen"}, {"in_progress", "In Arbeit", "ti-tool", "wird bearbeitet"},

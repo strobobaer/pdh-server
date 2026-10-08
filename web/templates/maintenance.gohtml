@@ -121,12 +121,12 @@
 <div class="card" style="padding:0">
   {{range .Done}}
   <div class="mt-done mt-arch" data-task="{{.Task.ID}}">
-    <div class="mt-done-row">
+    <div class="mt-done-row" data-rx data-rx-title="{{.Task.Title}}" data-rx-view="/maintenance/tasks/{{.Task.ID}}" data-rx-edit="/maintenance/tasks/{{.Task.ID}}">
       <button type="button" class="mt-arch-toggle" onclick="mtArchToggle(this)" aria-expanded="false" title="Checkliste ansehen"{{if not .Points}} disabled{{end}}><i class="ti ti-chevron-right"></i></button>
-      <a href="/maintenance/tasks/{{.Task.ID}}" class="mt-done-main">
+      <div class="mt-done-main">
         <b>{{.Task.Title}}</b>
         <small>{{.Task.InfraName}} · {{if eq .Task.Status "skipped"}}übersprungen{{else}}erledigt{{end}} {{.Completed}}{{if .Duration}} · {{.Duration}}{{end}}{{if .Executors}} · <i class="ti ti-user"></i> {{.Executors}}{{end}}</small>
-      </a>
+      </div>
       <div class="mt-done-flags">
         {{if .OutOfRange}}<span class="badge b-red" title="Messwerte außerhalb von Min/Max"><i class="ti ti-alert-triangle"></i> {{.OutOfRange}} außerhalb</span>{{end}}
         {{if .Unchecked}}<span class="badge b-amber" title="nicht abgehakte Punkte">{{.Unchecked}} offen</span>{{end}}

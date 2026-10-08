@@ -415,6 +415,32 @@
 </figure>
 {{end}}
 
+{{/* Aufklappbare Listenzeilen (data-rx) */}}
+{{define "hb-fig-rows"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 196" role="img" aria-label="Liste mit aufgeklappter Zeile">
+  <rect class="bg" x="1" y="1" width="638" height="194" rx="8"/>
+  <g font-size="10.5">
+    <text x="20" y="26" class="t-m">STÖRUNG</text><text x="300" y="26" class="t-m">ZUSTÄNDIG</text><text x="420" y="26" class="t-m">STATUS</text><text x="530" y="26" class="t-m">TERMIN</text>
+    <path class="ln" d="M14 34 H626"/>
+    <text x="20" y="54">Förderband steht</text><text x="300" y="54" class="t-m">M. Huber</text><text x="420" y="54">In Arbeit</text><text x="530" y="54">09.10.</text>
+    <path class="ln" d="M14 66 H626"/>
+    <rect class="acl" x="14" y="68" width="612" height="28" rx="4"/>
+    <text x="20" y="86" class="t-b">Scanner ohne Daten  ← angeklickt</text><text x="300" y="86" class="t-m">Michael Strobl</text><text x="420" y="86">In Arbeit</text><text x="530" y="86">08.10.</text>
+    <rect class="bg3" x="14" y="98" width="612" height="54" rx="4"/>
+    <text x="24" y="116" class="t-m">Der Scanner liefert keine Daten …</text>
+    <rect class="bg" x="24" y="124" width="76" height="22" rx="5"/><text x="62" y="139" class="t-c">👁 Ansehen</text>
+    <rect class="bg" x="108" y="124" width="88" height="22" rx="5"/><text x="152" y="139" class="t-c">✎ Bearbeiten</text>
+    <rect class="gr" x="204" y="124" width="80" height="22" rx="5"/><text x="244" y="139" class="t-c t-b">🔧 Beheben</text>
+    <text x="300" y="139" class="t-m">← Knöpfe direkt unter der Zeile</text>
+    <path class="ln" d="M14 160 H626"/>
+    <text x="20" y="180">Kompressor laut</text><text x="300" y="180" class="t-m">niemand</text><text x="420" y="180">Erkannt</text><text x="530" y="180">–</text>
+  </g>
+</svg>
+<figcaption>Zeile anklicken: Sie klappt auf, darunter Ansehen, Bearbeiten und Fertigstellen. Nochmal klicken klappt sie zu.</figcaption>
+</figure>
+{{end}}
+
 {{/* Farbschema / Theming */}}
 {{define "hb-fig-theme"}}
 <figure class="hb-fig">

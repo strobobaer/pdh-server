@@ -141,8 +141,13 @@ func TestUsersListDotsOpenEditing(t *testing.T) {
 	out := renderPage(t, tmpl, "users", UsersPageData{
 		Users: []UserView{{ID: "u3", FullName: "Eva", Username: "eva", CanEditProfile: true, CanManage: true, Active: true}},
 	})
-	if !strings.Contains(out, `href="/users/u3?tab=master" title="Bearbeiten"`) {
-		t.Error("Drei-Punkte-Knopf führt nicht in die Bearbeitung")
+	// Zeile klappt auf (data-rx); „Bearbeiten“ führt in den Reiter Stammdaten
+	if !strings.Contains(out, `data-rx-edit="/users/u3?tab=master"`) {
+		t.Error("Bearbeiten führt nicht in die Bearbeitung")
+	}
+	// Datenträger für Kontextmenü und ?edit= bleibt (unsichtbar) erhalten
+	if !strings.Contains(out, `data-id="u3"`) {
+		t.Error("data-id für Kontextmenü fehlt")
 	}
 	if strings.Contains(out, `id="umenu-u3"`) || strings.Contains(out, "Admin machen") {
 		t.Error("altes Menü bzw. 'Admin machen' noch in der Liste")

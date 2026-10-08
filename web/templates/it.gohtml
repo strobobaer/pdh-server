@@ -70,15 +70,14 @@
 
 <div class="card" style="padding:0">
   <table id="asset-table">
-    <thead><tr><th>Asset</th><th>Typ</th><th>IP / Hostname</th><th>Standort</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Asset</th><th>Typ</th><th>IP / Hostname</th><th>Standort</th><th>Status</th></tr></thead>
     <tbody>
     {{range .Assets}}
-    <tr style="cursor:pointer" oncontextmenu="toggleMenu('it-{{.ID}}'); return false;">
-      <td style="position:relative">
-        <a href="/it/{{.ID}}" style="position:absolute;inset:0;z-index:1"></a>
-        <div style="font-weight:500;position:relative">{{.Name}}</div>
-        {{if .InfraName}}<div style="font-size:11px;color:var(--accent);position:relative">{{.InfraName}}</div>{{end}}
-        <div style="font-size:11px;color:var(--muted);position:relative">{{if .Notes}}{{.Notes}}{{else}}{{.Manufacturer}} {{.Model}}{{if .SerialNo}} · {{.SerialNo}}{{end}}{{end}}</div>
+    <tr data-rx data-rx-title="{{.Name}}" data-rx-view="/it/{{.ID}}" data-rx-edit="/it/{{.ID}}">
+      <td>
+        <div style="font-weight:500">{{.Name}}</div>
+        {{if .InfraName}}<div style="font-size:11px;color:var(--accent)">{{.InfraName}}</div>{{end}}
+        <div style="font-size:11px;color:var(--muted)">{{if .Notes}}{{.Notes}}{{else}}{{.Manufacturer}} {{.Model}}{{if .SerialNo}} · {{.SerialNo}}{{end}}{{end}}</div>
       </td>
       <td><span style="font-size:13px">{{.TypeIcon}}</span> <span style="font-size:12px;color:var(--muted)">{{.TypeLabel}}</span></td>
       <td style="font-size:12px">
@@ -86,20 +85,16 @@
         {{if .Hostname}}<div style="color:var(--muted);font-size:11px">{{.Hostname}}</div>{{end}}
       </td>
       <td style="font-size:12px;color:var(--muted)">{{.Location}}</td>
-      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
-      <td onclick="event.stopPropagation()">
-        <div style="position:relative">
-          {{template "icon-button" (dict "Action" "more" "OnClick" (printf "toggleMenu('it-%s')" .ID))}}
-          <div id="it-{{.ID}}" class="win11-menu" style="display:none;position:absolute;right:0;top:28px;min-width:140px;z-index:100">
-            {{template "icon-button" (dict "Action" "activate" "ShowLabel" true "Label" "Aktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"active\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
-            {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" "Wartung" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"maintenance\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
-            {{template "icon-button" (dict "Action" "deactivate" "ShowLabel" true "Label" "Inaktiv" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxPost" (printf "/it/%s/status-web" .ID) "HxVals" "{\"status\":\"inactive\"}" "OnClick" (printf "closeMenu('it-%s')" .ID))}}
-          </div>
-        </div>
-      </td>
+      <td id="it-status-{{.ID}}"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      <template class="rx-more">
+        <span class="rec-sub">Status:</span>
+        <button type="button" class="btn btn-small" hx-post="/it/{{.ID}}/status-web" hx-vals='{"status":"active"}' hx-target="#it-status-{{.ID}}"><i class="ti ti-circle-check"></i> Aktiv</button>
+        <button type="button" class="btn btn-small" hx-post="/it/{{.ID}}/status-web" hx-vals='{"status":"maintenance"}' hx-target="#it-status-{{.ID}}"><i class="ti ti-tool"></i> Wartung</button>
+        <button type="button" class="btn btn-small" hx-post="/it/{{.ID}}/status-web" hx-vals='{"status":"inactive"}' hx-target="#it-status-{{.ID}}"><i class="ti ti-circle-x"></i> Inaktiv</button>
+      </template>
     </tr>
     {{else}}
-    <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:32px">Keine Assets vorhanden</td></tr>
+    <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">Keine Assets vorhanden</td></tr>
     {{end}}
     </tbody>
   </table>

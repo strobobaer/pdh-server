@@ -78,9 +78,9 @@
     </tr></thead>
     <tbody>
     {{range .Rows}}
-    <tr class="pb-row{{if not .Active}} inactive{{end}}" onclick="if(!event.target.closest('a'))location='/directory/{{.ID}}'">
+    <tr class="pb-row{{if not .Active}} inactive{{end}}" data-rx data-rx-title="{{.Name}}" data-rx-view="/directory/{{.ID}}"{{if $.CanEdit}} data-rx-edit="/directory/{{.ID}}?tab=master"{{end}}>
       <td>
-        <a href="/directory/{{.ID}}" style="font-weight:500">{{.Name}}</a>{{if .Rating}} <span class="badge b-gray" title="Bewertung">{{.Rating}}</span>{{end}}
+        <span style="font-weight:500">{{.Name}}</span>{{if .Rating}} <span class="badge b-gray" title="Bewertung">{{.Rating}}</span>{{end}}
         <div style="font-size:11px;color:var(--muted)">{{.PartnerNo}}{{if .ShortName}} · {{.ShortName}}{{end}}{{if .Category}} · {{.Category}}{{end}}{{if .City}} · {{.City}}{{end}}</div>
       </td>
       <td><span class="badge b-blue">{{.KindLabel}}</span> <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>

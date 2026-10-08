@@ -377,6 +377,16 @@ html.icons-fallback .btn-icon-glyph{display:inline-flex;align-items:center;justi
 .selectable-item{cursor:pointer}
 .selectable-item.is-selected{background:rgba(var(--accent-rgb),.12);outline:2px solid rgba(var(--accent-rgb),.45);outline-offset:-2px;border-radius:8px}
 .selectable-item.is-selected td{background:rgba(var(--accent-rgb),.12)}
+/* Aufklappbare Listenzeilen (data-rx): Klick klappt auf, darunter Ansehen / Bearbeiten / Fertigstellen */
+[data-rx]{cursor:pointer}
+[data-rx]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+[data-rx].rx-open,tr[data-rx].rx-open td{background:rgba(var(--accent-rgb),.08)}
+tr.rx-panel td{padding:0!important;background:rgba(var(--accent-rgb),.05);border-bottom:1px solid var(--border)}
+div.rx-panel{background:rgba(var(--accent-rgb),.05);border-bottom:1px solid var(--border);border-radius:0 0 8px 8px}
+.rx-box{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px}
+.rx-box .btn{font-size:12px}
+.rx-desc{flex-basis:100%;font-size:12px;color:var(--muted);white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.rx-box .grow{flex:1}
 .global-footer{height:34px;background:var(--bg2);border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,420px) minmax(180px,1fr);align-items:center;gap:14px;padding:0 18px;font-size:12px;color:var(--muted);flex-shrink:0}
 .footer-status-left,.footer-status-error{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .footer-status-error{justify-content:flex-end}
@@ -1545,6 +1555,106 @@ document.addEventListener('dblclick', (event) => {
 document.addEventListener('DOMContentLoaded', () => {
   setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
 });
+// ── Aufklappbare Listenzeilen ────────────────────────────
+// Einheitliche Bedienung aller Listen und Tabellen: Klick (oder Enter) auf eine
+// Zeile mit data-rx klappt sie auf, darunter erscheinen die Aktionen. Attribute:
+//   data-rx-view="/url"   Ansehen (Schnellansicht im Overlay)
+//   data-rx-edit="/url"   Bearbeiten (öffnet den Datensatz); Doppelklick ebenso
+//   data-rx-done="art:id" Fertigstellen über den Abschluss-Assistenten
+//                         (data-rx-done-label / data-rx-done-icon ändern Text/Symbol)
+//   data-rx-title, data-rx-desc  Titel bzw. Kurztext im aufgeklappten Bereich
+//   <template class="rx-more"> in der Zeile: weitere, seitenspezifische Knöpfe
+(function(){
+  const IGNORE = 'a,button,input,select,textarea,label,summary,[data-rx-ignore],.win11-menu';
+  function close(row){
+    const p = row && row.nextElementSibling;
+    if(p && p.classList.contains('rx-panel')) p.remove();
+    if(row){ row.classList.remove('rx-open'); row.setAttribute('aria-expanded', 'false'); }
+  }
+  function btn(tag, cls, icon, label){
+    const b = document.createElement(tag);
+    b.className = 'btn btn-small ' + cls;
+    if(tag === 'button') b.type = 'button';
+    const i = document.createElement('i'); i.className = 'ti ' + icon;
+    b.append(i, ' ' + label);
+    return b;
+  }
+  function build(row){
+    const d = row.dataset, box = document.createElement('div');
+    box.className = 'rx-box';
+    const title = d.rxTitle || '';
+    if(d.rxDesc){ const p = document.createElement('div'); p.className = 'rx-desc'; p.textContent = d.rxDesc; box.appendChild(p); }
+    if(d.rxView){
+      const b = btn('button', '', 'ti-eye', {{t "Ansehen"}});
+      b.addEventListener('click', () => openPdhFrame(d.rxView, title));
+      box.appendChild(b);
+    }
+    if(d.rxEdit){
+      const a = btn('a', '', 'ti-edit', {{t "Bearbeiten"}});
+      a.href = d.rxEdit;
+      box.appendChild(a);
+    }
+    if(d.rxDone){
+      const [kind, id] = d.rxDone.split(':');
+      const b = btn('button', 'cw-finish', d.rxDoneIcon || 'ti-circle-check', d.rxDoneLabel || {{t "Fertigstellen"}});
+      b.addEventListener('click', () => window.pdhComplete && window.pdhComplete(kind, id));
+      box.appendChild(b);
+    }
+    const more = row.querySelector('template.rx-more');
+    if(more){
+      const g = document.createElement('span'); g.className = 'grow'; box.appendChild(g);
+      box.appendChild(more.content.cloneNode(true));
+    }
+    if(row.tagName === 'TR'){
+      const tr = document.createElement('tr'), td = document.createElement('td');
+      tr.className = 'rx-panel';
+      td.colSpan = [...row.cells].reduce((n, c) => n + (c.colSpan || 1), 0);
+      td.appendChild(box); tr.appendChild(td);
+      return tr;
+    }
+    const div = document.createElement('div');
+    div.className = 'rx-panel'; div.appendChild(box);
+    return div;
+  }
+  function toggle(row){
+    const wasOpen = row.classList.contains('rx-open');
+    document.querySelectorAll('[data-rx].rx-open').forEach(close);
+    if(wasOpen) return;
+    const panel = build(row);
+    row.after(panel);
+    row.classList.add('rx-open');
+    row.setAttribute('aria-expanded', 'true');
+    if(window.htmx) htmx.process(panel);
+    const first = panel.querySelector('button,a');
+    if(first && row.matches(':focus')) first.focus();
+  }
+  function prepare(root){
+    (root || document).querySelectorAll('[data-rx]:not([tabindex])').forEach(r => {
+      r.tabIndex = 0;
+      r.setAttribute('aria-expanded', 'false');
+      if(!r.title) r.title = {{t "Klicken zum Aufklappen"}} + (r.dataset.rxEdit ? {{t " · Doppelklick öffnet"}} : '');
+    });
+  }
+  window.pdhRowsPrepare = prepare;
+  document.addEventListener('click', e => {
+    const row = e.target.closest('[data-rx]');
+    if(!row || e.target.closest(IGNORE)) return;
+    toggle(row);
+  });
+  document.addEventListener('dblclick', e => {
+    const row = e.target.closest('[data-rx]');
+    if(!row || e.target.closest(IGNORE) || !row.dataset.rxEdit) return;
+    location.href = row.dataset.rxEdit;
+  });
+  document.addEventListener('keydown', e => {
+    const row = e.target.closest && e.target.closest('[data-rx]');
+    if(!row || e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    toggle(row);
+  });
+  document.addEventListener('DOMContentLoaded', () => prepare());
+  document.addEventListener('htmx:afterSwap', e => prepare(e.target));
+})();
 const pdhNativeFetch = window.fetch ? window.fetch.bind(window) : null;
 if(pdhNativeFetch) {
   window.fetch = async function(input, init) {

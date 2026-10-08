@@ -218,6 +218,8 @@ async function saveDashGanttDate(item, end){
 // (Vorgangsarten, nur überfällig, nur ohne Zuständigen), im Browser gemerkt.
 var DV_TYPES = [['fault','Störungen','#3fae86'],['ticket','Tickets','#4b9fc4'],['maintenance','Wartung','#c99a3c'],['task','Aufgaben','#9d7fc9']];
 var DV_LABEL = {fault:'Störung', ticket:'Ticket', maintenance:'Wartung', task:'Aufgabe'};
+// Text des Fertigstellen-Knopfs je Art (wie im Arbeitsbereich)
+var DV_DONE = {fault:'Beheben', ticket:'Abschließen', maintenance:'Durchführen', task:'Erledigen'};
 function dvToday(){ return formatDateISO(new Date()); }
 function dvOverdue(t){ return !t.done && !t.provisional && t.end < dvToday(); }
 function dvFilter(boxId, storageKey, onChange){
@@ -270,9 +272,14 @@ function renderDashTable(){
     td(t.name);
     td(t.provisional ? '—' : t.end.split('-').reverse().join('.'), dvOverdue(t) ? 'dv-over' : '');
     td((t.running ? 'In Arbeit' : 'Offen') + (t.unassigned ? ' · ohne Zuständigen' : ''));
-    tr.addEventListener('click', function(){ window.location = t.url; });
+    // einheitlich aufklappbar (base.gohtml, data-rx): Ansehen / Bearbeiten / Fertigstellen
+    tr.setAttribute('data-rx', '');
+    tr.dataset.rxTitle = t.name;
+    if(t.url){ tr.dataset.rxView = t.url; tr.dataset.rxEdit = t.url; }
+    if(t.id && DV_DONE[t.refType]){ tr.dataset.rxDone = t.refType + ':' + t.id; tr.dataset.rxDoneLabel = DV_DONE[t.refType]; }
     body.appendChild(tr);
   });
+  if(window.pdhRowsPrepare) window.pdhRowsPrepare(body);
 }
 
 function renderDashGantt(){

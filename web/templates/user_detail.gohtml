@@ -76,7 +76,7 @@
       </div>
       {{if .Team}}
       <div class="rec-sec">Team ({{len .Team}})</div>
-      {{range .Team}}<a class="rec-row" href="/users/{{.ID}}"><i class="ti ti-user" style="color:var(--muted)"></i><div class="grow">{{.Name}}</div></a>{{end}}
+      {{range .Team}}<div class="rec-row" data-rx data-rx-view="/users/{{.ID}}" data-rx-edit="/users/{{.ID}}"><i class="ti ti-user" style="color:var(--muted)"></i><div class="grow">{{.Name}}</div></div>{{end}}
       {{end}}
     </div>
   </div>
