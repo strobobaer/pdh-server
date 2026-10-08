@@ -494,6 +494,22 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b>. Die Änderung steht im Reiter <b>Änderungen</b>.</li>
     </ol>
     Eine Anlage kann nicht unter sich selbst oder unter eine ihrer eigenen Unteranlagen gehängt werden.</div>
+  <h3 id="obligations"><i class="ti ti-clipboard-check"></i> Prüfpflichten &amp; Gefährdungsbeurteilungen</h3>
+  <p>Im Reiter <b>Prüfungen &amp; GBU</b> jeder Anlage stehen wiederkehrende <b>Prüfpflichten</b> (z. B. DGUV V3, UVV, Druckbehälter, Leitern) und <b>Gefährdungsbeurteilungen</b> nach ArbSchG §5. Bald Fälliges ist gelb, Überfälliges rot; die Zahl am Reiter zeigt, wie viele anstehen. Oben auf der Seite <b>Infrastruktur</b> stehen alle fälligen Einträge über alle Anlagen.</p>
+  <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Prüfpflicht oder GBU an</b>
+    <ol class="hb-steps">
+      <li>Anlage öffnen → Reiter <b>Prüfungen &amp; GBU</b> → bei Prüfpflichten bzw. Gefährdungsbeurteilungen <b>Hinzufügen</b>.</li>
+      <li>Bezeichnung, Grundlage, Prüfer/Firma und <b>Intervall</b> in Monaten eintragen (0 = einmalig).</li>
+      <li><b>Zuletzt erledigt</b> eintragen – die nächste Fälligkeit rechnet PDH selbst aus – oder die <b>nächste Fälligkeit</b> direkt angeben.</li>
+      <li><b>Erinnern (Tage vorher)</b> und die <b>verantwortliche Person</b> wählen → <b>Speichern</b>.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So erfasst du eine Durchführung</b>
+    <ol class="hb-steps">
+      <li>Eintrag anklicken → <b>Erledigt erfassen</b>.</li>
+      <li>Datum, Ergebnis (<b>ohne</b> oder <b>mit Mängeln</b>) und Bemerkung, z. B. Prüfbericht-Nr. → <b>Durchführung speichern</b>.</li>
+      <li>Die nächste Fälligkeit ist neu gesetzt; unter <b>Nachweise</b> stehen alle Durchführungen. Den Prüfbericht unter <b>Dokumente</b> ablegen.</li>
+    </ol>
+    <b>Erinnerung:</b> Die verantwortliche Person – ohne Eintrag alle Admins – bekommt im Chat eine Nachricht von „PDH System“, sobald der Vorlauf beginnt, und noch einmal, wenn die Fälligkeit überschritten ist. Neu anlegen, Durchführungen und Löschen stehen im Reiter <b>Änderungen</b>.</div>
   <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> Wer darf den Anlagenbaum ändern?</b>Anlegen, Bearbeiten und Deaktivieren von Gebäuden, Linien, Anlagen und Geräten braucht die Berechtigung <b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> (Kategorie „Infrastruktur“). Standardmäßig haben sie Administratoren und Manager; weiteren Rollen gibst du sie unter <b>Rollen &amp; Berechtigungen</b>. Ohne sie fehlen die Knöpfe „Hinzufügen“ und „Bearbeiten“ – ansehen, kommentieren und Vorgänge zuordnen geht weiterhin.</div>
   <h3 id="hmi"><i class="ti ti-device-desktop-analytics"></i> HMI-Fernzugriff</h3>
@@ -1072,7 +1088,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "versions") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles">
+<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles icons">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
@@ -1090,6 +1106,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>{{range .Items}}<li>{{.Label}} <code>{{.Key}}</code></li>{{end}}</ul>
   {{else}}<p class="rec-sub">Berechtigungen konnten nicht geladen werden.</p>{{end}}
   {{if $can}}<p class="rec-sub hb-shot-tools"><i class="ti ti-photo-plus"></i> Als Administrator kannst du unter jedem Kapitel eigene Bildschirmfotos hinzufügen – so wird das Handbuch zu eurem Handbuch.</p>{{end}}
+  <h3 id="icons"><i class="ti ti-icons"></i> Symbole anpassen</h3>
+  <p>Alle Symbole kommen aus einer Bibliothek mit rund 5.900 Symbolen (Tabler Icons), die der PDH-Server selbst ausliefert – es wird nichts aus dem Internet nachgeladen, PDH sieht also auch ohne Internetzugang vollständig aus. Unter <b>Verwaltung → Symbole</b> legst du fest, welches Symbol wofür steht: Navigation, Vorgangsarten und Datensätze, Anlagentypen, Lagertypen, IT-Typen und Knöpfe.</p>
+  <div class="hb-howto"><b><i class="ti ti-icons"></i> So tauschst du ein Symbol aus</b>
+    <ol class="hb-steps">
+      <li><b>Verwaltung → Symbole</b> öffnen (nur Administratoren).</li>
+      <li>Auf das Symbol links neben dem Eintrag klicken – die Auswahl öffnet sich. Suchbegriff eintippen (englisch, z. B. <i>tool</i>, <i>factory</i>, <i>plug</i>) und das passende Symbol anklicken. Wer den Namen kennt, trägt ihn direkt ins Feld ein.</li>
+      <li><b>Speichern</b> – die Änderung gilt sofort für alle. <i class="ti ti-restore"></i> setzt einen Eintrag auf die Vorgabe zurück, <b>Alles zurücksetzen</b> alle.</li>
+    </ol>
+    Geänderte Einträge sind farbig umrandet. In Auswahllisten (Ausklapplisten) zeigen Browser keine Symbole – dort steht nur der Name.</div>
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
 </section>
 

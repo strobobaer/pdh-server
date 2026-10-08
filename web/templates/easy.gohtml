@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>{{.AssetName}} – {{t "Meldung"}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{else}}<link rel="icon" href="/favicon.ico">{{end}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css">
 <style>
 /* Easy-Mode (easy_mode.go): eine Seite, große Tasten, für jedermann */
 *{box-sizing:border-box;margin:0;padding:0}
@@ -87,7 +87,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
   <!-- Start: Anlage, Melden, letzte Meldungen -->
   <section id="ez-home">
     <div class="ez-asset">
-      <div class="ic">{{.TypeIcon}}</div>
+      <div class="ic"><i class="ti {{.TypeIcon}}"></i></div>
       <div><h1>{{.AssetName}}</h1>{{if .AssetPath}}<div class="p">{{.AssetPath}}</div>{{end}}</div>
     </div>
     <div class="ez-actions">

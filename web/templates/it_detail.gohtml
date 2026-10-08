@@ -3,7 +3,7 @@
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
   {{template "icon-button" (dict "Action" "back" "Href" "/it")}}
   <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Asset.TypeIcon}} {{.Asset.Name}}</h1>
+    <h1 style="font-size:18px;font-weight:600"><i class="ti {{.Asset.TypeIcon}}"></i> {{.Asset.Name}}</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:2px">{{.Asset.TypeLabel}} · Erstellt {{.Asset.CreatedAgo}}{{if .Asset.InfraName}} · {{.Asset.InfraName}}{{end}}</p>
   </div>
   <span id="status-badge" class="badge {{.Asset.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Asset.StatusLabel}}</span>

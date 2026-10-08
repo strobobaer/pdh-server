@@ -10,6 +10,22 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.43.0] – 2026-10-08
+
+### Neu
+- Prüfpflichten und Gefährdungsbeurteilungen je Anlage (Reiter „Prüfungen & GBU“): Grundlage, Prüfer, Intervall, nächste Fälligkeit, Verantwortliche; „Erledigt erfassen“ mit Ergebnis setzt die nächste Fälligkeit und führt einen Nachweis
+- Erinnerung an Prüfpflichten und Gefährdungsbeurteilungen per Chat (PDH System) an die verantwortliche Person bzw. die Admins – zu Beginn des Vorlaufs und noch einmal bei Überfälligkeit
+- Überblick „Fällige Prüfungen & GBU“ über alle Anlagen oben auf der Infrastruktur-Seite
+- Symbole anpassen (Verwaltung → Symbole): für Navigation, Vorgangsarten, Anlagen-, Lager- und IT-Typen sowie Knöpfe das Symbol aus der Bibliothek (rund 5.900 Symbole, mit Suche) wählen
+
+### Geändert
+- Die Infrastruktur-Auswahl zeigt Gebäude, Linie, Anlage und Gerät nur noch als Symbol (Name im Tooltip) statt als englischen Text
+- Alle Symbole kommen jetzt vom eigenen Server statt aus dem Internet; PDH sieht auch ohne Internetzugang vollständig aus
+- Anlagen-, Lager- und IT-Typen haben einheitliche Symbole statt Emoji
+
+### Behoben
+- Die Easy-Mode-Seite zeigte statt des Anlagensymbols dessen technischen Namen
+
 ## [0.42.0] – 2026-10-08
 
 ### Neu

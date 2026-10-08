@@ -550,8 +550,8 @@ func loadListMine(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 	}
 	defer rows.Close()
 	meta := map[string][3]string{
-		"ticket": {"ti-ticket", "Ticket", "/tickets/"}, "fault": {"ti-alert-triangle", "Störung", "/faults/"},
-		"task": {"ti-list-check", "Aufgabe", "/tasks/"}, "maintenance": {"ti-tool", "Wartung", "/maintenance/tasks/"},
+		"ticket": {recordIcon("ticket"), "Ticket", "/tickets/"}, "fault": {recordIcon("fault"), "Störung", "/faults/"},
+		"task": {recordIcon("task"), "Aufgabe", "/tasks/"}, "maintenance": {recordIcon("maintenance"), "Wartung", "/maintenance/tasks/"},
 	}
 	perm := map[string]string{"ticket": "tickets.view", "fault": "faults.view", "task": "", "maintenance": "maintenance.view"}
 	var out []listItem

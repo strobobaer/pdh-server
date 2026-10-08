@@ -66,6 +66,7 @@ var navDefs = []navDef{
 
 	{navItem{"roles", "/admin/roles", "ti-shield-lock", "Rollen & Rechte", "roles", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"core", "/core/settings", "ti-settings", "Core-Einstellungen", "core-settings", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
+	{navItem{"icons", "/admin/icons", "ti-icons", "Symbole", "icons", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"categories", "/categories", "ti-hash", "Kategorien", "categories", false}, "admin", always},
 	{navItem{"serverconfig", "/admin/server-config", "ti-adjustments-cog", "Server-Einstellungen", "server-config", false}, "admin", func(b *BaseData) bool { return b.CanServerConfig }},
 	{navItem{"backup", "/admin/backup", "ti-database-export", "Datensicherung", "backup", false}, "admin", func(b *BaseData) bool { return b.CanBackup }},
@@ -222,6 +223,7 @@ func buildNav(b *BaseData, layout []navLayoutGroup) []navGroup {
 				continue
 			}
 			it := d.navItem
+			it.Icon = iconClass("nav." + key) // änderbar unter /admin/icons
 			it.Label = tr(b.Lang, it.Label)
 			if key == "trainings" && !b.CanTrainings {
 				it.Label = tr(b.Lang, "Meine Schulungen")

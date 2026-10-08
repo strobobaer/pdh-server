@@ -138,6 +138,9 @@ func (h *Handler) queryLinks(ctx context.Context, sql string, args ...interface{
 				it.Badge, it.BadgeClass = statusLabel(status), statusClass(status)
 			}
 			it.Frame = it.URL != ""
+			if key := linkRecordKey(it.URL); key != "" {
+				it.Icon = recordIcon(key) // Symbol-Tabelle statt fester Klasse im SQL
+			}
 			list = append(list, it)
 		}
 	}

@@ -148,7 +148,7 @@ func (h *Handler) CategoriesPage(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			mi := recordModules[module]
-			g := categoryGroup{Module: module, Label: mi.Label, Icon: mi.Icon}
+			g := categoryGroup{Module: module, Label: mi.Label, Icon: recordIcon(module)}
 			rs, err := h.db.Query(ctx, fmt.Sprintf(`
 				SELECT t.id::text, COALESCE(%s, '') FROM record_categories rc JOIN %s t ON t.id = rc.record_id
 				 WHERE rc.module = $1 AND rc.category_id = $2::uuid ORDER BY rc.created_at DESC LIMIT 300`, mi.TitleExpr, mi.Table),

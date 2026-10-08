@@ -20,6 +20,10 @@ func TemplateFuncs() template.FuncMap {
 		"join":       strings.Join,
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
+		// Symbol zum Schlüssel (icons.go): Vorgabe oder Änderung des Admins
+		"icon": iconClass,
+		// alle änderbaren Symbole als Map – für Skripte (window.PDH_ICONS)
+		"iconMap": iconMapAll,
 	}
 	for k, v := range i18nFuncs() { // t, lang, langs (Sprache wird je Ausgabe gebunden)
 		m[k] = v

@@ -26,6 +26,7 @@ type InfraPageData struct {
 	Stats          map[string]int
 	Types          []infraTypeOption
 	Message, Error string
+	DueObligations []obligationView // fällige Prüfungen & GBU über alle Anlagen
 }
 
 type InfraNodeView struct {
@@ -61,17 +62,19 @@ func (v InfraNodeView) InstalledLabel() string {
 
 type infraTypeOption struct{ Key, Label, Icon, Bg string }
 
-// infraTypes in der Reihenfolge der Hierarchie (Gebaeude → Gerät).
+// infraTypes in der Reihenfolge der Hierarchie (Gebaeude → Gerät); das Symbol
+// (Tabler-Klasse) kommt aus der Symbol-Tabelle (icons.go).
 var infraTypes = []infraTypeOption{
-	{"building", "Gebäude", "🏭", "rgba(99,102,241,.2)"},
-	{"line", "Linie", "🔄", "rgba(79,110,247,.2)"},
-	{"plant", "Anlage", "⚙️", "rgba(16,185,129,.2)"},
-	{"device", "Gerät", "🔌", "rgba(245,158,11,.2)"},
+	{"building", "Gebäude", "", "rgba(99,102,241,.2)"},
+	{"line", "Linie", "", "rgba(79,110,247,.2)"},
+	{"plant", "Anlage", "", "rgba(16,185,129,.2)"},
+	{"device", "Gerät", "", "rgba(245,158,11,.2)"},
 }
 
 func infraTypeOf(key string) (infraTypeOption, bool) {
 	for _, t := range infraTypes {
 		if t.Key == key {
+			t.Icon = infraTypeIcon(key)
 			return t, true
 		}
 	}
@@ -173,6 +176,7 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 	if stats, err := h.infra.GetStats(ctx); err == nil {
 		data.Stats = stats
 	}
+	data.DueObligations = h.dueObligations(ctx)
 	h.render(w, "infrastructure", data)
 }
 
@@ -259,6 +263,10 @@ type InfraDetailData struct {
 	DeptInherited  bool
 	HMI            hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
 	Message, Error string
+	Obligations    []obligationView // Reiter „Prüfungen & GBU“ (infra_obligations.go)
+	ObligationDue  int              // davon überfällig oder im Vorlauf
+	Users          []UserOption     // Verantwortliche
+	Today          string           // JJJJ-MM-TT (Formular „erledigt am“)
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +288,16 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		Message:        q.Get("msg"), Error: q.Get("err"),
 	}
 	data.PartnerLinks, data.SupplierID, data.ServiceID = h.infraPartnerLinks(ctx, id)
+	data.Obligations = h.infraObligations(ctx, id)
+	for _, o := range data.Obligations {
+		if o.State == "overdue" || o.State == "soon" {
+			data.ObligationDue++
+		}
+	}
+	data.Today = time.Now().Format("2006-01-02")
+	if data.CanEditInfra {
+		data.Users = h.userOptions(ctx)
+	}
 	if data.CanEditInfra {
 		data.Departments = h.loadDepartments(ctx)
 		data.ParentOptions = flattenNodes(h.infraTreeViews(ctx), "", id)

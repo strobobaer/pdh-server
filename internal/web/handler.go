@@ -387,6 +387,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/{id}/comments/{commentId}/pin", h.InfraCommentPinWeb)
 	r.Post("/infrastructure/{id}/comments/{commentId}/delete", h.InfraCommentDeleteWeb)
 	r.Post("/infrastructure", h.InfraCreate)
+	// Prüfpflichten & Gefährdungsbeurteilungen (infra_obligations.go)
+	r.Post("/infrastructure/{id}/obligations", h.InfraObligationSaveWeb)
+	r.Post("/infrastructure/{id}/obligations/{oid}", h.InfraObligationSaveWeb)
+	r.Post("/infrastructure/{id}/obligations/{oid}/done", h.InfraObligationDoneWeb)
+	r.Post("/infrastructure/{id}/obligations/{oid}/delete", h.InfraObligationDeleteWeb)
 	r.Get("/it", h.ITPage)
 	r.Post("/it", h.ITCreate)
 	r.Get("/it/{id}", h.ITDetail)
@@ -592,6 +597,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/roles", h.RolesPage)
 	r.Get("/admin/orgchart", h.OrgChartPage)
 	r.Get("/core/settings", h.CoreSettingsPage)
+	// Symbole (icons.go)
+	r.Get("/admin/icons", h.IconsPage)
+	r.Get("/admin/icons/names", h.IconNamesWeb)
+	r.Post("/admin/icons", h.IconsSaveWeb)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
 	r.Get("/core/settings/drives", h.DrivesPage)
 	r.Post("/core/settings/drives", h.DriveSaveWeb)
@@ -2540,12 +2549,8 @@ type StoragePageData struct {
 	Stats map[string]int
 }
 
-var storageTypeIcons = map[storage.NodeType]string{
-	storage.TypeLagerort: "🏭",
-	storage.TypeRegal:    "🗄️",
-	storage.TypeFach:     "📁",
-	storage.TypePlatz:    "📦",
-}
+// storageTypeIcon: Symbol des Lagertyps (icons.go, änderbar unter /admin/icons).
+func storageTypeIcon(t storage.NodeType) string { return iconClass("storage." + string(t)) }
 
 var storageTypeLabels = map[storage.NodeType]string{
 	storage.TypeLagerort: "Lagerort",
@@ -2569,7 +2574,7 @@ func storageNodeView(n *storage.Node) StorageNodeView {
 		Name:         n.Name,
 		Type:         string(n.Type),
 		TypeLabel:    storageTypeLabels[n.Type],
-		TypeIcon:     storageTypeIcons[n.Type],
+		TypeIcon:     storageTypeIcon(n.Type),
 		Description:  n.Description,
 		Location:     n.Location,
 		Capacity:     n.Capacity,
@@ -3665,7 +3670,7 @@ func (h *Handler) ITPage(w http.ResponseWriter, r *http.Request) {
 		Filter:   r.URL.Query().Get("type"), Stats: map[string]int{},
 	}
 	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := map[string]string{"server": "🖥️", "network": "🌐", "workstation": "💻", "printer": "🖨️", "phone": "📱", "tablet": "📟", "other": "📦"}
+	typeIcons := itTypeIcons()
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	if list, err := h.it.List(r.Context(), it.AssetType(data.Filter), ""); err == nil {
@@ -3706,10 +3711,10 @@ func (h *Handler) ITCreate(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "<tr><td>Fehler: %s</td></tr>", err.Error())
 		return
 	}
-	icons := map[string]string{"server": "🖥️", "network": "🌐", "workstation": "💻", "printer": "🖨️", "phone": "📱", "tablet": "📟", "other": "📦"}
+	icons := itTypeIcons()
 	labels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
 	t := string(a.Type)
-	fmt.Fprintf(w, "<tr><td><b>%s</b><div style=\"font-size:11px;color:var(--muted)\">%s</div><div style=\"font-size:11px;color:var(--muted)\">%s</div></td><td>%s %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td><td></td></tr>",
+	fmt.Fprintf(w, "<tr><td><b>%s</b><div style=\"font-size:11px;color:var(--muted)\">%s</div><div style=\"font-size:11px;color:var(--muted)\">%s</div></td><td><i class=\"ti %s\"></i> %s</td><td>%s</td><td>%s</td><td><span class=\"badge b-green\">Aktiv</span></td></tr>",
 		esc(a.Name), esc(a.InfraName), esc(a.Notes), esc(icons[t]), esc(labels[t]), esc(a.IPAddress), esc(a.Location))
 }
 
@@ -3726,7 +3731,7 @@ func (h *Handler) ITStatusWeb(w http.ResponseWriter, r *http.Request) {
 
 func itAssetDetailView(a *it.Asset) ITAssetDetailView {
 	typeLabels := map[string]string{"server": "Server", "network": "Netzwerk", "workstation": "Workstation", "printer": "Drucker", "phone": "Telefon", "tablet": "Tablet", "other": "Sonstiges"}
-	typeIcons := map[string]string{"server": "🖥️", "network": "🌐", "workstation": "💻", "printer": "🖨️", "phone": "📱", "tablet": "📟", "other": "📦"}
+	typeIcons := itTypeIcons()
 	statusLabels := map[string]string{"active": "Aktiv", "inactive": "Inaktiv", "maintenance": "Wartung", "retired": "Außer Dienst"}
 	statusClasses := map[string]string{"active": "b-green", "inactive": "b-gray", "maintenance": "b-amber", "retired": "b-red"}
 	v := ITAssetDetailView{

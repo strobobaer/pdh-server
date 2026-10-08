@@ -30,11 +30,14 @@
 .ih-act{width:30px;height:30px;border:0;background:none;color:var(--muted);border-radius:6px;cursor:pointer}
 .ih-act:hover{background:var(--bg3);color:var(--text)}
 .ih-parts th,.ih-parts td{padding:6px 8px;font-size:12px}
+.ob-row .ob-ic{font-size:18px;color:var(--green)}.ob-overdue .ob-ic{color:var(--red)}.ob-soon .ob-ic{color:var(--amber)}.ob-none .ob-ic{color:var(--muted)}
+.ob-sub,.ob-new{flex-basis:100%;border-top:1px dashed var(--border);padding-top:10px;margin-top:4px}
+.ob-form .cols{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 </style>
 {{$n := .Node}}
 <div class="rec-head">
   {{template "icon-button" (dict "Action" "back" "Href" (or (and .Parent (printf "/infrastructure/%s" .Parent.ID)) "/infrastructure"))}}
-  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;font-size:24px;background:{{css $n.TypeBg}}" title="{{$n.TypeLabel}}">{{$n.TypeIcon}}</div>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;font-size:24px;background:{{css $n.TypeBg}}" title="{{$n.TypeLabel}}"><i class="ti {{$n.TypeIcon}}"></i></div>
   <div class="t">
     <h1>{{$n.Name}}</h1>
     <div class="sub">
@@ -62,6 +65,7 @@
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   {{if .CanEditInfra}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
+  <a class="rec-tab" data-tab="checks" href="?tab=checks"><i class="ti ti-clipboard-check"></i> Prüfungen &amp; GBU{{if .ObligationDue}} <b style="background:var(--amber);color:#000">{{.ObligationDue}}</b>{{else if .Obligations}} <b>{{len .Obligations}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
@@ -82,7 +86,7 @@
       <div class="cols">
         <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="255"></div>
         <div class="form-group"><label class="form-label">Typ *</label>
-          <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key "device"}}selected{{end}}>{{.Icon}} {{.Label}}</option>{{end}}</select></div>
+          <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key "device"}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
         <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" maxlength="255" value="{{$n.Location}}"></div>
       </div>
       <p class="rec-sub" style="margin:2px 0 10px"><i class="ti ti-info-circle"></i> Alle weiteren Angaben ergänzt du direkt danach im Reiter „Stammdaten“ der neuen Unteranlage.</p>
@@ -98,8 +102,8 @@
     <div class="card" style="margin:0">
       <div class="card-title"><span><i class="ti ti-info-circle"></i> Stammdaten</span>
         {{if .CanEditInfra}}<a class="btn btn-small" href="?tab=master" onclick="recTab('master');return false"><i class="ti ti-edit"></i> Bearbeiten</a>{{end}}</div>
-      <div class="rec-f"><div class="rec-l">Typ</div><div class="rec-v">{{$n.TypeIcon}} {{$n.TypeLabel}}</div></div>
-      {{if .Parent}}<div class="rec-f"><div class="rec-l">Übergeordnet</div><div class="rec-v"><a href="/infrastructure/{{.Parent.ID}}">{{.Parent.TypeIcon}} {{.Parent.Name}}</a></div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Typ</div><div class="rec-v"><i class="ti {{$n.TypeIcon}}"></i> {{$n.TypeLabel}}</div></div>
+      {{if .Parent}}<div class="rec-f"><div class="rec-l">Übergeordnet</div><div class="rec-v"><a href="/infrastructure/{{.Parent.ID}}"><i class="ti {{.Parent.TypeIcon}}"></i> {{.Parent.Name}}</a></div></div>{{end}}
       {{if $n.Location}}<div class="rec-f"><div class="rec-l">Standort</div><div class="rec-v">{{$n.Location}}</div></div>{{end}}
       {{if $n.ManufacturerName}}<div class="rec-f"><div class="rec-l">Hersteller</div><div class="rec-v"><a href="/directory/{{$n.ManufacturerID}}" data-frame data-frame-title="{{$n.ManufacturerName}}">{{$n.ManufacturerName}}</a></div></div>
       {{else if $n.Manufacturer}}<div class="rec-f"><div class="rec-l">Hersteller</div><div class="rec-v">{{$n.Manufacturer}}</div></div>{{end}}
@@ -120,7 +124,7 @@
       <div id="children-list">
         {{range .Children}}
         <div class="rec-row" data-rx data-rx-view="/infrastructure/{{.ID}}" data-rx-edit="/infrastructure/{{.ID}}">
-          <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{css .TypeBg}};flex-shrink:0">{{.TypeIcon}}</div>
+          <div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:{{css .TypeBg}};flex-shrink:0"><i class="ti {{.TypeIcon}}"></i></div>
           <div class="grow">{{.Name}}<div class="rec-sub">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .ManufacturerName}} · {{.ManufacturerName}}{{else if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div></div>
           <i class="ti ti-chevron-right" style="color:var(--muted)"></i>
         </div>
@@ -140,11 +144,11 @@
     <div class="cols">
       <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" value="{{$n.Name}}" required maxlength="255"></div>
       <div class="form-group"><label class="form-label">Typ *</label>
-        <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key $n.Type}}selected{{end}}>{{.Icon}} {{.Label}}</option>{{end}}</select></div>
+        <select name="type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key $n.Type}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
       <div class="form-group"><label class="form-label">Übergeordnet</label>
         <select name="parent_id" class="form-input">
           <option value="">– oberste Ebene –</option>
-          {{range .ParentOptions}}<option value="{{.ID}}" {{if eq .ID $n.ParentID}}selected{{end}}>{{.TypeIcon}} {{.Path}}</option>{{end}}
+          {{range .ParentOptions}}<option value="{{.ID}}" {{if eq .ID $n.ParentID}}selected{{end}}>{{.Path}}</option>{{end}}
         </select></div>
       <div class="form-group"><label class="form-label">Standort</label><input name="location" class="form-input" value="{{$n.Location}}" maxlength="255" placeholder="z. B. Halle A"></div>
     </div>
@@ -178,6 +182,51 @@
   </form>
 </div>
 {{end}}
+
+<!-- ── Prüfungen & Gefährdungsbeurteilungen (infra_obligations.go) ── -->
+<div class="rec-pane" data-pane="checks">
+  {{range $kind := (list "inspection" "risk_assessment")}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti {{if eq $kind "inspection"}}ti-clipboard-check{{else}}ti-shield-check{{end}}"></i> {{if eq $kind "inspection"}}Prüfpflichten{{else}}Gefährdungsbeurteilungen{{end}}</span>
+      {{if $.CanEditInfra}}<button type="button" class="btn btn-small" onclick="obNew('{{$kind}}')"><i class="ti ti-plus"></i> Hinzufügen</button>{{end}}</div>
+    {{$any := false}}
+    {{range $.Obligations}}{{if eq .Kind $kind}}{{$any = true}}
+    <div class="rec-row ob-row ob-{{.State}}" data-rx data-rx-title="{{.Title}}">
+      <i class="ti {{if eq .State "overdue"}}ti-alert-octagon{{else if eq .State "soon"}}ti-bell-ringing{{else}}ti-circle-check{{end}} ob-ic"></i>
+      <div class="grow"><b>{{.Title}}</b>
+        <div class="rec-sub">{{if .Basis}}{{.Basis}} · {{end}}{{if .IntervalMonths}}alle {{.IntervalMonths}} Monate{{else}}einmalig{{end}}{{if .Inspector}} · {{.Inspector}}{{end}}{{if .ResponsibleName}} · <i class="ti ti-user"></i> {{.ResponsibleName}}{{end}}</div></div>
+      <div style="text-align:right;white-space:nowrap"><span class="badge {{.StateClass}}">{{.StateLabel}}</span>
+        <div class="rec-sub">{{if .NextDue}}fällig {{.NextDue}}{{end}}{{if .LastDone}} · zuletzt {{.LastDone}}{{end}}</div></div>
+      <template class="rx-more">
+        {{if .Notes}}<div class="rec-sub" style="flex-basis:100%;white-space:pre-wrap">{{.Notes}}</div>{{end}}
+        {{if $.CanEditInfra}}
+        <button type="button" class="btn btn-small cw-finish" onclick="obToggle(this,'.ob-done')"><i class="ti ti-circle-check"></i> Erledigt erfassen</button>
+        <button type="button" class="btn btn-small" onclick="obToggle(this,'.ob-edit')"><i class="ti ti-edit"></i> Bearbeiten</button>
+        {{end}}
+        {{if .Log}}<button type="button" class="btn btn-small" onclick="obToggle(this,'.ob-log')"><i class="ti ti-history"></i> Nachweise ({{len .Log}})</button>{{end}}
+        {{if $.CanEditInfra}}
+        <form method="post" action="/infrastructure/{{$.Node.ID}}/obligations/{{.ID}}/delete" onsubmit="return confirm('„{{.Title}}“ mit allen Nachweisen löschen?')" style="margin-left:auto"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>
+        <form class="ob-sub ob-done rec-form" method="post" action="/infrastructure/{{$.Node.ID}}/obligations/{{.ID}}/done" hidden>
+          <div class="cols">
+            <div class="form-group"><label class="form-label">Durchgeführt am *</label><input type="date" name="done_on" class="form-input" value="{{$.Today}}" max="{{$.Today}}" required></div>
+            <div class="form-group"><label class="form-label">Ergebnis</label><select name="result" class="form-input"><option value="ok">ohne Mängel</option><option value="defects">mit Mängeln</option></select></div>
+          </div>
+          <div class="form-group"><label class="form-label">Bemerkung / Prüfbericht-Nr.</label><input name="note" class="form-input" maxlength="1000"></div>
+          <p class="rec-sub" style="margin:-4px 0 8px">{{if .IntervalMonths}}Nächste Fälligkeit: Datum + {{.IntervalMonths}} Monate.{{else}}Einmalig – danach ohne neue Fälligkeit.{{end}} Den Prüfbericht unter <b>Dokumente</b> ablegen.</p>
+          <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Durchführung speichern</button>
+        </form>
+        <div class="ob-sub ob-edit" hidden>{{template "obligation-form" (dict "O" . "Users" $.Users "Action" (printf "/infrastructure/%s/obligations/%s" $.Node.ID .ID) "Kind" .Kind)}}</div>
+        {{end}}
+        {{if .Log}}<div class="ob-sub ob-log" hidden>{{range .Log}}<div class="rec-f"><div class="rec-l">{{.DoneOn}}</div><div class="rec-v"><span class="badge {{if .Defects}}b-amber{{else}}b-green{{end}}">{{if .Defects}}mit Mängeln{{else}}ohne Mängel{{end}}</span> {{.Note}}{{if .DoneBy}} <span class="rec-sub">· {{.DoneBy}}</span>{{end}}</div></div>{{end}}</div>{{end}}
+      </template>
+    </div>
+    {{end}}{{end}}
+    {{if not $any}}<div class="rec-sub" style="padding:10px 0">{{if eq $kind "inspection"}}Noch keine Prüfpflichten – z. B. DGUV V3, UVV-Prüfung, Druckbehälter, Leitern und Tritte.{{else}}Noch keine Gefährdungsbeurteilung – nach ArbSchG §5 für jede Anlage bzw. jeden Arbeitsplatz.{{end}}</div>{{end}}
+    {{if $.CanEditInfra}}<div id="ob-new-{{$kind}}" class="ob-new" hidden>{{template "obligation-form" (dict "O" nil "Users" $.Users "Action" (printf "/infrastructure/%s/obligations" $.Node.ID) "Kind" $kind)}}</div>{{end}}
+  </div>
+  {{end}}
+  <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „PDH System“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>
+</div>
 
 <!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->
 <div class="rec-pane" data-pane="events">
@@ -304,10 +353,34 @@
 <div class="rec-pane" data-pane="history">{{template "record-history-slot" (dict "Module" "infrastructure" "ID" .Node.ID)}}</div>
 {{end}}
 
+{{/* Prüfpflicht / Gefährdungsbeurteilung anlegen oder ändern: O = obligationView oder nil */}}
+{{define "obligation-form"}}{{$o := .O}}
+<form class="rec-form ob-form" method="post" action="{{.Action}}">
+  <div class="cols">
+    <div class="form-group"><label class="form-label">Art</label>
+      <select name="kind" class="form-input"><option value="inspection" {{if eq .Kind "inspection"}}selected{{end}}>Prüfpflicht</option><option value="risk_assessment" {{if eq .Kind "risk_assessment"}}selected{{end}}>Gefährdungsbeurteilung</option></select></div>
+    <div class="form-group" style="grid-column:span 2"><label class="form-label">Bezeichnung *</label><input name="title" class="form-input" required maxlength="200" value="{{if $o}}{{$o.Title}}{{end}}" placeholder="{{if eq .Kind "inspection"}}z. B. Prüfung elektrischer Anlagen (DGUV V3){{else}}z. B. GBU Bandsäge – Schnitt- und Lärmgefährdung{{end}}"></div>
+    <div class="form-group"><label class="form-label">Grundlage</label><input name="basis" class="form-input" maxlength="200" value="{{if $o}}{{$o.Basis}}{{end}}" placeholder="{{if eq .Kind "inspection"}}BetrSichV, DGUV V3 …{{else}}ArbSchG §5, BetrSichV §3{{end}}"></div>
+    <div class="form-group"><label class="form-label">{{if eq .Kind "inspection"}}Prüfer / Firma{{else}}Erstellt von{{end}}</label><input name="inspector" class="form-input" maxlength="200" value="{{if $o}}{{$o.Inspector}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Intervall (Monate, 0 = einmalig)</label><input type="number" name="interval_months" min="0" max="240" class="form-input" value="{{if $o}}{{$o.IntervalMonths}}{{else}}{{if eq .Kind "inspection"}}12{{else}}24{{end}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Zuletzt erledigt</label><input type="date" name="last_done" class="form-input" value="{{if $o}}{{$o.LastDoneISO}}{{end}}"></div>
+    <div class="form-group"><label class="form-label">Nächste Fälligkeit</label><input type="date" name="next_due" class="form-input" value="{{if $o}}{{$o.NextDueISO}}{{end}}" title="leer = zuletzt erledigt + Intervall"></div>
+    <div class="form-group"><label class="form-label">Erinnern (Tage vorher)</label><input type="number" name="remind_days" min="0" max="365" class="form-input" value="{{if $o}}{{$o.RemindDays}}{{else}}30{{end}}"></div>
+    <div class="form-group"><label class="form-label">Verantwortlich (bekommt die Erinnerung)</label>
+      <select name="responsible_to" class="form-input"><option value="">– Admins –</option>{{range .Users}}<option value="{{.ID}}" {{if and $o (eq .ID $o.ResponsibleID)}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  </div>
+  <div class="form-group"><label class="form-label">Notiz</label><textarea name="notes" class="form-input" rows="2">{{if $o}}{{$o.Notes}}{{end}}</textarea></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px">
+    <button type="button" class="btn btn-small" onclick="this.closest('.ob-new,.ob-sub').hidden=true">Abbrechen</button>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </div>
+</form>
+{{end}}
+
 {{define "context-list"}}
 {{range .Children}}
 <div class="act-item" onclick="window.location='/infrastructure/{{.ID}}'" style="cursor:pointer">
-  <div style="font-size:12px">{{.TypeIcon}}</div>
+  <div style="font-size:13px"><i class="ti {{.TypeIcon}}"></i></div>
   <div class="act-text">{{.Name}}</div>
   <i class="ti ti-chevron-right" style="font-size:12px;color:var(--muted)"></i>
 </div>
@@ -319,6 +392,19 @@
 function toggleMenu(id){const m=document.getElementById(id);m.style.display=m.style.display==='none'?'block':'none';}
 function closeMenu(id){document.getElementById(id).style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('[onclick*="toggleMenu"]')&&!e.target.closest('[id$="-menu"]'))document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');});
+// Prüfungen & GBU: Unterformulare im aufgeklappten Bereich, neues Formular je Art
+function obToggle(btn, sel) {
+  const box = btn.closest('.rx-box');
+  box.querySelectorAll('.ob-sub').forEach(f => { if(!f.matches(sel)) f.hidden = true; });
+  const f = box.querySelector(sel);
+  if(f){ f.hidden = !f.hidden; if(!f.hidden){ const i = f.querySelector('input,select'); if(i) i.focus(); } }
+}
+function obNew(kind) {
+  const f = document.getElementById('ob-new-' + kind);
+  if(!f) return;
+  f.hidden = !f.hidden;
+  if(!f.hidden) f.querySelector('input[name="title"]').focus();
+}
 function openAddChild() {
   recTab('overview');
   const box = document.getElementById('add-child');

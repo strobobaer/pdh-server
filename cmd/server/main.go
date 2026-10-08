@@ -257,6 +257,8 @@ func main() {
 	webHandler.StartChangeNotifier(context.Background())
 	maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 	webHandler.StartTrainingScheduler(context.Background())
+	webHandler.StartObligationReminders(context.Background())
+	webHandler.LoadIconOverrides(context.Background())
 	webHandler.StartKVPScheduler(context.Background())
 	webHandler.StartDriveMonitor(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
@@ -311,6 +313,8 @@ func main() {
 	for _, name := range web.AppIconFiles {
 		r.Handle("/"+name, icons)
 	}
+	// Symbol-Bibliothek (Tabler Icons) lokal statt aus dem Internet
+	r.Handle("/vendor/tabler-icons/*", icons)
 
 	// Static uploads
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))

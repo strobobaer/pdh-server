@@ -257,6 +257,7 @@ func (h *Handler) WorkBoardPage(w http.ResponseWriter, r *http.Request, kindKey 
 
 // buildWorkArea fuellt den gewaehlten Reiter; tab leer = aus der Adresse.
 func (h *Handler) buildWorkArea(r *http.Request, k workKind, tab string) workArea {
+	k.Icon = recordIcon(k.Module) // Symbol-Tabelle (icons.go)
 	q := r.URL.Query()
 	a := workArea{Kind: k, Q: strings.TrimSpace(q.Get("q")), Prio: q.Get("prio"), Infra: q.Get("infra"), Project: q.Get("project"),
 		Notice: q.Get("notice")}

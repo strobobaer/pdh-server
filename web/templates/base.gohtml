@@ -38,7 +38,7 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
 })();
 </script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -448,7 +448,7 @@ div.rx-panel{background:rgba(var(--accent-rgb),.05);border-bottom:1px solid var(
 .infra-picker-spacer{width:24px;height:24px;display:inline-block;flex-shrink:0}
 .infra-picker-select{flex:1;text-align:left;background:transparent;border:0;color:var(--text);padding:6px;border-radius:6px;cursor:pointer;min-width:0;font:inherit}
 .infra-picker-select:hover{background:rgba(var(--accent-rgb),.1)}
-.infra-picker-type{color:var(--muted);font-size:10px}
+.infra-picker-ic{display:inline-block;width:20px;text-align:center;cursor:help}
 /* ── Forms ── */
 .form-group{margin-bottom:14px}
 .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
@@ -1327,7 +1327,11 @@ function bindContextMenu(el, itemsFn){
     showContextMenu(event, itemsFn(event));
   });
 }
-function infraIcon(type){return ({building:'🏭',line:'🔄',plant:'⚙️',device:'🔌'}[type]||'📍')}
+// Symbole aus der Symbol-Tabelle (icons.go, änderbar unter /admin/icons)
+const PDH_ICONS = {{iconMap}};
+function infraIcon(type){return '<i class="ti ' + (PDH_ICONS['infra.' + type] || 'ti-point') + '"></i>'}
+// Typ nur als Symbol im Baum; der Name steht im Tooltip (title) und für Screenreader im aria-label
+const INFRA_TYPE_LABEL = {building:'Gebäude', line:'Linie', plant:'Anlage', device:'Gerät'};
 function collectInfraBranches(nodes, set){(nodes||[]).forEach(n=>{if((n.children||[]).length){set.add(n.id); collectInfraBranches(n.children,set)}})}
 function selectInfra(btn){
   const root=btn.closest('[data-infra-picker]');
@@ -1398,7 +1402,7 @@ function renderInfraNodes(root, nodes, depth){
     const toggle=hasChildren
       ? `<button type="button" class="infra-picker-toggle" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}"><i class="ti ti-chevron-right"></i></button>`
       : `<span class="infra-picker-spacer"></span>`;
-    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row${root.__infraFocus===n.id?' is-focus':''}">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)">${infraIcon(n.type)} ${escapeHtml(n.name)} <span class="infra-picker-type">${escapeHtml(n.type)}</span></button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
+    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row${root.__infraFocus===n.id?' is-focus':''}">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)" aria-label="${escapeHtml((INFRA_TYPE_LABEL[n.type]||n.type)+': '+n.name)}"><span class="infra-picker-ic" title="${escapeHtml(INFRA_TYPE_LABEL[n.type]||n.type)}" aria-hidden="true">${infraIcon(n.type)}</span> ${escapeHtml(n.name)}</button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
   }).join('');
 }
 function toggleInfraBranch(event, btn){

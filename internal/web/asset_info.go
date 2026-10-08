@@ -149,7 +149,7 @@ func (h *Handler) AssetInfoPage(w http.ResponseWriter, r *http.Request) {
 		if ck.Perm != "" && !h.hasPerm(r, ck.Perm) && !h.hasPerm(r, strings.Replace(ck.Perm, ".view", ".edit", 1)) {
 			continue
 		}
-		g := assetOpenGroup{Key: k.Key, Label: k.Label, Icon: k.Icon, NewType: k.NewType, NewLabel: k.NewLabel, ListURL: k.ListURL}
+		g := assetOpenGroup{Key: k.Key, Label: k.Label, Icon: recordIcon(k.Key), NewType: k.NewType, NewLabel: k.NewLabel, ListURL: k.ListURL}
 		g.Items, g.More = h.assetOpenItems(ctx, ck, cond, arg, scope, id, kind)
 		q := url.Values{"type": {k.NewType}, "back": {back}}
 		infraID := a.ID
@@ -184,18 +184,12 @@ func (h *Handler) AssetInfoPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "asset_info", d)
 }
 
+// infraTypeIcon: Symbol des Anlagentyps (icons.go, änderbar unter /admin/icons).
 func infraTypeIcon(typ string) string {
-	switch typ {
-	case "building":
-		return "ti-building-factory-2"
-	case "line":
-		return "ti-route"
-	case "plant":
-		return "ti-settings"
-	case "device":
-		return "ti-plug"
+	if iconDefault("infra."+typ) == "" {
+		return "ti-hierarchy-2"
 	}
-	return "ti-hierarchy-2"
+	return iconClass("infra." + typ)
 }
 
 func (h *Handler) loadAssetInfo(ctx context.Context, kind, id string) (assetInfoView, error) {

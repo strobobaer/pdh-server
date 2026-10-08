@@ -20,8 +20,13 @@ func AppIconHandler() http.Handler {
 	}
 	files := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if path.Ext(r.URL.Path) == ".webmanifest" {
+		switch path.Ext(r.URL.Path) {
+		case ".webmanifest":
 			w.Header().Set("Content-Type", "application/manifest+json")
+		case ".woff2": // Symbol-Bibliothek (vendor/tabler-icons)
+			w.Header().Set("Content-Type", "font/woff2")
+		case ".woff":
+			w.Header().Set("Content-Type", "font/woff")
 		}
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		files.ServeHTTP(w, r)
