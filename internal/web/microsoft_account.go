@@ -57,6 +57,8 @@ type AccountPageData struct {
 	MicrosoftWork       MicrosoftAccountView
 	MicrosoftPrivate    MicrosoftAccountView
 	Notice              string
+	UserID              string // Profilbild (avatar.go)
+	Initials, AvatarBg  string
 }
 
 // MicrosoftAccountView beschreibt eine Microsoft-Verbindung eines Nutzers -
@@ -110,6 +112,9 @@ func (h *Handler) AccountPage(w http.ResponseWriter, r *http.Request) {
 		MicrosoftConfigured: h.microsoft.configured(),
 		Notice:              r.URL.Query().Get("notice"),
 	}
+	u := getUser(r)
+	data.UserID = u.ID
+	data.Initials, data.AvatarBg = avatarFor(u.FirstName, u.LastName)
 	data.MicrosoftWork = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountWork)
 	data.MicrosoftPrivate = h.loadMicrosoftAccountView(r.Context(), getUser(r).ID, microsoftAccountPrivate)
 	h.render(w, "account", data)

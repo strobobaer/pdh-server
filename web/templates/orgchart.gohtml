@@ -57,7 +57,7 @@
                style="cursor:pointer" onclick="location.href='/users?edit={{.ID}}'"
                oncontextmenu="showContextMenu(event, userCardContextItems('{{.ID}}','{{.FullName}}')); return false;"
                title="{{.FullName}} · klicken zum Bearbeiten{{if .CanManage}} · ziehen, um die Rolle zu ändern{{end}}">
-            <div style="width:22px;height:22px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
+            <div style="width:22px;height:22px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0;overflow:hidden">{{if .AvatarURL}}<img src="{{.AvatarURL}}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">{{else}}{{.Initials}}{{end}}</div>
             <span style="max-width:130px;overflow:hidden;text-overflow:ellipsis">{{.FullName}}</span>
             {{if $.CanManageRoles}}<a href="/users?permissions={{.ID}}" title="Einzelrechte bearbeiten" style="color:var(--muted);display:flex;margin-left:2px" onclick="event.stopPropagation()"><i class="ti ti-shield-lock" style="font-size:13px"></i></a>{{end}}
           </div>

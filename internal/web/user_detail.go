@@ -56,6 +56,7 @@ type UserDetailData struct {
 	CanEditMaster       bool
 	CanEditCore         bool // Grunddaten-Dialog in der Benutzerliste
 	CanBroker           bool // Broker-Rollen vergeben (nur Benutzerverwaltung)
+	CanAvatar           bool // Profilbild ändern (selbst oder Benutzerverwaltung)
 	CanPrivate          bool
 	CanPermissions      bool
 	Team                []UserOption
@@ -125,6 +126,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		User:   h.userView(string(actor.Role), u, h.roleLabelMap(ctx), userNames, map[string]bool{}),
 		IsSelf: self, HasPassword: self && u.PasswordHash != "", CanEditMaster: editMaster, CanEditCore: editCore,
 		CanBroker:      h.canManageUsers(r),
+		CanAvatar:      self || h.canManageUsers(r),
 		CanPrivate:     h.canPrivateData(r, id),
 		CanPermissions: !self && h.canEditUserPermissions(r, string(u.Role)),
 		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
@@ -175,6 +177,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Departments = h.departmentNames(ctx)
 	d.Groups = h.userGroups(ctx, d.User.ID)
+	d.User.AvatarURL = h.userAvatarURL(ctx, d.User.ID)
 	if d.CanEditMaster {
 		d.AllGroups = h.loadGroups(ctx)
 	}

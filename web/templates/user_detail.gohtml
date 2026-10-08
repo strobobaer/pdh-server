@@ -3,7 +3,9 @@
 {{$u := .User}}{{$m := .Master}}{{$p := .Private}}
 <div class="rec-head">
   <a class="btn btn-icon" href="{{if .IsSelf}}/{{else}}/users{{end}}" title="Zurück"><i class="ti ti-arrow-left"></i></a>
-  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;background:{{$u.AvatarBg}};color:#fff;font-size:20px;font-weight:600;border-radius:50%">{{$u.Initials}}</div>
+  {{if .CanAvatar}}{{template "avatar-edit" (dict "ID" $u.ID "URL" $u.AvatarURL "Initials" $u.Initials "Bg" $u.AvatarBg "Back" (printf "/users/%s?tab=%s" $u.ID (or .Tab "overview")))}}
+  {{else if $u.AvatarURL}}<img class="rec-img" src="{{$u.AvatarURL}}" alt="" style="border-radius:50%">
+  {{else}}<div class="rec-img" style="display:flex;align-items:center;justify-content:center;background:{{$u.AvatarBg}};color:#fff;font-size:20px;font-weight:600;border-radius:50%">{{$u.Initials}}</div>{{end}}
   <div class="t">
     <h1>{{$u.FullName}} {{if .IsSelf}}<span class="badge b-blue">Mein Konto</span>{{end}} {{if not $u.Active}}<span class="badge b-gray">inaktiv</span>{{end}}</h1>
     <div class="sub">

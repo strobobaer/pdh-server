@@ -202,7 +202,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Kommentar:</b> kurz, was gemacht wurde – erscheint als Maßnahme im Verlauf. Bei Tickets, Störungen und Aufgaben optional die <b>Ursache</b>.</li>
       <li><b>Fertig</b> macht die Reservierungen zum Verbrauch und schließt ab. <b>Geht noch weiter</b> speichert Zeit, Reservierung und Kommentar – der Vorgang bleibt <i>in Bearbeitung</i>, z. B. bei Schichtende oder wenn Teile fehlen.</li>
     </ol>
-    Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von PDH-System. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
+    Die Ausgewählten bekommen denselben Zeitraum als <b style="color:var(--amber)">gelben Eintrag</b> in ihre Zeiterfassung und einen Chat-Hinweis von „Service“. Erst wenn sie ihn mit dem <b style="color:var(--green)">grünen Haken</b> bestätigen, zählt die Zeit (<a href="#time">mehr</a>).</div>
   <ul>
     <li>Bei <b>Wartungen</b> mit Checkliste ist die <b>Checkliste der erste Schritt</b> des Assistenten – Punkt für Punkt mit Foto je Punkt, auch am Leitstand. Beim Abschluss entsteht das Wartungsprotokoll als PDF an Auftrag und Anlage (<a href="#maintenance">mehr</a>).</li>
     <li>Kann der Vorgang nicht geschlossen werden (z. B. fehlt dir die Berechtigung zum Abschließen), wird das Erfasste trotzdem gespeichert und der Grund angezeigt.</li>
@@ -307,6 +307,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Fertig</b> – die reservierten Teile werden zum Verbrauch der Störung, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
   <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
+  <p><b>Automatisches Ticket zur Störung:</b> Ist auf dem Server eingestellt, dass jede Störung ein Ticket bekommt (<code>PDH_FAULT_CREATE_TICKET</code>), entsteht das Ticket erst, wenn die Störung einer <b>Person oder Gruppe zugewiesen</b> ist – auf der Störung steht bis dahin „Ticket wird angelegt, sobald …“. Das Ticket übernimmt Zuweisung, Gruppe, Anlage und Kostenstelle. Wird die Störung vorher erledigt, entfällt es.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
     <br>Klappt die Analyse oder der Chat nicht, steht der genaue Grund direkt darunter (z. B. Modell unbekannt, API-Schlüssel ungültig, Ollama nicht erreichbar) – das Modell und den Schlüssel trägt ein Administrator unter <b>Server-Einstellungen → Copilot</b> ein (Standard für Anthropic: <code>claude-opus-5-5</code>). Dort prüft <b>Verbindung testen</b>, welcher Schlüssel aktiv ist und ob Anthropic ihn annimmt. Meldet Anthropic, der Schlüssel sei <i>keinem Workspace zugeordnet</i> („anthropic-workspace-id header“), dort zusätzlich die <b>Anthropic-Workspace-ID</b> eintragen. Sie steht in der Claude Console unter <i>Settings → Workspaces</i>. Danach den Server neu starten.</div>
@@ -377,7 +378,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Was stört?</b> Titel und Ist-Zustand – beides Pflicht.</li>
       <li><b>Vorschlag</b>: wie geht es besser (Pflicht) und was bringt es (Nutzen).</li>
       <li><b>Wo?</b> Anlage oder Bereich – freiwillig. <b>Team</b>: Miteinreichende ankreuzen. Mit dem Recht „KVP steuern“ kannst du hier für jemand anderen einreichen.</li>
-      <li><b>Einreichen</b> öffnet den Vorschlag; <b>Einreichen &amp; nächste</b> beginnt gleich die nächste Idee. Im Reiter <b>Vorher/Nachher</b> ein Foto vom Ist-Zustand anhängen. Jede Entscheidung bekommst du per Chat von PDH-System.</li>
+      <li><b>Einreichen</b> öffnet den Vorschlag; <b>Einreichen &amp; nächste</b> beginnt gleich die nächste Idee. Im Reiter <b>Vorher/Nachher</b> ein Foto vom Ist-Zustand anhängen. Jede Entscheidung bekommst du per Chat von „Service“.</li>
     </ol>
     Solange der Vorschlag noch nicht bewertet wird, kannst du ihn unter <b>Vorschlag bearbeiten</b> ändern.</div>
   <div class="hb-howto"><b><i class="ti ti-scale"></i> So wird bewertet und entschieden</b> (Recht „KVP steuern“)
@@ -509,7 +510,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Datum, Ergebnis (<b>ohne</b> oder <b>mit Mängeln</b>) und Bemerkung, z. B. Prüfbericht-Nr. → <b>Durchführung speichern</b>.</li>
       <li>Die nächste Fälligkeit ist neu gesetzt; unter <b>Nachweise</b> stehen alle Durchführungen. Den Prüfbericht unter <b>Dokumente</b> ablegen.</li>
     </ol>
-    <b>Erinnerung:</b> Die verantwortliche Person – ohne Eintrag alle Admins – bekommt im Chat eine Nachricht von „PDH System“, sobald der Vorlauf beginnt, und noch einmal, wenn die Fälligkeit überschritten ist. Neu anlegen, Durchführungen und Löschen stehen im Reiter <b>Änderungen</b>.</div>
+    <b>Erinnerung:</b> Die verantwortliche Person – ohne Eintrag alle Admins – bekommt im Chat eine Nachricht von „Service“, sobald der Vorlauf beginnt, und noch einmal, wenn die Fälligkeit überschritten ist. Neu anlegen, Durchführungen und Löschen stehen im Reiter <b>Änderungen</b>.</div>
   <p><b>IT-Assets</b> (PCs, Netzwerk, Steuerungen) haben Hersteller und Lieferant und können einer Anlage zugeordnet werden.</p>
   <div class="hb-howto"><b><i class="ti ti-lock"></i> Wer darf den Anlagenbaum ändern?</b>Anlegen, Bearbeiten und Deaktivieren von Gebäuden, Linien, Anlagen und Geräten braucht die Berechtigung <b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> (Kategorie „Infrastruktur“). Standardmäßig haben sie Administratoren und Manager; weiteren Rollen gibst du sie unter <b>Rollen &amp; Berechtigungen</b>. Ohne sie fehlen die Knöpfe „Hinzufügen“ und „Bearbeiten“ – ansehen, kommentieren und Vorgänge zuordnen geht weiterhin.</div>
   <h3 id="hmi"><i class="ti ti-device-desktop-analytics"></i> HMI-Fernzugriff</h3>
@@ -570,7 +571,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Elektrisch</b> oder <b>Mechanisch</b> antippen.</li>
       <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
     </ol>
-    Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann wer gemeldet hat, die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „PDH System“; die meldende Person steht in der Meldung und in der Historie. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
+    Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann wer gemeldet hat, die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“; die meldende Person steht in der Meldung und in der Historie. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
   <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So testest du den Easy-Mode (Admins)</b>
     <ol class="hb-steps">
       <li>Anlage öffnen → oben <b>Easy-Mode testen</b>. Die Meldeseite öffnet sich in einem neuen Tab – genau so, wie sie nach dem QR-Scan aussieht.</li>
@@ -731,10 +732,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Rechts die Unterhaltung wählen – Titel und Link sind schon eingetragen.</li>
       <li>Absenden. Die anderen sehen eine Karte, die den Datensatz öffnet.</li>
     </ol></div>
-  <h3><i class="ti ti-bell"></i> Hinweise von PDH-System</h3>
-  <p><b>Beim Anlegen</b> eines Tickets, einer Störung, einer Aufgabe, eines Projekts, einer Wartung oder eines KVP-Vorschlags bestätigt PDH-System dir das im Chat. Die Nachricht nennt, wer zuständig ist oder an welche Broker der Vorgang ging. Wer als Zuständige/r, Verantwortliche/r oder über eine Gruppe eingetragen wurde, bekommt „Neu für dich“. Aus Wartungsplänen automatisch erzeugte Aufträge melden sich nicht.</p>
-  <p>Ändert jemand ein <b>Ticket</b>, eine <b>Störung</b>, eine <b>Aufgabe</b>, ein <b>Projekt</b> oder eine <b>Wartung</b>, schickt der Absender <b>PDH-System</b> einen kurzen Hinweis an alle Beteiligten: Ersteller/in, Verantwortliche/n und Zugewiesene. Wer die Änderung selbst gemacht hat, bekommt keinen Hinweis. Der Hinweis nennt, was sich geändert hat (z. B. „Status: offen → in Arbeit“, neuer Kommentar) und enthält eine Karte zum Vorgang. Mehrere Änderungen kurz hintereinander werden zu einer Nachricht zusammengefasst.</p>
-  <p>Die Hinweise sind nur zur Information – auf PDH-System zu antworten ist nicht nötig. Abschalten kannst du sie unter <b>Mein Konto → Konto &amp; Dienste</b>. PDH-System informiert Administratoren außerdem über <a href="#cleanup">Bereinigungsläufe</a> und <a href="#backup">Datensicherungen</a>.</p>
+  <h3><i class="ti ti-bell"></i> Hinweise von „Service“</h3>
+  <p><b>Beim Anlegen</b> eines Tickets, einer Störung, einer Aufgabe, eines Projekts, einer Wartung oder eines KVP-Vorschlags bestätigt „Service“ dir das im Chat. Die Nachricht nennt, wer zuständig ist oder an welche Broker der Vorgang ging. Wer als Zuständige/r, Verantwortliche/r oder über eine Gruppe eingetragen wurde, bekommt „Neu für dich“. Aus Wartungsplänen automatisch erzeugte Aufträge melden sich nicht.</p>
+  <p>Ändert jemand ein <b>Ticket</b>, eine <b>Störung</b>, eine <b>Aufgabe</b>, ein <b>Projekt</b> oder eine <b>Wartung</b>, schickt der Absender <b>Service</b> (mit dem PDH-Logo) einen kurzen Hinweis an alle Beteiligten: Ersteller/in, Verantwortliche/n und Zugewiesene. Wer die Änderung selbst gemacht hat, bekommt keinen Hinweis. Der Hinweis nennt, was sich geändert hat (z. B. „Status: offen → in Arbeit“, neuer Kommentar) und enthält eine Karte zum Vorgang. Mehrere Änderungen kurz hintereinander werden zu einer Nachricht zusammengefasst.</p>
+  <p>Die Hinweise sind nur zur Information – auf „Service“ zu antworten ist nicht nötig. Abschalten kannst du sie unter <b>Mein Konto → Konto &amp; Dienste</b>. „Service“ informiert Administratoren außerdem über <a href="#cleanup">Bereinigungsläufe</a> und <a href="#backup">Datensicherungen</a>.</p>
   {{template "hb-shots" (dict "Ref" (index $s "chat") "Can" $can)}}
 </section>
 
@@ -743,7 +744,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>In Störungen, Tickets und Aufgaben startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>; bei Wartungen fragt der Assistent die Zeit ab. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
   <div class="hb-howto"><b><i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> So bestätigst du Zeiten, die Kollegen für dich eingetragen haben</b>
     <ol class="hb-steps">
-      <li>Hat dich jemand beim Abschluss eines Vorgangs als „dabei“ eingetragen, bekommst du einen Chat-Hinweis von PDH-System.</li>
+      <li>Hat dich jemand beim Abschluss eines Vorgangs als „dabei“ eingetragen, bekommst du einen Chat-Hinweis von „Service“.</li>
       <li>In der <b>Zeiterfassung</b> steht oben die gelbe Karte <b>Zu bestätigen</b>; in der Liste ist der Eintrag gelb hinterlegt.</li>
       <li>Stimmt die Zeit: grüner Haken <b>Bestätigen</b>. Passt sie nicht: <i class="ti ti-edit"></i> korrigieren und dann bestätigen. Warst du nicht dabei: <i class="ti ti-trash"></i> löschen.</li>
     </ol>
@@ -753,6 +754,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="users" data-title="Benutzer &amp; Mein Konto" data-pages="users account orgchart org_units">
   <h2><i class="ti ti-users"></i> Benutzer &amp; Mein Konto</h2>
+  <div class="hb-howto"><b><i class="ti ti-user-circle"></i> So stellst du dein Profilbild ein</b>
+    <ol class="hb-steps">
+      <li>Oben rechts auf deinen Namen → <b>Mein Konto</b> (oder im eigenen Benutzerstamm auf das runde Bild oben links).</li>
+      <li>Auf das runde Bild tippen <i class="ti ti-camera"></i> und ein Foto wählen – am Handy geht auch direkt die Kamera. JPG, PNG oder GIF, höchstens 8 MB.</li>
+      <li>Fertig: Das Bild wird quadratisch zugeschnitten und erscheint im Chat, in der Kopfleiste, in der Benutzerliste, im Organigramm und bei „Aktivität“. <b>×</b> am Bild entfernt es wieder; dann stehen wieder die Initialen da.</li>
+    </ol>
+    Mit dem Recht <i>Benutzer verwalten</i> kannst du im Benutzerstamm auch das Bild anderer Personen setzen oder entfernen. Beim Speichern entfernt PDH Zusatzdaten aus dem Foto (z. B. den Aufnahmeort).</div>
   <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Eigene Daten pflegen</b>
     <ol class="hb-steps">
       <li>Oben rechts auf deinen Namen → <b>Mein Konto</b>.</li>
@@ -870,7 +878,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Navigation → <b>Bereinigung</b>. Im Reiter <b>Vormerkungen</b> steht bei jedem Datensatz schon vorab, was passieren wird: <i>wird gelöscht</i> oder <i>wird ausgeblendet</i> – mit Grund, z. B. „3 × Störungen, Lagerbestand 5“.</li>
       <li>Einzelne Vormerkungen bei Bedarf <b>aufheben</b>.</li>
       <li><b>Bereinigungslauf starten</b>. Unbenutzte Datensätze werden endgültig gelöscht, noch verwendete <b>ausgeblendet</b>.</li>
-      <li>Alle Administratoren bekommen von <b>PDH-System</b> eine Chat-Nachricht mit dem Ergebnis.</li>
+      <li>Alle Administratoren bekommen von <b>„Service“</b> eine Chat-Nachricht mit dem Ergebnis.</li>
     </ol></div>
   <p>Die Reiter <b>Gesperrt</b>, <b>Deaktiviert</b> und <b>Ausgeblendet</b> zeigen alle betroffenen Stammdaten – dort lassen sie sich mit einem Klick entsperren, aktivieren oder wieder einblenden. Der <b>Verlauf</b> zeigt jeden Bereinigungslauf mit Details. Ersatzteile findest du außerdem über den Listenfilter „Deaktiviert“ bzw. „Gesperrt“, Firmen über den Reiter „Inaktiv“.</p>
   <p>Auch Schnittstellen können keine Stammdaten löschen: Eine Löschanforderung über die API wird automatisch zur Löschvormerkung.</p>
@@ -897,7 +905,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Reiter <b>Zeitpläne</b> → „Neuer Zeitplan“.</li>
       <li>Name, <b>Häufigkeit</b> (täglich, wöchentlich mit Wochentag, monatlich mit Tag 1–28) und <b>Uhrzeit</b> wählen.</li>
       <li>Bestandteile anhaken und festlegen, wie viele Sicherungen <b>aufbewahrt</b> werden – ältere werden automatisch entfernt.</li>
-      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich PDH-System per Chat bei allen Administratoren.</li>
+      <li>Speichern. Mit <b>Jetzt ausführen</b> testest du den Zeitplan sofort. Schlägt eine geplante Sicherung fehl, meldet sich „Service“ per Chat bei allen Administratoren.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-restore"></i> So stellst du eine Sicherung wieder her</b>
     <ol class="hb-steps">
@@ -985,7 +993,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Passwörter und Schlüssel</b> werden nie angezeigt. Feld leer lassen = unverändert; „Wert entfernen“ löscht ihn.</li>
     <li><b>Datenbank</b>: Änderungen werden vor dem Speichern getestet. Nur wenn du sicher bist, „Trotzdem speichern“ anhaken.</li>
     <li><b>Sicherheit</b>: „Neuen Anmelde-Schlüssel erzeugen“ meldet nach dem Neustart alle Benutzer ab. Den Schlüssel für Portal-Passwörter nach dem ersten Gebrauch nicht mehr ändern.</li>
-    <li>Jede Änderung meldet PDH-System per Chat an alle Administratoren (ohne die Werte selbst).</li>
+    <li>Jede Änderung meldet „Service“ per Chat an alle Administratoren (ohne die Werte selbst).</li>
   </ul>
   <h3><i class="ti ti-color-swatch"></i> Erscheinungsbild: Farbschema, Schrift &amp; Größe</h3>
   <p>Im Reiter <b>Erscheinungsbild</b> legst du oben den <b>Firmenstandard</b> fest: Farbschema, Schriftart und Größe. Jeder Benutzer kann im Benutzermenü davon abweichen und das an seinem Konto speichern; Hell oder Dunkel wählt ohnehin jeder selbst – jedes Schema hat Farben für beide.</p>
@@ -1148,7 +1156,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>Ein eingebettetes Portal bleibt leer.</h3>
   <p>Der Anbieter erlaubt das Einbetten nicht. Im Viewer über <i class="ti ti-external-link"></i> in einem neuen Tab öffnen.</p>
   <h3>Die Chat-Leiste geht zu oft auf.</h3>
-  <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst. Das gilt auch für die Unterhaltung mit <b>PDH-System</b>; die Änderungshinweise lassen sich unter Mein Konto → Konto &amp; Dienste ganz abschalten.</p>
+  <p>Den Chat stummschalten (Glocke) – dann öffnet sie sich bei dieser Unterhaltung nicht mehr von selbst. Das gilt auch für die Unterhaltung mit <b>„Service“</b>; die Änderungshinweise lassen sich unter Mein Konto → Konto &amp; Dienste ganz abschalten.</p>
   <h3>Wie lösche ich eine Anlage, ein Ersatzteil oder einen Lagerplatz?</h3>
   <p>Gar nicht direkt: <b>Status → Zum Löschen vormerken</b>. Der Bereinigungslauf löscht den Datensatz oder blendet ihn aus, wenn er noch verwendet wird (<a href="#cleanup">mehr</a>).</p>
   <h3>Beim Speichern oder Buchen erscheint „gesperrt“.</h3>

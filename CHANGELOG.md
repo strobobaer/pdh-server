@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.44.0] – 2026-10-08
+
+### Neu
+- Profilbild: auf „Mein Konto“ (oder im eigenen Benutzerstamm) ein Foto wählen; es erscheint im Chat, in der Kopfleiste, in der Benutzerliste, im Organigramm und bei „Aktivität“ – mit „Benutzer verwalten“ auch für andere
+
+### Geändert
+- Systemmeldungen im Chat kommen jetzt von „Service“ mit dem PDH-Logo (bzw. dem Firmenlogo aus dem Branding) statt von „PDH System“; „Service“ taucht nicht in Personen-Auswahllisten auf
+- Das automatische Ticket aus einer Störung entsteht erst nach der Zuweisung an eine Person oder Gruppe (bis dahin Hinweis auf der Störung) und übernimmt auch die zugewiesene Gruppe
+
+### Behoben
+- Symbole erschienen hinter Cloudflare als leere Kästchen: Die Symbol-Schrift steckt jetzt direkt in der Symbol-Datei, und deren Adresse ändert sich mit jeder Version
+
 ## [0.43.0] – 2026-10-08
 
 ### Neu

@@ -69,3 +69,15 @@ func TestInfraFlattenAndSort(t *testing.T) {
 		t.Errorf("InstalledLabel = %q", got)
 	}
 }
+
+func TestFaultTicketPendingNotice(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := FaultDetailData{Fault: FaultDetailView{ID: "f1", Title: "Band steht", TicketPending: true}}
+	if !strings.Contains(renderPage(t, tmpl, "fault_detail", d), "Ticket wird angelegt, sobald die Störung") {
+		t.Error("Hinweis „Ticket wartet auf Zuweisung“ fehlt")
+	}
+	d.Fault.TicketPending = false
+	if strings.Contains(renderPage(t, tmpl, "fault_detail", d), "Ticket wird angelegt, sobald") {
+		t.Error("Hinweis ohne Vormerkung")
+	}
+}

@@ -29,7 +29,7 @@ import (
 //
 // Der Meldetext wird automatisch ins Deutsche übersetzt (Copilot); in der
 // Meldung steht der deutsche Text immer über dem Original. Ersteller ist der
-// Systembenutzer „PDH System“, die meldende Person steht im Text und in der
+// Systembenutzer „Service“, die meldende Person steht im Text und in der
 // Historie. Abschaltbar unter Core-Einstellungen (KeyEasyMode).
 
 // KeyEasyMode: 1 = Meldungen ohne Anmeldung per QR erlaubt (Standard), 0 = aus.

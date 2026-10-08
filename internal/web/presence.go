@@ -63,6 +63,7 @@ func (h *Handler) presenceOnline(userID string) bool {
 
 type presenceUser struct {
 	ID, Name, Initials, Color string
+	Avatar                    string // Profilbild (avatar.go)
 	Me                        bool
 	Online                    bool
 	LastSeen                  string // „vor 5 Min.“, „gestern 14:20“ …
@@ -107,18 +108,19 @@ func (h *Handler) PresenceWeb(w http.ResponseWriter, r *http.Request) {
 	lang := h.requestLang(r)
 	now := time.Now()
 	data := presenceData{}
-	rows, err := h.db.Query(ctx, `SELECT id::text, COALESCE(first_name,''), COALESCE(last_name,''), username, last_seen_at
+	rows, err := h.db.Query(ctx, `SELECT id::text, COALESCE(first_name,''), COALESCE(last_name,''), username, last_seen_at, COALESCE(avatar_path, '')
 		FROM users WHERE active AND NOT is_system_user`)
 	if err == nil {
 		var all []presenceUser
 		seen := map[string]*time.Time{}
 		for rows.Next() {
 			var u presenceUser
-			var first, lastName, user string
+			var first, lastName, user, avatar string
 			var last *time.Time
-			if rows.Scan(&u.ID, &first, &lastName, &user, &last) != nil {
+			if rows.Scan(&u.ID, &first, &lastName, &user, &last, &avatar) != nil {
 				continue
 			}
+			u.Avatar = avatarURL(u.ID, avatar)
 			u.Name = strings.TrimSpace(first + " " + lastName)
 			if u.Name == "" {
 				u.Name, first = user, user

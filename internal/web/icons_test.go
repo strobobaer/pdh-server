@@ -86,7 +86,17 @@ func TestIconsServedLocally(t *testing.T) {
 	if !strings.Contains(infra, `<i class="ti ti-arrows-maximize" aria-hidden="true"></i>`) {
 		t.Error("Knopf „Alle aufklappen“ ohne Symbol aus der Tabelle")
 	}
-	if _, err := os.Stat(filepath.Join("..", "..", "web", "static", "vendor", "tabler-icons", "fonts", "tabler-icons.woff2")); err != nil {
-		t.Error("Schriftdatei fehlt lokal")
+	// Schrift steckt in der CSS-Datei (keine separate Schriftdatei, die ein
+	// Zwischenspeicher wie Cloudflare falsch vorhalten kann)
+	css, err := os.ReadFile(filepath.Join("..", "..", "web", "static", "vendor", "tabler-icons", "tabler-icons.min.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), "src:url(data:font/woff2;base64,") || strings.Contains(string(css), "./fonts/") {
+		t.Error("Symbol-Schrift muss in die CSS-Datei eingebettet sein")
+	}
+	// Adresse mit Version: neue Version = neue Adresse (kein alter Zwischenstand)
+	if !strings.Contains(out, "/vendor/tabler-icons/tabler-icons.min.css?v=") {
+		t.Error("CSS-Adresse ohne Version")
 	}
 }

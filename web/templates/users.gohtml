@@ -106,7 +106,7 @@
     <tr id="user-row-{{.ID}}" data-active="{{.Active}}" data-can-manage="{{.CanManage}}" data-rx data-rx-title="{{.FullName}}" data-rx-view="/users/{{.ID}}"{{if .CanEditProfile}} data-rx-edit="/users/{{.ID}}?tab=master"{{end}} {{if .CanEditProfile}}oncontextmenu="showContextMenu(event, userRowContextItems(this)); return false;"{{end}}>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0">{{.Initials}}</div>
+          <div style="width:34px;height:34px;border-radius:50%;background:{{.AvatarBg}};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0;overflow:hidden">{{if .AvatarURL}}<img src="{{.AvatarURL}}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">{{else}}{{.Initials}}{{end}}</div>
           <div>
             <div style="font-weight:500">{{.FullName}}</div>
             <div style="font-size:11px;color:var(--muted)">@{{.Username}}{{if .ManagerName}} · berichtet an {{.ManagerName}}{{end}}</div>

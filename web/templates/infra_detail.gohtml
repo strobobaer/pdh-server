@@ -225,7 +225,7 @@
     {{if $.CanEditInfra}}<div id="ob-new-{{$kind}}" class="ob-new" hidden>{{template "obligation-form" (dict "O" nil "Users" $.Users "Action" (printf "/infrastructure/%s/obligations" $.Node.ID) "Kind" $kind)}}</div>{{end}}
   </div>
   {{end}}
-  <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „PDH System“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>
+  <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „Service“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>
 </div>
 
 <!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->

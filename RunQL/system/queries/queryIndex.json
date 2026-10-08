@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-08T15:21:08.654Z",
+  "generatedAt": "2026-10-08T16:06:54.942Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1183,6 +1183,28 @@
       "sqlHash": "5e0ef766c223c76fc31137ae47799992a6283337919a74f23062a3336f251e9c",
       "title": "Prüfpflichten und Gefährdungsbeurteilungen je Anlage (infra_obligations.go)",
       "updatedAt": "2026-10-08T15:21:07.999Z"
+    },
+    {
+      "createdAt": "2026-10-08T15:47:37.112Z",
+      "path": "migrations/110_user_avatar_service.up.sql",
+      "catalogContext": null,
+      "searchText": "profilbilder (avatar.go): pfad unter uploads/avatars, quadratisch 256 px (jpeg). migrations/110_user_avatar_service.up.sql -- profilbilder (avatar.go): pfad unter uploads/avatars, quadratisch 256 px (jpeg).\nalter table users add column if not exists avatar_path text;\n\n-- systemmeldungen erscheinen im chat als „service“ mit dem pdh-logo\n-- (vorher „pdh system“); benutzer bleibt inaktiv und kann sich nie anmelden.\nupdate users set first_name = 'service', last_name = ''\n where id = '00000000-0000-4000-8000-00000000d0d1';\n",
+      "searchUpdatedAt": "2026-10-08T15:47:37.222Z",
+      "schemaContext": null,
+      "sqlHash": "1cec155f72e05edf8500d94155e5f458f9d2f968116ac355e3087693f7f4303c",
+      "title": "Profilbilder (avatar.go): Pfad unter uploads/avatars, quadratisch 256 px (JPEG).",
+      "updatedAt": "2026-10-08T15:47:37.112Z"
+    },
+    {
+      "createdAt": "2026-10-08T16:06:54.295Z",
+      "path": "migrations/111_fault_ticket_pending.up.sql",
+      "catalogContext": null,
+      "searchText": "automatisches ticket aus einer störung (pdh_fault_create_ticket) erst nach der migrations/111_fault_ticket_pending.up.sql -- automatisches ticket aus einer störung (pdh_fault_create_ticket) erst nach der\n-- zuweisung: ist die störung beim anlegen niemandem zugewiesen (weder person noch\n-- gruppe), wird sie markiert; ein hintergrundlauf legt das ticket an, sobald sie\n-- zugewiesen ist (faults/deck_sync.go). erledigte störungen bekommen keins mehr.\nalter table faults add column if not exists ticket_pending boolean not null default false;\ncreate index if not exists idx_faults_ticket_pending on faults(id) where ticket_pending;\n",
+      "searchUpdatedAt": "2026-10-08T16:06:54.399Z",
+      "schemaContext": null,
+      "sqlHash": "b252da8f0b678adc9441dd2adf6bc7edda7abf66817c077579b0a9a5aa1b0ca7",
+      "title": "Automatisches Ticket aus einer Störung (PDH_FAULT_CREATE_TICKET) erst nach der",
+      "updatedAt": "2026-10-08T16:06:54.295Z"
     }
   ]
 }

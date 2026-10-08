@@ -37,6 +37,8 @@
 .avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;flex-shrink:0;position:relative}
 .avatar.sm{width:26px;height:26px;font-size:10.5px}
 .avatar.group{border-radius:8px}
+.avatar.img{background:var(--bg3)}
+.avatar img{width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block}
 .avatar .dot{position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--bg2);background:var(--muted)}
 .avatar .dot.on{background:var(--green)}
 .chat-main{display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -256,6 +258,8 @@ function userName(id){ return S.users[id]?.name || 'Unbekannt'; }
 function avatar(id, cls){
   const u = S.users[id];
   const dot = `<span class="dot ${S.online.has(id) ? 'on' : ''}" data-presence="${esc(id)}"></span>`;
+  // Profilbild (bzw. Logo bei „Service“), sonst Initialen auf Farbe
+  if(u?.avatar) return `<span class="avatar ${cls||''} img" title="${esc(u.name||'')}"><img src="${esc(u.avatar)}" alt="">${u.bot ? '' : dot}</span>`;
   return `<span class="avatar ${cls||''}" style="background:${color(id)}" title="${esc(u?.name||'')}">${esc(u?.initials||'?')}${dot}</span>`;
 }
 function convAvatar(c){
@@ -356,7 +360,7 @@ function renderList(){
   if(f){
     // Personen ohne bestehenden Chat direkt anschreibbar
     const withChat = new Set(chats.filter(c => c.kind === 'direct').map(otherMember));
-    const people = Object.values(S.users).filter(u => u.id !== ME && !withChat.has(u.id) && match(u.name)).slice(0, 8);
+    const people = Object.values(S.users).filter(u => u.id !== ME && !u.bot && !withChat.has(u.id) && match(u.name)).slice(0, 8);
     if(people.length){
       html += `<div class="chat-sec"><i class="ti ti-user"></i> Personen</div>` + people.map(u =>
         `<div class="chat-item" onclick="Chat.direct('${u.id}')">${avatar(u.id)}<div class="t"><div class="n">${esc(u.name)}</div><div class="p">${esc(u.department || u.email)}</div></div></div>`).join('');
@@ -602,7 +606,7 @@ function onMentionInput(){
   if(!m || !c){ closeMention(); return; }
   const q = m[2].toLowerCase();
   const pool = c.kind === 'channel' ? (S.teams.find(t => t.id === c.team_id)?.members || []) : (c.members || []);
-  mention.items = pool.filter(id => id !== ME && userName(id).toLowerCase().includes(q)).slice(0, 8);
+  mention.items = pool.filter(id => id !== ME && !S.users[id]?.bot && userName(id).toLowerCase().includes(q)).slice(0, 8);
   if(!mention.items.length){ closeMention(); return; }
   mention.open = true; mention.start = pos - m[2].length - 1; mention.sel = 0; drawMention();
 }
@@ -728,7 +732,7 @@ function peopleModal(title, okLabel, extraHtml, exclude, onOk){
   const draw = () => {
     const f = $('people-filter').value.toLowerCase();
     $('people-chips').innerHTML = [...picked].map(id => `<span data-id="${id}">${esc(userName(id))} ✕</span>`).join('');
-    $('people-list').innerHTML = Object.values(S.users).filter(u => u.id !== ME && !(exclude||[]).includes(u.id) && (!f || u.name.toLowerCase().includes(f) || (u.department||'').toLowerCase().includes(f)))
+    $('people-list').innerHTML = Object.values(S.users).filter(u => u.id !== ME && !u.bot && !(exclude||[]).includes(u.id) && (!f || u.name.toLowerCase().includes(f) || (u.department||'').toLowerCase().includes(f)))
       .map(u => `<label><input type="checkbox" value="${u.id}" ${picked.has(u.id) ? 'checked' : ''}> ${avatar(u.id, 'sm')} ${esc(u.name)} <small style="color:var(--muted)">${esc(u.department||'')}</small></label>`).join('');
   };
   $('people-list').onchange = e => { if(e.target.checked) picked.add(e.target.value); else picked.delete(e.target.value); draw(); };

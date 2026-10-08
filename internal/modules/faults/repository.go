@@ -39,8 +39,8 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 
 	var id string
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9)
+		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid))
 		RETURNING id`,
 		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID, f.ID,
 	).Scan(&id)
@@ -52,6 +52,12 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 			f.ID, id, f.CreatedBy)
 	}
 	return id, err
+}
+
+// MarkTicketPending: automatisches Ticket erst nach der Zuweisung (migrations/111).
+func (r *Repository) MarkTicketPending(ctx context.Context, faultID string) error {
+	_, err := r.db.Exec(ctx, `UPDATE faults SET ticket_pending = true WHERE id = $1::uuid AND linked_ticket_id IS NULL`, faultID)
+	return err
 }
 
 // GetLinkedTicketID liefert die ID des mit dieser Stoerung verknuepften

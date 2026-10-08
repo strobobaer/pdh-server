@@ -8,6 +8,14 @@
 {{if .Notice}}<div class="card" role="status" style="margin-bottom:14px">{{.Notice}}</div>{{end}}
 
 <div class="card" style="max-width:680px;margin-bottom:14px">
+  <div class="card-title"><i class="ti ti-user-circle"></i> Profilbild</div>
+  <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    {{template "avatar-edit" (dict "ID" .UserID "URL" .UserAvatar "Initials" .Initials "Bg" .AvatarBg "Back" "/account" "Size" "72px")}}
+    <p style="font-size:12px;color:var(--muted);flex:1;min-width:200px">Bild antippen, um ein Foto zu wählen (JPG, PNG oder GIF, höchstens 8 MB). Es wird quadratisch zugeschnitten und erscheint im Chat, in der Kopfleiste und in der Benutzerliste.{{if .UserAvatar}} × entfernt es wieder.{{end}}</p>
+  </div>
+</div>
+
+<div class="card" style="max-width:680px;margin-bottom:14px">
   <div class="card-title"><i class="ti ti-briefcase"></i> Microsoft 365 · Geschäftlich</div>
   {{with .MicrosoftWork}}{{if .Connected}}
   <p>Verbunden als <strong>{{.AccountLabel}}</strong></p>

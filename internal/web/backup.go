@@ -710,7 +710,7 @@ func reapplyMigrations(ctx context.Context, tx pgx.Tx, after int) (int, error) {
 func ensurePdhSystemUser(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, active, is_bot)
-		VALUES ($1::uuid, 'pdh-system', 'pdh-system@localhost', '!', 'PDH', 'System', 'worker', false, true)
+		VALUES ($1::uuid, 'pdh-system', 'pdh-system@localhost', '!', 'Service', '', 'worker', false, true)
 		ON CONFLICT DO NOTHING`, pdhSystemUserID)
 	return err
 }

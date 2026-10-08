@@ -1,0 +1,28 @@
+{{/*
+Profilbild ändern (avatar.go): Klick auf das Bild → Datei wählen → wird sofort
+hochgeladen (quadratisch zugeschnitten, 256 px). × entfernt das Bild.
+
+{{template "avatar-edit" (dict "ID" <Benutzer-ID> "URL" <Bildadresse oder ""> "Initials" "MS" "Bg" "#6366f1" "Back" "/account" "Size" "54px")}}
+*/}}
+{{define "avatar-edit"}}
+<form class="av-edit" method="post" action="/users/{{.ID}}/avatar" enctype="multipart/form-data" style="--av-size:{{if .Size}}{{css .Size}}{{else}}54px{{end}}">
+  <input type="hidden" name="back" value="{{.Back}}">
+  <label class="av-pic" title="Profilbild ändern" style="background:{{if .URL}}var(--bg3){{else}}{{css .Bg}}{{end}}">
+    {{if .URL}}<img src="{{.URL}}" alt="Profilbild">{{else}}<span>{{.Initials}}</span>{{end}}
+    <span class="av-cam" aria-hidden="true"><i class="ti ti-camera"></i></span>
+    <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif" hidden onchange="if(this.files.length) this.form.submit()">
+  </label>
+  {{if .URL}}<button type="submit" class="av-del" name="remove" value="1" title="Profilbild entfernen" aria-label="Profilbild entfernen" onclick="return confirm('Profilbild entfernen?')"><i class="ti ti-x"></i></button>{{end}}
+</form>
+<style>
+.av-edit{position:relative;display:inline-block;flex-shrink:0;width:var(--av-size);height:var(--av-size)}
+.av-pic{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:calc(var(--av-size) * .36);cursor:pointer;overflow:hidden;position:relative;border:1px solid var(--border)}
+.av-pic img{width:100%;height:100%;object-fit:cover}
+.av-cam{position:absolute;inset:auto 0 0 0;height:38%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.av-cam i{font-size:calc(var(--av-size) * .26);color:#fff}
+.av-pic:hover .av-cam,.av-pic:focus-within .av-cam{opacity:1}
+@media (hover:none){.av-cam{opacity:1}}
+.av-del{position:absolute;top:-4px;right:-4px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;padding:0}
+.av-del:hover{color:var(--red);border-color:var(--red)}
+</style>
+{{end}}

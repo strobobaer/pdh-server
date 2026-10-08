@@ -258,6 +258,7 @@ func main() {
 	maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 	webHandler.StartTrainingScheduler(context.Background())
 	webHandler.StartObligationReminders(context.Background())
+	faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
 	webHandler.LoadIconOverrides(context.Background())
 	webHandler.StartKVPScheduler(context.Background())
 	webHandler.StartDriveMonitor(context.Background())

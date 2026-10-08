@@ -74,6 +74,7 @@ type OrgChartUser struct {
 	FullName  string
 	Initials  string
 	AvatarBg  string
+	AvatarURL string
 	CanManage bool // Rang des angemeldeten Benutzers reicht, um diesen Benutzer zu verschieben
 }
 
@@ -94,6 +95,7 @@ func (h *Handler) OrgChartPage(w http.ResponseWriter, r *http.Request) {
 	}
 	roleDept := h.roleDepartments(ctx)
 	var tiers []OrgChartTier
+	avatars := h.avatarPaths(ctx)
 	for _, ro := range roles {
 		role := OrgChartRole{
 			ID: ro.ID, Key: ro.Key, Label: ro.Label, Level: ro.Level,
@@ -107,7 +109,7 @@ func (h *Handler) OrgChartPage(w http.ResponseWriter, r *http.Request) {
 			initials, bg := avatarFor(u.FirstName, u.LastName)
 			role.Users = append(role.Users, OrgChartUser{
 				ID: u.ID, FullName: u.FirstName + " " + u.LastName,
-				Initials: initials, AvatarBg: bg,
+				Initials: initials, AvatarBg: bg, AvatarURL: avatarURL(u.ID, avatars[u.ID]),
 				CanManage: h.rbac.Outranks(actorRoleKey, ro.Key),
 			})
 		}

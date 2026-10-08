@@ -2,12 +2,12 @@
 {{define "presence-list"}}
 <div class="pres-head"><span class="pres-dot on"></span>{{t "Online"}} <b>{{len .Online}}</b></div>
 {{if .Online}}<ul class="pres-list">
-  {{range .Online}}<li><span class="pres-av" style="background:{{.Color}}">{{.Initials}}<i class="pres-dot on"></i></span><span class="pres-name">{{.Name}}{{if .Me}} <small>({{t "du"}})</small>{{end}}</span></li>{{end}}
+  {{range .Online}}<li><span class="pres-av" style="background:{{.Color}}">{{if .Avatar}}<img src="{{.Avatar}}" alt="" class="pres-img">{{else}}{{.Initials}}{{end}}<i class="pres-dot on"></i></span><span class="pres-name">{{.Name}}{{if .Me}} <small>({{t "du"}})</small>{{end}}</span></li>{{end}}
 </ul>{{else}}<div class="pres-empty">{{t "Gerade ist niemand online."}}</div>{{end}}
 <details class="pres-off">
   <summary><span class="pres-dot"></span>{{t "Offline"}} <b>{{len .Offline}}{{if .OfflineMore}}+{{end}}</b></summary>
   <ul class="pres-list">
-    {{range .Offline}}<li class="off"><span class="pres-av" style="background:{{.Color}}">{{.Initials}}<i class="pres-dot"></i></span><span class="pres-name">{{.Name}}</span><span class="pres-last" title="{{t "zuletzt gesehen"}}">{{.LastSeen}}</span></li>{{end}}
+    {{range .Offline}}<li class="off"><span class="pres-av" style="background:{{.Color}}">{{if .Avatar}}<img src="{{.Avatar}}" alt="" class="pres-img">{{else}}{{.Initials}}{{end}}<i class="pres-dot"></i></span><span class="pres-name">{{.Name}}</span><span class="pres-last" title="{{t "zuletzt gesehen"}}">{{.LastSeen}}</span></li>{{end}}
   </ul>
   {{if .OfflineMore}}<div class="pres-empty">{{t "und %d weitere" .OfflineMore}}</div>{{end}}
 </details>
@@ -26,6 +26,7 @@
 .pres-list li.off{opacity:.7}
 .pres-av{position:relative;flex:0 0 26px;height:26px;border-radius:50%;color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
 .pres-list li.off .pres-av{filter:grayscale(.7)}
+.pres-img{width:100%;height:100%;border-radius:50%;object-fit:cover}
 .pres-av .pres-dot{position:absolute;right:-1px;bottom:-1px;border:2px solid var(--bg2)}
 .pres-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 9px}
 .pres-dot.on{background:var(--green,#10b981)}

@@ -48,6 +48,7 @@ type BaseData struct {
 	UserLastName  string
 	FaultID       string
 	CopilotRef    string // "fault:<id>" / "ticket:<id>": Seitenleiste lädt Copilot-Vorschläge (copilot_suggest.go)
+	UserAvatar    string // eigenes Profilbild (avatar.go), "" = Symbol
 
 	// Auto-Logout / Systemnutzer-Override (siehe base.gohtml Script-Block)
 	IsSystemUser           bool       // Session bleibt dauerhaft eingeloggt, kein Inaktivitäts-Timer
@@ -324,6 +325,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/assignments/{ref}/{id}", h.AssignmentBoardAssign)
 	r.Post("/work/{kind}/settings", h.WorkSettingsWeb) // Standard-Frist im Reiter „Regeln & Einstellungen“
 	r.Get("/account", h.AccountPage)
+	// Profilbilder (avatar.go); "me" = eigenes
+	r.Get("/avatar/{id}", h.AvatarWeb)
+	r.Post("/users/{id}/avatar", h.AvatarUploadWeb)
 	r.Post("/account/appearance", h.AppearanceSaveWeb)
 	r.Post("/account/nav-layout", h.NavLayoutSaveWeb)
 	r.Post("/account/microsoft/connect", h.MicrosoftConnectStart)
@@ -900,6 +904,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
+	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	return b
 }
 
@@ -1989,6 +1994,7 @@ type FaultDetailData struct {
 
 type FaultDetailView struct {
 	ID               string
+	TicketPending    bool // automatisches Ticket wartet auf die Zuweisung (migrations/111)
 	Title            string
 	Description      string
 	Symptoms         []string
@@ -2104,6 +2110,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 		data.RunningTime = running
 	}
 
+	_ = h.db.QueryRow(ctx, `SELECT ticket_pending FROM faults WHERE id = $1::uuid`, id).Scan(&data.Fault.TicketPending)
 	h.render(w, "fault_detail", data)
 }
 
@@ -2729,6 +2736,7 @@ type UserView struct {
 	FullName        string
 	Initials        string
 	AvatarBg        string
+	AvatarURL       string // Profilbild (avatar.go), "" = Initialen
 	RoleValue       string
 	RoleLabel       string
 	RoleClass       string
@@ -2888,6 +2896,10 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 				(groupMembers == nil || groupMembers[u.ID]) {
 				data.Users = append(data.Users, h.userView(actorRoleKey, u, roleLabelByKey, userNames, subordinateSet))
 			}
+		}
+		avatars := h.avatarPaths(r.Context())
+		for i := range data.Users {
+			data.Users[i].AvatarURL = avatarURL(data.Users[i].ID, avatars[data.Users[i].ID])
 		}
 		if canFullyManage {
 			data.TotalUsers = len(allUsers)

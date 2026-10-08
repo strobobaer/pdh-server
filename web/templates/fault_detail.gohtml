@@ -96,6 +96,7 @@
         {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" .Fault.CostCenterID)}}
         {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
       </form>
+      {{if .Fault.TicketPending}}<div class="rec-msg" style="margin:12px 0 0;background:rgba(245,158,11,.12);color:var(--amber)"><i class="ti ti-ticket"></i> Ticket wird angelegt, sobald die Störung einer Person oder Gruppe zugewiesen ist.</div>{{end}}
       <form hx-post="/records/fault/{{.Fault.ID}}/people" hx-target="#people-result-fault" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div class="form-group">
           <label class="form-label">Verantwortlich</label>

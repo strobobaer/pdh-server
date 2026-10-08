@@ -36,7 +36,21 @@ func (s *Service) syncFaultAsync(f *Fault) {
 		log.Debug().Str("fault_id", f.ID).Str("title", f.Title).Msg("nextcloud deck fault sync disabled")
 	}
 
-	if truthyEnv("PDH_FAULT_CREATE_TICKET") || truthyEnv("PDH_FAULT_CREATE_TICKET_ENABLED") {
+	if autoTicketEnabled() {
+		// ohne Zuweisung erst vormerken – das Ticket entsteht nach der Zuweisung
+		// (StartPendingTicketWatcher); so landet kein Ticket ohne Zuständige
+		if !faultAssigned(f) {
+			go func(id string) {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := s.repo.MarkTicketPending(ctx, id); err != nil {
+					log.Error().Err(err).Str("fault_id", id).Msg("ticket from fault: vormerken fehlgeschlagen")
+					return
+				}
+				log.Info().Str("fault_id", id).Msg("ticket from fault: wartet auf zuweisung")
+			}(f.ID)
+			return
+		}
 		priority := severityToTicketPriority(f.Severity)
 		go func(fault *Fault) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -49,6 +63,83 @@ func (s *Service) syncFaultAsync(f *Fault) {
 			log.Info().Str("fault_id", fault.ID).Str("ticket_id", ticketID).Msg("ticket from fault created")
 		}(cloneFault(f))
 	}
+}
+
+// autoTicketEnabled: Ticket aus jeder neuen Störung (Server-Einstellung).
+func autoTicketEnabled() bool {
+	return truthyEnv("PDH_FAULT_CREATE_TICKET") || truthyEnv("PDH_FAULT_CREATE_TICKET_ENABLED")
+}
+
+// faultAssigned: Störung ist einer Person zugewiesen (eine Gruppe prüft die
+// Datenbank im Hintergrundlauf – sie wird erst nach dem Anlegen gesetzt).
+func faultAssigned(f *Fault) bool { return f.AssignedTo != nil && *f.AssignedTo != "" }
+
+// StartPendingTicketWatcher legt vorgemerkte Tickets an, sobald die Störung
+// zugewiesen ist (Person oder Gruppe) – alle 15 Sekunden.
+func (s *Service) StartPendingTicketWatcher(ctx context.Context) {
+	if !autoTicketEnabled() {
+		return
+	}
+	go func() {
+		t := time.NewTicker(15 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				runCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				if n, err := s.CreatePendingTickets(runCtx); err != nil {
+					log.Error().Err(err).Msg("ticket from fault: vorgemerkte anlegen fehlgeschlagen")
+				} else if n > 0 {
+					log.Info().Int("tickets", n).Msg("ticket from fault: nach zuweisung angelegt")
+				}
+				cancel()
+			}
+		}
+	}()
+}
+
+// CreatePendingTickets: vorgemerkte Störungen mit Zuweisung bekommen ihr Ticket;
+// erledigte oder bereits verknüpfte verlieren die Markierung.
+func (s *Service) CreatePendingTickets(ctx context.Context) (int, error) {
+	if _, err := s.repo.db.Exec(ctx, `UPDATE faults SET ticket_pending = false
+		WHERE ticket_pending AND (status::text IN ('resolved', 'closed') OR archived_at IS NOT NULL OR linked_ticket_id IS NOT NULL)`); err != nil {
+		return 0, err
+	}
+	rows, err := s.repo.db.Query(ctx, `SELECT id::text FROM faults
+		WHERE ticket_pending AND (assigned_to IS NOT NULL OR assigned_group_id IS NOT NULL)`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	n := 0
+	for _, id := range ids {
+		// atomar übernehmen (auch bei mehreren Instanzen nur ein Ticket)
+		tag, err := s.repo.db.Exec(ctx, `UPDATE faults SET ticket_pending = false WHERE id = $1::uuid AND ticket_pending`, id)
+		if err != nil || tag.RowsAffected() == 0 {
+			continue
+		}
+		f, err := s.repo.GetByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		ticketID, err := s.repo.CreateTicketFromFault(ctx, f, severityToTicketPriority(f.Severity))
+		if err != nil {
+			_, _ = s.repo.db.Exec(ctx, `UPDATE faults SET ticket_pending = true WHERE id = $1::uuid`, id) // nächster Lauf
+			return n, err
+		}
+		log.Info().Str("fault_id", id).Str("ticket_id", ticketID).Msg("ticket from fault created after assignment")
+		n++
+	}
+	return n, nil
 }
 
 func faultDeckDescription(f *Fault) string {

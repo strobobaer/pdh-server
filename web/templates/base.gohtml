@@ -38,7 +38,7 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
 })();
 </script>
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
-<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css">
+<link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css?v={{appVersion}}">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -234,6 +234,8 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, va
 .sc-item:hover{background:var(--bg3)}
 .sc-item.unread .sc-n{font-weight:700}
 .sc-av{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;flex-shrink:0}
+.sc-av.img{background:var(--bg3)}.sc-av img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.sc-who-av{width:16px;height:16px;border-radius:50%;object-fit:cover;vertical-align:-3px}
 .sc-t{flex:1;min-width:0}
 .sc-n{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-p{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -278,6 +280,7 @@ html.ctx-chat-open:not(.sidebar-right-collapsed){--right-sidebar-w:max(380px, va
 .cop-q{color:var(--accent);margin-bottom:4px}
 .cop-a{color:var(--text);white-space:pre-wrap;margin-bottom:6px}
 .copilot-input{display:flex;gap:6px}
+.tu-av{width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0}
 /* Copilot-Vorschläge (copilot_suggest.go): gelb blinkender Reiter, solange ungelesen */
 @keyframes cop-blink{0%,100%{background:transparent;border-color:transparent}50%{background:rgba(245,158,11,.38);border-color:var(--amber)}}
 .ctx-tab.cop-alert,.topbar-ctx.cop-alert,.topbar-cop.cop-alert{color:var(--amber)!important;animation:cop-blink 1.1s ease-in-out infinite}
@@ -767,7 +770,7 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
       <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
       {{template "lang-switch"}}
       <div style="position:relative">
-        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}"><i class="ti ti-user"></i><span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
+        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
@@ -2054,6 +2057,8 @@ function pdhShareToChat(){
     const id = c.kind === 'direct' ? (other(c) || S.me) : c.id;
     let inner = '#';
     if(c.kind === 'direct') inner = esc((S.users[id] && S.users[id].initials) || '?');
+    // Profilbild bzw. Logo bei „Service“ (avatar.go)
+    if(c.kind === 'direct' && S.users[id] && S.users[id].avatar) return '<span class="sc-av img"><img src="' + esc(S.users[id].avatar) + '" alt=""></span>';
     if(c.kind === 'group') inner = '<i class="ti ti-users"></i>';
     return '<span class="sc-av" style="background:' + color(id) + '">' + inner + '</span>';
   }
@@ -2163,7 +2168,8 @@ function pdhShareToChat(){
       let bubble = '';
       if(m.deleted) bubble = '<div class="sc-bubble" style="font-style:italic;opacity:.6">gelöscht</div>';
       else if(m.body) bubble = '<div class="sc-bubble">' + renderBody(m) + '</div>';
-      const who = mine ? '' : '<div class="sc-who">' + esc(userName(m.user_id)) + (m.parent_id ? ' <i class="ti ti-arrow-back-up"></i>' : '') + '</div>';
+      const au = S.users[m.user_id];
+      const who = mine ? '' : '<div class="sc-who">' + (au && au.avatar ? '<img class="sc-who-av" src="' + esc(au.avatar) + '" alt=""> ' : '') + esc(userName(m.user_id)) + (m.parent_id ? ' <i class="ti ti-arrow-back-up"></i>' : '') + '</div>';
       return '<div class="sc-msg' + (mine ? ' mine' : '') + '">' + who + bubble + links + files + '<div class="sc-time">' + time(m.created_at) + '</div></div>';
     }).join('') || '<div class="sc-empty">Noch keine Nachrichten</div>';
     box.scrollTop = box.scrollHeight;

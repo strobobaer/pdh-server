@@ -92,6 +92,8 @@ type chatUser struct {
 	Department string `json:"department"`
 	Email      string `json:"email"`
 	Online     bool   `json:"online"`
+	Avatar     string `json:"avatar,omitempty"` // Profilbild bzw. Logo (avatar.go)
+	Bot        bool   `json:"bot,omitempty"`    // „Service“: Absender von Systemmeldungen, nicht auswählbar
 }
 
 type chatPreview struct {
@@ -370,8 +372,8 @@ func (h *Handler) ChatBootstrap(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) chatUsers(ctx context.Context) ([]chatUser, error) {
 	rows, err := h.db.Query(ctx, `
-		SELECT id::text, first_name, last_name, COALESCE(department, ''), email
-		FROM users WHERE active ORDER BY first_name, last_name`)
+		SELECT id::text, first_name, last_name, COALESCE(department, ''), email, COALESCE(avatar_path, '')
+		FROM users WHERE active OR id = $1::uuid ORDER BY first_name, last_name`, pdhSystemUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,13 +382,17 @@ func (h *Handler) chatUsers(ctx context.Context) ([]chatUser, error) {
 	var list []chatUser
 	for rows.Next() {
 		var u chatUser
-		var first, last string
-		if rows.Scan(&u.ID, &first, &last, &u.Department, &u.Email) != nil {
+		var first, last, avatar string
+		if rows.Scan(&u.ID, &first, &last, &u.Department, &u.Email, &avatar) != nil {
 			continue
 		}
 		u.Name = strings.TrimSpace(first + " " + last)
 		u.Initials = initials(first, last)
 		u.Online = hub.isOnline(u.ID)
+		u.Avatar = avatarURL(u.ID, avatar)
+		if u.ID == pdhSystemUserID {
+			u.Name, u.Bot, u.Email, u.Department = "Service", true, "", "Systemmeldungen"
+		}
 		list = append(list, u)
 	}
 	return list, rows.Err()
