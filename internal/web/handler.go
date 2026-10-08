@@ -2008,15 +2008,13 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 
 	u := getUser(r)
 	people := h.recordPeople(ctx, "fault", id)
+	// Seitenkopf wie ueberall ueber baseData: Navigation, Rechte, Sprache, Branding
+	base := h.baseData(r, "faults", fault.Title, "Ähnliche Störungen")
+	base.Title = fault.Title // Titel der Störung nicht übersetzen
+	base.FaultID = id
 	data := FaultDetailData{
-		BaseData: BaseData{
-			Title: fault.Title, Page: "faults",
-			ContextTitle:  "Ähnliche Störungen",
-			UserName:      u.FirstName + " " + u.LastName,
-			UserFirstName: u.FirstName, UserLastName: u.LastName,
-			FaultID: id,
-		},
-		Users:   h.userOptions(ctx),
+		BaseData: base,
+		Users:    h.userOptions(ctx),
 		History: h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,

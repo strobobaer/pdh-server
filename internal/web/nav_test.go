@@ -1,6 +1,7 @@
 package web
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -66,5 +67,25 @@ func TestBuildNavCustomLayout(t *testing.T) {
 	}
 	if _, err := sanitizeNavLayout(make([]navLayoutGroup, 31)); err == nil {
 		t.Error("zu viele Gruppen")
+	}
+}
+
+// Seiten muessen ihren Kopf ueber baseData bauen – sonst fehlen Navigation,
+// Rechte und Sprache (die Stoerungs-Detailseite hatte eine leere linke Leiste).
+func TestPagesUseBaseData(t *testing.T) {
+	files, _ := filepath.Glob("*.go")
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			if strings.Contains(line, "BaseData{") && !strings.Contains(line, "b := BaseData{") {
+				t.Errorf("%s:%d: BaseData von Hand gebaut – h.baseData(...) verwenden", f, i+1)
+			}
+		}
 	}
 }

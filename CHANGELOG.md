@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.39.1] – 2026-10-08
+
+### Behoben
+- Auf der Detailseite einer Störung war die linke Navigation leer; außerdem fehlten dort Sprache, Branding und berechtigungsabhängige Knöpfe
+
 ## [0.39.0] – 2026-10-08
 
 ### Neu
