@@ -589,5 +589,16 @@
  "gerade eben": "chiar acum",
  "vor %d Min.": "acum %d min.",
  "vor %d Std.": "acum %d h",
- "gestern %s": "ieri %s"
+ "gestern %s": "ieri %s",
+ "Passwort ändern": "Schimbă parola",
+ "Das Passwort braucht:": "Parola trebuie să conțină:",
+ "Das neue Passwort muss sich vom bisherigen unterscheiden.": "Parola nouă trebuie să fie diferită de cea actuală.",
+ "Erst mit dem neuen Passwort geht es weiter. Merke es dir gut – ab jetzt meldest du dich damit an.": "Poți continua doar cu o parolă nouă. Reține-o bine – de acum te autentifici cu ea.",
+ "Bitte vergib jetzt ein eigenes Passwort – das bisherige wurde vom Administrator vergeben oder der Wechsel wurde verlangt.": "Te rugăm să alegi acum propria parolă – cea actuală a fost setată de un administrator sau s-a cerut schimbarea.",
+ "Dein Passwort ist abgelaufen. Bitte vergib ein neues.": "Parola ta a expirat. Te rugăm să alegi una nouă.",
+ "Die Anmeldung ist abgelaufen. Bitte melde dich erneut an.": "Autentificarea a expirat. Te rugăm să te autentifici din nou.",
+ "ein Großbuchstabe": "o literă mare",
+ "ein Kleinbuchstabe": "o literă mică",
+ "eine Ziffer": "o cifră",
+ "ein Sonderzeichen": "un caracter special"
 }

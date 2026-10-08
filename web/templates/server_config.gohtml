@@ -38,6 +38,7 @@
 <div class="rec-tabs" role="tablist">
   {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
   <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
+  <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
 
@@ -93,6 +94,38 @@
 </form>
 </div>
 {{end}}
+
+<!-- ── Passwoerter: Richtlinie und Wechselzwang (password_policy.go) ── -->
+<div class="rec-pane" data-pane="passwords">
+{{with .Policy}}
+<form class="card" method="post" action="/admin/server-config/password-policy" autocomplete="off">
+  <div class="card-title"><span><i class="ti ti-password"></i> Passwort-Richtlinie</span><span class="sc-sub">gilt sofort für jedes neue Passwort – Anmeldeseite, „Passwort vergessen“, Mein Konto und Benutzerstamm</span></div>
+  <div class="sc-grid">
+    <div class="sc-f"><label for="pp-min">Mindestlänge</label><input class="form-input" id="pp-min" type="number" name="min_length" min="8" max="72" value="{{.MinLength}}"><div class="help">8 bis 72 Zeichen</div></div>
+    <div class="sc-f"><label for="pp-age">Höchstalter (Tage)</label><input class="form-input" id="pp-age" type="number" name="max_age_days" min="0" max="3650" value="{{.MaxAgeDays}}"><div class="help">danach muss das Passwort bei der Anmeldung geändert werden; 0 = läuft nie ab</div></div>
+    <div class="sc-f"><label for="pp-hist">Wiederverwendung sperren</label><input class="form-input" id="pp-hist" type="number" name="history" min="0" max="24" value="{{.History}}"><div class="help">die letzten N Passwörter sind gesperrt; 0 = aus</div></div>
+  </div>
+  <div class="sc-f" style="margin-top:12px"><label>Das Passwort braucht</label>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px">
+      <label style="font-weight:400"><input type="checkbox" name="require_upper" {{if .RequireUpper}}checked{{end}}> Großbuchstaben</label>
+      <label style="font-weight:400"><input type="checkbox" name="require_lower" {{if .RequireLower}}checked{{end}}> Kleinbuchstaben</label>
+      <label style="font-weight:400"><input type="checkbox" name="require_digit" {{if .RequireDigit}}checked{{end}}> Ziffer</label>
+      <label style="font-weight:400"><input type="checkbox" name="require_special" {{if .RequireSpecial}}checked{{end}}> Sonderzeichen</label>
+    </div></div>
+  <div class="sc-f" style="margin-top:12px"><label>Passwort ändern müssen</label>
+    <div style="display:grid;gap:6px;font-size:13px">
+      <label style="font-weight:400"><input type="checkbox" name="change_on_first_login" {{if .ChangeOnFirstLogin}}checked{{end}}> bei der <b>Erstanmeldung</b> – wenn ein Administrator das Konto mit Passwort anlegt</label>
+      <label style="font-weight:400"><input type="checkbox" name="change_after_admin_reset" {{if .ChangeAfterAdminReset}}checked{{end}}> nachdem ein <b>Administrator das Passwort</b> im Benutzerstamm geändert hat</label>
+      <label style="font-weight:400;color:var(--amber)"><input type="checkbox" name="expire_all"> jetzt <b>alle</b> Benutzer mit Passwort beim nächsten Anmelden zum Wechsel zwingen (einmalig)</label>
+    </div>
+    <div class="help">Gilt für die Anmeldung mit Passwort. Karte, Microsoft und Nextcloud brauchen kein Passwort; Systemnutzer (Terminals) sind ausgenommen.</div></div>
+  <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    <span class="sc-sub">{{if $.PasswordPending}}{{$.PasswordPending}} Benutzer müssen ihr Passwort bei der nächsten Anmeldung ändern.{{else}}Zurzeit muss niemand sein Passwort ändern.{{end}}</span>
+  </div>
+</form>
+{{end}}
+</div>
 
 <!-- ── Erscheinungsbild (Logos) ── -->
 <div class="rec-pane" data-pane="branding">

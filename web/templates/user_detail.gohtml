@@ -105,7 +105,15 @@
         <select name="role" class="form-input">{{range .Roles}}<option value="{{.Key}}" {{if eq .Key $u.RoleValue}}selected{{end}}>{{.Label}}</option>{{end}}</select>
         {{else}}<input class="form-input" value="{{$u.RoleLabel}}" disabled><input type="hidden" name="role" value="{{$u.RoleValue}}">{{end}}
       </div>
-      <div class="form-group"><label class="form-label">Neues Passwort <span class="rec-sub">(leer = unverändert, min. 8 Zeichen)</span></label><input type="password" name="password" class="form-input" autocomplete="new-password" minlength="8"></div>
+      <div class="form-group"><label class="form-label">Neues Passwort <span class="rec-sub">(leer = unverändert)</span></label><input type="password" name="password" class="form-input" autocomplete="new-password" minlength="8">
+        {{if .AdminPasswordHint}}<div class="rec-sub" style="font-size:11px;margin-top:3px">{{.AdminPasswordHint}}</div>{{end}}
+        {{if not $u.IsSystemUser}}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12px">
+          {{if .Password.MustChange}}<span class="badge b-amber"><i class="ti ti-key"></i> Wechsel bei nächster Anmeldung</span>
+          <button type="button" class="btn btn-small" hx-post="/users/{{$u.ID}}/password-change" hx-vals='{"on":"0"}' hx-target="#ud-pwc">Erlassen</button>
+          {{else if .Password.Expired}}<span class="badge b-amber"><i class="ti ti-clock-exclamation"></i> Passwort abgelaufen</span>
+          {{else}}<button type="button" class="btn btn-small" hx-post="/users/{{$u.ID}}/password-change" hx-vals='{"on":"1"}' hx-target="#ud-pwc"><i class="ti ti-key"></i> Passwortwechsel verlangen</button>{{end}}
+          <span id="ud-pwc"></span></div>{{end}}
+      </div>
       <div class="form-group"><label class="form-label">Nextcloud-Benutzer</label><input name="nextcloud_user_id" class="form-input" value="{{$u.NextcloudUserID}}"></div>
       <div class="form-group"><label class="form-label">RFID-Karte</label><input name="rfid_uid" class="form-input" value="{{$u.RFIDUID}}"></div>
     </div>
@@ -315,7 +323,7 @@
     <form hx-post="/users/me/password" hx-target="#pw-result" hx-on::after-request="if(event.detail.successful && event.detail.xhr.responseText.indexOf('ti-check') > -1){ this.reset(); {{if not .HasPassword}}setTimeout(function(){ location.reload(); }, 1500);{{end}} }" autocomplete="off">
       <div class="grid2" style="gap:10px">
         {{if .HasPassword}}<div class="form-group"><label class="form-label">Aktuelles Passwort</label><input type="password" name="current" class="form-input" required autocomplete="current-password"></div><div></div>{{end}}
-        <div class="form-group"><label class="form-label">Neues Passwort <span class="rec-sub">(mind. 8 Zeichen)</span></label><input type="password" name="password" class="form-input" required minlength="8" maxlength="72" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label">Neues Passwort</label><input type="password" name="password" class="form-input" required minlength="8" maxlength="72" autocomplete="new-password">{{if .PasswordHint}}<div class="rec-sub" style="font-size:11px;margin-top:3px">{{.PasswordHint}}</div>{{end}}</div>
         <div class="form-group"><label class="form-label">Neues Passwort wiederholen</label><input type="password" name="password2" class="form-input" required minlength="8" maxlength="72" autocomplete="new-password"></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">

@@ -173,6 +173,7 @@ func (h *Handler) LoginResetPage(w http.ResponseWriter, r *http.Request) {
 	d := h.loginDataFor(r, "")
 	d.Mode = "reset"
 	d.Token = r.URL.Query().Get("token")
+	d.Rules = h.passwordRules(r, d.Lang)
 	if _, err := h.resetTokenUser(r.Context(), d.Token); err != nil {
 		d.Mode, d.Token = "forgot", ""
 		d.Error = tr(d.Lang, resetLinkInvalid)
@@ -192,10 +193,14 @@ func (h *Handler) LoginResetPost(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "login", d)
 		return
 	}
-	if err := users.ValidatePassword(pw); err != nil {
-		d.Error = tr(d.Lang, err.Error())
-		h.render(w, "login", d)
-		return
+	d.Rules = h.passwordRules(r, d.Lang)
+	// Richtlinie und Wiederverwendung pruefen, bevor der Link verbraucht wird
+	if uid, err := h.resetTokenUser(ctx, d.Token); err == nil {
+		if err := h.users.CheckNewPassword(ctx, uid, pw); err != nil {
+			d.Error = tr(d.Lang, err.Error())
+			h.render(w, "login", d)
+			return
+		}
 	}
 	// Link verbrauchen (atomar) – erst dann das Passwort setzen
 	var userID string

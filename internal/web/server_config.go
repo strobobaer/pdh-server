@@ -15,6 +15,7 @@ import (
 	"pdh/internal/modules/faults"
 	"pdh/pkg/config"
 	"pdh/pkg/logger"
+	"pdh/internal/core/users"
 	"pdh/pkg/database"
 )
 
@@ -154,6 +155,9 @@ type ServerConfigData struct {
 	CanRestart     bool
 	CanLogs        bool
 	Msg, Err       string
+	// Reiter „Passwörter“ (password_policy.go)
+	Policy          *users.PasswordPolicy
+	PasswordPending int
 }
 
 func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
@@ -231,6 +235,11 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 			gv.Fields = append(gv.Fields, v)
 		}
 		d.Groups = append(d.Groups, gv)
+	}
+	if h.db != nil {
+		p := h.users.Policy(r.Context())
+		d.Policy = &p
+		_ = h.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM users WHERE active AND must_change_password`).Scan(&d.PasswordPending)
 	}
 	h.render(w, "server_config", d)
 }

@@ -25,6 +25,12 @@ func NewService(repo *Repository, jwtSecret string, tokenHours int) *Service {
 
 // Register - neuen User anlegen
 func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, error) {
+	policy := s.repo.LoadPolicy(ctx)
+	if in.Password != "" {
+		if err := policy.Validate(in.Password); err != nil {
+			return nil, err
+		}
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("passwort hash: %w", err)
@@ -54,6 +60,12 @@ func (s *Service) Register(ctx context.Context, in *CreateUserInput) (*User, err
 	if err := s.repo.Create(ctx, u); err != nil {
 		return nil, fmt.Errorf("user anlegen: %w", err)
 	}
+	if in.Password != "" {
+		// Erstanmeldung: das vom Administrator vergebene Passwort muss geaendert werden
+		if err := s.repo.storePassword(ctx, u.ID, u.PasswordHash, policy.ChangeOnFirstLogin && !in.IsSystemUser); err != nil {
+			return nil, fmt.Errorf("passwort speichern: %w", err)
+		}
+	}
 	return u, nil
 }
 
@@ -66,15 +78,20 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, *U
 	if err != nil {
 		return "", nil, err
 	}
-	ttl := s.tokenTTL
-	if u.IsSystemUser {
-		ttl = 10 * 365 * 24 * time.Hour // effektiv "läuft nicht ab"
-	}
-	tokenStr, err := s.IssueToken(u, ttl, nil)
+	tokenStr, err := s.SessionToken(u)
 	if err != nil {
 		return "", nil, err
 	}
 	return tokenStr, u, nil
+}
+
+// SessionToken: normales Anmelde-Token (Systemnutzer laufen effektiv nicht ab).
+func (s *Service) SessionToken(u *User) (string, error) {
+	ttl := s.tokenTTL
+	if u.IsSystemUser {
+		ttl = 10 * 365 * 24 * time.Hour // effektiv "läuft nicht ab"
+	}
+	return s.IssueToken(u, ttl, nil)
 }
 
 // Authenticate prüft nur E-Mail-ODER-Benutzername + Passwort, ohne ein
@@ -155,41 +172,62 @@ func (s *Service) Update(ctx context.Context, u *User) error {
 	return s.repo.Update(ctx, u)
 }
 
+// UpdateWithPassword speichert das Profil; ein vom Administrator gesetztes
+// Passwort muss (je nach Richtlinie) bei der naechsten Anmeldung geaendert werden.
 func (s *Service) UpdateWithPassword(ctx context.Context, u *User, password string) error {
-	if password != "" {
-		if len(password) < 8 {
-			return fmt.Errorf("passwort muss mindestens 8 zeichen lang sein")
-		}
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			return fmt.Errorf("passwort hash: %w", err)
-		}
-		u.PasswordHash = string(hash)
+	if password == "" {
+		return s.repo.Update(ctx, u)
 	}
-	return s.repo.Update(ctx, u)
-}
-
-// ValidatePassword: Mindestregeln fuer neue Passwoerter (bcrypt nutzt hoechstens 72 Bytes).
-func ValidatePassword(password string) error {
-	if len([]rune(password)) < 8 {
-		return fmt.Errorf("Das Passwort muss mindestens 8 Zeichen lang sein.")
-	}
-	if len(password) > 72 {
-		return fmt.Errorf("Das Passwort darf höchstens 72 Zeichen lang sein.")
-	}
-	return nil
-}
-
-// SetPassword setzt ein neues Passwort (nach geprueftem Ruecksetz-Link).
-func (s *Service) SetPassword(ctx context.Context, id, password string) error {
-	if err := ValidatePassword(password); err != nil {
+	policy := s.repo.LoadPolicy(ctx)
+	if err := policy.Validate(password); err != nil {
 		return err
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("passwort hash: %w", err)
 	}
-	return s.repo.SetPasswordHash(ctx, id, string(hash))
+	u.PasswordHash = string(hash)
+	if err := s.repo.Update(ctx, u); err != nil {
+		return err
+	}
+	return s.repo.storePassword(ctx, u.ID, u.PasswordHash, policy.ChangeAfterAdminReset && !u.IsSystemUser)
+}
+
+// CheckNewPassword: Richtlinie und Wiederverwendung fuer ein selbst gewaehltes Passwort.
+func (s *Service) CheckNewPassword(ctx context.Context, id, password string) error {
+	policy := s.repo.LoadPolicy(ctx)
+	if err := policy.Validate(password); err != nil {
+		return err
+	}
+	if s.repo.reusedPassword(ctx, id, password, policy.History) {
+		return fmt.Errorf("Dieses Passwort hast du vor Kurzem schon benutzt – bitte ein anderes wählen (gesperrt sind die letzten %d).", policy.History)
+	}
+	return nil
+}
+
+// SetPassword setzt ein selbst gewaehltes Passwort (Ruecksetz-Link, Pflichtwechsel,
+// Mein Konto) und hebt den Wechselzwang auf.
+func (s *Service) SetPassword(ctx context.Context, id, password string) error {
+	if err := s.CheckNewPassword(ctx, id, password); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("passwort hash: %w", err)
+	}
+	return s.repo.storePassword(ctx, id, string(hash), false)
+}
+
+// Policy, SavePolicy, PasswordState, SetMustChange: siehe password_policy.go.
+func (s *Service) Policy(ctx context.Context) PasswordPolicy { return s.repo.LoadPolicy(ctx) }
+func (s *Service) SavePolicy(ctx context.Context, p PasswordPolicy) error {
+	return s.repo.SavePolicy(ctx, p)
+}
+func (s *Service) PasswordState(ctx context.Context, id string) PasswordState {
+	return s.repo.PasswordState(ctx, id, s.repo.LoadPolicy(ctx))
+}
+func (s *Service) SetMustChange(ctx context.Context, id string, on bool) error {
+	return s.repo.SetMustChange(ctx, id, on)
 }
 
 // ErrWrongPassword: aktuelles Passwort stimmt nicht (Passwort aendern).

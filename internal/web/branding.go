@@ -280,7 +280,8 @@ type LoginData struct {
 	Mode   string
 	Notice string
 	Token  string
-	Next   string // Ziel nach der Anmeldung (z. B. gescannte QR-Infoseite)
+	Next   string   // Ziel nach der Anmeldung (z. B. gescannte QR-Infoseite)
+	Rules  []string // Passwort-Richtlinie ("reset", "change")
 }
 
 func (d LoginData) Language() string { return d.Lang }

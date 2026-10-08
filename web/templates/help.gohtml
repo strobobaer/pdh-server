@@ -696,10 +696,28 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-key"></i> So änderst du dein Passwort</b>
     <ol class="hb-steps">
       <li>Oben rechts auf deinen Namen → <b>Mein Konto</b> → Reiter <b>Konto &amp; Dienste</b>.</li>
-      <li>In der Karte <b>Passwort ändern</b> das aktuelle Passwort und zweimal das neue eingeben (mindestens 8 Zeichen).</li>
+      <li>In der Karte <b>Passwort ändern</b> das aktuelle Passwort und zweimal das neue eingeben. Unter dem Feld steht, was das Passwort braucht (Richtlinie, siehe unten).</li>
       <li><b>Passwort speichern</b>. Ab der nächsten Anmeldung gilt das neue Passwort.</li>
     </ol>
     Meldest du dich bisher nur per Karte oder Microsoft an, heißt die Karte <b>Passwort festlegen</b> – dann ist kein aktuelles Passwort nötig.</div>
+  <div class="hb-howto"><b><i class="ti ti-password"></i> Passwort ändern müssen</b>In diesen Fällen fragt PDH bei der Anmeldung mit Passwort zuerst nach einem neuen Passwort:
+    <ul>
+      <li><b>Erstanmeldung</b> – ein Administrator hat dein Konto mit einem Passwort angelegt.</li>
+      <li>Ein Administrator hat dein Passwort im <b>Benutzerstamm</b> geändert oder den Wechsel verlangt.</li>
+      <li>Dein Passwort ist <b>abgelaufen</b> (Höchstalter der Richtlinie).</li>
+    </ul>
+    <ol class="hb-steps">
+      <li>Wie gewohnt mit Benutzername und Passwort anmelden.</li>
+      <li>Es erscheint <b>Passwort ändern</b>. Zweimal das neue Passwort eingeben – es muss sich vom bisherigen unterscheiden und die angezeigten Regeln erfüllen.</li>
+      <li><b>Passwort speichern</b> – du bist angemeldet und landest dort, wo du hinwolltest.</li>
+    </ol>
+    Bis dahin gibt es keine Anmeldung, auch nicht über die Schnittstelle oder die Override-Anmeldung am Terminal. Für die Seite hast du 15 Minuten, sonst einfach neu anmelden. Karte, Microsoft und Nextcloud funktionieren weiter; Systembenutzer (Terminals) sind ausgenommen.</div>
+  <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Für Administratoren: Passwort im Benutzerstamm setzen</b>
+    <ol class="hb-steps">
+      <li>Benutzer öffnen (oder neu anlegen) und unter <b>Neues Passwort</b> ein vorläufiges Passwort eintragen – es muss die Richtlinie erfüllen.</li>
+      <li>Speichern und das Passwort der Person mitteilen. Sie muss es bei der nächsten Anmeldung ändern (abschaltbar in der Richtlinie).</li>
+      <li>Ohne neues Passwort geht es mit <b>Passwortwechsel verlangen</b>; <b>Erlassen</b> nimmt den Wechselzwang wieder weg. Den Stand zeigt das Schild „Wechsel bei nächster Anmeldung“ bzw. „Passwort abgelaufen“.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-lock-question"></i> Passwort vergessen?</b>
     <ol class="hb-steps">
       <li>Auf der Anmeldeseite unter dem Anmelden-Knopf auf <b>Passwort vergessen?</b>.</li>
@@ -880,6 +898,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Testmail an mich</b> schickt eine Nachricht an deine eigene Adresse.</li>
     </ol>
     „Passwort vergessen?“ verschickt seine Links nur, wenn E-Mail eingerichtet ist und im Reiter <b>Server</b> die <b>Öffentliche Adresse</b> steht. Der Link wird bewusst nur daraus gebaut, nie aus der Adresse der Anfrage.</div>
+  <div class="hb-howto"><b><i class="ti ti-password"></i> So stellst du die Passwort-Richtlinie ein</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Passwörter</b> öffnen.</li>
+      <li><b>Mindestlänge</b> (8–72), <b>Höchstalter</b> in Tagen (0 = läuft nie ab) und <b>Wiederverwendung sperren</b> (die letzten N Passwörter, 0 = aus) eintragen.</li>
+      <li>Ankreuzen, was das Passwort braucht: <b>Großbuchstaben</b>, <b>Kleinbuchstaben</b>, <b>Ziffer</b>, <b>Sonderzeichen</b>.</li>
+      <li>Festlegen, wann gewechselt werden muss: bei der <b>Erstanmeldung</b> und/oder nachdem ein <b>Administrator das Passwort</b> geändert hat. Mit <b>jetzt alle Benutzer … zum Wechsel zwingen</b> müssen einmalig alle mit Passwort beim nächsten Anmelden ein neues vergeben.</li>
+      <li><b>Speichern</b> – die Richtlinie gilt sofort für jedes neue Passwort, ein Neustart ist nicht nötig. Bestehende Passwörter bleiben gültig, bis sie geändert werden oder ablaufen.</li>
+    </ol>
+    Unter dem Knopf steht, wie viele Benutzer ihr Passwort gerade ändern müssen.</div>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So prüfst du den Copilot-Zugang</b>
     <ol class="hb-steps">
       <li>Reiter <b>Copilot</b> → <b>Verbindung testen</b>.</li>

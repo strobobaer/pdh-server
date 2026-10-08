@@ -31,7 +31,7 @@
         <div class="form-group"><label class="form-label" for="uf-username">Benutzername <span id="username-help" style="color:var(--muted);font-weight:400"></span></label><input id="uf-username" name="username" class="form-input" required autocomplete="username"></div>
         <div class="form-group"><label class="form-label" for="uf-email">E-Mail</label><input id="uf-email" name="email" type="email" class="form-input" required autocomplete="email"></div>
         <div class="form-group"><label class="form-label" for="uf-nextcloud">Nextcloud-Benutzer-ID</label><input id="uf-nextcloud" name="nextcloud_user_id" class="form-input" placeholder="Optional, für SSO-Verknüpfung"></div>
-        <div class="form-group"><label class="form-label" for="uf-password">Passwort <span id="password-help" style="color:var(--muted);font-weight:400">(Pflichtfeld)</span></label><input id="uf-password" name="password" type="password" class="form-input" minlength="8" autocomplete="new-password"></div>
+        <div class="form-group"><label class="form-label" for="uf-password">Passwort <span id="password-help" style="color:var(--muted);font-weight:400">(Pflichtfeld)</span></label><input id="uf-password" name="password" type="password" class="form-input" minlength="8" autocomplete="new-password">{{if .PasswordHint}}<div class="rec-sub" style="font-size:11px;margin-top:3px">{{.PasswordHint}}</div>{{end}}</div>
         <div class="form-group"><label class="form-label" for="uf-phone">Telefon</label><input id="uf-phone" name="phone" class="form-input" autocomplete="tel"></div>
       </div>
 

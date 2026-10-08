@@ -440,6 +440,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
+	r.Post("/admin/server-config/password-policy", h.PasswordPolicySaveWeb)
 	r.Post("/admin/branding/settings", h.BrandingSettingsWeb)
 	r.Post("/admin/branding/theme", h.BrandingThemeWeb)
 	r.Post("/admin/branding/timeline", h.BrandingTimelineWeb)
@@ -520,6 +521,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/users/{id}", h.UserDetailPage)
 	r.Post("/users/me/change-notifications", h.UserChangeNotificationsWeb)
 	r.Post("/users/me/password", h.AccountPasswordWeb)
+	r.Post("/users/{id}/password-change", h.UserRequirePasswordChangeWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)
@@ -679,6 +681,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/login/forgot", h.LoginForgotPost)
 	r.Get("/login/reset", h.LoginResetPage)
 	r.Post("/login/reset", h.LoginResetPost)
+	r.Get("/login/change", h.LoginChangePage) // Pflichtwechsel (password_policy.go)
+	r.Post("/login/change", h.LoginChangePost)
 	r.Get("/logout", h.Logout)
 
 	return r
@@ -1796,6 +1800,12 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "login", d)
 		return
 	}
+	if due, reason := h.passwordChangeDue(r, user); due {
+		// Pflichtwechsel: noch keine Sitzung, erst das neue Passwort (password_policy.go)
+		authLog(r, true, "passwort", r.FormValue("email"), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "passwortwechsel noetig: "+reason)
+		h.startPasswordChange(w, r, user, loginNext(r.FormValue("next")))
+		return
+	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	authLog(r, true, "passwort", r.FormValue("email"), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "")
@@ -2780,6 +2790,7 @@ type ITAssetDetailView struct {
 
 type UsersPageData struct {
 	BaseData
+	PasswordHint    string // Richtlinie beim Anlegen (password_policy.go)
 	Users           []UserView
 	TotalUsers      int
 	ActiveUsers     int
@@ -2986,6 +2997,7 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	for _, g := range h.loadGroups(ctx) {
 		data.GroupOptions = append(data.GroupOptions, UserOption{ID: g.ID, Name: g.Name})
 	}
+	data.PasswordHint = h.passwordHint(r, true, true)
 	h.render(w, "users", data)
 }
 
@@ -3518,6 +3530,10 @@ func (h *Handler) OverrideLoginWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.rbac.HasPermissionForUser(overrideUser.ID, string(overrideUser.Role), "system.override") {
 		http.Redirect(w, r, "/?override_error=keine_berechtigung", http.StatusFound)
+		return
+	}
+	if due, _ := h.passwordChangeDue(r, overrideUser); due {
+		http.Redirect(w, r, "/?override_error=passwort_aendern", http.StatusFound)
 		return
 	}
 

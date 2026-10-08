@@ -87,6 +87,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusUnauthorized, err.Error())
 		return
 	}
+	if !user.IsSystemUser && h.svc.PasswordState(r.Context(), user.ID).Required() {
+		// Pflichtwechsel (Erstanmeldung, vom Administrator gesetzt, abgelaufen): erst im Browser aendern
+		log.Warn().Str("bereich", "auth").Str("verfahren", "api").Str("login", in.Email).Str("user", user.ID).Str("ip", r.RemoteAddr).Msg("anmeldung abgelehnt: passwortwechsel noetig")
+		response.Error(w, http.StatusForbidden, "passwort muss geändert werden – bitte zuerst im browser anmelden")
+		return
+	}
 	log.Info().Str("bereich", "auth").Str("verfahren", "api").Str("login", in.Email).Str("user", user.ID).Str("ip", r.RemoteAddr).Msg("anmeldung erfolgreich")
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{

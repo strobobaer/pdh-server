@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-07T13:16:22.551Z",
+  "generatedAt": "2026-10-07T19:50:59.829Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1150,6 +1150,17 @@
       "sqlHash": "1be1f3206c38e4fe4736a44e5d3e26928674173f671f3e15e1a6c59ad5982c0e",
       "title": "Hinweis beim Anlegen: jeder neue Vorgang landet als 'created' in der",
       "updatedAt": "2026-10-07T13:16:21.904Z"
+    },
+    {
+      "createdAt": "2026-10-07T19:50:59.195Z",
+      "path": "migrations/107_password_policy.up.sql",
+      "catalogContext": null,
+      "searchText": "passwort-richtlinien (server-einstellungen → passwörter) und passwortwechsel-zwang: migrations/107_password_policy.up.sql -- passwort-richtlinien (server-einstellungen → passwörter) und passwortwechsel-zwang:\n--   must_change_password  bei der naechsten anmeldung mit passwort muss es geaendert werden\n--                         (erstanmeldung, passwort vom administrator gesetzt, manuell verlangt)\n--   password_changed_at   fuer das hoechstalter eines passworts\n--   password_history      letzte passwort-hashes gegen wiederverwendung\n-- die richtlinie selbst steht als json in app_settings (schluessel password_policy).\n\nalter table users add column if not exists must_change_password boolean not null default false;\nalter table users add column if not exists password_changed_at timestamptz;\n-- bestehende passwoerter gelten ab heute – sonst liefen sie bei einem hoechstalter sofort ab\nupdate users set password_changed_at = now() where password_changed_at is null and coalesce(password_hash, '') <> '';\n\ncreate table if not exists password_history (\n    id            bigserial primary key,\n    user_id       uuid not null references users(id) on delete cascade,\n    password_hash text not null,\n    created_at    timestamptz not null default now()\n);\ncreate index if not exists idx_password_history_user on password_history (user_id, created_at desc);\n",
+      "searchUpdatedAt": "2026-10-07T19:50:59.294Z",
+      "schemaContext": null,
+      "sqlHash": "a0c23d39a8c89421773263db247a2e2261a9717bc8b149beda252583abcd2ab5",
+      "title": "Passwort-Richtlinien (Server-Einstellungen → Passwörter) und Passwortwechsel-Zwang:",
+      "updatedAt": "2026-10-07T19:50:59.196Z"
     }
   ]
 }

@@ -589,5 +589,16 @@
  "gerade eben": "az önce",
  "vor %d Min.": "%d dk. önce",
  "vor %d Std.": "%d sa. önce",
- "gestern %s": "dün %s"
+ "gestern %s": "dün %s",
+ "Passwort ändern": "Şifreyi değiştir",
+ "Das Passwort braucht:": "Şifre şunları içermeli:",
+ "Das neue Passwort muss sich vom bisherigen unterscheiden.": "Yeni şifre mevcut şifreden farklı olmalıdır.",
+ "Erst mit dem neuen Passwort geht es weiter. Merke es dir gut – ab jetzt meldest du dich damit an.": "Devam etmek için yeni bir şifre gerekiyor. İyi hatırla – bundan sonra bununla giriş yapacaksın.",
+ "Bitte vergib jetzt ein eigenes Passwort – das bisherige wurde vom Administrator vergeben oder der Wechsel wurde verlangt.": "Lütfen şimdi kendi şifreni belirle – mevcut şifre bir yönetici tarafından verildi veya değişiklik istendi.",
+ "Dein Passwort ist abgelaufen. Bitte vergib ein neues.": "Şifrenin süresi doldu. Lütfen yeni bir şifre belirle.",
+ "Die Anmeldung ist abgelaufen. Bitte melde dich erneut an.": "Oturum açma süresi doldu. Lütfen tekrar giriş yap.",
+ "ein Großbuchstabe": "bir büyük harf",
+ "ein Kleinbuchstabe": "bir küçük harf",
+ "eine Ziffer": "bir rakam",
+ "ein Sonderzeichen": "bir özel karakter"
 }

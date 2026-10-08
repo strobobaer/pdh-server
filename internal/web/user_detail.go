@@ -49,7 +49,10 @@ type UserDetailData struct {
 	Master              userMaster
 	Private             userPrivate
 	IsSelf              bool
-	HasPassword         bool // eigenes Konto hat ein Passwort (Passwort ändern fragt das aktuelle ab)
+	HasPassword         bool                // eigenes Konto hat ein Passwort (Passwort ändern fragt das aktuelle ab)
+	PasswordHint        string              // Richtlinie fuer das eigene Passwort
+	AdminPasswordHint   string              // Richtlinie + Wechselzwang beim Setzen durch die Verwaltung
+	Password            users.PasswordState // Wechsel faellig? (Benutzerstamm)
 	CanEditMaster       bool
 	CanEditCore         bool // Grunddaten-Dialog in der Benutzerliste
 	CanBroker           bool // Broker-Rollen vergeben (nur Benutzerverwaltung)
@@ -66,7 +69,7 @@ type UserDetailData struct {
 	QualKinds           interface{}
 	CanMakeAdmin        bool
 	CanDeactivate       bool
-	ChangeNotifications bool // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
+	ChangeNotifications bool           // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
 	Departments         []string       // Auswahl fuer das Feld Abteilung
 	Groups              []UserGroupRef // Gruppen der Person
 	AllGroups           []groupView    // Auswahl (nur mit Bearbeitungsrecht)
@@ -127,6 +130,11 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
 		CanDeactivate:  !self && u.Active && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
+	}
+	if h.db != nil {
+		d.PasswordHint = h.passwordHint(r, false, false)
+		d.AdminPasswordHint = h.passwordHint(r, true, false)
+		d.Password = h.users.PasswordState(ctx, u.ID)
 	}
 	if self {
 		_ = h.db.QueryRow(ctx, `SELECT change_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.ChangeNotifications)

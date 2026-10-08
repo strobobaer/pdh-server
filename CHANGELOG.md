@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.38.0] – 2026-10-07
+
+### Sicherheit
+- Passwortwechsel-Zwang: Wer sich mit einem vom Administrator vergebenen Passwort zum ersten Mal anmeldet oder dessen Passwort im Benutzerstamm geändert wurde, muss zuerst ein eigenes Passwort vergeben – vorher gibt es keine Anmeldung, auch nicht über Schnittstelle oder Override
+- Passwort-Richtlinie in den Server-Einstellungen (Reiter „Passwörter“): Mindestlänge, Groß-/Kleinbuchstaben, Ziffer, Sonderzeichen, Höchstalter und Sperre für die letzten Passwörter; gilt sofort für jedes neue Passwort
+- Benutzerstamm: „Passwortwechsel verlangen“ bzw. „Erlassen“ und Anzeige, ob ein Wechsel aussteht oder das Passwort abgelaufen ist; alle Passwortfelder zeigen die geltenden Regeln
+
 ## [0.37.0] – 2026-10-07
 
 ### Neu
