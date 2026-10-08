@@ -416,7 +416,7 @@ func loadStatTickets(h *Handler, ctx context.Context, uid string, _ WidgetInstan
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "ticket", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE priority = 'critical') FROM tickets r
 		WHERE status IN ('open','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&open, &crit)
-	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets", Alert: crit > 0}, err
+	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "blue", URL: "/tickets?tab=items&chip=open", Alert: crit > 0}, err
 }
 
 func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -424,15 +424,16 @@ func loadStatFaults(h *Handler, ctx context.Context, uid string, _ WidgetInstanc
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "fault", "r", 0)
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'detected') FROM faults r
 		WHERE status IN ('detected','analyzing','in_progress','pending') AND archived_at IS NULL`+cond, args...).Scan(&active, &fresh)
-	return statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults", Alert: fresh > 0}, err
+	return statData{Value: fmt.Sprint(active), Sub: tr(ctxLang(ctx), "%d neu gemeldet", fresh), Color: "red", URL: "/faults?tab=items&chip=open", Alert: fresh > 0}, err
 }
 
 func loadStatMaintenance(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var due, overdue int
 	cond, args := scopeSQL(h.scopeForUserID(ctx, uid), "maintenance_task", "r", 0)
-	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date < CURRENT_DATE) FROM maintenance_tasks r
-		WHERE status::text IN ('open','in_progress','pending') AND due_date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
-	return statData{Value: fmt.Sprint(due), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "amber", URL: "/maintenance", Alert: overdue > 0}, err
+	// due_date ist ein Zeitpunkt – fällig ist alles bis einschließlich heute (Chip „Fällig“)
+	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE due_date::date < CURRENT_DATE) FROM maintenance_tasks r
+		WHERE status::text IN ('open','in_progress','pending') AND due_date::date <= CURRENT_DATE AND archived_at IS NULL`+cond, args...).Scan(&due, &overdue)
+	return statData{Value: fmt.Sprint(due), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "amber", URL: "/maintenance?tab=items&chip=due", Alert: overdue > 0}, err
 }
 
 func loadStatStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
@@ -442,14 +443,15 @@ func loadStatStock(h *Handler, ctx context.Context, uid string, _ WidgetInstance
 	return statData{Value: fmt.Sprint(low), Sub: tr(ctxLang(ctx), "%d kritisch", crit), Color: "green", URL: "/inventory", Alert: crit > 0}, err
 }
 
+// myTasksWhere: wie der Chip „Meine“ der Aufgaben – zuständig, verantwortlich oder über die Gruppe.
 const myTasksWhere = `(EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $1::uuid)
-	     OR t.assigned_group_id IN ` + myGroupIDs + `)
+	     OR t.responsible_to = $1::uuid OR t.assigned_group_id IN ` + myGroupIDs + `)
 	AND t.status IN ('open','in_progress','pending') AND t.archived_at IS NULL`
 
 func loadStatMyTasks(h *Handler, ctx context.Context, uid string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	var open, overdue int
 	err := h.db.QueryRow(ctx, `SELECT COUNT(*), COUNT(*) FILTER (WHERE t.due_date < CURRENT_DATE) FROM tasks t WHERE `+myTasksWhere, uid).Scan(&open, &overdue)
-	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "accent", URL: "/tasks", Alert: overdue > 0}, err
+	return statData{Value: fmt.Sprint(open), Sub: tr(ctxLang(ctx), "%d überfällig", overdue), Color: "accent", URL: "/tasks?tab=items&chip=mine", Alert: overdue > 0}, err
 }
 
 func fmtHours(min int) string {

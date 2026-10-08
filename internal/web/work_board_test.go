@@ -4,6 +4,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"pdh/internal/modules/maintenance"
 )
 
 func TestWorkRoute(t *testing.T) {
@@ -165,6 +168,52 @@ func TestMaintenanceWorkArea(t *testing.T) {
 	for _, want := range []string{`class="kvp-chip on"`, "nur mit Abweichungen", "Noch nichts abgeschlossen."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Wartungs-Archiv enthält %q nicht", want)
+		}
+	}
+}
+
+func TestDashboardCountersMatchLists(t *testing.T) {
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.Local)
+	mk := func(status maintenance.TaskStatus, dueInDays, lead int) *maintenance.MaintenanceTask {
+		return &maintenance.MaintenanceTask{Status: status, DueDate: now.AddDate(0, 0, dueInDays), LeadDays: lead}
+	}
+	for _, c := range []struct {
+		m    *maintenance.MaintenanceTask
+		want bool
+	}{
+		{mk(maintenance.TaskOpen, 30, 0), true},        // weit weg, kein Vorlauf
+		{mk(maintenance.TaskOpen, 30, 30), false},      // Vorlauf hat begonnen
+		{mk(maintenance.TaskOpen, 5, 0), false},        // naechste 7 Tage
+		{mk(maintenance.TaskInProgress, 30, 0), false}, // begonnen
+		{mk(maintenance.TaskOpen, -2, 0), false},       // ueberfaellig
+	} {
+		if got := maintUpcoming(c.m, now); got != c.want {
+			t.Errorf("maintUpcoming(Status %s, in %v Tagen, Vorlauf %d) = %v", c.m.Status, c.m.DueDate.Sub(now).Hours()/24, c.m.LeadDays, got)
+		}
+	}
+	// Chip „Fällig“ = Kachel „Wartung fällig“: bis einschliesslich heute
+	open := []workCard{{ID: "heute", DueNow: true}, {ID: "alt", DueNow: true, Overdue: true}, {ID: "morgen"}, {ID: "plan", Upcoming: true}}
+	a := workArea{Kind: workKinds["maintenance"], Chip: "due"}
+	if items := a.filterItems(open); len(items) != 2 {
+		t.Errorf("Fällig: %+v", items)
+	}
+	a.buildChips(open)
+	found := false
+	for _, c := range a.Chips {
+		if c.Key == "due" {
+			found = c.Count == 2
+		}
+	}
+	if !found {
+		t.Error("Chip „Fällig“ fehlt oder zählt falsch")
+	}
+	// Kacheln fuehren in die passende Liste (nicht nur auf die Startseite des Moduls)
+	for raw, want := range map[string][2]string{
+		"tab=items&chip=open": {"items", "open"}, "tab=items&chip=due": {"items", "due"}, "tab=items&chip=mine": {"items", "mine"},
+	} {
+		q, _ := url.ParseQuery(raw)
+		if tab, chip := workRoute(q); tab != want[0] || chip != want[1] {
+			t.Errorf("%s → %s/%s", raw, tab, chip)
 		}
 	}
 }

@@ -106,6 +106,7 @@ type GanttItem struct {
 	IsDone          bool   `json:"is_done"`
 	IsRunning       bool   `json:"is_running"`    // in Bearbeitung
 	IsUnassigned    bool   `json:"is_unassigned"` // weder Person noch Gruppe zugewiesen
+	IsUpcoming      bool   `json:"is_upcoming"`   // Wartung vor dem Vorlauf: nur im Zeitstrahl, nicht in „offen“
 	Color           string `json:"color"`
 	DetailURL       string `json:"detail_url"`
 	DueDateEndpoint string `json:"due_date_endpoint"` // API-Pfad zum Setzen des Fälligkeitsdatums per Drag
@@ -1344,6 +1345,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 				ID: m.ID, RefType: "maintenance", Title: m.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
 				IsProvisional: false, IsDone: isDone, IsRunning: m.Status == maintenance.TaskInProgress, Color: "#c99a3c", // synchron mit dem Leitstand-Zeitstrahl
+				IsUpcoming: maintUpcoming(m, now),
 				DetailURL:       "/maintenance/tasks/" + m.ID,
 				DueDateEndpoint: "/api/v1/maintenance/tasks/" + m.ID + "/due-date",
 			})
@@ -4004,10 +4006,10 @@ func (h *Handler) unassignedRecords(ctx context.Context) map[string]bool {
 		return out
 	}
 	rows, err := h.db.Query(ctx, `
-		SELECT 'ticket:' || id FROM tickets WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
-		UNION ALL SELECT 'fault:' || id FROM faults WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed')
-		UNION ALL SELECT 'maintenance:' || id FROM maintenance_tasks WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status IN ('open', 'in_progress', 'pending')
-		UNION ALL SELECT 'task:' || t.id FROM tasks t WHERE t.assigned_group_id IS NULL AND t.status NOT IN ('resolved', 'closed')
+		SELECT 'ticket:' || id FROM tickets WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed') AND archived_at IS NULL
+		UNION ALL SELECT 'fault:' || id FROM faults WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status NOT IN ('resolved', 'closed') AND archived_at IS NULL
+		UNION ALL SELECT 'maintenance:' || id FROM maintenance_tasks WHERE assigned_to IS NULL AND assigned_group_id IS NULL AND status IN ('open', 'in_progress', 'pending') AND archived_at IS NULL
+		UNION ALL SELECT 'task:' || t.id FROM tasks t WHERE t.assigned_group_id IS NULL AND t.status NOT IN ('resolved', 'closed') AND t.archived_at IS NULL
 			AND NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id)`)
 	if err != nil {
 		return out
@@ -4020,4 +4022,16 @@ func (h *Handler) unassignedRecords(ctx context.Context) map[string]bool {
 		}
 	}
 	return out
+}
+
+// maintUpcoming: noch nicht begonnen, Termin nach den naechsten 7 Tagen und Vorlauf
+// noch nicht erreicht – dieselbe Regel wie der Chip „Geplant“ (work_board.go) und der Leitstand.
+func maintUpcoming(m *maintenance.MaintenanceTask, now time.Time) bool {
+	if m.Status != maintenance.TaskOpen {
+		return false
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	due := m.DueDate.Local()
+	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, time.Local)
+	return due.After(today.AddDate(0, 0, 7)) && due.AddDate(0, 0, -m.LeadDays).After(today)
 }

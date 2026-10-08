@@ -230,7 +230,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = f.created_by), '') AS creator,
 			       f.created_at, '/faults/' || f.id::text AS detail_url, f.infrastructure_id
 			FROM faults f LEFT JOIN users u ON u.id = f.assigned_to LEFT JOIN user_groups g ON g.id = f.assigned_group_id
-			WHERE f.status IN ('detected', 'analyzing', 'in_progress', 'pending')
+			WHERE f.status IN ('detected', 'analyzing', 'in_progress', 'pending') AND f.archived_at IS NULL
 			UNION ALL
 			SELECT t.id::text, 'ticket', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::date::text, ''),
@@ -238,7 +238,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = t.created_by), ''),
 			       t.created_at, '/tickets/' || t.id::text, t.infrastructure_id
 			FROM tickets t LEFT JOIN users u ON u.id = t.assigned_to LEFT JOIN user_groups g ON g.id = t.assigned_group_id
-			WHERE t.status IN ('open', 'in_progress', 'pending')
+			WHERE t.status IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL
 			UNION ALL
 			SELECT m.id::text, 'maintenance', m.title, COALESCE(m.description, ''), m.status::text, m.priority::text,
 			       m.due_date::date::text,
@@ -246,7 +246,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = m.created_by), ''),
 			       m.created_at, '/maintenance/tasks/' || m.id::text, m.infrastructure_id
 			FROM maintenance_tasks m LEFT JOIN users u ON u.id = m.assigned_to LEFT JOIN user_groups g ON g.id = m.assigned_group_id
-			WHERE m.status IN ('open', 'in_progress', 'pending')
+			WHERE m.status IN ('open', 'in_progress', 'pending') AND m.archived_at IS NULL
 			UNION ALL
 			SELECT t.id::text, 'task', t.title, COALESCE(t.description, ''), t.status::text, t.priority::text,
 			       COALESCE(t.due_date::text, ''),
@@ -257,7 +257,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			       COALESCE((SELECT cu.first_name || ' ' || cu.last_name FROM users cu WHERE cu.id = t.created_by), ''),
 			       t.created_at, '/tasks/' || t.id::text, t.infrastructure_id
 			FROM tasks t
-			WHERE t.status IN ('open', 'in_progress', 'pending')
+			WHERE t.status IN ('open', 'in_progress', 'pending') AND t.archived_at IS NULL
 		) item
 		LEFT JOIN LATERAL (
 			SELECT action FROM global_dashboard_actions a

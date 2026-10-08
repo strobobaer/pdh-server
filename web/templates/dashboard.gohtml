@@ -151,6 +151,7 @@ var dashGanttItems = [
   {id:'{{.ID}}', refType:'{{.RefType}}', name:'{{.Title}}', start:'{{.StartISO}}', end:'{{.EndISO}}',
    provisional: {{if .IsProvisional}}true{{else}}false{{end}}, done: {{if .IsDone}}true{{else}}false{{end}},
    running: {{if .IsRunning}}true{{else}}false{{end}}, unassigned: {{if .IsUnassigned}}true{{else}}false{{end}},
+   upcoming: {{if .IsUpcoming}}true{{else}}false{{end}},
    color:'{{.Color}}', url:'{{.DetailURL}}', dueEndpoint:'{{.DueDateEndpoint}}'},
 {{end}}
 ];
@@ -253,7 +254,8 @@ var dvGanttMatch = dvFilter('dash-gantt-filter', 'pdh_dash_gantt_filter', functi
 
 function renderDashTable(){
   var body = document.getElementById('dash-table-body');
-  var open = dashGanttItems.filter(function(t){ return !t.done; });
+  // offen = wie „Alle offenen“: ohne Erledigtes und ohne Wartungen vor dem Vorlauf (stehen im Zeitstrahl)
+  var open = dashGanttItems.filter(function(t){ return !t.done && !t.upcoming; });
   var items = open.filter(dvTableMatch).sort(function(a, b){
     if(a.provisional !== b.provisional) return a.provisional ? 1 : -1;
     return a.end < b.end ? -1 : a.end > b.end ? 1 : 0;

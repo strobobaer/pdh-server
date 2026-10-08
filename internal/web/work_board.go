@@ -106,7 +106,7 @@ type workCard struct {
 	ID, Title, Description, InfraID, InfraName, ProjectID, ProjectName string
 	Due, Status, StatusLabel, StatusClass                              string
 	Priority, PriorityLabel, PriorityClass, PriorityDot, Who           string
-	Overdue, Unassigned, New, Mine, Upcoming                           bool
+	Overdue, DueNow, Unassigned, New, Mine, Upcoming                   bool // DueNow: faellig bis heute
 	CreatedAgo                                                         string
 }
 
@@ -376,6 +376,7 @@ func (h *Handler) workOpenCards(r *http.Request, k workKind) []workCard {
 			dl := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, time.Local)
 			c.Due = dl.Format("02.01.2006")
 			c.Overdue = dl.Before(today)
+			c.DueNow = !dl.After(today)
 		}
 		c.New = c.Status == "detected" || (c.Status == "open" && c.Unassigned)
 		c.StatusLabel, c.StatusClass = statusLabel(c.Status), statusClass(c.Status)
@@ -426,6 +427,8 @@ func chipMatch(chip string, c workCard) bool {
 		return c.Unassigned
 	case "overdue":
 		return c.Overdue
+	case "due":
+		return c.DueNow
 	case "noproject":
 		return c.ProjectID == ""
 	}
@@ -473,6 +476,7 @@ func (a *workArea) buildChips(open []workCard) {
 		add("noproject", "Ohne Projekt", "ti-folder-off", count("noproject"))
 	}
 	if a.Kind.Key == "maintenance" {
+		add("due", "Fällig", "ti-calendar-due", count("due")) // wie die Dashboard-Kachel „Wartung fällig“
 		add("planned", "Geplant", "ti-calendar-time", count("planned"))
 	}
 	add("archive", "Archiv", "ti-archive", -1)

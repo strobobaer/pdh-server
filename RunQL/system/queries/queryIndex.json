@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-07T19:50:59.829Z",
+  "generatedAt": "2026-10-08T04:08:26.889Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1161,6 +1161,17 @@
       "sqlHash": "a0c23d39a8c89421773263db247a2e2261a9717bc8b149beda252583abcd2ab5",
       "title": "Passwort-Richtlinien (Server-Einstellungen → Passwörter) und Passwortwechsel-Zwang:",
       "updatedAt": "2026-10-07T19:50:59.196Z"
+    },
+    {
+      "createdAt": "2026-10-08T04:07:29.564Z",
+      "path": "migrations/108_reopen_unarchive.up.sql",
+      "catalogContext": null,
+      "searchText": "wiedergeoeffnete vorgaenge: beim erledigen setzen tickets, stoerungen und migrations/108_reopen_unarchive.up.sql -- wiedergeoeffnete vorgaenge: beim erledigen setzen tickets, stoerungen und\n-- aufgaben archived_at/resolved_at. ging der status danach zurueck auf offen,\n-- in arbeit oder wartend, blieben beide stehen – der vorgang fehlte dann in\n-- den listen und zaehlern, die archiviertes ausblenden, tauchte aber im\n-- leitstand auf. ab jetzt hebt jeder wechsel auf einen offenen status die\n-- archivierung auf; bestehende faelle werden einmalig bereinigt.\n\ncreate or replace function pdh_reopen_unarchive() returns trigger as $$\nbegin\n    if new.status::text not in ('resolved', 'closed') and (new.archived_at is not null or new.resolved_at is not null) then\n        new.archived_at := null;\n        new.resolved_at := null;\n    end if;\n    return new;\nend;\n$$ language plpgsql;\n\ndrop trigger if exists trg_pdh_reopen_tickets on tickets;\ncreate trigger trg_pdh_reopen_tickets before insert or update on tickets\n    for each row execute function pdh_reopen_unarchive();\ndrop trigger if exists trg_pdh_reopen_faults on faults;\ncreate trigger trg_pdh_reopen_faults before insert or update on faults\n    for each row execute function pdh_reopen_unarchive();\ndrop trigger if exists trg_pdh_reopen_tasks on tasks;\ncreate trigger trg_pdh_reopen_tasks before insert or update on tasks\n    for each row execute function pdh_reopen_unarchive();\n\n-- bestand bereinigen (der trigger setzt die felder dabei zurueck)\nupdate tickets set updated_at = updated_at where status::text not in ('resolved', 'closed') and (archived_at is not null or resolved_at is not null);\nupdate faults  set updated_at = updated_at where status::text not in ('resolved', 'closed') and (archived_at is not null or resolved_at is not null);\nupdate tasks   set updated_at = updated_at where status::text not in ('resolved', 'closed') and (archived_at is not null or resolved_at is not null);\n",
+      "searchUpdatedAt": "2026-10-08T04:08:26.347Z",
+      "schemaContext": null,
+      "sqlHash": "1f95deb569ed316ae2bf0d02c15523485ff2ed29cd66b875f11d326c5d008a94",
+      "title": "Wiedergeoeffnete Vorgaenge: Beim Erledigen setzen Tickets, Stoerungen und",
+      "updatedAt": "2026-10-08T04:08:26.223Z"
     }
   ]
 }

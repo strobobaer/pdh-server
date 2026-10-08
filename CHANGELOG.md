@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.38.1] – 2026-10-08
+
+### Behoben
+- Wieder geöffnete Tickets, Störungen und Aufgaben blieben als „archiviert“ markiert: Sie fehlten in der Liste und in den Dashboard-Zählern, erschienen aber im Leitstand und bei der Zuweisung – jetzt hebt das Wiederöffnen die Archivierung auf, bestehende Fälle werden beim Update bereinigt
+- Dashboard-Kacheln führen direkt in die passende Liste („Alle offenen“, „Fällig“, „Meine“) statt auf die Startseite des Moduls
+- „Wartung fällig“ zählte Wartungen nicht mit, die heute erst später fällig sind; der neue Chip „Fällig“ unter Aufträge zeigt genau diese
+- „Meine Aufgaben“ zählt jetzt wie der Chip „Meine“ auch Aufgaben, für die man verantwortlich ist
+- Die Tabelle der offenen Vorgänge im Dashboard zeigt keine Wartungen mehr, deren Vorlauf noch nicht begonnen hat (wie Leitstand und „Alle offenen“); im Zeitstrahl stehen sie weiter
+
 ## [0.38.0] – 2026-10-07
 
 ### Sicherheit
