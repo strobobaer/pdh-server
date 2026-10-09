@@ -86,6 +86,42 @@
   </div>
   {{end}}
 </div>
+
+<!-- Easy-Mode-Meldetexte: zentraler Katalog, Zuordnung im Reiter „Meldetexte“ der Anlage (easy_texts.go) -->
+<details class="card" id="easy-texts"{{if not .EasyTexts}} open{{end}}>
+  <summary class="card-title" style="cursor:pointer;list-style:none"><span><i class="ti ti-hand-finger"></i> Easy-Mode: Meldetexte <b>{{len .EasyTexts}}</b></span><span class="card-action">auf-/zuklappen</span></summary>
+  <p class="rec-sub" style="margin-bottom:10px">Vorformulierte Meldungen für den QR-Code ohne Anmeldung. Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> legst du die Reihenfolge der Tasten fest.</p>
+  <p class="rec-sub" style="margin-bottom:10px"> An der Anlage im Reiter <b>Meldetexte</b> zuordnen – ein Text an einer Halle oder Linie gilt auch für alle Anlagen darunter. Im Easy-Mode erscheinen sie als Tasten in der Sprache des Handys.</p>
+  {{range $i, $t := .EasyTexts}}
+  <div class="rec-row" data-rx data-rx-title="{{.Text}}">
+    {{if $.CanEditInfra}}<span class="et-move">
+      <form method="post" action="/infrastructure/easy-texts/{{.ID}}/move"><input type="hidden" name="dir" value="up"><input type="hidden" name="back" value="/infrastructure#easy-texts">
+        <button class="ih-act" title="Nach oben"{{if eq $i 0}} disabled{{end}} aria-label="Nach oben"><i class="ti ti-chevron-up"></i></button></form>
+      <form method="post" action="/infrastructure/easy-texts/{{.ID}}/move"><input type="hidden" name="dir" value="down"><input type="hidden" name="back" value="/infrastructure#easy-texts">
+        <button class="ih-act" title="Nach unten"{{if .Last}} disabled{{end}} aria-label="Nach unten"><i class="ti ti-chevron-down"></i></button></form>
+    </span>{{else}}<i class="ti ti-message-2" style="font-size:18px;color:var(--accent)"></i>{{end}}
+    <div class="grow"><b>{{.Text}}</b><div class="rec-sub">{{.TypeLabel}} · elektrisch/mechanisch: {{.KindLabel}}</div></div>
+    <span class="badge {{if .Uses}}b-blue{{else}}b-gray{{end}}" title="An so vielen Anlagen zugeordnet (Unteranlagen nicht mitgezählt)">{{if .Uses}}{{.Uses}} Anlage{{if ne .Uses 1}}n{{end}}{{else}}nicht zugeordnet{{end}}</span>
+    {{if $.CanEditInfra}}<template class="rx-more">
+      <div style="flex-basis:100%">{{template "easy-text-form" (dict "T" . "Action" (printf "/infrastructure/easy-texts/%s" .ID) "Back" "/infrastructure#easy-texts" "Label" "Speichern")}}</div>
+      <form method="post" action="/infrastructure/easy-texts/{{.ID}}/delete" onsubmit="return confirm('Meldetext „{{.Text}}“ löschen? Er verschwindet auch von allen Anlagen.')"><input type="hidden" name="back" value="/infrastructure#easy-texts"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>
+    </template>{{end}}
+  </div>
+  {{else}}<div class="rec-sub" style="padding:6px 0 10px">Noch keine Meldetexte – z. B. „Band steht“, „Not-Aus ausgelöst“, „Öl tritt aus“, „Material fehlt“.</div>{{end}}
+  {{if .CanEditInfra}}<div class="ih-section" style="margin-top:14px">Neuer Meldetext</div>
+  {{template "easy-text-form" (dict "T" nil "Action" "/infrastructure/easy-texts" "Back" "/infrastructure#easy-texts" "Label" "Anlegen")}}{{end}}
+</details>
+<style>
+.et-move{display:flex;flex-direction:column;gap:0;flex-shrink:0}
+.et-move form{margin:0;line-height:0}
+.et-move .ih-act{width:32px;height:24px;border:0;background:none;color:var(--muted);border-radius:6px;cursor:pointer}
+.et-move .ih-act:hover:not(:disabled){background:var(--bg3);color:var(--text)}
+.et-move .ih-act:disabled{opacity:.25;cursor:default}
+</style>
+<script>
+// Ruecksprung auf den Katalog (#easy-texts): Karte aufgeklappt zeigen
+if(location.hash === '#easy-texts'){ const d = document.getElementById('easy-texts'); if(d){ d.open = true; d.scrollIntoView({block: 'start'}); } }
+</script>
 {{end}}
 
 {{define "infra_node"}}

@@ -1,0 +1,27 @@
+{{/* Easy-Mode-Meldetext anlegen/ändern (easy_texts.go).
+     dict: T (easyText oder nil), Action, Back, Assign (Anlage, optional), Label */}}
+{{define "easy-text-form"}}
+<form class="rec-form et-form" method="post" action="{{.Action}}">
+  <input type="hidden" name="back" value="{{.Back}}">
+  {{with .Assign}}<input type="hidden" name="assign" value="{{.}}">{{end}}
+  <div class="form-group"><label class="form-label">Meldetext (deutsch) *</label>
+    <input name="text" class="form-input" maxlength="200" minlength="3" required value="{{with .T}}{{.Text}}{{end}}" placeholder="z. B. Band steht, Not-Aus ausgelöst"></div>
+  <div class="cols">
+    <div class="form-group"><label class="form-label">Gilt für</label>
+      <select name="report_type" class="form-input">
+        {{$ty := "both"}}{{with .T}}{{$ty = .Type}}{{end}}
+        <option value="both"{{if eq $ty "both"}} selected{{end}}>Störung &amp; Ticket</option>
+        <option value="fault"{{if eq $ty "fault"}} selected{{end}}>nur Störung</option>
+        <option value="ticket"{{if eq $ty "ticket"}} selected{{end}}>nur Ticket</option>
+      </select></div>
+    <div class="form-group"><label class="form-label">Elektrisch / mechanisch</label>
+      <select name="kind" class="form-input">
+        {{$k := ""}}{{with .T}}{{$k = .Kind}}{{end}}
+        <option value=""{{if eq $k ""}} selected{{end}}>beim Melden fragen</option>
+        <option value="electrical"{{if eq $k "electrical"}} selected{{end}}>immer elektrisch</option>
+        <option value="mechanical"{{if eq $k "mechanical"}} selected{{end}}>immer mechanisch</option>
+      </select></div>
+  </div>
+  <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-device-floppy"></i> {{.Label}}</button>
+</form>
+{{end}}

@@ -27,6 +27,7 @@ type InfraPageData struct {
 	Types          []infraTypeOption
 	Message, Error string
 	DueObligations []obligationView // fällige Prüfungen & GBU über alle Anlagen
+	EasyTexts      []easyText       // Easy-Mode-Meldetexte (Katalog, easy_texts.go)
 }
 
 type InfraNodeView struct {
@@ -177,6 +178,7 @@ func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
 		data.Stats = stats
 	}
 	data.DueObligations = h.dueObligations(ctx)
+	data.EasyTexts = h.easyTextCatalog(ctx)
 	h.render(w, "infrastructure", data)
 }
 
@@ -267,6 +269,8 @@ type InfraDetailData struct {
 	ObligationDue  int              // davon überfällig oder im Vorlauf
 	Users          []UserOption     // Verantwortliche
 	Today          string           // JJJJ-MM-TT (Formular „erledigt am“)
+	EasyTexts      []easyText       // Reiter „Meldetexte“ (easy_texts.go)
+	EasyTextCount  int              // davon an dieser Anlage wirksam
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +299,12 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Today = time.Now().Format("2006-01-02")
+	data.EasyTexts = h.infraEasyTexts(ctx, id)
+	for _, t := range data.EasyTexts {
+		if t.Assigned || t.InheritedFrom != "" {
+			data.EasyTextCount++
+		}
+	}
 	if data.CanEditInfra {
 		data.Users = h.userOptions(ctx)
 	}

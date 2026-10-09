@@ -502,6 +502,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Eine Anlage kann nicht unter sich selbst oder unter eine ihrer eigenen Unteranlagen gehängt werden.</div>
   <h3 id="obligations"><i class="ti ti-clipboard-check"></i> Prüfpflichten &amp; Gefährdungsbeurteilungen</h3>
   <p>Im Reiter <b>Prüfungen &amp; GBU</b> jeder Anlage stehen wiederkehrende <b>Prüfpflichten</b> (z. B. DGUV V3, UVV, Druckbehälter, Leitern) und <b>Gefährdungsbeurteilungen</b> nach ArbSchG §5. Bald Fälliges ist gelb, Überfälliges rot; die Zahl am Reiter zeigt, wie viele anstehen. Oben auf der Seite <b>Infrastruktur</b> stehen alle fälligen Einträge über alle Anlagen.</p>
+  <p>Im Reiter <b>Meldetexte</b> legst du fest, welche vorformulierten Meldungen der <a href="#hb-easy-texts">Easy-Mode</a> an dieser Anlage als Tasten anbietet.</p>
   <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Prüfpflicht oder GBU an</b>
     <ol class="hb-steps">
       <li>Anlage öffnen → Reiter <b>Prüfungen &amp; GBU</b> → bei Prüfpflichten bzw. Gefährdungsbeurteilungen <b>Hinzufügen</b>.</li>
@@ -571,11 +572,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du im Easy-Mode</b>
     <ol class="hb-steps">
       <li>QR-Code scannen → <b>Störung +</b> (etwas ist kaputt) oder <b>Ticket +</b> (etwas wird gebraucht).</li>
-      <li><b>Was ist zu melden?</b> – in der eigenen Sprache schreiben.</li>
-      <li><b>Elektrisch</b> oder <b>Mechanisch</b> antippen.</li>
+      <li><b>Was ist zu melden?</b> – einen der vorgegebenen <b>Meldetexte</b> antippen (falls für die Anlage hinterlegt) und/oder in der eigenen Sprache schreiben. Mit Meldetext ist der eigene Text freiwillig.</li>
+      <li><b>Elektrisch</b> oder <b>Mechanisch</b> antippen. Gibt der Meldetext das schon vor, entfällt dieser Schritt.</li>
       <li><b>Anlage läuft</b> oder <b>Anlage steht</b> antippen – fertig, die Meldung ist da.</li>
     </ol>
-    Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“, in der Historie steht „QR-Code (Easy-Mode)“. Nach dem Namen fragt der Easy-Mode nicht. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
+    Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). In der Störung bzw. im Ticket steht der <b>deutsche Text immer oben</b>, darunter das Original, dann die Art und ob die Anlage steht. „Anlage steht“ bekommt hohe Priorität. Ersteller ist „Service“, in der Historie steht „QR-Code (Easy-Mode)“. Nach dem Namen fragt der Easy-Mode nicht. Mit Meldetext ist dieser der Titel der Meldung, ein eigener Text steht als Ergänzung darunter. Ohne eingerichteten Copilot bleibt der Text in der Originalsprache mit Hinweis.</div>
+  <div class="hb-howto" id="hb-easy-texts"><b><i class="ti ti-message-2"></i> So hinterlegst du Meldetexte für den Easy-Mode</b>
+    <ol class="hb-steps">
+      <li><b>Infrastruktur</b> öffnen → unten <b>Easy-Mode: Meldetexte</b> → bei <b>Neuer Meldetext</b> den Text auf Deutsch eintragen, z. B. „Band steht“ oder „Öl tritt aus“.</li>
+      <li>Wählen, ob der Text für <b>Störung &amp; Ticket</b>, nur Störung oder nur Ticket gilt, und ob er <b>immer elektrisch</b> bzw. <b>immer mechanisch</b> ist – dann fragt der Easy-Mode das nicht mehr. <b>Anlegen</b>.</li>
+      <li>Anlage öffnen → Reiter <b>Meldetexte</b> → passende Texte anhaken → <b>Zuordnung speichern</b>. Einen Text an einer Halle oder Linie zuordnen, dann gilt er für alle Anlagen darunter (dort steht „über …“).</li>
+      <li>Fehlt ein Text, im Reiter unten direkt <b>Anlegen und zuordnen</b> – er kommt in den Katalog und gilt gleich an dieser Anlage.</li>
+      <li>Die <b>Reihenfolge</b> der Tasten legst du im Katalog mit <i class="ti ti-chevron-up"></i> / <i class="ti ti-chevron-down"></i> fest – sie gilt für alle Anlagen. Neue Texte kommen ans Ende.</li>
+    </ol>
+    Im Easy-Mode erscheinen die Texte als große Tasten in der <b>Sprache des Handys</b> (automatisch übersetzt, wenn unter Server-Einstellungen → Übersetzung ein Dienst eingerichtet ist, sonst auf Deutsch). In der Meldung steht immer der deutsche Text. Ändern oder Löschen geht im Katalog; gelöschte Texte verschwinden von allen Anlagen.</div>
   <div class="hb-howto"><b><i class="ti ti-hand-finger"></i> So testest du den Easy-Mode (Admins)</b>
     <ol class="hb-steps">
       <li>Anlage öffnen → oben <b>Easy-Mode testen</b>. Die Meldeseite öffnet sich in einem neuen Tab – genau so, wie sie nach dem QR-Scan aussieht.</li>

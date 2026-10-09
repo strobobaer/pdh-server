@@ -24,7 +24,8 @@ import (
 //	QR an der Anlage scannen → /a/<id> leitet Nicht-Angemeldete auf /e/<id>
 //	→ Seite in der Sprache des Geräts: die letzten 5 Meldungen der Anlage,
 //	  Knöpfe „Störung +“ und „Ticket +“, oben „Anmelden“ (Normalmodus)
-//	→ Schritte: Wer meldet? → Was ist zu melden? → elektrisch/mechanisch
+//	→ Schritte: Was ist zu melden? (Meldetext antippen oder selbst schreiben)
+//	  → elektrisch/mechanisch (entfällt, wenn der Meldetext sie vorgibt)
 //	  → Anlage läuft/steht → Fertig
 //
 // Der Meldetext wird automatisch ins Deutsche übersetzt (Copilot); in der
@@ -47,6 +48,7 @@ type EasyPageData struct {
 	BaseData
 	AssetID, AssetName, AssetPath, TypeIcon string
 	Recent                                  []easyRecent
+	Texts                                   []easyTextOption // Meldetexte der Anlage (easy_texts.go)
 	LoginURL                                string
 	Test                                    bool // Testansicht für Admins (Knopf an der Anlage)
 	CanTranslate                            bool
@@ -88,6 +90,7 @@ func (h *Handler) EasyPage(w http.ResponseWriter, r *http.Request) {
 	d.Lang, d.Title, d.Page, d.Brand = lang, name, "easy", h.branding()
 	d.Look = h.appearance(r, d.Brand)
 	d.Recent = h.easyRecent(ctx, lang, h.infraSubtreeIDs(ctx, id))
+	d.Texts = h.easyTextOptions(ctx, lang, h.easyTextsFor(ctx, id))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	t, err := h.tmpl.Clone()
@@ -141,9 +144,11 @@ func (h *Handler) easyAdmin(r *http.Request) bool {
 // ── Meldung absenden ──────────────────────────────────────────
 
 type easyReportIn struct {
-	Type    string `json:"type"`  // fault | ticket
-	Name    string `json:"name"`  // wer meldet – freiwillig (die Seite fragt nicht mehr danach)
-	Text    string `json:"text"`  // was ist zu melden (Muttersprache)
+	Type    string `json:"type"`    // fault | ticket
+	Name    string `json:"name"`    // wer meldet – freiwillig (die Seite fragt nicht mehr danach)
+	Text    string `json:"text"`    // was ist zu melden (Muttersprache); mit Meldetext freiwillig
+	TextID  string `json:"text_id"` // gewählter Meldetext (easy_texts.go)
+	preset  string // dessen deutscher Text (vom Server nachgeschlagen)
 	Kind    string `json:"kind"`  // electrical | mechanical
 	State   string `json:"state"` // running | stopped
 	Website string `json:"website"`
@@ -194,7 +199,7 @@ func easyValidate(in *easyReportIn) error {
 		return errors.New("type")
 	case utf8.RuneCountInString(in.Name) > 80:
 		return errors.New("name")
-	case utf8.RuneCountInString(in.Text) < 3 || utf8.RuneCountInString(in.Text) > 2000:
+	case (in.TextID == "" && utf8.RuneCountInString(in.Text) < 3) || utf8.RuneCountInString(in.Text) > 2000:
 		return errors.New("text")
 	case easyKindDE[in.Kind] == "":
 		return errors.New("kind")
@@ -205,17 +210,30 @@ func easyValidate(in *easyReportIn) error {
 }
 
 // easyCompose: Titel und Beschreibung – deutscher Text immer über dem Original.
+// Mit Meldetext steht dieser als Titel und erste Zeile, der selbst
+// geschriebene Text (freiwillig) als Ergänzung darunter.
 func easyCompose(in easyReportIn, german, langName string, translated bool) (title, desc string) {
 	if german == "" {
 		german = in.Text
 	}
 	title = strings.TrimSpace(strings.SplitN(german, "\n", 2)[0])
+	if in.preset != "" {
+		title = in.preset
+	}
 	if r := []rune(title); len(r) > 80 {
 		title = strings.TrimSpace(string(r[:77])) + " …"
 	}
 	var b strings.Builder
+	if in.preset != "" {
+		b.WriteString(in.preset)
+		if german != "" {
+			b.WriteString("\n\n")
+		}
+	}
 	b.WriteString(german)
-	if translated && strings.TrimSpace(german) != in.Text {
+	if in.Text == "" {
+		// nur Meldetext, nichts selbst geschrieben
+	} else if translated && strings.TrimSpace(german) != in.Text {
 		label := "— Original"
 		if langName != "Deutsch" {
 			label += " (" + langName + ")"
@@ -285,9 +303,21 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 			langName = l.Name
 		}
 	}
+	// Meldetext: muss an dieser Anlage gelten und zur Art passen
+	if in.TextID != "" {
+		for _, t := range h.easyTextsFor(ctx, id) {
+			if t.ID == in.TextID && t.ForType(in.Type) {
+				in.preset = t.Text
+			}
+		}
+		if in.preset == "" {
+			fail(http.StatusBadRequest, "text")
+			return
+		}
+	}
 	// Übersetzen (auch bei deutscher Oberfläche – das Handy kann anders eingestellt sein als die Eingabe)
 	german, translated := in.Text, false
-	if h.faults != nil {
+	if h.faults != nil && in.Text != "" {
 		tctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 		if de, err := h.faults.Translate(tctx, in.Text); err == nil && de != "" {
 			german, translated = de, true

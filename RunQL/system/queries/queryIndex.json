@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-09T04:26:42.383Z",
+  "generatedAt": "2026-10-09T14:50:50.120Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1227,6 +1227,28 @@
       "sqlHash": "b64777329b08e77eb47b8b63931a5c1377a82aede5f9d81e0be0c248ae5aa4f2",
       "title": "113_user_row_height.up.sql",
       "updatedAt": "2026-10-09T04:26:41.759Z"
+    },
+    {
+      "createdAt": "2026-10-09T13:45:07.089Z",
+      "path": "migrations/114_easy_report_texts.up.sql",
+      "catalogContext": null,
+      "searchText": "114_easy_report_texts.up.sql migrations/114_easy_report_texts.up.sql -- 114_easy_report_texts.up.sql\n-- vorformulierte meldetexte fuer den easy-mode (internal/web/easy_texts.go).\n--\n-- easy_report_texts  zentraler katalog im infrastruktur-stamm (deutsch)\n--                    report_type: fuer stoerung, ticket oder beide\n--                    kind: belegt „elektrisch/mechanisch“ vor ('' = fragen)\n-- infra_easy_texts   zuordnung zu anlagen; gilt auch fuer alle unteranlagen\n\ncreate table if not exists easy_report_texts (\n    id          uuid primary key default gen_random_uuid(),\n    text        varchar(200) not null,\n    report_type varchar(10)  not null default 'both' check (report_type in ('both', 'fault', 'ticket')),\n    kind        varchar(12)  not null default '' check (kind in ('', 'electrical', 'mechanical')),\n    created_by  uuid references users(id) on delete set null,\n    created_at  timestamptz not null default now(),\n    updated_at  timestamptz not null default now()\n);\n\ncreate table if not exists infra_easy_texts (\n    infrastructure_id uuid not null references infrastructure(id) on delete cascade,\n    text_id           uuid not null references easy_report_texts(id) on delete cascade,\n    primary key (infrastructure_id, text_id)\n);\ncreate index if not exists idx_infra_easy_texts_text on infra_easy_texts(text_id);\n",
+      "searchUpdatedAt": "2026-10-09T13:45:07.195Z",
+      "schemaContext": null,
+      "sqlHash": "c059207e9127fe0b5fffb571251972c4a4bb8ea06b5e1f77ca20708e5eb6c49c",
+      "title": "114_easy_report_texts.up.sql",
+      "updatedAt": "2026-10-09T13:45:07.089Z"
+    },
+    {
+      "createdAt": "2026-10-09T14:50:49.488Z",
+      "path": "migrations/115_easy_report_texts_sort.up.sql",
+      "catalogContext": null,
+      "searchText": "115_easy_report_texts_sort.up.sql migrations/115_easy_report_texts_sort.up.sql -- 115_easy_report_texts_sort.up.sql\n-- eigene reihenfolge der easy-mode-meldetexte (katalog ▲/▼, easy_texts.go).\n-- bestehende texte starten alphabetisch.\n\nalter table easy_report_texts add column if not exists sort integer not null default 0;\n\nupdate easy_report_texts t set sort = x.rn\nfrom (select id, row_number() over (order by lower(text)) as rn from easy_report_texts) x\nwhere t.id = x.id and t.sort = 0;\n",
+      "searchUpdatedAt": "2026-10-09T14:50:49.586Z",
+      "schemaContext": null,
+      "sqlHash": "9e66e6af72b12cba41d6e70ff09a1b5125c6c022614c1228bd6984832e1f29c4",
+      "title": "115_easy_report_texts_sort.up.sql",
+      "updatedAt": "2026-10-09T14:50:49.488Z"
     }
   ]
 }

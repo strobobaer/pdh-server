@@ -67,6 +67,13 @@ textarea.ez-in{min-height:150px;resize:vertical}
 .ez-done p{color:var(--muted);margin-bottom:22px}
 .ez-test{background:rgba(245,158,11,.14);border:1px solid var(--amber);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13.5px;margin-bottom:14px}
 .ez-test b{display:block;color:var(--amber)}
+/* Meldetexte der Anlage (easy_texts.go): antippen statt schreiben */
+.ez-presets{display:grid;gap:10px;margin-bottom:16px}
+.ez-preset{display:flex;align-items:center;gap:12px;width:100%;padding:16px;border-radius:14px;border:2px solid var(--border);background:var(--bg2);color:var(--text);font-size:18px;font-weight:600;cursor:pointer;font-family:inherit;text-align:left;touch-action:manipulation}
+.ez-preset i{font-size:24px;color:var(--muted)}
+.ez-preset.sel{border-color:var(--accent);background:rgba(79,110,247,.12)}
+.ez-preset.sel i{color:var(--accent)}
+.ez-preset:active{transform:scale(.98)}
 .ez-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 [hidden]{display:none!important}
 </style>
@@ -106,6 +113,10 @@ textarea.ez-in{min-height:150px;resize:vertical}
     <div class="ez-steps" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="ez-pane" data-step="0">
       <div class="ez-q" id="ez-q-text">{{t "Was ist zu melden?"}}</div>
+      {{if .Texts}}<div class="ez-presets" id="ez-presets">
+        {{range .Texts}}<button type="button" class="ez-preset" data-text-id="{{.ID}}" data-type="{{.Type}}" data-kind="{{.Kind}}"><i class="ti ti-circle"></i><span>{{.Label}}</span></button>{{end}}
+      </div>
+      <div class="ez-hint" id="ez-hint-more">{{t "Antippen, was passt – oder selbst beschreiben. Mit Auswahl ist der eigene Text freiwillig."}}</div>{{end}}
       <div class="ez-hint">{{t "Schreib in deiner Sprache – die Meldung wird automatisch ins Deutsche übersetzt."}}</div>
       <textarea class="ez-in" id="ez-text" maxlength="2000" placeholder="{{t "Was ist passiert? Wo genau?"}}"></textarea>
     </div>
@@ -150,7 +161,20 @@ textarea.ez-in{min-height:150px;resize:vertical}
     qFault: {{t "Was ist zu melden?"}}, qTicket: {{t "Was wird gebraucht?"}}
   };
   const $ = id => document.getElementById(id);
-  const S = {type: '', step: 0, kind: '', state: ''};
+  const S = {type: '', step: 0, kind: '', state: '', textId: '', presetKind: ''};
+  const presets = [...document.querySelectorAll('.ez-preset')];
+  function pickPreset(p){
+    const on = p && S.textId !== p.dataset.textId;
+    S.textId = on ? p.dataset.textId : '';
+    S.presetKind = on ? p.dataset.kind : '';
+    presets.forEach(x => {
+      const sel = on && x === p;
+      x.classList.toggle('sel', sel);
+      x.querySelector('i').className = 'ti ' + (sel ? 'ti-circle-check-filled' : 'ti-circle');
+    });
+    $('ez-msg').textContent = '';
+  }
+  presets.forEach(p => p.addEventListener('click', () => pickPreset(p)));
   const panes = [...document.querySelectorAll('.ez-pane')];
   try{ localStorage.removeItem('pdh_easy_name'); }catch(e){} // frueher gemerkter Name (Schritt entfallen)
 
@@ -166,7 +190,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
     window.scrollTo(0, 0);
   }
   function check(i){
-    if(i === 0 && $('ez-text').value.trim().length < 3) return T.text;
+    if(i === 0 && !S.textId && $('ez-text').value.trim().length < 3) return T.text;
     if(i === 1 && !S.kind) return T.choose;
     if(i === 2 && !S.state) return T.choose;
     return '';
@@ -174,6 +198,11 @@ textarea.ez-in{min-height:150px;resize:vertical}
   document.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => {
     S.type = b.dataset.start; S.kind = ''; S.state = '';
     document.querySelectorAll('.ez-opt').forEach(o => o.classList.remove('sel'));
+    // nur die Meldetexte fuer Stoerung bzw. Ticket
+    pickPreset(null);
+    let anyPreset = false;
+    presets.forEach(p => { const fit = p.dataset.type === 'both' || p.dataset.type === S.type; p.hidden = !fit; anyPreset = anyPreset || fit; });
+    if($('ez-presets')){ $('ez-presets').hidden = !anyPreset; $('ez-hint-more').hidden = !anyPreset; }
     $('ez-q-text').textContent = S.type === 'ticket' ? T.qTicket : T.qFault;
     $('ez-home').hidden = true; $('ez-flow').hidden = false;
     show(0);
@@ -186,23 +215,29 @@ textarea.ez-in{min-height:150px;resize:vertical}
   }));
   $('ez-back').addEventListener('click', () => {
     if(S.step === 0){ $('ez-flow').hidden = true; $('ez-home').hidden = false; return; }
-    show(S.step - 1);
+    // Art vom Meldetext vorgegeben: Schritt „elektrisch/mechanisch“ ueberspringen
+    show(S.step === 2 && S.presetKind ? 0 : S.step - 1);
   });
   $('ez-next').addEventListener('click', next);
   async function next(){
     const err = check(S.step);
     if(err){ $('ez-msg').textContent = err; return; }
+    if(S.step === 0 && S.presetKind){
+      S.kind = S.presetKind;
+      document.querySelectorAll('[data-field="kind"] .ez-opt').forEach(o => o.classList.toggle('sel', o.dataset.value === S.kind));
+      show(2); return;
+    }
     if(S.step < panes.length - 1){ show(S.step + 1); return; }
     const btn = $('ez-next');
     btn.disabled = true; btn.textContent = T.sending;
     try{
       const res = await fetch('/e/' + ASSET + '/report', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'},
-        body: JSON.stringify({type: S.type, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
+        body: JSON.stringify({type: S.type, text_id: S.textId, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
       const j = await res.json().catch(() => ({}));
       if(!res.ok || !j.success) throw new Error(res.status === 429 ? T.many : T.fail);
       $('ez-flow').hidden = true; $('ez-done').hidden = false;
       $('ez-done-title').textContent = j.title || '';
-      $('ez-text').value = '';
+      $('ez-text').value = ''; pickPreset(null);
     }catch(e){
       $('ez-msg').textContent = e.message || T.fail;
       btn.disabled = false; show(S.step);

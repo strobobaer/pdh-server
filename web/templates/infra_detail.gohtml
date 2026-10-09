@@ -66,6 +66,7 @@
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   {{if .CanEditInfra}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
   <a class="rec-tab" data-tab="checks" href="?tab=checks"><i class="ti ti-clipboard-check"></i> Prüfungen &amp; GBU{{if .ObligationDue}} <b style="background:var(--amber);color:#000">{{.ObligationDue}}</b>{{else if .Obligations}} <b>{{len .Obligations}}</b>{{end}}</a>
+  <a class="rec-tab" data-tab="easy" href="?tab=easy"><i class="ti ti-hand-finger"></i> Meldetexte{{if .EasyTextCount}} <b>{{.EasyTextCount}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
@@ -226,6 +227,28 @@
   </div>
   {{end}}
   <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „Service“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>
+</div>
+
+<!-- ── Easy-Mode-Meldetexte: Zuordnung aus dem Katalog (easy_texts.go) ── -->
+<div class="rec-pane" data-pane="easy">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-hand-finger"></i> Meldetexte für den Easy-Mode</span><a class="card-action" href="/infrastructure#easy-texts">Katalog →</a></div>
+    <p class="rec-sub" style="margin-bottom:10px">Angehakte Texte erscheinen nach dem QR-Scan als Tasten – in der Sprache des Handys. Sie gelten auch für alle Unteranlagen. Texte mit <span class="badge b-blue">über …</span> gelten hier schon, weil sie an einer übergeordneten Anlage hängen.</p>
+    {{if .EasyTexts}}
+    <form method="post" action="/infrastructure/{{.Node.ID}}/easy-texts">
+      {{range .EasyTexts}}
+      <label class="rec-row" style="cursor:{{if $.CanEditInfra}}pointer{{else}}default{{end}}">
+        <input type="checkbox" name="text_id" value="{{.ID}}"{{if .Assigned}} checked{{end}}{{if not $.CanEditInfra}} disabled{{end}} style="width:20px;height:20px;flex-shrink:0">
+        <div class="grow"><b>{{.Text}}</b><div class="rec-sub">{{.TypeLabel}} · elektrisch/mechanisch: {{.KindLabel}}</div></div>
+        {{if .InheritedFrom}}<span class="badge b-blue" title="Gilt hier schon, weil er an „{{.InheritedFrom}}“ zugeordnet ist">über {{.InheritedFrom}}</span>{{end}}
+      </label>
+      {{end}}
+      {{if $.CanEditInfra}}<button class="btn btn-primary btn-small" type="submit" style="margin-top:10px"><i class="ti ti-device-floppy"></i> Zuordnung speichern</button>{{end}}
+    </form>
+    {{else}}<div class="rec-sub" style="padding:6px 0 10px">Im Katalog gibt es noch keine Meldetexte.</div>{{end}}
+    {{if .CanEditInfra}}<div class="ih-section" style="margin-top:16px">Neuer Meldetext – kommt in den Katalog und gilt gleich hier</div>
+    {{template "easy-text-form" (dict "T" nil "Action" "/infrastructure/easy-texts" "Back" (printf "/infrastructure/%s?tab=easy" .Node.ID) "Assign" .Node.ID "Label" "Anlegen und zuordnen")}}{{end}}
+  </div>
 </div>
 
 <!-- ── Anlagen-Historie (Vorgänge, Kommentare, Ersatzteile) ── -->
