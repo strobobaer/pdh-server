@@ -72,13 +72,25 @@ func (h *Handler) pushSettings(ctx context.Context) pushSettings {
 	if h.db == nil {
 		return s
 	}
-	s.Enabled = h.getUpdateSetting(ctx, keyPushEnabled, "0") == "1"
-	s.EnabledAt, _ = time.Parse(time.RFC3339, h.getUpdateSetting(ctx, keyPushEnabledAt, ""))
-	s.GroupsFault = splitIDs(h.getUpdateSetting(ctx, keyPushGroupsFault, ""))
-	s.GroupsTicket = splitIDs(h.getUpdateSetting(ctx, keyPushGroupsTick, ""))
-	rep, _ := strconv.Atoi(h.getUpdateSetting(ctx, keyPushRepeat, ""))
+	v := map[string]string{}
+	rows, err := h.db.Query(ctx, `SELECT key, value FROM app_settings WHERE key = ANY($1::text[])`,
+		[]string{keyPushEnabled, keyPushEnabledAt, keyPushGroupsFault, keyPushGroupsTick, keyPushRepeat, keyPushMaxMinutes})
+	if err == nil {
+		for rows.Next() {
+			var k, val string
+			if rows.Scan(&k, &val) == nil {
+				v[k] = val
+			}
+		}
+		rows.Close()
+	}
+	s.Enabled = v[keyPushEnabled] == "1"
+	s.EnabledAt, _ = time.Parse(time.RFC3339, v[keyPushEnabledAt])
+	s.GroupsFault = splitIDs(v[keyPushGroupsFault])
+	s.GroupsTicket = splitIDs(v[keyPushGroupsTick])
+	rep, _ := strconv.Atoi(v[keyPushRepeat])
 	s.RepeatSeconds = pushClamp(rep, 30, 600, pushDefaultRepeat)
-	mx, _ := strconv.Atoi(h.getUpdateSetting(ctx, keyPushMaxMinutes, ""))
+	mx, _ := strconv.Atoi(v[keyPushMaxMinutes])
 	s.MaxMinutes = pushClamp(mx, 5, 720, pushDefaultMax)
 	return s
 }
@@ -107,7 +119,15 @@ func (h *Handler) pushVAPIDKeys(ctx context.Context) (pushVAPID, error) {
 
 // pushEnabledFor: Push eingeschaltet (fuer BaseData – Alarm-Fenster in der App).
 func (h *Handler) pushEnabledFor(ctx context.Context) bool {
-	return h.db != nil && h.getUpdateSetting(ctx, keyPushEnabled, "0") == "1"
+	if h.db == nil {
+		return false
+	}
+	if on, ok := pushFlagCached(); ok {
+		return on
+	}
+	on := h.getUpdateSetting(ctx, keyPushEnabled, "0") == "1"
+	pushFlagStore(on)
+	return on
 }
 
 // ── Geraete anmelden ─────────────────────────────────────────
@@ -757,6 +777,7 @@ func (h *Handler) PushSettingsWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	pushFlagStore(on)
 	if on {
 		if _, err := h.pushVAPIDKeys(ctx); err != nil {
 			componentLog("push").Error().Err(err).Msg("vapid erzeugen")

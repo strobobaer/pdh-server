@@ -401,12 +401,6 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
 	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
 	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
-	// Easy-Mode-Meldetexte: Katalog und Zuordnung je Anlage (easy_texts.go)
-	r.Post("/infrastructure/easy-texts", h.EasyTextCreateWeb)
-	r.Post("/infrastructure/easy-texts/{tid}", h.EasyTextUpdateWeb)
-	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
-	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
-	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
 	// Prüfpflichten & Gefährdungsbeurteilungen (infra_obligations.go)
 	r.Post("/infrastructure/{id}/obligations", h.InfraObligationSaveWeb)
 	r.Post("/infrastructure/{id}/obligations/{oid}", h.InfraObligationSaveWeb)
@@ -429,9 +423,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/storage", h.StorageCreateRoot)
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
 	r.Get("/checklists", h.ChecklistsPage)
-	r.Get("/shifts", h.Shifts)
 	r.Post("/faults/{id}/chat-web", h.FaultChatWeb)
-	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Post("/time/start-web", h.TimeStartWeb)
 	r.Post("/time/manual-web", h.TimeManualWeb)
 	r.Post("/time/{id}/stop-web", h.TimeStopWeb)
@@ -650,7 +642,6 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/push", h.PushSettingsWeb)
-	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)
@@ -899,6 +890,7 @@ func getUser(r *http.Request) *users.User {
 // Inaktivitaets-Timer und die Override-Anmeldung braucht.
 func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseData {
 	u := getUser(r)
+	r = r.WithContext(h.withUserRow(r.Context(), u.ID)) // eine Abfrage fuer alle Benutzerspalten (user_row.go)
 	isOverride := false
 	if c, err := r.Cookie("pdh_return_token"); err == nil && c.Value != "" {
 		isOverride = true

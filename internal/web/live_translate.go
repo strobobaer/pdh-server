@@ -88,7 +88,9 @@ func (h *Handler) liveTranslateFor(ctx context.Context, userID string) liveTrans
 		return u
 	}
 	var target, uiLang string
-	if h.db.QueryRow(ctx, `SELECT live_translate, translate_lang, language FROM users WHERE id = $1::uuid`, userID).
+	if row := userRowFrom(ctx, userID); row != nil {
+		u.On, target, uiLang = row.liveTranslate, row.translateLang, row.language
+	} else if h.db.QueryRow(ctx, `SELECT live_translate, translate_lang, language FROM users WHERE id = $1::uuid`, userID).
 		Scan(&u.On, &target, &uiLang) != nil {
 		return liveTranslateUser{}
 	}

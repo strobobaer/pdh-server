@@ -922,12 +922,12 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
   <div class="ctx-section grow" data-context-panel="activity">
     <div class="ctx-title"><i class="ti ti-bell"></i>{{t "Aktivität"}}</div>
     {{template "presence-style"}}
-    <div id="pres-box" hx-get="/api/presence" hx-trigger="load, every 30s" aria-live="polite">
+    <div id="pres-box" hx-get="/api/presence" hx-trigger="load, every 30s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document" aria-live="polite">
       <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
     </div>
     <div id="activity-feed"
       hx-get="/api/activity"
-      hx-trigger="load, every 30s">
+      hx-trigger="load, every 30s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document">
       <div style="font-size:11px;color:var(--muted)">{{t "Lädt …"}}</div>
     </div>
   </div>
@@ -2562,7 +2562,7 @@ window.pdhPush = (function(){
   $('pdh-alarm-snooze').addEventListener('click', () => { if(shown){ snoozed[shown.id] = Date.now() + 120000; hide(); setTimeout(check, 121000); } });
   if(navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if(e.data && e.data.pdhPush) check(); });
   check();
-  setInterval(check, 20000);
+  setInterval(() => { if(!document.hidden) check(); }, 30000);
   document.addEventListener('visibilitychange', () => { if(!document.hidden) check(); });
 })();
 </script>

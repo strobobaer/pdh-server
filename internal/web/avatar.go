@@ -72,7 +72,11 @@ func (h *Handler) userAvatarURL(ctx context.Context, uid string) string {
 		return ""
 	}
 	var p *string
-	_ = h.db.QueryRow(ctx, `SELECT avatar_path FROM users WHERE id = $1::uuid`, uid).Scan(&p)
+	if row := userRowFrom(ctx, uid); row != nil {
+		p = row.avatarPath
+	} else {
+		_ = h.db.QueryRow(ctx, `SELECT avatar_path FROM users WHERE id = $1::uuid`, uid).Scan(&p)
+	}
 	if p == nil {
 		return avatarURL(uid, "")
 	}

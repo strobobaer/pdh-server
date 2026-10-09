@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-09T16:18:40.274Z",
+  "generatedAt": "2026-10-09T17:12:47.564Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1260,6 +1260,17 @@
       "sqlHash": "040fea4100559ffebf0612c27fd24d2e0569d9aca1c1a5029c96f2cef5eeb9a6",
       "title": "116_push_alerts.up.sql",
       "updatedAt": "2026-10-09T16:18:39.615Z"
+    },
+    {
+      "createdAt": "2026-10-09T17:08:48.321Z",
+      "path": "migrations/117_index_cleanup.up.sql",
+      "catalogContext": null,
+      "searchText": "117_index_cleanup.up.sql migrations/117_index_cleanup.up.sql -- 117_index_cleanup.up.sql\r\n-- ergebnis der pruefung auf dopplungen und bremskloetze (0.48.0).\r\n\r\n-- push-dienst (push.go): neue stoerungen/tickets der letzten minuten, alle 5 s\r\ncreate index if not exists idx_faults_created  on faults(created_at);\r\ncreate index if not exists idx_tickets_created on tickets(created_at);\r\n\r\n-- „meine störungen“, push-abschluss: wie bei tickets (idx_tickets_assigned)\r\ncreate index if not exists idx_faults_assigned on faults(assigned_to);\r\n\r\n-- doppelt: idx_shift_assign_date / idx_shift_assign_user (003/011) decken dieselben spalten ab\r\ndrop index if exists idx_shifts_date;\r\ndrop index if exists idx_shifts_user;\r\n",
+      "searchUpdatedAt": "2026-10-09T17:12:47.015Z",
+      "schemaContext": null,
+      "sqlHash": "e4fb311145656481340487ccd2da84a5e104afaa3c9e7f2e2bc9bd66027b61e8",
+      "title": "117_index_cleanup.up.sql",
+      "updatedAt": "2026-10-09T17:12:46.916Z"
     }
   ]
 }

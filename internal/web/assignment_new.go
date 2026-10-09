@@ -84,6 +84,12 @@ func (h *Handler) brokerFlags(ctx context.Context, userID string) (flags [4]bool
 	if h.db == nil || userID == "" {
 		return
 	}
+	if row := userRowFrom(ctx, userID); row != nil {
+		if row.active {
+			flags = row.broker
+		}
+		return
+	}
 	_ = h.db.QueryRow(ctx, `SELECT broker_faults, broker_tickets, broker_tasks, broker_maintenance FROM users WHERE id = $1::uuid AND active`, userID).
 		Scan(&flags[0], &flags[1], &flags[2], &flags[3])
 	return

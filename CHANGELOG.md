@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.48.1] – 2026-10-09
+
+### Behoben
+- Doppelt eingetragene Seitenadressen (Meldetexte, Leitstand-Einstellung, Schichtplan, Zeiterfassung an Störungen) bereinigt
+
+### Geändert
+- Schnellere Seiten: Die Angaben zur angemeldeten Person werden je Seitenaufruf mit einer statt sieben Datenbankabfragen gelesen
+- Die Suche nach neuen Störungen und Tickets für Push-Nachrichten ist entlastet, und doppelte Datenbank-Indizes im Schichtplan sind entfernt
+- Anwesenheit, Aktivität und Alarm-Prüfung werden nur noch abgefragt, solange der Browser-Tab sichtbar ist – beim Zurückkehren sofort
+
 ## [0.48.0] – 2026-10-09
 
 ### Neu

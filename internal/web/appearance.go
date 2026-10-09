@@ -91,8 +91,12 @@ type Appearance struct {
 func (h *Handler) appearance(r *http.Request, b Branding) Appearance {
 	a := Appearance{Brand: b, Allow: b.ThemeUserChoice}
 	if u := getUser(r); u.ID != "" && h.db != nil {
-		_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_scale, ui_row FROM users WHERE id = $1::uuid`, u.ID).
-			Scan(&a.User.Palette, &a.User.Font, &a.User.Scale, &a.User.Row)
+		if row := userRowFrom(r.Context(), u.ID); row != nil {
+			a.User = UserAppearance{Palette: row.palette, Font: row.font, Scale: row.scale, Row: row.row}
+		} else {
+			_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_scale, ui_row FROM users WHERE id = $1::uuid`, u.ID).
+				Scan(&a.User.Palette, &a.User.Font, &a.User.Scale, &a.User.Row)
+		}
 	}
 	a.FontID = b.FontID()
 	if _, ok := uiFont(a.User.Font); ok && a.Allow {

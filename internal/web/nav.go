@@ -158,7 +158,12 @@ func (h *Handler) userNavLayout(ctx context.Context, uid string) []navLayoutGrou
 		return nil
 	}
 	var raw []byte
-	if h.db.QueryRow(ctx, `SELECT nav_layout FROM users WHERE id = $1::uuid`, uid).Scan(&raw) != nil || len(raw) == 0 {
+	if row := userRowFrom(ctx, uid); row != nil {
+		raw = row.navLayout
+	} else if h.db.QueryRow(ctx, `SELECT nav_layout FROM users WHERE id = $1::uuid`, uid).Scan(&raw) != nil {
+		return nil
+	}
+	if len(raw) == 0 {
 		return nil
 	}
 	var l []navLayoutGroup
