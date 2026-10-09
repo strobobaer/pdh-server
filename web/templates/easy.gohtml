@@ -103,25 +103,20 @@ textarea.ez-in{min-height:150px;resize:vertical}
 
   <!-- Meldung Schritt für Schritt -->
   <section id="ez-flow" hidden>
-    <div class="ez-steps" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="ez-steps" aria-hidden="true"><i></i><i></i><i></i></div>
     <div class="ez-pane" data-step="0">
-      <div class="ez-q">{{t "Wer meldet?"}}</div>
-      <div class="ez-hint">{{t "Dein Name, damit wir nachfragen können."}}</div>
-      <input class="ez-in" id="ez-name" autocomplete="name" maxlength="80" placeholder="{{t "Vor- und Nachname"}}">
-    </div>
-    <div class="ez-pane" data-step="1" hidden>
       <div class="ez-q" id="ez-q-text">{{t "Was ist zu melden?"}}</div>
       <div class="ez-hint">{{t "Schreib in deiner Sprache – die Meldung wird automatisch ins Deutsche übersetzt."}}</div>
       <textarea class="ez-in" id="ez-text" maxlength="2000" placeholder="{{t "Was ist passiert? Wo genau?"}}"></textarea>
     </div>
-    <div class="ez-pane" data-step="2" hidden>
+    <div class="ez-pane" data-step="1" hidden>
       <div class="ez-q">{{t "Art der Meldung"}}</div>
       <div class="ez-choice" data-field="kind">
         <button type="button" class="ez-opt e" data-value="electrical"><i class="ti ti-bolt"></i>{{t "Elektrisch"}}</button>
         <button type="button" class="ez-opt m" data-value="mechanical"><i class="ti ti-settings"></i>{{t "Mechanisch"}}</button>
       </div>
     </div>
-    <div class="ez-pane" data-step="3" hidden>
+    <div class="ez-pane" data-step="2" hidden>
       <div class="ez-q">{{t "Zustand der Anlage"}}</div>
       <div class="ez-choice" data-field="state">
         <button type="button" class="ez-opt run" data-value="running"><i class="ti ti-player-play"></i>{{t "Anlage läuft"}}</button>
@@ -149,7 +144,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
 (function(){
   const ASSET = '{{.AssetID}}', TEST = {{.Test}};
   const T = {
-    name: {{t "Bitte deinen Namen angeben."}}, text: {{t "Bitte beschreiben, was los ist."}},
+    text: {{t "Bitte beschreiben, was los ist."}},
     choose: {{t "Bitte eine Antwort antippen."}}, sending: {{t "Wird gesendet …"}}, send: {{t "Fertig – melden"}},
     next: {{t "Weiter"}}, fail: {{t "Senden fehlgeschlagen – bitte nochmal versuchen."}}, many: {{t "Zu viele Meldungen – bitte kurz warten."}},
     qFault: {{t "Was ist zu melden?"}}, qTicket: {{t "Was wird gebraucht?"}}
@@ -157,7 +152,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
   const $ = id => document.getElementById(id);
   const S = {type: '', step: 0, kind: '', state: ''};
   const panes = [...document.querySelectorAll('.ez-pane')];
-  try{ $('ez-name').value = localStorage.getItem('pdh_easy_name') || ''; }catch(e){}
+  try{ localStorage.removeItem('pdh_easy_name'); }catch(e){} // frueher gemerkter Name (Schritt entfallen)
 
   function show(i){
     S.step = i;
@@ -171,10 +166,9 @@ textarea.ez-in{min-height:150px;resize:vertical}
     window.scrollTo(0, 0);
   }
   function check(i){
-    if(i === 0 && $('ez-name').value.trim().length < 2) return T.name;
-    if(i === 1 && $('ez-text').value.trim().length < 3) return T.text;
-    if(i === 2 && !S.kind) return T.choose;
-    if(i === 3 && !S.state) return T.choose;
+    if(i === 0 && $('ez-text').value.trim().length < 3) return T.text;
+    if(i === 1 && !S.kind) return T.choose;
+    if(i === 2 && !S.state) return T.choose;
     return '';
   }
   document.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => {
@@ -182,7 +176,7 @@ textarea.ez-in{min-height:150px;resize:vertical}
     document.querySelectorAll('.ez-opt').forEach(o => o.classList.remove('sel'));
     $('ez-q-text').textContent = S.type === 'ticket' ? T.qTicket : T.qFault;
     $('ez-home').hidden = true; $('ez-flow').hidden = false;
-    show($('ez-name').value.trim().length >= 2 ? 1 : 0);
+    show(0);
   }));
   document.querySelectorAll('.ez-choice').forEach(c => c.addEventListener('click', e => {
     const o = e.target.closest('.ez-opt'); if(!o) return;
@@ -201,11 +195,9 @@ textarea.ez-in{min-height:150px;resize:vertical}
     if(S.step < panes.length - 1){ show(S.step + 1); return; }
     const btn = $('ez-next');
     btn.disabled = true; btn.textContent = T.sending;
-    const name = $('ez-name').value.trim();
-    try{ localStorage.setItem('pdh_easy_name', name); }catch(e){}
     try{
       const res = await fetch('/e/' + ASSET + '/report', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'},
-        body: JSON.stringify({type: S.type, name, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
+        body: JSON.stringify({type: S.type, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
       const j = await res.json().catch(() => ({}));
       if(!res.ok || !j.success) throw new Error(res.status === 429 ? T.many : T.fail);
       $('ez-flow').hidden = true; $('ez-done').hidden = false;

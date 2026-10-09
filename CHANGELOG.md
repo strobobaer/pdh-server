@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.46.2] – 2026-10-09
+
+### Geändert
+- Easy-Mode: Der Schritt „Wer meldet?“ entfällt – eine Meldung hat nur noch drei Schritte (Was ist zu melden, Art, Zustand der Anlage), ein Name wird nicht mehr abgefragt oder auf dem Handy gespeichert
+
 ## [0.46.1] – 2026-10-09
 
 ### Geändert

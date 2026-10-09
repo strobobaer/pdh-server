@@ -142,7 +142,7 @@ func (h *Handler) easyAdmin(r *http.Request) bool {
 
 type easyReportIn struct {
 	Type    string `json:"type"`  // fault | ticket
-	Name    string `json:"name"`  // wer meldet
+	Name    string `json:"name"`  // wer meldet – freiwillig (die Seite fragt nicht mehr danach)
 	Text    string `json:"text"`  // was ist zu melden (Muttersprache)
 	Kind    string `json:"kind"`  // electrical | mechanical
 	State   string `json:"state"` // running | stopped
@@ -192,7 +192,7 @@ func easyValidate(in *easyReportIn) error {
 	switch {
 	case in.Type != "fault" && in.Type != "ticket":
 		return errors.New("type")
-	case utf8.RuneCountInString(in.Name) < 2 || utf8.RuneCountInString(in.Name) > 80:
+	case utf8.RuneCountInString(in.Name) > 80:
 		return errors.New("name")
 	case utf8.RuneCountInString(in.Text) < 3 || utf8.RuneCountInString(in.Text) > 2000:
 		return errors.New("text")
@@ -224,8 +224,16 @@ func easyCompose(in easyReportIn, german, langName string, translated bool) (tit
 	} else if !translated && langName != "Deutsch" {
 		b.WriteString("\n\n(Automatische Übersetzung nicht verfügbar – Text in " + langName + ")")
 	}
-	b.WriteString("\n\nGemeldet per QR-Code (Easy-Mode) von: " + in.Name + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
+	b.WriteString("\n\nGemeldet per QR-Code (Easy-Mode)" + easyFrom(in.Name, ": ") + " · " + easyKindDE[in.Kind] + " · " + easyStateDE[in.State])
 	return title, b.String()
+}
+
+// easyFrom: „ von<sep>Name“ – leer, wenn kein Name mitgeschickt wurde.
+func easyFrom(name, sep string) string {
+	if name == "" {
+		return ""
+	}
+	return " von" + sep + name
 }
 
 // EasyReportWeb: POST /e/{id}/report (JSON) – legt Störung oder Ticket an.
@@ -322,7 +330,11 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		recID = t.ID
 	}
-	h.addHistory(ctx, in.Type, recID, "create", "", "", in.Name, "Gemeldet per QR-Code (Easy-Mode) von "+in.Name+" – "+langName, pdhSystemUserID)
+	actor := in.Name
+	if actor == "" {
+		actor = "QR-Code (Easy-Mode)"
+	}
+	h.addHistory(ctx, in.Type, recID, "create", "", "", actor, "Gemeldet per QR-Code (Easy-Mode)"+easyFrom(in.Name, " ")+" – "+langName, pdhSystemUserID)
 	componentLog("easy").Info().Str("art", in.Type).Str("id", recID).Str("anlage", id).Str("sprache", lang).Bool("übersetzt", translated).Msg("meldung")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "title": title})
 }

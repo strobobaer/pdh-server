@@ -17,7 +17,7 @@ func TestEasyValidate(t *testing.T) {
 	}
 	for field, bad := range map[string]easyReportIn{
 		"type":  {Type: "task", Name: "Max", Text: "abc", Kind: "electrical", State: "running"},
-		"name":  {Type: "fault", Name: "M", Text: "abc", Kind: "electrical", State: "running"},
+		"name":  {Type: "fault", Name: strings.Repeat("M", 81), Text: "abc", Kind: "electrical", State: "running"},
 		"text":  {Type: "ticket", Name: "Max", Text: "x", Kind: "mechanical", State: "running"},
 		"kind":  {Type: "fault", Name: "Max", Text: "abc", Kind: "hydraulic", State: "running"},
 		"state": {Type: "fault", Name: "Max", Text: "abc", Kind: "mechanical", State: "broken"},
@@ -25,6 +25,14 @@ func TestEasyValidate(t *testing.T) {
 		if err := easyValidate(&bad); err == nil || err.Error() != field {
 			t.Errorf("%s: Fehler erwartet, erhalten %v", field, err)
 		}
+	}
+	// ohne Namen: die Seite fragt nicht mehr danach
+	anon := easyReportIn{Type: "ticket", Text: "Handschuhe fehlen", Kind: "mechanical", State: "running"}
+	if err := easyValidate(&anon); err != nil {
+		t.Errorf("Meldung ohne Namen abgelehnt: %v", err)
+	}
+	if _, desc := easyCompose(anon, anon.Text, "Deutsch", true); !strings.Contains(desc, "Gemeldet per QR-Code (Easy-Mode) · mechanisch") || strings.Contains(desc, " von") {
+		t.Errorf("Meldung ohne Namen falsch:\n%s", desc)
 	}
 }
 
@@ -102,6 +110,9 @@ func TestEasyPageRenders(t *testing.T) {
 		}
 		out := buf.String()
 		checkScripts(t, "easy", out)
+		if strings.Contains(out, `id="ez-name"`) {
+			t.Errorf("%s: Easy-Mode fragt noch nach dem Namen", lang)
+		}
 		for _, want := range []string{"Bandsäge 2", "Kette gerissen", `data-start="fault"`, `data-start="ticket"`, `href="/login?next=/a/11111111-1111-4111-8111-111111111111"`,
 			`'X-PDH-Easy': '1'`, `data-value="electrical"`, `data-value="stopped"`, `id="ez-website"`} {
 			if !strings.Contains(out, want) {
