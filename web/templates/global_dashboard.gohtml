@@ -178,6 +178,9 @@ html[data-entries-view="tiles"] #entries-table,html[data-entries-view="table"] #
 html[data-entries-view="tiles"] #entries-table-wrap{max-height:58vh;border:0;background:none;padding:2px}
 html[data-entries-view="tiles"] #entries-table-wrap.expanded{max-height:none}
 html.timeline-off #timeline-card{display:none}
+/* ohne Zeitstrahl fuellen die Vorgaenge (Kacheln wie Tabelle) die restliche Hoehe; gescrollt wird darin */
+html.timeline-off #entries-card{flex:1 1 auto;min-height:240px;display:flex;flex-direction:column}
+html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expanded{flex:1 1 auto;min-height:0;max-height:none}
 .header-button[aria-pressed="false"]{color:var(--muted)}
 /* ── Vorgaenge als Kacheln (touchbar); Groesse (--row-scale) skaliert Kachel und Schrift ── */
 #entries-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(250px * var(--row-scale)),1fr));gap:calc(10px * var(--row-scale));font-size:calc(14px * var(--row-scale))}

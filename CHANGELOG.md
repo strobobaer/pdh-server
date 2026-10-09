@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.46.1] – 2026-10-09
+
+### Geändert
+- Leitstand: Ist der Zeitstrahl ausgeblendet, füllen die Kacheln (bzw. die Tabelle) den ganzen restlichen Bildschirm
+
 ## [0.46.0] – 2026-10-09
 
 ### Neu
