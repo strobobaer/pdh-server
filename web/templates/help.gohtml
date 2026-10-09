@@ -287,6 +287,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-broker"}}
   <p>Meldungen aus dem Leitstand sind nie zugewiesen. Auch sonst kann jeder Vorgang ohne Zuständigen angelegt werden, egal ob über <b>Neu anlegen</b>, die Modulseite oder die Schnittstelle. Das gilt für Störungen, Tickets, Aufgaben und Wartungen. Jeder <b>Broker</b> der jeweiligen Art bekommt dann eine Chat-Nachricht vom Melder und kann den Vorgang übernehmen oder jemandem zuweisen. Im Verlauf des Vorgangs steht, an wen er verteilt wurde. Wer Broker ist (für Tickets, Störungen, Aufgaben und/oder Wartungen), legt die Benutzerverwaltung im <a href="#users">Benutzerstamm</a> fest. Ist für eine Art kein Broker hinterlegt, bleibt der Vorgang offen. Der Leitstand und die Bestätigung im Chat weisen darauf hin.</p>
   <p>Aus Wartungsplänen automatisch erzeugte Aufträge lösen keine Chat-Nachricht aus. Sie erscheinen auf der Seite <b>Zuweisung</b>, sobald ihr Vorlauf begonnen hat.</p>
+  <h3 id="push"><i class="ti ti-bell-ringing"></i> Push-Alarm aufs Handy</h3>
+  <p>Neue Störungen und Tickets kommen als Nachricht aufs Handy der Bereitschaft – mit Inhalt und den Knöpfen <b>Annehmen</b> und <b>Ansehen</b>. Wer zuerst annimmt, wird zuständig, der Vorgang steht auf <i>In Arbeit</i>, und bei allen anderen verschwindet die Nachricht. Ist beim Anlegen <b>Anlage steht</b> angehakt (im Assistenten bei „Wo?“, im Easy-Mode „Anlage steht“), meldet sich das Handy immer wieder, bis jemand annimmt; in der geöffneten PDH-App liegt der Alarm bildschirmfüllend über allem.</p>
+  <div class="hb-howto"><b><i class="ti ti-device-mobile"></i> So bekommst du Push-Alarme aufs Handy</b>
+    <ol class="hb-steps">
+      <li><b>iPhone</b> (ab iOS 16.4): PDH in Safari öffnen → Teilen → <b>Zum Home-Bildschirm</b>, dann PDH vom Home-Bildschirm aus starten. <b>Android</b>: PDH in Chrome öffnen.</li>
+      <li>Oben rechts auf deinen Namen → <b>Mein Konto</b> → <b>Auf diesem Gerät einschalten</b> → Benachrichtigungen <b>erlauben</b>.</li>
+      <li><b>Probe senden</b> – die Nachricht sollte gleich ankommen. Für Alarme die Benachrichtigungen von Chrome bzw. PDH in den Handy-Einstellungen auf „Mit Ton“ bzw. „Wichtig“ stellen.</li>
+      <li>Kommt ein Alarm: <b>Annehmen</b> direkt in der Nachricht antippen – oder die Nachricht antippen, dann öffnet sich der Alarm bildschirmfüllend mit großem <b>Annehmen</b>-Knopf. Steht dort „Angenommen von …“, kümmert sich schon jemand.</li>
+    </ol>
+    Benachrichtigt wirst du nur, wenn du in einer der gewählten Benutzergruppen bist; eigene Meldungen lösen bei dir keine Nachricht aus. Am iPhone gibt es keine Knöpfe in der Nachricht – dort antippen und auf der Alarmseite annehmen. Ganz über dem Sperrbildschirm wie ein Anruf kann eine Web-App den Alarm nicht zeigen; er bleibt aber stehen und meldet sich erneut.</div>
+  <div class="hb-howto"><b><i class="ti ti-settings"></i> So richtest du Push ein (Administratoren)</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Abteilungen &amp; Gruppen</b> eine Gruppe anlegen, z. B. „Bereitschaft Instandhaltung“, und die Personen eintragen.</li>
+      <li><b>Core-Einstellungen → Push-Benachrichtigungen aufs Handy</b>: einschalten und je Gruppe anhaken, ob sie bei <b>Störungen</b> und/oder <b>Tickets</b> benachrichtigt wird.</li>
+      <li>Für „Anlage steht“ festlegen, wie oft der Alarm wiederholt wird (Standard alle 60 Sekunden) und wie lange höchstens (Standard 120 Minuten). <b>Speichern</b>.</li>
+    </ol>
+    Push braucht eine <b>https</b>-Adresse (z. B. über den Cloudflare-Tunnel). Benachrichtigt werden nur Vorgänge, die nach dem Einschalten angelegt werden. Der Alarm endet, sobald jemand annimmt, der Vorgang erledigt oder anderweitig zugewiesen ist oder die Höchstdauer um ist. In der Historie des Vorgangs steht, dass benachrichtigt wurde und wer angenommen hat.</div>
   {{template "hb-shots" (dict "Ref" (index $s "dashboard") "Can" $can)}}
   <div class="hb-howto"><b><i class="ti ti-user-check"></i> So weist du als Broker zu</b>Bist du Broker (Benutzerstamm) oder Administrator, steht in der Navigation oben <b>Zuweisung</b>. Andere sehen diese Seite nicht. Dort laufen <b>alle</b> offenen Vorgänge <b>ohne Zuweisung</b> auf – Störungen, Tickets, Aufgaben und Wartungen. Zuweisen kannst du die Arten, für die du Broker bist (Administratoren alle); bei den übrigen steht, wer zuweist. Sie sind nach Art sortiert, die neuesten zuerst. Zu jedem Vorgang stehen Priorität, Anlage, Ersteller und Wartezeit dabei. Wartungen erscheinen, sobald ihr Vorlauf begonnen hat.
     <ol class="hb-steps">
@@ -775,6 +792,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Fertig: Das Bild wird quadratisch zugeschnitten und erscheint im Chat, in der Kopfleiste, in der Benutzerliste, im Organigramm und bei „Aktivität“. <b>×</b> am Bild entfernt es wieder; dann stehen wieder die Initialen da.</li>
     </ol>
     Mit dem Recht <i>Benutzer verwalten</i> kannst du im Benutzerstamm auch das Bild anderer Personen setzen oder entfernen. Beim Speichern entfernt PDH Zusatzdaten aus dem Foto (z. B. den Aufnahmeort).</div>
+  <p><i class="ti ti-bell-ringing"></i> Unter <b>Mein Konto</b> schaltest du auch <a href="#push">Push-Alarme aufs Handy</a> ein.</p>
   <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Eigene Daten pflegen</b>
     <ol class="hb-steps">
       <li>Oben rechts auf deinen Namen → <b>Mein Konto</b>.</li>

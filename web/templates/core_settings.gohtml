@@ -77,6 +77,31 @@
     </form>
   </div>
 
+  <div class="card" id="push">
+    <div class="card-title">Push-Benachrichtigungen aufs Handy</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Bei jeder neuen Störung bzw. jedem neuen Ticket bekommen die Mitglieder der gewählten Benutzergruppen eine Nachricht aufs Handy – mit Inhalt und <b>Annehmen</b>. Wer zuerst annimmt, wird zuständig; bei allen anderen verschwindet die Nachricht. Ist <b>Anlage steht</b> angehakt, wiederholt sich der Alarm, bis jemand annimmt, und erscheint in der PDH-App bildschirmfüllend. Jede Person schaltet Push unter <b>Mein Konto</b> auf ihrem Handy ein.</p>
+    {{with .Push}}
+    {{if not .HTTPS}}<p style="font-size:12px;color:var(--amber);margin:0 0 12px"><i class="ti ti-alert-triangle"></i> Push funktioniert nur über <b>https://</b>. Unter Server-Einstellungen ist keine https-Adresse eingetragen – z. B. über den Cloudflare-Tunnel erreichbar machen.</p>{{end}}
+    <form method="POST" action="/core/settings/push">
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:12px"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}} style="width:18px;height:18px"> Push-Benachrichtigungen einschalten</label>
+      {{if .Groups}}
+      <div style="overflow:auto;margin-bottom:12px"><table style="font-size:12.5px">
+        <thead><tr><th>Benutzergruppe</th><th style="text-align:center">Störungen</th><th style="text-align:center">Tickets</th></tr></thead>
+        <tbody>{{range .Groups}}<tr><td>{{.Name}} <span style="color:var(--muted)">({{.Members}})</span></td>
+          <td style="text-align:center"><input type="checkbox" name="groups_fault" value="{{.ID}}" {{if .ForFault}}checked{{end}} aria-label="{{.Name}} bei Störungen"></td>
+          <td style="text-align:center"><input type="checkbox" name="groups_ticket" value="{{.ID}}" {{if .ForTicket}}checked{{end}} aria-label="{{.Name}} bei Tickets"></td></tr>{{end}}</tbody>
+      </table></div>
+      {{else}}<p style="font-size:12px;color:var(--amber);margin:0 0 12px">Noch keine Benutzergruppen – unter Abteilungen &amp; Gruppen anlegen.</p>{{end}}
+      <div class="grid2" style="gap:10px">
+        <div class="form-group"><label class="form-label" for="push_repeat">„Anlage steht“: wiederholen alle … Sekunden</label><input id="push_repeat" type="number" min="30" max="600" name="repeat_seconds" class="form-input" value="{{.RepeatSeconds}}"></div>
+        <div class="form-group"><label class="form-label" for="push_max">… höchstens … Minuten lang</label><input id="push_max" type="number" min="5" max="720" name="max_minutes" class="form-input" value="{{.MaxMinutes}}"></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px">Eingeschaltete Geräte: {{.Devices}}. Benachrichtigt werden nur Vorgänge, die nach dem Einschalten angelegt werden; der Ersteller selbst bekommt keine Nachricht.</p>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+    {{end}}
+  </div>
+
   <div class="card">
     <div class="card-title">Leitstand: Wer führt aus?</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Beim Annehmen, Verwerfen und Fertigmelden am Leitstand wählt man aus der Liste der Mitarbeitenden aus Instandhaltung und IT, wer die Aktion ausführt – ohne Nachweis. Eingeschaltet gibt es die Liste nur an angemeldeten Terminals (Systembenutzer); an allen anderen Geräten, z. B. über den Cloudflare-Tunnel, muss dann wie früher die RFID-Karte gescannt werden.</p>

@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-09T14:50:50.120Z",
+  "generatedAt": "2026-10-09T16:18:40.274Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1249,6 +1249,17 @@
       "sqlHash": "9e66e6af72b12cba41d6e70ff09a1b5125c6c022614c1228bd6984832e1f29c4",
       "title": "115_easy_report_texts_sort.up.sql",
       "updatedAt": "2026-10-09T14:50:49.488Z"
+    },
+    {
+      "createdAt": "2026-10-09T16:18:39.614Z",
+      "path": "migrations/116_push_alerts.up.sql",
+      "catalogContext": null,
+      "searchText": "116_push_alerts.up.sql migrations/116_push_alerts.up.sql -- 116_push_alerts.up.sql\n-- push-benachrichtigungen aufs handy (internal/web/push.go, webpush.go).\n--\n-- plant_stopped       „anlage steht“ an stoerung/ticket: alarm wiederholt sich,\n--                     bis jemand annimmt (vollbild in der pdh-app)\n-- push_subscriptions  ein eintrag je geraet/browser (web push, rfc 8030)\n-- push_alerts         eine benachrichtigung je neuem vorgang; recipients aus den\n--                     in den core-einstellungen gewaehlten benutzergruppen;\n--                     accepted_by = wer zuerst angenommen hat\n\nalter table faults  add column if not exists plant_stopped boolean not null default false;\nalter table tickets add column if not exists plant_stopped boolean not null default false;\n\ncreate table if not exists push_subscriptions (\n    id         uuid primary key default gen_random_uuid(),\n    user_id    uuid not null references users(id) on delete cascade,\n    endpoint   text not null unique,\n    p256dh     text not null,\n    auth       text not null,\n    user_agent text not null default '',\n    created_at timestamptz not null default now(),\n    last_ok_at timestamptz,\n    failures   int not null default 0\n);\ncreate index if not exists idx_push_subscriptions_user on push_subscriptions(user_id);\n\ncreate table if not exists push_alerts (\n    id               uuid primary key default gen_random_uuid(),\n    ref_type         varchar(10) not null check (ref_type in ('fault', 'ticket')),\n    ref_id           uuid not null,\n    title            text not null,\n    body             text not null default '',\n    urgent           boolean not null default false,\n    recipients       uuid[] not null default '{}',\n    initial_assignee uuid,\n    created_at       timestamptz not null default now(),\n    last_sent_at     timestamptz,\n    sends            int not null default 0,\n    accepted_by      uuid references users(id) on delete set null,\n    accepted_at      timestamptz,\n    closed_at        timestamptz,\n    close_reason     text not null default '',\n    unique (ref_type, ref_id)\n);\ncreate index if not exists idx_push_alerts_open on push_alerts(created_at) where closed_at is null;\n",
+      "searchUpdatedAt": "2026-10-09T16:18:39.727Z",
+      "schemaContext": null,
+      "sqlHash": "040fea4100559ffebf0612c27fd24d2e0569d9aca1c1a5029c96f2cef5eeb9a6",
+      "title": "116_push_alerts.up.sql",
+      "updatedAt": "2026-10-09T16:18:39.615Z"
     }
   ]
 }

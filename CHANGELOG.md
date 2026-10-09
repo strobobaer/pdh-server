@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.48.0] – 2026-10-09
+
+### Neu
+- Push-Benachrichtigungen aufs Handy: Neue Störungen und Tickets gehen an die in den Core-Einstellungen gewählten Benutzergruppen – mit Inhalt und „Annehmen“; wer zuerst annimmt, wird zuständig und bei den anderen verschwindet die Nachricht (einschalten unter Mein Konto)
+- „Anlage steht“ beim Anlegen von Störungen und Tickets (Assistent, Leitstand, Easy-Mode): Der Push-Alarm wiederholt sich, bis jemand annimmt, und erscheint in der PDH-App bildschirmfüllend
+
 ## [0.47.0] – 2026-10-09
 
 ### Neu

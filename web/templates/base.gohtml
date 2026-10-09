@@ -2433,6 +2433,141 @@ function pdhReservedTag(p, kind, ref, reloadName){
 })();
 </script>
 
+{{if .PushEnabled}}
+<!-- Push-Benachrichtigungen (push.go, /sw.js): Geraet anmelden und „Anlage steht“-Alarm im Vollbild -->
+<div id="pdh-alarm" hidden role="alertdialog" aria-modal="true" aria-labelledby="pdh-alarm-title">
+  <div class="pa-box">
+    <div class="pa-kind"><i class="ti ti-alert-octagon"></i> <span id="pdh-alarm-kind"></span> · Anlage steht</div>
+    <h2 id="pdh-alarm-title"></h2>
+    <div class="pa-body" id="pdh-alarm-body"></div>
+    <div class="pa-more" id="pdh-alarm-more"></div>
+    <button type="button" class="pa-accept" id="pdh-alarm-accept"><i class="ti ti-hand-grab"></i> Annehmen</button>
+    <div class="pa-row"><a class="pa-btn" id="pdh-alarm-open" href="#"><i class="ti ti-eye"></i> Ansehen</a><button type="button" class="pa-btn" id="pdh-alarm-snooze">2 Min. ausblenden</button></div>
+    <div class="pa-msg" id="pdh-alarm-msg" role="alert"></div>
+  </div>
+</div>
+<style>
+#pdh-alarm{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;background:linear-gradient(170deg,#7f1d1d,#b91c1c 55%,#450a0a);color:#fff;animation:pa-pulse 1.6s ease-in-out infinite}
+@keyframes pa-pulse{50%{filter:brightness(1.18)}}
+#pdh-alarm[hidden]{display:none}
+.pa-box{width:min(560px,100%);display:flex;flex-direction:column;gap:12px}
+.pa-kind{font-size:15px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.pa-kind i{font-size:24px}
+#pdh-alarm h2{font-size:clamp(24px,6vw,36px);line-height:1.15;overflow-wrap:anywhere}
+.pa-body{font-size:17px;line-height:1.45;white-space:pre-wrap;opacity:.9;overflow-wrap:anywhere;max-height:40vh;overflow:auto}
+.pa-more{font-size:13px;opacity:.8}
+.pa-accept{min-height:90px;border:0;border-radius:16px;background:#10b981;color:#fff;font:inherit;font-size:25px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.pa-accept i{font-size:32px}
+.pa-accept:disabled{opacity:.6}
+.pa-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pa-btn{min-height:54px;border:0;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font:inherit;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;cursor:pointer}
+.pa-msg{min-height:20px;text-align:center;font-size:14px}
+</style>
+<script>
+// Push: Geraet anmelden (Mein Konto) und Abo aktuell halten
+window.pdhPush = (function(){
+  const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const b64ToBytes = s => { const p = '='.repeat((4 - s.length % 4) % 4); const raw = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
+  async function reg(){ return navigator.serviceWorker.register('/sw.js', {scope: '/'}); }
+  async function key(){ const r = await fetch('/push/key', {credentials: 'same-origin'}); return r.json(); }
+  async function save(sub){
+    const r = await fetch('/push/subscribe', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(sub.toJSON())});
+    if(!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'nicht gespeichert');
+  }
+  async function enable(){
+    if(!supported) throw new Error('Dieser Browser kann keine Push-Nachrichten. iPhone: PDH erst „Zum Home-Bildschirm“ hinzufügen und von dort öffnen.');
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt – in den Einstellungen des Browsers/Handys freigeben.');
+    const k = await key();
+    if(!k.enabled || !k.key) throw new Error('Push ist auf dem Server ausgeschaltet.');
+    const r = await reg(); await navigator.serviceWorker.ready;
+    let sub = await r.pushManager.getSubscription();
+    if(!sub) sub = await r.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(k.key)});
+    await save(sub);
+  }
+  async function disable(){
+    if(!supported) return;
+    const r = await navigator.serviceWorker.getRegistration('/');
+    const sub = r && await r.pushManager.getSubscription();
+    if(sub){
+      await fetch('/push/unsubscribe', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({endpoint: sub.endpoint})});
+      await sub.unsubscribe();
+    }
+  }
+  async function status(){
+    if(!supported) return {supported: false};
+    const r = await navigator.serviceWorker.getRegistration('/');
+    const sub = r && await r.pushManager.getSubscription();
+    return {supported: true, permission: Notification.permission, here: !!sub};
+  }
+  async function test(){
+    const r = await fetch('/push/test', {method: 'POST', credentials: 'same-origin'});
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    return j;
+  }
+  // bei jedem Seitenaufruf: erlaubtes Abo auffrischen (gehoert der angemeldeten Person)
+  if(supported && Notification.permission === 'granted'){
+    navigator.serviceWorker.getRegistration('/').then(async r => {
+      if(!r) return;
+      try{
+        let sub = await r.pushManager.getSubscription();
+        if(!sub){ const k = await key(); if(k.key) sub = await r.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(k.key)}); }
+        if(sub) await save(sub);
+      }catch(e){}
+    });
+  }
+  return {supported, enable, disable, status, test};
+})();
+
+// „Anlage steht“: Vollbild ueber der App, bis jemand annimmt
+(function(){
+  const box = document.getElementById('pdh-alarm');
+  let shown = null, snoozed = {};
+  const $ = id => document.getElementById(id);
+  function show(a, more){
+    shown = a;
+    $('pdh-alarm-kind').textContent = a.kind;
+    $('pdh-alarm-title').textContent = a.title;
+    $('pdh-alarm-body').textContent = a.body || '';
+    $('pdh-alarm-more').textContent = more > 1 ? 'Noch ' + (more - 1) + ' weitere(r) offene(r) Alarm(e)' : '';
+    $('pdh-alarm-open').href = a.url;
+    $('pdh-alarm-msg').textContent = '';
+    $('pdh-alarm-accept').disabled = false;
+    box.hidden = false;
+    if(navigator.vibrate) navigator.vibrate([700, 300, 700]);
+  }
+  function hide(){ shown = null; box.hidden = true; }
+  async function check(){
+    if(location.pathname.startsWith('/push/alert/')) return; // dort ist der Alarm schon bildschirmfuellend
+    try{
+      const r = await fetch('/push/alerts/open', {credentials: 'same-origin', cache: 'no-store'});
+      if(!r.ok) return;
+      const list = ((await r.json()).alerts || []).filter(a => !(snoozed[a.id] > Date.now()));
+      if(!list.length) hide();
+      else if(!shown || !list.some(a => a.id === shown.id)) show(list[0], list.length);
+    }catch(e){}
+  }
+  $('pdh-alarm-accept').addEventListener('click', async () => {
+    if(!shown) return;
+    $('pdh-alarm-accept').disabled = true; $('pdh-alarm-msg').textContent = 'Wird angenommen …';
+    try{
+      const r = await fetch(shown.accept, {method: 'POST', credentials: 'same-origin'});
+      const j = await r.json().catch(() => ({}));
+      if(r.ok && j.url){ hide(); location.href = j.url; return; }
+      $('pdh-alarm-msg').textContent = j.error || ('HTTP ' + r.status);
+      setTimeout(check, 1500);
+    }catch(e){ $('pdh-alarm-msg').textContent = e.message; $('pdh-alarm-accept').disabled = false; }
+  });
+  $('pdh-alarm-snooze').addEventListener('click', () => { if(shown){ snoozed[shown.id] = Date.now() + 120000; hide(); setTimeout(check, 121000); } });
+  if(navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => { if(e.data && e.data.pdhPush) check(); });
+  check();
+  setInterval(check, 20000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) check(); });
+})();
+</script>
+{{end}}
+
 </body>
 </html>
 <script>

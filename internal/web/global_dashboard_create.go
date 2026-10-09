@@ -36,6 +36,7 @@ type globalBoardCreateInput struct {
 	ReporterName     string   `json:"reporter_name"`
 	DueDate          string   `json:"due_date"`
 	MaintenanceType  string   `json:"maintenance_type"`
+	PlantStopped     bool     `json:"plant_stopped"` // „Anlage steht“ (Störung/Ticket) – Push-Alarm bis zur Annahme
 }
 
 func globalBoardCreateTypeAllowed(t string) bool {
@@ -197,6 +198,9 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		writeGlobalBoardError(w, http.StatusInternalServerError, tr(lang, "Vorgang konnte nicht angelegt werden"))
 		return
+	}
+	if in.PlantStopped && (brokerKind == "fault" || brokerKind == "ticket") {
+		h.markPlantStopped(r.Context(), brokerKind, brokerID, reporter.ID)
 	}
 	broker := ""
 	if brokerID != "" {

@@ -75,6 +75,7 @@ type BaseData struct {
 	Lang                   string     // Sprache der Oberflaeche (i18n.go)
 	LiveTranslate          string     // Zielsprache der Live-Uebersetzung, "" = aus (live_translate.go)
 	LiveTranslateOn        bool       // im Benutzerstamm eingeschaltet (auch ohne Dienst)
+	PushEnabled            bool       // Push-Benachrichtigungen an (push.go): Alarm-Vollbild in der App
 	LiveTranslateAvail     bool       // Uebersetzungsdienst eingerichtet
 	Nav                    []navGroup // linke Navigation (nav.go)
 }
@@ -400,6 +401,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
 	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
 	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
+	// Easy-Mode-Meldetexte: Katalog und Zuordnung je Anlage (easy_texts.go)
+	r.Post("/infrastructure/easy-texts", h.EasyTextCreateWeb)
+	r.Post("/infrastructure/easy-texts/{tid}", h.EasyTextUpdateWeb)
+	r.Post("/infrastructure/easy-texts/{tid}/delete", h.EasyTextDeleteWeb)
+	r.Post("/infrastructure/easy-texts/{tid}/move", h.EasyTextMoveWeb)
+	r.Post("/infrastructure/{id}/easy-texts", h.InfraEasyTextsWeb)
 	// Prüfpflichten & Gefährdungsbeurteilungen (infra_obligations.go)
 	r.Post("/infrastructure/{id}/obligations", h.InfraObligationSaveWeb)
 	r.Post("/infrastructure/{id}/obligations/{oid}", h.InfraObligationSaveWeb)
@@ -433,6 +440,16 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/records/{refType}/{id}/people", h.RecordPeopleWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/records/{refType}/{id}/group-options", h.RecordGroupOptionsWeb)
 	r.Post("/records/{refType}/{id}/group", h.RecordGroupWeb) // war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/records/{refType}/{id}/plant-stopped", h.RecordPlantStoppedWeb) // „Anlage steht“ (push.go)
+	// Push-Benachrichtigungen aufs Handy (push.go)
+	r.Get("/push/key", h.PushKeyWeb)
+	r.Post("/push/subscribe", h.PushSubscribeWeb)
+	r.Post("/push/unsubscribe", h.PushUnsubscribeWeb)
+	r.Post("/push/test", h.PushTestWeb)
+	r.Get("/push/alerts/open", h.PushAlertsOpenWeb)
+	r.Get("/push/alert/{id}", h.PushAlertPage)
+	r.Get("/push/alert/{id}/state", h.PushAlertStateWeb)
+	r.Post("/push/alert/{id}/accept", h.PushAlertAcceptWeb)
 	r.Get("/records/{refType}/{id}/parties", h.RecordPartiesWeb)
 	r.Post("/records/{refType}/{id}/parties", h.RecordPartyAddWeb)
 	r.Post("/records/{refType}/{id}/parties/{partyId}/delete", h.RecordPartyDeleteWeb)
@@ -631,6 +648,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
+	r.Post("/core/settings/push", h.PushSettingsWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
@@ -918,6 +937,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
+	b.PushEnabled = h.pushEnabledFor(r.Context())
 	if lt := h.liveTranslateFor(r.Context(), u.ID); lt.On {
 		b.LiveTranslateOn = true
 		b.LiveTranslateAvail = h.liveTranslateAvailable()

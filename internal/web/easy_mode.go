@@ -360,6 +360,9 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		}
 		recID = t.ID
 	}
+	if in.State == "stopped" {
+		h.markPlantStopped(ctx, in.Type, recID, pdhSystemUserID) // Push-Alarm bis zur Annahme (push.go)
+	}
 	actor := in.Name
 	if actor == "" {
 		actor = "QR-Code (Easy-Mode)"

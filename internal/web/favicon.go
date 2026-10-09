@@ -10,7 +10,9 @@ import (
 
 // AppIconFiles: oeffentliche App-Symbole unter der Wurzel (Browser fragen
 // /favicon.ico auch ohne <link> ab). Quelle: web/static, eingebettet.
-var AppIconFiles = []string{"favicon.ico", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest"}
+// sw.js ist der Service Worker fuer Push-Benachrichtigungen (push.go) – er muss
+// unter der Wurzel liegen, damit er fuer alle Seiten gilt.
+var AppIconFiles = []string{"favicon.ico", "favicon.svg", "favicon-32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "site.webmanifest", "sw.js"}
 
 // AppIconHandler liefert die Datei aus web/static, deren Name dem Pfad entspricht.
 func AppIconHandler() http.Handler {
@@ -27,6 +29,13 @@ func AppIconHandler() http.Handler {
 			w.Header().Set("Content-Type", "font/woff2")
 		case ".woff":
 			w.Header().Set("Content-Type", "font/woff")
+		case ".js":
+			// Service Worker: immer frisch pruefen, gilt fuer die ganze Seite
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Service-Worker-Allowed", "/")
+			files.ServeHTTP(w, r)
+			return
 		}
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		files.ServeHTTP(w, r)
