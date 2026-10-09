@@ -12,6 +12,12 @@
   var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.themeMode = mode;
+  // Zeilenhoehe der Tabelle/Listen: je Geraet gemerkt, sonst Vorgabe aus dem Konto
+  var row = parseInt(localStorage.getItem('pdh_leitstand_row'), 10);
+  if(!(row >= 70 && row <= 150)) row = {{.Row}};
+  if(!(row >= 70 && row <= 150)) row = 100;
+  document.documentElement.style.setProperty('--row-scale', (row / 100).toFixed(2));
+  window.PDH_ROW = row;
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
@@ -75,6 +81,7 @@
   --wait-bg:#faedd0;--wait-border:#e0bf78;
 }
 *{box-sizing:border-box}
+html{--row-scale:1}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text)}
 body{display:flex;flex-direction:column;overflow:hidden}
 button,input,textarea,select{font:inherit}
@@ -97,6 +104,12 @@ h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .header-meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
 .header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
 .header-button:hover,.action-button:hover{filter:brightness(1.14)}
+/* Zeilenhoehe in der Kopfzeile: − 100 % + */
+.row-ctl{display:inline-flex;align-items:center;gap:4px;min-height:48px;padding:0 6px 0 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text);font-weight:650;white-space:nowrap}
+.row-ctl button{width:36px;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1;padding:0}
+.row-ctl button:hover{filter:brightness(1.14)}
+.row-ctl button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.row-ctl output{min-width:46px;text-align:center;font-variant-numeric:tabular-nums}
 .header-button:focus-visible,.action-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18px;gap:10px;overflow:auto}
 .toolbar{min-height:40px;flex:none;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
@@ -148,15 +161,17 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
 /* ── Tabelle ── */
 #entries-table-wrap{border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
-#entries-table{width:100%;border-collapse:collapse;font-size:13px}
-#entries-table th,#entries-table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
-#entries-table th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);font-weight:700;font-size:12px}
+/* Zeilenhoehe (--row-scale): Abstaende und Schrift wachsen gemeinsam */
+#entries-table{width:100%;border-collapse:collapse;font-size:calc(13px * var(--row-scale))}
+#entries-table th,#entries-table td{padding:calc(8px * var(--row-scale)) calc(12px * var(--row-scale));text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+#entries-table th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);font-weight:700;font-size:calc(12px * var(--row-scale))}
+#entries-table td .kind{padding:calc(5px * var(--row-scale)) calc(7px * var(--row-scale));font-size:calc(12px * var(--row-scale))}
 #entries-table tbody tr{cursor:pointer}
 #entries-table tbody tr.alt{background:var(--surface-2)}
 #entries-table-wrap.expanded{max-height:none}
 #entries-table tbody tr.detail{cursor:default;background:var(--surface)}
 #entries-table tbody tr.detail:hover{background:var(--surface)}
-#entries-table td.detail-cell{white-space:normal;padding:0 10px 12px;border-bottom:2px solid var(--focus)}
+#entries-table td.detail-cell{white-space:normal;padding:0 10px 12px;border-bottom:2px solid var(--focus);font-size:13px}
 #entries-table td.detail-cell #edit-panel{border-color:var(--focus);border-top:0;border-radius:0 0 7px 7px}
 #entries-table tbody tr:not(.detail):hover{background:color-mix(in srgb,var(--surface-2) 80%,var(--focus) 20%)}
 #entries-table tbody tr.selected{background:var(--surface-2);outline:2px solid var(--focus);outline-offset:-2px}
@@ -199,6 +214,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #open-rfid input{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
 #open-rfid-error{color:var(--overdue);font-size:13px;margin:0;min-height:18px}
 @media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
+@media(max-width:1050px){.row-ctl-label{display:none}}
 @media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}}
 </style>
 </head>
@@ -220,6 +236,12 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     {{end}}
   </div>
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
+    <span class="row-ctl" role="group" aria-label="Zeilenhöhe" title="Zeilenhöhe der Tabelle und Listen – die Schrift passt sich an. Wird an diesem Gerät gemerkt.">
+      <span class="row-ctl-label">☰ Zeilen</span>
+      <button type="button" onclick="pdhRowStep(-10)" aria-label="Zeilen niedriger">−</button>
+      <output id="row-ctl-value">100 %</output>
+      <button type="button" onclick="pdhRowStep(10)" aria-label="Zeilen höher">+</button>
+    </span>
     <button class="header-button" type="button" id="theme-toggle" onclick="cycleThemeMode()" title="Darstellung wechseln" aria-label="Darstellung wechseln"><span aria-hidden="true" id="theme-toggle-icon">🖥️</span> <span id="theme-toggle-label">System</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
     {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
@@ -258,6 +280,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
       <button type="button" class="header-button" id="maintenance-select-close">Schließen</button>
     </div>
     <div id="maintenance-select-list" style="display:grid;gap:8px"></div>
+    <style>#maintenance-select-list > div{zoom:var(--row-scale)}</style>
     <div class="form-actions">
       <button type="button" class="action-button finish" id="maintenance-select-new">+ Neue Wartung anlegen</button>
     </div>
@@ -394,6 +417,19 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     if(label) label.textContent = meta.label;
     if(btn) btn.title = 'Darstellung: ' + meta.label;
   }
+  // Zeilenhoehe: sofort wirksam, je Geraet im Browser gemerkt
+  function applyRow(row){
+    window.PDH_ROW = row;
+    document.documentElement.style.setProperty('--row-scale', (row / 100).toFixed(2));
+    const out = document.getElementById('row-ctl-value');
+    if(out) out.textContent = row + ' %';
+  }
+  window.pdhRowStep = function(d){
+    const row = Math.max(70, Math.min(150, (window.PDH_ROW || 100) + d));
+    try{ localStorage.setItem('pdh_leitstand_row', String(row)); }catch(e){}
+    applyRow(row);
+  };
+  applyRow(window.PDH_ROW || 100);
   window.cycleThemeMode = function(){
     const current = localStorage.getItem('pdh_theme') || 'system';
     const index = THEME_MODES.indexOf(current);

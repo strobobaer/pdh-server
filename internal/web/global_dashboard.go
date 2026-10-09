@@ -82,6 +82,7 @@ type GlobalDashboardPageData struct {
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
 	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
+	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -145,10 +146,24 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		Timeline:                  h.branding().Timeline,
+		Row:                       h.sessionRowHeight(r, loggedIn),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
 	}
+}
+
+// sessionRowHeight: Zeilenhoehe der angemeldeten Person (appearance.go),
+// sonst 100 %. Der Leitstand liegt ausserhalb von authMiddleware.
+func (h *Handler) sessionRowHeight(r *http.Request, loggedIn bool) int {
+	row := 0
+	if u := h.sessionUser(r); loggedIn && u != nil && h.db != nil {
+		_ = h.db.QueryRow(r.Context(), `SELECT ui_row FROM users WHERE id = $1::uuid`, u.ID).Scan(&row)
+	}
+	if !validRow(row) {
+		row = defaultRow
+	}
+	return row
 }
 
 // globalDashboardTemplate: Leitstand-Seite mit den gemeinsamen Widgets (u. a.

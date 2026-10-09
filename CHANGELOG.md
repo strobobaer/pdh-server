@@ -14,6 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 - Benutzermenü → Darstellung: neue Einstellung „Zeilenhöhe“ macht die Zeilen in Tabellen und Listen niedriger oder höher (70–150 %), die Schrift passt sich dabei automatisch an; mit „Speichern“ gilt sie auf allen Geräten
+- Leitstand: Zeilenhöhe der Tabelle und der Wartungsliste direkt in der Kopfzeile einstellen (− / +), der Wert wird am Gerät gemerkt
 
 ## [0.45.0] – 2026-10-08
 
