@@ -640,5 +640,8 @@
  "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Arayüzü ve içerikleri (başlıklar, açıklamalar, yorumlar, sohbet) seçilen dile canlı olarak çevirir. Bunun için metinler çeviri hizmetine (DeepL veya Copilot) gönderilir.",
  "Live-Übersetzung ausschalten": "Canlı çeviriyi kapat",
  "Live-Übersetzung einschalten": "Canlı çeviriyi aç",
- "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Çeviri hizmeti ayarlanmamış (Sunucu ayarları → Çeviri)"
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Çeviri hizmeti ayarlanmamış (Sunucu ayarları → Çeviri)",
+ "Zeilenhöhe in Tabellen und Listen – die Schrift passt sich an": "Tablo ve listelerde satır yüksekliği – yazı uyum sağlar",
+ "Zeilen niedriger": "Daha alçak satırlar",
+ "Zeilen höher": "Daha yüksek satırlar"
 }

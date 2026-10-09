@@ -640,5 +640,8 @@
  "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Translates the interface and content (titles, descriptions, comments, chat) live into the selected language. The texts are sent to the translation service (DeepL or Copilot) for this.",
  "Live-Übersetzung ausschalten": "Turn off live translation",
  "Live-Übersetzung einschalten": "Turn on live translation",
- "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "No translation service set up (Server settings → Translation)"
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "No translation service set up (Server settings → Translation)",
+ "Zeilenhöhe in Tabellen und Listen – die Schrift passt sich an": "Row height in tables and lists – the text adjusts",
+ "Zeilen niedriger": "Lower rows",
+ "Zeilen höher": "Taller rows"
 }

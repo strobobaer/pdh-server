@@ -36,6 +36,17 @@ func TestAppearanceEffective(t *testing.T) {
 	if (Appearance{}).FontHref() == "" || !strings.Contains(string((Appearance{}).CSS()), "DM Sans") {
 		t.Error("leere Darstellung muss auf DM Sans zurückfallen")
 	}
+	// Zeilenhoehe: Standard 100 %, eigene Wahl als --row-scale
+	if !strings.Contains(string(d.CSS()), "--row-scale:1.00") {
+		t.Errorf("Zeilenhöhe Standard: %s", d.CSS())
+	}
+	a.Row = 80
+	if !strings.Contains(string(a.CSS()), "--row-scale:0.80") {
+		t.Errorf("Zeilenhöhe: %s", a.CSS())
+	}
+	if validRow(60) || validRow(160) || !validRow(70) || !validRow(150) {
+		t.Error("Grenzen der Zeilenhöhe")
+	}
 	if validScale(50) || validScale(200) || !validScale(70) || !validScale(160) {
 		t.Error("Grenzen der Größe")
 	}

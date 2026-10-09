@@ -15,6 +15,8 @@ import (
 // jeder Benutzer kann im Benutzermenue abweichen und das mit „Speichern“ an
 // seinem Konto ablegen – dann gilt es auf allen Geraeten. Die Groesse wirkt
 // ueber CSS-zoom auf die ganze Oberflaeche (die Seiten nutzen feste px).
+// Die Zeilenhoehe (nur je Benutzer) zoomt zusaetzlich Tabellen und
+// Listenzeilen – Abstaende und Schrift passen sich gemeinsam an.
 
 const (
 	keyBrandFont  = "branding.font"
@@ -24,6 +26,9 @@ const (
 	defaultScale = 100
 	minScale     = 70
 	maxScale     = 160
+	defaultRow   = 100
+	minRow       = 70
+	maxRow       = 150
 )
 
 // UIFont: waehlbare Schrift. Href leer = auf dem Geraet vorhanden.
@@ -64,10 +69,13 @@ func (b Branding) Fonts() []UIFont { return uiFonts }
 
 func validScale(v int) bool { return v >= minScale && v <= maxScale }
 
+func validRow(v int) bool { return v >= minRow && v <= maxRow }
+
 // UserAppearance: persoenliche Darstellung (leer/0 = Firmenstandard).
 type UserAppearance struct {
 	Palette, Font string
 	Scale         int
+	Row           int // Zeilenhoehe Tabellen/Listen in %
 }
 
 // Appearance: wirksame Darstellung fuer eine Seite.
@@ -77,13 +85,14 @@ type Appearance struct {
 	Allow  bool // Farbschema/Schrift frei waehlbar (Groesse immer)
 	FontID string
 	Scale  int
+	Row    int
 }
 
 func (h *Handler) appearance(r *http.Request, b Branding) Appearance {
 	a := Appearance{Brand: b, Allow: b.ThemeUserChoice}
 	if u := getUser(r); u.ID != "" && h.db != nil {
-		_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_scale FROM users WHERE id = $1::uuid`, u.ID).
-			Scan(&a.User.Palette, &a.User.Font, &a.User.Scale)
+		_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_scale, ui_row FROM users WHERE id = $1::uuid`, u.ID).
+			Scan(&a.User.Palette, &a.User.Font, &a.User.Scale, &a.User.Row)
 	}
 	a.FontID = b.FontID()
 	if _, ok := uiFont(a.User.Font); ok && a.Allow {
@@ -92,6 +101,10 @@ func (h *Handler) appearance(r *http.Request, b Branding) Appearance {
 	a.Scale = b.ScaleValue()
 	if validScale(a.User.Scale) {
 		a.Scale = a.User.Scale
+	}
+	a.Row = defaultRow
+	if validRow(a.User.Row) {
+		a.Row = a.User.Row
 	}
 	return a
 }
@@ -106,7 +119,7 @@ func (a Appearance) PaletteID() string {
 	return a.Brand.ThemeID()
 }
 
-// CSS: Schrift und Groesse als CSS-Variablen.
+// CSS: Schrift, Groesse und Zeilenhoehe als CSS-Variablen.
 func (a Appearance) CSS() template.CSS {
 	f, ok := uiFont(a.FontID)
 	if !ok {
@@ -115,7 +128,11 @@ func (a Appearance) CSS() template.CSS {
 	if !validScale(a.Scale) {
 		a.Scale = defaultScale
 	}
-	return template.CSS(fmt.Sprintf(":root{--font:%s;--ui-scale:%s}", f.Stack, strconv.FormatFloat(float64(a.Scale)/100, 'f', 2, 64)))
+	if !validRow(a.Row) {
+		a.Row = defaultRow
+	}
+	return template.CSS(fmt.Sprintf(":root{--font:%s;--ui-scale:%s;--row-scale:%s}", f.Stack,
+		strconv.FormatFloat(float64(a.Scale)/100, 'f', 2, 64), strconv.FormatFloat(float64(a.Row)/100, 'f', 2, 64)))
 }
 
 // FontHref: Webfont-Stylesheet der wirksamen Schrift (leer = keins).
@@ -129,7 +146,7 @@ func (a Appearance) FontHref() string {
 
 // DefaultLook: Firmenstandard ohne Benutzer (z. B. Anmeldeseite).
 func (b Branding) DefaultLook() Appearance {
-	return Appearance{Brand: b, Allow: b.ThemeUserChoice, FontID: b.FontID(), Scale: b.ScaleValue()}
+	return Appearance{Brand: b, Allow: b.ThemeUserChoice, FontID: b.FontID(), Scale: b.ScaleValue(), Row: defaultRow}
 }
 
 // FontsJS: Schriften fuer die Live-Vorschau im Benutzermenue.
@@ -157,7 +174,7 @@ func (b Branding) ScaleValue() int {
 	return defaultScale
 }
 
-// AppearanceSaveWeb: POST /account/appearance (palette, font, scale; leer = Firmenstandard)
+// AppearanceSaveWeb: POST /account/appearance (palette, font, scale, row; leer = Firmenstandard)
 func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	if u.ID == "" {
@@ -169,6 +186,7 @@ func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 	palette := strings.TrimSpace(r.FormValue("palette"))
 	font := strings.TrimSpace(r.FormValue("font"))
 	scale, _ := strconv.Atoi(r.FormValue("scale"))
+	row, _ := strconv.Atoi(r.FormValue("row"))
 	err := func() error {
 		if !b.ThemeUserChoice {
 			palette, font = "", ""
@@ -182,6 +200,9 @@ func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 		if scale != 0 && !validScale(scale) {
 			return fmt.Errorf("Größe muss zwischen %d und %d %% liegen", minScale, maxScale)
 		}
+		if row != 0 && !validRow(row) {
+			return fmt.Errorf("Zeilenhöhe muss zwischen %d und %d %% liegen", minRow, maxRow)
+		}
 		// Gleich dem Firmenstandard → leer speichern, damit spaetere
 		// Aenderungen des Standards wieder greifen
 		if palette == b.ThemeID() {
@@ -193,7 +214,10 @@ func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 		if scale == b.ScaleValue() {
 			scale = 0
 		}
-		_, err := h.db.Exec(r.Context(), `UPDATE users SET ui_palette=$1, ui_font=$2, ui_scale=$3 WHERE id=$4::uuid`, palette, font, scale, u.ID)
+		if row == defaultRow {
+			row = 0
+		}
+		_, err := h.db.Exec(r.Context(), `UPDATE users SET ui_palette=$1, ui_font=$2, ui_scale=$3, ui_row=$4 WHERE id=$5::uuid`, palette, font, scale, row, u.ID)
 		return err
 	}()
 	w.Header().Set("Content-Type", "application/json")

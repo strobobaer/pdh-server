@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.46.0] – 2026-10-09
+
+### Neu
+- Benutzermenü → Darstellung: neue Einstellung „Zeilenhöhe“ macht die Zeilen in Tabellen und Listen niedriger oder höher (70–150 %), die Schrift passt sich dabei automatisch an; mit „Speichern“ gilt sie auf allen Geräten
+
 ## [0.45.0] – 2026-10-08
 
 ### Neu

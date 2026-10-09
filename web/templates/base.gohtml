@@ -16,8 +16,8 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   document.documentElement.dataset.themeMode = mode;
   window.PDH_TERMINAL_INFRA = {{.TerminalInfraID}}; // Standort dieses Terminals (Infra-Picker)
   // Darstellung: am Benutzerkonto gespeichert (leer/0 = Firmenstandard)
-  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, scale: {{.Brand.ScaleValue}}};
-  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, scale: {{.Look.User.Scale}}};
+  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, scale: {{.Brand.ScaleValue}}, row: 100};
+  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
   window.PDH_LOOK_ALLOW = {{.Look.Allow}};
   window.PDH_PALETTES = {{.Brand.PaletteIDs}};
   document.documentElement.dataset.palette = {{.Look.PaletteID}};
@@ -601,7 +601,11 @@ select.form-input option{background:var(--bg2)}
 {{with .Look.FontHref}}<link rel="stylesheet" id="pdh-font" href="{{.}}">{{end}}
 <style id="pdh-ui">{{.Look.CSS}}
 /* Groesse: zoom auf die ganze Seite; Hoehe ausgleichen, damit 100vh passt */
-body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dvh / var(--ui-scale))}</style>
+body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dvh / var(--ui-scale))}
+/* Zeilenhoehe: zoom auf Tabellen und Listenzeilen, Schrift und Abstaende
+   wachsen gemeinsam (Handbuch und Kontexthilfe bleiben unveraendert) */
+table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
+.ctx-help table,.hb-ch table{zoom:1}</style>
 {{block "head" .}}{{end}}
 </head>
 <body{{if and (eq .Page "dashboard") (not .IsSystemUser) (not .IsBoardVisit) (not .IsOverrideSession)}} data-tour-offer="1"{{end}}{{if .LiveTranslate}} data-live-translate="{{.LiveTranslate}}"{{end}}>
@@ -794,6 +798,11 @@ body{zoom:var(--ui-scale);height:calc(100vh / var(--ui-scale));height:calc(100dv
               <span class="look-pct" id="look-pct">100 %</span>
               <button type="button" class="look-step" onclick="lookStep(10)" aria-label="{{t "Größer"}}">+</button>
             </div>
+            <div class="look-row" title="{{t "Zeilenhöhe in Tabellen und Listen – die Schrift passt sich an"}}"><i class="ti ti-line-height"></i>
+              <button type="button" class="look-step" onclick="lookRowStep(-10)" aria-label="{{t "Zeilen niedriger"}}">−</button>
+              <span class="look-pct" id="look-row">100 %</span>
+              <button type="button" class="look-step" onclick="lookRowStep(10)" aria-label="{{t "Zeilen höher"}}">+</button>
+            </div>
             <div class="look-actions">
               <button type="button" onclick="lookReset()" title="{{t "Firmenstandard verwenden"}}">{{t "Standard"}}</button>
               <button type="button" class="look-save" id="look-save" onclick="lookSave()" disabled>{{t "Speichern"}}</button>
@@ -985,7 +994,7 @@ function applyThemeMode(mode) {
   if(label) label.textContent = meta.label;
   if(btn) btn.title = 'Darstellung: ' + meta.label;
 }
-// Darstellung (Farbschema, Schrift, Groesse): sofort sichtbar, mit
+// Darstellung (Farbschema, Schrift, Groesse, Zeilenhoehe): sofort sichtbar, mit
 // „Speichern“ am Konto abgelegt. Leer/0 = Firmenstandard.
 const lookDraft = Object.assign({}, window.PDH_LOOK_SAVED);
 const PDH_FONTS = {{.Look.FontsJS}};
@@ -1006,18 +1015,22 @@ function lookApply() {
   const scale = lookEffective('scale');
   root.style.setProperty('--ui-scale', (scale / 100).toFixed(2));
   const pct = document.getElementById('look-pct'); if(pct) pct.textContent = scale + ' %';
+  const row = lookEffective('row');
+  root.style.setProperty('--row-scale', (row / 100).toFixed(2));
+  const rp = document.getElementById('look-row'); if(rp) rp.textContent = row + ' %';
   const sel = document.getElementById('look-font'); if(sel) sel.value = lookDraft.font || '';
   document.querySelectorAll('[data-palette-pick]').forEach(b => b.classList.toggle('on', b.dataset.palettePick === (lookDraft.palette || '')));
-  const dirty = ['palette','font','scale'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
+  const dirty = ['palette','font','scale','row'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
   const save = document.getElementById('look-save'); if(save) save.disabled = !dirty;
   const msg = document.getElementById('look-msg'); if(msg && dirty) msg.textContent = 'Vorschau – zum Behalten speichern';
 }
 function lookSet(k, v) { lookDraft[k] = v; lookApply(); }
 function lookStep(d) { lookDraft.scale = Math.max(70, Math.min(160, lookEffective('scale') + d)); lookApply(); }
-function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.scale = 0; lookApply(); }
+function lookRowStep(d) { lookDraft.row = Math.max(70, Math.min(150, lookEffective('row') + d)); lookApply(); }
+function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.scale = 0; lookDraft.row = 0; lookApply(); }
 async function lookSave() {
   const msg = document.getElementById('look-msg');
-  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', scale: String(lookDraft.scale || 0)});
+  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', scale: String(lookDraft.scale || 0), row: String(lookDraft.row || 0)});
   try {
     const res = await fetch('/account/appearance', {method: 'POST', body, credentials: 'same-origin'});
     const json = await res.json();

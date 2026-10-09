@@ -640,5 +640,8 @@
  "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Traduce interfața și conținutul (titluri, descrieri, comentarii, chat) live în limba aleasă. Pentru aceasta, textele sunt trimise serviciului de traducere (DeepL sau Copilot).",
  "Live-Übersetzung ausschalten": "Dezactivează traducerea live",
  "Live-Übersetzung einschalten": "Activează traducerea live",
- "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Niciun serviciu de traducere configurat (Setări server → Traducere)"
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Niciun serviciu de traducere configurat (Setări server → Traducere)",
+ "Zeilenhöhe in Tabellen und Listen – die Schrift passt sich an": "Înălțimea rândurilor în tabele și liste – textul se adaptează",
+ "Zeilen niedriger": "Rânduri mai joase",
+ "Zeilen höher": "Rânduri mai înalte"
 }
