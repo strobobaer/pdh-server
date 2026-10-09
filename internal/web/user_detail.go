@@ -28,6 +28,8 @@ type userMaster struct {
 	BrokerTickets, BrokerFaults                         bool
 	BrokerTasks, BrokerMaintenance                      bool
 	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
+	LiveTranslate                                       bool   // Live-Übersetzung (live_translate.go)
+	TranslateLang                                       string // Zielsprache, "" = Sprache der Oberfläche
 }
 
 type userPrivate struct {
@@ -201,7 +203,7 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 		&m.WorkLocation, &m.PhoneInternal, &m.PhoneMobile, &m.Language, &m.EntryDate, &m.ExitDate,
 		&m.Notes, &m.BrokerTickets, &m.BrokerFaults, &m.BrokerTasks, &m.BrokerMaintenance)
 	if err == nil {
-		_ = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, '') FROM users WHERE id = $1::uuid`, id).Scan(&m.TerminalInfraID)
+		_ = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, ''), live_translate, translate_lang FROM users WHERE id = $1::uuid`, id).Scan(&m.TerminalInfraID, &m.LiveTranslate, &m.TranslateLang)
 		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
 	}
 	return m, err
@@ -354,6 +356,18 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		entry, exit, v("language"), v("notes"), brokerT, brokerF, id, brokerA, brokerM); err != nil {
 		userRedirect(w, r, id, "master", "", err)
 		return
+	}
+	// Live-Übersetzung: an/aus und Zielsprache (leer = Sprache der Oberfläche)
+	if r.FormValue("lt_submitted") == "1" {
+		target := v("translate_lang")
+		if _, ok := translateLangByCode(target); !ok {
+			target = ""
+		}
+		if _, err := h.db.Exec(ctx, `UPDATE users SET live_translate = $1, translate_lang = $2 WHERE id = $3::uuid`,
+			r.FormValue("live_translate") == "on", target, id); err != nil {
+			userRedirect(w, r, id, "master", "", err)
+			return
+		}
 	}
 	// Terminal-Standort: nur Benutzerverwaltung, nur fuer Systembenutzer
 	if _, sent := r.Form["terminal_infrastructure_id"]; sent && h.canManageUsers(r) {

@@ -152,22 +152,24 @@ func langOf(data any) string {
 // bindLang setzt die sprachabhaengigen Template-Funktionen fuer eine Ausgabe.
 func bindLang(t *template.Template, lang string) *template.Template {
 	return t.Funcs(template.FuncMap{
-		"t":     func(s string, args ...any) string { return tr(lang, s, args...) },
-		"th":    func(s string, args ...any) template.HTML { return template.HTML(tr(lang, s, args...)) },
-		"lang":  func() string { return lang },
-		"langs": func() []langInfo { return supportedLangs },
+		"t":              func(s string, args ...any) string { return tr(lang, s, args...) },
+		"th":             func(s string, args ...any) template.HTML { return template.HTML(tr(lang, s, args...)) },
+		"lang":           func() string { return lang },
+		"langs":          func() []langInfo { return supportedLangs },
+		"translateLangs": func() []translateLang { return translateLangs },
 	})
 }
 
 // i18nFuncs: Platzhalter zum Parsen (die echte Sprache bindet bindLang).
 func i18nFuncs() template.FuncMap {
 	return template.FuncMap{
-		"t":     func(s string, args ...any) string { return tr(defaultLang, s, args...) },
+		"t": func(s string, args ...any) string { return tr(defaultLang, s, args...) },
 		// th: wie t, fuer Saetze mit eigener Auszeichnung (<b>, <i class=…>, <code>);
 		// die Uebersetzungsdateien gehoeren zum Projekt und sind vertrauenswuerdig
-		"th": func(s string, args ...any) template.HTML { return template.HTML(tr(defaultLang, s, args...)) },
-		"lang":  func() string { return defaultLang },
-		"langs": func() []langInfo { return supportedLangs },
+		"th":             func(s string, args ...any) template.HTML { return template.HTML(tr(defaultLang, s, args...)) },
+		"lang":           func() string { return defaultLang },
+		"langs":          func() []langInfo { return supportedLangs },
+		"translateLangs": func() []translateLang { return translateLangs },
 	}
 }
 

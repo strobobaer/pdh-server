@@ -632,5 +632,13 @@
  "Zur Anlage": "Makineye dön",
  "Zustand der Anlage": "Makine durumu",
  "Copilot-Hilfen auf- und zuklappen": "Copilot yardımını aç/kapat",
- "Symbole": "Simgeler"
+ "Symbole": "Simgeler",
+ "Live-Übersetzung": "Canlı çeviri",
+ "Alle Texte automatisch übersetzen": "Tüm metinleri otomatik çevir",
+ "Übersetzen in": "Şu dile çevir",
+ "Übersetzen in: Sprache der Oberfläche": "Şu dile çevir: arayüz dili",
+ "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Arayüzü ve içerikleri (başlıklar, açıklamalar, yorumlar, sohbet) seçilen dile canlı olarak çevirir. Bunun için metinler çeviri hizmetine (DeepL veya Copilot) gönderilir.",
+ "Live-Übersetzung ausschalten": "Canlı çeviriyi kapat",
+ "Live-Übersetzung einschalten": "Canlı çeviriyi aç",
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Çeviri hizmeti ayarlanmamış (Sunucu ayarları → Çeviri)"
 }

@@ -14,6 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 - Server-Einstellungen → Cloudflare-Tunnel: Tunnel-Token und Hostname dort pflegen, mit Schritt-für-Schritt-Anleitung, Installationsskript für Linux und Windows zum Herunterladen und einer Prüfung, ob das PDH über den Tunnel erreichbar ist
+- Live-Übersetzung: Im Benutzerstamm einschaltbar (auch im Benutzermenü) – übersetzt Oberfläche und Inhalte jeder Seite live in die Sprache der Oberfläche oder eine frei gewählte Sprache, mit DeepL oder dem Copilot; einzurichten unter Server-Einstellungen → Übersetzung
 
 ### Geändert
 - Der Copilot weiß, dass eine Störung und das daraus erstellte Ticket derselbe Vorgang sind: Er zählt sie nicht doppelt und nennt beide Links

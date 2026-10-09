@@ -73,6 +73,9 @@ type BaseData struct {
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
 	Lang                   string     // Sprache der Oberflaeche (i18n.go)
+	LiveTranslate          string     // Zielsprache der Live-Uebersetzung, "" = aus (live_translate.go)
+	LiveTranslateOn        bool       // im Benutzerstamm eingeschaltet (auch ohne Dienst)
+	LiveTranslateAvail     bool       // Uebersetzungsdienst eingerichtet
 	Nav                    []navGroup // linke Navigation (nav.go)
 }
 
@@ -544,7 +547,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/trainings", h.TrainingsPage)
 	r.Get("/suggest", h.SuggestWeb)
 	r.Post("/copilot/ask", h.CopilotAskWeb)
-	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
+	r.Get("/copilot/suggest", h.CopilotSuggestWeb)
+	r.Post("/translate/live", h.LiveTranslateWeb)
+	r.Post("/translate/live/toggle", h.LiveTranslateToggleWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
 	r.Get("/create/options", h.CreateOptionsWeb)
 	r.Get("/create/similar", h.CreateSimilarWeb)
@@ -906,6 +911,13 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
+	if lt := h.liveTranslateFor(r.Context(), u.ID); lt.On {
+		b.LiveTranslateOn = true
+		b.LiveTranslateAvail = h.liveTranslateAvailable()
+		if b.LiveTranslateAvail {
+			b.LiveTranslate = lt.Target
+		}
+	}
 	return b
 }
 

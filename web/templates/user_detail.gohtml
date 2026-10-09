@@ -137,6 +137,11 @@
       <div class="form-group"><label class="form-label">Sprache</label>
         <select name="language" class="form-input">{{$known := false}}{{range langs}}<option value="{{.Code}}" {{if eq .Code $m.Language}}selected{{$known = true}}{{end}}>{{.Name}}</option>{{end}}{{if and $m.Language (not $known)}}<option value="{{$m.Language}}" selected>{{$m.Language}}</option>{{end}}</select>
         <div class="rec-sub" style="margin-top:3px">{{t "Sprache der Oberfläche – wird beim Anmelden verwendet; umstellen geht jederzeit über die Flagge oben rechts."}}</div></div>
+      <div class="form-group"><label class="form-label">{{t "Live-Übersetzung"}}</label>
+        <input type="hidden" name="lt_submitted" value="1">
+        <label style="font-weight:400;display:flex;align-items:center;gap:6px;margin-bottom:6px"><input type="checkbox" name="live_translate" {{if $m.LiveTranslate}}checked{{end}}> {{t "Alle Texte automatisch übersetzen"}}</label>
+        <select name="translate_lang" class="form-input" aria-label="{{t "Übersetzen in"}}"><option value="">{{t "Übersetzen in: Sprache der Oberfläche"}}</option>{{range translateLangs}}<option value="{{.Code}}" {{if eq .Code $m.TranslateLang}}selected{{end}}>{{.Name}}{{if ne .Name .German}} ({{.German}}){{end}}</option>{{end}}</select>
+        <div class="rec-sub" style="margin-top:3px">{{t "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot)."}}</div></div>
       <div class="form-group"><label class="form-label">Eintritt</label><input type="date" name="entry_date" class="form-input" value="{{$m.EntryDate}}"></div>
       <div class="form-group"><label class="form-label">Austritt</label><input type="date" name="exit_date" class="form-input" value="{{$m.ExitDate}}"></div>
     </div>

@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-08T17:09:54.582Z",
+  "generatedAt": "2026-10-08T20:34:58.507Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1205,6 +1205,17 @@
       "sqlHash": "b252da8f0b678adc9441dd2adf6bc7edda7abf66817c077579b0a9a5aa1b0ca7",
       "title": "Automatisches Ticket aus einer Störung (PDH_FAULT_CREATE_TICKET) erst nach der",
       "updatedAt": "2026-10-08T16:06:54.295Z"
+    },
+    {
+      "createdAt": "2026-10-08T20:34:57.859Z",
+      "path": "migrations/112_live_translation.up.sql",
+      "catalogContext": null,
+      "searchText": "live-übersetzung (internal/web/live_translate.go): je benutzer an/aus und migrations/112_live_translation.up.sql -- live-übersetzung (internal/web/live_translate.go): je benutzer an/aus und\n-- zielsprache (leer = sprache der oberfläche). übersetzte texte werden je\n-- zielsprache zwischengespeichert, damit jeder text nur einmal übersetzt wird.\nalter table users add column if not exists live_translate boolean not null default false;\nalter table users add column if not exists translate_lang varchar(10) not null default '';\n\ncreate table if not exists translation_cache (\n    lang       varchar(10) not null,\n    hash       char(64)    not null, -- sha256 des ausgangstexts\n    source     text        not null,\n    text       text        not null,\n    provider   varchar(20) not null default '',\n    created_at timestamptz not null default now(),\n    used_at    timestamptz not null default now(),\n    primary key (lang, hash)\n);\ncreate index if not exists idx_translation_cache_used on translation_cache(used_at);\n",
+      "searchUpdatedAt": "2026-10-08T20:34:57.961Z",
+      "schemaContext": null,
+      "sqlHash": "22143beb596ae0be416c86b6c8542197a8233508a9450c40d235b86a3d488c03",
+      "title": "Live-Übersetzung (internal/web/live_translate.go): je Benutzer an/aus und",
+      "updatedAt": "2026-10-08T20:34:57.886Z"
     }
   ]
 }

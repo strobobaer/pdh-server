@@ -632,5 +632,13 @@
  "Zur Anlage": "Назад кон машината",
  "Zustand der Anlage": "Состојба на машината",
  "Copilot-Hilfen auf- und zuklappen": "Прикажи или скриј Copilot помош",
- "Symbole": "Икони"
+ "Symbole": "Икони",
+ "Live-Übersetzung": "Превод во живо",
+ "Alle Texte automatisch übersetzen": "Автоматски преведи ги сите текстови",
+ "Übersetzen in": "Преведи на",
+ "Übersetzen in: Sprache der Oberfläche": "Преведи на: јазик на интерфејсот",
+ "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Ги преведува интерфејсот и содржините (наслови, описи, коментари, разговор) во живо на избраниот јазик. За таа цел текстовите се испраќаат до услугата за превод (DeepL или Copilot).",
+ "Live-Übersetzung ausschalten": "Исклучи превод во живо",
+ "Live-Übersetzung einschalten": "Вклучи превод во живо",
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "Не е поставена услуга за превод (Поставки на серверот → Превод)"
 }

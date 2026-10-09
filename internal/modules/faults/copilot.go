@@ -299,6 +299,42 @@ Ist der Text bereits deutsch, gib ihn unverändert zurück.`, text)
 	return strings.TrimSpace(strings.Trim(strings.TrimSpace(out), `"„“`)), err
 }
 
+// TranslateTexts übersetzt mehrere Texte (Oberfläche und Inhalte) in die
+// Zielsprache – für die Live-Übersetzung. Reihenfolge und Anzahl bleiben gleich.
+func (c *Copilot) TranslateTexts(ctx context.Context, texts []string, langName string) ([]string, error) {
+	in, _ := json.Marshal(map[string][]string{"t": texts})
+	system := `Du übersetzt Texte aus der Software einer Instandhaltung (Knöpfe, Menüs, Hinweise, Störungen, Tickets, Kommentare, Chat) nach ` + langName + `.
+Antworte ausschließlich mit gültigem JSON {"t":[…]} – gleiche Anzahl und Reihenfolge wie die Eingabe, ohne Markdown.
+Kurze Oberflächenbegriffe knapp übersetzen. Namen von Personen, Maschinen und Teilen, Nummern, Codes, Einheiten, Daten und Platzhalter wie %s unverändert lassen.
+Ist ein Text schon ` + langName + ` oder nicht übersetzbar, gib ihn unverändert zurück.`
+	var out string
+	var err error
+	if c.backend == BackendAnthropic {
+		out, err = c.anthropicChat(ctx, system, string(in), "low")
+	} else {
+		out, err = c.ollamaChat(ctx, system, string(in), true)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if i := strings.Index(out, "{"); i >= 0 {
+		out = out[i:]
+	}
+	if i := strings.LastIndex(out, "}"); i >= 0 {
+		out = out[:i+1]
+	}
+	var res struct {
+		T []string `json:"t"`
+	}
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		return nil, fmt.Errorf("übersetzung lesen: %w", err)
+	}
+	if len(res.T) != len(texts) {
+		return nil, fmt.Errorf("übersetzung: %d statt %d Texte", len(res.T), len(texts))
+	}
+	return res.T, nil
+}
+
 func (c *Copilot) Analyze(ctx context.Context, fault *Fault) (*CopilotAnalysis, error) {
 	similar, err := c.repo.FindSimilar(ctx, fault, 5)
 	if err != nil {

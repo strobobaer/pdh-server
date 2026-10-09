@@ -72,6 +72,10 @@ var envGroups = []envGroup{
 		{Key: "PDH_COPILOT_ANTHROPICMODEL", Label: "Anthropic-Modell", Type: "text", Default: "claude-opus-5-5", Restart: true},
 		{Key: "PDH_COPILOT_ANTHROPICWORKSPACE", Label: "Anthropic-Workspace-ID", Help: "Nur nötig, wenn der API-Schlüssel keinem Workspace zugeordnet ist (Fehler „anthropic-workspace-id header“). Die ID steht in der Claude Console unter Settings → Workspaces.", Type: "text", Restart: true},
 	}},
+	{"translate", "Übersetzung", "ti-language", "Dienst für die Live-Übersetzung, die jeder Benutzer im Benutzerstamm einschalten kann.", []envField{
+		{Key: "PDH_TRANSLATE_PROVIDER", Label: "Dienst", Help: "auto = DeepL, wenn ein Schlüssel eingetragen ist und DeepL die Sprache kann, sonst der Copilot-Anbieter; deepl = nur DeepL; copilot = nur Copilot (Claude oder Ollama).", Type: "select", Options: []string{"auto", "deepl", "copilot"}, Default: "auto"},
+		{Key: "PDH_DEEPL_KEY", Label: "DeepL-API-Schlüssel", Help: "Aus dem DeepL-Konto (Account → API Keys). Schlüssel der kostenlosen API enden auf :fx.", Type: "text", Secret: true},
+	}},
 	{"microsoft", "Microsoft 365", "ti-brand-windows", "Anmeldung mit Microsoft, Teams-Benachrichtigungen und Organisationsabgleich.", []envField{
 		{Key: "PDH_MICROSOFT_TENANT_ID", Label: "Tenant-ID", Type: "text"},
 		{Key: "PDH_MICROSOFT_CLIENT_ID", Label: "Client-ID", Type: "text"},

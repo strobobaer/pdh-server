@@ -632,5 +632,13 @@
  "Zur Anlage": "Back to the machine",
  "Zustand der Anlage": "Machine status",
  "Copilot-Hilfen auf- und zuklappen": "Show or hide Copilot help",
- "Symbole": "Icons"
+ "Symbole": "Icons",
+ "Live-Übersetzung": "Live translation",
+ "Alle Texte automatisch übersetzen": "Translate all texts automatically",
+ "Übersetzen in": "Translate into",
+ "Übersetzen in: Sprache der Oberfläche": "Translate into: interface language",
+ "Übersetzt Oberfläche und Inhalte (Titel, Beschreibungen, Kommentare, Chat) live in die gewählte Sprache. Die Texte gehen dafür an den Übersetzungsdienst (DeepL oder Copilot).": "Translates the interface and content (titles, descriptions, comments, chat) live into the selected language. The texts are sent to the translation service (DeepL or Copilot) for this.",
+ "Live-Übersetzung ausschalten": "Turn off live translation",
+ "Live-Übersetzung einschalten": "Turn on live translation",
+ "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "No translation service set up (Server settings → Translation)"
 }
