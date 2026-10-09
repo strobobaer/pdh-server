@@ -32,7 +32,8 @@ func TestGlobalDashboardUsesBoardWizard(t *testing.T) {
 	out := render(false)
 	for _, want := range []string{`id="crw"`, `const BOARD =  true `, `id="crw-rep"`, `id="crw-infra-list"`, "Wer meldet?", "an die <b>Broker</b>",
 		"window.PDH_CREATE_BOARD", "['fault', 'ticket']", "item.status_key === 'open'", ".cw-overlay{", "tabler-icons",
-		`class="row-ctl"`, "pdhRowStep(10)", "pdh_leitstand_row", "calc(13px * var(--row-scale))"} {
+		`class="row-ctl"`, "pdhRowStep(10)", "pdh_leitstand_row", "calc(13px * var(--row-scale))",
+		`id="entries-tiles"`, "entry-tile", "pdhEntriesViewToggle()", "pdh_leitstand_view", "pdhTimelineToggle()", "pdh_leitstand_timeline"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Leitstand enthält %q nicht", want)
 		}

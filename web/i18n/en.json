@@ -643,5 +643,6 @@
  "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)": "No translation service set up (Server settings → Translation)",
  "Zeilenhöhe in Tabellen und Listen – die Schrift passt sich an": "Row height in tables and lists – the text adjusts",
  "Zeilen niedriger": "Lower rows",
- "Zeilen höher": "Taller rows"
+ "Zeilen höher": "Taller rows",
+ "Zeitstrahl ein- oder ausblenden": "Show or hide the timeline"
 }

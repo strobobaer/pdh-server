@@ -18,6 +18,10 @@
   if(!(row >= 70 && row <= 150)) row = 100;
   document.documentElement.style.setProperty('--row-scale', (row / 100).toFixed(2));
   window.PDH_ROW = row;
+  // Ansicht der Vorgaenge (Kacheln/Tabelle) und Zeitstrahl ein/aus: je Geraet gemerkt
+  var view = localStorage.getItem('pdh_leitstand_view');
+  document.documentElement.dataset.entriesView = view === 'table' ? 'table' : 'tiles';
+  if(localStorage.getItem('pdh_leitstand_timeline') === 'off') document.documentElement.classList.add('timeline-off');
 })();
 </script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
@@ -169,6 +173,34 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #entries-table tbody tr{cursor:pointer}
 #entries-table tbody tr.alt{background:var(--surface-2)}
 #entries-table-wrap.expanded{max-height:none}
+/* Ansicht umschaltbar (Kopfleiste): Kacheln oder Tabelle */
+html[data-entries-view="tiles"] #entries-table,html[data-entries-view="table"] #entries-tiles{display:none}
+html[data-entries-view="tiles"] #entries-table-wrap{max-height:58vh;border:0;background:none;padding:2px}
+html[data-entries-view="tiles"] #entries-table-wrap.expanded{max-height:none}
+html.timeline-off #timeline-card{display:none}
+.header-button[aria-pressed="false"]{color:var(--muted)}
+/* ── Vorgaenge als Kacheln (touchbar); Groesse (--row-scale) skaliert Kachel und Schrift ── */
+#entries-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(calc(250px * var(--row-scale)),1fr));gap:calc(10px * var(--row-scale));font-size:calc(14px * var(--row-scale))}
+.entry-tile{display:flex;flex-direction:column;gap:.45em;min-height:calc(112px * var(--row-scale));padding:.8em 1em;border:1px solid var(--border);border-left:.45em solid var(--tile-c,var(--border));border-radius:9px;background:var(--surface);color:var(--text);text-align:left;font:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:transform .08s,filter .15s}
+.entry-tile.fault{--tile-c:var(--type-fault)}.entry-tile.ticket{--tile-c:var(--type-ticket)}.entry-tile.maintenance{--tile-c:var(--type-maintenance)}.entry-tile.task{--tile-c:var(--type-task)}
+.entry-tile:hover{filter:brightness(1.1)}
+.entry-tile:active{transform:scale(.98)}
+.entry-tile:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.entry-tile.selected{outline:3px solid var(--focus);outline-offset:-1px;background:color-mix(in srgb,var(--surface-2) 80%,var(--focus) 20%)}
+.entry-tile.is-overdue{border-top-color:var(--overdue);border-right-color:var(--overdue);border-bottom-color:var(--overdue)}
+.et-top{display:flex;align-items:center;gap:.5em;flex-wrap:wrap}
+.et-top .kind{font-size:.82em;padding:.3em .55em}
+.et-prio{font-size:.82em;color:var(--muted);font-weight:650;white-space:nowrap}
+.et-due{margin-left:auto;font-size:.86em;color:var(--muted);white-space:nowrap}
+.et-due.overdue{color:var(--overdue);font-weight:700}
+.et-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:700;font-size:1.08em;line-height:1.25;overflow-wrap:anywhere}
+.et-meta{margin-top:auto;display:flex;flex-wrap:wrap;align-items:center;gap:.3em .9em;font-size:.82em;color:var(--muted)}
+.et-meta span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.et-meta .et-unassigned{color:var(--amber);font-weight:650}
+.et-meta .et-status{margin-left:auto;padding:.15em .55em;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);color:var(--text)}
+/* Bearbeitungsfenster unter der Kachelreihe der gewaehlten Kachel */
+#entries-tiles > .entry-detail{grid-column:1/-1;font-size:13px}
+.entry-detail #edit-panel{border:2px solid var(--focus)}
 #entries-table tbody tr.detail{cursor:default;background:var(--surface)}
 #entries-table tbody tr.detail:hover{background:var(--surface)}
 #entries-table td.detail-cell{white-space:normal;padding:0 10px 12px;border-bottom:2px solid var(--focus);font-size:13px}
@@ -214,7 +246,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #open-rfid input{width:100%;min-height:48px;padding:10px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)}
 #open-rfid-error{color:var(--overdue);font-size:13px;margin:0;min-height:18px}
 @media(max-width:1050px){main{padding:10px}header{padding:10px 12px}.action-button{font-size:12px;padding:0 8px}}
-@media(max-width:1050px){.row-ctl-label{display:none}}
+@media(max-width:1050px){.row-ctl-label,.header-button .tb-label{display:none}}
 @media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}}
 </style>
 </head>
@@ -236,13 +268,15 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     {{end}}
   </div>
   <div class="header-meta"><span id="updated-at">Wird geladen</span>
-    <span class="row-ctl" role="group" aria-label="Zeilenhöhe" title="Zeilenhöhe der Tabelle und Listen – die Schrift passt sich an. Wird an diesem Gerät gemerkt.">
-      <span class="row-ctl-label">☰ Zeilen</span>
-      <button type="button" onclick="pdhRowStep(-10)" aria-label="Zeilen niedriger">−</button>
+    <span class="row-ctl" role="group" aria-label="Größe der Kacheln und Zeilen" title="Größe der Kacheln bzw. Zeilenhöhe der Tabelle und Listen – die Schrift passt sich an. Wird an diesem Gerät gemerkt.">
+      <span class="row-ctl-label">Aa Größe</span>
+      <button type="button" onclick="pdhRowStep(-10)" aria-label="Kleiner">−</button>
       <output id="row-ctl-value">100 %</output>
-      <button type="button" onclick="pdhRowStep(10)" aria-label="Zeilen höher">+</button>
+      <button type="button" onclick="pdhRowStep(10)" aria-label="Größer">+</button>
     </span>
     <button class="header-button" type="button" id="theme-toggle" onclick="cycleThemeMode()" title="Darstellung wechseln" aria-label="Darstellung wechseln"><span aria-hidden="true" id="theme-toggle-icon">🖥️</span> <span id="theme-toggle-label">System</span></button>
+    <button class="header-button" type="button" id="view-toggle" onclick="pdhEntriesViewToggle()" title="Vorgänge als Kacheln oder als Tabelle zeigen"><span aria-hidden="true" id="view-toggle-icon">▦</span> <span id="view-toggle-label">Kacheln</span></button>
+    <button class="header-button" type="button" id="timeline-toggle" onclick="pdhTimelineToggle()" title="Zeitstrahl ein- oder ausblenden" aria-pressed="true"><span aria-hidden="true">📅</span> <span class="tb-label">Zeitstrahl</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
     {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
     {{if .LoggedIn}}
@@ -288,11 +322,12 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   <div id="entries-card" class="view-card">
     <div class="view-head">
-      <strong>Tabelle</strong>
-      <div class="view-filter" id="table-filter" role="group" aria-label="Was in der Tabelle angezeigt wird"></div>
+      <strong>Vorgänge</strong>
+      <div class="view-filter" id="table-filter" role="group" aria-label="Welche Vorgänge angezeigt werden"></div>
       <span class="view-count" id="table-count"></span>
     </div>
     <div id="entries-table-wrap">
+      <div id="entries-tiles" role="list" aria-label="Offene Vorgänge"></div>
       <table id="entries-table">
         <thead>
           <tr><th>Art</th><th>Titel</th><th>Priorität</th><th>Fällig</th><th>Ersteller</th><th>Zuständig</th><th>Status</th></tr>
@@ -423,6 +458,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     document.documentElement.style.setProperty('--row-scale', (row / 100).toFixed(2));
     const out = document.getElementById('row-ctl-value');
     if(out) out.textContent = row + ' %';
+    window.dispatchEvent(new Event('pdh-row-change'));
   }
   window.pdhRowStep = function(d){
     const row = Math.max(70, Math.min(150, (window.PDH_ROW || 100) + d));
@@ -643,6 +679,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   }
 
   function renderDashGantt(){
+    if(document.documentElement.classList.contains('timeline-off')) return;
     const target = document.getElementById('dash-gantt-target');
     const empty = document.getElementById('dash-gantt-empty');
 
@@ -755,6 +792,77 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
   const editPanelHome = document.getElementById('edit-panel-home');
   const entriesEmpty = document.getElementById('entries-empty');
 
+  const entriesTiles = document.getElementById('entries-tiles');
+  function entriesView(){ return document.documentElement.dataset.entriesView === 'table' ? 'table' : 'tiles'; }
+  function makeEl(tag, className, text, icon){
+    const el = document.createElement(tag);
+    if(className) el.className = className;
+    if(icon){ const i = document.createElement('i'); i.className = 'ti ' + icon; i.setAttribute('aria-hidden', 'true'); el.appendChild(i); el.appendChild(document.createTextNode(' ')); }
+    if(text) el.appendChild(document.createTextNode(text));
+    return el;
+  }
+  // Spalten des Kachelrasters (auto-fill) - fuer das Bearbeitungsfenster unter der Reihe
+  function tileColumns(){
+    const cols = getComputedStyle(entriesTiles).gridTemplateColumns;
+    return cols && cols !== 'none' ? Math.max(1, cols.trim().split(/ +/).length) : 1;
+  }
+  function makeTile(item, isSelected, overdue){
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.setAttribute('role', 'listitem');
+    tile.className = 'entry-tile ' + item.type_key + (isSelected ? ' selected' : '') + (overdue ? ' is-overdue' : '');
+    const top = makeEl('span', 'et-top');
+    top.appendChild(makeEl('span', 'kind ' + item.type_key, item.type));
+    if(item.priority) top.appendChild(makeEl('span', 'et-prio', item.priority, 'ti-flag'));
+    top.appendChild(makeEl('span', 'et-due' + (overdue ? ' overdue' : ''),
+      item.due_date ? fmtDisplayDate(parseISODate(item.due_date)) + (overdue ? ' · überfällig' : '') : 'Kein Termin', 'ti-calendar'));
+    tile.appendChild(top);
+    tile.appendChild(makeEl('span', 'et-title', item.title));
+    const meta = makeEl('span', 'et-meta');
+    if(item.creator){ const c = makeEl('span', '', item.creator, 'ti-user'); c.title = 'Ersteller'; meta.appendChild(c); }
+    const a = item.assignee ? makeEl('span', '', item.assignee, 'ti-user-check') : makeEl('span', 'et-unassigned', 'Ohne Zuständigen', 'ti-user-question');
+    a.title = 'Zuständig';
+    meta.appendChild(a);
+    if(item.status) meta.appendChild(makeEl('span', 'et-status', item.status));
+    tile.appendChild(meta);
+    tile.setAttribute('aria-expanded', isSelected ? 'true' : 'false');
+    tile.addEventListener('click', function(){ if(itemKey(item) === selectedKey) closeEditPanel(); else selectItem(item); });
+    return tile;
+  }
+  // Umschalter in der Kopfleiste (je Geraet gemerkt)
+  function updateHeaderToggles(){
+    const tiles = entriesView() === 'tiles';
+    const icon = document.getElementById('view-toggle-icon'), label = document.getElementById('view-toggle-label');
+    // Knopf zeigt, wohin er umschaltet
+    if(icon) icon.textContent = tiles ? '☰' : '▦';
+    if(label) label.textContent = tiles ? 'Tabelle' : 'Kacheln';
+    const tl = document.getElementById('timeline-toggle');
+    if(tl) tl.setAttribute('aria-pressed', document.documentElement.classList.contains('timeline-off') ? 'false' : 'true');
+  }
+  window.pdhEntriesViewToggle = function(){
+    const next = entriesView() === 'tiles' ? 'table' : 'tiles';
+    document.documentElement.dataset.entriesView = next;
+    try{ localStorage.setItem('pdh_leitstand_view', next); }catch(e){}
+    updateHeaderToggles();
+    renderEntriesTable(latestData.items || []);
+  };
+  window.pdhTimelineToggle = function(){
+    const off = !document.documentElement.classList.contains('timeline-off');
+    document.documentElement.classList.toggle('timeline-off', off);
+    try{ localStorage.setItem('pdh_leitstand_timeline', off ? 'off' : 'on'); }catch(e){}
+    updateHeaderToggles();
+    if(!off) renderDashGantt();
+  };
+  updateHeaderToggles();
+  // Kachelraster bricht bei anderer Breite/Groesse anders um: Bearbeitungsfenster neu einordnen
+  let tileResizeTimer = null;
+  function relayoutTiles(){
+    clearTimeout(tileResizeTimer);
+    tileResizeTimer = setTimeout(function(){ if(selectedKey && entriesView() === 'tiles') renderEntriesTable(latestData.items || []); }, 150);
+  }
+  window.addEventListener('resize', relayoutTiles);
+  window.addEventListener('pdh-row-change', relayoutTiles);
+
   function makeCell(text, className){
     const td = document.createElement('td');
     if(className) td.className = className;
@@ -764,6 +872,8 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 
   function renderEntriesTable(all){
     entriesBody.replaceChildren();
+    entriesTiles.replaceChildren();
+    const asTiles = entriesView() === 'tiles';
     const todayStr = todayMidnight().toISOString().slice(0,10);
     const items = all.filter(function(item){
       return tableMatch(item.type_key, !!(item.due_date && item.due_date < todayStr), !item.assignee, !!item.upcoming);
@@ -779,7 +889,26 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
     // Werkzeuge (Bearbeitungsfenster) erst nach Hause, dann ggf. unter die gewaehlte Zeile
     editPanelHome.after(editPanel);
     let expanded = false;
-    sorted.forEach(function(item, index){
+    if(asTiles){
+      const tiles = [];
+      let selectedIndex = -1;
+      sorted.forEach(function(item, index){
+        const isSelected = itemKey(item) === selectedKey;
+        if(isSelected) selectedIndex = index;
+        const tile = makeTile(item, isSelected, !!(item.due_date && item.due_date < todayStr));
+        entriesTiles.appendChild(tile);
+        tiles.push(tile);
+      });
+      if(selectedIndex >= 0 && !editPanel.classList.contains('hidden')){
+        const cols = tileColumns();
+        const rowEnd = Math.min(tiles.length - 1, Math.floor(selectedIndex / cols) * cols + cols - 1);
+        const detail = makeEl('div', 'entry-detail');
+        detail.appendChild(editPanel);
+        tiles[rowEnd].after(detail);
+        expanded = true;
+      }
+    }
+    if(!asTiles) sorted.forEach(function(item, index){
       const tr = document.createElement('tr');
       if(index % 2 === 1) tr.classList.add('alt');
       const isSelected = itemKey(item) === selectedKey;

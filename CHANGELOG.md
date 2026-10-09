@@ -14,7 +14,9 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 - Benutzermenü → Darstellung: neue Einstellung „Zeilenhöhe“ macht die Zeilen in Tabellen und Listen niedriger oder höher (70–150 %), die Schrift passt sich dabei automatisch an; mit „Speichern“ gilt sie auf allen Geräten
-- Leitstand: Zeilenhöhe der Tabelle und der Wartungsliste direkt in der Kopfzeile einstellen (− / +), der Wert wird am Gerät gemerkt
+- Leitstand: Die offenen Vorgänge erscheinen als große, antippbare Kacheln; in der Kopfzeile lässt sich auf die Tabelle umschalten
+- Leitstand: Größe der Kacheln bzw. Tabellenzeilen direkt in der Kopfzeile einstellen (− / +), die Schrift passt sich an
+- Leitstand und Dashboard: Der Zeitstrahl lässt sich per Knopf aus- und wieder einblenden; Ansicht, Größe und Zeitstrahl merkt sich das Gerät
 
 ## [0.45.0] – 2026-10-08
 

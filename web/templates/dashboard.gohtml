@@ -2,10 +2,17 @@
 
 
 {{define "content"}}
-<div style="margin-bottom:18px">
+<div style="margin-bottom:18px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+  <div style="flex:1;min-width:0">
   <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">{{if eq .Greeting "Morgen"}}{{t "Guten Morgen"}}{{else if eq .Greeting "Abend"}}{{t "Guten Abend"}}{{else}}{{t "Guten Tag"}}{{end}}, {{.UserFirstName}}</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
+  </div>
+  <button type="button" class="btn btn-small" id="dash-timeline-toggle" onclick="dashTimelineToggle()" aria-pressed="true" title="{{t "Zeitstrahl ein- oder ausblenden"}}"><i class="ti ti-timeline"></i> <span>{{t "Zeitstrahl"}}</span></button>
 </div>
+<script>
+// Zeitstrahl ein/aus: im Browser gemerkt, vor dem Zeichnen gesetzt
+try { if(localStorage.getItem('pdh_dash_timeline') === 'off') document.documentElement.classList.add('dash-timeline-off'); } catch(e) {}
+</script>
 
 {{template "dw-grid" .}}
 
@@ -22,6 +29,9 @@
 .dv-table tr.dv-row{cursor:pointer}
 .dv-table tr.dv-row:hover{background:var(--bg3)}
 .dv-table .dv-over{color:var(--red);font-weight:600}
+html.dash-timeline-off #dash-timeline-card{display:none}
+#dash-timeline-toggle[aria-pressed="false"]{color:var(--muted)}
+#dash-timeline-toggle[aria-pressed="false"] i{opacity:.5}
 </style>
 
 <!-- Tabelle der offenen Vorgänge (gleiche Auswahl wie im Leitstand) -->
@@ -40,8 +50,8 @@
   </div>
 </div>
 
-<!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen -->
-<div class="card">
+<!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen (oben ein-/ausblendbar) -->
+<div class="card" id="dash-timeline-card">
   <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <span>{{t "Zeitstrahl"}}</span>
     <div class="dv-filter" id="dash-gantt-filter" role="group" aria-label="{{t "Was im Zeitstrahl angezeigt wird"}}" style="flex-basis:100%;order:3"></div>
@@ -285,6 +295,7 @@ function renderDashTable(){
 }
 
 function renderDashGantt(){
+  if(document.documentElement.classList.contains('dash-timeline-off')) return;
   var target = document.getElementById('dash-gantt-target');
   var empty = document.getElementById('dash-gantt-empty');
   var shown = dashGanttItems.filter(dvGanttMatch);
@@ -322,7 +333,18 @@ function renderDashGantt(){
   }
 }
 
-function dashInit(){ renderDashTable(); renderDashGantt(); }
+function dashTimelineSync(){
+  var b = document.getElementById('dash-timeline-toggle');
+  if(b) b.setAttribute('aria-pressed', document.documentElement.classList.contains('dash-timeline-off') ? 'false' : 'true');
+}
+function dashTimelineToggle(){
+  var off = !document.documentElement.classList.contains('dash-timeline-off');
+  document.documentElement.classList.toggle('dash-timeline-off', off);
+  try { localStorage.setItem('pdh_dash_timeline', off ? 'off' : 'on'); } catch(e) {}
+  dashTimelineSync();
+  if(!off) renderDashGantt();
+}
+function dashInit(){ dashTimelineSync(); renderDashTable(); renderDashGantt(); }
 if(document.readyState !== 'loading'){ dashInit(); }
 else document.addEventListener('DOMContentLoaded', dashInit);
 </script>

@@ -111,7 +111,8 @@ func TestDashboardWithWidgets(t *testing.T) {
 	cat := []WidgetCatalogGroup{{Name: catStats, Items: []WidgetDef{widgetDefs[2]}}}
 	out := renderPage(t, tmpl, "dashboard", DashboardData{Widgets: views, WidgetCatalog: cat})
 	for _, want := range []string{`id="dw-grid"`, `data-id="d1" data-type="stat_tickets" data-size="1" data-refresh="60"`, `data-type="note" data-size="2"`, ">Schicht<",
-		"Öl nachfüllen", "Dashboard anpassen", `data-dw-catalog`, `data-type="stat_tickets" data-name="Offene Tickets"`, "sortablejs", `id="dw-tpl"`} {
+		"Öl nachfüllen", "Dashboard anpassen", `data-dw-catalog`, `data-type="stat_tickets" data-name="Offene Tickets"`, "sortablejs", `id="dw-tpl"`,
+		`id="dash-timeline-toggle"`, `id="dash-timeline-card"`, "pdh_dash_timeline"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Dashboard enthält %q nicht", want)
 		}
