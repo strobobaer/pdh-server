@@ -386,30 +386,26 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       <button type="button" class="header-button" id="edit-close">Schließen</button>
     </div>
     <div class="edit-actions" id="edit-action-buttons">
-      <button type="button" class="action-button" id="edit-info-button" hidden>ℹ Info</button>
       <button type="button" class="action-button accept" data-action="accept">Annehmen</button>
       <button type="button" class="action-button finish" data-action="done">Fertig</button>
       {{if .CanDiscard}}<button type="button" class="action-button discard" data-action="discard">Verwerfen</button>{{end}}
-      <button type="button" class="action-button wait" data-action="wait">Warten</button>
     </div>
     <form id="action-form" class="hidden">
       <p id="dialog-item" class="item-sub" style="margin:0"></p>
       <label id="worker-field" class="hidden">Zuständiger Mitarbeiter <span class="required-hint">Pflichtfeld · aktuell jeder Mitarbeiter wählbar</span>
         <select id="assigned-to" name="assigned_to" required><option value="">Mitarbeiter auswählen …</option></select>
       </label>
-      <label id="date-field" class="hidden">Wiedervorlage am <span class="required-hint">Pflichtfeld</span>
-        <input id="follow-up-date" type="date" name="follow_up_date">
-      </label>
-      <p id="done-hint" class="item-sub hidden" style="margin:0">Karte scannen – danach führt der Abschluss-Assistent Schritt für Schritt durch die Fertigmeldung: Material, Zeit, wer dabei war, Kommentar.</p>
-      <label id="comment-field">Kommentar <span class="required-hint">Pflichtfeld, mindestens 8 Zeichen</span>
-        <textarea id="comment" name="comment" minlength="8" maxlength="1000" required placeholder="Was wurde entschieden oder erledigt?"></textarea>
-      </label>
+      <p id="done-hint" class="item-sub hidden" style="margin:0">Auswählen, wer fertig meldet – danach führt der Abschluss-Assistent Schritt für Schritt durch die Fertigmeldung: Material, Zeit, wer dabei war, Kommentar.</p>
       <label id="parts-field" class="hidden" style="display:flex;align-items:center;gap:10px">
         <input id="no-parts" type="checkbox" name="no_parts_needed" style="width:22px;min-height:22px">
         Keine Ersatzteile benötigt
       </label>
-      <label>RFID-Karte zur Bestätigung <span class="required-hint">Pflichtfeld</span>
-        <input id="rfid-uid" name="rfid_uid" type="password" autocomplete="off" required placeholder="Karte scannen">
+      <!-- Wer führt aus? Instandhaltung/IT aus der Liste; ohne Liste (nur am Terminal erlaubt) die Karte -->
+      <label id="actor-field">Wer führt aus? <span class="required-hint">Pflichtfeld · Instandhaltung und IT</span>
+        <select id="actor-id" name="user_id"><option value="">Person auswählen …</option></select>
+      </label>
+      <label id="rfid-field" class="hidden">RFID-Karte zur Bestätigung <span class="required-hint">Pflichtfeld · Personenauswahl nur am Terminal</span>
+        <input id="rfid-uid" name="rfid_uid" type="password" autocomplete="off" placeholder="Karte scannen">
       </label>
       <div class="form-actions">
         <button class="action-button" type="button" id="cancel-action">Abbrechen</button>
@@ -487,12 +483,11 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
   const editActions = document.getElementById('edit-action-buttons');
   const form = document.getElementById('action-form');
   const workerField = document.getElementById('worker-field');
-  const dateField = document.getElementById('date-field');
   const partsField = document.getElementById('parts-field');
   const workerSelect = document.getElementById('assigned-to');
-  const dateInput = document.getElementById('follow-up-date');
-  const commentInput = document.getElementById('comment');
+  const actorSelect = document.getElementById('actor-id');
   const rfidInput = document.getElementById('rfid-uid');
+  let pickActor = true; // Liste statt Karte (Server: /global/data liefert actors)
   const loadState = document.getElementById('load-state');
 
   // ── Öffnen: angemeldet direkt, sonst erst RFID-Karte (Kurzzugang, /global/open)
@@ -537,7 +532,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       openRfidUid.value = ''; openRfidUid.focus();
     }finally{ submit.disabled = false; }
   });
-  const actionNames = {accept:'Annehmen',done:'Fertig',discard:'Verwerfen',wait:'Warten'};
+  const actionNames = {accept:'Annehmen',done:'Fertig',discard:'Verwerfen'};
   let current = null; // {item, action}
   let selectedKey = null; // type_key:id
   let latestData = {items:[], workers:[], gantt_items:[]};
@@ -562,6 +557,20 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
   function setOptions(options){
     fillSelect(workerSelect, options, 'Mitarbeiter auswählen …');
   }
+  // Wer führt aus: Liste (Instandhaltung/IT) oder – wenn hier nicht erlaubt – Karte
+  function setActors(actors){
+    pickActor = !!(actors && actors.length);
+    fillSelect(actorSelect, actors, 'Person auswählen …');
+    document.getElementById('actor-field').classList.toggle('hidden', !pickActor);
+    document.getElementById('rfid-field').classList.toggle('hidden', pickActor);
+    actorSelect.required = pickActor;
+    rfidInput.required = !pickActor;
+  }
+  // Annehmen: wer annimmt, ist vorgeschlagen zuständig
+  actorSelect.addEventListener('change', function(){
+    if(current && current.action === 'accept' && !workerSelect.value && actorSelect.value) workerSelect.value = actorSelect.value;
+  });
+  function actorPayload(){ return pickActor ? {user_id: actorSelect.value} : {rfid_uid: rfidInput.value.trim()}; }
 
   // ── Zeitstrahl: frappe-gantt, identisch zum Dashboard der angemeldeten
   // Nutzer (dashboard.gohtml) - inklusive Drag-to-Reschedule und
@@ -1061,12 +1070,6 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     const descriptionEl = document.getElementById('edit-description');
     descriptionEl.textContent = item.description || '';
     descriptionEl.classList.toggle('hidden', !item.description);
-    const infoButton = document.getElementById('edit-info-button');
-    infoButton.hidden = false;
-    infoButton.textContent = item.infrastructure_id ? 'ℹ Info' : 'ℹ Öffnen';
-    infoButton.onclick = function(){
-      openPage(item.infrastructure_id ? ('/infrastructure/' + item.infrastructure_id) : item.detail_url, item.title);
-    };
     form.classList.add('hidden');
     editActions.classList.remove('hidden');
     editPanel.classList.remove('hidden');
@@ -1100,29 +1103,23 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     current = {item:item, action:action};
     document.getElementById('dialog-item').textContent = actionNames[action] + ' · ' + item.title;
     workerField.classList.toggle('hidden', action !== 'accept');
-    workerSelect.required = action === 'accept';
-    dateField.classList.toggle('hidden', action !== 'wait');
-    dateInput.required = action === 'wait';
-    // "Fertig" laeuft ueber den Abschluss-Assistenten: hier nur die Karte
+    // "Fertig" laeuft ueber den Abschluss-Assistenten: hier nur, wer ausfuehrt
     const guided = action === 'done';
     partsField.classList.add('hidden');
-    document.getElementById('comment-field').classList.toggle('hidden', guided);
     document.getElementById('done-hint').classList.toggle('hidden', !guided);
     document.getElementById('submit-action').textContent = guided ? 'Fertigmeldung starten' : actionNames[action];
     form.reset();
     workerSelect.required = action === 'accept';
-    dateInput.required = action === 'wait';
-    commentInput.required = !guided;
     editActions.classList.add('hidden');
     form.classList.remove('hidden');
-    (guided ? rfidInput : commentInput).focus();
+    (pickActor ? actorSelect : rfidInput).focus();
   }
 
   // Fertig: Karte pruefen lassen, dann den Assistenten mit dem Token dieser Person oeffnen
   async function startGuidedDone(item){
     const response = await fetch('/global/complete-start', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:item.type_key, id:item.id, rfid_uid:rfidInput.value.trim()})
+      body:JSON.stringify(Object.assign({type:item.type_key, id:item.id}, actorPayload()))
     });
     const result = await response.json().catch(function(){return {};});
     if(!response.ok || !result.token) throw new Error(result.error || 'Fertigmeldung konnte nicht gestartet werden');
@@ -1171,6 +1168,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
   function render(data){
     latestData = data;
     setOptions(data.workers || []);
+    setActors(data.actors || []);
     document.getElementById('item-count').textContent = data.items.length + (data.items.length === 1 ? ' Eintrag' : ' Einträge');
     dashGanttItems = (data.gantt_items || []).map(function(t){
       return {id: t.id, refType: t.ref_type, name: t.title, start: t.start_iso, end: t.end_iso,
@@ -1212,16 +1210,13 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       finally{ submitDone.disabled = false; rfidInput.value = ''; }
       return;
     }
-    const payload = {
+    const payload = Object.assign({
       type: current.item.type_key,
       id: current.item.id,
       action: current.action,
-      comment: commentInput.value.trim(),
-      rfid_uid: rfidInput.value.trim(),
       assigned_to: workerSelect.value,
-      follow_up_date: dateInput.value,
       no_parts_needed: document.getElementById('no-parts').checked
-    };
+    }, actorPayload());
     const submit = document.getElementById('submit-action');
     submit.disabled = true;
     try{

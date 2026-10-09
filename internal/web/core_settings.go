@@ -45,7 +45,8 @@ type CoreSettingsPageData struct {
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
 
-	EasyMode bool // QR-Meldung ohne Anmeldung (easy_mode.go)
+	EasyMode              bool // QR-Meldung ohne Anmeldung (easy_mode.go)
+	BoardPickTerminalOnly bool // Leitstand: Personenauswahl nur am Terminal (global_dashboard_actor.go)
 }
 
 type UpdateCommitView struct {
@@ -132,6 +133,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		EasyMode:                  h.easyModeEnabled(ctx),
+		BoardPickTerminalOnly:     h.boardPickTerminalOnly(ctx),
 	}
 	data.CompletionDepartments = strings.Join(h.completionDepartments(ctx), ", ")
 	if rows, err := h.db.Query(ctx, `SELECT DISTINCT TRIM(department) FROM users WHERE active AND TRIM(COALESCE(department, '')) <> '' ORDER BY 1`); err == nil {

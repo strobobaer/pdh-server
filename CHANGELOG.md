@@ -17,6 +17,10 @@ im Kapitel „Versionen & Updates“ an.
 - Easy-Mode: Die Meldetexte der Anlage erscheinen als große Tasten in der Sprache des Handys; antippen genügt, eigener Text ist dann freiwillig, und ein Text kann „elektrisch/mechanisch“ vorgeben
 - Die Reihenfolge der Meldetexte lässt sich im Katalog mit ▲/▼ festlegen; so erscheinen sie auch im Easy-Mode und an der Anlage
 
+### Geändert
+- Leitstand: Statt die RFID-Karte zu scannen, wählt man bei Annehmen, Verwerfen und Fertig aus der Liste der Mitarbeitenden aus Instandhaltung und IT, wer ausführt; unter Core-Einstellungen lässt sich die Liste auf angemeldete Terminals beschränken – an anderen Geräten gilt dann weiter die Karte
+- Leitstand: Die Knöpfe „Info“ und „Warten“ und das Kommentarfeld im Bearbeitungsfenster entfallen; ein Kommentar ist dort nicht mehr nötig
+
 ## [0.46.2] – 2026-10-09
 
 ### Geändert

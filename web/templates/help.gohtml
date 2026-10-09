@@ -263,22 +263,22 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-id-badge-2"></i> So öffnest du einen Vorgang am Leitstand</b>
     <ol class="hb-steps">
-      <li>In der aufgeklappten Zeile <b>ℹ Öffnen</b> bzw. <b>ℹ Info</b> (Anlage) antippen – oder einen Balken im Zeitstrahl doppelt antippen.</li>
+      <li>Einen Balken im Zeitstrahl doppelt antippen.</li>
       <li>Ist am Leitstand niemand angemeldet, fragt er nach der <b>RFID-Karte</b>. Karte scannen, die Seite öffnet sich mit deinen Rechten.</li>
       <li>Das ist <b>keine dauerhafte Anmeldung</b>: Oben rechts steht <b>Zurück zum Leitstand</b>. Der Zugang endet damit, bei Inaktivität (Override-Zeit unter <b>Rollen &amp; Berechtigungen</b>), beim Schließen des Browsers oder sobald jemand den Leitstand wieder aufruft.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So meldest du am Leitstand fertig</b>
     <ol class="hb-steps">
-      <li>Den Vorgang in der Tabelle antippen – die Zeile klappt auf und zeigt darunter die Werkzeuge (<b>Annehmen</b>, <b>Fertig</b>, <b>Verwerfen</b>, <b>Warten</b>, <b>Info</b>). Nochmal antippen klappt sie wieder zu. Ein Balken im Zeitstrahl öffnet dieselben Werkzeuge. <b>Fertig</b> wählen.</li>
-      <li><b>RFID-Karte scannen</b> und <b>Fertigmeldung starten</b>. Fertig melden können Mitarbeitende aus Instandhaltung und IT.</li>
-      <li>Der <a href="#completion">Abschluss-Assistent</a> führt durch Material, Zeit, wer dabei war, und Kommentar – genau wie im PDH, nur in deinem Namen. Oben steht, für wen die Fertigmeldung läuft.</li>
+      <li>Den Vorgang antippen – darunter erscheinen die Werkzeuge (<b>Annehmen</b>, <b>Fertig</b>, für Administratoren und Manager auch <b>Verwerfen</b>). Nochmal antippen klappt sie wieder zu. Ein Balken im Zeitstrahl öffnet dieselben Werkzeuge. <b>Fertig</b> wählen.</li>
+      <li>Bei <b>Wer führt aus?</b> deinen Namen wählen und <b>Fertigmeldung starten</b>. In der Liste stehen die Mitarbeitenden aus Instandhaltung und IT. Ein Kommentar ist hier nicht nötig.</li>
+      <li>Der <a href="#completion">Abschluss-Assistent</a> führt durch Material, Zeit, wer dabei war, und Kommentar – genau wie im PDH, nur im Namen der gewählten Person. Oben steht, für wen die Fertigmeldung läuft.</li>
       <li><b>Fertig</b> schließt den Vorgang ab (Status „Gelöst“ bzw. „Erledigt“). <b>Geht noch weiter</b> speichert Zeit und Kommentar, der Vorgang steht dann auf <i>In Arbeit</i>.</li>
     </ol>
-    Die Karte gilt nur für diesen einen Vorgang und höchstens 20 Minuten. Danach oder für den nächsten Vorgang die Karte erneut scannen. Wer am Leitstand per Karte fertig melden darf (Instandhaltung und IT), darf dort auch abschließen – unabhängig vom Bearbeiten- und Abschluss-Recht seiner Rolle. Die Karte gilt dabei nur für den einen Vorgang.</div>
-  <div class="hb-howto"><b><i class="ti ti-hourglass"></i> Was die Karten-Aktionen am Status ändern</b>
+    Die Freigabe gilt nur für diesen einen Vorgang und höchstens 20 Minuten. Wer am Leitstand fertig melden darf (Instandhaltung und IT), darf dort auch abschließen – unabhängig vom Bearbeiten- und Abschluss-Recht seiner Rolle.<br>
+    <b>Nur am Terminal:</b> Ist unter <b>Core-Einstellungen → Leitstand: Wer führt aus?</b> „Personenauswahl nur am Terminal“ eingeschaltet, gibt es die Namensliste nur an angemeldeten Terminals. An allen anderen Geräten steht stattdessen das Feld <b>RFID-Karte</b> – dann wie früher die Karte scannen.</div>
+  <div class="hb-howto"><b><i class="ti ti-hourglass"></i> Was die Leitstand-Aktionen am Status ändern</b>
     <ul>
-      <li><b>Annehmen</b> – Vorgang wird zugewiesen und steht auf <i>In Arbeit</i>.</li>
-      <li><b>Warten</b> – Termin wird auf den Wiedervorlage-Tag verschoben, der Status wird <i>Wartet</i>. Das sieht man in allen Listen, nicht nur am Leitstand; der Vorgang bleibt offen.</li>
+      <li><b>Annehmen</b> – Vorgang wird zugewiesen und steht auf <i>In Arbeit</i>. Als Zuständiger ist die Person vorgeschlagen, die ausführt.</li>
       <li><b>Geht noch weiter</b> (im Assistenten) bzw. erneutes <b>Annehmen</b> – zurück auf <i>In Arbeit</i>.</li>
       <li><b>Fertig</b> – <i>Gelöst</i> (Störung, Ticket, Aufgabe) bzw. <i>Erledigt</i> (Wartung); der Vorgang verschwindet vom Leitstand.</li>
       <li><b>Verwerfen</b> – Störungen und Tickets werden ohne Maßnahme geschlossen, Wartungen übersprungen, Aufgaben geschlossen.</li>

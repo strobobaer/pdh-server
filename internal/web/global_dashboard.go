@@ -40,6 +40,9 @@ type GlobalDashboardData struct {
 	Workers        []UserOption      `json:"workers"`
 	Infrastructure []UserOption      `json:"infrastructure"`
 	GanttItems     []GanttItem       `json:"gantt_items"`
+	// Actors: Instandhaltung/IT zur Auswahl „Wer führt aus?“ – leer, wenn an
+	// diesem Gerät die RFID-Karte Pflicht ist (global_dashboard_actor.go)
+	Actors []UserOption `json:"actors"`
 }
 
 func (h *Handler) GlobalDashboardRoutes() chi.Router {
@@ -78,7 +81,7 @@ type GlobalDashboardPageData struct {
 	CanDiscard                bool
 	CanCreatePrivileged       bool // Aufgaben/Wartungen anlegen - Administratoren und Manager
 	CanChat                   bool // angemeldet mit Chat-Berechtigung: Chat-Knopf im Kopf
-	DefaultDueDaysTicket     int
+	DefaultDueDaysTicket      int
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
 	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
@@ -142,7 +145,7 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		CanDiscard:                h.isGlobalBoardAdminOrManager(r),
 		CanCreatePrivileged:       h.isGlobalBoardAdminOrManager(r),
 		CanChat:                   loggedIn && h.canUseChat(r),
-		DefaultDueDaysTicket:     appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
+		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		Timeline:                  h.branding().Timeline,
@@ -229,6 +232,7 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		Items:          make([]GlobalBoardItem, 0),
 		Workers:        make([]UserOption, 0),
 		Infrastructure: make([]UserOption, 0),
+		Actors:         make([]UserOption, 0),
 		GanttItems:     h.buildDashboardGantt(ctx, time.Now()),
 	}
 	if data.GanttItems == nil {
@@ -360,6 +364,10 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 	if err := userRows.Err(); err != nil {
 		http.Error(w, "Mitarbeiter konnten nicht gelesen werden", http.StatusInternalServerError)
 		return
+	}
+
+	if h.boardPickAllowed(r) {
+		data.Actors = h.boardActors(ctx)
 	}
 
 	infraRows, err := h.db.Query(ctx, `

@@ -631,6 +631,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
 	r.Post("/core/settings/install-update", h.InstallUpdateWeb)
 	r.Post("/admin/roles", h.RoleCreateWeb)

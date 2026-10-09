@@ -38,13 +38,14 @@ func boardCompleteFrom(ctx context.Context) bool {
 	return v
 }
 
-// GlobalDashboardCompleteStart: POST /global/complete-start {type, id, rfid_uid}
+// GlobalDashboardCompleteStart: POST /global/complete-start {type, id, user_id | rfid_uid}
 func (h *Handler) GlobalDashboardCompleteStart(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var in struct {
 		Type    string `json:"type"`
 		ID      string `json:"id"`
 		RFIDUID string `json:"rfid_uid"`
+		UserID  string `json:"user_id"` // Auswahl statt Karte (global_dashboard_actor.go)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeGlobalBoardError(w, http.StatusBadRequest, "Ungültige Anfrage")
@@ -55,14 +56,12 @@ func (h *Handler) GlobalDashboardCompleteStart(w http.ResponseWriter, r *http.Re
 		writeGlobalBoardError(w, http.StatusBadRequest, "Unbekannter Vorgang")
 		return
 	}
-	if in.RFIDUID == "" {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "Bitte RFID-Karte scannen")
-		return
-	}
-	_, actor, err := h.users.LoginByRFID(r.Context(), in.RFIDUID)
-	if err != nil || actor == nil || actor.IsSystemUser || !isGlobalBoardDepartment(actor.Department) || actor.Role == coreusers.RoleViewer {
-		authLog(r, false, "rfid-leitstand-fertig", "Karte "+maskUID(in.RFIDUID), "", "", "karte unbekannt oder nicht berechtigt")
-		writeGlobalBoardError(w, http.StatusUnauthorized, "RFID-Karte gehört keinem aktiven Mitarbeiter aus Instandhaltung oder IT")
+	actor, how, err := h.boardActor(r, in.UserID, in.RFIDUID)
+	if err != nil {
+		if in.RFIDUID != "" {
+			authLog(r, false, "rfid-leitstand-fertig", "Karte "+maskUID(in.RFIDUID), "", "", "karte unbekannt oder nicht berechtigt")
+		}
+		writeGlobalBoardError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 	if !h.globalBoardRecordActive(r, in.Type, in.ID) {
@@ -75,7 +74,11 @@ func (h *Handler) GlobalDashboardCompleteStart(w http.ResponseWriter, r *http.Re
 		return
 	}
 	name := strings.TrimSpace(actor.FirstName + " " + actor.LastName)
-	authLog(r, true, "rfid-leitstand-fertig", "Karte "+maskUID(in.RFIDUID), actor.ID, name, "")
+	if how == "Karte" {
+		authLog(r, true, "rfid-leitstand-fertig", "Karte "+maskUID(in.RFIDUID), actor.ID, name, "")
+	} else {
+		authLog(r, true, "auswahl-leitstand-fertig", "Auswahl am Leitstand", actor.ID, name, "")
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "name": name})
 }

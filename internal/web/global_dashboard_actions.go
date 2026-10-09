@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	coreusers "pdh/internal/core/users"
 	"pdh/internal/modules/maintenance"
 )
 
@@ -17,6 +16,7 @@ type GlobalBoardActionInput struct {
 	Action        string `json:"action"`
 	Comment       string `json:"comment"`
 	RFIDUID       string `json:"rfid_uid"`
+	UserID        string `json:"user_id"` // handelnde Person aus der Auswahl (global_dashboard_actor.go)
 	AssignedTo    string `json:"assigned_to"`
 	FollowUpDate  string `json:"follow_up_date"`
 	NoPartsNeeded bool   `json:"no_parts_needed"`
@@ -32,12 +32,9 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 	in.Comment = strings.TrimSpace(in.Comment)
 	in.RFIDUID = strings.TrimSpace(in.RFIDUID)
 	in.ID = strings.TrimSpace(in.ID)
-	if len([]rune(in.Comment)) < 8 || len([]rune(in.Comment)) > 1000 {
-		writeGlobalBoardError(w, http.StatusBadRequest, "Der Kommentar muss 8 bis 1000 Zeichen lang sein")
-		return
-	}
-	if in.RFIDUID == "" {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "Bitte RFID-Karte zur Bestätigung scannen")
+	// Kommentar freiwillig (der Leitstand fragt nicht mehr danach)
+	if len([]rune(in.Comment)) > 1000 {
+		writeGlobalBoardError(w, http.StatusBadRequest, "Der Kommentar darf höchstens 1000 Zeichen lang sein")
 		return
 	}
 	if !globalBoardTypeAllowed(in.Type) || !globalBoardActionAllowed(in.Action) || in.ID == "" {
@@ -45,10 +42,13 @@ func (h *Handler) GlobalDashboardAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, actor, err := h.users.LoginByRFID(r.Context(), in.RFIDUID)
-	if err != nil || actor == nil || !isGlobalBoardDepartment(actor.Department) || actor.Role == coreusers.RoleViewer {
-		writeGlobalBoardError(w, http.StatusUnauthorized, "RFID-Karte gehört keinem aktiven Mitarbeiter aus Instandhaltung oder IT")
+	actor, how, err := h.boardActor(r, in.UserID, in.RFIDUID)
+	if err != nil {
+		writeGlobalBoardError(w, http.StatusUnauthorized, err.Error())
 		return
+	}
+	if in.Comment == "" {
+		in.Comment = "Am Leitstand (" + how + ")"
 	}
 	if !h.globalBoardRecordActive(r, in.Type, in.ID) {
 		writeGlobalBoardError(w, http.StatusConflict, "Der Vorgang ist nicht mehr offen")

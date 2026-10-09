@@ -78,6 +78,15 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Leitstand: Wer führt aus?</div>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Beim Annehmen, Verwerfen und Fertigmelden am Leitstand wählt man aus der Liste der Mitarbeitenden aus Instandhaltung und IT, wer die Aktion ausführt – ohne Nachweis. Eingeschaltet gibt es die Liste nur an angemeldeten Terminals (Systembenutzer); an allen anderen Geräten, z. B. über den Cloudflare-Tunnel, muss dann wie früher die RFID-Karte gescannt werden.</p>
+    <form method="POST" action="/core/settings/board-pick">
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:10px"><input type="checkbox" name="terminal_only" {{if .BoardPickTerminalOnly}}checked{{end}} style="width:18px;height:18px"> Personenauswahl nur am Terminal, sonst RFID-Karte</label>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
+    </form>
+  </div>
+
+  <div class="card">
     <div class="card-title">Abschluss-Assistent: Wer war dabei?</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Beim Abschließen von Tickets, Störungen, Aufgaben und Wartungen fragt das PDH, wer mitgearbeitet hat. Vorgeschlagen werden Mitarbeitende dieser Abteilungen (Teilwort genügt, z. B. „Elektro“ passt auf „Elektrowerkstatt“); alle anderen lassen sich im Assistenten zuschalten.</p>
     <form method="POST" action="/core/settings/completion">
