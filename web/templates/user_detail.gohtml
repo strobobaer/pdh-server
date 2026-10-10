@@ -316,6 +316,7 @@
 <!-- ── Konto & Dienste (nur eigenes Konto) ── -->
 {{if .IsSelf}}
 <div class="rec-pane" data-pane="account">
+  {{if .IsSelf}}{{template "push-device-card" .}}{{end}}
   <div class="card">
     <div class="card-title"><span><i class="ti ti-bell"></i> Chat-Hinweise zu Änderungen</span><span id="cn-result" class="rec-sub"></span></div>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">

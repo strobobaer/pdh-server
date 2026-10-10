@@ -167,16 +167,29 @@ func TestPushPagesRender(t *testing.T) {
 	if strings.Contains(set, `name="groups_ticket" value="g1" checked`) {
 		t.Error("Tickets fälschlich angehakt")
 	}
-	acc := AccountPageData{}
-	acc.PushEnabled = true
-	out := renderPage(t, tmpl, "account", acc)
+	me := UserDetailData{User: UserView{ID: "u1"}, IsSelf: true}
+	me.PushEnabled = true
+	out := renderPage(t, tmpl, "user_detail", me)
 	checkScripts(t, "konto-push", out)
-	for _, want := range []string{`id="push-card"`, "pdhPush.enable", `id="pdh-alarm"`, "/push/alerts/open", "navigator.serviceWorker.register('/sw.js'"} {
+	for _, want := range []string{`id="push-card"`, "pdhPush.enable", `id="push-on"`, `id="pdh-alarm"`, "/push/alerts/open", "navigator.serviceWorker.register('/sw.js'"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("Konto ohne %q", want)
+			t.Errorf("Mein Konto ohne %q", want)
 		}
 	}
-	if strings.Contains(renderPage(t, tmpl, "account", AccountPageData{}), `id="pdh-alarm"`) {
-		t.Error("Alarm-Vollbild ohne eingeschalteten Push")
+	// ausgeschaltet: Karte mit Hinweis statt Knöpfen, kein Alarm-Vollbild
+	me.PushEnabled, me.CanManageRoles = false, true
+	off := renderPage(t, tmpl, "user_detail", me)
+	if !strings.Contains(off, `id="push-card"`) || !strings.Contains(off, "noch ausgeschaltet") || !strings.Contains(off, `href="/core/settings#push"`) ||
+		strings.Contains(off, `id="push-on"`) || strings.Contains(off, `id="pdh-alarm"`) {
+		t.Error("Hinweis bei ausgeschaltetem Push falsch")
+	}
+	// fremder Benutzerstamm: keine Karte; eingebettete Seite /account ohne doppelte Karte
+	if strings.Contains(renderPage(t, tmpl, "user_detail", UserDetailData{User: UserView{ID: "u2"}}), `id="push-card"`) {
+		t.Error("Push-Karte im fremden Benutzerstamm")
+	}
+	acc := AccountPageData{}
+	acc.PushEnabled = true
+	if strings.Contains(renderPage(t, tmpl, "account", acc), `id="push-card"`) {
+		t.Error("Push-Karte doppelt (eingebettete Seite /account)")
 	}
 }

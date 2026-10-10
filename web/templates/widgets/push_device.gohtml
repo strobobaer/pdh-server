@@ -1,0 +1,46 @@
+{{/* Push auf diesem Geraet ein-/ausschalten (push.go) – Mein Konto → Reiter „Konto & Dienste“.
+     Erwartet BaseData (.PushEnabled, .CanManageRoles). */}}
+{{define "push-device-card"}}
+<div class="card" id="push-card">
+  <div class="card-title"><span><i class="ti ti-bell-ringing"></i> Push-Benachrichtigungen aufs Handy</span></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Neue Störungen und Tickets für deine Gruppen kommen als Nachricht aufs Handy – mit <b>Annehmen</b>. Steht eine Anlage, meldet sich das Handy immer wieder, bis jemand annimmt; in der geöffneten PDH-App erscheint der Alarm bildschirmfüllend.</p>
+  {{if .PushEnabled}}
+  <p id="push-status" style="font-size:13px;margin-bottom:10px">Wird geprüft …</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button type="button" class="btn btn-primary" id="push-on"><i class="ti ti-bell-plus"></i> Auf diesem Gerät einschalten</button>
+    <button type="button" class="btn" id="push-test" hidden><i class="ti ti-send"></i> Probe senden</button>
+    <button type="button" class="btn" id="push-off" hidden><i class="ti ti-bell-off"></i> Auf diesem Gerät ausschalten</button>
+  </div>
+  <p style="font-size:11.5px;color:var(--muted);margin-top:10px"><b>iPhone</b> (ab iOS 16.4): PDH in Safari öffnen → Teilen → <b>Zum Home-Bildschirm</b>, dann PDH vom Home-Bildschirm starten und hier einschalten. <b>Android</b>: in Chrome einschalten; für Alarme die Benachrichtigungen von Chrome bzw. PDH auf „Mit Ton“/„Wichtig“ stellen.</p>
+  <script>
+  // pdhPush steht erst am Seitenende (base.gohtml) bereit
+  document.addEventListener('DOMContentLoaded', function(){
+    const $ = id => document.getElementById(id);
+    async function refresh(){
+      const s = await pdhPush.status();
+      let text = 'Auf diesem Gerät ausgeschaltet.';
+      if(!s.supported) text = 'Dieser Browser kann keine Push-Nachrichten (iPhone: erst „Zum Home-Bildschirm“).';
+      else if(s.permission === 'denied') text = 'Benachrichtigungen sind für PDH blockiert – in den Einstellungen des Browsers/Handys freigeben.';
+      else if(s.here) text = '✅ Auf diesem Gerät eingeschaltet.';
+      $('push-status').textContent = text;
+      $('push-on').hidden = !s.supported || s.here;
+      $('push-off').hidden = !s.here;
+      $('push-test').hidden = !s.here;
+    }
+    async function run(btn, fn, ok){
+      btn.disabled = true;
+      try{ await fn(); await refresh(); if(ok) $('push-status').textContent = ok; }
+      catch(e){ $('push-status').textContent = '⚠ ' + e.message; }
+      btn.disabled = false;
+    }
+    $('push-on').addEventListener('click', () => run($('push-on'), pdhPush.enable, '✅ Eingeschaltet – „Probe senden“ zum Testen.'));
+    $('push-off').addEventListener('click', () => run($('push-off'), pdhPush.disable, 'Auf diesem Gerät ausgeschaltet.'));
+    $('push-test').addEventListener('click', () => run($('push-test'), async () => { const j = await pdhPush.test(); if(!j.sent) throw new Error('Kein Gerät erreichbar'); }, '📨 Probe verschickt – sie sollte gleich ankommen.'));
+    refresh();
+  });
+  </script>
+  {{else}}
+  <p style="font-size:13px;color:var(--amber)"><i class="ti ti-info-circle"></i> Push ist im PDH noch ausgeschaltet.{{if .CanManageRoles}} Einschalten unter <a href="/core/settings#push" style="color:var(--accent)">Core-Einstellungen → Push-Benachrichtigungen aufs Handy</a>, dort auch die Benutzergruppen wählen.{{else}} Ein Administrator schaltet es unter Core-Einstellungen ein.{{end}}</p>
+  {{end}}
+</div>
+{{end}}

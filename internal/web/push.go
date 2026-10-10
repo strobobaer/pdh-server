@@ -17,7 +17,8 @@ import (
 
 // Push-Benachrichtigungen aufs Handy (migrations/116, Verschluesselung in webpush.go).
 //
-//	Mein Konto → „Push auf diesem Gerät einschalten“ (Service Worker /sw.js)
+//	Mein Konto → Reiter „Konto & Dienste“ → „Auf diesem Gerät einschalten“
+//	  (widgets/push_device.gohtml, Service Worker /sw.js)
 //	Core-Einstellungen → Push: ein/aus, Benutzergruppen je Art (Störung, Ticket),
 //	  Wiederholung und Höchstdauer für „Anlage steht“
 //
@@ -212,7 +213,7 @@ func (h *Handler) PushTestWeb(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Push ist ausgeschaltet (Core-Einstellungen)"})
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{"type": "test", "tag": "pdh-test", "title": "PDH – Probe", "body": "Push-Benachrichtigungen kommen auf diesem Gerät an.", "url": "/users/me"})
+	payload, _ := json.Marshal(map[string]any{"type": "test", "tag": "pdh-test", "title": "PDH – Probe", "body": "Push-Benachrichtigungen kommen auf diesem Gerät an.", "url": "/users/me?tab=account"})
 	ok, total := h.pushToUsers(ctx, []string{getUser(r).ID}, payload, time.Hour, "normal", "pdh-test")
 	if total == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Auf keinem Gerät eingeschaltet"})

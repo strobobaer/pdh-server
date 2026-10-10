@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.48.2] – 2026-10-09
+
+### Behoben
+- Push-Benachrichtigungen: Die Karte zum Einschalten auf dem Handy steht jetzt sichtbar unter Mein Konto → Reiter „Konto & Dienste“ und erscheint auch, solange Push noch ausgeschaltet ist – mit Hinweis, wo man es einschaltet
+
 ## [0.48.1] – 2026-10-09
 
 ### Behoben

@@ -79,7 +79,7 @@
 
   <div class="card" id="push">
     <div class="card-title">Push-Benachrichtigungen aufs Handy</div>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Bei jeder neuen Störung bzw. jedem neuen Ticket bekommen die Mitglieder der gewählten Benutzergruppen eine Nachricht aufs Handy – mit Inhalt und <b>Annehmen</b>. Wer zuerst annimmt, wird zuständig; bei allen anderen verschwindet die Nachricht. Ist <b>Anlage steht</b> angehakt, wiederholt sich der Alarm, bis jemand annimmt, und erscheint in der PDH-App bildschirmfüllend. Jede Person schaltet Push unter <b>Mein Konto</b> auf ihrem Handy ein.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Bei jeder neuen Störung bzw. jedem neuen Ticket bekommen die Mitglieder der gewählten Benutzergruppen eine Nachricht aufs Handy – mit Inhalt und <b>Annehmen</b>. Wer zuerst annimmt, wird zuständig; bei allen anderen verschwindet die Nachricht. Ist <b>Anlage steht</b> angehakt, wiederholt sich der Alarm, bis jemand annimmt, und erscheint in der PDH-App bildschirmfüllend. Jede Person schaltet Push auf ihrem Handy unter <a href="/users/me?tab=account" style="color:var(--accent)">Mein Konto → Konto &amp; Dienste</a> ein.</p>
     {{with .Push}}
     {{if not .HTTPS}}<p style="font-size:12px;color:var(--amber);margin:0 0 12px"><i class="ti ti-alert-triangle"></i> Push funktioniert nur über <b>https://</b>. Unter Server-Einstellungen ist keine https-Adresse eingetragen – z. B. über den Cloudflare-Tunnel erreichbar machen.</p>{{end}}
     <form method="POST" action="/core/settings/push">
