@@ -867,10 +867,18 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
   };
   updateHeaderToggles();
   // Kachelraster bricht bei anderer Breite/Groesse anders um: Bearbeitungsfenster neu einordnen
-  let tileResizeTimer = null;
+  // Nur wenn sich die Spaltenzahl aendert und kein Formular offen ist: Am Tablet
+  // loest schon die Adressleiste beim Scrollen oder die Bildschirmtastatur ein
+  // „resize“ aus – das Neu-Einhaengen schloss sonst die Auswahl „Wer führt aus?“.
+  let tileResizeTimer = null, tileCols = 0;
   function relayoutTiles(){
     clearTimeout(tileResizeTimer);
-    tileResizeTimer = setTimeout(function(){ if(selectedKey && entriesView() === 'tiles') renderEntriesTable(latestData.items || []); }, 150);
+    tileResizeTimer = setTimeout(function(){
+      if(!selectedKey || entriesView() !== 'tiles') return;
+      if(!form.classList.contains('hidden') || editPanel.contains(document.activeElement)) return;
+      if(tileColumns() === tileCols) return;
+      renderEntriesTable(latestData.items || []);
+    }, 150);
   }
   window.addEventListener('resize', relayoutTiles);
   window.addEventListener('pdh-row-change', relayoutTiles);
@@ -911,8 +919,9 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
         entriesTiles.appendChild(tile);
         tiles.push(tile);
       });
+      tileCols = tileColumns();
       if(selectedIndex >= 0 && !editPanel.classList.contains('hidden')){
-        const cols = tileColumns();
+        const cols = tileCols;
         const rowEnd = Math.min(tiles.length - 1, Math.floor(selectedIndex / cols) * cols + cols - 1);
         const detail = makeEl('div', 'entry-detail');
         detail.appendChild(editPanel);

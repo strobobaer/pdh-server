@@ -17,9 +17,11 @@ type InfraType string
 
 const (
 	TypeBuilding InfraType = "building"
-	TypeLine     InfraType = "line"
-	TypePlant    InfraType = "plant"
-	TypeDevice   InfraType = "device"
+	// TypeDryingChamber: Trockenkammer mit Bauteilen (Motoren, Klappen, Heizung, Tor) – web/chamber.go
+	TypeDryingChamber InfraType = "drying_chamber"
+	TypeLine          InfraType = "line"
+	TypePlant         InfraType = "plant"
+	TypeDevice        InfraType = "device"
 )
 
 type Infrastructure struct {

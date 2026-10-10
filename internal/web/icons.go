@@ -47,6 +47,7 @@ var iconGroupsStatic = []iconGroup{
 	}},
 	{"infra", "Anlagentypen", "Infrastruktur-Baum, Auswahl, Detailseite", []iconDef{
 		{"infra.building", "Gebäude", "ti-building-factory"},
+		{"infra.drying_chamber", "Trockenkammer", "ti-temperature"},
 		{"infra.line", "Linie", "ti-route"},
 		{"infra.plant", "Anlage", "ti-settings"},
 		{"infra.device", "Gerät", "ti-plug"},

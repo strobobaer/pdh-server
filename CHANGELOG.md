@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.49.0] – 2026-10-10
+
+### Neu
+- Infrastruktur: neuer Anlagentyp „Trockenkammer“ mit Reiter „Bauteile“ – je Gruppe (Motoren, Klappenmotoren, Heizungsstellventile, Heizungspumpen, Torrollen, Tordichtungen) die Anzahl eintragen, dann entsteht je Stück eine Kachel mit Typ aus den Ersatzteilen, NOK, letztem Wechsel und Ursache
+
+### Behoben
+- Leitstand im Kachelmodus: Die Auswahl „Wer führt aus?“ schloss sich am Tablet sofort wieder (beim Scrollen oder mit Bildschirmtastatur) – jetzt lässt sich die Person wählen
+
 ## [0.48.2] – 2026-10-09
 
 ### Behoben

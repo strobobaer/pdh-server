@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-09T17:12:47.564Z",
+  "generatedAt": "2026-10-10T07:55:37.818Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1271,6 +1271,17 @@
       "sqlHash": "e4fb311145656481340487ccd2da84a5e104afaa3c9e7f2e2bc9bd66027b61e8",
       "title": "117_index_cleanup.up.sql",
       "updatedAt": "2026-10-09T17:12:46.916Z"
+    },
+    {
+      "createdAt": "2026-10-10T07:55:37.173Z",
+      "path": "migrations/118_drying_chamber.up.sql",
+      "catalogContext": null,
+      "searchText": "118_drying_chamber.up.sql migrations/118_drying_chamber.up.sql -- 118_drying_chamber.up.sql\n-- anlagentyp „trockenkammer“ mit reiter „bauteile“ (internal/web/chamber.go).\n--\n-- infra_components: je bauteilgruppe (motoren, klappenmotoren, heizungsstellventile,\n-- heizungspumpen, torrollen, tordichtungen) und position eine kachel mit typ\n-- (ersatzteil), nok, letztem wechsel und ursache. die anzahl je gruppe ergibt\n-- sich aus den positionen 1..n.\n\n-- neuer enum-wert; wird in dieser migration nicht benutzt (transaktion)\nalter type infra_type add value if not exists 'drying_chamber';\n\ncreate table if not exists infra_components (\n    id                uuid primary key default gen_random_uuid(),\n    infrastructure_id uuid not null references infrastructure(id) on delete cascade,\n    kind              varchar(20) not null check (kind in ('motor', 'flap_motor', 'heating_valve', 'heating_pump', 'door_roller', 'door_seal')),\n    position          int not null check (position between 1 and 99),\n    spare_part_id     uuid references spare_parts(id) on delete set null,\n    nok               boolean not null default false,\n    last_change       date,\n    cause             text not null default '',\n    updated_by        uuid references users(id) on delete set null,\n    updated_at        timestamptz not null default now(),\n    unique (infrastructure_id, kind, position)\n);\ncreate index if not exists idx_infra_components_part on infra_components(spare_part_id) where spare_part_id is not null;\n",
+      "searchUpdatedAt": "2026-10-10T07:55:37.288Z",
+      "schemaContext": null,
+      "sqlHash": "202649eedf0ba19fbbbf610975141c99682e745806aa78dba587f394258f552b",
+      "title": "118_drying_chamber.up.sql",
+      "updatedAt": "2026-10-10T07:55:37.174Z"
     }
   ]
 }

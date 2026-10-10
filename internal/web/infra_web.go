@@ -67,6 +67,7 @@ type infraTypeOption struct{ Key, Label, Icon, Bg string }
 // (Tabler-Klasse) kommt aus der Symbol-Tabelle (icons.go).
 var infraTypes = []infraTypeOption{
 	{"building", "Gebäude", "", "rgba(99,102,241,.2)"},
+	{"drying_chamber", "Trockenkammer", "", "rgba(234,88,12,.2)"}, // Reiter „Bauteile“ (chamber.go)
 	{"line", "Linie", "", "rgba(79,110,247,.2)"},
 	{"plant", "Anlage", "", "rgba(16,185,129,.2)"},
 	{"device", "Gerät", "", "rgba(245,158,11,.2)"},
@@ -265,12 +266,15 @@ type InfraDetailData struct {
 	DeptInherited  bool
 	HMI            hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
 	Message, Error string
-	Obligations    []obligationView // Reiter „Prüfungen & GBU“ (infra_obligations.go)
-	ObligationDue  int              // davon überfällig oder im Vorlauf
-	Users          []UserOption     // Verantwortliche
-	Today          string           // JJJJ-MM-TT (Formular „erledigt am“)
-	EasyTexts      []easyText       // Reiter „Meldetexte“ (easy_texts.go)
-	EasyTextCount  int              // davon an dieser Anlage wirksam
+	Obligations    []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
+	ObligationDue  int                 // davon überfällig oder im Vorlauf
+	Users          []UserOption        // Verantwortliche
+	Today          string              // JJJJ-MM-TT (Formular „erledigt am“)
+	EasyTexts      []easyText          // Reiter „Meldetexte“ (easy_texts.go)
+	EasyTextCount  int                 // davon an dieser Anlage wirksam
+	Chamber        []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
+	ChamberNOK     int                 // davon NOK
+	ChamberParts   []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -300,6 +304,12 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
+	if string(node.Type) == chamberType {
+		data.Chamber, data.ChamberNOK = h.chamberGroups(ctx, id)
+		if data.CanEditInfra {
+			data.ChamberParts = h.chamberParts(ctx)
+		}
+	}
 	for _, t := range data.EasyTexts {
 		if t.Assigned || t.InheritedFrom != "" {
 			data.EasyTextCount++

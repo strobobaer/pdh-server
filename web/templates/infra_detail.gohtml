@@ -33,6 +33,17 @@
 .ob-row .ob-ic{font-size:18px;color:var(--green)}.ob-overdue .ob-ic{color:var(--red)}.ob-soon .ob-ic{color:var(--amber)}.ob-none .ob-ic{color:var(--muted)}
 .ob-sub,.ob-new{flex-basis:100%;border-top:1px dashed var(--border);padding-top:10px;margin-top:4px}
 .ob-form .cols{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+/* Trockenkammer: Kacheln von links nach rechts (chamber.go) */
+.cp-count{display:flex;gap:6px;align-items:center;margin-left:auto;font-size:12px;font-weight:400}
+.cp-count input{width:76px;min-height:36px}
+.cp-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.cp-tile{border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:10px 12px;background:var(--bg3);display:flex;flex-direction:column;gap:4px}
+.cp-tile.nok{border-color:var(--red);border-left-color:var(--red);background:rgba(239,68,68,.08)}
+.cp-tile .form-label{margin:4px 0 0;font-size:11px}
+.cp-tile .form-input{min-height:38px}
+.cp-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13.5px}
+.cp-nok{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--red);cursor:pointer}
+.cp-nok input{width:20px;height:20px;accent-color:var(--red)}
 </style>
 {{$n := .Node}}
 <div class="rec-head">
@@ -66,6 +77,7 @@
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
   {{if .CanEditInfra}}<a class="rec-tab" data-tab="master" href="?tab=master"><i class="ti ti-edit"></i> Stammdaten</a>{{end}}
   <a class="rec-tab" data-tab="checks" href="?tab=checks"><i class="ti ti-clipboard-check"></i> Prüfungen &amp; GBU{{if .ObligationDue}} <b style="background:var(--amber);color:#000">{{.ObligationDue}}</b>{{else if .Obligations}} <b>{{len .Obligations}}</b>{{end}}</a>
+  {{if eq .Node.Type "drying_chamber"}}<a class="rec-tab" data-tab="chamber" href="?tab=chamber"><i class="ti ti-temperature"></i> Bauteile{{if .ChamberNOK}} <b style="background:var(--red);color:#fff">{{.ChamberNOK}} NOK</b>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="easy" href="?tab=easy"><i class="ti ti-hand-finger"></i> Meldetexte{{if .EasyTextCount}} <b>{{.EasyTextCount}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="events" href="?tab=events"><i class="ti ti-timeline"></i> Anlagen-Historie</a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
@@ -228,6 +240,45 @@
   {{end}}
   <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „Service“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>
 </div>
+
+<!-- ── Trockenkammer: Bauteile je Gruppe (chamber.go) ── -->
+{{if eq .Node.Type "drying_chamber"}}
+<div class="rec-pane" data-pane="chamber">
+  <p class="rec-sub" style="margin-bottom:12px">Je Bauteilgruppe die <b>Anzahl</b> eintragen – dann entsteht je Stück eine Kachel. In jeder Kachel Typ (aus den Ersatzteilen), <b>NOK</b>, letzten Wechsel und Ursache pflegen und je Gruppe <b>Speichern</b>. NOK-Kacheln sind rot.</p>
+  {{range $g := .Chamber}}
+  <div class="card" id="cp-{{$g.Key}}">
+    <div class="card-title" style="flex-wrap:wrap;gap:8px">
+      <span><i class="ti {{$g.Icon}}"></i> {{$g.Label}} <b>{{len $g.Slots}}</b>{{if $g.NOKCount}} <span class="badge b-red">{{$g.NOKCount}} NOK</span>{{end}}</span>
+      {{if $.CanEditInfra}}<form method="post" action="/infrastructure/{{$.Node.ID}}/components/{{$g.Key}}/count" class="cp-count"
+        onsubmit="const n=+this.count.value, had={{len $g.Slots}}; return n>=had || confirm('Anzahl auf '+n+' verringern? Die Kacheln '+(n+1)+' bis '+had+' werden mit ihren Angaben gelöscht.')">
+        <label>Anzahl <input type="number" name="count" min="0" max="99" value="{{len $g.Slots}}" class="form-input" aria-label="Anzahl {{$g.Label}}"></label>
+        <button class="btn btn-small" type="submit">Übernehmen</button>
+      </form>{{end}}
+    </div>
+    {{if $g.Slots}}
+    <form method="post" action="/infrastructure/{{$.Node.ID}}/components/{{$g.Key}}">
+      <div class="cp-tiles">
+        {{range $g.Slots}}{{$p := .Position}}
+        <div class="cp-tile{{if .NOK}} nok{{end}}">
+          <div class="cp-head"><b>{{$g.One}} {{$p}}</b>
+            <label class="cp-nok"><input type="checkbox" name="nok_{{$p}}" value="1"{{if .NOK}} checked{{end}}{{if not $.CanEditInfra}} disabled{{end}} onchange="this.closest('.cp-tile').classList.toggle('nok', this.checked)"> NOK</label></div>
+          <label class="form-label">Typ (Ersatzteil)</label>
+          <input class="form-input" list="cp-parts" name="part_{{$p}}" value="{{.PartLabel}}" placeholder="Teilenummer oder Bezeichnung" autocomplete="off"{{if not $.CanEditInfra}} disabled{{end}}>
+          <label class="form-label">Letzter Wechsel</label>
+          <input class="form-input" type="date" name="last_{{$p}}" value="{{.LastChangeISO}}" max="{{$.Today}}"{{if not $.CanEditInfra}} disabled{{end}}>
+          <label class="form-label">Ursache</label>
+          <input class="form-input" name="cause_{{$p}}" value="{{.Cause}}" maxlength="300" placeholder="z. B. Lagerschaden, Verschleiß"{{if not $.CanEditInfra}} disabled{{end}}>
+        </div>
+        {{end}}
+      </div>
+      {{if $.CanEditInfra}}<button class="btn btn-primary btn-small" type="submit" style="margin-top:12px"><i class="ti ti-device-floppy"></i> {{$g.Label}} speichern</button>{{end}}
+    </form>
+    {{else}}<div class="rec-sub" style="padding:6px 0">Noch keine {{$g.Label}}{{if $.CanEditInfra}} – oben die Anzahl eintragen und „Übernehmen“{{end}}.</div>{{end}}
+  </div>
+  {{end}}
+  {{if .ChamberParts}}<datalist id="cp-parts">{{range .ChamberParts}}<option value="{{.Label}}"></option>{{end}}</datalist>{{end}}
+</div>
+{{end}}
 
 <!-- ── Easy-Mode-Meldetexte: Zuordnung aus dem Katalog (easy_texts.go) ── -->
 <div class="rec-pane" data-pane="easy">

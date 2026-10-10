@@ -369,7 +369,7 @@ func (h *Handler) partnerContacts(ctx context.Context, partnerID string) []Partn
 	return list
 }
 
-var infraTypeLabels = map[string]string{"building": "Gebäude", "line": "Linie", "plant": "Anlage", "device": "Gerät"}
+var infraTypeLabels = map[string]string{"building": "Gebäude", "drying_chamber": "Trockenkammer", "line": "Linie", "plant": "Anlage", "device": "Gerät"}
 
 func (h *Handler) partnerInfra(ctx context.Context, partnerID string) []PartnerInfraRow {
 	rows, err := h.db.Query(ctx, `
