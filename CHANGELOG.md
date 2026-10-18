@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.50.0] – 2026-10-18
+
+### Neu
+- Server-Einstellungen, Reiter „Störungen“: Schalter „Ticket zu jeder Störung anlegen“ – ausgeschaltet bekommen Störungen kein automatisches Ticket mehr (Standard: aus, wirkt sofort ohne Neustart)
+- Benutzerstamm: Knopf „Nextcloud-Konto anlegen“ beim Feld Nextcloud-Benutzer – legt das Konto in Nextcloud an, verknüpft es und zeigt das Startpasswort einmalig an
+
 ## [0.49.0] – 2026-10-10
 
 ### Neu

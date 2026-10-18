@@ -65,21 +65,18 @@ func (s *Service) syncFaultAsync(f *Fault) {
 	}
 }
 
-// autoTicketEnabled: Ticket aus jeder neuen Störung (Server-Einstellung).
-func autoTicketEnabled() bool {
-	return truthyEnv("PDH_FAULT_CREATE_TICKET") || truthyEnv("PDH_FAULT_CREATE_TICKET_ENABLED")
-}
+// autoTicketEnabled: Ticket aus jeder neuen Störung (Server-Einstellungen →
+// Störungen, PDH_FAULT_CREATE_TICKET; Standard aus, wirkt sofort).
+func autoTicketEnabled() bool { return truthyEnv("PDH_FAULT_CREATE_TICKET") }
 
 // faultAssigned: Störung ist einer Person zugewiesen (eine Gruppe prüft die
 // Datenbank im Hintergrundlauf – sie wird erst nach dem Anlegen gesetzt).
 func faultAssigned(f *Fault) bool { return f.AssignedTo != nil && *f.AssignedTo != "" }
 
 // StartPendingTicketWatcher legt vorgemerkte Tickets an, sobald die Störung
-// zugewiesen ist (Person oder Gruppe) – alle 15 Sekunden.
+// zugewiesen ist (Person oder Gruppe) – alle 15 Sekunden, solange die
+// Einstellung an ist (läuft immer, damit Ein-/Ausschalten ohne Neustart wirkt).
 func (s *Service) StartPendingTicketWatcher(ctx context.Context) {
-	if !autoTicketEnabled() {
-		return
-	}
 	go func() {
 		t := time.NewTicker(15 * time.Second)
 		defer t.Stop()
@@ -88,6 +85,9 @@ func (s *Service) StartPendingTicketWatcher(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				if !autoTicketEnabled() {
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				if n, err := s.CreatePendingTickets(runCtx); err != nil {
 					log.Error().Err(err).Msg("ticket from fault: vorgemerkte anlegen fehlgeschlagen")

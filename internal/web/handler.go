@@ -557,6 +557,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/users/me/change-notifications", h.UserChangeNotificationsWeb)
 	r.Post("/users/me/password", h.AccountPasswordWeb)
 	r.Post("/users/{id}/password-change", h.UserRequirePasswordChangeWeb)
+	r.Post("/users/{id}/nextcloud-account", h.UserNextcloudAccountWeb)
 	r.Post("/users/{id}/master", h.UserMasterSaveWeb)
 	r.Post("/users/{id}/private", h.UserPrivateSaveWeb)
 	r.Post("/users/{id}/qualifications", h.UserQualificationSaveWeb)

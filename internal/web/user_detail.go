@@ -72,6 +72,7 @@ type UserDetailData struct {
 	QualKinds           interface{}
 	CanMakeAdmin        bool
 	CanDeactivate       bool
+	CanNextcloud        bool // Knopf „Nextcloud-Konto anlegen“ (nextcloud_account.go)
 	ChangeNotifications bool           // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
 	Departments         []string       // Auswahl fuer das Feld Abteilung
 	Groups              []UserGroupRef // Gruppen der Person
@@ -133,6 +134,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		CanPermissions: !self && h.canEditUserPermissions(r, string(u.Role)),
 		CanMakeAdmin:   !self && h.actorIsAdmin(r) && u.Role != users.RoleAdmin && u.Active,
 		CanDeactivate:  !self && u.Active && h.canManageUsers(r) && h.outranksRole(r, string(u.Role)),
+		CanNextcloud:   h.canManageUsers(r) && (self || h.outranksRole(r, string(u.Role))) && nextcloudAccountReady(u.NextcloudUserID),
 		CreatedAt:      u.CreatedAt.Local().Format("02.01.2006"),
 	}
 	if h.db != nil {

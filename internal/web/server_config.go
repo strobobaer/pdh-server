@@ -98,6 +98,9 @@ var envGroups = []envGroup{
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_FAULTS_ID", Label: "Deck: Stapel Störungen", Type: "number", Restart: true},
 		{Key: "PDH_NEXTCLOUD_DECK_STACK_MAINTENANCE_ID", Label: "Deck: Stapel Wartung", Type: "number", Restart: true},
 	}},
+	{"faults", "Störungen", "ti-alert-triangle", "Abläufe rund um Störungen.", []envField{
+		{Key: "PDH_FAULT_CREATE_TICKET", Label: "Ticket zu jeder Störung anlegen", Help: "Aus = Störungen bleiben ohne Ticket (Standard). An = zu jeder neuen Störung entsteht ein Ticket, sobald sie einer Person oder Gruppe zugewiesen ist.", Type: "bool"},
+	}},
 	{"cloudflare", "Cloudflare-Tunnel", "ti-cloud-lock", "Das PDH sicher aus dem Internet erreichbar machen – ohne offene Ports in der Firewall. Anleitung und Installationsskript unten.", []envField{
 		{Key: "PDH_CLOUDFLARE_TUNNEL_TOKEN", Label: "Tunnel-Token", Help: "Aus dem Cloudflare-Dashboard (Networks → Tunnels → Tunnel → Configure). Der ganze Befehl „cloudflared service install …“ darf eingefügt werden.", Type: "text", Secret: true},
 		{Key: "PDH_CLOUDFLARE_HOSTNAME", Label: "Öffentlicher Hostname", Help: "Unter dieser Adresse ist das PDH erreichbar, z. B. pdh.firma.de – wie im Dashboard unter Public Hostname eingetragen.", Type: "text"},

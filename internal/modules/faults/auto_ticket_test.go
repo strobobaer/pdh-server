@@ -5,9 +5,12 @@ import "testing"
 // Ticket aus Störung erst nach der Zuweisung (migrations/111, deck_sync.go).
 func TestAutoTicketNeedsAssignment(t *testing.T) {
 	t.Setenv("PDH_FAULT_CREATE_TICKET", "")
-	t.Setenv("PDH_FAULT_CREATE_TICKET_ENABLED", "")
 	if autoTicketEnabled() {
 		t.Error("ohne Einstellung kein automatisches Ticket")
+	}
+	t.Setenv("PDH_FAULT_CREATE_TICKET", "false")
+	if autoTicketEnabled() {
+		t.Error("ausgeschaltet trotzdem aktiv")
 	}
 	t.Setenv("PDH_FAULT_CREATE_TICKET", "true")
 	if !autoTicketEnabled() {
