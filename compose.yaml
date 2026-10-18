@@ -132,6 +132,7 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       PDH_DATABASE_NAME: ${PDH_DATABASE_NAME:-pdh}
+      PDH_GRAFANA_DB_URL: db:5432
       PDH_GRAFANA_DB_PASSWORD: ${PDH_GRAFANA_DB_PASSWORD:-}
     volumes:
       - pdh_grafana:/var/lib/grafana

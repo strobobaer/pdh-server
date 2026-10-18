@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.50.1] – 2026-10-18
+
+### Neu
+- Installation ohne Docker (systemd): Grafana einmalig mit „sudo bash scripts/install-grafana.sh“ einrichten – lokaler Container, Nur-Lese-Benutzer und Verbindung zum PDH in einem Schritt
+
+### Behoben
+- Statistik bei Installationen ohne Docker: Die Grafana-Datenquelle fand die PDH-Datenbank nicht, und der Nur-Lese-Benutzer ließ sich ohne Rollenrechte des PDH-Datenbankbenutzers nicht einrichten
+
 ## [0.50.0] – 2026-10-18
 
 ### Neu

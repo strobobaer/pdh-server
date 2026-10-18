@@ -7,7 +7,7 @@ datasources:
     uid: pdh-postgres
     type: grafana-postgresql-datasource
     access: proxy
-    url: db:5432
+    url: ${PDH_GRAFANA_DB_URL}
     user: pdh_grafana
     isDefault: true
     editable: false

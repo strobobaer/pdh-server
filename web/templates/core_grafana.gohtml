@@ -47,7 +47,7 @@
       <input name="base_url" class="form-input" value="{{.BaseURL}}" placeholder="leer = {{.EffectiveBase}}"></div>
     {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
   </form>
-  <p class="rec-sub" style="margin-top:8px">{{if .Proxied}}<b>Leer lassen:</b> Grafana läuft durch das PDH unter <a href="/grafana/" target="_blank" rel="noopener"><code>/grafana/</code></a> – gleiche Adresse, gleiches HTTPS (auch über Cloudflare) und automatische Anmeldung mit dem PDH-Konto (Administratoren als Grafana-Admin, sonst nur lesen). Nur eintragen, wenn ein anderes Grafana genutzt werden soll.{{else}}Leer lassen, wenn Grafana auf demselben Server unter Port 3000 läuft. Sonst die Adresse von Grafana eintragen, z. B. <code>https://grafana.firma.de</code>.{{end}} Dashboard-Adressen dürfen kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
+  <p class="rec-sub" style="margin-top:8px">{{if .Proxied}}<b>Leer lassen:</b> Grafana läuft durch das PDH unter <a href="/grafana/" target="_blank" rel="noopener"><code>/grafana/</code></a> – gleiche Adresse, gleiches HTTPS (auch über Cloudflare) und automatische Anmeldung mit dem PDH-Konto (Administratoren als Grafana-Admin, sonst nur lesen). Nur eintragen, wenn ein anderes Grafana genutzt werden soll.{{else}}<b>Installation ohne Docker (systemd):</b> Grafana einmalig auf dem Server einrichten mit <code>sudo bash scripts/install-grafana.sh</code> im PDH-Verzeichnis – danach läuft es durch das PDH unter <code>/grafana/</code>. Ein anderes Grafana hier mit Adresse eintragen, z. B. <code>https://grafana.firma.de</code>.{{end}} Dashboard-Adressen dürfen kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
 </div>
 
 <div class="card">

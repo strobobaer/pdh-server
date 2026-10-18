@@ -42,19 +42,21 @@ func EnsureReader(ctx context.Context, db *pgxpool.Pool, password string) error 
 		verb, Role, password).Scan(&stmt); err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, stmt); err != nil {
+	if _, err := db.Exec(ctx, stmt); err != nil && !exists {
+		// ohne CREATEROLE: Rolle als Postgres-Superuser anlegen (scripts/install-grafana.sh)
 		return fmt.Errorf("grafana-datenbankbenutzer: %w", err)
 	}
 	var grant string
 	if err := db.QueryRow(ctx, `SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), $1::text)`, Role).Scan(&grant); err != nil {
 		return err
 	}
+	// Rollen-/Datenbankrechte sind optional (gibt ggf. der Superuser), Tabellenrechte nicht
+	for _, q := range []string{grant, `GRANT USAGE ON SCHEMA public TO ` + Role, `ALTER ROLE ` + Role + ` SET default_transaction_read_only = on`} {
+		_, _ = db.Exec(ctx, q)
+	}
 	for _, q := range []string{
-		grant,
-		`GRANT USAGE ON SCHEMA public TO ` + Role,
 		`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ` + Role,
 		`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ` + Role,
-		`ALTER ROLE ` + Role + ` SET default_transaction_read_only = on`,
 	} {
 		if _, err := db.Exec(ctx, q); err != nil {
 			return fmt.Errorf("grafana-leserechte: %w", err)
