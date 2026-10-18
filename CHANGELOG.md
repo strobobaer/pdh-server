@@ -10,7 +10,10 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.50.2] – 2026-10-18
+## [0.51.0] – 2026-10-18
+
+### Neu
+- E-Mail-Versand über Microsoft 365 ohne SMTP: Unter Server-Einstellungen → E-Mail den Versandweg „graph“ wählen – der PDH sendet dann über die App-Registrierung aus dem Reiter Microsoft 365 (Berechtigung Mail.Send), auch wenn SMTP AUTH im Tenant abgeschaltet ist
 
 ### Behoben
 - E-Mail-Versand über Microsoft 365 (smtp.office365.com): Die Anmeldung scheiterte mit „504 5.7.4 Unrecognized authentication type“, jetzt meldet sich der PDH per AUTH LOGIN an, wenn der Server kein AUTH PLAIN anbietet

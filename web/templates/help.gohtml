@@ -1098,8 +1098,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Speichern</b> – E-Mail-Einstellungen gelten sofort.</li>
       <li><b>Testmail an mich</b> schickt eine Nachricht an deine eigene Adresse.</li>
     </ol>
-    Microsoft 365: Server <code>smtp.office365.com</code>, Port <code>587</code>, <code>starttls</code>, Benutzer = vollständige Postfach-Adresse, Absender = dieselbe Adresse. Im Microsoft-365-Admin-Center muss beim Postfach „Authentifiziertes SMTP“ eingeschaltet sein.
     „Passwort vergessen?“ verschickt seine Links nur, wenn E-Mail eingerichtet ist und im Reiter <b>Server</b> die <b>Öffentliche Adresse</b> steht. Der Link wird bewusst nur daraus gebaut, nie aus der Adresse der Anfrage.</div>
+  <div class="hb-howto"><b><i class="ti ti-brand-windows"></i> So versendest du E-Mails über Microsoft 365</b>
+    <ol class="hb-steps">
+      <li>Im Microsoft Entra Admin Center die App-Registrierung des PDH öffnen → <b>API-Berechtigungen</b> → <b>Microsoft Graph</b> → <b>Anwendungsberechtigungen</b> → <b>Mail.Send</b> hinzufügen und <b>Administratorzustimmung erteilen</b>.</li>
+      <li>Im Reiter <b>Microsoft 365</b> müssen Tenant-ID, Client-ID und Client-Secret dieser App stehen.</li>
+      <li>Reiter <b>E-Mail</b>: <b>Versandweg</b> auf <code>graph</code> stellen und als <b>Absender</b> das Postfach eintragen, aus dem der PDH sendet (z. B. <code>pdh@firma.de</code>). SMTP-Server, Benutzer und Passwort bleiben leer.</li>
+      <li><b>Speichern</b> und <b>Testmail an mich</b> schicken.</li>
+    </ol>
+    Dafür muss „Authentifiziertes SMTP“ im Tenant nicht eingeschaltet sein. Mail.Send erlaubt der App zunächst das Senden aus jedem Postfach – deine Microsoft-Administration kann das per Zugriffsrichtlinie auf das PDH-Postfach beschränken.</div>
   <div class="hb-howto"><b><i class="ti ti-password"></i> So stellst du die Passwort-Richtlinie ein</b>
     <ol class="hb-steps">
       <li>Reiter <b>Passwörter</b> öffnen.</li>

@@ -56,13 +56,14 @@ var envGroups = []envGroup{
 		{Key: "PDH_AUTH_TOKENDURATION", Label: "Anmeldung gültig (Stunden)", Type: "number", Default: "24", Restart: true},
 		{Key: "PDH_CREDENTIALS_KEY", Label: "Schlüssel für Portal-Passwörter", Help: "Leer = aus dem Anmelde-Schlüssel abgeleitet. Nach dem ersten Speichern von Portal-Zugangsdaten NICHT mehr ändern – sonst sind sie unlesbar.", Type: "text", Secret: true},
 	}},
-	{"mail", "E-Mail", "ti-mail", "SMTP-Versand, z. B. für den täglichen Bestellvorschlag.", []envField{
+	{"mail", "E-Mail", "ti-mail", "E-Mail-Versand, z. B. für den täglichen Bestellvorschlag – über einen SMTP-Server oder Microsoft 365.", []envField{
+		{Key: "PDH_MAIL_TRANSPORT", Label: "Versandweg", Help: "smtp = SMTP-Server (Felder unten); graph = Microsoft 365 über die App aus dem Reiter Microsoft 365 (Anwendungsberechtigung Mail.Send) – SMTP-Server, Benutzer und Passwort bleiben dann leer.", Type: "select", Options: []string{"smtp", "graph"}, Default: "smtp"},
 		{Key: "PDH_SMTP_HOST", Label: "SMTP-Server", Type: "text"},
 		{Key: "PDH_SMTP_PORT", Label: "Port", Type: "number", Default: "587"},
 		{Key: "PDH_SMTP_TLS", Label: "Verschlüsselung", Help: "starttls = Port 587, tls = Port 465.", Type: "select", Options: []string{"starttls", "tls", "none"}, Default: "starttls"},
 		{Key: "PDH_SMTP_USER", Label: "Benutzer", Type: "text"},
 		{Key: "PDH_SMTP_PASSWORD", Label: "Passwort", Type: "text", Secret: true},
-		{Key: "PDH_SMTP_FROM", Label: "Absender", Type: "email"},
+		{Key: "PDH_SMTP_FROM", Label: "Absender", Help: "Bei Microsoft 365 (graph) die Adresse des Postfachs, aus dem gesendet wird.", Type: "email"},
 	}},
 	{"copilot", "Copilot (KI)", "ti-brain", "KI-Analyse von Störungen – lokal (Ollama) oder in der Cloud (Anthropic).", []envField{
 		{Key: "PDH_COPILOT_BACKEND", Label: "Anbieter", Type: "select", Options: []string{"ollama", "anthropic"}, Default: "ollama", Restart: true},

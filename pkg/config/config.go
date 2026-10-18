@@ -17,11 +17,14 @@ type Config struct {
 	Mail      MailConfig
 }
 
-// MailConfig: SMTP-Versand (z. B. taeglicher Bestellvorschlag). TLSMode:
+// MailConfig: E-Mail-Versand (z. B. taeglicher Bestellvorschlag). Transport:
+// "smtp" (Standard) oder "graph" (Microsoft 365 ueber die App-Registrierung
+// aus MicrosoftConfig, Absender = From). TLSMode:
 // "starttls" (Standard, Port 587), "tls" (implizit, Port 465) oder "none".
 // PublicURL wird fuer Links in E-Mails verwendet. CredentialsKey
 // verschluesselt Portal-/Shop-Passwoerter (leer = aus JWT-Secret abgeleitet).
 type MailConfig struct {
+	Transport      string
 	Host           string
 	Port           int
 	User           string
@@ -123,6 +126,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("microsoft.teamssenderuserid", "PDH_MICROSOFT_TEAMS_SENDER_USER_ID")
 	viper.BindEnv("microsoft.teamsid", "PDH_MICROSOFT_TEAMS_ID")
 	viper.BindEnv("microsoft.teamschannelid", "PDH_MICROSOFT_TEAMS_CHANNEL_ID")
+	viper.BindEnv("mail.transport", "PDH_MAIL_TRANSPORT")
 	viper.BindEnv("mail.host", "PDH_SMTP_HOST")
 	viper.BindEnv("mail.port", "PDH_SMTP_PORT")
 	viper.BindEnv("mail.user", "PDH_SMTP_USER")
@@ -144,6 +148,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("copilot.ollamaurl", "http://localhost:11434")
 	viper.SetDefault("copilot.model", "llama3.2")
 	viper.SetDefault("copilot.anthropicmodel", "claude-opus-5-5")
+	viper.SetDefault("mail.transport", "smtp")
 	viper.SetDefault("mail.port", 587)
 	viper.SetDefault("mail.tlsmode", "starttls")
 
@@ -174,6 +179,7 @@ func Load() (*Config, error) {
 	cfg.Microsoft.TeamsSenderUserID = viper.GetString("microsoft.teamssenderuserid")
 	cfg.Microsoft.TeamsID = viper.GetString("microsoft.teamsid")
 	cfg.Microsoft.TeamsChannelID = viper.GetString("microsoft.teamschannelid")
+	cfg.Mail.Transport = viper.GetString("mail.transport")
 	cfg.Mail.Host = viper.GetString("mail.host")
 	cfg.Mail.Port = viper.GetInt("mail.port")
 	cfg.Mail.User = viper.GetString("mail.user")

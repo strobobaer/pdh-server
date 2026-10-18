@@ -273,6 +273,9 @@ func (h *Handler) buildPurchaseSuggestions(ctx context.Context) ([]*PurchaseBuye
 // ── Mailversand ──────────────────────────────────────────────
 
 func (h *Handler) mailConfigured() bool {
+	if h.mailViaGraph() {
+		return h.mailCfg.From != "" && h.microsoftAppConfigured()
+	}
 	return h.mailCfg.Host != "" && h.mailCfg.From != ""
 }
 
@@ -321,6 +324,9 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 // oder unverschluesselt je nach PDH_SMTP_TLS).
 func (h *Handler) sendMail(to []string, subject, html string) error {
 	c := h.mailCfg
+	if h.mailViaGraph() {
+		return h.sendMailGraph(context.Background(), to, subject, html)
+	}
 	if !h.mailConfigured() {
 		return errors.New("SMTP ist nicht konfiguriert (PDH_SMTP_HOST / PDH_SMTP_FROM)")
 	}

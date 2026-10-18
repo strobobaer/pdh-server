@@ -245,7 +245,7 @@ func (h *Handler) microsoftDirectoryToken(ctx context.Context) (string, error) {
 		"grant_type":    {"client_credentials"},
 		"scope":         {"https://graph.microsoft.com/.default"},
 	}
-	endpoint := "https://login.microsoftonline.com/" + url.PathEscape(h.microsoft.TenantID) + "/oauth2/v2.0/token"
+	endpoint := microsoftLoginBase + "/" + url.PathEscape(h.microsoft.TenantID) + "/oauth2/v2.0/token"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
@@ -258,6 +258,13 @@ func (h *Handler) microsoftDirectoryToken(ctx context.Context) (string, error) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		var e struct {
+			Description string `json:"error_description"`
+		}
+		_ = json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&e)
+		if desc, _, _ := strings.Cut(e.Description, "\r\n"); desc != "" {
+			return "", fmt.Errorf("Microsoft token endpoint returned HTTP %d: %s", response.StatusCode, desc)
+		}
 		return "", fmt.Errorf("Microsoft token endpoint returned HTTP %d", response.StatusCode)
 	}
 	var tokens microsoftTokenResponse
