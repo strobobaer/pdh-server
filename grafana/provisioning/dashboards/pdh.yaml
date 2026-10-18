@@ -1,0 +1,13 @@
+# Mitgelieferte Dashboards (Ordner „PDH“). Eigene Dashboards legt man in
+# Grafana selbst an – diese hier werden bei jedem Update überschrieben.
+apiVersion: 1
+
+providers:
+  - name: PDH
+    folder: PDH
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/provisioning/dashboards

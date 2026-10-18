@@ -1,0 +1,189 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.cc-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.cc-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.cc-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.cc-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.cc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.cc-bar{display:grid;grid-template-columns:minmax(90px,170px) 1fr auto;gap:8px;align-items:center;font-size:12px;padding:3px 0}
+.cc-bar .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-bar .b{height:10px;background:var(--bg3);border-radius:5px;overflow:hidden}
+.cc-bar .f{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.cc-bar .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;min-width:42px}
+.cc-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+.cc-row.sub{margin-left:28px;border-style:dashed}
+.cc-row.off{opacity:.55}
+.cc-num{font-family:monospace;font-weight:700;min-width:70px}
+.cc-meta{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.cc-edit{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:-2px 0 8px;background:var(--bg3)}
+.cc-edit.sub{margin-left:28px}
+.cc-form{display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:8px;align-items:end}
+.cc-form .form-group{margin-bottom:0}
+.cc-form .wide{grid-column:1/-1}
+.cc-acts{display:flex;gap:4px;margin-left:auto}
+@media (max-width:900px){.cc-kpis{grid-template-columns:repeat(2,1fr)}.cc-grid{grid-template-columns:1fr}.cc-form{grid-template-columns:1fr 1fr}}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-building-bank"></i> Kostenstellen</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Kostenstellen mit Unterstellen und Tätigkeiten – Tätigkeiten stehen in der Zeiterfassung zur Auswahl</p>
+  </div>
+  <form method="get" style="display:flex;gap:6px;align-items:center">
+    <input type="hidden" name="tab" value="{{.Tab}}">
+    <select name="year" class="form-input" style="width:auto" onchange="this.form.submit()">{{range .Years}}<option value="{{.}}" {{if eq . $d.Year}}selected{{end}}>{{.}}</option>{{end}}</select>
+    <label style="font-size:12px;display:flex;gap:4px;align-items:center"><input type="checkbox" name="inactive" value="1" {{if .ShowInactive}}checked{{end}} onchange="this.form.submit()"> inaktive zeigen</label>
+  </form>
+</div>
+{{if .Message}}<div class="cc-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div class="cc-msg err"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="dashboard" href="?tab=dashboard&year={{.Year}}"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+  <a class="rec-tab" data-tab="centers" href="?tab=centers&year={{.Year}}"><i class="ti ti-building-bank"></i> Kostenstellen <b>{{len .All}}</b></a>
+  <a class="rec-tab" data-tab="activities" href="?tab=activities&year={{.Year}}"><i class="ti ti-tool"></i> Tätigkeiten <b>{{len .Activities}}</b></a>
+</div>
+
+<!-- ── Dashboard ── -->
+<div class="rec-pane" data-pane="dashboard">
+  <div class="cc-kpis">
+    {{range .KPIs}}<div class="stat {{.Class}}"><div class="stat-label">{{.Label}}</div><div class="stat-val">{{.Value}}</div><div class="stat-sub">{{.Sub}}</div></div>{{end}}
+  </div>
+  <div class="cc-grid">
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-clock-hour-4"></i> Stunden je Kostenstelle {{.Year}}</span></div>
+      {{range .HoursByCC}}<div class="cc-bar"><span class="l" title="{{.Label}}">{{.Label}}</span><span class="b"><span class="f" style="width:{{.Pct}}%"></span></span><span class="n">{{.Value}}</span></div>
+      {{else}}<p class="rec-sub">Noch keine Zeiten auf Kostenstellen gebucht.</p>{{end}}
+      <p class="rec-sub" style="margin-top:6px">Unterstellen zählen bei ihrer Hauptkostenstelle mit. Kostenstelle der Buchung: Tätigkeit, sonst gebuchte Anlage.</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-tool"></i> Stunden je Tätigkeit {{.Year}}</span></div>
+      {{range .HoursByActivity}}<div class="cc-bar"><span class="l" title="{{.Label}}">{{.Label}}</span><span class="b"><span class="f" style="width:{{.Pct}}%;background:var(--green)"></span></span><span class="n">{{.Value}}</span></div>
+      {{else}}<p class="rec-sub">Noch keine Zeiten mit Tätigkeit gebucht.</p>{{end}}
+    </div>
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-alert-triangle"></i> Offene Vorgänge je Kostenstelle</span></div>
+      {{range .OpenByCC}}<div class="cc-bar"><span class="l" title="{{.Label}}">{{.Label}}</span><span class="b"><span class="f" style="width:{{.Pct}}%;background:var(--red)"></span></span><span class="n">{{.Value}}</span></div>
+      {{else}}<p class="rec-sub">Keine offenen Tickets oder Störungen mit Kostenstelle.</p>{{end}}
+    </div>
+  </div>
+</div>
+
+<!-- ── Kostenstellen ── -->
+<div class="rec-pane" data-pane="centers">
+  <details class="card" {{if not .All}}open{{end}}>
+    <summary class="card-title" style="cursor:pointer"><span><i class="ti ti-plus"></i> Kostenstelle oder Unterstelle anlegen</span></summary>
+    <form method="post" action="/core/costcenters" class="cc-form" style="margin-top:8px">
+      {{template "cc-fields" (dict "D" $d "C" nil)}}
+      <div class="wide" style="display:flex;justify-content:flex-end">{{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")}}</div>
+    </form>
+  </details>
+
+  <div class="card">
+    {{range .Tree}}
+      {{template "cc-row" (dict "D" $d "C" . "Sub" false)}}
+      {{range .Children}}{{template "cc-row" (dict "D" $d "C" . "Sub" true)}}{{end}}
+    {{else}}<p class="rec-sub" style="text-align:center;padding:20px">Noch keine Kostenstellen angelegt.</p>{{end}}
+  </div>
+</div>
+
+<!-- ── Tätigkeiten ── -->
+<div class="rec-pane" data-pane="activities">
+  <details class="card" {{if not .Activities}}open{{end}}>
+    <summary class="card-title" style="cursor:pointer"><span><i class="ti ti-plus"></i> Tätigkeit anlegen</span></summary>
+    <form method="post" action="/core/costcenters/activities" class="cc-form" style="margin-top:8px">
+      {{template "cc-activity-fields" (dict "D" $d "A" nil)}}
+      <div class="wide" style="display:flex;justify-content:flex-end">{{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")}}</div>
+    </form>
+  </details>
+  <div class="card">
+    <p class="rec-sub" style="margin:0 0 8px">Reihenfolge = Reihenfolge in der Zeiterfassung. Ohne Kostenstelle gilt eine Tätigkeit für alle; mit Kostenstelle wird die Zeit dort gebucht.</p>
+    {{range $i, $a := .Activities}}
+    <div class="cc-row {{if not .Active}}off{{end}}">
+      <span class="cc-num">{{if .Number}}{{.Number}}{{else}}–{{end}}</span>
+      <div style="flex:1;min-width:160px"><div style="font-weight:600">{{.Name}}</div>
+        <div class="cc-meta"><span><i class="ti ti-building-bank"></i> {{if .CostCenterLabel}}{{.CostCenterLabel}}{{else}}alle Kostenstellen{{end}}</span><span><i class="ti ti-clock"></i> {{.HoursStr}} in {{$d.Year}}</span>{{if .Description}}<span>{{.Description}}</span>{{end}}{{if not .Active}}<span class="badge b-gray">inaktiv</span>{{end}}</div></div>
+      <div class="cc-acts">
+        <form method="post" action="/core/costcenters/activities/{{.ID}}/up"><button class="btn btn-icon" title="nach oben" {{if eq $i 0}}disabled{{end}}><i class="ti ti-chevron-up"></i></button></form>
+        <form method="post" action="/core/costcenters/activities/{{.ID}}/down"><button class="btn btn-icon" title="nach unten" {{if .Last}}disabled{{end}}><i class="ti ti-chevron-down"></i></button></form>
+        <button type="button" class="btn btn-icon" title="Bearbeiten" onclick="ccToggle('act-{{.ID}}')"><i class="ti ti-edit"></i></button>
+        <form method="post" action="/core/costcenters/activities/{{.ID}}/{{if .Active}}off{{else}}on{{end}}"><button class="btn btn-icon" title="{{if .Active}}Deaktivieren{{else}}Wieder aktivieren{{end}}"><i class="ti {{if .Active}}ti-eye-off{{else}}ti-eye{{end}}"></i></button></form>
+      </div>
+    </div>
+    <div class="cc-edit" id="act-{{.ID}}" style="display:none">
+      <form method="post" action="/core/costcenters/activities/{{.ID}}" class="cc-form">
+        {{template "cc-activity-fields" (dict "D" $d "A" .)}}
+        <div class="wide" style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" class="btn" onclick="ccToggle('act-{{.ID}}')">Abbrechen</button>
+          {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+        </div>
+      </form>
+    </div>
+    {{else}}<p class="rec-sub" style="text-align:center;padding:20px">Noch keine Tätigkeiten angelegt – z. B. „Rüsten“, „Reinigung“, „Instandhaltung“, „Projektarbeit“.</p>{{end}}
+  </div>
+</div>
+<script>function ccToggle(id){ var el = document.getElementById(id); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }</script>
+{{end}}
+
+{{define "cc-row"}}{{$c := .C}}
+<div class="cc-row {{if .Sub}}sub{{end}} {{if not $c.Active}}off{{end}}">
+  <span class="cc-num">{{$c.Number}}</span>
+  <div style="flex:1;min-width:160px"><div style="font-weight:600">{{$c.Name}} {{if .Sub}}<span class="badge b-gray">Unterstelle</span>{{end}}{{if not $c.Active}} <span class="badge b-gray">inaktiv</span>{{end}}</div>
+    <div class="cc-meta">
+      {{if $c.ResponsibleName}}<span><i class="ti ti-user"></i> {{$c.ResponsibleName}}</span>{{end}}
+      <span><i class="ti ti-clock"></i> {{$c.HoursStr}}{{if $c.Children}} (inkl. Unterstellen){{end}}</span>
+      <span><i class="ti ti-tool"></i> {{$c.Activities}} Tätigkeiten</span>
+      <span><i class="ti ti-hierarchy-2"></i> {{$c.Assets}} Anlagen</span>
+      {{if $c.Open}}<span style="color:var(--red)"><i class="ti ti-alert-triangle"></i> {{$c.Open}} offen</span>{{end}}
+      {{if $c.Description}}<span>{{$c.Description}}</span>{{end}}
+    </div></div>
+  <div class="cc-acts">
+    <button type="button" class="btn btn-icon" title="Bearbeiten" onclick="ccToggle('cc-{{$c.ID}}')"><i class="ti ti-edit"></i></button>
+    <form method="post" action="/core/costcenters/{{$c.ID}}/active" {{if $c.Active}}onsubmit="return confirm('Kostenstelle {{$c.Number}} deaktivieren?{{if $c.Children}} Ihre Unterstellen werden mit deaktiviert.{{end}}')"{{end}}>
+      <input type="hidden" name="on" value="{{if $c.Active}}0{{else}}1{{end}}">
+      <button class="btn btn-icon" title="{{if $c.Active}}Deaktivieren{{else}}Wieder aktivieren{{end}}"><i class="ti {{if $c.Active}}ti-eye-off{{else}}ti-eye{{end}}"></i></button>
+    </form>
+  </div>
+</div>
+<div class="cc-edit {{if .Sub}}sub{{end}}" id="cc-{{$c.ID}}" style="display:none">
+  <form method="post" action="/core/costcenters/{{$c.ID}}" class="cc-form">
+    {{template "cc-fields" (dict "D" .D "C" $c)}}
+    <div class="wide" style="display:flex;justify-content:flex-end;gap:8px">
+      <button type="button" class="btn" onclick="ccToggle('cc-{{$c.ID}}')">Abbrechen</button>
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "cc-fields"}}{{$c := .C}}
+<div class="form-group"><label class="form-label">Nummer *</label><input name="number" class="form-input" required maxlength="20" value="{{if $c}}{{$c.Number}}{{end}}" placeholder="z. B. 4100"></div>
+<div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="255" value="{{if $c}}{{$c.Name}}{{end}}" placeholder="z. B. Instandhaltung"></div>
+<div class="form-group"><label class="form-label">Gehört zu <span class="rec-sub">(= Unterstelle)</span></label>
+  <select name="parent_id" class="form-input"><option value="">– Hauptkostenstelle –</option>
+    {{range .D.Mains}}{{if or (not $c) (ne .ID $c.ID)}}<option value="{{.ID}}" {{if and $c (eq .ID $c.ParentID)}}selected{{end}}>{{.Label}}</option>{{end}}{{end}}
+  </select></div>
+<div class="form-group"><label class="form-label">Verantwortlich</label>
+  <select name="responsible_id" class="form-input"><option value="">– niemand –</option>
+    {{range .D.Users}}<option value="{{.ID}}" {{if and $c (eq .ID $c.ResponsibleID)}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select></div>
+<div class="form-group wide"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{if $c}}{{$c.Description}}{{end}}"></div>
+{{end}}
+
+{{define "cc-activity-fields"}}{{$a := .A}}
+<div class="form-group"><label class="form-label">Nummer</label><input name="number" class="form-input" maxlength="20" value="{{if $a}}{{$a.Number}}{{end}}" placeholder="optional"></div>
+<div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="255" value="{{if $a}}{{$a.Name}}{{end}}" placeholder="z. B. Rüsten"></div>
+<div class="form-group" style="grid-column:span 2"><label class="form-label">Kostenstelle</label>
+  <select name="cost_center_id" class="form-input"><option value="">– alle Kostenstellen –</option>
+    {{range .D.All}}{{if .Active}}<option value="{{.ID}}" {{if and $a (eq .ID $a.CostCenterID)}}selected{{end}}>{{if .ParentID}}  ↳ {{end}}{{.Label}}</option>{{end}}{{end}}
+  </select></div>
+<div class="form-group wide"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{if $a}}{{$a.Description}}{{end}}"></div>
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Übersicht {{.Year}}</div>
+{{range .KPIs}}<div class="act-item"><div class="act-dot d-blue"></div><div class="act-text">{{.Label}}</div><span style="font-size:11px">{{.Value}}</span></div>{{end}}
+{{end}}

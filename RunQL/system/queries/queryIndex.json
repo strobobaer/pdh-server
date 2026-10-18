@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-18T07:53:38.920Z",
+  "generatedAt": "2026-10-18T08:54:06.882Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1282,6 +1282,28 @@
       "sqlHash": "202649eedf0ba19fbbbf610975141c99682e745806aa78dba587f394258f552b",
       "title": "118_drying_chamber.up.sql",
       "updatedAt": "2026-10-10T07:55:37.174Z"
+    },
+    {
+      "createdAt": "2026-10-18T08:48:36.880Z",
+      "path": "migrations/119_cost_center_structure.up.sql",
+      "catalogContext": null,
+      "searchText": "119_cost_center_structure.up.sql migrations/119_cost_center_structure.up.sql -- 119_cost_center_structure.up.sql\n-- kostenstellen-dashboard im core-bereich (internal/web/costcenters_web.go):\n--   * unterstellen: cost_centers.parent_id (eine kostenstelle unter einer anderen)\n--   * verantwortliche/r und beschreibung je kostenstelle\n--   * tätigkeiten (cost_activities) – für alle oder für eine kostenstelle\n--   * zeiterfassung: time_entries.activity_id und cost_center_id\n\nalter table cost_centers\n    add column if not exists parent_id      uuid references cost_centers(id) on delete set null,\n    add column if not exists description    text not null default '',\n    add column if not exists responsible_id uuid references users(id) on delete set null;\ncreate index if not exists idx_cost_centers_parent on cost_centers(parent_id) where parent_id is not null;\n\ncreate table if not exists cost_activities (\n    id             uuid primary key default gen_random_uuid(),\n    number         varchar(20) not null default '',\n    name           varchar(255) not null,\n    description    text not null default '',\n    cost_center_id uuid references cost_centers(id) on delete cascade, -- null = für alle kostenstellen\n    active         boolean not null default true,\n    sort           integer not null default 0,\n    created_by     uuid references users(id) on delete set null,\n    created_at     timestamptz not null default now(),\n    updated_at     timestamptz not null default now()\n);\ncreate index if not exists idx_cost_activities_cc on cost_activities(cost_center_id);\n\nalter table time_entries\n    add column if not exists activity_id    uuid references cost_activities(id) on delete set null,\n    add column if not exists cost_center_id uuid references cost_centers(id) on delete set null;\ncreate index if not exists idx_time_entries_activity on time_entries(activity_id) where activity_id is not null;\ncreate index if not exists idx_time_entries_cost_center on time_entries(cost_center_id) where cost_center_id is not null;\n\ninsert into permissions (key, label, category) values\n    ('costcenters.manage', 'kostenstellen, unterstellen & tätigkeiten verwalten', 'system')\non conflict (key) do nothing;\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere r.key in ('admin', 'manager') and p.key = 'costcenters.manage'\non conflict do nothing;\n",
+      "searchUpdatedAt": "2026-10-18T08:48:36.990Z",
+      "schemaContext": null,
+      "sqlHash": "ac7b15958aed3f5a8b79592e843eed6a298fd6414f83a65d5ebca73a8347ed08",
+      "title": "119_cost_center_structure.up.sql",
+      "updatedAt": "2026-10-18T08:48:36.880Z"
+    },
+    {
+      "createdAt": "2026-10-18T08:54:06.233Z",
+      "path": "migrations/120_grafana_statistics.up.sql",
+      "catalogContext": null,
+      "searchText": "120_grafana_statistics.up.sql migrations/120_grafana_statistics.up.sql -- 120_grafana_statistics.up.sql\n-- statistik (/statistics): kacheln, die je ein grafana-dashboard öffnen.\n-- gepflegt unter core → grafana & statistik (internal/web/grafana.go).\n-- adresse von grafana: app_settings 'grafana.base_url' (leer = server-adresse, port 3000).\n\ncreate table if not exists grafana_dashboards (\n    id          uuid primary key default gen_random_uuid(),\n    title       varchar(120) not null,\n    url         text not null,                       -- voll (https://…) oder pfad (/d/uid/name)\n    description text not null default '',\n    icon        varchar(60) not null default 'ti-chart-line',\n    color       varchar(20) not null default 'blue',\n    kiosk       boolean not null default true,       -- ohne grafana-menüs anzeigen\n    open_mode   varchar(10) not null default 'embed' check (open_mode in ('embed', 'tab')),\n    refresh     varchar(10) not null default '',     -- z. b. 30s, 5m (leer = wie im dashboard)\n    sort        integer not null default 0,\n    active      boolean not null default true,\n    created_by  uuid references users(id) on delete set null,\n    created_at  timestamptz not null default now(),\n    updated_at  timestamptz not null default now()\n);\n\n-- mitgeliefertes start-dashboard (grafana/provisioning/dashboards/pdh-overview.json)\ninsert into grafana_dashboards (title, url, description, icon, color, sort)\nselect 'pdh übersicht', '/d/pdh-overview/pdh-ubersicht', 'störungen, tickets und stunden je kostenstelle', 'ti-chart-histogram', 'blue', 1\nwhere not exists (select 1 from grafana_dashboards);\n\ninsert into permissions (key, label, category) values\n    ('statistics.view', 'statistik (grafana-dashboards) ansehen', 'daten')\non conflict (key) do nothing;\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere r.key in ('admin', 'manager', 'technician') and p.key = 'statistics.view'\non conflict do nothing;\n",
+      "searchUpdatedAt": "2026-10-18T08:54:06.336Z",
+      "schemaContext": null,
+      "sqlHash": "0daed8519e48184690e50c969c6328c01c9469f250e24ca40f1f43dc171dc6d0",
+      "title": "120_grafana_statistics.up.sql",
+      "updatedAt": "2026-10-18T08:54:06.233Z"
     }
   ]
 }

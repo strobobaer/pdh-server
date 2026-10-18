@@ -1,0 +1,134 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.gf-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.gf-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.gf-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.gf-row{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-left:.4em solid var(--tile-c);border-radius:10px;margin-bottom:8px;flex-wrap:wrap}
+.gf-row.off{opacity:.55}
+.gf-ico{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;background:var(--tile-c);flex-shrink:0}
+.gf-url{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.gf-acts{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+.gf-acts form{margin:0}
+.gf-form{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.gf-form .form-group{margin-bottom:0}
+.gf-form .wide{grid-column:1/-1}
+.gf-icons{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.gf-icons button{width:38px;height:38px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);font-size:18px;cursor:pointer;color:var(--text)}
+.gf-icons button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.18)}
+.gf-colors{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.gf-colors label{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}
+.gf-colors span{width:22px;height:22px;border-radius:6px;display:inline-block}
+.gf-preview{display:flex;gap:12px;align-items:center;padding:12px;border-radius:14px;border:1px solid var(--border);border-left:.5em solid var(--tile-c)}
+.gf-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px;border-radius:999px}
+.gf-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
+.gf-status.bad{background:rgba(245,158,11,.15);color:var(--amber)}
+@media (max-width:700px){.gf-form{grid-template-columns:1fr}}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-chart-histogram"></i> Grafana &amp; Statistik</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Grafana-Adresse und die Kacheln der Seite <a href="/statistics">Statistik</a></p>
+  </div>
+  <a class="btn" href="/statistics"><i class="ti ti-layout-grid"></i> Statistik ansehen</a>
+  <a class="btn btn-primary" href="?edit=new#gf-form"><i class="ti ti-plus"></i> Dashboard hinzufügen</a>
+</div>
+{{if .Message}}<div class="gf-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="gf-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-plug-connected"></i> Grafana-Adresse</span>
+    <span class="gf-status {{if .HealthOK}}ok{{else}}bad{{end}}"><i class="ti {{if .HealthOK}}ti-circle-check{{else}}ti-alert-triangle{{end}}"></i> {{.Health}}</span></div>
+  <form method="post" action="/core/settings/grafana/base" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+    <div class="form-group" style="flex:1;min-width:260px;margin-bottom:0"><label class="form-label">Adresse, unter der Browser Grafana erreichen</label>
+      <input name="base_url" class="form-input" value="{{.BaseURL}}" placeholder="leer = {{.EffectiveBase}}"></div>
+    {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+  </form>
+  <p class="rec-sub" style="margin-top:8px">Leer lassen, wenn Grafana auf demselben Server läuft (Docker-Installation: Port 3000). Über das Internet (Cloudflare-Tunnel) eine eigene Adresse wie <code>https://grafana.firma.de</code> anlegen und hier eintragen. Dashboard-Adressen dürfen dann kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-layout-grid"></i> Kacheln der Statistik ({{len .Dashboards}})</span></div>
+  {{range $i, $g := .Dashboards}}
+  <div class="gf-row {{if not .Active}}off{{end}}" style="--tile-c:{{grafanaColor .Color}}">
+    <div class="gf-ico"><i class="ti {{.Icon}}"></i></div>
+    <div style="flex:1;min-width:180px">
+      <div style="font-weight:600">{{.Title}} {{if not .Active}}<span class="badge b-gray">ausgeblendet</span>{{end}}{{if eq .OpenMode "tab"}} <span class="badge b-gray">neuer Tab</span>{{end}}{{if .Kiosk}} <span class="badge b-blue">Kiosk</span>{{end}}{{if .Refresh}} <span class="badge b-gray">↻ {{.Refresh}}</span>{{end}}</div>
+      {{if .Description}}<div class="rec-sub">{{.Description}}</div>{{end}}
+      <div class="gf-url"><a href="{{.Href}}" target="_blank" rel="noopener">{{.Href}}</a></div>
+    </div>
+    <div class="gf-acts">
+      <form method="post" action="/core/settings/grafana/{{.ID}}/up"><button class="btn btn-icon" title="nach vorn" {{if eq $i 0}}disabled{{end}}><i class="ti ti-chevron-up"></i></button></form>
+      <form method="post" action="/core/settings/grafana/{{.ID}}/down"><button class="btn btn-icon" title="nach hinten" {{if .Last}}disabled{{end}}><i class="ti ti-chevron-down"></i></button></form>
+      <a class="btn btn-icon" href="?edit={{.ID}}#gf-form" title="Bearbeiten"><i class="ti ti-edit"></i></a>
+      <form method="post" action="/core/settings/grafana/{{.ID}}/{{if .Active}}off{{else}}on{{end}}"><button class="btn btn-icon" title="{{if .Active}}Ausblenden{{else}}Wieder anzeigen{{end}}"><i class="ti {{if .Active}}ti-eye-off{{else}}ti-eye{{end}}"></i></button></form>
+      <form method="post" action="/core/settings/grafana/{{.ID}}/delete" onsubmit="return confirm('Kachel „{{.Title}}“ löschen? Das Dashboard in Grafana bleibt erhalten.')"><button class="btn btn-icon btn-danger" title="Löschen"><i class="ti ti-trash"></i></button></form>
+    </div>
+  </div>
+  {{else}}<p class="rec-sub" style="text-align:center;padding:16px">Noch keine Kacheln – „Dashboard hinzufügen“.</p>{{end}}
+</div>
+
+<div class="card" id="gf-form">
+  {{$e := .Edit}}
+  <div class="card-title"><span><i class="ti {{if $e}}ti-edit{{else}}ti-plus{{end}}"></i> {{if $e}}„{{$e.Title}}“ bearbeiten{{else}}Dashboard hinzufügen{{end}}</span>{{if $e}}<a class="btn btn-small" href="/core/settings/grafana#gf-form">Neues statt dessen</a>{{end}}</div>
+  <form method="post" action="/core/settings/grafana{{if $e}}/{{$e.ID}}{{end}}" class="gf-form" id="gf-edit">
+    <div class="form-group"><label class="form-label">Titel der Kachel *</label><input name="title" class="form-input" required maxlength="120" value="{{if $e}}{{$e.Title}}{{end}}" placeholder="z. B. Störungen je Linie"></div>
+    <div class="form-group"><label class="form-label">Untertitel</label><input name="description" class="form-input" value="{{if $e}}{{$e.Description}}{{end}}" placeholder="optional, kurze Erklärung"></div>
+    <div class="form-group wide"><label class="form-label">Adresse des Dashboards *</label>
+      <input name="url" class="form-input" required value="{{if $e}}{{$e.URL}}{{end}}" placeholder="/d/abc123/stoerungen  oder  https://grafana.firma.de/d/abc123/stoerungen">
+      <div class="rec-sub" style="margin-top:3px">In Grafana das Dashboard öffnen und die Adresse aus der Browserzeile kopieren. Zeitraum und Variablen (<code>?from=now-30d&amp;var-linie=…</code>) dürfen mit drin sein.</div></div>
+    <div class="form-group"><label class="form-label">Öffnen</label>
+      <select name="open_mode" class="form-input">
+        <option value="embed" {{if or (not $e) (eq $e.OpenMode "embed")}}selected{{end}}>im PDH (eingebettet)</option>
+        <option value="tab" {{if and $e (eq $e.OpenMode "tab")}}selected{{end}}>in neuem Tab</option>
+      </select></div>
+    <div class="form-group"><label class="form-label">Automatisch aktualisieren</label>
+      <select name="refresh" class="form-input">{{$r := ""}}{{if $e}}{{$r = $e.Refresh}}{{end}}
+        {{range (list "" "30s" "1m" "5m" "15m" "1h")}}<option value="{{.}}" {{if eq . $r}}selected{{end}}>{{if .}}alle {{.}}{{else}}wie im Dashboard{{end}}</option>{{end}}
+      </select></div>
+    <div class="form-group wide"><label style="font-size:13px;display:flex;gap:8px;align-items:center"><input type="checkbox" name="kiosk" value="1" {{if or (not $e) $e.Kiosk}}checked{{end}}> Kiosk-Ansicht (ohne Grafana-Menüs – ideal für Touch-Bildschirme)</label></div>
+    <div class="form-group"><label class="form-label">Symbol</label>
+      <input name="icon" id="gf-icon" class="form-input" value="{{if $e}}{{$e.Icon}}{{else}}ti-chart-line{{end}}" maxlength="60">
+      <div class="gf-icons">{{range .Icons}}<button type="button" data-icon="{{.}}" title="{{.}}"><i class="ti {{.}}"></i></button>{{end}}</div></div>
+    <div class="form-group"><label class="form-label">Farbe</label>
+      <div class="gf-colors">{{$c := "blue"}}{{if $e}}{{$c = $e.Color}}{{end}}
+        {{range .Colors}}<label><input type="radio" name="color" value="{{.Key}}" data-css="{{.CSS}}" {{if eq .Key $c}}checked{{end}}><span style="background:{{.CSS}}"></span>{{.Label}}</label>{{end}}</div>
+      <div class="form-label" style="margin-top:12px">Vorschau</div>
+      <div class="gf-preview" id="gf-prev"><div class="gf-ico"><i class="ti"></i></div><div><div style="font-weight:600" data-p="title"></div><div class="rec-sub" data-p="desc"></div></div></div></div>
+    <div class="wide" style="display:flex;justify-content:flex-end;gap:8px">
+      {{if $e}}<a class="btn" href="/core/settings/grafana">Abbrechen</a>{{end}}
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+    </div>
+  </form>
+</div>
+
+<details class="card">
+  <summary class="card-title" style="cursor:pointer"><span><i class="ti ti-info-circle"></i> Grafana einrichten – Hinweise</span></summary>
+  <ul style="font-size:13px;line-height:1.6;margin:6px 0 0 18px">
+    <li>Die Docker-Installation startet Grafana mit: Port <b>3000</b>, Benutzer <code>admin</code>, Passwort in <code>.env.docker</code> unter <code>PDH_GRAFANA_ADMIN_PASSWORD</code>.</li>
+    <li>Die Datenquelle <b>PDH</b> ist schon eingerichtet. Sie liest die PDH-Datenbank nur (Benutzer <code>pdh_grafana</code>) und sieht keine Passwörter und Schlüssel.</li>
+    <li>Das Dashboard <b>PDH Übersicht</b> wird mitgeliefert und ist oben schon als Kachel eingetragen.</li>
+    <li>Damit Kacheln ohne Grafana-Anmeldung angezeigt werden, in <code>.env.docker</code> <code>PDH_GRAFANA_ANONYMOUS=true</code> setzen (nur Lesen). Läuft Grafana unter einer anderen Domain als das PDH, zusätzlich <code>PDH_GRAFANA_COOKIE_SAMESITE=none</code> und <code>PDH_GRAFANA_COOKIE_SECURE=true</code> (nur mit https).</li>
+  </ul>
+</details>
+
+<script>
+(function () {
+  var f = document.getElementById('gf-edit'); if (!f) return;
+  var prev = document.getElementById('gf-prev');
+  function upd() {
+    var c = f.querySelector('input[name=color]:checked');
+    prev.style.setProperty('--tile-c', c ? c.dataset.css : '#4f6ef7');
+    prev.querySelector('.gf-ico i').className = 'ti ' + f.elements.icon.value;
+    prev.querySelector('[data-p=title]').textContent = f.elements.title.value || 'Titel';
+    prev.querySelector('[data-p=desc]').textContent = f.elements.description.value;
+    f.querySelectorAll('.gf-icons button').forEach(function (b) { b.classList.toggle('on', b.dataset.icon === f.elements.icon.value); });
+  }
+  f.querySelectorAll('.gf-icons button').forEach(function (b) { b.addEventListener('click', function () { f.elements.icon.value = b.dataset.icon; upd(); }); });
+  f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+})();
+</script>
+{{end}}

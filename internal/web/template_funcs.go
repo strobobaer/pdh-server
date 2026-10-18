@@ -11,13 +11,14 @@ import (
 
 func TemplateFuncs() template.FuncMap {
 	m := template.FuncMap{
-		"appVersion": pdh.Version,
-		"css":        templateCSS,
-		"dict":       templateDict,
-		"list":       templateList,
-		"safeJS":     templateJS,
-		"hasPrefix":  strings.HasPrefix,
-		"join":       strings.Join,
+		"appVersion":   pdh.Version,
+		"css":          templateCSS,
+		"grafanaColor": grafanaColorCSS, // Kachelfarbe Statistik (grafana.go)
+		"dict":         templateDict,
+		"list":         templateList,
+		"safeJS":       templateJS,
+		"hasPrefix":    strings.HasPrefix,
+		"join":         strings.Join,
 		// Serverzeit beim Ausliefern der Seite (Uhr in der Kopfleiste)
 		"serverNowMs": func() int64 { return time.Now().UnixMilli() },
 		// Symbol zum Schlüssel (icons.go): Vorgabe oder Änderung des Admins

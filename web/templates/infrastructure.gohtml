@@ -25,6 +25,57 @@
 
 {{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
 {{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if .CanEditInfra}}<div style="display:flex;justify-content:flex-end;margin:0 0 12px">
+  <button type="button" class="btn" onclick="openInfraBulk('')"><i class="ti ti-stack-push"></i> Sammelanlegen</button>
+</div>
+
+<div id="infra-bulk" style="display:none" class="card">
+  <div class="card-title"><span><i class="ti ti-stack-push"></i> Sammelanlegen</span></div>
+  <p class="rec-sub" style="margin:-4px 0 10px">Übergeordnetes Element wählen, dann je Ebene einen Bereich „von–bis“. Vorhandene Elemente gleichen Namens werden übernommen; neue erben Standort, Kostenstelle und Abteilung.</p>
+  <form method="post" action="/infrastructure/bulk" id="infra-bulk-form" onsubmit="return confirm(document.getElementById('ib-total').textContent + ' – jetzt anlegen?')">
+    <div class="form-group"><label class="form-label">Übergeordnet</label>
+      <select name="parent_id" class="form-input">
+        <option value="">– oberste Ebene –</option>
+        {{range .AllNodes}}<option value="{{.ID}}">{{.Path}}</option>{{end}}
+      </select></div>
+    <div class="br-level">
+      <div class="br-level-h">Ebene 1 <select name="l1_type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key "plant"}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      {{template "bulk-range" (dict "Key" "l1" "Placeholder" "z. B. Presse ")}}
+    </div>
+    <div class="br-level">
+      <div class="br-level-h">Ebene 2 <span style="font-weight:400;color:var(--muted)">(optional – unter jedem Element der Ebene 1)</span> <select name="l2_type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key "device"}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      {{template "bulk-range" (dict "Key" "l2" "Placeholder" "z. B. Motor ")}}
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><input type="checkbox" name="l2_join" value="1"> Namen der Ebene 1 voranstellen, getrennt durch <input name="l2_sep" class="form-input" value=" " style="width:50px;padding:2px 6px"></label>
+    </div>
+    <div class="br-total" id="ib-total"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button type="button" class="btn" onclick="document.getElementById('infra-bulk').style.display='none'">Abbrechen</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-stack-push"></i> Anlegen</button>
+    </div>
+  </form>
+</div>
+
+<div id="infra-copy" style="display:none" class="card">
+  <div class="card-title"><span><i class="ti ti-copy"></i> <span id="ic-title">Kopieren</span></span></div>
+  <form method="post" id="infra-copy-form">
+    <div class="form-group"><label class="form-label">Ziel (übergeordnet)</label>
+      <select name="target_id" class="form-input">
+        <option value="">– oberste Ebene –</option>
+        {{range .AllNodes}}<option value="{{.ID}}">{{.Path}}</option>{{end}}
+      </select></div>
+    <div class="br-level">
+      <div class="br-level-h">Name der Kopie – oder Reihe „von–bis“ für mehrere Kopien</div>
+      {{template "bulk-range" (dict "Key" "c" "Label" "Name / Präfix")}}
+    </div>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:6px"><input type="checkbox" name="children" value="1" checked> mit allen Unteranlagen</label>
+    <p class="rec-sub" style="margin:0 0 10px"><i class="ti ti-info-circle"></i> Übernommen werden Typ, Beschreibung, Standort, Hersteller, Modell, Partner, Kostenstelle, Abteilung und die Bauteil-Positionen von Trockenkammern. Seriennummer, Inbetriebnahme, Vorgänge und Historie bleiben leer.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button type="button" class="btn" onclick="document.getElementById('infra-copy').style.display='none'">Abbrechen</button>
+      <button class="btn btn-primary" type="submit"><i class="ti ti-copy"></i> Kopieren</button>
+    </div>
+  </form>
+</div>
+{{end}}
 
 {{if .DueObligations}}
 <!-- Fällige Prüfpflichten & Gefährdungsbeurteilungen über alle Anlagen (infra_obligations.go) -->
@@ -139,7 +190,9 @@ if(location.hash === '#easy-texts'){ const d = document.getElementById('easy-tex
       <div style="font-size:11px;color:var(--muted)">{{.TypeLabel}}{{if .Location}} · {{.Location}}{{end}}{{if .Manufacturer}} · {{.Manufacturer}}{{end}}{{if .CostCenterName}} · {{.CostCenterNumber}} - {{.CostCenterName}}{{end}}</div>
     </div>
     {{if .SerialNo}}<span style="font-size:10px;color:var(--muted);background:var(--bg);padding:2px 6px;border-radius:4px;flex-shrink:0">{{.SerialNo}}</span>{{end}}
-    <template class="rx-more"><button type="button" class="btn btn-small" onclick="addChildNode('{{.ID}}')"><i class="ti ti-plus"></i> Unteranlage hinzufügen</button></template>
+    <template class="rx-more"><button type="button" class="btn btn-small" onclick="addChildNode('{{.ID}}')"><i class="ti ti-plus"></i> Unteranlage hinzufügen</button>
+      <button type="button" class="btn btn-small" onclick="openInfraBulk('{{.ID}}')"><i class="ti ti-stack-push"></i> Sammelanlegen</button>
+      <button type="button" class="btn btn-small" data-name="{{.Name}}" onclick="openInfraCopy('{{.ID}}', this.dataset.name, '{{.ParentID}}')"><i class="ti ti-copy"></i> Kopieren</button></template>
   </div>
   {{if .Children}}
   <div id="children-{{.ID}}" style="display:none;margin-left:24px;margin-top:4px;padding-left:16px;border-left:2px solid var(--border)">
@@ -213,5 +266,42 @@ function openNewNode(parentId) {
   box.querySelector('input[name="name"]').focus({preventScroll:true});
 }
 function addChildNode(parentId) { openNewNode(parentId); }
+const noInfraPerm = 'Zum Anlegen fehlt die Berechtigung „Infrastruktur anlegen, bearbeiten & deaktivieren“.';
+let infraBulkUpd, infraCopyUpd;
+function infraBulkSync(f) {
+  const total = document.getElementById('ib-total');
+  let n1 = 0, n2 = 0;
+  try { n1 = pdhRangeOf(f, 'l1').length; n2 = pdhRangeOf(f, 'l2').length; } catch (e) { total.textContent = ''; return; }
+  const lbl = s => s.options[s.selectedIndex].text;
+  total.textContent = !n1 ? '' : n2 ? n1 + ' × ' + lbl(f.elements.l1_type) + ' mit je ' + n2 + ' × ' + lbl(f.elements.l2_type) + ' = ' + (n1 + n1 * n2) + ' Elemente' : n1 + ' × ' + lbl(f.elements.l1_type);
+}
+function openInfraBulk(parentId) {
+  const box = document.getElementById('infra-bulk'), f = document.getElementById('infra-bulk-form');
+  if (!box) { alert(noInfraPerm); return; }
+  f.elements.parent_id.value = parentId || '';
+  box.style.display = 'block';
+  if (!infraBulkUpd) infraBulkUpd = pdhRangeBind(f, infraBulkSync); else infraBulkUpd();
+  box.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+function openInfraCopy(id, name, parentId) {
+  const box = document.getElementById('infra-copy'), f = document.getElementById('infra-copy-form');
+  if (!box) { alert(noInfraPerm); return; }
+  f.action = '/infrastructure/' + id + '/copy';
+  document.getElementById('ic-title').textContent = '„' + name + '“ kopieren';
+  f.elements.c_prefix.value = name + ' (Kopie)'; f.elements.c_from.value = ''; f.elements.c_to.value = ''; f.elements.c_suffix.value = '';
+  // Quelle und ihre Unteranlagen sind als Ziel nicht möglich
+  const inside = new Set([id]);
+  document.querySelectorAll('.infra-node[data-id="' + id + '"] .infra-node').forEach(n => inside.add(n.dataset.id));
+  Array.from(f.elements.target_id.options).forEach(o => { o.hidden = o.disabled = inside.has(o.value); });
+  f.elements.target_id.value = parentId || '';
+  box.style.display = 'block';
+  if (!infraCopyUpd) infraCopyUpd = pdhRangeBind(f); else infraCopyUpd();
+  box.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const open = new URLSearchParams(location.search).get('open');
+  if (open && document.querySelector('.infra-node[data-id="' + open + '"]')) { openBranch(open); scrollToNode(open); }
+});
 </script>
+{{template "bulk-range-script"}}
 {{end}}

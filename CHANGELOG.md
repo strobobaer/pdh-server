@@ -15,6 +15,13 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 - Server-Einstellungen, Reiter „Störungen“: Schalter „Ticket zu jeder Störung anlegen“ – ausgeschaltet bekommen Störungen kein automatisches Ticket mehr (Standard: aus, wirkt sofort ohne Neustart)
 - Benutzerstamm: Knopf „Nextcloud-Konto anlegen“ beim Feld Nextcloud-Benutzer – legt das Konto in Nextcloud an, verknüpft es und zeigt das Startpasswort einmalig an
+- Lagerverwaltung: „Sammelanlegen“ – Ziel wählen, dann Fächer und Plätze per „von–bis“ (z. B. A01–A12 mit je Platz 1–10) in einem Schritt anlegen; vorhandene werden übernommen, so lassen sich auch Plätze in bestehende Fächer ergänzen
+- Lagerverwaltung: Lagerorte, Regale und Fächer kopieren – samt Unterknoten und auf Wunsch mehrfach mit Namensreihe (ohne Bestand)
+- Infrastruktur: „Sammelanlegen“ (z. B. Presse 1–6 mit je Motor 1–3) und Kopieren einer Anlage samt Unteranlagen, Stammdaten, Partnern und Kostenstelle
+- Neues Kostenstellen-Dashboard (Navigation → Kostenstellen bzw. Core-Einstellungen): Stunden je Kostenstelle und Tätigkeit, offene Vorgänge je Kostenstelle, Pflege von Kostenstellen mit Unterstellen und Verantwortlichen
+- Tätigkeiten (z. B. Rüsten, Reinigung) – für alle oder je Kostenstelle; in der Zeiterfassung beim Starten, manuellen Erfassen und Bearbeiten wählbar, die Zeit zählt dann auf die Kostenstelle der Tätigkeit
+- Neue Seite „Statistik“ mit großen Touch-Kacheln, die Grafana-Dashboards im PDH oder in einem neuen Tab öffnen; Kacheln mit Symbol, Farbe, Kiosk-Ansicht und Aktualisierung unter Core-Einstellungen → Grafana & Statistik
+- Docker-Installation: Grafana läuft mit (Port 3000) – mit fertiger Datenquelle „PDH“ (nur lesen, ohne Passwörter und Schlüssel) und dem Dashboard „PDH Übersicht“
 
 ## [0.49.0] – 2026-10-10
 

@@ -1,0 +1,78 @@
+{{/*
+  Sammelanlegen / Kopieren: Eingabe einer Namensreihe „Präfix + von–bis“ mit
+  Vorschau (Lager, Infrastruktur). Gegenstück in Go: internal/core/namerange.
+  dict: Key (Feldpräfix, z. B. "l1"), Label, Placeholder (Präfix), Hint
+  Felder: <Key>_prefix, <Key>_from, <Key>_to, <Key>_suffix
+*/}}
+{{define "bulk-range"}}
+<div class="br-row" data-bulk-range="{{.Key}}">
+  <div class="form-group"><label class="form-label">{{if .Label}}{{.Label}}{{else}}Name / Präfix{{end}}</label><input name="{{.Key}}_prefix" class="form-input" placeholder="{{if .Placeholder}}{{.Placeholder}}{{else}}z. B. Fach {{end}}" autocomplete="off"></div>
+  <div class="form-group"><label class="form-label">von</label><input name="{{.Key}}_from" class="form-input" placeholder="1 / 01 / A" autocomplete="off" inputmode="text"></div>
+  <div class="form-group"><label class="form-label">bis</label><input name="{{.Key}}_to" class="form-input" placeholder="20 / 20 / F" autocomplete="off"></div>
+  <div class="form-group"><label class="form-label">Anhang</label><input name="{{.Key}}_suffix" class="form-input" placeholder="optional" autocomplete="off"></div>
+  <div class="br-preview" data-bulk-preview="{{.Key}}">{{if .Hint}}{{.Hint}}{{end}}</div>
+</div>
+{{end}}
+
+{{define "bulk-range-script"}}
+<style>
+.br-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;align-items:end}
+.br-row .form-group{margin-bottom:0}
+.br-preview{grid-column:1/-1;font-size:11px;color:var(--muted);min-height:15px}
+.br-preview.bad{color:var(--red)}
+.br-level{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--bg3)}
+.br-level-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;margin-bottom:8px;flex-wrap:wrap}
+.br-level-h select{width:auto;min-width:120px}
+.br-total{font-size:12px;font-weight:600;margin:4px 0 10px}
+@media (max-width:640px){.br-row{grid-template-columns:1fr 1fr}.br-row .form-group:first-child{grid-column:1/-1}}
+</style>
+<script>
+// gleiche Regeln wie namerange.Expand (Go): Zahlen mit führenden Nullen oder einzelne Buchstaben
+window.pdhRangeNames = function (prefix, from, to, suffix) {
+  from = (from || '').trim(); to = (to || '').trim();
+  if (!from && !to) { var n = ((prefix || '') + (suffix || '')).trim(); return n ? [n] : []; }
+  if (!from) throw '„von“ fehlt';
+  if (!to) to = from;
+  var out = [];
+  if (/^\d+$/.test(from)) {
+    if (!/^\d+$/.test(to)) throw '„bis“ muss auch eine Zahl sein';
+    var a = parseInt(from, 10), b = parseInt(to, 10);
+    if (b < a) throw '„bis“ ist kleiner als „von“';
+    if (b - a + 1 > 500) throw 'höchstens 500 auf einmal';
+    var w = (from.length > 1 && from[0] === '0') || (to.length > 1 && to[0] === '0') ? Math.max(from.length, to.length) : 0;
+    for (var i = a; i <= b; i++) { var s = String(i); while (s.length < w) s = '0' + s; out.push(prefix + s + suffix); }
+    return out;
+  }
+  if (/^[A-Za-z]$/.test(from) && /^[A-Za-z]$/.test(to)) {
+    if ((from >= 'a') !== (to >= 'a')) throw 'beide groß oder beide klein schreiben';
+    if (to < from) throw '„bis“ liegt vor „von“';
+    for (var c = from.charCodeAt(0); c <= to.charCodeAt(0); c++) out.push(prefix + String.fromCharCode(c) + suffix);
+    return out;
+  }
+  if (from === to) return [prefix + from + suffix];
+  throw 'Zahlen (1–20, 01–20) oder Buchstaben (A–F)';
+};
+window.pdhRangeOf = function (form, key) {
+  var v = function (k) { var el = form.elements[key + '_' + k]; return el ? el.value : ''; };
+  return window.pdhRangeNames(v('prefix'), v('from'), v('to'), v('suffix'));
+};
+window.pdhRangeShow = function (names) {
+  if (!names.length) return '';
+  var s = names.length === 1 ? names[0] : names.length <= 4 ? names.join(', ') : names.slice(0, 3).join(', ') + ' … ' + names[names.length - 1];
+  return names.length + ' × ' + s;
+};
+// Vorschau unter jeder Reihe aktualisieren; cb(form) für Zusatzanzeigen
+window.pdhRangeBind = function (form, cb) {
+  var upd = function () {
+    form.querySelectorAll('[data-bulk-preview]').forEach(function (p) {
+      p.classList.remove('bad');
+      try { p.textContent = window.pdhRangeShow(window.pdhRangeOf(form, p.dataset.bulkPreview)); }
+      catch (e) { p.textContent = e; p.classList.add('bad'); }
+    });
+    if (cb) cb(form);
+  };
+  form.addEventListener('input', upd); form.addEventListener('change', upd); upd();
+  return upd;
+};
+</script>
+{{end}}

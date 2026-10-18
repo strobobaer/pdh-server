@@ -20,6 +20,7 @@ import (
 	"pdh/internal/core/addins"
 	"pdh/internal/core/costcenters"
 	"pdh/internal/core/directory"
+	"pdh/internal/core/grafanadb"
 	"pdh/internal/core/infrastructure"
 	"pdh/internal/core/rbac"
 	"pdh/internal/core/shifts"
@@ -110,6 +111,14 @@ func main() {
 		log.Fatal().Err(err).Msg("migrationen")
 	}
 	log.Info().Msg("migrationen geprüft")
+	// Nur-Lese-Benutzer fuer Grafana (Statistik); Fehler bremsen den Start nicht
+	if pw := os.Getenv("PDH_GRAFANA_DB_PASSWORD"); pw != "" {
+		if err := grafanadb.EnsureReader(migrationCtx, db.Pool, pw); err != nil {
+			log.Warn().Err(err).Msg("grafana: nur-lese-benutzer nicht eingerichtet")
+		} else {
+			log.Info().Str("benutzer", grafanadb.Role).Msg("grafana: nur-lese-benutzer eingerichtet")
+		}
+	}
 	cfg = loadServerSettings(db, envPath)
 
 	// Noch kein Benutzer (frische Datenbank, z. B. Docker): ersten

@@ -69,6 +69,8 @@ type BaseData struct {
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
+	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
+	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
 	IsBroker               bool       // Broker fuer mind. eine Vorgangsart: Nav-Link "Zuweisung"
 	TerminalInfraID        string     // Standort des Terminals: Infra-Picker klappt bis hierhin auf
 	Look                   Appearance // Farbschema, Schrift und Groesse dieses Benutzers
@@ -395,6 +397,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/infrastructure/{id}/comments/{commentId}/pin", h.InfraCommentPinWeb)
 	r.Post("/infrastructure/{id}/comments/{commentId}/delete", h.InfraCommentDeleteWeb)
 	r.Post("/infrastructure", h.InfraCreate)
+	r.Post("/infrastructure/bulk", h.InfraBulkWeb)
+	r.Post("/infrastructure/{id}/copy", h.InfraCopyWeb)
 	// Easy-Mode-Meldetexte: Katalog und Zuordnung je Anlage (easy_texts.go)
 	r.Post("/infrastructure/easy-texts", h.EasyTextCreateWeb)
 	r.Post("/infrastructure/easy-texts/{tid}", h.EasyTextUpdateWeb)
@@ -425,6 +429,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/storage/{id}", h.StorageDetailPage)
 	r.Post("/storage", h.StorageCreateRoot)
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
+	r.Post("/storage/bulk", h.StorageBulkWeb)
+	r.Post("/storage/{id}/copy", h.StorageCopyWeb)
 	r.Get("/checklists", h.ChecklistsPage)
 	r.Post("/faults/{id}/chat-web", h.FaultChatWeb)
 	r.Post("/time/start-web", h.TimeStartWeb)
@@ -632,6 +638,20 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/icons", h.IconsSaveWeb)
 	r.Get("/core/settings/microsoft", h.MicrosoftAdminPage)
 	r.Get("/core/settings/drives", h.DrivesPage)
+	r.Get("/core/costcenters", h.CostCentersPage)
+	r.Post("/core/costcenters", h.CostCenterSaveWeb)
+	r.Post("/core/costcenters/activities", h.CostActivitySaveWeb)
+	r.Post("/core/costcenters/activities/{id}", h.CostActivitySaveWeb)
+	r.Post("/core/costcenters/activities/{id}/{action}", h.CostActivityActionWeb)
+	r.Post("/core/costcenters/{id}", h.CostCenterSaveWeb)
+	r.Post("/core/costcenters/{id}/active", h.CostCenterActiveWeb)
+	r.Get("/statistics", h.StatisticsPage)
+	r.Get("/statistics/{id}", h.StatisticsViewPage)
+	r.Get("/core/settings/grafana", h.GrafanaSettingsPage)
+	r.Post("/core/settings/grafana", h.GrafanaSaveWeb)
+	r.Post("/core/settings/grafana/base", h.GrafanaBaseSaveWeb)
+	r.Post("/core/settings/grafana/{id}", h.GrafanaSaveWeb)
+	r.Post("/core/settings/grafana/{id}/{action}", h.GrafanaActionWeb)
 	r.Post("/core/settings/drives", h.DriveSaveWeb)
 	r.Post("/core/settings/drives/sync-documents", h.DriveSyncDocumentsWeb)
 	r.Get("/core/settings/drives/{id}/browse", h.DriveBrowseWeb)
@@ -923,6 +943,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		Brand:                  brand,
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
+		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
+		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
@@ -1600,6 +1622,7 @@ type TimePageData struct {
 	// Von Kollegen eingetragene, noch zu bestaetigende eigene Zeiten
 	// (Abschluss-Assistent, "wer war dabei") – unabhaengig vom Zeitraum
 	PendingEntries []TimeEntryView
+	Activities     []activityGroup // Auswahl „Tätigkeit“ (costcenters_web.go)
 }
 
 type TimeEntryView struct {
@@ -1614,6 +1637,8 @@ type TimeEntryView struct {
 	DurationStr  string
 	Running      bool
 	InfraName    string
+	ActivityID   string // Tätigkeit (cost_activities)
+	ActivityName string
 	UserName     string
 	CanEdit      bool
 	Pending      bool   // unbestaetigt (gelb)
@@ -1817,6 +1842,26 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 	if running, err := h.time.GetRunning(ctx, u.ID); err == nil && running != nil && data.Running == nil {
 		view := timeEntryView(running)
 		data.Running = &view
+	}
+	data.Activities = h.activityGroups(ctx)
+	var entryIDs []string
+	for _, e := range data.Entries {
+		entryIDs = append(entryIDs, e.ID)
+	}
+	for _, e := range data.PendingEntries {
+		entryIDs = append(entryIDs, e.ID)
+	}
+	if data.Running != nil {
+		entryIDs = append(entryIDs, data.Running.ID)
+	}
+	acts := h.timeActivityNames(ctx, entryIDs)
+	for _, list := range [][]TimeEntryView{data.Entries, data.PendingEntries} {
+		for i := range list {
+			list[i].ActivityID, list[i].ActivityName = acts[list[i].ID][0], acts[list[i].ID][1]
+		}
+	}
+	if data.Running != nil {
+		data.Running.ActivityID, data.Running.ActivityName = acts[data.Running.ID][0], acts[data.Running.ID][1]
 	}
 	h.render(w, "timetracking", data)
 }
@@ -2588,8 +2633,11 @@ type StorageNodeView struct {
 
 type StoragePageData struct {
 	BaseData
-	Tree  []StorageNodeView
-	Stats map[string]int
+	Tree         []StorageNodeView
+	Stats        map[string]int
+	Targets      []storageTarget // Ziel-Auswahl für Sammelanlegen/Kopieren (storage_bulk.go)
+	CanEdit      bool
+	Message, Err string
 }
 
 // storageTypeIcon: Symbol des Lagertyps (icons.go, änderbar unter /admin/icons).
@@ -2637,6 +2685,8 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 	data := StoragePageData{
 		BaseData: h.baseData(r, "storage", "Lagerverwaltung", "Übersicht"),
 		Stats:    map[string]int{},
+		CanEdit:  h.canEditStorage(r),
+		Message:  r.URL.Query().Get("msg"), Err: r.URL.Query().Get("err"),
 	}
 	if tree, err := h.storage.GetTree(r.Context()); err == nil {
 		for _, n := range tree {
@@ -2645,6 +2695,7 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 		if tagIDs := h.categoryFilterIDs(r, "storage"); tagIDs != nil {
 			data.Tree = pruneStorageTree(data.Tree, tagIDs)
 		}
+		data.Targets = storageTargets(data.Tree)
 	}
 	if stats, err := h.storage.GetStats(r.Context()); err == nil {
 		data.Stats = stats
@@ -3607,9 +3658,16 @@ func (h *Handler) TimeStartWeb(w http.ResponseWriter, r *http.Request) {
 	if in.Description == "" {
 		in.Description = timeRefLabel(in.RefType)
 	}
-	if _, err := h.time.Start(r.Context(), in, u.ID); err != nil {
+	e, err := h.time.Start(r.Context(), in, u.ID)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if a := r.FormValue("activity_id"); a != "" && e != nil {
+		if err := h.setTimeActivity(r.Context(), e.ID, a); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -3644,9 +3702,16 @@ func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
 	if in.Description == "" {
 		in.Description = timeRefLabel(in.RefType)
 	}
-	if _, err := h.time.Start(r.Context(), in, u.ID); err != nil {
+	e, err := h.time.Start(r.Context(), in, u.ID)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if a := r.FormValue("activity_id"); a != "" && e != nil {
+		if err := h.setTimeActivity(r.Context(), e.ID, a); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -3683,6 +3748,12 @@ func (h *Handler) TimeEditWeb(w http.ResponseWriter, r *http.Request) {
 	if err := h.time.Update(r.Context(), chi.URLParam(r, "id"), u.ID, isAdmin, in); err != nil {
 		fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))
 		return
+	}
+	if _, ok := r.Form["activity_id"]; ok { // Update hat die Berechtigung schon geprüft
+		if err := h.setTimeActivity(r.Context(), chi.URLParam(r, "id"), r.FormValue("activity_id")); err != nil {
+			fmt.Fprintf(w, `<div style="color:var(--red);font-size:12px">%s</div>`, esc(err.Error()))
+			return
+		}
 	}
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px">Gespeichert</div>`)
 }

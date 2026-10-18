@@ -95,6 +95,43 @@ services:
       timeout: 5s
       retries: 3
 
+  # Statistik: Grafana mit der Datenquelle „PDH“ (Nur-Lese-Benutzer pdh_grafana,
+  # vom PDH beim Start angelegt) und dem Dashboard „PDH Übersicht“.
+  # Kacheln: Core → Grafana & Statistik. Passwörter erzeugen install-docker.sh
+  # bzw. install_update.sh in .env.docker.
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PDH_GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${PDH_GRAFANA_ADMIN_PASSWORD:-}
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SECURITY_COOKIE_SAMESITE: ${PDH_GRAFANA_COOKIE_SAMESITE:-lax}
+      GF_SECURITY_COOKIE_SECURE: ${PDH_GRAFANA_COOKIE_SECURE:-false}
+      GF_SERVER_ROOT_URL: ${PDH_GRAFANA_ROOT_URL:-}
+      GF_AUTH_ANONYMOUS_ENABLED: ${PDH_GRAFANA_ANONYMOUS:-false}
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_LANGUAGE: de-DE
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      PDH_DATABASE_NAME: ${PDH_DATABASE_NAME:-pdh}
+      PDH_GRAFANA_DB_PASSWORD: ${PDH_GRAFANA_DB_PASSWORD:-}
+    volumes:
+      - pdh_grafana:/var/lib/grafana
+      - ${PDH_UPDATE_HOST_REPO_DIR:-.}/grafana/provisioning:/etc/grafana/provisioning:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 volumes:
   pdh_database:
   pdh_uploads:
@@ -102,3 +139,4 @@ volumes:
   pdh_backups:
   pdh_config:
   pdh_logs:
+  pdh_grafana:

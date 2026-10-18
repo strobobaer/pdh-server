@@ -496,6 +496,21 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it hmi">
   <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
   <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Er startet zugeklappt; mit dem Pfeil klappst du einen Ast auf, die übrigen Äste klappen dabei zu. Kommst du zurück, ist der zuletzt geöffnete Ast wieder offen. <b>Alle aufklappen</b> zeigt den ganzen Baum. In der Anlagenauswahl (z. B. beim Melden) gilt das genauso; beim Suchen werden alle Treffer aufgeklappt.</p>
+  <div class="hb-howto"><b><i class="ti ti-stack-push"></i> So legst du viele Anlagen auf einmal an</b>
+    <ol class="hb-steps">
+      <li>Oben auf <b>Sammelanlegen</b> tippen – oder eine Anlage antippen und unten <b>Sammelanlegen</b> wählen, dann ist sie schon als übergeordnetes Element gewählt.</li>
+      <li><b>Ebene 1</b>: Typ wählen (z. B. Anlage), dazu Präfix, von und bis – z. B. „Presse “ von 1 bis 6.</li>
+      <li><b>Ebene 2</b> (optional): z. B. Geräte „Motor “ von 1 bis 3 unter jeder Presse. Mit „Namen der Ebene 1 voranstellen“ heißen sie „Presse 1 Motor 1“ usw.</li>
+      <li><b>Anlegen</b>. Neue Elemente übernehmen Standort, Kostenstelle und Abteilung des übergeordneten Elements; den Rest ergänzt du in den Stammdaten.</li>
+    </ol>
+    Elemente gleichen Namens werden nicht doppelt angelegt.</div>
+  <div class="hb-howto"><b><i class="ti ti-copy"></i> So kopierst du eine Anlage</b>
+    <ol class="hb-steps">
+      <li>Die Anlage im Baum antippen und unten <b>Kopieren</b> wählen.</li>
+      <li><b>Ziel</b> (übergeordnetes Element) und <b>Name</b> wählen – für mehrere Kopien Präfix, von und bis, z. B. „Linie “ von 2 bis 4.</li>
+      <li>„mit allen Unteranlagen“ kopiert den ganzen Ast mit.</li>
+    </ol>
+    Kopiert werden Typ, Beschreibung, Standort, Hersteller, Modell, Partner, Kostenstelle, Abteilung und bei Trockenkammern die Bauteil-Positionen. Seriennummer, Inbetriebnahme, Vorgänge und Historie bleiben leer.</div>
   <p>Zu jeder Anlage gibt es:</p>
   <ul>
     <li><b>Übersicht</b> – die wichtigsten Stammdaten auf einen Blick und die Unteranlagen (anklickbar).</li>
@@ -706,6 +721,22 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Verfügbare Formate <i class="ti ti-refresh" title="automatisch aus dem System"></i>:</p>
   <ul>{{range .LabelSizes}}<li>{{.Label}}</li>{{end}}</ul>
   <p>Bei A4-Bögen kannst du mit „Start bei Feld“ bereits benutzte Etiketten überspringen.</p>
+  <div class="hb-howto"><b><i class="ti ti-stack-push"></i> So legst du viele Fächer und Plätze auf einmal an</b>
+    <ol class="hb-steps">
+      <li>Oben auf <b>Sammelanlegen</b> tippen – oder am Lagerort, Regal oder Fach auf <i class="ti ti-stack-push"></i>, dann ist das Ziel schon gewählt.</li>
+      <li><b>Ziel</b> wählen: den Lagerort, das Regal oder das Fach, in das die neuen Einträge kommen.</li>
+      <li><b>Ebene 1</b>: Art wählen (z. B. Fächer), dazu <b>Präfix</b>, <b>von</b> und <b>bis</b>. Beispiel: Präfix „A“, von „01“, bis „12“ ergibt A01 bis A12. Buchstaben gehen auch: von „A“ bis „F“.</li>
+      <li><b>Ebene 2</b> (optional): z. B. Plätze von 1 bis 10 – sie entstehen in <b>jedem</b> Eintrag der Ebene 1. Mit „Namen der Ebene 1 voranstellen“ heißen die Plätze z. B. A01-1, A01-2 …</li>
+      <li>Unter den Feldern siehst du, was entsteht und wie viele es sind. <b>Anlegen</b> und bestätigen.</li>
+    </ol>
+    Was es unter dem Ziel schon gibt, wird nicht doppelt angelegt, sondern übernommen. So ergänzt du z. B. nachträglich Plätze in bestehenden Fächern: Ziel = Regal, Ebene 1 = die vorhandenen Fächer, Ebene 2 = die neuen Plätze. Höchstens 500 je Reihe und 2000 auf einmal.</div>
+  <div class="hb-howto"><b><i class="ti ti-copy"></i> So kopierst du ein Regal oder Fach</b>
+    <ol class="hb-steps">
+      <li>Am Eintrag auf <i class="ti ti-copy"></i> <b>Kopieren</b> tippen.</li>
+      <li><b>Ziel</b> wählen – angeboten werden nur passende Ebenen.</li>
+      <li><b>Name</b> der Kopie eintragen. Für mehrere Kopien Präfix, von und bis ausfüllen, z. B. „Regal “ von 2 bis 5.</li>
+      <li>„mit allen Unterknoten“ kopiert Fächer und Plätze mit. Bestand und Buchungen werden nicht kopiert.</li>
+    </ol></div>
   {{template "hb-shots" (dict "Ref" (index $s "storage") "Can" $can)}}
 </section>
 
@@ -788,7 +819,31 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Stimmt die Zeit: grüner Haken <b>Bestätigen</b>. Passt sie nicht: <i class="ti ti-edit"></i> korrigieren und dann bestätigen. Warst du nicht dabei: <i class="ti ti-trash"></i> löschen.</li>
     </ol>
     Unbestätigte Zeiten zählen noch nicht – weder in den Wochen- und Monatssummen noch im Export.</div>
+  <p><i class="ti ti-tool"></i> <b>Tätigkeit</b>: Beim Starten, beim manuellen Erfassen und beim Bearbeiten wählst du optional eine Tätigkeit (z. B. Rüsten, Reinigung). Die Zeit zählt dann auf die Kostenstelle der Tätigkeit; in der Liste steht die Tätigkeit unter der Beschreibung. Die Tätigkeiten pflegt die Verwaltung unter <a href="#costcenters">Kostenstellen</a>.</p>
   {{template "hb-shots" (dict "Ref" (index $s "time") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="costcenters" data-title="Kostenstellen &amp; Tätigkeiten" data-pages="costcenters">
+  <h2><i class="ti ti-building-bank"></i> Kostenstellen &amp; Tätigkeiten</h2>
+  <p>Unter <b>Navigation → Kostenstellen</b> (oder Core-Einstellungen → Kostenstellen &amp; Tätigkeiten) pflegst du Kostenstellen, ihre Unterstellen und die Tätigkeiten für die Zeiterfassung. Dafür brauchst du das Recht <i>Kostenstellen, Unterstellen &amp; Tätigkeiten verwalten</i>.</p>
+  <p>Das <b>Dashboard</b> zeigt für das gewählte Jahr: Anzahl der Kostenstellen und Tätigkeiten, die gebuchten Stunden, die Stunden je Kostenstelle und je Tätigkeit sowie offene Tickets und Störungen je Kostenstelle. Unterstellen zählen bei ihrer Hauptkostenstelle mit.</p>
+  <div class="hb-howto"><b><i class="ti ti-building-bank"></i> So legst du eine Unterstelle an</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Kostenstellen</b> → <b>Kostenstelle oder Unterstelle anlegen</b>.</li>
+      <li>Nummer und Name eintragen, z. B. „4110“ und „Elektrowerkstatt“.</li>
+      <li>Bei <b>Gehört zu</b> die Hauptkostenstelle wählen, z. B. „4100 Instandhaltung“. Leer lassen = Hauptkostenstelle.</li>
+      <li>Optional Verantwortliche/n und Beschreibung, dann <b>Anlegen</b>.</li>
+    </ol>
+    Eine Unterstelle gehört immer direkt zu einer Hauptkostenstelle. Wer eine Hauptkostenstelle deaktiviert, deaktiviert ihre Unterstellen mit.</div>
+  <div class="hb-howto"><b><i class="ti ti-tool"></i> So legst du Tätigkeiten an</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Tätigkeiten</b> → <b>Tätigkeit anlegen</b>.</li>
+      <li>Name eintragen (z. B. „Rüsten“), optional eine Nummer.</li>
+      <li><b>Kostenstelle</b>: leer = die Tätigkeit gilt für alle. Mit Kostenstelle wird jede Zeit mit dieser Tätigkeit dort gebucht.</li>
+      <li>Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> die Reihenfolge in der Zeiterfassung festlegen; <i class="ti ti-eye-off"></i> blendet eine Tätigkeit aus, ohne gebuchte Zeiten zu verlieren.</li>
+    </ol></div>
+  <p>Auf welche Kostenstelle eine Zeit zählt: zuerst die der Tätigkeit, sonst die der gebuchten Anlage.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "costcenters") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="users" data-title="Benutzer &amp; Mein Konto" data-pages="users account orgchart org_units">
@@ -1196,6 +1251,24 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Geänderte Einträge sind farbig umrandet. In Auswahllisten (Ausklapplisten) zeigen Browser keine Symbole – dort steht nur der Name.</div>
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="statistics" data-title="Statistik (Grafana)" data-pages="statistics">
+  <h2><i class="ti ti-chart-histogram"></i> Statistik (Grafana)</h2>
+  <p>Unter <b>Navigation → Statistik</b> stehen große Kacheln. Jede öffnet ein Auswertungs-Dashboard aus Grafana – direkt im PDH oder in einem neuen Tab. Oben wechselst du mit den Schaltflächen zwischen den Dashboards; <i class="ti ti-maximize"></i> schaltet auf Vollbild. Dafür brauchst du das Recht <i>Statistik (Grafana-Dashboards) ansehen</i>.</p>
+  <p>Mitgeliefert ist das Dashboard <b>PDH Übersicht</b>: offene Störungen und Tickets, neue Störungen je Woche, Störungen je Anlage, gebuchte Stunden je Kostenstelle, Tätigkeit und Art.</p>
+  <div class="hb-howto"><b><i class="ti ti-layout-grid"></i> So fügst du eine Kachel hinzu (Administratoren)</b>
+    <ol class="hb-steps">
+      <li>In Grafana das gewünschte Dashboard öffnen und die Adresse aus der Browserzeile kopieren.</li>
+      <li>Im PDH: <b>Core-Einstellungen → Grafana &amp; Statistik → Dashboard hinzufügen</b>.</li>
+      <li><b>Titel</b>, optional Untertitel, und die <b>Adresse</b> einfügen. Ein Pfad wie <code>/d/abc123/name</code> genügt, wenn oben die Grafana-Adresse stimmt.</li>
+      <li><b>Symbol</b> und <b>Farbe</b> antippen – die Vorschau zeigt die Kachel. <b>Kiosk-Ansicht</b> blendet die Grafana-Menüs aus; <b>Automatisch aktualisieren</b> lädt die Werte z. B. alle 5 Minuten neu.</li>
+      <li><b>Speichern</b>. Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> die Reihenfolge der Kacheln ändern, mit <i class="ti ti-eye-off"></i> ausblenden.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> Grafana-Adresse</b>
+    Bei der Docker-Installation läuft Grafana auf demselben Server unter Port <b>3000</b> (Benutzer <code>admin</code>, Passwort in <code>.env.docker</code> unter <code>PDH_GRAFANA_ADMIN_PASSWORD</code>). Dann bleibt die Adresse leer. Läuft das PDH über das Internet (Cloudflare-Tunnel), für Grafana eine eigene Adresse wie <code>https://grafana.firma.de</code> einrichten und unter Core → Grafana eintragen. Der grüne Punkt zeigt, ob der Server Grafana erreicht.</div>
+  <p>Bleibt eine eingebettete Kachel leer oder fragt nach einer Anmeldung: einmal über <i class="ti ti-external-link"></i> in Grafana anmelden. Für Anzeigen ganz ohne Anmeldung (z. B. Hallenbildschirm) in <code>.env.docker</code> <code>PDH_GRAFANA_ANONYMOUS=true</code> setzen – dann darf jeder im Netz die Dashboards ansehen, aber nichts ändern. Grafana liest die PDH-Daten nur und sieht keine Passwörter oder Schlüssel.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "statistics") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="connections" data-title="Import, Export &amp; Verbindungsseite" data-pages="import export">

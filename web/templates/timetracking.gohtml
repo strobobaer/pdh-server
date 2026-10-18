@@ -87,7 +87,7 @@
     <tbody>
     {{range .Entries}}
     <tr id="entry-{{.ID}}"{{if or (not .Running) (and .Pending .Mine)}} data-rx data-rx-title="{{.Description}}"{{end}}{{if .Pending}} class="te-pending" title="Unbestätigt{{if .PendingFrom}} – eingetragen von {{.PendingFrom}}{{end}}"{{end}}>
-      <td><div style="font-weight:500">{{.Description}}</div>{{if .Pending}}<div style="font-size:11px;color:var(--amber)"><i class="ti ti-clock-exclamation"></i> unbestätigt{{if .PendingFrom}} · von {{.PendingFrom}}{{end}}</div>{{end}}</td>
+      <td><div style="font-weight:500">{{.Description}}</div>{{if .ActivityName}}<div style="font-size:11px;color:var(--muted)"><i class="ti ti-tool"></i> {{.ActivityName}}</div>{{end}}{{if .Pending}}<div style="font-size:11px;color:var(--amber)"><i class="ti ti-clock-exclamation"></i> unbestätigt{{if .PendingFrom}} · von {{.PendingFrom}}{{end}}</div>{{end}}</td>
       {{if $.IsAdmin}}<td style="font-size:12px;color:var(--muted)">{{.UserName}}</td>{{end}}
       <td><div style="display:flex;align-items:center;gap:6px"><div class="act-dot {{.RefTypeDot}}"></div><span style="font-size:12px;color:var(--muted)">{{.RefTypeLabel}}</span></div></td>
       <td style="font-size:12px;color:var(--muted)">{{if .InfraName}}{{.InfraName}}{{else}}–{{end}}</td>
@@ -183,6 +183,12 @@
         <label class="form-label">Beschreibung <span style="color:var(--muted)">(optional)</span></label>
         <input id="start-desc" class="form-input" placeholder="Was wird gemacht?">
       </div>
+      {{if .Activities}}<div class="form-group">
+        <label class="form-label">Tätigkeit <span style="color:var(--muted)">(optional)</span></label>
+        <select id="start-activity-id" class="form-input"><option value="">– keine –</option>
+          {{range .Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
+        </select>
+      </div>{{end}}
       {{template "infra-tree-picker" (dict "TargetID" "start-infra-id" "SelectedLabelID" "start-infra-selected" "Label" "Kostenstelle (optional)")}}
       <div id="start-error" style="display:none;color:var(--red);font-size:12px;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:12px"></div>
       {{template "icon-button-toolbar" (dict
@@ -227,6 +233,12 @@
         <label class="form-label">Beschreibung</label>
         <input id="manual-desc" class="form-input" placeholder="Was wurde gemacht?">
       </div>
+      {{if .Activities}}<div class="form-group">
+        <label class="form-label">Tätigkeit <span style="color:var(--muted)">(optional)</span></label>
+        <select id="manual-activity-id" class="form-input"><option value="">– keine –</option>
+          {{range .Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
+        </select>
+      </div>{{end}}
       {{template "infra-tree-picker" (dict "TargetID" "manual-infra-id" "SelectedLabelID" "manual-infra-selected" "Label" "Kostenstelle (optional)")}}
       <div class="grid2">
         <div class="form-group"><label class="form-label">Start</label><input type="datetime-local" id="manual-start" class="form-input" required></div>
@@ -256,6 +268,12 @@
         <label class="form-label">Beschreibung</label>
         <input id="edit-desc" class="form-input">
       </div>
+      {{if .Activities}}<div class="form-group">
+        <label class="form-label">Tätigkeit <span style="color:var(--muted)">(optional)</span></label>
+        <select id="edit-activity-id" class="form-input"><option value="">– keine –</option>
+          {{range .Activities}}<optgroup label="{{.Label}}">{{range .Items}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</optgroup>{{end}}
+        </select>
+      </div>{{end}}
       <div class="grid2">
         <div class="form-group"><label class="form-label">Start</label><input type="datetime-local" id="edit-start" class="form-input" required></div>
         <div class="form-group"><label class="form-label">Ende</label><input type="datetime-local" id="edit-end" class="form-input"></div>
@@ -745,6 +763,7 @@ document.getElementById('start-form').addEventListener('submit', async function(
   else{const sel=document.getElementById('start-ref-select'); refId=sel.value; if(!desc&&sel.selectedOptions[0])desc=sel.selectedOptions[0].text;}
   const fd=new FormData(); fd.append('ref_type',type); fd.append('ref_id',refId); fd.append('description',desc);
   fd.append('infrastructure_id', document.getElementById('start-infra-id').value);
+  teAppendActivity(fd, 'start');
   const res=await fetch('/time/start-web',{method:'POST',body:fd});
   if(res.ok){closeStart();location.reload();}
   else{const t=await res.text(); const err=document.getElementById('start-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block'; btn.disabled=false; btn.innerHTML='<i class="ti ti-player-play"></i>Starten';}
@@ -788,10 +807,21 @@ document.getElementById('manual-form').addEventListener('submit', async function
   fd.append('started_at',document.getElementById('manual-start').value);
   fd.append('ended_at',document.getElementById('manual-end').value);
   fd.append('infrastructure_id', document.getElementById('manual-infra-id').value);
+  teAppendActivity(fd, 'manual');
   const res=await fetch('/time/manual-web',{method:'POST',body:fd});
   if(res.ok){closeManual();location.reload();}
   else{const t=await res.text(); const err=document.getElementById('manual-error'); err.textContent=t.replace(/<[^>]+>/g,'')||'Fehler'; err.style.display='block';}
 });
+
+// ── Tätigkeit (Kostenstellen) ───────────────────────────────
+window.teAct = { {{range .Entries}}{{if .ActivityID}}"{{.ID}}": "{{.ActivityID}}", {{end}}{{end}}{{range .PendingEntries}}{{if .ActivityID}}"{{.ID}}": "{{.ActivityID}}", {{end}}{{end}} };
+function teAppendActivity(fd, prefix) {
+  var sel = document.getElementById(prefix + '-activity-id');
+  if (!sel) return;
+  fd.append('activity_id', sel.value);
+  // „Sonstiges“ ohne Text: Tätigkeit als Beschreibung
+  if (sel.value && !fd.get('description').trim()) fd.set('description', sel.selectedOptions[0].text);
+}
 
 // ── Bearbeiten Modal ─────────────────────────────────────────
 function openEditEntry(id, desc, startISO, endISO){
@@ -799,6 +829,7 @@ function openEditEntry(id, desc, startISO, endISO){
   document.getElementById('edit-desc').value = desc;
   document.getElementById('edit-start').value = startISO;
   document.getElementById('edit-end').value = endISO || '';
+  var ea = document.getElementById('edit-activity-id'); if (ea) ea.value = (window.teAct || {})[id] || '';
   document.getElementById('edit-error').style.display = 'none';
   updateEditDuration();
   document.getElementById('edit-modal').style.display = 'flex';
@@ -822,6 +853,7 @@ document.getElementById('edit-form').addEventListener('submit', async function(e
   fd.append('description', document.getElementById('edit-desc').value);
   fd.append('started_at', document.getElementById('edit-start').value);
   fd.append('ended_at', document.getElementById('edit-end').value);
+  teAppendActivity(fd, 'edit');
   var res = await fetch('/time/'+id+'/edit-web', {method:'POST', body:fd});
   var text = await res.text();
   if(res.ok){ location.reload(); }

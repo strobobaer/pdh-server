@@ -1,0 +1,70 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.st-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.st-tile{display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-height:150px;padding:18px;border-radius:16px;
+  background:var(--bg2);border:1px solid var(--border);border-left:.5em solid var(--tile-c);color:var(--text);text-decoration:none;
+  touch-action:manipulation;transition:transform .08s,box-shadow .15s;-webkit-tap-highlight-color:transparent}
+.st-tile:hover{box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.st-tile:active{transform:scale(.97)}
+.st-tile:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.st-ico{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;background:var(--tile-c)}
+.st-t{font-size:17px;font-weight:600;line-height:1.25}
+.st-s{font-size:12px;color:var(--muted)}
+.st-ext{font-size:11px;color:var(--muted)}
+.st-hint{font-size:12px;padding:10px 12px;border-radius:10px;margin-bottom:14px;background:rgba(59,130,246,.1);color:var(--accent)}
+.st-view{display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:420px}
+.st-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.st-chips{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;padding-bottom:2px}
+.st-chip{display:flex;align-items:center;gap:6px;white-space:nowrap;padding:8px 12px;border-radius:999px;border:1px solid var(--border);font-size:13px;color:var(--text);text-decoration:none;min-height:40px}
+.st-chip.on{background:var(--tile-c);border-color:var(--tile-c);color:#fff}
+.st-frame{flex:1;width:100%;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}
+@media (max-width:640px){.st-tiles{grid-template-columns:1fr 1fr;gap:10px}.st-tile{min-height:130px;padding:14px}.st-ico{width:46px;height:46px;font-size:24px}.st-t{font-size:15px}}
+</style>
+
+{{if .Current}}{{with .Current}}
+<div class="st-view">
+  <div class="st-bar">
+    <a class="btn" href="/statistics" style="min-height:40px"><i class="ti ti-layout-grid"></i> Alle</a>
+    <div class="st-chips">
+      {{range $d.Dashboards}}<a class="st-chip {{if eq .ID $d.Current.ID}}on{{end}}" style="--tile-c:{{grafanaColor .Color}}"
+        {{if eq .OpenMode "tab"}}href="{{.Href}}" target="_blank" rel="noopener"{{else}}href="/statistics/{{.ID}}"{{end}}><i class="ti {{.Icon}}"></i> {{.Title}}</a>{{end}}
+    </div>
+    <button type="button" class="btn btn-icon" title="Vollbild" aria-label="Vollbild" onclick="var f=document.getElementById('st-frame'); (f.requestFullscreen||f.webkitRequestFullscreen).call(f)"><i class="ti ti-maximize"></i></button>
+    <a class="btn btn-icon" href="{{.Href}}" target="_blank" rel="noopener" title="In Grafana öffnen (neuer Tab)" aria-label="In Grafana öffnen"><i class="ti ti-external-link"></i></a>
+  </div>
+  <iframe id="st-frame" class="st-frame" src="{{.Href}}" title="{{.Title}}" allow="fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe>
+  <p class="rec-sub" style="margin-top:6px">Bleibt die Fläche leer oder verlangt eine Anmeldung? Einmal über <i class="ti ti-external-link"></i> in Grafana anmelden, dann neu laden.{{if $d.CanManage}} Einstellungen: <a href="/core/settings/grafana">Core → Grafana</a>.{{end}}</p>
+</div>
+{{end}}{{else}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-chart-histogram"></i> Statistik</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Auswertungen aus Grafana – Kachel antippen</p>
+  </div>
+  {{if .CanManage}}<a class="btn" href="/core/settings/grafana"><i class="ti ti-settings"></i> Kacheln verwalten</a>{{end}}
+</div>
+{{if .Err}}<div class="st-hint" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if and .CanManage .Auto}}<div class="st-hint"><i class="ti ti-info-circle"></i> Grafana wird unter <code>{{.BaseURL}}</code> erwartet (gleicher Server, Port 3000). Läuft es woanders – z. B. über Cloudflare –, die Adresse unter <a href="/core/settings/grafana">Core → Grafana</a> eintragen.</div>{{end}}
+<div class="st-tiles">
+  {{range .Dashboards}}
+  <a class="st-tile" style="--tile-c:{{grafanaColor .Color}}" {{if eq .OpenMode "tab"}}href="{{.Href}}" target="_blank" rel="noopener"{{else}}href="/statistics/{{.ID}}"{{end}}>
+    <div class="st-ico"><i class="ti {{.Icon}}"></i></div>
+    <div><div class="st-t">{{.Title}}</div>{{if .Description}}<div class="st-s">{{.Description}}</div>{{end}}</div>
+    {{if eq .OpenMode "tab"}}<div class="st-ext"><i class="ti ti-external-link"></i> öffnet in neuem Tab</div>{{end}}
+  </a>
+  {{else}}
+  <div class="card" style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">
+    <i class="ti ti-chart-histogram" style="font-size:48px;display:block;margin-bottom:12px"></i>
+    Noch keine Dashboards eingetragen.{{if .CanManage}} <a href="/core/settings/grafana">Jetzt unter Core → Grafana anlegen</a>.{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{define "context-list"}}
+<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Dashboards</div>
+{{range .Dashboards}}<a class="act-item" href="/statistics/{{.ID}}" style="text-decoration:none;color:inherit"><div class="act-dot" style="background:{{grafanaColor .Color}}"></div><div class="act-text">{{.Title}}</div></a>{{end}}
+{{end}}

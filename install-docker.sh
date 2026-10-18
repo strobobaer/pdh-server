@@ -109,6 +109,13 @@ if [[ ${#update_token} -lt 32 ]]; then
     fi
     echo "Generated update-agent token in .env.docker."
 fi
+# Grafana (Statistik): Admin-Passwort und Passwort des Nur-Lese-Datenbankbenutzers
+for grafana_key in PDH_GRAFANA_ADMIN_PASSWORD PDH_GRAFANA_DB_PASSWORD; do
+    if ! grep -q "^${grafana_key}=." "$env_file"; then
+        set_env_value "$grafana_key" "$(openssl rand -hex 24)"
+        echo "Generated ${grafana_key} in .env.docker."
+    fi
+done
 build_commit="$(git -C "$repo_dir" rev-parse HEAD)"
 set_env_value PDH_BUILD_COMMIT "$build_commit"
 set_env_value PDH_UPDATE_HOST_REPO_DIR "$repo_dir"
@@ -127,3 +134,4 @@ as_docker compose \
     up --detach --build
 
 echo "PDH is starting. Open http://localhost:8090 when its health check passes."
+echo "Grafana (Statistik): http://localhost:3000 - user admin, password PDH_GRAFANA_ADMIN_PASSWORD in .env.docker."

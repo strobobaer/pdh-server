@@ -56,9 +56,21 @@ else
 fi
 
 if [[ "$mode" == "docker" ]]; then
-    compose=(docker compose --project-name "$project_name" --env-file "$repo_dir/.env.docker" --project-directory "$repo_dir" -f "$repo_dir/compose.yaml")
+    env_file="$repo_dir/.env.docker"
+    # Grafana (Statistik, ab 0.50): fehlende Passwoerter einmalig erzeugen
+    for grafana_key in PDH_GRAFANA_ADMIN_PASSWORD PDH_GRAFANA_DB_PASSWORD; do
+        if [[ -f "$env_file" ]] && ! grep -q "^${grafana_key}=." "$env_file"; then
+            grafana_value="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            sed -i "/^${grafana_key}=/d" "$env_file"
+            printf '\n%s=%s\n' "$grafana_key" "$grafana_value" >> "$env_file"
+            echo "Generated ${grafana_key} in .env.docker."
+        fi
+    done
+    compose=(docker compose --project-name "$project_name" --env-file "$env_file" --project-directory "$repo_dir" -f "$repo_dir/compose.yaml")
     "${compose[@]}" build --build-arg "PDH_BUILD_COMMIT=$target" app updater
     "${compose[@]}" up -d --no-deps app updater
+    # Grafana separat: ein Fehler (z. B. Image nicht ladbar) darf das Update nicht abbrechen
+    "${compose[@]}" up -d --no-deps grafana || echo "Grafana konnte nicht gestartet werden (Statistik) - Update trotzdem fertig." >&2
 else
     # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
     # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)

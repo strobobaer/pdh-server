@@ -1,0 +1,98 @@
+{
+  "uid": "pdh-overview",
+  "title": "PDH Übersicht",
+  "tags": ["pdh"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": { "from": "now-90d", "to": "now" },
+  "refresh": "5m",
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Offene Störungen",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COUNT(*) AS \"Störungen\" FROM faults WHERE status::text NOT IN ('resolved','closed')" }]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Offene Tickets",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COUNT(*) AS \"Tickets\" FROM tickets WHERE status::text NOT IN ('resolved','closed')" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Neue Störungen im Zeitraum",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COUNT(*) AS \"Störungen\" FROM faults WHERE $__timeFilter(created_at)" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Gebuchte Stunden im Zeitraum",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "decimals": 1, "unit": "h" }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COALESCE(SUM(duration_min), 0) / 60.0 AS \"Stunden\" FROM time_entries WHERE $__timeFilter(started_at) AND NOT COALESCE(pending, false)" }]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Störungen und Tickets je Woche",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 70, "barAlignment": 0 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1w'), COUNT(*) AS \"Störungen\" FROM faults WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1" },
+        { "refId": "B", "format": "time_series", "rawQuery": true, "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, '1w'), COUNT(*) AS \"Tickets\" FROM tickets WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1" }
+      ]
+    },
+    {
+      "id": 6, "type": "bargauge", "title": "Stunden je Kostenstelle",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "unit": "h", "decimals": 1, "color": { "mode": "continuous-GrYlRd" } }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "reduceOptions": { "calcs": ["lastNotNull"], "values": true } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COALESCE(c.number || ' ' || c.name, 'ohne Kostenstelle') AS \"Kostenstelle\", SUM(COALESCE(te.duration_min, 0)) / 60.0 AS \"Stunden\" FROM time_entries te LEFT JOIN cost_activities a ON a.id = te.activity_id LEFT JOIN infrastructure i ON i.id = te.infrastructure_id LEFT JOIN cost_centers c ON c.id = COALESCE(te.cost_center_id, a.cost_center_id, i.cost_center_id) WHERE $__timeFilter(te.started_at) AND NOT COALESCE(te.pending, false) GROUP BY 1 ORDER BY 2 DESC LIMIT 15" }]
+    },
+    {
+      "id": 7, "type": "bargauge", "title": "Störungen je Anlage (Top 15)",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "basic", "reduceOptions": { "calcs": ["lastNotNull"], "values": true } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COALESCE(i.name, 'ohne Anlage') AS \"Anlage\", COUNT(*) AS \"Störungen\" FROM faults f LEFT JOIN infrastructure i ON i.id = f.infrastructure_id WHERE $__timeFilter(f.created_at) GROUP BY 1 ORDER BY 2 DESC LIMIT 15" }]
+    },
+    {
+      "id": 8, "type": "bargauge", "title": "Stunden je Tätigkeit",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "unit": "h", "decimals": 1, "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "basic", "reduceOptions": { "calcs": ["lastNotNull"], "values": true } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT TRIM(a.number || ' ' || a.name) AS \"Tätigkeit\", SUM(COALESCE(te.duration_min, 0)) / 60.0 AS \"Stunden\" FROM time_entries te JOIN cost_activities a ON a.id = te.activity_id WHERE $__timeFilter(te.started_at) AND NOT COALESCE(te.pending, false) GROUP BY 1 ORDER BY 2 DESC LIMIT 15" }]
+    },
+    {
+      "id": 9, "type": "piechart", "title": "Zeit nach Art",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "pdh-postgres" },
+      "fieldConfig": { "defaults": { "unit": "h", "decimals": 1 }, "overrides": [] },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }, "reduceOptions": { "calcs": ["lastNotNull"], "values": true } },
+      "targets": [{ "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT CASE ref_type::text WHEN 'fault' THEN 'Störung' WHEN 'ticket' THEN 'Ticket' WHEN 'maintenance' THEN 'Wartung' WHEN 'task' THEN 'Aufgabe' WHEN 'project' THEN 'Projekt' ELSE 'Sonstiges' END AS \"Art\", SUM(COALESCE(duration_min, 0)) / 60.0 AS \"Stunden\" FROM time_entries WHERE $__timeFilter(started_at) AND NOT COALESCE(pending, false) GROUP BY 1 ORDER BY 2 DESC" }]
+    }
+  ]
+}

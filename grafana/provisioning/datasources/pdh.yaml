@@ -1,0 +1,21 @@
+# Datenquelle „PDH“: liest die PDH-Datenbank mit dem Nur-Lese-Benutzer
+# pdh_grafana (legt das PDH beim Start an, internal/core/grafanadb).
+apiVersion: 1
+
+datasources:
+  - name: PDH
+    uid: pdh-postgres
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: db:5432
+    user: pdh_grafana
+    isDefault: true
+    editable: false
+    jsonData:
+      database: ${PDH_DATABASE_NAME}
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+      maxOpenConns: 5
+    secureJsonData:
+      password: ${PDH_GRAFANA_DB_PASSWORD}

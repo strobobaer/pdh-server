@@ -66,6 +66,7 @@ var navDefs = []navDef{
 
 	{navItem{"roles", "/admin/roles", "ti-shield-lock", "Rollen & Rechte", "roles", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"core", "/core/settings", "ti-settings", "Core-Einstellungen", "core-settings", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
+	{navItem{"costcenters", "/core/costcenters", "ti-building-bank", "Kostenstellen", "costcenters", false}, "admin", func(b *BaseData) bool { return b.CanCostCenters }},
 	{navItem{"icons", "/admin/icons", "ti-icons", "Symbole", "icons", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"categories", "/categories", "ti-hash", "Kategorien", "categories", false}, "admin", always},
 	{navItem{"serverconfig", "/admin/server-config", "ti-adjustments-cog", "Server-Einstellungen", "server-config", false}, "admin", func(b *BaseData) bool { return b.CanServerConfig }},
@@ -73,6 +74,7 @@ var navDefs = []navDef{
 	{navItem{"cleanup", "/admin/cleanup", "ti-trash-x", "Bereinigung", "cleanup", false}, "admin", func(b *BaseData) bool { return b.CanCleanup }},
 	{navItem{"printers", "/admin/printers", "ti-printer", "Drucker", "printers", false}, "admin", func(b *BaseData) bool { return b.CanPrinters }},
 
+	{navItem{"statistics", "/statistics", "ti-chart-histogram", "Statistik", "statistics", false}, "data", func(b *BaseData) bool { return b.CanStatistics }},
 	{navItem{"import", "/import", "ti-database-import", "Import", "import", false}, "data", func(b *BaseData) bool { return b.CanImport }},
 	{navItem{"export", "/export", "ti-database-export", "Export", "export", false}, "data", func(b *BaseData) bool { return b.CanExport }},
 

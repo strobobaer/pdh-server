@@ -17,6 +17,59 @@
     )
   )}}
 </div>
+{{if .CanEdit}}<div style="display:flex;justify-content:flex-end;margin:-8px 0 12px">
+  <button type="button" class="btn" onclick="openStorageBulk('')"><i class="ti ti-stack-push"></i> Sammelanlegen</button>
+</div>{{end}}
+{{if .Message}}<div style="font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div style="font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+{{if .CanEdit}}
+<div id="storage-bulk" style="display:none" class="card">
+  <div class="card-title"><i class="ti ti-stack-push"></i> Sammelanlegen</div>
+  <p style="font-size:12px;color:var(--muted);margin:-4px 0 10px">Ziel wählen, dann je Ebene einen Bereich „von–bis“. Was es unter dem Ziel schon gibt, wird übernommen – so lassen sich auch Plätze in bestehende Fächer ergänzen.</p>
+  <form method="post" action="/storage/bulk" id="storage-bulk-form" onsubmit="return confirm(document.getElementById('sb-total').textContent + ' – jetzt anlegen?')">
+    <div class="form-group"><label class="form-label">Ziel (Lagerort, Regal oder Fach)</label>
+      <select name="parent_id" class="form-input" required>
+        <option value="">– bitte wählen –</option>
+        {{range .Targets}}<option value="{{.ID}}" data-depth="{{.Depth}}">{{.Path}}</option>{{end}}
+      </select></div>
+    <div class="br-level">
+      <div class="br-level-h">Ebene 1 <select name="l1_type" class="form-input"><option value="regal">Regale</option><option value="fach" selected>Fächer</option><option value="platz">Plätze</option></select></div>
+      {{template "bulk-range" (dict "Key" "l1" "Placeholder" "z. B. Fach ")}}
+    </div>
+    <div class="br-level">
+      <div class="br-level-h">Ebene 2 <span style="font-weight:400;color:var(--muted)">(optional – in jedem Eintrag der Ebene 1)</span> <select name="l2_type" class="form-input"><option value="fach">Fächer</option><option value="platz" selected>Plätze</option></select></div>
+      {{template "bulk-range" (dict "Key" "l2" "Placeholder" "z. B. Platz ")}}
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><input type="checkbox" name="l2_join" value="1"> Namen der Ebene 1 voranstellen, getrennt durch <input name="l2_sep" class="form-input" value="-" style="width:50px;padding:2px 6px"> <span style="color:var(--muted)">(z. B. A01-03)</span></label>
+    </div>
+    <div class="br-total" id="sb-total"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('storage-bulk').style.display='none'")}}
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")}}
+    </div>
+  </form>
+</div>
+
+<div id="storage-copy" style="display:none" class="card">
+  <div class="card-title"><i class="ti ti-copy"></i> <span id="sc-title">Kopieren</span></div>
+  <form method="post" id="storage-copy-form">
+    <div class="form-group"><label class="form-label">Ziel</label>
+      <select name="target_id" class="form-input">
+        <option value="" data-depth="-1">– als neuer Lagerort –</option>
+        {{range .Targets}}<option value="{{.ID}}" data-depth="{{.Depth}}">{{.Path}}</option>{{end}}
+      </select></div>
+    <div class="br-level">
+      <div class="br-level-h">Name der Kopie – oder Reihe „von–bis“ für mehrere Kopien</div>
+      {{template "bulk-range" (dict "Key" "c" "Label" "Name / Präfix")}}
+    </div>
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" name="children" value="1" checked> mit allen Unterknoten (Regale, Fächer, Plätze – ohne Bestand)</label>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('storage-copy').style.display='none'")}}
+      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Kopieren")}}
+    </div>
+  </form>
+</div>
+{{end}}
 
 {{template "category-filter-slot" (dict "Module" "storage")}}
 
@@ -77,7 +130,9 @@
     <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
       {{if .ChildType}}
       {{template "icon-button" (dict "Action" "new" "ShowLabel" true "Label" .ChildTypeLabel "OnClick" (printf "showAddChild('%s')" .ID))}}
+      <button type="button" class="btn btn-icon" title="Sammelanlegen hier (von–bis)" aria-label="Sammelanlegen" onclick="openStorageBulk('{{.ID}}')"><i class="ti ti-stack-push"></i></button>
       {{end}}
+      <button type="button" class="btn btn-icon" title="Kopieren (mit Unterknoten, auch mehrfach)" aria-label="Kopieren" data-name="{{.Name}}" onclick="openStorageCopy('{{.ID}}', this.dataset.name, '{{.Type}}')"><i class="ti {{icon "action.copy"}}"></i></button>
       <a class="btn btn-icon" href="/storage/{{.ID}}" title="Lagerplatz öffnen (Bestand, Bewegungen, Feldsätze)"><i class="ti ti-external-link"></i></a>
       <a class="btn btn-icon" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener" title="Etiketten für alle Teile an diesem Lagerplatz drucken"><i class="ti ti-printer"></i></a>
       {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditNode('%s')" .ID))}}
@@ -141,5 +196,43 @@ function showEditNode(id) { const el = document.getElementById('edit-'+id); if(e
 function toggleStorageNode(id) { const children = document.getElementById('storage-children-'+id); const icon = document.getElementById('storage-icon-'+id); if(!children) return; const open = children.style.display !== 'none'; children.style.display = open ? 'none' : 'block'; if(icon) icon.style.transform = open ? 'rotate(-90deg)' : ''; }
 function expandStorageTree() { document.querySelectorAll('[id^="storage-children-"]').forEach(el => el.style.display = 'block'); document.querySelectorAll('[id^="storage-icon-"]').forEach(el => el.style.transform = ''); }
 function selectPlace(id, name) { /* reserved for later detail panel */ }
+var storageDepth = {lagerort: 0, regal: 1, fach: 2, platz: 3};
+function firstFree(sel) { if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) { var ok = Array.from(sel.options).find(function (o) { return !o.disabled; }); if (ok) sel.value = ok.value; } }
+function storageBulkSync(f) {
+  var sel = f.elements.parent_id, opt = sel.options[sel.selectedIndex], d = opt && opt.dataset.depth !== undefined ? +opt.dataset.depth : -1;
+  var t1 = f.elements.l1_type, t2 = f.elements.l2_type;
+  Array.from(t1.options).forEach(function (o) { o.disabled = d >= 0 && storageDepth[o.value] <= d; });
+  firstFree(t1);
+  Array.from(t2.options).forEach(function (o) { o.disabled = storageDepth[o.value] <= storageDepth[t1.value]; });
+  firstFree(t2);
+  var total = document.getElementById('sb-total'), n1 = 0, n2 = 0;
+  try { n1 = pdhRangeOf(f, 'l1').length; n2 = pdhRangeOf(f, 'l2').length; } catch (e) { total.textContent = ''; return; }
+  var lbl = function (s) { return s.options[s.selectedIndex].text; };
+  total.textContent = !n1 ? '' : n2 ? n1 + ' ' + lbl(t1) + ' mit je ' + n2 + ' ' + lbl(t2) + ' = ' + (n1 + n1 * n2) + ' Einträge' : n1 + ' ' + lbl(t1);
+}
+var storageBulkUpd, storageCopyUpd;
+function openStorageBulk(parent) {
+  var box = document.getElementById('storage-bulk'), f = document.getElementById('storage-bulk-form');
+  if (!box) return;
+  if (parent) f.elements.parent_id.value = parent;
+  box.style.display = 'block';
+  if (!storageBulkUpd) storageBulkUpd = pdhRangeBind(f, storageBulkSync); else storageBulkUpd();
+  box.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+function openStorageCopy(id, name, type) {
+  var box = document.getElementById('storage-copy'), f = document.getElementById('storage-copy-form');
+  if (!box) return;
+  f.action = '/storage/' + id + '/copy';
+  document.getElementById('sc-title').textContent = '„' + name + '“ kopieren';
+  f.elements.c_prefix.value = name + ' (Kopie)'; f.elements.c_from.value = ''; f.elements.c_to.value = ''; f.elements.c_suffix.value = '';
+  var d = storageDepth[type], sel = f.elements.target_id;
+  Array.from(sel.options).forEach(function (o) { var od = +o.dataset.depth; o.hidden = o.disabled = od === -1 ? type !== 'lagerort' : od >= d; });
+  var cur = document.querySelector('[data-storage-id="' + id + '"]'), parent = cur && cur.parentElement.closest('[data-storage-id]');
+  sel.value = parent ? parent.dataset.storageId : '';
+  box.style.display = 'block';
+  if (!storageCopyUpd) storageCopyUpd = pdhRangeBind(f); else storageCopyUpd();
+  box.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
 </script>
+{{template "bulk-range-script"}}
 {{end}}
