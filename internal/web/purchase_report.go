@@ -276,6 +276,47 @@ func (h *Handler) mailConfigured() bool {
 	return h.mailCfg.Host != "" && h.mailCfg.From != ""
 }
 
+// smtpAuthFor waehlt das Anmeldeverfahren nach dem AUTH-Angebot des
+// Servers: PLAIN, sonst LOGIN (z. B. Microsoft 365 / smtp.office365.com
+// bietet nur LOGIN und XOAUTH2 an).
+func smtpAuthFor(client *smtp.Client, c config.MailConfig) smtp.Auth {
+	if ok, mechs := client.Extension("AUTH"); ok {
+		offered := strings.Fields(strings.ToUpper(mechs))
+		hasPlain, hasLogin := false, false
+		for _, m := range offered {
+			hasPlain = hasPlain || m == "PLAIN"
+			hasLogin = hasLogin || m == "LOGIN"
+		}
+		if hasLogin && !hasPlain {
+			return &loginAuth{user: c.User, password: c.Password}
+		}
+	}
+	return smtp.PlainAuth("", c.User, c.Password, c.Host)
+}
+
+// loginAuth: SMTP AUTH LOGIN (Benutzer und Passwort nacheinander, Base64
+// erledigt net/smtp). Nur ueber TLS - sendMail authentifiziert nie ohne.
+type loginAuth struct {
+	user, password string
+}
+
+func (a *loginAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", nil, nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if !more {
+		return nil, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(string(fromServer))) {
+	case "username:", "user name", "username":
+		return []byte(a.user), nil
+	case "password:", "password":
+		return []byte(a.password), nil
+	}
+	return nil, fmt.Errorf("unerwartete SMTP-LOGIN-Rückfrage: %q", fromServer)
+}
+
 // sendMail verschickt eine HTML-Mail per SMTP (STARTTLS, implizites TLS
 // oder unverschluesselt je nach PDH_SMTP_TLS).
 func (h *Handler) sendMail(to []string, subject, html string) error {
@@ -313,7 +354,7 @@ func (h *Handler) sendMail(to []string, subject, html string) error {
 	}
 	defer client.Close()
 	if c.User != "" && !strings.EqualFold(c.TLSMode, "none") {
-		if err := client.Auth(smtp.PlainAuth("", c.User, c.Password, c.Host)); err != nil {
+		if err := client.Auth(smtpAuthFor(client, c)); err != nil {
 			return err
 		}
 	}

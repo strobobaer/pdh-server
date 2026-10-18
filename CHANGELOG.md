@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.50.2] – 2026-10-18
+
+### Behoben
+- E-Mail-Versand über Microsoft 365 (smtp.office365.com): Die Anmeldung scheiterte mit „504 5.7.4 Unrecognized authentication type“, jetzt meldet sich der PDH per AUTH LOGIN an, wenn der Server kein AUTH PLAIN anbietet
+
 ## [0.50.1] – 2026-10-18
 
 ### Neu
