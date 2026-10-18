@@ -82,7 +82,7 @@ func (h *Handler) storeMaintProtocol(ctx context.Context, p *maintProtocol, task
 			continue
 		}
 		if _, err := h.db.Exec(ctx, `INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
-			VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4, 'application/pdf', $5, $6, NULLIF($7,'')::uuid)`,
+			VALUES (pdh_uuid_v7(), $1, $2::uuid, $3, $4, 'application/pdf', $5, $6, NULLIF($7,'')::uuid)`,
 			tg[0], tg[1], name, filepath.ToSlash(rel), len(data), "Wartungsprotokoll: "+p.Title, userID); err != nil {
 			_ = os.Remove(abs)
 			log.Warn().Err(err).Msg("anhang nicht gespeichert")

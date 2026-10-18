@@ -24,7 +24,7 @@ func (r *Repository) AddAction(ctx context.Context, taskID, description, userID 
 	a := &TaskAction{TaskID: taskID, Description: description, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO task_actions (id, task_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, created_at`,
 		taskID, description, userID,
 	).Scan(&a.ID, &a.CreatedAt)
@@ -69,7 +69,7 @@ func (r *Repository) DeleteAction(ctx context.Context, id string) error {
 func (r *Repository) AddActionDirect(ctx context.Context, taskID, description, userID string) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO task_actions (id, task_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)`,
+		VALUES (pdh_uuid_v7(), $1, $2, $3)`,
 		taskID, description, userID)
 	return err
 }
@@ -101,7 +101,7 @@ func (r *Repository) AddPendingPart(ctx context.Context, taskID, partID, storage
 	p := &PendingPart{TaskID: taskID, PartID: partID, StorageNodeID: storageNodeID, Qty: qty, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO task_pending_parts (id, task_id, part_id, storage_node_id, qty, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 		RETURNING id, created_at`,
 		taskID, partID, storageNodeID, qty, userID,
 	).Scan(&p.ID, &p.CreatedAt)

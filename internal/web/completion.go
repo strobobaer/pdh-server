@@ -423,7 +423,7 @@ func (h *Handler) completionValidColleagues(ctx context.Context, ids []string, s
 func (h *Handler) insertTimeEntry(ctx context.Context, userID, refType, refID, desc string, start, end time.Time, pendingFrom string) error {
 	_, err := h.db.Exec(ctx, `
 		INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, pending, pending_from)
-		VALUES (gen_random_uuid(), $1::uuid, $2::time_ref_type, $3::uuid, $4, $5, $6, GREATEST(1, $7::int), $8 <> '', NULLIF($8, '')::uuid)`,
+		VALUES (pdh_uuid_v7(), $1::uuid, $2::time_ref_type, $3::uuid, $4, $5, $6, GREATEST(1, $7::int), $8 <> '', NULLIF($8, '')::uuid)`,
 		userID, refType, refID, desc, start, end, int(end.Sub(start).Minutes()), pendingFrom)
 	return err
 }

@@ -373,7 +373,7 @@ func (h *Handler) PartDocTakeWeb(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.Exec(ctx, `
 		INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by,
 			doc_kind, source_url, source_sha256, source_checked_at)
-		VALUES (gen_random_uuid(), 'inventory', $1::uuid, $2, $3, 'application/pdf', $4, $5, $6, $7, $8, $9, NOW())`,
+		VALUES (pdh_uuid_v7(), 'inventory', $1::uuid, $2, $3, 'application/pdf', $4, $5, $6, $7, $8, $9, NOW())`,
 		id, name, rel, len(data), partDocKinds[kind], u.ID, kind, raw, sha256Hex(data)); err != nil {
 		_ = os.Remove(filepath.Join("uploads", filepath.FromSlash(rel)))
 		chatError(w, http.StatusInternalServerError, err.Error())

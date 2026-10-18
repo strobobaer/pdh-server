@@ -70,7 +70,7 @@ func (r *Repository) Create(ctx context.Context, p *Project) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO projects (id, name, description, start_date, end_date, responsible_to,
 			infrastructure_id, cost_center_id, created_by, assigned_to)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, status, created_at, updated_at`,
 		p.Name, p.Description, p.StartDate, p.EndDate, p.ResponsibleTo,
 		p.InfrastructureID, p.CostCenterID, p.CreatedBy, p.AssignedTo,

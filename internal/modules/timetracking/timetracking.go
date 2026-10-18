@@ -98,7 +98,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 func (r *Repository) Create(ctx context.Context, e *TimeEntry) error {
 	query := `
 		INSERT INTO time_entries (id, user_id, ref_type, ref_id, description, started_at, ended_at, duration_min, infrastructure_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at`
 	dur := calcDuration(e.StartedAt, e.EndedAt)
 	return r.db.QueryRow(ctx, query,

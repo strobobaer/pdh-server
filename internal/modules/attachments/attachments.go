@@ -49,7 +49,7 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Save(ctx context.Context, a *Attachment) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at`,
 		a.RefType, a.RefID, a.Filename, a.Filepath,
 		a.Mimetype, a.SizeBytes, a.Caption, a.CreatedBy,

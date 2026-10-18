@@ -45,10 +45,14 @@ var grafanaIcons = []string{"ti-chart-line", "ti-chart-bar", "ti-chart-histogram
 	"ti-chart-dots", "ti-gauge", "ti-clock-hour-4", "ti-alert-triangle", "ti-ticket", "ti-tool", "ti-building-bank",
 	"ti-bolt", "ti-temperature", "ti-droplet", "ti-building-factory-2", "ti-package", "ti-users", "ti-calendar-stats", "ti-report-analytics"}
 
-// grafanaBase: eingetragene Grafana-Adresse; leer = gleicher Rechner wie das PDH, Port 3000.
+// grafanaBase: eingetragene Grafana-Adresse; leer = durch das PDH (/grafana,
+// Docker) bzw. gleicher Rechner wie das PDH, Port 3000.
 func (h *Handler) grafanaBase(r *http.Request) (base string, auto bool) {
 	if b := strings.TrimRight(strings.TrimSpace(h.getUpdateSetting(r.Context(), keyGrafanaBase, "")), "/"); b != "" {
 		return b, false
+	}
+	if grafanaProxyEnabled() {
+		return grafanaProxyPath, true
 	}
 	host := r.Host
 	if hst, _, err := net.SplitHostPort(host); err == nil {
@@ -120,6 +124,7 @@ type StatisticsPageData struct {
 	Dashboards []grafanaDashboard
 	BaseURL    string
 	Auto       bool
+	Proxied    bool // Grafana durch das PDH unter /grafana/ (grafana_proxy.go)
 	CanManage  bool
 	Current    *grafanaDashboard // /statistics/{id}
 	Err        string
@@ -134,7 +139,7 @@ func (h *Handler) StatisticsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	base, auto := h.grafanaBase(r)
-	d := StatisticsPageData{BaseData: h.baseData(r, "statistics", "Statistik", "Auswertungen"), BaseURL: base, Auto: auto, CanManage: h.canManageRoles(r)}
+	d := StatisticsPageData{BaseData: h.baseData(r, "statistics", "Statistik", "Auswertungen"), BaseURL: base, Auto: auto, Proxied: base == grafanaProxyPath, CanManage: h.canManageRoles(r)}
 	var err error
 	if d.Dashboards, err = h.grafanaDashboards(r.Context(), base, false); err != nil {
 		d.Err = err.Error()
@@ -172,6 +177,7 @@ type GrafanaSettingsData struct {
 	BaseURL        string // eingetragen
 	EffectiveBase  string
 	Auto           bool
+	Proxied        bool
 	Health         string // ok / Fehlertext
 	HealthOK       bool
 	Edit           *grafanaDashboard
@@ -185,7 +191,11 @@ type GrafanaSettingsData struct {
 func grafanaHealth(ctx context.Context, base string) string {
 	client := &http.Client{Timeout: 3 * time.Second}
 	var lastErr error
-	for _, b := range []string{base, "http://grafana:3000"} {
+	candidates := []string{base, "http://grafana:3000/grafana"}
+	if strings.HasPrefix(base, "/") { // durch das PDH: intern prüfen
+		candidates = []string{grafanaInternalURL() + grafanaProxyPath}
+	}
+	for _, b := range candidates {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(b, "/")+"/api/health", nil)
 		if err != nil {
 			lastErr = err
@@ -198,6 +208,9 @@ func grafanaHealth(ctx context.Context, base string) string {
 		}
 		resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
+			if strings.HasPrefix(base, "/") {
+				return "ok (durch das PDH unter " + base + "/ – gleiche Adresse und Anmeldung wie das PDH)"
+			}
 			if b != base {
 				return "ok (im Docker-Netz erreichbar – vom Browser aus über " + base + ")"
 			}
@@ -231,7 +244,7 @@ func (h *Handler) GrafanaSettingsPage(w http.ResponseWriter, r *http.Request) {
 	base, auto := h.grafanaBase(r)
 	d := GrafanaSettingsData{
 		BaseData: h.baseData(r, "core-settings", "Grafana & Statistik", "Systemverwaltung"),
-		BaseURL:  h.getUpdateSetting(ctx, keyGrafanaBase, ""), EffectiveBase: base, Auto: auto,
+		BaseURL:  h.getUpdateSetting(ctx, keyGrafanaBase, ""), EffectiveBase: base, Auto: auto, Proxied: base == grafanaProxyPath,
 		Colors: grafanaColors, Icons: grafanaIcons,
 		Message: r.URL.Query().Get("msg"), Error: r.URL.Query().Get("err"),
 	}

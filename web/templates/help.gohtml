@@ -1084,6 +1084,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang vor der Datenbank und ist hier nur lesbar. Leere Einträge wie <code>PDH_COPILOT_ANTHROPICKEY=</code> zählen nicht, dann gilt der Wert aus der Datenbank</td></tr>
     <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>
   </table>
+  <div class="hb-howto"><b><i class="ti ti-palette"></i> So bekommt Nextcloud den PDH-Look</b>
+    <ol class="hb-steps">
+      <li>Server-Einstellungen → Reiter <b>Nextcloud</b>. Unten zeigt die Karte <b>Nextcloud im PDH-Look</b> die Vorschau: Name, Firmenfarbe und Logo aus dem Reiter <b>Erscheinungsbild</b>.</li>
+      <li><b>An Nextcloud übertragen</b> – dafür braucht der eingetragene Nextcloud-Benutzer Admin-Rechte in Nextcloud.</li>
+      <li>Klappt das bei eurer Nextcloud-Version nicht: <b>occ-Skript herunterladen</b>, auf den Nextcloud-Server kopieren und dort <code>sudo bash nextcloud-theming-pdh.sh /var/www/nextcloud</code> ausführen.</li>
+      <li>Nextcloud im Browser neu laden (Strg+F5).</li>
+    </ol>
+    Ändert sich das Erscheinungsbild des PDH (Farbe, Logo, Name), einfach erneut übertragen.</div>
   <div class="hb-howto"><b><i class="ti ti-mail"></i> Beispiel: E-Mail-Versand einrichten</b>
     <ol class="hb-steps">
       <li>Reiter <b>E-Mail</b>: SMTP-Server, Port, Verschlüsselung, Benutzer, Passwort und Absender eintragen.</li>
@@ -1219,6 +1227,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Update installieren</b> klicken und bestätigen. Der Dienst startet neu; nach einer Minute die Seite neu laden.</li>
     </ol>
     Vor den Datenbank-Änderungen legt PDH automatisch eine Vollsicherung an (<a href="#backup">mehr</a>). Danach steht die neue Nummer in der Kopfzeile.</div>
+  <div class="hb-howto"><b><i class="ti ti-cloud"></i> So aktualisierst du Nextcloud</b>
+    <ol class="hb-steps">
+      <li><b>Core-Einstellungen</b> → Kachel <b>Nextcloud-Updates</b> (neben „GitHub-Updates“) → <b>Updates prüfen</b>. Die Kachel zeigt die installierte Version, ein verfügbares System-Update und alle App-Updates.</li>
+      <li><b>Alle Apps aktualisieren</b> spielt die App-Updates ein – Nextcloud bleibt dabei erreichbar.</li>
+      <li><b>System-Update (inkl. Apps)</b> aktualisiert Nextcloud selbst mit dem offiziellen Updater und danach die Apps. Nextcloud ist dabei einige Minuten im Wartungsmodus; vorher sollte eine Sicherung von Nextcloud bestehen.</li>
+      <li>Den Fortschritt zeigt die Kachel nach dem Neuladen der Seite; danach erneut <b>Updates prüfen</b>.</li>
+    </ol>
+    Das klappt, wenn Nextcloud auf demselben Server wie das PDH läuft und der Update-Agent eingerichtet ist. Liegt Nextcloud woanders als in <code>/var/www/nextcloud</code>, das Verzeichnis in der Kachel eintragen.</div>
   <p><b>Ohne Versionsnummer auf GitHub:</b> Zeigt <b>Version auf GitHub</b> „nicht angegeben“, stammt der Stand auf GitHub aus der Zeit vor der Versionierung. Ob ein Update da ist, entscheidet dann weiter der Commit-Vergleich.</p>
   <h3>Änderungsprotokoll <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   <p class="rec-sub">Was sich in welcher Version geändert hat – neueste zuerst. {{if .CurrentVersion}}Installiert ist Version {{.CurrentVersion}}.{{end}}</p>
@@ -1273,9 +1289,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Symbol</b> und <b>Farbe</b> antippen – die Vorschau zeigt die Kachel. <b>Kiosk-Ansicht</b> blendet die Grafana-Menüs aus; <b>Automatisch aktualisieren</b> lädt die Werte z. B. alle 5 Minuten neu.</li>
       <li><b>Speichern</b>. Mit <i class="ti ti-chevron-up"></i>/<i class="ti ti-chevron-down"></i> die Reihenfolge der Kacheln ändern, mit <i class="ti ti-eye-off"></i> ausblenden.</li>
     </ol></div>
-  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> Grafana-Adresse</b>
-    Bei der Docker-Installation läuft Grafana auf demselben Server unter Port <b>3000</b> (Benutzer <code>admin</code>, Passwort in <code>.env.docker</code> unter <code>PDH_GRAFANA_ADMIN_PASSWORD</code>). Dann bleibt die Adresse leer. Läuft das PDH über das Internet (Cloudflare-Tunnel), für Grafana eine eigene Adresse wie <code>https://grafana.firma.de</code> einrichten und unter Core → Grafana eintragen. Der grüne Punkt zeigt, ob der Server Grafana erreicht.</div>
-  <p>Bleibt eine eingebettete Kachel leer oder fragt nach einer Anmeldung: einmal über <i class="ti ti-external-link"></i> in Grafana anmelden. Für Anzeigen ganz ohne Anmeldung (z. B. Hallenbildschirm) in <code>.env.docker</code> <code>PDH_GRAFANA_ANONYMOUS=true</code> setzen – dann darf jeder im Netz die Dashboards ansehen, aber nichts ändern. Grafana liest die PDH-Daten nur und sieht keine Passwörter oder Schlüssel.</p>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> Grafana-Adresse und Anmeldung</b>
+    Bei der Docker-Installation läuft Grafana <b>hinter dem PDH</b> unter <code>/grafana/</code> – gleiche Adresse und gleiches HTTPS wie das PDH, auch über den Cloudflare-Tunnel. Angemeldet ist man automatisch mit dem PDH-Konto: PDH-Administratoren sind in Grafana Admin, wer Kostenstellen verwaltet ist Editor, alle anderen dürfen nur ansehen. Unter Core → Grafana bleibt die Adresse deshalb leer; der grüne Punkt zeigt, ob Grafana läuft. Ein separates Grafana lässt sich dort als Adresse eintragen.</div>
+  <p>Notfall-Zugang direkt am Server: <code>http://127.0.0.1:3000/grafana/</code>, Benutzer <code>admin</code>, Passwort <code>PDH_GRAFANA_ADMIN_PASSWORD</code> aus <code>.env.docker</code>. Von außen ist Port 3000 bewusst nicht erreichbar. Grafana liest die PDH-Daten nur und sieht keine Passwörter oder Schlüssel.</p>
   {{template "hb-shots" (dict "Ref" (index $s "statistics") "Can" $can)}}
 </section>
 

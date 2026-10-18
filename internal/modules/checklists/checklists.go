@@ -111,7 +111,7 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, c *Checklist) error {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO maintenance_checklists (id, name, description, category, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4)
 		RETURNING id, created_at`,
 		c.Name, c.Description, c.Category, c.CreatedBy,
 	).Scan(&c.ID, &c.CreatedAt)
@@ -127,7 +127,7 @@ func (r *Repository) Create(ctx context.Context, c *Checklist) error {
 			  (id, checklist_id, sort_order, item_type, label, description,
 			   required, compare_value, compare_unit, compare_tolerance,
 			   options, min_value, max_value)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			RETURNING id`,
 			c.ID, i, item.Type, item.Label, item.Description,
 			item.Required, item.CompareValue, item.CompareUnit,
@@ -211,7 +211,7 @@ func (r *Repository) SaveLog(ctx context.Context, taskID, userID string, in *Sav
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO task_checklist_logs
 		  (id, task_id, item_id, checked, text_value, number_value, selected, ok, note, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (task_id, item_id) DO UPDATE SET
 		  checked=$3, text_value=$4, number_value=$5, selected=$6, ok=$7, note=$8`,
 		taskID, in.ItemID, in.Checked, in.TextValue,

@@ -131,6 +131,23 @@
   </div>
 </form>
 {{if and (eq .Key "cloudflare") $.CF}}{{template "sc-cloudflare" $.CF}}{{end}}
+{{if eq .Key "nextcloud"}}{{with $.NCTheme}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-palette"></i> Nextcloud im PDH-Look</span><span class="sc-sub">Theming-App von Nextcloud</span></div>
+  <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:{{css .Color}};color:#fff;min-width:220px">
+      {{if .LogoURL}}<img src="{{.LogoURL}}" alt="" style="height:28px;max-width:90px;object-fit:contain;background:#fff;border-radius:4px;padding:2px">{{else}}<i class="ti ti-cloud" style="font-size:24px"></i>{{end}}
+      <div><div style="font-weight:600">{{.Name}}</div><div style="font-size:11px;opacity:.85">{{.Slogan}}</div></div>
+    </div>
+    <div class="sc-sub" style="flex:1;min-width:220px">Übernimmt <b>Name</b>, <b>Firmenfarbe</b> ({{.Color}}) als Haupt- und Hintergrundfarbe{{if .LogoURL}}, <b>Logo</b> (auch als Favicon){{else}} – ein Logo gibt es noch nicht (Reiter „Erscheinungsbild“){{end}}{{if .URL}} und die <b>Adresse</b> {{.URL}}{{end}}. Ändert sich das PDH-Erscheinungsbild, einfach erneut übertragen.</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <form method="post" action="/admin/server-config/nextcloud-theming" onsubmit="return confirm('Erscheinungsbild von Nextcloud jetzt auf den PDH-Look umstellen?')"><button class="btn btn-primary" type="submit"><i class="ti ti-send"></i> An Nextcloud übertragen</button></form>
+    <a class="btn" href="/admin/server-config/nextcloud-theming/script"><i class="ti ti-download"></i> occ-Skript herunterladen</a>
+    <span class="sc-sub">Übertragen braucht einen Nextcloud-Benutzer mit Admin-Rechten. Das Skript läuft auf dem Nextcloud-Server: <code>sudo bash nextcloud-theming-pdh.sh /var/www/nextcloud</code></span>
+  </div>
+</div>
+{{end}}{{end}}
 </div>
 {{end}}
 

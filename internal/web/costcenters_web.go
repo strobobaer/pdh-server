@@ -377,7 +377,7 @@ func (h *Handler) CostCenterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	msg := "Kostenstelle " + number + " gespeichert"
 	if id == "" {
 		err = h.db.QueryRow(ctx, `INSERT INTO cost_centers (id, number, name, description, parent_id, responsible_id, created_by)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4::uuid, $5::uuid, $6::uuid) RETURNING id::text`,
+			VALUES (pdh_uuid_v7(), $1, $2, $3, $4::uuid, $5::uuid, $6::uuid) RETURNING id::text`,
 			number, name, desc, parent, resp, getUser(r).ID).Scan(&id)
 		msg = "Kostenstelle " + number + " angelegt"
 	} else {

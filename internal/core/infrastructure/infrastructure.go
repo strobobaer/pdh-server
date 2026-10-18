@@ -105,7 +105,7 @@ func (r *Repository) Create(ctx context.Context, i *Infrastructure) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO infrastructure
 		 (id, parent_id, name, type, description, location, serial_no, manufacturer, manufacturer_id, model, cost_center_id, installed_at)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		 VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 RETURNING id, active, created_at, updated_at`,
 		i.ParentID, i.Name, i.Type, i.Description,
 		i.Location, i.SerialNo, i.Manufacturer, i.ManufacturerID, i.Model, i.CostCenterID, i.InstalledAt,

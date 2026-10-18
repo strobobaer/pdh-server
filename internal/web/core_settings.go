@@ -38,6 +38,7 @@ type CoreSettingsPageData struct {
 	AgentReachable      bool
 	AgentStatus         string
 	AgentOutput         string
+	NC                  *ncUpdateView // Kachel „Nextcloud-Updates“ (nextcloud_updates.go)
 	Notice              string
 
 	DefaultDueDaysFault       int
@@ -176,6 +177,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 			data.AgentStatus = "Update-Agent nicht erreichbar"
 		}
 	}
+	data.NC = h.ncUpdateViewFor(r.Context())
 	h.render(w, "core_settings", data)
 }
 

@@ -21,7 +21,7 @@ func (r *Repository) Create(ctx context.Context, f *Fault) error {
 	query := `
 		INSERT INTO faults (id, title, description, symptoms, severity, status,
 			infrastructure_id, assigned_to, responsible_to, created_by, detected_at, due_date, cost_center_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, 'detected', $5, $6, $7, $8, NOW(), $9, $10)
 		RETURNING id, status, detected_at, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		f.Title, f.Description, symptoms, f.Severity,
@@ -40,7 +40,7 @@ func (r *Repository) CreateTicketFromFault(ctx context.Context, f *Fault, priori
 	var id string
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, cost_center_id, linked_fault_id, assigned_group_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid))
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, (SELECT assigned_group_id FROM faults WHERE id = $9::uuid))
 		RETURNING id`,
 		"Störung: "+f.Title, description, priority, f.AssignedTo, f.ResponsibleTo, f.CreatedBy, f.InfrastructureID, f.CostCenterID, f.ID,
 	).Scan(&id)
@@ -101,7 +101,7 @@ func (r *Repository) SetStatusDirect(ctx context.Context, faultID, status, userI
 func (r *Repository) AddActionDirect(ctx context.Context, faultID, description, userID string) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO fault_actions (id, fault_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)`,
+		VALUES (pdh_uuid_v7(), $1, $2, $3)`,
 		faultID, description, userID)
 	return err
 }
@@ -244,7 +244,7 @@ func (r *Repository) SaveAnalysis(ctx context.Context, a *CopilotAnalysis) error
 	similar, _ := json.Marshal(a.SimilarFaults)
 	query := `
 		INSERT INTO fault_analyses (id, fault_id, summary, possible_causes, steps, similar_faults, confidence)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6)
 		ON CONFLICT (fault_id) DO UPDATE
 		SET summary=$2, possible_causes=$3, steps=$4, similar_faults=$5,
 			confidence=$6, created_at=NOW()

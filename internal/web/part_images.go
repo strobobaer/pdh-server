@@ -314,7 +314,7 @@ func (h *Handler) PartImageSetWeb(w http.ResponseWriter, r *http.Request) {
 	mimetype := http.DetectContentType(data)
 	if _, err := h.db.Exec(ctx, `
 		INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
-		VALUES (gen_random_uuid(), 'inventory', $1::uuid, $2, $3, $4, $5, 'Teilebild', $6)`,
+		VALUES (pdh_uuid_v7(), 'inventory', $1::uuid, $2, $3, $4, $5, 'Teilebild', $6)`,
 		id, name, filepath.ToSlash(rel), mimetype, len(data), nullID(getUser(r).ID)); err != nil {
 		_ = os.Remove(abs)
 		partRedirect(w, r, id, back, "", err)

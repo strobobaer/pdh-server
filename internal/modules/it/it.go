@@ -83,7 +83,7 @@ func (r *Repository) Create(ctx context.Context, a *Asset) error {
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO it_assets (id, name, type, status, hostname, ip_address, mac_address,
 		  manufacturer, manufacturer_id, model, serial_no, location, os, assigned_to, infrastructure_id, notes, created_by)
-		VALUES (gen_random_uuid(), $1, $2, 'active', $3, $4, '', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES (pdh_uuid_v7(), $1, $2, 'active', $3, $4, '', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at, updated_at`,
 		a.Name, a.Type, a.Hostname, a.IPAddress,
 		a.Manufacturer, a.ManufacturerID, a.Model, a.SerialNo, a.Location, a.OS,

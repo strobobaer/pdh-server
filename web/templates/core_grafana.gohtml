@@ -47,7 +47,7 @@
       <input name="base_url" class="form-input" value="{{.BaseURL}}" placeholder="leer = {{.EffectiveBase}}"></div>
     {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
   </form>
-  <p class="rec-sub" style="margin-top:8px">Leer lassen, wenn Grafana auf demselben Server läuft (Docker-Installation: Port 3000). Über das Internet (Cloudflare-Tunnel) eine eigene Adresse wie <code>https://grafana.firma.de</code> anlegen und hier eintragen. Dashboard-Adressen dürfen dann kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
+  <p class="rec-sub" style="margin-top:8px">{{if .Proxied}}<b>Leer lassen:</b> Grafana läuft durch das PDH unter <a href="/grafana/" target="_blank" rel="noopener"><code>/grafana/</code></a> – gleiche Adresse, gleiches HTTPS (auch über Cloudflare) und automatische Anmeldung mit dem PDH-Konto (Administratoren als Grafana-Admin, sonst nur lesen). Nur eintragen, wenn ein anderes Grafana genutzt werden soll.{{else}}Leer lassen, wenn Grafana auf demselben Server unter Port 3000 läuft. Sonst die Adresse von Grafana eintragen, z. B. <code>https://grafana.firma.de</code>.{{end}} Dashboard-Adressen dürfen kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
 </div>
 
 <div class="card">
@@ -108,10 +108,10 @@
 <details class="card">
   <summary class="card-title" style="cursor:pointer"><span><i class="ti ti-info-circle"></i> Grafana einrichten – Hinweise</span></summary>
   <ul style="font-size:13px;line-height:1.6;margin:6px 0 0 18px">
-    <li>Die Docker-Installation startet Grafana mit: Port <b>3000</b>, Benutzer <code>admin</code>, Passwort in <code>.env.docker</code> unter <code>PDH_GRAFANA_ADMIN_PASSWORD</code>.</li>
+    <li>Die Docker-Installation startet Grafana hinter dem PDH: aufrufen über <a href="/grafana/" target="_blank" rel="noopener"><code>/grafana/</code></a>, angemeldet ist man mit dem PDH-Konto. Dashboards bearbeiten können PDH-Administratoren (Grafana-Admin) und wer Kostenstellen verwaltet (Editor). Notfall-Zugang direkt am Server: <code>http://127.0.0.1:3000/grafana/</code>, Benutzer <code>admin</code>, Passwort <code>PDH_GRAFANA_ADMIN_PASSWORD</code> in <code>.env.docker</code>.</li>
     <li>Die Datenquelle <b>PDH</b> ist schon eingerichtet. Sie liest die PDH-Datenbank nur (Benutzer <code>pdh_grafana</code>) und sieht keine Passwörter und Schlüssel.</li>
     <li>Das Dashboard <b>PDH Übersicht</b> wird mitgeliefert und ist oben schon als Kachel eingetragen.</li>
-    <li>Damit Kacheln ohne Grafana-Anmeldung angezeigt werden, in <code>.env.docker</code> <code>PDH_GRAFANA_ANONYMOUS=true</code> setzen (nur Lesen). Läuft Grafana unter einer anderen Domain als das PDH, zusätzlich <code>PDH_GRAFANA_COOKIE_SAMESITE=none</code> und <code>PDH_GRAFANA_COOKIE_SECURE=true</code> (nur mit https).</li>
+    <li>Ein eigenes, separates Grafana (andere Domain) lässt sich oben als Adresse eintragen; dann meldet man sich dort selbst an.</li>
   </ul>
 </details>
 

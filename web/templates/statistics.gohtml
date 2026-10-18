@@ -35,7 +35,7 @@
     <a class="btn btn-icon" href="{{.Href}}" target="_blank" rel="noopener" title="In Grafana öffnen (neuer Tab)" aria-label="In Grafana öffnen"><i class="ti ti-external-link"></i></a>
   </div>
   <iframe id="st-frame" class="st-frame" src="{{.Href}}" title="{{.Title}}" allow="fullscreen" referrerpolicy="no-referrer-when-downgrade"></iframe>
-  <p class="rec-sub" style="margin-top:6px">Bleibt die Fläche leer oder verlangt eine Anmeldung? Einmal über <i class="ti ti-external-link"></i> in Grafana anmelden, dann neu laden.{{if $d.CanManage}} Einstellungen: <a href="/core/settings/grafana">Core → Grafana</a>.{{end}}</p>
+  {{if not $d.Proxied}}<p class="rec-sub" style="margin-top:6px">Bleibt die Fläche leer oder verlangt eine Anmeldung? Einmal über <i class="ti ti-external-link"></i> in Grafana anmelden, dann neu laden.{{if $d.CanManage}} Einstellungen: <a href="/core/settings/grafana">Core → Grafana</a>.{{end}}</p>{{end}}
 </div>
 {{end}}{{else}}
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -46,7 +46,7 @@
   {{if .CanManage}}<a class="btn" href="/core/settings/grafana"><i class="ti ti-settings"></i> Kacheln verwalten</a>{{end}}
 </div>
 {{if .Err}}<div class="st-hint" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
-{{if and .CanManage .Auto}}<div class="st-hint"><i class="ti ti-info-circle"></i> Grafana wird unter <code>{{.BaseURL}}</code> erwartet (gleicher Server, Port 3000). Läuft es woanders – z. B. über Cloudflare –, die Adresse unter <a href="/core/settings/grafana">Core → Grafana</a> eintragen.</div>{{end}}
+{{if and .CanManage .Auto (not .Proxied)}}<div class="st-hint"><i class="ti ti-info-circle"></i> Grafana wird unter <code>{{.BaseURL}}</code> erwartet (gleicher Server, Port 3000). Läuft es woanders – z. B. über Cloudflare –, die Adresse unter <a href="/core/settings/grafana">Core → Grafana</a> eintragen.</div>{{end}}
 <div class="st-tiles">
   {{range .Dashboards}}
   <a class="st-tile" style="--tile-c:{{grafanaColor .Color}}" {{if eq .OpenMode "tab"}}href="{{.Href}}" target="_blank" rel="noopener"{{else}}href="/statistics/{{.ID}}"{{end}}>

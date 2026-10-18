@@ -86,7 +86,7 @@ func (r *Repository) Create(ctx context.Context, u *User) error {
 	query := `
 		INSERT INTO users (id, username, email, password_hash, first_name, last_name, role, department, phone, active, is_system_user, rfid_uid, nextcloud_user_id,
 			on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		u.Username, u.Email, u.PasswordHash,

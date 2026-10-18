@@ -207,7 +207,7 @@ func (r *Repository) CreateStocktakeSession(ctx context.Context, fromNodeID, toN
 	session := &StocktakeSession{FromNodeID: fromNodeID, ToNodeID: toNodeID, Status: StocktakeOpen, CreatedBy: userID}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO inventory_sessions (id, from_node_id, to_node_id, status, created_by)
-		VALUES (gen_random_uuid(), $1, $2, 'open', $3)
+		VALUES (pdh_uuid_v7(), $1, $2, 'open', $3)
 		RETURNING id, created_at`, fromNodeID, toNodeID, userID,
 	).Scan(&session.ID, &session.CreatedAt); err != nil {
 		return nil, nil, err
@@ -238,7 +238,7 @@ func (r *Repository) CreateStocktakeSession(ctx context.Context, fromNodeID, toN
 			item := &StocktakeItem{SessionID: session.ID, StorageNodeID: nodeID, ExpectedQty: 0}
 			if err := tx.QueryRow(ctx, `
 				INSERT INTO inventory_session_items (id, session_id, storage_node_id, part_id, expected_qty)
-				VALUES (gen_random_uuid(), $1, $2, NULL, 0)
+				VALUES (pdh_uuid_v7(), $1, $2, NULL, 0)
 				RETURNING id`, session.ID, nodeID).Scan(&item.ID); err != nil {
 				return nil, nil, err
 			}
@@ -250,7 +250,7 @@ func (r *Repository) CreateStocktakeSession(ctx context.Context, fromNodeID, toN
 			item := &StocktakeItem{SessionID: session.ID, StorageNodeID: nodeID, PartID: &partID, ExpectedQty: s.Qty}
 			if err := tx.QueryRow(ctx, `
 				INSERT INTO inventory_session_items (id, session_id, storage_node_id, part_id, expected_qty)
-				VALUES (gen_random_uuid(), $1, $2, $3, $4)
+				VALUES (pdh_uuid_v7(), $1, $2, $3, $4)
 				RETURNING id`, session.ID, nodeID, s.PartID, s.Qty).Scan(&item.ID); err != nil {
 				return nil, nil, err
 			}

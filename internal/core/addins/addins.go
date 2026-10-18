@@ -104,7 +104,7 @@ func (r *Repository) Create(ctx context.Context, a *Addin) error {
 
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO addins (id, name, description, type, enabled, webhook_url, webhook_secret, script_code, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, true, $4, $5, $6, $7)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, true, $4, $5, $6, $7)
 		RETURNING id, enabled, created_at, updated_at`,
 		a.Name, a.Description, a.Type, a.WebhookURL, a.WebhookSecret, a.ScriptCode, a.CreatedBy,
 	).Scan(&a.ID, &a.Enabled, &a.CreatedAt, &a.UpdatedAt); err != nil {
@@ -240,7 +240,7 @@ func (r *Repository) GetSubscribed(ctx context.Context, eventName string) ([]*Ad
 func (r *Repository) LogRun(ctx context.Context, addinID, eventName, payload string, success bool, errMsg string, durationMs int) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO addin_run_log (id, addin_id, event_name, payload, success, error, duration_ms)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)`,
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6)`,
 		addinID, eventName, payload, success, errMsg, durationMs)
 	return err
 }

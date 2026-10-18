@@ -87,7 +87,7 @@ func ensureChild(ctx context.Context, tx pgx.Tx, parentID, name string, t NodeTy
 		return "", false, err
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO storage_nodes (id, parent_id, name, type, created_by)
-		VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4::uuid) RETURNING id::text`, parentID, name, t, userID).Scan(&id)
+		VALUES (pdh_uuid_v7(), $1::uuid, $2, $3, $4::uuid) RETURNING id::text`, parentID, name, t, userID).Scan(&id)
 	return id, true, err
 }
 
@@ -147,7 +147,7 @@ func (s *Service) Copy(ctx context.Context, srcID string, targetID *string, name
 func copyNode(ctx context.Context, tx pgx.Tx, n *Node, parentID *string, name string, withChildren bool, userID string) (int, error) {
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO storage_nodes (id, parent_id, name, type, description, location, capacity, created_by)
-		VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, $7::uuid) RETURNING id::text`,
+		VALUES (pdh_uuid_v7(), $1::uuid, $2, $3, $4, $5, $6, $7::uuid) RETURNING id::text`,
 		parentID, name, n.Type, n.Description, n.Location, n.Capacity, userID).Scan(&id); err != nil {
 		return 0, err
 	}

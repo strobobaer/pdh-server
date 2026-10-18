@@ -191,7 +191,7 @@ func calcStatus(stock, min, critical float64) StockStatus {
 func (r *Repository) ensureCustomFieldTables(ctx context.Context) error {
 	_, err := r.db.Exec(ctx, `
 		ALTER TABLE spare_parts ADD COLUMN IF NOT EXISTS storage_warehouse TEXT NOT NULL DEFAULT '';
-		CREATE TABLE IF NOT EXISTS spare_part_field_defs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(100) NOT NULL, field_type VARCHAR(30) NOT NULL DEFAULT 'text', sort_order INTEGER NOT NULL DEFAULT 100, active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+		CREATE TABLE IF NOT EXISTS spare_part_field_defs (id UUID PRIMARY KEY DEFAULT pdh_uuid_v7(), name VARCHAR(100) NOT NULL, field_type VARCHAR(30) NOT NULL DEFAULT 'text', sort_order INTEGER NOT NULL DEFAULT 100, active BOOLEAN NOT NULL DEFAULT true, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_spare_part_field_defs_name_active ON spare_part_field_defs (lower(name)) WHERE active=true;
 		CREATE TABLE IF NOT EXISTS spare_part_field_values (part_id UUID NOT NULL REFERENCES spare_parts(id) ON DELETE CASCADE, field_id UUID NOT NULL REFERENCES spare_part_field_defs(id) ON DELETE CASCADE, value TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (part_id, field_id));`)
 	return err
@@ -200,7 +200,7 @@ func (r *Repository) ensureCustomFieldTables(ctx context.Context) error {
 func (r *Repository) Create(ctx context.Context, p *SparePart) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO spare_parts (id, part_number, name, description, category, manufacturer, manufacturer_id, manufacturer_part, unit, stock_qty, min_qty, critical_qty, reorder_qty, price, infrastructure_id, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11, $12, $13, $14)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11, $12, $13, $14)
 		RETURNING id, active, created_at, updated_at`,
 		p.PartNumber, p.Name, p.Description, p.Category, p.Manufacturer, p.ManufacturerID, p.ManufacturerPart, p.Unit,
 		p.MinQty, p.CriticalQty, p.ReorderQty, p.Price, p.InfrastructureID, p.CreatedBy,
@@ -376,7 +376,7 @@ func bookTx(ctx context.Context, tx pgx.Tx, m *StockMovement) error {
 	}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id, reservation_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, created_at`,
 		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg, reservationArg,
 	).Scan(&m.ID, &m.CreatedAt); err != nil {
@@ -477,7 +477,7 @@ func (r *Repository) CreateFieldDef(ctx context.Context, d *CustomFieldDef) erro
 	if d.SortOrder == 0 {
 		d.SortOrder = 100
 	}
-	return r.db.QueryRow(ctx, `INSERT INTO spare_part_field_defs (id, name, field_type, sort_order) VALUES (gen_random_uuid(), $1, $2, $3) RETURNING id, active, created_at`, d.Name, d.FieldType, d.SortOrder).Scan(&d.ID, &d.Active, &d.CreatedAt)
+	return r.db.QueryRow(ctx, `INSERT INTO spare_part_field_defs (id, name, field_type, sort_order) VALUES (pdh_uuid_v7(), $1, $2, $3) RETURNING id, active, created_at`, d.Name, d.FieldType, d.SortOrder).Scan(&d.ID, &d.Active, &d.CreatedAt)
 }
 
 func (r *Repository) GetFieldValues(ctx context.Context, partID string) ([]*CustomFieldValue, error) {

@@ -46,7 +46,7 @@ type LocksmithTeamAssignment struct {
 func (r *Repository) CreateTeam(ctx context.Context, t *ShiftTeam) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO shift_teams (id, name, phone, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, active, created_at`,
 		t.Name, t.Phone, t.CreatedBy,
 	).Scan(&t.ID, &t.Active, &t.CreatedAt)

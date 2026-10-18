@@ -25,8 +25,16 @@ im Kapitel „Versionen & Updates“ an.
 - Server-Einstellungen: Zugangsdaten aus der .env.docker (Microsoft 365, Nextcloud, Copilot, DeepL, E-Mail …) mit einem Klick verschlüsselt in die Datenbank übernehmen – danach gelten sie aus der Datenbank und sind in den Reitern bearbeitbar
 - Server-Einstellungen: „Verbindung testen“ jetzt auch für Microsoft 365, Nextcloud und DeepL; das Ergebnis bleibt gespeichert und zeigt sich als grüner oder roter Punkt am Reiter
 - Server-Einstellungen: Sind Werte übernommen und der Test grün, entfernt „Aus .env.docker entfernen“ sie über den Update-Agenten aus der .env.docker (ohne Klartext-Kopie)
+- Server-Einstellungen → Nextcloud: „Nextcloud im PDH-Look“ überträgt Name, Firmenfarbe, Logo und Adresse des PDH in die Theming-App von Nextcloud – direkt oder per herunterladbarem occ-Skript
+- Doppel-Absende-Sperre: Ein Doppelklick oder erneutes Absenden legt nichts mehr doppelt an – jedes Absenden trägt einen einmaligen Schlüssel, der nur einmal ausgeführt wird
+- Core-Einstellungen: neue Kachel „Nextcloud-Updates“ neben den PDH-Updates – prüft System- und App-Updates von Nextcloud und spielt sie mit einem Klick ein („Alle Apps aktualisieren“, „System-Update“)
+- Grafana läuft durch das PDH unter /grafana/ – gleiche Adresse und HTTPS wie das PDH (auch über Cloudflare), Anmeldung automatisch mit dem PDH-Konto
+
+### Geändert
+- Neue Datensätze bekommen zeitlich sortierte IDs (UUIDv7) – schnellere Datenbank-Indizes, bestehende IDs bleiben unverändert
 
 ### Behoben
+- Statistik: Grafana-Kacheln brachen über HTTPS/Cloudflare mit „ERR_SSL_PROTOCOL_ERROR“ ab (Aufruf über Port 3000) – Grafana läuft jetzt unter /grafana/ durch das PDH
 - Mein Konto: „Geschäftskonto verbinden“, „Privates Konto verbinden“ und „Teams freigeben“ brachen mit „login.microsoftonline.com hat die Verbindung verweigert“ ab, wenn das PDH eingebettet lief (z. B. in Nextcloud) – die Microsoft-Anmeldung öffnet sich dann in einem neuen Tab
 
 ## [0.49.0] – 2026-10-10

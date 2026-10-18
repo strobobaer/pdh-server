@@ -29,7 +29,7 @@ func (r *Repository) AddAction(ctx context.Context, faultID, description, userID
 	a := &FaultAction{FaultID: faultID, Description: description, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO fault_actions (id, fault_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, created_at`,
 		faultID, description, userID,
 	).Scan(&a.ID, &a.CreatedAt)

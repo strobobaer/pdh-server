@@ -40,7 +40,7 @@ type AssignFieldSetInput struct {
 func (r *Repository) ensureFieldSetTables(ctx context.Context) error {
 	_, err := r.db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS spare_part_field_sets (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			id UUID PRIMARY KEY DEFAULT pdh_uuid_v7(),
 			name VARCHAR(100) NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
 			active BOOLEAN NOT NULL DEFAULT true,
@@ -86,7 +86,7 @@ func (r *Repository) CreateFieldSet(ctx context.Context, fs *FieldSet) error {
 	}
 	return r.db.QueryRow(ctx, `
 		INSERT INTO spare_part_field_sets (id, name, description)
-		VALUES (gen_random_uuid(), $1, $2)
+		VALUES (pdh_uuid_v7(), $1, $2)
 		RETURNING id, active, created_at`, fs.Name, fs.Description).Scan(&fs.ID, &fs.Active, &fs.CreatedAt)
 }
 
@@ -126,7 +126,7 @@ func (r *Repository) CreateFieldInSet(ctx context.Context, fieldSetID string, d 
 	}
 	return r.db.QueryRow(ctx, `
 		INSERT INTO spare_part_field_defs (id, name, field_type, sort_order, field_set_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4)
 		RETURNING id, active, created_at`, d.Name, d.FieldType, d.SortOrder, fieldSetID).Scan(&d.ID, &d.Active, &d.CreatedAt)
 }
 

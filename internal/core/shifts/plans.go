@@ -98,7 +98,7 @@ type GeneratePlanInput struct {
 func (r *Repository) CreatePlan(ctx context.Context, p *ShiftPlan) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO shift_plans (id, name, model_id, start_date, end_date, status, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'draft', $5)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, 'draft', $5)
 		RETURNING id, status, created_at`,
 		p.Name, p.ModelID, p.StartDate, p.EndDate, p.CreatedBy,
 	).Scan(&p.ID, &p.Status, &p.CreatedAt)
@@ -196,7 +196,7 @@ func (r *Repository) GetPlanAssignments(ctx context.Context, planID string) ([]*
 func (r *Repository) AssignWithPlan(ctx context.Context, a *ShiftAssignment, planID string) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO shift_assignments (id, user_id, shift_id, date, note, created_by, plan_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_id, date) DO UPDATE
 		SET shift_id=$2, note=$4, created_by=$5, plan_id=$6
 		RETURNING id, created_at`,
@@ -209,7 +209,7 @@ func (r *Repository) AssignWithPlan(ctx context.Context, a *ShiftAssignment, pla
 func (r *Repository) CreateRotationPattern(ctx context.Context, p *RotationPattern) error {
 	return r.db.QueryRow(ctx, `
 		INSERT INTO shift_rotation_patterns (id, model_id, name, cycle_length, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4)
 		RETURNING id, active, created_at`,
 		p.ModelID, p.Name, p.CycleLength, p.CreatedBy,
 	).Scan(&p.ID, &p.Active, &p.CreatedAt)
@@ -242,7 +242,7 @@ func (r *Repository) ListRotationPatterns(ctx context.Context, modelID string) (
 func (r *Repository) SetPatternDay(ctx context.Context, patternID string, dayIndex int, shiftID *string) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO shift_rotation_pattern_days (id, pattern_id, day_index, shift_id)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		ON CONFLICT (pattern_id, day_index) DO UPDATE SET shift_id=$3`,
 		patternID, dayIndex, shiftID)
 	return err
@@ -322,7 +322,7 @@ func (r *Repository) GeneratePlanFromPattern(ctx context.Context, plan *ShiftPla
 
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO shift_plans (id, name, model_id, start_date, end_date, status, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'draft', $5)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, 'draft', $5)
 		RETURNING id, status, created_at`,
 		plan.Name, plan.ModelID, plan.StartDate, plan.EndDate, plan.CreatedBy,
 	).Scan(&plan.ID, &plan.Status, &plan.CreatedAt); err != nil {
@@ -339,7 +339,7 @@ func (r *Repository) GeneratePlanFromPattern(ctx context.Context, plan *ShiftPla
 			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO shift_assignments (id, user_id, shift_id, date, created_by, plan_id)
-				VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+				VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 				ON CONFLICT (user_id, date) DO UPDATE
 				SET shift_id=$2, created_by=$4, plan_id=$5`,
 				u.UserID, *shiftID, d.Format("2006-01-02"), plan.CreatedBy, plan.ID); err != nil {

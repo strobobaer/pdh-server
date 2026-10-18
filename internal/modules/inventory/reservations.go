@@ -101,7 +101,7 @@ func (s *Service) Reserve(ctx context.Context, kind, refID, partID, storageNodeI
 
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO `+k.table+` (id, `+k.refCol+`, part_id, storage_node_id, qty, created_by, reserved)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, true) RETURNING id`,
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, true) RETURNING id`,
 		refID, partID, storageNodeID, qty, userID).Scan(&id); err != nil {
 		return "", err
 	}

@@ -1,0 +1,87 @@
+{{/*
+  Doppel-Absende-Sperre (Gegenstück: internal/web/request_once.go).
+  Jedes Absenden trägt einen einmaligen UUIDv7-Schlüssel; der Server führt
+  denselben Schlüssel nur einmal aus. Abschalten je Formular: data-no-once.
+*/}}
+{{define "request-once-script"}}
+<script>
+(function () {
+  if (window.pdhOnce) return;
+  // UUIDv7 (RFC 9562): 48 Bit Millisekunden + Zufall
+  function v7() {
+    var b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    var t = Date.now();
+    for (var i = 5; i >= 0; i--) { b[i] = t % 256; t = Math.floor(t / 256); }
+    b[6] = (b[6] & 0x0f) | 0x70;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    var h = Array.prototype.map.call(b, function (x) { return (x < 16 ? '0' : '') + x.toString(16); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  window.pdhOnce = v7;
+  function unsafe(m) { m = String(m || 'GET').toUpperCase(); return m !== 'GET' && m !== 'HEAD'; }
+  function sameOrigin(u) { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } }
+  function withOnce(u, tok) { var x = new URL(u, location.href); x.searchParams.set('_once', tok); return x.pathname + x.search + x.hash; }
+
+  // normale Formulare: Schlüssel in der Adresse, bei Doppelklick derselbe
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!(f instanceof HTMLFormElement) || f.hasAttribute('data-no-once')) return;
+    if (f.hasAttribute('hx-post') || f.hasAttribute('hx-put') || f.hasAttribute('hx-delete') || f.hasAttribute('hx-patch')) return; // htmx: Kopfzeile
+    var sub = e.submitter, useSub = sub && sub.hasAttribute('formaction');
+    var method = (sub && sub.getAttribute('formmethod')) || f.getAttribute('method') || 'get';
+    if (!unsafe(method)) return;
+    var action = useSub ? sub.formAction : f.action;
+    if (!sameOrigin(action)) return;
+    if (!f.dataset.once) {
+      f.dataset.once = v7();
+      // Seite bleibt stehen (Download, neuer Tab, Fehler per JS) → nächstes Absenden ist neu
+      setTimeout(function () { delete f.dataset.once; }, 4000);
+    }
+    if (useSub) sub.formAction = withOnce(action, f.dataset.once); else f.action = withOnce(action, f.dataset.once);
+  }, true);
+
+  // htmx: Schlüssel je auslösendem Formular/Knopf, frei nach der Antwort
+  document.addEventListener('htmx:configRequest', function (e) {
+    var el = e.detail.elt;
+    if (!unsafe(e.detail.verb) || !el || el.closest('[data-no-once]')) return;
+    if (el.matches('input, select, textarea')) return; // Eingaben (Autosave, Suche) nicht sperren
+    el.__pdhOnce = el.__pdhOnce || v7();
+    e.detail.headers['X-PDH-Once'] = el.__pdhOnce;
+  });
+  document.addEventListener('htmx:afterRequest', function (e) { if (e.detail.elt) delete e.detail.elt.__pdhOnce; });
+
+  // fetch: derselbe Aufruf mit gleichem Inhalt binnen 0,8 s = Doppelklick
+  function bodyKey(b) {
+    if (b == null) return '';
+    if (typeof b === 'string') return b.slice(0, 4000);
+    if (b instanceof URLSearchParams) return b.toString();
+    if (b instanceof FormData) {
+      var out = [];
+      b.forEach(function (v, k) { out.push(k + '=' + (typeof v === 'string' ? v : 'file:' + v.name + ':' + v.size)); });
+      return out.join('&').slice(0, 4000);
+    }
+    if (b instanceof Blob) return 'blob:' + b.size;
+    return '';
+  }
+  var recent = {}, origFetch = window.fetch;
+  if (origFetch) window.fetch = function (input, init) {
+    try {
+      init = init || {};
+      var method = init.method || (input && input.method) || 'GET';
+      var url = typeof input === 'string' ? input : (input && input.url) || String(input);
+      var headers = new Headers(init.headers || (input && input.headers) || {});
+      if (unsafe(method) && sameOrigin(url) && !headers.has('X-PDH-Once')) {
+        var key = String(method).toUpperCase() + ' ' + url + ' ' + bodyKey(init.body);
+        var now = Date.now(), r = recent[key];
+        var tok = r && now - r.t < 800 ? r.tok : v7();
+        recent[key] = { tok: tok, t: now };
+        headers.set('X-PDH-Once', tok);
+        init = Object.assign({}, init, { headers: headers });
+      }
+    } catch (err) { /* nie den Aufruf verhindern */ }
+    return origFetch.call(this, input, init);
+  };
+})();
+</script>
+{{end}}

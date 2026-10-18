@@ -101,7 +101,7 @@ func (r *Repository) Create(ctx context.Context, t *Ticket) error {
 	tags, _ := json.Marshal(t.Tags)
 	query := `
 		INSERT INTO tickets (id, title, description, priority, status, assigned_to, responsible_to, created_by, infrastructure_id, due_date, tags, cost_center_id)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`
 	return r.db.QueryRow(ctx, query,
 		t.Title, t.Description, t.Priority,
@@ -236,7 +236,7 @@ func (r *Repository) SetStatusDirect(ctx context.Context, ticketID, status, user
 func (r *Repository) AddActionDirect(ctx context.Context, ticketID, description, userID string) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO ticket_actions (id, ticket_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)`,
+		VALUES (pdh_uuid_v7(), $1, $2, $3)`,
 		ticketID, description, userID)
 	return err
 }
@@ -260,7 +260,7 @@ func (r *Repository) UpdateDueDate(ctx context.Context, id string, dueDate *time
 
 func (r *Repository) AddComment(ctx context.Context, c *Comment) error {
 	query := `INSERT INTO ticket_comments (id, ticket_id, user_id, text)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, created_at`
 	return r.db.QueryRow(ctx, query, c.TicketID, c.UserID, c.Text).
 		Scan(&c.ID, &c.CreatedAt)

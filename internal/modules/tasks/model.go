@@ -107,7 +107,7 @@ func (r *Repository) Create(ctx context.Context, t *Task) error {
 	if err := r.db.QueryRow(ctx, `
 		INSERT INTO tasks (id, title, description, priority, responsible_to,
 			due_date, start_date, project_id, infrastructure_id, created_by, color)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''))
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''))
 		RETURNING id, status, created_at, updated_at`,
 		t.Title, t.Description, t.Priority, t.ResponsibleTo,
 		t.DueDate, t.StartDate, t.ProjectID, t.InfrastructureID, t.CreatedBy, t.Color,

@@ -56,6 +56,33 @@
     {{if not .AgentConfigured}}<p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Update-Agent ist nicht erreichbar oder nicht konfiguriert. Installationsskript und Agent-Konfiguration prüfen.</p>{{end}}
   </div>
 
+  {{with .NC}}
+  <div class="card" id="nextcloud-updates">
+    <div class="card-title"><span><i class="ti ti-cloud"></i> Nextcloud-Updates</span>{{if and .Check (not .Check.Error)}}{{if .Check.UpToDate}}<span class="badge b-green">aktuell</span>{{else if .UpdateCount}}<span class="badge b-amber">{{.UpdateCount}} Update(s)</span>{{end}}{{end}}</div>
+    <dl style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;font-size:13px">
+      <dt style="color:var(--muted)">Installierte Version</dt><dd style="margin:0">{{if and .Check .Check.Version}}<b>{{.Check.Version}}</b>{{else}}noch nicht geprüft{{end}}</dd>
+      <dt style="color:var(--muted)">System-Update</dt><dd style="margin:0">{{if .Check}}{{if .Check.ServerUpdate}}<b style="color:var(--amber)">{{.Check.ServerUpdate}} verfügbar</b>{{else if not .Check.Error}}keins{{else}}–{{end}}{{else}}–{{end}}</dd>
+      <dt style="color:var(--muted)">App-Updates</dt><dd style="margin:0">{{if .Check}}{{if .Check.AppUpdates}}<b style="color:var(--amber)">{{len .Check.AppUpdates}}</b>: {{range $i, $a := .Check.AppUpdates}}{{if $i}}, {{end}}{{$a}}{{end}}{{else if not .Check.Error}}keine{{else}}–{{end}}{{else}}–{{end}}</dd>
+      <dt style="color:var(--muted)">Letzte Prüfung</dt><dd style="margin:0">{{if .Check}}{{.Check.CheckedAt}}{{else}}Noch nicht geprüft{{end}}</dd>
+    </dl>
+    {{if and .Check .Check.Error}}<p role="alert" style="color:var(--red);font-size:12px">{{.Check.Error}}</p>{{end}}
+    {{with .Job}}<p role="status" style="font-size:12px;{{if .Running}}color:var(--amber){{else if .Success}}color:var(--green){{else}}color:var(--red){{end}}"><i class="ti {{if .Running}}ti-loader-2{{else if .Success}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{if .Running}}Update läuft …{{else if .Success}}Letztes Update erfolgreich{{else}}Letztes Update mit Fehler{{end}}{{if .Finished}} ({{.Finished}}){{end}}</p>
+      {{if .Output}}<pre style="max-height:180px;overflow:auto;white-space:pre-wrap;font-size:11px;color:var(--muted)">{{.Output}}</pre>{{end}}{{end}}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <form method="POST" action="/core/settings/nextcloud/check"><button class="btn" type="submit" {{if not .AgentReady}}disabled{{end}}><i class="ti ti-refresh"></i> Updates prüfen</button></form>
+      <form method="POST" action="/core/settings/nextcloud/update" onsubmit="return confirm('Alle Nextcloud-Apps jetzt aktualisieren?')"><input type="hidden" name="what" value="apps">
+        <button class="btn btn-primary" type="submit" {{if or (not .AgentReady) (and .Job .Job.Running)}}disabled{{end}}><i class="ti ti-apps"></i> Alle Apps aktualisieren</button></form>
+      <form method="POST" action="/core/settings/nextcloud/update" onsubmit="return confirm('Nextcloud-System-Update starten? Nextcloud ist dabei einige Minuten im Wartungsmodus. Vorher sollte eine Sicherung von Nextcloud bestehen.')"><input type="hidden" name="what" value="all">
+        <button class="btn btn-primary" type="submit" {{if or (not .AgentReady) (and .Job .Job.Running)}}disabled{{end}}><i class="ti ti-download"></i> System-Update (inkl. Apps)</button></form>
+    </div>
+    <form method="POST" action="/core/settings/nextcloud/dir" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">
+      <div class="form-group" style="flex:1;min-width:200px;margin:0"><label class="form-label">Nextcloud-Verzeichnis auf diesem Server</label><input name="dir" class="form-input" value="{{.Dir}}"></div>
+      <button class="btn" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </form>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:0">Funktioniert, wenn Nextcloud auf demselben Server wie das PDH läuft. Ausgeführt werden die offiziellen Befehle (<code>occ update:check</code>, <code>occ app:update --all</code>, <code>updater.phar</code>) als Eigentümer von <code>occ</code>.{{if not .AgentReady}} Dafür muss der Update-Agent eingerichtet sein.{{end}}</p>
+  </div>
+  {{end}}
+
   <div class="card">
     <div class="card-title">Standard-Fälligkeiten</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Greift, wenn beim Anlegen kein eigener Termin angegeben wird - Anzahl Tage nach Erstellung.</p>

@@ -50,7 +50,7 @@ func (r *Repository) AddPendingPart(ctx context.Context, faultID, partID, storag
 	p := &PendingPart{FaultID: faultID, PartID: partID, StorageNodeID: storageNodeID, Qty: qty, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO fault_pending_parts (id, fault_id, part_id, storage_node_id, qty, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 		RETURNING id, created_at`,
 		faultID, partID, storageNodeID, qty, userID,
 	).Scan(&p.ID, &p.CreatedAt)

@@ -91,7 +91,7 @@ func ensureInfraChild(ctx context.Context, tx pgx.Tx, parentID *string, name str
 	}
 	// Standort, Kostenstelle und Abteilung vom Übergeordneten erben
 	err = tx.QueryRow(ctx, `INSERT INTO infrastructure (id, parent_id, name, type, location, cost_center_id, department_id)
-		SELECT gen_random_uuid(), $1::uuid, $2::varchar, $3::infra_type, p.location, p.cost_center_id, p.department_id
+		SELECT pdh_uuid_v7(), $1::uuid, $2::varchar, $3::infra_type, p.location, p.cost_center_id, p.department_id
 		FROM (SELECT NULL::int AS x) d LEFT JOIN infrastructure p ON p.id = $1::uuid
 		RETURNING id::text`, parentID, name, t).Scan(&id)
 	return id, true, err
@@ -152,7 +152,7 @@ func copyInfra(ctx context.Context, tx pgx.Tx, srcID string, parentID *string, n
 	var id string
 	if err := tx.QueryRow(ctx, `INSERT INTO infrastructure (id, parent_id, name, type, description, location, manufacturer, manufacturer_id,
 			model, cost_center_id, supplier_id, service_partner_id, department_id)
-		SELECT gen_random_uuid(), $2::uuid, $3::varchar, type, description, location, manufacturer, manufacturer_id,
+		SELECT pdh_uuid_v7(), $2::uuid, $3::varchar, type, description, location, manufacturer, manufacturer_id,
 			model, cost_center_id, supplier_id, service_partner_id, department_id
 		FROM infrastructure WHERE id = $1::uuid RETURNING id::text`, srcID, parentID, name).Scan(&id); err != nil {
 		return 0, err

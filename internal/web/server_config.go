@@ -178,6 +178,7 @@ type ServerConfigData struct {
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
+	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
@@ -262,6 +263,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.CF = h.cloudflareView(r.Context())
 	h.fillEnvTakeover(r.Context(), &d)
+	d.NCTheme = h.nextcloudTheme()
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p

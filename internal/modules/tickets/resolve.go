@@ -29,7 +29,7 @@ func (r *Repository) AddAction(ctx context.Context, ticketID, description, userI
 	a := &TicketAction{TicketID: ticketID, Description: description, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO ticket_actions (id, ticket_id, description, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		VALUES (pdh_uuid_v7(), $1, $2, $3)
 		RETURNING id, created_at`,
 		ticketID, description, userID,
 	).Scan(&a.ID, &a.CreatedAt)
@@ -96,7 +96,7 @@ func (r *Repository) AddPendingPart(ctx context.Context, ticketID, partID, stora
 	p := &PendingPart{TicketID: ticketID, PartID: partID, StorageNodeID: storageNodeID, Qty: qty, CreatedBy: userID}
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO ticket_pending_parts (id, ticket_id, part_id, storage_node_id, qty, created_by)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 		RETURNING id, created_at`,
 		ticketID, partID, storageNodeID, qty, userID,
 	).Scan(&p.ID, &p.CreatedAt)

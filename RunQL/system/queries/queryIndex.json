@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-18T09:16:50.657Z",
+  "generatedAt": "2026-10-18T09:58:09.217Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1315,6 +1315,17 @@
       "sqlHash": "c55f38b571ce1a2df226176d277c66810f46647749a5d1a711a634cd9a438b23",
       "title": "121_server_settings_override_env.up.sql",
       "updatedAt": "2026-10-18T09:16:50.003Z"
+    },
+    {
+      "createdAt": "2026-10-18T09:58:08.577Z",
+      "path": "migrations/122_uuid_v7_and_request_once.up.sql",
+      "catalogContext": null,
+      "searchText": "122_uuid_v7_and_request_once.up.sql migrations/122_uuid_v7_and_request_once.up.sql -- 122_uuid_v7_and_request_once.up.sql\n--\n-- 1) uuidv7: zeitlich sortierte ids (48 bit millisekunden-zeitstempel + 74 bit\n--    zufall, rfc 9562). eindeutig waren die ids schon vorher (uuidv4 +\n--    primärschlüssel); v7 sortiert neue datensätze ans ende des index und\n--    zeigt die entstehungszeit. postgresql 16 hat noch kein uuidv7(), daher\n--    eine eigene funktion; alle spalten mit default gen_random_uuid() werden\n--    umgestellt. bestehende ids bleiben unverändert.\ncreate or replace function pdh_uuid_v7() returns uuid\nlanguage sql volatile parallel safe as $$\n    select encode(\n        set_bit(set_bit(\n            overlay(uuid_send(gen_random_uuid())\n                    placing substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3)\n                    from 1 for 6),\n            52, 1), 53, 1),\n        'hex')::uuid\n$$;\n\ndo $$\ndeclare c record;\nbegin\n    for c in\n        select table_schema, table_name, column_name\n        from information_schema.columns\n        where table_schema = 'public' and data_type = 'uuid'\n          and column_default ilike '%gen_random_uuid()%'\n    loop\n        execute format('alter table %i.%i alter column %i set default pdh_uuid_v7()', c.table_schema, c.table_name, c.column_name);\n    end loop;\nend $$;\n\n-- 2) doppel-absende-sperre (internal/web/request_once.go): jedes absenden\n--    eines formulars bzw. jede htmx-aktion trägt einen einmaligen\n--    uuidv7-schlüssel; derselbe schlüssel wird nur einmal ausgeführt.\ncreate table if not exists request_once (\n    token      uuid primary key,\n    user_id    uuid,\n    path       text not null default '',\n    created_at timestamptz not null default now()\n);\ncreate index if not exists idx_request_once_created on request_once(created_at);\n",
+      "searchUpdatedAt": "2026-10-18T09:58:08.679Z",
+      "schemaContext": null,
+      "sqlHash": "f80dec1744d643f988d32e39a96a1d5161de2cc293b7d66cd04187225aed50f6",
+      "title": "122_uuid_v7_and_request_once.up.sql",
+      "updatedAt": "2026-10-18T09:58:08.577Z"
     }
   ]
 }

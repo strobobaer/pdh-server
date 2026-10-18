@@ -20,7 +20,7 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 func (r *Repository) CreateModel(ctx context.Context, m *ShiftModel) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO shift_models (id, name, description, active)
-		 VALUES (gen_random_uuid(), $1, $2, true)
+		 VALUES (pdh_uuid_v7(), $1, $2, true)
 		 RETURNING id, created_at`,
 		m.Name, m.Description,
 	).Scan(&m.ID, &m.CreatedAt)
@@ -49,7 +49,7 @@ func (r *Repository) ListModels(ctx context.Context) ([]*ShiftModel, error) {
 func (r *Repository) CreateShift(ctx context.Context, s *ShiftDefinition) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO shift_definitions (id, model_id, name, short_name, start_time, end_time, color, is_night)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+		 VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id`,
 		s.ModelID, s.Name, s.ShortName, s.StartTime, s.EndTime, s.Color, s.IsNight,
 	).Scan(&s.ID)
@@ -79,7 +79,7 @@ func (r *Repository) ListShifts(ctx context.Context, modelID string) ([]*ShiftDe
 func (r *Repository) Assign(ctx context.Context, a *ShiftAssignment) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO shift_assignments (id, user_id, shift_id, date, note, created_by)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+		 VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 		 ON CONFLICT (user_id, date) DO UPDATE
 		 SET shift_id=$2, note=$4, created_by=$5
 		 RETURNING id, created_at`,
@@ -149,7 +149,7 @@ func (r *Repository) DeleteAssignment(ctx context.Context, userID, date string) 
 func (r *Repository) CreateAbsence(ctx context.Context, a *Absence) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO absences (id, user_id, type, status, start_date, end_date, days, note)
-		 VALUES (gen_random_uuid(), $1, $2, 'pending', $3, $4, $5, $6)
+		 VALUES (pdh_uuid_v7(), $1, $2, 'pending', $3, $4, $5, $6)
 		 RETURNING id, created_at`,
 		a.UserID, a.Type, a.StartDate, a.EndDate, a.Days, a.Note,
 	).Scan(&a.ID, &a.CreatedAt)

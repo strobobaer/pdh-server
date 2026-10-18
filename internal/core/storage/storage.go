@@ -74,7 +74,7 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, n *Node) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO storage_nodes (id, parent_id, name, type, description, location, capacity, created_by)
-		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+		 VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, current_parts, active, created_at, updated_at`,
 		n.ParentID, n.Name, n.Type, n.Description, n.Location, n.Capacity, n.CreatedBy,
 	).Scan(&n.ID, &n.CurrentParts, &n.Active, &n.CreatedAt, &n.UpdatedAt)

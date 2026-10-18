@@ -40,7 +40,7 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 func (r *Repository) Create(ctx context.Context, c *CostCenter) error {
 	return r.db.QueryRow(ctx,
 		`INSERT INTO cost_centers (id, number, name, created_by)
-		 VALUES (gen_random_uuid(), $1, $2, $3)
+		 VALUES (pdh_uuid_v7(), $1, $2, $3)
 		 RETURNING id, active`,
 		c.Number, c.Name, c.CreatedBy,
 	).Scan(&c.ID, &c.Active)

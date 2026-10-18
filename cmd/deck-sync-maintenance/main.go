@@ -104,7 +104,7 @@ func envDefault(key, fallback string) string {
 func ensureMarkerTable(ctx context.Context, db *pgxpool.Pool) error {
 	_, err := db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS deck_sync_markers (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			id UUID PRIMARY KEY DEFAULT pdh_uuid_v7(),
 			ref_type VARCHAR(50) NOT NULL,
 			ref_id UUID NOT NULL,
 			destination VARCHAR(50) NOT NULL DEFAULT 'nextcloud_deck',

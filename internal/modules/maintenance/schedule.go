@@ -179,7 +179,7 @@ func (r *Repository) ensureTaskForPlan(ctx context.Context, planID, createdBy st
 		INSERT INTO maintenance_tasks
 		  (id, plan_id, title, description, type, infrastructure_id, priority, status, assigned_to, due_date,
 		   created_by, cost_center_id, responsible_to, assigned_group_id)
-		SELECT gen_random_uuid(), mp.id, mp.name, COALESCE(mp.description, ''), mp.type, mp.infrastructure_id, mp.priority, 'open',
+		SELECT pdh_uuid_v7(), mp.id, mp.name, COALESCE(mp.description, ''), mp.type, mp.infrastructure_id, mp.priority, 'open',
 		       mp.assigned_to, mp.next_due_at, COALESCE(NULLIF($2, '')::uuid, mp.created_by), mp.cost_center_id, mp.responsible_to, mp.assigned_group_id
 		FROM maintenance_plans mp WHERE mp.id = $1::uuid AND mp.active`, planID, createdBy)
 	if err != nil {

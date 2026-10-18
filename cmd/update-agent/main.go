@@ -83,6 +83,9 @@ func main() {
 	mux.Handle("POST /v1/mounts/mount", agent.authorized(http.HandlerFunc(agent.mountHandler)))
 	mux.Handle("POST /v1/mounts/unmount", agent.authorized(http.HandlerFunc(agent.unmountHandler)))
 	mux.Handle("POST /v1/env/remove", agent.authorized(http.HandlerFunc(agent.envRemoveHandler)))
+	mux.Handle("POST /v1/nextcloud/check", agent.authorized(http.HandlerFunc(agent.ncCheckHandler)))
+	mux.Handle("POST /v1/nextcloud/update", agent.authorized(http.HandlerFunc(agent.ncUpdateHandler)))
+	mux.Handle("GET /v1/nextcloud/status", agent.authorized(http.HandlerFunc(agent.ncStatusHandler)))
 
 	server := &http.Server{
 		Addr:              listen,

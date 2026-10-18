@@ -50,7 +50,7 @@ func (r *Repository) ensureMultiFieldSetTables(ctx context.Context) error {
 		WHERE custom_field_set_id IS NOT NULL
 		ON CONFLICT DO NOTHING;
 		CREATE TABLE IF NOT EXISTS spare_part_field_options (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			id UUID PRIMARY KEY DEFAULT pdh_uuid_v7(),
 			field_id UUID NOT NULL REFERENCES spare_part_field_defs(id) ON DELETE CASCADE,
 			value TEXT NOT NULL,
 			sort_order INTEGER NOT NULL DEFAULT 100,
@@ -165,7 +165,7 @@ func (r *Repository) CreateOptionForField(ctx context.Context, fieldID string, i
 		in.SortOrder = 100
 	}
 	o := &FieldOption{FieldID: fieldID, Value: strings.TrimSpace(in.Value), SortOrder: in.SortOrder}
-	err := r.db.QueryRow(ctx, `INSERT INTO spare_part_field_options (id, field_id, value, sort_order) VALUES (gen_random_uuid(), $1, $2, $3) RETURNING id, active, created_at`, fieldID, o.Value, o.SortOrder).Scan(&o.ID, &o.Active, &o.CreatedAt)
+	err := r.db.QueryRow(ctx, `INSERT INTO spare_part_field_options (id, field_id, value, sort_order) VALUES (pdh_uuid_v7(), $1, $2, $3) RETURNING id, active, created_at`, fieldID, o.Value, o.SortOrder).Scan(&o.ID, &o.Active, &o.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
