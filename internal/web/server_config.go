@@ -143,14 +143,23 @@ type envFieldView struct {
 	envField
 	Value    string // nur fuer nicht geheime Felder
 	IsSet    bool
-	Source   string // env | file | default
-	ReadOnly bool
+	Source     string // env | file | default
+	ReadOnly   bool
+	StillInEnv bool // in die Datenbank uebernommen, steht aber noch in .env.docker (env_takeover.go)
 }
 
 type envGroupView struct {
 	Key, Label, Icon, Intro string
 	Fields                  []envFieldView
 	External                int
+	// Übernahme aus .env.docker und Test (env_takeover.go)
+	TestWhat     string
+	TestRecorded bool
+	Test         *envTestResult
+	TakeOver     []string // kommt aus der Umgebung, kann in die Datenbank
+	Removable    []string // übernommen, steht noch in .env.docker
+	EnvStays     []string // muss in der Umgebung bleiben (Docker/Bootstrap)
+	CanRemove    bool
 }
 
 type ServerConfigData struct {
@@ -168,6 +177,8 @@ type ServerConfigData struct {
 	CanLogs        bool
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
+	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
+	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
 	PasswordPending int
@@ -250,6 +261,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, gv)
 	}
 	d.CF = h.cloudflareView(r.Context())
+	h.fillEnvTakeover(r.Context(), &d)
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p
@@ -537,13 +549,41 @@ func (h *Handler) ServerConfigTestWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	what := r.URL.Query().Get("what")
+	group := envTestGroup(what)
+	record := envTests[group].Record
 	ok := func(msg string) {
+		if record {
+			h.recordEnvTest(r.Context(), group, true, msg)
+		}
 		fmt.Fprintf(w, `<span style="color:var(--green)"><i class="ti ti-circle-check"></i> %s</span>`, esc(msg))
 	}
 	fail := func(err error) {
+		if record {
+			h.recordEnvTest(r.Context(), group, false, err.Error())
+		}
 		fmt.Fprintf(w, `<span style="color:var(--red)"><i class="ti ti-alert-circle"></i> %s</span>`, esc(err.Error()))
 	}
-	switch r.URL.Query().Get("what") {
+	formValues := func() map[string]string {
+		for _, g := range envGroups {
+			if g.Key == group {
+				if u, err := collectEnvUpdates(r, g); err == nil {
+					return u
+				}
+			}
+		}
+		return map[string]string{}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	switch what {
+	case "microsoft", "nextcloud", "deepl":
+		test := map[string]func(context.Context, map[string]string) (string, error){"microsoft": testMicrosoft, "nextcloud": testNextcloud, "deepl": testDeepL}[what]
+		if msg, err := test(ctx, formValues()); err != nil {
+			fail(err)
+		} else {
+			ok(msg)
+		}
 	case "database":
 		g := envGroups[1]
 		updates, err := collectEnvUpdates(r, g)

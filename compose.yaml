@@ -42,7 +42,7 @@ services:
       PDH_DATABASE_PASSWORD: ${PDH_DATABASE_PASSWORD:?Set PDH_DATABASE_PASSWORD in .env.docker}
       PDH_DATABASE_NAME: ${PDH_DATABASE_NAME:-pdh}
       PDH_DATABASE_SSLMODE: disable
-      PDH_AUTH_JWTSECRET: ${PDH_AUTH_JWTSECRET:?Set PDH_AUTH_JWTSECRET in .env.docker}
+      PDH_AUTH_JWTSECRET: ${PDH_AUTH_JWTSECRET:-} # darf nach „In die Datenbank übernehmen“ in .env.docker entfallen
       PDH_UPDATE_AGENT_URL: http://updater:8091
       PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
     ports:

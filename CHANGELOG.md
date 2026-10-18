@@ -22,6 +22,12 @@ im Kapitel „Versionen & Updates“ an.
 - Tätigkeiten (z. B. Rüsten, Reinigung) – für alle oder je Kostenstelle; in der Zeiterfassung beim Starten, manuellen Erfassen und Bearbeiten wählbar, die Zeit zählt dann auf die Kostenstelle der Tätigkeit
 - Neue Seite „Statistik“ mit großen Touch-Kacheln, die Grafana-Dashboards im PDH oder in einem neuen Tab öffnen; Kacheln mit Symbol, Farbe, Kiosk-Ansicht und Aktualisierung unter Core-Einstellungen → Grafana & Statistik
 - Docker-Installation: Grafana läuft mit (Port 3000) – mit fertiger Datenquelle „PDH“ (nur lesen, ohne Passwörter und Schlüssel) und dem Dashboard „PDH Übersicht“
+- Server-Einstellungen: Zugangsdaten aus der .env.docker (Microsoft 365, Nextcloud, Copilot, DeepL, E-Mail …) mit einem Klick verschlüsselt in die Datenbank übernehmen – danach gelten sie aus der Datenbank und sind in den Reitern bearbeitbar
+- Server-Einstellungen: „Verbindung testen“ jetzt auch für Microsoft 365, Nextcloud und DeepL; das Ergebnis bleibt gespeichert und zeigt sich als grüner oder roter Punkt am Reiter
+- Server-Einstellungen: Sind Werte übernommen und der Test grün, entfernt „Aus .env.docker entfernen“ sie über den Update-Agenten aus der .env.docker (ohne Klartext-Kopie)
+
+### Behoben
+- Mein Konto: „Geschäftskonto verbinden“, „Privates Konto verbinden“ und „Teams freigeben“ brachen mit „login.microsoftonline.com hat die Verbindung verweigert“ ab, wenn das PDH eingebettet lief (z. B. in Nextcloud) – die Microsoft-Anmeldung öffnet sich dann in einem neuen Tab
 
 ## [0.49.0] – 2026-10-10
 

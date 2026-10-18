@@ -22,10 +22,11 @@ import (
 // koennen in der Oberflaeche nicht ueberschrieben werden.
 
 var (
-	origOnce sync.Once
-	origEnv  map[string]bool     // Variablen, die schon vor dem Laden der Datei gesetzt waren
-	dbKeys   = map[string]bool{} // Schluessel, die in der Datenbank verwaltet werden (unter envMu)
-	envMu    sync.Mutex
+	origOnce     sync.Once
+	origEnv      map[string]bool     // Variablen, die schon vor dem Laden der Datei gesetzt waren
+	dbKeys       = map[string]bool{} // Schluessel, die in der Datenbank verwaltet werden (unter envMu)
+	overrideKeys = map[string]bool{} // aus der Umgebung uebernommen: Datenbank hat Vorrang (unter envMu)
+	envMu        sync.Mutex
 )
 
 // snapshotEnv merkt sich einmalig, welche Variablen "von aussen" kommen.
@@ -64,10 +65,27 @@ func EnvFilePath() string {
 }
 
 // FromProcessEnv: true, wenn die Variable von aussen (Docker/systemd/Shell)
-// gesetzt wurde und daher Vorrang vor der Datei hat.
+// gesetzt wurde und daher Vorrang vor der Datei hat. Nach „In die Datenbank
+// uebernehmen“ (TakeOverProcessEnv) gilt der Datenbankwert – dann false.
 func FromProcessEnv(key string) bool {
 	snapshotEnv()
+	envMu.Lock()
+	defer envMu.Unlock()
+	return origEnv[key] && !overrideKeys[key]
+}
+
+// InProcessEnv: Variable steht (noch) in der Umgebung, z. B. in .env.docker –
+// auch wenn die Datenbank inzwischen Vorrang hat.
+func InProcessEnv(key string) bool {
+	snapshotEnv()
 	return origEnv[key]
+}
+
+// OverridesEnv: Datenbankwert hat Vorrang vor der Umgebung.
+func OverridesEnv(key string) bool {
+	envMu.Lock()
+	defer envMu.Unlock()
+	return overrideKeys[key]
 }
 
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

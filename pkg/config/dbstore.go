@@ -121,13 +121,20 @@ func decryptSetting(v string) (string, error) {
 type DBSetting struct {
 	Key, Value, Source string
 	Secret             bool
+	OverridesEnv       bool // aus der Umgebung uebernommen, Vorrang vor .env.docker (migrations/121)
 	UpdatedAt          time.Time
 	DecryptErr         error
 }
 
 // LoadDBSettings liest alle Werte (Geheimnisse entschluesselt).
 func LoadDBSettings(ctx context.Context, db DBExec) (map[string]DBSetting, error) {
-	rows, err := db.Query(ctx, `SELECT key, value, secret, source, updated_at FROM server_settings`)
+	rows, err := db.Query(ctx, `SELECT key, value, secret, source, updated_at, overrides_env FROM server_settings`)
+	withOverride := true
+	if err != nil && strings.Contains(err.Error(), "overrides_env") {
+		// vor Migration 121 (z. B. gerade wiederhergestellte aeltere Sicherung)
+		withOverride = false
+		rows, err = db.Query(ctx, `SELECT key, value, secret, source, updated_at FROM server_settings`)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +142,11 @@ func LoadDBSettings(ctx context.Context, db DBExec) (map[string]DBSetting, error
 	out := map[string]DBSetting{}
 	for rows.Next() {
 		var s DBSetting
-		if err := rows.Scan(&s.Key, &s.Value, &s.Secret, &s.Source, &s.UpdatedAt); err != nil {
+		dest := []interface{}{&s.Key, &s.Value, &s.Secret, &s.Source, &s.UpdatedAt}
+		if withOverride {
+			dest = append(dest, &s.OverridesEnv)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
 		if v, err := decryptSetting(s.Value); err != nil {
@@ -199,7 +210,10 @@ func ApplyDBSettings(ctx context.Context, db DBExec) ([]string, error) {
 		if s.DecryptErr == nil {
 			dbKeys[k] = true
 		}
-		if origEnv[k] {
+		if s.OverridesEnv && s.DecryptErr == nil {
+			overrideKeys[k] = true
+		}
+		if origEnv[k] && !overrideKeys[k] {
 			continue
 		}
 		if s.DecryptErr != nil {
@@ -214,6 +228,55 @@ func ApplyDBSettings(ctx context.Context, db DBExec) ([]string, error) {
 	}
 	sort.Strings(bad)
 	return bad, nil
+}
+
+// TakeOverBlocked: Werte, die in der Umgebung bleiben muessen – Bootstrap
+// (Datenbank-Zugang, Schluessel) und was Docker compose selbst braucht.
+func TakeOverBlocked(key string) bool {
+	if BootstrapKey(key) || !strings.HasPrefix(key, "PDH_") {
+		return true
+	}
+	switch key {
+	case "PDH_SERVER_HOST", "PDH_SERVER_PORT", "PDH_UPDATE_AGENT_URL", "PDH_UPDATE_AGENT_TOKEN",
+		"PDH_BUILD_COMMIT", "PDH_COMPOSE_PROJECT_NAME", "PDH_UPDATE_HOST_REPO_DIR", "PDH_MOUNT_HOST_DIR", "PDH_UPDATE_MODE":
+		return true
+	}
+	return strings.HasPrefix(key, "PDH_GRAFANA_") // liest auch der Grafana-Container
+}
+
+// TakeOverProcessEnv uebernimmt von aussen gesetzte Werte (z. B. .env.docker)
+// in die Datenbank – Geheimnisse verschluesselt – und gibt der Datenbank ab
+// sofort Vorrang. Danach kann der Eintrag in .env.docker entfallen.
+// Rueckgabe: uebernommene Schluessel.
+func TakeOverProcessEnv(ctx context.Context, db DBExec, keys []string, secret func(string) bool, userID string) ([]string, error) {
+	snapshotEnv()
+	updates := map[string]string{}
+	for _, k := range keys {
+		if TakeOverBlocked(k) || !origEnv[k] {
+			continue
+		}
+		updates[k] = os.Getenv(k)
+	}
+	if len(updates) == 0 {
+		return nil, nil
+	}
+	if err := SaveDBSettings(ctx, db, updates, secret, "env_takeover", userID); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(updates))
+	for k := range updates {
+		if _, err := db.Exec(ctx, `UPDATE server_settings SET overrides_env = true WHERE key = $1`, k); err != nil {
+			return out, err
+		}
+		out = append(out, k)
+	}
+	envMu.Lock()
+	for _, k := range out {
+		overrideKeys[k] = true
+	}
+	envMu.Unlock()
+	sort.Strings(out)
+	return out, nil
 }
 
 // ImportEnvFileToDB uebertraegt Werte aus der Einstellungsdatei, die in der

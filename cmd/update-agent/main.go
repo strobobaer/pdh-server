@@ -82,6 +82,7 @@ func main() {
 	mux.Handle("GET /v1/mounts", agent.authorized(http.HandlerFunc(agent.mountsHandler)))
 	mux.Handle("POST /v1/mounts/mount", agent.authorized(http.HandlerFunc(agent.mountHandler)))
 	mux.Handle("POST /v1/mounts/unmount", agent.authorized(http.HandlerFunc(agent.unmountHandler)))
+	mux.Handle("POST /v1/env/remove", agent.authorized(http.HandlerFunc(agent.envRemoveHandler)))
 
 	server := &http.Server{
 		Addr:              listen,

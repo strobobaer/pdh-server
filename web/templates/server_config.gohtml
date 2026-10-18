@@ -15,6 +15,15 @@
 .sc-steps{margin:0 0 10px 18px;font-size:13px;line-height:1.55}
 .sc-steps li{margin-bottom:8px}
 .sc-cmd{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.sc-env{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sc-env.warn{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.35)}
+.sc-env.ok{background:rgba(16,185,129,.10);border-color:rgba(16,185,129,.35)}
+.sc-env form{margin:0}
+.sc-env code{font-size:11px}
+.sc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:4px;vertical-align:middle}
+.sc-dot.ok{background:var(--green,#16a34a)}
+.sc-dot.bad{background:var(--red,#ef4444)}
+.sc-src.still{border-color:transparent;background:rgba(245,158,11,.15);color:var(--amber,#f59e0b)}
 .sc-cmd code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;overflow-wrap:anywhere}
 </style>
 
@@ -39,8 +48,13 @@
 {{if .Undecryptable}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-key-off"></i> Nicht entschlüsselbar (anderer <code>PDH_SETTINGS_KEY</code>, z. B. nach Wiederherstellung auf einem anderen Server): <code>{{range $i, $k := .Undecryptable}}{{if $i}}, {{end}}{{$k}}{{end}}</code> – bitte neu eingeben.</div>{{end}}
 {{if not .FileWritable}}<div class="sc-msg" style="background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-lock"></i> Die Einstellungsdatei ist für den PDH-Dienst nicht beschreibbar – Änderungen können nicht gespeichert werden. Dateirechte prüfen (Eigentümer = Dienstbenutzer) oder <code>PDH_ENV_FILE</code> auf einen beschreibbaren Ort setzen.</div>{{end}}
 
+{{if .TakeOverTotal}}<div class="sc-env warn"><i class="ti ti-shield-lock" style="font-size:18px"></i>
+  <div style="flex:1;min-width:240px"><b>{{.TakeOverTotal}} sicherheitsrelevante Wert(e) stehen noch in <code>.env.docker</code></b> (z. B. Microsoft, Nextcloud, Copilot) und lassen sich hier nicht ändern. In die Datenbank übernehmen – verschlüsselt –, je Reiter testen und bei Grün aus <code>.env.docker</code> entfernen.</div>
+  <form method="post" action="/admin/server-config/takeover" onsubmit="return confirm('Alle {{.TakeOverTotal}} Werte aus .env.docker verschlüsselt in die Datenbank übernehmen? Sie gelten danach aus der Datenbank und sind hier bearbeitbar.')"><input type="hidden" name="group" value="all"><button class="btn btn-primary" type="submit"><i class="ti ti-database-import"></i> Alle in die Datenbank übernehmen</button></form>
+</div>{{end}}
+
 <div class="rec-tabs" role="tablist">
-  {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}</a>{{end}}
+  {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}{{if .Test}}<span class="sc-dot {{if .Test.OK}}ok{{else}}bad{{end}}" title="letzter Test {{if .Test.OK}}erfolgreich{{else}}fehlgeschlagen{{end}} ({{.Test.At}})"></span>{{else if .TakeOver}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Werte in .env.docker"></span>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
   <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
@@ -48,15 +62,27 @@
 
 {{range .Groups}}{{$g := .}}
 <div class="rec-pane" data-pane="{{.Key}}">
+{{if .TakeOver}}<div class="sc-env warn"><i class="ti ti-database-import" style="font-size:18px"></i>
+  <div style="flex:1;min-width:240px">Aus <code>.env.docker</code>: {{range $i, $k := .TakeOver}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}}. Übernehmen speichert die Werte verschlüsselt in der Datenbank; ab dann gelten sie von dort und lassen sich hier ändern.</div>
+  <form method="post" action="/admin/server-config/takeover"><input type="hidden" name="group" value="{{.Key}}"><button class="btn btn-primary" type="submit"><i class="ti ti-database-import"></i> In die Datenbank übernehmen</button></form>
+</div>{{end}}
+{{if .Removable}}<div class="sc-env {{if .CanRemove}}ok{{else}}warn{{end}}"><i class="ti {{if .CanRemove}}ti-circle-check{{else}}ti-player-play{{end}}" style="font-size:18px"></i>
+  <div style="flex:1;min-width:240px">
+    {{if .CanRemove}}<b>Gesichert{{if .Test}} und getestet{{end}}</b> – {{range $i, $k := .Removable}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}} {{if eq (len .Removable) 1}}kann{{else}}können{{end}} aus <code>.env.docker</code> entfallen. {{if .Test}}<span class="sc-sub">Test vom {{.Test.At}}: {{.Test.Msg}}</span>{{end}}
+    {{else}}In der Datenbank gesichert, steht aber noch in <code>.env.docker</code>: {{range $i, $k := .Removable}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}}. <b>Zuerst unten testen</b> – bei Grün lässt sich der Eintrag entfernen.{{if and .Test (not .Test.OK)}} <span style="color:var(--red)">Letzter Test ({{.Test.At}}): {{.Test.Msg}}</span>{{end}}{{end}}
+    {{if and .CanRemove (not $.AgentReady)}}<div class="sc-sub">Ohne Update-Agent: die Zeilen von Hand aus <code>.env.docker</code> löschen.</div>{{end}}
+  </div>
+  {{if and .CanRemove $.AgentReady}}<form method="post" action="/admin/server-config/env-remove" onsubmit="return confirm('Diese Einträge in .env.docker auskommentieren? Die Werte bleiben verschlüsselt in der Datenbank.')"><input type="hidden" name="group" value="{{.Key}}"><button class="btn" type="submit"><i class="ti ti-eraser"></i> Aus .env.docker entfernen</button></form>{{end}}
+</div>{{end}}
 <form class="card" method="post" action="/admin/server-config/save" id="sc-{{.Key}}" autocomplete="off">
   <input type="hidden" name="group" value="{{.Key}}">
   <div class="card-title"><span><i class="ti {{.Icon}}"></i> {{.Label}}</span><span class="sc-sub">{{.Intro}}</span></div>
-  {{if .External}}<div class="sc-sub" style="margin-bottom:10px"><span class="sc-src env">Umgebung</span> {{.External}} Wert(e) kommen von außen (Docker <code>.env.docker</code>, systemd oder Shell) und haben Vorrang – sie lassen sich nur dort ändern.</div>{{end}}
+  {{if .External}}<div class="sc-sub" style="margin-bottom:10px"><span class="sc-src env">Umgebung</span> {{.External}} Wert(e) kommen von außen (Docker <code>.env.docker</code>, systemd oder Shell) und haben Vorrang.{{if .TakeOver}} Mit „In die Datenbank übernehmen“ (oben) werden sie hier bearbeitbar.{{else}} {{range $i, $k := .EnvStays}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}} {{if .EnvStays}}braucht Docker selbst und bleibt{{end}} in <code>.env.docker</code>.{{end}}</div>{{end}}
   <div class="sc-grid">
   {{range .Fields}}
     <div class="sc-f">
       <label for="f-{{.Key}}">{{.Label}}
-        {{if eq .Source "env"}}<span class="sc-src env" title="von außen gesetzt">Umgebung</span>{{else if eq .Source "db"}}<span class="sc-src db" title="in der Datenbank gespeichert">Datenbank</span>{{else if eq .Source "file"}}<span class="sc-src file" title="in der Einstellungsdatei">Datei</span>{{else}}<span class="sc-src" title="Standardwert">Standard</span>{{end}}
+        {{if eq .Source "env"}}<span class="sc-src env" title="von außen gesetzt">Umgebung</span>{{else if eq .Source "db"}}<span class="sc-src db" title="in der Datenbank gespeichert">Datenbank</span>{{if .StillInEnv}} <span class="sc-src still" title="gilt aus der Datenbank – der Eintrag in .env.docker wird nicht mehr gebraucht">noch in .env.docker</span>{{end}}{{else if eq .Source "file"}}<span class="sc-src file" title="in der Einstellungsdatei">Datei</span>{{else}}<span class="sc-src" title="Standardwert">Standard</span>{{end}}
         {{if .Restart}}<i class="ti ti-refresh sc-restart" title="wirkt nach Neustart"></i>{{end}}
       </label>
       {{if .Secret}}
@@ -94,6 +120,10 @@
     {{if eq .Key "mail"}}
       <button class="btn" type="button" hx-post="/admin/server-config/test?what=mail" hx-target="#test-mail"><i class="ti ti-send"></i> Testmail an mich</button>
       <span id="test-mail" class="sc-sub"></span>
+    {{end}}
+    {{if or (eq .TestWhat "microsoft") (eq .TestWhat "nextcloud") (eq .TestWhat "deepl")}}
+      <button class="btn" type="button" hx-post="/admin/server-config/test?what={{.TestWhat}}" hx-include="#sc-{{.Key}}" hx-target="#test-{{.Key}}"><i class="ti ti-plug-connected"></i> Verbindung testen</button>
+      <span id="test-{{.Key}}" class="sc-sub">{{with .Test}}<span style="color:{{if .OK}}var(--green){{else}}var(--red){{end}}"><i class="ti {{if .OK}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{.Msg}} <span style="color:var(--muted)">({{.At}})</span></span>{{end}}</span>
     {{end}}
     {{if eq .Key "security"}}
       <label class="sc-sub"><input type="checkbox" name="new_jwt" value="1" onchange="if(this.checked&&!confirm('Neuen Anmelde-Schlüssel erzeugen? Nach dem Neustart müssen sich alle neu anmelden.'))this.checked=false"> Neuen Anmelde-Schlüssel erzeugen</label>

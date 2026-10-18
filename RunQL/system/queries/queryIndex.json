@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-18T08:54:06.882Z",
+  "generatedAt": "2026-10-18T09:16:50.657Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1304,6 +1304,17 @@
       "sqlHash": "0daed8519e48184690e50c969c6328c01c9469f250e24ca40f1f43dc171dc6d0",
       "title": "120_grafana_statistics.up.sql",
       "updatedAt": "2026-10-18T08:54:06.233Z"
+    },
+    {
+      "createdAt": "2026-10-18T09:16:50.003Z",
+      "path": "migrations/121_server_settings_override_env.up.sql",
+      "catalogContext": null,
+      "searchText": "121_server_settings_override_env.up.sql migrations/121_server_settings_override_env.up.sql -- 121_server_settings_override_env.up.sql\n-- werte aus der docker-/systemd-umgebung (.env.docker) in die datenbank\n-- übernehmen (server-einstellungen → „in die datenbank übernehmen“):\n-- overrides_env = true → der datenbankwert hat vorrang vor der umgebung,\n-- der eintrag in .env.docker kann danach entfallen (pkg/config/dbstore.go).\nalter table server_settings add column if not exists overrides_env boolean not null default false;\n",
+      "searchUpdatedAt": "2026-10-18T09:16:50.110Z",
+      "schemaContext": null,
+      "sqlHash": "c55f38b571ce1a2df226176d277c66810f46647749a5d1a711a634cd9a438b23",
+      "title": "121_server_settings_override_env.up.sql",
+      "updatedAt": "2026-10-18T09:16:50.003Z"
     }
   ]
 }
