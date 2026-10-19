@@ -72,8 +72,11 @@ type UserDetailData struct {
 	QualKinds           interface{}
 	CanMakeAdmin        bool
 	CanDeactivate       bool
-	CanNextcloud        bool // Knopf „Nextcloud-Konto anlegen“ (nextcloud_account.go)
+	CanNextcloud        bool           // Knopf „Nextcloud-Konto anlegen“ (nextcloud_account.go)
 	ChangeNotifications bool           // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
+	CanMailSettings     bool           // Testmail und E-Mail-Statusmeldungen (selbst oder Benutzerverwaltung)
+	MailNotifications   bool           // Statusmeldungen zusaetzlich per E-Mail (user_mail.go)
+	MailReady           bool           // E-Mail-Versand eingerichtet
 	Departments         []string       // Auswahl fuer das Feld Abteilung
 	Groups              []UserGroupRef // Gruppen der Person
 	AllGroups           []groupView    // Auswahl (nur mit Bearbeitungsrecht)
@@ -144,6 +147,10 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if self {
 		_ = h.db.QueryRow(ctx, `SELECT change_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.ChangeNotifications)
+	}
+	if d.CanMailSettings = self || editMaster; d.CanMailSettings && h.db != nil {
+		_ = h.db.QueryRow(ctx, `SELECT mail_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.MailNotifications)
+		d.MailReady = h.mailConfigured()
 	}
 	if m, err := h.loadUserMasterErr(ctx, id); err != nil {
 		d.Error = "Die erweiterten Stammdaten sind noch nicht verfügbar – bitte den Server neu starten, damit Migration 070 ausgeführt wird (" + err.Error() + ")"
@@ -232,36 +239,49 @@ func (h *Handler) loadUserPrivate(ctx context.Context, id string) userPrivate {
 	return p
 }
 
-// userResponsibilities: offene Vorgaenge, fuer die der Benutzer zustaendig
-// oder verantwortlich ist.
+// userResponsibilityRole: Rolle der Person im Vorgang (Alias der Tabelle).
+func userResponsibilityRole(alias string) string {
+	return `CASE WHEN ` + alias + `.assigned_to = $1::uuid THEN 'Zuständig' WHEN ` + alias + `.responsible_to = $1::uuid THEN 'Verantwortlich' ELSE 'Gruppe' END`
+}
+
+// userResponsibilityWho: Person ist zugewiesen, verantwortlich oder Mitglied
+// der zugewiesenen Gruppe (Zuweisung, Leitstand, Broker).
+func userResponsibilityWho(alias string) string {
+	return `($1::uuid IN (` + alias + `.assigned_to, ` + alias + `.responsible_to) OR ` + alias + `.assigned_group_id IN (SELECT gm.group_id FROM user_group_members gm WHERE gm.user_id = $1::uuid))`
+}
+
+// userResponsibilities: offene Vorgaenge, fuer die der Benutzer zustaendig,
+// verantwortlich oder ueber eine Gruppe zugewiesen ist.
 func (h *Handler) userResponsibilities(ctx context.Context, id string) []userResponsibility {
 	rows, err := h.db.Query(ctx, `
 		SELECT * FROM (
-			SELECT 'Störung' AS m, f.title::text AS t, '/faults/' || f.id AS u,
-			       CASE WHEN f.assigned_to = $1::uuid THEN 'Zuständig' ELSE 'Verantwortlich' END AS r, f.status::text AS s,
+			SELECT 'Störung' AS m, f.title::text AS t, '/faults/' || f.id AS u, `+userResponsibilityRole("f")+` AS r, f.status::text AS s,
 			       COALESCE(to_char(f.due_date, 'DD.MM.YYYY'), '') AS d, f.created_at AS c
-			FROM faults f WHERE $1::uuid IN (f.assigned_to, f.responsible_to) AND f.status NOT IN ('resolved', 'closed') AND f.archived_at IS NULL
+			FROM faults f WHERE `+userResponsibilityWho("f")+` AND f.status::text NOT IN ('resolved', 'closed') AND f.archived_at IS NULL
 			UNION ALL
-			SELECT 'Ticket', t.title, '/tickets/' || t.id, CASE WHEN t.assigned_to = $1::uuid THEN 'Zuständig' ELSE 'Verantwortlich' END,
+			SELECT 'Ticket', t.title::text, '/tickets/' || t.id, `+userResponsibilityRole("t")+`,
 			       t.status::text, COALESCE(to_char(t.due_date, 'DD.MM.YYYY'), ''), t.created_at
-			FROM tickets t WHERE $1::uuid IN (t.assigned_to, t.responsible_to) AND t.status NOT IN ('resolved', 'closed') AND t.archived_at IS NULL
+			FROM tickets t WHERE `+userResponsibilityWho("t")+` AND t.status::text NOT IN ('resolved', 'closed') AND t.archived_at IS NULL
 			UNION ALL
-			SELECT 'Aufgabe', a.title, '/tasks/' || a.id,
-			       CASE WHEN a.responsible_to = $1::uuid THEN 'Verantwortlich' ELSE 'Zuständig' END,
-			       a.status, COALESCE(to_char(a.due_date, 'DD.MM.YYYY'), ''), a.created_at
-			FROM tasks a WHERE ($1::uuid IN (a.assigned_to, a.responsible_to)
+			SELECT 'Aufgabe', a.title::text, '/tasks/' || a.id,
+			       CASE WHEN a.responsible_to = $1::uuid THEN 'Verantwortlich'
+			            WHEN a.assigned_to = $1::uuid OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = a.id AND ta.user_id = $1::uuid) THEN 'Zuständig'
+			            ELSE 'Gruppe' END,
+			       a.status::text, COALESCE(to_char(a.due_date, 'DD.MM.YYYY'), ''), a.created_at
+			FROM tasks a WHERE (`+userResponsibilityWho("a")+`
 			                    OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = a.id AND ta.user_id = $1::uuid))
-			  AND a.status NOT IN ('resolved', 'closed') AND a.archived_at IS NULL
+			  AND a.status NOT IN ('resolved', 'closed', 'done', 'skipped') AND a.archived_at IS NULL
 			UNION ALL
-			SELECT 'Wartung', m.title, '/maintenance/tasks/' || m.id,
-			       CASE WHEN m.assigned_to = $1::uuid THEN 'Zuständig' ELSE 'Verantwortlich' END,
-			       m.status::text, to_char(m.due_date, 'DD.MM.YYYY'), m.created_at
-			FROM maintenance_tasks m WHERE $1::uuid IN (m.assigned_to, m.responsible_to) AND m.status IN ('open', 'in_progress', 'pending') AND m.archived_at IS NULL
+			SELECT 'Wartung', m.title::text, '/maintenance/tasks/' || m.id, `+userResponsibilityRole("m")+`,
+			       m.status::text, COALESCE(to_char(m.due_date, 'DD.MM.YYYY'), ''), m.created_at
+			FROM maintenance_tasks m WHERE `+userResponsibilityWho("m")+` AND m.status::text IN ('open', 'in_progress', 'pending') AND m.archived_at IS NULL
 			UNION ALL
-			SELECT 'Projekt', p.name, '/projects/' || p.id, 'Verantwortlich', p.status, COALESCE(to_char(p.end_date, 'DD.MM.YYYY'), ''), p.created_at
-			FROM projects p WHERE p.responsible_to = $1::uuid AND p.status <> 'completed'
+			SELECT 'Projekt', p.name::text, '/projects/' || p.id, `+userResponsibilityRole("p")+`,
+			       p.status::text, COALESCE(to_char(p.end_date, 'DD.MM.YYYY'), ''), p.created_at
+			FROM projects p WHERE `+userResponsibilityWho("p")+` AND p.status NOT IN ('completed', 'cancelled')
 		) x ORDER BY c DESC LIMIT 200`, id)
 	if err != nil {
+		componentLog("benutzer").Error().Err(err).Str("user", id).Msg("zuständigkeiten laden")
 		return nil
 	}
 	defer rows.Close()

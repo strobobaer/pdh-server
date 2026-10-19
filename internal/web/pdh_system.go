@@ -67,6 +67,7 @@ func (h *Handler) systemNotify(ctx context.Context, userIDs []string, body strin
 			componentLog("benachrichtigung").Error().Err(err).Str("user", uid).Msg("pdh-system: hinweis nicht zugestellt")
 		}
 	}
+	h.mailSystemNotify(ctx, userIDs, body)
 }
 
 // adminIDs: alle aktiven Administratoren.

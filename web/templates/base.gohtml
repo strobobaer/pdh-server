@@ -440,7 +440,15 @@ div.rx-panel{background:rgba(var(--accent-rgb),.05);border-bottom:1px solid var(
 .infra-picker{border:1px solid var(--border);border-radius:8px;background:var(--bg3);padding:8px}
 .infra-picker-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .infra-picker-selected{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.infra-picker-search{margin-bottom:8px}
+.infra-picker-search{margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap}
+.infra-picker-search .form-input{flex:1;min-width:180px}
+.infra-picker-mode{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.infra-picker-mode button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+.infra-picker-mode button[aria-pressed="true"]{background:rgba(var(--accent-rgb),.14);color:var(--text);font-weight:600}
+.infra-picker-group{flex:1;text-align:left;background:transparent;border:0;color:var(--text);padding:6px;border-radius:6px;cursor:pointer;min-width:0;font:inherit;font-weight:600}
+.infra-picker-group:hover{background:rgba(var(--accent-rgb),.06)}
+.infra-picker-group .n{font-weight:400;color:var(--muted);font-size:11px;margin-left:4px}
+.infra-picker-sub{font-size:11px;color:var(--muted);margin-left:4px}
 .infra-picker-tree{max-height:230px;overflow:auto;font-size:12px;color:var(--muted)}
 .infra-picker-empty{font-size:12px;color:var(--muted);padding:8px}
 .infra-picker-node{margin-left:var(--depth,0)}
@@ -1378,18 +1386,69 @@ async function loadInfraPicker(root){
     const json=await res.json();
     if(!res.ok || !json.success) throw new Error(json.error || 'Infrastruktur konnte nicht geladen werden');
     root.__infraTree=json.data||[];
-    root.__infraExpanded=new Set();
-    // Aufklappen bis zur aktuellen Auswahl, sonst bis zum Terminal-Standort;
-    // ohne beides bleibt der Baum zugeklappt.
-    const target=document.getElementById(root.dataset.target);
-    const focus=(target && target.value) || window.PDH_TERMINAL_INFRA || '';
-    const path=focus ? findInfraPath(root.__infraTree, focus) : null;
-    if(path){ path.forEach(id=>root.__infraExpanded.add(id)); root.__infraFocus=focus; }
-    renderInfraPicker(root, root.__infraTree);
-    if(path) scrollInfraFocus(root);
+    root.__infraCCView=null;
+    root.__infraMode=infraPickerSavedMode();
+    infraPickerSyncModeButtons(root);
+    infraPickerReset(root);
   }catch(e){
     if(box) box.innerHTML='<div class="infra-picker-empty" style="color:var(--red)">Infrastruktur konnte nicht geladen werden</div>';
   }
+}
+// Ansicht des Pickers: "tree" = nach Standort (Baum), "cc" = nach Kostenstelle.
+// Die Wahl gilt je Browser für alle Picker.
+function infraPickerSavedMode(){try{return localStorage.getItem('pdh.infraPickerMode')==='cc'?'cc':'tree'}catch(e){return 'tree'}}
+function infraPickerSyncModeButtons(root){root.querySelectorAll('[data-infra-mode]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.infraMode===(root.__infraMode||'tree'))))}
+function infraView(root){
+  if((root.__infraMode||'tree')!=='cc') return root.__infraTree||[];
+  if(!root.__infraCCView) root.__infraCCView=buildInfraCCView(root.__infraTree||[]);
+  return root.__infraCCView;
+}
+// Aufklappen bis zur aktuellen Auswahl, sonst bis zum Terminal-Standort;
+// ohne beides bleibt der Baum zugeklappt.
+function infraPickerReset(root){
+  root.__infraExpanded=new Set();
+  const target=document.getElementById(root.dataset.target);
+  const focus=(target && target.value) || window.PDH_TERMINAL_INFRA || '';
+  const path=focus ? findInfraPath(infraView(root), focus) : null;
+  if(path){ path.forEach(id=>root.__infraExpanded.add(id)); root.__infraFocus=focus; }
+  infraPickerRender(root);
+  if(path) scrollInfraFocus(root);
+}
+function infraPickerRender(root){
+  const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
+  renderInfraPicker(root, q ? filterInfraTree(infraView(root), q) : infraView(root));
+}
+function setInfraPickerMode(btn){
+  const root=btn.closest('[data-infra-picker]');
+  if(!root) return;
+  root.__infraMode=btn.dataset.infraMode==='cc'?'cc':'tree';
+  try{localStorage.setItem('pdh.infraPickerMode', root.__infraMode)}catch(e){}
+  infraPickerSyncModeButtons(root);
+  if(root.__infraTree) infraPickerReset(root);
+}
+// Ansicht „Nach Kostenstelle“: oberste Ebene sind die Kostenstellen. Ohne
+// eigene Kostenstelle gilt die des übergeordneten Knotens; darunter bleibt
+// der Baum erhalten. Teile mit anderer Kostenstelle stehen bei ihrer eigenen
+// Gruppe, mit dem Standort als Hinweis.
+function buildInfraCCView(tree){
+  const groups=new Map();
+  const group=(cc)=>{
+    const key=cc.id||'none';
+    if(!groups.has(key)) groups.set(key,{id:'cc:'+key, group:true, type:'cc', name:cc.id?(cc.label||'Kostenstelle'):'Ohne Kostenstelle', none:!cc.id, children:[], count:0});
+    return groups.get(key);
+  };
+  const walk=(nodes, inherited, path, parent)=>{
+    (nodes||[]).forEach(n=>{
+      const cc=n.cost_center_id ? {id:n.cost_center_id, label:[n.cost_center_number, n.cost_center_name].filter(Boolean).join(' ')} : inherited;
+      const copy={...n, children:[]};
+      group(cc).count++;
+      if(parent && cc.id===inherited.id) parent.children.push(copy);
+      else { if(path) copy.path=path; group(cc).children.push(copy); }
+      walk(n.children, cc, path ? path+' › '+n.name : n.name, copy);
+    });
+  };
+  walk(tree, {id:'', label:''}, '', null);
+  return [...groups.values()].sort((a,b)=>(a.none-b.none) || a.name.localeCompare(b.name, 'de', {numeric:true}));
 }
 function renderInfraPicker(root, nodes){
   const box=root.querySelector('[data-infra-tree]');
@@ -1420,7 +1479,11 @@ function renderInfraNodes(root, nodes, depth){
     const toggle=hasChildren
       ? `<button type="button" class="infra-picker-toggle" aria-label="Ast ein- oder ausklappen" aria-expanded="${open}" onclick="toggleInfraBranch(event,this)" data-infra-toggle="${escapeHtml(n.id)}"><i class="ti ti-chevron-right"></i></button>`
       : `<span class="infra-picker-spacer"></span>`;
-    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row${root.__infraFocus===n.id?' is-focus':''}">${toggle}<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)" aria-label="${escapeHtml((INFRA_TYPE_LABEL[n.type]||n.type)+': '+n.name)}"><span class="infra-picker-ic" title="${escapeHtml(INFRA_TYPE_LABEL[n.type]||n.type)}" aria-hidden="true">${infraIcon(n.type)}</span> ${escapeHtml(n.name)}</button></div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
+    // Kostenstellen-Gruppe: nur auf- und zuklappen, nicht auswählbar
+    const label=n.group
+      ? `<button type="button" class="infra-picker-group" data-infra-toggle="${escapeHtml(n.id)}" onclick="toggleInfraBranch(event,this)" aria-expanded="${open}"><span class="infra-picker-ic" aria-hidden="true"><i class="ti ${n.none?'ti-circle-dashed':'ti-building-bank'}"></i></span> ${escapeHtml(n.name)}<span class="n">${n.count}</span></button>`
+      : `<button type="button" class="infra-picker-select" data-infra-id="${escapeHtml(n.id)}" data-infra-name="${escapeHtml(n.name)}" onclick="selectInfra(this)" aria-label="${escapeHtml((INFRA_TYPE_LABEL[n.type]||n.type)+': '+n.name)}"><span class="infra-picker-ic" title="${escapeHtml(INFRA_TYPE_LABEL[n.type]||n.type)}" aria-hidden="true">${infraIcon(n.type)}</span> ${escapeHtml(n.name)}${n.path?`<span class="infra-picker-sub">in ${escapeHtml(n.path)}</span>`:''}</button>`;
+    return `<div class="infra-picker-node" data-infra-node="${escapeHtml(n.id)}" style="--depth:${depth*12}px"><div class="infra-picker-row${root.__infraFocus===n.id?' is-focus':''}">${toggle}${label}</div>${hasChildren?`<div data-infra-children="${escapeHtml(n.id)}" style="display:${open?'block':'none'}">${renderInfraNodes(root, children, depth+1)}</div>`:''}</div>`;
   }).join('');
 }
 function toggleInfraBranch(event, btn){
@@ -1429,13 +1492,13 @@ function toggleInfraBranch(event, btn){
   const id=btn.dataset.infraToggle;
   root.__infraExpanded=root.__infraExpanded||new Set();
   // nur ein Ast offen: beim Öffnen bleiben nur der Knoten und seine Vorfahren aufgeklappt
-  const path=findInfraPath(root.__infraTree||[], id)||[id];
+  const path=findInfraPath(infraView(root), id)||[id];
   if(root.__infraExpanded.has(id)) root.__infraExpanded=new Set(path.slice(0,-1)); else root.__infraExpanded=new Set(path);
-  const q=(root.querySelector('[data-infra-filter]')?.value||'').toLowerCase().trim();
-  renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]));
+  infraPickerRender(root);
 }
-function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const children=filterInfraTree(n.children||[],q); const match=String(n.name||'').toLowerCase().includes(q)||String(n.type||'').toLowerCase().includes(q); return match||children.length?{...n,children}:null}).filter(Boolean)}
-function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); const q=input.value.toLowerCase().trim(); renderInfraPicker(root, q ? filterInfraTree(root.__infraTree||[], q) : (root.__infraTree||[]))}
+// Treffer in Name, Typ oder Kostenstelle; trifft eine Kostenstellen-Gruppe, bleibt sie ganz sichtbar
+function filterInfraTree(nodes, q){return (nodes||[]).map(n=>{const text=[n.name, n.type, n.cost_center_number, n.cost_center_name].join(' ').toLowerCase(); if(n.group && text.includes(q)) return n; const children=filterInfraTree(n.children||[],q); return text.includes(q)||children.length?{...n,children}:null}).filter(Boolean)}
+function filterInfraPicker(input){const root=input.closest('[data-infra-picker]'); if(root) infraPickerRender(root)}
 document.addEventListener('input', event => {
   if(event.target.matches('[data-infra-filter]')) filterInfraPicker(event.target);
 });

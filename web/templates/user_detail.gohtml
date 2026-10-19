@@ -83,6 +83,21 @@
     </div>
   </div>
   {{if $m.Notes}}<div class="card"><div class="card-title"><span><i class="ti ti-notes"></i> Notizen</span></div><div class="rec-v" style="font-size:13px">{{$m.Notes}}</div></div>{{end}}
+  {{if .CanMailSettings}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-mail"></i> E-Mail</span><span class="rec-sub">{{if $u.Email}}{{$u.Email}}{{else}}keine Adresse hinterlegt{{end}}</span></div>
+    {{if not .MailReady}}<p class="rec-sub" style="margin-bottom:8px"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> Der E-Mail-Versand ist noch nicht eingerichtet (Server-Einstellungen → E-Mail).</p>{{end}}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <button type="button" class="btn btn-small" hx-post="/users/{{$u.ID}}/test-mail" hx-target="#um-test" hx-disabled-elt="this" {{if or (not $u.Email) (not .MailReady)}}disabled{{end}}><i class="ti ti-send"></i> Testmail senden</button>
+      <span id="um-test"></span>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">
+      <input type="checkbox" {{if .MailNotifications}}checked{{end}} style="margin-top:3px"
+             hx-post="/users/{{$u.ID}}/mail-notifications" hx-trigger="change" hx-vals='js:{on: event.target.checked ? "1" : "0"}' hx-target="#um-notify">
+      <span><b>Statusmeldungen auch per E-Mail</b> – die Hinweise von PDH-System (neu angelegt, geändert, zugewiesen) kommen zusätzlich zum Chat an diese Adresse. <span id="um-notify"></span></span>
+    </label>
+  </div>
+  {{end}}
 </div>
 
 <!-- ── Stammdaten (alles in einem Formular, wie bei den übrigen Modulen) ── -->

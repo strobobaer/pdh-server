@@ -583,6 +583,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Tab schließen oder Zurück beendet die Verbindung. Auch die automatische Abmeldung bei Inaktivität trennt sie.</li>
     </ol>
     Am HMI bleibt eine laufende Sitzung bestehen – der Zugriff aus PDH verbindet immer „geteilt“.</div>
+  <div class="hb-howto"><b><i class="ti ti-building-bank"></i> So suchst du eine Anlage nach Kostenstelle</b>
+    <ol class="hb-steps">
+      <li>In der Infrastruktur-Auswahl (z. B. beim Anlegen eines Tickets) rechts neben dem Suchfeld <b>Nach Kostenstelle</b> wählen.</li>
+      <li>Die Kostenstelle aufklappen. Darunter steht ihre Infrastruktur mit dem gewohnten Baum. Die Zahl neben der Kostenstelle zeigt, wie viele Teile dazugehören.</li>
+      <li>Die Anlage anklicken. <b>Nach Standort</b> schaltet zurück auf den Baum Gebäude → Linie → Anlage → Gerät.</li>
+    </ol>
+    Hat ein Teil keine eigene Kostenstelle, gehört es zur Kostenstelle darüber. Hat ein Teil eine andere Kostenstelle als sein Gebäude, steht es bei seiner eigenen Kostenstelle, mit dem Hinweis, wo es steht („in Halle 1 › Linie A“). Teile ganz ohne Kostenstelle stehen unter <b>Ohne Kostenstelle</b>. Die Suche findet auch Kostenstellen. Der Browser merkt sich die gewählte Ansicht.</div>
   <h3><i class="ti ti-device-desktop-pin"></i> Terminal-Standort: Auswahl öffnet sich am richtigen Ort</h3>
   {{template "hb-fig-terminal"}}
   <p>Steht ein Terminal (Systembenutzer) fest in einer Halle oder an einer Linie, kannst du ihm diesen Standort geben. Wer dort ein Ticket, eine Störung oder eine Wartung anlegt, sieht die Infrastruktur-Auswahl schon bis zu diesem Standort aufgeklappt und hervorgehoben – die genaue Anlage wählt man dann mit einem Klick. Das gilt auch, wenn sich jemand kurz mit dem eigenen Konto am Terminal anmeldet.</p>
@@ -918,7 +925,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Je Konto unter <b>Outlook-Kalender</b> anhaken, was in diesen Kalender geschrieben wird (Schichten, Aufgaben, Wartungen, Tickets &amp; Störungen), und ob Termine als <b>Busy-Blocker</b> ins PDH geholt werden. <b>Kalenderauswahl speichern</b>, dann <b>Jetzt synchronisieren</b>.</li>
     </ol></div>
   <p>Busy-Blocker aus beiden Konten erscheinen im Schichtwochenplan als <b>O</b> („Outlook belegt“). Betreffzeilen werden nie übernommen, und eine Zuweisung bleibt trotzdem möglich. <b>Teams</b> gibt es nur über das Geschäftskonto. <b>Konto trennen</b> löscht die importierten Blocker dieses Kontos; bereits in Outlook eingetragene Termine bleiben dort stehen.</p>
-  <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren.</p>
+  <p>In der <b>Benutzerliste</b> öffnet <i class="ti ti-dots"></i> direkt die Bearbeitung. Der Benutzerstamm hat die Reiter Übersicht, Stammdaten, Privat, Nachweise, Einzelrechte, Zuständigkeiten, Feldsätze und Historie. <b>Einzelrechte</b> erlauben oder verbieten einzelne Funktionen abweichend von der Rolle; „Admin machen“ sehen nur Administratoren. <b>Zuständigkeiten</b> listet alle offenen Vorgänge, in denen die Person zugewiesen oder verantwortlich ist – auch über eine zugewiesene Gruppe (Rolle „Gruppe“).</p>
+  <div class="hb-howto"><b><i class="ti ti-mail"></i> So prüfst du den E-Mail-Versand und schaltest Statusmeldungen per E-Mail ein</b>
+    <ol class="hb-steps">
+      <li>Den Benutzerstamm der Person öffnen (oder <b>Mein Konto</b>), Reiter <b>Übersicht</b>, Karte <b>E-Mail</b>.</li>
+      <li><b>Testmail senden</b> – daneben steht, ob die Mail rausging oder was nicht stimmt.</li>
+      <li><b>Statusmeldungen auch per E-Mail</b> anhaken. Ab dann kommen die Hinweise von PDH-System (neu angelegt, geändert, zugewiesen) zusätzlich per E-Mail, mit Link zum Vorgang.</li>
+    </ol>
+    Die Karte sieht die Person selbst und wer ihre Stammdaten bearbeiten darf. Die E-Mail kommt nur, solange auch die Chat-Hinweise eingeschaltet sind (<b>Konto &amp; Dienste</b>). Der Versand muss unter <a href="#server">Server-Einstellungen → E-Mail</a> eingerichtet sein.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> Sprache</b>PDH gibt es auf Deutsch, Englisch, Rumänisch, Türkisch und Mazedonisch. Jede Person wählt ihre Sprache über die <b>Flagge</b> oben rechts (auf der Anmeldeseite oben in der Karte); die Wahl wird im Benutzerstamm gespeichert und gilt bei der nächsten Anmeldung auf jedem Gerät. Die <b>Vorwahl</b> trägt die Benutzerverwaltung im Benutzerstamm unter <b>Stammdaten → Sprache</b> ein. Ohne Eintrag nimmt PDH die Sprache des Browsers. Die Umstellung erfolgt schrittweise. Übersetzt sind bisher: Navigation, Kopfzeile, Menüs, Seitenleiste, Anmeldung, das <b>Dashboard</b> mit allen Widgets sowie der <b>Erstellungs-Assistent</b> (auch im Leitstand) und der <b>Abschluss-Assistent</b> samt ihren Meldungen. Der Leitstand folgt der Sprache des Browsers bzw. der zuletzt gewählten Flagge. Noch nicht übersetzte Seiten und dieses Handbuch erscheinen vorerst auf Deutsch; was du selbst eingibst (Titel, Kommentare) und der Verlauf bleiben in der Sprache, in der sie geschrieben wurden.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> So schaltest du die Live-Übersetzung ein</b>Die Live-Übersetzung übersetzt <b>alles auf der Seite</b> in deine Sprache – auch Seiten, die noch nicht übersetzt sind, und Inhalte wie Titel, Beschreibungen, Maßnahmen, Kommentare und Chat. Auch was später nachgeladen wird, wird übersetzt.
     <ol class="hb-steps">

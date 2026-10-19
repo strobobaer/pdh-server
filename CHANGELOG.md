@@ -18,6 +18,12 @@ im Kapitel „Versionen & Updates“ an.
 - Neues Modul „Vorlagen & Signaturen“: Firmenvorlagen für Word, Excel und PowerPoint zentral hochladen, versionieren und herunterladen, auf Wunsch in eine SharePoint-Bibliothek gespiegelt, damit sie in Office unter „Neu“ erscheinen
 - E-Mail-Signaturen mit Platzhaltern wie {Name}, {Position}, {Telefon} oder {Mobil}, je Abteilung oder für alle, mit Vorschau je Person; das Exchange-Skript rollt sie als Transportregel an jede ausgehende Mail aus
 - „Werte nach Microsoft 365 übertragen“ schreibt Position, Abteilung, Telefon, Mobil, Standort und Firma aus dem Benutzerstamm nach Microsoft 365; leere Felder übernimmt PDH von dort
+- Benutzerstamm → Übersicht → E-Mail: Knopf „Testmail senden“ prüft den Versand an die Adresse der Person
+- Schalter „Statusmeldungen auch per E-Mail“ je Person: Die Hinweise von PDH-System kommen dann zusätzlich zum Chat per E-Mail, mit Link zum Vorgang
+- Infrastruktur-Auswahl umschaltbar „Nach Standort“ oder „Nach Kostenstelle“: Die Kostenstellen lassen sich aufklappen, darunter steht ihre Infrastruktur im gewohnten Baum
+
+### Behoben
+- Benutzerstamm → Zuständigkeiten zeigt jetzt auch Vorgänge, die einer Gruppe der Person zugewiesen sind, sowie Projekte, denen sie zugewiesen ist; erledigte Aufgaben erscheinen nicht mehr als offen
 
 ## [0.51.0] – 2026-10-18
 

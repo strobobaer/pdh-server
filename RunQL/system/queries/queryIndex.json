@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-19T05:00:01.770Z",
+  "generatedAt": "2026-10-19T17:21:53.793Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1337,6 +1337,17 @@
       "sqlHash": "ec731b9cbe6ee7f5acc88617336bf44becb273be838fecd80e9a5260c752d0bd",
       "title": "123_m365_templates_signatures.up.sql",
       "updatedAt": "2026-10-19T05:00:01.120Z"
+    },
+    {
+      "createdAt": "2026-10-19T17:21:53.152Z",
+      "path": "migrations/124_user_mail_notifications.up.sql",
+      "catalogContext": null,
+      "searchText": "124_user_mail_notifications.up.sql migrations/124_user_mail_notifications.up.sql -- 124_user_mail_notifications.up.sql\n-- statusmeldungen von pdh-system zusätzlich per e-mail (benutzerstamm →\n-- übersicht → e-mail; internal/web/user_mail.go). standard: aus.\n\nalter table users add column if not exists mail_notifications boolean not null default false;\n",
+      "searchUpdatedAt": "2026-10-19T17:21:53.256Z",
+      "schemaContext": null,
+      "sqlHash": "0dca293d67949157a5dec70dbbbae8bfa7b6d0b50a427351cbdf18149d17a98e",
+      "title": "124_user_mail_notifications.up.sql",
+      "updatedAt": "2026-10-19T17:21:53.152Z"
     }
   ]
 }
