@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.52.1] – 2026-10-19
+
+### Behoben
+- Code-Editor ohne Docker: „scripts/install-code-server.sh“ sucht selbst einen freien Port, zeigt an, welches Programm einen Port belegt, und übernimmt mit „--existing PORT“ einen schon laufenden code-server
+
 ## [0.52.0] – 2026-10-19
 
 ### Neu
