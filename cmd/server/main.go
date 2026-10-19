@@ -330,6 +330,11 @@ func main() {
 	// Static uploads
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
+	// Zertifizierungsstelle für Nextcloud: CA-Zertifikat und Sperrliste öffentlich
+	// (Geräte installieren die CA, nginx holt die Sperrliste; pki_web.go)
+	r.Get("/pki/ca.crt", webHandler.PKICACertWeb)
+	r.Get("/pki/crl.pem", webHandler.PKICRLWeb)
+
 	// SSO routes must be mounted before the protected web UI.
 	r.Get("/sso/nextcloud", web.NextcloudSSOHandler(db.Pool, cfg.Auth.JWTSecret))
 

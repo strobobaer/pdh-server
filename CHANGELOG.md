@@ -24,7 +24,8 @@ im Kapitel „Versionen & Updates“ an.
 - Infrastruktur-Auswahl umschaltbar „Nach Standort“ oder „Nach Kostenstelle“: Die Kostenstellen lassen sich aufklappen, darunter steht ihre Infrastruktur im gewohnten Baum
 - Infrastruktur-Rechte wie bei den übrigen Modulen: „Infrastruktur ansehen“ und „Prüfpflichten & Gefährdungsbeurteilungen pflegen und erledigen“ zusätzlich zu „bearbeiten“; alle Rollen behalten das Ansehen
 - Neue Rolle „Anlagenverantwortliche/r“: Infrastruktur und Prüfpflichten verwalten, dazu Tickets, Störungen und Wartung bearbeiten und abschließen
-- Code-Editor für Administratoren: VS Code im Browser (code-server) mit dem PDH-Quellcode unter /code/, Anmeldung über das PDH, verlinkt in den Core-Einstellungen (Docker-Installation)
+- Zertifikate für Nextcloud: eigene Zertifizierungsstelle im PDH stellt persönliche Zertifikate für die Nextcloud-App, Geräte- und Server-Zertifikate als passwortgeschützte .p12 zum Herunterladen aus (Core-Einstellungen → Zertifikate, selbst unter Mein Konto); gesperrte Zertifikate lehnt nginx über die Sperrliste ab („scripts/configure-nextcloud-client-certs.sh“)
+- Code-Editor für Administratoren: VS Code im Browser (code-server) mit dem PDH-Quellcode unter /code/, Anmeldung über das PDH, verlinkt in den Core-Einstellungen; Docker-Installation automatisch, ohne Docker einmalig „sudo bash scripts/install-code-server.sh“
 
 ### Behoben
 - Benutzerstamm → Zuständigkeiten zeigt jetzt auch Vorgänge, die einer Gruppe der Person zugewiesen sind, sowie Projekte, denen sie zugewiesen ist; erledigte Aufgaben erscheinen nicht mehr als offen

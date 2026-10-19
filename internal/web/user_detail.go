@@ -77,6 +77,8 @@ type UserDetailData struct {
 	CanNextcloud        bool           // Knopf „Nextcloud-Konto anlegen“ (nextcloud_account.go)
 	ChangeNotifications bool           // Chat-Hinweise zu Aenderungen an eigenen Vorgaengen
 	CanMailSettings     bool           // Testmail und E-Mail-Statusmeldungen (selbst oder Benutzerverwaltung)
+	CanSelfCert         bool           // eigenes Zertifikat für die Nextcloud-App ausstellen (pki_web.go)
+	MyCerts             []pkiCertRow   // eigene Zertifikate (Konto & Dienste)
 	MailNotifications   bool           // Statusmeldungen zusaetzlich per E-Mail (user_mail.go)
 	MailReady           bool           // E-Mail-Versand eingerichtet
 	Departments         []string       // Auswahl fuer das Feld Abteilung
@@ -149,6 +151,11 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if self {
 		_ = h.db.QueryRow(ctx, `SELECT change_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.ChangeNotifications)
+		if !u.IsSystemUser {
+			d.CanSelfCert = h.pkiSelfService(ctx) || h.canPKI(r)
+			d.MyCerts = h.pkiList(ctx, id)
+			h.pkiRevealNew(ctx, d.MyCerts, q.Get("new"))
+		}
 	}
 	if d.CanMailSettings = self || editMaster; d.CanMailSettings && h.db != nil {
 		_ = h.db.QueryRow(ctx, `SELECT mail_notifications FROM users WHERE id = $1::uuid`, id).Scan(&d.MailNotifications)

@@ -940,6 +940,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Statusmeldungen auch per E-Mail</b> anhaken. Ab dann kommen die Hinweise von PDH-System (neu angelegt, geändert, zugewiesen) zusätzlich per E-Mail, mit Link zum Vorgang.</li>
     </ol>
     Die Karte sieht die Person selbst und wer ihre Stammdaten bearbeiten darf. Die E-Mail kommt nur, solange auch die Chat-Hinweise eingeschaltet sind (<b>Konto &amp; Dienste</b>). Der Versand muss unter <a href="#server">Server-Einstellungen → E-Mail</a> eingerichtet sein.</div>
+  <div class="hb-howto"><b><i class="ti ti-certificate"></i> So richtest du die Nextcloud-App mit Zertifikat ein</b>
+    <ol class="hb-steps">
+      <li><b>Mein Konto</b> → Reiter <b>Konto &amp; Dienste</b> → Karte <b>Zertifikat für die Nextcloud-App</b>.</li>
+      <li>Bei <b>Gerät</b> z. B. „Handy“ eintragen → <b>Zertifikat ausstellen</b>. Das <b>Passwort</b> erscheint direkt darunter.</li>
+      <li><b>.p12</b> herunterladen, am besten gleich auf dem Gerät.</li>
+      <li><b>Android:</b> Datei antippen bzw. Einstellungen → Sicherheit → Verschlüsselung &amp; Anmeldedaten → Zertifikat installieren → <b>VPN- und App-Nutzerzertifikat</b>, Passwort eingeben. Beim Anmelden in der Nextcloud-App das Zertifikat auswählen.<br><b>iPhone:</b> in der Nextcloud-App beim Anmelden das Client-Zertifikat aus „Dateien“ importieren. Über die iOS-Einstellungen installierte Zertifikate nutzt die App nicht.<br><b>Windows/Mac:</b> der Nextcloud-Desktop-Client fragt beim Einrichten nach dem Zertifikat → Datei und Passwort angeben.</li>
+    </ol>
+    Für jedes Gerät ein eigenes Zertifikat. Geht ein Gerät verloren: dort <b>Sperren</b>. Das Passwort zeigt <b>Passwort</b> jederzeit wieder an. Fehlt die Karte, hat die Administration die Selbstbedienung ausgeschaltet; dann stellt sie das Zertifikat aus.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> Sprache</b>PDH gibt es auf Deutsch, Englisch, Rumänisch, Türkisch und Mazedonisch. Jede Person wählt ihre Sprache über die <b>Flagge</b> oben rechts (auf der Anmeldeseite oben in der Karte); die Wahl wird im Benutzerstamm gespeichert und gilt bei der nächsten Anmeldung auf jedem Gerät. Die <b>Vorwahl</b> trägt die Benutzerverwaltung im Benutzerstamm unter <b>Stammdaten → Sprache</b> ein. Ohne Eintrag nimmt PDH die Sprache des Browsers. Die Umstellung erfolgt schrittweise. Übersetzt sind bisher: Navigation, Kopfzeile, Menüs, Seitenleiste, Anmeldung, das <b>Dashboard</b> mit allen Widgets sowie der <b>Erstellungs-Assistent</b> (auch im Leitstand) und der <b>Abschluss-Assistent</b> samt ihren Meldungen. Der Leitstand folgt der Sprache des Browsers bzw. der zuletzt gewählten Flagge. Noch nicht übersetzte Seiten und dieses Handbuch erscheinen vorerst auf Deutsch; was du selbst eingibst (Titel, Kommentare) und der Verlauf bleiben in der Sprache, in der sie geschrieben wurden.</div>
   <div class="hb-howto"><b><i class="ti ti-language"></i> So schaltest du die Live-Übersetzung ein</b>Die Live-Übersetzung übersetzt <b>alles auf der Seite</b> in deine Sprache – auch Seiten, die noch nicht übersetzt sind, und Inhalte wie Titel, Beschreibungen, Maßnahmen, Kommentare und Chat. Auch was später nachgeladen wird, wird übersetzt.
     <ol class="hb-steps">
@@ -1313,7 +1321,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "versions") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles icons">
+<section class="hb-ch" id="admin" data-title="Administration" data-pages="roles icons pki">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
@@ -1346,7 +1354,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Core-Einstellungen → Code-Editor (code-server)</b>. Der Editor öffnet sich in einem neuen Tab mit dem Ordner <code>/workspace/pdh</code>.</li>
       <li>Dateien bearbeiten wie in VS Code. Unter <b>Terminal → Neues Terminal</b> stehen <code>go</code>, <code>git</code> und <code>make</code> bereit, z. B. <code>go test ./...</code>.</li>
     </ol>
-    Andere Rollen kommen nicht hinein. Das Terminal läuft mit vollen Rechten im Container und sieht den Quellcode des Servers – Änderungen wirken erst nach einem Update bzw. Neubau. Git: Name und E-Mail einmalig im Terminal setzen (<code>git config --global user.name …</code>). Nur bei der Docker-Installation; ohne Docker erscheint ein Hinweis.</div>
+    Andere Rollen kommen nicht hinein. Das Terminal läuft mit vollen Rechten im Container und sieht den Quellcode des Servers – Änderungen wirken erst nach einem Update bzw. Neubau. Git: Name und E-Mail einmalig im Terminal setzen (<code>git config --global user.name …</code>). <b>Einrichten:</b> bei der Docker-Installation automatisch mit dem Update; bei der Installation ohne Docker (systemd) einmalig auf dem Server im PDH-Verzeichnis <code>sudo bash scripts/install-code-server.sh</code> ausführen – danach baut jedes Update den Editor mit. Abschalten: <code>sudo bash scripts/install-code-server.sh --remove</code>.</div>
+  <div class="hb-howto"><b><i class="ti ti-certificate"></i> Für Administratoren: Zertifikate für Nextcloud</b>Unter <b>Core-Einstellungen → Zertifikate (Nextcloud)</b> stellt die eigene Zertifizierungsstelle des PDH drei Arten aus, jeweils als passwortgeschützte <b>.p12</b>:
+    <ul>
+      <li><b>Persönlich (Nextcloud-App)</b> – je Person und Gerät. Mit eingeschalteter <b>Selbstbedienung</b> stellen die Mitarbeitenden sie unter Mein Konto selbst aus.</li>
+      <li><b>Gerät / Firma</b> – ein Zertifikat für mehrere Geräte. Sperren trifft alle zugleich.</li>
+      <li><b>Server (Nextcloud)</b> – für Nextcloud unter eigenem Namen oder eigener IP im Firmennetz. <b>Kette</b> und <b>Schlüssel</b> in nginx eintragen; auf den Geräten einmal die CA installieren (<code>…/pki/ca.crt</code>).</li>
+    </ul>
+    <ol class="hb-steps">
+      <li>Damit nginx nur Geräte mit Zertifikat hereinlässt, auf dem Nextcloud-Server einmalig <code>sudo bash scripts/configure-nextcloud-client-certs.sh --site /etc/nginx/sites-available/nextcloud</code> ausführen. Zugriffe über den Cloudflare-Tunnel und vom PDH selbst sind ausgenommen.</li>
+      <li>Zertifikate ausstellen bzw. ausstellen lassen, auf den Geräten einrichten (siehe „So richtest du die Nextcloud-App mit Zertifikat ein“ im Kapitel <a href="#users">Benutzer</a>).</li>
+      <li>Verlorene Geräte: Zertifikat <b>sperren</b>. nginx holt die Sperrliste alle 6 Stunden, sofort mit <code>sudo systemctl start pdh-pki-crl</code>.</li>
+    </ol>
+    Die ausführliche Anleitung mit Cloudflare, Server-Zertifikat und Fehlersuche steht in <code>docs/nextcloud-zertifikate.md</code>. Achtung: Die Zertifizierungsstelle hängt am Geheimnis <code>PDH_AUTH_JWTSECRET</code>; wird es geändert, müssen alle Zertifikate neu ausgestellt werden.</div>
   {{template "hb-shots" (dict "Ref" (index $s "admin") "Can" $can)}}
 </section>
 

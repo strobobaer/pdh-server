@@ -31,7 +31,9 @@ func (h *Handler) CodeServerProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !codeServerEnabled() {
-		http.Error(w, "code-server läuft nicht hinter dem PDH (PDH_CODESERVER_INTERNAL_URL fehlt – Docker-Installation: docker compose up -d codeserver)", http.StatusNotFound)
+		http.Error(w, "code-server ist noch nicht eingerichtet (PDH_CODESERVER_INTERNAL_URL fehlt).\n\n"+
+			"Installation ohne Docker (systemd): auf dem Server im PDH-Verzeichnis\n    sudo bash scripts/install-code-server.sh\n\n"+
+			"Docker-Installation: PDH aktualisieren bzw.\n    docker compose up -d --build codeserver app", http.StatusNotFound)
 		return
 	}
 	if r.URL.Path == codeServerPath {

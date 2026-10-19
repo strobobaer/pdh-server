@@ -23,6 +23,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.1
 	rsc.io/qr v0.2.0
+	software.sslmate.com/src/go-pkcs12 v0.5.0
 )
 
 require (

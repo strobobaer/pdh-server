@@ -1,0 +1,104 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.pk-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.pk-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.pk-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.pk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.pk-grid .card{margin:0}
+.pk-form .form-group{margin-bottom:8px}
+.pk-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+.pk-row.off{opacity:.55}
+.pk-row.new{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.2)}
+.pk-meta{font-size:11px;color:var(--muted)}
+.pk-acts{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.pk-pw{flex-basis:100%;font-size:12px;background:var(--bg3);border-radius:6px;padding:8px 10px}
+@media (max-width:1000px){.pk-grid{grid-template-columns:1fr}}
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+  {{template "icon-button" (dict "Action" "back" "Href" "/core/settings")}}
+  <div style="flex:1;min-width:220px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-certificate"></i> Zertifikate</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:3px">Eigene Zertifizierungsstelle für Nextcloud – persönliche Zertifikate für die Nextcloud-App, Geräte-Zertifikate und Server-Zertifikate</p>
+  </div>
+</div>
+{{if .Message}}<div class="pk-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div class="pk-msg err"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-building-bank"></i> Zertifizierungsstelle (CA)</span>
+    <span style="display:flex;gap:6px;flex-wrap:wrap">
+      <a class="btn btn-small" href="/pki/ca.crt"><i class="ti ti-download"></i> CA-Zertifikat (.crt)</a>
+      <a class="btn btn-small" href="/pki/ca.crt?format=der"><i class="ti ti-download"></i> CA (.cer, Windows/iOS)</a>
+      <a class="btn btn-small" href="/pki/crl.pem"><i class="ti ti-download"></i> Sperrliste</a>
+    </span></div>
+  {{if .CAError}}<p style="color:var(--red);font-size:13px">{{.CAError}}</p>{{else}}
+  <div class="rec-f"><div class="rec-l">Name</div><div class="rec-v">{{.CAName}}</div></div>
+  <div class="rec-f"><div class="rec-l">Gültig bis</div><div class="rec-v">{{.CAValid}}</div></div>
+  <div class="rec-f"><div class="rec-l">Fingerabdruck (SHA-256)</div><div class="rec-v" style="font-family:monospace;font-size:11px;word-break:break-all">{{.CAPrint}}</div></div>
+  {{end}}
+  <p class="rec-sub" style="margin:8px 0 0">Öffentliche Adressen (ohne Anmeldung): <code>{{if .PublicBase}}{{.PublicBase}}{{end}}/pki/ca.crt</code> und <code>{{if .PublicBase}}{{.PublicBase}}{{end}}/pki/crl.pem</code> – für Geräte und für nginx (<code>scripts/configure-nextcloud-client-certs.sh</code>). Anleitung: <a href="/help#admin">Handbuch</a> und <code>docs/nextcloud-zertifikate.md</code>.</p>
+  <form method="post" action="/core/settings/pki/self-service" style="margin-top:10px;font-size:13px">
+    <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" name="on" value="1" {{if .SelfService}}checked{{end}} onchange="this.form.submit()" style="margin-top:3px">
+      <span>Mitarbeitende dürfen sich ihr persönliches Zertifikat selbst ausstellen (<b>Mein Konto → Konto &amp; Dienste</b>, höchstens 5 gültige je Person)</span>
+    </label>
+  </form>
+</div>
+
+<div class="pk-grid">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-user-shield"></i> Persönlich (Nextcloud-App)</span></div>
+    <form method="post" action="/core/settings/pki/issue" class="pk-form">
+      <input type="hidden" name="kind" value="client">
+      <div class="form-group"><label class="form-label">Person *</label><select name="user_id" class="form-input" required><option value="">– auswählen –</option>{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Gerät</label><input name="label" class="form-input" maxlength="60" placeholder="z. B. Handy, Laptop"></div>
+      <div class="form-group"><label class="form-label">Gültigkeit</label><select name="days" class="form-input"><option value="365">1 Jahr</option><option value="730" selected>2 Jahre</option><option value="1095">3 Jahre</option></select></div>
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-certificate"></i> Ausstellen</button>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-device-mobile"></i> Gerät / Firma</span></div>
+    <form method="post" action="/core/settings/pki/issue" class="pk-form">
+      <input type="hidden" name="kind" value="device">
+      <div class="form-group"><label class="form-label">Name *</label><input name="label" class="form-input" required maxlength="100" placeholder="z. B. Firmenhandys Instandhaltung"></div>
+      <div class="form-group"><label class="form-label">Gültigkeit</label><select name="days" class="form-input"><option value="365">1 Jahr</option><option value="730" selected>2 Jahre</option><option value="1095">3 Jahre</option></select></div>
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-certificate"></i> Ausstellen</button>
+      <p class="rec-sub" style="margin:8px 0 0">Ein Zertifikat für mehrere Geräte – gesperrt wird es für alle zugleich.</p>
+    </form>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-server"></i> Server (Nextcloud)</span></div>
+    <form method="post" action="/core/settings/pki/issue" class="pk-form">
+      <input type="hidden" name="kind" value="server">
+      <div class="form-group"><label class="form-label">Servernamen und IPs *</label><textarea name="hostnames" class="form-input" rows="2" required placeholder="cloud.strobl-home.net, nextcloud.local, 192.168.1.10"></textarea></div>
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-certificate"></i> Ausstellen</button>
+      <p class="rec-sub" style="margin:8px 0 0">Gültig 825 Tage (Höchstwert für Apple-Geräte). Für nginx: Zertifikatskette und Schlüssel herunterladen.</p>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-list"></i> Ausgestellte Zertifikate <b>{{len .Certs}}</b></span></div>
+  {{range .Certs}}
+  <div class="pk-row{{if not .Active}} off{{end}}{{if eq .ID $d.NewID}} new{{end}}">
+    <i class="ti {{if eq .Kind "server"}}ti-server{{else if eq .Kind "device"}}ti-device-mobile{{else}}ti-user-shield{{end}}" style="font-size:20px"></i>
+    <div style="min-width:200px;flex:1"><b>{{.CommonName}}</b> <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+      <div class="pk-meta">{{.KindLabel}}{{if .Hostnames}} · {{.Hostnames}}{{end}} · ausgestellt {{.Created}} · gültig bis {{.NotAfter}}{{if .Revoked}} · gesperrt {{.RevokedAt}}{{end}} · Nr. {{.Serial}}</div></div>
+    <div class="pk-acts">
+      {{if .Active}}
+      <a class="btn btn-small" href="/certificates/{{.ID}}/p12"><i class="ti ti-download"></i> .p12</a>
+      {{if not .Password}}<button type="button" class="btn btn-small" hx-get="/certificates/{{.ID}}/password" hx-swap="outerHTML"><i class="ti ti-key"></i> Passwort</button>{{end}}
+      {{if eq .Kind "server"}}<a class="btn btn-small" href="/certificates/{{.ID}}/fullchain.pem" title="Zertifikat + CA für ssl_certificate"><i class="ti ti-download"></i> Kette</a><a class="btn btn-small" href="/certificates/{{.ID}}/key.pem" title="für ssl_certificate_key"><i class="ti ti-download"></i> Schlüssel</a>{{end}}
+      <form method="post" action="/certificates/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm('Zertifikat „{{.CommonName}}“ sperren? Das lässt sich nicht rückgängig machen.')"><input type="hidden" name="back" value="/core/settings/pki"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> Sperren</button></form>
+      {{else}}<a class="btn btn-small" href="/certificates/{{.ID}}/cert.pem"><i class="ti ti-download"></i> .crt</a>{{end}}
+    </div>
+    {{if .Password}}<div class="pk-pw"><i class="ti ti-key"></i> Passwort für die .p12: <code style="user-select:all;font-size:13px">{{.Password}}</code> – beim Import eingeben. Es lässt sich hier jederzeit wieder anzeigen, solange das Zertifikat gültig ist.</div>{{end}}
+  </div>
+  {{else}}
+  <p class="rec-sub">Noch keine Zertifikate ausgestellt.</p>
+  {{end}}
+</div>
+{{end}}

@@ -359,6 +359,32 @@
 {{if .IsSelf}}
 <div class="rec-pane" data-pane="account">
   {{if .IsSelf}}{{template "push-device-card" .}}{{end}}
+  {{if or .CanSelfCert .MyCerts}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-certificate"></i> Zertifikat für die Nextcloud-App</span></div>
+    <p class="rec-sub" style="margin-bottom:8px">Mit diesem Zertifikat weist sich dein Handy oder Laptop bei Nextcloud aus. Je Gerät ein eigenes Zertifikat ausstellen – geht ein Gerät verloren, sperrst du nur dieses.</p>
+    {{range .MyCerts}}
+    <div class="rec-row" style="flex-wrap:wrap;gap:8px{{if not .Active}};opacity:.55{{end}}">
+      <i class="ti ti-user-shield"></i>
+      <div class="grow"><b>{{if .Label}}{{.Label}}{{else}}{{.CommonName}}{{end}}</b> <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+        <div class="rec-sub">ausgestellt {{.Created}} · gültig bis {{.NotAfter}}</div></div>
+      {{if .Active}}
+      <a class="btn btn-small" href="/certificates/{{.ID}}/p12"><i class="ti ti-download"></i> .p12</a>
+      {{if not .Password}}<button type="button" class="btn btn-small" hx-get="/certificates/{{.ID}}/password" hx-swap="outerHTML"><i class="ti ti-key"></i> Passwort</button>{{end}}
+      <form method="post" action="/certificates/{{.ID}}/revoke" style="margin:0" onsubmit="return confirm('Zertifikat sperren? Das Gerät kommt danach nicht mehr in Nextcloud.')"><input type="hidden" name="back" value="/users/me?tab=account"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-ban"></i> Sperren</button></form>
+      {{end}}
+      {{if .Password}}<div style="flex-basis:100%;font-size:12px;background:var(--bg3);border-radius:6px;padding:8px 10px"><i class="ti ti-key"></i> Passwort für die .p12: <code style="user-select:all;font-size:13px">{{.Password}}</code> – beim Import auf dem Gerät eingeben.</div>{{end}}
+    </div>
+    {{end}}
+    {{if .CanSelfCert}}
+    <form method="post" action="/account/certificates" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+      <div class="form-group" style="margin:0;flex:1;min-width:180px"><label class="form-label">Gerät</label><input name="label" class="form-input" maxlength="60" placeholder="z. B. Handy, Laptop"></div>
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-certificate"></i> Zertifikat ausstellen</button>
+    </form>
+    <p class="rec-sub" style="margin-top:8px">Dann: <b>.p12</b> herunterladen, auf dem Gerät öffnen bzw. in der Nextcloud-App beim Anmelden auswählen, Passwort eingeben. Schritt für Schritt im <a href="/help#users">Handbuch</a>.</p>
+    {{end}}
+  </div>
+  {{end}}
   <div class="card">
     <div class="card-title"><span><i class="ti ti-bell"></i> Chat-Hinweise zu Änderungen</span><span id="cn-result" class="rec-sub"></span></div>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer">

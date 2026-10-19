@@ -97,6 +97,12 @@ else
         echo "WARNING: /usr/local/bin/pdh-update-agent konnte nicht ersetzt werden; der Update-Agent bleibt auf der alten Version." >&2
         echo "         Auf dem Server 'sudo ./install-update-agent.sh' im Repo-Verzeichnis ausfuehren (aktualisiert die systemd-Unit inkl. ReadWritePaths)." >&2
     fi
+    # code-server (/code/): nur wenn eingerichtet (scripts/install-code-server.sh); Fehler bricht das Update nicht ab
+    if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx pdh-codeserver; then
+        cs_port="$(sed -nE 's#^PDH_CODESERVER_INTERNAL_URL=http://127\.0\.0\.1:([0-9]+).*#\1#p' /etc/pdh/pdh.env 2>/dev/null | tail -n 1)"
+        PDH_CODESERVER_PORT="${cs_port:-8443}" bash "$repo_dir/scripts/install-code-server.sh" >/dev/null \
+            || echo "code-server konnte nicht neu gebaut werden (/code/) - Update trotzdem fertig." >&2
+    fi
 fi
 
 echo "Updated to $target."

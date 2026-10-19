@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-19T20:34:58.838Z",
+  "generatedAt": "2026-10-19T20:40:03.703Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1359,6 +1359,17 @@
       "sqlHash": "e004571d3fed9f36e14c00915c189b4185eb8e0b9fc155d6faf7fda49d596fe5",
       "title": "125_infrastructure_permissions.up.sql",
       "updatedAt": "2026-10-19T20:17:24.211Z"
+    },
+    {
+      "createdAt": "2026-10-19T20:40:03.029Z",
+      "path": "migrations/126_pki_certificates.up.sql",
+      "catalogContext": null,
+      "searchText": "126_pki_certificates.up.sql migrations/126_pki_certificates.up.sql -- 126_pki_certificates.up.sql\n-- eigene zertifizierungsstelle (ca) des pdh für nextcloud (internal/web/pki.go):\n--   * client: persönliches zertifikat einer person für die nextcloud-app (mtls)\n--   * device: geräte-/firmenzertifikat ohne person (z. b. für firmenhandys)\n--   * server: server-zertifikat für nextcloud (eigener name/ip), geräte vertrauen der ca\n-- die ca selbst liegt verschlüsselt in app_settings (pki.ca_cert / pki.ca_key).\n-- p12-datei und passwort bleiben verschlüsselt gespeichert, damit man sie\n-- erneut herunterladen kann, bis das zertifikat gesperrt wird.\n\ncreate table if not exists pki_certificates (\n    id            uuid primary key default pdh_uuid_v7(),\n    kind          varchar(10) not null check (kind in ('client', 'device', 'server')),\n    serial        text not null unique,              -- hex\n    common_name   varchar(255) not null,\n    label         varchar(100) not null default '',  -- z. b. „handy“, „laptop“\n    user_id       uuid references users(id) on delete cascade, -- nur client\n    hostnames     text not null default '',          -- nur server, kommagetrennt\n    not_before    timestamptz not null,\n    not_after     timestamptz not null,\n    cert_pem      text not null,\n    key_enc       text not null default '',          -- verschlüsselter pem-schlüssel (nur server, für nginx)\n    p12_enc       text not null default '',          -- verschlüsselte .p12 (base64)\n    password_enc  text not null default '',          -- verschlüsseltes p12-passwort\n    revoked_at    timestamptz,\n    revoked_by    uuid references users(id) on delete set null,\n    created_by    uuid references users(id) on delete set null,\n    created_at    timestamptz not null default now()\n);\ncreate index if not exists idx_pki_certificates_user on pki_certificates(user_id) where user_id is not null;\n\ninsert into permissions (key, label, category) values\n    ('pki.manage', 'zertifikate (nextcloud-app, geräte, server) ausstellen & sperren', 'system')\non conflict (key) do nothing;\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere r.key = 'admin' and p.key = 'pki.manage'\non conflict do nothing;\n",
+      "searchUpdatedAt": "2026-10-19T20:40:03.141Z",
+      "schemaContext": null,
+      "sqlHash": "05898b5de8d92262af280ad74067adade986577bccb09642fbbde71062e73033",
+      "title": "126_pki_certificates.up.sql",
+      "updatedAt": "2026-10-19T20:40:03.029Z"
     }
   ]
 }

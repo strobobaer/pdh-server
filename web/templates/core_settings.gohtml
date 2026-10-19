@@ -19,6 +19,7 @@
     <a href="/core/settings/drives" class="btn" style="font-size:12px"><i class="ti ti-server-2"></i> Netzlaufwerke</a>
     <a href="/core/costcenters" class="btn" style="font-size:12px"><i class="ti ti-building-bank"></i> Kostenstellen &amp; Tätigkeiten</a>
     <a href="/core/settings/grafana" class="btn" style="font-size:12px"><i class="ti ti-chart-histogram"></i> Grafana &amp; Statistik</a>
+    {{if .CanPKI}}<a href="/core/settings/pki" class="btn" style="font-size:12px"><i class="ti ti-certificate"></i> Zertifikate (Nextcloud)</a>{{end}}
     {{if .CanCode}}<a href="/code/" target="_blank" rel="noopener" class="btn" style="font-size:12px" title="VS Code im Browser mit dem PDH-Quellcode – öffnet in einem neuen Tab"><i class="ti ti-code"></i> Code-Editor (code-server)</a>{{end}}
   </div>
 </div>
