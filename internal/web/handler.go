@@ -68,6 +68,8 @@ type BaseData struct {
 	CanServerConfig        bool       // Nav-Link "Server-Einstellungen" (nur Admins)
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
+	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
+	CanInfraObligations    bool       // Prüfpflichten pflegen/erledigen (infrastructure.obligations)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
 	CanStatistics          bool       // Statistik mit Grafana-Dashboards (statistics.view, grafana.go)
@@ -972,6 +974,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
 		Brand:                  brand,
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
+		CanViewInfra:           h.canViewInfra(r),
+		CanInfraObligations:    h.canInfraObligations(r),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanStatistics:          h.rbac.HasPermissionForUser(u.ID, string(u.Role), "statistics.view"),

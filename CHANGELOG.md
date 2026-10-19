@@ -22,6 +22,8 @@ im Kapitel „Versionen & Updates“ an.
 - Benutzerstamm → Übersicht → E-Mail: Knopf „Testmail senden“ prüft den Versand an die Adresse der Person
 - Schalter „Statusmeldungen auch per E-Mail“ je Person: Die Hinweise von PDH-System kommen dann zusätzlich zum Chat per E-Mail, mit Link zum Vorgang
 - Infrastruktur-Auswahl umschaltbar „Nach Standort“ oder „Nach Kostenstelle“: Die Kostenstellen lassen sich aufklappen, darunter steht ihre Infrastruktur im gewohnten Baum
+- Infrastruktur-Rechte wie bei den übrigen Modulen: „Infrastruktur ansehen“ und „Prüfpflichten & Gefährdungsbeurteilungen pflegen und erledigen“ zusätzlich zu „bearbeiten“; alle Rollen behalten das Ansehen
+- Neue Rolle „Anlagenverantwortliche/r“: Infrastruktur und Prüfpflichten verwalten, dazu Tickets, Störungen und Wartung bearbeiten und abschließen
 - Code-Editor für Administratoren: VS Code im Browser (code-server) mit dem PDH-Quellcode unter /code/, Anmeldung über das PDH, verlinkt in den Core-Einstellungen (Docker-Installation)
 
 ### Behoben

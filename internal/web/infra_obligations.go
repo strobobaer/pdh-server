@@ -208,8 +208,8 @@ func readObligationForm(r *http.Request) (obligationInput, error) {
 // InfraObligationSaveWeb: POST /infrastructure/{id}/obligations[/{oid}] – anlegen bzw. ändern.
 func (h *Handler) InfraObligationSaveWeb(w http.ResponseWriter, r *http.Request) {
 	infraID, oid := chi.URLParam(r, "id"), chi.URLParam(r, "oid")
-	if !h.canEditInfra(r) {
-		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+	if !h.canInfraObligations(r) {
+		http.Error(w, "keine berechtigung (Prüfpflichten)", http.StatusForbidden)
 		return
 	}
 	r.ParseForm()
@@ -241,8 +241,8 @@ func (h *Handler) InfraObligationSaveWeb(w http.ResponseWriter, r *http.Request)
 // erfassen (Nachweis) und nächste Fälligkeit setzen.
 func (h *Handler) InfraObligationDoneWeb(w http.ResponseWriter, r *http.Request) {
 	infraID, oid := chi.URLParam(r, "id"), chi.URLParam(r, "oid")
-	if !h.canEditInfra(r) {
-		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+	if !h.canInfraObligations(r) {
+		http.Error(w, "keine berechtigung (Prüfpflichten)", http.StatusForbidden)
 		return
 	}
 	r.ParseForm()
@@ -286,8 +286,8 @@ func (h *Handler) InfraObligationDoneWeb(w http.ResponseWriter, r *http.Request)
 // InfraObligationDeleteWeb: POST /infrastructure/{id}/obligations/{oid}/delete
 func (h *Handler) InfraObligationDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	infraID, oid := chi.URLParam(r, "id"), chi.URLParam(r, "oid")
-	if !h.canEditInfra(r) {
-		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+	if !h.canInfraObligations(r) {
+		http.Error(w, "keine berechtigung (Prüfpflichten)", http.StatusForbidden)
 		return
 	}
 	var title, kind string

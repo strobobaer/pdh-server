@@ -201,7 +201,7 @@
   {{range $kind := (list "inspection" "risk_assessment")}}
   <div class="card">
     <div class="card-title"><span><i class="ti {{if eq $kind "inspection"}}ti-clipboard-check{{else}}ti-shield-check{{end}}"></i> {{if eq $kind "inspection"}}Prüfpflichten{{else}}Gefährdungsbeurteilungen{{end}}</span>
-      {{if $.CanEditInfra}}<button type="button" class="btn btn-small" onclick="obNew('{{$kind}}')"><i class="ti ti-plus"></i> Hinzufügen</button>{{end}}</div>
+      {{if $.CanInfraObligations}}<button type="button" class="btn btn-small" onclick="obNew('{{$kind}}')"><i class="ti ti-plus"></i> Hinzufügen</button>{{end}}</div>
     {{$any := false}}
     {{range $.Obligations}}{{if eq .Kind $kind}}{{$any = true}}
     <div class="rec-row ob-row ob-{{.State}}" data-rx data-rx-title="{{.Title}}">
@@ -212,12 +212,12 @@
         <div class="rec-sub">{{if .NextDue}}fällig {{.NextDue}}{{end}}{{if .LastDone}} · zuletzt {{.LastDone}}{{end}}</div></div>
       <template class="rx-more">
         {{if .Notes}}<div class="rec-sub" style="flex-basis:100%;white-space:pre-wrap">{{.Notes}}</div>{{end}}
-        {{if $.CanEditInfra}}
+        {{if $.CanInfraObligations}}
         <button type="button" class="btn btn-small cw-finish" onclick="obToggle(this,'.ob-done')"><i class="ti ti-circle-check"></i> Erledigt erfassen</button>
         <button type="button" class="btn btn-small" onclick="obToggle(this,'.ob-edit')"><i class="ti ti-edit"></i> Bearbeiten</button>
         {{end}}
         {{if .Log}}<button type="button" class="btn btn-small" onclick="obToggle(this,'.ob-log')"><i class="ti ti-history"></i> Nachweise ({{len .Log}})</button>{{end}}
-        {{if $.CanEditInfra}}
+        {{if $.CanInfraObligations}}
         <form method="post" action="/infrastructure/{{$.Node.ID}}/obligations/{{.ID}}/delete" onsubmit="return confirm('„{{.Title}}“ mit allen Nachweisen löschen?')" style="margin-left:auto"><button class="btn btn-small" style="color:var(--red)"><i class="ti ti-trash"></i> Löschen</button></form>
         <form class="ob-sub ob-done rec-form" method="post" action="/infrastructure/{{$.Node.ID}}/obligations/{{.ID}}/done" hidden>
           <div class="cols">
@@ -235,7 +235,7 @@
     </div>
     {{end}}{{end}}
     {{if not $any}}<div class="rec-sub" style="padding:10px 0">{{if eq $kind "inspection"}}Noch keine Prüfpflichten – z. B. DGUV V3, UVV-Prüfung, Druckbehälter, Leitern und Tritte.{{else}}Noch keine Gefährdungsbeurteilung – nach ArbSchG §5 für jede Anlage bzw. jeden Arbeitsplatz.{{end}}</div>{{end}}
-    {{if $.CanEditInfra}}<div id="ob-new-{{$kind}}" class="ob-new" hidden>{{template "obligation-form" (dict "O" nil "Users" $.Users "Action" (printf "/infrastructure/%s/obligations" $.Node.ID) "Kind" $kind)}}</div>{{end}}
+    {{if $.CanInfraObligations}}<div id="ob-new-{{$kind}}" class="ob-new" hidden>{{template "obligation-form" (dict "O" nil "Users" $.Users "Action" (printf "/infrastructure/%s/obligations" $.Node.ID) "Kind" $kind)}}</div>{{end}}
   </div>
   {{end}}
   <p class="rec-sub"><i class="ti ti-bell"></i> Erinnerung: Die verantwortliche Person (sonst die Admins) bekommt eine Chat-Nachricht von „Service“ – zu Beginn des Vorlaufs und noch einmal, wenn die Fälligkeit überschritten ist.</p>

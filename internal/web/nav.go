@@ -55,7 +55,7 @@ var navDefs = []navDef{
 
 	{navItem{"inventory", "/inventory", "ti-package", "Ersatzteile", "inventory", false}, "material", always},
 	{navItem{"storage", "/storage", "ti-building-warehouse", "Lager", "storage", false}, "material", always},
-	{navItem{"infrastructure", "/infrastructure", "ti-hierarchy-2", "Infrastruktur", "infrastructure", false}, "material", always},
+	{navItem{"infrastructure", "/infrastructure", "ti-hierarchy-2", "Infrastruktur", "infrastructure", false}, "material", func(b *BaseData) bool { return b.CanViewInfra }},
 	{navItem{"it", "/it", "ti-server-2", "IT-Assets", "it", false}, "material", always},
 	{navItem{"directory", "/directory", "ti-building-factory-2", "Hersteller & Lieferanten", "directory", false}, "material", always},
 	{navItem{"m365", "/m365", "ti-brand-office", "Vorlagen & Signaturen", "m365", false}, "people", always},

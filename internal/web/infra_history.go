@@ -512,6 +512,10 @@ func (h *Handler) loadInfraHistory(ctx context.Context, r *http.Request, infraID
 
 // InfraHistoryWeb liefert das Historien-Fragment (htmx) der Stammkarte.
 func (h *Handler) InfraHistoryWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewInfra(r) {
+		infraForbidden(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	f := parseInfraHistoryFilter(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -541,6 +545,10 @@ func (h *Handler) InfraHistoryWeb(w http.ResponseWriter, r *http.Request) {
 // InfraHistoryCSV exportiert die gefilterte Anlagen-Historie als CSV
 // (Semikolon-getrennt, UTF-8 mit BOM fuer Excel).
 func (h *Handler) InfraHistoryCSV(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewInfra(r) {
+		infraForbidden(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if h.db == nil {
 		http.Error(w, "Keine Datenbank", http.StatusServiceUnavailable)
@@ -659,6 +667,10 @@ func infraCommentError(w http.ResponseWriter, msg string) {
 
 // InfraCommentAddWeb legt einen Kommentar an der Anlage an.
 func (h *Handler) InfraCommentAddWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewInfra(r) {
+		infraForbidden(w)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	r.ParseForm()
 	text := strings.TrimSpace(r.FormValue("text"))

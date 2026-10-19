@@ -20,6 +20,26 @@ func (h *Handler) canEditInfra(r *http.Request) bool {
 	return h.rbac != nil && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit")
 }
 
+// canViewInfra: Infrastruktur-Liste, Stammkarte, Historie und Kommentare
+// (infrastructure.view; wer bearbeiten darf, darf auch ansehen). Die Auswahl
+// in Tickets, Störungen usw. braucht das Recht nicht.
+func (h *Handler) canViewInfra(r *http.Request) bool {
+	u := getUser(r)
+	return h.canEditInfra(r) || (h.rbac != nil && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.view"))
+}
+
+// canInfraObligations: Prüfpflichten und Gefährdungsbeurteilungen pflegen und
+// als erledigt erfassen (infrastructure.obligations, oder bearbeiten).
+func (h *Handler) canInfraObligations(r *http.Request) bool {
+	u := getUser(r)
+	return h.canEditInfra(r) || (h.rbac != nil && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.obligations"))
+}
+
+// infraForbidden: einheitliche Antwort ohne Ansehen-Recht.
+func infraForbidden(w http.ResponseWriter) {
+	http.Error(w, "keine berechtigung (Infrastruktur ansehen)", http.StatusForbidden)
+}
+
 // terminalUserID: der Systembenutzer dieses Geraets – direkt angemeldet oder
 // hinter einer Override-Sitzung (Rueckkehr-Token).
 func (h *Handler) terminalUserID(r *http.Request) string {

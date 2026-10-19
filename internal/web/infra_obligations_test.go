@@ -60,8 +60,12 @@ func TestObligationPagesRender(t *testing.T) {
 	gbu := obligationView{ID: "o2", InfraID: "n1", Kind: "risk_assessment", KindLabel: "Gefährdungsbeurteilung", Title: "GBU Presse", State: "none", StateLabel: "ohne Termin"}
 	d := InfraDetailData{Node: InfraNodeView{ID: "n1", Name: "Presse 3"}, Types: infraTypes, Obligations: []obligationView{ob, gbu}, ObligationDue: 1,
 		Users: []UserOption{{ID: "u1", Name: "Eva Maier"}}, Today: "2026-10-08"}
-	d.CanEditInfra = true
+	// nur Prüfpflichten-Recht (infrastructure.obligations), Stammdaten nicht
+	d.CanInfraObligations = true
 	out := renderPage(t, tmpl, "infra_detail", d)
+	if strings.Contains(out, `data-tab="master"`) {
+		t.Error("Prüfpflichten-Recht darf die Stammdaten nicht öffnen")
+	}
 	checkScripts(t, "infra_detail", out)
 	for _, want := range []string{`data-tab="checks"`, `data-pane="checks"`, "Prüfpflichten", "Gefährdungsbeurteilungen", "DGUV V3", "GBU Presse",
 		`action="/infrastructure/n1/obligations/o1/done"`, `action="/infrastructure/n1/obligations/o1"`, `action="/infrastructure/n1/obligations"`,
@@ -70,8 +74,8 @@ func TestObligationPagesRender(t *testing.T) {
 			t.Errorf("Anlage ohne %q", want)
 		}
 	}
-	// ohne Bearbeitungsrecht: lesen ja, Formulare nein
-	d.CanEditInfra = false
+	// ohne Recht: lesen ja, Formulare nein
+	d.CanInfraObligations = false
 	out = renderPage(t, tmpl, "infra_detail", d)
 	if strings.Contains(out, "/obligations/o1/done") || strings.Contains(out, `id="ob-new-inspection"`) || !strings.Contains(out, "DGUV V3") {
 		t.Error("ohne Recht: Liste sichtbar, Formulare nicht")

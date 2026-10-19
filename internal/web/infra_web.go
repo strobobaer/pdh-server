@@ -164,6 +164,10 @@ func (h *Handler) infraTreeViews(ctx context.Context) []InfraNodeView {
 }
 
 func (h *Handler) Infrastructure(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewInfra(r) {
+		infraForbidden(w)
+		return
+	}
 	ctx := r.Context()
 	q := r.URL.Query()
 	data := InfraPageData{
@@ -278,6 +282,10 @@ type InfraDetailData struct {
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
+	if !h.canViewInfra(r) {
+		infraForbidden(w)
+		return
+	}
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
 	node, err := h.infra.GetByID(ctx, id)

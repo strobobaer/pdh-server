@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-19T17:21:53.793Z",
+  "generatedAt": "2026-10-19T20:17:24.843Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1348,6 +1348,17 @@
       "sqlHash": "0dca293d67949157a5dec70dbbbae8bfa7b6d0b50a427351cbdf18149d17a98e",
       "title": "124_user_mail_notifications.up.sql",
       "updatedAt": "2026-10-19T17:21:53.152Z"
+    },
+    {
+      "createdAt": "2026-10-19T20:17:24.211Z",
+      "path": "migrations/125_infrastructure_permissions.up.sql",
+      "catalogContext": null,
+      "searchText": "125_infrastructure_permissions.up.sql migrations/125_infrastructure_permissions.up.sql -- 125_infrastructure_permissions.up.sql\n-- infrastruktur bekommt wie die übrigen module getrennte rechte:\n--   * infrastructure.view        – liste, detail, historie, kommentare\n--   * infrastructure.edit        – (bestand) anlegen, bearbeiten, deaktivieren …\n--   * infrastructure.obligations – prüfpflichten & gefährdungsbeurteilungen\n--                                  pflegen und als erledigt erfassen\n-- dazu die rolle „anlagenverantwortliche/r“ (rang zwischen techniker und manager).\n-- bisher durften alle infrastruktur ansehen – darum bekommen alle rollen „view“.\n\ninsert into permissions (key, label, category) values\n    ('infrastructure.view',        'infrastruktur ansehen',                                          'infrastruktur'),\n    ('infrastructure.obligations', 'prüfpflichten & gefährdungsbeurteilungen pflegen und erledigen', 'infrastruktur')\non conflict (key) do nothing;\n\n-- ansehen: alle vorhandenen rollen (verhalten wie bisher)\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere p.key = 'infrastructure.view'\non conflict do nothing;\n\n-- prüfpflichten: wer infrastruktur bearbeiten darf, dazu techniker\ninsert into role_permissions (role_id, permission_id)\nselect distinct r.id, p.id from roles r cross join permissions p\nwhere p.key = 'infrastructure.obligations'\n  and (r.key = 'technician' or exists (\n        select 1 from role_permissions rp join permissions e on e.id = rp.permission_id\n        where rp.role_id = r.id and e.key = 'infrastructure.edit'))\non conflict do nothing;\n\n-- rolle „anlagenverantwortliche/r“: alles, was techniker dürfen, plus alle infrastruktur-rechte\ninsert into roles (key, label, is_builtin, level) values ('asset_manager', 'anlagenverantwortliche/r', false, 60)\non conflict (key) do nothing;\n\ninsert into role_permissions (role_id, permission_id)\nselect (select id from roles where key = 'asset_manager'), rp.permission_id\nfrom role_permissions rp join roles t on t.id = rp.role_id\nwhere t.key = 'technician'\non conflict do nothing;\n\ninsert into role_permissions (role_id, permission_id)\nselect (select id from roles where key = 'asset_manager'), p.id from permissions p\nwhere p.key in ('infrastructure.view', 'infrastructure.edit', 'infrastructure.obligations', 'hmi.view', 'hmi.control',\n                'tickets.view', 'tickets.edit', 'tickets.resolve', 'faults.view', 'faults.edit', 'faults.resolve',\n                'maintenance.view', 'maintenance.edit', 'maintenance.complete')\non conflict do nothing;\n",
+      "searchUpdatedAt": "2026-10-19T20:17:24.311Z",
+      "schemaContext": null,
+      "sqlHash": "e004571d3fed9f36e14c00915c189b4185eb8e0b9fc155d6faf7fda49d596fe5",
+      "title": "125_infrastructure_permissions.up.sql",
+      "updatedAt": "2026-10-19T20:17:24.211Z"
     }
   ]
 }
