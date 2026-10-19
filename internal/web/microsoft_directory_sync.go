@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -29,6 +30,85 @@ type MicrosoftAdminPageData struct {
 	// Nextcloud-Konten beim Abgleich anlegen (NextcloudReady: Nextcloud eingerichtet)
 	NextcloudProvision bool
 	NextcloudReady     bool
+	// Nextcloud-Anmeldung mit Microsoft über den Update-Agenten (user_oidc)
+	AgentReady      bool
+	NCLoginAt       string // letzte Einrichtung
+	NCRedirectURI   string // in Entra einzutragen
+	NCOnlyMicrosoft bool
+	NCAutoProvision bool
+}
+
+const (
+	keyNCLoginAt       = "microsoft_nextcloud_login_at"
+	keyNCLoginRedirect = "microsoft_nextcloud_login_redirect"
+	keyNCLoginOptions  = "microsoft_nextcloud_login_options" // "only", "auto", "only,auto"
+)
+
+// ncRedirectURI: Redirect-URI für Entra aus der Nextcloud-Adresse (Ausgabe „URL=…“
+// des Agenten, sonst PDH_NEXTCLOUD_BASEURL).
+func ncRedirectURI(agentOutput string) string {
+	base := ""
+	for _, l := range strings.Split(agentOutput, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "URL="); ok {
+			base = strings.TrimSpace(v)
+		}
+	}
+	if !strings.HasPrefix(base, "http") {
+		base = strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL"))
+	}
+	if base = strings.TrimRight(base, "/"); base == "" {
+		return ""
+	}
+	return base + "/apps/user_oidc/code"
+}
+
+// MicrosoftNextcloudLoginWeb: POST /core/settings/microsoft/nextcloud-login –
+// richtet in Nextcloud „Mit Microsoft anmelden“ ein, mit Tenant, Client-ID und
+// Secret aus den Server-Einstellungen (Update-Agent, occ user_oidc).
+func (h *Handler) MicrosoftNextcloudLoginWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	back := func(msg string) {
+		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape(msg), http.StatusSeeOther)
+	}
+	if !h.microsoftAppConfigured() {
+		back("Zuerst unter Server-Einstellungen → Microsoft 365 Tenant-ID, Client-ID und Client-Secret eintragen")
+		return
+	}
+	only, auto := r.FormValue("only_microsoft") == "1", r.FormValue("auto_provision") == "1"
+	var res struct {
+		Output string `json:"output"`
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	err := h.agentJSON(ctx, http.MethodPost, "/v1/nextcloud/oidc", map[string]any{
+		"dir": h.ncDir(ctx), "tenant_id": strings.TrimSpace(h.microsoft.TenantID), "client_id": strings.TrimSpace(h.microsoft.ClientID),
+		"client_secret": h.microsoft.ClientSecret, "provider": "Microsoft", "only_microsoft": only, "auto_provision": auto,
+	}, &res)
+	if err != nil {
+		componentLog("nextcloud").Warn().Err(err).Msg("anmeldung mit microsoft einrichten")
+		back("Nextcloud-Anmeldung nicht eingerichtet: " + err.Error())
+		return
+	}
+	var opts []string
+	if only {
+		opts = append(opts, "only")
+	}
+	if auto {
+		opts = append(opts, "auto")
+	}
+	redirect := ncRedirectURI(res.Output)
+	_ = h.setUpdateSetting(r.Context(), keyNCLoginAt, time.Now().Local().Format("02.01.2006 15:04"))
+	_ = h.setUpdateSetting(r.Context(), keyNCLoginRedirect, redirect)
+	_ = h.setUpdateSetting(r.Context(), keyNCLoginOptions, strings.Join(opts, ","))
+	componentLog("nextcloud").Info().Str("von", getUser(r).ID).Bool("nur_microsoft", only).Bool("auto_provision", auto).Msg("anmeldung mit microsoft eingerichtet")
+	msg := "Nextcloud-Anmeldung mit Microsoft eingerichtet"
+	if redirect != "" {
+		msg += " – in Entra die Redirect-URI " + redirect + " eintragen, falls noch nicht geschehen"
+	}
+	back(msg)
 }
 
 // microsoftSyncResult: Zähler eines Verzeichnisabgleichs.
@@ -97,6 +177,14 @@ func (h *Handler) MicrosoftAdminPage(w http.ResponseWriter, r *http.Request) {
 
 		NextcloudProvision: h.getUpdateSetting(r.Context(), microsoftNextcloudSetting, "") == "1",
 		NextcloudReady:     nextcloud.UserClientFromEnv().Enabled(),
+		AgentReady:         h.driveAgentConfigured(),
+		NCLoginAt:          h.getUpdateSetting(r.Context(), keyNCLoginAt, ""),
+		NCRedirectURI:      h.getUpdateSetting(r.Context(), keyNCLoginRedirect, ""),
+	}
+	opts := h.getUpdateSetting(r.Context(), keyNCLoginOptions, "")
+	data.NCOnlyMicrosoft, data.NCAutoProvision = strings.Contains(opts, "only"), strings.Contains(opts, "auto")
+	if data.NCRedirectURI == "" {
+		data.NCRedirectURI = ncRedirectURI("")
 	}
 	rows, err := h.db.Query(r.Context(), `
 		SELECT u.id::text, u.first_name || ' ' || u.last_name, u.email,

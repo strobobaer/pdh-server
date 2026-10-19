@@ -33,7 +33,21 @@
       <span>Beim Abgleich fehlende <b>Nextcloud-Konten anlegen</b> – Benutzer-ID ist die Microsoft-E-Mail, damit die Anmeldung mit Microsoft in Nextcloud das Konto findet.</span>
     </label>
   </form>
-  <p style="font-size:12px;color:var(--muted);margin:10px 0 0">{{if .NextcloudReady}}Nur für zugeordnete, in Microsoft aktive Personen ohne Nextcloud-Konto; vorhandene Konten bleiben unverändert. Die Anmeldung mit Microsoft richtet die Administration einmalig in Nextcloud ein (<a href="/help#users">Handbuch</a>).{{else}}Erst unter Server-Einstellungen → Nextcloud Adresse und Zugang eintragen.{{end}}</p>
+  <p style="font-size:12px;color:var(--muted);margin:10px 0 0">{{if .NextcloudReady}}Nur für zugeordnete, in Microsoft aktive Personen ohne Nextcloud-Konto; vorhandene Konten bleiben unverändert.{{else}}Erst unter Server-Einstellungen → Nextcloud Adresse und Zugang eintragen.{{end}}</p>
+
+  <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+    <div style="font-weight:600;font-size:13px;margin-bottom:6px"><i class="ti ti-login"></i> „Mit Microsoft anmelden“ in Nextcloud</div>
+    <form method="POST" action="/core/settings/microsoft/nextcloud-login" style="font-size:13px" onsubmit="this.querySelector('button').disabled=true">
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:4px"><input type="checkbox" name="only_microsoft" value="1" {{if .NCOnlyMicrosoft}}checked{{end}} style="margin-top:3px"> <span>Nur noch mit Microsoft anmelden (Passwortfeld ausblenden – Notzugang: <code>/login?direct=1</code>)</span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px"><input type="checkbox" name="auto_provision" value="1" {{if .NCAutoProvision}}checked{{end}} style="margin-top:3px"> <span>Jede Person aus dem Tenant darf sich ein Konto anlegen (sonst nur, wer hier ein Nextcloud-Konto bekommen hat)</span></label>
+      <button class="btn btn-primary btn-small" type="submit" {{if or (not .Configured) (not .AgentReady)}}disabled{{end}}><i class="ti ti-plug-connected"></i> {{if .NCLoginAt}}Erneut einrichten{{else}}In Nextcloud einrichten{{end}}</button>
+    </form>
+    <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+      {{if not .AgentReady}}Braucht den Update-Agenten und Nextcloud auf demselben Server (wie die Nextcloud-Updates).{{else}}Nimmt Tenant-ID, Client-ID und Client-Secret aus den Server-Einstellungen – nichts muss von Hand übertragen werden.{{end}}
+      {{if .NCLoginAt}}<br>Zuletzt eingerichtet: {{.NCLoginAt}}.{{end}}
+      {{if .NCRedirectURI}}<br>In Entra unter <b>Authentifizierung → Web</b> eintragen: <code style="user-select:all">{{.NCRedirectURI}}</code> und unter <b>Tokenkonfiguration</b> den optionalen Anspruch <b>email</b> (ID-Token).{{end}}
+      <br><a href="/help#users">Handbuch</a></p>
+  </div>
 </div>
 
 {{if .TenantID}}

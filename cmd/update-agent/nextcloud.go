@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -63,8 +64,23 @@ occ status || true
 
 // hostCommand: Befehl im Host-Namensraum (Docker: Hilfscontainer).
 func (a *updateAgent) hostCommand(ctx context.Context, detached bool, script string) *exec.Cmd {
+	return a.hostCommandEnv(ctx, detached, script, nil)
+}
+
+// hostCommandEnv: wie hostCommand, mit Umgebungsvariablen für das Skript
+// (z. B. Geheimnisse – so stehen sie weder im Skripttext noch in den
+// Argumenten von docker run).
+func (a *updateAgent) hostCommandEnv(ctx context.Context, detached bool, script string, env map[string]string) *exec.Cmd {
+	var extra []string
+	for k, v := range env {
+		extra = append(extra, k+"="+v)
+	}
 	if a.mode == "systemd" {
-		return exec.CommandContext(ctx, "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "--", "bash", "-c", script)
+		cmd := exec.CommandContext(ctx, "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "--", "bash", "-c", script)
+		if len(extra) > 0 {
+			cmd.Env = append(os.Environ(), extra...)
+		}
+		return cmd
 	}
 	args := []string{"run", "--privileged", "--pid=host", "--net=host", "--entrypoint", "nsenter"}
 	if detached {
@@ -72,8 +88,110 @@ func (a *updateAgent) hostCommand(ctx context.Context, detached bool, script str
 	} else {
 		args = append(args, "--rm")
 	}
+	for k := range env {
+		args = append(args, "-e", k) // Wert kommt aus cmd.Env, nicht aus der Befehlszeile
+	}
 	args = append(args, "pdh-updater:local", "-t", "1", "-m", "-u", "-i", "-n", "--", "bash", "-c", script)
-	return exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	if len(extra) > 0 {
+		cmd.Env = append(os.Environ(), extra...)
+	}
+	return cmd
+}
+
+// ── Nextcloud-Anmeldung mit Microsoft (user_oidc) ─────────────────────────
+// Das PDH schickt Tenant, Client-ID und Secret aus seiner Datenbank; der
+// Agent richtet damit die App user_oidc ein (wie scripts/configure-nextcloud-microsoft-login.sh).
+
+var (
+	ncGUIDRe     = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	ncProviderRe = regexp.MustCompile(`^[A-Za-z0-9 ._-]{1,40}$`)
+)
+
+type ncOIDCRequest struct {
+	Dir           string `json:"dir"`
+	TenantID      string `json:"tenant_id"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	Provider      string `json:"provider"`
+	AutoProvision bool   `json:"auto_provision"`
+	OnlyMicrosoft bool   `json:"only_microsoft"`
+}
+
+// ncOIDCScript: occ-Befehle für user_oidc. Das Secret kommt aus $PDH_OIDC_SECRET.
+func ncOIDCScript(req ncOIDCRequest) (string, error) {
+	if !ncDirRe.MatchString(req.Dir) || strings.Contains(req.Dir, "..") {
+		return "", errors.New("ungültiges Nextcloud-Verzeichnis")
+	}
+	if !ncGUIDRe.MatchString(req.TenantID) || !ncGUIDRe.MatchString(req.ClientID) {
+		return "", errors.New("Tenant-ID und Client-ID müssen GUIDs sein (Server-Einstellungen → Microsoft 365)")
+	}
+	if req.Provider == "" {
+		req.Provider = "Microsoft"
+	}
+	if !ncProviderRe.MatchString(req.Provider) {
+		return "", errors.New("ungültiger Name für den Anmeldeknopf")
+	}
+	multi := "1"
+	if req.OnlyMicrosoft {
+		multi = "0"
+	}
+	return `set -e
+cd '` + req.Dir + `' 2>/dev/null || { echo "Nextcloud-Verzeichnis ` + req.Dir + ` nicht gefunden"; exit 3; }
+[ -f occ ] || { echo "occ nicht gefunden in ` + req.Dir + `"; exit 3; }
+[ -n "$PDH_OIDC_SECRET" ] || { echo "Client-Secret fehlt"; exit 4; }
+U="$(stat -c %U occ)"
+occ() { runuser -u "$U" -- php occ "$@"; }
+echo "### App user_oidc"
+occ app:list --output=json | grep -q '"user_oidc"' || occ app:install user_oidc
+occ app:enable user_oidc
+echo "### Anbieter ` + req.Provider + `"
+occ user_oidc:provider '` + req.Provider + `' \
+  --clientid='` + req.ClientID + `' \
+  --clientsecret="$PDH_OIDC_SECRET" \
+  --discoveryuri='https://login.microsoftonline.com/` + req.TenantID + `/v2.0/.well-known/openid-configuration' \
+  --scope='openid email profile' \
+  --unique-uid=0 --mapping-uid=email --mapping-display-name=name --mapping-email=email >/dev/null
+echo "### Konto-Regeln"
+occ config:system:set user_oidc auto_provision --value=` + fmt.Sprint(req.AutoProvision) + ` --type=boolean >/dev/null
+occ config:system:set user_oidc soft_auto_provision --value=true --type=boolean >/dev/null
+occ config:app:set user_oidc allow_multiple_user_backends --value=` + multi + ` >/dev/null
+echo "### Adresse"
+echo "URL=$(occ config:system:get overwrite.cli.url 2>/dev/null || true)"
+echo "### fertig"
+`, nil
+}
+
+// ncOIDCHandler: POST /v1/nextcloud/oidc → richtet die Anmeldung mit Microsoft ein.
+func (a *updateAgent) ncOIDCHandler(w http.ResponseWriter, r *http.Request) {
+	var req ncOIDCRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "ungültige Anfrage"})
+		return
+	}
+	if req.Dir == "" {
+		req.Dir = "/var/www/nextcloud"
+	}
+	script, err := ncOIDCScript(req)
+	if err == nil && strings.TrimSpace(req.ClientSecret) == "" {
+		err = errors.New("Client-Secret fehlt (Server-Einstellungen → Microsoft 365)")
+	}
+	if err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	out, err := a.hostCommandEnv(ctx, false, script, map[string]string{"PDH_OIDC_SECRET": req.ClientSecret}).CombinedOutput()
+	text := strings.ReplaceAll(strings.TrimSpace(string(out)), req.ClientSecret, "***")
+	if err != nil {
+		if text == "" {
+			text = err.Error()
+		}
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lastLine(text), "output": text})
+		return
+	}
+	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "output": text})
 }
 
 var (

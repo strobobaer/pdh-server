@@ -90,9 +90,27 @@ Für das Anlegen der Nextcloud-Konten braucht die App außerdem die **Anwendungs
 
 ## Schritt 2 – Nextcloud: Anmeldung mit Microsoft einrichten
 
-Auf dem Nextcloud-Server im PDH-Verzeichnis (z. B. `cd /opt/pdh` – dort, wo das Repository liegt):
+### Standardweg: per Knopf im PDH
 
-### Fall A – systemd-Installation (Zugangsdaten in `/etc/pdh/pdh.env`)
+Das PDH nimmt Tenant-ID, Client-ID und Client-Secret aus seiner Datenbank. Nichts muss von Hand kopiert werden.
+
+1. **Core-Einstellungen → Microsoft-365-Organisationssync** → Karte **Nextcloud**, Abschnitt **„Mit Microsoft anmelden“ in Nextcloud**.
+2. Die beiden Haken vorerst **leer lassen**:
+   - „Nur noch mit Microsoft anmelden“ – erst nach dem Test (Schritt 5).
+   - „Jede Person aus dem Tenant darf sich ein Konto anlegen“ – nur, wenn das PDH **nicht** entscheiden soll, wer Nextcloud bekommt.
+3. **In Nextcloud einrichten**. Nach einigen Sekunden meldet das PDH „Nextcloud-Anmeldung mit Microsoft eingerichtet“ und zeigt die **Redirect-URI**. Vergleiche sie mit Schritt 1a.
+
+Voraussetzung: Der **Update-Agent** ist eingerichtet, und Nextcloud liegt auf demselben Server wie das PDH, also genauso wie für die Kachel „Nextcloud-Updates“. Liegt Nextcloud nicht in `/var/www/nextcloud`, das Verzeichnis zuerst in der Kachel **Nextcloud-Updates** eintragen. Ist der Knopf ausgegraut, fehlt der Agent oder die Microsoft-Zugangsdaten. Dann den Ausweg unten nehmen.
+
+Der Agent gibt das Secret an Nextcloud als Umgebungsvariable weiter. Es steht weder im Skripttext noch im Protokoll.
+
+Erneut klicken ist gefahrlos, z. B. nach einem neuen Client-Secret oder um die Haken zu ändern.
+
+### Ausweg: Skript auf dem Server
+
+Läuft Nextcloud auf einem anderen Server oder ohne Update-Agent, auf dem Nextcloud-Server im PDH-Verzeichnis (dort, wo das Repository liegt):
+
+#### Fall A – systemd-Installation (Zugangsdaten in `/etc/pdh/pdh.env`)
 
 ```bash
 sudo bash scripts/configure-nextcloud-microsoft-login.sh
@@ -100,7 +118,7 @@ sudo bash scripts/configure-nextcloud-microsoft-login.sh
 
 Das Skript liest Tenant-ID, Client-ID und Secret selbst aus `/etc/pdh/pdh.env`.
 
-### Fall B – Docker-Installation oder Zugangsdaten nur in der PDH-Datenbank
+#### Fall B – Zugangsdaten nur in der PDH-Datenbank
 
 Seit „In die Datenbank übernehmen“ stehen die Werte nicht mehr in einer Datei. Dann gibst du sie mit. Das Secret übergibst du als Umgebungsvariable, damit es nicht in der Shell-Historie landet; das Leerzeichen am Zeilenanfang verhindert das bei den meisten Shells zusätzlich:
 
@@ -110,7 +128,7 @@ Seit „In die Datenbank übernehmen“ stehen die Werte nicht mehr in einer Dat
      --client-id 11111111-1111-1111-1111-111111111111
 ```
 
-### Was das Skript macht
+### Was eingerichtet wird (Knopf und Skript)
 
 1. Es installiert und aktiviert die Nextcloud-App **OpenID Connect user backend** (`user_oidc`).
 2. Es legt den Anbieter **„Microsoft“** an: Entra-Tenant als Aussteller, Benutzer-ID = E-Mail (`--mapping-uid=email`, `--unique-uid=0`), Anzeigename und E-Mail aus Microsoft.
@@ -118,7 +136,7 @@ Seit „In die Datenbank übernehmen“ stehen die Werte nicht mehr in einer Dat
 4. Es lässt die normale Passwort-Anmeldung bestehen.
 5. Am Ende gibt es die Redirect-URI aus. Vergleiche sie mit Schritt 1a.
 
-### Optionen
+#### Optionen des Skripts
 
 | Option | Wirkung |
 |---|---|
@@ -169,7 +187,9 @@ In Nextcloud unter **Benutzer** (als Admin) siehst du die neuen Konten. Die Benu
 
 ## Schritt 5 – Optional: nur noch Anmeldung mit Microsoft
 
-Erst, wenn Schritt 4 für mehrere Personen geklappt hat:
+Erst, wenn Schritt 4 für mehrere Personen geklappt hat: Im PDH (Core-Einstellungen → Microsoft-365-Organisationssync → Karte Nextcloud) **„Nur noch mit Microsoft anmelden“** anhaken und **Erneut einrichten** klicken.
+
+Mit dem Skript stattdessen:
 
 ```bash
 sudo bash scripts/configure-nextcloud-microsoft-login.sh --only-microsoft

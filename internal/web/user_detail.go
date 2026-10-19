@@ -63,6 +63,8 @@ type UserDetailData struct {
 	CanPermissions      bool
 	Team                []UserOption
 	Responsibilities    []userResponsibility
+	BrokerWaiting       []unassignedGroup // „Wartet auf Zuweisung (als Broker)“ – wie /assignments
+	BrokerWaitingCount  int
 	CreatedAt           string
 	Roles               []*rbac.Role // zuweisbare Rollen (inkl. aktueller)
 	CanChangeRole       bool
@@ -172,6 +174,13 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	d.Responsibilities = h.userResponsibilities(ctx, id)
+	// Broker: offene Vorgänge seiner Arten ohne Zuweisung (Sichtbarkeit des Betrachters)
+	for _, g := range h.brokerUnassigned(ctx, r, id, 50, false, false) {
+		if len(g.Items) > 0 {
+			d.BrokerWaiting = append(d.BrokerWaiting, g)
+			d.BrokerWaitingCount += len(g.Items) + g.More
+		}
+	}
 	d.Quals, d.QualWarn = h.loadUserQualifications(ctx, id, d.CanPrivate)
 	d.QualKinds = qualKinds
 	if editCore {

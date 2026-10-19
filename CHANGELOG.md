@@ -14,7 +14,8 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Neu
 - Nextcloud mit Microsoft 365: Unter Core-Einstellungen → Microsoft 365 legt der Abgleich auf Wunsch fehlende Nextcloud-Konten an, mit der Microsoft-E-Mail als Benutzer-ID
-- Nextcloud-Anmeldung mit Microsoft: Das Skript „scripts/configure-nextcloud-microsoft-login.sh“ richtet in Nextcloud den Knopf „Mit Microsoft anmelden“ ein, und nur Personen mit Nextcloud-Konto aus dem PDH kommen hinein
+- Nextcloud-Anmeldung mit Microsoft: Core-Einstellungen → Microsoft 365 → „In Nextcloud einrichten“ richtet den Knopf „Mit Microsoft anmelden“ ein, mit den Zugangsdaten aus den Server-Einstellungen; nur Personen mit Nextcloud-Konto aus dem PDH kommen hinein (ohne Update-Agent: Skript „scripts/configure-nextcloud-microsoft-login.sh“)
+- Benutzerstamm → Zuständigkeiten: Bei Brokern zeigt „Wartet auf Zuweisung (als Broker)“ die offenen Vorgänge ihrer Arten, die noch niemandem gehören
 - Neues Modul „Vorlagen & Signaturen“: Firmenvorlagen für Word, Excel und PowerPoint zentral hochladen, versionieren und herunterladen, auf Wunsch in eine SharePoint-Bibliothek gespiegelt, damit sie in Office unter „Neu“ erscheinen
 - E-Mail-Signaturen mit Platzhaltern wie {Name}, {Position}, {Telefon} oder {Mobil}, je Abteilung oder für alle, mit Vorschau je Person; das Exchange-Skript rollt sie als Transportregel an jede ausgehende Mail aus
 - „Werte nach Microsoft 365 übertragen“ schreibt Position, Abteilung, Telefon, Mobil, Standort und Firma aus dem Benutzerstamm nach Microsoft 365; leere Felder übernimmt PDH von dort

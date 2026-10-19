@@ -670,6 +670,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/drives/paths", h.DrivePathsWeb)
 	r.Post("/core/settings/microsoft/sync", h.MicrosoftDirectorySyncWeb)
 	r.Post("/core/settings/microsoft/nextcloud", h.MicrosoftNextcloudProvisionWeb)
+	r.Post("/core/settings/microsoft/nextcloud-login", h.MicrosoftNextcloudLoginWeb)
 	r.Get("/m365", h.M365Page)
 	r.Post("/m365/templates", h.M365TemplateSaveWeb)
 	r.Get("/m365/templates/{id}/download", h.M365TemplateDownloadWeb)

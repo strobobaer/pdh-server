@@ -8,6 +8,45 @@ import (
 	"testing"
 )
 
+func TestNCOIDCScript(t *testing.T) {
+	ok := ncOIDCRequest{Dir: "/var/www/nextcloud", TenantID: "00000000-0000-0000-0000-000000000001", ClientID: "00000000-0000-0000-0000-000000000002", ClientSecret: "geheim"}
+	for name, bad := range map[string]func(r *ncOIDCRequest){
+		"dir":      func(r *ncOIDCRequest) { r.Dir = "/var/www/nc; rm -rf /" },
+		"tenant":   func(r *ncOIDCRequest) { r.TenantID = "x'; id; '" },
+		"client":   func(r *ncOIDCRequest) { r.ClientID = "" },
+		"provider": func(r *ncOIDCRequest) { r.Provider = "a'b" },
+	} {
+		r := ok
+		bad(&r)
+		if _, err := ncOIDCScript(r); err == nil {
+			t.Errorf("%s: ungültige Eingabe akzeptiert", name)
+		}
+	}
+	s, err := ncOIDCScript(ok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s, "geheim") || !strings.Contains(s, `--clientsecret="$PDH_OIDC_SECRET"`) {
+		t.Error("Secret gehört nicht in den Skripttext")
+	}
+	for _, want := range []string{"--mapping-uid=email", "auto_provision --value=false", "allow_multiple_user_backends --value=1", "login.microsoftonline.com/00000000-0000-0000-0000-000000000001/v2.0", "user_oidc:provider 'Microsoft'"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Skript enthält %q nicht", want)
+		}
+	}
+	ok.OnlyMicrosoft, ok.AutoProvision = true, true
+	if s, _ := ncOIDCScript(ok); !strings.Contains(s, "allow_multiple_user_backends --value=0") || !strings.Contains(s, "auto_provision --value=true") {
+		t.Error("Optionen nicht übernommen")
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "oidc.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Errorf("Syntaxfehler %v %s", err, out)
+		}
+	}
+}
+
 func TestNCScript(t *testing.T) {
 	for _, bad := range []string{"", "relativ", "/var/www/nc; rm -rf /", "/var/../etc", "/var/www/$(id)", "/a b"} {
 		if _, err := ncScript(bad, "check"); err == nil {

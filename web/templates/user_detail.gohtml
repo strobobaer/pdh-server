@@ -31,7 +31,7 @@
   {{if .CanPrivate}}<a class="rec-tab" data-tab="private" href="?tab=private"><i class="ti ti-lock"></i> Privat</a>{{end}}
   <a class="rec-tab" data-tab="quals" href="?tab=quals"><i class="ti ti-certificate"></i> Nachweise{{if .QualWarn}} <b style="background:var(--amber);color:#111">{{.QualWarn}}</b>{{end}}</a>
   <a class="rec-tab" data-tab="trainings" href="?tab=trainings"><i class="ti ti-school"></i> Schulungen</a>
-  <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b></a>
+  <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-briefcase"></i> Zuständigkeiten <b>{{len .Responsibilities}}</b>{{if .BrokerWaitingCount}} <b style="background:var(--amber);color:#111" title="wartet auf Zuweisung (als Broker)">{{.BrokerWaitingCount}}</b>{{end}}</a>
   {{if .CanPermissions}}<a class="rec-tab" data-tab="perms" href="?tab=perms"><i class="ti ti-shield-lock"></i> Einzelrechte</a>{{end}}
   {{if .IsSelf}}<a class="rec-tab" data-tab="account" href="?tab=account"><i class="ti ti-plug-connected"></i> Konto & Dienste</a>{{end}}
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
@@ -312,6 +312,29 @@
       </tbody>
     </table>
   </div>
+  {{if .BrokerWaiting}}
+  <div class="card" style="padding:0;overflow-x:auto;margin-top:14px">
+    <div class="card-title" style="padding:12px 14px 0"><span><i class="ti ti-inbox"></i> Wartet auf Zuweisung (als Broker) <b>{{.BrokerWaitingCount}}</b></span><a class="btn btn-small" href="/assignments"><i class="ti ti-user-share"></i> Zur Zuweisung</a></div>
+    <p class="rec-sub" style="padding:4px 14px 8px;margin:0">Offene Vorgänge ohne Zuweisung in den Arten, für die {{$u.FullName}} Broker ist. Sie gehören noch niemandem – zugewiesen wird unter <b>Zuweisung</b>.</p>
+    <table>
+      <thead><tr><th>Vorgang</th><th>Art</th><th>Priorität</th><th>Anlage</th><th>Gemeldet</th></tr></thead>
+      <tbody>
+      {{range .BrokerWaiting}}{{$g := .}}
+        {{range .Items}}
+        <tr>
+          <td><a href="{{.Href}}" data-frame data-frame-title="{{$g.Label}}: {{.Title}}" style="color:var(--accent)">{{.Title}}</a></td>
+          <td><i class="ti {{$g.Icon}}"></i> {{$g.Label}}</td>
+          <td>{{if .PrioLabel}}{{.PrioLabel}}{{else}}{{.Priority}}{{end}}</td>
+          <td>{{if .Infra}}{{.Infra}}{{else}}—{{end}}</td>
+          <td style="white-space:nowrap">{{.Age}}{{if .Creator}} · {{.Creator}}{{end}}</td>
+        </tr>
+        {{end}}
+        {{if .More}}<tr><td colspan="5" class="rec-sub"><a href="{{.ListURL}}">… {{.More}} weitere {{.Label}}</a></td></tr>{{end}}
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
 </div>
 
 <!-- ── Einzelrechte ── -->

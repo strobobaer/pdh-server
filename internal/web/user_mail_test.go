@@ -21,6 +21,44 @@ func TestSystemMailContent(t *testing.T) {
 	}
 }
 
+func TestUserDetailBrokerWaiting(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := UserDetailData{User: UserView{ID: "u1", Username: "toni", FullName: "Anton Pröbstl"}, Master: userMaster{Language: "de"}}
+	if out := renderPage(t, tmpl, "user_detail", d); strings.Contains(out, "Wartet auf Zuweisung") {
+		t.Error("Broker-Tabelle ohne Einträge sichtbar")
+	}
+	d.BrokerWaiting = []unassignedGroup{{Label: "Störungen", Icon: "ti-alert-triangle", ListURL: "/faults?unassigned=1", More: 3,
+		Items: []unassignedItem{{Title: "Presse steht", Href: "/faults/f1", PrioLabel: "hoch", Infra: "Linie A", Age: "seit 2 Std."}}}}
+	d.BrokerWaitingCount = 4
+	out := renderPage(t, tmpl, "user_detail", d)
+	for _, want := range []string{"Wartet auf Zuweisung (als Broker)", `href="/faults/f1"`, "Presse steht", "Linie A", "… 3 weitere Störungen", `href="/assignments"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Benutzerstamm enthält %q nicht", want)
+		}
+	}
+}
+
+func TestNCRedirectURI(t *testing.T) {
+	if got := ncRedirectURI("### Adresse\nURL=https://cloud.example/\n### fertig"); got != "https://cloud.example/apps/user_oidc/code" {
+		t.Errorf("= %q", got)
+	}
+	t.Setenv("PDH_NEXTCLOUD_BASEURL", "https://nc.example")
+	if got := ncRedirectURI("URL="); got != "https://nc.example/apps/user_oidc/code" {
+		t.Errorf("Rückfall = %q", got)
+	}
+}
+
+func TestMicrosoftAdminNextcloudLogin(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := MicrosoftAdminPageData{Configured: true, TenantID: "t1", AgentReady: true, NCRedirectURI: "https://nc.example/apps/user_oidc/code"}
+	out := renderPage(t, tmpl, "microsoft_admin", d)
+	for _, want := range []string{`action="/core/settings/microsoft/nextcloud-login"`, "In Nextcloud einrichten", "https://nc.example/apps/user_oidc/code"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Seite enthält %q nicht", want)
+		}
+	}
+}
+
 func TestUserDetailMailCard(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	d := UserDetailData{User: UserView{ID: "u1", Username: "eva", Email: "eva@firma.de"}, Master: userMaster{Language: "de"}}
