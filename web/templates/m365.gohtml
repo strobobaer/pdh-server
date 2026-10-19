@@ -1,0 +1,204 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.m3-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.m3-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.m3-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.m3-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:14px}
+.m3-tpl{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2)}
+.m3-tpl.off{opacity:.55}
+.m3-tpl > i{font-size:26px;line-height:1}
+.m3-tpl .word{color:#2b579a}.m3-tpl .excel{color:#217346}.m3-tpl .powerpoint{color:#d24726}
+.m3-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.m3-acts{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+.m3-cat{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:4px 0 8px}
+.m3-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.m3-form .form-group{margin-bottom:0}
+.m3-form .wide{grid-column:1/-1}
+.m3-sig{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+.m3-sig.off{opacity:.55}
+.m3-ph{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
+.m3-ph button{font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:12px;background:var(--bg3);color:var(--text);cursor:pointer}
+.m3-edit{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.m3-edit textarea{font-family:monospace;font-size:12px;min-height:260px;width:100%}
+@media (max-width:900px){.m3-edit,.m3-form{grid-template-columns:1fr}}
+</style>
+
+<div style="margin-bottom:14px">
+  <h1 style="font-size:19px;font-weight:600"><i class="ti ti-brand-office"></i> Vorlagen &amp; Signaturen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">Firmenvorlagen für Word, Excel und PowerPoint{{if .CanManage}} · E-Mail-Signaturen für Outlook über Exchange{{end}}</p>
+</div>
+{{if .Message}}<div class="m3-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div class="m3-msg err"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+{{if .CanManage}}
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="templates" href="?tab=templates"><i class="ti ti-files"></i> Vorlagen <b>{{.TemplateCount}}</b></a>
+  <a class="rec-tab" data-tab="signatures" href="?tab=signatures"><i class="ti ti-signature"></i> Signaturen <b>{{len .Signatures}}</b></a>
+  <a class="rec-tab" data-tab="settings" href="?tab=settings"><i class="ti ti-settings"></i> Einstellungen</a>
+</div>
+{{end}}
+
+<!-- ── Vorlagen ── -->
+<div class="rec-pane{{if not .CanManage}} active{{end}}" data-pane="templates">
+  {{if .CanManage}}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-upload"></i> Vorlage hochladen</span>
+      {{if .SharePointSite}}<form method="post" action="/m365/sharepoint/sync" style="margin:0"><button class="btn btn-small" type="submit"><i class="ti ti-cloud-upload"></i> Mit SharePoint abgleichen{{if .SyncPending}} ({{.SyncPending}}){{end}}</button></form>{{end}}
+    </div>
+    <form method="post" action="/m365/templates" enctype="multipart/form-data" class="m3-form">
+      {{template "m3-template-fields" (dict "D" $d "T" nil)}}
+      <div class="form-group"><label class="form-label">Datei *</label><input type="file" name="file" required accept=".dotx,.docx,.xltx,.xlsx,.potx,.pptx" class="form-input"></div>
+      <div><button class="btn btn-primary" type="submit"><i class="ti ti-upload"></i> Hochladen</button></div>
+    </form>
+    <datalist id="m3-cats">{{range .Categories}}<option value="{{.}}">{{end}}</datalist>
+  </div>
+  {{end}}
+  {{range .Groups}}
+    <div class="m3-cat">{{if .Category}}{{.Category}}{{else}}Allgemein{{end}}</div>
+    <div class="m3-grid">
+    {{range .Templates}}
+      <div class="m3-tpl{{if not .Active}} off{{end}}">
+        <i class="ti {{.Icon}} {{.Kind}}"></i>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">{{.Name}}</div>
+          {{if .Description}}<div style="font-size:12px">{{.Description}}</div>{{end}}
+          <div class="m3-meta">{{.FileName}} · {{.SizeText}} · Version {{.Version}} · {{.Updated}}{{if not .Active}} · inaktiv{{end}}{{if and $d.CanManage $d.SharePointSite}}{{if .SyncPending}} · <span style="color:var(--orange)">SharePoint ausstehend</span>{{else if .SharePoint}} · SharePoint ✓{{end}}{{end}}</div>
+          <div class="m3-acts">
+            <a class="btn btn-small" href="/m365/templates/{{.ID}}/download"><i class="ti ti-download"></i> Herunterladen</a>
+            {{if $d.CanManage}}
+            <button type="button" class="btn btn-small" onclick="this.closest('.m3-tpl').nextElementSibling.hidden=false"><i class="ti ti-edit"></i> Bearbeiten</button>
+            <form method="post" action="/m365/templates/{{.ID}}/toggle" style="margin:0"><button class="btn btn-small" type="submit">{{if .Active}}<i class="ti ti-eye-off"></i> Ausblenden{{else}}<i class="ti ti-eye"></i> Freigeben{{end}}</button></form>
+            <form method="post" action="/m365/templates/{{.ID}}/delete" style="margin:0" onsubmit="return confirm('Vorlage „{{.Name}}“ löschen?')"><button class="btn btn-small" type="submit" title="Löschen"><i class="ti ti-trash"></i></button></form>
+            {{end}}
+          </div>
+        </div>
+      </div>
+      {{if $d.CanManage}}
+      <div class="card" hidden style="grid-column:1/-1">
+        <form method="post" action="/m365/templates/{{.ID}}" enctype="multipart/form-data" class="m3-form">
+          {{template "m3-template-fields" (dict "D" $d "T" .)}}
+          <div class="form-group"><label class="form-label">Neue Version (optional)</label><input type="file" name="file" accept=".dotx,.docx,.xltx,.xlsx,.potx,.pptx" class="form-input"></div>
+          <div style="display:flex;gap:6px"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+            <button type="button" class="btn" onclick="this.closest('.card').hidden=true">Abbrechen</button></div>
+        </form>
+      </div>
+      {{end}}
+    {{end}}
+    </div>
+  {{else}}
+    <p class="rec-sub">Noch keine Vorlagen.{{if .CanManage}} Oben die erste hochladen.{{end}}</p>
+  {{end}}
+</div>
+
+{{if .CanManage}}
+<!-- ── Signaturen ── -->
+<div class="rec-pane" data-pane="signatures">
+  {{if .Edit}}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-signature"></i> {{if .Edit.ID}}Signatur bearbeiten{{else}}Neue Signatur{{end}}</span><a class="btn btn-small" href="?tab=signatures">Schließen</a></div>
+    <form method="post" action="/m365/signatures{{if .Edit.ID}}/{{.Edit.ID}}{{end}}" id="m3-sig-form">
+      <div class="m3-form" style="margin-bottom:10px">
+        <div class="form-group"><label class="form-label">Name *</label><input name="name" class="form-input" required maxlength="200" value="{{.Edit.Name}}" placeholder="z. B. Standard"></div>
+        <div class="form-group"><label class="form-label">Gilt für</label>
+          <select name="department" class="form-input"><option value="">alle (ohne eigene Abteilungs-Signatur)</option>
+            {{range .Departments}}<option value="{{.}}" {{if eq . $d.Edit.Department}}selected{{end}}>Abteilung {{.}}</option>{{end}}
+            {{if .Edit.Department}}{{$found := false}}{{range .Departments}}{{if eq . $d.Edit.Department}}{{$found = true}}{{end}}{{end}}{{if not $found}}<option value="{{.Edit.Department}}" selected>Abteilung {{.Edit.Department}}</option>{{end}}{{end}}
+          </select></div>
+      </div>
+      <div class="m3-edit">
+        <div>
+          <label class="form-label">HTML der Signatur</label>
+          <div class="m3-ph">{{range .Fields}}<button type="button" onclick="m3Insert('{{"{"}}{{.Key}}{{"}"}}')">{{"{"}}{{.Key}}{{"}"}}</button>{{end}}</div>
+          <textarea name="html" id="m3-html" class="form-input" spellcheck="false"
+            hx-post="/m365/signatures/preview" hx-trigger="keyup changed delay:600ms, m3change" hx-target="#m3-preview" hx-include="#m3-sig-form">{{.Edit.HTML}}</textarea>
+          <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" name="active" value="1" {{if .Edit.Active}}checked{{end}}> aktiv (wird ausgerollt)</label>
+          <div style="display:flex;gap:6px;margin-top:10px"><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+        </div>
+        <div>
+          <label class="form-label">Vorschau für</label>
+          <select name="preview_user" class="form-input" hx-post="/m365/signatures/preview" hx-trigger="change" hx-target="#m3-preview" hx-include="#m3-sig-form">
+            {{range .PreviewUsers}}<option value="{{.ID}}" {{if eq .ID $d.MeID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+          <div id="m3-preview" style="margin-top:8px" hx-post="/m365/signatures/preview" hx-trigger="load" hx-include="#m3-sig-form"></div>
+          <p class="rec-sub" style="margin-top:6px">Werte aus dem Benutzerstamm, leere Felder aus Microsoft 365. In Outlook setzt Exchange die Werte aus Microsoft 365 ein.</p>
+        </div>
+      </div>
+    </form>
+  </div>
+  {{end}}
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-list"></i> Signaturen</span><a class="btn btn-small btn-primary" href="?tab=signatures&sig=new"><i class="ti ti-plus"></i> Neue Signatur</a></div>
+    {{range .Signatures}}
+      <div class="m3-sig{{if not .Active}} off{{end}}">
+        <i class="ti ti-signature"></i>
+        <div style="flex:1;min-width:180px"><b>{{.Name}}</b>
+          <div class="m3-meta">{{if .Department}}Abteilung {{.Department}}{{else}}alle übrigen{{end}} · {{.RuleLength}} von 5000 Zeichen · {{.Updated}}{{if not .Active}} · inaktiv{{end}}</div>
+          {{if .TooLong}}<div style="color:var(--red);font-size:11px"><i class="ti ti-alert-circle"></i> zu lang für Exchange</div>{{end}}
+        </div>
+        <a class="btn btn-small" href="?tab=signatures&sig={{.ID}}"><i class="ti ti-edit"></i> Bearbeiten</a>
+        <form method="post" action="/m365/signatures/{{.ID}}/delete" style="margin:0" onsubmit="return confirm('Signatur „{{.Name}}“ löschen?')"><button class="btn btn-small" type="submit" title="Löschen"><i class="ti ti-trash"></i></button></form>
+      </div>
+    {{else}}
+      <p class="rec-sub">Noch keine Signatur. „Neue Signatur“ startet mit einer Vorlage.</p>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-rocket"></i> In Outlook ausrollen</span></div>
+    <ol class="hb-steps" style="font-size:13px;margin:0 0 10px">
+      <li><b>Werte nach Microsoft 365 übertragen</b> – schreibt Position, Abteilung, Telefon, Mobil, Standort und Firma aus dem Benutzerstamm nach Microsoft 365. Leere PDH-Felder bleiben in Microsoft 365 unverändert.</li>
+      <li><b>Exchange-Skript herunterladen</b> und in PowerShell ausführen (<code>Connect-ExchangeOnline</code>, dann <code>.\pdh-signaturen.ps1</code>). Es legt je aktiver Signatur eine Transportregel an und entfernt alte PDH-Regeln.</li>
+    </ol>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <form method="post" action="/m365/signatures/push" style="margin:0" onsubmit="return confirm('Werte aus dem Benutzerstamm nach Microsoft 365 schreiben?')"><button class="btn" type="submit" {{if not .GraphReady}}disabled{{end}}><i class="ti ti-arrows-right-left"></i> Werte nach Microsoft 365 übertragen</button></form>
+      <a class="btn btn-primary" href="/m365/signatures/script"><i class="ti ti-download"></i> Exchange-Skript herunterladen</a>
+    </div>
+    <p class="rec-sub" style="margin-top:8px">Exchange hängt die Signatur beim Senden an jede Mail aus dem Unternehmen an – auch vom Handy. Im Entwurf ist sie nicht zu sehen. Antworten, in denen schon eine PDH-Signatur steht, bekommen keine zweite. Bilder nur als Link auf eine öffentliche Adresse (https://…).</p>
+  </div>
+</div>
+
+<!-- ── Einstellungen ── -->
+<div class="rec-pane" data-pane="settings">
+  <div class="card" style="max-width:680px;margin-bottom:14px">
+    <div class="card-title"><span><i class="ti ti-building"></i> Firma</span></div>
+    <form method="post" action="/m365/company" class="m3-form">
+      <div class="form-group"><label class="form-label">Firmenname für {Firma}</label><input name="company" class="form-input" value="{{.Company}}" placeholder="leer = Firmenname aus Microsoft 365"></div>
+      <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+    </form>
+  </div>
+  <div class="card" style="max-width:680px">
+    <div class="card-title"><span><i class="ti ti-brand-onedrive"></i> SharePoint-Bibliothek für Vorlagen</span></div>
+    {{if not .GraphReady}}<p class="rec-sub">Zuerst unter Server-Einstellungen → Microsoft 365 Tenant-ID, Client-ID und Client-Secret eintragen.</p>{{end}}
+    <form method="post" action="/m365/sharepoint" class="m3-form">
+      <div class="form-group"><label class="form-label">Site</label><input name="site" class="form-input" value="{{.SharePointSite}}" placeholder="firma.sharepoint.com/sites/Vorlagen"></div>
+      <div class="form-group"><label class="form-label">Bibliothek</label><input name="library" class="form-input" value="{{.SharePointLibrary}}" placeholder="Vorlagen"></div>
+      <div class="wide"><button class="btn btn-primary" type="submit"><i class="ti ti-plug-connected"></i> Speichern &amp; prüfen</button></div>
+    </form>
+    <p class="rec-sub" style="margin-top:10px">Die App-Registrierung braucht die Anwendungsberechtigung <b>Sites.ReadWrite.All</b>. Damit die Vorlagen in Word, Excel und PowerPoint unter „Neu“ erscheinen, die Bibliothek einmalig als Organisationsvorlagen registrieren (SharePoint-Online-PowerShell):<br>
+    <code style="user-select:all">Add-SPOOrgAssetsLibrary -LibraryUrl https://{{if .SharePointSite}}{{.SharePointSite}}/{{if .SharePointLibrary}}{{.SharePointLibrary}}{{else}}Vorlagen{{end}}{{else}}firma.sharepoint.com/sites/Vorlagen/Vorlagen{{end}} -OrgAssetType OfficeTemplateLibrary</code></p>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "m3-template-fields"}}{{$t := .T}}
+<div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="255" value="{{if $t}}{{$t.Name}}{{end}}" placeholder="leer = Dateiname"></div>
+<div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" maxlength="100" list="m3-cats" value="{{if $t}}{{$t.Category}}{{end}}" placeholder="z. B. Briefe, Präsentationen"></div>
+<div class="form-group wide"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{if $t}}{{$t.Description}}{{end}}"></div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function m3Insert(ph){
+  const ta = document.getElementById('m3-html');
+  if(!ta) return;
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + ph + ta.value.slice(e);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = s + ph.length;
+  if(window.htmx) htmx.trigger(ta, 'm3change');
+}
+</script>
+{{end}}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+
+	"pdh/internal/integrations/nextcloud"
 )
 
 type MicrosoftAdminPageData struct {
@@ -24,6 +26,15 @@ type MicrosoftAdminPageData struct {
 	Unmatched  string
 	Notice     string
 	Users      []MicrosoftDirectoryUserRow
+	// Nextcloud-Konten beim Abgleich anlegen (NextcloudReady: Nextcloud eingerichtet)
+	NextcloudProvision bool
+	NextcloudReady     bool
+}
+
+// microsoftSyncResult: Zähler eines Verzeichnisabgleichs.
+type microsoftSyncResult struct {
+	Matched, Unmatched                int
+	NextcloudCreated, NextcloudFailed int
 }
 
 // MicrosoftDirectoryUserRow ist ein aktiver PDH-Benutzer mit seiner
@@ -48,6 +59,21 @@ type microsoftDirectoryUser struct {
 	UserPrincipalName string `json:"userPrincipalName"`
 	Department        string `json:"department"`
 	AccountEnabled    bool   `json:"accountEnabled"`
+	// Rückfall für Signatur-Platzhalter (m365_signatures.go)
+	GivenName      string   `json:"givenName"`
+	Surname        string   `json:"surname"`
+	JobTitle       string   `json:"jobTitle"`
+	BusinessPhones []string `json:"businessPhones"`
+	MobilePhone    string   `json:"mobilePhone"`
+	OfficeLocation string   `json:"officeLocation"`
+	CompanyName    string   `json:"companyName"`
+}
+
+func (u microsoftDirectoryUser) businessPhone() string {
+	if len(u.BusinessPhones) > 0 {
+		return u.BusinessPhones[0]
+	}
+	return ""
 }
 
 type microsoftDirectoryPage struct {
@@ -68,6 +94,9 @@ func (h *Handler) MicrosoftAdminPage(w http.ResponseWriter, r *http.Request) {
 		Matched:    h.getUpdateSetting(r.Context(), "microsoft_directory_last_matched", "0"),
 		Unmatched:  h.getUpdateSetting(r.Context(), "microsoft_directory_last_unmatched", "0"),
 		Notice:     r.URL.Query().Get("notice"),
+
+		NextcloudProvision: h.getUpdateSetting(r.Context(), microsoftNextcloudSetting, "") == "1",
+		NextcloudReady:     nextcloud.UserClientFromEnv().Enabled(),
 	}
 	rows, err := h.db.Query(r.Context(), `
 		SELECT u.id::text, u.first_name || ' ' || u.last_name, u.email,
@@ -152,6 +181,23 @@ func (h *Handler) MicrosoftDirectoryUnassignWeb(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, "/core/settings/microsoft?notice=Zuordnung+entfernt", http.StatusSeeOther)
 }
 
+// MicrosoftNextcloudProvisionWeb schaltet das Anlegen von Nextcloud-Konten
+// beim Abgleich ein oder aus.
+func (h *Handler) MicrosoftNextcloudProvisionWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	value, notice := "0", "Nextcloud-Konten werden beim Abgleich nicht mehr angelegt"
+	if r.FormValue("enabled") == "1" {
+		value, notice = "1", "Nextcloud-Konten werden beim nächsten Abgleich angelegt"
+	}
+	if err := h.setUpdateSetting(r.Context(), microsoftNextcloudSetting, value); err != nil {
+		notice = "Einstellung konnte nicht gespeichert werden: " + err.Error()
+	}
+	http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape(notice), http.StatusSeeOther)
+}
+
 func (h *Handler) MicrosoftDirectorySyncWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageRoles(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -167,34 +213,41 @@ func (h *Handler) MicrosoftDirectorySyncWeb(w http.ResponseWriter, r *http.Reque
 	}
 	defer h.microsoftSyncMu.Unlock()
 
-	matched, unmatched, err := h.syncMicrosoftDirectory(r.Context())
+	res, err := h.syncMicrosoftDirectory(r.Context(), getUser(r).ID)
 	if err != nil {
 		http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape("Synchronisierung fehlgeschlagen: "+err.Error()), http.StatusSeeOther)
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_ = h.setUpdateSetting(r.Context(), "microsoft_directory_last_sync", now)
-	_ = h.setUpdateSetting(r.Context(), "microsoft_directory_last_matched", fmt.Sprint(matched))
-	_ = h.setUpdateSetting(r.Context(), "microsoft_directory_last_unmatched", fmt.Sprint(unmatched))
-	notice := fmt.Sprintf("Synchronisierung abgeschlossen: %d zugeordnet, %d ohne passendes PDH-Konto", matched, unmatched)
+	_ = h.setUpdateSetting(r.Context(), "microsoft_directory_last_matched", fmt.Sprint(res.Matched))
+	_ = h.setUpdateSetting(r.Context(), "microsoft_directory_last_unmatched", fmt.Sprint(res.Unmatched))
+	notice := fmt.Sprintf("Synchronisierung abgeschlossen: %d zugeordnet, %d ohne passendes PDH-Konto", res.Matched, res.Unmatched)
+	if res.NextcloudCreated > 0 || res.NextcloudFailed > 0 {
+		notice += fmt.Sprintf(" · Nextcloud: %d Konten verknüpft", res.NextcloudCreated)
+		if res.NextcloudFailed > 0 {
+			notice += fmt.Sprintf(", %d nicht möglich (Server-Protokoll)", res.NextcloudFailed)
+		}
+	}
 	http.Redirect(w, r, "/core/settings/microsoft?notice="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
-func (h *Handler) syncMicrosoftDirectory(ctx context.Context) (int, int, error) {
+func (h *Handler) syncMicrosoftDirectory(ctx context.Context, actorID string) (microsoftSyncResult, error) {
+	var res microsoftSyncResult
 	accessToken, err := h.microsoftDirectoryToken(ctx)
 	if err != nil {
-		return 0, 0, err
+		return res, err
 	}
+	provision := h.getUpdateSetting(ctx, microsoftNextcloudSetting, "") == "1" && nextcloud.UserClientFromEnv().Enabled()
 	query := url.Values{
-		"$select": {"id,displayName,mail,userPrincipalName,department,accountEnabled"},
+		"$select": {"id,displayName,mail,userPrincipalName,department,accountEnabled," + microsoftSignatureSelect},
 		"$top":    {"999"},
 	}
 	nextURL := "https://graph.microsoft.com/v1.0/users?" + query.Encode()
-	matched, unmatched := 0, 0
 	for nextURL != "" {
 		var page microsoftDirectoryPage
 		if err := h.getMicrosoftGraphJSON(ctx, accessToken, nextURL, &page); err != nil {
-			return matched, unmatched, err
+			return res, err
 		}
 		for _, directoryUser := range page.Users {
 			email := strings.TrimSpace(directoryUser.Mail)
@@ -202,7 +255,7 @@ func (h *Handler) syncMicrosoftDirectory(ctx context.Context) (int, int, error) 
 				email = strings.TrimSpace(directoryUser.UserPrincipalName)
 			}
 			if email == "" || directoryUser.ID == "" {
-				unmatched++
+				res.Unmatched++
 				continue
 			}
 			var pdhUserID string
@@ -211,31 +264,72 @@ func (h *Handler) syncMicrosoftDirectory(ctx context.Context) (int, int, error) 
 				WHERE active=true AND lower(trim(email))=lower($1)
 				LIMIT 1`, email).Scan(&pdhUserID)
 			if errors.Is(err, pgx.ErrNoRows) {
-				unmatched++
+				res.Unmatched++
 				continue
 			}
 			if err != nil {
-				return matched, unmatched, err
+				return res, err
 			}
 			_, err = h.db.Exec(ctx, `
 				INSERT INTO microsoft_directory_users
-					(tenant_id, microsoft_user_id, pdh_user_id, email, display_name, department, account_enabled, synced_at)
-				VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, NOW())
+					(tenant_id, microsoft_user_id, pdh_user_id, email, display_name, department, account_enabled, synced_at,
+					 given_name, surname, job_title, business_phone, mobile_phone, office_location, company_name)
+				VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, NOW(), $8, $9, $10, $11, $12, $13, $14)
 				ON CONFLICT (tenant_id, microsoft_user_id) DO UPDATE SET
 					pdh_user_id=EXCLUDED.pdh_user_id,
 					email=EXCLUDED.email,
 					display_name=EXCLUDED.display_name,
 					department=EXCLUDED.department,
 					account_enabled=EXCLUDED.account_enabled,
-					synced_at=NOW()`, h.microsoft.TenantID, directoryUser.ID, pdhUserID, email, directoryUser.DisplayName, directoryUser.Department, directoryUser.AccountEnabled)
+					synced_at=NOW(),
+					given_name=EXCLUDED.given_name, surname=EXCLUDED.surname, job_title=EXCLUDED.job_title,
+					business_phone=EXCLUDED.business_phone, mobile_phone=EXCLUDED.mobile_phone,
+					office_location=EXCLUDED.office_location, company_name=EXCLUDED.company_name`,
+				h.microsoft.TenantID, directoryUser.ID, pdhUserID, email, directoryUser.DisplayName, directoryUser.Department, directoryUser.AccountEnabled,
+				directoryUser.GivenName, directoryUser.Surname, directoryUser.JobTitle, directoryUser.businessPhone(),
+				directoryUser.MobilePhone, directoryUser.OfficeLocation, directoryUser.CompanyName)
 			if err != nil {
-				return matched, unmatched, err
+				return res, err
 			}
-			matched++
+			res.Matched++
+			if provision && directoryUser.AccountEnabled {
+				switch linked, err := h.provisionNextcloudFromMicrosoft(ctx, pdhUserID, email, directoryUser.DisplayName, actorID); {
+				case err != nil:
+					res.NextcloudFailed++
+					componentLog("nextcloud").Warn().Err(err).Str("user", pdhUserID).Str("microsoft", email).Msg("konto beim microsoft-abgleich")
+				case linked:
+					res.NextcloudCreated++
+				}
+			}
 		}
 		nextURL = page.NextLink
 	}
-	return matched, unmatched, nil
+	return res, nil
+}
+
+// provisionNextcloudFromMicrosoft legt für eine zugeordnete Person ohne
+// Nextcloud-Konto eines mit der Microsoft-E-Mail als Benutzer-ID an.
+// linked=false: Person hatte schon ein Konto.
+func (h *Handler) provisionNextcloudFromMicrosoft(ctx context.Context, pdhUserID, email, displayName, actorID string) (linked bool, err error) {
+	var current, firstName, lastName string
+	if err := h.db.QueryRow(ctx, `SELECT COALESCE(nextcloud_user_id, ''), first_name, last_name FROM users WHERE id=$1::uuid`,
+		pdhUserID).Scan(&current, &firstName, &lastName); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(current) != "" {
+		return false, nil
+	}
+	ncID, ok := nextcloudIDFromMicrosoftEmail(email)
+	if !ok {
+		return false, fmt.Errorf("„%s“ taugt nicht als Nextcloud-Benutzer-ID", email)
+	}
+	if name := strings.TrimSpace(firstName + " " + lastName); name != "" {
+		displayName = name
+	}
+	if _, _, err := h.createAndLinkNextcloudAccount(ctx, pdhUserID, ncID, displayName, email, actorID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (h *Handler) microsoftDirectoryToken(ctx context.Context) (string, error) {

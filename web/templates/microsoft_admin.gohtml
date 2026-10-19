@@ -22,7 +22,18 @@
   {{else}}
   <p style="font-size:13px;color:var(--muted)">Microsoft Client-ID, Client-Secret und Organisations-Tenant-ID müssen serverseitig konfiguriert sein.</p>
   {{end}}
-  <p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Abgleich verknüpft bestehende aktive PDH-Konten per E-Mail. Er legt keine Konten an, ändert keine Rollen und deaktiviert niemanden.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:0">Der Abgleich verknüpft bestehende aktive PDH-Konten per E-Mail. Er legt keine PDH-Konten an, ändert keine Rollen und deaktiviert niemanden.</p>
+</div>
+
+<div class="card" style="max-width:680px;margin-top:14px">
+  <div class="card-title"><i class="ti ti-cloud"></i> Nextcloud</div>
+  <form method="POST" action="/core/settings/microsoft/nextcloud" style="font-size:13px">
+    <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+      <input type="checkbox" name="enabled" value="1" {{if .NextcloudProvision}}checked{{end}} {{if not .NextcloudReady}}disabled{{end}} onchange="this.form.submit()" style="margin-top:3px">
+      <span>Beim Abgleich fehlende <b>Nextcloud-Konten anlegen</b> – Benutzer-ID ist die Microsoft-E-Mail, damit die Anmeldung mit Microsoft in Nextcloud das Konto findet.</span>
+    </label>
+  </form>
+  <p style="font-size:12px;color:var(--muted);margin:10px 0 0">{{if .NextcloudReady}}Nur für zugeordnete, in Microsoft aktive Personen ohne Nextcloud-Konto; vorhandene Konten bleiben unverändert. Die Anmeldung mit Microsoft richtet die Administration einmalig in Nextcloud ein (<a href="/help#users">Handbuch</a>).{{else}}Erst unter Server-Einstellungen → Nextcloud Adresse und Zugang eintragen.{{end}}</p>
 </div>
 
 {{if .TenantID}}

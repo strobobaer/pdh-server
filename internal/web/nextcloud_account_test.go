@@ -30,3 +30,31 @@ func TestNextcloudAccountButton(t *testing.T) {
 		t.Error("Knopf ohne Nextcloud-Zugang")
 	}
 }
+
+func TestNextcloudIDFromMicrosoftEmail(t *testing.T) {
+	for in, want := range map[string]string{
+		"Eva.Muster@firma.de":                       "Eva.Muster@firma.de",
+		" eva@firma.de ":                            "eva@firma.de",
+		"gast_extern.de#EXT#@firma.onmicrosoft.com": "",
+		"jürgen@firma.de":                           "",
+		"ohne-at":                                   "",
+		"":                                          "",
+	} {
+		got, ok := nextcloudIDFromMicrosoftEmail(in)
+		if got != want || ok != (want != "") {
+			t.Errorf("nextcloudIDFromMicrosoftEmail(%q) = %q, %v; erwartet %q", in, got, ok, want)
+		}
+	}
+}
+
+func TestMicrosoftAdminNextcloudCard(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := MicrosoftAdminPageData{Configured: true, TenantID: "t1"}
+	if out := renderPage(t, tmpl, "microsoft_admin", d); !strings.Contains(out, `action="/core/settings/microsoft/nextcloud"`) || !strings.Contains(out, "disabled onchange") {
+		t.Error("Nextcloud-Karte fehlt oder Schalter ohne Nextcloud-Zugang bedienbar")
+	}
+	d.NextcloudReady, d.NextcloudProvision = true, true
+	if out := renderPage(t, tmpl, "microsoft_admin", d); !strings.Contains(out, `value="1" checked`) {
+		t.Error("eingeschaltetes Anlegen nicht angehakt")
+	}
+}

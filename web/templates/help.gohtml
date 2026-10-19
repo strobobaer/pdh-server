@@ -889,6 +889,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>PDH legt in Nextcloud ein Konto mit dem Benutzernamen, Namen und der E-Mail der Person an und trägt es ins Feld ein. Das <b>Startpasswort</b> steht einmalig daneben – an die Person weitergeben, sie ändert es in Nextcloud.</li>
     </ol>
     Den Knopf gibt es nur, wenn unter <a href="#server">Server-Einstellungen → Nextcloud</a> Adresse und Zugang eingetragen sind und die Person noch kein Nextcloud-Konto hat. Der dort eingetragene Nextcloud-Benutzer braucht Admin-Rechte in Nextcloud. Gibt es das Konto in Nextcloud schon, wird es nur verknüpft.</div>
+  <div class="hb-howto"><b><i class="ti ti-brand-windows"></i> Für Administratoren: Nextcloud mit Microsoft 365</b>
+    <ol class="hb-steps">
+      <li><b>Einmalig in Nextcloud:</b> Auf dem Nextcloud-Server im PDH-Verzeichnis <code>sudo bash scripts/configure-nextcloud-microsoft-login.sh</code> ausführen. Danach zeigt die Nextcloud-Anmeldung den Knopf <b>Mit Microsoft anmelden</b>.</li>
+      <li><b>Einmalig in Entra:</b> In der App-Registrierung die Redirect-URI eintragen, die das Skript am Ende ausgibt (<code>…/apps/user_oidc/code</code>). Unter <b>Tokenkonfiguration</b> den optionalen Anspruch <b>email</b> fürs ID-Token hinzufügen.</li>
+      <li><b>Core-Einstellungen → Microsoft 365</b> → Karte <b>Nextcloud</b>: <b>Nextcloud-Konten anlegen</b> anhaken.</li>
+      <li><b>Jetzt abgleichen</b>. Jede zugeordnete Person ohne Nextcloud-Konto bekommt eines. Die Meldung oben zeigt, wie viele.</li>
+    </ol>
+    Die Nextcloud-Benutzer-ID ist dann die Microsoft-E-Mail. So findet die Microsoft-Anmeldung das Konto, und es braucht kein Startpasswort. Auch der Knopf <b>Nextcloud-Konto anlegen</b> im Benutzerstamm nimmt dann die Microsoft-E-Mail. Vorhandene Nextcloud-Konten bleiben, wie sie sind. In Microsoft deaktivierte Personen und Gastkonten bekommen kein Konto. Wer in Nextcloud noch kein Konto hat, kann sich dort auch mit Microsoft nicht anmelden. So entscheidet PDH, wer Nextcloud bekommt.</div>
   <div class="hb-howto"><b><i class="ti ti-user-cog"></i> Für Administratoren: Passwort im Benutzerstamm setzen</b>
     <ol class="hb-steps">
       <li>Benutzer öffnen (oder neu anlegen) und unter <b>Neues Passwort</b> ein vorläufiges Passwort eintragen – es muss die Richtlinie erfüllen.</li>
@@ -935,6 +943,35 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Übergeordnete</b> Abteilungen – vorbelegt Instandhaltung, IT, Office und GL – und Rollen <b>ohne Abteilung</b> (z. B. Administrator) sehen alles. Das Kennzeichen setzt du unter <b>Abteilungen &amp; Gruppen</b>.</li>
     </ul></div>
   {{template "hb-shots" (dict "Ref" (index $s "users") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="templates" data-title="Vorlagen &amp; Signaturen" data-pages="m365">
+  <h2><i class="ti ti-brand-office"></i> Vorlagen &amp; Signaturen</h2>
+  <p>Unter <b>Navigation → Vorlagen &amp; Signaturen</b> liegen die Firmenvorlagen für Word, Excel und PowerPoint. Jede Person kann sie dort herunterladen. Ist eine SharePoint-Bibliothek eingerichtet, stehen sie auch direkt in Word, Excel und PowerPoint unter <b>Neu</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-upload"></i> So stellst du eine Vorlage bereit</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Vorlagen</b> → <b>Vorlage hochladen</b>: Datei wählen (.dotx, .docx, .xltx, .xlsx, .potx, .pptx), Kategorie und Beschreibung eintragen, <b>Hochladen</b>.</li>
+      <li>Neue Fassung: bei der Vorlage <b>Bearbeiten</b>, Datei unter <b>Neue Version</b> wählen, <b>Speichern</b>. Die Versionsnummer zählt hoch.</li>
+      <li>Mit SharePoint: <b>Mit SharePoint abgleichen</b>. Neue und geänderte Vorlagen werden hochgeladen, ausgeblendete und gelöschte dort entfernt.</li>
+    </ol>
+    <b>Ausblenden</b> nimmt eine Vorlage aus der Liste, ohne sie zu löschen. Das Recht „Microsoft-365-Vorlagen &amp; E-Mail-Signaturen verwalten“ braucht man zum Hochladen und Ändern; Herunterladen darf jede Person.</div>
+  <div class="hb-howto"><b><i class="ti ti-signature"></i> So richtest du E-Mail-Signaturen ein</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Signaturen</b> → <b>Neue Signatur</b>. Bei <b>Gilt für</b> eine Abteilung wählen oder „alle“ lassen.</li>
+      <li>Das HTML anpassen. Die Knöpfe fügen Platzhalter ein, z. B. <code>{Name}</code>, <code>{Position}</code>, <code>{Telefon}</code>, <code>{Mobil}</code>, <code>{E-Mail}</code>, <code>{Firma}</code>. Rechts siehst du die Vorschau für eine ausgewählte Person.</li>
+      <li><b>Speichern</b>. Unten im Reiter zuerst <b>Werte nach Microsoft 365 übertragen</b>, dann <b>Exchange-Skript herunterladen</b>.</li>
+      <li>Das Skript in PowerShell ausführen: <code>Connect-ExchangeOnline</code>, dann <code>.\pdh-signaturen.ps1</code>. Ab dann hängt Exchange die Signatur an jede ausgehende Mail.</li>
+    </ol>
+    Die Werte kommen aus dem Benutzerstamm. Was dort leer ist, nimmt PDH aus Microsoft 365. Den Firmennamen für <code>{Firma}</code> trägst du im Reiter <b>Einstellungen</b> ein. Nach Änderungen an einer Signatur das Skript neu herunterladen und ausführen. Nach Änderungen im Benutzerstamm genügt <b>Werte nach Microsoft 365 übertragen</b>.</div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Für Administratoren: einmalige Einrichtung</b>
+    <ul>
+      <li>In der Entra-App-Registrierung des PDH unter <b>API-Berechtigungen → Microsoft Graph → Anwendungsberechtigungen</b> diese Rechte hinzufügen und die <b>Administratorzustimmung erteilen</b>: <b>Sites.ReadWrite.All</b> (für SharePoint) und <b>User.ReadWrite.All</b> (für Werte nach Microsoft 365).</li>
+      <li>Reiter <b>Einstellungen</b>: SharePoint-Site und Bibliothek eintragen, <b>Speichern &amp; prüfen</b>. Den dort angezeigten Befehl <code>Add-SPOOrgAssetsLibrary</code> einmalig in der SharePoint-Online-PowerShell ausführen. Bis die Vorlagen in Office erscheinen, kann es bis zu 24 Stunden dauern.</li>
+      <li>Vor dem Übertragen unter <b>Core-Einstellungen → Microsoft 365</b> einmal <b>Jetzt abgleichen</b>. Nur zugeordnete Personen werden übertragen.</li>
+      <li>Personen, die aus einem lokalen Active Directory synchronisiert werden, kann PDH in Microsoft 365 nicht ändern. Diese Werte im lokalen AD pflegen.</li>
+    </ul></div>
+  <p>Exchange erlaubt höchstens 5000 Zeichen je Signatur. Die Liste zeigt, wie viele eine Signatur braucht. Bilder wie das Logo nur als Link auf eine öffentlich erreichbare Adresse einbinden.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "templates") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="trainings" data-title="Schulungen &amp; Qualifikationen" data-pages="trainings">
@@ -1259,7 +1296,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
     <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
-    <li><b>Core-Einstellungen</b> – Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich, Hersteller &amp; Lieferanten, Feldsätze.</li>
+    <li><b>Core-Einstellungen</b> – Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich samt Nextcloud-Konten (<a href="#users">mehr</a>), Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
     <li><b>Datensicherung</b> – Sicherungen, Zeitpläne und Wiederherstellung (<a href="#backup">mehr</a>).</li>

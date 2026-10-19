@@ -35,9 +35,24 @@ Nach dem Neustart erscheint **Mein Konto** im Nutzermenü. Jeder Nutzer kann dor
 
 Jeder verbundene Nutzer kann unter **Mein Konto** je Konto (geschäftlich und privat getrennt) auswählen, ob Schichten, zugewiesene Aufgaben, Wartungen, Tickets und Störungen bei „Jetzt synchronisieren“ in seinen Outlook-Kalender geschrieben werden. Outlook-Termine mit Status „busy“, „tentative“, „out of office“ oder „working elsewhere“ werden optional als private Zeitblöcke importiert. Betreffzeilen werden nicht gespeichert; die Blocker beider Konten erscheinen als Warnmarkierung im PDH-Schichtwochenplan und verhindern keine manuelle Zuweisung. PDH bleibt für seine betrieblichen Datensätze führend.
 
-Administratoren gleichen unter **Core-Einstellungen → Microsoft-365-Organisationssync** den konfigurierten Entra-Tenant ab. Der Abgleich ordnet nur bestehende aktive PDH-Nutzer anhand der E-Mail-Adresse zu; er legt niemanden an, ändert keine Rollen und deaktiviert keine Konten.
+Administratoren gleichen unter **Core-Einstellungen → Microsoft-365-Organisationssync** den konfigurierten Entra-Tenant ab. Der Abgleich ordnet nur bestehende aktive PDH-Nutzer anhand der E-Mail-Adresse zu; er legt keine PDH-Konten an, ändert keine Rollen und deaktiviert keine Konten.
+
+## Nextcloud mit Microsoft 365
+
+PDH verbindet Microsoft 365 und Nextcloud in zwei Teilen:
+
+1. **Anmeldung:** Nextcloud meldet über die App `user_oidc` mit Entra ID an. `sudo bash scripts/configure-nextcloud-microsoft-login.sh` installiert die App und legt den Anbieter an. Tenant, Client-ID und Secret kommen aus `/etc/pdh/pdh.env` oder werden als Optionen übergeben. Die Einstellungen sind `--mapping-uid=email` und `--unique-uid=0`. Mit `auto_provision=false` melden sich nur Konten an, die es in Nextcloud schon gibt; `--auto-provision` hebt das auf. In Entra kommen dazu die Redirect-URI `<Nextcloud>/apps/user_oidc/code` und der optionale ID-Token-Anspruch `email`.
+2. **Konten:** Unter **Core-Einstellungen → Microsoft 365 → Nextcloud-Konten anlegen** legt der Abgleich für jede zugeordnete, in Entra aktive Person ohne `nextcloud_user_id` ein Nextcloud-Konto über die Provisioning-API an. Benutzer-ID ist die Microsoft-E-Mail (`mail`, sonst UPN). Adressen, die Nextcloud nicht unverändert als ID annimmt, werden übersprungen und protokolliert, ebenso Gastkonten mit `#EXT#`. Ist die Option an, nimmt auch der Knopf „Nextcloud-Konto anlegen“ im Benutzerstamm die Microsoft-E-Mail. Existiert das Konto in Nextcloud bereits, etwa nach einer ersten Microsoft-Anmeldung mit `--auto-provision`, wird es nur verknüpft.
 
 Für Teams muss ein Geschäfts-/Schulkonto unter **Mein Konto → Teams freigeben** die zusätzlichen delegierten Rechte erteilen. `PDH_MICROSOFT_TEAMS_SENDER_USER_ID` bezeichnet das PDH-Konto, dessen verbundenes Geschäftskonto Nachrichten versendet. Team- und Channel-ID richten den Kanalversand ein. Benachrichtigungen werden derzeit bei Aktionen im globalen PDH-Leitstand ausgelöst. Persönliche Microsoft-Konten unterstützen diese Teams-Funktionen nicht.
+
+## Vorlagen & Signaturen
+
+Das Modul unter `/m365` (Code: `internal/web/m365_templates.go`, `m365_signatures.go`, `m365_sharepoint.go`; Migration 123) hat zwei Teile. Verwalten dürfen Personen mit dem Recht `m365.templates.manage`.
+
+- **Office-Vorlagen.** Erlaubt sind `.dotx/.docx/.xltx/.xlsx/.potx/.pptx` bis 25 MB, ohne Makro-Vorlagen. Die Dateien liegen unter `uploads/office-templates/` mit Zufallsnamen und sind in der Datensicherung enthalten. Herunterladen dürfen alle Angemeldeten. Optional spiegelt PDH die Vorlagen in eine SharePoint-Bibliothek: Graph mit App-Token, Anwendungsberechtigung `Sites.ReadWrite.All`, Kategorie als Ordner. Gespiegelt wird nur beim Klick auf „Mit SharePoint abgleichen“. Damit die Vorlagen in Office erscheinen, die Bibliothek einmalig mit `Add-SPOOrgAssetsLibrary -OrgAssetType OfficeTemplateLibrary` registrieren.
+- **E-Mail-Signaturen.** Das sind HTML-Signaturen mit Platzhaltern `{Vorname} {Nachname} {Name} {E-Mail} {Position} {Abteilung} {Telefon} {Mobil} {Standort} {Firma}`. Das Skript `/m365/signatures/script` (PowerShell, Exchange Online) übersetzt sie in Transportregeln „PDH-Signatur: …“ mit Exchange-Attributen (`%%Title%%`, `%%MobileNumber%%` …). Es legt die Abteilungsregeln über `SenderADAttributeMatchesPatterns Department:^…$` vor der allgemeinen Regel an und entfernt alte PDH-Regeln. Ein unsichtbarer Marker `pdhsig` verhindert doppelte Signaturen in Antworten. Exchange begrenzt eine Signatur auf 5000 Zeichen.
+- **Datenquelle.** Der PDH-Benutzerstamm führt (`job_title`, `department`, `phone`, `phone_mobile`, `work_location`, Firmenname aus den Einstellungen). Leere Felder kommen aus dem Verzeichnisabgleich, der dafür zusätzlich `givenName, surname, jobTitle, businessPhones, mobilePhone, officeLocation, companyName` abruft. Exchange liest beim Senden die Werte aus Entra. Deshalb schreibt „Werte nach Microsoft 365 übertragen“ die gefüllten PDH-Felder per `PATCH /users/{id}` nach Entra (Anwendungsberechtigung `User.ReadWrite.All`). Aus einem lokalen AD synchronisierte Konten lehnt Graph dabei ab.
 
 ## Grenzen
 
