@@ -39,6 +39,8 @@ Administratoren gleichen unter **Core-Einstellungen → Microsoft-365-Organisati
 
 ## Nextcloud mit Microsoft 365
 
+Schritt-für-Schritt-Anleitung mit Fehlersuche: [nextcloud-microsoft-365.md](nextcloud-microsoft-365.md).
+
 PDH verbindet Microsoft 365 und Nextcloud in zwei Teilen:
 
 1. **Anmeldung:** Nextcloud meldet über die App `user_oidc` mit Entra ID an. `sudo bash scripts/configure-nextcloud-microsoft-login.sh` installiert die App und legt den Anbieter an. Tenant, Client-ID und Secret kommen aus `/etc/pdh/pdh.env` oder werden als Optionen übergeben. Die Einstellungen sind `--mapping-uid=email` und `--unique-uid=0`. Mit `auto_provision=false` melden sich nur Konten an, die es in Nextcloud schon gibt; `--auto-provision` hebt das auf. In Entra kommen dazu die Redirect-URI `<Nextcloud>/apps/user_oidc/code` und der optionale ID-Token-Anspruch `email`.

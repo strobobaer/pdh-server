@@ -45,6 +45,7 @@ services:
       PDH_AUTH_JWTSECRET: ${PDH_AUTH_JWTSECRET:-} # darf nach „In die Datenbank übernehmen“ in .env.docker entfallen
       PDH_UPDATE_AGENT_URL: http://updater:8091
       PDH_GRAFANA_INTERNAL_URL: http://grafana:3000 # Statistik: Grafana unter /grafana/ durch das PDH
+      PDH_CODESERVER_INTERNAL_URL: http://codeserver:8080 # VS Code im Browser unter /code/ (nur Admins)
       PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
     ports:
       - "8090:8090"
@@ -143,6 +144,34 @@ services:
       timeout: 5s
       retries: 3
 
+  # code-server (VS Code im Browser) mit dem PDH-Quellcode. Erreichbar nur über
+  # das PDH unter /code/ – nur Administratoren, Anmeldung über die PDH-Sitzung.
+  # Darum kein Port nach außen und kein eigenes Passwort (--auth none).
+  codeserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: codeserver
+    image: pdh-codeserver:local
+    restart: unless-stopped
+    # root, damit Dateien im Repo (meist root gehörig) bearbeitbar sind
+    user: ${PDH_CODESERVER_USER:-0:0}
+    environment:
+      HOME: /data
+      XDG_CONFIG_HOME: /data/config
+      # Repo gehört einem anderen Benutzer als dem Container – git trotzdem erlauben
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
+    volumes:
+      - ${PDH_UPDATE_HOST_REPO_DIR:-.}:/workspace/pdh
+      - pdh_codeserver:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 volumes:
   pdh_database:
   pdh_uploads:
@@ -151,3 +180,4 @@ volumes:
   pdh_config:
   pdh_logs:
   pdh_grafana:
+  pdh_codeserver:

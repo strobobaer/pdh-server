@@ -19,6 +19,7 @@ const updateRepository = "strobobaer/pdh-server"
 type CoreSettingsPageData struct {
 	CompletionDepartments string   // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
 	DepartmentOptions     []string // vorhandene Abteilungen (Vorschlaege)
+	CanCode               bool     // Link „Code-Editor“ (/code/, codeserver_proxy.go) – nur Admins
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
@@ -178,6 +179,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.NC = h.ncUpdateViewFor(r.Context())
+	data.CanCode = h.actorIsAdmin(r)
 	h.render(w, "core_settings", data)
 }
 

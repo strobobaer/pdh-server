@@ -48,4 +48,19 @@ ENV PDH_UPDATE_REPO_DIR=/repo
 EXPOSE 8091
 ENTRYPOINT ["/usr/local/bin/update-agent"]
 
+# code-server (VS Code im Browser) unter /code/ durch das PDH – mit Go, damit
+# sich das PDH direkt im Browser bauen und testen lässt (compose.yaml: codeserver).
+FROM codercom/code-server:4.96.4 AS codeserver
+USER root
+COPY --from=golang:1.24-bookworm /usr/local/go /usr/local/go
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends make postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data /workspace
+ENV PATH=/usr/local/go/bin:/data/go/bin:$PATH \
+    GOPATH=/data/go \
+    GOTOOLCHAIN=auto
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/entrypoint.sh", "--auth", "none", "--bind-addr", "0.0.0.0:8080", "--disable-telemetry", "--disable-update-check", "--user-data-dir", "/data/user", "--extensions-dir", "/data/extensions", "--app-name", "PDH Code", "/workspace/pdh"]
+
 FROM app AS final

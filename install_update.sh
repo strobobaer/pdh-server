@@ -71,6 +71,8 @@ if [[ "$mode" == "docker" ]]; then
     "${compose[@]}" up -d --no-deps app updater
     # Grafana separat: ein Fehler (z. B. Image nicht ladbar) darf das Update nicht abbrechen
     "${compose[@]}" up -d --no-deps grafana || echo "Grafana konnte nicht gestartet werden (Statistik) - Update trotzdem fertig." >&2
+    # code-server (/code/) ebenso separat
+    { "${compose[@]}" build codeserver && "${compose[@]}" up -d --no-deps codeserver; } || echo "code-server konnte nicht gestartet werden (/code/) - Update trotzdem fertig." >&2
 else
     # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
     # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)

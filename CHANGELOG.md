@@ -21,6 +21,7 @@ im Kapitel „Versionen & Updates“ an.
 - Benutzerstamm → Übersicht → E-Mail: Knopf „Testmail senden“ prüft den Versand an die Adresse der Person
 - Schalter „Statusmeldungen auch per E-Mail“ je Person: Die Hinweise von PDH-System kommen dann zusätzlich zum Chat per E-Mail, mit Link zum Vorgang
 - Infrastruktur-Auswahl umschaltbar „Nach Standort“ oder „Nach Kostenstelle“: Die Kostenstellen lassen sich aufklappen, darunter steht ihre Infrastruktur im gewohnten Baum
+- Code-Editor für Administratoren: VS Code im Browser (code-server) mit dem PDH-Quellcode unter /code/, Anmeldung über das PDH, verlinkt in den Core-Einstellungen (Docker-Installation)
 
 ### Behoben
 - Benutzerstamm → Zuständigkeiten zeigt jetzt auch Vorgänge, die einer Gruppe der Person zugewiesen sind, sowie Projekte, denen sie zugewiesen ist; erledigte Aufgaben erscheinen nicht mehr als offen

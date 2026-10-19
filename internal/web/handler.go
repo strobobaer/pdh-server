@@ -656,6 +656,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/statistics/{id}", h.StatisticsViewPage)
 	r.Handle("/grafana", http.HandlerFunc(h.GrafanaProxy))   // Grafana hinter dem PDH (grafana_proxy.go)
 	r.Handle("/grafana/*", http.HandlerFunc(h.GrafanaProxy))
+	r.Handle("/code", http.HandlerFunc(h.CodeServerProxy)) // VS Code im Browser, nur Admins (codeserver_proxy.go)
+	r.Handle("/code/*", http.HandlerFunc(h.CodeServerProxy))
 	r.Get("/core/settings/grafana", h.GrafanaSettingsPage)
 	r.Post("/core/settings/grafana", h.GrafanaSaveWeb)
 	r.Post("/core/settings/grafana/base", h.GrafanaBaseSaveWeb)
