@@ -100,6 +100,17 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Verantwortliche aus der Infrastruktur</div>
+    <form method="POST" action="/core/settings/infra-responsible" style="font-size:13px">
+      <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+        <input type="checkbox" name="on" value="1" {{if .InfraRespDefault}}checked{{end}} onchange="this.form.submit()" style="margin-top:3px">
+        <span>Neue Tickets, Störungen, Wartungsaufträge und Aufgaben ohne Verantwortliche/n übernehmen die Person der Anlage (eigene oder geerbte, Infrastruktur → Stammdaten → <b>Verantwortlich</b>).</span>
+      </label>
+    </form>
+    <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Wer beim Anlegen ausdrücklich eingetragen wird – auch aus dem Wartungsplan –, bleibt. Bestehende Vorgänge ändern sich nicht.</p>
+  </div>
+
+  <div class="card">
     <div class="card-title">Easy-Mode: Melden per QR-Code ohne Anmeldung</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Wer den QR-Code einer Anlage scannt und nicht angemeldet ist, kommt auf eine einfache Meldeseite in der Sprache seines Handys: die letzten 5 Meldungen der Anlage und „Störung +“ / „Ticket +“. Die Meldung wird automatisch ins Deutsche übersetzt (Copilot). Ausgeschaltet führen QR-Codes zur Anmeldung.</p>
     <form method="POST" action="/core/settings/easy-mode">

@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-20T16:58:47.474Z",
+  "generatedAt": "2026-10-20T17:30:51.327Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1392,6 +1392,17 @@
       "sqlHash": "257d03737529c2c451d5ebe0923c29aba4c317f89c12e2eb6d00fae162ab7ffd",
       "title": "128_inventory_scans.up.sql",
       "updatedAt": "2026-10-20T16:58:46.854Z"
+    },
+    {
+      "createdAt": "2026-10-20T17:30:50.679Z",
+      "path": "migrations/129_infra_responsible_default.up.sql",
+      "catalogContext": null,
+      "searchText": "129_infra_responsible_default.up.sql migrations/129_infra_responsible_default.up.sql -- 129_infra_responsible_default.up.sql\n-- neue tickets, störungen, wartungsaufträge und aufgaben ohne verantwortliche/n\n-- übernehmen die person der anlage (eigene oder vom übergeordneten element,\n-- migrations/127). gilt für jeden weg des anlegens (assistent, formulare,\n-- leitstand, schnittstelle, wartungspläne). abschaltbar unter\n-- core-einstellungen (app_settings infra_responsible_default = '0').\n-- eine ausdrücklich gesetzte person (auch aus dem wartungsplan) bleibt.\n\ncreate or replace function pdh_infra_responsible_default() returns trigger\nlanguage plpgsql as $$\nbegin\n    if new.responsible_to is null and new.infrastructure_id is not null\n       and coalesce((select value from app_settings where key = 'infra_responsible_default'), '1') = '1' then\n        new.responsible_to := (\n            with recursive up as (\n                select i.id, i.parent_id, i.responsible_to, 0 as depth\n                  from infrastructure i where i.id = new.infrastructure_id\n                union all\n                select p.id, p.parent_id, p.responsible_to, up.depth + 1\n                  from infrastructure p join up on p.id = up.parent_id\n                 where up.responsible_to is null and up.depth < 50\n            )\n            select up.responsible_to from up join users u on u.id = up.responsible_to and u.active\n             order by up.depth limit 1);\n    end if;\n    return new;\nend $$;\n\ndrop trigger if exists trg_tickets_infra_responsible on tickets;\ncreate trigger trg_tickets_infra_responsible before insert on tickets\n    for each row execute function pdh_infra_responsible_default();\n\ndrop trigger if exists trg_faults_infra_responsible on faults;\ncreate trigger trg_faults_infra_responsible before insert on faults\n    for each row execute function pdh_infra_responsible_default();\n\ndrop trigger if exists trg_maintenance_tasks_infra_responsible on maintenance_tasks;\ncreate trigger trg_maintenance_tasks_infra_responsible before insert on maintenance_tasks\n    for each row execute function pdh_infra_responsible_default();\n\ndrop trigger if exists trg_tasks_infra_responsible on tasks;\ncreate trigger trg_tasks_infra_responsible before insert on tasks\n    for each row execute function pdh_infra_responsible_default();\n",
+      "searchUpdatedAt": "2026-10-20T17:30:50.780Z",
+      "schemaContext": null,
+      "sqlHash": "711f2dfe1df8c72e4597e124bd6664f79680f67427c87e4f4a81768be656601c",
+      "title": "129_infra_responsible_default.up.sql",
+      "updatedAt": "2026-10-20T17:30:50.679Z"
     }
   ]
 }

@@ -21,6 +21,7 @@ type CoreSettingsPageData struct {
 	DepartmentOptions     []string // vorhandene Abteilungen (Vorschlaege)
 	CanCode               bool     // Link „Code-Editor“ (/code/, codeserver_proxy.go) – nur Admins
 	CanPKI                bool     // Link „Zertifikate (Nextcloud)“ (pki_web.go)
+	InfraRespDefault      bool     // Verantwortliche der Anlage in neue Vorgänge übernehmen (migrations/129)
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
@@ -182,7 +183,28 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 	data.NC = h.ncUpdateViewFor(r.Context())
 	data.CanCode = h.actorIsAdmin(r)
 	data.CanPKI = h.canPKI(r)
+	data.InfraRespDefault = h.getUpdateSetting(r.Context(), infraRespDefaultSetting, "1") == "1"
 	h.render(w, "core_settings", data)
+}
+
+// infraRespDefaultSetting: liest der Datenbank-Trigger pdh_infra_responsible_default
+// (migrations/129) – „1“ bzw. nicht gesetzt = an, „0“ = aus.
+const infraRespDefaultSetting = "infra_responsible_default"
+
+// InfraRespDefaultWeb: POST /core/settings/infra-responsible (on=1|leer)
+func (h *Handler) InfraRespDefaultWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.canManageRoles(r) {
+		http.Error(w, "keine berechtigung", http.StatusForbidden)
+		return
+	}
+	v, msg := "0", "Verantwortliche werden nicht mehr aus der Infrastruktur übernommen"
+	if r.FormValue("on") == "1" {
+		v, msg = "1", "Neue Vorgänge übernehmen die Verantwortlichen der Anlage"
+	}
+	if err := h.setUpdateSetting(r.Context(), infraRespDefaultSetting, v); err != nil {
+		msg = "Einstellung konnte nicht gespeichert werden: " + err.Error()
+	}
+	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 func (h *Handler) SaveCoreSettings(w http.ResponseWriter, r *http.Request) {

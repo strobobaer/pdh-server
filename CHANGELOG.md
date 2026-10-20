@@ -17,6 +17,7 @@ im Kapitel „Versionen & Updates“ an.
 - Beim Buchen eines Lieferscheins merkt sich PDH die Artikelnummern des Lieferanten am Teil, damit der nächste Lieferschein die Teile direkt findet
 - Bauteil per Foto erkennen: Bezeichnung, Hersteller, Typ und Merkmale vom Foto bzw. Typenschild, passende Teile im Lager mit Bestand, sonst vorausgefüllte Neuanlage mit dem Foto als Teilebild
 - Infrastruktur: Feld „Verantwortlich“ in den Stammdaten; ohne eigene Angabe gilt die Person des übergeordneten Elements, die Stammkarte zeigt „geerbt von …“
+- Neue Tickets, Störungen, Wartungsaufträge und Aufgaben ohne Verantwortliche/n übernehmen automatisch die Person der Anlage – abschaltbar unter Core-Einstellungen → „Verantwortliche aus der Infrastruktur“
 
 ### Geändert
 - Infrastruktur: Der Servicepartner wird aus den Lieferanten gewählt; ein bisher eingetragener Servicepartner, der kein Lieferant ist, bleibt sichtbar und erhalten

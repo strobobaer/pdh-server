@@ -705,6 +705,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/microsoft/{id}/unassign", h.MicrosoftDirectoryUnassignWeb)
 	r.Post("/core/settings", h.SaveCoreSettings)
 	r.Post("/core/settings/due-dates", h.SaveDueDateSettings)
+	r.Post("/core/settings/infra-responsible", h.InfraRespDefaultWeb)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)

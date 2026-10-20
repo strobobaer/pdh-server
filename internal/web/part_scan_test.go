@@ -136,3 +136,11 @@ func TestInfraResponsibleRender(t *testing.T) {
 		t.Error("Servicepartner nicht auf Lieferanten beschränkt")
 	}
 }
+
+func TestCoreSettingsInfraResponsible(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "core_settings", CoreSettingsPageData{InfraRespDefault: true})
+	if !strings.Contains(out, `action="/core/settings/infra-responsible"`) || !strings.Contains(out, `name="on" value="1" checked`) {
+		t.Error("Schalter „Verantwortliche aus der Infrastruktur“ fehlt oder nicht angehakt")
+	}
+}
