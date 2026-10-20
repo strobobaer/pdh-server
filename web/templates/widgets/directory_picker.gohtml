@@ -7,14 +7,16 @@ Usage:
 {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "part-manufacturer-id" "Value" .Part.ManufacturerID "LegacyValue" .Part.Manufacturer)}}
 
 Optional: "Name" (Feldname, Standard manufacturer_id) und "Kind"
-(manufacturer | supplier | all - Filter der Auswahl und Art beim Neuanlegen).
+(manufacturer | supplier | all - Filter der Auswahl und Art beim Neuanlegen),
+"SelectedLabel" (Name des gewählten Eintrags – bleibt sichtbar, wenn er nicht
+zur Art passt).
 Neben der Auswahl oeffnet ein Link den gewaehlten Partner im PDH-Viewer.
 */}}
 {{define "directory-picker"}}
 <div class="widget-field directory-picker-widget form-group">
   <label class="form-label">{{.Label}}</label>
   <div style="display:flex;gap:6px;align-items:center">
-    <select name="{{if .Name}}{{.Name}}{{else}}manufacturer_id{{end}}" id="{{.TargetID}}" class="form-input" data-directory-picker data-kind="{{if .Kind}}{{.Kind}}{{else}}manufacturer{{end}}" data-selected="{{.Value}}" style="flex:1">
+    <select name="{{if .Name}}{{.Name}}{{else}}manufacturer_id{{end}}" id="{{.TargetID}}" class="form-input" data-directory-picker data-kind="{{if .Kind}}{{.Kind}}{{else}}manufacturer{{end}}" data-selected="{{.Value}}" data-selected-label="{{.SelectedLabel}}" style="flex:1">
       <option value="">– kein Eintrag –</option>
     </select>
     <button type="button" class="btn" style="padding:6px 10px;flex-shrink:0" onclick="openDirectoryPickerModal('{{.TargetID}}')" title="Neu anlegen">
@@ -106,13 +108,23 @@ async function populateDirectorySelects(){
     await Promise.all(Array.prototype.map.call(selects, async function(sel){
       const items = await load(sel.dataset.kind || 'manufacturer');
       const selected = sel.dataset.selected || '';
+      let found = false;
       items.forEach(function(p){
         const opt = document.createElement('option');
         opt.value = p.id;
         opt.textContent = p.name + (p.approval_status === 'blocked' ? ' (gesperrt)' : '');
-        if(p.id === selected) opt.selected = true;
+        if(p.id === selected){ opt.selected = true; found = true; }
         sel.appendChild(opt);
       });
+      // bisheriger Eintrag passt nicht mehr zur Art (z. B. Servicepartner, der kein
+      // Lieferant ist): sichtbar behalten, sonst ginge er beim Speichern verloren
+      if(selected && !found){
+        const opt = document.createElement('option');
+        opt.value = selected;
+        opt.textContent = (sel.dataset.selectedLabel || 'bisheriger Eintrag') + (sel.dataset.kind === 'supplier' ? ' (kein Lieferant)' : '');
+        opt.selected = true;
+        sel.appendChild(opt);
+      }
     }));
   }catch(e){ console.warn('Herstellerverzeichnis laden fehlgeschlagen', e); }
 }

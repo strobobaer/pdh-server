@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.53.0] – 2026-10-20
+
+### Neu
+- Ersatzteile → Scannen: Lieferschein mit dem Smartphone fotografieren (oder als PDF wählen) – PDH erkennt Lieferant, Lieferschein-Nr. und Positionen und schlägt je Position einen Zugang zu einem vorhandenen Teil oder eine Neuanlage vor; nach Prüfung werden alle Positionen zusammen gebucht
+- Beim Buchen eines Lieferscheins merkt sich PDH die Artikelnummern des Lieferanten am Teil, damit der nächste Lieferschein die Teile direkt findet
+- Bauteil per Foto erkennen: Bezeichnung, Hersteller, Typ und Merkmale vom Foto bzw. Typenschild, passende Teile im Lager mit Bestand, sonst vorausgefüllte Neuanlage mit dem Foto als Teilebild
+- Infrastruktur: Feld „Verantwortlich“ in den Stammdaten; ohne eigene Angabe gilt die Person des übergeordneten Elements, die Stammkarte zeigt „geerbt von …“
+
+### Geändert
+- Infrastruktur: Der Servicepartner wird aus den Lieferanten gewählt; ein bisher eingetragener Servicepartner, der kein Lieferant ist, bleibt sichtbar und erhalten
+
+### Behoben
+- Code-Editor hinter nginx: „WebSocket close with status code 1006“ – „sudo bash scripts/configure-pdh-nginx-websockets.sh“ reicht die WebSockets für /code/ durch
+- Infrastruktur → Prüfungen & GBU: Mit dem Recht „Prüfpflichten“ allein war die Auswahl der Verantwortlichen leer
+
 ## [0.52.1] – 2026-10-19
 
 ### Behoben

@@ -1,0 +1,127 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.sc-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.sc-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.sc-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.sc-pick{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.sc-pick label.btn{cursor:pointer}
+.sc-pick input[type=file]{display:none}
+.sc-files{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.sc-file{position:relative;width:96px;height:96px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center}
+.sc-file img{width:100%;height:100%;object-fit:cover}
+.sc-file button{position:absolute;top:2px;right:2px;border:0;border-radius:50%;width:22px;height:22px;background:rgba(0,0,0,.6);color:#fff;cursor:pointer}
+.sc-go{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.sc-row{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap;text-decoration:none;color:var(--text)}
+.sc-row:hover{border-color:var(--accent)}
+</style>
+
+<div class="rec-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/inventory")}}
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti ti-scan"></i> Scannen &amp; erkennen</h1>
+    <p class="rec-sub">Lieferschein fotografieren und Zugänge buchen – oder ein Bauteil fotografieren und im Lager finden</p>
+  </div>
+</div>
+{{if .Message}}<div class="sc-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div class="sc-msg err"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+{{if not .VisionReady}}<div class="sc-msg err"><i class="ti ti-alert-triangle"></i> Die Bilderkennung braucht Claude als Copilot – unter <b>Server-Einstellungen → Copilot</b> einen Anthropic-API-Schlüssel eintragen.</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="delivery" href="?tab=delivery"><i class="ti ti-truck-delivery"></i> Lieferschein</a>
+  <a class="rec-tab" data-tab="part" href="?tab=part"><i class="ti ti-camera-search"></i> Bauteil erkennen</a>
+</div>
+
+<div class="rec-pane" data-pane="delivery">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-truck-delivery"></i> Lieferschein scannen</span></div>
+    <p class="rec-sub">Jede Seite einzeln fotografieren (gerade von oben, gut ausgeleuchtet) oder das PDF des Lieferanten wählen. Danach schlägt PDH je Position einen Zugang zu einem vorhandenen Teil oder eine Neuanlage vor – gebucht wird erst, wenn du es bestätigst.</p>
+    <div class="sc-pick">
+      <label class="btn btn-primary"><i class="ti ti-camera"></i> Seite fotografieren<input type="file" accept="image/*" capture="environment" onchange="scAdd('delivery', this)"></label>
+      <label class="btn"><i class="ti ti-file-upload"></i> Fotos / PDF wählen<input type="file" accept="image/*,application/pdf" multiple onchange="scAdd('delivery', this)"></label>
+    </div>
+    <div class="sc-files" id="sc-files-delivery"></div>
+    <div class="sc-go"><button type="button" class="btn btn-primary" id="sc-go-delivery" disabled onclick="scSend('delivery')"><i class="ti ti-sparkles"></i> Lieferschein erkennen</button><span class="rec-sub" id="sc-st-delivery"></span></div>
+  </div>
+</div>
+
+<div class="rec-pane" data-pane="part">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-camera-search"></i> Bauteil erkennen</span></div>
+    <p class="rec-sub">Das Teil mit Typenschild bzw. Etikett fotografieren – bis zu drei Fotos (z. B. Ansicht und Typenschild). PDH bestimmt Hersteller und Typ, sucht es im Lager und schlägt sonst eine Neuanlage vor.</p>
+    <div class="sc-pick">
+      <label class="btn btn-primary"><i class="ti ti-camera"></i> Foto aufnehmen<input type="file" accept="image/*" capture="environment" onchange="scAdd('part', this)"></label>
+      <label class="btn"><i class="ti ti-photo"></i> Foto wählen<input type="file" accept="image/*" multiple onchange="scAdd('part', this)"></label>
+    </div>
+    <div class="sc-files" id="sc-files-part"></div>
+    <div class="sc-go"><button type="button" class="btn btn-primary" id="sc-go-part" disabled onclick="scSend('part')"><i class="ti ti-sparkles"></i> Bauteil erkennen</button><span class="rec-sub" id="sc-st-part"></span></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-history"></i> Letzte Scans</span></div>
+  {{range .Recent}}
+  <a class="sc-row" href="/inventory/scan/{{.ID}}">
+    <i class="ti {{if eq .Kind "part"}}ti-camera-search{{else}}ti-truck-delivery{{end}}"></i>
+    <div style="flex:1;min-width:160px"><b>{{if eq .Kind "part"}}Bauteil{{else}}Lieferschein{{end}}{{if .NoteNo}} {{.NoteNo}}{{end}}</b>
+      <div class="rec-sub">{{.Created}}{{if .Who}} · {{.Who}}{{end}}{{if .AppliedNote}} · {{.AppliedNote}}{{end}}</div></div>
+    {{if eq .Status "pending"}}<span class="badge b-blue">wird erkannt</span>{{else if eq .Status "error"}}<span class="badge b-red">fehlgeschlagen</span>{{else if .Applied}}<span class="badge b-green">übernommen</span>{{else}}<span class="badge b-amber">zu prüfen</span>{{end}}
+  </a>
+  {{else}}<p class="rec-sub">Noch keine Scans.</p>{{end}}
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+const scFiles = {delivery: [], part: []};
+const scMax = {delivery: 8, part: 3};
+function scAdd(kind, input){
+  for(const f of input.files){ if(scFiles[kind].length < scMax[kind]) scFiles[kind].push(f); }
+  input.value = '';
+  scRender(kind);
+}
+function scRemove(kind, i){ scFiles[kind].splice(i, 1); scRender(kind); }
+function scRender(kind){
+  const box = document.getElementById('sc-files-' + kind);
+  box.innerHTML = '';
+  scFiles[kind].forEach(function(f, i){
+    const d = document.createElement('div');
+    d.className = 'sc-file';
+    if(f.type.startsWith('image/')){ const img = document.createElement('img'); img.src = URL.createObjectURL(f); d.appendChild(img); }
+    else { d.textContent = 'PDF ' + f.name; }
+    const b = document.createElement('button'); b.type = 'button'; b.title = 'Entfernen'; b.textContent = '×';
+    b.onclick = function(){ scRemove(kind, i); };
+    d.appendChild(b);
+    box.appendChild(d);
+  });
+  document.getElementById('sc-go-' + kind).disabled = scFiles[kind].length === 0;
+}
+// Fotos vor dem Hochladen verkleinern (längste Seite 2000 px, JPEG)
+async function scShrink(f){
+  if(!f.type.startsWith('image/') || f.type === 'image/gif') return f;
+  try{
+    const bmp = await createImageBitmap(f);
+    const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(function(res){ c.toBlob(res, 'image/jpeg', 0.85); });
+    return blob ? new File([blob], (f.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : f;
+  }catch(e){ return f; }
+}
+async function scSend(kind){
+  const btn = document.getElementById('sc-go-' + kind), st = document.getElementById('sc-st-' + kind);
+  btn.disabled = true;
+  st.textContent = 'Wird hochgeladen …';
+  try{
+    const fd = new FormData();
+    for(const f of scFiles[kind]){ const g = await scShrink(f); fd.append('files', g, g.name); }
+    const res = await fetch('/inventory/scan/' + kind, {method: 'POST', body: fd, credentials: 'same-origin'});
+    location.href = res.url;
+  }catch(e){
+    st.textContent = 'Hochladen fehlgeschlagen: ' + e.message;
+    btn.disabled = false;
+  }
+}
+</script>
+{{end}}

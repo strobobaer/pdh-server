@@ -621,6 +621,58 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 	return m, bookErr
 }
 
+// BookMany bucht mehrere Bewegungen in einer Transaktion – ganz oder gar
+// nicht (z. B. alle Positionen eines Lieferscheins). Gleiche Prüfungen wie Book.
+func (s *Service) BookMany(ctx context.Context, ins []*BookMovementInput, userID string) ([]*StockMovement, error) {
+	var moves []*StockMovement
+	for i, in := range ins {
+		if strings.TrimSpace(in.StorageNodeID) == "" {
+			return nil, fmt.Errorf("position %d: lagerort ist pflicht", i+1)
+		}
+		locked, err := s.repo.IsLocationLocked(ctx, in.StorageNodeID)
+		if err != nil {
+			return nil, err
+		}
+		if locked {
+			return nil, fmt.Errorf("position %d: lagerort ist durch eine laufende inventur gesperrt", i+1)
+		}
+		if in.Type == MovementReserve || in.Type == MovementUnreserve {
+			return nil, fmt.Errorf("reservierungen werden über den vorgang gebucht")
+		}
+		if (in.Type == MovementIn || in.Type == MovementOut) && in.Qty <= 0 {
+			return nil, fmt.Errorf("position %d: menge muss größer als 0 sein", i+1)
+		}
+		moves = append(moves, &StockMovement{
+			PartID: in.PartID, Type: in.Type, Qty: in.Qty, StorageNodeID: in.StorageNodeID,
+			Reference: in.Reference, Notes: in.Notes, FaultID: in.FaultID, TicketID: in.TicketID,
+			MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, CreatedBy: userID,
+		})
+	}
+	tx, err := s.repo.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	for i, m := range moves {
+		if err := bookTx(ctx, tx, m); err != nil {
+			return nil, fmt.Errorf("position %d: %w", i+1, err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	if eventBus != nil {
+		for _, m := range moves {
+			eventBus.Publish("inventory.booked", map[string]interface{}{
+				"part_id": m.PartID, "type": string(m.Type), "qty": m.Qty,
+				"qty_before": m.QtyBefore, "qty_after": m.QtyAfter,
+				"storage_node_id": m.StorageNodeID, "created_by": m.CreatedBy,
+			})
+		}
+	}
+	return moves, nil
+}
+
 type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }

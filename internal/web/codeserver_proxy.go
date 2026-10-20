@@ -45,12 +45,21 @@ func (h *Handler) CodeServerProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "code-server-Adresse ungültig", http.StatusInternalServerError)
 		return
 	}
+	serveCodeServer(w, r, target)
+}
+
+// serveCodeServer: an code-server weiterreichen; WebSockets ohne Zeitlimit.
+func serveCodeServer(w http.ResponseWriter, r *http.Request, target *url.URL) {
 	if isWebSocketUpgrade(r) {
 		// Editor und Terminal laufen über eine dauerhafte WebSocket-Verbindung –
 		// die Zeitlimits des PDH-Servers (Read 15 s, Write 120 s) gelten dafür nicht.
 		rc := http.NewResponseController(w)
-		_ = rc.SetReadDeadline(time.Time{})
-		_ = rc.SetWriteDeadline(time.Time{})
+		if err := rc.SetReadDeadline(time.Time{}); err != nil {
+			componentLog("codeserver").Warn().Err(err).Msg("websocket: lese-zeitlimit nicht aufhebbar")
+		}
+		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+			componentLog("codeserver").Warn().Err(err).Msg("websocket: schreib-zeitlimit nicht aufhebbar")
+		}
 	}
 	newCodeServerProxy(target).ServeHTTP(w, r)
 }

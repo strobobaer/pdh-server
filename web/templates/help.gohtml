@@ -521,7 +521,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Zu jeder Anlage gibt es:</p>
   <ul>
     <li><b>Übersicht</b> – die wichtigsten Stammdaten auf einen Blick und die Unteranlagen (anklickbar).</li>
-    <li><b>Stammdaten</b> – alle Angaben in einem Formular: Name, Typ, übergeordnetes Element, Standort, Beschreibung, Hersteller, Modell, Seriennummer, „In Betrieb seit“, Lieferant, Servicepartner, Kostenstelle und Abteilung.</li>
+    <li><b>Stammdaten</b> – alle Angaben in einem Formular: Name, Typ, übergeordnetes Element, Standort, Beschreibung, Hersteller, Modell, Seriennummer, „In Betrieb seit“, Lieferant, Servicepartner (Auswahl aus den Lieferanten), Kostenstelle, Abteilung und <b>Verantwortlich</b>. Ohne eigene Angabe gelten Abteilung und Verantwortliche/r des übergeordneten Elements – die Stammkarte zeigt dann „geerbt von …“.</li>
     <li><b>Anlagen-Historie</b> – das „Lebenslauf-Buch“ der Anlage: alle Störungen, Tickets, Wartungen, Maßnahmen, verbrauchten Ersatzteile und Kommentare. Mit Filter, Suche und <b>CSV-Export</b>. Wichtige Hinweise lassen sich als Kommentar <b>anheften</b>.</li>
     <li><b>Verknüpfungen</b> – offene Vorgänge, passende Ersatzteile, Firmen.</li>
     <li><b>HMI</b> – Fernzugriff auf die Bediengeräte der Anlage (VNC), je nach Berechtigung nur ansehen oder bedienen.</li>
@@ -658,7 +658,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "qrcodes") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="inventory" data-title="Ersatzteile" data-pages="inventory">
+<section class="hb-ch" id="inventory" data-title="Ersatzteile" data-pages="inventory inventory-scan">
   <h2><i class="ti ti-package"></i> Ersatzteile</h2>
   <p>Die Ersatzteilliste hat oben Reiter je <b>Kategorie</b> und Kacheln für „unter Mindestbestand“, „kritisch“, „leer“ und „ohne Lieferant“.</p>
   <h3><i class="ti ti-building-factory-2"></i> Hersteller und Lieferant sind zwei verschiedene Dinge</h3>
@@ -704,6 +704,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     Wird ein Vorgang <b>verworfen, archiviert oder gelöscht</b>, ohne dass das Material verbucht wurde, gehen offene Reservierungen automatisch an ihren Lagerplatz zurück.</div>
   <p>Beim Teil zeigt der Reiter <b>Lager &amp; Bewegungen</b> die Karte <b>Reservierungen</b>: für welchen Vorgang, an welchem Lagerplatz, von wem. Mit <b>Zurückbuchen</b> lässt sich dort direkt zurückbuchen. In den Bewegungen erscheinen <span class="badge b-amber">Reservierung</span> und <span class="badge b-blue">Rückbuchung Reservierung</span>. Nach dem Abschluss wird daraus <i>Abgang</i>, eine vorherige Teil-Rückbuchung zählt als <i>Zugang</i>. Reservierungen entstehen nur über Vorgänge, nicht über die manuelle Buchung. Vor dieser Version vorgemerkte Teile sind noch nicht abgebucht und werden wie bisher erst beim Abschluss gebucht.</p>
+  <div class="hb-howto"><b><i class="ti ti-truck-delivery"></i> So buchst du einen Lieferschein mit dem Smartphone</b>
+    <ol class="hb-steps">
+      <li><b>Ersatzteile</b> → <b>Scannen</b> → Reiter <b>Lieferschein</b>.</li>
+      <li><b>Seite fotografieren</b> – jede Seite einzeln, gerade von oben und gut ausgeleuchtet. Ein PDF vom Lieferanten geht über <b>Fotos / PDF wählen</b>.</li>
+      <li><b>Lieferschein erkennen</b>. Nach 20 bis 60 Sekunden steht jede Position mit Vorschlag da: <b>Zugang buchen</b> zu einem gefundenen Teil (grün: über Teile-, Hersteller- oder Lieferanten-Nummer gefunden) oder <b>Neu anlegen + buchen</b>.</li>
+      <li>Oben Lieferant und <b>Lagerort für alle</b> prüfen, bei Bedarf je Position Menge, Teil oder Lagerort ändern, Unpassendes auf <b>Überspringen</b> stellen.</li>
+      <li><b>Zugänge buchen</b> – alle Positionen werden zusammen gebucht, mit der Lieferschein-Nr. als Beleg.</li>
+    </ol>
+    Mit gewähltem Lieferanten merkt sich PDH dessen Artikelnummern am Teil – der nächste Lieferschein findet die Teile dann direkt. Fotos und Ergebnis bleiben unter <b>Scannen → Letzte Scans</b> erhalten.</div>
+  <div class="hb-howto"><b><i class="ti ti-camera-search"></i> So erkennst du ein Bauteil per Foto</b>
+    <ol class="hb-steps">
+      <li><b>Ersatzteile</b> → <b>Scannen</b> → Reiter <b>Bauteil erkennen</b>.</li>
+      <li>Das Teil fotografieren, am besten zusätzlich das Typenschild bzw. Etikett (bis zu drei Fotos).</li>
+      <li><b>Bauteil erkennen</b>. PDH zeigt Bezeichnung, Hersteller, Typ und Merkmale – und darunter passende Teile <b>im Lager</b> mit Bestand.</li>
+      <li>Passt ein Teil: <b>Öffnen</b> oder <b>Buchen</b>. Sonst unten <b>Als neues Teil anlegen</b> – die Felder sind vorausgefüllt, das Foto wird zum Teilebild.</li>
+    </ol>
+    „Unsicher“ heißt: lieber ein weiteres Foto vom Typenschild machen. Nummern übernimmt PDH nur, wenn sie im Bild lesbar sind. Für beides braucht es das Recht „Lager bearbeiten“ und Claude als Copilot (Server-Einstellungen → Copilot).</div>
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
 </section>
 
@@ -1354,7 +1371,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Core-Einstellungen → Code-Editor (code-server)</b>. Der Editor öffnet sich in einem neuen Tab mit dem Ordner <code>/workspace/pdh</code>.</li>
       <li>Dateien bearbeiten wie in VS Code. Unter <b>Terminal → Neues Terminal</b> stehen <code>go</code>, <code>git</code> und <code>make</code> bereit, z. B. <code>go test ./...</code>.</li>
     </ol>
-    Andere Rollen kommen nicht hinein. Das Terminal läuft mit vollen Rechten im Container und sieht den Quellcode des Servers – Änderungen wirken erst nach einem Update bzw. Neubau. Git: Name und E-Mail einmalig im Terminal setzen (<code>git config --global user.name …</code>). <b>Einrichten:</b> bei der Docker-Installation automatisch mit dem Update; bei der Installation ohne Docker (systemd) einmalig auf dem Server im PDH-Verzeichnis <code>sudo bash scripts/install-code-server.sh</code> ausführen – danach baut jedes Update den Editor mit. Abschalten: <code>sudo bash scripts/install-code-server.sh --remove</code>.</div>
+    Andere Rollen kommen nicht hinein. Das Terminal läuft mit vollen Rechten im Container und sieht den Quellcode des Servers – Änderungen wirken erst nach einem Update bzw. Neubau. Git: Name und E-Mail einmalig im Terminal setzen (<code>git config --global user.name …</code>). <b>Einrichten:</b> bei der Docker-Installation automatisch mit dem Update; bei der Installation ohne Docker (systemd) einmalig auf dem Server im PDH-Verzeichnis <code>sudo bash scripts/install-code-server.sh</code> ausführen – danach baut jedes Update den Editor mit. Abschalten: <code>sudo bash scripts/install-code-server.sh --remove</code>. Steht nginx vor dem PDH und meldet der Editor <i>„WebSocket close with status code 1006“</i>, einmalig <code>sudo bash scripts/configure-pdh-nginx-websockets.sh</code> ausführen.</div>
   <div class="hb-howto"><b><i class="ti ti-certificate"></i> Für Administratoren: Zertifikate für Nextcloud</b>Unter <b>Core-Einstellungen → Zertifikate (Nextcloud)</b> stellt die eigene Zertifizierungsstelle des PDH drei Arten aus, jeweils als passwortgeschützte <b>.p12</b>:
     <ul>
       <li><b>Persönlich (Nextcloud-App)</b> – je Person und Gerät. Mit eingeschalteter <b>Selbstbedienung</b> stellen die Mitarbeitenden sie unter Mein Konto selbst aus.</li>

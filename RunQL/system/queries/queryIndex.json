@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-19T20:40:03.703Z",
+  "generatedAt": "2026-10-20T16:58:47.474Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1370,6 +1370,28 @@
       "sqlHash": "05898b5de8d92262af280ad74067adade986577bccb09642fbbde71062e73033",
       "title": "126_pki_certificates.up.sql",
       "updatedAt": "2026-10-19T20:40:03.029Z"
+    },
+    {
+      "createdAt": "2026-10-20T16:54:25.877Z",
+      "path": "migrations/127_infrastructure_responsible.up.sql",
+      "catalogContext": null,
+      "searchText": "127_infrastructure_responsible.up.sql migrations/127_infrastructure_responsible.up.sql -- 127_infrastructure_responsible.up.sql\n-- verantwortliche/r je infrastruktur-element; ohne eigenen eintrag gilt die\n-- person des nächsten übergeordneten elements (wie bei der abteilung, 087).\n-- sicht infrastructure_responsible: wirksame person und woher sie kommt.\n\nalter table infrastructure\n    add column if not exists responsible_to uuid references users(id) on delete set null;\ncreate index if not exists idx_infrastructure_responsible on infrastructure(responsible_to) where responsible_to is not null;\n\ncreate or replace view infrastructure_responsible as\nwith recursive chain as (\n    select i.id, i.responsible_to, i.parent_id, i.id as source_id, 0 as depth from infrastructure i\n    union all\n    select c.id, p.responsible_to, p.parent_id, p.id, c.depth + 1\n      from chain c join infrastructure p on p.id = c.parent_id\n     where c.responsible_to is null and c.depth < 50\n)\nselect distinct on (id) id as infrastructure_id, responsible_to, source_id\n  from chain\n where responsible_to is not null\n order by id, depth;\n",
+      "searchUpdatedAt": "2026-10-20T16:54:25.969Z",
+      "schemaContext": null,
+      "sqlHash": "1512f1a7c9ab20ddc1e109ddcecfe51f249b472897b03bc934ba4ef61d88e5f7",
+      "title": "127_infrastructure_responsible.up.sql",
+      "updatedAt": "2026-10-20T16:54:25.877Z"
+    },
+    {
+      "createdAt": "2026-10-20T16:58:03.465Z",
+      "path": "migrations/128_inventory_scans.up.sql",
+      "catalogContext": null,
+      "searchText": "128_inventory_scans.up.sql migrations/128_inventory_scans.up.sql -- 128_inventory_scans.up.sql\n-- ersatzteile per smartphone erfassen (internal/web/part_scan.go):\n--   * delivery: lieferschein fotografiert/als pdf – positionen erkannt, daraus\n--     zugänge zu vorhandenen teilen bzw. neuanlagen vorgeschlagen\n--   * part: bauteil fotografiert – erkannt und mit dem bestand abgeglichen\n-- fotos/pdfs liegen unter uploads/inventory-scans/<id>/, das erkannte ergebnis als json.\n\ncreate table if not exists inventory_scans (\n    id            uuid primary key default pdh_uuid_v7(),\n    kind          varchar(10) not null check (kind in ('delivery', 'part')),\n    files         jsonb not null default '[]',   -- [{\"path\":\"inventory-scans/…\",\"name\":\"…\",\"type\":\"image/jpeg\"}]\n    result        jsonb not null default '{}',   -- antwort der bilderkennung\n    supplier_id   uuid references business_partners(id) on delete set null,\n    note_no       varchar(100) not null default '', -- lieferschein-nr.\n    applied_at    timestamptz,                     -- vorschläge übernommen\n    applied_by    uuid references users(id) on delete set null,\n    applied_note  text not null default '',        -- z. b. „5 zugänge, 2 neue teile“\n    created_by    uuid references users(id) on delete set null,\n    created_at    timestamptz not null default now()\n);\ncreate index if not exists idx_inventory_scans_created on inventory_scans(created_at desc);\n",
+      "searchUpdatedAt": "2026-10-20T16:58:46.937Z",
+      "schemaContext": null,
+      "sqlHash": "257d03737529c2c451d5ebe0923c29aba4c317f89c12e2eb6d00fae162ab7ffd",
+      "title": "128_inventory_scans.up.sql",
+      "updatedAt": "2026-10-20T16:58:46.854Z"
     }
   ]
 }

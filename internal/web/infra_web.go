@@ -254,31 +254,37 @@ func (h *Handler) InfraCreate(w http.ResponseWriter, r *http.Request) {
 
 type InfraDetailData struct {
 	BaseData
-	Node           InfraNodeView
-	Children       []InfraNodeView
-	Parent         *InfraNodeView
-	ParentOptions  []InfraNodeView // erlaubte Übergeordnete (ohne sich selbst und eigene Unteranlagen)
-	Types          []infraTypeOption
-	HistoryModules []infraHistoryModule
-	CommentRefs    []InfraCommentRefOption
-	PartnerLinks   []PartnerLink
-	SupplierID     string
-	ServiceID      string
-	Departments    []deptView
-	DepartmentID   string // eigene Abteilung der Anlage
-	EffectiveDept  string // wirksame Abteilung (ggf. geerbt)
-	DeptInherited  bool
-	HMI            hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
-	Message, Error string
-	Obligations    []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
-	ObligationDue  int                 // davon überfällig oder im Vorlauf
-	Users          []UserOption        // Verantwortliche
-	Today          string              // JJJJ-MM-TT (Formular „erledigt am“)
-	EasyTexts      []easyText          // Reiter „Meldetexte“ (easy_texts.go)
-	EasyTextCount  int                 // davon an dieser Anlage wirksam
-	Chamber        []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
-	ChamberNOK     int                 // davon NOK
-	ChamberParts   []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
+	Node            InfraNodeView
+	Children        []InfraNodeView
+	Parent          *InfraNodeView
+	ParentOptions   []InfraNodeView // erlaubte Übergeordnete (ohne sich selbst und eigene Unteranlagen)
+	Types           []infraTypeOption
+	HistoryModules  []infraHistoryModule
+	CommentRefs     []InfraCommentRefOption
+	PartnerLinks    []PartnerLink
+	SupplierID      string
+	ServiceID       string
+	ServiceName     string
+	Departments     []deptView
+	DepartmentID    string // eigene Abteilung der Anlage
+	EffectiveDept   string // wirksame Abteilung (ggf. geerbt)
+	DeptInherited   bool
+	ResponsibleID   string   // eigene Verantwortliche/r (migrations/127)
+	EffectiveRespID string   // wirksame Person (ggf. geerbt)
+	EffectiveResp   string   // deren Name
+	RespFromID      string   // geerbt von diesem Element ("" = eigene Angabe)
+	RespFromName    string   // dessen Name
+	HMI             hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
+	Message, Error  string
+	Obligations     []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
+	ObligationDue   int                 // davon überfällig oder im Vorlauf
+	Users           []UserOption        // Verantwortliche
+	Today           string              // JJJJ-MM-TT (Formular „erledigt am“)
+	EasyTexts       []easyText          // Reiter „Meldetexte“ (easy_texts.go)
+	EasyTextCount   int                 // davon an dieser Anlage wirksam
+	Chamber         []chamberGroup      // Trockenkammer: Reiter „Bauteile“ (chamber.go)
+	ChamberNOK      int                 // davon NOK
+	ChamberParts    []chamberPartOption // Vorschlagsliste „Typ (Ersatzteil)“
 }
 
 func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
@@ -304,6 +310,11 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		Message:        q.Get("msg"), Error: q.Get("err"),
 	}
 	data.PartnerLinks, data.SupplierID, data.ServiceID = h.infraPartnerLinks(ctx, id)
+	for _, l := range data.PartnerLinks {
+		if l.Role == "service" {
+			data.ServiceName = l.Name // bleibt in der Auswahl sichtbar, auch wenn kein Lieferant
+		}
+	}
 	data.Obligations = h.infraObligations(ctx, id)
 	for _, o := range data.Obligations {
 		if o.State == "overdue" || o.State == "soon" {
@@ -323,7 +334,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 			data.EasyTextCount++
 		}
 	}
-	if data.CanEditInfra {
+	if data.CanEditInfra || data.CanInfraObligations { // Verantwortliche (Stammdaten, Prüfpflichten)
 		data.Users = h.userOptions(ctx)
 	}
 	if data.CanEditInfra {
@@ -336,6 +347,21 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 		COALESCE((SELECT d.name FROM infrastructure_department x JOIN departments d ON d.id = x.department_id WHERE x.infrastructure_id = $1::uuid), '')`, id).
 		Scan(&data.DepartmentID, &effID, &data.EffectiveDept)
 	data.DeptInherited = effID != "" && effID != data.DepartmentID
+	// Verantwortliche/r – eigene oder vom nächsten übergeordneten Element (migrations/127)
+	var respSource string
+	_ = h.db.QueryRow(ctx, `SELECT COALESCE((SELECT responsible_to::text FROM infrastructure WHERE id = $1::uuid), ''),
+		COALESCE(x.responsible_to::text, ''), COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
+		COALESCE(x.source_id::text, ''), COALESCE(s.name, '')
+		FROM (SELECT 1) one
+		LEFT JOIN infrastructure_responsible x ON x.infrastructure_id = $1::uuid
+		LEFT JOIN users u ON u.id = x.responsible_to
+		LEFT JOIN infrastructure s ON s.id = x.source_id`, id).
+		Scan(&data.ResponsibleID, &data.EffectiveRespID, &data.EffectiveResp, &respSource, &data.RespFromName)
+	if respSource != "" && respSource != id {
+		data.RespFromID = respSource
+	} else {
+		data.RespFromName = ""
+	}
 	if children, err := h.infra.List(ctx, &id, ""); err == nil {
 		for _, c := range children {
 			data.Children = append(data.Children, infraNodeView(c))
@@ -443,6 +469,11 @@ func (h *Handler) saveInfraMaster(ctx context.Context, r *http.Request, id strin
 			return err
 		}
 	}
+	if _, ok := r.Form["responsible_to"]; ok {
+		if _, err := h.db.Exec(ctx, `UPDATE infrastructure SET responsible_to = $1 WHERE id = $2::uuid`, nullID(r.FormValue("responsible_to")), id); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -460,12 +491,12 @@ func (f infraFields) value(label string) string {
 
 // infraHistoryFields: lesbare Werte der Stammdaten fuer den Vergleich vor/nach dem Speichern.
 func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraFields, error) {
-	var typ, parent, location, desc, maker, model, serial, installed, supplier, service, cc, dept string
+	var typ, parent, location, desc, maker, model, serial, installed, supplier, service, cc, dept, resp string
 	err := h.db.QueryRow(ctx, `
 		SELECT i.type::text, COALESCE(p.name, ''), COALESCE(i.location, ''), COALESCE(i.description, ''),
 		       COALESCE(m.name, i.manufacturer, ''), COALESCE(i.model, ''), COALESCE(i.serial_no, ''),
 		       COALESCE(to_char(i.installed_at, 'DD.MM.YYYY'), ''), COALESCE(s.name, ''), COALESCE(sp.name, ''),
-		       COALESCE(cc.number || ' - ' || cc.name, ''), COALESCE(d.name, '')
+		       COALESCE(cc.number || ' - ' || cc.name, ''), COALESCE(d.name, ''), COALESCE(TRIM(ru.first_name || ' ' || ru.last_name), '')
 		  FROM infrastructure i
 		  LEFT JOIN infrastructure p ON p.id = i.parent_id
 		  LEFT JOIN business_partners m ON m.id = i.manufacturer_id
@@ -473,7 +504,8 @@ func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraField
 		  LEFT JOIN business_partners sp ON sp.id = i.service_partner_id
 		  LEFT JOIN cost_centers cc ON cc.id = i.cost_center_id
 		  LEFT JOIN departments d ON d.id = i.department_id
-		 WHERE i.id = $1::uuid AND i.active`, id).Scan(&typ, &parent, &location, &desc, &maker, &model, &serial, &installed, &supplier, &service, &cc, &dept)
+		  LEFT JOIN users ru ON ru.id = i.responsible_to
+		 WHERE i.id = $1::uuid AND i.active`, id).Scan(&typ, &parent, &location, &desc, &maker, &model, &serial, &installed, &supplier, &service, &cc, &dept, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -483,6 +515,6 @@ func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraField
 	return infraFields{
 		{"Name", name}, {"Typ", t.Label}, {"Übergeordnet", parent}, {"Standort", location}, {"Beschreibung", desc},
 		{"Hersteller", maker}, {"Modell", model}, {"Seriennummer", serial}, {"In Betrieb seit", installed},
-		{"Lieferant", supplier}, {"Servicepartner", service}, {"Kostenstelle", cc}, {"Abteilung", dept},
+		{"Lieferant", supplier}, {"Servicepartner", service}, {"Kostenstelle", cc}, {"Abteilung", dept}, {"Verantwortlich", resp},
 	}, nil
 }

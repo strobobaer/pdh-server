@@ -126,6 +126,7 @@
       {{range .PartnerLinks}}{{if ne .Role "manufacturer"}}<div class="rec-f"><div class="rec-l">{{.RoleLabel}}</div><div class="rec-v"><a href="/directory/{{.ID}}" data-frame data-frame-title="{{.Name}}"><i class="ti ti-building-factory-2"></i> {{.Name}}</a></div></div>{{end}}{{end}}
       {{if $n.CostCenterName}}<div class="rec-f"><div class="rec-l">Kostenstelle</div><div class="rec-v">{{$n.CostCenterNumber}} - {{$n.CostCenterName}}</div></div>{{end}}
       {{if .EffectiveDept}}<div class="rec-f"><div class="rec-l">Abteilung</div><div class="rec-v">{{.EffectiveDept}}{{if .DeptInherited}} <span class="rec-sub">(geerbt)</span>{{end}}</div></div>{{end}}
+      <div class="rec-f"><div class="rec-l">Verantwortlich</div><div class="rec-v">{{if .EffectiveResp}}<a href="/users/{{.EffectiveRespID}}" data-frame data-frame-title="{{.EffectiveResp}}"><i class="ti ti-user"></i> {{.EffectiveResp}}</a>{{if .RespFromID}} <span class="rec-sub">(geerbt von <a href="/infrastructure/{{.RespFromID}}">{{.RespFromName}}</a>)</span>{{end}}{{else}}<span class="rec-sub">—</span>{{end}}</div></div>
       {{if $n.Description}}<div class="rec-f"><div class="rec-l">Beschreibung</div><div class="rec-v">{{$n.Description}}</div></div>{{end}}
     </div>
 
@@ -179,7 +180,7 @@
     <div class="rec-sec">Partner</div>
     <div class="rec-compare">
       <div>{{template "directory-picker" (dict "Label" "Lieferant" "TargetID" "infra-edit-supplier-id" "Name" "supplier_id" "Kind" "supplier" "Value" .SupplierID)}}</div>
-      <div>{{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "all" "Value" .ServiceID)}}</div>
+      <div>{{template "directory-picker" (dict "Label" "Servicepartner" "TargetID" "infra-edit-service-id" "Name" "service_partner_id" "Kind" "supplier" "Value" .ServiceID "SelectedLabel" .ServiceName)}}</div>
     </div>
 
     <div class="rec-sec">Zuordnung</div>
@@ -187,6 +188,9 @@
     <div class="form-group"><label class="form-label">Abteilung</label>
       <select name="department_id" class="form-input"><option value="">– von übergeordneter Anlage erben –</option>{{range .Departments}}<option value="{{.ID}}" {{if eq .ID $.DepartmentID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
       <div class="rec-sub" style="margin-top:3px">Bestimmt, welche Abteilung die Vorgänge dieser Anlage sieht. Gilt auch für alle Unteranlagen ohne eigene Abteilung.</div></div>
+    <div class="form-group"><label class="form-label">Verantwortlich</label>
+      <select name="responsible_to" class="form-input"><option value="">– von übergeordneter Anlage erben{{if and .EffectiveResp .RespFromID}} ({{.EffectiveResp}}){{end}} –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+      <div class="rec-sub" style="margin-top:3px">Ansprechperson für diese Anlage. Gilt auch für alle Unteranlagen ohne eigene Angabe.</div></div>
 
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
       <a class="btn" href="?tab=overview">Abbrechen</a>

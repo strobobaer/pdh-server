@@ -361,6 +361,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/faults/{id}/infrastructure-web", h.FaultInfrastructureWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/faults/{id}/time/start", h.FaultStartTime)
 	r.Get("/inventory", h.Inventory)
+	// Lieferschein scannen / Bauteil erkennen (part_scan.go, part_scan_web.go)
+	r.Get("/inventory/scan", h.InventoryScanPage)
+	r.Post("/inventory/scan/{kind:delivery|part}", h.InventoryScanUploadWeb)
+	r.Get("/inventory/scan/{id}", h.InventoryScanDetail)
+	r.Post("/inventory/scan/{id}/apply", h.InventoryScanApplyWeb)
+	r.Post("/inventory/scan/{id}/create", h.InventoryScanCreatePartWeb)
 	r.Post("/inventory", h.CreatePart)
 	r.Get("/inventory/labels", h.PartLabelsPage)
 	r.Post("/inventory/labels/print", h.PartLabelsPrintWeb)

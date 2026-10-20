@@ -1,0 +1,165 @@
+{{template "base" .}}
+{{define "content"}}
+{{$d := .}}
+<style>
+.sc-msg{font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.sc-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.sc-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.sc-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.sc-thumbs a{width:84px;height:84px;border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--bg3);font-size:11px;color:var(--muted)}
+.sc-thumbs img{width:100%;height:100%;object-fit:cover}
+.sc-head{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sc-head .form-group{margin:0}
+.sc-line{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.sc-line.skip{opacity:.55}
+.sc-line-top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.sc-line-top .grow{flex:1;min-width:200px}
+.sc-codes{font-size:11px;color:var(--muted);font-family:monospace}
+.sc-grid{display:grid;grid-template-columns:110px 150px 1fr 1fr;gap:8px;margin-top:8px;align-items:end}
+.sc-grid .form-group{margin:0}
+.sc-new{display:grid;grid-template-columns:1fr 2fr 100px;gap:8px;margin-top:8px}
+.sc-new .form-group{margin:0}
+.sc-cand{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+@media (max-width:800px){.sc-head,.sc-grid,.sc-new{grid-template-columns:1fr 1fr}}
+</style>
+
+<div class="rec-head">
+  {{template "icon-button" (dict "Action" "back" "Href" "/inventory/scan")}}
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:19px;font-weight:600"><i class="ti {{if eq .Scan.Kind "part"}}ti-camera-search{{else}}ti-truck-delivery{{end}}"></i> {{if eq .Scan.Kind "part"}}Bauteil-Erkennung{{else}}Lieferschein{{if .Scan.NoteNo}} {{.Scan.NoteNo}}{{end}}{{end}}</h1>
+    <p class="rec-sub">{{.Scan.Created}}{{if .Scan.Who}} · {{.Scan.Who}}{{end}}</p>
+  </div>
+</div>
+{{if .Message}}<div class="sc-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Err}}<div class="sc-msg err"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="sc-thumbs">{{range .Files}}<a href="/uploads/{{.Path}}" target="_blank" rel="noopener">{{if eq .Type "application/pdf"}}<span><i class="ti ti-file-type-pdf" style="font-size:26px"></i><br>PDF</span>{{else}}<img src="/uploads/{{.Path}}" alt="{{.Name}}">{{end}}</a>{{end}}</div>
+
+{{if eq .Scan.Status "pending"}}
+<div class="card" id="sc-pending"><i class="ti ti-loader-2 ti-spin"></i> <b>Wird erkannt …</b> <span class="rec-sub">Das dauert meist 20 bis 60 Sekunden. Die Seite aktualisiert sich von selbst.</span></div>
+{{else if eq .Scan.Status "error"}}
+<div class="card"><div class="sc-msg err" style="margin:0 0 8px"><i class="ti ti-alert-circle"></i> Erkennung fehlgeschlagen: {{.Scan.Error}}</div>
+  <a class="btn" href="/inventory/scan?tab={{.Scan.Kind}}"><i class="ti ti-camera"></i> Neu scannen</a></div>
+{{end}}
+
+{{if .Delivery}}{{$del := .Delivery}}
+{{if .Scan.Applied}}<div class="sc-msg ok"><i class="ti ti-circle-check"></i> Gebucht: {{.Scan.AppliedNote}}</div>{{end}}
+<form method="post" action="/inventory/scan/{{.Scan.ID}}/apply" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+  <input type="hidden" name="lines" value="{{len .Lines}}">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-file-invoice"></i> Lieferschein</span>{{if $del.SupplierName}}<span class="rec-sub">erkannt: {{$del.SupplierName}}</span>{{end}}</div>
+    <div class="sc-head">
+      <div class="form-group"><label class="form-label">Lieferant</label>
+        <select name="supplier_id" class="form-input"><option value="">– ohne –</option>{{range .Suppliers}}<option value="{{.Value}}" {{if eq .Value $d.SupplierID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Lieferschein-Nr.</label><input name="note_no" class="form-input" maxlength="90" value="{{$del.DeliveryNoteNo}}"></div>
+      <div class="form-group"><label class="form-label">Datum / Bestellung</label><input class="form-input" disabled value="{{$del.DeliveryDate}}{{if $del.OrderNo}} · Best. {{$del.OrderNo}}{{end}}"></div>
+      <div class="form-group"><label class="form-label">Lagerort für alle</label>
+        <select name="default_store" class="form-input"><option value="">– je Position –</option>{{range .Storages}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+    </div>
+    <p class="rec-sub" style="margin:8px 0 0">Mit Lieferant werden dessen Artikelnummern am Teil gespeichert – beim nächsten Lieferschein findet PDH das Teil direkt.</p>
+  </div>
+
+  {{range .Lines}}{{$l := .}}{{$i := .Index}}
+  <div class="sc-line{{if eq .Action "skip"}} skip{{end}}" data-line="{{$i}}">
+    <input type="hidden" name="pos_{{$i}}" value="{{.Item.Position}}">
+    <input type="hidden" name="sno_{{$i}}" value="{{.Item.SupplierArticleNo}}">
+    <input type="hidden" name="mpn_{{$i}}" value="{{.Item.ManufacturerPartNo}}">
+    <div class="sc-line-top">
+      <div class="grow"><b>{{if .Item.Position}}Pos. {{.Item.Position}} · {{end}}{{.Item.Description}}</b>
+        <div class="sc-codes">{{if .Item.SupplierArticleNo}}Art.-Nr. {{.Item.SupplierArticleNo}} {{end}}{{if .Item.ManufacturerPartNo}}· Hersteller-Nr. {{.Item.ManufacturerPartNo}} {{end}}{{if .Item.Manufacturer}}· {{.Item.Manufacturer}} {{end}}{{if .Item.EAN}}· EAN {{.Item.EAN}}{{end}}</div></div>
+      {{if .Candidates}}{{with index .Candidates 0}}<span class="badge {{if ge .Score 85}}b-green{{else}}b-amber{{end}}">{{if ge .Score 85}}gefunden: {{.Reason}}{{else}}ähnlich{{end}}</span>{{end}}{{else}}<span class="badge b-blue">neu</span>{{end}}
+    </div>
+    <div class="sc-grid">
+      <div class="form-group"><label class="form-label">Menge</label><input name="qty_{{$i}}" class="form-input" inputmode="decimal" value="{{.Qty}}"></div>
+      <div class="form-group"><label class="form-label">Aktion</label>
+        <select name="act_{{$i}}" class="form-input" onchange="scAct(this)">
+          {{if .Candidates}}<option value="book" {{if eq .Action "book"}}selected{{end}}>Zugang buchen</option>{{end}}
+          <option value="new" {{if eq .Action "new"}}selected{{end}}>Neu anlegen + buchen</option>
+          <option value="skip" {{if eq .Action "skip"}}selected{{end}}>Überspringen</option>
+        </select></div>
+      <div class="form-group sc-book"{{if ne .Action "book"}} hidden{{end}}><label class="form-label">Teil</label>
+        <select name="part_{{$i}}" class="form-input">{{range .Candidates}}<option value="{{.ID}}" {{if eq .ID $l.PartID}}selected{{end}}>{{.PartNumber}} – {{.Name}} (Bestand {{.StockText}}{{if .Unit}} {{.Unit}}{{end}}) · {{.Reason}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Lagerort</label>
+        <select name="store_{{$i}}" class="form-input"><option value="">– wie oben –</option>{{range $d.Storages}}<option value="{{.Value}}" {{if eq .Value $l.StorageID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    </div>
+    <div class="sc-new"{{if ne .Action "new"}} hidden{{end}}>
+      <div class="form-group"><label class="form-label">Teilenummer</label><input name="num_{{$i}}" class="form-input" maxlength="100" value="{{.NewNumber}}"></div>
+      <div class="form-group"><label class="form-label">Bezeichnung</label><input name="name_{{$i}}" class="form-input" maxlength="255" value="{{.NewName}}"></div>
+      <div class="form-group"><label class="form-label">Einheit</label><input name="unit_{{$i}}" class="form-input" maxlength="20" value="{{.NewUnit}}" placeholder="Stück"></div>
+    </div>
+  </div>
+  {{else}}<div class="card"><p class="rec-sub">Auf dem Lieferschein wurden keine Positionen erkannt. Bitte deutlicher fotografieren und neu scannen.</p></div>{{end}}
+
+  {{if and .Lines (not .Scan.Applied)}}
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+    <a class="btn" href="/inventory/scan">Abbrechen</a>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-package-import"></i> Zugänge buchen</button>
+  </div>
+  {{end}}
+</form>
+{{end}}
+
+{{if .Part}}{{$p := .Part}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-sparkles"></i> Erkannt</span>
+    <span class="badge {{if eq $p.Confidence "high"}}b-green{{else if eq $p.Confidence "medium"}}b-amber{{else}}b-red{{end}}">{{if eq $p.Confidence "high"}}sicher{{else if eq $p.Confidence "medium"}}wahrscheinlich{{else}}unsicher{{end}}</span></div>
+  {{if not $p.Recognized}}<p class="rec-sub">Auf dem Foto war kein Bauteil sicher zu erkennen.</p>{{end}}
+  {{if $p.Name}}<div class="rec-f"><div class="rec-l">Bezeichnung</div><div class="rec-v"><b>{{$p.Name}}</b></div></div>{{end}}
+  {{if $p.Manufacturer}}<div class="rec-f"><div class="rec-l">Hersteller</div><div class="rec-v">{{$p.Manufacturer}}</div></div>{{end}}
+  {{if $p.PartNumber}}<div class="rec-f"><div class="rec-l">Artikelnummer</div><div class="rec-v" style="font-family:monospace">{{$p.PartNumber}}</div></div>{{end}}
+  {{if $p.TypeDesignation}}<div class="rec-f"><div class="rec-l">Typ</div><div class="rec-v" style="font-family:monospace">{{$p.TypeDesignation}}</div></div>{{end}}
+  {{if $p.Category}}<div class="rec-f"><div class="rec-l">Kategorie</div><div class="rec-v">{{$p.Category}}</div></div>{{end}}
+  {{range $p.Specs}}<div class="rec-f"><div class="rec-l">{{.Key}}</div><div class="rec-v">{{.Value}}</div></div>{{end}}
+  {{if $p.Description}}<p class="rec-sub" style="margin-top:6px">{{$p.Description}}</p>{{end}}
+  {{if $p.Notes}}<p class="rec-sub"><i class="ti ti-info-circle"></i> {{$p.Notes}}</p>{{end}}
+</div>
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-package"></i> Im Lager</span></div>
+  {{range .PartCandidates}}
+  <div class="sc-cand">
+    <div style="flex:1;min-width:180px"><b>{{.PartNumber}} – {{.Name}}</b><div class="rec-sub">Bestand {{.StockText}}{{if .Unit}} {{.Unit}}{{end}} · {{.Reason}}</div></div>
+    <a class="btn btn-small" href="/inventory/{{.ID}}"><i class="ti ti-eye"></i> Öffnen</a>
+    <a class="btn btn-small" href="/inventory/{{.ID}}?tab=stock"><i class="ti ti-arrows-exchange"></i> Buchen</a>
+  </div>
+  {{else}}<p class="rec-sub">Kein passendes Teil im Lager gefunden.</p>{{end}}
+</div>
+
+{{if not .Scan.Applied}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Als neues Teil anlegen</span></div>
+  <form method="post" action="/inventory/scan/{{.Scan.ID}}/create" class="rec-form">
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Teilenummer *</label><input name="part_number" class="form-input" required maxlength="100" value="{{.NewPart.Number}}"></div>
+      <div class="form-group"><label class="form-label">Bezeichnung *</label><input name="name" class="form-input" required maxlength="255" value="{{.NewPart.Name}}"></div>
+    </div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Hersteller</label>
+        <select name="manufacturer_id" class="form-input"><option value="">– ohne –</option>{{range .Manufacturers}}<option value="{{.Value}}" {{if eq .Value $d.NewPart.ManufacturerID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Hersteller-Artikelnr.</label><input name="manufacturer_part" class="form-input" maxlength="100" value="{{.NewPart.ManufacturerPart}}"></div>
+    </div>
+    <div class="cols">
+      <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" maxlength="100" value="{{.NewPart.Category}}"></div>
+      <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" maxlength="20" value="{{.NewPart.Unit}}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="4">{{.NewPart.Description}}</textarea></div>
+    <label style="font-size:13px;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" name="use_photo" value="1" checked> Foto als Teilebild übernehmen</label>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Teil anlegen</button>
+  </form>
+</div>
+{{else}}<div class="sc-msg ok"><i class="ti ti-circle-check"></i> {{.Scan.AppliedNote}}</div>{{end}}
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function scAct(sel){
+  const line = sel.closest('.sc-line');
+  line.classList.toggle('skip', sel.value === 'skip');
+  const book = line.querySelector('.sc-book'), nw = line.querySelector('.sc-new');
+  if(book) book.hidden = sel.value !== 'book';
+  if(nw) nw.hidden = sel.value !== 'new';
+}
+if(document.getElementById('sc-pending')) setTimeout(function(){ location.reload(); }, 3000);
+</script>
+{{end}}
