@@ -14,6 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Server-Einstellungen → Nextcloud: Schlägt „In Nextcloud einrichten“ fehl, steht der Grund jetzt rot direkt in der Karte „PDH-Administrator in Nextcloud“ statt nur oben auf der Seite
+- Gesperrte Knöpfe sind jetzt blasser dargestellt und sehen nicht mehr wie klickbare aus; die Karte „PDH-Administrator in Nextcloud“ sagt, wenn noch die Nextcloud-Adresse fehlt
 - Fehlermeldungen von occ-Befehlen nennen die eigentliche Fehlerzeile statt einer Zwischenüberschrift
 - Ein abgebrochenes Nextcloud-System-Update lässt Nextcloud nicht mehr im Wartungsmodus zurück (Nextcloud antwortete dann mit „503 Service Unavailable“)
 
