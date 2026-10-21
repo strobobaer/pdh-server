@@ -10,6 +10,26 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.57.0] – 2026-10-21
+
+### Neu
+- Planer (Instandhaltung → Planer) ersetzt den Schichtplan: Schichtplan, Urlaub & Abwesenheit, Wartungsplanung, Schichtmodelle & Vorlagen und Einstellungen an einer Stelle
+- Schichtplan als Wochenkalender: oben die Tage, links die Schichten des rechts gewählten Schichtmodells, im Feld die eingeteilten Mitarbeiter – ein Klick öffnet die Auswahl mit Hinweisen auf Urlaub und andere Schichten
+- Mindestbesetzung je Schicht (Feld rot, wenn zu wenige eingeteilt), Feiertage und Betriebsruhe im Kalender, Filter nach Abteilung und Gruppe, „Vorwoche übernehmen“
+- Vorlagen für Schichtmodelle: Tagschicht, 2-Schicht, 3-Schicht, 4- und 5-Schicht-Kontischicht, 12-Stunden Tag/Nacht (2-2-3) und Rufbereitschaft – legen Schichten und Rotationsmuster in einem Schritt an
+- Schichtmodelle, Schichten (Zeiten, Farbe, Pause, Mindestbesetzung) und Rotationsmuster lassen sich bearbeiten; „Plan erzeugen“ verteilt ein Muster auf Mannschaften mit automatischem Versatz, zuerst als Entwurf
+- Urlaub & Abwesenheit: Antrag mit halben Tagen und Vertretung, Genehmigung mit Hinweis auf Schichten und gleichzeitig abwesende Kollegen, Urlaubsanspruch mit Übertrag und Resturlaub, Teamkalender je Monat, Benachrichtigung per Chat
+- Arbeitstage werden ohne Wochenende, gesetzliche Feiertage (Bundesland wählbar) und Betriebsruhe gezählt
+- Wartungsplanung: Monatskalender mit offenen Wartungen und Prüfpflichten, Warnung wenn die zugewiesene Person abwesend ist oder keine Schicht hat, Leute im Dienst je Tag, Verschieben und Zuweisen an verfügbare Mitarbeiter
+- Neue Rechte: „Eigene Abwesenheit beantragen“, „Abwesenheiten genehmigen“, „Abwesenheitsgrund aller sehen“
+
+### Geändert
+- „Schichtplan ansehen/bearbeiten“ heißen jetzt „Planer ansehen“ und „Schichten planen“ und werden überall geprüft; ohne Recht sehen Kollegen bei fremden Abwesenheiten nur „abwesend“
+- Der Wochenstreifen auf dem Dashboard zeigt die eigenen Schichten (ohne Entwürfe)
+
+### Behoben
+- Der Dashboard-Wochenstreifen zeigte die Schichten einer beliebigen Person und sonntags schon die nächste Woche
+
 ## [0.56.2] – 2026-10-21
 
 ### Behoben

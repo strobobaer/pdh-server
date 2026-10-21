@@ -1,0 +1,589 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="rec-head">
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-calendar-time" style="font-size:26px"></i></div>
+  <div class="t">
+    <h1>Planer</h1>
+    <div class="sub">Schichten, Urlaub &amp; Abwesenheit, Wartungsplanung</div>
+  </div>
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab{{if eq .Tab "shifts"}} active{{end}}" href="/planner?tab=shifts"><i class="ti ti-calendar-week"></i> Schichtplan</a>
+  <a class="rec-tab{{if eq .Tab "absences"}} active{{end}}" href="/planner?tab=absences"><i class="ti ti-beach"></i> Urlaub &amp; Abwesenheit</a>
+  {{if .CanMaintView}}<a class="rec-tab{{if eq .Tab "maintenance"}} active{{end}}" href="/planner?tab=maintenance"><i class="ti ti-tool"></i> Wartungsplanung</a>{{end}}
+  {{if .CanPlan}}<a class="rec-tab{{if eq .Tab "models"}} active{{end}}" href="/planner?tab=models"><i class="ti ti-template"></i> Schichtmodelle &amp; Vorlagen</a>
+  <a class="rec-tab{{if eq .Tab "settings"}} active{{end}}" href="/planner?tab=settings"><i class="ti ti-settings"></i> Einstellungen</a>{{end}}
+</div>
+
+{{if eq .Tab "shifts"}}{{template "planner-shifts" .}}{{end}}
+{{if eq .Tab "absences"}}{{template "planner-absences" .}}{{end}}
+{{if eq .Tab "maintenance"}}{{template "planner-maint" .}}{{end}}
+{{if eq .Tab "models"}}{{template "planner-models" .}}{{end}}
+{{if eq .Tab "settings"}}{{template "planner-settings" .}}{{end}}
+
+<style>
+.pl-wrap{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:14px;align-items:start}
+@media (max-width:900px){.pl-wrap{grid-template-columns:1fr}}
+.pl-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.pl-bar .lbl{font-weight:700;font-size:15px;margin:0 6px}
+.pl-grid{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:760px}
+.pl-grid th,.pl-grid td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top}
+.pl-grid thead th{padding:6px 4px;text-align:center;font-size:12px;background:var(--bg3);position:sticky;top:0;z-index:1}
+.pl-grid thead th .d{font-size:15px;font-weight:700;display:block}
+.pl-grid thead th .hol{display:block;font-size:10px;color:var(--red);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-grid th.wkend,.pl-grid td.wkend{background:color-mix(in srgb,var(--muted) 8%,transparent)}
+.pl-grid th.holi,.pl-grid td.holi{background:color-mix(in srgb,var(--red) 7%,transparent)}
+.pl-grid th.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.pl-grid .sh{width:150px;padding:8px;text-align:left;border-left:5px solid var(--sc,#3B82F6);background:var(--bg2)}
+.pl-grid .sh b{display:block;font-size:13px}
+.pl-grid .sh small{color:var(--muted);font-size:11px}
+.pl-cell{padding:5px;min-height:62px;height:62px}
+.pl-cell.click{cursor:pointer}
+.pl-cell.click:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.pl-cell.under{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--red) 55%,transparent)}
+.pl-chip{display:block;font-size:11.5px;padding:2px 6px;margin-bottom:3px;border-radius:6px;background:color-mix(in srgb,var(--sc,#3B82F6) 20%,transparent);border-left:3px solid var(--sc,#3B82F6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-chip.draft{border-left-style:dashed;opacity:.75}
+.pl-count{font-size:10px;color:var(--muted)}
+.pl-count.bad{color:var(--red);font-weight:700}
+.pl-add{font-size:11px;color:var(--muted)}
+.pl-side .pl-model{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;text-decoration:none;color:inherit}
+.pl-side .pl-model.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.pl-side .pl-model small{display:block;color:var(--muted);font-size:11px}
+.pl-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.pl-modal.open{display:flex}
+.pl-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;width:min(460px,100%);max-height:85vh;display:flex;flex-direction:column}
+.pl-box header{padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;gap:8px}
+.pl-box .body{padding:10px 14px;overflow-y:auto}
+.pl-box footer{padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.pl-pick{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer}
+.pl-pick small{margin-left:auto;font-size:11px}
+.pl-pick.abs{opacity:.6}
+.ab-cal{border-collapse:collapse;font-size:11px;min-width:760px}
+.ab-cal th,.ab-cal td{border:1px solid var(--border);padding:2px;text-align:center;min-width:22px}
+.ab-cal th.n,.ab-cal td.n{text-align:left;min-width:150px;padding:2px 6px;white-space:nowrap}
+.ab-cal .ab-vacation{background:#10B981;color:#fff}
+.ab-cal .ab-sick{background:#EF4444;color:#fff}
+.ab-cal .ab-training{background:#6366F1;color:#fff}
+.ab-cal .ab-other{background:#94A3B8;color:#fff}
+.ab-cal .ab-pending{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 4px,transparent 4px 8px)}
+.mt-cal{width:100%;border-collapse:collapse;table-layout:fixed;min-width:760px}
+.mt-cal th{font-size:12px;padding:6px;background:var(--bg3);border:1px solid var(--border)}
+.mt-cal td{border:1px solid var(--border);vertical-align:top;height:110px;padding:4px}
+.mt-cal td.out{opacity:.45}
+.mt-cal .dh{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px}
+.mt-cal .dh b{color:var(--text,inherit);font-size:13px}
+.mt-item{display:block;font-size:11px;padding:3px 5px;border-radius:6px;margin-bottom:3px;background:color-mix(in srgb,#c99a3c 18%,transparent);border-left:3px solid #c99a3c;text-align:left;width:100%;border-top:0;border-right:0;border-bottom:0;color:inherit;cursor:pointer;font-family:inherit}
+.mt-item.obl{background:color-mix(in srgb,#6366F1 16%,transparent);border-left-color:#6366F1}
+.mt-item.warn-b-red{box-shadow:inset 0 0 0 1px var(--red)}
+.mt-item .w{display:block;color:var(--red);font-size:10px}
+.mt-item .w.a{color:var(--amber)}
+.pt-days{display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:4px}
+.pt-days label{font-size:10px;color:var(--muted);display:block}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.tpl{border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.tpl .pat{font-family:monospace;font-size:11px;color:var(--muted);word-break:break-all}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+</style>
+{{end}}
+
+{{/* ───────────────────────── Schichtplan ───────────────────────── */}}
+{{define "planner-shifts"}}
+<div class="pl-wrap">
+  <div style="min-width:0">
+    <div class="pl-bar">
+      <a class="btn btn-icon" href="/planner?tab=shifts&week={{.PrevWeek}}&model={{.ModelID}}&dept={{.Dept}}&group={{.Group}}" title="Vorige Woche"><i class="ti ti-chevron-left"></i></a>
+      <span class="lbl">{{.WeekLabel}}</span>
+      <a class="btn btn-icon" href="/planner?tab=shifts&week={{.NextWeek}}&model={{.ModelID}}&dept={{.Dept}}&group={{.Group}}" title="Nächste Woche"><i class="ti ti-chevron-right"></i></a>
+      {{if ne .Week .ThisWeek}}<a class="btn btn-small" href="/planner?tab=shifts&model={{.ModelID}}&dept={{.Dept}}&group={{.Group}}">Heute</a>{{end}}
+      <form method="get" action="/planner" style="display:flex;gap:6px;margin-left:auto;flex-wrap:wrap">
+        <input type="hidden" name="tab" value="shifts"><input type="hidden" name="week" value="{{.Week}}"><input type="hidden" name="model" value="{{.ModelID}}">
+        <select name="dept" class="form-input" style="width:auto" onchange="this.form.submit()"><option value="">Alle Abteilungen</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.Dept}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+        <select name="group" class="form-input" style="width:auto" onchange="this.form.submit()"><option value="">Alle Gruppen</option>{{range .Groups}}<option value="{{.Value}}" {{if eq .Value $.Group}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+      </form>
+    </div>
+    {{if .Rows}}
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="pl-grid">
+        <thead><tr><th style="width:150px;text-align:left;padding-left:10px">Schicht</th>
+          {{range .Days}}<th class="{{if .Weekend}}wkend{{end}}{{if .Holiday}} holi{{end}}{{if .Today}} today{{end}}" title="{{.Holiday}}">{{.Short}}<span class="d">{{.Label}}</span>{{if .Holiday}}<span class="hol">{{.Holiday}}</span>{{end}}</th>{{end}}
+        </tr></thead>
+        <tbody>
+        {{range $ri, $row := .Rows}}
+        <tr>
+          <th class="sh" style="--sc:{{css $row.Shift.Color}}"><b>{{$row.Shift.Name}}</b><small>{{$row.Shift.Short}} · {{$row.Shift.Time}}{{if $row.Shift.MinStaff}} · min. {{$row.Shift.MinStaff}}{{end}}</small></th>
+          {{range $ci, $c := $row.Cells}}{{$day := index $.Days $ci}}
+          <td class="pl-cell{{if $.CanPlan}} click{{end}}{{if $c.Under}} under{{end}}{{if $day.Weekend}} wkend{{end}}{{if $day.Holiday}} holi{{end}}" style="--sc:{{css $row.Shift.Color}}"
+              {{if $.CanPlan}}data-date="{{$day.Date}}" data-shift="{{$row.Shift.ID}}" data-shift-name="{{$row.Shift.Name}}" data-day-label="{{$day.Short}} {{$day.Label}}" data-people="{{range $i, $p := $c.People}}{{if $i}},{{end}}{{$p.ID}}{{end}}" tabindex="0" role="button" aria-label="{{$row.Shift.Name}} am {{$day.Short}} {{$day.Label}} besetzen"{{end}}>
+            {{range $c.People}}<span class="pl-chip{{if .Draft}} draft{{end}}" title="{{.Name}}{{if .Draft}} (Entwurf){{end}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}</span>{{end}}
+            {{if $row.Shift.MinStaff}}<span class="pl-count{{if $c.Under}} bad{{end}}">{{len $c.People}}/{{$row.Shift.MinStaff}}</span>
+            {{else if and $.CanPlan (not $c.People)}}<span class="pl-add"><i class="ti ti-plus"></i></span>{{end}}
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    <div class="rec-sub" style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+      {{if .CanPlan}}<span><i class="ti ti-hand-click"></i> Feld anklicken, um Mitarbeiter einzuteilen.</span>{{end}}
+      <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--red)"></span>Mindestbesetzung unterschritten</span>
+      {{if .DraftCount}}<span><span class="pl-chip draft" style="display:inline-block;margin:0">Entwurf</span> {{.DraftCount}} Einteilung(en) aus unveröffentlichten Plänen – nur für Planende sichtbar</span>{{end}}
+      {{if .CanPlan}}<form method="post" action="/planner/shifts/copy-week" style="margin-left:auto" onsubmit="return confirm('Einteilung der Vorwoche in diese Woche übernehmen? Vorhandene Einträge und Urlaubstage bleiben unberührt.')">
+        <input type="hidden" name="week" value="{{.Week}}"><input type="hidden" name="model" value="{{.ModelID}}">
+        <button class="btn btn-small" type="submit"><i class="ti ti-copy"></i> Vorwoche übernehmen</button></form>{{end}}
+    </div>
+    {{else}}
+    <div class="card"><div class="rec-sub" style="padding:10px">{{if .Models}}Dieses Schichtmodell hat noch keine Schichten.{{else}}Noch kein Schichtmodell vorhanden.{{end}}
+      {{if .CanPlan}} <a href="/planner?tab=models" style="color:var(--accent)">Schichtmodelle &amp; Vorlagen</a> – dort eine Vorlage übernehmen (z. B. 3-Schicht oder Kontischicht).{{end}}</div></div>
+    {{end}}
+  </div>
+
+  <aside class="pl-side">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-stack-2"></i> Schichtmodell</span></div>
+      {{range .Models}}<a class="pl-model{{if eq .ID $.ModelID}} on{{end}}" href="/planner?tab=shifts&week={{$.Week}}&model={{.ID}}&dept={{$.Dept}}&group={{$.Group}}">
+        <i class="ti {{if eq .ID $.ModelID}}ti-circle-dot{{else}}ti-circle{{end}}" style="margin-top:2px"></i><div><b>{{.Name}}</b><small>{{.Shifts}} Schicht(en)</small></div></a>
+      {{else}}<div class="rec-sub">Kein aktives Modell</div>{{end}}
+      {{if .CanPlan}}<a class="btn btn-small" style="width:100%;justify-content:center;margin-top:4px" href="/planner?tab=models"><i class="ti ti-template"></i> Modelle &amp; Vorlagen</a>{{end}}
+    </div>
+  </aside>
+</div>
+
+{{if .CanPlan}}
+<div class="pl-modal" id="pl-pick" onclick="if(event.target===this)plClose()">
+  <div class="pl-box" role="dialog" aria-modal="true" aria-labelledby="pl-pick-title">
+    <header><span id="pl-pick-title">Schicht besetzen</span><button class="btn btn-icon" type="button" onclick="plClose()" title="Schließen"><i class="ti ti-x"></i></button></header>
+    <div class="body">
+      <input class="form-input" id="pl-filter" placeholder="Name suchen …" autocomplete="off" style="margin-bottom:6px">
+      <div id="pl-list"></div>
+    </div>
+    <footer><span class="rec-sub" id="pl-sum" style="margin-right:auto"></span><button class="btn" type="button" onclick="plClose()">Abbrechen</button><button class="btn btn-primary" type="button" id="pl-save" onclick="plSave()"><i class="ti ti-check"></i> Übernehmen</button></footer>
+  </div>
+</div>
+<script>
+(function(){
+  const USERS = {{.Users}} || [];
+  const INFO = {{.DayInfo}} || {};
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let cur = null, sel = new Set();
+  function render(){
+    const q = document.getElementById('pl-filter').value.trim().toLowerCase();
+    const info = INFO[cur.date] || {shift:{}, shiftId:{}, absent:{}};
+    // eingeteilt zuerst, dann verfügbar, dann andere Schicht, dann abwesend
+    const rank = u => sel.has(u.ID) ? 0 : info.absent[u.ID] ? 3 : (info.shiftId[u.ID] && info.shiftId[u.ID] !== cur.shift) ? 2 : 1;
+    const list = USERS.filter(u => !q || u.Name.toLowerCase().includes(q) || (u.Dept || '').toLowerCase().includes(q))
+      .sort((a, b) => rank(a) - rank(b) || a.Name.localeCompare(b.Name));
+    document.getElementById('pl-list').innerHTML = list.map(u => {
+      const abs = info.absent[u.ID], other = info.shiftId[u.ID] && info.shiftId[u.ID] !== cur.shift ? info.shift[u.ID] : '';
+      let note = '';
+      if(abs) note = '<small style="color:var(--red)"><i class="ti ti-beach"></i> ' + esc(abs) + '</small>';
+      else if(other) note = '<small style="color:var(--amber)">in Schicht ' + esc(other) + ' – wechselt</small>';
+      else if(u.Dept) note = '<small style="color:var(--muted)">' + esc(u.Dept) + '</small>';
+      return '<label class="pl-pick' + (abs ? ' abs' : '') + '"><input type="checkbox" value="' + esc(u.ID) + '"' + (sel.has(u.ID) ? ' checked' : '') + '> ' + esc(u.Name) + note + '</label>';
+    }).join('') || '<div class="rec-sub">Keine Mitarbeiter</div>';
+    document.getElementById('pl-sum').textContent = sel.size + ' ausgewählt';
+  }
+  window.plOpen = function(td){
+    cur = {date: td.dataset.date, shift: td.dataset.shift};
+    sel = new Set((td.dataset.people || '').split(',').filter(Boolean));
+    document.getElementById('pl-pick-title').textContent = td.dataset.shiftName + ' · ' + td.dataset.dayLabel;
+    document.getElementById('pl-filter').value = '';
+    render();
+    document.getElementById('pl-pick').classList.add('open');
+    document.getElementById('pl-filter').focus();
+  };
+  window.plClose = function(){ document.getElementById('pl-pick').classList.remove('open'); };
+  document.getElementById('pl-list').addEventListener('change', e => {
+    if(e.target.type !== 'checkbox') return;
+    if(e.target.checked) sel.add(e.target.value); else sel.delete(e.target.value);
+    document.getElementById('pl-sum').textContent = sel.size + ' ausgewählt';
+  });
+  document.getElementById('pl-filter').addEventListener('input', render);
+  window.plSave = async function(){
+    const btn = document.getElementById('pl-save'); btn.disabled = true;
+    try{
+      const res = await fetch('/planner/shifts/cell', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({date: cur.date, shift_id: cur.shift, user_ids: [...sel]})});
+      const j = await res.json().catch(() => ({}));
+      if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
+      location.reload();
+    }catch(err){ alert('Speichern fehlgeschlagen: ' + err.message); btn.disabled = false; }
+  };
+  document.querySelectorAll('.pl-cell.click').forEach(td => {
+    td.addEventListener('click', () => plOpen(td));
+    td.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); plOpen(td); } });
+  });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') plClose(); });
+})();
+</script>
+{{end}}
+{{end}}
+
+{{/* ───────────────────────── Urlaub & Abwesenheit ───────────────────────── */}}
+{{define "planner-absences"}}
+{{$a := .Abs}}
+<div class="kpis">
+  <div class="kpi"><div class="v">{{$a.Me.Q $a.Me.Days}}</div><div class="l">Urlaubsanspruch {{$a.Year}}</div></div>
+  <div class="kpi"><div class="v">{{$a.Me.Q $a.Me.Carry}}</div><div class="l">Übertrag Vorjahr</div></div>
+  <div class="kpi"><div class="v">{{$a.Me.Q $a.Me.Taken}}</div><div class="l">genommen / genehmigt</div></div>
+  <div class="kpi"><div class="v" style="color:var(--amber)">{{$a.Me.Q $a.Me.Pending}}</div><div class="l">beantragt</div></div>
+  <div class="kpi"><div class="v" style="color:{{if lt $a.Me.Rest 0.0}}var(--red){{else}}var(--green){{end}}">{{$a.Me.Q $a.Me.Rest}}</div><div class="l">Resturlaub</div></div>
+</div>
+<div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))">
+  {{if or .CanRequest .CanApprove}}
+  <form class="card" style="margin:0" method="post" action="/planner/absences">
+    <div class="card-title"><span><i class="ti ti-plus"></i> {{if .CanApprove}}Abwesenheit erfassen{{else}}Urlaub beantragen{{end}}</span></div>
+    {{if .CanApprove}}<div class="form-group"><label class="form-label">Mitarbeiter</label>
+      <select name="user_id" class="form-input"><option value="">– ich selbst –</option>{{range $a.Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+      <div class="help">Für andere erfasst gilt sofort als genehmigt.</div></div>{{end}}
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Art</label><select name="type" class="form-input">{{range $a.Types}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">von</label><input type="date" name="start_date" class="form-input" required value="{{$a.Today}}"></div>
+      <div class="form-group"><label class="form-label">bis</label><input type="date" name="end_date" class="form-input" required value="{{$a.Today}}"></div>
+    </div></div>
+    <div style="display:flex;gap:14px;font-size:12px;margin-bottom:8px">
+      <label><input type="checkbox" name="half_start" value="1"> erster Tag halb</label>
+      <label><input type="checkbox" name="half_end" value="1"> letzter Tag halb</label>
+    </div>
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Vertretung</label><select name="substitute_id" class="form-input"><option value="">– keine –</option>{{range $a.Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Bemerkung</label><input name="note" class="form-input" maxlength="1000"></div>
+    </div></div>
+    <p class="rec-sub" style="margin:0 0 8px">Gezählt werden Arbeitstage Mo–Fr ohne Feiertage und Betriebsruhe. Krankmeldungen gelten sofort.</p>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-send"></i> Absenden</button></div>
+  </form>
+  {{end}}
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-list"></i> Meine Abwesenheiten</span>
+      <span style="display:flex;gap:4px"><a class="btn btn-icon" style="width:28px;min-width:28px;height:28px" href="/planner?tab=absences&year={{$a.PrevYear}}"><i class="ti ti-chevron-left"></i></a><b style="align-self:center">{{$a.Year}}</b><a class="btn btn-icon" style="width:28px;min-width:28px;height:28px" href="/planner?tab=absences&year={{$a.NextYear}}"><i class="ti ti-chevron-right"></i></a></span></div>
+    {{range $a.Mine}}
+    <div class="rec-row"><div class="grow"><b>{{.TypeLabel}}</b> {{.From}} – {{.To}} <span class="rec-sub">· {{.Days}} Tg.</span>
+      <div class="rec-sub"><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>{{if .Substitute}} · Vertretung {{.Substitute}}{{end}}{{if .DecisionNote}} · {{.DecisionNote}}{{end}}{{if .Note}} · {{.Note}}{{end}}</div></div>
+      <form method="post" action="/planner/absences/{{.ID}}/cancel" onsubmit="return confirm('Abwesenheit stornieren?')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Stornieren"><i class="ti ti-x" style="font-size:14px"></i></button></form></div>
+    {{else}}<div class="rec-sub">Keine Einträge</div>{{end}}
+  </div>
+</div>
+
+{{if .CanApprove}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-checklist"></i> Offene Anträge</span><span class="badge {{if $a.Pending}}b-amber{{else}}b-gray{{end}}">{{len $a.Pending}}</span></div>
+  {{range $a.Pending}}
+  <form class="rec-row" method="post" action="/planner/absences/{{.ID}}/decide" style="flex-wrap:wrap">
+    <div class="grow" style="min-width:240px"><b>{{.UserName}}</b> · {{.TypeLabel}} {{.From}} – {{.To}} <span class="rec-sub">({{.Days}} Tg.{{if .HalfStart}}, Beginn halb{{end}}{{if .HalfEnd}}, Ende halb{{end}})</span>
+      {{if .Note}}<div class="rec-sub">„{{.Note}}“</div>{{end}}{{if .Substitute}}<div class="rec-sub">Vertretung: {{.Substitute}}</div>{{end}}
+      {{range .Conflicts}}<div class="rec-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}</div>
+    <input name="decision_note" class="form-input" placeholder="Begründung (optional)" style="max-width:220px">
+    <label style="font-size:12px"><input type="checkbox" name="remove_shifts" value="1" checked> Schichten im Zeitraum entfernen</label>
+    <button class="btn btn-small btn-primary" name="decision" value="approve" type="submit"><i class="ti ti-check"></i> Genehmigen</button>
+    <button class="btn btn-small" name="decision" value="reject" type="submit" style="color:var(--red)"><i class="ti ti-x"></i> Ablehnen</button>
+  </form>
+  {{else}}<div class="rec-sub">Keine offenen Anträge</div>{{end}}
+</div>
+{{end}}
+
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-calendar-month"></i> Teamkalender</span>
+    <span style="display:flex;gap:4px;align-items:center"><a class="btn btn-icon" style="width:28px;min-width:28px;height:28px" href="/planner?tab=absences&year={{$a.Year}}&month={{$a.PrevMonth}}"><i class="ti ti-chevron-left"></i></a><b>{{$a.MonthLabel}}</b><a class="btn btn-icon" style="width:28px;min-width:28px;height:28px" href="/planner?tab=absences&year={{$a.Year}}&month={{$a.NextMonth}}"><i class="ti ti-chevron-right"></i></a></span></div>
+  {{if $a.Cal}}
+  <div style="overflow-x:auto"><table class="ab-cal">
+    <thead><tr><th class="n">Mitarbeiter</th>{{range $a.Days}}<th class="{{if .Weekend}}wkend{{end}}" title="{{.Holiday}}" style="{{if .Holiday}}color:var(--red);{{end}}{{if .Today}}box-shadow:inset 0 -2px 0 var(--accent){{end}}">{{.Short}}<br>{{.Label}}</th>{{end}}</tr></thead>
+    <tbody>{{range $a.Cal}}<tr><td class="n">{{.Name}}</td>{{range .Cells}}<td class="{{.Class}}" title="{{.Title}}">{{.Short}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>
+  <div class="rec-sub" style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap">
+    <span><span class="sw" style="background:#10B981"></span>Urlaub</span><span><span class="sw" style="background:#EF4444"></span>Krank</span>
+    <span><span class="sw" style="background:#6366F1"></span>Schulung</span><span><span class="sw" style="background:#94A3B8"></span>Sonstiges / abwesend</span>
+    <span>schraffiert = beantragt</span>
+  </div>
+  {{else}}<div class="rec-sub">Im {{$a.MonthLabel}} ist niemand abwesend.</div>{{end}}
+</div>
+
+{{if .CanApprove}}
+<div class="card" style="padding:0;overflow-x:auto">
+  <div class="card-title" style="padding:12px 14px 0"><span><i class="ti ti-scale"></i> Urlaubsansprüche {{$a.Year}}</span></div>
+  <table>
+    <thead><tr><th>Mitarbeiter</th><th style="text-align:right">Anspruch</th><th style="text-align:right">Übertrag</th><th style="text-align:right">genehmigt</th><th style="text-align:right">beantragt</th><th style="text-align:right">Rest</th><th></th></tr></thead>
+    <tbody>
+    {{range $a.Entitlements}}
+    <tr><td>{{.Name}}</td>
+      <td colspan="2" style="text-align:right"><form method="post" action="/planner/entitlements" style="display:flex;gap:4px;justify-content:flex-end">
+        <input type="hidden" name="user_id" value="{{.UserID}}"><input type="hidden" name="year" value="{{$a.Year}}">
+        <input name="days" class="form-input" value="{{.DaysIn}}" inputmode="decimal" style="width:64px;text-align:right" title="Anspruch">
+        <input name="carryover" class="form-input" value="{{.CarryIn}}" inputmode="decimal" style="width:64px;text-align:right" title="Übertrag">
+        <button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Speichern"><i class="ti ti-check" style="font-size:14px"></i></button></form></td>
+      <td style="text-align:right">{{.Q .Taken}}</td><td style="text-align:right">{{.Q .Pending}}</td>
+      <td style="text-align:right;font-weight:600;color:{{if lt .Rest 0.0}}var(--red){{else}}inherit{{end}}">{{.Q .Rest}}</td><td></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{if $a.Recent}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-history"></i> Zuletzt entschieden</span></div>
+  {{range $a.Recent}}<div class="rec-row"><div class="grow"><b>{{.UserName}}</b> · {{.TypeLabel}} {{.From}} – {{.To}} <span class="rec-sub">· {{.Days}} Tg.{{if .Decider}} · {{.Decider}}{{end}}</span></div><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+    <form method="post" action="/planner/absences/{{.ID}}/cancel" onsubmit="return confirm('Abwesenheit stornieren? Die Person wird benachrichtigt.')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Stornieren"><i class="ti ti-trash" style="font-size:14px"></i></button></form></div>{{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}
+
+{{/* ───────────────────────── Wartungsplanung ───────────────────────── */}}
+{{define "planner-maint"}}
+{{$m := .Maint}}
+<div class="pl-bar">
+  <a class="btn btn-icon" href="/planner?tab=maintenance&month={{$m.PrevMonth}}" title="Voriger Monat"><i class="ti ti-chevron-left"></i></a>
+  <span class="lbl">{{$m.MonthLabel}}</span>
+  <a class="btn btn-icon" href="/planner?tab=maintenance&month={{$m.NextMonth}}" title="Nächster Monat"><i class="ti ti-chevron-right"></i></a>
+  {{if $m.Warnings}}<span class="badge b-amber"><i class="ti ti-alert-triangle"></i> {{$m.Warnings}} Hinweis(e) zur Besetzung</span>{{end}}
+  <span class="rec-sub" style="margin-left:auto"><span class="sw" style="background:#c99a3c"></span>Wartung <span class="sw" style="background:#6366F1;margin-left:8px"></span>Prüfpflicht · <i class="ti ti-users"></i> = im Dienst</span>
+</div>
+{{if $m.Overdue}}
+<div class="card">
+  <div class="card-title"><span style="color:var(--red)"><i class="ti ti-alarm"></i> Überfällig</span><span class="badge b-red">{{len $m.Overdue}}</span></div>
+  {{range $m.Overdue}}<button type="button" class="mt-item" style="display:inline-block;width:auto;margin-right:6px" data-id="{{.ID}}" data-kind="{{.Kind}}" data-title="{{.Title}}" data-date="{{.Date}}" data-assignee="{{.AssigneeID}}" data-url="{{.URL}}">
+    <b>{{.Title}}</b> · {{.Infra}} · fällig {{.Date}}{{if .Warn}}<span class="w">{{.Warn}}</span>{{end}}</button>{{end}}
+</div>
+{{end}}
+<div class="card" style="padding:0;overflow-x:auto">
+  <table class="mt-cal">
+    <thead><tr><th>Mo</th><th>Di</th><th>Mi</th><th>Do</th><th>Fr</th><th>Sa</th><th>So</th></tr></thead>
+    <tbody>
+    {{range $m.Weeks}}<tr>
+      {{range .}}<td class="{{if not .InMonth}}out{{end}}{{if .Weekend}} wkend{{end}}" style="{{if .Holiday}}background:color-mix(in srgb,var(--red) 6%,transparent);{{end}}{{if .Today}}box-shadow:inset 0 0 0 2px var(--accent){{end}}">
+        <div class="dh"><b>{{.Label}}</b><span title="im Dienst (Schichtplan, ohne Abwesende)">{{if .OnDuty}}<i class="ti ti-users"></i> {{.OnDuty}}{{end}}{{if .Hours}} · {{.Hours}}{{end}}</span></div>
+        {{if .Holiday}}<div style="font-size:10px;color:var(--red);font-weight:600">{{.Holiday}}</div>{{end}}
+        {{range .Items}}<button type="button" class="mt-item{{if eq .Kind "obligation"}} obl{{end}}{{if .Warn}} warn-{{.WarnClass}}{{end}}" data-id="{{.ID}}" data-kind="{{.Kind}}" data-title="{{.Title}}" data-date="{{.Date}}" data-assignee="{{.AssigneeID}}" data-url="{{.URL}}" title="{{.Title}} · {{.Infra}}{{if .Assignee}} · {{.Assignee}}{{end}}{{if .Group}} · {{.Group}}{{end}}">
+          {{.Title}}{{if .Assignee}} <span class="rec-sub">· {{.Assignee}}</span>{{else if .Group}} <span class="rec-sub">· {{.Group}}</span>{{end}}
+          {{if .Warn}}<span class="w{{if eq .WarnClass "b-amber"}} a{{end}}"><i class="ti ti-alert-triangle"></i> {{.Warn}}</span>{{end}}</button>{{end}}
+      </td>{{end}}
+    </tr>{{end}}
+    </tbody>
+  </table>
+</div>
+<p class="rec-sub">Anklicken öffnet den Auftrag{{if .CanMaintEdit}} – oder verschieben und einer verfügbaren Person zuweisen{{end}}. Rot: zugewiesene Person ist an dem Tag abwesend. Gelb: keine Schicht an dem Tag oder niemand zugewiesen.</p>
+
+<div class="pl-modal" id="mt-dlg" onclick="if(event.target===this)this.classList.remove('open')">
+  <form class="pl-box" method="post" id="mt-form">
+    <header><span id="mt-title">Wartung</span><button class="btn btn-icon" type="button" onclick="document.getElementById('mt-dlg').classList.remove('open')"><i class="ti ti-x"></i></button></header>
+    <div class="body">
+      <input type="hidden" name="month" value="{{$m.Month}}">
+      <div class="form-group"><label class="form-label">Fällig am</label><input type="date" name="due_date" id="mt-date" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Zugewiesen an</label><select name="assigned_to" id="mt-user" class="form-input"></select>
+        <div class="help">Oben stehen die Mitarbeiter, die an diesem Tag Schicht haben und nicht abwesend sind.</div></div>
+    </div>
+    <footer><a class="btn" id="mt-open" href="#"><i class="ti ti-external-link"></i> Auftrag öffnen</a><button class="btn btn-primary" type="submit"><i class="ti ti-check"></i> Speichern</button></footer>
+  </form>
+</div>
+<script>
+(function(){
+  const AVAIL = {{$m.Avail}} || {};
+  const USERS = {{$m.Users}} || [];
+  const CAN = {{.CanMaintEdit}};
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function fill(date, current){
+    const av = AVAIL[date] || [], ids = new Set(av.map(u => u.ID));
+    let h = '<option value="">– unverändert –</option><option value="-">– niemand –</option>';
+    if(av.length) h += '<optgroup label="Im Dienst am ' + esc(date) + '">' + av.slice().sort((a, b) => a.Name.localeCompare(b.Name)).map(u => '<option value="' + esc(u.ID) + '"' + (u.ID === current ? ' selected' : '') + '>' + esc(u.Name) + '</option>').join('') + '</optgroup>';
+    h += '<optgroup label="Alle">' + USERS.filter(u => !ids.has(u.ID)).map(u => '<option value="' + esc(u.ID) + '"' + (u.ID === current ? ' selected' : '') + '>' + esc(u.Name) + '</option>').join('') + '</optgroup>';
+    document.getElementById('mt-user').innerHTML = h;
+  }
+  document.querySelectorAll('.mt-item').forEach(b => b.addEventListener('click', () => {
+    if(!CAN || b.dataset.kind !== 'maintenance'){ location.href = b.dataset.url; return; }
+    document.getElementById('mt-title').textContent = b.dataset.title;
+    document.getElementById('mt-form').action = '/planner/maintenance/' + b.dataset.id;
+    document.getElementById('mt-date').value = b.dataset.date;
+    document.getElementById('mt-open').href = b.dataset.url;
+    fill(b.dataset.date, b.dataset.assignee);
+    document.getElementById('mt-dlg').classList.add('open');
+  }));
+  const d = document.getElementById('mt-date');
+  if(d) d.addEventListener('change', () => fill(d.value, document.getElementById('mt-user').value));
+})();
+</script>
+{{end}}
+
+{{/* ───────────────────────── Schichtmodelle & Vorlagen ───────────────────────── */}}
+{{define "planner-models"}}
+{{$s := .Setup}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-template"></i> Vorlagen</span><span class="rec-sub">legt Schichtmodell + Rotationsmuster in einem Schritt an</span></div>
+  <div class="tpl-grid">
+    {{range $s.Templates}}
+    <form class="tpl" method="post" action="/planner/templates/{{.Key}}/apply">
+      <b>{{.Name}}</b>
+      <div class="rec-sub">{{.Description}}</div>
+      <div>{{range .Shifts}}<span class="badge" style="background:{{css .Color}};color:#fff;margin-right:3px">{{.Short}} {{.Start}}–{{.End}}</span>{{end}}</div>
+      <div class="pat" title="Rhythmus je Tag">{{.PatternText}}{{if gt .Crews 1}} · {{.Crews}} Mannschaften, Versatz {{.CrewStep}} Tage{{end}}</div>
+      <input name="name" class="form-input" placeholder="Name (optional)" maxlength="100" style="margin-top:auto">
+      <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-wand"></i> Übernehmen</button>
+    </form>
+    {{end}}
+    <form class="tpl" method="post" action="/planner/models/new">
+      <b>Eigenes Modell</b>
+      <div class="rec-sub">Leeres Schichtmodell – Schichten und Rhythmus selbst festlegen.</div>
+      <input name="name" class="form-input" placeholder="Name" maxlength="100" required style="margin-top:auto">
+      <input name="description" class="form-input" placeholder="Beschreibung" maxlength="500">
+      <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Anlegen</button>
+    </form>
+  </div>
+</div>
+
+{{range $mi, $m := $s.Models}}
+<details class="card" id="model-{{$m.ID}}" data-model="{{$m.ID}}">
+  <summary style="cursor:pointer;font-weight:700;display:flex;gap:8px;align-items:center"><i class="ti ti-stack-2"></i> {{$m.Name}} <span class="rec-sub" style="font-weight:400">· {{len $m.Shifts}} Schicht(en) · {{len $m.Patterns}} Muster</span>{{if not $m.Active}}<span class="badge b-gray">inaktiv</span>{{end}}</summary>
+  <form method="post" action="/planner/models/{{$m.ID}}" class="rec-form" style="margin-top:10px"><div class="cols">
+    <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{$m.Name}}" maxlength="100" required></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{$m.Description}}" maxlength="500"></div>
+    <div class="form-group" style="display:flex;gap:8px;align-items:flex-end"><label style="font-size:12px"><input type="checkbox" name="active" value="1" {{if $m.Active}}checked{{end}}> aktiv</label>
+      <button class="btn btn-small" type="submit"><i class="ti ti-check"></i> Speichern</button></div>
+  </div></form>
+
+  <h4 style="margin:10px 0 6px"><i class="ti ti-clock"></i> Schichten</h4>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>Name</th><th>Kürzel</th><th>Beginn</th><th>Ende</th><th>Farbe</th><th>Mindestbesetzung</th><th>Pause (min)</th><th>Reihenfolge</th><th>aktiv</th><th></th></tr></thead>
+    <tbody>
+    {{range $m.Shifts}}
+    <tr><form method="post" action="/planner/shift-defs/{{.ID}}">
+      <td><input name="name" class="form-input" value="{{.Name}}" maxlength="100" required></td>
+      <td><input name="short_name" class="form-input" value="{{.Short}}" maxlength="10" required style="width:60px"></td>
+      <td><input type="time" name="start_time" class="form-input" value="{{.Start}}" required></td>
+      <td><input type="time" name="end_time" class="form-input" value="{{.End}}" required></td>
+      <td><input type="color" name="color" value="{{.Color}}" style="width:44px;height:32px;border:0;background:none"></td>
+      <td><input type="number" min="0" name="min_staff" class="form-input" value="{{.MinStaff}}" style="width:70px"></td>
+      <td><input type="number" min="0" name="break_minutes" class="form-input" value="{{.Break}}" style="width:70px"></td>
+      <td><input type="number" name="sort_order" class="form-input" value="{{.Sort}}" style="width:60px"></td>
+      <td><select name="active" class="form-input" style="width:auto"><option value="1" {{if .Active}}selected{{end}}>ja</option><option value="0" {{if not .Active}}selected{{end}}>nein</option></select></td>
+      <td style="white-space:nowrap"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Speichern"><i class="ti ti-check" style="font-size:14px"></i></button>
+        {{if not .Used}}<button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" name="action" value="delete" title="Löschen" onclick="return confirm('Schicht löschen?')"><i class="ti ti-trash" style="font-size:14px"></i></button>{{else}}<span class="rec-sub" title="hat Einteilungen">{{.Used}}×</span>{{end}}</td>
+    </form></tr>
+    {{end}}
+    <tr><form method="post" action="/planner/models/{{$m.ID}}/shifts">
+      <td><input name="name" class="form-input" placeholder="neue Schicht" maxlength="100" required></td>
+      <td><input name="short_name" class="form-input" placeholder="X" maxlength="10" required style="width:60px"></td>
+      <td><input type="time" name="start_time" class="form-input" value="06:00" required></td>
+      <td><input type="time" name="end_time" class="form-input" value="14:00" required></td>
+      <td><input type="color" name="color" value="#3B82F6" style="width:44px;height:32px;border:0;background:none"></td>
+      <td><input type="number" min="0" name="min_staff" class="form-input" value="0" style="width:70px"></td>
+      <td><input type="number" min="0" name="break_minutes" class="form-input" value="30" style="width:70px"></td>
+      <td><input type="number" name="sort_order" class="form-input" value="{{len $m.Shifts}}" style="width:60px"></td>
+      <td></td>
+      <td><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-plus"></i></button></td>
+    </form></tr>
+    </tbody>
+  </table></div>
+
+  <h4 style="margin:14px 0 6px"><i class="ti ti-repeat"></i> Rotationsmuster</h4>
+  {{range $m.Patterns}}{{$p := .}}
+  <form method="post" action="/planner/patterns/{{$p.ID}}" class="card" style="margin:0 0 8px;background:var(--bg3)">
+    <input type="hidden" name="model_id" value="{{$m.ID}}">
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{$p.Name}}" maxlength="100" required></div>
+      <div class="form-group"><label class="form-label">Zykluslänge (Tage)</label><input type="number" min="1" max="84" name="cycle_length" class="form-input" value="{{$p.Cycle}}"><div class="help">nach dem Speichern erscheinen mehr/weniger Tage</div></div>
+      <div class="form-group"><label class="form-label">Mannschaften</label><input type="number" min="1" max="12" name="crews" class="form-input" value="{{$p.Crews}}"></div>
+      <div class="form-group"><label class="form-label">Versatz je Mannschaft (Tage)</label><input type="number" min="0" name="crew_step" class="form-input" value="{{$p.CrewStep}}"></div>
+    </div></div>
+    <div class="pt-days">
+      {{range $slot := $p.Slots}}<div><label>{{$slot.Label}}</label>
+        <select name="day_{{$slot.Index}}" class="form-input" style="padding:4px"><option value="">frei</option>{{range $m.Shifts}}<option value="{{.ID}}" {{if eq .ID $slot.Shift}}selected{{end}}>{{.Short}}</option>{{end}}</select></div>{{end}}
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:8px">
+      <button class="btn btn-small" type="submit" name="action" value="delete" formnovalidate onclick="return confirm('Rotationsmuster löschen?')" style="color:var(--red)"><i class="ti ti-trash"></i></button>
+      <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-check"></i> Muster speichern</button>
+    </div>
+  </form>
+  {{end}}
+  <form method="post" action="/planner/patterns/new" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="model_id" value="{{$m.ID}}">
+    <div class="form-group" style="margin:0"><label class="form-label">Neues Muster</label><input name="name" class="form-input" placeholder="Name" maxlength="100" required></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Tage</label><input type="number" min="1" max="84" name="cycle_length" class="form-input" value="7" style="width:80px"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Mannschaften</label><input type="number" min="1" max="12" name="crews" class="form-input" value="1" style="width:80px"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Versatz</label><input type="number" min="0" name="crew_step" class="form-input" value="0" style="width:80px"></div>
+    <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Anlegen</button>
+  </form>
+
+  {{if $m.Patterns}}
+  <h4 style="margin:14px 0 6px"><i class="ti ti-calendar-plus"></i> Plan erzeugen</h4>
+  <form method="post" action="/planner/plans/generate" class="card" style="margin:0;background:var(--bg3)">
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Rotationsmuster</label><select name="pattern_id" class="form-input">{{range $m.Patterns}}<option value="{{.ID}}">{{.Name}} ({{.Crews}} Mannschaft(en))</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">von</label><input type="date" name="start_date" class="form-input" value="{{$s.NextMonday}}" required></div>
+      <div class="form-group"><label class="form-label">bis</label><input type="date" name="end_date" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" maxlength="200" placeholder="optional"></div>
+    </div></div>
+    <label class="form-label">Mitarbeiter und Mannschaft</label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 12px;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px">
+      {{range $ui, $u := $s.Users}}<label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" name="user" value="{{$u.ID}}"> <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{$u.Name}}</span>
+        <select name="crew_{{$u.ID}}" class="form-input" style="width:auto;padding:2px 4px" title="Mannschaft">{{range $c := list 1 2 3 4 5 6 7 8 9 10 11 12}}<option value="{{$c}}">M{{$c}}</option>{{end}}</select></label>{{end}}
+    </div>
+    <p class="rec-sub">Mannschaft 2 läuft um den Versatz verschoben, Mannschaft 3 um den doppelten usw. Vorhandene Einteilungen und genehmigter Urlaub bleiben unberührt.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label style="font-size:12px"><input type="checkbox" name="publish" value="1"> gleich veröffentlichen</label>
+      <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-wand"></i> Plan erzeugen</button>
+    </div>
+  </form>
+  {{end}}
+  <form method="post" action="/planner/models/{{$m.ID}}/delete" onsubmit="return confirm('Schichtmodell mit Schichten, Mustern und Plänen löschen? Geht nur ohne Einteilungen.')" style="display:flex;justify-content:flex-end;margin-top:8px">
+    <button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> Modell löschen</button></form>
+</details>
+{{end}}
+
+<div class="card" style="padding:0;overflow-x:auto">
+  <div class="card-title" style="padding:12px 14px 0"><span><i class="ti ti-calendar-stats"></i> Erzeugte Pläne</span></div>
+  <table>
+    <thead><tr><th>Plan</th><th>Modell</th><th>Zeitraum</th><th style="text-align:right">Einteilungen</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range $s.Plans}}
+    <tr><td>{{.Name}}</td><td>{{.Model}}</td><td style="font-size:12px">{{.From}} – {{.To}}</td><td style="text-align:right">{{.Count}}</td>
+      <td>{{if eq .Status "published"}}<span class="badge b-green">veröffentlicht</span>{{else}}<span class="badge b-amber">Entwurf</span>{{end}}</td>
+      <td style="white-space:nowrap">
+        {{if eq .Status "published"}}<form method="post" action="/planner/plans/{{.ID}}/unpublish" style="display:inline"><button class="btn btn-small">Zurückziehen</button></form>
+        {{else}}<form method="post" action="/planner/plans/{{.ID}}/publish" style="display:inline"><button class="btn btn-small btn-primary"><i class="ti ti-send"></i> Veröffentlichen</button></form>{{end}}
+        <form method="post" action="/planner/plans/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Plan mit allen seinen Einteilungen löschen? Von Hand geänderte Einträge bleiben.')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Löschen"><i class="ti ti-trash" style="font-size:14px"></i></button></form>
+      </td></tr>
+    {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:14px">Noch kein Plan erzeugt</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+<script>
+(function(){
+  const open = new URL(location.href).searchParams.get('open');
+  const el = open && document.getElementById('model-' + open);
+  if(el){ el.open = true; el.scrollIntoView({block: 'start'}); }
+})();
+</script>
+{{end}}
+
+{{/* ───────────────────────── Einstellungen ───────────────────────── */}}
+{{define "planner-settings"}}
+{{$s := .Setup}}
+<div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+  <form class="card" style="margin:0" method="post" action="/planner/settings">
+    <div class="card-title"><span><i class="ti ti-adjustments"></i> Allgemein</span></div>
+    <div class="form-group"><label class="form-label">Bundesland (gesetzliche Feiertage)</label>
+      <select name="state" class="form-input">{{range $s.States}}<option value="{{.Code}}" {{if eq .Code $s.State}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Urlaubstage pro Jahr (Standard)</label><input name="vacation_default" class="form-input" inputmode="decimal" value="{{$s.VacationDef}}">
+      <div class="help">gilt, solange für eine Person kein eigener Anspruch eingetragen ist (Urlaub &amp; Abwesenheit → Urlaubsansprüche)</div></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Speichern</button></div>
+  </form>
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-calendar-off"></i> Betriebsruhe &amp; Brückentage</span></div>
+    <form method="post" action="/planner/closures" class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">von</label><input type="date" name="day" class="form-input" required></div>
+      <div class="form-group"><label class="form-label">bis (optional)</label><input type="date" name="day_to" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Bezeichnung</label><input name="name" class="form-input" maxlength="120" required placeholder="z. B. Betriebsurlaub"></div>
+    </div><div style="display:flex;justify-content:flex-end"><button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Eintragen</button></div></form>
+    {{range $s.Closures}}<div class="rec-row"><div class="grow">{{.Label}} · {{.Name}}</div>
+      <form method="post" action="/planner/closures/{{.Day}}/delete"><button class="btn btn-icon" style="width:28px;min-width:28px;height:28px" title="Entfernen"><i class="ti ti-x" style="font-size:13px"></i></button></form></div>
+    {{else}}<div class="rec-sub">Keine Betriebsruhetage eingetragen</div>{{end}}
+    <p class="rec-sub">Betriebsruhetage zählen wie Feiertage nicht als Urlaubstage und sind im Schichtplan markiert.</p>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="card-title"><span><i class="ti ti-confetti"></i> Feiertage {{$s.Year}}</span></div>
+    {{range $s.Holidays}}<div class="rec-row"><div style="width:90px" class="rec-sub">{{.Label}}</div><div class="grow">{{.Name}}</div></div>{{end}}
+  </div>
+</div>
+{{end}}

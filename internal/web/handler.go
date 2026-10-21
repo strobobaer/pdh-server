@@ -70,6 +70,7 @@ type BaseData struct {
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
 	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
+	CanPlanner             bool       // Planer: Schichten, Urlaub, Wartung (shifts.view)
 	CanInfraObligations    bool       // Prüfpflichten pflegen/erledigen (infrastructure.obligations)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
@@ -411,7 +412,27 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/projects", h.ProjectsPage)
 	r.Get("/projects/{id}", h.ProjectDetail)
 	h.maintenanceRoutes(r) // Wartung (maintenance_web.go)
-	r.Get("/shifts", h.Shifts)
+	r.Get("/shifts", h.Shifts) // → Planer
+	// Planer: Schichtplan, Urlaub & Abwesenheit, Wartungsplanung, Modelle & Vorlagen (planner*.go)
+	r.Get("/planner", h.PlannerPage)
+	r.Post("/planner/shifts/cell", h.PlannerCellWeb)
+	r.Post("/planner/shifts/copy-week", h.PlannerCopyWeekWeb)
+	r.Post("/planner/absences", h.PlannerAbsenceCreateWeb)
+	r.Post("/planner/absences/{id}/decide", h.PlannerAbsenceDecideWeb)
+	r.Post("/planner/absences/{id}/cancel", h.PlannerAbsenceCancelWeb)
+	r.Post("/planner/entitlements", h.PlannerEntitlementWeb)
+	r.Post("/planner/maintenance/{id}", h.PlannerMaintSaveWeb)
+	r.Post("/planner/templates/{key}/apply", h.PlannerTemplateApplyWeb)
+	r.Post("/planner/models/{id}", h.PlannerModelSaveWeb)
+	r.Post("/planner/models/{id}/delete", h.PlannerModelDeleteWeb)
+	r.Post("/planner/models/{id}/shifts", h.PlannerShiftAddWeb)
+	r.Post("/planner/shift-defs/{id}", h.PlannerShiftSaveWeb)
+	r.Post("/planner/patterns/{id}", h.PlannerPatternSaveWeb)
+	r.Post("/planner/plans/generate", h.PlannerGenerateWeb)
+	r.Post("/planner/plans/{id}/{action}", h.PlannerPlanActionWeb)
+	r.Post("/planner/settings", h.PlannerSettingsWeb)
+	r.Post("/planner/closures", h.PlannerClosureWeb)
+	r.Post("/planner/closures/{day}/delete", h.PlannerClosureWeb)
 	r.Get("/infrastructure", h.Infrastructure)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
@@ -1010,6 +1031,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
 		CanViewInfra:           h.canViewInfra(r),
 		CanProcurement:         h.canProcurement(r),
+		CanPlanner:             h.canPlannerView(r),
 		CanInfraObligations:    h.canInfraObligations(r),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
@@ -1360,25 +1382,33 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Schichtplan
-	monday := now.AddDate(0, 0, -int(now.Weekday())+1)
-	if wp, err := h.shifts.GetWeekPlan(ctx, monday.Format("2006-01-02")); err == nil && wp != nil {
-		days := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
-		shiftClasses := map[string]string{"F": "sf", "S": "ss", "N": "sn"}
-		for i, u2 := range wp.Users {
-			if i == 0 || u2.UserID == u.ID {
-				data.WeekPlan = true
-				for d := 0; d < 7; d++ {
-					date := monday.AddDate(0, 0, d).Format("2006-01-02")
-					label, class := "–", "se"
-					if entry, ok := u2.Days[date]; ok && entry.ShortName != "" {
-						label = entry.ShortName
-						if c, ok := shiftClasses[entry.ShortName]; ok {
-							class = c
-						}
+	// eigene Woche (Mo–So); Entwürfe unveröffentlichter Pläne zählen nicht
+	monday := mondayOf(now)
+	if rows, err := h.db.Query(ctx, `SELECT sa.date::text, sd.short_name FROM shift_assignments sa
+		JOIN shift_definitions sd ON sd.id = sa.shift_id LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
+		WHERE sa.user_id = $1::uuid AND sa.date BETWEEN $2 AND $3 AND (sa.plan_id IS NULL OR sp.status = 'published')`,
+		u.ID, monday, monday.AddDate(0, 0, 6)); err == nil {
+		mine := map[string]string{}
+		for rows.Next() {
+			var d, s string
+			if rows.Scan(&d, &s) == nil {
+				mine[d] = s
+			}
+		}
+		rows.Close()
+		if len(mine) > 0 {
+			days := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+			shiftClasses := map[string]string{"F": "sf", "S": "ss", "N": "sn"}
+			data.WeekPlan = true
+			for d := 0; d < 7; d++ {
+				label, class := "–", "se"
+				if s := mine[monday.AddDate(0, 0, d).Format(dayISO)]; s != "" {
+					label = s
+					if c, ok := shiftClasses[s]; ok {
+						class = c
 					}
-					data.WeekDays = append(data.WeekDays, ShiftDay{Short: days[d], Label: label, Class: class})
 				}
-				break
+				data.WeekDays = append(data.WeekDays, ShiftDay{Short: days[d], Label: label, Class: class})
 			}
 		}
 	}
@@ -2298,195 +2328,16 @@ func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, esc(entry.ID[:8]))
 }
 
-// ── Shifts Page ───────────────────────────────────────────────
+// ── Schichtplan ───────────────────────────────────────────────
 
-type ShiftsPageData struct {
-	BaseData
-	WeekNumber           int
-	WeekRange            string
-	PrevWeek             string
-	NextWeek             string
-	Days                 []WeekDay
-	Users                []shifts.UserWeekPlan
-	ShiftDefs            []ShiftDefView
-	Absences             []AbsenceView
-	ShiftMap             []ShiftEntry
-	LocksmithSlot1Phone  string
-	LocksmithSlot2Phone  string
-	LocksmithSlot1TeamID string
-	LocksmithSlot2TeamID string
-	LocksmithSlot1UserID string
-	LocksmithSlot2UserID string
-	UserOptions          []UserOption
-}
-
-type WeekDay struct {
-	Short    string
-	Date     string
-	DateFull string
-}
-
-type ShiftDefView struct {
-	ID        string
-	Name      string
-	ShortName string
-	StartTime string
-	EndTime   string
-	Class     string
-}
-
-type AbsenceView struct {
-	UserName    string
-	TypeLabel   string
-	TypeDot     string
-	StartDate   string
-	EndDate     string
-	Days        float64
-	StatusLabel string
-	StatusClass string
-}
-
-type ShiftEntry struct {
-	UserID string
-	Date   string
-	Label  string
-	Class  string
-	Title  string
-}
-
+// Shifts: GET /shifts – der Schichtplan ist im Planer aufgegangen
+// (planner.go); alte Links und Lesezeichen landen dort.
 func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	weekParam := r.URL.Query().Get("week")
-	if weekParam == "" {
-		weekParam = time.Now().Format("2006-01-02")
+	target := "/planner?tab=shifts"
+	if wk := r.URL.Query().Get("week"); wk != "" {
+		target += "&week=" + url.QueryEscape(wk)
 	}
-
-	t, _ := time.Parse("2006-01-02", weekParam)
-	wd := int(t.Weekday())
-	if wd == 0 {
-		wd = 7
-	}
-	monday := t.AddDate(0, 0, -(wd - 1))
-	sunday := monday.AddDate(0, 0, 6)
-	_, week := monday.ISOWeek()
-
-	dayNames := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
-	data := ShiftsPageData{
-		BaseData:   h.baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
-		WeekNumber: week,
-		WeekRange:  monday.Format("02.01") + "–" + sunday.Format("02.01.2006"),
-		PrevWeek:   monday.AddDate(0, 0, -7).Format("2006-01-02"),
-		NextWeek:   monday.AddDate(0, 0, 7).Format("2006-01-02"),
-	}
-
-	for d := 0; d < 7; d++ {
-		day := monday.AddDate(0, 0, d)
-		data.Days = append(data.Days, WeekDay{
-			Short:    dayNames[d],
-			Date:     day.Format("02.01"),
-			DateFull: day.Format("2006-01-02"),
-		})
-	}
-
-	shiftClasses := map[string]string{"F": "sf", "S": "ss", "N": "sn"}
-
-	if wp, err := h.shifts.GetWeekPlan(ctx, monday.Format("2006-01-02")); err == nil && wp != nil {
-		data.Users = wp.Users
-		for _, u := range wp.Users {
-			for date, entry := range u.Days {
-				class := shiftClasses[entry.ShortName]
-				if class == "" {
-					class = "se"
-				}
-				data.ShiftMap = append(data.ShiftMap, ShiftEntry{
-					UserID: u.UserID, Date: date,
-					Label: entry.ShortName, Class: class,
-				})
-			}
-		}
-	}
-
-	data.UserOptions = h.userOptions(ctx)
-	for _, u := range data.Users {
-		if u.ShiftLocksmith1 {
-			data.LocksmithSlot1UserID = u.UserID
-		}
-		if u.ShiftLocksmith2 {
-			data.LocksmithSlot2UserID = u.UserID
-		}
-	}
-
-	if assignments, err := h.shifts.GetLocksmithAssignments(ctx); err == nil {
-		for _, a := range assignments {
-			if a.Slot == 1 {
-				data.LocksmithSlot1Phone = a.Phone
-				if a.TeamID != nil {
-					data.LocksmithSlot1TeamID = *a.TeamID
-				}
-			} else if a.Slot == 2 {
-				data.LocksmithSlot2Phone = a.Phone
-				if a.TeamID != nil {
-					data.LocksmithSlot2TeamID = *a.TeamID
-				}
-			}
-		}
-	}
-
-	if models, err := h.shifts.ListModels(ctx); err == nil && len(models) > 0 {
-		if defs, err := h.shifts.ListShifts(ctx, models[0].ID); err == nil {
-			for _, d := range defs {
-				class := shiftClasses[d.ShortName]
-				data.ShiftDefs = append(data.ShiftDefs, ShiftDefView{
-					ID:   d.ID,
-					Name: d.Name, ShortName: d.ShortName,
-					StartTime: d.StartTime, EndTime: d.EndTime, Class: class,
-				})
-			}
-		}
-	}
-
-	absTypeLabels := map[string]string{"vacation": "Urlaub", "sick": "Krank", "training": "Schulung", "other": "Sonstiges"}
-	absTypeDots := map[string]string{"vacation": "d-blue", "sick": "d-red", "training": "d-green", "other": "d-amber"}
-	if abs, err := h.shifts.ListAbsences(ctx, "", ""); err == nil {
-		for _, a := range abs {
-			data.Absences = append(data.Absences, AbsenceView{
-				UserName:    a.UserName,
-				TypeLabel:   absTypeLabels[string(a.Type)],
-				TypeDot:     absTypeDots[string(a.Type)],
-				StartDate:   a.StartDate,
-				EndDate:     a.EndDate,
-				Days:        a.Days,
-				StatusLabel: statusLabel(string(a.Status)),
-				StatusClass: statusClass(string(a.Status)),
-			})
-		}
-	}
-	if rows, err := h.db.Query(ctx, `
-		SELECT user_id::text, starts_at, ends_at FROM microsoft_calendar_blocks
-		WHERE starts_at < $2 AND ends_at > $1`, monday, sunday.AddDate(0, 0, 1)); err == nil {
-		defer rows.Close()
-		marked := make(map[string]struct{})
-		for rows.Next() {
-			var userID string
-			var startsAt, endsAt time.Time
-			if rows.Scan(&userID, &startsAt, &endsAt) != nil || !endsAt.After(startsAt) {
-				continue
-			}
-			localStart := startsAt.In(time.Local)
-			localEnd := endsAt.Add(-time.Nanosecond).In(time.Local)
-			for day := time.Date(localStart.Year(), localStart.Month(), localStart.Day(), 0, 0, 0, 0, time.Local); !day.After(localEnd); day = day.AddDate(0, 0, 1) {
-				date := day.Format("2006-01-02")
-				key := userID + ":" + date
-				if _, exists := marked[key]; exists {
-					continue
-				}
-				marked[key] = struct{}{}
-				data.ShiftMap = append(data.ShiftMap, ShiftEntry{UserID: userID, Date: date, Label: "O", Class: "outlook-busy", Title: "Outlook belegt"})
-			}
-		}
-	}
-
-	h.render(w, "shifts", data)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // ── Ticket Detail ─────────────────────────────────────────────

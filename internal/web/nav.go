@@ -51,7 +51,7 @@ var navDefs = []navDef{
 	{navItem{"projects", "/projects", "ti-timeline", "Projekte", "projects", false}, "work", always},
 	{navItem{"kvp", "/kvp", "ti-bulb", "KVP", "kvp", false}, "work", always},
 	{navItem{"time", "/time", "ti-clock", "Zeiterfassung", "time", false}, "work", always},
-	{navItem{"shifts", "/shifts", "ti-calendar-time", "Schichtplan", "shifts", false}, "work", always},
+	{navItem{"shifts", "/planner", "ti-calendar-time", "Planer", "planner", false}, "work", func(b *BaseData) bool { return b.CanPlanner }},
 
 	{navItem{"inventory", "/inventory", "ti-package", "Ersatzteile", "inventory", false}, "material", always},
 	{navItem{"storage", "/storage", "ti-building-warehouse", "Lager", "storage", false}, "material", always},

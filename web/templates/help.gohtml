@@ -877,9 +877,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "chat") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="time" data-title="Zeiterfassung &amp; Schichtplan" data-pages="time shifts">
-  <h2><i class="ti ti-clock"></i> Zeiterfassung &amp; Schichtplan</h2>
-  <p>In Störungen, Tickets und Aufgaben startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>; bei Wartungen fragt der Assistent die Zeit ab. Vergessene Zeiten trägst du in der Zeiterfassung nach. Der <b>Schichtplan</b> zeigt Schichten, Teams und Qualifikationen (z. B. Schichtführer, Bereitschaft).</p>
+<section class="hb-ch" id="time" data-title="Zeiterfassung" data-pages="time">
+  <h2><i class="ti ti-clock"></i> Zeiterfassung</h2>
+  <p>In Störungen, Tickets und Aufgaben startest und stoppst du deine Zeit mit <b>Zeit erfassen</b>; bei Wartungen fragt der Assistent die Zeit ab. Vergessene Zeiten trägst du in der Zeiterfassung nach. Schichten, Urlaub und Wartungstermine plant der <a href="#planner">Planer</a>.</p>
   <div class="hb-howto"><b><i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> So bestätigst du Zeiten, die Kollegen für dich eingetragen haben</b>
     <ol class="hb-steps">
       <li>Hat dich jemand beim Abschluss eines Vorgangs als „dabei“ eingetragen, bekommst du einen Chat-Hinweis von „Service“.</li>
@@ -889,6 +889,42 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Unbestätigte Zeiten zählen noch nicht – weder in den Wochen- und Monatssummen noch im Export.</div>
   <p><i class="ti ti-tool"></i> <b>Tätigkeit</b>: Beim Starten, beim manuellen Erfassen und beim Bearbeiten wählst du optional eine Tätigkeit (z. B. Rüsten, Reinigung). Die Zeit zählt dann auf die Kostenstelle der Tätigkeit; in der Liste steht die Tätigkeit unter der Beschreibung. Die Tätigkeiten pflegt die Verwaltung unter <a href="#costcenters">Kostenstellen</a>.</p>
   {{template "hb-shots" (dict "Ref" (index $s "time") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="planner" data-title="Planer: Schichten, Urlaub &amp; Wartung" data-pages="planner">
+  <h2><i class="ti ti-calendar-time"></i> Planer: Schichten, Urlaub &amp; Wartung</h2>
+  <p>Unter <b>Instandhaltung → Planer</b> planst du Schichten, Urlaub und Wartungstermine an einer Stelle. Feiertage (Bundesland in den Einstellungen) und Betriebsruhe sind überall markiert.</p>
+  <h3><i class="ti ti-calendar-week"></i> Schichtplan</h3>
+  <p>Eine Woche: oben die Tage, links die Schichten des Schichtmodells. Das Modell wählst du rechts. In jedem Feld stehen die eingeteilten Mitarbeiter. Ein rot umrandetes Feld hat weniger Leute als die Mindestbesetzung.</p>
+  <div class="hb-howto"><b><i class="ti ti-hand-click"></i> So teilst du Mitarbeiter ein</b>
+    <ol class="hb-steps">
+      <li>Woche mit den Pfeilen wählen, rechts das <b>Schichtmodell</b>.</li>
+      <li>Auf das Feld klicken (Schicht × Tag). Die Liste zeigt alle Mitarbeiter: wer Urlaub hat (rot) und wer schon in einer anderen Schicht steht (gelb).</li>
+      <li>Haken setzen oder entfernen – <b>Übernehmen</b>. Wer schon in einer anderen Schicht steht, wechselt in diese.</li>
+    </ol>
+    <b>Vorwoche übernehmen</b> kopiert die Einteilung der Vorwoche – vorhandene Einträge und Urlaubstage bleiben. Mit Abteilung und Gruppe oben filterst du die Anzeige.</div>
+  <h3><i class="ti ti-beach"></i> Urlaub &amp; Abwesenheit</h3>
+  <div class="hb-howto"><b><i class="ti ti-send"></i> So beantragst du Urlaub</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Urlaub &amp; Abwesenheit</b> → Art, von, bis, ggf. halber erster oder letzter Tag und Vertretung.</li>
+      <li><b>Absenden</b>. Deine Führungskraft (sonst alle mit Genehmigungsrecht) bekommt eine Nachricht.</li>
+      <li>Du wirst über die Entscheidung benachrichtigt. Oben siehst du Anspruch, genommen, beantragt und Rest.</li>
+    </ol>
+    Gezählt werden Arbeitstage Mo–Fr ohne Feiertage und Betriebsruhe. Krankmeldungen gelten sofort. Beantragte Einträge kannst du selbst stornieren.</div>
+  <p>Wer genehmigt, sieht <b>Offene Anträge</b> mit Hinweisen: eingeteilte Schichten im Zeitraum und Kollegen der Abteilung, die gleichzeitig fehlen. Beim Genehmigen können die Schichten im Zeitraum gleich entfernt werden. Darunter: Teamkalender je Monat und die <b>Urlaubsansprüche</b> je Person (Anspruch und Übertrag). Ohne das Recht „Abwesenheitsgrund aller sehen“ zeigt PDH bei Kollegen nur „abwesend“.</p>
+  <h3><i class="ti ti-tool"></i> Wartungsplanung</h3>
+  <p>Monatskalender mit offenen Wartungen und Prüfpflichten. Je Tag steht, wie viele Leute im Dienst sind (<i class="ti ti-users"></i>) und wie viele Stunden Wartung geplant sind. <span style="color:var(--red)">Rot</span>: Die zugewiesene Person ist abwesend. <span style="color:var(--amber)">Gelb</span>: Sie hat an dem Tag keine Schicht oder niemand ist zugewiesen. Ein Klick öffnet den Dialog zum <b>Verschieben</b> und <b>Zuweisen</b> – oben in der Auswahl stehen die Leute, die an dem Tag Dienst haben.</p>
+  <h3><i class="ti ti-template"></i> Schichtmodelle &amp; Vorlagen</h3>
+  <div class="hb-howto"><b><i class="ti ti-wand"></i> So legst du ein Schichtmodell aus einer Vorlage an</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Schichtmodelle &amp; Vorlagen</b> → Vorlage wählen, z. B. <b>3-Schicht</b>, <b>4-Schicht Kontischicht</b> oder <b>12-Stunden Tag/Nacht</b> – <b>Übernehmen</b>.</li>
+      <li>PDH legt die Schichten (Zeiten, Farben) und das Rotationsmuster mit Mannschaften an. Zeiten, Mindestbesetzung und Pausen kannst du danach ändern.</li>
+      <li>Unter <b>Plan erzeugen</b> Zeitraum wählen, Mitarbeiter anhaken und jeder eine <b>Mannschaft</b> (M1, M2 …) geben – <b>Plan erzeugen</b>.</li>
+      <li>Der Plan ist zuerst ein <b>Entwurf</b> (gestrichelt, nur für Planende sichtbar). Passt er, unten <b>Veröffentlichen</b>.</li>
+    </ol>
+    Ein Rotationsmuster legt für jeden Tag des Zyklus die Schicht fest. Mannschaft 2 läuft um den Versatz verschoben, Mannschaft 3 um den doppelten. Vorhandene Einteilungen und genehmigter Urlaub werden beim Erzeugen nie überschrieben.</div>
+  <p>Rechte (Rollen &amp; Rechte, Gruppe „Schichtplanung“): <b>Planer ansehen</b>, <b>Schichten planen</b>, <b>eigene Abwesenheit beantragen</b>, <b>Abwesenheiten genehmigen</b>, <b>Abwesenheitsgrund aller sehen</b>. Verschieben und Zuweisen von Wartungen braucht „Wartung bearbeiten“.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "planner") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="costcenters" data-title="Kostenstellen &amp; Tätigkeiten" data-pages="costcenters">
