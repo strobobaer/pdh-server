@@ -67,3 +67,27 @@ func TestSanitizeUserIDAndPassword(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckAdmin(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pw, _ := r.BasicAuth()
+		switch {
+		case pw != "richtig":
+			w.WriteHeader(http.StatusUnauthorized)
+		case user == "pdhNCadmin":
+			_, _ = w.Write([]byte(`{"ocs":{"meta":{"statuscode":100},"data":{"groups":["users","admin"]}}}`))
+		default:
+			_, _ = w.Write([]byte(`{"ocs":{"meta":{"statuscode":100},"data":{"groups":["users"]}}}`))
+		}
+	}))
+	defer srv.Close()
+	if ok, err := NewUserClient(srv.URL, "pdhNCadmin", "richtig").CheckAdmin(context.Background()); err != nil || !ok {
+		t.Errorf("Admin: %v %v", ok, err)
+	}
+	if ok, err := NewUserClient(srv.URL, "eva", "richtig").CheckAdmin(context.Background()); err != nil || ok {
+		t.Errorf("kein Admin: %v %v", ok, err)
+	}
+	if _, err := NewUserClient(srv.URL, "pdhNCadmin", "falsch").CheckAdmin(context.Background()); !errors.Is(err, ErrLoginFailed) {
+		t.Errorf("falsches Passwort: %v", err)
+	}
+}

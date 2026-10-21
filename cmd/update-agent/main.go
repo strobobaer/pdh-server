@@ -87,6 +87,7 @@ func main() {
 	mux.Handle("POST /v1/nextcloud/update", agent.authorized(http.HandlerFunc(agent.ncUpdateHandler)))
 	mux.Handle("GET /v1/nextcloud/status", agent.authorized(http.HandlerFunc(agent.ncStatusHandler)))
 	mux.Handle("POST /v1/nextcloud/oidc", agent.authorized(http.HandlerFunc(agent.ncOIDCHandler)))
+	mux.Handle("POST /v1/nextcloud/service-account", agent.authorized(http.HandlerFunc(agent.ncServiceHandler)))
 
 	server := &http.Server{
 		Addr:              listen,

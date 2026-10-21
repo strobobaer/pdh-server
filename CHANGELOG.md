@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.55.0] – 2026-10-21
+
+### Neu
+- Nextcloud: eigenes Admin-Konto für das PDH (Vorgabe „pdhNCadmin“) – Server-Einstellungen → Nextcloud → „In Nextcloud einrichten“ legt es an, erzeugt ein zufälliges Passwort und trägt es im PDH ein
+- Das PDH hat beim Passwort Vorrang: Alle 6 Stunden prüft es die Anmeldung und setzt sein Passwort und die Admin-Rechte in Nextcloud wieder, wenn sie dort geändert wurden; „Neues Passwort“ tauscht es jederzeit aus
+
+### Geändert
+- Handbuch „Versionen & Updates“: Hinweis, dass ein Update am Server „install_update.sh“ braucht – „git pull“ allein baut das Programm nicht neu
+
 ## [0.54.0] – 2026-10-21
 
 ### Neu

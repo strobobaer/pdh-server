@@ -267,6 +267,7 @@ func main() {
 	maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 	webHandler.StartTrainingScheduler(context.Background())
 	webHandler.StartObligationReminders(context.Background())
+	webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
 	webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
 	faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
 	webHandler.LoadIconOverrides(context.Background())

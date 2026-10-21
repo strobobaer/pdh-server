@@ -77,3 +77,26 @@ func TestNCScript(t *testing.T) {
 		t.Error("System-Update ohne updater.phar/Apps")
 	}
 }
+
+func TestNCServiceScript(t *testing.T) {
+	for _, bad := range []ncServiceRequest{{Dir: "/var/www/nextcloud", User: "a b"}, {Dir: "/var/www/nextcloud", User: "x';id;'"}, {Dir: "rel", User: "pdhNCadmin"}} {
+		if _, err := ncServiceScript(bad); err == nil {
+			t.Errorf("%+v akzeptiert", bad)
+		}
+	}
+	s, err := ncServiceScript(ncServiceRequest{Dir: "/var/www/nextcloud", User: "pdhNCadmin", Password: "geheim-geheim-123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s, "geheim") || !strings.Contains(s, "user:resetpassword --password-from-env 'pdhNCadmin'") ||
+		!strings.Contains(s, "user:add --password-from-env") || !strings.Contains(s, "group:adduser admin 'pdhNCadmin'") {
+		t.Errorf("Skript:\n%s", s)
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "svc.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Errorf("Syntaxfehler %v %s", err, out)
+		}
+	}
+}

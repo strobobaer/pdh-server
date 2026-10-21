@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"pdh/internal/core/users"
 	"pdh/internal/modules/faults"
 	"pdh/pkg/config"
-	"pdh/pkg/logger"
-	"pdh/internal/core/users"
 	"pdh/pkg/database"
+	"pdh/pkg/logger"
 )
 
 // Verwaltung -> Server-Einstellungen: alle Werte, die frueher nur in der
@@ -142,8 +142,8 @@ func (h *Handler) canServerConfig(r *http.Request) bool {
 
 type envFieldView struct {
 	envField
-	Value    string // nur fuer nicht geheime Felder
-	IsSet    bool
+	Value      string // nur fuer nicht geheime Felder
+	IsSet      bool
 	Source     string // env | file | default
 	ReadOnly   bool
 	StillInEnv bool // in die Datenbank uebernommen, steht aber noch in .env.docker (env_takeover.go)
@@ -180,6 +180,7 @@ type ServerConfigData struct {
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
+	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
 	TakeOverTotal  int             // Werte aus .env.docker, die noch nicht in der Datenbank sind
 	// Reiter „Passwörter“ (password_policy.go)
 	Policy          *users.PasswordPolicy
@@ -265,6 +266,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	d.CF = h.cloudflareView(r.Context())
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()
+	d.NCAdmin = h.ncAdminViewFor(r.Context())
 	if h.db != nil {
 		p := h.users.Policy(r.Context())
 		d.Policy = &p

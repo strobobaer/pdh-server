@@ -61,3 +61,15 @@ func mustURL(t *testing.T, s string) *url.URL {
 	}
 	return u
 }
+
+func TestServerConfigNextcloudAdminCard(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	d := ServerConfigData{Groups: []envGroupView{{Key: "nextcloud"}}, NCAdmin: ncAdminView{Managed: true, User: "pdhNCadmin", Checked: "21.10.2026 08:00 – angemeldet", AgentReady: true, Configured: true, DefaultUser: "pdhNCadmin"}}
+	d.Tab = "nextcloud"
+	out := renderPage(t, tmpl, "server_config", d)
+	for _, want := range []string{"PDH-Administrator in Nextcloud", `action="/admin/server-config/nextcloud/admin"`, `value="rotate"`, "zuletzt geprüft: 21.10.2026 08:00"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Server-Einstellungen enthalten %q nicht", want)
+		}
+	}
+}

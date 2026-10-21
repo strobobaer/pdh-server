@@ -162,6 +162,83 @@ echo "### fertig"
 `, nil
 }
 
+// ── Dienstkonto des PDH in Nextcloud (z. B. pdhNCadmin) ───────────────────
+// Das PDH verwaltet das Passwort und hat Vorrang: Konto anlegen bzw. Passwort
+// setzen, aktivieren und in die Gruppe admin aufnehmen. Das Passwort kommt
+// über OC_PASS (occ --password-from-env), nicht über die Befehlszeile.
+
+var ncUserRe = regexp.MustCompile(`^[A-Za-z0-9_.@-]{1,64}$`)
+
+type ncServiceRequest struct {
+	Dir      string `json:"dir"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+func ncServiceScript(req ncServiceRequest) (string, error) {
+	if !ncDirRe.MatchString(req.Dir) || strings.Contains(req.Dir, "..") {
+		return "", errors.New("ungültiges Nextcloud-Verzeichnis")
+	}
+	if !ncUserRe.MatchString(req.User) {
+		return "", errors.New("ungültiger Benutzername (Buchstaben, Ziffern, _ . @ -)")
+	}
+	return `set -e
+cd '` + req.Dir + `' 2>/dev/null || { echo "Nextcloud-Verzeichnis ` + req.Dir + ` nicht gefunden"; exit 3; }
+[ -f occ ] || { echo "occ nicht gefunden in ` + req.Dir + `"; exit 3; }
+[ -n "$OC_PASS" ] || { echo "Passwort fehlt"; exit 4; }
+U="$(stat -c %U occ)"
+occ() { runuser -u "$U" -- php occ "$@"; }
+if occ user:info '` + req.User + `' >/dev/null 2>&1; then
+  echo "### Passwort setzen"
+  occ user:resetpassword --password-from-env '` + req.User + `'
+  occ user:enable '` + req.User + `' >/dev/null 2>&1 || true
+  echo "STATUS=updated"
+else
+  echo "### Konto anlegen"
+  occ user:add --password-from-env --display-name='PDH (Dienstkonto)' --group=admin '` + req.User + `'
+  echo "STATUS=created"
+fi
+occ group:adduser admin '` + req.User + `' >/dev/null 2>&1 || true
+echo "### fertig"
+`, nil
+}
+
+// ncServiceHandler: POST /v1/nextcloud/service-account
+func (a *updateAgent) ncServiceHandler(w http.ResponseWriter, r *http.Request) {
+	var req ncServiceRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "ungültige Anfrage"})
+		return
+	}
+	if req.Dir == "" {
+		req.Dir = "/var/www/nextcloud"
+	}
+	script, err := ncServiceScript(req)
+	if err == nil && len(req.Password) < 12 {
+		err = errors.New("Passwort zu kurz")
+	}
+	if err != nil {
+		writeMountJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	out, err := a.hostCommandEnv(ctx, false, script, map[string]string{"OC_PASS": req.Password}).CombinedOutput()
+	text := strings.ReplaceAll(strings.TrimSpace(string(out)), req.Password, "***")
+	if err != nil {
+		if text == "" {
+			text = err.Error()
+		}
+		writeMountJSON(w, http.StatusOK, map[string]any{"ok": false, "error": lastLine(text), "output": text})
+		return
+	}
+	status := "updated"
+	if strings.Contains(text, "STATUS=created") {
+		status = "created"
+	}
+	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status, "output": text})
+}
+
 // ncOIDCHandler: POST /v1/nextcloud/oidc → richtet die Anmeldung mit Microsoft ein.
 func (a *updateAgent) ncOIDCHandler(w http.ResponseWriter, r *http.Request) {
 	var req ncOIDCRequest

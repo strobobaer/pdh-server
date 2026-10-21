@@ -104,6 +104,55 @@ func (c *UserClient) CreateUser(ctx context.Context, u NewUser) (string, error) 
 	}
 }
 
+// ErrLoginFailed: Nextcloud nimmt Benutzer bzw. Passwort nicht an.
+var ErrLoginFailed = errors.New("nextcloud lehnt die anmeldung ab")
+
+// CheckAdmin: Kommt das eingetragene Konto in Nextcloud hinein, und ist es
+// Mitglied der Gruppe admin? (Provisioning-API, eigene Gruppen)
+func (c *UserClient) CheckAdmin(ctx context.Context) (isAdmin bool, err error) {
+	if !c.Enabled() {
+		return false, errors.New("Nextcloud ist nicht eingerichtet (Server-Einstellungen → Nextcloud)")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/ocs/v1.php/cloud/users/"+url.PathEscape(c.username)+"/groups?format=json", nil)
+	if err != nil {
+		return false, err
+	}
+	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("OCS-APIRequest", "true")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return false, ErrLoginFailed
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	var r struct {
+		OCS struct {
+			Meta struct {
+				StatusCode int `json:"statuscode"`
+			} `json:"meta"`
+			Data struct {
+				Groups []string `json:"groups"`
+			} `json:"data"`
+		} `json:"ocs"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return false, fmt.Errorf("nextcloud: %s", resp.Status)
+	}
+	if r.OCS.Meta.StatusCode == 997 { // OCS: nicht angemeldet
+		return false, ErrLoginFailed
+	}
+	for _, g := range r.OCS.Data.Groups {
+		if g == "admin" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 var invalidUserIDChars = regexp.MustCompile(`[^a-zA-Z0-9_.@-]+`)
 
 // SanitizeUserID: Nextcloud erlaubt nur a-z, A-Z, 0-9, _ . @ - in Benutzer-IDs.
@@ -137,4 +186,14 @@ func RandomPassword(n int) string {
 		b[i], b[j.Int64()] = b[j.Int64()], b[i]
 	}
 	return string(b)
+}
+
+// NewUserClient: Client mit ausdrücklichen Zugangsdaten (z. B. zum Prüfen eines neuen Passworts).
+func NewUserClient(baseURL, username, password string) *UserClient {
+	return &UserClient{
+		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		username:   strings.TrimSpace(username),
+		password:   password,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+	}
 }

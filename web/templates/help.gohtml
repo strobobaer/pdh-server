@@ -1174,6 +1174,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <tr><td><span class="rec-sub">Umgebung</span></td><td>von außen vorgegeben (Docker <code>.env.docker</code>, systemd) – hat Vorrang vor der Datenbank und ist hier nur lesbar. Leere Einträge wie <code>PDH_COPILOT_ANTHROPICKEY=</code> zählen nicht, dann gilt der Wert aus der Datenbank</td></tr>
     <tr><td><i class="ti ti-refresh"></i></td><td>wirkt erst nach einem <b>Neustart</b> – der Knopf <b>Server neu starten</b> erledigt das in wenigen Sekunden</td></tr>
   </table>
+  <div class="hb-howto"><b><i class="ti ti-user-shield"></i> So richtest du den PDH-Administrator in Nextcloud ein</b>
+    <ol class="hb-steps">
+      <li>Server-Einstellungen → Reiter <b>Nextcloud</b>: oben die <b>Nextcloud-Adresse</b> eintragen und speichern.</li>
+      <li>Karte <b>PDH-Administrator in Nextcloud</b> → Benutzername (Vorgabe <b>pdhNCadmin</b>) → <b>In Nextcloud einrichten</b>. Das PDH legt das Konto als Nextcloud-Admin an, erzeugt ein zufälliges Passwort und trägt Benutzer und Passwort selbst bei <b>Benutzer</b> / <b>App-Passwort</b> ein.</li>
+      <li>Oben <b>Neu starten</b>, damit Ablage und Deck das Konto übernehmen.</li>
+    </ol>
+    Das Passwort kennt nur das PDH. Alle 6 Stunden prüft es die Anmeldung. Hat jemand das Passwort in Nextcloud geändert oder das Konto aus der Gruppe <b>admin</b> genommen, setzt das PDH sein Passwort und die Rechte wieder und meldet das allen Administratoren. <b>Neues Passwort</b> tauscht es jederzeit aus. <b>Nicht mehr verwalten</b> beendet den Abgleich, Konto und Passwort bleiben. Braucht den Update-Agenten und Nextcloud auf demselben Server. Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen.</div>
   <div class="hb-howto"><b><i class="ti ti-palette"></i> So bekommt Nextcloud den PDH-Look</b>
     <ol class="hb-steps">
       <li>Server-Einstellungen → Reiter <b>Nextcloud</b>. Unten zeigt die Karte <b>Nextcloud im PDH-Look</b> die Vorschau: Name, Firmenfarbe und Logo aus dem Reiter <b>Erscheinungsbild</b>.</li>
@@ -1324,7 +1331,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Ist ein Update da, listet <b>Neu in … Version(en)</b> alle Änderungen seit deiner Version – lies sie vor dem Installieren.</li>
       <li><b>Update installieren</b> klicken und bestätigen. Der Dienst startet neu; nach einer Minute die Seite neu laden.</li>
     </ol>
-    Vor den Datenbank-Änderungen legt PDH automatisch eine Vollsicherung an (<a href="#backup">mehr</a>). Danach steht die neue Nummer in der Kopfzeile.</div>
+    Vor den Datenbank-Änderungen legt PDH automatisch eine Vollsicherung an (<a href="#backup">mehr</a>). Danach steht die neue Nummer in der Kopfzeile.<br>
+    <b>Am Server von Hand:</b> nicht nur <code>git pull</code> – das holt die Dateien, baut das Programm aber nicht neu, und neue Seiten passen dann nicht zum alten Programm (z. B. „Template-Fehler … can't evaluate field …“). Richtig ist im PDH-Verzeichnis <code>sudo PDH_UPDATE_MODE=systemd bash install_update.sh</code> (bei Docker <code>PDH_UPDATE_MODE=docker</code>) – holt, baut und startet neu.</div>
   <div class="hb-howto"><b><i class="ti ti-cloud"></i> So aktualisierst du Nextcloud</b>
     <ol class="hb-steps">
       <li><b>Core-Einstellungen</b> → Kachel <b>Nextcloud-Updates</b> (neben „GitHub-Updates“) → <b>Updates prüfen</b>. Die Kachel zeigt die installierte Version, ein verfügbares System-Update und alle App-Updates.</li>

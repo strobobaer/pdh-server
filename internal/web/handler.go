@@ -490,6 +490,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Get("/admin/server-config/cloudflared/script", h.CloudflaredScriptWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
+	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)
 	r.Post("/admin/server-config/takeover", h.ServerConfigTakeOverWeb)
 	r.Post("/admin/server-config/env-remove", h.ServerConfigEnvRemoveWeb)

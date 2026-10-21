@@ -131,7 +131,21 @@
   </div>
 </form>
 {{if and (eq .Key "cloudflare") $.CF}}{{template "sc-cloudflare" $.CF}}{{end}}
-{{if eq .Key "nextcloud"}}{{with $.NCTheme}}
+{{if eq .Key "nextcloud"}}{{with $.NCAdmin}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-user-shield"></i> PDH-Administrator in Nextcloud</span><span class="sc-sub">{{if .Managed}}vom PDH verwaltet{{else}}noch nicht eingerichtet{{end}}</span></div>
+  <p class="sc-sub" style="margin:0 0 10px">Ein eigenes Admin-Konto in Nextcloud, mit dem das PDH Konten anlegt, Dateien ablegt, Deck-Karten schreibt und das Erscheinungsbild überträgt. Das Passwort verwaltet das PDH: Es ist zufällig, steht verschlüsselt in den Server-Einstellungen und wird alle 6 Stunden geprüft – ändert es jemand in Nextcloud, setzt das PDH sein Passwort wieder durch.</p>
+  {{if .Managed}}<div class="sc-sub" style="margin-bottom:8px"><i class="ti ti-user"></i> Konto <b>{{.User}}</b>{{if .Checked}} · zuletzt geprüft: {{.Checked}}{{end}}</div>{{end}}
+  {{if not .AgentReady}}<p class="sc-sub" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Braucht den Update-Agenten und Nextcloud auf demselben Server.</p>{{end}}
+  <form method="post" action="/admin/server-config/nextcloud/admin" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="form-group" style="margin:0;min-width:200px"><label class="form-label">Benutzername in Nextcloud</label><input name="user" class="form-input" maxlength="64" value="{{if .Managed}}{{.User}}{{else}}{{.DefaultUser}}{{end}}"></div>
+    <button class="btn btn-primary btn-small" name="action" value="sync" type="submit" {{if or (not .AgentReady) (not .Configured)}}disabled{{end}}><i class="ti ti-refresh"></i> {{if .Managed}}Jetzt abgleichen{{else}}In Nextcloud einrichten{{end}}</button>
+    {{if .Managed}}<button class="btn btn-small" name="action" value="rotate" type="submit" {{if not .AgentReady}}disabled{{end}} onclick="return confirm('Neues Passwort erzeugen und in Nextcloud setzen? Ablage und Deck übernehmen es nach einem Neustart des PDH.')"><i class="ti ti-key"></i> Neues Passwort</button>
+    <button class="btn btn-small" name="action" value="release" type="submit" onclick="return confirm('Das PDH soll das Konto nicht mehr verwalten? Benutzer und Passwort bleiben, wie sie sind.')"><i class="ti ti-unlink"></i> Nicht mehr verwalten</button>{{end}}
+  </form>
+  <p class="sc-sub" style="margin:8px 0 0">Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen – das PDH meldet sich mit Benutzername und Passwort an.</p>
+</div>
+{{end}}{{with $.NCTheme}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-palette"></i> Nextcloud im PDH-Look</span><span class="sc-sub">Theming-App von Nextcloud</span></div>
   <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
