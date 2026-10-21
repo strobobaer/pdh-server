@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"pdh/pkg/config"
 )
 
 func TestAdminToolProxy(t *testing.T) {
@@ -71,5 +73,30 @@ func TestServerConfigNextcloudAdminCard(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Server-Einstellungen enthalten %q nicht", want)
 		}
+	}
+}
+
+func TestAgentTokenNotEditable(t *testing.T) {
+	var sys envGroup
+	for _, g := range envGroups {
+		if g.Key == "system" {
+			sys = g
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/server-config/save", strings.NewReader("PDH_UPDATE_AGENT_TOKEN=fremd&PDH_UPDATE_AGENT_URL=http://x&PDH_BACKUP_DIR=backups"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = req.ParseForm()
+	upd, err := collectEnvUpdates(req, sys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := upd["PDH_UPDATE_AGENT_TOKEN"]; ok {
+		t.Error("Agent-Token darf nicht über die Server-Einstellungen gespeichert werden")
+	}
+	if _, ok := upd["PDH_UPDATE_AGENT_URL"]; ok {
+		t.Error("Agent-Adresse darf nicht über die Server-Einstellungen gespeichert werden")
+	}
+	if !config.AgentKey("PDH_UPDATE_AGENT_TOKEN") || config.AgentKey("PDH_BACKUP_DIR") {
+		t.Error("AgentKey falsch")
 	}
 }

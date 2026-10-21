@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-21T04:08:34.415Z",
+  "generatedAt": "2026-10-21T04:47:01.515Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1414,6 +1414,17 @@
       "sqlHash": "c756510021017f8ad8d1201fdbc008d588cd23edf52e900506af15f3a1ca41fa",
       "title": "130_spare_part_ean.up.sql",
       "updatedAt": "2026-10-21T04:08:33.767Z"
+    },
+    {
+      "createdAt": "2026-10-21T04:47:00.860Z",
+      "path": "migrations/131_agent_settings_not_in_db.up.sql",
+      "catalogContext": null,
+      "searchText": "131_agent_settings_not_in_db.up.sql migrations/131_agent_settings_not_in_db.up.sql -- 131_agent_settings_not_in_db.up.sql\n-- update-agent-token und -adresse gehören nur in die einstellungsdatei, aus der\n-- auch der agent liest (install-update-agent.sh). über die server-einstellungen\n-- gespeicherte datenbank-werte hatten vorrang und führten zu „401 unauthorized“.\ndelete from server_settings where key in ('pdh_update_agent_token', 'pdh_update_agent_url');\n",
+      "searchUpdatedAt": "2026-10-21T04:47:00.971Z",
+      "schemaContext": null,
+      "sqlHash": "65bd47a67b54995724ebdf86124a044f93a59aea9a4b887ddd2aedd6fb8753b7",
+      "title": "131_agent_settings_not_in_db.up.sql",
+      "updatedAt": "2026-10-21T04:47:00.860Z"
     }
   ]
 }

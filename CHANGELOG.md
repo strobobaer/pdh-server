@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.55.1] – 2026-10-21
+
+### Behoben
+- „Update-Agent antwortet mit 401 Unauthorized“: Token und Adresse des Update-Agenten lassen sich nicht mehr über die Server-Einstellungen in die Datenbank speichern, dort vorhandene Werte werden beim Start entfernt; „scripts/repair-update-agent-token.sh“ gleicht PDH und Agent wieder an
+
 ## [0.55.0] – 2026-10-21
 
 ### Neu

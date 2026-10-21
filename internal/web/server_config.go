@@ -29,6 +29,7 @@ type envField struct {
 	Options                         []string // fuer Type "select"
 	Secret                          bool
 	Restart                         bool // wirkt erst nach Neustart
+	Fixed                           bool // nur per Installationsskript (Update-Agent), hier nicht änderbar
 }
 
 type envGroup struct {
@@ -114,8 +115,8 @@ var envGroups = []envGroup{
 		{Key: "PDH_LOG_DIR", Label: "Protokollordner", Help: "Tagesdateien pdh-JJJJ-MM-TT.jsonl.", Type: "text", Default: "logs"},
 	}},
 	{"system", "Updates & Sicherung", "ti-refresh", "Update-Agent und Sicherungsordner.", []envField{
-		{Key: "PDH_UPDATE_AGENT_URL", Label: "Update-Agent-Adresse", Type: "url"},
-		{Key: "PDH_UPDATE_AGENT_TOKEN", Label: "Update-Agent-Token", Type: "text", Secret: true},
+		{Key: "PDH_UPDATE_AGENT_URL", Label: "Update-Agent-Adresse", Help: "Setzt install-update-agent.sh – Agent und PDH lesen sie aus derselben Datei.", Type: "url", Fixed: true},
+		{Key: "PDH_UPDATE_AGENT_TOKEN", Label: "Update-Agent-Token", Help: "Setzt install-update-agent.sh. Bei „401 Unauthorized“: sudo bash scripts/repair-update-agent-token.sh", Type: "text", Secret: true, Fixed: true},
 		{Key: "PDH_BACKUP_DIR", Label: "Sicherungsordner", Type: "text", Default: "backups"},
 	}},
 }
@@ -245,6 +246,8 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 			case config.FromProcessEnv(f.Key):
 				v.Source, v.ReadOnly = "env", true
 				gv.External++
+			case f.Fixed:
+				v.Source, v.ReadOnly = "file", true
 			case inDB && dbv.DecryptErr == nil:
 				v.Source = "db"
 			case inFile:
@@ -321,6 +324,9 @@ func collectEnvUpdates(r *http.Request, g envGroup) (map[string]string, error) {
 	for _, f := range g.Fields {
 		if config.FromProcessEnv(f.Key) {
 			continue // von aussen vorgegeben
+		}
+		if f.Fixed {
+			continue // nur per Installationsskript (Update-Agent)
 		}
 		raw, present := r.Form[f.Key]
 		val := ""

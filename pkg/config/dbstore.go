@@ -29,6 +29,13 @@ func BootstrapKey(key string) bool {
 	return strings.HasPrefix(key, "PDH_DATABASE_") || key == "PDH_SETTINGS_KEY" || key == "PDH_ENV_FILE"
 }
 
+// AgentKey: Zugang zum Update-Agenten. Der Agent liest ihn nur aus seiner
+// Einstellungsdatei (install-update-agent.sh) – ein abweichender Wert in der
+// Datenbank führte zu „401 Unauthorized“. Daher nie aus der Datenbank.
+func AgentKey(key string) bool {
+	return key == "PDH_UPDATE_AGENT_TOKEN" || key == "PDH_UPDATE_AGENT_URL"
+}
+
 // SecretKey: Heuristik fuer geheime Werte (zusaetzlich zum Katalog).
 func SecretKey(key string) bool {
 	for _, s := range []string{"PASSWORD", "SECRET", "TOKEN", "_KEY", "ANTHROPICKEY"} {
@@ -162,7 +169,7 @@ func LoadDBSettings(ctx context.Context, db DBExec) (map[string]DBSetting, error
 // SaveDBSettings speichert Werte (leer = bewusst leer, ueberschreibt die Datei).
 func SaveDBSettings(ctx context.Context, db DBExec, updates map[string]string, secret func(string) bool, source, userID string) error {
 	for k, v := range updates {
-		if BootstrapKey(k) {
+		if BootstrapKey(k) || AgentKey(k) {
 			return fmt.Errorf("%s gehört in die Einstellungsdatei, nicht in die Datenbank", k)
 		}
 		isSecret := secret != nil && secret(k) || SecretKey(k)
@@ -204,7 +211,7 @@ func ApplyDBSettings(ctx context.Context, db DBExec) ([]string, error) {
 	envMu.Lock()
 	defer envMu.Unlock()
 	for k, s := range vals {
-		if BootstrapKey(k) {
+		if BootstrapKey(k) || AgentKey(k) {
 			continue
 		}
 		if s.DecryptErr == nil {
