@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.56.2] – 2026-10-21
+
+### Behoben
+- Der Schichtplan war nach 0.56.1 nicht erreichbar (Weiterleitung auf den noch nicht fertigen Planer) – die bisherige Seite ist wieder da
+
+### Sicherheit
+- Schichtplan-Schnittstelle prüft jetzt die Rechte: ansehen mit „Planer ansehen“, ändern mit „Schichten planen“; Abwesenheiten für andere anlegen oder genehmigen nur mit „Abwesenheiten genehmigen“, fremde Abwesenheiten sehen nur mit dem passenden Recht
+
 ## [0.56.1] – 2026-10-21
 
 ### Geändert

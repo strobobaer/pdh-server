@@ -2298,16 +2298,195 @@ func (h *Handler) FaultStartTime(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<div style="color:var(--green);font-size:12px;margin-top:8px"><i class="ti ti-check"></i> Zeit gestartet (ID: %s...)</div>`, esc(entry.ID[:8]))
 }
 
-// ── Schichtplan ───────────────────────────────────────────────
+// ── Shifts Page ───────────────────────────────────────────────
 
-// Shifts: GET /shifts – die Schichtplanung ist im Planer aufgegangen
-// (planner.go); alte Links und Lesezeichen landen dort.
+type ShiftsPageData struct {
+	BaseData
+	WeekNumber           int
+	WeekRange            string
+	PrevWeek             string
+	NextWeek             string
+	Days                 []WeekDay
+	Users                []shifts.UserWeekPlan
+	ShiftDefs            []ShiftDefView
+	Absences             []AbsenceView
+	ShiftMap             []ShiftEntry
+	LocksmithSlot1Phone  string
+	LocksmithSlot2Phone  string
+	LocksmithSlot1TeamID string
+	LocksmithSlot2TeamID string
+	LocksmithSlot1UserID string
+	LocksmithSlot2UserID string
+	UserOptions          []UserOption
+}
+
+type WeekDay struct {
+	Short    string
+	Date     string
+	DateFull string
+}
+
+type ShiftDefView struct {
+	ID        string
+	Name      string
+	ShortName string
+	StartTime string
+	EndTime   string
+	Class     string
+}
+
+type AbsenceView struct {
+	UserName    string
+	TypeLabel   string
+	TypeDot     string
+	StartDate   string
+	EndDate     string
+	Days        float64
+	StatusLabel string
+	StatusClass string
+}
+
+type ShiftEntry struct {
+	UserID string
+	Date   string
+	Label  string
+	Class  string
+	Title  string
+}
+
 func (h *Handler) Shifts(w http.ResponseWriter, r *http.Request) {
-	target := "/planner?tab=shifts"
-	if wk := r.URL.Query().Get("week"); wk != "" {
-		target += "&week=" + url.QueryEscape(wk)
+	ctx := r.Context()
+	weekParam := r.URL.Query().Get("week")
+	if weekParam == "" {
+		weekParam = time.Now().Format("2006-01-02")
 	}
-	http.Redirect(w, r, target, http.StatusFound)
+
+	t, _ := time.Parse("2006-01-02", weekParam)
+	wd := int(t.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	monday := t.AddDate(0, 0, -(wd - 1))
+	sunday := monday.AddDate(0, 0, 6)
+	_, week := monday.ISOWeek()
+
+	dayNames := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
+	data := ShiftsPageData{
+		BaseData:   h.baseData(r, "shifts", "Schichtplanung", "Abwesenheiten"),
+		WeekNumber: week,
+		WeekRange:  monday.Format("02.01") + "–" + sunday.Format("02.01.2006"),
+		PrevWeek:   monday.AddDate(0, 0, -7).Format("2006-01-02"),
+		NextWeek:   monday.AddDate(0, 0, 7).Format("2006-01-02"),
+	}
+
+	for d := 0; d < 7; d++ {
+		day := monday.AddDate(0, 0, d)
+		data.Days = append(data.Days, WeekDay{
+			Short:    dayNames[d],
+			Date:     day.Format("02.01"),
+			DateFull: day.Format("2006-01-02"),
+		})
+	}
+
+	shiftClasses := map[string]string{"F": "sf", "S": "ss", "N": "sn"}
+
+	if wp, err := h.shifts.GetWeekPlan(ctx, monday.Format("2006-01-02")); err == nil && wp != nil {
+		data.Users = wp.Users
+		for _, u := range wp.Users {
+			for date, entry := range u.Days {
+				class := shiftClasses[entry.ShortName]
+				if class == "" {
+					class = "se"
+				}
+				data.ShiftMap = append(data.ShiftMap, ShiftEntry{
+					UserID: u.UserID, Date: date,
+					Label: entry.ShortName, Class: class,
+				})
+			}
+		}
+	}
+
+	data.UserOptions = h.userOptions(ctx)
+	for _, u := range data.Users {
+		if u.ShiftLocksmith1 {
+			data.LocksmithSlot1UserID = u.UserID
+		}
+		if u.ShiftLocksmith2 {
+			data.LocksmithSlot2UserID = u.UserID
+		}
+	}
+
+	if assignments, err := h.shifts.GetLocksmithAssignments(ctx); err == nil {
+		for _, a := range assignments {
+			if a.Slot == 1 {
+				data.LocksmithSlot1Phone = a.Phone
+				if a.TeamID != nil {
+					data.LocksmithSlot1TeamID = *a.TeamID
+				}
+			} else if a.Slot == 2 {
+				data.LocksmithSlot2Phone = a.Phone
+				if a.TeamID != nil {
+					data.LocksmithSlot2TeamID = *a.TeamID
+				}
+			}
+		}
+	}
+
+	if models, err := h.shifts.ListModels(ctx); err == nil && len(models) > 0 {
+		if defs, err := h.shifts.ListShifts(ctx, models[0].ID); err == nil {
+			for _, d := range defs {
+				class := shiftClasses[d.ShortName]
+				data.ShiftDefs = append(data.ShiftDefs, ShiftDefView{
+					ID:   d.ID,
+					Name: d.Name, ShortName: d.ShortName,
+					StartTime: d.StartTime, EndTime: d.EndTime, Class: class,
+				})
+			}
+		}
+	}
+
+	absTypeLabels := map[string]string{"vacation": "Urlaub", "sick": "Krank", "training": "Schulung", "other": "Sonstiges"}
+	absTypeDots := map[string]string{"vacation": "d-blue", "sick": "d-red", "training": "d-green", "other": "d-amber"}
+	if abs, err := h.shifts.ListAbsences(ctx, "", ""); err == nil {
+		for _, a := range abs {
+			data.Absences = append(data.Absences, AbsenceView{
+				UserName:    a.UserName,
+				TypeLabel:   absTypeLabels[string(a.Type)],
+				TypeDot:     absTypeDots[string(a.Type)],
+				StartDate:   a.StartDate,
+				EndDate:     a.EndDate,
+				Days:        a.Days,
+				StatusLabel: statusLabel(string(a.Status)),
+				StatusClass: statusClass(string(a.Status)),
+			})
+		}
+	}
+	if rows, err := h.db.Query(ctx, `
+		SELECT user_id::text, starts_at, ends_at FROM microsoft_calendar_blocks
+		WHERE starts_at < $2 AND ends_at > $1`, monday, sunday.AddDate(0, 0, 1)); err == nil {
+		defer rows.Close()
+		marked := make(map[string]struct{})
+		for rows.Next() {
+			var userID string
+			var startsAt, endsAt time.Time
+			if rows.Scan(&userID, &startsAt, &endsAt) != nil || !endsAt.After(startsAt) {
+				continue
+			}
+			localStart := startsAt.In(time.Local)
+			localEnd := endsAt.Add(-time.Nanosecond).In(time.Local)
+			for day := time.Date(localStart.Year(), localStart.Month(), localStart.Day(), 0, 0, 0, 0, time.Local); !day.After(localEnd); day = day.AddDate(0, 0, 1) {
+				date := day.Format("2006-01-02")
+				key := userID + ":" + date
+				if _, exists := marked[key]; exists {
+					continue
+				}
+				marked[key] = struct{}{}
+				data.ShiftMap = append(data.ShiftMap, ShiftEntry{UserID: userID, Date: date, Label: "O", Class: "outlook-busy", Title: "Outlook belegt"})
+			}
+		}
+	}
+
+	h.render(w, "shifts", data)
 }
 
 // ── Ticket Detail ─────────────────────────────────────────────
