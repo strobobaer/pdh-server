@@ -48,7 +48,9 @@ occ app:update --all
 echo "### fertig"
 `, nil
 	case "system", "all":
-		return head + `echo "### System-Update (updater.phar)"
+		// bricht updater.phar ab, bliebe Nextcloud sonst im Wartungsmodus (503)
+		return head + `trap 'occ maintenance:mode --off >/dev/null 2>&1 || true' EXIT
+echo "### System-Update (updater.phar)"
 runuser -u "$U" -- php updater/updater.phar --no-interaction
 echo "### Datenbank-Indizes"
 occ db:add-missing-indices --no-interaction || true
@@ -402,10 +404,14 @@ func (a *updateAgent) ncStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	writeMountJSON(w, http.StatusOK, map[string]any{"ok": true, "status": st})
 }
 
+// lastLine: letzte aussagekräftige Zeile der Ausgabe – ohne leere Zeilen und
+// ohne die eigenen „### …“-Überschriften der Skripte.
 func lastLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.LastIndex(s, "\n"); i >= 0 {
-		return s[i+1:]
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(lines[i]); l != "" && !strings.HasPrefix(l, "###") {
+			return l
+		}
 	}
-	return s
+	return strings.TrimSpace(s)
 }

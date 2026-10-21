@@ -1180,6 +1180,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Karte <b>PDH-Administrator in Nextcloud</b> → Benutzername (Vorgabe <b>pdhNCadmin</b>) → <b>In Nextcloud einrichten</b>. Das PDH legt das Konto als Nextcloud-Admin an, erzeugt ein zufälliges Passwort und trägt Benutzer und Passwort selbst bei <b>Benutzer</b> / <b>App-Passwort</b> ein.</li>
       <li>Oben <b>Neu starten</b>, damit Ablage und Deck das Konto übernehmen.</li>
     </ol>
+    Klappt das Einrichten nicht, steht der Grund rot in der Karte unter <b>Letzter Versuch</b>. Häufig hängt Nextcloud im Wartungsmodus (Meldung „503“): Dann auf dem Server <code>sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --off</code> ausführen und erneut einrichten.
     Das Passwort kennt nur das PDH. Alle 6 Stunden prüft es die Anmeldung. Hat jemand das Passwort in Nextcloud geändert oder das Konto aus der Gruppe <b>admin</b> genommen, setzt das PDH sein Passwort und die Rechte wieder und meldet das allen Administratoren. <b>Neues Passwort</b> tauscht es jederzeit aus. <b>Nicht mehr verwalten</b> beendet den Abgleich, Konto und Passwort bleiben. Braucht den Update-Agenten und Nextcloud auf demselben Server. Gilt in Nextcloud Zwei-Faktor-Pflicht für Admins, das Konto davon ausnehmen.</div>
   <div class="hb-howto"><b><i class="ti ti-palette"></i> So bekommt Nextcloud den PDH-Look</b>
     <ol class="hb-steps">

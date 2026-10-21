@@ -24,6 +24,7 @@ const (
 	ncAdminDefaultUser = "pdhNCadmin"
 	keyNCAdminManaged  = "nextcloud.service_account"         // "1" = vom PDH verwaltet
 	keyNCAdminChecked  = "nextcloud.service_account_checked" // letzte Prüfung (Text)
+	keyNCAdminError    = "nextcloud.service_account_error"   // letzter Fehlschlag beim Einrichten (Text)
 )
 
 var ncAdminUserRe = regexp.MustCompile(`^[A-Za-z0-9_.@-]{1,64}$`)
@@ -32,6 +33,7 @@ type ncAdminView struct {
 	Managed     bool
 	User        string
 	Checked     string
+	LastError   string // letzter Fehlschlag von „Einrichten/Abgleichen“ – steht in der Karte
 	AgentReady  bool
 	Configured  bool // Adresse eingetragen
 	DefaultUser string
@@ -42,6 +44,7 @@ func (h *Handler) ncAdminViewFor(ctx context.Context) ncAdminView {
 		Managed:     h.getUpdateSetting(ctx, keyNCAdminManaged, "") == "1",
 		User:        strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_USERNAME")),
 		Checked:     h.getUpdateSetting(ctx, keyNCAdminChecked, ""),
+		LastError:   h.getUpdateSetting(ctx, keyNCAdminError, ""),
 		AgentReady:  h.driveAgentConfigured(),
 		Configured:  strings.TrimSpace(os.Getenv("PDH_NEXTCLOUD_BASEURL")) != "",
 		DefaultUser: ncAdminDefaultUser,
@@ -73,6 +76,12 @@ func (h *Handler) NextcloudAdminWeb(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			key, text = "err", err.Error()
 		}
+		// auch in der Karte zeigen – die Meldung oben auf der Seite ist leicht zu übersehen
+		last := ""
+		if err != nil {
+			last = time.Now().Local().Format("02.01.2006 15:04") + " – " + text
+		}
+		_ = h.setUpdateSetting(ctx, keyNCAdminError, last)
 		http.Redirect(w, r, "/admin/server-config?tab=nextcloud&"+key+"="+url.QueryEscape(text), http.StatusSeeOther)
 	}
 	action := r.FormValue("action")

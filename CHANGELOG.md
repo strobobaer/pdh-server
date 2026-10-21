@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.55.3] – 2026-10-21
+
+### Behoben
+- Server-Einstellungen → Nextcloud: Schlägt „In Nextcloud einrichten“ fehl, steht der Grund jetzt rot direkt in der Karte „PDH-Administrator in Nextcloud“ statt nur oben auf der Seite
+- Fehlermeldungen von occ-Befehlen nennen die eigentliche Fehlerzeile statt einer Zwischenüberschrift
+- Ein abgebrochenes Nextcloud-System-Update lässt Nextcloud nicht mehr im Wartungsmodus zurück (Nextcloud antwortete dann mit „503 Service Unavailable“)
+
 ## [0.55.2] – 2026-10-21
 
 ### Behoben
