@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.55.2] – 2026-10-21
+
+### Behoben
+- Update-Agent startete nach einem Neustart nicht mehr („PDH_UPDATE_AGENT_TOKEN must be at least 32 characters“): Beim Übernehmen der Einstellungsdatei in die Datenbank wurde auch das Agent-Token übernommen und in der Datei auskommentiert – Token und Adresse des Agenten bleiben jetzt immer in der Datei
+- Server-Protokoll: „copilot bereit“ nennt bei Claude das tatsächlich genutzte Modell statt des Ollama-Modells
+- nginx-Einrichtungsskripte legen ihre Sicherungen jetzt unter `/etc/nginx/pdh-backups/` ab statt in `sites-enabled` – dort wurden sie mitgeladen und erzeugten „conflicting server name“
+
 ## [0.55.1] – 2026-10-21
 
 ### Behoben

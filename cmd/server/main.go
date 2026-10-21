@@ -276,7 +276,14 @@ func main() {
 	webHandler.StartEnabledImportPolls(context.Background())
 	webHandler.StartEnabledQueryPolls(context.Background())
 
-	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", cfg.Copilot.Model).Msg("copilot bereit")
+	copilotModel := cfg.Copilot.Model // Ollama
+	if cfg.Copilot.Backend == "anthropic" {
+		copilotModel = cfg.Copilot.AnthropicModel
+		if copilotModel == "" {
+			copilotModel = faults.DefaultAnthropicModel
+		}
+	}
+	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", copilotModel).Msg("copilot bereit")
 
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt

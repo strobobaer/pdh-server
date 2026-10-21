@@ -79,7 +79,9 @@ if [[ -z "${missing// }" ]]; then
 fi
 log "Ziel: $UPSTREAM – neue Blöcke für:$missing"
 
-backup="$SITE.bak.ws.$(date +%Y%m%d%H%M%S)"
+# Sicherung außerhalb von sites-enabled – nginx lädt dort jede Datei mit
+mkdir -p /etc/nginx/pdh-backups
+backup="/etc/nginx/pdh-backups/$(basename "$SITE").ws.$(date +%Y%m%d%H%M%S)"
 cp "$SITE" "$backup"
 map_created=0
 if ! grep -RqsE 'map[[:space:]]+\$http_upgrade[[:space:]]+\$connection_upgrade' /etc/nginx; then

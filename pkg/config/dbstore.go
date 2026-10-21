@@ -302,7 +302,9 @@ func ImportEnvFileToDB(ctx context.Context, db DBExec, path string, secret func(
 	}
 	updates := map[string]string{}
 	for k, v := range file {
-		if !strings.HasPrefix(k, "PDH_") || BootstrapKey(k) || origEnv[k] {
+		// Agent-Zugang bleibt in der Datei: der Update-Agent liest nur sie
+		// (sonst stand der Agent nach dem nächsten Neustart ohne Token da)
+		if !strings.HasPrefix(k, "PDH_") || BootstrapKey(k) || AgentKey(k) || origEnv[k] {
 			continue
 		}
 		if _, exists := have[k]; exists {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,5 +67,19 @@ func TestCommentOutKeys(t *testing.T) {
 	baks, _ := filepath.Glob(path + ".bak-*")
 	if len(baks) != 1 {
 		t.Errorf("Sicherungskopie fehlt: %v", baks)
+	}
+}
+
+func TestAgentKeysStayInFile(t *testing.T) {
+	for _, k := range []string{"PDH_UPDATE_AGENT_TOKEN", "PDH_UPDATE_AGENT_URL"} {
+		if !AgentKey(k) {
+			t.Errorf("%s muss in der Datei bleiben", k)
+		}
+		if err := SaveDBSettings(context.Background(), nil, map[string]string{k: "x"}, nil, "test", ""); err == nil {
+			t.Errorf("%s darf nicht in die Datenbank", k)
+		}
+	}
+	if AgentKey("PDH_BACKUP_DIR") {
+		t.Error("PDH_BACKUP_DIR ist kein Agent-Wert")
 	}
 }

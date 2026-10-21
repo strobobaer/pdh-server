@@ -96,13 +96,15 @@ EOF
 if [[ -n "$SITE" ]]; then
   [[ -f "$SITE" ]] || { err "Site nicht gefunden: $SITE"; exit 1; }
   if ! grep -q "pdh-client-cert.conf" "$SITE"; then
-    log "Snippet in $SITE einbinden (Sicherung: $SITE.bak.pki)"
-    cp "$SITE" "$SITE.bak.pki"
+    mkdir -p /etc/nginx/pdh-backups
+    BACKUP="/etc/nginx/pdh-backups/$(basename "$SITE").pki.$(date +%Y%m%d%H%M%S)"
+    log "Snippet in $SITE einbinden (Sicherung: $BACKUP)"
+    cp "$SITE" "$BACKUP"
     # je server-Block mit „listen … ssl“ einmal, hinter die erste listen-Zeile
     # (IPv4 und IPv6 im selben Block → trotzdem nur ein include)
     awk '/^[[:space:]]*server[[:space:]]*\{/ { done = 0 }
          { print }
-         /^[[:space:]]*listen[[:space:]].*ssl/ && !done { print "    include /etc/nginx/snippets/pdh-client-cert.conf;"; done = 1 }' "$SITE.bak.pki" > "$SITE"
+         /^[[:space:]]*listen[[:space:]].*ssl/ && !done { print "    include /etc/nginx/snippets/pdh-client-cert.conf;"; done = 1 }' "$BACKUP" > "$SITE"
   fi
 fi
 
@@ -135,7 +137,7 @@ log "nginx prüfen und neu laden"
 if nginx -t; then
   systemctl reload nginx
 else
-  err "nginx-Konfiguration fehlerhaft – nichts neu geladen. Sicherung: ${SITE:-(keine)}.bak.pki"
+  err "nginx-Konfiguration fehlerhaft – nichts neu geladen. Sicherung: ${BACKUP:-(keine)}"
   exit 1
 fi
 

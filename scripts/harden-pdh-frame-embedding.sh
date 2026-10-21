@@ -55,7 +55,8 @@ if [[ -z "${PDH_SITE}" || ! -f "${PDH_SITE}" ]]; then
 fi
 
 log "Using PDH site: ${PDH_SITE}"
-cp "${PDH_SITE}" "${PDH_SITE}.bak.frame.$(date +%Y%m%d%H%M%S)"
+mkdir -p /etc/nginx/pdh-backups
+cp "${PDH_SITE}" "/etc/nginx/pdh-backups/$(basename "${PDH_SITE}").frame.$(date +%Y%m%d%H%M%S)"
 
 mkdir -p "$(dirname "${NGINX_SNIPPET}")"
 cat > "${NGINX_SNIPPET}" <<NGINX
