@@ -363,6 +363,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/inventory", h.Inventory)
 	// Lieferschein scannen / Bauteil erkennen (part_scan.go, part_scan_web.go)
 	r.Get("/inventory/scan", h.InventoryScanPage)
+	r.Get("/inventory/lookup", h.InventoryLookupWeb) // Barcode → Teil
 	r.Post("/inventory/scan/{kind:delivery|part}", h.InventoryScanUploadWeb)
 	r.Get("/inventory/scan/{id}", h.InventoryScanDetail)
 	r.Post("/inventory/scan/{id}/apply", h.InventoryScanApplyWeb)

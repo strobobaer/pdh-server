@@ -46,6 +46,8 @@ type deliveryItem struct {
 	Manufacturer       string  `json:"manufacturer"`
 	Description        string  `json:"description"`
 	Quantity           float64 `json:"quantity"`
+	OrderedQuantity    float64 `json:"ordered_quantity"`   // bestellt (0 = nicht angegeben)
+	BackorderQuantity  float64 `json:"backorder_quantity"` // Rückstand laut Lieferschein
 	Unit               string  `json:"unit"`
 	EAN                string  `json:"ean"`
 }
@@ -103,6 +105,8 @@ var deliverySchema = objSchema(map[string]any{
 		"manufacturer":         strProp("Hersteller, falls angegeben"),
 		"description":          strProp("Artikelbezeichnung"),
 		"quantity":             map[string]any{"type": "number", "description": "gelieferte Menge (nicht bestellt, nicht Rückstand)"},
+		"ordered_quantity":     map[string]any{"type": "number", "description": "bestellte Menge, falls auf dem Lieferschein angegeben, sonst 0"},
+		"backorder_quantity":   map[string]any{"type": "number", "description": "Rückstand bzw. noch offene Menge, falls angegeben, sonst 0"},
 		"unit":                 strProp("Einheit wie Stück, m, kg, Pack – leer wenn nicht angegeben"),
 		"ean":                  strProp("EAN/GTIN, falls angegeben"),
 	})},
@@ -131,7 +135,8 @@ Was nicht lesbar ist, bleibt leer. Antworte ausschließlich im vorgegebenen JSON
 
 const deliveryPrompt = `Die Bilder bzw. das PDF zeigen einen Lieferschein (eine oder mehrere Seiten).
 Lies Kopf (Lieferant, Lieferschein-Nr., Datum, Bestell-Nr.) und alle gelieferten Positionen.
-Je Position: Artikelnummer des Lieferanten, Hersteller-Nummer/Typ (falls getrennt), Bezeichnung, gelieferte Menge, Einheit, EAN.
+Je Position: Artikelnummer des Lieferanten, Hersteller-Nummer/Typ (falls getrennt), Bezeichnung, gelieferte Menge, Einheit, EAN –
+und falls angegeben die bestellte Menge und den Rückstand (offene bzw. nachzuliefernde Menge).
 Keine Summen-, Versand-, Verpackungs- oder Textzeilen als Position. Positionen, die über mehrere Seiten gehen, nur einmal.`
 
 const partPrompt = `Das Foto zeigt ein Bauteil bzw. Ersatzteil, eventuell mit Typenschild, Etikett oder Verpackung.
@@ -161,7 +166,7 @@ func normCodes(codes ...string) []string {
 
 type partCandidate struct {
 	ID, PartNumber, Name, Unit, Reason string
-	Stock                              float64
+	Stock, MinQty                      float64
 	Score                              int
 	LastStorageID                      string // Lagerort mit dem meisten Bestand
 }
@@ -175,10 +180,11 @@ func (h *Handler) matchParts(ctx context.Context, codes []string, words []string
 	if len(codes) > 0 {
 		rows, err := h.db.Query(ctx, `
 			SELECT * FROM (
-				SELECT p.id::text, p.part_number, p.name, COALESCE(p.unit, ''), COALESCE(p.stock_qty, 0),
+				SELECT p.id::text, p.part_number, p.name, COALESCE(p.unit, ''), COALESCE(p.stock_qty, 0), COALESCE(p.min_qty, 0),
 				       GREATEST(
 				         CASE WHEN regexp_replace(lower(p.part_number), '[^a-z0-9]', '', 'g') = ANY($1) THEN 95 ELSE 0 END,
 				         CASE WHEN regexp_replace(lower(COALESCE(p.manufacturer_part, '')), '[^a-z0-9]', '', 'g') = ANY($1) THEN 90 ELSE 0 END,
+				         CASE WHEN p.ean <> '' AND p.ean = ANY($1) THEN 97 ELSE 0 END,
 				         COALESCE((SELECT MAX(CASE WHEN s.partner_id = $2::uuid THEN 100 ELSE 85 END) FROM spare_part_suppliers s
 				                   WHERE s.part_id = p.id AND regexp_replace(lower(COALESCE(s.supplier_part_no, '')), '[^a-z0-9]', '', 'g') = ANY($1)), 0)
 				       ) AS score,
@@ -188,8 +194,8 @@ func (h *Handler) matchParts(ctx context.Context, codes []string, words []string
 		if err == nil {
 			for rows.Next() {
 				var c partCandidate
-				if rows.Scan(&c.ID, &c.PartNumber, &c.Name, &c.Unit, &c.Stock, &c.Score, &c.LastStorageID) == nil {
-					c.Reason = map[int]string{100: "Artikelnr. dieses Lieferanten", 95: "Teilenummer", 90: "Hersteller-Nr.", 85: "Artikelnr. eines Lieferanten"}[c.Score]
+				if rows.Scan(&c.ID, &c.PartNumber, &c.Name, &c.Unit, &c.Stock, &c.MinQty, &c.Score, &c.LastStorageID) == nil {
+					c.Reason = map[int]string{100: "Artikelnr. dieses Lieferanten", 97: "EAN", 95: "Teilenummer", 90: "Hersteller-Nr.", 85: "Artikelnr. eines Lieferanten"}[c.Score]
 					out = append(out, c)
 				}
 			}
@@ -211,7 +217,7 @@ func (h *Handler) matchParts(ctx context.Context, codes []string, words []string
 		cond[i] = fmt.Sprintf("(p.name ILIKE $%d OR p.description ILIKE $%d OR p.part_number ILIKE $%d)", i+1, i+1, i+1)
 		args[i] = likePattern(w)
 	}
-	rows, err := h.db.Query(ctx, `SELECT p.id::text, p.part_number, p.name, COALESCE(p.unit, ''), COALESCE(p.stock_qty, 0),
+	rows, err := h.db.Query(ctx, `SELECT p.id::text, p.part_number, p.name, COALESCE(p.unit, ''), COALESCE(p.stock_qty, 0), COALESCE(p.min_qty, 0),
 			COALESCE((SELECT st.storage_node_id::text FROM spare_part_stock st WHERE st.part_id = p.id ORDER BY st.qty DESC LIMIT 1), '')
 		FROM spare_parts p WHERE p.active AND p.hidden_at IS NULL AND `+strings.Join(cond, " AND ")+` ORDER BY p.name LIMIT 5`, args...)
 	if err != nil {
@@ -221,7 +227,7 @@ func (h *Handler) matchParts(ctx context.Context, codes []string, words []string
 	defer rows.Close()
 	for rows.Next() {
 		c := partCandidate{Score: 40, Reason: "ähnlicher Name"}
-		if rows.Scan(&c.ID, &c.PartNumber, &c.Name, &c.Unit, &c.Stock, &c.LastStorageID) == nil {
+		if rows.Scan(&c.ID, &c.PartNumber, &c.Name, &c.Unit, &c.Stock, &c.MinQty, &c.LastStorageID) == nil {
 			out = append(out, c)
 		}
 	}

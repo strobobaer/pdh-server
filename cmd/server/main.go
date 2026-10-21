@@ -335,6 +335,14 @@ func main() {
 	r.Get("/pki/ca.crt", webHandler.PKICACertWeb)
 	r.Get("/pki/crl.pem", webHandler.PKICRLWeb)
 
+	// n8n und pgAdmin unter /n8n/ bzw. /pgadmin/ (admin_tools_proxy.go) – vor der
+	// PDH-Anmeldung, weil n8n-Webhooks ohne Sitzung ankommen müssen; der Proxy
+	// prüft alles andere selbst (nur Administratoren).
+	for _, tool := range []string{"n8n", "pgadmin"} {
+		r.Handle("/"+tool, webHandler.AdminToolProxy(tool))
+		r.Handle("/"+tool+"/*", webHandler.AdminToolProxy(tool))
+	}
+
 	// SSO routes must be mounted before the protected web UI.
 	r.Get("/sso/nextcloud", web.NextcloudSSOHandler(db.Pool, cfg.Auth.JWTSecret))
 

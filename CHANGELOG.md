@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.54.0] – 2026-10-21
+
+### Neu
+- Ersatzteile: Feld „EAN / GTIN“ in den Stammdaten (mit Barcode-Knopf und Prüfziffern-Kontrolle); die Ersatzteil-Suche findet Teile auch über die EAN
+- Ersatzteile → Barcode: Strichcode fotografieren öffnet das passende Teil direkt zum Buchen (EAN, Teile-, Hersteller- oder Lieferanten-Nummer); ohne Barcode-Unterstützung im Browser lässt sich die Nummer eintippen
+- Lieferschein-Scan: bestellte Menge und Rückstand werden mitgelesen, Positionen mit Rückstand und Teile aus dem Bestellvorschlag sind markiert; nach dem Buchen zeigt PDH die Teile des Lieferanten, die noch unter Mindestbestand liegen
+- Lieferschein- und Bauteil-Scan übernehmen eine erkannte EAN in neue Teile und ergänzen sie bei vorhandenen Teilen ohne EAN
+- n8n und pgAdmin unter der PDH-Adresse (/n8n/, /pgadmin/), nur für Administratoren und in den Core-Einstellungen verlinkt; n8n-Webhooks bleiben ohne Anmeldung erreichbar – Einrichtung mit „scripts/configure-pdh-admin-tools.sh“
+
+### Sicherheit
+- „scripts/configure-pdh-admin-tools.sh --disable-old-code-site“ schaltet die alte nginx-Seite des Code-Editors ab, die ihn ohne PDH-Anmeldung erreichbar machte
+
+### Geändert
+- „scripts/configure-pdh-nginx-websockets.sh“ richtet die WebSockets jetzt für /code/, /n8n/ und /pgadmin/ ein und übernimmt von Hand eingetragene Blöcke
+
 ## [0.53.0] – 2026-10-20
 
 ### Neu

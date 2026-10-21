@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-20T17:30:51.327Z",
+  "generatedAt": "2026-10-21T04:08:34.415Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1403,6 +1403,17 @@
       "sqlHash": "711f2dfe1df8c72e4597e124bd6664f79680f67427c87e4f4a81768be656601c",
       "title": "129_infra_responsible_default.up.sql",
       "updatedAt": "2026-10-20T17:30:50.679Z"
+    },
+    {
+      "createdAt": "2026-10-21T04:08:33.766Z",
+      "path": "migrations/130_spare_part_ean.up.sql",
+      "catalogContext": null,
+      "searchText": "130_spare_part_ean.up.sql migrations/130_spare_part_ean.up.sql -- 130_spare_part_ean.up.sql\n-- ean/gtin je ersatzteil (stammdaten, barcode-scan in der ersatzteil-liste,\n-- abgleich beim lieferschein- und bauteil-scan – internal/web/part_scan.go).\n\nalter table spare_parts add column if not exists ean varchar(20) not null default '';\ncreate index if not exists idx_spare_parts_ean on spare_parts(ean) where ean <> '';\n",
+      "searchUpdatedAt": "2026-10-21T04:08:33.873Z",
+      "schemaContext": null,
+      "sqlHash": "c756510021017f8ad8d1201fdbc008d588cd23edf52e900506af15f3a1ca41fa",
+      "title": "130_spare_part_ean.up.sql",
+      "updatedAt": "2026-10-21T04:08:33.767Z"
     }
   ]
 }

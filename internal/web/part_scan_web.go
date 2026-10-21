@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,8 +53,28 @@ type deliveryLine struct {
 	Qty        string
 }
 
+// Short: weniger geliefert als bestellt bzw. Rückstand vermerkt.
+func (l deliveryLine) Short() bool {
+	it := l.Item
+	return it.BackorderQuantity > 0 || (it.OrderedQuantity > 0 && it.OrderedQuantity > it.Quantity)
+}
+
+// Missing: offene Menge (Rückstand oder bestellt − geliefert).
+func (l deliveryLine) Missing() string {
+	it := l.Item
+	if it.BackorderQuantity > 0 {
+		return formatQty(it.BackorderQuantity)
+	}
+	return formatQty(it.OrderedQuantity - it.Quantity)
+}
+
+// BelowMin: Teil lag unter Mindestbestand – stand also im Bestellvorschlag.
+func (c partCandidate) BelowMin() bool { return c.MinQty > 0 && c.Stock < c.MinQty }
+
+func (c partCandidate) MinText() string { return formatQty(c.MinQty) }
+
 type scanNewPart struct {
-	Number, Name, ManufacturerPart, Category, Description, Unit, ManufacturerID string
+	Number, Name, ManufacturerPart, Category, Description, Unit, ManufacturerID, EAN string
 }
 
 type InventoryScanDetailData struct {
@@ -73,6 +94,31 @@ type InventoryScanDetailData struct {
 	NewPart         scanNewPart
 	Manufacturers   []partnerOption
 	ManufacturerHit string
+	ShortCount      int             // Positionen mit Rückstand
+	StillShort      []partCandidate // nach dem Buchen: Teile des Lieferanten noch unter Mindestbestand
+}
+
+// supplierBelowMin: Teile dieses Lieferanten, die unter Mindestbestand liegen.
+func (h *Handler) supplierBelowMin(ctx context.Context, supplierID string) []partCandidate {
+	if supplierID == "" {
+		return nil
+	}
+	rows, err := h.db.Query(ctx, `SELECT DISTINCT p.id::text, p.part_number, p.name, COALESCE(p.unit, ''), COALESCE(p.stock_qty, 0), COALESCE(p.min_qty, 0)
+		FROM spare_parts p JOIN spare_part_suppliers s ON s.part_id = p.id AND s.partner_id = $1::uuid
+		WHERE p.active AND p.hidden_at IS NULL AND p.min_qty > 0 AND p.stock_qty < p.min_qty
+		ORDER BY p.name LIMIT 50`, supplierID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []partCandidate
+	for rows.Next() {
+		var c partCandidate
+		if rows.Scan(&c.ID, &c.PartNumber, &c.Name, &c.Unit, &c.Stock, &c.MinQty) == nil {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func (h *Handler) loadScan(ctx context.Context, id string) (scanListRow, []scanFile, []byte, string, error) {
@@ -195,6 +241,14 @@ func (h *Handler) InventoryScanDetail(w http.ResponseWriter, r *http.Request) {
 				}
 				d.Storages, _ = h.storagePaths(ctx)
 				d.Lines = h.buildDeliveryLines(ctx, &dr, d.SupplierID)
+				for _, l := range d.Lines {
+					if l.Short() {
+						d.ShortCount++
+					}
+				}
+				if s.Applied {
+					d.StillShort = h.supplierBelowMin(ctx, d.SupplierID)
+				}
 			}
 		case "part":
 			var pr partResult
@@ -214,7 +268,7 @@ func (h *Handler) InventoryScanDetail(w http.ResponseWriter, r *http.Request) {
 
 // newPartFromRecognition: Vorbelegung „Neu anlegen“ aus der Foto-Erkennung.
 func newPartFromRecognition(pr partResult) scanNewPart {
-	np := scanNewPart{Name: strings.TrimSpace(pr.Name), Category: strings.TrimSpace(pr.Category), Unit: "Stück"}
+	np := scanNewPart{Name: strings.TrimSpace(pr.Name), Category: strings.TrimSpace(pr.Category), Unit: "Stück", EAN: normGTIN(pr.EAN)}
 	np.ManufacturerPart = strings.TrimSpace(pr.TypeDesignation)
 	if np.ManufacturerPart == "" {
 		np.ManufacturerPart = strings.TrimSpace(pr.PartNumber)
@@ -294,13 +348,13 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 	n, _ := strconv.Atoi(r.FormValue("lines"))
 
 	type pending struct {
-		pos, action, partID, store, number, name, unit, supplierNo, mpn string
-		qty                                                             float64
+		pos, action, partID, store, number, name, unit, supplierNo, mpn, ean string
+		qty                                                                  float64
 	}
 	var todo []pending
 	for i := 0; i < n && i < 500; i++ {
 		f := func(k string) string { return strings.TrimSpace(r.FormValue(fmt.Sprintf("%s_%d", k, i))) }
-		p := pending{action: f("act"), partID: f("part"), store: f("store"), number: f("num"), name: f("name"), unit: f("unit"), supplierNo: f("sno"), mpn: f("mpn"), pos: f("pos")}
+		p := pending{action: f("act"), partID: f("part"), store: f("store"), number: f("num"), name: f("name"), unit: f("unit"), supplierNo: f("sno"), mpn: f("mpn"), ean: f("ean"), pos: f("pos")}
 		if p.action != "book" && p.action != "new" {
 			continue
 		}
@@ -362,6 +416,7 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 	var moves []*inventory.BookMovementInput
 	for _, p := range todo {
 		h.upsertPartSupplier(ctx, p.partID, supplierID, p.supplierNo, uid)
+		h.setPartEAN(ctx, p.partID, p.ean) // nur, wenn das Teil noch keine EAN hat
 		moves = append(moves, &inventory.BookMovementInput{PartID: p.partID, Type: inventory.MovementIn, Qty: p.qty, StorageNodeID: p.store,
 			Reference: truncateRunes(ref, 250), Notes: "Wareneingang per Lieferschein-Scan · Pos. " + p.pos})
 	}
@@ -414,6 +469,7 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	h.addHistory(ctx, "spare_part", part.ID, "create", "", "", in.PartNumber, "Angelegt aus Foto-Erkennung", uid)
+	h.setPartEAN(ctx, part.ID, f("ean"))
 	if r.FormValue("use_photo") == "1" && len(files) > 0 && strings.HasPrefix(files[0].Type, "image/") {
 		if err := h.attachScanPhoto(ctx, part.ID, in.Description, files[0], uid); err != nil {
 			componentLog("lager-scan").Warn().Err(err).Str("teil", part.ID).Msg("foto als teilebild")
@@ -422,6 +478,36 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 	_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET applied_at = NOW(), applied_by = $2::uuid, applied_note = $3 WHERE id = $1::uuid`,
 		id, nullID(uid), "Teil "+in.PartNumber+" angelegt")
 	partRedirect(w, r, part.ID, "master", "Teil aus Foto-Erkennung angelegt – bitte Stammdaten prüfen und Bestand buchen", nil)
+}
+
+// InventoryLookupWeb: GET /inventory/lookup?code= – Barcode (EAN, Teile-,
+// Hersteller- oder Lieferanten-Nummer) → eindeutiger Treffer öffnet das Teil
+// zum Buchen, sonst die Liste mit der Nummer als Suche.
+func (h *Handler) InventoryLookupWeb(w http.ResponseWriter, r *http.Request) {
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if code == "" {
+		http.Redirect(w, r, "/inventory", http.StatusSeeOther)
+		return
+	}
+	codes := normCodes(code)
+	if g := normGTIN(code); g != "" {
+		codes = normCodes(code, g)
+	}
+	hits := h.matchParts(r.Context(), codes, nil, "")
+	if len(hits) == 1 || (len(hits) > 1 && hits[0].Score > hits[1].Score) {
+		http.Redirect(w, r, "/inventory/"+hits[0].ID+"?tab=stock", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/inventory?q="+urlQueryEscapeCode(code), http.StatusSeeOther)
+}
+
+func urlQueryEscapeCode(s string) string { return strings.ReplaceAll(url.QueryEscape(s), "+", "%20") }
+
+// setPartEAN: EAN einer neuen Position übernehmen, wenn sie gültig ist.
+func (h *Handler) setPartEAN(ctx context.Context, partID, ean string) {
+	if g := normGTIN(ean); g != "" {
+		_, _ = h.db.Exec(ctx, `UPDATE spare_parts SET ean = $1 WHERE id = $2::uuid AND ean = ''`, g, partID)
+	}
 }
 
 // attachScanPhoto: Foto des Scans als Teilebild übernehmen (wie PartImageSetWeb).

@@ -144,3 +144,48 @@ func TestCoreSettingsInfraResponsible(t *testing.T) {
 		t.Error("Schalter „Verantwortliche aus der Infrastruktur“ fehlt oder nicht angehakt")
 	}
 }
+
+func TestNormGTIN(t *testing.T) {
+	for in, want := range map[string]string{
+		"4006381333931":   "4006381333931", // EAN-13
+		"4006 381 333931": "4006381333931",
+		"4006381333932":   "",               // falsche Prüfziffer
+		"96385074":        "96385074",       // EAN-8
+		"036000291452":    "036000291452",   // UPC-A
+		"10036000291459":  "10036000291459", // GTIN-14
+		"ABC123":          "",
+		"":                "",
+	} {
+		if got := normGTIN(in); got != want {
+			t.Errorf("normGTIN(%q) = %q, erwartet %q", in, got, want)
+		}
+	}
+}
+
+func TestDeliveryBackorder(t *testing.T) {
+	l := deliveryLine{Item: deliveryItem{Quantity: 3, OrderedQuantity: 5}}
+	if !l.Short() || l.Missing() != "2" {
+		t.Errorf("bestellt 5, geliefert 3: Short=%v Missing=%s", l.Short(), l.Missing())
+	}
+	l = deliveryLine{Item: deliveryItem{Quantity: 3, BackorderQuantity: 4}}
+	if !l.Short() || l.Missing() != "4" {
+		t.Errorf("Rückstand 4: %v %s", l.Short(), l.Missing())
+	}
+	if (deliveryLine{Item: deliveryItem{Quantity: 5, OrderedQuantity: 5}}).Short() {
+		t.Error("vollständig geliefert als Rückstand gemeldet")
+	}
+	if !(partCandidate{Stock: 1, MinQty: 2}).BelowMin() || (partCandidate{Stock: 1}).BelowMin() {
+		t.Error("BelowMin falsch")
+	}
+	tmpl := loadTestTemplates(t)
+	out := renderPage(t, tmpl, "inventory_scan_detail", InventoryScanDetailData{Scan: scanListRow{ID: "s1", Kind: "delivery", Status: "done", Applied: true, AppliedNote: "1 Zugang gebucht"},
+		Delivery: &deliveryResult{}, ShortCount: 1,
+		Lines: []deliveryLine{{Index: 0, Item: deliveryItem{Description: "Riemen", Quantity: 3, OrderedQuantity: 5}, Qty: "3", Action: "book", PartID: "p1",
+			Candidates: []partCandidate{{ID: "p1", PartNumber: "R1", Name: "Riemen", Score: 95, Stock: 0, MinQty: 2}}}},
+		StillShort: []partCandidate{{ID: "p2", PartNumber: "F1", Name: "Filter", Stock: 1, MinQty: 4}}})
+	for _, want := range []string{"Rückstand 2", "im Bestellvorschlag", "bestellt 5", "Noch unter Mindestbestand bei diesem Lieferanten", "Bestand 1 von mindestens 4"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Ergebnis enthält %q nicht", want)
+		}
+	}
+}

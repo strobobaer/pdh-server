@@ -184,7 +184,7 @@ func (h *Handler) Inventory(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.Query != "" {
 		add(`(sp.part_number || ' ' || sp.name || ' ' || COALESCE(sp.category, '') || ' ' || COALESCE(sp.manufacturer_part, '') || ' ' ||
-		      COALESCE(mf.name, sp.manufacturer, '') || ' ' || COALESCE(sb.name, '') || ' ' || COALESCE(sup.supplier_part_no, '')) ILIKE $?`,
+		      COALESCE(mf.name, sp.manufacturer, '') || ' ' || COALESCE(sb.name, '') || ' ' || COALESCE(sup.supplier_part_no, '') || ' ' || COALESCE(sp.ean, '')) ILIKE $?`,
 			likePattern(data.Query))
 	}
 	if tag := q.Get("tag"); tag != "" {
@@ -240,6 +240,7 @@ type PartMaster struct {
 	ID, PartNumber, Name, Description, ImageURL, Category, Unit string
 	ManufacturerID, ManufacturerName, ManufacturerLegacy        string
 	ManufacturerPart                                            string
+	EAN                                                         string // EAN/GTIN (migrations/130)
 	MinQty, CriticalQty, ReorderQty, Price, StockQty            float64
 	ReservedQty                                                 float64 // abgebucht, noch nicht verbraucht
 	InfraID, InfraName, BuyerID, BuyerName                      string
@@ -313,7 +314,7 @@ func (h *Handler) loadPartMaster(ctx context.Context, id string) (PartMaster, er
 	err := h.db.QueryRow(ctx, `
 		SELECT sp.id::text, sp.part_number, sp.name, COALESCE(sp.description, ''), COALESCE(sp.category, ''), sp.unit,
 		       COALESCE(sp.manufacturer_id::text, ''), COALESCE(mf.name, ''), COALESCE(sp.manufacturer, ''),
-		       COALESCE(sp.manufacturer_part, ''),
+		       COALESCE(sp.manufacturer_part, ''), COALESCE(sp.ean, ''),
 		       sp.min_qty::float8, sp.critical_qty::float8, sp.reorder_qty::float8, sp.price::float8, sp.stock_qty::float8,
 		       COALESCE((SELECT SUM(rv.qty) FROM spare_part_reservations rv WHERE rv.part_id = sp.id), 0)::float8,
 		       COALESCE(sp.infrastructure_id::text, ''), COALESCE(i.name, ''),
@@ -324,7 +325,7 @@ func (h *Handler) loadPartMaster(ctx context.Context, id string) (PartMaster, er
 		LEFT JOIN infrastructure i ON i.id = sp.infrastructure_id
 		LEFT JOIN users bu ON bu.id = sp.buyer_id
 		WHERE sp.id = $1::uuid`, id).Scan(&p.ID, &p.PartNumber, &p.Name, &desc, &p.Category, &p.Unit,
-		&p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerLegacy, &p.ManufacturerPart,
+		&p.ManufacturerID, &p.ManufacturerName, &p.ManufacturerLegacy, &p.ManufacturerPart, &p.EAN,
 		&p.MinQty, &p.CriticalQty, &p.ReorderQty, &p.Price, &p.StockQty, &p.ReservedQty,
 		&p.InfraID, &p.InfraName, &p.BuyerID, &p.BuyerName, &created, &updated)
 	if err != nil {
@@ -535,7 +536,7 @@ func (h *Handler) PartMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	n := PartMaster{
 		PartNumber: v("part_number"), Name: v("name"), Category: v("category"), Unit: v("unit"),
 		Description: v("description"), ImageURL: v("image_url"),
-		ManufacturerID: v("manufacturer_id"), ManufacturerPart: v("manufacturer_part"),
+		ManufacturerID: v("manufacturer_id"), ManufacturerPart: v("manufacturer_part"), EAN: normGTIN(v("ean")),
 		InfraID: v("infrastructure_id"), BuyerID: v("buyer_id"),
 	}
 	if n.Unit == "" {
@@ -543,6 +544,10 @@ func (h *Handler) PartMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if n.PartNumber == "" || n.Name == "" {
 		partRedirect(w, r, id, "master", "", errors.New("Teilenummer und Name sind Pflicht"))
+		return
+	}
+	if raw := v("ean"); raw != "" && n.EAN == "" {
+		partRedirect(w, r, id, "master", "", errors.New("EAN ungültig – 8, 12, 13 oder 14 Ziffern mit passender Prüfziffer"))
 		return
 	}
 	for key, dst := range map[string]*float64{"min_qty": &n.MinQty, "critical_qty": &n.CriticalQty, "reorder_qty": &n.ReorderQty, "price": &n.Price} {
@@ -579,6 +584,10 @@ func (h *Handler) PartMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		partRedirect(w, r, id, "master", "", err)
 		return
 	}
+	if _, err = tx.Exec(ctx, `UPDATE spare_parts SET ean = $1 WHERE id = $2::uuid`, n.EAN, id); err != nil {
+		partRedirect(w, r, id, "master", "", err)
+		return
+	}
 	// Hauptlieferant = bevorzugter Lieferant mit Konditionen
 	if mainSupplier != "" {
 		if _, err = tx.Exec(ctx, `
@@ -609,7 +618,7 @@ func (h *Handler) logPartChanges(ctx context.Context, r *http.Request, id string
 		{"Teilenummer", old.PartNumber, n.PartNumber}, {"Name", old.Name, n.Name},
 		{"Kategorie", old.Category, n.Category}, {"Einheit", old.Unit, n.Unit},
 		{"Beschreibung", old.Description, n.Description}, {"Teilebild", old.ImageURL, n.ImageURL},
-		{"Hersteller-Teilenummer", old.ManufacturerPart, n.ManufacturerPart},
+		{"Hersteller-Teilenummer", old.ManufacturerPart, n.ManufacturerPart}, {"EAN", old.EAN, n.EAN},
 		{"Mindestbestand", formatQty(old.MinQty), formatQty(n.MinQty)},
 		{"Kritischer Bestand", formatQty(old.CriticalQty), formatQty(n.CriticalQty)},
 		{"Nachbestellmenge", formatQty(old.ReorderQty), formatQty(n.ReorderQty)},

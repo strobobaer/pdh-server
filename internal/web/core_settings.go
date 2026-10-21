@@ -17,11 +17,12 @@ import (
 const updateRepository = "strobobaer/pdh-server"
 
 type CoreSettingsPageData struct {
-	CompletionDepartments string   // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
-	DepartmentOptions     []string // vorhandene Abteilungen (Vorschlaege)
-	CanCode               bool     // Link „Code-Editor“ (/code/, codeserver_proxy.go) – nur Admins
-	CanPKI                bool     // Link „Zertifikate (Nextcloud)“ (pki_web.go)
-	InfraRespDefault      bool     // Verantwortliche der Anlage in neue Vorgänge übernehmen (migrations/129)
+	CompletionDepartments string      // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
+	DepartmentOptions     []string    // vorhandene Abteilungen (Vorschlaege)
+	CanCode               bool        // Link „Code-Editor“ (/code/, codeserver_proxy.go) – nur Admins
+	CanPKI                bool        // Link „Zertifikate (Nextcloud)“ (pki_web.go)
+	AdminTools            []adminTool // n8n, pgAdmin unter /n8n/, /pgadmin/ (admin_tools_proxy.go)
+	InfraRespDefault      bool        // Verantwortliche der Anlage in neue Vorgänge übernehmen (migrations/129)
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
@@ -183,6 +184,9 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 	data.NC = h.ncUpdateViewFor(r.Context())
 	data.CanCode = h.actorIsAdmin(r)
 	data.CanPKI = h.canPKI(r)
+	if data.CanCode {
+		data.AdminTools = enabledAdminTools()
+	}
 	data.InfraRespDefault = h.getUpdateSetting(r.Context(), infraRespDefaultSetting, "1") == "1"
 	h.render(w, "core_settings", data)
 }

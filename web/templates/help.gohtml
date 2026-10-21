@@ -721,6 +721,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Passt ein Teil: <b>Öffnen</b> oder <b>Buchen</b>. Sonst unten <b>Als neues Teil anlegen</b> – die Felder sind vorausgefüllt, das Foto wird zum Teilebild.</li>
     </ol>
     „Unsicher“ heißt: lieber ein weiteres Foto vom Typenschild machen. Nummern übernimmt PDH nur, wenn sie im Bild lesbar sind. Für beides braucht es das Recht „Lager bearbeiten“ und Claude als Copilot (Server-Einstellungen → Copilot).</div>
+  <div class="hb-howto"><b><i class="ti ti-truck-off"></i> Rückstand und Bestellvorschlag beim Lieferschein</b>Steht auf dem Lieferschein eine bestellte Menge oder ein Rückstand, zeigt die Position <b>Rückstand …</b> (rot), und oben steht, wie viele Positionen nicht vollständig geliefert sind. Gebucht wird immer nur die gelieferte Menge. Lag ein gefundenes Teil unter Mindestbestand, steht <b>im Bestellvorschlag</b> daneben. Nach dem Buchen listet die Seite die Teile dieses Lieferanten, die <b>noch unter Mindestbestand</b> liegen – mit Link zum Bestellvorschlag.</div>
+  <div class="hb-howto"><b><i class="ti ti-barcode"></i> So findest du ein Teil per Barcode</b>
+    <ol class="hb-steps">
+      <li><b>Ersatzteile</b> → <b>Barcode</b> und den Strichcode auf Teil oder Verpackung fotografieren.</li>
+      <li>Ist die Nummer eindeutig einem Teil zugeordnet – EAN, Teilenummer, Hersteller- oder Lieferanten-Artikelnummer –, öffnet sich das Teil direkt im Reiter <b>Lager &amp; Bewegungen</b> zum Buchen. Sonst zeigt die Liste alle Treffer.</li>
+    </ol>
+    Die EAN trägst du in den <b>Stammdaten</b> des Teils ein – auch per Barcode-Knopf neben dem Feld. PDH prüft die Prüfziffer. Beim Lieferschein- und Bauteil-Scan wird eine erkannte EAN bei neuen Teilen übernommen und bei vorhandenen ohne EAN ergänzt. Kann der Browser keine Barcodes lesen (z. B. Safari auf dem iPhone), fragt PDH nach der Nummer zum Eintippen.</div>
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
 </section>
 
@@ -1372,6 +1379,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Dateien bearbeiten wie in VS Code. Unter <b>Terminal → Neues Terminal</b> stehen <code>go</code>, <code>git</code> und <code>make</code> bereit, z. B. <code>go test ./...</code>.</li>
     </ol>
     Andere Rollen kommen nicht hinein. Das Terminal läuft mit vollen Rechten im Container und sieht den Quellcode des Servers – Änderungen wirken erst nach einem Update bzw. Neubau. Git: Name und E-Mail einmalig im Terminal setzen (<code>git config --global user.name …</code>). <b>Einrichten:</b> bei der Docker-Installation automatisch mit dem Update; bei der Installation ohne Docker (systemd) einmalig auf dem Server im PDH-Verzeichnis <code>sudo bash scripts/install-code-server.sh</code> ausführen – danach baut jedes Update den Editor mit. Abschalten: <code>sudo bash scripts/install-code-server.sh --remove</code>. Steht nginx vor dem PDH und meldet der Editor <i>„WebSocket close with status code 1006“</i>, einmalig <code>sudo bash scripts/configure-pdh-nginx-websockets.sh</code> ausführen.</div>
+  <div class="hb-howto"><b><i class="ti ti-route"></i> Für Administratoren: n8n und pgAdmin unter der PDH-Adresse</b>n8n (Automatisierung) und pgAdmin (Datenbank) laufen auf dem Server als eigene Container und sind über das PDH erreichbar: <code>…/n8n/</code> und <code>…/pgadmin/</code>, verlinkt unter <b>Core-Einstellungen</b>.
+    <ol class="hb-steps">
+      <li>Auf dem Server im PDH-Verzeichnis <code>sudo bash scripts/configure-pdh-admin-tools.sh</code> ausführen. Das Skript findet die Container, trägt sie im PDH ein, richtet die WebSockets in nginx ein und startet das PDH neu.</li>
+      <li>Meldet es, dass n8n noch nicht für <code>/n8n/</code> eingestellt ist: die angezeigten Zeilen (<code>N8N_PATH</code>, <code>WEBHOOK_URL</code> …) in die Compose-Datei von n8n übernehmen und dort <code>docker compose up -d</code>.</li>
+      <li>Die alte Seite „code-server“ in nginx macht den Code-Editor <b>ohne PDH-Anmeldung</b> erreichbar. Abschalten mit <code>sudo bash scripts/configure-pdh-admin-tools.sh --disable-old-code-site</code> und im Cloudflare-Tunnel den alten Hostnamen entfernen.</li>
+    </ol>
+    Nur Administratoren kommen hinein. pgAdmin und n8n behalten zusätzlich ihre eigene Anmeldung. Ausnahme sind die <b>Webhooks</b> von n8n (<code>…/n8n/webhook/…</code>): Sie sind ohne Anmeldung erreichbar, damit externe Dienste n8n aufrufen können.</div>
   <div class="hb-howto"><b><i class="ti ti-certificate"></i> Für Administratoren: Zertifikate für Nextcloud</b>Unter <b>Core-Einstellungen → Zertifikate (Nextcloud)</b> stellt die eigene Zertifizierungsstelle des PDH drei Arten aus, jeweils als passwortgeschützte <b>.p12</b>:
     <ul>
       <li><b>Persönlich (Nextcloud-App)</b> – je Person und Gerät. Mit eingeschalteter <b>Selbstbedienung</b> stellen die Mitarbeitenden sie unter Mein Konto selbst aus.</li>

@@ -124,6 +124,7 @@
         <div class="rec-sec">Hersteller</div>
         {{template "directory-picker" (dict "Label" "Hersteller" "TargetID" "part-manufacturer-id" "Name" "manufacturer_id" "Kind" "manufacturer" "Value" $p.ManufacturerID "LegacyValue" $p.ManufacturerLegacy)}}
         <div class="form-group"><label class="form-label">Hersteller-Teilenummer</label><input name="manufacturer_part" class="form-input" value="{{$p.ManufacturerPart}}" maxlength="100"></div>
+        <div class="form-group"><label class="form-label">EAN / GTIN</label><div style="display:flex;gap:6px"><input id="part-ean" name="ean" class="form-input" value="{{$p.EAN}}" maxlength="20" inputmode="numeric" placeholder="Barcode auf der Verpackung"><input id="barcode-part-ean" type="file" accept="image/*" capture="environment" style="display:none" onchange="scanBarcodeIntoInput(this,'part-ean')"><button type="button" class="btn" title="Barcode fotografieren" onclick="document.getElementById('barcode-part-ean').click()"><i class="ti ti-barcode"></i></button></div></div>
       </div>
       <div>
         <div class="rec-sec">Hauptlieferant</div>

@@ -2012,6 +2012,40 @@ function closePdhFrame(){
 }
 document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closePdhFrame(); });
 
+// Barcode von einem Foto lesen (BarcodeDetector; Chrome/Android, Edge). Ohne
+// Unterstützung (z. B. Safari/iPhone) oder ohne Treffer: Nummer abtippen lassen.
+async function pdhReadBarcode(file){
+  if(file && 'BarcodeDetector' in window){
+    try{
+      const bitmap = await createImageBitmap(file);
+      const formats = await BarcodeDetector.getSupportedFormats();
+      const detector = new BarcodeDetector({formats: formats && formats.length ? formats : undefined});
+      const codes = await detector.detect(bitmap);
+      if(codes && codes.length) return codes[0].rawValue || '';
+      const typed = prompt('Kein Barcode erkannt. Nummer unter dem Strichcode eintippen:');
+      return typed ? typed.trim() : '';
+    }catch(e){ /* weiter mit Eingabe */ }
+  }
+  const typed = prompt('Dieser Browser kann keine Barcodes lesen. Nummer unter dem Strichcode eintippen:');
+  return typed ? typed.trim() : '';
+}
+async function scanBarcodeIntoInput(fileInput, targetInputId){
+  const target = document.getElementById(targetInputId);
+  if(!target || !fileInput.files || !fileInput.files.length) return;
+  try{
+    const code = await pdhReadBarcode(fileInput.files[0]);
+    if(code){ target.value = code; target.dispatchEvent(new Event('input', {bubbles: true})); target.focus(); }
+  }finally{ fileInput.value = ''; }
+}
+// Ersatzteil per Barcode öffnen (Ersatzteil-Liste → „Barcode“)
+async function pdhBarcodeLookup(fileInput){
+  if(!fileInput.files || !fileInput.files.length) return;
+  try{
+    const code = await pdhReadBarcode(fileInput.files[0]);
+    if(code) location.href = '/inventory/lookup?code=' + encodeURIComponent(code);
+  }finally{ fileInput.value = ''; }
+}
+
 // Reiter der Stammdaten-Detailseiten (.rec-tab[data-tab] / .rec-pane[data-pane]);
 // der aktive Reiter steht in ?tab=, damit Links und Ruecksprung ihn behalten.
 function recTab(tab){

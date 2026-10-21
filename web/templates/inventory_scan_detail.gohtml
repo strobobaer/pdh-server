@@ -43,7 +43,13 @@
 {{end}}
 
 {{if .Delivery}}{{$del := .Delivery}}
-{{if .Scan.Applied}}<div class="sc-msg ok"><i class="ti ti-circle-check"></i> Gebucht: {{.Scan.AppliedNote}}</div>{{end}}
+{{if .Scan.Applied}}<div class="sc-msg ok"><i class="ti ti-circle-check"></i> Gebucht: {{.Scan.AppliedNote}}</div>
+  {{if .StillShort}}<div class="card">
+    <div class="card-title"><span><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> Noch unter Mindestbestand bei diesem Lieferanten</span><a class="btn btn-small" href="/directory/purchase-report"><i class="ti ti-shopping-cart"></i> Bestellvorschlag</a></div>
+    {{range .StillShort}}<div class="sc-cand"><div style="flex:1;min-width:180px"><b>{{.PartNumber}} – {{.Name}}</b><div class="rec-sub">Bestand {{.StockText}} von mindestens {{.MinText}}{{if .Unit}} {{.Unit}}{{end}}</div></div><a class="btn btn-small" href="/inventory/{{.ID}}"><i class="ti ti-eye"></i> Öffnen</a></div>{{end}}
+  </div>{{end}}
+{{end}}
+{{if .ShortCount}}<div class="sc-msg err"><i class="ti ti-truck-off"></i> {{.ShortCount}} Position(en) nicht vollständig geliefert – Rückstand laut Lieferschein. Gebucht wird nur die gelieferte Menge.</div>{{end}}
 <form method="post" action="/inventory/scan/{{.Scan.ID}}/apply" onsubmit="this.querySelector('button[type=submit]').disabled=true">
   <input type="hidden" name="lines" value="{{len .Lines}}">
   <div class="card">
@@ -64,11 +70,14 @@
     <input type="hidden" name="pos_{{$i}}" value="{{.Item.Position}}">
     <input type="hidden" name="sno_{{$i}}" value="{{.Item.SupplierArticleNo}}">
     <input type="hidden" name="mpn_{{$i}}" value="{{.Item.ManufacturerPartNo}}">
+    <input type="hidden" name="ean_{{$i}}" value="{{.Item.EAN}}">
     <div class="sc-line-top">
       <div class="grow"><b>{{if .Item.Position}}Pos. {{.Item.Position}} · {{end}}{{.Item.Description}}</b>
         <div class="sc-codes">{{if .Item.SupplierArticleNo}}Art.-Nr. {{.Item.SupplierArticleNo}} {{end}}{{if .Item.ManufacturerPartNo}}· Hersteller-Nr. {{.Item.ManufacturerPartNo}} {{end}}{{if .Item.Manufacturer}}· {{.Item.Manufacturer}} {{end}}{{if .Item.EAN}}· EAN {{.Item.EAN}}{{end}}</div></div>
-      {{if .Candidates}}{{with index .Candidates 0}}<span class="badge {{if ge .Score 85}}b-green{{else}}b-amber{{end}}">{{if ge .Score 85}}gefunden: {{.Reason}}{{else}}ähnlich{{end}}</span>{{end}}{{else}}<span class="badge b-blue">neu</span>{{end}}
+      {{if .Candidates}}{{with index .Candidates 0}}<span class="badge {{if ge .Score 85}}b-green{{else}}b-amber{{end}}">{{if ge .Score 85}}gefunden: {{.Reason}}{{else}}ähnlich{{end}}</span>{{if .BelowMin}} <span class="badge b-blue" title="Bestand {{.StockText}} lag unter dem Mindestbestand {{.MinText}}">im Bestellvorschlag</span>{{end}}{{end}}{{else}}<span class="badge b-blue">neu</span>{{end}}
+      {{if .Short}}<span class="badge b-red" title="{{if .Item.OrderedQuantity}}bestellt {{.Item.OrderedQuantity}}{{end}}">Rückstand {{.Missing}}</span>{{end}}
     </div>
+    {{if or .Item.OrderedQuantity .Item.BackorderQuantity}}<div class="sc-codes">{{if .Item.OrderedQuantity}}bestellt {{.Item.OrderedQuantity}} · {{end}}geliefert {{.Qty}}{{if .Item.BackorderQuantity}} · Rückstand {{.Item.BackorderQuantity}}{{end}}</div>{{end}}
     <div class="sc-grid">
       <div class="form-group"><label class="form-label">Menge</label><input name="qty_{{$i}}" class="form-input" inputmode="decimal" value="{{.Qty}}"></div>
       <div class="form-group"><label class="form-label">Aktion</label>
@@ -142,6 +151,7 @@
       <div class="form-group"><label class="form-label">Kategorie</label><input name="category" class="form-input" maxlength="100" value="{{.NewPart.Category}}"></div>
       <div class="form-group"><label class="form-label">Einheit</label><input name="unit" class="form-input" maxlength="20" value="{{.NewPart.Unit}}"></div>
     </div>
+    <div class="form-group"><label class="form-label">EAN / GTIN</label><input name="ean" class="form-input" maxlength="20" inputmode="numeric" value="{{.NewPart.EAN}}"></div>
     <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="4">{{.NewPart.Description}}</textarea></div>
     <label style="font-size:13px;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" name="use_photo" value="1" checked> Foto als Teilebild übernehmen</label>
     <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Teil anlegen</button>
