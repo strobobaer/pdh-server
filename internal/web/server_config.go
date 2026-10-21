@@ -212,7 +212,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for k := range file {
-		if strings.HasPrefix(k, "PDH_") && !config.BootstrapKey(k) && !config.FromProcessEnv(k) {
+		if strings.HasPrefix(k, "PDH_") && !config.BootstrapKey(k) && !config.AgentKey(k) && !config.FromProcessEnv(k) {
 			if _, ok := dbVals[k]; !ok {
 				d.PendingImport = append(d.PendingImport, k)
 			}

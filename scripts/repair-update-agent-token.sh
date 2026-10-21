@@ -33,6 +33,14 @@ if [[ ${#token} -lt 32 ]]; then
 fi
 log "Token des Agenten: Fingerabdruck $(fp "$token") ($agent_env)"
 
+# Adresse des Agenten: vor 0.55.2 konnte die Übernahme in die Datenbank die
+# Zeile auskommentieren – dann ist das PDH „ohne Update-Agent“.
+if ! grep -qE '^PDH_UPDATE_AGENT_URL=.+' "$agent_env"; then
+  log "PDH_UPDATE_AGENT_URL fehlt in $agent_env → http://127.0.0.1:8091 eingetragen"
+  sed -i '/^PDH_UPDATE_AGENT_URL=/d' "$agent_env"
+  printf 'PDH_UPDATE_AGENT_URL=http://127.0.0.1:8091\n' >> "$agent_env"
+fi
+
 # laufender Agent: welches Token hat er geladen?
 agent_pid="$(systemctl show -p MainPID --value pdh-update-agent 2>/dev/null || echo 0)"
 if [[ "$agent_pid" != "0" && -r "/proc/$agent_pid/environ" ]]; then

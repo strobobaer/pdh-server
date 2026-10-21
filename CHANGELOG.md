@@ -14,6 +14,8 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Formulare mit mehreren Aktionsknöpfen (z. B. „In Nextcloud einrichten“) schickten an eine falsche Adresse („/admin/[object HTMLButtonElement]“, 404) und taten scheinbar nichts – der PDH-Administrator in Nextcloud ließ sich so nicht anlegen
+- „scripts/repair-update-agent-token.sh“ trägt auch die fehlende Adresse des Update-Agenten wieder ein – ohne sie war das PDH „ohne Update-Agent“ und z. B. „In Nextcloud einrichten“ gesperrt
+- Der Hinweis „In der Einstellungsdatei stehen Werte, die noch nicht in der Datenbank sind“ nennt das Update-Agent-Token nicht mehr – es bleibt absichtlich in der Datei
 - Server-Einstellungen → Nextcloud: Schlägt „In Nextcloud einrichten“ fehl, steht der Grund jetzt rot direkt in der Karte „PDH-Administrator in Nextcloud“ statt nur oben auf der Seite
 - Gesperrte Knöpfe sind jetzt blasser dargestellt und sehen nicht mehr wie klickbare aus; die Karte „PDH-Administrator in Nextcloud“ sagt, wenn noch die Nextcloud-Adresse fehlt
 - Fehlermeldungen von occ-Befehlen nennen die eigentliche Fehlerzeile statt einer Zwischenüberschrift
