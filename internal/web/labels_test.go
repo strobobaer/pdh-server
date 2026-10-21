@@ -75,7 +75,7 @@ func TestReadImage(t *testing.T) {
 func TestLabelsPageRenders(t *testing.T) {
 	tmpl := loadTestTemplates(t)
 	svg, _ := qrSVG("https://pdh/inventory/s1")
-	item := labelItem{PartID: "s1", PartNumber: "4711-A", Name: "Rillenkugellager 6205", Unit: "Stück", MinQty: "4",
+	item := labelItem{PartID: "s1", PartNumber: "4711-A", Manufacturer: "SKF", Name: "Rillenkugellager 6205", Unit: "Stück", MinQty: "4",
 		Location: "Halle 1 › Regal A › Fach 3", LocationLeaf: "Fach 3", QR: svg}
 	for _, size := range []string{"62x29", "a4-70x37"} {
 		s := labelSizeByKey(size)
@@ -95,7 +95,7 @@ func TestLabelsPageRenders(t *testing.T) {
 			t.Fatalf("%s: %v", size, err)
 		}
 		out := buf.String()
-		for _, want := range []string{"Fach 3", "4711-A", "Rillenkugellager 6205", "Mindestmenge", "<svg", `name="part" value="s1"`} {
+		for _, want := range []string{"Fach 3", "4711-A", "SKF", "Rillenkugellager 6205", "Mindestmenge", "<svg", `name="part" value="s1"`} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s: Etikett enthält %q nicht", size, want)
 			}

@@ -87,14 +87,27 @@ func dymoPartLabel(it labelItem, t dymoLabelType, paperName string, showCat bool
 	loc := it.headText()
 	lh := H / 4
 	b.WriteString(dymoText("LAGERPLATZ", loc, map[bool]float64{true: 10, false: 12}[small], true, x, m, tw, lh, "Left"))
-	nameH := H / 3
-	b.WriteString(dymoText("NAME", it.Name, map[bool]float64{true: 7, false: 9}[small], true, x, m+lh, tw, nameH, "Left"))
-	if showCat && it.Category != "" && !small {
-		b.WriteString(dymoText("KATEGORIE", it.Category, 6, false, x, m+lh+nameH, tw, H/8, "Left"))
+	if it.Asset {
+		nameH := H / 3
+		b.WriteString(dymoText("NAME", it.Name, map[bool]float64{true: 7, false: 9}[small], true, x, m+lh, tw, nameH, "Left"))
+		if showCat && it.Category != "" && !small {
+			b.WriteString(dymoText("KATEGORIE", it.Category, 6, false, x, m+lh+nameH, tw, H/8, "Left"))
+		}
+		by := H - m - H/5
+		b.WriteString(dymoText("TEILENR", it.numText(), map[bool]float64{true: 7, false: 9}[small], true, x, by, tw*6/10, H/5, "Left"))
+		b.WriteString(dymoText("MIN", it.rightText(), map[bool]float64{true: 7, false: 9}[small], true, x+tw*6/10, by, tw*4/10, H/5, "Right"))
+		b.WriteString(`</DieCutLabel>`)
+		return b.String()
 	}
-	by := H - m - H/5
-	b.WriteString(dymoText("TEILENR", it.numText(), map[bool]float64{true: 7, false: 9}[small], true, x, by, tw*6/10, H/5, "Left"))
-	b.WriteString(dymoText("MIN", it.rightText(), map[bool]float64{true: 7, false: 9}[small], true, x+tw*6/10, by, tw*4/10, H/5, "Right"))
+	// Ersatzteil: Teilenummer über die volle Breite, darunter Hersteller + Mindestmenge
+	rowH := H / 6
+	by := H - m - rowH
+	pnY := by - rowH
+	nameH := pnY - (m + lh)
+	b.WriteString(dymoText("NAME", it.Name, map[bool]float64{true: 7, false: 8}[small], true, x, m+lh, tw, nameH, "Left"))
+	b.WriteString(dymoText("TEILENR", it.numText(), map[bool]float64{true: 7, false: 9}[small], true, x, pnY, tw, rowH, "Left"))
+	b.WriteString(dymoText("HERSTELLER", it.Manufacturer, map[bool]float64{true: 6, false: 7}[small], false, x, by, tw*6/10, rowH, "Left"))
+	b.WriteString(dymoText("MIN", it.rightText(), map[bool]float64{true: 6, false: 7}[small], true, x+tw*6/10, by, tw*4/10, rowH, "Right"))
 	b.WriteString(`</DieCutLabel>`)
 	return b.String()
 }

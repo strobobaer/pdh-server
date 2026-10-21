@@ -81,7 +81,7 @@ func (r *Repository) Assign(ctx context.Context, a *ShiftAssignment) error {
 		`INSERT INTO shift_assignments (id, user_id, shift_id, date, note, created_by)
 		 VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
 		 ON CONFLICT (user_id, date) DO UPDATE
-		 SET shift_id=$2, note=$4, created_by=$5
+		 SET shift_id=$2, note=$4, created_by=$5, plan_id=NULL
 		 RETURNING id, created_at`,
 		a.UserID, a.ShiftID, a.Date, a.Note, a.CreatedBy,
 	).Scan(&a.ID, &a.CreatedAt)
@@ -106,11 +106,13 @@ func (r *Repository) GetWeekPlan(ctx context.Context, weekStart, weekEnd string)
 	var assignments []*ShiftAssignment
 	for rows.Next() {
 		a := &ShiftAssignment{}
-		rows.Scan(&a.ID, &a.UserID, &a.ShiftID, &a.Date, &a.Note,
-			&a.ShiftName, &a.ShortName, &a.StartTime, &a.EndTime, &a.Color, &a.UserName)
+		if err := rows.Scan(&a.ID, &a.UserID, &a.ShiftID, &a.Date, &a.Note,
+			&a.ShiftName, &a.ShortName, &a.StartTime, &a.EndTime, &a.Color, &a.UserName); err != nil {
+			return nil, err
+		}
 		assignments = append(assignments, a)
 	}
-	return assignments, nil
+	return assignments, rows.Err()
 }
 
 func (r *Repository) GetUserShifts(ctx context.Context, userID, from, to string) ([]*ShiftAssignment, error) {
@@ -130,11 +132,13 @@ func (r *Repository) GetUserShifts(ctx context.Context, userID, from, to string)
 	var assignments []*ShiftAssignment
 	for rows.Next() {
 		a := &ShiftAssignment{}
-		rows.Scan(&a.ID, &a.UserID, &a.ShiftID, &a.Date, &a.Note,
-			&a.ShiftName, &a.ShortName, &a.StartTime, &a.EndTime, &a.Color)
+		if err := rows.Scan(&a.ID, &a.UserID, &a.ShiftID, &a.Date, &a.Note,
+			&a.ShiftName, &a.ShortName, &a.StartTime, &a.EndTime, &a.Color); err != nil {
+			return nil, err
+		}
 		assignments = append(assignments, a)
 	}
-	return assignments, nil
+	return assignments, rows.Err()
 }
 
 func (r *Repository) DeleteAssignment(ctx context.Context, userID, date string) error {
@@ -157,7 +161,7 @@ func (r *Repository) CreateAbsence(ctx context.Context, a *Absence) error {
 
 func (r *Repository) ListAbsences(ctx context.Context, userID string, status AbsenceStatus) ([]*Absence, error) {
 	query := `SELECT a.id, a.user_id, a.type, a.status, a.start_date::text,
-		a.end_date::text, a.days, a.note, a.approved_by, a.created_at,
+		a.end_date::text, a.days::float8, COALESCE(a.note, ''), a.approved_by, a.created_at,
 		u.first_name || ' ' || u.last_name
 		FROM absences a JOIN users u ON a.user_id = u.id WHERE 1=1`
 	args := []interface{}{}
@@ -195,7 +199,7 @@ func (r *Repository) ApproveAbsence(ctx context.Context, id, approvedBy string, 
 		status = AbsenceRejected
 	}
 	_, err := r.db.Exec(ctx,
-		`UPDATE absences SET status=$1, approved_by=$2 WHERE id=$3`,
+		`UPDATE absences SET status=$1, approved_by=$2, decided_at=NOW() WHERE id=$3`,
 		status, approvedBy, id)
 	return err
 }

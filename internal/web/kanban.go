@@ -284,8 +284,15 @@ func setKanbanCardCount(ctx context.Context, tx pgx.Tx, partID string, count int
 			status, full = "full", full+1
 		}
 		maxNo++
-		if _, err := tx.Exec(ctx, `INSERT INTO kanban_cards (part_id, card_no, status, emptied_at) VALUES ($1::uuid, $2, $3,
-			CASE WHEN $3 = 'empty' THEN NOW() END)`, partID, maxNo, status); err != nil {
+		// Leerzeitpunkt in Go setzen: $3 als Spalte und im Vergleich ergäbe
+		// zwei Typen (varchar/text) → „inkonsistente Typen für Parameter $3“
+		var emptied *time.Time
+		if status == "empty" {
+			now := time.Now()
+			emptied = &now
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO kanban_cards (part_id, card_no, status, emptied_at) VALUES ($1::uuid, $2, $3, $4)`,
+			partID, maxNo, status, emptied); err != nil {
 			return err
 		}
 	}

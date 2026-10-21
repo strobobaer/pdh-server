@@ -66,7 +66,7 @@ type Absence struct {
 	Status     AbsenceStatus `json:"status"`
 	StartDate  string        `json:"start_date"`
 	EndDate    string        `json:"end_date"`
-	Days       int           `json:"days"`
+	Days       float64       `json:"days"`
 	Note       string        `json:"note,omitempty"`
 	ApprovedBy *string       `json:"approved_by,omitempty"`
 	CreatedAt  time.Time     `json:"created_at"`

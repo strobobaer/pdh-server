@@ -95,6 +95,7 @@ type labelItem struct {
 	PartID, PartNumber, Name, Category, Unit, MinQty string
 	Location, LocationLeaf                           string
 	NodeID                                           string // Lagerplatz des Etiketts (QR → Buchung an diesem Platz)
+	Manufacturer                                     string // Hersteller (zweite Zeile unter der Teilenummer)
 	URL                                              string
 	QR                                               template.HTML
 	// Anlagen-/IT-Etiketten (asset_info.go): Nummer ohne "Nr."-Praefix,
@@ -302,8 +303,9 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 	}
 	rows, err := h.db.Query(ctx, `
 		SELECT sp.id::text, sp.part_number, sp.name, COALESCE(sp.category, ''), sp.unit, sp.min_qty::float8,
-		       COALESCE(st.storage_node_id::text, '')
+		       COALESCE(st.storage_node_id::text, ''), COALESCE(NULLIF(lmf.name, ''), sp.manufacturer, '')
 		FROM spare_parts sp
+		LEFT JOIN business_partners lmf ON lmf.id = sp.manufacturer_id
 		LEFT JOIN spare_part_stock st ON st.part_id = sp.id AND `+stockCond+`
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY sp.name, st.storage_node_id
@@ -317,7 +319,7 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 		var it labelItem
 		var min float64
 		var node string
-		if rows.Scan(&it.PartID, &it.PartNumber, &it.Name, &it.Category, &it.Unit, &min, &node) != nil {
+		if rows.Scan(&it.PartID, &it.PartNumber, &it.Name, &it.Category, &it.Unit, &min, &node, &it.Manufacturer) != nil {
 			continue
 		}
 		it.MinQty = formatQty(min)

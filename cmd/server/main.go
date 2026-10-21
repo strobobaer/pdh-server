@@ -152,6 +152,11 @@ func main() {
 	storageHandler := storage.NewHandler(storageSvc)
 	shiftSvc := shifts.NewService(shiftRepo)
 	shiftHandler := shifts.NewHandler(shiftSvc)
+	shiftHandler.SetPermChecker(func(r *http.Request, perm string) bool {
+		uid, _ := r.Context().Value(middleware.UserIDKey).(string)
+		role, _ := r.Context().Value(middleware.RoleKey).(string)
+		return rbacSvc.HasPermissionForUser(uid, role, perm)
+	})
 
 	infraRepo := infrastructure.NewRepository(db.Pool)
 	infraSvc := infrastructure.NewService(infraRepo)

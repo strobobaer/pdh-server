@@ -107,14 +107,40 @@ func zplPartLabel(it labelItem, z zebraSettings, showCat bool, copies int) strin
 	y += big + m/2
 	fmt.Fprintf(&b, "^FO%d,%d^GB%d,%d,%d^FS", x, y, tw, 2, 2)
 	y += m
-	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,2,0,L^FD%s^FS", x, y, mid, mid, tw, zplText(it.Name))
-	y += 2*mid + m/2
-	if showCat && it.Category != "" && y+small < h-big-m {
+	by := h - m - mid
+	if it.Asset {
+		fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,2,0,L^FD%s^FS", x, y, mid, mid, tw, zplText(it.Name))
+		y += 2*mid + m/2
+		if showCat && it.Category != "" && y+small < h-big-m {
+			fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, y, small, small, tw, zplText(it.Category))
+		}
+		fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, by, mid, mid, tw/2+tw/6, zplText(it.numText()))
+		fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS", x, by, mid, mid, tw, zplText(it.rightText()))
+		b.WriteString("^XZ\n")
+		return b.String()
+	}
+	// Ersatzteil: Teilenummer über die volle Breite, darunter Hersteller + Mindestmenge
+	pnY := by - mid - m/3
+	nameLines := 2
+	if y+2*mid > pnY-m/3 {
+		nameLines = 1
+	}
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,%d,0,L^FD%s^FS", x, y, mid, mid, tw, nameLines, zplText(it.Name))
+	y += nameLines*mid + m/2
+	if showCat && it.Category != "" && y+small < pnY-m/3 {
 		fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, y, small, small, tw, zplText(it.Category))
 	}
-	by := h - m - mid
-	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, by, mid, mid, tw/2+tw/6, zplText(it.numText()))
-	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS", x, by, mid, mid, tw, zplText(it.rightText()))
+	// lange Nummern kleiner setzen statt abschneiden (Font 0: Zeichen ≈ 0,55 × Höhe breit)
+	num := it.numText()
+	pf := mid
+	if n := len([]rune(num)); n > 0 {
+		if fit := int(float64(tw) / (0.55 * float64(n))); fit < pf {
+			pf = max(fit, small*2/3)
+		}
+	}
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, pnY+(mid-pf), pf, pf, tw, zplText(num))
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,L^FD%s^FS", x, by, small, small, tw*2/3, zplText(it.Manufacturer))
+	fmt.Fprintf(&b, "^FO%d,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS", x, by, small, small, tw, zplText(it.rightText()))
 	b.WriteString("^XZ\n")
 	return b.String()
 }

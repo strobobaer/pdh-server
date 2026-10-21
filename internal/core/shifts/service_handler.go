@@ -98,7 +98,13 @@ func (s *Service) GetWeekPlan(ctx context.Context, weekStart string) (*WeekPlan,
 func (s *Service) CreateAbsence(ctx context.Context, in *CreateAbsenceInput) (*Absence, error) {
 	start, _ := time.Parse("2006-01-02", in.StartDate)
 	end, _ := time.Parse("2006-01-02", in.EndDate)
-	days := int(end.Sub(start).Hours()/24) + 1
+	// Arbeitstage Mo–Fr (Feiertage berücksichtigt der Planer, internal/web/planner_absences.go)
+	days := 0.0
+	for d := start; !start.IsZero() && !d.After(end); d = d.AddDate(0, 0, 1) {
+		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday {
+			days++
+		}
+	}
 
 	a := &Absence{UserID: in.UserID, Type: in.Type, StartDate: in.StartDate,
 		EndDate: in.EndDate, Days: days, Note: in.Note}
@@ -115,59 +121,87 @@ func (s *Service) ApproveAbsence(ctx context.Context, id, approvedBy string, app
 
 // ── Handler ──────────────────────────────────────────────────
 
+// PermFunc prüft ein Recht (Rollen & Rechte) für die Anfrage.
+type PermFunc func(r *http.Request, perm string) bool
+
 type Handler struct {
 	svc *Service
+	can PermFunc
 }
 
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// SetPermChecker verbindet den Handler mit Rollen & Rechte. Ohne Prüfer
+// gilt nur noch die Rolle admin als berechtigt.
+func (h *Handler) SetPermChecker(f PermFunc) { h.can = f }
+
+func (h *Handler) allowed(r *http.Request, perm string) bool {
+	if h.can != nil {
+		return h.can(r, perm)
+	}
+	role, _ := r.Context().Value(middleware.RoleKey).(string)
+	return role == "admin"
+}
+
+func (h *Handler) require(perm string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !h.allowed(r, perm) {
+				response.Error(w, http.StatusForbidden, "keine berechtigung")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func (h *Handler) Routes(jwtSecret string) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Auth(jwtSecret))
 
-	// Schichtmodelle
-	r.Get("/models", h.ListModels)
-	r.Post("/models", h.CreateModel)
-	r.Get("/models/{id}/shifts", h.ListShifts)
-	r.Post("/models/{id}/shifts", h.CreateShift)
+	// Lesen: shifts.view
+	r.Group(func(r chi.Router) {
+		r.Use(h.require("shifts.view"))
+		r.Get("/models", h.ListModels)
+		r.Get("/models/{id}/shifts", h.ListShifts)
+		r.Get("/week/{date}", h.GetWeekPlan)
+		r.Get("/user/{id}", h.GetUserShifts)
+		r.Get("/patterns", h.ListRotationPatterns)
+		r.Get("/patterns/{id}", h.GetRotationPattern)
+		r.Get("/plans", h.ListPlans)
+		r.Get("/plans/{id}", h.GetPlan)
+		r.Get("/teams", h.ListTeams)
+		r.Get("/teams/locksmith-assignments", h.GetLocksmithAssignments)
+	})
 
-	// Zuweisungen
-	r.Post("/assign", h.Assign)
-	r.Post("/assign/bulk", h.BulkAssign)
-	r.Delete("/assign/{userID}/{date}", h.DeleteAssignment)
-	r.Get("/week/{date}", h.GetWeekPlan)
-	r.Get("/user/{id}", h.GetUserShifts)
+	// Planen: shifts.edit
+	r.Group(func(r chi.Router) {
+		r.Use(h.require("shifts.edit"))
+		r.Post("/models", h.CreateModel)
+		r.Post("/models/{id}/shifts", h.CreateShift)
+		r.Post("/assign", h.Assign)
+		r.Post("/assign/bulk", h.BulkAssign)
+		r.Delete("/assign/{userID}/{date}", h.DeleteAssignment)
+		r.Post("/patterns", h.CreateRotationPattern)
+		r.Post("/patterns/{id}/days", h.SetPatternDay)
+		r.Post("/plans", h.CreatePlan)
+		r.Post("/plans/generate", h.GeneratePlan)
+		r.Post("/plans/{id}/assign", h.AssignInPlan)
+		r.Post("/plans/{id}/publish", h.PublishPlan)
+		r.Post("/plans/{id}/unpublish", h.UnpublishPlan)
+		r.Delete("/plans/{id}", h.DeletePlan)
+		r.Post("/teams", h.CreateTeam)
+		r.Post("/teams/{id}", h.UpdateTeam)
+		r.Delete("/teams/{id}", h.DeactivateTeam)
+		r.Post("/teams/locksmith-assignments/{slot}", h.SetLocksmithAssignment)
+	})
 
-	// Abwesenheiten
+	// Abwesenheiten: Prüfung im Handler (eigene vs. fremde)
 	r.Get("/absences", h.ListAbsences)
 	r.Post("/absences", h.CreateAbsence)
-	r.Post("/absences/{id}/approve", h.ApproveAbsence) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
-
-	// Rotationsmuster
-	r.Get("/patterns", h.ListRotationPatterns)
-	r.Post("/patterns", h.CreateRotationPattern)
-	r.Get("/patterns/{id}", h.GetRotationPattern)
-	r.Post("/patterns/{id}/days", h.SetPatternDay)
-
-	// Schichtplaene (Entwurf/Veroeffentlicht)
-	r.Get("/plans", h.ListPlans)
-	r.Post("/plans", h.CreatePlan)
-	r.Post("/plans/generate", h.GeneratePlan)
-	r.Get("/plans/{id}", h.GetPlan)
-	r.Post("/plans/{id}/assign", h.AssignInPlan)
-	r.Post("/plans/{id}/publish", h.PublishPlan)
-	r.Post("/plans/{id}/unpublish", h.UnpublishPlan)
-	r.Delete("/plans/{id}", h.DeletePlan)
-
-	// Teams (erweiterbare Liste, z.B. fuer Schichtschlosser-Diensthandys)
-	r.Get("/teams", h.ListTeams)
-	r.Post("/teams", h.CreateTeam)
-	r.Post("/teams/{id}", h.UpdateTeam)
-	r.Delete("/teams/{id}", h.DeactivateTeam)
-	r.Get("/teams/locksmith-assignments", h.GetLocksmithAssignments)
-	r.Post("/teams/locksmith-assignments/{slot}", h.SetLocksmithAssignment)
+	r.With(h.require("absences.approve")).Post("/absences/{id}/approve", h.ApproveAbsence) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
 
 	return r
 }
@@ -230,8 +264,7 @@ func (h *Handler) DeleteAssignment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetWeekPlan(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value(middleware.RoleKey).(string)
-	isPlanner := role == "admin" || role == "manager"
+	isPlanner := h.allowed(r, "shifts.edit")
 	plan, err := h.svc.GetWeekPlanForRole(r.Context(), chi.URLParam(r, "date"), isPlanner)
 	if err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 200, plan)
@@ -242,8 +275,7 @@ func (h *Handler) GetUserShifts(w http.ResponseWriter, r *http.Request) {
 	to := r.URL.Query().Get("to")
 	if from == "" { from = time.Now().Format("2006-01-02") }
 	if to == "" { to = time.Now().AddDate(0, 1, 0).Format("2006-01-02") }
-	role, _ := r.Context().Value(middleware.RoleKey).(string)
-	isPlanner := role == "admin" || role == "manager"
+	isPlanner := h.allowed(r, "shifts.edit")
 	var shifts []*ShiftAssignment
 	var err error
 	if isPlanner {
@@ -257,6 +289,10 @@ func (h *Handler) GetUserShifts(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListAbsences(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
+	if !h.allowed(r, "absences.view_all") && !h.allowed(r, "absences.approve") {
+		// ohne Recht nur die eigenen Abwesenheiten
+		userID, _ = r.Context().Value(middleware.UserIDKey).(string)
+	}
 	status := AbsenceStatus(r.URL.Query().Get("status"))
 	absences, err := h.svc.ListAbsences(r.Context(), userID, status)
 	if err != nil { response.Error(w, 500, err.Error()); return }
@@ -266,6 +302,15 @@ func (h *Handler) ListAbsences(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CreateAbsence(w http.ResponseWriter, r *http.Request) {
 	var in CreateAbsenceInput
 	if err := decode(r, &in); err != nil { response.Error(w, 400, "ungültige eingabe"); return }
+	self, _ := r.Context().Value(middleware.UserIDKey).(string)
+	if in.UserID == "" {
+		in.UserID = self
+	}
+	// eigene: absences.request – für andere: absences.approve
+	if (in.UserID == self && !h.allowed(r, "absences.request")) || (in.UserID != self && !h.allowed(r, "absences.approve")) {
+		response.Error(w, http.StatusForbidden, "keine berechtigung")
+		return
+	}
 	a, err := h.svc.CreateAbsence(r.Context(), &in)
 	if err != nil { response.Error(w, 500, err.Error()); return }
 	response.JSON(w, 201, a)

@@ -339,9 +339,11 @@ func (r *Repository) GeneratePlanFromPattern(ctx context.Context, plan *ShiftPla
 			}
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO shift_assignments (id, user_id, shift_id, date, created_by, plan_id)
-				VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5)
-				ON CONFLICT (user_id, date) DO UPDATE
-				SET shift_id=$2, created_by=$4, plan_id=$5`,
+				SELECT pdh_uuid_v7(), $1, $2, $3::date, $4, $5
+				WHERE NOT EXISTS (SELECT 1 FROM absences a WHERE a.user_id = $1 AND a.status = 'approved'
+				                  AND $3::date BETWEEN a.start_date AND a.end_date)
+				-- vorhandene (auch veröffentlichte) Schichten bleiben – nichts überschreiben
+				ON CONFLICT (user_id, date) DO NOTHING`,
 				u.UserID, *shiftID, d.Format("2006-01-02"), plan.CreatedBy, plan.ID); err != nil {
 				return err
 			}
@@ -622,8 +624,7 @@ func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListPlans(w http.ResponseWriter, r *http.Request) {
-	role, _ := r.Context().Value(middleware.RoleKey).(string)
-	isPlanner := role == "admin" || role == "manager"
+	isPlanner := h.allowed(r, "shifts.edit")
 	plans, err := h.svc.ListPlans(r.Context(), isPlanner)
 	if err != nil {
 		response.Error(w, 500, err.Error())

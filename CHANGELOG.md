@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.56.1] – 2026-10-21
+
+### Geändert
+- Ersatzteil-Etiketten zeigen die Teilenummer vollständig über die ganze Breite (lange Nummern brechen um bzw. werden kleiner gedruckt), darunter den Hersteller – im Browser-Druck, auf Zebra und auf Dymo
+
+### Behoben
+- „Kanban aktivieren“ bzw. Speichern im Reiter Kanban scheiterte mit „inkonsistente Typen für Parameter $3“
+
 ## [0.56.0] – 2026-10-21
 
 ### Neu
