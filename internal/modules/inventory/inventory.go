@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -88,7 +89,9 @@ type StockMovement struct {
 	TicketID          string       `json:"ticket_id,omitempty"`
 	MaintenanceTaskID string       `json:"maintenance_task_id,omitempty"`
 	TaskID            string       `json:"task_id,omitempty"`
+	InfrastructureID  string       `json:"infrastructure_id,omitempty"` // Ausbuchung/Reservierung auf eine Anlage
 	ReservationID     string       `json:"reservation_id,omitempty"`
+	NoNegative        bool         `json:"-"` // Abgang darf den Lagerplatz nicht ins Minus bringen
 	CreatedBy         string       `json:"created_by"`
 	CreatedAt         time.Time    `json:"created_at"`
 	PartName          string       `json:"part_name,omitempty"`
@@ -159,6 +162,8 @@ type BookMovementInput struct {
 	TicketID          string       `json:"ticket_id,omitempty"`
 	MaintenanceTaskID string       `json:"maintenance_task_id,omitempty"`
 	TaskID            string       `json:"task_id,omitempty"`
+	InfrastructureID  string       `json:"infrastructure_id,omitempty"`
+	NoNegative        bool         `json:"-"`
 }
 
 type CreateFieldDefInput struct {
@@ -330,9 +335,13 @@ func (r *Repository) BookMovement(ctx context.Context, m *StockMovement) error {
 // bookTx: Buchung innerhalb einer bestehenden Transaktion (auch fuer
 // Reservierungen genutzt).
 func bookTx(ctx context.Context, tx pgx.Tx, m *StockMovement) error {
+	// Zeile sperren: zwei gleichzeitige Buchungen am selben Lagerplatz
+	// würden sonst vom selben Altbestand ausgehen.
 	var current float64
-	tx.QueryRow(ctx, `SELECT COALESCE(qty,0) FROM spare_part_stock WHERE part_id=$1 AND storage_node_id=$2`,
-		m.PartID, m.StorageNodeID).Scan(&current)
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(qty,0)::float8 FROM spare_part_stock WHERE part_id=$1 AND storage_node_id=$2 FOR UPDATE`,
+		m.PartID, m.StorageNodeID).Scan(&current); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
 
 	m.QtyBefore = current
 	newQty := current
@@ -346,6 +355,9 @@ func bookTx(ctx context.Context, tx pgx.Tx, m *StockMovement) error {
 	case MovementCorrect, MovementInventory:
 		newQty = m.Qty
 		m.Qty = newQty - current
+	}
+	if m.NoNegative && newQty < 0 && newQty < current {
+		return fmt.Errorf("nicht genug bestand am lagerplatz (vorhanden: %s)", strconv.FormatFloat(current, 'f', -1, 64))
 	}
 	m.QtyAfter = newQty
 
@@ -370,15 +382,18 @@ func bookTx(ctx context.Context, tx pgx.Tx, m *StockMovement) error {
 	if m.TaskID != "" {
 		taskIDArg = m.TaskID
 	}
-	var reservationArg interface{}
+	var reservationArg, infraArg interface{}
 	if m.ReservationID != "" {
 		reservationArg = m.ReservationID
 	}
+	if m.InfrastructureID != "" {
+		infraArg = m.InfrastructureID
+	}
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id, reservation_id)
-		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO stock_movements (id, part_id, type, qty, qty_before, qty_after, storage_node_id, reference, notes, created_by, fault_id, ticket_id, maintenance_task_id, task_id, reservation_id, infrastructure_id)
+		VALUES (pdh_uuid_v7(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, created_at`,
-		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg, reservationArg,
+		m.PartID, m.Type, m.Qty, m.QtyBefore, m.QtyAfter, m.StorageNodeID, m.Reference, m.Notes, m.CreatedBy, faultIDArg, ticketIDArg, maintTaskIDArg, taskIDArg, reservationArg, infraArg,
 	).Scan(&m.ID, &m.CreatedAt); err != nil {
 		return err
 	}
@@ -608,7 +623,8 @@ func (s *Service) Book(ctx context.Context, in *BookMovementInput, userID string
 	m := &StockMovement{
 		PartID: in.PartID, Type: in.Type, Qty: in.Qty, StorageNodeID: in.StorageNodeID,
 		Reference: in.Reference, Notes: in.Notes, FaultID: in.FaultID, TicketID: in.TicketID,
-		MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, CreatedBy: userID,
+		MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, InfrastructureID: in.InfrastructureID,
+			NoNegative: in.NoNegative, CreatedBy: userID,
 	}
 	bookErr := s.repo.BookMovement(ctx, m)
 	if bookErr == nil && eventBus != nil {
@@ -645,7 +661,8 @@ func (s *Service) BookMany(ctx context.Context, ins []*BookMovementInput, userID
 		moves = append(moves, &StockMovement{
 			PartID: in.PartID, Type: in.Type, Qty: in.Qty, StorageNodeID: in.StorageNodeID,
 			Reference: in.Reference, Notes: in.Notes, FaultID: in.FaultID, TicketID: in.TicketID,
-			MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, CreatedBy: userID,
+			MaintenanceTaskID: in.MaintenanceTaskID, TaskID: in.TaskID, InfrastructureID: in.InfrastructureID,
+			NoNegative: in.NoNegative, CreatedBy: userID,
 		})
 	}
 	tx, err := s.repo.db.Begin(ctx)

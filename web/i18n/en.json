@@ -655,5 +655,9 @@
  "Auswertungen": "Reports",
  "Grafana & Statistik": "Grafana & statistics",
  "Kostenstellen": "Cost centres",
- "Statistik": "Statistics"
+ "Statistik": "Statistics",
+ "Beschaffung": "Procurement",
+ "Beschaffung & Einkauf": "Procurement & purchasing",
+ "Rahmenvertrag": "Framework contract",
+ "Reservierte Menge als verbraucht buchen?": "Book the reserved quantity as consumed?"
 }

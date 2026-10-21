@@ -1,0 +1,204 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{$p := .Part}}
+<div class="bk-wrap">
+  <div class="bk-head">
+    {{if $p.ImageURL}}<img class="bk-img" src="{{$p.ImageURL}}" alt="" loading="lazy">{{else}}<div class="bk-img bk-noimg"><i class="ti ti-package"></i></div>{{end}}
+    <div class="bk-t">
+      <h1>{{$p.Name}}</h1>
+      <div class="rec-sub"><span style="font-family:monospace">{{$p.PartNumber}}</span>{{if $p.Category}} · {{$p.Category}}{{end}}{{if $p.ManufacturerName}} · {{$p.ManufacturerName}}{{end}}{{if $p.ManufacturerPart}} · {{$p.ManufacturerPart}}{{end}}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 10px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}{{if $p.ReservedQty}} ({{$p.Q $p.ReservedQty}} reserviert){{end}}</span>
+        {{with .Kanban}}<span class="badge b-blue" title="Kanban: volle / alle Karten"><i class="ti ti-layout-kanban"></i> {{.Full}}/{{.CardCount}} Karten voll</span>{{end}}
+        {{if .CanDetail}}<a class="btn btn-small" href="/inventory/{{$p.ID}}"><i class="ti ti-file-description"></i> Ersatzteilstamm</a>{{end}}
+      </div>
+    </div>
+  </div>
+  {{if $p.Description}}<div class="card bk-desc">{{$p.Description}}</div>{{end}}
+
+  {{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+  {{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+  {{if or .CanBook .CanCorrect}}
+  <form class="card" method="post" action="/inventory/{{$p.ID}}/booking" id="bk-form">
+    <div class="card-title"><span><i class="ti ti-arrows-exchange"></i> Buchung erfassen</span></div>
+    <div class="bk-acts" role="radiogroup" aria-label="Buchungsart">
+      {{range .Actions}}
+      {{$ok := false}}{{if or (eq .Key "other") (eq .Key "correct")}}{{$ok = $.CanCorrect}}{{else}}{{$ok = $.CanBook}}{{end}}
+      {{if $ok}}<label class="bk-act" title="{{.Hint}}"><input type="radio" name="action" value="{{.Key}}" {{if eq .Key $.Action}}checked{{end}}><span><i class="ti {{.Icon}}"></i>{{.Label}}</span></label>{{end}}
+      {{end}}
+    </div>
+    <p class="rec-sub bk-hint" id="bk-hint"></p>
+
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Lagerplatz</label>
+        <select name="storage_node_id" class="form-input" required><option value="">– auswählen –</option>{{range .StorageOptions}}<option value="{{.Value}}" {{if eq .Value $.DefaultStore}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label" id="bk-qty-label">Menge ({{$p.Unit}})</label><input name="qty" class="form-input bk-qty" inputmode="decimal" required autocomplete="off"></div>
+    </div></div>
+
+    <!-- Zuordnung: Ausbuchung / Reservierung -->
+    <div data-show="out reserve" class="bk-sec">
+      <label class="form-label">Zuordnen zu <span style="color:var(--red)">*</span></label>
+      <div class="bk-seg">
+        <label><input type="radio" name="target" value="record" checked> <i class="ti ti-clipboard-list"></i> Vorgang</label>
+        <label><input type="radio" name="target" value="infra"> <i class="ti ti-hierarchy-2"></i> Anlage</label>
+      </div>
+      <div data-target="record">
+        <input type="hidden" name="ref" id="bk-ref" value="{{.RefValue}}">
+        <div class="bk-picked" id="bk-picked" {{if not .RefValue}}hidden{{end}}><i class="ti ti-circle-check" style="color:var(--green)"></i> <span id="bk-picked-label">{{.RefLabel}}</span> <button type="button" class="btn btn-small" onclick="bkPick('','')">ändern</button></div>
+        <div id="bk-search" {{if .RefValue}}hidden{{end}}>
+          <input class="form-input" id="bk-q" placeholder="Störung, Ticket, Aufgabe oder Wartung suchen …" autocomplete="off">
+          <div class="bk-results" id="bk-results"><div class="rec-sub">Lade offene Vorgänge …</div></div>
+        </div>
+      </div>
+      <div data-target="infra" hidden>
+        {{template "infra-tree-picker" (dict "TargetID" "bk-infra" "SelectedLabelID" "bk-infra-label" "Label" "Anlage aus dem Infrastruktur-Baum" "Value" $p.InfraID "SelectedLabel" $p.InfraName)}}
+      </div>
+    </div>
+
+    <!-- Einbuchung -->
+    <div data-show="in" class="bk-sec">
+      <div class="form-group"><label class="form-label">Referenz</label><input name="reference" class="form-input" maxlength="200" placeholder="z. B. Lieferschein- oder Bestellnummer"></div>
+      {{with .Kanban}}{{if .Ordered}}<p class="rec-sub"><i class="ti ti-layout-kanban"></i> {{.Ordered}} Kanban-Karte(n) bestellt – je {{.Q .CardQty}} {{$p.Unit}} eingebucht wird eine Karte wieder voll.</p>{{end}}{{end}}
+    </div>
+
+    <!-- Sonstiges -->
+    <div data-show="other" class="bk-sec">
+      <div class="bk-seg">
+        <label><input type="radio" name="direction" value="out" checked> <i class="ti ti-upload"></i> Abgang</label>
+        <label><input type="radio" name="direction" value="in"> <i class="ti ti-download"></i> Zugang</label>
+      </div>
+      <div class="rec-form"><div class="cols">
+        <div class="form-group"><label class="form-label">Grund <span style="color:var(--red)">*</span></label>
+          <select name="reason" class="form-input" data-for="other"><option value="">– auswählen –</option>{{range .OtherReasons}}<option>{{.}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">oder eigener Grund</label><input name="reason_text" class="form-input" maxlength="120" data-for="other"></div>
+      </div></div>
+    </div>
+
+    <!-- Korrektur -->
+    <div data-show="correct" class="bk-sec">
+      <p class="rec-sub" style="margin:0 0 6px">Trage den <b>gezählten Bestand</b> am Lagerplatz ein. PDH bucht die Differenz als Korrektur.{{if .Stock}} Aktuell: {{range $i, $s := .Stock}}{{if $i}}, {{end}}{{$s.Path}} {{$s.Qty}}{{end}}.{{end}}</p>
+      <div class="rec-form"><div class="cols">
+        <div class="form-group"><label class="form-label">Grund <span style="color:var(--red)">*</span></label>
+          <select name="reason" class="form-input" data-for="correct"><option value="">– auswählen –</option>{{range .CorrectReasons}}<option>{{.}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">oder eigener Grund</label><input name="reason_text" class="form-input" maxlength="120" data-for="correct"></div>
+      </div></div>
+    </div>
+
+    <div class="form-group"><label class="form-label">Notiz</label><input name="notes" class="form-input" maxlength="1000"></div>
+    <button class="btn btn-primary bk-go" type="submit"><i class="ti ti-check"></i> <span id="bk-go-label">Buchen</span></button>
+  </form>
+  {{else}}
+  <div class="rec-msg err"><i class="ti ti-lock"></i> Du darfst dieses Teil ansehen, aber nicht buchen (Recht „Ersatzteile ein-/ausbuchen und reservieren“).</div>
+  {{end}}
+
+  <div class="rec-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-building-warehouse"></i> Bestand je Lagerplatz</span></div>
+      {{range .Stock}}<div class="rec-row"><div class="grow">{{.Path}}</div><b>{{.Qty}} {{$p.Unit}}</b></div>
+      {{else}}<div class="rec-sub">Kein Bestand an einem Lagerplatz</div>{{end}}
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title"><span><i class="ti ti-bookmark"></i> Reservierungen</span></div>
+      {{range .Reservations}}<div class="rec-row"><div class="grow"><a href="{{.RefURL}}" style="color:var(--accent)">{{.RefLabel}}</a><div class="rec-sub">{{.Path}} · {{.Date}} · {{.User}}</div></div><b>{{.Qty}}</b>
+        {{if $.CanBook}}{{if eq .Kind "infrastructure"}}<button type="button" class="btn btn-small" onclick="pdhConsumeReservation('{{.Kind}}','{{.RefID}}','{{.ID}}')" title="Als verbraucht buchen"><i class="ti ti-check"></i></button>{{end}}
+        <button type="button" class="btn btn-small" onclick="pdhReturnReservation('{{.Kind}}','{{.RefID}}','{{.ID}}',{{.QtyRaw}})" title="Zurückbuchen"><i class="ti ti-arrow-back-up"></i></button>{{end}}</div>
+      {{else}}<div class="rec-sub">Keine offenen Reservierungen</div>{{end}}
+    </div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-title"><span><i class="ti ti-history"></i> Letzte Buchungen</span></div>
+    {{range .Moves}}<div class="rec-row"><div class="grow"><span class="badge {{if eq .TypeKey "in"}}b-green{{else if eq .TypeKey "out"}}b-red{{else if eq .TypeKey "reserve"}}b-amber{{else}}b-gray{{end}}">{{.TypeLabel}}</span> <b>{{.Qty}}</b> · {{.Path}}
+      <div class="rec-sub">{{.Date}} · {{.User}}{{if .RecordLabel}} · {{.RecordLabel}}{{else if .Reference}} · {{.Reference}}{{end}}</div></div></div>
+    {{else}}<div class="rec-sub">Noch keine Buchungen</div>{{end}}
+  </div>
+</div>
+<style>
+.bk-wrap{max-width:860px;margin:0 auto}
+.bk-head{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px}
+.bk-img{width:110px;height:110px;object-fit:contain;border-radius:12px;background:#fff;border:1px solid var(--border);flex-shrink:0}
+.bk-noimg{display:flex;align-items:center;justify-content:center;background:var(--bg3);color:var(--muted);font-size:40px}
+.bk-t h1{font-size:20px;margin:0 0 2px}
+.bk-desc{white-space:pre-line;font-size:13px}
+.bk-acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:6px}
+.bk-act input{position:absolute;opacity:0;pointer-events:none}
+.bk-act span{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-weight:600;font-size:13px;background:var(--bg3)}
+.bk-act span i{font-size:22px}
+.bk-act input:checked + span{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
+.bk-act input:focus-visible + span{outline:2px solid var(--accent)}
+.bk-hint{margin:0 0 10px}
+.bk-sec{margin-bottom:10px}
+.bk-seg{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.bk-seg label{display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px}
+.bk-seg label:has(input:checked){border-color:var(--accent);color:var(--accent)}
+.bk-results{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px}
+.bk-hit{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-bottom:1px solid var(--border);background:transparent;color:inherit;cursor:pointer;font:inherit}
+.bk-hit:hover,.bk-hit:focus{background:var(--bg3)}
+.bk-hit small{display:block;color:var(--muted);font-size:11px}
+.bk-picked{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--green);border-radius:8px;font-size:13px}
+.bk-qty{font-size:18px;font-weight:600}
+.bk-go{width:100%;justify-content:center;padding:12px;font-size:15px}
+@media (max-width:600px){.bk-img{width:80px;height:80px}.bk-t h1{font-size:17px}}
+</style>
+<script>
+(function(){
+  const form = document.getElementById('bk-form');
+  if(!form) return;
+  const HINTS = { {{range .Actions}}{{.Key}}: {{.Hint}}, {{end}} };
+  const LABELS = {in: 'Einbuchen', out: 'Ausbuchen', reserve: 'Reservieren', other: 'Sonstiges buchen', correct: 'Korrektur buchen'};
+  const unit = {{$p.Unit}};
+  function act(){ const c = form.querySelector('input[name=action]:checked'); return c ? c.value : ''; }
+  function target(){ const c = form.querySelector('input[name=target]:checked'); return c ? c.value : 'record'; }
+  function update(){
+    const a = act();
+    form.querySelectorAll('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(' ').includes(a); });
+    // nur die Felder der gewählten Art senden (Grund gibt es bei Sonstiges und Korrektur)
+    form.querySelectorAll('[data-for]').forEach(el => { el.disabled = el.dataset.for !== a; });
+    form.querySelectorAll('[data-target]').forEach(el => { el.hidden = el.dataset.target !== target(); });
+    document.getElementById('bk-hint').textContent = HINTS[a] || '';
+    document.getElementById('bk-go-label').textContent = LABELS[a] || 'Buchen';
+    document.getElementById('bk-qty-label').textContent = (a === 'correct' ? 'Gezählter Bestand am Lagerplatz' : 'Menge') + ' (' + unit + ')';
+  }
+  form.addEventListener('change', e => { if(e.target.name === 'action' || e.target.name === 'target') update(); });
+  form.addEventListener('submit', e => {
+    const a = act();
+    if((a === 'out' || a === 'reserve')){
+      if(target() === 'record' && !document.getElementById('bk-ref').value){ e.preventDefault(); alert('Bitte den Vorgang auswählen – oder „Anlage“ wählen.'); return; }
+      if(target() === 'infra' && !document.getElementById('bk-infra').value){ e.preventDefault(); alert('Bitte die Anlage im Infrastruktur-Baum auswählen.'); return; }
+    }
+    if(a === 'other' || a === 'correct'){
+      const sel = form.querySelector('select[data-for="' + a + '"]'), txt = form.querySelector('input[data-for="' + a + '"]');
+      if(!sel.value && !txt.value.trim()){ e.preventDefault(); alert('Bitte einen Grund angeben.'); return; }
+    }
+  });
+  // Vorgang suchen
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const box = document.getElementById('bk-results'), q = document.getElementById('bk-q');
+  let timer, seq = 0;
+  async function search(){
+    const my = ++seq;
+    try{
+      const res = await fetch('/inventory/booking/refs?q=' + encodeURIComponent(q.value.trim()), {credentials: 'same-origin'});
+      const d = await res.json();
+      if(my !== seq) return;
+      if(!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+      const list = d.results || [];
+      box.innerHTML = list.length ? list.map(x => '<button type="button" class="bk-hit" data-v="' + esc(x.value) + '" data-l="' + esc(x.label) + '">' + esc(x.label) + '<small>' + esc(x.sub) + '</small></button>').join('')
+        : '<div class="rec-sub" style="padding:8px">Kein offener Vorgang gefunden.</div>';
+    }catch(err){ box.innerHTML = '<div class="rec-sub" style="padding:8px;color:var(--red)">' + esc(err.message) + '</div>'; }
+  }
+  window.bkPick = function(v, l){
+    document.getElementById('bk-ref').value = v;
+    document.getElementById('bk-picked-label').textContent = l;
+    document.getElementById('bk-picked').hidden = !v;
+    document.getElementById('bk-search').hidden = !!v;
+    if(!v){ q.focus(); search(); }
+  };
+  box.addEventListener('click', e => { const b = e.target.closest('.bk-hit'); if(b) bkPick(b.dataset.v, b.dataset.l); });
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
+  update();
+  if(!document.getElementById('bk-ref').value) search();
+})();
+</script>
+{{end}}

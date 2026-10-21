@@ -28,13 +28,16 @@ type reservationKind struct {
 	label  string
 	url    string
 	src    string // Tabelle des Vorgangs
+	title  string // Titelspalte in src
 }
 
 var reservationKinds = map[string]reservationKind{
-	"fault":            {"fault_pending_parts", "fault_id", "Störung", "/faults/", "faults"},
-	"ticket":           {"ticket_pending_parts", "ticket_id", "Ticket", "/tickets/", "tickets"},
-	"task":             {"task_pending_parts", "task_id", "Aufgabe", "/tasks/", "tasks"},
-	"maintenance_task": {"maintenance_task_pending_parts", "task_id", "Wartung", "/maintenance/tasks/", "maintenance_tasks"},
+	"fault":            {"fault_pending_parts", "fault_id", "Störung", "/faults/", "faults", "title"},
+	"ticket":           {"ticket_pending_parts", "ticket_id", "Ticket", "/tickets/", "tickets", "title"},
+	"task":             {"task_pending_parts", "task_id", "Aufgabe", "/tasks/", "tasks", "title"},
+	"maintenance_task": {"maintenance_task_pending_parts", "task_id", "Wartung", "/maintenance/tasks/", "maintenance_tasks", "title"},
+	// Reservierung direkt auf eine Anlage (Buchungserfassung per Etiketten-QR, Migration 132)
+	"infrastructure": {"infrastructure_pending_parts", "infrastructure_id", "Anlage", "/infrastructure/", "infrastructure", "name"},
 }
 
 func kindOf(kind string) (reservationKind, error) {
@@ -116,6 +119,8 @@ func (s *Service) Reserve(ctx context.Context, kind, refID, partID, storageNodeI
 		m.TaskID = refID
 	case "maintenance_task":
 		m.MaintenanceTaskID = refID
+	case "infrastructure":
+		m.InfrastructureID = refID
 	}
 	if err := bookTx(ctx, tx, m); err != nil {
 		return "", err
@@ -204,11 +209,42 @@ func (s *Service) ConsumeReservations(ctx context.Context, kind, refID string) e
 	return tx.Commit(ctx)
 }
 
+// ConsumeReservation: eine einzelne Reservierung als verbraucht buchen
+// (z. B. Anlagen-Reservierung, die keinen Vorgangsabschluss hat). Wie
+// ConsumeReservations, nur für einen Eintrag.
+func (s *Service) ConsumeReservation(ctx context.Context, kind, refID, id string) error {
+	k, err := kindOf(kind)
+	if err != nil {
+		return err
+	}
+	tx, err := s.repo.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `UPDATE `+k.table+` SET reserved = false WHERE id = $1::uuid AND `+k.refCol+` = $2::uuid AND reserved`, id, refID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return errors.New("reservierung nicht gefunden")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE stock_movements SET type = CASE type WHEN 'reserve' THEN 'out'::stock_movement_type ELSE 'in'::stock_movement_type END,
+			notes = CASE WHEN COALESCE(notes,'') = '' THEN 'aus Reservierung' ELSE notes || ' · aus Reservierung' END
+		WHERE reservation_id = $1::uuid AND type IN ('reserve', 'unreserve')`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM `+k.table+` WHERE id = $1::uuid`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // Reservations: aktive Reservierungen eines Teils (partID leer: alle).
 func (s *Service) Reservations(ctx context.Context, partID string) ([]*Reservation, error) {
 	var parts []string
 	for kind, k := range reservationKinds {
-		parts = append(parts, `SELECT rv.id::text, '`+kind+`', rv.ref_id::text, COALESCE(x.title,''), rv.part_id::text,
+		parts = append(parts, `SELECT rv.id::text, '`+kind+`', rv.ref_id::text, COALESCE(x.`+k.title+`::text,''), rv.part_id::text,
 			rv.storage_node_id::text, COALESCE(sn.name,''), rv.qty::float8, COALESCE(u.first_name || ' ' || u.last_name, ''), rv.created_at
 			FROM spare_part_reservations rv
 			JOIN `+k.src+` x ON x.id = rv.ref_id

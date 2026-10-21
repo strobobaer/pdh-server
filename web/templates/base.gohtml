@@ -2420,6 +2420,17 @@ async function pdhReturnReservation(kind, ref, id, max, reload){
     if(typeof reload === 'function') reload(); else location.reload();
   }catch(e){ alert({{t "Fehler"}} + ': ' + e.message); }
 }
+// Reservierung als verbraucht buchen (Anlagen-Reservierungen, siehe part_booking.go).
+async function pdhConsumeReservation(kind, ref, id){
+  if(!confirm({{t "Reservierte Menge als verbraucht buchen?"}})) return;
+  try{
+    const res = await fetch('/reservations/' + encodeURIComponent(kind) + '/' + encodeURIComponent(ref) + '/' + encodeURIComponent(id) + '/consume',
+      {method: 'POST', credentials: 'same-origin'});
+    const j = await res.json();
+    if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
+    location.reload();
+  }catch(e){ alert({{t "Fehler"}} + ': ' + e.message); }
+}
 // Kennzeichnung + Rueckbuchen-Knopf fuer eine vorgemerkte Position (p aus .../pending-parts)
 function pdhReservedTag(p, kind, ref, reloadName){
   if(!p || !p.reserved) return '';

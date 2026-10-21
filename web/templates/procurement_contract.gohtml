@@ -1,0 +1,104 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{$c := .Contract}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="/procurement?tab=contracts" title="Rahmenverträge"><i class="ti ti-arrow-left"></i></a>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-file-certificate" style="font-size:26px"></i></div>
+  <div class="t">
+    <h1>{{if .IsNew}}Neuer Rahmenvertrag{{else}}Rahmenvertrag {{$c.No}}{{end}}</h1>
+    {{if not .IsNew}}<div class="sub">{{$c.SupplierName}}{{if $c.Title}} · {{$c.Title}}{{end}}</div>{{end}}
+  </div>
+  {{if not .IsNew}}<span class="badge {{$c.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$c.StatusLabel}}</span>{{end}}
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+{{if not .IsNew}}
+<div class="kpis">
+  <div class="kpi"><div class="v">{{$c.Items}}</div><div class="l">Positionen</div></div>
+  <div class="kpi"><div class="v" style="font-size:18px">{{$c.CalledValue}}</div><div class="l">abgerufen{{if $c.TotalValue}} von {{$c.TotalValue}}{{end}}</div></div>
+  {{if $c.TotalValue}}<div class="kpi"><div class="v" style="color:{{if ge $c.UsedPct 100}}var(--red){{else if ge $c.UsedPct 80}}var(--amber){{else}}var(--green){{end}}">{{$c.UsedPct}} %</div><div class="l">ausgeschöpft</div></div>{{end}}
+  <div class="kpi"><div class="v" style="font-size:16px">{{if $c.ValidUntil}}{{$c.ValidUntil}}{{else}}offen{{end}}</div><div class="l">gültig bis</div></div>
+</div>
+{{end}}
+
+{{if .CanEdit}}
+<form class="card" method="post" action="/procurement/contracts/{{if .IsNew}}new{{else}}{{$c.ID}}{{end}}">
+  <div class="card-title"><span><i class="ti ti-edit"></i> Vertragsdaten</span></div>
+  <div class="rec-form"><div class="cols">
+    <div class="form-group"><label class="form-label">Vertragsnummer *</label><input name="contract_no" class="form-input" maxlength="60" required value="{{$c.No}}"></div>
+    <div class="form-group"><label class="form-label">Bezeichnung</label><input name="title" class="form-input" maxlength="200" value="{{$c.Title}}" placeholder="z. B. Normteile 2026"></div>
+    <div class="form-group"><label class="form-label">Lieferant *</label>
+      <select name="supplier_id" class="form-input" required><option value="">– auswählen –</option>{{range .Suppliers}}<option value="{{.Value}}" {{if eq .Value $c.SupplierID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+  </div></div>
+  <div class="rec-form"><div class="cols">
+    <div class="form-group"><label class="form-label">Gültig ab</label><input type="date" name="valid_from" class="form-input" value="{{$c.FromInput}}"></div>
+    <div class="form-group"><label class="form-label">Gültig bis</label><input type="date" name="valid_until" class="form-input" value="{{$c.UntilInput}}"></div>
+    <div class="form-group"><label class="form-label">Vertragsvolumen (€)</label><input name="total_value" class="form-input" inputmode="decimal" value="{{if $c.TotalRaw}}{{$c.TotalRaw}}{{end}}" placeholder="leer = ohne Obergrenze"></div>
+  </div></div>
+  <div class="form-group"><label class="form-label">Notizen</label><textarea name="notes" class="form-input" rows="3" maxlength="4000">{{$c.Notes}}</textarea></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="active" value="1" {{if $c.Active}}checked{{end}}> Vertrag aktiv</label>
+    <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> {{if .IsNew}}Anlegen{{else}}Speichern{{end}}</button>
+  </div>
+</form>
+{{else if not .IsNew}}
+<div class="card">
+  <div class="rec-f"><div class="rec-l">Lieferant</div><div class="rec-v">{{$c.SupplierName}}</div></div>
+  <div class="rec-f"><div class="rec-l">Gültig</div><div class="rec-v">{{if $c.ValidFrom}}{{$c.ValidFrom}}{{else}}–{{end}} bis {{if $c.ValidUntil}}{{$c.ValidUntil}}{{else}}offen{{end}}</div></div>
+  {{if $c.Notes}}<div class="rec-f"><div class="rec-l">Notizen</div><div class="rec-v" style="white-space:pre-line">{{$c.Notes}}</div></div>{{end}}
+</div>
+{{end}}
+
+{{if not .IsNew}}
+<div class="card" style="padding:0;overflow-x:auto">
+  <table>
+    <thead><tr><th>Ersatzteil</th><th>Art.-Nr. Lieferant</th><th style="text-align:right">Preis</th><th style="text-align:right">Rahmenmenge</th><th style="text-align:right">abgerufen</th><th></th></tr></thead>
+    <tbody>
+    {{range .Items}}
+    <tr>
+      <td><a href="/inventory/{{.PartID}}" style="color:var(--accent)">{{.PartName}}</a> {{if .Kanban}}<span class="badge b-blue" title="Kanban bestellt über diesen Vertrag"><i class="ti ti-layout-kanban"></i></span>{{end}}<div class="rec-sub" style="font-family:monospace">{{.PartNumber}}</div></td>
+      <td style="font-family:monospace;font-size:12px">{{.SupplierPartNo}}</td>
+      <td style="text-align:right">{{.E .Price}}</td>
+      <td style="text-align:right">{{if .ContractQty}}{{.Q .ContractQty}} {{.Unit}}{{else}}offen{{end}}</td>
+      <td style="text-align:right">{{.Q .CalledQty}} {{.Unit}}{{if .ContractQty}}<div class="rec-sub" {{if ge .UsedPct 100}}style="color:var(--red)"{{end}}>{{.UsedPct}} %</div>{{end}}</td>
+      <td style="white-space:nowrap">{{if $.CanEdit}}
+        <button type="button" class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Bearbeiten" onclick="ctEdit({{.PartNumber}},{{.SupplierPartNo}},{{.In .Price}},{{.In .ContractQty}},{{.In .CalledQty}})"><i class="ti ti-edit" style="font-size:14px"></i></button>
+        <form method="post" action="/procurement/contracts/{{$c.ID}}/items/{{.ID}}/delete" style="display:inline" onsubmit="return confirm('Position entfernen?')"><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Entfernen"><i class="ti ti-x" style="font-size:14px"></i></button></form>{{end}}</td>
+    </tr>
+    {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Noch keine Position</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{if .CanEdit}}
+<form class="card" method="post" action="/procurement/contracts/{{$c.ID}}/items" id="ct-item">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Position hinzufügen oder ändern</span></div>
+  <div class="rec-form"><div class="cols">
+    <div class="form-group"><label class="form-label">Teilenummer *</label><input name="part_number" class="form-input" list="ct-parts" required autocomplete="off">
+      <datalist id="ct-parts">{{range .Parts}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</datalist></div>
+    <div class="form-group"><label class="form-label">Art.-Nr. Lieferant</label><input name="supplier_part_no" class="form-input" maxlength="100"></div>
+    <div class="form-group"><label class="form-label">Vertragspreis (€)</label><input name="price" class="form-input" inputmode="decimal"></div>
+  </div></div>
+  <div class="rec-form"><div class="cols">
+    <div class="form-group"><label class="form-label">Rahmenmenge</label><input name="contract_qty" class="form-input" inputmode="decimal" placeholder="leer = ohne Obergrenze"></div>
+    <div class="form-group"><label class="form-label">abgerufen (Korrektur)</label><input name="called_qty" class="form-input" inputmode="decimal" placeholder="leer = unverändert"><div class="help">Kanban-Bestellungen zählen automatisch hoch</div></div>
+  </div></div>
+  <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Position speichern</button></div>
+</form>
+<form method="post" action="/procurement/contracts/{{$c.ID}}/delete" onsubmit="return confirm('Rahmenvertrag mit allen Positionen löschen? Kanban-Regelkreise bestellen danach ohne Vertrag.')" style="display:flex;justify-content:flex-end">
+  <button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-trash"></i> Vertrag löschen</button>
+</form>
+<script>
+function ctEdit(no, sno, price, qty, called){
+  const f = document.getElementById('ct-item');
+  f.part_number.value = no; f.supplier_part_no.value = sno;
+  f.price.value = String(price).replace('.', ','); f.contract_qty.value = qty ? String(qty).replace('.', ',') : '';
+  f.called_qty.value = String(called).replace('.', ',');
+  f.scrollIntoView({behavior: 'smooth'}); f.price.focus();
+}
+</script>
+{{end}}
+{{end}}
+{{end}}

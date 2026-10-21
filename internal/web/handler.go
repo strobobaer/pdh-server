@@ -69,6 +69,7 @@ type BaseData struct {
 	Brand                  Branding   // Name und Logos (Erscheinungsbild)
 	CanEditInfra           bool       // Infrastruktur anlegen/bearbeiten (infrastructure.edit)
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
+	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
 	CanInfraObligations    bool       // Prüfpflichten pflegen/erledigen (infrastructure.obligations)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
@@ -364,6 +365,7 @@ func (h *Handler) Routes() chi.Router {
 	// Lieferschein scannen / Bauteil erkennen (part_scan.go, part_scan_web.go)
 	r.Get("/inventory/scan", h.InventoryScanPage)
 	r.Get("/inventory/lookup", h.InventoryLookupWeb) // Barcode → Teil
+	r.Get("/inventory/booking/refs", h.BookingRefsWeb) // offene Vorgänge für Ausbuchung/Reservierung
 	r.Post("/inventory/scan/{kind:delivery|part}", h.InventoryScanUploadWeb)
 	r.Get("/inventory/scan/{id}", h.InventoryScanDetail)
 	r.Post("/inventory/scan/{id}/apply", h.InventoryScanApplyWeb)
@@ -388,6 +390,20 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/inventory/{id}/documents/{att}/refresh", h.PartDocRefreshWeb)
 	r.Post("/inventory/{id}/master", h.PartMasterSaveWeb)
 	r.Post("/inventory/{id}/book", h.PartBookWeb)
+	r.Get("/inventory/{id}/booking", h.PartBookingPage) // Buchungserfassung (Ziel des Etiketten-QR)
+	r.Post("/inventory/{id}/booking", h.PartBookingSaveWeb)
+	r.Post("/inventory/{id}/kanban", h.PartKanbanSaveWeb)
+	// Beschaffung & Einkauf: Kanban, Bestellvorschlag, Rahmenverträge (kanban.go, procurement.go)
+	r.Get("/procurement", h.ProcurementPage)
+	r.Post("/procurement/order", h.ProcurementOrderWeb)
+	r.Post("/procurement/cards/{id}/{action}", h.KanbanCardActionWeb)
+	r.Get("/procurement/kanban/{id}/print", h.KanbanPrintPage)
+	r.Get("/procurement/contracts/{id}", h.ContractPage)
+	r.Post("/procurement/contracts/{id}", h.ContractSaveWeb)
+	r.Post("/procurement/contracts/{id}/delete", h.ContractDeleteWeb)
+	r.Post("/procurement/contracts/{id}/items", h.ContractItemSaveWeb)
+	r.Post("/procurement/contracts/{id}/items/{item}/delete", h.ContractItemDeleteWeb)
+	r.Get("/k/{id}", h.KanbanCardPage) // Ziel des QR-Codes auf der Kanban-Karte
 	r.Post("/inventory/book-web", h.InventoryBookWeb)
 	r.Get("/tasks", h.TasksPage)
 	r.Get("/tasks/{id}", h.TaskDetail)
@@ -593,6 +609,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/translate/live", h.LiveTranslateWeb)
 	r.Post("/translate/live/toggle", h.LiveTranslateToggleWeb)
 	r.Post("/reservations/{kind}/{ref}/{id}/return", h.ReservationReturnWeb)
+	r.Post("/reservations/{kind}/{ref}/{id}/consume", h.ReservationConsumeWeb)
 	r.Get("/create/options", h.CreateOptionsWeb)
 	r.Get("/create/similar", h.CreateSimilarWeb)
 	r.Post("/suggest/accept", h.SuggestAcceptWeb)
@@ -992,6 +1009,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		Brand:                  brand,
 		CanEditInfra:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), "infrastructure.edit"),
 		CanViewInfra:           h.canViewInfra(r),
+		CanProcurement:         h.canProcurement(r),
 		CanInfraObligations:    h.canInfraObligations(r),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
@@ -2637,6 +2655,18 @@ func (h *Handler) TicketStartTime(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) InventoryBookWeb(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+	typ := inventory.MovementType(r.FormValue("type"))
+	allowed := h.canBookParts(r)
+	if typ == inventory.MovementCorrect || typ == inventory.MovementInventory {
+		allowed = h.canCorrectParts(r) || h.canEditParts(r)
+	}
+	if !allowed {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `<div style="color:var(--red)">Keine Berechtigung zum Buchen</div>`)
+		return
+	}
+	defer h.kanbanSync(context.WithoutCancel(r.Context()), r.FormValue("part_id"))
 	u := getUser(r)
 	qty, _ := strconv.ParseFloat(r.FormValue("qty"), 64)
 	in := &inventory.BookMovementInput{

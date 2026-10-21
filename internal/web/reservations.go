@@ -19,6 +19,7 @@ var reservationKinds = map[string][2]string{
 	"task":             {"task", "tasks.edit"},
 	"maintenance":      {"maintenance_task", "maintenance.edit"},
 	"maintenance_task": {"maintenance_task", "maintenance.edit"},
+	"infrastructure":   {"infrastructure", "inventory.book"}, // Reservierung auf eine Anlage (Buchungserfassung)
 }
 
 // ReservationReturnWeb: POST /reservations/{kind}/{ref}/{id}/return

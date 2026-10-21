@@ -300,6 +300,13 @@ type PartDetailData struct {
 	SupplierOptions      []partnerOption
 	StorageOptions       []partnerOption
 	History              []HistoryView
+	// Kanban (Reiter „Kanban“, migrations/132)
+	Kanban         *kanbanLoopView
+	CanKanban      bool // Regelkreis einrichten
+	CanKanbanView  bool // Reiter sehen
+	CanCardActions bool
+	CanBook        bool
+	Contracts      []contractView
 }
 
 var movementTypeLabels = map[string]string{
@@ -416,35 +423,7 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if rows, err := h.db.Query(ctx, `
-		SELECT sm.created_at, sm.type::text, sm.qty::float8, sm.qty_before::float8, sm.qty_after::float8,
-		       COALESCE(sm.storage_node_id::text, ''), COALESCE(TRIM(u.first_name || ' ' || u.last_name), ''),
-		       COALESCE(sm.reference, ''), COALESCE(sm.notes, ''),
-		       CASE WHEN f.id IS NOT NULL THEN '/faults/' || f.id WHEN t.id IS NOT NULL THEN '/tickets/' || t.id
-		            WHEN ta.id IS NOT NULL THEN '/tasks/' || ta.id WHEN m.id IS NOT NULL THEN '/maintenance/tasks/' || m.id ELSE '' END,
-		       COALESCE('Störung: ' || f.title, 'Ticket: ' || t.title, 'Aufgabe: ' || ta.title, 'Wartung: ' || m.title, '')
-		FROM stock_movements sm
-		LEFT JOIN users u ON u.id = sm.created_by
-		LEFT JOIN faults f ON f.id = sm.fault_id
-		LEFT JOIN tickets t ON t.id = sm.ticket_id
-		LEFT JOIN tasks ta ON ta.id = sm.task_id
-		LEFT JOIN maintenance_tasks m ON m.id = sm.maintenance_task_id
-		WHERE sm.part_id = $1::uuid ORDER BY sm.created_at DESC LIMIT 150`, id); err == nil {
-		for rows.Next() {
-			var mv PartMovementRow
-			var at time.Time
-			var qty, before, after float64
-			var node string
-			if rows.Scan(&at, &mv.TypeKey, &qty, &before, &after, &node, &mv.User, &mv.Reference, &mv.Notes, &mv.RecordURL, &mv.RecordLabel) != nil {
-				continue
-			}
-			mv.Date = at.Local().Format("02.01.2006 15:04")
-			mv.TypeLabel = movementTypeLabels[mv.TypeKey]
-			mv.Qty, mv.Before, mv.After, mv.Path = formatQty(qty), formatQty(before), formatQty(after), paths[node]
-			data.Movements = append(data.Movements, mv)
-		}
-		rows.Close()
-	}
+	data.Movements = h.partMovements(ctx, id, paths, 150)
 
 	if rows, err := h.db.Query(ctx, `
 		SELECT label, id, title, SUM(net)::float8, MAX(at) FROM (
@@ -457,6 +436,9 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 			FROM stock_movements sm JOIN tasks ta ON ta.id = sm.task_id WHERE sm.part_id = $1::uuid AND sm.type IN ('out', 'in')
 			UNION ALL SELECT 'Wartung', '/maintenance/tasks/' || m.id, m.title, CASE WHEN sm.type = 'out' THEN sm.qty ELSE -sm.qty END, sm.created_at
 			FROM stock_movements sm JOIN maintenance_tasks m ON m.id = sm.maintenance_task_id WHERE sm.part_id = $1::uuid AND sm.type IN ('out', 'in')
+			UNION ALL SELECT 'Anlage', '/infrastructure/' || i.id, i.name, CASE WHEN sm.type = 'out' THEN sm.qty ELSE -sm.qty END, sm.created_at
+			FROM stock_movements sm JOIN infrastructure i ON i.id = sm.infrastructure_id
+			WHERE sm.part_id = $1::uuid AND sm.type IN ('out', 'in') AND sm.fault_id IS NULL AND sm.ticket_id IS NULL AND sm.task_id IS NULL AND sm.maintenance_task_id IS NULL
 		) x GROUP BY label, id, title ORDER BY MAX(at) DESC LIMIT 200`, id); err == nil {
 		for rows.Next() {
 			var us PartUsageRow
@@ -485,6 +467,19 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 		data.StorageOptions = storageOpts
 	}
 	data.History = h.recordHistory(ctx, "spare_part", id)
+	data.CanBook = h.canBookParts(r) || h.canCorrectParts(r)
+	data.CanKanban = h.canKanbanSetup(r)
+	data.CanKanbanView = data.CanKanban || h.canProcurement(r)
+	data.CanCardActions = h.canBookParts(r) || h.canProcureOrder(r)
+	if data.CanKanbanView {
+		h.kanbanSync(ctx, id)
+		data.Kanban = h.kanbanLoop(ctx, id)
+		if data.CanKanban {
+			data.StorageOptions = storageOpts
+			data.SupplierOptions = h.supplierOptions(ctx)
+			data.Contracts = h.contractsList(ctx, "", true)
+		}
+	}
 	h.render(w, "inventory_detail", data)
 }
 
@@ -641,20 +636,33 @@ func (h *Handler) logPartChanges(ctx context.Context, r *http.Request, id string
 // PartBookWeb bucht eine Lagerbewegung direkt aus der Detailseite.
 func (h *Handler) PartBookWeb(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if !h.hasPerm(r, "inventory.edit") && !h.hasPerm(r, "inventory.view") {
+	typ := inventory.MovementType(r.FormValue("type"))
+	allowed := h.canBookParts(r)
+	if typ == inventory.MovementCorrect || typ == inventory.MovementInventory {
+		allowed = h.canCorrectParts(r) || h.canEditParts(r)
+	}
+	if !uuidInPathRe.MatchString(id) || !allowed {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
 	r.ParseForm()
 	qty, err := formFloat(r, "qty")
+	uid := getUser(r).ID
 	if err == nil {
 		_, err = h.inv.Book(r.Context(), &inventory.BookMovementInput{
-			PartID: id, Type: inventory.MovementType(r.FormValue("type")), Qty: qty,
+			PartID: id, Type: typ, Qty: qty, NoNegative: typ == inventory.MovementOut,
 			StorageNodeID: strings.TrimSpace(r.FormValue("storage_node_id")),
 			Reference:     strings.TrimSpace(r.FormValue("reference")), Notes: strings.TrimSpace(r.FormValue("notes")),
-		}, getUser(r).ID)
+		}, uid)
 	}
-	partRedirect(w, r, id, "stock", fmt.Sprintf("Buchung erfasst (%s)", movementTypeLabels[r.FormValue("type")]), triggerError(err))
+	msg := fmt.Sprintf("Buchung erfasst (%s)", movementTypeLabels[string(typ)])
+	if err == nil && typ == inventory.MovementIn {
+		if n := h.kanbanReceive(r.Context(), id, qty, uid); n > 0 {
+			msg += fmt.Sprintf(" – %d Kanban-Karte(n) wieder voll", n)
+		}
+	}
+	h.kanbanSync(r.Context(), id)
+	partRedirect(w, r, id, "stock", msg, triggerError(err))
 }
 
 // withTab haengt den aktiven Reiter an eine (ggf. schon parametrisierte) URL.

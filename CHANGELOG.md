@@ -10,9 +10,29 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.55.3] – 2026-10-21
+## [0.56.0] – 2026-10-21
+
+### Neu
+- Beschaffung & Einkauf (Material & Anlagen, auch über Core-Einstellungen): Kanban-Tafel, Bestellvorschlag aus leeren Kanban-Karten, offene Bestellungen mit Liefertermin und Rahmenverträge
+- Kanban je Ersatzteil zum Aktivieren (Reiter „Kanban“ im Ersatzteilstamm): Anzahl Karten, Menge je Karte, Lagerplatz, Lieferant und Rahmenvertrag; Karten werden bei sinkendem Bestand automatisch leer gemeldet und lassen sich mit QR-Code drucken
+- Kanban-Karte scannen: Behälter leer melden oder Wareneingang buchen direkt am Lagerplatz
+- Rahmenverträge mit Positionen, Vertragspreis und Rahmenmenge; Kanban-Bestellungen rufen die Menge ab, der Status warnt vor Ablauf und Ausschöpfung
+- Buchungserfassung je Ersatzteil mit Bild und Beschreibung – der QR-Code auf dem Lagerplatz-Etikett führt jetzt direkt dorthin: Einbuchung, Ausbuchung, Reservierung, Sonstiges und Korrektur
+- Ausbuchung und Reservierung fragen, welchem Vorgang (Störung, Ticket, Aufgabe, Wartung) oder welcher Anlage aus dem Infrastruktur-Baum die Teile zugeordnet werden
+- Eigene Rechte in Rollen & Rechte: „Ersatzteile ein-/ausbuchen und reservieren“, „Bestandskorrekturen und sonstige Buchungen“ sowie vier Rechte der Gruppe „Beschaffung“
+
+### Geändert
+- Teile mit Kanban stehen nicht mehr im täglichen Bestellvorschlag nach Mindestbestand – sie bestellt der Kanban-Kreislauf
+- Eine Ausbuchung über die Buchungserfassung oder den Teilestamm kann einen Lagerplatz nicht mehr ins Minus buchen
 
 ### Behoben
+- Ersatzteile → Scannen: Fehlermeldungen (z. B. „Position 3: Menge fehlt“, Upload zu groß) wurden nicht angezeigt
+- Ersatzteile → Scannen: Eine Erkennung, die das Zeitlimit überschritt oder durch einen Neustart abbrach, blieb für immer auf „läuft“ – sie wird jetzt mit Hinweis als Fehler beendet
+- Ersatzteile → Scannen: Ein Lieferschein ließ sich durch doppeltes Absenden zweimal buchen, aus einem Bauteil-Foto ließen sich mehrere Teile anlegen
+- Ersatzteile → Scannen: Ein abgelehnter Upload zeigte eine leere 404-Seite statt der Fehlermeldung; bestellte Mengen und Rückstände stehen mit Komma
+- Barcode-Suche erkennt die QR-Codes von PDH-Etiketten und Kanban-Karten
+- Zwei gleichzeitige Buchungen am selben Lagerplatz konnten sich gegenseitig überschreiben
+- Die Schnellbuchung im Lager prüfte keine Rechte
 - Formulare mit mehreren Aktionsknöpfen (z. B. „In Nextcloud einrichten“) schickten an eine falsche Adresse („/admin/[object HTMLButtonElement]“, 404) und taten scheinbar nichts – der PDH-Administrator in Nextcloud ließ sich so nicht anlegen
 - „scripts/repair-update-agent-token.sh“ trägt auch die fehlende Adresse des Update-Agenten wieder ein – ohne sie war das PDH „ohne Update-Agent“ und z. B. „In Nextcloud einrichten“ gesperrt
 - Der Hinweis „In der Einstellungsdatei stehen Werte, die noch nicht in der Datenbank sind“ nennt das Update-Agent-Token nicht mehr – es bleibt absichtlich in der Datei

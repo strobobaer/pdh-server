@@ -687,12 +687,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>PDH lädt das Dokument erneut von der Quelle. Hat der Anbieter eine <b>neue Fassung</b>, wird die alte Datei ersetzt und im Verlauf vermerkt. Sonst ändert sich nur das Datum bei „Stand“.</li>
     </ol></div>
   <p><b>Wie wird gesucht?</b> Ist unter Server-Einstellungen → Copilot ein Anthropic-Schlüssel hinterlegt, sucht <b>Claude</b> im Internet – zuerst beim Hersteller, dann bei seriösen Händlern. Sonst sucht PDH über DuckDuckGo. Angezeigt werden in beiden Fällen nur Adressen, hinter denen PDH wirklich ein PDF gefunden hat. Manche Anbieter geben Dokumente nur nach Anmeldung heraus – dann das PDF selbst herunterladen und über <b>Dokument</b> hochladen. Nutzungsrechte des Anbieters beachten. Suchen und übernehmen kann, wer Ersatzteile bearbeiten darf.</p>
-  <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So buchst du Ware</b>
+  <div class="hb-howto"><b><i class="ti ti-qrcode"></i> So buchst du per QR-Code am Lagerplatz</b>
     <ol class="hb-steps">
-      <li>Im Teil oben auf <b>Buchen</b> (oder in der Liste auf „Buchung“).</li>
-      <li>Buchungsart wählen: <b>Wareneingang</b>/<b>Warenausgang</b> (Menge wird zu-/abgebucht) oder <b>Korrektur</b>/<b>Inventur</b> (Menge ist der neue Bestand).</li>
-      <li>Menge und <b>Lagerplatz</b> angeben, optional Lieferschein-Nr. – Buchen.</li>
-    </ol></div>
+      <li>Den QR-Code auf dem Lagerplatz-Etikett mit dem Smartphone scannen – oder im Teil oben auf <b>Buchen</b>. Es öffnet sich die <b>Buchungserfassung</b> mit Bild, Beschreibung und Bestand. Der Lagerplatz des Etiketts ist schon gewählt.</li>
+      <li>Buchungsart antippen:
+        <b>Einbuchung</b> (Wareneingang),
+        <b>Ausbuchung</b> (Entnahme),
+        <b>Reservierung</b> (zurücklegen),
+        <b>Sonstiges</b> (Zugang oder Abgang mit Grund, z. B. Ausschuss, Rücksendung) oder
+        <b>Korrektur</b> (gezählten Bestand eintragen, PDH bucht die Differenz).</li>
+      <li>Bei <b>Ausbuchung</b> und <b>Reservierung</b> wählst du, wofür: einen offenen <b>Vorgang</b> (Störung, Ticket, Aufgabe, Wartung – deine eigenen stehen oben, tippen zum Suchen) oder eine <b>Anlage</b> aus dem Infrastruktur-Baum. Ohne Zuordnung bucht PDH nicht.</li>
+      <li>Menge eingeben – <b>Buchen</b>. Mehr als am Lagerplatz liegt, lässt sich nicht ausbuchen.</li>
+    </ol>
+    Eine Reservierung auf eine Anlage steht beim Teil unter <b>Reservierungen</b>: <b>Verbraucht</b> bucht sie als Entnahme, <b>Zurückbuchen</b> legt sie zurück. Etiketten, die vor dieser Version gedruckt wurden, öffnen noch das Teil – dort führt <b>Buchen</b> zur Erfassung.
+    Rechte: „Ersatzteile ein-/ausbuchen und reservieren“ für Einbuchung, Ausbuchung, Reservierung; „Bestandskorrekturen und sonstige Buchungen“ für Sonstiges und Korrektur.</div>
   <h3 id="reservation"><i class="ti ti-bookmark"></i> Ersatzteile reservieren</h3>
   <p>Teile für eine Störung, ein Ticket, eine Aufgabe oder eine Wartung werden <b>reserviert</b>: Die Menge wird sofort vom gewählten Lagerplatz <b>abgebucht</b>. So kann sie niemand anderes mehr verplanen. Der Bestand zeigt dann nur noch die freie Menge, die reservierte steht <b>in Klammern</b> daneben – z. B. <b>6 <span class="res-q">(4)</span></b> / 2 Stk: 6 frei, 4 reserviert, Mindestbestand 2. Das gilt in der Ersatzteilliste, beim Teil, je Lagerplatz und bei der Teilesuche im Abschluss-Assistenten.</p>
   <div class="hb-howto"><b><i class="ti ti-bookmark"></i> So reservierst du und buchst zurück</b>
@@ -725,7 +733,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-barcode"></i> So findest du ein Teil per Barcode</b>
     <ol class="hb-steps">
       <li><b>Ersatzteile</b> → <b>Barcode</b> und den Strichcode auf Teil oder Verpackung fotografieren.</li>
-      <li>Ist die Nummer eindeutig einem Teil zugeordnet – EAN, Teilenummer, Hersteller- oder Lieferanten-Artikelnummer –, öffnet sich das Teil direkt im Reiter <b>Lager &amp; Bewegungen</b> zum Buchen. Sonst zeigt die Liste alle Treffer.</li>
+      <li>Ist die Nummer eindeutig einem Teil zugeordnet – EAN, Teilenummer, Hersteller- oder Lieferanten-Artikelnummer –, öffnet sich das Teil direkt im Reiter <b>Lager &amp; Bewegungen</b> zum Buchen. Sonst zeigt die Liste alle Treffer. Ein QR-Code von einem PDH-Etikett oder einer Kanban-Karte öffnet direkt die Buchungserfassung bzw. die Karte.</li>
     </ol>
     Die EAN trägst du in den <b>Stammdaten</b> des Teils ein – auch per Barcode-Knopf neben dem Feld. PDH prüft die Prüfziffer. Beim Lieferschein- und Bauteil-Scan wird eine erkannte EAN bei neuen Teilen übernommen und bei vorhandenen ohne EAN ergänzt. Kann der Browser keine Barcodes lesen (z. B. Safari auf dem iPhone), fragt PDH nach der Nummer zum Eintippen.</div>
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
@@ -799,15 +807,37 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "printers") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="purchasing" data-title="Einkauf &amp; Bestellvorschlag" data-pages="">
-  <h2><i class="ti ti-shopping-cart"></i> Einkauf &amp; Bestellvorschlag</h2>
+<section class="hb-ch" id="purchasing" data-title="Beschaffung, Kanban &amp; Einkauf" data-pages="procurement">
+  <h2><i class="ti ti-shopping-cart"></i> Beschaffung, Kanban &amp; Einkauf</h2>
   {{template "hb-fig-purchase"}}
-  <p>Sinkt der Bestand eines Teils auf oder unter den Mindestbestand, erscheint es im <b>Bestellvorschlag</b> (Ersatzteile → Bestellvorschlag) – sortiert nach Einkäufer und Lieferant, mit Menge und Wert. Jeder Einkäufer bekommt ihn zusätzlich jeden Morgen per E-Mail.</p>
+  <p>Unter <b>Material &amp; Anlagen → Beschaffung &amp; Einkauf</b> (auch über Core-Einstellungen) findest du die <b>Kanban-Tafel</b>, den <b>Bestellvorschlag</b>, die offenen <b>Bestellungen</b> und die <b>Rahmenverträge</b>.</p>
+  <h3><i class="ti ti-layout-kanban"></i> Kanban</h3>
+  <p>Mit Kanban wird ein Teil über eine feste Zahl <b>Karten</b> mit fester Menge nachbestellt – z. B. 2 Karten à 50 Stück (Zwei-Behälter-Prinzip). Jede Karte ist <span class="badge b-green">voll</span>, <span class="badge b-red">leer – zu bestellen</span> oder <span class="badge b-amber">bestellt</span>.</p>
+  <div class="hb-howto"><b><i class="ti ti-toggle-right"></i> So aktivierst du Kanban für ein Teil</b>
+    <ol class="hb-steps">
+      <li>Ersatzteil öffnen → Reiter <b>Kanban</b>.</li>
+      <li><b>Anzahl Karten</b>, <b>Menge je Karte</b>, Lieferzeit und den <b>Kanban-Lagerplatz</b> (dort wird geliefert) eintragen. Lieferant und <b>Rahmenvertrag</b> wählen, falls vorhanden.</li>
+      <li><b>Kanban aktivieren</b>. PDH legt die Karten an – so viele voll, wie der Bestand hergibt.</li>
+      <li><b>Karten drucken</b> und je eine an jeden Behälter hängen.</li>
+    </ol>
+    Mit „automatisch leer melden“ meldet PDH volle Karten selbst leer, sobald der Bestand nicht mehr für sie reicht. Ohne diesen Haken scannt man die Karte am leeren Behälter und tippt <b>Karte leer melden</b>. <b>Abschalten</b> stoppt den Kreislauf, Karten und Einstellungen bleiben.</div>
+  <div class="hb-howto"><b><i class="ti ti-shopping-cart-check"></i> So bestellst du</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Bestellvorschlag</b>: Leere Karten stehen dort nach Lieferant – mit Menge, Vertragspreis und Wert. Mit <b>E-Mail</b> öffnet sich eine fertige Bestellung an den Lieferanten.</li>
+      <li>Positionen auswählen, <b>Bestellnummer</b> und ggf. Liefertermin eintragen – <b>Als bestellt melden</b>. Ohne Termin rechnet PDH mit der Lieferzeit.</li>
+      <li>Kommt die Ware: im Reiter <b>Bestellungen</b> auf <b>Geliefert</b>, die Kanban-Karte scannen oder die Ware ganz normal einbuchen. Die Karte ist wieder voll, die Menge am Kanban-Lagerplatz gebucht.</li>
+    </ol>
+    Überfällige Bestellungen sind rot markiert. Teile ohne Kanban stehen weiter unter „Unter Mindestbestand“ und im täglichen Bestellvorschlag per E-Mail – Kanban-Teile nicht, die bestellt der Kreislauf.</div>
+  <h3><i class="ti ti-file-certificate"></i> Rahmenverträge</h3>
+  <p>Reiter <b>Rahmenverträge</b> → <b>Neuer Rahmenvertrag</b>: Vertragsnummer, Lieferant, Laufzeit und ggf. Vertragsvolumen. Danach die <b>Positionen</b> mit Teilenummer, Vertragspreis und Rahmenmenge. Ein Kanban-Regelkreis mit Vertrag bestellt zum Vertragspreis und zählt die abgerufene Menge hoch. Der Status zeigt <b>läuft bald ab</b> (unter 31 Tagen), <b>abgelaufen</b> und <b>(fast) ausgeschöpft</b>.</p>
+  <h3><i class="ti ti-mail"></i> Täglicher Bestellvorschlag</h3>
+  <p>Sinkt der Bestand eines Teils ohne Kanban auf oder unter den Mindestbestand, erscheint es im <b>Bestellvorschlag</b> (Ersatzteile → Bestellvorschlag) – sortiert nach Einkäufer und Lieferant, mit Menge und Wert. Jeder Einkäufer bekommt ihn zusätzlich jeden Morgen per E-Mail.</p>
   <ul>
     <li>Den <b>Einkäufer</b> legst du im Teil fest (Reiter Lieferanten &amp; Einkauf).</li>
     <li>Die Menge ist die Nachbestellmenge, aufgerundet auf die Mindestabnahme des Lieferanten.</li>
     <li>Gesperrte Lieferanten werden übersprungen.</li>
   </ul>
+  <p>Rechte (Rollen &amp; Rechte, Gruppe „Beschaffung“): <b>ansehen</b>, <b>Kanban-Regelkreise einrichten</b>, <b>bestellen</b> und <b>Rahmenverträge pflegen</b> lassen sich je Rolle getrennt vergeben.</p>
   {{template "hb-shots" (dict "Ref" (index $s "purchasing") "Can" $can)}}
 </section>
 

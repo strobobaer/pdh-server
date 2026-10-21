@@ -597,7 +597,7 @@ func (h *Handler) PartLabelsPrintWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	base := h.publicBaseURL(r)
 	for i := range items {
-		items[i].URL = base + "/inventory/" + items[i].PartID
+		items[i].URL = partLabelURL(base, items[i])
 	}
 	h.printLabelItems(w, r, items)
 }

@@ -655,5 +655,9 @@
  "Auswertungen": "Raporlar",
  "Grafana & Statistik": "Grafana ve istatistik",
  "Kostenstellen": "Masraf merkezleri",
- "Statistik": "İstatistik"
+ "Statistik": "İstatistik",
+ "Beschaffung": "Tedarik",
+ "Beschaffung & Einkauf": "Tedarik ve satın alma",
+ "Rahmenvertrag": "Çerçeve sözleşme",
+ "Reservierte Menge als verbraucht buchen?": "Rezerve edilen miktar tüketildi olarak kaydedilsin mi?"
 }

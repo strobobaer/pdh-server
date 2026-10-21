@@ -655,5 +655,9 @@
  "Auswertungen": "Извештаи",
  "Grafana & Statistik": "Grafana и статистика",
  "Kostenstellen": "Центри на трошоци",
- "Statistik": "Статистика"
+ "Statistik": "Статистика",
+ "Beschaffung": "Набавка",
+ "Beschaffung & Einkauf": "Набавка и купување",
+ "Rahmenvertrag": "Рамковен договор",
+ "Reservierte Menge als verbraucht buchen?": "Да се книжи резервираната количина како потрошена?"
 }

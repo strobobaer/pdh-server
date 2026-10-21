@@ -347,6 +347,16 @@ func readScanFiles(scanID string, fhs []*multipart.FileHeader) ([]scanFile, []fa
 
 // runScan: Erkennung im Hintergrund, Ergebnis in inventory_scans.
 func (h *Handler) runScan(scanID, kind string, inputs []faults.VisionInput) {
+	// Ergebnis mit eigenem Kontext speichern: nach dem Zeitlimit der
+	// Erkennung schlug sonst auch das UPDATE fehl, der Scan blieb „läuft“.
+	db, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer dbCancel()
+	defer func() {
+		if p := recover(); p != nil {
+			componentLog("lager-scan").Error().Interface("panic", p).Str("scan", scanID).Msg("erkennung abgestürzt")
+			_, _ = h.db.Exec(db, `UPDATE inventory_scans SET status = 'error', error = 'Interner Fehler bei der Erkennung' WHERE id = $1::uuid`, scanID)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
 	prompt, schema := deliveryPrompt, deliverySchema
@@ -363,7 +373,11 @@ func (h *Handler) runScan(scanID, kind string, inputs []faults.VisionInput) {
 	}
 	if err != nil {
 		componentLog("lager-scan").Warn().Err(err).Str("scan", scanID).Str("art", kind).Msg("erkennung")
-		_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET status = 'error', error = $2 WHERE id = $1::uuid`, scanID, err.Error())
+		msg := err.Error()
+		if errors.Is(err, context.DeadlineExceeded) {
+			msg = fmt.Sprintf("Erkennung hat länger als %d Minuten gedauert – bitte mit weniger oder kleineren Seiten erneut scannen", int(scanTimeout.Minutes()))
+		}
+		_, _ = h.db.Exec(db, `UPDATE inventory_scans SET status = 'error', error = $2 WHERE id = $1::uuid`, scanID, msg)
 		return
 	}
 	var noteNo string
@@ -373,7 +387,10 @@ func (h *Handler) runScan(scanID, kind string, inputs []faults.VisionInput) {
 			noteNo = truncateRunes(d.DeliveryNoteNo, 90)
 		}
 	}
-	_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET status = 'done', result = $2::jsonb, note_no = $3 WHERE id = $1::uuid`, scanID, out, noteNo)
+	if _, err := h.db.Exec(db, `UPDATE inventory_scans SET status = 'done', result = $2::jsonb, note_no = $3 WHERE id = $1::uuid`, scanID, out, noteNo); err != nil {
+		componentLog("lager-scan").Error().Err(err).Str("scan", scanID).Msg("ergebnis speichern")
+		return
+	}
 	componentLog("lager-scan").Info().Str("scan", scanID).Str("art", kind).Msg("erkannt")
 }
 
@@ -390,7 +407,7 @@ func (h *Handler) InventoryScanUploadWeb(w http.ResponseWriter, r *http.Request)
 	}
 	back := "/inventory/scan?tab=" + kind
 	if h.faults == nil || h.faults.Copilot() == nil || !h.faults.Copilot().VisionAvailable() {
-		http.Redirect(w, r, withNotice(back, "err", faults.ErrVisionUnavailable.Error()), http.StatusSeeOther)
+		http.Redirect(w, r, scanNotice(back, "err", faults.ErrVisionUnavailable.Error()), http.StatusSeeOther)
 		return
 	}
 	// Fotos über das Mobilnetz brauchen länger als das Lese-Limit des Servers (15 s)
@@ -398,7 +415,7 @@ func (h *Handler) InventoryScanUploadWeb(w http.ResponseWriter, r *http.Request)
 	_ = rc.SetReadDeadline(time.Now().Add(3 * time.Minute))
 	r.Body = http.MaxBytesReader(w, r.Body, scanMaxTotal+(2<<20))
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		http.Redirect(w, r, withNotice(back, "err", fmt.Sprintf("Upload zu groß oder abgebrochen (höchstens %d MB)", scanMaxTotal>>20)), http.StatusSeeOther)
+		http.Redirect(w, r, scanNotice(back, "err", fmt.Sprintf("Upload zu groß oder abgebrochen (höchstens %d MB)", scanMaxTotal>>20)), http.StatusSeeOther)
 		return
 	}
 	fhs := r.MultipartForm.File["files"]
@@ -408,14 +425,14 @@ func (h *Handler) InventoryScanUploadWeb(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	var id string
 	if err := h.db.QueryRow(ctx, `INSERT INTO inventory_scans (kind, created_by) VALUES ($1, $2::uuid) RETURNING id::text`, kind, nullID(getUser(r).ID)).Scan(&id); err != nil {
-		http.Redirect(w, r, withNotice(back, "err", friendlyDBError(err)), http.StatusSeeOther)
+		http.Redirect(w, r, scanNotice(back, "err", friendlyDBError(err)), http.StatusSeeOther)
 		return
 	}
 	files, inputs, err := readScanFiles(id, fhs)
 	if err != nil {
 		_, _ = h.db.Exec(ctx, `DELETE FROM inventory_scans WHERE id = $1::uuid`, id)
 		_ = os.RemoveAll(filepath.Join(scanDir, id))
-		http.Redirect(w, r, withNotice(back, "err", err.Error()), http.StatusSeeOther)
+		http.Redirect(w, r, scanNotice(back, "err", err.Error()), http.StatusSeeOther)
 		return
 	}
 	raw, _ := json.Marshal(files)

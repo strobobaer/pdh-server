@@ -1,0 +1,60 @@
+{{define "kanban-print-page"}}<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban-Karten {{.Loop.PartNumber}}</title>
+<style>
+@page{size:A4;margin:10mm}
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;color:#111;background:#fff}
+.bar{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid #ddd;background:#f6f7f9}
+.bar button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid #888;background:#fff;cursor:pointer}
+.sheet{display:grid;grid-template-columns:repeat(2,1fr);gap:6mm;padding:6mm}
+.kc{border:2px solid #111;border-radius:4mm;padding:5mm;height:128mm;display:flex;flex-direction:column;gap:3mm;break-inside:avoid;page-break-inside:avoid}
+.kc .top{display:flex;justify-content:space-between;align-items:flex-start;gap:3mm}
+.kc .lbl{font-size:9pt;text-transform:uppercase;letter-spacing:.08em;color:#555}
+.kc .no{font-size:30pt;font-weight:800;line-height:1}
+.kc .no small{font-size:13pt;color:#555}
+.kc .name{font-size:15pt;font-weight:700;line-height:1.15}
+.kc .pn{font-family:ui-monospace,monospace;font-size:12pt}
+.kc table{width:100%;border-collapse:collapse;font-size:10.5pt}
+.kc td{padding:1.2mm 0;border-bottom:.3mm solid #ccc;vertical-align:top}
+.kc td:first-child{color:#555;width:32mm}
+.kc .qty{font-size:22pt;font-weight:800}
+.kc .qr{margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:4mm}
+.kc .qr svg{width:36mm;height:36mm}
+.kc .hint{font-size:9pt;color:#333;max-width:55mm}
+.kc img.logo{max-height:10mm;max-width:35mm}
+@media print{.bar{display:none}.sheet{padding:0}}
+</style>
+</head>
+<body>
+<div class="bar"><b>Kanban-Karten · {{.Loop.PartName}}</b><span>{{len .Cards}} Karte(n)</span><button onclick="window.print()">Drucken</button></div>
+<div class="sheet">
+{{range .Cards}}
+<div class="kc">
+  <div class="top">
+    <div><div class="lbl">Kanban-Karte</div><div class="no">{{.No}}<small>/{{$.Loop.CardCount}}</small></div></div>
+    {{if $.Logo}}<img class="logo" src="{{$.Logo}}" alt="">{{end}}
+  </div>
+  <div class="name">{{$.Loop.PartName}}</div>
+  <div class="pn">{{$.Loop.PartNumber}}</div>
+  <div><span class="lbl">Menge je Behälter</span><div class="qty">{{$.Loop.Q $.Loop.CardQty}} {{$.Loop.Unit}}</div></div>
+  <table>
+    <tr><td>Lagerplatz</td><td>{{if $.Loop.StoragePath}}{{$.Loop.StoragePath}}{{else}}–{{end}}</td></tr>
+    <tr><td>Lieferant</td><td>{{if $.Loop.SupplierName}}{{$.Loop.SupplierName}}{{else}}–{{end}}</td></tr>
+    {{if $.Loop.ContractLabel}}<tr><td>Rahmenvertrag</td><td>{{$.Loop.ContractLabel}}</td></tr>{{end}}
+    {{if $.Loop.LeadTime}}<tr><td>Lieferzeit</td><td>{{$.Loop.LeadTime}} Tage</td></tr>{{end}}
+    {{if $.Loop.Notes}}<tr><td>Hinweis</td><td>{{$.Loop.Notes}}</td></tr>{{end}}
+  </table>
+  <div class="qr">
+    <div class="hint"><b>Behälter leer?</b><br>QR-Code scannen und „Karte leer melden“. Bei Wareneingang erneut scannen.</div>
+    {{.QR}}
+  </div>
+</div>
+{{end}}
+</div>
+</body>
+</html>
+{{end}}

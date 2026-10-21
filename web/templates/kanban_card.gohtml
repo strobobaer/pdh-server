@@ -1,0 +1,46 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{$k := .Loop}}{{$c := .Card}}
+<div style="max-width:620px;margin:0 auto">
+  <div class="bk-head" style="display:flex;gap:14px;align-items:flex-start;margin-bottom:12px">
+    {{if $k.ImageURL}}<img src="{{$k.ImageURL}}" alt="" style="width:96px;height:96px;object-fit:contain;border-radius:12px;background:#fff;border:1px solid var(--border)">{{end}}
+    <div>
+      <div class="rec-sub"><i class="ti ti-layout-kanban"></i> Kanban-Karte</div>
+      <h1 style="font-size:20px;margin:2px 0">{{$k.PartName}}</h1>
+      <div class="rec-sub" style="font-family:monospace">{{$k.PartNumber}}</div>
+    </div>
+  </div>
+
+  {{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+  {{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+  <div class="card" style="text-align:center">
+    <div style="font-size:44px;font-weight:800;line-height:1">{{$c.No}}<span style="font-size:20px;color:var(--muted)">/{{$k.CardCount}}</span></div>
+    <div style="margin:8px 0"><span class="badge {{$c.StatusClass}}" style="font-size:14px;padding:5px 14px">{{$c.StatusLabel}}</span></div>
+    <div class="rec-sub">{{$k.Q $k.CardQty}} {{$k.Unit}} je Karte · Lagerplatz {{if $k.StoragePath}}{{$k.StoragePath}}{{else}}–{{end}}</div>
+    {{if $c.Since}}<div class="rec-sub">seit {{$c.Since}}</div>{{end}}
+    {{if $c.OrderRef}}<div class="rec-sub">Bestellung {{$c.OrderRef}}</div>{{end}}
+    {{if $c.Expected}}<div class="rec-sub" {{if $c.Late}}style="color:var(--red);font-weight:600"{{end}}>erwartet {{$c.Expected}}{{if $c.Late}} – überfällig{{end}}</div>{{end}}
+    {{if not $k.Active}}<div class="rec-msg err" style="margin-top:10px">Kanban ist für dieses Teil abgeschaltet.</div>{{end}}
+  </div>
+
+  {{if $k.Active}}
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {{if and (eq $c.Status "full") .CanEmpty}}
+    <form method="post" action="/procurement/cards/{{$c.ID}}/empty"><button class="btn btn-primary" style="width:100%;justify-content:center;padding:14px;font-size:16px" type="submit"><i class="ti ti-box-off"></i> Behälter leer – Karte leer melden</button></form>
+    {{end}}
+    {{if and (ne $c.Status "full") .CanReceive}}
+    <form method="post" action="/procurement/cards/{{$c.ID}}/receive" onsubmit="return confirm('Wareneingang: {{$k.Q $k.CardQty}} {{$k.Unit}} an {{$k.StoragePath}} einbuchen?')"><button class="btn {{if eq $c.Status "ordered"}}btn-primary{{end}}" style="width:100%;justify-content:center;padding:14px;font-size:16px" type="submit"><i class="ti ti-package-import"></i> Ware ist da – {{$k.Q $k.CardQty}} {{$k.Unit}} einbuchen</button></form>
+    {{end}}
+    {{if and (eq $c.Status "ordered") .CanCancel}}
+    <form method="post" action="/procurement/cards/{{$c.ID}}/cancel" onsubmit="return confirm('Bestellung zurücknehmen?')"><button class="btn" style="width:100%;justify-content:center" type="submit"><i class="ti ti-arrow-back-up"></i> Bestellung zurücknehmen</button></form>
+    {{end}}
+    {{if and (ne $c.Status "full") .CanFull}}
+    <form method="post" action="/procurement/cards/{{$c.ID}}/full" onsubmit="return confirm('Karte ohne Buchung auf voll setzen?')"><button class="btn btn-small" style="width:100%;justify-content:center" type="submit"><i class="ti ti-adjustments"></i> Ohne Buchung auf voll setzen (Korrektur)</button></form>
+    {{end}}
+    <a class="btn" style="justify-content:center" href="/inventory/{{$k.PartID}}/booking"><i class="ti ti-arrows-exchange"></i> Teil buchen (Ein-/Ausbuchung, Reservierung)</a>
+  </div>
+  {{end}}
+</div>
+{{end}}

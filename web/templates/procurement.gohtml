@@ -1,0 +1,163 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="rec-head">
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-shopping-cart" style="font-size:26px"></i></div>
+  <div class="t">
+    <h1>Beschaffung &amp; Einkauf</h1>
+    <div class="sub">Kanban-Regelkreise, Bestellvorschlag, offene Bestellungen und Rahmenverträge</div>
+  </div>
+  <a class="btn btn-small" href="/inventory"><i class="ti ti-package"></i> Ersatzteile</a>
+  <a class="btn btn-small" href="/directory/purchase-report"><i class="ti ti-mail"></i> Täglicher Bestellvorschlag (E-Mail)</a>
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="kpis">
+  <div class="kpi"><div class="v">{{len .Loops}}</div><div class="l">Kanban-Teile</div></div>
+  <div class="kpi"><div class="v" style="color:var(--green)">{{.CountFull}}</div><div class="l">volle Karten</div></div>
+  <div class="kpi"><div class="v" style="color:var(--red)">{{.CountEmpty}}</div><div class="l">leer – zu bestellen</div></div>
+  <div class="kpi"><div class="v" style="color:var(--amber)">{{.CountOrdered}}</div><div class="l">bestellt{{if .CountLate}} · <span style="color:var(--red)">{{.CountLate}} überfällig</span>{{end}}</div></div>
+  <div class="kpi"><div class="v" style="font-size:18px">{{.ProposalValue}}</div><div class="l">Wert Bestellvorschlag</div></div>
+</div>
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="board" href="?tab=board"><i class="ti ti-layout-kanban"></i> Kanban-Tafel <b>{{len .Loops}}</b></a>
+  <a class="rec-tab" data-tab="proposal" href="?tab=proposal"><i class="ti ti-shopping-cart"></i> Bestellvorschlag <b>{{.CountEmpty}}</b></a>
+  <a class="rec-tab" data-tab="orders" href="?tab=orders"><i class="ti ti-truck-delivery"></i> Bestellungen <b>{{.CountOrdered}}</b></a>
+  <a class="rec-tab" data-tab="contracts" href="?tab=contracts"><i class="ti ti-file-certificate"></i> Rahmenverträge <b>{{len .Contracts}}</b></a>
+</div>
+
+<!-- ── Kanban-Tafel ── -->
+<div class="rec-pane" data-pane="board">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Ersatzteil</th><th>Karten</th><th style="text-align:right">je Karte</th><th style="text-align:right">Bestand</th><th>Lagerplatz</th><th>Lieferant / Vertrag</th><th></th></tr></thead>
+      <tbody>
+      {{range .Loops}}
+      <tr>
+        <td><a href="/inventory/{{.PartID}}?tab=kanban" style="color:var(--accent);font-weight:600">{{.PartName}}</a><div class="rec-sub" style="font-family:monospace">{{.PartNumber}}</div></td>
+        <td><div class="kb-dots" title="{{.Full}} voll · {{.Empty}} leer · {{.Ordered}} bestellt">{{range .Cards}}<span class="kb-dot kb-{{.Status}}" title="Karte {{.No}}: {{.StatusLabel}}{{if .Expected}} · erwartet {{.Expected}}{{end}}">{{.No}}</span>{{end}}</div></td>
+        <td style="text-align:right">{{.Q .CardQty}} {{.Unit}}</td>
+        <td style="text-align:right">{{.Q .Stock}} {{.Unit}}</td>
+        <td style="font-size:12px">{{if .StoragePath}}{{.StoragePath}}{{else}}<span style="color:var(--red)">fehlt</span>{{end}}</td>
+        <td style="font-size:12px">{{if .SupplierName}}{{.SupplierName}}{{else}}<span class="rec-sub">–</span>{{end}}{{if .ContractLabel}}<div class="rec-sub"><i class="ti ti-file-certificate"></i> {{.ContractLabel}}</div>{{end}}</td>
+        <td><a class="btn btn-icon" style="width:30px;min-width:30px;height:30px" href="/procurement/kanban/{{.PartID}}/print" target="_blank" rel="noopener" title="Karten drucken"><i class="ti ti-printer" style="font-size:14px"></i></a></td>
+      </tr>
+      {{else}}<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Noch kein Teil mit Kanban. Ersatzteil öffnen → Reiter <b>Kanban</b> → „Kanban aktivieren“.</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Bestellvorschlag ── -->
+<div class="rec-pane" data-pane="proposal">
+  {{if .Groups}}
+  <form method="post" action="/procurement/order" id="pr-form">
+    {{range .Groups}}
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-building-store"></i> {{.SupplierName}}</span>
+        <span style="display:flex;gap:6px;align-items:center"><b>{{.Total}}</b>{{if .MailTo}}<a class="btn btn-small" href="{{.MailTo}}" title="Bestellung als E-Mail vorbereiten"><i class="ti ti-mail"></i> E-Mail</a>{{end}}</span></div>
+      <table>
+        <thead><tr><th style="width:30px"><input type="checkbox" checked onchange="this.closest('table').querySelectorAll('tbody input[type=checkbox]').forEach(c=>c.checked=this.checked)" title="alle"></th><th>Ersatzteil</th><th>Karten</th><th style="text-align:right">Menge</th><th style="text-align:right">Preis</th><th style="text-align:right">Wert</th><th>Vertrag</th></tr></thead>
+        <tbody>
+        {{range .Loops}}{{$l := .}}
+        <tr>
+          <td>{{range .Cards}}{{if eq .Status "empty"}}<input type="checkbox" name="card" value="{{.ID}}" checked hidden data-loop="{{$l.PartID}}">{{end}}{{end}}<input type="checkbox" checked onchange="document.querySelectorAll('input[data-loop=&quot;{{.PartID}}&quot;]').forEach(c=>c.checked=this.checked)"></td>
+          <td><a href="/inventory/{{.PartID}}?tab=kanban" style="color:var(--accent)">{{.PartName}}</a><div class="rec-sub" style="font-family:monospace">{{.PartNumber}}</div></td>
+          <td>{{.Empty}} × {{.Q .CardQty}}</td>
+          <td style="text-align:right;font-weight:600">{{.OrderQty}} {{.Unit}}</td>
+          <td style="text-align:right">{{if .UnitPrice}}{{.Q .UnitPrice}} €{{else}}–{{end}}</td>
+          <td style="text-align:right">{{.OrderValue}}</td>
+          <td style="font-size:12px">{{if .ContractLabel}}{{.ContractLabel}}{{else}}<span class="rec-sub">–</span>{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+    {{if .CanOrder}}
+    <div class="card">
+      <div class="card-title"><span><i class="ti ti-check"></i> Ausgewählte Karten als bestellt melden</span></div>
+      <div class="rec-form"><div class="cols">
+        <div class="form-group"><label class="form-label">Bestellnummer</label><input name="order_ref" class="form-input" maxlength="100" placeholder="z. B. B-2026-0412"></div>
+        <div class="form-group"><label class="form-label">Liefertermin</label><input type="date" name="expected_at" class="form-input" min="{{.Today}}"><div class="help">leer = heute + Lieferzeit des Regelkreises</div></div>
+      </div></div>
+      <p class="rec-sub">Teile mit Rahmenvertrag rufen die bestellte Menge aus dem Vertrag ab.</p>
+      <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit"><i class="ti ti-shopping-cart-check"></i> Als bestellt melden</button></div>
+    </div>
+    {{else}}<p class="rec-sub">Bestellen dürfen Personen mit dem Recht „Bestellen und Wareneingang zu Kanban-Karten melden“.</p>{{end}}
+  </form>
+  {{else}}
+  <div class="card"><div class="rec-sub" style="padding:8px"><i class="ti ti-circle-check" style="color:var(--green)"></i> Keine leere Kanban-Karte – nichts zu bestellen.</div></div>
+  {{end}}
+
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-alert-triangle"></i> Unter Mindestbestand (ohne Kanban)</span><a class="btn btn-small" href="/directory/purchase-report">Ausführlich</a></div>
+    {{$any := false}}
+    {{range .MinStock}}{{range .Suppliers}}{{range .Lines}}{{$any = true}}
+    <div class="rec-row"><div class="grow"><a href="/inventory/{{.PartID}}" style="color:var(--accent)">{{.Name}}</a> <span class="rec-sub" style="font-family:monospace">{{.PartNumber}}</span>
+      <div class="rec-sub">Bestand {{.Stock}} / Mindestbestand {{.MinQty}}</div></div><b>{{.OrderQty}} {{.Unit}}</b>{{if .Critical}} <span class="badge b-red">kritisch</span>{{end}}</div>
+    {{end}}{{end}}{{end}}
+    {{if not $any}}<div class="rec-sub">Kein Teil ohne Kanban unter Mindestbestand.</div>{{end}}
+  </div>
+</div>
+
+<!-- ── Bestellungen ── -->
+<div class="rec-pane" data-pane="orders">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Ersatzteil</th><th>Karte</th><th>Bestellt</th><th>Bestellung</th><th>Erwartet</th><th>Lieferant</th><th></th></tr></thead>
+      <tbody>
+      {{range .Ordered}}{{$l := .}}
+      {{range .Cards}}{{if eq .Status "ordered"}}
+      <tr>
+        <td><a href="/inventory/{{$l.PartID}}?tab=kanban" style="color:var(--accent)">{{$l.PartName}}</a><div class="rec-sub">{{$l.Q $l.CardQty}} {{$l.Unit}} → {{$l.StoragePath}}</div></td>
+        <td>{{.No}}/{{$l.CardCount}}</td>
+        <td style="font-size:12px">{{.Since}}</td>
+        <td style="font-size:12px">{{.OrderRef}}</td>
+        <td style="font-size:12px{{if .Late}};color:var(--red);font-weight:600{{end}}">{{.Expected}}{{if .Late}} · überfällig{{end}}</td>
+        <td style="font-size:12px">{{$l.SupplierName}}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/procurement/cards/{{.ID}}/receive" style="display:inline" onsubmit="return confirm('Wareneingang: {{$l.Q $l.CardQty}} {{$l.Unit}} an {{$l.StoragePath}} einbuchen?')"><input type="hidden" name="back" value="/procurement?tab=orders"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-package-import"></i> Geliefert</button></form>
+          {{if $.CanOrder}}<form method="post" action="/procurement/cards/{{.ID}}/cancel" style="display:inline" onsubmit="return confirm('Bestellung zurücknehmen? Die Karte ist dann wieder leer.')"><input type="hidden" name="back" value="/procurement?tab=orders"><button class="btn btn-small" type="submit" title="Bestellung zurücknehmen"><i class="ti ti-arrow-back-up"></i></button></form>{{end}}
+        </td>
+      </tr>
+      {{end}}{{end}}
+      {{else}}<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Keine offene Kanban-Bestellung</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="rec-sub">Ein Wareneingang über die Buchungserfassung (QR-Code am Lagerplatz) macht bestellte Karten ebenfalls wieder voll.</p>
+</div>
+
+<!-- ── Rahmenverträge ── -->
+<div class="rec-pane" data-pane="contracts">
+  {{if .CanContracts}}<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><a class="btn btn-primary btn-small" href="/procurement/contracts/new"><i class="ti ti-plus"></i> Neuer Rahmenvertrag</a></div>{{end}}
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Vertrag</th><th>Lieferant</th><th>Gültig</th><th style="text-align:right">Positionen</th><th style="text-align:right">Abgerufen</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range .Contracts}}
+      <tr>
+        <td><a href="/procurement/contracts/{{.ID}}" style="color:var(--accent);font-weight:600">{{.No}}</a>{{if .Title}}<div class="rec-sub">{{.Title}}</div>{{end}}</td>
+        <td><a href="/directory/{{.SupplierID}}" data-frame data-frame-title="{{.SupplierName}}" style="color:var(--accent)">{{.SupplierName}}</a></td>
+        <td style="font-size:12px">{{if .ValidFrom}}{{.ValidFrom}}{{else}}–{{end}} bis {{if .ValidUntil}}{{.ValidUntil}}{{else}}offen{{end}}</td>
+        <td style="text-align:right">{{.Items}}</td>
+        <td style="text-align:right">{{.CalledValue}}{{if .TotalValue}}<div class="rec-sub">von {{.TotalValue}} ({{.UsedPct}} %)</div>{{end}}</td>
+        <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+      </tr>
+      {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Noch kein Rahmenvertrag erfasst</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+<style>
+.kb-dots{display:flex;gap:3px;flex-wrap:wrap}
+.kb-dot{min-width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.kb-dot.kb-full{background:var(--green)}
+.kb-dot.kb-empty{background:var(--red)}
+.kb-dot.kb-ordered{background:var(--amber)}
+</style>
+{{end}}

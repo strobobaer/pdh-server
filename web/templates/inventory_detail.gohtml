@@ -30,7 +30,7 @@
   </div>
   <span class="badge {{$p.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$p.StatusLabel}} · {{$p.Q $p.StockQty}} {{$p.Unit}}{{if $p.ReservedQty}} ({{$p.Q $p.ReservedQty}} reserviert){{end}}</span>
   <a class="btn btn-small" href="/inventory/labels?part={{$p.ID}}" target="_blank" rel="noopener" title="Lagerplatz-Etiketten drucken"><i class="ti ti-printer"></i> Etiketten</a>
-  <a class="btn btn-small" href="#" onclick="recTab('stock');document.getElementById('book-type').focus();return false"><i class="ti ti-arrows-exchange"></i> Buchen</a>
+  {{if .CanBook}}<a class="btn btn-small btn-primary" href="/inventory/{{$p.ID}}/booking" title="Ein-/Ausbuchung, Reservierung, Sonstiges, Korrektur"><i class="ti ti-arrows-exchange"></i> Buchen</a>{{end}}
 </div>
 
 {{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
@@ -43,6 +43,7 @@
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="stock" href="?tab=stock"><i class="ti ti-building-warehouse"></i> Lager & Bewegungen <b>{{len .Stock}}</b></a>
   <a class="rec-tab" data-tab="purchasing" href="?tab=purchasing"><i class="ti ti-truck"></i> Lieferanten & Einkauf <b>{{len .Suppliers}}</b></a>
+  {{if .CanKanbanView}}<a class="rec-tab" data-tab="kanban" href="?tab=kanban"><i class="ti ti-layout-kanban"></i> Kanban{{if and .Kanban .Kanban.Active}} <b>{{.Kanban.Full}}/{{.Kanban.CardCount}}</b>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="usage" href="?tab=usage"><i class="ti ti-link"></i> Verwendung <b>{{len .Usage}}</b></a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
   <a class="rec-tab" data-tab="history" href="?tab=history"><i class="ti ti-history"></i> Historie</a>
@@ -178,6 +179,7 @@
       <div class="card-title"><span><i class="ti ti-bookmark"></i> Reservierungen</span>{{if $p.ReservedQty}}<span class="badge b-amber">{{$p.Q $p.ReservedQty}} {{$p.Unit}}</span>{{end}}</div>
       <p class="rec-sub" style="margin:0 0 8px">Reservierte Teile sind bereits vom Lagerplatz abgebucht. Beim Abschluss des Vorgangs werden sie zum Verbrauch, nicht benötigte Mengen bitte zurückbuchen.</p>
       {{range .Reservations}}<div class="rec-row"><div class="grow"><a href="{{.RefURL}}" data-frame data-frame-title="{{.RefLabel}}" style="color:var(--accent)">{{.RefLabel}}</a><div class="rec-sub">{{.Path}} · {{.Date}} · {{.User}}</div></div><b>{{.Qty}} {{$p.Unit}}</b>
+        {{if eq .Kind "infrastructure"}}<button type="button" class="btn btn-small" title="Reservierte Menge ist an der Anlage verbaut – als Verbrauch buchen" onclick="pdhConsumeReservation('{{.Kind}}','{{.RefID}}','{{.ID}}')"><i class="ti ti-check"></i> Verbraucht</button>{{end}}
         <button type="button" class="btn btn-small" title="Nicht benötigte Menge zurück an den Lagerplatz buchen" onclick="pdhReturnReservation('{{.Kind}}','{{.RefID}}','{{.ID}}',{{.QtyRaw}},pdhPartReload)"><i class="ti ti-arrow-back-up"></i> Zurückbuchen</button></div>
       {{else}}<div class="rec-sub">Keine offenen Reservierungen</div>{{end}}
     </div>
@@ -265,6 +267,85 @@
     </div>
   </div>
 </div>
+
+{{if .CanKanbanView}}
+<!-- ── Kanban (kanban.go) ── -->
+<div class="rec-pane" data-pane="kanban">
+  {{$k := .Kanban}}
+  {{if and $k $k.Active}}
+  <div class="kpis">
+    <div class="kpi"><div class="v" style="color:var(--green)">{{$k.Full}}</div><div class="l">volle Karten</div></div>
+    <div class="kpi"><div class="v" style="color:var(--red)">{{$k.Empty}}</div><div class="l">leer – zu bestellen</div></div>
+    <div class="kpi"><div class="v" style="color:var(--amber)">{{$k.Ordered}}</div><div class="l">bestellt</div></div>
+    <div class="kpi"><div class="v">{{$k.Q $k.CardQty}}</div><div class="l">{{$p.Unit}} je Karte · {{$k.Total}} im Kreislauf</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-cards"></i> Karten</span>
+      <a class="btn btn-small" href="/procurement/kanban/{{$p.ID}}/print" target="_blank" rel="noopener"><i class="ti ti-printer"></i> Karten drucken</a></div>
+    <div class="kb-cards">
+      {{range $k.Cards}}
+      <div class="kb-card kb-{{.Status}}">
+        <div class="kb-no">{{.No}}<small>/{{$k.CardCount}}</small></div>
+        <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+        {{if .Since}}<div class="rec-sub">seit {{.Since}}</div>{{end}}
+        {{if .OrderRef}}<div class="rec-sub">Bestellung {{.OrderRef}}</div>{{end}}
+        {{if .Expected}}<div class="rec-sub" {{if .Late}}style="color:var(--red)"{{end}}>erwartet {{.Expected}}</div>{{end}}
+        {{if $.CanCardActions}}
+        <form method="post" action="/procurement/cards/{{.ID}}/{{if eq .Status "full"}}empty{{else}}receive{{end}}" class="kb-act">
+          <input type="hidden" name="back" value="/inventory/{{$p.ID}}?tab=kanban">
+          {{if eq .Status "full"}}<button class="btn btn-small" type="submit" title="Behälter angebrochen/aufgebraucht"><i class="ti ti-box-off"></i> Leer melden</button>
+          {{else}}<button class="btn btn-small" type="submit" onclick="return confirm('Wareneingang: {{$k.Q $k.CardQty}} {{$p.Unit}} an {{$k.StoragePath}} einbuchen?')"><i class="ti ti-package-import"></i> Geliefert</button>{{end}}
+        </form>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    <p class="rec-sub" style="margin:8px 0 0">{{if $k.AutoEmpty}}Karten werden automatisch leer gemeldet, sobald der Bestand ({{$p.Q $p.StockQty}} {{$p.Unit}}) nicht mehr für sie reicht.{{else}}Karten werden nur von Hand (oder per Scan der Karte) leer gemeldet.{{end}} Leere Karten stehen im <a href="/procurement?tab=proposal" style="color:var(--accent)">Bestellvorschlag</a>; ein Wareneingang macht bestellte Karten wieder voll.</p>
+  </div>
+  {{else}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-layout-kanban"></i> Kanban für dieses Teil</span><span class="badge b-gray">{{if $k}}abgeschaltet{{else}}nicht aktiv{{end}}</span></div>
+    <p class="rec-sub" style="margin:0">Mit Kanban wird dieses Teil über eine feste Zahl Karten mit fester Menge nachbestellt: Ist ein Behälter leer, wird seine Karte leer gemeldet und landet im Bestellvorschlag. {{if not .CanKanban}}Einrichten dürfen Personen mit dem Recht „Kanban-Regelkreise einrichten“.{{end}}</p>
+  </div>
+  {{end}}
+  {{if .CanKanban}}
+  <form class="card" method="post" action="/inventory/{{$p.ID}}/kanban">
+    <div class="card-title"><span><i class="ti ti-settings"></i> {{if and $k $k.Active}}Regelkreis einstellen{{else}}Kanban aktivieren{{end}}</span></div>
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Anzahl Karten</label><input type="number" min="1" max="99" name="card_count" class="form-input" required value="{{if $k}}{{$k.CardCount}}{{else}}2{{end}}"></div>
+      <div class="form-group"><label class="form-label">Menge je Karte ({{$p.Unit}})</label><input name="card_qty" class="form-input" inputmode="decimal" required value="{{if $k}}{{$k.In $k.CardQty}}{{else}}{{$p.In $p.ReorderQty}}{{end}}"></div>
+      <div class="form-group"><label class="form-label">Lieferzeit (Tage)</label><input type="number" min="0" name="lead_time_days" class="form-input" value="{{if $k}}{{$k.LeadTime}}{{else}}0{{end}}"></div>
+    </div></div>
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Kanban-Lagerplatz (Wareneingang)</label>
+        <select name="storage_node_id" class="form-input" required><option value="">– auswählen –</option>{{range .StorageOptions}}<option value="{{.Value}}" {{if and $k (eq .Value $k.StorageID)}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Lieferant</label>
+        <select name="supplier_id" class="form-input"><option value="">{{if $.MainSupplierID}}– Hauptlieferant –{{else}}– keiner –{{end}}</option>{{range .SupplierOptions}}<option value="{{.Value}}" {{if $k}}{{if eq .Value $k.SupplierID}}selected{{end}}{{else if eq .Value $.MainSupplierID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Rahmenvertrag</label>
+        <select name="contract_id" class="form-input"><option value="">– ohne –</option>{{range .Contracts}}<option value="{{.ID}}" {{if and $k (eq .ID $k.ContractID)}}selected{{end}}>{{.SupplierName}} · {{.No}}{{if .Title}} · {{.Title}}{{end}}</option>{{end}}</select></div>
+    </div></div>
+    <div class="form-group"><label class="form-label">Hinweis</label><input name="notes" class="form-input" maxlength="1000" value="{{if $k}}{{$k.Notes}}{{end}}" placeholder="z. B. Behälter: Kleinteilekiste blau"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center"><input type="checkbox" name="auto_empty" value="1" {{if or (not $k) $k.AutoEmpty}}checked{{end}}> Karten automatisch leer melden, wenn der Bestand sinkt</label>
+      <div style="display:flex;gap:6px">
+        {{if and $k $k.Active}}<button class="btn btn-small" type="submit" name="action" value="off" formnovalidate onclick="return confirm('Kanban für dieses Teil abschalten? Karten und Einstellungen bleiben erhalten.')"><i class="ti ti-player-pause"></i> Abschalten</button>{{end}}
+        <button class="btn btn-primary btn-small" type="submit" name="action" value="save"><i class="ti ti-check"></i> {{if and $k $k.Active}}Speichern{{else}}Kanban aktivieren{{end}}</button>
+      </div>
+    </div>
+  </form>
+  {{end}}
+</div>
+<style>
+.kb-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.kb-card{border:1px solid var(--border);border-left:4px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:5px;background:var(--bg3)}
+.kb-card.kb-full{border-left-color:var(--green)}
+.kb-card.kb-empty{border-left-color:var(--red)}
+.kb-card.kb-ordered{border-left-color:var(--amber)}
+.kb-no{font-size:22px;font-weight:700;line-height:1}
+.kb-no small{font-size:12px;color:var(--muted);font-weight:500}
+.kb-act{margin-top:auto}
+</style>
+{{end}}
 
 <!-- ── Verwendung ── -->
 <div class="rec-pane" data-pane="usage">

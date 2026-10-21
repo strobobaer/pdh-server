@@ -117,6 +117,11 @@ async function scSend(kind){
     const fd = new FormData();
     for(const f of scFiles[kind]){ const g = await scShrink(f); fd.append('files', g, g.name); }
     const res = await fetch('/inventory/scan/' + kind, {method: 'POST', body: fd, credentials: 'same-origin'});
+    if(!res.ok){
+      // 403/413 vom Server oder Proxy: Meldung zeigen statt auf eine 404-Seite zu springen
+      const txt = (await res.text()).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+      throw new Error(res.status === 413 ? 'Dateien zu groß' : (txt || ('HTTP ' + res.status)));
+    }
     location.href = res.url;
   }catch(e){
     st.textContent = 'Hochladen fehlgeschlagen: ' + e.message;

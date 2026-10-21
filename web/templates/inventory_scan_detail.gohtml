@@ -75,9 +75,9 @@
       <div class="grow"><b>{{if .Item.Position}}Pos. {{.Item.Position}} · {{end}}{{.Item.Description}}</b>
         <div class="sc-codes">{{if .Item.SupplierArticleNo}}Art.-Nr. {{.Item.SupplierArticleNo}} {{end}}{{if .Item.ManufacturerPartNo}}· Hersteller-Nr. {{.Item.ManufacturerPartNo}} {{end}}{{if .Item.Manufacturer}}· {{.Item.Manufacturer}} {{end}}{{if .Item.EAN}}· EAN {{.Item.EAN}}{{end}}</div></div>
       {{if .Candidates}}{{with index .Candidates 0}}<span class="badge {{if ge .Score 85}}b-green{{else}}b-amber{{end}}">{{if ge .Score 85}}gefunden: {{.Reason}}{{else}}ähnlich{{end}}</span>{{if .BelowMin}} <span class="badge b-blue" title="Bestand {{.StockText}} lag unter dem Mindestbestand {{.MinText}}">im Bestellvorschlag</span>{{end}}{{end}}{{else}}<span class="badge b-blue">neu</span>{{end}}
-      {{if .Short}}<span class="badge b-red" title="{{if .Item.OrderedQuantity}}bestellt {{.Item.OrderedQuantity}}{{end}}">Rückstand {{.Missing}}</span>{{end}}
+      {{if .Short}}<span class="badge b-red" title="{{if .Item.OrderedQuantity}}bestellt {{.Ordered}}{{end}}">Rückstand {{.Missing}}</span>{{end}}
     </div>
-    {{if or .Item.OrderedQuantity .Item.BackorderQuantity}}<div class="sc-codes">{{if .Item.OrderedQuantity}}bestellt {{.Item.OrderedQuantity}} · {{end}}geliefert {{.Qty}}{{if .Item.BackorderQuantity}} · Rückstand {{.Item.BackorderQuantity}}{{end}}</div>{{end}}
+    {{if or .Item.OrderedQuantity .Item.BackorderQuantity}}<div class="sc-codes">{{if .Item.OrderedQuantity}}bestellt {{.Ordered}} · {{end}}geliefert {{.Qty}}{{if .Item.BackorderQuantity}} · Rückstand {{.Backorder}}{{end}}</div>{{end}}
     <div class="sc-grid">
       <div class="form-group"><label class="form-label">Menge</label><input name="qty_{{$i}}" class="form-input" inputmode="decimal" value="{{.Qty}}"></div>
       <div class="form-group"><label class="form-label">Aktion</label>

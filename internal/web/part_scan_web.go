@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,29 @@ func (l deliveryLine) Missing() string {
 		return formatQty(it.BackorderQuantity)
 	}
 	return formatQty(it.OrderedQuantity - it.Quantity)
+}
+
+// Ordered / Backorder: Mengen vom Lieferschein mit Komma statt Punkt.
+func (l deliveryLine) Ordered() string   { return formatQty(l.Item.OrderedQuantity) }
+func (l deliveryLine) Backorder() string { return formatQty(l.Item.BackorderQuantity) }
+
+// scanNotice hängt msg/err an – die Scan-Seiten lesen genau diese Parameter
+// (withNotice schreibt außerhalb von /users/ „notice“, das hier nie ankam).
+func scanNotice(back, key, text string) string {
+	sep := "?"
+	if strings.Contains(back, "?") {
+		sep = "&"
+	}
+	return back + sep + key + "=" + url.QueryEscape(text)
+}
+
+// expireStaleScans: Erkennungen, die nach dem Zeitlimit (oder durch einen
+// Neustart) noch „läuft“ zeigen, als Fehler abschließen – sonst lädt die
+// Ergebnisseite endlos neu.
+func (h *Handler) expireStaleScans(ctx context.Context) {
+	_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET status = 'error',
+			error = 'Erkennung abgebrochen (Zeitlimit oder Neustart) – bitte erneut scannen'
+		WHERE status = 'pending' AND created_at < NOW() - make_interval(secs => $1)`, (scanTimeout + time.Minute).Seconds())
 }
 
 // BelowMin: Teil lag unter Mindestbestand – stand also im Bestellvorschlag.
@@ -148,6 +172,7 @@ func (h *Handler) InventoryScanPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	h.expireStaleScans(ctx)
 	q := r.URL.Query()
 	d := InventoryScanPageData{
 		BaseData: h.baseData(r, "inventory-scan", "Scannen & erkennen", "Ersatzteile"),
@@ -218,9 +243,10 @@ func (h *Handler) InventoryScanDetail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	h.expireStaleScans(ctx)
 	s, files, result, supplier, err := h.loadScan(ctx, id)
 	if err != nil {
-		http.Redirect(w, r, withNotice("/inventory/scan", "err", "Scan nicht gefunden"), http.StatusSeeOther)
+		http.Redirect(w, r, scanNotice("/inventory/scan", "err", "Scan nicht gefunden"), http.StatusSeeOther)
 		return
 	}
 	q := r.URL.Query()
@@ -302,7 +328,11 @@ func scanBack(w http.ResponseWriter, r *http.Request, id, msg string, err error)
 	if err != nil {
 		key, text = "err", err.Error()
 	}
-	http.Redirect(w, r, withNotice("/inventory/scan/"+id, key, text), http.StatusSeeOther)
+	target := "/inventory/scan"
+	if uuidInPathRe.MatchString(id) {
+		target += "/" + id
+	}
+	http.Redirect(w, r, scanNotice(target, key, text), http.StatusSeeOther)
 }
 
 // upsertPartSupplier: Lieferant am Teil vermerken und dessen Artikelnummer
@@ -321,6 +351,13 @@ func (h *Handler) upsertPartSupplier(ctx context.Context, partID, supplierID, su
 	}
 }
 
+// claimScan markiert den Scan als „in Arbeit“ – nur der erste Aufruf gewinnt.
+func (h *Handler) claimScan(ctx context.Context, id, uid string) bool {
+	tag, err := h.db.Exec(ctx, `UPDATE inventory_scans SET applied_at = NOW(), applied_by = $2::uuid, applied_note = 'wird gebucht …'
+		WHERE id = $1::uuid AND applied_at IS NULL`, id, nullID(uid))
+	return err == nil && tag.RowsAffected() == 1
+}
+
 // InventoryScanApplyWeb: POST /inventory/scan/{id}/apply – Lieferschein buchen.
 func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canEditParts(r) {
@@ -329,7 +366,11 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	s, _, result, _, err := h.loadScan(ctx, id)
+	if !uuidInPathRe.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
+	s, _, _, _, err := h.loadScan(ctx, id)
 	if err != nil || s.Kind != "delivery" || s.Status != "done" {
 		scanBack(w, r, id, "", errors.New("Scan nicht gefunden oder noch nicht erkannt"))
 		return
@@ -338,8 +379,6 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 		scanBack(w, r, id, "", errors.New("Dieser Lieferschein wurde schon gebucht"))
 		return
 	}
-	var dr deliveryResult
-	_ = json.Unmarshal(result, &dr)
 	_ = r.ParseForm()
 	uid := getUser(r).ID
 	supplierID := strings.TrimSpace(r.FormValue("supplier_id"))
@@ -392,6 +431,15 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 	if noteNo != "" {
 		ref += " " + noteNo
 	}
+	// Scan vor dem Buchen für sich beanspruchen – ein zweites „Buchen“
+	// (Doppelklick, zweiter Tab) bucht sonst denselben Lieferschein noch einmal.
+	if !h.claimScan(ctx, id, uid) {
+		scanBack(w, r, id, "", errors.New("Dieser Lieferschein wird gerade gebucht oder wurde schon gebucht"))
+		return
+	}
+	release := func() {
+		_, _ = h.db.Exec(context.WithoutCancel(ctx), `UPDATE inventory_scans SET applied_at = NULL, applied_by = NULL, applied_note = '' WHERE id = $1::uuid`, id)
+	}
 	// 1. neue Teile anlegen
 	created := 0
 	for i := range todo {
@@ -401,6 +449,7 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 		}
 		part, err := h.inv.Create(ctx, &inventory.CreatePartInput{PartNumber: p.number, Name: p.name, ManufacturerPart: p.mpn, Unit: p.unit, MinQty: 1, ReorderQty: 5}, uid)
 		if err != nil {
+			release()
 			msg := friendlyPartError(err)
 			if created > 0 {
 				msg += fmt.Sprintf(" – %d neue Teile wurden schon angelegt, gebucht ist noch nichts", created)
@@ -421,6 +470,7 @@ func (h *Handler) InventoryScanApplyWeb(w http.ResponseWriter, r *http.Request) 
 			Reference: truncateRunes(ref, 250), Notes: "Wareneingang per Lieferschein-Scan · Pos. " + p.pos})
 	}
 	if _, err := h.inv.BookMany(ctx, moves, uid); err != nil {
+		release()
 		msg := "Buchen fehlgeschlagen: " + err.Error()
 		if created > 0 {
 			msg += fmt.Sprintf(" (%d neue Teile sind angelegt – nach der Korrektur erneut „Buchen“, sie werden dann gefunden)", created)
@@ -446,9 +496,17 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 	}
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
+	if !uuidInPathRe.MatchString(id) {
+		http.NotFound(w, r)
+		return
+	}
 	s, files, _, _, err := h.loadScan(ctx, id)
-	if err != nil || s.Kind != "part" {
-		scanBack(w, r, id, "", errors.New("Scan nicht gefunden"))
+	if err != nil || s.Kind != "part" || s.Status != "done" {
+		scanBack(w, r, id, "", errors.New("Scan nicht gefunden oder noch nicht erkannt"))
+		return
+	}
+	if s.Applied {
+		scanBack(w, r, id, "", errors.New("Aus diesem Foto wurde schon ein Teil angelegt"))
 		return
 	}
 	_ = r.ParseForm()
@@ -463,8 +521,13 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	uid := getUser(r).ID
+	if !h.claimScan(ctx, id, uid) {
+		scanBack(w, r, id, "", errors.New("Aus diesem Foto wurde schon ein Teil angelegt"))
+		return
+	}
 	part, err := h.inv.Create(ctx, in, uid)
 	if err != nil {
+		_, _ = h.db.Exec(context.WithoutCancel(ctx), `UPDATE inventory_scans SET applied_at = NULL, applied_by = NULL, applied_note = '' WHERE id = $1::uuid`, id)
 		scanBack(w, r, id, "", errors.New(friendlyPartError(err)))
 		return
 	}
@@ -480,6 +543,8 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 	partRedirect(w, r, part.ID, "master", "Teil aus Foto-Erkennung angelegt – bitte Stammdaten prüfen und Bestand buchen", nil)
 }
 
+var ownQRRe = regexp.MustCompile(`/(inventory|k)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:/booking)?(?:[?#].*)?$`)
+
 // InventoryLookupWeb: GET /inventory/lookup?code= – Barcode (EAN, Teile-,
 // Hersteller- oder Lieferanten-Nummer) → eindeutiger Treffer öffnet das Teil
 // zum Buchen, sonst die Liste mit der Nummer als Suche.
@@ -487,6 +552,15 @@ func (h *Handler) InventoryLookupWeb(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
 	if code == "" {
 		http.Redirect(w, r, "/inventory", http.StatusSeeOther)
+		return
+	}
+	// PDH-eigener QR-Code (Etikett oder Kanban-Karte) → direkt dorthin
+	if m := ownQRRe.FindStringSubmatch(code); m != nil {
+		if m[1] == "k" {
+			http.Redirect(w, r, "/k/"+m[2], http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, "/inventory/"+m[2]+"/booking", http.StatusSeeOther)
+		}
 		return
 	}
 	codes := normCodes(code)

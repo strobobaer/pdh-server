@@ -94,6 +94,7 @@ func (h *Handler) publicBaseURL(r *http.Request) string {
 type labelItem struct {
 	PartID, PartNumber, Name, Category, Unit, MinQty string
 	Location, LocationLeaf                           string
+	NodeID                                           string // Lagerplatz des Etiketts (QR → Buchung an diesem Platz)
 	URL                                              string
 	QR                                               template.HTML
 	// Anlagen-/IT-Etiketten (asset_info.go): Nummer ohne "Nr."-Praefix,
@@ -174,7 +175,7 @@ func (h *Handler) PartLabelsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	base := h.publicBaseURL(r)
 	for i := range items {
-		items[i].URL = base + "/inventory/" + items[i].PartID
+		items[i].URL = partLabelURL(base, items[i])
 	}
 	h.renderLabelsPage(w, r, data, items)
 }
@@ -320,6 +321,7 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 			continue
 		}
 		it.MinQty = formatQty(min)
+		it.NodeID = node
 		if node != "" {
 			it.Location = paths[node]
 			if parts := strings.Split(it.Location, " › "); len(parts) > 0 {
@@ -379,4 +381,14 @@ func leadingDigits(s string) string {
 		i++
 	}
 	return s[:i]
+}
+
+// partLabelURL: Ziel des QR-Codes auf dem Ersatzteil-Etikett – direkt die
+// Buchungserfassung, am Lagerplatz des Etiketts vorausgewählt.
+func partLabelURL(base string, it labelItem) string {
+	u := base + "/inventory/" + it.PartID + "/booking"
+	if it.NodeID != "" {
+		u += "?loc=" + it.NodeID
+	}
+	return u
 }

@@ -125,6 +125,8 @@ func (h *Handler) buildPurchaseSuggestions(ctx context.Context) ([]*PurchaseBuye
 			ORDER BY s.preferred DESC, s.price NULLS LAST, s.created_at
 			LIMIT 1) sup ON true
 		WHERE sp.active AND sp.min_qty > 0 AND sp.stock_qty <= sp.min_qty
+		  -- Kanban-Teile bestellt der Regelkreis (leere Karten), nicht der Mindestbestand
+		  AND NOT EXISTS (SELECT 1 FROM kanban_loops k WHERE k.part_id = sp.id AND k.active)
 		ORDER BY sp.name`)
 	if err != nil {
 		return nil, err
