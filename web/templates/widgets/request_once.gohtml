@@ -22,6 +22,9 @@
   function unsafe(m) { m = String(m || 'GET').toUpperCase(); return m !== 'GET' && m !== 'HEAD'; }
   function sameOrigin(u) { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } }
   function withOnce(u, tok) { var x = new URL(u, location.href); x.searchParams.set('_once', tok); return x.pathname + x.search + x.hash; }
+  // Zieladresse über das Attribut: f.action liefert sonst ein Feld oder einen
+  // Knopf mit name="action" (→ „/admin/[object HTMLButtonElement]“, 404)
+  function formAction(f) { return new URL(f.getAttribute('action') || location.href, location.href).href; }
 
   // normale Formulare: Schlüssel in der Adresse, bei Doppelklick derselbe
   document.addEventListener('submit', function (e) {
@@ -31,14 +34,14 @@
     var sub = e.submitter, useSub = sub && sub.hasAttribute('formaction');
     var method = (sub && sub.getAttribute('formmethod')) || f.getAttribute('method') || 'get';
     if (!unsafe(method)) return;
-    var action = useSub ? sub.formAction : f.action;
+    var action = useSub ? sub.formAction : formAction(f);
     if (!sameOrigin(action)) return;
     if (!f.dataset.once) {
       f.dataset.once = v7();
       // Seite bleibt stehen (Download, neuer Tab, Fehler per JS) → nächstes Absenden ist neu
       setTimeout(function () { delete f.dataset.once; }, 4000);
     }
-    if (useSub) sub.formAction = withOnce(action, f.dataset.once); else f.action = withOnce(action, f.dataset.once);
+    if (useSub) sub.formAction = withOnce(action, f.dataset.once); else f.setAttribute('action', withOnce(action, f.dataset.once));
   }, true);
 
   // htmx: Schlüssel je auslösendem Formular/Knopf, frei nach der Antwort
