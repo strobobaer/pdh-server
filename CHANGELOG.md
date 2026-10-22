@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.58.0] – 2026-10-22
+
+### Neu
+- Kalender (Instandhaltung → Kalender): je Mitarbeiter eine Zeile mit Urlaub, Schichten, fälligen Wartungen, Prüfpflichten, Tickets, Störungen, Aufgaben und laufenden Projekten – standardmäßig 14 Tage, wählbar was angezeigt wird sowie Abteilung, Gruppe und Person; Überschneidungen (abwesend, aber Schicht oder fälliger Auftrag) sind rot umrandet, die Auswahl merkt sich PDH
+
+### Geändert
+- Neues Erscheinungsbild im Stil von Windows 11: Navigation und Kopfzeile auf ruhigem Hintergrund, Inhalt als Fläche mit runder Ecke, Navigation mit Markierung der aktiven Seite, flachere Knöpfe und Eingabefelder, Reiter mit kurzem Unterstrich, schmale Scrollbalken – Firmenfarbe und Erscheinungsbild-Einstellungen gelten weiter
+- Navigation links: Es ist immer nur die Gruppe der geöffneten Seite aufgeklappt, beim Aufklappen einer anderen Gruppe schließen sich die übrigen
+
 ## [0.57.0] – 2026-10-21
 
 ### Neu

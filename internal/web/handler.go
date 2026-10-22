@@ -415,6 +415,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/shifts", h.Shifts) // → Planer
 	// Planer: Schichtplan, Urlaub & Abwesenheit, Wartungsplanung, Modelle & Vorlagen (planner*.go)
 	r.Get("/planner", h.PlannerPage)
+	r.Get("/calendar", h.CalendarPage) // Kalender-Dashboard (calendar_board.go)
 	r.Post("/planner/shifts/cell", h.PlannerCellWeb)
 	r.Post("/planner/shifts/copy-week", h.PlannerCopyWeekWeb)
 	r.Post("/planner/absences", h.PlannerAbsenceCreateWeb)

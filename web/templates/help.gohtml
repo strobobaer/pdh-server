@@ -80,7 +80,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-layout"}}
   <h3><i class="ti ti-map"></i> So findest du dich zurecht</h3>
   <ul>
-    <li><b>Links</b> wählst du das Modul, z. B. Störungen oder Ersatzteile. Die Einträge sind in Gruppen sortiert (Instandhaltung, Material &amp; Anlagen, Personal, Verwaltung, Daten, Hilfe &amp; Links); die Gruppen sind zunächst zugeklappt – ein Klick auf die Überschrift klappt sie auf und zu, PDH merkt sich das; die Gruppe der geöffneten Seite ist immer offen.</li>
+    <li><b>Links</b> wählst du das Modul, z. B. Störungen oder Ersatzteile. Die Einträge sind in Gruppen sortiert (Instandhaltung, Material &amp; Anlagen, Personal, Verwaltung, Daten, Hilfe &amp; Links); offen ist immer nur die Gruppe der geöffneten Seite – ein Klick auf eine andere Überschrift klappt diese auf und die übrigen zu.</li>
     <li><b>Navigation anpassen</b> (oben im Benutzermenü): Einträge per Ziehen in andere Gruppen oder eine andere Reihenfolge bringen, Gruppennamen anklicken zum Umbenennen, mit <b>Gruppe</b> eigene Gruppen anlegen, mit <i class="ti ti-trash"></i> löschen (die Einträge wandern nach oben). <b>Fertig</b> speichert die Anordnung an deinem Konto – sie gilt auf jedem Gerät; <b>Standard</b> stellt die Vorgabe wieder her. Neue Funktionen erscheinen automatisch in ihrer Vorgabe-Gruppe.</li>
     <li><b>Oben</b> findest du die <b>Uhr</b> mit Wochentag und Datum, den Chat, „Im Chat teilen“ und dein Konto. Ein Klick auf die Uhr öffnet die <b>Zeiterfassung</b>; fährst du mit der Maus darüber, siehst du auch die Kalenderwoche.</li>
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
@@ -925,6 +925,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Ein Rotationsmuster legt für jeden Tag des Zyklus die Schicht fest. Mannschaft 2 läuft um den Versatz verschoben, Mannschaft 3 um den doppelten. Vorhandene Einteilungen und genehmigter Urlaub werden beim Erzeugen nie überschrieben.</div>
   <p>Rechte (Rollen &amp; Rechte, Gruppe „Schichtplanung“): <b>Planer ansehen</b>, <b>Schichten planen</b>, <b>eigene Abwesenheit beantragen</b>, <b>Abwesenheiten genehmigen</b>, <b>Abwesenheitsgrund aller sehen</b>. Verschieben und Zuweisen von Wartungen braucht „Wartung bearbeiten“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "planner") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="calendar" data-title="Kalender" data-pages="calendar">
+  <h2><i class="ti ti-calendar-event"></i> Kalender</h2>
+  <p>Unter <b>Instandhaltung → Kalender</b> siehst du auf einen Blick, wer wann was hat: je Mitarbeiter eine Zeile, je Tag eine Spalte – Urlaub und Abwesenheit, Schichten, fällige Wartungen, Prüfpflichten, Tickets, Störungen, Aufgaben und laufende Projekte (als Balken). Was keiner Person zugewiesen ist, steht unten in <b>Ohne Person</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-filter"></i> So stellst du den Kalender ein</b>
+    <ol class="hb-steps">
+      <li>Zeitraum: Standard sind <b>14 Tage ab heute</b>. Mit den Pfeilen blätterst du, oben wählst du Start und Länge (7 bis 42 Tage).</li>
+      <li>Was angezeigt wird: die runden Schalter (Urlaub, Schichten, Wartungen …) an- oder abwählen. Die Zahl daneben zeigt, wie viele Einträge es gibt.</li>
+      <li>Wen: Abteilung, Gruppe oder eine Person wählen. „nur Personen mit Einträgen“ blendet leere Zeilen aus.</li>
+    </ol>
+    PDH merkt sich deine Auswahl. <i class="ti ti-restore"></i> setzt sie zurück. Ein Klick auf einen Eintrag öffnet ihn.</div>
+  <p><span style="box-shadow:inset 0 0 0 2px var(--red);padding:0 6px;border-radius:3px">Rot umrandet</span> sind <b>Überschneidungen</b>: Die Person ist abwesend (genehmigt oder beantragt), hat am selben Tag aber eine Schicht oder einen fälligen Auftrag. <span style="box-shadow:inset 0 0 0 2px var(--amber);padding:0 6px;border-radius:3px">Gelb</span>: ein fälliger Auftrag an einem Tag, an dem die Person keine Schicht hat. Den Grund zeigt der Hinweis beim Darüberfahren. Ohne das Recht „Abwesenheitsgrund aller sehen“ steht bei Kollegen nur „abwesend“.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "calendar") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="costcenters" data-title="Kostenstellen &amp; Tätigkeiten" data-pages="costcenters">

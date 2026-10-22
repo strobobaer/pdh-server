@@ -42,19 +42,21 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
 <link rel="stylesheet" href="/vendor/tabler-icons/tabler-icons.min.css?v={{appVersion}}">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+/* Farben im Stil von Windows 11 (Fluent): neutrale Grautöne, Akzent aus dem
+   Erscheinungsbild (pdh-theme) überschreibt --accent */
 :root{
-  --bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;
-  --accent:#4f6ef7;--accent2:#7c3aed;--accent-rgb:79,110,247;--on-accent:#fff;
-  --text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;
+  --bg:#202020;--bg2:#2b2b2b;--bg3:#323232;
+  --accent:#4f8ef7;--accent2:#7c3aed;--accent-rgb:79,142,247;--on-accent:#fff;
+  --text:#f3f3f3;--muted:#a3a3a3;--border:#3b3b3b;
   --green:#10b981;--amber:#f59e0b;--red:#ef4444;
-  --font:'DM Sans',system-ui,sans-serif;
+  --font:'Segoe UI Variable Text','Segoe UI Variable','Segoe UI','DM Sans',system-ui,sans-serif;
   --left-open-w:200px;--right-open-w:260px;
   --left-sidebar-w:var(--left-open-w);--right-sidebar-w:var(--right-open-w)
 }
 html[data-theme="light"]{
-  --bg:#f5f7fb;--bg2:#ffffff;--bg3:#eef2f7;
-  --accent:#3457d5;--accent2:#6d28d9;--accent-rgb:52,87,213;--on-accent:#fff;
-  --text:#111827;--muted:#64748b;--border:#d7dee8;
+  --bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;
+  --accent:#005fb8;--accent2:#6d28d9;--accent-rgb:0,95,184;--on-accent:#fff;
+  --text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;
   --green:#059669;--amber:#d97706;--red:#dc2626
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;flex-direction:column;height:100vh;overflow:hidden}
@@ -540,6 +542,78 @@ select.form-input option{background:var(--bg2)}
   .print-brand img{max-height:40px;max-width:180px;object-fit:contain}
   .print-brand .pb-date{margin-left:auto}
 }
+/* ── Windows-11-Optik (Fluent) ─────────────────────────────────
+   Mica: Navigation und Kopfzeile liegen auf dem Fensterhintergrund, der
+   Inhalt ist eine hellere Ebene mit runder Ecke. Steuerelemente mit 4 px,
+   Karten mit 8 px Radius, feine Linien statt kräftiger Rahmen. */
+:root{--stroke:rgba(255,255,255,.07);--stroke-strong:rgba(255,255,255,.14);--fill-hover:rgba(255,255,255,.06);--fill-press:rgba(255,255,255,.04);
+  --shadow-card:0 1px 2px rgba(0,0,0,.25);--shadow-flyout:0 8px 24px rgba(0,0,0,.35);--layer:#272727}
+html[data-theme="light"]{--stroke:rgba(0,0,0,.07);--stroke-strong:rgba(0,0,0,.16);--fill-hover:rgba(0,0,0,.04);--fill-press:rgba(0,0,0,.025);
+  --shadow-card:0 1px 2px rgba(0,0,0,.05);--shadow-flyout:0 8px 24px rgba(0,0,0,.14);--layer:#fafafa}
+body{background:var(--bg);-webkit-font-smoothing:antialiased}
+.sidebar,.context,.ctx-tabs{background:var(--bg);border-color:transparent}
+.logo{border-bottom-color:transparent}
+.topbar{background:var(--bg);border-bottom:0;height:48px}
+.main{background:var(--layer);border-top:1px solid var(--stroke);border-left:1px solid var(--stroke);border-top-left-radius:8px}
+.main-wrap{background:var(--bg)}
+/* Navigation wie im Explorer */
+.nav-section{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;padding:12px 18px 4px}
+.nav-item{margin:2px 6px;padding:8px 12px;border-radius:4px;border-left:0;position:relative;color:var(--text);opacity:.86;transition:background .1s}
+.nav-item i{color:var(--muted)}
+.nav-item:hover{background:var(--fill-hover);opacity:1}
+.nav-item:active{background:var(--fill-press)}
+.nav-item.active{background:var(--fill-hover);color:var(--text);opacity:1;font-weight:600}
+.nav-item.active i{color:var(--accent)}
+.nav-item.active::before{content:"";position:absolute;left:0;top:50%;width:3px;height:16px;margin-top:-8px;border-radius:2px;background:var(--accent)}
+html.sidebar-left-collapsed .nav-item{margin:2px 6px;padding:9px 0;border-right:0}
+html.sidebar-left-collapsed .nav-item.active::before{height:14px;margin-top:-7px}
+.nav-fold{border-radius:4px}
+.nav-fold:hover{background:var(--fill-hover)}
+/* Flächen */
+.card,.kpi{background:var(--bg2);border:1px solid var(--stroke);border-radius:8px;box-shadow:var(--shadow-card)}
+a.kpi:hover{border-color:var(--stroke-strong);background:color-mix(in srgb,var(--bg2) 92%,var(--text))}
+.rec-img{border-radius:8px;border-color:var(--stroke)}
+.rec-head h1{font-size:20px;font-weight:600;letter-spacing:-.2px}
+/* Steuerelemente */
+.btn{border-radius:4px;border:1px solid var(--stroke);border-bottom-color:var(--stroke-strong);background:color-mix(in srgb,var(--bg2) 88%,var(--text) 4%);min-height:36px;transition:background .1s,border-color .1s}
+.btn:hover{background:color-mix(in srgb,var(--bg2) 90%,var(--text) 8%);border-color:var(--stroke)}
+.btn:active{background:var(--bg2);opacity:.85}
+.btn-primary{background:var(--accent);border-color:transparent;border-bottom-color:rgba(0,0,0,.22);color:var(--on-accent)}
+.btn-primary:hover{background:color-mix(in srgb,var(--accent) 90%,#fff);opacity:1}
+.btn-small{min-height:32px}
+.btn-icon{width:36px;min-width:36px;height:36px;border-color:transparent;background:transparent}
+.btn-icon:hover{background:var(--fill-hover);border-color:transparent}
+.form-input{border-radius:4px;background:color-mix(in srgb,var(--bg2) 92%,var(--text) 3%);border:1px solid var(--stroke);border-bottom-color:color-mix(in srgb,var(--text) 40%,transparent)}
+.form-input:hover{background:color-mix(in srgb,var(--bg2) 88%,var(--text) 6%)}
+.form-input:focus{background:var(--bg2);border-color:var(--stroke);border-bottom:2px solid var(--accent);padding-bottom:7px}
+select.form-input{cursor:pointer}
+.badge{border-radius:4px}
+.sidebar-toggle,.topbar-clock,.topbar-user{border-radius:4px;border-color:var(--stroke);background:transparent}
+.sidebar-toggle:hover,.topbar-clock:hover,.topbar-user:hover{background:var(--fill-hover);border-color:var(--stroke)}
+.ctx-tab{border-radius:4px}
+.ctx-tab:hover,.ctx-tab.active{background:var(--fill-hover);border-color:transparent}
+/* Reiter wie Windows-Pivot: kurzer, runder Unterstrich */
+.rec-tabs,.list-tabs{border-bottom-color:var(--stroke)}
+.rec-tab,.list-tabs a{position:relative;border-bottom:0;border-radius:4px 4px 0 0;color:var(--muted)}
+.rec-tab:hover,.list-tabs a:hover{background:var(--fill-hover);color:var(--text)}
+.rec-tab.active,.list-tabs a.active{color:var(--text);font-weight:600}
+.rec-tab.active::after,.list-tabs a.active::after{content:"";position:absolute;left:50%;bottom:0;width:18px;margin-left:-9px;height:3px;border-radius:2px;background:var(--accent)}
+/* Tabellen ruhiger */
+th{text-transform:none;letter-spacing:0;font-size:12px;color:var(--muted);border-bottom-color:var(--stroke)}
+td{border-bottom-color:var(--stroke)}
+tr:hover td{background:var(--fill-hover)}
+.rec-row,.rec-f{border-bottom-color:var(--stroke)}
+.rec-msg{border-radius:4px;border:1px solid var(--stroke)}
+/* Flyouts und Dialoge */
+.pl-box,.ip-box,.win11-menu,.chat-toast{border-radius:8px;box-shadow:var(--shadow-flyout)}
+/* schlanke Scrollbalken */
+*{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--text) 28%,transparent) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text) 26%,transparent);border-radius:4px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-track{background:transparent}
+@media (max-width:760px){.main{border-radius:0;border-left:0}}
+/* Touch (Tablet an der Anlage): Ziele groß genug lassen */
+@media (pointer:coarse){.btn{min-height:42px}.btn-small{min-height:40px}.btn-icon{width:42px;min-width:42px;height:42px}}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -647,15 +721,13 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     </div>
   </nav>
   <script>
-  // Einklappbare Navigationsgruppen: standardmaessig zu, Zustand je Browser;
-  // die Gruppe mit der geoeffneten Seite bleibt immer offen.
+  // Einklappbare Navigationsgruppen (Akkordeon): offen ist nur die Gruppe mit
+  // der geöffneten Seite; wer eine andere aufklappt, schließt die übrigen.
   (function(){
-    let st = {};
-    try{ st = JSON.parse(localStorage.getItem('pdh_nav_fold') || '{}'); }catch(e){}
+    try{ localStorage.removeItem('pdh_nav_fold'); }catch(e){}
     document.querySelectorAll('.nav-fold').forEach(function(b){
       const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
-      // Standard: zugeklappt – bis man die Gruppe selbst aufklappt
-      const folded = (b.dataset.fold in st ? !!st[b.dataset.fold] : true) && !(g && g.querySelector('.nav-item.active'));
+      const folded = !(g && g.querySelector('.nav-item.active'));
       b.setAttribute('aria-expanded', folded ? 'false' : 'true');
       if(g) g.classList.toggle('folded', folded);
     });
@@ -736,14 +808,14 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     catch(e){ alert(e.message); }
   }
   function pdhFold(b){
-    const g = document.querySelector('[data-fold-group="' + b.dataset.fold + '"]');
-    const fold = b.getAttribute('aria-expanded') === 'true';
-    b.setAttribute('aria-expanded', fold ? 'false' : 'true');
-    if(g) g.classList.toggle('folded', fold);
-    let st = {};
-    try{ st = JSON.parse(localStorage.getItem('pdh_nav_fold') || '{}'); }catch(e){}
-    st[b.dataset.fold] = fold;
-    try{ localStorage.setItem('pdh_nav_fold', JSON.stringify(st)); }catch(e){}
+    const opening = b.getAttribute('aria-expanded') !== 'true';
+    // Akkordeon: beim Aufklappen alle anderen Gruppen schließen
+    document.querySelectorAll('#pdh-nav .nav-fold').forEach(function(o){
+      const open = o === b && opening;
+      o.setAttribute('aria-expanded', open ? 'true' : 'false');
+      const g = document.querySelector('[data-fold-group="' + o.dataset.fold + '"]');
+      if(g) g.classList.toggle('folded', !open);
+    });
   }
   </script>
 </aside>

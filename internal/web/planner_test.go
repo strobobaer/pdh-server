@@ -195,3 +195,26 @@ func TestPlannerOtherTabsRender(t *testing.T) {
 		}
 	}
 }
+
+func TestCalendarRenders(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	abs := &calChip{Kind: "absence", Short: "Urlaub", Tip: "Urlaub", Color: "#10B981", URL: "/planner?tab=absences"}
+	sh := &calChip{Kind: "shift", Short: "F", Color: "#10B981", URL: "/planner?tab=shifts"}
+	row := calRow{UserID: "u1", Name: "Anna Muster", Conflicts: 1, Cells: []calCell{
+		{Date: "2026-10-22", Absence: abs, Shift: sh, Conflict: "Urlaub – aber Schicht F",
+			Items: []calChip{{Kind: "maintenance", Title: "Ölwechsel", URL: "/maintenance/tasks/t1", Color: "#C99A3C", Icon: "ti-tool"}}},
+		{Date: "2026-10-23", Warn: "Fällig an einem Tag ohne Schicht",
+			Items: []calChip{{Kind: "project", Title: "Umbau Linie 2", URL: "/projects/p1", Color: "#64748B", Icon: "ti-timeline", SpanStart: true}}},
+	}}
+	d := CalendarData{Kinds: calKinds, Ranges: calRanges, Range: 14, From: "2026-10-22", Today: "2026-10-22", Label: "22.10. – 04.11.2026",
+		Show: map[string]bool{"absence": true, "shift": true, "maintenance": true, "project": true}, Counts: map[string]int{"maintenance": 1},
+		Days: []plannerDay{{Date: "2026-10-22", Label: "22.10.", Short: "Do", Today: true}, {Date: "2026-10-23", Label: "23.10.", Short: "Fr", Holiday: "Testtag"}},
+		Rows: []calRow{row}, Conflicts: 1, Warns: 1, OnlyBusy: true}
+	out := renderPage(t, tmpl, "calendar", d)
+	for _, want := range []string{"Anna Muster", " clash", " warn", "Ölwechsel", "Umbau Linie 2", "/maintenance/tasks/t1", "1 Überschneidung", "Testtag",
+		`name="show" value="ticket"`, `value="14" selected`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Kalender enthält %q nicht", want)
+		}
+	}
+}
