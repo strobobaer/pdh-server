@@ -953,6 +953,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "calendar") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="ms" data-title="Managementsysteme" data-pages="ms ms-doc ms-handbook ms-process ms-instruction ms-form">
+  <h2><i class="ti ti-certificate-2"></i> Managementsysteme</h2>
+  <p>Unter <b>Managementsysteme</b> in der Navigation stehen eure gelenkten Dokumente: <b>Handbücher</b>, <b>Prozessbeschreibungen</b>, <b>Verfahrens-</b> und <b>Arbeitsanweisungen</b>, <b>Formblätter &amp; Vorlagen</b> sowie <b>Leitlinien</b> – je Managementsystem (Qualität ISO 9001, Umwelt 14001, Arbeitsschutz 45001, Energie 50001, Informationssicherheit 27001, integriertes System). Gültig ist immer die <b>freigegebene Fassung</b>. Ältere Fassungen bleiben mit Änderungsgrund und Freigabe erhalten.</p>
+  <div class="hb-howto"><b><i class="ti ti-file-plus"></i> So legst du ein Dokument an und gibst es frei</b>
+    <ol class="hb-steps">
+      <li><b>Neues Dokument</b> → Art, Managementsystem und Titel. Die Nummer vergibt PDH (z. B. <b>QM-PB-004</b>), das Dokument startet als <b>Entwurf</b> mit passender Gliederung (z. B. Zweck, Geltungsbereich, Verantwortlichkeiten, Ablauf).</li>
+      <li>Reiter <b>Bearbeiten &amp; Freigabe</b>: Inhalt schreiben – rechts steht die Vorschau. <code>## Überschrift</code>, <code>- Liste</code>, <code>1. Schritt</code>, <code>**fett**</code>, Tabellen mit <code>| Spalte | Spalte |</code>. Normbezug und <b>Änderungsgrund</b> eintragen, <b>Speichern</b>.</li>
+      <li><b>Zur Prüfung geben</b> – alle mit Freigaberecht bekommen eine Nachricht.</li>
+      <li>Die prüfende Person liest und <b>gibt frei</b> oder schickt es mit Anmerkung <b>zur Überarbeitung zurück</b>. Die eigene Fassung kann niemand selbst freigeben (Vier-Augen-Prinzip).</li>
+    </ol>
+    Ändern heißt immer: <b>Neue Fassung beginnen</b>. Sie startet mit dem gültigen Inhalt; bis zur Freigabe bleibt die alte Fassung gültig. Vorlagen, Original-Dateien oder Prozessgrafiken hängst du unter <b>Dateien</b> an.</div>
+  <div class="hb-howto"><b><i class="ti ti-eye-check"></i> Kenntnisnahme und Überprüfung</b>
+    Unter <b>Stammdaten</b> legst du fest, wer die Fassung lesen muss (<b>alle</b> oder eine <b>Abteilung</b>) und alle wie viele Monate das Dokument überprüft wird. Nach jeder Freigabe bekommen die Betroffenen eine Nachricht; oben im Dokument steht <b>Gelesen und verstanden</b>. Der Reiter <b>Kenntnisnahme</b> zeigt, wer schon bestätigt hat. Ist die Überprüfung fällig, ist das Dokument in der Liste rot markiert – prüfen und eine neue Fassung freigeben lassen (auch ohne inhaltliche Änderung, Grund „Überprüft“). <b>Mitgeltende Dokumente</b> verknüpfst du ebenfalls in den Stammdaten.</div>
+  <p>Rechte (Rollen &amp; Rechte, Gruppe „Managementsysteme“): <b>lesen</b> (alle), <b>anlegen und bearbeiten</b>, <b>prüfen, freigeben und zurückziehen</b>, <b>Systeme verwalten</b> (Knopf <b>Systeme</b>: eigene Systeme wie Lebensmittelsicherheit ergänzen). Wer nur lesen darf, sieht ausschließlich freigegebene Dokumente.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "ms") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="costcenters" data-title="Kostenstellen &amp; Tätigkeiten" data-pages="costcenters">
   <h2><i class="ti ti-building-bank"></i> Kostenstellen &amp; Tätigkeiten</h2>
   <p>Unter <b>Navigation → Kostenstellen</b> (oder Core-Einstellungen → Kostenstellen &amp; Tätigkeiten) pflegst du Kostenstellen, ihre Unterstellen und die Tätigkeiten für die Zeiterfassung. Dafür brauchst du das Recht <i>Kostenstellen, Unterstellen &amp; Tätigkeiten verwalten</i>.</p>

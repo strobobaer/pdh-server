@@ -1,0 +1,235 @@
+{{template "base" .}}
+
+{{define "content"}}
+{{$d := .Doc}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="/ms?type={{.DocTypeKey}}" title="Zur Liste"><i class="ti ti-arrow-left"></i></a>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti {{$d.Icon}}" style="font-size:24px"></i></div>
+  <div class="t">
+    <h1>{{$d.Title}}</h1>
+    <div class="sub"><span style="font-family:monospace">{{$d.No}}</span> · {{$d.TypeLabel}} · <span class="badge" style="background:{{css $d.SystemColor}};color:#fff">{{$d.SystemCode}}</span> {{$d.SystemName}}{{if $d.Owner}} · verantwortlich: {{$d.Owner}}{{end}}</div>
+  </div>
+  {{if $d.Withdrawn}}<span class="badge b-red" style="font-size:12px;padding:4px 12px">zurückgezogen</span>
+  {{else if $d.Version}}<span class="badge b-green" style="font-size:12px;padding:4px 12px">Fassung {{$d.Version}} gültig seit {{$d.Released}}</span>
+  {{else}}<span class="badge b-gray" style="font-size:12px;padding:4px 12px">noch nicht freigegeben</span>{{end}}
+  {{if $d.OpenLabel}}<span class="badge {{$d.OpenClass}}" style="font-size:12px;padding:4px 12px">Fassung {{.OpenV.Version}}: {{$d.OpenLabel}}</span>{{end}}
+  {{if .Current}}<button class="btn btn-small" type="button" onclick="window.print()"><i class="ti ti-printer"></i> Drucken</button>{{end}}
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+{{if .NeedRead}}
+<form class="rec-msg ms-read" method="post" action="/ms/{{$d.ID}}/read">
+  <i class="ti ti-eye"></i> <span>Bitte lies die gültige Fassung und bestätige die Kenntnisnahme.</span>
+  <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Gelesen und verstanden</button>
+</form>
+{{end}}
+{{if $d.ReviewDue}}<div class="rec-msg err"><i class="ti ti-calendar-due"></i> Die Überprüfung war am {{$d.NextReview}} fällig.{{if .CanEdit}} Inhalt prüfen und eine neue Fassung freigeben lassen (auch ohne Änderung, Grund „Überprüft“).{{end}}</div>{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab" data-tab="content" href="?tab=content"><i class="ti ti-file-text"></i> Inhalt</a>
+  {{if or .CanEdit .CanApprove}}<a class="rec-tab" data-tab="edit" href="?tab=edit"><i class="ti ti-pencil"></i> Bearbeiten &amp; Freigabe{{if .OpenV}} <b>{{.OpenV.StatusLabel}}</b>{{end}}</a>{{end}}
+  <a class="rec-tab" data-tab="versions" href="?tab=versions"><i class="ti ti-history"></i> Fassungen <b>{{len .Versions}}</b></a>
+  {{if ne .ReadScope "none"}}<a class="rec-tab" data-tab="reads" href="?tab=reads"><i class="ti ti-eye-check"></i> Kenntnisnahme <b>{{.ReadDone}}/{{.ReadTotal}}</b></a>{{end}}
+  <a class="rec-tab" data-tab="files" href="?tab=files"><i class="ti ti-paperclip"></i> Dateien</a>
+  {{if .CanEdit}}<a class="rec-tab" data-tab="meta" href="?tab=meta"><i class="ti ti-settings"></i> Stammdaten</a>{{end}}
+</div>
+
+<!-- Inhalt -->
+<div class="rec-pane" data-pane="content">
+  {{if .Current}}
+  {{if .ShowingOld}}<div class="rec-msg err"><i class="ti ti-history"></i> Du siehst Fassung {{.Current.Version}} ({{.Current.StatusLabel}}) – nicht die gültige. <a href="?tab=content" style="color:var(--accent)">Zur gültigen Fassung</a></div>{{end}}
+  <article class="card ms-doc">
+    <header class="ms-dochead">
+      <div><b>{{$d.No}}</b> · {{.Current.Title}}</div>
+      <div class="rec-sub">Fassung {{.Current.Version}}{{if .Current.Released}} · freigegeben {{.Current.Released}}{{if .Current.Reviewer}} von {{.Current.Reviewer}}{{end}}{{end}}{{if .Current.Author}} · erstellt von {{.Current.Author}}{{end}}{{if .Current.NormRefs}} · Normbezug: {{.Current.NormRefs}}{{end}}</div>
+    </header>
+    <div class="ms-body">{{.Current.HTML}}</div>
+  </article>
+  {{if .MyRead}}<p class="rec-sub"><i class="ti ti-circle-check" style="color:var(--green)"></i> Von dir gelesen am {{.MyRead}}.</p>{{end}}
+  {{else}}
+  <div class="card"><div class="rec-sub" style="padding:8px">Dieses Dokument hat noch keine freigegebene Fassung.{{if .OpenV}} Der Entwurf steht unter „Bearbeiten &amp; Freigabe“.{{end}}</div></div>
+  {{end}}
+  {{if .Related}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-link"></i> Mitgeltende Dokumente</span></div>
+    {{range .Related}}<div class="rec-row"><a class="grow" href="/ms/{{.ID}}" style="color:var(--accent)"><span style="font-family:monospace">{{.No}}</span> {{.Title}}</a><span class="rec-sub">{{.TypeLabel}}</span>{{if .Version}}<span class="badge b-green">{{.Version}}</span>{{end}}</div>{{end}}
+  </div>
+  {{end}}
+</div>
+
+{{if or .CanEdit .CanApprove}}
+<!-- Bearbeiten & Freigabe -->
+<div class="rec-pane" data-pane="edit">
+  {{with .OpenV}}
+  {{if eq .Status "review"}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-gavel"></i> Fassung {{.Version}} – in Prüfung seit {{.Submitted}}</span><span class="rec-sub">von {{.Author}}</span></div>
+    <div class="rec-f"><div class="rec-l">Änderungsgrund</div><div class="rec-v">{{.ChangeNote}}</div></div>
+    {{if .NormRefs}}<div class="rec-f"><div class="rec-l">Normbezug</div><div class="rec-v">{{.NormRefs}}</div></div>{{end}}
+    {{if $.CanApprove}}
+    <form method="post" style="margin-top:10px">
+      <div class="form-group"><label class="form-label">Anmerkung (bei Zurückweisen Pflicht)</label><input name="review_note" class="form-input" maxlength="2000"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn" formaction="/ms/{{$d.ID}}/reject" type="submit"><i class="ti ti-arrow-back-up"></i> Zur Überarbeitung zurück</button>
+        <button class="btn btn-primary" formaction="/ms/{{$d.ID}}/approve" type="submit" {{if $.OwnVersion}}disabled title="Vier-Augen-Prinzip: Die eigene Fassung gibt jemand anderes frei"{{end}} onclick="return confirm('Fassung {{.Version}} freigeben? Sie wird sofort gültig und ersetzt die bisherige.')"><i class="ti ti-circle-check"></i> Freigeben</button>
+      </div>
+      {{if $.OwnVersion}}<p class="rec-sub" style="text-align:right">Vier-Augen-Prinzip: Diese Fassung stammt von dir – freigeben muss jemand anderes.</p>{{end}}
+    </form>
+    {{else}}<p class="rec-sub">Freigeben dürfen Personen mit dem Recht „Dokumente prüfen, freigeben und zurückziehen“.</p>{{end}}
+  </div>
+  <article class="card ms-doc"><div class="ms-body">{{.HTML}}</div></article>
+  {{else}}
+  {{if .ReviewNote}}<div class="rec-msg err"><i class="ti ti-message-exclamation"></i> Zurückgewiesen{{if .Reviewer}} von {{.Reviewer}}{{end}}: {{.ReviewNote}}</div>{{end}}
+  {{if $.CanEdit}}
+  <form class="card" method="post" id="ms-edit">
+    <div class="card-title"><span><i class="ti ti-pencil"></i> Entwurf – Fassung {{.Version}}</span><span class="rec-sub">zuletzt {{.Created}}</span></div>
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Titel *</label><input name="title" class="form-input" value="{{.Title}}" maxlength="200" required></div>
+      <div class="form-group"><label class="form-label">Normbezug</label><input name="norm_refs" class="form-input" value="{{.NormRefs}}" maxlength="300" placeholder="z. B. ISO 9001: 7.5, 8.5.1"></div>
+    </div></div>
+    <div class="ms-editor">
+      <div><label class="form-label">Inhalt <span class="rec-sub">– ## Überschrift · - Liste · 1. Schritt · **fett** · | Tabelle | · [Link](https://…)</span></label>
+        <textarea name="content" id="ms-content" class="form-input" rows="24" spellcheck="true">{{.Content}}</textarea></div>
+      <div><label class="form-label">Vorschau</label><div class="ms-body ms-preview" id="ms-preview"></div></div>
+    </div>
+    <div class="form-group"><label class="form-label">Änderungsgrund * <span class="rec-sub">(Pflicht vor der Prüfung)</span></label><input name="change_note" class="form-input" value="{{.ChangeNote}}" maxlength="2000" placeholder="z. B. Ablauf um Schritt 4 ergänzt"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn" formaction="/ms/{{$d.ID}}/discard" formnovalidate type="submit" style="color:var(--red)" onclick="return confirm('{{if $d.Version}}Entwurf verwerfen? Die gültige Fassung bleibt.{{else}}Dokument verwerfen? Es wurde noch nie freigegeben und wird gelöscht.{{end}}')"><i class="ti ti-trash"></i> Verwerfen</button>
+      <button class="btn" formaction="/ms/{{$d.ID}}/save" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button>
+      <button class="btn btn-primary" formaction="/ms/{{$d.ID}}/submit" type="submit"><i class="ti ti-send"></i> Zur Prüfung geben</button>
+    </div>
+  </form>
+  {{end}}
+  {{end}}
+  {{else}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-pencil-plus"></i> Ändern</span></div>
+    <p class="rec-sub">Freigegebene Fassungen werden nie überschrieben. Eine Änderung ist eine neue Fassung: Sie startet mit dem gültigen Inhalt, wird geprüft und ersetzt die alte erst mit der Freigabe.</p>
+    {{if .CanEdit}}<form method="post" action="/ms/{{$d.ID}}/revise" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit"><i class="ti ti-pencil-plus"></i> Neue Fassung beginnen</button></form>{{end}}
+  </div>
+  {{end}}
+  {{if .CanApprove}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-archive"></i> Gültigkeit</span></div>
+    {{if $d.Withdrawn}}<form method="post" action="/ms/{{$d.ID}}/restore" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="rec-sub">Das Dokument ist zurückgezogen und für Lesende ausgeblendet.</span><button class="btn btn-small" type="submit"><i class="ti ti-arrow-back-up"></i> Wieder gültig</button></form>
+    {{else if $d.Version}}<form method="post" action="/ms/{{$d.ID}}/withdraw" style="display:flex;justify-content:space-between;align-items:center;gap:8px" onsubmit="return confirm('Dokument zurückziehen? Es ist dann nicht mehr gültig, bleibt aber mit allen Fassungen erhalten.')"><span class="rec-sub">Wird das Dokument nicht mehr gebraucht, ziehst du es zurück – gelöscht wird nichts.</span><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-archive"></i> Zurückziehen</button></form>{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+<!-- Fassungen -->
+<div class="rec-pane" data-pane="versions">
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table>
+      <thead><tr><th>Fassung</th><th>Status</th><th>Änderungsgrund</th><th>Erstellt</th><th>Freigabe</th><th></th></tr></thead>
+      <tbody>
+      {{range .Versions}}
+      <tr><td><b>{{.Version}}</b></td><td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+        <td style="font-size:12px">{{.ChangeNote}}{{if .ReviewNote}}<div class="rec-sub">Prüfung: {{.ReviewNote}}</div>{{end}}</td>
+        <td style="font-size:12px">{{.Author}}<div class="rec-sub">{{.Created}}</div></td>
+        <td style="font-size:12px">{{if .Released}}{{.Released}}{{if .Reviewer}}<div class="rec-sub">{{.Reviewer}}</div>{{end}}{{end}}</td>
+        <td><a class="btn btn-small" href="?tab=content&v={{.ID}}"><i class="ti ti-eye"></i> Ansehen</a></td></tr>
+      {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Noch keine Fassung</td></tr>{{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{if ne .ReadScope "none"}}
+<!-- Kenntnisnahme -->
+<div class="rec-pane" data-pane="reads">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-eye-check"></i> Kenntnisnahme der gültigen Fassung</span><span class="badge {{if eq .ReadDone .ReadTotal}}b-green{{else}}b-amber{{end}}">{{.ReadDone}} von {{.ReadTotal}}</span></div>
+    {{range .Reads}}<div class="rec-row"><div class="grow">{{.Name}}{{if .Dept}} <span class="rec-sub">· {{.Dept}}</span>{{end}}</div>{{if .Read}}<span class="badge b-green"><i class="ti ti-check"></i> {{.ReadAt}}</span>{{else}}<span class="badge b-gray">offen</span>{{end}}</div>
+    {{else}}<div class="rec-sub">{{if .Current}}Niemand muss dieses Dokument bestätigen.{{else}}Noch keine gültige Fassung.{{end}}</div>{{end}}
+  </div>
+</div>
+{{end}}
+
+<!-- Dateien -->
+<div class="rec-pane" data-pane="files">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-paperclip"></i> Dateien (Vorlagen, Original-Dokumente, Prozessgrafiken)</span></div>
+    <div id="attachments-{{$d.ID}}" data-attach-ref="ms_document:{{$d.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
+    {{if .CanEdit}}<label class="btn btn-small" style="cursor:pointer"><i class="ti ti-upload"></i> Datei hochladen<input type="file" multiple style="display:none" onchange="uploadFiles(this,'ms_document','{{$d.ID}}')"></label>{{end}}
+  </div>
+</div>
+
+{{if .CanEdit}}
+<!-- Stammdaten -->
+<div class="rec-pane" data-pane="meta">
+  <form class="card" method="post" action="/ms/{{$d.ID}}/meta">
+    <div class="rec-form"><div class="cols">
+      <div class="form-group"><label class="form-label">Art</label><select name="doc_type" class="form-input">{{range .Types}}<option value="{{.Key}}" {{if eq .Key $.DocTypeKey}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Managementsystem</label><select name="system_id" class="form-input">{{range .Systems}}<option value="{{.ID}}" {{if eq .ID $.SystemID}}selected{{end}}>{{.Code}} · {{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Verantwortlich (Prozesseigner)</label><select name="owner_id" class="form-input"><option value="">– niemand –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.OwnerID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Abteilung</label><select name="department_id" class="form-input"><option value="">– keine –</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.DeptID}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      <div class="form-group"><label class="form-label">Überprüfung alle … Monate</label><input type="number" min="0" max="120" name="review_months" class="form-input" value="{{.ReviewMonths}}"><div class="help">0 = keine regelmäßige Überprüfung{{if $d.NextReview}} · nächste: {{$d.NextReview}}{{end}}</div></div>
+      <div class="form-group"><label class="form-label">Kenntnisnahme</label><select name="read_scope" class="form-input">
+        <option value="none" {{if eq .ReadScope "none"}}selected{{end}}>nicht erforderlich</option>
+        <option value="all" {{if eq .ReadScope "all"}}selected{{end}}>alle Mitarbeiter</option>
+        <option value="department" {{if eq .ReadScope "department"}}selected{{end}}>Mitarbeiter der Abteilung</option></select>
+        <div class="help">bei jeder neuen Fassung erneut</div></div>
+    </div></div>
+    <div class="form-group"><label class="form-label">Mitgeltende Dokumente</label>
+      <div class="ms-rel">{{range .AllDocs}}<label><input type="checkbox" name="related" value="{{.ID}}" {{if index $.RelatedIDs .ID}}checked{{end}}> <span style="font-family:monospace">{{.No}}</span> {{.Title}}</label>{{else}}<span class="rec-sub">keine weiteren Dokumente</span>{{end}}</div></div>
+    <div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-small" type="submit"><i class="ti ti-check"></i> Speichern</button></div>
+  </form>
+</div>
+{{end}}
+
+<style>
+.ms-read{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--amber) 14%,transparent);color:inherit}
+.ms-read span{flex:1}
+.ms-doc{padding:22px 28px;max-width:900px}
+.ms-dochead{border-bottom:2px solid var(--accent);padding-bottom:8px;margin-bottom:14px}
+.ms-body{font-size:13.5px;line-height:1.65}
+.ms-body h2{font-size:17px;margin:18px 0 6px}.ms-body h3{font-size:15px;margin:14px 0 4px}.ms-body h4{font-size:13.5px;margin:12px 0 4px}
+.ms-body p{margin:6px 0}.ms-body ul,.ms-body ol{margin:6px 0 6px 22px}.ms-body li{margin:2px 0}
+.ms-body code{background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:12px}
+.ms-body a{color:var(--accent)}
+.ms-body table.ms-tab{margin:8px 0;font-size:13px;width:auto;min-width:50%}
+.ms-body table.ms-tab th,.ms-body table.ms-tab td{border:1px solid var(--border);padding:5px 9px;text-transform:none;letter-spacing:0}
+.ms-editor{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+@media (max-width:1000px){.ms-editor{grid-template-columns:1fr}}
+#ms-content{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.5;resize:vertical}
+.ms-preview{border:1px solid var(--border);border-radius:6px;padding:10px 14px;max-height:560px;overflow:auto;background:var(--bg2)}
+.ms-rel{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:4px 12px;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12.5px}
+@media print{.rec-head .btn,.rec-tabs,.rec-msg,.ms-read,.sidebar,.topbar,.context{display:none!important}.rec-pane{display:none!important}.rec-pane[data-pane="content"]{display:block!important}.ms-doc{box-shadow:none;border:0;max-width:none}}
+</style>
+<script>
+(function(){
+  const ta = document.getElementById('ms-content'), pv = document.getElementById('ms-preview');
+  if(!ta || !pv) return;
+  const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const inl = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // gleiche Regeln wie msMarkdown (ms.go)
+  function md(src){
+    let out = '', list = '', para = [], table = [];
+    const fp = () => { if(para.length){ out += '<p>' + para.join('<br>') + '</p>'; para = []; } };
+    const cl = () => { if(list){ out += '</' + list + '>'; list = ''; } };
+    const ft = () => { if(!table.length) return; out += '<table class="ms-tab">' + table.map((r, i) => '<tr>' + r.map(c => (i ? '<td>' : '<th>') + inl(c) + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</table>'; table = []; };
+    src.replace(/\r\n/g, '\n').split('\n').forEach(raw => {
+      const t = raw.trim();
+      if(!t){ fp(); cl(); ft(); return; }
+      if(t.startsWith('|')){ fp(); cl(); const c = t.replace(/^\||\|$/g, '').split('|').map(x => x.trim()); if(c.some(x => x.replace(/[-: ]/g, ''))) table.push(c); return; }
+      if(t.startsWith('#')){ fp(); cl(); ft(); const n = Math.min(3, t.match(/^#+/)[0].length); out += '<h' + (n + 1) + '>' + inl(t.replace(/^#+/, '').trim()) + '</h' + (n + 1) + '>'; return; }
+      const ol = /^\d+[.)]\s+/.test(t), ul = /^[-*]\s/.test(t);
+      if(ol || ul){ fp(); ft(); const k = ol ? 'ol' : 'ul'; if(list !== k){ cl(); out += '<' + k + '>'; list = k; } out += '<li>' + inl(ol ? t.replace(/^\d+[.)]\s+/, '') : t.slice(2).trim()) + '</li>'; return; }
+      cl(); ft(); para.push(inl(t));
+    });
+    fp(); cl(); ft();
+    return out;
+  }
+  const upd = () => { pv.innerHTML = md(ta.value); };
+  ta.addEventListener('input', upd); upd();
+  // ungespeicherte Änderungen nicht verlieren
+  let dirty = false; ta.addEventListener('input', () => dirty = true);
+  document.getElementById('ms-edit').addEventListener('submit', () => dirty = false);
+  window.addEventListener('beforeunload', e => { if(dirty){ e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+{{end}}

@@ -77,6 +77,12 @@ var navDefs = []navDef{
 	{navItem{"cleanup", "/admin/cleanup", "ti-trash-x", "Bereinigung", "cleanup", false}, "admin", func(b *BaseData) bool { return b.CanCleanup }},
 	{navItem{"printers", "/admin/printers", "ti-printer", "Drucker", "printers", false}, "admin", func(b *BaseData) bool { return b.CanPrinters }},
 
+	{navItem{"ms", "/ms", "ti-certificate-2", "Dokumente", "ms", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
+	{navItem{"ms-handbook", "/ms?type=handbook", "ti-book-2", "Handbücher", "ms-handbook", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
+	{navItem{"ms-process", "/ms?type=process", "ti-route", "Prozessbeschreibungen", "ms-process", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
+	{navItem{"ms-instruction", "/ms?type=instruction", "ti-clipboard-text", "Arbeitsanweisungen", "ms-instruction", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
+	{navItem{"ms-form", "/ms?type=form", "ti-file-text", "Formblätter & Vorlagen", "ms-form", false}, "ms", func(b *BaseData) bool { return b.CanMS }},
+
 	{navItem{"statistics", "/statistics", "ti-chart-histogram", "Statistik", "statistics", false}, "data", func(b *BaseData) bool { return b.CanStatistics }},
 	{navItem{"import", "/import", "ti-database-import", "Import", "import", false}, "data", func(b *BaseData) bool { return b.CanImport }},
 	{navItem{"export", "/export", "ti-database-export", "Export", "export", false}, "data", func(b *BaseData) bool { return b.CanExport }},
@@ -92,6 +98,7 @@ var navDefaultGroups = []struct{ Key, Label string }{
 	{"material", "Material & Anlagen"},
 	{"people", "Personal"},
 	{"admin", "Verwaltung"},
+	{"ms", "Managementsysteme"},
 	{"data", "Daten"},
 	{"links", "Hilfe & Links"},
 }

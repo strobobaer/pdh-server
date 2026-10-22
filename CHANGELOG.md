@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.61.0] – 2026-10-22
+
+### Neu
+- Managementsysteme (eigene Gruppe in der Navigation): gelenkte Dokumente für Qualität (ISO 9001), Umwelt (14001), Arbeitsschutz (45001), Energie (50001), Informationssicherheit (27001) und das integrierte System – Handbücher, Prozessbeschreibungen, Verfahrens- und Arbeitsanweisungen, Formblätter & Vorlagen, Leitlinien
+- Dokumentnummern automatisch (z. B. QM-PB-001), neue Dokumente starten mit passender Gliederung; Inhalt mit Überschriften, Listen, Tabellen und Live-Vorschau, Dateien als Anhang
+- Fassungen mit Änderungsgrund: Entwurf → Prüfung → Freigabe nach dem Vier-Augen-Prinzip; ältere Fassungen bleiben einsehbar, Dokumente lassen sich zurückziehen
+- Kenntnisnahme je Fassung (alle oder eine Abteilung) mit Übersicht, wer bestätigt hat; Überprüfungsfrist mit Markierung, wenn sie fällig ist; mitgeltende Dokumente verknüpfbar
+- Eigene Rechte: lesen, anlegen/bearbeiten, prüfen/freigeben, Systeme verwalten; weitere Managementsysteme lassen sich ergänzen
+
 ## [0.60.0] – 2026-10-22
 
 ### Neu

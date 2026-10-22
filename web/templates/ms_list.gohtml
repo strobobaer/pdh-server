@@ -1,0 +1,119 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="rec-head">
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti {{if .TypeInfo}}{{.TypeInfo.Icon}}{{else}}ti-certificate-2{{end}}" style="font-size:26px"></i></div>
+  <div class="t">
+    <h1>{{if .TypeInfo}}{{.TypeInfo.Plural}}{{else}}Managementsysteme{{end}}</h1>
+    <div class="sub">Gelenkte Dokumente – gültig ist immer die freigegebene Fassung</div>
+  </div>
+  {{if .CanManage}}<a class="btn btn-small" href="/ms?view=systems"><i class="ti ti-settings"></i> Systeme</a>{{end}}
+  {{if .CanEdit}}<button class="btn btn-primary" type="button" onclick="document.getElementById('ms-new').showModal()"><i class="ti ti-plus"></i> Neues Dokument</button>{{end}}
+</div>
+
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+<div class="kpis">
+  <a class="kpi" href="/ms?type={{.Type}}"><div class="v" style="color:var(--green)">{{.CountReleased}}</div><div class="l">gültige Dokumente</div></a>
+  <a class="kpi" href="/ms?type={{.Type}}&view=read"><div class="v" style="color:{{if .CountRead}}var(--amber){{else}}inherit{{end}}">{{.CountRead}}</div><div class="l">von mir zu lesen</div></a>
+  {{if or .CanEdit .CanApprove}}
+  <a class="kpi" href="/ms?type={{.Type}}&view=review"><div class="v">{{.CountReview}}</div><div class="l">in Prüfung</div></a>
+  <a class="kpi" href="/ms?type={{.Type}}&view=draft"><div class="v">{{.CountDraft}}</div><div class="l">Entwürfe</div></a>
+  <a class="kpi" href="/ms?type={{.Type}}&view=due"><div class="v" style="color:{{if .CountDue}}var(--red){{else}}inherit{{end}}">{{.CountDue}}</div><div class="l">Überprüfung fällig</div></a>
+  {{end}}
+</div>
+
+{{if and (eq .View "systems") .CanManage}}
+<div class="card" style="padding:0;overflow-x:auto">
+  <div class="card-title" style="padding:12px 14px 0"><span><i class="ti ti-settings"></i> Managementsysteme</span><a class="btn btn-small" href="/ms">Zurück zur Liste</a></div>
+  <table>
+    <thead><tr><th>Kürzel</th><th>Name</th><th>Norm</th><th>Farbe</th><th>Reihenfolge</th><th>aktiv</th><th style="text-align:right">Dokumente</th><th></th></tr></thead>
+    <tbody>
+    {{range .Systems}}
+    <tr><form method="post" action="/ms/systems">
+      <td><input name="code" class="form-input" value="{{.Code}}" readonly style="width:80px"></td>
+      <td><input name="name" class="form-input" value="{{.Name}}" maxlength="120" required></td>
+      <td><input name="norm" class="form-input" value="{{.Norm}}" maxlength="60" style="width:130px"></td>
+      <td><input type="color" name="color" value="{{.Color}}" style="width:44px;height:32px;border:0;background:none"></td>
+      <td><input type="number" name="sort_order" class="form-input" value="{{.Sort}}" style="width:70px"></td>
+      <td><select name="active" class="form-input" style="width:auto"><option value="1" {{if .Active}}selected{{end}}>ja</option><option value="0" {{if not .Active}}selected{{end}}>nein</option></select></td>
+      <td style="text-align:right">{{.Docs}}</td>
+      <td><button class="btn btn-icon" style="width:30px;min-width:30px;height:30px" title="Speichern"><i class="ti ti-check" style="font-size:14px"></i></button></td>
+    </form></tr>
+    {{end}}
+    <tr><form method="post" action="/ms/systems">
+      <td><input name="code" class="form-input" placeholder="z. B. LM" maxlength="10" required style="width:80px"></td>
+      <td><input name="name" class="form-input" placeholder="z. B. Lebensmittelsicherheit" maxlength="120" required></td>
+      <td><input name="norm" class="form-input" placeholder="ISO 22000" maxlength="60" style="width:130px"></td>
+      <td><input type="color" name="color" value="#3B82F6" style="width:44px;height:32px;border:0;background:none"></td>
+      <td><input type="number" name="sort_order" class="form-input" value="10" style="width:70px"></td>
+      <td><input type="hidden" name="active" value="1"></td><td></td>
+      <td><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-plus"></i></button></td>
+    </form></tr>
+    </tbody>
+  </table>
+  <p class="rec-sub" style="padding:0 14px 12px">Das Kürzel ist der Anfang der Dokumentnummer (z. B. QM-PB-001) und lässt sich nicht mehr ändern.</p>
+</div>
+{{else}}
+<form class="card ms-filter" method="get" action="/ms">
+  <input type="hidden" name="view" value="{{.View}}">
+  <div class="ms-chips">
+    <a class="ms-chip{{if not .Type}} on{{end}}" href="/ms?view={{.View}}&system={{.System}}">Alle Arten</a>
+    {{range .Types}}<a class="ms-chip{{if eq .Key $.Type}} on{{end}}" href="/ms?type={{.Key}}&view={{$.View}}&system={{$.System}}"><i class="ti {{.Icon}}"></i> {{.Plural}}</a>{{end}}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="type" value="{{.Type}}">
+    <select name="system" class="form-input" style="width:auto" onchange="this.form.submit()"><option value="">Alle Systeme</option>{{range .Systems}}<option value="{{.Code}}" {{if eq .Code $.System}}selected{{end}}>{{.Code}} · {{.Name}}</option>{{end}}</select>
+    <input name="q" class="form-input" style="flex:1;min-width:200px" value="{{.Query}}" placeholder="Nummer, Titel oder Verantwortliche/n suchen …">
+    <button class="btn btn-small" type="submit"><i class="ti ti-search"></i></button>
+    {{if or .CanEdit .CanApprove}}<a class="btn btn-small" href="/ms?type={{.Type}}&view=withdrawn" title="Zurückgezogene Dokumente">Zurückgezogen</a>{{end}}
+  </div>
+</form>
+
+<div class="card" style="padding:0;overflow-x:auto">
+  <table>
+    <thead><tr><th>Nummer</th><th>Titel</th><th>System</th><th>Fassung</th><th>Verantwortlich</th><th>Überprüfung</th><th></th></tr></thead>
+    <tbody>
+    {{range .Docs}}
+    <tr>
+      <td style="font-family:monospace;white-space:nowrap"><a href="/ms/{{.ID}}" style="color:var(--accent)">{{.No}}</a></td>
+      <td><a href="/ms/{{.ID}}" style="font-weight:600"><i class="ti {{.Icon}}" style="color:var(--muted)"></i> {{.Title}}</a><div class="rec-sub">{{.TypeLabel}}</div></td>
+      <td><span class="badge" style="background:{{css .SystemColor}};color:#fff" title="{{.SystemName}}">{{.SystemCode}}</span></td>
+      <td style="white-space:nowrap">{{if .Version}}<span class="badge b-green">{{.Version}}</span> <span class="rec-sub">seit {{.Released}}</span>{{else}}<span class="rec-sub">noch keine</span>{{end}}
+        {{if .OpenLabel}}<div><span class="badge {{.OpenClass}}">{{.OpenLabel}}</span></div>{{end}}{{if .Withdrawn}}<div><span class="badge b-red">zurückgezogen</span></div>{{end}}</td>
+      <td style="font-size:12px">{{.Owner}}</td>
+      <td style="font-size:12px;{{if .ReviewDue}}color:var(--red);font-weight:600{{end}}">{{.NextReview}}{{if .ReviewDue}} · fällig{{end}}</td>
+      <td>{{if .ReadPending}}<span class="badge b-amber" title="Bitte lesen und bestätigen"><i class="ti ti-eye"></i> lesen</span>{{end}}</td>
+    </tr>
+    {{else}}<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">Keine Dokumente für diese Auswahl{{if .CanEdit}} – oben „Neues Dokument“{{end}}.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{if .CanEdit}}
+<dialog id="ms-new" class="ms-dlg">
+  <form method="post" action="/ms">
+    <h3 style="margin:0 0 12px"><i class="ti ti-file-plus"></i> Neues Dokument</h3>
+    <div class="form-group"><label class="form-label">Art *</label>
+      <select name="doc_type" class="form-input" required>{{range .Types}}<option value="{{.Key}}" {{if eq .Key $.Type}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Managementsystem *</label>
+      <select name="system_id" class="form-input" required>{{range .Systems}}<option value="{{.ID}}" {{if eq .Code $.System}}selected{{end}}>{{.Code}} · {{.Name}}{{if .Norm}} ({{.Norm}}){{end}}</option>{{end}}</select></div>
+    <div class="form-group"><label class="form-label">Titel *</label><input name="title" class="form-input" maxlength="200" required placeholder="z. B. Lenkung dokumentierter Information"></div>
+    <div class="form-group"><label class="form-label">Dokumentnummer</label><input name="doc_no" class="form-input" maxlength="40" placeholder="leer = automatisch, z. B. QM-PB-004"></div>
+    <p class="rec-sub">Das Dokument startet als Entwurf mit einer passenden Gliederung. Gültig wird es erst nach Prüfung und Freigabe.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn" type="button" onclick="this.closest('dialog').close()">Abbrechen</button><button class="btn btn-primary" type="submit"><i class="ti ti-check"></i> Anlegen</button></div>
+  </form>
+</dialog>
+{{end}}
+<style>
+.ms-filter{display:flex;flex-direction:column;gap:10px}
+.ms-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ms-chip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:5px 11px;border:1px solid var(--border);border-radius:999px;color:var(--text)}
+.ms-chip:hover{background:var(--fill-hover,var(--bg3))}
+.ms-chip.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-weight:600}
+.ms-dlg{border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);padding:18px;width:min(480px,94vw);box-shadow:var(--shadow-flyout,0 8px 24px rgba(0,0,0,.3))}
+.ms-dlg::backdrop{background:rgba(0,0,0,.45)}
+</style>
+{{end}}

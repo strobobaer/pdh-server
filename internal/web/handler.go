@@ -71,6 +71,7 @@ type BaseData struct {
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
 	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
 	CanPlanner             bool       // Planer: Schichten, Urlaub, Wartung (shifts.view)
+	CanMS                  bool       // Managementsysteme (ms.view)
 	CanInfraObligations    bool       // Prüfpflichten pflegen/erledigen (infrastructure.obligations)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
 	CanCostCenters         bool       // Core → Kostenstellen (costcenters.manage, costcenters_web.go)
@@ -418,6 +419,12 @@ func (h *Handler) Routes() chi.Router {
 	// Planer: Schichtplan, Urlaub & Abwesenheit, Wartungsplanung, Modelle & Vorlagen (planner*.go)
 	r.Get("/planner", h.PlannerPage)
 	r.Get("/calendar", h.CalendarPage) // Kalender-Dashboard (calendar_board.go)
+	// Managementsysteme: gelenkte Dokumente (ms.go)
+	r.Get("/ms", h.MSListPage)
+	r.Post("/ms", h.MSCreateWeb)
+	r.Post("/ms/systems", h.MSSystemWeb)
+	r.Get("/ms/{id}", h.MSDocPage)
+	r.Post("/ms/{id}/{action}", h.MSActionWeb)
 	r.Post("/planner/shifts/cell", h.PlannerCellWeb)
 	r.Post("/planner/shifts/copy-week", h.PlannerCopyWeekWeb)
 	r.Post("/planner/absences", h.PlannerAbsenceCreateWeb)
@@ -1035,6 +1042,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanViewInfra:           h.canViewInfra(r),
 		CanProcurement:         h.canProcurement(r),
 		CanPlanner:             h.canPlannerView(r),
+		CanMS:                  h.canMSView(r),
 		CanInfraObligations:    h.canInfraObligations(r),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),
 		CanCostCenters:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "costcenters.manage") || h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
