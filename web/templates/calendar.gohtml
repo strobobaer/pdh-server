@@ -11,6 +11,7 @@
   {{if .Warns}}<span class="badge b-amber" style="font-size:12px;padding:4px 12px" title="fälliger Auftrag an einem Tag ohne Schicht">{{.Warns}} ohne Schicht</span>{{end}}
 </div>
 
+{{range .LoadErrors}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> Konnte nicht geladen werden – {{.}}</div>{{end}}
 <form class="card cal-filter" method="get" action="/calendar">
   <input type="hidden" name="set" value="1">
   <div class="cal-row">

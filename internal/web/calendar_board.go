@@ -74,6 +74,7 @@ type CalendarData struct {
 	OnlyBusy          bool
 	Conflicts, Warns  int
 	Counts            map[string]int
+	LoadErrors        []string // Arten, die nicht geladen werden konnten (statt still zu fehlen)
 }
 
 func calChipFor(k calKind) calChip { return calChip{Kind: k.Key, Color: k.Color, Icon: k.Icon} }
@@ -282,11 +283,13 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 	// fällige Vorgänge: Person = zugewiesen (Aufgaben: alle Beteiligten), sonst „Ohne Person“
 	type src struct{ kind, table, open, url, people string }
 	srcs := []src{
-		{"maintenance", "maintenance_tasks", "t.status::text IN ('open', 'in_progress', 'pending')", "/maintenance/tasks/", "ARRAY_REMOVE(ARRAY[t.assigned_to::text], NULL)"},
-		{"ticket", "tickets", "t.status::text IN ('open', 'in_progress', 'pending')", "/tickets/", "ARRAY_REMOVE(ARRAY[t.assigned_to::text], NULL)"},
-		{"fault", "faults", "t.status::text IN ('detected', 'analyzing', 'in_progress', 'pending')", "/faults/", "ARRAY_REMOVE(ARRAY[t.assigned_to::text], NULL)"},
+		{"maintenance", "maintenance_tasks", "t.status::text IN ('open', 'in_progress', 'pending')", "/maintenance/tasks/", calPeople},
+		{"ticket", "tickets", "t.status::text IN ('open', 'in_progress', 'pending')", "/tickets/", calPeople},
+		{"fault", "faults", "t.status::text IN ('detected', 'analyzing', 'in_progress', 'pending')", "/faults/", calPeople},
 		{"task", "tasks", "t.status IN ('open', 'in_progress', 'pending')", "/tasks/",
-			"ARRAY(SELECT ta.user_id::text FROM task_assignees ta WHERE ta.task_id = t.id UNION SELECT t.assigned_to::text WHERE t.assigned_to IS NOT NULL)"},
+			// Aufgaben haben mehrere Zuständige (task_assignees, Migration 062 – tasks.assigned_to gibt es
+			// nicht mehr); ohne Zuständige gilt die verantwortliche Person
+			"COALESCE(NULLIF(ARRAY(SELECT ta.user_id::text FROM task_assignees ta WHERE ta.task_id = t.id), '{}'), ARRAY_REMOVE(ARRAY[t.responsible_to::text], NULL))"},
 	}
 	refType := map[string]string{"maintenance": "maintenance_task", "ticket": "ticket", "fault": "fault", "task": "task"}
 	for _, s := range srcs {
@@ -307,6 +310,7 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 			ORDER BY 3 LIMIT 2000`, args...)
 		if err != nil {
 			componentLog("kalender").Warn().Err(err).Str("art", s.kind).Msg("laden")
+			d.LoadErrors = append(d.LoadErrors, calKindByKey(s.kind).Label+": "+friendlyDBError(err))
 			continue
 		}
 		for rs.Next() {
@@ -461,3 +465,6 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 
 // Chips für Vorlagen: Tooltip enthält Konflikt
 func (c calCell) Busy() bool { return c.Absence != nil || c.Shift != nil || len(c.Items) > 0 }
+
+// calPeople: zugewiesene Person, sonst die verantwortliche (Tickets, Störungen, Wartungen).
+const calPeople = `COALESCE(NULLIF(ARRAY_REMOVE(ARRAY[t.assigned_to::text], NULL), '{}'), ARRAY_REMOVE(ARRAY[t.responsible_to::text], NULL))`

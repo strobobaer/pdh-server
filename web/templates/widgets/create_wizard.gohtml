@@ -27,6 +27,10 @@
 .crw-similar a:last-child{border-bottom:0}
 .crw-similar a:hover{background:var(--bg3)}
 .crw-similar small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crw-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.crw-thumbs div{position:relative;width:72px;height:72px}
+.crw-thumbs img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+.crw-thumbs button{position:absolute;top:-7px;right:-7px;width:24px;height:24px;border-radius:50%;border:0;background:var(--red);color:#fff;cursor:pointer;font-size:14px;line-height:1}
 .crw-stopped{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;font-weight:600}
 .crw-stopped input{width:22px;height:22px;accent-color:var(--red)}
 .crw-stopped:has(input:checked){border-color:var(--red);background:rgba(239,68,68,.1)}
@@ -71,6 +75,12 @@
         <p class="hint">{{t "Ein kurzer, eindeutiger Titel – die Details in die Beschreibung."}}</p>
         <div class="form-group"><label class="form-label">{{t "Titel"}} *</label><input data-suggest="title" class="form-input" id="crw-title-in" maxlength="200" autocomplete="off" placeholder="{{t "z. B. Presse 3 – Hydraulik verliert Öl"}}"></div>
         <div class="form-group"><label class="form-label">{{t "Beschreibung"}}{{if .Board}} * <small style="color:var(--muted)">({{t "mehr als drei Wörter"}})</small>{{end}}</label><textarea data-suggest="description" class="form-input" id="crw-desc" rows="4" maxlength="4000" placeholder="{{t "Was genau ist los? Seit wann? Was wurde schon versucht?"}}"></textarea></div>
+        <div class="form-group"><label class="form-label">{{t "Fotos"}} <small style="color:var(--muted)">({{t "freiwillig, bis zu 5"}})</small></label>
+          <div class="crw-thumbs" id="crw-thumbs"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-camera"></i> {{t "Foto aufnehmen"}}<input type="file" accept="image/*" capture="environment" id="crw-cam" hidden></label>
+            <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-photo"></i> {{t "Bild wählen"}}<input type="file" accept="image/*" multiple id="crw-pick" hidden></label>
+          </div></div>
         <div id="crw-sym-box" class="form-group"><label class="form-label">{{t "Symptome (mit Komma trennen)"}}</label><input class="form-input" id="crw-sym" placeholder="{{t "z. B. Ölaustritt, Druckabfall, Geräusch"}}"></div>
         <label class="form-label" id="crw-prio-label">{{t "Priorität"}}</label>
         <div class="cw-chips" id="crw-prio">
@@ -363,7 +373,8 @@
   window.crwClose = function(){ $('crw').classList.remove('open'); };
 
   function reset(type, preset){
-    st = {type: type || '', fixedType: !!type, i: 0, who: '', rep: '', due: '', dueTouched: false, preset: preset || {}};
+    st = {type: type || '', fixedType: !!type, i: 0, who: '', rep: '', due: '', dueTouched: false, preset: preset || {}, photos: []};
+    if($('crw-thumbs')) $('crw-thumbs').innerHTML = '';
     ['crw-title-in', 'crw-desc', 'crw-sym', 'crw-people-q', 'crw-start', 'crw-infra-q', 'crw-rep-q', 'crw-rep-name'].forEach(id => { if($(id)) $(id).value = ''; });
     if($('crw-resp')) $('crw-resp').value = '';
     $('crw-stopped').checked = false;
@@ -396,6 +407,44 @@
     try{ await loadOpts(); }catch(e){ msg(e.message, 'err'); }
   };
 
+  // Fotos: im Browser verkleinert (lange Seite 1600 px), höchstens 5; nach
+  // dem Anlegen als Anhang hochgeladen (record_photos.go)
+  async function crwShrink(f){
+    if(!f.type.startsWith('image/') || f.type === 'image/gif') return f;
+    try{
+      const bmp = await createImageBitmap(f);
+      const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+      return blob ? new File([blob], 'foto.jpg', {type: 'image/jpeg'}) : f;
+    }catch(e){ return f; }
+  }
+  function crwThumbs(){
+    const box = $('crw-thumbs');
+    if(!box) return;
+    box.innerHTML = '';
+    st.photos.forEach((f, i) => {
+      const d = document.createElement('div'), img = document.createElement('img'), x = document.createElement('button');
+      img.src = URL.createObjectURL(f); img.alt = '';
+      x.type = 'button'; x.textContent = '×'; x.title = {{t "Entfernen"}};
+      x.onclick = () => { st.photos.splice(i, 1); crwThumbs(); };
+      d.append(img, x); box.appendChild(d);
+    });
+  }
+  ['crw-cam', 'crw-pick'].forEach(id => { const el = $(id); if(el) el.addEventListener('change', async ev => {
+    for(const f of [...ev.target.files]){ if(st.photos.length >= 5) break; if(f.type.startsWith('image/')) st.photos.push(await crwShrink(f)); }
+    ev.target.value = ''; crwThumbs();
+  }); });
+  async function crwUploadPhotos(url, photos){
+    if(!photos.length) return true;
+    const fd = new FormData();
+    photos.forEach(f => fd.append('files', f, f.name || 'foto.jpg'));
+    fd.append('caption', {{t "Foto aus der Meldung"}});
+    try{ const r = await fetch(url, {method: 'POST', credentials: 'same-origin', body: fd}); return r.ok; }catch(e){ return false; }
+  }
+
   async function boardSubmit(again){
     const t = TYPES[st.type];
     const payload = {type: st.type, title: $('crw-title-in').value.trim(), description: $('crw-desc').value.trim(),
@@ -410,9 +459,10 @@
       const res = await fetch('/global/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
       const j = await res.json().catch(() => ({}));
       if(!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+      const photosOk = j.id && j.photo_token ? await crwUploadPhotos('/global/photos/' + encodeURIComponent(j.kind) + '/' + encodeURIComponent(j.id) + '?token=' + encodeURIComponent(j.photo_token), st.photos) : !st.photos.length;
       const b = window.PDH_CREATE_BOARD;
       if(b && b.onCreated) b.onCreated();
-      const done = F({{t "%s angelegt"}}, t.label) + (j.broker ? ' – ' + j.broker : '');
+      const done = F({{t "%s angelegt"}}, t.label) + (j.broker ? ' – ' + j.broker : '') + (photosOk ? '' : ' ' + {{t "(Fotos nicht gespeichert)"}});
       if(again){
         reset(st.type); st.fixedType = true; render();
         msg(done + ' – ' + {{t "jetzt der nächste."}}, 'ok');
@@ -469,7 +519,8 @@
       if((st.type === 'fault' || st.type === 'ticket') && $('crw-stopped').checked) extra.push(fetch('/records/' + t.ref + '/' + encodeURIComponent(id) + '/plant-stopped', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({value: '1'})}));
       if(st.type === 'fault' && due) extra.push(fetch('/api/v1/faults/' + encodeURIComponent(id) + '/due-date', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({due_date: due})}));
       const results = await Promise.all(extra);
-      const failed = results.filter(r => !r.ok).length;
+      let failed = results.filter(r => !r.ok).length;
+      if(!(await crwUploadPhotos('/api/v1/attachments/' + t.ref + '/' + encodeURIComponent(id), st.photos))) failed++;
       if(again){
         reset(st.type, st.preset); st.fixedType = true; render();
         msg(F({{t "%s angelegt"}}, t.label) + (failed ? ' ' + {{t "(Zusatzangaben teilweise nicht gespeichert)"}} : '') + ' – ' + {{t "jetzt der nächste."}}, failed ? 'warn' : 'ok');

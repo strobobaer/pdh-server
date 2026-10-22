@@ -54,6 +54,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Post("/complete-start", h.GlobalDashboardCompleteStart)
 	r.Post("/open", h.GlobalDashboardOpen)
 	r.Post("/create", h.GlobalDashboardCreate)
+	r.Post("/photos/{kind}/{id}", h.GlobalPhotosWeb) // Fotos zum gerade angelegten Vorgang
 	r.Post("/settings", h.GlobalDashboardSettingsWeb)
 	r.Post("/maintenance/{id}/start", h.GlobalDashboardMaintenanceStart)
 	return r

@@ -207,7 +207,9 @@ func (h *Handler) GlobalDashboardCreate(w http.ResponseWriter, r *http.Request) 
 		broker = h.dispatchToBrokers(r.Context(), brokerKind, brokerID, in.Title, in.Priority, h.infraName(r.Context(), infrastructureID), reporter.ID)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "broker": brokerMessage(lang, broker)})
+	// id + Schlüssel: Fotos aus dem Assistenten nachreichen (record_photos.go)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "broker": brokerMessage(lang, broker),
+		"id": brokerID, "kind": brokerKind, "photo_token": h.photoToken(brokerKind, brokerID, time.Now())})
 }
 
 // GlobalDashboardMaintenanceStart startet eine im Wartungsmodul bereits

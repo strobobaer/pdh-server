@@ -36,6 +36,9 @@ import (
 // KeyEasyMode: 1 = Meldungen ohne Anmeldung per QR erlaubt (Standard), 0 = aus.
 const KeyEasyMode = "easy_mode_enabled"
 
+// easyPhotoMax: Fotos je Easy-Mode-Meldung (record_photos.go speichert sie)
+const easyPhotoMax = 3
+
 func (h *Handler) easyModeEnabled(ctx context.Context) bool {
 	return h.db != nil && appsettings.GetInt(ctx, h.db, KeyEasyMode, 1) == 1
 }
@@ -269,7 +272,21 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in easyReportIn
-	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
+	// mit Fotos: Formular (data = JSON, files = Bilder), sonst reines JSON
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, easyPhotoMax*recordPhotoMaxSize+(1<<20))
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			fail(http.StatusRequestEntityTooLarge, "too large")
+			return
+		}
+		if fs := r.MultipartForm.File["files"]; len(fs) > easyPhotoMax {
+			r.MultipartForm.File["files"] = fs[:easyPhotoMax]
+		}
+		if err := json.Unmarshal([]byte(r.FormValue("data")), &in); err != nil {
+			fail(http.StatusBadRequest, "bad request")
+			return
+		}
+	} else if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&in); err != nil {
 		fail(http.StatusBadRequest, "bad request")
 		return
 	}
@@ -363,12 +380,19 @@ func (h *Handler) EasyReportWeb(w http.ResponseWriter, r *http.Request) {
 	if in.State == "stopped" {
 		h.markPlantStopped(ctx, in.Type, recID, pdhSystemUserID) // Push-Alarm bis zur Annahme (push.go)
 	}
+	photos := 0
+	if r.MultipartForm != nil {
+		var err error
+		if photos, err = h.saveRecordPhotos(ctx, in.Type, recID, pdhSystemUserID, r); err != nil {
+			componentLog("easy").Warn().Err(err).Str("id", recID).Msg("fotos")
+		}
+	}
 	actor := in.Name
 	if actor == "" {
 		actor = "QR-Code (Easy-Mode)"
 	}
 	h.addHistory(ctx, in.Type, recID, "create", "", "", actor, "Gemeldet per QR-Code (Easy-Mode)"+easyFrom(in.Name, " ")+" – "+langName, pdhSystemUserID)
-	componentLog("easy").Info().Str("art", in.Type).Str("id", recID).Str("anlage", id).Str("sprache", lang).Bool("übersetzt", translated).Msg("meldung")
+	componentLog("easy").Info().Str("art", in.Type).Str("id", recID).Str("anlage", id).Str("sprache", lang).Bool("übersetzt", translated).Int("fotos", photos).Msg("meldung")
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "title": title})
 }
 

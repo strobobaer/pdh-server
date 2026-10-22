@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.60.0] – 2026-10-22
+
+### Neu
+- Fotos beim Melden: Im Erstellungs-Assistenten (auch im Leitstand) bis zu fünf und im Easy-Mode bis zu drei Fotos aufnehmen oder auswählen – sie werden auf dem Gerät verkleinert und stehen danach unter „Dokumente“ am Vorgang
+
+### Behoben
+- Kalender: Aufgaben fehlten ganz (Abfrage nutzte ein seit der Mehrfach-Zuweisung entfallenes Feld) – sie stehen jetzt bei allen Zuständigen, ohne Zuständige bei der verantwortlichen Person; Tickets, Störungen und Wartungen ohne Zuweisung ebenfalls bei der verantwortlichen Person
+- Kalender: Kann eine Art nicht geladen werden, steht oben eine Meldung, statt dass die Einträge still fehlen
+
 ## [0.59.0] – 2026-10-22
 
 ### Neu

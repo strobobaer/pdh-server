@@ -663,5 +663,12 @@
  "Planer": "Planner",
  "Urlaub, Schichten & Wartung": "Leave, shifts & maintenance",
  "Kalender": "Calendar",
- "Etiketten-Designer": "Label designer"
+ "Etiketten-Designer": "Label designer",
+ "(Fotos nicht gespeichert)": "(photos not saved)",
+ "Bild wählen": "Choose picture",
+ "Foto aufnehmen": "Take photo",
+ "Foto aus der Meldung": "Photo from the report",
+ "Fotos": "Photos",
+ "freiwillig, bis zu 5": "optional, up to 5",
+ "Freiwillig: bis zu 3 Fotos vom Problem.": "Optional: up to 3 photos of the problem."
 }

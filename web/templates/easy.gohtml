@@ -76,6 +76,13 @@ textarea.ez-in{min-height:150px;resize:vertical}
 .ez-preset:active{transform:scale(.98)}
 .ez-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 [hidden]{display:none!important}
+.ez-photos{margin-top:12px}
+.ez-photo-btns{display:flex;gap:8px;flex-wrap:wrap}
+.ez-photo{font-size:15px;padding:12px}
+.ez-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ez-thumbs div{position:relative;width:84px;height:84px}
+.ez-thumbs img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+.ez-thumbs button{position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:16px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -119,6 +126,14 @@ textarea.ez-in{min-height:150px;resize:vertical}
       <div class="ez-hint" id="ez-hint-more">{{t "Antippen, was passt – oder selbst beschreiben. Mit Auswahl ist der eigene Text freiwillig."}}</div>{{end}}
       <div class="ez-hint">{{t "Schreib in deiner Sprache – die Meldung wird automatisch ins Deutsche übersetzt."}}</div>
       <textarea class="ez-in" id="ez-text" maxlength="2000" placeholder="{{t "Was ist passiert? Wo genau?"}}"></textarea>
+      <div class="ez-photos">
+        <div class="ez-thumbs" id="ez-thumbs"></div>
+        <div class="ez-photo-btns">
+          <label class="ez-btn ez-photo"><i class="ti ti-camera"></i> {{t "Foto aufnehmen"}}<input type="file" accept="image/*" capture="environment" id="ez-cam" hidden></label>
+          <label class="ez-btn ez-photo"><i class="ti ti-photo"></i> {{t "Bild wählen"}}<input type="file" accept="image/*" multiple id="ez-pick" hidden></label>
+        </div>
+        <div class="ez-hint">{{t "Freiwillig: bis zu 3 Fotos vom Problem."}}</div>
+      </div>
     </div>
     <div class="ez-pane" data-step="1" hidden>
       <div class="ez-q">{{t "Art der Meldung"}}</div>
@@ -162,6 +177,35 @@ textarea.ez-in{min-height:150px;resize:vertical}
   };
   const $ = id => document.getElementById(id);
   const S = {type: '', step: 0, kind: '', state: '', textId: '', presetKind: ''};
+  // Fotos: auf dem Handy verkleinert (lange Seite 1600 px), höchstens 3
+  const PHOTOS = [];
+  async function shrink(f){
+    if(!f.type.startsWith("image/") || f.type === "image/gif") return f;
+    try{
+      const bmp = await createImageBitmap(f);
+      const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
+      return blob ? new File([blob], "foto.jpg", {type: "image/jpeg"}) : f;
+    }catch(e){ return f; }
+  }
+  function thumbs(){
+    const box = document.getElementById("ez-thumbs");
+    box.innerHTML = "";
+    PHOTOS.forEach((f, i) => {
+      const d = document.createElement("div"), img = document.createElement("img"), x = document.createElement("button");
+      img.src = URL.createObjectURL(f); img.alt = "";
+      x.type = "button"; x.textContent = "×"; x.onclick = () => { PHOTOS.splice(i, 1); thumbs(); };
+      d.append(img, x); box.appendChild(d);
+    });
+  }
+  async function addPhotos(list){
+    for(const f of list){ if(PHOTOS.length >= 3) break; if(f.type.startsWith("image/")) PHOTOS.push(await shrink(f)); }
+    thumbs();
+  }
+  ["ez-cam", "ez-pick"].forEach(id => document.getElementById(id).addEventListener("change", ev => { addPhotos([...ev.target.files]); ev.target.value = ""; }));
   const presets = [...document.querySelectorAll('.ez-preset')];
   function pickPreset(p){
     const on = p && S.textId !== p.dataset.textId;
@@ -231,13 +275,21 @@ textarea.ez-in{min-height:150px;resize:vertical}
     const btn = $('ez-next');
     btn.disabled = true; btn.textContent = T.sending;
     try{
-      const res = await fetch('/e/' + ASSET + '/report', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'},
-        body: JSON.stringify({type: S.type, text_id: S.textId, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST})});
+      const data = JSON.stringify({type: S.type, text_id: S.textId, text: $('ez-text').value.trim(), kind: S.kind, state: S.state, website: $('ez-website').value, test: TEST});
+      let opts = {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PDH-Easy': '1'}, body: data};
+      if(PHOTOS.length){ // mit Fotos als Formular (Browser setzt den Typ samt Grenze selbst)
+        const fd = new FormData();
+        fd.append('data', data);
+        PHOTOS.forEach(f => fd.append('files', f, f.name || 'foto.jpg'));
+        opts = {method: 'POST', headers: {'X-PDH-Easy': '1'}, body: fd};
+      }
+      const res = await fetch('/e/' + ASSET + '/report', opts);
       const j = await res.json().catch(() => ({}));
       if(!res.ok || !j.success) throw new Error(res.status === 429 ? T.many : T.fail);
       $('ez-flow').hidden = true; $('ez-done').hidden = false;
       $('ez-done-title').textContent = j.title || '';
       $('ez-text').value = ''; pickPreset(null);
+      PHOTOS.length = 0; thumbs();
     }catch(e){
       $('ez-msg').textContent = e.message || T.fail;
       btn.disabled = false; show(S.step);

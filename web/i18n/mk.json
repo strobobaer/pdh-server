@@ -663,5 +663,12 @@
  "Planer": "Планер",
  "Urlaub, Schichten & Wartung": "Одмор, смени и одржување",
  "Kalender": "Календар",
- "Etiketten-Designer": "Дизајнер на етикети"
+ "Etiketten-Designer": "Дизајнер на етикети",
+ "(Fotos nicht gespeichert)": "(фотографиите не се зачувани)",
+ "Bild wählen": "Избери слика",
+ "Foto aufnehmen": "Сликај",
+ "Foto aus der Meldung": "Фотографија од пријавата",
+ "Fotos": "Фотографии",
+ "freiwillig, bis zu 5": "по избор, до 5",
+ "Freiwillig: bis zu 3 Fotos vom Problem.": "По избор: до 3 фотографии од проблемот."
 }
