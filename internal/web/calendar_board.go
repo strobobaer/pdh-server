@@ -293,13 +293,18 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		if !d.Show[s.kind] {
 			continue
 		}
-		args := []any{from, to}
+		// Stichtag: Fälligkeit, ohne Fälligkeit der Tag der Anlage. Überfälliges
+		// (Stichtag vor heute, noch offen) steht in der Spalte „heute“ –
+		// sofern heute im Zeitraum liegt. So fehlt kein offener Vorgang.
+		args := []any{from, to, today}
 		sc, sa := scopeSQL(scope, refType[s.kind], "t", len(args))
 		args = append(args, sa...)
-		rs, err := h.db.Query(ctx, `SELECT t.id::text, t.title, t.due_date, `+s.people+`, COALESCE(g.name, ''), COALESCE(i.name, '')
+		rs, err := h.db.Query(ctx, `SELECT t.id::text, t.title, COALESCE(t.due_date, t.created_at), t.due_date IS NULL, `+s.people+`, COALESCE(g.name, ''), COALESCE(i.name, '')
 			FROM `+s.table+` t LEFT JOIN user_groups g ON g.id = t.assigned_group_id LEFT JOIN infrastructure i ON i.id = t.infrastructure_id
-			WHERE `+s.open+` AND t.archived_at IS NULL AND t.due_date IS NOT NULL AND t.due_date::date BETWEEN $1 AND $2`+sc+`
-			ORDER BY t.due_date LIMIT 2000`, args...)
+			WHERE `+s.open+` AND t.archived_at IS NULL
+			  AND (COALESCE(t.due_date, t.created_at)::date BETWEEN $1 AND $2
+			       OR (COALESCE(t.due_date, t.created_at)::date < $3::date AND $3::date BETWEEN $1 AND $2))`+sc+`
+			ORDER BY 3 LIMIT 2000`, args...)
 		if err != nil {
 			componentLog("kalender").Warn().Err(err).Str("art", s.kind).Msg("laden")
 			continue
@@ -307,12 +312,25 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		for rs.Next() {
 			var id, title, group, infra string
 			var due time.Time
+			var noDue bool
 			var ppl []string
-			if rs.Scan(&id, &title, &due, &ppl, &group, &infra) != nil {
+			if rs.Scan(&id, &title, &due, &noDue, &ppl, &group, &infra) != nil {
 				continue
 			}
 			due = due.Local()
 			tip := calKindByKey(s.kind).Label + ": " + title
+			switch {
+			case due.Before(today):
+				if noDue {
+					tip += " · ohne Fälligkeit, angelegt am " + due.Format("02.01.2006")
+				} else {
+					tip += " · überfällig seit " + due.Format("02.01.2006")
+					title = "⚠ " + title
+				}
+				due = today
+			case noDue:
+				tip += " · ohne Fälligkeit (Tag der Anlage)"
+			}
 			if infra != "" {
 				tip += " · " + infra
 			}

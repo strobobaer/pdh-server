@@ -374,6 +374,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/inventory", h.CreatePart)
 	r.Get("/inventory/labels", h.PartLabelsPage)
 	r.Post("/inventory/labels/print", h.PartLabelsPrintWeb)
+	r.Get("/inventory/labels/designer", h.LabelDesignerPage) // Etiketten-Designer (label_designer.go)
+	r.Post("/inventory/labels/designer", h.LabelDesignerSaveWeb)
 	// Druckerintegration (printers.go)
 	r.Get("/admin/printers", h.PrintersPage)
 	r.Post("/admin/printers", h.PrinterSaveWeb)

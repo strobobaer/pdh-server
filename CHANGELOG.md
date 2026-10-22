@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.59.0] – 2026-10-22
+
+### Neu
+- Etiketten: Auswahl nach Lagerort – in der Etikettenansicht Lager, Regal, Fach oder Platz anhaken (mit allen Unterplätzen, Zahl der Etiketten je Ort, Suche, „nur mit Bestand“)
+- Etiketten-Designer (Etikettenansicht → Designer): je Etikettengröße Felder frei platzieren und in der Größe ändern – QR-Code, Logo, Lagerplatz, Lagerpfad, Bezeichnung, Kategorie, Teilenummer, Hersteller, Hersteller-Teilenummer, Mindestmenge, EAN, Freitext; je Feld Schriftgröße, fett, Festbreite, Ausrichtung, maximale Zeichen und Zeilen, Präfix und Linie
+- Das gestaltete Layout gilt für alle Druckwege: Browser, Netzwerkdrucker (PDF), Zebra und Dymo; „Standard“ stellt die bisherige Gestaltung wieder her
+
+### Behoben
+- Kalender: Angelegte Vorgänge ohne Fälligkeitsdatum fehlten – sie stehen jetzt am Tag ihrer Anlage; überfällige und ältere offene Vorgänge stehen (mit ⚠ bzw. Hinweis) in der Spalte „heute“
+
 ## [0.58.0] – 2026-10-22
 
 ### Neu

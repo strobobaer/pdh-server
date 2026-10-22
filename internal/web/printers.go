@@ -615,18 +615,24 @@ func (h *Handler) printLabelItems(w http.ResponseWriter, r *http.Request, items 
 	}
 	copies := clampInt(r.FormValue("copies"), 1, 1, 50)
 	showCat := r.FormValue("cat_line") != "0"
+	// gestaltetes Layout (Etiketten-Designer) gilt für Ersatzteil-Etiketten aller Druckwege
+	size := labelSizeByKey(r.FormValue("size"))
+	layout := h.labelLayoutFor(ctx, size)
 	switch p.Kind {
 	case "zebra":
 		z := zebraSettingsFrom(p.Config)
 		var zpl strings.Builder
 		for _, it := range items {
-			zpl.WriteString(zplPartLabel(it, z, showCat, copies))
+			if layout != nil && !it.Asset {
+				zpl.WriteString(zplLayoutLabel(layout, it, size, z, copies))
+			} else {
+				zpl.WriteString(zplPartLabel(it, z, showCat, copies))
+			}
 		}
 		err = rawSend(ctx, p.Config["host"], parsePort(p.Config["port"], "9100"), []byte(zpl.String()))
 	case "network":
-		size := labelSizeByKey(r.FormValue("size"))
 		var pdf []byte
-		if pdf, err = labelsPDF(items, size, copies, clampInt(r.FormValue("start"), 0, 0, 40), showCat); err == nil {
+		if pdf, err = labelsPDF(items, size, copies, clampInt(r.FormValue("start"), 0, 0, 40), showCat, layout); err == nil {
 			err = sendToNetworkPrinter(ctx, p.Config, "PDH Etiketten", pdf, 1)
 		}
 	case "dymo":
@@ -634,6 +640,9 @@ func (h *Handler) printLabelItems(w http.ResponseWriter, r *http.Request, items 
 		var labels []string
 		for _, it := range items {
 			x := dymoPartLabel(it, t, p.Config["paper_name"], showCat)
+			if layout != nil && !it.Asset {
+				x = dymoLayoutLabel(layout, it, size, t, p.Config["paper_name"])
+			}
 			for c := 0; c < copies; c++ {
 				labels = append(labels, x)
 			}

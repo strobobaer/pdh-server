@@ -96,7 +96,9 @@ type labelItem struct {
 	Location, LocationLeaf                           string
 	NodeID                                           string // Lagerplatz des Etiketts (QR → Buchung an diesem Platz)
 	Manufacturer                                     string // Hersteller (zweite Zeile unter der Teilenummer)
+	MPN, EAN                                         string // Hersteller-Teilenummer, EAN (Etiketten-Designer)
 	URL                                              string
+	Parts                                            []labelPart // Felder nach dem Designer-Layout
 	QR                                               template.HTML
 	// Anlagen-/IT-Etiketten (asset_info.go): Nummer ohne "Nr."-Praefix,
 	// rechts unten ein Hinweis statt der Mindestmenge
@@ -143,7 +145,12 @@ type LabelsPageData struct {
 	// Formular- und Druckadresse (Ersatzteile: /inventory/labels, Anlagen: /a/labels)
 	Action, PrintURL string
 	Assets           bool // Anlagen-/IT-Etiketten: keine Kategorie-Auswahl
-
+	// Auswahl nach Lagerort (Lager, Regal, Fach, Platz) und Etiketten-Designer
+	Tree       []storageTreeOption
+	StockOnly  bool
+	NeedSelect bool         // noch nichts gewählt
+	Layout     *labelLayout // gestaltetes Layout dieser Größe (nil = Standard)
+	CanDesign  bool
 }
 
 // PartLabelsPage erzeugt die Druckansicht. Auswahl (kombinierbar):
@@ -165,14 +172,22 @@ func (h *Handler) PartLabelsPage(w http.ResponseWriter, r *http.Request) {
 		Title:   "Lagerplatz-Etiketten",
 		Logo:    h.labelLogo(),
 	}
-	for _, k := range []string{"part", "loc", "node", "list", "cat", "q", "status"} {
+	// Lagerorte wählt der Baum im Formular selbst (node, stock)
+	for _, k := range []string{"part", "loc", "list", "cat", "q", "status"} {
 		for _, v := range q[k] {
 			data.Params = append(data.Params, struct{ Key, Value string }{k, v})
 		}
 	}
-	items, err := h.loadLabelItems(ctx, q)
-	if err != nil {
-		data.Error = err.Error()
+	data.Tree, data.StockOnly = h.storageTree(ctx, q["node"]), q.Get("stock") == "1"
+	data.CanDesign = h.canLabelDesign(r)
+	var items []labelItem
+	if len(q["part"]) == 0 && len(q["node"]) == 0 && q.Get("list") != "1" {
+		data.NeedSelect = true
+	} else {
+		var err error
+		if items, err = h.loadLabelItems(ctx, q); err != nil {
+			data.Error = err.Error()
+		}
 	}
 	base := h.publicBaseURL(r)
 	for i := range items {
@@ -193,6 +208,13 @@ func (h *Handler) renderLabelsPage(w http.ResponseWriter, r *http.Request, data 
 	for i := range items {
 		if svg, err := qrSVG(items[i].URL); err == nil {
 			items[i].QR = svg
+		}
+	}
+	if !data.Assets {
+		if data.Layout = h.labelLayoutFor(ctx, data.Size); data.Layout != nil {
+			for i := range items {
+				items[i].Parts = data.Layout.parts(items[i], data.Logo)
+			}
 		}
 	}
 	// Kopien und (bei A4) uebersprungene Felder bereits benutzter Boegen
@@ -271,11 +293,15 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 			stockCond = "st.storage_node_id::text = $" + strconv.Itoa(len(args))
 		}
 	case get("node") != "":
-		args = append(args, get("node"))
+		// ein oder mehrere Lagerorte (Lager, Regal, Fach, Platz) – jeweils mit allen Unterplätzen
+		args = append(args, q["node"])
 		stockCond = fmt.Sprintf(`st.storage_node_id IN (
-			WITH RECURSIVE sub AS (SELECT id FROM storage_nodes WHERE id::text = $%d
+			WITH RECURSIVE sub AS (SELECT id FROM storage_nodes WHERE id::text = ANY($%d::text[])
 			                       UNION ALL SELECT n.id FROM storage_nodes n JOIN sub ON n.parent_id = sub.id)
 			SELECT id FROM sub)`, len(args))
+		if get("stock") == "1" {
+			stockCond += " AND st.qty > 0"
+		}
 		where = append(where, "st.part_id IS NOT NULL")
 	case get("list") == "1":
 		switch cat := get("cat"); cat {
@@ -303,7 +329,7 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 	}
 	rows, err := h.db.Query(ctx, `
 		SELECT sp.id::text, sp.part_number, sp.name, COALESCE(sp.category, ''), sp.unit, sp.min_qty::float8,
-		       COALESCE(st.storage_node_id::text, ''), COALESCE(NULLIF(lmf.name, ''), sp.manufacturer, '')
+		       COALESCE(st.storage_node_id::text, ''), COALESCE(NULLIF(lmf.name, ''), sp.manufacturer, ''), COALESCE(sp.manufacturer_part, ''), COALESCE(sp.ean, '')
 		FROM spare_parts sp
 		LEFT JOIN business_partners lmf ON lmf.id = sp.manufacturer_id
 		LEFT JOIN spare_part_stock st ON st.part_id = sp.id AND `+stockCond+`
@@ -319,7 +345,7 @@ func (h *Handler) loadLabelItems(ctx context.Context, q map[string][]string) ([]
 		var it labelItem
 		var min float64
 		var node string
-		if rows.Scan(&it.PartID, &it.PartNumber, &it.Name, &it.Category, &it.Unit, &min, &node, &it.Manufacturer) != nil {
+		if rows.Scan(&it.PartID, &it.PartNumber, &it.Name, &it.Category, &it.Unit, &min, &node, &it.Manufacturer, &it.MPN, &it.EAN) != nil {
 			continue
 		}
 		it.MinQty = formatQty(min)

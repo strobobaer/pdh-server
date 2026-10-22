@@ -39,6 +39,22 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
 .label .brand{position:absolute;right:1.5mm;top:1.2mm;max-height:3.6mm;max-width:12mm;object-fit:contain}
 .label.has-brand .loc{padding-right:13mm}
 
+/* gestaltetes Layout (Etiketten-Designer) */
+.label.lx{display:block;padding:0;position:relative}
+.lx-f{position:absolute;overflow:hidden;line-height:1.12;color:#000}
+.lx-t{display:-webkit-box;-webkit-box-orient:vertical;word-break:break-word}
+.lx-qr svg{width:100%;height:100%;display:block}
+.lx-logo{object-fit:contain;object-position:left top}
+/* Lagerort-Auswahl */
+.lsel{position:relative}
+.lsel > summary{list-style:none;cursor:pointer;padding:4px 10px;border:1px solid #888;border-radius:4px;background:#fff}
+.lsel > summary::-webkit-details-marker{display:none}
+.lsel-box{position:absolute;z-index:20;top:110%;left:0;width:min(440px,92vw);max-height:60vh;overflow:auto;background:#fff;color:#111;border:1px solid #bbb;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);padding:8px}
+.lsel-box label{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:13px;cursor:pointer}
+.lsel-box label small{color:#666;margin-left:auto}
+.lsel-box .lvl{font-size:10px;color:#666;border:1px solid #ccc;border-radius:3px;padding:0 4px}
+.lsel-foot{display:flex;gap:8px;align-items:center;position:sticky;bottom:-8px;background:#fff;padding:6px 0 0;border-top:1px solid #eee;margin-top:6px}
+
 /* A4-Bogen */
 .sheet{width:210mm;height:297mm;background:#fff;padding:{{.Size.MarginTop}}mm 0 0 {{.Size.MarginLeft}}mm;display:grid;grid-template-columns:repeat({{.Size.Cols}},{{.Size.W}}mm);grid-auto-rows:{{.Size.H}}mm;justify-content:center;align-content:start}
 .sheet .label{outline:.1mm dashed #ccc}
@@ -61,11 +77,28 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
 <form class="toolbar" method="get" action="{{.Action}}">
   <b>Etiketten</b>
   {{range .Params}}<input type="hidden" name="{{.Key}}" value="{{.Value}}">{{end}}
+  {{if not .Assets}}
+  <details class="lsel" {{if .NeedSelect}}open{{end}}>
+    <summary>📦 Lagerort wählen{{$n := 0}}{{range .Tree}}{{if .Selected}}{{$n = 1}}{{end}}{{end}}{{if $n}} ✓{{end}}</summary>
+    <div class="lsel-box">
+      <input type="search" placeholder="Lager, Regal, Fach, Platz suchen …" oninput="lselFilter(this.value)" style="width:100%;margin-bottom:6px">
+      {{range .Tree}}<label style="{{.Indent}}" data-path="{{.Path}}"><input type="checkbox" name="node" value="{{.ID}}" {{if .Selected}}checked{{end}}> <span class="lvl">{{.Type}}</span> {{.Name}} <small>{{.Parts}}</small></label>
+      {{else}}<div class="muted">Keine Lagerorte angelegt</div>{{end}}
+      <div class="lsel-foot">
+        <label style="padding:0"><input type="checkbox" name="stock" value="1" {{if .StockOnly}}checked{{end}}> nur mit Bestand</label>
+        <span style="flex:1"></span>
+        <button type="submit">Übernehmen</button>
+      </div>
+      <div class="muted" style="font-size:11px">Gewählt ist der Platz mit allen Unterplätzen. Die Zahl nennt die Etiketten (Teil × Platz).</div>
+    </div>
+  </details>
+  {{end}}
   <label>Format <select name="size" onchange="this.form.submit()">{{range .Sizes}}<option value="{{.Key}}" {{if eq .Key $.Size.Key}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
   <label>Kopien <input type="number" name="copies" min="1" max="50" value="{{.Copies}}" onchange="this.form.submit()"></label>
   {{if .Size.Sheet}}<label title="Bereits verbrauchte Felder auf einem angebrochenen Bogen überspringen">Start bei Feld <input type="number" name="start" min="0" max="40" value="{{.Start}}" onchange="this.form.submit()"></label>{{end}}
   <label>{{if .Assets}}Pfad{{else}}Kategorie{{end}} <select name="cat_line" onchange="this.form.submit()"><option value="1">anzeigen</option><option value="0" {{if not .ShowCat}}selected{{end}}>ausblenden</option></select></label>
-  <span class="muted">{{len .Labels}} Etikett(en){{if gt .Copies 1}} × {{.Copies}}{{end}}</span>
+  <span class="muted">{{len .Labels}} Etikett(en){{if gt .Copies 1}} × {{.Copies}}{{end}}{{if .Layout}} · eigenes Layout{{end}}</span>
+  {{if .CanDesign}}<a href="/inventory/labels/designer?size={{.Size.Key}}" target="_blank" rel="noopener" style="font-size:13px">✎ Designer</a>{{end}}
   <span style="flex:1"></span>
   <button type="button" onclick="window.print()">🖨 Drucken</button>
   {{if .Printers}}
@@ -82,7 +115,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
 {{range .Pages}}
   {{if $.Size.Sheet}}<div class="sheet">{{end}}
   {{range .}}
-    {{if .}}
+    {{if and . .Parts}}{{$it := .}}
+    <div class="label lx">{{range .Parts}}{{if eq .Kind "qr"}}<div class="lx-f lx-qr" style="{{.Style}}">{{$it.QR}}</div>{{else if eq .Kind "logo"}}<img class="lx-f lx-logo" style="{{.Style}}" src="{{$.Logo}}" alt="">{{else}}<div class="lx-f lx-t" style="{{.Style}}">{{.Text}}</div>{{end}}{{end}}</div>
+    {{else if .}}
     <div class="label{{if and $.Logo (not $.Size.Compact)}} has-brand{{end}}">
       {{if and $.Logo (not $.Size.Compact)}}<img class="brand" src="{{$.Logo}}" alt="">{{end}}
       <div class="qr">{{.QR}}</div>
@@ -109,7 +144,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}
   {{end}}
   {{if $.Size.Sheet}}</div>{{end}}
 {{else}}
-  {{if not .Error}}<div class="err" style="background:#fef3c7;color:#92400e">Keine Etiketten für diese Auswahl.</div>{{end}}
+  {{if .NeedSelect}}<div class="err" style="background:#e0f2fe;color:#075985">Oben unter „📦 Lagerort wählen“ ein Lager, Regal, Fach oder einen Platz auswählen – oder Etiketten aus einem Ersatzteil bzw. der Ersatzteilliste aufrufen.</div>{{else if not .Error}}<div class="err" style="background:#fef3c7;color:#92400e">Keine Etiketten für diese Auswahl.</div>{{end}}
 {{end}}
 </div>
 {{if .Printers}}
@@ -138,6 +173,7 @@ async function lpPrint(){
 }
 </script>
 {{end}}
+<script>function lselFilter(q){  q = q.trim().toLowerCase();  document.querySelectorAll('.lsel-box label[data-path]').forEach(function(l){ l.style.display = !q || l.dataset.path.toLowerCase().indexOf(q) >= 0 ? '' : 'none'; });}</script>
 </body>
 </html>
 {{end}}

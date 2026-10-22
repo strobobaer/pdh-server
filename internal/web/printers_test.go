@@ -182,12 +182,12 @@ func TestIPPRoundTrip(t *testing.T) {
 
 func TestLabelsPDFAndDymoXML(t *testing.T) {
 	for _, key := range []string{"62x29", "a4-70x37", "89x36"} {
-		pdf, err := labelsPDF([]labelItem{testLabel, testLabel}, labelSizeByKey(key), 2, 1, true)
+		pdf, err := labelsPDF([]labelItem{testLabel, testLabel}, labelSizeByKey(key), 2, 1, true, nil)
 		if err != nil || !bytes.HasPrefix(pdf, []byte("%PDF-")) {
 			t.Errorf("%s: %v", key, err)
 		}
 	}
-	if _, err := labelsPDF(nil, labelSizeByKey("62x29"), 1, 0, true); err == nil {
+	if _, err := labelsPDF(nil, labelSizeByKey("62x29"), 1, 0, true, nil); err == nil {
 		t.Error("leere Auswahl ergab ein PDF")
 	}
 	for _, typ := range dymoLabelTypes {

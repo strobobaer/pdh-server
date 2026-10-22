@@ -742,11 +742,11 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "inventory") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="storage" data-title="Lager, Lagerplätze &amp; Etiketten" data-pages="storage">
+<section class="hb-ch" id="storage" data-title="Lager, Lagerplätze &amp; Etiketten" data-pages="storage labels-designer">
   <h2><i class="ti ti-building-warehouse"></i> Lager, Lagerplätze &amp; Etiketten</h2>
   <p>Das Lager ist gegliedert in Lagerort → Regal → Fach → Platz. Über <i class="ti ti-external-link"></i> öffnest du einen Platz mit Bestand, Bewegungen und Dokumenten.</p>
   <h3><i class="ti ti-printer"></i> Etiketten</h3>
-  <p>So sieht ein Etikett aus – der QR-Code führt direkt zum Teil im PDH (mit dem Handy scannen):</p>
+  <p>So sieht ein Etikett im Standard aus – der QR-Code öffnet mit dem Handy direkt die <b>Buchungserfassung</b> des Teils an diesem Lagerplatz:</p>
   <figure class="hb-fig" style="display:flex;justify-content:center">
     <div style="width:62mm;height:29mm;background:#fff;color:#111;display:flex;gap:1.5mm;padding:1.5mm 2mm;border:1px solid #ccc;border-radius:2px;text-align:left;font-family:Arial,sans-serif">
       <div style="height:100%;aspect-ratio:1/1;flex-shrink:0">{{.SampleQR}}</div>
@@ -754,7 +754,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
         <div style="font-weight:700;font-size:9pt;border-bottom:.3mm solid #000">Fach 3</div>
         <div style="font-size:7pt;font-weight:600">Rillenkugellager 6205</div>
         <div style="display:flex;justify-content:space-between;align-items:flex-end">
-          <div><div style="font-size:5pt;color:#555">TEILE-NR.</div><div style="font-family:monospace;font-weight:700;font-size:8pt">4711-A</div></div>
+          <div style="min-width:0;flex:1"><div style="font-size:5pt;color:#555">TEILE-NR.</div><div style="font-family:monospace;font-weight:700;font-size:8pt;word-break:break-all">4711-6205-2RSH-C3</div><div style="font-size:6pt;font-weight:700">SKF</div></div>
           <div style="text-align:right;font-size:6.5pt"><div style="font-size:5pt;color:#555">MINDESTMENGE</div><b style="font-size:8pt">4</b> Stück</div>
         </div>
       </div>
@@ -762,7 +762,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </figure>
   <div class="hb-howto"><b><i class="ti ti-printer"></i> So druckst du Etiketten</b>
     <ol class="hb-steps">
-      <li>Im Teil auf <b>Etiketten</b> (alle Lagerplätze) oder auf das Drucker-Symbol an einem Lagerplatz – oder am Lagerplatz selbst für alle Teile dort.</li>
+      <li>Im Teil auf <b>Etiketten</b> (alle Lagerplätze) oder auf das Drucker-Symbol an einem Lagerplatz – oder in der Etikettenansicht oben <b>📦 Lagerort wählen</b>: Lager, Regal, Fach oder Platz anhaken (gilt mit allen Unterplätzen, die Zahl nennt die Etiketten), „nur mit Bestand“ nach Bedarf, <b>Übernehmen</b>.</li>
       <li>Oben das <b>Format</b> deines Etikettendruckers wählen, ggf. Kopien.</li>
       <li><b>Drucken</b>: im Druckdialog Skalierung 100 % und keine Ränder einstellen.</li>
       <li>Oder ohne Druckdialog: rechts oben einen eingerichteten Drucker wählen und <b>Direkt drucken</b> (<a href="#printers">Drucker einrichten</a>).</li>
@@ -770,6 +770,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Verfügbare Formate <i class="ti ti-refresh" title="automatisch aus dem System"></i>:</p>
   <ul>{{range .LabelSizes}}<li>{{.Label}}</li>{{end}}</ul>
   <p>Bei A4-Bögen kannst du mit „Start bei Feld“ bereits benutzte Etiketten überspringen.</p>
+  <div class="hb-howto"><b><i class="ti ti-layout-board-split"></i> So gestaltest du deine Etiketten (Designer)</b>
+    <ol class="hb-steps">
+      <li>In der Etikettenansicht oben <b>✎ Designer</b> (Recht „Lager bearbeiten“ oder „Drucker verwalten“). Oben rechts die <b>Etikettengröße</b> wählen – jede Größe hat ihr eigenes Layout.</li>
+      <li>Rechts unter <b>Felder</b> anhaken, was aufs Etikett soll: QR-Code, Logo, Lagerplatz, Lagerpfad, Bezeichnung, Kategorie, Teilenummer, Hersteller, Hersteller-Teilenr., Mindestmenge, EAN oder ein Freitext.</li>
+      <li>Felder auf dem Etikett mit der Maus <b>verschieben</b>, an der Ecke unten rechts die <b>Größe</b> ändern. Pfeiltasten verschieben um 0,1 mm (mit Umschalt um 1 mm).</li>
+      <li>Für das gewählte Feld rechts genau einstellen: Position und Größe in mm, <b>Schriftgröße</b>, fett, Festbreite, Ausrichtung, <b>maximale Zeichenzahl</b> (längere Texte enden mit „…“), maximale <b>Zeilen</b>, Präfix (z. B. „Min “) und Linie darunter.</li>
+      <li><b>Speichern</b>. Ab jetzt drucken Browser, Netzwerkdrucker, Zebra und Dymo nach diesem Layout. <b>Standard</b> stellt die ursprüngliche Gestaltung wieder her.</li>
+    </ol>
+    Die Vorschau zeigt ein echtes Teil aus dem Lager. Zebra und Dymo drucken das Logo nicht. Hat der Drucker ein anderes Etikettenmaß eingestellt, wird das Layout maßstäblich angepasst.</div>
   <div class="hb-howto"><b><i class="ti ti-stack-push"></i> So legst du viele Fächer und Plätze auf einmal an</b>
     <ol class="hb-steps">
       <li>Oben auf <b>Sammelanlegen</b> tippen – oder am Lagerort, Regal oder Fach auf <i class="ti ti-stack-push"></i>, dann ist das Ziel schon gewählt.</li>
@@ -932,7 +941,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="calendar" data-title="Kalender" data-pages="calendar">
   <h2><i class="ti ti-calendar-event"></i> Kalender</h2>
-  <p>Unter <b>Instandhaltung → Kalender</b> siehst du auf einen Blick, wer wann was hat: je Mitarbeiter eine Zeile, je Tag eine Spalte – Urlaub und Abwesenheit, Schichten, fällige Wartungen, Prüfpflichten, Tickets, Störungen, Aufgaben und laufende Projekte (als Balken). Was keiner Person zugewiesen ist, steht unten in <b>Ohne Person</b>.</p>
+  <p>Unter <b>Instandhaltung → Kalender</b> siehst du auf einen Blick, wer wann was hat: je Mitarbeiter eine Zeile, je Tag eine Spalte – Urlaub und Abwesenheit, Schichten, fällige Wartungen, Prüfpflichten, Tickets, Störungen, Aufgaben und laufende Projekte (als Balken). Was keiner Person zugewiesen ist, steht unten in <b>Ohne Person</b>. Vorgänge stehen am Tag ihrer Fälligkeit, ohne Fälligkeit am Tag ihrer Anlage. Überfällige (mit ⚠) und ältere ohne Fälligkeit stehen in der Spalte <b>heute</b>, solange sie offen sind.</p>
   <div class="hb-howto"><b><i class="ti ti-filter"></i> So stellst du den Kalender ein</b>
     <ol class="hb-steps">
       <li>Zeitraum: Standard sind <b>14 Tage ab heute</b>. Mit den Pfeilen blätterst du, oben wählst du Start und Länge (7 bis 42 Tage).</li>

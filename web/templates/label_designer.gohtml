@@ -1,0 +1,210 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="rec-head">
+  <a class="btn btn-icon" href="/inventory/labels?size={{.Size.Key}}" title="Zur Etikettenansicht"><i class="ti ti-arrow-left"></i></a>
+  <div class="rec-img" style="display:flex;align-items:center;justify-content:center;color:var(--accent)"><i class="ti ti-layout-board-split" style="font-size:24px"></i></div>
+  <div class="t">
+    <h1>Etiketten-Designer</h1>
+    <div class="sub">{{.Size.Label}} · {{.Size.W}} × {{.Size.H}} mm · {{if .Custom}}eigenes Layout{{else}}Standard-Layout (noch nicht angepasst){{end}}</div>
+  </div>
+  <select class="form-input" style="width:auto" onchange="location.href='/inventory/labels/designer?size='+this.value">{{range .Sizes}}<option value="{{.Key}}" {{if eq .Key $.Size.Key}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+  <button class="btn" type="button" onclick="ldReset()" title="Gespeichertes Layout löschen – es gilt wieder die Standard-Gestaltung"><i class="ti ti-restore"></i> Standard</button>
+  <a class="btn" href="/inventory/labels?size={{.Size.Key}}" target="_blank" rel="noopener"><i class="ti ti-printer"></i> Etiketten drucken</a>
+  <button class="btn btn-primary" type="button" onclick="ldSave()"><i class="ti ti-device-floppy"></i> Speichern</button>
+</div>
+<div class="rec-msg" id="ld-msg" hidden></div>
+
+<div class="ld-wrap">
+  <div class="card ld-stage-card" style="margin:0">
+    <div class="ld-bar">
+      <span class="rec-sub">Ziehen = verschieben · Ecke unten rechts = Größe · Pfeiltasten = 0,1 mm (mit Umschalt 1 mm)</span>
+      <label class="rec-sub" style="margin-left:auto">Zoom <input type="range" id="ld-zoom" min="5" max="18" value="10" step="1"></label>
+      <label class="rec-sub"><input type="checkbox" id="ld-grid" checked> Raster</label>
+    </div>
+    <div class="ld-stage"><div id="ld-canvas" class="ld-canvas grid"></div></div>
+  </div>
+
+  <aside class="ld-side">
+    <div class="card" style="margin:0 0 10px">
+      <div class="card-title"><span><i class="ti ti-list"></i> Felder</span></div>
+      <div id="ld-fields"></div>
+    </div>
+    <div class="card" style="margin:0" id="ld-props">
+      <div class="card-title"><span id="ld-p-title">Feld wählen</span></div>
+      <div id="ld-p-body" class="rec-sub">Ein Feld auf dem Etikett oder in der Liste anklicken.</div>
+    </div>
+  </aside>
+</div>
+
+<style>
+.ld-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+@media (max-width:1000px){.ld-wrap{grid-template-columns:1fr}}
+.ld-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.ld-stage{overflow:auto;padding:24px;background:repeating-conic-gradient(var(--bg3) 0 25%,var(--bg2) 0 50%) 0 0/16px 16px;border-radius:6px;min-height:240px;display:flex;align-items:flex-start;justify-content:center}
+.ld-canvas{position:relative;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);color:#000;flex:none}
+.ld-canvas.grid{background-image:linear-gradient(rgba(0,0,0,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.06) 1px,transparent 1px);background-size:var(--mm) var(--mm)}
+.ld-el{position:absolute;overflow:hidden;line-height:1.12;cursor:move;outline:1px dashed rgba(0,0,0,.18);user-select:none;color:#000;font-family:Arial,Helvetica,sans-serif}
+.ld-el.txt{display:-webkit-box;-webkit-box-orient:vertical;word-break:break-word}
+.ld-el.sel{outline:2px solid var(--accent);z-index:5}
+.ld-el .h{position:absolute;right:0;bottom:0;width:10px;height:10px;background:var(--accent);cursor:nwse-resize;display:none}
+.ld-el.sel .h{display:block}
+.ld-el svg{width:100%;height:100%;display:block;pointer-events:none}
+.ld-el img{width:100%;height:100%;object-fit:contain;object-position:left top;pointer-events:none}
+.ld-el .ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;color:#888;border:1px dashed #aaa}
+.ld-f{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;cursor:pointer;font-size:13px}
+.ld-f:hover{background:var(--fill-hover,var(--bg3))}
+.ld-f.sel{background:var(--fill-hover,var(--bg3));font-weight:600}
+.ld-f small{margin-left:auto;color:var(--muted);font-size:11px}
+.ld-grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
+.ld-grid2 label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.ld-grid2 label.chk{flex-direction:row;align-items:center;gap:6px;color:var(--text);font-size:12px}
+.ld-grid2 .full{grid-column:1/-1}
+</style>
+<script>
+(function(){
+  const SIZE = {key: {{.Size.Key}}, w: {{.Size.W}}, h: {{.Size.H}}};
+  const FIELDS = {{.Fields}};
+  const SAMPLE = {{.Sample}} || {};
+  const QR = {{.SampleQR}};
+  const LOGO = {{.Logo}};
+  let els = ({{.Layout.Elements}} || []).map(e => Object.assign({}, e));
+  let zoom = 10, selKey = '';
+  const canvas = document.getElementById('ld-canvas');
+  const label = k => (FIELDS.find(f => f.Key === k) || {Label: k}).Label;
+  const r1 = v => Math.round(v * 10) / 10;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function text(e){
+    let v = e.key === 'text' ? (e.text || '') : (SAMPLE[e.key] || '');
+    v = String(v).trim();
+    if(!v) return '';
+    if(e.max > 0 && [...v].length > e.max) v = [...v].slice(0, e.max - 1).join('') + '…';
+    return (e.prefix || '') + v;
+  }
+  function draw(){
+    canvas.style.setProperty('--mm', zoom + 'px');
+    canvas.style.width = SIZE.w * zoom + 'px'; canvas.style.height = SIZE.h * zoom + 'px';
+    canvas.innerHTML = '';
+    els.forEach(e => {
+      if(!e.visible) return;
+      const d = document.createElement('div');
+      d.className = 'ld-el' + (e.key === 'qr' || e.key === 'logo' ? '' : ' txt') + (e.key === selKey ? ' sel' : '');
+      d.dataset.key = e.key;
+      Object.assign(d.style, {left: e.x * zoom + 'px', top: e.y * zoom + 'px', width: e.w * zoom + 'px', height: e.h * zoom + 'px'});
+      if(e.key === 'qr') d.innerHTML = QR || '<div class="ph">QR</div>';
+      else if(e.key === 'logo') d.innerHTML = LOGO ? '<img src="' + esc(LOGO) + '" alt="">' : '<div class="ph">Logo (Erscheinungsbild)</div>';
+      else {
+        d.textContent = text(e) || '(' + label(e.key) + ')';
+        Object.assign(d.style, {fontSize: e.size * 0.3528 * zoom + 'px', fontWeight: e.bold ? 700 : 400, textAlign: e.align || 'left',
+          fontFamily: e.mono ? "'Courier New',monospace" : '', borderBottom: e.line ? Math.max(1, .3 * zoom) + 'px solid #000' : '',
+          webkitLineClamp: String(e.lines || 1), whiteSpace: (e.lines || 1) === 1 ? 'nowrap' : '', textOverflow: 'ellipsis', display: (e.lines || 1) === 1 ? 'block' : ''});
+      }
+      const hd = document.createElement('span'); hd.className = 'h'; d.appendChild(hd);
+      canvas.appendChild(d);
+    });
+    list(); props();
+  }
+  function list(){
+    document.getElementById('ld-fields').innerHTML = els.map(e =>
+      '<div class="ld-f' + (e.key === selKey ? ' sel' : '') + '" data-key="' + esc(e.key) + '"><input type="checkbox" data-vis="' + esc(e.key) + '"' + (e.visible ? ' checked' : '') + ' title="anzeigen"> ' + esc(label(e.key)) +
+      '<small>' + (e.visible ? r1(e.x) + ' / ' + r1(e.y) + ' mm' : 'aus') + '</small></div>').join('');
+  }
+  function num(name, lab, v, step, min, max){ return '<label>' + lab + '<input class="form-input" type="number" data-p="' + name + '" value="' + v + '" step="' + step + '"' + (min != null ? ' min="' + min + '"' : '') + (max != null ? ' max="' + max + '"' : '') + '></label>'; }
+  function props(){
+    const e = els.find(x => x.key === selKey);
+    const body = document.getElementById('ld-p-body');
+    if(!e){ document.getElementById('ld-p-title').textContent = 'Feld wählen'; body.innerHTML = 'Ein Feld auf dem Etikett oder in der Liste anklicken.'; return; }
+    document.getElementById('ld-p-title').textContent = label(e.key);
+    let h = '<div class="ld-grid2">' + num('x', 'X (mm)', r1(e.x), .1, 0, SIZE.w) + num('y', 'Y (mm)', r1(e.y), .1, 0, SIZE.h) +
+      num('w', 'Breite (mm)', r1(e.w), .1, 1, SIZE.w) + num('h', 'Höhe (mm)', r1(e.h), .1, 1, SIZE.h);
+    if(e.key !== 'qr' && e.key !== 'logo'){
+      h += num('size', 'Schrift (pt)', e.size, .5, 4, 40) + num('lines', 'Zeilen (max.)', e.lines || 1, 1, 1, 4) +
+        num('max', 'Zeichen (max., 0 = egal)', e.max || 0, 1, 0, 200) +
+        '<label>Ausrichtung<select class="form-input" data-p="align">' + ['left', 'center', 'right'].map(a => '<option value="' + a + '"' + ((e.align || 'left') === a ? ' selected' : '') + '>' + ({left: 'links', center: 'mittig', right: 'rechts'})[a] + '</option>').join('') + '</select></label>' +
+        '<label class="full">Präfix (davor)<input class="form-input" data-p="prefix" value="' + esc(e.prefix || '') + '" maxlength="30" placeholder="z. B. Nr. oder Min "></label>' +
+        (e.key === 'text' ? '<label class="full">Text<input class="form-input" data-p="text" value="' + esc(e.text || '') + '" maxlength="120"></label>' : '') +
+        '<label class="chk"><input type="checkbox" data-p="bold"' + (e.bold ? ' checked' : '') + '> fett</label>' +
+        '<label class="chk"><input type="checkbox" data-p="mono"' + (e.mono ? ' checked' : '') + '> Festbreite</label>' +
+        '<label class="chk full"><input type="checkbox" data-p="line"' + (e.line ? ' checked' : '') + '> Linie darunter</label>';
+    }
+    h += '<label class="chk full"><input type="checkbox" data-p="visible"' + (e.visible ? ' checked' : '') + '> auf dem Etikett anzeigen</label></div>';
+    body.innerHTML = h;
+  }
+  function clampEl(e){
+    e.w = Math.max(1, Math.min(e.w, SIZE.w)); e.h = Math.max(1, Math.min(e.h, SIZE.h));
+    e.x = Math.max(0, Math.min(e.x, SIZE.w - e.w)); e.y = Math.max(0, Math.min(e.y, SIZE.h - e.h));
+    e.x = r1(e.x); e.y = r1(e.y); e.w = r1(e.w); e.h = r1(e.h);
+  }
+  document.getElementById('ld-p-body').addEventListener('input', ev => {
+    const t = ev.target, p = t.dataset.p, e = els.find(x => x.key === selKey);
+    if(!p || !e) return;
+    if(t.type === 'checkbox') e[p] = t.checked;
+    else if(t.type === 'number') e[p] = parseFloat(String(t.value).replace(',', '.')) || 0;
+    else e[p] = t.value;
+    if(['x', 'y', 'w', 'h'].includes(p)) clampEl(e);
+    if(p === 'lines' || p === 'max') e[p] = Math.round(e[p]);
+    const keep = document.activeElement && document.activeElement.dataset.p;
+    redraw(keep);
+  });
+  // Nur die Fläche neu zeichnen, damit das Eingabefeld den Fokus behält
+  function redraw(focusP){
+    const body = document.getElementById('ld-p-body');
+    draw();
+    if(focusP){ const f = body.querySelector('[data-p="' + focusP + '"]'); if(f){ f.focus(); if(f.setSelectionRange && f.type === 'text'){ const n = f.value.length; f.setSelectionRange(n, n); } } }
+  }
+  document.getElementById('ld-fields').addEventListener('click', ev => {
+    const vis = ev.target.dataset && ev.target.dataset.vis;
+    if(vis){ const e = els.find(x => x.key === vis); e.visible = ev.target.checked; selKey = vis; draw(); return; }
+    const row = ev.target.closest('.ld-f'); if(row){ selKey = row.dataset.key; draw(); }
+  });
+  // Ziehen und Größe ändern
+  let drag = null;
+  canvas.addEventListener('pointerdown', ev => {
+    const d = ev.target.closest('.ld-el'); if(!d) return;
+    selKey = d.dataset.key;
+    const e = els.find(x => x.key === selKey);
+    drag = {e, mode: ev.target.classList.contains('h') ? 'size' : 'move', sx: ev.clientX, sy: ev.clientY, ox: e.x, oy: e.y, ow: e.w, oh: e.h};
+    canvas.setPointerCapture(ev.pointerId);
+    draw(); ev.preventDefault();
+  });
+  canvas.addEventListener('pointermove', ev => {
+    if(!drag) return;
+    const dx = (ev.clientX - drag.sx) / zoom, dy = (ev.clientY - drag.sy) / zoom, e = drag.e;
+    if(drag.mode === 'move'){ e.x = drag.ox + dx; e.y = drag.oy + dy; } else { e.w = drag.ow + dx; e.h = drag.oh + dy; }
+    clampEl(e);
+    const d = canvas.querySelector('[data-key="' + e.key + '"]');
+    if(d) Object.assign(d.style, {left: e.x * zoom + 'px', top: e.y * zoom + 'px', width: e.w * zoom + 'px', height: e.h * zoom + 'px'});
+  });
+  const stop = () => { if(drag){ drag = null; draw(); } };
+  canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointercancel', stop);
+  document.addEventListener('keydown', ev => {
+    if(!selKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    const step = ev.shiftKey ? 1 : .1, e = els.find(x => x.key === selKey);
+    const mv = {ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step]}[ev.key];
+    if(!mv) return;
+    ev.preventDefault(); e.x += mv[0]; e.y += mv[1]; clampEl(e); draw();
+  });
+  document.getElementById('ld-zoom').addEventListener('input', ev => { zoom = +ev.target.value; draw(); });
+  document.getElementById('ld-grid').addEventListener('change', ev => canvas.classList.toggle('grid', ev.target.checked));
+  function msg(ok, t){ const m = document.getElementById('ld-msg'); m.hidden = false; m.className = 'rec-msg ' + (ok ? 'ok' : 'err'); m.textContent = t; }
+  async function post(body){
+    const res = await fetch('/inventory/labels/designer', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
+  }
+  window.ldSave = async function(){
+    try{ await post({size: SIZE.key, elements: els}); msg(true, 'Layout für ' + SIZE.key + ' gespeichert – gilt ab sofort für Browser-Druck, Netzwerk-, Zebra- und Dymo-Drucker.'); }
+    catch(err){ msg(false, 'Speichern fehlgeschlagen: ' + err.message); }
+  };
+  window.ldReset = async function(){
+    if(!confirm('Eigenes Layout löschen? Dann gilt wieder die Standard-Gestaltung.')) return;
+    try{ await post({size: SIZE.key, reset: true}); location.reload(); }catch(err){ msg(false, err.message); }
+  };
+  // eingebaute Pixelgröße anpassen: Etikett soll in die Fläche passen
+  const avail = document.querySelector('.ld-stage').clientWidth - 48;
+  zoom = Math.max(5, Math.min(18, Math.floor(avail / SIZE.w)));
+  document.getElementById('ld-zoom').value = zoom;
+  draw();
+})();
+</script>
+{{end}}

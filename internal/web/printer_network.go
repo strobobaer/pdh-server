@@ -391,7 +391,7 @@ func networkTestPDF(printerName, location, url string, config map[string]string)
 
 // labelsPDF: Etiketten wie die Druckansicht – A4-Bogen oder Rolle (eine
 // Seite je Etikett).
-func labelsPDF(items []labelItem, size labelSize, copies, start int, showCat bool) ([]byte, error) {
+func labelsPDF(items []labelItem, size labelSize, copies, start int, showCat bool, layout *labelLayout) ([]byte, error) {
 	var flat []*labelItem
 	if size.Sheet {
 		for i := 0; i < start; i++ {
@@ -434,7 +434,11 @@ func labelsPDF(items []labelItem, size labelSize, copies, start int, showCat boo
 			x = left + float64(k%size.Cols)*size.W
 			y = size.MarginTop + float64(k/size.Cols)*size.H
 		}
-		drawLabelPDF(p, *it, x, y, size, showCat)
+		if layout != nil && !it.Asset {
+			drawLayoutPDF(p, layout, *it, x, y)
+		} else {
+			drawLabelPDF(p, *it, x, y, size, showCat)
+		}
 	}
 	if len(flat) == 0 {
 		return nil, errors.New("keine Etiketten für diese Auswahl")
