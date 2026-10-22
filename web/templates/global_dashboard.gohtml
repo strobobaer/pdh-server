@@ -11,6 +11,7 @@
   var mode = localStorage.getItem('pdh_theme') || 'system';
   var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
+  document.documentElement.dataset.palette = {{.PaletteID}};
   document.documentElement.dataset.themeMode = mode;
   // Zeilenhoehe der Tabelle/Listen: je Geraet gemerkt, sonst Vorgabe aus dem Konto
   var row = parseInt(localStorage.getItem('pdh_leitstand_row'), 10);
@@ -30,7 +31,7 @@
 {{template "timeline-style" .Timeline}}
 <style>
 /* Erstellungs- und Abschluss-Assistent im Leitstand: gleiche Optik wie im PDH, Farben aus dem Leitstand */
-#cw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
+#cw{--bg2:var(--surface);--bg3:var(--surface-2);--font:inherit;font-family:inherit;color:var(--text)}
 #cw .cw{font-size:14px}
 #cw .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:400}
 #cw .form-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;outline:0;min-height:44px}
@@ -42,7 +43,7 @@
 #cw .btn-icon{min-height:32px;padding:0}
 #cw .cw-chips button{min-height:40px;font-size:13px}
 #cw .cw-people label,#cw .cw-check{min-height:44px}
-#crw{--bg2:var(--surface);--bg3:var(--surface-2);--accent-rgb:79,110,247;--on-accent:#fff;--font:inherit;font-family:inherit;color:var(--text)}
+#crw{--bg2:var(--surface);--bg3:var(--surface-2);--font:inherit;font-family:inherit;color:var(--text)}
 #crw .cw{font-size:14px}
 #crw .form-group{margin-bottom:14px}
 #crw .form-label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:400}
@@ -56,15 +57,19 @@
 #crw .crw-pick label{min-height:44px}
 </style>
 <style>
+/* Farben wie im übrigen PDH (Windows-11-Grautöne); das Farbschema aus dem
+   Erscheinungsbild (pdh-theme unten) überschreibt --bg/--bg2/--bg3/--accent … –
+   die Leitstand-Flächen folgen über --surface/--surface-2 */
 :root{
-  color-scheme:dark;font-family:"Aptos","Segoe UI",sans-serif;
-  --bg:#101512;--surface:#19211c;--surface-2:#222d26;--border:#35443a;--text:#f1f5f2;--muted:#a2b0a6;
-  --accent:#4f6ef7;--green:#2b8a57;--amber:#c48b22;--red:#bd4747;--focus:#b6e3c6;--overdue:#e05a5a;
-  --type-fault:#3fae86;--type-ticket:#4b9fc4;--type-maintenance:#c99a3c;--type-task:#9d7fc9;
-  --type-fault-bg:#254b43;--type-fault-fg:#bce8d5;
-  --type-ticket-bg:#214b61;--type-ticket-fg:#b7e4f5;
+  color-scheme:dark;font-family:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI","Aptos",system-ui,sans-serif;
+  --bg:#202020;--bg2:#2b2b2b;--bg3:#323232;--border:#3b3b3b;--text:#f3f3f3;--muted:#a3a3a3;
+  --surface:var(--bg2);--surface-2:var(--bg3);
+  --accent:#4f8ef7;--accent-rgb:79,142,247;--on-accent:#fff;--green:#2b8a57;--amber:#c48b22;--red:#bd4747;--focus:var(--accent);--overdue:#e05a5a;
+  --type-fault:#f97316;--type-ticket:#0ea5e9;--type-maintenance:#c99a3c;--type-task:#8b5cf6;
+  --type-fault-bg:#4a2c16;--type-fault-fg:#fed7aa;
+  --type-ticket-bg:#12384a;--type-ticket-fg:#bae6fd;
   --type-maintenance-bg:#614719;--type-maintenance-fg:#f3dcaa;
-  --type-task-bg:#493d5a;--type-task-fg:#e1d1f4;
+  --type-task-bg:#34295a;--type-task-fg:#ddd6fe;
   --accept-bg:#24583d;--accept-border:#397b55;
   --finish-bg:#20576a;--finish-border:#347890;
   --discard-bg:#5b3030;--discard-border:#854545;
@@ -72,13 +77,14 @@
 }
 :root[data-theme="light"]{
   color-scheme:light;
-  --bg:#f5f7fb;--surface:#ffffff;--surface-2:#eef2f7;--border:#d7dee8;--text:#111827;--muted:#64748b;
-  --accent:#3457d5;--green:#059669;--amber:#d97706;--red:#dc2626;--focus:#1d4ed8;--overdue:#dc2626;
-  --type-fault:#0f9d6b;--type-ticket:#1f7fae;--type-maintenance:#b3801e;--type-task:#7c5bc7;
-  --type-fault-bg:#d6f3e7;--type-fault-fg:#0b6b49;
-  --type-ticket-bg:#dbeefb;--type-ticket-fg:#155d85;
+  --bg:#f3f3f3;--bg2:#ffffff;--bg3:#f9f9f9;--border:#e2e2e2;--text:#1b1b1b;--muted:#5f5f5f;
+  --surface:var(--bg2);--surface-2:var(--bg3);
+  --accent:#005fb8;--accent-rgb:0,95,184;--on-accent:#fff;--green:#059669;--amber:#d97706;--red:#dc2626;--focus:var(--accent);--overdue:#dc2626;
+  --type-fault:#ea580c;--type-ticket:#0284c7;--type-maintenance:#b3801e;--type-task:#7c3aed;
+  --type-fault-bg:#ffedd5;--type-fault-fg:#9a3412;
+  --type-ticket-bg:#e0f2fe;--type-ticket-fg:#075985;
   --type-maintenance-bg:#faedd2;--type-maintenance-fg:#8a5f10;
-  --type-task-bg:#ece3fa;--type-task-fg:#5b3fa3;
+  --type-task-bg:#ede9fe;--type-task-fg:#5b21b6;
   --accept-bg:#dcf3e6;--accept-border:#8fd1ac;
   --finish-bg:#daeef8;--finish-border:#8dc4dd;
   --discard-bg:#fbe0e0;--discard-border:#e2a3a3;
@@ -93,10 +99,10 @@ select{color-scheme:inherit}
 button{color:inherit}
 header{min-height:74px;padding:12px 20px;display:flex;align-items:center;gap:16px;background:var(--surface);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:10px;min-width:0}
-.brand-mark{width:42px;height:42px;display:grid;place-items:center;background:var(--green);color:#fff;font-size:20px;font-weight:800;border-radius:7px;flex:none}
+.brand-mark{width:42px;height:42px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent,#fff);font-size:20px;font-weight:800;border-radius:4px;flex:none}
 h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .subtitle{margin-top:4px;color:var(--muted);font-size:13px}
-.heading-edit-btn{flex:none;width:34px;height:34px;min-height:0;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.heading-edit-btn{flex:none;width:34px;height:34px;min-height:0;border:1px solid var(--border);border-radius:4px;background:var(--surface-2);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .heading-edit-btn:hover{color:var(--text);filter:brightness(1.14)}
 #heading-form{display:flex;flex-direction:column;gap:6px}
 #heading-form input{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 9px;min-height:0}
@@ -106,10 +112,10 @@ h1{font-size:21px;line-height:1.15;margin:0;font-weight:700}
 .heading-form-actions button{min-height:30px;padding:0 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text);cursor:pointer}
 .heading-form-actions button:hover{filter:brightness(1.14)}
 .header-meta{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
-.header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
+.header-button,.action-button{min-height:48px;border:1px solid var(--border);border-radius:4px;background:var(--surface-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 14px;text-decoration:none;cursor:pointer;font-weight:650;white-space:nowrap}
 .header-button:hover,.action-button:hover{filter:brightness(1.14)}
 /* Zeilenhoehe in der Kopfzeile: − 100 % + */
-.row-ctl{display:inline-flex;align-items:center;gap:4px;min-height:48px;padding:0 6px 0 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text);font-weight:650;white-space:nowrap}
+.row-ctl{display:inline-flex;align-items:center;gap:4px;min-height:48px;padding:0 6px 0 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface-2);color:var(--text);font-weight:650;white-space:nowrap}
 .row-ctl button{width:36px;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1;padding:0}
 .row-ctl button:hover{filter:brightness(1.14)}
 .row-ctl button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
@@ -123,7 +129,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .legend-dot.fault{background:var(--type-fault)}.legend-dot.ticket{background:var(--type-ticket)}.legend-dot.maintenance{background:var(--type-maintenance)}.legend-dot.task{background:var(--type-task)}.legend-dot.overdue{background:var(--overdue)}
 
 /* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
-#timeline-card{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:12px}
+#timeline-card{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px}
 #timeline-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
 #dash-gantt-target{overflow-x:auto}
 /* ohne Anmeldung: Balken nicht verschiebbar (frappe-gantt 0.6 kennt kein readonly) –
@@ -152,7 +158,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .gantt .bar-wrapper.gantt-selected .bar{filter:drop-shadow(0 0 4px var(--focus))}
 
 /* ── Anzeige-Auswahl je Ansicht (Tabelle, Zeitstrahl) ── */
-.view-card{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:12px}
+.view-card{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px}
 .view-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 .view-count{margin-left:auto;font-size:12px;color:var(--muted)}
 .view-filter{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -164,7 +170,7 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 #timeline-card-head .view-filter{flex-basis:100%}
 
 /* ── Tabelle ── */
-#entries-table-wrap{border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:auto;max-height:340px}
+#entries-table-wrap{border:1px solid var(--border);border-radius:4px;background:var(--surface);overflow:auto;max-height:340px}
 /* Zeilenhoehe (--row-scale): Abstaende und Schrift wachsen gemeinsam */
 #entries-table{width:100%;border-collapse:collapse;font-size:calc(13px * var(--row-scale))}
 #entries-table th,#entries-table td{padding:calc(8px * var(--row-scale)) calc(12px * var(--row-scale));text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -213,7 +219,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 #entries-table td.overdue{color:var(--overdue);font-weight:700}
 
 /* ── Bearbeitungsfenster (unterhalb) ── */
-#edit-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
+#edit-panel{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
 .edit-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .edit-panel-head h2{font-size:17px;margin:0}
 .edit-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -236,7 +242,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 .create-tile.ticket{border-color:var(--type-ticket)}
 .create-tile.task{border-color:var(--type-task)}
 .create-tile.maintenance{border-color:var(--type-maintenance)}
-#create-panel{flex:none;border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
+#create-panel{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:16px 18px 18px;display:grid;gap:13px}
 .kind{display:inline-flex;padding:5px 7px;border-radius:5px;background:var(--type-fault-bg);color:var(--type-fault-fg);font-weight:700;font-size:12px}
 .kind.ticket{background:var(--type-ticket-bg);color:var(--type-ticket-fg)}.kind.maintenance{background:var(--type-maintenance-bg);color:var(--type-maintenance-fg)}.kind.task{background:var(--type-task-bg);color:var(--type-task-fg)}
 .item-sub{font-size:12px;color:var(--muted);margin-top:5px}
@@ -252,6 +258,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 @media(max-width:1050px){.row-ctl-label,.header-button .tb-label{display:none}}
 @media(max-width:760px){header{min-height:64px}.brand-mark{width:38px;height:38px}h1{font-size:18px}.subtitle,#updated-at{display:none}.header-meta{gap:6px}.header-button{min-height:46px;padding:0 10px;font-size:12px}main{padding:8px}.toolbar{min-height:32px}}
 </style>
+<style id="pdh-theme">{{.ThemeCSS}}</style>
 {{template "request-once-script"}}
 </head>
 <body>
@@ -1014,7 +1021,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       const overdue = item.due_date && item.due_date < todayStr;
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid '
-        + (overdue ? 'var(--overdue)' : 'var(--border)') + ';border-radius:7px;background:var(--surface)';
+        + (overdue ? 'var(--overdue)' : 'var(--border)') + ';border-radius:4px;background:var(--surface)';
 
       const textBox = document.createElement('div');
       const titleEl = document.createElement('div');

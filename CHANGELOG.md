@@ -18,6 +18,9 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 - Neues Erscheinungsbild im Stil von Windows 11: Navigation und Kopfzeile auf ruhigem Hintergrund, Inhalt als Fläche mit runder Ecke, Navigation mit Markierung der aktiven Seite, flachere Knöpfe und Eingabefelder, Reiter mit kurzem Unterstrich, schmale Scrollbalken – Firmenfarbe und Erscheinungsbild-Einstellungen gelten weiter
 - Navigation links: Es ist immer nur die Gruppe der geöffneten Seite aufgeklappt, beim Aufklappen einer anderen Gruppe schließen sich die übrigen
+- Leitstand im selben Design wie das übrige PDH: Farbschema und Firmenfarbe aus dem Erscheinungsbild, Windows-11-Grautöne, gleiche Schrift
+- Einheitliche Farben für die Arten in Leitstand und Kalender: Störung orange, Ticket hellblau, Wartung gold, Aufgabe violett – Rot steht nur noch für „überfällig“ und Überschneidungen
+- Handbuch im neuen Design (Inhaltsverzeichnis mit Markierung, Karten, Anleitungen mit Farbleiste); die Skizze zum Aufbau der Oberfläche zeigt die neue Navigation
 
 ## [0.57.0] – 2026-10-21
 

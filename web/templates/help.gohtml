@@ -2,12 +2,14 @@
 {{define "content"}}
 <style>
 .hb{display:grid;grid-template-columns:240px 1fr;gap:18px;align-items:start}
-.hb-toc{position:sticky;top:0;max-height:calc(100vh - 140px);overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px}
-.hb-toc a{display:block;padding:5px 8px;border-radius:6px;font-size:12.5px;color:var(--muted)}
-.hb-toc a:hover,.hb-toc a.active{background:var(--bg3);color:var(--accent)}
+.hb-toc{position:sticky;top:0;max-height:calc(100vh - 140px);overflow-y:auto;background:var(--bg2);border:1px solid var(--stroke,var(--border));border-radius:8px;padding:8px;box-shadow:var(--shadow-card,none)}
+.hb-toc a{display:block;position:relative;padding:6px 10px;border-radius:4px;font-size:12.5px;color:var(--text);opacity:.85}
+.hb-toc a:hover{background:var(--fill-hover,var(--bg3));opacity:1}
+.hb-toc a.active{background:var(--fill-hover,var(--bg3));opacity:1;font-weight:600}
+.hb-toc a.active::before{content:"";position:absolute;left:0;top:50%;width:3px;height:14px;margin-top:-7px;border-radius:2px;background:var(--accent)}
 .hb-toc .n{display:inline-block;width:22px;color:var(--muted)}
 .hb-body{min-width:0}
-.hb-ch{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin-bottom:14px;scroll-margin-top:12px}
+.hb-ch{background:var(--bg2);border:1px solid var(--stroke,var(--border));border-radius:8px;box-shadow:var(--shadow-card,none);padding:18px 22px;margin-bottom:14px;scroll-margin-top:12px}
 .hb-ch h2{font-size:17px;font-weight:600;margin-bottom:10px;display:flex;gap:8px;align-items:center}
 .hb-ch h2 i{color:var(--accent)}
 .hb-ch h3{font-size:13.5px;font-weight:600;margin:16px 0 6px;display:flex;gap:6px;align-items:center}
@@ -240,6 +242,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new assignments">
   <h2><i class="ti ti-layout-dashboard"></i> Leitstand &amp; Meldungen</h2>
   <p>Am <b>Leitstand</b> (z. B. am Terminal in der Halle) meldet jede und jeder schnell ein Problem – ohne sich lange durchzuklicken.</p>
+  <p>Der Leitstand sieht aus wie das übrige PDH: dasselbe Farbschema aus dem <b>Erscheinungsbild</b> (Firmenfarbe), Hell und Dunkel wie eingestellt. Die Arten haben überall dieselbe Farbe – <span style="color:#f97316">■</span> Störung, <span style="color:#0ea5e9">■</span> Ticket, <span style="color:#c99a3c">■</span> Wartung, <span style="color:#8b5cf6">■</span> Aufgabe; Rot bleibt für <b>überfällig</b> reserviert.</p>
   <p>Auch hier legst du mit dem <a href="#creation">Erstellungs-Assistenten</a> an, groß und fingerfreundlich – nur <b>ohne Zuweisung</b>: Statt „Wer kümmert sich?“ fragt der Leitstand <b>Wer meldet?</b>. Den Vorgang verteilen danach die Broker.</p>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung am Leitstand</b>
     <ol class="hb-steps">

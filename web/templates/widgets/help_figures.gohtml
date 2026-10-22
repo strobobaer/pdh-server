@@ -6,11 +6,16 @@
 
 {{define "hb-fig-style"}}
 <style>
-.hb-fig{margin:12px 0;border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:12px;text-align:center}
+.hb-fig{margin:12px 0;border:1px solid var(--stroke,var(--border));border-radius:8px;background:var(--bg);padding:12px;text-align:center}
 .hb-fig svg{width:100%;height:auto;max-height:340px}
 .hb-fig figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}
 .hb-fig .bg{fill:var(--bg2);stroke:var(--border)}
 .hb-fig .bg3{fill:var(--bg3);stroke:var(--border)}
+/* Windows-11-Aufbau: Fensterhintergrund, Inhaltsfläche, Steuerelemente, Auswahl */
+.hb-fig .win{fill:var(--bg);stroke:var(--border)}
+.hb-fig .lay{fill:var(--layer,var(--bg2));stroke:var(--border)}
+.hb-fig .ctl{fill:none;stroke:var(--border)}
+.hb-fig .sel{fill:var(--text);fill-opacity:.08}
 .hb-fig .ac{fill:var(--accent)}
 .hb-fig .acs{fill:none;stroke:var(--accent);stroke-width:2}
 .hb-fig .acl{fill:rgba(var(--accent-rgb),.15);stroke:var(--accent)}
@@ -27,7 +32,7 @@
 .hb-steps{counter-reset:hbs;list-style:none;margin:10px 0!important;padding:0}
 .hb-steps li{counter-increment:hbs;position:relative;padding:4px 0 8px 36px!important;margin:0!important}
 .hb-steps li::before{content:counter(hbs);position:absolute;left:0;top:2px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--on-accent,#fff);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
-.hb-howto{border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:12px 0;background:var(--bg)}
+.hb-howto{border:1px solid var(--stroke,var(--border));border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;margin:12px 0;background:var(--layer,var(--bg))}
 .hb-howto > b{display:flex;gap:6px;align-items:center;font-size:13px;margin-bottom:4px}
 .hb-howto > b i{color:var(--accent)}
 .hb-release{border:1px solid var(--border);border-radius:8px;padding:6px 12px;margin:8px 0;background:var(--bg)}
@@ -43,35 +48,43 @@
 {{define "hb-fig-layout"}}
 <figure class="hb-fig">
 <svg viewBox="0 0 640 300" role="img" aria-label="Aufbau der Oberfläche">
-  <rect class="bg" x="1" y="1" width="638" height="298" rx="8"/>
+  <!-- Fensterhintergrund (Mica): Navigation, Kopfleiste und rechte Leiste liegen darauf -->
+  <rect class="win" x="1" y="1" width="638" height="298" rx="8"/>
   <!-- Navigation -->
-  <rect class="bg3" x="10" y="10" width="110" height="280" rx="6"/>
-  <text x="22" y="32" class="t-b">PDH</text>
-  <g class="t-m"><text x="22" y="56">▣ Dashboard</text><text x="22" y="74">✉ Chat</text><text x="22" y="92">⚠ Störungen</text><text x="22" y="110">▤ Tickets</text><text x="22" y="128">☑ Aufgaben</text><text x="22" y="146">⚙ Wartung</text><text x="22" y="164">▦ Ersatzteile</text><text x="22" y="182">⌂ Infrastruktur</text><text x="22" y="200">📖 Handbuch</text></g>
+  <rect class="ac" x="14" y="12" width="18" height="18" rx="4"/><text x="40" y="26" class="t-b">PDH</text>
+  <text x="18" y="50" class="t-m">▣ Dashboard</text>
+  <text x="18" y="72" class="t-b" font-size="10">Instandhaltung ˅</text>
+  <g class="t-m"><text x="22" y="90">⚠ Störungen</text><text x="22" y="108">▤ Tickets</text></g>
+  <rect class="sel" x="12" y="114" width="106" height="18" rx="4"/><rect class="ac" x="12" y="118" width="3" height="10" rx="1.5"/>
+  <text x="22" y="127" font-size="9.5">📅 Planer</text>
+  <g class="t-m"><text x="22" y="145">☑ Aufgaben</text></g>
+  <text x="18" y="170" class="t-m" font-size="10">Material &amp; Anlagen ›</text>
+  <text x="18" y="190" class="t-m" font-size="10">Verwaltung ›</text>
+  <text x="18" y="210" class="t-m" font-size="10">Hilfe &amp; Links ›</text>
   <!-- Kopfleiste -->
-  <rect class="bg3" x="130" y="10" width="440" height="34" rx="6"/>
-  <text x="142" y="31" class="t-m">PDH / Ersatzteile</text>
-  <rect class="bg" x="232" y="17" width="92" height="20" rx="5"/><text x="278" y="31" class="t-c" font-size="9.5">🕐 Do 08:59:32</text>
-  <rect class="acl" x="330" y="17" width="82" height="20" rx="5"/><text x="371" y="31" class="t-c" font-size="9.5">↗ Im Chat teilen</text>
-  <rect class="acl" x="418" y="17" width="48" height="20" rx="5"/><text x="442" y="31" class="t-c" font-size="9.5">✉ Chat</text>
-  <rect class="bg" x="472" y="17" width="90" height="20" rx="5"/><text x="517" y="31" class="t-c" font-size="9.5">👤 Mein Konto</text>
-  <!-- Inhalt -->
-  <rect class="bg" x="130" y="52" width="440" height="238" rx="6"/>
-  <text x="146" y="76" class="t-b" font-size="13">Seiteninhalt</text>
-  <rect class="acl" x="146" y="88" width="408" height="20" rx="4"/><text x="152" y="102" font-size="9.5">Reiter: Übersicht · Stammdaten · Feldsätze · Dokumente · Verknüpfungen · Historie</text>
-  <rect class="bg3" x="146" y="118" width="200" height="80" rx="6"/><rect class="bg3" x="354" y="118" width="200" height="80" rx="6"/>
-  <rect class="bg3" x="146" y="206" width="408" height="70" rx="6"/>
-  <!-- Seitenleiste mit senkrechten Reitern -->
-  <rect class="bg3" x="580" y="10" width="50" height="280" rx="6"/>
-  <g font-size="10"><text transform="translate(610,34) rotate(90)">Chat</text><text transform="translate(610,80) rotate(90)">Suche</text><text transform="translate(610,130) rotate(90)">Copilot</text><text transform="translate(610,186) rotate(90)">Aktivität</text><text transform="translate(610,246) rotate(90)">Hilfe</text></g>
-  <circle class="ac" cx="620" cy="22" r="7"/><text x="620" y="25.5" class="t-w t-c" font-size="9">3</text>
+  <text x="134" y="28" class="t-m">PDH / Planer</text>
+  <rect class="ctl" x="232" y="15" width="92" height="20" rx="4"/><text x="278" y="29" class="t-c" font-size="9.5">🕐 Do 08:59:32</text>
+  <rect class="ctl" x="330" y="15" width="82" height="20" rx="4"/><text x="371" y="29" class="t-c" font-size="9.5">↗ Im Chat teilen</text>
+  <rect class="ctl" x="418" y="15" width="48" height="20" rx="4"/><text x="442" y="29" class="t-c" font-size="9.5">✉ Chat</text>
+  <rect class="ctl" x="472" y="15" width="90" height="20" rx="4"/><text x="517" y="29" class="t-c" font-size="9.5">👤 Mein Konto</text>
+  <!-- Inhalt: eigene Fläche mit runder Ecke oben links -->
+  <path class="lay" d="M130,52 a8,8 0 0 1 8,-8 H572 V299 H130 Z"/>
+  <text x="146" y="74" class="t-b" font-size="13">Seiteninhalt</text>
+  <text x="148" y="98" font-size="9.5" class="t-b">Übersicht</text><rect class="ac" x="161" y="103" width="18" height="3" rx="1.5"/>
+  <text x="206" y="98" font-size="9.5" class="t-m">Stammdaten</text><text x="270" y="98" font-size="9.5" class="t-m">Dokumente</text><text x="330" y="98" font-size="9.5" class="t-m">Historie</text>
+  <line class="ln" x1="146" y1="107" x2="556" y2="107" stroke-width="0.6"/>
+  <rect class="bg" x="146" y="118" width="200" height="80" rx="8"/><rect class="bg" x="354" y="118" width="200" height="80" rx="8"/>
+  <rect class="bg" x="146" y="206" width="408" height="70" rx="8"/>
+  <!-- rechte Seitenleiste mit senkrechten Reitern -->
+  <g font-size="10" class="t-m"><text transform="translate(600,58) rotate(90)">Chat</text><text transform="translate(600,104) rotate(90)">Suche</text><text transform="translate(600,154) rotate(90)">Copilot</text><text transform="translate(600,210) rotate(90)">Aktivität</text><text transform="translate(600,266) rotate(90)">Hilfe</text></g>
+  <circle class="ac" cx="610" cy="46" r="7"/><text x="610" y="49.5" class="t-w t-c" font-size="9">3</text>
   <!-- Griff zum Ziehen der Breite -->
-  <rect class="ac" x="123" y="120" width="4" height="60" rx="2"/><text x="125" y="196" class="t-c" font-size="12">↔</text>
+  <rect class="ac" x="123" y="230" width="4" height="40" rx="2"/><text x="125" y="286" class="t-c" font-size="12">↔</text>
   <!-- Beschriftungen -->
-  <g class="t-m"><text x="18" y="284">① Navigation</text><text x="138" y="284">② Inhalt mit Reitern</text><text x="484" y="62">③ Kopfleiste</text></g>
-  <text x="596" y="284" class="t-m t-c">④</text>
+  <g class="t-m"><text x="18" y="240">① Navigation</text><text x="430" y="290">② Inhalt mit Reitern</text><text x="232" y="48">③ Kopfleiste</text></g>
+  <text x="612" y="290" class="t-m t-c">④</text>
 </svg>
-<figcaption>① Navigation (Breite am Rand ↔ ziehen) · ② Seiteninhalt mit Reitern · ③ Kopfleiste mit Uhr (Klick → Zeiterfassung), Chat und Mein Konto · ④ rechte Seitenleiste mit senkrechten Reitern (eingeklappt; Zahl = ungelesene Chat-Nachrichten; aufgeklappt ebenfalls in der Breite ziehbar)</figcaption>
+<figcaption>① Navigation – offen ist nur die Gruppe der geöffneten Seite, die aktive Seite trägt links einen Farbbalken (Breite am Rand ↔ ziehen) · ② Seiteninhalt mit Reitern auf eigener Fläche · ③ Kopfleiste mit Uhr (Klick → Zeiterfassung), Chat und Mein Konto · ④ rechte Seitenleiste mit senkrechten Reitern (Zahl = ungelesene Chat-Nachrichten; aufgeklappt ebenfalls in der Breite ziehbar)</figcaption>
 </figure>
 {{end}}
 
@@ -80,18 +93,18 @@
 <figure class="hb-fig">
 <svg viewBox="0 0 640 200" role="img" aria-label="Aufbau einer Detailseite">
   <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
-  <text x="18" y="30" font-size="16">←</text><rect class="bg3" x="40" y="14" width="30" height="30" rx="6"/>
+  <text x="18" y="30" font-size="16">←</text><rect class="bg3" x="40" y="14" width="30" height="30" rx="8"/>
   <text x="80" y="28" class="t-b" font-size="13">Rillenkugellager 6205</text><text x="80" y="42" class="t-m">4711-A · Lager · SKF</text>
   <rect class="gr" x="470" y="18" width="70" height="20" rx="10"/><text x="505" y="32" class="t-c" font-size="9.5">OK · 12 Stück</text>
-  <rect class="acl" x="548" y="18" width="78" height="20" rx="5"/><text x="587" y="32" class="t-c" font-size="9.5">✎ Bearbeiten</text>
+  <rect class="acl" x="548" y="18" width="78" height="20" rx="4"/><text x="587" y="32" class="t-c" font-size="9.5">✎ Bearbeiten</text>
   <line class="ln" x1="16" y1="68" x2="624" y2="68"/>
   <g font-size="10.5">
-    <text x="20" y="62" fill="var(--accent)" class="t-b">Übersicht</text><line x1="18" y1="67" x2="78" y2="67" stroke="var(--accent)" stroke-width="2.5"/>
+    <text x="20" y="62" class="t-b">Übersicht</text><rect x="39" y="66" width="18" height="3" rx="1.5" fill="var(--accent)"/>
     <text x="96" y="62" class="t-m">Stammdaten</text><text x="170" y="62" class="t-m">Feldsätze</text><text x="236" y="62" class="t-m">Lager</text><text x="282" y="62" class="t-m">Lieferanten</text><text x="354" y="62" class="t-m">Verwendung</text><text x="428" y="62" class="t-m">Dokumente</text><text x="496" y="62" class="t-m">Verknüpfungen</text><text x="580" y="62" class="t-m">Historie</text>
   </g>
-  <rect class="bg3" x="16" y="80" width="196" height="100" rx="6"/><text x="26" y="98" class="t-b">Hersteller</text><text x="26" y="116" class="t-m">SKF · Teilenr. 6205-2RSH</text><text x="26" y="132" class="t-m">☎ 0800 …</text>
-  <rect class="bg3" x="222" y="80" width="196" height="100" rx="6"/><text x="232" y="98" class="t-b">Hauptlieferant</text><text x="232" y="116" class="t-m">Muster GmbH · Art. 88123</text><text x="232" y="132" class="t-m">EK 12,40 € · 3 Tage</text>
-  <rect class="bg3" x="428" y="80" width="196" height="100" rx="6"/><text x="438" y="98" class="t-b">Lagerplätze</text><text x="438" y="116" class="t-m">Halle 1 › Regal A › Fach 3</text><text x="438" y="132" class="t-m">Werkstatt › Schrank 2</text>
+  <rect class="bg3" x="16" y="80" width="196" height="100" rx="8"/><text x="26" y="98" class="t-b">Hersteller</text><text x="26" y="116" class="t-m">SKF · Teilenr. 6205-2RSH</text><text x="26" y="132" class="t-m">☎ 0800 …</text>
+  <rect class="bg3" x="222" y="80" width="196" height="100" rx="8"/><text x="232" y="98" class="t-b">Hauptlieferant</text><text x="232" y="116" class="t-m">Muster GmbH · Art. 88123</text><text x="232" y="132" class="t-m">EK 12,40 € · 3 Tage</text>
+  <rect class="bg3" x="428" y="80" width="196" height="100" rx="8"/><text x="438" y="98" class="t-b">Lagerplätze</text><text x="438" y="116" class="t-m">Halle 1 › Regal A › Fach 3</text><text x="438" y="132" class="t-m">Werkstatt › Schrank 2</text>
 </svg>
 <figcaption>Jede Detailseite: Kopf mit Status und Aktionen, darunter die Reiter. Der aktive Reiter ist unterstrichen.</figcaption>
 </figure>
@@ -182,16 +195,16 @@
 <figure class="hb-fig">
 <svg viewBox="0 0 640 220" role="img" aria-label="Chat in der Seitenleiste">
   <rect class="bg" x="1" y="1" width="638" height="218" rx="8"/>
-  <rect class="bg3" x="10" y="10" width="330" height="200" rx="6"/><text x="175" y="110" class="t-c t-m">aktuelle Seite bleibt sichtbar</text>
-  <rect class="bg" x="350" y="10" width="230" height="200" rx="6"/>
+  <rect class="bg3" x="10" y="10" width="330" height="200" rx="8"/><text x="175" y="110" class="t-c t-m">aktuelle Seite bleibt sichtbar</text>
+  <rect class="bg" x="350" y="10" width="230" height="200" rx="8"/>
   <text x="362" y="30" class="t-b">← Eva Muster</text><text x="560" y="30" class="t-m">⤢ ✕</text>
   <rect class="bg3" x="362" y="44" width="150" height="34" rx="8"/><text x="370" y="60" font-size="10">Pumpe 2 läuft wieder?</text><text x="370" y="72" class="t-m">08:14</text>
   <rect class="acl" x="410" y="86" width="158" height="34" rx="8"/><text x="418" y="102" font-size="10">Ja, Lager getauscht 👍</text><text x="418" y="114" class="t-m">08:16</text>
-  <rect class="bg3" x="362" y="128" width="190" height="26" rx="6"/><text x="370" y="145" font-size="10">⚠ Störung: Pumpe 2 heiß</text>
-  <rect class="bg3" x="362" y="170" width="170" height="30" rx="6"/><text x="370" y="189" class="t-m">Nachricht… (Enter senden)</text>
+  <rect class="bg3" x="362" y="128" width="190" height="26" rx="8"/><text x="370" y="145" font-size="10">⚠ Störung: Pumpe 2 heiß</text>
+  <rect class="bg3" x="362" y="170" width="170" height="30" rx="8"/><text x="370" y="189" class="t-m">Nachricht… (Enter senden)</text>
   <circle class="ac" cx="556" cy="185" r="12"/><text x="556" y="189" class="t-w t-c">➤</text>
-  <rect class="bg3" x="590" y="10" width="40" height="200" rx="6"/>
-  <rect class="acl" x="596" y="16" width="28" height="60" rx="6"/><text transform="translate(614,26) rotate(90)" font-size="10">Chat</text>
+  <rect class="bg3" x="590" y="10" width="40" height="200" rx="8"/>
+  <rect class="acl" x="596" y="16" width="28" height="60" rx="8"/><text transform="translate(614,26) rotate(90)" font-size="10">Chat</text>
   <text transform="translate(614,90) rotate(90)" font-size="10" class="t-m">Suche</text><text transform="translate(614,140) rotate(90)" font-size="10" class="t-m">Hilfe</text>
 </svg>
 <figcaption>Chat in der rechten Seitenleiste: Liste, Unterhaltung, Karte zu einem verlinkten Datensatz und Eingabe – die Seite bleibt dabei offen.</figcaption>
@@ -209,8 +222,8 @@
   <rect class="bg3" x="124" y="56" width="104" height="24" rx="12"/><text x="176" y="72" class="t-c t-m">Optimierung</text>
   <rect class="gr" x="234" y="56" width="90" height="24" rx="12"/><text x="279" y="72" class="t-c">▶ Produktiv</text>
   <rect class="bg3" x="330" y="56" width="70" height="24" rx="12"/><text x="365" y="72" class="t-c t-m">Efficio</text>
-  <rect class="rd" x="430" y="56" width="104" height="24" rx="6"/><text x="482" y="72" class="t-c">🔒 Gesperrt</text>
-  <rect class="acl" x="544" y="56" width="80" height="24" rx="6"/><text x="584" y="72" class="t-c">⚙ Status</text>
+  <rect class="rd" x="430" y="56" width="104" height="24" rx="8"/><text x="482" y="72" class="t-c">🔒 Gesperrt</text>
+  <rect class="acl" x="544" y="56" width="80" height="24" rx="8"/><text x="584" y="72" class="t-c">⚙ Status</text>
   <text x="20" y="100" class="t-m">Farbig = gesetzt · grau = antippen zum Setzen</text>
   <text x="430" y="100" class="t-m">nur bei Stammdaten</text>
 </svg>
@@ -284,9 +297,9 @@
   <path class="ar" d="M317 82 V118"/>
   <rect class="bg3" x="160" y="122" width="320" height="64" rx="8"/>
   <text x="172" y="140" class="t-m">Zeiterfassung von Max (Instandhaltung)</text>
-  <rect x="172" y="148" width="296" height="28" rx="5" style="fill:rgba(245,158,11,.22);stroke:var(--amber)"/>
+  <rect x="172" y="148" width="296" height="28" rx="4" style="fill:rgba(245,158,11,.22);stroke:var(--amber)"/>
   <text x="182" y="166" font-size="10">Ticket: Presse 2 · 07:45–09:15 · 1:30 h</text>
-  <rect x="404" y="152" width="56" height="20" rx="5" style="fill:var(--green)"/><text x="432" y="166" class="t-c" font-size="9.5" style="fill:#fff;font-weight:600">✓ OK</text>
+  <rect x="404" y="152" width="56" height="20" rx="4" style="fill:var(--green)"/><text x="432" y="166" class="t-c" font-size="9.5" style="fill:#fff;font-weight:600">✓ OK</text>
 </svg>
 <figcaption>Schritt für Schritt mit „OK – weiter“. Wer dabei war, bekommt die Zeit gelb in die Zeiterfassung und bestätigt sie mit dem grünen Haken.</figcaption>
 </figure>
@@ -301,11 +314,11 @@
   <rect class="bg3" x="12" y="12" width="170" height="226" rx="8"/>
   <text x="24" y="32" class="t-b">Widget-Katalog</text>
   <g font-size="9.5">
-    <rect class="bg" x="22" y="44" width="150" height="26" rx="5"/><text x="32" y="61">⚡ Schnellaktionen</text><text x="160" y="61" class="t-c">+</text>
-    <rect class="acl" x="22" y="76" width="150" height="26" rx="5"/><text x="32" y="93" class="t-b">✔ Mir zugewiesen</text><text x="160" y="93" class="t-c">+</text>
-    <rect class="bg" x="22" y="108" width="150" height="26" rx="5"/><text x="32" y="125">📊 Verlauf 14 Tage</text><text x="160" y="125" class="t-c">+</text>
-    <rect class="bg" x="22" y="140" width="150" height="26" rx="5"/><text x="32" y="157">🗓 Meine Schichten</text><text x="160" y="157" class="t-c">+</text>
-    <rect class="bg" x="22" y="172" width="150" height="26" rx="5"/><text x="32" y="189">📝 Notizzettel</text><text x="160" y="189" class="t-c">+</text>
+    <rect class="bg" x="22" y="44" width="150" height="26" rx="4"/><text x="32" y="61">⚡ Schnellaktionen</text><text x="160" y="61" class="t-c">+</text>
+    <rect class="acl" x="22" y="76" width="150" height="26" rx="4"/><text x="32" y="93" class="t-b">✔ Mir zugewiesen</text><text x="160" y="93" class="t-c">+</text>
+    <rect class="bg" x="22" y="108" width="150" height="26" rx="4"/><text x="32" y="125">📊 Verlauf 14 Tage</text><text x="160" y="125" class="t-c">+</text>
+    <rect class="bg" x="22" y="140" width="150" height="26" rx="4"/><text x="32" y="157">🗓 Meine Schichten</text><text x="160" y="157" class="t-c">+</text>
+    <rect class="bg" x="22" y="172" width="150" height="26" rx="4"/><text x="32" y="189">📝 Notizzettel</text><text x="160" y="189" class="t-c">+</text>
   </g>
   <path class="ar" d="M172 89 C 260 89, 300 170, 352 170"/>
   <text x="250" y="118" class="t-m">ziehen</text>
@@ -316,7 +329,7 @@
     <rect class="bg3 acs" x="416" y="12" width="100" height="62" rx="8" stroke-dasharray="4 3"/><text x="428" y="32" class="t-m">Meine Aufgaben</text><text x="428" y="60" class="t-b" font-size="20" style="fill:var(--accent)">5</text>
     <rect class="bg3 acs" x="524" y="12" width="104" height="62" rx="8" stroke-dasharray="4 3"/><text x="536" y="32" class="t-m">Meine Stunden</text><text x="536" y="60" class="t-b" font-size="18" style="fill:#60a5fa">31:45 h</text>
     <rect class="bg3 acs" x="200" y="84" width="208" height="70" rx="8" stroke-dasharray="4 3"/><text x="212" y="104" class="t-m">⚡ Schnellaktionen</text>
-    <rect class="bg" x="212" y="114" width="56" height="30" rx="5"/><rect class="bg" x="274" y="114" width="56" height="30" rx="5"/><rect class="bg" x="336" y="114" width="56" height="30" rx="5"/>
+    <rect class="bg" x="212" y="114" width="56" height="30" rx="4"/><rect class="bg" x="274" y="114" width="56" height="30" rx="4"/><rect class="bg" x="336" y="114" width="56" height="30" rx="4"/>
     <rect class="acl" x="416" y="84" width="212" height="154" rx="8" stroke-dasharray="4 3"/>
     <text x="428" y="104" class="t-m">✔ Mir zugewiesen</text>
     <g font-size="9.5"><text x="428" y="126">Presse 2: Hydraulik</text><text x="428" y="148">Lichtschranke Linie 1</text><text x="428" y="170">Monatswartung</text></g>
@@ -370,23 +383,23 @@
 <figure class="hb-fig">
 <svg viewBox="0 0 640 230" role="img" aria-label="Darstellung im Benutzermenü">
   <rect class="bg" x="1" y="1" width="638" height="228" rx="8"/>
-  <rect class="bg3" x="400" y="10" width="120" height="24" rx="6"/><text x="460" y="26" class="t-c" font-size="10">👤 Mein Name ▾</text>
+  <rect class="bg3" x="400" y="10" width="120" height="24" rx="8"/><text x="460" y="26" class="t-c" font-size="10">👤 Mein Name ▾</text>
   <rect class="bg" x="330" y="40" width="290" height="180" rx="8"/>
   <text x="346" y="60" class="t-m">🎨 Darstellung</text>
   <circle cx="356" cy="80" r="9" class="bg3"/><text x="356" y="84" class="t-c" font-size="9">🏢</text>
   <circle cx="380" cy="80" r="9" fill="#4f6ef7"/><circle cx="404" cy="80" r="9" fill="#14939a"/><circle cx="428" cy="80" r="9" fill="#2b8f52"/>
   <circle cx="452" cy="80" r="9" fill="#8fbcbb" stroke="var(--text)" stroke-width="2"/><circle cx="476" cy="80" r="9" fill="#d4570c"/>
-  <rect class="bg3" x="346" y="98" width="258" height="22" rx="5"/><text x="356" y="113" font-size="10">Aa  Atkinson Hyperlegible ▾</text>
-  <rect class="bg3" x="346" y="128" width="26" height="22" rx="5"/><text x="359" y="143" class="t-c">−</text>
+  <rect class="bg3" x="346" y="98" width="258" height="22" rx="4"/><text x="356" y="113" font-size="10">Aa  Atkinson Hyperlegible ▾</text>
+  <rect class="bg3" x="346" y="128" width="26" height="22" rx="4"/><text x="359" y="143" class="t-c">−</text>
   <text x="400" y="143" class="t-c t-b">120 %</text>
-  <rect class="bg3" x="428" y="128" width="26" height="22" rx="5"/><text x="441" y="143" class="t-c">+</text>
+  <rect class="bg3" x="428" y="128" width="26" height="22" rx="4"/><text x="441" y="143" class="t-c">+</text>
   <text x="470" y="143" font-size="10" class="t-m">Aa Größe</text>
-  <rect class="bg3" x="346" y="158" width="26" height="22" rx="5"/><text x="359" y="173" class="t-c">−</text>
+  <rect class="bg3" x="346" y="158" width="26" height="22" rx="4"/><text x="359" y="173" class="t-c">−</text>
   <text x="400" y="173" class="t-c t-b">80 %</text>
-  <rect class="bg3" x="428" y="158" width="26" height="22" rx="5"/><text x="441" y="173" class="t-c">+</text>
+  <rect class="bg3" x="428" y="158" width="26" height="22" rx="4"/><text x="441" y="173" class="t-c">+</text>
   <text x="470" y="173" font-size="10" class="t-m">☰ Zeilenhöhe</text>
-  <rect class="bg3" x="346" y="188" width="124" height="22" rx="5"/><text x="408" y="203" class="t-c" font-size="10">Standard</text>
-  <rect class="ac" x="480" y="188" width="124" height="22" rx="5"/><text x="542" y="203" class="t-w t-c" font-size="10">Speichern</text>
+  <rect class="bg3" x="346" y="188" width="124" height="22" rx="4"/><text x="408" y="203" class="t-c" font-size="10">Standard</text>
+  <rect class="ac" x="480" y="188" width="124" height="22" rx="4"/><text x="542" y="203" class="t-w t-c" font-size="10">Speichern</text>
   <g class="t-m"><text x="20" y="84">① Farbschema antippen</text><text x="20" y="114">② Schriftart wählen</text><text x="20" y="144">③ kleiner / größer (70–160 %)</text><text x="20" y="174">④ Zeilenhöhe Tabellen/Listen (70–150 %)</text><text x="20" y="204">⑤ Speichern = gilt auf allen Geräten</text></g>
   <path class="ar" d="M190 80 H330"/><path class="ar" d="M170 110 H340"/><path class="ar" d="M220 140 H340"/><path class="ar" d="M262 170 H340"/><path class="ar" d="M270 200 H476"/>
 </svg>
@@ -434,9 +447,9 @@
     <text x="20" y="86" class="t-b">Scanner ohne Daten  ← angeklickt</text><text x="300" y="86" class="t-m">Michael Strobl</text><text x="420" y="86">In Arbeit</text><text x="530" y="86">08.10.</text>
     <rect class="bg3" x="14" y="98" width="612" height="54" rx="4"/>
     <text x="24" y="116" class="t-m">Der Scanner liefert keine Daten …</text>
-    <rect class="bg" x="24" y="124" width="76" height="22" rx="5"/><text x="62" y="139" class="t-c">👁 Ansehen</text>
-    <rect class="bg" x="108" y="124" width="88" height="22" rx="5"/><text x="152" y="139" class="t-c">✎ Bearbeiten</text>
-    <rect class="gr" x="204" y="124" width="80" height="22" rx="5"/><text x="244" y="139" class="t-c t-b">🔧 Beheben</text>
+    <rect class="bg" x="24" y="124" width="76" height="22" rx="4"/><text x="62" y="139" class="t-c">👁 Ansehen</text>
+    <rect class="bg" x="108" y="124" width="88" height="22" rx="4"/><text x="152" y="139" class="t-c">✎ Bearbeiten</text>
+    <rect class="gr" x="204" y="124" width="80" height="22" rx="4"/><text x="244" y="139" class="t-c t-b">🔧 Beheben</text>
     <text x="300" y="139" class="t-m">← Knöpfe direkt unter der Zeile</text>
     <path class="ln" d="M14 160 H626"/>
     <text x="20" y="180">Kompressor laut</text><text x="300" y="180" class="t-m">niemand</text><text x="420" y="180">Erkannt</text><text x="530" y="180">–</text>
@@ -460,11 +473,11 @@
   </g>
   <rect class="bg3" x="16" y="84" width="608" height="52" rx="8"/>
   <text x="28" y="104" class="t-m">Vorschau:</text>
-  <rect class="ac" x="84" y="94" width="92" height="22" rx="6"/><text x="130" y="109" class="t-w t-c" font-size="10">✓ Schaltfläche</text>
+  <rect class="ac" x="84" y="94" width="92" height="22" rx="8"/><text x="130" y="109" class="t-w t-c" font-size="10">✓ Schaltfläche</text>
   <rect class="acl" x="186" y="94" width="88" height="22" rx="11"/><text x="230" y="109" class="t-c" font-size="10">Hervorhebung</text>
   <text x="290" y="109" font-size="10" style="fill:var(--accent)">Verknüpfung</text>
   <text x="28" y="128" class="t-m">☑ Benutzer dürfen im Benutzermenü ein eigenes Farbschema wählen</text>
-  <rect class="ac" x="540" y="94" width="72" height="22" rx="6"/><text x="576" y="109" class="t-w t-c" font-size="10">Speichern</text>
+  <rect class="ac" x="540" y="94" width="72" height="22" rx="8"/><text x="576" y="109" class="t-w t-c" font-size="10">Speichern</text>
 </svg>
 <figcaption>Schema antippen (die Seite zeigt es sofort zur Probe), dann Speichern. Hell/Dunkel bleibt die Wahl jedes Benutzers.</figcaption>
 </figure>
@@ -523,10 +536,10 @@
   <text x="342" y="66" class="t-c t-m">immer mit Begründung</text>
   <path class="ar" d="M266 95 H300"/><text x="283" y="88" class="t-c t-m">✓</text>
   <circle class="acs" cx="400" cy="105" r="62"/>
-  <rect class="acl" x="340" y="70" width="52" height="28" rx="6"/><text x="366" y="88" class="t-c t-b">Plan</text>
-  <rect class="am" x="408" y="70" width="52" height="28" rx="6"/><text x="434" y="88" class="t-c t-b">Do</text>
-  <rect class="acl" x="408" y="112" width="52" height="28" rx="6"/><text x="434" y="130" class="t-c t-b">Check</text>
-  <rect class="gr" x="340" y="112" width="52" height="28" rx="6"/><text x="366" y="130" class="t-c t-b">Act</text>
+  <rect class="acl" x="340" y="70" width="52" height="28" rx="8"/><text x="366" y="88" class="t-c t-b">Plan</text>
+  <rect class="am" x="408" y="70" width="52" height="28" rx="8"/><text x="434" y="88" class="t-c t-b">Do</text>
+  <rect class="acl" x="408" y="112" width="52" height="28" rx="8"/><text x="434" y="130" class="t-c t-b">Check</text>
+  <rect class="gr" x="340" y="112" width="52" height="28" rx="8"/><text x="366" y="130" class="t-c t-b">Act</text>
   <text x="400" y="182" class="t-c t-m">nicht wirksam → neuer Zyklus</text>
   <path class="ar" d="M464 105 H500"/>
   <rect class="gr" x="504" y="76" width="122" height="58" rx="8"/><text x="565" y="98" class="t-c t-b">🏆 Abgeschlossen</text><text x="565" y="114" class="t-c t-m">Standard · Einsparung</text><text x="565" y="127" class="t-c t-m">A3-Report</text>
@@ -544,10 +557,10 @@
   <rect class="acl" x="236" y="50" width="140" height="70" rx="8"/><text x="306" y="76" class="t-c t-b">PDH</text><text x="306" y="94" class="t-c t-m">/mnt/pdh/instandhaltung</text><text x="306" y="108" class="t-c t-m">✓ verbunden · 412 GB frei</text>
   <path class="ar" d="M378 70 C 400 30, 410 26, 428 26"/><path class="ar" d="M378 78 C 400 65, 410 62, 428 62"/>
   <path class="ar" d="M378 92 C 400 105, 410 98, 428 98"/><path class="ar" d="M378 100 C 400 140, 410 134, 428 134"/>
-  <rect class="gr" x="430" y="12" width="196" height="28" rx="6"/><text x="442" y="30">🗃️ Globaler Datenspeicher</text>
-  <rect class="gr" x="430" y="48" width="196" height="28" rx="6"/><text x="442" y="66">⇄ Import &amp; Export</text>
-  <rect class="gr" x="430" y="84" width="196" height="28" rx="6"/><text x="442" y="102">💾 PDH-Sicherungen</text>
-  <rect class="gr" x="430" y="120" width="196" height="28" rx="6"/><text x="442" y="138">📁 PDH-Dokumente/Tickets/…</text>
+  <rect class="gr" x="430" y="12" width="196" height="28" rx="8"/><text x="442" y="30">🗃️ Globaler Datenspeicher</text>
+  <rect class="gr" x="430" y="48" width="196" height="28" rx="8"/><text x="442" y="66">⇄ Import &amp; Export</text>
+  <rect class="gr" x="430" y="84" width="196" height="28" rx="8"/><text x="442" y="102">💾 PDH-Sicherungen</text>
+  <rect class="gr" x="430" y="120" width="196" height="28" rx="8"/><text x="442" y="138">📁 PDH-Dokumente/Tickets/…</text>
 </svg>
 <figcaption>PDH bindet die Freigabe ein und nutzt sie je nach Auswahl als Datenspeicher, für Import &amp; Export, Sicherungen und die Dokumentenablage.</figcaption>
 </figure>
@@ -559,12 +572,12 @@
   <rect class="bg" x="1" y="1" width="638" height="178" rx="8"/>
   <text x="16" y="24" class="t-m">Dashboard</text><text x="88" y="24" class="t-m">Tickets 9</text><text x="152" y="24" class="t-b">▦ Board</text><text x="212" y="24" class="t-m">Regeln &amp; Einstellungen</text>
   <rect class="bg3" x="16" y="38" width="190" height="130" rx="8"/><text x="28" y="56" class="t-b">○ Offen 3</text>
-  <rect class="rd" x="26" y="64" width="170" height="44" rx="6"/><text x="36" y="82" class="t-b">Presse steht</text><text x="36" y="98" class="t-m">überfällig · niemand</text>
-  <rect class="gr" x="26" y="116" width="90" height="22" rx="6"/><text x="71" y="131" class="t-c">▶ Bearbeiten</text>
+  <rect class="rd" x="26" y="64" width="170" height="44" rx="8"/><text x="36" y="82" class="t-b">Presse steht</text><text x="36" y="98" class="t-m">überfällig · niemand</text>
+  <rect class="gr" x="26" y="116" width="90" height="22" rx="8"/><text x="71" y="131" class="t-c">▶ Bearbeiten</text>
   <rect class="bg3" x="224" y="38" width="190" height="130" rx="8"/><text x="236" y="56" class="t-b">🔧 In Arbeit 4</text>
-  <rect class="bg" x="234" y="64" width="170" height="44" rx="6"/><text x="244" y="82" class="t-b">Tür klemmt</text><text x="244" y="98" class="t-m">M. Huber · bis 09.10.</text>
+  <rect class="bg" x="234" y="64" width="170" height="44" rx="8"/><text x="244" y="82" class="t-b">Tür klemmt</text><text x="244" y="98" class="t-m">M. Huber · bis 09.10.</text>
   <rect class="bg3" x="432" y="38" width="190" height="130" rx="8"/><text x="444" y="56" class="t-b">✔ Erledigt (7 Tage)</text>
-  <rect class="bg" x="442" y="64" width="170" height="44" rx="6"/><text x="452" y="82" class="t-b">Filter getauscht</text><text x="452" y="98" class="t-m">Gelöst 06.10.</text>
+  <rect class="bg" x="442" y="64" width="170" height="44" rx="8"/><text x="452" y="82" class="t-b">Filter getauscht</text><text x="452" y="98" class="t-m">Gelöst 06.10.</text>
 </svg>
 <figcaption>Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der KVP: Dashboard, Liste mit Filter-Chips, Board nach Status und Regeln – jede Karte mit dem Knopf zum Abschluss-Assistenten.</figcaption>
 </figure>

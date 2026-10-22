@@ -86,6 +86,8 @@ type GlobalDashboardPageData struct {
 	DefaultDueDaysMaintenance int
 	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
 	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
+	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
+	PaletteID                 string        // wirksames Farbschema (Firmenstandard bzw. Wahl der angemeldeten Person)
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -137,6 +139,7 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		endBoardVisit(w)
 		loggedIn = false
 	}
+	brand := h.branding()
 	data := GlobalDashboardPageData{
 		LoggedIn:                  loggedIn,
 		Title:                     h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
@@ -148,7 +151,9 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysTicket:      appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTicket, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
-		Timeline:                  h.branding().Timeline,
+		Timeline:                  brand.Timeline,
+		ThemeCSS:                  brand.ThemeCSS(),
+		PaletteID:                 h.appearance(r, brand).PaletteID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {

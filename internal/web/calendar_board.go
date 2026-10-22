@@ -25,7 +25,7 @@ var calKinds = []calKind{
 	{"maintenance", "Wartungen", "ti-tool", "#C99A3C"},
 	{"obligation", "Prüfpflichten", "ti-clipboard-check", "#6366F1"},
 	{"ticket", "Tickets", "ti-ticket", "#0EA5E9"},
-	{"fault", "Störungen", "ti-alert-triangle", "#EF4444"},
+	{"fault", "Störungen", "ti-alert-triangle", "#F97316"},
 	{"task", "Aufgaben", "ti-list-check", "#8B5CF6"},
 	{"project", "Projekte", "ti-timeline", "#64748B"},
 }
