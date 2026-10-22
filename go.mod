@@ -20,6 +20,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/xuri/excelize/v2 v2.8.0
 	golang.org/x/crypto v0.40.0
+	golang.org/x/image v0.12.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.1
 	rsc.io/qr v0.2.0

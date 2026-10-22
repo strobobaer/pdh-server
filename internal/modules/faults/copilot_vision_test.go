@@ -1,8 +1,12 @@
 package faults
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -51,5 +55,32 @@ func TestAnalyzeVisionRequest(t *testing.T) {
 	ollama := NewCopilot("", "", "", "", nil)
 	if _, err := ollama.AnalyzeVision(context.Background(), "", "x", []VisionInput{{Data: jpeg}}, schema, ""); !errors.Is(err, ErrVisionUnavailable) {
 		t.Errorf("ohne Claude: %v", err)
+	}
+}
+
+// Handyfotos über 2048 px gehen verkleinert an die API (Limit 5 MB / 8000 px je Bild).
+func TestAnalyzeVisionShrinksLargePhoto(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"{}"}],"stop_reason":"end_turn"}`))
+	}))
+	defer srv.Close()
+	c := NewCopilot("sk-ant-test", "", "", "", nil)
+	c.anthropicURL = srv.URL
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 4000, 3000)), nil)
+	if _, err := c.AnalyzeVision(context.Background(), "", "x", []VisionInput{{Data: buf.Bytes()}}, map[string]any{"type": "object"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	src := body["messages"].([]any)[0].(map[string]any)["content"].([]any)[0].(map[string]any)["source"].(map[string]any)
+	raw, err := base64.StdEncoding.DecodeString(src["data"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || cfg.Width != 2048 || cfg.Height != 1536 {
+		t.Errorf("gesendet %dx%d (%v), erwartet 2048x1536", cfg.Width, cfg.Height, err)
 	}
 }

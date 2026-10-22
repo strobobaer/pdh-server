@@ -96,27 +96,50 @@ function scRender(kind){
   });
   document.getElementById('sc-go-' + kind).disabled = scFiles[kind].length === 0;
 }
-// Fotos vor dem Hochladen verkleinern (längste Seite 2000 px, JPEG)
-async function scShrink(f){
+// Fotos vor dem Hochladen verkleinern (längste Seite edge px, JPEG). Klappt
+// createImageBitmap nicht (ältere Browser, sehr große Fotos), über <img>;
+// klappt beides nicht, geht das Original – der Server verkleinert dann.
+function scLoadImg(f){
+  return new Promise(function(res, rej){
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = function(){ res(img); };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('Bild nicht lesbar')); };
+    img.src = url;
+  });
+}
+async function scShrink(f, edge, quality){
   if(!f.type.startsWith('image/') || f.type === 'image/gif') return f;
+  let src;
+  try{ src = await createImageBitmap(f, {imageOrientation: 'from-image'}); }
+  catch(e){ try{ src = await scLoadImg(f); }catch(e2){ return f; } }
   try{
-    const bmp = await createImageBitmap(f);
-    const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    const s = Math.min(1, edge / Math.max(w, h));
     const c = document.createElement('canvas');
-    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise(function(res){ c.toBlob(res, 'image/jpeg', 0.85); });
-    return blob ? new File([blob], (f.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : f;
+    c.width = Math.round(w * s); c.height = Math.round(h * s);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(src, 0, 0, c.width, c.height);
+    const blob = await new Promise(function(res){ c.toBlob(res, 'image/jpeg', quality); });
+    return blob && blob.size < f.size ? new File([blob], (f.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : f;
   }catch(e){ return f; }
+}
+async function scForm(kind, edge, quality){
+  const fd = new FormData();
+  for(const f of scFiles[kind]){ const g = await scShrink(f, edge, quality); fd.append('files', g, g.name); }
+  return fd;
 }
 async function scSend(kind){
   const btn = document.getElementById('sc-go-' + kind), st = document.getElementById('sc-st-' + kind);
   btn.disabled = true;
   st.textContent = 'Wird hochgeladen …';
   try{
-    const fd = new FormData();
-    for(const f of scFiles[kind]){ const g = await scShrink(f); fd.append('files', g, g.name); }
-    const res = await fetch('/inventory/scan/' + kind, {method: 'POST', body: fd, credentials: 'same-origin'});
+    let res = await fetch('/inventory/scan/' + kind, {method: 'POST', body: await scForm(kind, 2000, 0.85), credentials: 'same-origin'});
+    if(res.status === 413){
+      // Proxy lässt so viel nicht durch → deutlich kleiner erneut senden
+      st.textContent = 'Bilder sind zu groß – werden verkleinert und erneut gesendet …';
+      res = await fetch('/inventory/scan/' + kind, {method: 'POST', body: await scForm(kind, 1280, 0.7), credentials: 'same-origin'});
+    }
     if(!res.ok){
       // 403/413 vom Server oder Proxy: Meldung zeigen statt auf eine 404-Seite zu springen
       const txt = (await res.text()).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);

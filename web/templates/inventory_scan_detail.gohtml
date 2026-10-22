@@ -153,9 +153,78 @@
     </div>
     <div class="form-group"><label class="form-label">EAN / GTIN</label><input name="ean" class="form-input" maxlength="20" inputmode="numeric" value="{{.NewPart.EAN}}"></div>
     <div class="form-group"><label class="form-label">Beschreibung</label><textarea name="description" class="form-input" rows="4">{{.NewPart.Description}}</textarea></div>
-    <label style="font-size:13px;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" name="use_photo" value="1" checked> Foto als Teilebild übernehmen</label>
+    <div class="form-group">
+      <label class="form-label">Teilebild</label>
+      <div class="sc-imgsrc">
+        <label><input type="radio" name="image_src" value="web" checked> <i class="ti ti-world-search"></i> Passendes Bild aus dem Internet</label>
+        {{if .Files}}<label><input type="radio" name="image_src" value="photo"> <i class="ti ti-camera"></i> Eigenes Foto</label>{{end}}
+        <label><input type="radio" name="image_src" value="none"> <i class="ti ti-photo-off"></i> Kein Bild</label>
+      </div>
+      <div id="sc-web" class="sc-web">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="sc-img-q" class="form-input" value="{{.NewPart.ImageQuery}}" placeholder="Hersteller und Teilenummer" aria-label="Suchbegriff für das Bild" onkeydown="if(event.key==='Enter'){event.preventDefault();scImgSearch();}">
+          <button type="button" class="btn" onclick="scImgSearch()"><i class="ti ti-search"></i> Suchen</button>
+        </div>
+        <div id="sc-img-grid" class="sc-img-grid"><div class="rec-sub">Bilder werden gesucht …</div></div>
+        <div id="sc-img-src" class="rec-sub" style="margin-top:4px"></div>
+        <input type="hidden" name="image_url" id="sc-img-url">
+        <input type="hidden" name="image_fallback" id="sc-img-fb">
+      </div>
+    </div>
     <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Teil anlegen</button>
   </form>
+<style>
+.sc-imgsrc{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-bottom:8px}
+.sc-imgsrc label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.sc-img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.sc-img-hit{border:2px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;overflow:hidden;padding:0}
+.sc-img-hit img{width:100%;aspect-ratio:1/1;object-fit:contain;display:block}
+.sc-img-hit.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.35)}
+</style>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let searched = false;
+  function pick(btn, hit){
+    document.querySelectorAll('.sc-img-hit.on').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    $('sc-img-url').value = hit.image; $('sc-img-fb').value = hit.thumbnail || '';
+  }
+  window.scImgSearch = async function(){
+    const q = $('sc-img-q').value.trim(), grid = $('sc-img-grid');
+    searched = true;
+    $('sc-img-url').value = ''; $('sc-img-fb').value = '';
+    if(q.length < 2){ grid.innerHTML = '<div class="rec-sub">Suchbegriff eingeben (z. B. Hersteller und Teilenummer).</div>'; return; }
+    grid.innerHTML = '<div class="rec-sub"><i class="ti ti-loader-2 ti-spin"></i> Suche läuft …</div>';
+    try{
+      const res = await fetch('/inventory/image-search?q=' + encodeURIComponent(q), {credentials: 'same-origin'});
+      const d = await res.json();
+      if(!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+      grid.innerHTML = '';
+      $('sc-img-src').textContent = d.results.length ? 'Quelle: ' + d.source + ' – erstes Bild ist ausgewählt, ein Klick wählt ein anderes. Bildrechte des Anbieters beachten.' : '';
+      if(!d.results.length){ grid.innerHTML = '<div class="rec-sub">Keine Bilder gefunden – anderen Suchbegriff versuchen. Sonst wird das eigene Foto genommen.</div>'; return; }
+      d.results.slice(0, 12).forEach((hit, i) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'sc-img-hit'; b.title = hit.title || '';
+        const img = document.createElement('img');
+        img.src = hit.thumbnail; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.alt = hit.title || '';
+        img.onerror = () => { const was = b.classList.contains('on'); b.remove(); if(was){ const n = grid.querySelector('.sc-img-hit'); if(n) n.click(); } };
+        b.appendChild(img);
+        b.onclick = () => pick(b, hit);
+        grid.appendChild(b);
+        if(i === 0) pick(b, hit);
+      });
+    }catch(e){ grid.innerHTML = '<div class="rec-sub" style="color:var(--red)">Bildsuche nicht möglich: ' + String(e.message).replace(/</g, '&lt;') + ' – dann wird das eigene Foto genommen.</div>'; }
+  };
+  function sync(){
+    const v = (document.querySelector('input[name=image_src]:checked') || {}).value;
+    $('sc-web').style.display = v === 'web' ? '' : 'none';
+    if(v === 'web' && !searched) scImgSearch();
+  }
+  document.querySelectorAll('input[name=image_src]').forEach(r => r.addEventListener('change', sync));
+  sync();
+})();
+</script>
 </div>
 {{else}}<div class="sc-msg ok"><i class="ti ti-circle-check"></i> {{.Scan.AppliedNote}}</div>{{end}}
 {{end}}

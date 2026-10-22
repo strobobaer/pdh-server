@@ -388,6 +388,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/printers/{id}/dymo-test", h.PrinterDymoTestWeb)
 	r.Get("/inventory/{id}", h.PartDetailPage)
 	r.Get("/inventory/{id}/image-search", h.PartImageSearchWeb)
+	r.Get("/inventory/image-search", h.PartImageSearchWeb) // ohne Teil (Neuanlage aus der Foto-Erkennung)
 	r.Post("/inventory/{id}/image", h.PartImageSetWeb)
 	r.Get("/inventory/{id}/doc-search", h.PartDocSearchWeb)
 	r.Post("/inventory/{id}/documents", h.PartDocTakeWeb)

@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.63.0] – 2026-10-22
+
+### Neu
+- Bauteil per Foto erkennen: Beim Anlegen als neues Teil schlägt PDH ein passendes Teilebild aus dem Internet vor (Suche nach Hersteller und Teilenummer); wahlweise eigenes Foto oder kein Bild.
+
+### Behoben
+- Große Handyfotos brechen die Foto-Erkennung nicht mehr mit „Bild zu groß“ ab: PDH verkleinert sie im Browser und auf dem Server, ein vom Proxy abgewiesener Upload wird automatisch kleiner wiederholt.
+- Teilebilder aus Fotos werden verkleinert gespeichert und erscheinen richtig gedreht.
+
 ## [0.62.0] – 2026-10-22
 
 ### Geändert

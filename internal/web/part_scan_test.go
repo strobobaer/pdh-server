@@ -69,8 +69,11 @@ func TestNewPartFromRecognition(t *testing.T) {
 	np := newPartFromRecognition(partResult{Name: "Rillenkugellager", Manufacturer: "SKF", TypeDesignation: "6205-2RSH", EAN: "7316577",
 		Specs: []partSpec{{"Innendurchmesser", "25 mm"}, {"", "x"}}})
 	if np.Number != "6205-2RSH" || np.ManufacturerPart != "6205-2RSH" || np.Unit != "Stück" ||
-		np.Description != "Hersteller: SKF\nInnendurchmesser: 25 mm\nEAN: 7316577" {
+		np.Description != "Hersteller: SKF\nInnendurchmesser: 25 mm\nEAN: 7316577" || np.ImageQuery != "SKF 6205-2RSH" {
 		t.Errorf("Vorbelegung: %+v", np)
+	}
+	if np := newPartFromRecognition(partResult{Name: "Keilriemen"}); np.ImageQuery != "Keilriemen" {
+		t.Errorf("Bildsuche ohne Nummer: %q", np.ImageQuery)
 	}
 }
 
@@ -105,9 +108,9 @@ func TestScanPagesRender(t *testing.T) {
 	p := InventoryScanDetailData{Scan: scanListRow{ID: "s2", Kind: "part", Status: "done"},
 		Part:           &partResult{Recognized: true, Name: "Rillenkugellager", Manufacturer: "SKF", Confidence: "high"},
 		PartCandidates: []partCandidate{{ID: "p9", PartNumber: "6205", Name: "Kugellager", Reason: "Teilenummer"}},
-		NewPart:        scanNewPart{Number: "6205-2RS", Name: "Rillenkugellager", Unit: "Stück"}}
+		NewPart:        scanNewPart{Number: "6205-2RS", Name: "Rillenkugellager", Unit: "Stück", ImageQuery: "SKF 6205-2RS"}}
 	out = renderPage(t, tmpl, "inventory_scan_detail", p)
-	for _, want := range []string{"Rillenkugellager", "sicher", `href="/inventory/p9"`, `action="/inventory/scan/s2/create"`, `value="6205-2RS"`, `name="use_photo"`} {
+	for _, want := range []string{"Rillenkugellager", "sicher", `href="/inventory/p9"`, `action="/inventory/scan/s2/create"`, `value="6205-2RS"`, `name="image_src" value="web" checked`, `value="SKF 6205-2RS"`, "/inventory/image-search?q="} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Bauteil-Ergebnis enthält %q nicht", want)
 		}

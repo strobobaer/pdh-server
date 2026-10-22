@@ -10,6 +10,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+
+	"pdh/internal/core/imaging"
 )
 
 // Bilderkennung für die Ersatzteile (Lieferschein scannen, Bauteil erkennen):
@@ -22,6 +24,13 @@ type VisionInput struct {
 	MediaType string
 	Data      []byte
 }
+
+// Bildgröße für die API: lange Seite und Dateigröße (base64 macht daraus
+// ein Drittel mehr – bleibt so unter dem Limit von 5 MB je Bild).
+const (
+	visionMaxEdge  = 2048
+	visionMaxBytes = 3_500_000
+)
 
 // ErrVisionUnavailable: kein Claude-Zugang eingerichtet.
 var ErrVisionUnavailable = errors.New("Bilderkennung braucht Claude als Copilot – unter Server-Einstellungen → Copilot einen Anthropic-API-Schlüssel eintragen")
@@ -59,7 +68,17 @@ func (c *Copilot) AnalyzeVision(ctx context.Context, system, prompt string, inpu
 		if err != nil {
 			return "", err
 		}
-		b64 := base64.StdEncoding.EncodeToString(in.Data)
+		data := in.Data
+		if mt != "application/pdf" {
+			// Handyfotos sind oft größer als die 5 MB / 8000 px, die die API je Bild
+			// annimmt – verkleinern statt abweisen (mehr Auflösung wertet sie ohnehin nicht aus).
+			if out, omt, changed, ferr := imaging.Fit(data, visionMaxEdge, visionMaxBytes); ferr == nil && changed {
+				data, mt = out, omt
+			} else if ferr != nil && len(data) > visionMaxBytes {
+				return "", fmt.Errorf("Bild ist zu groß (%d MB) und ließ sich nicht verkleinern: %v", len(data)>>20, ferr)
+			}
+		}
+		b64 := base64.StdEncoding.EncodeToString(data)
 		if mt == "application/pdf" {
 			blocks = append(blocks, anthropic.NewBetaDocumentBlock(anthropic.BetaBase64PDFSourceParam{Data: b64}))
 		} else {

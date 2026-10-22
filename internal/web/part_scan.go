@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/core/imaging"
 	"pdh/internal/modules/faults"
 )
 
@@ -35,6 +36,7 @@ const (
 	scanMaxFileBytes = 20 << 20
 	scanMaxTotal     = 40 << 20
 	scanTimeout      = 4 * time.Minute
+	scanStoreEdge    = 3000 // zu große Fotos werden so groß abgelegt (lange Seite)
 )
 
 // ── Ergebnis der Bilderkennung ─────────────────────────────────
@@ -319,13 +321,18 @@ func readScanFiles(scanID string, fhs []*multipart.FileHeader) ([]scanFile, []fa
 		if err != nil {
 			return nil, nil, err
 		}
-		data, err := io.ReadAll(io.LimitReader(f, scanMaxFileBytes+1))
+		data, err := io.ReadAll(io.LimitReader(f, scanMaxTotal+1))
 		f.Close()
 		if err != nil {
 			return nil, nil, err
 		}
 		if len(data) > scanMaxFileBytes {
-			return nil, nil, fmt.Errorf("„%s“ ist größer als %d MB", fh.Filename, scanMaxFileBytes>>20)
+			// zu großes Foto trotzdem annehmen: verkleinert ablegen (PDFs nicht)
+			small, _, changed, ferr := imaging.Fit(data, scanStoreEdge, scanMaxFileBytes)
+			if ferr != nil || !changed || len(small) > scanMaxFileBytes {
+				return nil, nil, fmt.Errorf("„%s“ ist größer als %d MB", fh.Filename, scanMaxFileBytes>>20)
+			}
+			data = small
 		}
 		if total += len(data); total > scanMaxTotal {
 			return nil, nil, fmt.Errorf("Zusammen höchstens %d MB", scanMaxTotal>>20)

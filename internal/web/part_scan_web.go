@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"pdh/internal/core/imaging"
 	"pdh/internal/modules/inventory"
 )
 
@@ -99,6 +100,7 @@ func (c partCandidate) MinText() string { return formatQty(c.MinQty) }
 
 type scanNewPart struct {
 	Number, Name, ManufacturerPart, Category, Description, Unit, ManufacturerID, EAN string
+	ImageQuery                                                                       string // Suchbegriff für das Teilebild aus dem Internet
 }
 
 type InventoryScanDetailData struct {
@@ -316,6 +318,12 @@ func newPartFromRecognition(pr partResult) scanNewPart {
 		b.WriteString("EAN: " + pr.EAN + "\n")
 	}
 	np.Description = strings.TrimSpace(b.String())
+	// Hersteller + Nummer findet das Produktfoto am sichersten, sonst die Bezeichnung
+	q := strings.TrimSpace(pr.Manufacturer + " " + np.ManufacturerPart)
+	if np.ManufacturerPart == "" {
+		q = strings.TrimSpace(pr.Manufacturer + " " + np.Name)
+	}
+	np.ImageQuery = q
 	return np
 }
 
@@ -533,14 +541,52 @@ func (h *Handler) InventoryScanCreatePartWeb(w http.ResponseWriter, r *http.Requ
 	}
 	h.addHistory(ctx, "spare_part", part.ID, "create", "", "", in.PartNumber, "Angelegt aus Foto-Erkennung", uid)
 	h.setPartEAN(ctx, part.ID, f("ean"))
-	if r.FormValue("use_photo") == "1" && len(files) > 0 && strings.HasPrefix(files[0].Type, "image/") {
-		if err := h.attachScanPhoto(ctx, part.ID, in.Description, files[0], uid); err != nil {
-			componentLog("lager-scan").Warn().Err(err).Str("teil", part.ID).Msg("foto als teilebild")
-		}
-	}
+	imgNote := h.scanPartImage(ctx, r, part.ID, in.Description, files, uid)
 	_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET applied_at = NOW(), applied_by = $2::uuid, applied_note = $3 WHERE id = $1::uuid`,
 		id, nullID(uid), "Teil "+in.PartNumber+" angelegt")
-	partRedirect(w, r, part.ID, "master", "Teil aus Foto-Erkennung angelegt – bitte Stammdaten prüfen und Bestand buchen", nil)
+	partRedirect(w, r, part.ID, "master", "Teil aus Foto-Erkennung angelegt"+imgNote+" – bitte Stammdaten prüfen und Bestand buchen", nil)
+}
+
+// scanPartImage setzt das Teilebild nach der Wahl im Formular (image_src):
+// „web“ = gewähltes Bild aus der Internet-Bildsuche (lädt es nicht, wird das
+// Foto genommen), „photo“ = eigenes Foto, „none“ = keins. Liefert einen
+// Zusatz für die Meldung.
+func (h *Handler) scanPartImage(ctx context.Context, r *http.Request, partID, desc string, files []scanFile, uid string) string {
+	src := r.FormValue("image_src")
+	if src == "" && r.FormValue("use_photo") == "1" { // ältere Formulare
+		src = "photo"
+	}
+	photo := func() string {
+		if len(files) == 0 || !strings.HasPrefix(files[0].Type, "image/") {
+			return ""
+		}
+		if err := h.attachScanPhoto(ctx, partID, desc, files[0], uid); err != nil {
+			componentLog("lager-scan").Warn().Err(err).Str("teil", partID).Msg("foto als teilebild")
+			return ""
+		}
+		return ", Foto als Teilebild"
+	}
+	switch src {
+	case "web":
+		data, _, name, err := downloadImage(ctx, strings.TrimSpace(r.FormValue("image_url")))
+		if fb := strings.TrimSpace(r.FormValue("image_fallback")); err != nil && fb != "" {
+			data, _, name, err = downloadImage(ctx, fb) // Hotlink-Schutz → Vorschaubild der Suche
+		}
+		if err == nil {
+			err = h.attachPartImage(ctx, partID, desc, name, data, uid)
+		}
+		if err == nil {
+			return ", Teilebild aus dem Internet"
+		}
+		componentLog("lager-scan").Warn().Err(err).Str("teil", partID).Msg("internet-bild als teilebild")
+		if p := photo(); p != "" {
+			return p + " (Internet-Bild ließ sich nicht laden)"
+		}
+		return ""
+	case "photo":
+		return photo()
+	}
+	return ""
 }
 
 var ownQRRe = regexp.MustCompile(`/(inventory|k)/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:/booking)?(?:[?#].*)?$`)
@@ -590,7 +636,29 @@ func (h *Handler) attachScanPhoto(ctx context.Context, partID, desc string, f sc
 	if err != nil {
 		return err
 	}
-	ext := filepath.Ext(f.Path)
+	return h.attachPartImage(ctx, partID, desc, "foto"+filepath.Ext(f.Path), data, uid)
+}
+
+// Teilebilder aus Foto-Erkennung und Internet: lange Seite höchstens so groß.
+const (
+	partImageEdge     = 1600
+	partImageMaxStore = 2 << 20
+)
+
+// attachPartImage legt ein Bild als Anhang „Teilebild“ ab und setzt es als
+// Teilebild; große Fotos werden dabei verkleinert.
+func (h *Handler) attachPartImage(ctx context.Context, partID, desc, name string, data []byte, uid string) error {
+	if small, _, changed, err := imaging.Fit(data, partImageEdge, partImageMaxStore); err == nil && changed {
+		data = small
+	}
+	mt := http.DetectContentType(data)
+	ext, ok := partImageTypes[mt]
+	if !ok {
+		return fmt.Errorf("kein unterstütztes Bildformat (%s)", mt)
+	}
+	if name = filepath.Base(name); name == "" || name == "." || name == "/" || len(name) > 120 {
+		name = "teilebild" + ext
+	}
 	rel := filepath.ToSlash(filepath.Join("inventory", partID, "bild-"+randomHex(8)+ext))
 	abs := filepath.Join("uploads", filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
@@ -601,10 +669,10 @@ func (h *Handler) attachScanPhoto(ctx context.Context, partID, desc string, f sc
 	}
 	if _, err := h.db.Exec(ctx, `INSERT INTO attachments (id, ref_type, ref_id, filename, filepath, mimetype, size_bytes, caption, created_by)
 		VALUES (pdh_uuid_v7(), 'inventory', $1::uuid, $2, $3, $4, $5, 'Teilebild', $6)`,
-		partID, "foto"+ext, rel, f.Type, len(data), nullID(uid)); err != nil {
+		partID, name, rel, mt, len(data), nullID(uid)); err != nil {
 		_ = os.Remove(abs)
 		return err
 	}
-	_, err = h.db.Exec(ctx, `UPDATE spare_parts SET description = $1, updated_at = NOW() WHERE id = $2::uuid`, joinPartImage(desc, "/uploads/"+rel), partID)
+	_, err := h.db.Exec(ctx, `UPDATE spare_parts SET description = $1, updated_at = NOW() WHERE id = $2::uuid`, joinPartImage(desc, "/uploads/"+rel), partID)
 	return err
 }
