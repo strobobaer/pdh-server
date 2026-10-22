@@ -1,33 +1,24 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+{{$t := .Ticket}}{{$open := not (or (eq $t.Status "resolved") (eq $t.Status "closed"))}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
   {{template "icon-button" (dict "Action" "back" "Href" "/tickets")}}
-  <div style="flex:1">
-    <h1 style="font-size:18px;font-weight:600">{{.Ticket.Title}}</h1>
-    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt {{.Ticket.CreatedAgo}}{{if .Ticket.InfraName}} · {{.Ticket.InfraName}}{{end}}</p>
+  <div style="flex:1;min-width:200px">
+    <h1 style="font-size:18px;font-weight:600">{{$t.Title}}</h1>
+    <p style="font-size:12px;color:var(--muted);margin-top:2px">Erstellt {{$t.CreatedAgo}}{{if $t.InfraName}} · {{$t.InfraName}}{{end}}</p>
   </div>
-  <span class="badge {{.Ticket.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.Priority}}</span>
-  <span class="badge {{.Ticket.StatusClass}}" style="font-size:12px;padding:4px 12px">{{.Ticket.StatusLabel}}</span>
-  {{if not (or (eq .Ticket.Status "resolved") (eq .Ticket.Status "closed"))}}{{template "icon-button" (dict "Action" "done" "ShowLabel" true "Label" "Abschließen" "OnClick" (printf "pdhComplete('ticket','%s')" .Ticket.ID))}}{{end}}
-  <!-- ... Menü -->
-  <div style="position:relative" oncontextmenu="toggleMenu('ticket-menu'); return false;">
-    {{template "icon-button" (dict "Action" "more" "OnClick" "toggleMenu('ticket-menu')")}}
-    <div id="ticket-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:36px;min-width:180px;z-index:100">
-      <div style="padding:4px 8px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Status ändern</div>
-      {{range .StatusOptions}}
-      {{template "icon-button" (dict "Action" "refresh" "ShowLabel" true "Label" .Label "Class" "btn-small" "Style" "width:100%;justify-content:flex-start;margin-bottom:4px" "HxPost" (printf "/tickets/%s/status-web" $.Ticket.ID) "HxVals" (printf "{\"status\":\"%s\"}" .Value) "HxTarget" "#status-badge" "OnClick" "closeMenu('ticket-menu')")}}
-      {{end}}
-      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
-      {{template "icon-button" (dict "Action" "delete" "ShowLabel" true "Label" "Ticket löschen" "Class" "btn-small" "Style" "width:100%;justify-content:flex-start" "HxDelete" (printf "/tickets/%s" .Ticket.ID) "HxConfirm" "Ticket löschen?" "HxTarget" "body" "OnClick" "closeMenu('ticket-menu')")}}
-    </div>
-  </div>
+  <span class="badge {{$t.PriorityClass}}" style="font-size:12px;padding:4px 12px">{{$t.Priority}}</span>
+  <span class="badge {{$t.StatusClass}}" style="font-size:12px;padding:4px 12px">{{$t.StatusLabel}}</span>
+  <button class="btn" type="button" title="Löschen" aria-label="Löschen" hx-delete="/tickets/{{$t.ID}}" hx-confirm="Ticket endgültig löschen?" hx-target="body"><i class="ti ti-trash"></i></button>
 </div>
 <div id="archive-result" style="margin-bottom:10px"></div>
-{{template "record-meta-slot" (dict "Module" "ticket" "ID" .Ticket.ID)}}
+{{template "record-meta-slot" (dict "Module" "ticket" "ID" $t.ID)}}
 <div class="rec-tabs" role="tablist">
   <a class="rec-tab" data-tab="overview" href="?tab=overview"><i class="ti ti-layout-dashboard"></i> Übersicht</a>
-  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{.CommentCount}}</b></a>
+  <a class="rec-tab" data-tab="edit" href="?tab=edit"><i class="ti ti-edit"></i> Bearbeiten</a>
   <a class="rec-tab" data-tab="work" href="?tab=work"><i class="ti ti-tool"></i> Maßnahmen & Ersatzteile</a>
+  <a class="rec-tab" data-tab="time" href="?tab=time"><i class="ti ti-clock"></i> Zeit <b>{{len .TimeEntries}}</b></a>
+  <a class="rec-tab" data-tab="comments" href="?tab=comments"><i class="ti ti-message"></i> Kommentare <b>{{.CommentCount}}</b></a>
   <a class="rec-tab" data-tab="fields" href="?tab=fields"><i class="ti ti-forms"></i> Feldsätze</a>
   <a class="rec-tab" data-tab="docs" href="?tab=docs"><i class="ti ti-paperclip"></i> Dokumente</a>
   <a class="rec-tab" data-tab="links" href="?tab=links"><i class="ti ti-link"></i> Verknüpfungen</a>
@@ -36,93 +27,103 @@
 
 <!-- ── Übersicht ── -->
 <div class="rec-pane" data-pane="overview">
-{{template "work-do" (dict "Kind" "ticket" "ID" .Ticket.ID "Open" (not (or (eq .Ticket.Status "resolved") (eq .Ticket.Status "closed"))) "Title" "Ticket bearbeiten" "Label" "Bearbeiten & abschließen" "Icon" "ti-player-play" "Due" .Ticket.DueDate "DoneTitle" .Ticket.StatusLabel "ArchiveURL" "/tickets?view=archive")}}
-<div class="grid2" style="grid-template-columns:1fr 340px;gap:14px;align-items:start">
+{{template "work-do" (dict "Kind" "ticket" "ID" $t.ID "Open" $open "Title" "Ticket bearbeiten" "Label" "Bearbeiten & abschließen" "Icon" "ti-player-play" "Due" $t.DueDate "DoneTitle" $t.StatusLabel "ArchiveURL" "/tickets?view=archive")}}
+<div class="grid2" style="grid-template-columns:1fr 320px;gap:14px;align-items:start">
   <div>
-    <!-- Beschreibung -->
     <div class="card">
       <div class="card-title">Beschreibung</div>
-      <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if .Ticket.Description}}{{.Ticket.Description}}{{else}}Keine Beschreibung{{end}}</p>
+      <p style="font-size:13px;line-height:1.6;color:var(--muted)">{{if $t.Description}}{{$t.Description}}{{else}}Keine Beschreibung{{end}}</p>
     </div>
-
-    <!-- Ticket lösen -->
-    <div id="ticket-resolve-card" style="display:none"><!-- Abschluss jetzt oben in der Karte „Ticket bearbeiten“ (work-do) -->
-    </div>
-
   </div>
-
-  <!-- Rechte Spalte -->
   <div>
     <div class="card">
-      <div class="card-title">Details</div>
-      {{if .Ticket.RecordImageURL}}
-      <img src="{{.Ticket.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:8px;border:1px solid var(--border);margin-bottom:12px">
+      <div class="card-title"><span>Details</span><a class="card-action rec-tab" data-tab="edit" href="?tab=edit" style="padding:0"><i class="ti ti-edit"></i> Bearbeiten</a></div>
+      {{if $t.RecordImageURL}}
+      <img src="{{$t.RecordImageURL}}" alt="Datensatzbild" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:4px;border:1px solid var(--stroke);margin-bottom:8px">
       {{end}}
-      <div class="li"><div class="li-text"><div class="li-sub">Priorität</div><div class="li-title"><span class="badge {{.Ticket.PriorityClass}}">{{.Ticket.Priority}}</span></div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Status</div><div class="li-title" id="status-badge"><span class="badge {{.Ticket.StatusClass}}">{{.Ticket.StatusLabel}}</span></div></div></div>
-      <div class="li"><div class="li-text"><div class="li-sub">Erstellt</div><div class="li-title" style="font-size:12px">{{.Ticket.CreatedAgo}}</div></div></div>
-      <form hx-post="/api/v1/tickets/{{.Ticket.ID}}/due-date" hx-swap="none" hx-on::after-request="if(event.detail.successful) location.reload()" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div class="form-group">
-          <label class="form-label">Termin</label>
-          <input name="due_date" type="date" class="form-input" value="{{.Ticket.DueDateISO}}">
-        </div>
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-      <form hx-post="/tickets/{{.Ticket.ID}}/infrastructure-web" hx-target="#ticket-infra-result" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        {{template "infra-tree-picker" (dict "TargetID" "ticket-detail-infra-id" "SelectedLabelID" "ticket-detail-infra-selected" "Label" "Infrastruktur" "Value" .Ticket.InfraID "SelectedLabel" .Ticket.InfraName)}}
-        <div id="ticket-infra-result" style="font-size:12px;margin-bottom:8px"></div>
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-      <form hx-post="/api/v1/tickets/{{.Ticket.ID}}/cost-center" hx-swap="none" hx-on::after-request="if(event.detail.successful) location.reload()" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        {{template "cost-center-picker" (dict "Label" "Kostenstelle" "Value" .Ticket.CostCenterID)}}
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
-      <form hx-post="/records/ticket/{{.Ticket.ID}}/people" hx-target="#people-result-ticket" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div class="form-group">
-          <label class="form-label">Verantwortlich</label>
-          <select name="responsible_to" class="form-input">
-            <option value="">Nicht gesetzt</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Zugewiesen</label>
-          <select name="assigned_to" class="form-input">
-            <option value="">Nicht zugewiesen</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Ticket.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Zugewiesene Gruppe</label>
-          <select name="assigned_group_id" class="form-input" hx-get="/records/ticket/{{.Ticket.ID}}/group-options" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select>
-        </div>
-        <div id="people-result-ticket" style="font-size:12px;margin-bottom:8px"></div>
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Style" "width:100%;justify-content:center")}}
-      </form>
+      <dl class="w11-props">
+        <dt>Status</dt><dd><span class="badge {{$t.StatusClass}}">{{$t.StatusLabel}}</span></dd>
+        <dt>Priorität</dt><dd><span class="badge {{$t.PriorityClass}}">{{$t.Priority}}</span></dd>
+        <dt>Termin</dt><dd>{{if $t.DueDate}}{{$t.DueDate}}{{else}}–{{end}}</dd>
+        <dt>Verantwortlich</dt><dd>{{if $t.ResponsibleName}}{{$t.ResponsibleName}}{{else}}–{{end}}</dd>
+        <dt>Zugewiesen</dt><dd>{{if $t.AssignedName}}{{$t.AssignedName}}{{else}}–{{end}}</dd>
+        <dt>Infrastruktur</dt><dd>{{if $t.InfraName}}{{$t.InfraName}}{{else}}–{{end}}</dd>
+        <dt>Kostenstelle</dt><dd>{{if $t.CostCenterNumber}}{{$t.CostCenterNumber}} – {{$t.CostCenterName}}{{else}}–{{end}}</dd>
+        <dt>Erstellt</dt><dd>{{$t.CreatedAgo}}</dd>
+      </dl>
     </div>
-
     <div class="card">
       <div class="card-title">Beteiligte</div>
-      <div id="record-parties" hx-get="/records/ticket/{{.Ticket.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Zeiterfassung</div>
-      {{if .RunningTime}}
-      <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:12px;color:var(--green);font-weight:500">⏱ Läuft seit {{.RunningTime.StartedAt.Format "15:04"}}</div>
-      </div>
-      {{template "icon-button" (dict "Action" "stop" "ShowLabel" true "Label" "Zeit stoppen" "Style" "width:100%;justify-content:center" "HxPost" (printf "/time/%s/stop-web" .RunningTime.ID) "HxTarget" "#time-result" "HxOnAfterRequest" "setTimeout(()=>location.reload(),1000)")}}
-      {{else}}
-      {{template "icon-button" (dict "Action" "start" "ShowLabel" true "Label" "Zeit erfassen" "Style" "width:100%;justify-content:center" "HxPost" (printf "/tickets/%s/time/start" .Ticket.ID) "HxTarget" "#time-result")}}
-      {{end}}
-      <div id="time-result"></div>
-      {{range .TimeEntries}}
-      <div class="li"><div class="li-text"><div class="li-sub">{{.UserName}}</div></div><span style="font-size:11px;color:var(--green)">{{if .DurationMin}}{{.DurationMin}}min{{else}}läuft...{{end}}</span></div>
-      {{end}}
+      <div id="record-parties" hx-get="/records/ticket/{{$t.ID}}/parties" hx-trigger="load" hx-swap="innerHTML"></div>
     </div>
   </div>
 </div>
+</div>
+
+<!-- ── Bearbeiten (Einstellungs-Zeilen wie in Windows 11) ── -->
+<div class="rec-pane" data-pane="edit">
+  <div class="rec-edit">
+    <div class="w11-group">Zuständigkeit</div>
+    <div class="w11-row" data-save="/tickets/{{$t.ID}}/status-web" data-label="Status">
+      <i class="ti ti-progress w11-row-icon"></i>
+      <div class="w11-row-text"><b>Status</b><span>Gelöst und Geschlossen gehen über „Bearbeiten &amp; abschließen“ in der Übersicht.</span></div>
+      <div class="w11-row-ctl"><select name="status" class="form-input" aria-label="Status">{{range .StatusOptions}}{{if or (eq .Value $t.Status) (not (or (eq .Value "resolved") (eq .Value "closed")))}}<option value="{{.Value}}" {{if eq .Value $t.Status}}selected{{end}}>{{.Label}}</option>{{end}}{{end}}</select></div>
+    </div>
+    <div class="w11-row" data-save="/records/ticket/{{$t.ID}}/people" data-label="Zuständigkeit">
+      <i class="ti ti-users w11-row-icon"></i>
+      <div class="w11-row-text"><b>Personen und Gruppe</b><span>Verantwortlich behält den Überblick, Zugewiesen macht die Arbeit.</span></div>
+      <div class="w11-row-ctl">
+        <div class="form-group"><label class="form-label">Verantwortlich</label>
+          <select name="responsible_to" class="form-input"><option value="">Nicht gesetzt</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $t.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Zugewiesen</label>
+          <select name="assigned_to" class="form-input"><option value="">Nicht zugewiesen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $t.AssignedID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+        <div class="form-group"><label class="form-label">Zugewiesene Gruppe</label>
+          <select name="assigned_group_id" class="form-input" hx-get="/records/ticket/{{$t.ID}}/group-options" hx-trigger="load" hx-target="this" hx-swap="innerHTML"><option value="__keep__">Lädt…</option></select></div>
+      </div>
+    </div>
+    <div class="w11-group">Zuordnung</div>
+    <div class="w11-row" data-save="/api/v1/tickets/{{$t.ID}}/due-date" data-label="Termin">
+      <i class="ti ti-calendar w11-row-icon"></i>
+      <div class="w11-row-text"><b>Termin</b><span>Bis wann das Ticket erledigt sein soll.</span></div>
+      <div class="w11-row-ctl"><input name="due_date" type="date" class="form-input" value="{{$t.DueDateISO}}" aria-label="Termin"></div>
+    </div>
+    <div class="w11-row" data-save="/tickets/{{$t.ID}}/infrastructure-web" data-label="Infrastruktur">
+      <i class="ti ti-building-factory-2 w11-row-icon"></i>
+      <div class="w11-row-text"><b>Infrastruktur</b><span>Anlage oder Bereich, um die es geht.</span></div>
+      <div class="w11-row-ctl">{{template "infra-tree-picker" (dict "TargetID" "ticket-detail-infra-id" "SelectedLabelID" "ticket-detail-infra-selected" "Label" "Anlage / Bereich" "Value" $t.InfraID "SelectedLabel" $t.InfraName)}}</div>
+    </div>
+    <div class="w11-row" data-save="/api/v1/tickets/{{$t.ID}}/cost-center" data-label="Kostenstelle">
+      <i class="ti ti-coin w11-row-icon"></i>
+      <div class="w11-row-text"><b>Kostenstelle</b><span>Auf welche Kostenstelle Material und Zeit gehen.</span></div>
+      <div class="w11-row-ctl">{{template "cost-center-picker" (dict "Label" "Kostenstelle" "TargetID" "ticket-cost-center-id" "Value" $t.CostCenterID)}}</div>
+    </div>
+    <div class="w11-actions">
+      <div class="w11-infobar" role="status"></div>
+      <button class="btn btn-primary" type="button" onclick="pdhRecSave(this)"><i class="ti ti-device-floppy"></i> Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Zeit ── -->
+<div class="rec-pane" data-pane="time">
+  <div class="rec-edit">
+    <div class="w11-row">
+      <i class="ti ti-clock w11-row-icon"></i>
+      <div class="w11-row-text"><b>Zeiterfassung</b><span>{{if .RunningTime}}Läuft seit {{.RunningTime.StartedAt.Format "15:04"}}{{if .RunningTime.Description}} · {{.RunningTime.Description}}{{end}}{{else}}Startet deine Zeit für dieses Ticket.{{end}}</span></div>
+      {{if .RunningTime}}
+      <button class="btn" type="button" hx-post="/time/{{.RunningTime.ID}}/stop-web" hx-target="#time-result" hx-on::after-request="setTimeout(()=>location.reload(),1000)"><i class="ti ti-player-stop"></i> Zeit stoppen</button>
+      {{else}}
+      <button class="btn btn-primary" type="button" hx-post="/tickets/{{$t.ID}}/time/start" hx-target="#time-result" hx-on::after-request="setTimeout(()=>location.reload(),1000)"><i class="ti ti-player-play"></i> Zeit erfassen</button>
+      {{end}}
+    </div>
+    <div id="time-result"></div>
+    <div class="w11-group">Zeiteinträge</div>
+    {{range .TimeEntries}}
+    <div class="w11-row"><i class="ti ti-clock-hour-4 w11-row-icon"></i><div class="w11-row-text"><b>{{if .Description}}{{.Description}}{{else}}Zeiteintrag{{end}}</b><span>{{.UserName}}</span></div><span style="font-size:13px">{{if .DurationMin}}{{.DurationMin}} min{{else}}läuft …{{end}}</span></div>
+    {{else}}
+    <div class="w11-infobar">Noch keine Zeiteinträge.</div>
+    {{end}}
+  </div>
 </div>
 
 <!-- ── Kommentare ── -->
@@ -145,7 +146,7 @@
       </div>
       <form hx-post="/tickets/{{.Ticket.ID}}/comment" hx-target="#comments-list" hx-swap="beforeend" style="margin-top:12px;display:flex;gap:8px">
         <input data-suggest="comment" name="text" class="form-input" placeholder="Kommentar hinzufügen..." style="flex:1;font-size:12px" required>
-        {{template "icon-button" (dict "Action" "send" "Type" "submit")}}
+        <button class="btn" type="submit" aria-label="Senden"><i class="ti ti-send"></i></button>
       </form>
     </div>
 </div>
@@ -170,32 +171,7 @@
       <button type="button" id="ticket-parts-add-btn" class="btn" onclick="openTicketPartModal()"><i class="ti ti-package"></i> Ersatzteil reservieren</button>
     </div>
 
-    <!-- Ersatzteil-vormerken Popup -->
-    <div id="ticket-part-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:6000;align-items:center;justify-content:center">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:420px;margin:20px">
-        <div style="font-size:15px;font-weight:600;margin-bottom:14px">Ersatzteil reservieren</div>
-        <div class="form-group">
-          <label class="form-label">Ersatzteil</label>
-          <input id="tp-part-search" class="form-input" placeholder="Suchen..." oninput="filterTicketParts()" autocomplete="off">
-          <div id="tp-part-results" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:4px;display:none"></div>
-          <input type="hidden" id="tp-part-id">
-          <div id="tp-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Lagerort</label>
-          <select id="tp-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Menge</label>
-          <input id="tp-part-qty" type="number" step="0.001" class="form-input" value="1">
-        </div>
-        <div id="tp-part-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
-          <button type="button" class="btn" onclick="closeTicketPartModal()">Abbrechen</button>
-          <button type="button" class="btn btn-primary" onclick="bookTicketPart()">Reservieren</button>
-        </div>
-      </div>
-    </div>
+    {{template "work-part-dialog" (dict "ID" "ticket-part-modal" "P" "tp" "Filter" "filterTicketParts" "Book" "bookTicketPart" "Close" "closeTicketPartModal")}}
 </div>
 
 <!-- ── Feldsätze ── -->
@@ -209,20 +185,7 @@
     <div class="card">
       <div class="card-title"><i class="ti ti-paperclip"></i> Fotos & Dokumente</div>
       <div id="attachments-{{.Ticket.ID}}" data-attach-ref="ticket:{{.Ticket.ID}}" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-photo" style="font-size:16px"></i>Galerie
-          <input type="file" accept="image/*" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-camera" style="font-size:16px"></i>Kamera
-          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;color:var(--muted)">
-          <i class="ti ti-file-upload" style="font-size:16px"></i>Dokument
-          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" onchange="uploadFiles(this,'ticket','{{.Ticket.ID}}')">
-        </label>
-      </div>
+      {{template "work-upload-buttons" (dict "Module" "ticket" "ID" .Ticket.ID)}}
     </div>
 </div>
 
@@ -245,18 +208,8 @@
 
 {{block "scripts" .}}
 {{template "work-style"}}
+{{template "work-edit-script"}}
 <script>
-
-function toggleMenu(id) {
-  const m = document.getElementById(id);
-  m.style.display = m.style.display === 'none' ? 'block' : 'none';
-}
-function closeMenu(id) { document.getElementById(id).style.display='none'; }
-document.addEventListener('click', e => {
-  if(!e.target.closest('[onclick*="toggleMenu"]') && !e.target.closest('[id$="-menu"]'))
-    document.querySelectorAll('[id$="-menu"]').forEach(m=>m.style.display='none');
-});
-
 // ── Ticket lösen: Maßnahmen-Verlauf + Ersatzteil-Merkliste ──────
 const TICKET_ID = '{{.Ticket.ID}}';
 let TICKET_RESOLVED = false;
@@ -272,20 +225,16 @@ async function initTicketResolveUI(){
     TICKET_RESOLVED = (t.status === 'resolved' || t.status === 'closed');
   }catch(e){ TICKET_RESOLVED = false; }
 
-  const resolveCard = document.getElementById('ticket-resolve-card');
   const partsHint = document.getElementById('ticket-parts-hint');
   const partsAddBtn = document.getElementById('ticket-parts-add-btn');
   const partsTitle = document.getElementById('ticket-parts-title');
   const actionsAdd = document.getElementById('ticket-actions-add');
 
   if(TICKET_RESOLVED){
-    resolveCard.style.display = 'none';
     partsHint.style.display = 'none';
     partsAddBtn.style.display = 'none';
     partsTitle.textContent = 'Verwendete Ersatzteile';
     actionsAdd.style.display = 'none';
-  } else {
-    resolveCard.style.display = 'none';
   }
 
   loadTicketActions();

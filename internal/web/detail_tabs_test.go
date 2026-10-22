@@ -50,9 +50,9 @@ func TestDetailPagesTabs(t *testing.T) {
 		data interface{}
 		want []string
 	}{
-		{"ticket_detail", TicketDetailData{}, []string{"overview", "comments", "work", "fields", "docs", "links", "history"}},
-		{"fault_detail", FaultDetailData{}, []string{"overview", "copilot", "work", "fields", "docs", "links", "history"}},
-		{"task_detail", TaskDetailData{}, []string{"overview", "fields", "docs", "links", "history"}},
+		{"ticket_detail", TicketDetailData{}, []string{"overview", "edit", "work", "time", "comments", "fields", "docs", "links", "history"}},
+		{"fault_detail", FaultDetailData{}, []string{"overview", "edit", "work", "time", "copilot", "fields", "docs", "links", "history"}},
+		{"task_detail", TaskDetailData{}, []string{"overview", "edit", "work", "time", "fields", "docs", "links", "history"}},
 		{"project_detail", ProjectDetailData{}, []string{"overview", "fields", "docs", "links", "history"}},
 		{"maintenance_detail", MaintenanceTaskDetailData{}, []string{"overview", "fields", "links", "history"}},
 		{"storage_detail", StorageDetailData{ID: "n1", Name: "Regal A"}, []string{"overview", "stock", "moves", "fields", "docs", "links", "history"}},

@@ -337,3 +337,153 @@
 </div>
 {{end}}
 {{end}}
+
+{{/* Dialog „Ersatzteil reservieren“ (Windows-11-Dialog) für Ticket, Störung, Aufgabe.
+     (dict "ID" "ticket-part-modal" "P" "tp" "Filter" "filterTicketParts" "Book" "bookTicketPart" "Close" "closeTicketPartModal")
+     Die Element-IDs ({{.P}}-part-search …) bleiben wie bisher, die Seite liefert die Funktionen. */}}
+{{define "work-part-dialog"}}
+<div id="{{.ID}}" class="w11-dialog" style="display:none" role="dialog" aria-modal="true" aria-labelledby="{{.P}}-part-title">
+  <div class="w11-dialog-box">
+    <div class="w11-dialog-body">
+      <h2 id="{{.P}}-part-title">Ersatzteil reservieren</h2>
+      <div class="form-group">
+        <label class="form-label" for="{{.P}}-part-search">Ersatzteil</label>
+        <input id="{{.P}}-part-search" class="form-input" placeholder="Name oder Teilenummer suchen" data-fn="{{.Filter}}" oninput="window[this.dataset.fn]()" autocomplete="off">
+        <div id="{{.P}}-part-results" class="w11-pick" style="display:none"></div>
+        <input type="hidden" id="{{.P}}-part-id">
+        <div id="{{.P}}-part-selected" style="font-size:12px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{.P}}-part-location">Lagerort</label>
+        <select id="{{.P}}-part-location" class="form-input"><option value="">Lade Lagerorte...</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{.P}}-part-qty">Menge</label>
+        <input id="{{.P}}-part-qty" type="number" step="0.001" class="form-input" value="1">
+      </div>
+      <div id="{{.P}}-part-error" class="w11-infobar error" style="display:none;margin:0"></div>
+    </div>
+    <div class="w11-dialog-foot">
+      <button type="button" class="btn btn-primary" data-fn="{{.Book}}" onclick="window[this.dataset.fn]()">Reservieren</button>
+      <button type="button" class="btn" data-fn="{{.Close}}" onclick="window[this.dataset.fn]()">Abbrechen</button>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{/* Upload-Knöpfe (Galerie, Kamera, Dokument) für den Reiter „Dokumente“.
+     (dict "Module" "ticket" "ID" …) */}}
+{{define "work-upload-buttons"}}
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+  <label class="btn" style="cursor:pointer"><i class="ti ti-photo"></i> Galerie<input type="file" accept="image/*" multiple style="display:none" data-mod="{{.Module}}" data-id="{{.ID}}" onchange="uploadFiles(this,this.dataset.mod,this.dataset.id)"></label>
+  <label class="btn" style="cursor:pointer"><i class="ti ti-camera"></i> Kamera<input type="file" accept="image/*" capture="environment" style="display:none" data-mod="{{.Module}}" data-id="{{.ID}}" onchange="uploadFiles(this,this.dataset.mod,this.dataset.id)"></label>
+  <label class="btn" style="cursor:pointer"><i class="ti ti-file-upload"></i> Dokument<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple style="display:none" data-mod="{{.Module}}" data-id="{{.ID}}" onchange="uploadFiles(this,this.dataset.mod,this.dataset.id)"></label>
+</div>
+{{end}}
+
+{{/* Reiter „Bearbeiten“ der Detailseiten (Aufgabe, Ticket, Störung) – wie beim KVP:
+     alle änderbaren Felder in einem Reiter, ein „Speichern“-Knopf
+     (onclick="pdhRecSave(this)" innerhalb von .rec-edit). Jeder Abschnitt
+     [data-save="URL"] geht an seinen bisherigen Endpunkt, aber nur, wenn sich
+     darin etwas geändert hat (sonst entstünden leere Historie-Einträge).
+     data-json: als JSON senden (Mehrfachauswahl → Liste);
+     data-clear="feld:flag": leeres Feld → {flag:true} statt {feld:""}. */}}
+{{define "work-edit-script"}}
+<style>
+/* Windows-11-Bausteine der Detailseiten (Fluent): Einstellungs-Zeilen wie in
+   „Einstellungen“, InfoBar, Eigenschaftenliste, Dialog mit Fußleiste. */
+.rec-edit{max-width:880px;display:grid;gap:4px}
+.w11-group{font-size:14px;font-weight:600;margin:14px 0 6px}
+.w11-group:first-child{margin-top:0}
+.w11-row{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:14px 16px;background:var(--bg2);border:1px solid var(--stroke);border-radius:8px;box-shadow:var(--shadow-card)}
+.w11-row-icon{font-size:20px;color:var(--text);width:24px;text-align:center;flex-shrink:0}
+.w11-row-text{flex:1;min-width:180px;display:grid;gap:2px}
+.w11-row-text b{font-size:14px;font-weight:400}
+.w11-row-text span{font-size:12px;color:var(--muted)}
+.w11-row-ctl{flex:0 1 340px;min-width:220px;display:grid;gap:8px}
+.w11-row-ctl .form-group{margin:0}
+.w11-row-ctl .form-label{font-size:12px;margin-bottom:4px}
+.w11-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}
+.w11-actions .w11-infobar{flex:1;margin:0}
+.w11-actions .btn{min-width:120px;justify-content:center}
+.w11-infobar{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:4px;border:1px solid var(--stroke);font-size:13px;line-height:1.4;margin-bottom:10px;
+  background:color-mix(in srgb,var(--text) 4%,var(--bg2))}
+.w11-infobar:empty{display:none}
+.w11-infobar::before{font-family:'tabler-icons';content:"\eac5";color:var(--accent);font-size:16px;line-height:1.2}
+.w11-infobar.success{background:color-mix(in srgb,var(--green) 12%,var(--bg2))}
+.w11-infobar.success::before{content:"\ea67";color:var(--green)}
+.w11-infobar.warning{background:color-mix(in srgb,var(--amber) 12%,var(--bg2))}
+.w11-infobar.warning::before{content:"\ea06";color:var(--amber)}
+.w11-infobar.error{background:color-mix(in srgb,var(--red) 12%,var(--bg2))}
+.w11-infobar.error::before{content:"\ea05";color:var(--red)}
+.w11-infobar small{display:block;color:var(--muted);font-size:12px}
+.w11-props{display:grid;grid-template-columns:auto 1fr;margin:0}
+.w11-props dt,.w11-props dd{padding:9px 0;border-top:1px solid var(--stroke);margin:0}
+.w11-props dt:first-of-type,.w11-props dd:first-of-type{border-top:0}
+.w11-props dt{font-size:12px;color:var(--muted);padding-right:14px}
+.w11-props dd{font-size:13px;text-align:right;overflow-wrap:anywhere}
+.w11-dialog{position:fixed;inset:0;z-index:6000;align-items:center;justify-content:center;background:rgba(0,0,0,.4)}
+.w11-dialog-box{width:100%;max-width:440px;margin:20px;background:var(--bg2);border:1px solid var(--stroke-strong);border-radius:8px;box-shadow:var(--shadow-flyout);overflow:hidden;animation:win11-menu-in .12s ease-out}
+.w11-dialog-body{padding:24px}
+.w11-dialog-body h2{font-size:20px;font-weight:600;margin-bottom:14px}
+.w11-dialog-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:20px 24px;background:var(--bg3);border-top:1px solid var(--stroke)}
+.w11-dialog-foot .btn{justify-content:center}
+.w11-pick{max-height:180px;overflow-y:auto;border:1px solid var(--stroke);border-radius:4px;margin-top:4px}
+.w11-pick > div{padding:8px 10px;font-size:13px;cursor:pointer;border-radius:4px}
+.w11-pick > div:hover{background:var(--fill-hover)}
+.w11-list .li{border-bottom-color:var(--stroke)}
+</style>
+<script>
+(function(){
+  if(window.pdhRecSave) return;
+  const vals = el => el.tagName === 'SELECT' ? Array.from(el.selectedOptions).map(o => o.value) : [el.value];
+  // Ausgangswert aus dem HTML: Kostenstellen-Auswahl merkt ihn in data-selected,
+  // nachgeladene Optionen (Gruppe) tragen das selected-Attribut.
+  function initial(el){
+    if(el.tagName !== 'SELECT') return el.defaultValue;
+    if(el.dataset.selected !== undefined) return el.dataset.selected;
+    const def = Array.from(el.options).filter(o => o.defaultSelected).map(o => o.value);
+    return (def.length || el.multiple ? def : [el.options.length ? el.options[0].value : '']).join(',');
+  }
+  const fields = sec => Array.from(sec.querySelectorAll('[name]')).filter(el => !el.disabled);
+  const dirty = sec => fields(sec).some(el => !vals(el).includes('__keep__') && vals(el).join(',') !== initial(el));
+  async function send(sec){
+    const opts = {method: 'POST', credentials: 'same-origin'};
+    if(sec.hasAttribute('data-json')){
+      const o = {};
+      fields(sec).forEach(el => { o[el.name] = el.multiple ? vals(el) : el.value; });
+      const [f, flag] = (sec.dataset.clear || '').split(':');
+      if(f && o[f] === ''){ delete o[f]; o[flag] = true; }
+      opts.headers = {'Content-Type': 'application/json'};
+      opts.body = JSON.stringify(o);
+    }else{
+      const p = new URLSearchParams();
+      fields(sec).forEach(el => vals(el).forEach(v => p.append(el.name, v)));
+      opts.body = p;
+    }
+    const res = await fetch(sec.dataset.save, opts), text = await res.text();
+    let err = '';
+    try{ const j = JSON.parse(text); if(j && j.success === false) err = j.error || 'Fehler'; }catch(e){}
+    // HTML-Endpunkte melden Fehler als roten Text mit Status 200.
+    if(!err && text.includes('var(--red)')) err = text.replace(/<[^>]*>/g, '').trim();
+    if(!res.ok && !err) err = text.replace(/<[^>]*>/g, '').trim() || ('HTTP ' + res.status);
+    if(err) throw new Error((sec.dataset.label ? sec.dataset.label + ': ' : '') + err);
+  }
+  window.pdhRecSave = async function(btn){
+    const box = btn.closest('.rec-edit'), msg = box.querySelector('.w11-infobar');
+    const show = (t, cls) => { msg.textContent = t; msg.className = 'w11-infobar' + (cls ? ' ' + cls : ''); };
+    const secs = Array.from(box.querySelectorAll('[data-save]')).filter(dirty);
+    if(!secs.length){ show('Keine Änderungen.'); return; }
+    btn.disabled = true; show('Wird gespeichert …');
+    try{
+      for(const s of secs) await send(s);
+      show('Gespeichert.', 'success');
+      setTimeout(() => location.reload(), 500);
+    }catch(e){
+      show('Nicht gespeichert – ' + e.message, 'error');
+      btn.disabled = false;
+    }
+  };
+})();
+</script>
+{{end}}

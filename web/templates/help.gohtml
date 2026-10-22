@@ -327,10 +327,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Störung öffnen, im Reiter <b>Copilot</b> bei Bedarf eine Analyse starten oder Fragen stellen.</li>
       <li>Im Reiter <b>Maßnahmen &amp; Ersatzteile</b> zwischendurch festhalten, was gemacht wurde, und benötigte Teile <b>reservieren</b> – sie sind damit sofort für dich aus dem Lager gebucht.</li>
-      <li><b>Beheben &amp; abschließen</b> (Karte oben in der Übersicht, in der Liste, auf dem Board oder im Menü <i class="ti ti-dots"></i> „Als gelöst markieren“): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
+      <li><b>Beheben &amp; abschließen</b> (Karte oben in der Übersicht, in der Liste oder auf dem Board): Der <a href="#completion">Abschluss-Assistent</a> fragt Material, Zeit, wer dabei war und den Kommentar ab.</li>
       <li><b>Fertig</b> – die reservierten Teile werden zum Verbrauch der Störung, die Störung wandert ins Archiv. Oder <b>Geht noch weiter</b>, wenn die Arbeit noch nicht beendet ist.</li>
     </ol></div>
-  <p>Verantwortliche, Zuständige (auch externe Firmen), Termin, Kostenstelle und Zeiterfassung stehen in der Übersicht.</p>
+  <p>Die Übersicht zeigt Verantwortliche, Zuständige (auch externe Firmen), Termin, Anlage und Kostenstelle. Ändern geht im Reiter <b>Bearbeiten</b>, die Zeit erfasst du im Reiter <b>Zeit</b> (siehe <a href="#work-views">Detailseite</a>).</p>
   <p><b>Automatisches Ticket zur Störung:</b> Standardmäßig bekommt eine Störung <b>kein</b> eigenes Ticket. Ein Administrator kann das unter <b>Server-Einstellungen → Störungen → Ticket zu jeder Störung anlegen</b> einschalten (wirkt sofort). Dann entsteht das Ticket erst, wenn die Störung einer <b>Person oder Gruppe zugewiesen</b> ist – auf der Störung steht bis dahin „Ticket wird angelegt, sobald …“. Das Ticket übernimmt Zuweisung, Gruppe, Anlage und Kostenstelle. Wird die Störung vorher erledigt, entfällt es.</p>
   <div class="hb-howto"><b><i class="ti ti-brain"></i> Copilot und ähnliche Fälle</b>PDH vergleicht jede Störung mit allen bereits gelösten: Titel, Beschreibung und Symptome werden inhaltlich verglichen (Wortformen und Umlaute egal, seltene Fachbegriffe zählen mehr); dieselbe Anlage zählt deutlich, eine Anlage an derselben Linie etwas mehr. Die passendsten Fälle stehen rechts in der Leiste mit ihrer <b>Ähnlichkeit in Prozent</b> – auch ohne Analyse; ein Klick öffnet den Fall, die Lösung steht im Tooltip.
     Die <b>Copilot-Analyse</b> bekommt diese Fälle samt Ursache, Lösung und durchgeführten Maßnahmen sowie den Anlagenpfad mit und stützt sich zuerst darauf. Die <b>Konfidenz</b> ist nur hoch, wenn ähnliche Fälle die Einschätzung tragen. Je mehr Störungen sauber mit Ursache, Lösung und Maßnahmen abgeschlossen werden, desto besser werden die Vorschläge.
@@ -362,14 +362,22 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Regeln &amp; Einstellungen</b>: die Regeln des Moduls, die <b>Standard-Frist</b> (Tage nach Anlage, wenn kein Termin angegeben ist – ändern darf, wer Rollen &amp; Rechte verwaltet) und die <b>Broker</b>.</li>
   </ul>
   <p>Angelegt wird weiterhin mit dem <a href="#creation">Erstellungs-Assistenten</a> (<b>Neu</b>), abgeschlossen mit dem <a href="#completion">Abschluss-Assistenten</a>.</p>
-  <p>Auf der Detailseite steht oben die Karte <b>Ticket bearbeiten</b> (bei Störungen <b>Störung beheben</b>, bei Aufgaben <b>Aufgabe erledigen</b>) – wie beim Wartungsauftrag. Ist der Vorgang abgeschlossen, zeigt sie das an und führt ins Archiv.</p>
+  <p>Die <b>Detailseite</b> eines Tickets, einer Störung oder Aufgabe ist aufgebaut wie ein KVP-Vorschlag. In der <b>Übersicht</b> steht oben die Karte <b>Ticket bearbeiten</b> (bei Störungen <b>Störung beheben</b>, bei Aufgaben <b>Aufgabe erledigen</b>). Daneben steht die Karte <b>Details</b> zum Nachlesen. Ist der Vorgang abgeschlossen, zeigt die Karte das an und führt ins Archiv. Alles Änderbare liegt in eigenen Reitern:</p>
   <ul>
-    <li><b>Kommentare</b> (eigener Reiter) – für die Abstimmung im Team.</li>
-    <li><b>Maßnahmen &amp; Ersatzteile</b> – wie bei Störungen.</li>
-    <li><b>Status ändern</b> – über das Menü <i class="ti ti-dots"></i> oben rechts im Ticket.</li>
+    <li><b>Bearbeiten</b> – Zuständigkeit (Verantwortlich, Zugewiesen, Gruppe), Termin, Anlage und Kostenstelle. Bei Tickets auch der Status, bei Aufgaben die Farbe im Gantt.</li>
+    <li><b>Maßnahmen &amp; Ersatzteile</b> – festhalten, was gemacht wurde, und Teile reservieren.</li>
+    <li><b>Zeit</b> – Zeit starten und stoppen, darunter alle Zeiteinträge.</li>
+    <li><b>Kommentare</b> (Tickets) – für die Abstimmung im Team.</li>
   </ul>
+  <div class="hb-howto"><b><i class="ti ti-edit"></i> So änderst du Zuständigkeit, Termin oder Anlage</b>
+    <ol class="hb-steps">
+      <li>Reiter <b>Bearbeiten</b> öffnen. Oder in der Karte <b>Details</b> auf <i class="ti ti-edit"></i> <b>Bearbeiten</b> tippen.</li>
+      <li>Felder ändern – auch mehrere auf einmal. Jede Einstellung steht wie in den Windows-Einstellungen in einer eigenen Zeile: links, worum es geht, rechts das Feld.</li>
+      <li>Unten rechts <b>Speichern</b> antippen. Links daneben erscheint die Meldung, ob es geklappt hat. Gespeichert wird nur, was du geändert hast. Jede Änderung steht danach in der <b>Historie</b>.</li>
+    </ol>
+    Den Status <b>Gelöst</b> oder <b>Geschlossen</b> setzt du nicht hier, sondern mit dem Abschluss-Assistenten.</div>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So schließt du ein Ticket ab</b>
-    Grüner Haken <b>Abschließen</b> (oben rechts, in der Karte „Ticket abschließen“ oder in der Liste: Zeile aufklappen → <b>Abschließen</b>) – der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
+    <b>Bearbeiten &amp; abschließen</b> antippen – in der Karte oben in der Übersicht oder in der Liste (Zeile aufklappen → <b>Abschließen</b>). Der <a href="#completion">Abschluss-Assistent</a> fragt nacheinander Material, Zeit, wer dabei war und den Kommentar ab. Am Ende <b>Fertig</b> oder <b>Geht noch weiter</b>.</div>
   <div class="hb-howto"><b><i class="ti ti-inbox"></i> Tipp für Broker</b>
     Dein Eingang ist die Seite <b>Zuweisung</b> (Navigation oben). Dort weist du direkt zu (<a href="#dashboard">mehr</a>). In der Ticketliste zeigt der Filter <b>Ohne Zuweisung</b> dieselben Tickets.</div>
   {{template "hb-shots" (dict "Ref" (index $s "tickets") "Can" $can)}}

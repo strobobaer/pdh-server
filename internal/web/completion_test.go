@@ -98,9 +98,10 @@ func TestNoBypassCompletion(t *testing.T) {
 		return string(b)
 	}
 	for file, want := range map[string]string{
-		"ticket_detail.gohtml":      "pdhComplete('ticket'",
-		"fault_detail.gohtml":       "pdhComplete('fault'",
-		"task_detail.gohtml":        "pdhComplete('task'",
+		// Detailseiten schliessen ueber die „Durchfuehren“-Karte ab (work-do → pdhComplete).
+		"ticket_detail.gohtml":      `"work-do" (dict "Kind" "ticket"`,
+		"fault_detail.gohtml":       `"work-do" (dict "Kind" "fault"`,
+		"task_detail.gohtml":        `"work-do" (dict "Kind" "task"`,
 		"maintenance_detail.gohtml": "pdhComplete('maintenance'",
 		"widgets/work_board.gohtml": `data-rx-done="{{$k.Key}}:`, // Fertigstellen im aufgeklappten Bereich → pdhComplete
 	} {
@@ -113,6 +114,9 @@ func TestNoBypassCompletion(t *testing.T) {
 				t.Errorf("%s: Abschluss ohne Assistent (%s)", file, bad)
 			}
 		}
+	}
+	if !strings.Contains(read("widgets/work_board.gohtml"), `onclick="pdhComplete('{{.Kind}}','{{.ID}}')"`) {
+		t.Error("„Durchführen“-Karte (work-do) öffnet den Assistenten nicht")
 	}
 	if !regexp.MustCompile(`action === 'done' && item\.dataset\.complete`).MatchString(read("base.gohtml")) {
 		t.Error("„Auswahl erledigen“ öffnet den Assistenten nicht")

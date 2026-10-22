@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.62.0] – 2026-10-22
+
+### Geändert
+- Tickets, Störungen und Aufgaben sind auf der Detailseite aufgebaut wie der KVP: Zuständigkeit, Termin, Anlage und Kostenstelle ändert man im neuen Reiter „Bearbeiten“ mit einem gemeinsamen „Speichern“ statt in vielen Einzelfeldern rechts.
+- Die Zeiterfassung hat auf Ticket, Störung und Aufgabe einen eigenen Reiter „Zeit“; die Karte „Details“ in der Übersicht zeigt alles auf einen Blick zum Nachlesen.
+- Aufgaben haben jetzt wie Tickets und Störungen den Reiter „Maßnahmen & Ersatzteile“.
+- Die Detailseiten sind im Windows-11-Stil gestaltet: Einstellungs-Zeilen im Reiter „Bearbeiten“, Meldungsleisten, Eigenschaftenliste in „Details“ und ein Windows-11-Dialog zum Reservieren von Ersatzteilen.
+- Schaltflächen auf den Detailseiten tragen wie beim KVP Symbol und Beschriftung; der doppelte „Abschließen“-Knopf und das Menü oben rechts entfallen – abgeschlossen wird über die Karte in der Übersicht.
+- Der Ticket-Status lässt sich im Reiter „Bearbeiten“ ändern; „Gelöst“ und „Geschlossen“ gehen nur noch über den Abschluss-Assistenten.
+
 ## [0.61.0] – 2026-10-22
 
 ### Neu
