@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.63.1] – 2026-10-22
+
+### Geändert
+- Symbole erscheinen schneller: Die Symbol-Bibliothek wird komprimiert übertragen und bleibt im Browser gespeichert, statt täglich neu geladen zu werden.
+
 ## [0.63.0] – 2026-10-22
 
 ### Neu
