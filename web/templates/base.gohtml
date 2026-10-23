@@ -1294,11 +1294,22 @@ document.addEventListener('click', function(e){
   // reiner Systemnutzer (kein Override aktiv): kein Timer, bleibt wie
   // gewünscht dauerhaft eingeloggt.
 
+  // Administratoren: solange code-server, n8n oder pgAdmin in einem anderen
+  // Tab offen sind, nicht abmelden (admin_tool_activity.go).
+  var waitForAdminTools = {{if .IsAdmin}}!isOverride{{else}}false{{end}};
+
   if(logoutUrl && minutes > 0){
     var idleTimer;
+    function idleExpired(){
+      if(!waitForAdminTools){ window.location = logoutUrl; return; }
+      fetch('/api/admin-tools/active', {cache: 'no-store', credentials: 'same-origin'})
+        .then(function(r){ return r.ok ? r.json() : {}; })
+        .then(function(d){ if(d && d.active) resetIdleTimer(); else window.location = logoutUrl; })
+        .catch(function(){ window.location = logoutUrl; });
+    }
     function resetIdleTimer(){
       clearTimeout(idleTimer);
-      idleTimer = setTimeout(function(){ window.location = logoutUrl; }, minutes * 60 * 1000);
+      idleTimer = setTimeout(idleExpired, minutes * 60 * 1000);
     }
     ['mousemove','keydown','click','touchstart','scroll'].forEach(function(evt){
       document.addEventListener(evt, resetIdleTimer, {passive:true});

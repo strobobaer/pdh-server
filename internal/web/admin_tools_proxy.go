@@ -77,6 +77,7 @@ func (h *Handler) AdminToolProxy(key string) http.Handler {
 				http.Error(w, "keine berechtigung – "+tool.Label+" ist nur für Administratoren", http.StatusForbidden)
 				return
 			}
+			defer h.toolAct.begin(sessionKey(r))() // hält den Auto-Logout an (admin_tool_activity.go)
 		}
 		if !tool.Enabled() {
 			http.Error(w, tool.Label+" ist nicht eingerichtet ("+tool.EnvVar+" fehlt – siehe scripts/configure-pdh-admin-tools.sh)", http.StatusNotFound)

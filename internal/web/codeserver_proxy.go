@@ -45,6 +45,7 @@ func (h *Handler) CodeServerProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "code-server-Adresse ungültig", http.StatusInternalServerError)
 		return
 	}
+	defer h.toolAct.begin(sessionKey(r))() // hält den Auto-Logout an (admin_tool_activity.go)
 	serveCodeServer(w, r, target)
 }
 

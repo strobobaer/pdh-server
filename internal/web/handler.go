@@ -56,6 +56,7 @@ type BaseData struct {
 	IsBoardVisit           bool       // Kurzsitzung per Karte aus dem Leitstand (endet nach der Override-Zeit)
 	IdleTimeoutMinutes     int        // globale Auto-Logout-Zeit (Minuten)
 	OverrideTimeoutMinutes int        // Zeit bis zur automatischen Rückkehr zum Systemnutzer
+	IsAdmin                bool       // Auto-Logout wartet, solange code-server/n8n/pgAdmin offen sind
 	CanManageUsers         bool       // Benutzerverwaltung anzeigen
 	CanManageRoles         bool       // Nav-Link "Rollen & Berechtigungen" anzeigen
 	CanImport              bool       // Nav-Link "Import" anzeigen
@@ -289,6 +290,7 @@ type Handler struct {
 	mqttImport       *mqttimport.Manager
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
+	toolAct          toolActivity // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 }
 
 func NewHandler(
@@ -749,6 +751,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Handle("/grafana/*", http.HandlerFunc(h.GrafanaProxy))
 	r.Handle("/code", http.HandlerFunc(h.CodeServerProxy)) // VS Code im Browser, nur Admins (codeserver_proxy.go)
 	r.Handle("/code/*", http.HandlerFunc(h.CodeServerProxy))
+	r.Get("/api/admin-tools/active", h.AdminToolsActive) // Auto-Logout wartet auf offene Werkzeug-Tabs
 	r.Get("/core/settings/grafana", h.GrafanaSettingsPage)
 	r.Post("/core/settings/grafana", h.GrafanaSaveWeb)
 	r.Post("/core/settings/grafana/base", h.GrafanaBaseSaveWeb)
@@ -1065,7 +1068,8 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsBoardVisit:           isBoardVisit(r),
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
-		CanManageUsers:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
+		IsAdmin:                u.Role == users.RoleAdmin,
+		CanManageUsers:        h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),

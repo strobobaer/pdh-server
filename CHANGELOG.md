@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.72.0] – 2026-10-23
+
+### Geändert
+- Administratoren werden nicht mehr wegen Inaktivität abgemeldet, solange Code-Editor, n8n oder pgAdmin in einem anderen Tab offen sind – bisher beendete der PDH-Tab im Hintergrund die Sitzung, und das Werkzeug blieb hängen.
+
 ## [0.71.0] – 2026-10-23
 
 ### Neu
