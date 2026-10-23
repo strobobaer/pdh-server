@@ -79,6 +79,7 @@
 {{end}}
 
 {{template "category-filter-slot" (dict "Module" "storage")}}
+<template id="storage-parent-opts"><option value="" data-depth="-1">– ganz oben (als Lagerort) –</option>{{range .Targets}}<option value="{{.ID}}" data-depth="{{.Depth}}">{{.Path}}</option>{{end}}</template>
 
 <div id="new-root" style="display:none" class="card">
   <div class="card-title">Lagerort anlegen</div>
@@ -143,25 +144,36 @@
       <a class="btn btn-icon" href="/storage/{{.ID}}" title="Lagerplatz öffnen (Bestand, Bewegungen, Feldsätze)"><i class="ti ti-external-link"></i></a>
       <a class="btn btn-icon" href="/inventory/labels?node={{.ID}}" target="_blank" rel="noopener" title="Etiketten für alle Teile an diesem Lagerplatz drucken"><i class="ti ti-printer"></i></a>
       {{template "icon-button" (dict "Action" "edit" "OnClick" (printf "showEditNode('%s')" .ID))}}
-      {{template "icon-button" (dict "Action" "delete" "Label" "Zum Löschen vormerken" "HxPost" (printf "/records/state/storage/%s" .ID) "HxVals" "{\"action\":\"mark\"}" "HxConfirm" "Lagerplatz zum Löschen vormerken? Er wird sofort deaktiviert; der Bereinigungslauf löscht ihn oder blendet ihn aus, falls er noch verwendet wird (Bestand, Unterplätze, Buchungen)." "HxTarget" "closest .storage-node" "HxSwap" "delete")}}
+      {{template "icon-button" (dict "Action" "delete" "Label" "Löschen" "HxPost" (printf "/storage/%s/delete-web" .ID) "HxConfirm" (printf "„%s“ löschen%s? Geht nur ohne Bestand." .Name (or (and .Children " samt allen Unterknoten") "")) "HxTarget" (printf "#storage-msg-%s" .ID) "HxOnAfterRequest" "if(event.detail.successful) setTimeout(function(){ location.reload(); }, 900)")}}
     </div>
   </div>
 
+  <div id="storage-msg-{{.ID}}" data-swap-errors style="font-size:12.5px;margin:4px 0 0 36px"></div>
   <div id="edit-{{.ID}}" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0 8px 36px">
-    <div style="font-size:12px;font-weight:600;margin-bottom:8px">{{.TypeLabel}} bearbeiten</div>
-    <form hx-post="/api/v1/storage/{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()">
+    <div style="font-size:12px;font-weight:600;margin-bottom:8px">{{.TypeLabel}} „{{.Name}}“ bearbeiten</div>
+    <form id="edit-form-{{.ID}}" data-swap-errors hx-post="/storage/{{.ID}}/edit-web" hx-target="#storage-msg-{{.ID}}" hx-on::after-request="if(event.detail.successful) location.reload()">
       <div class="grid2">
-        <input name="name" class="form-input" value="{{.Name}}" required>
-        {{if eq .Type "lagerort"}}
-        <input name="location" class="form-input" value="{{.Location}}" placeholder="Standort">
-        {{else}}
-        <input name="capacity" class="form-input" value="{{.Capacity}}" placeholder="Kapazität">
-        {{end}}
-        <input name="description" class="form-input" value="{{.Description}}" placeholder="Beschreibung" style="grid-column:1/-1">
+        <div class="form-group"><label class="form-label">Name</label><input name="name" class="form-input" value="{{.Name}}" required></div>
+        <div class="form-group"><label class="form-label">Art</label>
+          <select name="type" class="form-input">
+            <option value="lagerort"{{if eq .Type "lagerort"}} selected{{end}}>Lagerort</option>
+            <option value="regal"{{if eq .Type "regal"}} selected{{end}}>Regal</option>
+            <option value="fach"{{if eq .Type "fach"}} selected{{end}}>Fach</option>
+            <option value="platz"{{if eq .Type "platz"}} selected{{end}}>Platz</option>
+          </select></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Liegt in</label>
+          <select name="parent_id" class="form-input" data-current="{{.ParentID}}"><option value="{{.ParentID}}">(aktuelle Lage)</option></select></div>
+        <div class="form-group" data-loc><label class="form-label">Standort</label><input name="location" class="form-input" value="{{.Location}}" placeholder="z. B. Halle B"></div>
+        <div class="form-group" data-cap><label class="form-label">Kapazität</label><input name="capacity" class="form-input" value="{{.Capacity}}" placeholder="optional"></div>
+        <div class="form-group" style="grid-column:1/-1"><label class="form-label">Beschreibung</label><input name="description" class="form-input" value="{{.Description}}"></div>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
-        {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" (printf "showEditNode('%s')" .ID))}}
-        {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit")}}
+      <p style="font-size:11.5px;color:var(--muted);margin:2px 0 0">Reihenfolge: Lagerort → Regal → Fach → Platz (Ebenen dürfen übersprungen werden). Beim Verschieben wandert alles darunter mit, auch der Bestand.</p>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button type="button" class="btn" style="color:var(--red);margin-right:auto" hx-post="/storage/{{.ID}}/delete-web" hx-target="#storage-msg-{{.ID}}"
+          hx-confirm="„{{.Name}}“ löschen{{if .Children}} samt allen Unterknoten{{end}}? Geht nur ohne Bestand."
+          hx-on::after-request="if(event.detail.successful) setTimeout(function(){ location.reload(); }, 900)"><i class="ti ti-trash"></i> Löschen</button>
+        <button type="button" class="btn" onclick="showEditNode('{{.ID}}')"><i class="ti ti-x"></i> Abbrechen</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
       </div>
     </form>
   </div>
@@ -199,7 +211,41 @@
 {{block "scripts" .}}
 <script>
 function showAddChild(id) { const el = document.getElementById('add-child-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
-function showEditNode(id) { const el = document.getElementById('edit-'+id); if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+function showEditNode(id) { const el = document.getElementById('edit-'+id); if(el) { storageEditPrep(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; } }
+// Bearbeiten: „Liegt in“ ohne den Knoten selbst und seine Unterknoten, Art nur passend
+// zu Ziel und Unterknoten (Lagerort → Regal → Fach → Platz); der Server prüft dasselbe.
+function storageEditPrep(id) {
+  var form = document.getElementById('edit-form-' + id), node = document.querySelector('[data-storage-id="' + id + '"]');
+  if (!form || !node || form.dataset.ready) return;
+  form.dataset.ready = '1';
+  var inside = {}; inside[id] = true;
+  node.querySelectorAll('[data-storage-id]').forEach(function (n) { inside[n.dataset.storageId] = true; });
+  var minChild = 9, kids = document.getElementById('storage-children-' + id);
+  if (kids) Array.from(kids.children).forEach(function (c) {
+    var m = c.className.match(/storage-(lagerort|regal|fach|platz)/);
+    if (m) minChild = Math.min(minChild, storageDepth[m[1]]);
+  });
+  var ps = form.elements.parent_id, ts = form.elements.type;
+  ps.innerHTML = document.getElementById('storage-parent-opts').innerHTML;
+  Array.from(ps.options).forEach(function (o) { if (inside[o.value]) { o.disabled = true; o.hidden = true; } });
+  ps.value = ps.dataset.current || '';
+  var sync = function () {
+    var opt = ps.options[ps.selectedIndex], d = opt && opt.value ? +opt.dataset.depth : -1;
+    Array.from(ts.options).forEach(function (o) {
+      var td = storageDepth[o.value];
+      o.disabled = (d < 0 ? o.value !== 'lagerort' : td <= d) || td >= minChild;
+    });
+    firstFree(ts);
+    form.querySelector('[data-loc]').style.display = ts.value === 'lagerort' ? '' : 'none';
+    form.querySelector('[data-cap]').style.display = ts.value === 'lagerort' ? 'none' : '';
+  };
+  ps.addEventListener('change', sync); ts.addEventListener('change', sync); sync();
+}
+// Fehler (400/403/409) als Text ins Meldungsfeld statt still verwerfen
+document.body.addEventListener('htmx:beforeSwap', function (e) {
+  var st = e.detail.xhr.status, t = e.detail.target;
+  if (st >= 400 && st < 500 && t && t.hasAttribute('data-swap-errors')) { e.detail.shouldSwap = true; e.detail.isError = false; }
+});
 function toggleStorageNode(id) { const children = document.getElementById('storage-children-'+id); const icon = document.getElementById('storage-icon-'+id); if(!children) return; const open = children.style.display !== 'none'; children.style.display = open ? 'none' : 'block'; if(icon) icon.style.transform = open ? 'rotate(-90deg)' : ''; }
 function expandStorageTree() { document.querySelectorAll('[id^="storage-children-"]').forEach(el => el.style.display = 'block'); document.querySelectorAll('[id^="storage-icon-"]').forEach(el => el.style.transform = ''); }
 function selectPlace(id, name) { /* reserved for later detail panel */ }

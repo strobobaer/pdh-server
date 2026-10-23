@@ -51,3 +51,20 @@ func TestIconButtonShowLabel(t *testing.T) {
 		t.Errorf("ohne ShowLabel sichtbarer Text: %s", out)
 	}
 }
+
+func TestStorageEditForm(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	tree := []StorageNodeView{{ID: "l1", Name: "Hauptlager", Type: "lagerort", ChildType: "regal", ChildTypeLabel: "Regal",
+		Children: []StorageNodeView{{ID: "f1", Name: "Fach 1", Type: "fach", ParentID: "l1", ChildType: "platz", ChildTypeLabel: "Platz"}}}}
+	out := renderPage(t, tmpl, "storage", StoragePageData{Tree: tree, Targets: storageTargets(tree), CanEdit: true, Stats: map[string]int{}})
+	for _, want := range []string{`hx-post="/storage/f1/edit-web"`, `<option value="fach" selected>Fach</option>`, `name="parent_id" class="form-input" data-current="l1"`,
+		`id="storage-parent-opts"`, "– ganz oben (als Lagerort) –", `hx-post="/storage/f1/delete-web"`, `id="storage-msg-f1" data-swap-errors`,
+		"Löschen</button>", "Speichern</button>", "storageEditPrep", "htmx:beforeSwap", "samt allen Unterknoten"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Lagerseite enthält %q nicht", want)
+		}
+	}
+	if strings.Contains(out, "/records/state/storage/") {
+		t.Error("altes „Zum Löschen vormerken“ noch vorhanden")
+	}
+}

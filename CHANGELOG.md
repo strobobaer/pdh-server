@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.71.0] – 2026-10-23
+
+### Neu
+- Lagerverwaltung: Unter „Bearbeiten“ lässt sich die Art eines Knotens ändern (Lagerort, Regal, Fach, Platz) und der Knoten samt Inhalt an eine andere Stelle im Baum verschieben; PDH erlaubt nur, was zu Lage und Unterknoten passt.
+
+### Geändert
+- Lagerverwaltung: Löschen wirkt sofort – ohne Bestand wird der Knoten mit allen Unterknoten gelöscht, mit alten Buchungen ausgeblendet; liegt noch Bestand dort, nennt PDH die Teile und löscht nichts. Gründe, warum etwas nicht geht, stehen direkt unter der Zeile.
+
 ## [0.70.0] – 2026-10-23
 
 ### Neu

@@ -506,6 +506,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/storage/{id}/children-web", h.StorageAddChild)
 	r.Post("/storage/bulk", h.StorageBulkWeb)
 	r.Post("/storage/{id}/copy", h.StorageCopyWeb)
+	r.Post("/storage/{id}/edit-web", h.StorageEditWeb)     // Name, Art, Lage im Baum (storage_edit.go)
+	r.Post("/storage/{id}/delete-web", h.StorageDeleteWeb) // löschen bzw. ausblenden
 	r.Get("/checklists", h.ChecklistsPage)
 	r.Post("/faults/{id}/chat-web", h.FaultChatWeb)
 	r.Post("/time/start-web", h.TimeStartWeb)
@@ -2606,6 +2608,7 @@ type StorageNodeView struct {
 	CurrentParts   int
 	ChildType      string
 	ChildTypeLabel string
+	ParentID       string // "" = Lagerort ganz oben (Bearbeiten: „Liegt in“)
 	Children       []StorageNodeView
 }
 
@@ -2652,6 +2655,9 @@ func storageNodeView(n *storage.Node) StorageNodeView {
 		Location:     n.Location,
 		Capacity:     n.Capacity,
 		CurrentParts: n.CurrentParts,
+	}
+	if n.ParentID != nil {
+		v.ParentID = *n.ParentID
 	}
 	if childType, ok := storageChildTypes[n.Type]; ok {
 		v.ChildType = string(childType)
