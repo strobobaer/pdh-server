@@ -137,7 +137,7 @@
   async function tick() {
     if (document.hidden) return;
     try {
-      const r = await fetch(url, {credentials: 'same-origin', cache: 'no-store'});
+      const r = await fetch(url, {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
       if (!r.ok) return;
       const d = await r.json();
       for (const [id, p] of Object.entries(d.peers || {})) {

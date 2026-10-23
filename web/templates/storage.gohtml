@@ -24,8 +24,10 @@
 {{if .Err}}<div style="font-size:12px;padding:8px 12px;border-radius:8px;margin-bottom:12px;background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
 
 {{if .CanEdit}}
-<div id="storage-bulk" style="display:none" class="card">
+<div id="storage-bulk" style="display:{{if .BulkOpen}}block{{else}}none{{end}}" class="card">
   <div class="card-title"><i class="ti ti-stack-push"></i> Sammelanlegen</div>
+  {{if .BulkDone}}<div style="font-size:13px;padding:10px 12px;border-radius:8px;margin-bottom:10px;background:rgba(16,185,129,.12);color:var(--green)"><i class="ti ti-circle-check"></i> <b>{{.BulkDone}}</b>{{if .OpenID}} – im Baum unten markiert{{end}}. Weitere anlegen oder mit <b>Fertig</b> schließen.</div>{{end}}
+  {{if .BulkErr}}<div style="font-size:13px;padding:10px 12px;border-radius:8px;margin-bottom:10px;background:rgba(239,68,68,.12);color:var(--red)"><i class="ti ti-alert-circle"></i> Nichts angelegt: {{.BulkErr}}</div>{{end}}
   <p style="font-size:12px;color:var(--muted);margin:-4px 0 10px">Ziel wählen, dann je Ebene einen Bereich „von–bis“. Was es unter dem Ziel schon gibt, wird übernommen – so lassen sich auch Plätze in bestehende Fächer ergänzen.</p>
   <form method="post" action="/storage/bulk" id="storage-bulk-form" onsubmit="return confirm(document.getElementById('sb-total').textContent + ' – jetzt anlegen?')">
     <div class="form-group"><label class="form-label">Ziel (Lagerort, Regal oder Fach)</label>
@@ -43,9 +45,14 @@
       <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><input type="checkbox" name="l2_join" value="1"> Namen der Ebene 1 voranstellen, getrennt durch <input name="l2_sep" class="form-input" value="-" style="width:50px;padding:2px 6px"> <span style="color:var(--muted)">(z. B. A01-03)</span></label>
     </div>
     <div class="br-total" id="sb-total"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px">
-      {{template "icon-button" (dict "Action" "cancel" "ShowLabel" true "OnClick" "document.getElementById('storage-bulk').style.display='none'")}}
-      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Anlegen")}}
+    <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+      {{if .BulkDone}}
+      <button type="submit" class="btn"><i class="ti ti-stack-push"></i> Weitere anlegen</button>
+      <button type="button" class="btn btn-primary" onclick="closeStorageBulk()"><i class="ti ti-check"></i> Fertig</button>
+      {{else}}
+      <button type="button" class="btn" onclick="closeStorageBulk()"><i class="ti ti-x"></i> Abbrechen</button>
+      <button type="submit" class="btn btn-primary"><i class="ti ti-stack-push"></i> Anlegen</button>
+      {{end}}
     </div>
   </form>
 </div>
@@ -211,6 +218,27 @@ function storageBulkSync(f) {
   total.textContent = !n1 ? '' : n2 ? n1 + ' ' + lbl(t1) + ' mit je ' + n2 + ' ' + lbl(t2) + ' = ' + (n1 + n1 * n2) + ' Einträge' : n1 + ' ' + lbl(t1);
 }
 var storageBulkUpd, storageCopyUpd;
+// Sammelanlegen schließen; Ergebnis-Parameter aus der Adresse nehmen (neu laden zeigt die normale Seite)
+function closeStorageBulk() {
+  var box = document.getElementById('storage-bulk');
+  if (box) box.style.display = 'none';
+  if (/[?&]bulk=/.test(location.search)) history.replaceState(null, '', '/storage');
+}
+// nach dem Sammelanlegen: Dialog mit Ziel wieder öffnen, Ziel im Baum aufklappen und markieren
+document.addEventListener('DOMContentLoaded', function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('bulk') !== '1') return;
+  var open = q.get('open') || '';
+  var f = document.getElementById('storage-bulk-form');
+  if (f && open) f.elements.parent_id.value = open;
+  if (f) storageBulkUpd = pdhRangeBind(f, storageBulkSync);
+  var node = open && document.querySelector('[data-storage-id="' + open + '"]');
+  if (node && q.get('bulkdone')) {
+    expandStorageTree();
+    var row = node.querySelector('.storage-row');
+    if (row) { row.style.outline = '2px solid var(--green)'; row.style.background = 'rgba(16,185,129,.12)'; }
+  }
+});
 function openStorageBulk(parent) {
   var box = document.getElementById('storage-bulk'), f = document.getElementById('storage-bulk-form');
   if (!box) return;

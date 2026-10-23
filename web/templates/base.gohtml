@@ -415,12 +415,15 @@ div.rx-panel{background:rgba(var(--accent-rgb),.05);border-bottom:1px solid var(
 .rx-box .btn{font-size:12px}
 .rx-desc{flex-basis:100%;font-size:12px;color:var(--muted);white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .rx-box .grow{flex:1}
-.global-footer{height:34px;background:var(--bg2);border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,420px) minmax(180px,1fr);align-items:center;gap:14px;padding:0 18px;font-size:12px;color:var(--muted);flex-shrink:0}
+.global-footer{height:46px;background:var(--bg2);border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,420px) minmax(180px,1fr);align-items:center;gap:14px;padding:0 18px;font-size:12px;color:var(--muted);flex-shrink:0}
 .footer-status-left,.footer-status-error{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .footer-status-error{justify-content:flex-end}
 .footer-status-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.14);flex-shrink:0}
-.footer-progress{height:8px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);overflow:hidden}
-.footer-progress-fill{height:100%;width:0%;border-radius:inherit;background:var(--green);transition:width .2s ease,background .2s ease}
+/* Statusbalken: Tätigkeit und Fortschritt in % im Balken (setGlobalStatus) */
+.footer-progress{position:relative;height:24px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);overflow:hidden}
+.footer-progress-fill{height:100%;width:0%;border-radius:inherit;background:var(--green);transition:width .25s ease,background .2s ease;opacity:.85}
+.footer-progress-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 10px;font-size:11.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 3px var(--bg2)}
+.footer-progress-label b{font-variant-numeric:tabular-nums}
 .global-footer.busy .footer-status-dot,.global-footer.busy .footer-progress-fill{background:var(--accent)}
 .global-footer.warn .footer-status-dot,.global-footer.warn .footer-progress-fill{background:var(--amber)}
 .global-footer.error .footer-status-dot,.global-footer.error .footer-progress-fill{background:var(--red)}
@@ -663,7 +666,8 @@ tr:hover td{background:var(--fill-hover)}
   .grid2,.rec-compare,.cat-layout,.cat-form,.chat-app,.chat-app.side-open,.hb,.lg-kv,.modes{grid-template-columns:1fr!important}
   .main [style*="grid-template-columns"]:not([style*="auto-fit"]):not([style*="auto-fill"]){grid-template-columns:1fr!important}
   .stats{grid-template-columns:repeat(2,1fr)}
-  .global-footer{grid-template-columns:1fr}
+  .global-footer{grid-template-columns:1fr;height:auto;padding:6px 12px}
+  .global-footer .footer-status-left,.global-footer .footer-status-error{display:none}
   .main table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .rec-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
   /* Seitenkopf mit Aktionsknoepfen: Knoepfe umbrechen statt ueberlaufen */
@@ -1049,8 +1053,9 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     <span class="footer-status-dot" id="footer-status-dot"></span>
     <span id="footer-status-text">Bereit</span>
   </div>
-  <div class="footer-progress" aria-label="Statusfortschritt">
+  <div class="footer-progress" role="progressbar" aria-label="Statusfortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="footer-progress">
     <div class="footer-progress-fill" id="footer-progress-fill"></div>
+    <span class="footer-progress-label" id="footer-progress-label"></span>
   </div>
   <div class="footer-status-error" id="footer-status-error">Keine Fehler</div>
 </footer>
@@ -1585,6 +1590,38 @@ document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('[dat
 
 let globalStatusTimer = null;
 let selectedListItem = null;
+// Statusbalken unten: Tätigkeit und Fortschritt in %. Solange gearbeitet wird
+// (busy), läuft der Balken gleichmäßig auf 90 % zu; echte Werte (Upload/Download)
+// setzt pdhStatusProgress(). Fertig = 100 %, danach leert sich der Balken.
+const pdhStatus = {value: 0, message: '', creep: null, active: 0};
+function pdhStatusRender(state) {
+  const fill = document.getElementById('footer-progress-fill');
+  const label = document.getElementById('footer-progress-label');
+  const bar = document.getElementById('footer-progress');
+  const pct = Math.round(Math.max(0, Math.min(100, pdhStatus.value)));
+  if(fill) fill.style.width = pct + '%';
+  if(bar) bar.setAttribute('aria-valuenow', String(pct));
+  if(label) {
+    label.textContent = '';
+    if(pdhStatus.message && (state !== 'ok' || pct > 0)) {
+      label.appendChild(document.createTextNode(pdhStatus.message));
+      if(state === 'busy' || pct > 0) {
+        const b = document.createElement('b');
+        b.textContent = pct + ' %';
+        label.appendChild(b);
+      }
+    }
+  }
+}
+function pdhStatusStopCreep() {
+  if(pdhStatus.creep) window.clearInterval(pdhStatus.creep);
+  pdhStatus.creep = null;
+}
+// pdhStatusProgress: echter Fortschritt (0–100) einer laufenden Aktion.
+function pdhStatusProgress(pct) {
+  pdhStatus.value = Math.max(pdhStatus.value, Math.min(99, Number(pct) || 0));
+  pdhStatusRender('busy');
+}
 function setGlobalStatus(state, message, progress, errorText) {
   const footer = document.getElementById('global-status-footer');
   if(!footer) return;
@@ -1592,20 +1629,48 @@ function setGlobalStatus(state, message, progress, errorText) {
   footer.className = 'global-footer ' + normalized;
   const text = document.getElementById('footer-status-text');
   const error = document.getElementById('footer-status-error');
-  const fill = document.getElementById('footer-progress-fill');
-  if(text) text.textContent = message || (normalized === 'busy' ? 'Arbeite...' : 'Bereit');
+  pdhStatus.message = message || (normalized === 'busy' ? 'Arbeite …' : 'Bereit');
+  if(text) text.textContent = pdhStatus.message;
   if(error) error.textContent = errorText || (normalized === 'error' ? (message || 'Fehler') : 'Keine Fehler');
-  if(fill) {
-    let width = progress;
-    if(width === undefined || width === null) width = normalized === 'busy' ? 45 : 100;
-    fill.style.width = Math.max(0, Math.min(100, Number(width) || 0)) + '%';
-  }
   if(globalStatusTimer) window.clearTimeout(globalStatusTimer);
+  if(normalized === 'busy') {
+    pdhStatus.value = progress === undefined || progress === null ? Math.max(pdhStatus.value < 100 ? pdhStatus.value : 0, 8) : Number(progress) || 0;
+    if(!pdhStatus.creep) pdhStatus.creep = window.setInterval(() => {
+      if(pdhStatus.value < 90) { pdhStatus.value += Math.max(0.4, (90 - pdhStatus.value) * 0.06); pdhStatusRender('busy'); }
+    }, 200);
+    pdhStatusRender('busy');
+    return;
+  }
+  pdhStatusStopCreep();
+  pdhStatus.value = progress === undefined || progress === null ? 100 : Number(progress) || 0;
+  pdhStatusRender(normalized);
   if(normalized === 'ok') {
     globalStatusTimer = window.setTimeout(() => {
-      if(fill) fill.style.width = '0%';
-    }, 1200);
+      pdhStatus.value = 0;
+      pdhStatusRender('ok');
+    }, 1500);
   }
+}
+// pdhStatusWhat: Beschreibung der auslösenden Aktion (data-status, Beschriftung
+// des Knopfes bzw. Formulars), z. B. „Speichere: Anlegen“.
+function pdhStatusWhat(elt, method) {
+  let what = '';
+  if(elt && elt.closest) {
+    const own = elt.closest('[data-status]');
+    if(own) return own.dataset.status;
+    let src = elt;
+    if(elt.tagName === 'FORM') src = elt.querySelector('[type=submit]') || elt;
+    what = src.getAttribute('aria-label') || src.getAttribute('title') || '';
+    if(!what && elt.tagName === 'FORM') {
+      const head = elt.closest('.card') && elt.closest('.card').querySelector('.card-title');
+      what = head ? head.textContent : '';
+    }
+    if(!what && elt.tagName !== 'FORM' && elt.tagName !== 'DIV' && elt.tagName !== 'BODY') what = elt.textContent || '';
+  }
+  what = what.replace(/\s+/g, ' ').trim();
+  if(what.length > 60) what = what.slice(0, 57) + '…';
+  const verb = (method || 'GET').toUpperCase() === 'GET' ? 'Lade' : 'Speichere';
+  return what ? verb + ': ' + what + ' …' : (verb === 'Lade' ? 'Lade Daten …' : 'Speichere …');
 }
 function showGlobalError(message, detail) {
   setGlobalStatus('error', message || 'Fehler', 100, detail || message || 'Fehler');
@@ -1848,10 +1913,11 @@ document.addEventListener('DOMContentLoaded', () => {
 const pdhNativeFetch = window.fetch ? window.fetch.bind(window) : null;
 if(pdhNativeFetch) {
   window.fetch = async function(input, init) {
-    setGlobalStatus('busy', 'Laedt...', 35, '');
+    if(init && init.pdhQuiet) return pdhNativeFetch(input, init);
+    setGlobalStatus('busy', pdhStatusWhat(document.activeElement, init && init.method));
     try {
       const response = await pdhNativeFetch(input, init);
-      if(response.ok) setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
+      if(response.ok) setGlobalStatus('ok', 'Fertig', 100, 'Keine Fehler');
       else showGlobalError('HTTP ' + response.status, response.statusText || 'Request fehlgeschlagen');
       return response;
     } catch(err) {
@@ -1860,13 +1926,35 @@ if(pdhNativeFetch) {
     }
   };
 }
-document.body.addEventListener('htmx:beforeRequest', () => setGlobalStatus('busy', 'Sende Anfrage...', 35, ''));
+// Hintergrund-Abfragen (hx-trigger „every …“, Nachladen beim Öffnen) zeigen keinen Balken
+function pdhHtmxQuiet(event) {
+  const elt = event.detail && event.detail.elt;
+  const trig = elt && elt.getAttribute ? (elt.getAttribute('hx-trigger') || '') : '';
+  return /every|load|revealed|intersect/.test(trig) && !(event.detail.requestConfig && event.detail.requestConfig.triggeringEvent && event.detail.requestConfig.triggeringEvent.isTrusted);
+}
+document.body.addEventListener('htmx:beforeRequest', (event) => {
+  if(pdhHtmxQuiet(event)) return;
+  const verb = event.detail.requestConfig ? event.detail.requestConfig.verb : 'get';
+  setGlobalStatus('busy', pdhStatusWhat(event.detail.elt, verb));
+});
+document.body.addEventListener('htmx:xhr:progress', (event) => {
+  if(event.detail && event.detail.lengthComputable && event.detail.total > 0) pdhStatusProgress(event.detail.loaded / event.detail.total * 95);
+});
 document.body.addEventListener('htmx:afterRequest', (event) => {
   const xhr = event.detail && event.detail.xhr;
   if(xhr && xhr.status === 423) showGlobalError('Gesperrt', xhr.responseText || 'Datensatz gesperrt');
   else if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
-  else setGlobalStatus('ok', 'Bereit', 100, 'Keine Fehler');
+  else if(!pdhHtmxQuiet(event)) setGlobalStatus('ok', 'Fertig', 100, 'Keine Fehler');
 });
+// normale Formulare und Seitenwechsel: Balken läuft, bis die neue Seite da ist
+document.addEventListener('submit', (event) => {
+  window.setTimeout(() => {
+    const f = event.target;
+    if(event.defaultPrevented || !f || f.target === '_blank' || f.hasAttribute('hx-post') || f.hasAttribute('hx-get')) return;
+    setGlobalStatus('busy', pdhStatusWhat(event.submitter || f, f.method));
+  }, 0);
+});
+window.addEventListener('pageshow', (event) => { if(event.persisted) setGlobalStatus('ok', 'Bereit', 0, 'Keine Fehler'); });
 document.body.addEventListener('htmx:responseError', (event) => {
   const xhr = event.detail && event.detail.xhr;
   showGlobalError('HTMX-Fehler', xhr ? ('HTTP ' + xhr.status + ' ' + xhr.statusText) : 'Antwortfehler');
@@ -2774,7 +2862,7 @@ window.pdhPush = (function(){
   async function check(){
     if(location.pathname.startsWith('/push/alert/')) return; // dort ist der Alarm schon bildschirmfuellend
     try{
-      const r = await fetch('/push/alerts/open', {credentials: 'same-origin', cache: 'no-store'});
+      const r = await fetch('/push/alerts/open', {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
       if(!r.ok) return;
       const list = ((await r.json()).alerts || []).filter(a => !(snoozed[a.id] > Date.now()));
       if(!list.length) hide();

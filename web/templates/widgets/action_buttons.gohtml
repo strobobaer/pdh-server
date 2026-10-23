@@ -37,7 +37,7 @@ die Symbol-Tabelle: {{icon "action.<Aktion>"}} – änderbar unter /admin/icons.
 {{- if eq $action "save" -}}{{- if not $label -}}{{- $label = "Speichern" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
 {{- if eq $action "back" -}}{{- if not $label -}}{{- $label = "Zurück" -}}{{- end -}}{{- end -}}
 {{- if eq $action "send" -}}{{- if not $label -}}{{- $label = "Senden" -}}{{- end -}}{{- $variant = "btn btn-primary" -}}{{- end -}}
-{{- $showInlineLabel := eq $action "filter" -}}
+{{- $showInlineLabel := or (eq $action "filter") .ShowLabel -}}
 {{- if .Href }}
 <a href="{{.Href}}" {{if .ID}}id="{{.ID}}"{{end}} class="{{$variant}} btn-icon {{if $showInlineLabel}}btn-icon-labeled{{end}} {{.Class}}" style="{{css .Style}}" aria-label="{{$label}}" title="{{$label}}"
    {{if .OnClick}}onclick="{{safeJS .OnClick}}"{{else if .Confirm}}onclick="return confirm('{{.Confirm}}')"{{end}}

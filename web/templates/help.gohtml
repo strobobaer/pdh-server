@@ -149,6 +149,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Der Pfeil <i class="ti ti-arrow-left"></i> oben links bringt dich immer dorthin zurück, woher du gekommen bist. Fährst du mit der Maus darüber, siehst du das Ziel.</div>
   <div class="hb-howto"><b><i class="ti ti-app-window"></i> Verknüpfungen öffnen, ohne die Seite zu verlassen</b>
     Klickst du z. B. in einem Ticket auf die Anlage, öffnet sie sich rechts im <b>PDH-Viewer</b>. Mit <kbd>Esc</kbd> schließt du ihn wieder. <kbd>Strg</kbd>+Klick öffnet stattdessen einen neuen Tab.</div>
+  <div class="hb-howto" id="hb-statusbar"><b><i class="ti ti-progress"></i> Die Statusleiste unten</b>
+    Ganz unten siehst du, was PDH gerade macht – im Balken steht die Tätigkeit und der Fortschritt in Prozent, z. B. „Speichere: Anlegen … 62 %“. Bei Uploads und Downloads ist es der echte Fortschritt, sonst läuft der Balken gleichmäßig bis 90 % und springt bei Abschluss auf <b>Fertig 100 %</b>. Blau = arbeitet, grün = fertig, gelb = Hinweis, rot = Fehler (rechts steht, was schiefging). Hintergrund-Aktualisierungen, z. B. von Widgets, zeigt die Leiste nicht an.</div>
   {{template "hb-shots" (dict "Ref" (index $s "start") "Can" $can)}}
 </section>
 
@@ -831,6 +833,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Ebene 1</b>: Art wählen (z. B. Fächer), dazu <b>Präfix</b>, <b>von</b> und <b>bis</b>. Beispiel: Präfix „A“, von „01“, bis „12“ ergibt A01 bis A12. Buchstaben gehen auch: von „A“ bis „F“.</li>
       <li><b>Ebene 2</b> (optional): z. B. Plätze von 1 bis 10 – sie entstehen in <b>jedem</b> Eintrag der Ebene 1. Mit „Namen der Ebene 1 voranstellen“ heißen die Plätze z. B. A01-1, A01-2 …</li>
       <li>Unter den Feldern siehst du, was entsteht und wie viele es sind. <b>Anlegen</b> und bestätigen.</li>
+      <li>Der Dialog bleibt offen und zeigt das Ergebnis, z. B. „Sammelanlegen: 18 angelegt“; das Ziel ist im Baum grün markiert und aufgeklappt. <b>Weitere anlegen</b> für die nächste Reihe – oder <b>Fertig</b>.</li>
     </ol>
     Was es unter dem Ziel schon gibt, wird nicht doppelt angelegt, sondern übernommen. So ergänzt du z. B. nachträglich Plätze in bestehenden Fächern: Ziel = Regal, Ebene 1 = die vorhandenen Fächer, Ebene 2 = die neuen Plätze. Höchstens 500 je Reihe und 2000 auf einmal.</div>
   <div class="hb-howto"><b><i class="ti ti-copy"></i> So kopierst du ein Regal oder Fach</b>

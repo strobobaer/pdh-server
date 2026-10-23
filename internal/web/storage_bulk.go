@@ -97,8 +97,9 @@ func (h *Handler) StorageBulkWeb(w http.ResponseWriter, r *http.Request) {
 	if err == nil && len(n1)*max(1, len(n2)) > 2000 {
 		err = fmt.Errorf("zu viele auf einmal (%d) – höchstens 2000", len(n1)*max(1, len(n2)))
 	}
+	parent := r.FormValue("parent_id")
 	if err != nil {
-		storageBack(w, r, "", err)
+		storageBulkBack(w, r, parent, "", err)
 		return
 	}
 	res, err := h.storage.BulkCreate(r.Context(), r.FormValue("parent_id"),
@@ -108,7 +109,27 @@ func (h *Handler) StorageBulkWeb(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		h.addHistory(r.Context(), "storage", r.FormValue("parent_id"), "update", "", "", "", bulkMsg("Sammelanlegen", res), getUser(r).ID)
 	}
-	storageBack(w, r, bulkMsg("Sammelanlegen", res), err)
+	storageBulkBack(w, r, parent, bulkMsg("Sammelanlegen", res), err)
+}
+
+// storageBulkBack: zurück zur Lagerverwaltung mit offenem Dialog „Sammelanlegen“ –
+// Ergebnis bzw. Fehler stehen im Dialog („Weitere anlegen“ oder „Fertig“), der
+// Zielknoten wird im Baum angesprungen und hervorgehoben.
+func storageBulkBack(w http.ResponseWriter, r *http.Request, parent, msg string, err error) {
+	q := url.Values{"bulk": {"1"}}
+	if parent != "" {
+		q.Set("open", parent)
+	}
+	if err != nil {
+		q.Set("bulkerr", err.Error())
+	} else {
+		q.Set("bulkdone", msg)
+	}
+	frag := ""
+	if parent != "" {
+		frag = "#storage-bulk"
+	}
+	http.Redirect(w, r, "/storage?"+q.Encode()+frag, http.StatusSeeOther)
 }
 
 // StorageCopyWeb: POST /storage/{id}/copy

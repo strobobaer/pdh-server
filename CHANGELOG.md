@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.70.0] – 2026-10-23
+
+### Neu
+- Die Statusleiste unten ist höher und zeigt im Balken, was PDH gerade macht und wie weit es ist (z. B. „Speichere: Anlegen … 62 %“), bei Uploads mit echtem Fortschritt; Hintergrund-Aktualisierungen lassen den Balken in Ruhe.
+
+### Geändert
+- Lager → Sammelanlegen: Der Dialog hat beschriftete Knöpfe „Abbrechen“ und „Anlegen“, bleibt nach dem Anlegen offen und zeigt das Ergebnis mit „Weitere anlegen“ und „Fertig“; das Ziel wird im Baum aufgeklappt und markiert.
+- Knöpfe, die mit Beschriftung gedacht sind (z. B. Speichern, Abbrechen, Anlegen in Dialogen), zeigen jetzt neben dem Symbol auch ihren Text.
+
+### Behoben
+- Lager → Sammelanlegen: Der Knopf zum Anlegen war nur ein unbeschriftetes Symbol und leicht zu übersehen; Fehler erscheinen jetzt direkt im Dialog („Nichts angelegt: …“).
+
 ## [0.69.0] – 2026-10-23
 
 ### Neu

@@ -2614,6 +2614,10 @@ type StoragePageData struct {
 	Tree         []StorageNodeView
 	Stats        map[string]int
 	Targets      []storageTarget // Ziel-Auswahl für Sammelanlegen/Kopieren (storage_bulk.go)
+	// Sammelanlegen: Dialog nach dem Absenden offen lassen (Ergebnis, „Fertig“), Ziel hervorheben
+	BulkOpen          bool
+	BulkDone, BulkErr string
+	OpenID            string
 	CanEdit      bool
 	Message, Err string
 }
@@ -2665,6 +2669,8 @@ func (h *Handler) StoragePage(w http.ResponseWriter, r *http.Request) {
 		Stats:    map[string]int{},
 		CanEdit:  h.canEditStorage(r),
 		Message:  r.URL.Query().Get("msg"), Err: r.URL.Query().Get("err"),
+		BulkOpen: r.URL.Query().Get("bulk") == "1", BulkDone: r.URL.Query().Get("bulkdone"), BulkErr: r.URL.Query().Get("bulkerr"),
+		OpenID: r.URL.Query().Get("open"),
 	}
 	if tree, err := h.storage.GetTree(r.Context()); err == nil {
 		for _, n := range tree {

@@ -83,7 +83,7 @@ a.btn{min-height:60px;font-size:18px;background:rgba(255,255,255,.14);color:var(
     const poll = setInterval(async () => {
       if(closed){ clearInterval(poll); return; }
       try{
-        const r = await fetch('/push/alert/' + ID + '/state', {credentials: 'same-origin', cache: 'no-store'});
+        const r = await fetch('/push/alert/' + ID + '/state', {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
         const j = await r.json();
         if(j.closed) done(j.accepted_by ? 'Angenommen von ' + j.accepted_by + (j.accepted_at ? ' um ' + j.accepted_at : '') : (j.reason || 'Nicht mehr offen'));
       }catch(e){}
