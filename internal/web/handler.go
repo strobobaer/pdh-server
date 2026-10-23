@@ -455,6 +455,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/vpn/peers", h.VPNCreateWeb)
 	r.Get("/vpn/peers/{id}/config", h.VPNConfigWeb)
 	r.Post("/vpn/peers/{id}/revoke", h.VPNRevokeWeb)
+	r.Post("/vpn/peers/{id}/toggle", h.VPNToggleWeb) // aktivieren/deaktivieren (vpn_status.go)
+	r.Get("/vpn/status", h.VPNStatusWeb)
 	r.Get("/plant-watch/{id}/cards", h.PlantWatchCardsWeb)
 	r.Post("/plant-watch", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
@@ -559,6 +561,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/peers/{id}/config", h.VPNConfigWeb)
 	r.Post("/admin/server-config/vpn/peers/{id}/revoke", h.VPNRevokeWeb)
 	r.Post("/admin/server-config/vpn/peers/{id}/delete", h.VPNDeleteWeb)
+	r.Post("/admin/server-config/vpn/peers/{id}/toggle", h.VPNToggleWeb)
+	r.Get("/admin/server-config/vpn/status", h.VPNStatusWeb)
 	r.Post("/admin/server-config/vpn/peers/{id}/import", h.VPNReimportWeb) // Tunnel: neue Konfiguration (vpn_import.go)
 	r.Post("/admin/server-config/vpn/import-check", h.VPNImportCheckWeb)
 	r.Post("/admin/server-config/vpn/bulk", h.VPNBulkWeb) // Konfigurationen für mehrere Benutzer

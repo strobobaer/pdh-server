@@ -13,7 +13,7 @@ import (
 
 // WireGuard auf dem Host (systemd-Dienst pdh-wireguard): Server-Einstellungen →
 // VPN → Installationsskript. Das Skript installiert wireguard-tools, legt den
-// Dienst (scripts/pdh-wireguard.sh, eingebettet als pdh.WireGuardDaemon) und den
+// Dienst (scripts/pdh-wireguard-daemon.sh, eingebettet als pdh.WireGuardDaemon) und den
 // Austauschordner an, öffnet den UDP-Port in ufw/firewalld und startet den Dienst.
 // Bei Docker ist der Ordner in die App eingebunden (compose.yaml:
 // PDH_WIREGUARD_HOST_DIR → /app/wireguard), sonst ist es config/wireguard des PDH.
@@ -73,6 +73,9 @@ const vpnScriptLinux = `#!/usr/bin/env bash
 # Ausführen auf dem Server, auf dem das PDH läuft (auch bei Docker – auf dem Host):
 #   sudo bash pdh-wireguard.sh
 # Nach einem PDH-Update oder einer Änderung des Ports erneut ausführen.
+
+# mit „sh“ aufgerufen: mit bash neu starten (dash kennt Arrays und (( )) nicht)
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -Eeuo pipefail
 
 DIR='{{DIR}}'

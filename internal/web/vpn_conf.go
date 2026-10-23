@@ -17,7 +17,7 @@ import (
 
 // WireGuard-Konfigurationen für das VPN ins Maschinennetz (vpn.go) – ohne
 // Datenbank, damit testbar. Der systemd-Dienst pdh-wireguard auf dem Host
-// (scripts/pdh-wireguard.sh) liest die Dateien aus dem gemeinsamen Ordner und
+// (scripts/pdh-wireguard-daemon.sh) liest die Dateien aus dem gemeinsamen Ordner und
 // wendet sie an:
 //
 //	pdhhub.conf    Hub: Geräte (user) und Standort-Gateways wählen sich ein
@@ -55,12 +55,18 @@ type vpnPeer struct {
 	Endpoint, RemotePublicKey        string
 	CreatedAt                        time.Time
 	Revoked                          bool
+	Disabled                         bool   // vorübergehend deaktiviert (getrennt, Konfiguration bleibt gültig)
 	Iface                            string // outbound: Schnittstelle (pdhout1 …)
 	Status                           vpnPeerStatus
+	ConnState, ConnLabel             string // Anzeige (vpn_status.go)
 	privateKey, psk                  string
 }
 
 func (p vpnPeer) RouteList() []string { return splitRoutes(p.Routes) }
+
+// Active: nicht gesperrt und nicht deaktiviert – nur solche Einträge kommen in
+// die Konfiguration des Dienstes.
+func (p vpnPeer) Active() bool { return !p.Revoked && !p.Disabled }
 
 type vpnPeerStatus struct {
 	Known            bool
@@ -228,11 +234,13 @@ func vpnEndpoint(s string) (string, error) {
 
 // ── Konfigurationen ─────────────────────────────────────────
 
-// vpnReachable: Netze, die eingewählte Geräte erreichen (Gateways und ausgehende Tunnel).
-func vpnReachable(peers []vpnPeer) []string {
+// vpnReachable: Netze, die eingewählte Geräte erreichen (Gateways und ausgehende
+// Tunnel). Für die Konfiguration der Geräte zählen auch deaktivierte Einträge mit
+// (activeOnly=false) – so bleibt sie nach dem Wieder-Aktivieren gültig.
+func vpnReachable(peers []vpnPeer, activeOnly bool) []string {
 	var out []string
 	for _, p := range peers {
-		if p.Revoked {
+		if p.Revoked || (activeOnly && p.Disabled) {
 			continue
 		}
 		switch p.Kind {
@@ -259,7 +267,7 @@ func vpnHubConf(s vpnSettings, peers []vpnPeer) (string, error) {
 	b.WriteString("# PDH – automatisch erzeugt, nicht von Hand ändern\n[Interface]\n")
 	fmt.Fprintf(&b, "PrivateKey = %s\nAddress = %s/%d\nListenPort = %d\n", s.serverPrivateKey, vpnServerAddress(sub), sub.Bits(), s.Port)
 	for _, p := range peers {
-		if p.Revoked || p.Kind == "outbound" {
+		if !p.Active() || p.Kind == "outbound" {
 			continue
 		}
 		allowed := append([]string{p.Address}, p.RouteList()...)
@@ -279,7 +287,7 @@ func vpnHubConf(s vpnSettings, peers []vpnPeer) (string, error) {
 func vpnHubRoutes(peers []vpnPeer) string {
 	var r []string
 	for _, p := range peers {
-		if !p.Revoked && p.Kind == "gateway" {
+		if p.Active() && p.Kind == "gateway" {
 			r = append(r, p.RouteList()...)
 		}
 	}
@@ -289,10 +297,10 @@ func vpnHubRoutes(peers []vpnPeer) string {
 
 // vpnForwardRules: forward.allow – Geräte dürfen in Gateway- und Tunnelnetze, nicht zueinander.
 func vpnForwardRules(peers []vpnPeer) string {
-	dst := vpnReachable(peers)
+	dst := vpnReachable(peers, true)
 	var b strings.Builder
 	for _, p := range peers {
-		if p.Revoked || p.Kind != "user" {
+		if !p.Active() || p.Kind != "user" {
 			continue
 		}
 		for _, d := range dst {
@@ -315,7 +323,7 @@ func vpnClientConf(s vpnSettings, p vpnPeer, peers []vpnPeer) (string, error) {
 		if s.DNS != "" {
 			fmt.Fprintf(&b, "DNS = %s\n", s.DNS)
 		}
-		allowed = append([]string{vpnServerAddress(sub).String() + "/32"}, vpnReachable(peers)...)
+		allowed = append([]string{vpnServerAddress(sub).String() + "/32"}, vpnReachable(peers, false)...)
 	}
 	fmt.Fprintf(&b, "\n[Peer]\nPublicKey = %s\n", s.ServerPublicKey)
 	if p.psk != "" {

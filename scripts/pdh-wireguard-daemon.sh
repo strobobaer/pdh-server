@@ -12,6 +12,19 @@
 # Zurück: status (ohne Schlüssel), heartbeat (Unix-Zeit), error (letzter Fehler).
 # Firewall: eigene Ketten PDH-FWD/PDH-NAT, nur für pdh*-Schnittstellen – Docker
 # und das übrige Netz des Hosts bleiben unberührt.
+#
+# Nicht von Hand starten – das Installationsskript (pdh-wireguard.sh aus PDH)
+# legt diese Datei als /usr/local/bin/pdh-wireguard an und startet sie über systemd.
+
+# mit „sh“ aufgerufen: mit bash neu starten (dash kennt <<< und Arrays nicht)
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+if [ -t 1 ] && [ -z "${INVOCATION_ID:-}" ] && [ "${1:-}" != "--foreground" ]; then
+	echo "Das ist der Dienst pdh-wireguard, nicht das Installationsskript."
+	echo "Installationsskript: PDH → Server-Einstellungen → VPN → „Installationsskript für Linux“,"
+	echo "dann auf dem Server: sudo bash pdh-wireguard.sh"
+	echo "(Zum Testen im Vordergrund: sudo $0 --foreground)"
+	exit 1
+fi
 set -uo pipefail
 
 DIR="${PDH_WIREGUARD_DIR:-/srv/pdh-wireguard}"

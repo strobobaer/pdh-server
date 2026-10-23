@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-23T04:19:29.435Z",
+  "generatedAt": "2026-10-23T10:05:18.802Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1491,6 +1491,17 @@
       "sqlHash": "7f6bc7f9544e48e6738a721ec57a4766dc237c250af8d17a3230921ce0667a34",
       "title": "137_vpn_admin.up.sql",
       "updatedAt": "2026-10-23T04:19:28.781Z"
+    },
+    {
+      "createdAt": "2026-10-23T10:05:18.159Z",
+      "path": "migrations/138_vpn_disable.up.sql",
+      "catalogContext": null,
+      "searchText": "138_vpn_disable.up.sql migrations/138_vpn_disable.up.sql -- 138_vpn_disable.up.sql\n-- vpn: verbindungen (geräte, standort-gateways, tunnel) vorübergehend deaktivieren,\n-- ohne sie zu sperren. deaktiviert = nicht in der konfiguration des dienstes\n-- pdh-wireguard (verbindung getrennt); schlüssel, adresse und die verteilte\n-- konfiguration bleiben gültig, aktivieren verbindet wieder (internal/web/vpn.go).\nalter table vpn_peers add column if not exists disabled_at timestamptz;\nalter table vpn_peers add column if not exists disabled_by uuid references users(id) on delete set null;\n",
+      "searchUpdatedAt": "2026-10-23T10:05:18.267Z",
+      "schemaContext": null,
+      "sqlHash": "5f8d211a09a646fa31fc566deeb9a90d7a94ed083a67dee1f34d9f0567eb92ef",
+      "title": "138_vpn_disable.up.sql",
+      "updatedAt": "2026-10-23T10:05:18.159Z"
     }
   ]
 }

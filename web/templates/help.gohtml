@@ -1613,7 +1613,22 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Einwahl-Server:</b> Deine Geräte und die <b>Standort-Gateways</b> (Router im Maschinennetz, z. B. Teltonika, mGuard, eWON) wählen sich bei PDH ein. PDH verbindet beide – am Router muss kein Port offen sein.</li>
     <li><b>Client:</b> Ist im Maschinennetz schon ein WireGuard-Server, verbindet sich PDH als <b>ausgehender Tunnel</b> dorthin. Eingewählte Geräte erreichen die Netze dahinter ebenfalls.</li>
   </ul>
-  <p>Eingewählte Geräte erreichen nur die Netze der Gateways und Tunnel, nicht einander. Oben rechts siehst du, ob das VPN läuft; der grüne Punkt an einem Gerät heißt „gerade verbunden“.</p>
+  <p>Eingewählte Geräte erreichen nur die Netze der Gateways und Tunnel, nicht einander. Oben rechts siehst du, ob das VPN läuft.</p>
+  <div class="hb-howto" id="hb-vpn-status"><b><i class="ti ti-activity"></i> Steht die Verbindung?</b>
+    Jedes Gerät, jedes Gateway und jeder Tunnel zeigt seinen Zustand – die Anzeige aktualisiert sich alle 10 Sekunden von selbst:
+    <ul>
+      <li><b style="color:var(--green)">verbunden</b> – in den letzten 3 Minuten Kontakt, dazu Absender-Adresse und Datenmenge.</li>
+      <li><b style="color:var(--amber)">getrennt – letzter Kontakt vor …</b> – war verbunden, meldet sich aber nicht mehr (Gerät aus, Tunnel in der App beendet, Router nicht erreichbar).</li>
+      <li><b style="color:var(--amber)">keine Antwort vom Server</b> – ein Tunnel zum Maschinennetz kommt nicht zustande: Endpunkt, Schlüssel und Freigabe am entfernten Server prüfen.</li>
+      <li><b>noch nie verbunden</b> · <b>deaktiviert</b> · <b style="color:var(--red)">gesperrt</b>.</li>
+    </ul>
+    Oben steht die Zusammenfassung, z. B. „Tunnel 1/1 verbunden · Geräte 3/12 verbunden“. WireGuard meldet einen Abbruch nicht sofort: Erst nach etwa 3 Minuten ohne Kontakt gilt eine Verbindung als getrennt.</div>
+  <div class="hb-howto" id="hb-vpn-toggle"><b><i class="ti ti-player-pause"></i> So aktivierst bzw. deaktivierst du eine Verbindung</b>
+    <ol class="hb-steps">
+      <li>Am Gerät, Gateway oder Tunnel auf <b>Deaktivieren</b> tippen – die Verbindung wird sofort getrennt, der Eintrag ist grau.</li>
+      <li>Zum Wiederherstellen <b>Aktivieren</b> – nach wenigen Sekunden steht die Verbindung wieder.</li>
+    </ol>
+    Anders als <b>Sperren</b> bleiben Schlüssel und Konfiguration gültig; auf den Geräten und am Router muss nichts geändert werden. Eigene Geräte kann jede/r selbst (de)aktivieren, alles andere die Administration unter <b>Server-Einstellungen → VPN</b>. Jede Änderung steht im Protokoll.</div>
   <div class="hb-howto"><b><i class="ti ti-device-laptop"></i> So richtest du dein Gerät ein</b>
     <ol class="hb-steps">
       <li><b>VPN Maschinennetz</b> öffnen → unter <b>Meine Geräte</b> einen Namen eintragen, z. B. „Laptop Service“ → <b>Zugang anlegen</b>.</li>

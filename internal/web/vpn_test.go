@@ -166,13 +166,19 @@ func TestVPNParseStatus(t *testing.T) {
 
 func vpnTestView(admin bool) vpnView {
 	s, peers := vpnTestSetup()
+	status := map[string]vpnPeerStatus{
+		"U1PUB":  {Known: true, Online: true, Handshake: "vor 1 Min.", Received: "1 KB", Sent: "2 KB", RemoteEndpoint: "203.0.113.5:4321"},
+		"REMOTE": {Known: true, Handshake: "vor 10 Min.", Received: "5 MB", Sent: "1 MB"},
+	}
+	for i := range peers {
+		peers[i] = vpnWithStatus(peers[i], status, true)
+	}
 	base, back := "/vpn", "/vpn?"
 	if admin {
 		base, back = vpnAdminURL+"/vpn", vpnAdminURL+"?tab=vpn&"
 	}
 	v := vpnView{Settings: s, Service: vpnService{State: "ok", Label: "läuft"}, Admin: admin, Base: base, Back: back,
-		Mine: []vpnPeer{peers[0]}, Reachable: vpnReachable(peers), Host: vpnHostView{Dir: "/srv/pdh-wireguard", UID: 10001, GID: 10001, Docker: true}}
-	v.Mine[0].Status = vpnPeerStatus{Online: true, Handshake: "vor 1 Min.", Received: "1 KB", Sent: "2 KB"}
+		Mine: []vpnPeer{peers[0]}, Reachable: vpnReachable(peers, false), Host: vpnHostView{Dir: "/srv/pdh-wireguard", UID: 10001, GID: 10001, Docker: true}}
 	if admin {
 		v.Users, v.Gateways, v.Outbound = peers[:2], []vpnPeer{peers[2]}, []vpnPeer{peers[3]}
 		v.Events = []vpnEvent{{At: "23.10.2026 10:00", User: "Max", Peer: "Laptop", Note: "Konfiguration heruntergeladen"}}
@@ -308,5 +314,87 @@ func TestVPNAdminImportAndBulkRender(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Reiter VPN enthält %q nicht", want)
 		}
+	}
+}
+
+func TestVPNConnState(t *testing.T) {
+	cases := []struct {
+		p       vpnPeer
+		ok      bool
+		state   string
+		contain string
+	}{
+		{vpnPeer{Revoked: true}, true, "revoked", "gesperrt"},
+		{vpnPeer{Disabled: true}, true, "off", "deaktiviert"},
+		{vpnPeer{}, false, "unknown", "Dienst"},
+		{vpnPeer{Status: vpnPeerStatus{Online: true, Handshake: "vor 1 Min."}}, true, "on", "verbunden"},
+		{vpnPeer{Status: vpnPeerStatus{Handshake: "vor 9 Min."}}, true, "lost", "letzter Kontakt vor 9 Min."},
+		{vpnPeer{Kind: "outbound"}, true, "wait", "keine Antwort"},
+		{vpnPeer{Kind: "user"}, true, "never", "noch nie"},
+	}
+	for _, c := range cases {
+		st, label := vpnConn(c.p, c.ok)
+		if st != c.state || !strings.Contains(label, c.contain) {
+			t.Errorf("%+v: %s %q", c.p, st, label)
+		}
+	}
+	_, peers := vpnTestSetup()
+	peers[2].Disabled = true // Gateway deaktiviert
+	for i := range peers {
+		peers[i] = vpnWithStatus(peers[i], map[string]vpnPeerStatus{"U1PUB": {Online: true, Handshake: "jetzt"}, "REMOTE": {Online: true, Handshake: "jetzt"}}, true)
+	}
+	if sum := vpnSummarize(peers); sum != (vpnSummary{Tunnels: 1, TunnelsOn: 1, Gateways: 0, GatewaysOn: 0, Devices: 1, DevicesOn: 1}) {
+		t.Errorf("Zusammenfassung: %+v", sum)
+	}
+}
+
+func TestVPNDisabledLeavesConfig(t *testing.T) {
+	s, peers := vpnTestSetup()
+	peers[2].Disabled = true // Gateway
+	peers[0].Disabled = true // Gerät
+	hub, _ := vpnHubConf(s, peers)
+	if strings.Contains(hub, "G1PUB") || strings.Contains(hub, "U1PUB") {
+		t.Errorf("deaktivierte Einträge im Hub:\n%s", hub)
+	}
+	if got := vpnForwardRules(peers); got != "" {
+		t.Errorf("Weiterleitung für deaktiviertes Gerät: %q", got)
+	}
+	peers[0].Disabled = false
+	if got := vpnForwardRules(peers); strings.Contains(got, "192.168.10.0/24") || !strings.Contains(got, "192.168.20.0/24") {
+		t.Errorf("deaktiviertes Gateway noch erreichbar: %q", got)
+	}
+	// Gerätekonfiguration behält die Netze des deaktivierten Gateways (gilt nach dem Aktivieren weiter)
+	if conf, _ := vpnClientConf(s, peers[0], peers); !strings.Contains(conf, "192.168.10.0/24") {
+		t.Errorf("Gerätekonfiguration ohne Gateway-Netz:\n%s", conf)
+	}
+}
+
+func TestVPNToggleAndLiveRender(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	v := vpnTestView(true)
+	v.Gateways[0].Disabled = true
+	v.Gateways[0] = vpnWithStatus(v.Gateways[0], nil, true)
+	v.Summary = vpnSummarize(append(append(append([]vpnPeer{}, v.Users...), v.Gateways...), v.Outbound...))
+	c, _ := tmpl.Clone()
+	var b strings.Builder
+	if err := bindLang(c, "de").ExecuteTemplate(&b, "vpn-admin", v); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{`action="/admin/server-config/vpn/peers/g1/toggle"`, "Aktivieren", "Deaktivieren", `class="vp-conn off" data-vpn-conn="g1">deaktiviert`,
+		`class="vp-conn on" data-vpn-conn="u1">verbunden`, `data-vpn-conn="o1">getrennt – letzter Kontakt vor 10 Min.`, "von 203.0.113.5:4321",
+		`data-vpn-sum="Tunnels">0/1`, `data-vpn-sum="Devices">1/1`, "data-vpn-service", "setInterval(tick, 10000)", `"/admin/server-config/vpn" + '/status'`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Reiter VPN enthält %q nicht", want)
+		}
+	}
+	page := renderPage(t, tmpl, "vpn", VPNPageData{VPN: vpnTestView(false)})
+	for _, want := range []string{`action="/vpn/peers/u1/toggle"`, `"/vpn" + '/status'`, `data-vpn-sum="Devices"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Seite enthält %q nicht", want)
+		}
+	}
+	if strings.Contains(page, `data-vpn-sum="Tunnels"`) {
+		t.Error("Benutzer sieht Tunnel-Zusammenfassung")
 	}
 }

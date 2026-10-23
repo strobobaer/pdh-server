@@ -106,7 +106,7 @@ func (h *Handler) vpnLoadSettings(ctx context.Context) (vpnSettings, error) {
 func (h *Handler) vpnLoadPeers(ctx context.Context, keys bool) ([]vpnPeer, error) {
 	rows, err := h.db.Query(ctx, `SELECT p.id::text, p.kind, p.name, COALESCE(p.user_id::text, ''),
 			COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), ''), p.address, p.public_key, p.private_key_enc, p.psk_enc,
-			p.routes, p.endpoint, p.remote_public_key, p.created_at, p.revoked_at IS NOT NULL
+			p.routes, p.endpoint, p.remote_public_key, p.created_at, p.revoked_at IS NOT NULL, p.disabled_at IS NOT NULL
 		FROM vpn_peers p LEFT JOIN users u ON u.id = p.user_id
 		ORDER BY p.revoked_at IS NOT NULL, p.kind, p.created_at`)
 	if err != nil {
@@ -119,7 +119,7 @@ func (h *Handler) vpnLoadPeers(ctx context.Context, keys bool) ([]vpnPeer, error
 		var p vpnPeer
 		var privEnc, pskEnc string
 		if err := rows.Scan(&p.ID, &p.Kind, &p.Name, &p.UserID, &p.UserName, &p.Address, &p.PublicKey, &privEnc, &pskEnc,
-			&p.Routes, &p.Endpoint, &p.RemotePublicKey, &p.CreatedAt, &p.Revoked); err != nil {
+			&p.Routes, &p.Endpoint, &p.RemotePublicKey, &p.CreatedAt, &p.Revoked, &p.Disabled); err != nil {
 			return nil, err
 		}
 		if p.Kind == "outbound" && !p.Revoked {
@@ -162,7 +162,7 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 	if s.Enabled {
 		files["forward.allow"] = vpnForwardRules(peers)
 		for _, p := range peers {
-			if p.Iface != "" {
+			if p.Iface != "" && p.Active() { // Schnittstellenname bleibt auch beim Deaktivieren reserviert
 				files[p.Iface+".conf"] = vpnOutboundConf(p)
 			}
 		}
@@ -198,7 +198,9 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 
 // vpnService: Zustand des Dienstes aus heartbeat/error/status.
 type vpnService struct {
-	State, Label, Error string // State: ok | off | down
+	State string `json:"state"` // ok | off | down
+	Label string `json:"label"`
+	Error string `json:"error"`
 }
 
 func vpnReadService(enabled bool, now time.Time) (vpnService, map[string]vpnPeerStatus) {
@@ -252,6 +254,7 @@ type vpnView struct {
 	Back      string // Rücksprung mit ?show=
 	Host      vpnHostView
 	ZipIDs    string // frisch angelegte Zugänge (Sammelanlage) zum Herunterladen als ZIP
+	Summary   vpnSummary
 	Error     string
 }
 
@@ -281,13 +284,13 @@ func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show 
 	if err != nil {
 		componentLog("vpn").Warn().Err(err).Msg("zugaenge laden")
 	}
-	v.Reachable = vpnReachable(peers)
+	v.Reachable = vpnReachable(peers, false)
+	var shown []vpnPeer
 	for _, p := range peers {
-		key := p.PublicKey
-		if p.Kind == "outbound" {
-			key = p.RemotePublicKey
+		p = vpnWithStatus(p, status, svc.State == "ok")
+		if admin || (p.Kind == "user" && p.UserID == uid) {
+			shown = append(shown, p)
 		}
-		p.Status = status[key]
 		if p.Kind == "user" && p.UserID == uid {
 			v.Mine = append(v.Mine, p)
 		}
@@ -303,6 +306,7 @@ func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show 
 			v.Outbound = append(v.Outbound, p)
 		}
 	}
+	v.Summary = vpnSummarize(shown)
 	if admin {
 		v.People = h.userOptions(ctx)
 		v.Events = h.vpnEvents(ctx)
@@ -692,8 +696,9 @@ func (h *Handler) vpnInsert(ctx context.Context, p *vpnPeer, uid string) error {
 func (h *Handler) vpnTarget(r *http.Request, admin bool) (vpnPeer, error) {
 	id := chi.URLParam(r, "id")
 	var p vpnPeer
-	err := h.db.QueryRow(r.Context(), `SELECT id::text, kind, name, COALESCE(user_id::text, ''), revoked_at IS NOT NULL FROM vpn_peers WHERE id = $1::uuid`, id).
-		Scan(&p.ID, &p.Kind, &p.Name, &p.UserID, &p.Revoked)
+	err := h.db.QueryRow(r.Context(), `SELECT id::text, kind, name, COALESCE(user_id::text, ''), revoked_at IS NOT NULL, disabled_at IS NOT NULL
+		FROM vpn_peers WHERE id = $1::uuid`, id).
+		Scan(&p.ID, &p.Kind, &p.Name, &p.UserID, &p.Revoked, &p.Disabled)
 	if err != nil {
 		return p, errors.New("Zugang nicht gefunden")
 	}

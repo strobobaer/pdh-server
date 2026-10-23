@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.69.0] – 2026-10-23
+
+### Neu
+- VPN: Jede Verbindung zeigt deutlich, ob sie steht – „verbunden“, „getrennt – letzter Kontakt vor …“, „keine Antwort vom Server“, „noch nie verbunden“ –, mit Datenmenge; die Anzeige und die Zusammenfassung („Tunnel 1/1 verbunden“) aktualisieren sich alle 10 Sekunden.
+- VPN: Geräte, Standort-Gateways und Tunnel lassen sich deaktivieren und wieder aktivieren, ohne sie zu sperren – die Konfiguration bleibt gültig.
+
+### Behoben
+- Das VPN-Installationsskript bricht nicht mehr mit „Syntax error: redirection unexpected“ ab, wenn es mit „sh“ statt „bash“ gestartet wird; das Dienst-Skript im Repository heißt jetzt pdh-wireguard-daemon.sh und erklärt beim versehentlichen Start, dass das Installationsskript aus Server-Einstellungen → VPN gemeint ist.
+
 ## [0.68.0] – 2026-10-23
 
 ### Neu

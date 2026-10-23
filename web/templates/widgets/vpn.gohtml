@@ -10,6 +10,13 @@
 .vp-state.ok{color:var(--green)}.vp-state.down{color:var(--red)}.vp-state.off{color:var(--muted)}
 .vp-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none;display:inline-block}
 .vp-dot.on{background:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.2)}
+.vp-dot.lost,.vp-dot.wait{background:var(--amber)}.vp-dot.revoked{background:var(--red)}
+.vp-conn{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:6px;background:var(--bg3);color:var(--muted);white-space:nowrap}
+.vp-conn.on{background:rgba(16,185,129,.15);color:var(--green)}
+.vp-conn.lost,.vp-conn.wait{background:rgba(245,158,11,.15);color:var(--amber)}
+.vp-conn.revoked,.vp-conn.unknown{background:rgba(239,68,68,.12);color:var(--red)}
+.vp-sum{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin:8px 0 2px}
+.vp-sum b{font-size:15px}
 .vp-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
 .vp-row.off{opacity:.55}
 .vp-row b{font-size:13.5px}
@@ -66,18 +73,22 @@
 {{end}}{{end}}
 
 {{define "vpn-peer"}}{{$p := .P}}{{$v := .V}}
-<div class="vp-row{{if $p.Revoked}} off{{end}}">
-  <span class="vp-dot{{if $p.Status.Online}} on{{end}}" title="{{if $p.Status.Online}}verbunden{{else}}nicht verbunden{{end}}"></span>
+<div class="vp-row{{if not $p.Active}} off{{end}}">
+  <span class="vp-dot {{$p.ConnState}}" data-vpn-dot="{{$p.ID}}" title="{{$p.ConnLabel}}"></span>
   <div style="min-width:0">
-    <b>{{$p.Name}}</b>{{if $p.Revoked}} <span class="badge b-red">gesperrt</span>{{end}}{{if .ShowUser}} <span class="vp-meta">· {{$p.UserName}}</span>{{end}}
+    <b>{{$p.Name}}</b>{{if .ShowUser}} <span class="vp-meta">· {{$p.UserName}}</span>{{end}}
+    <span class="vp-conn {{$p.ConnState}}" data-vpn-conn="{{$p.ID}}">{{$p.ConnLabel}}</span>
     <div class="vp-meta">
       {{if eq $p.Kind "outbound"}}{{$p.Endpoint}} · {{$p.Iface}} · eigene Adresse {{$p.Address}}{{else}}{{$p.Address}}{{end}}
       {{if $p.Routes}} · Netze {{$p.Routes}}{{end}}
-      {{if $p.Status.Handshake}} · letzter Kontakt {{$p.Status.Handshake}} · ↓ {{$p.Status.Received}} ↑ {{$p.Status.Sent}}{{else if not $p.Revoked}} · noch nie verbunden{{end}}
+      <span data-vpn-detail="{{$p.ID}}">{{with $p.Detail}} · {{.}}{{end}}</span>
     </div>
     {{if and (eq $p.Kind "outbound") (not $p.Revoked)}}<div class="vp-meta">Öffentlicher Schlüssel von PDH (am entfernten Server eintragen): <span class="vp-key">{{$p.PublicKey}}</span></div>{{end}}
   </div>
   <div class="vp-acts">
+    {{if not $p.Revoked}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/toggle"{{if not $p.Disabled}} onsubmit="return confirm('„{{$p.Name}}“ deaktivieren? Die Verbindung wird getrennt, die Konfiguration bleibt gültig.')"{{end}}>
+      {{if $p.Disabled}}<button class="btn btn-small btn-primary" type="submit"><i class="ti ti-player-play"></i> Aktivieren</button>
+      {{else}}<button class="btn btn-small" type="submit"><i class="ti ti-player-pause"></i> Deaktivieren</button>{{end}}</form>{{end}}
     {{if and (not $p.Revoked) (ne $p.Kind "outbound")}}<a class="btn btn-small" href="{{$v.Back}}show={{$p.ID}}#show"><i class="ti ti-qrcode"></i> Konfiguration</a>{{end}}
     {{if not $p.Revoked}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/revoke" onsubmit="return confirm('„{{$p.Name}}“ sperren? Die Verbindung wird sofort getrennt.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-lock"></i> Sperren</button></form>
     {{else if $v.Admin}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/delete" onsubmit="return confirm('„{{$p.Name}}“ endgültig löschen?')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
@@ -108,6 +119,50 @@
 <div id="{{.Target}}" class="vp-hint" style="margin-top:4px"></div>
 {{end}}
 
+{{/* Zusammenfassung (nur aktive Einträge); data-vpn-sum wird live aktualisiert. */}}
+{{define "vpn-summary"}}
+<div class="vp-sum">
+  {{if .Admin}}<span><i class="ti ti-plug-connected"></i> Tunnel <b data-vpn-sum="Tunnels">{{.Summary.TunnelsOn}}/{{.Summary.Tunnels}}</b> verbunden</span>
+  <span><i class="ti ti-router"></i> Gateways <b data-vpn-sum="Gateways">{{.Summary.GatewaysOn}}/{{.Summary.Gateways}}</b> verbunden</span>{{end}}
+  <span><i class="ti ti-device-laptop"></i> Geräte <b data-vpn-sum="Devices">{{.Summary.DevicesOn}}/{{.Summary.Devices}}</b> verbunden</span>
+</div>
+{{end}}
+
+{{/* Live-Anzeige: alle 10 Sekunden {{Base}}/status abfragen und Status, Punkte,
+     Datenmenge, Zusammenfassung und Dienstzustand aktualisieren. */}}
+{{define "vpn-live"}}
+<script>
+(function () {
+  const url = {{.Base}} + '/status';
+  async function tick() {
+    if (document.hidden) return;
+    try {
+      const r = await fetch(url, {credentials: 'same-origin', cache: 'no-store'});
+      if (!r.ok) return;
+      const d = await r.json();
+      for (const [id, p] of Object.entries(d.peers || {})) {
+        document.querySelectorAll('[data-vpn-conn="' + id + '"]').forEach(function (el) { el.className = 'vp-conn ' + p.state; el.textContent = p.label; });
+        document.querySelectorAll('[data-vpn-dot="' + id + '"]').forEach(function (el) { el.className = 'vp-dot ' + p.state; el.title = p.label; });
+        document.querySelectorAll('[data-vpn-detail="' + id + '"]').forEach(function (el) { el.textContent = p.detail ? ' · ' + p.detail : ''; });
+      }
+      const s = d.summary || {};
+      [['Tunnels', 'TunnelsOn'], ['Gateways', 'GatewaysOn'], ['Devices', 'DevicesOn']].forEach(function (k) {
+        document.querySelectorAll('[data-vpn-sum="' + k[0] + '"]').forEach(function (el) { el.textContent = (s[k[1]] || 0) + '/' + (s[k[0]] || 0); });
+      });
+      if (d.service) {
+        document.querySelectorAll('[data-vpn-service]').forEach(function (el) {
+          el.className = 'vp-state ' + d.service.state;
+          el.innerHTML = '<span class="vp-dot' + (d.service.state === 'ok' ? ' on' : '') + '"></span> VPN ';
+          el.appendChild(document.createTextNode(d.service.label));
+        });
+      }
+    } catch (e) { /* nächster Versuch in 10 s */ }
+  }
+  setInterval(tick, 10000);
+})();
+</script>
+{{end}}
+
 {{define "vpn-mine"}}{{$v := .}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-device-laptop"></i> Meine Geräte</span></div>
@@ -125,7 +180,8 @@
 {{template "vpn-style"}}
 <div class="card" id="vpn-host">
   <div class="card-title"><span><i class="ti ti-server-2"></i> WireGuard auf dem Server</span>
-    <span class="vp-state {{.Service.State}}"><span class="vp-dot{{if eq .Service.State "ok"}} on{{end}}"></span> VPN {{.Service.Label}}</span></div>
+    <span class="vp-state {{.Service.State}}" data-vpn-service><span class="vp-dot{{if eq .Service.State "ok"}} on{{end}}"></span> VPN {{.Service.Label}}</span></div>
+  {{template "vpn-summary" .}}
   {{if .Service.Error}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> Dienst pdh-wireguard: {{.Service.Error}}</div>{{end}}
   <p class="vp-hint">WireGuard läuft direkt auf dem Server als systemd-Dienst <code>pdh-wireguard</code>. PDH schreibt die Konfiguration nach <code>{{.Host.Dir}}</code>{{if .Host.Docker}} (in die App eingebunden){{end}}, der Dienst übernimmt sie innerhalb weniger Sekunden.</p>
   <ol class="vp-hint" style="padding-left:18px">
@@ -210,6 +266,7 @@
   <p class="vp-hint" style="margin-top:8px">Eigene Geräte anlegen dürfen Personen mit dem Recht <b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> (Rollen &amp; Rechte) – auf der Seite <a href="/vpn">VPN Maschinennetz</a>.</p>
 </div>
 
+{{template "vpn-live" .}}
 <div class="card" id="events">
   <div class="card-title"><span><i class="ti ti-history"></i> Protokoll <small class="vp-meta">die letzten 50 Einträge</small></span></div>
   {{range .Events}}<div class="vp-ev"><span>{{.At}}</span><span>{{.User}}</span><span>{{if .Peer}}<b>{{.Peer}}</b> – {{end}}{{.Note}}</span></div>{{else}}<p class="vp-hint">Noch keine Einträge.</p>{{end}}

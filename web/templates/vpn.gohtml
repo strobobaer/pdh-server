@@ -10,7 +10,7 @@
     <h1 style="font-size:19px;font-weight:600"><i class="ti ti-shield-lock"></i> VPN ins Maschinennetz</h1>
     <p style="font-size:12px;color:var(--muted);margin-top:3px">WireGuard: mit Laptop oder Handy über PDH in die Netze der Maschinen</p>
   </div>
-  <span class="vp-state {{$v.Service.State}}"><span class="vp-dot{{if eq $v.Service.State "ok"}} on{{end}}"></span> VPN {{$v.Service.Label}}</span>
+  <span class="vp-state {{$v.Service.State}}" data-vpn-service><span class="vp-dot{{if eq $v.Service.State "ok"}} on{{end}}"></span> VPN {{$v.Service.Label}}</span>
   {{if .CanAdmin}}<a class="btn btn-small" href="/admin/server-config?tab=vpn"><i class="ti ti-settings"></i> Einrichtung</a>{{end}}
 </div>
 {{if .Message}}<div class="vp-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
@@ -18,5 +18,7 @@
 {{if not $v.Settings.Enabled}}<div class="vp-msg err"><i class="ti ti-info-circle"></i> Das VPN ist noch nicht eingeschaltet{{if .CanAdmin}} – unter <a href="/admin/server-config?tab=vpn">Server-Einstellungen → VPN</a> einrichten{{else}} – bitte an die Administration wenden{{end}}.</div>{{end}}
 
 {{template "vpn-show" $v}}
+{{template "vpn-summary" $v}}
 {{template "vpn-mine" $v}}
+{{template "vpn-live" $v}}
 {{end}}
