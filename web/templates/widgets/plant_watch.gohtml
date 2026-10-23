@@ -1,0 +1,51 @@
+{{/* Anlagen-Schnellübersicht (plant_watch.go): Karten einer Übersicht – auch
+     zum Nachladen per htmx (GET /plant-watch/{id}/cards). */}}
+{{define "pw-cards"}}
+<div class="pw-sum">
+  <span><b>{{.Total}}</b> Anlagen</span>
+  <span class="pw-sum-red"><span class="pw-dot red"></span> {{.Red}} Handlungsbedarf</span>
+  <span class="pw-sum-amber"><span class="pw-dot amber"></span> {{.Amber}} beobachten</span>
+  {{if .Only}}<span class="pw-sum-note">nur Auffälliges angezeigt</span>{{end}}
+</div>
+{{if not .Cards}}
+<div class="card pw-empty">{{if .Only}}<i class="ti ti-circle-check" style="color:var(--green)"></i> Alles in Ordnung – keine Auffälligkeiten.{{else}}Diese Übersicht enthält noch keine aktiven Anlagen.{{end}}</div>
+{{end}}
+<div class="pw-grid">
+{{range $c := .Cards}}
+  <div class="pw-card {{$c.State}}">
+    <div class="pw-ch">
+      <span class="pw-dot {{$c.State}}" title="{{if eq $c.State "red"}}Handlungsbedarf{{else if eq $c.State "amber"}}beobachten{{else}}in Ordnung{{end}}"></span>
+      <i class="ti {{$c.TypeIcon}}" title="{{$c.TypeLabel}}"></i>
+      <a href="/infrastructure/{{$c.ID}}{{if $c.Chamber}}?tab=chamber{{end}}">{{$c.Name}}</a>
+    </div>
+    <div class="pw-path">{{$c.TypeLabel}} · {{$c.Path}}{{if $c.Location}} · {{$c.Location}}{{end}}</div>
+    <div class="pw-kpis">
+      {{if $c.Faults}}<a class="badge {{if $c.Critical}}b-red{{else}}b-amber{{end}}" href="/a/{{$c.ID}}" title="Offene Störungen (inkl. Unteranlagen)"><i class="ti ti-alert-triangle"></i> {{$c.Faults}} Störung{{if gt $c.Faults 1}}en{{end}}{{if $c.Critical}} · {{$c.Critical}} kritisch{{end}}</a>{{end}}
+      {{if $c.NOK}}<span class="badge b-red"><i class="ti ti-circle-x"></i> {{$c.NOK}} NOK</span>{{end}}
+      {{if $c.MaintOverdue}}<a class="badge b-amber" href="/a/{{$c.ID}}" title="Überfällige Wartungen"><i class="ti ti-tool"></i> {{$c.MaintOverdue}} Wartung überfällig</a>{{end}}
+      {{if $c.ObligOverdue}}<a class="badge b-amber" href="/infrastructure/{{$c.ID}}?tab=checks" title="Überfällige Prüfpflichten / GBU"><i class="ti ti-clipboard-check"></i> {{$c.ObligOverdue}} Prüfung überfällig</a>{{end}}
+      {{if eq $c.State "green"}}<span class="badge b-green"><i class="ti ti-check"></i> alles OK</span>{{end}}
+    </div>
+    {{if $c.Chamber}}
+    <div class="pw-parts">
+      {{range $g := $c.Chamber}}{{if $g.Slots}}
+      <div class="pw-grp">
+        <div class="pw-gl"><i class="ti {{$g.Icon}}"></i> {{$g.Label}}{{if $g.NOKCount}} <b class="pw-nok">{{$g.NOKCount}} NOK</b>{{end}}</div>
+        <div class="pw-slots">
+          {{range $g.Slots}}<a class="pw-slot{{if .NOK}} nok{{else if not .PartID}} empty{{end}}" href="/infrastructure/{{$c.ID}}?tab=chamber#cp-{{$g.Key}}"
+            title="{{$g.One}} {{.Position}}: {{if .NOK}}NOK{{else}}OK{{end}}{{if .PartLabel}} · {{.PartLabel}}{{end}}{{if .LastChange}} · letzter Wechsel {{.LastChange}}{{end}}{{if .Cause}} · Ursache: {{.Cause}}{{end}}">{{.Position}}</a>{{end}}
+        </div>
+      </div>
+      {{end}}{{end}}
+    </div>
+    {{end}}
+    {{if $c.Children}}
+    <div class="pw-kids">
+      {{range $c.Children}}<a class="pw-kid" href="/infrastructure/{{.ID}}" title="{{.TypeLabel}}{{if .Faults}} · {{.Faults}} offene Störung(en){{end}}{{if .NOK}} · {{.NOK}} NOK{{end}}{{if .MaintOverdue}} · {{.MaintOverdue}} Wartung überfällig{{end}}{{if .ObligOverdue}} · {{.ObligOverdue}} Prüfung überfällig{{end}}"><span class="pw-dot {{.State}}"></span><i class="ti {{.TypeIcon}}"></i> {{.Name}}</a>{{end}}
+      {{if $c.MoreChildren}}<a class="pw-kid" href="/infrastructure/{{$c.ID}}">+ {{$c.MoreChildren}} weitere</a>{{end}}
+    </div>
+    {{end}}
+  </div>
+{{end}}
+</div>
+{{end}}

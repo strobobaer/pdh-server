@@ -445,6 +445,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/planner/closures", h.PlannerClosureWeb)
 	r.Post("/planner/closures/{day}/delete", h.PlannerClosureWeb)
 	r.Get("/infrastructure", h.Infrastructure)
+	// Anlagen-Schnellübersicht (plant_watch.go)
+	r.Get("/plant-watch", h.PlantWatchWeb)
+	r.Get("/plant-watch/{id}/cards", h.PlantWatchCardsWeb)
+	r.Post("/plant-watch", h.PlantWatchSaveWeb)
+	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
+	r.Post("/plant-watch/{id}/delete", h.PlantWatchDeleteWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert

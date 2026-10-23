@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.64.0] – 2026-10-23
+
+### Neu
+- Anlagen-Schnellübersicht: Anlagen mit besonderem Augenmerk (einzeln gewählt oder ganze Anlagentypen, z. B. alle Trockenkammern) auf einer Seite mit Ampel für offene Störungen, überfällige Wartungen und Prüfungen sowie NOK-Bauteile.
+- Trockenkammern zeigen in der Schnellübersicht Motoren, Klappenmotoren, Heizungsventile, Heizungspumpen, Torrollen und Tordichtungen als farbige Kästchen mit ihrem Status.
+- Schnellübersichten lassen sich für Gruppen und einzelne Benutzer freigeben (neues Recht „Anlagen-Schnellübersichten einrichten“); jede Person kann sich zusätzlich eigene Übersichten anlegen.
+
 ## [0.63.1] – 2026-10-22
 
 ### Geändert
