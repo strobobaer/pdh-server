@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.65.0] – 2026-10-23
+
+### Neu
+- In der Schnellübersicht schaltet ein Klick auf einen Motor, ein Ventil oder ein anderes Bauteil einer Trockenkammer zwischen grün (OK) und rot (NOK) um.
+- Die Schnellübersicht zeigt zugeordnete Energiewerte (z. B. kWh, Leistung, Verbrauch) mit dem letzten Messwert.
+- Dashboard-Widget „Anlagen-Schnellübersicht“: die Ampel einer gewählten Übersicht direkt auf der Startseite.
+- Dashboard-Widget „Scannen“ im Schnellzugriff: QR-Codes und Barcodes mit der Handy-Kamera scannen – öffnet Anlage, Ersatzteil oder Kanban-Karte, auch für Handscanner.
+
 ## [0.64.0] – 2026-10-23
 
 ### Neu

@@ -108,7 +108,8 @@ func TestDashboardWithWidgets(t *testing.T) {
 		}
 		views = append(views, DashboardWidgetView{WidgetInstance: w, Def: d, Title: title})
 	}
-	cat := []WidgetCatalogGroup{{Name: catStats, Items: []WidgetDef{widgetDefs[2]}}}
+	tickets, _ := widgetDef("stat_tickets")
+	cat := []WidgetCatalogGroup{{Name: catStats, Items: []WidgetDef{tickets}}}
 	out := renderPage(t, tmpl, "dashboard", DashboardData{Widgets: views, WidgetCatalog: cat})
 	for _, want := range []string{`id="dw-grid"`, `data-id="d1" data-type="stat_tickets" data-size="1" data-refresh="60"`, `data-type="note" data-size="2"`, ">Schicht<",
 		"Öl nachfüllen", "Dashboard anpassen", `data-dw-catalog`, `data-type="stat_tickets" data-name="Offene Tickets"`, "sortablejs", `id="dw-tpl"`,

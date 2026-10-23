@@ -20,6 +20,16 @@
 .dw-tools button:hover{border-color:var(--accent)}
 .dw-body{flex:1;padding:10px 12px 12px;min-width:0;font-size:12.5px}
 .dw-loading{color:var(--muted);font-size:12px}
+.dw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--green);flex:none}
+.dw-dot.amber{background:var(--amber)}.dw-dot.red{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.25)}
+.dw-scan{display:flex;flex-direction:column;gap:8px;height:100%}
+.dw-scan-btn{flex:1;min-height:72px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer}
+.dw-scan-btn i{font-size:28px}
+.dw-scan-in{display:flex;gap:6px}
+.dw-scan-in .form-input{flex:1;min-width:0;min-height:38px}
+.dw-pw-sum{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px;font-size:12px}
+.dw-pw-sum a{color:var(--accent);text-decoration:none;font-weight:600;margin-right:auto}
+.dw-pw-sum span{display:inline-flex;align-items:center;gap:5px}
 .dw-cfg{display:none;padding:0 12px 12px;gap:6px;flex-direction:column}
 .dw-cfg label{font-size:11px;color:var(--muted)}
 .dw-cfg textarea{min-height:80px;font-family:inherit}
@@ -120,6 +130,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   </div>
 </div>
 
+<template id="dw-watch-opts"><option value="">{{t "Erste verfügbare"}}</option>{{range .WatchBoards}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</template>
 <template id="dw-tpl">{{template "dw-card" (dict "ID" "" "Type" "" "Size" 1 "Title" "" "Def" (dict "Name" "" "Icon" "" "Refresh" 0 "Config" "") "Config" nil)}}</template>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
@@ -153,6 +164,8 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   function prepCfg(el){
     const kind = el.dataset.cfgkind;
     el.querySelectorAll('[data-cfg-kind]').forEach(x => x.style.display = x.dataset.cfgKind === kind ? '' : 'none');
+    const sel = el.querySelector('select[data-cfg="board"]'), opts = document.getElementById('dw-watch-opts');
+    if(kind === 'watch' && sel && opts && !sel.options.length){ sel.innerHTML = opts.innerHTML; sel.value = sel.dataset.val || ''; }
   }
   window.dwAddFromCatalog = function(item){
     const el = makeCard(item);
@@ -254,6 +267,10 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   <div class="dw-cfg">
     <label>{{t "Überschrift (leer = Standard)"}}</label><input class="form-input" data-cfg="title" maxlength="40" value="{{with .Config}}{{index . "title"}}{{end}}">
     <div data-cfg-kind="links" style="display:flex;flex-direction:column;gap:4px"><label>{{th "Links – je Zeile <code>Name | Adresse</code>, z. B. <code>Presse 2 | /infrastructure/…</code> oder <code>Wetter | https://…</code>"}}</label><textarea class="form-input" data-cfg="links">{{with .Config}}{{index . "links"}}{{end}}</textarea></div>
+    <div data-cfg-kind="watch" style="display:flex;flex-direction:column;gap:4px">
+      <label>{{t "Übersicht"}}</label><select class="form-input" data-cfg="board" data-val="{{with .Config}}{{index . "board"}}{{end}}"></select>
+      <label>{{t "Anzeigen"}}</label><select class="form-input" data-cfg="only"><option value="">{{t "Alle Anlagen"}}</option><option value="1"{{with .Config}}{{if eq (index . "only") "1"}} selected{{end}}{{end}}>{{t "Nur Auffälliges"}}</option></select>
+    </div>
     <div data-cfg-kind="note" class="dw-note-store"><textarea data-cfg="note" maxlength="2000" hidden>{{with .Config}}{{index . "note"}}{{end}}</textarea></div>
   </div>
   <div class="dw-body"><span class="dw-loading">{{t "Lädt…"}}</span></div>
@@ -278,6 +295,22 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 {{else if eq .Def.Type "chart_trend"}}
   {{with .Data}}<div class="dw-chart">{{range .Days}}<div class="d" title="{{t "%s: %d Tickets, %d Störungen" .Label .Tickets .Faults}}"><div class="bars">{{if $.Data.ShowTickets}}<span class="b bt" style="height:{{.HT}}%"></span>{{end}}{{if $.Data.ShowFaults}}<span class="b bf" style="height:{{.HF}}%"></span>{{end}}</div><span class="l">{{.Label}}</span></div>{{end}}</div>
   <div class="dw-legend">{{if .ShowTickets}}<span class="lt">{{t "Tickets (%d)" .SumTickets}}</span>{{end}}{{if .ShowFaults}}<span class="lf">{{t "Störungen (%d)" .SumFaults}}</span>{{end}}</div>{{end}}
+{{else if eq .Def.Type "scan"}}
+  <div class="dw-scan">
+    <button type="button" class="dw-scan-btn" onclick="pdhScanLive(this.parentNode.querySelector('input[type=file]'))"><i class="ti ti-scan"></i>{{t "Code scannen"}}</button>
+    <input type="file" accept="image/*" capture="environment" hidden onchange="pdhScanPhoto(this)">
+    <form action="/scan" method="get" class="dw-scan-in">
+      <input class="form-input" name="code" placeholder="{{t "Nummer eingeben oder Handscanner"}}" autocomplete="off" enterkeyhint="go" aria-label="{{t "Code"}}">
+      <button class="btn btn-small" type="submit" title="{{t "Öffnen"}}" aria-label="{{t "Öffnen"}}"><i class="ti ti-arrow-right"></i></button>
+    </form>
+  </div>
+{{else if eq .Def.Type "plant_watch"}}
+  {{with .Data}}
+  <div class="dw-pw-sum"><a href="/plant-watch?b={{.Board.ID}}"><i class="ti {{.Board.Icon}}"></i> {{.Board.Name}}</a><span><span class="dw-dot red"></span>{{.Red}}</span><span><span class="dw-dot amber"></span>{{.Amber}}</span><span>{{t "%d Anlagen" .Total}}</span></div>
+  <div class="dw-list">{{range $c := .Cards}}
+    <a class="dw-li" href="/infrastructure/{{$c.ID}}{{if $c.Chamber}}?tab=chamber{{end}}"><span class="dw-dot {{$c.State}}"></span><span class="tx"><span class="t">{{$c.Name}}</span><span class="s">{{$c.TypeLabel}}{{if $c.Faults}} · {{t "%d Störungen" $c.Faults}}{{end}}{{if $c.MaintOverdue}} · {{t "Wartung überfällig"}}{{end}}{{if $c.ObligOverdue}} · {{t "Prüfung überfällig"}}{{end}}{{range $g := $c.Chamber}}{{range $g.Slots}}{{if .NOK}} · {{$g.One}} {{.Position}}{{end}}{{end}}{{end}}</span></span>{{if $c.NOK}}<span class="badge b-red">{{$c.NOK}} NOK</span>{{else if $c.Critical}}<span class="badge b-red">{{t "kritisch"}}</span>{{end}}</a>
+  {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{t "Alles in Ordnung – keine Auffälligkeiten."}}</div>{{end}}</div>
+  {{else}}<div class="dw-none">{{th "Noch keine Schnellübersicht – unter <a href='/plant-watch?edit=new'>Anlagen-Schnellübersicht</a> anlegen."}}</div>{{end}}
 {{else if eq .Def.Type "my_shifts"}}
   <div class="dw-shifts">{{range .Data}}<div class="d{{if .Today}} today{{end}}"><div>{{.Day}} {{.Date}}</div><div class="sh" {{if .Color}}style="color:{{css .Color}}"{{end}} title="{{.Name}}">{{if .Short}}{{.Short}}{{else}}–{{end}}</div><div class="tm">{{if .Time}}{{.Time}}{{else}}{{t "frei"}}{{end}}</div></div>{{end}}</div>
 {{end}}

@@ -482,6 +482,12 @@ select.form-input option{background:var(--bg2)}
 .se{background:var(--bg3);color:var(--muted)}
 /* ── HTMX loading ── */
 .htmx-indicator{display:none}
+/* Live-Scanner (pdhScanLive) */
+.pdh-scan-ov{position:fixed;inset:0;z-index:10000;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.pdh-scan-ov video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pdh-scan-frame{position:relative;width:min(70vw,320px);aspect-ratio:1;border:3px solid #fff;border-radius:16px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
+.pdh-scan-hint{position:relative;color:#fff;margin-top:18px;font-size:14px;text-align:center;padding:0 16px}
+.pdh-scan-ov .btn{position:relative;margin-top:18px;min-width:140px;min-height:44px}
 .htmx-request .htmx-indicator{display:inline}
 .htmx-request.htmx-indicator{display:inline}
 
@@ -2116,6 +2122,51 @@ async function pdhBarcodeLookup(fileInput){
   try{
     const code = await pdhReadBarcode(fileInput.files[0]);
     if(code) location.href = '/inventory/lookup?code=' + encodeURIComponent(code);
+  }finally{ fileInput.value = ''; }
+}
+
+// Widget „Scannen“: Live-Scan mit der Rückkamera (BarcodeDetector), Treffer → /scan?code=…
+// Ohne Kamera-Zugriff oder BarcodeDetector (z. B. iPhone, http): Foto aufnehmen und daraus lesen.
+async function pdhScanLive(photoInput){
+  const fallback = () => { if(photoInput) photoInput.click(); };
+  if(!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ fallback(); return; }
+  let stream;
+  try{ stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}, audio: false}); }
+  catch(e){ fallback(); return; }
+  const ov = document.createElement('div');
+  ov.className = 'pdh-scan-ov';
+  ov.innerHTML = '<video playsinline muted></video><div class="pdh-scan-frame"></div>' +
+    '<div class="pdh-scan-hint">QR-Code oder Barcode in den Rahmen halten</div><button type="button" class="btn">Abbrechen</button>';
+  document.body.appendChild(ov);
+  let done = false;
+  const stop = () => { done = true; stream.getTracks().forEach(t => t.stop()); ov.remove(); };
+  ov.querySelector('button').onclick = stop;
+  const video = ov.querySelector('video');
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  const formats = await BarcodeDetector.getSupportedFormats().catch(() => []);
+  const detector = new BarcodeDetector(formats && formats.length ? {formats: formats} : undefined);
+  const tick = async () => {
+    if(done) return;
+    try{
+      const codes = await detector.detect(video);
+      if(codes && codes.length && codes[0].rawValue){
+        const code = codes[0].rawValue;
+        stop();
+        if(navigator.vibrate) navigator.vibrate(80);
+        location.href = '/scan?code=' + encodeURIComponent(code);
+        return;
+      }
+    }catch(e){ /* Bild noch nicht bereit */ }
+    setTimeout(tick, 200);
+  };
+  tick();
+}
+async function pdhScanPhoto(fileInput){
+  if(!fileInput.files || !fileInput.files.length) return;
+  try{
+    const code = await pdhReadBarcode(fileInput.files[0]);
+    if(code) location.href = '/scan?code=' + encodeURIComponent(code);
   }finally{ fileInput.value = ''; }
 }
 

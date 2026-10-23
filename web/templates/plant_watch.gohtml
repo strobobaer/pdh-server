@@ -39,7 +39,15 @@
 .pw-slots{display:flex;flex-wrap:wrap;gap:4px}
 .pw-slot{min-width:28px;height:26px;padding:0 5px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;text-decoration:none;
   background:rgba(16,185,129,.16);color:var(--green);border:1px solid rgba(16,185,129,.35)}
-.pw-slot.empty{background:var(--bg3);color:var(--muted);border-color:var(--border)}
+button.pw-slot{cursor:pointer;font-family:inherit;min-width:34px;height:32px}
+button.pw-slot:hover{outline:2px solid var(--accent);outline-offset:1px}
+.pw-slot.htmx-request{opacity:.5}
+.pw-energy{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px 10px;border-top:1px dashed var(--border);padding-top:8px}
+.pw-en{display:flex;align-items:center;gap:5px;font-size:12px;min-width:0}
+.pw-en i{color:var(--amber)}
+.pw-en .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.pw-en b{white-space:nowrap}
+.pw-en.stale b{color:var(--muted);font-weight:400}
 .pw-slot.nok{background:var(--red);color:#fff;border-color:var(--red)}
 .pw-kids{display:flex;flex-wrap:wrap;gap:5px;border-top:1px dashed var(--border);padding-top:8px}
 .pw-kid{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 8px;border-radius:7px;background:var(--bg3);color:var(--text);text-decoration:none;max-width:100%}

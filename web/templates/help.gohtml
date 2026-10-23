@@ -108,17 +108,24 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Oben im Benutzermenü <b>Dashboard anpassen</b> (von jeder Seite aus – PDH wechselt dafür aufs Dashboard). Der <b>Widget-Katalog</b> öffnet sich, die Widgets bekommen einen gestrichelten Rahmen.</li>
       <li>Ein Widget aus dem Katalog <b>ins Raster ziehen</b> – oder auf <b>+</b> tippen, dann landet es am Ende.</li>
       <li>Widgets im Raster an die gewünschte Stelle <b>ziehen</b> (am Handy kurz halten, dann ziehen). <i class="ti ti-arrows-horizontal"></i> ändert die Breite (1 bis 4 Spalten), <i class="ti ti-x"></i> entfernt das Widget.</li>
-      <li><i class="ti ti-settings"></i> öffnet die Einstellungen: eigene Überschrift, bei <b>Eigene Links</b> je Zeile <code>Name | Adresse</code>.</li>
+      <li><i class="ti ti-settings"></i> öffnet die Einstellungen: eigene Überschrift, bei <b>Eigene Links</b> je Zeile <code>Name | Adresse</code>, bei <b>Anlagen-Schnellübersicht</b> welche Übersicht und ob nur Auffälliges erscheint.</li>
       <li><b>Fertig</b> speichert – deine Zusammenstellung gilt an deinem Konto auf allen Geräten. <b>Abbrechen</b> verwirft die Änderungen, <b>Standard</b> stellt die Grundausstattung wieder her.</li>
     </ol></div>
   <table>
-    <tr><td><b>Schnellzugriff</b></td><td><b>Schnellaktionen</b> (große Knöpfe: Neu anlegen, Störung melden, Ticket, Zeit erfassen, Ersatzteil suchen …), <b>Eigene Links</b></td></tr>
+    <tr><td><b>Schnellzugriff</b></td><td><b>Schnellaktionen</b> (große Knöpfe: Neu anlegen, Störung melden, Ticket, Zeit erfassen, Ersatzteil suchen …), <b>Eigene Links</b>, <b>Scannen</b> (QR-Code oder Barcode mit der Handy-Kamera – siehe unten)</td></tr>
     <tr><td><b>Tabelle und Zeitstrahl</b></td><td>Unter den Kacheln stehen die offenen Vorgänge als <b>Tabelle</b> und darunter im <b>Zeitstrahl</b>. Über beiden wählst du wie im Leitstand, was angezeigt wird (Störungen, Tickets, Wartung, Aufgaben, nur überfällige, nur ohne Zuständigen) – dein Browser merkt sich die Auswahl. Eine Zeile antippen öffnet den Vorgang. Der Knopf <i class="ti ti-timeline"></i> <b>Zeitstrahl</b> oben rechts blendet den Zeitstrahl aus und wieder ein; auch das merkt sich der Browser.</td></tr>
     <tr><td><b>Kennzahlen</b></td><td>Offene Tickets, Aktive Störungen, Wartung fällig, Nachbestellen, Meine Aufgaben, Meine Stunden, Verlauf 14 Tage (Tickets und Störungen pro Tag)</td></tr>
-    <tr><td><b>Listen</b></td><td><b>Mir zugewiesen</b> (das Dringendste zuerst, Überfälliges rot), Aktuelle Störungen, Wartungen nächste 7 Tage, Bestellliste</td></tr>
+    <tr><td><b>Listen</b></td><td><b>Mir zugewiesen</b> (das Dringendste zuerst, Überfälliges rot), Aktuelle Störungen, Wartungen nächste 7 Tage, Bestellliste, <b>Anlagen-Schnellübersicht</b> (Ampel einer <a href="#watch">Schnellübersicht</a> mit NOK-Bauteilen und Störungen)</td></tr>
     <tr><td><b>Persönlich</b></td><td>Meine Schichten (7 Tage), Notizzettel (nur für dich sichtbar; einfach hineinschreiben – wird automatisch gespeichert, auch ohne <b>Dashboard anpassen</b>)</td></tr>
   </table>
   <p>Du siehst im Katalog nur Widgets, für die du die Berechtigung hast – z. B. „Bestellliste“ nur mit <i>Lager ansehen</i>. Am Handy stehen kleine Kennzahlen zu zweit nebeneinander, alles andere über die volle Breite.</p>
+  <div class="hb-howto" id="hb-scan"><b><i class="ti ti-scan"></i> So scannst du mit dem Handy</b>
+    <ol class="hb-steps">
+      <li>Einmalig das Widget <b>Scannen</b> (Katalog → Schnellzugriff) aufs Dashboard legen.</li>
+      <li><b>Code scannen</b> antippen und den Kamerazugriff erlauben. QR-Code oder Barcode in den Rahmen halten – PDH erkennt ihn von selbst und öffnet das Passende.</li>
+      <li>Kann der Browser nicht live scannen (z. B. iPhone), öffnet sich stattdessen die Kamera für ein Foto; PDH liest den Code daraus. Klappt auch das nicht, die Nummer unter dem Strichcode eintippen.</li>
+    </ol>
+    Der QR-Code einer Anlage öffnet ihre Infoseite mit den offenen Vorgängen, ein Etikett oder eine Kanban-Karte die Buchung, eine EAN oder Teilenummer das Ersatzteil. Ein <b>Handscanner</b> (Tastatur-Modus) schreibt einfach ins Feld darunter – mit Enter geht es weiter.</div>
   <h3><i class="ti ti-device-mobile"></i> Am Smartphone und Tablet</h3>
   {{template "hb-fig-mobile"}}
   <p>Das PDH passt sich der Bildschirmgröße an – es gibt keine eigene App, der Browser genügt.</p>
@@ -629,7 +636,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Gelb – beobachten:</b> eine Störung ist offen, eine Wartung oder eine Prüfpflicht ist überfällig.</li>
     <li><b>Grün – alles OK.</b></li>
   </ul>
-  <p>Gezählt wird immer die Anlage mit allen Unteranlagen. Bei Trockenkammern steht je Bauteilgruppe eine Reihe nummerierter Kästchen: grün = OK, rot = NOK, grau = noch kein Typ eingetragen. Mit der Maus darauf (oder lange tippen) siehst du Typ, letzten Wechsel und Ursache; ein Klick öffnet den Reiter <b>Bauteile</b>. Bei anderen Anlagen stehen die Unteranlagen und Geräte mit eigenem Ampelpunkt darunter. Die Karten aktualisieren sich jede Minute von selbst. <b>Nur Auffälliges</b> blendet alle grünen Karten aus.</p>
+  <p>Gezählt wird immer die Anlage mit allen Unteranlagen. Bei Trockenkammern steht je Bauteilgruppe eine Reihe nummerierter Kästchen: grün = OK, rot = NOK, grün ist der Standard. Mit der Maus darauf (oder lange tippen) siehst du Typ, letzten Wechsel und Ursache. Mit dem Recht <b>Infrastruktur bearbeiten</b> schaltet <b>ein Klick</b> das Bauteil von grün (OK) auf rot (NOK) und wieder zurück – die Änderung steht in der Historie der Anlage. Ohne das Recht öffnet der Klick den Reiter <b>Bauteile</b>. Bei anderen Anlagen stehen die Unteranlagen und Geräte mit eigenem Ampelpunkt darunter. Sind der Anlage oder ihren Unteranlagen <b>Energiewerte</b> zugeordnet (Import-Zuordnungen aus MQTT, Modbus, OPC-UA … mit Bezeichnungen wie Energie, kWh, Leistung, Strom, Verbrauch, Gas, Wärme, Druckluft), zeigt die Karte den letzten Messwert mit <i class="ti ti-bolt"></i>; Werte älter als ein Tag sind grau. Die Karten aktualisieren sich jede Minute von selbst. <b>Nur Auffälliges</b> blendet alle grünen Karten aus.</p>
   <div class="hb-howto"><b><i class="ti ti-plus"></i> So legst du eine Schnellübersicht an</b>
     <ol class="hb-steps">
       <li><b>Anlagen-Schnellübersicht</b> öffnen → <b>Neue Übersicht</b>.</li>

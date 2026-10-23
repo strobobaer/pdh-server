@@ -34,7 +34,7 @@ type WidgetDef struct {
 	Type, Name, Icon, Category, Desc string
 	Size                             int    // Standardbreite in Spalten (1–4)
 	Perm                             string // noetige Berechtigung ("" = alle)
-	Config                           string // "" | "links" | "note"
+	Config                           string // "" | "links" | "note" | "watch"
 	Refresh                          int    // Sekunden bis zur Aktualisierung (0 = nie)
 	load                             func(h *Handler, ctx context.Context, uid string, inst WidgetInstance, can func(string) bool) (any, error)
 }
@@ -51,6 +51,7 @@ var widgetCategories = []string{catQuick, catStats, catLists, catPersonal}
 
 var widgetDefs = []WidgetDef{
 	{Type: "quick_actions", Name: "Schnellaktionen", Icon: "ti-bolt", Category: catQuick, Size: 2, Desc: "Große Knöpfe für das, was du oft brauchst: melden, Zeit erfassen, Ersatzteil suchen …", load: loadQuickActions},
+	{Type: "scan", Name: "Scannen", Icon: "ti-scan", Category: catQuick, Size: 1, Desc: "QR-Code oder Barcode mit der Handy-Kamera scannen – öffnet Anlage, Ersatzteil oder Kanban-Karte; auch für Handscanner", load: loadScan},
 	{Type: "quick_links", Name: "Eigene Links", Icon: "ti-link", Category: catQuick, Size: 1, Config: "links", Desc: "Deine Lesezeichen – Seiten im PDH oder im Netz", load: loadQuickLinks},
 	{Type: "stat_tickets", Name: "Offene Tickets", Icon: "ti-ticket", Category: catStats, Size: 1, Perm: "tickets.view", Refresh: 60, Desc: "Anzahl offener Tickets, davon kritisch", load: loadStatTickets},
 	{Type: "stat_faults", Name: "Aktive Störungen", Icon: "ti-alert-triangle", Category: catStats, Size: 1, Perm: "faults.view", Refresh: 30, Desc: "Störungen, die noch nicht behoben sind, davon neu gemeldet", load: loadStatFaults},
@@ -63,6 +64,7 @@ var widgetDefs = []WidgetDef{
 	{Type: "list_mine", Name: "Mir zugewiesen", Icon: "ti-user-check", Category: catLists, Size: 2, Refresh: 60, Desc: "Deine offenen Tickets, Störungen, Aufgaben und Wartungen – das Dringendste zuerst", load: loadListMine},
 	{Type: "list_faults", Name: "Aktuelle Störungen", Icon: "ti-alert-octagon", Category: catLists, Size: 2, Perm: "faults.view", Refresh: 30, Desc: "Die neuesten offenen Störungen mit Anlage", load: loadListFaults},
 	{Type: "list_maintenance", Name: "Wartungen nächste 7 Tage", Icon: "ti-calendar-check", Category: catLists, Size: 2, Perm: "maintenance.view", Refresh: 300, Desc: "Was in den nächsten Tagen fällig wird", load: loadListMaintenance},
+	{Type: "plant_watch", Name: "Anlagen-Schnellübersicht", Icon: "ti-eye", Category: catLists, Size: 2, Perm: "infrastructure.view", Config: "watch", Refresh: 60, Desc: "Ampel einer Schnellübersicht – z. B. alle Trockenkammern mit NOK-Bauteilen und offenen Störungen", load: loadPlantWatch},
 	{Type: "list_stock", Name: "Bestellliste", Icon: "ti-shopping-cart", Category: catLists, Size: 2, Perm: "inventory.view", Refresh: 300, Desc: "Ersatzteile unter Mindestbestand mit Bestand und Lagerort", load: loadListStock},
 	{Type: "my_shifts", Name: "Meine Schichten", Icon: "ti-calendar-time", Category: catPersonal, Size: 2, Refresh: 600, Desc: "Deine Schichten der nächsten 7 Tage", load: loadMyShifts},
 	{Type: "note", Name: "Notizzettel", Icon: "ti-note", Category: catPersonal, Size: 1, Config: "note", Desc: "Eine persönliche Notiz, nur für dich sichtbar", load: loadNote},
@@ -135,6 +137,13 @@ func sanitizeWidgets(in []WidgetInstance) ([]WidgetInstance, error) {
 				note = string([]rune(note)[:2000])
 			}
 			cfg["note"] = note
+		case "watch":
+			if b := strings.TrimSpace(w.Config["board"]); b != "" && len(b) <= 40 && strings.Trim(b, "0123456789abcdef-") == "" {
+				cfg["board"] = b
+			}
+			if w.Config["only"] == "1" {
+				cfg["only"] = "1"
+			}
 		}
 		if t := strings.TrimSpace(w.Config["title"]); t != "" {
 			if len([]rune(t)) > 40 {
@@ -702,6 +711,10 @@ func loadMyShifts(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+func loadScan(_ *Handler, _ context.Context, _ string, _ WidgetInstance, _ func(string) bool) (any, error) {
+	return nil, nil
 }
 
 func loadNote(_ *Handler, _ context.Context, _ string, inst WidgetInstance, _ func(string) bool) (any, error) {

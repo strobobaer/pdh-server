@@ -26,14 +26,21 @@
       {{if $c.ObligOverdue}}<a class="badge b-amber" href="/infrastructure/{{$c.ID}}?tab=checks" title="Überfällige Prüfpflichten / GBU"><i class="ti ti-clipboard-check"></i> {{$c.ObligOverdue}} Prüfung überfällig</a>{{end}}
       {{if eq $c.State "green"}}<span class="badge b-green"><i class="ti ti-check"></i> alles OK</span>{{end}}
     </div>
+    {{if $c.Energy}}
+    <div class="pw-energy">
+      {{range $c.Energy}}<div class="pw-en{{if .Stale}} stale{{end}}" title="{{if .Infra}}{{.Infra}} · {{end}}{{if .Age}}gemessen {{.Age}}{{end}}"><i class="ti ti-bolt"></i><span class="n">{{.Name}}{{if .Infra}} <small>({{.Infra}})</small>{{end}}</span><b>{{.Value}}</b></div>{{end}}
+    </div>
+    {{end}}
     {{if $c.Chamber}}
     <div class="pw-parts">
       {{range $g := $c.Chamber}}{{if $g.Slots}}
       <div class="pw-grp">
         <div class="pw-gl"><i class="ti {{$g.Icon}}"></i> {{$g.Label}}{{if $g.NOKCount}} <b class="pw-nok">{{$g.NOKCount}} NOK</b>{{end}}</div>
         <div class="pw-slots">
-          {{range $g.Slots}}<a class="pw-slot{{if .NOK}} nok{{else if not .PartID}} empty{{end}}" href="/infrastructure/{{$c.ID}}?tab=chamber#cp-{{$g.Key}}"
-            title="{{$g.One}} {{.Position}}: {{if .NOK}}NOK{{else}}OK{{end}}{{if .PartLabel}} · {{.PartLabel}}{{end}}{{if .LastChange}} · letzter Wechsel {{.LastChange}}{{end}}{{if .Cause}} · Ursache: {{.Cause}}{{end}}">{{.Position}}</a>{{end}}
+          {{range $g.Slots}}{{$tip := printf "%s %d: %s%s%s%s" $g.One .Position (or (and .NOK "NOK") "OK") (or (and .PartLabel (printf " · %s" .PartLabel)) " · kein Typ eingetragen") (or (and .LastChange (printf " · letzter Wechsel %s" .LastChange)) "") (or (and .Cause (printf " · Ursache: %s" .Cause)) "")}}
+          {{if $.CanToggle}}<button type="button" class="pw-slot{{if .NOK}} nok{{end}}" title="{{$tip}} – Klick schaltet auf {{if .NOK}}OK{{else}}NOK{{end}}"
+            hx-post="/plant-watch/{{$.BoardID}}/toggle" hx-vals='{"infra":"{{$c.ID}}","kind":"{{$g.Key}}","pos":"{{.Position}}","only":"{{if $.Only}}1{{end}}"}' hx-target="#pw-body" hx-swap="innerHTML">{{.Position}}</button>
+          {{else}}<a class="pw-slot{{if .NOK}} nok{{end}}" href="/infrastructure/{{$c.ID}}?tab=chamber#cp-{{$g.Key}}" title="{{$tip}}">{{.Position}}</a>{{end}}{{end}}
         </div>
       </div>
       {{end}}{{end}}

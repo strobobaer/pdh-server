@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -52,9 +54,16 @@ type watchChild struct {
 	watchStats
 }
 
+// watchEnergy: zugeordneter Energiewert (Import-Zuordnung, migrations/059) mit letztem Messwert.
+type watchEnergy struct {
+	Name, Value, Infra, Age string
+	Stale                   bool // älter als ein Tag
+}
+
 type watchCard struct {
 	ID, Name, Path, Type, TypeLabel, TypeIcon, Location string
 	watchStats
+	Energy       []watchEnergy
 	Chamber      []chamberGroup
 	Children     []watchChild
 	MoreChildren int
@@ -65,6 +74,7 @@ type watchCards struct {
 	BoardID           string
 	Cards             []watchCard
 	Only              bool // nur Auffälliges
+	CanToggle         bool // Bauteile per Klick OK/NOK schalten (infrastructure.edit)
 	Total, Red, Amber int
 	Lang              string
 }
@@ -194,6 +204,49 @@ func (h *Handler) watchStatsFor(ctx context.Context, ids []string) map[string]wa
 	return out
 }
 
+// watchEnergyRe: Bezeichnungen von Import-Zuordnungen, die als Energiewerte gelten.
+const watchEnergyRe = `energ|kwh|mwh|leistung|strom|verbrauch|gas|w(ä|ae)rme|power|druckluft|spannung|\mkw\M|\mwh\M|\mampere`
+
+const watchMaxEnergy = 8
+
+// watchEnergyFor: Energiewerte je Anlage (samt Unteranlagen), neueste Messung zuerst.
+func (h *Handler) watchEnergyFor(ctx context.Context, ids []string) map[string][]watchEnergy {
+	out := map[string][]watchEnergy{}
+	if len(ids) == 0 || h.db == nil {
+		return out
+	}
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE sub AS (
+			SELECT id AS root, id FROM infrastructure WHERE id = ANY($1::text[]::uuid[])
+			UNION ALL
+			SELECT s.root, i.id FROM sub s JOIN infrastructure i ON i.parent_id = s.id WHERE i.active
+		)
+		SELECT s.root::text, m.name, COALESCE(m.last_value, ''), CASE WHEN m.infrastructure_id = s.root THEN '' ELSE i.name END, m.last_received_at
+		FROM sub s JOIN import_mappings m ON m.infrastructure_id = s.id JOIN infrastructure i ON i.id = m.infrastructure_id
+		WHERE m.last_value IS NOT NULL AND m.last_value <> '' AND (m.name ~* $2 OR m.note ~* $2)
+		ORDER BY s.root, m.last_received_at DESC NULLS LAST, lower(m.name)`, ids, watchEnergyRe)
+	if err != nil {
+		componentLog("schnelluebersicht").Warn().Err(err).Msg("energiewerte")
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var root string
+		var e watchEnergy
+		var at *time.Time
+		if rows.Scan(&root, &e.Name, &e.Value, &e.Infra, &at) != nil || len(out[root]) >= watchMaxEnergy {
+			continue
+		}
+		if rs := []rune(e.Value); len(rs) > 24 {
+			e.Value = string(rs[:24]) + "…"
+		}
+		if at != nil {
+			e.Age, e.Stale = timeAgo(*at), time.Since(*at) > 24*time.Hour
+		}
+		out[root] = append(out[root], e)
+	}
+	return out
+}
+
 // watchBody: Karten einer Übersicht (Baumreihenfolge; only = nur rot/gelb).
 func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang string) watchCards {
 	body := watchCards{BoardID: b.ID, Only: only, Lang: lang}
@@ -216,8 +269,14 @@ func (h *Handler) watchBody(ctx context.Context, b *watchBoard, only bool, lang 
 		cards = append(cards, c)
 	})
 	stats := h.watchStatsFor(ctx, ids)
+	cardIDs := make([]string, 0, len(cards))
+	for _, c := range cards {
+		cardIDs = append(cardIDs, c.ID)
+	}
+	energy := h.watchEnergyFor(ctx, cardIDs)
 	for _, c := range cards {
 		c.watchStats = stats[c.ID]
+		c.Energy = energy[c.ID]
 		for i := range c.Children {
 			c.Children[i].watchStats = stats[c.Children[i].ID]
 		}
@@ -304,6 +363,7 @@ func (h *Handler) PlantWatchWeb(w http.ResponseWriter, r *http.Request) {
 	if data.Board != nil && data.Edit == nil {
 		h.loadWatchContent(ctx, data.Board)
 		data.Body = h.watchBody(ctx, data.Board, q.Get("only") == "1", data.Lang)
+		data.Body.CanToggle = data.CanEditInfra
 	}
 	t, _ := h.tmpl.Clone()
 	t = bindLang(t, data.Lang)
@@ -322,7 +382,9 @@ func (h *Handler) PlantWatchCardsWeb(w http.ResponseWriter, r *http.Request) {
 	for _, b := range h.watchBoards(ctx, getUser(r).ID, h.canManageWatch(r)) {
 		if b.ID == id {
 			h.loadWatchContent(ctx, &b)
-			h.renderFragment(w, "pw-cards", h.watchBody(ctx, &b, r.URL.Query().Get("only") == "1", lang))
+			body := h.watchBody(ctx, &b, r.URL.Query().Get("only") == "1", lang)
+			body.CanToggle = h.canEditInfra(r)
+			h.renderFragment(w, "pw-cards", body)
 			return
 		}
 	}
@@ -446,4 +508,74 @@ func (h *Handler) canEditWatch(ctx context.Context, id, uid string, manage bool)
 		return false
 	}
 	return manage || (uid != "" && owner == uid)
+}
+
+// watchWidget: Daten des Dashboard-Widgets „Anlagen-Schnellübersicht“.
+type watchWidget struct {
+	Board watchBoard
+	watchCards
+}
+
+// loadPlantWatch: gewählte Übersicht (config board, sonst die erste), config only=1 nur Auffälliges.
+func loadPlantWatch(h *Handler, ctx context.Context, uid string, inst WidgetInstance, can func(string) bool) (any, error) {
+	boards := h.watchBoards(ctx, uid, can(watchPerm))
+	if len(boards) == 0 {
+		return nil, nil
+	}
+	b := boards[0]
+	for _, x := range boards {
+		if x.ID == inst.Config["board"] {
+			b = x
+		}
+	}
+	h.loadWatchContent(ctx, &b)
+	return watchWidget{Board: b, watchCards: h.watchBody(ctx, &b, inst.Config["only"] == "1", ctxLang(ctx))}, nil
+}
+
+// PlantWatchToggleWeb: POST /plant-watch/{id}/toggle (infra, kind, pos, only) –
+// ein Bauteil einer Trockenkammer per Klick zwischen OK (grün) und NOK (rot)
+// umschalten; liefert die Karten der Übersicht neu.
+func (h *Handler) PlantWatchToggleWeb(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	lang := h.requestLang(r)
+	if !h.canEditInfra(r) {
+		http.Error(w, "keine berechtigung (Infrastruktur bearbeiten)", http.StatusForbidden)
+		return
+	}
+	r.ParseForm()
+	infraID, kind := r.FormValue("infra"), r.FormValue("kind")
+	pos, err := strconv.Atoi(r.FormValue("pos"))
+	k, ok := chamberKindOf(kind)
+	var b *watchBoard
+	for _, x := range h.watchBoards(ctx, getUser(r).ID, h.canManageWatch(r)) {
+		if x.ID == chi.URLParam(r, "id") {
+			x := x
+			b = &x
+		}
+	}
+	if err != nil || !ok || b == nil {
+		http.Error(w, tr(lang, "Übersicht nicht gefunden oder nicht freigegeben"), http.StatusNotFound)
+		return
+	}
+	var nok bool
+	err = h.db.QueryRow(ctx, `UPDATE infra_components c SET nok = NOT c.nok, updated_by = $4::uuid, updated_at = NOW()
+		FROM infrastructure i WHERE i.id = c.infrastructure_id AND i.type::text = $5
+		  AND c.infrastructure_id = $1::uuid AND c.kind = $2 AND c.position = $3 RETURNING c.nok`,
+		infraID, k.Key, pos, nullID(getUser(r).ID), chamberType).Scan(&nok)
+	if err != nil {
+		componentLog("schnelluebersicht").Warn().Err(err).Msg("bauteil umschalten")
+		http.Error(w, "Bauteil nicht gefunden", http.StatusBadRequest)
+		return
+	}
+	note := k.One + " " + strconv.Itoa(pos) + ": "
+	if nok {
+		note += "NOK"
+	} else {
+		note += "wieder OK"
+	}
+	h.addHistory(ctx, "infrastructure", infraID, "update", k.Label, "", note, note+" (Schnellübersicht)", getUser(r).ID)
+	h.loadWatchContent(ctx, b)
+	body := h.watchBody(ctx, b, r.FormValue("only") == "1", lang)
+	body.CanToggle = true
+	h.renderFragment(w, "pw-cards", body)
 }

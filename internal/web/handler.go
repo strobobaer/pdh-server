@@ -105,6 +105,7 @@ type DashboardData struct {
 	GanttItems     []GanttItem
 	Widgets        []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
 	WidgetCatalog  []WidgetCatalogGroup
+	WatchBoards    []watchBoard // Auswahl im Widget „Anlagen-Schnellübersicht“
 }
 
 // GanttItem ist ein vereinheitlichter Zeitstrahl-Eintrag fürs Dashboard,
@@ -367,6 +368,7 @@ func (h *Handler) Routes() chi.Router {
 	// Lieferschein scannen / Bauteil erkennen (part_scan.go, part_scan_web.go)
 	r.Get("/inventory/scan", h.InventoryScanPage)
 	r.Get("/inventory/lookup", h.InventoryLookupWeb) // Barcode → Teil
+	r.Get("/scan", h.ScanWeb)                         // Widget „Scannen“: Code → Anlage, Teil, Kanban (scan.go)
 	r.Get("/inventory/booking/refs", h.BookingRefsWeb) // offene Vorgänge für Ausbuchung/Reservierung
 	r.Post("/inventory/scan/{kind:delivery|part}", h.InventoryScanUploadWeb)
 	r.Get("/inventory/scan/{id}", h.InventoryScanDetail)
@@ -451,6 +453,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/plant-watch", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}/delete", h.PlantWatchDeleteWeb)
+	r.Post("/plant-watch/{id}/toggle", h.PlantWatchToggleWeb)
 	r.Get("/infrastructure/{id}", h.InfraDetail)
 	h.hmiRoutes(r)                                     // HMI-Fernzugriff (VNC) aus der Anlage
 	r.Post("/infrastructure/{id}/edit", h.InfraUpdate) // FIX: war PUT, wird von Cloudflare/Nginx blockiert
@@ -1331,6 +1334,9 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 			now.AddDate(0, 0, 7-int(now.Weekday())).Format("02.01")),
 	}
 	data.Widgets, data.WidgetCatalog, _ = h.dashboardWidgetViews(r)
+	if h.canViewInfra(r) {
+		data.WatchBoards = h.watchBoards(ctx, u.ID, h.canManageWatch(r))
+	}
 
 	// Störungen
 	if fl, err := h.faults.List(ctx, ""); err == nil {
