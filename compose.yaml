@@ -46,6 +46,9 @@ services:
       PDH_UPDATE_AGENT_URL: http://updater:8091
       PDH_GRAFANA_INTERNAL_URL: http://grafana:3000 # Statistik: Grafana unter /grafana/ durch das PDH
       PDH_CODESERVER_INTERNAL_URL: http://codeserver:8080 # VS Code im Browser unter /code/ (nur Admins)
+      # VPN (WireGuard läuft auf dem Host als Dienst pdh-wireguard, Server-Einstellungen → VPN)
+      PDH_WIREGUARD_DIR: /app/wireguard
+      PDH_WIREGUARD_HOST_DIR: ${PDH_WIREGUARD_HOST_DIR:-/srv/pdh-wireguard}
       PDH_UPDATE_AGENT_TOKEN: ${PDH_UPDATE_AGENT_TOKEN:?Set PDH_UPDATE_AGENT_TOKEN in .env.docker}
     ports:
       - "8090:8090"
@@ -61,6 +64,12 @@ services:
         target: /mnt/pdh
         bind:
           propagation: rslave
+          create_host_path: true
+      # VPN: Austauschordner mit dem Host-Dienst pdh-wireguard (Konfiguration hin, Status zurück)
+      - type: bind
+        source: ${PDH_WIREGUARD_HOST_DIR:-/srv/pdh-wireguard}
+        target: /app/wireguard
+        bind:
           create_host_path: true
 
   updater:
@@ -96,30 +105,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-  # VPN ins Maschinennetz (WireGuard): PDH schreibt die Konfiguration nach
-  # pdh_config/wireguard (Seite /vpn), dieser Dienst wendet sie an. Eigener
-  # Netz-Namensraum – die Firewall-Regeln betreffen nicht den Host.
-  # Im Internet-Router den UDP-Port auf den Server weiterleiten.
-  wireguard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: wireguard
-    image: pdh-wireguard:local
-    restart: unless-stopped
-    init: true
-    cap_add:
-      - NET_ADMIN
-    sysctls:
-      net.ipv4.ip_forward: "1"
-      net.ipv4.conf.all.src_valid_mark: "1"
-    environment:
-      PDH_WIREGUARD_DIR: /pdh-config/wireguard
-    ports:
-      - "${PDH_WIREGUARD_PORT:-51820}:51820/udp"
-    volumes:
-      - pdh_config:/pdh-config
 
   # Statistik: Grafana mit der Datenquelle „PDH“ (Nur-Lese-Benutzer pdh_grafana,
   # vom PDH beim Start angelegt) und dem Dashboard „PDH Übersicht“.

@@ -179,6 +179,7 @@ type ServerConfigData struct {
 	CanLogs        bool
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
+	VPN            vpnView         // Reiter „VPN“: WireGuard auf dem Host (vpn.go)
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
@@ -267,6 +268,13 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.Groups = append(d.Groups, gv)
 	}
 	d.CF = h.cloudflareView(r.Context())
+	if h.db != nil {
+		show := ""
+		if d.Tab == "vpn" {
+			show = q.Get("show")
+		}
+		d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, true, show)
+	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()
 	d.NCAdmin = h.ncAdminViewFor(r.Context())

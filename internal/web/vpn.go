@@ -20,12 +20,15 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// VPN ins Maschinennetz (migrations/136): PDH ist WireGuard-Hub für Geräte und
-// Standort-Gateways und kann sich zusätzlich als Client zu entfernten
-// WireGuard-Servern verbinden. Die PDH-App selbst braucht keine Netzwerkrechte:
-// sie schreibt die Konfiguration in den Ordner PDH_WIREGUARD_DIR (Volume
-// pdh_config), der Dienst „wireguard“ (scripts/wireguard-sidecar.sh, NET_ADMIN)
-// wendet sie an und meldet den Status zurück (vpn_conf.go).
+// VPN ins Maschinennetz (migrations/136, 137): PDH ist WireGuard-Hub für Geräte
+// und Standort-Gateways und kann sich zusätzlich als Client zu entfernten
+// WireGuard-Servern verbinden. WireGuard läuft auf dem Host als systemd-Dienst
+// pdh-wireguard (vpn_host.go); die PDH-App schreibt nur die Konfiguration in den
+// Austauschordner PDH_WIREGUARD_DIR und liest den Status zurück (vpn_conf.go).
+//
+//	/vpn                       eigene Geräte (vpn.use)
+//	Server-Einstellungen → VPN Einrichtung, Gateways, Tunnel, alle Geräte,
+//	                           Protokoll (Administratoren, canServerConfig)
 
 const (
 	vpnSetEnabled  = "vpn.enabled"
@@ -37,6 +40,7 @@ const (
 	vpnDefSubnet   = "10.66.0.0/24"
 	vpnMaxDevices  = 5  // je Person
 	vpnMaxOutbound = 20 // ausgehende Tunnel
+	vpnAdminURL    = "/admin/server-config"
 )
 
 var (
@@ -44,10 +48,10 @@ var (
 	vpnNameRe = regexp.MustCompile(`^[^\x00-\x1f]{1,80}$`)
 )
 
+// canVPNUse: eigene Geräte; Administratoren der Server-Einstellungen dürfen immer.
 func (h *Handler) canVPNUse(r *http.Request) bool {
-	return h.hasPerm(r, "vpn.use") || h.canVPNManage(r)
+	return h.hasPerm(r, "vpn.use") || h.canServerConfig(r)
 }
-func (h *Handler) canVPNManage(r *http.Request) bool { return h.hasPerm(r, "vpn.manage") }
 
 func (h *Handler) vpnKey() []byte {
 	secret := h.mailCfg.CredentialsKey
@@ -58,7 +62,7 @@ func (h *Handler) vpnKey() []byte {
 	return sum[:]
 }
 
-// vpnDir: Austauschordner mit dem Dienst „wireguard“.
+// vpnDir: Austauschordner mit dem Dienst pdh-wireguard (Docker: Bind-Mount).
 func vpnDir() string {
 	if d := strings.TrimSpace(os.Getenv("PDH_WIREGUARD_DIR")); d != "" {
 		return d
@@ -74,7 +78,7 @@ func (h *Handler) vpnLoadSettings(ctx context.Context) (vpnSettings, error) {
 		Subnet:   h.appSetting(ctx, vpnSetSubnet, vpnDefSubnet),
 		DNS:      h.appSetting(ctx, vpnSetDNS, ""),
 	}
-	s.Port, _ = strconv.Atoi(h.appSetting(ctx, vpnSetPort, strconv.Itoa(vpnListenPort)))
+	s.Port, _ = strconv.Atoi(h.appSetting(ctx, vpnSetPort, strconv.Itoa(vpnDefPort)))
 	enc := h.appSetting(ctx, vpnSetKey, "")
 	if enc == "" {
 		priv, _, err := vpnKeyPair()
@@ -154,7 +158,7 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	files := map[string]string{"wg0.conf": hub, "wg0.routes": vpnHubRoutes(peers), "forward.allow": ""}
+	files := map[string]string{vpnHubIf + ".conf": hub, vpnHubIf + ".routes": vpnHubRoutes(peers), "forward.allow": ""}
 	if s.Enabled {
 		files["forward.allow"] = vpnForwardRules(peers)
 		for _, p := range peers {
@@ -164,11 +168,16 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 		}
 	}
 	dir := vpnDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	writeErr := func(err error) error {
+		if os.IsPermission(err) {
+			return fmt.Errorf("Ordner %s nicht beschreibbar – Server-Einstellungen → VPN → Installationsskript auf dem Server ausführen", dir)
+		}
 		return err
 	}
-	// alte Tunnel-Dateien entfernen
-	if old, _ := filepath.Glob(filepath.Join(dir, vpnOutPrefix+"*.conf")); len(old) > 0 {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return writeErr(err)
+	}
+	if old, _ := filepath.Glob(filepath.Join(dir, vpnOutPrefix+"*.conf")); len(old) > 0 { // entfernte Tunnel
 		for _, f := range old {
 			if _, keep := files[filepath.Base(f)]; !keep {
 				_ = os.Remove(f)
@@ -178,10 +187,10 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 	for name, content := range files {
 		tmp := filepath.Join(dir, "."+name+".tmp")
 		if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
-			return err
+			return writeErr(err)
 		}
 		if err := os.Rename(tmp, filepath.Join(dir, name)); err != nil {
-			return err
+			return writeErr(err)
 		}
 	}
 	return nil
@@ -209,9 +218,9 @@ func vpnReadService(enabled bool, now time.Time) (vpnService, map[string]vpnPeer
 	beat, _ := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
 	switch {
 	case err != nil || beat == 0:
-		svc.State, svc.Label = "down", "Dienst „wireguard“ meldet sich nicht"
+		svc.State, svc.Label = "down", "Dienst pdh-wireguard meldet sich nicht"
 	case now.Sub(time.Unix(beat, 0)) > time.Minute:
-		svc.State, svc.Label = "down", "Dienst „wireguard“ meldet sich seit "+timeAgo(time.Unix(beat, 0))+" nicht"
+		svc.State, svc.Label = "down", "Dienst pdh-wireguard meldet sich seit "+timeAgo(time.Unix(beat, 0))+" nicht"
 	case svc.Error != "":
 		svc.State, svc.Label = "down", "Fehler im Dienst"
 	default:
@@ -224,11 +233,11 @@ type vpnEvent struct {
 	At, User, Peer, Action, Note string
 }
 
-type VPNPageData struct {
-	BaseData
+// vpnView: Daten der Seite /vpn und des Reiters „VPN“ der Server-Einstellungen.
+type vpnView struct {
 	Settings  vpnSettings
 	Service   vpnService
-	CanManage bool
+	Admin     bool // Verwaltung (Server-Einstellungen)
 	Mine      []vpnPeer
 	Users     []vpnPeer // alle Geräte (Verwaltung)
 	Gateways  []vpnPeer
@@ -239,78 +248,99 @@ type VPNPageData struct {
 	ShowConf  string
 	ShowQR    template.HTML
 	Reachable []string
-	Message   string
+	Base      string // /vpn bzw. /admin/server-config/vpn (Formulare)
+	Back      string // Rücksprung mit ?show=
+	Host      vpnHostView
 	Error     string
 }
 
-// VPNPage: GET /vpn (?show=ID zeigt Konfiguration und QR-Code)
-func (h *Handler) VPNPage(w http.ResponseWriter, r *http.Request) {
-	if !h.canVPNUse(r) {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	ctx := r.Context()
-	uid := getUser(r).ID
-	q := r.URL.Query()
-	d := VPNPageData{
-		BaseData:  h.baseData(r, "vpn", "VPN ins Maschinennetz", "WireGuard"),
-		CanManage: h.canVPNManage(r),
-		Message:   q.Get("msg"), Error: q.Get("err"),
+type VPNPageData struct {
+	BaseData
+	VPN      vpnView
+	CanAdmin bool
+	Message  string
+	Error    string
+}
+
+// vpnLoadView: Geräte, Status und (Verwaltung) alles Übrige; show = Konfiguration anzeigen.
+func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show string) vpnView {
+	v := vpnView{Admin: admin, Base: "/vpn", Back: "/vpn?"}
+	if admin {
+		v.Base, v.Back = vpnAdminURL+"/vpn", vpnAdminURL+"?tab=vpn&"
+		v.Host = vpnHostInfo()
 	}
 	s, err := h.vpnLoadSettings(ctx)
-	if err != nil && d.Error == "" {
-		d.Error = err.Error()
+	if err != nil {
+		v.Error = err.Error()
 	}
-	d.Settings = s
+	v.Settings = s
 	svc, status := vpnReadService(s.Enabled && s.Endpoint != "", time.Now())
-	d.Service = svc
+	v.Service = svc
 	peers, err := h.vpnLoadPeers(ctx, false)
 	if err != nil {
 		componentLog("vpn").Warn().Err(err).Msg("zugaenge laden")
 	}
-	d.Reachable = vpnReachable(peers)
+	v.Reachable = vpnReachable(peers)
 	for _, p := range peers {
 		key := p.PublicKey
 		if p.Kind == "outbound" {
 			key = p.RemotePublicKey
 		}
 		p.Status = status[key]
-		switch {
-		case p.Kind == "user" && p.UserID == uid:
-			d.Mine = append(d.Mine, p)
+		if p.Kind == "user" && p.UserID == uid {
+			v.Mine = append(v.Mine, p)
 		}
-		if !d.CanManage {
+		if !admin {
 			continue
 		}
 		switch p.Kind {
 		case "user":
-			d.Users = append(d.Users, p)
+			v.Users = append(v.Users, p)
 		case "gateway":
-			d.Gateways = append(d.Gateways, p)
+			v.Gateways = append(v.Gateways, p)
 		case "outbound":
-			d.Outbound = append(d.Outbound, p)
+			v.Outbound = append(v.Outbound, p)
 		}
 	}
-	if d.CanManage {
-		d.People = h.userOptions(ctx)
-		d.Events = h.vpnEvents(ctx)
+	if admin {
+		v.People = h.userOptions(ctx)
+		v.Events = h.vpnEvents(ctx)
 	}
-	if id := q.Get("show"); id != "" {
-		if conf, p, err := h.vpnPeerConf(ctx, id, uid, d.CanManage); err == nil {
-			d.Show, d.ShowConf = &p, conf
+	if show != "" {
+		if conf, p, err := h.vpnPeerConf(ctx, show, uid, admin); err == nil {
+			v.Show, v.ShowConf = &p, conf
 			if p.Kind == "user" {
-				d.ShowQR, _ = qrSVG(conf)
+				v.ShowQR, _ = qrSVG(conf)
 			}
 			h.vpnLog(ctx, uid, p.ID, p.Name, "show", "Konfiguration angezeigt")
-		} else if d.Error == "" {
-			d.Error = err.Error()
+		} else if v.Error == "" {
+			v.Error = err.Error()
 		}
+	}
+	return v
+}
+
+// VPNPage: GET /vpn – eigene Geräte (?show=ID zeigt Konfiguration und QR-Code)
+func (h *Handler) VPNPage(w http.ResponseWriter, r *http.Request) {
+	if !h.canVPNUse(r) {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	q := r.URL.Query()
+	d := VPNPageData{
+		BaseData: h.baseData(r, "vpn", "VPN ins Maschinennetz", "WireGuard"),
+		CanAdmin: h.canServerConfig(r),
+		Message:  q.Get("msg"), Error: q.Get("err"),
+	}
+	d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, false, q.Get("show"))
+	if d.Error == "" {
+		d.Error = d.VPN.Error
 	}
 	h.render(w, "vpn", d)
 }
 
 // vpnPeerConf: Konfiguration eines Geräts/Gateways (Eigentümer oder Verwaltung).
-func (h *Handler) vpnPeerConf(ctx context.Context, id, uid string, manage bool) (string, vpnPeer, error) {
+func (h *Handler) vpnPeerConf(ctx context.Context, id, uid string, admin bool) (string, vpnPeer, error) {
 	s, err := h.vpnLoadSettings(ctx)
 	if err != nil {
 		return "", vpnPeer{}, err
@@ -328,10 +358,10 @@ func (h *Handler) vpnPeerConf(ctx context.Context, id, uid string, manage bool) 
 			return "", p, errors.New("Zugang ist gesperrt")
 		case p.Kind == "outbound":
 			return "", p, errors.New("Ausgehende Tunnel haben keine Konfiguration zum Herunterladen")
-		case !manage && (p.Kind != "user" || p.UserID != uid):
+		case !admin && (p.Kind != "user" || p.UserID != uid):
 			return "", p, errors.New("Kein Zugriff auf diesen Zugang")
 		case s.Endpoint == "":
-			return "", p, errors.New("Zuerst unter Einstellungen den öffentlichen Endpunkt eintragen")
+			return "", p, errors.New("Das VPN ist noch nicht eingerichtet (Server-Einstellungen → VPN)")
 		}
 		conf, err := vpnClientConf(s, p, peers)
 		return conf, p, err
@@ -367,8 +397,14 @@ func (h *Handler) vpnEvents(ctx context.Context) []vpnEvent {
 	return out
 }
 
-func vpnBack(msg, show string, err error) string {
+// vpnRedirect: zurück zu /vpn bzw. Server-Einstellungen → VPN.
+func vpnRedirect(w http.ResponseWriter, r *http.Request, admin bool, msg, show string, err error) {
 	q := url.Values{}
+	target := "/vpn"
+	if admin {
+		target = vpnAdminURL
+		q.Set("tab", "vpn")
+	}
 	if err != nil {
 		q.Set("err", err.Error())
 	} else if msg != "" {
@@ -377,18 +413,26 @@ func vpnBack(msg, show string, err error) string {
 	if show != "" {
 		q.Set("show", show)
 	}
-	return "/vpn?" + q.Encode()
+	http.Redirect(w, r, target+"?"+q.Encode(), http.StatusSeeOther)
 }
 
-// VPNSettingsWeb: POST /vpn/settings
+// vpnAdminGuard: Verwaltung nur für Administratoren der Server-Einstellungen.
+func (h *Handler) vpnAdminGuard(w http.ResponseWriter, r *http.Request) bool {
+	if !h.canServerConfig(r) {
+		http.Error(w, "keine berechtigung (Server-Einstellungen, nur Administratoren)", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// VPNSettingsWeb: POST /admin/server-config/vpn/settings
 func (h *Handler) VPNSettingsWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canVPNManage(r) {
-		http.Error(w, "keine berechtigung (VPN verwalten)", http.StatusForbidden)
+	if !h.vpnAdminGuard(w, r) {
 		return
 	}
 	ctx := r.Context()
 	r.ParseForm()
-	fail := func(err error) { http.Redirect(w, r, vpnBack("", "", err)+"#settings", http.StatusSeeOther) }
+	fail := func(err error) { vpnRedirect(w, r, true, "", "", err) }
 	endpoint := strings.TrimSpace(r.FormValue("endpoint"))
 	if endpoint != "" && !vpnHostRe.MatchString(endpoint) {
 		fail(errors.New("Öffentlicher Name: nur Rechnername oder IP-Adresse, ohne http:// und Port"))
@@ -441,25 +485,29 @@ func (h *Handler) VPNSettingsWeb(w http.ResponseWriter, r *http.Request) {
 		fail(err)
 		return
 	}
-	http.Redirect(w, r, vpnBack("Einstellungen gespeichert", "", nil), http.StatusSeeOther)
+	vpnRedirect(w, r, true, "VPN-Einstellungen gespeichert", "", nil)
 }
 
-// VPNCreateWeb: POST /vpn/peers (kind=user|gateway|outbound)
+// VPNCreateWeb: POST /vpn/peers (eigenes Gerät) bzw.
+// POST /admin/server-config/vpn/peers (kind=user|gateway|outbound, Gerät für Person).
 func (h *Handler) VPNCreateWeb(w http.ResponseWriter, r *http.Request) {
+	admin := strings.HasPrefix(r.URL.Path, vpnAdminURL)
+	if admin && !h.vpnAdminGuard(w, r) {
+		return
+	}
 	if !h.canVPNUse(r) {
 		http.Error(w, "keine berechtigung (VPN)", http.StatusForbidden)
 		return
 	}
 	ctx := r.Context()
 	r.ParseForm()
-	uid, manage := getUser(r).ID, h.canVPNManage(r)
+	uid := getUser(r).ID
 	kind := r.FormValue("kind")
-	name := oneLine(r.FormValue("name"))
-	fail := func(err error) { http.Redirect(w, r, vpnBack("", "", err), http.StatusSeeOther) }
-	if kind != "user" && !manage {
-		http.Error(w, "keine berechtigung (VPN verwalten)", http.StatusForbidden)
-		return
+	if !admin {
+		kind = "user"
 	}
+	name := oneLine(r.FormValue("name"))
+	fail := func(err error) { vpnRedirect(w, r, admin, "", "", err) }
 	if !vpnNameRe.MatchString(name) {
 		fail(errors.New("Bitte einen Namen eingeben (höchstens 80 Zeichen)"))
 		return
@@ -481,7 +529,7 @@ func (h *Handler) VPNCreateWeb(w http.ResponseWriter, r *http.Request) {
 		switch kind {
 		case "user":
 			p.UserID = uid
-			if manage && r.FormValue("user_id") != "" {
+			if admin && r.FormValue("user_id") != "" {
 				p.UserID = r.FormValue("user_id")
 			}
 			n := 0
@@ -546,7 +594,7 @@ func (h *Handler) VPNCreateWeb(w http.ResponseWriter, r *http.Request) {
 	if kind == "outbound" {
 		show = ""
 	}
-	http.Redirect(w, r, vpnBack(labels[kind]+" „"+name+"“ angelegt", show, nil), http.StatusSeeOther)
+	vpnRedirect(w, r, admin, labels[kind]+" „"+name+"“ angelegt", show, nil)
 }
 
 // vpnOutboundFromForm: ausgehender Tunnel aus eingefügter Konfiguration oder
@@ -645,8 +693,8 @@ func (h *Handler) vpnInsert(ctx context.Context, p *vpnPeer, uid string) error {
 	return nil
 }
 
-// vpnTarget: Eintrag laden und Recht prüfen (eigenes Gerät oder Verwaltung).
-func (h *Handler) vpnTarget(r *http.Request) (vpnPeer, error) {
+// vpnTarget: Eintrag laden und Recht prüfen (admin: Verwaltung; sonst eigenes Gerät).
+func (h *Handler) vpnTarget(r *http.Request, admin bool) (vpnPeer, error) {
 	id := chi.URLParam(r, "id")
 	var p vpnPeer
 	err := h.db.QueryRow(r.Context(), `SELECT id::text, kind, name, COALESCE(user_id::text, ''), revoked_at IS NOT NULL FROM vpn_peers WHERE id = $1::uuid`, id).
@@ -654,42 +702,55 @@ func (h *Handler) vpnTarget(r *http.Request) (vpnPeer, error) {
 	if err != nil {
 		return p, errors.New("Zugang nicht gefunden")
 	}
-	if !h.canVPNManage(r) && (!h.canVPNUse(r) || p.Kind != "user" || p.UserID != getUser(r).ID) {
+	if admin {
+		if !h.canServerConfig(r) {
+			return p, errors.New("Kein Zugriff (nur Administratoren)")
+		}
+		return p, nil
+	}
+	if !h.canVPNUse(r) || p.Kind != "user" || p.UserID != getUser(r).ID {
 		return p, errors.New("Kein Zugriff auf diesen Zugang")
 	}
 	return p, nil
 }
 
-// VPNConfigWeb: GET /vpn/peers/{id}/config – .conf zum Herunterladen
+// VPNConfigWeb: GET /vpn/peers/{id}/config bzw. /admin/server-config/vpn/peers/{id}/config – .conf
 func (h *Handler) VPNConfigWeb(w http.ResponseWriter, r *http.Request) {
-	p, err := h.vpnTarget(r)
+	admin := strings.HasPrefix(r.URL.Path, vpnAdminURL)
+	p, err := h.vpnTarget(r, admin)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	uid := getUser(r).ID
-	conf, _, err := h.vpnPeerConf(r.Context(), p.ID, uid, h.canVPNManage(r))
+	conf, _, err := h.vpnPeerConf(r.Context(), p.ID, uid, admin)
 	if err != nil {
-		http.Redirect(w, r, vpnBack("", "", err), http.StatusSeeOther)
+		vpnRedirect(w, r, admin, "", "", err)
 		return
 	}
 	h.vpnLog(r.Context(), uid, p.ID, p.Name, "download", "Konfiguration heruntergeladen")
-	file := strings.Trim(regexp.MustCompile(`[^A-Za-z0-9_-]+`).ReplaceAllString(p.Name, "-"), "-")
-	if file == "" || len(file) > 15 { // Windows/Android: Tunnelname aus dem Dateinamen, höchstens 15 Zeichen
-		file = strings.Trim(file[:min(len(file), 15)], "-")
-		if file == "" {
-			file = "pdh-vpn"
-		}
-	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+file+`.conf"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+vpnFileName(p.Name)+`.conf"`)
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(conf))
 }
 
-// VPNRevokeWeb: POST /vpn/peers/{id}/revoke – sperren (sofort wirksam)
+// vpnFileName: Windows/Android nehmen den Tunnelnamen aus dem Dateinamen (höchstens 15 Zeichen).
+func vpnFileName(name string) string {
+	f := strings.Trim(regexp.MustCompile(`[^A-Za-z0-9_-]+`).ReplaceAllString(name, "-"), "-")
+	if len(f) > 15 {
+		f = strings.Trim(f[:15], "-")
+	}
+	if f == "" {
+		f = "pdh-vpn"
+	}
+	return f
+}
+
+// VPNRevokeWeb: POST …/peers/{id}/revoke – sperren (sofort wirksam)
 func (h *Handler) VPNRevokeWeb(w http.ResponseWriter, r *http.Request) {
-	p, err := h.vpnTarget(r)
+	admin := strings.HasPrefix(r.URL.Path, vpnAdminURL)
+	p, err := h.vpnTarget(r, admin)
 	if err == nil && p.Revoked {
 		err = errors.New("Zugang ist schon gesperrt")
 	}
@@ -701,19 +762,18 @@ func (h *Handler) VPNRevokeWeb(w http.ResponseWriter, r *http.Request) {
 		err = h.vpnApply(r.Context())
 	}
 	if err != nil {
-		http.Redirect(w, r, vpnBack("", "", err), http.StatusSeeOther)
+		vpnRedirect(w, r, admin, "", "", err)
 		return
 	}
-	http.Redirect(w, r, vpnBack("„"+p.Name+"“ gesperrt – die Verbindung ist getrennt", "", nil), http.StatusSeeOther)
+	vpnRedirect(w, r, admin, "„"+p.Name+"“ gesperrt – die Verbindung ist getrennt", "", nil)
 }
 
-// VPNDeleteWeb: POST /vpn/peers/{id}/delete – gesperrten Eintrag endgültig löschen (Verwaltung)
+// VPNDeleteWeb: POST /admin/server-config/vpn/peers/{id}/delete – gesperrten Eintrag löschen
 func (h *Handler) VPNDeleteWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canVPNManage(r) {
-		http.Error(w, "keine berechtigung (VPN verwalten)", http.StatusForbidden)
+	if !h.vpnAdminGuard(w, r) {
 		return
 	}
-	p, err := h.vpnTarget(r)
+	p, err := h.vpnTarget(r, true)
 	if err == nil && !p.Revoked {
 		err = errors.New("Nur gesperrte Einträge lassen sich löschen")
 	}
@@ -722,13 +782,13 @@ func (h *Handler) VPNDeleteWeb(w http.ResponseWriter, r *http.Request) {
 		_, err = h.db.Exec(r.Context(), `DELETE FROM vpn_peers WHERE id = $1::uuid AND revoked_at IS NOT NULL`, p.ID)
 	}
 	if err != nil {
-		http.Redirect(w, r, vpnBack("", "", err), http.StatusSeeOther)
+		vpnRedirect(w, r, true, "", "", err)
 		return
 	}
-	http.Redirect(w, r, vpnBack("„"+p.Name+"“ gelöscht", "", nil), http.StatusSeeOther)
+	vpnRedirect(w, r, true, "„"+p.Name+"“ gelöscht", "", nil)
 }
 
-// VPNStartup: Konfiguration beim Serverstart schreiben (Dienst startet ggf. vor PDH neu).
+// VPNStartup: Konfiguration beim Serverstart schreiben (der Dienst übernimmt sie).
 func (h *Handler) VPNStartup(ctx context.Context) {
 	if h.db == nil || h.appSetting(ctx, vpnSetEnabled, "") != "1" {
 		return

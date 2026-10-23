@@ -1297,6 +1297,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="server" data-title="Server-Einstellungen &amp; Ersteinrichtung" data-pages="server-config server-logs">
   <h2><i class="ti ti-adjustments-cog"></i> Server-Einstellungen &amp; Ersteinrichtung</h2>
+  <p>Im Reiter <b>VPN</b> richtest du das WireGuard-VPN ins Maschinennetz ein (Dienst auf dem Server, Gateways, ausgehende Tunnel, alle Geräte) – siehe <a href="#hb-vpn-setup">VPN ins Maschinennetz</a>.</p>
   <h3><i class="ti ti-rocket"></i> Ersteinrichtung</h3>
   {{template "hb-fig-setup"}}
   <p>Beim allerersten Start braucht das PDH keine vorbereitete <code>.env</code>-Datei. Der Anmelde-Schlüssel wird automatisch erzeugt. Findet das PDH keine Datenbank oder noch keinen Benutzer, öffnet sich im Browser unter <code>http://&lt;server&gt;:8090/setup</code> der <b>Einrichtungsassistent</b>.</p>
@@ -1607,7 +1608,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="vpn" data-title="VPN ins Maschinennetz" data-pages="vpn">
   <h2><i class="ti ti-shield-lock"></i> VPN ins Maschinennetz</h2>
-  <p>Über <b>VPN Maschinennetz</b> (Navigation → Material &amp; Anlagen) kommst du mit Laptop oder Handy von unterwegs ins Maschinennetz – z. B. um mit dem TIA-Portal auf eine Steuerung zu schauen. PDH nutzt dafür <b>WireGuard</b>. PDH kann dabei beides sein:</p>
+  <p>Über <b>VPN Maschinennetz</b> (Navigation → Material &amp; Anlagen) kommst du mit Laptop oder Handy von unterwegs ins Maschinennetz – z. B. um mit dem TIA-Portal auf eine Steuerung zu schauen. PDH nutzt dafür <b>WireGuard</b>, das direkt auf dem Server läuft. PDH kann dabei beides sein:</p>
   <ul>
     <li><b>Einwahl-Server:</b> Deine Geräte und die <b>Standort-Gateways</b> (Router im Maschinennetz, z. B. Teltonika, mGuard, eWON) wählen sich bei PDH ein. PDH verbindet beide – am Router muss kein Port offen sein.</li>
     <li><b>Client:</b> Ist im Maschinennetz schon ein WireGuard-Server, verbindet sich PDH als <b>ausgehender Tunnel</b> dorthin. Eingewählte Geräte erreichen die Netze dahinter ebenfalls.</li>
@@ -1621,23 +1622,26 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Tunnel aktivieren. Die Steuerungen erreichst du jetzt unter ihren normalen Adressen im Maschinennetz.</li>
     </ol>
     Für jedes Gerät einen eigenen Zugang anlegen (höchstens 5). Geht ein Gerät verloren, den Zugang sofort <b>sperren</b> – die Verbindung bricht sofort ab. Kommen neue Netze dazu, die Konfiguration neu laden.</div>
-  <div class="hb-howto"><b><i class="ti ti-settings"></i> So richtest du das VPN ein (Verwaltung)</b>
+  <div class="hb-howto" id="hb-vpn-setup"><b><i class="ti ti-settings"></i> So richtest du das VPN ein (nur Administratoren)</b>
     <ol class="hb-steps">
-      <li>Unter <b>Einstellungen</b> den <b>öffentlichen Namen oder die IP</b> des Servers eintragen, Port (Standard 51820) und VPN-Netz prüfen, <b>eingeschaltet</b> wählen → <b>Speichern</b>.</li>
-      <li>Im Internet-Router den <b>UDP-Port</b> auf den PDH-Server weiterleiten.</li>
+      <li><b>Server-Einstellungen</b> → Reiter <b>VPN</b> öffnen. Den <b>öffentlichen Namen oder die IP</b> des Servers eintragen, UDP-Port (Standard 51820) und VPN-Netz prüfen → <b>Speichern</b> (noch ausgeschaltet lassen).</li>
+      <li><b>Installationsskript für Linux</b> herunterladen, auf den Server kopieren und dort <code>sudo bash pdh-wireguard.sh</code> ausführen. Es installiert <code>wireguard-tools</code>, richtet den systemd-Dienst <code>pdh-wireguard</code> ein und öffnet den Port in ufw bzw. firewalld.</li>
+      <li>Im Internet-Router den <b>UDP-Port</b> auf den Server weiterleiten und im Reiter <b>VPN</b> auf <b>eingeschaltet</b> stellen.</li>
       <li><b>Standort-Gateway</b> anlegen: Name und <b>Netze dahinter</b> (z. B. 192.168.10.0/24). Die angezeigte Konfiguration am Router als WireGuard-Schnittstelle einspielen, Weiterleitung ins LAN ohne NAT erlauben.</li>
       <li>Oder einen <b>ausgehenden Tunnel</b> anlegen: die vom entfernten Server erzeugte Client-Konfiguration einfügen – oder Endpunkt, Schlüssel des Servers und eigene Tunneladresse eintragen und den angezeigten öffentlichen Schlüssel von PDH am entfernten Server hinterlegen.</li>
     </ol>
-    Gesperrte Einträge lassen sich danach löschen. Das <b>Protokoll</b> zeigt, wer wann einen Zugang angelegt, angezeigt, heruntergeladen, gesperrt oder die Einstellungen geändert hat.</div>
+    Nach einem PDH-Update oder einer Änderung des Ports das Installationsskript erneut ausführen. Unter <b>Alle Geräte</b> legst du Zugänge für andere an und sperrst sie; gesperrte Einträge lassen sich danach löschen. Das <b>Protokoll</b> zeigt, wer wann einen Zugang angelegt, angezeigt, heruntergeladen, gesperrt oder die Einstellungen geändert hat.</div>
   <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was?</b>
     <ul>
-      <li><b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> – eigene Geräte anlegen, Konfiguration laden, sperren. Anfangs nur Administratoren und Anlagenverantwortliche; weitere Rollen unter <b>Rollen &amp; Rechte</b>.</li>
-      <li><b>VPN: Server, Gateways, ausgehende Tunnel und alle Zugänge verwalten</b> – alles oben, für alle Personen. Anfangs nur Administratoren.</li>
+      <li><b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> – eigene Geräte auf der Seite <b>VPN Maschinennetz</b> anlegen, Konfiguration laden, sperren. Anfangs nur Administratoren und Anlagenverantwortliche; weitere Rollen unter <b>Rollen &amp; Rechte</b>.</li>
+      <li><b>Einrichtung</b> (Einstellungen, Gateways, ausgehende Tunnel, alle Geräte, Protokoll) – nur Administratoren mit dem Recht auf die <b>Server-Einstellungen</b>.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn das VPN nicht läuft</b>
     <ul>
-      <li><b>„Dienst „wireguard“ meldet sich nicht“:</b> Der Docker-Dienst <code>wireguard</code> läuft nicht – nach dem Update <code>docker compose up -d</code> ausführen bzw. das Server-Protokoll prüfen.</li>
-      <li><b>„WireGuard fehlt im Kernel“:</b> Der Server braucht Linux ab 5.6 (oder das Paket <code>wireguard</code>).</li>
+      <li><b>„Dienst pdh-wireguard meldet sich nicht“:</b> Das Installationsskript wurde noch nicht ausgeführt oder der Dienst ist gestoppt – auf dem Server <code>systemctl status pdh-wireguard</code> und <code>journalctl -u pdh-wireguard</code> prüfen.</li>
+      <li><b>„Ordner … nicht beschreibbar“:</b> Das Installationsskript (erneut) ausführen – es legt den Austauschordner mit den richtigen Rechten an.</li>
+      <li><b>„WireGuard fehlt im Kernel“:</b> Der Server braucht Linux ab 5.6 (z. B. Ubuntu 22.04/24.04, Debian 12).</li>
+      <li><b>„… überschneidet das Netz des Servers“:</b> Ein Netz hinter einem Gateway oder Tunnel (oder das VPN-Netz) liegt im LAN oder in einem Docker-Netz des Servers. Anderes VPN-Netz wählen bzw. die Netze genauer angeben.</li>
       <li><b>Gerät verbindet sich nie:</b> UDP-Port im Internet-Router prüfen und ob der öffentliche Name auf die richtige Adresse zeigt.</li>
       <li><b>Verbunden, aber Steuerung nicht erreichbar:</b> Am Gateway die Weiterleitung ins LAN erlauben; die Geräte im Maschinennetz brauchen den Router als Gateway.</li>
     </ul></div>

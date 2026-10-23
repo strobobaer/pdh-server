@@ -16,21 +16,22 @@ import (
 )
 
 // WireGuard-Konfigurationen für das VPN ins Maschinennetz (vpn.go) – ohne
-// Datenbank, damit testbar. Der Dienst „wireguard“ (scripts/wireguard-sidecar.sh)
-// liest die Dateien aus dem gemeinsamen Ordner und wendet sie an:
+// Datenbank, damit testbar. Der systemd-Dienst pdh-wireguard auf dem Host
+// (scripts/pdh-wireguard.sh) liest die Dateien aus dem gemeinsamen Ordner und
+// wendet sie an:
 //
-//	wg0.conf       Hub: Geräte (user) und Standort-Gateways wählen sich ein
-//	wg0.routes     Netze hinter den Gateways (Änderung → Hub neu starten)
-//	pdhoN.conf     je ausgehender Tunnel eine Schnittstelle (PDH als Client, mit NAT)
+//	pdhhub.conf    Hub: Geräte (user) und Standort-Gateways wählen sich ein
+//	pdhhub.routes  Netze hinter den Gateways (Änderung → Hub neu starten)
+//	pdhoutN.conf   je ausgehender Tunnel eine Schnittstelle (PDH als Client, mit NAT)
 //	forward.allow  „Quelle Ziel“ je Zeile: was eingewählte Geräte erreichen dürfen
 //
 // Zurück schreibt der Dienst status (je Gegenstelle: Schnittstelle, Schlüssel,
 // Endpunkt, letzter Handshake, empfangen, gesendet), heartbeat und error.
 
 const (
-	vpnListenPort  = 51820 // im Container; nach außen PDH_WIREGUARD_PORT
-	vpnHubIf       = "wg0"
-	vpnOutPrefix   = "pdho"
+	vpnDefPort     = 51820
+	vpnHubIf       = "pdhhub"
+	vpnOutPrefix   = "pdhout"
 	vpnDisabled    = "# pdh-disabled"
 	vpnKeepalive   = 25
 	vpnOnlineAfter = 3 * time.Minute // Handshake jünger → verbunden
@@ -54,7 +55,7 @@ type vpnPeer struct {
 	Endpoint, RemotePublicKey        string
 	CreatedAt                        time.Time
 	Revoked                          bool
-	Iface                            string // outbound: Schnittstelle (pdho1 …)
+	Iface                            string // outbound: Schnittstelle (pdhout1 …)
 	Status                           vpnPeerStatus
 	privateKey, psk                  string
 }
@@ -245,7 +246,7 @@ func vpnReachable(peers []vpnPeer) []string {
 	return out
 }
 
-// vpnHubConf: wg0.conf des Servers (Hub).
+// vpnHubConf: pdhhub.conf des Servers (Hub); ListenPort = öffentlicher Port.
 func vpnHubConf(s vpnSettings, peers []vpnPeer) (string, error) {
 	if !s.Enabled {
 		return vpnDisabled + "\n", nil
@@ -256,7 +257,7 @@ func vpnHubConf(s vpnSettings, peers []vpnPeer) (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString("# PDH – automatisch erzeugt, nicht von Hand ändern\n[Interface]\n")
-	fmt.Fprintf(&b, "PrivateKey = %s\nAddress = %s/%d\nListenPort = %d\n", s.serverPrivateKey, vpnServerAddress(sub), sub.Bits(), vpnListenPort)
+	fmt.Fprintf(&b, "PrivateKey = %s\nAddress = %s/%d\nListenPort = %d\n", s.serverPrivateKey, vpnServerAddress(sub), sub.Bits(), s.Port)
 	for _, p := range peers {
 		if p.Revoked || p.Kind == "outbound" {
 			continue
@@ -324,7 +325,7 @@ func vpnClientConf(s vpnSettings, p vpnPeer, peers []vpnPeer) (string, error) {
 	return b.String(), nil
 }
 
-// vpnOutboundConf: pdhoN.conf – PDH als Client eines entfernten WireGuard-Servers.
+// vpnOutboundConf: pdhoutN.conf – PDH als Client eines entfernten WireGuard-Servers.
 func vpnOutboundConf(p vpnPeer) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# PDH – ausgehender Tunnel: %s\n[Interface]\nPrivateKey = %s\nAddress = %s\n", oneLine(p.Name), p.privateKey, p.Address)

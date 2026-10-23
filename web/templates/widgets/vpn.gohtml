@@ -1,0 +1,179 @@
+{{/* VPN ins Maschinennetz (vpn.go): Bausteine für /vpn (eigene Geräte) und
+     Server-Einstellungen → VPN (Verwaltung, nur Administratoren). Daten: vpnView. */}}
+
+{{define "vpn-style"}}
+<style>
+.vp-msg{font-size:12.5px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.vp-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
+.vp-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
+.vp-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:999px;background:var(--bg3)}
+.vp-state.ok{color:var(--green)}.vp-state.down{color:var(--red)}.vp-state.off{color:var(--muted)}
+.vp-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none;display:inline-block}
+.vp-dot.on{background:var(--green);box-shadow:0 0 0 3px rgba(16,185,129,.2)}
+.vp-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
+.vp-row.off{opacity:.55}
+.vp-row b{font-size:13.5px}
+.vp-meta{font-size:11.5px;color:var(--muted)}
+.vp-acts{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.vp-show{border:2px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--bg2)}
+.vp-show-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px;align-items:start}
+.vp-show pre{background:var(--bg3);border-radius:8px;padding:10px;font-size:12px;overflow:auto;white-space:pre;margin:0;user-select:all}
+.vp-qr{background:#fff;border-radius:10px;padding:10px}
+.vp-qr svg{width:100%;height:auto;display:block}
+.vp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;align-items:end}
+.vp-form .form-label{margin-bottom:3px}
+.vp-hint{font-size:12px;color:var(--muted);line-height:1.5}
+.vp-key{font-family:monospace;font-size:11.5px;word-break:break-all;user-select:all}
+.vp-ev{display:grid;grid-template-columns:130px 150px minmax(0,1fr);gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)}
+.vp-cmd{display:flex;gap:6px;align-items:center;background:var(--bg3);border-radius:8px;padding:6px 8px;margin:6px 0}
+.vp-cmd code{flex:1;font-size:12.5px}
+@media (max-width:800px){.vp-show-grid{grid-template-columns:1fr}.vp-ev{grid-template-columns:1fr}}
+</style>
+{{end}}
+
+{{define "vpn-show"}}{{$v := .}}{{with .Show}}
+<div class="vp-show" id="show">
+  <div class="card-title" style="margin-bottom:8px"><span><i class="ti ti-file-code"></i> Konfiguration „{{.Name}}“</span>
+    <span style="display:flex;gap:6px"><a class="btn btn-small btn-primary" href="{{$v.Base}}/peers/{{.ID}}/config"><i class="ti ti-download"></i> .conf herunterladen</a><a class="btn btn-small" href="{{$v.Back}}">Schließen</a></span></div>
+  <div class="vp-show-grid">
+    <div>
+      <pre>{{$v.ShowConf}}</pre>
+      <p class="vp-hint" style="margin-top:8px"><i class="ti ti-lock"></i> Enthält den privaten Schlüssel – nicht weitergeben. Bei Verlust des Geräts den Zugang sofort <b>sperren</b>.</p>
+    </div>
+    <div>
+      {{if eq .Kind "user"}}
+      <div class="vp-qr">{{$v.ShowQR}}</div>
+      <ol class="vp-hint" style="padding-left:18px;margin-top:8px">
+        <li>App <b>WireGuard</b> installieren (App Store, Play Store, wireguard.com).</li>
+        <li>Handy: <b>+</b> → <b>QR-Code scannen</b>. Laptop: <b>Tunnel aus Datei importieren</b> → .conf wählen.</li>
+        <li>Tunnel <b>aktivieren</b> – fertig.</li>
+      </ol>
+      {{else}}
+      <ol class="vp-hint" style="padding-left:18px">
+        <li>Am Router im Maschinennetz eine <b>WireGuard-Schnittstelle</b> anlegen und die .conf importieren (oder die Werte übertragen).</li>
+        <li>Die Weiterleitung von WireGuard ins LAN erlauben, <b>ohne NAT</b>.</li>
+        <li>Die Geräte im Maschinennetz brauchen den Router als Gateway (oder eine Route für das VPN-Netz {{$v.Settings.Subnet}}).</li>
+        <li>Der Router baut die Verbindung selbst auf – am Router muss kein Port offen sein.</li>
+      </ol>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}{{end}}
+
+{{define "vpn-peer"}}{{$p := .P}}{{$v := .V}}
+<div class="vp-row{{if $p.Revoked}} off{{end}}">
+  <span class="vp-dot{{if $p.Status.Online}} on{{end}}" title="{{if $p.Status.Online}}verbunden{{else}}nicht verbunden{{end}}"></span>
+  <div style="min-width:0">
+    <b>{{$p.Name}}</b>{{if $p.Revoked}} <span class="badge b-red">gesperrt</span>{{end}}{{if .ShowUser}} <span class="vp-meta">· {{$p.UserName}}</span>{{end}}
+    <div class="vp-meta">
+      {{if eq $p.Kind "outbound"}}{{$p.Endpoint}} · {{$p.Iface}} · eigene Adresse {{$p.Address}}{{else}}{{$p.Address}}{{end}}
+      {{if $p.Routes}} · Netze {{$p.Routes}}{{end}}
+      {{if $p.Status.Handshake}} · letzter Kontakt {{$p.Status.Handshake}} · ↓ {{$p.Status.Received}} ↑ {{$p.Status.Sent}}{{else if not $p.Revoked}} · noch nie verbunden{{end}}
+    </div>
+    {{if and (eq $p.Kind "outbound") (not $p.Revoked)}}<div class="vp-meta">Öffentlicher Schlüssel von PDH (am entfernten Server eintragen): <span class="vp-key">{{$p.PublicKey}}</span></div>{{end}}
+  </div>
+  <div class="vp-acts">
+    {{if and (not $p.Revoked) (ne $p.Kind "outbound")}}<a class="btn btn-small" href="{{$v.Back}}show={{$p.ID}}#show"><i class="ti ti-qrcode"></i> Konfiguration</a>{{end}}
+    {{if not $p.Revoked}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/revoke" onsubmit="return confirm('„{{$p.Name}}“ sperren? Die Verbindung wird sofort getrennt.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-lock"></i> Sperren</button></form>
+    {{else if $v.Admin}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/delete" onsubmit="return confirm('„{{$p.Name}}“ endgültig löschen?')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "vpn-mine"}}{{$v := .}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-device-laptop"></i> Meine Geräte</span></div>
+  {{range .Mine}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint" style="margin-bottom:10px">Noch kein Gerät. Lege für jedes Gerät (Laptop, Handy) einen eigenen Zugang an.</p>{{end}}
+  <form method="post" action="{{.Base}}/peers" class="vp-form" style="margin-top:10px">
+    <input type="hidden" name="kind" value="user">
+    <div><label class="form-label">Neues Gerät</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Laptop Service, Handy"></div>
+    <div><button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Zugang anlegen</button></div>
+  </form>
+  {{if .Reachable}}<p class="vp-hint" style="margin-top:10px"><i class="ti ti-route"></i> Erreichbar über das VPN: {{range $i, $r := .Reachable}}{{if $i}}, {{end}}{{$r}}{{end}}. Kommen neue Netze dazu, die Konfiguration neu laden.</p>{{end}}
+</div>
+{{end}}
+
+{{define "vpn-admin"}}{{$v := .}}
+{{template "vpn-style"}}
+<div class="card" id="vpn-host">
+  <div class="card-title"><span><i class="ti ti-server-2"></i> WireGuard auf dem Server</span>
+    <span class="vp-state {{.Service.State}}"><span class="vp-dot{{if eq .Service.State "ok"}} on{{end}}"></span> VPN {{.Service.Label}}</span></div>
+  {{if .Service.Error}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> Dienst pdh-wireguard: {{.Service.Error}}</div>{{end}}
+  <p class="vp-hint">WireGuard läuft direkt auf dem Server als systemd-Dienst <code>pdh-wireguard</code>. PDH schreibt die Konfiguration nach <code>{{.Host.Dir}}</code>{{if .Host.Docker}} (in die App eingebunden){{end}}, der Dienst übernimmt sie innerhalb weniger Sekunden.</p>
+  <ol class="vp-hint" style="padding-left:18px">
+    <li>Unten die Einstellungen eintragen und speichern (zuerst noch ausgeschaltet lassen).</li>
+    <li><a class="btn btn-small btn-primary" href="{{.Base}}/script"><i class="ti ti-brand-ubuntu"></i> Installationsskript für Linux</a> herunterladen, auf den Server kopieren und dort ausführen:
+      <div class="vp-cmd"><code>sudo bash pdh-wireguard.sh</code><button type="button" class="btn btn-small" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent)" title="Kopieren"><i class="ti ti-copy"></i></button></div>
+      Es installiert <code>wireguard-tools</code>, richtet den Dienst ein und öffnet den UDP-Port in ufw/firewalld. Nach einem PDH-Update oder einer Port-Änderung erneut ausführen.</li>
+    <li>Im Internet-Router den <b>UDP-Port {{.Settings.Port}}</b> auf den Server weiterleiten, dann <b>eingeschaltet</b> wählen.</li>
+  </ol>
+</div>
+
+<div class="card" id="settings">
+  <div class="card-title"><span><i class="ti ti-settings"></i> Einstellungen</span></div>
+  <form method="post" action="{{.Base}}/settings" class="vp-form">
+    <div><label class="form-label">VPN</label>
+      <select class="form-input" name="enabled"><option value="">ausgeschaltet</option><option value="1"{{if .Settings.Enabled}} selected{{end}}>eingeschaltet</option></select></div>
+    <div><label class="form-label">Öffentlicher Name oder IP des Servers</label><input class="form-input" name="endpoint" value="{{.Settings.Endpoint}}" placeholder="vpn.firma.de"></div>
+    <div><label class="form-label">UDP-Port</label><input class="form-input" name="port" type="number" min="1" max="65535" value="{{.Settings.Port}}"></div>
+    <div><label class="form-label">VPN-Netz</label><input class="form-input" name="subnet" value="{{.Settings.Subnet}}"></div>
+    <div><label class="form-label">DNS für Geräte (optional)</label><input class="form-input" name="dns" value="{{.Settings.DNS}}" placeholder="192.168.10.1"></div>
+    <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+  </form>
+  <p class="vp-hint" style="margin-top:10px">Das VPN-Netz und die Netze hinter Gateways und Tunneln dürfen sich nicht mit dem Netz des Servers überschneiden (LAN, Docker) – der Dienst prüft das und startet sonst nicht. Öffentlicher Schlüssel des Servers: <span class="vp-key">{{.Settings.ServerPublicKey}}</span></p>
+</div>
+
+{{template "vpn-show" .}}
+
+<div class="card" id="gateways">
+  <div class="card-title"><span><i class="ti ti-router"></i> Standort-Gateways <small class="vp-meta">Router im Maschinennetz wählen sich bei PDH ein</small></span></div>
+  {{range .Gateways}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint">Noch kein Gateway.</p>{{end}}
+  <form method="post" action="{{.Base}}/peers" class="vp-form" style="margin-top:10px">
+    <input type="hidden" name="kind" value="gateway">
+    <div><label class="form-label">Name</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Halle 2 – Teltonika"></div>
+    <div><label class="form-label">Netze dahinter</label><input class="form-input" name="routes" required placeholder="192.168.10.0/24, 192.168.11.0/24"></div>
+    <div><button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Gateway anlegen</button></div>
+  </form>
+</div>
+
+<div class="card" id="outbound">
+  <div class="card-title"><span><i class="ti ti-plug-connected"></i> Ausgehende Tunnel <small class="vp-meta">PDH verbindet sich als Client zu einem WireGuard-Server im Maschinennetz</small></span></div>
+  {{range .Outbound}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint">Noch kein ausgehender Tunnel.</p>{{end}}
+  <details style="margin-top:10px"><summary class="btn btn-small" style="display:inline-flex"><i class="ti ti-plus"></i> Tunnel hinzufügen</summary>
+  <form method="post" action="{{.Base}}/peers" style="margin-top:10px">
+    <input type="hidden" name="kind" value="outbound">
+    <div class="vp-form">
+      <div><label class="form-label">Name</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Werk Süd – mGuard"></div>
+      <div><label class="form-label">Netze dahinter</label><input class="form-input" name="routes" placeholder="192.168.20.0/24 (leer = aus der Konfiguration)"></div>
+    </div>
+    <p class="vp-hint" style="margin:10px 0 4px"><b>Entweder</b> die vom entfernten Server erzeugte Client-Konfiguration einfügen …</p>
+    <textarea class="form-input" name="import" rows="6" style="font-family:monospace;font-size:12px" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.8.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.werk-sued.de:51820&#10;AllowedIPs = 192.168.20.0/24"></textarea>
+    <p class="vp-hint" style="margin:10px 0 4px"><b>… oder</b> die Werte einzeln eintragen. PDH erzeugt dann den Schlüssel; seinen öffentlichen Schlüssel trägst du danach am entfernten Server ein.</p>
+    <div class="vp-form">
+      <div><label class="form-label">Endpunkt (host:port)</label><input class="form-input" name="endpoint" placeholder="vpn.werk-sued.de:51820"></div>
+      <div><label class="form-label">Öffentlicher Schlüssel des Servers</label><input class="form-input" name="remote_key" placeholder="Base64, 44 Zeichen"></div>
+      <div><label class="form-label">Eigene Tunneladresse</label><input class="form-input" name="address" placeholder="10.8.0.5/32"></div>
+      <div><label class="form-label">Pre-Shared-Key (optional)</label><input class="form-input" name="psk"></div>
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:10px"><i class="ti ti-plus"></i> Tunnel anlegen</button>
+  </form></details>
+</div>
+
+<div class="card" id="devices">
+  <div class="card-title"><span><i class="ti ti-users"></i> Alle Geräte</span><a class="card-action" href="/vpn">Meine Geräte →</a></div>
+  {{range .Users}}{{template "vpn-peer" (dict "P" . "V" $v "ShowUser" true)}}{{else}}<p class="vp-hint">Noch keine Geräte.</p>{{end}}
+  <form method="post" action="{{.Base}}/peers" class="vp-form" style="margin-top:10px">
+    <input type="hidden" name="kind" value="user">
+    <div><label class="form-label">Gerät für Person</label><select class="form-input" name="user_id" required><option value="">– Person wählen –</option>{{range .People}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+    <div><label class="form-label">Gerätename</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Laptop"></div>
+    <div><button class="btn" type="submit"><i class="ti ti-plus"></i> Anlegen</button></div>
+  </form>
+  <p class="vp-hint" style="margin-top:8px">Eigene Geräte anlegen dürfen Personen mit dem Recht <b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> (Rollen &amp; Rechte) – auf der Seite <a href="/vpn">VPN Maschinennetz</a>.</p>
+</div>
+
+<div class="card" id="events">
+  <div class="card-title"><span><i class="ti ti-history"></i> Protokoll <small class="vp-meta">die letzten 50 Einträge</small></span></div>
+  {{range .Events}}<div class="vp-ev"><span>{{.At}}</span><span>{{.User}}</span><span>{{if .Peer}}<b>{{.Peer}}</b> – {{end}}{{.Note}}</span></div>{{else}}<p class="vp-hint">Noch keine Einträge.</p>{{end}}
+</div>
+{{end}}

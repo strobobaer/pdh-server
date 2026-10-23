@@ -57,6 +57,7 @@
   {{range .Groups}}<a class="rec-tab" data-tab="{{.Key}}" href="?tab={{.Key}}"><i class="ti {{.Icon}}"></i> {{.Label}}{{if .Test}}<span class="sc-dot {{if .Test.OK}}ok{{else}}bad{{end}}" title="letzter Test {{if .Test.OK}}erfolgreich{{else}}fehlgeschlagen{{end}} ({{.Test.At}})"></span>{{else if .TakeOver}}<span class="sc-dot" style="background:var(--amber,#f59e0b)" title="Werte in .env.docker"></span>{{end}}</a>{{end}}
   <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
   <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
+  <a class="rec-tab" data-tab="vpn" href="?tab=vpn"><i class="ti ti-shield-lock"></i> VPN{{if eq .VPN.Service.State "down"}}<span class="sc-dot bad" title="{{.VPN.Service.Label}}"></span>{{else if eq .VPN.Service.State "ok"}}<span class="sc-dot ok" title="läuft"></span>{{end}}</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
 
@@ -196,6 +197,11 @@
   </div>
 </form>
 {{end}}
+</div>
+
+<!-- ── VPN ins Maschinennetz: WireGuard auf dem Host (vpn.go, widgets/vpn.gohtml) ── -->
+<div class="rec-pane" data-pane="vpn">
+{{template "vpn-admin" .VPN}}
 </div>
 
 <!-- ── Erscheinungsbild (Logos) ── -->

@@ -81,7 +81,7 @@ func vpnTestSetup() (vpnSettings, []vpnPeer) {
 		{ID: "u2", Kind: "user", Name: "Altes Handy", Address: "10.66.0.4/32", PublicKey: "U2PUB", Revoked: true},
 		{ID: "g1", Kind: "gateway", Name: "Halle 2", Address: "10.66.0.3/32", PublicKey: "G1PUB", privateKey: "G1PRIV", Routes: "192.168.10.0/24"},
 		{ID: "o1", Kind: "outbound", Name: "Werk Süd", Address: "10.8.0.5/32", PublicKey: "O1PUB", privateKey: "O1PRIV",
-			Endpoint: "vpn.sued.de:51820", RemotePublicKey: "REMOTE", Routes: "192.168.20.0/24", Iface: "pdho1"},
+			Endpoint: "vpn.sued.de:51820", RemotePublicKey: "REMOTE", Routes: "192.168.20.0/24", Iface: "pdhout1"},
 	}
 	return s, peers
 }
@@ -164,26 +164,77 @@ func TestVPNParseStatus(t *testing.T) {
 	}
 }
 
+func vpnTestView(admin bool) vpnView {
+	s, peers := vpnTestSetup()
+	base, back := "/vpn", "/vpn?"
+	if admin {
+		base, back = vpnAdminURL+"/vpn", vpnAdminURL+"?tab=vpn&"
+	}
+	v := vpnView{Settings: s, Service: vpnService{State: "ok", Label: "läuft"}, Admin: admin, Base: base, Back: back,
+		Mine: []vpnPeer{peers[0]}, Reachable: vpnReachable(peers), Host: vpnHostView{Dir: "/srv/pdh-wireguard", UID: 10001, GID: 10001, Docker: true}}
+	v.Mine[0].Status = vpnPeerStatus{Online: true, Handshake: "vor 1 Min.", Received: "1 KB", Sent: "2 KB"}
+	if admin {
+		v.Users, v.Gateways, v.Outbound = peers[:2], []vpnPeer{peers[2]}, []vpnPeer{peers[3]}
+		v.Events = []vpnEvent{{At: "23.10.2026 10:00", User: "Max", Peer: "Laptop", Note: "Konfiguration heruntergeladen"}}
+		v.People = []UserOption{{ID: "x", Name: "Max Muster"}}
+	}
+	return v
+}
+
 func TestVPNPageRenders(t *testing.T) {
 	tmpl := loadTestTemplates(t)
-	s, peers := vpnTestSetup()
-	d := VPNPageData{Settings: s, Service: vpnService{State: "ok", Label: "läuft"}, CanManage: true,
-		Mine: []vpnPeer{peers[0]}, Users: peers[:2], Gateways: []vpnPeer{peers[2]}, Outbound: []vpnPeer{peers[3]},
-		Events: []vpnEvent{{At: "23.10.2026 10:00", User: "Max", Peer: "Laptop", Note: "Konfiguration heruntergeladen"}},
-		People: []UserOption{{ID: "x", Name: "Max Muster"}}, Reachable: vpnReachable(peers),
-		Show: &peers[0], ShowConf: "[Interface]\nPrivateKey = U1PRIV", ShowQR: "<svg></svg>"}
-	d.Mine[0].Status = vpnPeerStatus{Online: true, Handshake: "vor 1 Min.", Received: "1 KB", Sent: "2 KB"}
-	out := renderPage(t, tmpl, "vpn", d)
-	for _, want := range []string{"VPN läuft", "Konfiguration „Laptop“", "PrivateKey = U1PRIV", "/vpn/peers/u1/config", "<svg></svg>",
-		`name="kind" value="gateway"`, `name="kind" value="outbound"`, "Halle 2", "pdho1", "O1PUB", "gesperrt", "/vpn/peers/u2/delete",
-		"Max Muster", "Konfiguration heruntergeladen", "192.168.20.0/24", "vp-dot on", "SERVERPUB"} {
+	v := vpnTestView(false)
+	_, peers := vpnTestSetup()
+	v.Show, v.ShowConf, v.ShowQR = &peers[0], "[Interface]\nPrivateKey = U1PRIV", "<svg></svg>"
+	out := renderPage(t, tmpl, "vpn", VPNPageData{VPN: v, CanAdmin: true})
+	for _, want := range []string{"VPN läuft", "Meine Geräte", "Konfiguration „Laptop“", "PrivateKey = U1PRIV", `href="/vpn/peers/u1/config"`,
+		"<svg></svg>", `action="/vpn/peers"`, `action="/vpn/peers/u1/revoke"`, "vp-dot on", "192.168.20.0/24", `href="/admin/server-config?tab=vpn"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Seite enthält %q nicht", want)
 		}
 	}
-	// ohne Verwaltung: nur eigene Geräte
-	out = renderPage(t, tmpl, "vpn", VPNPageData{Settings: s, Mine: []vpnPeer{peers[0]}})
-	if strings.Contains(out, `id="settings"`) || strings.Contains(out, `value="gateway"`) || !strings.Contains(out, "Meine Geräte") {
-		t.Error("Verwaltung ohne Recht sichtbar")
+	for _, not := range []string{`value="gateway"`, `id="settings"`, "Alle Geräte", "/vpn/script"} {
+		if strings.Contains(out, not) {
+			t.Errorf("Seite für Benutzer enthält Verwaltung %q", not)
+		}
+	}
+	if out := renderPage(t, tmpl, "vpn", VPNPageData{VPN: vpnTestView(false)}); strings.Contains(out, "tab=vpn") {
+		t.Error("Link zur Einrichtung ohne Admin-Recht")
+	}
+}
+
+func TestVPNAdminPaneRenders(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c, _ := tmpl.Clone()
+	var b strings.Builder
+	if err := bindLang(c, "de").ExecuteTemplate(&b, "vpn-admin", vpnTestView(true)); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"pdh-wireguard", "/srv/pdh-wireguard", `href="/admin/server-config/vpn/script"`, `action="/admin/server-config/vpn/settings"`,
+		`name="kind" value="gateway"`, `name="kind" value="outbound"`, "Halle 2", "pdhout1", "O1PUB", "gesperrt",
+		`action="/admin/server-config/vpn/peers/u2/delete"`, `href="/admin/server-config?tab=vpn&amp;show=g1#show"`, "Max Muster",
+		"Konfiguration heruntergeladen", "SERVERPUB", "UDP-Port 51820"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Reiter VPN enthält %q nicht", want)
+		}
+	}
+}
+
+func TestVPNInstallScript(t *testing.T) {
+	sc := vpnInstallScript(vpnHostView{Dir: "/srv/pdh-wireguard", UID: 10001, GID: 10001}, 51999)
+	for _, want := range []string{"#!/usr/bin/env bash", "DIR='/srv/pdh-wireguard'", "PDH_UID='10001'", "PORT='51999'",
+		"cat >/usr/local/bin/pdh-wireguard <<'PDH_WG_DAEMON'", "pdh-wireguard – systemd-Dienst auf dem Host", "\nPDH_WG_DAEMON\n",
+		"/etc/systemd/system/pdh-wireguard.service", "Environment=PDH_WIREGUARD_DIR=$DIR", "systemctl restart pdh-wireguard",
+		"ip link add pdhtest type wireguard", `ufw allow "$PORT/udp"`} {
+		if !strings.Contains(sc, want) {
+			t.Errorf("Skript enthält %q nicht", want)
+		}
+	}
+	if strings.Contains(sc, "{{") {
+		t.Error("Platzhalter nicht ersetzt")
+	}
+	if strings.Contains(sc, "PrivateKey") {
+		t.Error("Skript darf keine Schlüssel enthalten")
 	}
 }

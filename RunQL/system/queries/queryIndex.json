@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-23T03:53:56.169Z",
+  "generatedAt": "2026-10-23T04:19:29.435Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1480,6 +1480,17 @@
       "sqlHash": "6b5f0f9f73733778fa8b38183405d8f18f399e13ce0ab89d27d356858a174f1f",
       "title": "136_vpn.up.sql",
       "updatedAt": "2026-10-23T03:53:55.511Z"
+    },
+    {
+      "createdAt": "2026-10-23T04:19:28.781Z",
+      "path": "migrations/137_vpn_admin.up.sql",
+      "catalogContext": null,
+      "searchText": "137_vpn_admin.up.sql migrations/137_vpn_admin.up.sql -- 137_vpn_admin.up.sql\n-- vpn: einrichtung, gateways, ausgehende tunnel und alle zugänge liegen jetzt unter\n-- server-einstellungen → vpn und brauchen administratorrechte (system.server_config).\n-- wireguard läuft auf dem host als systemd-dienst pdh-wireguard statt im container.\n-- das eigene recht „vpn verwalten“ (136) entfällt; zuordnungen fallen per cascade weg.\ndelete from permissions where key = 'vpn.manage';\n",
+      "searchUpdatedAt": "2026-10-23T04:19:28.888Z",
+      "schemaContext": null,
+      "sqlHash": "7f6bc7f9544e48e6738a721ec57a4766dc237c250af8d17a3230921ce0667a34",
+      "title": "137_vpn_admin.up.sql",
+      "updatedAt": "2026-10-23T04:19:28.781Z"
     }
   ]
 }

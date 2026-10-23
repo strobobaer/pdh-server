@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.67.0] – 2026-10-23
+
+### Geändert
+- VPN: WireGuard läuft jetzt direkt auf dem Server als systemd-Dienst „pdh-wireguard“ statt in einem eigenen Docker-Container; ein Installationsskript richtet ihn mit einem Befehl ein.
+- Die Einrichtung des VPN (Einstellungen, Standort-Gateways, ausgehende Tunnel, alle Geräte, Protokoll) liegt unter Server-Einstellungen → VPN und ist nur für Administratoren; die Seite „VPN Maschinennetz“ zeigt nur noch die eigenen Geräte.
+- Das Recht „VPN verwalten“ entfällt – die Verwaltung gehört zu den Server-Einstellungen.
+
+### Sicherheit
+- Der VPN-Dienst prüft vor dem Start, ob sich ein Netz mit dem Netz des Servers (LAN, Docker) überschneidet, und setzt seine Firewall-Regeln nur für VPN-Verkehr.
+
 ## [0.66.0] – 2026-10-23
 
 ### Neu
