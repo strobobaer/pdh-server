@@ -223,6 +223,7 @@
 <div class="card" id="outbound">
   <div class="card-title"><span><i class="ti ti-plug-connected"></i> Tunnel zum Maschinennetz <small class="vp-meta">PDH verbindet sich als Client zu einem WireGuard-Server im Maschinennetz</small></span></div>
   {{range .Outbound}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint">Noch kein Tunnel. Am Router im Maschinennetz (mGuard, Teltonika, FRITZ!Box …) einen WireGuard-Zugang für PDH anlegen, dessen <b>.conf</b> exportieren und hier importieren.</p>{{end}}
+  <p class="vp-hint">Ein Tunnel braucht das VPN oben <b>nicht</b> eingeschaltet und keinen öffentlichen Namen – wie im WireGuard-Client: Datei importieren, fertig. Nur das Installationsskript muss einmal auf dem Server gelaufen sein.</p>
   <details style="margin-top:10px"{{if not .Outbound}} open{{end}}><summary class="btn btn-small" style="display:inline-flex"><i class="ti ti-file-import"></i> WireGuard-Konfiguration importieren</summary>
   <form method="post" action="{{.Base}}/peers" style="margin-top:10px" id="vp-import">
     <input type="hidden" name="kind" value="outbound">

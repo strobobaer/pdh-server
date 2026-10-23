@@ -99,12 +99,12 @@ func (h *Handler) VPNStatusWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	s, _ := h.vpnLoadSettings(ctx)
-	svc, status := vpnReadService(s.Enabled && s.Endpoint != "", time.Now())
 	peers, err := h.vpnLoadPeers(ctx, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	svc, status := vpnReadService(vpnServiceWanted(s, peers), time.Now())
 	uid := getUser(r).ID
 	out := vpnStatusJSON{Service: svc, Peers: map[string]vpnPeerStatusJ{}}
 	var shown []vpnPeer

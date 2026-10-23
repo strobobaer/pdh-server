@@ -6,7 +6,7 @@
 #   pdhhub.conf    Hub für Geräte und Standort-Gateways (# pdh-disabled = aus)
 #   pdhhub.routes  Netze hinter den Gateways – Änderung: Hub neu starten,
 #                  sonst nur „wg syncconf“ (bestehende Verbindungen bleiben)
-#   pdhoutN.conf   ausgehende Tunnel (PDH als Client, mit NAT)
+#   pdhoutN.conf   ausgehende Tunnel (PDH als Client, mit NAT) – auch ohne Hub
 #   forward.allow  „Quelle Ziel“: was eingewählte Geräte erreichen dürfen
 #
 # Zurück: status (ohne Schlüssel), heartbeat (Unix-Zeit), error (letzter Fehler).
@@ -98,17 +98,17 @@ apply_hub() {
 	up pdhhub && sum "$DIR/pdhhub.routes" >"$RUN/pdhhub.routes"
 }
 
+# Ausgehende Tunnel laufen auch bei ausgeschaltetem Hub (PDH als reiner Client).
 apply_outbound() {
 	local f name want
 	for f in /etc/wireguard/pdhout*.conf; do # entfernte Tunnel abbauen
 		[ -e "$f" ] || continue
 		name=$(basename "$f" .conf)
-		if disabled || [ ! -f "$DIR/$name.conf" ]; then
+		if [ ! -f "$DIR/$name.conf" ]; then
 			down "$name"
 			rm -f "$f" "$RUN/$name.sum"
 		fi
 	done
-	disabled && return
 	for f in "$DIR"/pdhout*.conf; do
 		[ -e "$f" ] || continue
 		name=$(basename "$f" .conf)

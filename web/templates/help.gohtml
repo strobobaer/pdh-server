@@ -1666,6 +1666,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto" id="hb-vpn-import"><b><i class="ti ti-file-import"></i> So importierst du den Tunnel zum Maschinennetz</b>
     <ol class="hb-steps">
       <li>Am Router bzw. WireGuard-Server im Maschinennetz (mGuard, Teltonika, FRITZ!Box …) einen WireGuard-Zugang für PDH anlegen und dessen Konfiguration als <b>.conf</b> exportieren.</li>
+      <li>Einmal das <b>Installationsskript</b> auf dem Server ausführen (siehe oben, Schritt 2). Den Rest der Einrichtung – öffentlicher Name, Port, <b>eingeschaltet</b> – braucht ein Tunnel <b>nicht</b>; das ist nur für Geräte und Gateways nötig, die sich bei PDH einwählen.</li>
       <li><b>Server-Einstellungen</b> → <b>VPN</b> → <b>Tunnel zum Maschinennetz</b> → <b>WireGuard-Konfiguration importieren</b>.</li>
       <li>Namen eintragen und die <b>.conf-Datei wählen</b> (oder ins Feld ziehen bzw. den Inhalt einfügen). <b>Prüfen</b> zeigt Endpunkt, Tunneladresse und Netze.</li>
       <li>Leitet die Konfiguration alles durch den Tunnel (<code>0.0.0.0/0</code>), unter <b>Netze dahinter</b> die Netze im Maschinennetz angeben, z. B. 192.168.20.0/24 → <b>Tunnel anlegen</b>.</li>

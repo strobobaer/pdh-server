@@ -161,10 +161,11 @@ func (h *Handler) vpnApply(ctx context.Context) error {
 	files := map[string]string{vpnHubIf + ".conf": hub, vpnHubIf + ".routes": vpnHubRoutes(peers), "forward.allow": ""}
 	if s.Enabled {
 		files["forward.allow"] = vpnForwardRules(peers)
-		for _, p := range peers {
-			if p.Iface != "" && p.Active() { // Schnittstellenname bleibt auch beim Deaktivieren reserviert
-				files[p.Iface+".conf"] = vpnOutboundConf(p)
-			}
+	}
+	// ausgehende Tunnel auch ohne Hub – wie ein importierter Tunnel im WireGuard-Client
+	for _, p := range peers {
+		if p.Iface != "" && p.Active() { // Schnittstellenname bleibt auch beim Deaktivieren reserviert
+			files[p.Iface+".conf"] = vpnOutboundConf(p)
 		}
 	}
 	dir := vpnDir()
@@ -201,6 +202,20 @@ type vpnService struct {
 	State string `json:"state"` // ok | off | down
 	Label string `json:"label"`
 	Error string `json:"error"`
+}
+
+// vpnServiceWanted: der Dienst soll laufen – Hub eingeschaltet (mit öffentlichem
+// Namen) oder mindestens ein aktiver ausgehender Tunnel, der braucht den Hub nicht.
+func vpnServiceWanted(s vpnSettings, peers []vpnPeer) bool {
+	if s.Enabled && s.Endpoint != "" {
+		return true
+	}
+	for _, p := range peers {
+		if p.Kind == "outbound" && p.Active() {
+			return true
+		}
+	}
+	return false
 }
 
 func vpnReadService(enabled bool, now time.Time) (vpnService, map[string]vpnPeerStatus) {
@@ -278,12 +293,12 @@ func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show 
 		v.Error = err.Error()
 	}
 	v.Settings = s
-	svc, status := vpnReadService(s.Enabled && s.Endpoint != "", time.Now())
-	v.Service = svc
 	peers, err := h.vpnLoadPeers(ctx, false)
 	if err != nil {
 		componentLog("vpn").Warn().Err(err).Msg("zugaenge laden")
 	}
+	svc, status := vpnReadService(vpnServiceWanted(s, peers), time.Now())
+	v.Service = svc
 	v.Reachable = vpnReachable(peers, false)
 	var shown []vpnPeer
 	for _, p := range peers {

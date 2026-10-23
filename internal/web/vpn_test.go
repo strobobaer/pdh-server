@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pdh"
 )
 
 func TestVPNKeys(t *testing.T) {
@@ -396,5 +398,30 @@ func TestVPNToggleAndLiveRender(t *testing.T) {
 	}
 	if strings.Contains(page, `data-vpn-sum="Tunnels"`) {
 		t.Error("Benutzer sieht Tunnel-Zusammenfassung")
+	}
+}
+
+func TestVPNOutboundWithoutHub(t *testing.T) {
+	off := vpnSettings{Subnet: "10.66.0.0/24"}
+	tunnel := vpnPeer{Kind: "outbound", Iface: "pdhout1"}
+	if vpnServiceWanted(off, nil) {
+		t.Error("ohne Hub und ohne Tunnel soll der Dienst nicht laufen")
+	}
+	if !vpnServiceWanted(off, []vpnPeer{tunnel}) {
+		t.Error("ausgehender Tunnel braucht den Hub nicht – Dienst soll laufen")
+	}
+	tunnel.Disabled = true
+	if vpnServiceWanted(off, []vpnPeer{tunnel, {Kind: "user"}}) {
+		t.Error("deaktivierter Tunnel hält den Dienst an")
+	}
+	if !vpnServiceWanted(vpnSettings{Enabled: true, Endpoint: "vpn.firma.de"}, nil) {
+		t.Error("eingeschalteter Hub: Dienst soll laufen")
+	}
+	// der Dienst auf dem Host baut Tunnel nicht ab, nur weil der Hub aus ist
+	daemon := pdh.WireGuardDaemon
+	i := strings.Index(daemon, "apply_outbound() {")
+	j := strings.Index(daemon[i:], "\n}\n")
+	if i < 0 || j < 0 || strings.Contains(daemon[i:i+j], "disabled") {
+		t.Error("apply_outbound hängt noch am Hub (disabled)")
 	}
 }

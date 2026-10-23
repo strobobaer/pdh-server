@@ -15,6 +15,9 @@ im Kapitel „Versionen & Updates“ an.
 ### Geändert
 - Administratoren werden nicht mehr wegen Inaktivität abgemeldet, solange Code-Editor, n8n oder pgAdmin in einem anderen Tab offen sind – bisher beendete der PDH-Tab im Hintergrund die Sitzung, und das Werkzeug blieb hängen.
 
+### Behoben
+- VPN: Ein importierter Tunnel zum Maschinennetz verbindet sich jetzt wie im WireGuard-Client, auch wenn das VPN für Geräte und Gateways ausgeschaltet ist – bisher blieb er ohne eingeschaltetes VPN und öffentlichen Namen stumm (danach einmal das Installationsskript erneut ausführen).
+
 ## [0.71.0] – 2026-10-23
 
 ### Neu
