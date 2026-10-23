@@ -251,6 +251,7 @@ type vpnView struct {
 	Base      string // /vpn bzw. /admin/server-config/vpn (Formulare)
 	Back      string // Rücksprung mit ?show=
 	Host      vpnHostView
+	ZipIDs    string // frisch angelegte Zugänge (Sammelanlage) zum Herunterladen als ZIP
 	Error     string
 }
 
@@ -532,13 +533,7 @@ func (h *Handler) VPNCreateWeb(w http.ResponseWriter, r *http.Request) {
 			if admin && r.FormValue("user_id") != "" {
 				p.UserID = r.FormValue("user_id")
 			}
-			n := 0
-			for _, x := range peers {
-				if x.Kind == "user" && !x.Revoked && x.UserID == p.UserID {
-					n++
-				}
-			}
-			if n >= vpnMaxDevices {
+			if vpnDeviceCount(peers, p.UserID) >= vpnMaxDevices {
 				return fmt.Errorf("Höchstens %d aktive Geräte je Person – ein altes Gerät sperren", vpnMaxDevices)
 			}
 		case "gateway":

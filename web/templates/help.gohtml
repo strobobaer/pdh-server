@@ -1628,9 +1628,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Installationsskript für Linux</b> herunterladen, auf den Server kopieren und dort <code>sudo bash pdh-wireguard.sh</code> ausführen. Es installiert <code>wireguard-tools</code>, richtet den systemd-Dienst <code>pdh-wireguard</code> ein und öffnet den Port in ufw bzw. firewalld.</li>
       <li>Im Internet-Router den <b>UDP-Port</b> auf den Server weiterleiten und im Reiter <b>VPN</b> auf <b>eingeschaltet</b> stellen.</li>
       <li><b>Standort-Gateway</b> anlegen: Name und <b>Netze dahinter</b> (z. B. 192.168.10.0/24). Die angezeigte Konfiguration am Router als WireGuard-Schnittstelle einspielen, Weiterleitung ins LAN ohne NAT erlauben.</li>
-      <li>Oder einen <b>ausgehenden Tunnel</b> anlegen: die vom entfernten Server erzeugte Client-Konfiguration einfügen – oder Endpunkt, Schlüssel des Servers und eigene Tunneladresse eintragen und den angezeigten öffentlichen Schlüssel von PDH am entfernten Server hinterlegen.</li>
+      <li>Oder einen <b>Tunnel zum Maschinennetz</b> anlegen (siehe unten).</li>
     </ol>
     Nach einem PDH-Update oder einer Änderung des Ports das Installationsskript erneut ausführen. Unter <b>Alle Geräte</b> legst du Zugänge für andere an und sperrst sie; gesperrte Einträge lassen sich danach löschen. Das <b>Protokoll</b> zeigt, wer wann einen Zugang angelegt, angezeigt, heruntergeladen, gesperrt oder die Einstellungen geändert hat.</div>
+  <div class="hb-howto" id="hb-vpn-import"><b><i class="ti ti-file-import"></i> So importierst du den Tunnel zum Maschinennetz</b>
+    <ol class="hb-steps">
+      <li>Am Router bzw. WireGuard-Server im Maschinennetz (mGuard, Teltonika, FRITZ!Box …) einen WireGuard-Zugang für PDH anlegen und dessen Konfiguration als <b>.conf</b> exportieren.</li>
+      <li><b>Server-Einstellungen</b> → <b>VPN</b> → <b>Tunnel zum Maschinennetz</b> → <b>WireGuard-Konfiguration importieren</b>.</li>
+      <li>Namen eintragen und die <b>.conf-Datei wählen</b> (oder ins Feld ziehen bzw. den Inhalt einfügen). <b>Prüfen</b> zeigt Endpunkt, Tunneladresse und Netze.</li>
+      <li>Leitet die Konfiguration alles durch den Tunnel (<code>0.0.0.0/0</code>), unter <b>Netze dahinter</b> die Netze im Maschinennetz angeben, z. B. 192.168.20.0/24 → <b>Tunnel anlegen</b>.</li>
+    </ol>
+    PDH verbindet sich sofort. Erzeugt der Router später neue Schlüssel, am Tunnel <b>Neue Konfiguration einspielen</b> – Name und Protokoll bleiben. Eine DNS-Angabe in der Datei wird nicht übernommen.</div>
+  <div class="hb-howto" id="hb-vpn-users"><b><i class="ti ti-users-plus"></i> So erstellst du Konfigurationen für die Benutzer</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen</b> → <b>VPN</b> → <b>Alle Geräte</b> → <b>Konfigurationen für Benutzer erstellen</b>.</li>
+      <li>Gerätenamen eintragen (z. B. „Laptop“) und die <b>Personen anhaken</b> – das Suchfeld filtert, „alle angezeigten wählen“ hakt alle Treffer an.</li>
+      <li><b>Zugänge erstellen</b>. Jede Person bekommt einen eigenen Zugang mit eigener Adresse und eigenen Schlüsseln.</li>
+      <li><b>Alle als ZIP herunterladen</b>: je Person ein Ordner mit der .conf-Datei. Einzeln geht es über <b>Konfiguration</b> am Gerät, mit QR-Code fürs Handy.</li>
+    </ol>
+    Die Konfigurationen enthalten die privaten Schlüssel – nur auf sicherem Weg weitergeben. Wer das Recht „VPN nutzen“ hat, kann seine Konfiguration auch selbst unter <b>VPN Maschinennetz</b> laden. Die Netze der Gateways und Tunnel stehen in jeder Konfiguration; kommen neue dazu, die Konfiguration neu laden.</div>
   <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was?</b>
     <ul>
       <li><b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> – eigene Geräte auf der Seite <b>VPN Maschinennetz</b> anlegen, Konfiguration laden, sperren. Anfangs nur Administratoren und Anlagenverantwortliche; weitere Rollen unter <b>Rollen &amp; Rechte</b>.</li>

@@ -238,3 +238,75 @@ func TestVPNInstallScript(t *testing.T) {
 		t.Error("Skript darf keine Schlüssel enthalten")
 	}
 }
+
+func TestVPNNewDevice(t *testing.T) {
+	s, peers := vpnTestSetup()
+	p, err := vpnNewDevice(s, peers, "x1", "VPN")
+	if err != nil || p.Address != "10.66.0.4/32" || !vpnValidKey(p.PublicKey) || p.psk == "" || p.UserID != "x1" {
+		t.Fatalf("neues Gerät: %+v %v", p, err) // .4 ist frei (gesperrter Zugang)
+	}
+	peers = append(peers, p)
+	q, _ := vpnNewDevice(s, peers, "x2", "VPN")
+	if q.Address == p.Address {
+		t.Error("doppelte Adresse")
+	}
+	for i := 0; i < 4; i++ {
+		d, err := vpnNewDevice(s, peers, "x1", "VPN")
+		if err != nil {
+			t.Fatal(err)
+		}
+		peers = append(peers, d)
+	}
+	if _, err := vpnNewDevice(s, peers, "x1", "VPN"); err == nil {
+		t.Error("mehr als 5 Geräte je Person erlaubt")
+	}
+}
+
+func TestVPNImportSummary(t *testing.T) {
+	priv, _, _ := vpnKeyPair()
+	_, pub, _ := vpnKeyPair()
+	conf := "[Interface]\nPrivateKey = " + priv + "\nAddress = 10.8.0.5/32\n[Peer]\nPublicKey = " + pub + "\nPresharedKey = " + pub +
+		"\nEndpoint = vpn.sued.de:51820\nAllowedIPs = 0.0.0.0/0\n"
+	if _, err := vpnImportSummary(conf, "", "10.66.0.0/24"); err == nil || !strings.Contains(err.Error(), "0.0.0.0/0") {
+		t.Errorf("alles durch den Tunnel nicht erkannt: %v", err)
+	}
+	sum, err := vpnImportSummary(conf, "192.168.20.0/24", "10.66.0.0/24")
+	if err != nil || !strings.Contains(sum, "vpn.sued.de:51820") || !strings.Contains(sum, "192.168.20.0/24") || !strings.Contains(sum, "mit Pre-Shared-Key") {
+		t.Errorf("Vorschau: %q %v", sum, err)
+	}
+	if _, err := vpnImportSummary(conf, "10.66.0.0/25", "10.66.0.0/24"); err == nil {
+		t.Error("Überschneidung mit dem VPN-Netz nicht erkannt")
+	}
+}
+
+func TestVPNZipIDs(t *testing.T) {
+	const a, b = "0191a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5b", "0191a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5c"
+	if !vpnZipIDsOK(a) || !vpnZipIDsOK(a+","+b) {
+		t.Error("gültige IDs abgelehnt")
+	}
+	for _, bad := range []string{"", a + ",", "x", a + ",<script>"} {
+		if vpnZipIDsOK(bad) {
+			t.Errorf("%q akzeptiert", bad)
+		}
+	}
+}
+
+func TestVPNAdminImportAndBulkRender(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	v := vpnTestView(true)
+	v.ZipIDs = "u1,g1"
+	c, _ := tmpl.Clone()
+	var b strings.Builder
+	if err := bindLang(c, "de").ExecuteTemplate(&b, "vpn-admin", v); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"WireGuard-Konfiguration importieren", `type="file" accept=".conf`, `hx-post="/admin/server-config/vpn/import-check"`,
+		`action="/admin/server-config/vpn/peers/o1/import"`, `id="vp-check-o1"`, "Neue Konfiguration einspielen",
+		`action="/admin/server-config/vpn/bulk"`, `name="user_id" value="x"`, "Konfigurationen für Benutzer erstellen",
+		`href="/admin/server-config/vpn/zip?ids=u1%2cg1"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Reiter VPN enthält %q nicht", want)
+		}
+	}
+}

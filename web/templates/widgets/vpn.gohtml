@@ -27,6 +27,10 @@
 .vp-ev{display:grid;grid-template-columns:130px 150px minmax(0,1fr);gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)}
 .vp-cmd{display:flex;gap:6px;align-items:center;background:var(--bg3);border-radius:8px;padding:6px 8px;margin:6px 0}
 .vp-cmd code{flex:1;font-size:12.5px}
+.vp-pick{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;background:var(--bg3);display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px}
+.vp-pick label{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:13px;cursor:pointer}
+.vp-pick label:hover{background:var(--bg2)}
+.vp-pick input{width:18px;height:18px;flex:none}
 @media (max-width:800px){.vp-show-grid{grid-template-columns:1fr}.vp-ev{grid-template-columns:1fr}}
 </style>
 {{end}}
@@ -78,7 +82,30 @@
     {{if not $p.Revoked}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/revoke" onsubmit="return confirm('„{{$p.Name}}“ sperren? Die Verbindung wird sofort getrennt.')"><button class="btn btn-small" type="submit" style="color:var(--red)"><i class="ti ti-lock"></i> Sperren</button></form>
     {{else if $v.Admin}}<form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/delete" onsubmit="return confirm('„{{$p.Name}}“ endgültig löschen?')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Löschen</button></form>{{end}}
   </div>
+  {{if and $v.Admin (eq $p.Kind "outbound") (not $p.Revoked)}}
+  <details style="flex-basis:100%"><summary class="vp-meta" style="cursor:pointer"><i class="ti ti-file-import"></i> Neue Konfiguration einspielen (z. B. neue Schlüssel am Router)</summary>
+    <form method="post" action="{{$v.Base}}/peers/{{$p.ID}}/import" onsubmit="return confirm('Konfiguration von „{{$p.Name}}“ ersetzen? Der Tunnel verbindet sich neu.')">
+      <div class="vp-form"><div><label class="form-label">Netze dahinter</label><input class="form-input" name="routes" value="{{$p.Routes}}" placeholder="leer = aus der Konfiguration"></div></div>
+      {{template "vpn-import-field" (dict "Base" $v.Base "Target" (printf "vp-check-%s" $p.ID))}}
+      <button class="btn btn-primary btn-small" type="submit" style="margin-top:6px"><i class="ti ti-upload"></i> Einspielen</button>
+    </form>
+  </details>
+  {{end}}
 </div>
+{{end}}
+
+{{/* Feld für eine WireGuard-Client-Konfiguration: Datei wählen/ablegen oder
+     einfügen, „Prüfen“ zeigt die Vorschau (VPNImportCheckWeb). */}}
+{{define "vpn-import-field"}}
+<p class="vp-hint" style="margin:10px 0 4px"><b>.conf-Datei</b> des entfernten Servers wählen, hierher ziehen oder den Inhalt einfügen:</p>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+  <input type="file" accept=".conf,.txt,text/plain" onchange="const f=this.files[0], ta=this.closest('form').querySelector('textarea[name=import]'); if(f) f.text().then(t => { ta.value = t; ta.dispatchEvent(new Event('change')); })">
+  <button class="btn btn-small" type="button" hx-post="{{.Base}}/import-check" hx-include="closest form" hx-target="#{{.Target}}"><i class="ti ti-checks"></i> Prüfen</button>
+</div>
+<textarea class="form-input" name="import" rows="6" style="font-family:monospace;font-size:12px"
+  ondragover="event.preventDefault()" ondrop="event.preventDefault(); const f=event.dataTransfer.files[0]; if(f) f.text().then(t => this.value = t)"
+  placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.8.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.werk-sued.de:51820&#10;AllowedIPs = 192.168.20.0/24"></textarea>
+<div id="{{.Target}}" class="vp-hint" style="margin-top:4px"></div>
 {{end}}
 
 {{define "vpn-mine"}}{{$v := .}}
@@ -138,18 +165,17 @@
 </div>
 
 <div class="card" id="outbound">
-  <div class="card-title"><span><i class="ti ti-plug-connected"></i> Ausgehende Tunnel <small class="vp-meta">PDH verbindet sich als Client zu einem WireGuard-Server im Maschinennetz</small></span></div>
-  {{range .Outbound}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint">Noch kein ausgehender Tunnel.</p>{{end}}
-  <details style="margin-top:10px"><summary class="btn btn-small" style="display:inline-flex"><i class="ti ti-plus"></i> Tunnel hinzufügen</summary>
-  <form method="post" action="{{.Base}}/peers" style="margin-top:10px">
+  <div class="card-title"><span><i class="ti ti-plug-connected"></i> Tunnel zum Maschinennetz <small class="vp-meta">PDH verbindet sich als Client zu einem WireGuard-Server im Maschinennetz</small></span></div>
+  {{range .Outbound}}{{template "vpn-peer" (dict "P" . "V" $v)}}{{else}}<p class="vp-hint">Noch kein Tunnel. Am Router im Maschinennetz (mGuard, Teltonika, FRITZ!Box …) einen WireGuard-Zugang für PDH anlegen, dessen <b>.conf</b> exportieren und hier importieren.</p>{{end}}
+  <details style="margin-top:10px"{{if not .Outbound}} open{{end}}><summary class="btn btn-small" style="display:inline-flex"><i class="ti ti-file-import"></i> WireGuard-Konfiguration importieren</summary>
+  <form method="post" action="{{.Base}}/peers" style="margin-top:10px" id="vp-import">
     <input type="hidden" name="kind" value="outbound">
     <div class="vp-form">
       <div><label class="form-label">Name</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Werk Süd – mGuard"></div>
       <div><label class="form-label">Netze dahinter</label><input class="form-input" name="routes" placeholder="192.168.20.0/24 (leer = aus der Konfiguration)"></div>
     </div>
-    <p class="vp-hint" style="margin:10px 0 4px"><b>Entweder</b> die vom entfernten Server erzeugte Client-Konfiguration einfügen …</p>
-    <textarea class="form-input" name="import" rows="6" style="font-family:monospace;font-size:12px" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.8.0.5/32&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.werk-sued.de:51820&#10;AllowedIPs = 192.168.20.0/24"></textarea>
-    <p class="vp-hint" style="margin:10px 0 4px"><b>… oder</b> die Werte einzeln eintragen. PDH erzeugt dann den Schlüssel; seinen öffentlichen Schlüssel trägst du danach am entfernten Server ein.</p>
+    {{template "vpn-import-field" (dict "Base" .Base "Target" "vp-import-check")}}
+    <p class="vp-hint" style="margin:10px 0 4px"><b>… oder</b> ohne Datei die Werte einzeln eintragen. PDH erzeugt dann den Schlüssel; seinen öffentlichen Schlüssel trägst du danach am entfernten Server ein.</p>
     <div class="vp-form">
       <div><label class="form-label">Endpunkt (host:port)</label><input class="form-input" name="endpoint" placeholder="vpn.werk-sued.de:51820"></div>
       <div><label class="form-label">Öffentlicher Schlüssel des Servers</label><input class="form-input" name="remote_key" placeholder="Base64, 44 Zeichen"></div>
@@ -162,13 +188,25 @@
 
 <div class="card" id="devices">
   <div class="card-title"><span><i class="ti ti-users"></i> Alle Geräte</span><a class="card-action" href="/vpn">Meine Geräte →</a></div>
+  {{if .ZipIDs}}<div class="vp-msg ok" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><i class="ti ti-file-zip"></i> Die neuen Konfigurationen liegen bereit – je Person ein Ordner mit der .conf-Datei.
+    <a class="btn btn-small btn-primary" href="{{.Base}}/zip?ids={{.ZipIDs}}"><i class="ti ti-download"></i> Alle als ZIP herunterladen</a></div>{{end}}
   {{range .Users}}{{template "vpn-peer" (dict "P" . "V" $v "ShowUser" true)}}{{else}}<p class="vp-hint">Noch keine Geräte.</p>{{end}}
-  <form method="post" action="{{.Base}}/peers" class="vp-form" style="margin-top:10px">
-    <input type="hidden" name="kind" value="user">
-    <div><label class="form-label">Gerät für Person</label><select class="form-input" name="user_id" required><option value="">– Person wählen –</option>{{range .People}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
-    <div><label class="form-label">Gerätename</label><input class="form-input" name="name" maxlength="80" required placeholder="z. B. Laptop"></div>
-    <div><button class="btn" type="submit"><i class="ti ti-plus"></i> Anlegen</button></div>
-  </form>
+  <details style="margin-top:10px"{{if not .Users}} open{{end}}><summary class="btn btn-small" style="display:inline-flex"><i class="ti ti-users-plus"></i> Konfigurationen für Benutzer erstellen</summary>
+  <form method="post" action="{{.Base}}/bulk" style="margin-top:10px">
+    <p class="vp-hint" style="margin-bottom:6px">Personen auswählen – jede bekommt einen eigenen Zugang mit eigener Adresse und eigenen Schlüsseln. Danach alle Konfigurationen als ZIP laden oder einzeln mit QR-Code anzeigen.</p>
+    <div class="vp-form" style="margin-bottom:6px">
+      <div><label class="form-label">Gerätename</label><input class="form-input" name="name" maxlength="80" value="VPN" placeholder="z. B. Laptop"></div>
+      <div><label class="form-label">Personen filtern</label><input class="form-input" type="search" placeholder="Name …" oninput="const q=this.value.toLowerCase(); this.closest('form').querySelectorAll('.vp-pick label').forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none')"></div>
+    </div>
+    <div class="vp-pick">
+      {{range .People}}<label><input type="checkbox" name="user_id" value="{{.ID}}"> {{.Name}}</label>{{end}}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Zugänge erstellen</button>
+      <button class="btn btn-small" type="button" onclick="this.closest('form').querySelectorAll('.vp-pick label').forEach(l => { if(l.style.display !== 'none') l.querySelector('input').checked = true })">alle angezeigten wählen</button>
+      <span class="vp-hint">höchstens 5 Geräte je Person</span>
+    </div>
+  </form></details>
   <p class="vp-hint" style="margin-top:8px">Eigene Geräte anlegen dürfen Personen mit dem Recht <b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> (Rollen &amp; Rechte) – auf der Seite <a href="/vpn">VPN Maschinennetz</a>.</p>
 </div>
 

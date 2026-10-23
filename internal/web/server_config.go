@@ -274,6 +274,9 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 			show = q.Get("show")
 		}
 		d.VPN = h.vpnLoadView(r.Context(), getUser(r).ID, true, show)
+		if d.Tab == "vpn" && vpnZipIDsOK(q.Get("zip")) {
+			d.VPN.ZipIDs = q.Get("zip")
+		}
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

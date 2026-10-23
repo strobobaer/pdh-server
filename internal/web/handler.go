@@ -559,6 +559,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/admin/server-config/vpn/peers/{id}/config", h.VPNConfigWeb)
 	r.Post("/admin/server-config/vpn/peers/{id}/revoke", h.VPNRevokeWeb)
 	r.Post("/admin/server-config/vpn/peers/{id}/delete", h.VPNDeleteWeb)
+	r.Post("/admin/server-config/vpn/peers/{id}/import", h.VPNReimportWeb) // Tunnel: neue Konfiguration (vpn_import.go)
+	r.Post("/admin/server-config/vpn/import-check", h.VPNImportCheckWeb)
+	r.Post("/admin/server-config/vpn/bulk", h.VPNBulkWeb) // Konfigurationen für mehrere Benutzer
+	r.Get("/admin/server-config/vpn/zip", h.VPNZipWeb)
 	r.Post("/admin/server-config/restart", h.ServerRestartWeb)
 	r.Post("/admin/server-config/nextcloud/admin", h.NextcloudAdminWeb) // Dienstkonto pdhNCadmin (nextcloud_admin.go)
 	r.Post("/admin/server-config/import", h.ServerConfigImportWeb)

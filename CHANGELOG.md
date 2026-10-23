@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.68.0] – 2026-10-23
+
+### Neu
+- VPN: Den Tunnel zum Maschinennetz legst du an, indem du die .conf-Datei des Routers hochlädst oder hineinziehst; „Prüfen“ zeigt vorab Endpunkt, Tunneladresse und Netze.
+- VPN: Neue Konfiguration in einen bestehenden Tunnel einspielen, z. B. nach neuen Schlüsseln am Router – Name und Protokoll bleiben.
+- VPN: Konfigurationen für mehrere Benutzer auf einmal erstellen und alle zusammen als ZIP herunterladen (je Person ein Ordner).
+
 ## [0.67.0] – 2026-10-23
 
 ### Geändert
