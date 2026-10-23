@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.66.0] – 2026-10-23
+
+### Neu
+- VPN ins Maschinennetz (WireGuard): Mit Laptop oder Handy über PDH in die Netze der Maschinen – Zugang je Gerät mit Konfiguration zum Herunterladen und QR-Code für die WireGuard-App.
+- Standort-Gateways: Router im Maschinennetz wählen sich bei PDH ein und geben ihre Netze frei, ohne dass am Router ein Port offen sein muss.
+- Ausgehende Tunnel: PDH verbindet sich als Client zu einem vorhandenen WireGuard-Server im Maschinennetz; die Client-Konfiguration lässt sich einfach einfügen.
+- Zugänge lassen sich sofort sperren; ein Protokoll zeigt, wer wann Zugänge angelegt, geladen oder gesperrt hat (neue Rechte „VPN nutzen“ und „VPN verwalten“).
+
 ## [0.65.0] – 2026-10-23
 
 ### Neu

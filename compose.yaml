@@ -97,6 +97,30 @@ services:
       timeout: 5s
       retries: 3
 
+  # VPN ins Maschinennetz (WireGuard): PDH schreibt die Konfiguration nach
+  # pdh_config/wireguard (Seite /vpn), dieser Dienst wendet sie an. Eigener
+  # Netz-Namensraum – die Firewall-Regeln betreffen nicht den Host.
+  # Im Internet-Router den UDP-Port auf den Server weiterleiten.
+  wireguard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: wireguard
+    image: pdh-wireguard:local
+    restart: unless-stopped
+    init: true
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv4.conf.all.src_valid_mark: "1"
+    environment:
+      PDH_WIREGUARD_DIR: /pdh-config/wireguard
+    ports:
+      - "${PDH_WIREGUARD_PORT:-51820}:51820/udp"
+    volumes:
+      - pdh_config:/pdh-config
+
   # Statistik: Grafana mit der Datenquelle „PDH“ (Nur-Lese-Benutzer pdh_grafana,
   # vom PDH beim Start angelegt) und dem Dashboard „PDH Übersicht“.
   # Kacheln: Core → Grafana & Statistik. Passwörter erzeugen install-docker.sh

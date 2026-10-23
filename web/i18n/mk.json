@@ -697,5 +697,8 @@
  "Scannen": "Скенирај",
  "Wartung überfällig": "Одржувањето доцни",
  "kritisch": "критично",
- "Öffnen": "Отвори"
+ "Öffnen": "Отвори",
+ "VPN ins Maschinennetz": "VPN во мрежата на машини",
+ "WireGuard": "WireGuard",
+ "VPN Maschinennetz": "VPN мрежа на машини"
 }

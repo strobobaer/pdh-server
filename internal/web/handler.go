@@ -71,6 +71,7 @@ type BaseData struct {
 	CanViewInfra           bool       // Infrastruktur ansehen: Nav-Link, Stammkarte (infrastructure.view)
 	CanProcurement         bool       // Beschaffung & Einkauf (procurement.view)
 	CanPlanner             bool       // Planer: Schichten, Urlaub, Wartung (shifts.view)
+	CanVPN                 bool       // VPN ins Maschinennetz (vpn.use / vpn.manage)
 	CanMS                  bool       // Managementsysteme (ms.view)
 	CanInfraObligations    bool       // Prüfpflichten pflegen/erledigen (infrastructure.obligations)
 	CanTrainings           bool       // Schulungen & Qualifikationen verwalten (trainings.manage)
@@ -449,6 +450,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/infrastructure", h.Infrastructure)
 	// Anlagen-Schnellübersicht (plant_watch.go)
 	r.Get("/plant-watch", h.PlantWatchWeb)
+	// VPN ins Maschinennetz (vpn.go, vpn_conf.go)
+	r.Get("/vpn", h.VPNPage)
+	r.Post("/vpn/settings", h.VPNSettingsWeb)
+	r.Post("/vpn/peers", h.VPNCreateWeb)
+	r.Get("/vpn/peers/{id}/config", h.VPNConfigWeb)
+	r.Post("/vpn/peers/{id}/revoke", h.VPNRevokeWeb)
+	r.Post("/vpn/peers/{id}/delete", h.VPNDeleteWeb)
 	r.Get("/plant-watch/{id}/cards", h.PlantWatchCardsWeb)
 	r.Post("/plant-watch", h.PlantWatchSaveWeb)
 	r.Post("/plant-watch/{id}", h.PlantWatchSaveWeb)
@@ -1052,6 +1060,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		CanViewInfra:           h.canViewInfra(r),
 		CanProcurement:         h.canProcurement(r),
 		CanPlanner:             h.canPlannerView(r),
+		CanVPN:                 h.canVPNUse(r),
 		CanMS:                  h.canMSView(r),
 		CanInfraObligations:    h.canInfraObligations(r),
 		CanTrainings:           h.rbac.HasPermissionForUser(u.ID, string(u.Role), trainingsPerm),

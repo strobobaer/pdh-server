@@ -697,5 +697,8 @@
  "Scannen": "Tara",
  "Wartung überfällig": "Bakım gecikmiş",
  "kritisch": "kritik",
- "Öffnen": "Aç"
+ "Öffnen": "Aç",
+ "VPN ins Maschinennetz": "Makine ağına VPN",
+ "WireGuard": "WireGuard",
+ "VPN Maschinennetz": "VPN makine ağı"
 }

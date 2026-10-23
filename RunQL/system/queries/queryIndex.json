@@ -1,6 +1,6 @@
 {
   "version": "0.1",
-  "generatedAt": "2026-10-23T03:02:22.225Z",
+  "generatedAt": "2026-10-23T03:53:56.169Z",
   "queries": [
     {
       "createdAt": "2026-09-27T08:33:01.761Z",
@@ -1469,6 +1469,17 @@
       "sqlHash": "5b40a6e64e36313b6a4f739706ffed9023859fc58e139e89e8456dbe4d07a580",
       "title": "135_plant_watch.up.sql",
       "updatedAt": "2026-10-23T03:02:21.599Z"
+    },
+    {
+      "createdAt": "2026-10-23T03:53:55.511Z",
+      "path": "migrations/136_vpn.up.sql",
+      "catalogContext": null,
+      "searchText": "136_vpn.up.sql migrations/136_vpn.up.sql -- 136_vpn.up.sql\n-- wireguard-vpn ins maschinennetz (internal/web/vpn.go, dienst „wireguard“ in compose.yaml).\n--\n-- pdh ist hub (schnittstelle wg0):\n--   * user    – gerät einer person (laptop, handy), wählt sich bei pdh ein\n--   * gateway – router im maschinennetz (teltonika, mguard …), wählt sich bei pdh ein\n--               und gibt seine netze (routes) bekannt\n-- pdh ist client (je tunnel eine eigene schnittstelle):\n--   * outbound – pdh verbindet sich zu einem entfernten wireguard-server (endpoint,\n--               remote_public_key); die netze dahinter (routes) erreichen eingewählte\n--               geräte über nat.\n-- eingewählte geräte dürfen nur in die netze von gateways und ausgehenden tunneln,\n-- nicht zueinander. schlüssel liegen verschlüsselt in der datenbank; der server-\n-- schlüssel in app_settings (vpn.server_key).\n-- rechte:\n--   vpn.use    – eigene zugänge anlegen, konfiguration laden, sperren\n--   vpn.manage – einstellungen, gateways, ausgehende tunnel, alle zugänge, protokoll\n\ninsert into permissions (key, label, category) values\n    ('vpn.use',    'vpn: eigene zugänge ins maschinennetz anlegen und nutzen',             'vpn'),\n    ('vpn.manage', 'vpn: server, gateways, ausgehende tunnel und alle zugänge verwalten', 'vpn')\non conflict (key) do nothing;\n\n-- zugang zum maschinennetz ist heikel: anfangs nur administratoren und anlagenverantwortliche\ninsert into role_permissions (role_id, permission_id)\nselect r.id, p.id from roles r cross join permissions p\nwhere (r.key in ('admin', 'asset_manager') and p.key = 'vpn.use') or (r.key = 'admin' and p.key = 'vpn.manage')\non conflict do nothing;\n\ncreate table if not exists vpn_peers (\n    id                uuid primary key default pdh_uuid_v7(),\n    kind              varchar(10) not null check (kind in ('user', 'gateway', 'outbound')),\n    name              varchar(80) not null,\n    user_id           uuid references users(id) on delete cascade,    -- nur user\n    address           varchar(50) not null,                           -- user/gateway: adresse im vpn-netz; outbound: eigene tunneladresse (cidr)\n    public_key        varchar(60) not null,                           -- eigener öffentlicher schlüssel des eintrags\n    private_key_enc   text not null,                                  -- verschlüsselt (für konfiguration zum herunterladen bzw. outbound)\n    psk_enc           text not null default '',                       -- verschlüsselter pre-shared-key\n    routes            text not null default '',                       -- gateway/outbound: netze dahinter, kommagetrennt\n    endpoint          varchar(255) not null default '',               -- nur outbound: host:port des entfernten servers\n    remote_public_key varchar(60) not null default '',                -- nur outbound\n    created_by        uuid references users(id) on delete set null,\n    created_at        timestamptz not null default now(),\n    revoked_at        timestamptz,\n    revoked_by        uuid references users(id) on delete set null\n);\ncreate unique index if not exists idx_vpn_peers_address on vpn_peers(address) where revoked_at is null and kind <> 'outbound';\ncreate unique index if not exists idx_vpn_peers_key on vpn_peers(public_key) where revoked_at is null;\ncreate index if not exists idx_vpn_peers_user on vpn_peers(user_id) where user_id is not null;\n\n-- protokoll: wer hat wann welchen zugang angelegt, geladen, gesperrt …\ncreate table if not exists vpn_events (\n    id        uuid primary key default pdh_uuid_v7(),\n    at        timestamptz not null default now(),\n    user_id   uuid references users(id) on delete set null,\n    peer_id   uuid references vpn_peers(id) on delete set null,\n    peer_name varchar(80) not null default '',\n    action    varchar(20) not null,\n    note      text not null default ''\n);\ncreate index if not exists idx_vpn_events_at on vpn_events(at desc);\n",
+      "searchUpdatedAt": "2026-10-23T03:53:55.617Z",
+      "schemaContext": null,
+      "sqlHash": "6b5f0f9f73733778fa8b38183405d8f18f399e13ce0ab89d27d356858a174f1f",
+      "title": "136_vpn.up.sql",
+      "updatedAt": "2026-10-23T03:53:55.511Z"
     }
   ]
 }

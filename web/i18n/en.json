@@ -697,5 +697,8 @@
  "Scannen": "Scan",
  "Wartung überfällig": "Maintenance overdue",
  "kritisch": "critical",
- "Öffnen": "Open"
+ "Öffnen": "Open",
+ "VPN ins Maschinennetz": "VPN to the machine network",
+ "WireGuard": "WireGuard",
+ "VPN Maschinennetz": "VPN machine network"
 }

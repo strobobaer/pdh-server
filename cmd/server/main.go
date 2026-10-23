@@ -280,6 +280,7 @@ func main() {
 	webHandler.StartDriveMonitor(context.Background())
 	webHandler.StartEnabledImportPolls(context.Background())
 	webHandler.StartEnabledQueryPolls(context.Background())
+	webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
 
 	copilotModel := cfg.Copilot.Model // Ollama
 	if cfg.Copilot.Backend == "anthropic" {

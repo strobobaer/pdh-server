@@ -63,4 +63,13 @@ ENV PATH=/usr/local/go/bin:/data/go/bin:$PATH \
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/entrypoint.sh", "--auth", "none", "--bind-addr", "0.0.0.0:8080", "--disable-telemetry", "--disable-update-check", "--user-data-dir", "/data/user", "--extensions-dir", "/data/extensions", "--app-name", "PDH Code", "/workspace/pdh"]
 
+# WireGuard-VPN ins Maschinennetz (compose.yaml: wireguard) – wendet die vom
+# PDH erzeugte Konfiguration an (internal/web/vpn_conf.go). Braucht NET_ADMIN
+# und WireGuard im Kernel des Hosts (Linux ab 5.6).
+FROM alpine:3.20 AS wireguard
+RUN apk add --no-cache bash coreutils iproute2 iptables wireguard-tools
+COPY scripts/wireguard-sidecar.sh /usr/local/bin/wireguard-sidecar
+RUN sed -i 's/\r$//' /usr/local/bin/wireguard-sidecar && chmod 755 /usr/local/bin/wireguard-sidecar
+ENTRYPOINT ["/usr/local/bin/wireguard-sidecar"]
+
 FROM app AS final

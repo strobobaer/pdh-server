@@ -1605,6 +1605,45 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "connections") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="vpn" data-title="VPN ins Maschinennetz" data-pages="vpn">
+  <h2><i class="ti ti-shield-lock"></i> VPN ins Maschinennetz</h2>
+  <p>Über <b>VPN Maschinennetz</b> (Navigation → Material &amp; Anlagen) kommst du mit Laptop oder Handy von unterwegs ins Maschinennetz – z. B. um mit dem TIA-Portal auf eine Steuerung zu schauen. PDH nutzt dafür <b>WireGuard</b>. PDH kann dabei beides sein:</p>
+  <ul>
+    <li><b>Einwahl-Server:</b> Deine Geräte und die <b>Standort-Gateways</b> (Router im Maschinennetz, z. B. Teltonika, mGuard, eWON) wählen sich bei PDH ein. PDH verbindet beide – am Router muss kein Port offen sein.</li>
+    <li><b>Client:</b> Ist im Maschinennetz schon ein WireGuard-Server, verbindet sich PDH als <b>ausgehender Tunnel</b> dorthin. Eingewählte Geräte erreichen die Netze dahinter ebenfalls.</li>
+  </ul>
+  <p>Eingewählte Geräte erreichen nur die Netze der Gateways und Tunnel, nicht einander. Oben rechts siehst du, ob das VPN läuft; der grüne Punkt an einem Gerät heißt „gerade verbunden“.</p>
+  <div class="hb-howto"><b><i class="ti ti-device-laptop"></i> So richtest du dein Gerät ein</b>
+    <ol class="hb-steps">
+      <li><b>VPN Maschinennetz</b> öffnen → unter <b>Meine Geräte</b> einen Namen eintragen, z. B. „Laptop Service“ → <b>Zugang anlegen</b>.</li>
+      <li>Die App <b>WireGuard</b> installieren (App Store, Play Store oder wireguard.com).</li>
+      <li>Handy: in der App <b>+</b> → <b>QR-Code scannen</b>. Laptop: <b>.conf herunterladen</b> und in der App <b>Tunnel aus Datei importieren</b>.</li>
+      <li>Tunnel aktivieren. Die Steuerungen erreichst du jetzt unter ihren normalen Adressen im Maschinennetz.</li>
+    </ol>
+    Für jedes Gerät einen eigenen Zugang anlegen (höchstens 5). Geht ein Gerät verloren, den Zugang sofort <b>sperren</b> – die Verbindung bricht sofort ab. Kommen neue Netze dazu, die Konfiguration neu laden.</div>
+  <div class="hb-howto"><b><i class="ti ti-settings"></i> So richtest du das VPN ein (Verwaltung)</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Einstellungen</b> den <b>öffentlichen Namen oder die IP</b> des Servers eintragen, Port (Standard 51820) und VPN-Netz prüfen, <b>eingeschaltet</b> wählen → <b>Speichern</b>.</li>
+      <li>Im Internet-Router den <b>UDP-Port</b> auf den PDH-Server weiterleiten.</li>
+      <li><b>Standort-Gateway</b> anlegen: Name und <b>Netze dahinter</b> (z. B. 192.168.10.0/24). Die angezeigte Konfiguration am Router als WireGuard-Schnittstelle einspielen, Weiterleitung ins LAN ohne NAT erlauben.</li>
+      <li>Oder einen <b>ausgehenden Tunnel</b> anlegen: die vom entfernten Server erzeugte Client-Konfiguration einfügen – oder Endpunkt, Schlüssel des Servers und eigene Tunneladresse eintragen und den angezeigten öffentlichen Schlüssel von PDH am entfernten Server hinterlegen.</li>
+    </ol>
+    Gesperrte Einträge lassen sich danach löschen. Das <b>Protokoll</b> zeigt, wer wann einen Zugang angelegt, angezeigt, heruntergeladen, gesperrt oder die Einstellungen geändert hat.</div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was?</b>
+    <ul>
+      <li><b>VPN: eigene Zugänge ins Maschinennetz anlegen und nutzen</b> – eigene Geräte anlegen, Konfiguration laden, sperren. Anfangs nur Administratoren und Anlagenverantwortliche; weitere Rollen unter <b>Rollen &amp; Rechte</b>.</li>
+      <li><b>VPN: Server, Gateways, ausgehende Tunnel und alle Zugänge verwalten</b> – alles oben, für alle Personen. Anfangs nur Administratoren.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn das VPN nicht läuft</b>
+    <ul>
+      <li><b>„Dienst „wireguard“ meldet sich nicht“:</b> Der Docker-Dienst <code>wireguard</code> läuft nicht – nach dem Update <code>docker compose up -d</code> ausführen bzw. das Server-Protokoll prüfen.</li>
+      <li><b>„WireGuard fehlt im Kernel“:</b> Der Server braucht Linux ab 5.6 (oder das Paket <code>wireguard</code>).</li>
+      <li><b>Gerät verbindet sich nie:</b> UDP-Port im Internet-Router prüfen und ob der öffentliche Name auf die richtige Adresse zeigt.</li>
+      <li><b>Verbunden, aber Steuerung nicht erreichbar:</b> Am Gateway die Weiterleitung ins LAN erlauben; die Geräte im Maschinennetz brauchen den Router als Gateway.</li>
+    </ul></div>
+  {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">
   <h2><i class="ti ti-help-circle"></i> Tipps &amp; häufige Fragen</h2>
   <h3>Ich sehe einen Reiter oder Knopf nicht.</h3>
