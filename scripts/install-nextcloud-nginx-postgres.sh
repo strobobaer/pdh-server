@@ -25,6 +25,7 @@ NEXTCLOUD_DIR="/var/www/nextcloud"
 NEXTCLOUD_DATA_DIR="/var/ncdata"
 PHP_VERSION=""
 PURGE_APACHE_MARIADB="0"
+RESTORE="0"
 INSTALL_LATEST_URL="https://download.nextcloud.com/server/releases/latest.tar.bz2"
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -48,6 +49,10 @@ Optional:
   --data-dir PATH             Nextcloud data dir, default: /var/ncdata
   --php-version VERSION       Override PHP version, e.g. 8.3
   --purge-apache-mariadb      Stop and purge Apache/MariaDB packages first
+  --restore                   Restore mode (pdh-restore.sh): files and database are
+                              already back; install packages, tune PHP, adapt the
+                              Nginx site and leave maintenance mode – no new install,
+                              no database/user creation, no --domain/--*-pass needed
   -h, --help                  Show this help
 
 Notes:
@@ -69,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     --data-dir) NEXTCLOUD_DATA_DIR="${2:-}"; shift 2 ;;
     --php-version) PHP_VERSION="${2:-}"; shift 2 ;;
     --purge-apache-mariadb) PURGE_APACHE_MARIADB="1"; shift ;;
+    --restore) RESTORE="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Unknown argument: $1"; usage; exit 2 ;;
   esac
@@ -79,15 +85,21 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-if [[ -z "${NEXTCLOUD_DOMAIN}" || -z "${NEXTCLOUD_ADMIN_PASS}" || -z "${NEXTCLOUD_DB_PASS}" ]]; then
-  err "Missing required argument."
-  usage
-  exit 2
-fi
-
-if [[ -e "${NEXTCLOUD_DIR}/config/config.php" ]]; then
-  err "Nextcloud already appears to be installed at ${NEXTCLOUD_DIR}. Aborting to avoid overwrite."
-  exit 1
+if [[ "${RESTORE}" == "1" ]]; then
+  if [[ ! -e "${NEXTCLOUD_DIR}/config/config.php" ]]; then
+    err "--restore: ${NEXTCLOUD_DIR}/config/config.php is missing – restore the files first."
+    exit 1
+  fi
+else
+  if [[ -z "${NEXTCLOUD_DOMAIN}" || -z "${NEXTCLOUD_ADMIN_PASS}" || -z "${NEXTCLOUD_DB_PASS}" ]]; then
+    err "Missing required argument."
+    usage
+    exit 2
+  fi
+  if [[ -e "${NEXTCLOUD_DIR}/config/config.php" ]]; then
+    err "Nextcloud already appears to be installed at ${NEXTCLOUD_DIR}. Aborting to avoid overwrite."
+    exit 1
+  fi
 fi
 
 export DEBIAN_FRONTEND=noninteractive
@@ -105,10 +117,14 @@ if [[ "${PURGE_APACHE_MARIADB}" == "1" ]]; then
 fi
 
 log "Installing packages"
+# Wiederherstellung: Postgres ist schon in der passenden Version da – das
+# Metapaket könnte sonst eine zweite Hauptversion samt Cluster mitbringen.
+PG_PACKAGES=(postgresql postgresql-contrib)
+[[ "${RESTORE}" == "1" ]] && PG_PACKAGES=()
 apt-get update
 apt-get install -y \
   nginx \
-  postgresql postgresql-contrib \
+  "${PG_PACKAGES[@]}" \
   php-fpm php-cli php-pgsql php-xml php-mbstring php-curl php-zip \
   php-gd php-intl php-bcmath php-gmp php-imagick php-apcu \
   unzip curl wget bzip2 ca-certificates acl redis-server php-redis
@@ -130,6 +146,7 @@ fi
 PHP_FPM_SERVICE="$(basename "${PHP_SOCKET}" .sock)"
 log "Using PHP-FPM socket: ${PHP_SOCKET}"
 
+if [[ "${RESTORE}" != "1" ]]; then
 log "Creating PostgreSQL database and user"
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
@@ -148,7 +165,9 @@ if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${NEXT
 else
   warn "Database ${NEXTCLOUD_DB_NAME} already exists; leaving it in place."
 fi
+fi
 
+if [[ "${RESTORE}" != "1" ]]; then
 log "Downloading Nextcloud"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -160,6 +179,12 @@ mkdir -p "$(dirname "${NEXTCLOUD_DIR}")" "${NEXTCLOUD_DATA_DIR}"
 rsync -a "${TMP_DIR}/nextcloud/" "${NEXTCLOUD_DIR}/"
 chown -R www-data:www-data "${NEXTCLOUD_DIR}" "${NEXTCLOUD_DATA_DIR}"
 chmod 750 "${NEXTCLOUD_DATA_DIR}"
+else
+log "Restore: setting file owners"
+mkdir -p "${NEXTCLOUD_DATA_DIR}"
+chown -R www-data:www-data "${NEXTCLOUD_DIR}" "${NEXTCLOUD_DATA_DIR}"
+chmod 750 "${NEXTCLOUD_DATA_DIR}"
+fi
 
 log "Tuning PHP-FPM"
 PHP_INI_CANDIDATES=(
@@ -184,8 +209,12 @@ done
 
 systemctl restart "${PHP_FPM_SERVICE}" 2>/dev/null || systemctl restart php*-fpm
 
-log "Writing Nginx site"
 NGINX_SITE="/etc/nginx/sites-available/nextcloud.conf"
+if [[ "${RESTORE}" == "1" && -f "${NGINX_SITE}" ]]; then
+log "Restore: keeping Nginx site, adapting PHP-FPM socket"
+sed -i -E "s#unix:/run/php/php[0-9.]*-fpm\.sock#unix:${PHP_SOCKET}#" "${NGINX_SITE}"
+else
+log "Writing Nginx site"
 if [[ -f "${NGINX_SITE}" ]]; then
   cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d%H%M%S)"
 fi
@@ -275,6 +304,7 @@ server {
     }
 }
 NGINX
+fi
 
 ln -sfn "${NGINX_SITE}" /etc/nginx/sites-enabled/nextcloud.conf
 rm -f /etc/nginx/sites-enabled/default
@@ -282,6 +312,7 @@ nginx -t
 systemctl enable nginx
 systemctl reload nginx
 
+if [[ "${RESTORE}" != "1" ]]; then
 log "Running Nextcloud occ installation"
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" maintenance:install \
   --database "pgsql" \
@@ -300,6 +331,12 @@ sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set default_phone_regi
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set maintenance_window_start --type=integer --value=1
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" config:system:set memcache.local --value='\\OC\\Memcache\\APCu'
 sudo -u www-data php "${NEXTCLOUD_DIR}/occ" background:cron
+else
+log "Restore: leaving maintenance mode"
+# Datenbank und Dateien stammen aus verschiedenen Zeitpunkten – Clients neu abgleichen lassen
+sudo -u www-data php "${NEXTCLOUD_DIR}/occ" maintenance:data-fingerprint
+sudo -u www-data php "${NEXTCLOUD_DIR}/occ" maintenance:mode --off
+fi
 
 log "Installing cron job"
 cat > /etc/cron.d/nextcloud <<CRON
@@ -307,7 +344,7 @@ cat > /etc/cron.d/nextcloud <<CRON
 CRON
 
 systemctl enable postgresql
-systemctl restart postgresql
+[[ "${RESTORE}" == "1" ]] || systemctl restart postgresql
 systemctl restart "${PHP_FPM_SERVICE}" 2>/dev/null || systemctl restart php*-fpm
 systemctl reload nginx
 

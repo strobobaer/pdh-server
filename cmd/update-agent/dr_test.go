@@ -389,3 +389,24 @@ func TestDRAppScripts(t *testing.T) {
 		t.Error("rsync-Skript setzt n8n nicht sicher fort")
 	}
 }
+
+func TestNextcloudInstallerRestore(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "scripts", "install-nextcloud-nginx-postgres.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	drBashSyntax(t, "nextcloud-installer", s)
+	for _, want := range []string{"--restore)", "--restore ", `RESTORE="1"`, "maintenance:data-fingerprint", "maintenance:mode --off"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Installer ohne %q", want)
+		}
+	}
+	// Im Wiederherstellungsmodus weder Datenbank anlegen noch neu installieren
+	for _, guarded := range []string{`log "Creating PostgreSQL database and user"`, `log "Running Nextcloud occ installation"`, `log "Downloading Nextcloud"`} {
+		i := strings.Index(s, guarded)
+		if i < 0 || !strings.Contains(s[max(0, i-200):i], `if [[ "${RESTORE}" != "1" ]]`) {
+			t.Errorf("%s nicht durch RESTORE geschützt", guarded)
+		}
+	}
+}
