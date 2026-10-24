@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.73.0] – 2026-10-24
+
+### Neu
+- Ausfallschutz (Server-Einstellungen): Der Server sichert Datenbank, Dateien und Konfiguration von PDH, Nextcloud und n8n laufend auf ein Netzlaufwerk; mit pdh-restore.sh lässt sich daraus ein neuer Server oder eine VM aufbauen – auch auf einen bestimmten Zeitpunkt.
+- Ausfallschutz: Status der VM-Sicherung (Datum oder Zeitstempel-Datei) mit Warnung an die Administratoren, wenn sie zu alt ist.
+- Nextcloud-Installationsskript: Wiederherstellungsmodus `--restore` für den Wiederaufbau.
+
 ## [0.72.1] – 2026-10-24
 
 ### Behoben

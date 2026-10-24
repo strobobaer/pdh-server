@@ -582,3 +582,22 @@
 <figcaption>Tickets, Störungen, Aufgaben und Wartungen sind aufgebaut wie der KVP: Dashboard, Liste mit Filter-Chips, Board nach Status und Regeln – jede Karte mit dem Knopf zum Abschluss-Assistenten.</figcaption>
 </figure>
 {{end}}
+
+{{define "hb-fig-ausfallschutz"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 180" role="img" aria-label="Ausfallschutz: Server sichert laufend aufs Netzlaufwerk, pdh-restore.sh baut daraus einen neuen Server auf">
+  <rect class="bg" x="1" y="1" width="638" height="178" rx="8"/>
+  <rect class="acl" x="16" y="40" width="150" height="100" rx="8"/><text x="91" y="64" class="t-c t-b">PDH-Server</text>
+  <text x="91" y="84" class="t-c t-m">Postgres · PDH</text><text x="91" y="100" class="t-c t-m">Nextcloud · n8n</text><text x="91" y="120" class="t-c t-m">Update-Agent</text>
+  <path class="ar" d="M168 90 H226"/><text x="197" y="80" class="t-c t-m">laufend</text>
+  <rect class="bg3" x="230" y="20" width="180" height="140" rx="8"/><text x="320" y="40" class="t-c t-b">🗄️ Netzlaufwerk</text>
+  <text x="244" y="62" font-size="10">base/ – tägl. Grundsicherung</text><text x="244" y="82" font-size="10">wal/ – Änderungen (≤ 5 min)</text>
+  <text x="244" y="102" font-size="10">files/ – Dateien, Konfiguration</text><text x="244" y="122" font-size="10">papierkorb/ – Gelöschtes</text>
+  <text x="244" y="142" font-size="10">pdh-restore.sh</text>
+  <path class="ar" d="M412 90 H470"/><text x="441" y="80" class="t-c t-m">im Notfall</text>
+  <rect class="gr" x="474" y="40" width="150" height="100" rx="8"/><text x="549" y="64" class="t-c t-b">Neuer Server / VM</text>
+  <text x="549" y="88" class="t-c t-m">sudo bash</text><text x="549" y="102" class="t-c t-m">pdh-restore.sh</text><text x="549" y="122" class="t-c t-m">optional --time</text>
+</svg>
+<figcaption>Der Server sichert Datenbank, Dateien und Konfiguration laufend aufs Netzlaufwerk; pdh-restore.sh baut daraus einen neuen Server auf – auf den neuesten Stand oder einen Zeitpunkt.</figcaption>
+</figure>
+{{end}}

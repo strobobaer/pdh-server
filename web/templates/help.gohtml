@@ -1697,6 +1697,39 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "vpn") "Can" $can)}}
 </section>
 
+<section class="hb-ch" id="ausfallschutz" data-title="Ausfallschutz &amp; Wiederaufbau" data-pages="server-config">
+  <h2><i class="ti ti-shield-check"></i> Ausfallschutz &amp; Wiederaufbau</h2>
+  <p>Fällt der Server aus, brennt ab oder wird versehentlich etwas gelöscht, lässt sich alles wiederherstellen. Der Server sichert dafür laufend auf ein <b>Netzlaufwerk</b>: die <b>Datenbank</b> (PDH und Nextcloud), alle <b>Dateien und Einstellungen</b> von PDH, Nextcloud und n8n. Das läuft im Hintergrund über den Update-Agenten – auch wenn das PDH selbst gerade nicht läuft.</p>
+  {{template "hb-fig-ausfallschutz"}}
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So schaltest du den Ausfallschutz ein</b>
+    <ol class="hb-steps">
+      <li>Unter <b>Core-Einstellungen → Netzlaufwerke</b> eine Freigabe mit der Rolle <b>Datensicherung</b> anlegen – am besten auf einem anderen Gerät als dem Server.</li>
+      <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen, das Laufwerk wählen, <b>eingeschaltet</b> wählen und speichern.</li>
+      <li>Beim ersten Einschalten startet die Datenbank einmal neu – das PDH ist wenige Sekunden nicht erreichbar.</li>
+      <li>Nach wenigen Minuten zeigt der Reiter die erste Übertragung und die erste Grundsicherung.</li>
+    </ol></div>
+  <p><b>Wie aktuell ist die Sicherung?</b> Die Datenbank höchstens <b>5 Minuten</b> alt (einstellbar), Dateien höchstens so alt wie der Dateiabgleich (Standard 60 Minuten). Jede Nacht kommt eine Grundsicherung dazu; aufbewahrt wird 14 Tage (einstellbar). Gelöschte oder überschriebene Dateien landen so lange im <b>Papierkorb</b> auf dem Laufwerk. Nextcloud wird im laufenden Betrieb abgeglichen, n8n dafür kurz angehalten.</p>
+  <p>Die Freigabe enthält Zugangsdaten (<code>.env</code>, Nextcloud-<code>config.php</code>) – nur Administratoren dürfen darauf zugreifen.</p>
+  <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> So baust du den Server wieder auf</b>
+    <ol class="hb-steps">
+      <li>Frischen Ubuntu-Server oder eine neue VM bereitstellen.</li>
+      <li>Die Freigabe einbinden, z. B. <code>sudo mount -t cifs //nas/sicherung /mnt/sicherung -o username=…</code></li>
+      <li>Das Skript liegt im Sicherungsordner (oder im Reiter herunterladen): <code>sudo bash /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;/pdh-restore.sh --from /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;</code></li>
+      <li>Für einen <b>früheren Stand</b> (z. B. vor einem versehentlichen Löschen) zusätzlich <code>--time "2026-10-24 14:30:00"</code> angeben.</li>
+      <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-server"></i> VM-Sicherung</b>
+    Läuft das PDH in einer VM, sollte zusätzlich der Hypervisor (z. B. Proxmox, Hyper-V) die ganze VM regelmäßig auf ein anderes Ziel sichern. Im Reiter das Datum der letzten VM-Sicherung eintragen – oder eine Datei auf dem Netzlaufwerk nennen, die die VM-Sicherung bei jedem Lauf aktualisiert. Ist sie älter als eingestellt (Standard 7 Tage), meldet das PDH es den Administratoren.</div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn etwas nicht stimmt</b>
+    <ul>
+      <li><b>„WAL-Dateien stauen sich“:</b> Das Netzlaufwerk ist nicht erreichbar oder voll. Die Änderungen warten auf dem Server und werden nachgeholt, sobald das Laufwerk wieder da ist.</li>
+      <li><b>„Letzte Grundsicherung ist älter als 26 Stunden“:</b> Fehlermeldung im Reiter prüfen, „Grundsicherung jetzt“ anstoßen.</li>
+      <li><b>„nur bei systemd-Installationen“:</b> Der Ausfallschutz läuft auf Produktivservern (systemd); im Docker-Testsystem ist er nicht verfügbar.</li>
+      <li><b>„braucht die Datenbank auf diesem Server“:</b> Die Datenbank liegt auf einem anderen Rechner – dort muss sie gesichert werden.</li>
+    </ul></div>
+  {{template "hb-shots" (dict "Ref" (index $s "ausfallschutz") "Can" $can)}}
+</section>
+
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">
   <h2><i class="ti ti-help-circle"></i> Tipps &amp; häufige Fragen</h2>
   <h3>Ich sehe einen Reiter oder Knopf nicht.</h3>

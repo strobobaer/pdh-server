@@ -376,6 +376,14 @@ Logs anzeigen:
 journalctl -u pdh -f
 ```
 
+## Ausfallschutz
+
+Unter **Server-Einstellungen → Ausfallschutz** sichert der Server (systemd-Installation mit
+Update-Agent) laufend Datenbank (Grundsicherung + WAL-Archiv), Dateien und Konfiguration von
+PDH, Nextcloud und n8n auf ein Netzlaufwerk. `scripts/pdh-restore.sh` baut daraus einen neuen
+Server auf, optional auf einen Zeitpunkt (`--time`). Einzelheiten im Handbuch, Kapitel
+„Ausfallschutz & Wiederaufbau“.
+
 ## Entwicklung
 
 Formatieren:
