@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pdh"
 )
 
 func TestValidateDRConfig(t *testing.T) {
@@ -408,5 +410,28 @@ func TestNextcloudInstallerRestore(t *testing.T) {
 		if i < 0 || !strings.Contains(s[max(0, i-200):i], `if [[ "${RESTORE}" != "1" ]]`) {
 			t.Errorf("%s nicht durch RESTORE geschützt", guarded)
 		}
+	}
+}
+
+func TestRestoreScript(t *testing.T) {
+	s := pdh.RestoreScript
+	drBashSyntax(t, "pdh-restore", s)
+	for _, want := range []string{"recovery.signal", "recovery_target_action = 'promote'", "gunzip -c", "pg_is_in_recovery",
+		"apt.postgresql.org", "Keine Grundsicherung vor", "--restore", "docker volume create", "docker compose up -d",
+		"sources.json", "install-update-agent.sh", "--yes", "--time"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("pdh-restore.sh ohne %q", want)
+		}
+	}
+}
+
+func TestDRCopyRestoreScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := drWriteRestoreScript(dir); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "pdh-restore.sh"))
+	if err != nil || string(b) != pdh.RestoreScript {
+		t.Fatalf("Skript nicht ins Ziel kopiert: %v", err)
 	}
 }

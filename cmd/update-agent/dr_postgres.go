@@ -186,7 +186,19 @@ func (a *updateAgent) drRunBase(ctx context.Context) error {
 	a.dr.mu.Lock()
 	a.dr.LastBase = now
 	a.dr.mu.Unlock()
+	if err := drWriteRestoreScript(target); err != nil {
+		return fmt.Errorf("pdh-restore.sh nicht abgelegt: %w", err)
+	}
 	return a.drPrune(target, cfg.KeepDays, now)
+}
+
+// drWriteRestoreScript legt das Wiederaufbau-Skript in den Sicherungsordner.
+func drWriteRestoreScript(target string) error {
+	tmp := filepath.Join(target, ".pdh-restore.sh.part")
+	if err := os.WriteFile(tmp, []byte(pdh.RestoreScript), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(target, "pdh-restore.sh"))
 }
 
 // drPrune: alte Grundsicherungen, nicht mehr gebrauchte WAL und alte
