@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.72.1] – 2026-10-24
+
+### Behoben
+- Docker: Das PDH-Netz liegt jetzt fest auf 172.31.254.0/24 (änderbar über `PDH_DOCKER_SUBNET` in `.env.docker`) statt auf einem von Docker gewählten Netz, das VPN-Netze überschneiden konnte – das Update stellt bestehende Installationen um und startet dabei alle Dienste einmal neu.
+- Docker: Neuinstallationen legen auch die Docker-eigenen Netze in 172.31.0.0/16, damit sie nicht mit WireGuard-Netzen kollidieren.
+- VPN: Tunnel mit Adressen in 172.17.x (z. B. 172.17.214.2/24) starten jetzt – das Installationsskript verlegt das Docker-Standardnetz docker0 von 172.17.0.0/16 nach 172.31.255.0/24 (danach einmal das Installationsskript erneut ausführen).
+
 ## [0.72.0] – 2026-10-23
 
 ### Geändert

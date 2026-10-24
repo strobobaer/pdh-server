@@ -181,6 +181,17 @@ services:
       timeout: 5s
       retries: 3
 
+# Festes, kleines Docker-Netz am oberen Ende von 172.16.0.0/12 statt eines von
+# Docker gewählten /16 (172.18.0.0/16 …, später 192.168.x.0/20) – sonst
+# überschneidet es leicht das VPN-Netz oder Netze hinter Gateways und Tunneln
+# (pdh-wireguard startet diese dann nicht). Bei Bedarf in .env.docker ändern;
+# install_update.sh legt das Netz dann neu an.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${PDH_DOCKER_SUBNET:-172.31.254.0/24}
+
 volumes:
   pdh_database:
   pdh_uploads:

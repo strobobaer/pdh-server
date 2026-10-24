@@ -68,6 +68,21 @@ if [[ "$mode" == "docker" ]]; then
     done
     compose=(docker compose --project-name "$project_name" --env-file "$env_file" --project-directory "$repo_dir" -f "$repo_dir/compose.yaml")
     "${compose[@]}" build --build-arg "PDH_BUILD_COMMIT=$target" app updater
+    # Docker-Netz (ab 0.72.1 fest, PDH_DOCKER_SUBNET): liegt das vorhandene Netz
+    # woanders, alle Dienste herunterfahren, damit Compose es neu anlegt, und die
+    # Datenbank zuerst wieder starten (--no-deps unten startet sie nicht).
+    # Laeuft im Container pdh-update-job, nicht im Projektnetz.
+    want_subnet="$(grep '^PDH_DOCKER_SUBNET=' "$env_file" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+    want_subnet="${want_subnet:-172.31.254.0/24}"
+    network_id="$(docker network ls -q --filter "label=com.docker.compose.project=$project_name" --filter "label=com.docker.compose.network=default" | head -n 1)"
+    if [[ -n "$network_id" ]]; then
+        have_subnet="$(docker network inspect "$network_id" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}')"
+        if [[ " $have_subnet " != *" $want_subnet "* ]]; then
+            echo "Docker-Netz wird von ${have_subnet% } auf $want_subnet umgestellt (Dienste starten neu)."
+            "${compose[@]}" down
+            "${compose[@]}" up -d db
+        fi
+    fi
     "${compose[@]}" up -d --no-deps app updater
     # Grafana separat: ein Fehler (z. B. Image nicht ladbar) darf das Update nicht abbrechen
     "${compose[@]}" up -d --no-deps grafana || echo "Grafana konnte nicht gestartet werden (Statistik) - Update trotzdem fertig." >&2

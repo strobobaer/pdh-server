@@ -68,6 +68,19 @@ elif ! command -v openssl >/dev/null 2>&1; then
     as_root apt-get install -y openssl
 fi
 
+# Docker-eigene Netze (docker0, weitere Compose-Netze) klein in 172.31.0.0/16
+# halten statt 172.17.0.0/16 ff. und 192.168.x.0/20 – sonst kollidieren sie
+# leicht mit VPN-Netzen (WireGuard). Eine vorhandene daemon.json bleibt unberührt.
+if [[ ! -e /etc/docker/daemon.json ]]; then
+    as_root mkdir -p /etc/docker
+    printf '%s\n' '{' \
+        '  "bip": "172.31.255.1/24",' \
+        '  "default-address-pools": [{"base": "172.31.128.0/18", "size": 24}]' \
+        '}' | as_root tee /etc/docker/daemon.json >/dev/null
+    echo "Docker networks restricted to 172.31.0.0/16 (/etc/docker/daemon.json)."
+    as_root systemctl restart docker
+fi
+
 as_root systemctl enable --now docker
 
 if [[ ! -f "$env_file" ]]; then

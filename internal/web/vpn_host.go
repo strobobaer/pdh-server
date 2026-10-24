@@ -125,6 +125,38 @@ chown "$PDH_UID:$PDH_GID" "$DIR"
 chmod 700 "$DIR"
 ok "Ordner $DIR (gehört dem PDH-Benutzer $PDH_UID)"
 
+# 3b. Docker-Standardnetz (docker0, 172.17.0.0/16) verlegen – es überschneidet sonst
+# VPN-Netze in 172.17.x (pdh-wireguard startet solche Tunnel nicht).
+DOCKER_JSON=/etc/docker/daemon.json
+if ip -4 -o addr show docker0 2>/dev/null | grep -q ' inet 172\.17\.'; then
+  info "Verlege das Docker-Netz docker0 von 172.17.0.0/16 nach 172.31.255.0/24 …"
+  moved=0
+  if [[ ! -s $DOCKER_JSON ]]; then
+    mkdir -p /etc/docker
+    printf '%s\n' '{' '  "bip": "172.31.255.1/24",' \
+      '  "default-address-pools": [{"base": "172.31.128.0/18", "size": 24}]' '}' >"$DOCKER_JSON"
+    moved=1
+  elif command -v python3 >/dev/null; then
+    cp -p "$DOCKER_JSON" "$DOCKER_JSON.pdh-backup"
+    python3 - "$DOCKER_JSON" <<'PDH_DOCKER_JSON' && moved=1
+import json, sys
+p = sys.argv[1]
+with open(p) as f:
+    d = json.load(f)
+d["bip"] = "172.31.255.1/24"
+d.setdefault("default-address-pools", [{"base": "172.31.128.0/18", "size": 24}])
+with open(p, "w") as f:
+    json.dump(d, f, indent=2)
+    f.write("\n")
+PDH_DOCKER_JSON
+  fi
+  if ((moved)); then
+    systemctl restart docker && ok "docker0 liegt jetzt auf 172.31.255.0/24 (Container starten neu, $DOCKER_JSON)"
+  else
+    warn "$DOCKER_JSON nicht angepasst (python3 fehlt) – dort \"bip\": \"172.31.255.1/24\" eintragen und Docker neu starten."
+  fi
+fi
+
 # 4. Dienst pdh-wireguard
 info "Richte den Dienst pdh-wireguard ein …"
 cat >/usr/local/bin/pdh-wireguard <<'PDH_WG_DAEMON'

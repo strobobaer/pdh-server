@@ -234,7 +234,7 @@ func TestVPNInstallScript(t *testing.T) {
 	for _, want := range []string{"#!/usr/bin/env bash", "DIR='/srv/pdh-wireguard'", "PDH_UID='10001'", "PORT='51999'",
 		"cat >/usr/local/bin/pdh-wireguard <<'PDH_WG_DAEMON'", "pdh-wireguard – systemd-Dienst auf dem Host", "\nPDH_WG_DAEMON\n",
 		"/etc/systemd/system/pdh-wireguard.service", "Environment=PDH_WIREGUARD_DIR=$DIR", "systemctl restart pdh-wireguard",
-		"ip link add pdhtest type wireguard", `ufw allow "$PORT/udp"`} {
+		"ip link add pdhtest type wireguard", `ufw allow "$PORT/udp"`, `d["bip"] = "172.31.255.1/24"`, "systemctl restart docker"} {
 		if !strings.Contains(sc, want) {
 			t.Errorf("Skript enthält %q nicht", want)
 		}

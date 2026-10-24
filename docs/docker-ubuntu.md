@@ -15,6 +15,10 @@ The script may prompt for sudo access. On its first run it generates database, J
 
 After the containers become healthy, open `http://<server-ip>:8090`. The PostgreSQL port is not published on the host. For internet-facing use, put TLS termination and a reverse proxy in front of PDH, and restrict direct access to port 8090 with the host firewall.
 
+### Network addresses
+
+To avoid clashing with WireGuard (VPN network, networks behind gateways and outbound tunnels), the Compose network is pinned to `172.31.254.0/24`. Override it with `PDH_DOCKER_SUBNET` in `.env.docker`; the next update (`install_update.sh`) detects the change, stops the services and recreates the network. On a fresh host without `/etc/docker/daemon.json` the installer also moves Docker's own networks into `172.31.0.0/16` (`bip` 172.31.255.1/24, address pool 172.31.128.0/18). An existing `daemon.json` is left untouched; on older hosts `docker0` stays on `172.17.0.0/16` unless you change it there.
+
 ## Operations
 
 Administrators can check for updates and install them from **Core-Einstellungen**. The updater fetches only the configured GitHub `main` branch, refuses local tracked changes and non-fast-forward updates, builds the app and updater images, and restarts those services. Automatic checks only report availability; they never install without an administrator action.
