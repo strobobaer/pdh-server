@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,5 +89,34 @@ func TestSetupTemplateRenders(t *testing.T) {
 				t.Error("Nur-Administrator-Modus falsch")
 			}
 		}
+	}
+}
+
+// Benutzer aus dem Assistenten müssen sich anmelden können: users.department und
+// users.phone werden beim Anmelden in string gelesen – NULL ließ die Anmeldung
+// mit „benutzer nicht gefunden“ scheitern.
+func TestCreateAdminFillsTextColumns(t *testing.T) {
+	for _, col := range []string{"department", "phone"} {
+		if !strings.Contains(createAdminSQL, col) {
+			t.Errorf("Administrator wird ohne %s angelegt (NULL)", col)
+		}
+	}
+}
+
+func TestUsersTextColumnsMigration(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "139_users_text_defaults.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{"SET department = '' WHERE department IS NULL", "SET phone = '' WHERE phone IS NULL",
+		"ALTER COLUMN department SET DEFAULT ''", "ALTER COLUMN phone SET DEFAULT ''"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Migration ohne %q", want)
+		}
+	}
+	// kein NOT NULL: ältere ZIP-Sicherungen mit NULL müssen sich weiter einspielen lassen
+	if strings.Contains(s, "SET NOT NULL") {
+		t.Error("NOT NULL bricht die Wiederherstellung alter Sicherungen")
 	}
 }

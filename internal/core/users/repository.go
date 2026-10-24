@@ -99,7 +99,7 @@ func (r *Repository) Create(ctx context.Context, u *User) error {
 func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
+		role, COALESCE(department, ''), COALESCE(phone, ''), active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id
 		FROM users WHERE id = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, id).Scan(
@@ -117,7 +117,7 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*User, error) {
 func (r *Repository) GetByIdentifier(ctx context.Context, identifier string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
+		role, COALESCE(department, ''), COALESCE(phone, ''), active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE (email = $1 OR username = $1) AND active = true`
 	err := r.db.QueryRow(ctx, query, identifier).Scan(
@@ -136,7 +136,7 @@ func (r *Repository) GetByIdentifier(ctx context.Context, identifier string) (*U
 func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
 	u := &User{}
 	query := `SELECT id, username, email, password_hash, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, created_at, updated_at,
+		role, COALESCE(department, ''), COALESCE(phone, ''), active, is_system_user, rfid_uid, created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader
 		FROM users WHERE rfid_uid = $1 AND active = true`
 	err := r.db.QueryRow(ctx, query, uid).Scan(
@@ -151,7 +151,7 @@ func (r *Repository) GetByRFID(ctx context.Context, uid string) (*User, error) {
 
 func (r *Repository) List(ctx context.Context) ([]*User, error) {
 	query := `SELECT id, username, email, first_name, last_name,
-		role, department, phone, active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
+		role, COALESCE(department, ''), COALESCE(phone, ''), active, is_system_user, rfid_uid, COALESCE(nextcloud_user_id, ''), created_at, updated_at,
 		on_call_duty, shift_locksmith_1, shift_locksmith_2, sharpening, heating_fill, shift_leader, manager_id
 		FROM users WHERE active = true ORDER BY last_name, first_name`
 	rows, err := r.db.Query(ctx, query)

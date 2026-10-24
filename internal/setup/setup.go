@@ -518,14 +518,18 @@ func adminFromForm(r *http.Request) (adminInput, error) {
 	return a, nil
 }
 
+// createAdminSQL: department/phone ausdrücklich leer – die Anmeldung liest sie als
+// Text; NULL ließ sie mit „benutzer nicht gefunden“ scheitern.
+const createAdminSQL = `
+		INSERT INTO users (username, email, password_hash, first_name, last_name, role, active, department, phone)
+		VALUES ($1, $2, $3, $4, $5, 'admin', true, '', '')`
+
 func createAdmin(ctx context.Context, pool *pgxpool.Pool, a adminInput) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(a.password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	_, err = pool.Exec(ctx, `
-		INSERT INTO users (username, email, password_hash, first_name, last_name, role, active)
-		VALUES ($1, $2, $3, $4, $5, 'admin', true)`, a.username, a.email, string(hash), a.first, a.last)
+	_, err = pool.Exec(ctx, createAdminSQL, a.username, a.email, string(hash), a.first, a.last)
 	return err
 }
 

@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.74.2] – 2026-10-24
+
+### Behoben
+- Nach der Ersteinrichtung ließ sich der im Einrichtungsassistenten angelegte Administrator nicht anmelden („Benutzer nicht gefunden“) – fehlende Angaben zu Abteilung und Telefon werden jetzt als leer behandelt; betroffene Konten gehen nach dem Update wieder.
+
 ## [0.74.1] – 2026-10-24
 
 ### Behoben
