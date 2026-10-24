@@ -563,6 +563,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
 	r.Post("/admin/server-config/dr/vm", h.DRVMWeb)
 	r.Get("/admin/server-config/dr/restore-script", h.DRRestoreScriptWeb)
+	r.Get("/admin/server-config/dr/vm-script", h.DRVMScriptWeb)
 	// Reiter „VPN“: WireGuard auf dem Host (vpn.go, vpn_host.go) – nur Administratoren
 	r.Get("/admin/server-config/vpn/script", h.VPNScriptWeb)
 	r.Post("/admin/server-config/vpn/settings", h.VPNSettingsWeb)

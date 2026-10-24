@@ -382,6 +382,18 @@ func (h *Handler) DRVMWeb(w http.ResponseWriter, r *http.Request) {
 	drRedirect(w, r, "VM-Sicherung gespeichert", nil)
 }
 
+// DRVMScriptWeb: GET /admin/server-config/dr/vm-script – pdh-vm-prepare.sh
+func (h *Handler) DRVMScriptWeb(w http.ResponseWriter, r *http.Request) {
+	if !h.vpnAdminGuard(w, r) {
+		return
+	}
+	componentLog("dr").Info().Str("user", getUser(r).ID).Msg("vm-vorbereitungsskript heruntergeladen")
+	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="pdh-vm-prepare.sh"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(pdh.VMPrepareScript))
+}
+
 // DRRestoreScriptWeb: GET /admin/server-config/dr/restore-script – pdh-restore.sh
 func (h *Handler) DRRestoreScriptWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.vpnAdminGuard(w, r) {

@@ -9,3 +9,10 @@ import _ "embed"
 //
 //go:embed scripts/pdh-restore.sh
 var RestoreScript string
+
+// VMPrepareScript bereitet eine frische Ubuntu-VM vor – für eine neue
+// Installation (--neu) oder den Wiederaufbau aus dem Ausfallschutz
+// (--wiederaufbau, scripts/pdh-vm-prepare.sh).
+//
+//go:embed scripts/pdh-vm-prepare.sh
+var VMPrepareScript string

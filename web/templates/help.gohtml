@@ -1713,10 +1713,16 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> So baust du den Server wieder auf</b>
     <ol class="hb-steps">
       <li>Frischen Ubuntu-Server oder eine neue VM bereitstellen.</li>
-      <li>Die Freigabe einbinden, z. B. <code>sudo mount -t cifs //nas/sicherung /mnt/sicherung -o username=…</code></li>
+      <li><b>pdh-vm-prepare.sh</b> im Reiter herunterladen, auf die VM kopieren und ausführen: <code>sudo bash pdh-vm-prepare.sh --wiederaufbau --share //nas/sicherung --user BENUTZER</code>. Es setzt Zeitzone, Firewall und Gast-Agent (Proxmox, VMware, Hyper-V), fragt das Passwort ab und bindet die Freigabe dauerhaft unter <code>/mnt/sicherung</code> ein. Mit <code>--restore</code> startet es den Wiederaufbau gleich mit.</li>
       <li>Das Skript liegt im Sicherungsordner (oder im Reiter herunterladen): <code>sudo bash /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;/pdh-restore.sh --from /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;</code></li>
       <li>Für einen <b>früheren Stand</b> (z. B. vor einem versehentlichen Löschen) zusätzlich <code>--time "2026-10-24 14:30:00"</code> angeben.</li>
       <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So richtest du einen ganz neuen Server ein</b>
+    <ol class="hb-steps">
+      <li>Frische Ubuntu-VM (22.04 oder 24.04) anlegen, <b>pdh-vm-prepare.sh</b> darauf kopieren.</li>
+      <li><code>sudo bash pdh-vm-prepare.sh --neu --hostname pdh</code> – installiert Postgres, PDH und den Update-Agenten.</li>
+      <li>Im Browser die angezeigte Adresse <code>http://…:8090/setup</code> öffnen und den Einrichtungscode eingeben.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-server"></i> VM-Sicherung</b>
     Läuft das PDH in einer VM, sollte zusätzlich der Hypervisor (z. B. Proxmox, Hyper-V) die ganze VM regelmäßig auf ein anderes Ziel sichern. Im Reiter das Datum der letzten VM-Sicherung eintragen – oder eine Datei auf dem Netzlaufwerk nennen, die die VM-Sicherung bei jedem Lauf aktualisiert. Ist sie älter als eingestellt (Standard 7 Tage), meldet das PDH es den Administratoren.</div>

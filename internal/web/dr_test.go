@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"pdh"
 	"pdh/internal/core/users"
 )
 
@@ -190,5 +194,44 @@ func TestDRAgentMismatch(t *testing.T) {
 	}
 	if a := drAgentMismatch(false, drStatus{}); len(a) != 0 {
 		t.Fatalf("%v", a)
+	}
+}
+
+func TestVMPrepareScript(t *testing.T) {
+	s := pdh.VMPrepareScript
+	if bash, err := exec.LookPath("bash"); err == nil {
+		f := filepath.Join(t.TempDir(), "vm.sh")
+		_ = os.WriteFile(f, []byte(s), 0o644)
+		if out, err := exec.Command(bash, "-n", f).CombinedOutput(); err != nil {
+			t.Fatalf("Syntaxfehler %v %s", err, out)
+		}
+	}
+	for _, want := range []string{"--neu", "--wiederaufbau", "systemd-detect-virt", "qemu-guest-agent", "open-vm-tools",
+		"Europe/Berlin", "credentials=/root/.pdh-share-cred", "/etc/fstab", "mfsymlinks", "PDH-Ausfallschutz",
+		"pdh-restore.sh", "CREATE ROLE", "install-update-agent.sh", "setup-code.txt", "ufw allow 8090/tcp"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("pdh-vm-prepare.sh ohne %q", want)
+		}
+	}
+	if strings.Contains(s, ",password=") || strings.Contains(s, "-o password") {
+		t.Error("Freigabe-Passwort gehört nicht in Mount-Optionen/fstab")
+	}
+}
+
+func TestDRVMScriptDownload(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodGet, "/admin/server-config/dr/vm-script", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: "u1", Role: users.Role("user")}))
+	rec := httptest.NewRecorder()
+	h.DRVMScriptWeb(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("ohne Recht: %d", rec.Code)
+	}
+	tmpl := loadTestTemplates(t)
+	c, _ := tmpl.Clone()
+	var b strings.Builder
+	_ = bindLang(c, "de").ExecuteTemplate(&b, "dr-admin", drView{DBLocal: true, Status: drStatus{OK: true, Supported: true}})
+	if !strings.Contains(b.String(), `href="/admin/server-config/dr/vm-script"`) {
+		t.Error("Reiter ohne Download des VM-Skripts")
 	}
 }

@@ -54,7 +54,9 @@
 <div class="card" id="dr-restore">
   <div class="card-title"><span><i class="ti ti-refresh-alert"></i> Wiederaufbau</span></div>
   <ol class="vp-hint" style="padding-left:18px">
-    <li>Frischen Ubuntu-Server bzw. eine VM bereitstellen und die Freigabe einbinden.</li>
+    <li>Frischen Ubuntu-Server bzw. eine VM bereitstellen und mit <a class="btn btn-small" href="/admin/server-config/dr/vm-script"><i class="ti ti-download"></i> pdh-vm-prepare.sh</a> vorbereiten – richtet Zeitzone, Firewall und Gast-Agent ein und bindet die Freigabe ein:
+      <div class="vp-cmd"><code>sudo bash pdh-vm-prepare.sh --wiederaufbau --share //nas/freigabe --user BENUTZER --restore</code></div>
+      Für eine ganz neue Installation statt dessen <code>--neu</code>.</li>
     <li><a class="btn btn-small btn-primary" href="/admin/server-config/dr/restore-script"><i class="ti ti-download"></i> pdh-restore.sh</a> herunterladen (liegt auch im Sicherungsordner) und ausführen:
       <div class="vp-cmd"><code>sudo bash pdh-restore.sh --from /mnt/…/PDH-Ausfallschutz/&lt;server&gt;</code></div>
       Für einen früheren Stand: <code>--time "JJJJ-MM-TT HH:MM:SS"</code>.</li>

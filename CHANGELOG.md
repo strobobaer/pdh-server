@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.74.0] – 2026-10-24
+
+### Neu
+- Skript pdh-vm-prepare.sh (Server-Einstellungen → Ausfallschutz): bereitet eine frische Ubuntu-VM vor – Zeitzone, Firewall, Gast-Agent für Proxmox/VMware/Hyper-V – und richtet wahlweise eine neue PDH-Installation ein oder bindet die Sicherungsfreigabe für den Wiederaufbau dauerhaft ein.
+
 ## [0.73.0] – 2026-10-24
 
 ### Neu
