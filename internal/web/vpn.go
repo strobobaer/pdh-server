@@ -202,6 +202,7 @@ type vpnService struct {
 	State string `json:"state"` // ok | off | down
 	Label string `json:"label"`
 	Error string `json:"error"`
+	Alive bool   `json:"alive"` // Dienst meldet sich (auch mit Fehler) – Status der Tunnel ist gültig
 }
 
 // vpnServiceWanted: der Dienst soll laufen – Hub eingeschaltet (mit öffentlichem
@@ -239,9 +240,9 @@ func vpnReadService(enabled bool, now time.Time) (vpnService, map[string]vpnPeer
 	case now.Sub(time.Unix(beat, 0)) > time.Minute:
 		svc.State, svc.Label = "down", "Dienst pdh-wireguard meldet sich seit "+timeAgo(time.Unix(beat, 0))+" nicht"
 	case svc.Error != "":
-		svc.State, svc.Label = "down", "Fehler im Dienst"
+		svc.State, svc.Label, svc.Alive = "down", "Fehler im Dienst", true
 	default:
-		svc.State, svc.Label = "ok", "läuft"
+		svc.State, svc.Label, svc.Alive = "ok", "läuft", true
 	}
 	return svc, st
 }
@@ -302,7 +303,7 @@ func (h *Handler) vpnLoadView(ctx context.Context, uid string, admin bool, show 
 	v.Reachable = vpnReachable(peers, false)
 	var shown []vpnPeer
 	for _, p := range peers {
-		p = vpnWithStatus(p, status, svc.State == "ok")
+		p = vpnWithStatus(p, status, svc.Alive)
 		if admin || (p.Kind == "user" && p.UserID == uid) {
 			shown = append(shown, p)
 		}

@@ -112,7 +112,7 @@ func (h *Handler) VPNStatusWeb(w http.ResponseWriter, r *http.Request) {
 		if !admin && (p.Kind != "user" || p.UserID != uid) {
 			continue
 		}
-		p = vpnWithStatus(p, status, svc.State == "ok")
+		p = vpnWithStatus(p, status, svc.Alive)
 		shown = append(shown, p)
 		out.Peers[p.ID] = vpnPeerStatusJ{State: p.ConnState, Label: p.ConnLabel, Detail: vpnConnDetail(p)}
 	}

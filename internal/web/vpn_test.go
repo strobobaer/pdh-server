@@ -1,6 +1,8 @@
 package web
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -423,5 +425,26 @@ func TestVPNOutboundWithoutHub(t *testing.T) {
 	j := strings.Index(daemon[i:], "\n}\n")
 	if i < 0 || j < 0 || strings.Contains(daemon[i:i+j], "disabled") {
 		t.Error("apply_outbound hängt noch am Hub (disabled)")
+	}
+}
+
+// Dienst läuft, meldet aber einen Fehler (z. B. Tunnel überschneidet docker0):
+// Tunnel-Status bleibt gültig statt „Status unbekannt – VPN-Dienst läuft nicht“.
+func TestVPNReadServiceAliveWithError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PDH_WIREGUARD_DIR", dir)
+	now := time.Now()
+	_ = os.WriteFile(filepath.Join(dir, "heartbeat"), []byte(strconv.FormatInt(now.Unix(), 10)), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "error"), []byte("pdhout0 nicht gestartet: 172.17.214.2/24 überschneidet das Netz des Servers"), 0o644)
+	svc, _ := vpnReadService(true, now)
+	if svc.State != "down" || !svc.Alive || !strings.Contains(svc.Error, "172.17.214.2/24") {
+		t.Fatalf("Fehler im laufenden Dienst: %+v", svc)
+	}
+	if st, _ := vpnConn(vpnPeer{Kind: "outbound"}, svc.Alive); st != "wait" {
+		t.Fatalf("Tunnel-Zustand %q, erwartet wait", st)
+	}
+	_ = os.Remove(filepath.Join(dir, "heartbeat"))
+	if svc, _ = vpnReadService(true, now); svc.Alive {
+		t.Fatalf("ohne Heartbeat darf der Dienst nicht als lebendig gelten: %+v", svc)
 	}
 }
