@@ -63,7 +63,7 @@ done
 # shellcheck disable=SC1091
 . /etc/os-release
 [[ "${ID:-}" == ubuntu ]] || fail "Dieses Skript ist für Ubuntu (gefunden: ${PRETTY_NAME:-?})."
-case "${VERSION_ID:-}" in 22.04|24.04) ;; *) warn "Getestet mit Ubuntu 22.04/24.04, hier ${VERSION_ID:-?}." ;; esac
+case "${VERSION_ID:-}" in 22.04|24.04|26.04) ;; *) warn "Getestet mit Ubuntu 22.04/24.04/26.04, hier ${VERSION_ID:-?}." ;; esac
 [[ "$MODE" != wiederaufbau || -n "$SHARE" ]] || fail "--share fehlt (z. B. --share //nas/sicherung)."
 [[ "$REPO" == /* ]] || fail "--repo braucht einen absoluten Pfad."
 

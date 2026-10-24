@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.74.1] – 2026-10-24
+
+### Behoben
+- Einrichtung des Update-Agenten und Wiederaufbau brachen mit „detected dubious ownership“ ab, wenn das PDH-Verzeichnis dem Benutzer pdh gehört (z. B. nach pdh-vm-prepare.sh --neu).
+
 ## [0.74.0] – 2026-10-24
 
 ### Neu

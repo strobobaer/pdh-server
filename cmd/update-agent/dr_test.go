@@ -560,3 +560,23 @@ func TestDRErrorsPerKind(t *testing.T) {
 		t.Fatalf("Fehler bleibt: %q", st.Error)
 	}
 }
+
+// Als root ausgeführte Skripte arbeiten im Repo des Benutzers pdh – git verlangt
+// dafür safe.directory, sonst „detected dubious ownership“.
+func TestRootScriptsGitSafeDirectory(t *testing.T) {
+	for _, f := range []string{"../../install-update-agent.sh", "../../scripts/pdh-restore.sh"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			l := strings.TrimSpace(line)
+			if strings.HasPrefix(l, "#") || !strings.Contains(l, "git -") || strings.Contains(l, "git clone") || strings.HasPrefix(l, "gitr()") {
+				continue
+			}
+			if !strings.Contains(l, "safe.directory") {
+				t.Errorf("%s:%d git ohne safe.directory: %s", f, i+1, l)
+			}
+		}
+	}
+}

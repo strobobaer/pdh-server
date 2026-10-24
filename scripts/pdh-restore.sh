@@ -173,10 +173,11 @@ id pdh >/dev/null 2>&1 || useradd --system --home-dir "$REPO" --shell /usr/sbin/
 if [[ ! -d "$REPO/.git" ]]; then
   git clone -q "$REPO_URL" "$REPO"
 fi
-git -C "$REPO" fetch -q origin
+gitr() { git -c safe.directory="$REPO" -C "$REPO" "$@"; } # Repo gehört später pdh
+gitr fetch -q origin
 if [[ "$COMMIT" != "-" ]]; then
-  git -C "$REPO" checkout -q -B main "$COMMIT"
-  git -C "$REPO" branch -q -u origin/main main || true
+  gitr checkout -q -B main "$COMMIT"
+  gitr branch -q -u origin/main main || true
 fi
 restore_dir() { # Label Zielordner
   [[ -d "$FROM/files/$1" ]] || return 0

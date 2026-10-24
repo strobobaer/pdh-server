@@ -54,7 +54,8 @@ if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
     exit 1
 fi
 
-build_commit="$(git -C "$repo_dir" rev-parse HEAD)"
+# root liest das Repo des PDH-Benutzers – git verlangt dafür safe.directory
+build_commit="$(git -c safe.directory="$repo_dir" -C "$repo_dir" rev-parse HEAD)"
 install -d -m 0750 /var/cache/pdh-updater
 mkdir -p "$repo_dir/bin"
 (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$build_commit" -o bin/pdh ./cmd/server)
