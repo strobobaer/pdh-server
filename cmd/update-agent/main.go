@@ -25,6 +25,7 @@ type jobStatus struct {
 }
 
 type updateAgent struct {
+	dr      drState // Ausfallschutz (dr.go), eigener Mutex
 	mu      sync.RWMutex
 	status  jobStatus
 	token   string
@@ -88,6 +89,12 @@ func main() {
 	mux.Handle("GET /v1/nextcloud/status", agent.authorized(http.HandlerFunc(agent.ncStatusHandler)))
 	mux.Handle("POST /v1/nextcloud/oidc", agent.authorized(http.HandlerFunc(agent.ncOIDCHandler)))
 	mux.Handle("POST /v1/nextcloud/service-account", agent.authorized(http.HandlerFunc(agent.ncServiceHandler)))
+	// Ausfallschutz – Einzelbetrieb (dr.go)
+	if err := agent.drLoad(); err != nil {
+		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)
+	}
+	mux.Handle("GET /v1/dr/status", agent.authorized(http.HandlerFunc(agent.drStatusHandler)))
+	mux.Handle("POST /v1/dr/config", agent.authorized(http.HandlerFunc(agent.drConfigHandler)))
 
 	server := &http.Server{
 		Addr:              listen,
