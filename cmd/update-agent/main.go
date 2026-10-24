@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -95,6 +96,7 @@ func main() {
 	}
 	mux.Handle("GET /v1/dr/status", agent.authorized(http.HandlerFunc(agent.drStatusHandler)))
 	mux.Handle("POST /v1/dr/config", agent.authorized(http.HandlerFunc(agent.drConfigHandler)))
+	go agent.drLoop(context.Background())
 
 	server := &http.Server{
 		Addr:              listen,

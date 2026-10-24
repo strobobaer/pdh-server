@@ -95,6 +95,7 @@ type drState struct {
 	Missing      []string   `json:"missing"`
 	N8N          *drN8NInfo `json:"n8n,omitempty"`
 	Error        string     `json:"error"`
+	ErrorKind    string     `json:"error_kind"` // wal, base, files, postgres
 	ErrorAt      time.Time  `json:"error_at"`
 	Running      string     `json:"-"`
 }
@@ -181,10 +182,19 @@ func (a *updateAgent) drSave() error {
 	return os.Rename(tmp, filepath.Join(dir, "state.json"))
 }
 
-// drFail merkt sich den letzten Fehler für Status und Alarm.
-func (a *updateAgent) drFail(err error) {
+// drFail merkt sich den letzten Fehler für Status und Alarm; drOK löscht ihn,
+// sobald ein Lauf derselben Art wieder klappt.
+func (a *updateAgent) drFail(kind string, err error) {
 	a.dr.mu.Lock()
-	a.dr.Error, a.dr.ErrorAt = err.Error(), time.Now().UTC()
+	a.dr.Error, a.dr.ErrorKind, a.dr.ErrorAt = err.Error(), kind, time.Now().UTC()
+	a.dr.mu.Unlock()
+}
+
+func (a *updateAgent) drOK(kind string) {
+	a.dr.mu.Lock()
+	if a.dr.ErrorKind == kind {
+		a.dr.Error, a.dr.ErrorKind, a.dr.ErrorAt = "", "", time.Time{}
+	}
 	a.dr.mu.Unlock()
 }
 
@@ -203,7 +213,9 @@ func (a *updateAgent) drStatusHandler(w http.ResponseWriter, _ *http.Request) {
 		drJSON(w, drStatus{Error: drUnsupportedMsg})
 		return
 	}
-	drJSON(w, a.drStatus())
+	st := a.drStatus()
+	st.SpoolFiles, st.SpoolBytes, st.SpoolOldest = drSpoolInfo(a.hp(drSpool))
+	drJSON(w, st)
 }
 
 func (a *updateAgent) drStatus() drStatus {
@@ -241,11 +253,12 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if c.Enabled != old.Enabled || (c.Enabled && c.WALMaxMinutes != old.WALMaxMinutes) {
 		archiving, err := a.drApplyPostgres(r.Context(), c)
 		if err != nil {
-			a.drFail(err)
+			a.drFail("postgres", err)
 			_ = a.drSave()
 			drRefuse(w, err.Error())
 			return
 		}
+		a.drOK("postgres")
 		a.dr.mu.Lock()
 		a.dr.Archiving = archiving
 		a.dr.mu.Unlock()
