@@ -235,6 +235,22 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.dr.mu.Lock()
+	old := a.dr.Config
+	a.dr.mu.Unlock()
+	// Postgres nur anfassen, wenn sich etwas für die Archivierung ändert
+	if c.Enabled != old.Enabled || (c.Enabled && c.WALMaxMinutes != old.WALMaxMinutes) {
+		archiving, err := a.drApplyPostgres(r.Context(), c)
+		if err != nil {
+			a.drFail(err)
+			_ = a.drSave()
+			drRefuse(w, err.Error())
+			return
+		}
+		a.dr.mu.Lock()
+		a.dr.Archiving = archiving
+		a.dr.mu.Unlock()
+	}
+	a.dr.mu.Lock()
 	a.dr.Config = c
 	a.dr.mu.Unlock()
 	if err := a.drSave(); err != nil {
