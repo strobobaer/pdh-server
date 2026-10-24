@@ -304,3 +304,88 @@ func TestDRBaseRetryWait(t *testing.T) {
 		t.Fatal("Wartezeit nach fehlgeschlagener Grundsicherung falsch")
 	}
 }
+
+func drFakeExists(paths ...string) func(string) bool {
+	m := map[string]bool{}
+	for _, p := range paths {
+		m[p] = true
+	}
+	return func(p string) bool { return m[p] }
+}
+
+func drLabels(src []drSource) string {
+	var l []string
+	for _, s := range src {
+		l = append(l, s.Label)
+	}
+	return strings.Join(l, ",")
+}
+
+func TestDRFileSources(t *testing.T) {
+	got := drFileSources("/opt/pdh", drFakeExists("/opt/pdh/uploads", "/opt/pdh/.env", "/etc/pdh", "/etc/systemd/system"))
+	if l := drLabels(got); l != "uploads,env,etc-pdh,systemd" {
+		t.Fatalf("Quellen %s", l)
+	}
+	for _, s := range got {
+		if s.Label == "env" && !s.File {
+			t.Error(".env muss als Datei abgeglichen werden")
+		}
+		if s.Label == "systemd" && strings.Join(s.Filter, " ") != "--include=pdh*.service --exclude=*" {
+			t.Errorf("systemd-Filter %v", s.Filter)
+		}
+	}
+}
+
+func TestDRNextcloudSources(t *testing.T) {
+	ex := drFakeExists("/var/www/nextcloud/config/config.php", "/etc/nginx")
+	if l := drLabels(drNextcloudSources("/var/www/nextcloud", "/var/ncdata", ex)); l != "nextcloud-app,nextcloud-data,nginx" {
+		t.Fatalf("mit Datenordner: %s", l)
+	}
+	if l := drLabels(drNextcloudSources("/var/www/nextcloud", "/var/www/nextcloud/data", ex)); l != "nextcloud-app,nginx" {
+		t.Fatalf("Datenordner im Programmordner: %s", l)
+	}
+	if got := drNextcloudSources("/var/www/nextcloud", "/var/ncdata", drFakeExists()); len(got) != 0 {
+		t.Fatalf("ohne config.php: %v", got)
+	}
+}
+
+func TestDRParseN8N(t *testing.T) {
+	js := `[{"Name":"/pdh-admin-n8n","Config":{"Labels":{"com.docker.compose.project.working_dir":"/opt/n8n"}},
+	"Mounts":[{"Type":"volume","Name":"n8n_data","Source":"/var/lib/docker/volumes/n8n_data/_data"},
+	{"Type":"bind","Source":"/opt/n8n/files"}]}]`
+	info, err := drParseN8N([]byte(js))
+	if err != nil || info.Container != "pdh-admin-n8n" || info.ComposeDir != "/opt/n8n" || len(info.Volumes) != 1 ||
+		info.Volumes[0].Name != "n8n_data" || info.Volumes[0].Mountpoint != "/var/lib/docker/volumes/n8n_data/_data" {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if l := drLabels(drN8NSources(info)); l != "n8n-compose,n8n-vol-n8n_data" {
+		t.Fatalf("n8n-Quellen %s", l)
+	}
+	if _, err := drParseN8N([]byte(`[]`)); err == nil {
+		t.Fatal("leeres inspect ohne Fehler")
+	}
+}
+
+func TestDRRsyncArgs(t *testing.T) {
+	got := strings.Join(drRsyncArgs(drSource{Label: "uploads", Path: "/r/uploads"}, "/t", "2026-10-24"), " ")
+	want := "-rtl --delete --backup --backup-dir=/t/papierkorb/2026-10-24/uploads --exclude=.git /r/uploads/ /t/files/uploads/"
+	if got != want {
+		t.Fatalf("\n got %s\nwant %s", got, want)
+	}
+	sd := strings.Join(drRsyncArgs(drSource{Label: "systemd", Path: "/etc/systemd/system", Filter: []string{"--include=pdh*.service", "--exclude=*"}}, "/t", "2026-10-24"), " ")
+	if !strings.HasSuffix(sd, "--include=pdh*.service --exclude=* /etc/systemd/system/ /t/files/systemd/") {
+		t.Fatalf("systemd: %s", sd)
+	}
+	f := strings.Join(drRsyncArgs(drSource{Label: "env", Path: "/r/.env", File: true}, "/t", "2026-10-24"), " ")
+	if !strings.HasSuffix(f, " /r/.env /t/files/env") {
+		t.Fatalf("Datei: %s", f)
+	}
+}
+
+func TestDRAppScripts(t *testing.T) {
+	drBashSyntax(t, "rsync", drRsyncScript)
+	drBashSyntax(t, "ncdata", drNCDataScript)
+	if !strings.Contains(drRsyncScript, "trap") || !strings.Contains(drRsyncScript, "docker unpause") {
+		t.Error("rsync-Skript setzt n8n nicht sicher fort")
+	}
+}

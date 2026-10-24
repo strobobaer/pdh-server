@@ -173,6 +173,7 @@ func (a *updateAgent) drLoop(ctx context.Context) {
 	if !a.drSupported() {
 		return
 	}
+	a.drUnpauseN8N(ctx)
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
@@ -216,8 +217,17 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	}
 	if cfg.Enabled {
 		a.dr.mu.Lock()
-		lastBase, lastTry := a.dr.LastBase, a.dr.BaseTry
+		lastBase, lastTry, lastFiles := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync
+		if a.dr.FilesTry.After(lastFiles) {
+			lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
+		}
 		a.dr.mu.Unlock()
+		// Dateien zuerst: die Grundsicherung übernimmt die Quellen des letzten Abgleichs
+		if drFilesDue(lastFiles, cfg.FileSyncMinutes, now) && a.drStartRun("files") == nil {
+			a.dr.mu.Lock()
+			a.dr.FilesTry = now
+			a.dr.mu.Unlock()
+		}
 		if drBaseDue(lastBase, cfg.BaseHour, now) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
 			a.dr.mu.Lock()
 			a.dr.BaseTry = now

@@ -94,6 +94,7 @@ type drState struct {
 	LastBase     time.Time  `json:"last_base"`
 	BaseTry      time.Time  `json:"base_try"` // letzter automatischer Versuch
 	LastFileSync time.Time  `json:"last_file_sync"`
+	FilesTry     time.Time  `json:"files_try"` // letzter automatischer Abgleich-Versuch
 	Sources      []drSource `json:"sources"`
 	Missing      []string   `json:"missing"`
 	N8N          *drN8NInfo `json:"n8n,omitempty"`
@@ -284,7 +285,7 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 // drStartRun startet eine Grundsicherung ("base") oder einen Dateiabgleich
 // ("files") im Hintergrund; nie zwei Läufe gleichzeitig.
 func (a *updateAgent) drStartRun(what string) error {
-	run := map[string]func(context.Context) error{"base": a.drRunBase}[what]
+	run := map[string]func(context.Context) error{"base": a.drRunBase, "files": a.drRunFiles}[what]
 	if run == nil {
 		return errors.New("unbekannter Lauf")
 	}

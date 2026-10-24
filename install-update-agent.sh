@@ -20,6 +20,8 @@ command -v openssl >/dev/null 2>&1 || missing_packages+=(openssl)
 # Netzlaufwerke (Core-Einstellungen -> Netzlaufwerke)
 command -v mount.cifs >/dev/null 2>&1 || missing_packages+=(cifs-utils)
 command -v mount.nfs >/dev/null 2>&1 || missing_packages+=(nfs-common)
+# Ausfallschutz (Server-Einstellungen -> Ausfallschutz): Dateiabgleich
+command -v rsync >/dev/null 2>&1 || missing_packages+=(rsync)
 if (( ${#missing_packages[@]} > 0 )); then
     apt-get update
     apt-get install -y "${missing_packages[@]}"
