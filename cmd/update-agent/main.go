@@ -96,6 +96,7 @@ func main() {
 	}
 	mux.Handle("GET /v1/dr/status", agent.authorized(http.HandlerFunc(agent.drStatusHandler)))
 	mux.Handle("POST /v1/dr/config", agent.authorized(http.HandlerFunc(agent.drConfigHandler)))
+	mux.Handle("POST /v1/dr/run", agent.authorized(http.HandlerFunc(agent.drRunHandler)))
 	go agent.drLoop(context.Background())
 
 	server := &http.Server{

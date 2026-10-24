@@ -8,9 +8,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
+
+	"pdh"
 )
 
 const drSpool = "/var/lib/postgresql/pdh-wal-spool"
@@ -78,4 +86,123 @@ func (a *updateAgent) drApplyPostgres(ctx context.Context, c drConfig) (bool, er
 		return false, errors.New("Postgres: " + msg)
 	}
 	return c.Enabled, nil
+}
+
+// drBaseScript: Grundsicherung des ganzen Clusters als ein tar.gz nach
+// $PDH_DR_OUT (Ordner .part auf dem Laufwerk). pg_basebackup läuft als postgres
+// und schreibt auf stdout – so braucht postgres keine Rechte auf dem Laufwerk.
+const drBaseScript = `set -euo pipefail
+psqlq() { runuser -u postgres -- psql -XAtqc "$1"; }
+start=$(psqlq "SELECT pg_walfile_name(pg_current_wal_lsn())")
+ver=$(psqlq 'SHOW server_version_num')
+runuser -u postgres -- pg_basebackup -D - -Ft -X fetch -z --checkpoint=fast > "$PDH_DR_OUT/base.tar.gz"
+sync
+echo "START_WAL=$start"
+echo "PG_VERSION_NUM=$ver"
+`
+
+// drBaseInfo: info.json je Grundsicherung – alles, was pdh-restore.sh braucht.
+type drBaseInfo struct {
+	Name         string     `json:"name"`
+	Created      time.Time  `json:"created"`
+	StartWAL     string     `json:"start_wal"`
+	PGVersionNum int        `json:"pg_version_num"`
+	PDHVersion   string     `json:"pdh_version"`
+	Commit       string     `json:"commit"`
+	RepoDir      string     `json:"repo_dir"`
+	Sources      []drSource `json:"sources"`
+	N8N          *drN8NInfo `json:"n8n,omitempty"`
+	Bytes        int64      `json:"bytes"`
+}
+
+// drScriptValue liest "KEY=wert" aus der Ausgabe eines Host-Skripts.
+func drScriptValue(out, key string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), key+"="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+func (a *updateAgent) drCommit() string {
+	out, err := exec.Command("git", "-c", "safe.directory=*", "-C", a.repoDir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// drRunBase: Grundsicherung schreiben, danach Aufbewahrung anwenden.
+func (a *updateAgent) drRunBase(ctx context.Context) error {
+	a.dr.mu.Lock()
+	cfg, sources, n8n := a.dr.Config, a.dr.Sources, a.dr.N8N
+	a.dr.mu.Unlock()
+	target := a.hp(cfg.Target)
+	if err := drTargetCheck(target); err != nil {
+		return err
+	}
+	baseDir := filepath.Join(target, "base")
+	if err := os.MkdirAll(baseDir, 0o750); err != nil {
+		return err
+	}
+	if old, _ := filepath.Glob(filepath.Join(baseDir, ".*.part")); len(old) > 0 {
+		for _, p := range old {
+			_ = os.RemoveAll(p)
+		}
+	}
+	now := time.Now().UTC()
+	name := now.Format("20060102T150405Z")
+	part := filepath.Join(baseDir, "."+name+".part")
+	if err := os.MkdirAll(part, 0o750); err != nil {
+		return err
+	}
+	out, err := a.hostCommandEnv(ctx, false, drBaseScript, map[string]string{
+		"PDH_DR_OUT": cfg.Target + "/base/." + name + ".part",
+	}).CombinedOutput()
+	if err != nil {
+		_ = os.RemoveAll(part)
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		return fmt.Errorf("Grundsicherung fehlgeschlagen: %s", lines[len(lines)-1])
+	}
+	info := drBaseInfo{Name: name, Created: now, StartWAL: drScriptValue(string(out), "START_WAL"),
+		PDHVersion: pdh.Version(), Commit: a.drCommit(), RepoDir: a.repoDir, Sources: sources, N8N: n8n}
+	info.PGVersionNum, _ = strconv.Atoi(drScriptValue(string(out), "PG_VERSION_NUM"))
+	if fi, err := os.Stat(filepath.Join(part, "base.tar.gz")); err == nil {
+		info.Bytes = fi.Size()
+	}
+	if info.StartWAL == "" || info.Bytes == 0 {
+		_ = os.RemoveAll(part)
+		return errors.New("Grundsicherung unvollständig (keine Startdatei bzw. leeres Archiv)")
+	}
+	b, _ := json.MarshalIndent(info, "", "  ")
+	if err := os.WriteFile(filepath.Join(part, "info.json"), b, 0o640); err != nil {
+		_ = os.RemoveAll(part)
+		return err
+	}
+	if err := os.Rename(part, filepath.Join(baseDir, name)); err != nil {
+		return err
+	}
+	a.dr.mu.Lock()
+	a.dr.LastBase = now
+	a.dr.mu.Unlock()
+	return a.drPrune(target, cfg.KeepDays, now)
+}
+
+// drPrune: alte Grundsicherungen, nicht mehr gebrauchte WAL und alte
+// Papierkorb-Tage entfernen.
+func (a *updateAgent) drPrune(target string, keepDays int, now time.Time) error {
+	baseDir := filepath.Join(target, "base")
+	remove, oldest := drPrunePlan(drListBases(baseDir), keepDays, now)
+	for _, name := range remove {
+		if err := os.RemoveAll(filepath.Join(baseDir, name)); err != nil {
+			return err
+		}
+	}
+	if oldest != "" {
+		if _, err := drPruneWAL(filepath.Join(target, "wal"), oldest); err != nil {
+			return err
+		}
+	}
+	return drPruneTrash(filepath.Join(target, "papierkorb"), keepDays, now)
 }

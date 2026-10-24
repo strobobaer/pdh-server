@@ -225,3 +225,82 @@ func TestDRFilesDue(t *testing.T) {
 		t.Fatal("Fälligkeit des Dateiabgleichs falsch")
 	}
 }
+
+func TestDRPrunePlan(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	b := func(name string, daysAgo int, start string) drBaseInfo {
+		return drBaseInfo{Name: name, Created: now.AddDate(0, 0, -daysAgo), StartWAL: start}
+	}
+	bases := []drBaseInfo{b("alt", 20, wal1), b("mittel", 10, wal2), b("neu", 1, wal3)}
+	remove, oldest := drPrunePlan(bases, 14, now)
+	if len(remove) != 1 || remove[0] != "alt" || oldest != wal2 {
+		t.Fatalf("remove=%v oldest=%s", remove, oldest)
+	}
+	remove, oldest = drPrunePlan([]drBaseInfo{b("a", 40, wal1), b("b", 30, wal2)}, 14, now)
+	if len(remove) != 1 || remove[0] != "a" || oldest != wal2 {
+		t.Fatalf("neueste muss bleiben: remove=%v oldest=%s", remove, oldest)
+	}
+}
+
+func TestDRPruneWAL(t *testing.T) {
+	dir := t.TempDir()
+	names := []string{wal1 + ".gz", "000000010000000000000005.gz", "000000010000000000000009.gz", "00000002.history.gz"}
+	for _, n := range names {
+		drWriteFile(t, filepath.Join(dir, n), "x")
+	}
+	n, err := drPruneWAL(dir, "000000010000000000000005")
+	if err != nil || n != 1 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	left, _ := os.ReadDir(dir)
+	if len(left) != 3 || left[0].Name() == wal1+".gz" {
+		t.Fatalf("übrig: %v", left)
+	}
+}
+
+func TestDRPruneTrash(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	for _, d := range []string{"2026-10-01", "2026-10-20", "kein-datum"} {
+		drWriteFile(t, filepath.Join(dir, d, "uploads", "a.txt"), "x")
+	}
+	if err := drPruneTrash(dir, 14, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-10-01")); !os.IsNotExist(err) {
+		t.Fatal("alter Papierkorb-Tag nicht gelöscht")
+	}
+	for _, d := range []string{"2026-10-20", "kein-datum"} {
+		if _, err := os.Stat(filepath.Join(dir, d)); err != nil {
+			t.Fatalf("%s gelöscht", d)
+		}
+	}
+}
+
+func TestDRBaseScript(t *testing.T) {
+	drBashSyntax(t, "base", drBaseScript)
+	for _, want := range []string{"-X fetch", "--checkpoint=fast", "pg_walfile_name", "START_WAL=", "PG_VERSION_NUM=", "$PDH_DR_OUT"} {
+		if !strings.Contains(drBaseScript, want) {
+			t.Errorf("Grundsicherungs-Skript ohne %q", want)
+		}
+	}
+}
+
+func TestDRListBasesSkipsPart(t *testing.T) {
+	dir := t.TempDir()
+	info := `{"name":"20261024T020000Z","created":"2026-10-24T02:00:00Z","start_wal":"` + wal1 + `"}`
+	drWriteFile(t, filepath.Join(dir, "20261024T020000Z", "info.json"), info)
+	drWriteFile(t, filepath.Join(dir, "20261024T020000Z", "base.tar.gz"), "12345")
+	drWriteFile(t, filepath.Join(dir, ".20261025T020000Z.part", "info.json"), info)
+	bases := drListBases(dir)
+	if len(bases) != 1 || bases[0].StartWAL != wal1 || bases[0].Bytes != 5 {
+		t.Fatalf("%+v", bases)
+	}
+}
+
+func TestDRBaseRetryWait(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	if !drBaseRetryOK(time.Time{}, now) || drBaseRetryOK(now.Add(-59*time.Minute), now) || !drBaseRetryOK(now.Add(-time.Hour), now) {
+		t.Fatal("Wartezeit nach fehlgeschlagener Grundsicherung falsch")
+	}
+}

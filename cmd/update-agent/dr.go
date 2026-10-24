@@ -9,9 +9,11 @@ package main
 // Docker ist das Testsystem.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -90,6 +92,7 @@ type drState struct {
 	LastWALShip  time.Time  `json:"last_wal_ship"`
 	LastWALFile  string     `json:"last_wal_file"`
 	LastBase     time.Time  `json:"last_base"`
+	BaseTry      time.Time  `json:"base_try"` // letzter automatischer Versuch
 	LastFileSync time.Time  `json:"last_file_sync"`
 	Sources      []drSource `json:"sources"`
 	Missing      []string   `json:"missing"`
@@ -215,6 +218,11 @@ func (a *updateAgent) drStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 	st := a.drStatus()
 	st.SpoolFiles, st.SpoolBytes, st.SpoolOldest = drSpoolInfo(a.hp(drSpool))
+	if st.Config.Target != "" {
+		for _, b := range drListBases(filepath.Join(a.hp(st.Config.Target), "base")) {
+			st.Bases = append(st.Bases, drBase{Name: b.Name, Created: b.Created, Bytes: b.Bytes})
+		}
+	}
 	drJSON(w, st)
 }
 
@@ -268,6 +276,66 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 	a.dr.mu.Unlock()
 	if err := a.drSave(); err != nil {
 		drRefuse(w, "Zustand nicht gespeichert: "+err.Error())
+		return
+	}
+	drJSON(w, map[string]any{"ok": true})
+}
+
+// drStartRun startet eine Grundsicherung ("base") oder einen Dateiabgleich
+// ("files") im Hintergrund; nie zwei Läufe gleichzeitig.
+func (a *updateAgent) drStartRun(what string) error {
+	run := map[string]func(context.Context) error{"base": a.drRunBase}[what]
+	if run == nil {
+		return errors.New("unbekannter Lauf")
+	}
+	a.dr.mu.Lock()
+	if a.dr.Running != "" {
+		a.dr.mu.Unlock()
+		return errors.New("läuft bereits")
+	}
+	a.dr.Running = what
+	a.dr.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer cancel()
+		err := run(ctx)
+		a.dr.mu.Lock()
+		a.dr.Running = ""
+		a.dr.mu.Unlock()
+		if err != nil {
+			a.drFail(what, err)
+		} else {
+			a.drOK(what)
+		}
+		if err := a.drSave(); err != nil {
+			log.Printf("ausfallschutz: state.json: %v", err)
+		}
+	}()
+	return nil
+}
+
+// drRunHandler: POST /v1/dr/run {"what":"base"|"files"}
+func (a *updateAgent) drRunHandler(w http.ResponseWriter, r *http.Request) {
+	if !a.drSupported() {
+		drRefuse(w, drUnsupportedMsg)
+		return
+	}
+	var req struct {
+		What string `json:"what"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil {
+		drRefuse(w, "ungültige Anfrage")
+		return
+	}
+	a.dr.mu.Lock()
+	enabled := a.dr.Config.Enabled
+	a.dr.mu.Unlock()
+	if !enabled {
+		drRefuse(w, "Ausfallschutz ist ausgeschaltet")
+		return
+	}
+	if err := a.drStartRun(req.What); err != nil {
+		drRefuse(w, err.Error())
 		return
 	}
 	drJSON(w, map[string]any{"ok": true})

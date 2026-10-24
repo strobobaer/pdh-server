@@ -5,6 +5,7 @@ package main
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"context"
 	"errors"
 	"fmt"
@@ -158,6 +159,11 @@ func drBaseDue(last time.Time, hour int, now time.Time) bool {
 	return !now.Before(sched) && last.Before(sched)
 }
 
+// drBaseRetryOK: nach einem Versuch frühestens eine Stunde später erneut.
+func drBaseRetryOK(lastTry, now time.Time) bool {
+	return lastTry.IsZero() || now.Sub(lastTry) >= time.Hour
+}
+
 func drFilesDue(last time.Time, minutes int, now time.Time) bool {
 	return last.IsZero() || now.Sub(last) >= time.Duration(minutes)*time.Minute
 }
@@ -208,7 +214,99 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	default:
 		a.drOK("wal")
 	}
+	if cfg.Enabled {
+		a.dr.mu.Lock()
+		lastBase, lastTry := a.dr.LastBase, a.dr.BaseTry
+		a.dr.mu.Unlock()
+		if drBaseDue(lastBase, cfg.BaseHour, now) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
+			a.dr.mu.Lock()
+			a.dr.BaseTry = now
+			a.dr.mu.Unlock()
+		}
+	}
 	if err := a.drSave(); err != nil {
 		log.Printf("ausfallschutz: state.json: %v", err)
 	}
+}
+
+// drListBases: vollständige Grundsicherungen (Ordner mit info.json, ohne .part).
+func drListBases(baseDir string) []drBaseInfo {
+	entries, _ := os.ReadDir(baseDir)
+	var out []drBaseInfo
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(baseDir, e.Name(), "info.json"))
+		if err != nil {
+			continue
+		}
+		var info drBaseInfo
+		if json.Unmarshal(b, &info) != nil || info.StartWAL == "" {
+			continue
+		}
+		info.Name = e.Name()
+		if fi, err := os.Stat(filepath.Join(baseDir, e.Name(), "base.tar.gz")); err == nil {
+			info.Bytes = fi.Size()
+		}
+		out = append(out, info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
+	return out
+}
+
+// drPrunePlan: Grundsicherungen älter als keepDays entfernen – die neueste
+// bleibt immer. oldestStart ist die erste WAL-Datei, die noch gebraucht wird.
+func drPrunePlan(bases []drBaseInfo, keepDays int, now time.Time) (remove []string, oldestStart string) {
+	sorted := append([]drBaseInfo(nil), bases...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Created.After(sorted[j].Created) })
+	limit := time.Duration(keepDays) * 24 * time.Hour
+	for i, b := range sorted {
+		if i > 0 && now.Sub(b.Created) > limit {
+			remove = append(remove, b.Name)
+			continue
+		}
+		oldestStart = b.StartWAL
+	}
+	return remove, oldestStart
+}
+
+// drPruneWAL löscht WAL-Dateien vor oldestStart; .history-Dateien bleiben.
+func drPruneWAL(walDir, oldestStart string) (removed int, err error) {
+	entries, err := os.ReadDir(walDir)
+	if err != nil {
+		return 0, err
+	}
+	for _, e := range entries {
+		name := strings.TrimSuffix(e.Name(), ".gz")
+		if len(name) != 24 || name == e.Name() || name >= oldestStart {
+			continue
+		}
+		if err := os.Remove(filepath.Join(walDir, e.Name())); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
+// drPruneTrash: Papierkorb-Tage (JJJJ-MM-TT) älter als keepDays entfernen.
+func drPruneTrash(trashDir string, keepDays int, now time.Time) error {
+	entries, err := os.ReadDir(trashDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		day, perr := time.Parse("2006-01-02", e.Name())
+		if perr != nil || !e.IsDir() || now.Sub(day) <= time.Duration(keepDays)*24*time.Hour {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(trashDir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
