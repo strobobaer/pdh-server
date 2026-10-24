@@ -2,7 +2,9 @@ package main
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -108,7 +110,7 @@ func TestDRPostgresConf(t *testing.T) {
 	for _, want := range []string{
 		"archive_mode = on",
 		"archive_timeout = 5min",
-		"archive_command = 'test ! -f /var/lib/postgresql/pdh-wal-spool/%f && cp %p /var/lib/postgresql/pdh-wal-spool/%f.part && mv /var/lib/postgresql/pdh-wal-spool/%f.part /var/lib/postgresql/pdh-wal-spool/%f'",
+		"archive_command = 'test ! -f /var/lib/postgresql/pdh-wal-spool/%f && cp %p /var/lib/postgresql/pdh-wal-spool/%f.part && sync /var/lib/postgresql/pdh-wal-spool/%f.part && mv /var/lib/postgresql/pdh-wal-spool/%f.part /var/lib/postgresql/pdh-wal-spool/%f'",
 	} {
 		if !strings.Contains(c, want) {
 			t.Errorf("Konfiguration ohne %q:\n%s", want, c)
@@ -370,7 +372,7 @@ func TestDRParseN8N(t *testing.T) {
 
 func TestDRRsyncArgs(t *testing.T) {
 	got := strings.Join(drRsyncArgs(drSource{Label: "uploads", Path: "/r/uploads"}, "/t", "2026-10-24"), " ")
-	want := "-rtl --delete --backup --backup-dir=/t/papierkorb/2026-10-24/uploads --exclude=.git /r/uploads/ /t/files/uploads/"
+	want := "-rt --copy-links --delete --backup --backup-dir=/t/papierkorb/2026-10-24/uploads --exclude=.git /r/uploads/ /t/files/uploads/"
 	if got != want {
 		t.Fatalf("\n got %s\nwant %s", got, want)
 	}
@@ -433,5 +435,128 @@ func TestDRCopyRestoreScript(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(dir, "pdh-restore.sh"))
 	if err != nil || string(b) != pdh.RestoreScript {
 		t.Fatalf("Skript nicht ins Ziel kopiert: %v", err)
+	}
+}
+
+// Review #1: Zielordner wird angelegt – aber nur auf einem eingebundenen Laufwerk.
+func TestDREnsureTarget(t *testing.T) {
+	fs := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fs, "mnt", "pdh", "nas"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := "/mnt/pdh/nas/PDH-Ausfallschutz/srv1"
+	if err := drEnsureTarget(fs, target, "/mnt/pdh", map[string]bool{}); err == nil {
+		t.Fatal("nicht eingebundenes Laufwerk ohne Fehler")
+	}
+	if _, err := os.Stat(filepath.Join(fs, filepath.FromSlash(target))); err == nil {
+		t.Fatal("Ordner auf der lokalen Platte statt dem Laufwerk angelegt")
+	}
+	if err := drEnsureTarget(fs, target, "/mnt/pdh", map[string]bool{"nas": true}); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(fs, filepath.FromSlash(target))); err != nil || !fi.IsDir() {
+		t.Fatal("Zielordner nicht angelegt")
+	}
+	// lokales Laufwerk (schon eingebunden): Laufwerksordner muss existieren
+	if err := os.MkdirAll(filepath.Join(fs, "data", "nas"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := drEnsureTarget(fs, "/data/nas/PDH-Ausfallschutz/srv1", "/mnt/pdh", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := drEnsureTarget(fs, "/fehlt/nas/PDH-Ausfallschutz/srv1", "/mnt/pdh", nil); err == nil {
+		t.Fatal("fehlendes lokales Laufwerk ohne Fehler")
+	}
+}
+
+// Review #2: gleichzeitiges Speichern darf state.json nicht beschädigen.
+func TestDRSaveConcurrent(t *testing.T) {
+	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
+	a := &updateAgent{mode: "systemd"}
+	a.dr.Config = drDefaults()
+	errs := make(chan error, 40)
+	for i := 0; i < 40; i++ {
+		go func() { errs <- a.drSave() }()
+	}
+	for i := 0; i < 40; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("drSave: %v", err)
+		}
+	}
+	b := &updateAgent{mode: "systemd"}
+	if err := b.drLoad(); err != nil {
+		t.Fatalf("state.json beschädigt: %v", err)
+	}
+}
+
+// Review #3: Postgres-Umstellung läuft weiter, auch wenn der Browser abbricht.
+func TestDRConfigApplyDetached(t *testing.T) {
+	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
+	t.Setenv("PDH_MOUNT_ROOT", "/mnt/pdh")
+	a := &updateAgent{mode: "systemd"}
+	a.dr.Config = drDefaults()
+	var ctxErr error = errors.New("nicht aufgerufen")
+	a.drApply = func(ctx context.Context, c drConfig) (bool, error) {
+		ctxErr = ctx.Err()
+		return c.Enabled, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Browser-Tab geschlossen
+	body := `{"enabled":true,"target":"/mnt/pdh/nas/PDH-Ausfallschutz/srv1","base_hour":2,"keep_days":14,"file_sync_minutes":60,"wal_max_minutes":5}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/dr/config", strings.NewReader(body)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	a.drConfigHandler(rec, req)
+	if ctxErr != nil {
+		t.Fatalf("Postgres-Umstellung mit abgebrochenem Kontext: %v (%s)", ctxErr, rec.Body.String())
+	}
+	if !a.dr.Archiving || !a.dr.Config.Enabled {
+		t.Fatal("Zustand nicht übernommen")
+	}
+}
+
+// Review #4/#5: keine Symlinks aufs SMB-Ziel schreiben; Zertifikate mitsichern.
+func TestDRRsyncCopiesLinks(t *testing.T) {
+	args := strings.Join(drRsyncArgs(drSource{Label: "nginx", Path: "/etc/nginx"}, "/t", "2026-10-24"), " ")
+	if strings.Contains(args, "-rtl") || !strings.Contains(args, "--copy-links") {
+		t.Fatalf("Symlinks würden aufs Laufwerk geschrieben: %s", args)
+	}
+}
+
+func TestDRNextcloudCerts(t *testing.T) {
+	ex := drFakeExists("/var/www/nextcloud/config/config.php", "/etc/nginx", "/etc/ssl/pdh-nextcloud", "/etc/letsencrypt")
+	if l := drLabels(drNextcloudSources("/var/www/nextcloud", "/var/ncdata", ex)); l != "nextcloud-app,nextcloud-data,nginx,ssl-pdh-nextcloud,letsencrypt" {
+		t.Fatalf("Quellen %s", l)
+	}
+	for _, want := range []string{"restore_dir ssl-pdh-nextcloud /etc/ssl/pdh-nextcloud", "restore_dir letsencrypt /etc/letsencrypt"} {
+		if !strings.Contains(pdh.RestoreScript, want) {
+			t.Errorf("pdh-restore.sh ohne %q", want)
+		}
+	}
+}
+
+// Review #6/#7: WAL im Spool fsyncen; Einschalten nimmt bei jedem Fehler zurück.
+func TestDRSpoolFsyncAndRollback(t *testing.T) {
+	if !strings.Contains(drPostgresConf(5), "sync /var/lib/postgresql/pdh-wal-spool/%f.part") {
+		t.Error("archive_command ohne fsync")
+	}
+	for _, want := range []string{"trap", "SHOW archive_command", "pdh-wal-spool"} {
+		if !strings.Contains(drEnableScript, want) {
+			t.Errorf("Einschalt-Skript ohne %q", want)
+		}
+	}
+}
+
+// Review #8: Fehler je Art – ein erholter WAL-Lauf löscht keinen Grundsicherungsfehler.
+func TestDRErrorsPerKind(t *testing.T) {
+	a := &updateAgent{mode: "systemd"}
+	a.drFail("base", errors.New("Platte voll"))
+	a.drFail("wal", errors.New("Laufwerk weg"))
+	a.drOK("wal")
+	if st := a.drStatus(); !strings.Contains(st.Error, "Platte voll") || strings.Contains(st.Error, "Laufwerk weg") {
+		t.Fatalf("Fehler im Status: %q", st.Error)
+	}
+	a.drOK("base")
+	if st := a.drStatus(); st.Error != "" {
+		t.Fatalf("Fehler bleibt: %q", st.Error)
 	}
 }

@@ -165,3 +165,30 @@ func TestDRFetchStatusTimeout(t *testing.T) {
 		t.Fatal("Zeitbegrenzung greift nicht")
 	}
 }
+
+// Review #8: nie erfolgreiche Grundsicherung bzw. Abgleich seit dem Einschalten melden.
+func TestDRAlertsNeverSucceeded(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	st := drStatus{Config: drConfig{Enabled: true, FileSyncMinutes: 60}, EnabledSince: now.Add(-27 * time.Hour)}
+	got := strings.Join(drAlerts(st, time.Time{}, 7, now), " | ")
+	if !strings.Contains(got, "Noch keine Grundsicherung") || !strings.Contains(got, "Noch kein Dateiabgleich") {
+		t.Fatalf("Alarme: %s", got)
+	}
+	st.EnabledSince = now.Add(-10 * time.Minute)
+	if a := drAlerts(st, time.Time{}, 7, now); len(a) != 0 {
+		t.Fatalf("frisch eingeschaltet: %v", a)
+	}
+}
+
+// Review #2: PDH sagt eingeschaltet, Agent nicht (z. B. state.json verloren) → Alarm.
+func TestDRAgentMismatch(t *testing.T) {
+	if a := drAgentMismatch(true, drStatus{}); len(a) != 1 || !strings.Contains(a[0], "Update-Agent") {
+		t.Fatalf("%v", a)
+	}
+	if a := drAgentMismatch(true, drStatus{Config: drConfig{Enabled: true}}); len(a) != 0 {
+		t.Fatalf("%v", a)
+	}
+	if a := drAgentMismatch(false, drStatus{}); len(a) != 0 {
+		t.Fatalf("%v", a)
+	}
+}

@@ -27,6 +27,7 @@ type jobStatus struct {
 
 type updateAgent struct {
 	dr      drState // Ausfallschutz (dr.go), eigener Mutex
+	drApply func(context.Context, drConfig) (bool, error) // nil = drApplyPostgres
 	mu      sync.RWMutex
 	status  jobStatus
 	token   string
@@ -93,6 +94,7 @@ func main() {
 	// Ausfallschutz – Einzelbetrieb (dr.go)
 	if err := agent.drLoad(); err != nil {
 		log.Printf("ausfallschutz: state.json nicht lesbar: %v", err)
+		agent.drFail("state", fmt.Errorf("Zustand nicht lesbar (Einstellungen im PDH erneut speichern): %w", err))
 	}
 	mux.Handle("GET /v1/dr/status", agent.authorized(http.HandlerFunc(agent.drStatusHandler)))
 	mux.Handle("POST /v1/dr/config", agent.authorized(http.HandlerFunc(agent.drConfigHandler)))

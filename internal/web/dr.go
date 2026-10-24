@@ -70,6 +70,7 @@ type drStatus struct {
 	Running      string    `json:"running"`
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
+	EnabledSince time.Time `json:"enabled_since"`
 }
 
 type drView struct {
@@ -211,7 +212,7 @@ func (h *Handler) drLoadView(ctx context.Context) drView {
 			v.VMAge = v.Ago(vm)
 			v.VMWarn = time.Since(vm) > time.Duration(v.VMMaxDays)*24*time.Hour
 		}
-		v.Alerts = drAlerts(st, vm, v.VMMaxDays, time.Now())
+		v.Alerts = append(drAgentMismatch(h.appSetting(ctx, drSetEnabled, "") == "1", st), drAlerts(st, vm, v.VMMaxDays, time.Now())...)
 	}
 	return v
 }
@@ -235,10 +236,26 @@ func drAlerts(st drStatus, vmLast time.Time, vmMaxDays int, now time.Time) []str
 		now.Sub(st.LastFileSync) > 3*time.Duration(st.Config.FileSyncMinutes)*time.Minute {
 		out = append(out, "Dateiabgleich hängt seit "+st.LastFileSync.Local().Format("02.01.2006 15:04"))
 	}
+	// seit dem Einschalten noch nie geklappt
+	if st.LastBase.IsZero() && !st.EnabledSince.IsZero() && now.Sub(st.EnabledSince) > 26*time.Hour {
+		out = append(out, "Noch keine Grundsicherung seit dem Einschalten")
+	}
+	if st.LastFileSync.IsZero() && !st.EnabledSince.IsZero() && st.Config.FileSyncMinutes > 0 &&
+		now.Sub(st.EnabledSince) > 3*time.Duration(st.Config.FileSyncMinutes)*time.Minute {
+		out = append(out, "Noch kein Dateiabgleich seit dem Einschalten")
+	}
 	if !vmLast.IsZero() && now.Sub(vmLast) > time.Duration(vmMaxDays)*24*time.Hour {
 		out = append(out, fmt.Sprintf("VM-Sicherung ist %d Tage alt", int(now.Sub(vmLast).Hours()/24)))
 	}
 	return out
+}
+
+// drAgentMismatch: im PDH eingeschaltet, im Agenten nicht (z. B. Zustand verloren).
+func drAgentMismatch(pdhEnabled bool, st drStatus) []string {
+	if pdhEnabled && !st.Config.Enabled {
+		return []string{"Ausfallschutz ist im Update-Agenten ausgeschaltet – unter Server-Einstellungen → Ausfallschutz erneut speichern"}
+	}
+	return nil
 }
 
 // drWatch: alle 5 Minuten prüfen und bei neuen Problemen die Admins benachrichtigen.
@@ -259,7 +276,8 @@ func (h *Handler) drWatch(ctx context.Context) {
 			alerts = []string{"Update-Agent nicht erreichbar – Ausfallschutz-Sicherung läuft nicht"}
 		} else {
 			drives := h.loadDrives(ctx)
-			alerts = drAlerts(st, h.drVMTime(ctx, drives, h.appSetting(ctx, drSetDrive, "")), h.drVMMaxDays(ctx), time.Now())
+			alerts = append(drAgentMismatch(true, st),
+				drAlerts(st, h.drVMTime(ctx, drives, h.appSetting(ctx, drSetDrive, "")), h.drVMMaxDays(ctx), time.Now())...)
 		}
 		msg := strings.Join(alerts, "\n")
 		if msg == h.appSetting(ctx, drSetAlertLast, "") {

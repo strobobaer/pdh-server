@@ -26,14 +26,14 @@ const drSpool = "/var/lib/postgresql/pdh-wal-spool"
 func drPostgresConf(walMaxMinutes int) string {
 	return fmt.Sprintf(`# PDH Ausfallschutz – vom Update-Agenten verwaltet, nicht von Hand ändern
 archive_mode = on
-archive_command = 'test ! -f %[1]s/%%f && cp %%p %[1]s/%%f.part && mv %[1]s/%%f.part %[1]s/%%f'
+archive_command = 'test ! -f %[1]s/%%f && cp %%p %[1]s/%%f.part && sync %[1]s/%%f.part && mv %[1]s/%%f.part %[1]s/%%f'
 archive_timeout = %[2]dmin
 `, drSpool, walMaxMinutes)
 }
 
 // drEnableScript: Konfiguration aus $PDH_DR_CONF nach conf.d schreiben; bei
 // archive_mode = off einmal neu starten, sonst nur neu laden.
-const drEnableScript = `set -euo pipefail
+const drEnableScript = `set -Eeuo pipefail
 psqlq() { runuser -u postgres -- psql -XAtqc "$1"; }
 conf_file=$(psqlq 'SHOW config_file') || { echo "Postgres nicht erreichbar (runuser -u postgres psql)"; exit 1; }
 confd="$(dirname "$conf_file")/conf.d"
@@ -45,6 +45,9 @@ if [ "$(psqlq 'SHOW wal_level')" = minimal ]; then
 fi
 install -d -o postgres -g postgres -m 700 ` + drSpool + `
 f="$confd/pdh-ausfallschutz.conf"
+rollback() { rm -f "$f" "$f.tmp"; systemctl restart postgresql || true; }
+# ab hier: bei jedem Fehler Einstellung zurücknehmen
+trap 'rollback; echo "Einschalten fehlgeschlagen – Einstellung zurückgenommen"' ERR
 printf '%s' "$PDH_DR_CONF" > "$f.tmp"
 chown postgres:postgres "$f.tmp"; chmod 644 "$f.tmp"; mv "$f.tmp" "$f"
 if [ "$(psqlq 'SHOW archive_mode')" = off ]; then
@@ -53,10 +56,14 @@ else
   psqlq 'SELECT pg_reload_conf()' >/dev/null
 fi
 for _ in $(seq 1 30); do psqlq 'SELECT 1' >/dev/null 2>&1 && break; sleep 1; done
+trap - ERR
 if [ "$(psqlq 'SHOW archive_mode' 2>/dev/null || true)" != on ]; then
-  rm -f "$f"; systemctl restart postgresql || true
-  echo "archive_mode ist nach dem Neustart nicht an – Einstellung zurückgenommen"; exit 1
+  rollback; echo "archive_mode ist nach dem Neustart nicht an – Einstellung zurückgenommen"; exit 1
 fi
+case "$(psqlq 'SHOW archive_command' 2>/dev/null || true)" in
+  *pdh-wal-spool*) ;;
+  *) rollback; echo "archive_command ist anderswo gesetzt (ALTER SYSTEM bzw. postgresql.auto.conf) – dort entfernen"; exit 1 ;;
+esac
 echo ARCHIVING=1
 `
 
@@ -139,7 +146,7 @@ func (a *updateAgent) drRunBase(ctx context.Context) error {
 	cfg, sources, n8n := a.dr.Config, a.dr.Sources, a.dr.N8N
 	a.dr.mu.Unlock()
 	target := a.hp(cfg.Target)
-	if err := drTargetCheck(target); err != nil {
+	if err := a.drPrepareTarget(cfg.Target); err != nil {
 		return err
 	}
 	baseDir := filepath.Join(target, "base")

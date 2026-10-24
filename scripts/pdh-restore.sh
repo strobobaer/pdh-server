@@ -228,6 +228,10 @@ if [[ -d "$FROM/files/nextcloud-app" ]]; then
   apt-get install -y -qq nginx
   restore_dir nextcloud-app "$NCDIR"
   restore_dir nextcloud-data "$NCDATA"
+  # Zertifikate vor nginx – die Seiten verweisen darauf (nginx -t)
+  restore_dir ssl-pdh-nextcloud /etc/ssl/pdh-nextcloud
+  restore_dir letsencrypt /etc/letsencrypt
+  for d in /etc/ssl/pdh-nextcloud /etc/letsencrypt; do [[ -d "$d" ]] && chmod -R go-rwx "$d"; done
   restore_dir nginx /etc/nginx
   bash "$REPO/scripts/install-nextcloud-nginx-postgres.sh" --restore --install-dir "$NCDIR" --data-dir "$NCDATA"
   ok "Nextcloud läuft"

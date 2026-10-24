@@ -63,6 +63,7 @@ type drStatus struct {
 	Running      string    `json:"running"` // "", "base", "files"
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
+	EnabledSince time.Time `json:"enabled_since"`
 }
 
 // Gemeinsame Typen für Grundsicherung (info.json), Dateiabgleich und Wiederaufbau.
@@ -98,10 +99,11 @@ type drState struct {
 	Sources      []drSource `json:"sources"`
 	Missing      []string   `json:"missing"`
 	N8N          *drN8NInfo `json:"n8n,omitempty"`
-	Error        string     `json:"error"`
-	ErrorKind    string     `json:"error_kind"` // wal, base, files, postgres
-	ErrorAt      time.Time  `json:"error_at"`
-	Running      string     `json:"-"`
+	Errors       map[string]string `json:"errors"` // je Art: wal, base, files, postgres, state
+	ErrorAt      time.Time         `json:"error_at"`
+	EnabledSince time.Time         `json:"enabled_since"`
+	Running      string            `json:"-"`
+	saveMu       sync.Mutex        // state.json nie gleichzeitig schreiben
 }
 
 func drDefaults() drConfig {
@@ -169,6 +171,8 @@ func (a *updateAgent) drLoad() error {
 
 // drSave schreibt state.json atomar (Aufrufer hält a.dr.mu nicht).
 func (a *updateAgent) drSave() error {
+	a.dr.saveMu.Lock()
+	defer a.dr.saveMu.Unlock()
 	a.dr.mu.Lock()
 	b, err := json.MarshalIndent(&a.dr, "", "  ")
 	a.dr.mu.Unlock()
@@ -190,16 +194,31 @@ func (a *updateAgent) drSave() error {
 // sobald ein Lauf derselben Art wieder klappt.
 func (a *updateAgent) drFail(kind string, err error) {
 	a.dr.mu.Lock()
-	a.dr.Error, a.dr.ErrorKind, a.dr.ErrorAt = err.Error(), kind, time.Now().UTC()
+	if a.dr.Errors == nil {
+		a.dr.Errors = map[string]string{}
+	}
+	a.dr.Errors[kind], a.dr.ErrorAt = err.Error(), time.Now().UTC()
 	a.dr.mu.Unlock()
 }
 
 func (a *updateAgent) drOK(kind string) {
 	a.dr.mu.Lock()
-	if a.dr.ErrorKind == kind {
-		a.dr.Error, a.dr.ErrorKind, a.dr.ErrorAt = "", "", time.Time{}
+	delete(a.dr.Errors, kind)
+	if len(a.dr.Errors) == 0 {
+		a.dr.ErrorAt = time.Time{}
 	}
 	a.dr.mu.Unlock()
+}
+
+// drErrorText: alle offenen Fehler, feste Reihenfolge.
+func drErrorText(errs map[string]string) string {
+	var out []string
+	for _, k := range []string{"state", "postgres", "wal", "base", "files"} {
+		if e := errs[k]; e != "" {
+			out = append(out, e)
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 func drJSON(w http.ResponseWriter, v any) {
@@ -233,7 +252,7 @@ func (a *updateAgent) drStatus() drStatus {
 	st := drStatus{OK: true, Supported: true, Config: a.dr.Config, Archiving: a.dr.Archiving,
 		LastWALShip: a.dr.LastWALShip, LastWALFile: a.dr.LastWALFile, LastBase: a.dr.LastBase,
 		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running,
-		Error: a.dr.Error, ErrorAt: a.dr.ErrorAt}
+		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince}
 	for _, s := range a.dr.Sources {
 		st.Sources = append(st.Sources, s.Label)
 	}
@@ -260,7 +279,10 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 	a.dr.mu.Unlock()
 	// Postgres nur anfassen, wenn sich etwas für die Archivierung ändert
 	if c.Enabled != old.Enabled || (c.Enabled && c.WALMaxMinutes != old.WALMaxMinutes) {
-		archiving, err := a.drApplyPostgres(r.Context(), c)
+		// nicht am Browser-Kontext: ein geschlossener Tab darf die Umstellung nicht abbrechen
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		archiving, err := a.drApplyFn()(ctx, c)
+		cancel()
 		if err != nil {
 			a.drFail("postgres", err)
 			_ = a.drSave()
@@ -270,6 +292,11 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 		a.drOK("postgres")
 		a.dr.mu.Lock()
 		a.dr.Archiving = archiving
+		if c.Enabled {
+			a.dr.EnabledSince = time.Now().UTC()
+		} else {
+			a.dr.EnabledSince = time.Time{}
+		}
 		a.dr.mu.Unlock()
 	}
 	a.dr.mu.Lock()
@@ -340,4 +367,12 @@ func (a *updateAgent) drRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	drJSON(w, map[string]any{"ok": true})
+}
+
+// drApplyFn: Postgres-Umstellung (in Tests ersetzbar).
+func (a *updateAgent) drApplyFn() func(context.Context, drConfig) (bool, error) {
+	if a.drApply != nil {
+		return a.drApply
+	}
+	return a.drApplyPostgres
 }

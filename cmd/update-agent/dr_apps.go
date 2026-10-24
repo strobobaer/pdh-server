@@ -55,6 +55,13 @@ func drNextcloudSources(ncDir, dataDir string, exists func(string) bool) []drSou
 	if exists("/etc/nginx") {
 		out = append(out, drSource{Label: "nginx", Path: "/etc/nginx"})
 	}
+	// Zertifikate, auf die die nginx-Seiten zeigen (Cloudflare-Origin, Let's Encrypt)
+	if exists("/etc/ssl/pdh-nextcloud") {
+		out = append(out, drSource{Label: "ssl-pdh-nextcloud", Path: "/etc/ssl/pdh-nextcloud"})
+	}
+	if exists("/etc/letsencrypt") {
+		out = append(out, drSource{Label: "letsencrypt", Path: "/etc/letsencrypt"})
+	}
 	return out
 }
 
@@ -98,9 +105,10 @@ func drN8NSources(info drN8NInfo) []drSource {
 }
 
 // drRsyncArgs: rsync-Argumente für eine Quelle. Keine Besitzer/Rechte (CIFS);
-// pdh-restore.sh setzt sie beim Zurückspielen.
+// pdh-restore.sh setzt sie beim Zurückspielen. Symlinks werden als Dateien
+// kopiert: CIFS ohne mfsymlinks lehnt symlink() ab (z. B. nginx sites-enabled).
 func drRsyncArgs(src drSource, target, day string) []string {
-	args := []string{"-rtl", "--delete", "--backup",
+	args := []string{"-rt", "--copy-links", "--delete", "--backup",
 		"--backup-dir=" + target + "/papierkorb/" + day + "/" + src.Label, "--exclude=.git"}
 	args = append(args, src.Filter...)
 	if src.File {
@@ -175,7 +183,7 @@ func (a *updateAgent) drRunFiles(ctx context.Context) error {
 	cfg := a.dr.Config
 	a.dr.mu.Unlock()
 	target := a.hp(cfg.Target)
-	if err := drTargetCheck(target); err != nil {
+	if err := a.drPrepareTarget(cfg.Target); err != nil {
 		return err
 	}
 	sources := drFileSources(a.repoDir, a.drExists)

@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -194,7 +195,11 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 		return
 	}
 	target := a.hp(cfg.Target)
-	if err := drTargetCheck(target); err != nil {
+	check := func() error { return drTargetCheck(target) }
+	if cfg.Enabled {
+		check = func() error { return a.drPrepareTarget(cfg.Target) }
+	}
+	if err := check(); err != nil {
 		if cfg.Enabled {
 			a.drFail("wal", err)
 			_ = a.drSave()
@@ -319,4 +324,32 @@ func drPruneTrash(trashDir string, keepDays int, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// drEnsureTarget legt den Sicherungsordner an – nur wenn das Laufwerk wirklich
+// eingebunden ist (sonst landete die Sicherung auf der lokalen Platte unter
+// /mnt/pdh). fsRoot: "/proc/1/root" im systemd-Modus, in Tests ein Temp-Ordner.
+func drEnsureTarget(fsRoot, target, mountRoot string, mounted map[string]bool) error {
+	root := path.Clean(mountRoot) + "/"
+	driveDir := path.Dir(path.Dir(target)) // <Laufwerk>/PDH-Ausfallschutz/<host>
+	if strings.HasPrefix(target, root) {
+		key := strings.SplitN(strings.TrimPrefix(target, root), "/", 2)[0]
+		if !mounted[key] {
+			return fmt.Errorf("Netzlaufwerk %s ist nicht eingebunden", key)
+		}
+		driveDir = root + key
+	}
+	if fi, err := os.Stat(fsRoot + driveDir); err != nil || !fi.IsDir() {
+		return errors.New("Netzlaufwerk nicht erreichbar: " + driveDir)
+	}
+	return os.MkdirAll(fsRoot+target, 0o750)
+}
+
+// drPrepareTarget: Sicherungsordner anlegen und auf Schreibbarkeit prüfen.
+func (a *updateAgent) drPrepareTarget(target string) error {
+	fsRoot := strings.TrimSuffix(a.hp("/"), "/")
+	if err := drEnsureTarget(fsRoot, target, mountRoot(), a.mountedTargets()); err != nil {
+		return err
+	}
+	return drTargetCheck(a.hp(target))
 }
