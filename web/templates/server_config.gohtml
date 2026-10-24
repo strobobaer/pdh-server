@@ -58,6 +58,7 @@
   <a class="rec-tab" data-tab="branding" href="?tab=branding"><i class="ti ti-palette"></i> Erscheinungsbild</a>
   <a class="rec-tab" data-tab="passwords" href="?tab=passwords"><i class="ti ti-password"></i> Passwörter</a>
   <a class="rec-tab" data-tab="vpn" href="?tab=vpn"><i class="ti ti-shield-lock"></i> VPN{{if eq .VPN.Service.State "down"}}<span class="sc-dot bad" title="{{.VPN.Service.Label}}"></span>{{else if eq .VPN.Service.State "ok"}}<span class="sc-dot ok" title="läuft"></span>{{end}}</a>
+  <a class="rec-tab" data-tab="dr" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz</a>
   {{if .CanLogs}}<a class="rec-tab" href="/admin/server-config/logs" style="margin-left:auto"><i class="ti ti-file-analytics"></i> Protokoll ansehen</a>{{end}}
 </div>
 
@@ -202,6 +203,11 @@
 <!-- ── VPN ins Maschinennetz: WireGuard auf dem Host (vpn.go, widgets/vpn.gohtml) ── -->
 <div class="rec-pane" data-pane="vpn">
 {{template "vpn-admin" .VPN}}
+</div>
+
+<!-- ── Ausfallschutz: Sicherung aufs Netzlaufwerk (dr.go, widgets/dr.gohtml) ── -->
+<div class="rec-pane" data-pane="dr">
+{{if eq .Tab "dr"}}{{template "dr-admin" .DR}}{{else}}<div class="card"><a class="btn" href="?tab=dr"><i class="ti ti-shield-check"></i> Ausfallschutz laden</a></div>{{end}}
 </div>
 
 <!-- ── Erscheinungsbild (Logos) ── -->

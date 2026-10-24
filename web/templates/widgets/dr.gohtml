@@ -1,0 +1,75 @@
+{{/* Server-Einstellungen → Ausfallschutz (internal/web/dr.go). Stil: vpn-style. */}}
+{{define "dr-admin"}}{{$v := .}}
+{{template "vpn-style"}}
+<div class="card" id="dr-status">
+  <div class="card-title"><span><i class="ti ti-shield-check"></i> Ausfallschutz – Sicherung aufs Netzlaufwerk</span>
+    {{if not .AgentErr}}<span class="vp-state {{if and .Status.Config.Enabled (not .Status.Error)}}ok{{else if .Status.Config.Enabled}}down{{else}}off{{end}}"><span class="vp-dot{{if and .Status.Config.Enabled (not .Status.Error)}} on{{end}}"></span> {{if .Status.Config.Enabled}}eingeschaltet{{else}}ausgeschaltet{{end}}</span>{{end}}</div>
+  {{if .AgentErr}}
+  <div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.AgentErr}}</div>
+  <p class="vp-hint">Die Sicherung läuft über den Update-Agenten des Servers (systemd-Installation). Ohne ihn ist der Ausfallschutz nicht verfügbar.</p>
+  {{else}}
+  <p class="vp-hint">Der Server sichert laufend <b>Datenbank</b> (tägliche Grundsicherung und alle Änderungen), <b>Dateien und Konfiguration</b> von PDH, Nextcloud und n8n in einen Ordner auf einem Netzlaufwerk. Daraus baut <code>pdh-restore.sh</code> einen neuen Server oder eine VM auf – auch auf einen bestimmten Zeitpunkt.</p>
+  {{range .Alerts}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
+  {{if .Status.Config.Enabled}}
+  <table class="table" style="margin-top:8px">
+    <tr><td>Sicherungsordner</td><td><code>{{.Status.Config.Target}}</code></td></tr>
+    <tr><td>Datenbank-Archivierung</td><td>{{if .Status.Archiving}}aktiv{{else}}<b>nicht aktiv</b>{{end}} · letzte Übertragung {{$v.Ago .Status.LastWALShip}}{{if .Status.LastWALFile}} (<code>{{.Status.LastWALFile}}</code>){{end}}</td></tr>
+    <tr><td>Zwischenspeicher</td><td>{{.Status.SpoolFiles}} Dateien, {{$v.SpoolSize}}</td></tr>
+    <tr><td>Letzte Grundsicherung</td><td>{{$v.Ago .Status.LastBase}}</td></tr>
+    <tr><td>Letzter Dateiabgleich</td><td>{{$v.Ago .Status.LastFileSync}}{{if .Status.Sources}}<br><span class="rec-sub">{{range $i, $s := .Status.Sources}}{{if $i}}, {{end}}{{$s}}{{end}}</span>{{end}}{{range .Status.Missing}}<br><span class="rec-sub">{{.}}</span>{{end}}</td></tr>
+    {{if .Status.Running}}<tr><td>Läuft gerade</td><td>{{if eq .Status.Running "base"}}Grundsicherung{{else}}Dateiabgleich{{end}} …</td></tr>{{end}}
+  </table>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="/admin/server-config/dr/run"><input type="hidden" name="what" value="base"><button class="btn btn-small" type="submit"><i class="ti ti-database-export"></i> Grundsicherung jetzt</button></form>
+    <form method="post" action="/admin/server-config/dr/run"><input type="hidden" name="what" value="files"><button class="btn btn-small" type="submit"><i class="ti ti-folders"></i> Dateien jetzt abgleichen</button></form>
+  </div>
+  {{if .Status.Bases}}
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-history"></i> Grundsicherungen</span></div>
+  <table class="table">{{range .Status.Bases}}<tr><td><code>{{.Name}}</code></td><td>{{.Size}}</td></tr>{{end}}</table>
+  {{end}}
+  {{end}}
+  <div class="vp-msg"><i class="ti ti-lock"></i> Die Freigabe enthält Zugangsdaten (.env, Nextcloud-config.php) – nur für Administratoren freigeben.</div>
+  {{end}}
+</div>
+
+{{if not .AgentErr}}
+<div class="card" id="dr-settings">
+  <div class="card-title"><span><i class="ti ti-settings"></i> Einstellungen</span></div>
+  {{if not .DBLocal}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> Ausfallschutz-Sicherung braucht die Datenbank auf diesem Server.</div>{{end}}
+  <form method="post" action="/admin/server-config/dr/settings" class="vp-form">
+    <div><label class="form-label">Ausfallschutz</label>
+      <select class="form-input" name="enabled"><option value="">ausgeschaltet</option><option value="1"{{if .Status.Config.Enabled}} selected{{end}}>eingeschaltet</option></select></div>
+    <div><label class="form-label">Netzlaufwerk</label>
+      <select class="form-input" name="drive"><option value="">– wählen –</option>{{range .Drives}}<option value="{{.Key}}"{{if eq .Key $v.DriveKey}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+      {{if not .Drives}}<span class="rec-sub">Zuerst unter Core-Einstellungen → Netzlaufwerke ein Laufwerk mit der Rolle „Datensicherung“ anlegen.</span>{{end}}</div>
+    <div><label class="form-label">Grundsicherung täglich um (Uhr)</label><input class="form-input" type="number" name="base_hour" min="0" max="23" value="{{if .Status.Config.KeepDays}}{{.Status.Config.BaseHour}}{{else}}2{{end}}"></div>
+    <div><label class="form-label">Aufbewahrung (Tage)</label><input class="form-input" type="number" name="keep_days" min="1" max="365" value="{{if .Status.Config.KeepDays}}{{.Status.Config.KeepDays}}{{else}}14{{end}}"></div>
+    <div><label class="form-label">Dateiabgleich alle (Minuten)</label><input class="form-input" type="number" name="file_sync_minutes" min="5" max="1440" value="{{if .Status.Config.FileSyncMinutes}}{{.Status.Config.FileSyncMinutes}}{{else}}60{{end}}"></div>
+    <div><label class="form-label">Datenbank-Änderungen spätestens alle (Minuten)</label><input class="form-input" type="number" name="wal_max_minutes" min="1" max="60" value="{{if .Status.Config.WALMaxMinutes}}{{.Status.Config.WALMaxMinutes}}{{else}}5{{end}}"></div>
+    <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+  </form>
+  <p class="vp-hint">Beim ersten Einschalten startet Postgres einmal neu – das PDH ist wenige Sekunden nicht erreichbar.</p>
+</div>
+
+<div class="card" id="dr-restore">
+  <div class="card-title"><span><i class="ti ti-refresh-alert"></i> Wiederaufbau</span></div>
+  <ol class="vp-hint" style="padding-left:18px">
+    <li>Frischen Ubuntu-Server bzw. eine VM bereitstellen und die Freigabe einbinden.</li>
+    <li><a class="btn btn-small btn-primary" href="/admin/server-config/dr/restore-script"><i class="ti ti-download"></i> pdh-restore.sh</a> herunterladen (liegt auch im Sicherungsordner) und ausführen:
+      <div class="vp-cmd"><code>sudo bash pdh-restore.sh --from /mnt/…/PDH-Ausfallschutz/&lt;server&gt;</code></div>
+      Für einen früheren Stand: <code>--time "JJJJ-MM-TT HH:MM:SS"</code>.</li>
+  </ol>
+</div>
+
+<div class="card" id="dr-vm">
+  <div class="card-title"><span><i class="ti ti-server"></i> VM-Sicherung</span>{{if .VMAge}}<span class="vp-state {{if .VMWarn}}down{{else}}ok{{end}}">zuletzt {{.VMAge}}</span>{{end}}</div>
+  <p class="vp-hint">Läuft das PDH in einer VM, sollte zusätzlich der Hypervisor die ganze VM regelmäßig auf ein anderes Ziel sichern. Hier das Datum der letzten VM-Sicherung eintragen – oder eine Datei auf dem Netzlaufwerk nennen, die die VM-Sicherung bei jedem Lauf aktualisiert.</p>
+  <form method="post" action="/admin/server-config/dr/vm" class="vp-form">
+    <div><label class="form-label">Letzte VM-Sicherung</label><input class="form-input" type="date" name="vm_last" value="{{.VMLast}}"></div>
+    <div><label class="form-label">oder Zeitstempel-Datei (auf dem Laufwerk)</label><input class="form-input" name="vm_stamp" value="{{.VMStamp}}" placeholder="z. B. VM-Sicherung/letzter-lauf.txt"></div>
+    <div><label class="form-label">Warnen nach (Tagen)</label><input class="form-input" type="number" name="vm_max_days" min="1" max="90" value="{{if .VMMaxDays}}{{.VMMaxDays}}{{else}}7{{end}}"></div>
+    <div><button class="btn" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+  </form>
+</div>
+{{end}}
+{{end}}

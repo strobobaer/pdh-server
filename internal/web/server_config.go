@@ -180,6 +180,7 @@ type ServerConfigData struct {
 	Msg, Err       string
 	CF             *CloudflareView // Reiter „Cloudflare-Tunnel“ (cloudflare_tunnel.go)
 	VPN            vpnView         // Reiter „VPN“: WireGuard auf dem Host (vpn.go)
+	DR             drView          // Reiter „Ausfallschutz“ (dr.go), nur geladen wenn geöffnet
 	AgentReady     bool            // Update-Agent kann .env.docker bereinigen
 	NCTheme        ncTheme         // Reiter Nextcloud: Erscheinungsbild übernehmen (nextcloud_theming.go)
 	NCAdmin        ncAdminView     // Reiter Nextcloud: Dienstkonto des PDH (nextcloud_admin.go)
@@ -277,6 +278,9 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		if d.Tab == "vpn" && vpnZipIDsOK(q.Get("zip")) {
 			d.VPN.ZipIDs = q.Get("zip")
 		}
+	}
+	if d.Tab == "dr" { // fragt den Update-Agenten – nur wenn der Reiter offen ist
+		d.DR = h.drLoadView(r.Context())
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

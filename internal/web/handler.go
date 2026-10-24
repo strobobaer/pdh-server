@@ -558,6 +558,11 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/save", h.ServerConfigSaveWeb)
 	r.Post("/admin/server-config/test", h.ServerConfigTestWeb)
 	r.Get("/admin/server-config/cloudflared/script", h.CloudflaredScriptWeb)
+	// Reiter „Ausfallschutz“: Sicherung aufs Netzlaufwerk über den Update-Agenten (dr.go)
+	r.Post("/admin/server-config/dr/settings", h.DRSettingsWeb)
+	r.Post("/admin/server-config/dr/run", h.DRRunWeb)
+	r.Post("/admin/server-config/dr/vm", h.DRVMWeb)
+	r.Get("/admin/server-config/dr/restore-script", h.DRRestoreScriptWeb)
 	// Reiter „VPN“: WireGuard auf dem Host (vpn.go, vpn_host.go) – nur Administratoren
 	r.Get("/admin/server-config/vpn/script", h.VPNScriptWeb)
 	r.Post("/admin/server-config/vpn/settings", h.VPNSettingsWeb)
