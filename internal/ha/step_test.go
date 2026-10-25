@@ -14,6 +14,7 @@ var testWall = time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 // base liefert einen Takt um t=100 s mit Amtszeit 1.
 func base(mode Mode, role Role) Input {
 	return Input{
+		SelfID:        "self",
 		Now:           100 * sec,
 		Wall:          testWall,
 		Mode:          mode,
@@ -175,6 +176,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Passive)
 				in.Partner = gonePeer("node", Active, 1, 60*sec)
 				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
 				in.VotePending, in.VoteAskedAt, in.VoteGranted = 2, 99*sec, 2
 				return in
 			},
@@ -198,6 +200,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Passive)
 				in.Partner = gonePeer("node", Active, 1, 60*sec)
 				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
 				in.VotePending, in.VoteAskedAt = 2, 99*sec
 				return in
 			},
@@ -214,6 +217,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Passive)
 				in.Partner = seenPeer("node", Rejoin, 2, 100*sec)
 				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
 				in.VotePending, in.VoteAskedAt, in.VoteGranted = 2, 99*sec, 2
 				return in
 			},
@@ -226,6 +230,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Passive)
 				in.Partner = seenPeer("node", Active, 1, 100*sec)
 				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
 				in.VotePending, in.VoteAskedAt, in.VoteGranted = 2, 99*sec, 2
 				return in
 			},
@@ -252,6 +257,60 @@ func TestStepTable(t *testing.T) {
 					t.Fatalf("veraltete Bitte muss durch neue ersetzt sein: %d", out.VotePending)
 				}
 			},
+		},
+		{
+			name: "trio passiv stimme erhalten, aktiver partner erst 3 s weg",
+			in: func() Input {
+				in := base(Trio, Passive)
+				in.Partner = gonePeer("node", Active, 1, 97*sec)
+				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
+				in.VotePending, in.VoteAskedAt, in.VoteGranted = 2, 99*sec, 2
+				return in
+			},
+			role: Passive, term: 1,
+			check: func(t *testing.T, out Output) {
+				if out.VotePending != 2 {
+					t.Fatalf("Bitte muss bestehen bleiben: %d", out.VotePending)
+				}
+			},
+		},
+		{
+			name: "trio passiv zeuge hat erbetene amtszeit anderem knoten gegeben",
+			in: func() Input {
+				in := base(Trio, Passive)
+				in.Partner = gonePeer("node", Active, 1, 60*sec)
+				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "other"
+				in.VotePending, in.VoteAskedAt = 2, 90*sec
+				return in
+			},
+			role: Passive, term: 2,
+			actions: acts(ActRequestVote, 3),
+			check: func(t *testing.T, out Output) {
+				if out.VotePending != 3 {
+					t.Fatalf("Bitte um 2 muss durch 3 ersetzt sein: %d", out.VotePending)
+				}
+			},
+		},
+		{
+			name: "trio passiv partner unbekannt",
+			in: func() Input {
+				in := base(Trio, Passive)
+				in.Now = 1 * sec
+				in.Witness = seenPeer("witness", Witness, 1, 1*sec)
+				return in
+			},
+			role: Passive, term: 1,
+		},
+		{
+			name: "duo passiv partner unbekannt, gateway ok",
+			in: func() Input {
+				in := base(Duo, Passive)
+				in.Now, in.GatewayLastOK = 1*sec, 1*sec
+				return in
+			},
+			role: Passive, term: 1,
 		},
 		{
 			name: "duo aktiv ohne partner, gateway ok, 120 s",

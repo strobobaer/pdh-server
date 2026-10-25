@@ -10,7 +10,8 @@ const voteRepeat = 5
 
 const dataAssumedNote = " (Datenstand angenommen, keine Replikation)"
 
-// absent: Gegenstelle nicht gesehen und seit mindestens d still (nil = unbekannt).
+// absent: Gegenstelle nicht gesehen und seit mindestens d still. nil zählt
+// als weg – das gilt nur fürs Abschalten; Übernahmen verlangen einen Partner.
 func absent(p *PeerObs, now, d time.Duration) bool {
 	return p == nil || (!p.Seen && now-p.LastSeen >= d)
 }
@@ -77,9 +78,9 @@ func (s *stepper) adoptHigherTerm() bool {
 	if w != nil && w.Term > t {
 		t = w.Term
 	}
-	// Eine gesehene Amtszeit gleich der erbetenen kann die eigene Zeugenstimme
-	// sein; verfallen lassen nur, wenn der Partner sie aktiv führt.
-	if g := s.out.VotePending; g > s.p.Term && t == g &&
+	// Hat der Zeuge die erbetene Amtszeit uns gegeben, die Bitte nicht
+	// verfallen lassen – außer der Partner führt sie aktiv.
+	if g := s.out.VotePending; g > s.p.Term && t == g && s.votedForSelf(g) &&
 		!(pa != nil && pa.Role == Active && pa.Term >= g) {
 		t = g - 1
 	}
@@ -143,13 +144,17 @@ func (s *stepper) fenced() {
 func (s *stepper) passiveTrio() {
 	in := s.in
 	if g := s.out.VotePending; g > s.p.Term && in.VoteGranted == g {
-		// Mit Stimme übernehmen, sobald der Partner nicht mehr aktiv auftritt.
-		if takeoverAllowed(in) && !(seen(in.Partner) && in.Partner.Role == Active) {
+		// Mit Stimme übernehmen: Partner gesehen und nicht aktiv, oder
+		// für die volle Übernahmezeit weg.
+		pa := in.Partner
+		gone := pa != nil && (seen(pa) && pa.Role != Active ||
+			absent(pa, in.Now, in.Settings.TakeoverTrio))
+		if gone && takeoverAllowed(in) {
 			s.takeOver(g)
 		}
 		return
 	}
-	if !absent(in.Partner, in.Now, in.Settings.TakeoverTrio) || !takeoverAllowed(in) {
+	if in.Partner == nil || !absent(in.Partner, in.Now, in.Settings.TakeoverTrio) || !takeoverAllowed(in) {
 		return
 	}
 	if s.out.VotePending <= s.p.Term {
@@ -163,7 +168,9 @@ func (s *stepper) passiveTrio() {
 
 func (s *stepper) passiveDuo() {
 	in := s.in
-	if absent(in.Partner, in.Now, in.Settings.TakeoverDuo) && in.Gateway && takeoverAllowed(in) {
+	// Partner unbekannt (nil) → keine Übernahme; nil zählt nur beim Abschalten als weg.
+	if in.Partner != nil && absent(in.Partner, in.Now, in.Settings.TakeoverDuo) &&
+		in.Gateway && takeoverAllowed(in) {
 		s.takeOver(s.p.Term + 1)
 	}
 }
@@ -183,6 +190,12 @@ func (s *stepper) takeOver(term uint64) {
 		note = dataAssumedNote
 	}
 	s.become(Active, note)
+}
+
+// votedForSelf: der Zeuge meldet Amtszeit g mit Stimme für diesen Knoten.
+func (s *stepper) votedForSelf(g uint64) bool {
+	w := s.in.Witness
+	return w != nil && s.in.SelfID != "" && w.Term == g && w.VotedFor == s.in.SelfID
 }
 
 func (s *stepper) clearVote() { s.out.VotePending, s.out.VoteAskedAt = 0, 0 }

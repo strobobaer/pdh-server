@@ -137,6 +137,7 @@ type PeerObs struct {
 	DataCurrent bool
 	Maint       bool
 	MaintSeq    uint64
+	VotedFor    string // nur Zeuge: Kandidat seiner höchsten Stimme
 }
 
 // Persisted ist der dauerhaft gespeicherte Zustand (state.json).
@@ -190,6 +191,7 @@ const (
 
 // Input ist alles, was ein Entscheidungsschritt wissen darf.
 type Input struct {
+	SelfID  string        // eigene Kennung
 	Now     time.Duration // monotone Uhr seit Start
 	Wall    time.Time     // nur für Anzeige, Tageszähler, Wartezeit
 	Mode    Mode

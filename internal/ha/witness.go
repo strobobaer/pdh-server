@@ -15,8 +15,9 @@ func Vote(p Persisted, req VoteRequest, nodes []PeerObs, now time.Duration, s Se
 		return false, p
 	}
 	// Dieselbe Stimme darf wiederholt werden (Antwort kann verloren gehen).
-	again := req.Term == p.VotedTerm && req.From == p.VotedFor
-	if req.Term <= p.VotedTerm && !again {
+	known := max(p.VotedTerm, p.Term)
+	again := req.Term == p.VotedTerm && req.From == p.VotedFor && req.Term >= known
+	if req.Term <= known && !again {
 		return false, p
 	}
 	for _, n := range nodes {
