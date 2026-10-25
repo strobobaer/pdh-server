@@ -10,6 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.75.1] – 2026-10-25
+
+### Behoben
+- Der Zeugen-Container startet auch, wenn er auf einem Windows-Rechner gebaut wurde.
+- Ein Zeuge hinter Docker-Portweiterleitung zeigt seinen Verbindungsweg richtig an und meldet keinen falschen Ausfall mehr.
+- In der Knotenübersicht steht beim Zeugen kein irreführendes „Gateway: nein“ mehr.
+
 ## [0.75.0] – 2026-10-25
 
 ### Neu

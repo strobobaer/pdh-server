@@ -773,3 +773,23 @@ func TestOlderHeartbeatKeepsNewer(t *testing.T) {
 		t.Fatalf("Neustart nicht erkannt: %+v", v.Last)
 	}
 }
+
+// Hinter Portweiterleitung (Docker, NAT) kommt die Verbindung an einer fremden
+// Adresse an; mit nur einer eigenen Adresse auf dem Port gehört sie zu dieser.
+func TestLocalPathBehindNAT(t *testing.T) {
+	addr := func(s string) net.Addr { a, _ := net.ResolveTCPAddr("tcp", s); return a }
+	one := &transport{self: nodeConfig{ID: "z", Addrs: []string{"10.10.0.231:7480"}}}
+	if got := one.localPath(addr("172.18.0.2:7480")); got != "10.10.0.231:7480" {
+		t.Errorf("eine Adresse: %q", got)
+	}
+	if got := one.localPath(addr("172.18.0.2:9999")); got != "172.18.0.2:9999" {
+		t.Errorf("anderer Port: %q", got)
+	}
+	two := &transport{self: nodeConfig{ID: "z", Addrs: []string{"10.10.0.231:7480", "10.99.0.3:7480"}}}
+	if got := two.localPath(addr("172.18.0.2:7480")); got != "172.18.0.2:7480" {
+		t.Errorf("zwei Adressen, nicht zuordenbar: %q", got)
+	}
+	if got := two.localPath(addr("10.99.0.3:7480")); got != "10.99.0.3:7480" {
+		t.Errorf("genaue Adresse: %q", got)
+	}
+}

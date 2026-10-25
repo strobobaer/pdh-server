@@ -1,0 +1,2 @@
+# Shell-Skripte laufen unter Linux und in Containern: immer LF
+*.sh text eol=lf

@@ -664,14 +664,24 @@ func normAddr(s string) string {
 }
 
 // localPath ordnet eine angenommene Verbindung einer eigenen Adresse zu.
+// Hinter Portweiterleitung (Docker, NAT) kommt sie an einer fremden Adresse an;
+// gibt es nur eine eigene Adresse mit diesem Port, gehört sie zu dieser.
 func (t *transport) localPath(a net.Addr) string {
 	s := normAddr(a.String())
+	_, port, _ := net.SplitHostPort(s)
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	var samePort []string
 	for _, own := range t.ownAddrsLocked() {
 		if normAddr(own) == s {
 			return own
 		}
+		if _, p, err := net.SplitHostPort(own); err == nil && p == port {
+			samePort = append(samePort, own)
+		}
+	}
+	if len(samePort) == 1 {
+		return samePort[0]
 	}
 	return s
 }

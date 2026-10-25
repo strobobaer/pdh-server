@@ -20,7 +20,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
 COPY deploy/ha-witness/entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
-RUN chmod 0755 /usr/local/bin/pdh-ha-entrypoint \
+# Windows-Checkout (CRLF) darf den Start nicht verhindern
+RUN sed -i 's/\r$//' /usr/local/bin/pdh-ha-entrypoint \
+    && chmod 0755 /usr/local/bin/pdh-ha-entrypoint \
     && install -d -m 0700 /etc/pdh/ha \
     && install -d -m 0700 /var/lib/pdh-ha
 VOLUME ["/etc/pdh/ha", "/var/lib/pdh-ha"]
