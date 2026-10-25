@@ -204,6 +204,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 
 func cmdRun(override string, stderr io.Writer) error {
 	st := newStore()
+	if err := st.fixPerms(); err != nil {
+		fmt.Fprintln(stderr, "pdh-ha: Rechte von", st.etc, "nicht gesetzt:", err)
+	}
 	d := newDaemon(st, openEventLog(st.statePath("events.jsonl"), 5<<20, 3))
 	if override != "" {
 		d.version, d.versionOverride = override, true

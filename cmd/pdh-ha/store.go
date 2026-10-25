@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,6 +81,31 @@ func newStore() store {
 
 func (s store) etcPath(name string) string   { return filepath.Join(s.etc, name) }
 func (s store) statePath(name string) string { return filepath.Join(s.state, name) }
+
+// fixPerms: beim Start Ordner auf 0700 und Schlüssel (*.key) auf 0600 setzen,
+// falls jemand sie gelockert hat (z. B. durch Kopieren). Fehlt der Ordner, nichts tun.
+func (s store) fixPerms() error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	ents, err := os.ReadDir(s.etc)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := os.Chmod(s.etc, 0o700); err != nil {
+		return err
+	}
+	for _, e := range ents {
+		if e.Type().IsRegular() && strings.Contains(e.Name(), ".key") {
+			if err := os.Chmod(s.etcPath(e.Name()), 0o600); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func (s store) writeEtc(name string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(s.etc, 0o700); err != nil {

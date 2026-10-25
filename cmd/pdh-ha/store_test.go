@@ -186,3 +186,37 @@ func TestEventLogOlderSeqAfterRotation(t *testing.T) {
 		}
 	}
 }
+
+// Beim Start: Ordner 0700, Schlüssel 0600 (auch nach einem früheren Fehler).
+func TestStoreFixPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-Rechte")
+	}
+	st := store{etc: filepath.Join(t.TempDir(), "ha"), state: t.TempDir()}
+	if err := os.MkdirAll(st.etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"ca.key", "node.key", "node.key.new", "node.crt"} {
+		if err := os.WriteFile(st.etcPath(n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(st.etc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.fixPerms(); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(st.etc); fi.Mode().Perm() != 0o700 {
+		t.Errorf("Ordner %v", fi.Mode().Perm())
+	}
+	for n, want := range map[string]os.FileMode{"ca.key": 0o600, "node.key": 0o600, "node.key.new": 0o600, "node.crt": 0o644} {
+		if fi, _ := os.Stat(st.etcPath(n)); fi.Mode().Perm() != want {
+			t.Errorf("%s: %v, erwartet %v", n, fi.Mode().Perm(), want)
+		}
+	}
+	// fehlender Ordner (noch nicht eingerichtet) ist kein Fehler
+	if err := (store{etc: filepath.Join(t.TempDir(), "fehlt")}).fixPerms(); err != nil {
+		t.Errorf("fehlender Ordner: %v", err)
+	}
+}
