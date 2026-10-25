@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.75.0] – 2026-10-25
+
+### Neu
+- Ausfallschutz mit zwei Servern und optionalem Zeugen im Beobachtungsmodus: Server koppeln, Heartbeat über LAN und VPN, Rollen und Ereignisse ansehen – es wird noch nichts umgeschaltet.
+- Testlabor für den Ausfallschutz (Docker).
+
+### Geändert
+- Die Netzlaufwerk-Sicherung läuft mit zwei Servern nur auf dem aktiven Server.
+
 ## [0.74.2] – 2026-10-24
 
 ### Behoben
