@@ -1311,6 +1311,7 @@ func (h *Handler) StartBackupSystem(ctx context.Context) {
 	h.markStaleBackupRuns(ctx)
 	h.StartBackupSchedules(ctx)
 	go h.drWatch(ctx) // Ausfallschutz: Alarme an die Admins (dr.go)
+	go h.haWatch(ctx) // Ausfallschutz pdh-ha: Alarme an die Admins (ha_watch.go)
 }
 
 // ── Automatische Vollsicherung bei jedem Update ─────────────

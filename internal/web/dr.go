@@ -68,6 +68,7 @@ type drStatus struct {
 	Missing      []string  `json:"missing"`
 	Bases        []drBase  `json:"bases"`
 	Running      string    `json:"running"`
+	Paused       string    `json:"paused"` // z. B. „passiver Knoten“ (pdh-ha)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
@@ -85,6 +86,7 @@ type drView struct {
 	VMAge     string
 	VMWarn    bool
 	Alerts    []string
+	HA        haView // Bereich „Betriebsart“ (ha.go), oben im Reiter
 }
 
 // Ago: Zeitangabe für die Anzeige.

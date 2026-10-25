@@ -107,6 +107,7 @@ func (a *updateAgent) drCheckActive(ctx context.Context) bool {
 // ── Installation (erster Knoten) ───────────────────────────────────────────
 
 type haInstallStatus struct {
+	OK      bool   `json:"ok"` // für agentJSON im PDH
 	Running bool   `json:"running"`
 	Done    bool   `json:"done"`
 	Error   string `json:"error"`
@@ -139,7 +140,7 @@ func (j *haJob) status() haInstallStatus {
 	if len(lines) > haLogLines {
 		lines = lines[len(lines)-haLogLines:]
 	}
-	return haInstallStatus{Running: j.running, Done: j.done, Error: j.err, Log: strings.Join(lines, "\n")}
+	return haInstallStatus{OK: true, Running: j.running, Done: j.done, Error: j.err, Log: strings.Join(lines, "\n")}
 }
 
 // haInstallScript läuft per systemd-run außerhalb des Agenten (eigener cgroup,

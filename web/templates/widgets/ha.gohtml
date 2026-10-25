@@ -1,0 +1,98 @@
+{{/* Server-Einstellungen → Ausfallschutz → Betriebsart (internal/web/ha.go). Stil: vpn-style (in dr-admin geladen). */}}
+{{define "ha-admin"}}{{$v := .}}
+<div class="card" id="ha-mode">
+  <div class="card-title"><span><i class="ti ti-server-2"></i> Betriebsart: {{if and .Installed .Status.Configured}}{{.ModeText}}{{else}}Einzel{{end}}</span>
+    {{if and .Installed .Status.Configured (not .Err)}}<span class="vp-state {{if .Status.Maint}}off{{else}}ok{{end}}"><span class="vp-dot{{if not .Status.Maint}} on{{end}}"></span> {{if .Status.Maint}}Wartung – Automatik aus{{else}}Automatik an{{end}}</span>{{end}}</div>
+
+  {{if .JoinCode}}
+  <div class="vp-show">
+    <b><i class="ti ti-key"></i> Beitrittscode</b> – wird nur jetzt angezeigt, einmal verwendbar, gültig bis {{.JoinUntil}}.
+    <ol class="vp-hint" style="padding-left:18px;margin:8px 0 0">
+      <li><a class="btn btn-small btn-primary" href="/admin/server-config/ha/join-script"><i class="ti ti-download"></i> pdh-ha-join.sh</a> auf den neuen Server (frisches Ubuntu) kopieren.</li>
+      <li>Dort ausführen:<div class="vp-cmd"><code class="vp-key">{{.JoinCmd}}</code></div></li>
+    </ol>
+  </div>
+  {{end}}
+
+  {{if .Err}}
+  <div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.Err}}</div>
+  <p class="vp-hint">Der Dienst <code>pdh-ha</code> ist installiert, antwortet aber nicht richtig. Auf dem Server prüfen: <code>sudo systemctl status pdh-ha</code></p>
+  {{end}}
+
+  {{if .NeedsSetup}}
+  <p class="vp-hint">Dieser Server läuft allein. Mit einem zweiten Server (und einem Zeugen) übernimmt der zweite, wenn dieser ausfällt. Zuerst wird hier der Dienst <code>pdh-ha</code> eingerichtet – dann gibt es Beitrittscodes für die weiteren Server.</p>
+  {{if .InstallErr}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.InstallErr}}</div>{{end}}
+  {{if .Install.Running}}<div class="vp-msg"><i class="ti ti-loader"></i> Installation läuft … (Seite neu laden für den Fortschritt)</div>{{end}}
+  {{if .Install.Error}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.Install.Error}}</div>{{end}}
+  {{if .Install.Log}}<pre class="vp-hint" style="background:var(--bg3);border-radius:8px;padding:8px;overflow:auto;max-height:240px">{{.Install.Log}}</pre>{{end}}
+  {{if not .Install.Running}}
+  <form method="post" action="/admin/server-config/ha/setup" class="vp-form">
+    <div><label class="form-label">Adressen dieses Servers (LAN, WireGuard)</label><input class="form-input" name="addrs" value="{{.SuggestText}}" placeholder="z. B. 192.168.1.10, 10.66.0.1"></div>
+    <div><button class="btn btn-primary" type="submit"><i class="ti ti-shield-plus"></i> Ausfallschutz einrichten</button></div>
+  </form>
+  <p class="vp-hint">Die Adressen nutzen die Server untereinander (Port 7480). Mehrere mit Komma trennen.</p>
+  {{end}}
+  {{else if not .Err}}
+  {{if .Status.Observe}}<div class="vp-msg err"><i class="ti ti-eye"></i> <b>Beobachtungsmodus – es wird nichts umgeschaltet.</b> Der Dienst meldet nur, was er tun würde.</div>{{end}}
+  {{if eq .Status.Mode "duo"}}<div class="vp-msg"><i class="ti ti-alert-circle"></i> Eingeschränkter Ausfallschutz (kein Zeuge).</div>{{end}}
+  {{range .Status.Warnings}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
+  {{if .Status.Blocked}}<div class="vp-msg err"><i class="ti ti-lock"></i> <b>Übernahme gesperrt: {{.Status.Blocked}}</b><br>Die Automatik übernimmt solange nicht. Fällt der aktive Server sicher aus, hilft „Übernahme erzwingen“.</div>{{end}}
+
+  <table class="table" style="margin-top:8px">
+    <tr><th>Kennung</th><th>Art</th><th>Rolle</th><th>Amtszeit</th><th>Version</th><th>Gateway</th><th>Zuletzt gesehen</th><th>Wege</th></tr>
+    {{range .Nodes}}
+    <tr><td><b>{{.ID}}</b>{{if .Self}} <span class="rec-sub">(hier)</span>{{end}}</td><td>{{.KindText}}</td><td><span class="vp-conn{{if eq .Role "aktiv"}} on{{else if eq .Role "abgeschaltet"}} revoked{{end}}">{{.Role}}</span></td>
+      <td>{{if .Term}}{{.Term}}{{else}}–{{end}}</td><td>{{.Version}}</td><td>{{if .Gateway}}erreichbar{{else}}<b>nein</b>{{end}}</td>
+      <td>{{.SeenText}}{{if .SkewWarn}}<br><span class="vp-conn lost">Uhrzeit prüfen ({{printf "%.0f" .ClockSkew}} s)</span>{{end}}</td>
+      <td>{{range .Paths}}<div><span class="vp-conn{{if .Alive}} on{{else}} revoked{{end}}">{{.Addr}}</span> <span class="vp-meta">{{.Age}}{{if .Err}} · {{.Err}}{{end}}</span></div>{{else}}{{if not .Self}}<span class="vp-meta">–</span>{{end}}{{end}}</td></tr>
+    {{end}}
+  </table>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    {{if .CanJoinNode}}<form method="post" action="/admin/server-config/ha/join-code"><input type="hidden" name="role" value="node"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-key"></i> Beitrittscode: zweiter Server</button></form>{{end}}
+    {{if .CanJoinWitness}}<form method="post" action="/admin/server-config/ha/join-code"><input type="hidden" name="role" value="witness"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-key"></i> Beitrittscode: Zeuge</button></form>{{end}}
+    <form method="post" action="/admin/server-config/ha/maintenance">{{if .Status.Maint}}<input type="hidden" name="on" value="0"><button class="btn btn-small" type="submit"><i class="ti ti-player-play"></i> Automatik an</button>{{else}}<input type="hidden" name="on" value="1"><button class="btn btn-small" type="submit"><i class="ti ti-player-pause"></i> Automatik aus (Wartung)</button>{{end}}</form>
+    {{if .HasPeers}}<form method="post" action="/admin/server-config/ha/command"><input type="hidden" name="cmd" value="swap"><button class="btn btn-small" type="submit"><i class="ti ti-arrows-exchange"></i> Rollen tauschen</button></form>{{end}}
+  </div>
+
+  {{if .HasPeers}}
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-alert-octagon"></i> Übernahme erzwingen</span></div>
+  <p class="vp-hint">Nur wenn der aktive Server sicher aus ist. Laufen beide als aktiv, können Daten verloren gehen. Zur Bestätigung <b>ÜBERNEHMEN</b> eintippen.</p>
+  <form method="post" action="/admin/server-config/ha/command" class="vp-form">
+    <input type="hidden" name="cmd" value="force_takeover">
+    <div><label class="form-label">Bestätigung</label><input class="form-input" name="confirm" autocomplete="off" placeholder="ÜBERNEHMEN"></div>
+    <div><button class="btn btn-small btn-danger" type="submit"><i class="ti ti-bolt"></i> Übernahme erzwingen</button></div>
+  </form>
+  {{if .Status.CAHolder}}
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-trash"></i> Knoten entfernen</span></div>
+  <form method="post" action="/admin/server-config/ha/remove" class="vp-form">
+    <div><label class="form-label">Server oder Zeuge</label><select class="form-input" name="id">{{range .Status.Peers}}<option value="{{.ID}}">{{.ID}} ({{.KindText}})</option>{{end}}</select></div>
+    <div><label class="form-label"><input type="checkbox" name="gone" value="1"> dauerhaft weg (nicht erreichbar)</label></div>
+    <div><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Entfernen</button></div>
+  </form>
+  <p class="vp-hint">Den Zeugen zuerst entfernen. Den aktiven Server vorher per „Rollen tauschen“ abgeben.</p>
+  {{end}}
+  {{end}}
+
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-clock"></i> Zeiten</span></div>
+  {{if .Status.CAHolder}}{{$f := .Form}}
+  <form method="post" action="/admin/server-config/ha/settings" class="vp-form">
+    <div><label class="form-label">Takt (s)</label><input class="form-input" type="number" name="tick_s" min="1" max="5" value="{{index $f "tick_s"}}"></div>
+    <div><label class="form-label">Selbst-Abschaltung nach (s)</label><input class="form-input" type="number" name="fence_s" min="3" max="300" value="{{index $f "fence_s"}}"></div>
+    <div><label class="form-label">Übernahme mit Zeuge nach (s)</label><input class="form-input" type="number" name="takeover_trio_s" min="10" max="600" value="{{index $f "takeover_trio_s"}}"></div>
+    <div><label class="form-label">Übernahme ohne Zeuge nach (s)</label><input class="form-input" type="number" name="takeover_duo_s" min="10" max="600" value="{{index $f "takeover_duo_s"}}"></div>
+    <div><label class="form-label">Wartezeit nach Umschaltung (min)</label><input class="form-input" type="number" name="cooldown_min" min="0" max="1440" value="{{index $f "cooldown_min"}}"></div>
+    <div><label class="form-label">Umschaltungen je Tag</label><input class="form-input" type="number" name="max_per_day" min="1" max="20" value="{{index $f "max_per_day"}}"></div>
+    <div><label class="form-label">Gateway-Ziele (Komma)</label><input class="form-input" name="gateway_targets" value="{{.TargetsText}}" placeholder="z. B. 192.168.1.1"></div>
+    <div><button class="btn" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
+  </form>
+  <p class="vp-hint">Übernahmezeit mindestens Selbst-Abschaltung + 2 × Takt + 5 s.</p>
+  {{else}}
+  <p class="vp-hint">Einstellungen bitte am ersten Server ändern (dort, wo der Ausfallschutz eingerichtet wurde).</p>
+  {{end}}
+
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-list"></i> Ereignisse</span></div>
+  {{range .Events}}<div class="vp-ev"><span>{{$v.EventTime .At}}</span><span>{{if eq .Kind "alarm"}}<span class="vp-conn revoked">Alarm</span>{{else if eq .Kind "action"}}<span class="vp-conn lost">würde jetzt</span>{{else if eq .Kind "role"}}<span class="vp-conn on">Rolle</span>{{else if eq .Kind "warn"}}<span class="vp-conn lost">Warnung</span>{{else}}<span class="vp-conn">Info</span>{{end}}</span><span>{{.Text}}</span></div>{{else}}<p class="vp-hint">Noch keine Ereignisse.</p>{{end}}
+  {{end}}
+</div>
+{{end}}
