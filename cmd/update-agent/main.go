@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,6 +29,8 @@ type jobStatus struct {
 type updateAgent struct {
 	dr      drState // Ausfallschutz (dr.go), eigener Mutex
 	drApply func(context.Context, drConfig) (bool, error) // nil = drApplyPostgres
+	ha      haJob                                         // pdh-ha-Installation (ha.go)
+	haRun   func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
 	mu      sync.RWMutex
 	status  jobStatus
 	token   string
@@ -100,6 +103,9 @@ func main() {
 	mux.Handle("POST /v1/dr/config", agent.authorized(http.HandlerFunc(agent.drConfigHandler)))
 	mux.Handle("POST /v1/dr/run", agent.authorized(http.HandlerFunc(agent.drRunHandler)))
 	go agent.drLoop(context.Background())
+	// Ausfallschutz mit zwei Servern – pdh-ha (ha.go)
+	mux.Handle("POST /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallHandler)))
+	mux.Handle("GET /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallStatusHandler)))
 
 	server := &http.Server{
 		Addr:              listen,

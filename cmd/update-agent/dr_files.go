@@ -194,6 +194,13 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	if cfg.Target == "" {
 		return
 	}
+	// zwei Server (pdh-ha): nur der aktive Knoten sichert
+	if !a.drCheckActive(ctx) {
+		if err := a.drSave(); err != nil {
+			log.Printf("ausfallschutz: state.json: %v", err)
+		}
+		return
+	}
 	target := a.hp(cfg.Target)
 	check := func() error { return drTargetCheck(target) }
 	if cfg.Enabled {

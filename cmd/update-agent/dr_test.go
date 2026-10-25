@@ -103,6 +103,13 @@ func TestDRScriptsSyntax(t *testing.T) {
 	for name, s := range map[string]string{"enable": drEnableScript, "disable": drDisableScript} {
 		drBashSyntax(t, name, s)
 	}
+	for _, f := range []string{"../../scripts/install-pdh-ha.sh", "../../scripts/pdh-ha-join.sh"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drBashSyntax(t, filepath.Base(f), string(b))
+	}
 }
 
 func TestDRPostgresConf(t *testing.T) {
@@ -564,7 +571,7 @@ func TestDRErrorsPerKind(t *testing.T) {
 // Als root ausgeführte Skripte arbeiten im Repo des Benutzers pdh – git verlangt
 // dafür safe.directory, sonst „detected dubious ownership“.
 func TestRootScriptsGitSafeDirectory(t *testing.T) {
-	for _, f := range []string{"../../install-update-agent.sh", "../../scripts/pdh-restore.sh"} {
+	for _, f := range []string{"../../install-update-agent.sh", "../../scripts/pdh-restore.sh", "../../scripts/install-pdh-ha.sh", "../../scripts/pdh-ha-join.sh"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
