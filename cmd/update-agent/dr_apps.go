@@ -30,8 +30,9 @@ func drFileSources(repoDir string, exists func(string) bool) []drSource {
 		{Label: "uploads", Path: path.Join(repoDir, "uploads")},
 		{Label: "chat_files", Path: path.Join(repoDir, "chat_files")},
 		{Label: "env", Path: path.Join(repoDir, ".env"), File: true},
-		{Label: "etc-pdh", Path: "/etc/pdh"},
-		{Label: "systemd", Path: "/etc/systemd/system", Filter: []string{"--include=pdh*.service", "--exclude=*"}},
+		// Schlüssel und Dienst von pdh-ha nie aufs Laufwerk (gehören zum Rechner)
+		{Label: "etc-pdh", Path: "/etc/pdh", Filter: []string{"--exclude=/ha/"}},
+		{Label: "systemd", Path: "/etc/systemd/system", Filter: []string{"--exclude=pdh-ha.service", "--include=pdh*.service", "--exclude=*"}},
 		{Label: "wireguard-bin", Path: "/usr/local/bin/pdh-wireguard", File: true},
 	}
 	var out []drSource

@@ -179,20 +179,23 @@ if [[ "$COMMIT" != "-" ]]; then
   gitr checkout -q -B main "$COMMIT"
   gitr branch -q -u origin/main main || true
 fi
-restore_dir() { # Label Zielordner
+restore_dir() { # Label Zielordner [rsync-Filter …]
   [[ -d "$FROM/files/$1" ]] || return 0
-  mkdir -p "$2"; rsync -rtl "$FROM/files/$1/" "$2/"
+  mkdir -p "$2"; rsync -rtl "${@:3}" "$FROM/files/$1/" "$2/"
 }
 restore_dir uploads "$REPO/uploads"
 restore_dir chat_files "$REPO/chat_files"
 if [[ -f "$FROM/files/env" ]]; then install -m 600 "$FROM/files/env" "$REPO/.env"; fi
 chown -R pdh:pdh "$REPO"
 if [[ -d "$FROM/files/etc-pdh" ]]; then
-  restore_dir etc-pdh /etc/pdh
-  chown -R root:pdh /etc/pdh; chmod -R u=rwX,g=rX,o= /etc/pdh
+  # Schlüssel von pdh-ha (ältere Sicherungen) nie zurückspielen
+  restore_dir etc-pdh /etc/pdh --exclude=/ha/
+  find /etc/pdh -path /etc/pdh/ha -prune -o -exec chown root:pdh {} + -exec chmod u=rwX,g=rX,o= {} +
 fi
 if compgen -G "$FROM/files/systemd/pdh*.service" >/dev/null; then
-  cp "$FROM"/files/systemd/pdh*.service /etc/systemd/system/
+  for f in "$FROM"/files/systemd/pdh*.service; do
+    [[ "$(basename "$f")" == pdh-ha.service ]] || cp "$f" /etc/systemd/system/
+  done
 fi
 if [[ -f "$FROM/files/wireguard-bin" ]]; then install -m 755 "$FROM/files/wireguard-bin" /usr/local/bin/pdh-wireguard; fi
 if [[ ! -f /etc/systemd/system/pdh.service ]]; then
@@ -266,3 +269,4 @@ echo "  • VPN: Server-Einstellungen → VPN → Installationsskript erneut aus
 echo "  • Cloudflare-Tunnel prüfen (Server-Einstellungen → Cloudflare)"
 echo "  • Admin-Werkzeuge: sudo bash $REPO/scripts/configure-pdh-admin-tools.sh"
 echo "  • Ausfallschutz auf diesem Server wieder einschalten (Server-Einstellungen → Ausfallschutz)"
+echo "  • Ausfallschutz mit zwei Servern danach neu einrichten (pdh-ha wird nicht mitgesichert)"

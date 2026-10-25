@@ -1,0 +1,37 @@
+# pdh-ha als Container: Zeuge (Standardziel) und Knoten im Testlabor (Ziel lab).
+# Build-Kontext ist die Repo-Wurzel:
+#   docker build -f deploy/ha-witness/Dockerfile --build-arg COMMIT=$(git rev-parse HEAD) .
+FROM golang:1.24 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY internal/ha ./internal/ha
+COPY cmd/pdh-ha ./cmd/pdh-ha
+COPY VERSION ./
+ARG VERSION=""
+ARG COMMIT=""
+RUN v="${VERSION:-$(tr -d '[:space:]' < VERSION)}" \
+    && CGO_ENABLED=0 go build -buildvcs=false -trimpath \
+       -ldflags "-s -w -X main.version=${v} -X main.commit=${COMMIT}" \
+       -o /out/pdh-ha ./cmd/pdh-ha
+
+FROM debian:bookworm-slim AS base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
+COPY deploy/ha-witness/entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
+RUN chmod 0755 /usr/local/bin/pdh-ha-entrypoint \
+    && install -d -m 0700 /etc/pdh/ha \
+    && install -d -m 0700 /var/lib/pdh-ha
+VOLUME ["/etc/pdh/ha", "/var/lib/pdh-ha"]
+EXPOSE 7480/tcp
+ENTRYPOINT ["/usr/local/bin/pdh-ha-entrypoint"]
+
+# Testlabor: zusätzlich curl für Handbefehle über den Socket (Rollentausch)
+FROM base AS lab
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Standardziel (zuletzt): Zeuge
+FROM base AS witness

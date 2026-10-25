@@ -281,6 +281,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if d.Tab == "dr" { // fragt den Update-Agenten – nur wenn der Reiter offen ist
 		d.DR = h.drLoadView(r.Context())
+		d.DR.HA = h.haLoadView(r.Context()) // Betriebsart: pdh-ha über den Socket (ha.go)
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

@@ -103,6 +103,13 @@ func TestDRScriptsSyntax(t *testing.T) {
 	for name, s := range map[string]string{"enable": drEnableScript, "disable": drDisableScript} {
 		drBashSyntax(t, name, s)
 	}
+	for _, f := range []string{"../../scripts/install-pdh-ha.sh", "../../scripts/pdh-ha-join.sh"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drBashSyntax(t, filepath.Base(f), string(b))
+	}
 }
 
 func TestDRPostgresConf(t *testing.T) {
@@ -334,9 +341,36 @@ func TestDRFileSources(t *testing.T) {
 		if s.Label == "env" && !s.File {
 			t.Error(".env muss als Datei abgeglichen werden")
 		}
-		if s.Label == "systemd" && strings.Join(s.Filter, " ") != "--include=pdh*.service --exclude=*" {
+		if s.Label == "systemd" && strings.Join(s.Filter, " ") != "--exclude=pdh-ha.service --include=pdh*.service --exclude=*" {
 			t.Errorf("systemd-Filter %v", s.Filter)
 		}
+	}
+}
+
+// Schlüssel von pdh-ha (/etc/pdh/ha) und sein Dienst dürfen nie aufs Netzlaufwerk.
+func TestDRSourcesExcludeHA(t *testing.T) {
+	got := drFileSources("/opt/pdh", drFakeExists("/opt/pdh/uploads", "/etc/pdh", "/etc/systemd/system"))
+	seen := false
+	for _, s := range got {
+		if strings.HasPrefix(s.Path, "/etc/pdh/ha") {
+			t.Errorf("Quelle %s schließt /etc/pdh/ha ein", s.Label)
+		}
+		args := strings.Join(drRsyncArgs(s, "/t", "2026-10-25"), " ")
+		switch s.Label {
+		case "etc-pdh":
+			seen = true
+			if !strings.Contains(args, "--exclude=/ha/") {
+				t.Errorf("etc-pdh ohne Ausschluss von ha/: %s", args)
+			}
+		case "systemd":
+			i, j := strings.Index(args, "--exclude=pdh-ha.service"), strings.Index(args, "--include=pdh*.service")
+			if i < 0 || j < 0 || i > j {
+				t.Errorf("systemd schließt pdh-ha.service nicht aus: %s", args)
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("etc-pdh fehlt")
 	}
 }
 
@@ -420,7 +454,8 @@ func TestRestoreScript(t *testing.T) {
 	drBashSyntax(t, "pdh-restore", s)
 	for _, want := range []string{"recovery.signal", "recovery_target_action = 'promote'", "gunzip -c", "pg_is_in_recovery",
 		"apt.postgresql.org", "Keine Grundsicherung vor", "--restore", "docker volume create", "docker compose up -d",
-		"sources.json", "install-update-agent.sh", "--yes", "--time"} {
+		"sources.json", "install-update-agent.sh", "--yes", "--time",
+		"--exclude=/ha/", "pdh-ha.service", "-path /etc/pdh/ha -prune", "Ausfallschutz mit zwei Servern danach neu einrichten"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("pdh-restore.sh ohne %q", want)
 		}
@@ -564,7 +599,7 @@ func TestDRErrorsPerKind(t *testing.T) {
 // Als root ausgeführte Skripte arbeiten im Repo des Benutzers pdh – git verlangt
 // dafür safe.directory, sonst „detected dubious ownership“.
 func TestRootScriptsGitSafeDirectory(t *testing.T) {
-	for _, f := range []string{"../../install-update-agent.sh", "../../scripts/pdh-restore.sh"} {
+	for _, f := range []string{"../../install-update-agent.sh", "../../scripts/pdh-restore.sh", "../../scripts/install-pdh-ha.sh", "../../scripts/pdh-ha-join.sh"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)

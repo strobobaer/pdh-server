@@ -1710,13 +1710,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p><b>Wie aktuell ist die Sicherung?</b> Die Datenbank höchstens <b>5 Minuten</b> alt (einstellbar), Dateien höchstens so alt wie der Dateiabgleich (Standard 60 Minuten). Jede Nacht kommt eine Grundsicherung dazu; aufbewahrt wird 14 Tage (einstellbar). Gelöschte oder überschriebene Dateien landen so lange im <b>Papierkorb</b> auf dem Laufwerk. Nextcloud wird im laufenden Betrieb abgeglichen, n8n dafür kurz angehalten.</p>
   <p>Die Freigabe enthält Zugangsdaten (<code>.env</code>, Nextcloud-<code>config.php</code>) – nur Administratoren dürfen darauf zugreifen.</p>
+  <p>Mit zwei Servern zeigt der Reiter auf dem passiven Server den Hinweis „Beobachtung: würde pausieren – …“. In dieser Version läuft die Sicherung trotzdem weiter (siehe <a href="#spiegelbetrieb">Ausfallschutz mit zwei Servern</a>).</p>
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> So baust du den Server wieder auf</b>
     <ol class="hb-steps">
       <li>Frischen Ubuntu-Server oder eine neue VM bereitstellen.</li>
       <li><b>pdh-vm-prepare.sh</b> im Reiter herunterladen, auf die VM kopieren und ausführen: <code>sudo bash pdh-vm-prepare.sh --wiederaufbau --share //nas/sicherung --user BENUTZER</code>. Es setzt Zeitzone, Firewall und Gast-Agent (Proxmox, VMware, Hyper-V), fragt das Passwort ab und bindet die Freigabe dauerhaft unter <code>/mnt/sicherung</code> ein. Mit <code>--restore</code> startet es den Wiederaufbau gleich mit.</li>
       <li>Das Skript liegt im Sicherungsordner (oder im Reiter herunterladen): <code>sudo bash /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;/pdh-restore.sh --from /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;</code></li>
       <li>Für einen <b>früheren Stand</b> (z. B. vor einem versehentlichen Löschen) zusätzlich <code>--time "2026-10-24 14:30:00"</code> angeben.</li>
-      <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten.</li>
+      <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten. Den Ausfallschutz mit zwei Servern danach neu einrichten – seine Schlüssel werden nicht mitgesichert.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So richtest du einen ganz neuen Server ein</b>
     <ol class="hb-steps">
@@ -1734,6 +1735,71 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„braucht die Datenbank auf diesem Server“:</b> Die Datenbank liegt auf einem anderen Rechner – dort muss sie gesichert werden.</li>
     </ul></div>
   {{template "hb-shots" (dict "Ref" (index $s "ausfallschutz") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="spiegelbetrieb" data-title="Ausfallschutz mit zwei Servern" data-pages="server-config">
+  <h2><i class="ti ti-server-2"></i> Ausfallschutz mit zwei Servern</h2>
+  <p>Ein zweiter Server und ein <b>Zeuge</b> beobachten sich gegenseitig. Der Dienst <code>pdh-ha</code> läuft auf jedem Server und prüft über das LAN und über WireGuard, ob der andere noch da ist. Der Zeuge ist ein kleiner dritter Teilnehmer ohne Daten – er hilft nur bei der Entscheidung, wer aktiv ist.</p>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> In dieser Version wird noch nichts umgeschaltet</b>
+    Der Dienst arbeitet im <b>Beobachtungsmodus</b>. Er zeigt nur, was er tun würde – als Ereignis „würde jetzt: …“. Kein Server übernimmt wirklich, nichts wird verschoben oder gestoppt. So kannst du in Ruhe prüfen, ob alles zuverlässig erkannt wird.</div>
+  {{template "hb-fig-spiegelbetrieb"}}
+  <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-server-2"></i> So fügst du den zweiten Server hinzu</b>
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen. Unter „Betriebsart“ die Adressen dieses Servers prüfen (LAN und WireGuard, du kannst sie ändern) und <b>Ausfallschutz einrichten</b> wählen. Beim ersten Einrichten startet das PDH dabei ggf. einmal kurz neu.</li>
+      <li><b>Beitrittscode: zweiter Server</b> wählen. Der Code gilt 30 Minuten, nur einmal, und wird nur jetzt angezeigt.</li>
+      <li><b>pdh-ha-join.sh</b> im Reiter herunterladen und auf den neuen Ubuntu-Server kopieren.</li>
+      <li>Dort ausführen: <code>sudo bash pdh-ha-join.sh &lt;Code&gt;</code>. Das Skript holt den Quelltext von GitHub – der erste Server muss also eine dort veröffentlichte Version haben. Unter Ubuntu 22.04 ist das mitgelieferte Go zu alt (nötig: Go 1.21 oder neuer): vorher <code>sudo snap install go --classic</code> ausführen.</li>
+      <li>Nach kurzer Zeit zeigt die Tabelle beide Server. Die Betriebsart steht auf <b>Duo</b>.</li>
+      <li>Optional: <b>Automatik an</b> wählen. Dann trifft der Dienst Entscheidungen – in dieser Version zeigt er sie nur als Ereignis „würde jetzt: …“ an, es passiert nichts. So kannst du beobachten, was er tun würde.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-eye-check"></i> So fügst du einen Zeugen hinzu (Programm oder Container)</b>
+    <ol class="hb-steps">
+      <li>Erst den zweiten Server hinzufügen – ohne ihn wird der Zeuge abgelehnt („Zuerst den zweiten Server hinzufügen“).</li>
+      <li><b>Beitrittscode: Zeuge</b> wählen.</li>
+      <li><b>Als Programm</b> auf einem dritten Rechner: <code>sudo bash pdh-ha-join.sh --witness &lt;Code&gt;</code></li>
+      <li><b>Als Container</b> (auf dem dritten Rechner, im PDH-Quelltext): im Ordner <code>deploy/ha-witness</code> ausführen: <code>PDH_HA_JOIN='&lt;Code&gt;' PDH_HA_ADDR=&lt;IP dieses Rechners&gt; docker compose up -d --build</code>. <code>PDH_HA_ADDR</code> ist die Adresse, unter der die Server den Zeugen erreichen (Port 7480) – ohne sie meldet der Container seine interne Adresse, die die Server nicht erreichen. Beide Angaben braucht nur der erste Start.</li>
+      <li>Die Betriebsart steht danach auf <b>Trio</b>, der Hinweis „kein Zeuge“ verschwindet.</li>
+    </ol>
+    <p><b>Wichtig:</b> Der Zeuge braucht <b>eigene Hardware und eigenen Strom</b>. Läuft er auf demselben Gerät oder an derselben Stromversorgung wie ein Server, fällt er mit aus – dann ist er wertlos. Erkennt das PDH gemeinsame Hardware, zeigt es eine Warnung.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> Nach einem PDH-Update</b>
+    <p>Das Update des PDH bringt <code>pdh-ha</code> nur auf dem ersten Server auf den neuen Stand. Die Übersicht warnt dann „Versionen unterschiedlich“ und zeigt den passenden Befehl.</p>
+    <ol class="hb-steps">
+      <li>Den <b>Commit</b> des ersten Servers ablesen: in der Übersicht in Klammern hinter seiner Version, oder dort <code>pdh-ha version</code> ausführen.</li>
+      <li><b>Zweiter Server</b> und <b>Zeugen-Rechner</b> (Programm): <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code></li>
+      <li><b>Zeuge als Container</b>: im PDH-Quelltext auf denselben Stand gehen (<code>git fetch</code>, <code>git checkout &lt;Commit&gt;</code>), dann in <code>deploy/ha-witness</code> <code>PDH_HA_COMMIT=&lt;Commit&gt; docker compose up -d --build</code> (der Commit erscheint dann auch in der Übersicht). <code>PDH_HA_ADDR</code> und Code sind nicht nötig – sie liegen schon in den Volumes.</li>
+      <li>Nach kurzer Zeit verschwindet die Warnung „Versionen unterschiedlich“.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-trash"></i> So entfernst du einen Server oder Zeugen</b>
+    <ol class="hb-steps">
+      <li>Das geht nur am ersten Server (dort, wo der Ausfallschutz eingerichtet wurde): Bereich <b>Knoten entfernen</b>.</li>
+      <li>Den Zeugen <b>zuerst</b> entfernen. Solange ein Zeuge da ist, lässt sich kein Server entfernen.</li>
+      <li>Der <b>aktive</b> Server lässt sich nicht entfernen. Erst <b>Rollen tauschen</b>, dann den bisherigen aktiven (jetzt passiven) Server entfernen.</li>
+      <li>Ist der Server dauerhaft weg und nicht erreichbar, <b>dauerhaft weg</b> ankreuzen und <b>Entfernen</b> wählen.</li>
+      <li>Einen entfernten Server wieder verwenden: dort <code>sudo pdh-ha reset --yes</code> ausführen und danach mit einem neuen Beitrittscode erneut beitreten. Bis dahin bleibt er inaktiv.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-list-details"></i> So liest du die Übersicht</b>
+    <ul>
+      <li><b>Rolle:</b> <i>aktiv</i> arbeitet, <i>passiv</i> wartet bereit, <i>abgeschaltet</i> hat sich selbst abgeschaltet, <i>wiedereingliederung</i> kommt gerade zurück, <i>zeuge</i> ist der Zeuge.</li>
+      <li><b>Amtszeit:</b> Zähler, der bei jedem Wechsel des aktiven Servers steigt. Die höhere Amtszeit gilt.</li>
+      <li><b>Wege:</b> Jeder Teilnehmer ist über LAN und WireGuard verbunden. Grün heißt: Nachrichten kommen an. Ist nur ein Weg rot, gilt der Partner noch als erreichbar.</li>
+      <li><b>Gateway:</b> Zeigt, ob der Server sein Netz (Router) erreicht. „nein“ heißt: der Fehler liegt eher bei diesem Server als beim Partner.</li>
+      <li><b>Zuletzt gesehen:</b> Wann zuletzt eine Nachricht kam. „Uhrzeit prüfen“ warnt, wenn die Uhren zu stark abweichen.</li>
+      <li><b>Ereignisse:</b> „Rolle“ und „Info“ erklären, was passiert ist. <b>„würde jetzt: …“</b> ist eine Aktion, die der Dienst im Echtbetrieb ausführen würde – hier nur Beobachtung.</li>
+      <li><b>Übernahme gesperrt: …</b> Die Automatik übernimmt solange nicht. Beispiel „Wartungsstand beim Partner noch nicht angekommen“: Der Partner hat das Ende der Wartung noch nicht gesehen, die Automatik wartet darauf. Ist der Partner wirklich weg, hilft <b>Übernahme erzwingen</b> (dazu <b>ÜBERNEHMEN</b> eintippen). Nur verwenden, wenn der aktive Server sicher aus ist – laufen beide als aktiv, können Daten verloren gehen.</li>
+      <li><b>Knöpfe:</b> <i>Rollen tauschen</i> gibt es nur am aktiven Server, <i>Übernahme erzwingen</i> nur an einem nicht aktiven. Am Zeugen und an einem entfernten Server gibt es keine Befehle.</li>
+      <li><b>Alarm „Aktiver Server abgelöst (neue Amtszeit …)“:</b> Der andere Server führt jetzt eine höhere Amtszeit – dieser gibt die Rolle ab und kommt als passiver Server zurück.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-clock"></i> Zeiten, Umschaltungen und Alarme</b>
+    <ul>
+      <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) lassen sich nur am <b>ersten Server</b> ändern. Der <b>Takt</b> ist der Abstand, in dem sich die Server „Ich bin da“ melden (Standard 1 Sekunde). Die <b>Selbst-Abschaltung</b> ist die Zeit, nach der sich ein aktiver Server selbst stoppt, wenn er niemanden mehr erreicht – damit nie zwei Server gleichzeitig aktiv sind. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
+      <li><b>Umschaltungen je Tag:</b> Jeder Server übernimmt höchstens so oft automatisch pro Tag. Danach geht die Automatik aus und es kommt ein Alarm.</li>
+      <li><b>Alarme</b> gehen an die Administratoren und tragen den Zusatz „(Beobachtung)“. Je Art kommt höchstens einer alle 15 Minuten.</li>
+      <li><b>Netzlaufwerk-Sicherung:</b> Künftig soll sie nur auf dem aktiven Server laufen. In dieser Version läuft sie auf jedem Server weiter. Der Reiter zeigt nur, was passieren würde: „Beobachtung: würde pausieren – passiver Knoten“ oder „… – pdh-ha nicht erreichbar“.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
+    Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>
+  {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">

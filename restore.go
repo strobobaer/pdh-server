@@ -16,3 +16,10 @@ var RestoreScript string
 //
 //go:embed scripts/pdh-vm-prepare.sh
 var VMPrepareScript string
+
+// HAJoinScript fügt einen weiteren Server oder den Zeugen dem Ausfallschutz
+// (pdh-ha) hinzu (scripts/pdh-ha-join.sh). Das PDH bietet es zusammen mit dem
+// Beitrittscode unter Server-Einstellungen → Ausfallschutz an.
+//
+//go:embed scripts/pdh-ha-join.sh
+var HAJoinScript string

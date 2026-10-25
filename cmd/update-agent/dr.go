@@ -61,6 +61,8 @@ type drStatus struct {
 	Missing      []string  `json:"missing"`
 	Bases        []drBase  `json:"bases"`
 	Running      string    `json:"running"` // "", "base", "files"
+	Paused       string    `json:"paused"`  // "passiver Knoten" (pdh-ha), sonst ""
+	Advice       string    `json:"advice"`  // Beobachtung: würde pausieren (Sperre aus)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
@@ -88,21 +90,23 @@ type drN8NInfo struct {
 // drState: dauerhaft gespeicherter Zustand (state.json); Running nur im Speicher.
 type drState struct {
 	mu           sync.Mutex
-	Config       drConfig   `json:"config"`
-	Archiving    bool       `json:"archiving"`
-	LastWALShip  time.Time  `json:"last_wal_ship"`
-	LastWALFile  string     `json:"last_wal_file"`
-	LastBase     time.Time  `json:"last_base"`
-	BaseTry      time.Time  `json:"base_try"` // letzter automatischer Versuch
-	LastFileSync time.Time  `json:"last_file_sync"`
-	FilesTry     time.Time  `json:"files_try"` // letzter automatischer Abgleich-Versuch
-	Sources      []drSource `json:"sources"`
-	Missing      []string   `json:"missing"`
-	N8N          *drN8NInfo `json:"n8n,omitempty"`
+	Config       drConfig          `json:"config"`
+	Archiving    bool              `json:"archiving"`
+	LastWALShip  time.Time         `json:"last_wal_ship"`
+	LastWALFile  string            `json:"last_wal_file"`
+	LastBase     time.Time         `json:"last_base"`
+	BaseTry      time.Time         `json:"base_try"` // letzter automatischer Versuch
+	LastFileSync time.Time         `json:"last_file_sync"`
+	FilesTry     time.Time         `json:"files_try"` // letzter automatischer Abgleich-Versuch
+	Sources      []drSource        `json:"sources"`
+	Missing      []string          `json:"missing"`
+	N8N          *drN8NInfo        `json:"n8n,omitempty"`
 	Errors       map[string]string `json:"errors"` // je Art: wal, base, files, postgres, state
 	ErrorAt      time.Time         `json:"error_at"`
 	EnabledSince time.Time         `json:"enabled_since"`
 	Running      string            `json:"-"`
+	Paused       string            `json:"-"` // nur im Speicher, je Takt neu (ha.go)
+	Advice       string            `json:"-"` // dito
 	saveMu       sync.Mutex        // state.json nie gleichzeitig schreiben
 }
 
@@ -213,7 +217,7 @@ func (a *updateAgent) drOK(kind string) {
 // drErrorText: alle offenen Fehler, feste Reihenfolge.
 func drErrorText(errs map[string]string) string {
 	var out []string
-	for _, k := range []string{"state", "postgres", "wal", "base", "files"} {
+	for _, k := range []string{"state", "ha", "postgres", "wal", "base", "files"} {
 		if e := errs[k]; e != "" {
 			out = append(out, e)
 		}
@@ -251,7 +255,7 @@ func (a *updateAgent) drStatus() drStatus {
 	defer a.dr.mu.Unlock()
 	st := drStatus{OK: true, Supported: true, Config: a.dr.Config, Archiving: a.dr.Archiving,
 		LastWALShip: a.dr.LastWALShip, LastWALFile: a.dr.LastWALFile, LastBase: a.dr.LastBase,
-		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running,
+		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running, Paused: a.dr.Paused, Advice: a.dr.Advice,
 		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince}
 	for _, s := range a.dr.Sources {
 		st.Sources = append(st.Sources, s.Label)
@@ -360,6 +364,10 @@ func (a *updateAgent) drRunHandler(w http.ResponseWriter, r *http.Request) {
 	a.dr.mu.Unlock()
 	if !enabled {
 		drRefuse(w, "Ausfallschutz ist ausgeschaltet")
+		return
+	}
+	if !a.drCheckActive(r.Context()) {
+		drRefuse(w, "Sicherung pausiert: "+drPauseReason(a.drStatus()))
 		return
 	}
 	if err := a.drStartRun(req.What); err != nil {

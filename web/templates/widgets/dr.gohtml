@@ -1,6 +1,7 @@
 {{/* Server-Einstellungen → Ausfallschutz (internal/web/dr.go). Stil: vpn-style. */}}
 {{define "dr-admin"}}{{$v := .}}
 {{template "vpn-style"}}
+{{template "ha-admin" .HA}}
 <div class="card" id="dr-status">
   <div class="card-title"><span><i class="ti ti-shield-check"></i> Ausfallschutz – Sicherung aufs Netzlaufwerk</span>
     {{if not .AgentErr}}<span class="vp-state {{if and .Status.Config.Enabled (not .Status.Error)}}ok{{else if .Status.Config.Enabled}}down{{else}}off{{end}}"><span class="vp-dot{{if and .Status.Config.Enabled (not .Status.Error)}} on{{end}}"></span> {{if .Status.Config.Enabled}}eingeschaltet{{else}}ausgeschaltet{{end}}</span>{{end}}</div>
@@ -9,6 +10,8 @@
   <p class="vp-hint">Die Sicherung läuft über den Update-Agenten des Servers (systemd-Installation). Ohne ihn ist der Ausfallschutz nicht verfügbar.</p>
   {{else}}
   <p class="vp-hint">Der Server sichert laufend <b>Datenbank</b> (tägliche Grundsicherung und alle Änderungen), <b>Dateien und Konfiguration</b> von PDH, Nextcloud und n8n in einen Ordner auf einem Netzlaufwerk. Daraus baut <code>pdh-restore.sh</code> einen neuen Server oder eine VM auf – auch auf einen bestimmten Zeitpunkt.</p>
+  {{if .Status.Paused}}<div class="vp-msg"><i class="ti ti-player-pause"></i> Sicherung pausiert: {{.Status.Paused}}</div>{{end}}
+  {{if .Status.Advice}}<div class="vp-msg"><i class="ti ti-eye"></i> {{.Status.Advice}} – in dieser Version läuft die Sicherung weiter.</div>{{end}}
   {{range .Alerts}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
   {{if .Status.Config.Enabled}}
   <table class="table" style="margin-top:8px">

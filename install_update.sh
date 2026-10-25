@@ -106,6 +106,18 @@ else
     # schreibgeschuetztes Dateisystem) darf das Update nicht halb fertig
     # abbrechen.
     systemctl restart pdh
+    # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
+    # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
+    # ein Fehler bricht das Update nicht ab.
+    if [[ -x /usr/local/bin/pdh-ha ]]; then
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
+                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
+        else
+            bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
+                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
+        fi
+    fi
     if install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent; then
         systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
     else
