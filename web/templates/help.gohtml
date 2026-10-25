@@ -1751,7 +1751,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>pdh-ha-join.sh</b> im Reiter herunterladen und auf den neuen Ubuntu-Server kopieren.</li>
       <li>Dort ausführen: <code>sudo bash pdh-ha-join.sh &lt;Code&gt;</code></li>
       <li>Nach kurzer Zeit zeigt die Tabelle beide Server. Die Betriebsart steht auf <b>Duo</b>.</li>
-      <li>Zum Schluss <b>Automatik an</b> wählen, damit der Dienst Entscheidungen trifft (im Beobachtungsmodus nur als „würde jetzt“).</li>
+      <li>Optional: <b>Automatik an</b> wählen. Dann trifft der Dienst Entscheidungen – in dieser Version zeigt er sie nur als Ereignis „würde jetzt: …“ an, es passiert nichts. So kannst du beobachten, was er tun würde.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-eye-check"></i> So fügst du einen Zeugen hinzu (Programm oder Container)</b>
     <ol class="hb-steps">
@@ -1782,7 +1782,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> Zeiten, Umschaltungen und Alarme</b>
     <ul>
-      <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) lassen sich nur am <b>ersten Server</b> ändern. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
+      <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) lassen sich nur am <b>ersten Server</b> ändern. Der <b>Takt</b> ist der Abstand, in dem sich die Server „Ich bin da“ melden (Standard 1 Sekunde). Die <b>Selbst-Abschaltung</b> ist die Zeit, nach der sich ein aktiver Server selbst stoppt, wenn er niemanden mehr erreicht – damit nie zwei Server gleichzeitig aktiv sind. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
       <li><b>Umschaltungen je Tag:</b> Jeder Server übernimmt höchstens so oft automatisch pro Tag. Danach geht die Automatik aus und es kommt ein Alarm.</li>
       <li><b>Alarme</b> gehen an die Administratoren und tragen den Zusatz „(Beobachtung)“. Je Art kommt höchstens einer alle 15 Minuten.</li>
       <li><b>Netzlaufwerk-Sicherung:</b> Sie läuft nur auf dem aktiven Server. Auf dem passiven steht „Sicherung pausiert: passiver Knoten“. Ist <code>pdh-ha</code> eingerichtet, aber nicht erreichbar, pausiert die Sicherung mit einer Fehlermeldung.</li>
@@ -1792,7 +1792,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="faq"data-title="Tipps &amp; häufige Fragen" data-pages="">
+<section class="hb-ch" id="faq" data-title="Tipps &amp; häufige Fragen" data-pages="">
   <h2><i class="ti ti-help-circle"></i> Tipps &amp; häufige Fragen</h2>
   <h3>Ich sehe einen Reiter oder Knopf nicht.</h3>
   <p>Viele Funktionen hängen von Berechtigungen ab. Frag eure Administration.</p>

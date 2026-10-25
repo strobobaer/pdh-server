@@ -13,7 +13,7 @@ im Kapitel „Versionen & Updates“ an.
 ## [0.75.0] – 2026-10-25
 
 ### Neu
-- Ausfallschutz mit zwei Servern und optionalem Zeugen im Beobachtungsmodus: Server koppeln, Heartbeat über LAN und VPN, Rollen und Ereignisse ansehen – es wird noch nichts umgeschaltet.
+- Ausfallschutz mit zwei Servern und optionalem Zeugen im Beobachtungsmodus: Server koppeln, die Server prüfen sich gegenseitig über LAN und VPN, Rollen und Ereignisse ansehen – es wird noch nichts umgeschaltet.
 - Testlabor für den Ausfallschutz (Docker).
 
 ### Geändert
