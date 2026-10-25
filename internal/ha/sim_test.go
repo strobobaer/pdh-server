@@ -69,7 +69,7 @@ type sim struct {
 	tick         int
 	nodes        []*simNode
 	w            *simWitness
-	down         map[string]int // "a|b" → getrennt bis Takt (ausschließlich)
+	down         map[string]int // "a>b" → Richtung getrennt bis Takt (ausschließlich)
 	rng          *rand.Rand     // nil: kein Verzug
 	queue        []simMsg
 	lastAt       map[string]int
@@ -100,24 +100,27 @@ func newSim(t testing.TB, mode Mode, rng *rand.Rand) *sim {
 	return s
 }
 
-func linkKey(a, b string) string {
-	if a > b {
-		a, b = b, a
-	}
-	return a + "|" + b
-}
+// linkUp: Richtung from → to verbunden.
+func (s *sim) linkUp(from, to string) bool { return s.down[from+">"+to] <= s.tick }
 
-func (s *sim) linkUp(a, b string) bool { return s.down[linkKey(a, b)] <= s.tick }
-
-// cut trennt die Verbindung für n Takte (n < 0: dauerhaft).
-func (s *sim) cut(a, b string, n int) {
+// cutOne trennt nur die Richtung from → to für n Takte (n < 0: dauerhaft).
+func (s *sim) cutOne(from, to string, n int) {
 	if n < 0 {
 		n = 1 << 30
 	}
-	s.down[linkKey(a, b)] = s.tick + 1 + n
+	s.down[from+">"+to] = s.tick + 1 + n
 }
 
-func (s *sim) heal(a, b string) { delete(s.down, linkKey(a, b)) }
+// cut trennt die Verbindung in beide Richtungen.
+func (s *sim) cut(a, b string, n int) {
+	s.cutOne(a, b, n)
+	s.cutOne(b, a, n)
+}
+
+func (s *sim) heal(a, b string) {
+	delete(s.down, a+">"+b)
+	delete(s.down, b+">"+a)
+}
 
 func (s *sim) node(id string) *simNode {
 	for _, n := range s.nodes {
@@ -270,6 +273,7 @@ func (s *sim) nodeStep(n *simNode) {
 		HandoverPending: n.carry.HandoverPending, HandoverAt: n.carry.HandoverAt,
 		HandoverSentAt: n.carry.HandoverSentAt,
 		NoActiveSince:  n.carry.NoActiveSince, NoActiveAlarmed: n.carry.NoActiveAlarmed,
+		VoteSince: n.carry.VoteSince, VoteAlarmed: n.carry.VoteAlarmed, LastMutual: n.carry.LastMutual,
 	}
 	if s.mode == Trio {
 		in.Witness = s.obs(n.view, now, n.id, "w", "witness")
@@ -326,8 +330,13 @@ func (s *sim) record() {
 		if s.w == nil && l[1] == "w" {
 			continue
 		}
-		if !s.linkUp(l[0], l[1]) {
+		switch ab, ba := s.linkUp(l[0], l[1]), s.linkUp(l[1], l[0]); {
+		case !ab && !ba:
 			fmt.Fprintf(&b, "%s-%s:getrennt ", l[0], l[1])
+		case !ab:
+			fmt.Fprintf(&b, "%s>%s:getrennt ", l[0], l[1])
+		case !ba:
+			fmt.Fprintf(&b, "%s>%s:getrennt ", l[1], l[0])
 		}
 	}
 	s.trace = append(s.trace, fmt.Sprintf("%4d %s", s.tick, b.String()))
@@ -466,6 +475,35 @@ func TestSimTrio(t *testing.T) {
 			s.want("a", Active, 1)
 			s.want("b", Passive, 1)
 		}},
+		{"einseitig: zeuge sieht den abgeschalteten, der ihn nicht", func(s *sim) {
+			s.run(5)
+			s.cut("a", "b", -1)
+			s.cutOne("w", "a", -1)
+			s.run(150)
+			s.want("a", Fenced, 1)
+			s.want("b", Passive, 1)
+			s.wantEvent("Übernahme verweigert")
+		}},
+		{"einseitig: aktiver hört partner, partner ihn nicht", func(s *sim) {
+			s.run(5)
+			s.cutOne("a", "b", -1)
+			s.cut("a", "w", -1)
+			s.run(60)
+			s.want("b", Active, 2)
+			s.wantEvent("a role: Rolle: aktiv → abgeschaltet")
+		}},
+		{"wartung, aktiver isoliert, wartung aus beim passiven", func(s *sim) {
+			s.run(3)
+			s.node("a").cmd = CmdMaintOn
+			s.run(5)
+			s.cut("a", "b", -1)
+			s.cut("a", "w", -1)
+			s.run(5)
+			s.node("b").cmd = CmdMaintOff
+			s.run(100)
+			s.want("a", Active, 1)
+			s.want("b", Passive, 1)
+		}},
 		{"rollentausch", func(s *sim) {
 			s.run(5)
 			s.node("a").cmd = CmdSwap
@@ -530,6 +568,12 @@ func TestSimDuo(t *testing.T) {
 // seltene Neustarts und Rollentausche (handover geht mitunter verloren);
 // Verzug ≤ 1 Takt. Liefert die Zahl der Rollenwechsel nach aktiv.
 func simRandom(t testing.TB, seed int64, ticks int) int {
+	return simRandomOpts(t, seed, ticks, false)
+}
+
+// simRandomOpts: oneWay = Verbindungen fallen auch nur in eine Richtung aus,
+// dazu zufällige Wartungsbefehle.
+func simRandomOpts(t testing.TB, seed int64, ticks int, oneWay bool) int {
 	rng := rand.New(rand.NewSource(seed))
 	s := newSim(t, Trio, rng)
 	s.set.Cooldown, s.set.MaxPerDay = 0, 20
@@ -538,8 +582,21 @@ func simRandom(t testing.TB, seed int64, ticks int) int {
 	restartAt := map[string]int{}
 	for i := 0; i < ticks; i++ {
 		for _, l := range links {
-			if s.linkUp(l[0], l[1]) && rng.Intn(cutRate) == 0 {
-				s.cut(l[0], l[1], 1+rng.Intn(120))
+			if !oneWay {
+				if s.linkUp(l[0], l[1]) && rng.Intn(cutRate) == 0 {
+					s.cut(l[0], l[1], 1+rng.Intn(120))
+				}
+				continue
+			}
+			if s.linkUp(l[0], l[1]) && s.linkUp(l[1], l[0]) && rng.Intn(cutRate) == 0 {
+				switch d := 1 + rng.Intn(120); rng.Intn(3) {
+				case 0:
+					s.cut(l[0], l[1], d)
+				case 1:
+					s.cutOne(l[0], l[1], d)
+				default:
+					s.cutOne(l[1], l[0], d)
+				}
 			}
 		}
 		for _, n := range s.nodes {
@@ -551,6 +608,11 @@ func simRandom(t testing.TB, seed int64, ticks int) int {
 				restartAt[n.id] = s.tick + 1 + rng.Intn(120)
 			case n.up && n.p.Role == Active && rng.Intn(400) == 0:
 				n.cmd = CmdSwap
+			case oneWay && n.up && rng.Intn(500) == 0:
+				n.cmd = CmdMaintOn
+				if rng.Intn(2) == 0 {
+					n.cmd = CmdMaintOff
+				}
 			}
 		}
 		s.step()
@@ -572,7 +634,9 @@ func TestSimTrioRandom(t *testing.T) {
 	promoted := 0
 	for seed := int64(1); seed <= int64(n); seed++ {
 		promoted += simRandom(t, seed, 2000)
+		promoted += simRandomOpts(t, seed, 2000, true)
 	}
+	n *= 2
 	t.Logf("%d Wechsel nach aktiv in %d Läufen", promoted, n)
 	// Die Simulation muss tatsächlich umschalten, sonst prüft sie nichts.
 	if promoted < n {
@@ -585,4 +649,13 @@ func FuzzSimTrio(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, seed int64) { simRandom(t, seed, 2000) })
+}
+
+// FuzzSimOneWay: wie FuzzSimTrio, Ausfälle auch nur in eine Richtung,
+// dazu Wartungsbefehle.
+func FuzzSimOneWay(f *testing.F) {
+	for _, seed := range []int64{1, 7, 42, 1234, 20261025} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, seed int64) { simRandomOpts(t, seed, 2000, true) })
 }

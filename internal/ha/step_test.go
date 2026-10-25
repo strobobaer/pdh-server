@@ -25,6 +25,7 @@ func base(mode Mode, role Role) Input {
 		DataAssumed:   true,
 		Settings:      DefaultSettings(),
 		Persist:       Persisted{Term: 1, Role: role, PartnerVersion: "0.75.0"},
+		LastMutual:    100 * sec,
 	}
 }
 
@@ -112,6 +113,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Active)
 				in.Partner = gonePeer("node", Passive, 1, 91*sec)
 				in.Witness = gonePeer("witness", Witness, 1, 91*sec)
+				in.LastMutual = 91 * sec
 				return in
 			},
 			role: Active, term: 1,
@@ -122,6 +124,7 @@ func TestStepTable(t *testing.T) {
 				in := base(Trio, Active)
 				in.Partner = gonePeer("node", Passive, 1, 90*sec)
 				in.Witness = gonePeer("witness", Witness, 1, 90*sec)
+				in.LastMutual = 90 * sec
 				return in
 			},
 			role: Fenced, term: 1,
@@ -132,7 +135,11 @@ func TestStepTable(t *testing.T) {
 		},
 		{
 			name: "trio aktiv nie jemanden gesehen",
-			in:   func() Input { return base(Trio, Active) },
+			in: func() Input {
+				in := base(Trio, Active)
+				in.LastMutual = 0
+				return in
+			},
 			role: Fenced, term: 1,
 			actions: acts(ActFence, 1, ActVIPRelease, 1),
 		},
@@ -643,7 +650,7 @@ func TestStepBrakes(t *testing.T) {
 				in := duoTakeover()
 				in.Persist.LastSwitch = testWall.Add(-time.Hour)
 				in.Persist.SwitchDay, in.Persist.SwitchCount = "2026-10-25", 3
-				in.Persist.MaintSeq = 4
+				in.Persist.MaintSeq, in.Partner.MaintSeq = 4, 4
 				return in
 			},
 			role: Passive, term: 1,
@@ -792,6 +799,13 @@ func TestAllowed(t *testing.T) {
 		reason string
 	}{
 		{"frei", func(in *Input) {}, true, ""},
+		{"wartung vor wartungsstand", func(in *Input) {
+			in.Persist.Maint, in.Persist.MaintSeq = true, 6
+		}, false, "Wartung"},
+		{"wartungsstand vor version", func(in *Input) {
+			in.Persist.MaintSeq, in.Partner.MaintSeq = 6, 5
+			in.Persist.PartnerVersion = "x"
+		}, false, "Wartungsstand beim Partner noch nicht angekommen"},
 		{"wartung vor version", func(in *Input) {
 			in.Persist.Maint, in.Persist.PartnerVersion = true, "x"
 		}, false, "Wartung"},
@@ -922,6 +936,49 @@ func TestStepCommands(t *testing.T) {
 			role: Passive, term: 3,
 		},
 		{
+			name: "später handover nach rückfall des partners wird abgelehnt",
+			in: func() Input {
+				in := receive(4)()
+				in.Partner.Role = Active
+				return in
+			},
+			role: Passive, term: 3,
+		},
+		{
+			name: "handover, partner mit anderer amtszeit",
+			in: func() Input {
+				in := receive(4)()
+				in.Persist.Term = 3
+				in.Partner.Term = 2
+				return in
+			},
+			role: Passive, term: 3,
+		},
+		{
+			name: "handover, partner nicht gesehen",
+			in: func() Input {
+				in := receive(4)()
+				in.Partner = gonePeer("node", Passive, 3, 95*sec)
+				return in
+			},
+			role: Passive, term: 3,
+		},
+		{
+			name: "rollentausch: partner sieht uns nicht mehr",
+			in: func() Input {
+				in := pending(95*sec, 95*sec)
+				in.Partner.SeesSelf = false
+				return in
+			},
+			role: Passive, term: 4,
+			check: func(t *testing.T, out Output) {
+				if out.HandoverPending != 0 {
+					t.Fatalf("Rollentausch nicht beendet: %d", out.HandoverPending)
+				}
+				wantEvent(t, out, "alarm", "Rollentausch fehlgeschlagen")
+			},
+		},
+		{
 			name: "rollentausch: wiederholung nach 5 takten",
 			in:   func() Input { return pending(95*sec, 95*sec) },
 			role: Passive, term: 3,
@@ -1032,6 +1089,9 @@ func TestStepCommands(t *testing.T) {
 			role: Active, term: 8,
 			actions: acts(ActPromote, 8, ActVIPTake, 8),
 			check: func(t *testing.T, out Output) {
+				if !out.Persist.LastSwitch.Equal(testWall) || out.Persist.SwitchCount != 0 {
+					t.Fatalf("erzwungen: Wartezeit ja, Zählung nein: %+v", out.Persist)
+				}
 				wantEvent(t, out, "alarm", "Übernahme erzwungen")
 				wantEvent(t, out, "role", "Rolle: passiv → aktiv (Amtszeit 8)")
 			},
@@ -1116,9 +1176,13 @@ func TestStepMaintSpread(t *testing.T) {
 		{"partner niedriger", func(in *Input) {
 			in.Partner.Maint, in.Partner.MaintSeq = true, 2
 		}, false, 3},
-		{"partner gleich", func(in *Input) {
+		{"partner gleich, wartung an gewinnt", func(in *Input) {
 			in.Partner.Maint, in.Partner.MaintSeq = true, 3
-		}, false, 3},
+		}, true, 3},
+		{"partner gleich, eigene wartung bleibt", func(in *Input) {
+			in.Persist.Maint = true
+			in.Partner.Maint, in.Partner.MaintSeq = false, 3
+		}, true, 3},
 		{"partner nicht gesehen", func(in *Input) {
 			in.Partner = gonePeer("node", Active, 1, 90*sec)
 			in.Partner.Maint, in.Partner.MaintSeq = true, 9
@@ -1418,6 +1482,220 @@ func TestStepFenceReturn(t *testing.T) {
 					t.Fatalf("Bitte muss bestehen bleiben: %d", out.VotePending)
 				}
 			},
+		},
+	})
+}
+
+// TestStepMutual (R8): aktiv bleibt nur bei gegenseitiger Sicht.
+func TestStepMutual(t *testing.T) {
+	lastMutual := func(want time.Duration) func(t *testing.T, out Output) {
+		return func(t *testing.T, out Output) {
+			t.Helper()
+			if out.LastMutual != want {
+				t.Fatalf("LastMutual = %v, erwartet %v", out.LastMutual, want)
+			}
+		}
+	}
+	oneSided := func(last time.Duration) func() Input {
+		return func() Input {
+			in := base(Trio, Active)
+			in.Partner = gonePeer("node", Passive, 1, 50*sec)
+			in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+			in.Witness.SeesSelf = false
+			in.LastMutual = last
+			return in
+		}
+	}
+	runCases(t, []stepCase{
+		{
+			name: "trio zeuge gegenseitig",
+			in: func() Input {
+				in := base(Trio, Active)
+				in.Partner = gonePeer("node", Passive, 1, 50*sec)
+				in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+				in.LastMutual = 60 * sec
+				return in
+			},
+			role: Active, term: 1, check: lastMutual(100 * sec),
+		},
+		{
+			name: "trio zeuge einseitig 9 s",
+			in:   oneSided(91 * sec),
+			role: Active, term: 1, check: lastMutual(91 * sec),
+		},
+		{
+			name: "trio zeuge einseitig 10 s",
+			in:   oneSided(90 * sec),
+			role: Fenced, term: 1,
+			actions: acts(ActFence, 1, ActVIPRelease, 1),
+		},
+		{
+			name: "trio partner einseitig 10 s",
+			in: func() Input {
+				in := base(Trio, Active)
+				in.Partner = seenPeer("node", Passive, 1, 100*sec)
+				in.Partner.SeesSelf = false
+				in.Witness = gonePeer("witness", Witness, 1, 50*sec)
+				in.LastMutual = 90 * sec
+				return in
+			},
+			role: Fenced, term: 1,
+			actions: acts(ActFence, 1, ActVIPRelease, 1),
+		},
+		{
+			name: "duo partner einseitig, gateway 10 s weg",
+			in: func() Input {
+				in := base(Duo, Active)
+				in.Gateway, in.GatewayLastOK = false, 90*sec
+				in.Partner = seenPeer("node", Passive, 1, 100*sec)
+				in.Partner.SeesSelf = false
+				in.LastMutual = 90 * sec
+				return in
+			},
+			role: Fenced, term: 1,
+			actions: acts(ActFence, 1, ActVIPRelease, 1),
+		},
+		{
+			name: "stimme erhalten, zeuge sieht uns nicht mehr",
+			in: func() Input {
+				in := base(Trio, Passive)
+				in.Partner = gonePeer("node", Active, 1, 60*sec)
+				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor, in.Witness.SeesSelf = "self", false
+				in.VotePending, in.VoteAskedAt, in.VoteGranted = 2, 99*sec, 2
+				return in
+			},
+			role: Passive, term: 1,
+		},
+	})
+}
+
+// TestStepVoteRefused (R9): Stimmbitte bleibt 2 × Übernahmezeit ohne Zusage → einmal Alarm.
+func TestStepVoteRefused(t *testing.T) {
+	const text = "Übernahme verweigert – Zeuge sieht den anderen Server noch; prüfen und ggf. Übernahme erzwingen"
+	asking := func(since time.Duration, alarmed bool) func() Input {
+		return func() Input {
+			in := base(Trio, Passive)
+			in.Partner = gonePeer("node", Active, 1, 10*sec)
+			in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+			in.VotePending, in.VoteAskedAt, in.VoteSince, in.VoteAlarmed = 2, 98*sec, since, alarmed
+			return in
+		}
+	}
+	state := func(since time.Duration, alarmed, alarm bool) func(t *testing.T, out Output) {
+		return func(t *testing.T, out Output) {
+			t.Helper()
+			if out.VoteSince != since || out.VoteAlarmed != alarmed {
+				t.Fatalf("VoteSince/VoteAlarmed = %v/%v, erwartet %v/%v", out.VoteSince, out.VoteAlarmed, since, alarmed)
+			}
+			found := false
+			for _, e := range out.Events {
+				found = found || e.Kind == "alarm" && e.Text == text
+			}
+			if found != alarm {
+				t.Fatalf("Alarm = %v, erwartet %v: %v", found, alarm, out.Events)
+			}
+		}
+	}
+	runCases(t, []stepCase{
+		{
+			name: "erste bitte merkt beginn",
+			in: func() Input {
+				in := base(Trio, Passive)
+				in.Partner = gonePeer("node", Active, 1, 70*sec)
+				return in
+			},
+			role: Passive, term: 1,
+			actions: acts(ActRequestVote, 2),
+			check:   state(100*sec, false, false),
+		},
+		{name: "59 s", in: asking(41*sec, false), role: Passive, term: 1, check: state(41*sec, false, false)},
+		{name: "60 s", in: asking(40*sec, false), role: Passive, term: 1, check: state(40*sec, true, true)},
+		{name: "nur einmal", in: asking(10*sec, true), role: Passive, term: 1, check: state(10*sec, true, false)},
+		{
+			name: "partner wieder gesehen beendet die phase",
+			in: func() Input {
+				in := asking(10*sec, true)()
+				in.Partner = seenPeer("node", Active, 1, 100*sec)
+				return in
+			},
+			role: Passive, term: 1,
+			check: state(0, false, false),
+		},
+		{
+			name: "zusage beendet die phase",
+			in: func() Input {
+				in := asking(10*sec, true)()
+				in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+				in.Witness.VotedFor = "self"
+				in.VoteGranted = 2
+				return in
+			},
+			role: Active, term: 2,
+			actions: acts(ActPromote, 2, ActVIPTake, 2),
+			check:   state(0, false, false),
+		},
+	})
+}
+
+// TestStepMaintStand (R10): eine Übernahme verlangt denselben Wartungsstand
+// wie zuletzt beim Partner gesehen; Abschalten in Wartung nur bei gleichem Stand.
+func TestStepMaintStand(t *testing.T) {
+	// b hat während der Trennung „Wartung aus“ bekommen, a war in Wartung (Stand 5).
+	bAfterOff := func() Input {
+		in := duoTakeover()
+		in.Persist.Maint, in.Persist.MaintSeq = false, 6
+		in.Partner.Maint, in.Partner.MaintSeq = true, 5
+		return in
+	}
+	runCases(t, []stepCase{
+		{
+			name: "keine übernahme mit anderem wartungsstand",
+			in:   bAfterOff,
+			role: Passive, term: 1,
+			check: func(t *testing.T, out Output) {
+				in := bAfterOff()
+				if ok, reason := Allowed(in); ok || reason != "Wartungsstand beim Partner noch nicht angekommen" {
+					t.Fatalf("Allowed = %v %q", ok, reason)
+				}
+			},
+		},
+		{
+			name: "übernahme erzwingen geht trotzdem",
+			in: func() Input {
+				in := bAfterOff()
+				in.Command = CmdForceTakeover
+				return in
+			},
+			role: Active, term: 2,
+			actions: acts(ActPromote, 2, ActVIPTake, 2),
+		},
+		{
+			name: "wartung nur hier eingeschaltet: abschalten wie sonst",
+			in: func() Input {
+				in := base(Trio, Active)
+				in.Persist.Maint, in.Persist.MaintSeq = true, 6
+				in.Partner = gonePeer("node", Passive, 1, 50*sec)
+				in.Partner.MaintSeq = 5
+				in.Witness = gonePeer("witness", Witness, 1, 50*sec)
+				in.LastMutual = 50 * sec
+				return in
+			},
+			role: Fenced, term: 1,
+			actions: acts(ActFence, 1, ActVIPRelease, 1),
+		},
+		{
+			name: "gemeinsame wartung: kein abschalten",
+			in: func() Input {
+				in := base(Trio, Active)
+				in.Persist.Maint, in.Persist.MaintSeq = true, 6
+				in.Partner = gonePeer("node", Passive, 1, 50*sec)
+				in.Partner.Maint, in.Partner.MaintSeq = true, 6
+				in.Witness = gonePeer("witness", Witness, 1, 50*sec)
+				in.LastMutual = 50 * sec
+				return in
+			},
+			role: Active, term: 1,
 		},
 	})
 }

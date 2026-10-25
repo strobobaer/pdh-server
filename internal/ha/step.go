@@ -21,6 +21,7 @@ const dataAssumedNote = " (Datenstand angenommen, keine Replikation)"
 // Gründe für eine gesperrte Übernahme, in Prüfreihenfolge.
 const (
 	reasonMaint    = "Wartung"
+	reasonMaintSeq = "Wartungsstand beim Partner noch nicht angekommen"
 	reasonVersion  = "Versionen unterschiedlich"
 	reasonCooldown = "Wartezeit nach Umschaltung"
 	reasonData     = "Datenstand nicht aktuell"
@@ -47,6 +48,8 @@ func Allowed(in Input) (ok bool, reason string) {
 	switch {
 	case p.Maint:
 		return false, reasonMaint
+	case !maintAgreed(in.Partner, p):
+		return false, reasonMaintSeq
 	case p.PartnerVersion != in.Version:
 		return false, reasonVersion
 	case in.Wall.Sub(p.LastSwitch) < in.Settings.Cooldown:
@@ -58,6 +61,11 @@ func Allowed(in Input) (ok bool, reason string) {
 	}
 	return true, ""
 }
+
+// maintAgreed: der Partner hatte zuletzt denselben Wartungsstand wie wir.
+// Ohne das könnte eine nur hier geänderte Wartung die Automatik freigeben,
+// während der Partner (noch) in Wartung nicht abschaltet.
+func maintAgreed(pa *PeerObs, p Persisted) bool { return pa != nil && pa.MaintSeq == p.MaintSeq }
 
 func switchesToday(p Persisted, wall time.Time) int {
 	if p.SwitchDay != wall.Format("2006-01-02") {
@@ -79,6 +87,11 @@ func Step(in Input) Output {
 	s.out.VotePending, s.out.VoteAskedAt = in.VotePending, in.VoteAskedAt
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
+	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
+	s.out.LastMutual = in.LastMutual
+	if mutual(in.Partner) || in.Mode == Trio && mutual(in.Witness) {
+		s.out.LastMutual = in.Now
+	}
 	if s.p.Role == "" {
 		s.p.Role = Passive
 	}
@@ -144,8 +157,13 @@ func (s *stepper) observe() {
 		s.p.PartnerVersion = pa.Version
 	}
 	for _, o := range []*PeerObs{s.in.Partner, s.in.Witness} {
-		if seen(o) && o.MaintSeq > s.p.MaintSeq {
+		if !seen(o) {
+			continue
+		}
+		if o.MaintSeq > s.p.MaintSeq {
 			s.p.Maint, s.p.MaintSeq = o.Maint, o.MaintSeq
+		} else if o.MaintSeq == s.p.MaintSeq && o.Maint {
+			s.p.Maint = true // gleicher Stand, verschieden: Wartung gewinnt
 		}
 	}
 }
@@ -213,6 +231,7 @@ func (s *stepper) forceTakeover() bool {
 		}
 	}
 	s.promote(t+1, false)
+	s.p.LastSwitch = s.in.Wall // Wartezeit gilt, Tageszähler nicht
 	s.event("alarm", "Übernahme erzwungen")
 	return true
 }
@@ -235,8 +254,9 @@ func (s *stepper) swap() bool {
 // receiveHandover: der Partner übergibt die nächste Amtszeit – zählt nicht
 // zur Tageshöchstzahl und gilt auch in Wartung.
 func (s *stepper) receiveHandover() bool {
-	h := s.in.Handover
-	if h == 0 || h != s.p.Term+1 || s.out.HandoverPending != 0 {
+	h, pa := s.in.Handover, s.in.Partner
+	if h == 0 || h != s.p.Term+1 || s.out.HandoverPending != 0 ||
+		!seen(pa) || pa.Role != Passive || pa.Term != h-1 {
 		return false
 	}
 	s.promote(h, false)
@@ -260,7 +280,7 @@ func (s *stepper) handover() bool {
 	// Partner aus den Augen verloren: ob er übernommen hat, ist unklar, und
 	// er könnte inzwischen um eine Stimme bitten. Die übergebene Amtszeit gilt
 	// als vergeben, eine spätere Stimmbitte fragt nach der nächsten.
-	if !seen(pa) || since >= took && pa.Role != Passive {
+	if !mutual(pa) || (since >= took && pa.Role != Passive) {
 		s.clearHandover()
 		s.p.Term = hp
 		s.event("alarm", "Rollentausch fehlgeschlagen")
@@ -311,17 +331,15 @@ func (s *stepper) active() {
 		}
 		return
 	}
-	if s.p.Maint {
+	// Wartung hält nur, wenn der Partner sie mit demselben Stand kennt.
+	if s.p.Maint && maintAgreed(in.Partner, s.p) {
 		return
 	}
-	lost := false
-	switch in.Mode {
-	case Trio:
-		lost = absent(in.Partner, in.Now, in.Settings.FenceAfter) &&
-			absent(in.Witness, in.Now, in.Settings.FenceAfter)
-	case Duo:
-		lost = absent(in.Partner, in.Now, in.Settings.FenceAfter) &&
-			in.Now-in.GatewayLastOK >= in.Settings.FenceAfter
+	// Aktiv bleibt nur, wer gegenseitige Sicht hat – bloßes Empfangen reicht
+	// nicht, die Gegenstelle könnte uns für weg halten.
+	lost := in.Now-s.out.LastMutual >= in.Settings.FenceAfter
+	if in.Mode == Duo {
+		lost = lost && in.Now-in.GatewayLastOK >= in.Settings.FenceAfter
 	}
 	if lost {
 		s.act(ActFence, s.p.Term)
@@ -366,17 +384,29 @@ func (s *stepper) passiveTrio() {
 	if g := s.out.VotePending; g > s.p.Term && in.VoteGranted == g {
 		// Mit Stimme übernehmen: Partner gesehen und weder aktiv noch
 		// abgeschaltet (der kann gerade zurückkehren), oder für die volle
-		// Übernahmezeit weg.
+		// Übernahmezeit weg. Nur solange der Zeuge uns sieht – sein Schutz
+		// der Stimme reicht nur bis Übernahmezeit nach dem letzten Kontakt.
 		pa := in.Partner
 		gone := pa != nil && (seen(pa) && pa.Role != Active && pa.Role != Fenced ||
 			absent(pa, in.Now, in.Settings.TakeoverTrio))
-		if gone && s.takeoverAllowed() {
+		if gone && mutual(in.Witness) && s.takeoverAllowed() {
 			s.promote(g, true)
 		}
 		return
 	}
-	if in.Partner == nil || !absent(in.Partner, in.Now, in.Settings.TakeoverTrio) || !s.takeoverAllowed() {
+	if in.Partner == nil || !absent(in.Partner, in.Now, in.Settings.TakeoverTrio) {
+		s.out.VoteSince, s.out.VoteAlarmed = 0, false
 		return
+	}
+	if !s.takeoverAllowed() {
+		return
+	}
+	if s.out.VoteSince == 0 {
+		s.out.VoteSince = in.Now
+	}
+	if !s.out.VoteAlarmed && in.Now-s.out.VoteSince >= 2*in.Settings.TakeoverTrio {
+		s.out.VoteAlarmed = true
+		s.event("alarm", "Übernahme verweigert – Zeuge sieht den anderen Server noch; prüfen und ggf. Übernahme erzwingen")
 	}
 	if s.out.VotePending <= s.p.Term {
 		s.out.VotePending = s.p.Term + 1
@@ -441,7 +471,10 @@ func (s *stepper) votedForSelf(g uint64) bool {
 	return w != nil && s.in.SelfID != "" && w.Term == g && w.VotedFor == s.in.SelfID
 }
 
-func (s *stepper) clearVote() { s.out.VotePending, s.out.VoteAskedAt = 0, 0 }
+func (s *stepper) clearVote() {
+	s.out.VotePending, s.out.VoteAskedAt = 0, 0
+	s.out.VoteSince, s.out.VoteAlarmed = 0, false
+}
 
 func (s *stepper) act(k ActionKind, term uint64) {
 	s.out.Actions = append(s.out.Actions, Action{Kind: k, Term: term})

@@ -221,6 +221,9 @@ type Input struct {
 	HandoverSentAt  time.Duration // letzte handover-Aktion
 	NoActiveSince   time.Duration // >0: seit dann zwei passive, keiner aktiv
 	NoActiveAlarmed bool
+	VoteSince       time.Duration // erste noch offene Stimmbitte
+	VoteAlarmed     bool
+	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -237,4 +240,7 @@ type Output struct {
 	HandoverSentAt  time.Duration
 	NoActiveSince   time.Duration
 	NoActiveAlarmed bool
+	VoteSince       time.Duration
+	VoteAlarmed     bool
+	LastMutual      time.Duration
 }
