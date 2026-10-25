@@ -191,6 +191,20 @@ func shouldDial(self nodeConfig, peer clusterNode) bool {
 	return self.ID < peer.ID
 }
 
+// setCert tauscht das eigene Zertifikat (Erneuerung); gilt für neue Verbindungen.
+func (t *transport) setCert(c tls.Certificate) {
+	t.mu.Lock()
+	t.cert = c
+	t.mu.Unlock()
+}
+
+func (t *transport) currentCert() *tls.Certificate {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	c := t.cert
+	return &c
+}
+
 func (t *transport) tickLocked() time.Duration {
 	if t.cl.Settings.Tick > 0 {
 		return t.cl.Settings.Tick
@@ -368,11 +382,13 @@ func (t *transport) dialOnce(ctx context.Context, id, addr string) bool {
 		return false
 	}
 	c := tls.Client(raw, &tls.Config{
-		Certificates: []tls.Certificate{t.cert},
-		RootCAs:      t.ca,
-		ServerName:   id,
-		NextProtos:   []string{alpnHA},
-		MinVersion:   tls.VersionTLS13,
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return t.currentCert(), nil
+		},
+		RootCAs:    t.ca,
+		ServerName: id,
+		NextProtos: []string{alpnHA},
+		MinVersion: tls.VersionTLS13,
 	})
 	hctx, cancel := context.WithTimeout(ctx, handshakeMax)
 	err = c.HandshakeContext(hctx)
@@ -521,11 +537,15 @@ func (t *transport) receive(id, path, serial string, m message) {
 	if m.T == "hb" {
 		// Neustart der Gegenstelle (seq deutlich kleiner oder andere HostID):
 		// alte Kennungen der Doppelerkennung verwerfen
-		if p.hasLast && (m.Seq+restartSlack < p.last.Seq ||
-			(m.HostID != "" && p.last.HostID != "" && m.HostID != p.last.HostID)) {
+		restart := p.hasLast && (m.Seq+restartSlack < p.last.Seq ||
+			(m.HostID != "" && p.last.HostID != "" && m.HostID != p.last.HostID))
+		if restart {
 			p.dedup = nil
 		}
-		p.last, p.hasLast = m, true
+		// ein älterer Heartbeat über einen langsamen Weg ersetzt den neueren nicht
+		if !p.hasLast || restart || m.Seq > p.last.Seq {
+			p.last, p.hasLast = m, true
+		}
 		t.mu.Unlock()
 		return
 	}
@@ -754,11 +774,13 @@ func (t *transport) serve(ctx context.Context, ln net.Listener, join http.Handle
 		defer srv.Close()
 	}
 	cfg := &tls.Config{
-		Certificates: []tls.Certificate{t.cert},
-		ClientAuth:   tls.VerifyClientCertIfGiven,
-		ClientCAs:    t.ca,
-		NextProtos:   []string{alpnHA, alpnJoin},
-		MinVersion:   tls.VersionTLS13,
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return t.currentCert(), nil
+		},
+		ClientAuth: tls.VerifyClientCertIfGiven,
+		ClientCAs:  t.ca,
+		NextProtos: []string{alpnHA, alpnJoin},
+		MinVersion: tls.VersionTLS13,
 	}
 	sem := make(chan struct{}, 64) // gleichzeitige Handshakes
 	var wg sync.WaitGroup
@@ -863,8 +885,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // joinHandler bedient POST /v1/join (nur auf dem CA-Knoten). Der Code wird
 // beim Einlösen verbraucht – scheitert danach die Prüfung, ist ein neuer nötig.
-func joinHandler(st store, codes *joinCodes, onJoin func(clusterConfig), ev *eventLog) http.Handler {
-	var mu sync.Mutex
+// mu schützt cluster.json; der Daemon teilt ihn für eigene Schreibzugriffe
+// (nil = eigener).
+func joinHandler(st store, codes *joinCodes, mu *sync.Mutex, onJoin func(clusterConfig), ev *eventLog) http.Handler {
+	if mu == nil {
+		mu = &sync.Mutex{}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/join", func(w http.ResponseWriter, r *http.Request) {
 		var req joinRequest

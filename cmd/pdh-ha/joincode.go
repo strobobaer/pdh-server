@@ -133,3 +133,15 @@ func (j *joinCodes) redeem(secret, srcIP string, now time.Time) (role string, er
 	e.used = true
 	return e.role, nil
 }
+
+// open: mindestens ein ausgegebener Code ist noch gültig und unbenutzt.
+func (j *joinCodes) open(now time.Time) bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for _, e := range j.codes {
+		if !e.used && !now.After(e.expires) {
+			return true
+		}
+	}
+	return false
+}

@@ -335,7 +335,7 @@ func newJoinEnv(t *testing.T) *joinEnv {
 	e.ta = newTransport(nodeConfig{ID: "a", Kind: "node", Addrs: []string{e.addr}, CAHolder: true}, cl, certA, e.ca.pool, testMono(), e.ev)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go e.ta.serve(ctx, ln, joinHandler(e.st, e.codes, func(c clusterConfig) {
+	go e.ta.serve(ctx, ln, joinHandler(e.st, e.codes, nil, func(c clusterConfig) {
 		e.mu.Lock()
 		e.got = append(e.got, c)
 		e.mu.Unlock()
@@ -756,5 +756,20 @@ func TestJoinInternalErrorHidden(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("Einzelheiten fehlen im Protokoll: %+v", e.ev.since(0, 0))
+	}
+}
+
+func TestOlderHeartbeatKeepsNewer(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, pairCluster(1, "127.0.0.1:2"), certB, ca.pool, testMono(), nil)
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 1000, Term: 2})
+	tb.receive("a", "q", "1", message{T: "hb", Seq: 999, Term: 1}) // langsamer Weg
+	if v := tb.peers(testTick)["a"]; v.Last.Seq != 1000 || v.Last.Term != 2 || !pathAlive(v, "q") {
+		t.Fatalf("älterer Heartbeat übernommen: %+v", v.Last)
+	}
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 3, Term: 1}) // Neustart
+	if v := tb.peers(testTick)["a"]; v.Last.Seq != 3 {
+		t.Fatalf("Neustart nicht erkannt: %+v", v.Last)
 	}
 }
