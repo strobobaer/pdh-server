@@ -202,6 +202,11 @@ func TestAPI(t *testing.T) {
 	if s := d.statusNow(); s.Self.Role != ha.Active || s.Self.Term != 6 {
 		t.Fatalf("Übernahme erzwungen: %+v", s.Self)
 	}
+	// Befehle nur passend zur eigenen Rolle
+	err = apiDo(sock, http.MethodPost, "/v1/command", map[string]string{"cmd": "force_takeover"}, nil)
+	if err == nil || err.Error() != "Nur auf einem nicht aktiven Server möglich" {
+		t.Fatalf("Übernahme auf dem aktiven: %v", err)
+	}
 	if err := apiDo(sock, http.MethodPost, "/v1/setup", map[string]any{"addrs": []string{"127.0.0.1"}}, nil); err == nil {
 		t.Fatal("zweites Einrichten über API")
 	}
@@ -281,5 +286,27 @@ func TestAPIUnconfiguredSetup(t *testing.T) {
 	n, _ := st.loadNode()
 	if n.Addrs[0] != "10.0.0.1:7480" {
 		t.Fatalf("Port nicht ergänzt: %v", n.Addrs)
+	}
+}
+
+func TestAPICommandRoles(t *testing.T) {
+	d, fn, _ := apiDaemon(t)
+	fn.setView("b", seenView(message{Role: "aktiv", Term: 5, Ver: "test"}))
+	d.tick(context.Background())
+	d.tick(context.Background()) // passiv
+	if err := d.command("swap"); err == nil || err.Error() != "Nur auf dem aktiven Server möglich" {
+		t.Fatalf("Tausch auf dem passiven: %v", err)
+	}
+	d.mu.Lock()
+	d.removed = true
+	d.mu.Unlock()
+	for _, f := range []func() error{func() error { return d.command("force_takeover") }, func() error { return d.setMaintenance(true) }} {
+		if err := f(); err == nil || err.Error() != "Aus dem Cluster entfernt" {
+			t.Fatalf("entfernter Knoten: %v", err)
+		}
+	}
+	w := fakeDaemon(t, nodeConfig{ID: "w", Kind: "witness"}, trioCluster(), ha.Persisted{Role: ha.Witness, Term: 1}, newFakeNet())
+	if err := w.setMaintenance(true); err == nil || err.Error() != "Auf dem Zeugen nicht möglich" {
+		t.Fatalf("Wartung am Zeugen: %v", err)
 	}
 }

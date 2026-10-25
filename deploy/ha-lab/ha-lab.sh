@@ -242,6 +242,8 @@ sc_aktiv_weg() {
 sc_leitung_weg() {
     log "node2 von lan und vpn trennen – nichts darf umschalten"
     net_off node2 lan vpn || fail "Netz off node2"
+    wait_for 15 eval '[[ "$(jget seen:node1 <<<"$J2")" == nein ]] && roles aktiv passiv' ||
+        fail "Trennung wirkt nicht (node2 sieht node1 noch) oder Rollen geändert (node1=$R1, node2=$R2)"
     watch_for 45 eval 'roles aktiv passiv' || fail "Rollen geändert (node1=$R1, node2=$R2)"
 }
 
@@ -268,10 +270,10 @@ sc_hin_und_her() {
             ((takeovers <= 3)) || fail "mehr als 3 Umschaltungen"
             net_on node1 lan vpn wit || fail "Netz on node1"
             wait_for 60 eval 'roles passiv aktiv' || fail "Runde $round: node1 nach Rückkehr nicht passiv ($R1)"
-            sleep 3
+            watch_for 3 eval 'roles passiv aktiv' || fail "Runde $round: Rollen nicht stabil (node1=$R1, node2=$R2)"
             swap_on node2 || fail "Rollentausch auf node2"
             wait_for 60 eval 'roles aktiv passiv' || fail "Runde $round: Rollentausch nicht abgeschlossen"
-            sleep 3
+            watch_for 3 eval 'roles aktiv passiv' || fail "Runde $round: Rollen nach Tausch nicht stabil (node1=$R1, node2=$R2)"
         else
             log "Runde $round: Tageshöchstzahl erreicht, Wartung an"
             watch_for 10 eval '[[ "$R2" != aktiv ]]' || fail "node2 übernimmt trotz Wartung"

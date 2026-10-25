@@ -138,6 +138,23 @@ func (v haView) TargetsText() string        { return strings.Join(v.Status.Gatew
 func (v haView) JoinUntil() string          { return v.JoinExpires.Local().Format("02.01.2006 15:04") }
 func (haView) EventTime(t time.Time) string { return t.Local().Format("02.01. 15:04:05") }
 
+// CanCommand: Wartung und Befehle nur auf einem Server, der noch im Verbund ist.
+func (v haView) CanCommand() bool {
+	if v.Status.Self.Kind == "witness" {
+		return false
+	}
+	for _, w := range v.Status.Warnings {
+		if w == "Aus dem Cluster entfernt" {
+			return false
+		}
+	}
+	return true
+}
+
+// CanSwap: Rollentausch nur auf dem aktiven Server, Übernahme erzwingen nur auf einem nicht aktiven.
+func (v haView) CanSwap() bool  { return v.HasPeers() && v.CanCommand() && v.Status.Self.Role == "aktiv" }
+func (v haView) CanForce() bool { return v.HasPeers() && v.CanCommand() && v.Status.Self.Role != "aktiv" }
+
 // VersionDiff: pdh-ha meldet „Versionen unterschiedlich“.
 func (v haView) VersionDiff() bool {
 	for _, w := range v.Status.Warnings {

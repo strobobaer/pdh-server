@@ -350,8 +350,13 @@ func (d *daemon) issueJoinCode(role string) (string, time.Time, error) {
 func (d *daemon) setMaintenance(on bool) error {
 	d.lock()
 	defer d.unlock()
-	if !d.configured {
+	switch {
+	case !d.configured:
 		return errNotConfigured
+	case d.removed:
+		return errors.New("Aus dem Cluster entfernt")
+	case d.node.Kind == "witness":
+		return errors.New("Auf dem Zeugen nicht möglich")
 	}
 	p := d.p
 	p.Maint = on
@@ -385,10 +390,16 @@ func (d *daemon) command(cmd string) error {
 	switch {
 	case !d.configured:
 		return errNotConfigured
+	case d.removed:
+		return errors.New("Aus dem Cluster entfernt")
 	case d.node.Kind == "witness":
 		return errors.New("Auf dem Zeugen nicht möglich")
 	case d.modeLocked() == ha.Single:
 		return errors.New("Nur mit zwei Servern möglich")
+	case c == ha.CmdForceTakeover && d.p.Role == ha.Active:
+		return errors.New("Nur auf einem nicht aktiven Server möglich")
+	case c == ha.CmdSwap && d.p.Role != ha.Active:
+		return errors.New("Nur auf dem aktiven Server möglich")
 	}
 	d.cmd = c
 	d.event("info", "Befehl: "+text)

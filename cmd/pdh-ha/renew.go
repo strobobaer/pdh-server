@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -64,6 +66,10 @@ func (d *daemon) signLocked(csrPEM []byte, id, kind string) ([]byte, error) {
 	csr, err := x509.ParseCertificateRequest(rb.Bytes)
 	if err != nil || csr.Subject.CommonName != id {
 		return nil, errors.New("Signieranforderung passt nicht zur Kennung")
+	}
+	// wie beim Beitritt (admit): nur ECDSA P-256, gültig signiert
+	if pub, ok := csr.PublicKey.(*ecdsa.PublicKey); !ok || pub.Curve != elliptic.P256() || csr.CheckSignature() != nil {
+		return nil, errors.New("Signieranforderung muss ECDSA P-256 und gültig signiert sein")
 	}
 	caCert, err1 := os.ReadFile(d.st.etcPath("ca.crt"))
 	caKey, err2 := os.ReadFile(d.st.etcPath("ca.key"))

@@ -413,3 +413,28 @@ func TestHAVersionDiffUpdateCmd(t *testing.T) {
 		t.Error("Update-Befehl ohne Versionsunterschied")
 	}
 }
+
+// Knöpfe nur passend zur eigenen Rolle.
+func TestHAButtonsByRole(t *testing.T) {
+	base := func(role, kind string) haView {
+		return haView{Installed: true, Status: haStatus{Configured: true, Mode: "trio", Observe: true,
+			Self:  haNode{ID: "x", Kind: kind, Role: role},
+			Peers: []haNode{{ID: "y", Kind: "node", Role: "passiv"}}}}
+	}
+	has := func(out, s string) bool { return strings.Contains(out, s) }
+	const swap, force, maint = `name="cmd" value="swap"`, `name="cmd" value="force_takeover"`, `action="/admin/server-config/ha/maintenance"`
+	if out := renderDR(t, drView{HA: base("aktiv", "node")}); !has(out, swap) || has(out, force) || !has(out, maint) {
+		t.Error("aktiv: Tausch und Wartung ja, Übernahme erzwingen nein")
+	}
+	if out := renderDR(t, drView{HA: base("passiv", "node")}); has(out, swap) || !has(out, force) {
+		t.Error("passiv: Übernahme erzwingen ja, Tausch nein")
+	}
+	if out := renderDR(t, drView{HA: base("zeuge", "witness")}); has(out, swap) || has(out, force) || has(out, maint) {
+		t.Error("Zeuge: keine Befehle")
+	}
+	v := base("passiv", "node")
+	v.Status.Warnings = []string{"Aus dem Cluster entfernt"}
+	if out := renderDR(t, drView{HA: v}); has(out, swap) || has(out, force) || has(out, maint) {
+		t.Error("entfernt: keine Befehle")
+	}
+}
