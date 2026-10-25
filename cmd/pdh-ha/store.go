@@ -48,10 +48,11 @@ type clusterConfig struct {
 func (c clusterConfig) Mode() ha.Mode {
 	nodes, witness := 0, 0
 	for _, n := range c.Nodes {
-		if n.Kind == "witness" {
-			witness++
-		} else {
+		switch n.Kind {
+		case "node":
 			nodes++
+		case "witness":
+			witness++
 		}
 	}
 	switch {
@@ -200,7 +201,8 @@ type loggedEvent struct {
 }
 
 // eventLog ist ein Zeilenprotokoll (JSON) mit Rotation: events.jsonl,
-// events.jsonl.1, … – insgesamt höchstens keep Dateien.
+// events.jsonl.1, … – insgesamt höchstens keep Dateien. Die letzten memMax
+// Einträge liegen im Speicher; nur ältere Abfragen lesen die Dateien.
 type eventLog struct {
 	mu       sync.Mutex
 	path     string
@@ -208,18 +210,26 @@ type eventLog struct {
 	keep     int
 	seq      uint64
 	size     int64
+	memMax   int
+	buf      []loggedEvent
+	lastWarn time.Time
 }
 
 func openEventLog(path string, maxBytes int64, keep int) *eventLog {
 	if keep < 1 {
 		keep = 1
 	}
-	l := &eventLog{path: path, maxBytes: maxBytes, keep: keep}
-	for _, e := range l.readAll() {
+	l := &eventLog{path: path, maxBytes: maxBytes, keep: keep, memMax: 1000}
+	all := l.readAll()
+	for _, e := range all {
 		if e.Seq > l.seq {
 			l.seq = e.Seq
 		}
 	}
+	if len(all) > l.memMax {
+		all = all[len(all)-l.memMax:]
+	}
+	l.buf = all
 	if fi, err := os.Stat(path); err == nil {
 		l.size = fi.Size()
 	}
@@ -233,38 +243,62 @@ func (l *eventLog) file(i int) string {
 	return l.path + "." + strconv.Itoa(i)
 }
 
+// warn meldet Dateiprobleme auf stderr, höchstens einmal je Minute.
+func (l *eventLog) warn(err error) {
+	if time.Since(l.lastWarn) < time.Minute {
+		return
+	}
+	l.lastWarn = time.Now()
+	fmt.Fprintf(os.Stderr, "pdh-ha: Ereignisprotokoll %s: %v\n", l.path, err)
+}
+
 func (l *eventLog) add(e ha.Event) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.seq++
-	b, _ := json.Marshal(loggedEvent{Seq: l.seq, At: time.Now().UTC(), Kind: e.Kind, Text: e.Text})
+	le := loggedEvent{Seq: l.seq, At: time.Now().UTC(), Kind: e.Kind, Text: e.Text}
+	l.buf = append(l.buf, le)
+	if len(l.buf) > l.memMax {
+		l.buf = append([]loggedEvent(nil), l.buf[len(l.buf)-l.memMax:]...)
+	}
+	b, _ := json.Marshal(le)
 	b = append(b, '\n')
 	if l.size > 0 && l.size+int64(len(b)) > l.maxBytes {
 		l.rotate()
 	}
 	if err := os.MkdirAll(filepath.Dir(l.path), 0o700); err != nil {
+		l.warn(err)
 		return
 	}
 	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
+		l.warn(err)
 		return
 	}
 	defer f.Close()
-	if n, err := f.Write(b); err == nil {
-		l.size += int64(n)
+	n, err := f.Write(b)
+	l.size += int64(n)
+	if err != nil {
+		l.warn(err)
 	}
 }
 
-// rotate schiebt .1 → .2 …, die älteste Datei fällt weg.
+// rotate schiebt .1 → .2 …, die älteste Datei fällt weg. Scheitert das
+// Umbenennen der aktuellen Datei, bleibt die Größe stehen.
 func (l *eventLog) rotate() {
 	os.Remove(l.file(l.keep - 1))
 	for i := l.keep - 2; i >= 0; i-- {
-		os.Rename(l.file(i), l.file(i+1))
+		if err := os.Rename(l.file(i), l.file(i+1)); err != nil && !os.IsNotExist(err) {
+			l.warn(err)
+			if i == 0 {
+				return
+			}
+		}
 	}
 	l.size = 0
 }
 
-// readAll liest alle Dateien vom ältesten zum neuesten.
+// readAll liest alle Dateien vom ältesten zum neuesten (ohne Sperre).
 func (l *eventLog) readAll() []loggedEvent {
 	var out []loggedEvent
 	for i := l.keep - 1; i >= 0; i-- {
@@ -273,24 +307,24 @@ func (l *eventLog) readAll() []loggedEvent {
 			continue
 		}
 		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		sc.Buffer(make([]byte, 0, 64*1024), 4<<20)
 		for sc.Scan() {
 			var e loggedEvent
 			if json.Unmarshal(sc.Bytes(), &e) == nil && e.Seq > 0 {
 				out = append(out, e)
 			}
 		}
+		if err := sc.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "pdh-ha: Ereignisprotokoll %s: %v\n", l.file(i), err)
+		}
 		f.Close()
 	}
 	return out
 }
 
-// since liefert bis zu limit Einträge mit Seq > seq, aufsteigend.
-func (l *eventLog) since(seq uint64, limit int) []loggedEvent {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+func after(src []loggedEvent, seq uint64, limit int) []loggedEvent {
 	var out []loggedEvent
-	for _, e := range l.readAll() {
+	for _, e := range src {
 		if e.Seq > seq {
 			if limit > 0 && len(out) >= limit {
 				break
@@ -299,4 +333,17 @@ func (l *eventLog) since(seq uint64, limit int) []loggedEvent {
 		}
 	}
 	return out
+}
+
+// since liefert bis zu limit Einträge mit Seq > seq, aufsteigend. Aus dem
+// Speicher, solange der Puffer die Anfrage abdeckt; sonst aus den Dateien.
+func (l *eventLog) since(seq uint64, limit int) []loggedEvent {
+	l.mu.Lock()
+	if len(l.buf) == 0 || l.buf[0].Seq <= seq+1 {
+		out := after(l.buf, seq, limit)
+		l.mu.Unlock()
+		return out
+	}
+	l.mu.Unlock()
+	return after(l.readAll(), seq, limit)
 }

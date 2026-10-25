@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -25,6 +26,15 @@ var idRe = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
 // validID prüft eine Kennung: [a-z0-9-], 1–32 Zeichen, kein '-' am Rand.
 func validID(id string) bool {
 	return idRe.MatchString(id) && id[0] != '-' && id[len(id)-1] != '-'
+}
+
+// normHex macht Hex-Text vergleichbar: klein, ohne führende Nullen.
+func normHex(s string) string {
+	s = strings.TrimLeft(strings.ToLower(s), "0")
+	if s == "" {
+		return "0"
+	}
+	return s
 }
 
 func validKind(kind string) bool { return kind == "node" || kind == "witness" }
@@ -109,6 +119,9 @@ func signCSR(caCertPEM, caKeyPEM, csrPEM []byte, kind string, days int) ([]byte,
 	if !validKind(kind) {
 		return nil, fmt.Errorf("Ungültige Art %q", kind)
 	}
+	if days <= 0 {
+		return nil, errors.New("Laufzeit muss größer als 0 Tage sein")
+	}
 	cb, _ := pem.Decode(caCertPEM)
 	kb, _ := pem.Decode(caKeyPEM)
 	rb, _ := pem.Decode(csrPEM)
@@ -143,12 +156,16 @@ func signCSR(caCertPEM, caKeyPEM, csrPEM []byte, kind string, days int) ([]byte,
 		return nil, err
 	}
 	now := time.Now()
+	notAfter := now.AddDate(0, 0, days)
+	if notAfter.After(ca.NotAfter) {
+		notAfter = ca.NotAfter
+	}
 	tpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: id, OrganizationalUnit: []string{kind}},
 		DNSNames:     []string{id},
 		NotBefore:    now.Add(-5 * time.Minute),
-		NotAfter:     now.AddDate(0, 0, days),
+		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 	}
@@ -172,13 +189,13 @@ func fingerprint(certPEM []byte) string {
 // peerIdentity liest Kennung und Art des Gegenübers aus dem (bereits von TLS
 // gegen die CA geprüften) Zertifikat und weist gesperrte Seriennummern ab.
 func peerIdentity(cs tls.ConnectionState, revoked []string) (id, kind string, err error) {
-	if len(cs.PeerCertificates) == 0 {
-		return "", "", errors.New("Kein Zertifikat vorgelegt")
+	if len(cs.VerifiedChains) == 0 || len(cs.VerifiedChains[0]) == 0 {
+		return "", "", errors.New("Zertifikat nicht von der Cluster-CA")
 	}
-	c := cs.PeerCertificates[0]
-	ser := serialHex(c)
+	c := cs.VerifiedChains[0][0]
+	ser := normHex(serialHex(c))
 	for _, r := range revoked {
-		if r == ser {
+		if normHex(r) == ser {
 			return "", "", errors.New("Zertifikat gesperrt")
 		}
 	}

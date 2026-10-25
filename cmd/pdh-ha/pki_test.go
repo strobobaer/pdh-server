@@ -1,8 +1,12 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"net"
 	"strings"
@@ -138,5 +142,60 @@ func TestPeerIdentity(t *testing.T) {
 	// ohne Zertifikat
 	if _, _, err := peerIdentity(tls.ConnectionState{}, nil); err == nil {
 		t.Fatal("ohne Zertifikat akzeptiert")
+	}
+}
+
+func TestPeerIdentityUnverified(t *testing.T) {
+	caCert, caKey, _ := newCA("c1")
+	cert, _ := issueNode(t, caCert, caKey, "pdh-a", "node")
+	cs := tls.ConnectionState{PeerCertificates: []*x509.Certificate{parseCert(t, cert)}}
+	if _, _, err := peerIdentity(cs, nil); err == nil || err.Error() != "Zertifikat nicht von der Cluster-CA" {
+		t.Fatalf("unverifiziert: %v", err)
+	}
+}
+
+func TestPeerIdentityRevokedNormalized(t *testing.T) {
+	caCert, caKey, _ := newCA("c1")
+	cert, key := issueNode(t, caCert, caKey, "pdh-a", "node")
+	srvCert, srvKey := issueNode(t, caCert, caKey, "srv", "node")
+	cs, se, ce := handshake(t, srvCert, srvKey, caCert, cert, key, caCert)
+	if se != nil || ce != nil {
+		t.Fatal(se, ce)
+	}
+	ser := strings.ToUpper(serialHex(parseCert(t, cert)))
+	if _, _, err := peerIdentity(cs, []string{"000" + ser}); err == nil || err.Error() != "Zertifikat gesperrt" {
+		t.Fatalf("normalisiert: %v", err)
+	}
+}
+
+func TestSignCSRBadCN(t *testing.T) {
+	caCert, caKey, _ := newCA("c1")
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	for _, cn := range []string{"../x", "-a", "", "A"} {
+		der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: cn}}, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		csr := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
+		if _, err := signCSR(caCert, caKey, csr, "node", 730); err == nil {
+			t.Errorf("CN %q akzeptiert", cn)
+		}
+	}
+}
+
+func TestSignCSRDays(t *testing.T) {
+	caCert, caKey, _ := newCA("c1")
+	_, csr, _ := newKeyCSR("pdh-a", "node")
+	for _, d := range []int{0, -5} {
+		if _, err := signCSR(caCert, caKey, csr, "node", d); err == nil {
+			t.Errorf("days %d akzeptiert", d)
+		}
+	}
+	c, err := signCSR(caCert, caKey, csr, "node", 100000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseCert(t, c).NotAfter.After(parseCert(t, caCert).NotAfter) {
+		t.Fatal("Laufzeit über CA hinaus")
 	}
 }

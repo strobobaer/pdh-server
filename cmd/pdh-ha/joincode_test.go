@@ -27,7 +27,7 @@ func TestJoinCodesRedeem(t *testing.T) {
 	var jc joinCodes
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	sec := jc.issue("node", now)
+	sec, _ := jc.issue("node", now)
 	if role, err := jc.redeem(sec, "1.2.3.4", now); err != nil || role != "node" {
 		t.Fatalf("%q %v", role, err)
 	}
@@ -35,12 +35,12 @@ func TestJoinCodesRedeem(t *testing.T) {
 		t.Fatalf("zweites Mal: %v", err)
 	}
 
-	sec = jc.issue("witness", now)
+	sec, _ = jc.issue("witness", now)
 	if _, err := jc.redeem(sec, "1.2.3.4", now.Add(31*time.Minute)); err == nil || err.Error() != "Beitrittscode abgelaufen" {
 		t.Fatalf("abgelaufen: %v", err)
 	}
 
-	sec = jc.issue("node", now)
+	sec, _ = jc.issue("node", now)
 	for i := 0; i < 5; i++ {
 		if _, err := jc.redeem("falsch", "9.9.9.9", now); err == nil {
 			t.Fatal("falsch akzeptiert")
@@ -58,11 +58,18 @@ func TestJoinCodesRedeem(t *testing.T) {
 func TestJoinCodesRedeemAfterWindow(t *testing.T) {
 	var jc joinCodes
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	sec := jc.issue("node", now)
+	sec, _ := jc.issue("node", now)
 	for i := 0; i < 5; i++ {
 		jc.redeem("falsch", "9.9.9.9", now)
 	}
 	if role, err := jc.redeem(sec, "9.9.9.9", now.Add(61*time.Second)); err != nil || role != "node" {
 		t.Fatalf("nach der Minute: %q %v", role, err)
+	}
+}
+
+func TestJoinCodesIssueBadRole(t *testing.T) {
+	var jc joinCodes
+	if _, err := jc.issue("boss", time.Now()); err == nil {
+		t.Fatal("Rolle boss akzeptiert")
 	}
 }

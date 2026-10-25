@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -69,7 +70,10 @@ type joinCodes struct {
 }
 
 // issue erzeugt ein neues Geheimnis (32 Byte) für die Rolle "node" | "witness".
-func (j *joinCodes) issue(role string, now time.Time) string {
+func (j *joinCodes) issue(role string, now time.Time) (string, error) {
+	if !validKind(role) {
+		return "", fmt.Errorf("Ungültige Rolle %q", role)
+	}
 	b := make([]byte, joinCodeBytes)
 	if _, err := rand.Read(b); err != nil {
 		panic(err) // ohne Zufall darf kein Code entstehen
@@ -87,7 +91,7 @@ func (j *joinCodes) issue(role string, now time.Time) string {
 		}
 	}
 	j.codes[sha256.Sum256([]byte(secret))] = &joinEntry{role: role, expires: now.Add(joinCodeTTL)}
-	return secret
+	return secret, nil
 }
 
 // redeem löst das Geheimnis ein. Fehlversuche zählen je Quelladresse; ab dem

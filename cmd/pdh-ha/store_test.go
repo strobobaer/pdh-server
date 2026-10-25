@@ -140,3 +140,49 @@ func TestEventLogRotate(t *testing.T) {
 		t.Fatalf("nach Neustart: %+v", r)
 	}
 }
+
+func TestClusterModeIgnoresUnknownKind(t *testing.T) {
+	c := clusterConfig{Nodes: []clusterNode{{ID: "a", Kind: "node"}, {ID: "b", Kind: "weird"}}}
+	if c.Mode() != ha.Single {
+		t.Fatalf("Mode %v", c.Mode())
+	}
+}
+
+func TestEventLogMemory(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "events.jsonl")
+	l := openEventLog(p, 200, 3)
+	l.memMax = 5
+	for i := 0; i < 30; i++ {
+		l.add(ha.Event{Kind: "info", Text: "Ereignis Nummer eins zwei drei"})
+	}
+	// aus dem Speicher: Dateien sind nicht nötig
+	for _, f := range []string{p, p + ".1", p + ".2"} {
+		os.Remove(f)
+	}
+	r := l.since(27, 100)
+	if len(r) != 3 || r[0].Seq != 28 || r[2].Seq != 30 {
+		t.Fatalf("Speicher: %+v", r)
+	}
+	if r := l.since(30, 10); len(r) != 0 {
+		t.Fatalf("leer erwartet: %+v", r)
+	}
+}
+
+func TestEventLogOlderSeqAfterRotation(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "events.jsonl")
+	l := openEventLog(p, 400, 3)
+	l.memMax = 3
+	for i := 0; i < 12; i++ {
+		l.add(ha.Event{Kind: "info", Text: "Ereignis Nummer eins zwei drei"})
+	}
+	r := l.since(0, 100)
+	if len(r) < 4 || r[len(r)-1].Seq != 12 {
+		t.Fatalf("älter als Puffer: %+v", r)
+	}
+	for i := 1; i < len(r); i++ {
+		if r[i].Seq != r[i-1].Seq+1 {
+			t.Fatalf("Lücke: %+v", r)
+		}
+	}
+}
