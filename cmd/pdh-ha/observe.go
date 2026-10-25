@@ -169,6 +169,11 @@ func (d *daemon) statusLocked() apiStatus {
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version,
 		Gateway: d.last.Gateway, Seen: true, Paths: []apiPath{},
 	}
+	// Vor dem ersten Takt (Neustart-Regel noch nicht angewandt) und nach einem
+	// Speicherfehler nie „aktiv“ melden – sonst sichert z. B. der Agent zu früh.
+	if d.node.Kind == "node" && (d.booting && st.Mode != ha.Single || d.unsaved && d.p.Role == ha.Active) {
+		st.Self.Role = ha.Fenced
+	}
 	if d.node.Kind == "witness" {
 		st.Self.Term = max(d.p.VotedTerm, d.p.Term)
 	} else if st.Mode != ha.Single && d.last.SelfID != "" {

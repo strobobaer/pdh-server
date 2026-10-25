@@ -489,6 +489,8 @@ func (d *daemon) removeNode(id string, gone bool) error {
 			err = errors.New("Zuerst den Zeugen entfernen")
 		case v.Last.T == "hb" && ha.Role(v.Last.Role) == ha.Active && v.Last.Term >= d.p.Term:
 			err = errors.New("Aktiven Server erst per Rollen tauschen abgeben")
+		case v.Last.T == "hb" && (ha.Role(v.Last.Role) == ha.Fenced || ha.Role(v.Last.Role) == ha.Rejoin) && v.Last.Term >= d.p.Term:
+			err = errors.New("Server ist möglicherweise noch aktiv – zuerst Übernahme erzwingen")
 		case !v.seen() && !gone:
 			err = errors.New("Server nicht erreichbar – zum Entfernen „dauerhaft weg“ bestätigen")
 		}
@@ -509,16 +511,26 @@ func (d *daemon) removeNode(id string, gone bool) error {
 		cl.Revoked = append(cl.Revoked, n.Serial)
 	}
 	cl.Version++
+	// Wechsel zu Einzel: eigene Amtszeit erhöhen, damit der Entfernte sie nie überbietet
+	if cl.Mode() == ha.Single && d.cl.Mode() != ha.Single {
+		p := d.p
+		p.Term++
+		if err := d.saveFn(p); err != nil {
+			d.unlock()
+			return err
+		}
+		d.p = p
+	}
 	if err := d.st.saveCluster(cl); err != nil {
 		d.unlock()
 		return err
 	}
 	d.cl = cl
-	nt, tick := d.net, d.settingsLocked().Tick
+	self, nt, tick := d.node.ID, d.net, d.settingsLocked().Tick
 	d.unlock()
 	// erst Bescheid geben, dann die Verbindungen trennen
-	nt.sendTo(id, message{T: "removed", ID: d.node.ID, Seq: d.nextSeq()})
-	nt.broadcast(message{T: "cluster", ID: d.node.ID, Seq: d.nextSeq(), Cluster: &cl})
+	nt.sendTo(id, message{T: "removed", ID: self, Seq: d.nextSeq()})
+	nt.broadcast(message{T: "cluster", ID: self, Seq: d.nextSeq(), Cluster: &cl})
 	time.AfterFunc(2*tick, func() { nt.setCluster(cl) })
 	d.event("info", fmt.Sprintf("%s %s entfernt", kindText(n.Kind), id))
 	go d.applyFirewall()

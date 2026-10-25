@@ -178,7 +178,14 @@ const ufwTimeout = 30 * time.Second
 func ufwRun(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, ufwTimeout)
 	defer cancel()
-	return exec.CommandContext(ctx, "ufw", args...).CombinedOutput()
+	return ufwCmd(ctx, args...).CombinedOutput()
+}
+
+// ufwCmd: ufw mit englischer Ausgabe (ausgewertet wird „Status: active“).
+func ufwCmd(ctx context.Context, args ...string) *exec.Cmd {
+	c := exec.CommandContext(ctx, "ufw", args...)
+	c.Env = append(os.Environ(), "LC_ALL=C")
+	return c
 }
 
 // applyUFW ersetzt die pdh-ha-Regeln – nur wenn ufw installiert und aktiv ist.

@@ -224,6 +224,39 @@ func TestAPIRemovePassive(t *testing.T) {
 	if s := d.statusNow(); s.Mode != ha.Single {
 		t.Fatalf("Betriebsart: %s", s.Mode)
 	}
+	// Wechsel zu Einzel: Amtszeit +1, gespeichert – der Entfernte kann sie nicht mehr überbieten
+	if p, _ := d.st.loadState(); p.Term != 2 || d.statusNow().Self.Term != 2 {
+		t.Fatalf("Amtszeit nach Wechsel zu Einzel: gespeichert %d, Status %d", p.Term, d.statusNow().Self.Term)
+	}
+}
+
+// Abgeschaltete oder zurückkehrende Server mit Amtszeit ≥ eigener könnten noch aktiv sein.
+func TestAPIRemoveMaybeActive(t *testing.T) {
+	for _, role := range []string{"abgeschaltet", "wiedereingliederung"} {
+		d, fn, sock := apiDaemon(t)
+		fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test"}))
+		d.tick(context.Background())
+		fn.setView("b", seenView(message{Role: role, Term: 1, Ver: "test"}))
+		d.tick(context.Background())
+		err := apiDo(sock, http.MethodPost, "/v1/nodes/remove", map[string]any{"id": "b"}, nil)
+		if err == nil || !strings.Contains(err.Error(), "Server ist möglicherweise noch aktiv – zuerst Übernahme erzwingen") {
+			t.Fatalf("%s: %v", role, err)
+		}
+		if c, _ := d.st.loadCluster(); len(c.Nodes) != 2 {
+			t.Fatalf("%s trotzdem entfernt", role)
+		}
+	}
+	// niedrigere Amtszeit: entfernen erlaubt
+	d, fn, sock := apiDaemon(t)
+	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test"}))
+	fn.setView("b", seenView(message{Role: "abgeschaltet", Term: 2, Ver: "test"}))
+	d.tick(context.Background())
+	d.mu.Lock()
+	d.p.Term = 3
+	d.mu.Unlock()
+	if err := apiDo(sock, http.MethodPost, "/v1/nodes/remove", map[string]any{"id": "b"}, nil); err != nil {
+		t.Fatalf("abgeschaltet mit niedrigerer Amtszeit: %v", err)
+	}
 }
 
 func TestAPIUnconfiguredSetup(t *testing.T) {

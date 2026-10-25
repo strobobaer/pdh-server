@@ -76,6 +76,7 @@ type daemon struct {
 	removed    bool
 	started    bool
 	booting    bool
+	unsaved    bool // letztes Speichern gescheitert: gilt bis zum Erfolg als nicht aktiv
 	runCtx     context.Context
 	loadErr    string
 
@@ -483,8 +484,9 @@ func (d *daemon) actionFailed(a ha.Action, err error) {
 	p.MaintSeq++
 	pl := plan{}
 	if serr := d.saveFn(p); serr == nil {
-		d.p = p
+		d.p, d.unsaved = p, false
 	} else {
+		d.unsaved = true
 		d.saveAlarmLocked(&pl, "Zustand nicht gespeichert: "+serr.Error())
 	}
 	d.unlock()
@@ -555,13 +557,21 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	d.pingRound(ctx, s.Tick)
 	in := d.inputLocked(now, wall, s, mode, views)
 	in.Booting = d.booting
+	if d.unsaved && in.Persist.Role == ha.Active {
+		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
+	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	out := ha.Step(in)
-	if out.Persist != d.p {
+	if out.Persist != d.p || d.unsaved {
 		if err := d.saveFn(out.Persist); err != nil {
+			if d.p.Role == ha.Active && !d.unsaved {
+				pl.actions = append(pl.actions, ha.Action{Kind: ha.ActFence, Term: d.p.Term})
+			}
+			d.unsaved = true
 			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
 			return pl
 		}
+		d.unsaved = false
 	}
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
 	d.p, d.carry = out.Persist, out

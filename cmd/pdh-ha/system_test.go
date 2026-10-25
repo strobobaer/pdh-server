@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -90,5 +91,16 @@ func TestIDFromHostname(t *testing.T) {
 		if got := idFromHostname(in); got != want || !validID(got) {
 			t.Errorf("%q → %q", in, got)
 		}
+	}
+}
+
+// ufw-Ausgabe wird nach englischem Text ausgewertet („Status: active“) – immer LC_ALL=C.
+func TestUFWCmdLocale(t *testing.T) {
+	c := ufwCmd(context.Background(), "status", "numbered")
+	if !reflect.DeepEqual(c.Args, []string{"ufw", "status", "numbered"}) {
+		t.Fatalf("Args %v", c.Args)
+	}
+	if len(c.Env) == 0 || c.Env[len(c.Env)-1] != "LC_ALL=C" {
+		t.Fatalf("Umgebung ohne LC_ALL=C am Ende: %v", c.Env)
 	}
 }

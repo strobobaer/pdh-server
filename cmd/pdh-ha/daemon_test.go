@@ -537,3 +537,56 @@ func TestThreeDaemons(t *testing.T) {
 		t.Fatalf("Stimme nicht gespeichert: %+v", p)
 	}
 }
+
+// Vor dem ersten Takt meldet ein Server im Verbund nie „aktiv“ (I1).
+func TestDaemonBootingReportsFenced(t *testing.T) {
+	fn := newFakeNet()
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 2}, fn)
+	if r := d.statusNow().Self.Role; r != ha.Fenced {
+		t.Fatalf("vor dem ersten Takt: %s", r)
+	}
+	single := clusterConfig{ClusterID: "c1", Version: 1, CAHolder: "a", Settings: ha.DefaultSettings(),
+		Nodes: []clusterNode{{ID: "a", Kind: "node", Addrs: []string{"127.0.0.1:7480"}}}}
+	d1 := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, single, ha.Persisted{Role: ha.Active, Term: 1}, newFakeNet())
+	if r := d1.statusNow().Self.Role; r != ha.Active {
+		t.Fatalf("Einzel vor dem ersten Takt: %s", r)
+	}
+}
+
+// Speicherfehler: der Server gilt bis zum nächsten gelungenen Speichern als
+// nicht aktiv – im Status und als Eingabe für den nächsten Schritt (I2).
+func TestDaemonSaveFailureNotActive(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("b", seenView(message{Role: "passiv", Term: 2, Ver: "test"}))
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 2}, fn)
+	d.mu.Lock()
+	d.booting = false // Neustart-Regel hier nicht prüfen
+	d.mu.Unlock()
+	fn.setView("b", seenView(message{Role: "aktiv", Term: 3, Ver: "test"}))
+	d.saveFn = func(ha.Persisted) error { return errors.New("Platte voll") }
+	d.tick(context.Background())
+	if st := d.statusNow(); st.Self.Role != ha.Fenced || st.Self.Term != 2 {
+		t.Fatalf("nach Speicherfehler: %s/%d", st.Self.Role, st.Self.Term)
+	}
+	if !hasEvent(d, "Platte voll") {
+		t.Fatalf("Alarm fehlt: %v", eventTexts(d))
+	}
+	// Partner wieder passiv: mit „aktiv“ als Eingabe bliebe der Schritt aktiv
+	// und würde gar nicht speichern – als nicht aktiv wird erneut gespeichert.
+	fn.setView("b", seenView(message{Role: "passiv", Term: 2, Ver: "test"}))
+	var saved []ha.Persisted
+	d.saveFn = func(p ha.Persisted) error { saved = append(saved, p); return d.st.saveState(p) }
+	d.tick(context.Background())
+	if len(saved) == 0 || saved[0].Role == ha.Active {
+		t.Fatalf("gespeichert: %+v", saved)
+	}
+	if r := d.statusNow().Self.Role; r == ha.Active {
+		t.Fatalf("Status nach gelungenem Speichern noch aktiv: %s", r)
+	}
+	d.mu.Lock()
+	unsaved := d.unsaved
+	d.mu.Unlock()
+	if unsaved {
+		t.Fatal("Merker bleibt nach gelungenem Speichern gesetzt")
+	}
+}
