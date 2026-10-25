@@ -61,8 +61,8 @@ type drStatus struct {
 	Missing      []string  `json:"missing"`
 	Bases        []drBase  `json:"bases"`
 	Running      string    `json:"running"` // "", "base", "files"
-	Paused       string    `json:"paused"` // "passiver Knoten" (pdh-ha), sonst ""
-	Advice       string    `json:"advice"` // Beobachtung: würde pausieren (Sperre aus)
+	Paused       string    `json:"paused"`  // "passiver Knoten" (pdh-ha), sonst ""
+	Advice       string    `json:"advice"`  // Beobachtung: würde pausieren (Sperre aus)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
@@ -90,17 +90,17 @@ type drN8NInfo struct {
 // drState: dauerhaft gespeicherter Zustand (state.json); Running nur im Speicher.
 type drState struct {
 	mu           sync.Mutex
-	Config       drConfig   `json:"config"`
-	Archiving    bool       `json:"archiving"`
-	LastWALShip  time.Time  `json:"last_wal_ship"`
-	LastWALFile  string     `json:"last_wal_file"`
-	LastBase     time.Time  `json:"last_base"`
-	BaseTry      time.Time  `json:"base_try"` // letzter automatischer Versuch
-	LastFileSync time.Time  `json:"last_file_sync"`
-	FilesTry     time.Time  `json:"files_try"` // letzter automatischer Abgleich-Versuch
-	Sources      []drSource `json:"sources"`
-	Missing      []string   `json:"missing"`
-	N8N          *drN8NInfo `json:"n8n,omitempty"`
+	Config       drConfig          `json:"config"`
+	Archiving    bool              `json:"archiving"`
+	LastWALShip  time.Time         `json:"last_wal_ship"`
+	LastWALFile  string            `json:"last_wal_file"`
+	LastBase     time.Time         `json:"last_base"`
+	BaseTry      time.Time         `json:"base_try"` // letzter automatischer Versuch
+	LastFileSync time.Time         `json:"last_file_sync"`
+	FilesTry     time.Time         `json:"files_try"` // letzter automatischer Abgleich-Versuch
+	Sources      []drSource        `json:"sources"`
+	Missing      []string          `json:"missing"`
+	N8N          *drN8NInfo        `json:"n8n,omitempty"`
 	Errors       map[string]string `json:"errors"` // je Art: wal, base, files, postgres, state
 	ErrorAt      time.Time         `json:"error_at"`
 	EnabledSince time.Time         `json:"enabled_since"`

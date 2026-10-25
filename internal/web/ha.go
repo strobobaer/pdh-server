@@ -151,9 +151,15 @@ func (v haView) CanCommand() bool {
 	return true
 }
 
-// CanSwap: Rollentausch nur auf dem aktiven Server, Übernahme erzwingen nur auf einem nicht aktiven.
-func (v haView) CanSwap() bool  { return v.HasPeers() && v.CanCommand() && v.Status.Self.Role == "aktiv" }
-func (v haView) CanForce() bool { return v.HasPeers() && v.CanCommand() && v.Status.Self.Role != "aktiv" }
+// CanSwap: Rollentausch nur auf dem aktiven Server.
+func (v haView) CanSwap() bool {
+	return v.HasPeers() && v.CanCommand() && v.Status.Self.Role == "aktiv"
+}
+
+// CanForce: Übernahme erzwingen nur auf einem nicht aktiven Server.
+func (v haView) CanForce() bool {
+	return v.HasPeers() && v.CanCommand() && v.Status.Self.Role != "aktiv"
+}
 
 // VersionDiff: pdh-ha meldet „Versionen unterschiedlich“.
 func (v haView) VersionDiff() bool {
