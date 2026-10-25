@@ -34,15 +34,15 @@
   {{end}}
   {{else if not .Err}}
   {{if .Status.Observe}}<div class="vp-msg err"><i class="ti ti-eye"></i> <b>Beobachtungsmodus – es wird nichts umgeschaltet.</b> Der Dienst meldet nur, was er tun würde.</div>{{end}}
-  {{if eq .Status.Mode "duo"}}<div class="vp-msg"><i class="ti ti-alert-circle"></i> Eingeschränkter Ausfallschutz (kein Zeuge).</div>{{end}}
   {{range .Status.Warnings}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
+  {{if .VersionDiff}}<p class="vp-hint">Nach einem PDH-Update auf dem zweiten Server und dem Zeugen-Rechner ausführen:{{if .UpdateCmd}}<span class="vp-cmd"><code class="vp-key">{{.UpdateCmd}}</code></span>{{else}} <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code> – den Commit zeigt <code>pdh-ha version</code> auf dem ersten Server.{{end}} Zeuge als Container: siehe Handbuch.</p>{{end}}
   {{if .Status.Blocked}}<div class="vp-msg err"><i class="ti ti-lock"></i> <b>Übernahme gesperrt: {{.Status.Blocked}}</b><br>Die Automatik übernimmt solange nicht. Fällt der aktive Server sicher aus, hilft „Übernahme erzwingen“.</div>{{end}}
 
   <table class="table" style="margin-top:8px">
     <tr><th>Kennung</th><th>Art</th><th>Rolle</th><th>Amtszeit</th><th>Version</th><th>Gateway</th><th>Zuletzt gesehen</th><th>Wege</th></tr>
     {{range .Nodes}}
     <tr><td><b>{{.ID}}</b>{{if .Self}} <span class="rec-sub">(hier)</span>{{end}}</td><td>{{.KindText}}</td><td><span class="vp-conn{{if eq .Role "aktiv"}} on{{else if eq .Role "abgeschaltet"}} revoked{{end}}">{{.Role}}</span></td>
-      <td>{{if .Term}}{{.Term}}{{else}}–{{end}}</td><td>{{.Version}}</td><td>{{if .Gateway}}erreichbar{{else}}<b>nein</b>{{end}}</td>
+      <td>{{if .Term}}{{.Term}}{{else}}–{{end}}</td><td>{{.Version}}{{if .Commit}} <span class="rec-sub">({{.ShortCommit}})</span>{{end}}</td><td>{{if .Gateway}}erreichbar{{else}}<b>nein</b>{{end}}</td>
       <td>{{.SeenText}}{{if .SkewWarn}}<br><span class="vp-conn lost">Uhrzeit prüfen ({{printf "%.0f" .ClockSkew}} s)</span>{{end}}</td>
       <td>{{range .Paths}}<div><span class="vp-conn{{if .Alive}} on{{else}} revoked{{end}}">{{.Addr}}</span> <span class="vp-meta">{{.Age}}{{if .Err}} · {{.Err}}{{end}}</span></div>{{else}}{{if not .Self}}<span class="vp-meta">–</span>{{end}}{{end}}</td></tr>
     {{end}}

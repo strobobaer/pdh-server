@@ -64,7 +64,7 @@ ok "Pakete vorhanden"
 # GOTOOLCHAIN=auto (lädt die Go-Version aus go.mod) braucht mindestens Go 1.21
 go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
 if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-  fail "Go ist zu alt (Ubuntu 22.04). Bitte Go 1.22+ installieren, z. B.: sudo snap install go --classic"
+  fail "Go ist zu alt (Ubuntu 22.04). Bitte Go 1.21 oder neuer installieren, z. B.: sudo snap install go --classic"
 fi
 
 # Commit aus dem Code: base64url ohne Auffüllung → JSON, Feld "c"

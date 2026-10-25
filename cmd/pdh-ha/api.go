@@ -24,7 +24,7 @@ import (
 // GET /v1/status liefert apiStatus, z. B.:
 //
 //	{"ok":true,"configured":true,"mode":"trio",
-//	 "self":{"id":"pdh1","kind":"node","role":"aktiv","term":3,"version":"0.75.0","gateway":true,
+//	 "self":{"id":"pdh1","kind":"node","role":"aktiv","term":3,"version":"0.75.0","commit":"51c21bc","gateway":true,
 //	         "seen":true,"last_seen_ago":0,"clock_skew":0,"paths":[]},
 //	 "peers":[{"id":"pdh2","kind":"node","role":"passiv","term":3,"version":"0.75.0","gateway":true,
 //	           "seen":true,"last_seen_ago":0.4,"clock_skew":-0.1,
@@ -58,6 +58,7 @@ type apiNode struct {
 	Role        ha.Role   `json:"role"`
 	Term        uint64    `json:"term"`
 	Version     string    `json:"version"`
+	Commit      string    `json:"commit"` // Stand des Quelltexts (leer = unbekannt)
 	Gateway     bool      `json:"gateway"`
 	Seen        bool      `json:"seen"`
 	LastSeenAgo float64   `json:"last_seen_ago"`

@@ -590,3 +590,16 @@ func TestDaemonSaveFailureNotActive(t *testing.T) {
 		t.Fatal("Merker bleibt nach gelungenem Speichern gesetzt")
 	}
 }
+
+// Commit je Knoten im Status – für den Update-Befehl bei unterschiedlichen Versionen.
+func TestStatusCommit(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "alt", Commit: "def5678"}))
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1}, fn)
+	d.commit = "abc1234"
+	d.tick(context.Background())
+	st := d.statusNow()
+	if st.Self.Commit != "abc1234" || len(st.Peers) != 1 || st.Peers[0].Commit != "def5678" {
+		t.Fatalf("Commits: hier %q, Partner %+v", st.Self.Commit, st.Peers)
+	}
+}

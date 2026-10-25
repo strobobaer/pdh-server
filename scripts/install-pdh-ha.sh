@@ -51,6 +51,14 @@ unit_changed=0
 etc_changes=$unit_changed
 [[ -d /etc/pdh/ha ]] || etc_changes=1
 getent group pdh >/dev/null || etc_changes=1
+# Benutzer des PDH-Dienstes braucht die Gruppe pdh für den Socket
+pdh_user="$(systemctl show -p User --value pdh 2>/dev/null || true)"
+add_user=0
+if [[ -n "$pdh_user" && "$pdh_user" != root ]] && id "$pdh_user" >/dev/null 2>&1 && [[ " $(id -nG "$pdh_user" 2>/dev/null) " != *" pdh "* ]]; then
+    add_user=1 etc_changes=1
+fi
+first_install=0
+[[ -x /usr/local/bin/pdh-ha ]] || first_install=1
 if (( etc_changes )) && [[ ! -w /etc/systemd/system ]]; then
     echo "/etc ist nicht beschreibbar (Update-Agent-Sandbox?) – pdh-ha bleibt unverändert." >&2
     echo "Bitte auf dem Server ausführen: sudo bash $repo_dir/scripts/install-pdh-ha.sh $repo_dir" >&2
@@ -93,6 +101,10 @@ ldflags="-s -w -X main.version=$build_version -X main.commit=$build_commit"
 # Gruppe pdh: Zugriff des PDH auf den Socket /run/pdh-ha/api.sock
 getent group pdh >/dev/null || groupadd --system pdh
 [[ -d /etc/pdh/ha ]] || install -d -m 0700 /etc/pdh/ha
+if (( add_user )); then
+    usermod -aG pdh "$pdh_user"
+    echo "Benutzer $pdh_user zur Gruppe pdh hinzugefügt – PDH muss neu gestartet werden, damit es pdh-ha erreicht."
+fi
 if (( unit_changed )); then
     printf '%s\n' "$unit" > "$unit_file"
     systemctl daemon-reload
@@ -106,4 +118,11 @@ if systemctl is-active --quiet pdh-ha; then
 else
     systemctl enable --now pdh-ha
     echo "pdh-ha $build_version ($build_commit) installiert und gestartet."
+fi
+# Neue Gruppe wirkt erst nach Neustart – nur beim Erst-Install, Updates lassen PDH laufen
+if (( first_install )) && (( add_user )); then
+    systemctl try-restart pdh
+    echo "PDH neu gestartet."
+elif (( add_user )); then
+    echo "Bitte PDH neu starten: sudo systemctl restart pdh"
 fi

@@ -1746,10 +1746,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
   <div class="hb-howto"><b><i class="ti ti-server-2"></i> So fügst du den zweiten Server hinzu</b>
     <ol class="hb-steps">
-      <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen. Unter „Betriebsart“ die Adressen dieses Servers prüfen (LAN und WireGuard, du kannst sie ändern) und <b>Ausfallschutz einrichten</b> wählen.</li>
+      <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen. Unter „Betriebsart“ die Adressen dieses Servers prüfen (LAN und WireGuard, du kannst sie ändern) und <b>Ausfallschutz einrichten</b> wählen. Beim ersten Einrichten startet das PDH dabei ggf. einmal kurz neu.</li>
       <li><b>Beitrittscode: zweiter Server</b> wählen. Der Code gilt 30 Minuten, nur einmal, und wird nur jetzt angezeigt.</li>
       <li><b>pdh-ha-join.sh</b> im Reiter herunterladen und auf den neuen Ubuntu-Server kopieren.</li>
-      <li>Dort ausführen: <code>sudo bash pdh-ha-join.sh &lt;Code&gt;</code></li>
+      <li>Dort ausführen: <code>sudo bash pdh-ha-join.sh &lt;Code&gt;</code>. Das Skript holt den Quelltext von GitHub – der erste Server muss also eine dort veröffentlichte Version haben. Unter Ubuntu 22.04 ist das mitgelieferte Go zu alt (nötig: Go 1.21 oder neuer): vorher <code>sudo snap install go --classic</code> ausführen.</li>
       <li>Nach kurzer Zeit zeigt die Tabelle beide Server. Die Betriebsart steht auf <b>Duo</b>.</li>
       <li>Optional: <b>Automatik an</b> wählen. Dann trifft der Dienst Entscheidungen – in dieser Version zeigt er sie nur als Ereignis „würde jetzt: …“ an, es passiert nichts. So kannst du beobachten, was er tun würde.</li>
     </ol></div>
@@ -1758,10 +1758,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Erst den zweiten Server hinzufügen – ohne ihn wird der Zeuge abgelehnt („Zuerst den zweiten Server hinzufügen“).</li>
       <li><b>Beitrittscode: Zeuge</b> wählen.</li>
       <li><b>Als Programm</b> auf einem dritten Rechner: <code>sudo bash pdh-ha-join.sh --witness &lt;Code&gt;</code></li>
-      <li><b>Als Container</b>: im Ordner <code>deploy/ha-witness</code> den Code als Umgebungsvariable <code>PDH_HA_JOIN</code> eintragen und den Container starten.</li>
+      <li><b>Als Container</b> (auf dem dritten Rechner, im PDH-Quelltext): im Ordner <code>deploy/ha-witness</code> ausführen: <code>PDH_HA_JOIN='&lt;Code&gt;' PDH_HA_ADDR=&lt;IP dieses Rechners&gt; docker compose up -d --build</code>. <code>PDH_HA_ADDR</code> ist die Adresse, unter der die Server den Zeugen erreichen (Port 7480) – ohne sie meldet der Container seine interne Adresse, die die Server nicht erreichen. Beide Angaben braucht nur der erste Start.</li>
       <li>Die Betriebsart steht danach auf <b>Trio</b>, der Hinweis „kein Zeuge“ verschwindet.</li>
     </ol>
     <p><b>Wichtig:</b> Der Zeuge braucht <b>eigene Hardware und eigenen Strom</b>. Läuft er auf demselben Gerät oder an derselben Stromversorgung wie ein Server, fällt er mit aus – dann ist er wertlos. Erkennt das PDH gemeinsame Hardware, zeigt es eine Warnung.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> Nach einem PDH-Update</b>
+    <p>Das Update des PDH bringt <code>pdh-ha</code> nur auf dem ersten Server auf den neuen Stand. Die Übersicht warnt dann „Versionen unterschiedlich“ und zeigt den passenden Befehl.</p>
+    <ol class="hb-steps">
+      <li>Den <b>Commit</b> des ersten Servers ablesen: in der Übersicht in Klammern hinter seiner Version, oder dort <code>pdh-ha version</code> ausführen.</li>
+      <li><b>Zweiter Server</b> und <b>Zeugen-Rechner</b> (Programm): <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code></li>
+      <li><b>Zeuge als Container</b>: im PDH-Quelltext auf denselben Stand gehen (<code>git fetch</code>, <code>git checkout &lt;Commit&gt;</code>), dann in <code>deploy/ha-witness</code> <code>PDH_HA_COMMIT=&lt;Commit&gt; docker compose up -d --build</code> (der Commit erscheint dann auch in der Übersicht). <code>PDH_HA_ADDR</code> und Code sind nicht nötig – sie liegen schon in den Volumes.</li>
+      <li>Nach kurzer Zeit verschwindet die Warnung „Versionen unterschiedlich“.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-trash"></i> So entfernst du einen Server oder Zeugen</b>
     <ol class="hb-steps">
       <li>Das geht nur am ersten Server (dort, wo der Ausfallschutz eingerichtet wurde): Bereich <b>Knoten entfernen</b>.</li>

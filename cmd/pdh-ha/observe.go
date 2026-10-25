@@ -166,7 +166,7 @@ func (d *daemon) statusLocked() apiStatus {
 	st.Maint, st.CAHolder = d.p.Maint, d.node.CAHolder
 	st.GatewayTargets = append(st.GatewayTargets, d.cl.GatewayTargets...)
 	st.Self = apiNode{
-		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version,
+		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,
 		Gateway: d.last.Gateway, Seen: true, Paths: []apiPath{},
 	}
 	// Vor dem ersten Takt (Neustart-Regel noch nicht angewandt) und nach einem
@@ -201,7 +201,7 @@ func (d *daemon) statusLocked() apiStatus {
 		v := d.views[n.ID]
 		an := apiNode{ID: n.ID, Kind: n.Kind, Seen: v.seen(), LastSeenAgo: ago(v.LastSeen), Paths: []apiPath{}}
 		if m := v.Last; m.T == "hb" {
-			an.Role, an.Term, an.Version, an.Gateway = ha.Role(m.Role), m.Term, m.Ver, m.Gateway
+			an.Role, an.Term, an.Version, an.Commit, an.Gateway = ha.Role(m.Role), m.Term, m.Ver, m.Commit, m.Gateway
 			hosts[n.ID] = m.HostID
 		}
 		for _, p := range v.Paths {

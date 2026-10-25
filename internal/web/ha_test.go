@@ -382,3 +382,34 @@ func TestHAJoinCodeOnce(t *testing.T) {
 		t.Fatal("Code zweimal angezeigt")
 	}
 }
+
+// Unterschiedliche Versionen: Update-Befehl mit dem Commit des ersten Servers.
+func TestHAVersionDiffUpdateCmd(t *testing.T) {
+	v := haView{Installed: true, Status: haStatus{Configured: true, Mode: "duo", CAHolder: true, Observe: true,
+		Self:     haNode{ID: "pdh1", Kind: "node", Role: "aktiv", Version: "0.75.0", Commit: "51c21bcabcdef"},
+		Peers:    []haNode{{ID: "pdh2", Kind: "node", Role: "passiv", Version: "0.74.0", Commit: "1111111"}},
+		Warnings: []string{"Versionen unterschiedlich"}}}
+	out := renderDR(t, drView{HA: v})
+	if !strings.Contains(out, "sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update 51c21bcabcdef") {
+		t.Errorf("Update-Befehl mit Commit des ersten Servers fehlt")
+	}
+	if !strings.Contains(out, "51c21bc") {
+		t.Error("Commit bei der Version fehlt")
+	}
+	// Auf dem zweiten Server: Commit vom ersten (Partner)
+	v.Status.CAHolder = false
+	v.Status.Self.Commit, v.Status.Peers[0].Commit = "1111111", "51c21bcabcdef"
+	if out := renderDR(t, drView{HA: v}); !strings.Contains(out, "--update 51c21bcabcdef") {
+		t.Error("zweiter Server: Commit des ersten fehlt")
+	}
+	// Commit unbekannt: Hinweis auf pdh-ha version
+	v.Status.Peers[0].Commit = ""
+	if out := renderDR(t, drView{HA: v}); !strings.Contains(out, "pdh-ha version") || strings.Contains(out, "--update 1111111") {
+		t.Error("ohne Commit: Hinweis auf pdh-ha version fehlt")
+	}
+	// gleiche Versionen: kein Befehl
+	v.Status.Warnings = nil
+	if out := renderDR(t, drView{HA: v}); strings.Contains(out, "--update") {
+		t.Error("Update-Befehl ohne Versionsunterschied")
+	}
+}

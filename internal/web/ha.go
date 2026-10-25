@@ -53,6 +53,7 @@ type haNode struct {
 	Role        string   `json:"role"`
 	Term        uint64   `json:"term"`
 	Version     string   `json:"version"`
+	Commit      string   `json:"commit"`
 	Gateway     bool     `json:"gateway"`
 	Seen        bool     `json:"seen"`
 	LastSeenAgo float64  `json:"last_seen_ago"` // Sekunden, -1 = nie
@@ -137,6 +138,37 @@ func (v haView) TargetsText() string        { return strings.Join(v.Status.Gatew
 func (v haView) JoinUntil() string          { return v.JoinExpires.Local().Format("02.01.2006 15:04") }
 func (haView) EventTime(t time.Time) string { return t.Local().Format("02.01. 15:04:05") }
 
+// VersionDiff: pdh-ha meldet „Versionen unterschiedlich“.
+func (v haView) VersionDiff() bool {
+	for _, w := range v.Status.Warnings {
+		if strings.HasPrefix(w, "Versionen unterschiedlich") {
+			return true
+		}
+	}
+	return false
+}
+
+// FirstCommit: Commit des ersten Servers (CA-Knoten) – hier oder der andere Server.
+func (v haView) FirstCommit() string {
+	if v.Status.CAHolder {
+		return v.Status.Self.Commit
+	}
+	for _, p := range v.Status.Peers {
+		if p.Kind == "node" {
+			return p.Commit
+		}
+	}
+	return ""
+}
+
+// UpdateCmd: Befehl für zweiten Server und Zeugen-Rechner ("" = Commit unbekannt).
+func (v haView) UpdateCmd() string {
+	if c := v.FirstCommit(); c != "" {
+		return "sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update " + c
+	}
+	return ""
+}
+
 // Form: Zeiten für das Formular in ganzen Sekunden bzw. Minuten.
 func (v haView) Form() map[string]int {
 	s := v.Status.Settings
@@ -146,6 +178,14 @@ func (v haView) Form() map[string]int {
 	return map[string]int{"tick_s": int(s.Tick / time.Second), "fence_s": int(s.FenceAfter / time.Second),
 		"takeover_trio_s": int(s.TakeoverTrio / time.Second), "takeover_duo_s": int(s.TakeoverDuo / time.Second),
 		"cooldown_min": int(s.Cooldown / time.Minute), "max_per_day": s.MaxPerDay}
+}
+
+// ShortCommit: die ersten 7 Zeichen des Commits.
+func (n haNode) ShortCommit() string {
+	if len(n.Commit) > 7 {
+		return n.Commit[:7]
+	}
+	return n.Commit
 }
 
 func (n haNode) KindText() string {

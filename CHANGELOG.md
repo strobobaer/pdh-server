@@ -15,9 +15,13 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 - Ausfallschutz mit zwei Servern und optionalem Zeugen im Beobachtungsmodus: Server koppeln, die Server prüfen sich gegenseitig über LAN und VPN, Rollen und Ereignisse ansehen – es wird noch nichts umgeschaltet.
 - Testlabor für den Ausfallschutz (Docker).
+- Bei unterschiedlichen Versionen zeigt die Übersicht den Update-Befehl für den zweiten Server und den Zeugen.
 
 ### Geändert
 - Der Reiter Ausfallschutz zeigt an, ob die Netzlaufwerk-Sicherung auf einem passiven Server künftig pausieren würde – in dieser Version läuft sie weiter.
+
+### Sicherheit
+- Die Schlüssel des Ausfallschutzes mit zwei Servern werden nicht aufs Netzlaufwerk gesichert und beim Wiederaufbau nicht zurückgespielt.
 
 ## [0.74.2] – 2026-10-24
 

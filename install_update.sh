@@ -112,7 +112,7 @@ else
     if [[ -x /usr/local/bin/pdh-ha ]]; then
         if command -v systemd-run >/dev/null 2>&1; then
             systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
-                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe journalctl -u pdh-ha-update-*" >&2
+                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
         else
             bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
                 || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2

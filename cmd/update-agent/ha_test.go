@@ -329,6 +329,15 @@ func TestHAInstallScriptContent(t *testing.T) {
 	if strings.Contains(s, "ufw allow") {
 		t.Error("install-pdh-ha.sh öffnet ufw selbst (macht pdh-ha)")
 	}
+	// Benutzer des PDH in die Gruppe pdh (Socket), PDH-Neustart nur beim Erst-Install
+	for _, want := range []string{"systemctl show -p User --value pdh", `usermod -aG pdh "$pdh_user"`, "PDH muss neu gestartet werden"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("install-pdh-ha.sh ohne %q", want)
+		}
+	}
+	if i, k := strings.Index(s, "if (( first_install ))"), strings.Index(s, "systemctl try-restart pdh"); i < 0 || k < i || strings.Count(s, "try-restart pdh") != 1 {
+		t.Error("install-pdh-ha.sh: PDH-Neustart nicht auf den Erst-Install beschränkt")
+	}
 	j, err := os.ReadFile("../../scripts/pdh-ha-join.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -353,7 +362,8 @@ func TestHAInstallScriptContent(t *testing.T) {
 	if !strings.Contains(us, "if [[ -x /usr/local/bin/pdh-ha ]]") || i < 0 || k < 0 || i > k {
 		t.Error("install_update.sh baut pdh-ha nicht vor dem Agent-Neustart per systemd-run")
 	}
-	if !strings.Contains(us, "pdh-ha-Update fehlgeschlagen – siehe journalctl -u pdh-ha-update-*") {
+	// systemd-run --pipe zeigt die Ausgabe direkt, ein Journal der Einmal-Unit gibt es nicht
+	if !strings.Contains(us, "pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben") || strings.Contains(us, "journalctl -u pdh-ha-update") {
 		t.Error("install_update.sh: Warnung fehlt")
 	}
 }
