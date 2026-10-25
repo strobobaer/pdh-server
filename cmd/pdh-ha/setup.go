@@ -9,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
+	"time"
 
 	"pdh/internal/ha"
 )
@@ -89,7 +92,7 @@ func setupFiles(st store, o setupOpts) error {
 		return err
 	}
 	cl := clusterConfig{
-		ClusterID: clusterID, Version: 1, Settings: ha.DefaultSettings(),
+		ClusterID: clusterID, CAHolder: id, Version: 1, Settings: ha.DefaultSettings(),
 		Nodes: []clusterNode{{ID: id, Kind: "node", Addrs: addrs, Serial: serialHex(c)}},
 	}
 	steps := []func() error{
@@ -173,4 +176,53 @@ func parseCertPEM(p []byte) (*x509.Certificate, error) {
 		return nil, errors.New("Zertifikat ist unlesbar")
 	}
 	return x509.ParseCertificate(b.Bytes)
+}
+
+// resetFiles verschiebt Konfiguration und Zustand in Sicherungsordner
+// (<etc>.reset-<Zeit>, <state>.reset-<Zeit>), damit setup/join wieder geht.
+// Nur uneingerichtet oder nach dem Entfernen aus dem Cluster. Liefert den
+// Sicherungsordner der Konfiguration ("" = nichts zu verschieben).
+func resetFiles(st store, now time.Time) (string, error) {
+	if configured(st) {
+		_, errC := os.Stat(st.etcPath("cluster.json"))
+		_, errR := os.Stat(st.etcPath("cluster.json.removed"))
+		if !os.IsNotExist(errC) || errR != nil {
+			return "", errors.New("Nur nach Entfernen aus dem Cluster möglich")
+		}
+	}
+	suffix := ".reset-" + now.Format("20060102-150405")
+	etcBackup := ""
+	for _, dir := range []string{st.etc, st.state} {
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) || err == nil && len(entries) == 0 {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		dst := dir + suffix
+		if err := os.MkdirAll(dst, 0o700); err != nil {
+			return "", err
+		}
+		// node.json zuerst: ab dann gilt der Rechner als uneingerichtet
+		slices.SortStableFunc(entries, func(a, b os.DirEntry) int {
+			return boolInt(b.Name() == "node.json") - boolInt(a.Name() == "node.json")
+		})
+		for _, e := range entries {
+			if err := os.Rename(filepath.Join(dir, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+				return "", err
+			}
+		}
+		if dir == st.etc {
+			etcBackup = dst
+		}
+	}
+	return etcBackup, nil
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

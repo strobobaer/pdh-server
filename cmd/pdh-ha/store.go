@@ -37,6 +37,7 @@ type clusterNode struct {
 // clusterConfig ist die gemeinsame Konfiguration (cluster.json).
 type clusterConfig struct {
 	ClusterID      string        `json:"cluster_id"`
+	CAHolder       string        `json:"ca_holder"` // Kennung des Knotens mit der CA
 	Version        uint64        `json:"version"`
 	Nodes          []clusterNode `json:"nodes"`
 	Settings       ha.Settings   `json:"settings"`

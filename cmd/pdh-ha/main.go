@@ -32,6 +32,8 @@ const usage = `Aufruf: pdh-ha <Befehl>
   status [--json]                     Zustand anzeigen
   maintenance on|off                  Wartung (Automatik aus/an)
   settings '<json>'                   Zeiten setzen ({"settings":{…},"gateway_targets":[…]})
+  reset --yes                         nach dem Entfernen: Konfiguration sichern und
+                                      zurücksetzen (danach setup oder join)
   version                             Version anzeigen
 `
 
@@ -168,6 +170,25 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		return 0
+	case "reset":
+		yes := fs.Bool("yes", false, "bestätigen")
+		if fs.Parse(args[1:]) != nil {
+			return 2
+		}
+		if !*yes {
+			return fail(errors.New("Zum Bestätigen --yes angeben"))
+		}
+		st := newStore()
+		backup, err := resetFiles(st, time.Now())
+		if err != nil {
+			return fail(err)
+		}
+		if backup == "" {
+			fmt.Fprintln(stdout, "Nichts zurückzusetzen.")
+		} else {
+			fmt.Fprintf(stdout, "Zurückgesetzt. Sicherung: %s (Zustand: %s.reset-…)\n", backup, st.state)
+		}
+		return 0
 	case "version":
 		fmt.Fprintf(stdout, "pdh-ha %s %s\n", version, commit)
 		return 0
@@ -184,7 +205,8 @@ func cmdRun(override string, stderr io.Writer) error {
 	}
 	d.hostID = hostID()
 	if err := d.load(); err != nil {
-		return err
+		// weiterlaufen: die API meldet den Fehler, der Takt lädt erneut
+		fmt.Fprintln(stderr, "pdh-ha: Konfiguration nicht lesbar:", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

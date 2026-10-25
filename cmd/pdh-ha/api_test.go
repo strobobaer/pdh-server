@@ -150,11 +150,29 @@ func TestAPI(t *testing.T) {
 	if err := apiDo(sock, http.MethodPut, "/v1/settings", map[string]any{"settings": good, "gateway_targets": []string{"10.0.0.254"}}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if c, _ := d.st.loadCluster(); c.Settings.TakeoverDuo != 90*time.Second || c.Version != 3 || c.GatewayTargets[0] != "10.0.0.254" {
+	if c, _ := d.st.loadCluster(); c.Settings.TakeoverDuo != 90*time.Second || c.Version != 3 || c.GatewayTargets[0] != "10.0.0.254" || c.CAHolder != "a" {
 		t.Fatalf("Zeiten nicht gespeichert: %+v", c)
+	}
+	// ohne gateway_targets bleiben die Ziele, [] leert sie
+	if err := apiDo(sock, http.MethodPut, "/v1/settings", map[string]any{"settings": good}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := d.st.loadCluster(); len(c.GatewayTargets) != 1 {
+		t.Fatalf("Ziele verloren: %+v", c.GatewayTargets)
+	}
+	if err := apiDo(sock, http.MethodPut, "/v1/settings", map[string]any{"settings": good, "gateway_targets": []string{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := d.st.loadCluster(); len(c.GatewayTargets) != 0 || c.Version != 5 {
+		t.Fatalf("Ziele nicht geleert: %+v", c)
 	}
 
 	// Entfernen
+	var es map[string]any
+	apiDo(sock, http.MethodGet, "/v1/status", nil, &es)
+	if e, ok := es["error"]; !ok || e != "" {
+		t.Fatalf("Fehlerfeld: %v", es["error"])
+	}
 	err = apiDo(sock, http.MethodPost, "/v1/nodes/remove", map[string]any{"id": "b"}, nil)
 	if err == nil || err.Error() != "Aktiven Server erst per Rollen tauschen abgeben" {
 		t.Fatalf("aktiven entfernen: %v", err)
@@ -197,7 +215,7 @@ func TestAPIRemovePassive(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ := d.st.loadCluster()
-	if len(c.Nodes) != 1 || c.Version != 3 || len(c.Revoked) != 1 || c.Revoked[0] != "abc" {
+	if len(c.Nodes) != 1 || c.Version != 3 || c.CAHolder != "a" || len(c.Revoked) != 1 || c.Revoked[0] != "abc" {
 		t.Fatalf("Cluster: %+v", c)
 	}
 	if r := fn.messages("removed"); len(r) != 1 || r[0].to != "b" {

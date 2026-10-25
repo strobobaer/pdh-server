@@ -109,7 +109,7 @@ func (r *recActor) Do(_ context.Context, a ha.Action) error {
 }
 
 func duoCluster() clusterConfig {
-	return clusterConfig{ClusterID: "c1", Version: 2, Settings: ha.DefaultSettings(), Nodes: []clusterNode{
+	return clusterConfig{ClusterID: "c1", Version: 2, CAHolder: "a", Settings: ha.DefaultSettings(), Nodes: []clusterNode{
 		{ID: "a", Kind: "node", Addrs: []string{"127.0.0.1:7480"}},
 		{ID: "b", Kind: "node", Addrs: []string{"127.0.0.2:7480"}},
 	}}
@@ -201,11 +201,21 @@ func TestDaemonSaveFailureSendsNothing(t *testing.T) {
 	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1}, fn)
 	d.saveFn = func(ha.Persisted) error { return errors.New("Platte voll") }
 	d.tick(context.Background())
+	d.tick(context.Background())
 	if n := len(fn.messages("hb")); n != 0 {
 		t.Fatalf("%d Heartbeats trotz Speicherfehler", n)
 	}
 	if d.statusNow().Self.Term != 1 || !hasEvent(d, "Platte voll") {
 		t.Fatalf("Zustand: %+v %v", d.statusNow().Self, eventTexts(d))
+	}
+	n := 0
+	for _, e := range eventTexts(d) {
+		if strings.Contains(e, "Platte voll") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("Speicher-Alarm %d-mal statt einmal je Minute", n)
 	}
 }
 

@@ -48,7 +48,8 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 			d.renewRespLocked(&pl, m)
 		}
 	case "removed":
-		if kind == "node" && !d.removed {
+		// nur der CA-Knoten darf entfernen (laut eigener Knotenliste)
+		if kind == "node" && in.From == d.cl.CAHolder && !d.removed {
 			d.removedLocked(&pl)
 		}
 	}
@@ -63,7 +64,7 @@ func (d *daemon) voteLocked(pl *plan, from string, m message) {
 	granted, next := ha.Vote(d.p, ha.VoteRequest{From: from, Term: m.VoteTerm}, nodes, d.mono(), s)
 	if next != d.p {
 		if err := d.saveFn(next); err != nil {
-			pl.event("alarm", "Stimme nicht gespeichert, keine Antwort: "+err.Error())
+			d.saveAlarmLocked(pl, "Stimme nicht gespeichert, keine Antwort: "+err.Error())
 			return
 		}
 		d.p = next
@@ -83,6 +84,13 @@ func (d *daemon) clusterMsgLocked(pl *plan, from string, m message) {
 		return
 	}
 	if _, ok := findNode(c, d.node.ID); !ok {
+		if from != d.cl.CAHolder {
+			if !d.alarms["foreign-remove|"+from] {
+				d.alarms["foreign-remove|"+from] = true
+				pl.event("warn", fmt.Sprintf("Knotenliste von %s ohne diesen Server ignoriert (nur der erste Server darf entfernen)", from))
+			}
+			return
+		}
 		d.removedLocked(pl)
 		return
 	}
@@ -107,8 +115,14 @@ func findNode(c clusterConfig, id string) (clusterNode, bool) {
 
 // removedLocked: aus dem Cluster entfernt → zurück auf Einzel.
 func (d *daemon) removedLocked(pl *plan) {
-	if err := os.Rename(d.st.etcPath("cluster.json"), d.st.etcPath("cluster.json.removed")); err != nil {
-		pl.event("warn", "cluster.json nicht umbenannt: "+err.Error())
+	if err := d.renameRemoved(); err != nil {
+		if d.node.CAHolder {
+			pl.event("warn", "Alte Knotenliste nicht gesichert: "+err.Error())
+		} else {
+			// ohne Umbenennen gälte nach einem Neustart wieder die alte Liste
+			d.renamePending = true
+			pl.event("alarm", "Entfernen nicht dauerhaft gespeichert: "+err.Error())
+		}
 	}
 	self := clusterNode{ID: d.node.ID, Kind: d.node.Kind, Addrs: d.ownAddrsLocked()}
 	if n, ok := findNode(d.cl, d.node.ID); ok {
@@ -134,4 +148,36 @@ func (d *daemon) removedLocked(pl *plan) {
 	d.net.setCluster(cl)
 	pl.ufw = true
 	pl.event("info", "Aus dem Cluster entfernt")
+}
+
+func (d *daemon) renameRemoved() error {
+	return os.Rename(d.st.etcPath("cluster.json"), d.st.etcPath("cluster.json.removed"))
+}
+
+// removedHousekeepingLocked: Umbenennen wiederholen; nach „pdh-ha reset“
+// (node.json fehlt) zurück in den uneingerichteten Zustand.
+func (d *daemon) removedHousekeepingLocked(pl *plan) {
+	if !d.removed {
+		return
+	}
+	if d.renamePending {
+		if err := d.renameRemoved(); err == nil || os.IsNotExist(err) {
+			d.renamePending = false
+			pl.event("info", "Entfernen dauerhaft gespeichert")
+		}
+	}
+	if !configured(d.st) {
+		if d.trCancel != nil {
+			d.trCancel()
+			d.trCancel = nil
+		}
+		if _, real := d.net.(*transport); real {
+			d.net = nil
+		}
+		d.configured, d.removed, d.started, d.renamePending = false, false, false, false
+		d.node, d.cl, d.p = nodeConfig{}, clusterConfig{}, ha.Persisted{}
+		d.carry, d.last = ha.Output{}, ha.Input{}
+		d.views = map[string]peerView{}
+		pl.event("info", "Zurückgesetzt – bereit zum Einrichten oder Beitreten")
+	}
 }

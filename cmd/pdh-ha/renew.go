@@ -48,7 +48,7 @@ func (d *daemon) checkRenewLocked(pl *plan, now time.Time) {
 	}
 	d.renewKey = key
 	for _, n := range d.cl.Nodes {
-		if n.Kind == "node" && n.ID != d.node.ID {
+		if n.Kind == "node" && n.ID != d.node.ID && (d.cl.CAHolder == "" || n.ID == d.cl.CAHolder) {
 			pl.send(n.ID, message{T: "renew_req", ID: d.node.ID, CSR: string(csr), Seq: d.nextSeq()})
 		}
 	}

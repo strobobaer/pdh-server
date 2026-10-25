@@ -97,6 +97,10 @@ type daemon struct {
 	renewKey     []byte
 	renewAt      time.Time
 
+	renamePending bool               // cluster.json.removed noch nicht geschrieben
+	trCancel      context.CancelFunc // beendet den Transport (Zurücksetzen)
+	saveAlarmAt   time.Time
+
 	clReqAt   map[string]time.Duration
 	protoSent map[ha.ActionKind]uint64
 	alarms    map[string]bool
@@ -104,7 +108,8 @@ type daemon struct {
 	ufwLast   string // zuletzt gesetzte Regeln
 	ufwFailed string // zuletzt gescheiterte Regeln
 	ufwFailAt time.Time
-	ufwMu     sync.Mutex // ein ufw-Lauf zur Zeit
+	ufwBusy   atomic.Bool // ein ufw-Lauf zur Zeit
+	ufwAgain  atomic.Bool // währenddessen erneut angestoßen
 
 	seqBase uint64
 	seqN    atomic.Uint64
@@ -156,10 +161,26 @@ func (d *daemon) events(evs []ha.Event) {
 }
 
 // load liest die Ablage. Ohne node.json bleibt der Dienst uneingerichtet.
+// Ein Ladefehler bleibt in loadErr stehen (Status „error“); der Takt
+// versucht es weiter.
 func (d *daemon) load() error {
 	d.lock()
 	defer d.unlock()
-	return d.loadLocked()
+	return d.tryLoadLocked()
+}
+
+func (d *daemon) tryLoadLocked() error {
+	err := d.loadLocked()
+	if err != nil {
+		msg := "Konfiguration nicht lesbar: " + err.Error()
+		if d.loadErr != msg {
+			d.loadErr = msg
+			d.event("alarm", msg)
+		}
+		return err
+	}
+	d.loadErr = ""
+	return nil
 }
 
 func (d *daemon) loadLocked() error {
@@ -286,7 +307,17 @@ func (d *daemon) startLocked() {
 		join = joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev)
 	}
 	if ok {
-		go tr.serve(d.runCtx, ln, join)
+		ctx, cancel := context.WithCancel(d.runCtx)
+		d.trCancel = cancel
+		go tr.serve(ctx, ln, join)
+	}
+}
+
+// saveAlarmLocked: Speicherfehler höchstens einmal je Minute melden.
+func (d *daemon) saveAlarmLocked(pl *plan, text string) {
+	if now := d.wall(); d.saveAlarmAt.IsZero() || now.Sub(d.saveAlarmAt) >= time.Minute {
+		d.saveAlarmAt = now
+		pl.event("alarm", text)
 	}
 }
 
@@ -321,9 +352,26 @@ func kindText(kind string) string {
 
 // applyFirewall setzt die ufw-Regeln, wenn sie sich geändert haben. Nach
 // einem Fehler wird dieselbe Regelliste erst nach einer Minute wiederholt.
+// Es läuft höchstens ein Lauf; Anstöße währenddessen führen danach zu
+// genau einem weiteren Lauf mit dem dann aktuellen Stand.
 func (d *daemon) applyFirewall() {
-	d.ufwMu.Lock()
-	defer d.ufwMu.Unlock()
+	d.ufwAgain.Store(true)
+	if !d.ufwBusy.CompareAndSwap(false, true) {
+		return
+	}
+	for {
+		for d.ufwAgain.Swap(false) {
+			d.applyFirewallOnce()
+		}
+		d.ufwBusy.Store(false)
+		// Anstoß zwischen letzter Prüfung und Freigabe nicht verlieren
+		if !d.ufwAgain.Load() || !d.ufwBusy.CompareAndSwap(false, true) {
+			return
+		}
+	}
+}
+
+func (d *daemon) applyFirewallOnce() {
 	d.mu.Lock()
 	if !d.configured || d.runCtx == nil {
 		d.mu.Unlock()
@@ -433,28 +481,22 @@ func (d *daemon) actionFailed(a ha.Action, err error) {
 	p := d.p
 	p.Maint = true
 	p.MaintSeq++
-	serr := d.saveFn(p)
-	if serr == nil {
+	pl := plan{}
+	if serr := d.saveFn(p); serr == nil {
 		d.p = p
+	} else {
+		d.saveAlarmLocked(&pl, "Zustand nicht gespeichert: "+serr.Error())
 	}
 	d.unlock()
 	d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v – Automatik aus", a.Kind, err))
-	if serr != nil {
-		d.event("alarm", "Zustand nicht gespeichert: "+serr.Error())
-	}
+	d.events(pl.events)
 }
 
 func (d *daemon) tick(ctx context.Context) {
 	d.lock()
 	if !d.configured {
 		if configured(d.st) {
-			if err := d.loadLocked(); err != nil {
-				if d.loadErr != err.Error() {
-					d.loadErr = err.Error()
-					d.event("alarm", "Konfiguration nicht lesbar: "+err.Error())
-				}
-			} else {
-				d.loadErr = ""
+			if d.tryLoadLocked() == nil && d.configured {
 				d.startLocked()
 				d.event("info", fmt.Sprintf("Konfiguration geladen: %s (%s)", d.node.ID, kindText(d.node.Kind)))
 				d.unlock()
@@ -466,12 +508,20 @@ func (d *daemon) tick(ctx context.Context) {
 		return
 	}
 	d.startLocked()
+	hk := plan{net: d.net}
+	d.removedHousekeepingLocked(&hk)
+	if !d.configured {
+		d.unlock()
+		d.execute(ctx, hk)
+		return
+	}
 	var pl plan
 	if d.node.Kind == "witness" {
 		pl = d.tickWitnessLocked(ctx)
 	} else {
 		pl = d.tickNodeLocked(ctx)
 	}
+	pl.events = append(pl.events, hk.events...)
 	// Beitrittscode ausgegeben oder abgelaufen → Regeln anpassen
 	tried := d.ufwLast
 	if tried == "" {
@@ -509,7 +559,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	out := ha.Step(in)
 	if out.Persist != d.p {
 		if err := d.saveFn(out.Persist); err != nil {
-			pl.event("alarm", "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
+			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
 			return pl
 		}
 	}
@@ -584,7 +634,7 @@ func (d *daemon) tickWitnessLocked(ctx context.Context) plan {
 	}
 	if p != d.p {
 		if err := d.saveFn(p); err != nil {
-			pl.event("alarm", "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
+			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
 			return pl
 		}
 		d.p = p

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"sync"
 	"time"
 
 	"pdh/internal/ha"
@@ -157,6 +158,7 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	// Uneingerichtet: fest aktiv (wie ohne pdh-ha)
 	if !d.configured {
+		st.Error = d.loadErr
 		return st
 	}
 	now, wall := d.mono(), d.wall()
@@ -243,14 +245,21 @@ func (d *daemon) pingRound(ctx context.Context, tick time.Duration) {
 		if gw, err := gwFn(); err == nil {
 			targets = append([]string{gw}, targets...)
 		}
+		// alle Ziele gleichzeitig; der erste Erfolg zählt, die übrigen werden abgebrochen
 		pctx, cancel := context.WithTimeout(ctx, 2*time.Second+tick)
 		defer cancel()
+		var wg sync.WaitGroup
 		for _, t := range targets {
-			if pingFn(pctx, t) {
-				d.gwOK.Store(int64(d.mono()))
-				return
-			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if pingFn(pctx, t) {
+					d.gwOK.Store(int64(d.mono()))
+					cancel()
+				}
+			}()
 		}
+		wg.Wait()
 	}()
 }
 

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,7 @@ type apiStatus struct {
 	Observe        bool        `json:"observe"` // in Teil 2 immer true
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
+	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
 }
 
 type apiNode struct {
@@ -82,12 +84,15 @@ func socketPath() string {
 // serveAPI lauscht auf dem Socket bis ctx endet. ready (darf nil sein)
 // bekommt das Ergebnis des Öffnens.
 func serveAPI(ctx context.Context, d *daemon, sock string, ready chan<- error) error {
-	ln, err := listenUnix(sock)
+	ln, warns, err := listenUnix(sock)
 	if ready != nil {
 		ready <- err
 	}
 	if err != nil {
 		return err
+	}
+	for _, w := range warns {
+		d.event("warn", w)
 	}
 	srv := &http.Server{Handler: apiHandler(d), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second}
 	go func() {
@@ -103,26 +108,34 @@ func serveAPI(ctx context.Context, d *daemon, sock string, ready chan<- error) e
 }
 
 // listenUnix: alte Socket-Datei entfernen, 0660, Gruppe pdh (falls vorhanden).
-func listenUnix(sock string) (net.Listener, error) {
+// Rechte-Probleme sind Warnungen (das PDH erreicht den Socket dann evtl. nicht).
+func listenUnix(sock string) (net.Listener, []string, error) {
 	if err := os.MkdirAll(filepath.Dir(sock), 0o750); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	os.Remove(sock)
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	os.Chmod(sock, 0o660)
+	var warns []string
+	if err := os.Chmod(sock, 0o660); err != nil && runtime.GOOS != "windows" {
+		warns = append(warns, "Socket-Rechte nicht gesetzt: "+err.Error())
+	}
 	if g, err := user.LookupGroup("pdh"); err == nil {
 		if gid, err := strconv.Atoi(g.Gid); err == nil {
-			os.Chown(sock, -1, gid)
+			if err := os.Chown(sock, -1, gid); err != nil {
+				warns = append(warns, "Socket-Gruppe pdh nicht gesetzt: "+err.Error())
+			}
 			// eigener Laufzeitordner (systemd RuntimeDirectory): Gruppe darf hinein
 			if dir := filepath.Dir(sock); filepath.Base(dir) == "pdh-ha" {
-				os.Chown(dir, -1, gid)
+				if err := os.Chown(dir, -1, gid); err != nil {
+					warns = append(warns, "Gruppe pdh für "+dir+" nicht gesetzt: "+err.Error())
+				}
 			}
 		}
 	}
-	return ln, nil
+	return ln, warns, nil
 }
 
 type apiErr struct {
@@ -407,7 +420,14 @@ func (d *daemon) updateSettings(s ha.Settings, targets []string) error {
 		d.unlock()
 		return err
 	}
+	if !d.node.CAHolder {
+		d.unlock()
+		return errors.New("Einstellungen bitte am ersten Server ändern")
+	}
 	cl := d.cl
+	if targets == nil {
+		clean = d.cl.GatewayTargets // nicht angegeben: Ziele bleiben
+	}
 	cl.Settings, cl.GatewayTargets = s, clean
 	cl.Version++
 	pl, err := d.publishClusterLocked(cl)

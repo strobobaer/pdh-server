@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Anbindung an das Betriebssystem: Gateway, Ping, Hardware-Kennung, ufw.
@@ -171,23 +172,32 @@ func ufwNumbered(out string) []int {
 	return nums
 }
 
+const ufwTimeout = 30 * time.Second
+
+// ufwRun führt einen ufw-Befehl mit eigener Frist aus.
+func ufwRun(ctx context.Context, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, ufwTimeout)
+	defer cancel()
+	return exec.CommandContext(ctx, "ufw", args...).CombinedOutput()
+}
+
 // applyUFW ersetzt die pdh-ha-Regeln – nur wenn ufw installiert und aktiv ist.
 func applyUFW(ctx context.Context, rules [][]string) error {
-	out, err := exec.CommandContext(ctx, "ufw", "status").Output()
+	out, err := ufwRun(ctx, "status")
 	if err != nil || !strings.Contains(string(out), "Status: active") {
 		return nil
 	}
-	out, err = exec.CommandContext(ctx, "ufw", "status", "numbered").Output()
+	out, err = ufwRun(ctx, "status", "numbered")
 	if err != nil {
 		return fmt.Errorf("ufw status: %w", err)
 	}
 	for _, n := range ufwNumbered(string(out)) {
-		if b, err := exec.CommandContext(ctx, "ufw", "--force", "delete", strconv.Itoa(n)).CombinedOutput(); err != nil {
+		if b, err := ufwRun(ctx, "--force", "delete", strconv.Itoa(n)); err != nil {
 			return fmt.Errorf("ufw delete %d: %v %s", n, err, strings.TrimSpace(string(b)))
 		}
 	}
 	for _, r := range rules {
-		if b, err := exec.CommandContext(ctx, "ufw", r...).CombinedOutput(); err != nil {
+		if b, err := ufwRun(ctx, r...); err != nil {
 			return fmt.Errorf("ufw %s: %v %s", strings.Join(r, " "), err, strings.TrimSpace(string(b)))
 		}
 	}
