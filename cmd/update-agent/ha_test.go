@@ -35,41 +35,64 @@ func haFakeSocket(t *testing.T, body string) string {
 	return sock
 }
 
+// haInstalled: node.json in PDH_HA_ETC – pdh-ha gilt als eingerichtet.
+func haInstalled(t *testing.T) {
+	t.Helper()
+	etc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(etc, "node.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PDH_HA_ETC", etc)
+}
+
 func TestDRIsActive(t *testing.T) {
 	a := &updateAgent{mode: "systemd"}
 	ctx := context.Background()
 
-	t.Run("Datei fehlt", func(t *testing.T) {
-		t.Setenv("PDH_HA_SOCKET", filepath.Join(t.TempDir(), "fehlt.sock"))
+	t.Run("ohne node.json", func(t *testing.T) {
+		t.Setenv("PDH_HA_ETC", t.TempDir())
+		haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
 		if ok, err := a.drIsActive(ctx); !ok || err != nil {
 			t.Fatalf("ohne pdh-ha: %v %v", ok, err)
 		}
 	})
+	t.Run("Socket fehlt", func(t *testing.T) {
+		haInstalled(t)
+		t.Setenv("PDH_HA_SOCKET", filepath.Join(t.TempDir(), "fehlt.sock"))
+		if ok, err := a.drIsActive(ctx); ok || err == nil {
+			t.Fatalf("eingerichtet, Socket fehlt: %v %v", ok, err)
+		}
+	})
 	t.Run("aktiv", func(t *testing.T) {
+		haInstalled(t)
 		haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"a","role":"aktiv"}}`)
 		if ok, err := a.drIsActive(ctx); !ok || err != nil {
 			t.Fatalf("aktiv: %v %v", ok, err)
 		}
 	})
 	t.Run("passiv", func(t *testing.T) {
+		haInstalled(t)
 		haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
 		if ok, err := a.drIsActive(ctx); ok || err != nil {
 			t.Fatalf("passiv: %v %v", ok, err)
 		}
 	})
 	t.Run("nie eingerichtet", func(t *testing.T) {
+		haInstalled(t)
 		haFakeSocket(t, `{"ok":true,"configured":false,"self":{"role":""}}`)
 		if ok, err := a.drIsActive(ctx); !ok || err != nil {
 			t.Fatalf("uneingerichtet: %v %v", ok, err)
 		}
 	})
 	t.Run("Ladefehler", func(t *testing.T) {
+		haInstalled(t)
 		haFakeSocket(t, `{"ok":true,"configured":false,"error":"Konfiguration nicht lesbar: x"}`)
 		if ok, err := a.drIsActive(ctx); ok || err == nil {
 			t.Fatalf("Ladefehler: %v %v", ok, err)
 		}
 	})
 	t.Run("kein Server", func(t *testing.T) {
+		haInstalled(t)
 		sock := filepath.Join(t.TempDir(), "api.sock")
 		if err := os.WriteFile(sock, nil, 0o600); err != nil {
 			t.Fatal(err)
@@ -81,6 +104,24 @@ func TestDRIsActive(t *testing.T) {
 	})
 }
 
+// Manuelle Sicherung auf dem passiven Knoten abgelehnt.
+func TestDRRunRefusedOnPassive(t *testing.T) {
+	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
+	haInstalled(t)
+	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
+	a := &updateAgent{mode: "systemd"}
+	a.dr.Config = drDefaults()
+	a.dr.Config.Enabled = true
+	rec := httptest.NewRecorder()
+	a.drRunHandler(rec, httptest.NewRequest(http.MethodPost, "/v1/dr/run", strings.NewReader(`{"what":"base"}`)))
+	if !strings.Contains(rec.Body.String(), `"ok":false`) || !strings.Contains(rec.Body.String(), "Sicherung pausiert: passiver Knoten") {
+		t.Fatalf("passiv: %s", rec.Body.String())
+	}
+	if a.drStatus().Running != "" {
+		t.Fatal("Lauf trotzdem gestartet")
+	}
+}
+
 // Auf dem passiven Knoten pausiert die Schleife; ist pdh-ha nicht erreichbar,
 // steht das im Fehler.
 func TestDRTickPausedOnPassive(t *testing.T) {
@@ -89,6 +130,7 @@ func TestDRTickPausedOnPassive(t *testing.T) {
 	a := &updateAgent{mode: "docker"} // Pfade ohne /proc/1/root
 	a.dr.Config = drDefaults()
 	a.dr.Config.Target = target
+	haInstalled(t)
 
 	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
 	a.drTick(context.Background(), time.Now())
@@ -99,9 +141,7 @@ func TestDRTickPausedOnPassive(t *testing.T) {
 		t.Fatal("passiver Knoten hat das Ziel angefasst")
 	}
 
-	sock := filepath.Join(t.TempDir(), "api.sock")
-	_ = os.WriteFile(sock, nil, 0o600)
-	t.Setenv("PDH_HA_SOCKET", sock)
+	t.Setenv("PDH_HA_SOCKET", filepath.Join(t.TempDir(), "fehlt.sock"))
 	a.drTick(context.Background(), time.Now())
 	if st := a.drStatus(); !strings.Contains(st.Error, "pdh-ha nicht erreichbar – Sicherung pausiert") || st.Paused != "" {
 		t.Fatalf("nicht erreichbar: %+v", st)
@@ -194,9 +234,17 @@ func TestHAInstallRuns(t *testing.T) {
 	if gotEnv["PDH_HA_REPO"] != "/opt/pdh-server" || gotEnv["PDH_HA_ADDRS"] != "192.168.1.10,fd00::1" {
 		t.Fatalf("Umgebung: %v", gotEnv)
 	}
-	if strings.Contains(gotScript, "192.168") || !strings.Contains(gotScript, `"$PDH_HA_ADDRS"`) || !strings.Contains(gotScript, `"configured":true`) {
-		t.Fatalf("Skript: %s", gotScript)
+	// außerhalb des Agenten (systemd-run), Werte nur über die Umgebung
+	for _, want := range []string{"systemd-run --wait --pipe --collect --quiet", "--setenv=PDH_HA_REPO", "--setenv=PDH_HA_ADDRS", `"$PDH_HA_SCRIPT"`} {
+		if !strings.Contains(gotScript, want) {
+			t.Fatalf("Skript ohne %q: %s", want, gotScript)
+		}
 	}
+	inner := gotEnv["PDH_HA_SCRIPT"]
+	if strings.Contains(gotScript+inner, "192.168") || !strings.Contains(inner, `"$PDH_HA_ADDRS"`) || !strings.Contains(inner, `"configured":true`) {
+		t.Fatalf("Skript: %s / %s", gotScript, inner)
+	}
+	drBashSyntax(t, "ha-install-inner", inner)
 	drBashSyntax(t, "ha-install", gotScript)
 }
 
@@ -213,6 +261,10 @@ func TestHAInstallScriptContent(t *testing.T) {
 			t.Errorf("install-pdh-ha.sh ohne %q", want)
 		}
 	}
+	// erst Unit (kann an schreibgeschütztem /etc scheitern), dann Binary atomar tauschen
+	if i, j := strings.Index(s, "daemon-reload"), strings.Index(s, "mv -f"); i < 0 || j < 0 || i > j || !strings.Contains(s, "/usr/local/bin/pdh-ha.new") {
+		t.Error("install-pdh-ha.sh: Binary nicht atomar nach der Unit getauscht")
+	}
 	if strings.Contains(s, "ufw allow") {
 		t.Error("install-pdh-ha.sh öffnet ufw selbst (macht pdh-ha)")
 	}
@@ -220,7 +272,8 @@ func TestHAInstallScriptContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"https://github.com/strobobaer/pdh-server.git", "/opt/pdh-ha-src", "tr '_-' '/+'", "--update", "--witness", "iputils-ping"} {
+	for _, want := range []string{"https://github.com/strobobaer/pdh-server.git", "/opt/pdh-ha-src", "tr '_-' '/+'", "--update", "--witness", "iputils-ping",
+		`PDH_HA_JOIN="$CODE" /usr/local/bin/pdh-ha`, "sudo snap install go --classic", "read -r"} {
 		if !strings.Contains(string(j), want) {
 			t.Errorf("pdh-ha-join.sh ohne %q", want)
 		}
@@ -229,7 +282,17 @@ func TestHAInstallScriptContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(u), `if [[ -x /usr/local/bin/pdh-ha ]]; then bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir"`) {
-		t.Error("install_update.sh baut pdh-ha nicht mit")
+	us := string(u)
+	if strings.Contains(string(j), `"$CODE"; then`) || strings.Contains(string(j), `join "$CODE"`) {
+		t.Error("pdh-ha-join.sh gibt den Code in der Befehlszeile weiter")
+	}
+	// vor dem Agent-Neustart und außerhalb seiner cgroup
+	i := strings.Index(us, "systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-")
+	k := strings.Index(us, "--unit=pdh-update-agent-restart")
+	if !strings.Contains(us, "if [[ -x /usr/local/bin/pdh-ha ]]") || i < 0 || k < 0 || i > k {
+		t.Error("install_update.sh baut pdh-ha nicht vor dem Agent-Neustart per systemd-run")
+	}
+	if !strings.Contains(us, "pdh-ha-Update fehlgeschlagen – siehe journalctl -u pdh-ha-update-*") {
+		t.Error("install_update.sh: Warnung fehlt")
 	}
 }

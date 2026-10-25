@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,15 +33,23 @@ func haSocketPath() string {
 	return "/run/pdh-ha/api.sock"
 }
 
+func haEtcDir() string {
+	if v := strings.TrimSpace(os.Getenv("PDH_HA_ETC")); v != "" {
+		return v
+	}
+	return "/etc/pdh/ha"
+}
+
 // drIsActive: läuft die Netzlaufwerk-Sicherung auf diesem Knoten? Ohne pdh-ha
-// (keine Socket-Datei) oder nie eingerichtet: ja. Nicht erreichbar oder
-// Konfiguration nicht lesbar: nein, mit Fehler.
+// (keine node.json) oder nie eingerichtet: ja. Eingerichtet, aber Dienst nicht
+// erreichbar oder Konfiguration nicht lesbar: nein, mit Fehler.
 func (a *updateAgent) drIsActive(ctx context.Context) (bool, error) {
-	sock := haSocketPath()
-	if _, err := os.Stat(sock); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(haEtcDir(), "node.json")); errors.Is(err, os.ErrNotExist) {
 		return true, nil
 	}
+	sock := haSocketPath()
 	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{
+		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", sock)
@@ -133,8 +142,19 @@ func (j *haJob) status() haInstallStatus {
 	return haInstallStatus{Running: j.running, Done: j.done, Error: j.err, Log: strings.Join(lines, "\n")}
 }
 
-// Werte nur über Umgebungsvariablen; setup nie zweimal.
+// haInstallScript läuft per systemd-run außerhalb des Agenten (eigener cgroup,
+// /etc beschreibbar): ein Neustart des Agenten bricht die Installation nicht ab.
+// Werte nur über Umgebungsvariablen.
 const haInstallScript = `set -euo pipefail
+if command -v systemd-run >/dev/null 2>&1; then
+    exec systemd-run --wait --pipe --collect --quiet --unit="pdh-ha-install-$(date +%s)" \
+        --setenv=PDH_HA_REPO --setenv=PDH_HA_ADDRS bash -c "$PDH_HA_SCRIPT"
+fi
+exec bash -c "$PDH_HA_SCRIPT"
+`
+
+// haInstallInner: Installation und Einrichtung; setup nie zweimal.
+const haInstallInner = `set -euo pipefail
 bash "$PDH_HA_REPO/scripts/install-pdh-ha.sh" "$PDH_HA_REPO"
 for _ in $(seq 1 40); do [[ -S /run/pdh-ha/api.sock ]] && break; sleep 0.25; done
 if /usr/local/bin/pdh-ha status --json 2>/dev/null | grep -q '"configured":true'; then
@@ -189,7 +209,7 @@ func (a *updateAgent) haInstallHandler(w http.ResponseWriter, r *http.Request) {
 	j.running, j.done, j.err = true, false, ""
 	j.log = nil
 	j.mu.Unlock()
-	env := map[string]string{"PDH_HA_REPO": a.repoDir, "PDH_HA_ADDRS": strings.Join(req.Addrs, ",")}
+	env := map[string]string{"PDH_HA_REPO": a.repoDir, "PDH_HA_ADDRS": strings.Join(req.Addrs, ","), "PDH_HA_SCRIPT": haInstallInner}
 	run := a.haRunFn()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)

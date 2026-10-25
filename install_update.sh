@@ -106,15 +106,24 @@ else
     # schreibgeschuetztes Dateisystem) darf das Update nicht halb fertig
     # abbrechen.
     systemctl restart pdh
+    # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
+    # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
+    # ein Fehler bricht das Update nicht ab.
+    if [[ -x /usr/local/bin/pdh-ha ]]; then
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
+                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe journalctl -u pdh-ha-update-*" >&2
+        else
+            bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
+                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
+        fi
+    fi
     if install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent; then
         systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
     else
         echo "WARNING: /usr/local/bin/pdh-update-agent konnte nicht ersetzt werden; der Update-Agent bleibt auf der alten Version." >&2
         echo "         Auf dem Server 'sudo ./install-update-agent.sh' im Repo-Verzeichnis ausfuehren (aktualisiert die systemd-Unit inkl. ReadWritePaths)." >&2
     fi
-    # Ausfallschutz (pdh-ha): nur wenn eingerichtet; Fehler bricht das Update nicht ab
-    if [[ -x /usr/local/bin/pdh-ha ]]; then bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
-        || echo "WARNING: pdh-ha konnte nicht neu gebaut werden (Ausfallschutz) - Update trotzdem fertig." >&2; fi
     # code-server (/code/): nur wenn eingerichtet (scripts/install-code-server.sh); Fehler bricht das Update nicht ab
     if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx pdh-codeserver; then
         cs_port="$(sed -nE 's#^PDH_CODESERVER_INTERNAL_URL=http://127\.0\.0\.1:([0-9]+).*#\1#p' /etc/pdh/pdh.env 2>/dev/null | tail -n 1)"

@@ -26,8 +26,8 @@ var (
 const usage = `Aufruf: pdh-ha <Befehl>
   run [--version-override V]          Dienst starten
   setup [--addr a,b] [--id K]         diesen Server als ersten einrichten
-  join [--witness] [--addr a,b] [--id K] <Code>
-                                      einem Cluster beitreten
+  join [--witness] [--addr a,b] [--id K] [<Code>]
+                                      einem Cluster beitreten (Code sonst aus PDH_HA_JOIN)
   join-code [--witness]               Beitrittscode erzeugen
   status [--json]                     Zustand anzeigen
   maintenance on|off                  Wartung (Automatik aus/an)
@@ -98,7 +98,12 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		if fs.Parse(args[1:]) != nil {
 			return 2
 		}
-		if fs.NArg() != 1 {
+		// Code als Argument oder aus PDH_HA_JOIN (taucht dann nicht in ps auf)
+		code := strings.TrimSpace(os.Getenv("PDH_HA_JOIN"))
+		if fs.NArg() == 1 {
+			code = fs.Arg(0)
+		}
+		if fs.NArg() > 1 || code == "" {
 			fmt.Fprint(stderr, usage)
 			return 2
 		}
@@ -108,7 +113,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		n, err := joinFiles(ctx, newStore(), fs.Arg(0), joinOpts{ID: *id, Kind: kind, Addrs: splitList(*addr)})
+		n, err := joinFiles(ctx, newStore(), code, joinOpts{ID: *id, Kind: kind, Addrs: splitList(*addr)})
 		if err != nil {
 			return fail(err)
 		}
