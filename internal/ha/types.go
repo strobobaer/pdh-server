@@ -138,6 +138,7 @@ type PeerObs struct {
 	Maint       bool
 	MaintSeq    uint64
 	VotedFor    string // nur Zeuge: Kandidat seiner höchsten Stimme
+	SeesSelf    bool   // die Gegenstelle meldet, dass sie diesen Knoten gerade sieht
 }
 
 // Persisted ist der dauerhaft gespeicherte Zustand (state.json).
@@ -212,9 +213,14 @@ type Input struct {
 	Persist  Persisted
 
 	// aus dem vorigen Output
-	HoldUntil   time.Duration
-	VotePending uint64
-	VoteAskedAt time.Duration
+	HoldUntil       time.Duration
+	VotePending     uint64
+	VoteAskedAt     time.Duration
+	HandoverPending uint64        // >0: eigener Rollentausch an diese Amtszeit läuft
+	HandoverAt      time.Duration // Beginn des Rollentauschs
+	HandoverSentAt  time.Duration // letzte handover-Aktion
+	NoActiveSince   time.Duration // >0: seit dann zwei passive, keiner aktiv
+	NoActiveAlarmed bool
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -223,7 +229,12 @@ type Output struct {
 	Actions []Action
 	Events  []Event
 
-	HoldUntil   time.Duration
-	VotePending uint64
-	VoteAskedAt time.Duration
+	HoldUntil       time.Duration
+	VotePending     uint64
+	VoteAskedAt     time.Duration
+	HandoverPending uint64
+	HandoverAt      time.Duration
+	HandoverSentAt  time.Duration
+	NoActiveSince   time.Duration
+	NoActiveAlarmed bool
 }

@@ -28,9 +28,14 @@ func Vote(p Persisted, req VoteRequest, nodes []PeerObs, now time.Duration, s Se
 			return false, p
 		}
 		// Seit Start nie gesehen zählt als „vielleicht aktiv“: der Zeuge
-		// muss selbst die ganze Übernahmezeit beobachtet haben.
+		// muss selbst die ganze Übernahmezeit beobachtet haben. Ein
+		// abgeschalteter Knoten kann jederzeit zurückkehren und zählt wie aktiv,
+		// ebenso der Knoten mit der letzten Stimme, solange der Zeuge dessen
+		// neue Amtszeit noch nicht gesehen hat.
 		unknown := !n.Seen && n.LastSeen == 0
-		if (n.Role == Active || unknown) && (n.Seen || now-n.LastSeen < s.TakeoverTrio) {
+		promised := n.ID == p.VotedFor && n.Term < p.VotedTerm
+		holder := n.Role == Active || n.Role == Fenced || promised
+		if (holder || unknown) && (n.Seen || now-n.LastSeen < s.TakeoverTrio) {
 			return false, p
 		}
 	}
