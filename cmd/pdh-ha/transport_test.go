@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -249,6 +250,7 @@ func TestTransportRejectsForeign(t *testing.T) {
 	certA, pemA := ca.tlsCert(t, "a", "node")
 	foreignA, _ := other.tlsCert(t, "a", "node")
 	strangerX, _ := ca.tlsCert(t, "x", "node")
+	witnessA, _ := ca.tlsCert(t, "a", "witness")
 	lnB := listenLocal(t)
 	cl := clusterConfig{ClusterID: "c1", Settings: testSettings(), Revoked: []string{serialHex(parseCert(t, pemA))}, Nodes: []clusterNode{
 		{ID: "a", Kind: "node", Addrs: []string{"127.0.0.1:1"}},
@@ -280,7 +282,8 @@ func TestTransportRejectsForeign(t *testing.T) {
 	try(&certA)     // gesperrt
 	try(nil)        // ohne Zertifikat
 	try(&strangerX) // nicht im Cluster
-	waitFor(t, 5*time.Second, "vier Ablehnungen", func() bool { return tb.rejects.Load() >= 4 })
+	try(&witnessA)  // Art passt nicht zur Knotenliste
+	waitFor(t, 5*time.Second, "fünf Ablehnungen", func() bool { return tb.rejects.Load() >= 5 })
 
 	n := 0
 	for _, e := range ev.since(0, 0) {
@@ -309,6 +312,7 @@ type joinEnv struct {
 	addr  string
 	mu    sync.Mutex
 	got   []clusterConfig
+	ev    *eventLog
 }
 
 func newJoinEnv(t *testing.T) *joinEnv {
@@ -327,7 +331,8 @@ func newJoinEnv(t *testing.T) *joinEnv {
 		t.Fatal(err)
 	}
 	certA, _ := e.ca.tlsCert(t, "a", "node")
-	e.ta = newTransport(nodeConfig{ID: "a", Kind: "node", Addrs: []string{e.addr}, CAHolder: true}, cl, certA, e.ca.pool, testMono(), testEvents(t))
+	e.ev = testEvents(t)
+	e.ta = newTransport(nodeConfig{ID: "a", Kind: "node", Addrs: []string{e.addr}, CAHolder: true}, cl, certA, e.ca.pool, testMono(), e.ev)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go e.ta.serve(ctx, ln, joinHandler(e.st, e.codes, func(c clusterConfig) {
@@ -335,7 +340,7 @@ func newJoinEnv(t *testing.T) *joinEnv {
 		e.got = append(e.got, c)
 		e.mu.Unlock()
 		e.ta.setCluster(c)
-	}))
+	}, e.ev))
 	return e
 }
 
@@ -456,5 +461,300 @@ func TestTransportLongLine(t *testing.T) {
 	v := ta.peers(testTick)["b"]
 	if v.Paths[0].Err != "Zeile zu lang, Verbindung geschlossen" || v.LastSeen != 0 {
 		t.Fatalf("%+v", v)
+	}
+}
+
+// fakeMono ist eine von Hand gestellte monotone Uhr.
+type fakeMono struct{ ns atomic.Int64 }
+
+func (f *fakeMono) now() time.Duration  { return time.Duration(f.ns.Load()) }
+func (f *fakeMono) add(d time.Duration) { f.ns.Add(int64(d)) }
+
+func newFakeMono() *fakeMono {
+	f := &fakeMono{}
+	f.add(time.Second)
+	return f
+}
+
+// pairCluster: a und b als Knoten; a baut zu b auf.
+func pairCluster(ver uint64, addrB string) clusterConfig {
+	return clusterConfig{ClusterID: "c1", Version: ver, Settings: testSettings(), Nodes: []clusterNode{
+		{ID: "a", Kind: "node", Addrs: []string{"127.0.0.1:1"}},
+		{ID: "b", Kind: "node", Addrs: []string{addrB}},
+	}}
+}
+
+func (t *transport) connCount(id string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	n := 0
+	for _, pc := range t.conns {
+		if pc.peer == id {
+			n++
+		}
+	}
+	return n
+}
+
+func TestRunConnRefusesRevokedOrRemoved(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	cl := pairCluster(1, "127.0.0.1:2")
+	cl.Revoked = []string{"abc"}
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, cl, certB, ca.pool, testMono(), nil)
+	for _, c := range []struct{ id, serial string }{{"a", "abc"}, {"z", "def"}} {
+		x, y := net.Pipe()
+		go y.Write(encodeLine(message{T: "hb", ID: c.id, Seq: 1}))
+		if tb.runConn(context.Background(), c.id, "p", x, x, c.serial) {
+			t.Errorf("%s: Nachricht angenommen", c.id)
+		}
+		y.Close()
+	}
+	if v := tb.peers(testTick)["a"]; v.LastSeen != 0 || tb.connCount("a") != 0 {
+		t.Fatalf("gesperrte Gegenstelle verbucht: %+v", v)
+	}
+}
+
+func TestReceiveDropsRevoked(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	cl := pairCluster(1, "127.0.0.1:2")
+	cl.Revoked = []string{"ABC"}
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, cl, certB, ca.pool, testMono(), nil)
+	tb.receive("a", "p", "abc", message{T: "vote_req", Seq: 1})
+	tb.receive("a", "p", "abc", message{T: "hb", Seq: 2})
+	select {
+	case in := <-tb.incoming():
+		t.Fatalf("zugestellt: %+v", in)
+	default:
+	}
+	if tb.peers(testTick)["a"].LastSeen != 0 {
+		t.Fatal("gesperrter Heartbeat verbucht")
+	}
+}
+
+func TestSetClusterRevokesLiveConnection(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certA, pemA := ca.tlsCert(t, "a", "node")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	lnA, lnB := listenLocal(t), listenLocal(t)
+	cl := pairCluster(1, lnB.Addr().String())
+	ta := newTransport(nodeConfig{ID: "a", Kind: "node"}, cl, certA, ca.pool, testMono(), nil)
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, cl, certB, ca.pool, testMono(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ta.serve(ctx, lnA, nil)
+	go tb.serve(ctx, lnB, nil)
+	go beat(ctx, ta, "a")
+	waitFor(t, 5*time.Second, "verbunden", func() bool { return tb.peers(testTick)["a"].seen() })
+
+	rev := cl
+	rev.Version = 2
+	rev.Revoked = []string{serialHex(parseCert(t, pemA))}
+	tb.setCluster(rev)
+	waitFor(t, 5*time.Second, "Verbindung getrennt", func() bool {
+		return tb.connCount("a") == 0 && ta.connCount("b") == 0 && !tb.peers(testTick)["a"].seen()
+	})
+	ta.sendTo("b", message{T: "vote_req", Seq: 1 << 41})
+	select {
+	case in := <-tb.incoming():
+		t.Fatalf("Nachricht nach Sperre: %+v", in)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func TestDedupResetOnRestart(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, pairCluster(1, "127.0.0.1:2"), certB, ca.pool, testMono(), nil)
+	got := func() int {
+		n := 0
+		for {
+			select {
+			case <-tb.incoming():
+				n++
+			default:
+				return n
+			}
+		}
+	}
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 1000})
+	tb.receive("a", "p", "1", message{T: "vote_req", Seq: 1001})
+	tb.receive("a", "q", "1", message{T: "vote_req", Seq: 1001}) // zweiter Weg
+	if n := got(); n != 1 {
+		t.Fatalf("vor Neustart %d statt 1", n)
+	}
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 1}) // Gegenstelle neu gestartet
+	tb.receive("a", "p", "1", message{T: "vote_req", Seq: 1001})
+	if n := got(); n != 1 {
+		t.Fatalf("nach Neustart %d statt 1", n)
+	}
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 5, HostID: "h1"})
+	tb.receive("a", "p", "1", message{T: "vote_req", Seq: 1001})
+	tb.receive("a", "p", "1", message{T: "hb", Seq: 6, HostID: "h2"}) // andere Maschine
+	tb.receive("a", "p", "1", message{T: "vote_req", Seq: 1001})
+	if n := got(); n != 1 {
+		t.Fatalf("nach Wechsel der HostID %d statt 1", n)
+	}
+}
+
+func TestSetClusterIgnoresOlder(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, pairCluster(3, "127.0.0.1:2"), certB, ca.pool, testMono(), nil)
+	old := pairCluster(2, "127.0.0.1:2")
+	old.Nodes = old.Nodes[1:]
+	tb.setCluster(old)
+	if _, ok := tb.peers(testTick)["a"]; !ok {
+		t.Fatal("ältere Knotenliste übernommen")
+	}
+}
+
+func TestHandshakePerIPCap(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	lnB := listenLocal(t)
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, pairCluster(1, lnB.Addr().String()), certB, ca.pool, testMono(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go tb.serve(ctx, lnB, nil)
+	for i := 0; i < 8; i++ {
+		c, err := net.Dial("tcp", lnB.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+	}
+	c, err := net.Dial("tcp", lnB.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err = c.Read(make([]byte, 1))
+	if ne, ok := err.(net.Error); err == nil || (ok && ne.Timeout()) {
+		t.Fatalf("neunter Handshake nicht sofort geschlossen: %v", err)
+	}
+}
+
+func TestServeRestartsDialers(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certA, _ := ca.tlsCert(t, "a", "node")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	lnB := listenLocal(t)
+	cl := pairCluster(1, lnB.Addr().String())
+	ta := newTransport(nodeConfig{ID: "a", Kind: "node"}, cl, certA, ca.pool, testMono(), nil)
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, cl, certB, ca.pool, testMono(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go tb.serve(ctx, lnB, nil)
+	go beat(ctx, ta, "a")
+
+	c1, stop1 := context.WithCancel(ctx)
+	done := make(chan struct{})
+	ln1 := listenLocal(t)
+	go func() { ta.serve(c1, ln1, nil); close(done) }()
+	waitFor(t, 5*time.Second, "erste Verbindung", func() bool { return tb.peers(testTick)["a"].seen() })
+	stop1()
+	<-done
+	waitFor(t, 5*time.Second, "getrennt", func() bool { return !tb.peers(testTick)["a"].seen() })
+	go ta.serve(ctx, listenLocal(t), nil)
+	waitFor(t, 5*time.Second, "Neustart der Verbindungen", func() bool { return tb.peers(testTick)["a"].seen() })
+}
+
+func TestDialRejectsWrongIdentity(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certA, _ := ca.tlsCert(t, "a", "node")
+	certC, _ := ca.tlsCert(t, "c", "node") // gültige CA, aber nicht b
+	lnB := listenLocal(t)
+	var accepted atomic.Int32
+	tl := tls.NewListener(lnB, &tls.Config{Certificates: []tls.Certificate{certC}, NextProtos: []string{"pdh-ha/1"}, MinVersion: tls.VersionTLS13})
+	go func() {
+		for {
+			c, err := tl.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			go func(c net.Conn) {
+				defer c.Close()
+				c.Write(encodeLine(message{T: "hb", ID: "b", Seq: 1}))
+				bufio.NewReader(c).ReadByte()
+			}(c)
+		}
+	}()
+	cl := pairCluster(1, lnB.Addr().String())
+	cl.Nodes = append(cl.Nodes, clusterNode{ID: "c", Kind: "node"})
+	ta := newTransport(nodeConfig{ID: "a", Kind: "node"}, cl, certA, ca.pool, testMono(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ta.serve(ctx, listenLocal(t), nil)
+	waitFor(t, 5*time.Second, "Fehlertext", func() bool {
+		v := ta.peers(testTick)["b"]
+		return accepted.Load() >= 1 && len(v.Paths) == 1 && v.Paths[0].Err != ""
+	})
+	if v := ta.peers(testTick)["b"]; v.LastSeen != 0 || ta.connCount("b") != 0 {
+		t.Fatalf("falsche Gegenstelle angenommen: %+v", v)
+	}
+}
+
+func TestRejectEventRepeatsAfterMinute(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	certB, _ := ca.tlsCert(t, "b", "node")
+	fm := newFakeMono()
+	ev := testEvents(t)
+	tb := newTransport(nodeConfig{ID: "b", Kind: "node"}, pairCluster(1, "127.0.0.1:2"), certB, ca.pool, fm.now, ev)
+	addr := &net.TCPAddr{IP: net.IPv4(10, 0, 0, 9), Port: 4000}
+	count := func() int {
+		n := 0
+		for _, e := range ev.since(0, 0) {
+			if e.Text == "Verbindung abgelehnt: 10.0.0.9" {
+				n++
+			}
+		}
+		return n
+	}
+	tb.reject(addr)
+	fm.add(59 * time.Second)
+	tb.reject(addr)
+	if n := count(); n != 1 {
+		t.Fatalf("innerhalb einer Minute %d", n)
+	}
+	fm.add(time.Second)
+	tb.reject(addr)
+	if n := count(); n != 2 {
+		t.Fatalf("nach einer Minute %d", n)
+	}
+}
+
+func TestVerifyJoinServerRequiresNode(t *testing.T) {
+	ca := newTestCA(t, "c1")
+	for kind, ok := range map[string]bool{"node": true, "witness": false} {
+		c, _ := ca.tlsCert(t, "s", kind)
+		err := verifyJoinServer(c.Certificate, fingerprint(ca.cert))
+		if (err == nil) != ok {
+			t.Errorf("%s: %v", kind, err)
+		}
+	}
+}
+
+func TestJoinInternalErrorHidden(t *testing.T) {
+	e := newJoinEnv(t)
+	if err := os.Remove(e.st.etcPath("ca.key")); err != nil {
+		t.Fatal(err)
+	}
+	_, csr, _ := newKeyCSR("b", "node")
+	_, err := joinRemote(context.Background(), e.code(t, "node"), joinRequest{ID: "b", CSR: string(csr), Addrs: []string{"127.0.0.1:4"}})
+	if err == nil || err.Error() != "Interner Fehler beim Beitritt" {
+		t.Fatalf("Fehlertext: %v", err)
+	}
+	found := false
+	for _, ev := range e.ev.since(0, 0) {
+		if strings.HasPrefix(ev.Text, "Beitritt von b fehlgeschlagen: ") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Einzelheiten fehlen im Protokoll: %+v", e.ev.since(0, 0))
 	}
 }

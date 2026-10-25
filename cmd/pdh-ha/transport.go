@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -38,6 +40,9 @@ const (
 	joinCertDays = 730
 	maxJoinAddrs = 8
 	dedupKeep    = 64
+	restartSlack = 64 // so weit darf hb-seq über mehrere Wege zurückspringen
+	handshakeMax = 3 * time.Second
+	handshakeIP  = 8 // gleichzeitige Handshakes je Quelladresse
 )
 
 var dialBackoff = []time.Duration{time.Second, 2 * time.Second, 5 * time.Second}
@@ -150,6 +155,7 @@ type transport struct {
 	dialers  map[string]context.CancelFunc
 	runCtx   context.Context
 	rejectAt map[string]time.Duration
+	hsPerIP  map[string]int // laufende Handshakes je Quelladresse
 
 	rejects atomic.Uint64 // Zähler abgelehnter Verbindungen (Tests)
 }
@@ -164,6 +170,7 @@ func newTransport(self nodeConfig, cl clusterConfig, cert tls.Certificate, ca *x
 		conns:    map[string]*peerConn{},
 		dialers:  map[string]context.CancelFunc{},
 		rejectAt: map[string]time.Duration{},
+		hsPerIP:  map[string]int{},
 	}
 }
 
@@ -251,10 +258,14 @@ func (t *transport) pathErr(id, path, msg string) {
 }
 
 // setCluster übernimmt eine neue Knotenliste: entfernte oder gesperrte
-// Gegenstellen werden getrennt, Verbindungsaufbau angepasst.
+// Gegenstellen werden getrennt, Verbindungsaufbau angepasst. Eine ältere
+// Version als die aktuelle wird ignoriert (verspätete Zustellung).
 func (t *transport) setCluster(cl clusterConfig) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if cl.Version < t.cl.Version {
+		return
+	}
 	t.cl = cl
 	for id := range t.ps {
 		if _, ok := t.nodeLocked(id); !ok {
@@ -311,10 +322,24 @@ func (t *transport) reconcileLocked() {
 func (t *transport) startDialers(ctx context.Context) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.runCtx == nil {
-		t.runCtx = ctx
-		t.reconcileLocked()
+	if t.runCtx != nil {
+		return
 	}
+	t.runCtx = ctx
+	t.reconcileLocked()
+	// Endet ctx, darf ein späterer serve-Aufruf neu starten.
+	go func() {
+		<-ctx.Done()
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.runCtx == ctx {
+			t.runCtx = nil
+			for k, cancel := range t.dialers {
+				cancel()
+				delete(t.dialers, k)
+			}
+		}
+	}()
 }
 
 func (t *transport) dialLoop(ctx context.Context, id, addr string) {
@@ -349,7 +374,7 @@ func (t *transport) dialOnce(ctx context.Context, id, addr string) bool {
 		NextProtos:   []string{alpnHA},
 		MinVersion:   tls.VersionTLS13,
 	})
-	hctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	hctx, cancel := context.WithTimeout(ctx, handshakeMax)
 	err = c.HandshakeContext(hctx)
 	cancel()
 	if err != nil {
@@ -398,6 +423,12 @@ func (t *transport) runConn(ctx context.Context, id, path string, c, raw net.Con
 	pc := &peerConn{peer: id, path: path, serial: serial, c: c, raw: raw, out: make(chan []byte, 32), done: make(chan struct{})}
 	key := id + "|" + path
 	t.mu.Lock()
+	// erneut unter derselben Sperre prüfen: setCluster kann seit identify gelaufen sein
+	if _, ok := t.nodeLocked(id); !ok || t.revokedLocked(serial) {
+		t.mu.Unlock()
+		pc.close()
+		return false
+	}
 	if old := t.conns[key]; old != nil {
 		old.close()
 	}
@@ -426,9 +457,14 @@ func (t *transport) runConn(ctx context.Context, id, path string, c, raw net.Con
 	for {
 		c.SetReadDeadline(time.Now().Add(3 * t.tick()))
 		if !sc.Scan() {
-			if ctx.Err() == nil {
-				t.pathErr(id, path, readErrText(sc.Err()))
+			t.mu.Lock()
+			// nur der aktuelle Weg darf den Fehlertext setzen
+			if ctx.Err() == nil && t.conns[key] == pc {
+				if _, ok := t.nodeLocked(id); ok {
+					t.pathLocked(id, path).err = readErrText(sc.Err())
+				}
 			}
+			t.mu.Unlock()
 			return got
 		}
 		var m message
@@ -436,7 +472,7 @@ func (t *transport) runConn(ctx context.Context, id, path string, c, raw net.Con
 			continue
 		}
 		got = true
-		t.receive(id, path, m)
+		t.receive(id, path, serial, m)
 	}
 }
 
@@ -471,10 +507,10 @@ func (t *transport) writer(pc *peerConn) {
 // receive verbucht eine Nachricht. hb wird nur gespeichert; andere bekannte
 // Arten gehen an incoming() – über mehrere Wege doppelt angekommene
 // (gleiche Art und seq > 0) nur einmal.
-func (t *transport) receive(id, path string, m message) {
+func (t *transport) receive(id, path, serial string, m message) {
 	now := t.mono()
 	t.mu.Lock()
-	if _, ok := t.nodeLocked(id); !ok {
+	if _, ok := t.nodeLocked(id); !ok || t.revokedLocked(serial) {
 		t.mu.Unlock()
 		return
 	}
@@ -483,6 +519,12 @@ func (t *transport) receive(id, path string, m message) {
 	s.recv, s.last = true, now
 	m.ID = id
 	if m.T == "hb" {
+		// Neustart der Gegenstelle (seq deutlich kleiner oder andere HostID):
+		// alte Kennungen der Doppelerkennung verwerfen
+		if p.hasLast && (m.Seq+restartSlack < p.last.Seq ||
+			(m.HostID != "" && p.last.HostID != "" && m.HostID != p.last.HostID)) {
+			p.dedup = nil
+		}
 		p.last, p.hasLast = m, true
 		t.mu.Unlock()
 		return
@@ -704,6 +746,7 @@ func (t *transport) serve(ctx context.Context, ln net.Listener, join http.Handle
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       30 * time.Second,
 			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       10 * time.Second,
 			MaxHeaderBytes:    16 << 10,
 			ErrorLog:          log.New(io.Discard, "", 0),
 		}
@@ -730,26 +773,46 @@ func (t *transport) serve(ctx context.Context, ln net.Listener, join http.Handle
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
+		host := hostOf(raw.RemoteAddr())
+		t.mu.Lock()
+		full := t.hsPerIP[host] >= handshakeIP
+		if !full {
+			t.hsPerIP[host]++
+		}
+		t.mu.Unlock()
+		if full {
+			raw.Close()
+			continue
+		}
 		select {
 		case sem <- struct{}{}:
 		default:
+			t.handshakeDone(host)
 			raw.Close()
 			continue
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			t.handleConn(sctx, raw, cfg, jl, sem)
+			t.handleConn(sctx, raw, cfg, jl, func() { <-sem; t.handshakeDone(host) })
 		}()
 	}
 }
 
-func (t *transport) handleConn(ctx context.Context, raw net.Conn, cfg *tls.Config, jl *chanListener, sem chan struct{}) {
+func (t *transport) handshakeDone(host string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.hsPerIP[host]--; t.hsPerIP[host] <= 0 {
+		delete(t.hsPerIP, host)
+	}
+}
+
+func (t *transport) handleConn(ctx context.Context, raw net.Conn, cfg *tls.Config, jl *chanListener, release func()) {
 	c := tls.Server(raw, cfg)
-	hctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	hctx, cancel := context.WithTimeout(ctx, handshakeMax)
 	err := c.HandshakeContext(hctx)
 	cancel()
-	<-sem
+	release()
 	if err != nil {
 		if ctx.Err() == nil {
 			t.reject(raw.RemoteAddr())
@@ -800,7 +863,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // joinHandler bedient POST /v1/join (nur auf dem CA-Knoten). Der Code wird
 // beim Einlösen verbraucht – scheitert danach die Prüfung, ist ein neuer nötig.
-func joinHandler(st store, codes *joinCodes, onJoin func(clusterConfig)) http.Handler {
+func joinHandler(st store, codes *joinCodes, onJoin func(clusterConfig), ev *eventLog) http.Handler {
 	var mu sync.Mutex
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/join", func(w http.ResponseWriter, r *http.Request) {
@@ -822,15 +885,23 @@ func joinHandler(st store, codes *joinCodes, onJoin func(clusterConfig)) http.Ha
 			writeJSON(w, status, joinErrorBody{err.Error()})
 			return
 		}
+		// onJoin unter derselben Sperre: Knotenlisten kommen in Reihenfolge an
 		mu.Lock()
 		resp, status, err := admit(st, role, req)
+		if err == nil && onJoin != nil {
+			onJoin(resp.Cluster)
+		}
 		mu.Unlock()
 		if err != nil {
-			writeJSON(w, status, joinErrorBody{err.Error()})
+			msg := err.Error()
+			if status >= http.StatusInternalServerError {
+				if ev != nil {
+					ev.add(ha.Event{Kind: "warn", Text: fmt.Sprintf("Beitritt von %s fehlgeschlagen: %v", req.ID, err)})
+				}
+				msg = "Interner Fehler beim Beitritt"
+			}
+			writeJSON(w, status, joinErrorBody{msg})
 			return
-		}
-		if onJoin != nil {
-			onJoin(resp.Cluster)
 		}
 		writeJSON(w, http.StatusOK, resp)
 	})
@@ -862,9 +933,14 @@ func admit(st store, role string, req joinRequest) (joinResponse, int, error) {
 	if csr.Subject.CommonName != req.ID {
 		return joinResponse{}, bad, errors.New("Kennung passt nicht zur Signieranforderung")
 	}
+	if pub, ok := csr.PublicKey.(*ecdsa.PublicKey); !ok || pub.Curve != elliptic.P256() || csr.CheckSignature() != nil {
+		return joinResponse{}, bad, errors.New("Signieranforderung muss ECDSA P-256 und gültig signiert sein")
+	}
+	// Fehler mit Status 500 gehen nur ins Ereignisprotokoll, nicht an die Gegenseite
+	internal := http.StatusInternalServerError
 	cl, err := st.loadCluster()
 	if err != nil {
-		return joinResponse{}, http.StatusInternalServerError, errors.New("Cluster-Konfiguration nicht lesbar")
+		return joinResponse{}, internal, fmt.Errorf("Cluster-Konfiguration nicht lesbar: %v", err)
 	}
 	nodes, witnesses := 0, 0
 	for _, n := range cl.Nodes {
@@ -888,22 +964,22 @@ func admit(st store, role string, req joinRequest) (joinResponse, int, error) {
 	}
 	caCert, err1 := os.ReadFile(st.etcPath("ca.crt"))
 	caKey, err2 := os.ReadFile(st.etcPath("ca.key"))
-	if err1 != nil || err2 != nil {
-		return joinResponse{}, http.StatusInternalServerError, errors.New("Dieser Server hält die Zertifizierungsstelle nicht")
+	if err := errors.Join(err1, err2); err != nil {
+		return joinResponse{}, internal, fmt.Errorf("Zertifizierungsstelle nicht lesbar: %v", err)
 	}
 	certPEM, err := signCSR(caCert, caKey, []byte(req.CSR), role, joinCertDays)
 	if err != nil {
-		return joinResponse{}, bad, err
+		return joinResponse{}, internal, fmt.Errorf("Signieren: %v", err)
 	}
 	cb, _ := pem.Decode(certPEM)
 	cert, err := x509.ParseCertificate(cb.Bytes)
 	if err != nil {
-		return joinResponse{}, http.StatusInternalServerError, err
+		return joinResponse{}, internal, err
 	}
 	cl.Nodes = append(cl.Nodes, clusterNode{ID: req.ID, Kind: role, Addrs: req.Addrs, Serial: serialHex(cert)})
 	cl.Version++
 	if err := st.saveCluster(cl); err != nil {
-		return joinResponse{}, http.StatusInternalServerError, fmt.Errorf("Cluster-Konfiguration nicht gespeichert: %v", err)
+		return joinResponse{}, internal, fmt.Errorf("Cluster-Konfiguration nicht gespeichert: %v", err)
 	}
 	return joinResponse{Cert: string(certPEM), CA: string(caCert), Cluster: cl}, http.StatusOK, nil
 }
@@ -940,6 +1016,10 @@ func verifyJoinServer(rawCerts [][]byte, fp string) error {
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
 	if _, err := leaf.Verify(x509.VerifyOptions{Roots: pool, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}); err != nil {
+		return errServerCert
+	}
+	// Beitritt nur bei einem Server, nie bei einem Zeugen
+	if len(leaf.Subject.OrganizationalUnit) != 1 || leaf.Subject.OrganizationalUnit[0] != "node" {
 		return errServerCert
 	}
 	return nil
