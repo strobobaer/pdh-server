@@ -1,0 +1,37 @@
+# Zeuge für den PDH-Ausfallschutz als Container (z. B. auf einem dritten
+# Rechner oder einem Raspberry Pi). Nicht auf einem der beiden Server betreiben.
+#
+# Erster Start (Code in der PDH-Oberfläche oder mit `pdh-ha join-code --witness`
+# auf dem ersten Server erzeugen, 30 min gültig):
+#   cd deploy/ha-witness
+#   PDH_HA_JOIN='<Code>' PDH_HA_ADDR=<IP dieses Rechners> docker compose up -d --build
+#   docker compose logs -f
+# Danach genügt `docker compose up -d`; Schlüssel und Zustand liegen in den Volumes.
+# Zustand ansehen: docker compose exec witness pdh-ha status
+# Port 7480/tcp muss von beiden Servern aus erreichbar sein.
+name: pdh-ha-witness
+
+services:
+  witness:
+    build:
+      context: ../..
+      dockerfile: deploy/ha-witness/Dockerfile
+      target: witness
+      args:
+        COMMIT: ${PDH_HA_COMMIT:-}
+    image: pdh-ha-witness:local
+    hostname: ${HA_ID:-zeuge}
+    restart: unless-stopped
+    ports:
+      - "7480:7480"
+    environment:
+      PDH_HA_JOIN: ${PDH_HA_JOIN:-}
+      PDH_HA_ADDR: ${PDH_HA_ADDR:-}
+      PDH_HA_ID: ${HA_ID:-}
+    volumes:
+      - ha-etc:/etc/pdh/ha
+      - ha-state:/var/lib/pdh-ha
+
+volumes:
+  ha-etc:
+  ha-state:

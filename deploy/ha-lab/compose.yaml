@@ -1,0 +1,99 @@
+# Testlabor für pdh-ha – nur Testumgebung. Bedienung über ha-lab.sh.
+# Netze: lan (Server + Gateway), vpn (Server), wit (Server + Zeuge).
+# Die Server melden nur lan- und vpn-Adressen als Wege zueinander; node1
+# zusätzlich seine wit-Adresse, damit der Zeuge beitreten kann.
+name: pdh-ha-lab
+
+x-pdh-ha: &pdh-ha
+  build:
+    context: ../..
+    dockerfile: deploy/ha-witness/Dockerfile
+    target: lab
+    args:
+      COMMIT: ${PDH_HA_COMMIT:-lab}
+  image: pdh-ha-lab:local
+  restart: "no"
+  init: true
+
+services:
+  node1:
+    <<: *pdh-ha
+    container_name: node1
+    hostname: node1
+    volumes:
+      - node1-etc:/etc/pdh/ha
+      - node1-state:/var/lib/pdh-ha
+    networks:
+      lan:
+        ipv4_address: 10.77.1.11
+      vpn:
+        ipv4_address: 10.77.2.11
+      wit:
+        ipv4_address: 10.77.3.11
+
+  node2:
+    <<: *pdh-ha
+    container_name: node2
+    hostname: node2
+    environment:
+      PDH_HA_VERSION_OVERRIDE: ${NODE2_VERSION_OVERRIDE:-}
+    volumes:
+      - node2-etc:/etc/pdh/ha
+      - node2-state:/var/lib/pdh-ha
+    networks:
+      lan:
+        ipv4_address: 10.77.1.12
+      vpn:
+        ipv4_address: 10.77.2.12
+      wit:
+        ipv4_address: 10.77.3.12
+
+  witness:
+    <<: *pdh-ha
+    container_name: witness
+    hostname: witness
+    volumes:
+      - witness-etc:/etc/pdh/ha
+      - witness-state:/var/lib/pdh-ha
+    networks:
+      wit:
+        ipv4_address: 10.77.3.20
+
+  # Gateway-Ziel der Server: antwortet nur auf Ping
+  gw:
+    image: alpine:3.20
+    container_name: gw
+    hostname: gw
+    command: ["sleep", "infinity"]
+    init: true
+    networks:
+      lan:
+        ipv4_address: 10.77.1.254
+
+networks:
+  lan:
+    name: pdh-ha-lab-lan
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.77.1.0/24
+  vpn:
+    name: pdh-ha-lab-vpn
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.77.2.0/24
+  wit:
+    name: pdh-ha-lab-wit
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.77.3.0/24
+
+volumes:
+  node1-etc:
+  node1-state:
+  node2-etc:
+  node2-state:
+  witness-etc:
+  witness-state:
