@@ -424,6 +424,7 @@ func TestStepTable(t *testing.T) {
 			actions: acts(ActRejoin, 3),
 			check: func(t *testing.T, out Output) {
 				wantEvent(t, out, "role", "Rolle: aktiv → wiedereingliederung (Amtszeit 3)")
+				wantEvent(t, out, "alarm", "Aktiver Server abgelöst (neue Amtszeit 3)")
 			},
 		},
 		{
@@ -445,6 +446,13 @@ func TestStepTable(t *testing.T) {
 			},
 			role: Rejoin, term: 2,
 			actions: acts(ActRejoin, 2),
+			check: func(t *testing.T, out Output) {
+				for _, e := range out.Events {
+					if e.Kind == "alarm" {
+						t.Fatalf("abgeschaltet: kein Alarm erwartet, %v", out.Events)
+					}
+				}
+			},
 		},
 		{
 			name: "passiv übernimmt höhere amtszeit ohne rollenwechsel",

@@ -316,6 +316,21 @@ func TestDRPausedShown(t *testing.T) {
 	}
 }
 
+// Beobachtung: Hinweis statt Pause, Sicherung läuft weiter.
+func TestDRAdviceShown(t *testing.T) {
+	adv := "Beobachtung: würde pausieren – passiver Knoten"
+	out := renderDR(t, drView{DBLocal: true, Status: drStatus{OK: true, Supported: true, Advice: adv,
+		Config: drConfig{Enabled: true, Target: "/mnt/x"}}})
+	if !strings.Contains(out, adv) || strings.Contains(out, "Sicherung pausiert") {
+		t.Error("Hinweis fehlt oder Pause angezeigt")
+	}
+	var st drStatus
+	_ = json.Unmarshal([]byte(`{"advice":"x"}`), &st)
+	if st.Advice != "x" {
+		t.Error("Feld advice wird nicht gelesen")
+	}
+}
+
 func TestHAJoinScript(t *testing.T) {
 	if !strings.Contains(pdh.HAJoinScript, "pdh-ha-join.sh") || !strings.Contains(pdh.HAJoinScript, "--witness") {
 		t.Fatal("eingebettetes Beitrittsskript fehlt")

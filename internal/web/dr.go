@@ -69,6 +69,7 @@ type drStatus struct {
 	Bases        []drBase  `json:"bases"`
 	Running      string    `json:"running"`
 	Paused       string    `json:"paused"` // z. B. „passiver Knoten“ (pdh-ha)
+	Advice       string    `json:"advice"` // Beobachtung: „würde pausieren – …“
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`

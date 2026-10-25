@@ -212,6 +212,9 @@ func (s *stepper) adoptHigherTerm() bool {
 		s.clearVote()
 	}
 	if s.p.Role == Active || s.p.Role == Fenced {
+		if s.p.Role == Active {
+			s.event("alarm", fmt.Sprintf("Aktiver Server abgelöst (neue Amtszeit %d)", t))
+		}
 		s.act(ActRejoin, t)
 		s.become(Rejoin, "")
 		return true

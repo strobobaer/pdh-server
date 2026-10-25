@@ -17,7 +17,7 @@ im Kapitel „Versionen & Updates“ an.
 - Testlabor für den Ausfallschutz (Docker).
 
 ### Geändert
-- Die Netzlaufwerk-Sicherung läuft mit zwei Servern nur auf dem aktiven Server.
+- Der Reiter Ausfallschutz zeigt an, ob die Netzlaufwerk-Sicherung auf einem passiven Server künftig pausieren würde – in dieser Version läuft sie weiter.
 
 ## [0.74.2] – 2026-10-24
 

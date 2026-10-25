@@ -1710,14 +1710,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol></div>
   <p><b>Wie aktuell ist die Sicherung?</b> Die Datenbank höchstens <b>5 Minuten</b> alt (einstellbar), Dateien höchstens so alt wie der Dateiabgleich (Standard 60 Minuten). Jede Nacht kommt eine Grundsicherung dazu; aufbewahrt wird 14 Tage (einstellbar). Gelöschte oder überschriebene Dateien landen so lange im <b>Papierkorb</b> auf dem Laufwerk. Nextcloud wird im laufenden Betrieb abgeglichen, n8n dafür kurz angehalten.</p>
   <p>Die Freigabe enthält Zugangsdaten (<code>.env</code>, Nextcloud-<code>config.php</code>) – nur Administratoren dürfen darauf zugreifen.</p>
-  <p>Mit zwei Servern sichert nur der aktive Server aufs Netzlaufwerk (siehe <a href="#spiegelbetrieb">Ausfallschutz mit zwei Servern</a>).</p>
+  <p>Mit zwei Servern zeigt der Reiter auf dem passiven Server den Hinweis „Beobachtung: würde pausieren – …“. In dieser Version läuft die Sicherung trotzdem weiter (siehe <a href="#spiegelbetrieb">Ausfallschutz mit zwei Servern</a>).</p>
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> So baust du den Server wieder auf</b>
     <ol class="hb-steps">
       <li>Frischen Ubuntu-Server oder eine neue VM bereitstellen.</li>
       <li><b>pdh-vm-prepare.sh</b> im Reiter herunterladen, auf die VM kopieren und ausführen: <code>sudo bash pdh-vm-prepare.sh --wiederaufbau --share //nas/sicherung --user BENUTZER</code>. Es setzt Zeitzone, Firewall und Gast-Agent (Proxmox, VMware, Hyper-V), fragt das Passwort ab und bindet die Freigabe dauerhaft unter <code>/mnt/sicherung</code> ein. Mit <code>--restore</code> startet es den Wiederaufbau gleich mit.</li>
       <li>Das Skript liegt im Sicherungsordner (oder im Reiter herunterladen): <code>sudo bash /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;/pdh-restore.sh --from /mnt/sicherung/PDH-Ausfallschutz/&lt;server&gt;</code></li>
       <li>Für einen <b>früheren Stand</b> (z. B. vor einem versehentlichen Löschen) zusätzlich <code>--time "2026-10-24 14:30:00"</code> angeben.</li>
-      <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten.</li>
+      <li>Danach VPN-Installationsskript erneut ausführen, Cloudflare-Tunnel prüfen und den Ausfallschutz auf dem neuen Server wieder einschalten. Den Ausfallschutz mit zwei Servern danach neu einrichten – seine Schlüssel werden nicht mitgesichert.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So richtest du einen ganz neuen Server ein</b>
     <ol class="hb-steps">
@@ -1785,7 +1785,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) lassen sich nur am <b>ersten Server</b> ändern. Der <b>Takt</b> ist der Abstand, in dem sich die Server „Ich bin da“ melden (Standard 1 Sekunde). Die <b>Selbst-Abschaltung</b> ist die Zeit, nach der sich ein aktiver Server selbst stoppt, wenn er niemanden mehr erreicht – damit nie zwei Server gleichzeitig aktiv sind. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
       <li><b>Umschaltungen je Tag:</b> Jeder Server übernimmt höchstens so oft automatisch pro Tag. Danach geht die Automatik aus und es kommt ein Alarm.</li>
       <li><b>Alarme</b> gehen an die Administratoren und tragen den Zusatz „(Beobachtung)“. Je Art kommt höchstens einer alle 15 Minuten.</li>
-      <li><b>Netzlaufwerk-Sicherung:</b> Sie läuft nur auf dem aktiven Server. Auf dem passiven steht „Sicherung pausiert: passiver Knoten“. Ist <code>pdh-ha</code> eingerichtet, aber nicht erreichbar, pausiert die Sicherung mit einer Fehlermeldung.</li>
+      <li><b>Netzlaufwerk-Sicherung:</b> Künftig soll sie nur auf dem aktiven Server laufen. In dieser Version läuft sie auf jedem Server weiter. Der Reiter zeigt nur, was passieren würde: „Beobachtung: würde pausieren – passiver Knoten“ oder „… – pdh-ha nicht erreichbar“.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
     Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>

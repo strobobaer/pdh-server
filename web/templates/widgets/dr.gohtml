@@ -11,6 +11,7 @@
   {{else}}
   <p class="vp-hint">Der Server sichert laufend <b>Datenbank</b> (tägliche Grundsicherung und alle Änderungen), <b>Dateien und Konfiguration</b> von PDH, Nextcloud und n8n in einen Ordner auf einem Netzlaufwerk. Daraus baut <code>pdh-restore.sh</code> einen neuen Server oder eine VM auf – auch auf einen bestimmten Zeitpunkt.</p>
   {{if .Status.Paused}}<div class="vp-msg"><i class="ti ti-player-pause"></i> Sicherung pausiert: {{.Status.Paused}}</div>{{end}}
+  {{if .Status.Advice}}<div class="vp-msg"><i class="ti ti-eye"></i> {{.Status.Advice}} – in dieser Version läuft die Sicherung weiter.</div>{{end}}
   {{range .Alerts}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
   {{if .Status.Config.Enabled}}
   <table class="table" style="margin-top:8px">

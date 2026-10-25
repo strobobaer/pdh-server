@@ -62,6 +62,7 @@ type drStatus struct {
 	Bases        []drBase  `json:"bases"`
 	Running      string    `json:"running"` // "", "base", "files"
 	Paused       string    `json:"paused"` // "passiver Knoten" (pdh-ha), sonst ""
+	Advice       string    `json:"advice"` // Beobachtung: würde pausieren (Sperre aus)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
@@ -105,6 +106,7 @@ type drState struct {
 	EnabledSince time.Time         `json:"enabled_since"`
 	Running      string            `json:"-"`
 	Paused       string            `json:"-"` // nur im Speicher, je Takt neu (ha.go)
+	Advice       string            `json:"-"` // dito
 	saveMu       sync.Mutex        // state.json nie gleichzeitig schreiben
 }
 
@@ -253,7 +255,7 @@ func (a *updateAgent) drStatus() drStatus {
 	defer a.dr.mu.Unlock()
 	st := drStatus{OK: true, Supported: true, Config: a.dr.Config, Archiving: a.dr.Archiving,
 		LastWALShip: a.dr.LastWALShip, LastWALFile: a.dr.LastWALFile, LastBase: a.dr.LastBase,
-		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running, Paused: a.dr.Paused,
+		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running, Paused: a.dr.Paused, Advice: a.dr.Advice,
 		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince}
 	for _, s := range a.dr.Sources {
 		st.Sources = append(st.Sources, s.Label)

@@ -104,8 +104,36 @@ func TestDRIsActive(t *testing.T) {
 	})
 }
 
-// Manuelle Sicherung auf dem passiven Knoten abgelehnt.
+// haEnforce: Sperre wie ab Teil 3 (Testhook).
+func haEnforce(t *testing.T) {
+	t.Helper()
+	old := haGateEnforced
+	haGateEnforced = true
+	t.Cleanup(func() { haGateEnforced = old })
+}
+
+// Beobachtung (Teil 1): manuelle Sicherung auf dem passiven Knoten läuft, Hinweis steht im Status.
+func TestDRRunObservedOnPassive(t *testing.T) {
+	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
+	haInstalled(t)
+	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
+	a := &updateAgent{mode: "systemd"}
+	a.dr.Config = drDefaults()
+	a.dr.Config.Enabled = true
+	a.dr.Running = "files" // Lauf kommt bis drStartRun, ohne wirklich zu sichern
+	rec := httptest.NewRecorder()
+	a.drRunHandler(rec, httptest.NewRequest(http.MethodPost, "/v1/dr/run", strings.NewReader(`{"what":"base"}`)))
+	if strings.Contains(rec.Body.String(), "pausiert") || !strings.Contains(rec.Body.String(), "läuft bereits") {
+		t.Fatalf("Beobachtung darf nicht sperren: %s", rec.Body.String())
+	}
+	if st := a.drStatus(); st.Paused != "" || st.Advice != "Beobachtung: würde pausieren – passiver Knoten" {
+		t.Fatalf("Status: %+v", st)
+	}
+}
+
+// Manuelle Sicherung auf dem passiven Knoten abgelehnt (Sperre aktiv).
 func TestDRRunRefusedOnPassive(t *testing.T) {
+	haEnforce(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	haInstalled(t)
 	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
@@ -122,9 +150,42 @@ func TestDRRunRefusedOnPassive(t *testing.T) {
 	}
 }
 
-// Auf dem passiven Knoten pausiert die Schleife; ist pdh-ha nicht erreichbar,
-// steht das im Fehler.
+// Beobachtung (Teil 1): die Schleife sichert auch auf dem passiven Knoten
+// und bei nicht erreichbarem pdh-ha; nur der Hinweis zeigt, was künftig passieren würde.
+func TestDRTickObservedOnPassive(t *testing.T) {
+	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
+	target := t.TempDir()
+	a := &updateAgent{mode: "docker"}
+	a.dr.Config = drDefaults()
+	a.dr.Config.Target = target
+	haInstalled(t)
+
+	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
+	a.drTick(context.Background(), time.Now())
+	if st := a.drStatus(); st.Paused != "" || st.Error != "" || st.Advice != "Beobachtung: würde pausieren – passiver Knoten" {
+		t.Fatalf("passiv: %+v", st)
+	}
+	if _, err := os.Stat(filepath.Join(target, "wal")); err != nil {
+		t.Fatal("Beobachtung hat die Sicherung gestoppt")
+	}
+
+	t.Setenv("PDH_HA_SOCKET", filepath.Join(t.TempDir(), "fehlt.sock"))
+	a.drTick(context.Background(), time.Now())
+	if st := a.drStatus(); st.Paused != "" || st.Error != "" || st.Advice != "Beobachtung: würde pausieren – pdh-ha nicht erreichbar" {
+		t.Fatalf("nicht erreichbar: %+v", st)
+	}
+
+	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"a","role":"aktiv"}}`)
+	a.drTick(context.Background(), time.Now())
+	if st := a.drStatus(); st.Advice != "" || st.Paused != "" {
+		t.Fatalf("aktiv: %+v", st)
+	}
+}
+
+// Sperre aktiv: auf dem passiven Knoten pausiert die Schleife; ist pdh-ha nicht
+// erreichbar, steht das im Fehler.
 func TestDRTickPausedOnPassive(t *testing.T) {
+	haEnforce(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	target := t.TempDir()
 	a := &updateAgent{mode: "docker"} // Pfade ohne /proc/1/root

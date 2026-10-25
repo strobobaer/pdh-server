@@ -26,6 +26,10 @@ const (
 	haLogLines       = 40
 )
 
+// haGateEnforced: Sperre der Netzlaufwerk-Sicherung auf dem passiven Knoten.
+// Teil 1 beobachtet nur (nichts wird umgeschaltet), ab Teil 3 true. Tests setzen es.
+var haGateEnforced = false
+
 func haSocketPath() string {
 	if v := strings.TrimSpace(os.Getenv("PDH_HA_SOCKET")); v != "" {
 		return v
@@ -87,14 +91,25 @@ func (a *updateAgent) drIsActive(ctx context.Context) (bool, error) {
 }
 
 // drCheckActive setzt Pause bzw. Fehler „ha“ für den Status; true = sichern.
+// Solange die Sperre aus ist (Beobachtung), immer sichern und nur den Hinweis setzen.
 func (a *updateAgent) drCheckActive(ctx context.Context) bool {
 	active, err := a.drIsActive(ctx)
-	paused := ""
-	if err == nil && !active {
-		paused = haPassiveMsg
+	paused, advice := "", ""
+	switch {
+	case err != nil:
+		advice = "Beobachtung: würde pausieren – pdh-ha nicht erreichbar"
+	case !active:
+		paused, advice = haPassiveMsg, "Beobachtung: würde pausieren – "+haPassiveMsg
+	}
+	if !haGateEnforced {
+		a.dr.mu.Lock()
+		a.dr.Paused, a.dr.Advice = "", advice
+		a.dr.mu.Unlock()
+		a.drOK("ha")
+		return true
 	}
 	a.dr.mu.Lock()
-	a.dr.Paused = paused
+	a.dr.Paused, a.dr.Advice = paused, ""
 	a.dr.mu.Unlock()
 	if err != nil {
 		a.drFail("ha", errors.New(haUnreachableMsg))
