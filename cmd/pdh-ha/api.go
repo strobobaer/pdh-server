@@ -462,6 +462,10 @@ func (d *daemon) updateSettings(s ha.Settings, targets []string) error {
 		d.unlock()
 		return errors.New("Einstellungen bitte am ersten Server ändern")
 	}
+	if s.Real() && !d.cl.SwapTested && d.fixed == nil {
+		d.unlock()
+		return errors.New("Erst einmal Rollen tauschen – hin und zurück")
+	}
 	cl := d.cl
 	if targets == nil {
 		clean = d.cl.GatewayTargets // nicht angegeben: Ziele bleiben

@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -335,10 +334,15 @@ func (d *daemon) startLocked() {
 	}
 	d.started = true
 	d.selectActorLocked(d.runCtx)
-	var join http.Handler
+	// HTTPS auf dem Port: Beitritt (nur CA-Halter) und Konfigurationsübergabe
+	mux := http.NewServeMux()
 	if d.node.CAHolder {
-		join = joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev)
+		mux.Handle("POST /v1/join", joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev))
 	}
+	if d.node.Kind == "node" {
+		mux.HandleFunc("POST /v1/config/pull", d.configPullHTTP)
+	}
+	var join http.Handler = mux
 	if ok {
 		ctx, cancel := context.WithCancel(d.runCtx)
 		d.trCancel = cancel
@@ -375,25 +379,50 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 
 // pgEnvLocked: was pgActor über Partner, Wege und Schlüssel wissen muss.
 func (d *daemon) pgEnvLocked(pg *pgCtl) pgEnv {
-	e := pgEnv{SelfID: d.node.ID, SlotKeepMB: d.settingsLocked().SlotKeep >> 20, DataCurrent: d.dataCurrent}
-	for _, a := range d.ownAddrsLocked() {
-		e.Listen = append(e.Listen, hostOfAddr(a))
-	}
+	self := clusterNode{ID: d.node.ID, Kind: d.node.Kind, Addrs: d.ownAddrsLocked()}
+	var partner clusterNode
 	for _, n := range d.cl.Nodes {
 		if n.Kind == "node" && n.ID != d.node.ID {
-			e.PartnerID = n.ID
-			for _, a := range n.Addrs {
-				e.PartnerAddrs = append(e.PartnerAddrs, hostOfAddr(a))
-			}
+			partner = n
 			break
 		}
 	}
+	pass := ""
 	if b, err := os.ReadFile(d.st.etcPath("replica.pass")); err == nil {
-		e.ReplicaPass = strings.TrimSpace(string(b))
+		pass = strings.TrimSpace(string(b))
 	}
-	dir := path.Join(pg.c.ConfDir, "pdh-ha")
-	e.CAFile, e.CertFile, e.KeyFile = path.Join(dir, "ca.crt"), path.Join(dir, "node.crt"), path.Join(dir, "node.key")
-	return e
+	cl := d.cl
+	cl.Settings = d.settingsLocked()
+	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent)
+}
+
+// swapCompleted: In diesem Schritt ist ein Rollentausch gelungen – als
+// Übernehmender (Übergabe erhalten) oder als Abgebender (Partner führt die
+// übergebene Amtszeit).
+func swapCompleted(in ha.Input, out ha.Output) bool {
+	received := in.Handover != 0 && in.Persist.Role == ha.Passive && out.Persist.Role == ha.Active && out.Persist.Term == in.Handover
+	gave := in.HandoverPending != 0 && out.HandoverPending == 0 && out.Persist.Role == ha.Passive && out.Persist.Term >= in.HandoverPending
+	return received || gave
+}
+
+// countSwapLocked zählt gelungene Rollentausche; ab zwei (hin und zurück)
+// ist die Pflicht-Testumschaltung erledigt und „echt“ erlaubt.
+func (d *daemon) countSwapLocked(pl *plan) {
+	cl := d.cl
+	cl.Swaps++
+	if cl.Swaps >= 2 && !cl.SwapTested {
+		cl.SwapTested = true
+		pl.event("info", "Pflicht-Testumschaltung erledigt – automatische Umschaltung kann auf „echt“ gestellt werden")
+	}
+	cl.Version++
+	p2, err := d.publishClusterLocked(cl)
+	if err != nil {
+		pl.event("alarm", "Knotenliste nicht gespeichert: "+err.Error())
+		return
+	}
+	pl.sends = append(pl.sends, p2.sends...)
+	pl.events = append(pl.events, p2.events...)
+	pl.ufw = pl.ufw || p2.ufw
 }
 
 // reconcileInterval: Abstand des Abgleichs von Dienst und Datenbank.
@@ -489,7 +518,7 @@ func (d *daemon) applyFirewallOnce() {
 		d.mu.Unlock()
 		return
 	}
-	rules := ufwRules(d.cl, d.node.ID, d.codes.open(d.wall()))
+	rules := ufwRules(d.cl, d.node.ID, d.codes.open(d.wall()), d.pgActorLocked() != nil)
 	key := fmt.Sprint(rules)
 	if key == d.ufwLast || key == d.ufwFailed && d.wall().Sub(d.ufwFailAt) < time.Minute {
 		d.mu.Unlock()
@@ -781,6 +810,9 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		pl.actions = append(pl.actions, a)
 	}
 	d.replSyncLocked(ctx, &pl, now, s, mode)
+	if d.node.CAHolder && swapCompleted(in, out) {
+		d.countSwapLocked(&pl)
+	}
 	pl.events = append(out.Events, pl.events...)
 	d.clusterRequestsLocked(&pl, now, s, views)
 	d.checkRenewLocked(&pl, wall)

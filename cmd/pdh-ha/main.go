@@ -34,6 +34,10 @@ const usage = `Aufruf: pdh-ha <Befehl>
   settings '<json>'                   Zeiten setzen ({"settings":{…},"gateway_targets":[…]})
   reset --yes                         nach dem Entfernen: Konfiguration sichern und
                                       zurücksetzen (danach setup oder join)
+  replica-init [--confirm-host NAME]  diesen (passiven) Server als Datenbank-Spiegel
+                                      des aktiven einrichten (überschreibt die Datenbank)
+  peer-pg-major                       PostgreSQL-Hauptversion des aktiven Servers
+  should-run-pdh                      Exit 0, wenn pdh hier laufen soll
   version                             Version anzeigen
 `
 
@@ -197,9 +201,65 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	case "version":
 		fmt.Fprintf(stdout, "pdh-ha %s %s\n", version, commit)
 		return 0
+	case "should-run-pdh":
+		if shouldRunPDH(newStore()) {
+			return 0
+		}
+		return 1
+	case "peer-pg-major":
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		info, _, err := pullFromActive(ctx, newStore(), true)
+		if err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, info.PGMajor)
+		return 0
+	case "replica-init":
+		confirm := fs.String("confirm-host", "", "Hostname zur Bestätigung, wenn hier schon Datenbanken liegen")
+		if fs.Parse(args[1:]) != nil {
+			return 2
+		}
+		if err := cmdReplicaInit(*confirm); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Datenbank-Spiegel läuft – im PDH Rollen tauschen (hin und zurück) testen.")
+		return 0
 	}
 	fmt.Fprint(stderr, usage)
 	return 2
+}
+
+// cmdReplicaInit baut den pgActor für diesen Server und richtet den Spiegel ein.
+func cmdReplicaInit(confirm string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
+	defer cancel()
+	st := newStore()
+	n, err := st.loadNode()
+	if err != nil {
+		return err
+	}
+	cl, err := st.loadCluster()
+	if err != nil {
+		return err
+	}
+	r := execRunner{}
+	c, err := discoverCluster(ctx, r)
+	if err != nil {
+		return err
+	}
+	self := clusterNode{ID: n.ID, Kind: n.Kind, Addrs: n.Addrs}
+	if sn, ok := findNode(cl, n.ID); ok {
+		self = sn
+	}
+	ev := openEventLog(st.statePath("replica-init.jsonl"), 1<<20, 2)
+	pa := newPGActor(&pgCtl{r: r, c: c}, newServiceCtl(r), ev, func() pgEnv { return buildPGEnv(self, clusterNode{}, cl, "", c, true) })
+	return replicaInit(ctx, st, pa, replicaOpts{
+		ConfirmHost: confirm, Repo: pdhRepo(), Etc: pdhEtc(), Hostname: os.Hostname, Wait: 2 * time.Minute,
+		Pull: func(ctx context.Context, dry bool) (pullResp, clusterNode, error) {
+			return pullFromActive(ctx, st, dry)
+		},
+	})
 }
 
 func cmdRun(override string, stderr io.Writer) error {

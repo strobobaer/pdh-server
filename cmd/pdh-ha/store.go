@@ -44,6 +44,8 @@ type clusterConfig struct {
 	Settings       ha.Settings   `json:"settings"`
 	GatewayTargets []string      `json:"gateway_targets"`
 	Revoked        []string      `json:"revoked"` // Seriennummern hex
+	Swaps          int           `json:"swaps"`       // gelungene Rollentausche seit Einrichtung des Spiegels
+	SwapTested     bool          `json:"swap_tested"` // Pflicht-Testumschaltung (hin und zurück) erledigt
 }
 
 // Mode folgt aus der Knotenliste: 1 Knoten einzel, 2 duo, 2 + Zeuge trio.

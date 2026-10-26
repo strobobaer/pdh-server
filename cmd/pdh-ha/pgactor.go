@@ -37,15 +37,16 @@ type pgActor struct {
 	env     func() pgEnv
 	pushCfg func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
 	wait    time.Duration                   // Frist für den Gleichstand beim Abgeben
-	poll    time.Duration
-	now     func() time.Time
+	poll     time.Duration
+	now      func() time.Time
+	passfile string // Pfad der passfile (Tests: Temp-Ordner)
 
 	mu        sync.Mutex
 	syncNames string // gewünschte synchronous_standby_names (Replikation, Task 8)
 }
 
 func newPGActor(pg *pgCtl, svc serviceCtl, ev *eventLog, env func() pgEnv) *pgActor {
-	return &pgActor{pg: pg, svc: svc, ev: ev, env: env, wait: 60 * time.Second, poll: 500 * time.Millisecond, now: time.Now}
+	return &pgActor{pg: pg, svc: svc, ev: ev, env: env, wait: 60 * time.Second, poll: 500 * time.Millisecond, now: time.Now, passfile: pgPassfile}
 }
 
 // standbyConninfo: alle Wege zum aktiven Knoten, Passwort nur aus der passfile.
