@@ -88,10 +88,10 @@ type daemon struct {
 	net   peerNet
 	codes joinCodes
 
-	views       map[string]peerView
-	cmd         ha.CommandKind
-	handoverIn  uint64
-	voteGranted uint64
+	views        map[string]peerView
+	cmd          ha.CommandKind
+	handoverIn   uint64
+	voteGranted  uint64
 	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
 	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
 	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
