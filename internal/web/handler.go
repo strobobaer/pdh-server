@@ -568,6 +568,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/join-code", h.HAJoinCodeWeb)
 	r.Post("/admin/server-config/ha/maintenance", h.HAMaintenanceWeb)
 	r.Post("/admin/server-config/ha/command", h.HACommandWeb)
+	r.Post("/admin/server-config/ha/diverged-delete", h.HADivergedDeleteWeb)
 	r.Post("/admin/server-config/ha/remove", h.HARemoveWeb)
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
 	r.Get("/admin/server-config/ha/join-script", h.HAJoinScriptWeb)

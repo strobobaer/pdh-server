@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +42,10 @@ type haStatus struct {
 	Settings       ha.Settings `json:"settings"`
 	GatewayTargets []string    `json:"gateway_targets"`
 	Blocked        string      `json:"blocked"`
-	Observe        bool        `json:"observe"`
+	Observe        bool        `json:"observe"` // automatische Umschaltung nur gemeldet
+	SwapTested     bool        `json:"swap_tested"`
+	AutoMode       string      `json:"auto_mode"`
+	Busy           bool        `json:"busy"`
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"`
@@ -60,6 +64,33 @@ type haNode struct {
 	ClockSkew   float64  `json:"clock_skew"`    // Sekunden
 	Paths       []haPath `json:"paths"`
 	Self        bool     `json:"-"`
+
+	// Datenbank-Spiegel
+	PG          string       `json:"pg"` // primary, standby, stopped, error, unknown
+	LSN         uint64       `json:"lsn"`
+	LagBytes    int64        `json:"lag_bytes"`
+	Sync        bool         `json:"sync"`
+	Stale       bool         `json:"stale"`
+	Timeline    uint32       `json:"timeline"`
+	DataCurrent bool         `json:"data_current"`
+	Diverged    []haDiverged `json:"diverged"`
+}
+
+// haDiverged: abgezweigte Daten auf einem Server (nur dort gespeichert).
+type haDiverged struct {
+	ID     string          `json:"id"`
+	At     time.Time       `json:"at"`
+	Term   uint64          `json:"term"`
+	Bytes  int64           `json:"bytes"`
+	Tables []haTableChange `json:"tables"`
+	Node   string          `json:"-"` // Server, auf dem die Daten liegen
+}
+
+type haTableChange struct {
+	Table  string
+	Insert int
+	Update int
+	Delete int
 }
 
 type haPath struct {
@@ -198,10 +229,65 @@ func (v haView) Form() map[string]int {
 	if s == (ha.Settings{}) {
 		s = ha.DefaultSettings()
 	}
+	d := ha.DefaultSettings()
+	if s.AsyncAfter == 0 {
+		s.AsyncAfter, s.LagLimit, s.SlotKeep = d.AsyncAfter, d.LagLimit, d.SlotKeep
+	}
 	return map[string]int{"tick_s": int(s.Tick / time.Second), "fence_s": int(s.FenceAfter / time.Second),
 		"takeover_trio_s": int(s.TakeoverTrio / time.Second), "takeover_duo_s": int(s.TakeoverDuo / time.Second),
-		"cooldown_min": int(s.Cooldown / time.Minute), "max_per_day": s.MaxPerDay}
+		"cooldown_min": int(s.Cooldown / time.Minute), "max_per_day": s.MaxPerDay,
+		"async_after_s": int(s.AsyncAfter / time.Second), "lag_limit_mb": int(s.LagLimit >> 20), "slot_keep_gb": int(s.SlotKeep >> 30)}
 }
+
+// PGText: Zustand der Datenbank in Anwendersprache.
+func (n haNode) PGText() string {
+	switch n.PG {
+	case "primary":
+		return "schreibend"
+	case "standby":
+		return "Standby"
+	case "stopped":
+		return "gestoppt"
+	case "error":
+		return "Fehler"
+	}
+	return "–"
+}
+
+// HasDB: der Server meldet einen Datenbank-Spiegel.
+func (n haNode) HasDB() bool { return n.PG != "" && n.PG != "unknown" }
+
+// LagText: Rückstand des Partners in MB (nur am schreibbaren Server).
+func (n haNode) LagText() string { return fmt.Sprintf("%.1f MB", float64(n.LagBytes)/(1<<20)) }
+
+// Diverged: abgezweigte Daten aller Server, neueste zuerst.
+func (v haView) Diverged() []haDiverged {
+	var out []haDiverged
+	for _, n := range v.Nodes() {
+		for _, d := range n.Diverged {
+			d.Node = n.ID
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return out
+}
+
+// HasMirror: mindestens ein Server meldet einen Datenbank-Spiegel.
+func (v haView) HasMirror() bool {
+	for _, n := range v.Nodes() {
+		if n.HasDB() {
+			return true
+		}
+	}
+	return false
+}
+
+// AutoReal: automatische Umschaltung ist „echt“.
+func (v haView) AutoReal() bool { return v.Status.AutoMode == ha.AutoReal }
+
+func (d haDiverged) SizeText() string { return fmt.Sprintf("%.1f MB", float64(d.Bytes)/(1<<20)) }
+func (d haDiverged) TimeText() string { return d.At.Local().Format("02.01.2006 15:04") }
 
 // ShortCommit: die ersten 7 Zeichen des Commits.
 func (n haNode) ShortCommit() string {
@@ -564,6 +650,22 @@ func (h *Handler) haDoCommand(ctx context.Context, f url.Values) (string, error)
 	return msg + " – siehe Ereignisse", nil
 }
 
+func (h *Handler) haDoDivergedDelete(ctx context.Context, f url.Values) (string, error) {
+	id, node := strings.TrimSpace(f.Get("id")), strings.TrimSpace(f.Get("node"))
+	if !haDivergedIDRe.MatchString(id) || !haIDRe.MatchString(node) {
+		return "", errors.New("Ungültiger Eintrag")
+	}
+	if strings.TrimSpace(f.Get("confirm")) != "GEPRÜFT" {
+		return "", errors.New("Bitte GEPRÜFT eintippen")
+	}
+	if err := h.haDo(ctx, http.MethodPost, "/v1/diverged/delete", map[string]string{"id": id, "node": node}, nil); err != nil {
+		return "", err
+	}
+	return "Abgezweigte Daten " + id + " gelöscht", nil
+}
+
+var haDivergedIDRe = regexp.MustCompile(`^[0-9a-z-]{1,64}$`)
+
 func (h *Handler) haDoRemove(ctx context.Context, f url.Values) (string, error) {
 	id := strings.TrimSpace(f.Get("id"))
 	if !haIDRe.MatchString(id) {
@@ -584,6 +686,13 @@ func (h *Handler) haDoSettings(ctx context.Context, f url.Values) (string, error
 		TakeoverDuo:  sec("takeover_duo_s", 60),
 		Cooldown:     time.Duration(drFormInt(f, "cooldown_min", 15)) * time.Minute,
 		MaxPerDay:    drFormInt(f, "max_per_day", 3),
+		AsyncAfter:   sec("async_after_s", 10),
+		LagLimit:     int64(drFormInt(f, "lag_limit_mb", 16)) << 20,
+		SlotKeep:     int64(drFormInt(f, "slot_keep_gb", 20)) << 30,
+		AutoMode:     ha.AutoObserve,
+	}
+	if f.Get("auto_mode") == ha.AutoReal {
+		s.AutoMode = ha.AutoReal
 	}
 	if err := s.Validate(); err != nil {
 		return "", err
@@ -638,6 +747,11 @@ func (h *Handler) HACommandWeb(w http.ResponseWriter, r *http.Request) {
 // HARemoveWeb: POST /admin/server-config/ha/remove (id, gone=1)
 func (h *Handler) HARemoveWeb(w http.ResponseWriter, r *http.Request) {
 	h.haRoute(h.haDoRemove, "remove")(w, r)
+}
+
+// HADivergedDeleteWeb: POST /admin/server-config/ha/diverged-delete (id, node, confirm=GEPRÜFT)
+func (h *Handler) HADivergedDeleteWeb(w http.ResponseWriter, r *http.Request) {
+	h.haRoute(h.haDoDivergedDelete, "diverged-delete")(w, r)
 }
 
 // HASettingsWeb: POST /admin/server-config/ha/settings
