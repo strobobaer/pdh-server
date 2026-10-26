@@ -37,6 +37,7 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		HandoverPending: c.HandoverPending, HandoverAt: c.HandoverAt, HandoverSentAt: c.HandoverSentAt,
 		NoActiveSince: c.NoActiveSince, NoActiveAlarmed: c.NoActiveAlarmed,
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
+		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl

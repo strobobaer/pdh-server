@@ -16,6 +16,10 @@ const (
 	handoverQuiet  = 5
 )
 
+// demoteWait: so lange über die Übernahmezeit hinaus wartet ein Rollentausch
+// auf die Abgabe der eigenen Datenbank, dann wird er abgebrochen.
+const demoteWait = 90 * time.Second
+
 const dataAssumedNote = " (Datenstand angenommen, keine Replikation)"
 
 // Gründe für eine gesperrte Übernahme, in Prüfreihenfolge.
@@ -75,9 +79,10 @@ func switchesToday(p Persisted, wall time.Time) int {
 }
 
 type stepper struct {
-	in  Input
-	p   Persisted
-	out Output
+	in     Input
+	p      Persisted
+	out    Output
+	manual bool // Aktionen stammen aus einem Handbefehl (Tausch, Übernahme erzwingen)
 }
 
 // Step berechnet aus einem Takt die nächste Rolle, Aktionen und Ereignisse.
@@ -86,6 +91,7 @@ func Step(in Input) Output {
 	s.out.HoldUntil = in.HoldUntil
 	s.out.VotePending, s.out.VoteAskedAt = in.VotePending, in.VoteAskedAt
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
+	s.out.HandoverReadyAt = in.HandoverReadyAt
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -139,9 +145,11 @@ func (s *stepper) decide() {
 	case Fenced:
 		s.fenced()
 	case Passive:
+		s.manual = true
 		if s.receiveHandover() || s.handover() {
 			return
 		}
+		s.manual = false
 		if s.in.Mode == Trio {
 			s.passiveTrio()
 		} else {
@@ -227,6 +235,8 @@ func (s *stepper) forceTakeover() bool {
 	if s.p.Role == Active {
 		return false
 	}
+	s.manual = true
+	defer func() { s.manual = false }()
 	t := s.p.Term
 	for _, o := range []*PeerObs{s.in.Partner, s.in.Witness} {
 		if o != nil && o.Term > t {
@@ -246,10 +256,14 @@ func (s *stepper) swap() bool {
 		return false
 	}
 	next := s.p.Term + 1
+	s.manual = true
+	defer func() { s.manual = false }()
+	// Die Übergabe folgt erst, wenn die eigene Datenbank abgegeben ist
+	// (DemoteDone) – sonst stuft der Partner hoch, während sie noch schreibt.
 	s.act(ActDemote, s.p.Term)
 	s.act(ActVIPRelease, s.p.Term)
-	s.act(ActHandover, next)
-	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = next, s.in.Now, s.in.Now
+	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = next, s.in.Now, 0
+	s.out.HandoverReadyAt = 0
 	s.become(Passive, "")
 	return true
 }
@@ -279,7 +293,23 @@ func (s *stepper) handover() bool {
 		return false
 	}
 	took := in.Settings.Takeover(in.Mode)
-	since := in.Now - s.out.HandoverAt
+	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
+	// Partner hat noch nichts bekommen, also zurück nach aktiv.
+	if in.DemoteFailed == hp-1 || in.DemoteDone != hp-1 && in.Now-s.out.HandoverAt >= took+demoteWait {
+		s.clearHandover()
+		s.event("alarm", "Rollentausch abgebrochen")
+		s.unfence()
+		return true
+	}
+	if in.DemoteDone != hp-1 {
+		return true // Abgabe läuft noch
+	}
+	if s.out.HandoverReadyAt == 0 {
+		s.out.HandoverReadyAt, s.out.HandoverSentAt = in.Now, in.Now
+		s.act(ActHandover, hp)
+		return true
+	}
+	since := in.Now - s.out.HandoverReadyAt
 	// Partner aus den Augen verloren: ob er übernommen hat, ist unklar, und
 	// er könnte inzwischen um eine Stimme bitten. Die übergebene Amtszeit gilt
 	// als vergeben, eine spätere Stimmbitte fragt nach der nächsten.
@@ -307,6 +337,7 @@ func (s *stepper) handover() bool {
 
 func (s *stepper) clearHandover() {
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = 0, 0, 0
+	s.out.HandoverReadyAt = 0
 }
 
 // boot: Start nach Neustart (Spec 5.4). Ein bisher aktiver Knoten wartet
@@ -314,6 +345,13 @@ func (s *stepper) clearHandover() {
 func (s *stepper) boot() bool {
 	if s.p.Role != Active && s.p.Role != Fenced {
 		return false
+	}
+	if !s.in.Settings.Real() {
+		// Beobachtung: Rolle bleibt wie gespeichert.
+		if !mutual(s.in.Partner) {
+			s.would(ActFence)
+		}
+		return true
 	}
 	if mutual(s.in.Partner) {
 		s.unfence()
@@ -343,6 +381,10 @@ func (s *stepper) active() {
 	lost := in.Now-s.out.LastMutual >= in.Settings.FenceAfter
 	if in.Mode == Duo {
 		lost = lost && in.Now-in.GatewayLastOK >= in.Settings.FenceAfter
+	}
+	if lost && !in.Settings.Real() {
+		s.would(ActFence)
+		return
 	}
 	if lost {
 		s.act(ActFence, s.p.Term)
@@ -384,7 +426,12 @@ func (s *stepper) unfence() {
 
 func (s *stepper) passiveTrio() {
 	in := s.in
-	if g := s.out.VotePending; g > s.p.Term && in.VoteGranted == g {
+	real := in.Settings.Real()
+	granted := in.VoteGranted
+	if !real {
+		granted = in.ProbeGranted // Beobachtung: nur Probestimme, nichts gespeichert
+	}
+	if g := s.out.VotePending; g > s.p.Term && granted == g {
 		// Mit Stimme übernehmen: Partner gesehen und weder aktiv noch
 		// abgeschaltet (der kann gerade zurückkehren), oder für die volle
 		// Übernahmezeit weg. Nur solange der Zeuge uns sieht – sein Schutz
@@ -393,7 +440,11 @@ func (s *stepper) passiveTrio() {
 		gone := pa != nil && (seen(pa) && pa.Role != Active && pa.Role != Fenced ||
 			absent(pa, in.Now, in.Settings.TakeoverTrio))
 		if gone && mutual(in.Witness) && s.takeoverAllowed() {
-			s.promote(g, true)
+			if real {
+				s.promote(g, true)
+			} else {
+				s.would(ActPromote)
+			}
 		}
 		return
 	}
@@ -417,7 +468,11 @@ func (s *stepper) passiveTrio() {
 		return
 	}
 	s.out.VoteAskedAt = in.Now
-	s.act(ActRequestVote, s.out.VotePending)
+	if real {
+		s.act(ActRequestVote, s.out.VotePending)
+	} else {
+		s.act(ActProbeVote, s.out.VotePending)
+	}
 }
 
 func (s *stepper) passiveDuo() {
@@ -425,7 +480,11 @@ func (s *stepper) passiveDuo() {
 	// Partner unbekannt (nil) → keine Übernahme; nil zählt nur beim Abschalten als weg.
 	if in.Partner != nil && absent(in.Partner, in.Now, in.Settings.TakeoverDuo) &&
 		in.Gateway && s.takeoverAllowed() {
-		s.promote(s.p.Term+1, true)
+		if in.Settings.Real() {
+			s.promote(s.p.Term+1, true)
+		} else {
+			s.would(ActPromote)
+		}
 	}
 }
 
@@ -480,7 +539,16 @@ func (s *stepper) clearVote() {
 }
 
 func (s *stepper) act(k ActionKind, term uint64) {
-	s.out.Actions = append(s.out.Actions, Action{Kind: k, Term: term})
+	s.out.Actions = append(s.out.Actions, Action{Kind: k, Term: term, Manual: s.manual})
+}
+
+// would meldet bei Beobachtung eine automatische Entscheidung, ohne Rolle oder
+// Amtszeit zu ändern – je Entscheidung nur einmal, solange sie besteht.
+func (s *stepper) would(k ActionKind) {
+	if k != s.in.Would {
+		s.event("action", fmt.Sprintf("würde jetzt: %s (Beobachtung)", k))
+	}
+	s.out.Would = k
 }
 
 func (s *stepper) event(kind, text string) {

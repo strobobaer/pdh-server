@@ -109,7 +109,7 @@ func (r *recActor) Do(_ context.Context, a ha.Action) error {
 }
 
 func duoCluster() clusterConfig {
-	return clusterConfig{ClusterID: "c1", Version: 2, CAHolder: "a", Settings: ha.DefaultSettings(), Nodes: []clusterNode{
+	return clusterConfig{ClusterID: "c1", Version: 2, CAHolder: "a", Settings: realSettings(), Nodes: []clusterNode{
 		{ID: "a", Kind: "node", Addrs: []string{"127.0.0.1:7480"}},
 		{ID: "b", Kind: "node", Addrs: []string{"127.0.0.2:7480"}},
 	}}
@@ -426,7 +426,8 @@ func TestCertRenewal(t *testing.T) {
 
 func scaledSettings() *ha.Settings {
 	return &ha.Settings{Tick: testTick, FenceAfter: 500 * time.Millisecond, TakeoverTrio: 1500 * time.Millisecond,
-		TakeoverDuo: 3 * time.Second, Cooldown: 0, MaxPerDay: 20}
+		TakeoverDuo: 3 * time.Second, Cooldown: 0, MaxPerDay: 20,
+		AsyncAfter: 10 * time.Second, LagLimit: 16 << 20, SlotKeep: 20 << 30, AutoMode: ha.AutoReal}
 }
 
 type liveDaemon struct {
@@ -601,5 +602,48 @@ func TestStatusCommit(t *testing.T) {
 	st := d.statusNow()
 	if st.Self.Commit != "abc1234" || len(st.Peers) != 1 || st.Peers[0].Commit != "def5678" {
 		t.Fatalf("Commits: hier %q, Partner %+v", st.Self.Commit, st.Peers)
+	}
+}
+
+// realSettings: Standard, aber automatische Entscheidungen wirken (Teil-2-Verhalten).
+func realSettings() ha.Settings {
+	s := ha.DefaultSettings()
+	s.AutoMode = ha.AutoReal
+	return s
+}
+
+// orderActor schreibt ausgeführte Aktionen ins gemeinsame Reihenfolge-Protokoll.
+type orderActor struct{ ol *orderLog }
+
+func (o orderActor) Do(_ context.Context, a ha.Action) error {
+	o.ol.add(fmt.Sprintf("act %s term=%d", a.Kind, a.Term))
+	return nil
+}
+
+// Rollentausch: Die Übergabe geht erst raus, nachdem demote ausgeführt wurde.
+func TestDaemonSwapHandoverAfterDemote(t *testing.T) {
+	ol := &orderLog{}
+	fn := newFakeNet()
+	fn.order = ol
+	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test", Sees: []string{"a"}}))
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1, PartnerVersion: "test"}, fn)
+	d.act = orderActor{ol}
+	d.tick(context.Background())
+	if err := d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	d.tick(context.Background())
+	d.tick(context.Background())
+	demote, handover := -1, -1
+	for i, l := range ol.list() {
+		switch {
+		case l == "act demote term=1" && demote < 0:
+			demote = i
+		case strings.HasPrefix(l, "send handover") && handover < 0:
+			handover = i
+		}
+	}
+	if demote < 0 || handover < 0 || handover < demote {
+		t.Fatalf("Reihenfolge demote/handover: %v", ol.list())
 	}
 }

@@ -92,6 +92,7 @@ type daemon struct {
 	cmd         ha.CommandKind
 	handoverIn  uint64
 	voteGranted uint64
+	demoteDone  uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
 	lastMode    ha.Mode
 
 	certNotAfter time.Time
@@ -459,6 +460,12 @@ func (d *daemon) execute(ctx context.Context, pl plan) {
 		if err := d.doAction(ctx, a); err != nil {
 			d.actionFailed(a, err)
 			break
+		}
+		if a.Kind == ha.ActDemote {
+			// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
+			d.lock()
+			d.demoteDone = a.Term
+			d.unlock()
 		}
 	}
 	d.events(pl.events)

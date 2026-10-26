@@ -11,6 +11,13 @@ const sec = time.Second
 
 var testWall = time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 
+// realSettings: Standard, aber automatische Entscheidungen wirken (Teil-2-Verhalten).
+func realSettings() Settings {
+	s := DefaultSettings()
+	s.AutoMode = AutoReal
+	return s
+}
+
 // base liefert einen Takt um t=100 s mit Amtszeit 1.
 func base(mode Mode, role Role) Input {
 	return Input{
@@ -23,7 +30,7 @@ func base(mode Mode, role Role) Input {
 		GatewayLastOK: 100 * sec,
 		DataCurrent:   true,
 		DataAssumed:   true,
-		Settings:      DefaultSettings(),
+		Settings:      realSettings(),
 		Persist:       Persisted{Term: 1, Role: role, PartnerVersion: "0.75.0"},
 		LastMutual:    100 * sec,
 	}
@@ -66,7 +73,12 @@ func runCases(t *testing.T, cases []stepCase) {
 					out.Persist.Role, out.Persist.Term, c.role, c.term, out.Events)
 			}
 			if len(out.Actions) != 0 || len(c.actions) != 0 {
-				if !reflect.DeepEqual(out.Actions, c.actions) {
+				// Manual prüfen eigene Tests; die Tabellen vergleichen Art und Amtszeit
+				got := make([]Action, len(out.Actions))
+				for i, a := range out.Actions {
+					got[i] = Action{Kind: a.Kind, Term: a.Term}
+				}
+				if !reflect.DeepEqual(got, c.actions) {
 					t.Fatalf("Aktionen = %v, erwartet %v", out.Actions, c.actions)
 				}
 			}
@@ -861,7 +873,7 @@ func TestStepCommands(t *testing.T) {
 		}
 	}
 	swapCheck := func(t *testing.T, out Output) {
-		if out.HandoverPending != 4 || out.HandoverAt != 100*sec || out.HandoverSentAt != 100*sec {
+		if out.HandoverPending != 4 || out.HandoverAt != 100*sec || out.HandoverSentAt != 0 || out.HandoverReadyAt != 0 {
 			t.Fatalf("Rollentausch nicht vermerkt: %d %v %v", out.HandoverPending, out.HandoverAt, out.HandoverSentAt)
 		}
 		wantEvent(t, out, "role", "Rolle: aktiv → passiv (Amtszeit 3)")
@@ -885,6 +897,8 @@ func TestStepCommands(t *testing.T) {
 		in.Partner = seenPeer("node", Passive, 3, 100*sec)
 		in.Witness = seenPeer("witness", Witness, 3, 100*sec)
 		in.HandoverPending, in.HandoverAt, in.HandoverSentAt = 4, at, sentAt
+		// Abgabe der Datenbank erledigt, Übergabe läuft seit at
+		in.DemoteDone, in.HandoverReadyAt = 3, at
 		return in
 	}
 	runCases(t, []stepCase{
@@ -892,14 +906,14 @@ func TestStepCommands(t *testing.T) {
 			name: "swap",
 			in:   swapIn(false),
 			role: Passive, term: 3,
-			actions: acts(ActDemote, 3, ActVIPRelease, 3, ActHandover, 4),
+			actions: acts(ActDemote, 3, ActVIPRelease, 3),
 			check:   swapCheck,
 		},
 		{
 			name: "swap in wartung",
 			in:   swapIn(true),
 			role: Passive, term: 3,
-			actions: acts(ActDemote, 3, ActVIPRelease, 3, ActHandover, 4),
+			actions: acts(ActDemote, 3, ActVIPRelease, 3),
 			check:   swapCheck,
 		},
 		{
@@ -1706,4 +1720,201 @@ func TestStepMaintStand(t *testing.T) {
 			role: Active, term: 1,
 		},
 	})
+}
+
+// observeSettings: Standard mit Beobachtung (automatische Entscheidungen nur gemeldet).
+func observeSettings() Settings {
+	s := DefaultSettings()
+	s.AutoMode = AutoObserve
+	return s
+}
+
+func hasKind(out Output, k ActionKind) bool {
+	for _, a := range out.Actions {
+		if a.Kind == k {
+			return true
+		}
+	}
+	return false
+}
+
+func countEvents(out Output, text string) int {
+	n := 0
+	for _, e := range out.Events {
+		if strings.Contains(e.Text, text) {
+			n++
+		}
+	}
+	return n
+}
+
+// trioPartnerGone: passiver Knoten, aktiver Partner seit der Übernahmezeit weg.
+func trioPartnerGone(set Settings) Input {
+	in := base(Trio, Passive)
+	in.Settings = set
+	in.Partner = gonePeer("node", Active, 1, 100*sec-set.TakeoverTrio)
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.LastMutual = 100 * sec
+	return in
+}
+
+func TestObserveNoRoleChange(t *testing.T) {
+	in := trioPartnerGone(observeSettings())
+	in.VotePending, in.VoteAskedAt = 2, 99*sec
+	in.ProbeGranted = 2
+	out := Step(in)
+	if out.Persist.Role != Passive || out.Persist.Term != 1 || hasKind(out, ActPromote) {
+		t.Fatalf("Beobachtung darf nicht übernehmen: %s/%d %v", out.Persist.Role, out.Persist.Term, out.Actions)
+	}
+	if countEvents(out, "würde jetzt: promote (Beobachtung)") != 1 || out.Would != ActPromote {
+		t.Fatalf("Ereignis fehlt: %v, Would %q", out.Events, out.Would)
+	}
+	in.Would = out.Would
+	in.Now += sec
+	in.Witness.LastSeen = in.Now
+	out = Step(in)
+	if countEvents(out, "würde jetzt") != 0 || out.Would != ActPromote {
+		t.Fatalf("Ereignis nur einmal: %v", out.Events)
+	}
+}
+
+func TestObserveProbeVote(t *testing.T) {
+	out := Step(trioPartnerGone(observeSettings()))
+	if !hasKind(out, ActProbeVote) || hasKind(out, ActRequestVote) {
+		t.Fatalf("Probestimme erwartet: %v", out.Actions)
+	}
+	if out.Persist.Role != Passive || out.Persist.Term != 1 {
+		t.Fatalf("Rolle/Amtszeit verändert: %s/%d", out.Persist.Role, out.Persist.Term)
+	}
+}
+
+func TestObserveDuoNoTakeover(t *testing.T) {
+	in := base(Duo, Passive)
+	in.Settings = observeSettings()
+	in.Partner = gonePeer("node", Active, 1, 100*sec-in.Settings.TakeoverDuo)
+	out := Step(in)
+	if out.Persist.Role != Passive || out.Persist.Term != 1 || hasKind(out, ActPromote) {
+		t.Fatalf("Duo-Beobachtung übernimmt: %s/%d %v", out.Persist.Role, out.Persist.Term, out.Actions)
+	}
+	if countEvents(out, "würde jetzt: promote (Beobachtung)") != 1 {
+		t.Fatalf("Ereignis fehlt: %v", out.Events)
+	}
+}
+
+func TestObserveActiveNoFence(t *testing.T) {
+	in := base(Trio, Active)
+	in.Settings = observeSettings()
+	in.LastMutual = 100*sec - in.Settings.FenceAfter
+	in.Partner = gonePeer("node", Passive, 1, 0)
+	in.Witness = gonePeer("witness", Witness, 1, 0)
+	out := Step(in)
+	if out.Persist.Role != Active || hasKind(out, ActFence) {
+		t.Fatalf("Beobachtung darf nicht abschalten: %s %v", out.Persist.Role, out.Actions)
+	}
+	if countEvents(out, "würde jetzt: fence (Beobachtung)") != 1 {
+		t.Fatalf("Ereignis fehlt: %v", out.Events)
+	}
+}
+
+func TestObserveBootStaysActive(t *testing.T) {
+	in := base(Trio, Active)
+	in.Settings = observeSettings()
+	in.Booting = true
+	in.LastMutual = 0
+	out := Step(in)
+	if out.Persist.Role != Active || hasKind(out, ActFence) {
+		t.Fatalf("Start in Beobachtung: %s %v", out.Persist.Role, out.Actions)
+	}
+	if countEvents(out, "würde jetzt: fence (Beobachtung)") != 1 {
+		t.Fatalf("Ereignis fehlt: %v", out.Events)
+	}
+}
+
+func TestObserveManualReal(t *testing.T) {
+	in := base(Trio, Passive)
+	in.Settings = observeSettings()
+	in.Command = CmdForceTakeover
+	out := Step(in)
+	if out.Persist.Role != Active || out.Persist.Term != 2 {
+		t.Fatalf("erzwungene Übernahme: %s/%d", out.Persist.Role, out.Persist.Term)
+	}
+	for _, a := range out.Actions {
+		if a.Kind == ActPromote && !a.Manual {
+			t.Fatalf("promote ohne Manual: %v", out.Actions)
+		}
+	}
+	if !hasKind(out, ActPromote) {
+		t.Fatalf("promote fehlt: %v", out.Actions)
+	}
+}
+
+// swapped: aktiver Knoten hat gerade den Rollentausch zu Amtszeit 2 begonnen.
+func swapped(t *testing.T) Input {
+	t.Helper()
+	in := base(Trio, Active)
+	in.Partner = seenPeer("node", Passive, 1, 100*sec)
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.Command = CmdSwap
+	out := Step(in)
+	if out.Persist.Role != Passive || out.HandoverPending != 2 || !hasKind(out, ActDemote) {
+		t.Fatalf("Tausch nicht begonnen: %s %d %v", out.Persist.Role, out.HandoverPending, out.Actions)
+	}
+	if hasKind(out, ActHandover) {
+		t.Fatalf("handover vor erledigtem demote: %v", out.Actions)
+	}
+	for _, a := range out.Actions {
+		if !a.Manual {
+			t.Fatalf("Tausch-Aktion ohne Manual: %v", out.Actions)
+		}
+	}
+	in.Command = CmdNone
+	in.Persist = out.Persist
+	in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
+	in.HandoverReadyAt = out.HandoverReadyAt
+	return in
+}
+
+func TestHandoverWaitsForDemote(t *testing.T) {
+	in := swapped(t)
+	for i := 0; i < 10; i++ {
+		in.Now += sec
+		in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+		out := Step(in)
+		if hasKind(out, ActHandover) || out.Persist.Role != Passive {
+			t.Fatalf("Takt %d: handover vor demote: %v (%s)", i, out.Actions, out.Persist.Role)
+		}
+		in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
+		in.HandoverReadyAt = out.HandoverReadyAt
+	}
+	in.Now += sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	in.DemoteDone = 1
+	out := Step(in)
+	if !hasKind(out, ActHandover) || out.HandoverReadyAt != in.Now {
+		t.Fatalf("handover nach demote erwartet: %v, bereit %v", out.Actions, out.HandoverReadyAt)
+	}
+}
+
+func TestHandoverDemoteFailed(t *testing.T) {
+	in := swapped(t)
+	in.Now += sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	in.DemoteFailed = 1
+	out := Step(in)
+	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || hasKind(out, ActHandover) {
+		t.Fatalf("Abbruch erwartet: %s %v", out.Persist.Role, out.Actions)
+	}
+	if countEvents(out, "Rollentausch abgebrochen") != 1 || out.HandoverPending != 0 {
+		t.Fatalf("Ereignis/Zustand: %v %d", out.Events, out.HandoverPending)
+	}
+}
+
+func TestHandoverDemoteTimeout(t *testing.T) {
+	in := swapped(t)
+	in.Now = in.HandoverAt + in.Settings.TakeoverTrio + 90*sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	out := Step(in)
+	if out.Persist.Role != Active || countEvents(out, "Rollentausch abgebrochen") != 1 {
+		t.Fatalf("Zeitüberschreitung beim demote: %s %v", out.Persist.Role, out.Events)
+	}
 }
