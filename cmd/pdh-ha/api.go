@@ -46,7 +46,8 @@ type apiStatus struct {
 	Settings       ha.Settings `json:"settings"`
 	GatewayTargets []string    `json:"gateway_targets"`
 	Blocked        string      `json:"blocked"` // ha.Allowed-Grund, "" = frei
-	Observe        bool        `json:"observe"` // in Teil 2 immer true
+	Observe        bool        `json:"observe"` // automatische Umschaltung nur gemeldet (auto_mode observe)
+	SwapTested     bool        `json:"swap_tested"`
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
@@ -248,16 +249,16 @@ func apiHandler(d *daemon) http.Handler {
 	})
 	mux.HandleFunc("POST /v1/diverged/delete", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			ID string `json:"id"`
+			ID   string `json:"id"`
+			Node string `json:"node"` // leer = dieser Server
 		}
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		if err := deleteDiverged(divergedDir(), req.ID); err != nil {
+		if err := d.deleteDivergedAt(req.Node, req.ID); err != nil {
 			apiFail(w, err)
 			return
 		}
-		d.event("info", "Abgezweigte Daten gelöscht: "+req.ID)
 		apiOK(w)
 	})
 	mux.HandleFunc("POST /v1/nodes/remove", func(w http.ResponseWriter, r *http.Request) {

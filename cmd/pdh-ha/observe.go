@@ -173,6 +173,7 @@ func (d *daemon) statusLocked() apiStatus {
 		Gateway: d.last.Gateway, Seen: true, Paths: []apiPath{},
 	}
 	st.AutoMode, st.Busy = st.Settings.AutoMode, d.busy.Load()
+	st.Observe, st.SwapTested = !st.Settings.Real(), d.cl.SwapTested
 	if d.node.Kind == "node" {
 		var hb message
 		d.hbPGLocked(&hb)

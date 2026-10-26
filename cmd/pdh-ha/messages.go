@@ -35,6 +35,13 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 				d.voteGranted = m.VoteTerm
 			}
 		}
+	case "diverged_delete":
+		// geprüfte abgezweigte Daten auf diesem Server löschen (Auftrag vom Partner)
+		if !witness && kind == "node" {
+			if err := deleteDiverged(divergedDir(), m.Node); err == nil {
+				pl.event("info", "Abgezweigte Daten gelöscht: "+m.Node)
+			}
+		}
 	case "vote_probe":
 		if witness && kind == "node" {
 			d.probeLocked(&pl, in.From, m)

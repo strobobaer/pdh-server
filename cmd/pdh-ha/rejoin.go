@@ -148,6 +148,26 @@ func deleteDiverged(dir, id string) error {
 	return os.RemoveAll(p)
 }
 
+// deleteDivergedAt löscht geprüfte abgezweigte Daten hier oder – per
+// Nachricht – auf dem anderen Server (dort läuft das PDH oft nicht).
+func (d *daemon) deleteDivergedAt(node, id string) error {
+	d.mu.Lock()
+	self, kind, net := d.node.ID, d.kindOfLocked(node), d.net
+	d.mu.Unlock()
+	if node == "" || node == self {
+		if err := deleteDiverged(divergedDir(), id); err != nil {
+			return err
+		}
+		d.event("info", "Abgezweigte Daten gelöscht: "+id)
+		return nil
+	}
+	if kind != "node" || !divergedIDRe.MatchString(id) {
+		return errors.New("Ungültiger Server oder Eintrag")
+	}
+	net.sendTo(node, message{T: "diverged_delete", ID: self, Node: id, Seq: d.nextSeq()})
+	return nil
+}
+
 func (a *pgActor) binPath(name string) string {
 	return path.Join("/usr/lib/postgresql", a.pg.c.Version, "bin", name)
 }

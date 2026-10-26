@@ -91,6 +91,7 @@ var deliverTypes = map[string]bool{
 	"vote_req": true, "vote_resp": true, "handover": true, "cluster": true,
 	"renew_req": true, "renew_resp": true, "removed": true,
 	"stale": true, "stale_ack": true, "current": true, "current_ack": true, "vote_probe": true,
+	"diverged_delete": true,
 }
 
 // pathStat beschreibt einen Weg; LastRecv monoton, 0 = nie.
