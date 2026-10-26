@@ -60,9 +60,9 @@ type drStatus struct {
 	Sources      []string  `json:"sources"`
 	Missing      []string  `json:"missing"`
 	Bases        []drBase  `json:"bases"`
-	Running      string    `json:"running"` // "", "base", "files"
-	Paused       string    `json:"paused"`  // "passiver Knoten" (pdh-ha), sonst ""
-	Advice       string    `json:"advice"`  // Beobachtung: würde pausieren (Sperre aus)
+	Running      string    `json:"running"`   // "", "base", "files"
+	Paused       string    `json:"paused"`    // "passiver Knoten" (pdh-ha), sonst ""
+	Advice       string    `json:"advice"`    // Beobachtung: würde pausieren (Sperre aus)
 	LastNode     string    `json:"last_node"` // Kennung des Servers, der zuletzt gesichert hat (pdh-ha)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
@@ -106,8 +106,8 @@ type drState struct {
 	ErrorAt      time.Time         `json:"error_at"`
 	EnabledSince time.Time         `json:"enabled_since"`
 	Running      string            `json:"-"`
-	Paused       string            `json:"-"` // nur im Speicher, je Takt neu (ha.go)
-	Advice       string            `json:"-"` // dito
+	Paused       string            `json:"-"`             // nur im Speicher, je Takt neu (ha.go)
+	Advice       string            `json:"-"`             // dito
 	LastNode     string            `json:"last_node"`     // Server, der zuletzt als aktiver gesichert hat
 	LastTimeline uint32            `json:"last_timeline"` // Timeline der Datenbank beim letzten Takt als aktiver
 	BaseNeeded   bool              `json:"base_needed"`   // nach Hochstufung (neue Timeline) sofort Grundsicherung

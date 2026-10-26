@@ -5,8 +5,8 @@ package main
 
 import (
 	"compress/gzip"
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
