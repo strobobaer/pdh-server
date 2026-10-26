@@ -763,6 +763,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	d.replInputLocked(ctx, &in, s)
 	out := ha.Step(in)
+	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
 	if !out.Persist.Equal(d.p) || d.unsaved {
 		if err := d.saveFn(out.Persist); err != nil {
 			if d.p.Role == ha.Active && !d.unsaved {
@@ -815,7 +816,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		pl.actions = append(pl.actions, a)
 	}
 	d.replSyncLocked(ctx, &pl, now, s, mode)
-	if d.node.CAHolder && swapCompleted(in, out) {
+	if d.node.CAHolder && swapped {
 		d.countSwapLocked(&pl)
 	}
 	pl.events = append(out.Events, pl.events...)

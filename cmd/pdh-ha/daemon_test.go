@@ -679,6 +679,31 @@ func TestDaemonDemoteFailedReported(t *testing.T) {
 	}
 }
 
+// Der CA-Halter zählt auch den Tausch, bei dem er die Übergabe erhält
+// (Rückweg der Pflicht-Testumschaltung).
+func TestDaemonCountsReceivedSwap(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("b", seenView(message{Role: "passiv", Term: 2, Ver: "test", Sees: []string{"a"}}))
+	cl := duoCluster()
+	cl.Swaps = 1
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node", CAHolder: true}, cl, ha.Persisted{Role: ha.Passive, Term: 2, PartnerVersion: "test"}, fn)
+	d.act = &recActor{}
+	d.tick(context.Background())
+	d.lock()
+	d.handoverIn = 3
+	d.unlock()
+	d.tick(context.Background())
+	d.lock()
+	role, term, swaps, tested := d.p.Role, d.p.Term, d.cl.Swaps, d.cl.SwapTested
+	d.unlock()
+	if role != ha.Active || term != 3 {
+		t.Fatalf("Übergabe nicht übernommen: %s Amtszeit %d", role, term)
+	}
+	if swaps != 2 || !tested {
+		t.Fatalf("Tausch nicht gezählt: Swaps %d, SwapTested %v", swaps, tested)
+	}
+}
+
 // Rollentausch: Die Übergabe geht erst raus, nachdem demote ausgeführt wurde.
 func TestDaemonSwapHandoverAfterDemote(t *testing.T) {
 	ol := &orderLog{}
