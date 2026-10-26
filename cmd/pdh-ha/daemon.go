@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -95,6 +96,11 @@ type daemon struct {
 	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
 	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
 	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
+	dataCurrent  bool   // echter Datenstand (Replikation, Task 8)
+
+	sys           runner        // Systembefehle (Tests: Fake)
+	reconcileAt   time.Duration // letzter Abgleich (monoton)
+	reconcileWait atomic.Bool   // Abgleich steht in der Warteschlange
 
 	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
 	actQ        chan queuedAction
@@ -133,6 +139,7 @@ type daemon struct {
 type queuedAction struct {
 	a     ha.Action
 	batch uint64
+	fn    func(ctx context.Context) // statt a: interne Arbeit (Abgleich)
 }
 
 func newDaemon(st store, ev *eventLog) *daemon {
@@ -153,6 +160,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		alarms:    map[string]bool{},
 		downSince: map[string]time.Duration{},
 		actQ:      make(chan queuedAction, 16),
+		sys:       execRunner{},
 	}
 	d.act = observeActor{ev: ev}
 	d.saveFn = st.saveState
@@ -321,6 +329,7 @@ func (d *daemon) startLocked() {
 		delete(d.alarms, "listen")
 	}
 	d.started = true
+	d.selectActorLocked(d.runCtx)
 	var join http.Handler
 	if d.node.CAHolder {
 		join = joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev)
@@ -330,6 +339,80 @@ func (d *daemon) startLocked() {
 		d.trCancel = cancel
 		go tr.serve(ctx, ln, join)
 	}
+}
+
+// selectActorLocked: Ist der Datenbank-Spiegel eingerichtet (replica.pass),
+// führt pgActor die Aktionen echt aus; sonst bleibt es beim Melden.
+func (d *daemon) selectActorLocked(ctx context.Context) {
+	if _, observe := d.act.(observeActor); !observe || d.node.Kind != "node" {
+		return
+	}
+	if _, err := os.Stat(d.st.etcPath("replica.pass")); err != nil {
+		return
+	}
+	c, err := discoverCluster(ctx, d.sys)
+	if err != nil {
+		d.alarmOnce("pg", "Datenbank-Spiegel eingerichtet, aber PostgreSQL nicht gefunden: "+err.Error())
+		return
+	}
+	pg := &pgCtl{r: d.sys, c: c}
+	d.act = newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.pgEnvLocked(pg)
+	})
+}
+
+// pgEnvLocked: was pgActor über Partner, Wege und Schlüssel wissen muss.
+func (d *daemon) pgEnvLocked(pg *pgCtl) pgEnv {
+	e := pgEnv{SelfID: d.node.ID, SlotKeepMB: d.settingsLocked().SlotKeep >> 20, DataCurrent: d.dataCurrent}
+	for _, a := range d.ownAddrsLocked() {
+		e.Listen = append(e.Listen, hostOfAddr(a))
+	}
+	for _, n := range d.cl.Nodes {
+		if n.Kind == "node" && n.ID != d.node.ID {
+			e.PartnerID = n.ID
+			for _, a := range n.Addrs {
+				e.PartnerAddrs = append(e.PartnerAddrs, hostOfAddr(a))
+			}
+			break
+		}
+	}
+	if b, err := os.ReadFile(d.st.etcPath("replica.pass")); err == nil {
+		e.ReplicaPass = strings.TrimSpace(string(b))
+	}
+	dir := path.Join(pg.c.ConfDir, "pdh-ha")
+	e.CAFile, e.CertFile, e.KeyFile = path.Join(dir, "ca.crt"), path.Join(dir, "node.crt"), path.Join(dir, "node.key")
+	return e
+}
+
+// reconcileInterval: Abstand des Abgleichs von Dienst und Datenbank.
+const reconcileInterval = 30 * time.Second
+
+// maybeReconcileLocked reiht den Abgleich beim Start und alle 30 s in die
+// Aktions-Warteschlange ein – so läuft er nie neben einer Aktion.
+func (d *daemon) maybeReconcileLocked(ctx context.Context, now time.Duration) {
+	pa, ok := d.act.(*pgActor)
+	if !ok || d.reconcileAt != 0 && now-d.reconcileAt < reconcileInterval || !d.reconcileWait.CompareAndSwap(false, true) {
+		return
+	}
+	d.reconcileAt = now
+	go func() {
+		d.pendingActs.Add(1)
+		select {
+		case d.actQ <- queuedAction{fn: func(ctx context.Context) {
+			defer d.reconcileWait.Store(false)
+			d.mu.Lock()
+			role := d.p.Role
+			d.mu.Unlock()
+			pa.reconcile(ctx, role)
+		}}:
+		case <-ctx.Done():
+			d.pendingActs.Add(-1)
+			d.reconcileWait.Store(false)
+		}
+	}()
+	d.actOnce.Do(func() { go d.actionWorker(ctx) })
 }
 
 // saveAlarmLocked: Speicherfehler höchstens einmal je Minute melden.
@@ -508,7 +591,11 @@ func (d *daemon) actionWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case q := <-d.actQ:
-			if q.batch != failed {
+			if q.fn != nil {
+				d.busy.Store(true)
+				q.fn(ctx)
+				d.busy.Store(false)
+			} else if q.batch != failed {
 				d.busy.Store(true)
 				err := d.doAction(ctx, q.a)
 				if err != nil {
@@ -590,6 +677,7 @@ func (d *daemon) tick(ctx context.Context) {
 		pl = d.tickWitnessLocked(ctx)
 	} else {
 		pl = d.tickNodeLocked(ctx)
+		d.maybeReconcileLocked(ctx, d.mono())
 	}
 	pl.events = append(pl.events, hk.events...)
 	// Beitrittscode ausgegeben oder abgelaufen → Regeln anpassen
