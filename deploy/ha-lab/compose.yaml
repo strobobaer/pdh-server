@@ -35,6 +35,10 @@ services:
     volumes:
       - node1-etc:/etc/pdh/ha
       - node1-state:/var/lib/pdh-ha
+      # PostgreSQL auf eigenem Volume: overlayfs kann Ordner aus dem Image nicht
+      # umbenennen (Neukopie legt den Datenordner beiseite)
+      - node1-pgdata:/var/lib/postgresql
+      - node1-pgconf:/etc/postgresql
     networks:
       lan:
         ipv4_address: 10.77.1.11
@@ -52,6 +56,10 @@ services:
     volumes:
       - node2-etc:/etc/pdh/ha
       - node2-state:/var/lib/pdh-ha
+      # PostgreSQL auf eigenem Volume: overlayfs kann Ordner aus dem Image nicht
+      # umbenennen (Neukopie legt den Datenordner beiseite)
+      - node2-pgdata:/var/lib/postgresql
+      - node2-pgconf:/etc/postgresql
     networks:
       lan:
         ipv4_address: 10.77.1.12
@@ -107,5 +115,9 @@ volumes:
   node1-state:
   node2-etc:
   node2-state:
+  node1-pgdata:
+  node1-pgconf:
+  node2-pgdata:
+  node2-pgconf:
   witness-etc:
   witness-state:
