@@ -93,7 +93,7 @@ func TestVote(t *testing.T) {
 				t.Fatalf("gewährt = %v, erwartet %v", ok, c.granted)
 			}
 			if !ok {
-				if next != c.p {
+				if !next.Equal(c.p) {
 					t.Fatalf("abgelehnt darf den Zustand nicht ändern: %+v", next)
 				}
 				return

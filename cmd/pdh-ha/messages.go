@@ -62,7 +62,7 @@ func (d *daemon) voteLocked(pl *plan, from string, m message) {
 	s := d.settingsLocked()
 	nodes := d.nodeObsLocked(d.net.peers(s.Tick))
 	granted, next := ha.Vote(d.p, ha.VoteRequest{From: from, Term: m.VoteTerm}, nodes, d.mono(), s)
-	if next != d.p {
+	if !next.Equal(d.p) {
 		if err := d.saveFn(next); err != nil {
 			d.saveAlarmLocked(pl, "Stimme nicht gespeichert, keine Antwort: "+err.Error())
 			return

@@ -77,7 +77,69 @@ func TestSettingsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(out) != in {
+	const want = `{"tick_s":1,"fence_s":10,"takeover_trio_s":30,"takeover_duo_s":60,"cooldown_min":15,"max_per_day":3,"async_after_s":10,"lag_limit_mb":16,"slot_keep_gb":20,"auto_mode":"observe"}`
+	if string(out) != want {
 		t.Fatalf("Marshal: %s", out)
+	}
+}
+
+func TestSettingsMissingFieldsDefault(t *testing.T) {
+	var s Settings
+	if err := json.Unmarshal([]byte(`{"tick_s":1,"fence_s":10,"takeover_trio_s":30,"takeover_duo_s":60,"cooldown_min":15,"max_per_day":3}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.AsyncAfter != 10*time.Second || s.LagLimit != 16<<20 || s.SlotKeep != 20<<30 || s.AutoMode != AutoObserve {
+		t.Fatalf("Standardwerte fehlen: %+v", s)
+	}
+	if s != DefaultSettings() || s.Validate() != nil {
+		t.Fatalf("soll Standard sein: %+v", s)
+	}
+}
+
+func TestSettingsNewRanges(t *testing.T) {
+	for _, c := range []struct {
+		mod  func(*Settings)
+		want string
+	}{
+		{func(s *Settings) { s.AsyncAfter = 2 * time.Second }, "„asynchron nach“ muss zwischen 3 und 300 s liegen"},
+		{func(s *Settings) { s.LagLimit = 2048 << 20 }, "Verzögerungsgrenze muss zwischen 1 und 1024 MB liegen"},
+		{func(s *Settings) { s.SlotKeep = 0 }, "Höchstmenge zurückgehaltener Änderungen muss zwischen 1 und 1000 GB liegen"},
+		{func(s *Settings) { s.AutoMode = "x" }, "Automatische Umschaltung muss „observe“ oder „real“ sein"},
+	} {
+		s := DefaultSettings()
+		c.mod(&s)
+		if err := s.Validate(); err == nil || err.Error() != c.want {
+			t.Errorf("%v, möchte %q", err, c.want)
+		}
+	}
+}
+
+func TestSettingsNewRoundTrip(t *testing.T) {
+	s := DefaultSettings()
+	s.AutoMode = AutoReal
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Settings
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != s || !got.Real() || DefaultSettings().Real() {
+		t.Fatalf("Rundlauf: %+v statt %+v", got, s)
+	}
+}
+
+func TestPersistedEqual(t *testing.T) {
+	a := Persisted{Term: 1, Stale: map[string]uint64{"b": 2}}
+	if !a.Equal(Persisted{Term: 1, Stale: map[string]uint64{"b": 2}}) {
+		t.Fatal("gleich erwartet")
+	}
+	if a.Equal(Persisted{Term: 1}) || a.Equal(Persisted{Term: 2, Stale: map[string]uint64{"b": 2}}) ||
+		a.Equal(Persisted{Term: 1, Stale: map[string]uint64{"b": 3}}) {
+		t.Fatal("ungleich erwartet")
+	}
+	if !(Persisted{Term: 1}).Equal(Persisted{Term: 1, Stale: map[string]uint64{}}) {
+		t.Fatal("leer und nil sind gleich")
 	}
 }

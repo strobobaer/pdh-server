@@ -562,7 +562,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	out := ha.Step(in)
-	if out.Persist != d.p || d.unsaved {
+	if !out.Persist.Equal(d.p) || d.unsaved {
 		if err := d.saveFn(out.Persist); err != nil {
 			if d.p.Role == ha.Active && !d.unsaved {
 				pl.actions = append(pl.actions, ha.Action{Kind: ha.ActFence, Term: d.p.Term})
@@ -642,7 +642,7 @@ func (d *daemon) tickWitnessLocked(ctx context.Context) plan {
 			p.Maint = true
 		}
 	}
-	if p != d.p {
+	if !p.Equal(d.p) {
 		if err := d.saveFn(p); err != nil {
 			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
 			return pl

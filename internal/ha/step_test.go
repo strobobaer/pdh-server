@@ -548,7 +548,7 @@ func TestStepPersistCopy(t *testing.T) {
 	in.Persist.SwitchDay, in.Persist.SwitchCount = "2026-10-24", 2
 	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
 	out := Step(in)
-	if out.Persist != in.Persist {
+	if !out.Persist.Equal(in.Persist) {
 		t.Fatalf("Zustand verändert: %+v, erwartet %+v", out.Persist, in.Persist)
 	}
 }
