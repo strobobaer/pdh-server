@@ -29,8 +29,10 @@ SETTINGS_SHORT=1/5/15/20/0/3
 # bis pdh-ha ihn abschaltet (wie in der Produktion beim Hochfahren)
 RW_GRACE=15
 
-# Adressen: node1 meldet zuerst wit (für den Beitritt des Zeugen), node2 nur lan + vpn
-N1_ADDRS=10.77.3.11,10.77.1.11,10.77.2.11
+# Adressen: node1 meldet zusätzlich wit (für den Beitritt des Zeugen), node2 nur
+# lan + vpn. wit steht zuletzt: PostgreSQL probiert die Adressen der Reihe nach
+# und gibt nach einer abgelehnten Anmeldung (node1 erlaubt nur node2s lan/vpn) auf.
+N1_ADDRS=10.77.1.11,10.77.2.11,10.77.3.11
 N2_ADDRS=10.77.1.12,10.77.2.12
 W_ADDRS=10.77.3.20
 declare -A IP=(
