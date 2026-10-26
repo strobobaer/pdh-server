@@ -15,9 +15,21 @@ x-pdh-ha: &pdh-ha
   restart: "no"
   init: true
 
+# Server mit PostgreSQL (Datenbank-Spiegel, Teil 3); pdh ist ein Platzhalter
+x-pdh-ha-pg: &pdh-ha-pg
+  build:
+    context: ../..
+    dockerfile: deploy/ha-witness/Dockerfile
+    target: lab-pg
+    args:
+      COMMIT: ${PDH_HA_COMMIT:-lab}
+  image: pdh-ha-lab-pg:local
+  restart: "no"
+  init: true
+
 services:
   node1:
-    <<: *pdh-ha
+    <<: *pdh-ha-pg
     container_name: node1
     hostname: node1
     volumes:
@@ -32,7 +44,7 @@ services:
         ipv4_address: 10.77.3.11
 
   node2:
-    <<: *pdh-ha
+    <<: *pdh-ha-pg
     container_name: node2
     hostname: node2
     environment:
