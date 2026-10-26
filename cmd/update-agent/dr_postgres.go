@@ -23,6 +23,9 @@ import (
 
 const drSpool = "/var/lib/postgresql/pdh-wal-spool"
 
+// drSpoolDir: Zwischenspeicher, den die Schleife leert (Tests setzen einen Temp-Ordner).
+var drSpoolDir = drSpool
+
 func drPostgresConf(walMaxMinutes int) string {
 	return fmt.Sprintf(`# PDH Ausfallschutz – vom Update-Agenten verwaltet, nicht von Hand ändern
 archive_mode = on
@@ -192,6 +195,7 @@ func (a *updateAgent) drRunBase(ctx context.Context) error {
 	}
 	a.dr.mu.Lock()
 	a.dr.LastBase = now
+	a.dr.BaseNeeded = false
 	a.dr.mu.Unlock()
 	if err := drWriteRestoreScript(target); err != nil {
 		return fmt.Errorf("pdh-restore.sh nicht abgelegt: %w", err)

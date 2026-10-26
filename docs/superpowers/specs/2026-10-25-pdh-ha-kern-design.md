@@ -178,8 +178,12 @@ Heartbeat, keine Entscheidungen.
 
 ### 4.4 Netzlaufwerk-Sicherung und Zeugen-Warnung
 
-- Update-Agent fragt vor WAL-Verschieben, Grundsicherung und Dateiabgleich
-  `GET /v1/status`; läuft nur, wenn `aktiv` oder kein `pdh-ha` vorhanden.
+- Update-Agent fragt vor Grundsicherung und Dateiabgleich `GET /v1/status`;
+  läuft nur, wenn `aktiv` oder kein `pdh-ha` vorhanden. In Teil 2 (Beobachtung)
+  war das nur ein Hinweis (Ruling R20); ab Teil 3 ist die Sperre scharf und
+  verlangt zusätzlich eine schreibbare Datenbank. Schon erzeugte WAL-Dateien im
+  Zwischenspeicher werden unabhängig von der Rolle verschoben
+  (`2026-10-25-ausfallschutz-db-cluster-design.md` §5).
 - Warnung bei erkennbar gemeinsamer Hardware zweier Stimmen: gleiche
   `/sys/class/dmi/id/product_uuid` bzw. bei VMs (`systemd-detect-virt`) gleiche
   Host-Kennung, soweit der Hypervisor sie preisgibt. Nur Hinweis, keine Sperre.

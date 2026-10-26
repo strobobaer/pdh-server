@@ -104,7 +104,7 @@ func TestDRIsActive(t *testing.T) {
 	})
 }
 
-// haEnforce: Sperre wie ab Teil 3 (Testhook).
+// haEnforce: Sperre wie ab Teil 3 (Standard, Testhook).
 func haEnforce(t *testing.T) {
 	t.Helper()
 	old := haGateEnforced
@@ -112,8 +112,17 @@ func haEnforce(t *testing.T) {
 	t.Cleanup(func() { haGateEnforced = old })
 }
 
+// haObserve: Sperre aus wie in Teil 2 (Beobachtung, Testhook).
+func haObserve(t *testing.T) {
+	t.Helper()
+	old := haGateEnforced
+	haGateEnforced = false
+	t.Cleanup(func() { haGateEnforced = old })
+}
+
 // Beobachtung (Teil 1): manuelle Sicherung auf dem passiven Knoten läuft, Hinweis steht im Status.
 func TestDRRunObservedOnPassive(t *testing.T) {
+	haObserve(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	haInstalled(t)
 	haFakeSocket(t, `{"ok":true,"configured":true,"self":{"id":"b","role":"passiv"}}`)
@@ -153,6 +162,7 @@ func TestDRRunRefusedOnPassive(t *testing.T) {
 // Beobachtung (Teil 1): die Schleife sichert auch auf dem passiven Knoten
 // und bei nicht erreichbarem pdh-ha; nur der Hinweis zeigt, was künftig passieren würde.
 func TestDRTickObservedOnPassive(t *testing.T) {
+	haObserve(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	target := t.TempDir()
 	a := &updateAgent{mode: "docker"}
