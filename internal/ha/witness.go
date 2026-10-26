@@ -14,6 +14,10 @@ func Vote(p Persisted, req VoteRequest, nodes []PeerObs, now time.Duration, s Se
 	if req.From == "" {
 		return false, p
 	}
+	// Der aktive Knoten hat gemeldet, dass ihm Speicherungen fehlen.
+	if _, stale := p.Stale[req.From]; stale {
+		return false, p
+	}
 	// Dieselbe Stimme darf wiederholt werden (Antwort kann verloren gehen).
 	known := max(p.VotedTerm, p.Term)
 	again := req.Term == p.VotedTerm && req.From == p.VotedFor && req.Term >= known
@@ -44,4 +48,36 @@ func Vote(p Persisted, req VoteRequest, nodes []PeerObs, now time.Duration, s Se
 		p.Term = req.Term
 	}
 	return true, p
+}
+
+// MarkStale vermerkt node als „nicht aktuell“ ab Amtszeit term. Die Map wird
+// kopiert – Persisted wird als Wert weitergereicht und darf nie geteilt geändert werden.
+func MarkStale(p Persisted, node string, term uint64) Persisted {
+	m := make(map[string]uint64, len(p.Stale)+1)
+	for k, v := range p.Stale {
+		m[k] = v
+	}
+	m[node] = max(m[node], term)
+	p.Stale = m
+	return p
+}
+
+// ClearStale löscht den Vermerk, wenn er aus derselben oder einer älteren
+// Amtszeit stammt (eine spätere Meldung „nicht aktuell“ bleibt stehen).
+func ClearStale(p Persisted, node string, term uint64) Persisted {
+	t, ok := p.Stale[node]
+	if !ok || term < t {
+		return p
+	}
+	m := make(map[string]uint64, len(p.Stale))
+	for k, v := range p.Stale {
+		if k != node {
+			m[k] = v
+		}
+	}
+	if len(m) == 0 {
+		m = nil
+	}
+	p.Stale = m
+	return p
 }

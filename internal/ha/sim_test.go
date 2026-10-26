@@ -53,6 +53,7 @@ type simNode struct {
 	granted      uint64
 	demoteDone   uint64 // Amtszeit der zuletzt erledigten Abgabe
 	probeGranted uint64
+	stale        bool // Datenstand nicht aktuell (DataCurrent false)
 	handover     uint64
 	cmd          CommandKind
 }
@@ -280,7 +281,7 @@ func (s *sim) nodeStep(n *simNode) {
 		SelfID: n.id, Now: now, Wall: simWall.Add(time.Duration(s.tick) * time.Second),
 		Mode: s.mode, Version: simVersion,
 		Gateway: n.gateway, GatewayLastOK: n.gwLastOK,
-		DataCurrent: true, DataAssumed: true, Booting: n.booting,
+		DataCurrent: !n.stale, DataAssumed: true, Booting: n.booting,
 		Partner:     s.obs(n.view, now, n.id, n.peer, "node"),
 		VoteGranted: n.granted, Handover: n.handover, Command: n.cmd,
 		Settings: s.set, Persist: n.p,
@@ -310,6 +311,9 @@ func (s *sim) nodeStep(n *simNode) {
 	}
 	for _, a := range out.Actions {
 		s.logf("%s Aktion %s{%d}", n.id, a.Kind, a.Term)
+		if a.Kind == ActPromote && !a.Manual && n.stale {
+			s.fail("%s ohne aktuellen Datenstand automatisch hochgestuft (Amtszeit %d)", n.id, a.Term)
+		}
 		switch a.Kind {
 		case ActRequestVote:
 			if s.w != nil {
@@ -632,6 +636,8 @@ func simRandomOpts(t testing.TB, seed int64, ticks int, oneWay bool) int {
 				restartAt[n.id] = s.tick + 1 + rng.Intn(120)
 			case n.up && n.p.Role == Active && rng.Intn(400) == 0:
 				n.cmd = CmdSwap
+			case n.up && rng.Intn(300) == 0:
+				n.stale = !n.stale
 			case oneWay && n.up && rng.Intn(500) == 0:
 				n.cmd = CmdMaintOn
 				if rng.Intn(2) == 0 {
