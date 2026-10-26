@@ -367,3 +367,40 @@ func TestHAInstallScriptContent(t *testing.T) {
 		t.Error("install_update.sh: Warnung fehlt")
 	}
 }
+
+// Datenbank-Spiegel (Teil 3): --voll richtet Knoten 2 ein, pdh startet nur
+// auf dem aktiven Server.
+func TestFullNodeScripts(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	j := read("../../scripts/pdh-ha-join.sh")
+	for _, want := range []string{"--voll) VOLL=1", "pdh-ha peer-pg-major", "install-pdh-program.sh", `replica-init --confirm-host "$confirm"`,
+		"apt.postgresql.org", "read -r -p \"Zum Bestätigen den Hostnamen", "--voll nicht zusammen mit --witness"} {
+		if !strings.Contains(j, want) {
+			t.Errorf("pdh-ha-join.sh ohne %q", want)
+		}
+	}
+	// replica-init bringt die .env – erst danach Agent und PDH bauen
+	if i, k := strings.Index(j, "pdh-ha replica-init"), strings.Index(j, "install-update-agent.sh"); i < 0 || k < i {
+		t.Error("pdh-ha-join.sh: install-update-agent.sh muss nach replica-init laufen")
+	}
+	p := read("../../scripts/install-pdh-program.sh")
+	if strings.Contains(p, "systemctl restart pdh") || strings.Contains(p, "systemctl start pdh") || strings.Contains(p, "createdb") ||
+		!strings.Contains(p, "systemctl disable pdh") {
+		t.Error("install-pdh-program.sh darf pdh nicht starten und keine Datenbank anlegen")
+	}
+	for _, f := range []string{"../../install-update-agent.sh", "../../install_update.sh"} {
+		s := strings.ReplaceAll(read(f), "\r\n", "\n")
+		if !strings.Contains(s, "pdh-ha should-run-pdh") || strings.Count(s, "systemctl restart pdh\n") != 1 {
+			t.Errorf("%s: Neustart von pdh nicht an should-run-pdh gebunden", f)
+		}
+		if i, k := strings.Index(s, "should-run-pdh"), strings.Index(s, "systemctl restart pdh\n"); k < i {
+			t.Errorf("%s: Neustart vor der Prüfung", f)
+		}
+	}
+}

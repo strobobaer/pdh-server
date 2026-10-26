@@ -4,12 +4,16 @@
 #   sudo bash pdh-ha-join.sh [<Code>]           als zweiter Server beitreten
 #   sudo bash pdh-ha-join.sh --witness [<Code>] als Zeuge beitreten
 #   sudo bash pdh-ha-join.sh --update <Commit>  pdh-ha auf diesen Stand bringen
+#   … --voll                                    zusätzlich PDH + Datenbank-Spiegel
+#                                               (Standby des aktiven Servers)
 #
 # Den Beitrittscode erzeugt das PDH (Server-Einstellungen → Ausfallschutz) oder
 # „pdh-ha join-code [--witness]“ auf dem ersten Server. Das Skript installiert
 # git/Go, holt das PDH-Repo auf den Commit aus dem Code nach /opt/pdh-ha-src,
 # baut pdh-ha (scripts/install-pdh-ha.sh) und tritt bei. Ohne <Code> kommt er
 # aus PDH_HA_JOIN oder wird abgefragt (dann nicht in der Prozessliste sichtbar).
+# Mit --voll ersetzt die Kopie des aktiven Servers die Datenbank hier – liegen
+# schon Datenbanken vor, werden sie gesichert und der Hostname abgefragt.
 
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 set -euo pipefail
@@ -23,18 +27,20 @@ ok()   { printf '\033[1;32m✔ %s\033[0m\n' "$*"; }
 info() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31m✘ %s\033[0m\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
 
-WITNESS=0 UPDATE="" CODE="${PDH_HA_JOIN:-}" GOT_CODE=0
+WITNESS=0 VOLL=0 UPDATE="" CODE="${PDH_HA_JOIN:-}" GOT_CODE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --witness) WITNESS=1; shift ;;
+    --voll) VOLL=1; shift ;;
     --update) UPDATE="${2:-}"; [[ -n "$UPDATE" ]] || fail "--update braucht einen Commit"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; fail "Unbekannte Option: $1" ;;
     *) (( ! GOT_CODE )) || fail "Nur einen Beitrittscode angeben"; CODE="$1"; GOT_CODE=1; shift ;;
   esac
 done
+(( ! (VOLL && WITNESS) )) || fail "--voll nicht zusammen mit --witness (der Zeuge hat keine Datenbank)"
 if [[ -n "$UPDATE" ]]; then
   [[ $WITNESS -eq 0 ]] || fail "--update nicht zusammen mit --witness"
   CODE=""
@@ -92,11 +98,50 @@ checkout() {
   ok "Quelltext auf Stand $commit ($SRC)"
 }
 
+# Datenbank-Spiegel: PostgreSQL in der Hauptversion des aktiven Servers, PDH
+# ohne eigene Datenbank, Erstkopie per replica-init, dann Agent und PDH bauen.
+full_node() {
+  local commit="$1" major dbs confirm=""
+  info "Datenbank-Spiegel einrichten"
+  systemctl restart pdh-ha
+  sleep 3
+  major="$(/usr/local/bin/pdh-ha peer-pg-major)" || fail "Aktiver Server nicht erreichbar (siehe oben)."
+  [[ "$major" =~ ^[0-9]+$ ]] || fail "Unerwartete PostgreSQL-Version vom aktiven Server: $major"
+  if ! dpkg -s "postgresql-$major" >/dev/null 2>&1; then
+    info "Installiere PostgreSQL $major (wie auf dem aktiven Server)"
+    apt-get update -qq
+    if ! apt-cache show "postgresql-$major" >/dev/null 2>&1; then
+      info "PostgreSQL $major fehlt in Ubuntu – richte das Paketarchiv apt.postgresql.org ein"
+      apt-get install -y -qq curl ca-certificates lsb-release
+      install -d /usr/share/postgresql-common/pgdg
+      curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+      echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+        >/etc/apt/sources.list.d/pgdg.list
+      apt-get update -qq
+    fi
+    apt-get install -y -qq "postgresql-$major"
+  fi
+  ok "PostgreSQL $major vorhanden"
+  bash "$SRC/scripts/install-pdh-program.sh" /opt/pdh-server "$commit"
+  dbs="$(runuser -u postgres -- psql -XAtqc "SELECT datname FROM pg_database WHERE datname NOT IN ('postgres','template0','template1')" 2>/dev/null | tr '\n' ' ' || true)"
+  if [[ -n "${dbs// /}" ]]; then
+    warn "Auf diesem Server liegen schon Datenbanken: $dbs"
+    warn "Sie werden gesichert (/var/lib/pdh-ha/vorher) und durch die Kopie des aktiven Servers ersetzt."
+    read -r -p "Zum Bestätigen den Hostnamen dieses Servers ($(hostname)) eintippen: " confirm || true
+  fi
+  /usr/local/bin/pdh-ha replica-init --confirm-host "$confirm" || fail "Datenbank-Spiegel nicht eingerichtet (siehe oben)."
+  info "PDH und Update-Agent bauen (dauert ein paar Minuten)"
+  bash /opt/pdh-server/install-update-agent.sh
+  systemctl restart pdh-ha
+  ok "Datenbank-Spiegel läuft – im PDH Rollen tauschen (hin und zurück) testen"
+}
+
 if [[ -n "$UPDATE" ]]; then
   info "pdh-ha aktualisieren"
   checkout "$UPDATE"
   bash "$SRC/scripts/install-pdh-ha.sh" "$SRC"
   ok "pdh-ha aktualisiert: $(/usr/local/bin/pdh-ha version)"
+  (( VOLL )) && full_node "$UPDATE"
   exit 0
 fi
 
@@ -120,3 +165,5 @@ out="$(PDH_HA_JOIN="$CODE" /usr/local/bin/pdh-ha "${args[@]}")" || fail "Beitrit
 # Dienst lädt die neue Konfiguration
 systemctl restart pdh-ha
 ok "$out"
+(( VOLL )) && full_node "$commit"
+exit 0

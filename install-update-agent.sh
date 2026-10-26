@@ -90,5 +90,17 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now pdh-update-agent
-systemctl restart pdh
+# Im Datenbank-Spiegel läuft pdh nur auf dem aktiven Server (pdh-ha entscheidet;
+# Exit 1 = nicht starten, ältere pdh-ha ohne den Befehl = wie bisher starten).
+pdh_should_run() {
+    [[ -x /usr/local/bin/pdh-ha ]] || return 0
+    local rc=0
+    /usr/local/bin/pdh-ha should-run-pdh >/dev/null 2>&1 || rc=$?
+    [[ $rc -ne 1 ]]
+}
+if pdh_should_run; then
+    systemctl restart pdh
+else
+    echo "pdh bleibt aus (passiver Server im Datenbank-Spiegel)."
+fi
 echo "PDH Update Agent installed and enabled."
