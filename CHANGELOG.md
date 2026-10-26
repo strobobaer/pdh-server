@@ -10,6 +10,21 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.0] – 2026-10-26
+
+### Neu
+- Datenbank-Spiegel im Ausfallschutz: Der aktive Server schreibt jede Speicherung synchron auch auf den zweiten Server (`pdh-ha-join.sh --voll`).
+- „Rollen tauschen“ und „Übernahme erzwingen“ schalten jetzt wirklich um – Datenbank und PDH wechseln auf den anderen Server.
+- Ein zurückkehrender Server gliedert sich selbst als Spiegel wieder ein; Daten, die nur auf ihm lagen, werden vorher gesichert und als „Abgezweigte Daten“ zur Prüfung angezeigt.
+- Fällt der zweite Server aus, arbeitet der aktive nach kurzer Zeit asynchron weiter – im Trio erst nach Bestätigung des Zeugen.
+- Einstellung „Automatische Umschaltung: Beobachtung oder echt“; „echt“ erst nach der Pflicht-Testumschaltung (hin und zurück).
+- Neue Einstellungen „Asynchron nach“, „Verzögerungsgrenze“ und „Höchstmenge zurückgehaltener Änderungen“.
+
+### Geändert
+- Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme folgt sofort eine neue Grundsicherung.
+- Im Beobachtungsmodus ändern automatische Entscheidungen keine Rollen und Amtszeiten mehr, sie werden nur gemeldet.
+- Auf dem passiven Server läuft das PDH nicht; Updates starten es dort nicht mehr.
+
 ## [0.75.1] – 2026-10-25
 
 ### Behoben
