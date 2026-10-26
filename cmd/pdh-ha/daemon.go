@@ -359,6 +359,9 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 	if _, err := os.Stat(d.st.etcPath("replica.pass")); err != nil {
 		return
 	}
+	if d.alarms["pg"] {
+		return // PostgreSQL fehlt: nicht in jedem Takt erneut suchen
+	}
 	c, err := discoverCluster(ctx, d.sys)
 	if err != nil {
 		d.alarmOnce("pg", "Datenbank-Spiegel eingerichtet, aber PostgreSQL nicht gefunden: "+err.Error())
@@ -715,6 +718,8 @@ func (d *daemon) tick(ctx context.Context) {
 	if d.node.Kind == "witness" {
 		pl = d.tickWitnessLocked(ctx)
 	} else {
+		// nach replica-init ohne Neustart zum echten Ausführer wechseln
+		d.selectActorLocked(ctx)
 		pl = d.tickNodeLocked(ctx)
 		d.maybeReconcileLocked(ctx, d.mono())
 	}
