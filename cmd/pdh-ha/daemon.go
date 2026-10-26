@@ -356,11 +356,16 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		return
 	}
 	pg := &pgCtl{r: d.sys, c: c}
-	d.act = newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv {
+	pa := newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.pgEnvLocked(pg)
 	})
+	d.act = pa
+	// abgebrochene Neukopie zuerst reparieren, vor jeder anderen Aktion
+	if err := pa.recoverDataDir(ctx); err != nil {
+		d.alarmOnce("pg-dir", "Datenordner nach abgebrochener Neukopie nicht wiederhergestellt: "+err.Error())
+	}
 }
 
 // pgEnvLocked: was pgActor über Partner, Wege und Schlüssel wissen muss.

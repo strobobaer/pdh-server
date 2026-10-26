@@ -234,6 +234,20 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	mux.HandleFunc("POST /v1/diverged/delete", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID string `json:"id"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := deleteDiverged(divergedDir(), req.ID); err != nil {
+			apiFail(w, err)
+			return
+		}
+		d.event("info", "Abgezweigte Daten gelöscht: "+req.ID)
+		apiOK(w)
+	})
 	mux.HandleFunc("POST /v1/nodes/remove", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ID   string `json:"id"`
