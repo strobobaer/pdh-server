@@ -286,6 +286,9 @@ func TestDaemonActorPanic(t *testing.T) {
 			ra := &recActor{fail: fail}
 			d.act = ra
 			d.tick(context.Background()) // Start: aktiv ohne Partner → fence
+			waitFor(t, 2*time.Second, "Aktionen erledigt", d.actionsIdle)
+			ra.mu.Lock()
+			defer ra.mu.Unlock()
 			if len(ra.got) == 0 || ra.got[0].Kind != ha.ActFence {
 				t.Fatalf("Aktionen: %+v", ra.got)
 			}
@@ -613,11 +616,67 @@ func realSettings() ha.Settings {
 }
 
 // orderActor schreibt ausgeführte Aktionen ins gemeinsame Reihenfolge-Protokoll.
-type orderActor struct{ ol *orderLog }
+type orderActor struct {
+	ol   *orderLog
+	slow time.Duration // so lange dauert demote
+}
 
 func (o orderActor) Do(_ context.Context, a ha.Action) error {
+	if a.Kind == ha.ActDemote {
+		time.Sleep(o.slow)
+	}
 	o.ol.add(fmt.Sprintf("act %s term=%d", a.Kind, a.Term))
 	return nil
+}
+
+// Eine lange Aktion hält den Takt nicht an: Heartbeats laufen weiter.
+func TestDaemonActionsAsync(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("b", peerView{Paths: []pathStat{{Addr: "x"}}})
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1}, fn)
+	release := make(chan struct{})
+	d.act = blockActor{release}
+	d.tick(context.Background()) // fence läuft und blockiert
+	waitFor(t, 2*time.Second, "Aktion läuft", d.busy.Load)
+	before := len(fn.messages("hb"))
+	d.tick(context.Background())
+	d.tick(context.Background())
+	if len(fn.messages("hb")) <= before || d.actionsIdle() {
+		t.Fatalf("Takt angehalten oder Aktion fertig: hb %d→%d", before, len(fn.messages("hb")))
+	}
+	close(release)
+	waitFor(t, 2*time.Second, "Aktion fertig", d.actionsIdle)
+	if d.busy.Load() {
+		t.Fatal("busy nach Ende gesetzt")
+	}
+}
+
+type blockActor struct{ release chan struct{} }
+
+func (b blockActor) Do(context.Context, ha.Action) error { <-b.release; return nil }
+
+// Scheitert demote, meldet der Daemon das an Step (Rollentausch abgebrochen).
+func TestDaemonDemoteFailedReported(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test", Sees: []string{"a"}}))
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1, PartnerVersion: "test"}, fn)
+	d.act = &recActor{fail: func(a ha.Action) error {
+		if a.Kind == ha.ActDemote {
+			return errors.New("Frist überschritten")
+		}
+		return nil
+	}}
+	d.tick(context.Background())
+	if err := d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	d.tick(context.Background())
+	waitFor(t, 2*time.Second, "demote gescheitert", d.actionsIdle)
+	d.tick(context.Background())
+	waitFor(t, 2*time.Second, "Abbruch", func() bool { return hasEvent(d, "Rollentausch abgebrochen") })
+	if s := d.statusNow(); s.Self.Role != ha.Active || len(fn.messages("handover")) != 0 {
+		t.Fatalf("nach gescheitertem demote: %+v, handover %d", s.Self, len(fn.messages("handover")))
+	}
 }
 
 // Rollentausch: Die Übergabe geht erst raus, nachdem demote ausgeführt wurde.
@@ -627,12 +686,18 @@ func TestDaemonSwapHandoverAfterDemote(t *testing.T) {
 	fn.order = ol
 	fn.setView("b", seenView(message{Role: "passiv", Term: 1, Ver: "test", Sees: []string{"a"}}))
 	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1, PartnerVersion: "test"}, fn)
-	d.act = orderActor{ol}
+	d.act = orderActor{ol: ol, slow: 300 * time.Millisecond}
 	d.tick(context.Background())
 	if err := d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
-	d.tick(context.Background())
+	for i := 0; i < 3; i++ { // demote läuft noch: keine Übergabe
+		d.tick(context.Background())
+		if n := len(fn.messages("handover")); n != 0 {
+			t.Fatalf("Takt %d: handover vor erledigtem demote", i)
+		}
+	}
+	waitFor(t, 2*time.Second, "demote erledigt", d.actionsIdle)
 	d.tick(context.Background())
 	demote, handover := -1, -1
 	for i, l := range ol.list() {

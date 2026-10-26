@@ -92,7 +92,16 @@ type daemon struct {
 	cmd         ha.CommandKind
 	handoverIn  uint64
 	voteGranted uint64
-	demoteDone  uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
+	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
+	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
+	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
+
+	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
+	actQ        chan queuedAction
+	actOnce     sync.Once
+	actBatch    uint64       // nur unter mu
+	busy        atomic.Bool  // eine Aktion läuft gerade
+	pendingActs atomic.Int32 // wartend oder laufend
 	lastMode    ha.Mode
 
 	certNotAfter time.Time
@@ -119,6 +128,13 @@ type daemon struct {
 	pinging atomic.Bool
 }
 
+// queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
+// entfallen die übrigen dieser Gruppe (wie bisher „break“).
+type queuedAction struct {
+	a     ha.Action
+	batch uint64
+}
+
 func newDaemon(st store, ev *eventLog) *daemon {
 	start := time.Now()
 	d := &daemon{
@@ -136,6 +152,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		protoSent: map[ha.ActionKind]uint64{},
 		alarms:    map[string]bool{},
 		downSince: map[string]time.Duration{},
+		actQ:      make(chan queuedAction, 16),
 	}
 	d.act = observeActor{ev: ev}
 	d.saveFn = st.saveState
@@ -456,23 +473,67 @@ func (d *daemon) execute(ctx context.Context, pl plan) {
 			pl.net.sendTo(s.to, s.m)
 		}
 	}
-	for _, a := range pl.actions {
-		if err := d.doAction(ctx, a); err != nil {
-			d.actionFailed(a, err)
-			break
-		}
-		if a.Kind == ha.ActDemote {
-			// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
-			d.lock()
-			d.demoteDone = a.Term
-			d.unlock()
-		}
+	if len(pl.actions) > 0 {
+		d.enqueueActions(ctx, pl.actions)
 	}
 	d.events(pl.events)
 	if pl.ufw {
 		go d.applyFirewall()
 	}
 }
+
+// enqueueActions reiht die Aktionen eines Schritts in die Warteschlange ein;
+// der Ausführer läuft so lange wie der erste Aufrufer (run).
+func (d *daemon) enqueueActions(ctx context.Context, acts []ha.Action) {
+	d.actOnce.Do(func() { go d.actionWorker(ctx) })
+	d.mu.Lock()
+	d.actBatch++
+	b := d.actBatch
+	d.mu.Unlock()
+	for _, a := range acts {
+		d.pendingActs.Add(1)
+		select {
+		case d.actQ <- queuedAction{a: a, batch: b}:
+		case <-ctx.Done():
+			d.pendingActs.Add(-1)
+			return
+		}
+	}
+}
+
+func (d *daemon) actionWorker(ctx context.Context) {
+	var failed uint64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case q := <-d.actQ:
+			if q.batch != failed {
+				d.busy.Store(true)
+				err := d.doAction(ctx, q.a)
+				if err != nil {
+					failed = q.batch
+					d.actionFailed(q.a, err)
+				}
+				if q.a.Kind == ha.ActDemote {
+					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
+					d.lock()
+					if err == nil {
+						d.demoteDone = q.a.Term
+					} else {
+						d.demoteFailed = q.a.Term
+					}
+					d.unlock()
+				}
+				d.busy.Store(false)
+			}
+			d.pendingActs.Add(-1)
+		}
+	}
+}
+
+// actionsIdle: keine Aktion wartet oder läuft.
+func (d *daemon) actionsIdle() bool { return d.pendingActs.Load() == 0 }
 
 func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 	defer func() {
@@ -602,6 +663,8 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		switch a.Kind {
 		case ha.ActRequestVote:
 			pl.send(witness, message{T: "vote_req", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
+		case ha.ActProbeVote:
+			pl.send(witness, message{T: "vote_probe", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
 		case ha.ActHandover:
 			pl.send(partner, message{T: "handover", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
 		case ha.ActPromote:
@@ -610,7 +673,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 			pl.event("alarm", fmt.Sprintf("Selbst-Abschaltung (Amtszeit %d)", a.Term))
 		}
 		// Wiederholte Stimmbitten und Übergaben nur einmal melden
-		if a.Kind == ha.ActRequestVote || a.Kind == ha.ActHandover {
+		if a.Kind == ha.ActRequestVote || a.Kind == ha.ActProbeVote || a.Kind == ha.ActHandover {
 			if d.protoSent[a.Kind] == a.Term {
 				continue
 			}
