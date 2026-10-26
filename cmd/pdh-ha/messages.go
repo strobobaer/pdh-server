@@ -29,7 +29,30 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 		}
 	case "vote_resp":
 		if !witness && kind == "witness" && m.Granted && m.VoteTerm != 0 && m.VoteTerm == d.carry.VotePending {
-			d.voteGranted = m.VoteTerm
+			if m.Probe {
+				d.probeGranted = m.VoteTerm // Beobachtung: nur „würde zustimmen“
+			} else {
+				d.voteGranted = m.VoteTerm
+			}
+		}
+	case "vote_probe":
+		if witness && kind == "node" {
+			d.probeLocked(&pl, in.From, m)
+		}
+	case "stale", "current":
+		if witness && kind == "node" && m.Node != "" {
+			d.witnessStaleLocked(&pl, in.From, m, m.T == "stale")
+		}
+	case "stale_ack":
+		if !witness && kind == "witness" && m.VoteTerm == d.p.Term {
+			d.staleAckTerm = m.VoteTerm
+		}
+	case "current_ack":
+		if !witness && kind == "witness" {
+			if d.persistLocked(&pl, ha.ClearStale(d.p, m.Node, m.VoteTerm)) {
+				d.staleAckTerm = 0
+				pl.event("info", fmt.Sprintf("Wieder synchron: %s ist aktuell", m.Node))
+			}
 		}
 	case "handover":
 		if !witness && kind == "node" {

@@ -50,6 +50,8 @@ type apiStatus struct {
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
+	AutoMode       string      `json:"auto_mode"`
+	Busy           bool        `json:"busy"` // eine Aktion läuft
 }
 
 type apiNode struct {
@@ -64,6 +66,16 @@ type apiNode struct {
 	LastSeenAgo float64   `json:"last_seen_ago"`
 	ClockSkew   float64   `json:"clock_skew"`
 	Paths       []apiPath `json:"paths"`
+
+	// Datenbank-Spiegel (leer/unknown ohne Spiegel)
+	PG          string         `json:"pg"`
+	LSN         uint64         `json:"lsn"`
+	LagBytes    int64          `json:"lag_bytes"`
+	Sync        bool           `json:"sync"`
+	Stale       bool           `json:"stale"`
+	Timeline    uint32         `json:"timeline"`
+	DataCurrent bool           `json:"data_current"`
+	Diverged    []divergedInfo `json:"diverged"`
 }
 
 type apiPath struct {

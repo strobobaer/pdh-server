@@ -96,7 +96,12 @@ type daemon struct {
 	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
 	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
 	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
-	dataCurrent  bool   // echter Datenstand (Replikation, Task 8)
+	dataCurrent  bool   // echter Datenstand (Replikation)
+
+	pgSt          atomic.Pointer[pgStatus] // zuletzt bekannter Zustand von PostgreSQL
+	pgQuerying    atomic.Bool
+	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
+	staleAckTerm  uint64        // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
 
 	sys           runner        // Systembefehle (Tests: Fake)
 	reconcileAt   time.Duration // letzter Abgleich (monoton)
@@ -722,6 +727,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
+	d.replInputLocked(ctx, &in, s)
 	out := ha.Step(in)
 	if !out.Persist.Equal(d.p) || d.unsaved {
 		if err := d.saveFn(out.Persist); err != nil {
@@ -774,6 +780,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		}
 		pl.actions = append(pl.actions, a)
 	}
+	d.replSyncLocked(ctx, &pl, now, s, mode)
 	pl.events = append(out.Events, pl.events...)
 	d.clusterRequestsLocked(&pl, now, s, views)
 	d.checkRenewLocked(&pl, wall)
