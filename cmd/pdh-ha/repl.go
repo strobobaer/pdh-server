@@ -107,18 +107,23 @@ func (d *daemon) replSyncLocked(ctx context.Context, pl *plan, now time.Duration
 	}
 	sb, ok := partnerStandby(st, partner)
 	streaming := ok && sb.State == "streaming"
-	if streaming || d.lastStreaming == 0 {
-		d.lastStreaming = now
+	// „zuletzt streaming“ gilt nur in dieser Amtszeit: ein Stempel von früher
+	// meldete den Partner nach einem Tausch sofort als veraltet
+	if streaming || d.lastStreaming == 0 || d.lastStreamingTerm != d.p.Term {
+		d.lastStreaming, d.lastStreamingTerm = now, d.p.Term
 	}
 	var lag int64
 	if ok && st.LSN > sb.FlushLSN {
 		lag = int64(st.LSN - sb.FlushLSN)
 	}
 	_, partnerStale := d.p.Stale[partner]
+	staleAcked := d.staleAckTerm != 0 && d.staleAckTerm == d.p.Term
 	out := ha.SyncStep(ha.SyncIn{
 		Mode: mode, Now: now, Settings: s, Sync: pa.syncTarget() != "", Streaming: streaming,
 		LagBytes: lag, LastStreaming: d.lastStreaming,
-		StaleAcked: d.staleAckTerm != 0 && d.staleAckTerm == d.p.Term, PartnerStale: partnerStale,
+		// Hat der Zeuge den Vermerk bestätigt, steht er dort – auch wenn der
+		// Partner inzwischen wieder streamt; dann „wieder aktuell“ melden
+		StaleAcked: staleAcked, PartnerStale: partnerStale || staleAcked,
 	})
 	switch {
 	case out.MarkStale:

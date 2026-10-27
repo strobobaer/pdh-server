@@ -100,7 +100,9 @@ type daemon struct {
 	pgSt          atomic.Pointer[pgStatus] // zuletzt bekannter Zustand von PostgreSQL
 	pgQuerying    atomic.Bool
 	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
-	staleAckTerm  uint64        // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
+	// Amtszeit, in der lastStreaming gesetzt wurde
+	lastStreamingTerm uint64
+	staleAckTerm      uint64 // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
 
 	sys           runner        // Systembefehle (Tests: Fake)
 	reconcileAt   time.Duration // letzter Abgleich (monoton)

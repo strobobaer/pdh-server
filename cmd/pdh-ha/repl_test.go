@@ -83,6 +83,50 @@ func TestReplDuoAsyncWithoutWitness(t *testing.T) {
 	}
 }
 
+// Nach einem Rollentausch zählt „zuletzt streaming“ ab Amtsantritt – ein
+// Stempel aus einer früheren Amtszeit meldete den Partner sofort als veraltet.
+func TestReplNewTermNoImmediateStale(t *testing.T) {
+	d, fn, _, now := replDaemon(t, trioCluster(), "pdh_ha_b|streaming|0/100|0/100|sync")
+	tickFor(t, d, now, 2)
+	d.lock()
+	d.p.Role, d.p.Term = ha.Passive, 2 // Amtszeit abgegeben …
+	d.unlock()
+	tickFor(t, d, now, 30)
+	d.lock()
+	d.p.Role, d.p.Term = ha.Active, 3 // … und nach einem Tausch zurück
+	d.unlock()
+	r := d.act.(*pgActor).pg.r.(*fakeRunner)
+	r.on("runuser", "pg_stat_replication", "", nil) // Partner wechselt gerade auf Standby
+	tickFor(t, d, now, 2)
+	for _, s := range fn.messages("stale") {
+		if s.m.VoteTerm == 3 {
+			t.Fatalf("stale direkt nach Amtsantritt: %+v", s.m)
+		}
+	}
+}
+
+// Bestätigt der Zeuge „nicht aktuell“, während der Partner schon wieder
+// streamt, muss „wieder aktuell“ folgen – sonst sperrt der Zeuge ihn dauerhaft.
+func TestReplCurrentAfterLateStaleAck(t *testing.T) {
+	d, fn, pa, now := replDaemon(t, trioCluster(), "pdh_ha_b|streaming|0/100|0/100|sync")
+	tickFor(t, d, now, 2)
+	d.handle(context.Background(), inbound{From: "w", Msg: message{T: "stale_ack", Node: "b", VoteTerm: 1}})
+	tickFor(t, d, now, 2)
+	if pa.syncTarget() != "pdh_ha_b" {
+		t.Fatal("streamt: synchron bleiben")
+	}
+	cur := fn.messages("current")
+	if len(cur) == 0 || cur[0].m.Node != "b" || cur[0].m.VoteTerm != 1 {
+		t.Fatalf("current an den Zeugen erwartet: %+v", cur)
+	}
+	d.handle(context.Background(), inbound{From: "w", Msg: message{T: "current_ack", Node: "b", VoteTerm: 1}})
+	n := len(fn.messages("current"))
+	tickFor(t, d, now, 3)
+	if len(fn.messages("current")) != n {
+		t.Fatal("current nach current_ack weiter gesendet")
+	}
+}
+
 func TestReplBackToSyncSendsCurrent(t *testing.T) {
 	d, fn, pa, now := replDaemon(t, trioCluster(), "pdh_ha_b|streaming|0/100|0/100|sync")
 	pa.setSyncTarget("")
