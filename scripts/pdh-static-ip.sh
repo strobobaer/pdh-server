@@ -47,6 +47,12 @@ done
 
 (( DRY || EUID == 0 )) || fail "Bitte als root ausführen: sudo bash $0 …"
 command -v netplan >/dev/null 2>&1 || fail "netplan fehlt – dieses Skript ist für Ubuntu-Server."
+# Schon die vorhandene Konfiguration fehlerhaft? Dann zuerst diese reparieren
+# (sonst sähe der Fehler aus, als käme er von der neuen Datei).
+if (( ! DRY )) && ! err="$(netplan generate 2>&1)"; then
+  printf '%s\n' "$err" >&2
+  fail "Die vorhandene Netzwerkkonfiguration unter /etc/netplan ist schon fehlerhaft (siehe oben) – bitte zuerst reparieren, nichts geändert."
+fi
 
 ipv4_re='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 
