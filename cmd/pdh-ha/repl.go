@@ -74,7 +74,12 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 	if in.Partner != nil {
 		lag = in.Partner.LagBytes
 	}
-	d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, in.Partner)
+	// Ist der Partner nicht zu sehen, gilt der zuletzt gemeldete Wert – sonst
+	// wäre der Standby genau dann „nicht aktuell“, wenn er übernehmen soll.
+	// Nach einem Neustart ohne Partner bleibt es beim Anfangswert false.
+	if in.Partner == nil || in.Partner.Seen {
+		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, in.Partner)
+	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
 }
 

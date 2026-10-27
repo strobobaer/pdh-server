@@ -177,3 +177,34 @@ func TestPassiveDataCurrentFromActive(t *testing.T) {
 		t.Fatal("vom aktiven Knoten als veraltet gemeldet: nicht aktuell")
 	}
 }
+
+// Fällt der aktive Knoten weg, gilt der zuletzt gemeldete Datenstand – sonst
+// wäre er genau dann „nicht aktuell“, wenn übernommen werden soll (Spec 2.5).
+func TestPassiveDataCurrentKeptWhenActiveGone(t *testing.T) {
+	fn := newFakeNet()
+	last := message{Role: "aktiv", Term: 1, Ver: "test", Sees: []string{"b"}, PG: "primary", Sync: true}
+	fn.setView("a", seenView(last))
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1, PartnerVersion: "test"}, fn)
+	r := (&fakeRunner{}).on("runuser", statusKey, stStandby, nil)
+	pa, _ := testActor(t, r)
+	d.act = pa
+	now := 100 * time.Second
+	d.mono = func() time.Duration { return now }
+	tickFor(t, d, &now, 2)
+	if !d.dataCurrent {
+		t.Fatal("streamt synchron: aktuell erwartet")
+	}
+	gone := seenView(last)
+	gone.Paths[0].Alive = false
+	fn.setView("a", gone)
+	tickFor(t, d, &now, 3)
+	if !d.dataCurrent {
+		t.Fatal("aktiver Knoten weg: zuletzt gemeldeter Wert (aktuell) muss gelten")
+	}
+	last.Stale = true
+	fn.setView("a", seenView(last))
+	tickFor(t, d, &now, 1)
+	if d.dataCurrent {
+		t.Fatal("zurück und als veraltet gemeldet: nicht aktuell")
+	}
+}
