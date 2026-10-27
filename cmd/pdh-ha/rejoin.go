@@ -196,15 +196,28 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 	out, err := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_rewind"), "--dry-run",
 		"--target-pgdata", a.pg.c.DataDir, "--source-server", src}, nil, nil)
 	rewindOK := err == nil
+	// Trennpunkt unbekannt (Probelauf gescheitert): vorsichtshalber vollständig
+	// sichern, sonst löschte die Neukopie hier asynchron gespeicherte Zeilen.
+	var fork uint64
+	diverged := true
 	if rewindOK {
-		fork, diverged, perr := parseRewindDryRun(out)
-		switch {
-		case perr != nil:
+		f, d, perr := parseRewindDryRun(out)
+		if perr != nil {
 			rewindOK = false
-		case diverged:
-			if err := a.saveDiverged(ctx, term, fork); err != nil {
-				return fmt.Errorf("Abgezweigte Daten nicht gesichert – nichts überschrieben: %w", err)
-			}
+		} else {
+			fork, diverged = f, d
+		}
+	}
+	if !rewindOK {
+		why := strings.TrimSpace(string(out))
+		if err != nil {
+			why = strings.TrimSpace(why + " " + err.Error())
+		}
+		a.ev.add(ha.Event{Kind: "warn", Text: "pg_rewind-Probelauf fehlgeschlagen – alte Datenbank wird vor der Neukopie gesichert: " + why})
+	}
+	if diverged {
+		if err := a.saveDiverged(ctx, term, fork); err != nil {
+			return fmt.Errorf("Abgezweigte Daten nicht gesichert – nichts überschrieben: %w", err)
 		}
 	}
 	if rewindOK {
@@ -324,11 +337,15 @@ func (a *pgActor) saveDiverged(ctx context.Context, term, fork uint64) error {
 		os.RemoveAll(out)
 		return fmt.Errorf("pg_dumpall fehlgeschlagen: %w", err)
 	}
-	// pg_waldump endet mit Fehler am Ende des WAL – die Ausgabe zählt trotzdem.
-	wd, _ := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_waldump"),
-		"-p", path.Join(a.pg.c.DataDir, "pg_wal"), "-s", lsnText(fork)}, nil, nil)
-	info := divergedInfo{ID: id, At: now.UTC(), Term: term, Tables: parseWaldump(wd, rel)}
-	if len(info.Tables) == 0 {
+	info := divergedInfo{ID: id, At: now.UTC(), Term: term}
+	if fork != 0 {
+		// pg_waldump endet mit Fehler am Ende des WAL – die Ausgabe zählt trotzdem.
+		wd, _ := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_waldump"),
+			"-p", path.Join(a.pg.c.DataDir, "pg_wal"), "-s", lsnText(fork)}, nil, nil)
+		info.Tables = parseWaldump(wd, rel)
+	}
+	// fork 0 = Trennpunkt unbekannt: Sicherung immer behalten
+	if fork != 0 && len(info.Tables) == 0 {
 		// Nur Verwaltungsdaten hinter dem Trennpunkt (z. B. Shutdown-Checkpoint
 		// nach sauberem Stopp): nichts zu prüfen, kein Fehlalarm.
 		os.RemoveAll(out)

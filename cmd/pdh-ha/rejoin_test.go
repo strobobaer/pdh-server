@@ -169,17 +169,26 @@ func TestRejoinNoSpace(t *testing.T) {
 	}
 }
 
+// Scheitert schon der Probelauf, ist der Trennpunkt unbekannt: vor der
+// Neukopie die alte Datenbank vollständig sichern (sonst gingen dort
+// asynchron gespeicherte Zeilen verloren) – auch ohne Zeilenübersicht.
 func TestRejoinRewindFailsBasebackup(t *testing.T) {
-	r := (&fakeRunner{}).
-		on("runuser -u postgres -- psql", "", "", errors.New("läuft nicht")).
-		on("pg_lsclusters", "", stStoppedLs, nil).
-		on("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind", "", "", errors.New("kaputt"))
+	r := divergedRunner().
+		on("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run", "", "", errors.New("kaputt"))
 	a := rejoinActor(t, r)
 	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoin, Term: 5}); err != nil {
 		t.Fatal(err)
 	}
-	seq(t, r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run", "chown postgres:postgres",
+	seq(t, r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run",
+		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_ctl -D", "bash -c set -o pipefail; runuser -u postgres -- pg_dumpall",
+		"pg_ctlcluster 18 main stop", "chown postgres:postgres",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup -D "+a.pg.c.DataDir+" -X stream -S pdh_ha_a -d host=10.0.0.2")
+	if has(r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump") {
+		t.Fatal("ohne Trennpunkt keine Zeilenübersicht")
+	}
+	if list, err := listDiverged(divergedDir()); err != nil || len(list) != 1 {
+		t.Fatalf("Sicherung vor der Neukopie erwartet: %v %v", list, err)
+	}
 	if alts, _ := filepath.Glob(filepath.FromSlash(a.pg.c.DataDir) + ".alt-*"); len(alts) != 0 {
 		t.Fatalf("alter Ordner nach Erfolg nicht gelöscht: %v", alts)
 	}
