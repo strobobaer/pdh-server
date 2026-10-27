@@ -19,8 +19,19 @@ type execRunner struct{}
 
 func (execRunner) Run(ctx context.Context, argv []string, env []string, stdin []byte) ([]byte, error) {
 	c := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// „runuser -u NAME -- befehl …“ ohne PAM ausführen (Abfragen laufen
+	// mehrmals je Sekunde und füllten sonst das Journal)
+	if len(argv) > 4 && argv[0] == "runuser" && argv[1] == "-u" && argv[3] == "--" {
+		if as, err := commandAs(ctx, argv[2], argv[4:]); err == nil {
+			c = as
+		}
+	}
 	if len(env) > 0 {
-		c.Env = append(os.Environ(), env...)
+		base := c.Env
+		if base == nil {
+			base = os.Environ()
+		}
+		c.Env = append(base, env...)
 	}
 	if stdin != nil {
 		c.Stdin = bytes.NewReader(stdin)
