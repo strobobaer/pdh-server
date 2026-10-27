@@ -124,7 +124,20 @@ const drRsyncScript = `set -uo pipefail
 args=()
 for ((i = 0; i < PDH_DR_ARGC; i++)); do v="PDH_DR_ARG_$i"; args+=("${!v}"); done
 dest="${args[${#args[@]}-1]}"
+src="${args[${#args[@]}-2]}"
 mkdir -p "$(dirname "$dest")"
+# Verweise auf einen übergeordneten Ordner (z. B. uploads/uploads -> uploads)
+# auslassen: --copy-links folgte ihnen endlos, bis der Pfad zu lang wird
+if [ -d "$src" ]; then
+  while IFS= read -r -d '' l; do
+    t=$(readlink -f -- "$l" 2>/dev/null) || continue
+    [ -d "$t" ] || continue
+    d=$(readlink -f -- "$(dirname -- "$l")")
+    case "$d/" in
+      "${t%/}"/*) args=("--exclude=/${l#"${src%/}/"}" "${args[@]}"); echo "Verweis auf übergeordneten Ordner ausgelassen: $l -> $t" ;;
+    esac
+  done < <(find "$src" -type l -print0 2>/dev/null)
+fi
 if [ -n "${PDH_DR_PAUSE:-}" ]; then
   trap 'docker unpause "$PDH_DR_PAUSE" >/dev/null 2>&1 || true' EXIT
   docker pause "$PDH_DR_PAUSE" >/dev/null || { echo "Container $PDH_DR_PAUSE lässt sich nicht pausieren"; exit 1; }
@@ -172,10 +185,38 @@ func (a *updateAgent) drRsync(ctx context.Context, src drSource, target, day, pa
 	}
 	out, err := a.hostCommandEnv(ctx, false, drRsyncScript, env).CombinedOutput()
 	if err != nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		return fmt.Errorf("%s: %s", src.Label, lines[len(lines)-1])
+		return fmt.Errorf("%s: %s", src.Label, drRsyncError(string(out)))
 	}
 	return nil
+}
+
+// drRsyncError: Schlusszeile („rsync endete mit Fehler 23“) und die erste
+// Meldung von rsync selbst – sie nennt Datei und Grund.
+func drRsyncError(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	msg := strings.TrimSpace(lines[len(lines)-1])
+	var first string
+	n := 0
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "rsync: ") || strings.HasPrefix(l, "file has vanished") {
+			if n == 0 {
+				first = l
+			}
+			n++
+		}
+	}
+	if first == "" {
+		return msg
+	}
+	if r := []rune(first); len(r) > 300 {
+		first = string(r[:300]) + "…"
+	}
+	msg += " – " + first
+	if n > 1 {
+		msg += fmt.Sprintf(" (und %d weitere)", n-1)
+	}
+	return msg
 }
 
 // drRunFiles: alle Quellen abgleichen, sources.json schreiben, Papierkorb aufräumen.
@@ -184,7 +225,7 @@ func (a *updateAgent) drRunFiles(ctx context.Context) error {
 	cfg := a.dr.Config
 	a.dr.mu.Unlock()
 	target := a.hp(cfg.Target)
-	if err := a.drPrepareTarget(cfg.Target); err != nil {
+	if err := a.drPrepareTarget(ctx, cfg.Target); err != nil {
 		return err
 	}
 	sources := drFileSources(a.repoDir, a.drExists)

@@ -29,6 +29,7 @@ type jobStatus struct {
 type updateAgent struct {
 	dr      drState // Ausfallschutz (dr.go), eigener Mutex
 	drApply func(context.Context, drConfig) (bool, error) // nil = drApplyPostgres
+	drSysID func(context.Context) (string, error)         // nil = psql (dr_owner.go)
 	ha      haJob                                         // pdh-ha-Installation (ha.go)
 	haRun   func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
 	mu      sync.RWMutex

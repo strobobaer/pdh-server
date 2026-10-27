@@ -112,7 +112,9 @@ type drState struct {
 	LastTimeline uint32            `json:"last_timeline"` // Timeline der Datenbank beim letzten Takt als aktiver
 	BaseNeeded   bool              `json:"base_needed"`   // nach Hochstufung (neue Timeline) sofort Grundsicherung
 	UnreachSince time.Time         `json:"-"`             // pdh-ha nicht erreichbar seit
-	saveMu       sync.Mutex        // state.json nie gleichzeitig schreiben
+	systemID     string            // Kennung der Datenbank (dr_owner.go), zwischengespeichert
+	systemIDAt   time.Time
+	saveMu       sync.Mutex // state.json nie gleichzeitig schreiben
 }
 
 func drDefaults() drConfig {
@@ -310,6 +312,12 @@ func (a *updateAgent) drConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.dr.mu.Lock()
 	a.dr.Config = c
+	// neuer Zielordner (z. B. Server umbenannt): dort gleich Grundsicherung und
+	// Dateiabgleich, sonst hätte er bis zur nächsten Nacht nur WAL-Dateien
+	if c.Enabled && old.Target != "" && c.Target != old.Target {
+		a.dr.BaseNeeded, a.dr.BaseTry = true, time.Time{}
+		a.dr.LastFileSync, a.dr.FilesTry = time.Time{}, time.Time{}
+	}
 	a.dr.mu.Unlock()
 	if err := a.drSave(); err != nil {
 		drRefuse(w, "Zustand nicht gespeichert: "+err.Error())

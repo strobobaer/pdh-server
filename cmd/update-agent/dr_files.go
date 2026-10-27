@@ -4,8 +4,10 @@ package main
 // Fälligkeiten und die Schleife des Agenten.
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,18 +64,39 @@ func drSpoolInfo(spool string) (files int, bytes int64, oldest time.Time) {
 	return
 }
 
-// drGzipSize: Größe des entpackten Inhalts einer .gz-Datei.
-func drGzipSize(p string) (int64, error) {
-	f, err := os.Open(p)
+// drSameContent: Inhalt von src gleich dem entpackten Inhalt von gz? WAL-Dateien
+// sind immer gleich groß – nur der Inhalt verrät eine fremde Datenbank.
+func drSameContent(src, gz string) (bool, error) {
+	hash := func(r io.Reader) ([]byte, error) {
+		h := sha256.New()
+		if _, err := io.Copy(h, r); err != nil {
+			return nil, err
+		}
+		return h.Sum(nil), nil
+	}
+	in, err := os.Open(src)
 	if err != nil {
-		return 0, err
+		return false, err
+	}
+	defer in.Close()
+	a, err := hash(in)
+	if err != nil {
+		return false, err
+	}
+	f, err := os.Open(gz)
+	if err != nil {
+		return false, err
 	}
 	defer f.Close()
 	zr, err := gzip.NewReader(f)
 	if err != nil {
-		return 0, err
+		return false, err
 	}
-	return io.Copy(io.Discard, zr)
+	b, err := hash(zr)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(a, b), nil
 }
 
 // drShipFile packt eine Datei nach dst (.part, fsync, rename).
@@ -121,10 +144,9 @@ func drShipWAL(spool, walDir string) (shipped int, last string, err error) {
 		src := filepath.Join(spool, e.Name())
 		dst := filepath.Join(walDir, e.Name()+".gz")
 		if _, err := os.Stat(dst); err == nil {
-			info, ierr := e.Info()
-			size, gerr := drGzipSize(dst)
-			if ierr != nil || gerr != nil || size != info.Size() {
-				return shipped, last, fmt.Errorf("WAL %s liegt schon mit anderem Inhalt auf dem Laufwerk", e.Name())
+			// schon da: nach einem Abbruch zwischen Schreiben und Löschen gleich
+			if same, err := drSameContent(src, dst); err != nil || !same {
+				return shipped, last, fmt.Errorf("WAL %s liegt schon mit anderem Inhalt auf dem Laufwerk (sichert ein zweiter Server in denselben Ordner?)", e.Name())
 			}
 		} else if err := drShipFile(src, dst); err != nil {
 			return shipped, last, fmt.Errorf("WAL %s nicht übertragen: %w", e.Name(), err)
@@ -199,7 +221,7 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	// WAL-Dateien im Zwischenspeicher gehören zur Geschichte der Datenbank und
 	// gehen trotzdem aufs Laufwerk (z. B. nach dem Abgeben).
 	if !a.drCheckActive(ctx) {
-		if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 && drTargetCheck(target) == nil {
+		if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 && drTargetCheck(target) == nil && a.drOwnerCheck(ctx, cfg.Target) == nil {
 			walDir := filepath.Join(target, "wal")
 			_ = os.MkdirAll(walDir, 0o750)
 			if n, last, err := drShipWAL(a.hp(drSpoolDir), walDir); err == nil && n > 0 {
@@ -213,9 +235,14 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 		}
 		return
 	}
-	check := func() error { return drTargetCheck(target) }
+	check := func() error {
+		if err := drTargetCheck(target); err != nil {
+			return err
+		}
+		return a.drOwnerCheck(ctx, cfg.Target)
+	}
 	if cfg.Enabled {
-		check = func() error { return a.drPrepareTarget(cfg.Target) }
+		check = func() error { return a.drPrepareTarget(ctx, cfg.Target) }
 	}
 	if err := check(); err != nil {
 		if cfg.Enabled {
@@ -363,11 +390,14 @@ func drEnsureTarget(fsRoot, target, mountRoot string, mounted map[string]bool) e
 	return os.MkdirAll(fsRoot+target, 0o750)
 }
 
-// drPrepareTarget: Sicherungsordner anlegen und auf Schreibbarkeit prüfen.
-func (a *updateAgent) drPrepareTarget(target string) error {
+// drPrepareTarget: Sicherungsordner anlegen, auf Schreibbarkeit und Besitzer prüfen.
+func (a *updateAgent) drPrepareTarget(ctx context.Context, target string) error {
 	fsRoot := strings.TrimSuffix(a.hp("/"), "/")
 	if err := drEnsureTarget(fsRoot, target, mountRoot(), a.mountedTargets()); err != nil {
 		return err
 	}
-	return drTargetCheck(a.hp(target))
+	if err := drTargetCheck(a.hp(target)); err != nil {
+		return err
+	}
+	return a.drOwnerCheck(ctx, target)
 }

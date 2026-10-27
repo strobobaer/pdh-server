@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.1] – 2026-10-28
+
+### Behoben
+- Die Netzlaufwerk-Sicherung verweigert einen Sicherungsordner, der schon einem anderen Server gehört (zwei Server mit gleichem Namen), statt die Sicherungen beider zu vermischen.
+- Eine Änderungsdatei (WAL) mit gleichem Namen, aber fremdem Inhalt wird jetzt erkannt und gemeldet, statt verworfen.
+- Verweise, die auf ihren eigenen Ordner zeigen (z. B. `uploads/uploads`), führen beim Dateiabgleich nicht mehr zu „rsync endete mit Fehler 23“ und endlosen Kopien.
+- Bei Fehlern im Dateiabgleich zeigt der Reiter Ausfallschutz jetzt die betroffene Datei und den Grund.
+- Nach einem Wechsel des Sicherungsordners (z. B. Server umbenannt) starten Grundsicherung und Dateiabgleich sofort statt erst in der Nacht.
+
 ## [0.76.0] – 2026-10-27
 
 ### Neu

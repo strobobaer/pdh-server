@@ -24,7 +24,7 @@ func gateAgent(t *testing.T) (*updateAgent, string, string) {
 	old := drSpoolDir
 	drSpoolDir = spool
 	t.Cleanup(func() { drSpoolDir = old })
-	a := &updateAgent{mode: "docker"} // Pfade ohne /proc/1/root
+	a := &updateAgent{mode: "docker", drSysID: drTestSysID} // Pfade ohne /proc/1/root
 	a.dr.Config = drDefaults()
 	a.dr.Config.Target = target
 	haInstalled(t)
