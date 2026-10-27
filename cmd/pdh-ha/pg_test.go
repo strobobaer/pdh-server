@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeCall ist ein aufgezeichneter Systembefehl.
@@ -263,5 +264,30 @@ func TestWriteConfAtomicOwned(t *testing.T) {
 	}
 	if b2, _ := os.ReadFile(name); string(b2) != string(b) {
 		t.Fatal("bei Fehler darf die alte Datei nicht ersetzt werden")
+	}
+}
+
+func init() { pgStartPause = time.Millisecond }
+
+// Abnahme 27.10.: Der Start nach der Wiedereingliederung hing sich an den
+// abgebrochenen Startauftrag von systemd beim Hochfahren und scheiterte.
+func TestPGStartRetries(t *testing.T) {
+	n, failFirst := 0, 1
+	r := (&fakeRunner{}).
+		onFn("pg_ctlcluster 18 main start", "", func(fakeCall) (string, error) {
+			n++
+			if n <= failFirst {
+				return "", errors.New("Job for postgresql@18-main.service failed")
+			}
+			return "", nil
+		}).
+		on("pg_lsclusters", "", "18 main 5432 down postgres /var/lib/postgresql/18/main /l\n", nil)
+	p := &pgCtl{r: r, c: pgCluster{Version: "18", Name: "main"}}
+	if err := p.ctl(context.Background(), "start"); err != nil || n != 2 {
+		t.Fatalf("zweiter Versuch: %v nach %d", err, n)
+	}
+	n, failFirst = 0, 99 // scheitert immer
+	if err := p.ctl(context.Background(), "start"); err == nil || n != 3 {
+		t.Fatalf("nach drei Versuchen Fehler erwartet: %v %d", err, n)
 	}
 }

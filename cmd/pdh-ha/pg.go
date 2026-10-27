@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -69,12 +70,36 @@ func (p *pgCtl) query(ctx context.Context, sql string) (string, error) {
 }
 
 // ctl startet, stoppt (schnell), lädt oder startet den Cluster neu.
+// pgStartTries/pgStartPause: Beim Hochfahren läuft oft noch der Startauftrag
+// von systemd (postgresql@…), den pdh-ha mit der Selbst-Abschaltung
+// abbricht; ein „start“ hängt sich an diesen Auftrag und scheitert mit ihm,
+// obwohl ein zweiter Versuch Sekunden später klappt.
+var (
+	pgStartTries = 3
+	pgStartPause = 3 * time.Second
+)
+
 func (p *pgCtl) ctl(ctx context.Context, op string) error {
 	argv := []string{"pg_ctlcluster", p.c.Version, p.c.Name, op}
 	if op == "stop" {
 		argv = append(argv, "-m", "fast")
 	}
-	_, err := p.r.Run(ctx, argv, nil, nil)
+	var err error
+	for i := 0; i < pgStartTries; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(pgStartPause):
+			}
+		}
+		if _, err = p.r.Run(ctx, argv, nil, nil); err == nil || op != "start" {
+			return err
+		}
+		if !p.stopped(ctx) {
+			return nil // läuft trotz Fehlermeldung
+		}
+	}
 	return err
 }
 
