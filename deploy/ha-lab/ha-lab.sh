@@ -62,7 +62,19 @@ log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*"; }
 # Abbruch eines Szenarios (läuft in einer Subshell)
 fail() {
     echo "NICHT BESTANDEN: $*"
+    diag
     exit 1
+}
+
+# diag: Zustand und letzte Ereignisse aller Knoten (zur Fehlersuche)
+diag() {
+    local c
+    for c in node1 node2 witness; do
+        echo "--- $c: pdh-ha status"
+        timeout 10 docker exec "$c" pdh-ha status 2>&1 | sed 's/^/    /' || echo "    (nicht erreichbar)"
+        echo "--- $c: letzte Ereignisse"
+        timeout 10 docker exec "$c" tail -n 25 /var/lib/pdh-ha/events.jsonl 2>&1 | cut -c1-240 | sed 's/^/    /' || true
+    done
 }
 
 need() {
