@@ -70,9 +70,16 @@ func (s systemdService) Start(ctx context.Context) error { return s.each(ctx, fa
 func (s systemdService) Stop(ctx context.Context) error  { return s.each(ctx, true, "stop") }
 
 // Active: läuft pdh oder der Tunnel? (Abgleich stoppt beides am passiven Knoten)
+// „activating“ zählt mit: ein abstürzendes pdh (Restart=always) steht meist
+// dort, und is-active liefert dann einen Fehler.
 func (s systemdService) Active(ctx context.Context) bool {
 	for _, u := range s.units(ctx) {
-		if s.run(ctx, "is-active", "--quiet", u) == nil {
+		out, err := s.r.Run(ctx, []string{"systemctl", "is-active", u}, nil, nil)
+		switch strings.TrimSpace(string(out)) {
+		case "activating", "reloading":
+			return true
+		}
+		if err == nil {
 			return true
 		}
 	}

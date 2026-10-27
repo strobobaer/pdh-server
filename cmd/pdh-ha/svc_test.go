@@ -37,7 +37,7 @@ func TestSystemdServiceArgs(t *testing.T) {
 	_ = s.SetAutostart(ctx, false)
 	want := []string{"systemctl list-unit-files --no-legend cloudflared.service", "systemctl start pdh",
 		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl stop pdh",
-		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl is-active --quiet pdh",
+		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl is-active pdh",
 		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl disable pdh"}
 	if got := r.list(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("%v", got)
@@ -50,7 +50,7 @@ func TestSystemdServiceWithCloudflared(t *testing.T) {
 	t.Setenv("PDH_HA_SERVICE_CMD", "")
 	r := (&fakeRunner{}).
 		on("systemctl list-unit-files", "", "cloudflared.service enabled enabled\n", nil).
-		on("systemctl is-active --quiet pdh", "", "", errors.New("inactive"))
+		on("systemctl is-active pdh", "", "", errors.New("inactive"))
 	s := newServiceCtl(r)
 	ctx := context.Background()
 	_ = s.Start(ctx)
@@ -66,9 +66,19 @@ func TestSystemdServiceWithCloudflared(t *testing.T) {
 		}
 	}
 	want := []string{"systemctl start pdh", "systemctl start cloudflared", "systemctl stop cloudflared", "systemctl stop pdh",
-		"systemctl is-active --quiet pdh", "systemctl is-active --quiet cloudflared",
+		"systemctl is-active pdh", "systemctl is-active cloudflared",
 		"systemctl disable pdh", "systemctl disable cloudflared"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%v", got)
+	}
+}
+
+// Ein abstürzendes pdh (Restart=always) steht meist auf „activating“ – auch
+// das muss am passiven Server als laufend gelten, sonst stoppt es niemand.
+func TestSystemdServiceActivatingCountsAsActive(t *testing.T) {
+	t.Setenv("PDH_HA_SERVICE_CMD", "")
+	r := (&fakeRunner{}).on("systemctl is-active pdh", "", "activating\n", errors.New("exit status 3"))
+	if !newServiceCtl(r).Active(context.Background()) {
+		t.Fatal("activating (auto-restart) gilt als laufend")
 	}
 }
