@@ -30,6 +30,9 @@ const (
 	drSetVMStamp   = "dr.vm_stamp"
 	drSetVMMaxDays = "dr.vm_max_days"
 	drSetAlertLast = "dr.alert_last"
+	// zuletzt gespeicherte Zeiten (Formular) – damit der andere Server im
+	// Verbund die Sicherung nach einer Übernahme selbst einschaltet
+	drSetForm = "dr.form"
 )
 
 // JSON-Vertrag mit dem Agenten (cmd/update-agent/dr.go).
@@ -261,15 +264,58 @@ func drAgentMismatch(pdhEnabled bool, st drStatus) []string {
 	return nil
 }
 
-// drWatch: alle 5 Minuten prüfen und bei neuen Problemen die Admins benachrichtigen.
+func drDrivePath(drives []networkDrive, key string) string {
+	for _, d := range drives {
+		if d.Key == key {
+			return d.Path()
+		}
+	}
+	return ""
+}
+
+// drFormKeep: die Zeiten aus dem Formular, die drHeal wieder braucht.
+func drFormKeep(f url.Values) url.Values {
+	keep := url.Values{}
+	for _, k := range []string{"base_hour", "keep_days", "file_sync_minutes", "wal_max_minutes"} {
+		if v := strings.TrimSpace(f.Get(k)); v != "" {
+			keep.Set(k, v)
+		}
+	}
+	return keep
+}
+
+// drHeal: im PDH (Datenbank) eingeschaltet, im Agenten dieses Servers nicht –
+// nach einer Übernahme im Verbund (Datenbank-Spiegel, der Agent des anderen
+// Servers war nie eingeschaltet) oder bei verlorenem Agent-Zustand. Dann die
+// gespeicherten Werte an den eigenen Agenten schicken; true = eingeschaltet.
+func (h *Handler) drHeal(ctx context.Context, st drStatus, form, drivePath, ncDir string) (bool, error) {
+	if st.Config.Enabled {
+		return false, nil
+	}
+	f, _ := url.ParseQuery(form)
+	f.Set("enabled", "1")
+	host, _ := os.Hostname()
+	c, err := drBuildConfig(f, drivePath, host, ncDir, dbIsLocal(os.Getenv("PDH_DATABASE_HOST")))
+	if err != nil {
+		return false, err
+	}
+	if err := h.drSendConfig(ctx, c); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// drWatch: bald nach dem Start (im Verbund oft: nach einer Übernahme), dann
+// alle 5 Minuten prüfen und bei neuen Problemen die Admins benachrichtigen.
 func (h *Handler) drWatch(ctx context.Context) {
-	t := time.NewTicker(5 * time.Minute)
+	t := time.NewTimer(time.Minute)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			t.Reset(5 * time.Minute)
 		}
 		if h.appSetting(ctx, drSetEnabled, "") != "1" {
 			continue
@@ -279,7 +325,19 @@ func (h *Handler) drWatch(ctx context.Context) {
 			alerts = []string{"Update-Agent nicht erreichbar – Ausfallschutz-Sicherung läuft nicht"}
 		} else {
 			drives := h.loadDrives(ctx)
-			alerts = append(drAgentMismatch(true, st),
+			healed, herr := h.drHeal(ctx, st, h.appSetting(ctx, drSetForm, ""),
+				drDrivePath(drives, h.appSetting(ctx, drSetDrive, "")), h.ncDir(ctx))
+			switch {
+			case herr != nil:
+				alerts = append(alerts, "Ausfallschutz-Sicherung auf diesem Server nicht eingeschaltet: "+herr.Error())
+			case healed:
+				componentLog("dr").Info().Msg("ausfallschutz-sicherung aus der datenbank eingeschaltet")
+				if st2, err := h.drFetchStatus(ctx); err == nil {
+					st = st2
+				}
+			}
+			alerts = append(alerts, drAgentMismatch(herr == nil, st)...)
+			alerts = append(alerts,
 				drAlerts(st, h.drVMTime(ctx, drives, h.appSetting(ctx, drSetDrive, "")), h.drVMMaxDays(ctx), time.Now())...)
 		}
 		msg := strings.Join(alerts, "\n")
@@ -311,12 +369,7 @@ func (h *Handler) DRSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	_ = r.ParseForm()
 	key := strings.TrimSpace(r.FormValue("drive"))
-	drivePath := ""
-	for _, d := range h.loadDrives(ctx) {
-		if d.Key == key {
-			drivePath = d.Path()
-		}
-	}
+	drivePath := drDrivePath(h.loadDrives(ctx), key)
 	host, _ := os.Hostname()
 	c, err := drBuildConfig(r.Form, drivePath, host, h.ncDir(ctx), dbIsLocal(os.Getenv("PDH_DATABASE_HOST")))
 	if err == nil {
@@ -332,6 +385,7 @@ func (h *Handler) DRSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.setAppSetting(ctx, drSetEnabled, on)
 	_ = h.setAppSetting(ctx, drSetDrive, key)
+	_ = h.setAppSetting(ctx, drSetForm, drFormKeep(r.Form).Encode())
 	componentLog("dr").Info().Bool("enabled", c.Enabled).Str("target", c.Target).Str("user", getUser(r).ID).Msg("ausfallschutz eingestellt")
 	drRedirect(w, r, "Ausfallschutz gespeichert", nil)
 }

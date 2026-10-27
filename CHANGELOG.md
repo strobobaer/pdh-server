@@ -24,7 +24,7 @@ im Kapitel „Versionen & Updates“ an.
 - Neues Skript `scripts/pdh-static-ip.sh` stellt die jetzige IP-Adresse eines Servers fest ein (mit automatischem Zurücksetzen, falls die Verbindung abreißt).
 
 ### Geändert
-- Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme folgt sofort eine neue Grundsicherung.
+- Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme schaltet der neue aktive Server sie mit den gespeicherten Einstellungen selbst ein und beginnt mit einer neuen Grundsicherung.
 - Im Beobachtungsmodus ändern automatische Entscheidungen keine Rollen und Amtszeiten mehr, sie werden nur gemeldet.
 - Auf dem passiven Server läuft das PDH nicht; Updates starten es dort nicht mehr.
 
