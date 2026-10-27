@@ -7,6 +7,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"slices"
 	"time"
 
 	"pdh/internal/ha"
@@ -91,6 +93,7 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, pt)
 	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
+	d.maybeRecopyLocked(ctx, pa, st, in.Partner, in.Now)
 }
 
 // replSyncLocked: am aktiven Knoten synchron/asynchron schalten und den
@@ -116,6 +119,7 @@ func (d *daemon) replSyncLocked(ctx context.Context, pl *plan, now time.Duration
 	if ok && st.LSN > sb.FlushLSN {
 		lag = int64(st.LSN - sb.FlushLSN)
 	}
+	d.slotLostLocked(ctx, pl, pa, st, partner, streaming)
 	_, partnerStale := d.p.Stale[partner]
 	staleAcked := d.staleAckTerm != 0 && d.staleAckTerm == d.p.Term
 	out := ha.SyncStep(ha.SyncIn{
@@ -157,6 +161,62 @@ func (d *daemon) replSyncLocked(ctx context.Context, pl *plan, now time.Duration
 	if out.SendCurrent {
 		pl.send(witness, message{T: "current", ID: d.node.ID, Node: partner, VoteTerm: d.p.Term, Seq: d.nextSeq()})
 	}
+}
+
+// needCopyMarker: Datei, solange der Partner nach ungültigem Slot neu kopiert
+// werden muss (übersteht einen Neustart des aktiven Knotens).
+func (d *daemon) needCopyMarker(partner string) string {
+	return d.st.statePath("neukopie-" + partner)
+}
+
+// slotLostLocked: Ist der Slot des Partners ungültig, fehlt dem Standby WAL –
+// er braucht eine Neukopie. Slot neu anlegen (pg_basebackup -S braucht ihn),
+// Markierung setzen; per Heartbeat (need_copy) erfährt es der Partner. Streamt
+// er wieder, ist die Markierung erledigt.
+func (d *daemon) slotLostLocked(ctx context.Context, pl *plan, pa *pgActor, st *pgStatus, partner string, streaming bool) {
+	marker := d.needCopyMarker(partner)
+	if streaming {
+		if err := os.Remove(marker); err == nil {
+			pl.event("info", "Neukopie von "+partner+" abgeschlossen – Spiegel läuft wieder")
+		}
+		return
+	}
+	slot := slotName(partner)
+	if !slices.Contains(st.LostSlots, slot) {
+		return
+	}
+	if _, err := os.Stat(marker); err == nil {
+		return // schon vermerkt, Slot wird bzw. wurde neu angelegt
+	}
+	if err := writeFileAtomic(marker, nil, 0o600); err != nil {
+		d.saveAlarmLocked(pl, "Markierung für Neukopie nicht gespeichert: "+err.Error())
+		return
+	}
+	pl.event("alarm", fmt.Sprintf("Slot für %s ungültig (zu viele zurückgehaltene Änderungen) – %s wird neu kopiert, sobald er erreichbar ist", partner, partner))
+	d.enqueueFnLocked(ctx, func(ctx context.Context) { pa.recreateSlot(ctx, slot) })
+}
+
+// recopyRetry: Abstand, bevor eine Neukopie nach ungültigem Slot wiederholt wird.
+const recopyRetry = 10 * time.Minute
+
+// maybeRecopyLocked: Meldet der aktive Partner need_copy und empfängt der
+// eigene Standby nichts, die Datenbank einmal neu von ihm kopieren.
+func (d *daemon) maybeRecopyLocked(ctx context.Context, pa *pgActor, st *pgStatus, pt *ha.PeerObs, now time.Duration) {
+	if d.p.Role != ha.Passive || pt == nil || !pt.Seen || pt.PG != "primary" || st == nil ||
+		st.State != "standby" || st.Streaming || d.recopying.Load() ||
+		d.recopyAt != 0 && now-d.recopyAt < recopyRetry {
+		return
+	}
+	partner, _ := d.peerIDsLocked()
+	if v, ok := d.views[partner]; !ok || !v.Last.NeedCopy {
+		return
+	}
+	d.recopying.Store(true)
+	d.recopyAt = now
+	d.enqueueFnLocked(ctx, func(ctx context.Context) {
+		defer d.recopying.Store(false)
+		pa.recopy(ctx)
+	})
 }
 
 // persistLocked speichert einen geänderten Zustand; false = Speicherfehler (Alarm).
@@ -210,6 +270,9 @@ func (d *daemon) hbPGLocked(m *message) {
 		partner, _ := d.peerIDsLocked()
 		m.Sync = pa.syncTarget() != ""
 		_, m.Stale = d.p.Stale[partner]
+		if _, err := os.Stat(d.needCopyMarker(partner)); err == nil {
+			m.NeedCopy = true
+		}
 		if sb, ok := partnerStandby(st, partner); ok && st.LSN > sb.FlushLSN {
 			m.Lag = int64(st.LSN - sb.FlushLSN)
 		}

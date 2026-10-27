@@ -75,9 +75,10 @@ type message struct {
 	Lag      int64          `json:"lag,omitempty"`
 	Sync     bool           `json:"sync,omitempty"`
 	TL       uint32         `json:"tl,omitempty"`
-	Stale    bool           `json:"stale,omitempty"` // aktiver Knoten: Partner nicht aktuell
-	Node     string         `json:"node,omitempty"`  // stale/current: betroffener Knoten
-	Probe    bool           `json:"probe,omitempty"` // vote_resp auf eine Probestimme
+	Stale    bool           `json:"stale,omitempty"`     // aktiver Knoten: Partner nicht aktuell
+	NeedCopy bool           `json:"need_copy,omitempty"` // aktiver Knoten: Slot des Partners ungültig, Neukopie nötig
+	Node     string         `json:"node,omitempty"`      // stale/current: betroffener Knoten
+	Probe    bool           `json:"probe,omitempty"`     // vote_resp auf eine Probestimme
 	Diverged []divergedInfo `json:"diverged,omitempty"`
 
 	VoteTerm uint64         `json:"vote_term,omitempty"`

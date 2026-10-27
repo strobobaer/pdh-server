@@ -102,7 +102,9 @@ type daemon struct {
 	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
 	// Amtszeit, in der lastStreaming gesetzt wurde
 	lastStreamingTerm uint64
-	staleAckTerm      uint64 // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
+	recopying         atomic.Bool   // Neukopie nach ungültigem Slot läuft
+	recopyAt          time.Duration // letzte Neukopie (monoton)
+	staleAckTerm      uint64        // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
 
 	sys           runner        // Systembefehle (Tests: Fake)
 	reconcileAt   time.Duration // letzter Abgleich (monoton)

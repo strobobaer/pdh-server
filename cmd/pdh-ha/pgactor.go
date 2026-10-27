@@ -31,12 +31,12 @@ type pgEnv struct {
 }
 
 type pgActor struct {
-	pg      *pgCtl
-	svc     serviceCtl
-	ev      *eventLog
-	env     func() pgEnv
-	pushCfg func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
-	wait    time.Duration                   // Frist für den Gleichstand beim Abgeben
+	pg       *pgCtl
+	svc      serviceCtl
+	ev       *eventLog
+	env      func() pgEnv
+	pushCfg  func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
+	wait     time.Duration                   // Frist für den Gleichstand beim Abgeben
 	poll     time.Duration
 	now      func() time.Time
 	passfile string // Pfad der passfile (Tests: Temp-Ordner)
@@ -252,6 +252,44 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 		if err := a.pg.writeConf(ctx, a.standbyConf(e)); err == nil {
 			_ = a.pg.ctl(ctx, "reload")
 		}
+	}
+}
+
+// recreateSlot legt einen ungültigen Slot neu an (mit sofort reserviertem
+// WAL) – pg_basebackup -S der Neukopie braucht einen gültigen Slot.
+func (a *pgActor) recreateSlot(ctx context.Context, slot string) {
+	if _, err := a.pg.query(ctx, fmt.Sprintf(
+		"SELECT pg_drop_replication_slot('%[1]s') FROM pg_replication_slots WHERE slot_name = '%[1]s';\n"+
+			"SELECT pg_create_physical_replication_slot('%[1]s', true)", slot)); err != nil {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Slot " + slot + " nicht neu angelegt: " + err.Error()})
+	}
+}
+
+// recopy: Der aktive Server hat das WAL für diesen Standby nicht mehr
+// (Slot ungültig) – Datenbank neu von ihm kopieren und wieder Standby werden.
+func (a *pgActor) recopy(ctx context.Context) {
+	e := a.env()
+	if st := a.pg.status(ctx); st.State != "standby" && st.State != "stopped" {
+		return // eigene Daten (kein Standby): Sache der Wiedereingliederung
+	}
+	a.ev.add(ha.Event{Kind: "alarm", Text: "Slot beim aktiven Server ungültig – Datenbank wird neu vom aktiven Server kopiert"})
+	if err := a.svc.Stop(ctx); err != nil {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: pdh nicht gestoppt: " + err.Error()})
+		return
+	}
+	if err := a.pg.ctl(ctx, "stop"); err != nil && a.pg.status(ctx).State != "stopped" {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: PostgreSQL nicht gestoppt: " + err.Error()})
+		return
+	}
+	err := a.fullCopy(ctx, e)
+	if err == nil {
+		err = a.becomeStandby(ctx, e)
+	}
+	if err != nil {
+		a.ev.add(ha.Event{Kind: "alarm", Text: err.Error()})
+	}
+	if serr := a.pg.ctl(ctx, "start"); serr != nil {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: PostgreSQL startet nicht: " + serr.Error()})
 	}
 }
 

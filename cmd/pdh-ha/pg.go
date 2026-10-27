@@ -92,6 +92,7 @@ type pgStatus struct {
 	Standbys  []standbyStat
 	ReadOnly  bool
 	SyncNames string
+	LostSlots []string // primary: ungültige Slots (wal_status lost)
 	Err       string
 }
 
@@ -145,8 +146,19 @@ func (p *pgCtl) status(ctx context.Context) pgStatus {
 		s.ReplayLSN, _ = parseLSN(c[3])
 		st.Standbys = append(st.Standbys, s)
 	}
+	if lost, err := p.query(ctx, pgLostSlotsSQL); err == nil {
+		for _, s := range strings.Split(lost, "\n") {
+			if s = strings.TrimSpace(s); s != "" {
+				st.LostSlots = append(st.LostSlots, s)
+			}
+		}
+	}
 	return st
 }
+
+// pgLostSlotsSQL: Slots, für die zu viel zurückgehalten wurde – der Standby
+// dahinter braucht eine Neukopie.
+const pgLostSlotsSQL = `SELECT slot_name FROM pg_replication_slots WHERE wal_status = 'lost'`
 
 // stopped: pg_lsclusters meldet den Cluster nicht als online.
 func (p *pgCtl) stopped(ctx context.Context) bool {
@@ -182,6 +194,11 @@ func renderPGConf(c pgConf) string {
 	w("max_replication_slots", "10")
 	w("synchronous_commit", "on")
 	w("recovery_target_timeline", pgQuote("latest"))
+	// Eine hart getrennte Leitung bemerkt PostgreSQL sonst erst nach 60 s –
+	// so lange hingen Speicherungen, bevor „asynchron nach“ überhaupt zählt.
+	w("wal_sender_timeout", pgQuote("10s"))
+	w("wal_receiver_timeout", pgQuote("10s"))
+	w("wal_receiver_status_interval", pgQuote("1s"))
 	w("ssl", "on")
 	if c.CertFile != "" {
 		w("ssl_cert_file", pgQuote(c.CertFile))

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +127,79 @@ func TestReplCurrentAfterLateStaleAck(t *testing.T) {
 	if len(fn.messages("current")) != n {
 		t.Fatal("current nach current_ack weiter gesendet")
 	}
+}
+
+// Ist der Slot des Partners ungültig (max_slot_wal_keep_size überschritten),
+// braucht der Standby eine Neukopie: Alarm, Slot neu anlegen, Markierung
+// (übersteht Neustarts) und need_copy im Heartbeat, bis der Partner streamt.
+func TestActiveLostSlotSignalsCopy(t *testing.T) {
+	d, fn, _, now := replDaemon(t, trioCluster(), "")
+	r := d.act.(*pgActor).pg.r.(*fakeRunner)
+	r.on("runuser", "wal_status = 'lost'", "pdh_ha_b", nil)
+	tickFor(t, d, now, 3)
+	if !hasEvent(d, "Slot für b ungültig") {
+		t.Fatal("Alarm fehlt")
+	}
+	if !has(r.list(), "psql: SELECT pg_drop_replication_slot('pdh_ha_b')") {
+		t.Fatalf("Slot nicht neu angelegt: %v", r.list())
+	}
+	if _, err := os.Stat(d.st.statePath("neukopie-b")); err != nil {
+		t.Fatal("Markierung fehlt")
+	}
+	last := func() message {
+		var m message
+		for _, s := range fn.messages("hb") {
+			m = s.m
+		}
+		return m
+	}
+	if !last().NeedCopy {
+		t.Fatal("need_copy fehlt im Heartbeat")
+	}
+	r.on("runuser", "wal_status = 'lost'", "", nil)
+	r.on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	tickFor(t, d, now, 3)
+	if _, err := os.Stat(d.st.statePath("neukopie-b")); err == nil || last().NeedCopy {
+		t.Fatal("nach Wiederanlauf: Markierung und need_copy weg erwartet")
+	}
+	if n := countPrefix(r.list(), "psql: SELECT pg_drop_replication_slot"); n != 1 {
+		t.Fatalf("Slot %d-mal neu angelegt", n)
+	}
+}
+
+// Meldet der aktive Partner need_copy und empfängt der Standby nichts, wird
+// er einmal neu kopiert.
+func TestPassiveRecopiesOnNeedCopy(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("a", seenView(message{Role: "aktiv", Term: 1, Ver: "test", Sees: []string{"b"}, PG: "primary", NeedCopy: true}))
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1, PartnerVersion: "test"}, fn)
+	r := (&fakeRunner{}).on("runuser", statusKey, stStandbyNotStreaming, nil)
+	pa, _ := testActor(t, r)
+	d.act = pa
+	now := 100 * time.Second
+	d.mono = func() time.Duration { return now }
+	tickFor(t, d, &now, 5)
+	seq(t, r.list(), "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup", "pg_ctlcluster 18 main start")
+	if n := countPrefix(r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup"); n != 1 {
+		t.Fatalf("Neukopie %d-mal", n)
+	}
+	alarm := false
+	for _, e := range pa.ev.since(0, 1000) {
+		alarm = alarm || strings.Contains(e.Text, "Datenbank wird neu vom aktiven Server kopiert")
+	}
+	if !alarm {
+		t.Fatal("Alarm fehlt")
+	}
+}
+
+func countPrefix(list []string, p string) int {
+	n := 0
+	for _, l := range list {
+		if strings.HasPrefix(l, p) {
+			n++
+		}
+	}
+	return n
 }
 
 func TestReplBackToSyncSendsCurrent(t *testing.T) {
