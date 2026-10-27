@@ -55,10 +55,10 @@ func TestUFWRules(t *testing.T) {
 		{"allow", "from", "10.0.0.2", "to", "any", "port", "7480", "proto", "tcp", "comment", "pdh-ha"},
 		{"allow", "from", "10.8.0.2", "to", "any", "port", "7480", "proto", "tcp", "comment", "pdh-ha"},
 	}
-	if got := ufwRules(cl, "a", false); !reflect.DeepEqual(got, want) {
+	if got := ufwRules(cl, "a", false, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("%v", got)
 	}
-	got := ufwRules(cl, "a", true)
+	got := ufwRules(cl, "a", true, false)
 	if len(got) != 3 || strings.Join(got[2], " ") != "allow 7480/tcp comment pdh-ha-join" {
 		t.Fatalf("mit Beitritt: %v", got)
 	}

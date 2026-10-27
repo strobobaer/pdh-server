@@ -46,10 +46,13 @@ type apiStatus struct {
 	Settings       ha.Settings `json:"settings"`
 	GatewayTargets []string    `json:"gateway_targets"`
 	Blocked        string      `json:"blocked"` // ha.Allowed-Grund, "" = frei
-	Observe        bool        `json:"observe"` // in Teil 2 immer true
+	Observe        bool        `json:"observe"` // automatische Umschaltung nur gemeldet (auto_mode observe)
+	SwapTested     bool        `json:"swap_tested"`
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
+	AutoMode       string      `json:"auto_mode"`
+	Busy           bool        `json:"busy"` // eine Aktion läuft
 }
 
 type apiNode struct {
@@ -64,6 +67,16 @@ type apiNode struct {
 	LastSeenAgo float64   `json:"last_seen_ago"`
 	ClockSkew   float64   `json:"clock_skew"`
 	Paths       []apiPath `json:"paths"`
+
+	// Datenbank-Spiegel (leer/unknown ohne Spiegel)
+	PG          string         `json:"pg"`
+	LSN         uint64         `json:"lsn"`
+	LagBytes    int64          `json:"lag_bytes"`
+	Sync        bool           `json:"sync"`
+	Stale       bool           `json:"stale"`
+	Timeline    uint32         `json:"timeline"`
+	DataCurrent bool           `json:"data_current"`
+	Diverged    []divergedInfo `json:"diverged"`
 }
 
 type apiPath struct {
@@ -234,6 +247,20 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	mux.HandleFunc("POST /v1/diverged/delete", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID   string `json:"id"`
+			Node string `json:"node"` // leer = dieser Server
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := d.deleteDivergedAt(req.Node, req.ID); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
 	mux.HandleFunc("POST /v1/nodes/remove", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ID   string `json:"id"`
@@ -368,7 +395,11 @@ func (d *daemon) setMaintenance(on bool) error {
 	if on {
 		d.event("info", "Wartung an – Automatik aus")
 	} else {
-		d.event("info", "Wartung aus – Automatik an (Beobachtung)")
+		text := "Wartung aus – Automatik an"
+		if !d.settingsLocked().Real() {
+			text += " (Beobachtung)"
+		}
+		d.event("info", text)
 	}
 	return nil
 }
@@ -398,6 +429,10 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Nur mit zwei Servern möglich")
 	case c == ha.CmdForceTakeover && d.p.Role == ha.Active:
 		return errors.New("Nur auf einem nicht aktiven Server möglich")
+	case c == ha.CmdForceTakeover && d.last.Partner != nil && d.last.Partner.Seen && d.last.Partner.Role == ha.Active:
+		// sonst verliert ein gesunder aktiver Server seine Rolle, und was er
+		// bis dahin allein gespeichert hat, landet in den abgezweigten Daten
+		return errors.New("Der aktive Server ist erreichbar – bitte am aktiven Server „Rollen tauschen“ verwenden")
 	case c == ha.CmdSwap && d.p.Role != ha.Active:
 		return errors.New("Nur auf dem aktiven Server möglich")
 	}
@@ -432,9 +467,14 @@ func (d *daemon) updateSettings(s ha.Settings, targets []string) error {
 		d.unlock()
 		return err
 	}
-	if !d.node.CAHolder {
+	// am CA-Knoten oder am aktiven: mit Spiegel läuft das PDH nur am aktiven
+	if !d.node.CAHolder && d.p.Role != ha.Active {
 		d.unlock()
-		return errors.New("Einstellungen bitte am ersten Server ändern")
+		return errors.New("Einstellungen bitte am aktiven Server ändern")
+	}
+	if s.Real() && !d.cl.SwapTested && d.fixed == nil {
+		d.unlock()
+		return errors.New("Erst einmal Rollen tauschen – hin und zurück")
 	}
 	cl := d.cl
 	if targets == nil {

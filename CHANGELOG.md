@@ -10,6 +10,27 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.0] – 2026-10-27
+
+### Neu
+- Datenbank-Spiegel im Ausfallschutz: Der aktive Server schreibt jede Speicherung synchron auch auf den zweiten Server (`pdh-ha-join.sh --voll`).
+- „Rollen tauschen“ und „Übernahme erzwingen“ schalten jetzt wirklich um – Datenbank und PDH wechseln auf den anderen Server.
+- Ein zurückkehrender Server gliedert sich selbst als Spiegel wieder ein; Daten, die nur auf ihm lagen, werden vorher gesichert und als „Abgezweigte Daten“ zur Prüfung angezeigt.
+- Fällt der zweite Server aus, arbeitet der aktive nach kurzer Zeit asynchron weiter – im Trio erst nach Bestätigung des Zeugen.
+- Einstellung „Automatische Umschaltung: Beobachtung oder echt“; „echt“ erst nach der Pflicht-Testumschaltung (hin und zurück).
+- Neue Einstellungen „Asynchron nach“, „Verzögerungsgrenze“ und „Höchstmenge zurückgehaltener Änderungen“.
+- Der Cloudflare-Tunnel läuft im Verbund nur auf dem aktiven Server und wechselt mit der Rolle – Anwender erreichen so immer den aktiven Server.
+- Hat der aktive Server zu viele Änderungen für den ausgefallenen zweiten zurückgehalten, wird dieser bei seiner Rückkehr automatisch neu kopiert (mit Alarm).
+- Neues Skript `scripts/pdh-static-ip.sh` stellt die jetzige IP-Adresse eines Servers fest ein (mit automatischem Zurücksetzen, falls die Verbindung abreißt).
+
+### Geändert
+- Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme schaltet der neue aktive Server sie mit den gespeicherten Einstellungen selbst ein und beginnt mit einer neuen Grundsicherung.
+- Im Beobachtungsmodus ändern automatische Entscheidungen keine Rollen und Amtszeiten mehr, sie werden nur gemeldet.
+- Auf dem passiven Server läuft das PDH nicht; Updates starten es dort nicht mehr.
+
+### Behoben
+- Kommentare zu einem Ticket werden nach dem Neuladen der Seite wieder angezeigt (vorher erschienen sie nur direkt nach dem Schreiben).
+
 ## [0.75.1] – 2026-10-25
 
 ### Behoben

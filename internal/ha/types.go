@@ -37,7 +37,21 @@ type Settings struct {
 	TakeoverDuo  time.Duration
 	Cooldown     time.Duration // Wartezeit nach Umschaltung
 	MaxPerDay    int           // Umschaltungen je Tag
+
+	AsyncAfter time.Duration // Standby so lange weg → asynchron (nach Bestätigung)
+	LagLimit   int64         // Verzögerungsgrenze der Spiegelung in Bytes
+	SlotKeep   int64         // Höchstmenge zurückgehaltener Änderungen in Bytes
+	AutoMode   string        // AutoObserve | AutoReal
 }
+
+// Betriebsarten der automatischen Umschaltung.
+const (
+	AutoObserve = "observe" // nur melden, nichts ändern
+	AutoReal    = "real"    // automatische Entscheidungen wirken
+)
+
+// Real meldet, ob automatische Entscheidungen wirklich ausgeführt werden.
+func (s Settings) Real() bool { return s.AutoMode == AutoReal }
 
 // DefaultSettings liefert die Standardzeiten.
 func DefaultSettings() Settings {
@@ -48,6 +62,10 @@ func DefaultSettings() Settings {
 		TakeoverDuo:  60 * time.Second,
 		Cooldown:     15 * time.Minute,
 		MaxPerDay:    3,
+		AsyncAfter:   10 * time.Second,
+		LagLimit:     16 << 20,
+		SlotKeep:     20 << 30,
+		AutoMode:     AutoObserve,
 	}
 }
 
@@ -70,6 +88,18 @@ func (s Settings) Validate() error {
 	}
 	if s.MaxPerDay < 1 || s.MaxPerDay > 20 {
 		return errors.New("Umschaltungen je Tag müssen zwischen 1 und 20 liegen")
+	}
+	if s.AsyncAfter < 3*time.Second || s.AsyncAfter > 300*time.Second {
+		return errors.New("„asynchron nach“ muss zwischen 3 und 300 s liegen")
+	}
+	if s.LagLimit < 1<<20 || s.LagLimit > 1024<<20 {
+		return errors.New("Verzögerungsgrenze muss zwischen 1 und 1024 MB liegen")
+	}
+	if s.SlotKeep < 1<<30 || s.SlotKeep > 1000<<30 {
+		return errors.New("Höchstmenge zurückgehaltener Änderungen muss zwischen 1 und 1000 GB liegen")
+	}
+	if s.AutoMode != AutoObserve && s.AutoMode != AutoReal {
+		return errors.New("Automatische Umschaltung muss „observe“ oder „real“ sein")
 	}
 	min := s.FenceAfter + 2*s.Tick + 5*time.Second
 	if s.TakeoverTrio < min || s.TakeoverDuo < min {
@@ -96,6 +126,11 @@ type settingsJSON struct {
 	TakeoverDuoS  int `json:"takeover_duo_s"`
 	CooldownMin   int `json:"cooldown_min"`
 	MaxPerDay     int `json:"max_per_day"`
+
+	AsyncAfterS int    `json:"async_after_s"`
+	LagLimitMB  int64  `json:"lag_limit_mb"`
+	SlotKeepGB  int64  `json:"slot_keep_gb"`
+	AutoMode    string `json:"auto_mode"`
 }
 
 func (s Settings) MarshalJSON() ([]byte, error) {
@@ -106,6 +141,10 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		TakeoverDuoS:  int(s.TakeoverDuo / time.Second),
 		CooldownMin:   int(s.Cooldown / time.Minute),
 		MaxPerDay:     s.MaxPerDay,
+		AsyncAfterS:   int(s.AsyncAfter / time.Second),
+		LagLimitMB:    s.LagLimit >> 20,
+		SlotKeepGB:    s.SlotKeep >> 30,
+		AutoMode:      s.AutoMode,
 	})
 }
 
@@ -121,6 +160,24 @@ func (s *Settings) UnmarshalJSON(b []byte) error {
 		TakeoverDuo:  time.Duration(j.TakeoverDuoS) * time.Second,
 		Cooldown:     time.Duration(j.CooldownMin) * time.Minute,
 		MaxPerDay:    j.MaxPerDay,
+		AsyncAfter:   time.Duration(j.AsyncAfterS) * time.Second,
+		LagLimit:     j.LagLimitMB << 20,
+		SlotKeep:     j.SlotKeepGB << 30,
+		AutoMode:     j.AutoMode,
+	}
+	// Alte Dateien kennen die neuen Felder nicht: fehlend/0/leer → Standard.
+	def := DefaultSettings()
+	if j.AsyncAfterS == 0 {
+		s.AsyncAfter = def.AsyncAfter
+	}
+	if j.LagLimitMB == 0 {
+		s.LagLimit = def.LagLimit
+	}
+	if j.SlotKeepGB == 0 {
+		s.SlotKeep = def.SlotKeep
+	}
+	if j.AutoMode == "" {
+		s.AutoMode = def.AutoMode
 	}
 	return nil
 }
@@ -139,6 +196,12 @@ type PeerObs struct {
 	MaintSeq    uint64
 	VotedFor    string // nur Zeuge: Kandidat seiner höchsten Stimme
 	SeesSelf    bool   // die Gegenstelle meldet, dass sie diesen Knoten gerade sieht
+	PG          string // Zustand der Datenbank des Partners (Text des Daemons)
+	Sync        bool   // Partner-Datenbank spiegelt synchron
+	Stale       bool   // Partner-Datenbank ist veraltet (hinter dem Stand)
+	LSN         uint64 // Schreibposition (Replay) des Partners
+	LagBytes    int64  // Verzögerung der Spiegelung in Bytes
+	Timeline    uint32 // Zeitlinie der Partner-Datenbank
 }
 
 // Persisted ist der dauerhaft gespeicherte Zustand (state.json).
@@ -153,6 +216,26 @@ type Persisted struct {
 	PartnerVersion string    `json:"partner_version"`
 	VotedTerm      uint64    `json:"voted_term"` // nur Zeuge
 	VotedFor       string    `json:"voted_for"`  // nur Zeuge
+
+	// Stale: Amtszeit → Schreibposition, ab der der Partner veraltet ist.
+	Stale map[string]uint64 `json:"stale,omitempty"`
+}
+
+// Equal vergleicht zwei Zustände; die Karte Stale verhindert ==.
+// nil und leer gelten als gleich.
+func (p Persisted) Equal(q Persisted) bool {
+	if len(p.Stale) != len(q.Stale) {
+		return false
+	}
+	for k, v := range p.Stale {
+		if w, ok := q.Stale[k]; !ok || w != v {
+			return false
+		}
+	}
+	return p.Term == q.Term && p.Role == q.Role && p.LastSwitch.Equal(q.LastSwitch) &&
+		p.SwitchDay == q.SwitchDay && p.SwitchCount == q.SwitchCount &&
+		p.Maint == q.Maint && p.MaintSeq == q.MaintSeq &&
+		p.PartnerVersion == q.PartnerVersion && p.VotedTerm == q.VotedTerm && p.VotedFor == q.VotedFor
 }
 
 // ActionKind benennt eine Aktion, die der Daemon ausführen (oder im
@@ -169,11 +252,13 @@ const (
 	ActRequestVote ActionKind = "request_vote"
 	ActHandover    ActionKind = "handover"
 	ActRejoin      ActionKind = "rejoin"
+	ActProbeVote   ActionKind = "probe_vote"
 )
 
 type Action struct {
-	Kind ActionKind
-	Term uint64
+	Kind   ActionKind
+	Term   uint64
+	Manual bool // durch Handbefehl ausgelöst: immer echt, auch bei Beobachtung
 }
 
 // Event ist ein Protokolleintrag; Kind "role", "action", "alarm" oder "info".
@@ -208,6 +293,9 @@ type Input struct {
 	VoteGranted      uint64 // >0: Zeuge stimmt dieser Amtszeit zu
 	Handover         uint64 // >0: aktiver Partner übergibt diese Amtszeit
 	Command          CommandKind
+	ProbeGranted     uint64 // >0: Zeuge hat die Probe-Stimme für diese Amtszeit gegeben
+	DemoteDone       uint64 // >0: demote dieser Amtszeit ist abgeschlossen
+	DemoteFailed     uint64 // >0: demote dieser Amtszeit ist fehlgeschlagen
 
 	Settings Settings
 	Persist  Persisted
@@ -224,6 +312,8 @@ type Input struct {
 	VoteSince       time.Duration // erste noch offene Stimmbitte
 	VoteAlarmed     bool
 	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
+	Would           ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
+	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -243,4 +333,6 @@ type Output struct {
 	VoteSince       time.Duration
 	VoteAlarmed     bool
 	LastMutual      time.Duration
+	Would           ActionKind
+	HandoverReadyAt time.Duration
 }

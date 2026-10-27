@@ -26,9 +26,20 @@ const (
 	haLogLines       = 40
 )
 
-// haGateEnforced: Sperre der Netzlaufwerk-Sicherung auf dem passiven Knoten.
-// Teil 1 beobachtet nur (nichts wird umgeschaltet), ab Teil 3 true. Tests setzen es.
-var haGateEnforced = false
+// haGateEnforced: Sperre der Netzlaufwerk-Sicherung auf dem passiven Knoten –
+// ab Teil 3 (Datenbank-Spiegel) scharf. Tests können sie abschalten.
+var haGateEnforced = true
+
+// haPauseAlarm: so lange darf pdh-ha unerreichbar sein, bevor die Pause als Fehler gilt.
+const haPauseAlarm = 15 * time.Minute
+
+// haSelf: was der Agent über diesen Knoten von pdh-ha wissen muss.
+type haSelf struct {
+	ID       string `json:"id"`
+	Role     string `json:"role"`
+	PG       string `json:"pg"`
+	Timeline uint32 `json:"timeline"`
+}
 
 func haSocketPath() string {
 	if v := strings.TrimSpace(os.Getenv("PDH_HA_SOCKET")); v != "" {
@@ -48,8 +59,15 @@ func haEtcDir() string {
 // (keine node.json) oder nie eingerichtet: ja. Eingerichtet, aber Dienst nicht
 // erreichbar oder Konfiguration nicht lesbar: nein, mit Fehler.
 func (a *updateAgent) drIsActive(ctx context.Context) (bool, error) {
+	_, active, err := a.drHASelf(ctx)
+	return active, err
+}
+
+// drHASelf: Zustand laut pdh-ha. Aktiv heißt: Rolle aktiv und die Datenbank
+// schreibbar (primary) – oder ohne Datenbank-Spiegel (unknown).
+func (a *updateAgent) drHASelf(ctx context.Context) (haSelf, bool, error) {
 	if _, err := os.Stat(filepath.Join(haEtcDir(), "node.json")); errors.Is(err, os.ErrNotExist) {
-		return true, nil
+		return haSelf{}, true, nil
 	}
 	sock := haSocketPath()
 	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{
@@ -61,39 +79,41 @@ func (a *updateAgent) drIsActive(ctx context.Context) (bool, error) {
 	}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://pdh-ha/v1/status", nil)
 	if err != nil {
-		return false, err
+		return haSelf{}, false, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return haSelf{}, false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("pdh-ha: HTTP %d", resp.StatusCode)
+		return haSelf{}, false, fmt.Errorf("pdh-ha: HTTP %d", resp.StatusCode)
 	}
 	var st struct {
 		Configured bool   `json:"configured"`
 		Error      string `json:"error"`
-		Self       struct {
-			Role string `json:"role"`
-		} `json:"self"`
+		Self       haSelf `json:"self"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&st); err != nil {
-		return false, err
+		return haSelf{}, false, err
 	}
 	switch {
 	case st.Error != "":
-		return false, errors.New(st.Error)
+		return haSelf{}, false, errors.New(st.Error)
 	case !st.Configured:
-		return true, nil
+		return st.Self, true, nil
 	}
-	return st.Self.Role == "aktiv", nil
+	writable := st.Self.PG == "" || st.Self.PG == "unknown" || st.Self.PG == "primary"
+	return st.Self, st.Self.Role == "aktiv" && writable, nil
 }
 
 // drCheckActive setzt Pause bzw. Fehler „ha“ für den Status; true = sichern.
-// Solange die Sperre aus ist (Beobachtung), immer sichern und nur den Hinweis setzen.
+// Nur der aktive Knoten mit schreibbarer Datenbank sichert. Ist pdh-ha
+// eingerichtet, aber nicht erreichbar, pausiert die Sicherung; nach 15 min
+// zusätzlich Fehler (Alarm). Nach einem Wechsel der Timeline (Hochstufung)
+// steht sofort eine Grundsicherung an.
 func (a *updateAgent) drCheckActive(ctx context.Context) bool {
-	active, err := a.drIsActive(ctx)
+	self, active, err := a.drHASelf(ctx)
 	paused, advice := "", ""
 	switch {
 	case err != nil:
@@ -108,14 +128,36 @@ func (a *updateAgent) drCheckActive(ctx context.Context) bool {
 		a.drOK("ha")
 		return true
 	}
+	now := time.Now()
 	a.dr.mu.Lock()
 	a.dr.Paused, a.dr.Advice = paused, ""
+	if err != nil {
+		if a.dr.UnreachSince.IsZero() {
+			a.dr.UnreachSince = now
+		}
+	} else {
+		a.dr.UnreachSince = time.Time{}
+	}
+	since := a.dr.UnreachSince
+	if active && self.ID != "" {
+		a.dr.LastNode = self.ID
+	}
+	if active && self.Timeline > 0 {
+		if a.dr.LastTimeline != 0 && self.Timeline != a.dr.LastTimeline {
+			a.dr.BaseNeeded = true // neue Timeline: Zeitpunkt-Wiederherstellung braucht eine neue Grundsicherung
+		}
+		a.dr.LastTimeline = self.Timeline
+	}
 	a.dr.mu.Unlock()
 	if err != nil {
 		a.drFail("ha", errors.New(haUnreachableMsg))
+		if now.Sub(since) >= haPauseAlarm {
+			a.drFail("ha-pause", errors.New("Netzlaufwerk-Sicherung seit über 15 Minuten pausiert – pdh-ha prüfen"))
+		}
 		return false
 	}
 	a.drOK("ha")
+	a.drOK("ha-pause")
 	return active
 }
 

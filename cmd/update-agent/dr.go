@@ -60,9 +60,10 @@ type drStatus struct {
 	Sources      []string  `json:"sources"`
 	Missing      []string  `json:"missing"`
 	Bases        []drBase  `json:"bases"`
-	Running      string    `json:"running"` // "", "base", "files"
-	Paused       string    `json:"paused"`  // "passiver Knoten" (pdh-ha), sonst ""
-	Advice       string    `json:"advice"`  // Beobachtung: würde pausieren (Sperre aus)
+	Running      string    `json:"running"`   // "", "base", "files"
+	Paused       string    `json:"paused"`    // "passiver Knoten" (pdh-ha), sonst ""
+	Advice       string    `json:"advice"`    // Beobachtung: würde pausieren (Sperre aus)
+	LastNode     string    `json:"last_node"` // Kennung des Servers, der zuletzt gesichert hat (pdh-ha)
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
@@ -105,8 +106,12 @@ type drState struct {
 	ErrorAt      time.Time         `json:"error_at"`
 	EnabledSince time.Time         `json:"enabled_since"`
 	Running      string            `json:"-"`
-	Paused       string            `json:"-"` // nur im Speicher, je Takt neu (ha.go)
-	Advice       string            `json:"-"` // dito
+	Paused       string            `json:"-"`             // nur im Speicher, je Takt neu (ha.go)
+	Advice       string            `json:"-"`             // dito
+	LastNode     string            `json:"last_node"`     // Server, der zuletzt als aktiver gesichert hat
+	LastTimeline uint32            `json:"last_timeline"` // Timeline der Datenbank beim letzten Takt als aktiver
+	BaseNeeded   bool              `json:"base_needed"`   // nach Hochstufung (neue Timeline) sofort Grundsicherung
+	UnreachSince time.Time         `json:"-"`             // pdh-ha nicht erreichbar seit
 	saveMu       sync.Mutex        // state.json nie gleichzeitig schreiben
 }
 
@@ -217,7 +222,7 @@ func (a *updateAgent) drOK(kind string) {
 // drErrorText: alle offenen Fehler, feste Reihenfolge.
 func drErrorText(errs map[string]string) string {
 	var out []string
-	for _, k := range []string{"state", "ha", "postgres", "wal", "base", "files"} {
+	for _, k := range []string{"state", "ha", "ha-pause", "postgres", "wal", "base", "files"} {
 		if e := errs[k]; e != "" {
 			out = append(out, e)
 		}
@@ -256,7 +261,7 @@ func (a *updateAgent) drStatus() drStatus {
 	st := drStatus{OK: true, Supported: true, Config: a.dr.Config, Archiving: a.dr.Archiving,
 		LastWALShip: a.dr.LastWALShip, LastWALFile: a.dr.LastWALFile, LastBase: a.dr.LastBase,
 		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running, Paused: a.dr.Paused, Advice: a.dr.Advice,
-		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince}
+		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince, LastNode: a.dr.LastNode}
 	for _, s := range a.dr.Sources {
 		st.Sources = append(st.Sources, s.Label)
 	}

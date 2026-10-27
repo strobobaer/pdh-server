@@ -5,8 +5,8 @@ package main
 
 import (
 	"compress/gzip"
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -194,14 +194,25 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	if cfg.Target == "" {
 		return
 	}
-	// zwei Server (pdh-ha): nur der aktive Knoten sichert
+	target := a.hp(cfg.Target)
+	// zwei Server (pdh-ha): nur der aktive Knoten sichert. Schon erzeugte
+	// WAL-Dateien im Zwischenspeicher gehören zur Geschichte der Datenbank und
+	// gehen trotzdem aufs Laufwerk (z. B. nach dem Abgeben).
 	if !a.drCheckActive(ctx) {
+		if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 && drTargetCheck(target) == nil {
+			walDir := filepath.Join(target, "wal")
+			_ = os.MkdirAll(walDir, 0o750)
+			if n, last, err := drShipWAL(a.hp(drSpoolDir), walDir); err == nil && n > 0 {
+				a.dr.mu.Lock()
+				a.dr.LastWALShip, a.dr.LastWALFile = now.UTC(), last
+				a.dr.mu.Unlock()
+			}
+		}
 		if err := a.drSave(); err != nil {
 			log.Printf("ausfallschutz: state.json: %v", err)
 		}
 		return
 	}
-	target := a.hp(cfg.Target)
 	check := func() error { return drTargetCheck(target) }
 	if cfg.Enabled {
 		check = func() error { return a.drPrepareTarget(cfg.Target) }
@@ -215,7 +226,7 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	}
 	walDir := filepath.Join(target, "wal")
 	_ = os.MkdirAll(walDir, 0o750)
-	n, last, err := drShipWAL(a.hp(drSpool), walDir)
+	n, last, err := drShipWAL(a.hp(drSpoolDir), walDir)
 	switch {
 	case err != nil && !errors.Is(err, os.ErrNotExist):
 		a.drFail("wal", err)
@@ -229,7 +240,7 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	}
 	if cfg.Enabled {
 		a.dr.mu.Lock()
-		lastBase, lastTry, lastFiles := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync
+		lastBase, lastTry, lastFiles, baseNeeded := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync, a.dr.BaseNeeded
 		if a.dr.FilesTry.After(lastFiles) {
 			lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
 		}
@@ -240,7 +251,7 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 			a.dr.FilesTry = now
 			a.dr.mu.Unlock()
 		}
-		if drBaseDue(lastBase, cfg.BaseHour, now) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
+		if (baseNeeded || drBaseDue(lastBase, cfg.BaseHour, now)) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
 			a.dr.mu.Lock()
 			a.dr.BaseTry = now
 			a.dr.mu.Unlock()

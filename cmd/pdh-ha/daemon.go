@@ -17,7 +17,7 @@ import (
 )
 
 // Der Dienst: Takt-Schleife für Knoten und Zeugen, Nachrichten, Befehle.
-// Teil 2 ist Beobachtungsmodus – Aktionen erzeugen nur Ereignisse.
+// Automatische Entscheidungen bei auto_mode observe erzeugen nur Ereignisse.
 
 const (
 	renewBefore    = 30 * 24 * time.Hour
@@ -88,10 +88,35 @@ type daemon struct {
 	net   peerNet
 	codes joinCodes
 
-	views       map[string]peerView
-	cmd         ha.CommandKind
-	handoverIn  uint64
-	voteGranted uint64
+	views        map[string]peerView
+	cmd          ha.CommandKind
+	handoverIn   uint64
+	voteGranted  uint64
+	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
+	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
+	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
+	dataCurrent  bool   // echter Datenstand (Replikation)
+
+	pgSt          atomic.Pointer[pgStatus] // zuletzt bekannter Zustand von PostgreSQL
+	pgQuerying    atomic.Bool
+	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
+	// Amtszeit, in der lastStreaming gesetzt wurde
+	lastStreamingTerm uint64
+	syncLoaded        bool          // synchronous_standby_names einmal aus PostgreSQL übernommen
+	recopying         atomic.Bool   // Neukopie nach ungültigem Slot läuft
+	recopyAt          time.Duration // letzte Neukopie (monoton)
+	staleAckTerm      uint64        // Zeuge hat „Partner nicht aktuell“ für diese Amtszeit bestätigt
+
+	sys           runner        // Systembefehle (Tests: Fake)
+	reconcileAt   time.Duration // letzter Abgleich (monoton)
+	reconcileWait atomic.Bool   // Abgleich steht in der Warteschlange
+
+	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
+	actQ        chan queuedAction
+	actOnce     sync.Once
+	actBatch    uint64       // nur unter mu
+	busy        atomic.Bool  // eine Aktion läuft gerade
+	pendingActs atomic.Int32 // wartend oder laufend
 	lastMode    ha.Mode
 
 	certNotAfter time.Time
@@ -118,6 +143,14 @@ type daemon struct {
 	pinging atomic.Bool
 }
 
+// queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
+// entfallen die übrigen dieser Gruppe (wie bisher „break“).
+type queuedAction struct {
+	a     ha.Action
+	batch uint64
+	fn    func(ctx context.Context) // statt a: interne Arbeit (Abgleich)
+}
+
 func newDaemon(st store, ev *eventLog) *daemon {
 	start := time.Now()
 	d := &daemon{
@@ -135,6 +168,8 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		protoSent: map[ha.ActionKind]uint64{},
 		alarms:    map[string]bool{},
 		downSince: map[string]time.Duration{},
+		actQ:      make(chan queuedAction, 16),
+		sys:       execRunner{},
 	}
 	d.act = observeActor{ev: ev}
 	d.saveFn = st.saveState
@@ -147,11 +182,8 @@ func (d *daemon) nextSeq() uint64 { return d.seqBase + d.seqN.Add(1) }
 func (d *daemon) lock()   { d.clMu.Lock(); d.mu.Lock() }
 func (d *daemon) unlock() { d.mu.Unlock(); d.clMu.Unlock() }
 
-// event schreibt ins Protokoll; Alarme tragen in Teil 2 den Zusatz.
+// event schreibt ins Protokoll.
 func (d *daemon) event(kind, text string) {
-	if kind == "alarm" {
-		text += " (Beobachtung)"
-	}
 	d.ev.add(ha.Event{Kind: kind, Text: text})
 }
 
@@ -303,15 +335,130 @@ func (d *daemon) startLocked() {
 		delete(d.alarms, "listen")
 	}
 	d.started = true
-	var join http.Handler
+	d.selectActorLocked(d.runCtx)
+	// HTTPS auf dem Port: Beitritt (nur CA-Halter) und Konfigurationsübergabe
+	mux := http.NewServeMux()
 	if d.node.CAHolder {
-		join = joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev)
+		mux.Handle("POST /v1/join", joinHandler(d.st, &d.codes, &d.clMu, d.onJoin, d.ev))
 	}
+	if d.node.Kind == "node" {
+		mux.HandleFunc("POST /v1/config/pull", d.configPullHTTP)
+	}
+	var join http.Handler = mux
 	if ok {
 		ctx, cancel := context.WithCancel(d.runCtx)
 		d.trCancel = cancel
 		go tr.serve(ctx, ln, join)
 	}
+}
+
+// selectActorLocked: Ist der Datenbank-Spiegel eingerichtet (replica.pass),
+// führt pgActor die Aktionen echt aus; sonst bleibt es beim Melden.
+func (d *daemon) selectActorLocked(ctx context.Context) {
+	if _, observe := d.act.(observeActor); !observe || d.node.Kind != "node" {
+		return
+	}
+	if _, err := os.Stat(d.st.etcPath("replica.pass")); err != nil {
+		return
+	}
+	if d.alarms["pg"] {
+		return // PostgreSQL fehlt: nicht in jedem Takt erneut suchen
+	}
+	c, err := discoverCluster(ctx, d.sys)
+	if err != nil {
+		d.alarmOnce("pg", "Datenbank-Spiegel eingerichtet, aber PostgreSQL nicht gefunden: "+err.Error())
+		return
+	}
+	pg := &pgCtl{r: d.sys, c: c}
+	pa := newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.pgEnvLocked(pg)
+	})
+	d.act = pa
+	// PostgreSQL-Port für den Partner öffnen (ufwRules mit pg)
+	go d.applyFirewall()
+	// abgebrochene Neukopie zuerst reparieren, vor jeder anderen Aktion
+	if err := pa.recoverDataDir(ctx); err != nil {
+		d.alarmOnce("pg-dir", "Datenordner nach abgebrochener Neukopie nicht wiederhergestellt: "+err.Error())
+	}
+}
+
+// pgEnvLocked: was pgActor über Partner, Wege und Schlüssel wissen muss.
+func (d *daemon) pgEnvLocked(pg *pgCtl) pgEnv {
+	self := clusterNode{ID: d.node.ID, Kind: d.node.Kind, Addrs: d.ownAddrsLocked()}
+	var partner clusterNode
+	for _, n := range d.cl.Nodes {
+		if n.Kind == "node" && n.ID != d.node.ID {
+			partner = n
+			break
+		}
+	}
+	pass := ""
+	if b, err := os.ReadFile(d.st.etcPath("replica.pass")); err == nil {
+		pass = strings.TrimSpace(string(b))
+	}
+	cl := d.cl
+	cl.Settings = d.settingsLocked()
+	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent)
+}
+
+// swapCompleted: In diesem Schritt ist ein Rollentausch gelungen – als
+// Übernehmender (Übergabe erhalten) oder als Abgebender (Partner führt die
+// übergebene Amtszeit).
+func swapCompleted(in ha.Input, out ha.Output) bool {
+	received := in.Handover != 0 && in.Persist.Role == ha.Passive && out.Persist.Role == ha.Active && out.Persist.Term == in.Handover
+	gave := in.HandoverPending != 0 && out.HandoverPending == 0 && out.Persist.Role == ha.Passive && out.Persist.Term >= in.HandoverPending
+	return received || gave
+}
+
+// countSwapLocked zählt gelungene Rollentausche; ab zwei (hin und zurück)
+// ist die Pflicht-Testumschaltung erledigt und „echt“ erlaubt.
+func (d *daemon) countSwapLocked(pl *plan) {
+	cl := d.cl
+	cl.Swaps++
+	if cl.Swaps >= 2 && !cl.SwapTested {
+		cl.SwapTested = true
+		pl.event("info", "Pflicht-Testumschaltung erledigt – automatische Umschaltung kann auf „echt“ gestellt werden")
+	}
+	cl.Version++
+	p2, err := d.publishClusterLocked(cl)
+	if err != nil {
+		pl.event("alarm", "Knotenliste nicht gespeichert: "+err.Error())
+		return
+	}
+	pl.sends = append(pl.sends, p2.sends...)
+	pl.events = append(pl.events, p2.events...)
+	pl.ufw = pl.ufw || p2.ufw
+}
+
+// reconcileInterval: Abstand des Abgleichs von Dienst und Datenbank.
+const reconcileInterval = 30 * time.Second
+
+// maybeReconcileLocked reiht den Abgleich beim Start und alle 30 s in die
+// Aktions-Warteschlange ein – so läuft er nie neben einer Aktion.
+func (d *daemon) maybeReconcileLocked(ctx context.Context, now time.Duration) {
+	pa, ok := d.act.(*pgActor)
+	if !ok || d.reconcileAt != 0 && now-d.reconcileAt < reconcileInterval || !d.reconcileWait.CompareAndSwap(false, true) {
+		return
+	}
+	d.reconcileAt = now
+	go func() {
+		d.pendingActs.Add(1)
+		select {
+		case d.actQ <- queuedAction{fn: func(ctx context.Context) {
+			defer d.reconcileWait.Store(false)
+			d.mu.Lock()
+			role := d.p.Role
+			d.mu.Unlock()
+			pa.reconcile(ctx, role)
+		}}:
+		case <-ctx.Done():
+			d.pendingActs.Add(-1)
+			d.reconcileWait.Store(false)
+		}
+	}()
+	d.actOnce.Do(func() { go d.actionWorker(ctx) })
 }
 
 // saveAlarmLocked: Speicherfehler höchstens einmal je Minute melden.
@@ -378,7 +525,7 @@ func (d *daemon) applyFirewallOnce() {
 		d.mu.Unlock()
 		return
 	}
-	rules := ufwRules(d.cl, d.node.ID, d.codes.open(d.wall()))
+	rules := ufwRules(d.cl, d.node.ID, d.codes.open(d.wall()), d.pgActorLocked() != nil)
 	key := fmt.Sprint(rules)
 	if key == d.ufwLast || key == d.ufwFailed && d.wall().Sub(d.ufwFailAt) < time.Minute {
 		d.mu.Unlock()
@@ -455,11 +602,8 @@ func (d *daemon) execute(ctx context.Context, pl plan) {
 			pl.net.sendTo(s.to, s.m)
 		}
 	}
-	for _, a := range pl.actions {
-		if err := d.doAction(ctx, a); err != nil {
-			d.actionFailed(a, err)
-			break
-		}
+	if len(pl.actions) > 0 {
+		d.enqueueActions(ctx, pl.actions)
 	}
 	d.events(pl.events)
 	if pl.ufw {
@@ -467,13 +611,74 @@ func (d *daemon) execute(ctx context.Context, pl plan) {
 	}
 }
 
+// enqueueActions reiht die Aktionen eines Schritts in die Warteschlange ein;
+// der Ausführer läuft so lange wie der erste Aufrufer (run).
+func (d *daemon) enqueueActions(ctx context.Context, acts []ha.Action) {
+	d.actOnce.Do(func() { go d.actionWorker(ctx) })
+	d.mu.Lock()
+	d.actBatch++
+	b := d.actBatch
+	d.mu.Unlock()
+	for _, a := range acts {
+		d.pendingActs.Add(1)
+		select {
+		case d.actQ <- queuedAction{a: a, batch: b}:
+		case <-ctx.Done():
+			d.pendingActs.Add(-1)
+			return
+		}
+	}
+}
+
+func (d *daemon) actionWorker(ctx context.Context) {
+	var failed uint64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case q := <-d.actQ:
+			if q.fn != nil {
+				d.busy.Store(true)
+				q.fn(ctx)
+				d.busy.Store(false)
+			} else if q.batch != failed {
+				d.busy.Store(true)
+				err := d.doAction(ctx, q.a)
+				if err != nil {
+					failed = q.batch
+					d.actionFailed(q.a, err)
+				}
+				if q.a.Kind == ha.ActDemote {
+					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
+					d.lock()
+					if err == nil {
+						d.demoteDone = q.a.Term
+					} else {
+						d.demoteFailed = q.a.Term
+					}
+					d.unlock()
+				}
+				d.busy.Store(false)
+			}
+			d.pendingActs.Add(-1)
+		}
+	}
+}
+
+// actionsIdle: keine Aktion wartet oder läuft.
+func (d *daemon) actionsIdle() bool { return d.pendingActs.Load() == 0 }
+
 func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("Absturz: %v", r)
 		}
 	}()
-	return d.act.Do(ctx, a)
+	// d.act wechselt unter Sperre (selectActorLocked nach replica-init)
+	d.mu.Lock()
+	act := d.act
+	d.mu.Unlock()
+	return act.Do(ctx, a)
 }
 
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
@@ -521,7 +726,10 @@ func (d *daemon) tick(ctx context.Context) {
 	if d.node.Kind == "witness" {
 		pl = d.tickWitnessLocked(ctx)
 	} else {
+		// nach replica-init ohne Neustart zum echten Ausführer wechseln
+		d.selectActorLocked(ctx)
 		pl = d.tickNodeLocked(ctx)
+		d.maybeReconcileLocked(ctx, d.mono())
 	}
 	pl.events = append(pl.events, hk.events...)
 	// Beitrittscode ausgegeben oder abgelaufen → Regeln anpassen
@@ -561,8 +769,10 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
+	d.replInputLocked(ctx, &in, s)
 	out := ha.Step(in)
-	if out.Persist != d.p || d.unsaved {
+	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
+	if !out.Persist.Equal(d.p) || d.unsaved {
 		if err := d.saveFn(out.Persist); err != nil {
 			if d.p.Role == ha.Active && !d.unsaved {
 				pl.actions = append(pl.actions, ha.Action{Kind: ha.ActFence, Term: d.p.Term})
@@ -595,6 +805,8 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		switch a.Kind {
 		case ha.ActRequestVote:
 			pl.send(witness, message{T: "vote_req", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
+		case ha.ActProbeVote:
+			pl.send(witness, message{T: "vote_probe", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
 		case ha.ActHandover:
 			pl.send(partner, message{T: "handover", ID: d.node.ID, Term: d.p.Term, VoteTerm: a.Term, Seq: d.nextSeq()})
 		case ha.ActPromote:
@@ -603,13 +815,17 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 			pl.event("alarm", fmt.Sprintf("Selbst-Abschaltung (Amtszeit %d)", a.Term))
 		}
 		// Wiederholte Stimmbitten und Übergaben nur einmal melden
-		if a.Kind == ha.ActRequestVote || a.Kind == ha.ActHandover {
+		if a.Kind == ha.ActRequestVote || a.Kind == ha.ActProbeVote || a.Kind == ha.ActHandover {
 			if d.protoSent[a.Kind] == a.Term {
 				continue
 			}
 			d.protoSent[a.Kind] = a.Term
 		}
 		pl.actions = append(pl.actions, a)
+	}
+	d.replSyncLocked(ctx, &pl, now, s, mode)
+	if d.node.CAHolder && swapped {
+		d.countSwapLocked(&pl)
 	}
 	pl.events = append(out.Events, pl.events...)
 	d.clusterRequestsLocked(&pl, now, s, views)
@@ -642,7 +858,7 @@ func (d *daemon) tickWitnessLocked(ctx context.Context) plan {
 			p.Maint = true
 		}
 	}
-	if p != d.p {
+	if !p.Equal(d.p) {
 		if err := d.saveFn(p); err != nil {
 			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
 			return pl

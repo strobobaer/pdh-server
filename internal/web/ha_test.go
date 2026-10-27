@@ -128,7 +128,7 @@ func TestHAViewTrio(t *testing.T) {
 		t.Fatalf("Ereignisse (neueste zuerst): %+v", v.Events)
 	}
 	out := renderDR(t, drView{HA: v})
-	for _, want := range []string{"Beobachtungsmodus – es wird nichts umgeschaltet", "Betriebsart: Trio", "pdh1", "pdh2", "zeuge1",
+	for _, want := range []string{"Automatische Umschaltung: Beobachtung.", "Betriebsart: Trio", "pdh1", "pdh2", "zeuge1",
 		">aktiv<", ">passiv<", ">zeuge<", "10.0.0.2:7480", "10.66.0.2:7480", "connection refused", "Versionen unterschiedlich: zeuge1 hat 0.74.0",
 		"Übernahme gesperrt: Wartungsstand beim Partner noch nicht angekommen", "Übernahme erzwingen", "Uhrzeit prüfen",
 		"Zeuge nicht erreichbar (Beobachtung)", `action="/admin/server-config/ha/maintenance"`, `action="/admin/server-config/ha/command"`,
@@ -138,12 +138,19 @@ func TestHAViewTrio(t *testing.T) {
 			t.Errorf("Übersicht ohne %q", want)
 		}
 	}
-	// Einstellungen nur am ersten Server
+	// Einstellungen am ersten oder am aktiven Server, nicht am passiven
 	v.Status.CAHolder = false
 	out = renderDR(t, drView{HA: v})
-	if strings.Contains(out, `action="/admin/server-config/ha/settings"`) || !strings.Contains(out, "Einstellungen bitte am ersten Server ändern") {
-		t.Error("Zeiten-Formular auf einem Nicht-CA-Knoten")
+	if !strings.Contains(out, `action="/admin/server-config/ha/settings"`) {
+		t.Error("Zeiten-Formular fehlt am aktiven Nicht-CA-Knoten")
 	}
+	self := v.Status.Self
+	v.Status.Self.Role = "passiv"
+	out = renderDR(t, drView{HA: v})
+	if strings.Contains(out, `action="/admin/server-config/ha/settings"`) || !strings.Contains(out, "Einstellungen bitte am aktiven Server ändern") {
+		t.Error("Zeiten-Formular auf einem passiven Nicht-CA-Knoten")
+	}
+	v.Status.Self = self
 	// Ladefehler des Dienstes deutlich zeigen
 	v = haView{Installed: true, Status: haStatus{Configured: false, Error: "Konfiguration nicht lesbar: node.json kaputt"}}
 	v.Err = haStatusErr(v.Status)
@@ -187,6 +194,95 @@ func TestHAForbidden(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("ohne Recht: Status %d", rec.Code)
 		}
+	}
+}
+
+// Datenbank-Spiegel: Spalte Datenbank, Rückstand, abgezweigte Daten, Pflicht-Tausch.
+const haMirrorStatus = `{"ok":true,"configured":true,"mode":"trio","observe":true,"swap_tested":false,"auto_mode":"observe","ca_holder":true,
+ "self":{"id":"pdh1","kind":"node","role":"aktiv","term":3,"version":"0.76.0","seen":true,"paths":[],"pg":"primary","sync":true,"lag_bytes":1572864,"stale":false},
+ "peers":[{"id":"pdh2","kind":"node","role":"passiv","term":3,"version":"0.76.0","seen":true,"paths":[],"pg":"standby","data_current":false,
+   "diverged":[{"id":"20261026-101500-amtszeit5","at":"2026-10-26T10:15:00Z","term":5,"bytes":2097152,"tables":[{"Table":"pdh.public.tickets","Insert":3,"Update":1,"Delete":0}]}]},
+  {"id":"zeuge1","kind":"witness","role":"zeuge","term":3,"version":"0.76.0","seen":true,"paths":[]}],
+ "maint":false,"settings":{"tick_s":1,"fence_s":10,"takeover_trio_s":30,"takeover_duo_s":60,"cooldown_min":15,"max_per_day":3,"async_after_s":10,"lag_limit_mb":16,"slot_keep_gb":20,"auto_mode":"observe"},
+ "gateway_targets":[],"warnings":[],"error":""}`
+
+func TestHANodeDBColumns(t *testing.T) {
+	startFakeHA(t, &fakeHA{status: haMirrorStatus, events: `[]`})
+	out := renderDR(t, drView{HA: (&Handler{}).haLoadView(context.Background())})
+	for _, want := range []string{"<th>Datenbank</th>", ">schreibend<", "synchron · Rückstand 1.5 MB", ">Standby<", "<b>nicht aktuell</b>",
+		"Pflicht-Testumschaltung offen", "Abgezweigte Daten", "pdh.public.tickets: 3 neu, 1 geändert, 0 gelöscht", "Server <b>pdh2</b>",
+		`action="/admin/server-config/ha/diverged-delete"`, `name="node" value="pdh2"`, `name="async_after_s" min="3" max="300" value="10"`,
+		`name="slot_keep_gb" min="1" max="1000" value="20"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Übersicht ohne %q", want)
+		}
+	}
+}
+
+func TestHASettingsRealDisabledUntilSwap(t *testing.T) {
+	startFakeHA(t, &fakeHA{status: haMirrorStatus, events: `[]`})
+	v := (&Handler{}).haLoadView(context.Background())
+	out := renderDR(t, drView{HA: v})
+	if !strings.Contains(out, `<option value="real" disabled>echt – Erst einmal Rollen tauschen – hin und zurück</option>`) {
+		t.Error("„echt“ vor dem Pflicht-Tausch wählbar")
+	}
+	v.Status.SwapTested, v.Status.AutoMode, v.Status.Observe = true, "real", false
+	out = renderDR(t, drView{HA: v})
+	if !strings.Contains(out, `<option value="real" selected>echt</option>`) || !strings.Contains(out, "Zugangsweg wird erst mit Teil 5 umgeschaltet") {
+		t.Error("nach Pflicht-Tausch: „echt“ mit Hinweis erwartet")
+	}
+}
+
+func TestHASettingsSendsNewFields(t *testing.T) {
+	f := &fakeHA{status: haMirrorStatus, events: `[]`}
+	startFakeHA(t, f)
+	form := url.Values{"tick_s": {"1"}, "fence_s": {"10"}, "takeover_trio_s": {"30"}, "takeover_duo_s": {"60"}, "cooldown_min": {"15"},
+		"max_per_day": {"3"}, "async_after_s": {"12"}, "lag_limit_mb": {"32"}, "slot_keep_gb": {"5"}, "auto_mode": {"real"}}
+	if _, err := (&Handler{}).haDoSettings(context.Background(), form); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	body := f.bodies[len(f.bodies)-1]
+	f.mu.Unlock()
+	for _, want := range []string{`"async_after_s":12`, `"lag_limit_mb":32`, `"slot_keep_gb":5`, `"auto_mode":"real"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Einstellungen ohne %s: %s", want, body)
+		}
+	}
+	// Ohne die neuen Felder (altes Formular) gelten die Standardwerte – kein Fehler.
+	delete(form, "async_after_s")
+	delete(form, "auto_mode")
+	if _, err := (&Handler{}).haDoSettings(context.Background(), form); err != nil {
+		t.Fatalf("altes Formular: %v", err)
+	}
+}
+
+func TestHADivergedDeleteCallsSocket(t *testing.T) {
+	f := &fakeHA{status: haMirrorStatus, events: `[]`}
+	startFakeHA(t, f)
+	h := &Handler{}
+	ctx := context.Background()
+	if _, err := h.haDoDivergedDelete(ctx, url.Values{"id": {"20261026-101500-amtszeit5"}, "node": {"pdh2"}, "confirm": {"ja"}}); err == nil {
+		t.Fatal("ohne GEPRÜFT darf nichts gelöscht werden")
+	}
+	if _, err := h.haDoDivergedDelete(ctx, url.Values{"id": {"../etc"}, "node": {"pdh2"}, "confirm": {"GEPRÜFT"}}); err == nil {
+		t.Fatal("ungültige Kennung angenommen")
+	}
+	if _, err := h.haDoDivergedDelete(ctx, url.Values{"id": {"20261026-101500-amtszeit5"}, "node": {"pdh2"}, "confirm": {"GEPRÜFT"}}); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if last := f.calls[len(f.calls)-1]; last != "POST /v1/diverged/delete" || !strings.Contains(f.bodies[len(f.bodies)-1], `"node":"pdh2"`) {
+		t.Fatalf("%v %v", f.calls, f.bodies)
+	}
+}
+
+func TestHASwapConfirmText(t *testing.T) {
+	startFakeHA(t, &fakeHA{status: haMirrorStatus, events: `[]`})
+	out := renderDR(t, drView{HA: (&Handler{}).haLoadView(context.Background())})
+	if !strings.Contains(out, "Dateien werden erst mit Teil 6 gespiegelt – auf dem anderen Knoten fehlen neue Anhänge") {
+		t.Error("Warnung beim Rollentausch fehlt")
 	}
 }
 
@@ -265,7 +361,7 @@ func TestHAAlarmThrottle(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("zwei gleiche Alarme in 15 min: %d Meldungen", len(sent))
 	}
-	if sent[0] != "⚠️ **Ausfallschutz (Beobachtung)**\nZeuge nicht erreichbar (Beobachtung)\nServer-Einstellungen → Ausfallschutz" {
+	if sent[0] != "⚠️ **Ausfallschutz**\nZeuge nicht erreichbar (Beobachtung)\nServer-Einstellungen → Ausfallschutz" {
 		t.Fatalf("Text: %q", sent[0])
 	}
 	haNotifyAlarms([]haEvent{ev(4, "alarm", "Selbst-Abschaltung (Amtszeit 4) (Beobachtung)", t0.Add(11*time.Minute))}, t0.Add(11*time.Minute), false, get, set, notify)

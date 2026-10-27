@@ -235,3 +235,38 @@ func TestDRVMScriptDownload(t *testing.T) {
 		t.Error("Reiter ohne Download des VM-Skripts")
 	}
 }
+
+// Verbund: Nach einer Übernahme ist die Sicherung im PDH (gespiegelte
+// Datenbank) an, im Agenten des neuen aktiven Servers aber nie eingeschaltet
+// worden – drHeal schickt die gespeicherten Werte an den eigenen Agenten.
+func TestDRHealFromDatabase(t *testing.T) {
+	t.Setenv("PDH_DATABASE_HOST", "localhost")
+	var got drConfig
+	calls := 0
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer agent.Close()
+	h := &Handler{updateAgentURL: agent.URL, updateAgentToken: "tok"}
+	form := drFormKeep(url.Values{"base_hour": {"3"}, "keep_days": {"7"}, "file_sync_minutes": {"30"}, "wal_max_minutes": {"5"}, "drive": {"x"}}).Encode()
+	if strings.Contains(form, "drive") {
+		t.Fatalf("Formularwerte: %s", form)
+	}
+	healed, err := h.drHeal(context.Background(), drStatus{}, form, "/mnt/pdh/nas", "/var/www/nextcloud")
+	if err != nil || !healed || calls != 1 {
+		t.Fatalf("geheilt=%v err=%v Aufrufe=%d", healed, err, calls)
+	}
+	if !got.Enabled || got.BaseHour != 3 || got.KeepDays != 7 || got.FileSyncMinutes != 30 || !strings.HasPrefix(got.Target, "/mnt/pdh/nas/") {
+		t.Fatalf("Agent erhielt %+v", got)
+	}
+	// schon eingeschaltet: nichts senden
+	if healed, err := h.drHeal(context.Background(), drStatus{Config: drConfig{Enabled: true}}, form, "/mnt/pdh/nas", ""); healed || err != nil || calls != 1 {
+		t.Fatalf("erneut gesendet: %v %v %d", healed, err, calls)
+	}
+	// Laufwerk hier unbekannt: Fehler statt halber Konfiguration
+	if _, err := h.drHeal(context.Background(), drStatus{}, form, "", ""); err == nil || calls != 1 {
+		t.Fatalf("ohne Laufwerk: %v", err)
+	}
+}

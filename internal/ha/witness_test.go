@@ -93,7 +93,7 @@ func TestVote(t *testing.T) {
 				t.Fatalf("gewährt = %v, erwartet %v", ok, c.granted)
 			}
 			if !ok {
-				if next != c.p {
+				if !next.Equal(c.p) {
 					t.Fatalf("abgelehnt darf den Zustand nicht ändern: %+v", next)
 				}
 				return
@@ -105,5 +105,39 @@ func TestVote(t *testing.T) {
 				t.Fatalf("Amtszeit des Zeugen nicht nachgezogen: %+v", next)
 			}
 		})
+	}
+}
+
+func TestVoteRefusesStale(t *testing.T) {
+	nodes := []PeerObs{
+		{ID: "a", Kind: "node", LastSeen: 60 * sec, Role: Active, Term: 1},
+		{ID: "b", Kind: "node", Seen: true, LastSeen: 100 * sec, Role: Passive, Term: 1},
+	}
+	p := Persisted{Role: Witness, Term: 1}
+	if ok, _ := Vote(p, VoteRequest{From: "b", Term: 2}, nodes, 100*sec, DefaultSettings()); !ok {
+		t.Fatal("ohne Vermerk soll die Stimme kommen")
+	}
+	p = MarkStale(p, "b", 1)
+	if ok, next := Vote(p, VoteRequest{From: "b", Term: 2}, nodes, 100*sec, DefaultSettings()); ok || next.VotedTerm != 0 {
+		t.Fatalf("nicht aktueller Knoten bekommt Stimme: %+v", next)
+	}
+}
+
+func TestMarkStaleCopies(t *testing.T) {
+	p := MarkStale(Persisted{}, "b", 3)
+	q := MarkStale(p, "c", 4)
+	if len(p.Stale) != 1 || len(q.Stale) != 2 || q.Stale["b"] != 3 || q.Stale["c"] != 4 {
+		t.Fatalf("Kopie verletzt: %v %v", p.Stale, q.Stale)
+	}
+}
+
+func TestClearStaleNeedsTerm(t *testing.T) {
+	p := MarkStale(Persisted{}, "b", 5)
+	if q := ClearStale(p, "b", 4); q.Stale["b"] != 5 {
+		t.Fatalf("ältere Amtszeit darf nicht löschen: %v", q.Stale)
+	}
+	q := ClearStale(p, "b", 5)
+	if _, ok := q.Stale["b"]; ok || p.Stale["b"] != 5 {
+		t.Fatalf("Löschen/Kopie: %v %v", q.Stale, p.Stale)
 	}
 }

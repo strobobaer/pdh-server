@@ -32,6 +32,7 @@ type simMsg struct {
 	handover uint64
 	vote     uint64 // Stimmbitte an den Zeugen
 	grant    uint64 // Zusage an den Knoten
+	probe    bool   // nur Probe (Beobachtung): nichts speichern
 }
 
 type simSeen struct {
@@ -40,26 +41,30 @@ type simSeen struct {
 }
 
 type simNode struct {
-	id, peer string
-	up       bool
-	start    int // Starttakt, Grundlage der eigenen monotonen Uhr
-	booting  bool
-	gateway  bool
-	gwLastOK time.Duration
-	p        Persisted
-	carry    Output
-	view     map[string]*simSeen
-	granted  uint64
-	handover uint64
-	cmd      CommandKind
+	id, peer     string
+	up           bool
+	start        int // Starttakt, Grundlage der eigenen monotonen Uhr
+	booting      bool
+	gateway      bool
+	gwLastOK     time.Duration
+	p            Persisted
+	carry        Output
+	view         map[string]*simSeen
+	granted      uint64
+	demoteDone   uint64 // Amtszeit der zuletzt erledigten Abgabe
+	probeGranted uint64
+	stale        bool // Datenstand nicht aktuell (DataCurrent false)
+	handover     uint64
+	cmd          CommandKind
 }
 
 func (n *simNode) clock(tick int) time.Duration { return time.Duration(tick-n.start+1) * time.Second }
 
 type simWitness struct {
-	p     Persisted
-	view  map[string]*simSeen
-	votes []VoteRequest
+	p      Persisted
+	view   map[string]*simSeen
+	votes  []VoteRequest
+	probes []VoteRequest
 }
 
 type sim struct {
@@ -81,7 +86,7 @@ type sim struct {
 
 func newSim(t testing.TB, mode Mode, rng *rand.Rand) *sim {
 	s := &sim{
-		t: t, mode: mode, set: DefaultSettings(), rng: rng,
+		t: t, mode: mode, set: realSettings(), rng: rng,
 		down: map[string]int{}, lastAt: map[string]int{}, owner: map[uint64]string{},
 	}
 	for _, id := range []string{"a", "b"} {
@@ -189,7 +194,9 @@ func (s *sim) step() {
 func (s *sim) deliver(m simMsg) {
 	if m.to == "w" {
 		s.w.view[m.from] = &simSeen{last: time.Duration(s.tick) * time.Second, hb: m.hb}
-		if m.vote > 0 {
+		if m.vote > 0 && m.probe {
+			s.w.probes = append(s.w.probes, VoteRequest{From: m.from, Term: m.vote})
+		} else if m.vote > 0 {
 			s.w.votes = append(s.w.votes, VoteRequest{From: m.from, Term: m.vote})
 		}
 		return
@@ -202,8 +209,11 @@ func (s *sim) deliver(m simMsg) {
 	if m.handover > 0 {
 		n.handover = m.handover
 	}
-	if m.grant > n.granted {
+	if m.grant > n.granted && !m.probe {
 		n.granted = m.grant
+	}
+	if m.grant > n.probeGranted && m.probe {
+		n.probeGranted = m.grant
 	}
 }
 
@@ -241,6 +251,12 @@ func (s *sim) witnessStep() {
 		}
 	}
 	w.votes = nil
+	for _, req := range w.probes {
+		if ok, _ := Vote(w.p, req, nodes, now, s.set); ok {
+			s.send(simMsg{from: "w", to: req.From, hb: s.witnessHB(nodes), grant: req.Term, probe: true})
+		}
+	}
+	w.probes = nil
 	w.p.Term = max(w.p.Term, w.p.VotedTerm)
 	hb := s.witnessHB(nodes)
 	for _, n := range s.nodes {
@@ -265,7 +281,7 @@ func (s *sim) nodeStep(n *simNode) {
 		SelfID: n.id, Now: now, Wall: simWall.Add(time.Duration(s.tick) * time.Second),
 		Mode: s.mode, Version: simVersion,
 		Gateway: n.gateway, GatewayLastOK: n.gwLastOK,
-		DataCurrent: true, DataAssumed: true, Booting: n.booting,
+		DataCurrent: !n.stale, DataAssumed: true, Booting: n.booting,
 		Partner:     s.obs(n.view, now, n.id, n.peer, "node"),
 		VoteGranted: n.granted, Handover: n.handover, Command: n.cmd,
 		Settings: s.set, Persist: n.p,
@@ -274,6 +290,8 @@ func (s *sim) nodeStep(n *simNode) {
 		HandoverSentAt: n.carry.HandoverSentAt,
 		NoActiveSince:  n.carry.NoActiveSince, NoActiveAlarmed: n.carry.NoActiveAlarmed,
 		VoteSince: n.carry.VoteSince, VoteAlarmed: n.carry.VoteAlarmed, LastMutual: n.carry.LastMutual,
+		HandoverReadyAt: n.carry.HandoverReadyAt, Would: n.carry.Would, DemoteDone: n.demoteDone,
+		ProbeGranted: n.probeGranted,
 	}
 	if s.mode == Trio {
 		in.Witness = s.obs(n.view, now, n.id, "w", "witness")
@@ -293,11 +311,21 @@ func (s *sim) nodeStep(n *simNode) {
 	}
 	for _, a := range out.Actions {
 		s.logf("%s Aktion %s{%d}", n.id, a.Kind, a.Term)
+		if a.Kind == ActPromote && !a.Manual && n.stale {
+			s.fail("%s ohne aktuellen Datenstand automatisch hochgestuft (Amtszeit %d)", n.id, a.Term)
+		}
 		switch a.Kind {
 		case ActRequestVote:
 			if s.w != nil {
 				s.send(simMsg{from: n.id, to: "w", hb: hb, vote: a.Term})
 			}
+		case ActProbeVote:
+			if s.w != nil {
+				s.send(simMsg{from: n.id, to: "w", hb: hb, vote: a.Term, probe: true})
+			}
+		case ActDemote:
+			// Abgabe der Datenbank gilt im nächsten Takt als erledigt
+			n.demoteDone = a.Term
 		case ActHandover:
 			if !s.dropHandover && !(s.rng != nil && s.rng.Intn(4) == 0) {
 				s.send(simMsg{from: n.id, to: n.peer, hb: hb, handover: a.Term})
@@ -507,7 +535,7 @@ func TestSimTrio(t *testing.T) {
 		{"rollentausch", func(s *sim) {
 			s.run(5)
 			s.node("a").cmd = CmdSwap
-			s.run(10)
+			s.run(15) // ein Takt mehr: Übergabe erst nach der Abgabe
 			s.want("a", Passive, 2)
 			s.want("b", Active, 2)
 		}},
@@ -608,6 +636,8 @@ func simRandomOpts(t testing.TB, seed int64, ticks int, oneWay bool) int {
 				restartAt[n.id] = s.tick + 1 + rng.Intn(120)
 			case n.up && n.p.Role == Active && rng.Intn(400) == 0:
 				n.cmd = CmdSwap
+			case n.up && rng.Intn(300) == 0:
+				n.stale = !n.stale
 			case oneWay && n.up && rng.Intn(500) == 0:
 				n.cmd = CmdMaintOn
 				if rng.Intn(2) == 0 {
@@ -658,4 +688,20 @@ func FuzzSimOneWay(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, seed int64) { simRandomOpts(t, seed, 2000, true) })
+}
+
+// Beobachtung: Fällt der aktive Knoten aus, ändern sich in 10 Minuten weder
+// Rollen noch Amtszeiten – es wird nur gemeldet.
+func TestSimObserveNoSwitch(t *testing.T) {
+	for _, mode := range []Mode{Trio, Duo} {
+		t.Run(string(mode), func(t *testing.T) {
+			s := newSim(t, mode, nil)
+			s.set.AutoMode = AutoObserve
+			s.run(5)
+			s.crash("a")
+			s.run(600)
+			s.want("b", Passive, 1)
+			s.wantEvent("würde jetzt: promote (Beobachtung)")
+		})
+	}
 }

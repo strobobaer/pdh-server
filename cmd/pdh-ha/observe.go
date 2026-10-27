@@ -23,6 +23,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 		o.Gateway, o.DataCurrent = m.Gateway, m.DataCurrent
 		o.Maint, o.MaintSeq = m.Maint, m.MaintSeq
 		o.VotedFor = m.VotedFor
+		o.PG, o.Sync, o.Stale, o.LSN, o.LagBytes, o.Timeline = m.PG, m.Sync, m.Stale, m.LSN, m.Lag, m.TL
 		o.SeesSelf = slices.Contains(m.Sees, selfID)
 	}
 	return o
@@ -37,6 +38,8 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		HandoverPending: c.HandoverPending, HandoverAt: c.HandoverAt, HandoverSentAt: c.HandoverSentAt,
 		NoActiveSince: c.NoActiveSince, NoActiveAlarmed: c.NoActiveAlarmed,
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
+		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
+		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl
@@ -169,6 +172,18 @@ func (d *daemon) statusLocked() apiStatus {
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,
 		Gateway: d.last.Gateway, Seen: true, Paths: []apiPath{},
 	}
+	st.AutoMode, st.Busy = st.Settings.AutoMode, d.busy.Load()
+	st.Observe, st.SwapTested = !st.Settings.Real(), d.cl.SwapTested
+	if d.node.Kind == "node" {
+		var hb message
+		d.hbPGLocked(&hb)
+		st.Self.PG, st.Self.LSN, st.Self.LagBytes, st.Self.Sync, st.Self.Stale, st.Self.Timeline, st.Self.Diverged =
+			hb.PG, hb.LSN, hb.Lag, hb.Sync, hb.Stale, hb.TL, hb.Diverged
+		st.Self.DataCurrent = d.dataCurrent || hb.PG == "primary"
+		if st.Self.PG == "" {
+			st.Self.PG = "unknown"
+		}
+	}
 	// Vor dem ersten Takt (Neustart-Regel noch nicht angewandt) und nach einem
 	// Speicherfehler nie „aktiv“ melden – sonst sichert z. B. der Agent zu früh.
 	if d.node.Kind == "node" && (d.booting && st.Mode != ha.Single || d.unsaved && d.p.Role == ha.Active) {
@@ -176,7 +191,8 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	if d.node.Kind == "witness" {
 		st.Self.Term = max(d.p.VotedTerm, d.p.Term)
-	} else if st.Mode != ha.Single && d.last.SelfID != "" {
+	} else if st.Mode != ha.Single && d.last.SelfID != "" && d.p.Role != ha.Active {
+		// nur der passive übernimmt; der aktive ist mit Spiegel nie „aktuell“
 		_, st.Blocked = ha.Allowed(d.last)
 	}
 	ago := func(t time.Duration) float64 {
@@ -202,6 +218,8 @@ func (d *daemon) statusLocked() apiStatus {
 		an := apiNode{ID: n.ID, Kind: n.Kind, Seen: v.seen(), LastSeenAgo: ago(v.LastSeen), Paths: []apiPath{}}
 		if m := v.Last; m.T == "hb" {
 			an.Role, an.Term, an.Version, an.Commit, an.Gateway = ha.Role(m.Role), m.Term, m.Ver, m.Commit, m.Gateway
+			an.PG, an.LSN, an.LagBytes, an.Sync, an.Stale, an.Timeline, an.DataCurrent, an.Diverged =
+				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
 			hosts[n.ID] = m.HostID
 		}
 		for _, p := range v.Paths {
@@ -284,6 +302,9 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		m.Role = string(ha.Witness)
 		m.Term = max(d.p.VotedTerm, d.p.Term)
 		m.VotedFor = d.p.VotedFor
+	}
+	if d.node.Kind == "node" {
+		d.hbPGLocked(&m)
 	}
 	return m
 }

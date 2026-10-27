@@ -1740,10 +1740,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="spiegelbetrieb" data-title="Ausfallschutz mit zwei Servern" data-pages="server-config">
   <h2><i class="ti ti-server-2"></i> Ausfallschutz mit zwei Servern</h2>
   <p>Ein zweiter Server und ein <b>Zeuge</b> beobachten sich gegenseitig. Der Dienst <code>pdh-ha</code> läuft auf jedem Server und prüft über das LAN und über WireGuard, ob der andere noch da ist. Der Zeuge ist ein kleiner dritter Teilnehmer ohne Daten – er hilft nur bei der Entscheidung, wer aktiv ist.</p>
-  <div class="hb-howto"><b><i class="ti ti-eye"></i> In dieser Version wird noch nichts umgeschaltet</b>
-    Der Dienst arbeitet im <b>Beobachtungsmodus</b>. Er zeigt nur, was er tun würde – als Ereignis „würde jetzt: …“. Kein Server übernimmt wirklich, nichts wird verschoben oder gestoppt. So kannst du in Ruhe prüfen, ob alles zuverlässig erkannt wird.</div>
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> Was wirklich passiert – und was nur gemeldet wird</b>
+    <ul>
+      <li><b>Datenbank-Spiegel:</b> Ist er eingerichtet, schreibt der aktive Server jede Speicherung auch auf den passiven. Das läuft immer echt.</li>
+      <li><b>Rollen tauschen</b> und <b>Übernahme erzwingen</b> wirken immer echt.</li>
+      <li><b>Automatische Umschaltung</b> bei einem Ausfall: Standard ist <b>Beobachtung</b>. Der Dienst meldet dann nur „würde jetzt: …“, Rollen bleiben, wie sie sind. Auf <b>echt</b> lässt sie sich erst nach der Pflicht-Testumschaltung stellen.</li>
+      <li>Der <b>Cloudflare-Tunnel</b> läuft nur auf dem aktiven Server und wechselt mit der Rolle – über die öffentliche Adresse erreichst du immer den aktiven Server. Die Adresse im LAN schaltet noch nicht mit um: Dort erreichst du das PDH nach einer Übernahme unter der Adresse des neuen aktiven Servers.</li>
+    </ul></div>
   {{template "hb-fig-spiegelbetrieb"}}
   <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-network"></i> So stellst du feste IP-Adressen ein</b>
+    <p>Die Server und der Zeuge kennen sich über ihre Adressen. Vergibt der Router per DHCP eine neue Adresse, finden sie sich nicht mehr. Deshalb jede Adresse fest einstellen – am besten, bevor der Verbund eingerichtet wird.</p>
+    <ol class="hb-steps">
+      <li>Auf jedem Server: <code>sudo bash /opt/pdh-server/scripts/pdh-static-ip.sh</code>. Das Skript zeigt die jetzige Adresse, das Gateway und die DNS-Server und fragt nach.</li>
+      <li>Nach dem Bestätigen testet es die Einstellung: Ist die Verbindung noch da, <b>ENTER</b> drücken. Sonst geht nach 120 Sekunden alles automatisch zurück – auch über SSH ungefährlich.</li>
+      <li>Im Router die Adresse aus dem DHCP-Bereich nehmen oder für den Server reservieren. Für den Zeugen-PC eine DHCP-Reservierung im Router anlegen.</li>
+      <li>Netzlaufwerke (Freigaben) müssen von <b>beiden</b> Servern erreichbar sein – die Freigabe also für beide Adressen erlauben. Die Netzlaufwerk-Sicherung schaltet der neue aktive Server nach einer Übernahme nach etwa einer Minute selbst ein (eigener Ordner unter <code>PDH-Ausfallschutz/</code>, beginnend mit einer Grundsicherung).</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-server-2"></i> So fügst du den zweiten Server hinzu</b>
     <ol class="hb-steps">
       <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen. Unter „Betriebsart“ die Adressen dieses Servers prüfen (LAN und WireGuard, du kannst sie ändern) und <b>Ausfallschutz einrichten</b> wählen. Beim ersten Einrichten startet das PDH dabei ggf. einmal kurz neu.</li>
@@ -1751,7 +1764,39 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>pdh-ha-join.sh</b> im Reiter herunterladen und auf den neuen Ubuntu-Server kopieren.</li>
       <li>Dort ausführen: <code>sudo bash pdh-ha-join.sh &lt;Code&gt;</code>. Das Skript holt den Quelltext von GitHub – der erste Server muss also eine dort veröffentlichte Version haben. Unter Ubuntu 22.04 ist das mitgelieferte Go zu alt (nötig: Go 1.21 oder neuer): vorher <code>sudo snap install go --classic</code> ausführen.</li>
       <li>Nach kurzer Zeit zeigt die Tabelle beide Server. Die Betriebsart steht auf <b>Duo</b>.</li>
-      <li>Optional: <b>Automatik an</b> wählen. Dann trifft der Dienst Entscheidungen – in dieser Version zeigt er sie nur als Ereignis „würde jetzt: …“ an, es passiert nichts. So kannst du beobachten, was er tun würde.</li>
+      <li>Optional: <b>Automatik an</b> wählen. Dann trifft der Dienst Entscheidungen. Bei „Beobachtung“ zeigt er sie nur als Ereignis „würde jetzt: …“ an.</li>
+    </ol></div>
+  <div class="hb-howto"><b><i class="ti ti-database"></i> So richtest du den Datenbank-Spiegel ein</b>
+    <ol class="hb-steps">
+      <li>Den zweiten Server wie oben beitreten lassen – oder bei einem schon beigetretenen Server weitermachen.</li>
+      <li>Auf dem zweiten Server ausführen: <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt; --voll</code> (bei einem neuen Beitritt: <code>sudo bash pdh-ha-join.sh --voll &lt;Code&gt;</code>).</li>
+      <li>Das Skript installiert PostgreSQL in derselben Version wie auf dem aktiven Server und das PDH-Programm. Dann kopiert es die Datenbank und die Einstellungen vom aktiven Server.</li>
+      <li><b>Achtung:</b> Die Datenbank auf dem zweiten Server wird ersetzt. Liegen dort schon Datenbanken, zeigt das Skript sie an, sichert sie nach <code>/var/lib/pdh-ha/vorher</code> und fragt nach dem Hostnamen. Nur wer ihn eintippt, macht weiter.</li>
+      <li>Im Reiter zeigt die Spalte <b>Datenbank</b> nun „schreibend“ und „Standby“, darunter „synchron“.</li>
+      <li><b>Pflicht-Testumschaltung:</b> einmal <b>Rollen tauschen</b> und zurück. Prüfe dabei unter der Adresse des jeweils aktiven Servers, ob deine Daten da sind.</li>
+    </ol>
+    <p>Auf dem passiven Server läuft das PDH nicht. Das übernimmt <code>pdh-ha</code>: Es startet das PDH nur auf dem aktiven Server.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So tauschst du die Rollen</b>
+    <ol class="hb-steps">
+      <li>Am <b>aktiven</b> Server <b>Rollen tauschen</b> wählen.</li>
+      <li>Der aktive Server stellt die Datenbank auf „nur lesen“ und wartet, bis der passive alles hat (höchstens 60 Sekunden). Erst dann gibt er ab. Klappt das nicht, bricht der Tausch ab und nichts ändert sich.</li>
+      <li>Das PDH ist für Sekunden nicht erreichbar und läuft danach auf dem anderen Server.</li>
+    </ol>
+    <p><b>Hinweis:</b> Hochgeladene Dateien werden noch nicht gespiegelt. Nach einem Tausch fehlen auf dem anderen Server neue Anhänge.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> Synchron und asynchron</b>
+    <ul>
+      <li><b>Synchron</b> (Normalfall): Jede Speicherung liegt erst dann als gespeichert vor, wenn auch der passive Server sie hat. Es geht nichts verloren.</li>
+      <li>Fällt der passive Server aus, <b>hängen Speicherungen</b> bis zu „asynchron nach“ (Standard 10 Sekunden). Dann schaltet der aktive Server auf <b>asynchron</b> und arbeitet weiter. Im Trio tut er das erst, wenn der Zeuge bestätigt hat, dass der passive Server jetzt <b>nicht aktuell</b> ist. Der Zeuge gibt ihm danach keine Stimme mehr.</li>
+      <li>Kommt der passive Server zurück und hat aufgeholt, schaltet der aktive wieder auf synchron.</li>
+      <li><b>Im Duo</b> (ohne Zeuge) bleibt ein Restrisiko: Fällt nur die Leitung zwischen den Servern aus und sehen beide noch das Gateway, können Speicherungen verloren gehen. Darum ist ein Zeuge empfohlen.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-git-fork"></i> Abgezweigte Daten prüfen</b>
+    <p>Wurde eine Übernahme erzwungen, kann der alte Server Speicherungen haben, die der neue nicht kennt. Kommt er zurück, gliedert <code>pdh-ha</code> ihn als passiven Server ein – vorher sichert es diese Daten vollständig.</p>
+    <ol class="hb-steps">
+      <li>Im Reiter erscheint <b>Abgezweigte Daten</b> mit Zeitpunkt, Server und betroffenen Tabellen (z. B. „tickets: 3 neu“). Dazu kommt ein Alarm.</li>
+      <li>Der Abzug liegt auf diesem Server unter <code>/var/lib/pdh-ha/abgezweigt/&lt;Eintrag&gt;/dump.sql.gz</code>.</li>
+      <li>Zum Prüfen in eine eigene Datenbank einspielen, z. B. <code>sudo -u postgres createdb pruefung</code> und <code>zcat dump.sql.gz | sudo -u postgres psql pruefung</code>. Fehlende Einträge von Hand im PDH nachtragen.</li>
+      <li>Danach im Reiter <b>GEPRÜFT</b> eintippen und <b>Geprüft – löschen</b> wählen. Automatisch wird nichts gelöscht.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-eye-check"></i> So fügst du einen Zeugen hinzu (Programm oder Container)</b>
     <ol class="hb-steps">
@@ -1785,17 +1830,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Wege:</b> Jeder Teilnehmer ist über LAN und WireGuard verbunden. Grün heißt: Nachrichten kommen an. Ist nur ein Weg rot, gilt der Partner noch als erreichbar.</li>
       <li><b>Gateway:</b> Zeigt, ob der Server sein Netz (Router) erreicht. „nein“ heißt: der Fehler liegt eher bei diesem Server als beim Partner.</li>
       <li><b>Zuletzt gesehen:</b> Wann zuletzt eine Nachricht kam. „Uhrzeit prüfen“ warnt, wenn die Uhren zu stark abweichen.</li>
-      <li><b>Ereignisse:</b> „Rolle“ und „Info“ erklären, was passiert ist. <b>„würde jetzt: …“</b> ist eine Aktion, die der Dienst im Echtbetrieb ausführen würde – hier nur Beobachtung.</li>
+      <li><b>Datenbank:</b> <i>schreibend</i> ist die Datenbank des aktiven Servers, darunter „synchron“ oder „asynchron“ und der Rückstand des Partners. <i>Standby</i> ist der Spiegel, „nicht aktuell“ heißt: ihm fehlen Speicherungen, er übernimmt nicht automatisch.</li>
+      <li><b>Ereignisse:</b> „Rolle“ und „Info“ erklären, was passiert ist. <b>„würde jetzt: …“</b> ist eine automatische Entscheidung, die bei „Beobachtung“ nur gemeldet wird.</li>
       <li><b>Übernahme gesperrt: …</b> Die Automatik übernimmt solange nicht. Beispiel „Wartungsstand beim Partner noch nicht angekommen“: Der Partner hat das Ende der Wartung noch nicht gesehen, die Automatik wartet darauf. Ist der Partner wirklich weg, hilft <b>Übernahme erzwingen</b> (dazu <b>ÜBERNEHMEN</b> eintippen). Nur verwenden, wenn der aktive Server sicher aus ist – laufen beide als aktiv, können Daten verloren gehen.</li>
-      <li><b>Knöpfe:</b> <i>Rollen tauschen</i> gibt es nur am aktiven Server, <i>Übernahme erzwingen</i> nur an einem nicht aktiven. Am Zeugen und an einem entfernten Server gibt es keine Befehle.</li>
+      <li><b>Knöpfe:</b> <i>Rollen tauschen</i> gibt es nur am aktiven Server, <i>Übernahme erzwingen</i> nur an einem nicht aktiven – und nur, solange der aktive Server nicht erreichbar ist. Ist er erreichbar, lehnt der Dienst ab: Dann am aktiven Server <i>Rollen tauschen</i> verwenden. Am Zeugen und an einem entfernten Server gibt es keine Befehle.</li>
       <li><b>Alarm „Aktiver Server abgelöst (neue Amtszeit …)“:</b> Der andere Server führt jetzt eine höhere Amtszeit – dieser gibt die Rolle ab und kommt als passiver Server zurück.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> Zeiten, Umschaltungen und Alarme</b>
     <ul>
-      <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) lassen sich nur am <b>ersten Server</b> ändern. Der <b>Takt</b> ist der Abstand, in dem sich die Server „Ich bin da“ melden (Standard 1 Sekunde). Die <b>Selbst-Abschaltung</b> ist die Zeit, nach der sich ein aktiver Server selbst stoppt, wenn er niemanden mehr erreicht – damit nie zwei Server gleichzeitig aktiv sind. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
+      <li>Die <b>Zeiten</b> (Takt, Selbst-Abschaltung, Übernahme mit und ohne Zeuge, Wartezeit, Umschaltungen je Tag) und die <b>Automatische Umschaltung</b> (Beobachtung oder echt) ändert man am <b>aktiven Server</b> (oder am ersten Server) im Bereich <b>Zeiten</b> ganz unten, dann <b>Speichern</b>. Der <b>Takt</b> ist der Abstand, in dem sich die Server „Ich bin da“ melden (Standard 1 Sekunde). Die <b>Selbst-Abschaltung</b> ist die Zeit, nach der sich ein aktiver Server selbst stoppt, wenn er niemanden mehr erreicht – damit nie zwei Server gleichzeitig aktiv sind. Die Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein.</li>
       <li><b>Umschaltungen je Tag:</b> Jeder Server übernimmt höchstens so oft automatisch pro Tag. Danach geht die Automatik aus und es kommt ein Alarm.</li>
-      <li><b>Alarme</b> gehen an die Administratoren und tragen den Zusatz „(Beobachtung)“. Je Art kommt höchstens einer alle 15 Minuten.</li>
-      <li><b>Netzlaufwerk-Sicherung:</b> Künftig soll sie nur auf dem aktiven Server laufen. In dieser Version läuft sie auf jedem Server weiter. Der Reiter zeigt nur, was passieren würde: „Beobachtung: würde pausieren – passiver Knoten“ oder „… – pdh-ha nicht erreichbar“.</li>
+      <li><b>Datenbank-Spiegel:</b> „Asynchron nach“ (Standard 10 s), „Verzögerungsgrenze“ (16 MB: so viel Rückstand gilt noch als aktuell) und „Höchstmenge zurückgehaltener Änderungen“ (20 GB: so viel hebt der aktive Server für einen fehlenden Partner auf – danach braucht dieser eine vollständige Neukopie).</li>
+      <li><b>Automatische Umschaltung:</b> „Beobachtung“ (Standard) oder „echt“. „echt“ ist erst nach der Pflicht-Testumschaltung wählbar.</li>
+      <li><b>Alarme</b> gehen an die Administratoren. Je Art kommt höchstens einer alle 15 Minuten.</li>
+      <li><b>Netzlaufwerk-Sicherung:</b> Sie läuft nur auf dem aktiven Server mit schreibbarer Datenbank. Der passive Server zeigt „Sicherung pausiert: passiver Knoten“. Nach einer Übernahme macht der neue aktive Server sofort eine neue Grundsicherung. Ist <code>pdh-ha</code> nicht erreichbar, pausiert die Sicherung, und nach 15 Minuten kommt ein Fehler.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
     Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>

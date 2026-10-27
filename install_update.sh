@@ -104,8 +104,18 @@ else
     # Zuerst die Anwendung neu starten: ein nicht ersetzbares Agent-Binary
     # (z.B. aeltere systemd-Unit ohne /usr/local/bin in ReadWritePaths oder
     # schreibgeschuetztes Dateisystem) darf das Update nicht halb fertig
-    # abbrechen.
-    systemctl restart pdh
+    # abbrechen. Im Datenbank-Spiegel läuft pdh nur auf dem aktiven Server
+    # (pdh-ha should-run-pdh: Exit 1 = nicht starten; ältere pdh-ha ohne den
+    # Befehl = wie bisher starten).
+    should_rc=0
+    if [[ -x /usr/local/bin/pdh-ha ]]; then
+        /usr/local/bin/pdh-ha should-run-pdh >/dev/null 2>&1 || should_rc=$?
+    fi
+    if [[ $should_rc -ne 1 ]]; then
+        systemctl restart pdh
+    else
+        echo "pdh bleibt aus (passiver Server im Datenbank-Spiegel)."
+    fi
     # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
     # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
     # ein Fehler bricht das Update nicht ab.

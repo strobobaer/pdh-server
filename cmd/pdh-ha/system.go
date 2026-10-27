@@ -128,7 +128,10 @@ func portOf(addrs []string) string {
 
 // ufwRules: Port 7480 nur für die Adressen der anderen Cluster-Mitglieder;
 // solange ein Beitrittscode gilt, für alle.
-func ufwRules(cl clusterConfig, selfID string, joinOpen bool) [][]string {
+// ufwRules: Port des Dienstes für die eingetragenen Adressen, beim offenen
+// Beitrittscode für alle; mit Datenbank-Spiegel (pg) zusätzlich PostgreSQL
+// nur für die Adressen des anderen Servers.
+func ufwRules(cl clusterConfig, selfID string, joinOpen, pg bool) [][]string {
 	port := haPort
 	for _, n := range cl.Nodes {
 		if n.ID == selfID {
@@ -148,6 +151,9 @@ func ufwRules(cl clusterConfig, selfID string, joinOpen bool) [][]string {
 			}
 			seen[h] = true
 			rules = append(rules, []string{"allow", "from", h, "to", "any", "port", port, "proto", "tcp", "comment", "pdh-ha"})
+			if pg && n.Kind == "node" {
+				rules = append(rules, []string{"allow", "from", h, "to", "any", "port", strconv.Itoa(pgPort), "proto", "tcp", "comment", "pdh-ha-pg"})
+			}
 		}
 	}
 	if joinOpen {
@@ -156,7 +162,7 @@ func ufwRules(cl clusterConfig, selfID string, joinOpen bool) [][]string {
 	return rules
 }
 
-var ufwNumRe = regexp.MustCompile(`^\[\s*(\d+)\].*#\s*(pdh-ha|pdh-ha-join)\s*$`)
+var ufwNumRe = regexp.MustCompile(`^\[\s*(\d+)\].*#\s*(pdh-ha|pdh-ha-join|pdh-ha-pg)\s*$`)
 
 // ufwNumbered liefert die Nummern der pdh-ha-Regeln aus „ufw status numbered“,
 // absteigend (so bleiben die übrigen Nummern beim Löschen gültig).

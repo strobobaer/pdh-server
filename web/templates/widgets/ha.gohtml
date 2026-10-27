@@ -33,16 +33,19 @@
   <p class="vp-hint">Die Adressen nutzen die Server untereinander (Port 7480). Mehrere mit Komma trennen.</p>
   {{end}}
   {{else if not .Err}}
-  {{if .Status.Observe}}<div class="vp-msg err"><i class="ti ti-eye"></i> <b>Beobachtungsmodus – es wird nichts umgeschaltet.</b> Der Dienst meldet nur, was er tun würde.</div>{{end}}
+  {{if .Status.Observe}}<div class="vp-msg err"><i class="ti ti-eye"></i> <b>Automatische Umschaltung: Beobachtung.</b> Fällt ein Server aus, meldet der Dienst nur, was er tun würde. „Rollen tauschen“ und „Übernahme erzwingen“ wirken echt{{if .HasMirror}}, der Datenbank-Spiegel läuft{{end}}.</div>{{else}}<div class="vp-msg err"><i class="ti ti-bolt"></i> <b>Automatische Umschaltung: echt.</b> Zugangsweg wird erst mit Teil 5 umgeschaltet – nach einer Übernahme ist das PDH nur unter der Adresse des neuen aktiven Knotens erreichbar.</div>{{end}}
+  {{if and .HasMirror (not .Status.SwapTested)}}<div class="vp-msg"><i class="ti ti-list-check"></i> <b>Pflicht-Testumschaltung offen:</b> einmal „Rollen tauschen“ und zurück. Erst danach lässt sich die automatische Umschaltung auf „echt“ stellen.</div>{{else if .HasMirror}}<p class="vp-hint"><i class="ti ti-circle-check"></i> Pflicht-Testumschaltung erledigt.</p>{{end}}
   {{range .Status.Warnings}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
   {{if .VersionDiff}}<p class="vp-hint">Nach einem PDH-Update auf dem zweiten Server und dem Zeugen-Rechner ausführen:{{if .UpdateCmd}}<span class="vp-cmd"><code class="vp-key">{{.UpdateCmd}}</code></span>{{else}} <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code> – den Commit zeigt <code>pdh-ha version</code> auf dem ersten Server.{{end}} Zeuge als Container: siehe Handbuch.</p>{{end}}
   {{if .Status.Blocked}}<div class="vp-msg err"><i class="ti ti-lock"></i> <b>Übernahme gesperrt: {{.Status.Blocked}}</b><br>Die Automatik übernimmt solange nicht. Fällt der aktive Server sicher aus, hilft „Übernahme erzwingen“.</div>{{end}}
 
   <table class="table" style="margin-top:8px">
-    <tr><th>Kennung</th><th>Art</th><th>Rolle</th><th>Amtszeit</th><th>Version</th><th>Gateway</th><th>Zuletzt gesehen</th><th>Wege</th></tr>
+    <tr><th>Kennung</th><th>Art</th><th>Rolle</th><th>Amtszeit</th><th>Version</th>{{if .HasMirror}}<th>Datenbank</th>{{end}}<th>Gateway</th><th>Zuletzt gesehen</th><th>Wege</th></tr>
     {{range .Nodes}}
     <tr><td><b>{{.ID}}</b>{{if .Self}} <span class="rec-sub">(hier)</span>{{end}}</td><td>{{.KindText}}</td><td><span class="vp-conn{{if eq .Role "aktiv"}} on{{else if eq .Role "abgeschaltet"}} revoked{{end}}">{{.Role}}</span></td>
-      <td>{{if .Term}}{{.Term}}{{else}}–{{end}}</td><td>{{.Version}}{{if .Commit}} <span class="rec-sub">({{.ShortCommit}})</span>{{end}}</td><td>{{if eq .Kind "witness"}}–{{else if .Gateway}}erreichbar{{else}}<b>nein</b>{{end}}</td>
+      <td>{{if .Term}}{{.Term}}{{else}}–{{end}}</td><td>{{.Version}}{{if .Commit}} <span class="rec-sub">({{.ShortCommit}})</span>{{end}}</td>
+      {{if $v.HasMirror}}<td>{{if eq .Kind "witness"}}–{{else}}<span class="vp-conn{{if eq .PG "primary"}} on{{else if eq .PG "error"}} revoked{{end}}">{{.PGText}}</span>{{if eq .PG "primary"}}<br><span class="vp-meta">{{if .Sync}}synchron{{else}}asynchron{{end}} · Rückstand {{.LagText}}</span>{{if .Stale}}<br><span class="vp-conn lost">Partner nicht aktuell</span>{{end}}{{else if eq .PG "standby"}}<br><span class="vp-meta">{{if .DataCurrent}}aktuell{{else}}<b>nicht aktuell</b>{{end}}</span>{{end}}{{end}}</td>{{end}}
+      <td>{{if eq .Kind "witness"}}–{{else if .Gateway}}erreichbar{{else}}<b>nein</b>{{end}}</td>
       <td>{{.SeenText}}{{if .SkewWarn}}<br><span class="vp-conn lost">Uhrzeit prüfen ({{printf "%.0f" .ClockSkew}} s)</span>{{end}}</td>
       <td>{{range .Paths}}<div><span class="vp-conn{{if .Alive}} on{{else}} revoked{{end}}">{{.Addr}}</span> <span class="vp-meta">{{.Age}}{{if .Err}} · {{.Err}}{{end}}</span></div>{{else}}{{if not .Self}}<span class="vp-meta">–</span>{{end}}{{end}}</td></tr>
     {{end}}
@@ -52,7 +55,7 @@
     {{if .CanJoinNode}}<form method="post" action="/admin/server-config/ha/join-code"><input type="hidden" name="role" value="node"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-key"></i> Beitrittscode: zweiter Server</button></form>{{end}}
     {{if .CanJoinWitness}}<form method="post" action="/admin/server-config/ha/join-code"><input type="hidden" name="role" value="witness"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-key"></i> Beitrittscode: Zeuge</button></form>{{end}}
     {{if .CanCommand}}<form method="post" action="/admin/server-config/ha/maintenance">{{if .Status.Maint}}<input type="hidden" name="on" value="0"><button class="btn btn-small" type="submit"><i class="ti ti-player-play"></i> Automatik an</button>{{else}}<input type="hidden" name="on" value="1"><button class="btn btn-small" type="submit"><i class="ti ti-player-pause"></i> Automatik aus (Wartung)</button>{{end}}</form>{{end}}
-    {{if .CanSwap}}<form method="post" action="/admin/server-config/ha/command"><input type="hidden" name="cmd" value="swap"><button class="btn btn-small" type="submit"><i class="ti ti-arrows-exchange"></i> Rollen tauschen</button></form>{{end}}
+    {{if .CanSwap}}<form method="post" action="/admin/server-config/ha/command"{{if .HasMirror}} onsubmit="return confirm('Rollen tauschen? Dateien werden erst mit Teil 6 gespiegelt – auf dem anderen Knoten fehlen neue Anhänge.')"{{end}}><input type="hidden" name="cmd" value="swap"><button class="btn btn-small" type="submit"><i class="ti ti-arrows-exchange"></i> Rollen tauschen</button></form>{{end}}
   </div>
 
   {{if .HasPeers}}
@@ -77,7 +80,7 @@
   {{end}}
 
   <div class="card-title" style="margin-top:14px"><span><i class="ti ti-clock"></i> Zeiten</span></div>
-  {{if .Status.CAHolder}}{{$f := .Form}}
+  {{if .CanEditSettings}}{{$f := .Form}}
   <form method="post" action="/admin/server-config/ha/settings" class="vp-form">
     <div><label class="form-label">Takt (s)</label><input class="form-input" type="number" name="tick_s" min="1" max="5" value="{{index $f "tick_s"}}"></div>
     <div><label class="form-label">Selbst-Abschaltung nach (s)</label><input class="form-input" type="number" name="fence_s" min="3" max="300" value="{{index $f "fence_s"}}"></div>
@@ -86,11 +89,35 @@
     <div><label class="form-label">Wartezeit nach Umschaltung (min)</label><input class="form-input" type="number" name="cooldown_min" min="0" max="1440" value="{{index $f "cooldown_min"}}"></div>
     <div><label class="form-label">Umschaltungen je Tag</label><input class="form-input" type="number" name="max_per_day" min="1" max="20" value="{{index $f "max_per_day"}}"></div>
     <div><label class="form-label">Gateway-Ziele (Komma)</label><input class="form-input" name="gateway_targets" value="{{.TargetsText}}" placeholder="z. B. 192.168.1.1"></div>
+    <div><label class="form-label">Asynchron nach (s)</label><input class="form-input" type="number" name="async_after_s" min="3" max="300" value="{{index $f "async_after_s"}}"></div>
+    <div><label class="form-label">Verzögerungsgrenze (MB)</label><input class="form-input" type="number" name="lag_limit_mb" min="1" max="1024" value="{{index $f "lag_limit_mb"}}"></div>
+    <div><label class="form-label">Höchstmenge zurückgehaltener Änderungen (GB)</label><input class="form-input" type="number" name="slot_keep_gb" min="1" max="1000" value="{{index $f "slot_keep_gb"}}"></div>
+    <div><label class="form-label">Automatische Umschaltung</label><select class="form-input" name="auto_mode">
+      <option value="observe"{{if not .AutoReal}} selected{{end}}>Beobachtung (nur melden)</option>
+      <option value="real"{{if .AutoReal}} selected{{end}}{{if not .Status.SwapTested}} disabled{{end}}>echt{{if not .Status.SwapTested}} – Erst einmal Rollen tauschen – hin und zurück{{end}}</option>
+    </select></div>
     <div><button class="btn" type="submit"><i class="ti ti-device-floppy"></i> Speichern</button></div>
   </form>
   <p class="vp-hint">Übernahmezeit mindestens Selbst-Abschaltung + 2 × Takt + 5 s.</p>
   {{else}}
-  <p class="vp-hint">Einstellungen bitte am ersten Server ändern (dort, wo der Ausfallschutz eingerichtet wurde).</p>
+  <p class="vp-hint">Einstellungen bitte am aktiven Server ändern.</p>
+  {{end}}
+
+  {{with .Diverged}}
+  <div class="card-title" style="margin-top:14px"><span><i class="ti ti-git-fork"></i> Abgezweigte Daten</span></div>
+  <p class="vp-hint">Speicherungen, die nur auf einem Server lagen, als dieser wieder eingegliedert wurde. Sie wurden vollständig gesichert und nicht übernommen. Prüfen und gewünschte Einträge von Hand übernehmen (siehe Handbuch), dann löschen.</p>
+  {{range .}}
+  <div class="vp-show">
+    <b>{{.TimeText}}</b> · Server <b>{{.Node}}</b> · Amtszeit {{.Term}} · {{.SizeText}}
+    <div class="vp-meta">{{range .Tables}}{{.Table}}: {{.Insert}} neu, {{.Update}} geändert, {{.Delete}} gelöscht<br>{{else}}keine Tabellenänderungen erkannt{{end}}</div>
+    <div class="vp-meta">Abzug: <code>/var/lib/pdh-ha/abgezweigt/{{.ID}}/dump.sql.gz</code> auf {{.Node}}</div>
+    <form method="post" action="/admin/server-config/ha/diverged-delete" class="vp-form">
+      <input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="node" value="{{.Node}}">
+      <div><input class="form-input" name="confirm" autocomplete="off" placeholder="GEPRÜFT"></div>
+      <div><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> Geprüft – löschen</button></div>
+    </form>
+  </div>
+  {{end}}
   {{end}}
 
   <div class="card-title" style="margin-top:14px"><span><i class="ti ti-list"></i> Ereignisse</span></div>

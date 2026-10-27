@@ -35,5 +35,21 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Testlabor mit PostgreSQL (Ubuntu wie in der Produktion); pdh als Platzhalter
+FROM ubuntu:26.04 AS lab-pg
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+       postgresql postgresql-contrib iputils-ping curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
+COPY deploy/ha-lab/pdh-dummy.sh /usr/local/bin/pdh-dummy
+COPY deploy/ha-lab/lab-pg-entrypoint.sh /usr/local/bin/pdh-ha-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/pdh-dummy /usr/local/bin/pdh-ha-entrypoint \
+    && chmod 0755 /usr/local/bin/pdh-dummy /usr/local/bin/pdh-ha-entrypoint \
+    && install -d -m 0700 /etc/pdh/ha /var/lib/pdh-ha
+ENV PDH_HA_SERVICE_CMD=/usr/local/bin/pdh-dummy
+EXPOSE 7480/tcp 5432/tcp
+ENTRYPOINT ["/usr/local/bin/pdh-ha-entrypoint"]
+
 # Standardziel (zuletzt): Zeuge
 FROM base AS witness

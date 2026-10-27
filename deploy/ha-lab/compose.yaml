@@ -15,14 +15,30 @@ x-pdh-ha: &pdh-ha
   restart: "no"
   init: true
 
+# Server mit PostgreSQL (Datenbank-Spiegel, Teil 3); pdh ist ein Platzhalter
+x-pdh-ha-pg: &pdh-ha-pg
+  build:
+    context: ../..
+    dockerfile: deploy/ha-witness/Dockerfile
+    target: lab-pg
+    args:
+      COMMIT: ${PDH_HA_COMMIT:-lab}
+  image: pdh-ha-lab-pg:local
+  restart: "no"
+  init: true
+
 services:
   node1:
-    <<: *pdh-ha
+    <<: *pdh-ha-pg
     container_name: node1
     hostname: node1
     volumes:
       - node1-etc:/etc/pdh/ha
       - node1-state:/var/lib/pdh-ha
+      # PostgreSQL auf eigenem Volume: overlayfs kann Ordner aus dem Image nicht
+      # umbenennen (Neukopie legt den Datenordner beiseite)
+      - node1-pgdata:/var/lib/postgresql
+      - node1-pgconf:/etc/postgresql
     networks:
       lan:
         ipv4_address: 10.77.1.11
@@ -32,7 +48,7 @@ services:
         ipv4_address: 10.77.3.11
 
   node2:
-    <<: *pdh-ha
+    <<: *pdh-ha-pg
     container_name: node2
     hostname: node2
     environment:
@@ -40,6 +56,10 @@ services:
     volumes:
       - node2-etc:/etc/pdh/ha
       - node2-state:/var/lib/pdh-ha
+      # PostgreSQL auf eigenem Volume: overlayfs kann Ordner aus dem Image nicht
+      # umbenennen (Neukopie legt den Datenordner beiseite)
+      - node2-pgdata:/var/lib/postgresql
+      - node2-pgconf:/etc/postgresql
     networks:
       lan:
         ipv4_address: 10.77.1.12
@@ -95,5 +115,9 @@ volumes:
   node1-state:
   node2-etc:
   node2-state:
+  node1-pgdata:
+  node1-pgconf:
+  node2-pgdata:
+  node2-pgconf:
   witness-etc:
   witness-state:

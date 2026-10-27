@@ -70,6 +70,17 @@ type message struct {
 	Sees        []string  `json:"sees,omitempty"`      // Gegenstellen, die der Absender gerade sieht
 	VotedFor    string    `json:"voted_for,omitempty"` // nur Zeuge
 
+	// Datenbank-Spiegel (Teil 3)
+	LSN      uint64         `json:"lsn,omitempty"`
+	Lag      int64          `json:"lag,omitempty"`
+	Sync     bool           `json:"sync,omitempty"`
+	TL       uint32         `json:"tl,omitempty"`
+	Stale    bool           `json:"stale,omitempty"`     // aktiver Knoten: Partner nicht aktuell
+	NeedCopy bool           `json:"need_copy,omitempty"` // aktiver Knoten: Slot des Partners ungültig, Neukopie nötig
+	Node     string         `json:"node,omitempty"`      // stale/current: betroffener Knoten
+	Probe    bool           `json:"probe,omitempty"`     // vote_resp auf eine Probestimme
+	Diverged []divergedInfo `json:"diverged,omitempty"`
+
 	VoteTerm uint64         `json:"vote_term,omitempty"`
 	Granted  bool           `json:"granted,omitempty"`
 	Cluster  *clusterConfig `json:"cluster,omitempty"`
@@ -80,6 +91,8 @@ type message struct {
 var deliverTypes = map[string]bool{
 	"vote_req": true, "vote_resp": true, "handover": true, "cluster": true,
 	"renew_req": true, "renew_resp": true, "removed": true,
+	"stale": true, "stale_ack": true, "current": true, "current_ack": true, "vote_probe": true,
+	"diverged_delete": true,
 }
 
 // pathStat beschreibt einen Weg; LastRecv monoton, 0 = nie.

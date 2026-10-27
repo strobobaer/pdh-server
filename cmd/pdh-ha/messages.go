@@ -29,7 +29,37 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 		}
 	case "vote_resp":
 		if !witness && kind == "witness" && m.Granted && m.VoteTerm != 0 && m.VoteTerm == d.carry.VotePending {
-			d.voteGranted = m.VoteTerm
+			if m.Probe {
+				d.probeGranted = m.VoteTerm // Beobachtung: nur „würde zustimmen“
+			} else {
+				d.voteGranted = m.VoteTerm
+			}
+		}
+	case "diverged_delete":
+		// geprüfte abgezweigte Daten auf diesem Server löschen (Auftrag vom Partner)
+		if !witness && kind == "node" {
+			if err := deleteDiverged(divergedDir(), m.Node); err == nil {
+				pl.event("info", "Abgezweigte Daten gelöscht: "+m.Node)
+			}
+		}
+	case "vote_probe":
+		if witness && kind == "node" {
+			d.probeLocked(&pl, in.From, m)
+		}
+	case "stale", "current":
+		if witness && kind == "node" && m.Node != "" {
+			d.witnessStaleLocked(&pl, in.From, m, m.T == "stale")
+		}
+	case "stale_ack":
+		if !witness && kind == "witness" && m.VoteTerm == d.p.Term {
+			d.staleAckTerm = m.VoteTerm
+		}
+	case "current_ack":
+		if !witness && kind == "witness" {
+			if d.persistLocked(&pl, ha.ClearStale(d.p, m.Node, m.VoteTerm)) {
+				d.staleAckTerm = 0
+				pl.event("info", fmt.Sprintf("Wieder synchron: %s ist aktuell", m.Node))
+			}
 		}
 	case "handover":
 		if !witness && kind == "node" {
@@ -62,7 +92,7 @@ func (d *daemon) voteLocked(pl *plan, from string, m message) {
 	s := d.settingsLocked()
 	nodes := d.nodeObsLocked(d.net.peers(s.Tick))
 	granted, next := ha.Vote(d.p, ha.VoteRequest{From: from, Term: m.VoteTerm}, nodes, d.mono(), s)
-	if next != d.p {
+	if !next.Equal(d.p) {
 		if err := d.saveFn(next); err != nil {
 			d.saveAlarmLocked(pl, "Stimme nicht gespeichert, keine Antwort: "+err.Error())
 			return
@@ -148,6 +178,14 @@ func (d *daemon) removedLocked(pl *plan) {
 	d.net.setCluster(cl)
 	pl.ufw = true
 	pl.event("info", "Aus dem Cluster entfernt")
+	if pa := d.pgActorLocked(); pa != nil && d.node.CAHolder { // ein entfernter Knoten wird nie aktiv (R14)
+		// wieder Einzelbetrieb: pdh startet wie früher beim Hochfahren
+		d.enqueueFnLocked(context.Background(), func(ctx context.Context) {
+			if err := pa.svc.SetAutostart(ctx, true); err == nil {
+				_ = pa.svc.Start(ctx)
+			}
+		})
+	}
 }
 
 func (d *daemon) renameRemoved() error {
