@@ -10,8 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"pdh/internal/ha"
 )
@@ -270,4 +273,34 @@ func TestUfwRulesPG(t *testing.T) {
 	if m := ufwNumRe.FindStringSubmatch("[ 3] 5432/tcp ALLOW IN 127.0.0.2 # pdh-ha-pg"); m == nil {
 		t.Fatal("pdh-ha-pg-Regeln müssen beim Aufräumen erkannt werden")
 	}
+}
+
+// Der Wechsel zum Datenbank-Ausführer (replica.pass ohne Neustart) muss die
+// Firewall für PostgreSQL öffnen – sonst erreicht der Standby den Port nie.
+func TestSelectActorOpensPGFirewall(t *testing.T) {
+	d := pullDaemon(t, ha.Active)
+	var mu sync.Mutex
+	var got [][]string
+	d.ufwFn = func(_ context.Context, rules [][]string) error {
+		mu.Lock()
+		got = rules
+		mu.Unlock()
+		return nil
+	}
+	d.runCtx = context.Background()
+	d.applyFirewallOnce()
+	d.st.writeEtc("replica.pass", []byte(testPass+"\n"), 0o600)
+	d.lock()
+	d.selectActorLocked(d.runCtx)
+	d.unlock()
+	waitFor(t, 2*time.Second, "Regel pdh-ha-pg", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, r := range got {
+			if slices.Contains(r, "pdh-ha-pg") {
+				return true
+			}
+		}
+		return false
+	})
 }

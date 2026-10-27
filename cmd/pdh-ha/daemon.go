@@ -376,6 +376,8 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		return d.pgEnvLocked(pg)
 	})
 	d.act = pa
+	// PostgreSQL-Port für den Partner öffnen (ufwRules mit pg)
+	go d.applyFirewall()
 	// abgebrochene Neukopie zuerst reparieren, vor jeder anderen Aktion
 	if err := pa.recoverDataDir(ctx); err != nil {
 		d.alarmOnce("pg-dir", "Datenordner nach abgebrochener Neukopie nicht wiederhergestellt: "+err.Error())
