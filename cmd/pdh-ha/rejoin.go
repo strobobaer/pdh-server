@@ -281,8 +281,13 @@ func (a *pgActor) saveDiverged(ctx context.Context, term, fork uint64) error {
 	port := freePort(55432)
 	iso := &pgCtl{r: a.pg.r, c: a.pg.c}
 	iso.c.Port = port
-	if _, err := a.pg.r.Run(ctx, []string{"pg_ctlcluster", a.pg.c.Version, a.pg.c.Name, "start", "--", "-o",
-		fmt.Sprintf("-p %d -c listen_addresses=localhost -c archive_mode=off -c default_transaction_read_only=on", port)}, nil, nil); err != nil {
+	// pg_ctl direkt: pg_ctlcluster prüft den Start über den eingestellten Port
+	// und meldet bei anderem Port einen Fehler, obwohl der Server läuft.
+	logFile := path.Join("/var/log/postgresql", fmt.Sprintf("postgresql-%s-%s-abgeschottet.log", a.pg.c.Version, a.pg.c.Name))
+	if _, err := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_ctl"),
+		"-D", a.pg.c.DataDir, "-w", "-t", "120", "-l", logFile, "-o",
+		fmt.Sprintf("-c config_file=%s -p %d -c listen_addresses=localhost -c archive_mode=off -c default_transaction_read_only=on",
+			path.Join(a.pg.c.ConfDir, "postgresql.conf"), port), "start"}, nil, nil); err != nil {
 		return fmt.Errorf("alte Datenbank nicht abgeschottet gestartet: %w", err)
 	}
 	defer a.pg.ctl(ctx, "stop")
@@ -323,6 +328,13 @@ func (a *pgActor) saveDiverged(ctx context.Context, term, fork uint64) error {
 	wd, _ := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_waldump"),
 		"-p", path.Join(a.pg.c.DataDir, "pg_wal"), "-s", lsnText(fork)}, nil, nil)
 	info := divergedInfo{ID: id, At: now.UTC(), Term: term, Tables: parseWaldump(wd, rel)}
+	if len(info.Tables) == 0 {
+		// Nur Verwaltungsdaten hinter dem Trennpunkt (z. B. Shutdown-Checkpoint
+		// nach sauberem Stopp): nichts zu prüfen, kein Fehlalarm.
+		os.RemoveAll(out)
+		a.ev.add(ha.Event{Kind: "info", Text: "Wiedereingliederung: keine abgezweigten Zeilenänderungen"})
+		return nil
+	}
 	if fi, err := os.Stat(filepath.FromSlash(dump)); err == nil {
 		info.Bytes = fi.Size()
 	}

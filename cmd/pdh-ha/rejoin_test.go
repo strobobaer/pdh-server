@@ -71,7 +71,7 @@ func TestRejoinNoDivergence(t *testing.T) {
 	l := r.list()
 	seq(t, l, "svc stop", "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --target-pgdata", "chown", "chown", "pg_ctlcluster 18 main start")
-	if has(l, "bash -c") || has(l, "pg_ctlcluster 18 main start --") {
+	if has(l, "bash -c") || has(l, "/bin/pg_ctl ") {
 		t.Fatalf("ohne Abzweigung kein Abzug: %v", l)
 	}
 	if !strings.Contains(confText(t, a), "primary_conninfo") {
@@ -91,13 +91,44 @@ func divergedRunner() *fakeRunner {
 		on("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump", "", "rmgr: Heap len, desc: INSERT off: 3, blkref #0: rel 1663/16384/16385 blk 0\n", nil)
 }
 
+// Nach einem sauberen Stopp liegt oft nur der Shutdown-Checkpoint hinter dem
+// Trennpunkt: keine Zeilenänderung, also kein Eintrag und kein Alarm.
+func TestRejoinDivergedWithoutRowChanges(t *testing.T) {
+	r := divergedRunner().
+		on("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump", "", "rmgr: XLOG len, desc: CHECKPOINT_SHUTDOWN redo 0/3000028\n", nil)
+	a := rejoinActor(t, r)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoin, Term: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := listDiverged(divergedDir()); err != nil || len(list) != 0 {
+		t.Fatalf("ohne Zeilenänderung keine abgezweigten Daten: %v %v", list, err)
+	}
+	for _, e := range a.ev.since(0, 1000) {
+		if strings.Contains(e.Text, "Abgezweigte Daten gesichert") {
+			t.Fatal("Alarm ohne Zeilenänderung")
+		}
+	}
+	if !has(r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --target-pgdata") {
+		t.Fatal("pg_rewind muss trotzdem laufen")
+	}
+}
+
 func TestRejoinDiverged(t *testing.T) {
 	r := divergedRunner()
 	a := rejoinActor(t, r)
 	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoin, Term: 5}); err != nil {
 		t.Fatal(err)
 	}
-	seq(t, r.list(), "pg_ctlcluster 18 main start -- -o", "psql: SELECT COALESCE(sum(pg_database_size", "df",
+	// pg_ctl direkt: pg_ctlcluster prüft den Start über den eingestellten Port
+	// und meldet bei anderem Port einen Fehler, obwohl der Server läuft
+	isoStart := "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_ctl -D "
+	for _, l := range r.list() {
+		if strings.HasPrefix(l, isoStart) && (!strings.Contains(l, "postgresql.conf -p 55432 -c listen_addresses=localhost") ||
+			!strings.Contains(l, "-w -t 120 -l /var/log/postgresql/postgresql-18-main-abgeschottet.log") || !strings.HasSuffix(l, " start")) {
+			t.Fatalf("abgeschotteter Start: %s", l)
+		}
+	}
+	seq(t, r.list(), isoStart, "psql: SELECT COALESCE(sum(pg_database_size", "df",
 		"psql: SELECT oid, datname", "bash -c set -o pipefail; runuser -u postgres -- pg_dumpall",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump", "pg_ctlcluster 18 main stop",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --target-pgdata")
