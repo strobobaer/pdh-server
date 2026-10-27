@@ -2424,8 +2424,16 @@ type TicketDetailData struct {
 type CommentView struct {
 	ID         string
 	UserName   string
+	Initial    string
 	Text       string
 	CreatedAgo string
+}
+
+func commentView(id, name, text string, at time.Time) CommentView {
+	if name == "" {
+		name = "Unbekannt"
+	}
+	return CommentView{ID: id, UserName: name, Initial: string([]rune(name)[:1]), Text: text, CreatedAgo: timeAgo(at)}
 }
 
 type StatusOption struct {
@@ -2483,6 +2491,12 @@ func (h *Handler) TicketDetail(w http.ResponseWriter, r *http.Request) {
 	data.Ticket.ResponsibleName = people.ResponsibleName
 	data.Ticket.RecordImageURL = h.recordImageURL(ctx, "ticket", id)
 
+	if cs, err := h.tickets.ListComments(ctx, id); err == nil {
+		for _, c := range cs {
+			data.Comments = append(data.Comments, commentView(c.ID, c.UserName, c.Text, c.CreatedAt))
+		}
+		data.CommentCount = len(data.Comments)
+	}
 	if running, err := h.time.GetRunning(ctx, u.ID); err == nil {
 		data.RunningTime = running
 	}

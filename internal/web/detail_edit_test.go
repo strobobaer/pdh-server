@@ -51,3 +51,25 @@ func TestDetailEditTabs(t *testing.T) {
 		}
 	}
 }
+
+// Kommentare erscheinen nach dem Neuladen (vorher wurde die Liste nie gefüllt).
+func TestTicketDetailShowsComments(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	c := commentView("c1", "Übel Ärger", "Testspiegel", time.Now())
+	if c.Initial != "Ü" {
+		t.Fatalf("Initiale %q", c.Initial)
+	}
+	out := renderPage(t, tmpl, "ticket_detail", TicketDetailData{
+		Ticket:       TicketView{ID: "t1", Title: "T", Status: "open"},
+		Comments:     []CommentView{c, commentView("c2", "", "ohne Namen", time.Now())},
+		CommentCount: 2,
+	})
+	for _, w := range []string{"Testspiegel", "Übel Ärger", "ohne Namen", "Unbekannt", "Kommentare <b>2</b>"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("%q fehlt", w)
+		}
+	}
+	if strings.Contains(out, "Noch keine Kommentare") {
+		t.Error("leer trotz Kommentaren")
+	}
+}

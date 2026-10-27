@@ -27,6 +27,9 @@ im Kapitel „Versionen & Updates“ an.
 - Im Beobachtungsmodus ändern automatische Entscheidungen keine Rollen und Amtszeiten mehr, sie werden nur gemeldet.
 - Auf dem passiven Server läuft das PDH nicht; Updates starten es dort nicht mehr.
 
+### Behoben
+- Kommentare zu einem Ticket werden nach dem Neuladen der Seite wieder angezeigt (vorher erschienen sie nur direkt nach dem Schreiben).
+
 ## [0.75.1] – 2026-10-25
 
 ### Behoben

@@ -73,6 +73,7 @@ type Comment struct {
 	UserID    string    `json:"user_id"`
 	Text      string    `json:"text"`
 	CreatedAt time.Time `json:"created_at"`
+	UserName  string    `json:"user_name,omitempty"` // nur ListComments
 }
 
 // CreateInput
@@ -266,6 +267,27 @@ func (r *Repository) AddComment(ctx context.Context, c *Comment) error {
 		Scan(&c.ID, &c.CreatedAt)
 }
 
+// ListComments: Kommentare eines Tickets, älteste zuerst, mit Namen des Verfassers.
+func (r *Repository) ListComments(ctx context.Context, ticketID string) ([]*Comment, error) {
+	rows, err := r.db.Query(ctx, `SELECT c.id, c.ticket_id, c.user_id, c.text, c.created_at,
+		COALESCE(TRIM(u.first_name || ' ' || u.last_name), '')
+		FROM ticket_comments c LEFT JOIN users u ON u.id = c.user_id
+		WHERE c.ticket_id = $1 ORDER BY c.created_at`, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Comment
+	for rows.Next() {
+		c := &Comment{}
+		if err := rows.Scan(&c.ID, &c.TicketID, &c.UserID, &c.Text, &c.CreatedAt, &c.UserName); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // Service
 type Service struct {
 	repo *Repository
@@ -408,6 +430,10 @@ func (s *Service) UpdateDueDate(ctx context.Context, id string, dueDate *time.Ti
 func (s *Service) AddComment(ctx context.Context, ticketID, userID, text string) (*Comment, error) {
 	c := &Comment{TicketID: ticketID, UserID: userID, Text: text}
 	return c, s.repo.AddComment(ctx, c)
+}
+
+func (s *Service) ListComments(ctx context.Context, ticketID string) ([]*Comment, error) {
+	return s.repo.ListComments(ctx, ticketID)
 }
 
 // Handler
