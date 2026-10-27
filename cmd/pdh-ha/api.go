@@ -467,9 +467,10 @@ func (d *daemon) updateSettings(s ha.Settings, targets []string) error {
 		d.unlock()
 		return err
 	}
-	if !d.node.CAHolder {
+	// am CA-Knoten oder am aktiven: mit Spiegel läuft das PDH nur am aktiven
+	if !d.node.CAHolder && d.p.Role != ha.Active {
 		d.unlock()
-		return errors.New("Einstellungen bitte am ersten Server ändern")
+		return errors.New("Einstellungen bitte am aktiven Server ändern")
 	}
 	if s.Real() && !d.cl.SwapTested && d.fixed == nil {
 		d.unlock()

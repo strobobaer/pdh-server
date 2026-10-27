@@ -129,8 +129,22 @@ func TestRemovedOnlyFromCAHolder(t *testing.T) {
 	if _, err := os.Stat(d.st.etcPath("cluster.json")); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.updateSettings(ha.DefaultSettings(), nil); err == nil || err.Error() != "Einstellungen bitte am ersten Server ändern" {
-		t.Fatalf("Zeiten auf Nicht-CA-Knoten: %v", err)
+	if err := d.updateSettings(ha.DefaultSettings(), nil); err == nil || err.Error() != "Einstellungen bitte am aktiven Server ändern" {
+		t.Fatalf("Zeiten auf passivem Nicht-CA-Knoten: %v", err)
+	}
+}
+
+// Mit Spiegel läuft das PDH nur am aktiven Server: dort müssen die
+// Einstellungen änderbar sein, auch wenn es nicht der erste Server ist.
+func TestSettingsOnActiveNonCA(t *testing.T) {
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 2}, newFakeNet())
+	s := ha.DefaultSettings()
+	s.TakeoverDuo = 90 * time.Second
+	if err := d.updateSettings(s, nil); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := d.st.loadCluster(); c.Settings.TakeoverDuo != 90*time.Second {
+		t.Fatalf("nicht gespeichert: %+v", c.Settings)
 	}
 }
 

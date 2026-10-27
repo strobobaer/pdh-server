@@ -80,7 +80,7 @@
   {{end}}
 
   <div class="card-title" style="margin-top:14px"><span><i class="ti ti-clock"></i> Zeiten</span></div>
-  {{if .Status.CAHolder}}{{$f := .Form}}
+  {{if .CanEditSettings}}{{$f := .Form}}
   <form method="post" action="/admin/server-config/ha/settings" class="vp-form">
     <div><label class="form-label">Takt (s)</label><input class="form-input" type="number" name="tick_s" min="1" max="5" value="{{index $f "tick_s"}}"></div>
     <div><label class="form-label">Selbst-Abschaltung nach (s)</label><input class="form-input" type="number" name="fence_s" min="3" max="300" value="{{index $f "fence_s"}}"></div>
@@ -100,7 +100,7 @@
   </form>
   <p class="vp-hint">Übernahmezeit mindestens Selbst-Abschaltung + 2 × Takt + 5 s.</p>
   {{else}}
-  <p class="vp-hint">Einstellungen bitte am ersten Server ändern (dort, wo der Ausfallschutz eingerichtet wurde).</p>
+  <p class="vp-hint">Einstellungen bitte am aktiven Server ändern.</p>
   {{end}}
 
   {{with .Diverged}}

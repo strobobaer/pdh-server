@@ -138,12 +138,19 @@ func TestHAViewTrio(t *testing.T) {
 			t.Errorf("Übersicht ohne %q", want)
 		}
 	}
-	// Einstellungen nur am ersten Server
+	// Einstellungen am ersten oder am aktiven Server, nicht am passiven
 	v.Status.CAHolder = false
 	out = renderDR(t, drView{HA: v})
-	if strings.Contains(out, `action="/admin/server-config/ha/settings"`) || !strings.Contains(out, "Einstellungen bitte am ersten Server ändern") {
-		t.Error("Zeiten-Formular auf einem Nicht-CA-Knoten")
+	if !strings.Contains(out, `action="/admin/server-config/ha/settings"`) {
+		t.Error("Zeiten-Formular fehlt am aktiven Nicht-CA-Knoten")
 	}
+	self := v.Status.Self
+	v.Status.Self.Role = "passiv"
+	out = renderDR(t, drView{HA: v})
+	if strings.Contains(out, `action="/admin/server-config/ha/settings"`) || !strings.Contains(out, "Einstellungen bitte am aktiven Server ändern") {
+		t.Error("Zeiten-Formular auf einem passiven Nicht-CA-Knoten")
+	}
+	v.Status.Self = self
 	// Ladefehler des Dienstes deutlich zeigen
 	v = haView{Installed: true, Status: haStatus{Configured: false, Error: "Konfiguration nicht lesbar: node.json kaputt"}}
 	v.Err = haStatusErr(v.Status)

@@ -202,6 +202,12 @@ func (v haView) VersionDiff() bool {
 	return false
 }
 
+// CanEditSettings: Zeiten am ersten Server oder am aktiven (mit Spiegel läuft
+// das PDH nur dort).
+func (v haView) CanEditSettings() bool {
+	return v.Status.CAHolder || v.Status.Self.Role == "aktiv"
+}
+
 // FirstCommit: Commit des ersten Servers (CA-Knoten) – hier oder der andere Server.
 func (v haView) FirstCommit() string {
 	if v.Status.CAHolder {
