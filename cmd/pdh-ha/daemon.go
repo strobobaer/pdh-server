@@ -671,7 +671,11 @@ func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 			err = fmt.Errorf("Absturz: %v", r)
 		}
 	}()
-	return d.act.Do(ctx, a)
+	// d.act wechselt unter Sperre (selectActorLocked nach replica-init)
+	d.mu.Lock()
+	act := d.act
+	d.mu.Unlock()
+	return act.Do(ctx, a)
 }
 
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
