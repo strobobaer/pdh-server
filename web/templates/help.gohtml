@@ -1733,6 +1733,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„Letzte Grundsicherung ist älter als 26 Stunden“:</b> Fehlermeldung im Reiter prüfen, „Grundsicherung jetzt“ anstoßen.</li>
       <li><b>„nur bei systemd-Installationen“:</b> Der Ausfallschutz läuft auf Produktivservern (systemd); im Docker-Testsystem ist er nicht verfügbar.</li>
       <li><b>„braucht die Datenbank auf diesem Server“:</b> Die Datenbank liegt auf einem anderen Rechner – dort muss sie gesichert werden.</li>
+      <li><b>„Sicherungsordner … gehört einem anderen Server“:</b> Zwei Server mit gleichem Namen sichern auf dasselbe Laufwerk. Jeder Server braucht einen eigenen Namen (<code>sudo hostnamectl set-hostname …</code>), danach im Reiter „Speichern“ – er sichert dann in einen neuen Ordner und beginnt sofort mit einer Grundsicherung.</li>
+      <li><b>„rsync endete mit Fehler 23“:</b> Einzelne Dateien ließen sich nicht sichern; dahinter steht die erste Datei samt Grund. Verweise, die auf ihren eigenen Ordner zeigen (z. B. <code>uploads/uploads</code>), lässt die Sicherung selbst aus.</li>
     </ul></div>
   {{template "hb-shots" (dict "Ref" (index $s "ausfallschutz") "Can" $can)}}
 </section>

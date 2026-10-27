@@ -117,6 +117,7 @@ type drBaseInfo struct {
 	Created      time.Time  `json:"created"`
 	StartWAL     string     `json:"start_wal"`
 	PGVersionNum int        `json:"pg_version_num"`
+	SystemID     string     `json:"system_id,omitempty"` // Kennung der Datenbank (dr_owner.go)
 	PDHVersion   string     `json:"pdh_version"`
 	Commit       string     `json:"commit"`
 	RepoDir      string     `json:"repo_dir"`
@@ -149,7 +150,7 @@ func (a *updateAgent) drRunBase(ctx context.Context) error {
 	cfg, sources, n8n := a.dr.Config, a.dr.Sources, a.dr.N8N
 	a.dr.mu.Unlock()
 	target := a.hp(cfg.Target)
-	if err := a.drPrepareTarget(cfg.Target); err != nil {
+	if err := a.drPrepareTarget(ctx, cfg.Target); err != nil {
 		return err
 	}
 	baseDir := filepath.Join(target, "base")
@@ -178,6 +179,7 @@ func (a *updateAgent) drRunBase(ctx context.Context) error {
 	info := drBaseInfo{Name: name, Created: now, StartWAL: drScriptValue(string(out), "START_WAL"),
 		PDHVersion: pdh.Version(), Commit: a.drCommit(), RepoDir: a.repoDir, Sources: sources, N8N: n8n}
 	info.PGVersionNum, _ = strconv.Atoi(drScriptValue(string(out), "PG_VERSION_NUM"))
+	info.SystemID, _ = a.drSystemID(ctx)
 	if fi, err := os.Stat(filepath.Join(part, "base.tar.gz")); err == nil {
 		info.Bytes = fi.Size()
 	}

@@ -165,7 +165,7 @@ func TestDRTickObservedOnPassive(t *testing.T) {
 	haObserve(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	target := t.TempDir()
-	a := &updateAgent{mode: "docker"}
+	a := &updateAgent{mode: "docker", drSysID: drTestSysID}
 	a.dr.Config = drDefaults()
 	a.dr.Config.Target = target
 	haInstalled(t)
@@ -198,7 +198,7 @@ func TestDRTickPausedOnPassive(t *testing.T) {
 	haEnforce(t)
 	t.Setenv("PDH_DR_STATE_DIR", t.TempDir())
 	target := t.TempDir()
-	a := &updateAgent{mode: "docker"} // Pfade ohne /proc/1/root
+	a := &updateAgent{mode: "docker", drSysID: drTestSysID} // Pfade ohne /proc/1/root
 	a.dr.Config = drDefaults()
 	a.dr.Config.Target = target
 	haInstalled(t)
