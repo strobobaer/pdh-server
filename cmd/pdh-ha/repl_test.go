@@ -356,3 +356,18 @@ func TestPassiveDataCurrentKeptWhenActiveGone(t *testing.T) {
 		t.Fatal("zurück und als veraltet gemeldet: nicht aktuell")
 	}
 }
+
+// Die Übernahmesperre betrifft nur den passiven Server; der aktive ist mit
+// Spiegel nie „aktuell“ (kein Standby) und darf das nicht als Sperre melden.
+func TestStatusBlockedOnlyOnPassive(t *testing.T) {
+	for _, role := range []ha.Role{ha.Active, ha.Passive} {
+		d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, trioCluster(), ha.Persisted{Role: role, Term: 1}, newFakeNet())
+		d.mu.Lock()
+		d.booting = false
+		d.last = ha.Input{SelfID: "a", Persist: d.p, DataCurrent: false}
+		d.mu.Unlock()
+		if got := d.statusNow().Blocked; (got != "") != (role == ha.Passive) {
+			t.Fatalf("%s: Sperre %q", role, got)
+		}
+	}
+}

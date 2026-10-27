@@ -191,7 +191,8 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	if d.node.Kind == "witness" {
 		st.Self.Term = max(d.p.VotedTerm, d.p.Term)
-	} else if st.Mode != ha.Single && d.last.SelfID != "" {
+	} else if st.Mode != ha.Single && d.last.SelfID != "" && d.p.Role != ha.Active {
+		// nur der passive übernimmt; der aktive ist mit Spiegel nie „aktuell“
 		_, st.Blocked = ha.Allowed(d.last)
 	}
 	ago := func(t time.Duration) float64 {
