@@ -223,8 +223,16 @@ func (a *pgActor) unfence(ctx context.Context) error {
 
 // reconcile gleicht Dienst und Datenbank mit der Rolle ab – nur in die
 // sichere Richtung: nie hochstufen, nie pdh auf einem nicht aktiven Knoten.
+// Am aktiven Knoten mit schreibbarer Datenbank startet er pdh und Tunnel
+// (nach einem Neustart bei Beobachtung gibt es kein unfence, das sie startet);
+// systemctl start lässt laufende Einheiten unberührt.
 func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	if role == ha.Active {
+		if st := a.pg.status(ctx); st.State == "primary" && !st.ReadOnly {
+			if err := a.svc.Start(ctx); err != nil {
+				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh bzw. Tunnel auf dem aktiven Server nicht gestartet: " + err.Error()})
+			}
+		}
 		return
 	}
 	if a.svc.Active(ctx) {

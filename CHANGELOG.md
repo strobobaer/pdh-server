@@ -19,6 +19,8 @@ im Kapitel „Versionen & Updates“ an.
 - Fällt der zweite Server aus, arbeitet der aktive nach kurzer Zeit asynchron weiter – im Trio erst nach Bestätigung des Zeugen.
 - Einstellung „Automatische Umschaltung: Beobachtung oder echt“; „echt“ erst nach der Pflicht-Testumschaltung (hin und zurück).
 - Neue Einstellungen „Asynchron nach“, „Verzögerungsgrenze“ und „Höchstmenge zurückgehaltener Änderungen“.
+- Der Cloudflare-Tunnel läuft im Verbund nur auf dem aktiven Server und wechselt mit der Rolle – Anwender erreichen so immer den aktiven Server.
+- Hat der aktive Server zu viele Änderungen für den ausgefallenen zweiten zurückgehalten, wird dieser bei seiner Rückkehr automatisch neu kopiert (mit Alarm).
 
 ### Geändert
 - Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme folgt sofort eine neue Grundsicherung.

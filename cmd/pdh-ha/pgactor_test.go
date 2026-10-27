@@ -219,6 +219,25 @@ func TestReconcilePassiveStopsPDH(t *testing.T) {
 	}
 }
 
+// Nach einem Neustart des aktiven Servers (Beobachtung: Rolle bleibt, kein
+// unfence) startet der Abgleich pdh und Tunnel – sonst blieben sie aus.
+func TestReconcileActiveStartsServices(t *testing.T) {
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
+	a, svc := testActor(t, r)
+	svc.active = false
+	a.reconcile(context.Background(), ha.Active)
+	if !svc.active {
+		t.Fatal("aktiv mit schreibbarer Datenbank: pdh nicht gestartet")
+	}
+	ro := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", "f|0/100|1|on|pdh_ha_b|", nil)
+	a2, svc2 := testActor(t, ro)
+	svc2.active = false
+	a2.reconcile(context.Background(), ha.Active)
+	if svc2.active {
+		t.Fatal("Datenbank nur lesend (abgeschaltet): pdh darf nicht starten")
+	}
+}
+
 func TestReconcileWritableNotActiveFences(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a, _ := testActor(t, r)

@@ -35,8 +35,40 @@ func TestSystemdServiceArgs(t *testing.T) {
 		t.Fatal("is-active mit Fehler heißt nicht aktiv")
 	}
 	_ = s.SetAutostart(ctx, false)
-	want := []string{"systemctl start pdh", "systemctl stop pdh", "systemctl is-active --quiet pdh", "systemctl disable pdh"}
+	want := []string{"systemctl list-unit-files --no-legend cloudflared.service", "systemctl start pdh",
+		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl stop pdh",
+		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl is-active --quiet pdh",
+		"systemctl list-unit-files --no-legend cloudflared.service", "systemctl disable pdh"}
 	if got := r.list(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("%v", got)
+	}
+}
+
+// Ist cloudflared installiert, läuft der Tunnel wie pdh nur auf dem aktiven
+// Server – sonst schickte Cloudflare Anfragen auch an den passiven.
+func TestSystemdServiceWithCloudflared(t *testing.T) {
+	t.Setenv("PDH_HA_SERVICE_CMD", "")
+	r := (&fakeRunner{}).
+		on("systemctl list-unit-files", "", "cloudflared.service enabled enabled\n", nil).
+		on("systemctl is-active --quiet pdh", "", "", errors.New("inactive"))
+	s := newServiceCtl(r)
+	ctx := context.Background()
+	_ = s.Start(ctx)
+	_ = s.Stop(ctx)
+	if !s.Active(ctx) {
+		t.Fatal("cloudflared läuft: aktiv (auf dem passiven Server wird gestoppt)")
+	}
+	_ = s.SetAutostart(ctx, false)
+	var got []string
+	for _, l := range r.list() {
+		if l != "systemctl list-unit-files --no-legend cloudflared.service" {
+			got = append(got, l)
+		}
+	}
+	want := []string{"systemctl start pdh", "systemctl start cloudflared", "systemctl stop cloudflared", "systemctl stop pdh",
+		"systemctl is-active --quiet pdh", "systemctl is-active --quiet cloudflared",
+		"systemctl disable pdh", "systemctl disable cloudflared"}
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%v", got)
 	}
 }

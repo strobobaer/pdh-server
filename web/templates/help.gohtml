@@ -1745,7 +1745,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Datenbank-Spiegel:</b> Ist er eingerichtet, schreibt der aktive Server jede Speicherung auch auf den passiven. Das läuft immer echt.</li>
       <li><b>Rollen tauschen</b> und <b>Übernahme erzwingen</b> wirken immer echt.</li>
       <li><b>Automatische Umschaltung</b> bei einem Ausfall: Standard ist <b>Beobachtung</b>. Der Dienst meldet dann nur „würde jetzt: …“, Rollen bleiben, wie sie sind. Auf <b>echt</b> lässt sie sich erst nach der Pflicht-Testumschaltung stellen.</li>
-      <li>Der <b>Zugangsweg</b> (Cloudflare, Adresse) schaltet noch nicht mit um. Nach einer Übernahme erreichst du das PDH unter der Adresse des neuen aktiven Servers.</li>
+      <li>Der <b>Cloudflare-Tunnel</b> läuft nur auf dem aktiven Server und wechselt mit der Rolle – über die öffentliche Adresse erreichst du immer den aktiven Server. Die Adresse im LAN schaltet noch nicht mit um: Dort erreichst du das PDH nach einer Übernahme unter der Adresse des neuen aktiven Servers.</li>
     </ul></div>
   {{template "hb-fig-spiegelbetrieb"}}
   <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
