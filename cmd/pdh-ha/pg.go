@@ -199,6 +199,10 @@ func renderPGConf(c pgConf) string {
 	w("wal_sender_timeout", pgQuote("10s"))
 	w("wal_receiver_timeout", pgQuote("10s"))
 	w("wal_receiver_status_interval", pgQuote("1s"))
+	// pg_rewind braucht auf dem abgelösten Server das WAL ab dem letzten
+	// gemeinsamen Prüfpunkt; ohne Vorrat ist es nach einem Neustart weg und
+	// es bleibt nur die vollständige Neukopie.
+	w("wal_keep_size", pgQuote("1GB"))
 	w("ssl", "on")
 	if c.CertFile != "" {
 		w("ssl_cert_file", pgQuote(c.CertFile))

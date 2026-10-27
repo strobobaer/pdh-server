@@ -118,6 +118,7 @@ func TestRenderPGConf(t *testing.T) {
 		"max_replication_slots = 10", "synchronous_commit = on", "recovery_target_timeline = 'latest'",
 		// harte Leitungstrennung nach 10 s erkennen (Standard 60 s), Standby meldet sich jede Sekunde
 		"wal_sender_timeout = '10s'", "wal_receiver_timeout = '10s'", "wal_receiver_status_interval = '1s'",
+		"wal_keep_size = '1GB'",
 		"ssl = on", "ssl_cert_file = '/c.crt'", "ssl_key_file = '/c.key'", "ssl_ca_file = '/ca.crt'",
 		"listen_addresses = 'localhost,10.0.0.1'", "synchronous_standby_names = 'pdh_ha_b'",
 		"default_transaction_read_only = on", "primary_conninfo = 'host=x password=''geheim'",

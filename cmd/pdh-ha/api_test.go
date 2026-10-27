@@ -51,7 +51,7 @@ func apiDaemon(t *testing.T) (*daemon, *fakeNet, string) {
 }
 
 func TestAPI(t *testing.T) {
-	d, _, sock := apiDaemon(t)
+	d, fn, sock := apiDaemon(t)
 	d.tick(context.Background()) // höhere Amtszeit gesehen → wiedereingliederung
 	d.tick(context.Background()) // → passiv
 
@@ -195,6 +195,9 @@ func TestAPI(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest || eb.OK || eb.Error == "" {
 		t.Fatalf("Fehlerformat: %d %+v", resp.StatusCode, eb)
 	}
+	// erzwingen nur, wenn der aktive Server nicht mehr erreichbar ist
+	fn.setView("b", peerView{})
+	d.tick(context.Background())
 	if err := apiDo(sock, http.MethodPost, "/v1/command", map[string]string{"cmd": "force_takeover"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -308,5 +311,23 @@ func TestAPICommandRoles(t *testing.T) {
 	w := fakeDaemon(t, nodeConfig{ID: "w", Kind: "witness"}, trioCluster(), ha.Persisted{Role: ha.Witness, Term: 1}, newFakeNet())
 	if err := w.setMaintenance(true); err == nil || err.Error() != "Auf dem Zeugen nicht möglich" {
 		t.Fatalf("Wartung am Zeugen: %v", err)
+	}
+}
+
+// „Übernahme erzwingen“ nur, wenn der aktive Server weg ist – ein gesunder
+// aktiver würde sonst abgelöst (Abnahme 27.10.: abgezweigte Daten ohne Ausfall).
+func TestForceRefusedWhileActiveSeen(t *testing.T) {
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, trioCluster(), ha.Persisted{Role: ha.Passive, Term: 3}, newFakeNet())
+	d.mu.Lock()
+	d.last = ha.Input{SelfID: "b", Partner: &ha.PeerObs{ID: "a", Kind: "node", Seen: true, Role: ha.Active, Term: 3}}
+	d.mu.Unlock()
+	if err := d.command("force_takeover"); err == nil || !strings.Contains(err.Error(), "Rollen tauschen") {
+		t.Fatalf("Erzwingen trotz erreichbarem aktivem Server: %v", err)
+	}
+	d.mu.Lock()
+	d.last.Partner.Seen = false
+	d.mu.Unlock()
+	if err := d.command("force_takeover"); err != nil {
+		t.Fatalf("aktiver Server weg: %v", err)
 	}
 }
