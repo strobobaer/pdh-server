@@ -142,9 +142,6 @@ func replicaInit(ctx context.Context, st store, pa *pgActor, o replicaOpts) erro
 	if err := extractConfig(full.Archive, o.Repo, o.Etc); err != nil {
 		return fmt.Errorf("Konfiguration nicht übernommen: %w", err)
 	}
-	if err := st.writeEtc("replica.pass", []byte(full.ReplicaPass+"\n"), 0o600); err != nil {
-		return err
-	}
 	e := pa.env()
 	e.PartnerID, e.PartnerAddrs, e.ReplicaPass = active.ID, nil, full.ReplicaPass
 	for _, a := range active.Addrs {
@@ -181,6 +178,11 @@ func replicaInit(ctx context.Context, st store, pa *pgActor, o replicaOpts) erro
 			return errors.New("Standby läuft, empfängt aber noch nichts vom aktiven Server – Firewall (Port 5432) und Protokoll prüfen")
 		}
 		time.Sleep(pa.poll)
+	}
+	// erst jetzt: replica.pass schaltet den laufenden Dienst auf den
+	// Datenbank-Ausführer, und der hielte eine laufende Neukopie für abgebrochen
+	if err := st.writeEtc("replica.pass", []byte(full.ReplicaPass+"\n"), 0o600); err != nil {
+		return err
 	}
 	return pa.svc.SetAutostart(ctx, false)
 }

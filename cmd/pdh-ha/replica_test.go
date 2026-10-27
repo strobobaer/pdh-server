@@ -131,6 +131,28 @@ func TestReplicaInitOrder(t *testing.T) {
 	}
 }
 
+// replica.pass schaltet den laufenden Dienst auf den Datenbank-Ausführer, und
+// der holt einen halb kopierten Datenordner als „abgebrochene Neukopie“ zurück.
+// Deshalb erst schreiben, wenn der Standby läuft.
+func TestReplicaInitWritesPassAfterCopy(t *testing.T) {
+	r := replicaRunner("")
+	e := newReplicaEnv(t, r, "18")
+	var during error
+	r.onFn("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup", "", func(fakeCall) (string, error) {
+		_, during = os.Stat(e.st.etcPath("replica.pass"))
+		return "", nil
+	})
+	if err := replicaInit(context.Background(), e.st, e.pa, e.o); err != nil {
+		t.Fatal(err)
+	}
+	if during == nil {
+		t.Fatal("replica.pass liegt schon während der Neukopie")
+	}
+	if _, err := os.Stat(e.st.etcPath("replica.pass")); err != nil {
+		t.Fatal("replica.pass fehlt nach dem Einrichten")
+	}
+}
+
 func TestReplicaInitDumpFailsKeepsAll(t *testing.T) {
 	r := replicaRunner("pdh (12 MB)").on("bash -c", "", "", errors.New("Platte voll"))
 	e := newReplicaEnv(t, r, "18")
