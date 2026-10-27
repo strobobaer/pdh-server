@@ -45,8 +45,10 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
+# rewind-fehler läuft mit real: nach dem Pflicht-Tausch liegen die abgezweigten
+# Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
-    [rewind-fehler]=observe [slot-grenze]=observe)
+    [slot-grenze]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
 BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
