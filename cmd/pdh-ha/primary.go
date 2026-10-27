@@ -19,8 +19,10 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -163,15 +165,26 @@ func configArchive(repo, etc string) ([]byte, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	add := func(name string, b []byte) error {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(b)), Typeflag: tar.TypeReg}); err != nil {
+	// Rechte und Besitzer (als Namen) mitgeben: pdh läuft nicht als root
+	add := func(name string, fi fs.FileInfo, b []byte) error {
+		h := &tar.Header{Name: name, Mode: int64(fi.Mode().Perm()), Size: int64(len(b)), Typeflag: tar.TypeReg}
+		if fi.IsDir() {
+			h.Typeflag = tar.TypeDir
+		}
+		h.Uname, h.Gname = ownerNames(fi)
+		if err := tw.WriteHeader(h); err != nil {
 			return err
 		}
 		_, err := tw.Write(b)
 		return err
 	}
-	if b, err := os.ReadFile(filepath.Join(repo, ".env")); err == nil {
-		if err := add(".env", b); err != nil {
+	envPath := filepath.Join(repo, ".env")
+	if b, err := os.ReadFile(envPath); err == nil {
+		fi, err := os.Stat(envPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := add(".env", fi, b); err != nil {
 			return nil, err
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -190,16 +203,27 @@ func configArchive(repo, etc string) ([]byte, error) {
 			if rel == "ha" {
 				return filepath.SkipDir // knotenspezifisch, nie übertragen
 			}
-			return nil
+			fi, err := de.Info()
+			if err != nil {
+				return err
+			}
+			if rel == "." {
+				return add("etc/", fi, nil)
+			}
+			return add("etc/"+rel+"/", fi, nil)
 		}
 		if !de.Type().IsRegular() {
 			return nil
+		}
+		fi, err := de.Info()
+		if err != nil {
+			return err
 		}
 		b, err := os.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		return add("etc/"+rel, b)
+		return add("etc/"+rel, fi, b)
 	})
 	if err != nil {
 		return nil, err
@@ -229,29 +253,71 @@ func extractConfig(archive []byte, repo, etc string) error {
 			return err
 		}
 		name := h.Name
-		if h.Typeflag != tar.TypeReg || strings.HasPrefix(name, "/") || strings.Contains(name, "..") || strings.Contains(name, `\`) {
+		dir := h.Typeflag == tar.TypeDir
+		if h.Typeflag != tar.TypeReg && !dir || strings.HasPrefix(name, "/") || strings.Contains(name, "..") || strings.Contains(name, `\`) {
 			return fmt.Errorf("Ungültiger Eintrag im Konfigurationsarchiv: %q", name)
 		}
+		rest, inEtc := strings.CutPrefix(name, "etc/")
 		var dst string
 		switch {
-		case name == ".env":
+		case name == ".env" && !dir:
 			dst = filepath.Join(repo, ".env")
-		case strings.HasPrefix(name, "etc/") && !strings.HasPrefix(name, "etc/ha/"):
-			dst = filepath.Join(etc, filepath.FromSlash(strings.TrimPrefix(name, "etc/")))
+		case inEtc && rest != "ha" && !strings.HasPrefix(rest, "ha/"):
+			dst = filepath.Join(etc, filepath.FromSlash(strings.TrimSuffix(rest, "/")))
 		default:
 			return fmt.Errorf("Ungültiger Eintrag im Konfigurationsarchiv: %q", name)
 		}
-		b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
-		if err != nil {
-			return err
+		// ältere Archive ohne Rechte: wie bisher 0640/0750
+		perm := os.FileMode(h.Mode) & os.ModePerm
+		if dir {
+			if perm == 0 {
+				perm = 0o750
+			}
+			if err := os.MkdirAll(dst, perm); err != nil {
+				return err
+			}
+			if err := os.Chmod(dst, perm); err != nil && runtime.GOOS != "windows" {
+				return err
+			}
+		} else {
+			if perm == 0 {
+				perm = 0o640
+			}
+			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
+				return err
+			}
+			if err := writeFileAtomic(dst, b, perm); err != nil {
+				return err
+			}
 		}
-		if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
-			return err
-		}
-		if err := writeFileAtomic(dst, b, 0o640); err != nil {
-			return err
+		if err := chownNames(dst, h.Uname, h.Gname); err != nil {
+			return fmt.Errorf("Besitzer von %s nicht gesetzt: %w", dst, err)
 		}
 	}
+}
+
+// chownNames setzt Besitzer und Gruppe nach Namen; unbekannte Namen (oder
+// keine) lassen den jeweiligen Teil unverändert.
+func chownNames(path, uname, gname string) error {
+	uid, gid := -1, -1
+	if uname != "" {
+		if u, err := user.Lookup(uname); err == nil {
+			uid, _ = strconv.Atoi(u.Uid)
+		}
+	}
+	if gname != "" {
+		if g, err := user.LookupGroup(gname); err == nil {
+			gid, _ = strconv.Atoi(g.Gid)
+		}
+	}
+	if uid < 0 && gid < 0 {
+		return nil
+	}
+	return os.Lchown(path, uid, gid)
 }
 
 // configPullHTTP: POST /v1/config/pull – nur Knoten des Verbunds mit

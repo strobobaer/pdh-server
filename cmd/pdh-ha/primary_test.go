@@ -207,7 +207,7 @@ func tarGz(t *testing.T, names ...string) []byte {
 }
 
 func TestExtractConfigRejectsTraversal(t *testing.T) {
-	for _, bad := range []string{"../x", "etc/../../x", "/etc/passwd", "etc/ha/node.key", "andere.txt"} {
+	for _, bad := range []string{"../x", "etc/../../x", "/etc/passwd", "etc/ha/node.key", "etc/ha", "andere.txt"} {
 		if err := extractConfig(tarGz(t, bad), t.TempDir(), t.TempDir()); err == nil {
 			t.Errorf("%q muss abgelehnt werden", bad)
 		}
