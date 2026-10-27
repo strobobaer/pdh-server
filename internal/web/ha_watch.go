@@ -46,7 +46,7 @@ func haNotifyAlarms(evs []haEvent, now time.Time, recentOnly bool, get func(stri
 			continue
 		}
 		set(key, now.UTC().Format(time.RFC3339))
-		notify("⚠️ **Ausfallschutz (Beobachtung)**\n" + e.Text + "\nServer-Einstellungen → Ausfallschutz")
+		notify("⚠️ **Ausfallschutz**\n" + e.Text + "\nServer-Einstellungen → Ausfallschutz")
 	}
 }
 

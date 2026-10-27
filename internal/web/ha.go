@@ -627,7 +627,7 @@ func (h *Handler) haDoMaintenance(ctx context.Context, f url.Values) (string, er
 	if on {
 		return "Wartung an – Automatik aus", nil
 	}
-	return "Automatik an (Beobachtung)", nil
+	return "Wartung aus – Automatik an", nil
 }
 
 func (h *Handler) haDoCommand(ctx context.Context, f url.Values) (string, error) {

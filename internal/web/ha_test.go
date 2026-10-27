@@ -354,7 +354,7 @@ func TestHAAlarmThrottle(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("zwei gleiche Alarme in 15 min: %d Meldungen", len(sent))
 	}
-	if sent[0] != "⚠️ **Ausfallschutz (Beobachtung)**\nZeuge nicht erreichbar (Beobachtung)\nServer-Einstellungen → Ausfallschutz" {
+	if sent[0] != "⚠️ **Ausfallschutz**\nZeuge nicht erreichbar (Beobachtung)\nServer-Einstellungen → Ausfallschutz" {
 		t.Fatalf("Text: %q", sent[0])
 	}
 	haNotifyAlarms([]haEvent{ev(4, "alarm", "Selbst-Abschaltung (Amtszeit 4) (Beobachtung)", t0.Add(11*time.Minute))}, t0.Add(11*time.Minute), false, get, set, notify)

@@ -17,7 +17,7 @@ import (
 )
 
 // Der Dienst: Takt-Schleife für Knoten und Zeugen, Nachrichten, Befehle.
-// Teil 2 ist Beobachtungsmodus – Aktionen erzeugen nur Ereignisse.
+// Automatische Entscheidungen bei auto_mode observe erzeugen nur Ereignisse.
 
 const (
 	renewBefore    = 30 * 24 * time.Hour
@@ -177,11 +177,8 @@ func (d *daemon) nextSeq() uint64 { return d.seqBase + d.seqN.Add(1) }
 func (d *daemon) lock()   { d.clMu.Lock(); d.mu.Lock() }
 func (d *daemon) unlock() { d.mu.Unlock(); d.clMu.Unlock() }
 
-// event schreibt ins Protokoll; Alarme tragen in Teil 2 den Zusatz.
+// event schreibt ins Protokoll.
 func (d *daemon) event(kind, text string) {
-	if kind == "alarm" {
-		text += " (Beobachtung)"
-	}
 	d.ev.add(ha.Event{Kind: kind, Text: text})
 }
 

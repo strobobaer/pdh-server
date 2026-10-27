@@ -296,7 +296,7 @@ func TestDaemonActorPanic(t *testing.T) {
 			if !p.Maint || p.MaintSeq != 5 {
 				t.Fatalf("Wartung nicht an: %+v", p)
 			}
-			if !hasEvent(d, "alarm: Aktion fence fehlgeschlagen") || !hasEvent(d, "(Beobachtung)") {
+			if !hasEvent(d, "alarm: Aktion fence fehlgeschlagen") {
 				t.Fatalf("Alarm fehlt: %v", eventTexts(d))
 			}
 		})

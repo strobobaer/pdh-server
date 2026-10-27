@@ -1,5 +1,5 @@
 // pdh-ha ist der Ausfallschutz-Dienst für zwei PDH-Server und einen Zeugen.
-// In Teil 2 nur Beobachtungsmodus: Aktionen werden gemeldet, nicht ausgeführt.
+// Automatische Umschaltung standardmäßig nur beobachtet (auto_mode observe).
 package main
 
 import (
@@ -299,7 +299,11 @@ func printStatus(w io.Writer, st apiStatus) {
 		fmt.Fprintln(w, "Betriebsart: einzel (Ausfallschutz nicht eingerichtet)")
 		return
 	}
-	fmt.Fprintf(w, "Betriebsart: %s (Beobachtungsmodus – es wird nichts umgeschaltet)\n", st.Mode)
+	auto := "echt"
+	if st.Observe {
+		auto = "nur Beobachtung"
+	}
+	fmt.Fprintf(w, "Betriebsart: %s (automatische Umschaltung: %s)\n", st.Mode, auto)
 	fmt.Fprintf(w, "Dieser Server: %s (%s) – %s, Amtszeit %d, Version %s\n", st.Self.ID, kindText(st.Self.Kind), st.Self.Role, st.Self.Term, st.Self.Version)
 	maint := "aus"
 	if st.Maint {

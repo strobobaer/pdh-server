@@ -395,7 +395,11 @@ func (d *daemon) setMaintenance(on bool) error {
 	if on {
 		d.event("info", "Wartung an – Automatik aus")
 	} else {
-		d.event("info", "Wartung aus – Automatik an (Beobachtung)")
+		text := "Wartung aus – Automatik an"
+		if !d.settingsLocked().Real() {
+			text += " (Beobachtung)"
+		}
+		d.event("info", text)
 	}
 	return nil
 }
