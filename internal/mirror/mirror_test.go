@@ -1,0 +1,150 @@
+package mirror
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var _ Prober = (*pgxpool.Pool)(nil)
+
+// reply: eine Antwort des Fake-Probers; err gesetzt = Fehler, sonst Werte.
+type reply struct {
+	vals []any
+	err  error
+}
+
+type fakeRow struct{ r reply }
+
+func (f fakeRow) Scan(dest ...any) error {
+	if f.r.err != nil {
+		return f.r.err
+	}
+	for i, d := range dest {
+		switch p := d.(type) {
+		case *bool:
+			*p = f.r.vals[i].(bool)
+		case *pgtype.Interval:
+			*p, _ = f.r.vals[i].(pgtype.Interval)
+		case *pgtype.Timestamptz:
+			*p, _ = f.r.vals[i].(pgtype.Timestamptz)
+		}
+	}
+	return nil
+}
+
+// fakeProber liefert die Antworten der Reihe nach, danach immer die letzte.
+type fakeProber struct {
+	mu      sync.Mutex
+	replies []reply
+	n       int
+}
+
+func (f *fakeProber) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i := f.n
+	if i >= len(f.replies) {
+		i = len(f.replies) - 1
+	}
+	f.n++
+	return fakeRow{f.replies[i]}
+}
+
+func modeReply(rec, ro bool) reply { return reply{vals: []any{rec, ro}} }
+
+var errDB = errors.New("verbindung weg")
+
+func TestDetect(t *testing.T) {
+	cases := []struct {
+		name string
+		r    reply
+		want Mode
+		err  bool
+	}{
+		{"normal", modeReply(false, false), Normal, false},
+		{"recovery", modeReply(true, false), ReadOnly, false},
+		{"readonly", modeReply(false, true), ReadOnly, false},
+		{"fehler", reply{err: errDB}, Normal, true},
+	}
+	for _, c := range cases {
+		got, err := Detect(context.Background(), &fakeProber{replies: []reply{c.r}})
+		if (err != nil) != c.err {
+			t.Fatalf("%s: err=%v", c.name, err)
+		}
+		if !c.err && got != c.want {
+			t.Fatalf("%s: got %v want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestModeString(t *testing.T) {
+	if Normal.String() != "normal" || ReadOnly.String() != "spiegel" {
+		t.Fatal("String()")
+	}
+}
+
+func TestWatchChange(t *testing.T) {
+	p := &fakeProber{replies: []reply{modeReply(true, false), modeReply(true, false), modeReply(false, false)}}
+	var reasons []string
+	Watch(context.Background(), p, ReadOnly, time.Millisecond, time.Second, func(r string) { reasons = append(reasons, r) })
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "spiegel → normal") {
+		t.Fatalf("reasons=%v", reasons)
+	}
+}
+
+func TestWatchDBLost(t *testing.T) {
+	p := &fakeProber{replies: []reply{{err: errDB}}}
+	var reasons []string
+	Watch(context.Background(), p, ReadOnly, time.Millisecond, 5*time.Millisecond, func(r string) { reasons = append(reasons, r) })
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "Datenbank") {
+		t.Fatalf("reasons=%v", reasons)
+	}
+}
+
+func TestWatchShortErrorsNoChange(t *testing.T) {
+	p := &fakeProber{replies: []reply{{err: errDB}, {err: errDB}, modeReply(true, false)}}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	calls := 0
+	Watch(ctx, p, ReadOnly, time.Millisecond, time.Second, func(string) { calls++ })
+	if calls != 0 {
+		t.Fatalf("onChange %d mal", calls)
+	}
+}
+
+func TestWatchLostZeroNeverEnds(t *testing.T) {
+	p := &fakeProber{replies: []reply{{err: errDB}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	calls := 0
+	Watch(ctx, p, ReadOnly, time.Millisecond, 0, func(string) { calls++ })
+	if calls != 0 {
+		t.Fatalf("onChange %d mal", calls)
+	}
+}
+
+func TestReplayLagNull(t *testing.T) {
+	p := &fakeProber{replies: []reply{{vals: []any{pgtype.Interval{}, pgtype.Timestamptz{}}}}}
+	lag, at, err := ReplayLag(context.Background(), p)
+	if err != nil || !at.IsZero() || lag != 0 {
+		t.Fatalf("lag=%v at=%v err=%v", lag, at, err)
+	}
+}
+
+func TestReplayLagValue(t *testing.T) {
+	d := 3 * time.Second
+	ts := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	p := &fakeProber{replies: []reply{{vals: []any{pgtype.Interval{Microseconds: d.Microseconds(), Valid: true}, pgtype.Timestamptz{Time: ts, Valid: true}}}}}
+	lag, at, err := ReplayLag(context.Background(), p)
+	if err != nil || lag != d || !at.Equal(ts) {
+		t.Fatalf("lag=%v at=%v err=%v", lag, at, err)
+	}
+}

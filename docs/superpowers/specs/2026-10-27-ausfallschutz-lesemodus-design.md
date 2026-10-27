@@ -72,7 +72,8 @@ ebenfalls.
 | `grafanadb.EnsureReader` | entfällt |
 | Einrichtungsassistent (keine Benutzer) | entfällt – Spiegel ohne Benutzer startet nicht |
 | Alle `Start*`-Hintergrundjobs (Sicherung, DR-Wächter, Update-Prüfung, Laufwerks-, Abfrage-, Export-, Import-Abrufe, Erinnerungen, KVP, MQTT, Nextcloud-Abgleich, Änderungs-, Einkaufs-, Push-Benachrichtigung, Schulungen) | entfallen |
-| `haWatch` (Ausfallschutz-Meldungen) | läuft – liest nur pdh-ha |
+| `haWatch` (Ausfallschutz-Meldungen) | entfällt – schreibt `app_settings` (Ereignis-Zähler) und Nachrichten an Admins; das macht der aktive Server |
+| `VPNStartup` | entfällt – WireGuard gehört zum aktiven Server |
 
 **Versionsprüfung:** Höchste Migration der Datenbank (`schema_migrations`) mit
 der höchsten mitgelieferten vergleichen. Fehlen Migrationen (der Spiegel hat
@@ -100,8 +101,10 @@ Ein Middleware-Schritt in `Routes()` direkt nach `authMiddleware`:
   überspringen; weitere findet der Labortest (Abschnitt 9) und werden einzeln
   mit `if h.readonly` umgangen.
 - **Netz:** Liefert die Datenbank `cannot execute … in a read-only transaction`
-  (SQLSTATE `25006`), wird daraus dieselbe freundliche Meldung statt 500 –
-  an der zentralen Stelle, an der Handler-Fehler zur Antwort werden.
+  (SQLSTATE `25006`), wird daraus dieselbe freundliche Meldung statt 500. Die
+  Abfangstelle ist ein pgx-`QueryTracer` am Pool, der die Anfrage markiert, plus
+  eine Middleware, die eine 5xx-Antwort markierter Anfragen durch die
+  Sperrmeldung ersetzt.
 - Knöpfe bleiben sichtbar; die Sperre sitzt am Server.
 
 ## 5. Anmeldung (Regel C)
