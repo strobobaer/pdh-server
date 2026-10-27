@@ -238,6 +238,8 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	if a.svc.Active(ctx) {
 		if err := a.svc.Stop(ctx); err == nil {
 			a.ev.add(ha.Event{Kind: "info", Text: "pdh auf nicht aktivem Server gestoppt"})
+		} else {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "pdh bzw. Tunnel auf nicht aktivem Server nicht gestoppt: " + err.Error()})
 		}
 	}
 	e := a.env()
@@ -246,6 +248,8 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 		if !st.ReadOnly {
 			if err := a.fence(ctx); err == nil {
 				a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – abgeschaltet"})
+			} else {
+				a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – Abschalten fehlgeschlagen: " + err.Error()})
 			}
 		}
 	case "standby":

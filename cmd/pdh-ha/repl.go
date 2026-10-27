@@ -108,6 +108,15 @@ func (d *daemon) replSyncLocked(ctx context.Context, pl *plan, now time.Duration
 	if partner == "" {
 		return
 	}
+	// Nach einem Neustart von pdh-ha ist das gemerkte Ziel leer, PostgreSQL
+	// läuft laut Konfiguration aber womöglich synchron – einmal übernehmen
+	// (später nicht: der Status hinkt einer eigenen Umschaltung nach).
+	if !d.syncLoaded {
+		d.syncLoaded = true
+		if pa.syncTarget() == "" && st.SyncNames != "" {
+			pa.setSyncTarget(st.SyncNames)
+		}
+	}
 	sb, ok := partnerStandby(st, partner)
 	streaming := ok && sb.State == "streaming"
 	// „zuletzt streaming“ gilt nur in dieser Amtszeit: ein Stempel von früher

@@ -202,6 +202,26 @@ func countPrefix(list []string, p string) int {
 	return n
 }
 
+// Nach einem Neustart von pdh-ha ist das gemerkte Ziel leer, PostgreSQL läuft
+// aber laut Konfiguration synchron – einmal übernehmen, sonst hingen bei
+// fehlendem Partner alle Speicherungen ohne stale an den Zeugen.
+func TestReplSyncTargetLoadedAfterRestart(t *testing.T) {
+	d, fn, pa, now := replDaemon(t, trioCluster(), "")
+	pa.setSyncTarget("") // frisch gestarteter Dienst; stPrimary meldet pdh_ha_b
+	tickFor(t, d, now, 12)
+	if pa.syncTarget() != "pdh_ha_b" {
+		t.Fatalf("Ziel nicht aus PostgreSQL übernommen: %q", pa.syncTarget())
+	}
+	if len(fn.messages("stale")) == 0 {
+		t.Fatal("Partner weg: stale an den Zeugen erwartet")
+	}
+	d.handle(context.Background(), inbound{From: "w", Msg: message{T: "stale_ack", Node: "b", VoteTerm: 1}})
+	tickFor(t, d, now, 3) // Status meldet weiter pdh_ha_b (applySync im Test ohne Wirkung)
+	if pa.syncTarget() != "" {
+		t.Fatal("nach Bestätigung asynchron – nicht wieder auf den alten Stand zurück")
+	}
+}
+
 func TestReplBackToSyncSendsCurrent(t *testing.T) {
 	d, fn, pa, now := replDaemon(t, trioCluster(), "pdh_ha_b|streaming|0/100|0/100|sync")
 	pa.setSyncTarget("")
