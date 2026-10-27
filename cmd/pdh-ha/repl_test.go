@@ -178,6 +178,9 @@ func TestPassiveDataCurrentFromActive(t *testing.T) {
 	}
 }
 
+// Standby ohne Verbindung zum aktiven Knoten (pg_stat_wal_receiver leer)
+const stStandbyNotStreaming = "t|0/100|1|off||"
+
 // Fällt der aktive Knoten weg, gilt der zuletzt gemeldete Datenstand – sonst
 // wäre er genau dann „nicht aktuell“, wenn übernommen werden soll (Spec 2.5).
 func TestPassiveDataCurrentKeptWhenActiveGone(t *testing.T) {
@@ -193,6 +196,12 @@ func TestPassiveDataCurrentKeptWhenActiveGone(t *testing.T) {
 	tickFor(t, d, &now, 2)
 	if !d.dataCurrent {
 		t.Fatal("streamt synchron: aktuell erwartet")
+	}
+	// Erst reißt die Replikation ab, der Partner gilt aber noch als gesehen
+	r.on("runuser", statusKey, stStandbyNotStreaming, nil)
+	tickFor(t, d, &now, 2)
+	if !d.dataCurrent {
+		t.Fatal("Replikation kurz weg, aktiver meldet synchron: weiter aktuell")
 	}
 	gone := seenView(last)
 	gone.Paths[0].Alive = false

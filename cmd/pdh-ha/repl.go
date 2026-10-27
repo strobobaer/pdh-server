@@ -74,11 +74,21 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 	if in.Partner != nil {
 		lag = in.Partner.LagBytes
 	}
-	// Ist der Partner nicht zu sehen, gilt der zuletzt gemeldete Wert – sonst
-	// wäre der Standby genau dann „nicht aktuell“, wenn er übernehmen soll.
+	// Aktuell wird der Standby nur, wenn er streamt und synchron geführt wird.
+	// Danach verliert er das nur durch Meldungen des aktiven Knotens (nicht
+	// mehr synchron oder „nicht aktuell“): Solange der synchron führt, liegt
+	// jede bestätigte Speicherung schon hier, auch wenn die Verbindung gerade
+	// abreißt. Ist der Partner nicht zu sehen, gilt der zuletzt gemeldete Wert –
+	// sonst wäre der Standby genau dann „nicht aktuell“, wenn er übernehmen soll.
 	// Nach einem Neustart ohne Partner bleibt es beim Anfangswert false.
-	if in.Partner == nil || in.Partner.Seen {
-		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, in.Partner)
+	switch pt := in.Partner; {
+	case pt == nil:
+		d.dataCurrent = false
+	case !pt.Seen:
+	case d.dataCurrent:
+		d.dataCurrent = pt.PG == "primary" && pt.Sync && !pt.Stale
+	default:
+		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, pt)
 	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
 }
