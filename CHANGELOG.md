@@ -21,6 +21,7 @@ im Kapitel „Versionen & Updates“ an.
 - Neue Einstellungen „Asynchron nach“, „Verzögerungsgrenze“ und „Höchstmenge zurückgehaltener Änderungen“.
 - Der Cloudflare-Tunnel läuft im Verbund nur auf dem aktiven Server und wechselt mit der Rolle – Anwender erreichen so immer den aktiven Server.
 - Hat der aktive Server zu viele Änderungen für den ausgefallenen zweiten zurückgehalten, wird dieser bei seiner Rückkehr automatisch neu kopiert (mit Alarm).
+- Neues Skript `scripts/pdh-static-ip.sh` stellt die jetzige IP-Adresse eines Servers fest ein (mit automatischem Zurücksetzen, falls die Verbindung abreißt).
 
 ### Geändert
 - Die Netzlaufwerk-Sicherung läuft im Verbund nur noch auf dem aktiven Server; nach einer Übernahme folgt sofort eine neue Grundsicherung.

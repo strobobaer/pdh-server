@@ -1749,6 +1749,14 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ul></div>
   {{template "hb-fig-spiegelbetrieb"}}
   <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
+  <div class="hb-howto"><b><i class="ti ti-network"></i> So stellst du feste IP-Adressen ein</b>
+    <p>Die Server und der Zeuge kennen sich über ihre Adressen. Vergibt der Router per DHCP eine neue Adresse, finden sie sich nicht mehr. Deshalb jede Adresse fest einstellen – am besten, bevor der Verbund eingerichtet wird.</p>
+    <ol class="hb-steps">
+      <li>Auf jedem Server: <code>sudo bash /opt/pdh-server/scripts/pdh-static-ip.sh</code>. Das Skript zeigt die jetzige Adresse, das Gateway und die DNS-Server und fragt nach.</li>
+      <li>Nach dem Bestätigen testet es die Einstellung: Ist die Verbindung noch da, <b>ENTER</b> drücken. Sonst geht nach 120 Sekunden alles automatisch zurück – auch über SSH ungefährlich.</li>
+      <li>Im Router die Adresse aus dem DHCP-Bereich nehmen oder für den Server reservieren. Für den Zeugen-PC eine DHCP-Reservierung im Router anlegen.</li>
+      <li>Netzlaufwerke (Freigaben) müssen von <b>beiden</b> Servern erreichbar sein – die Freigabe also für beide Adressen erlauben.</li>
+    </ol></div>
   <div class="hb-howto"><b><i class="ti ti-server-2"></i> So fügst du den zweiten Server hinzu</b>
     <ol class="hb-steps">
       <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen. Unter „Betriebsart“ die Adressen dieses Servers prüfen (LAN und WireGuard, du kannst sie ändern) und <b>Ausfallschutz einrichten</b> wählen. Beim ersten Einrichten startet das PDH dabei ggf. einmal kurz neu.</li>
