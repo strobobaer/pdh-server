@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.76.0] – 2026-10-26
+## [0.76.0] – 2026-10-27
 
 ### Neu
 - Datenbank-Spiegel im Ausfallschutz: Der aktive Server schreibt jede Speicherung synchron auch auf den zweiten Server (`pdh-ha-join.sh --voll`).
