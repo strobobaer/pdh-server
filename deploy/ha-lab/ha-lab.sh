@@ -49,6 +49,7 @@ declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt
     [rewind-fehler]=observe [slot-grenze]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
+BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
 ACKED="$(mktemp -t ha-lab-acked.XXXXXX)"
 trap 'rm -f "$ACKED"' EXIT
 WRITER_PID=""
@@ -184,8 +185,15 @@ snap() {
         LAST_LINE="$line"
     fi
     # uneingerichtet meldet pdh-ha immer aktiv – erst eingerichtet zählt
+    # Gleiche Amtszeit: sofort nicht bestanden. Verschiedene: ein neu
+    # gestarteter früherer aktiver Server (Beobachtung schaltet ihn nicht ab)
+    # meldet kurz seine alte Rolle, bis er die höhere Amtszeit sieht.
     if [[ "$R1" == aktiv && "$R2" == aktiv && "$C1" == ja && "$C2" == ja ]]; then
-        fail "zwei aktive Server (node1 Amtszeit $T1, node2 Amtszeit $T2)"
+        [[ "$T1" != "$T2" ]] || fail "zwei aktive Server mit gleicher Amtszeit $T1"
+        ((BOTH_ACT >= 0)) || BOTH_ACT=$SECONDS
+        ((SECONDS - BOTH_ACT < RW_GRACE)) || fail "zwei aktive Server seit $RW_GRACE s (node1 Amtszeit $T1, node2 Amtszeit $T2)"
+    else
+        BOTH_ACT=-1
     fi
     ((PG_LAB == 1)) && watch_pg
     return 0
