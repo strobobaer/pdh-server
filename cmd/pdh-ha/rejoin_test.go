@@ -113,6 +113,34 @@ func TestRejoinDivergedWithoutRowChanges(t *testing.T) {
 	}
 }
 
+// pg_waldump liest ohne -t die Zeitleiste 1 – nach einem Rollentausch liegen
+// die abgezweigten Daten aber auf einer höheren. Liest pg_waldump gar nichts,
+// bleibt die Sicherung (Umfang unbekannt) – sonst ginge sie verloren.
+func TestRejoinDivergedTimelineAndEmptyWaldump(t *testing.T) {
+	r := divergedRunner().
+		on("runuser -u postgres -- psql -XAtq -p 55", "pg_control_checkpoint", "3", nil).
+		on("runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump", "", "", errors.New("could not find file"))
+	a := rejoinActor(t, r)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoin, Term: 5}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, l := range r.list() {
+		if strings.HasPrefix(l, "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_waldump") {
+			found = true
+			if !strings.Contains(l, " -t 3") {
+				t.Fatalf("Zeitleiste fehlt: %s", l)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("pg_waldump nicht aufgerufen")
+	}
+	if list, err := listDiverged(divergedDir()); err != nil || len(list) != 1 {
+		t.Fatalf("ohne gelesene Datensätze muss die Sicherung bleiben: %v %v", list, err)
+	}
+}
+
 func TestRejoinDiverged(t *testing.T) {
 	r := divergedRunner()
 	a := rejoinActor(t, r)
@@ -232,6 +260,42 @@ func TestRecoverDataDirAfterCrash(t *testing.T) {
 	a.pg.r = r2
 	if err := a.recoverDataDir(context.Background()); err != nil || len(r2.list()) != 0 {
 		t.Fatalf("intakter Ordner: nichts tun: %v %v", err, r2.list())
+	}
+}
+
+// pg_basebackup legt PG_VERSION früh an: eine halbe Kopie erkennt nur die
+// Markierung „Kopie läuft“. Nach Erfolg liegt standby.signal sofort vor (ein
+// Absturz vor becomeStandby startete sonst eine schreibbare Kopie).
+func TestFullCopyMarkerAndStandbySignal(t *testing.T) {
+	r := &fakeRunner{}
+	a := rejoinActor(t, r)
+	dd := filepath.FromSlash(a.pg.c.DataDir)
+	if err := os.Rename(dd, dd+".alt-20261026-101500"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dd, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dd, "PG_VERSION"), []byte("18\n"), 0o600) // halbe Kopie
+	os.WriteFile(dd+".kopie-laeuft", nil, 0o600)
+	os.WriteFile(filepath.Join(dd+".alt-20261026-101500", "alt"), nil, 0o600)
+	if err := a.recoverDataDir(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dd, "alt")); err != nil {
+		t.Fatal("halbe Kopie mit PG_VERSION nicht durch den alten Ordner ersetzt")
+	}
+	if _, err := os.Stat(dd + ".kopie-laeuft"); err == nil {
+		t.Fatal("Markierung nach Rückholung nicht entfernt")
+	}
+	if err := a.fullCopy(context.Background(), a.env()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dd, "standby.signal")); err != nil {
+		t.Fatal("standby.signal fehlt direkt nach der Kopie")
+	}
+	if _, err := os.Stat(dd + ".kopie-laeuft"); err == nil {
+		t.Fatal("Markierung nach Erfolg nicht entfernt")
 	}
 }
 

@@ -241,7 +241,14 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 func (a *pgActor) fullCopy(ctx context.Context, e pgEnv) error {
 	dd := filepath.FromSlash(a.pg.c.DataDir)
 	alt := dd + ".alt-" + a.now().Format("20060102-150405")
+	// Markierung außerhalb des Datenordners: pg_basebackup legt PG_VERSION
+	// früh an, nur so erkennt recoverDataDir eine abgebrochene Kopie.
+	marker := dd + copyMarkerSuffix
+	if err := writeFileAtomic(marker, nil, 0o600); err != nil {
+		return fmt.Errorf("Markierung für die Neukopie nicht geschrieben: %w", err)
+	}
 	if err := os.Rename(dd, alt); err != nil {
+		os.Remove(marker)
 		return fmt.Errorf("Datenordner nicht beiseitegelegt: %w", err)
 	}
 	restore := func(cause error) error {
@@ -249,6 +256,7 @@ func (a *pgActor) fullCopy(ctx context.Context, e pgEnv) error {
 		if rerr := os.Rename(alt, dd); rerr != nil {
 			return fmt.Errorf("Neukopie fehlgeschlagen (%v), alter Datenordner liegt unter %s: %w", cause, alt, rerr)
 		}
+		os.Remove(marker)
 		return fmt.Errorf("Neukopie fehlgeschlagen: %w", cause)
 	}
 	if err := os.MkdirAll(dd, 0o700); err != nil {
@@ -261,19 +269,35 @@ func (a *pgActor) fullCopy(ctx context.Context, e pgEnv) error {
 		"-D", a.pg.c.DataDir, "-X", "stream", "-S", slotName(e.SelfID), "-d", standbyConninfo(e)}, nil, nil); err != nil {
 		return restore(err)
 	}
+	// sofort Standby: ein Absturz vor becomeStandby startete sonst eine schreibbare Kopie
+	if err := a.pg.writeOwned(ctx, filepath.Join(dd, "standby.signal"), nil); err != nil {
+		return restore(err)
+	}
+	os.Remove(marker)
 	a.ev.add(ha.Event{Kind: "info", Text: "Datenbank neu vom aktiven Server kopiert"})
-	return os.RemoveAll(alt)
+	if err := os.RemoveAll(alt); err != nil {
+		a.ev.add(ha.Event{Kind: "warn", Text: "Alter Datenordner nicht gelöscht (" + alt + "): " + err.Error()})
+	}
+	return nil
 }
+
+// copyMarkerSuffix: Datei neben dem Datenordner, solange eine Neukopie läuft.
+const copyMarkerSuffix = ".kopie-laeuft"
 
 // recoverDataDir holt nach einem Absturz während der Neukopie den alten
 // Datenordner zurück, statt einen leeren oder halben Cluster zu starten.
 func (a *pgActor) recoverDataDir(ctx context.Context) error {
 	dd := filepath.FromSlash(a.pg.c.DataDir)
-	if _, err := os.Stat(filepath.Join(dd, "PG_VERSION")); err == nil {
+	_, mErr := os.Stat(dd + copyMarkerSuffix)
+	copying := mErr == nil
+	if _, err := os.Stat(filepath.Join(dd, "PG_VERSION")); err == nil && !copying {
 		return nil
 	}
 	alts, _ := filepath.Glob(dd + ".alt-*")
 	if len(alts) == 0 {
+		if copying {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie abgebrochen und kein alter Datenordner vorhanden – bitte replica-init erneut ausführen"})
+		}
 		return nil
 	}
 	sort.Strings(alts)
@@ -284,6 +308,7 @@ func (a *pgActor) recoverDataDir(ctx context.Context) error {
 	if err := os.Rename(alt, dd); err != nil {
 		return err
 	}
+	os.Remove(dd + copyMarkerSuffix)
 	a.ev.add(ha.Event{Kind: "alarm", Text: "Abgebrochene Neukopie: alter Datenordner zurückgeholt"})
 	return a.pg.ctl(ctx, "start")
 }
@@ -338,14 +363,23 @@ func (a *pgActor) saveDiverged(ctx context.Context, term, fork uint64) error {
 		return fmt.Errorf("pg_dumpall fehlgeschlagen: %w", err)
 	}
 	info := divergedInfo{ID: id, At: now.UTC(), Term: term}
+	readWAL := false // pg_waldump hat nachweislich Datensätze gelesen
 	if fork != 0 {
+		// Ohne -t liest pg_waldump Zeitleiste 1 – nach einem Rollentausch
+		// liegen die abgezweigten Daten auf der aktuellen der alten Datenbank.
+		argv := []string{"runuser", "-u", "postgres", "--", a.binPath("pg_waldump"),
+			"-p", path.Join(a.pg.c.DataDir, "pg_wal"), "-s", lsnText(fork)}
+		if tl, err := iso.query(ctx, "SELECT timeline_id FROM pg_control_checkpoint()"); err == nil && tl != "" {
+			argv = append(argv, "-t", tl)
+		}
 		// pg_waldump endet mit Fehler am Ende des WAL – die Ausgabe zählt trotzdem.
-		wd, _ := a.pg.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", a.binPath("pg_waldump"),
-			"-p", path.Join(a.pg.c.DataDir, "pg_wal"), "-s", lsnText(fork)}, nil, nil)
+		wd, _ := a.pg.r.Run(ctx, argv, nil, nil)
+		readWAL = strings.Contains(string(wd), "rmgr: ")
 		info.Tables = parseWaldump(wd, rel)
 	}
-	// fork 0 = Trennpunkt unbekannt: Sicherung immer behalten
-	if fork != 0 && len(info.Tables) == 0 {
+	// Nur löschen, wenn pg_waldump gelesen und keine Zeilenänderung gefunden
+	// hat; Trennpunkt unbekannt oder nichts gelesen: Sicherung behalten.
+	if readWAL && len(info.Tables) == 0 {
 		// Nur Verwaltungsdaten hinter dem Trennpunkt (z. B. Shutdown-Checkpoint
 		// nach sauberem Stopp): nichts zu prüfen, kein Fehlalarm.
 		os.RemoveAll(out)
