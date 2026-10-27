@@ -74,6 +74,9 @@ diag() {
         timeout 10 docker exec "$c" pdh-ha status 2>&1 | sed 's/^/    /' || echo "    (nicht erreichbar)"
         echo "--- $c: letzte Ereignisse"
         timeout 10 docker exec "$c" tail -n 25 /var/lib/pdh-ha/events.jsonl 2>&1 | cut -c1-240 | sed 's/^/    /' || true
+        echo "--- $c: state.json"
+        timeout 10 docker exec "$c" cat /var/lib/pdh-ha/state.json 2>&1 | tr -d '\n' | cut -c1-600 | sed 's/^/    /' || true
+        echo
     done
 }
 
