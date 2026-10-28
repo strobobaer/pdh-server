@@ -568,6 +568,9 @@ func TestDaemonSaveFailureNotActive(t *testing.T) {
 	d.mu.Unlock()
 	fn.setView("b", seenView(message{Role: "aktiv", Term: 3, Ver: "test"}))
 	d.saveFn = func(ha.Persisted) error { return errors.New("Platte voll") }
+	// Der Fence-Befehl läuft im Aktions-Arbeiter: vor dem Löschen des Temp-Ordners
+	// abwarten, sonst schreibt er noch ins Ereignisprotokoll.
+	t.Cleanup(func() { waitFor(t, 2*time.Second, "Aktionen erledigt", d.actionsIdle) })
 	d.tick(context.Background())
 	if st := d.statusNow(); st.Self.Role != ha.Fenced || st.Self.Term != 2 {
 		t.Fatalf("nach Speicherfehler: %s/%d", st.Self.Role, st.Self.Term)
