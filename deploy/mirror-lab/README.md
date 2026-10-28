@@ -64,9 +64,11 @@ Rückgabewert 0 bzw. 1.
 zuletzt, weil danach kein Standby mehr da ist; ein weiteres Szenario baut das
 Labor dann neu auf.
 
-Findet `crawl` Schreibzugriffe, listet es sie mit Anzahl, Anfrage und
-SQL-Anfang (`GET /pfad → UPDATE …`); Zugriffe ohne Anfrage stehen als
-`(Hintergrund)`. Abhilfe im betroffenen Handler: im Spiegel
+Findet `crawl` Schreibzugriffe, listet es sie mit Anzahl, Anfrage, SQL-Anfang
+und Programmstelle (`GET /pfad → UPDATE …  [web.(*Handler).x datei.go:12 < …]`,
+Feld `stelle` der Protokollzeile); Zugriffe ohne Anfrage stehen als
+`(Hintergrund)`. Der Crawler besucht zuerst jede neue Seitenart (Pfad mit
+Kennungen als `:id`), dann neue Pfade, zuletzt nur andere Abfrageparameter. Abhilfe im betroffenen Handler: im Spiegel
 (`h.Mirror().On`) den Schreibschritt auslassen und einen Test dazu schreiben.
 
 Den Crawler allein (gegen ein laufendes Labor oder einen anderen Spiegel):
