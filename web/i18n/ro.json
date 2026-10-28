@@ -724,5 +724,8 @@
  "beantragt": "solicitat",
  "nichts geplant": "nimic planificat",
  "überfällig seit": "restant din",
- "Bestellvorgänge": "Comenzi de achiziție"
+ "Bestellvorgänge": "Comenzi de achiziție",
+ "Gruppe nach oben": "Mută grupul în sus",
+ "Gruppe nach unten": "Mută grupul în jos",
+ "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Trageți intrările, mutați grupurile cu ↑ ↓, faceți clic pe numele grupului pentru a-l redenumi."
 }

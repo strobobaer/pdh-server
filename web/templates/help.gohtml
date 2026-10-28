@@ -83,7 +83,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3><i class="ti ti-map"></i> So findest du dich zurecht</h3>
   <ul>
     <li><b>Links</b> wählst du das Modul, z. B. Störungen oder Ersatzteile. Die Einträge sind in Gruppen sortiert (Instandhaltung, Material &amp; Anlagen, Personal, Verwaltung, Daten, Hilfe &amp; Links); offen ist immer nur die Gruppe der geöffneten Seite – ein Klick auf eine andere Überschrift klappt diese auf und die übrigen zu.</li>
-    <li><b>Navigation anpassen</b> (oben im Benutzermenü): Einträge per Ziehen in andere Gruppen oder eine andere Reihenfolge bringen, Gruppennamen anklicken zum Umbenennen, mit <b>Gruppe</b> eigene Gruppen anlegen, mit <i class="ti ti-trash"></i> löschen (die Einträge wandern nach oben). <b>Fertig</b> speichert die Anordnung an deinem Konto – sie gilt auf jedem Gerät; <b>Standard</b> stellt den Firmenstandard wieder her (siehe <a href="#admin">Standards für alle</a>). Neue Funktionen erscheinen automatisch in ihrer Vorgabe-Gruppe.</li>
+    <li><b>Navigation anpassen</b> (oben im Benutzermenü): Einträge per Ziehen in andere Gruppen oder eine andere Reihenfolge bringen, ganze Gruppen mit <i class="ti ti-arrow-up"></i> <i class="ti ti-arrow-down"></i> nach oben oder unten verschieben, Gruppennamen anklicken zum Umbenennen, mit <b>Gruppe</b> eigene Gruppen anlegen, mit <i class="ti ti-trash"></i> löschen (die Einträge wandern nach oben). <b>Fertig</b> speichert die Anordnung an deinem Konto – sie gilt auf jedem Gerät; <b>Standard</b> stellt den Firmenstandard wieder her (siehe <a href="#admin">Standards für alle</a>). Neue Funktionen erscheinen automatisch in ihrer Vorgabe-Gruppe.</li>
     <li><b>Oben</b> findest du die <b>Uhr</b> mit Wochentag und Datum, daneben kleine Symbolknöpfe in Gruppen: <i class="ti ti-share"></i> Im Chat teilen, <i class="ti ti-messages"></i> Chat und <i class="ti ti-brain"></i> Copilot, dann <i class="ti ti-device-desktop"></i> Hell/Dunkel und die Sprache, ganz rechts dein Konto. Was ein Knopf tut, zeigt ein kurzer Hinweis, wenn du mit der Maus darauf zeigst. Uhr und Benutzermenü sind immer sichtbar. Ist der Bildschirm zu schmal (Smartphone, große Schrift), blendet PDH die übrigen Knöpfe der Reihe nach aus. „Im Chat teilen“, „Hell/Dunkel“ und „Suche, Hilfe &amp; mehr“ findest du dann im Benutzermenü, Chat und Copilot als Reiter in der rechten Seitenleiste. Ein Klick auf die Uhr öffnet die <b>Zeiterfassung</b>; fährst du mit der Maus darüber, siehst du auch die Kalenderwoche.</li>
     <li><b>Rechts</b> liegen senkrechte Reiter (Chat, Suche, Copilot, Aktivität, Hilfe). Ein Klick klappt die Leiste auf, ein zweiter wieder zu.</li>
     <li><b>Wer ist online?</b> Der Reiter <b>Aktivität</b> zeigt oben alle, die PDH gerade geöffnet haben (grüner Punkt), darunter aufklappbar die übrigen mit „zuletzt gesehen“ (z. B. „vor 20 Min.“, „gestern 14:10“). Die Liste aktualisiert sich alle 30 Sekunden; Terminals (Systembenutzer) erscheinen nicht.</li>
@@ -257,7 +257,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Navigation → <b>Leitstände</b> → <b>Neuer Leitstand</b>. Name eingeben – die <b>Adresse</b> schlägt PDH vor.</li>
       <li>Bei <b>Was der Leitstand zeigt</b> die <b>Abteilung</b> und/oder <b>Gruppe / Team</b> wählen und die <b>Vorgangsarten</b> ankreuzen. Ohne Auswahl zeigt er alles.</li>
-      <li><b>Bausteine</b> zusammenstellen: hinzufügen, an der Griffleiste <i class="ti ti-grip-vertical"></i> ziehen, Breite (¼ bis ganz) und Überschrift wählen, mit <i class="ti ti-x"></i> entfernen. Zur Auswahl: Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, Aktuelle Störungen, Fällige Wartung, Hinweistext, Andere Leitstände (Knöpfe zum Umschalten).</li>
+      <li><b>Bausteine</b> zusammenstellen: hinzufügen, an der Griffleiste <i class="ti ti-grip-vertical"></i> ziehen, Breite (¼ bis ganz) und Überschrift wählen, mit <i class="ti ti-x"></i> entfernen. Zur Auswahl: Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, Aktuelle Störungen, Fällige Wartung, <b>Kalender</b> (wie unter Übersicht → Kalender: Schichten, Sonderdienste wie Bereitschaft, Abwesenheit und fällige Vorgänge – oben im Baustein Zeitraum, Abteilung, Gruppe, Person und Arten wählen; ohne Anmeldung nur lesbar, Abwesenheit ohne Grund), Hinweistext, Andere Leitstände (Knöpfe zum Umschalten).</li>
       <li>Optional <b>Weiterblättern</b>: nach so vielen Sekunden (mindestens 10) zum nächsten Leitstand – für mehrere im Kreis bei jedem den nächsten eintragen. Oben rechts läuft die Zeit mit. Berührt jemand den Bildschirm, beginnt die Zeit neu; ist ein Formular offen, bleibt er stehen.</li>
       <li><b>Speichern</b> – Terminals der Abteilung bzw. Gruppe zeigen ihn sofort; ein Terminal mit eigenem Leitstand startet direkt dort (<b>Zur Startseite</b> führt trotzdem aufs Dashboard).</li>
     </ol>
@@ -1002,6 +1002,23 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Haken setzen oder entfernen – <b>Übernehmen</b>. Wer schon in einer anderen Schicht steht, wechselt in diese.</li>
     </ol>
     <b>Vorwoche übernehmen</b> kopiert die Einteilung der Vorwoche – vorhandene Einträge und Urlaubstage bleiben. Mit Abteilung und Gruppe oben filterst du die Anzeige.</div>
+  <div class="hb-howto"><b><i class="ti ti-hand-move"></i> So ziehst du Einteilungen</b>
+    <ol class="hb-steps">
+      <li><b>Verschieben:</b> einen Namen anfassen und auf einen anderen Tag oder in eine andere Schicht ziehen.</li>
+      <li><b>Kopieren:</b> dabei <b>Strg</b> drücken – am Tablet vorher unten <b>Kopieren</b> einschalten.</li>
+      <li><b>Über mehrere Tage:</b> den Namen am <b>rechten Rand</b> anfassen und bis zum letzten Tag ziehen – z. B. Montag einteilen und bis Freitag durchziehen; die Person steht dann jeden Tag in dieser Schicht.</li>
+    </ol>
+    Tage mit genehmigtem Urlaub und Tage, an denen die Person schon eine andere Schicht hat, überspringt PDH und sagt es dir.</div>
+  <h3><i class="ti ti-star"></i> Sonderdienste, Bereitschaft &amp; Zusatzaufgaben</h3>
+  <p>Unter den Schichten stehen die <b>Sonderdienste</b>, z. B. Rufbereitschaft, Ersthelfer oder eine Zusatzaufgabe. Sie gelten zusätzlich zur Schicht; eine Person kann an einem Tag mehrere haben. Einteilen, Ziehen und Verlängern geht wie bei den Schichten.</p>
+  <div class="hb-howto"><b><i class="ti ti-certificate"></i> So legst du eine Dienstart an</b> (Recht „Sonderdienste einteilen“)
+    <ol class="hb-steps">
+      <li>Planer → <b>Einstellungen</b> → <b>Sonderdienste, Bereitschaft &amp; Zusatzaufgaben</b>.</li>
+      <li>Name, Kürzel, Art (Bereitschaft, besondere Tätigkeit, Zusatzaufgabe), Farbe und ggf. Mindestbesetzung eintragen.</li>
+      <li>Bei <b>Nötige Qualifikation</b> eine Qualifikation aus dem Personalstamm wählen (z. B. „Ersthelfer“, „Elektrofachkraft“). Dann bietet der Schichtplan nur Personen an, die diesen Nachweis haben und deren Nachweis am Tag noch gilt.</li>
+      <li><b>Anlegen</b>. Löschen geht nur ohne Einteilungen – sonst wird die Dienstart abgeschaltet.</li>
+    </ol>
+    Die Qualifikationen pflegst du je Person unter <b>Benutzer → Nachweise</b>.</div>
   <h3><i class="ti ti-beach"></i> Urlaub &amp; Abwesenheit</h3>
   <div class="hb-howto"><b><i class="ti ti-send"></i> So beantragst du Urlaub</b>
     <ol class="hb-steps">
@@ -1038,6 +1055,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     PDH merkt sich deine Auswahl. <i class="ti ti-restore"></i> setzt sie zurück. Ein Klick auf einen Eintrag öffnet ihn.</div>
   <p><span style="box-shadow:inset 0 0 0 2px var(--red);padding:0 6px;border-radius:3px">Rot umrandet</span> sind <b>Überschneidungen</b>: Die Person ist abwesend (genehmigt oder beantragt), hat am selben Tag aber eine Schicht oder einen fälligen Auftrag. <span style="box-shadow:inset 0 0 0 2px var(--amber);padding:0 6px;border-radius:3px">Gelb</span>: ein fälliger Auftrag an einem Tag, an dem die Person keine Schicht hat. Den Grund zeigt der Hinweis beim Darüberfahren. Ohne das Recht „Abwesenheitsgrund aller sehen“ steht bei Kollegen nur „abwesend“.</p>
   {{template "hb-shots" (dict "Ref" (index $s "calendar") "Can" $can)}}
+  <div class="hb-howto"><b><i class="ti ti-hand-move"></i> So änderst du im Kalender per Ziehen</b>
+    <ol class="hb-steps">
+      <li><b>Schicht oder Sonderdienst</b> auf einen anderen Tag oder zu einer anderen Person ziehen (Strg bzw. <b>Kopieren</b> = kopieren). Am rechten Rand gezogen gilt sie an jedem Tag bis dorthin.</li>
+      <li><b>Urlaub/Abwesenheit</b> am rechten Rand ziehen: nach rechts verlängern, nach links verkürzen, vor den Beginn = früher anfangen. Die Urlaubstage werden neu gezählt. Das dürfen Genehmigende – und du selbst, solange dein Antrag noch nicht genehmigt ist.</li>
+      <li><b>Störung, Ticket, Aufgabe oder Wartung</b> auf einen anderen Tag ziehen: die Fälligkeit wird auf diesen Tag gelegt (die Uhrzeit bleibt) und steht in der Historie.</li>
+    </ol>
+    Ziehen geht nur mit dem passenden Recht (Schichten planen, Sonderdienste einteilen, Abwesenheiten genehmigen bzw. den Vorgang bearbeiten). Derselbe Kalender steht auch als Baustein <b>Kalender</b> im Leitstand – mit Auswahl oben im Baustein.</div>
 </section>
 
 <section class="hb-ch" id="ms" data-title="Managementsysteme" data-pages="ms ms-doc ms-handbook ms-process ms-instruction ms-form">

@@ -724,5 +724,8 @@
  "beantragt": "talep edildi",
  "nichts geplant": "plan yok",
  "überfällig seit": "şu tarihten beri gecikmiş",
- "Bestellvorgänge": "Satın alma siparişleri"
+ "Bestellvorgänge": "Satın alma siparişleri",
+ "Gruppe nach oben": "Grubu yukarı taşı",
+ "Gruppe nach unten": "Grubu aşağı taşı",
+ "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Girdileri sürükleyin, grupları ↑ ↓ ile taşıyın, yeniden adlandırmak için grup adına tıklayın."
 }

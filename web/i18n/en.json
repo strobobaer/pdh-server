@@ -724,5 +724,8 @@
  "beantragt": "requested",
  "nichts geplant": "nothing planned",
  "überfällig seit": "overdue since",
- "Bestellvorgänge": "Purchase orders"
+ "Bestellvorgänge": "Purchase orders",
+ "Gruppe nach oben": "Move group up",
+ "Gruppe nach unten": "Move group down",
+ "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Drag entries, move groups with ↑ ↓, click a group name to rename it."
 }

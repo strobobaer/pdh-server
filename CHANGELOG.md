@@ -17,6 +17,7 @@ im Kapitel „Versionen & Updates“ an.
 - Sonderdienste: Bereitschaft, besondere Tätigkeiten und Zusatzaufgaben werden im Schichtplan unter den Schichten eingeteilt. Eine Dienstart kann eine Qualifikation aus dem Personalstamm verlangen – dann stehen nur Personen mit gültigem Nachweis zur Auswahl (Planer → Einstellungen → Sonderdienste, neues Recht „Sonderdienste einteilen“).
 - Kalender: Schichten und Sonderdienste ziehen (auch auf eine andere Person), am Rand über weitere Tage verlängern, Urlaub und Abwesenheit am Rand verlängern oder verkürzen und die Fälligkeit von Störungen, Tickets, Aufgaben und Wartungen per Ziehen verschieben.
 - Kalender zeigt die Sonderdienste als eigene Art.
+- Navigation anpassen: ganze Gruppen lassen sich mit Pfeilen nach oben oder unten verschieben.
 - Leitstand-Baustein „Kalender“: derselbe Kalender mit Schichten, Sonderdiensten, Abwesenheit und fälligen Vorgängen, Auswahl (Zeitraum, Abteilung, Gruppe, Person, Arten) oben im Baustein; voreingestellt auf die Abteilung bzw. Gruppe des Leitstands. Ohne Anmeldung nur lesbar, Abwesenheiten ohne Grund.
 
 ## [0.76.5] – 2026-10-28
