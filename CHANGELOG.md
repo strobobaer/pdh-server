@@ -13,10 +13,10 @@ im Kapitel „Versionen & Updates“ an.
 ## [0.76.3] – 2026-10-28
 
 ### Behoben
-- Auf Smartphone und Tablet war der Knopf für das Benutzermenü rechts aus dem Bild gerutscht – er bleibt jetzt immer sichtbar; wird es eng, kürzt sich zuerst der Seitentitel, dann die Uhr.
+- Auf Smartphone und Tablet war der Knopf für das Benutzermenü rechts aus dem Bild gerutscht – Uhr und Benutzermenü bleiben jetzt immer ganz sichtbar.
 
 ### Geändert
-- Auf dem Smartphone steht Copilot nicht mehr in der Kopfleiste, sondern wie gewohnt als Reiter in der rechten Seitenleiste.
+- Ist die Kopfleiste zu schmal, kürzt sich zuerst der Seitentitel; danach werden Knöpfe ausgeblendet: Im Chat teilen, Copilot, Hell/Dunkel, Chat, rechte Seitenleiste, zuletzt die Sprache. „Im Chat teilen“, „Hell/Dunkel“ und „Suche, Hilfe & mehr“ stehen dann im Benutzermenü, Chat und Copilot als Reiter in der rechten Seitenleiste.
 - Anmeldeseite, Easy-Mode und Leitstand folgen jetzt ebenfalls dem Design-Stil (Fiori oder Fluent).
 
 ## [0.76.2] – 2026-10-28
