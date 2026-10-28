@@ -206,7 +206,7 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 /* ── Main ── */
 .main-wrap{display:flex;flex-direction:column;overflow:hidden;min-width:0} /* min-width:0: breite Tabellen duerfen die Spalte nicht aufblaehen */
 .main{flex:1;overflow-y:auto;padding:22px}
-/* Band „Spiegel – nur lesen“ (mirror.go): orange = Spiegel, rot = aktiver Server weg */
+/* Band „Spiegel – nur lesen“ (mirror.go): orange = Spiegel (auch Status unbekannt), rot = aktiver Server weg */
 .mirror-band{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 22px;font-size:13px;line-height:1.4;flex-shrink:0;border-bottom:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 16%,var(--bg));color:var(--text)}
 .mirror-band.err{border-color:var(--red);background:color-mix(in srgb,var(--red) 16%,var(--bg))}
 .mirror-band > i{font-size:16px;color:var(--amber)}
@@ -917,13 +917,14 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
       <div class="status-dot" title="{{t "API online"}}"></div>
     </div>
   </div>
-  {{with .Mirror}}{{$m := .}}{{$ok := or .ActiveSeen .Restricted}}
+  {{with .Mirror}}{{$m := .}}{{$ok := or .ActiveSeen .Restricted (not .Known)}}
   <div class="mirror-band {{if $ok}}warn{{else}}err{{end}}" role="status">
     <i class="ti {{if $ok}}ti-eye{{else}}ti-alert-triangle{{end}}"></i>
     <b>{{t "Spiegel – nur lesen"}}</b>
     {{- if .Restricted}}<span>· {{t "Spiegel wartet auf das Update des aktiven Servers"}}</span>
-    {{- else if .ActiveSeen}}<span>· {{if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
+    {{- else if .ActiveSeen}}<span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
       {{- with .ActiveURL}}<span>· {{t "Aktiver Server:"}} <span class="mb-host" translate="no">{{$m.ActiveHost}}</span></span> <a class="btn btn-small" href="{{.}}">{{t "öffnen"}}</a>{{end}}
+    {{- else if not .Known}}<span>· {{t "Status des aktiven Servers unbekannt"}}</span><span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
     {{- else}}<span>· {{if .DataAt}}{{t "Aktiver Server nicht erreichbar – Daten vom %s" .DataAt}}{{else}}{{t "Aktiver Server nicht erreichbar"}} · {{t "Datenstand unbekannt"}}{{end}}</span>{{end}}
     {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=ha"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
   </div>

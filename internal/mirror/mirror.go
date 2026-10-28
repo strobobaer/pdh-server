@@ -103,3 +103,25 @@ func ReplayLag(ctx context.Context, p Prober) (lag time.Duration, at time.Time, 
 		time.Duration(iv.Days)*24*time.Hour + time.Duration(iv.Months)*30*24*time.Hour
 	return lag, ts.Time, nil
 }
+
+// currentSQL: Empfänger streamt, letzte Meldung des aktiven Servers frisch,
+// alles Empfangene eingespielt. 60 s statt 30 s: bei Ruhe fragt der Spiegel
+// erst nach wal_receiver_timeout/2 (30 s) nach – 30 s würde ständig kippen.
+// Ohne pg_read_all_stats sind status/last_msg_receipt_time NULL; dann reicht
+// ein laufender Empfänger (beendet sich nach wal_receiver_timeout ohne Kontakt).
+// Kein Empfänger (keine Zeile) oder keine LSN → false.
+const currentSQL = `SELECT COALESCE((
+	SELECT CASE WHEN r.status IS NULL THEN true
+		ELSE r.status = 'streaming' AND r.last_msg_receipt_time > now() - interval '60 seconds' END
+	FROM pg_stat_wal_receiver r LIMIT 1
+) AND pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn(), false)`
+
+// Current: Spiegel ist auf dem Stand des aktiven Servers (nichts unterwegs).
+// Bei ruhendem aktivem Server wächst ReplayLag, Current bleibt true.
+func Current(ctx context.Context, p Prober) (bool, error) {
+	var ok bool
+	if err := p.QueryRow(ctx, currentSQL).Scan(&ok); err != nil {
+		return false, err
+	}
+	return ok, nil
+}

@@ -187,3 +187,33 @@ func TestWatchEveryZeroNoPanic(t *testing.T) {
 	defer cancel()
 	Watch(ctx, &fakeProber{replies: []reply{modeReply(true, false)}}, ReadOnly, 0, time.Second, func(string) { t.Fatal("onChange") })
 }
+
+// sqlProber merkt sich die Abfrage und liefert eine Antwort.
+type sqlProber struct {
+	r   reply
+	sql string
+}
+
+func (s *sqlProber) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	s.sql = sql
+	return fakeRow{s.r}
+}
+
+func TestCurrent(t *testing.T) {
+	for _, want := range []bool{true, false} {
+		p := &sqlProber{r: reply{vals: []any{want}}}
+		got, err := Current(context.Background(), p)
+		if err != nil || got != want {
+			t.Fatalf("%v: got=%v err=%v", want, got, err)
+		}
+		// Empfänger streamt, Meldung frisch, alles Empfangene eingespielt; ohne Zeile → false
+		for _, part := range []string{"pg_stat_wal_receiver", "'streaming'", "last_msg_receipt_time", "pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()", "COALESCE("} {
+			if !strings.Contains(p.sql, part) {
+				t.Errorf("Abfrage ohne %q: %s", part, p.sql)
+			}
+		}
+	}
+	if got, err := Current(context.Background(), &sqlProber{r: reply{err: errDB}}); err == nil || got {
+		t.Fatalf("Fehler: got=%v err=%v", got, err)
+	}
+}

@@ -267,6 +267,9 @@ type Handler struct {
 	mirrorPeerC      mirrorCache[mirrorPeer]
 	mirrorLagFetch   func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
 	mirrorLagC       mirrorCache[mirrorLag]
+	mirrorCurFetch   func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
+	loginFn          func(ctx context.Context, email, password string) (string, *users.User, error)
+	loginRFIDFn      func(ctx context.Context, uid string) (string, *users.User, error)
 	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
 	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db               *pgxpool.Pool
@@ -2071,7 +2074,11 @@ func loginNext(next string) string {
 
 func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
+	login := h.loginFn // Tests; nil → users.Login
+	if login == nil {
+		login = h.users.Login
+	}
+	token, user, err := login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
 		d := h.loginDataFor(r, "Ungültige Anmeldedaten")
@@ -2107,7 +2114,11 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "login", h.loginDataFor(r, "Keine Karte erkannt"))
 		return
 	}
-	token, user, err := h.users.LoginByRFID(r.Context(), uid)
+	loginRFID := h.loginRFIDFn // Tests; nil → users.LoginByRFID
+	if loginRFID == nil {
+		loginRFID = h.users.LoginByRFID
+	}
+	token, user, err := loginRFID(r.Context(), uid)
 	if err != nil {
 		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
 		d := h.loginDataFor(r, "Unbekannte Karte")

@@ -524,7 +524,7 @@ func mirrorBannerPage(t *testing.T, m *MirrorBanner) string {
 }
 
 func TestMirrorBannerRendered(t *testing.T) {
-	out := mirrorBannerPage(t, &MirrorBanner{ActiveSeen: true, Lag: "3 s", ActiveURL: "http://10.10.0.17:8080/"})
+	out := mirrorBannerPage(t, &MirrorBanner{Known: true, ActiveSeen: true, Lag: "3 s", ActiveURL: "http://10.10.0.17:8080/"})
 	for _, want := range []string{"Spiegel – nur lesen", "Datenstand vor 3 s", `href="http://10.10.0.17:8080/"`, ">10.10.0.17:8080<", "mirror-band warn"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("aktiv gesehen: %q fehlt", want)
@@ -534,21 +534,39 @@ func TestMirrorBannerRendered(t *testing.T) {
 		t.Error("aktiv gesehen: kein Ausfall-Hinweis")
 	}
 	// Rückstand unbekannt
-	if out := mirrorBannerPage(t, &MirrorBanner{ActiveSeen: true}); !strings.Contains(out, "Datenstand unbekannt") {
+	if out := mirrorBannerPage(t, &MirrorBanner{Known: true, ActiveSeen: true}); !strings.Contains(out, "Datenstand unbekannt") {
 		t.Error("ohne Rückstand: „Datenstand unbekannt“ fehlt")
 	}
 	// aktiver Server weg: rot, Admin mit Knopf zum Ausfallschutz
-	out = mirrorBannerPage(t, &MirrorBanner{DataAt: "28.10. 06:49", Admin: true})
+	out = mirrorBannerPage(t, &MirrorBanner{Known: true, DataAt: "28.10. 06:49", Admin: true})
 	for _, want := range []string{"Aktiver Server nicht erreichbar – Daten vom 28.10. 06:49", "mirror-band err", `href="/admin/server-config?tab=ha"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("weg/Admin: %q fehlt", want)
 		}
 	}
-	if out := mirrorBannerPage(t, &MirrorBanner{DataAt: "28.10. 06:49"}); strings.Contains(out, "?tab=ha") {
+	if out := mirrorBannerPage(t, &MirrorBanner{Known: true, DataAt: "28.10. 06:49"}); strings.Contains(out, "?tab=ha") {
 		t.Error("Nicht-Admin: kein Knopf zum Ausfallschutz")
 	}
-	if out := mirrorBannerPage(t, &MirrorBanner{}); !strings.Contains(out, "Aktiver Server nicht erreichbar") || !strings.Contains(out, "Datenstand unbekannt") {
+	if out := mirrorBannerPage(t, &MirrorBanner{Known: true}); !strings.Contains(out, "Aktiver Server nicht erreichbar") || !strings.Contains(out, "Datenstand unbekannt") {
 		t.Error("weg ohne Zeitpunkt")
+	}
+	// Status unbekannt (pdh-ha nicht lesbar): orange statt rot, Admin mit Knopf
+	out = mirrorBannerPage(t, &MirrorBanner{Lag: "4 s", Admin: true})
+	for _, want := range []string{"Status des aktiven Servers unbekannt", "mirror-band warn", "Datenstand vor 4 s", `href="/admin/server-config?tab=ha"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("unbekannt: %q fehlt", want)
+		}
+	}
+	if strings.Contains(out, "nicht erreichbar") || strings.Contains(out, "mirror-band err") {
+		t.Error("unbekannt: nicht als Ausfall zeigen")
+	}
+	if out := mirrorBannerPage(t, &MirrorBanner{}); strings.Contains(out, "?tab=ha") {
+		t.Error("unbekannt, Nicht-Admin: kein Knopf")
+	}
+	// auf dem Stand des aktiven Servers: „aktuell“ statt wachsendem Rückstand
+	out = mirrorBannerPage(t, &MirrorBanner{Known: true, ActiveSeen: true, Current: true, Lag: "5 min"})
+	if !strings.Contains(out, "Datenstand aktuell") || strings.Contains(out, "Datenstand vor") {
+		t.Errorf("aktuell: %s", out)
 	}
 	// eingeschränkt
 	if out := mirrorBannerPage(t, &MirrorBanner{Restricted: true, Admin: true}); !strings.Contains(out, "Spiegel wartet auf das Update des aktiven Servers") {
@@ -575,13 +593,15 @@ func TestMirrorBannerData(t *testing.T) {
 		lagCalls++
 		return 3 * time.Second, at, nil
 	}
+	curCalls := 0
+	h.mirrorCurFetch = func(context.Context) (bool, error) { curCalls++; return true, nil }
 	b := h.mirrorBanner(r)
-	if b == nil || !b.ActiveSeen || !b.Admin || b.Restricted || b.Lag != "3 s" || b.DataAt != "28.10. 06:49" || b.ActiveURL != "http://10.10.0.17:8080/" {
+	if b == nil || !b.Known || !b.ActiveSeen || !b.Admin || b.Restricted || !b.Current || b.Lag != "3 s" || b.DataAt != "28.10. 06:49" || b.ActiveURL != "http://10.10.0.17:8080/" {
 		t.Fatalf("Band: %+v", b)
 	}
 	h.mirrorBanner(r)
-	if lagCalls != 1 {
-		t.Fatalf("Rückstand zwischengespeichert: %d Abfragen", lagCalls)
+	if lagCalls != 1 || curCalls != 1 {
+		t.Fatalf("Rückstand zwischengespeichert: %d/%d Abfragen", lagCalls, curCalls)
 	}
 	// Abfragefehler → kein Rückstand
 	h = &Handler{}
@@ -589,13 +609,15 @@ func TestMirrorBannerData(t *testing.T) {
 	h.mirrorAdminFn = func(*http.Request) bool { return false }
 	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(false), nil }
 	h.mirrorLagFetch = func(context.Context) (time.Duration, time.Time, error) { return 0, time.Time{}, errors.New("db weg") }
-	if b := h.mirrorBanner(r); b == nil || b.ActiveSeen || b.Admin || !b.Restricted || b.Lag != "" || b.DataAt != "" {
+	h.mirrorCurFetch = func(context.Context) (bool, error) { return true, errors.New("db weg") }
+	if b := h.mirrorBanner(r); b == nil || !b.Known || b.ActiveSeen || b.Admin || !b.Restricted || b.Current || b.Lag != "" || b.DataAt != "" {
 		t.Fatalf("Fehler: %+v", b)
 	}
 	// noch nichts eingespielt (NULL) → kein Rückstand
 	h.mirrorLagC = mirrorCache[mirrorLag]{}
 	h.mirrorLagFetch = func(context.Context) (time.Duration, time.Time, error) { return 0, time.Time{}, nil }
-	if b := h.mirrorBanner(r); b.Lag != "" || b.DataAt != "" {
+	h.mirrorCurFetch = func(context.Context) (bool, error) { return false, nil }
+	if b := h.mirrorBanner(r); b.Lag != "" || b.DataAt != "" || b.Current {
 		t.Fatalf("NULL: %+v", b)
 	}
 	// ohne Datenbank kein Absturz
@@ -603,7 +625,7 @@ func TestMirrorBannerData(t *testing.T) {
 	h.SetMirror(MirrorInfo{On: true})
 	h.mirrorAdminFn = func(*http.Request) bool { return false }
 	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return haStatus{}, errors.New("x") }
-	if b := h.mirrorBanner(r); b == nil || b.Lag != "" {
+	if b := h.mirrorBanner(r); b == nil || b.Lag != "" || b.Current || b.Known {
 		t.Fatalf("ohne DB: %+v", b)
 	}
 }
@@ -732,25 +754,62 @@ func TestMirrorLoginRefused(t *testing.T) {
 			t.Errorf("%s: unerwartete Antwort %d", c.name, rec.Code)
 		}
 	}
-	// beide Anmeldewege prüfen vor Passwortwechsel und Cookie
-	b, err := os.ReadFile("handler.go")
-	if err != nil {
-		t.Fatal(err)
+}
+
+// mirrorLoginHandler: Spiegel an, aktiver Server erreichbar, Anmeldung ohne Datenbank.
+func mirrorLoginHandler(admin bool) *Handler {
+	h := &Handler{}
+	h.SetMirror(MirrorInfo{On: true})
+	h.mirrorAdminFn = func(*http.Request) bool { return admin }
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(true), nil }
+	u := &users.User{ID: "u1", FirstName: "Max", Role: users.RoleTechnician, Active: true}
+	h.loginFn = func(_ context.Context, email, pw string) (string, *users.User, error) {
+		if email != "max" || pw != "geheim" {
+			return "", nil, errors.New("falsch")
+		}
+		return "tok", u, nil
 	}
-	src := strings.ReplaceAll(string(b), "\r\n", "\n")
-	for _, fn := range []string{"func (h *Handler) LoginPost(", "func (h *Handler) LoginRFIDWeb("} {
-		i := strings.Index(src, fn)
-		if i < 0 {
-			t.Fatalf("%s fehlt", fn)
+	h.loginRFIDFn = func(_ context.Context, uid string) (string, *users.User, error) {
+		if uid != "AB12" {
+			return "", nil, errors.New("unbekannt")
 		}
-		body := src[i:]
-		body = body[:strings.Index(body, "\n}\n")]
-		gate, cookie := strings.Index(body, "h.mirrorLoginRefused("), strings.Index(body, `Name: "pdh_token"`)
-		if gate < 0 || cookie < 0 || gate > cookie {
-			t.Errorf("%s: Regel C fehlt vor dem Cookie", fn)
-		}
-		if pw := strings.Index(body, "h.passwordChangeDue("); pw >= 0 && gate > pw {
-			t.Errorf("%s: Regel C erst nach dem Passwortwechsel", fn)
+		return "tok", u, nil
+	}
+	return h
+}
+
+func TestMirrorLoginPostRuleC(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(h *Handler, w http.ResponseWriter, r *http.Request)
+		body string
+	}{
+		{"passwort", (*Handler).LoginPost, "email=max&password=geheim&next=%2Ftickets"},
+		{"rfid", (*Handler).LoginRFIDWeb, "uid=AB12&next=%2Ftickets"},
+	}
+	for _, c := range cases {
+		for _, admin := range []bool{false, true} {
+			h := mirrorLoginHandler(admin)
+			req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(c.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			c.call(h, rec, req)
+			var tok bool
+			for _, ck := range rec.Result().Cookies() {
+				if ck.Name == "pdh_token" && ck.Value != "" {
+					tok = true
+				}
+			}
+			loc := rec.Header().Get("Location")
+			if admin {
+				if rec.Code != http.StatusFound || loc != "/tickets" || !tok {
+					t.Errorf("%s/Admin: %d %q Cookie=%v", c.name, rec.Code, loc, tok)
+				}
+				continue
+			}
+			if rec.Code != http.StatusFound || loc != "/login?spiegel=1" || tok {
+				t.Errorf("%s/Benutzer: %d %q Cookie=%v", c.name, rec.Code, loc, tok)
+			}
 		}
 	}
 }
