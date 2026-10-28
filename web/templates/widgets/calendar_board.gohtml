@@ -1,0 +1,118 @@
+{{/* Kalender (Filter + Raster) – Seite /calendar und Leitstand-Baustein (/global/calendar) */}}
+{{define "calendar-board"}}
+{{range .LoadErrors}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> Konnte nicht geladen werden – {{.}}</div>{{end}}
+<form class="card cal-filter" method="get" action="{{if .Embed}}/global/calendar{{else}}/calendar{{end}}">
+  <input type="hidden" name="set" value="1">{{if .Embed}}<input type="hidden" name="b" value="{{.Board}}">{{end}}
+  <div class="cal-row">
+    <a class="btn btn-icon cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Prev}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}" title="Zurück"><i class="ti ti-chevron-left"></i></a>
+    <input type="date" name="from" class="form-input" value="{{.From}}" style="width:auto" onchange="this.form.requestSubmit()">
+    <a class="btn btn-icon cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Next}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}" title="Weiter"><i class="ti ti-chevron-right"></i></a>
+    {{if ne .From .Today}}<a class="btn btn-small cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Today}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}">Heute</a>{{end}}
+    <select name="days" class="form-input" style="width:auto" onchange="this.form.requestSubmit()">{{range .Ranges}}<option value="{{.}}" {{if eq . $.Range}}selected{{end}}>{{.}} Tage</option>{{end}}</select>
+    <select name="dept" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Abteilungen</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.Dept}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <select name="group" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Gruppen</option>{{range .Groups}}<option value="{{.Value}}" {{if eq .Value $.Group}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+    <select name="user" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Personen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.User}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  </div>
+  <div class="cal-row">
+    {{range .Kinds}}<label class="cal-kind" style="--kc:{{css .Color}}"><input type="checkbox" name="show" value="{{.Key}}" {{if index $.Show .Key}}checked{{end}} onchange="this.form.requestSubmit()"><i class="ti {{.Icon}}"></i> {{.Label}}{{with index $.Counts .Key}} <b>{{.}}</b>{{end}}</label>{{end}}
+    <label class="cal-kind" style="margin-left:auto"><input type="hidden" name="busy" value="0"><input type="checkbox" name="busy" value="1" {{if .OnlyBusy}}checked{{end}} onchange="this.form.requestSubmit()"> nur Personen mit Einträgen</label>
+    {{if .Embed}}<a class="btn btn-small cal-nav" href="/global/calendar?b={{.Board}}" title="Auswahl des Leitstands"><i class="ti ti-restore"></i></a>{{else}}<a class="btn btn-small" href="/calendar?reset=1" title="Auswahl zurücksetzen"><i class="ti ti-restore"></i></a>{{end}}
+  </div>
+</form>
+
+<div class="card cal-scroll" style="padding:0;overflow:auto;{{if not .Embed}}max-height:calc(100vh - 260px){{else}}max-height:70vh{{end}}">
+  <table class="cal-grid">
+    <thead><tr><th class="who">Mitarbeiter</th>
+      {{range .Days}}<th class="{{if .Weekend}}we{{end}}{{if .Holiday}} hol{{end}}{{if .Today}} today{{end}}" title="{{.Holiday}}">{{.Short}}<span>{{.Label}}</span>{{if .Holiday}}<em>{{.Holiday}}</em>{{end}}</th>{{end}}
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr data-user="{{.UserID}}">
+      <th class="who">{{if .UserID}}{{.Name}}{{else}}<i>{{.Name}}</i>{{end}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}{{if .Conflicts}}<small style="color:var(--red)"><i class="ti ti-alert-octagon"></i> {{.Conflicts}}</small>{{end}}</th>
+      {{range .Cells}}
+      <td data-date="{{.Date}}" class="{{if .Weekend}}we{{end}}{{if .Holiday}} hol{{end}}{{if .Conflict}} clash{{else if .Warn}} warn{{end}}" title="{{if .Conflict}}⚠ {{.Conflict}}{{else if .Warn}}{{.Warn}}{{end}}">
+        {{with .Absence}}<a class="cc abs{{if .Pending}} pend{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-id="{{.ID}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti ti-beach"></i> {{.Short}}</a>{{end}}
+        {{with .Shift}}<a class="cc sh{{if .Pending}} pend{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-row="{{.Row}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}{{if .Pending}} (Entwurf){{end}}">{{.Short}}</a>{{end}}
+        {{range .Items}}<a class="cc it{{if .SpanMid}} mid{{end}}{{if eq .Kind "project"}} proj{{end}}" href="{{.URL}}"{{if .Drag}} data-drag="{{.Drag}}" data-kind="{{.Kind}}" data-id="{{.ID}}" data-row="{{.Row}}"{{end}} style="--kc:{{css .Color}}" title="{{.Tip}}"><i class="ti {{.Icon}}"></i>{{if not .SpanMid}} {{.Title}}{{end}}</a>{{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td colspan="99" style="text-align:center;color:var(--muted);padding:24px">Im Zeitraum gibt es keine Einträge für diese Auswahl.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+<div class="rec-sub" style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap">
+  <span><span class="cal-key clash"></span> Überschneidung: abwesend, aber Schicht oder fälliger Auftrag</span>
+  <span><span class="cal-key warn"></span> fällig an einem Tag ohne Schicht</span>
+  <span>schraffiert = beantragt bzw. Entwurf</span>
+  <span><i class="ti ti-hand-move"></i> Eintrag ziehen = verschieben (Strg = kopieren) · am rechten Rand ziehen = Schicht/Dienst über weitere Tage, Abwesenheit verlängern</span>
+  <button type="button" class="btn btn-small" id="cal-copy" aria-pressed="false" title="Ziehen kopiert Schichten und Dienste statt sie zu verschieben"><i class="ti ti-copy"></i> Kopieren</button>
+</div>
+{{if .Embed}}<style>
+.cal-filter{display:flex;flex-direction:column;gap:8px}
+.cal-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cal-kind{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;cursor:pointer;user-select:none}
+.cal-kind i{color:var(--kc,var(--muted))}
+.cal-kind:has(input:checked){border-color:var(--kc,var(--accent));background:color-mix(in srgb,var(--kc,var(--accent)) 12%,transparent)}
+.cal-kind input{margin:0}
+.cal-kind b{font-weight:600;font-size:10px;color:var(--muted)}
+.cal-grid{border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:100%}
+.cal-grid th,.cal-grid td{border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.cal-grid thead th{position:sticky;top:0;z-index:2;background:var(--bg3);font-size:11px;padding:5px 2px;text-align:center;min-width:92px;font-weight:600}
+.cal-grid thead th span{display:block;font-size:13px}
+.cal-grid thead th em{display:block;font-style:normal;font-size:9.5px;color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-grid thead th.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.cal-grid .who{position:sticky;left:0;z-index:1;background:var(--bg2);text-align:left;font-size:12.5px;padding:6px 8px;min-width:170px;max-width:200px;font-weight:600}
+.cal-grid thead .who{z-index:3;background:var(--bg3)}
+.cal-grid .who small{display:block;font-weight:400;color:var(--muted);font-size:10.5px}
+.cal-grid td{vertical-align:top;padding:3px;height:44px}
+.cal-grid .we{background:color-mix(in srgb,var(--muted) 7%,transparent)}
+.cal-grid .hol{background:color-mix(in srgb,var(--red) 6%,transparent)}
+.cal-grid td.clash{box-shadow:inset 0 0 0 2px var(--red);background:color-mix(in srgb,var(--red) 8%,transparent)}
+.cal-grid td.warn{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--amber) 70%,transparent)}
+.cc{display:block;font-size:10.5px;line-height:1.35;padding:1px 5px;margin-bottom:2px;border-radius:5px;color:inherit;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  background:color-mix(in srgb,var(--kc) 18%,transparent);border-left:3px solid var(--kc)}
+.cc:hover{background:color-mix(in srgb,var(--kc) 30%,transparent)}
+.cc.abs{background:var(--kc);color:#fff;border-left-color:var(--kc)}
+.cc.sh{display:inline-block;min-width:24px;text-align:center;font-weight:700;background:var(--kc);color:#fff;border:0}
+.cc.pend{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 4px,transparent 4px 8px);opacity:.85}
+.cc.proj{border-radius:5px 0 0 5px;margin-right:-4px}
+.cc.proj.mid{border-left:0;border-radius:0;min-height:14px;margin-left:-4px}
+.cal-key{display:inline-block;width:14px;height:12px;vertical-align:-2px;border-radius:3px}
+.cal-key.clash{box-shadow:inset 0 0 0 2px var(--red)}
+.cal-key.warn{box-shadow:inset 0 0 0 2px var(--amber)}
+.cal-grid .cc.it[data-drag="item"] .dg-end{display:none}
+</style>{{end}}
+{{end}}
+
+{{define "calendar-js"}}
+<script>
+// pdhCalInit: Ziehen im Kalender (Seite und Leitstand-Baustein)
+window.pdhCalInit = function(box){
+  const grid = box.querySelector('.cal-grid'); if(!grid) return;
+  const userOf = c => c.closest('tr').dataset.user || '';
+  const drag = pdhGridDrag({root: grid, chip: '.cc[data-drag]', cell: 'td[data-date]',
+    canDrop: (ch, c) => ch.dataset.drag === 'item' || ((ch.dataset.drag === 'shift' || ch.dataset.drag === 'duty') && userOf(c) !== ''),
+    onMove: (ch, from, to, copy) => {
+      const k = ch.dataset.drag;
+      if(k === 'item') return pdhGridPost('/calendar/move', {kind: ch.dataset.kind, id: ch.dataset.id, to_date: to.dataset.date});
+      if(k === 'shift' || k === 'duty') return pdhGridPost('/planner/grid/move', {kind: k, user_id: userOf(from), to_user: userOf(to),
+        from_date: from.dataset.date, from_row: ch.dataset.row, to_date: to.dataset.date, to_row: ch.dataset.row, copy: copy});
+      alert('Abwesenheiten am Rand ziehen, um sie zu verlängern oder zu verkürzen.');
+    },
+    onFill: (ch, from, cells) => {
+      const k = ch.dataset.drag;
+      if(k === 'absence'){
+        // nach rechts gezogen: Ende = letzter Tag; nach links: Beginn = erster Tag
+        const to = cells[0] === from ? cells[cells.length - 1] : cells[0];
+        return pdhGridPost('/planner/absences/' + ch.dataset.id + '/extend', {to_date: to.dataset.date});
+      }
+      if(k === 'shift' || k === 'duty') return pdhGridPost('/planner/grid/fill', {kind: k, user_id: userOf(from), from_row: ch.dataset.row,
+        from_date: cells[0].dataset.date, to_date: cells[cells.length - 1].dataset.date});
+    }});
+  const cb = box.querySelector('#cal-copy'); if(cb) cb.addEventListener('click', () => { const on = cb.getAttribute('aria-pressed') !== 'true'; cb.setAttribute('aria-pressed', on); cb.classList.toggle('dg-copy-on', on); drag.setCopy(on); });
+};
+</script>
+{{end}}
