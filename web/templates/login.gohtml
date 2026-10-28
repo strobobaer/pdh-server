@@ -103,6 +103,7 @@ input:focus{border-color:var(--accent)}
   <a class="link" href="/login">← {{t "Zurück zur Anmeldung"}}</a>
   {{else}}
   <h2>{{t "Anmelden"}}</h2>
+  {{if .Mirror}}<div class="error">{{t "Bitte den aktiven Server verwenden"}}{{with .MirrorURL}}: <a href="{{.}}">{{.}}</a>{{end}}</div>{{end}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
   {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   {{if .Next}}<div class="notice">{{t "Nach der Anmeldung geht es direkt weiter zur gescannten Seite."}}</div>{{end}}

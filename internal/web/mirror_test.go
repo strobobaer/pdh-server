@@ -1,14 +1,22 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"pdh/internal/core/users"
 	"pdh/pkg/database"
 )
 
@@ -71,6 +79,7 @@ func TestReadOnlyAllowsAuth(t *testing.T) {
 		{http.MethodPost, "/logout"},
 		{http.MethodPost, "/lang"},
 		{http.MethodPost, "/admin/server-config/ha/command"},
+		{http.MethodPost, "/api/v1/users/login"},
 	}
 	for _, c := range cases {
 		if rec := mirrorServe(hd, c.method, c.path, nil); rec.Code != http.StatusOK {
@@ -80,7 +89,7 @@ func TestReadOnlyAllowsAuth(t *testing.T) {
 	if *calls != len(cases) {
 		t.Fatalf("durchgereicht: %d", *calls)
 	}
-	for _, p := range []string{"/loginx", "/admin/server-config", "/admin/server-config/hax", "/language"} {
+	for _, p := range []string{"/loginx", "/admin/server-config", "/admin/server-config/hax", "/language", "/api/v1/users/login/x", "/api/v1/users"} {
 		if rec := mirrorServe(hd, http.MethodPost, p, nil); rec.Code != http.StatusConflict {
 			t.Fatalf("POST %s muss gesperrt sein: %d", p, rec.Code)
 		}
@@ -113,6 +122,15 @@ func TestReadOnlyOffPassesAll(t *testing.T) {
 	}
 }
 
+// mirrorStaleHeaders: Kopfzeilen des Handlers, die zur Sperrmeldung nicht passen.
+var mirrorStaleHeaders = map[string]string{
+	"Content-Disposition": `attachment; filename="x.pdf"`,
+	"Content-Encoding":    "gzip",
+	"ETag":                `"abc"`,
+	"Last-Modified":       "Mon, 02 Jan 2006 15:04:05 GMT",
+	"Cache-Control":       "max-age=3600",
+}
+
 // writeIn25006: Handler, der wie ein Schreibzugriff am Standby scheitert
 // (Tracer markiert die Anfrage) und dann 500 meldet.
 func writeIn25006(fail bool) http.Handler {
@@ -122,6 +140,9 @@ func writeIn25006(fail bool) http.Handler {
 			tr.TraceQueryEnd(r.Context(), nil, pgx.TraceQueryEndData{Err: &pgconn.PgError{Code: "25006"}})
 		}
 		w.Header().Set("HX-Redirect", "/irgendwo")
+		for k, v := range mirrorStaleHeaders {
+			w.Header().Set(k, v)
+		}
 		http.Error(w, "interner Fehler", http.StatusInternalServerError)
 	})
 }
@@ -137,6 +158,14 @@ func TestReadOnlyTracerConverts500(t *testing.T) {
 	}
 	if rec.Header().Get("HX-Redirect") != "" {
 		t.Fatal("htmx-Kopfzeilen des Handlers müssen verworfen werden")
+	}
+	for k := range mirrorStaleHeaders {
+		if k != "Cache-Control" && rec.Header().Get(k) != "" {
+			t.Errorf("Kopfzeile %s des Handlers muss verworfen werden", k)
+		}
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("Cache-Control: %q", rec.Header().Get("Cache-Control"))
 	}
 	// erlaubter Schreibpfad (z. B. Passwort vergessen) schreibt trotzdem
 	rec = mirrorServe(h.MirrorMiddleware(writeIn25006(true)), http.MethodPost, "/login/forgot", map[string]string{"HX-Request": "true"})
@@ -196,5 +225,265 @@ func TestPresenceSkippedInMirror(t *testing.T) {
 	presence.mu.Unlock()
 	if saved {
 		t.Fatal("im Spiegel darf presenceTouch nichts speichern")
+	}
+}
+
+// ── Anmeldung nach Regel C, eingeschränkter Modus ───────────
+
+func TestMirrorLoginAllowed(t *testing.T) {
+	seen := mirrorPeer{Known: true, ActiveSeen: true}
+	gone := mirrorPeer{Known: true}
+	unknown := mirrorPeer{}
+	cases := []struct {
+		name  string
+		admin bool
+		p     mirrorPeer
+		want  bool
+	}{
+		{"admin/gesehen", true, seen, true},
+		{"admin/nicht gesehen", true, gone, true},
+		{"admin/unbekannt", true, unknown, true},
+		{"benutzer/gesehen", false, seen, false},
+		{"benutzer/nicht gesehen", false, gone, true},
+		{"benutzer/unbekannt", false, unknown, false},
+	}
+	for _, c := range cases {
+		if got := mirrorLoginAllowed(c.admin, c.p); got != c.want {
+			t.Errorf("%s: %v, erwartet %v", c.name, got, c.want)
+		}
+	}
+}
+
+// mirrorStatus: pdh-ha-Status mit aktivem Partner (gesehen oder nicht).
+func mirrorStatus(seen bool) haStatus {
+	return haStatus{Configured: true, Peers: []haNode{
+		{Kind: "witness", Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "10.10.0.99:7946"}}},
+		{Kind: "node", Role: "aktiv", Seen: seen, Paths: []haPath{{Addr: "10.10.0.17:7946"}}},
+	}}
+}
+
+// mirrorGateTest: authMiddleware mit Sitzung (Benutzer ohne Datenbank) vor einem Handler, der „ok“ schreibt.
+func mirrorGateTest(t *testing.T, info MirrorInfo, admin bool, st haStatus) (http.Handler, *int, string) {
+	t.Helper()
+	h := &Handler{jwtSecret: boardTestSecret}
+	h.SetMirror(info)
+	h.userByIDFn = func(_ context.Context, id string) (*users.User, error) {
+		return &users.User{ID: id, Role: users.RoleTechnician, Active: true}, nil
+	}
+	h.mirrorAdminFn = func(*http.Request) bool { return admin }
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return st, nil }
+	calls := 0
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte("ok"))
+	})
+	tok := boardTestToken(t, jwt.MapClaims{"sub": "u1", "exp": time.Now().Add(time.Hour).Unix()})
+	return h.authMiddleware(next), &calls, tok
+}
+
+func mirrorSessionGet(hd http.Handler, tok, path string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.AddCookie(&http.Cookie{Name: "pdh_token", Value: tok})
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	hd.ServeHTTP(rec, req)
+	return rec
+}
+
+func cookieCleared(rec *httptest.ResponseRecorder, name string) bool {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == name && c.MaxAge < 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMirrorGateExistingSession(t *testing.T) {
+	hd, calls, tok := mirrorGateTest(t, MirrorInfo{On: true}, false, mirrorStatus(true))
+	rec := mirrorSessionGet(hd, tok, "/", nil)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?spiegel=1" {
+		t.Fatalf("Nicht-Admin bei erreichbarem aktivem Server: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	for _, c := range []string{"pdh_token", "pdh_user_id", "pdh_return_token"} {
+		if !cookieCleared(rec, c) {
+			t.Errorf("Cookie %s nicht gelöscht", c)
+		}
+	}
+	if *calls != 0 {
+		t.Fatal("Handler darf nicht erreicht werden")
+	}
+	// htmx (Hintergrundabfrage): ganze Seite zur Anmeldung
+	rec = mirrorSessionGet(hd, tok, "/api/presence", map[string]string{"HX-Request": "true"})
+	if rec.Header().Get("HX-Redirect") != "/login?spiegel=1" || !cookieCleared(rec, "pdh_token") {
+		t.Fatalf("htmx: %d %v", rec.Code, rec.Header())
+	}
+	// aktiver Server weg → Nicht-Admin darf lesen
+	hd, calls, tok = mirrorGateTest(t, MirrorInfo{On: true}, false, mirrorStatus(false))
+	if rec := mirrorSessionGet(hd, tok, "/", nil); rec.Code != http.StatusOK || *calls != 1 {
+		t.Fatalf("aktiver Server nicht gesehen: %d", rec.Code)
+	}
+	// Admin immer
+	hd, calls, tok = mirrorGateTest(t, MirrorInfo{On: true}, true, mirrorStatus(true))
+	if rec := mirrorSessionGet(hd, tok, "/", nil); rec.Code != http.StatusOK || *calls != 1 {
+		t.Fatalf("Admin: %d", rec.Code)
+	}
+	// Spiegel aus: keine Schranke, kein Statusabruf
+	h := &Handler{jwtSecret: boardTestSecret}
+	h.userByIDFn = func(_ context.Context, id string) (*users.User, error) {
+		return &users.User{ID: id, Role: users.RoleTechnician, Active: true}, nil
+	}
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { t.Error("Statusabruf ohne Spiegel"); return haStatus{}, nil }
+	h.mirrorAdminFn = func(*http.Request) bool { return false }
+	reached := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true })
+	if mirrorSessionGet(h.authMiddleware(next), tok, "/", nil); !reached {
+		t.Fatal("Spiegel aus: Handler nicht erreicht")
+	}
+}
+
+func TestMirrorGateBoardComplete(t *testing.T) {
+	const id = "11111111-1111-1111-1111-111111111111"
+	tok := boardTestToken(t, jwt.MapClaims{"sub": "u1", "scope": boardCompleteScope, "ref": "fault:" + id, "exp": time.Now().Add(time.Minute).Unix()})
+	for _, admin := range []bool{false, true} {
+		hd, calls, _ := mirrorGateTest(t, MirrorInfo{On: true}, admin, mirrorStatus(true))
+		req := httptest.NewRequest(http.MethodPost, "/complete/fault/"+id, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		hd.ServeHTTP(rec, req)
+		if admin {
+			if rec.Code != http.StatusOK || *calls != 1 {
+				t.Fatalf("Admin: %d", rec.Code)
+			}
+			continue
+		}
+		if rec.Code != http.StatusConflict || *calls != 0 {
+			t.Fatalf("Nicht-Admin per Leitstand-Token: %d calls=%d", rec.Code, *calls)
+		}
+	}
+}
+
+func TestMirrorRestrictedRedirect(t *testing.T) {
+	info := MirrorInfo{On: true, Restricted: true}
+	hd, calls, tok := mirrorGateTest(t, info, true, mirrorStatus(false))
+	rec := mirrorSessionGet(hd, tok, "/tickets", nil)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/admin/server-config?tab=ha" {
+		t.Fatalf("Admin /tickets: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	for _, p := range []string{"/admin/server-config", "/admin/server-config?tab=ha", "/admin/server-config/ha/join-script", "/logout"} {
+		if rec := mirrorSessionGet(hd, tok, p, nil); rec.Code != http.StatusOK {
+			t.Fatalf("%s muss durch: %d %q", p, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+	if *calls != 4 {
+		t.Fatalf("durchgereicht: %d", *calls)
+	}
+	// htmx-Hintergrundabfragen: nichts tauschen, keine Umleitungsschleife
+	rec = mirrorSessionGet(hd, tok, "/api/presence", map[string]string{"HX-Request": "true"})
+	if rec.Code != http.StatusNoContent || rec.Header().Get("Location") != "" {
+		t.Fatalf("htmx: %d %v", rec.Code, rec.Header())
+	}
+	// Nicht-Admin: abgemeldet, auch wenn der aktive Server weg ist
+	hd, calls, tok = mirrorGateTest(t, info, false, mirrorStatus(false))
+	rec = mirrorSessionGet(hd, tok, "/admin/server-config", nil)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?spiegel=1" || !cookieCleared(rec, "pdh_token") || *calls != 0 {
+		t.Fatalf("Nicht-Admin eingeschränkt: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestMirrorRestrictedAllowed(t *testing.T) {
+	for _, p := range []string{"/admin/server-config", "/admin/server-config/ha/command", "/login", "/login/rfid", "/logout", "/lang", "/static/x.js"} {
+		if !mirrorRestrictedAllowed(p) {
+			t.Errorf("%s muss erlaubt sein", p)
+		}
+	}
+	for _, p := range []string{"/", "/tickets", "/admin/server-configx", "/admin/users", "/loginx", "/language", "/staticx"} {
+		if mirrorRestrictedAllowed(p) {
+			t.Errorf("%s darf nicht erlaubt sein", p)
+		}
+	}
+}
+
+func TestMirrorPeerFromStatus(t *testing.T) {
+	h := &Handler{}
+	fetches := 0
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
+		fetches++
+		return haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{{Addr: "10.10.0.17:7946"}}}}}, nil
+	}
+	p := h.mirrorPeerState(context.Background())
+	if !p.Known || !p.ActiveSeen || p.ActiveAddr != "10.10.0.17" {
+		t.Fatalf("Peer: %+v", p)
+	}
+	h.mirrorPeerState(context.Background())
+	if fetches != 1 {
+		t.Fatalf("Zwischenspeicher: %d Abrufe", fetches)
+	}
+	// Zeuge zählt nicht als aktiver Server
+	h = &Handler{}
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
+		return haStatus{Configured: true, Peers: []haNode{{Kind: "witness", Role: "aktiv", Seen: true}}}, nil
+	}
+	if p := h.mirrorPeerState(context.Background()); !p.Known || p.ActiveSeen {
+		t.Fatalf("Zeuge: %+v", p)
+	}
+	// Fehler oder nicht eingerichtet → unbekannt
+	for _, f := range []func(context.Context) (haStatus, error){
+		func(context.Context) (haStatus, error) { return haStatus{}, errors.New("socket fehlt") },
+		func(context.Context) (haStatus, error) { return haStatus{Configured: false}, nil },
+	} {
+		h = &Handler{}
+		h.mirrorPeerFetch = f
+		if p := h.mirrorPeerState(context.Background()); p.Known {
+			t.Fatalf("muss unbekannt sein: %+v", p)
+		}
+	}
+	// ohne Socket (Standardabruf) → unbekannt
+	t.Setenv("PDH_HA_SOCKET", filepath.Join(t.TempDir(), "fehlt.sock"))
+	h = &Handler{}
+	if p := h.mirrorPeerState(context.Background()); p.Known {
+		t.Fatalf("ohne Socket: %+v", p)
+	}
+}
+
+func TestMirrorActiveURL(t *testing.T) {
+	p := mirrorPeer{Known: true, ActiveSeen: true, ActiveAddr: "10.10.0.17"}
+	r := httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/x", nil)
+	if u := mirrorActiveLink(r, p); u != "http://10.10.0.17:8080/" {
+		t.Fatalf("mit Port: %q", u)
+	}
+	r = httptest.NewRequest(http.MethodGet, "http://pdh2.firma.de/x", nil)
+	r.Header.Set("X-Forwarded-Proto", "https")
+	if u := mirrorActiveLink(r, p); u != "https://10.10.0.17/" {
+		t.Fatalf("ohne Port, https: %q", u)
+	}
+	if u := mirrorActiveLink(r, mirrorPeer{Known: true}); u != "" {
+		t.Fatalf("ohne Adresse: %q", u)
+	}
+	if u := mirrorActiveLink(r, mirrorPeer{ActiveAddr: "fd00::17"}); u != "https://[fd00::17]/" {
+		t.Fatalf("IPv6: %q", u)
+	}
+}
+
+func TestMirrorLoginHint(t *testing.T) {
+	h := &Handler{}
+	h.SetMirror(MirrorInfo{On: true})
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(true), nil }
+	d := h.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/login?spiegel=1", nil), LoginData{})
+	if !d.Mirror || d.MirrorURL != "http://10.10.0.17:8080/" {
+		t.Fatalf("Hinweis: %+v", d)
+	}
+	if d := h.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "/login", nil), LoginData{}); d.Mirror {
+		t.Fatal("ohne spiegel=1 kein Hinweis")
+	}
+	off := &Handler{}
+	if d := off.mirrorLoginHint(httptest.NewRequest(http.MethodGet, "/login?spiegel=1", nil), LoginData{}); d.Mirror {
+		t.Fatal("Spiegel aus: kein Hinweis")
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "login.gohtml"))
+	if err != nil || !strings.Contains(string(b), "Bitte den aktiven Server verwenden") || !strings.Contains(string(b), ".MirrorURL") {
+		t.Fatal("login.gohtml: Hinweis fehlt")
 	}
 }

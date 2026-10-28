@@ -2,6 +2,7 @@ package web
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"pdh/pkg/database"
 	"pdh/pkg/response"
@@ -21,10 +23,11 @@ import (
 const mirrorReadOnlyMsg = "Dieser Server ist der Spiegel – nur lesen. Änderungen bitte am aktiven Server."
 
 // mirrorAllowedWrite: Schreibanfragen, die der Spiegel trotzdem annimmt –
-// Anmelden/Abmelden, Sprache (nur Cookie) und Ausfallschutz-Befehle (pdh-ha-Socket).
+// Anmelden/Abmelden (auch über die Schnittstelle), Sprache (nur Cookie) und
+// Ausfallschutz-Befehle (pdh-ha-Socket).
 func mirrorAllowedWrite(path string) bool {
 	switch path {
-	case "/login", "/logout", "/lang":
+	case "/login", "/logout", "/lang", "/api/v1/users/login":
 		return true
 	}
 	return strings.HasPrefix(path, "/login/") || strings.HasPrefix(path, "/admin/server-config/ha/")
@@ -103,11 +106,17 @@ func (m *mirrorWriter) WriteHeader(code int) {
 	m.wrote = true
 	if code >= 500 && m.mark.Load() {
 		m.refused = true
-		for k := range m.Header() {
+		hd := m.Header()
+		for k := range hd {
 			if strings.HasPrefix(strings.ToLower(k), "hx-") {
-				m.Header().Del(k)
+				hd.Del(k)
 			}
 		}
+		// Kopfzeilen der verworfenen Antwort passen nicht zur Sperrmeldung
+		for _, k := range []string{"Content-Disposition", "Content-Encoding", "ETag", "Last-Modified"} {
+			hd.Del(k)
+		}
+		hd.Set("Cache-Control", "no-store")
 		m.h.mirrorRefuse(m.ResponseWriter, m.r)
 		return
 	}
@@ -143,3 +152,170 @@ func (m *mirrorWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func (m *mirrorWriter) Unwrap() http.ResponseWriter { return m.ResponseWriter }
+
+// ── Anmeldung am Spiegel (Regel C) und eingeschränkter Modus ─
+
+const (
+	mirrorLoginURL      = "/login?spiegel=1"
+	mirrorRestrictedURL = "/admin/server-config?tab=ha"
+	mirrorPeerTTL       = 5 * time.Second
+	mirrorPeerTimeout   = 2 * time.Second // hängender Socket darf Anfragen nicht aufhalten
+)
+
+// mirrorPeer: was pdh-ha über den aktiven Server weiß.
+type mirrorPeer struct {
+	Known      bool   // Status von pdh-ha gelesen
+	ActiveSeen bool   // aktiver Server gerade erreichbar
+	ActiveAddr string // Host des aktiven Servers, ohne Port
+}
+
+// mirrorLoginAllowed – Regel C: Admins immer; alle anderen nur, wenn sicher
+// feststeht, dass der aktive Server weg ist.
+func mirrorLoginAllowed(admin bool, p mirrorPeer) bool {
+	return admin || (p.Known && !p.ActiveSeen)
+}
+
+// mirrorRestrictedAllowed: Pfade im eingeschränkten Modus (Schema älter als
+// das Programm) – nur Ausfallschutz, Anmeldung, Sprache.
+func mirrorRestrictedAllowed(path string) bool {
+	switch path {
+	case "/admin/server-config", "/login", "/logout", "/lang":
+		return true
+	}
+	for _, pre := range []string{"/admin/server-config/", "/login/", "/static/"} {
+		if strings.HasPrefix(path, pre) {
+			return true
+		}
+	}
+	return false
+}
+
+// mirrorPeerState: Lage des aktiven Servers, 5 s zwischengespeichert.
+// pdh-ha fehlt, antwortet nicht oder ist nicht eingerichtet → Known=false.
+func (h *Handler) mirrorPeerState(ctx context.Context) mirrorPeer {
+	h.mirrorPeerMu.Lock()
+	defer h.mirrorPeerMu.Unlock()
+	if !h.mirrorPeerAt.IsZero() && time.Since(h.mirrorPeerAt) < mirrorPeerTTL {
+		return h.mirrorPeerVal
+	}
+	fetch := h.mirrorPeerFetch
+	if fetch == nil {
+		fetch = h.haStatusFetch
+	}
+	// abgebrochene Anfrage soll nicht „unbekannt“ für alle zwischenspeichern
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mirrorPeerTimeout)
+	defer cancel()
+	var p mirrorPeer
+	if st, err := fetch(ctx); err == nil && st.Configured {
+		p = mirrorPeerFrom(st)
+	}
+	h.mirrorPeerVal, h.mirrorPeerAt = p, time.Now()
+	return p
+}
+
+func (h *Handler) haStatusFetch(ctx context.Context) (haStatus, error) {
+	var st haStatus
+	err := h.haDo(ctx, http.MethodGet, "/v1/status", nil, &st)
+	return st, err
+}
+
+// mirrorPeerFrom: aktiver Partner (kein Zeuge); ein gesehener hat Vorrang.
+func mirrorPeerFrom(st haStatus) mirrorPeer {
+	p := mirrorPeer{Known: true}
+	for _, n := range st.Peers {
+		if n.Role != "aktiv" || n.Kind == "witness" {
+			continue
+		}
+		addr := ""
+		if len(n.Paths) > 0 {
+			addr = hostOnly(n.Paths[0].Addr)
+		}
+		if n.Seen {
+			return mirrorPeer{Known: true, ActiveSeen: true, ActiveAddr: addr}
+		}
+		if p.ActiveAddr == "" {
+			p.ActiveAddr = addr
+		}
+	}
+	return p
+}
+
+func hostOnly(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return strings.Trim(addr, "[]")
+}
+
+// mirrorActiveLink: Adresse des aktiven Servers mit Schema und Port der
+// aktuellen Anfrage; ohne bekannte Adresse "".
+func mirrorActiveLink(r *http.Request, p mirrorPeer) string {
+	if p.ActiveAddr == "" {
+		return ""
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	host := p.ActiveAddr
+	if _, port, err := net.SplitHostPort(r.Host); err == nil && port != "" {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return scheme + "://" + host + "/"
+}
+
+// mirrorAdmin: darf den Spiegel immer bedienen (Server-Einstellungen).
+func (h *Handler) mirrorAdmin(r *http.Request) bool {
+	if h.mirrorAdminFn != nil {
+		return h.mirrorAdminFn(r)
+	}
+	return h.canServerConfig(r)
+}
+
+// mirrorDenied: Benutzer im Kontext darf am Spiegel nicht angemeldet sein.
+func (h *Handler) mirrorDenied(r *http.Request) bool {
+	m := h.Mirror()
+	if !m.On || h.mirrorAdmin(r) {
+		return false
+	}
+	return m.Restricted || !mirrorLoginAllowed(false, h.mirrorPeerState(r.Context()))
+}
+
+// mirrorGate: nach dem Auflösen der Sitzung (authMiddleware). true → beantwortet.
+func (h *Handler) mirrorGate(w http.ResponseWriter, r *http.Request) bool {
+	if !h.Mirror().On {
+		return false
+	}
+	htmx := r.Header.Get("HX-Request") == "true"
+	if h.mirrorDenied(r) {
+		clearSessionCookies(w)
+		if htmx {
+			w.Header().Set("HX-Redirect", mirrorLoginURL)
+			return true
+		}
+		http.Redirect(w, r, mirrorLoginURL, http.StatusFound)
+		return true
+	}
+	if h.Mirror().Restricted && !mirrorRestrictedAllowed(r.URL.Path) {
+		if htmx { // Hintergrundabfragen der Seite: nichts tauschen
+			w.Header().Set("HX-Reswap", "none")
+			w.WriteHeader(http.StatusNoContent)
+			return true
+		}
+		http.Redirect(w, r, mirrorRestrictedURL, http.StatusFound)
+		return true
+	}
+	return false
+}
+
+// mirrorLoginHint: Hinweis „aktiven Server verwenden“ auf der Anmeldeseite (?spiegel=1).
+func (h *Handler) mirrorLoginHint(r *http.Request, d LoginData) LoginData {
+	if !h.Mirror().On || r.URL.Query().Get("spiegel") != "1" {
+		return d
+	}
+	d.Mirror = true
+	d.MirrorURL = mirrorActiveLink(r, h.mirrorPeerState(r.Context()))
+	return d
+}

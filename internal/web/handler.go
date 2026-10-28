@@ -259,8 +259,14 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	mirror           MirrorInfo                 // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
-	mirrorActiveURL  func(*http.Request) string // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirrorPeerMu     sync.Mutex
+	mirrorPeerAt     time.Time
+	mirrorPeerVal    mirrorPeer
+	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
+	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db               *pgxpool.Pool
 	tmpl             *template.Template
 	users            *users.Service
@@ -314,7 +320,7 @@ func NewHandler(
 	rb *rbac.Service,
 	jwtSecret string,
 ) *Handler {
-	return &Handler{
+	h := &Handler{
 		db:   db,
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
@@ -328,6 +334,8 @@ func NewHandler(
 		exportCron:  scheduler.NewCronManager(),
 		importPoll:  scheduler.NewIntervalManager(),
 	}
+	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
+	return h
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -2044,6 +2052,7 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if n := loginNext(r.URL.Query().Get("next")); n != "/" {
 		d.Next = n
 	}
+	d = h.mirrorLoginHint(r, d)
 	h.render(w, "login", d)
 }
 
@@ -2169,7 +2178,7 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 	if userID == "" {
 		return nil
 	}
-	user, err := h.users.GetByID(r.Context(), userID)
+	user, err := h.userByID(r.Context(), userID)
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Str("user_id", userID).Msg("sitzung: benutzer nicht ladbar (deaktiviert/geloescht?)")
 		return nil
@@ -2194,7 +2203,13 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		if bu := h.boardCompleteUser(r); bu != nil {
 			ctx := context.WithValue(r.Context(), "user", bu)
 			ctx = context.WithValue(ctx, boardCompleteKey{}, true)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			r = r.WithContext(ctx)
+			// Spiegel: Fertigmeldung schreibt – Nicht-Admins gleich abweisen
+			if h.mirrorDenied(r) {
+				h.mirrorRefuse(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
 			return
 		}
 		user := h.sessionUser(r)
@@ -2203,9 +2218,7 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			// gueltig war, aber der Benutzer nicht mehr geladen werden kann
 			// (deaktiviert/geloescht). Sonst haengt der Browser dauerhaft an
 			// einem Token fest, das nie wieder zu "/" durchkommt.
-			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
-			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
-			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+			clearSessionCookies(w)
 			// QR-Code einer Anlage gescannt: Easy-Mode (melden ohne Anmeldung) …
 			if id, ok := strings.CutPrefix(r.URL.Path, "/a/"); ok && r.Method == http.MethodGet && len(id) == 36 && uuidInPathRe.MatchString(id) &&
 				h.easyModeEnabled(r.Context()) && h.assetKindOf(r.Context(), id) == "infra" {
@@ -2222,9 +2235,27 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), "user", user)
 		r = r.WithContext(ctx)
+		if h.mirrorGate(w, r) { // Spiegel: Regel C, eingeschränkter Modus (mirror.go)
+			return
+		}
 		h.presenceTouch(user.ID) // Anwesenheit (Seitenleiste „Aktivität“)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// clearSessionCookies: Sitzung im Browser beenden.
+func clearSessionCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+}
+
+// userByID: Benutzer laden (Sitzung, Leitstand-Token).
+func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) {
+	if h.userByIDFn != nil {
+		return h.userByIDFn(ctx, id)
+	}
+	return h.users.GetByID(ctx, id)
 }
 
 // ── Fault Detail ─────────────────────────────────────────────

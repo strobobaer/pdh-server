@@ -114,7 +114,7 @@ func (h *Handler) boardCompleteUser(r *http.Request) *coreusers.User {
 	if sub == "" {
 		return nil
 	}
-	u, err := h.users.GetByID(r.Context(), sub)
+	u, err := h.userByID(r.Context(), sub)
 	if err != nil || u == nil || !u.Active {
 		return nil
 	}
