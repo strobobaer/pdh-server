@@ -182,6 +182,7 @@
   <div class="card-title"><span><i class="ti ti-server-2"></i> WireGuard auf dem Server</span>
     <span class="vp-state {{.Service.State}}" data-vpn-service><span class="vp-dot{{if eq .Service.State "ok"}} on{{end}}"></span> VPN {{.Service.Label}}</span></div>
   {{template "vpn-summary" .}}
+  {{if .Error}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.Error}}</div>{{end}}
   {{if .Service.Error}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> Dienst pdh-wireguard: {{.Service.Error}}</div>{{end}}
   <p class="vp-hint">WireGuard läuft direkt auf dem Server als systemd-Dienst <code>pdh-wireguard</code>. PDH schreibt die Konfiguration nach <code>{{.Host.Dir}}</code>{{if .Host.Docker}} (in die App eingebunden){{end}}, der Dienst übernimmt sie innerhalb weniger Sekunden.</p>
   <ol class="vp-hint" style="padding-left:18px">

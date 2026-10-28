@@ -91,3 +91,15 @@ func TestMirrorDoesNotCreateKeys(t *testing.T) {
 		t.Fatal("andere Fehler bleiben 503")
 	}
 }
+
+// Gegenprobe: ohne Spiegel wird nichts als „im Spiegel nicht verfügbar“ abgewiesen.
+func TestNormalModeDoesNotRefuseKeys(t *testing.T) {
+	ctx := context.Background()
+	h, _ := mirrorProbe(t, false)
+	if _, err := h.vpnLoadSettings(ctx); errors.Is(err, errMirrorNotCreated) {
+		t.Fatal("vpnLoadSettings im Normalbetrieb weist als Spiegel ab")
+	}
+	if _, err := h.pkiLoadCA(ctx); errors.Is(err, errMirrorNotCreated) {
+		t.Fatal("pkiLoadCA im Normalbetrieb weist als Spiegel ab")
+	}
+}
