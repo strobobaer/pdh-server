@@ -82,11 +82,14 @@ Der Entscheidungskern (`internal/ha/step.go`) löst `ActVIPTake` /
 | Selbst-Abschaltung (`ActFence`) | abgeben |
 | Rückkehr aus der Abschaltung (`unfence`) | übernehmen |
 
-Neu: `pgActor.Do` führt beide Aktionen wirklich aus (heute nur
-„würde jetzt“). Beobachtungsmodus: automatische Aktionen werden weiterhin nur
-protokolliert; Handbefehle (Tausch, Erzwingen) wirken immer – wie bei allen
-anderen Aktionen. Ist `vip_on` aus, sind beide Aktionen ohne Wirkung und ohne
-Ereignis.
+**Korrektur:** Die Adresse wird nur über den Abgleich (2.5) gesetzt (Soll =
+Rolle `aktiv` und keine eigene Übergabe läuft), nicht in `pgActor.Do`.
+`ActVIPTake`/`ActVIPRelease` bleiben im Kern, werden in `pgActor.Do` aber ohne
+Wirkung und ohne Ereignis quittiert. Grund: Ein Fehler in `Do` schaltet über
+`actionFailed` Wartung ein und die Automatik ab – das darf die Adresse nie
+auslösen; und ein Abgleich, der beim Rollentausch nicht auf die Übergabe
+achtet, holte die Adresse sofort zurück. Beobachtungsmodus braucht keine
+Sonderregel (siehe 2.5). Ist `vip_on` aus, passiert nichts.
 
 ### 2.3 Ausführung
 
@@ -129,9 +132,9 @@ Ist-Zustand, unabhängig von einzelnen Aktionen:
   einem Neustart hat sie kein Server, bis pdh-ha ihn als aktiv bestätigt),
   versehentliches Entfernen durch den Netzwerkdienst (z. B. `netplan apply`),
   verlorene Aktionen.
-- Im Beobachtungsmodus wird nur auf „abgeben“ abgeglichen (eine Adresse auf
-  einem nicht aktiven Server ist immer falsch); „übernehmen“ nur protokolliert,
-  außer nach einem Handbefehl.
+- **Korrektur:** Der Beobachtungsmodus braucht keine Sonderregel: Dort ändern
+  automatische Entscheidungen die Rolle nie, die Rolle ist also immer echt
+  (Ausgangslage oder Handbefehl) – Adresse und Skripte folgen ihr.
 
 ### 2.6 Test
 
@@ -142,10 +145,10 @@ Ist-Zustand, unabhängig von einzelnen Aktionen:
   freie Testadresse.
 - Ablauf je Server nacheinander: Prüfadresse annehmen (mit 2.4), der andere
   Server prüft über die Verbund-Schnittstelle (Port 7480, neuer Aufruf
-  „Adresse prüfen“) Ping und `http://<ip>:8090/health` (dort antwortet das PDH
-  – am passiven Server als Spiegel, Teil 4), der Zeuge prüft nur HTTP (im
-  Container ohne Ping-Recht); Prüfadresse wieder abgeben. Höchstdauer je
-  Server 20 s.
+  „Adresse prüfen“); Prüfadresse wieder abgeben. Höchstdauer je Server 20 s.
+  **Korrektur:** Geprüft wird nicht per Ping/HTTP, sondern per TLS-Verbindung
+  zu pdh-ha auf Port 7480 an der Prüfadresse; das Zertifikat muss zum
+  erwarteten Knoten gehören.
 - Ergebnis je Richtung im PDH und in `pdh-ha status`. `vip_on` lässt sich erst
   einschalten, wenn ein Test in beide Richtungen erfolgreich war. Gespeichert
   werden Zeitpunkt, Netz und Karten; der Test gilt für jede Adresse im selben
@@ -250,13 +253,17 @@ startbar und zurücknehmbar, Änderungen an netplan immer mit `netplan try`
    .202 bleibt, nichts wird unterbrochen.
 2. **Verbund umstellen:** eigene Adressen des Knotens (`node.json` `addrs`,
    Verbund-Konfiguration) auf .203; Heartbeat und Replikation laufen danach
-   über .203. Die mitwandernde Adresse darf nie als Verbindungsweg eingetragen
+   über .203. **Korrektur:** Dafür gibt es einen neuen Befehl „Adressen eines
+   Knotens ändern“ (`pdh-ha addrs set`): pg_hba, `listen_addresses` und
+   `primary_conninfo` hängen an den Adressen; `listen_addresses` verlangt einen
+   PostgreSQL-Neustart. Die mitwandernde Adresse darf nie als Verbindungsweg eingetragen
    sein (wird beim Speichern abgelehnt).
 3. **Test** (2.6) mit freier Testadresse.
 4. **Übergabe:** .202 aus der festen Netzwerkkonfiguration entfernen,
    gleichzeitig `vip=.202`, `vip_on` setzen. Die Adresse bleibt dabei auf
-   demselben Server (pdh-ha setzt sie im selben Takt) – für Benutzer keine
-   Unterbrechung; eine SSH-Sitzung über .202 kann abreißen, daher fordert das
+   demselben Server. **Korrektur:** Entfernt netplan die feste .202, setzt
+   pdh-ha sie im nächsten Takt neu – Unterbrechung höchstens wenige Sekunden
+   (Duplikat-Prüfung bis 3 s), nicht „keine“; eine SSH-Sitzung über .202 kann abreißen, daher fordert das
    Skript die Anmeldung über .203.
 
 Prüfliste vor Schritt 4 (im Skript und im Handbuch): alles, was .202 als

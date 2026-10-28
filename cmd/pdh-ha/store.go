@@ -26,6 +26,9 @@ type nodeConfig struct {
 	Kind     string   `json:"kind"`
 	Addrs    []string `json:"addrs"`
 	CAHolder bool     `json:"ca_holder"`
+
+	// VIPInterface: Netzwerkkarte für die mitwandernde Adresse (sonst automatisch).
+	VIPInterface string `json:"vip_interface,omitempty"`
 }
 
 type clusterNode struct {
@@ -46,6 +49,7 @@ type clusterConfig struct {
 	Revoked        []string      `json:"revoked"` // Seriennummern hex
 	Swaps          int           `json:"swaps"`       // gelungene Rollentausche seit Einrichtung des Spiegels
 	SwapTested     bool          `json:"swap_tested"` // Pflicht-Testumschaltung (hin und zurück) erledigt
+	Access         accessConfig  `json:"access"`      // Zugangsweg: mitwandernde Adresse, Skripte
 }
 
 // Mode folgt aus der Knotenliste: 1 Knoten einzel, 2 duo, 2 + Zeuge trio.
