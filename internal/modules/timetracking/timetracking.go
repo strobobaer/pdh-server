@@ -560,10 +560,24 @@ func (s *Service) Update(ctx context.Context, id, userID string, isAdmin bool, i
 
 type Handler struct {
 	svc *Service
+	can func(r *http.Request, perm string) bool
 }
 
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// SetPermChecker verbindet den Handler mit Rollen & Rechte.
+func (h *Handler) SetPermChecker(f func(r *http.Request, perm string) bool) { h.can = f }
+
+// viewAll: Zeiten anderer sehen und bearbeiten (Recht timetracking.view_all;
+// ohne Prüfer wie früher nur admin und manager).
+func (h *Handler) viewAll(r *http.Request) bool {
+	if h.can != nil {
+		return h.can(r, "timetracking.view_all")
+	}
+	role, _ := r.Context().Value(middleware.RoleKey).(string)
+	return role == "admin" || role == "manager"
 }
 
 func (h *Handler) Routes(jwtSecret string) chi.Router {
@@ -736,9 +750,7 @@ func (h *Handler) ExportCSV(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	role, _ := r.Context().Value(middleware.RoleKey).(string)
-	isAdmin := role == "admin" || role == "manager"
-	if err := h.svc.Delete(r.Context(), id, userID, isAdmin); err != nil {
+	if err := h.svc.Delete(r.Context(), id, userID, h.viewAll(r)); err != nil {
 		response.Error(w, 500, err.Error())
 		return
 	}

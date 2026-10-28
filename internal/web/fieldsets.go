@@ -352,7 +352,7 @@ func (h *Handler) RecordFieldsSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !h.hasPerm(r, m.EditPerm) {
+	if !h.hasPermRec(r, masterEditPerm(m), m.Key, id) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}

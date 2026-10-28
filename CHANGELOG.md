@@ -27,6 +27,68 @@ im Kapitel „Versionen & Updates“ an.
 ### Behoben
 - Docker-Testsystem: Der Build bricht nicht mehr wegen der eingebetteten Skripte ab.
 - Der Reiter VPN zeigt Fehlermeldungen, statt einen leeren Schlüssel anzuzeigen.
+
+## [0.76.6] – 2026-10-28
+
+### Neu
+- Schichtplan: Namen lassen sich auf einen anderen Tag oder in eine andere Schicht ziehen (Strg oder „Kopieren“ = kopieren); am rechten Rand gezogen trägt PDH die Person an jedem Tag ein – z. B. Montag bis Freitag. Urlaub und schon vergebene Schichten werden übersprungen und gemeldet.
+- Sonderdienste: Bereitschaft, besondere Tätigkeiten und Zusatzaufgaben werden im Schichtplan unter den Schichten eingeteilt. Eine Dienstart kann eine Qualifikation aus dem Personalstamm verlangen – dann stehen nur Personen mit gültigem Nachweis zur Auswahl (Planer → Einstellungen → Sonderdienste, neues Recht „Sonderdienste einteilen“).
+- Kalender: Schichten und Sonderdienste ziehen (auch auf eine andere Person), am Rand über weitere Tage verlängern, Urlaub und Abwesenheit am Rand verlängern oder verkürzen und die Fälligkeit von Störungen, Tickets, Aufgaben und Wartungen per Ziehen verschieben.
+- Kalender zeigt die Sonderdienste als eigene Art.
+- Navigation anpassen: ganze Gruppen lassen sich mit Pfeilen nach oben oder unten verschieben.
+- Leitstand-Baustein „Kalender“: derselbe Kalender mit Schichten, Sonderdiensten, Abwesenheit und fälligen Vorgängen, Auswahl (Zeitraum, Abteilung, Gruppe, Person, Arten) oben im Baustein; voreingestellt auf die Abteilung bzw. Gruppe des Leitstands. Ohne Anmeldung nur lesbar, Abwesenheiten ohne Grund.
+
+## [0.76.5] – 2026-10-28
+
+### Neu
+- Bestellvorgänge (Navigation → Bestellvorgänge): ein Vorgang je Lieferant mit mehreren Positionen verfolgt Angebot, Bestellung, Auftragsbestätigung, Lieferung und Rechnung.
+- Die Auftragsbestätigung wird je Position mit der Bestellung verglichen (Menge, Preis) und ihr Liefertermin mit dem Wunschtermin; Abweichungen sind gelb markiert und stehen in der Historie.
+- Lieferungen, auch Teillieferungen, werden mit der AB verglichen (Überlieferung, Rest offen, überfällig) und buchen beim „Wareneingang buchen“ direkt ins Lager; volle Kanban-Karten werden dabei zurückgesetzt.
+- „Rechnung OK“ schließt den Vorgang – auch ohne hinterlegte Rechnung, weil die Rechnung in ELO bearbeitet wird; eine Rechnungs- oder ELO-Nummer kann optional eingetragen werden.
+- Bestellvorgänge stehen beim Ersatzteil (Reiter Lieferanten & Einkauf, dort auch „+ Bestellvorgang“) und beim Lieferanten (Reiter Bestellungen); Angebot, AB und Lieferschein lassen sich als Dokument anhängen.
+- Neue Rechte „Bestellvorgänge anlegen und bearbeiten“, „Wareneingang buchen“ und „Rechnung OK setzen“ (auch je Abteilung); wer bisher bestellen bzw. ins Lager buchen durfte, bekommt sie. Löschen darf nur der Bereichsadministrator Beschaffung.
+
+## [0.76.4] – 2026-10-28
+
+### Neu
+- Standards für alle: Unter Core-Einstellungen übernimmt ein Administrator seine eigene Darstellung, sein Menü und sein Dashboard mit einem Klick als Standard – wer nichts Eigenes gespeichert hat, sieht diesen Stand; auf Wunsch werden auch die eigenen Einstellungen aller ersetzt, „Werksvorgabe“ stellt die Auslieferung wieder her.
+- Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
+- Neues Recht „Leitstand verwalten“ (Verwerfen, Aufgaben und Wartung im Leitstand anlegen) – bisher fest an Administrator und Manager gebunden, beide haben es weiterhin.
+- Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
+- Neues Widget „Mein Kalender“: die eigenen nächsten 7 Tage mit Schicht, Urlaub, fälligen Vorgängen und Prüfpflichten (neues Recht „Widget Mein Kalender“, anfangs für alle).
+- Neues Widget „Schichtplan Team“: wer aus der eigenen Abteilung in den nächsten 7 Tagen welche Schicht hat, mit Urlaub und Abwesenheit (Recht „Schichtplan sehen“).
+- Rechte auf Abteilungsebene: In der Rollen-Matrix und bei den Einzelrechten lässt sich jedes Recht auf eine Abteilung samt Unterabteilungen begrenzen – z. B. Störungen bearbeiten nur in Halle 2.
+- Bereichsadministrator: Für jeden Bereich (Störungen, Tickets, Wartung, Aufgaben, Projekte, KVP, Infrastruktur, IT, Lager, Beschaffung, Hersteller & Lieferanten, Schichten, Abwesenheit, Managementsysteme) gibt es ein Recht, das alle Rechte des Bereichs umfasst und endgültiges Löschen erlaubt.
+- Stammdaten können vom Bereichsadministrator sofort „endgültig gelöscht“ werden; noch verwendete werden stattdessen ausgeblendet.
+- Mehrere Leitstände: unter Navigation → Leitstände bekommt jede Abteilung, Gruppe oder jedes Team einen eigenen Leitstand aus Bausteinen (Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, aktuelle Störungen, fällige Wartung, Hinweistext, Knöpfe zu anderen Leitständen), der nur ihre Vorgänge zeigt.
+- Leitstände blättern auf Wunsch nach einer einstellbaren Zeit zum nächsten weiter; Bedienung am Bildschirm hält das Weiterblättern an.
+- Terminals bekommen im Benutzerstamm einen festen Leitstand; sonst gilt der ihrer Gruppe, dann der ihrer Abteilung, dann der Standard-Leitstand.
+
+- Das Logo dreht sich beim Laden einer Seite und solange gearbeitet wird – eine kleine Spielerei (aus bei „Bewegung reduzieren“).
+
+### Geändert
+- Der bisherige Leitstand ist jetzt der Standard-Leitstand und lässt sich wie jeder andere bearbeiten; Überschrift und Untertitel ändert, wer das Recht „Leitstand verwalten“ hat.
+- Der Leitstand zeigt immer die Standard-Darstellung (Farbschema und Design-Stil) – unabhängig davon, wer gerade angemeldet ist.
+- „Standard“ in Navigation anpassen und Dashboard anpassen holt jetzt den Firmenstandard zurück.
+- Rollen & Rechte übersichtlicher: Rollen mit Rang, Abteilung, Pflichtschulungen und Benutzerzahl in eigener Tabelle; die Matrix hat ein Suchfeld, Gruppen zum Auf- und Zuklappen, eine feste Kopfzeile und Häkchen für ganze Gruppen; die Rechte sind neu gegliedert (z. B. „System & Sicherheit“, „Stammdaten“, „Daten & Schnittstellen“).
+- „Zeiterfassung: Zeiten aller sehen, bearbeiten und löschen“ wird jetzt wirklich geprüft (bisher fest Administrator und Manager; Manager haben es weiterhin).
+- Auto-Logout steht jetzt unter Core-Einstellungen statt unter Rollen & Rechte.
+- Benutzerverwaltung: die Rollen-Knöpfe ergeben sich aus allen vorhandenen Rollen (auch eigenen), „Inaktive anzeigen“ blendet deaktivierte Benutzer ein, Gruppen stehen unter der Abteilung.
+- Der Knopf „Zeitstrahl“ oben auf dem Dashboard entfällt – den Zeitstrahl nimmst du unter „Dashboard anpassen“ heraus oder fügst ihn hinzu.
+
+### Behoben
+- Inaktive Benutzer erschienen nie in der Benutzerverwaltung.
+- Knöpfe mit Symbol und Text (z. B. „+ Neuer Benutzer“) waren im hellen Modus weiß auf weiß und abgeschnitten.
+- Farbige Abzeichen (Rolle, Priorität, Status) sind im hellen Modus jetzt gut lesbar.
+
+### Sicherheit
+- Viele Aktionen prüften bisher nur die Anmeldung, nicht das Recht – z. B. Störungen und Tickets abschließen, Status ändern, Aufgaben, Projekte, Wartungen und IT-Geräte anlegen und bearbeiten, Ersatzteile und Lagerorte anlegen, Buchungen und Inventur über die Schnittstelle. Jetzt brauchen sie das passende Recht (in der Abteilung des Vorgangs); wer an einem Vorgang beteiligt ist, darf ihn weiter bearbeiten. Störungen und Tickets melden, kommentieren und Zeiten erfassen bleibt für alle offen.
+- Damit niemand ausgesperrt wird, bekommen beim Update alle Rollen außer „Betrachter“ die Rechte zum Bearbeiten und Abschließen von Störungen, Tickets, Wartungen, Aufgaben, Projekten und IT; wer das Lager sieht, bekommt „Ersatzteile und Lagerorte anlegen“ (neu) und „Buchen“. Unter Rollen & Rechte lassen sie sich danach wegnehmen oder auf Abteilungen begrenzen.
+- Wartungsaufträge, Aufgaben, Projekte und KVP-Vorschläge kann nur noch der jeweilige Bereichsadministrator endgültig löschen – bisher ging das bei Aufgaben, Projekten und Wartungsaufträgen für jeden.
+- Stammdaten über die Schnittstelle zum Löschen vormerken braucht jetzt das Bearbeiten-Recht des Bereichs; Sperren, Deaktivieren und Feldsätze von Anlagen brauchen „Infrastruktur bearbeiten“.
+- Rechte zum Bearbeiten und Abschließen von Vorgängen beachten jetzt die Abteilung des Vorgangs.
+- Wer Rollen verwalten darf, aber kein Administrator ist, konnte anderen Rollen und Personen Rechte geben, die er selbst nicht hat – das geht jetzt nicht mehr.
+
 ## [0.76.3] – 2026-10-28
 
 ### Behoben

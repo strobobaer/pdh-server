@@ -113,10 +113,43 @@ func TestDashboardWithWidgets(t *testing.T) {
 	out := renderPage(t, tmpl, "dashboard", DashboardData{Widgets: views, WidgetCatalog: cat})
 	for _, want := range []string{`id="dw-grid"`, `data-id="d1" data-type="stat_tickets" data-size="1" data-refresh="60"`, `data-type="note" data-size="2"`, ">Schicht<",
 		"Öl nachfüllen", "Dashboard anpassen", `data-dw-catalog`, `data-type="stat_tickets" data-name="Offene Tickets"`, "sortablejs", `id="dw-tpl"`,
-		`id="dash-timeline-toggle"`, `id="dash-timeline-card"`, "pdh_dash_timeline"} {
+		"window.pdhDashMount", "pdh_dash_table_filter", "pdh_dash_gantt_filter"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Dashboard enthält %q nicht", want)
 		}
+	}
+	// Tabelle und Zeitstrahl sind Widgets: keine festen Karten und kein Schalter mehr
+	for _, gone := range []string{`id="dash-timeline-toggle"`, `id="dash-timeline-card"`, `id="dash-table-card"`, "Schichtplan KW"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("Dashboard enthält noch die feste Stelle %q", gone)
+		}
+	}
+	// Gerüst der beiden Widgets (per htmx nachgeladen)
+	for typ, want := range map[string][]string{
+		"vg_table":    {`id="dash-table-filter"`, `id="dash-table-body"`, "pdhDashMount()"},
+		"vg_timeline": {`id="dash-gantt-filter"`, `id="dash-gantt-target"`, `class="tl-legend"`, "pdhDashMount()"},
+	} {
+		d, _ := widgetDef(typ)
+		if !d.Single {
+			t.Errorf("%s muss einmalig sein", typ)
+		}
+		var buf bytes.Buffer
+		c, err := tmpl.Clone()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ExecuteTemplate(&buf, "dw-body", widgetBody{Def: d, Inst: WidgetInstance{ID: "x", Type: typ}}); err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range want {
+			if !strings.Contains(buf.String(), w) {
+				t.Errorf("Widget %s enthält %q nicht", typ, w)
+			}
+		}
+	}
+	// höchstens einmal je Dashboard
+	if l, _ := sanitizeWidgets([]WidgetInstance{{ID: "a", Type: "vg_table"}, {ID: "b", Type: "vg_table"}, {ID: "c", Type: "note"}}); len(l) != 2 {
+		t.Errorf("doppelte Tabelle nicht entfernt: %+v", l)
 	}
 	if strings.Contains(out, `<div class="stats">`) {
 		t.Error("alte feste Kennzahlenzeile noch vorhanden")

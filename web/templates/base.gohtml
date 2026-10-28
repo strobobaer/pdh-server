@@ -8,6 +8,9 @@
 <title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <script>
+// Logo dreht sich einmal beim Laden der Seite (Spielerei)
+document.documentElement.classList.add('pdh-loading');
+window.addEventListener('load', function(){ setTimeout(function(){ document.documentElement.classList.remove('pdh-loading'); }, 800); });
 window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'})[document.documentElement.lang] || 'de-DE';
 (function(){
   const mode = localStorage.getItem('pdh_theme') || 'system';
@@ -155,6 +158,11 @@ html.sidebar-right-collapsed{--right-sidebar-w:54px}
 .logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--on-accent);flex-shrink:0}
 .logo-text{font-size:14px;font-weight:600}
 .logo-ver{font-size:10px;color:var(--muted)}
+/* Spielerei: Logo dreht sich beim Laden einer Seite und solange gearbeitet wird */
+@keyframes pdh-logo-spin{to{transform:rotate(360deg)}}
+html.pdh-loading .logo-icon,html.pdh-loading .logo-img{animation:pdh-logo-spin .8s ease-in-out}
+html.pdh-busy .logo-icon,html.pdh-busy .logo-img{animation:pdh-logo-spin .8s linear infinite}
+@media (prefers-reduced-motion:reduce){html.pdh-loading .logo-icon,html.pdh-loading .logo-img,html.pdh-busy .logo-icon,html.pdh-busy .logo-img{animation:none}}
 .sidebar-toggle{width:44px;min-width:44px;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .sidebar-toggle:hover{border-color:var(--muted);background:var(--bg2)}
 .sidebar-toggle i{font-size:18px}
@@ -175,7 +183,10 @@ nav{padding:12px 0;flex:1}
 html.nav-editing .nav-group{display:block!important;min-height:26px;border:1px dashed var(--border);border-radius:6px;margin:2px 8px 6px;padding:2px 0}
 html.nav-editing .nav-group[data-fold-group="top"]{border-style:dotted}
 html.nav-editing .nav-item{cursor:grab}
-html.nav-editing .nav-fold i{display:none}
+html.nav-editing .nav-fold > i{display:none}
+.nav-fold .nav-gmove i,.nav-fold .nav-gdel i{transform:none!important;transition:none;margin:0}
+.nav-gmove{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;color:var(--muted);cursor:pointer;flex-shrink:0}
+.nav-gmove:hover,.nav-gmove:focus{color:var(--accent);background:var(--bg3);outline:none}
 .nav-gl-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;font-size:11px;padding:2px 6px;text-transform:none;letter-spacing:0}
 .nav-gdel{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 0 0 6px}
 .nav-ghost{opacity:.4}
@@ -349,6 +360,12 @@ html.cop-raise .pdh-frame{z-index:700} /* Vorschlag aus der Seitenleiste öffnet
 .b-green{background:rgba(16,185,129,.15);color:#6ee7b7}
 .b-blue{background:rgba(var(--accent-rgb),.15);color:#a5b4fc}
 .b-gray{background:rgba(107,114,128,.15);color:#9ca3af}
+/* hell: dunklere Schrift, sonst kaum lesbar (Kontrast ≥ 4.5:1) */
+html[data-theme="light"] .b-red{color:#b91c1c}
+html[data-theme="light"] .b-amber{color:#92400e}
+html[data-theme="light"] .b-green{color:#047857}
+html[data-theme="light"] .b-blue{color:var(--accent)}
+html[data-theme="light"] .b-gray{color:#4b5563}
 /* ── List items ── */
 .li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
 .li:last-child{border:0;padding-bottom:0}
@@ -718,6 +735,15 @@ html[data-style="fiori"] tr:hover td{background:var(--bg3)}
 html[data-style="fiori"] .badge{border-radius:4px}
 html[data-style="fiori"] .rec-msg{border-radius:8px}
 html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-style="fiori"] .win11-menu,html[data-style="fiori"] .chat-toast{border-radius:12px}
+/* Symbolknöpfe mit Beschriftung (icon-button, z. B. „+ Neuer Benutzer“): Breite
+   nach Inhalt und Farbe der Variante – die durchsichtigen 36-px-Symbolknöpfe
+   oben (Fluent wie Fiori) gelten nur für reine Symbole */
+html .btn-icon.btn-icon-labeled{width:auto;min-width:36px;padding:0 14px}
+html .btn-icon.btn-primary,html .btn-icon.btn-primary:hover{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+html .btn-icon.btn-primary:hover{filter:brightness(1.08)}
+html .btn-icon.btn-success{background:var(--green);border-color:var(--green);color:#fff}
+html .btn-icon.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+html .btn-icon.btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -839,7 +865,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         <button type="button" onclick="pdhNavReset()" title="{{t "Vorgabe wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
         <button type="button" class="on" onclick="pdhNavSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
       </div>
-      <div class="nav-edit-hint" style="display:none">{{t "Einträge ziehen, Gruppennamen anklicken zum Umbenennen."}}</div>
+      <div class="nav-edit-hint" style="display:none">{{t "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen."}}</div>
     </div>
   </nav>
   <script>
@@ -893,7 +919,29 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
       if(g) g.remove(); btn.remove();
     });
     btn.appendChild(del);
+    // Gruppe nach oben/unten verschieben (Kopf und Einträge zusammen)
+    [['up', 'ti-arrow-up', {{t "Gruppe nach oben"}}], ['down', 'ti-arrow-down', {{t "Gruppe nach unten"}}]].forEach(function(m){
+      const b = document.createElement('span');
+      b.className = 'nav-gmove'; b.title = m[2]; b.setAttribute('role', 'button'); b.setAttribute('aria-label', m[2]); b.tabIndex = 0;
+      b.innerHTML = '<i class="ti ' + m[1] + '"></i>';
+      const go = e => { e.stopPropagation(); e.preventDefault(); pdhNavMoveGroup(btn, m[0]); };
+      b.addEventListener('click', go);
+      b.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' ') go(e); });
+      btn.insertBefore(b, del);
+    });
     btn.onclick = null;
+  }
+  // pdhNavMoveGroup: Gruppe (Kopf + Einträge) mit der vorigen bzw. nächsten tauschen;
+  // die oberste Gruppe ohne Namen bleibt immer oben
+  function pdhNavMoveGroup(btn, dir){
+    const g = document.querySelector('#pdh-nav [data-fold-group="' + btn.dataset.fold + '"]'); if(!g) return;
+    const heads = [...document.querySelectorAll('#pdh-nav .nav-fold')];
+    const i = heads.indexOf(btn), other = heads[dir === 'up' ? i - 1 : i + 1];
+    if(!other) return;
+    const og = document.querySelector('#pdh-nav [data-fold-group="' + other.dataset.fold + '"]');
+    if(dir === 'up') { other.before(btn); btn.after(g); }
+    else { (og || other).after(btn); btn.after(g); }
+    btn.querySelector('.nav-gmove').focus();
   }
   function pdhNavAddGroup(){
     const key = 'g' + Date.now().toString(36);
@@ -1815,6 +1863,8 @@ function setGlobalStatus(state, message, progress, errorText) {
   if(text) text.textContent = pdhStatus.message;
   if(error) error.textContent = errorText || (normalized === 'error' ? (message || 'Fehler') : 'Keine Fehler');
   if(globalStatusTimer) window.clearTimeout(globalStatusTimer);
+  // Spielerei: Logo dreht sich, solange gearbeitet wird
+  document.documentElement.classList.toggle('pdh-busy', normalized === 'busy');
   if(normalized === 'busy') {
     pdhStatus.value = progress === undefined || progress === null ? Math.max(pdhStatus.value < 100 ? pdhStatus.value : 0, 8) : Number(progress) || 0;
     if(!pdhStatus.creep) pdhStatus.creep = window.setInterval(() => {

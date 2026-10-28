@@ -62,6 +62,7 @@ var navDefs = []navDef{
 	{navItem{"vpn", "/vpn", "ti-shield-lock", "VPN Maschinennetz", "vpn", false}, "material", func(b *BaseData) bool { return b.CanVPN }},
 	{navItem{"directory", "/directory", "ti-building-factory-2", "Hersteller & Lieferanten", "directory", false}, "material", always},
 	{navItem{"procurement", "/procurement", "ti-shopping-cart", "Beschaffung & Einkauf", "procurement", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
+	{navItem{"purchases", "/purchases", "ti-truck-delivery", "Bestellvorgänge", "purchases", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
 	{navItem{"m365", "/m365", "ti-brand-office", "Vorlagen & Signaturen", "m365", false}, "people", always},
 
 	{navItem{"users", "/users", "ti-users", "Benutzer", "users", false}, "people", func(b *BaseData) bool { return b.CanManageUsers }},
@@ -71,6 +72,7 @@ var navDefs = []navDef{
 
 	{navItem{"roles", "/admin/roles", "ti-shield-lock", "Rollen & Rechte", "roles", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"core", "/core/settings", "ti-settings", "Core-Einstellungen", "core-settings", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
+	{navItem{"leitstaende", "/leitstaende", "ti-device-tv", "Leitstände", "leitstaende", false}, "admin", func(b *BaseData) bool { return b.CanManageLeitstand }},
 	{navItem{"costcenters", "/core/costcenters", "ti-building-bank", "Kostenstellen", "costcenters", false}, "admin", func(b *BaseData) bool { return b.CanCostCenters }},
 	{navItem{"icons", "/admin/icons", "ti-icons", "Symbole", "icons", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"categories", "/categories", "ti-hash", "Kategorien", "categories", false}, "admin", always},
@@ -178,11 +180,11 @@ func (h *Handler) userNavLayout(ctx context.Context, uid string) []navLayoutGrou
 		return nil
 	}
 	if len(raw) == 0 {
-		return nil
+		return h.companyNavLayout(ctx) // nichts Eigenes: Firmenstandard (user_defaults.go)
 	}
 	var l []navLayoutGroup
 	if json.Unmarshal(raw, &l) != nil {
-		return nil
+		return h.companyNavLayout(ctx)
 	}
 	l, _ = sanitizeNavLayout(l)
 	return l

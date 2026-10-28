@@ -292,6 +292,8 @@ type PlannerData struct {
 	Depts, Groups                      []partnerOption
 	Dept, Group                        string
 	DraftCount                         int
+	DutyRows                           []plannerDutyRow // Sonderdienste (planner_duties.go)
+	CanDuties                          bool
 
 	// weitere Reiter (planner_absences.go, planner_models.go, planner_maint.go)
 	Abs   *absenceTabData
@@ -438,6 +440,7 @@ func (h *Handler) fillShiftWeek(r *http.Request, d *PlannerData) {
 			c.Under = d.Rows[i].Shift.MinStaff > 0 && len(c.People) < d.Rows[i].Shift.MinStaff
 		}
 	}
+	h.fillDutyWeek(r, d, start)
 	// Abwesenheiten der Woche (genehmigt und beantragt)
 	viewAll := d.CanViewAll
 	if arows, err := h.db.Query(ctx, `SELECT user_id::text, type::text, status::text, start_date, end_date FROM absences

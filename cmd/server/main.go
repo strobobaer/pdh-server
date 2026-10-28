@@ -237,6 +237,11 @@ func main() {
 	timeRepo := timetracking.NewRepository(db.Pool)
 	timeSvc := timetracking.NewService(timeRepo)
 	timeHandler := timetracking.NewHandler(timeSvc)
+	timeHandler.SetPermChecker(func(r *http.Request, perm string) bool {
+		uid, _ := r.Context().Value(middleware.UserIDKey).(string)
+		role, _ := r.Context().Value(middleware.RoleKey).(string)
+		return rbacSvc.HasPermissionForUser(uid, role, perm)
+	})
 
 	maintRepo := maintenance.NewRepository(db.Pool)
 	maintSvc := maintenance.NewService(maintRepo)
@@ -371,6 +376,8 @@ func main() {
 	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)
 	r.Use(webHandler.MirrorMiddleware)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
+	// Löschen nur mit Recht (Bereichsadministrator), vor der Löschvormerkung
+	r.Use(webHandler.PermissionGateMiddleware)
 	r.Use(webHandler.ChangeTrackingMiddleware)
 
 	// API

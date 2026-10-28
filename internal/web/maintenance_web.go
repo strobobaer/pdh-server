@@ -549,6 +549,7 @@ type maintStepGroup struct {
 
 type MaintenanceTaskDetailData struct {
 	BaseData
+	CanDelete   bool // Bereichsadministrator Wartung
 	Task        MaintenanceTaskDetailView
 	StepGroups  []maintStepGroup
 	StepCount   int
@@ -643,6 +644,7 @@ func (h *Handler) MaintenanceTaskDetail(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	data.ProtocolURL = h.maintProtocolURLs(ctx, []string{id})[id]
+	data.CanDelete = h.isAreaAdmin(r, "maintenance_task", id)
 	h.render(w, "maintenance_detail", data)
 }
 

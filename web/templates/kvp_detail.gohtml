@@ -10,7 +10,7 @@
   <span class="badge {{$k.QuadrantClass}}" style="font-size:12px;padding:4px 12px">{{$k.QuadrantLabel}}</span>
   <span class="badge {{$k.StatusClass}}" style="font-size:12px;padding:4px 12px"><i class="ti {{$k.StatusIcon}}"></i>&nbsp;{{$k.StatusLabel}}</span>
   <a class="btn" href="/kvp/{{$k.ID}}/print" target="_blank" rel="noopener"><i class="ti ti-printer"></i> A3-Report</a>
-  {{if .CanManage}}<form method="post" action="/kvp/{{$k.ID}}/delete" onsubmit="return confirm('Vorschlag {{$k.Code}} endgültig löschen?')"><button class="btn" type="submit" title="Löschen" aria-label="Löschen"><i class="ti ti-trash"></i></button></form>{{end}}
+  {{if .CanDelete}}<form method="post" action="/kvp/{{$k.ID}}/delete" onsubmit="return confirm('Vorschlag {{$k.Code}} endgültig löschen?')"><button class="btn" type="submit" title="Löschen" aria-label="Löschen"><i class="ti ti-trash"></i></button></form>{{end}}
 </div>
 {{if .Message}}<div class="kvp-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
 {{if .Error}}<div class="kvp-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}

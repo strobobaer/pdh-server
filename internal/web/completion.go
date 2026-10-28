@@ -114,7 +114,7 @@ func (h *Handler) completionKind(w http.ResponseWriter, r *http.Request) (comple
 	// Fertigmeldung per Karte am Leitstand: das Token gilt nur fuer genau diesen
 	// Vorgang und die Person ist schon als Instandhaltung/IT geprueft – das
 	// Bearbeiten-Recht der Rolle (z. B. maintenance.edit) ist dort nicht noetig.
-	if !h.canFn(r)(k.EditPerm) && !boardCompleteFrom(r.Context()) && !h.completionInvolved(r, k, id) {
+	if !h.hasPermRec(r, k.EditPerm, k.RefType, id) && !boardCompleteFrom(r.Context()) && !h.completionInvolved(r, k, id) {
 		completionJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": tr(lang, "Keine Berechtigung, diesen Vorgang zu bearbeiten.")})
 		return k, "", false
 	}
@@ -536,7 +536,7 @@ func (h *Handler) CompletionStepPhotoWeb(w http.ResponseWriter, r *http.Request)
 // Leitstand (dort ist sie schon als Instandhaltung/IT geprueft, wie bei den
 // uebrigen Leitstand-Aktionen).
 func (h *Handler) canFinish(r *http.Request, k completionKind, id string) bool {
-	return h.canFn(r)(k.DonePerm) || boardCompleteFrom(r.Context()) || h.completionInvolved(r, k, id)
+	return h.hasPermRec(r, k.DonePerm, k.RefType, id) || boardCompleteFrom(r.Context()) || h.completionInvolved(r, k, id)
 }
 
 // completionInvolved: Wer einem Vorgang zugewiesen ist, ihn verantwortet oder

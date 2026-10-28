@@ -951,6 +951,7 @@ type KVPDetailData struct {
 	Message    string
 	Error      string
 	CanManage  bool
+	CanDelete  bool // Bereichsadministrator KVP: endgültig löschen
 	CanWork    bool
 	CanEdit    bool
 	Users      []UserOption
@@ -1065,6 +1066,7 @@ func (h *Handler) KVPDetailPage(w http.ResponseWriter, r *http.Request) {
 		Message:    r.URL.Query().Get("msg"),
 		Error:      r.URL.Query().Get("err"),
 		CanManage:  h.canManageKVP(r),
+		CanDelete:  h.isAreaAdmin(r, "kvp", k.ID),
 		CanWork:    h.canWorkKVP(r, k) && !k.Final(),
 		CanEdit:    h.canEditKVPContent(r, k),
 		Users:      h.userOptions(ctx),
