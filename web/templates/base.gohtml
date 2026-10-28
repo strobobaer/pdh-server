@@ -775,8 +775,10 @@ html.tb-off-1 .win11-menu a.tb-share-menu,html.tb-off-3 .win11-menu a.tb-theme-m
   .rec-tab{white-space:nowrap}
   .rec-head h1{font-size:16px}
   input,select,textarea{font-size:16px!important} /* iOS zoomt sonst beim Antippen */
-  .win11-menu{max-width:calc(100vw - 16px)}
-  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh - 70px);overflow-y:auto}
+  /* 100vw zählt ohne den Zoom der Größe (--ui-scale), daher umrechnen */
+  .win11-menu{max-width:calc(100vw / var(--ui-scale, 1) - 16px)}
+  #user-menu{min-width:0!important;width:calc(100vw / var(--ui-scale, 1) - 16px);max-width:340px}
+  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh / var(--ui-scale, 1) - 70px);overflow-y:auto}
   .context{width:100vw}
   .pdh-frame-panel{width:100%}
 }

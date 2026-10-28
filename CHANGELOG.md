@@ -14,6 +14,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Auf Smartphone und Tablet war der Knopf für das Benutzermenü rechts aus dem Bild gerutscht – Uhr und Benutzermenü bleiben jetzt immer ganz sichtbar.
+- Mit vergrößerter Schrift war das geöffnete Benutzermenü auf dem Smartphone links abgeschnitten – es passt jetzt immer ins Bild.
 
 ### Geändert
 - Ist die Kopfleiste zu schmal, kürzt sich zuerst der Seitentitel; danach werden Knöpfe ausgeblendet: Im Chat teilen, Copilot, Hell/Dunkel, Chat, rechte Seitenleiste, zuletzt die Sprache. „Im Chat teilen“, „Hell/Dunkel“ und „Suche, Hilfe & mehr“ stehen dann im Benutzermenü, Chat und Copilot als Reiter in der rechten Seitenleiste.
