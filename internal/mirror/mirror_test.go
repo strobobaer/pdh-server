@@ -148,3 +148,42 @@ func TestReplayLagValue(t *testing.T) {
 		t.Fatalf("lag=%v at=%v err=%v", lag, at, err)
 	}
 }
+
+// hangProber blockiert, bis der Kontext der Abfrage endet (halbtote Verbindung).
+type hangProber struct{}
+
+type hangRow struct{ ctx context.Context }
+
+func (r hangRow) Scan(dest ...any) error { <-r.ctx.Done(); return r.ctx.Err() }
+
+func (hangProber) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return hangRow{ctx}
+}
+
+func TestWatchHangingProbeCountsAsLost(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var reasons []string
+	Watch(ctx, hangProber{}, ReadOnly, 5*time.Millisecond, 20*time.Millisecond, func(r string) { reasons = append(reasons, r) })
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "Datenbank") {
+		t.Fatalf("reasons=%v", reasons)
+	}
+}
+
+func TestWatchFailureClockResets(t *testing.T) {
+	ok := modeReply(true, false)
+	p := &fakeProber{replies: []reply{{err: errDB}, {err: errDB}, ok, {err: errDB}, {err: errDB}, ok}}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	calls := 0
+	Watch(ctx, p, ReadOnly, 10*time.Millisecond, 25*time.Millisecond, func(string) { calls++ })
+	if calls != 0 {
+		t.Fatalf("onChange %d mal", calls)
+	}
+}
+
+func TestWatchEveryZeroNoPanic(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	Watch(ctx, &fakeProber{replies: []reply{modeReply(true, false)}}, ReadOnly, 0, time.Second, func(string) { t.Fatal("onChange") })
+}

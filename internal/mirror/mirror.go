@@ -32,6 +32,7 @@ type Prober interface {
 }
 
 // Detect fragt den Modus ab: Standby oder schreibgeschützte Transaktion = ReadOnly.
+// Bei Fehler wird Normal mit err geliefert – Aufrufer prüfen zuerst err.
 func Detect(ctx context.Context, p Prober) (Mode, error) {
 	var rec, ro bool
 	err := p.QueryRow(ctx, `SELECT pg_is_in_recovery(), current_setting('transaction_read_only') = 'on'`).Scan(&rec, &ro)
@@ -47,8 +48,12 @@ func Detect(ctx context.Context, p Prober) (Mode, error) {
 // Watch prüft alle every den Modus und blockiert bis ctx endet oder onChange
 // gerufen wurde (genau einmal, dann Rückkehr): bei abweichendem Modus oder wenn
 // Detect länger als lost durchgehend fehlschlägt. lost <= 0 heißt: Datenbank-
-// fehler beenden Watch nie, nur ein Moduswechsel.
+// fehler beenden Watch nie, nur ein Moduswechsel. Jede Abfrage ist auf every
+// begrenzt; eine hängende Abfrage zählt als Fehler. every <= 0 wird auf 1 s gesetzt.
 func Watch(ctx context.Context, p Prober, start Mode, every, lost time.Duration, onChange func(reason string)) {
+	if every <= 0 {
+		every = time.Second
+	}
 	var failSince time.Time
 	t := time.NewTicker(every)
 	defer t.Stop()
@@ -58,7 +63,9 @@ func Watch(ctx context.Context, p Prober, start Mode, every, lost time.Duration,
 			return
 		case <-t.C:
 		}
-		m, err := Detect(ctx, p)
+		pctx, cancel := context.WithTimeout(ctx, every)
+		m, err := Detect(pctx, p)
+		cancel()
 		if ctx.Err() != nil {
 			return
 		}
