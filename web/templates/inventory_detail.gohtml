@@ -218,6 +218,15 @@
 
 <!-- ── Lieferanten & Einkauf ── -->
 <div class="rec-pane" data-pane="purchasing">
+  {{if .CanProcurement}}
+  <div class="card" style="padding:0;overflow-x:auto">
+    <div class="card-title" style="padding:12px 14px 0"><span><i class="ti ti-truck-delivery"></i> Bestellvorgänge</span>
+      {{if .CanPurchase}}<form method="post" action="/purchases" style="display:flex;gap:6px;align-items:center"><input type="hidden" name="part_id" value="{{.Part.ID}}"><input type="hidden" name="title" value="{{.Part.Name}}">
+        <select class="form-input" name="supplier_id" style="width:auto;font-size:12px;padding:4px 6px" aria-label="Lieferant">{{range .Suppliers}}<option value="{{.PartnerID}}">{{.Name}}</option>{{else}}<option value="">– Lieferant später –</option>{{end}}</select>
+        <button class="btn btn-small" type="submit"><i class="ti ti-plus"></i> Bestellvorgang</button></form>{{end}}</div>
+    {{template "purchase-links" .Purchases}}
+  </div>
+  {{end}}
   <div class="card" style="padding:0;overflow-x:auto">
     <table>
       <thead><tr><th>Lieferant</th><th>Art.-Nr.</th><th style="text-align:right">EK-Preis</th><th style="text-align:right">Mindestmenge</th><th>Lieferzeit</th><th>Bestellkontakt</th><th></th></tr></thead>

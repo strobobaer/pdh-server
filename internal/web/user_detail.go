@@ -28,6 +28,7 @@ type userMaster struct {
 	BrokerTickets, BrokerFaults                         bool
 	BrokerTasks, BrokerMaintenance                      bool
 	TerminalInfraID, TerminalInfraPath                  string // Standort des Terminals (Systembenutzer)
+	LeitstandID, LeitstandName                          string // direkt gewählter Leitstand des Terminals
 	LiveTranslate                                       bool   // Live-Übersetzung (live_translate.go)
 	TranslateLang                                       string // Zielsprache, "" = Sprache der Oberfläche
 }
@@ -56,9 +57,10 @@ type UserDetailData struct {
 	AdminPasswordHint   string              // Richtlinie + Wechselzwang beim Setzen durch die Verwaltung
 	Password            users.PasswordState // Wechsel faellig? (Benutzerstamm)
 	CanEditMaster       bool
-	CanEditCore         bool // Grunddaten-Dialog in der Benutzerliste
-	CanBroker           bool // Broker-Rollen vergeben (nur Benutzerverwaltung)
-	CanAvatar           bool // Profilbild ändern (selbst oder Benutzerverwaltung)
+	CanEditCore         bool         // Grunddaten-Dialog in der Benutzerliste
+	CanBroker           bool         // Broker-Rollen vergeben (nur Benutzerverwaltung)
+	Boards              []*leitstand // Auswahl „Leitstand“ für Terminals
+	CanAvatar           bool         // Profilbild ändern (selbst oder Benutzerverwaltung)
 	CanPrivate          bool
 	CanPermissions      bool
 	Team                []UserOption
@@ -136,6 +138,7 @@ func (h *Handler) UserDetailPage(w http.ResponseWriter, r *http.Request) {
 		User:   h.userView(string(actor.Role), u, h.roleLabelMap(ctx), userNames, map[string]bool{}),
 		IsSelf: self, HasPassword: self && u.PasswordHash != "", CanEditMaster: editMaster, CanEditCore: editCore,
 		CanBroker:      h.canManageUsers(r),
+		Boards:         h.listLeitstaende(ctx),
 		CanAvatar:      self || h.canManageUsers(r),
 		CanPrivate:     h.canPrivateData(r, id),
 		CanPermissions: !self && h.canEditUserPermissions(r, string(u.Role)),
@@ -228,7 +231,9 @@ func (h *Handler) loadUserMasterErr(ctx context.Context, id string) (userMaster,
 		&m.WorkLocation, &m.PhoneInternal, &m.PhoneMobile, &m.Language, &m.EntryDate, &m.ExitDate,
 		&m.Notes, &m.BrokerTickets, &m.BrokerFaults, &m.BrokerTasks, &m.BrokerMaintenance)
 	if err == nil {
-		_ = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, ''), live_translate, translate_lang FROM users WHERE id = $1::uuid`, id).Scan(&m.TerminalInfraID, &m.LiveTranslate, &m.TranslateLang)
+		_ = h.db.QueryRow(ctx, `SELECT COALESCE(u.terminal_infrastructure_id::text, ''), u.live_translate, u.translate_lang,
+			COALESCE(u.leitstand_id::text, ''), COALESCE(l.name, '')
+			FROM users u LEFT JOIN leitstaende l ON l.id = u.leitstand_id WHERE u.id = $1::uuid`, id).Scan(&m.TerminalInfraID, &m.LiveTranslate, &m.TranslateLang, &m.LeitstandID, &m.LeitstandName)
 		m.TerminalInfraPath = h.infraPath(ctx, m.TerminalInfraID)
 	}
 	return m, err
@@ -416,6 +421,15 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Leitstand des Terminals: direkt gewählt geht vor Gruppe/Abteilung
+	if _, sent := r.Form["leitstand_id"]; sent && h.canManageUsers(r) {
+		if _, err := h.db.Exec(ctx, `
+			UPDATE users SET leitstand_id = CASE WHEN is_system_user THEN NULLIF($1, '')::uuid END
+			WHERE id = $2::uuid`, v("leitstand_id"), id); err != nil {
+			userRedirect(w, r, id, "master", "", err)
+			return
+		}
+	}
 	n := h.loadUserMaster(ctx, id)
 	yes := func(b bool) string {
 		if b {
@@ -431,6 +445,7 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 		{"Broker Tickets", yes(old.BrokerTickets), yes(n.BrokerTickets)}, {"Broker Störungen", yes(old.BrokerFaults), yes(n.BrokerFaults)},
 		{"Broker Aufgaben", yes(old.BrokerTasks), yes(n.BrokerTasks)}, {"Broker Wartungen", yes(old.BrokerMaintenance), yes(n.BrokerMaintenance)},
 		{"Terminal-Standort", old.TerminalInfraPath, n.TerminalInfraPath},
+		{"Leitstand", old.LeitstandName, n.LeitstandName},
 	}
 	actor := getUser(r)
 	for _, c := range changes {

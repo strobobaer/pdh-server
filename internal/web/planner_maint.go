@@ -217,11 +217,11 @@ func (m maintDay) Hours() string {
 // PlannerMaintSaveWeb: POST /planner/maintenance/{id} – Fälligkeit verschieben
 // und/oder zuweisen (assigned_to leer = unverändert, "-" = niemand).
 func (h *Handler) PlannerMaintSaveWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.hasPerm(r, "maintenance.edit") {
+	id := chi.URLParam(r, "id")
+	if !h.hasPermRec(r, "maintenance.edit", "maintenance_task", id) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
 		return
 	}
-	id := chi.URLParam(r, "id")
 	ctx := r.Context()
 	if !uuidInPathRe.MatchString(id) || !h.recordInScope(ctx, h.requestScope(r), "maintenance_task", id) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)

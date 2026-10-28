@@ -1,0 +1,71 @@
+{{template "base" .}}
+
+{{define "content"}}
+<style>
+.pu-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pu-head h1{font-size:19px;font-weight:600}
+.pu-head p{font-size:12px;color:var(--muted);margin-top:3px;max-width:760px}
+.pu-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.pu-new{display:grid;grid-template-columns:minmax(200px,1fr) minmax(200px,2fr) auto;gap:8px;align-items:end}
+@media (max-width:700px){.pu-new{grid-template-columns:1fr}}
+.pu-steps{display:flex;gap:3px;align-items:center}
+.pu-steps span{width:22px;height:6px;border-radius:3px;background:var(--bg3);border:1px solid var(--border)}
+.pu-steps span.done{background:var(--accent);border-color:var(--accent)}
+.pu-steps span.cur{background:color-mix(in srgb,var(--accent) 35%,transparent);border-color:var(--accent)}
+.pu-steps span.warn{background:var(--amber,#f59e0b);border-color:var(--amber,#f59e0b)}
+.pu-warn{font-size:11.5px;color:var(--amber,#b45309);display:flex;gap:4px;align-items:center}
+.pu-t td{vertical-align:top}
+.pu-t .num{font-family:monospace;font-weight:600;color:var(--accent);text-decoration:none}
+</style>
+<div class="pu-head">
+  <div style="flex:1;min-width:0">
+    <h1><i class="ti ti-truck-delivery"></i> Bestellvorgänge</h1>
+    <p>Angebot → Bestellung → Auftragsbestätigung → Lieferung → Rechnung OK. PDH vergleicht die AB mit der Bestellung und die Lieferung mit der AB; der Wareneingang bucht ins Lager.</p>
+  </div>
+  <a class="btn btn-small" href="/procurement"><i class="ti ti-shopping-cart"></i> Beschaffung</a>
+</div>
+{{if .Message}}<div class="rec-msg ok"><i class="ti ti-check"></i> {{.Message}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err"><i class="ti ti-alert-circle"></i> {{.Error}}</div>{{end}}
+
+{{if .CanEdit}}
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-plus"></i> Neuer Bestellvorgang</span></div>
+  <form method="post" action="/purchases" class="pu-new">
+    <div class="form-group" style="margin:0"><label class="form-label" for="pu-sup">Lieferant</label>
+      <select class="form-input" id="pu-sup" name="supplier_id"><option value="">– später wählen –</option>{{range .Suppliers}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></div>
+    <div class="form-group" style="margin:0"><label class="form-label" for="pu-title">Worum geht es?</label>
+      <input class="form-input" id="pu-title" name="title" maxlength="200" placeholder="z. B. Lager Presse 3, Ersatzteile Schweißroboter"></div>
+    <button class="btn btn-primary" type="submit"><i class="ti ti-plus"></i> Anlegen</button>
+  </form>
+</div>
+{{end}}
+
+<div class="rec-tabs" role="tablist">
+  <a class="rec-tab{{if eq .Tab "open"}} active{{end}}" href="?tab=open"><i class="ti ti-progress"></i> Offen <b>{{.CountOpen}}</b></a>
+  <a class="rec-tab{{if eq .Tab "done"}} active{{end}}" href="?tab=done"><i class="ti ti-circle-check"></i> Abgeschlossen <b>{{.CountDone}}</b></a>
+  <a class="rec-tab{{if eq .Tab "all"}} active{{end}}" href="?tab=all"><i class="ti ti-list"></i> Alle</a>
+</div>
+<form class="pu-bar" method="get"><input type="hidden" name="tab" value="{{.Tab}}">
+  <input class="form-input" name="q" value="{{.Query}}" placeholder="Suchen: Nummer, Lieferant, AB, Rechnung …" style="max-width:340px" aria-label="Bestellvorgänge durchsuchen">
+  <button class="btn btn-small" type="submit"><i class="ti ti-search"></i> Suchen</button>
+</form>
+
+<div class="card" style="padding:0;overflow-x:auto">
+  <table class="pu-t">
+    <thead><tr><th>Nummer</th><th>Lieferant / Titel</th><th>Stand</th><th>Prüfung</th><th>Termin</th><th style="text-align:right">Wert</th></tr></thead>
+    <tbody>
+    {{range .Orders}}
+    <tr>
+      <td><a class="num" href="/purchases/{{.ID}}">{{.Number}}</a><div class="rec-sub">{{.CreatedAt}}</div></td>
+      <td><b>{{if .SupplierName}}{{.SupplierName}}{{else}}<span class="rec-sub">Lieferant fehlt</span>{{end}}</b>{{if .Title}}<div class="rec-sub">{{.Title}}</div>{{end}}</td>
+      <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+        <div class="pu-steps" style="margin-top:5px" aria-hidden="true">{{range .Steps}}<span class="{{if .Done}}done{{else if .Current}}cur{{end}}{{if .Warn}} warn{{end}}" title="{{.Label}}{{if .Warn}}: {{.Warn}}{{end}}"></span>{{end}}</div></td>
+      <td>{{range .Warnings}}<div class="pu-warn"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{else}}<span class="rec-sub">–</span>{{end}}</td>
+      <td style="font-size:12px;white-space:nowrap">{{if .ConfirmedDelivery}}AB: {{.D .ConfirmedDelivery}}{{else if .WantedDate}}Wunsch: {{.D .WantedDate}}{{else}}–{{end}}{{if .Late}} <i class="ti ti-clock-exclamation" style="color:var(--red)" title="überfällig"></i>{{end}}</td>
+      <td style="text-align:right;white-space:nowrap">{{.ValueLabel}}</td>
+    </tr>
+    {{else}}<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Keine Bestellvorgänge{{if eq .Tab "open"}} offen{{end}}.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

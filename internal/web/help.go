@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"sort"
 
 	"pdh"
 )
@@ -78,17 +77,13 @@ func (h *Handler) helpData(r *http.Request) HelpPageData {
 	}
 	if h.rbac != nil {
 		if perms, err := h.rbac.ListPermissions(r.Context()); err == nil {
-			byCat := map[string][]helpPerm{}
-			for _, p := range perms {
-				byCat[p.Category] = append(byCat[p.Category], helpPerm{p.Key, p.Label})
-			}
-			cats := make([]string, 0, len(byCat))
-			for c := range byCat {
-				cats = append(cats, c)
-			}
-			sort.Strings(cats)
-			for _, c := range cats {
-				d.PermGroups = append(d.PermGroups, helpPermGroup{Category: c, Items: byCat[c]})
+			// gleiche Reihenfolge wie die Matrix unter Rollen & Rechte (rbac_guard.go)
+			for _, g := range groupPermissions(perms) {
+				hg := helpPermGroup{Category: g.Category}
+				for _, p := range g.Permissions {
+					hg.Items = append(hg.Items, helpPerm{p.Key, p.Label})
+				}
+				d.PermGroups = append(d.PermGroups, hg)
 			}
 		}
 	}

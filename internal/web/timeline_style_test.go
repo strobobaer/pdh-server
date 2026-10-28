@@ -59,7 +59,7 @@ func TestTimelinePagesRender(t *testing.T) {
 	checkScripts(t, "server_config", out)
 
 	dash := renderPage(t, tmpl, "dashboard", DashboardData{GanttItems: []GanttItem{{ID: "a", RefType: "ticket", Title: "T", StartISO: "2026-10-01", EndISO: "2026-10-09", IsRunning: true, IsUnassigned: true, Color: "#4b9fc4"}}})
-	for _, want := range []string{"running: true, unassigned: true", "pdhTimelineApply(wrapper, t)", "bar_height: PDH_TL.barHeight", `class="tl-legend"`} {
+	for _, want := range []string{"running: true, unassigned: true", "pdhTimelineApply(wrapper, t)", "bar_height: PDH_TL.barHeight"} {
 		if !strings.Contains(dash, want) {
 			t.Errorf("Dashboard enthält %q nicht", want)
 		}

@@ -1,137 +1,137 @@
 {{template "base" .}}
 {{define "content"}}
-<div style="margin-bottom:18px">
-  <h1 style="font-size:19px;font-weight:600">Rollen & Berechtigungen</h1>
-  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{len .Roles}} Rollen · {{len .PermissionGroups}} Berechtigungsgruppen</p>
+<div style="margin-bottom:14px">
+  <h1 style="font-size:19px;font-weight:600">Rollen &amp; Berechtigungen</h1>
+  <p style="font-size:12px;color:var(--muted);margin-top:3px">{{len .Roles}} Rollen · {{.PermissionCount}} Rechte in {{len .PermissionGroups}} Gruppen · Ausnahmen für einzelne Personen unter Benutzer → Einzelrechte</p>
 </div>
+{{if .Notice}}<div class="rec-msg ok" role="status">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err" role="alert">{{.Error}}</div>{{end}}
 
-<div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-  <!-- Neue Rolle -->
-  <div class="card">
-    <div class="card-title">Neue Rolle anlegen</div>
-    <form method="POST" action="/admin/roles">
-      <div class="grid2" style="gap:10px">
-        <div class="form-group">
-          <label class="form-label">Schlüssel (technisch, z.B. "einkauf")</label>
-          <input name="key" class="form-input" pattern="[a-z0-9_]+" title="nur Kleinbuchstaben, Ziffern, Unterstrich" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Anzeigename</label>
-          <input name="label" class="form-input" placeholder="z.B. Einkauf" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Rang (Hierarchie)</label>
-          <input type="number" min="0" name="level" class="form-input" value="{{.NextRoleLevel}}" required>
-        </div>
-      </div>
-      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Höherer Rang = mehr Befugnis. Eine Rolle kann nur Benutzer und Rollen mit echt niedrigerem Rang verwalten.</p>
-      <button type="submit" class="btn btn-primary"><i class="ti ti-plus"></i> Rolle anlegen</button>
-    </form>
-  </div>
+<style>
+.rl-table{width:100%;border-collapse:collapse;font-size:13px}
+.rl-table th{text-align:left;font-size:11.5px}
+.rl-table td{padding:8px 10px;vertical-align:middle}
+.rl-key{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}
+.rl-tag{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--muted);margin-left:6px}
+.rl-in{width:64px;padding:4px 6px;font:inherit;font-size:12.5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);text-align:center}
+.rl-sel{max-width:180px;padding:4px 6px;font:inherit;font-size:12.5px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.rl-new{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.rl-new label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.rl-new input{min-width:0}
+/* Matrix */
+.pm-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+.pm-search{flex:1 1 240px;max-width:360px}
+.pm-legend{font-size:11.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.pm-wrap{overflow:auto;max-height:calc(100vh - 230px);border:1px solid var(--border);border-radius:8px}
+.pm{border-collapse:separate;border-spacing:0;font-size:12.5px;width:100%}
+.pm th,.pm td{padding:6px 10px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.pm thead th{position:sticky;top:0;z-index:3;text-align:center;white-space:nowrap;font-size:12px;vertical-align:bottom}
+.pm thead th small{display:block;font-weight:400;font-size:10.5px;color:var(--muted)}
+.pm .pm-first{position:sticky;left:0;z-index:2;text-align:left;min-width:260px;max-width:420px}
+.pm thead .pm-first{z-index:4}
+.pm .pm-first .rl-key{display:block}
+.pm td{text-align:center}
+.pm tr.pm-head td{background:var(--bg3);font-weight:600;cursor:pointer;user-select:none}
+.pm tr.pm-head .pm-first{background:var(--bg3)}
+.pm tr.pm-head .pm-first i{transition:transform .15s;margin-right:4px}
+.pm tbody.closed tr.pm-head .pm-first i{transform:rotate(-90deg)}
+.pm tbody.closed tr.pm-row{display:none}
+.pm tbody.pm-hidden{display:none}
+.pm tr.pm-row.pm-hidden{display:none}
+.pm tr.pm-row:hover td{background:var(--fill-hover, var(--bg3))}
+.pm input[type=checkbox]{width:17px;height:17px;cursor:pointer}
+.pm input[type=checkbox]:disabled{cursor:not-allowed;opacity:.45}
+.pm .pm-lock{font-size:12px;color:var(--muted);vertical-align:middle}
+.pm .pm-dep{display:none;margin:2px auto 0;max-width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:10px;line-height:1.3;padding:1px 5px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--muted);cursor:pointer}
+.pm td:hover .pm-dep,.pm td:focus-within .pm-dep{display:block}
+.pm .pm-dep.set{display:block;color:var(--accent);border-color:var(--accent);font-weight:600}
+.pm-dep-pop{position:absolute;z-index:700;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-card,0 8px 24px rgba(0,0,0,.25));padding:10px;width:260px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.pm-dep-pop[hidden]{display:none}
+.pm-dep-act{display:flex;gap:6px;justify-content:flex-end}
+.pm .pm-n{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px}
+</style>
 
-  <!-- Auto-Logout -->
-  <div class="card">
-    <div class="card-title">Auto-Logout</div>
-    <form method="POST" action="/admin/settings">
-      <div class="grid2" style="gap:10px">
-        <div class="form-group">
-          <label class="form-label">Inaktivität bis Auto-Logout (Minuten)</label>
-          <input type="number" min="1" name="idle_timeout_minutes" class="form-input" value="{{.IdleTimeoutMinutes}}" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Override-Sitzung: Rücksprung nach (Minuten)</label>
-          <input type="number" min="1" name="override_timeout_minutes" class="form-input" value="{{.OverrideTimeoutMinutes}}" required>
-        </div>
-      </div>
-      <p style="font-size:11px;color:var(--muted);margin:-4px 0 10px">Systemnutzer (Häkchen in der Benutzerverwaltung) sind von der Auto-Logout-Zeit ausgenommen und bleiben dauerhaft eingeloggt. Die Override-Zeit gilt auch für den Kurzzugang per Karte aus dem Leitstand.</p>
-      {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
-    </form>
+<!-- Rollen -->
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-shield-lock"></i> Rollen</span><span class="sc-sub" style="font-weight:400;font-size:11.5px;color:var(--muted)">Höherer Rang = mehr Befugnis; du verwaltest nur Rollen mit niedrigerem Rang als deinem.</span></div>
+  <div style="overflow-x:auto">
+  <table class="rl-table">
+    <thead><tr><th>Rolle</th><th title="Rangstufe in der Hierarchie">Rang</th><th title="Wer diese Rolle hat, sieht nur Vorgänge dieser Abteilung (und ihrer Unterabteilungen) – leer oder übergeordnete Abteilung = alles">Abteilung (Sichtbarkeit)</th><th>Pflichtschulungen</th><th>Benutzer</th><th></th></tr></thead>
+    <tbody>
+    {{range .Roles}}{{$rdep := index $.RoleDepartments .ID}}
+    <tr>
+      <td><b>{{.Label}}</b>{{if .IsBuiltin}}<span class="rl-tag">eingebaut</span>{{end}}<div class="rl-key">{{.Key}}</div></td>
+      <td>{{if .CanManage}}<input type="number" min="0" value="{{.Level}}" id="role-level-{{.ID}}" class="rl-in" onchange="saveRoleLevel(this,'{{.ID}}')" aria-label="Rang der Rolle {{.Label}}">{{else}}{{.Level}}{{end}}</td>
+      <td>{{if .CanManage}}<select class="rl-sel" onchange="saveRoleDepartment(this,'{{.ID}}')" aria-label="Abteilung der Rolle {{.Label}}">
+          <option value="">– alle Abteilungen –</option>
+          {{range $.Departments}}<option value="{{.ID}}" {{if eq .ID $rdep}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>{{else}}{{range $.Departments}}{{if eq .ID $rdep}}{{.Name}}{{end}}{{end}}{{end}}</td>
+      <td style="font-size:12px;color:var(--muted)">{{with index $.RoleTrainings .Key}}<i class="ti ti-school"></i> {{join . ", "}}{{else}}–{{end}}</td>
+      <td><a href="/users?role={{.Key}}" title="Benutzer mit dieser Rolle anzeigen" style="color:var(--accent)">{{.UserCount}}</a></td>
+      <td style="text-align:right">{{if and (not .IsBuiltin) .CanManage}}
+        <form method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?{{if .UserCount}} {{.UserCount}} Benutzer haben sie noch.{{end}}')">
+          <button type="submit" class="btn-icon" title="Rolle löschen" aria-label="Rolle {{.Label}} löschen"><i class="ti ti-trash"></i></button>
+        </form>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
   </div>
+  <form method="POST" action="/admin/roles" class="rl-new">
+    <label>Schlüssel (technisch)<input name="key" class="form-input" pattern="[a-z0-9_]+" title="nur Kleinbuchstaben, Ziffern, Unterstrich" placeholder="z. B. einkauf" required style="width:150px"></label>
+    <label>Anzeigename<input name="label" class="form-input" placeholder="z. B. Einkauf" required style="width:180px"></label>
+    <label>Rang<input type="number" min="0" name="level" class="form-input" value="{{.NextRoleLevel}}" required style="width:80px"></label>
+    <button type="submit" class="btn btn-primary btn-small"><i class="ti ti-plus"></i> Rolle anlegen</button>
+  </form>
 </div>
 
 <!-- Berechtigungs-Matrix -->
-<div class="card" style="overflow-x:auto">
-  <div class="card-title">Berechtigungs-Matrix</div>
-  <table style="border-collapse:collapse;width:100%;font-size:12.5px">
-    <thead>
-      <tr>
-        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">Berechtigung</th>
-        {{range .Roles}}
-        <th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap"
-            {{if .CanManage}}oncontextmenu="showContextMenu(event, roleColumnContextItems('{{.ID}}','{{.Label}}',{{.IsBuiltin}})); return false;"{{end}}>
-          {{.Label}}
-          <div style="font-size:10px;font-weight:400;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:3px" title="Rangstufe in der Hierarchie">
-            Rang
-            {{if .CanManage}}
-            <input type="number" min="0" value="{{.Level}}" id="role-level-{{.ID}}" style="width:42px;font-size:10px;padding:1px 3px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);text-align:center"
-                   onchange="saveRoleLevel(this,'{{.ID}}')">
-            {{else}}
-            {{.Level}}
-            {{end}}
-          </div>
-          {{$rdep := index $.RoleDepartments .ID}}
-          {{with index $.RoleTrainings .Key}}<div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px;max-width:140px;white-space:normal" title="Pflichtschulungen dieser Rolle"><i class="ti ti-school"></i> {{join . ", "}}</div>{{end}}
-          <div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px" title="Abteilung der Rolle">
-            {{if .CanManage}}
-            <select onchange="saveRoleDepartment(this,'{{.ID}}')" style="max-width:120px;font-size:10px;padding:1px 3px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text)" aria-label="Abteilung der Rolle {{.Label}}">
-              <option value="">– Abteilung –</option>
-              {{range $.Departments}}<option value="{{.ID}}" {{if eq .ID $rdep}}selected{{end}}>{{.Name}}</option>{{end}}
-            </select>
-            {{else}}{{range $.Departments}}{{if eq .ID $rdep}}{{.Name}}{{end}}{{end}}{{end}}
-          </div>
-          {{if and (not .IsBuiltin) .CanManage}}
-          <form id="role-delete-form-{{.ID}}" method="POST" action="/admin/roles/{{.ID}}/delete-web" style="display:inline" onsubmit="return confirm('Rolle {{.Label}} wirklich löschen?')">
-            <button type="submit" class="btn-icon" style="width:20px;height:20px;vertical-align:middle" title="Rolle löschen"><i class="ti ti-trash" style="font-size:12px"></i></button>
-          </form>
-          {{end}}
-        </th>
+<div class="card">
+  <div class="card-title"><span><i class="ti ti-checkbox"></i> Berechtigungs-Matrix</span></div>
+  <div class="pm-bar">
+    <input type="search" class="form-input pm-search" id="pm-search" placeholder="Recht suchen, z. B. Wartung oder tickets.edit" aria-label="Recht suchen" oninput="pmFilter()">
+    <button type="button" class="btn btn-small" onclick="pmAll(false)" title="Alle Gruppen aufklappen"><i class="ti ti-chevrons-down"></i> Alle auf</button>
+    <button type="button" class="btn btn-small" onclick="pmAll(true)" title="Alle Gruppen zuklappen"><i class="ti ti-chevrons-up"></i> Alle zu</button>
+    <span class="pm-legend"><span>Häkchen in der Gruppenzeile = ganze Gruppe für die Rolle</span><span><i class="ti ti-lock"></i> = kannst du nicht vergeben (hast es selbst nicht)</span><span>grau = Rang zu niedrig</span></span>
+  </div>
+  <div class="pm-wrap">
+  <table class="pm" id="pm">
+    <thead><tr>
+      <th class="pm-first">Recht</th>
+      {{range .Roles}}<th title="{{.Label}} – Rang {{.Level}}">{{.Label}}<small>Rang {{.Level}}</small></th>{{end}}
+    </tr></thead>
+    {{$roles := .Roles}}{{$matrix := .Matrix}}{{$grant := .CanGrant}}{{$mdept := .MatrixDept}}{{$dn := .DeptNames}}
+    {{range $gi, $g := .PermissionGroups}}
+    <tbody class="pm-group" data-cat="{{$g.Category}}">
+      <tr class="pm-head" onclick="pmToggle(this.parentNode, event)">
+        <td class="pm-first"><i class="ti ti-chevron-down"></i>{{$g.Category}}<span class="pm-n">{{len $g.Permissions}}</span></td>
+        {{range $roles}}<td><input type="checkbox" class="pm-gcb" data-role="{{.ID}}" {{if not .CanManage}}disabled{{end}} onclick="event.stopPropagation()" onchange="pmGroupSet(this)" aria-label="Alle Rechte der Gruppe {{$g.Category}} für {{.Label}}" title="Ganze Gruppe für {{.Label}}"></td>{{end}}
+      </tr>
+      {{range $g.Permissions}}{{$perm := .}}{{$can := index $grant $perm.Key}}
+      <tr class="pm-row" data-s="{{$perm.Label}} {{$perm.Key}} {{$g.Category}}">
+        <td class="pm-first">{{$perm.Label}}<span class="rl-key">{{$perm.Key}}</span></td>
+        {{range $roles}}{{$role := .}}{{$on := index $matrix $role.ID $perm.ID}}
+        <td><input type="checkbox" class="pm-cb" data-role="{{$role.ID}}" data-perm="{{$perm.ID}}" data-grant="{{if $can}}1{{end}}" {{if $on}}checked{{end}}
+             {{if not $role.CanManage}}disabled title="Rang zu niedrig, um {{$role.Label}} zu bearbeiten"{{else if and (not $can) (not $on)}}disabled title="Kannst du nicht vergeben – du hast dieses Recht selbst nicht"{{else}}title="{{$perm.Label}} – {{$role.Label}}"{{end}}
+             onchange="saveMatrixCell(this)" aria-label="{{$perm.Label}} für {{$role.Label}}">{{if and $role.CanManage (not $can)}}<i class="ti ti-lock pm-lock" aria-hidden="true"></i>{{end}}
+             {{if $role.CanManage}}{{$d := index $mdept $role.ID $perm.ID}}<button type="button" class="pm-dep{{if $d}} set{{end}}" data-dep="{{$d}}" onclick="pmDept(this)" title="{{if $d}}Gilt nur in: {{index $dn $d}} (mit Unterabteilungen){{else}}Gilt in allen Abteilungen – antippen, um auf eine Abteilung zu begrenzen{{end}}" aria-label="Abteilung für {{$perm.Label}} – {{$role.Label}}">{{if $d}}{{index $dn $d}}{{else}}<i class="ti ti-building" aria-hidden="true"></i>{{end}}</button>{{end}}</td>
         {{end}}
       </tr>
-    </thead>
-    <tbody>
-      {{$roles := .Roles}}
-      {{$matrix := .Matrix}}
-      {{range .PermissionGroups}}
-      <tr><td colspan="99" style="padding:10px 10px 4px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px">{{.Category}}</td></tr>
-      {{range .Permissions}}
-      {{$perm := .}}
-      <tr>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border)">{{.Label}}</td>
-        {{range $roles}}
-        {{$role := .}}
-        <td style="text-align:center;padding:6px 10px;border-bottom:1px solid var(--border)">
-          <input type="checkbox" {{if index $matrix $role.ID $perm.ID}}checked{{end}} {{if not $role.CanManage}}disabled title="Rang zu niedrig, um diese Rolle zu bearbeiten"{{end}}
-                 onchange="saveMatrixCell(this,'{{$role.ID}}','{{$perm.ID}}')">
-        </td>
-        {{end}}
-      </tr>
-      {{end}}
       {{end}}
     </tbody>
+    {{end}}
   </table>
+  </div>
+</div>
+<div id="pm-dep-pop" class="pm-dep-pop" hidden role="dialog" aria-label="Abteilung des Rechts">
+  <label for="pm-dep-sel">Recht gilt in</label>
+  <select id="pm-dep-sel" class="form-input"><option value="">allen Abteilungen</option>{{range .Departments}}<option value="{{.ID}}">{{.Indent}}{{.Name}}</option>{{end}}</select>
+  <div class="pm-dep-act"><button type="button" class="btn btn-small btn-primary" onclick="pmDeptSave()">Übernehmen</button><button type="button" class="btn btn-small" onclick="pmDeptClose()">Abbrechen</button></div>
 </div>
 {{end}}
 
 {{define "scripts"}}
 <script>
-function roleColumnContextItems(roleId, roleLabel, isBuiltin){
-  const items = [
-    {heading: roleLabel},
-    {label: 'Rang ändern', icon: 'ti-arrows-sort', onClick: function(){
-      const input = document.getElementById('role-level-' + roleId);
-      if(input){ input.focus(); input.select(); }
-    }}
-  ];
-  if(!isBuiltin){
-    items.push({separator: true});
-    items.push({label: 'Rolle löschen', icon: 'ti-trash', danger: true, onClick: function(){
-      const form = document.getElementById('role-delete-form-' + roleId);
-      if(form) form.requestSubmit();
-    }});
-  }
-  return items;
-}
-
 async function saveRoleDepartment(sel, roleId){
   sel.disabled = true;
   try{
@@ -162,20 +162,97 @@ async function saveRoleLevel(input, roleId){
   }
 }
 
-async function saveMatrixCell(checkbox, roleId, permId){
-  checkbox.disabled = true;
+// ── Matrix ──
+async function pmSave(cb){
+  const res = await fetch('/admin/roles/matrix-web', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'role_id=' + encodeURIComponent(cb.dataset.role) + '&permission_id=' + encodeURIComponent(cb.dataset.perm) + '&granted=' + (cb.checked ? 'true' : 'false')
+  });
+  if(!res.ok) throw new Error((await res.text()) || ('HTTP ' + res.status));
+}
+// Abteilung je Recht: Knopf unter dem Häkchen öffnet die Auswahl
+let pmDepBtn = null;
+function pmDept(btn){
+  const pop = document.getElementById('pm-dep-pop'), sel = document.getElementById('pm-dep-sel');
+  pmDepBtn = btn; sel.value = btn.dataset.dep || '';
+  pop.hidden = false;
+  const r = btn.getBoundingClientRect();
+  pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+  pop.style.left = Math.max(8, Math.min(window.scrollX + r.left - 100, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 8)) + 'px';
+  sel.focus();
+}
+function pmDeptClose(){ document.getElementById('pm-dep-pop').hidden = true; pmDepBtn = null; }
+async function pmDeptSave(){
+  const btn = pmDepBtn; if(!btn) return;
+  const cb = btn.closest('td').querySelector('.pm-cb'), sel = document.getElementById('pm-dep-sel'), dep = sel.value;
   try{
     const res = await fetch('/admin/roles/matrix-web', {
       method: 'POST', credentials: 'same-origin',
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: 'role_id=' + encodeURIComponent(roleId) + '&permission_id=' + encodeURIComponent(permId) + '&granted=' + (checkbox.checked ? 'true' : 'false')
+      body: 'role_id=' + encodeURIComponent(cb.dataset.role) + '&permission_id=' + encodeURIComponent(cb.dataset.perm) + '&granted=true&department_id=' + encodeURIComponent(dep)
     });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-  }catch(e){
-    alert('Konnte nicht gespeichert werden: ' + e.message);
-    checkbox.checked = !checkbox.checked;
-  }
-  checkbox.disabled = false;
+    if(!res.ok) throw new Error((await res.text()) || ('HTTP ' + res.status));
+    cb.checked = true; btn.dataset.dep = dep; btn.classList.toggle('set', !!dep);
+    if(dep){ btn.textContent = sel.selectedOptions[0].textContent.trim(); btn.title = 'Gilt nur in: ' + btn.textContent + ' (mit Unterabteilungen)'; }
+    else { btn.innerHTML = '<i class="ti ti-building" aria-hidden="true"></i>'; btn.title = 'Gilt in allen Abteilungen – antippen, um auf eine Abteilung zu begrenzen'; }
+    pmSync(cb.closest('tbody'));
+  }catch(e){ alert('Konnte nicht gespeichert werden: ' + e.message); }
+  pmDeptClose();
 }
+document.addEventListener('keydown', e => { if(e.key === 'Escape') pmDeptClose(); });
+async function saveMatrixCell(cb){
+  cb.disabled = true;
+  try{ await pmSave(cb); }
+  catch(e){ alert('Konnte nicht gespeichert werden: ' + e.message); cb.checked = !cb.checked; }
+  cb.disabled = false;
+  // ohne eigenes Recht nach dem Wegnehmen nicht wieder vergebbar
+  if(!cb.checked && !cb.dataset.grant){ cb.disabled = true; cb.title = 'Kannst du nicht vergeben – du hast dieses Recht selbst nicht'; }
+  const db = cb.closest('td').querySelector('.pm-dep');
+  if(db && !cb.checked && db.dataset.dep){ db.dataset.dep = ''; db.classList.remove('set'); db.innerHTML = '<i class="ti ti-building" aria-hidden="true"></i>'; }
+  pmSync(cb.closest('tbody'));
+}
+// Gruppen-Häkchen: an = alle Rechte der Gruppe, die du vergeben darfst; aus = alle weg
+async function pmGroupSet(g){
+  const body = g.closest('tbody'), on = g.checked;
+  const cells = [...body.querySelectorAll('.pm-cb[data-role="' + g.dataset.role + '"]')].filter(c => c.checked !== on && (!on || c.dataset.grant));
+  g.disabled = true;
+  for(const c of cells){
+    c.checked = on;
+    try{ await pmSave(c); }catch(e){ c.checked = !on; alert('Konnte nicht gespeichert werden: ' + e.message); break; }
+    if(!c.checked && !c.dataset.grant){ c.disabled = true; c.title = 'Kannst du nicht vergeben – du hast dieses Recht selbst nicht'; }
+  }
+  g.disabled = false;
+  pmSync(body);
+}
+function pmSync(body){
+  body.querySelectorAll('.pm-gcb').forEach(g => {
+    const cells = [...body.querySelectorAll('.pm-cb[data-role="' + g.dataset.role + '"]')];
+    const n = cells.filter(c => c.checked).length;
+    g.checked = n > 0 && n === cells.length;
+    g.indeterminate = n > 0 && n < cells.length;
+  });
+}
+// Auf-/Zuklappen, im Browser gemerkt
+const PM_KEY = 'pdh_roles_closed';
+function pmClosed(){ try{ return JSON.parse(localStorage.getItem(PM_KEY) || '[]'); }catch(e){ return []; } }
+function pmStore(){ try{ localStorage.setItem(PM_KEY, JSON.stringify([...document.querySelectorAll('#pm tbody.closed')].map(b => b.dataset.cat))); }catch(e){} }
+function pmToggle(body, ev){ if(ev && ev.target.closest('input')) return; body.classList.toggle('closed'); pmStore(); }
+function pmAll(close){ document.querySelectorAll('#pm tbody.pm-group').forEach(b => b.classList.toggle('closed', close)); pmStore(); }
+// Suche: Treffer aufklappen, leere Gruppen ausblenden
+function pmFilter(){
+  const q = document.getElementById('pm-search').value.trim().toLowerCase();
+  document.querySelectorAll('#pm tbody.pm-group').forEach(b => {
+    let hits = 0;
+    b.querySelectorAll('tr.pm-row').forEach(tr => { const ok = !q || tr.dataset.s.toLowerCase().includes(q); tr.classList.toggle('pm-hidden', !ok); if(ok) hits++; });
+    b.classList.toggle('pm-hidden', q && !hits);
+    if(q && hits) b.classList.remove('closed');
+  });
+  if(!q){ const c = pmClosed(); document.querySelectorAll('#pm tbody.pm-group').forEach(b => b.classList.toggle('closed', c.includes(b.dataset.cat))); }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const c = pmClosed();
+  document.querySelectorAll('#pm tbody.pm-group').forEach(b => { if(c.includes(b.dataset.cat)) b.classList.add('closed'); pmSync(b); });
+});
 </script>
 {{end}}

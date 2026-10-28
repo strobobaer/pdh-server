@@ -48,11 +48,11 @@
     {{if $s.Hidden}}<span class="rm-state rm-hidden"><i class="ti ti-eye-off"></i> Ausgeblendet (noch verwendet)</span>
     {{else if $s.Marked}}<span class="rm-state rm-del" title="{{$s.MarkReason}}"><i class="ti ti-trash-x"></i> Zum Löschen vorgemerkt{{if $s.MarkedBy}} von {{$s.MarkedBy}}{{end}} · {{$s.MarkedAt}}</span>
     {{else if not $s.Active}}<span class="rm-state rm-off"><i class="ti ti-circle-off"></i> Deaktiviert</span>{{end}}
-    {{if .CanEdit}}
+    {{if or .CanEdit .CanDelete}}
     <details>
       <summary><i class="ti ti-adjustments"></i> Status</summary>
       <form class="rm-menu" hx-post="/records/state/{{.Module}}/{{.ID}}" hx-target="#rmeta-{{.ID}}" hx-swap="innerHTML">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Stammdaten werden nicht direkt gelöscht. Grund (optional, erscheint in der Historie):</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Stammdaten werden nicht direkt gelöscht{{if .CanDelete}} – außer vom Bereichsadministrator{{end}}. Grund (optional, erscheint in der Historie):</div>
         <textarea name="reason" placeholder="z. B. Anlage verschrottet, Artikel ersetzt durch …"></textarea>
         {{if $s.Locked}}
         <button class="btn btn-small" name="action" value="unlock"><i class="ti ti-lock-open"></i> Sperre aufheben</button>
@@ -68,6 +68,9 @@
         <button class="btn btn-small" name="action" value="unmark"><i class="ti ti-arrow-back-up"></i> Löschvormerkung aufheben</button>
         {{else if not $s.Hidden}}
         <button class="btn btn-small" name="action" value="mark" onclick="return confirm('Datensatz zum Löschen vormerken? Er wird sofort deaktiviert; der Bereinigungslauf löscht ihn oder blendet ihn aus, falls er noch verwendet wird.')" style="color:var(--red,#ef4444)"><i class="ti ti-trash-x"></i> Zum Löschen vormerken</button>
+        {{end}}
+        {{if .CanDelete}}
+        <button class="btn btn-small" name="action" value="delete_now" onclick="return confirm('Datensatz jetzt endgültig löschen? Das lässt sich nicht rückgängig machen. Wird er noch verwendet, wird er stattdessen ausgeblendet.')" style="color:#fff;background:var(--red,#ef4444);border-color:var(--red,#ef4444)" title="Nur für Bereichsadministratoren"><i class="ti ti-trash"></i> Endgültig löschen</button>
         {{end}}
       </form>
     </details>

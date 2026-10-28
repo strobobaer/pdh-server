@@ -693,7 +693,7 @@ func (h *Handler) RecordPlantStoppedWeb(w http.ResponseWriter, r *http.Request) 
 	u := getUser(r)
 	editPerm := map[string]string{"fault": "faults.edit", "ticket": "tickets.edit"}[refType]
 	tag, err := h.db.Exec(r.Context(), `UPDATE `+table+` SET plant_stopped = $2 WHERE id = $1::uuid
-		AND ($4 OR (created_by = $3::uuid AND created_at > NOW() - INTERVAL '10 minutes'))`, id, on, nullID(u.ID), h.hasPerm(r, editPerm))
+		AND ($4 OR (created_by = $3::uuid AND created_at > NOW() - INTERVAL '10 minutes'))`, id, on, nullID(u.ID), h.hasPermRec(r, editPerm, refType, id))
 	if err != nil || tag.RowsAffected() == 0 {
 		http.Error(w, "nicht erlaubt oder nicht gefunden", http.StatusForbidden)
 		return

@@ -1,0 +1,199 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.lsm-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.lsm-head h1{font-size:19px;font-weight:600}
+.lsm-head p{font-size:12px;color:var(--muted);margin-top:3px;max-width:760px}
+.lsm-tag{font-size:10.5px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--muted);margin-left:6px}
+.lsm-off{color:var(--muted)}
+.lsm-t td{vertical-align:top}
+.lsm-sub{font-size:11.5px;color:var(--muted)}
+.lsm-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 16px}
+.lsm-slug{display:flex;align-items:center;gap:4px}
+.lsm-slug span{font-size:12px;color:var(--muted);white-space:nowrap}
+.lsm-types{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:13px}
+.lsm-types label,.lsm-check{display:flex;align-items:center;gap:6px;font-size:13px}
+.lsm-blocks{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.lsm-b{display:grid;grid-template-columns:auto 1fr auto;gap:8px 12px;align-items:start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2)}
+.lsm-b .grip{cursor:grab;color:var(--muted);font-size:18px;padding-top:4px}
+.lsm-b .nm{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.lsm-b .nm small{font-weight:400;color:var(--muted)}
+.lsm-b .opts{grid-column:2;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:12px;color:var(--muted)}
+.lsm-b .opts select,.lsm-b .opts input{font:inherit;font-size:12.5px;padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.lsm-b textarea{grid-column:2;width:100%;min-height:70px;font:inherit;font-size:13px;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.lsm-b .lk{grid-column:2;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px}
+.lsm-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lsm-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.lsm-form .help{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+</style>
+
+{{if .Notice}}<div class="rec-msg ok" role="status">{{.Notice}}</div>{{end}}
+{{if .Error}}<div class="rec-msg err" role="alert">{{.Error}}</div>{{end}}
+
+{{if not .Edit}}
+<div class="lsm-head">
+  <div style="flex:1;min-width:0">
+    <h1>Leitstände</h1>
+    <p>Jeder Leitstand ist aus Bausteinen zusammengestellt und kann einer Abteilung, Gruppe oder einem Team zugeordnet sein – dann zeigt er nur deren Vorgänge. Ein Terminal zeigt: den direkt gewählten Leitstand (Benutzer → Terminal), sonst den seiner Gruppe, sonst den seiner Abteilung, sonst den <b>Standard-Leitstand</b>. Bildschirme ohne Anmeldung öffnen die Adresse des Leitstands; das Gerät merkt sie sich.</p>
+  </div>
+  <a href="/leitstaende/new" class="btn btn-primary"><i class="ti ti-plus"></i> Neuer Leitstand</a>
+</div>
+<div class="card" style="padding:0;overflow-x:auto">
+  <table class="lsm-t">
+    <thead><tr><th>Leitstand</th><th>Adresse</th><th>Zeigt</th><th>Weiterblättern</th><th title="direkt zugeordnete Terminals">Terminals</th><th></th></tr></thead>
+    <tbody>
+    {{range .Boards}}
+    <tr{{if not .Active}} class="lsm-off"{{end}}>
+      <td><b>{{.Name}}</b>{{if .IsDefault}}<span class="lsm-tag">Standard</span>{{end}}{{if not .Active}}<span class="lsm-tag">aus</span>{{end}}{{if .Subtitle}}<div class="lsm-sub">{{.Subtitle}}</div>{{end}}</td>
+      <td><a href="/global/b/{{.Slug}}" target="_blank" rel="noopener" style="color:var(--accent)">/global/b/{{.Slug}}</a></td>
+      <td>{{.Scope}}<div class="lsm-sub">{{len .Blocks}} Bausteine · {{range $i, $t := .Types}}{{if $i}}, {{end}}{{if eq $t "fault"}}Störungen{{else if eq $t "ticket"}}Tickets{{else if eq $t "maintenance"}}Wartung{{else}}Aufgaben{{end}}{{end}}</div></td>
+      <td>{{if and .RotateSeconds .RotateNextName}}nach {{.RotateSeconds}} s → {{.RotateNextName}}{{else}}–{{end}}</td>
+      <td>{{.Terminals}}</td>
+      <td style="white-space:nowrap;text-align:right"><a href="/leitstaende/{{.ID}}" class="btn btn-small"><i class="ti ti-pencil"></i> Bearbeiten</a></td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}{{with .Edit}}
+<div class="lsm-head">
+  <div style="flex:1;min-width:0">
+    <h1>{{if $.IsNew}}Neuer Leitstand{{else}}{{.Name}}{{end}}</h1>
+    <p><a href="/leitstaende" style="color:var(--accent)">← alle Leitstände</a>{{if not $.IsNew}} · <a href="/global/b/{{.Slug}}" target="_blank" rel="noopener" style="color:var(--accent)">öffnen</a>{{end}}</p>
+  </div>
+</div>
+<form method="POST" action="/leitstaende/{{if $.IsNew}}new{{else}}{{.ID}}{{end}}" id="lsm-form" onsubmit="return lsmSubmit()">
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-device-tv"></i> Grunddaten</span></div>
+    <div class="lsm-form">
+      <div class="form-group"><label class="form-label" for="lsm-name">Name (Überschrift)</label><input class="form-input" id="lsm-name" name="name" value="{{.Name}}" maxlength="120" required placeholder="z. B. Leitstand Instandhaltung"></div>
+      <div class="form-group"><label class="form-label" for="lsm-slug">Adresse</label><div class="lsm-slug"><span>/global/b/</span><input class="form-input" id="lsm-slug" name="slug" value="{{.Slug}}" pattern="[a-z0-9][a-z0-9\-]{1,58}" required placeholder="instandhaltung" title="Kleinbuchstaben, Ziffern, Bindestrich"></div></div>
+      <div class="form-group"><label class="form-label" for="lsm-sub">Untertitel</label><input class="form-input" id="lsm-sub" name="subtitle" value="{{.Subtitle}}" maxlength="200"></div>
+      <div class="form-group"><label class="form-label">&nbsp;</label><label class="lsm-check"><input type="checkbox" name="active" {{if .Active}}checked{{end}} {{if .IsDefault}}disabled title="Der Standard-Leitstand ist immer aktiv"{{end}}> aktiv{{if .IsDefault}} (Standard – immer aktiv){{end}}</label></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-filter"></i> Was der Leitstand zeigt</span></div>
+    <div class="lsm-form">
+      <div class="form-group"><label class="form-label" for="lsm-dep">Abteilung</label>
+        <select class="form-input" id="lsm-dep" name="department_id"><option value="">– alle –</option>{{$dep := .DepartmentID}}{{range $.Departments}}<option value="{{.ID}}" {{if eq .ID $dep}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+        <div class="help">Vorgänge an Anlagen der Abteilung (und Unterabteilungen), an ihre Gruppen oder Personen zugewiesen. Terminals der Abteilung zeigen diesen Leitstand.</div></div>
+      <div class="form-group"><label class="form-label" for="lsm-grp">Gruppe / Team</label>
+        <select class="form-input" id="lsm-grp" name="group_id"><option value="">– keine –</option>{{$grp := .GroupID}}{{range $.Groups}}<option value="{{.ID}}" {{if eq .ID $grp}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+        <div class="help">Vorgänge, die der Gruppe oder einem Mitglied zugewiesen sind. Terminals in der Gruppe zeigen diesen Leitstand.</div></div>
+      <div class="form-group"><label class="form-label">Vorgangsarten</label>
+        <div class="lsm-types">{{$b := .}}{{range $.Types}}<label><input type="checkbox" name="type_{{.Key}}" {{if $b.HasType .Key}}checked{{end}}> {{.Label}}</label>{{end}}</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-layout-grid-add"></i> Bausteine</span><span class="lsm-sub">Ziehen zum Anordnen · Breite in Vierteln</span></div>
+    <div class="lsm-blocks" id="lsm-blocks"></div>
+    <div class="lsm-add">
+      <select class="form-input" id="lsm-addsel" style="width:auto" aria-label="Baustein wählen">{{range $.BlockDefs}}<option value="{{.Type}}" data-single="{{if .Single}}1{{end}}">{{.Name}} – {{.Desc}}</option>{{end}}</select>
+      <button type="button" class="btn btn-small" onclick="lsmAdd()"><i class="ti ti-plus"></i> Baustein hinzufügen</button>
+    </div>
+    <input type="hidden" name="blocks" id="lsm-blocks-json">
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-player-track-next"></i> Weiterblättern</span></div>
+    <div class="lsm-form">
+      <div class="form-group"><label class="form-label" for="lsm-rot">Nach … Sekunden</label><input class="form-input" type="number" id="lsm-rot" name="rotate_seconds" min="0" max="3600" value="{{.RotateSeconds}}"><div class="help">0 = bleibt stehen, sonst mindestens 10 Sekunden. Berührt jemand den Bildschirm, beginnt die Zeit neu; ist ein Formular offen, wird nicht geblättert.</div></div>
+      <div class="form-group"><label class="form-label" for="lsm-next">zum Leitstand</label>
+        <select class="form-input" id="lsm-next" name="rotate_next"><option value="">– keiner –</option>{{$id := .ID}}{{$next := .RotateNext}}{{range $.Boards}}{{if ne .ID $id}}<option value="{{.ID}}" {{if eq .ID $next}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select>
+        <div class="help">Mehrere Leitstände im Kreis: jeweils den nächsten eintragen.</div></div>
+    </div>
+  </div>
+
+  <div class="lsm-actions">
+    <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
+    <a href="/leitstaende" class="btn">Abbrechen</a>
+  </div>
+</form>
+{{if and (not $.IsNew) (not .IsDefault)}}
+<form method="POST" action="/leitstaende/{{.ID}}/delete" style="margin-top:22px" onsubmit="return confirm('Leitstand {{.Name}} löschen? Terminals, die ihn direkt gewählt haben, zeigen danach den Leitstand ihrer Gruppe/Abteilung bzw. den Standard.')">
+  <button type="submit" class="btn btn-danger btn-small"><i class="ti ti-trash"></i> Leitstand löschen</button>
+</form>
+{{end}}
+
+<template id="lsm-tpl">
+  <div class="lsm-b">
+    <i class="ti ti-grip-vertical grip" aria-hidden="true"></i>
+    <div>
+      <div class="nm"><i class="ti"></i><span class="n"></span><small class="d"></small></div>
+      <div class="opts" style="margin-top:6px">
+        <label>Breite <select class="sz" aria-label="Breite"><option value="1">¼</option><option value="2">½</option><option value="3">¾</option><option value="4">ganz</option></select></label>
+        <label>Überschrift <input class="tt" maxlength="60" placeholder="wie vorgegeben" aria-label="Eigene Überschrift"></label>
+      </div>
+    </div>
+    <button type="button" class="btn-icon rm" title="Baustein entfernen" aria-label="Baustein entfernen"><i class="ti ti-x"></i></button>
+  </div>
+</template>
+{{end}}{{end}}
+{{end}}
+
+{{define "scripts"}}{{if .Edit}}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+const LSM_DEFS = {{.BlockDefs}};
+const LSM_BOARDS = [{{range .Boards}}{{if ne .ID $.Edit.ID}}{slug: {{.Slug}}, name: {{.Name}}},{{end}}{{end}}];
+const lsmList = document.getElementById('lsm-blocks');
+function lsmDef(t){ return LSM_DEFS.find(d => d.Type === t); }
+function lsmItem(b){
+  const d = lsmDef(b.type); if(!d) return null;
+  const el = document.getElementById('lsm-tpl').content.firstElementChild.cloneNode(true);
+  el.dataset.type = b.type; el.dataset.id = b.id || ('b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+  el.querySelector('.nm i').className = 'ti ' + d.Icon;
+  el.querySelector('.n').textContent = d.Name;
+  el.querySelector('.d').textContent = d.Desc;
+  el.querySelector('.sz').value = String(b.size || d.Size);
+  el.querySelector('.tt').value = (b.config && b.config.title) || '';
+  if(d.Config === 'text'){
+    const ta = document.createElement('textarea'); ta.className = 'cfg-text'; ta.maxLength = 1000; ta.placeholder = 'Text, der im Leitstand erscheint';
+    ta.value = (b.config && b.config.text) || ''; el.appendChild(ta);
+  }
+  if(d.Config === 'boards'){
+    const box = document.createElement('div'); box.className = 'lk';
+    const on = ((b.config && b.config.boards) || '').split(',');
+    if(!LSM_BOARDS.length) box.textContent = 'Noch keine anderen Leitstände.';
+    LSM_BOARDS.forEach(o => { const l = document.createElement('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.value = o.slug; c.checked = on.includes(o.slug); l.append(c, ' ' + o.name); box.appendChild(l); });
+    el.appendChild(box);
+  }
+  el.querySelector('.rm').addEventListener('click', () => { el.remove(); lsmSync(); });
+  return el;
+}
+function lsmSync(){
+  // Einmal-Bausteine, die schon da sind, im Auswahlfeld sperren
+  const have = new Set([...lsmList.children].map(e => e.dataset.type));
+  document.querySelectorAll('#lsm-addsel option').forEach(o => { o.disabled = o.dataset.single === '1' && have.has(o.value); });
+}
+function lsmAdd(){
+  const sel = document.getElementById('lsm-addsel');
+  if(sel.selectedOptions[0] && sel.selectedOptions[0].disabled) return;
+  const el = lsmItem({type: sel.value}); if(el){ lsmList.appendChild(el); el.scrollIntoView({block: 'nearest'}); }
+  lsmSync();
+}
+function lsmSubmit(){
+  const out = [...lsmList.children].map(el => {
+    const b = {id: el.dataset.id, type: el.dataset.type, size: +el.querySelector('.sz').value, config: {}};
+    const tt = el.querySelector('.tt').value.trim(); if(tt) b.config.title = tt;
+    const ta = el.querySelector('.cfg-text'); if(ta) b.config.text = ta.value;
+    const lk = el.querySelector('.lk'); if(lk) b.config.boards = [...lk.querySelectorAll('input:checked')].map(c => c.value).join(',');
+    return b;
+  });
+  document.getElementById('lsm-blocks-json').value = JSON.stringify(out);
+  return true;
+}
+(JSON.parse({{.BlocksJSON}}) || []).forEach(b => { const el = lsmItem(b); if(el) lsmList.appendChild(el); });
+lsmSync();
+if(window.Sortable) Sortable.create(lsmList, {handle: '.grip', animation: 150});
+// Adresse aus dem Namen vorschlagen (nur bei neuem Leitstand)
+{{if .IsNew}}(function(){
+  const name = document.getElementById('lsm-name'), slug = document.getElementById('lsm-slug');
+  let touched = false; slug.addEventListener('input', () => touched = true);
+  name.addEventListener('input', () => { if(touched) return; slug.value = name.value.toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,59); });
+})();{{end}}
+</script>
+{{end}}{{end}}

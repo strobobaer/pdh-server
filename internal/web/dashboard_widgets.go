@@ -36,6 +36,7 @@ type WidgetDef struct {
 	Perm                             string // noetige Berechtigung ("" = alle)
 	Config                           string // "" | "links" | "note" | "watch"
 	Refresh                          int    // Sekunden bis zur Aktualisierung (0 = nie)
+	Single                           bool   // höchstens einmal je Dashboard (feste Element-IDs)
 	load                             func(h *Handler, ctx context.Context, uid string, inst WidgetInstance, can func(string) bool) (any, error)
 }
 
@@ -61,11 +62,15 @@ var widgetDefs = []WidgetDef{
 	{Type: "stat_my_tasks", Name: "Meine Aufgaben", Icon: "ti-list-check", Category: catStats, Size: 1, Refresh: 120, Desc: "Deine offenen Aufgaben, davon überfällig", load: loadStatMyTasks},
 	{Type: "stat_my_hours", Name: "Meine Stunden", Icon: "ti-clock", Category: catStats, Size: 1, Refresh: 120, Desc: "Erfasste Zeit diese Woche und heute", load: loadStatMyHours},
 	{Type: "chart_trend", Name: "Verlauf 14 Tage", Icon: "ti-chart-bar", Category: catStats, Size: 2, Refresh: 600, Desc: "Neue Tickets und Störungen pro Tag der letzten zwei Wochen", load: loadChartTrend},
+	{Type: "vg_table", Name: "Tabelle offener Vorgänge", Icon: "ti-table", Category: catLists, Size: 4, Single: true, Desc: "Alle offenen Störungen, Tickets, Wartungen und Aufgaben – wie im Leitstand nach Art, „nur überfällig“ und „ohne Zuständigen“ filterbar", load: loadNone},
+	{Type: "vg_timeline", Name: "Zeitstrahl", Icon: "ti-timeline", Category: catLists, Size: 4, Single: true, Desc: "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet", load: loadNone},
 	{Type: "list_mine", Name: "Mir zugewiesen", Icon: "ti-user-check", Category: catLists, Size: 2, Refresh: 60, Desc: "Deine offenen Tickets, Störungen, Aufgaben und Wartungen – das Dringendste zuerst", load: loadListMine},
 	{Type: "list_faults", Name: "Aktuelle Störungen", Icon: "ti-alert-octagon", Category: catLists, Size: 2, Perm: "faults.view", Refresh: 30, Desc: "Die neuesten offenen Störungen mit Anlage", load: loadListFaults},
 	{Type: "list_maintenance", Name: "Wartungen nächste 7 Tage", Icon: "ti-calendar-check", Category: catLists, Size: 2, Perm: "maintenance.view", Refresh: 300, Desc: "Was in den nächsten Tagen fällig wird", load: loadListMaintenance},
 	{Type: "plant_watch", Name: "Anlagen-Schnellübersicht", Icon: "ti-eye", Category: catLists, Size: 2, Perm: "infrastructure.view", Config: "watch", Refresh: 60, Desc: "Ampel einer Schnellübersicht – z. B. alle Trockenkammern mit NOK-Bauteilen und offenen Störungen", load: loadPlantWatch},
 	{Type: "list_stock", Name: "Bestellliste", Icon: "ti-shopping-cart", Category: catLists, Size: 2, Perm: "inventory.view", Refresh: 300, Desc: "Ersatzteile unter Mindestbestand mit Bestand und Lagerort", load: loadListStock},
+	{Type: "my_calendar", Name: "Mein Kalender", Icon: "ti-calendar", Category: catPersonal, Size: 2, Perm: "calendar.view", Refresh: 300, Desc: "Deine nächsten 7 Tage: Schicht, Urlaub, fällige Vorgänge und Prüfpflichten", load: loadMyCalendar},
+	{Type: "team_shifts", Name: "Schichtplan Team", Icon: "ti-calendar-user", Category: catLists, Size: 4, Perm: "shifts.view", Refresh: 600, Desc: "Wer aus deiner Abteilung in den nächsten 7 Tagen welche Schicht hat – mit Urlaub und Abwesenheit", load: loadTeamShifts},
 	{Type: "my_shifts", Name: "Meine Schichten", Icon: "ti-calendar-time", Category: catPersonal, Size: 2, Refresh: 600, Desc: "Deine Schichten der nächsten 7 Tage", load: loadMyShifts},
 	{Type: "note", Name: "Notizzettel", Icon: "ti-note", Category: catPersonal, Size: 1, Config: "note", Desc: "Eine persönliche Notiz, nur für dich sichtbar", load: loadNote},
 }
@@ -79,16 +84,29 @@ func widgetDef(t string) (WidgetDef, bool) {
 	return WidgetDef{}, false
 }
 
-// defaultWidgets: Zusammenstellung fuer Benutzer ohne eigene Auswahl
-// (entspricht der bisherigen Kennzahlenzeile plus Persoenliches).
+// defaultWidgets: Zusammenstellung fuer Benutzer ohne eigene Auswahl und ohne
+// Firmenstandard (user_defaults.go) – Kennzahlen, Persoenliches und die
+// frueher fest eingebauten Teile (Tabelle, Zeitstrahl, Stoerungen,
+// Schichten, Wartung).
 func defaultWidgets() []WidgetInstance {
-	types := []string{"stat_tickets", "stat_faults", "stat_maintenance", "stat_stock", "quick_actions", "list_mine"}
+	types := []string{"stat_tickets", "stat_faults", "stat_maintenance", "stat_stock", "quick_actions", "list_mine",
+		"vg_table", "vg_timeline", "list_faults", "my_shifts", "list_maintenance"}
 	var out []WidgetInstance
 	for i, t := range types {
 		d, _ := widgetDef(t)
-		out = append(out, WidgetInstance{ID: fmt.Sprintf("d%d", i+1), Type: t, Size: d.Size})
+		size := d.Size
+		if t == "list_maintenance" {
+			size = 4 // volle Zeile wie frueher „Wartung fällig“
+		}
+		out = append(out, WidgetInstance{ID: fmt.Sprintf("d%d", i+1), Type: t, Size: size})
 	}
 	return out
+}
+
+// loadNone: Widgets ohne Serverdaten (Tabelle, Zeitstrahl zeichnen sich im
+// Browser aus den Vorgängen der Dashboard-Seite).
+func loadNone(*Handler, context.Context, string, WidgetInstance, func(string) bool) (any, error) {
+	return nil, nil
 }
 
 // ── Laden/Speichern ──────────────────────────────────────────
@@ -98,11 +116,12 @@ func (h *Handler) userWidgets(ctx context.Context, uid string) []WidgetInstance 
 	if h.db != nil && uid != "" {
 		_ = h.db.QueryRow(ctx, `SELECT dashboard_widgets FROM users WHERE id = $1::uuid`, uid).Scan(&raw)
 	}
-	if len(raw) == 0 {
-		return defaultWidgets()
-	}
 	var list []WidgetInstance
-	if err := json.Unmarshal(raw, &list); err != nil {
+	if len(raw) == 0 || json.Unmarshal(raw, &list) != nil {
+		// nichts Eigenes: Firmenstandard (user_defaults.go), sonst Vorgabe
+		if c := h.companyWidgets(ctx); c != nil {
+			return c
+		}
 		return defaultWidgets()
 	}
 	return list
@@ -113,13 +132,14 @@ func sanitizeWidgets(in []WidgetInstance) ([]WidgetInstance, error) {
 	if len(in) > maxWidgets {
 		return nil, fmt.Errorf("höchstens %d Widgets", maxWidgets)
 	}
-	seen := map[string]bool{}
+	seen, single := map[string]bool{}, map[string]bool{}
 	var out []WidgetInstance
 	for i, w := range in {
 		d, ok := widgetDef(w.Type)
-		if !ok {
+		if !ok || (d.Single && single[d.Type]) {
 			continue
 		}
+		single[d.Type] = true
 		if w.ID == "" || len(w.ID) > 40 || seen[w.ID] {
 			w.ID = fmt.Sprintf("w%d%d", time.Now().UnixNano()%1e9, i)
 		}
