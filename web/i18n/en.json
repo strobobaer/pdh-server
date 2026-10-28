@@ -710,5 +710,18 @@
  "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Open items with a due date on the timeline – drag to move the date, double-click to open",
  "Leitstände": "Control boards",
  "– über Gruppe/Abteilung –": "– via group/department –",
- "inaktiv": "inactive"
+ "inaktiv": "inactive",
+ "Deine nächsten 7 Tage: Schicht, Urlaub, fällige Vorgänge und Prüfpflichten": "Your next 7 days: shift, leave, due items and inspections",
+ "Entwurf": "Draft",
+ "Keine Kolleginnen und Kollegen in deiner Abteilung.": "No colleagues in your department.",
+ "Mein Kalender": "My calendar",
+ "Schichtplan Team": "Team shift plan",
+ "Team": "Team",
+ "Wer aus deiner Abteilung in den nächsten 7 Tagen welche Schicht hat – mit Urlaub und Abwesenheit": "Who in your department works which shift in the next 7 days – with leave and absences",
+ "Zum Kalender": "Open calendar",
+ "Zum Schichtplan": "Open shift plan",
+ "abwesend": "absent",
+ "beantragt": "requested",
+ "nichts geplant": "nothing planned",
+ "überfällig seit": "overdue since"
 }

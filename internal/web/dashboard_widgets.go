@@ -69,6 +69,8 @@ var widgetDefs = []WidgetDef{
 	{Type: "list_maintenance", Name: "Wartungen nächste 7 Tage", Icon: "ti-calendar-check", Category: catLists, Size: 2, Perm: "maintenance.view", Refresh: 300, Desc: "Was in den nächsten Tagen fällig wird", load: loadListMaintenance},
 	{Type: "plant_watch", Name: "Anlagen-Schnellübersicht", Icon: "ti-eye", Category: catLists, Size: 2, Perm: "infrastructure.view", Config: "watch", Refresh: 60, Desc: "Ampel einer Schnellübersicht – z. B. alle Trockenkammern mit NOK-Bauteilen und offenen Störungen", load: loadPlantWatch},
 	{Type: "list_stock", Name: "Bestellliste", Icon: "ti-shopping-cart", Category: catLists, Size: 2, Perm: "inventory.view", Refresh: 300, Desc: "Ersatzteile unter Mindestbestand mit Bestand und Lagerort", load: loadListStock},
+	{Type: "my_calendar", Name: "Mein Kalender", Icon: "ti-calendar", Category: catPersonal, Size: 2, Perm: "calendar.view", Refresh: 300, Desc: "Deine nächsten 7 Tage: Schicht, Urlaub, fällige Vorgänge und Prüfpflichten", load: loadMyCalendar},
+	{Type: "team_shifts", Name: "Schichtplan Team", Icon: "ti-calendar-user", Category: catLists, Size: 4, Perm: "shifts.view", Refresh: 600, Desc: "Wer aus deiner Abteilung in den nächsten 7 Tagen welche Schicht hat – mit Urlaub und Abwesenheit", load: loadTeamShifts},
 	{Type: "my_shifts", Name: "Meine Schichten", Icon: "ti-calendar-time", Category: catPersonal, Size: 2, Refresh: 600, Desc: "Deine Schichten der nächsten 7 Tage", load: loadMyShifts},
 	{Type: "note", Name: "Notizzettel", Icon: "ti-note", Category: catPersonal, Size: 1, Config: "note", Desc: "Eine persönliche Notiz, nur für dich sichtbar", load: loadNote},
 }

@@ -17,9 +17,13 @@ im Kapitel „Versionen & Updates“ an.
 - Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
 - Neues Recht „Leitstand verwalten“ (Verwerfen, Aufgaben und Wartung im Leitstand anlegen) – bisher fest an Administrator und Manager gebunden, beide haben es weiterhin.
 - Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
+- Neues Widget „Mein Kalender“: die eigenen nächsten 7 Tage mit Schicht, Urlaub, fälligen Vorgängen und Prüfpflichten (neues Recht „Widget Mein Kalender“, anfangs für alle).
+- Neues Widget „Schichtplan Team“: wer aus der eigenen Abteilung in den nächsten 7 Tagen welche Schicht hat, mit Urlaub und Abwesenheit (Recht „Schichtplan sehen“).
 - Mehrere Leitstände: unter Navigation → Leitstände bekommt jede Abteilung, Gruppe oder jedes Team einen eigenen Leitstand aus Bausteinen (Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, aktuelle Störungen, fällige Wartung, Hinweistext, Knöpfe zu anderen Leitständen), der nur ihre Vorgänge zeigt.
 - Leitstände blättern auf Wunsch nach einer einstellbaren Zeit zum nächsten weiter; Bedienung am Bildschirm hält das Weiterblättern an.
 - Terminals bekommen im Benutzerstamm einen festen Leitstand; sonst gilt der ihrer Gruppe, dann der ihrer Abteilung, dann der Standard-Leitstand.
+
+- Das Logo dreht sich beim Laden einer Seite und solange gearbeitet wird – eine kleine Spielerei (aus bei „Bewegung reduzieren“).
 
 ### Geändert
 - Der bisherige Leitstand ist jetzt der Standard-Leitstand und lässt sich wie jeder andere bearbeiten; Überschrift und Untertitel ändert, wer das Recht „Leitstand verwalten“ hat.

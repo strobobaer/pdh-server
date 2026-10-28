@@ -84,6 +84,31 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
 .dw-legend{display:flex;gap:12px;font-size:11px;color:var(--muted);margin-top:6px}
 .dw-legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .dw-legend .lt::before{background:#60a5fa}.dw-legend .lf::before{background:var(--red)}
+.dw-cal{display:flex;flex-direction:column;gap:6px}
+.dw-cal .cd{border:1px solid var(--border);border-radius:8px;padding:5px 8px;background:var(--bg3)}
+.dw-cal .cd.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.dw-cal .cd.we .cdh{color:var(--muted)}
+.dw-cal .cdh{font-size:11.5px;font-weight:600}
+.dw-cal .cdh span{font-weight:400;color:var(--muted)}
+.dw-cal ul{list-style:none;margin:3px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.dw-cal li a{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--text);text-decoration:none;min-width:0}
+.dw-cal li a span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dw-cal li a:hover span{text-decoration:underline}
+.dw-cal li.pend{opacity:.65;font-style:italic}
+.dw-cal .cdf{font-size:11px;color:var(--muted)}
+.dw-more{display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);text-decoration:none}
+.dw-tsh-wrap{overflow-x:auto}
+.dw-tsh{width:100%;border-collapse:collapse;font-size:12px}
+.dw-tsh th,.dw-tsh td{border-bottom:1px solid var(--border);padding:4px 6px;text-align:center;white-space:nowrap}
+.dw-tsh th:first-child,.dw-tsh td.nm{text-align:left;position:sticky;left:0;background:var(--bg2)}
+.dw-tsh th{font-weight:600;color:var(--muted)}
+.dw-tsh th small{font-weight:400}
+.dw-tsh .today{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.dw-tsh td.we{background:var(--bg3)}
+.dw-tsh tr.me td.nm{font-weight:700}
+.dw-tsh td.draft b{opacity:.55;font-style:italic}
+.dw-tsh .abs{font-size:10.5px;color:var(--muted)}
+.dw-tsh .free{color:var(--muted)}
 .dw-shifts{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .dw-shifts .d{border:1px solid var(--border);border-radius:8px;padding:6px 2px;text-align:center;font-size:11px;background:var(--bg3)}
 .dw-shifts .d.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
@@ -338,6 +363,14 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
   {{template "timeline-legend"}}
   <div id="dash-gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">{{t "Keine Einträge mit Terminen vorhanden."}}</div>
   <script>if(window.pdhDashMount) pdhDashMount();</script>
+{{else if eq .Def.Type "my_calendar"}}
+  <div class="dw-cal">{{range .Data}}<div class="cd{{if .Today}} today{{end}}{{if .Weekend}} we{{end}}"><div class="cdh">{{if .Today}}{{t "Heute"}}{{else}}{{.Day}}{{end}} <span>{{.Date}}</span></div>
+    {{if .Items}}<ul>{{range .Items}}<li{{if .Pending}} class="pend"{{end}}><a href="{{.URL}}" title="{{.Tip}}"><i class="ti {{.Icon}}" style="color:{{css .Color}}" aria-hidden="true"></i><span>{{.Title}}</span></a></li>{{end}}</ul>{{else}}<div class="cdf">{{t "nichts geplant"}}</div>{{end}}</div>{{end}}</div>
+  <a class="dw-more" href="/calendar">{{t "Zum Kalender"}} →</a>
+{{else if eq .Def.Type "team_shifts"}}
+  {{if .Data.Rows}}<div class="dw-tsh-wrap"><table class="dw-tsh"><thead><tr><th>{{if .Data.Dept}}{{.Data.Dept}}{{else}}{{t "Team"}}{{end}}</th>{{range .Data.Days}}<th class="{{if .Today}}today{{end}}">{{.Day}}<br><small>{{.Date}}</small></th>{{end}}</tr></thead>
+  <tbody>{{range .Data.Rows}}<tr{{if .Me}} class="me"{{end}}><td class="nm">{{.Name}}</td>{{range .Cells}}<td class="{{if .Today}}today {{end}}{{if .Weekend}}we {{end}}{{if .Draft}}draft{{end}}" title="{{if .Absence}}{{.Absence}}{{else}}{{.Name}}{{end}}{{if .Draft}} ({{t "Entwurf"}}){{end}}">{{if .Absence}}<span class="abs">{{.Absence}}</span>{{else if .Short}}<b {{if .Color}}style="color:{{css .Color}}"{{end}}>{{.Short}}</b>{{else}}<span class="free">–</span>{{end}}</td>{{end}}</tr>{{end}}</tbody></table></div>
+  <a class="dw-more" href="/planner?tab=shifts">{{t "Zum Schichtplan"}} →</a>{{else}}<div class="dw-empty">{{t "Keine Kolleginnen und Kollegen in deiner Abteilung."}}</div>{{end}}
 {{else if eq .Def.Type "my_shifts"}}
   <div class="dw-shifts">{{range .Data}}<div class="d{{if .Today}} today{{end}}"><div>{{.Day}} {{.Date}}</div><div class="sh" {{if .Color}}style="color:{{css .Color}}"{{end}} title="{{.Name}}">{{if .Short}}{{.Short}}{{else}}–{{end}}</div><div class="tm">{{if .Time}}{{.Time}}{{else}}{{t "frei"}}{{end}}</div></div>{{end}}</div>
 {{end}}

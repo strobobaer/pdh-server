@@ -710,5 +710,18 @@
  "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Tarihli açık işler zaman çizelgesinde – tarihi sürükleyerek taşıyın, açmak için çift tıklayın",
  "Leitstände": "Kontrol panoları",
  "– über Gruppe/Abteilung –": "– grup/departman üzerinden –",
- "inaktiv": "pasif"
+ "inaktiv": "pasif",
+ "Deine nächsten 7 Tage: Schicht, Urlaub, fällige Vorgänge und Prüfpflichten": "Önümüzdeki 7 gün: vardiya, izin, vadesi gelen işler ve denetimler",
+ "Entwurf": "Taslak",
+ "Keine Kolleginnen und Kollegen in deiner Abteilung.": "Departmanınızda iş arkadaşı yok.",
+ "Mein Kalender": "Takvimim",
+ "Schichtplan Team": "Ekip vardiya planı",
+ "Team": "Ekip",
+ "Wer aus deiner Abteilung in den nächsten 7 Tagen welche Schicht hat – mit Urlaub und Abwesenheit": "Departmanınızda önümüzdeki 7 gün kimin hangi vardiyada olduğu – izin ve devamsızlıklarla",
+ "Zum Kalender": "Takvime git",
+ "Zum Schichtplan": "Vardiya planına git",
+ "abwesend": "yok",
+ "beantragt": "talep edildi",
+ "nichts geplant": "plan yok",
+ "überfällig seit": "şu tarihten beri gecikmiş"
 }
