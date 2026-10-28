@@ -75,8 +75,25 @@ func (t *tunnelSetup) stored() string {
 	return ""
 }
 
-// Sum: Prüfsumme des abgelegten Tokens (nicht der Datei), "" ohne Datei.
-func (t *tunnelSetup) Sum() string { return sumOf(t.stored()) }
+// pendingFile: Merker „Einrichtung noch nicht vollständig übernommen“ (Dateien
+// geschrieben, aber Neuladen oder Neustart von systemd gescheitert).
+func (t *tunnelSetup) pendingFile() string { return t.envFile + ".pending" }
+
+// markPending: Neuladen/Neustart steht noch aus; Sum() meldet dann "", damit
+// das PDH das Token erneut schickt und Apply die Schritte wiederholt.
+func (t *tunnelSetup) markPending() {
+	_ = os.MkdirAll(filepath.Dir(t.pendingFile()), 0o755)
+	_ = os.WriteFile(t.pendingFile(), nil, 0o600)
+}
+
+// Sum: Prüfsumme des abgelegten Tokens (nicht der Datei), "" ohne Datei oder
+// solange die Übernahme nicht abgeschlossen ist.
+func (t *tunnelSetup) Sum() string {
+	if exists(t.pendingFile()) {
+		return ""
+	}
+	return sumOf(t.stored())
+}
 
 // tunnelBinary: Programm cloudflared (das Installationsskript kann es nach
 // /usr/local/bin legen).
@@ -167,6 +184,9 @@ func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, er
 		return false, errors.New("Tunnel-Token enthält unzulässige Zeichen")
 	}
 	defer func() {
+		if err == nil && changed && token != "" {
+			t.markPending() // bis Neuladen (und Neustart) gelungen sind
+		}
 		if err == nil && changed && !t.noSystemd {
 			if _, e := t.r.Run(ctx, []string{"systemctl", "daemon-reload"}, nil, nil); e != nil {
 				err = e
@@ -176,8 +196,12 @@ func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, er
 				// Autostart bleibt aus: gestartet wird nur am aktiven Server
 				if _, e := t.r.Run(ctx, []string{"systemctl", "disable", tunnelUnit}, nil, nil); e != nil {
 					err = e
+					return
 				}
 			}
+		}
+		if err == nil && token != "" {
+			os.Remove(t.pendingFile())
 		}
 	}()
 	if token == "" {
@@ -195,6 +219,9 @@ func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, er
 				return changed, err
 			}
 			changed = changed || c
+		}
+		if c, _ := removeFile(t.pendingFile()); c {
+			changed = true
 		}
 		os.Remove(filepath.Dir(t.dropin)) // leeren Ordner aufräumen
 		return changed, nil
@@ -215,25 +242,30 @@ func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, er
 	if err != nil {
 		return changed, err
 	}
-	return changed || c, nil
+	// früher abgebrochene Übernahme: Neuladen und Neustart nachholen
+	return changed || c || exists(t.pendingFile()), nil
 }
 
 // putTunnel: Token vom PDH übernehmen. Ein laufender Tunnel wird bei geänderter
 // Einrichtung neu gestartet, bei leerem Token gestoppt; gestartet wird hier nie
 // (das entscheidet der Abgleich nach Rolle). Liefert die neue Prüfsumme.
 func (d *daemon) putTunnel(ctx context.Context, token string) (string, error) {
+	// Entfernen: zuerst stoppen, solange die Dienstdatei noch da ist – ohne sie
+	// meldet tunnelService „nicht installiert“ und könnte nie mehr stoppen.
+	if token == "" && (d.tunnel.stored() != "" || exists(d.tunnel.pendingFile())) && d.tunCtl.Active(ctx) {
+		if err := d.tunCtl.Stop(ctx); err != nil {
+			d.event("warn", "Tunnel nicht gestoppt: "+err.Error())
+			return "", err
+		}
+	}
 	changed, err := d.tunnel.Apply(ctx, token)
 	if err != nil {
 		d.event("warn", "Tunnel-Token nicht übernommen: "+err.Error())
 		return "", err
 	}
-	if (token == "" || changed) && d.tunCtl.Active(ctx) {
-		if token == "" {
-			err = d.tunCtl.Stop(ctx)
-		} else {
-			err = d.tunCtl.Restart(ctx)
-		}
-		if err != nil {
+	if token != "" && changed && d.tunCtl.Active(ctx) {
+		if err := d.tunCtl.Restart(ctx); err != nil {
+			d.tunnel.markPending() // beim nächsten Abgleich erneut versuchen
 			d.event("warn", "Tunnel nach Token-Änderung nicht neu gestartet: "+err.Error())
 			return "", err
 		}

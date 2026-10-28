@@ -220,7 +220,11 @@ func apiHandler(d *daemon) http.Handler {
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		sum, err := d.putTunnel(r.Context(), req.Token)
+		// systemd-Schritte dürfen nicht abbrechen, wenn der Client die Verbindung
+		// schließt (halb übernommene Einrichtung), haben aber eine eigene Frist
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+		defer cancel()
+		sum, err := d.putTunnel(ctx, req.Token)
 		if err != nil {
 			apiFail(w, err)
 			return

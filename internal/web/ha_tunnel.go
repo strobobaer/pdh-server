@@ -22,7 +22,8 @@ import (
 const (
 	tunnelSyncEvery   = 60 * time.Second
 	tunnelLogRepeat   = time.Hour
-	tunnelSyncTimeout = 20 * time.Second
+	tunnelSyncTimeout = 2 * time.Minute
+	tunnelPutTimeout  = 90 * time.Second // daemon-reload und Neustart von cloudflared dauern
 )
 
 // tokenSum: SHA-256 (hex) des Tokens selbst – dieselbe Rechnung wie in pdh-ha;
@@ -78,7 +79,7 @@ func (h *Handler) syncTunnelOnce(ctx context.Context) error {
 	if !ok || tokenSum(token) == st.Access.Tunnel.Sum {
 		return nil
 	}
-	return h.haDo(ctx, http.MethodPut, "/v1/tunnel", map[string]string{"token": token}, nil)
+	return h.haDoT(ctx, tunnelPutTimeout, http.MethodPut, "/v1/tunnel", map[string]string{"token": token}, nil)
 }
 
 // RunTunnelSync gleicht beim Start und danach alle 60 s das Tunnel-Token mit

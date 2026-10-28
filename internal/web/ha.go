@@ -352,10 +352,12 @@ func haSocket() string {
 }
 
 // haClient: HTTP über den Unix-Socket von pdh-ha, Zeitlimit 3 s.
-func (h *Handler) haClient() *http.Client {
+func (h *Handler) haClient() *http.Client { return h.haClientT(haTimeout) }
+
+func (h *Handler) haClientT(timeout time.Duration) *http.Client {
 	sock := haSocket()
 	return &http.Client{
-		Timeout: haTimeout,
+		Timeout: timeout,
 		Transport: &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", sock)
@@ -365,6 +367,11 @@ func (h *Handler) haClient() *http.Client {
 
 // haDo ruft die Socket-API; Fehlerantworten (400) kommen als Text des Dienstes.
 func (h *Handler) haDo(ctx context.Context, method, path string, in, out any) error {
+	return h.haDoT(ctx, haTimeout, method, path, in, out)
+}
+
+// haDoT wie haDo, mit eigener Frist (langsame Aufrufe wie der Tunnel-Token).
+func (h *Handler) haDoT(ctx context.Context, timeout time.Duration, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -378,7 +385,7 @@ func (h *Handler) haDo(ctx context.Context, method, path string, in, out any) er
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := h.haClient().Do(req)
+	resp, err := h.haClientT(timeout).Do(req)
 	if err != nil {
 		return errors.New("pdh-ha nicht erreichbar: " + err.Error())
 	}

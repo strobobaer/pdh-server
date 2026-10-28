@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -250,5 +251,140 @@ func TestPrintStatusTunnel(t *testing.T) {
 	printStatus(&b, apiStatus{Configured: true, Mode: ha.Duo, Self: apiNode{ID: "a", Kind: "node", Role: ha.Active}})
 	if strings.Contains(b.String(), "Tunnel") {
 		t.Errorf("Tunnelzeile ohne Tunnel:\n%s", b.String())
+	}
+}
+
+// unitCtl verhält sich wie tunnelService: ohne Dienstdatei „nicht installiert“,
+// dann weder aktiv noch stoppbar.
+type unitCtl struct {
+	unit     string
+	active   bool
+	failNext string // Vorgang, der einmal scheitert
+	calls    []string
+}
+
+func (u *unitCtl) fail(op string) error {
+	if u.failNext == op {
+		u.failNext = ""
+		return errors.New("Fehler bei " + op)
+	}
+	return nil
+}
+func (u *unitCtl) Start(context.Context) error { return nil }
+func (u *unitCtl) Stop(context.Context) error {
+	u.calls = append(u.calls, "stop")
+	if !exists(u.unit) {
+		return nil
+	}
+	if err := u.fail("stop"); err != nil {
+		return err
+	}
+	u.active = false
+	return nil
+}
+func (u *unitCtl) Restart(context.Context) error {
+	u.calls = append(u.calls, "restart")
+	return u.fail("restart")
+}
+func (u *unitCtl) Active(context.Context) bool              { return u.active && exists(u.unit) }
+func (u *unitCtl) SetAutostart(context.Context, bool) error { return nil }
+
+func TestTunnelRemoveStopsRunningBeforeUnitGone(t *testing.T) {
+	d := newDaemon(store{etc: t.TempDir(), state: t.TempDir()}, openEventLog(filepath.Join(t.TempDir(), "e.jsonl"), 1<<20, 2))
+	ts, _, _ := testTunnelSetup(t)
+	ts.noSystemd = true
+	ts.baseUnit = filepath.Join(filepath.Dir(ts.baseUnit), "cloudflared.service")
+	// Grunddatei nur anlegen lassen, wenn systemd-Betrieb: hier selbst mit Marker
+	if err := os.WriteFile(ts.baseUnit, []byte(tunnelMarker+"\n[Unit]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := &unitCtl{unit: ts.baseUnit, active: true}
+	d.tunnel, d.tunCtl = ts, u
+	ctx := context.Background()
+	if _, err := d.putTunnel(ctx, "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.putTunnel(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if u.active {
+		t.Fatal("Tunnel läuft nach dem Entfernen des Tokens weiter")
+	}
+	if exists(ts.baseUnit) || ts.Sum() != "" {
+		t.Fatal("Einrichtung nicht entfernt")
+	}
+	// scheitert das Stoppen, bleibt alles stehen und der Abgleich versucht es erneut
+	u2 := &unitCtl{unit: ts.baseUnit, active: true, failNext: "stop"}
+	if err := os.WriteFile(ts.baseUnit, []byte(tunnelMarker+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.tunCtl = u2
+	if _, err := d.putTunnel(ctx, "abc"); err != nil {
+		t.Fatal(err)
+	}
+	u2.calls = nil
+	if _, err := d.putTunnel(ctx, ""); err == nil || ts.Sum() == "" {
+		t.Fatalf("Stopp-Fehler: err=%v sum=%q", err, ts.Sum())
+	}
+	if _, err := d.putTunnel(ctx, ""); err != nil || u2.active || ts.Sum() != "" {
+		t.Fatalf("Wiederholung: err=%v aktiv=%v", err, u2.active)
+	}
+}
+
+func TestTunnelRepairsAfterFailedReload(t *testing.T) {
+	d := newDaemon(store{etc: t.TempDir(), state: t.TempDir()}, openEventLog(filepath.Join(t.TempDir(), "e.jsonl"), 1<<20, 2))
+	ts, r, _ := testTunnelSetup(t)
+	failed := false
+	r.onFn("systemctl daemon-reload", "", func(fakeCall) (string, error) {
+		if !failed {
+			failed = true
+			return "", errors.New("daemon-reload gescheitert")
+		}
+		return "", nil
+	})
+	u := &unitCtl{unit: ts.baseUnit, active: true}
+	d.tunnel, d.tunCtl = ts, u
+	ctx := context.Background()
+	if _, err := d.putTunnel(ctx, "abc"); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	// Datei liegt, aber die Übernahme gilt nicht als abgeschlossen
+	if ts.Sum() != "" {
+		t.Fatal("Prüfsumme trotz gescheitertem daemon-reload gemeldet")
+	}
+	sum, err := d.putTunnel(ctx, "abc")
+	if err != nil || sum != sumOf("abc") {
+		t.Fatalf("Reparatur: %v %q", err, sum)
+	}
+	if got := strings.Join(r.list(), "|"); got != "systemctl daemon-reload|systemctl daemon-reload|systemctl disable cloudflared" {
+		t.Fatalf("Befehle: %s", got)
+	}
+	if strings.Join(u.calls, ",") != "restart" {
+		t.Fatalf("Neustart nach Reparatur fehlt: %v", u.calls)
+	}
+}
+
+func TestTunnelRepairsAfterFailedRestart(t *testing.T) {
+	d := newDaemon(store{etc: t.TempDir(), state: t.TempDir()}, openEventLog(filepath.Join(t.TempDir(), "e.jsonl"), 1<<20, 2))
+	ts, _, _ := testTunnelSetup(t)
+	ts.noSystemd = true
+	u := &unitCtl{unit: ts.envFile, active: true, failNext: "restart"}
+	d.tunnel, d.tunCtl = ts, u
+	ctx := context.Background()
+	if _, err := d.putTunnel(ctx, "abc"); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	if ts.Sum() != "" {
+		t.Fatal("Prüfsumme trotz gescheitertem Neustart gemeldet")
+	}
+	u.calls = nil
+	sum, err := d.putTunnel(ctx, "abc")
+	if err != nil || sum != sumOf("abc") || strings.Join(u.calls, ",") != "restart" {
+		t.Fatalf("Reparatur: %v %q %v", err, sum, u.calls)
+	}
+	// danach ist alles ruhig
+	u.calls = nil
+	if _, err := d.putTunnel(ctx, "abc"); err != nil || len(u.calls) != 0 {
+		t.Fatalf("erneuter Aufruf: %v %v", err, u.calls)
 	}
 }
