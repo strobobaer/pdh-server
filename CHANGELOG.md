@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.3] – 2026-10-28
+
+### Behoben
+- Auf Smartphone und Tablet war der Knopf für das Benutzermenü rechts aus dem Bild gerutscht – er bleibt jetzt immer sichtbar; wird es eng, kürzt sich zuerst der Seitentitel, dann die Uhr.
+
+### Geändert
+- Auf dem Smartphone steht Copilot nicht mehr in der Kopfleiste, sondern wie gewohnt als Reiter in der rechten Seitenleiste.
+- Anmeldeseite, Easy-Mode und Leitstand folgen jetzt ebenfalls dem Design-Stil (Fiori oder Fluent).
+
 ## [0.76.2] – 2026-10-28
 
 ### Neu

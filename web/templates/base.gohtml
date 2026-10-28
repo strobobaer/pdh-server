@@ -716,9 +716,19 @@ html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-styl
    Navigation als ausfahrbares Menue (☰), kompakte Kopfzeile, einspaltige
    Raster, wischbare Tabellen. Touch-Geraete: groessere Tippflaechen. */
 .topbar-burger,.topbar-ctx,.pdh-backdrop,.win11-menu a.tb-share-menu{display:none}
+/* Der Konto-Knopf bleibt immer sichtbar: rechts nichts schrumpfen lassen,
+   bei Platzmangel wird zuerst die Uhr gekürzt */
+.topbar > div{min-width:0}
+.topbar > div > *{flex-shrink:0}
+.topbar > div > .topbar-clock{flex-shrink:1;min-width:0;overflow:hidden}
+.topbar-path{white-space:nowrap}
+.topbar-cur{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:50} /* gibt zuerst Platz her */
 .pdh-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:440}
 [oncontextmenu]{-webkit-touch-callout:none}
 @media (max-width:1180px){
+  .tb-sep{display:none}
+  .topbar-clock .clk-day{display:none}
+  .topbar .theme-toggle{width:36px;min-width:36px}
   .app{grid-template-columns:var(--left-sidebar-w) 1fr}
   .pdh-resizer.right{display:none}
   .context{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:450;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .2s ease}
@@ -738,7 +748,9 @@ html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-styl
   .topbar-path,.status-dot,.tb-label,.tu-name,.tb-share{display:none}
   .win11-menu a.tb-share-menu{display:flex}
   .topbar-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
-  .topbar > div{gap:6px!important;margin-left:0!important}
+  .topbar > div{gap:4px!important;margin-left:0!important}
+  /* Copilot ist als Reiter in der rechten Seitenleiste erreichbar (deren Knopf blinkt mit) */
+  .topbar .theme-toggle.topbar-cop{display:none}
   .theme-toggle{padding:0 10px;height:40px}
   .theme-toggle > span:not(.ctx-badge){display:none}
   .topbar-clock{height:40px;padding:0 8px;gap:4px}
