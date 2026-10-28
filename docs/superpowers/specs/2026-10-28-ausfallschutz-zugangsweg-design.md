@@ -1,6 +1,6 @@
 # Ausfallschutz Teil 5 – Zugangsweg
 
-Stand: 2026-10-28 · Status: Entwurf zur Freigabe ·
+Stand: 2026-10-28 · Status: freigegeben ·
 Gesamt-Architektur: `2026-10-24-ausfallschutz-design.md` (Abschnitte 3, 7, 8) ·
 Vorgänger: `2026-10-27-ausfallschutz-lesemodus-design.md`
 
@@ -265,8 +265,9 @@ Firewall-Freigaben nur für .202, **die Netzlaufwerk-Freigabe `pdhnas` auf der
 Produktion** (die Testserver sichern dorthin – ein Sicherungsziel darf nicht
 mitwandern).
 
-Reihenfolge: zuerst Testverbund .14/.17 mit einer freien Testadresse (vom
-Nutzer zu nennen, außerhalb des DHCP-Bereichs); Produktion erst, wenn dort ein
+Reihenfolge: zuerst Testverbund .14/.17 mit der freien Testadresse
+**10.10.0.15** (vom Nutzer genannt, außerhalb des DHCP-Bereichs) als
+mitwandernder Adresse; Produktion erst, wenn dort ein
 zweiter Server existiert – bis dahin ändert sich an .202 nichts.
 
 ## 7. Fehlerfälle
