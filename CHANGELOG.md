@@ -10,6 +10,24 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.0] – 2026-10-28
+
+### Neu
+- Das PDH läuft jetzt auch auf dem passiven Server („Spiegel“) im Lesemodus: anmelden und ansehen geht, jede Änderung wird mit einem Hinweis abgelehnt.
+- Am Spiegel melden sich Administratoren an; fällt der aktive Server aus, dürfen sich alle anmelden (nur lesen), andere sehen „Bitte den aktiven Server verwenden“.
+- Ein Band oben auf jeder Seite zeigt am Spiegel den Datenstand („aktuell“ oder „vor …“), den aktiven Server und – bei Ausfall – den Stand der letzten Daten.
+- Übernimmt der Spiegel die Rolle, startet das PDH dort nach etwa 10 Sekunden von selbst neu und ist schreibbar; Anmeldungen bleiben gültig.
+- `/health` zeigt die Betriebsart (`spiegel` oder `normal`).
+
+### Geändert
+- `pdh-ha` startet das PDH auch auf dem passiven Server, der Cloudflare-Tunnel läuft nur noch auf dem aktiven.
+- Nach dem Hochfahren startet `pdh-ha` das PDH erst nach wenigen Sekunden, nicht mehr beim Booten.
+- Am Spiegel entfallen VPN-Schlüssel und Zertifizierungsstelle neu anlegen, Hintergrundaufgaben und Benachrichtigungen; reines Ansehen von Seiten schreibt dort nichts mehr.
+
+### Behoben
+- Docker-Testsystem: Der Build bricht nicht mehr wegen der eingebetteten Skripte ab.
+- Der Reiter VPN zeigt Fehlermeldungen, statt einen leeren Schlüssel anzuzeigen.
+
 ## [0.76.1] – 2026-10-28
 
 ### Behoben

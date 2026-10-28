@@ -1745,11 +1745,25 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-eye"></i> Was wirklich passiert – und was nur gemeldet wird</b>
     <ul>
       <li><b>Datenbank-Spiegel:</b> Ist er eingerichtet, schreibt der aktive Server jede Speicherung auch auf den passiven. Das läuft immer echt.</li>
+      <li><b>PDH am Spiegel:</b> Das PDH läuft auch auf dem passiven Server – nur lesen (siehe „So arbeitest du am Spiegel“). <code>/health</code> zeigt dort <code>"mode": "spiegel"</code>.</li>
       <li><b>Rollen tauschen</b> und <b>Übernahme erzwingen</b> wirken immer echt.</li>
       <li><b>Automatische Umschaltung</b> bei einem Ausfall: Standard ist <b>Beobachtung</b>. Der Dienst meldet dann nur „würde jetzt: …“, Rollen bleiben, wie sie sind. Auf <b>echt</b> lässt sie sich erst nach der Pflicht-Testumschaltung stellen.</li>
       <li>Der <b>Cloudflare-Tunnel</b> läuft nur auf dem aktiven Server und wechselt mit der Rolle – über die öffentliche Adresse erreichst du immer den aktiven Server. Die Adresse im LAN schaltet noch nicht mit um: Dort erreichst du das PDH nach einer Übernahme unter der Adresse des neuen aktiven Servers.</li>
     </ul></div>
   {{template "hb-fig-spiegelbetrieb"}}
+  <div class="hb-howto"><b><i class="ti ti-eye"></i> So arbeitest du am Spiegel</b>
+    <p>Der passive Server zeigt dir das PDH zum Nachsehen – etwa, wenn der aktive Server ausfällt. Du erkennst ihn am orangen Band oben auf jeder Seite.</p>
+    <ol class="hb-steps">
+      <li>Die Adresse des Spiegels im Browser öffnen und anmelden. Solange der aktive Server erreichbar ist, dürfen sich hier nur Administratoren anmelden. Alle anderen sehen „Bitte den aktiven Server verwenden“ mit einem Link dorthin.</li>
+      <li>Fällt der aktive Server aus, darf sich jeder anmelden – aber nur zum Lesen. Kann der Spiegel den Zustand nicht feststellen, bleibt es bei den Administratoren.</li>
+      <li>Im Band liest du den <b>Datenstand</b>: „aktuell“ oder „vor 2 Minuten“. Ist der aktive Server nicht erreichbar, steht dort „Daten vom“ mit Datum und Uhrzeit. „Status des aktiven Servers unbekannt“ heißt: Der Spiegel kann <code>pdh-ha</code> nicht lesen.</li>
+      <li>Ansehen, suchen und Berichte öffnen geht wie gewohnt. Jede Änderung (Speichern, Anlegen, Löschen) lehnt der Spiegel ab: „Dieser Server ist der Spiegel – nur lesen. Änderungen bitte am aktiven Server.“ Bei einem Klick auf der Seite erscheint die Meldung im Hinweisfeld.</li>
+      <li>Mit <b>öffnen</b> im Band springst du zum aktiven Server und arbeitest dort weiter.</li>
+      <li>Übernimmt der Spiegel die Rolle (Rollen tauschen oder Übernahme erzwingen), startet das PDH hier nach etwa 10 Sekunden von selbst neu und ist schreibbar. Du bleibst angemeldet. Das Band verschwindet.</li>
+    </ol>
+    {{template "hb-fig-spiegelband"}}
+    <p><b>Nicht verfügbar am Spiegel:</b> neue VPN-Schlüssel und Zertifizierungsstellen (der Reiter VPN zeigt „Im Spiegel nicht verfügbar“), Hintergrundaufgaben und Benachrichtigungen. Die Einstellungen des Ausfallschutzes änderst du immer am aktiven Server.</p>
+    <p><b>Spiegel wartet auf das Update:</b> Hat der Spiegel ein neueres Programm als seine Datenbank, zeigt er nur Server-Einstellungen und Hilfe – und nur für Administratoren. Das ist normal, wenn du den Spiegel zuerst aktualisierst. Nach dem Update des aktiven Servers ist das Band wieder weg.</p></div>
   <p>Die <b>Betriebsart</b> ergibt sich aus der Zahl der Teilnehmer: <b>Einzel</b> (ein Server), <b>Duo</b> (zwei Server, „Eingeschränkter Ausfallschutz“) und <b>Trio</b> (zwei Server und ein Zeuge). Neue Verbünde starten mit <b>Automatik aus (Wartung)</b>.</p>
   <div class="hb-howto"><b><i class="ti ti-network"></i> So stellst du feste IP-Adressen ein</b>
     <p>Die Server und der Zeuge kennen sich über ihre Adressen. Vergibt der Router per DHCP eine neue Adresse, finden sie sich nicht mehr. Deshalb jede Adresse fest einstellen – am besten, bevor der Verbund eingerichtet wird.</p>
@@ -1777,7 +1791,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Im Reiter zeigt die Spalte <b>Datenbank</b> nun „schreibend“ und „Standby“, darunter „synchron“.</li>
       <li><b>Pflicht-Testumschaltung:</b> einmal <b>Rollen tauschen</b> und zurück. Prüfe dabei unter der Adresse des jeweils aktiven Servers, ob deine Daten da sind.</li>
     </ol>
-    <p>Auf dem passiven Server läuft das PDH nicht. Das übernimmt <code>pdh-ha</code>: Es startet das PDH nur auf dem aktiven Server.</p></div>
+    <p>Auf dem passiven Server läuft das PDH im <b>Spiegelmodus</b> (nur lesen). <code>pdh-ha</code> startet es dort, sobald die Datenbank als Standby läuft – ein paar Sekunden nach dem Hochfahren, nicht schon beim Booten.</p></div>
   <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So tauschst du die Rollen</b>
     <ol class="hb-steps">
       <li>Am <b>aktiven</b> Server <b>Rollen tauschen</b> wählen.</li>

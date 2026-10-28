@@ -128,8 +128,12 @@ der Reiter Ausfallschutz; kurz zwischengespeichert, ca. 5 s).
 ## 6. Anzeige
 
 - Band oben auf jeder Seite, orange: „Spiegel – nur lesen · Datenstand vor 2 s ·
-  Aktiver Server: 10.10.0.17 [öffnen]“. Datenstand aus
-  `now() - pg_last_xact_replay_timestamp()`; die Adresse aus dem pdh-ha-Status.
+  Aktiver Server: 10.10.0.17 [öffnen]“; die Adresse kommt aus dem pdh-ha-Status.
+  **Datenstand:** „aktuell“, wenn der WAL-Empfänger streamt (letzte Nachricht
+  höchstens 60 s alt) und Empfangs-LSN = Wiedergabe-LSN; sonst „vor <Dauer>“
+  aus `now() - pg_last_xact_replay_timestamp()`.
+- Status des pdh-ha nicht lesbar: Band amber, „Status des aktiven Servers
+  unbekannt“ (mit Datenstand wie oben); Anmeldung nur für Admins.
 - Aktiver Server nicht gesehen: Band rot, „Aktiver Server nicht erreichbar –
   Daten vom TT.MM. HH:MM“, für Admins mit Knopf zum Reiter Ausfallschutz.
 - Eingeschränkter Modus (3): eigenes Band „Spiegel wartet auf das Update des
@@ -146,7 +150,7 @@ der Reiter Ausfallschutz; kurz zwischengespeichert, ca. 5 s).
 | aktiv, Datenbank schreibbar | an | an |
 | passiv, Datenbank läuft als Standby | an (Spiegelmodus) | aus |
 | passiv während Neukopie / Rückführung / Abschottung / Datenbank gestoppt | aus | aus |
-| Wartung | unverändert | unverändert |
+| Wartung | Der Abgleich läuft auch in der Wartung weiter: am passiven Knoten mit Standby wird `pdh` gestartet | unverändert |
 | Einzel / ohne `replica.pass` | wie bisher | wie bisher |
 
 - **Kein Autostart beim Booten:** `pdh` bleibt im Verbund `disabled`. Beim
