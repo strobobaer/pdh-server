@@ -179,7 +179,7 @@ func TestPassiveRecopiesOnNeedCopy(t *testing.T) {
 	now := 100 * time.Second
 	d.mono = func() time.Duration { return now }
 	tickFor(t, d, &now, 5)
-	seq(t, r.list(), "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup", "pg_ctlcluster 18 main start")
+	seq(t, r.list(), "tun stop", "svc stop", "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup", "pg_ctlcluster 18 main start")
 	if n := countPrefix(r.list(), "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup"); n != 1 {
 		t.Fatalf("Neukopie %d-mal", n)
 	}

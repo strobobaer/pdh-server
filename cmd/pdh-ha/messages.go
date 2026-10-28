@@ -179,10 +179,12 @@ func (d *daemon) removedLocked(pl *plan) {
 	pl.ufw = true
 	pl.event("info", "Aus dem Cluster entfernt")
 	if pa := d.pgActorLocked(); pa != nil && d.node.CAHolder { // ein entfernter Knoten wird nie aktiv (R14)
-		// wieder Einzelbetrieb: pdh startet wie früher beim Hochfahren
+		// wieder Einzelbetrieb: pdh und Tunnel starten wie früher beim Hochfahren
 		d.enqueueFnLocked(context.Background(), func(ctx context.Context) {
-			if err := pa.svc.SetAutostart(ctx, true); err == nil {
-				_ = pa.svc.Start(ctx)
+			for _, s := range []serviceCtl{pa.svc, pa.tun} {
+				if err := s.SetAutostart(ctx, true); err == nil {
+					_ = s.Start(ctx)
+				}
 			}
 		})
 	}

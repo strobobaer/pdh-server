@@ -69,7 +69,7 @@ func TestRejoinNoDivergence(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := r.list()
-	seq(t, l, "svc stop", "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run",
+	seq(t, l, "tun stop", "svc stop", "pg_ctlcluster 18 main stop", "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --dry-run",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --target-pgdata", "chown", "chown", "pg_ctlcluster 18 main start")
 	if has(l, "bash -c") || has(l, "/bin/pg_ctl ") {
 		t.Fatalf("ohne Abzweigung kein Abzug: %v", l)

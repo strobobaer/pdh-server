@@ -360,6 +360,7 @@ lab_up() {
     wait_for 30 eval 'roles aktiv passiv && [[ "$(jget maint <<<"$J2")" == nein && "$(jget blocked <<<"$J2")" == "" ]]' ||
         fail "Cluster nicht bereit (node2 gesperrt: $(jget blocked <<<"$J2"))"
     wait_for 60 mirror_ok || fail "Spiegel nicht synchron (node1 sync=$(jget sync <<<"$J1"), node2 pg=$(jget pg <<<"$J2"), aktuell=$(jget current <<<"$J2"))"
+    wait_for 60 eval 'pdh_on node1 && pdh_on node2' || fail "pdh läuft nicht auf beiden Servern (am passiven als Spiegel)"
     if [[ "$mode" == real ]]; then
         pflicht_tausch
         docker exec node1 pdh-ha settings "$(settings_json real)" || fail "Automatik echt setzen"
@@ -368,6 +369,9 @@ lab_up() {
     fi
     log "Labor bereit: node1 aktiv, node2 Standby synchron, Zeuge verbunden, Automatik $mode"
 }
+
+# pdh_on <Container>: Platzhalter für pdh läuft (am passiven Server als Spiegel)
+pdh_on() { docker exec "$1" test -f /run/pdh-dummy.running; }
 
 # mirror_ok: node1 aktiv und synchron, node2 Standby mit aktuellem Datenstand
 mirror_ok() {
@@ -523,6 +527,7 @@ sc_beobachtung() {
 sc_tausch() {
     wait_acks 5 30 || fail "Schreib-Generator bestätigt nichts"
     pflicht_tausch
+    wait_for 60 eval 'pdh_on node1 && pdh_on node2' || fail "nach dem Tausch läuft pdh nicht auf beiden Servern"
     wait_acks 5 30 || fail "nach dem Tausch keine Speicherungen"
 }
 

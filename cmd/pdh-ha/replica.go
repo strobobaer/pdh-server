@@ -154,7 +154,7 @@ func replicaInit(ctx context.Context, st store, pa *pgActor, o replicaOpts) erro
 	if err := pa.writeAccess(ctx, e); err != nil {
 		return err
 	}
-	if err := pa.svc.Stop(ctx); err != nil {
+	if err := pa.stopServices(ctx); err != nil {
 		return err
 	}
 	if err := pa.pg.ctl(ctx, "stop"); err != nil && pa.pg.status(ctx).State != "stopped" {
@@ -184,12 +184,14 @@ func replicaInit(ctx context.Context, st store, pa *pgActor, o replicaOpts) erro
 	if err := st.writeEtc("replica.pass", []byte(full.ReplicaPass+"\n"), 0o600); err != nil {
 		return err
 	}
-	return pa.svc.SetAutostart(ctx, false)
+	// pdh startet der Abgleich (als Spiegel), nie systemd beim Hochfahren
+	return pa.disableAutostart(ctx)
 }
 
-// shouldRunPDH: pdh darf laufen, wenn kein Verbund eingerichtet ist, Einzel
-// oder dieser Knoten aktiv ist (für Update-Skripte).
-func shouldRunPDH(st store) bool {
+// shouldRunPDH: pdh darf laufen, wenn kein Verbund eingerichtet ist, Einzel,
+// dieser Knoten aktiv ist oder passiv über einem laufenden Standby (Spiegel)
+// – für Update-Skripte. pgState liefert den Zustand von pgCtl.status.
+func shouldRunPDH(st store, pgState func() string) bool {
 	if _, err := st.loadNode(); err != nil {
 		return true
 	}
@@ -201,5 +203,8 @@ func shouldRunPDH(st store) bool {
 		return true // ohne Datenbank-Spiegel wie bisher
 	}
 	p, err := st.loadState()
-	return err == nil && p.Role == ha.Active
+	if err != nil {
+		return false
+	}
+	return p.Role == ha.Active || p.Role == ha.Passive && pgState() == "standby"
 }

@@ -12,17 +12,23 @@ import (
 	"pdh/internal/ha"
 )
 
-// svcLog: Dienst-Aufrufe landen als "svc <op>" im fakeRunner (eine Reihenfolge).
+// svcLog: Dienst-Aufrufe landen als "<name> <op>" (svc = pdh, tun = Tunnel)
+// im fakeRunner (eine Reihenfolge).
 type svcLog struct {
 	r      *fakeRunner
+	name   string
 	active bool
 }
 
-func (s *svcLog) log(op string)                            { _, _ = s.r.Run(context.Background(), []string{"svc", op}, nil, nil) }
+func (s *svcLog) log(op string)                            { _, _ = s.r.Run(context.Background(), []string{s.name, op}, nil, nil) }
 func (s *svcLog) Start(context.Context) error              { s.log("start"); s.active = true; return nil }
 func (s *svcLog) Stop(context.Context) error               { s.log("stop"); s.active = false; return nil }
+func (s *svcLog) Restart(context.Context) error            { s.log("restart"); s.active = true; return nil }
 func (s *svcLog) Active(context.Context) bool              { return s.active }
 func (s *svcLog) SetAutostart(context.Context, bool) error { return nil }
+
+// tunOf: der Tunnel-Fake eines testActor.
+func tunOf(a *pgActor) *svcLog { return a.tun.(*svcLog) }
 
 const (
 	stPrimary = "f|0/100|1|off|pdh_ha_b|"
@@ -33,9 +39,10 @@ func testActor(t *testing.T, r *fakeRunner) (*pgActor, *svcLog) {
 	t.Helper()
 	pg := testPG(r)
 	pg.c.DataDir, pg.c.ConfDir = t.TempDir(), t.TempDir()
-	svc := &svcLog{r: r, active: true}
+	svc := &svcLog{r: r, name: "svc", active: true}
+	tun := &svcLog{r: r, name: "tun", active: true}
 	ev := openEventLog(filepath.Join(t.TempDir(), "events.jsonl"), 5<<20, 3)
-	a := newPGActor(pg, svc, ev, func() pgEnv {
+	a := newPGActor(pg, svc, tun, ev, func() pgEnv {
 		return pgEnv{SelfID: "a", PartnerID: "b", PartnerAddrs: []string{"10.0.0.2"}, CAFile: "/ca.crt",
 			Listen: []string{"10.0.0.1"}, SlotKeepMB: 20480, DataCurrent: true}
 	})
@@ -139,9 +146,32 @@ func TestPromoteOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	seq(t, r.list(), "psql: SELECT pg_promote(true, 60)", "psql: SELECT pg_is_in_recovery()",
-		"psql: SELECT pg_create_physical_replication_slot('pdh_ha_b')", "chown", "pg_ctlcluster 18 main reload", "svc start")
+		"psql: SELECT pg_create_physical_replication_slot('pdh_ha_b')", "chown", "pg_ctlcluster 18 main reload", "svc restart", "tun start")
 	if c := confText(t, a); !strings.Contains(c, "synchronous_standby_names = 'pdh_ha_b'") || strings.Contains(c, "primary_conninfo") {
 		t.Fatalf("Konfiguration:\n%s", c)
+	}
+}
+
+// Nach dem Hochstufen pdh neu starten (lief als Spiegel, nicht auf den
+// Wächter warten), danach erst den Tunnel.
+func TestPromoteRestartsPDH(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "(SELECT timeline_id FROM pg_control_checkpoint())", stStandby, nil).
+		on("runuser", "SELECT pg_promote", "t", nil).
+		on("runuser", "SELECT pg_is_in_recovery()", "f", nil)
+	a, _ := testActor(t, r)
+	tunOf(a).active = false
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 4}); err != nil {
+		t.Fatal(err)
+	}
+	var svc []string
+	for _, l := range r.list() {
+		if strings.HasPrefix(l, "svc ") || strings.HasPrefix(l, "tun ") {
+			svc = append(svc, l)
+		}
+	}
+	if strings.Join(svc, ",") != "svc restart,tun start" {
+		t.Fatalf("Dienste: %v", svc)
 	}
 }
 
@@ -178,8 +208,8 @@ func TestFenceOrder(t *testing.T) {
 	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActFence}); err != nil {
 		t.Fatal(err)
 	}
-	seq(t, r.list(), "svc stop", "chown", "pg_ctlcluster 18 main reload", "psql: SELECT pg_terminate_backend")
-	if svc.active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+	seq(t, r.list(), "tun stop", "svc stop", "chown", "pg_ctlcluster 18 main reload", "psql: SELECT pg_terminate_backend")
+	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
 		t.Fatal("nicht abgeschaltet")
 	}
 	for _, c := range r.calls {
@@ -192,11 +222,12 @@ func TestFenceOrder(t *testing.T) {
 func TestUnfence(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a, svc := testActor(t, r)
-	svc.active = false
+	svc.active, tunOf(a).active = false, false
 	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActUnfence}); err != nil {
 		t.Fatal(err)
 	}
-	if !svc.active || strings.Contains(confText(t, a), "default_transaction_read_only") {
+	seq(t, r.list(), "svc start", "tun start")
+	if !svc.active || !tunOf(a).active || strings.Contains(confText(t, a), "default_transaction_read_only") {
 		t.Fatal("nicht zurückgenommen")
 	}
 	r2 := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stStandby, nil)
@@ -206,16 +237,55 @@ func TestUnfence(t *testing.T) {
 	}
 }
 
-func TestReconcilePassiveStopsPDH(t *testing.T) {
+// Passiv mit Standby: pdh läuft als Spiegel, der Tunnel nie.
+func TestReconcilePassiveStandbyStartsPDH(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stStandby, nil)
 	a, svc := testActor(t, r)
+	svc.active = false
 	a.reconcile(context.Background(), ha.Passive)
-	if svc.active {
-		t.Fatal("pdh läuft auf passivem Knoten weiter")
+	if !svc.active || tunOf(a).active || !has(r.list(), "svc start") || !has(r.list(), "tun stop") || has(r.list(), "tun start") {
+		t.Fatalf("passiv + Standby: pdh an, Tunnel aus: %v", r.list())
 	}
-	a.reconcile(context.Background(), ha.Active)
-	if svc.active {
-		t.Fatal("Abgleich darf pdh nicht starten")
+	a.reconcile(context.Background(), ha.Passive)
+	n := 0
+	for _, e := range a.ev.since(0, 0) {
+		if e.Text == "PDH als Spiegel gestartet" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("Ereignis nur beim Wechsel von aus nach an: %d", n)
+	}
+	// aktiv, aber Datenbank Standby (noch nicht hochgestuft): nichts starten
+	r2 := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stStandby, nil)
+	a2, svc2 := testActor(t, r2)
+	svc2.active, tunOf(a2).active = false, false
+	a2.reconcile(context.Background(), ha.Active)
+	if svc2.active || tunOf(a2).active {
+		t.Fatal("Abgleich darf am aktiven Knoten ohne schreibbare Datenbank nichts starten")
+	}
+}
+
+// Passiv ohne Standby (abgeschottet, gestoppt, Fehler): pdh aus.
+func TestReconcilePassiveFencedStopsPDH(t *testing.T) {
+	cases := map[string]*fakeRunner{
+		"nur lesend": (&fakeRunner{}).on("runuser", "pg_is_in_recovery", "f|0/100|1|on|pdh_ha_b|", nil),
+		"gestoppt": (&fakeRunner{}).
+			on("runuser -u postgres -- psql", "", "", errors.New("läuft nicht")).
+			on("pg_lsclusters", "", stStoppedLs, nil),
+		"Fehler": (&fakeRunner{}).
+			on("runuser -u postgres -- psql", "", "", errors.New("kaputt")).
+			on("pg_lsclusters", "", "18 main 5432 online postgres /d /l", nil),
+	}
+	for name, r := range cases {
+		a, svc := testActor(t, r)
+		a.reconcile(context.Background(), ha.Passive)
+		if svc.active || tunOf(a).active || has(r.list(), "svc start") {
+			t.Fatalf("%s: pdh und Tunnel aus: %v", name, r.list())
+		}
+		if has(r.list(), "psql: SELECT pg_terminate_backend") {
+			t.Fatalf("%s: nicht erneut abschotten: %v", name, r.list())
+		}
 	}
 }
 
@@ -224,10 +294,10 @@ func TestReconcilePassiveStopsPDH(t *testing.T) {
 func TestReconcileActiveStartsServices(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a, svc := testActor(t, r)
-	svc.active = false
+	svc.active, tunOf(a).active = false, false
 	a.reconcile(context.Background(), ha.Active)
-	if !svc.active {
-		t.Fatal("aktiv mit schreibbarer Datenbank: pdh nicht gestartet")
+	if !svc.active || !tunOf(a).active {
+		t.Fatal("aktiv mit schreibbarer Datenbank: pdh bzw. Tunnel nicht gestartet")
 	}
 	ro := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", "f|0/100|1|on|pdh_ha_b|", nil)
 	a2, svc2 := testActor(t, ro)

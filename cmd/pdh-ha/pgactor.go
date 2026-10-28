@@ -32,7 +32,8 @@ type pgEnv struct {
 
 type pgActor struct {
 	pg       *pgCtl
-	svc      serviceCtl
+	svc      serviceCtl // pdh
+	tun      serviceCtl // Cloudflare-Tunnel (nur am aktiven Knoten)
 	ev       *eventLog
 	env      func() pgEnv
 	pushCfg  func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
@@ -45,8 +46,8 @@ type pgActor struct {
 	syncNames string // gewünschte synchronous_standby_names (Replikation, Task 8)
 }
 
-func newPGActor(pg *pgCtl, svc serviceCtl, ev *eventLog, env func() pgEnv) *pgActor {
-	return &pgActor{pg: pg, svc: svc, ev: ev, env: env, wait: 60 * time.Second, poll: 500 * time.Millisecond, now: time.Now, passfile: pgPassfile}
+func newPGActor(pg *pgCtl, svc, tun serviceCtl, ev *eventLog, env func() pgEnv) *pgActor {
+	return &pgActor{pg: pg, svc: svc, tun: tun, ev: ev, env: env, wait: 60 * time.Second, poll: 500 * time.Millisecond, now: time.Now, passfile: pgPassfile}
 }
 
 // standbyConninfo: alle Wege zum aktiven Knoten, Passwort nur aus der passfile.
@@ -184,15 +185,27 @@ func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 	if err := a.pg.ctl(ctx, "reload"); err != nil {
 		return err
 	}
-	return a.svc.Start(ctx)
+	// pdh lief als Spiegel: neu starten statt auf seinen Wächter zu warten
+	return errors.Join(a.svc.Restart(ctx), a.tun.Start(ctx))
 }
 
-// fence: pdh aus, Datenbank nur lesend, offene Sitzungen beenden. Die
+// stopServices: erst den Tunnel, dann pdh.
+func (a *pgActor) stopServices(ctx context.Context) error {
+	return errors.Join(a.tun.Stop(ctx), a.svc.Stop(ctx))
+}
+
+// disableAutostart: im Verbund startet pdh-ha pdh und Tunnel, nie systemd
+// beim Hochfahren (dort ist PostgreSQL kurz schreibbar).
+func (a *pgActor) disableAutostart(ctx context.Context) error {
+	return errors.Join(a.svc.SetAutostart(ctx, false), a.tun.SetAutostart(ctx, false))
+}
+
+// fence: Tunnel und pdh aus, Datenbank nur lesend, offene Sitzungen beenden. Die
 // Replikation (walsender) läuft weiter.
 func (a *pgActor) fence(ctx context.Context) error {
 	e := a.env()
-	if err := a.svc.Stop(ctx); err != nil {
-		return fmt.Errorf("pdh nicht gestoppt: %w", err)
+	if err := a.stopServices(ctx); err != nil {
+		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
 	}
 	if st := a.pg.status(ctx); st.State != "primary" {
 		return nil // Standby oder gestoppt: schreibt ohnehin nicht
@@ -218,11 +231,12 @@ func (a *pgActor) unfence(ctx context.Context) error {
 	if err := a.pg.ctl(ctx, "reload"); err != nil {
 		return err
 	}
-	return a.svc.Start(ctx)
+	return errors.Join(a.svc.Start(ctx), a.tun.Start(ctx))
 }
 
-// reconcile gleicht Dienst und Datenbank mit der Rolle ab – nur in die
-// sichere Richtung: nie hochstufen, nie pdh auf einem nicht aktiven Knoten.
+// reconcile gleicht Dienste und Datenbank mit der Rolle ab – nur in die
+// sichere Richtung: nie hochstufen, Tunnel nie auf einem nicht aktiven
+// Knoten, pdh dort nur als Spiegel über einem Standby.
 // Am aktiven Knoten mit schreibbarer Datenbank startet er pdh und Tunnel
 // (nach einem Neustart bei Beobachtung gibt es kein unfence, das sie startet);
 // systemctl start lässt laufende Einheiten unberührt.
@@ -230,40 +244,59 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	if role == ha.Active {
 		if st := a.pg.status(ctx); st.State == "primary" && !st.ReadOnly {
 			if err := a.svc.Start(ctx); err != nil {
-				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh bzw. Tunnel auf dem aktiven Server nicht gestartet: " + err.Error()})
+				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh auf dem aktiven Server nicht gestartet: " + err.Error()})
+			}
+			if err := a.tun.Start(ctx); err != nil {
+				a.ev.add(ha.Event{Kind: "alarm", Text: "Tunnel auf dem aktiven Server nicht gestartet: " + err.Error()})
 			}
 		}
 		return
 	}
-	if a.svc.Active(ctx) {
-		if err := a.svc.Stop(ctx); err == nil {
-			a.ev.add(ha.Event{Kind: "info", Text: "pdh auf nicht aktivem Server gestoppt"})
+	if a.tun.Active(ctx) {
+		if err := a.tun.Stop(ctx); err == nil {
+			a.ev.add(ha.Event{Kind: "info", Text: "Tunnel auf nicht aktivem Server gestoppt"})
 		} else {
-			a.ev.add(ha.Event{Kind: "alarm", Text: "pdh bzw. Tunnel auf nicht aktivem Server nicht gestoppt: " + err.Error()})
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Tunnel auf nicht aktivem Server nicht gestoppt: " + err.Error()})
 		}
 	}
 	e := a.env()
-	switch st := a.pg.status(ctx); st.State {
-	case "primary":
-		if !st.ReadOnly {
-			if err := a.fence(ctx); err == nil {
-				a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – abgeschaltet"})
+	st := a.pg.status(ctx)
+	switch {
+	case st.State == "standby":
+		if !a.svc.Active(ctx) {
+			if err := a.svc.Start(ctx); err == nil {
+				a.ev.add(ha.Event{Kind: "info", Text: "PDH als Spiegel gestartet"})
 			} else {
-				a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – Abschalten fehlgeschlagen: " + err.Error()})
+				a.ev.add(ha.Event{Kind: "alarm", Text: "PDH als Spiegel nicht gestartet: " + err.Error()})
 			}
 		}
-	case "standby":
-		if len(e.PartnerAddrs) == 0 {
-			return
+	case st.State == "primary" && !st.ReadOnly:
+		if err := a.fence(ctx); err == nil {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – abgeschaltet"})
+		} else {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Nicht aktiver Server mit schreibbarer Datenbank – Abschalten fehlgeschlagen: " + err.Error()})
 		}
-		want := renderPGConf(a.standbyConf(e))
-		name := filepath.Join(filepath.FromSlash(a.pg.c.ConfDir), "conf.d", "pdh-ha.conf")
-		if cur, err := os.ReadFile(name); err == nil && string(cur) == want {
-			return
+		return
+	default: // abgeschottet, gestoppt, Fehler: kein Spiegel
+		if a.svc.Active(ctx) {
+			if err := a.svc.Stop(ctx); err == nil {
+				a.ev.add(ha.Event{Kind: "info", Text: "pdh auf nicht aktivem Server gestoppt"})
+			} else {
+				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh auf nicht aktivem Server nicht gestoppt: " + err.Error()})
+			}
 		}
-		if err := a.pg.writeConf(ctx, a.standbyConf(e)); err == nil {
-			_ = a.pg.ctl(ctx, "reload")
-		}
+		return
+	}
+	if len(e.PartnerAddrs) == 0 {
+		return
+	}
+	want := renderPGConf(a.standbyConf(e))
+	name := filepath.Join(filepath.FromSlash(a.pg.c.ConfDir), "conf.d", "pdh-ha.conf")
+	if cur, err := os.ReadFile(name); err == nil && string(cur) == want {
+		return
+	}
+	if err := a.pg.writeConf(ctx, a.standbyConf(e)); err == nil {
+		_ = a.pg.ctl(ctx, "reload")
 	}
 }
 
@@ -285,8 +318,8 @@ func (a *pgActor) recopy(ctx context.Context) {
 		return // eigene Daten (kein Standby): Sache der Wiedereingliederung
 	}
 	a.ev.add(ha.Event{Kind: "alarm", Text: "Slot beim aktiven Server ungültig – Datenbank wird neu vom aktiven Server kopiert"})
-	if err := a.svc.Stop(ctx); err != nil {
-		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: pdh nicht gestoppt: " + err.Error()})
+	if err := a.stopServices(ctx); err != nil {
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: pdh bzw. Tunnel nicht gestoppt: " + err.Error()})
 		return
 	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil && a.pg.status(ctx).State != "stopped" {
