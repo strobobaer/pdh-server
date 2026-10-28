@@ -597,6 +597,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/diverged-delete", h.HADivergedDeleteWeb)
 	r.Post("/admin/server-config/ha/remove", h.HARemoveWeb)
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
+	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
+	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
+	r.Post("/admin/server-config/ha/hooks-run", h.HAHooksRunWeb)
 	r.Get("/admin/server-config/ha/join-script", h.HAJoinScriptWeb)
 	// Reiter „VPN“: WireGuard auf dem Host (vpn.go, vpn_host.go) – nur Administratoren
 	r.Get("/admin/server-config/vpn/script", h.VPNScriptWeb)

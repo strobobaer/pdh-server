@@ -284,6 +284,15 @@ func (h *Handler) haStatusFetch(ctx context.Context) (haStatus, error) {
 
 // mirrorPeerFrom: aktiver Partner (kein Zeuge); ein gesehener hat Vorrang.
 func mirrorPeerFrom(st haStatus) mirrorPeer {
+	p := mirrorPeerPaths(st)
+	// Mitwandernde Adresse: der Link führt immer zum aktiven Server, egal welcher es ist.
+	if st.Access.VIPOn && st.Access.VIP != "" {
+		p.ActiveAddr = vipAddr(st.Access.VIP)
+	}
+	return p
+}
+
+func mirrorPeerPaths(st haStatus) mirrorPeer {
 	p := mirrorPeer{Known: true}
 	for _, n := range st.Peers {
 		if n.Role != "aktiv" || n.Kind == "witness" {

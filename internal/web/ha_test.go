@@ -20,11 +20,12 @@ import (
 
 // fakeHA: pdh-ha-Socket-API auf einem Unix-Listener in t.TempDir().
 type fakeHA struct {
-	mu     sync.Mutex
-	status string // JSON von /v1/status
-	events string // JSON-Liste der Ereignisse
-	calls  []string
-	bodies []string
+	mu      sync.Mutex
+	status  string // JSON von /v1/status
+	events  string // JSON-Liste der Ereignisse
+	vipTest string // Antwort von /v1/vip/test
+	calls   []string
+	bodies  []string
 }
 
 func startFakeHA(t *testing.T, f *fakeHA) string {
@@ -54,6 +55,11 @@ func startFakeHA(t *testing.T, f *fakeHA) string {
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "events": out})
+		case "/v1/vip/test":
+			f.mu.Lock()
+			body := f.vipTest
+			f.mu.Unlock()
+			_, _ = w.Write([]byte(body))
 		case "/v1/join-code":
 			_, _ = w.Write([]byte(`{"ok":true,"code":"CODE123","expires":"2026-10-25T10:30:00Z"}`))
 		default:

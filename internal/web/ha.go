@@ -54,8 +54,23 @@ type haStatus struct {
 
 // haAccess: Zugangsweg aus dem Status von pdh-ha (hier nur, was der Abgleich braucht).
 type haAccess struct {
+	VIP      string       `json:"vip"` // mit Präfixlänge, z. B. 10.77.1.50/24
+	VIPOn    bool         `json:"vip_on"`
+	HooksOn  bool         `json:"hooks_on"`
+	Iface    string       `json:"iface"` // eigene Netzwerkkarte
+	IfaceErr string       `json:"iface_err"`
+	Holder   string       `json:"holder"` // Server, der die Adresse hält ("" = keiner)
+	Tested   *haVIPTested `json:"tested"`
+	Hooks    struct {
+		Names []string    `json:"names"`
+		Sum   string      `json:"sum"`
+		Same  bool        `json:"same"`
+		Last  *haHooksRun `json:"last"`
+	} `json:"hooks"`
 	Tunnel struct {
-		Sum string `json:"sum"` // Prüfsumme (SHA-256) des bei pdh-ha abgelegten Tunnel-Tokens
+		Sum       string `json:"sum"` // Prüfsumme (SHA-256) des bei pdh-ha abgelegten Tunnel-Tokens
+		Installed bool   `json:"installed"`
+		Running   bool   `json:"running"`
 	} `json:"tunnel"`
 }
 
@@ -72,6 +87,11 @@ type haNode struct {
 	ClockSkew   float64  `json:"clock_skew"`    // Sekunden
 	Paths       []haPath `json:"paths"`
 	Self        bool     `json:"-"`
+
+	// Zugangsweg
+	VIPHeld   bool   `json:"vip_held"`
+	HooksSum  string `json:"hooks_sum"`
+	TunnelSum string `json:"tunnel_sum"`
 
 	// Datenbank-Spiegel
 	PG          string       `json:"pg"` // primary, standby, stopped, error, unknown
@@ -134,6 +154,7 @@ type haView struct {
 	JoinCmd      string
 	JoinExpires  time.Time
 	SuggestAddrs []string // LAN- und WireGuard-Adresse dieses Servers
+	Origin       string   // PDH_CLOUDFLARE_ORIGIN: Ziel des Tunnels
 }
 
 func (v haView) ModeText() string {
@@ -453,6 +474,7 @@ func (h *Handler) haLoadView(ctx context.Context) haView {
 		}
 		v.Err = haStatusErr(v.Status)
 		v.Events = h.haRecentEvents(ctx, 50)
+		v.Origin = h.cloudflareSettings(ctx).Origin
 	}
 	if v.NeedsSetup() && h.driveAgentConfigured() {
 		ctx, cancel := context.WithTimeout(ctx, haTimeout)
