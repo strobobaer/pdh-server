@@ -44,7 +44,17 @@ type pgActor struct {
 
 	mu        sync.Mutex
 	syncNames string // gewünschte synchronous_standby_names (Replikation, Task 8)
+	mirror    *mirrorNote // zuletzt gemeldeter Ausgang des Spiegel-Starts (nil = keiner)
 }
+
+// mirrorNote: Ausgang eines Spiegel-Starts ("" = gestartet, sonst Fehler).
+type mirrorNote struct {
+	err string
+	at  time.Time
+}
+
+// mirrorRepeat: gleicher Ausgang wird höchstens so oft erneut gemeldet.
+const mirrorRepeat = time.Hour
 
 func newPGActor(pg *pgCtl, svc, tun serviceCtl, ev *eventLog, env func() pgEnv) *pgActor {
 	return &pgActor{pg: pg, svc: svc, tun: tun, ev: ev, env: env, wait: 60 * time.Second, poll: 500 * time.Millisecond, now: time.Now, passfile: pgPassfile}
@@ -191,7 +201,40 @@ func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 
 // stopServices: erst den Tunnel, dann pdh.
 func (a *pgActor) stopServices(ctx context.Context) error {
+	a.mirrorReset()
 	return errors.Join(a.tun.Stop(ctx), a.svc.Stop(ctx))
+}
+
+// mirrorStarted meldet den Ausgang des Spiegel-Starts nur bei Änderung oder
+// spätestens nach mirrorRepeat erneut – ein dauerhaft abstürzendes pdh
+// füllt sonst alle 30 s das Protokoll.
+func (a *pgActor) mirrorStarted(err error) {
+	n := mirrorNote{at: a.now()}
+	if err != nil {
+		n.err = err.Error()
+	}
+	a.mu.Lock()
+	last := a.mirror
+	quiet := last != nil && last.err == n.err && n.at.Sub(last.at) < mirrorRepeat
+	if !quiet {
+		a.mirror = &n
+	}
+	a.mu.Unlock()
+	switch {
+	case quiet:
+	case err == nil:
+		a.ev.add(ha.Event{Kind: "info", Text: "PDH als Spiegel gestartet"})
+	default:
+		a.ev.add(ha.Event{Kind: "alarm", Text: "PDH als Spiegel nicht gestartet: " + n.err})
+	}
+}
+
+// mirrorReset: pdh bewusst gestoppt oder aktiv – der nächste Spiegel-Start
+// wird wieder gemeldet.
+func (a *pgActor) mirrorReset() {
+	a.mu.Lock()
+	a.mirror = nil
+	a.mu.Unlock()
 }
 
 // disableAutostart: im Verbund startet pdh-ha pdh und Tunnel, nie systemd
@@ -242,6 +285,7 @@ func (a *pgActor) unfence(ctx context.Context) error {
 // systemctl start lässt laufende Einheiten unberührt.
 func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	if role == ha.Active {
+		a.mirrorReset()
 		if st := a.pg.status(ctx); st.State == "primary" && !st.ReadOnly {
 			if err := a.svc.Start(ctx); err != nil {
 				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh auf dem aktiven Server nicht gestartet: " + err.Error()})
@@ -264,11 +308,7 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	switch {
 	case st.State == "standby":
 		if !a.svc.Active(ctx) {
-			if err := a.svc.Start(ctx); err == nil {
-				a.ev.add(ha.Event{Kind: "info", Text: "PDH als Spiegel gestartet"})
-			} else {
-				a.ev.add(ha.Event{Kind: "alarm", Text: "PDH als Spiegel nicht gestartet: " + err.Error()})
-			}
+			a.mirrorStarted(a.svc.Start(ctx))
 		}
 	case st.State == "primary" && !st.ReadOnly:
 		if err := a.fence(ctx); err == nil {
@@ -280,6 +320,7 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	default: // abgeschottet, gestoppt, Fehler: kein Spiegel
 		if a.svc.Active(ctx) {
 			if err := a.svc.Stop(ctx); err == nil {
+				a.mirrorReset()
 				a.ev.add(ha.Event{Kind: "info", Text: "pdh auf nicht aktivem Server gestoppt"})
 			} else {
 				a.ev.add(ha.Event{Kind: "alarm", Text: "pdh auf nicht aktivem Server nicht gestoppt: " + err.Error()})

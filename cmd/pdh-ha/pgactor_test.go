@@ -15,13 +15,18 @@ import (
 // svcLog: Dienst-Aufrufe landen als "<name> <op>" (svc = pdh, tun = Tunnel)
 // im fakeRunner (eine Reihenfolge).
 type svcLog struct {
-	r      *fakeRunner
-	name   string
-	active bool
+	r        *fakeRunner
+	name     string
+	active   bool
+	startErr error // Start scheitert (pdh dauerhaft „failed“)
 }
 
 func (s *svcLog) log(op string)                            { _, _ = s.r.Run(context.Background(), []string{s.name, op}, nil, nil) }
-func (s *svcLog) Start(context.Context) error              { s.log("start"); s.active = true; return nil }
+func (s *svcLog) Start(context.Context) error {
+	s.log("start")
+	s.active = s.startErr == nil
+	return s.startErr
+}
 func (s *svcLog) Stop(context.Context) error               { s.log("stop"); s.active = false; return nil }
 func (s *svcLog) Restart(context.Context) error            { s.log("restart"); s.active = true; return nil }
 func (s *svcLog) Active(context.Context) bool              { return s.active }
@@ -263,6 +268,63 @@ func TestReconcilePassiveStandbyStartsPDH(t *testing.T) {
 	a2.reconcile(context.Background(), ha.Active)
 	if svc2.active || tunOf(a2).active {
 		t.Fatal("Abgleich darf am aktiven Knoten ohne schreibbare Datenbank nichts starten")
+	}
+}
+
+// countEvents: Ereignisse mit Text-Präfix.
+func countEvents(a *pgActor, prefix string) int {
+	n := 0
+	for _, e := range a.ev.since(0, 0) {
+		if strings.HasPrefix(e.Text, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+// Ein pdh, das nach jedem Start gleich wieder aus ist (oder gar nicht
+// startet), darf das Protokoll nicht alle 30 s füllen: gleicher Ausgang nur
+// einmal, nach einer Stunde erneut, bei Änderung sofort.
+func TestReconcileMirrorStartNoFlood(t *testing.T) {
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stStandby, nil)
+	a, svc := testActor(t, r)
+	now := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	a.now = func() time.Time { return now }
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		svc.active = false // gleich wieder abgestürzt
+		a.reconcile(ctx, ha.Passive)
+		now = now.Add(30 * time.Second)
+	}
+	if n := countEvents(a, "PDH als Spiegel gestartet"); n != 1 || countPrefix(r.list(), "svc start") != 3 {
+		t.Fatalf("Start ok mehrfach: %d Ereignisse, Aufrufe %v", n, r.list())
+	}
+	svc.startErr = errors.New("start request repeated too quickly")
+	for i := 0; i < 5; i++ {
+		svc.active = false
+		a.reconcile(ctx, ha.Passive)
+		now = now.Add(30 * time.Second)
+	}
+	if n := countEvents(a, "PDH als Spiegel nicht gestartet"); n != 1 {
+		t.Fatalf("gleicher Fehler: genau ein Alarm, nicht %d", n)
+	}
+	now = now.Add(time.Hour)
+	a.reconcile(ctx, ha.Passive)
+	if n := countEvents(a, "PDH als Spiegel nicht gestartet"); n != 2 {
+		t.Fatalf("nach einer Stunde erneut melden: %d", n)
+	}
+	svc.startErr = nil
+	a.reconcile(ctx, ha.Passive)
+	if n := countEvents(a, "PDH als Spiegel gestartet"); n != 2 {
+		t.Fatalf("wieder gestartet: melden (%d)", n)
+	}
+	// bewusst gestoppt (Rückführung) und danach wieder Spiegel: erneut melden
+	if err := a.stopServices(ctx); err != nil {
+		t.Fatal(err)
+	}
+	a.reconcile(ctx, ha.Passive)
+	if n := countEvents(a, "PDH als Spiegel gestartet"); n != 3 {
+		t.Fatalf("nach bewusstem Stopp erneut melden: %d", n)
 	}
 }
 
