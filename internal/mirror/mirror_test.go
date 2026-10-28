@@ -114,7 +114,7 @@ func TestWatchShortErrorsNoChange(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 	calls := 0
-	Watch(ctx, p, ReadOnly, time.Millisecond, time.Second, func(string) { calls++ })
+	Watch(ctx, p, ReadOnly, time.Millisecond, time.Hour, func(string) { calls++ })
 	if calls != 0 {
 		t.Fatalf("onChange %d mal", calls)
 	}
@@ -161,7 +161,7 @@ func (hangProber) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 func TestWatchHangingProbeCountsAsLost(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var reasons []string
 	Watch(ctx, hangProber{}, ReadOnly, 5*time.Millisecond, 20*time.Millisecond, func(r string) { reasons = append(reasons, r) })
@@ -170,22 +170,73 @@ func TestWatchHangingProbeCountsAsLost(t *testing.T) {
 	}
 }
 
+// clockProber: wie fakeProber, aber jede Abfrage rückt die Testuhr um step vor;
+// nach allen Antworten wird stop gerufen (Ende ohne Zeitgrenze im Test).
+type clockProber struct {
+	fakeProber
+	clock *time.Time
+	step  time.Duration
+	stop  func()
+}
+
+func (c *clockProber) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	c.fakeProber.mu.Lock()
+	*c.clock = c.clock.Add(c.step)
+	last := c.fakeProber.n >= len(c.fakeProber.replies)
+	c.fakeProber.mu.Unlock()
+	if last {
+		c.stop()
+	}
+	return c.fakeProber.QueryRow(ctx, sql, args...)
+}
+
+// withClock ersetzt die Uhr von Watch für die Dauer des Tests.
+func withClock(t *testing.T) *time.Time {
+	t.Helper()
+	clock := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	old := now
+	now = func() time.Time { return clock }
+	t.Cleanup(func() { now = old })
+	return &clock
+}
+
+// Uhr statt Wartezeit: jede Abfrage „dauert“ 20 s, lost 30 s. Zwei Fehler
+// hintereinander bleiben darunter; ohne Zurücksetzen nach der guten Antwort
+// wäre die Grenze beim dritten Fehler überschritten.
 func TestWatchFailureClockResets(t *testing.T) {
 	ok := modeReply(true, false)
-	p := &fakeProber{replies: []reply{{err: errDB}, {err: errDB}, ok, {err: errDB}, {err: errDB}, ok}}
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	p := &clockProber{fakeProber: fakeProber{replies: []reply{{err: errDB}, {err: errDB}, ok, {err: errDB}, {err: errDB}, ok}},
+		clock: withClock(t), step: 20 * time.Second, stop: cancel}
 	calls := 0
-	Watch(ctx, p, ReadOnly, 10*time.Millisecond, 25*time.Millisecond, func(string) { calls++ })
+	Watch(ctx, p, ReadOnly, time.Millisecond, 30*time.Second, func(string) { calls++ })
 	if calls != 0 {
 		t.Fatalf("onChange %d mal", calls)
+	}
+	if p.n < 6 {
+		t.Fatalf("nur %d Abfragen", p.n)
+	}
+}
+
+// Gegenprobe zur Uhr: ohne gute Antwort dazwischen greift lost.
+func TestWatchFailureClockExpires(t *testing.T) {
+	ok := modeReply(true, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p := &clockProber{fakeProber: fakeProber{replies: []reply{{err: errDB}, {err: errDB}, {err: errDB}, ok}},
+		clock: withClock(t), step: 20 * time.Second, stop: cancel}
+	var reasons []string
+	Watch(ctx, p, ReadOnly, time.Millisecond, 30*time.Second, func(r string) { reasons = append(reasons, r) })
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "Datenbank") {
+		t.Fatalf("reasons=%v", reasons)
 	}
 }
 
 func TestWatchEveryZeroNoPanic(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	Watch(ctx, &fakeProber{replies: []reply{modeReply(true, false)}}, ReadOnly, 0, time.Second, func(string) { t.Fatal("onChange") })
+	Watch(ctx, &fakeProber{replies: []reply{modeReply(true, false)}}, ReadOnly, 0, time.Hour, func(string) { t.Fatal("onChange") })
 }
 
 // sqlProber merkt sich die Abfrage und liefert eine Antwort.

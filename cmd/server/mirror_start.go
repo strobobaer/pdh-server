@@ -2,16 +2,84 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
+	"pdh/internal/mirror"
 	"pdh/pkg/config"
 	"pdh/pkg/database"
 	"pdh/pkg/logger"
 )
+
+// haStat prüft Dateien für haConfigured (in Tests ersetzbar).
+var haStat = os.Stat
+
+// haConfigured: Dieser Rechner gehört zu einem Ausfallschutz-Verbund – pdh-ha
+// ist eingerichtet (node.json unter PDH_HA_ETC, sonst /etc/pdh/ha, wie pdh-ha
+// selbst). Der Ordner ist 0700 root; der Dienstbenutzer pdh bekommt dann
+// „keine Berechtigung“ – das zählt als eingerichtet (pdh-ha ist installiert,
+// und das geschieht erst nach der Einrichtung des PDH).
+func haConfigured() bool {
+	dir := "/etc/pdh/ha"
+	if v := os.Getenv("PDH_HA_ETC"); v != "" {
+		dir = v
+	}
+	_, err := haStat(filepath.Join(dir, "node.json"))
+	return err == nil || !errors.Is(err, fs.ErrNotExist)
+}
+
+// detectWithRetry: Modus ermitteln, bei Fehler bis zu tries Versuche im Abstand wait.
+func detectWithRetry(tries int, wait time.Duration, detect func() (mirror.Mode, error)) (mirror.Mode, error) {
+	var (
+		m   mirror.Mode
+		err error
+	)
+	for i := 0; i < tries; i++ {
+		if i > 0 {
+			time.Sleep(wait)
+		}
+		if m, err = detect(); err == nil {
+			return m, nil
+		}
+	}
+	return m, err
+}
+
+// watchSchemaCatchUp: Im eingeschränkten Spiegel alle every prüfen, ob die
+// Datenbank den Programmstand erreicht hat (keine offenen Migrationen mehr,
+// d. h. der aktive Server ist aktualisiert und das Schema repliziert). Dann
+// genau einmal done rufen und zurückkehren. Fehler: weiter warten. Jede Prüfung
+// ist auf every begrenzt; every <= 0 wird auf 1 s gesetzt.
+func watchSchemaCatchUp(ctx context.Context, every time.Duration, pending func(context.Context) (int, error), done func()) {
+	if every <= 0 {
+		every = time.Second
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		pctx, cancel := context.WithTimeout(ctx, every)
+		n, err := pending(pctx)
+		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil && n == 0 {
+			done()
+			return
+		}
+	}
+}
 
 // schemaBehind: Die Datenbank ist eingerichtet, aber der Spiegel hinkt dem
 // Programmstand bei den Migrationen hinterher (Anmeldung dann eingeschränkt).

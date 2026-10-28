@@ -89,7 +89,7 @@ func TestReadOnlyAllowsAuth(t *testing.T) {
 	if *calls != len(cases) {
 		t.Fatalf("durchgereicht: %d", *calls)
 	}
-	for _, p := range []string{"/loginx", "/admin/server-config", "/admin/server-config/hax", "/language", "/api/v1/users/login/x", "/api/v1/users"} {
+	for _, p := range []string{"/loginx", "/login/forgot", "/login/reset", "/login/change", "/login/x", "/admin/server-config", "/admin/server-config/hax", "/language", "/api/v1/users/login/x", "/api/v1/users"} {
 		if rec := mirrorServe(hd, http.MethodPost, p, nil); rec.Code != http.StatusConflict {
 			t.Fatalf("POST %s muss gesperrt sein: %d", p, rec.Code)
 		}
@@ -167,8 +167,8 @@ func TestReadOnlyTracerConverts500(t *testing.T) {
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("Cache-Control: %q", rec.Header().Get("Cache-Control"))
 	}
-	// erlaubter Schreibpfad (z. B. Passwort vergessen) schreibt trotzdem
-	rec = mirrorServe(h.MirrorMiddleware(writeIn25006(true)), http.MethodPost, "/login/forgot", map[string]string{"HX-Request": "true"})
+	// erlaubter Schreibpfad (Anmeldung) schreibt trotzdem
+	rec = mirrorServe(h.MirrorMiddleware(writeIn25006(true)), http.MethodPost, "/login", map[string]string{"HX-Request": "true"})
 	if rec.Code != http.StatusConflict || rec.Header().Get("X-PDH-Spiegel") != "1" {
 		t.Fatalf("htmx mit Marke: %d %v", rec.Code, rec.Header())
 	}

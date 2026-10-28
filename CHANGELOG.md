@@ -18,11 +18,11 @@ im Kapitel „Versionen & Updates“ an.
 - Ein Band oben auf jeder Seite zeigt am Spiegel den Datenstand („aktuell“ oder „vor …“), den aktiven Server und – bei Ausfall – den Stand der letzten Daten.
 - Übernimmt der Spiegel die Rolle, startet das PDH dort nach etwa 10 Sekunden von selbst neu und ist schreibbar; Anmeldungen bleiben gültig.
 - `/health` zeigt die Betriebsart (`spiegel` oder `normal`).
+- Wartet der Spiegel auf das Update des aktiven Servers, startet das PDH dort kurz nach diesem Update von selbst neu und zeigt wieder alle Seiten.
 
 ### Geändert
-- `pdh-ha` startet das PDH auch auf dem passiven Server, der Cloudflare-Tunnel läuft nur noch auf dem aktiven.
-- Nach dem Hochfahren startet `pdh-ha` das PDH erst nach wenigen Sekunden, nicht mehr beim Booten.
-- Am Spiegel entfallen VPN-Schlüssel und Zertifizierungsstelle neu anlegen, Hintergrundaufgaben und Benachrichtigungen; reines Ansehen von Seiten schreibt dort nichts mehr.
+- `pdh-ha` startet das PDH jetzt auch auf dem passiven Server (als Spiegel), der Cloudflare-Tunnel läuft nur noch auf dem aktiven.
+- Am Spiegel entfallen VPN-Schlüssel und Zertifizierungsstelle neu anlegen, Passwort vergessen oder ändern, Hintergrundaufgaben und Benachrichtigungen; reines Ansehen von Seiten schreibt dort nichts mehr.
 
 ### Behoben
 - Docker-Testsystem: Der Build bricht nicht mehr wegen der eingebetteten Skripte ab.

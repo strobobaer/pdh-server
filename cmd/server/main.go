@@ -78,6 +78,12 @@ func main() {
 
 	db, err := openDatabase(&cfg.Database)
 	if err != nil {
+		// Im Ausfallschutz-Verbund nie den Assistenten öffnen (z. B. auf dem
+		// passiven Server, solange PostgreSQL noch startet): beenden, systemd
+		// bzw. pdh-ha starten neu.
+		if haConfigured() {
+			log.Fatal().Err(err).Msg("datenbank nicht verfügbar – Ausfallschutz eingerichtet, kein Einrichtungsassistent; neuer Versuch durch systemd/pdh-ha")
+		}
 		// Datenbank fehlt/unerreichbar -> Einrichtungsassistent im Browser
 		log.Warn().Err(err).Msg("datenbank nicht verfügbar – starte Einrichtungsassistent")
 		if err := setup.Run(context.Background(), setup.Options{Addr: addr, NeedDB: true, DBError: err.Error()}); err != nil {
@@ -95,10 +101,15 @@ func main() {
 
 	// Spiegelmodus: PostgreSQL-Standby bzw. schreibgeschützte Datenbank. Dann
 	// startet das PDH nur lesend, ohne Sicherung, Migration oder Hintergrunddienste.
-	detectCtx, detectCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	mode, merr := mirror.Detect(detectCtx, db.Pool)
-	detectCancel()
+	mode, merr := detectWithRetry(3, time.Second, func() (mirror.Mode, error) {
+		detectCtx, detectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer detectCancel()
+		return mirror.Detect(detectCtx, db.Pool)
+	})
 	if merr != nil {
+		if haConfigured() { // im Verbund nicht raten: keine Vollsicherung/Migration auf einem Spiegel
+			log.Fatal().Err(merr).Msg("spiegelmodus nicht ermittelbar – Ausfallschutz eingerichtet, neuer Versuch durch systemd/pdh-ha")
+		}
 		log.Warn().Err(merr).Msg("spiegelmodus nicht ermittelbar – starte wie gewohnt")
 	}
 	mirrorOn := mode == mirror.ReadOnly
@@ -330,6 +341,20 @@ func main() {
 		log.Error().Str("grund", reason).Msg("spiegelmodus gewechselt – neustart")
 		os.Exit(3)
 	})
+	// Eingeschränkter Spiegel: sobald das Schema nachgezogen ist (aktiver
+	// Server aktualisiert, Migrationen repliziert), neu starten – dann ohne Einschränkung.
+	if restricted {
+		go watchSchemaCatchUp(context.Background(), 30*time.Second, func(ctx context.Context) (int, error) {
+			pending, initialized, err := database.PendingMigrations(ctx, db.Pool, "migrations")
+			if err != nil || !schemaBehind(pending, initialized) {
+				return 0, err
+			}
+			return len(pending), nil
+		}, func() {
+			log.Warn().Msg("spiegel: datenbank auf programmstand – neustart ohne einschränkung")
+			os.Exit(3)
+		})
+	}
 
 	copilotModel := cfg.Copilot.Model // Ollama
 	if cfg.Copilot.Backend == "anthropic" {

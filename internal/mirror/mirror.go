@@ -45,6 +45,9 @@ func Detect(ctx context.Context, p Prober) (Mode, error) {
 	return Normal, nil
 }
 
+// now ist die Uhr für die Ausfallzeit in Watch (in Tests ersetzbar).
+var now = time.Now
+
 // Watch prüft alle every den Modus und blockiert bis ctx endet oder onChange
 // gerufen wurde (genau einmal, dann Rückkehr): bei abweichendem Modus oder wenn
 // Detect länger als lost durchgehend fehlschlägt. lost <= 0 heißt: Datenbank-
@@ -71,9 +74,9 @@ func Watch(ctx context.Context, p Prober, start Mode, every, lost time.Duration,
 		}
 		if err != nil {
 			if failSince.IsZero() {
-				failSince = time.Now()
+				failSince = now()
 			}
-			if lost > 0 && time.Since(failSince) >= lost {
+			if lost > 0 && now().Sub(failSince) >= lost {
 				onChange(fmt.Sprintf("Datenbank seit %s nicht erreichbar: %v", lost, err))
 				return
 			}
