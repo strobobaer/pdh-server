@@ -16,11 +16,12 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   document.documentElement.dataset.themeMode = mode;
   window.PDH_TERMINAL_INFRA = {{.TerminalInfraID}}; // Standort dieses Terminals (Infra-Picker)
   // Darstellung: am Benutzerkonto gespeichert (leer/0 = Firmenstandard)
-  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, scale: {{.Brand.ScaleValue}}, row: 100};
-  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
+  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, style: {{.Brand.StyleID}}, scale: {{.Brand.ScaleValue}}, row: 100};
+  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, style: {{.Look.User.Style}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
   window.PDH_LOOK_ALLOW = {{.Look.Allow}};
   window.PDH_PALETTES = {{.Brand.PaletteIDs}};
   document.documentElement.dataset.palette = {{.Look.PaletteID}};
+  document.documentElement.dataset.style = {{.Look.StyleID}};
   try { localStorage.removeItem('pdh_palette'); } catch(e) {} // frueher im Browser gespeichert
   if(localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches) document.documentElement.classList.add('sidebar-left-collapsed');
   // per Ziehen eingestellte Breiten der Seitenleisten (pdhResizer)
@@ -380,6 +381,11 @@ tr:last-child td{border:0}
 .theme-toggle{height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;gap:8px;font-size:13px;font-family:var(--font);cursor:pointer}
 .theme-toggle:hover{border-color:var(--muted);background:var(--bg2)}
 .theme-toggle i{font-size:16px;color:var(--accent)}
+/* Kopfleiste: Symbolknöpfe ohne Text, Erklärung im Tooltip (title), Gruppen mit Trennstrich */
+.topbar .theme-toggle{width:40px;min-width:40px;height:40px;padding:0;justify-content:center}
+.topbar .theme-toggle > span:not(.ctx-badge){display:none}
+.topbar .theme-toggle i{font-size:18px}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 4px;flex-shrink:0}
 html.icons-fallback .ti::before{font-family:var(--font);font-weight:700;display:inline-block;line-height:1}
 html.icons-fallback .ti-plus::before{content:"+"}
 html.icons-fallback .ti-refresh::before{content:"R"}
@@ -522,6 +528,12 @@ select.form-input option{background:var(--bg2)}
 .look-row{display:flex;align-items:center;gap:6px;margin:6px 0}
 .look-row select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;font-size:12px;padding:4px 6px}
 .look-step{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:15px;line-height:1}
+.look-style{gap:0}
+.look-style i{margin-right:6px}
+.look-seg{flex:1;min-height:28px;padding:0 6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.look-seg:first-of-type{border-radius:6px 0 0 6px}
+.look-seg:last-of-type{border-radius:0 6px 6px 0;border-left:0}
+.look-seg.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 .look-pct{min-width:48px;text-align:center;font-size:12.5px;font-weight:600}
 .look-actions{display:flex;gap:6px;margin-top:8px}
 .look-actions button{flex:1;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-family:var(--font)}
@@ -633,6 +645,79 @@ tr:hover td{background:var(--fill-hover)}
 @media (max-width:760px){.main{border-radius:0;border-left:0}}
 /* Touch (Tablet an der Anlage): Ziele groß genug lassen */
 @media (pointer:coarse){.btn{min-height:42px}.btn-small{min-height:40px}.btn-icon{width:42px;min-width:42px;height:42px}}
+/* ── SAP-Fiori-Optik (Horizon), Design-Stil „fiori“ (ui_style.go) ──────
+   Weiße Kopfleiste und Navigation mit Schatten auf grauem Grund, Karten
+   ohne Rahmen mit 12 px Ecke, Knöpfe mit 8 px Ecke (Standard: weiß mit
+   blauer Schrift, hervorgehoben: Akzentfläche), Reiter mit durchgehender
+   Unterstreichung. Der Akzent bleibt beim Farbschema. */
+html[data-style="fiori"]{
+  --bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--layer:#12171c;
+  --text:#eaecee;--muted:#a9b4be;--border:#3a4552;
+  --stroke:rgba(234,236,238,.12);--stroke-strong:rgba(234,236,238,.24);--fill-hover:rgba(234,236,238,.07);--fill-press:rgba(234,236,238,.04);
+  --shadow-card:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5);--shadow-flyout:0 0 2px rgba(0,0,0,.6),0 8px 16px rgba(0,0,0,.6);
+  --field-border:#8396a8;--btn-border:#8396a8
+}
+html[data-style="fiori"][data-theme="light"]{
+  --bg:#f5f6f7;--bg2:#ffffff;--bg3:#eff1f2;--layer:#f5f6f7;
+  --text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
+  --stroke:rgba(34,53,72,.12);--stroke-strong:rgba(34,53,72,.24);--fill-hover:rgba(34,53,72,.05);--fill-press:rgba(34,53,72,.08);
+  --shadow-card:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2);--shadow-flyout:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15);
+  --field-border:#556b82;--btn-border:#bcc3ca
+}
+/* Kopfleiste und Navigation: weiße Flächen mit Schatten */
+html[data-style="fiori"] .topbar{background:var(--bg2);height:52px;box-shadow:var(--shadow-card);position:relative;z-index:30}
+html[data-style="fiori"] .sidebar,html[data-style="fiori"] .context,html[data-style="fiori"] .ctx-tabs{background:var(--bg2)}
+html[data-style="fiori"] .sidebar{border-right:1px solid var(--border)}
+html[data-style="fiori"] .context{border-left:1px solid var(--border)}
+html[data-style="fiori"] .main{background:var(--bg);border:0;border-radius:0}
+html[data-style="fiori"] .nav-section{font-size:12px;font-weight:700;color:var(--muted)}
+html[data-style="fiori"] .nav-item{border-radius:8px;opacity:1;color:var(--text)}
+html[data-style="fiori"] .nav-item i{color:var(--text)}
+html[data-style="fiori"] .nav-item.active{background:rgba(var(--accent-rgb),.12);color:var(--accent);font-weight:700}
+html[data-style="fiori"] .nav-item.active i{color:var(--accent)}
+html[data-style="fiori"] .nav-item.active::before{display:none}
+html[data-style="fiori"] .nav-fold{border-radius:8px}
+html[data-style="fiori"] .sidebar-toggle,html[data-style="fiori"] .topbar-clock,html[data-style="fiori"] .topbar-user,html[data-style="fiori"] .theme-toggle{border-radius:8px;border-color:transparent;background:transparent}
+html[data-style="fiori"] .sidebar-toggle:hover,html[data-style="fiori"] .topbar-clock:hover,html[data-style="fiori"] .topbar-user:hover,html[data-style="fiori"] .theme-toggle:hover{background:var(--fill-hover);border-color:transparent}
+/* Karten und Kennzahlen */
+html[data-style="fiori"] .card,html[data-style="fiori"] .kpi,html[data-style="fiori"] .stat{background:var(--bg2);border:0;border-radius:12px;box-shadow:var(--shadow-card)}
+html[data-style="fiori"] a.kpi:hover{background:var(--bg2);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.6),var(--shadow-card)}
+html[data-style="fiori"] .card-title{font-size:14px;font-weight:700}
+html[data-style="fiori"] .kpi .v,html[data-style="fiori"] .stat-val{font-weight:400;font-size:26px;letter-spacing:0}
+html[data-style="fiori"] .stat-label{text-transform:none;letter-spacing:0;font-size:12px}
+html[data-style="fiori"] .rec-head h1{font-size:20px;font-weight:700}
+/* Knöpfe: Standard weiß mit Akzentschrift, hervorgehoben fett auf Akzent */
+html[data-style="fiori"] .btn{border-radius:8px;border:1px solid var(--btn-border);background:var(--bg2);color:var(--accent);font-weight:600}
+html[data-style="fiori"] .btn:hover{background:rgba(var(--accent-rgb),.08);border-color:var(--btn-border)}
+html[data-style="fiori"] .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+html[data-style="fiori"] .btn-primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000)}
+html[data-style="fiori"] .btn-success{background:var(--green);border-color:var(--green);color:#fff}
+html[data-style="fiori"] .btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
+html[data-style="fiori"] .btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+html[data-style="fiori"] .btn-icon{border-color:transparent;background:transparent}
+html[data-style="fiori"] .btn-icon:hover{background:rgba(var(--accent-rgb),.08)}
+/* Menüeinträge sind technisch .btn – dort bleibt es bei der schlichten Menüzeile */
+html[data-style="fiori"] .win11-menu > .btn{border:0;background:transparent;color:var(--text);font-weight:400;border-radius:6px}
+html[data-style="fiori"] .win11-menu > .btn:hover{background:var(--fill-hover)}
+html[data-style="fiori"] .win11-menu > .btn-primary{color:var(--accent)}
+html[data-style="fiori"] .win11-menu > .btn-danger,html[data-style="fiori"] .win11-menu > .btn-warning{color:var(--red)}
+/* Eingabefelder */
+html[data-style="fiori"] .form-input{border-radius:4px;background:var(--bg2);border:1px solid var(--field-border)}
+html[data-style="fiori"] .form-input:hover{background:var(--bg2);border-color:var(--accent)}
+html[data-style="fiori"] .form-input:focus{border:1px solid var(--accent);box-shadow:0 0 0 1px var(--accent);padding-bottom:8px}
+/* Reiter wie die Fiori-Icon-Tab-Bar: Akzentschrift, durchgehende Linie */
+html[data-style="fiori"] .rec-tab,html[data-style="fiori"] .list-tabs a{color:var(--text);border-radius:0}
+html[data-style="fiori"] .rec-tab:hover,html[data-style="fiori"] .list-tabs a:hover{background:transparent;color:var(--accent)}
+html[data-style="fiori"] .rec-tab.active,html[data-style="fiori"] .list-tabs a.active{color:var(--accent);font-weight:700}
+html[data-style="fiori"] .rec-tab.active::after,html[data-style="fiori"] .list-tabs a.active::after{left:0;right:0;width:auto;margin:0;height:3px;border-radius:2px 2px 0 0}
+/* Tabellen: Kopf ohne Großbuchstaben, ruhige Trennlinien */
+html[data-style="fiori"] th{font-weight:400;font-size:12.5px;color:var(--muted);border-bottom-color:var(--border)}
+html[data-style="fiori"] td{border-bottom-color:var(--border)}
+html[data-style="fiori"] tr:hover td{background:var(--bg3)}
+/* Hinweise, Menüs, Dialoge */
+html[data-style="fiori"] .badge{border-radius:4px}
+html[data-style="fiori"] .rec-msg{border-radius:8px}
+html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-style="fiori"] .win11-menu,html[data-style="fiori"] .chat-toast{border-radius:12px}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -641,9 +726,23 @@ tr:hover td{background:var(--fill-hover)}
    Navigation als ausfahrbares Menue (☰), kompakte Kopfzeile, einspaltige
    Raster, wischbare Tabellen. Touch-Geraete: groessere Tippflaechen. */
 .topbar-burger,.topbar-ctx,.pdh-backdrop,.win11-menu a.tb-share-menu{display:none}
+/* Uhr und Konto-Knopf bleiben immer ganz sichtbar (nichts rechts schrumpft).
+   Wird es eng, kürzt sich der Seitentitel; reicht das nicht, blendet
+   pdhTopbarFit() die übrigen Knöpfe nach data-tb-hide aus (1 zuerst). */
+.topbar > div{min-width:0}
+.topbar > div > *{flex-shrink:0}
+.topbar-path{white-space:nowrap}
+.topbar-cur{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .tb-auto-off{display:none!important}
+/* ausgeblendete Knöpfe erscheinen stattdessen im Benutzermenü (tb-off-N am html) */
+.win11-menu a.tb-ctx-menu,.win11-menu a.tb-theme-menu{display:none}
+html.tb-off-1 .win11-menu a.tb-share-menu,html.tb-off-3 .win11-menu a.tb-theme-menu,html.tb-off-5 .win11-menu a.tb-ctx-menu{display:flex}
 .pdh-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:440}
 [oncontextmenu]{-webkit-touch-callout:none}
 @media (max-width:1180px){
+  .tb-sep{display:none}
+  .topbar-clock .clk-day{display:none}
+  .topbar .theme-toggle{width:36px;min-width:36px}
   .app{grid-template-columns:var(--left-sidebar-w) 1fr}
   .pdh-resizer.right{display:none}
   .context{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:450;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .2s ease}
@@ -663,7 +762,7 @@ tr:hover td{background:var(--fill-hover)}
   .topbar-path,.status-dot,.tb-label,.tu-name,.tb-share{display:none}
   .win11-menu a.tb-share-menu{display:flex}
   .topbar-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
-  .topbar > div{gap:6px!important;margin-left:0!important}
+  .topbar > div{gap:4px!important;margin-left:0!important}
   .theme-toggle{padding:0 10px;height:40px}
   .theme-toggle > span:not(.ctx-badge){display:none}
   .topbar-clock{height:40px;padding:0 8px;gap:4px}
@@ -686,8 +785,10 @@ tr:hover td{background:var(--fill-hover)}
   .rec-tab{white-space:nowrap}
   .rec-head h1{font-size:16px}
   input,select,textarea{font-size:16px!important} /* iOS zoomt sonst beim Antippen */
-  .win11-menu{max-width:calc(100vw - 16px)}
-  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh - 70px);overflow-y:auto}
+  /* 100vw zählt ohne den Zoom der Größe (--ui-scale), daher umrechnen */
+  .win11-menu{max-width:calc(100vw / var(--ui-scale, 1) - 16px)}
+  #user-menu{min-width:0!important;width:calc(100vw / var(--ui-scale, 1) - 16px);max-width:340px}
+  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh / var(--ui-scale, 1) - 70px);overflow-y:auto}
   .context{width:100vw}
   .pdh-frame-panel{width:100%}
 }
@@ -698,6 +799,7 @@ tr:hover td{background:var(--fill-hover)}
   .infra-picker-tree{max-height:45vh}
   .pal-dot{width:28px;height:28px}
   .look-step{width:36px;height:36px}
+  .look-seg{min-height:36px}
 }
 </style>
 <style id="pdh-theme">{{.Brand.ThemeCSS}}</style>
@@ -846,19 +948,22 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="{{t "Navigation öffnen"}}" title="{{t "Navigation"}}"><i class="ti ti-menu-2"></i></button>
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
       <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="{{t "Zeiterfassung öffnen"}}" aria-label="{{t "Uhrzeit – Zeiterfassung öffnen"}}">
         <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>
       </a>
-      <button type="button" class="theme-toggle topbar-cop" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
+      <span class="tb-sep" aria-hidden="true"></span>
       {{if and .CanChat (ne .Page "chat")}}
-      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
-      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="{{t "Chat in der Seitenleiste"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
+      <button type="button" class="theme-toggle tb-share" data-tb-hide="1" onclick="pdhShareToChat()" aria-label="{{t "Im Chat teilen"}}" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
+      <button type="button" class="theme-toggle" data-tb-hide="4" onclick="activateContextTab('chat')" aria-label="{{t "Chat"}}" title="{{t "Chat in der Seitenleiste öffnen"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
       {{end}}
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="{{t "Darstellung wechseln"}}" title="{{t "Darstellung wechseln"}}">
+      <button type="button" class="theme-toggle topbar-cop" data-tb-hide="2" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button type="button" class="theme-toggle" id="theme-toggle" data-tb-hide="3" onclick="cycleThemeMode()" aria-label="{{t "Hell/Dunkel wechseln"}}" title="{{t "Hell/Dunkel wechseln"}}">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
+      {{template "lang-switch"}}
       {{if .IsBoardVisit}}
       <a class="btn btn-small" href="/logout" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" title="{{t "Kurzzugang beenden und zurück zum Leitstand"}}">
         <i class="ti ti-corner-up-left"></i><span class="tb-label"> {{t "Zurück zum Leitstand"}}</span>
@@ -873,10 +978,10 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         <i class="ti ti-user-plus"></i><span class="tb-label"> {{t "Anmelden zur Erledigung"}}</span>
       </button>
       {{end}}
-      <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
-      {{template "lang-switch"}}
+      <button type="button" class="theme-toggle topbar-ctx" data-tb-hide="5" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
+      <span class="tb-sep" aria-hidden="true"></span>
       <div style="position:relative">
-        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
+        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}" title="{{t "Mein Konto, Darstellung und Abmelden"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
@@ -884,6 +989,8 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
           <a href="#" class="menu-item" id="um-dw-edit" onclick="closeMenu('user-menu'); pdhDashboardEdit(); return false;"><i class="ti ti-layout-dashboard"></i>{{t "Dashboard anpassen"}}</a>
           <a href="#" class="menu-item" id="um-nav-edit" onclick="closeMenu('user-menu'); pdhNavEdit(true); return false;"><i class="ti ti-adjustments-horizontal"></i>{{t "Navigation anpassen"}}</a>
           {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>{{t "Im Chat teilen"}}</a>{{end}}
+          <a href="#" class="menu-item tb-ctx-menu" onclick="closeMenu('user-menu'); toggleSidebar('right'); return false;"><i class="ti ti-layout-sidebar-right"></i>{{t "Suche, Hilfe & mehr"}}</a>
+          <a href="#" class="menu-item tb-theme-menu" onclick="cycleThemeMode(); return false;"><i class="ti ti-sun-moon"></i>{{t "Hell/Dunkel wechseln"}}</a>
           <form method="post" action="/translate/live/toggle" style="margin:0" onsubmit="this.back.value=location.pathname+location.search"><input type="hidden" name="back" value="/">
             <button type="submit" class="menu-item" style="width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;color:inherit" translate="no"><i class="ti ti-language"></i>{{if .LiveTranslateOn}}{{t "Live-Übersetzung ausschalten"}}{{else}}{{t "Live-Übersetzung einschalten"}}{{end}}{{if and .LiveTranslateOn (not .LiveTranslateAvail)}} <span title="{{t "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)"}}" style="color:var(--amber)">⚠</span>{{end}}</button></form>
           <div class="pal-menu look-menu">
@@ -891,6 +998,9 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
             {{if .Look.Allow}}<div class="pal-row">
               <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="lookSet('palette','')" title="{{t "Firmenstandard"}} ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
               {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="lookSet('palette','{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
+            </div>
+            <div class="look-row look-style" role="group" aria-label="{{t "Design-Stil"}}"><i class="ti ti-layout-grid" title="{{t "Design-Stil"}}"></i>
+              {{range .Brand.Styles}}<button type="button" class="look-seg" data-style-pick="{{.ID}}" onclick="lookSet('style','{{.ID}}')" title="{{.Name}}: {{.Hint}}">{{.Short}}</button>{{end}}
             </div>
             <div class="look-row"><i class="ti ti-typography" title="{{t "Schriftart"}}"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="{{t "Schriftart"}}">
               <option value="">{{t "Firmenstandard"}}</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
@@ -1107,7 +1217,7 @@ function applyThemeMode(mode) {
   const btn = document.getElementById('theme-toggle');
   if(icon) icon.className = meta.icon;
   if(label) label.textContent = meta.label;
-  if(btn) btn.title = 'Darstellung: ' + meta.label;
+  if(btn) btn.title = 'Hell/Dunkel: ' + meta.label + ' – klicken zum Wechseln';
 }
 // Darstellung (Farbschema, Schrift, Groesse, Zeilenhoehe): sofort sichtbar, mit
 // „Speichern“ am Konto abgelegt. Leer/0 = Firmenstandard.
@@ -1133,19 +1243,22 @@ function lookApply() {
   const row = lookEffective('row');
   root.style.setProperty('--row-scale', (row / 100).toFixed(2));
   const rp = document.getElementById('look-row'); if(rp) rp.textContent = row + ' %';
+  if(window.pdhTopbarFitSoon) pdhTopbarFitSoon();
+  root.dataset.style = window.PDH_LOOK_ALLOW && lookDraft.style ? lookDraft.style : window.PDH_LOOK_DEFAULT.style;
+  document.querySelectorAll('[data-style-pick]').forEach(b => { const on = b.dataset.stylePick === root.dataset.style; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   const sel = document.getElementById('look-font'); if(sel) sel.value = lookDraft.font || '';
   document.querySelectorAll('[data-palette-pick]').forEach(b => b.classList.toggle('on', b.dataset.palettePick === (lookDraft.palette || '')));
-  const dirty = ['palette','font','scale','row'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
+  const dirty = ['palette','font','style','scale','row'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
   const save = document.getElementById('look-save'); if(save) save.disabled = !dirty;
   const msg = document.getElementById('look-msg'); if(msg && dirty) msg.textContent = 'Vorschau – zum Behalten speichern';
 }
 function lookSet(k, v) { lookDraft[k] = v; lookApply(); }
 function lookStep(d) { lookDraft.scale = Math.max(70, Math.min(160, lookEffective('scale') + d)); lookApply(); }
 function lookRowStep(d) { lookDraft.row = Math.max(70, Math.min(150, lookEffective('row') + d)); lookApply(); }
-function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.scale = 0; lookDraft.row = 0; lookApply(); }
+function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.style = ''; lookDraft.scale = 0; lookDraft.row = 0; lookApply(); }
 async function lookSave() {
   const msg = document.getElementById('look-msg');
-  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', scale: String(lookDraft.scale || 0), row: String(lookDraft.row || 0)});
+  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', style: lookDraft.style || '', scale: String(lookDraft.scale || 0), row: String(lookDraft.row || 0)});
   try {
     const res = await fetch('/account/appearance', {method: 'POST', body, credentials: 'same-origin'});
     const json = await res.json();
@@ -1183,6 +1296,42 @@ async function lookSave() {
 // aktueller Zoom-Faktor (fuer pixelgenaue Positionierung von Menues)
 function pdhZoom() { return parseFloat(getComputedStyle(document.body).zoom) || 1; }
 document.addEventListener('DOMContentLoaded', lookApply);
+// Kopfleiste: passt nicht alles hinein, Knöpfe nach data-tb-hide ausblenden
+// (1 zuerst, Sprache zuletzt). Uhr und Konto-Knopf bleiben immer; der
+// Seitentitel darf vorher bis auf einen Rest schrumpfen.
+function pdhTopbarFit() {
+  const tb = document.querySelector('.topbar'); if(!tb) return;
+  const lang = tb.querySelector('.lang-switch');
+  if(lang) lang.dataset.tbHide = '6';
+  const off = [...tb.querySelectorAll('[data-tb-hide]')];
+  off.forEach(e => e.classList.remove('tb-auto-off'));
+  const html = document.documentElement;
+  [...html.classList].filter(c => c.startsWith('tb-off-')).forEach(c => html.classList.remove(c));
+  tb.querySelectorAll('.tb-sep').forEach(e => e.classList.remove('tb-auto-off'));
+  const cur = tb.querySelector('.topbar-cur');
+  const tight = () => tb.scrollWidth > tb.clientWidth + 1 || (cur && cur.scrollWidth > cur.clientWidth + 1 && cur.clientWidth < 60);
+  if(!tight()) return;
+  tb.querySelectorAll('.tb-sep').forEach(e => e.classList.add('tb-auto-off'));
+  off.sort((a, b) => a.dataset.tbHide - b.dataset.tbHide);
+  for(const e of off) {
+    if(!tight()) break;
+    if(getComputedStyle(e).display === 'none') continue;
+    e.classList.add('tb-auto-off');
+    html.classList.add('tb-off-' + e.dataset.tbHide);
+  }
+}
+(function(){
+  let t = 0;
+  const run = () => { cancelAnimationFrame(t); t = requestAnimationFrame(pdhTopbarFit); };
+  document.addEventListener('DOMContentLoaded', () => {
+    run();
+    const tb = document.querySelector('.topbar');
+    if(tb && window.ResizeObserver) new ResizeObserver(run).observe(tb);
+    if(document.fonts) document.fonts.ready.then(run);
+  });
+  window.addEventListener('resize', run);
+  window.pdhTopbarFitSoon = run;
+})();
 function cycleThemeMode() {
   const current = localStorage.getItem('pdh_theme') || 'system';
   const index = THEME_MODES.indexOf(current);

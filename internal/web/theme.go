@@ -261,16 +261,20 @@ func (h *Handler) BrandingThemeWeb(w http.ResponseWriter, r *http.Request) {
 	if !validScale(scale) {
 		scale = defaultScale
 	}
+	style := r.FormValue("style")
+	if !validStyle(style) {
+		style = defaultStyle
+	}
 	ctx := r.Context()
 	var err error
-	for k, v := range map[string]string{keyBrandTheme: theme, keyBrandThemeColor: color, keyBrandThemeUser: user, keyBrandFont: font, keyBrandScale: strconv.Itoa(scale)} {
+	for k, v := range map[string]string{keyBrandTheme: theme, keyBrandThemeColor: color, keyBrandThemeUser: user, keyBrandFont: font, keyBrandScale: strconv.Itoa(scale), keyBrandStyle: style} {
 		if e := h.setAppSetting(ctx, k, v); e != nil {
 			err = e
 		}
 	}
 	resetBrandingCache()
 	componentLog("konfiguration").Info().Str("farbschema", theme).Str("user", getUser(r).ID).Msg("farbschema gespeichert")
-	brandingRedirect(w, r, "Farbschema und Schrift gespeichert.", err)
+	brandingRedirect(w, r, "Farbschema, Design-Stil und Schrift gespeichert.", err)
 }
 
 // ── Farbrechnung ────────────────────────────────────────────

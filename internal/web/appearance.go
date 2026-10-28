@@ -74,6 +74,7 @@ func validRow(v int) bool { return v >= minRow && v <= maxRow }
 // UserAppearance: persoenliche Darstellung (leer/0 = Firmenstandard).
 type UserAppearance struct {
 	Palette, Font string
+	Style         string // Design-Stil (ui_style.go)
 	Scale         int
 	Row           int // Zeilenhoehe Tabellen/Listen in %
 }
@@ -92,10 +93,10 @@ func (h *Handler) appearance(r *http.Request, b Branding) Appearance {
 	a := Appearance{Brand: b, Allow: b.ThemeUserChoice}
 	if u := getUser(r); u.ID != "" && h.db != nil {
 		if row := userRowFrom(r.Context(), u.ID); row != nil {
-			a.User = UserAppearance{Palette: row.palette, Font: row.font, Scale: row.scale, Row: row.row}
+			a.User = UserAppearance{Palette: row.palette, Font: row.font, Style: row.style, Scale: row.scale, Row: row.row}
 		} else {
-			_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_scale, ui_row FROM users WHERE id = $1::uuid`, u.ID).
-				Scan(&a.User.Palette, &a.User.Font, &a.User.Scale, &a.User.Row)
+			_ = h.db.QueryRow(r.Context(), `SELECT ui_palette, ui_font, ui_style, ui_scale, ui_row FROM users WHERE id = $1::uuid`, u.ID).
+				Scan(&a.User.Palette, &a.User.Font, &a.User.Style, &a.User.Scale, &a.User.Row)
 		}
 	}
 	a.FontID = b.FontID()
@@ -178,7 +179,7 @@ func (b Branding) ScaleValue() int {
 	return defaultScale
 }
 
-// AppearanceSaveWeb: POST /account/appearance (palette, font, scale, row; leer = Firmenstandard)
+// AppearanceSaveWeb: POST /account/appearance (palette, font, style, scale, row; leer = Firmenstandard)
 func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
 	if u.ID == "" {
@@ -189,17 +190,21 @@ func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 	b := h.branding()
 	palette := strings.TrimSpace(r.FormValue("palette"))
 	font := strings.TrimSpace(r.FormValue("font"))
+	style := strings.TrimSpace(r.FormValue("style"))
 	scale, _ := strconv.Atoi(r.FormValue("scale"))
 	row, _ := strconv.Atoi(r.FormValue("row"))
 	err := func() error {
 		if !b.ThemeUserChoice {
-			palette, font = "", ""
+			palette, font, style = "", "", ""
 		}
 		if _, ok := b.palette(palette); palette != "" && !ok {
 			return errors.New("unbekanntes Farbschema")
 		}
 		if _, ok := uiFont(font); font != "" && !ok {
 			return errors.New("unbekannte Schrift")
+		}
+		if style != "" && !validStyle(style) {
+			return errors.New("unbekannter Design-Stil")
 		}
 		if scale != 0 && !validScale(scale) {
 			return fmt.Errorf("Größe muss zwischen %d und %d %% liegen", minScale, maxScale)
@@ -215,13 +220,16 @@ func (h *Handler) AppearanceSaveWeb(w http.ResponseWriter, r *http.Request) {
 		if font == b.FontID() {
 			font = ""
 		}
+		if style == b.StyleID() {
+			style = ""
+		}
 		if scale == b.ScaleValue() {
 			scale = 0
 		}
 		if row == defaultRow {
 			row = 0
 		}
-		_, err := h.db.Exec(r.Context(), `UPDATE users SET ui_palette=$1, ui_font=$2, ui_scale=$3, ui_row=$4 WHERE id=$5::uuid`, palette, font, scale, row, u.ID)
+		_, err := h.db.Exec(r.Context(), `UPDATE users SET ui_palette=$1, ui_font=$2, ui_scale=$3, ui_row=$4, ui_style=$5 WHERE id=$6::uuid`, palette, font, scale, row, style, u.ID)
 		return err
 	}()
 	w.Header().Set("Content-Type", "application/json")

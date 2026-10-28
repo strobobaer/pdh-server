@@ -37,8 +37,21 @@ input:focus{border-color:var(--accent)}
 <style>{{.Brand.ThemeCSS}}</style>
 {{with .Brand.DefaultLook.FontHref}}<link rel="stylesheet" href="{{.}}">{{end}}
 <style>{{.Brand.DefaultLook.CSS}} body{zoom:var(--ui-scale)}</style>
-<!-- Farbschema: Firmenstandard (Anmeldeseite immer dunkel) -->
-<script>document.documentElement.dataset.palette = {{.Brand.ThemeID}};</script>
+<!-- Farbschema und Design-Stil: Firmenstandard (Fluent dunkel, Fiori hell wie die SAP-Anmeldung) -->
+<script>document.documentElement.dataset.palette = {{.Brand.ThemeID}}; document.documentElement.dataset.style = {{.Brand.StyleID}};</script>
+<style>
+html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9}
+html[data-style="fiori"] .card{border:0;border-radius:16px;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"] .logo-icon{background:var(--accent);border-radius:8px}
+html[data-style="fiori"] .logo-text{font-weight:700}
+html[data-style="fiori"] h2{font-weight:700}
+html[data-style="fiori"] label{color:var(--muted);font-size:13px}
+html[data-style="fiori"] input{border:1px solid #556b82;border-radius:4px;background:#fff}
+html[data-style="fiori"] input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
+html[data-style="fiori"] .notice{color:#256f3a}
+html[data-style="fiori"] .error{color:#aa0808}
+</style>
 </head>
 <body>
 <div class="card">

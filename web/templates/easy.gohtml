@@ -83,7 +83,24 @@ textarea.ez-in{min-height:150px;resize:vertical}
 .ez-thumbs div{position:relative;width:84px;height:84px}
 .ez-thumbs img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
 .ez-thumbs button{position:absolute;top:-8px;right:-8px;width:28px;height:28px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:16px;cursor:pointer}
+/* Design-Stil Fiori (ui_style.go): Horizon-Farben, Flächen mit Schatten statt Rahmen */
+html[data-style="fiori"]{--bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--text:#eaecee;--muted:#a9b4be;--border:#3a4552;--red:#ff8888;--amber:#ffab1d;--green:#5dc122;--ez-shadow:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5)}
+@media (prefers-color-scheme:light){html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#eff1f2;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;--red:#aa0808;--amber:#e76500;--green:#256f3a;--ez-shadow:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2)}}
+html[data-style="fiori"] .ez-top{border-bottom:0;box-shadow:var(--ez-shadow)}
+html[data-style="fiori"] .ez-logo{background:var(--accent);border-radius:8px}
+html[data-style="fiori"] .ez-login{border-radius:8px;background:var(--bg2);color:var(--accent)}
+html[data-style="fiori"] .ez-big{border-radius:12px;box-shadow:var(--ez-shadow)}
+html[data-style="fiori"] .ez-big.f{background:#bb0000}
+html[data-style="fiori"] .ez-big.t{background:var(--accent)}
+html[data-style="fiori"] h2{text-transform:none;letter-spacing:0;font-size:15px;color:var(--text)}
+html[data-style="fiori"] .ez-item,html[data-style="fiori"] .ez-opt,html[data-style="fiori"] .ez-preset{border-color:transparent;border-radius:12px;box-shadow:var(--ez-shadow)}
+html[data-style="fiori"] .ez-opt.sel,html[data-style="fiori"] .ez-preset.sel{border-color:var(--accent)}
+html[data-style="fiori"] .ez-in{border:1px solid var(--muted);border-radius:4px}
+html[data-style="fiori"] .ez-in:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+html[data-style="fiori"] .ez-btn{border-radius:8px;background:var(--bg2);color:var(--accent);border-color:var(--muted)}
+html[data-style="fiori"] .ez-btn.go{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 </style>
+<script>document.documentElement.dataset.style = {{.Look.StyleID}};</script>
 </head>
 <body>
 <header class="ez-top">

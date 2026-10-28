@@ -89,6 +89,7 @@ type GlobalDashboardPageData struct {
 	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
 	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
 	PaletteID                 string        // wirksames Farbschema (Firmenstandard bzw. Wahl der angemeldeten Person)
+	StyleID                   string        // wirksamer Design-Stil (ui_style.go)
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -155,6 +156,7 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		Timeline:                  brand.Timeline,
 		ThemeCSS:                  brand.ThemeCSS(),
 		PaletteID:                 h.appearance(r, brand).PaletteID(),
+		StyleID:                   h.appearance(r, brand).StyleID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {

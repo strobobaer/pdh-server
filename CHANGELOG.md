@@ -27,6 +27,23 @@ im Kapitel „Versionen & Updates“ an.
 ### Behoben
 - Docker-Testsystem: Der Build bricht nicht mehr wegen der eingebetteten Skripte ab.
 - Der Reiter VPN zeigt Fehlermeldungen, statt einen leeren Schlüssel anzuzeigen.
+## [0.76.3] – 2026-10-28
+
+### Behoben
+- Auf Smartphone und Tablet war der Knopf für das Benutzermenü rechts aus dem Bild gerutscht – Uhr und Benutzermenü bleiben jetzt immer ganz sichtbar.
+- Mit vergrößerter Schrift war das geöffnete Benutzermenü auf dem Smartphone links abgeschnitten – es passt jetzt immer ins Bild.
+
+### Geändert
+- Ist die Kopfleiste zu schmal, kürzt sich zuerst der Seitentitel; danach werden Knöpfe ausgeblendet: Im Chat teilen, Copilot, Hell/Dunkel, Chat, rechte Seitenleiste, zuletzt die Sprache. „Im Chat teilen“, „Hell/Dunkel“ und „Suche, Hilfe & mehr“ stehen dann im Benutzermenü, Chat und Copilot als Reiter in der rechten Seitenleiste.
+- Anmeldeseite, Easy-Mode und Leitstand folgen jetzt ebenfalls dem Design-Stil (Fiori oder Fluent).
+
+## [0.76.2] – 2026-10-28
+
+### Neu
+- Design-Stil zum Umschalten: „Fiori“ (wie SAP, jetzt Standard) mit weißer Kopfleiste, Karten mit Schatten, Knöpfen mit blauer Schrift und durchgehend unterstrichenen Reitern, oder wie bisher „Fluent“ (wie Windows 11) – jeder wählt ihn im Benutzermenü unter „Darstellung“, der Firmenstandard steht unter Server-Einstellungen → Erscheinungsbild.
+
+### Geändert
+- Kopfleiste aufgeräumt: Chat teilen, Chat, Copilot, Hell/Dunkel und Sprache sind kleine Symbolknöpfe in Gruppen; was ein Knopf tut, zeigt der Hinweis beim Darüberfahren mit der Maus.
 
 ## [0.76.1] – 2026-10-28
 
