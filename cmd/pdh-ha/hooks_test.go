@@ -355,3 +355,32 @@ func TestRunHooksNow(t *testing.T) {
 		t.Fatal("Zeuge darf keine Skripte ausführen")
 	}
 }
+
+// Nach der Zeitüberschreitung darf kein Kindprozess des Skripts weiterlaufen.
+func TestHooksTimeoutKillsChildren(t *testing.T) {
+	skipWindows(t)
+	h, dir := testHookRunner(t)
+	h.timeout = 300 * time.Millisecond
+	marker := "19.31337" // eindeutige Schlafdauer als Erkennungszeichen
+	writeHook(t, dir, "10-kind", "#!/bin/sh\nsleep 19 "+marker+" 2>/dev/null &\nsleep 19 "+marker+"\n", 0o755)
+	r := h.run(context.Background(), hookEnv{Role: ha.Active})
+	if len(r) != 1 || r[0].OK || !strings.Contains(r[0].Out, "Zeitüberschreitung") {
+		t.Fatalf("Ergebnis: %+v", r)
+	}
+	waitFor(t, 3*time.Second, "Kindprozess läuft noch", func() bool { return !procWithArg(marker) })
+}
+
+// procWithArg: läuft ein Prozess mit diesem Argument? (/proc)
+func procWithArg(arg string) bool {
+	ents, _ := os.ReadDir("/proc")
+	for _, e := range ents {
+		raw, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if err == nil && strings.Contains(string(raw), arg) {
+			if st, err := os.ReadFile("/proc/" + e.Name() + "/stat"); err == nil && strings.Contains(string(st), ") Z ") {
+				continue // Zombie zählt nicht
+			}
+			return true
+		}
+	}
+	return false
+}

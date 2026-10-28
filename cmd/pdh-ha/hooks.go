@@ -298,8 +298,12 @@ func (h *hookRunner) runOne(ctx context.Context, f hookFile, e hookEnv) hookResu
 	cmd.Env = append([]string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, e.vars()...)
 	cmd.Stdout, cmd.Stderr = &out, &out // Stdin bleibt leer (/dev/null)
 	cmd.WaitDelay = hookKillWaitTime
+	hookProcGroup(cmd)
 	start := time.Now()
 	err := cmd.Run()
+	if cctx.Err() != nil || errors.Is(err, exec.ErrWaitDelay) {
+		hookKillGroup(cmd) // Kindprozesse, die Abbruch oder Ende überlebt haben
+	}
 	r := hookResult{Name: f.Name, OK: err == nil, Out: out.String(), Dur: time.Since(start).Seconds()}
 	why := "fehlgeschlagen"
 	if errors.Is(cctx.Err(), context.DeadlineExceeded) {
