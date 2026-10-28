@@ -87,6 +87,8 @@ type message struct {
 	Tun   string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
 	// cluster: dieser Knoten darf PostgreSQL für neue Adressen neu starten (addrs set --neustart)
 	RestartPG string `json:"restart_pg,omitempty"`
+	// cluster: Zugang (pg_hba, primary_conninfo) auch ohne Änderung neu schreiben (addrs set, Wiederholung)
+	ReapplyAccess bool `json:"reapply_access,omitempty"`
 
 	VoteTerm uint64         `json:"vote_term,omitempty"`
 	Granted  bool           `json:"granted,omitempty"`

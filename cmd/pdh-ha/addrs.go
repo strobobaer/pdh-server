@@ -11,8 +11,12 @@ package main
 // Standby immer, am aktiven Knoten nur auf ausdrücklichen Wunsch (--neustart),
 // sonst ein Hinweis. Der Wunsch reist in der Nachricht „cluster“ (RestartPG =
 // Kennung des Knotens) mit; geht er verloren (Knotenliste später per
-// Heartbeat nachgefordert), bleibt es beim Hinweis, und derselbe Befehl mit
-// --neustart holt den Neustart nach.
+// Heartbeat nachgefordert), bleibt es beim Alarm, und derselbe Befehl mit
+// --neustart holt den Neustart nach. Die eigenen Adressen des aktiven Servers
+// lassen sich nur mit --neustart ändern (sonst wäre der Spiegel getrennt).
+// Derselbe Befehl mit unveränderten Adressen verteilt die Liste erneut mit
+// ReapplyAccess: jeder Knoten schreibt den Zugang neu (Wiederholung nach
+// einem Fehler).
 
 import (
 	"context"
@@ -28,7 +32,8 @@ import (
 )
 
 // cleanNodeAddrs prüft neue Adressen wie beim Beitritt (fehlender Port: der
-// bisherige des Knotens, sonst 7480) – nur IP-Adressen, ohne Doppelte.
+// bisherige des Knotens, sonst 7480) – nur IP-Adressen, ohne Doppelte. Der
+// Port bleibt: der Dienst lauscht nur auf dem beim Start gewählten.
 func cleanNodeAddrs(cl clusterConfig, n clusterNode, addrs []string) ([]string, error) {
 	port := portOf(n.Addrs)
 	var in []string
@@ -61,6 +66,9 @@ func cleanNodeAddrs(cl clusterConfig, n clusterNode, addrs []string) ([]string, 
 		if err != nil {
 			return nil, fmt.Errorf("Ungültige Adresse %q – bitte eine IP-Adresse angeben", a)
 		}
+		if _, p, _ := net.SplitHostPort(a); p != port {
+			return nil, errors.New("Port kann nicht geändert werden")
+		}
 		ip = ip.Unmap()
 		if vip.IsValid() && ip == vip {
 			return nil, errors.New("Die mitwandernde Adresse darf kein Verbindungsweg sein")
@@ -92,8 +100,10 @@ func addrsChanged(old, new clusterConfig, id string) bool {
 
 // setNodeAddrs ändert die Adressen eines Mitglieds (nur am CA-Halter) und
 // verteilt die Knotenliste. restartPG erlaubt dem betroffenen Knoten, ein
-// aktives PostgreSQL für die neuen Adressen neu zu starten; mit unveränderten
-// Adressen holt er nur diesen Neustart nach.
+// aktives PostgreSQL für die neuen Adressen neu zu starten; ohne ihn lehnt
+// sie die Änderung der Adressen des aktiven Servers ab. Unveränderte Adressen
+// verteilen die Liste erneut: jeder Knoten schreibt den Zugang neu
+// (Wiederholung nach einem Fehler), mit restartPG samt Neustart.
 func (d *daemon) setNodeAddrs(id string, addrs []string, restartPG bool) error {
 	d.lock()
 	if err := d.clusterEditable(); err != nil {
@@ -114,9 +124,10 @@ func (d *daemon) setNodeAddrs(id string, addrs []string, restartPG bool) error {
 		d.unlock()
 		return err
 	}
-	if slices.Equal(clean, d.cl.Nodes[idx].Addrs) && !restartPG {
+	changed := !slices.Equal(clean, d.cl.Nodes[idx].Addrs)
+	if changed && !restartPG && d.activeLocked(id) {
 		d.unlock()
-		return nil
+		return errors.New("Adressen des aktiven Servers nur mit --neustart (PostgreSQL startet kurz neu)")
 	}
 	old := d.cl
 	cl := d.cl
@@ -134,15 +145,19 @@ func (d *daemon) setNodeAddrs(id string, addrs []string, restartPG bool) error {
 	}
 	d.cl = cl
 	pl := plan{net: d.net, ufw: true}
-	m := message{T: "cluster", ID: d.node.ID, Seq: d.nextSeq(), Cluster: &cl}
+	m := message{T: "cluster", ID: d.node.ID, Seq: d.nextSeq(), Cluster: &cl, ReapplyAccess: !changed}
 	if restartPG {
 		m.RestartPG = id
 	}
 	pl.send("", m)
-	d.followAddrsLocked(&pl, old, cl, restartPG && id == d.node.ID)
+	d.followAddrsLocked(&pl, old, cl, restartPG && id == d.node.ID, !changed)
 	nt, tick := d.net, d.settingsLocked().Tick
 	d.unlock()
-	pl.event("info", fmt.Sprintf("Adressen von %s geändert: %s", id, strings.Join(clean, ", ")))
+	if changed {
+		pl.event("info", fmt.Sprintf("Adressen von %s geändert: %s", id, strings.Join(clean, ", ")))
+	} else {
+		pl.event("info", fmt.Sprintf("Adressen von %s unverändert – Zugang wird überall neu geschrieben", id))
+	}
 	d.execute(context.Background(), pl)
 	// erst senden, dann die Wege wechseln: sonst ginge die Nachricht über
 	// einen gerade geschlossenen Weg verloren (wie beim Entfernen)
@@ -150,9 +165,20 @@ func (d *daemon) setNodeAddrs(id string, addrs []string, restartPG bool) error {
 	return nil
 }
 
+// activeLocked: Knoten id ist aktiv – laut eigenem Zustand bzw. letztem
+// Heartbeat des Partners.
+func (d *daemon) activeLocked(id string) bool {
+	if id == d.node.ID {
+		return d.p.Role == ha.Active
+	}
+	v := d.views[id]
+	return v.Last.T == "hb" && ha.Role(v.Last.Role) == ha.Active
+}
+
 // followAddrsLocked zieht nach einer neuen Knotenliste die eigenen Adressen in
-// node.json und PostgreSQL nach. restartReq: Neustart-Wunsch für diesen Knoten.
-func (d *daemon) followAddrsLocked(pl *plan, old, cl clusterConfig, restartReq bool) {
+// node.json und PostgreSQL nach. restartReq: Neustart-Wunsch für diesen Knoten;
+// reapply: Zugang auch ohne Änderung neu schreiben (Wiederholung).
+func (d *daemon) followAddrsLocked(pl *plan, old, cl clusterConfig, restartReq, reapply bool) {
 	self := d.node.ID
 	own := addrsChanged(old, cl, self)
 	if own {
@@ -173,13 +199,22 @@ func (d *daemon) followAddrsLocked(pl *plan, old, cl clusterConfig, restartReq b
 		}
 	}
 	pa := d.pgActorLocked()
-	if pa == nil || !own && !partner && !restartReq {
+	if pa == nil || !own && !partner && !restartReq && !reapply {
 		return
 	}
 	listen := own || restartReq
+	retry := "sudo pdh-ha addrs set " + self
+	if n, ok := findNode(cl, self); ok {
+		hosts := make([]string, len(n.Addrs))
+		for i, a := range n.Addrs {
+			hosts[i] = hostOfAddr(a)
+		}
+		retry += " " + strings.Join(hosts, ",")
+	}
 	d.enqueueFnLocked(context.Background(), func(ctx context.Context) {
 		if err := pa.reapplyAddrs(ctx, listen, restartReq); err != nil {
-			pa.ev.add(ha.Event{Kind: "alarm", Text: "PostgreSQL nicht auf die neuen Adressen umgestellt: " + err.Error()})
+			pa.ev.add(ha.Event{Kind: "alarm", Text: "PostgreSQL nicht auf die neuen Adressen umgestellt: " + err.Error() +
+				" – erneut versuchen: " + retry + " (am ersten Server)"})
 		}
 	})
 }
@@ -224,7 +259,8 @@ func (a *pgActor) reapplyAddrs(ctx context.Context, ownListenChanged, restartPri
 			return nil
 		}
 		if !restartPrimary {
-			a.ev.add(ha.Event{Kind: "warn", Text: fmt.Sprintf("Neustart von PostgreSQL nötig: sudo pdh-ha addrs set %s %s --neustart",
+			// eigentlich abgelehnt (setNodeAddrs); bleibt, wenn der Wunsch verloren ging
+			a.ev.add(ha.Event{Kind: "alarm", Text: fmt.Sprintf("Neustart von PostgreSQL nötig: sudo pdh-ha addrs set %s %s --neustart (am ersten Server) – Spiegel getrennt bis zum Neustart",
 				e.SelfID, strings.Join(e.Listen, ","))})
 			return nil
 		}

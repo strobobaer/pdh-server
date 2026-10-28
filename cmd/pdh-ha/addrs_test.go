@@ -45,10 +45,15 @@ func TestSetNodeAddrsRejectsVIP(t *testing.T) {
 		{"ungültig", "a", []string{"10.77.1.300"}},
 		{"Name statt IP", "a", []string{"server1"}},
 		{"keine im Netz der VIP", "a", []string{"192.168.5.5"}},
+		{"anderer Port", "a", []string{"10.77.1.15:7481"}},
 	} {
 		if err := d.setNodeAddrs(c.id, c.addrs, false); err == nil {
 			t.Errorf("%s: angenommen", c.name)
 		}
+	}
+	// der Dienst lauscht nur auf dem beim Start gewählten Port
+	if err := d.setNodeAddrs("a", []string{"10.77.1.15", "10.77.2.15:7481"}, true); err == nil || err.Error() != "Port kann nicht geändert werden" {
+		t.Fatalf("Port: %v", err)
 	}
 	if d.cl.Version != ver {
 		t.Fatalf("abgelehnte Änderung hat die Knotenliste verändert: Version %d", d.cl.Version)
@@ -89,10 +94,15 @@ func TestSetNodeAddrsPublishes(t *testing.T) {
 		defer fn.mu.Unlock()
 		return fn.cl.Version == ver+1
 	})
-	// unverändert ohne Neustart: nichts zu tun
-	if err := d.setNodeAddrs("b", []string{"10.77.1.16", "10.77.2.16"}, false); err != nil || d.cl.Version != ver+1 {
+	// unverändert ohne Neustart: erneut verteilt, Zugang überall neu schreiben
+	if err := d.setNodeAddrs("b", []string{"10.77.1.16", "10.77.2.16"}, false); err != nil || d.cl.Version != ver+2 {
 		t.Fatalf("unverändert: %v, Version %d", err, d.cl.Version)
 	}
+	msgs = fn.messages("cluster")
+	if last := msgs[len(msgs)-1].m; !last.ReapplyAccess || last.RestartPG != "" {
+		t.Fatalf("Wiederholung: %+v", last)
+	}
+	ver++
 	// eigene Adressen: node.json zieht mit; Neustart-Wunsch geht mit
 	if err := d.setNodeAddrs("a", []string{"10.77.1.15"}, true); err != nil {
 		t.Fatal(err)
@@ -167,8 +177,8 @@ func TestReapplyAddrsPrimaryNoRestart(t *testing.T) {
 	if !has(r.list(), "pg_ctlcluster 18 main reload") || has(r.list(), "pg_ctlcluster 18 main restart") {
 		t.Fatalf("aktiv ohne Erlaubnis: nur neu laden: %v", r.list())
 	}
-	if countEvents(a, "Neustart von PostgreSQL nötig: sudo pdh-ha addrs set a 10.0.0.11 --neustart") != 1 {
-		t.Fatal("Hinweis auf den Neustart fehlt")
+	if n := countKind(a, "alarm", "Neustart von PostgreSQL nötig: sudo pdh-ha addrs set a 10.0.0.11 --neustart (am ersten Server) – Spiegel getrennt bis zum Neustart"); n != 1 {
+		t.Fatalf("Alarm zum Neustart: %d", n)
 	}
 	r2 := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a2 := reapplyActor(t, r2, func(e *pgEnv) { e.Listen = []string{"10.0.0.11"} })
@@ -337,5 +347,108 @@ func TestSetClusterRetiresOldPaths(t *testing.T) {
 	ta.pathErr("b", "127.0.0.2:1", "Verbindung fehlgeschlagen")
 	if p := ta.peers(testTick)["b"].Paths; len(p) != 1 || p[0].Err == "" {
 		t.Fatalf("Weg nach Rückkehr: %+v", p)
+	}
+}
+
+func countKind(a *pgActor, kind, text string) int {
+	n := 0
+	for _, e := range a.ev.since(0, 0) {
+		if e.Kind == kind && e.Text == text {
+			n++
+		}
+	}
+	return n
+}
+
+// Die eigenen Adressen des aktiven Servers ändern trennte den Spiegel, bis
+// PostgreSQL neu startet – daher nur mit --neustart.
+func TestSetNodeAddrsActiveNeedsRestart(t *testing.T) {
+	d, fn := addrsDaemon(t, nodeConfig{ID: "a", Kind: "node", CAHolder: true}, ha.Active)
+	const want = "Adressen des aktiven Servers nur mit --neustart (PostgreSQL startet kurz neu)"
+	if err := d.setNodeAddrs("a", []string{"10.77.1.15"}, false); err == nil || err.Error() != want {
+		t.Fatalf("aktiv hier: %v", err)
+	}
+	// Partner b ist der passive: geht ohne
+	if err := d.setNodeAddrs("b", []string{"10.77.1.16"}, false); err != nil {
+		t.Fatal(err)
+	}
+	// unverändert (nur Zugang neu schreiben) geht auch am aktiven ohne
+	if err := d.setNodeAddrs("a", []string{"10.77.1.5"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.setNodeAddrs("a", []string{"10.77.1.15"}, true); err != nil {
+		t.Fatal(err)
+	}
+	// Partner aktiv laut letztem Heartbeat
+	p, _ := addrsDaemon(t, nodeConfig{ID: "a", Kind: "node", CAHolder: true}, ha.Passive)
+	p.lock()
+	p.views["b"] = seenView(message{Role: string(ha.Active), Term: 2})
+	p.unlock()
+	if err := p.setNodeAddrs("b", []string{"10.77.1.16"}, false); err == nil || err.Error() != want {
+		t.Fatalf("Partner aktiv: %v", err)
+	}
+	if err := p.setNodeAddrs("b", []string{"10.77.1.16"}, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = fn
+}
+
+// Scheitert das Umstellen am Partner, holt derselbe Befehl mit unveränderten
+// Adressen es nach (Zugang wird überall neu geschrieben).
+func TestAddrsRetryAfterFailure(t *testing.T) {
+	ca, cafn := addrsDaemon(t, nodeConfig{ID: "a", Kind: "node", CAHolder: true}, ha.Passive)
+	b, _ := addrsDaemon(t, nodeConfig{ID: "b", Kind: "node", Addrs: []string{"10.77.1.6:7480"}}, ha.Active)
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
+	pa, _ := primaryActor(t, r)
+	hbaPath := filepath.Join(pa.pg.c.ConfDir, "pg_hba.conf")
+	os.Remove(hbaPath) // Zugang kann nicht geschrieben werden
+	b.mu.Lock()
+	b.act = pa
+	b.mu.Unlock()
+	deliver := func() {
+		msgs := cafn.messages("cluster")
+		m := msgs[len(msgs)-1].m
+		b.handle(context.Background(), inbound{From: "a", Msg: m})
+		waitFor(t, 2*time.Second, "Abgleich gelaufen", b.actionsIdle)
+	}
+	if err := ca.setNodeAddrs("a", []string{"10.77.1.15"}, false); err != nil {
+		t.Fatal(err)
+	}
+	deliver()
+	if countEvents(pa, "PostgreSQL nicht auf die neuen Adressen umgestellt") != 1 ||
+		countEvents(pa, "PostgreSQL nicht auf die neuen Adressen umgestellt: Zugang für den Partner nicht geschrieben") != 1 {
+		t.Fatalf("Alarm fehlt: %v", pa.ev.since(0, 0))
+	}
+	found := false
+	for _, e := range pa.ev.since(0, 0) {
+		found = found || e.Kind == "alarm" && strings.HasSuffix(e.Text, "– erneut versuchen: sudo pdh-ha addrs set b 10.77.1.6 (am ersten Server)")
+	}
+	if !found {
+		t.Fatalf("Wiederholungsbefehl fehlt: %v", pa.ev.since(0, 0))
+	}
+	// Ursache behoben; ein fremder Absender kann das Neuschreiben nicht auslösen
+	os.WriteFile(hbaPath, []byte("local all postgres peer\n"), 0o640)
+	b.mu.Lock()
+	c := b.cl
+	b.cl.CAHolder = "x" // a ist hier nicht CA-Halter
+	b.mu.Unlock()
+	c.Version++
+	b.handle(context.Background(), inbound{From: "a", Msg: message{T: "cluster", ID: "a", Cluster: &c, ReapplyAccess: true}})
+	time.Sleep(50 * time.Millisecond)
+	waitFor(t, 2*time.Second, "Warteschlange leer", b.actionsIdle)
+	ca.lock()
+	ca.cl.Version = c.Version // Testnachricht hat diese Version verbraucht
+	ca.unlock()
+	if hba, _ := os.ReadFile(hbaPath); strings.Contains(string(hba), hbaBegin) {
+		t.Fatal("Neuschreiben ohne CA-Halter ausgelöst")
+	}
+	// gleicher Befehl, unveränderte Adressen
+	if err := ca.setNodeAddrs("a", []string{"10.77.1.15"}, false); err != nil {
+		t.Fatal(err)
+	}
+	deliver()
+	hba, _ := os.ReadFile(hbaPath)
+	if !strings.Contains(string(hba), hbaBegin) || !has(r.list(), "pg_ctlcluster 18 main reload") || has(r.list(), "pg_ctlcluster 18 main restart") {
+		t.Fatalf("Wiederholung: %v\n%s", r.list(), hba)
 	}
 }
