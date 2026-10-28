@@ -145,6 +145,7 @@ type daemon struct {
 
 	// Mitwandernde Adresse (nur Knoten); die Felder ändern sich nur unter mu.
 	ifAddrsFn   func() ([]ifAddr, error) // Netzwerkkarten (Tests: Fake)
+	hooks       *hookRunner              // Skripte beim Rollenwechsel
 	access      *accessWorker            // nil = keine Adresse auf diesem Server
 	accessKey   string                   // Einstellung, für die access gilt ("" = keine)
 	accessStop  context.CancelFunc
@@ -191,6 +192,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		ifAddrsFn: listIfAddrs,
 	}
 	d.act = observeActor{ev: ev}
+	d.hooks = newHookRunner(ev)
 	d.saveFn = st.saveState
 	d.tlsFn, d.peerPostFn, d.probeAddrFn, d.holdAfter = d.clusterTLS, d.peerPost, d.probeAddrLocal, time.After
 	return d
@@ -576,6 +578,8 @@ func (d *daemon) applyFirewallOnce() {
 func (d *daemon) run(ctx context.Context) error {
 	d.lock()
 	d.runCtx = ctx
+	d.hooks.ctx = ctx
+	go d.hooks.loop(ctx) // Skript-Ordner alle 30 s neu lesen
 	d.startLocked()
 	d.unlock()
 	go d.applyFirewall()
@@ -855,6 +859,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	d.replInputLocked(ctx, &in, s)
+	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
 	out := ha.Step(in)
 	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
 	if !out.Persist.Equal(d.p) || d.unsaved {
@@ -877,6 +882,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	if d.access != nil {
 		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
 	}
+	d.hooksChangedLocked(before, out.Persist.Role, booting)
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {

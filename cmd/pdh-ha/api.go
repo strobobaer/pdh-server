@@ -69,8 +69,13 @@ type apiAccess struct {
 	Tunnel   apiTunnel  `json:"tunnel"`
 }
 
-// apiHooks: Skripte beim Rollenwechsel (füllt Teil 5, Skripte).
-type apiHooks struct{}
+// apiHooks: Skripte beim Rollenwechsel.
+type apiHooks struct {
+	Names []string `json:"names"` // ausführbare Skripte in Laufreihenfolge
+	Sum   string   `json:"sum"`   // Prüfsumme über Namen und Inhalte
+	Same  bool     `json:"same"`  // kein gesehener Partner hat eine andere Prüfsumme
+	Last  *hookRun `json:"last"`  // letzter Lauf (nil = noch keiner)
+}
 
 // apiTunnel: Cloudflare-Tunnel (füllt Teil 5, Tunnel).
 type apiTunnel struct{}
@@ -328,6 +333,15 @@ func apiHandler(d *daemon) http.Handler {
 			return
 		}
 		apiOK(w)
+	})
+	// Skripte jetzt mit der aktuellen Rolle ausführen (Testen, Nachholen)
+	mux.HandleFunc("POST /v1/hooks/run", func(w http.ResponseWriter, r *http.Request) {
+		res, err := d.runHooksNow(r.Context())
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
 	})
 	// Adresstest; dauert bis etwa eine Minute (Client mit längerer Frist)
 	mux.HandleFunc("POST /v1/vip/test", func(w http.ResponseWriter, r *http.Request) {

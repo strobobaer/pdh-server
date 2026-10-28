@@ -35,6 +35,8 @@ const usage = `Aufruf: pdh-ha <Befehl>
   access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
                                       Zugangsweg: mitwandernde Adresse und Skripte
                                       (--vip-on erst nach erfolgreichem vip test)
+  hook run                            Skripte beim Rollenwechsel jetzt mit der aktuellen
+                                      Rolle ausführen und die Ausgabe zeigen
   vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
                                       (Standard: die eingetragene Adresse)
   reset --yes                         nach dem Entfernen: Konfiguration sichern und
@@ -234,6 +236,18 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "Test erfolgreich – die mitwandernde Adresse kann eingeschaltet werden.")
 		return 0
+	case "hook":
+		if len(args) != 2 || args[1] != "run" {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		var r struct {
+			Results []hookResult `json:"results"`
+		}
+		if err := apiDoT(sock, 5*time.Minute, http.MethodPost, "/v1/hooks/run", map[string]string{}, &r); err != nil {
+			return fail(err)
+		}
+		return printHookResults(stdout, r.Results)
 	case "reset":
 		yes := fs.Bool("yes", false, "bestätigen")
 		if fs.Parse(args[1:]) != nil {
@@ -416,6 +430,9 @@ func printStatus(w io.Writer, st apiStatus) {
 			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
 		}
 	}
+	if h := st.Access.Hooks; len(h.Names) > 0 || st.Access.HooksOn {
+		fmt.Fprintf(w, "Skripte: %d, %s, letzter Lauf %s\n", len(h.Names), sameText(h.Same), hookRunText(h.Last))
+	}
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
 		if p.Seen {
@@ -438,4 +455,44 @@ func printStatus(w io.Writer, st apiStatus) {
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "Hinweis: %s\n", x)
 	}
+}
+
+func sameText(same bool) string {
+	if same {
+		return "gleich"
+	}
+	return "anders als beim Partner"
+}
+
+// hookRunText: Ausgang des letzten Laufs für die Statuszeile.
+func hookRunText(r *hookRun) string {
+	if r == nil {
+		return "noch keiner"
+	}
+	for _, x := range r.Results {
+		if !x.OK {
+			return "mit Fehler (" + x.Name + ")"
+		}
+	}
+	return "ok"
+}
+
+// printHookResults zeigt je Skript ok oder Fehler plus Ausgabe; 1 bei Fehlern.
+func printHookResults(w io.Writer, res []hookResult) int {
+	if len(res) == 0 {
+		fmt.Fprintln(w, "Keine Skripte vorhanden.")
+		return 0
+	}
+	rc := 0
+	for _, r := range res {
+		state := "ok"
+		if !r.OK {
+			state, rc = "Fehler", 1
+		}
+		fmt.Fprintf(w, "%s: %s (%.1f s)\n", r.Name, state, r.Dur)
+		if r.Out != "" {
+			fmt.Fprintln(w, "  "+strings.ReplaceAll(r.Out, "\n", "\n  "))
+		}
+	}
+	return rc
 }
