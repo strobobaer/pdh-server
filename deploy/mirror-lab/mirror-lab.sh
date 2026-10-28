@@ -255,6 +255,8 @@ sc_anmeldung() {
 
 sc_version() {
     local body r
+    # Bei Abbruch (fail beendet die Subshell): Dummy-Migration entfernen, pdh2 neu starten
+    trap 'docker exec "$PDH2" rm -f "$DUMMY_MIG" >/dev/null 2>&1; pdh_restart "$PDH2" >/dev/null 2>&1' EXIT
     log "  Dummy-Migration $DUMMY_MIG in pdh2, Neustart"
     docker exec "$PDH2" sh -c "echo 'SELECT 1;' > $DUMMY_MIG"
     pdh_restart "$PDH2" || fail "pdh2 startet mit Dummy-Migration nicht neu"
@@ -272,6 +274,7 @@ sc_version() {
     docker exec "$PDH2" rm -f "$DUMMY_MIG"
     pdh_restart "$PDH2" || fail "pdh2 startet ohne Dummy-Migration nicht neu"
     mode_is pdh2 spiegel || fail "pdh2 nach dem Aufräumen nicht im Spiegelmodus"
+    trap - EXIT
 }
 
 sc_hochstufen() {
