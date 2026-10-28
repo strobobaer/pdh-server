@@ -7,12 +7,7 @@
   <h1 style="font-size:19px;font-weight:600;letter-spacing:-.3px">{{if eq .Greeting "Morgen"}}{{t "Guten Morgen"}}{{else if eq .Greeting "Abend"}}{{t "Guten Abend"}}{{else}}{{t "Guten Tag"}}{{end}}, {{.UserFirstName}}</h1>
   <p style="font-size:12px;color:var(--muted);margin-top:3px">{{.DateStr}} · Werk Augsburg</p>
   </div>
-  <button type="button" class="btn btn-small" id="dash-timeline-toggle" onclick="dashTimelineToggle()" aria-pressed="true" title="{{t "Zeitstrahl ein- oder ausblenden"}}"><i class="ti ti-timeline"></i> <span>{{t "Zeitstrahl"}}</span></button>
 </div>
-<script>
-// Zeitstrahl ein/aus: im Browser gemerkt, vor dem Zeichnen gesetzt
-try { if(localStorage.getItem('pdh_dash_timeline') === 'off') document.documentElement.classList.add('dash-timeline-off'); } catch(e) {}
-</script>
 
 {{template "dw-grid" .}}
 
@@ -29,117 +24,12 @@ try { if(localStorage.getItem('pdh_dash_timeline') === 'off') document.documentE
 .dv-table tr.dv-row{cursor:pointer}
 .dv-table tr.dv-row:hover{background:var(--bg3)}
 .dv-table .dv-over{color:var(--red);font-weight:600}
-html.dash-timeline-off #dash-timeline-card{display:none}
-#dash-timeline-toggle[aria-pressed="false"]{color:var(--muted)}
-#dash-timeline-toggle[aria-pressed="false"] i{opacity:.5}
+/* Kopf der Widgets Tabelle und Zeitstrahl (widgets/dashboard_widgets.gohtml) */
+.dv-head{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:8px}
+.dv-count{margin-left:auto;font-size:12px;color:var(--muted)}
+.dv-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)}
 </style>
 
-<!-- Tabelle der offenen Vorgänge (gleiche Auswahl wie im Leitstand) -->
-<div class="card" id="dash-table-card">
-  <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span>{{t "Tabelle"}}</span>
-    <div class="dv-filter" id="dash-table-filter" role="group" aria-label="{{t "Was in der Tabelle angezeigt wird"}}"></div>
-    <span id="dash-table-count" style="margin-left:auto;font-size:12px;color:var(--muted);font-weight:400"></span>
-  </div>
-  <div style="overflow:auto;max-height:340px">
-    <table class="dv-table">
-      <thead><tr><th>{{t "Art"}}</th><th>{{t "Titel"}}</th><th>{{t "Fällig"}}</th><th>{{t "Status"}}</th></tr></thead>
-      <tbody id="dash-table-body"></tbody>
-    </table>
-    <div id="dash-table-empty" style="display:none;font-size:12px;color:var(--muted);padding:14px;text-align:center">{{t "Keine offenen Vorgänge vorhanden."}}</div>
-  </div>
-</div>
-
-<!-- Kombinierter Zeitstrahl: Aufgaben, Tickets, Wartung, Störungen (oben ein-/ausblendbar) -->
-<div class="card" id="dash-timeline-card">
-  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-    <span>{{t "Zeitstrahl"}}</span>
-    <div class="dv-filter" id="dash-gantt-filter" role="group" aria-label="{{t "Was im Zeitstrahl angezeigt wird"}}" style="flex-basis:100%;order:3"></div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)">
-      <span><i class="ti ti-square-filled" style="color:#3fae86"></i> {{t "Störungen"}}</span>
-      <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> {{t "Tickets"}}</span>
-      <span><i class="ti ti-square-filled" style="color:#c99a3c"></i> {{t "Wartung"}}</span>
-      <span><i class="ti ti-square-filled" style="color:#9d7fc9"></i> {{t "Aufgaben"}}</span>
-      <span><i class="ti ti-square-filled" style="color:#e05a5a"></i> {{t "Überfällig"}}</span>
-      <span style="opacity:.5"><i class="ti ti-square-filled"></i> {{t "ausgeblasst = kein Termin, +30 Tage geschätzt"}}</span>
-    </div>
-  </div>
-  <div id="dash-gantt-target" style="overflow-x:auto"></div>
-  {{template "timeline-legend"}}
-  <div id="dash-gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">
-    {{t "Keine Einträge mit Terminen vorhanden."}}
-  </div>
-</div>
-
-<div class="grid2">
-  <!-- Störungen -->
-  <div class="card">
-    <div class="card-title">
-      {{t "Aktive Störungen"}}
-      <a href="/faults" class="card-action">{{t "alle anzeigen →"}}</a>
-    </div>
-    {{if .Faults}}
-    {{range .Faults}}
-    <div class="li {{.BlinkClass}}">
-      <div class="li-text">
-        <div class="li-title">{{.Title}}</div>
-        <div class="li-sub">{{.InfraName}} · {{.DetectedAgo}}</div>
-      </div>
-      <span class="badge {{.SeverityClass}}">{{.Severity}}</span>
-    </div>
-    {{end}}
-    {{else}}
-    <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine aktiven Störungen"}}</div>
-    {{end}}
-  </div>
-
-  <!-- Schichtplan -->
-  <div class="card">
-    <div class="card-title">
-      {{t "Schichtplan KW %d" .WeekNumber}}
-      <span style="font-size:11px;color:var(--muted)">{{.WeekRange}}</span>
-    </div>
-    {{if .WeekPlan}}
-    <div style="font-size:11px;color:var(--muted);margin-bottom:5px">{{.UserFirstName}} {{.UserLastName}}</div>
-    <div class="shift-grid">
-      {{range .WeekDays}}
-      <div class="shift-day">
-        <div class="shift-day-name">{{.Short}}</div>
-        <div class="shift-pill {{.Class}}">{{.Label}}</div>
-      </div>
-      {{end}}
-    </div>
-    <div style="margin-top:10px;font-size:10px;color:var(--muted);display:flex;gap:10px">
-      <span style="color:#6ee7b7">{{t "■ Früh"}}</span>
-      <span style="color:#fcd34d">{{t "■ Spät"}}</span>
-      <span style="color:#a5b4fc">{{t "■ Nacht"}}</span>
-    </div>
-    {{else}}
-    <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine Schichten diese Woche"}}</div>
-    {{end}}
-  </div>
-</div>
-
-<!-- Wartung heute -->
-<div class="card">
-  <div class="card-title">
-    {{t "Wartung fällig"}}
-    <a href="/maintenance" class="card-action">{{t "alle anzeigen →"}}</a>
-  </div>
-  {{if .MaintenanceDue}}
-  {{range .MaintenanceDue}}
-  <div class="li {{.BlinkClass}}">
-    <div class="li-text">
-      <div class="li-title">{{.Title}}</div>
-      <div class="li-sub">{{.InfraName}} · ~{{.EstimatedMin}}min</div>
-    </div>
-    <span class="badge {{.PriorityClass}}">{{.Priority}}</span>
-  </div>
-  {{end}}
-  {{else}}
-  <div style="font-size:12px;color:var(--muted);padding:8px 0">{{t "Keine Wartung fällig"}}</div>
-  {{end}}
-</div>
 {{end}}
 
 {{define "context-list"}}
@@ -263,11 +153,20 @@ function dvFilter(boxId, storageKey, onChange){
     return true;
   };
 }
-var dvTableMatch = dvFilter('dash-table-filter', 'pdh_dash_table_filter', function(){ renderDashTable(); });
-var dvGanttMatch = dvFilter('dash-gantt-filter', 'pdh_dash_gantt_filter', function(){ renderDashGantt(); });
+// Tabelle und Zeitstrahl sind Widgets (widgets/dashboard_widgets.gohtml) und
+// kommen per htmx nach: pdhDashMount richtet Chips ein und zeichnet, sobald
+// ihr Gerüst da ist (wird beim Laden der Seite und aus dem Widget aufgerufen).
+var dvTableMatch = null, dvGanttMatch = null;
+window.pdhDashMount = function(){
+  var tb = document.getElementById('dash-table-filter');
+  if(tb && !tb.dataset.ready){ tb.dataset.ready = '1'; dvTableMatch = dvFilter('dash-table-filter', 'pdh_dash_table_filter', function(){ renderDashTable(); }); renderDashTable(); }
+  var gb = document.getElementById('dash-gantt-filter');
+  if(gb && !gb.dataset.ready){ gb.dataset.ready = '1'; dvGanttMatch = dvFilter('dash-gantt-filter', 'pdh_dash_gantt_filter', function(){ renderDashGantt(); }); renderDashGantt(); }
+};
 
 function renderDashTable(){
   var body = document.getElementById('dash-table-body');
+  if(!body || !dvTableMatch) return;
   // offen = wie „Alle offenen“: ohne Erledigtes und ohne Wartungen vor dem Vorlauf (stehen im Zeitstrahl)
   var open = dashGanttItems.filter(function(t){ return !t.done && !t.upcoming; });
   var items = open.filter(dvTableMatch).sort(function(a, b){
@@ -295,9 +194,9 @@ function renderDashTable(){
 }
 
 function renderDashGantt(){
-  if(document.documentElement.classList.contains('dash-timeline-off')) return;
   var target = document.getElementById('dash-gantt-target');
   var empty = document.getElementById('dash-gantt-empty');
+  if(!target || !dvGanttMatch) return;
   var shown = dashGanttItems.filter(dvGanttMatch);
   if(!shown.length){
     target.style.display = 'none';
@@ -333,19 +232,7 @@ function renderDashGantt(){
   }
 }
 
-function dashTimelineSync(){
-  var b = document.getElementById('dash-timeline-toggle');
-  if(b) b.setAttribute('aria-pressed', document.documentElement.classList.contains('dash-timeline-off') ? 'false' : 'true');
-}
-function dashTimelineToggle(){
-  var off = !document.documentElement.classList.contains('dash-timeline-off');
-  document.documentElement.classList.toggle('dash-timeline-off', off);
-  try { localStorage.setItem('pdh_dash_timeline', off ? 'off' : 'on'); } catch(e) {}
-  dashTimelineSync();
-  if(!off) renderDashGantt();
-}
-function dashInit(){ dashTimelineSync(); renderDashTable(); renderDashGantt(); }
-if(document.readyState !== 'loading'){ dashInit(); }
-else document.addEventListener('DOMContentLoaded', dashInit);
+if(document.readyState !== 'loading'){ pdhDashMount(); }
+else document.addEventListener('DOMContentLoaded', pdhDashMount);
 </script>
 {{end}}

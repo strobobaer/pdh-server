@@ -117,7 +117,7 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     {{range .WidgetCatalog}}
     <h4>{{.Name}}</h4>
     <div class="dw-cat-list" data-dw-catalog>
-      {{range .Items}}<div class="dw-cat-item" data-type="{{.Type}}" data-name="{{.Name}}" data-icon="{{.Icon}}" data-size="{{.Size}}" data-refresh="{{.Refresh}}" data-config="{{.Config}}">
+      {{range .Items}}<div class="dw-cat-item" data-type="{{.Type}}" data-name="{{.Name}}" data-icon="{{.Icon}}" data-size="{{.Size}}" data-refresh="{{.Refresh}}" data-config="{{.Config}}"{{if .Single}} data-single="1"{{end}}>
         <i class="ti {{.Icon}}"></i><div><b>{{.Name}}</b><small>{{.Desc}}</small></div>
         <button type="button" class="add" onclick="dwAddFromCatalog(this.closest('.dw-cat-item'))" title="{{t "Hinzufügen"}}" aria-label="{{t "%s hinzufügen" .Name}}"><i class="ti ti-plus" style="font-size:15px;margin:0"></i></button>
       </div>{{end}}
@@ -168,6 +168,9 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     if(kind === 'watch' && sel && opts && !sel.options.length){ sel.innerHTML = opts.innerHTML; sel.value = sel.dataset.val || ''; }
   }
   window.dwAddFromCatalog = function(item){
+    // Tabelle und Zeitstrahl gibt es nur einmal: vorhandenes zeigen statt doppeln
+    const have = item.dataset.single === '1' && grid.querySelector('.dw[data-type="' + item.dataset.type + '"]');
+    if(have){ have.scrollIntoView({behavior: 'smooth', block: 'center'}); have.animate([{outline: '3px solid var(--accent)'}, {outline: '3px solid transparent'}], {duration: 1200}); return; }
     const el = makeCard(item);
     const empty = document.getElementById('dw-empty'); if(empty) empty.remove();
     grid.appendChild(el); load(el);
@@ -311,6 +314,30 @@ html[data-theme="light"] .dw-stat.c-blue .v{color:#2563eb}
     <a class="dw-li" href="/infrastructure/{{$c.ID}}{{if $c.Chamber}}?tab=chamber{{end}}"><span class="dw-dot {{$c.State}}"></span><span class="tx"><span class="t">{{$c.Name}}</span><span class="s">{{$c.TypeLabel}}{{if $c.Faults}} · {{t "%d Störungen" $c.Faults}}{{end}}{{if $c.MaintOverdue}} · {{t "Wartung überfällig"}}{{end}}{{if $c.ObligOverdue}} · {{t "Prüfung überfällig"}}{{end}}{{range $g := $c.Chamber}}{{range $g.Slots}}{{if .NOK}} · {{$g.One}} {{.Position}}{{end}}{{end}}{{end}}</span></span>{{if $c.NOK}}<span class="badge b-red">{{$c.NOK}} NOK</span>{{else if $c.Critical}}<span class="badge b-red">{{t "kritisch"}}</span>{{end}}</a>
   {{else}}<div class="dw-none"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{t "Alles in Ordnung – keine Auffälligkeiten."}}</div>{{end}}</div>
   {{else}}<div class="dw-none">{{th "Noch keine Schnellübersicht – unter <a href='/plant-watch?edit=new'>Anlagen-Schnellübersicht</a> anlegen."}}</div>{{end}}
+{{else if eq .Def.Type "vg_table"}}
+  <div class="dv-head"><div class="dv-filter" id="dash-table-filter" role="group" aria-label="{{t "Was in der Tabelle angezeigt wird"}}"></div><span id="dash-table-count" class="dv-count"></span></div>
+  <div style="overflow:auto;max-height:340px">
+    <table class="dv-table">
+      <thead><tr><th>{{t "Art"}}</th><th>{{t "Titel"}}</th><th>{{t "Fällig"}}</th><th>{{t "Status"}}</th></tr></thead>
+      <tbody id="dash-table-body"></tbody>
+    </table>
+    <div id="dash-table-empty" style="display:none;font-size:12px;color:var(--muted);padding:14px;text-align:center">{{t "Keine offenen Vorgänge vorhanden."}}</div>
+  </div>
+  <script>if(window.pdhDashMount) pdhDashMount();</script>
+{{else if eq .Def.Type "vg_timeline"}}
+  <div class="dv-head"><div class="dv-filter" id="dash-gantt-filter" role="group" aria-label="{{t "Was im Zeitstrahl angezeigt wird"}}"></div>
+    <div class="dv-legend">
+      <span><i class="ti ti-square-filled" style="color:#3fae86"></i> {{t "Störungen"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#4b9fc4"></i> {{t "Tickets"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#c99a3c"></i> {{t "Wartung"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#9d7fc9"></i> {{t "Aufgaben"}}</span>
+      <span><i class="ti ti-square-filled" style="color:#e05a5a"></i> {{t "Überfällig"}}</span>
+      <span style="opacity:.5"><i class="ti ti-square-filled"></i> {{t "ausgeblasst = kein Termin, +30 Tage geschätzt"}}</span>
+    </div></div>
+  <div id="dash-gantt-target" style="overflow-x:auto"></div>
+  {{template "timeline-legend"}}
+  <div id="dash-gantt-empty" style="display:none;font-size:12px;color:var(--muted);padding:20px;text-align:center">{{t "Keine Einträge mit Terminen vorhanden."}}</div>
+  <script>if(window.pdhDashMount) pdhDashMount();</script>
 {{else if eq .Def.Type "my_shifts"}}
   <div class="dw-shifts">{{range .Data}}<div class="d{{if .Today}} today{{end}}"><div>{{.Day}} {{.Date}}</div><div class="sh" {{if .Color}}style="color:{{css .Color}}"{{end}} title="{{.Name}}">{{if .Short}}{{.Short}}{{else}}–{{end}}</div><div class="tm">{{if .Time}}{{.Time}}{{else}}{{t "frei"}}{{end}}</div></div>{{end}}</div>
 {{end}}

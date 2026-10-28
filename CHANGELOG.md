@@ -15,10 +15,12 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 - Standards für alle: Unter Core-Einstellungen übernimmt ein Administrator seine eigene Darstellung, sein Menü und sein Dashboard mit einem Klick als Standard – wer nichts Eigenes gespeichert hat, sieht diesen Stand; auf Wunsch werden auch die eigenen Einstellungen aller ersetzt, „Werksvorgabe“ stellt die Auslieferung wieder her.
 - Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
+- Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
 
 ### Geändert
 - Der Leitstand zeigt immer die Standard-Darstellung (Farbschema und Design-Stil) – unabhängig davon, wer gerade angemeldet ist.
 - „Standard“ in Navigation anpassen und Dashboard anpassen holt jetzt den Firmenstandard zurück.
+- Der Knopf „Zeitstrahl“ oben auf dem Dashboard entfällt – den Zeitstrahl nimmst du unter „Dashboard anpassen“ heraus oder fügst ihn hinzu.
 
 ## [0.76.3] – 2026-10-28
 

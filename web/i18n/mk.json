@@ -704,5 +704,8 @@
  "Design-Stil": "Стил на дизајн",
  "Hell/Dunkel wechseln": "Промени светло/темно",
  "Chat in der Seitenleiste öffnen": "Отвори разговор во страничната лента",
- "Mein Konto, Darstellung und Abmelden": "Мојата сметка, изглед и одјава"
+ "Mein Konto, Darstellung und Abmelden": "Мојата сметка, изглед и одјава",
+ "Tabelle offener Vorgänge": "Табела со отворени задачи",
+ "Alle offenen Störungen, Tickets, Wartungen und Aufgaben – wie im Leitstand nach Art, „nur überfällig“ und „ohne Zuständigen“ filterbar": "Сите отворени дефекти, тикети, одржувања и задачи – филтрирање по вид, „само задоцнети“ и „без одговорен“ како на контролната табла",
+ "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Отворени задачи со рок на временската линија – повлечете за да го поместите рокот, двоен клик за отворање"
 }

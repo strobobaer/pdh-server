@@ -704,5 +704,8 @@
  "Design-Stil": "Stil de design",
  "Hell/Dunkel wechseln": "Comută luminos/întunecat",
  "Chat in der Seitenleiste öffnen": "Deschide chatul în bara laterală",
- "Mein Konto, Darstellung und Abmelden": "Contul meu, aspect și deconectare"
+ "Mein Konto, Darstellung und Abmelden": "Contul meu, aspect și deconectare",
+ "Tabelle offener Vorgänge": "Tabel cu lucrări deschise",
+ "Alle offenen Störungen, Tickets, Wartungen und Aufgaben – wie im Leitstand nach Art, „nur überfällig“ und „ohne Zuständigen“ filterbar": "Toate defecțiunile, tichetele, mentenanțele și sarcinile deschise – filtrabile după tip, „doar restante” și „fără responsabil”, ca la panoul de control",
+ "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Lucrări deschise cu termen pe axa timpului – trageți pentru a muta termenul, dublu clic pentru deschidere"
 }

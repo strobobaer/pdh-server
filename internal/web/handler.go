@@ -94,20 +94,13 @@ func (b BaseData) Language() string { return b.Lang }
 
 type DashboardData struct {
 	BaseData
-	Greeting       string
-	DateStr        string
-	WeekNumber     int
-	WeekRange      string
-	Stats          DashStats
-	Faults         []FaultView
-	MaintenanceDue []MaintenanceView
-	OpenTickets    []TicketView
-	WeekPlan       bool
-	WeekDays       []ShiftDay
-	GanttItems     []GanttItem
-	Widgets        []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
-	WidgetCatalog  []WidgetCatalogGroup
-	WatchBoards    []watchBoard // Auswahl im Widget „Anlagen-Schnellübersicht“
+	Greeting      string
+	DateStr       string
+	OpenTickets   []TicketView          // rechte Seitenleiste
+	GanttItems    []GanttItem           // Widgets Tabelle und Zeitstrahl
+	Widgets       []DashboardWidgetView // persoenliche Widgets (dashboard_widgets.go)
+	WidgetCatalog []WidgetCatalogGroup
+	WatchBoards   []watchBoard // Auswahl im Widget „Anlagen-Schnellübersicht“
 }
 
 // GanttItem ist ein vereinheitlichter Zeitstrahl-Eintrag fürs Dashboard,
@@ -1365,54 +1358,23 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := getUser(r)
 	now := time.Now()
-	_, week := now.ISOWeek()
 
+	// Inhalt kommt aus den Widgets (dashboard_widgets.go); hier nur Kopf,
+	// rechte Seitenleiste und die Vorgänge für Tabelle und Zeitstrahl.
 	data := DashboardData{
-		BaseData:   h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
-		Greeting:   greeting(),
-		DateStr:    longDate(h.requestLang(r), now),
-		WeekNumber: week,
-		WeekRange: fmt.Sprintf("%s–%s",
-			now.AddDate(0, 0, -int(now.Weekday())+1).Format("02.01"),
-			now.AddDate(0, 0, 7-int(now.Weekday())).Format("02.01")),
+		BaseData: h.baseData(r, "dashboard", "Dashboard", "Offene Tickets"),
+		Greeting: greeting(),
+		DateStr:  longDate(h.requestLang(r), now),
 	}
 	data.Widgets, data.WidgetCatalog, _ = h.dashboardWidgetViews(r)
 	if h.canViewInfra(r) {
 		data.WatchBoards = h.watchBoards(ctx, u.ID, h.canManageWatch(r))
 	}
 
-	// Störungen
-	if fl, err := h.faults.List(ctx, ""); err == nil {
-		for _, f := range fl {
-			if f.Status == "detected" || f.Status == "in_progress" || f.Status == "analyzing" || f.Status == "pending" {
-				data.Stats.ActiveFaults++
-				if f.Status == "analyzing" {
-					data.Stats.AnalyzingFaults++
-				}
-			}
-			if len(data.Faults) < 4 && (f.Status == "detected" || f.Status == "in_progress" || f.Status == "pending") {
-				data.Faults = append(data.Faults, FaultView{
-					ID: f.ID, Title: f.Title,
-					Status: string(f.Status), StatusLabel: statusLabel(string(f.Status)),
-					StatusClass: statusClass(string(f.Status)),
-					Severity:    string(f.Severity), SeverityClass: severityClass(string(f.Severity)),
-					DetectedAgo: timeAgo(f.DetectedAt),
-					BlinkClass:  faultBlinkClass(string(f.Status)),
-				})
-			}
-		}
-	}
-
-	// Tickets
+	// Rechte Seitenleiste: neue offene Tickets
 	if tl, err := h.tickets.List(ctx, ""); err == nil {
 		for _, t := range tl {
-			if t.Status == "open" || t.Status == "in_progress" || t.Status == "pending" {
-				data.Stats.OpenTickets++
-				if t.Priority == "critical" {
-					data.Stats.CriticalTickets++
-				}
-			}
-			if len(data.OpenTickets) < 5 && (t.Status == "open") {
+			if len(data.OpenTickets) < 5 && t.Status == "open" {
 				data.OpenTickets = append(data.OpenTickets, TicketView{
 					ID: t.ID, Title: t.Title,
 					Priority: string(t.Priority), PriorityClass: priorityClass(string(t.Priority)),
@@ -1423,64 +1385,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Wartung fällig
-	if mt, err := h.maint.GetDueToday(ctx); err == nil {
-		data.Stats.MaintenanceDue = len(mt)
-		for _, m := range mt {
-			if len(data.MaintenanceDue) < 3 {
-				data.MaintenanceDue = append(data.MaintenanceDue, MaintenanceView{
-					ID: m.ID, Title: m.Title, InfraName: m.InfraName,
-					EstimatedMin: 0, Priority: string(m.Priority),
-					PriorityClass: priorityClass(string(m.Priority)),
-					BlinkClass:    maintenanceBlinkClass(m.DueDate),
-				})
-			}
-		}
-	}
-
-	// Lager
-	if stats, err := h.inv.GetStats(ctx); err == nil {
-		if v, ok := stats["total_value"].(float64); ok {
-			data.Stats.InventoryValue = fmt.Sprintf("%.0f", v)
-		}
-		if v, ok := stats["low_stock"].(int); ok {
-			data.Stats.LowStock = v
-		}
-	}
-
-	// Schichtplan
-	// eigene Woche (Mo–So); Entwürfe unveröffentlichter Pläne zählen nicht
-	monday := mondayOf(now)
-	if rows, err := h.db.Query(ctx, `SELECT sa.date::text, sd.short_name FROM shift_assignments sa
-		JOIN shift_definitions sd ON sd.id = sa.shift_id LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
-		WHERE sa.user_id = $1::uuid AND sa.date BETWEEN $2 AND $3 AND (sa.plan_id IS NULL OR sp.status = 'published')`,
-		u.ID, monday, monday.AddDate(0, 0, 6)); err == nil {
-		mine := map[string]string{}
-		for rows.Next() {
-			var d, s string
-			if rows.Scan(&d, &s) == nil {
-				mine[d] = s
-			}
-		}
-		rows.Close()
-		if len(mine) > 0 {
-			days := []string{"Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"}
-			shiftClasses := map[string]string{"F": "sf", "S": "ss", "N": "sn"}
-			data.WeekPlan = true
-			for d := 0; d < 7; d++ {
-				label, class := "–", "se"
-				if s := mine[monday.AddDate(0, 0, d).Format(dayISO)]; s != "" {
-					label = s
-					if c, ok := shiftClasses[s]; ok {
-						class = c
-					}
-				}
-				data.WeekDays = append(data.WeekDays, ShiftDay{Short: days[d], Label: label, Class: class})
-			}
-		}
-	}
-
-	// ── Kombinierter Zeitstrahl (Aufgaben, Tickets, Wartung, Störungen) ──
+	// ── Vorgänge für die Widgets Tabelle und Zeitstrahl ──
 	data.GanttItems = h.scopeGantt(ctx, h.requestScope(r), h.buildDashboardGantt(ctx, now))
 
 	h.render(w, "dashboard", data)
