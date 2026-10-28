@@ -3,6 +3,9 @@ package database
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -79,7 +82,7 @@ func readOnlyCheck(ctx context.Context, err error, sql string) {
 	if m != nil {
 		m.Store(true)
 	}
-	log.Warn().Str("bereich", "datenbank").Str("sql", sqlHead(sql)).Bool("anfrage", m != nil).Msg("schreibzugriff im spiegel")
+	log.Warn().Str("bereich", "datenbank").Str("sql", sqlHead(sql)).Str("stelle", writeSite()).Bool("anfrage", m != nil).Msg("schreibzugriff im spiegel")
 }
 
 func isReadOnlyErr(err error) bool {
@@ -94,4 +97,26 @@ func sqlHead(sql string) string {
 		return string(r[:80]) + "…"
 	}
 	return s
+}
+
+// writeSite: bis zu drei Aufrufer aus dem PDH (ohne pgx und den Tracer), damit
+// sich ein Schreibzugriff im Spiegel dem Handler zuordnen lässt –
+// „web.(*Handler).setAppSetting purchase_report.go:102 < …“.
+func writeSite() string {
+	var pcs [48]uintptr
+	n := runtime.Callers(1, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	var out []string
+	for len(out) < 3 {
+		f, more := frames.Next()
+		fn := f.Function
+		if strings.HasPrefix(fn, "pdh/") && !strings.HasPrefix(fn, "pdh/pkg/database.readOnly") &&
+			fn != "pdh/pkg/database.writeSite" {
+			out = append(out, fn[strings.LastIndex(fn, "/")+1:]+" "+filepath.Base(f.File)+":"+strconv.Itoa(f.Line))
+		}
+		if !more {
+			break
+		}
+	}
+	return strings.Join(out, " < ")
 }

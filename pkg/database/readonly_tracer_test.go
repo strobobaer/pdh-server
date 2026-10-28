@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -51,5 +52,15 @@ func TestReadOnlyTracerBatchAndCopy(t *testing.T) {
 	ct.TraceCopyFromEnd(ctx, nil, pgx.TraceCopyFromEndData{Err: &pgconn.PgError{Code: "25006"}})
 	if !mark.Load() {
 		t.Fatal("CopyFrom mit 25006 muss markieren")
+	}
+}
+
+// writeSiteCaller steht für einen Handler, der schreibt.
+func writeSiteCaller() string { return writeSite() }
+
+func TestWriteSiteNamesCaller(t *testing.T) {
+	s := writeSiteCaller()
+	if !strings.HasPrefix(s, "database.writeSiteCaller readonly_tracer_test.go:") || !strings.Contains(s, " < database.TestWriteSiteNamesCaller ") {
+		t.Fatalf("Aufrufstelle: %q", s)
 	}
 }

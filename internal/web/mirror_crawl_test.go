@@ -48,6 +48,20 @@ func crawlSkip(u *url.URL) bool {
 	return strings.Contains(raw, "{{") || strings.Contains(raw, "${") || strings.Contains(raw, "%7B%7B") || strings.Contains(raw, "$%7B")
 }
 
+// crawlIDRe: Pfadteil, der eine Kennung ist (UUID, Zahl, lange Hex-Folge).
+var crawlIDRe = regexp.MustCompile(`^(?i:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9]+|[0-9a-f]{16,})$`)
+
+// crawlPattern: Pfad mit Kennungen als :id – „/tickets/:id/edit“.
+func crawlPattern(p string) string {
+	parts := strings.Split(p, "/")
+	for i, s := range parts {
+		if crawlIDRe.MatchString(s) {
+			parts[i] = ":id"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
 type crawler struct {
 	t      *testing.T
 	base   *url.URL
@@ -133,15 +147,45 @@ func TestMirrorCrawl(t *testing.T) {
 	}
 
 	start := base.ResolveReference(&url.URL{Path: "/"})
-	queue := []*url.URL{start}
-	seen := map[string]bool{start.String(): true}
+	// Breite vor Tiefe: zuerst neue Seitenarten (Pfad mit Kennungen als :id),
+	// dann neue Pfade, zuletzt nur andere Abfrageparameter (blättern, Filter …)
+	var queues [3][]*url.URL
+	seen := map[string]bool{}
+	patterns, paths := map[string]bool{}, map[string]bool{}
+	push := func(u *url.URL) {
+		if seen[u.String()] {
+			return
+		}
+		seen[u.String()] = true
+		prio := 2
+		if p := crawlPattern(u.Path); !patterns[p] {
+			patterns[p], prio = true, 0
+		} else if !paths[u.Path] {
+			prio = 1
+		}
+		paths[u.Path] = true
+		queues[prio] = append(queues[prio], u)
+	}
+	pop := func() *url.URL {
+		for i := range queues {
+			if len(queues[i]) > 0 {
+				u := queues[i][0]
+				queues[i] = queues[i][1:]
+				return u
+			}
+		}
+		return nil
+	}
+	push(start)
 	var failures, timeouts, big []string
 	status := map[int]int{}
 	visited, relogins := 0, 0
 
-	for len(queue) > 0 && visited < limit {
-		u := queue[0]
-		queue = queue[1:]
+	for visited < limit {
+		u := pop()
+		if u == nil {
+			break
+		}
 		if !c.loggedIn() { // Sitzung verloren (Cookie gelöscht) → neu anmelden
 			relogins++
 			if relogins > 20 {
@@ -185,9 +229,8 @@ func TestMirrorCrawl(t *testing.T) {
 		}
 		resp.Body.Close() // Ereignisströme und Downloads: nicht weiterlesen
 		for _, l := range links {
-			if n := c.norm(u, l); n != nil && !seen[n.String()] {
-				seen[n.String()] = true
-				queue = append(queue, n)
+			if n := c.norm(u, l); n != nil {
+				push(n)
 			}
 		}
 	}
@@ -201,7 +244,8 @@ func TestMirrorCrawl(t *testing.T) {
 	for _, k := range codes {
 		sum = append(sum, fmt.Sprintf("%d×%d", status[k], k))
 	}
-	t.Logf("besucht: %d Seiten (offen: %d), Antworten: %s", visited, len(queue), strings.Join(sum, " "))
+	t.Logf("besucht: %d Seiten, %d Seitenarten (offen: %d/%d/%d), Antworten: %s", visited, len(patterns),
+		len(queues[0]), len(queues[1]), len(queues[2]), strings.Join(sum, " "))
 	for _, s := range timeouts {
 		t.Logf("keine Antwort: %s", s)
 	}

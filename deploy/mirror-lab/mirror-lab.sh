@@ -88,6 +88,7 @@ writes_in_log() {
     docker logs "$PDH2" 2>&1 | awk '
         /schreibzugriff im spiegel/ {
             s = $0; sub(/.*"sql":"/, "", s); sub(/".*/, "", s)
+            if ($0 ~ /"stelle":"/) { w = $0; sub(/.*"stelle":"/, "", w); sub(/".*/, "", w); s = s "  [" w "]" }
             if ($0 ~ /"anfrage":false/) print "(Hintergrund)  →  " s
             else pend[++n] = s
             next
