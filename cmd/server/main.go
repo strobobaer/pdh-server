@@ -95,7 +95,9 @@ func main() {
 
 	// Spiegelmodus: PostgreSQL-Standby bzw. schreibgeschützte Datenbank. Dann
 	// startet das PDH nur lesend, ohne Sicherung, Migration oder Hintergrunddienste.
-	mode, merr := mirror.Detect(context.Background(), db.Pool)
+	detectCtx, detectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	mode, merr := mirror.Detect(detectCtx, db.Pool)
+	detectCancel()
 	if merr != nil {
 		log.Warn().Err(merr).Msg("spiegelmodus nicht ermittelbar – starte wie gewohnt")
 	}
@@ -106,17 +108,21 @@ func main() {
 		pending, initialized, perr := database.PendingMigrations(pctx, db.Pool, "migrations")
 		pcancel()
 		if perr != nil {
-			log.Warn().Err(perr).Msg("spiegel: migrationsstand nicht ermittelbar")
+			log.Warn().Err(perr).Msg("spiegel: migrationsstand nicht ermittelbar – anmeldung eingeschränkt")
+			restricted = true // im Zweifel eingeschränkt
+		} else {
+			restricted = schemaBehind(pending, initialized)
 		}
-		restricted = schemaBehind(pending, initialized)
 		log.Warn().Bool("schema_veraltet", restricted).Msg("spiegelmodus: PDH startet nur lesend")
 	}
 
 	if mirrorOn {
 		cfg = loadServerSettingsReadOnly(db)
 		var humans int
-		if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err != nil || humans == 0 {
-			log.Fatal().Err(err).Msg("spiegel: keine benutzer in der datenbank – einrichtung im Spiegel nicht möglich")
+		if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err != nil {
+			log.Fatal().Err(err).Msg("spiegel: benutzer konnten nicht gezählt werden")
+		} else if humans == 0 {
+			log.Fatal().Msg("spiegel: keine benutzer in der datenbank – einrichtung im Spiegel nicht möglich")
 		}
 	} else {
 		// Neue Programmversion bzw. ausstehende Datenbank-Aenderungen: vorher
@@ -279,17 +285,6 @@ func main() {
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
 	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted}) // vor Routes(), danach unveränderlich
-	// Moduswechsel (Abschottung/Beförderung) beendet den Prozess; der Dienst startet neu.
-	onModeChange := func(reason string) {
-		log.Warn().Str("grund", reason).Msg("spiegelmodus gewechselt – neustart")
-		os.Exit(3)
-	}
-	if mirrorOn {
-		go mirror.Watch(context.Background(), db.Pool, mode, 5*time.Second, 60*time.Second, onModeChange)
-	} else {
-		// Einzelserver: kurze Datenbankausfälle bleiben folgenlos (lost = 0), nur ein Moduswechsel zählt.
-		go mirror.Watch(context.Background(), db.Pool, mode, 5*time.Second, 0, onModeChange)
-	}
 	webHandler.RegisterMaintenanceProtocol() // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
