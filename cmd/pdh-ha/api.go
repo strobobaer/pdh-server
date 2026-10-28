@@ -318,6 +318,37 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	mux.HandleFunc("PUT /v1/access", func(w http.ResponseWriter, r *http.Request) {
+		var req accessUpdate
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := d.updateAccess(req); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
+	// Adresstest; dauert bis etwa eine Minute (Client mit längerer Frist)
+	mux.HandleFunc("POST /v1/vip/test", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Addr string `json:"addr"` // leer = mitwandernde Adresse
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		addr, err := d.vipTestAddr(req.Addr)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		res, err := d.runVIPCheck(r.Context(), addr)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
+	})
 	return mux
 }
 
@@ -616,9 +647,9 @@ func (d *daemon) removeNode(id string, gone bool) error {
 
 // --- Client ---
 
-func apiClient(sock string) *http.Client {
+func apiClientT(sock string, timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var dl net.Dialer
 			return dl.DialContext(ctx, "unix", sock)
@@ -627,12 +658,16 @@ func apiClient(sock string) *http.Client {
 }
 
 func apiRaw(sock, method, path, body string) (*http.Response, error) {
+	return apiRawT(sock, 30*time.Second, method, path, body)
+}
+
+func apiRawT(sock string, timeout time.Duration, method, path, body string) (*http.Response, error) {
 	req, err := http.NewRequest(method, "http://pdh-ha"+path, strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return apiClient(sock).Do(req)
+	return apiClientT(sock, timeout).Do(req)
 }
 
 // apiError ist eine Fehlerantwort des Dienstes (im Unterschied zu „nicht erreichbar“).
@@ -641,6 +676,11 @@ type apiError struct{ msg string }
 func (e apiError) Error() string { return e.msg }
 
 func apiDo(sock, method, path string, in, out any) error {
+	return apiDoT(sock, 30*time.Second, method, path, in, out)
+}
+
+// apiDoT wie apiDo, mit eigener Frist (lange Aufrufe wie der Adresstest).
+func apiDoT(sock string, timeout time.Duration, method, path string, in, out any) error {
 	body := ""
 	if in != nil {
 		if s, ok := in.(string); ok {
@@ -653,7 +693,7 @@ func apiDo(sock, method, path string, in, out any) error {
 			body = string(b)
 		}
 	}
-	resp, err := apiRaw(sock, method, path, body)
+	resp, err := apiRawT(sock, timeout, method, path, body)
 	if err != nil {
 		return err
 	}

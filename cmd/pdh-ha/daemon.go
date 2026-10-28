@@ -151,6 +151,14 @@ type daemon struct {
 	accessPrev  <-chan struct{} // Abgabe des vorigen Arbeiters (neuer startet danach)
 	accessIface string
 	accessErr   string // Kartenwahl gescheitert
+
+	// Adresstest (vip_check.go); Tests ersetzen die Wege.
+	tlsFn       func() (*tls.Certificate, *x509.CertPool, error)
+	peerPostFn  func(ctx context.Context, peer clusterNode, path string, in, out any) error
+	probeAddrFn func(ctx context.Context, hostport, expect string) error
+	holdAfter   func(time.Duration) <-chan time.Time
+	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
+	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -184,6 +192,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 	}
 	d.act = observeActor{ev: ev}
 	d.saveFn = st.saveState
+	d.tlsFn, d.peerPostFn, d.probeAddrFn, d.holdAfter = d.clusterTLS, d.peerPost, d.probeAddrLocal, time.After
 	return d
 }
 
@@ -354,6 +363,12 @@ func (d *daemon) startLocked() {
 	}
 	if d.node.Kind == "node" {
 		mux.HandleFunc("POST /v1/config/pull", d.configPullHTTP)
+	}
+	// Adresstest: prüfen auf allen Mitgliedern, Prüfadresse halten nur Server
+	mux.HandleFunc("POST /v1/probe-addr", d.probeAddrHTTP)
+	if d.node.Kind == "node" {
+		mux.HandleFunc("POST /v1/probe-hold", d.probeHoldHTTP)
+		mux.HandleFunc("POST /v1/probe-release", d.probeReleaseHTTP)
 	}
 	var join http.Handler = mux
 	if ok {
@@ -575,6 +590,7 @@ func (d *daemon) run(ctx context.Context) error {
 		d.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			d.stopProbeHold() // Prüfadresse nicht liegen lassen
 			return nil
 		case m := <-in:
 			d.handle(ctx, m)
