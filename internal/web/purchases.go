@@ -81,10 +81,10 @@ type purchaseStepView struct {
 
 type purchaseItemView struct {
 	ID, PartID, PartNo, PartName, Description, SupplierPartNo, Unit, StorageID string
-	QtyQuoted, PriceQuoted, QtyOrdered, PriceOrdered               *float64
-	QtyConfirmed, PriceConfirmed                                   *float64
-	Delivered                                                      float64
-	ABWarn, DeliveryWarn                                           string
+	QtyQuoted, PriceQuoted, QtyOrdered, PriceOrdered                           *float64
+	QtyConfirmed, PriceConfirmed                                               *float64
+	Delivered                                                                  float64
+	ABWarn, DeliveryWarn                                                       string
 }
 
 // Open: noch zu liefernde Menge (bestätigt, sonst bestellt).
@@ -233,7 +233,7 @@ func (h *Handler) loadPurchase(ctx context.Context, id string) (*purchaseView, e
 	}
 	rows.Close()
 	drows, err := h.db.Query(ctx, `SELECT d.id::text, d.delivery_note_no, d.delivered_on, COALESCE(u.first_name || ' ' || u.last_name, ''), d.notes,
-		COALESCE(ARRAY(SELECT ` + qtySQL("di.qty") + ` || ' ' || i.unit || ' ' || COALESCE(NULLIF(i.description, ''), sp.name, 'Position') ||
+		COALESCE(ARRAY(SELECT `+qtySQL("di.qty")+` || ' ' || i.unit || ' ' || COALESCE(NULLIF(i.description, ''), sp.name, 'Position') ||
 			CASE WHEN di.booked THEN ' → Lager' ELSE '' END
 			FROM purchase_delivery_items di JOIN purchase_order_items i ON i.id = di.item_id LEFT JOIN spare_parts sp ON sp.id = i.part_id
 			WHERE di.delivery_id = d.id ORDER BY i.pos), '{}')
@@ -405,16 +405,16 @@ func deptList(id string) []string {
 
 type PurchaseDetailData struct {
 	BaseData
-	P                                     *purchaseView
-	Tab, Message, Error                   string
-	CanEdit, CanReceive, CanInvoice       bool
-	CanDelete                             bool
-	Suppliers, Storage                    []partnerOption
-	Departments                           []deptView
-	Parts                                 []purchasePartOption
-	History                               []HistoryView
-	Today                                 string
-	HasOpen                               bool
+	P                               *purchaseView
+	Tab, Message, Error             string
+	CanEdit, CanReceive, CanInvoice bool
+	CanDelete                       bool
+	Suppliers, Storage              []partnerOption
+	Departments                     []deptView
+	Parts                           []purchasePartOption
+	History                         []HistoryView
+	Today                           string
+	HasOpen                         bool
 }
 
 type purchasePartOption struct{ ID, No, Name, Unit string }
@@ -722,7 +722,6 @@ func (h *Handler) savePurchaseItems(ctx context.Context, tx pgx.Tx, r *http.Requ
 	return err
 }
 
-
 // PurchaseDeliveryWeb: POST /purchases/{id}/delivery – Wareneingang (auch
 // Teillieferung) erfassen und ins Lager buchen.
 func (h *Handler) PurchaseDeliveryWeb(w http.ResponseWriter, r *http.Request) {
@@ -881,7 +880,7 @@ func (h *Handler) purchasesFor(ctx context.Context, partID, supplierID string) [
 		cond, arg = `EXISTS (SELECT 1 FROM purchase_order_items i WHERE i.order_id = o.id AND i.part_id = $1::uuid)`, partID
 	}
 	rows, err := h.db.Query(ctx, `SELECT o.id::text, o.number, o.title, COALESCE(bp.name, ''), o.status, COALESCE(o.ordered_at, o.created_at),
-		COALESCE((SELECT string_agg(` + qtySQL("COALESCE(i.qty_confirmed, i.qty_ordered, i.qty_quoted, 0)") + ` || ' ' || i.unit, ', ')
+		COALESCE((SELECT string_agg(`+qtySQL("COALESCE(i.qty_confirmed, i.qty_ordered, i.qty_quoted, 0)")+` || ' ' || i.unit, ', ')
 			FROM purchase_order_items i WHERE i.order_id = o.id AND i.part_id = NULLIF($2, '')::uuid), '')
 		FROM purchase_orders o LEFT JOIN business_partners bp ON bp.id = o.supplier_id
 		WHERE `+cond+` ORDER BY o.created_at DESC LIMIT 50`, arg, partID)
