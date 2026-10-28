@@ -44,6 +44,8 @@ im Kapitel „Versionen & Updates“ an.
 - Farbige Abzeichen (Rolle, Priorität, Status) sind im hellen Modus jetzt gut lesbar.
 
 ### Sicherheit
+- Viele Aktionen prüften bisher nur die Anmeldung, nicht das Recht – z. B. Störungen und Tickets abschließen, Status ändern, Aufgaben, Projekte, Wartungen und IT-Geräte anlegen und bearbeiten, Ersatzteile und Lagerorte anlegen, Buchungen und Inventur über die Schnittstelle. Jetzt brauchen sie das passende Recht (in der Abteilung des Vorgangs); wer an einem Vorgang beteiligt ist, darf ihn weiter bearbeiten. Störungen und Tickets melden, kommentieren und Zeiten erfassen bleibt für alle offen.
+- Damit niemand ausgesperrt wird, bekommen beim Update alle Rollen außer „Betrachter“ die Rechte zum Bearbeiten und Abschließen von Störungen, Tickets, Wartungen, Aufgaben, Projekten und IT; wer das Lager sieht, bekommt „Ersatzteile und Lagerorte anlegen“ (neu) und „Buchen“. Unter Rollen & Rechte lassen sie sich danach wegnehmen oder auf Abteilungen begrenzen.
 - Wartungsaufträge, Aufgaben, Projekte und KVP-Vorschläge kann nur noch der jeweilige Bereichsadministrator endgültig löschen – bisher ging das bei Aufgaben, Projekten und Wartungsaufträgen für jeden.
 - Stammdaten über die Schnittstelle zum Löschen vormerken braucht jetzt das Bearbeiten-Recht des Bereichs; Sperren, Deaktivieren und Feldsätze von Anlagen brauchen „Infrastruktur bearbeiten“.
 - Rechte zum Bearbeiten und Abschließen von Vorgängen beachten jetzt die Abteilung des Vorgangs.
