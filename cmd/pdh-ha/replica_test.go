@@ -115,7 +115,7 @@ func TestReplicaInitOrder(t *testing.T) {
 	if err := replicaInit(context.Background(), e.st, e.pa, e.o); err != nil {
 		t.Fatal(err)
 	}
-	seq(t, e.r.list(), "bash -c set -o pipefail; runuser -u postgres -- pg_dumpall", "svc stop", "pg_ctlcluster 18 main stop",
+	seq(t, e.r.list(), "bash -c set -o pipefail; runuser -u postgres -- pg_dumpall", "tun stop", "svc stop", "pg_ctlcluster 18 main stop",
 		"runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup", "pg_ctlcluster 18 main start")
 	if b, _ := os.ReadFile(e.st.etcPath("replica.pass")); strings.TrimSpace(string(b)) != testPass {
 		t.Fatal("replica.pass fehlt")
@@ -167,27 +167,38 @@ func TestReplicaInitDumpFailsKeepsAll(t *testing.T) {
 
 func TestShouldRunPDH(t *testing.T) {
 	st := store{etc: t.TempDir(), state: t.TempDir()}
-	if !shouldRunPDH(st) {
+	pgState := "stopped"
+	run := func() bool { return shouldRunPDH(st, func() string { return pgState }) }
+	if !run() {
 		t.Fatal("ohne pdh-ha: laufen")
 	}
 	st.saveNode(nodeConfig{ID: "b", Kind: "node"})
 	st.saveCluster(trioCluster())
-	if !shouldRunPDH(st) {
+	if !run() {
 		t.Fatal("ohne Datenbank-Spiegel: wie bisher laufen")
 	}
 	st.writeEtc("replica.pass", []byte(testPass), 0o600)
 	st.saveState(ha.Persisted{Role: ha.Passive, Term: 1})
-	if shouldRunPDH(st) {
-		t.Fatal("passiv mit Spiegel: nicht laufen")
+	if run() {
+		t.Fatal("passiv, Datenbank gestoppt: nicht laufen")
+	}
+	pgState = "standby"
+	if !run() {
+		t.Fatal("passiv mit laufendem Standby: als Spiegel laufen")
+	}
+	pgState = "primary"
+	if run() {
+		t.Fatal("passiv mit eigener Datenbank: nicht laufen")
 	}
 	st.saveState(ha.Persisted{Role: ha.Active, Term: 2})
-	if !shouldRunPDH(st) {
+	pgState = "stopped"
+	if !run() {
 		t.Fatal("aktiv: laufen")
 	}
 	single := clusterConfig{ClusterID: "c1", Version: 9, CAHolder: "b", Nodes: []clusterNode{{ID: "b", Kind: "node"}}}
 	st.saveCluster(single)
 	st.saveState(ha.Persisted{Role: ha.Passive, Term: 2})
-	if !shouldRunPDH(st) {
+	if !run() {
 		t.Fatal("Einzel: laufen")
 	}
 }

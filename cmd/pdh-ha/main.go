@@ -202,7 +202,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "pdh-ha %s %s\n", version, commit)
 		return 0
 	case "should-run-pdh":
-		if shouldRunPDH(newStore()) {
+		if shouldRunPDH(newStore(), localPGState) {
 			return 0
 		}
 		return 1
@@ -230,6 +230,19 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	return 2
 }
 
+// localPGState: Zustand des PostgreSQL hier (pgCtl.status); nicht lesbar →
+// "error" (gilt nicht als Standby).
+func localPGState() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r := execRunner{}
+	c, err := discoverCluster(ctx, r)
+	if err != nil {
+		return "error"
+	}
+	return (&pgCtl{r: r, c: c}).status(ctx).State
+}
+
 // cmdReplicaInit baut den pgActor für diesen Server und richtet den Spiegel ein.
 func cmdReplicaInit(confirm string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
@@ -253,7 +266,7 @@ func cmdReplicaInit(confirm string) error {
 		self = sn
 	}
 	ev := openEventLog(st.statePath("replica-init.jsonl"), 1<<20, 2)
-	pa := newPGActor(&pgCtl{r: r, c: c}, newServiceCtl(r), ev, func() pgEnv { return buildPGEnv(self, clusterNode{}, cl, "", c, true) })
+	pa := newPGActor(&pgCtl{r: r, c: c}, newServiceCtl(r), newTunnelCtl(r), ev, func() pgEnv { return buildPGEnv(self, clusterNode{}, cl, "", c, true) })
 	return replicaInit(ctx, st, pa, replicaOpts{
 		ConfirmHost: confirm, Repo: pdhRepo(), Etc: pdhEtc(), Hostname: os.Hostname, Wait: 2 * time.Minute,
 		Pull: func(ctx context.Context, dry bool) (pullResp, clusterNode, error) {

@@ -89,6 +89,8 @@ type BaseData struct {
 	PushEnabled            bool       // Push-Benachrichtigungen an (push.go): Alarm-Vollbild in der App
 	LiveTranslateAvail     bool       // Uebersetzungsdienst eingerichtet
 	Nav                    []navGroup // linke Navigation (nav.go)
+
+	Mirror *MirrorBanner // Band „Spiegel – nur lesen“, nil außerhalb des Spiegels (mirror.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -254,6 +256,17 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
+	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
+	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
+	mirrorPeerC      mirrorCache[mirrorPeer]
+	mirrorLagFetch   func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
+	mirrorLagC       mirrorCache[mirrorLag]
+	mirrorCurFetch   func(context.Context) (bool, error) // Spiegel auf Stand; nil → mirror.Current (Tests tauschen aus)
+	loginFn          func(ctx context.Context, email, password string) (string, *users.User, error)
+	loginRFIDFn      func(ctx context.Context, uid string) (string, *users.User, error)
+	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
+	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db               *pgxpool.Pool
 	tmpl             *template.Template
 	users            *users.Service
@@ -307,7 +320,7 @@ func NewHandler(
 	rb *rbac.Service,
 	jwtSecret string,
 ) *Handler {
-	return &Handler{
+	h := &Handler{
 		db:   db,
 		tmpl: tmpl, users: u, shifts: s, storage: st, infra: i,
 		tickets: t, faults: f, maint: m, inv: inv, it: itt, time: tt,
@@ -321,6 +334,8 @@ func NewHandler(
 		exportCron:  scheduler.NewCronManager(),
 		importPoll:  scheduler.NewIntervalManager(),
 	}
+	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
+	return h
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -1124,6 +1139,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
+	b.Mirror = h.mirrorBanner(r)
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	b.PushEnabled = h.pushEnabledFor(r.Context())
 	if lt := h.liveTranslateFor(r.Context(), u.ID); lt.On {
@@ -1975,6 +1991,7 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if n := loginNext(r.URL.Query().Get("next")); n != "/" {
 		d.Next = n
 	}
+	d = h.mirrorLoginHint(r, d)
 	h.render(w, "login", d)
 }
 
@@ -1990,7 +2007,11 @@ func loginNext(next string) string {
 
 func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	token, user, err := h.users.Login(r.Context(), r.FormValue("email"), r.FormValue("password"))
+	login := h.loginFn // Tests; nil → users.Login
+	if login == nil {
+		login = h.users.Login
+	}
+	token, user, err := login(r.Context(), r.FormValue("email"), r.FormValue("password"))
 	if err != nil {
 		authLog(r, false, "passwort", r.FormValue("email"), "", "", err.Error())
 		d := h.loginDataFor(r, "Ungültige Anmeldedaten")
@@ -1998,6 +2019,9 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 			d.Next = n
 		}
 		h.render(w, "login", d)
+		return
+	}
+	if h.mirrorLoginRefused(w, r, user, "passwort", r.FormValue("email")) {
 		return
 	}
 	if due, reason := h.passwordChangeDue(r, user); due {
@@ -2023,7 +2047,11 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "login", h.loginDataFor(r, "Keine Karte erkannt"))
 		return
 	}
-	token, user, err := h.users.LoginByRFID(r.Context(), uid)
+	loginRFID := h.loginRFIDFn // Tests; nil → users.LoginByRFID
+	if loginRFID == nil {
+		loginRFID = h.users.LoginByRFID
+	}
+	token, user, err := loginRFID(r.Context(), uid)
 	if err != nil {
 		authLog(r, false, "rfid", "Karte "+maskUID(uid), "", "", err.Error())
 		d := h.loginDataFor(r, "Unbekannte Karte")
@@ -2031,6 +2059,9 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 			d.Next = n
 		}
 		h.render(w, "login", d)
+		return
+	}
+	if h.mirrorLoginRefused(w, r, user, "rfid", "Karte "+maskUID(uid)) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
@@ -2100,7 +2131,7 @@ func (h *Handler) sessionUser(r *http.Request) *users.User {
 	if userID == "" {
 		return nil
 	}
-	user, err := h.users.GetByID(r.Context(), userID)
+	user, err := h.userByID(r.Context(), userID)
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Str("user_id", userID).Msg("sitzung: benutzer nicht ladbar (deaktiviert/geloescht?)")
 		return nil
@@ -2125,7 +2156,13 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		if bu := h.boardCompleteUser(r); bu != nil {
 			ctx := context.WithValue(r.Context(), "user", bu)
 			ctx = context.WithValue(ctx, boardCompleteKey{}, true)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			r = r.WithContext(ctx)
+			// Spiegel: Fertigmeldung schreibt – Nicht-Admins gleich abweisen
+			if h.mirrorDenied(r) {
+				h.mirrorRefuse(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
 			return
 		}
 		user := h.sessionUser(r)
@@ -2134,9 +2171,7 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 			// gueltig war, aber der Benutzer nicht mehr geladen werden kann
 			// (deaktiviert/geloescht). Sonst haengt der Browser dauerhaft an
 			// einem Token fest, das nie wieder zu "/" durchkommt.
-			http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
-			http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
-			http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+			clearSessionCookies(w)
 			// QR-Code einer Anlage gescannt: Easy-Mode (melden ohne Anmeldung) …
 			if id, ok := strings.CutPrefix(r.URL.Path, "/a/"); ok && r.Method == http.MethodGet && len(id) == 36 && uuidInPathRe.MatchString(id) &&
 				h.easyModeEnabled(r.Context()) && h.assetKindOf(r.Context(), id) == "infra" {
@@ -2153,9 +2188,27 @@ func (h *Handler) authMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), "user", user)
 		r = r.WithContext(ctx)
+		if h.mirrorGate(w, r) { // Spiegel: Regel C, eingeschränkter Modus (mirror.go)
+			return
+		}
 		h.presenceTouch(user.ID) // Anwesenheit (Seitenleiste „Aktivität“)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// clearSessionCookies: Sitzung im Browser beenden.
+func clearSessionCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_return_token", Value: "", Path: "/", MaxAge: -1})
+}
+
+// userByID: Benutzer laden (Sitzung, Leitstand-Token).
+func (h *Handler) userByID(ctx context.Context, id string) (*users.User, error) {
+	if h.userByIDFn != nil {
+		return h.userByIDFn(ctx, id)
+	}
+	return h.users.GetByID(ctx, id)
 }
 
 // ── Fault Detail ─────────────────────────────────────────────

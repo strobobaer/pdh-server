@@ -1,0 +1,17 @@
+# Eigene Ausschlussliste für das Spiegel-Labor (statt der .dockerignore im
+# Wurzelordner): scripts/ muss mit, restore.go bettet Skripte daraus ein.
+.git
+.env
+.env.*
+!.env.example
+config.yaml
+bin
+build
+dist
+uploads
+backups
+logs
+chat_files
+nextcloud-app
+*.exe
+*.patch

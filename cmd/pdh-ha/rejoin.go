@@ -183,8 +183,9 @@ func (a *pgActor) rejoin(ctx context.Context, term uint64) error {
 	if len(e.PartnerAddrs) == 0 {
 		return errors.New("Kein aktiver Partner bekannt")
 	}
-	if err := a.svc.Stop(ctx); err != nil {
-		return fmt.Errorf("pdh nicht gestoppt: %w", err)
+	// Start als Spiegel übernimmt der nächste Abgleich
+	if err := a.stopServices(ctx); err != nil {
+		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
 	}
 	if st := a.pg.status(ctx); st.State == "standby" && st.Streaming {
 		return nil // folgt schon dem aktiven Knoten

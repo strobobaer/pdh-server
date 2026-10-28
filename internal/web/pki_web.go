@@ -396,7 +396,7 @@ func (h *Handler) CertificateRevokeWeb(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) PKICACertWeb(w http.ResponseWriter, r *http.Request) {
 	ca, err := h.pkiLoadCA(r.Context())
 	if err != nil {
-		http.Error(w, "Zertifizierungsstelle nicht verfügbar", http.StatusServiceUnavailable)
+		http.Error(w, "Zertifizierungsstelle nicht verfügbar", pkiUnavailableStatus(err))
 		return
 	}
 	if r.URL.Query().Get("format") == "der" {
@@ -411,9 +411,18 @@ func (h *Handler) PKICACertWeb(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) PKICRLWeb(w http.ResponseWriter, r *http.Request) {
 	crl, err := h.pkiCRL(r.Context())
 	if err != nil {
-		http.Error(w, "Sperrliste nicht verfügbar", http.StatusServiceUnavailable)
+		http.Error(w, "Sperrliste nicht verfügbar", pkiUnavailableStatus(err))
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
 	pkiDownload(w, "pdh-crl.pem", "application/x-pem-file", crl)
+}
+
+// pkiUnavailableStatus: im Spiegel ohne Zertifizierungsstelle 404 (es gibt
+// keine – kein Serverfehler), sonst 503.
+func pkiUnavailableStatus(err error) int {
+	if errors.Is(err, errMirrorNotCreated) {
+		return http.StatusNotFound
+	}
+	return http.StatusServiceUnavailable
 }

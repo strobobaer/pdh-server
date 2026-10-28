@@ -284,6 +284,9 @@ type LoginData struct {
 	Token  string
 	Next   string   // Ziel nach der Anmeldung (z. B. gescannte QR-Infoseite)
 	Rules  []string // Passwort-Richtlinie ("reset", "change")
+	// Spiegel: Anmeldung abgewiesen (?spiegel=1, mirror.go)
+	Mirror    bool
+	MirrorURL string // aktiver Server; "" = unbekannt
 }
 
 func (d LoginData) Language() string { return d.Lang }

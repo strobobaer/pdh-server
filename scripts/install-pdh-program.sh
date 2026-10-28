@@ -56,4 +56,4 @@ fi
 systemctl daemon-reload
 # pdh startet nicht beim Hochfahren – im Verbund schaltet pdh-ha ihn
 systemctl disable pdh >/dev/null 2>&1 || true
-ok "Dienst pdh eingerichtet (startet nur auf dem aktiven Server)"
+ok "Dienst pdh eingerichtet (pdh-ha startet ihn)"

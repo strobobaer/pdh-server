@@ -23,6 +23,8 @@ func New(cfg *config.DatabaseConfig) (*DB, error) {
 	poolCfg.MinConns = 5
 	poolCfg.MaxConnLifetime = time.Hour
 	poolCfg.MaxConnIdleTime = 30 * time.Minute
+	// Spiegelmodus: Schreibversuche (25006) markieren die Anfrage (readonly_tracer.go)
+	poolCfg.ConnConfig.Tracer = NewReadOnlyTracer()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

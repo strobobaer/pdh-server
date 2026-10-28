@@ -448,3 +448,18 @@ func TestVPNReadServiceAliveWithError(t *testing.T) {
 		t.Fatalf("ohne Heartbeat darf der Dienst nicht als lebendig gelten: %+v", svc)
 	}
 }
+
+// Fehler der Ansicht (z. B. „Im Spiegel nicht verfügbar“) erscheinen im Reiter VPN.
+func TestVPNAdminShowsViewError(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	v := vpnTestView(true)
+	v.Error = errMirrorNotCreated.Error()
+	c, _ := tmpl.Clone()
+	var b strings.Builder
+	if err := bindLang(c, "de").ExecuteTemplate(&b, "vpn-admin", v); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "Im Spiegel nicht verfügbar") {
+		t.Error("Reiter VPN zeigt den Fehler der Ansicht nicht")
+	}
+}

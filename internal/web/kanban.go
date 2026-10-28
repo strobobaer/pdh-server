@@ -203,7 +203,7 @@ func (h *Handler) kanbanCards(ctx context.Context, partIDs []string) (map[string
 // mehr für sie reicht (volle Karten > ⌈Bestand / Kartenmenge⌉). Wieder voll
 // wird eine Karte nur über den Wareneingang. partID leer: alle Regelkreise.
 func (h *Handler) kanbanSync(ctx context.Context, partID string) {
-	if h.db == nil {
+	if h.db == nil || h.Mirror().On { // Spiegel: Karten gleicht der aktive Server ab
 		return
 	}
 	_, err := h.db.Exec(ctx, `

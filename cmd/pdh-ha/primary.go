@@ -157,7 +157,7 @@ GRANT EXECUTE ON FUNCTION pg_read_binary_file(text, bigint, bigint, boolean) TO 
 		"SELECT pg_create_physical_replication_slot('%[1]s') WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '%[1]s')", slot)); err != nil {
 		return err
 	}
-	return a.svc.SetAutostart(ctx, false)
+	return a.disableAutostart(ctx)
 }
 
 // configArchive packt .env des PDH und /etc/pdh ohne ha/ (tar.gz).
@@ -384,7 +384,7 @@ func (d *daemon) configPull(ctx context.Context, cs tls.ConnectionState, dry boo
 	}
 	pa := d.currentPGActor()
 	if pa == nil {
-		pa = newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv { return buildPGEnv(self, requester, cl, pass, c, true) })
+		pa = newPGActor(pg, newServiceCtl(d.sys), newTunnelCtl(d.sys), d.ev, func() pgEnv { return buildPGEnv(self, requester, cl, pass, c, true) })
 	}
 	if err := pa.ensurePrimary(ctx, d.st.etc); err != nil {
 		return pullResp{}, http.StatusInternalServerError, err

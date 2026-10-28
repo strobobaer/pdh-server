@@ -88,6 +88,9 @@ func scanNotice(back, key, text string) string {
 // Neustart) noch „läuft“ zeigen, als Fehler abschließen – sonst lädt die
 // Ergebnisseite endlos neu.
 func (h *Handler) expireStaleScans(ctx context.Context) {
+	if h.Mirror().On { // Spiegel: nichts abschließen, das macht der aktive Server
+		return
+	}
 	_, _ = h.db.Exec(ctx, `UPDATE inventory_scans SET status = 'error',
 			error = 'Erkennung abgebrochen (Zeitlimit oder Neustart) – bitte erneut scannen'
 		WHERE status = 'pending' AND created_at < NOW() - make_interval(secs => $1)`, (scanTimeout + time.Minute).Seconds())

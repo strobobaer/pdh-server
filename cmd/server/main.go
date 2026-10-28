@@ -27,6 +27,7 @@ import (
 	"pdh/internal/core/storage"
 	"pdh/internal/core/synclink"
 	"pdh/internal/core/users"
+	"pdh/internal/mirror"
 	"pdh/internal/modules/attachments"
 	"pdh/internal/modules/checklists"
 	"pdh/internal/modules/faults"
@@ -77,6 +78,12 @@ func main() {
 
 	db, err := openDatabase(&cfg.Database)
 	if err != nil {
+		// Im Ausfallschutz-Verbund nie den Assistenten öffnen (z. B. auf dem
+		// passiven Server, solange PostgreSQL noch startet): beenden, systemd
+		// bzw. pdh-ha starten neu.
+		if haConfigured() {
+			log.Fatal().Err(err).Msg("datenbank nicht verfügbar – Ausfallschutz eingerichtet, kein Einrichtungsassistent; neuer Versuch durch systemd/pdh-ha")
+		}
 		// Datenbank fehlt/unerreichbar -> Einrichtungsassistent im Browser
 		log.Warn().Err(err).Msg("datenbank nicht verfügbar – starte Einrichtungsassistent")
 		if err := setup.Run(context.Background(), setup.Options{Addr: addr, NeedDB: true, DBError: err.Error()}); err != nil {
@@ -92,44 +99,82 @@ func main() {
 	defer db.Close()
 	log.Info().Msg("datenbank verbunden")
 
-	// Neue Programmversion bzw. ausstehende Datenbank-Aenderungen: vorher
-	// automatisch eine Vollsicherung des bisherigen Stands anlegen.
-	backupCtx, backupCancel := context.WithTimeout(context.Background(), 2*time.Hour)
-	if err := web.BackupBeforeUpdate(backupCtx, db.Pool, buildCommit, "migrations"); err != nil {
-		if os.Getenv("PDH_SKIP_UPDATE_BACKUP") == "1" {
-			log.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – PDH_SKIP_UPDATE_BACKUP=1, update wird trotzdem angewendet")
+	// Spiegelmodus: PostgreSQL-Standby bzw. schreibgeschützte Datenbank. Dann
+	// startet das PDH nur lesend, ohne Sicherung, Migration oder Hintergrunddienste.
+	mode, merr := detectWithRetry(3, time.Second, func() (mirror.Mode, error) {
+		detectCtx, detectCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer detectCancel()
+		return mirror.Detect(detectCtx, db.Pool)
+	})
+	if merr != nil {
+		if haConfigured() { // im Verbund nicht raten: keine Vollsicherung/Migration auf einem Spiegel
+			log.Fatal().Err(merr).Msg("spiegelmodus nicht ermittelbar – Ausfallschutz eingerichtet, neuer Versuch durch systemd/pdh-ha")
+		}
+		log.Warn().Err(merr).Msg("spiegelmodus nicht ermittelbar – starte wie gewohnt")
+	}
+	mirrorOn := mode == mirror.ReadOnly
+	restricted := false
+	if mirrorOn {
+		pctx, pcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		pending, initialized, perr := database.PendingMigrations(pctx, db.Pool, "migrations")
+		pcancel()
+		if perr != nil {
+			log.Warn().Err(perr).Msg("spiegel: migrationsstand nicht ermittelbar – anmeldung eingeschränkt")
+			restricted = true // im Zweifel eingeschränkt
 		} else {
-			backupCancel()
-			log.Fatal().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – update wird NICHT angewendet (Speicherplatz/Sicherungsordner prüfen; im Notfall PDH_SKIP_UPDATE_BACKUP=1 setzen)")
+			restricted = schemaBehind(pending, initialized)
 		}
-	}
-	backupCancel()
-
-	migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer migrationCancel()
-	if err := database.RunMigrations(migrationCtx, db.Pool, "migrations"); err != nil {
-		log.Fatal().Err(err).Msg("migrationen")
-	}
-	log.Info().Msg("migrationen geprüft")
-	cfg = loadServerSettings(db, envPath)
-	// Nur-Lese-Benutzer fuer Grafana (Statistik); Fehler bremsen den Start nicht
-	if pw := os.Getenv("PDH_GRAFANA_DB_PASSWORD"); pw != "" {
-		if err := grafanadb.EnsureReader(migrationCtx, db.Pool, pw); err != nil {
-			log.Warn().Err(err).Msg("grafana: nur-lese-benutzer nicht eingerichtet")
-		} else {
-			log.Info().Str("benutzer", grafanadb.Role).Msg("grafana: nur-lese-benutzer eingerichtet")
-		}
+		log.Warn().Bool("schema_veraltet", restricted).Msg("spiegelmodus: PDH startet nur lesend")
 	}
 
-	// Noch kein Benutzer (frische Datenbank, z. B. Docker): ersten
-	// Administrator im Browser anlegen lassen.
-	var humans int
-	if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err == nil && humans == 0 {
-		log.Warn().Msg("noch kein benutzer vorhanden – starte Einrichtungsassistent")
-		if err := setup.Run(context.Background(), setup.Options{Addr: addr, Pool: db.Pool}); err != nil {
-			log.Fatal().Err(err).Msg("einrichtung")
+	if mirrorOn {
+		cfg = loadServerSettingsReadOnly(db)
+		var humans int
+		if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err != nil {
+			log.Fatal().Err(err).Msg("spiegel: benutzer konnten nicht gezählt werden")
+		} else if humans == 0 {
+			log.Fatal().Msg("spiegel: keine benutzer in der datenbank – einrichtung im Spiegel nicht möglich")
 		}
-		cfg = loadServerSettings(db, envPath) // z. B. neue oeffentliche Adresse
+	} else {
+		// Neue Programmversion bzw. ausstehende Datenbank-Aenderungen: vorher
+		// automatisch eine Vollsicherung des bisherigen Stands anlegen.
+		backupCtx, backupCancel := context.WithTimeout(context.Background(), 2*time.Hour)
+		if err := web.BackupBeforeUpdate(backupCtx, db.Pool, buildCommit, "migrations"); err != nil {
+			if os.Getenv("PDH_SKIP_UPDATE_BACKUP") == "1" {
+				log.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – PDH_SKIP_UPDATE_BACKUP=1, update wird trotzdem angewendet")
+			} else {
+				backupCancel()
+				log.Fatal().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – update wird NICHT angewendet (Speicherplatz/Sicherungsordner prüfen; im Notfall PDH_SKIP_UPDATE_BACKUP=1 setzen)")
+			}
+		}
+		backupCancel()
+
+		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer migrationCancel()
+		if err := database.RunMigrations(migrationCtx, db.Pool, "migrations"); err != nil {
+			log.Fatal().Err(err).Msg("migrationen")
+		}
+		log.Info().Msg("migrationen geprüft")
+		cfg = loadServerSettings(db, envPath)
+		// Nur-Lese-Benutzer fuer Grafana (Statistik); Fehler bremsen den Start nicht
+		if pw := os.Getenv("PDH_GRAFANA_DB_PASSWORD"); pw != "" {
+			if err := grafanadb.EnsureReader(migrationCtx, db.Pool, pw); err != nil {
+				log.Warn().Err(err).Msg("grafana: nur-lese-benutzer nicht eingerichtet")
+			} else {
+				log.Info().Str("benutzer", grafanadb.Role).Msg("grafana: nur-lese-benutzer eingerichtet")
+			}
+		}
+
+		// Noch kein Benutzer (frische Datenbank, z. B. Docker): ersten
+		// Administrator im Browser anlegen lassen.
+		var humans int
+		if err := db.Pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users WHERE NOT is_bot`).Scan(&humans); err == nil && humans == 0 {
+			log.Warn().Msg("noch kein benutzer vorhanden – starte Einrichtungsassistent")
+			if err := setup.Run(context.Background(), setup.Options{Addr: addr, Pool: db.Pool}); err != nil {
+				log.Fatal().Err(err).Msg("einrichtung")
+			}
+			cfg = loadServerSettings(db, envPath) // z. B. neue oeffentliche Adresse
+		}
 	}
 	addr = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port) // Port/Host koennen aus der Datenbank kommen
 
@@ -255,6 +300,7 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
+	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted}) // vor Routes(), danach unveränderlich
 	webHandler.RegisterMaintenanceProtocol() // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
@@ -266,26 +312,54 @@ func main() {
 		TeamsID:           cfg.Microsoft.TeamsID,
 		TeamsChannelID:    cfg.Microsoft.TeamsChannelID,
 	})
-	webHandler.StartUpdateChecker(context.Background())
-	webHandler.StartEnabledMqttBrokers(context.Background())
-	webHandler.StartEnabledMqttConsumers(context.Background())
-	webHandler.StartEnabledExportSchedules(context.Background())
 	webHandler.ConfigureMail(cfg.Mail)
-	webHandler.StartPurchaseReportSchedule(context.Background())
-	webHandler.StartBackupSystem(context.Background())
-	webHandler.StartChangeNotifier(context.Background())
-	maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
-	webHandler.StartTrainingScheduler(context.Background())
-	webHandler.StartObligationReminders(context.Background())
-	webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
-	webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
-	faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
 	webHandler.LoadIconOverrides(context.Background())
-	webHandler.StartKVPScheduler(context.Background())
-	webHandler.StartDriveMonitor(context.Background())
-	webHandler.StartEnabledImportPolls(context.Background())
-	webHandler.StartEnabledQueryPolls(context.Background())
-	webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
+	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
+		webHandler.StartUpdateChecker(context.Background())
+		webHandler.StartEnabledMqttBrokers(context.Background())
+		webHandler.StartEnabledMqttConsumers(context.Background())
+		webHandler.StartEnabledExportSchedules(context.Background())
+		webHandler.StartPurchaseReportSchedule(context.Background())
+		webHandler.StartBackupSystem(context.Background())
+		webHandler.StartChangeNotifier(context.Background())
+		maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
+		webHandler.StartTrainingScheduler(context.Background())
+		webHandler.StartObligationReminders(context.Background())
+		webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
+		webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
+		faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
+		webHandler.StartKVPScheduler(context.Background())
+		webHandler.StartDriveMonitor(context.Background())
+		webHandler.StartEnabledImportPolls(context.Background())
+		webHandler.StartEnabledQueryPolls(context.Background())
+		webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
+	}
+
+	// Modus überwachen (auch im Normalmodus: fängt eine spätere Abschottung ab).
+	// Im Spiegel zusätzlich: Datenbank 60 s weg -> Neustart; im Normalmodus
+	// beenden nur Moduswechsel den Prozess (Einzelserver bleiben wie bisher).
+	watchEvery, watchLost := 5*time.Second, time.Duration(0)
+	if mirrorOn {
+		watchLost = 60 * time.Second
+	}
+	go mirror.Watch(context.Background(), db.Pool, mode, watchEvery, watchLost, func(reason string) {
+		log.Error().Str("grund", reason).Msg("spiegelmodus gewechselt – neustart")
+		os.Exit(3)
+	})
+	// Eingeschränkter Spiegel: sobald das Schema nachgezogen ist (aktiver
+	// Server aktualisiert, Migrationen repliziert), neu starten – dann ohne Einschränkung.
+	if restricted {
+		go watchSchemaCatchUp(context.Background(), 30*time.Second, func(ctx context.Context) (int, error) {
+			pending, initialized, err := database.PendingMigrations(ctx, db.Pool, "migrations")
+			if err != nil || !schemaBehind(pending, initialized) {
+				return 0, err
+			}
+			return len(pending), nil
+		}, func() {
+			log.Warn().Msg("spiegel: datenbank auf programmstand – neustart ohne einschränkung")
+			os.Exit(3)
+		})
+	}
 
 	copilotModel := cfg.Copilot.Model // Ollama
 	if cfg.Copilot.Backend == "anthropic" {
@@ -299,6 +373,8 @@ func main() {
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)
+	r.Use(webHandler.MirrorMiddleware)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
 	// Löschen nur mit Recht (Bereichsadministrator), vor der Löschvormerkung
 	r.Use(webHandler.PermissionGateMiddleware)
@@ -316,6 +392,7 @@ func main() {
 			"status":  "ok",
 			"service": "pdh",
 			"version": pdh.Version(),
+			"mode":    mode.String(),
 		})
 	})
 

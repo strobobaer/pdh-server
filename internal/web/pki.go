@@ -71,6 +71,9 @@ func (h *Handler) pkiLoadCA(ctx context.Context) (*pkiCA, error) {
 		}
 		return parseCA([]byte(certPEM), []byte(keyPEM))
 	}
+	if h.Mirror().On { // Spiegel: keine Zertifizierungsstelle anlegen
+		return nil, errMirrorNotCreated
+	}
 	ca, keyPEM, err := newCA(h.branding().AppName, time.Now())
 	if err != nil {
 		return nil, err

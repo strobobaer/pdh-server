@@ -370,7 +370,7 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		return
 	}
 	pg := &pgCtl{r: d.sys, c: c}
-	pa := newPGActor(pg, newServiceCtl(d.sys), d.ev, func() pgEnv {
+	pa := newPGActor(pg, newServiceCtl(d.sys), newTunnelCtl(d.sys), d.ev, func() pgEnv {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		return d.pgEnvLocked(pg)
