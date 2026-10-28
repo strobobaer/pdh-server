@@ -151,6 +151,16 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .ls-kpi span{font-size:12px;color:var(--muted)}
 .ls-kpi.alert b{color:var(--overdue)}
 .ls-list{display:flex;flex-direction:column;gap:6px}
+.ls-calbox{min-height:120px;font-size:13px}
+.ls-calbox .form-input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg3,var(--bg2));color:var(--text);width:auto}
+.ls-calbox .btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:12.5px;min-height:32px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);text-decoration:none;cursor:pointer}
+.ls-calbox .btn-icon{width:32px;padding:5px 0}
+.ls-calbox .btn:hover{border-color:var(--accent);color:var(--accent)}
+.ls-calbox .card{border:0;padding:0;background:none;box-shadow:none}
+.ls-calbox .cal-scroll{border:1px solid var(--border)!important;border-radius:10px}
+.ls-calbox .rec-sub{color:var(--muted);font-size:12px}
+.ls-calbox .badge{font-size:11px;padding:2px 8px;border-radius:999px}
+.ls-calbox .cal-filter{box-shadow:none;margin-bottom:8px}
 .ls-li{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%;zoom:var(--row-scale)}
 .ls-li .t{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ls-li .s{font-size:12px;color:var(--muted);white-space:nowrap}
@@ -422,6 +432,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     {{if eq .Type "kennzahlen"}}<div class="ls-kpis" data-ls-kpis></div>
     {{else if eq .Type "stoerungen"}}<div class="ls-list" data-ls-list="fault"></div>
     {{else if eq .Type "wartung"}}<div class="ls-list" data-ls-list="maintenance"></div>
+    {{else if eq .Type "kalender"}}<div class="ls-calbox" data-ls-calbox><span style="color:var(--muted);font-size:13px">Kalender lädt …</span></div>
     {{else if eq .Type "hinweis"}}<div class="ls-note">{{index .Config "text"}}</div>
     {{else if eq .Type "links"}}<div class="ls-links">{{range .Links}}<a class="header-button" href="/global/b/{{.Slug}}">{{.Name}}</a>{{else}}<span style="color:var(--muted);font-size:13px">Keine anderen Leitstände ausgewählt.</span>{{end}}</div>
     {{end}}
@@ -1413,6 +1424,36 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
       if(left <= 0) location.href = '/global/b/' + encodeURIComponent(LS_ROTATE.next);
     }, 1000);
   }
+})();
+</script>
+{{template "grid-drag"}}
+{{template "calendar-js"}}
+<script>
+// Baustein „Kalender“: derselbe Kalender wie unter Übersicht → Kalender, Auswahl oben im Baustein
+(function(){
+  const boxes = document.querySelectorAll('[data-ls-calbox]'); if(!boxes.length) return;
+  async function load(box, url){
+    try{
+      const res = await fetch(url, {credentials: 'same-origin', pdhQuiet: true});
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      box.innerHTML = await res.text(); box.dataset.url = url;
+      pdhCalInit(box);
+    }catch(e){ box.textContent = 'Kalender konnte nicht geladen werden (' + e.message + ').'; }
+  }
+  boxes.forEach(function(box){
+    // Navigation und Auswahl im Baustein laden den Kalender neu, ohne die Seite zu verlassen
+    box.addEventListener('click', function(e){
+      const a = e.target.closest('a.cal-nav'); if(!a) return;
+      e.preventDefault(); load(box, a.getAttribute('href'));
+    });
+    box.addEventListener('submit', function(e){
+      const f = e.target.closest('form.cal-filter'); if(!f) return;
+      e.preventDefault(); load(box, f.getAttribute('action') + '?' + new URLSearchParams(new FormData(f)).toString());
+    });
+    load(box, '/global/calendar?b=' + encodeURIComponent(LS_BOARD));
+    // alle 5 Minuten auffrischen – nicht während gezogen wird
+    setInterval(function(){ if(!box.querySelector('.dg-src')) load(box, box.dataset.url); }, 300000);
+  });
 })();
 </script>
 {{template "create-wizard" (dict "Board" true)}}

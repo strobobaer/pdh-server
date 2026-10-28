@@ -51,6 +51,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Get("/", h.GlobalDashboard)
 	r.Get("/b/{slug}", h.GlobalDashboardBoard) // bestimmter Leitstand (leitstand_boards.go)
 	r.Get("/data", h.GlobalDashboardData)
+	r.Get("/calendar", h.CalendarBoardFragment) // Baustein „Kalender“ (calendar_board.go)
 	r.Post("/actions", h.GlobalDashboardAction)
 	r.Post("/complete-start", h.GlobalDashboardCompleteStart)
 	r.Post("/open", h.GlobalDashboardOpen)

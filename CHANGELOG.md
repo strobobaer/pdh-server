@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.6] – 2026-10-28
+
+### Neu
+- Schichtplan: Namen lassen sich auf einen anderen Tag oder in eine andere Schicht ziehen (Strg oder „Kopieren“ = kopieren); am rechten Rand gezogen trägt PDH die Person an jedem Tag ein – z. B. Montag bis Freitag. Urlaub und schon vergebene Schichten werden übersprungen und gemeldet.
+- Sonderdienste: Bereitschaft, besondere Tätigkeiten und Zusatzaufgaben werden im Schichtplan unter den Schichten eingeteilt. Eine Dienstart kann eine Qualifikation aus dem Personalstamm verlangen – dann stehen nur Personen mit gültigem Nachweis zur Auswahl (Planer → Einstellungen → Sonderdienste, neues Recht „Sonderdienste einteilen“).
+- Kalender: Schichten und Sonderdienste ziehen (auch auf eine andere Person), am Rand über weitere Tage verlängern, Urlaub und Abwesenheit am Rand verlängern oder verkürzen und die Fälligkeit von Störungen, Tickets, Aufgaben und Wartungen per Ziehen verschieben.
+- Kalender zeigt die Sonderdienste als eigene Art.
+- Navigation anpassen: ganze Gruppen lassen sich mit Pfeilen nach oben oder unten verschieben.
+- Leitstand-Baustein „Kalender“: derselbe Kalender mit Schichten, Sonderdiensten, Abwesenheit und fälligen Vorgängen, Auswahl (Zeitraum, Abteilung, Gruppe, Person, Arten) oben im Baustein; voreingestellt auf die Abteilung bzw. Gruppe des Leitstands. Ohne Anmeldung nur lesbar, Abwesenheiten ohne Grund.
+
 ## [0.76.5] – 2026-10-28
 
 ### Neu

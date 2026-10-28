@@ -183,7 +183,10 @@ nav{padding:12px 0;flex:1}
 html.nav-editing .nav-group{display:block!important;min-height:26px;border:1px dashed var(--border);border-radius:6px;margin:2px 8px 6px;padding:2px 0}
 html.nav-editing .nav-group[data-fold-group="top"]{border-style:dotted}
 html.nav-editing .nav-item{cursor:grab}
-html.nav-editing .nav-fold i{display:none}
+html.nav-editing .nav-fold > i{display:none}
+.nav-fold .nav-gmove i,.nav-fold .nav-gdel i{transform:none!important;transition:none;margin:0}
+.nav-gmove{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;color:var(--muted);cursor:pointer;flex-shrink:0}
+.nav-gmove:hover,.nav-gmove:focus{color:var(--accent);background:var(--bg3);outline:none}
 .nav-gl-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;font-size:11px;padding:2px 6px;text-transform:none;letter-spacing:0}
 .nav-gdel{background:none;border:0;color:var(--muted);cursor:pointer;padding:0 0 0 6px}
 .nav-ghost{opacity:.4}
@@ -852,7 +855,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         <button type="button" onclick="pdhNavReset()" title="{{t "Vorgabe wiederherstellen"}}"><i class="ti ti-restore"></i> {{t "Standard"}}</button>
         <button type="button" class="on" onclick="pdhNavSave()"><i class="ti ti-check"></i> {{t "Fertig"}}</button>
       </div>
-      <div class="nav-edit-hint" style="display:none">{{t "Einträge ziehen, Gruppennamen anklicken zum Umbenennen."}}</div>
+      <div class="nav-edit-hint" style="display:none">{{t "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen."}}</div>
     </div>
   </nav>
   <script>
@@ -906,7 +909,29 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
       if(g) g.remove(); btn.remove();
     });
     btn.appendChild(del);
+    // Gruppe nach oben/unten verschieben (Kopf und Einträge zusammen)
+    [['up', 'ti-arrow-up', {{t "Gruppe nach oben"}}], ['down', 'ti-arrow-down', {{t "Gruppe nach unten"}}]].forEach(function(m){
+      const b = document.createElement('span');
+      b.className = 'nav-gmove'; b.title = m[2]; b.setAttribute('role', 'button'); b.setAttribute('aria-label', m[2]); b.tabIndex = 0;
+      b.innerHTML = '<i class="ti ' + m[1] + '"></i>';
+      const go = e => { e.stopPropagation(); e.preventDefault(); pdhNavMoveGroup(btn, m[0]); };
+      b.addEventListener('click', go);
+      b.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' ') go(e); });
+      btn.insertBefore(b, del);
+    });
     btn.onclick = null;
+  }
+  // pdhNavMoveGroup: Gruppe (Kopf + Einträge) mit der vorigen bzw. nächsten tauschen;
+  // die oberste Gruppe ohne Namen bleibt immer oben
+  function pdhNavMoveGroup(btn, dir){
+    const g = document.querySelector('#pdh-nav [data-fold-group="' + btn.dataset.fold + '"]'); if(!g) return;
+    const heads = [...document.querySelectorAll('#pdh-nav .nav-fold')];
+    const i = heads.indexOf(btn), other = heads[dir === 'up' ? i - 1 : i + 1];
+    if(!other) return;
+    const og = document.querySelector('#pdh-nav [data-fold-group="' + other.dataset.fold + '"]');
+    if(dir === 'up') { other.before(btn); btn.after(g); }
+    else { (og || other).after(btn); btn.after(g); }
+    btn.querySelector('.nav-gmove').focus();
   }
   function pdhNavAddGroup(){
     const key = 'g' + Date.now().toString(36);

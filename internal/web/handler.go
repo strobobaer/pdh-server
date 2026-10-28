@@ -436,6 +436,13 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/ms/{id}/{action}", h.MSActionWeb)
 	r.Post("/planner/shifts/cell", h.PlannerCellWeb)
 	r.Post("/planner/shifts/copy-week", h.PlannerCopyWeekWeb)
+	r.Post("/planner/grid/move", h.PlannerGridMoveWeb) // Eintrag ziehen: verschieben/kopieren (planner_duties.go)
+	r.Post("/planner/grid/fill", h.PlannerGridFillWeb) // Eintrag am Rand über weitere Tage ziehen
+	r.Post("/planner/duties/cell", h.PlannerDutyCellWeb)
+	r.Post("/planner/absences/{id}/extend", h.PlannerAbsenceExtendWeb) // im Kalender am Rand ziehen
+	r.Post("/calendar/move", h.CalendarMoveWeb)                         // Fälligkeit im Kalender verschieben
+	r.Post("/planner/duty-types/{id}", h.PlannerDutyTypeSaveWeb)
+	r.Post("/planner/duty-types/{id}/delete", h.PlannerDutyTypeDeleteWeb)
 	r.Post("/planner/absences", h.PlannerAbsenceCreateWeb)
 	r.Post("/planner/absences/{id}/decide", h.PlannerAbsenceDecideWeb)
 	r.Post("/planner/absences/{id}/cancel", h.PlannerAbsenceCancelWeb)

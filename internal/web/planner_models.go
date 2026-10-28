@@ -141,6 +141,10 @@ type setupTabData struct {
 	Year        int
 	Today       string
 	NextMonday  string
+	DutyTypes   []dutyType // Sonderdienste (planner_duties.go)
+	DutyKinds   []struct{ Key, Label, Icon string }
+	QualTitles  []string
+	CanDuties   bool
 }
 
 func (h *Handler) setupTab(r *http.Request) *setupTabData {
@@ -149,6 +153,8 @@ func (h *Handler) setupTab(r *http.Request) *setupTabData {
 	d := &setupTabData{Templates: shiftTemplates, States: germanStates, Year: now.Year(), Today: now.Format(dayISO),
 		NextMonday: mondayOf(now).AddDate(0, 0, 7).Format(dayISO)}
 	d.State = h.appSetting(ctx, "planner_holiday_state", "")
+	d.CanDuties = h.hasPerm(r, permDuties)
+	d.DutyTypes, d.DutyKinds, d.QualTitles = h.dutyTypes(ctx, false), dutyKinds, h.qualificationTitles(ctx)
 	d.VacationDef = h.appSetting(ctx, "planner_vacation_default", "30")
 	for _, m := range h.plannerModels(ctx, true) {
 		sm := setupModel{plannerModel: m}

@@ -724,5 +724,8 @@
  "beantragt": "побарано",
  "nichts geplant": "ништо планирано",
  "überfällig seit": "задоцнето од",
- "Bestellvorgänge": "Набавки"
+ "Bestellvorgänge": "Набавки",
+ "Gruppe nach oben": "Помести ја групата нагоре",
+ "Gruppe nach unten": "Помести ја групата надолу",
+ "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Повлечете ги ставките, преместете ги групите со ↑ ↓, кликнете на името на групата за преименување."
 }

@@ -51,6 +51,7 @@
 .pl-count{font-size:10px;color:var(--muted)}
 .pl-count.bad{color:var(--red);font-weight:700}
 .pl-add{font-size:11px;color:var(--muted)}
+.pl-grid tr.pl-sep th{background:var(--bg3);text-align:left;padding:6px 10px;font-size:12px;font-weight:700}
 .pl-side .pl-model{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;text-decoration:none;color:inherit}
 .pl-side .pl-model.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .pl-side .pl-model small{display:block;color:var(--muted);font-size:11px}
@@ -118,19 +119,36 @@
           <th class="sh" style="--sc:{{css $row.Shift.Color}}"><b>{{$row.Shift.Name}}</b><small>{{$row.Shift.Short}} · {{$row.Shift.Time}}{{if $row.Shift.MinStaff}} · min. {{$row.Shift.MinStaff}}{{end}}</small></th>
           {{range $ci, $c := $row.Cells}}{{$day := index $.Days $ci}}
           <td class="pl-cell{{if $.CanPlan}} click{{end}}{{if $c.Under}} under{{end}}{{if $day.Weekend}} wkend{{end}}{{if $day.Holiday}} holi{{end}}" style="--sc:{{css $row.Shift.Color}}"
-              {{if $.CanPlan}}data-date="{{$day.Date}}" data-shift="{{$row.Shift.ID}}" data-shift-name="{{$row.Shift.Name}}" data-day-label="{{$day.Short}} {{$day.Label}}" data-people="{{range $i, $p := $c.People}}{{if $i}},{{end}}{{$p.ID}}{{end}}" tabindex="0" role="button" aria-label="{{$row.Shift.Name}} am {{$day.Short}} {{$day.Label}} besetzen"{{end}}>
-            {{range $c.People}}<span class="pl-chip{{if .Draft}} draft{{end}}" title="{{.Name}}{{if .Draft}} (Entwurf){{end}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}</span>{{end}}
+              {{if $.CanPlan}}data-kind="shift" data-row="{{$row.Shift.ID}}" data-date="{{$day.Date}}" data-shift="{{$row.Shift.ID}}" data-shift-name="{{$row.Shift.Name}}" data-day-label="{{$day.Short}} {{$day.Label}}" data-people="{{range $i, $p := $c.People}}{{if $i}},{{end}}{{$p.ID}}{{end}}" tabindex="0" role="button" aria-label="{{$row.Shift.Name}} am {{$day.Short}} {{$day.Label}} besetzen"{{end}}>
+            {{range $c.People}}<span class="pl-chip{{if .Draft}} draft{{end}}" data-user="{{.ID}}" title="{{.Name}}{{if .Draft}} (Entwurf){{end}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}</span>{{end}}
             {{if $row.Shift.MinStaff}}<span class="pl-count{{if $c.Under}} bad{{end}}">{{len $c.People}}/{{$row.Shift.MinStaff}}</span>
             {{else if and $.CanPlan (not $c.People)}}<span class="pl-add"><i class="ti ti-plus"></i></span>{{end}}
           </td>
           {{end}}
         </tr>
         {{end}}
+        {{if .DutyRows}}
+        <tr class="pl-sep"><th colspan="8"><i class="ti ti-star"></i> Sonderdienste, Bereitschaft &amp; Zusatzaufgaben{{if .CanDuties}} <a href="/planner?tab=settings#duties" style="color:var(--accent);font-weight:400;margin-left:8px">Dienstarten verwalten</a>{{end}}</th></tr>
+        {{range $row := .DutyRows}}
+        <tr>
+          <th class="sh" style="--sc:{{css $row.Type.Color}}"><b><i class="ti {{$row.Type.Icon}}"></i> {{$row.Type.Name}}</b><small>{{$row.Type.KindLabel}}{{if $row.Type.Qualification}} · nur „{{$row.Type.Qualification}}“{{end}}{{if $row.Type.MinStaff}} · min. {{$row.Type.MinStaff}}{{end}}</small></th>
+          {{range $ci, $c := $row.Cells}}{{$day := index $.Days $ci}}
+          <td class="pl-cell pl-duty{{if $.CanDuties}} click{{end}}{{if $c.Under}} under{{end}}{{if $day.Weekend}} wkend{{end}}{{if $day.Holiday}} holi{{end}}" style="--sc:{{css $row.Type.Color}}"
+              {{if $.CanDuties}}data-kind="duty" data-row="{{$row.Type.ID}}" data-date="{{$day.Date}}" data-shift-name="{{$row.Type.Name}}" data-day-label="{{$day.Short}} {{$day.Label}}" data-qual="{{$row.Type.Qualification}}" data-qualified="{{range $i, $q := $row.Qualified}}{{if $i}},{{end}}{{$q}}{{end}}" data-people="{{range $i, $p := $c.People}}{{if $i}},{{end}}{{$p.ID}}{{end}}" tabindex="0" role="button" aria-label="{{$row.Type.Name}} am {{$day.Short}} {{$day.Label}} einteilen"{{end}}>
+            {{range $c.People}}<span class="pl-chip" data-user="{{.ID}}" title="{{.Name}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}</span>{{end}}
+            {{if $row.Type.MinStaff}}<span class="pl-count{{if $c.Under}} bad{{end}}">{{len $c.People}}/{{$row.Type.MinStaff}}</span>
+            {{else if and $.CanDuties (not $c.People)}}<span class="pl-add"><i class="ti ti-plus"></i></span>{{end}}
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+        {{end}}
         </tbody>
       </table>
     </div>
     <div class="rec-sub" style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-      {{if .CanPlan}}<span><i class="ti ti-hand-click"></i> Feld anklicken, um Mitarbeiter einzuteilen.</span>{{end}}
+      {{if or .CanPlan .CanDuties}}<span><i class="ti ti-hand-click"></i> Feld anklicken = einteilen · Name ziehen = verschieben (Strg = kopieren) · am rechten Rand ziehen = über weitere Tage</span>
+      <button type="button" class="btn btn-small" id="pl-copy" aria-pressed="false" title="Ziehen kopiert statt zu verschieben (für Tablet ohne Strg-Taste)"><i class="ti ti-copy"></i> Kopieren</button>{{end}}
       <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--red)"></span>Mindestbesetzung unterschritten</span>
       {{if .DraftCount}}<span><span class="pl-chip draft" style="display:inline-block;margin:0">Entwurf</span> {{.DraftCount}} Einteilung(en) aus unveröffentlichten Plänen – nur für Planende sichtbar</span>{{end}}
       {{if .CanPlan}}<form method="post" action="/planner/shifts/copy-week" style="margin-left:auto" onsubmit="return confirm('Einteilung der Vorwoche in diese Woche übernehmen? Vorhandene Einträge und Urlaubstage bleiben unberührt.')">
@@ -154,7 +172,7 @@
   </aside>
 </div>
 
-{{if .CanPlan}}
+{{if or .CanPlan .CanDuties}}
 <div class="pl-modal" id="pl-pick" onclick="if(event.target===this)plClose()">
   <div class="pl-box" role="dialog" aria-modal="true" aria-labelledby="pl-pick-title">
     <header><span id="pl-pick-title">Schicht besetzen</span><button class="btn btn-icon" type="button" onclick="plClose()" title="Schließen"><i class="ti ti-x"></i></button></header>
@@ -165,6 +183,7 @@
     <footer><span class="rec-sub" id="pl-sum" style="margin-right:auto"></span><button class="btn" type="button" onclick="plClose()">Abbrechen</button><button class="btn btn-primary" type="button" id="pl-save" onclick="plSave()"><i class="ti ti-check"></i> Übernehmen</button></footer>
   </div>
 </div>
+{{template "grid-drag"}}
 <script>
 (function(){
   const USERS = {{.Users}} || [];
@@ -174,6 +193,21 @@
   function render(){
     const q = document.getElementById('pl-filter').value.trim().toLowerCase();
     const info = INFO[cur.date] || {shift:{}, shiftId:{}, absent:{}};
+    if(cur.kind === 'duty'){
+      // Sonderdienst: Qualifikation aus dem Personalstamm, Schicht ist egal
+      const ok = u => !cur.qualified || cur.qualified.has(u.ID);
+      const rk = u => sel.has(u.ID) ? 0 : info.absent[u.ID] ? 3 : ok(u) ? 1 : 2;
+      const lst = USERS.filter(u => !q || u.Name.toLowerCase().includes(q) || (u.Dept || '').toLowerCase().includes(q)).sort((a, b) => rk(a) - rk(b) || a.Name.localeCompare(b.Name));
+      document.getElementById('pl-list').innerHTML = lst.map(u => {
+        const abs = info.absent[u.ID], qual = ok(u);
+        let note = abs ? '<small style="color:var(--red)"><i class="ti ti-beach"></i> ' + esc(abs) + '</small>'
+          : !qual ? '<small style="color:var(--muted)"><i class="ti ti-certificate-off"></i> ohne „' + esc(cur.qual) + '“</small>'
+          : info.shift[u.ID] ? '<small style="color:var(--muted)">Schicht ' + esc(info.shift[u.ID]) + '</small>' : (u.Dept ? '<small style="color:var(--muted)">' + esc(u.Dept) + '</small>' : '');
+        return '<label class="pl-pick' + (abs || !qual ? ' abs' : '') + '"><input type="checkbox" value="' + esc(u.ID) + '"' + (sel.has(u.ID) ? ' checked' : '') + (!qual && !sel.has(u.ID) ? ' disabled' : '') + '> ' + esc(u.Name) + note + '</label>';
+      }).join('') || '<div class="rec-sub">Keine Mitarbeiter</div>';
+      document.getElementById('pl-sum').textContent = sel.size + ' ausgewählt';
+      return;
+    }
     // eingeteilt zuerst, dann verfügbar, dann andere Schicht, dann abwesend
     const rank = u => sel.has(u.ID) ? 0 : info.absent[u.ID] ? 3 : (info.shiftId[u.ID] && info.shiftId[u.ID] !== cur.shift) ? 2 : 1;
     const list = USERS.filter(u => !q || u.Name.toLowerCase().includes(q) || (u.Dept || '').toLowerCase().includes(q))
@@ -189,7 +223,8 @@
     document.getElementById('pl-sum').textContent = sel.size + ' ausgewählt';
   }
   window.plOpen = function(td){
-    cur = {date: td.dataset.date, shift: td.dataset.shift};
+    cur = {kind: td.dataset.kind || 'shift', date: td.dataset.date, shift: td.dataset.row, qual: td.dataset.qual || '',
+      qualified: td.dataset.qual ? new Set((td.dataset.qualified || '').split(',').filter(Boolean)) : null};
     sel = new Set((td.dataset.people || '').split(',').filter(Boolean));
     document.getElementById('pl-pick-title').textContent = td.dataset.shiftName + ' · ' + td.dataset.dayLabel;
     document.getElementById('pl-filter').value = '';
@@ -207,10 +242,12 @@
   window.plSave = async function(){
     const btn = document.getElementById('pl-save'); btn.disabled = true;
     try{
-      const res = await fetch('/planner/shifts/cell', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({date: cur.date, shift_id: cur.shift, user_ids: [...sel]})});
+      const duty = cur.kind === 'duty';
+      const res = await fetch(duty ? '/planner/duties/cell' : '/planner/shifts/cell', {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(duty ? {date: cur.date, duty_id: cur.shift, user_ids: [...sel]} : {date: cur.date, shift_id: cur.shift, user_ids: [...sel]})});
       const j = await res.json().catch(() => ({}));
       if(!res.ok || j.success === false) throw new Error(j.error || ('HTTP ' + res.status));
+      if(j.skipped && j.skipped.length) alert('Nicht eingeteilt:\n• ' + j.skipped.join('\n• '));
       location.reload();
     }catch(err){ alert('Speichern fehlgeschlagen: ' + err.message); btn.disabled = false; }
   };
@@ -219,6 +256,16 @@
     td.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); plOpen(td); } });
   });
   document.addEventListener('keydown', e => { if(e.key === 'Escape') plClose(); });
+  // Ziehen: verschieben/kopieren und am Rand über weitere Tage (widgets/grid_drag.gohtml)
+  const grid = document.querySelector('.pl-grid');
+  const drag = pdhGridDrag({root: grid, chip: '.pl-cell.click .pl-chip', cell: '.pl-cell.click',
+    canDrop: (ch, c) => c.dataset.kind === ch.closest('.pl-cell').dataset.kind,
+    onMove: (ch, from, to, copy) => pdhGridPost('/planner/grid/move', {kind: from.dataset.kind, user_id: ch.dataset.user,
+      from_date: from.dataset.date, from_row: from.dataset.row, to_date: to.dataset.date, to_row: to.dataset.row, copy: copy}),
+    onFill: (ch, from, cells) => pdhGridPost('/planner/grid/fill', {kind: from.dataset.kind, user_id: ch.dataset.user,
+      from_date: cells[0].dataset.date, to_date: cells[cells.length - 1].dataset.date, from_row: from.dataset.row})});
+  const cb = document.getElementById('pl-copy');
+  if(cb) cb.addEventListener('click', () => { const on = cb.getAttribute('aria-pressed') !== 'true'; cb.setAttribute('aria-pressed', on); cb.classList.toggle('dg-copy-on', on); drag.setCopy(on); });
 })();
 </script>
 {{end}}
@@ -586,4 +633,49 @@
     {{range $s.Holidays}}<div class="rec-row"><div style="width:90px" class="rec-sub">{{.Label}}</div><div class="grow">{{.Name}}</div></div>{{end}}
   </div>
 </div>
+{{if $s.CanDuties}}
+<div class="card" id="duties" style="margin-top:14px">
+  <div class="card-title"><span><i class="ti ti-star"></i> Sonderdienste, Bereitschaft &amp; Zusatzaufgaben</span><span class="rec-sub">erscheinen im Schichtplan unter den Schichten</span></div>
+  <datalist id="du-quals">{{range $s.QualTitles}}<option value="{{.}}">{{end}}</datalist>
+  <div style="overflow-x:auto"><table class="du-t">
+    <thead><tr><th colspan="9" style="padding:0"><div class="du-row du-h"><span>Name</span><span>Kürzel</span><span>Art</span><span>Nötige Qualifikation (Personalstamm)</span><span>Min.</span><span>Farbe</span><span>Reihenf.</span><span>Aktiv</span><span></span></div></th></tr></thead>
+    <tbody>
+    {{range $s.DutyTypes}}
+    <tr><td colspan="9" style="padding:0"><form method="post" action="/planner/duty-types/{{.ID}}" class="du-row">
+      <input class="form-input" name="name" value="{{.Name}}" maxlength="80" required aria-label="Name">
+      <input class="form-input" name="short_name" value="{{.Short}}" maxlength="10" aria-label="Kürzel">
+      <select class="form-input" name="kind" aria-label="Art">{{$k := .Kind}}{{range $s.DutyKinds}}<option value="{{.Key}}" {{if eq .Key $k}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+      <input class="form-input" name="qualification" value="{{.Qualification}}" list="du-quals" maxlength="200" placeholder="– alle –" aria-label="Nötige Qualifikation">
+      <input class="form-input" name="min_staff" value="{{.MinStaff}}" type="number" min="0" aria-label="Mindestbesetzung">
+      <input name="color" type="color" value="{{.Color}}" aria-label="Farbe">
+      <input class="form-input" name="sort_order" value="{{.Sort}}" type="number" aria-label="Reihenfolge">
+      <label><input type="checkbox" name="active" {{if .Active}}checked{{end}}> aktiv</label>
+      <span style="display:flex;gap:4px"><button class="btn btn-small" type="submit" title="Speichern"><i class="ti ti-check"></i></button>
+      <button class="btn btn-small" type="submit" formaction="/planner/duty-types/{{.ID}}/delete" onclick="return confirm('Dienstart {{.Name}} löschen? Mit Einteilungen wird sie nur abgeschaltet.')" title="Löschen{{if .Used}} ({{.Used}} Einteilungen – wird abgeschaltet){{end}}"><i class="ti ti-trash"></i></button></span>
+    </form></td></tr>
+    {{end}}
+    <tr><td colspan="9" style="padding:0"><form method="post" action="/planner/duty-types/new" class="du-row">
+      <input class="form-input" name="name" maxlength="80" required placeholder="Neu, z. B. Brandschutzhelfer" aria-label="Name">
+      <input class="form-input" name="short_name" maxlength="10" placeholder="BS" aria-label="Kürzel">
+      <select class="form-input" name="kind" aria-label="Art">{{range $s.DutyKinds}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select>
+      <input class="form-input" name="qualification" list="du-quals" maxlength="200" placeholder="– alle –" aria-label="Nötige Qualifikation">
+      <input class="form-input" name="min_staff" value="0" type="number" min="0" aria-label="Mindestbesetzung">
+      <input name="color" type="color" value="#F59E0B" aria-label="Farbe">
+      <input class="form-input" name="sort_order" value="10" type="number" aria-label="Reihenfolge">
+      <span></span>
+      <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-plus"></i> Anlegen</button>
+    </form></td></tr>
+    </tbody>
+  </table></div>
+  <p class="rec-sub">Ist eine Qualifikation eingetragen, bietet der Schichtplan nur Personen an, die sie im Personalstamm (Benutzer → Nachweise) haben und deren Nachweis am Tag noch gilt.</p>
+</div>
+<style>
+.du-t{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
+.du-t th{text-align:left}
+.du-h{font-size:11px;color:var(--muted);font-weight:600}
+.du-row{display:grid;grid-template-columns:1.6fr .6fr 1.1fr 1.6fr .5fr 44px .6fr 70px 80px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.du-row .form-input{padding:5px 7px;font-size:12.5px}
+.du-row input[type=color]{width:40px;height:30px;border:1px solid var(--border);border-radius:6px;background:none;padding:2px}
+</style>
+{{end}}
 {{end}}

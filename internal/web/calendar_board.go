@@ -1,12 +1,17 @@
 package web
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"pdh/internal/core/users"
 )
 
 // Kalender-Dashboard (/calendar): Zeilen = Mitarbeiter, Spalten = Tage
@@ -28,6 +33,7 @@ var calKinds = []calKind{
 	{"fault", "Störungen", "ti-alert-triangle", "#F97316"},
 	{"task", "Aufgaben", "ti-list-check", "#8B5CF6"},
 	{"project", "Projekte", "ti-timeline", "#64748B"},
+	{"duty", "Sonderdienste", "ti-star", "#F59E0B"},
 }
 
 var calRanges = []int{7, 14, 21, 28, 42}
@@ -36,6 +42,8 @@ type calChip struct {
 	Kind, Title, Short, URL, Color, Icon, Tip string
 	Pending                                   bool // beantragt / Entwurf
 	SpanStart, SpanMid                        bool // Projektbalken
+	// Ziehen im Kalender (widgets/grid_drag.gohtml): Art, Datensatz, Zeile
+	Drag, ID, Row string // Drag: shift | duty | absence | item ("" = fest)
 }
 
 type calCell struct {
@@ -75,6 +83,8 @@ type CalendarData struct {
 	Conflicts, Warns  int
 	Counts            map[string]int
 	LoadErrors        []string // Arten, die nicht geladen werden konnten (statt still zu fehlen)
+	Embed             bool     // als Baustein im Leitstand (/global/calendar)
+	Board             string   // Leitstand-Adresse im Baustein
 }
 
 func calChipFor(k calKind) calChip { return calChip{Kind: k.Key, Color: k.Color, Icon: k.Icon} }
@@ -90,11 +100,53 @@ func calKindByKey(key string) calKind {
 
 // CalendarPage: GET /calendar?from=&days=&show=…&dept=&group=&user=&busy=
 func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
+	d := h.buildCalendar(r, nil)
+	d.BaseData = h.baseData(r, "calendar", "Kalender", "Übersicht")
+	h.render(w, "calendar", d)
+}
+
+// CalendarBoardFragment: GET /global/calendar?b=<leitstand>&… – derselbe
+// Kalender als Baustein „Kalender“ im Leitstand (auch ohne Anmeldung lesbar;
+// Ziehen nur mit Anmeldung und Recht). Voreinstellung: Abteilung/Gruppe und
+// Vorgangsarten des Leitstands.
+func (h *Handler) CalendarBoardFragment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	board := h.resolveLeitstand(r)
+	if b := h.boardBySlug(r, r.URL.Query().Get("b")); b != nil {
+		board = b
+	}
+	if u := h.sessionUser(r); u != nil {
+		r = r.WithContext(context.WithValue(r.Context(), "user", u))
+	}
+	d := h.buildCalendar(r, board)
+	h.renderFragment(w, "calendar-board", d)
+}
+
+// buildCalendar: Daten des Kalenders – für die Seite (board = nil) oder als
+// Leitstand-Baustein.
+func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData {
 	ctx := r.Context()
 	me := getUser(r)
+	if me == nil {
+		me = &users.User{}
+	}
 	q := r.URL.Query()
-	// Auswahl: aus der Adresse, sonst die zuletzt gemerkte
-	if q.Get("set") == "" && q.Get("reset") == "" {
+	embed := board != nil
+	// Auswahl: aus der Adresse, sonst die zuletzt gemerkte (nur auf der Seite)
+	if embed {
+		if q.Get("set") == "" {
+			if board.DepartmentID != "" {
+				q.Set("dept", board.DepartmentID)
+			}
+			if board.GroupID != "" {
+				q.Set("group", board.GroupID)
+			}
+			q["show"] = append([]string{"shift", "duty", "absence"}, board.Types...)
+			if q.Get("days") == "" {
+				q.Set("days", "7")
+			}
+		}
+	} else if q.Get("set") == "" && q.Get("reset") == "" {
 		if saved := h.userPref(ctx, me.ID, "calendar"); saved != "" {
 			if sv, err := url.ParseQuery(saved); err == nil {
 				for k, v := range sv {
@@ -109,9 +161,11 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		h.setUserPref(ctx, me.ID, "calendar", "")
 	}
 	d := CalendarData{
-		BaseData: h.baseData(r, "calendar", "Kalender", "Übersicht"),
-		Kinds:    calKinds, Ranges: calRanges, Show: map[string]bool{}, Counts: map[string]int{},
-		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"),
+		Kinds: calKinds, Ranges: calRanges, Show: map[string]bool{}, Counts: map[string]int{},
+		Dept: q.Get("dept"), Group: q.Get("group"), User: q.Get("user"), Embed: embed,
+	}
+	if embed {
+		d.Board = board.Slug
 	}
 	d.Range = atoiDefault(q.Get("days"), 14)
 	if d.Range < 1 || d.Range > 62 {
@@ -137,7 +191,7 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.OnlyBusy = q.Get("busy") != "0"
-	if q.Get("set") != "" { // Auswahl merken (ohne Start – der ist immer „ab heute“, wenn nichts gewählt)
+	if q.Get("set") != "" && !embed { // Auswahl merken (ohne Start – der ist immer „ab heute“, wenn nichts gewählt)
 		keep := url.Values{}
 		for _, k := range []string{"days", "dept", "group", "user", "busy"} {
 			if v := q.Get(k); v != "" {
@@ -149,10 +203,11 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		}
 		h.setUserPref(ctx, me.ID, "calendar", keep.Encode())
 	}
-	// Rechte
-	if !h.canPlannerView(r) {
+	// Rechte – am Leitstand sind Schichten, Dienste und Abwesenheit (ohne Grund) für alle sichtbar
+	if !h.canPlannerView(r) && !embed {
 		delete(d.Show, "shift")
 		delete(d.Show, "absence")
+		delete(d.Show, "duty")
 	}
 	if !h.hasPerm(r, "infrastructure.view") && !h.hasPerm(r, "infrastructure.obligations") {
 		delete(d.Show, "obligation")
@@ -212,12 +267,13 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 	planner := h.canShiftPlan(r)
 
 	if d.Show["absence"] {
-		if rs, err := h.db.Query(ctx, `SELECT user_id::text, type::text, status::text, start_date, end_date FROM absences
+		canApprove := h.canAbsenceApprove(r)
+		if rs, err := h.db.Query(ctx, `SELECT id::text, user_id::text, type::text, status::text, start_date, end_date FROM absences
 			WHERE status IN ('approved', 'pending') AND start_date <= $2 AND end_date >= $1`, from, to); err == nil {
 			for rs.Next() {
-				var uid, typ, st string
+				var aid, uid, typ, st string
 				var a, b time.Time
-				if rs.Scan(&uid, &typ, &st, &a, &b) != nil {
+				if rs.Scan(&aid, &uid, &typ, &st, &a, &b) != nil {
 					continue
 				}
 				label := "abwesend"
@@ -234,6 +290,9 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 				if typ == "sick" && (viewAll || uid == me.ID) {
 					ch.Color = "#EF4444"
 				}
+				if canApprove || (uid == me.ID && st == "pending") {
+					ch.Drag, ch.ID = "absence", aid
+				}
 				for t := a; !t.After(b); t = t.AddDate(0, 0, 1) {
 					if c := cellOf(uid, t); c != nil {
 						cc := ch
@@ -247,21 +306,24 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 	}
 	// Schichten immer laden (für Konflikte/„keine Schicht“), anzeigen nur wenn gewählt
 	hasShifts := map[string]bool{}
-	if h.canPlannerView(r) {
-		if rs, err := h.db.Query(ctx, `SELECT sa.user_id::text, sa.date, sd.short_name, sd.name, sd.color, to_char(sd.start_time, 'HH24:MI') || '–' || to_char(sd.end_time, 'HH24:MI'),
+	if h.canPlannerView(r) || embed {
+		if rs, err := h.db.Query(ctx, `SELECT sa.user_id::text, sa.shift_id::text, sa.date, sd.short_name, sd.name, sd.color, to_char(sd.start_time, 'HH24:MI') || '–' || to_char(sd.end_time, 'HH24:MI'),
 				(sa.plan_id IS NOT NULL AND sp.status = 'draft')
 			FROM shift_assignments sa JOIN shift_definitions sd ON sd.id = sa.shift_id LEFT JOIN shift_plans sp ON sp.id = sa.plan_id
 			WHERE sa.date BETWEEN $1 AND $2 AND ($3 OR sa.plan_id IS NULL OR sp.status = 'published')`, from, to, planner); err == nil {
 			for rs.Next() {
-				var uid, short, name, color, tm string
+				var uid, sid, short, name, color, tm string
 				var day time.Time
 				var draft bool
-				if rs.Scan(&uid, &day, &short, &name, &color, &tm, &draft) != nil {
+				if rs.Scan(&uid, &sid, &day, &short, &name, &color, &tm, &draft) != nil {
 					continue
 				}
 				hasShifts[uid] = true
 				if c := cellOf(uid, day); c != nil {
 					c.Shift = &calChip{Kind: "shift", Short: short, Title: name, Color: color, Tip: name + " " + tm, Pending: draft, URL: "/planner?tab=shifts&week=" + mondayOf(day).Format(dayISO)}
+					if planner {
+						c.Shift.Drag, c.Shift.Row = "shift", sid
+					}
 					if d.Show["shift"] {
 						d.Counts["shift"]++
 					}
@@ -277,8 +339,43 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 		}
 		ch := calChipFor(calKindByKey(kind))
 		ch.Title, ch.URL, ch.Tip = title, link, tip
+		if id, ok := calMovable[kind]; ok && me.ID != "" && h.hasPerm(r, id.perm) && strings.HasPrefix(link, id.url) {
+			ch.Drag, ch.ID = "item", strings.TrimPrefix(link, id.url)
+		}
 		c.Items = append(c.Items, ch)
 		d.Counts[kind]++
+	}
+	// Sonderdienste (planner_duties.go)
+	if d.Show["duty"] && (h.canPlannerView(r) || embed) {
+		canDuty := h.hasPerm(r, permDuties)
+		if rs, err := h.db.Query(ctx, `SELECT a.user_id::text, a.duty_type_id::text, a.date, t.name, t.short_name, t.color, t.qualification
+			FROM duty_assignments a JOIN duty_types t ON t.id = a.duty_type_id WHERE a.date BETWEEN $1 AND $2`, from, to); err == nil {
+			for rs.Next() {
+				var uid, tid, name, short, color, qual string
+				var day time.Time
+				if rs.Scan(&uid, &tid, &day, &name, &short, &color, &qual) != nil {
+					continue
+				}
+				c := cellOf(uid, day)
+				if c == nil {
+					continue
+				}
+				ch := calChipFor(calKindByKey("duty"))
+				if hexColorRe.MatchString(color) {
+					ch.Color = color
+				}
+				ch.Title, ch.URL, ch.Tip = firstNonEmpty(short, name), "/planner?tab=shifts&week="+mondayOf(day).Format(dayISO), name
+				if qual != "" {
+					ch.Tip += " · " + qual
+				}
+				if canDuty {
+					ch.Drag, ch.Row = "duty", tid
+				}
+				c.Items = append(c.Items, ch)
+				d.Counts["duty"]++
+			}
+			rs.Close()
+		}
 	}
 	// fällige Vorgänge: Person = zugewiesen (Aufgaben: alle Beteiligten), sonst „Ohne Person“
 	type src struct{ kind, table, open, url, people string }
@@ -415,7 +512,7 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 			c := &row.Cells[i]
 			due := 0
 			for _, it := range c.Items {
-				if it.Kind != "project" {
+				if it.Kind != "project" && it.Kind != "duty" {
 					due++
 				}
 			}
@@ -445,7 +542,17 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 			if !d.Show["absence"] {
 				c.Absence = nil
 			}
-			sort.SliceStable(c.Items, func(a, b int) bool { return c.Items[a].Kind == "project" && c.Items[b].Kind != "project" })
+			// Projekte zuerst, dann Sonderdienste, dann fällige Vorgänge
+			rank := func(k string) int {
+				switch k {
+				case "project":
+					return 0
+				case "duty":
+					return 1
+				}
+				return 2
+			}
+			sort.SliceStable(c.Items, func(a, b int) bool { return rank(c.Items[a].Kind) < rank(c.Items[b].Kind) })
 		}
 	}
 	for _, row := range order {
@@ -460,7 +567,53 @@ func (h *Handler) CalendarPage(w http.ResponseWriter, r *http.Request) {
 	if nobody.busy && d.User == "" {
 		d.Rows = append(d.Rows, *nobody)
 	}
-	h.render(w, "calendar", d)
+	return d
+}
+
+// calMovable: Vorgänge, deren Fälligkeit sich im Kalender per Ziehen verschieben lässt.
+var calMovable = map[string]struct{ url, table, ref, perm string }{
+	"ticket":      {"/tickets/", "tickets", "ticket", "tickets.edit"},
+	"fault":       {"/faults/", "faults", "fault", "faults.edit"},
+	"task":        {"/tasks/", "tasks", "task", "tasks.edit"},
+	"maintenance": {"/maintenance/tasks/", "maintenance_tasks", "maintenance_task", "maintenance.edit"},
+}
+
+// CalendarMoveWeb: POST /calendar/move – JSON {kind, id, to_date}: Fälligkeit
+// eines Vorgangs auf einen anderen Tag legen (Uhrzeit bleibt).
+func (h *Handler) CalendarMoveWeb(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Kind   string `json:"kind"`
+		ID     string `json:"id"`
+		ToDate string `json:"to_date"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&in); err != nil {
+		completionJSON(w, http.StatusBadRequest, map[string]any{"error": "ungültige Daten"})
+		return
+	}
+	m, ok := calMovable[in.Kind]
+	to, err := time.ParseInLocation(dayISO, in.ToDate, time.Local)
+	if !ok || err != nil || !uuidInPathRe.MatchString(in.ID) {
+		completionJSON(w, http.StatusBadRequest, map[string]any{"error": "Vorgang oder Datum ungültig"})
+		return
+	}
+	u := getUser(r)
+	if !h.hasPermRec(r, m.perm, m.ref, in.ID) && !h.recordInvolved(r.Context(), u.ID, m.ref, in.ID) {
+		completionJSON(w, http.StatusForbidden, map[string]any{"error": "Keine Berechtigung, diesen Vorgang zu ändern."})
+		return
+	}
+	ctx := r.Context()
+	var old string
+	_ = h.db.QueryRow(ctx, `SELECT COALESCE(to_char(due_date, 'DD.MM.YYYY'), '') FROM `+m.table+` WHERE id = $1::uuid`, in.ID).Scan(&old)
+	q := `UPDATE ` + m.table + ` SET due_date = CASE WHEN due_date IS NULL THEN $2::date + time '12:00' ELSE due_date + ($2::date - due_date::date) END, updated_at = NOW() WHERE id = $1::uuid`
+	if m.table == "tasks" {
+		q = `UPDATE tasks SET due_date = $2::date, updated_at = NOW() WHERE id = $1::uuid`
+	}
+	if _, err := h.db.Exec(ctx, q, in.ID, to); err != nil {
+		completionJSON(w, http.StatusBadRequest, map[string]any{"error": friendlyDBError(err)})
+		return
+	}
+	h.addHistory(ctx, m.ref, in.ID, "update", "due_date", old, to.Format("02.01.2006"), "Fälligkeit im Kalender verschoben", u.ID)
+	completionJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 // Chips für Vorlagen: Tooltip enthält Konflikt
