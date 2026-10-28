@@ -262,9 +262,7 @@ type Handler struct {
 	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
 	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
-	mirrorPeerMu     sync.Mutex
-	mirrorPeerAt     time.Time
-	mirrorPeerVal    mirrorPeer
+	mirrorPeerC      mirrorCache[mirrorPeer]
 	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
 	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db               *pgxpool.Pool
@@ -2078,6 +2076,9 @@ func (h *Handler) LoginPost(w http.ResponseWriter, r *http.Request) {
 		h.render(w, "login", d)
 		return
 	}
+	if h.mirrorLoginRefused(w, r, user, "passwort", r.FormValue("email")) {
+		return
+	}
 	if due, reason := h.passwordChangeDue(r, user); due {
 		// Pflichtwechsel: noch keine Sitzung, erst das neue Passwort (password_policy.go)
 		authLog(r, true, "passwort", r.FormValue("email"), user.ID, strings.TrimSpace(user.FirstName+" "+user.LastName), "passwortwechsel noetig: "+reason)
@@ -2109,6 +2110,9 @@ func (h *Handler) LoginRFIDWeb(w http.ResponseWriter, r *http.Request) {
 			d.Next = n
 		}
 		h.render(w, "login", d)
+		return
+	}
+	if h.mirrorLoginRefused(w, r, user, "rfid", "Karte "+maskUID(uid)) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})

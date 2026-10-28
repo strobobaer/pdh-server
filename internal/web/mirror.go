@@ -9,9 +9,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"pdh/internal/core/users"
 	"pdh/pkg/database"
 	"pdh/pkg/response"
 )
@@ -159,7 +161,8 @@ const (
 	mirrorLoginURL      = "/login?spiegel=1"
 	mirrorRestrictedURL = "/admin/server-config?tab=ha"
 	mirrorPeerTTL       = 5 * time.Second
-	mirrorPeerTimeout   = 2 * time.Second // hängender Socket darf Anfragen nicht aufhalten
+	mirrorPeerGrace     = 30 * time.Second // Abruffehler: letzter Erfolg gilt so lange weiter
+	mirrorPeerTimeout   = 2 * time.Second  // hängender Socket darf Anfragen nicht aufhalten
 )
 
 // mirrorPeer: was pdh-ha über den aktiven Server weiß.
@@ -176,13 +179,13 @@ func mirrorLoginAllowed(admin bool, p mirrorPeer) bool {
 }
 
 // mirrorRestrictedAllowed: Pfade im eingeschränkten Modus (Schema älter als
-// das Programm) – nur Ausfallschutz, Anmeldung, Sprache.
+// das Programm) – nur Ausfallschutz, Anmeldung, Sprache, Handbuch.
 func mirrorRestrictedAllowed(path string) bool {
 	switch path {
-	case "/admin/server-config", "/login", "/logout", "/lang":
+	case "/admin/server-config", "/login", "/logout", "/lang", "/help":
 		return true
 	}
-	for _, pre := range []string{"/admin/server-config/", "/login/", "/static/"} {
+	for _, pre := range []string{"/admin/server-config/", "/login/", "/static/", "/help/"} {
 		if strings.HasPrefix(path, pre) {
 			return true
 		}
@@ -190,27 +193,78 @@ func mirrorRestrictedAllowed(path string) bool {
 	return false
 }
 
+// mirrorCache: Wert mit Lebensdauer. Genau ein Abruf gleichzeitig, ohne
+// gehaltene Sperre; die anderen bekommen den letzten Wert (nur ganz ohne Wert
+// warten sie). Fehlschlag: letzter Erfolg gilt noch grace lang, dann Nullwert.
+type mirrorCache[T any] struct {
+	mu   sync.Mutex
+	val  T
+	at   time.Time     // letzter Abruf
+	okAt time.Time     // letzter erfolgreicher Abruf
+	wait chan struct{} // laufender Abruf, nil = keiner
+}
+
+func (c *mirrorCache[T]) get(ttl, grace time.Duration, fetch func() (T, bool)) (out T) {
+	c.mu.Lock()
+	if !c.at.IsZero() && time.Since(c.at) < ttl {
+		defer c.mu.Unlock()
+		return c.val
+	}
+	if w := c.wait; w != nil {
+		if !c.at.IsZero() {
+			defer c.mu.Unlock()
+			return c.val
+		}
+		c.mu.Unlock()
+		<-w
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.val
+	}
+	w := make(chan struct{})
+	c.wait = w
+	c.mu.Unlock()
+	var v T
+	ok := false
+	defer func() { // auch bei panic: Wartende freigeben
+		c.mu.Lock()
+		now := time.Now()
+		if ok {
+			c.val, c.okAt = v, now
+		} else if c.okAt.IsZero() || now.Sub(c.okAt) >= grace {
+			var zero T
+			c.val = zero
+		}
+		c.at, c.wait = now, nil
+		close(w)
+		out = c.val
+		c.mu.Unlock()
+	}()
+	v, ok = fetch()
+	return v
+}
+
 // mirrorPeerState: Lage des aktiven Servers, 5 s zwischengespeichert.
-// pdh-ha fehlt, antwortet nicht oder ist nicht eingerichtet → Known=false.
+// pdh-ha fehlt oder ist nicht eingerichtet → Known=false; antwortet es nicht,
+// gilt der letzte Stand noch 30 s.
 func (h *Handler) mirrorPeerState(ctx context.Context) mirrorPeer {
-	h.mirrorPeerMu.Lock()
-	defer h.mirrorPeerMu.Unlock()
-	if !h.mirrorPeerAt.IsZero() && time.Since(h.mirrorPeerAt) < mirrorPeerTTL {
-		return h.mirrorPeerVal
-	}
-	fetch := h.mirrorPeerFetch
-	if fetch == nil {
-		fetch = h.haStatusFetch
-	}
-	// abgebrochene Anfrage soll nicht „unbekannt“ für alle zwischenspeichern
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mirrorPeerTimeout)
-	defer cancel()
-	var p mirrorPeer
-	if st, err := fetch(ctx); err == nil && st.Configured {
-		p = mirrorPeerFrom(st)
-	}
-	h.mirrorPeerVal, h.mirrorPeerAt = p, time.Now()
-	return p
+	return h.mirrorPeerC.get(mirrorPeerTTL, mirrorPeerGrace, func() (mirrorPeer, bool) {
+		fetch := h.mirrorPeerFetch
+		if fetch == nil {
+			fetch = h.haStatusFetch
+		}
+		// abgebrochene Anfrage soll nicht „unbekannt“ für alle zwischenspeichern
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mirrorPeerTimeout)
+		defer cancel()
+		st, err := fetch(ctx)
+		if err != nil {
+			return mirrorPeer{}, false
+		}
+		if !st.Configured {
+			return mirrorPeer{}, true
+		}
+		return mirrorPeerFrom(st), true
+	})
 }
 
 func (h *Handler) haStatusFetch(ctx context.Context) (haStatus, error) {
@@ -226,10 +280,7 @@ func mirrorPeerFrom(st haStatus) mirrorPeer {
 		if n.Role != "aktiv" || n.Kind == "witness" {
 			continue
 		}
-		addr := ""
-		if len(n.Paths) > 0 {
-			addr = hostOnly(n.Paths[0].Addr)
-		}
+		addr := peerAddr(n.Paths)
 		if n.Seen {
 			return mirrorPeer{Known: true, ActiveSeen: true, ActiveAddr: addr}
 		}
@@ -238,6 +289,19 @@ func mirrorPeerFrom(st haStatus) mirrorPeer {
 		}
 	}
 	return p
+}
+
+// peerAddr: erster lebender Pfad, sonst der erste.
+func peerAddr(paths []haPath) string {
+	for _, pa := range paths {
+		if pa.Alive {
+			return hostOnly(pa.Addr)
+		}
+	}
+	if len(paths) > 0 {
+		return hostOnly(paths[0].Addr)
+	}
+	return ""
 }
 
 func hostOnly(addr string) string {
@@ -299,7 +363,7 @@ func (h *Handler) mirrorGate(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if h.Mirror().Restricted && !mirrorRestrictedAllowed(r.URL.Path) {
-		if htmx { // Hintergrundabfragen der Seite: nichts tauschen
+		if htmx || mirrorBackground(r) { // Hintergrundabfragen der Seite: nichts tauschen
 			w.Header().Set("HX-Reswap", "none")
 			w.WriteHeader(http.StatusNoContent)
 			return true
@@ -308,6 +372,22 @@ func (h *Handler) mirrorGate(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// mirrorBackground: Abruf aus einer Seite (fetch, Teilansicht), keine Seitennavigation.
+func mirrorBackground(r *http.Request) bool {
+	return r.URL.Query().Get("fragment") == "1" || !strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// mirrorLoginRefused – Regel C schon beim Anmelden: abgewiesen → kein Cookie,
+// Hinweis auf der Anmeldeseite. true → beantwortet.
+func (h *Handler) mirrorLoginRefused(w http.ResponseWriter, r *http.Request, u *users.User, method, login string) bool {
+	if !h.Mirror().On || !h.mirrorDenied(r.WithContext(context.WithValue(r.Context(), "user", u))) {
+		return false
+	}
+	authLog(r, false, method, login, u.ID, strings.TrimSpace(u.FirstName+" "+u.LastName), "spiegel: regel C")
+	http.Redirect(w, r, mirrorLoginURL, http.StatusFound)
+	return true
 }
 
 // mirrorLoginHint: Hinweis „aktiven Server verwenden“ auf der Anmeldeseite (?spiegel=1).

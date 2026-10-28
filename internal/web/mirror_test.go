@@ -368,7 +368,7 @@ func TestMirrorGateBoardComplete(t *testing.T) {
 func TestMirrorRestrictedRedirect(t *testing.T) {
 	info := MirrorInfo{On: true, Restricted: true}
 	hd, calls, tok := mirrorGateTest(t, info, true, mirrorStatus(false))
-	rec := mirrorSessionGet(hd, tok, "/tickets", nil)
+	rec := mirrorSessionGet(hd, tok, "/tickets", map[string]string{"Accept": "text/html"})
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/admin/server-config?tab=ha" {
 		t.Fatalf("Admin /tickets: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
@@ -394,12 +394,12 @@ func TestMirrorRestrictedRedirect(t *testing.T) {
 }
 
 func TestMirrorRestrictedAllowed(t *testing.T) {
-	for _, p := range []string{"/admin/server-config", "/admin/server-config/ha/command", "/login", "/login/rfid", "/logout", "/lang", "/static/x.js"} {
+	for _, p := range []string{"/admin/server-config", "/admin/server-config/ha/command", "/login", "/login/rfid", "/logout", "/lang", "/static/x.js", "/help", "/help/ha"} {
 		if !mirrorRestrictedAllowed(p) {
 			t.Errorf("%s muss erlaubt sein", p)
 		}
 	}
-	for _, p := range []string{"/", "/tickets", "/admin/server-configx", "/admin/users", "/loginx", "/language", "/staticx"} {
+	for _, p := range []string{"/", "/tickets", "/admin/server-configx", "/admin/users", "/loginx", "/language", "/staticx", "/helpx"} {
 		if mirrorRestrictedAllowed(p) {
 			t.Errorf("%s darf nicht erlaubt sein", p)
 		}
@@ -485,5 +485,180 @@ func TestMirrorLoginHint(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "login.gohtml"))
 	if err != nil || !strings.Contains(string(b), "Bitte den aktiven Server verwenden") || !strings.Contains(string(b), ".MirrorURL") {
 		t.Fatal("login.gohtml: Hinweis fehlt")
+	}
+}
+
+// ── nachgezogene Korrekturen ─
+
+func TestMirrorPeerStateGrace(t *testing.T) {
+	h := &Handler{}
+	fail := false
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
+		if fail {
+			return haStatus{}, errors.New("socket hängt")
+		}
+		return mirrorStatus(false), nil
+	}
+	if p := h.mirrorPeerState(context.Background()); !p.Known || p.ActiveSeen {
+		t.Fatalf("Erfolg: %+v", p)
+	}
+	age := func(d time.Duration) {
+		h.mirrorPeerC.mu.Lock()
+		h.mirrorPeerC.at = h.mirrorPeerC.at.Add(-d)
+		h.mirrorPeerC.okAt = h.mirrorPeerC.okAt.Add(-d)
+		h.mirrorPeerC.mu.Unlock()
+	}
+	fail = true
+	age(6 * time.Second) // Lebensdauer um, Nachfrist läuft
+	if p := h.mirrorPeerState(context.Background()); !p.Known || p.ActiveSeen {
+		t.Fatalf("Fehler in der Nachfrist: alter Wert erwartet, %+v", p)
+	}
+	age(31 * time.Second)
+	if p := h.mirrorPeerState(context.Background()); p.Known {
+		t.Fatalf("Fehler nach 30 s: unbekannt erwartet, %+v", p)
+	}
+}
+
+func TestMirrorPeerStateSingleFlight(t *testing.T) {
+	h := &Handler{}
+	block := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	slow := false
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) {
+		if slow {
+			entered <- struct{}{}
+			<-block
+			return mirrorStatus(true), nil
+		}
+		return mirrorStatus(false), nil
+	}
+	h.mirrorPeerState(context.Background())
+	h.mirrorPeerC.mu.Lock()
+	h.mirrorPeerC.at = h.mirrorPeerC.at.Add(-time.Minute)
+	h.mirrorPeerC.mu.Unlock()
+	slow = true
+	done := make(chan mirrorPeer)
+	go func() { done <- h.mirrorPeerState(context.Background()) }()
+	<-entered
+	// zweiter Aufruf wartet nicht auf den hängenden Abruf
+	got := make(chan mirrorPeer)
+	go func() { got <- h.mirrorPeerState(context.Background()) }()
+	select {
+	case p := <-got:
+		if !p.Known || p.ActiveSeen {
+			t.Fatalf("veralteter Wert erwartet: %+v", p)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("zweiter Aufruf blockiert")
+	}
+	close(block)
+	if p := <-done; !p.ActiveSeen {
+		t.Fatalf("Abrufer: %+v", p)
+	}
+}
+
+func TestMirrorPeerPrefersAlivePath(t *testing.T) {
+	st := haStatus{Configured: true, Peers: []haNode{{Role: "aktiv", Seen: true, Paths: []haPath{
+		{Addr: "10.10.0.17:7946"}, {Addr: "192.168.5.17:7946", Alive: true},
+	}}}}
+	if p := mirrorPeerFrom(st); p.ActiveAddr != "192.168.5.17" {
+		t.Fatalf("lebender Pfad: %+v", p)
+	}
+	st.Peers[0].Paths[1].Alive = false
+	if p := mirrorPeerFrom(st); p.ActiveAddr != "10.10.0.17" {
+		t.Fatalf("Rückfall erster Pfad: %+v", p)
+	}
+}
+
+func TestMirrorLoginRefused(t *testing.T) {
+	user := &users.User{ID: "u1", Role: users.RoleTechnician, Active: true}
+	cases := []struct {
+		name   string
+		info   MirrorInfo
+		admin  bool
+		seen   bool
+		refuse bool
+	}{
+		{"spiegel aus", MirrorInfo{}, false, true, false},
+		{"benutzer, aktiv erreichbar", MirrorInfo{On: true}, false, true, true},
+		{"benutzer, aktiv weg", MirrorInfo{On: true}, false, false, false},
+		{"admin", MirrorInfo{On: true}, true, true, false},
+		{"eingeschränkt, benutzer", MirrorInfo{On: true, Restricted: true}, false, false, true},
+	}
+	for _, c := range cases {
+		h := &Handler{}
+		h.SetMirror(c.info)
+		var seenUser *users.User
+		h.mirrorAdminFn = func(r *http.Request) bool {
+			if u, ok := r.Context().Value("user").(*users.User); ok {
+				seenUser = u
+			}
+			return c.admin
+		}
+		h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(c.seen), nil }
+		rec := httptest.NewRecorder()
+		got := h.mirrorLoginRefused(rec, httptest.NewRequest(http.MethodPost, "/login", nil), user, "passwort", "max")
+		if got != c.refuse {
+			t.Errorf("%s: %v, erwartet %v", c.name, got, c.refuse)
+			continue
+		}
+		if c.info.On && seenUser != user {
+			t.Errorf("%s: Benutzer nicht im Kontext", c.name)
+		}
+		if got && (rec.Code != http.StatusFound || rec.Header().Get("Location") != "/login?spiegel=1" || len(rec.Result().Cookies()) != 0) {
+			t.Errorf("%s: %d %q Cookies=%v", c.name, rec.Code, rec.Header().Get("Location"), rec.Result().Cookies())
+		}
+		if !got && (rec.Code != http.StatusOK || rec.Body.Len() != 0) {
+			t.Errorf("%s: unerwartete Antwort %d", c.name, rec.Code)
+		}
+	}
+	// beide Anmeldewege prüfen vor Passwortwechsel und Cookie
+	b, err := os.ReadFile("handler.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := strings.ReplaceAll(string(b), "\r\n", "\n")
+	for _, fn := range []string{"func (h *Handler) LoginPost(", "func (h *Handler) LoginRFIDWeb("} {
+		i := strings.Index(src, fn)
+		if i < 0 {
+			t.Fatalf("%s fehlt", fn)
+		}
+		body := src[i:]
+		body = body[:strings.Index(body, "\n}\n")]
+		gate, cookie := strings.Index(body, "h.mirrorLoginRefused("), strings.Index(body, `Name: "pdh_token"`)
+		if gate < 0 || cookie < 0 || gate > cookie {
+			t.Errorf("%s: Regel C fehlt vor dem Cookie", fn)
+		}
+		if pw := strings.Index(body, "h.passwordChangeDue("); pw >= 0 && gate > pw {
+			t.Errorf("%s: Regel C erst nach dem Passwortwechsel", fn)
+		}
+	}
+}
+
+func TestMirrorRestrictedBackground(t *testing.T) {
+	hd, calls, tok := mirrorGateTest(t, MirrorInfo{On: true, Restricted: true}, true, mirrorStatus(false))
+	html := map[string]string{"Accept": "text/html,application/xhtml+xml"}
+	if rec := mirrorSessionGet(hd, tok, "/tickets", html); rec.Code != http.StatusFound {
+		t.Fatalf("Seitenaufruf: %d", rec.Code)
+	}
+	for name, c := range map[string]struct {
+		path string
+		hdr  map[string]string
+	}{
+		"fetch json":  {"/api/presence", map[string]string{"Accept": "application/json"}},
+		"ohne accept": {"/api/presence", nil},
+		"fragment":    {"/tickets?fragment=1", html},
+	} {
+		if rec := mirrorSessionGet(hd, tok, c.path, c.hdr); rec.Code != http.StatusNoContent || rec.Header().Get("Location") != "" {
+			t.Errorf("%s: %d %q", name, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+	for _, p := range []string{"/help", "/help/kapitel"} {
+		if rec := mirrorSessionGet(hd, tok, p, html); rec.Code != http.StatusOK {
+			t.Errorf("%s: %d", p, rec.Code)
+		}
+	}
+	if *calls != 2 {
+		t.Fatalf("durchgereicht: %d", *calls)
 	}
 }
