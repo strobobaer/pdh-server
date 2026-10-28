@@ -51,6 +51,7 @@ type CoreSettingsPageData struct {
 	DefaultDueDaysMaintenance int
 
 	EasyMode              bool             // QR-Meldung ohne Anmeldung (easy_mode.go)
+	Defaults              DefaultsView     // Standards für alle (user_defaults.go)
 	BoardPickTerminalOnly bool             // Leitstand: Personenauswahl nur am Terminal (global_dashboard_actor.go)
 	Push                  pushSettingsView // Push-Benachrichtigungen (push.go)
 }
@@ -139,6 +140,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysTask:        appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysTask, appsettings.DefaultDueDaysFallback),
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		EasyMode:                  h.easyModeEnabled(ctx),
+		Defaults:                  h.defaultsView(r),
 		Push:                      h.pushSettingsView(ctx),
 		BoardPickTerminalOnly:     h.boardPickTerminalOnly(ctx),
 	}

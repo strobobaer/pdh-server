@@ -98,11 +98,12 @@ func (h *Handler) userWidgets(ctx context.Context, uid string) []WidgetInstance 
 	if h.db != nil && uid != "" {
 		_ = h.db.QueryRow(ctx, `SELECT dashboard_widgets FROM users WHERE id = $1::uuid`, uid).Scan(&raw)
 	}
-	if len(raw) == 0 {
-		return defaultWidgets()
-	}
 	var list []WidgetInstance
-	if err := json.Unmarshal(raw, &list); err != nil {
+	if len(raw) == 0 || json.Unmarshal(raw, &list) != nil {
+		// nichts Eigenes: Firmenstandard (user_defaults.go), sonst Vorgabe
+		if c := h.companyWidgets(ctx); c != nil {
+			return c
+		}
 		return defaultWidgets()
 	}
 	return list

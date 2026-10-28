@@ -808,6 +808,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/infra-responsible", h.InfraRespDefaultWeb)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/push", h.PushSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)

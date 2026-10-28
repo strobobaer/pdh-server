@@ -88,8 +88,8 @@ type GlobalDashboardPageData struct {
 	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
 	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
 	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
-	PaletteID                 string        // wirksames Farbschema (Firmenstandard bzw. Wahl der angemeldeten Person)
-	StyleID                   string        // wirksamer Design-Stil (ui_style.go)
+	PaletteID                 string        // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
+	StyleID                   string        // Design-Stil: immer der Firmenstandard (ui_style.go)
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -155,8 +155,8 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		DefaultDueDaysMaintenance: appsettings.GetInt(ctx, h.db, appsettings.KeyDefaultDueDaysMaintenance, appsettings.DefaultDueDaysFallback),
 		Timeline:                  brand.Timeline,
 		ThemeCSS:                  brand.ThemeCSS(),
-		PaletteID:                 h.appearance(r, brand).PaletteID(),
-		StyleID:                   h.appearance(r, brand).StyleID(),
+		PaletteID:                 brand.ThemeID(),
+		StyleID:                   brand.StyleID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {

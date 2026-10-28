@@ -26,6 +26,55 @@
   </div>
 </div>
 
+{{with .Defaults}}{{if .Allowed}}
+<div class="card" id="defaults" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-users-group"></i> Standards für alle</span></div>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Richte Darstellung, Menü und Dashboard bei dir ein und übernimm sie hier als Standard. Alle, die nichts Eigenes gespeichert haben, sehen dann deinen Stand; jeder kann danach für sich weiter anpassen. Der Leitstand zeigt immer die Standard-Darstellung.</p>
+  <div class="df-rows">
+    <div class="df-row">
+      <div class="df-t"><b><i class="ti ti-palette"></i> Darstellung</b>
+        <small>Jetzt: {{.DesignName}}, {{.DesignStyle}}{{if .DesignInfo}} · gesetzt {{.DesignInfo}}{{end}}</small>
+        <small>Einstellen: Benutzermenü → Darstellung (Farbe, Design-Stil, Schrift, Größe). Firmenfarbe und Logos: <a href="/admin/server-config?tab=branding">Server-Einstellungen → Erscheinungsbild</a></small></div>
+      <form method="POST" action="/core/settings/defaults" class="df-f"><input type="hidden" name="what" value="design">
+        <label title="Auch wer schon eine eigene Darstellung gespeichert hat, bekommt den Standard"><input type="checkbox" name="reset_users"> auch eigene Einstellungen aller ersetzen</label>
+        <button class="btn btn-primary btn-small" name="action" value="set" type="submit" title="Deine aktuelle Darstellung wird Standard für alle"><i class="ti ti-check"></i> Meine als Standard</button>
+        <button class="btn btn-small" name="action" value="reset" type="submit" title="Werksvorgabe: PDH-Blau, Fiori, DM Sans, 100 %"><i class="ti ti-restore"></i> Werksvorgabe</button>
+      </form>
+    </div>
+    <div class="df-row">
+      <div class="df-t"><b><i class="ti ti-menu-2"></i> Menü</b>
+        <small>Jetzt: {{if .NavSet}}eigener Standard{{if .NavInfo}} · gesetzt {{.NavInfo}}{{end}}{{else}}Werksvorgabe{{end}}</small>
+        <small>Einstellen: Benutzermenü → Navigation anpassen (Gruppen, Reihenfolge, Namen)</small></div>
+      <form method="POST" action="/core/settings/defaults" class="df-f"><input type="hidden" name="what" value="nav">
+        <label title="Auch wer schon ein eigenes Menü gespeichert hat, bekommt den Standard"><input type="checkbox" name="reset_users"> auch eigene Einstellungen aller ersetzen</label>
+        <button class="btn btn-primary btn-small" name="action" value="set" type="submit" title="Dein aktuelles Menü wird Standard für alle"><i class="ti ti-check"></i> Meins als Standard</button>
+        <button class="btn btn-small" name="action" value="reset" type="submit" title="Werksvorgabe der Menügruppen"><i class="ti ti-restore"></i> Werksvorgabe</button>
+      </form>
+    </div>
+    <div class="df-row">
+      <div class="df-t"><b><i class="ti ti-layout-dashboard"></i> Dashboard</b>
+        <small>Jetzt: {{if .DashboardSet}}eigener Standard{{if .DashboardInfo}} · gesetzt {{.DashboardInfo}}{{end}}{{else}}Werksvorgabe{{end}}</small>
+        <small>Einstellen: Benutzermenü → Dashboard anpassen (Widgets wählen und anordnen)</small></div>
+      <form method="POST" action="/core/settings/defaults" class="df-f"><input type="hidden" name="what" value="dashboard">
+        <label title="Auch wer schon ein eigenes Dashboard gespeichert hat, bekommt den Standard"><input type="checkbox" name="reset_users"> auch eigene Einstellungen aller ersetzen</label>
+        <button class="btn btn-primary btn-small" name="action" value="set" type="submit" title="Dein aktuelles Dashboard wird Standard für alle"><i class="ti ti-check"></i> Meins als Standard</button>
+        <button class="btn btn-small" name="action" value="reset" type="submit" title="Werksvorgabe der Widgets"><i class="ti ti-restore"></i> Werksvorgabe</button>
+      </form>
+    </div>
+  </div>
+</div>
+<style>
+.df-rows{display:flex;flex-direction:column;gap:10px}
+.df-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:10px 0;border-top:1px solid var(--border)}
+.df-row:first-child{border-top:0;padding-top:0}
+.df-t{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.df-t small{font-size:11.5px;color:var(--muted)}
+.df-t a{color:var(--accent)}
+.df-f{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.df-f label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}
+</style>
+{{end}}{{end}}
+
 <div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px">
   <div class="card">
     <div class="card-title">GitHub-Updates</div>

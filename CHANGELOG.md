@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.78.0] – 2026-10-28
+
+### Neu
+- Standards für alle: Unter Core-Einstellungen übernimmt ein Administrator seine eigene Darstellung, sein Menü und sein Dashboard mit einem Klick als Standard – wer nichts Eigenes gespeichert hat, sieht diesen Stand; auf Wunsch werden auch die eigenen Einstellungen aller ersetzt, „Werksvorgabe“ stellt die Auslieferung wieder her.
+- Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
+
+### Geändert
+- Der Leitstand zeigt immer die Standard-Darstellung (Farbschema und Design-Stil) – unabhängig davon, wer gerade angemeldet ist.
+- „Standard“ in Navigation anpassen und Dashboard anpassen holt jetzt den Firmenstandard zurück.
+
 ## [0.76.3] – 2026-10-28
 
 ### Behoben

@@ -178,11 +178,11 @@ func (h *Handler) userNavLayout(ctx context.Context, uid string) []navLayoutGrou
 		return nil
 	}
 	if len(raw) == 0 {
-		return nil
+		return h.companyNavLayout(ctx) // nichts Eigenes: Firmenstandard (user_defaults.go)
 	}
 	var l []navLayoutGroup
 	if json.Unmarshal(raw, &l) != nil {
-		return nil
+		return h.companyNavLayout(ctx)
 	}
 	l, _ = sanitizeNavLayout(l)
 	return l
