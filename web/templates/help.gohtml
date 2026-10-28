@@ -248,9 +248,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "categories") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new assignments">
+<section class="hb-ch" id="dashboard" data-title="Leitstand &amp; Meldungen" data-pages="assignments-new assignments leitstaende">
   <h2><i class="ti ti-layout-dashboard"></i> Leitstand &amp; Meldungen</h2>
   <p>Am <b>Leitstand</b> (z. B. am Terminal in der Halle) meldet jede und jeder schnell ein Problem – ohne sich lange durchzuklicken.</p>
+  <p>Es kann <b>mehrere Leitstände</b> geben, z. B. einen je Abteilung oder Team. Welcher erscheint: am Terminal der direkt gewählte (Benutzer → Terminal), sonst der seiner <b>Gruppe</b>, sonst der seiner <b>Abteilung</b>, sonst der <b>Standard-Leitstand</b>. Ein Bildschirm ohne Anmeldung öffnet die Adresse des Leitstands (z. B. <code>/global/b/instandhaltung</code>) und merkt sie sich.</p>
+  <div class="hb-howto"><b><i class="ti ti-device-tv"></i> So richtest du einen Leitstand für eine Abteilung oder ein Team ein</b> (Recht „Leitstand verwalten“)
+    <ol class="hb-steps">
+      <li>Navigation → <b>Leitstände</b> → <b>Neuer Leitstand</b>. Name eingeben – die <b>Adresse</b> schlägt PDH vor.</li>
+      <li>Bei <b>Was der Leitstand zeigt</b> die <b>Abteilung</b> und/oder <b>Gruppe / Team</b> wählen und die <b>Vorgangsarten</b> ankreuzen. Ohne Auswahl zeigt er alles.</li>
+      <li><b>Bausteine</b> zusammenstellen: hinzufügen, an der Griffleiste <i class="ti ti-grip-vertical"></i> ziehen, Breite (¼ bis ganz) und Überschrift wählen, mit <i class="ti ti-x"></i> entfernen. Zur Auswahl: Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, Aktuelle Störungen, Fällige Wartung, Hinweistext, Andere Leitstände (Knöpfe zum Umschalten).</li>
+      <li>Optional <b>Weiterblättern</b>: nach so vielen Sekunden (mindestens 10) zum nächsten Leitstand – für mehrere im Kreis bei jedem den nächsten eintragen. Oben rechts läuft die Zeit mit. Berührt jemand den Bildschirm, beginnt die Zeit neu; ist ein Formular offen, bleibt er stehen.</li>
+      <li><b>Speichern</b> – Terminals der Abteilung bzw. Gruppe zeigen ihn sofort; ein Terminal mit eigenem Leitstand startet direkt dort (<b>Zur Startseite</b> führt trotzdem aufs Dashboard).</li>
+    </ol>
+    Auch der Standard-Leitstand lässt sich so bearbeiten. Überschrift und Untertitel änderst du auch direkt im Leitstand mit <b>✎</b>. Ein Terminal bekommt einen bestimmten Leitstand im Benutzerstamm (Feld <b>Leitstand</b> bei Systemnutzern).</div>
   <p>Der Leitstand sieht aus wie das übrige PDH: dasselbe Farbschema aus dem <b>Erscheinungsbild</b> (Firmenfarbe), Hell und Dunkel wie eingestellt. Die Arten haben überall dieselbe Farbe – <span style="color:#f97316">■</span> Störung, <span style="color:#0ea5e9">■</span> Ticket, <span style="color:#c99a3c">■</span> Wartung, <span style="color:#8b5cf6">■</span> Aufgabe; Rot bleibt für <b>überfällig</b> reserviert.</p>
   <p>Auch hier legst du mit dem <a href="#creation">Erstellungs-Assistenten</a> an, groß und fingerfreundlich – nur <b>ohne Zuweisung</b>: Statt „Wer kümmert sich?“ fragt der Leitstand <b>Wer meldet?</b>. Den Vorgang verteilen danach die Broker.</p>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> So meldest du eine Störung am Leitstand</b>
@@ -624,6 +634,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li><b>Benutzer</b> → den Systembenutzer des Terminals öffnen → Reiter <b>Stammdaten</b> (Berechtigung <i>Benutzer verwalten</i>).</li>
       <li>Unter <b>Systemnutzer</b> erscheint <b>Standort des Terminals</b>: im Baum Gebäude, Linie oder Anlage antippen.</li>
+      <li>Darunter wählst du bei Bedarf einen <b>Leitstand</b>, den das Terminal immer zeigt. „– über Gruppe/Abteilung –“ heißt: der Leitstand seiner Gruppe oder Abteilung, sonst der Standard.</li>
       <li><b>Speichern</b>. Auf der Übersicht steht jetzt „Terminal-Standort“; die Änderung erscheint in der Historie.</li>
     </ol>
     Wird die Anlage später gelöscht, ist der Standort automatisch wieder leer – dann klappt der Baum wie gewohnt ganz auf.</div>

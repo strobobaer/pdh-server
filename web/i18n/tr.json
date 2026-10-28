@@ -707,5 +707,8 @@
  "Mein Konto, Darstellung und Abmelden": "Hesabım, görünüm ve çıkış",
  "Tabelle offener Vorgänge": "Açık işler tablosu",
  "Alle offenen Störungen, Tickets, Wartungen und Aufgaben – wie im Leitstand nach Art, „nur überfällig“ und „ohne Zuständigen“ filterbar": "Tüm açık arızalar, talepler, bakımlar ve görevler – kontrol panosundaki gibi türe, „sadece gecikenler“ ve „sorumlusuz“ olarak filtrelenebilir",
- "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Tarihli açık işler zaman çizelgesinde – tarihi sürükleyerek taşıyın, açmak için çift tıklayın"
+ "Offene Vorgänge mit Termin im Zeitstrahl – Termin per Ziehen verschieben, Doppelklick öffnet": "Tarihli açık işler zaman çizelgesinde – tarihi sürükleyerek taşıyın, açmak için çift tıklayın",
+ "Leitstände": "Kontrol panoları",
+ "– über Gruppe/Abteilung –": "– grup/departman üzerinden –",
+ "inaktiv": "pasif"
 }

@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strings"
@@ -48,6 +49,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(h.LangMiddleware) // Sprache fuer Meldungen des Erstellungs-Assistenten
 	r.Get("/", h.GlobalDashboard)
+	r.Get("/b/{slug}", h.GlobalDashboardBoard) // bestimmter Leitstand (leitstand_boards.go)
 	r.Get("/data", h.GlobalDashboardData)
 	r.Post("/actions", h.GlobalDashboardAction)
 	r.Post("/complete-start", h.GlobalDashboardCompleteStart)
@@ -77,6 +79,11 @@ type GlobalDashboardPageData struct {
 	LoggedIn                  bool
 	Title                     string
 	Subtitle                  string
+	Board                     *leitstand              // angezeigter Leitstand (leitstand_boards.go)
+	Blocks                    []boardBlockView        // Bausteine in Reihenfolge
+	Core                      map[string]template.CSS // feste Bausteine (create, vorgaenge, zeitstrahl) → Stil (Reihenfolge, Breite) oder "" = aus
+	Boards                    []*leitstand            // alle aktiven Leitstände (Links, Weiterblättern)
+	CanManageBoards           bool
 	CanEditHeading            bool
 	CanDiscard                bool
 	CanCreatePrivileged       bool // Aufgaben/Wartungen anlegen - Administratoren und Manager
@@ -97,11 +104,7 @@ type GlobalDashboardPageData struct {
 // geprueft statt ueber den (auf dieser Route nie gesetzten) Request-
 // Context von authMiddleware.
 func (h *Handler) canEditGlobalDashboardHeading(r *http.Request) bool {
-	user := h.sessionUser(r)
-	if user == nil {
-		return false
-	}
-	return h.rbac.HasPermissionForUser(user.ID, string(user.Role), "system.manage_roles")
+	return h.canManageLeitstand(r) // Recht „Leitstand verwalten“
 }
 
 // isGlobalBoardAdminOrManager gilt sowohl fuer den Verwerfen-Button im
@@ -123,6 +126,31 @@ func (h *Handler) canUseChat(r *http.Request) bool {
 }
 
 func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
+	h.renderLeitstand(w, r, h.resolveLeitstand(r))
+}
+
+// GlobalDashboardBoard: /global/b/{slug} – merkt sich den Leitstand an
+// diesem Gerät, damit /global/ (z. B. nach dem Abmelden) wieder dort landet.
+func (h *Handler) GlobalDashboardBoard(w http.ResponseWriter, r *http.Request) {
+	b := h.boardBySlug(r, chi.URLParam(r, "slug"))
+	if b == nil {
+		http.Error(w, "Leitstand nicht gefunden oder nicht aktiv", http.StatusNotFound)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: leitstandCookie, Value: b.Slug, Path: "/", MaxAge: 365 * 86400, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	h.renderLeitstand(w, r, b)
+}
+
+// boardBlockView: Baustein mit Katalogeintrag und CSS-Stil.
+type boardBlockView struct {
+	BoardBlock
+	Def   boardBlockDef
+	Style template.CSS // order und Breite im Raster
+	Title string
+	Links []*leitstand // Baustein „Andere Leitstände“
+}
+
+func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board *leitstand) {
 	w.Header().Set("Cache-Control", "no-store")
 	tmpl, err := h.globalDashboardTemplate(r)
 	if err != nil {
@@ -141,8 +169,10 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 	brand := h.branding()
 	data := GlobalDashboardPageData{
 		LoggedIn:                  loggedIn,
-		Title:                     h.getUpdateSetting(ctx, "global_dashboard_title", globalDashboardDefaultTitle),
-		Subtitle:                  h.getUpdateSetting(ctx, "global_dashboard_subtitle", globalDashboardDefaultSubtitle),
+		Title:                     board.Name,
+		Subtitle:                  board.Subtitle,
+		Board:                     board,
+		CanManageBoards:           loggedIn && h.canManageLeitstand(r),
 		CanEditHeading:            h.canEditGlobalDashboardHeading(r),
 		CanDiscard:                h.isGlobalBoardAdminOrManager(r),
 		CanCreatePrivileged:       h.isGlobalBoardAdminOrManager(r),
@@ -155,6 +185,34 @@ func (h *Handler) GlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		PaletteID:                 brand.ThemeID(),
 		StyleID:                   brand.StyleID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
+		Core:                      map[string]template.CSS{"create": "", "vorgaenge": "", "zeitstrahl": ""},
+	}
+	for _, b := range h.listLeitstaende(ctx) {
+		if b.Active || b.IsDefault {
+			data.Boards = append(data.Boards, b)
+		}
+	}
+	for i, bl := range board.Blocks {
+		d, _ := boardBlockDefFor(bl.Type)
+		// nur Zahlen aus der geprüften Zusammenstellung (sanitizeBoardBlocks)
+		v := boardBlockView{BoardBlock: bl, Def: d, Title: d.Name, Style: template.CSS(fmt.Sprintf("order:%d;--ls-span:%d", i+1, bl.Size))}
+		if t := bl.Config["title"]; t != "" {
+			v.Title = t
+		}
+		if _, core := data.Core[bl.Type]; core {
+			data.Core[bl.Type] = v.Style
+			continue
+		}
+		if bl.Type == "links" {
+			for _, slug := range strings.Split(bl.Config["boards"], ",") {
+				for _, o := range data.Boards {
+					if o.Slug == slug && o.ID != board.ID {
+						v.Links = append(v.Links, o)
+					}
+				}
+			}
+		}
+		data.Blocks = append(data.Blocks, v)
 	}
 	if err := tmpl.ExecuteTemplate(w, "global_dashboard.gohtml", data); err != nil {
 		http.Error(w, "Dashboard konnte nicht gerendert werden", http.StatusInternalServerError)
@@ -194,8 +252,8 @@ func (h *Handler) globalDashboardTemplate(r *http.Request) (*template.Template, 
 }
 
 // GlobalDashboardSettingsWeb speichert die Ueberschrift/den Untertitel
-// des Leitstands (app_settings, wie die uebrigen Core-Einstellungen) -
-// gilt fuer alle Betrachter, auch nicht angemeldete.
+// des angezeigten Leitstands (Tabelle leitstaende) – gilt fuer alle
+// Betrachter, auch nicht angemeldete.
 func (h *Handler) GlobalDashboardSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canEditGlobalDashboardHeading(r) {
 		http.Error(w, "keine berechtigung", http.StatusForbidden)
@@ -218,13 +276,14 @@ func (h *Handler) GlobalDashboardSettingsWeb(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Untertitel darf höchstens 200 Zeichen lang sein", http.StatusBadRequest)
 		return
 	}
-	ctx := r.Context()
-	if err := h.setUpdateSetting(ctx, "global_dashboard_title", title); err != nil {
-		http.Error(w, "Überschrift konnte nicht gespeichert werden", http.StatusInternalServerError)
-		return
+	// Überschrift des angezeigten Leitstands (?b=, sonst Standard)
+	board := h.defaultLeitstand(r.Context())
+	if b := h.boardBySlug(r, r.FormValue("b")); b != nil {
+		board = b
 	}
-	if err := h.setUpdateSetting(ctx, "global_dashboard_subtitle", subtitle); err != nil {
-		http.Error(w, "Untertitel konnte nicht gespeichert werden", http.StatusInternalServerError)
+	if _, err := h.db.Exec(r.Context(), `UPDATE leitstaende SET name = $1, subtitle = $2, updated_at = NOW() WHERE slug = $3`,
+		title, subtitle, board.Slug); err != nil {
+		http.Error(w, "Überschrift konnte nicht gespeichert werden", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -295,6 +354,27 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+	// Leitstand (?b=): Vorgangsarten und Zuordnung zu Abteilung/Gruppe
+	board := h.resolveLeitstand(r)
+	if slug := r.URL.Query().Get("b"); slug != "" {
+		if b := h.boardBySlug(r, slug); b != nil {
+			board = b
+		}
+	}
+	boardIDs := h.boardAllowedIDs(ctx, board)
+	boardShows := func(kind, id string) bool {
+		if !board.HasType(kind) {
+			return false
+		}
+		return boardIDs == nil || boardIDs[kind][id]
+	}
+	gantt := data.GanttItems[:0]
+	for _, g := range data.GanttItems {
+		if boardShows(g.RefType, g.ID) {
+			gantt = append(gantt, g)
+		}
+	}
+	data.GanttItems = gantt
 	// Abteilungsrechte: nur fuer angemeldete, eingeschraenkte Personen (die
 	// oeffentliche Tafel ohne Anmeldung bleibt vollstaendig)
 	var scopeIDs map[string]map[string]bool
@@ -334,6 +414,9 @@ func (h *Handler) GlobalDashboardData(w http.ResponseWriter, r *http.Request) {
 			if allowed := scopeIDs[item.TypeKey]; allowed != nil && !allowed[item.ID] {
 				continue
 			}
+		}
+		if !boardShows(item.TypeKey, item.ID) {
+			continue
 		}
 		item.StatusKey = item.Status
 		item.Status = globalStatusLabel(item.Status)

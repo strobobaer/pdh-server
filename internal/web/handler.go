@@ -60,6 +60,7 @@ type BaseData struct {
 	IsAdmin                bool       // Auto-Logout wartet, solange code-server/n8n/pgAdmin offen sind
 	CanManageUsers         bool       // Benutzerverwaltung anzeigen
 	CanManageRoles         bool       // Nav-Link "Rollen & Berechtigungen" anzeigen
+	CanManageLeitstand     bool       // Nav-Link "Leitstände" (leitstand_boards.go)
 	CanImport              bool       // Nav-Link "Import" anzeigen
 	CanExport              bool       // Nav-Link "Export" anzeigen
 	CanChat                bool       // Chat-Navigation, Ungelesen-Zaehler und "Im Chat teilen"
@@ -803,6 +804,10 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
 	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
+	r.Get("/leitstaende", h.LeitstaendePage)
+	r.Get("/leitstaende/{id}", h.LeitstaendePage)
+	r.Post("/leitstaende/{id}", h.LeitstandSaveWeb)
+	r.Post("/leitstaende/{id}/delete", h.LeitstandDeleteWeb)
 	r.Post("/core/settings/board-pick", h.BoardPickSettingsWeb)
 	r.Post("/core/settings/push", h.PushSettingsWeb)
 	r.Post("/core/settings/check-update", h.CheckUpdateWeb)
@@ -1080,6 +1085,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsAdmin:                u.Role == users.RoleAdmin,
 		CanManageUsers:        h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
+		CanManageLeitstand:     h.rbac.HasPermissionForUser(u.ID, string(u.Role), permLeitstand),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
 		CanExport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "export.read"),
 		CanChat:                u.ID != "" && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "chat.use"),
@@ -1356,6 +1362,11 @@ func (h *Handler) RecordArchiveWeb(w http.ResponseWriter, r *http.Request) {
 // ── Seiten ───────────────────────────────────────────────────
 
 func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
+	// Terminal mit eigenem Leitstand startet dort (leitstand_boards.go)
+	if to := h.terminalLeitstandStart(r); to != "" {
+		http.Redirect(w, r, to, http.StatusFound)
+		return
+	}
 	ctx := r.Context()
 	u := getUser(r)
 	now := time.Now()

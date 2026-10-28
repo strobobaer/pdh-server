@@ -139,6 +139,27 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 :root[data-style="fiori"] #timeline-card,:root[data-style="fiori"] .view-card,:root[data-style="fiori"] #entries-table-wrap,:root[data-style="fiori"] #edit-panel,:root[data-style="fiori"] #create-panel{border-color:transparent;border-radius:12px;box-shadow:var(--ls-shadow)}
 :root[data-style="fiori"] .entry-tile,:root[data-style="fiori"] .create-tile{border-radius:12px;box-shadow:var(--ls-shadow)}
 
+/* ── Bausteine des Leitstands (leitstand_boards.go): Raster mit 4 Spalten ── */
+#ls-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:start}
+#ls-grid > .ls-b{grid-column:span var(--ls-span,4);min-width:0}
+#ls-grid > .ls-off{display:none!important}
+@media(max-width:900px){#ls-grid > .ls-b{grid-column:span 4}}
+.ls-x .view-head strong{font-size:15px}
+.ls-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.ls-kpi{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface-2)}
+.ls-kpi b{display:block;font-size:calc(28px * var(--row-scale));line-height:1.1}
+.ls-kpi span{font-size:12px;color:var(--muted)}
+.ls-kpi.alert b{color:var(--overdue)}
+.ls-list{display:flex;flex-direction:column;gap:6px}
+.ls-li{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%;zoom:var(--row-scale)}
+.ls-li .t{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ls-li .s{font-size:12px;color:var(--muted);white-space:nowrap}
+.ls-li.over .s{color:var(--overdue);font-weight:600}
+.ls-note{white-space:pre-wrap;font-size:calc(15px * var(--row-scale));line-height:1.45}
+.ls-links{display:flex;flex-wrap:wrap;gap:8px}
+#ls-rotate{font-size:12px;color:var(--muted)}
+:root[data-style="fiori"] .ls-kpi,:root[data-style="fiori"] .ls-li{border-color:transparent;border-radius:12px;box-shadow:var(--ls-shadow)}
+
 /* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
 #timeline-card{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px}
 #timeline-card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
@@ -301,8 +322,9 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     <button class="header-button" type="button" id="timeline-toggle" onclick="pdhTimelineToggle()" title="Zeitstrahl ein- oder ausblenden" aria-pressed="true"><span aria-hidden="true">📅</span> <span class="tb-label">Zeitstrahl</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
     {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
+    {{if .CanManageBoards}}{{with .Board}}{{if .ID}}<a class="header-button" href="/leitstaende/{{.ID}}" title="Bausteine, Zuordnung und Weiterblättern dieses Leitstands bearbeiten"><span aria-hidden="true">⚙</span> <span class="tb-label">Bearbeiten</span></a>{{end}}{{end}}{{end}}
     {{if .LoggedIn}}
-    <a class="header-button" href="/" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
+    <a class="header-button" href="/?dash=1" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
     {{else}}
     <a class="header-button" href="/login" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
     {{end}}
@@ -319,9 +341,11 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       <span><span class="legend-dot overdue"></span>Überfällig</span>
     </span>
     <span id="load-state" role="status" aria-live="polite"></span>
+    <span id="ls-rotate" aria-live="off"></span>
   </div>
+  <div id="ls-grid">
 
-  <div id="create-tiles">
+  <div id="create-tiles" class="ls-b{{if and .Core (not (index .Core "create"))}} ls-off{{end}}" style="{{index .Core "create"}}">
     <button type="button" class="create-tile fault" data-type="fault"><span class="create-tile-icon" aria-hidden="true">⚠</span><span>Neue Störung</span></button>
     <button type="button" class="create-tile ticket" data-type="ticket"><span class="create-tile-icon" aria-hidden="true">🎫</span><span>Neues Ticket</span></button>
     {{if .CanCreatePrivileged}}
@@ -330,7 +354,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     {{end}}
   </div>
 
-  <div id="maintenance-select-panel" class="hidden">
+  <div id="maintenance-select-panel" class="hidden ls-b" style="{{index .Core "create"}}">
     <div class="edit-panel-head">
       <h2 style="font-size:17px;margin:0">Wartungen</h2>
       <button type="button" class="header-button" id="maintenance-select-close">Schließen</button>
@@ -342,7 +366,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     </div>
   </div>
 
-  <div id="entries-card" class="view-card">
+  <div id="entries-card" class="view-card ls-b{{if and .Core (not (index .Core "vorgaenge"))}} ls-off{{end}}" style="{{index .Core "vorgaenge"}}">
     <div class="view-head">
       <strong>Vorgänge</strong>
       <div class="view-filter" id="table-filter" role="group" aria-label="Welche Vorgänge angezeigt werden"></div>
@@ -360,7 +384,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     </div>
   </div>
 
-  <div id="timeline-card">
+  <div id="timeline-card" class="ls-b{{if and .Core (not (index .Core "zeitstrahl"))}} ls-off{{end}}" style="{{index .Core "zeitstrahl"}}">
     <div id="timeline-card-head">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <strong>Zeitstrahl</strong>
@@ -392,6 +416,18 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     <div id="dash-gantt-empty">Keine Einträge mit Terminen vorhanden.</div>
   </div>
 
+  {{range .Blocks}}
+  <section class="view-card ls-b ls-x" style="{{.Style}}" data-ls="{{.Type}}" aria-label="{{.Title}}">
+    <div class="view-head"><strong>{{.Title}}</strong></div>
+    {{if eq .Type "kennzahlen"}}<div class="ls-kpis" data-ls-kpis></div>
+    {{else if eq .Type "stoerungen"}}<div class="ls-list" data-ls-list="fault"></div>
+    {{else if eq .Type "wartung"}}<div class="ls-list" data-ls-list="maintenance"></div>
+    {{else if eq .Type "hinweis"}}<div class="ls-note">{{index .Config "text"}}</div>
+    {{else if eq .Type "links"}}<div class="ls-links">{{range .Links}}<a class="header-button" href="/global/b/{{.Slug}}">{{.Name}}</a>{{else}}<span style="color:var(--muted);font-size:13px">Keine anderen Leitstände ausgewählt.</span>{{end}}</div>
+    {{end}}
+  </section>
+  {{end}}
+  </div>
 
   <div id="edit-panel-home"></div>
   <div id="edit-panel" class="hidden">
@@ -496,6 +532,13 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     });
   }
 })();
+
+// angezeigter Leitstand (leitstand_boards.go)
+{{with .Board}}var LS_BOARD = {{.Slug}};
+var LS_TYPES = {{.Types}};
+var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {{.RotateNextName}}};
+{{else}}var LS_BOARD = 'standard', LS_TYPES = ['fault','ticket','maintenance','task'], LS_ROTATE = {seconds: 0};
+{{end}}
 
 (function(){
   const editPanel = document.getElementById('edit-panel');
@@ -801,11 +844,16 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
       });
       box.appendChild(b);
     }
-    VIEW_TYPES.forEach(function(t){ chip(t[0], t[1], t[0]); });
-    const sep = document.createElement('span'); sep.className = 'view-sep'; box.appendChild(sep);
+    // nur die Vorgangsarten, die dieser Leitstand zeigt; bei nur einer Art keine Art-Auswahl
+    const shown = VIEW_TYPES.filter(function(t){ return LS_TYPES.indexOf(t[0]) >= 0; });
+    if(shown.length > 1){
+      shown.forEach(function(t){ chip(t[0], t[1], t[0]); });
+      const sep = document.createElement('span'); sep.className = 'view-sep'; box.appendChild(sep);
+    }
+    shown.forEach(function(t){ state[t[0]] = shown.length > 1 ? state[t[0]] : true; });
     chip('overdue', VIEW_FLAGS[0][1], 'overdue');
     chip('unassigned', VIEW_FLAGS[1][1], '');
-    if(withUpcoming) chip('upcoming', 'Geplante Wartungen', 'maintenance');
+    if(withUpcoming && LS_TYPES.indexOf('maintenance') >= 0) chip('upcoming', 'Geplante Wartungen', 'maintenance');
     // match(typ, ueberfaellig, ohneZustaendigen, geplant)
     return function(type, overdue, unassigned, upcoming){
       if(state[type] === false) return false;
@@ -1205,6 +1253,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     });
     renderDashGantt();
     renderEntriesTable(data.items);
+    lsRenderExtras(data.items);
     if(selectedKey){
       const still = data.items.find(function(item){ return itemKey(item) === selectedKey; });
       // offenes Formular (Kommentar, Karte) beim Aktualisieren stehen lassen
@@ -1214,9 +1263,43 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     }
   }
 
+  // Bausteine Kennzahlen, Aktuelle Störungen, Fällige Wartung (aus den Vorgängen)
+  function lsRenderExtras(items){
+    const todayStr = todayMidnight().toISOString().slice(0,10);
+    const open = items.filter(function(i){ return !i.upcoming; });
+    const over = function(i){ return i.due_date && i.due_date < todayStr; };
+    document.querySelectorAll('[data-ls-kpis]').forEach(function(box){
+      const kinds = [['fault','Störungen'],['ticket','Tickets'],['maintenance','Wartung'],['task','Aufgaben']].filter(function(k){ return LS_TYPES.indexOf(k[0]) >= 0; });
+      const tiles = kinds.map(function(k){ return [open.filter(function(i){ return i.type_key === k[0]; }).length, k[1] + ' offen', false]; });
+      const nOver = open.filter(over).length, nFree = open.filter(function(i){ return !i.assignee; }).length;
+      tiles.push([nOver, 'überfällig', nOver > 0], [nFree, 'ohne Zuständigen', false]);
+      box.replaceChildren.apply(box, tiles.map(function(t){
+        const d = document.createElement('div'); d.className = 'ls-kpi' + (t[2] ? ' alert' : '');
+        const b = document.createElement('b'); b.textContent = t[0];
+        const s = document.createElement('span'); s.textContent = t[1];
+        d.append(b, s); return d;
+      }));
+    });
+    document.querySelectorAll('[data-ls-list]').forEach(function(box){
+      const kind = box.dataset.lsList;
+      let list = open.filter(function(i){ return i.type_key === kind; });
+      if(kind === 'maintenance') list = list.filter(function(i){ return !i.due_date || i.due_date <= todayStr; });
+      if(!list.length){ const e = document.createElement('div'); e.className = 'empty'; e.textContent = kind === 'fault' ? 'Keine offenen Störungen.' : 'Keine Wartung fällig.'; box.replaceChildren(e); return; }
+      box.replaceChildren.apply(box, list.slice(0, 8).map(function(i){
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'ls-li' + (over(i) ? ' over' : '');
+        const t = document.createElement('span'); t.className = 't'; t.textContent = i.title;
+        const s = document.createElement('span'); s.className = 's';
+        s.textContent = (i.due_date ? (over(i) ? 'überfällig ' : 'fällig ') + i.due_date.split('-').reverse().join('.') : i.status) + (i.assignee ? ' · ' + i.assignee : '');
+        b.append(t, s);
+        b.addEventListener('click', function(){ selectItem(i); });
+        return b;
+      }));
+    });
+  }
+
   async function refresh(){
     try{
-      const response = await fetch('/global/data', {cache:'no-store'});
+      const response = await fetch('/global/data?b=' + encodeURIComponent(LS_BOARD), {cache:'no-store'});
       if(!response.ok) throw new Error('HTTP ' + response.status);
       const data = await response.json();
       render(data);
@@ -1298,7 +1381,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
         const response = await fetch('/global/settings', {
           method: 'POST', credentials: 'same-origin',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'title=' + encodeURIComponent(titleInput.value.trim()) + '&subtitle=' + encodeURIComponent(subtitleInput.value.trim())
+          body: 'b=' + encodeURIComponent(LS_BOARD) + '&title=' + encodeURIComponent(titleInput.value.trim()) + '&subtitle=' + encodeURIComponent(subtitleInput.value.trim())
         });
         if(!response.ok) throw new Error((await response.text()) || ('HTTP ' + response.status));
         document.getElementById('heading-title').textContent = titleInput.value.trim();
@@ -1312,6 +1395,24 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 
   refresh();
   window.setInterval(function(){ if(editPanel.classList.contains('hidden')) refresh(); }, 30000);
+
+  // Weiterblättern zum nächsten Leitstand: Bedienung startet die Zeit neu,
+  // offene Formulare (Vorgang, Anlegen, Wartungsauswahl) halten an
+  if(LS_ROTATE.seconds > 0 && LS_ROTATE.next){
+    let left = LS_ROTATE.seconds;
+    const note = document.getElementById('ls-rotate');
+    const busy = function(){
+      return !editPanel.classList.contains('hidden') || !document.getElementById('maintenance-select-panel').classList.contains('hidden')
+        || !!document.querySelector('.cw-overlay.open, dialog[open]');
+    };
+    ['pointerdown','keydown','wheel','touchstart'].forEach(function(ev){ document.addEventListener(ev, function(){ left = LS_ROTATE.seconds; }, {passive: true}); });
+    window.setInterval(function(){
+      if(busy()){ left = LS_ROTATE.seconds; note.textContent = ''; return; }
+      left--;
+      note.textContent = '→ ' + LS_ROTATE.name + ' in ' + left + ' s';
+      if(left <= 0) location.href = '/global/b/' + encodeURIComponent(LS_ROTATE.next);
+    }, 1000);
+  }
 })();
 </script>
 {{template "create-wizard" (dict "Board" true)}}

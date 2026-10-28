@@ -17,8 +17,12 @@ im Kapitel „Versionen & Updates“ an.
 - Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
 - Neues Recht „Leitstand verwalten“ (Verwerfen, Aufgaben und Wartung im Leitstand anlegen) – bisher fest an Administrator und Manager gebunden, beide haben es weiterhin.
 - Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
+- Mehrere Leitstände: unter Navigation → Leitstände bekommt jede Abteilung, Gruppe oder jedes Team einen eigenen Leitstand aus Bausteinen (Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, aktuelle Störungen, fällige Wartung, Hinweistext, Knöpfe zu anderen Leitständen), der nur ihre Vorgänge zeigt.
+- Leitstände blättern auf Wunsch nach einer einstellbaren Zeit zum nächsten weiter; Bedienung am Bildschirm hält das Weiterblättern an.
+- Terminals bekommen im Benutzerstamm einen festen Leitstand; sonst gilt der ihrer Gruppe, dann der ihrer Abteilung, dann der Standard-Leitstand.
 
 ### Geändert
+- Der bisherige Leitstand ist jetzt der Standard-Leitstand und lässt sich wie jeder andere bearbeiten; Überschrift und Untertitel ändert, wer das Recht „Leitstand verwalten“ hat.
 - Der Leitstand zeigt immer die Standard-Darstellung (Farbschema und Design-Stil) – unabhängig davon, wer gerade angemeldet ist.
 - „Standard“ in Navigation anpassen und Dashboard anpassen holt jetzt den Firmenstandard zurück.
 - Rollen & Rechte übersichtlicher: Rollen mit Rang, Abteilung, Pflichtschulungen und Benutzerzahl in eigener Tabelle; die Matrix hat ein Suchfeld, Gruppen zum Auf- und Zuklappen, eine feste Kopfzeile und Häkchen für ganze Gruppen; die Rechte sind neu gegliedert (z. B. „System & Sicherheit“, „Stammdaten“, „Daten & Schnittstellen“).

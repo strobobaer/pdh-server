@@ -71,6 +71,7 @@ var navDefs = []navDef{
 
 	{navItem{"roles", "/admin/roles", "ti-shield-lock", "Rollen & Rechte", "roles", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"core", "/core/settings", "ti-settings", "Core-Einstellungen", "core-settings", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
+	{navItem{"leitstaende", "/leitstaende", "ti-device-tv", "Leitstände", "leitstaende", false}, "admin", func(b *BaseData) bool { return b.CanManageLeitstand }},
 	{navItem{"costcenters", "/core/costcenters", "ti-building-bank", "Kostenstellen", "costcenters", false}, "admin", func(b *BaseData) bool { return b.CanCostCenters }},
 	{navItem{"icons", "/admin/icons", "ti-icons", "Symbole", "icons", false}, "admin", func(b *BaseData) bool { return b.CanManageRoles }},
 	{navItem{"categories", "/categories", "ti-hash", "Kategorien", "categories", false}, "admin", always},
