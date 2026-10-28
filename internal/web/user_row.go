@@ -14,7 +14,7 @@ import (
 
 type userRow struct {
 	id                      string
-	palette, font           string
+	palette, font, style    string
 	scale, row              int
 	avatarPath              *string
 	navLayout               []byte
@@ -32,10 +32,10 @@ func (h *Handler) withUserRow(ctx context.Context, uid string) context.Context {
 		return ctx
 	}
 	u := &userRow{id: uid}
-	err := h.db.QueryRow(ctx, `SELECT ui_palette, ui_font, ui_scale, ui_row, avatar_path, nav_layout,
+	err := h.db.QueryRow(ctx, `SELECT ui_palette, ui_font, ui_style, ui_scale, ui_row, avatar_path, nav_layout,
 			live_translate, translate_lang, language, broker_faults, broker_tickets, broker_tasks, broker_maintenance, active
 		FROM users WHERE id = $1::uuid`, uid).
-		Scan(&u.palette, &u.font, &u.scale, &u.row, &u.avatarPath, &u.navLayout,
+		Scan(&u.palette, &u.font, &u.style, &u.scale, &u.row, &u.avatarPath, &u.navLayout,
 			&u.liveTranslate, &u.translateLang, &u.language, &u.broker[0], &u.broker[1], &u.broker[2], &u.broker[3], &u.active)
 	if err != nil {
 		return ctx // Hilfsfunktionen fragen dann wie bisher einzeln

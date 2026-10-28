@@ -16,11 +16,12 @@ window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'
   document.documentElement.dataset.themeMode = mode;
   window.PDH_TERMINAL_INFRA = {{.TerminalInfraID}}; // Standort dieses Terminals (Infra-Picker)
   // Darstellung: am Benutzerkonto gespeichert (leer/0 = Firmenstandard)
-  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, scale: {{.Brand.ScaleValue}}, row: 100};
-  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
+  window.PDH_LOOK_DEFAULT = {palette: {{.Brand.ThemeID}}, font: {{.Brand.FontID}}, style: {{.Brand.StyleID}}, scale: {{.Brand.ScaleValue}}, row: 100};
+  window.PDH_LOOK_SAVED = {palette: {{.Look.User.Palette}}, font: {{.Look.User.Font}}, style: {{.Look.User.Style}}, scale: {{.Look.User.Scale}}, row: {{.Look.User.Row}}};
   window.PDH_LOOK_ALLOW = {{.Look.Allow}};
   window.PDH_PALETTES = {{.Brand.PaletteIDs}};
   document.documentElement.dataset.palette = {{.Look.PaletteID}};
+  document.documentElement.dataset.style = {{.Look.StyleID}};
   try { localStorage.removeItem('pdh_palette'); } catch(e) {} // frueher im Browser gespeichert
   if(localStorage.getItem('pdh_sidebar_left') !== 'expanded' && !window.matchMedia('(max-width:760px)').matches) document.documentElement.classList.add('sidebar-left-collapsed');
   // per Ziehen eingestellte Breiten der Seitenleisten (pdhResizer)
@@ -512,6 +513,12 @@ select.form-input option{background:var(--bg2)}
 .look-row{display:flex;align-items:center;gap:6px;margin:6px 0}
 .look-row select{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;font-size:12px;padding:4px 6px}
 .look-step{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:15px;line-height:1}
+.look-style{gap:0}
+.look-style i{margin-right:6px}
+.look-seg{flex:1;min-height:28px;padding:0 6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.look-seg:first-of-type{border-radius:6px 0 0 6px}
+.look-seg:last-of-type{border-radius:0 6px 6px 0;border-left:0}
+.look-seg.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
 .look-pct{min-width:48px;text-align:center;font-size:12.5px;font-weight:600}
 .look-actions{display:flex;gap:6px;margin-top:8px}
 .look-actions button{flex:1;font-size:12px;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-family:var(--font)}
@@ -623,6 +630,79 @@ tr:hover td{background:var(--fill-hover)}
 @media (max-width:760px){.main{border-radius:0;border-left:0}}
 /* Touch (Tablet an der Anlage): Ziele groß genug lassen */
 @media (pointer:coarse){.btn{min-height:42px}.btn-small{min-height:40px}.btn-icon{width:42px;min-width:42px;height:42px}}
+/* ── SAP-Fiori-Optik (Horizon), Design-Stil „fiori“ (ui_style.go) ──────
+   Weiße Kopfleiste und Navigation mit Schatten auf grauem Grund, Karten
+   ohne Rahmen mit 12 px Ecke, Knöpfe mit 8 px Ecke (Standard: weiß mit
+   blauer Schrift, hervorgehoben: Akzentfläche), Reiter mit durchgehender
+   Unterstreichung. Der Akzent bleibt beim Farbschema. */
+html[data-style="fiori"]{
+  --bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--layer:#12171c;
+  --text:#eaecee;--muted:#a9b4be;--border:#3a4552;
+  --stroke:rgba(234,236,238,.12);--stroke-strong:rgba(234,236,238,.24);--fill-hover:rgba(234,236,238,.07);--fill-press:rgba(234,236,238,.04);
+  --shadow-card:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5);--shadow-flyout:0 0 2px rgba(0,0,0,.6),0 8px 16px rgba(0,0,0,.6);
+  --field-border:#8396a8;--btn-border:#8396a8
+}
+html[data-style="fiori"][data-theme="light"]{
+  --bg:#f5f6f7;--bg2:#ffffff;--bg3:#eff1f2;--layer:#f5f6f7;
+  --text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;
+  --stroke:rgba(34,53,72,.12);--stroke-strong:rgba(34,53,72,.24);--fill-hover:rgba(34,53,72,.05);--fill-press:rgba(34,53,72,.08);
+  --shadow-card:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2);--shadow-flyout:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15);
+  --field-border:#556b82;--btn-border:#bcc3ca
+}
+/* Kopfleiste und Navigation: weiße Flächen mit Schatten */
+html[data-style="fiori"] .topbar{background:var(--bg2);height:52px;box-shadow:var(--shadow-card);position:relative;z-index:30}
+html[data-style="fiori"] .sidebar,html[data-style="fiori"] .context,html[data-style="fiori"] .ctx-tabs{background:var(--bg2)}
+html[data-style="fiori"] .sidebar{border-right:1px solid var(--border)}
+html[data-style="fiori"] .context{border-left:1px solid var(--border)}
+html[data-style="fiori"] .main{background:var(--bg);border:0;border-radius:0}
+html[data-style="fiori"] .nav-section{font-size:12px;font-weight:700;color:var(--muted)}
+html[data-style="fiori"] .nav-item{border-radius:8px;opacity:1;color:var(--text)}
+html[data-style="fiori"] .nav-item i{color:var(--text)}
+html[data-style="fiori"] .nav-item.active{background:rgba(var(--accent-rgb),.12);color:var(--accent);font-weight:700}
+html[data-style="fiori"] .nav-item.active i{color:var(--accent)}
+html[data-style="fiori"] .nav-item.active::before{display:none}
+html[data-style="fiori"] .nav-fold{border-radius:8px}
+html[data-style="fiori"] .sidebar-toggle,html[data-style="fiori"] .topbar-clock,html[data-style="fiori"] .topbar-user,html[data-style="fiori"] .theme-toggle{border-radius:8px;border-color:transparent;background:transparent}
+html[data-style="fiori"] .sidebar-toggle:hover,html[data-style="fiori"] .topbar-clock:hover,html[data-style="fiori"] .topbar-user:hover,html[data-style="fiori"] .theme-toggle:hover{background:var(--fill-hover);border-color:transparent}
+/* Karten und Kennzahlen */
+html[data-style="fiori"] .card,html[data-style="fiori"] .kpi,html[data-style="fiori"] .stat{background:var(--bg2);border:0;border-radius:12px;box-shadow:var(--shadow-card)}
+html[data-style="fiori"] a.kpi:hover{background:var(--bg2);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.6),var(--shadow-card)}
+html[data-style="fiori"] .card-title{font-size:14px;font-weight:700}
+html[data-style="fiori"] .kpi .v,html[data-style="fiori"] .stat-val{font-weight:400;font-size:26px;letter-spacing:0}
+html[data-style="fiori"] .stat-label{text-transform:none;letter-spacing:0;font-size:12px}
+html[data-style="fiori"] .rec-head h1{font-size:20px;font-weight:700}
+/* Knöpfe: Standard weiß mit Akzentschrift, hervorgehoben fett auf Akzent */
+html[data-style="fiori"] .btn{border-radius:8px;border:1px solid var(--btn-border);background:var(--bg2);color:var(--accent);font-weight:600}
+html[data-style="fiori"] .btn:hover{background:rgba(var(--accent-rgb),.08);border-color:var(--btn-border)}
+html[data-style="fiori"] .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+html[data-style="fiori"] .btn-primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000)}
+html[data-style="fiori"] .btn-success{background:var(--green);border-color:var(--green);color:#fff}
+html[data-style="fiori"] .btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
+html[data-style="fiori"] .btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+html[data-style="fiori"] .btn-icon{border-color:transparent;background:transparent}
+html[data-style="fiori"] .btn-icon:hover{background:rgba(var(--accent-rgb),.08)}
+/* Menüeinträge sind technisch .btn – dort bleibt es bei der schlichten Menüzeile */
+html[data-style="fiori"] .win11-menu > .btn{border:0;background:transparent;color:var(--text);font-weight:400;border-radius:6px}
+html[data-style="fiori"] .win11-menu > .btn:hover{background:var(--fill-hover)}
+html[data-style="fiori"] .win11-menu > .btn-primary{color:var(--accent)}
+html[data-style="fiori"] .win11-menu > .btn-danger,html[data-style="fiori"] .win11-menu > .btn-warning{color:var(--red)}
+/* Eingabefelder */
+html[data-style="fiori"] .form-input{border-radius:4px;background:var(--bg2);border:1px solid var(--field-border)}
+html[data-style="fiori"] .form-input:hover{background:var(--bg2);border-color:var(--accent)}
+html[data-style="fiori"] .form-input:focus{border:1px solid var(--accent);box-shadow:0 0 0 1px var(--accent);padding-bottom:8px}
+/* Reiter wie die Fiori-Icon-Tab-Bar: Akzentschrift, durchgehende Linie */
+html[data-style="fiori"] .rec-tab,html[data-style="fiori"] .list-tabs a{color:var(--text);border-radius:0}
+html[data-style="fiori"] .rec-tab:hover,html[data-style="fiori"] .list-tabs a:hover{background:transparent;color:var(--accent)}
+html[data-style="fiori"] .rec-tab.active,html[data-style="fiori"] .list-tabs a.active{color:var(--accent);font-weight:700}
+html[data-style="fiori"] .rec-tab.active::after,html[data-style="fiori"] .list-tabs a.active::after{left:0;right:0;width:auto;margin:0;height:3px;border-radius:2px 2px 0 0}
+/* Tabellen: Kopf ohne Großbuchstaben, ruhige Trennlinien */
+html[data-style="fiori"] th{font-weight:400;font-size:12.5px;color:var(--muted);border-bottom-color:var(--border)}
+html[data-style="fiori"] td{border-bottom-color:var(--border)}
+html[data-style="fiori"] tr:hover td{background:var(--bg3)}
+/* Hinweise, Menüs, Dialoge */
+html[data-style="fiori"] .badge{border-radius:4px}
+html[data-style="fiori"] .rec-msg{border-radius:8px}
+html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-style="fiori"] .win11-menu,html[data-style="fiori"] .chat-toast{border-radius:12px}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────
@@ -688,6 +768,7 @@ tr:hover td{background:var(--fill-hover)}
   .infra-picker-tree{max-height:45vh}
   .pal-dot{width:28px;height:28px}
   .look-step{width:36px;height:36px}
+  .look-seg{min-height:36px}
 }
 </style>
 <style id="pdh-theme">{{.Brand.ThemeCSS}}</style>
@@ -881,6 +962,9 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
             {{if .Look.Allow}}<div class="pal-row">
               <button type="button" class="pal-dot pal-default" data-palette-pick="" onclick="lookSet('palette','')" title="{{t "Firmenstandard"}} ({{.Brand.ThemeName}})"><i class="ti ti-building"></i></button>
               {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="lookSet('palette','{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
+            </div>
+            <div class="look-row look-style" role="group" aria-label="{{t "Design-Stil"}}"><i class="ti ti-layout-grid" title="{{t "Design-Stil"}}"></i>
+              {{range .Brand.Styles}}<button type="button" class="look-seg" data-style-pick="{{.ID}}" onclick="lookSet('style','{{.ID}}')" title="{{.Hint}}">{{.Name}}</button>{{end}}
             </div>
             <div class="look-row"><i class="ti ti-typography" title="{{t "Schriftart"}}"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="{{t "Schriftart"}}">
               <option value="">{{t "Firmenstandard"}}</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
@@ -1111,19 +1195,21 @@ function lookApply() {
   const row = lookEffective('row');
   root.style.setProperty('--row-scale', (row / 100).toFixed(2));
   const rp = document.getElementById('look-row'); if(rp) rp.textContent = row + ' %';
+  root.dataset.style = window.PDH_LOOK_ALLOW && lookDraft.style ? lookDraft.style : window.PDH_LOOK_DEFAULT.style;
+  document.querySelectorAll('[data-style-pick]').forEach(b => { const on = b.dataset.stylePick === root.dataset.style; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   const sel = document.getElementById('look-font'); if(sel) sel.value = lookDraft.font || '';
   document.querySelectorAll('[data-palette-pick]').forEach(b => b.classList.toggle('on', b.dataset.palettePick === (lookDraft.palette || '')));
-  const dirty = ['palette','font','scale','row'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
+  const dirty = ['palette','font','style','scale','row'].some(k => (lookDraft[k] || '') !== (window.PDH_LOOK_SAVED[k] || ''));
   const save = document.getElementById('look-save'); if(save) save.disabled = !dirty;
   const msg = document.getElementById('look-msg'); if(msg && dirty) msg.textContent = 'Vorschau – zum Behalten speichern';
 }
 function lookSet(k, v) { lookDraft[k] = v; lookApply(); }
 function lookStep(d) { lookDraft.scale = Math.max(70, Math.min(160, lookEffective('scale') + d)); lookApply(); }
 function lookRowStep(d) { lookDraft.row = Math.max(70, Math.min(150, lookEffective('row') + d)); lookApply(); }
-function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.scale = 0; lookDraft.row = 0; lookApply(); }
+function lookReset() { lookDraft.palette = ''; lookDraft.font = ''; lookDraft.style = ''; lookDraft.scale = 0; lookDraft.row = 0; lookApply(); }
 async function lookSave() {
   const msg = document.getElementById('look-msg');
-  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', scale: String(lookDraft.scale || 0), row: String(lookDraft.row || 0)});
+  const body = new URLSearchParams({palette: lookDraft.palette || '', font: lookDraft.font || '', style: lookDraft.style || '', scale: String(lookDraft.scale || 0), row: String(lookDraft.row || 0)});
   try {
     const res = await fetch('/account/appearance', {method: 'POST', body, credentials: 'same-origin'});
     const json = await res.json();
