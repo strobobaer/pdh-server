@@ -359,6 +359,22 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	// Adressen eines Knotens ändern (nur am CA-Halter)
+	mux.HandleFunc("PUT /v1/addrs", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Node      string   `json:"node"`
+			Addrs     []string `json:"addrs"`
+			RestartPG bool     `json:"restart_pg"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := d.setNodeAddrs(req.Node, req.Addrs, req.RestartPG); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
 	// Skripte jetzt mit der aktuellen Rolle ausführen (Testen, Nachholen)
 	mux.HandleFunc("POST /v1/hooks/run", func(w http.ResponseWriter, r *http.Request) {
 		res, err := d.runHooksNow(r.Context())

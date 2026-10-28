@@ -85,6 +85,8 @@ type message struct {
 	VIP   bool   `json:"vip,omitempty"`   // hält die mitwandernde Adresse
 	Hooks string `json:"hooks,omitempty"` // Kurzstand der Skripte beim Rollenwechsel
 	Tun   string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
+	// cluster: dieser Knoten darf PostgreSQL für neue Adressen neu starten (addrs set --neustart)
+	RestartPG string `json:"restart_pg,omitempty"`
 
 	VoteTerm uint64         `json:"vote_term,omitempty"`
 	Granted  bool           `json:"granted,omitempty"`
@@ -171,6 +173,7 @@ type transport struct {
 	ps       map[string]*peerState
 	conns    map[string]*peerConn // Schlüssel peer|weg
 	dialers  map[string]context.CancelFunc
+	retired  map[string]bool // peer|weg: Weg fiel mit einer neuen Knotenliste weg
 	runCtx   context.Context
 	rejectAt map[string]time.Duration
 	hsPerIP  map[string]int // laufende Handshakes je Quelladresse
@@ -187,6 +190,7 @@ func newTransport(self nodeConfig, cl clusterConfig, cert tls.Certificate, ca *x
 		ps:       map[string]*peerState{},
 		conns:    map[string]*peerConn{},
 		dialers:  map[string]context.CancelFunc{},
+		retired:  map[string]bool{},
 		rejectAt: map[string]time.Duration{},
 		hsPerIP:  map[string]int{},
 	}
@@ -284,7 +288,7 @@ func (t *transport) pathLocked(id, path string) *pathState {
 func (t *transport) pathErr(id, path, msg string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if _, ok := t.nodeLocked(id); ok {
+	if _, ok := t.nodeLocked(id); ok && !t.retired[id+"|"+path] {
 		t.pathLocked(id, path).err = msg
 	}
 }
@@ -298,10 +302,34 @@ func (t *transport) setCluster(cl clusterConfig) {
 	if cl.Version < t.cl.Version {
 		return
 	}
+	oldPaths := map[string][]string{}
+	for _, n := range t.cl.Nodes {
+		oldPaths[n.ID] = t.pathsLocked(n)
+	}
 	t.cl = cl
 	for id := range t.ps {
 		if _, ok := t.nodeLocked(id); !ok {
 			delete(t.ps, id)
+		}
+	}
+	// geänderte Adressen: weggefallene Wege aus der Anzeige nehmen – sonst
+	// meldeten sie nach einer Minute „ausgefallen“. Eine noch offene
+	// Verbindung darauf bleibt (kein Abriss); endet sie, verschwindet der Weg
+	// wieder (runConn).
+	for _, n := range cl.Nodes {
+		now := t.pathsLocked(n)
+		for _, p := range now {
+			delete(t.retired, n.ID+"|"+p)
+		}
+		for _, p := range oldPaths[n.ID] {
+			if slices.Contains(now, p) {
+				continue
+			}
+			k := n.ID + "|" + p
+			t.retired[k] = true
+			if ps := t.ps[n.ID]; ps != nil {
+				delete(ps.paths, p)
+			}
 		}
 	}
 	for _, pc := range t.conns {
@@ -474,6 +502,12 @@ func (t *transport) runConn(ctx context.Context, id, path string, c, raw net.Con
 		t.mu.Lock()
 		if t.conns[key] == pc {
 			delete(t.conns, key)
+		}
+		// weggefallener Weg (neue Adressen): nicht als „ausgefallen“ stehen lassen
+		if t.retired[key] && t.conns[key] == nil {
+			if ps := t.ps[id]; ps != nil {
+				delete(ps.paths, path)
+			}
 		}
 		t.mu.Unlock()
 	}()

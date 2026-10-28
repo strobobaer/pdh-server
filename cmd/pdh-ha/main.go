@@ -39,6 +39,9 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       Rolle ausführen und die Ausgabe zeigen
   vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
                                       (Standard: die eingetragene Adresse)
+  addrs set <knoten> <adr,…> [--neustart]
+                                      Adressen eines Knotens ändern (am ersten Server);
+                                      --neustart: aktives PostgreSQL dafür neu starten
   reset --yes                         nach dem Entfernen: Konfiguration sichern und
                                       zurücksetzen (danach setup oder join)
   replica-init [--confirm-host NAME]  diesen (passiven) Server als Datenbank-Spiegel
@@ -235,6 +238,30 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		fmt.Fprintln(stdout, "Test erfolgreich – die mitwandernde Adresse kann eingeschaltet werden.")
+		return 0
+	case "addrs":
+		// --neustart darf auch nach den Adressen stehen (flag hört dort auf)
+		restart, pos := false, []string{}
+		for _, a := range args[min(len(args), 2):] {
+			switch {
+			case a == "--neustart" || a == "-neustart":
+				restart = true
+			case strings.HasPrefix(a, "-"):
+				fmt.Fprint(stderr, usage)
+				return 2
+			default:
+				pos = append(pos, a)
+			}
+		}
+		if len(args) < 2 || args[1] != "set" || len(pos) != 2 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		body := map[string]any{"node": pos[0], "addrs": splitList(pos[1]), "restart_pg": restart}
+		if err := apiDo(sock, http.MethodPut, "/v1/addrs", body, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Adressen gespeichert und verteilt.")
 		return 0
 	case "hook":
 		if len(args) != 2 || args[1] != "run" {

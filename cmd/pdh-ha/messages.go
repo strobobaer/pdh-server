@@ -128,10 +128,14 @@ func (d *daemon) clusterMsgLocked(pl *plan, from string, m message) {
 		pl.event("alarm", "Knotenliste nicht gespeichert: "+err.Error())
 		return
 	}
+	old := d.cl
 	d.cl = c
 	d.net.setCluster(c)
 	pl.ufw = true
 	pl.event("info", fmt.Sprintf("Knotenliste übernommen (Version %d)", c.Version))
+	// geänderte Adressen: node.json und PostgreSQL nachziehen; den
+	// Neustart-Wunsch darf nur der CA-Halter schicken (addrs set)
+	d.followAddrsLocked(pl, old, c, m.RestartPG != "" && m.RestartPG == d.node.ID && from == old.CAHolder)
 }
 
 func findNode(c clusterConfig, id string) (clusterNode, bool) {
