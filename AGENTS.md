@@ -68,9 +68,13 @@ Update-Prüfung (Core-Einstellungen liest `VERSION`/`CHANGELOG.md` von GitHub ma
   `CHANGELOG.md` unter `### Neu`, `### Geändert`, `### Behoben` oder
   `### Sicherheit` – in Anwendersprache, ein Satz je Punkt.
 - Ist die aktuelle Version schon auf GitHub (`git show origin/main:VERSION`
-  gleich `VERSION`), eine neue Version anlegen: neue Funktionen → Nebenversion
-  (0.15.0 → 0.16.0), nur Fehlerkorrekturen → Korrekturversion (0.15.0 → 0.15.1).
-  Sonst in den obersten, noch nicht veröffentlichten Eintrag ergänzen.
+  gleich `VERSION`), eine neue Version anlegen: **immer die nächste
+  Korrekturversion** (0.76.3 → 0.76.4 → 0.76.5), auch bei neuen Funktionen.
+  Nebenversionen (0.77.0, 0.78.0 …) vergibt nur der Anwender selbst –
+  0.77.0 ist für den Spiegelserver reserviert. Sonst in den obersten, noch
+  nicht veröffentlichten Eintrag ergänzen.
+- Ein Pull Request = eine Version. Kommt während der Arbeit ein weiteres
+  Funktionspaket dazu, bekommt es die nächste Korrekturversion.
 - Neuer Eintrag: `## [x.y.z] – JJJJ-MM-TT` ganz oben, `VERSION` gleichzeitig ändern.
 - `TestChangelogMatchesVersion` prüft, dass `VERSION` und oberster Eintrag
   übereinstimmen und die Versionen absteigend sortiert sind.

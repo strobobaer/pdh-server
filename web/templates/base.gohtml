@@ -8,6 +8,9 @@
 <title>{{or .Brand.AppName "PDH"}} – {{.Title}}</title>
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}"><link rel="manifest" href="/site.webmanifest">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">{{end}}
 <script>
+// Logo dreht sich einmal beim Laden der Seite (Spielerei)
+document.documentElement.classList.add('pdh-loading');
+window.addEventListener('load', function(){ setTimeout(function(){ document.documentElement.classList.remove('pdh-loading'); }, 800); });
 window.PDH_LOCALE = ({de:'de-DE', en:'en-GB', ro:'ro-RO', tr:'tr-TR', mk:'mk-MK'})[document.documentElement.lang] || 'de-DE';
 (function(){
   const mode = localStorage.getItem('pdh_theme') || 'system';
@@ -155,6 +158,11 @@ html.sidebar-right-collapsed{--right-sidebar-w:54px}
 .logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--on-accent);flex-shrink:0}
 .logo-text{font-size:14px;font-weight:600}
 .logo-ver{font-size:10px;color:var(--muted)}
+/* Spielerei: Logo dreht sich beim Laden einer Seite und solange gearbeitet wird */
+@keyframes pdh-logo-spin{to{transform:rotate(360deg)}}
+html.pdh-loading .logo-icon,html.pdh-loading .logo-img{animation:pdh-logo-spin .8s ease-in-out}
+html.pdh-busy .logo-icon,html.pdh-busy .logo-img{animation:pdh-logo-spin .8s linear infinite}
+@media (prefers-reduced-motion:reduce){html.pdh-loading .logo-icon,html.pdh-loading .logo-img,html.pdh-busy .logo-icon,html.pdh-busy .logo-img{animation:none}}
 .sidebar-toggle{width:44px;min-width:44px;height:44px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .sidebar-toggle:hover{border-color:var(--muted);background:var(--bg2)}
 .sidebar-toggle i{font-size:18px}
@@ -1808,6 +1816,8 @@ function setGlobalStatus(state, message, progress, errorText) {
   if(text) text.textContent = pdhStatus.message;
   if(error) error.textContent = errorText || (normalized === 'error' ? (message || 'Fehler') : 'Keine Fehler');
   if(globalStatusTimer) window.clearTimeout(globalStatusTimer);
+  // Spielerei: Logo dreht sich, solange gearbeitet wird
+  document.documentElement.classList.toggle('pdh-busy', normalized === 'busy');
   if(normalized === 'busy') {
     pdhStatus.value = progress === undefined || progress === null ? Math.max(pdhStatus.value < 100 ? pdhStatus.value : 0, 8) : Number(progress) || 0;
     if(!pdhStatus.creep) pdhStatus.creep = window.setInterval(() => {

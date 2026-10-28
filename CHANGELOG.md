@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.78.0] – 2026-10-28
+## [0.76.4] – 2026-10-28
 
 ### Neu
 - Standards für alle: Unter Core-Einstellungen übernimmt ein Administrator seine eigene Darstellung, sein Menü und sein Dashboard mit einem Klick als Standard – wer nichts Eigenes gespeichert hat, sieht diesen Stand; auf Wunsch werden auch die eigenen Einstellungen aller ersetzt, „Werksvorgabe“ stellt die Auslieferung wieder her.
