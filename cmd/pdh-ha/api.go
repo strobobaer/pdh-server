@@ -53,7 +53,27 @@ type apiStatus struct {
 	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
+	Access         apiAccess   `json:"access"`
 }
+
+// apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.
+type apiAccess struct {
+	VIP      string     `json:"vip"`
+	VIPOn    bool       `json:"vip_on"`
+	HooksOn  bool       `json:"hooks_on"`
+	Iface    string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
+	IfaceErr string     `json:"iface_err"` // Kartenwahl gescheitert
+	Holder   string     `json:"holder"`    // Kennung des Servers mit der Adresse ("" = niemand)
+	Tested   *vipTested `json:"tested"`
+	Hooks    apiHooks   `json:"hooks"`
+	Tunnel   apiTunnel  `json:"tunnel"`
+}
+
+// apiHooks: Skripte beim Rollenwechsel (füllt Teil 5, Skripte).
+type apiHooks struct{}
+
+// apiTunnel: Cloudflare-Tunnel (füllt Teil 5, Tunnel).
+type apiTunnel struct{}
 
 type apiNode struct {
 	ID          string    `json:"id"`
@@ -77,6 +97,11 @@ type apiNode struct {
 	Timeline    uint32         `json:"timeline"`
 	DataCurrent bool           `json:"data_current"`
 	Diverged    []divergedInfo `json:"diverged"`
+
+	// Zugangsweg (Teil 5)
+	VIPHeld   bool   `json:"vip_held"`
+	HooksSum  string `json:"hooks_sum"`
+	TunnelSum string `json:"tunnel_sum"`
 }
 
 type apiPath struct {

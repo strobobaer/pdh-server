@@ -326,6 +326,24 @@ func printStatus(w io.Writer, st apiStatus) {
 	if st.Blocked != "" {
 		fmt.Fprintf(w, "Übernahme gesperrt: %s\n", st.Blocked)
 	}
+	if a := st.Access; a.VIP != "" {
+		addr, _, _ := strings.Cut(a.VIP, "/")
+		where := "niemand"
+		switch a.Holder {
+		case "":
+		case st.Self.ID:
+			where = "hier"
+		default:
+			where = "bei " + a.Holder
+		}
+		if !a.VIPOn {
+			where += " (aus)"
+		}
+		fmt.Fprintf(w, "Adresse %s: %s\n", addr, where)
+		if a.IfaceErr != "" {
+			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
+		}
+	}
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
 		if p.Seen {

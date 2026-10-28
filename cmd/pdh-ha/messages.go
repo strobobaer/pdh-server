@@ -216,6 +216,7 @@ func (d *daemon) removedHousekeepingLocked(pl *plan) {
 		}
 		d.configured, d.removed, d.started, d.renamePending = false, false, false, false
 		d.node, d.cl, d.p = nodeConfig{}, clusterConfig{}, ha.Persisted{}
+		d.syncAccessLocked(context.Background()) // ohne Einstellung: Arbeiter beenden, Adresse abgeben
 		d.carry, d.last = ha.Output{}, ha.Input{}
 		d.views = map[string]peerView{}
 		pl.event("info", "Zurückgesetzt – bereit zum Einrichten oder Beitreten")

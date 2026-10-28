@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -141,6 +142,15 @@ type daemon struct {
 	seqN    atomic.Uint64
 	gwOK    atomic.Int64 // monotone Zeit (ns) der letzten Gateway-Antwort
 	pinging atomic.Bool
+
+	// Mitwandernde Adresse (nur Knoten); die Felder ändern sich nur unter mu.
+	ifAddrsFn   func() ([]ifAddr, error) // Netzwerkkarten (Tests: Fake)
+	access      *accessWorker            // nil = keine Adresse auf diesem Server
+	accessKey   string                   // Einstellung, für die access gilt ("" = keine)
+	accessStop  context.CancelFunc
+	accessPrev  <-chan struct{} // Abgabe des vorigen Arbeiters (neuer startet danach)
+	accessIface string
+	accessErr   string // Kartenwahl gescheitert
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -170,6 +180,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		downSince: map[string]time.Duration{},
 		actQ:      make(chan queuedAction, 16),
 		sys:       execRunner{},
+		ifAddrsFn: listIfAddrs,
 	}
 	d.act = observeActor{ev: ev}
 	d.saveFn = st.saveState
@@ -745,8 +756,66 @@ func (d *daemon) tick(ctx context.Context) {
 	d.execute(ctx, pl)
 }
 
+// syncAccessLocked startet, ersetzt oder beendet den Arbeiter der
+// mitwandernden Adresse passend zur Einstellung. Läuft unter mu und blockiert
+// nie: Der alte Arbeiter gibt eine gehaltene Adresse im Hintergrund ab, der
+// neue beginnt erst danach. Das Ende des Dienstes (runCtx) gibt nichts ab.
+func (d *daemon) syncAccessLocked(ctx context.Context) {
+	a := d.cl.Access
+	key := ""
+	var vip netip.Prefix
+	if d.node.Kind == "node" && !d.removed && a.VIPOn {
+		if p, err := parseVIP(a.VIP); err == nil {
+			vip, key = p, p.String()+"|"+d.node.VIPInterface
+		}
+	}
+	if key == d.accessKey && (d.access != nil || key == "") {
+		return
+	}
+	if key != d.accessKey {
+		if old := d.access; old != nil {
+			d.accessStop()
+			released := make(chan struct{})
+			go func() {
+				defer close(released)
+				old.release()
+			}()
+			d.accessPrev = released
+		}
+		d.access, d.accessStop, d.accessKey = nil, nil, key
+		d.accessIface, d.accessErr = "", ""
+		delete(d.alarms, "vip-iface")
+	}
+	if key == "" {
+		return
+	}
+	// Kartenwahl; scheitert sie, im nächsten Takt erneut
+	addrs, err := d.ifAddrsFn()
+	iface := ""
+	if err == nil {
+		iface, err = pickInterface(addrs, vip, d.node.VIPInterface)
+	}
+	if err != nil {
+		d.accessErr = err.Error()
+		d.alarmOnce("vip-iface", "Mitwandernde Adresse: "+err.Error())
+		return
+	}
+	d.accessIface, d.accessErr = iface, ""
+	delete(d.alarms, "vip-iface")
+	base := d.runCtx
+	if base == nil {
+		base = ctx
+	}
+	wctx, cancel := context.WithCancel(base)
+	w := newAccessWorker(newVIPCtl(d.sys, iface, vip), d.ev)
+	w.after = d.accessPrev
+	d.access, d.accessStop = w, cancel
+	go w.run(wctx)
+}
+
 func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	pl := plan{net: d.net}
+	d.syncAccessLocked(ctx)
 	if d.removed {
 		return pl
 	}
@@ -779,12 +848,19 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 			}
 			d.unsaved = true
 			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
+			if d.access != nil {
+				// Zustand auf der Platte ungewiss: nicht aktiv, Adresse abgeben
+				d.access.set(false, ha.Fenced, d.p.Term)
+			}
 			return pl
 		}
 		d.unsaved = false
 	}
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
 	d.p, d.carry = out.Persist, out
+	if d.access != nil {
+		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
+	}
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {

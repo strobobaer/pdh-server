@@ -81,6 +81,11 @@ type message struct {
 	Probe    bool           `json:"probe,omitempty"`     // vote_resp auf eine Probestimme
 	Diverged []divergedInfo `json:"diverged,omitempty"`
 
+	// Zugangsweg (Teil 5)
+	VIP   bool   `json:"vip,omitempty"`   // hält die mitwandernde Adresse
+	Hooks string `json:"hooks,omitempty"` // Kurzstand der Skripte beim Rollenwechsel
+	Tun   string `json:"tun,omitempty"`   // Kurzstand des Cloudflare-Tunnels
+
 	VoteTerm uint64         `json:"vote_term,omitempty"`
 	Granted  bool           `json:"granted,omitempty"`
 	Cluster  *clusterConfig `json:"cluster,omitempty"`
