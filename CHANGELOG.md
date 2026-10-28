@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.1] – 2026-10-28
+
+### Neu
+- Netzlaufwerke: neue Art „UniFi NAS“ – nur Adresse des NAS, Name des freigegebenen Laufwerks und SMB oder NFS wählen, PDH ergänzt Freigabepfad und SMB-Version selbst.
+
 ## [0.77.0] – 2026-10-28
 
 ### Neu

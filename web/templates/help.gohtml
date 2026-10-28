@@ -1342,7 +1342,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 
 <section class="hb-ch" id="drives" data-title="Netzlaufwerke" data-pages="core-settings">
   <h2><i class="ti ti-server-2"></i> Netzlaufwerke</h2>
-  <p>Unter <b>Core-Einstellungen → Netzlaufwerke</b> bindet PDH Freigaben aus dem Firmennetz ein – Windows-Freigaben und NAS (<b>SMB/CIFS</b>), <b>NFS</b> oder ein Verzeichnis, das der Server schon eingebunden hat (<b>Lokaler Pfad</b>). Jedes Laufwerk liegt danach unter <code>/mnt/pdh/&lt;name&gt;</code>.</p>
+  <p>Unter <b>Core-Einstellungen → Netzlaufwerke</b> bindet PDH Freigaben aus dem Firmennetz ein – Windows-Freigaben und NAS (<b>SMB/CIFS</b>), <b>NFS</b>, ein <b>UniFi NAS</b> oder ein Verzeichnis, das der Server schon eingebunden hat (<b>Lokaler Pfad</b>). Jedes Laufwerk liegt danach unter <code>/mnt/pdh/&lt;name&gt;</code>.</p>
   {{template "hb-fig-drives"}}
   <div class="hb-howto"><b><i class="ti ti-plug"></i> So bindest du ein Laufwerk ein</b> (Recht „Rollen &amp; Rechte verwalten“)
     <ol class="hb-steps">
@@ -1351,6 +1351,15 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Ankreuzen, wofür das Laufwerk dient (siehe unten), dann <b>Speichern &amp; einbinden</b>. <b>Testen</b> prüft, ob PDH lesen und schreiben darf; <b>Durchsuchen</b> zeigt die Ordner und kopiert Pfade.</li>
     </ol>
     Mit „automatisch einbinden“ verbindet PDH das Laufwerk nach jedem Neustart und alle 5 Minuten wieder, falls die Verbindung abbricht. Fällt ein Laufwerk aus, bekommen die Administratoren eine Chat-Nachricht und PDH arbeitet lokal weiter.</div>
+  <div class="hb-howto"><b><i class="ti ti-server-2"></i> So bindest du ein UniFi NAS (UNAS) ein</b>
+    <ol class="hb-steps">
+      <li>In <b>UniFi Drive</b> ein freigegebenes Laufwerk anlegen (Name ohne Leerzeichen, z. B. <code>Instandhaltung</code>) und einem Benutzer Lese- und Schreibrechte geben.</li>
+      <li>In PDH <b>Laufwerk hinzufügen</b>, als Art <b>UniFi NAS</b> wählen und die <b>Adresse des NAS</b> (z. B. <code>192.168.1.20</code>) sowie den <b>Namen des Laufwerks</b> eintragen.</li>
+      <li><b>SMB</b> (empfohlen): Benutzername und Passwort des UniFi-Drive-Benutzers eintragen. PDH stellt SMB 3 selbst ein.<br>
+          <b>NFS</b>: In UniFi Drive beim Laufwerk NFS einschalten und die Adresse des PDH-Servers erlauben. PDH nutzt den Pfad <code>/var/nfs/shared/&lt;Laufwerk&gt;</code>.</li>
+      <li><b>Speichern &amp; einbinden</b>, dann <b>Testen</b>. Danach erscheint das Laufwerk als SMB- bzw. NFS-Freigabe in der Liste und lässt sich wie jedes andere bearbeiten.</li>
+    </ol>
+    Hinweis: Bei NFS zeigt PDH den freien Platz des ganzen Speicherpools, nicht eine Begrenzung des einzelnen Laufwerks.</div>
   <table>
     <tr><td><b><i class="ti ti-database"></i> Globaler Datenspeicher</b></td><td>Die Standardablage: Import- und Export-Pfade <b>ohne</b> führenden Schrägstrich (z. B. <code>Exporte/zaehler.xlsx</code>) liegen hier. Sicherungen und Dokumente landen ebenfalls hier, wenn dafür kein eigenes Laufwerk gewählt ist.</td></tr>
     <tr><td><b><i class="ti ti-database-import"></i> Import &amp; Export</b></td><td>Das Laufwerk erscheint als Vorschlag in den Feldern <b>Quellpfad</b> und <b>Zielpfad</b> der Import- und Export-Verbindungen.</td></tr>

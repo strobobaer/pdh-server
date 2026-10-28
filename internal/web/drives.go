@@ -71,6 +71,9 @@ func (d networkDrive) KindLabel() string {
 	case "smb":
 		return "SMB/CIFS (Windows-Freigabe, NAS)"
 	case "nfs":
+		if isUniFiNFS(d.Kind, d.Source) {
+			return "NFS (UniFi NAS)"
+		}
 		return "NFS"
 	}
 	return "Lokaler Pfad (bereits eingebunden)"
@@ -606,7 +609,36 @@ var (
 	smbSourceRe = regexp.MustCompile(`^//[A-Za-z0-9._-]+(/[^\s,'"\\]+)+$`)
 	nfsSourceRe = regexp.MustCompile(`^[A-Za-z0-9._-]+:/[^\s,'"\\]*$`)
 	mountOptRe  = regexp.MustCompile(`^[A-Za-z0-9=._,:-]*$`)
+
+	unifiHostRe  = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	unifiShareRe = regexp.MustCompile(`^[^\s/\\,'"]+$`)
 )
+
+// UniFi NAS (UNAS, UniFi Drive): Ubiquiti stellt jedes freigegebene Laufwerk
+// per SMB unter //<NAS>/<Laufwerk> und per NFS unter
+// <NAS>:/var/nfs/shared/<Laufwerk> bereit. PDH speichert es als normale
+// SMB- bzw. NFS-Freigabe – Agent und Datenbank bleiben unveraendert.
+const unifiNFSBase = "/var/nfs/shared/"
+
+// unifiDrive: Adresse, Laufwerksname und Protokoll → Art und Freigabe.
+func unifiDrive(host, share, proto string) (kind, source string, err error) {
+	host, share = strings.TrimSpace(host), strings.Trim(strings.TrimSpace(share), `/\`)
+	switch {
+	case !unifiHostRe.MatchString(host):
+		return "", "", errors.New("UniFi NAS: Bitte die IP-Adresse oder den Namen des NAS angeben, z. B. 192.168.1.20")
+	case !unifiShareRe.MatchString(share):
+		return "", "", errors.New("UniFi NAS: Bitte den Namen des freigegebenen Laufwerks angeben (ohne Leerzeichen und Schrägstriche)")
+	}
+	if proto == "nfs" {
+		return "nfs", host + ":" + unifiNFSBase + share, nil
+	}
+	return "smb", "//" + host + "/" + share, nil
+}
+
+// isUniFiNFS: NFS-Freigabe eines UniFi NAS (am Pfad erkennbar).
+func isUniFiNFS(kind, source string) bool {
+	return kind == "nfs" && strings.Contains(source, ":"+unifiNFSBase)
+}
 
 // normalizeSource: \\server\freigabe → //server/freigabe
 func normalizeSource(kind, s string) string {
@@ -649,6 +681,16 @@ func (h *Handler) DriveSaveWeb(w http.ResponseWriter, r *http.Request) {
 	kind := r.FormValue("kind")
 	source := normalizeSource(kind, r.FormValue("source"))
 	options := strings.TrimSpace(r.FormValue("options"))
+	if kind == "unifi" {
+		var err error
+		if kind, source, err = unifiDrive(r.FormValue("unifi_host"), r.FormValue("unifi_share"), r.FormValue("unifi_proto")); err != nil {
+			drivesRedirect(w, r, "", err)
+			return
+		}
+		if kind == "smb" && options == "" {
+			options = "vers=3.0" // UniFi Drive spricht SMB 3
+		}
+	}
 	switch {
 	case name == "" || len([]rune(name)) > 100:
 		drivesRedirect(w, r, "", errors.New("Bitte einen Namen angeben (höchstens 100 Zeichen)"))
