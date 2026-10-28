@@ -80,6 +80,9 @@ func (h *Handler) vpnLoadSettings(ctx context.Context) (vpnSettings, error) {
 	}
 	s.Port, _ = strconv.Atoi(h.appSetting(ctx, vpnSetPort, strconv.Itoa(vpnDefPort)))
 	enc := h.appSetting(ctx, vpnSetKey, "")
+	if enc == "" && h.Mirror().On { // Spiegel: Schlüssel nicht anlegen
+		return s, errMirrorNotCreated
+	}
 	if enc == "" {
 		priv, _, err := vpnKeyPair()
 		if err == nil {
@@ -391,6 +394,10 @@ func (h *Handler) vpnPeerConf(ctx context.Context, id, uid string, admin bool) (
 }
 
 func (h *Handler) vpnLog(ctx context.Context, uid, peerID, peerName, action, note string) {
+	if h.Mirror().On { // Spiegel: nur ins Server-Protokoll (z. B. Skript heruntergeladen)
+		componentLog("vpn").Info().Str("aktion", action).Str("zugang", peerName).Str("benutzer", uid).Bool("spiegel", true).Msg(note)
+		return
+	}
 	_, err := h.db.Exec(ctx, `INSERT INTO vpn_events (user_id, peer_id, peer_name, action, note) VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
 		nullID(uid), nullID(peerID), peerName, action, note)
 	if err != nil {

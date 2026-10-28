@@ -25,6 +25,10 @@ import (
 
 const mirrorReadOnlyMsg = "Dieser Server ist der Spiegel – nur lesen. Änderungen bitte am aktiven Server."
 
+// errMirrorNotCreated: etwas, das beim ersten Aufruf angelegt wird (Schlüssel,
+// Zertifizierungsstelle), fehlt noch – im Spiegel wird nichts angelegt.
+var errMirrorNotCreated = errors.New("Im Spiegel nicht verfügbar – wird beim ersten Aufruf am aktiven Server angelegt")
+
 // mirrorAllowedWrite: Schreibanfragen, die der Spiegel trotzdem annimmt –
 // Anmelden/Abmelden (auch über die Schnittstelle), Sprache (nur Cookie) und
 // Ausfallschutz-Befehle (pdh-ha-Socket).

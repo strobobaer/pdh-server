@@ -501,7 +501,7 @@ func (h *Handler) userPref(ctx context.Context, uid, key string) string {
 	return h.appSetting(ctx, "user:"+uid+":"+key, "")
 }
 func (h *Handler) setUserPref(ctx context.Context, uid, key, value string) {
-	if uid != "" {
+	if uid != "" && !h.Mirror().On { // Spiegel: Ansicht nicht merken
 		_ = h.setAppSetting(ctx, "user:"+uid+":"+key, value)
 	}
 }
