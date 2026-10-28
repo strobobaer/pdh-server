@@ -1954,6 +1954,7 @@ document.body.addEventListener('htmx:xhr:progress', (event) => {
 document.body.addEventListener('htmx:afterRequest', (event) => {
   const xhr = event.detail && event.detail.xhr;
   if(xhr && xhr.status === 423) showGlobalError('Gesperrt', xhr.responseText || 'Datensatz gesperrt');
+  else if(xhr && xhr.status === 409 && xhr.getResponseHeader('X-PDH-Spiegel')) showGlobalError('Spiegel – nur lesen', xhr.responseText || 'Änderungen bitte am aktiven Server.');
   else if(xhr && xhr.status >= 400) showGlobalError('HTTP ' + xhr.status, xhr.statusText || 'HTMX-Fehler');
   else if(!pdhHtmxQuiet(event)) setGlobalStatus('ok', 'Fertig', 100, 'Keine Fehler');
 });

@@ -343,6 +343,8 @@ func main() {
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)
+	r.Use(webHandler.MirrorMiddleware)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
 	r.Use(webHandler.ChangeTrackingMiddleware)
 

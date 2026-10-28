@@ -36,6 +36,10 @@ func (h *Handler) presenceTouch(userID string) {
 	now := time.Now()
 	presence.mu.Lock()
 	presence.seen[userID] = now
+	if h.Mirror().On { // Spiegel: nur im Speicher, nichts in die Datenbank
+		presence.mu.Unlock()
+		return
+	}
 	save := now.Sub(presence.saved[userID]) >= presenceSaveEvery
 	if save {
 		presence.saved[userID] = now

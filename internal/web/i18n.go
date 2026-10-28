@@ -182,7 +182,7 @@ func (h *Handler) LangSwitchWeb(w http.ResponseWriter, r *http.Request) {
 		lang = defaultLang
 	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_lang", Value: lang, Path: "/", MaxAge: int((365 * 24 * time.Hour).Seconds()), SameSite: http.SameSiteLaxMode})
-	if u := h.sessionUser(r); u != nil && h.db != nil {
+	if u := h.sessionUser(r); u != nil && h.db != nil && !h.Mirror().On { // Spiegel: nur Cookie
 		_, _ = h.db.Exec(r.Context(), `UPDATE users SET language = $1 WHERE id = $2::uuid`, lang, u.ID)
 	}
 	back := r.FormValue("back")
