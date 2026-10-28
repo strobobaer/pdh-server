@@ -3,24 +3,26 @@ package web
 // Design-Stil: Formensprache der ganzen Oberflaeche (Flaechen, Ecken,
 // Schatten, Knoepfe, Reiter, Tabellen) als Ergaenzung zu Farbschema und
 // Schrift (appearance.go). „Fluent“ ist die bisherige Windows-11-Optik,
-// „Fiori“ lehnt sich an SAP Fiori (Horizon) an. Umgesetzt allein in CSS:
+// „Fiori“ lehnt sich an SAP Fiori (Horizon) an und ist der Standard.
+// Umgesetzt allein in CSS:
 // base.gohtml setzt html[data-style], die Regeln dazu stehen dort.
 // Firmenstandard in den Server-Einstellungen, je Benutzer im Benutzermenue
 // waehlbar (wie das Farbschema nur, wenn die Wahl freigegeben ist).
 
 const (
 	keyBrandStyle = "branding.style"
-	defaultStyle  = "fluent"
+	defaultStyle  = "fiori"
 )
 
 // UIStyle: waehlbarer Design-Stil.
+// Short steht im Umschalter des Benutzermenues, Name und Hint im Tooltip.
 type UIStyle struct {
-	ID, Name, Hint string
+	ID, Short, Name, Hint string
 }
 
 var uiStyles = []UIStyle{
-	{"fluent", "Fluent (Windows 11)", "Mica-Flächen, feine Linien, kleine Ecken"},
-	{"fiori", "Fiori (SAP)", "weiße Kopfleiste, Karten mit Schatten, blaue Textknöpfe"},
+	{"fiori", "Fiori", "Fiori (SAP)", "weiße Kopfleiste, Karten mit Schatten, blaue Textknöpfe"},
+	{"fluent", "Fluent", "Fluent (Windows 11)", "Mica-Flächen, feine Linien, kleine Ecken"},
 }
 
 func validStyle(id string) bool {

@@ -255,7 +255,7 @@
     <div class="sc-grid" style="margin-bottom:10px">
       <div class="sc-f"><label>Design-Stil</label>
         <select class="form-input" name="style" id="th-style">{{range .Brand.Styles}}<option value="{{.ID}}" {{if eq .ID $.Brand.StyleID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
-        <div class="help">Formensprache der ganzen Oberfläche: Fluent wie Windows 11, Fiori wie SAP – das Farbschema bleibt.</div></div>
+        <div class="help">Formensprache der ganzen Oberfläche: Fiori wie SAP (Standard), Fluent wie Windows 11 – das Farbschema bleibt.</div></div>
       <div class="sc-f"><label>Schriftart</label>
         <select class="form-input" name="font" id="th-font">{{range .Brand.Fonts}}<option value="{{.ID}}" {{if eq .ID $.Brand.FontID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
         <div class="help">Webschriften werden von Google Fonts geladen; „System“ und „Verdana“ nutzen die Schrift des Geräts.</div></div>

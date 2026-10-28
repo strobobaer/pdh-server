@@ -10,10 +10,13 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.77.0] – 2026-10-28
+## [0.76.2] – 2026-10-28
 
 ### Neu
-- Design-Stil zum Umschalten: Neben „Fluent“ (wie Windows 11) gibt es jetzt „Fiori“ (wie SAP) mit weißer Kopfleiste, Karten mit Schatten, Knöpfen mit blauer Schrift und durchgehend unterstrichenen Reitern – jeder wählt ihn im Benutzermenü unter „Darstellung“, der Firmenstandard steht unter Server-Einstellungen → Erscheinungsbild.
+- Design-Stil zum Umschalten: „Fiori“ (wie SAP, jetzt Standard) mit weißer Kopfleiste, Karten mit Schatten, Knöpfen mit blauer Schrift und durchgehend unterstrichenen Reitern, oder wie bisher „Fluent“ (wie Windows 11) – jeder wählt ihn im Benutzermenü unter „Darstellung“, der Firmenstandard steht unter Server-Einstellungen → Erscheinungsbild.
+
+### Geändert
+- Kopfleiste aufgeräumt: Chat teilen, Chat, Copilot, Hell/Dunkel und Sprache sind kleine Symbolknöpfe in Gruppen; was ein Knopf tut, zeigt der Hinweis beim Darüberfahren mit der Maus.
 
 ## [0.76.1] – 2026-10-28
 

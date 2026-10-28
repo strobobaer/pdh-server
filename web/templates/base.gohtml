@@ -371,6 +371,11 @@ tr:last-child td{border:0}
 .theme-toggle{height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);display:inline-flex;align-items:center;gap:8px;font-size:13px;font-family:var(--font);cursor:pointer}
 .theme-toggle:hover{border-color:var(--muted);background:var(--bg2)}
 .theme-toggle i{font-size:16px;color:var(--accent)}
+/* Kopfleiste: Symbolknöpfe ohne Text, Erklärung im Tooltip (title), Gruppen mit Trennstrich */
+.topbar .theme-toggle{width:40px;min-width:40px;height:40px;padding:0;justify-content:center}
+.topbar .theme-toggle > span:not(.ctx-badge){display:none}
+.topbar .theme-toggle i{font-size:18px}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 4px;flex-shrink:0}
 html.icons-fallback .ti::before{font-family:var(--font);font-weight:700;display:inline-block;line-height:1}
 html.icons-fallback .ti-plus::before{content:"+"}
 html.icons-fallback .ti-refresh::before{content:"R"}
@@ -917,19 +922,22 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     <button type="button" class="sidebar-toggle topbar-burger" onclick="pdhNav()" aria-label="{{t "Navigation öffnen"}}" title="{{t "Navigation"}}"><i class="ti ti-menu-2"></i></button>
     <span class="topbar-path">PDH /</span>
     <span class="topbar-cur">{{.Title}}</span>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
       <a href="/time" class="topbar-clock" id="pdh-clock" data-server-ms="{{serverNowMs}}" title="{{t "Zeiterfassung öffnen"}}" aria-label="{{t "Uhrzeit – Zeiterfassung öffnen"}}">
         <i class="ti ti-clock"></i><span class="clk-day"></span><span class="clk-date"></span><span class="clk-time">--:--:--</span>
       </a>
-      <button type="button" class="theme-toggle topbar-cop" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
+      <span class="tb-sep" aria-hidden="true"></span>
       {{if and .CanChat (ne .Page "chat")}}
-      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
-      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" title="{{t "Chat in der Seitenleiste"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
+      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" aria-label="{{t "Im Chat teilen"}}" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
+      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" aria-label="{{t "Chat"}}" title="{{t "Chat in der Seitenleiste öffnen"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
       {{end}}
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="{{t "Darstellung wechseln"}}" title="{{t "Darstellung wechseln"}}">
+      <button type="button" class="theme-toggle topbar-cop" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="{{t "Hell/Dunkel wechseln"}}" title="{{t "Hell/Dunkel wechseln"}}">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
+      {{template "lang-switch"}}
       {{if .IsBoardVisit}}
       <a class="btn btn-small" href="/logout" style="background:rgba(245,158,11,.15);border-color:var(--amber,#f59e0b);color:var(--amber,#f59e0b)" title="{{t "Kurzzugang beenden und zurück zum Leitstand"}}">
         <i class="ti ti-corner-up-left"></i><span class="tb-label"> {{t "Zurück zum Leitstand"}}</span>
@@ -945,9 +953,9 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
       </button>
       {{end}}
       <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
-      {{template "lang-switch"}}
+      <span class="tb-sep" aria-hidden="true"></span>
       <div style="position:relative">
-        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
+        <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}" title="{{t "Mein Konto, Darstellung und Abmelden"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
         <div id="user-menu" class="win11-menu" style="display:none;position:absolute;right:0;top:50px;min-width:160px;z-index:200">
           <a href="/users/me" class="menu-item"><i class="ti ti-user-cog"></i>{{t "Mein Konto"}}</a>
           <a href="/help" class="menu-item"><i class="ti ti-book"></i>{{t "Handbuch"}}</a>
@@ -964,7 +972,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
               {{range .Brand.Palettes}}<button type="button" class="pal-dot" data-palette-pick="{{.ID}}" onclick="lookSet('palette','{{.ID}}')" title="{{.Name}}" style="background:{{.Swatch}}"></button>{{end}}
             </div>
             <div class="look-row look-style" role="group" aria-label="{{t "Design-Stil"}}"><i class="ti ti-layout-grid" title="{{t "Design-Stil"}}"></i>
-              {{range .Brand.Styles}}<button type="button" class="look-seg" data-style-pick="{{.ID}}" onclick="lookSet('style','{{.ID}}')" title="{{.Hint}}">{{.Name}}</button>{{end}}
+              {{range .Brand.Styles}}<button type="button" class="look-seg" data-style-pick="{{.ID}}" onclick="lookSet('style','{{.ID}}')" title="{{.Name}}: {{.Hint}}">{{.Short}}</button>{{end}}
             </div>
             <div class="look-row"><i class="ti ti-typography" title="{{t "Schriftart"}}"></i><select id="look-font" onchange="lookSet('font', this.value)" aria-label="{{t "Schriftart"}}">
               <option value="">{{t "Firmenstandard"}}</option>{{range .Brand.Fonts}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
@@ -1169,7 +1177,7 @@ function applyThemeMode(mode) {
   const btn = document.getElementById('theme-toggle');
   if(icon) icon.className = meta.icon;
   if(label) label.textContent = meta.label;
-  if(btn) btn.title = 'Darstellung: ' + meta.label;
+  if(btn) btn.title = 'Hell/Dunkel: ' + meta.label + ' – klicken zum Wechseln';
 }
 // Darstellung (Farbschema, Schrift, Groesse, Zeilenhoehe): sofort sichtbar, mit
 // „Speichern“ am Konto abgelegt. Leer/0 = Firmenstandard.
