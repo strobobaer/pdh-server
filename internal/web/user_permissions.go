@@ -95,8 +95,19 @@ func (h *Handler) UserPermissionSetWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "permission_id fehlt", http.StatusBadRequest)
 		return
 	}
+	key, err := h.permKeyByID(r, permissionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// erlauben – oder Abweichung löschen, wenn die Rolle das Recht hat
+	mode := r.FormValue("mode")
+	if (mode == "allow" || (mode == "clear" && h.rbac.HasPermission(string(target.Role), key))) && !h.mayGrant(r, key) {
+		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast", http.StatusForbidden)
+		return
+	}
 	var opErr error
-	switch r.FormValue("mode") {
+	switch mode {
 	case "allow":
 		opErr = h.rbac.SetUserPermission(r.Context(), id, permissionID, true)
 	case "deny":

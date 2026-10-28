@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
-	coreusers "pdh/internal/core/users"
 	"pdh/pkg/appsettings"
 )
 
@@ -106,17 +105,15 @@ func (h *Handler) canEditGlobalDashboardHeading(r *http.Request) bool {
 }
 
 // isGlobalBoardAdminOrManager gilt sowohl fuer den Verwerfen-Button im
-// Leitstand als auch fuer das Anlegen von Aufgaben/Wartungen dort -
-// bewusst per direktem Rollenvergleich statt RBAC-Permission, analog zu
-// isFullAdmin in handler.go, da beides keine ueber die Rollen-Verwaltung
-// konfigurierbare Berechtigung ist, sondern Admins/Managern vorbehalten
-// bleibt.
+// Leitstand als auch fuer das Anlegen von Aufgaben/Wartungen dort: Recht
+// „Leitstand verwalten“ (leitstand.manage, anfangs admin und manager).
+// Der Leitstand liegt ausserhalb von authMiddleware, daher ueber die Sitzung.
 func (h *Handler) isGlobalBoardAdminOrManager(r *http.Request) bool {
 	user := h.sessionUser(r)
-	if user == nil {
+	if user == nil || h.rbac == nil {
 		return false
 	}
-	return user.Role == coreusers.RoleAdmin || user.Role == coreusers.RoleManager
+	return h.rbac.HasPermissionForUser(user.ID, string(user.Role), "leitstand.manage")
 }
 
 // canUseChat: Sitzungsperson darf den Chat nutzen (Leitstand liegt ausserhalb von authMiddleware).

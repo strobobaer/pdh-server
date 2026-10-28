@@ -339,6 +339,12 @@ html.cop-raise .pdh-frame{z-index:700} /* Vorschlag aus der Seitenleiste öffnet
 .b-green{background:rgba(16,185,129,.15);color:#6ee7b7}
 .b-blue{background:rgba(var(--accent-rgb),.15);color:#a5b4fc}
 .b-gray{background:rgba(107,114,128,.15);color:#9ca3af}
+/* hell: dunklere Schrift, sonst kaum lesbar (Kontrast ≥ 4.5:1) */
+html[data-theme="light"] .b-red{color:#b91c1c}
+html[data-theme="light"] .b-amber{color:#92400e}
+html[data-theme="light"] .b-green{color:#047857}
+html[data-theme="light"] .b-blue{color:var(--accent)}
+html[data-theme="light"] .b-gray{color:#4b5563}
 /* ── List items ── */
 .li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
 .li:last-child{border:0;padding-bottom:0}
@@ -708,6 +714,15 @@ html[data-style="fiori"] tr:hover td{background:var(--bg3)}
 html[data-style="fiori"] .badge{border-radius:4px}
 html[data-style="fiori"] .rec-msg{border-radius:8px}
 html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-style="fiori"] .win11-menu,html[data-style="fiori"] .chat-toast{border-radius:12px}
+/* Symbolknöpfe mit Beschriftung (icon-button, z. B. „+ Neuer Benutzer“): Breite
+   nach Inhalt und Farbe der Variante – die durchsichtigen 36-px-Symbolknöpfe
+   oben (Fluent wie Fiori) gelten nur für reine Symbole */
+html .btn-icon.btn-icon-labeled{width:auto;min-width:36px;padding:0 14px}
+html .btn-icon.btn-primary,html .btn-icon.btn-primary:hover{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+html .btn-icon.btn-primary:hover{filter:brightness(1.08)}
+html .btn-icon.btn-success{background:var(--green);border-color:var(--green);color:#fff}
+html .btn-icon.btn-danger{background:var(--red);border-color:var(--red);color:#fff}
+html .btn-icon.btn-warning{background:var(--amber);border-color:var(--amber);color:#111827}
 </style>
 <style id="pdh-mobile">
 /* ── Tablet & Smartphone ──────────────────────────────────────

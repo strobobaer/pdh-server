@@ -277,7 +277,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Einen Balken im Zeitstrahl doppelt antippen.</li>
       <li>Ist am Leitstand niemand angemeldet, fragt er nach der <b>RFID-Karte</b>. Karte scannen, die Seite öffnet sich mit deinen Rechten.</li>
-      <li>Das ist <b>keine dauerhafte Anmeldung</b>: Oben rechts steht <b>Zurück zum Leitstand</b>. Der Zugang endet damit, bei Inaktivität (Override-Zeit unter <b>Rollen &amp; Berechtigungen</b>), beim Schließen des Browsers oder sobald jemand den Leitstand wieder aufruft.</li>
+      <li>Das ist <b>keine dauerhafte Anmeldung</b>: Oben rechts steht <b>Zurück zum Leitstand</b>. Der Zugang endet damit, bei Inaktivität (Override-Zeit unter <b>Core-Einstellungen → Auto-Logout</b>), beim Schließen des Browsers oder sobald jemand den Leitstand wieder aufruft.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-circle-check"></i> So meldest du am Leitstand fertig</b>
     <ol class="hb-steps">
@@ -516,7 +516,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="infrastructure" data-title="Infrastruktur &amp; IT" data-pages="infrastructure it hmi">
   <h2><i class="ti ti-hierarchy-2"></i> Infrastruktur &amp; IT</h2>
   <p>Der Anlagenbaum bildet euren Betrieb ab: Gebäude → Linien → Anlagen → Geräte. Er startet zugeklappt; mit dem Pfeil klappst du einen Ast auf, die übrigen Äste klappen dabei zu. Kommst du zurück, ist der zuletzt geöffnete Ast wieder offen. <b>Alle aufklappen</b> zeigt den ganzen Baum. In der Anlagenauswahl (z. B. beim Melden) gilt das genauso; beim Suchen werden alle Treffer aufgeklappt.</p>
-  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was bei der Infrastruktur?</b>Unter <b>Rollen &amp; Rechte</b> (Gruppe „Infrastruktur“) gibt es drei Rechte:
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> Wer darf was bei der Infrastruktur?</b>Unter <b>Rollen &amp; Rechte</b> (Gruppe „Infrastruktur &amp; Anlagen“) gibt es drei Rechte:
     <ul>
       <li><b>Infrastruktur ansehen</b> – Anlagenbaum, Stammkarte, Historie und Kommentare. Ohne dieses Recht fehlt der Menüpunkt. Die Anlagenauswahl beim Melden von Tickets oder Störungen funktioniert trotzdem.</li>
       <li><b>Infrastruktur anlegen, bearbeiten &amp; deaktivieren</b> – Stammdaten, Unteranlagen, Kopieren, Massenbearbeitung, Bauteile und Meldetexte. Schließt Ansehen und Prüfpflichten ein.</li>
@@ -1157,7 +1157,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Abteilungen</b> mit Leitung. Jede Person gehört zu höchstens einer – im Benutzerstamm unter <b>Stammdaten → Abteilung</b> auswählen. Umbenennen wirkt sofort bei allen Mitarbeitenden. Kommt aus dem Microsoft-Abgleich eine neue Abteilung, legt PDH sie automatisch an.</li>
       <li><b>Gruppen</b> bündeln Personen quer zu Abteilungen (z. B. „Elektro Frühschicht“, „Ersthelfer“), optional mit Abteilung und Leitung. Mitglieder wählst du in der Gruppe oder im Benutzerstamm unter <b>Stammdaten → Gruppen</b>; eine Person kann in mehreren Gruppen sein. Vorgänge lassen sich einer Gruppe zuweisen; in der <b>Benutzerliste</b> filterst du nach Abteilung und Gruppe.</li>
       <li>Abteilungen bilden eine <b>Hierarchie</b>: Jede kann eine <b>übergeordnete Abteilung</b> haben. Die Struktur steht im <b>Organigramm</b> unter den Rollen.</li>
-      <li><b>Rollen</b> ordnest du unter <b>Rollen &amp; Rechte</b> einer Abteilung zu (Auswahl im Kopf jeder Rollenspalte).</li>
+      <li><b>Rollen</b> ordnest du unter <b>Rollen &amp; Rechte</b> in der Tabelle <b>Rollen</b> einer Abteilung zu (Spalte „Abteilung (Sichtbarkeit)“).</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-lock-access"></i> Rechte je Abteilung</b>Die Abteilung eines Vorgangs ergibt sich aus seiner <b>Anlage</b>: Im Anlagenbaum trägst du unter <b>Bearbeiten → Abteilung</b> ein, zu welcher Abteilung eine Anlage gehört. Unteranlagen ohne eigene Angabe <b>erben</b> sie von oben (in der Übersicht als „geerbt“ markiert).
     <ul>
@@ -1204,7 +1204,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-books"></i> Katalog einrichten</b> (Recht „Schulungen &amp; Qualifikationen verwalten“)
     <ol class="hb-steps">
       <li><b>Schulungen</b> → Reiter <b>Katalog</b> → <b>Neu im Katalog</b>: Bezeichnung, Art (Schulung/Unterweisung oder Qualifikation), <b>Verantwortlich</b>, Wiederholung in Monaten (0 = einmalig) und wie viele Tage vor Ablauf sie fällig wird.</li>
-      <li>Unter <b>Pflicht für</b> ankreuzen, wer sie braucht: Rollen, Abteilungen, Gruppen oder einzelne Personen. Die Pflichtschulungen einer Rolle stehen auch unter <b>Rollen &amp; Rechte</b> im Kopf der Rollenspalte.</li>
+      <li>Unter <b>Pflicht für</b> ankreuzen, wer sie braucht: Rollen, Abteilungen, Gruppen oder einzelne Personen. Die Pflichtschulungen einer Rolle stehen auch unter <b>Rollen &amp; Rechte</b> in der Tabelle <b>Rollen</b>.</li>
     </ol></div>
   <div class="hb-howto"><b><i class="ti ti-signature"></i> So entsteht ein Nachweis</b>
     <ol class="hb-steps">
@@ -1530,7 +1530,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 <section class="hb-ch" id="admin" data-title="Administration" data-pages="roles icons pki core-settings">
   <h2><i class="ti ti-settings"></i> Administration</h2>
   <ul>
-    <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm.</li>
+    <li><b>Rollen &amp; Rechte</b> – was welche Rolle darf; Ausnahmen je Person unter Einzelrechte im Benutzerstamm (siehe unten).</li>
     <li><b>Core-Einstellungen</b> – Standards für alle (siehe unten), Fristen, Updates (<a href="#versions">mehr</a>), Microsoft-365-Abgleich samt Nextcloud-Konten (<a href="#users">mehr</a>), Hersteller &amp; Lieferanten, Feldsätze.</li>
     <li><b>Import / Export</b> – Daten aus Maschinen und Systemen (MQTT, OPC UA, Modbus, SQL, Excel, Web) übernehmen und Exporte planen (<a href="#connections">mehr</a>).</li>
     <li><b>Drucker</b> – Etiketten- und Netzwerkdrucker einrichten, prüfen und testen (<a href="#printers">mehr</a>).</li>
@@ -1547,6 +1547,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Werksvorgabe</b> stellt die Auslieferung von PDH wieder her.</li>
     </ol>
     Danach kann jeder – auch du – wieder für sich anpassen. <b>Standard</b> im Benutzermenü holt jederzeit den Firmenstandard zurück.</div>
+  <div class="hb-howto"><b><i class="ti ti-shield-lock"></i> So setzt du Rechte für eine Rolle</b> (Recht „Rollen &amp; Rechte verwalten“)
+    <ol class="hb-steps">
+      <li><b>Rollen &amp; Rechte</b> öffnen. Oben stehen die <b>Rollen</b> mit Rang, Abteilung (wer sie hat, sieht nur Vorgänge dieser Abteilung), Pflichtschulungen und Anzahl Benutzer – darunter legst du eine neue Rolle an.</li>
+      <li>In der <b>Berechtigungs-Matrix</b> oben ins Suchfeld tippen (z. B. „Wartung“ oder <code>tickets.edit</code>) – oder die Gruppen mit <b>Alle auf</b> / <b>Alle zu</b> bzw. einem Klick auf die Gruppenzeile auf- und zuklappen. PDH merkt sich, was zu ist.</li>
+      <li>Häkchen in der Zeile eines Rechts setzt es für die Rolle in der Spalte – sofort gespeichert. Das Häkchen in der <b>Gruppenzeile</b> setzt oder entfernt die ganze Gruppe; „–“ heißt: nur ein Teil.</li>
+    </ol>
+    Rollen mit gleichem oder höherem Rang als deinem sind grau. Rechte, die du selbst nicht hast, kannst du nicht vergeben (<i class="ti ti-lock"></i>) – nur Administratoren dürfen alles. Das gilt auch für <b>Einzelrechte</b> im Benutzerstamm.</div>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}

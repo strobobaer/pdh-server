@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1791,7 +1792,7 @@ func (h *Handler) TimeTracking(w http.ResponseWriter, r *http.Request) {
 		weekStart = now.AddDate(0, 0, -6)
 	}
 
-	isFullAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	isFullAdmin := h.hasPerm(r, "timetracking.view_all") // Recht „Zeiterfassung: alle sehen“
 	subordinateIDs, _ := h.users.SubordinateIDs(ctx, u.ID)
 	// Wer keine volle Admin/Manager-Rolle hat, aber eigene (direkte oder
 	// indirekte) Unteruser fuehrt, darf trotzdem deren Zeiten zusammen mit
@@ -2739,6 +2740,15 @@ type UsersPageData struct {
 	DeptFilter      string       // ?dept=
 	GroupFilter     string       // ?group=
 	GroupOptions    []UserOption // Gruppen fuer den Filter
+	RoleFilters     []RoleFilter // Rollen-Knöpfe, automatisch aus den vorhandenen Rollen
+	ShowInactive    bool         // ?inactive=1
+	InactiveUsers   int
+}
+
+// RoleFilter: ein Rollen-Knopf über der Benutzerliste.
+type RoleFilter struct {
+	Key, Label, Icon string
+	Count            int
 }
 
 type UserView struct {
@@ -2771,6 +2781,7 @@ type UserView struct {
 	Sharpening      bool
 	HeatingFill     bool
 	ShiftLeader     bool
+	Groups          string // Gruppen, kommagetrennt
 }
 
 type RoleStat struct {
@@ -2811,6 +2822,10 @@ func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels, userN
 		"admin": "b-red", "manager": "b-blue", "technician": "b-green",
 		"worker": "b-gray", "viewer": "b-gray",
 	}
+	roleClass, ok := roleClasses[u.Role]
+	if !ok {
+		roleClass = "b-amber" // eigene Rollen
+	}
 	initials, bg := avatarFor(u.FirstName, u.LastName)
 
 	label := roleLabels[string(u.Role)]
@@ -2828,7 +2843,7 @@ func (h *Handler) userView(actorRoleKey string, u *users.User, roleLabels, userN
 		Initials: initials, AvatarBg: bg,
 		RoleValue:    string(u.Role),
 		RoleLabel:    label,
-		RoleClass:    roleClasses[u.Role],
+		RoleClass:    roleClass,
 		IsSystemUser: u.IsSystemUser,
 		RFIDUID:      derefOr(u.RFIDUID, ""),
 		Department:   u.Department, Phone: u.Phone, Active: u.Active,
@@ -2861,6 +2876,7 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := r.URL.Query().Get("role")
+	showInactive := r.URL.Query().Get("inactive") == "1"
 	deptFilter := r.URL.Query().Get("dept")
 	groupFilter := r.URL.Query().Get("group")
 	var groupMembers map[string]bool
@@ -2902,10 +2918,14 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 			}
 			scopedTotal++
 			if !u.Active {
-				continue
+				data.InactiveUsers++
+				if !showInactive {
+					continue
+				}
+			} else {
+				data.ActiveUsers++
+				roleCounts[string(u.Role)]++
 			}
-			data.ActiveUsers++
-			roleCounts[string(u.Role)]++
 			if (filter == "" || string(u.Role) == filter) &&
 				(deptFilter == "" || strings.EqualFold(strings.TrimSpace(u.Department), deptFilter)) &&
 				(groupMembers == nil || groupMembers[u.ID]) {
@@ -2923,15 +2943,28 @@ func (h *Handler) Users(w http.ResponseWriter, r *http.Request) {
 		}
 		roleIcons := map[string]string{"admin": "👑", "manager": "📋", "technician": "🔧", "worker": "👷", "viewer": "👁️"}
 		for _, ro := range roles {
-			if roleCounts[ro.Key] > 0 {
+			if roleCounts[ro.Key] > 0 || ro.Key == filter {
 				icon := roleIcons[ro.Key]
 				if icon == "" {
 					icon = "🔑"
 				}
 				data.RoleStats = append(data.RoleStats, RoleStat{Icon: icon, Label: ro.Label, Count: roleCounts[ro.Key]})
+				data.RoleFilters = append(data.RoleFilters, RoleFilter{Key: ro.Key, Label: ro.Label, Icon: icon, Count: roleCounts[ro.Key]})
 			}
 		}
+		// Gruppen je Person (unter der Abteilung angezeigt)
+		groupsOf := map[string][]string{}
+		for _, g := range h.loadGroups(ctx) {
+			for id := range g.MemberIDs {
+				groupsOf[id] = append(groupsOf[id], g.Name)
+			}
+		}
+		for i := range data.Users {
+			sort.Strings(groupsOf[data.Users[i].ID])
+			data.Users[i].Groups = strings.Join(groupsOf[data.Users[i].ID], ", ")
+		}
 	}
+	data.ShowInactive = showInactive
 	data.Departments = h.departmentNames(r.Context())
 	data.DeptFilter, data.GroupFilter = deptFilter, groupFilter
 	for _, g := range h.loadGroups(ctx) {
@@ -3167,15 +3200,16 @@ func (h *Handler) UserRoleWeb(w http.ResponseWriter, r *http.Request) {
 
 type RolesPageData struct {
 	BaseData
-	Roles                  []RoleColumn
-	PermissionGroups       []PermissionGroup
-	Matrix                 map[string]map[string]bool // roleID -> permissionID -> granted
-	IdleTimeoutMinutes     int
-	OverrideTimeoutMinutes int
-	NextRoleLevel          int
-	Departments            []deptView
-	RoleDepartments        map[string]string   // roleID -> departmentID
-	RoleTrainings          map[string][]string // roleKey -> Pflichtschulungen
+	Roles            []RoleColumn
+	PermissionGroups []PermissionGroup
+	PermissionCount  int
+	Matrix           map[string]map[string]bool // roleID -> permissionID -> granted
+	CanGrant         map[string]bool            // permKey -> darf die handelnde Person vergeben (rbac_guard.go)
+	NextRoleLevel    int
+	Departments      []deptView
+	RoleDepartments  map[string]string   // roleID -> departmentID
+	RoleTrainings    map[string][]string // roleKey -> Pflichtschulungen
+	Notice, Error    string
 }
 
 // RoleColumn ist eine Rollen-Spalte der Berechtigungs-Matrix, angereichert
@@ -3184,6 +3218,7 @@ type RolesPageData struct {
 type RoleColumn struct {
 	*rbac.Role
 	CanManage bool
+	UserCount int // aktive Benutzer mit dieser Rolle
 }
 
 type PermissionGroup struct {
@@ -3226,21 +3261,27 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 	perms, _ := h.rbac.ListPermissions(ctx)
 	matrix, _ := h.rbac.MatrixEntries(ctx)
 
-	var groups []PermissionGroup
-	currentCat := ""
+	groups := groupPermissions(perms)
+	canGrant := map[string]bool{}
 	for _, p := range perms {
-		if p.Category != currentCat || len(groups) == 0 {
-			groups = append(groups, PermissionGroup{Category: p.Category})
-			currentCat = p.Category
+		canGrant[p.Key] = h.mayGrant(r, p.Key)
+	}
+	userCount := map[string]int{}
+	if rows, err := h.db.Query(ctx, `SELECT role, COUNT(*) FROM users WHERE active GROUP BY role`); err == nil {
+		for rows.Next() {
+			var k string
+			var n int
+			if rows.Scan(&k, &n) == nil {
+				userCount[k] = n
+			}
 		}
-		last := &groups[len(groups)-1]
-		last.Permissions = append(last.Permissions, p)
+		rows.Close()
 	}
 
 	actorRoleKey := string(getUser(r).Role)
 	roleColumns := make([]RoleColumn, 0, len(roles))
 	for _, ro := range roles {
-		roleColumns = append(roleColumns, RoleColumn{Role: ro, CanManage: h.rbac.Outranks(actorRoleKey, ro.Key)})
+		roleColumns = append(roleColumns, RoleColumn{Role: ro, CanManage: h.rbac.Outranks(actorRoleKey, ro.Key), UserCount: userCount[ro.Key]})
 	}
 	nextRoleLevel := h.rbac.RoleLevel(actorRoleKey) - 1
 	if nextRoleLevel < 0 {
@@ -3248,16 +3289,18 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RolesPageData{
-		BaseData:               h.baseData(r, "roles", "Rollen & Berechtigungen", "Auto-Logout"),
-		Roles:                  roleColumns,
-		PermissionGroups:       groups,
-		Matrix:                 matrix,
-		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
-		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
-		NextRoleLevel:          nextRoleLevel,
-		Departments:            h.loadDepartments(ctx),
-		RoleDepartments:        h.roleDepartments(ctx),
-		RoleTrainings:          h.roleTrainings(ctx),
+		BaseData:         h.baseData(r, "roles", "Rollen & Berechtigungen", "Rollen"),
+		Roles:            roleColumns,
+		PermissionGroups: groups,
+		PermissionCount:  len(perms),
+		Matrix:           matrix,
+		CanGrant:         canGrant,
+		NextRoleLevel:    nextRoleLevel,
+		Departments:      h.loadDepartments(ctx),
+		RoleDepartments:  h.roleDepartments(ctx),
+		RoleTrainings:    h.roleTrainings(ctx),
+		Notice:           r.URL.Query().Get("notice"),
+		Error:            r.URL.Query().Get("error"),
 	}
 	h.render(w, "roles", data)
 }
@@ -3295,10 +3338,15 @@ func (h *Handler) RoleCreateWeb(w http.ResponseWriter, r *http.Request) {
 		level = 0
 	}
 	level = h.clampRoleLevel(r, level)
-	if key != "" && label != "" {
-		h.rbac.CreateRole(r.Context(), key, label, level)
+	if key == "" || label == "" {
+		http.Redirect(w, r, "/admin/roles?error="+url.QueryEscape("Schlüssel und Anzeigename ausfüllen"), http.StatusFound)
+		return
 	}
-	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+	if _, err := h.rbac.CreateRole(r.Context(), key, label, level); err != nil {
+		http.Redirect(w, r, "/admin/roles?error="+url.QueryEscape("Rolle „"+label+"“ nicht angelegt – gibt es den Schlüssel „"+key+"“ schon?"), http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, "/admin/roles?notice="+url.QueryEscape("Rolle „"+label+"“ angelegt – jetzt unten in der Matrix die Rechte setzen"), http.StatusFound)
 }
 
 // RoleUpdateLevelWeb aendert die Rangstufe einer bestehenden Rolle
@@ -3373,6 +3421,15 @@ func (h *Handler) RoleMatrixWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "keine berechtigung, diese Rolle zu bearbeiten", http.StatusForbidden)
 		return
 	}
+	key, err := h.permKeyByID(r, permID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if granted && !h.mayGrant(r, key) {
+		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast", http.StatusForbidden)
+		return
+	}
 	if err := h.rbac.SetRolePermission(r.Context(), roleID, permID, granted); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -3392,7 +3449,7 @@ func (h *Handler) SettingsWeb(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(r.FormValue("override_timeout_minutes")); err == nil {
 		h.rbac.SetOverrideTimeoutMinutes(r.Context(), v)
 	}
-	http.Redirect(w, r, "/admin/roles", http.StatusFound)
+	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Auto-Logout gespeichert")+"#autologout", http.StatusFound)
 }
 
 // ── Override-Anmeldung an Systemnutzer-Terminals ─────────────────
@@ -3646,7 +3703,7 @@ func (h *Handler) TimeManualWeb(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) TimeDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
-	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	isAdmin := h.hasPerm(r, "timetracking.view_all")
 	if err := h.time.Delete(r.Context(), chi.URLParam(r, "id"), u.ID, isAdmin); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -3656,7 +3713,7 @@ func (h *Handler) TimeDeleteWeb(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) TimeEditWeb(w http.ResponseWriter, r *http.Request) {
 	u := getUser(r)
-	isAdmin := u.Role == users.RoleAdmin || u.Role == users.RoleManager
+	isAdmin := h.hasPerm(r, "timetracking.view_all")
 	r.ParseMultipartForm(32 << 20)
 	started, err := time.ParseInLocation("2006-01-02T15:04", r.FormValue("started_at"), time.Local)
 	if err != nil {

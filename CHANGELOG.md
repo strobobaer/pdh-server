@@ -15,12 +15,25 @@ im Kapitel „Versionen & Updates“ an.
 ### Neu
 - Standards für alle: Unter Core-Einstellungen übernimmt ein Administrator seine eigene Darstellung, sein Menü und sein Dashboard mit einem Klick als Standard – wer nichts Eigenes gespeichert hat, sieht diesen Stand; auf Wunsch werden auch die eigenen Einstellungen aller ersetzt, „Werksvorgabe“ stellt die Auslieferung wieder her.
 - Neues Recht „Standards für alle festlegen“ (anfangs nur Administratoren).
+- Neues Recht „Leitstand verwalten“ (Verwerfen, Aufgaben und Wartung im Leitstand anlegen) – bisher fest an Administrator und Manager gebunden, beide haben es weiterhin.
 - Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
 
 ### Geändert
 - Der Leitstand zeigt immer die Standard-Darstellung (Farbschema und Design-Stil) – unabhängig davon, wer gerade angemeldet ist.
 - „Standard“ in Navigation anpassen und Dashboard anpassen holt jetzt den Firmenstandard zurück.
+- Rollen & Rechte übersichtlicher: Rollen mit Rang, Abteilung, Pflichtschulungen und Benutzerzahl in eigener Tabelle; die Matrix hat ein Suchfeld, Gruppen zum Auf- und Zuklappen, eine feste Kopfzeile und Häkchen für ganze Gruppen; die Rechte sind neu gegliedert (z. B. „System & Sicherheit“, „Stammdaten“, „Daten & Schnittstellen“).
+- „Zeiterfassung: Zeiten aller sehen, bearbeiten und löschen“ wird jetzt wirklich geprüft (bisher fest Administrator und Manager; Manager haben es weiterhin).
+- Auto-Logout steht jetzt unter Core-Einstellungen statt unter Rollen & Rechte.
+- Benutzerverwaltung: die Rollen-Knöpfe ergeben sich aus allen vorhandenen Rollen (auch eigenen), „Inaktive anzeigen“ blendet deaktivierte Benutzer ein, Gruppen stehen unter der Abteilung.
 - Der Knopf „Zeitstrahl“ oben auf dem Dashboard entfällt – den Zeitstrahl nimmst du unter „Dashboard anpassen“ heraus oder fügst ihn hinzu.
+
+### Behoben
+- Inaktive Benutzer erschienen nie in der Benutzerverwaltung.
+- Knöpfe mit Symbol und Text (z. B. „+ Neuer Benutzer“) waren im hellen Modus weiß auf weiß und abgeschnitten.
+- Farbige Abzeichen (Rolle, Priorität, Status) sind im hellen Modus jetzt gut lesbar.
+
+### Sicherheit
+- Wer Rollen verwalten darf, aber kein Administrator ist, konnte anderen Rollen und Personen Rechte geben, die er selbst nicht hat – das geht jetzt nicht mehr.
 
 ## [0.76.3] – 2026-10-28
 
