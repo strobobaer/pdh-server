@@ -57,7 +57,7 @@ case "$(uname -m)" in x86_64|aarch64) ;; *) warn "Getestet mit amd64/arm64, hier
 
 info "Pakete installieren"
 missing=()
-for p in git iputils-ping ufw python3; do
+for p in git iputils-ping ufw python3 iproute2 arping; do
   dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p")
 done
 command -v go >/dev/null 2>&1 || missing+=(golang-go)
@@ -66,6 +66,30 @@ if (( ${#missing[@]} > 0 )); then
   apt-get install -y -qq "${missing[@]}"
 fi
 ok "Pakete vorhanden"
+
+# Ordner für Skripte beim Rollenwechsel (pdh-ha führt nur Dateien daraus aus, die root gehören)
+install -d -m 0755 -o root -g root /etc/pdh/ha-hooks
+
+# Tunnel (Zugangsweg): cloudflared nur auf vollen Servern; pdh-ha startet/stoppt ihn selbst.
+# Wie in internal/web/cloudflare_tunnel.go: offizielles .deb von GitHub (keine Paketquelle nötig).
+install_cloudflared() {
+  local arch tmp
+  if command -v cloudflared >/dev/null 2>&1; then ok "cloudflared vorhanden"; return 0; fi
+  case "$(dpkg --print-architecture)" in amd64|arm64) arch="$(dpkg --print-architecture)" ;; *) warn "cloudflared: Architektur $(dpkg --print-architecture) nicht unterstützt – übersprungen"; return 0 ;; esac
+  info "Installiere cloudflared"
+  apt-get install -y -qq curl ca-certificates
+  tmp="$(mktemp -d)"
+  if curl -fsSL -o "$tmp/cloudflared.deb" "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb" \
+    && dpkg -i "$tmp/cloudflared.deb" >/dev/null; then
+    # pdh-ha steuert den Dienst – nicht von selbst starten
+    systemctl disable --now cloudflared >/dev/null 2>&1 || true
+    ok "cloudflared installiert"
+  else
+    warn "cloudflared konnte nicht installiert werden – später nachholen: pdh-ha-join.sh --update <Commit> --voll"
+  fi
+  rm -rf "$tmp"
+}
+(( ! VOLL )) || install_cloudflared
 
 # GOTOOLCHAIN=auto (lädt die Go-Version aus go.mod) braucht mindestens Go 1.21
 go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
