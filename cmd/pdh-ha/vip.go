@@ -1,0 +1,149 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/netip"
+	"os/exec"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+// vipCtl setzt und entfernt die mitwandernde Adresse auf einer Netzwerkkarte
+// (ip/arping). Take/Release/probeFree laufen nie gleichzeitig (mu).
+type vipCtl struct {
+	r     runner
+	iface string
+	vip   netip.Prefix
+	sleep func(time.Duration)
+	mu    sync.Mutex
+}
+
+func newVIPCtl(r runner, iface string, vip netip.Prefix) *vipCtl {
+	return &vipCtl{r: r, iface: iface, vip: vip, sleep: time.Sleep}
+}
+
+// errDuplicate: die Adresse wird schon von einem anderen Gerät benutzt.
+type errDuplicate struct {
+	IP  string
+	MAC string
+}
+
+func (e *errDuplicate) Error() string {
+	return fmt.Sprintf("Adresse %s wird noch von einem anderen Gerät benutzt (MAC %s)", e.IP, e.MAC)
+}
+
+var arpMACRe = regexp.MustCompile(`\[([0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})\]`)
+
+// toolMissing macht aus „Programm nicht gefunden“ eine Anweisung für den Betreiber.
+func toolMissing(tool string, err error) error {
+	if err != nil && (errors.Is(err, exec.ErrNotFound) || strings.Contains(err.Error(), "executable file not found")) {
+		return fmt.Errorf("%s fehlt – sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> ausführen", tool)
+	}
+	return nil
+}
+
+func (v *vipCtl) cidr() string { return fmt.Sprintf("%s/%d", v.vip.Addr(), v.vip.Bits()) }
+
+// Has: liegt die Adresse gerade auf der Karte?
+func (v *vipCtl) Has(ctx context.Context) (bool, error) {
+	out, err := v.r.Run(ctx, []string{"ip", "-o", "-4", "addr", "show", "dev", v.iface}, nil, nil)
+	if err != nil {
+		if m := toolMissing("ip", err); m != nil {
+			return false, m
+		}
+		return false, fmt.Errorf("Adressen von %s lesen: %w", v.iface, err)
+	}
+	want := v.cidr()
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		for i := 0; i+1 < len(f); i++ {
+			if f[i] == "inet" && f[i+1] == want {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// probeFree prüft per ARP, ob ip im Netz schon vergeben ist (nil = frei).
+func (v *vipCtl) probeFree(ctx context.Context, ip netip.Addr) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.probeLocked(ctx, ip)
+}
+
+func (v *vipCtl) probeLocked(ctx context.Context, ip netip.Addr) error {
+	out, err := v.r.Run(ctx, []string{"arping", "-D", "-c", "2", "-w", "3", "-I", v.iface, ip.String()}, nil, nil)
+	if err == nil {
+		return nil
+	}
+	if m := toolMissing("arping", err); m != nil {
+		return m
+	}
+	// arping -D beendet sich mit Ausgang 1, wenn jemand antwortet
+	if strings.Contains(err.Error(), "exit status 1") {
+		mac := "unbekannt"
+		if m := arpMACRe.FindStringSubmatch(string(out) + " " + err.Error()); m != nil {
+			mac = m[1]
+		}
+		return &errDuplicate{IP: ip.String(), MAC: mac}
+	}
+	return fmt.Errorf("Adressprüfung für %s: %w", ip, err)
+}
+
+// Take legt die Adresse auf die Karte (nach Duplikat-Prüfung) und meldet sie
+// per Gratuitous ARP; eine zweite Runde folgt nach 5 s im Hintergrund.
+func (v *vipCtl) Take(ctx context.Context) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if has, err := v.Has(ctx); err != nil {
+		return err
+	} else if has {
+		return nil
+	}
+	if err := v.probeLocked(ctx, v.vip.Addr()); err != nil {
+		return err
+	}
+	if _, err := v.r.Run(ctx, []string{"ip", "addr", "add", v.cidr(), "dev", v.iface}, nil, nil); err != nil {
+		if m := toolMissing("ip", err); m != nil {
+			return m
+		}
+		return fmt.Errorf("Adresse %s setzen: %w", v.cidr(), err)
+	}
+	announce := []string{"arping", "-U", "-c", "3", "-I", v.iface, v.vip.Addr().String()}
+	if _, err := v.r.Run(ctx, announce, nil, nil); err != nil {
+		if m := toolMissing("arping", err); m != nil {
+			return m
+		}
+		// die Adresse liegt schon an – die Ankündigung ist nur Zugabe
+	}
+	// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take)
+	go func() {
+		v.sleep(5 * time.Second)
+		bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, _ = v.r.Run(bg, announce, nil, nil)
+	}()
+	return nil
+}
+
+// Release nimmt die Adresse von der Karte; „war nicht da“ gilt als Erfolg.
+func (v *vipCtl) Release(ctx context.Context) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	out, err := v.r.Run(ctx, []string{"ip", "addr", "del", v.cidr(), "dev", v.iface}, nil, nil)
+	if err == nil {
+		return nil
+	}
+	if m := toolMissing("ip", err); m != nil {
+		return m
+	}
+	if strings.Contains(err.Error(), "Cannot assign requested address") || strings.Contains(string(out), "Cannot assign requested address") {
+		return nil
+	}
+	return fmt.Errorf("Adresse %s entfernen: %w", v.cidr(), err)
+}
