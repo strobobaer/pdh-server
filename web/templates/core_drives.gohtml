@@ -59,9 +59,17 @@
         <select name="kind" class="form-input" id="drv-kind" onchange="drvKind()">
           <option value="smb" {{with $e}}{{if eq .Kind "smb"}}selected{{end}}{{end}}>SMB/CIFS – Windows-Freigabe, NAS</option>
           <option value="nfs" {{with $e}}{{if eq .Kind "nfs"}}selected{{end}}{{end}}>NFS</option>
+          {{if not $e}}<option value="unifi">UniFi NAS (UNAS, UniFi Drive)</option>{{end}}
           <option value="local" {{with $e}}{{if eq .Kind "local"}}selected{{end}}{{end}}>Lokaler Pfad (bereits eingebunden)</option>
         </select></div>
-      <div class="form-group" style="grid-column:1/-1"><label class="form-label" id="drv-src-label">Freigabe *</label>
+      <div class="form-group drv-unifi"><label class="form-label">Adresse des NAS *</label><input name="unifi_host" class="form-input" placeholder="z. B. 192.168.1.20"></div>
+      <div class="form-group drv-unifi"><label class="form-label">Freigegebenes Laufwerk *</label><input name="unifi_share" class="form-input" placeholder="Name wie in UniFi Drive, z. B. Instandhaltung"></div>
+      <div class="form-group drv-unifi"><label class="form-label">Protokoll</label>
+        <select name="unifi_proto" class="form-input" id="drv-unifi-proto" onchange="drvKind()">
+          <option value="smb">SMB – mit Benutzer und Passwort (empfohlen)</option>
+          <option value="nfs">NFS – Freigabe für die Server-Adresse in UniFi Drive</option>
+        </select></div>
+      <div class="form-group drv-src" style="grid-column:1/-1"><label class="form-label" id="drv-src-label">Freigabe *</label>
         <input name="source" class="form-input" required value="{{with $e}}{{.Source}}{{end}}" id="drv-src" placeholder="\\server\freigabe"></div>
       <div class="form-group drv-cred"><label class="form-label">Benutzername</label><input name="username" class="form-input" autocomplete="off" value="{{with $e}}{{.Username}}{{end}}" placeholder="leer = Gast"></div>
       <div class="form-group drv-cred"><label class="form-label">Passwort</label><input name="password" type="password" class="form-input" autocomplete="new-password" placeholder="{{if $e}}{{if $e.HasPassword}}gespeichert – leer lassen = unverändert{{end}}{{end}}">
@@ -124,9 +132,13 @@
 function drvKind(){
   const k = document.getElementById('drv-kind').value;
   const src = document.getElementById('drv-src'), lab = document.getElementById('drv-src-label');
+  const unifi = k === 'unifi', smb = k === 'smb' || (unifi && document.getElementById('drv-unifi-proto').value === 'smb');
+  document.querySelectorAll('.drv-unifi').forEach(e => { e.style.display = unifi ? '' : 'none'; e.querySelectorAll('input').forEach(i => i.required = unifi); });
+  document.querySelectorAll('.drv-src').forEach(e => e.style.display = unifi ? 'none' : '');
+  src.required = !unifi;
   src.placeholder = k === 'smb' ? '\\\\server\\freigabe' : (k === 'nfs' ? 'server:/export/pfad' : '/srv/daten');
   lab.textContent = k === 'smb' ? 'Freigabe *' : (k === 'nfs' ? 'NFS-Export *' : 'Verzeichnis auf dem Server *');
-  document.querySelectorAll('.drv-cred').forEach(e => e.style.display = k === 'smb' ? '' : 'none');
+  document.querySelectorAll('.drv-cred').forEach(e => e.style.display = smb ? '' : 'none');
   document.querySelectorAll('.drv-mnt').forEach(e => e.style.display = k === 'local' ? 'none' : '');
 }
 function drvCopy(p){ if(navigator.clipboard) navigator.clipboard.writeText(p); }

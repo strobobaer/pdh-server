@@ -58,3 +58,19 @@ func TestCopyFileUnique(t *testing.T) {
 		}
 	}
 }
+
+func TestUniFiDrive(t *testing.T) {
+	kind, src, err := unifiDrive(" 192.168.1.20 ", "Instandhaltung", "smb")
+	if err != nil || kind != "smb" || src != "//192.168.1.20/Instandhaltung" || !smbSourceRe.MatchString(src) {
+		t.Errorf("SMB: %q %q %v", kind, src, err)
+	}
+	kind, src, err = unifiDrive("unas.local", "/Daten/", "nfs")
+	if err != nil || kind != "nfs" || src != "unas.local:/var/nfs/shared/Daten" || !nfsSourceRe.MatchString(src) || !isUniFiNFS(kind, src) {
+		t.Errorf("NFS: %q %q %v", kind, src, err)
+	}
+	for _, c := range [][2]string{{"", "Daten"}, {"nas;rm", "Daten"}, {"nas", ""}, {"nas", "Meine Daten"}, {"nas", "a/b"}} {
+		if _, _, err := unifiDrive(c[0], c[1], "smb"); err == nil {
+			t.Errorf("%q / %q haette abgelehnt werden muessen", c[0], c[1])
+		}
+	}
+}
