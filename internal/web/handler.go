@@ -87,6 +87,8 @@ type BaseData struct {
 	PushEnabled            bool       // Push-Benachrichtigungen an (push.go): Alarm-Vollbild in der App
 	LiveTranslateAvail     bool       // Uebersetzungsdienst eingerichtet
 	Nav                    []navGroup // linke Navigation (nav.go)
+
+	Mirror *MirrorBanner // Band „Spiegel – nur lesen“, nil außerhalb des Spiegels (mirror.go)
 }
 
 // Language: Sprache fuer die Template-Funktion t (siehe bindLang).
@@ -263,6 +265,8 @@ type Handler struct {
 	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
 	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
 	mirrorPeerC      mirrorCache[mirrorPeer]
+	mirrorLagFetch   func(context.Context) (time.Duration, time.Time, error) // Rückstand; nil → mirror.ReplayLag (Tests tauschen aus)
+	mirrorLagC       mirrorCache[mirrorLag]
 	mirrorAdminFn    func(*http.Request) bool                           // nil → canServerConfig (Tests)
 	userByIDFn       func(context.Context, string) (*users.User, error) // nil → users.GetByID (Tests)
 	db               *pgxpool.Pool
@@ -1116,6 +1120,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IsBroker:               h.isBroker(r.Context(), u.ID),
 	}
 	b.Nav = buildNav(&b, h.userNavLayout(r.Context(), u.ID))
+	b.Mirror = h.mirrorBanner(r)
 	b.UserAvatar = h.userAvatarURL(r.Context(), u.ID)
 	b.PushEnabled = h.pushEnabledFor(r.Context())
 	if lt := h.liveTranslateFor(r.Context(), u.ID); lt.On {

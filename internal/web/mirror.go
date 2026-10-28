@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"pdh/internal/core/users"
+	"pdh/internal/mirror"
 	"pdh/pkg/database"
 	"pdh/pkg/response"
 )
@@ -163,6 +164,8 @@ const (
 	mirrorPeerTTL       = 5 * time.Second
 	mirrorPeerGrace     = 30 * time.Second // Abruffehler: letzter Erfolg gilt so lange weiter
 	mirrorPeerTimeout   = 2 * time.Second  // hängender Socket darf Anfragen nicht aufhalten
+	mirrorLagTTL        = 2 * time.Second
+	mirrorLagTimeout    = time.Second
 )
 
 // mirrorPeer: was pdh-ha über den aktiven Server weiß.
@@ -398,4 +401,83 @@ func (h *Handler) mirrorLoginHint(r *http.Request, d LoginData) LoginData {
 	d.Mirror = true
 	d.MirrorURL = mirrorActiveLink(r, h.mirrorPeerState(r.Context()))
 	return d
+}
+
+// ── Band „Spiegel – nur lesen“ (base.gohtml) ─
+
+// MirrorBanner: Inhalt des Bands oben im Inhalt. Lag/DataAt "" = unbekannt.
+type MirrorBanner struct {
+	Restricted, ActiveSeen, Admin bool
+	Lag, DataAt, ActiveURL        string
+}
+
+// ActiveHost: Adresse für die Anzeige (ohne Schema und Schrägstrich).
+func (m MirrorBanner) ActiveHost() string {
+	u := strings.TrimSuffix(m.ActiveURL, "/")
+	if i := strings.Index(u, "://"); i >= 0 {
+		u = u[i+3:]
+	}
+	return u
+}
+
+// mirrorLagText: Rückstand knapp – „59 s“, „1 min“, „1 h 5 min“.
+func mirrorLagText(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d s", int(d/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d/time.Minute))
+	}
+	return fmt.Sprintf("%d h %d min", int(d/time.Hour), int(d%time.Hour/time.Minute))
+}
+
+// mirrorLag: zuletzt gelesener Rückstand; ok=false → unbekannt.
+type mirrorLag struct {
+	ok  bool
+	lag time.Duration
+	at  time.Time // zuletzt eingespielte Transaktion
+	got time.Time // Zeitpunkt der Abfrage
+}
+
+// mirrorLagState: Rückstand des Spiegels, 2 s zwischengespeichert.
+func (h *Handler) mirrorLagState(ctx context.Context) mirrorLag {
+	return h.mirrorLagC.get(mirrorLagTTL, 0, func() (mirrorLag, bool) {
+		fetch := h.mirrorLagFetch
+		if fetch == nil {
+			if h.db == nil {
+				return mirrorLag{}, false
+			}
+			fetch = func(ctx context.Context) (time.Duration, time.Time, error) { return mirror.ReplayLag(ctx, h.db) }
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mirrorLagTimeout)
+		defer cancel()
+		lag, at, err := fetch(ctx)
+		if err != nil || at.IsZero() {
+			return mirrorLag{}, false
+		}
+		return mirrorLag{ok: true, lag: lag, at: at, got: time.Now()}, true
+	})
+}
+
+// mirrorBanner: Band für die Seite; nil außerhalb des Spiegels.
+func (h *Handler) mirrorBanner(r *http.Request) *MirrorBanner {
+	m := h.Mirror()
+	if !m.On {
+		return nil
+	}
+	p := h.mirrorPeerState(r.Context())
+	b := &MirrorBanner{
+		Restricted: m.Restricted,
+		ActiveSeen: p.ActiveSeen,
+		Admin:      h.mirrorAdmin(r),
+		ActiveURL:  mirrorActiveLink(r, p),
+	}
+	if l := h.mirrorLagState(r.Context()); l.ok {
+		b.Lag = mirrorLagText(l.lag + time.Since(l.got))
+		b.DataAt = l.at.Local().Format("02.01. 15:04")
+	}
+	return b
 }

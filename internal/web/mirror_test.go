@@ -488,6 +488,126 @@ func TestMirrorLoginHint(t *testing.T) {
 	}
 }
 
+// ── Band „Spiegel – nur lesen“ ─
+
+func TestMirrorLagText(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		0:                               "0 s",
+		59 * time.Second:                "59 s",
+		61 * time.Second:                "1 min",
+		3900 * time.Second:              "1 h 5 min",
+		-3 * time.Second:                "0 s",
+		7200 * time.Second:              "2 h 0 min",
+		59*time.Minute + 59*time.Second: "59 min",
+	} {
+		if got := mirrorLagText(d); got != want {
+			t.Errorf("%v: %q, erwartet %q", d, got, want)
+		}
+	}
+}
+
+func mirrorBannerPage(t *testing.T, m *MirrorBanner) string {
+	t.Helper()
+	bd := BaseData{Mirror: m}
+	bd.Nav = buildNav(&bd, nil)
+	out := renderPage(t, loadTestTemplates(t), "org_units", OrgUnitsData{BaseData: bd})
+	// nur das Band – Skripte der Seite enthalten ähnliche Texte
+	i := strings.Index(out, `<div class="mirror-band`)
+	if i < 0 {
+		return ""
+	}
+	j := strings.Index(out[i:], `<div class="main">`)
+	if j < 0 {
+		t.Fatal("Band nicht vor dem Inhalt")
+	}
+	return out[i : i+j]
+}
+
+func TestMirrorBannerRendered(t *testing.T) {
+	out := mirrorBannerPage(t, &MirrorBanner{ActiveSeen: true, Lag: "3 s", ActiveURL: "http://10.10.0.17:8080/"})
+	for _, want := range []string{"Spiegel – nur lesen", "Datenstand vor 3 s", `href="http://10.10.0.17:8080/"`, ">10.10.0.17:8080<", "mirror-band warn"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aktiv gesehen: %q fehlt", want)
+		}
+	}
+	if strings.Contains(out, "nicht erreichbar") || strings.Contains(out, "?tab=ha") {
+		t.Error("aktiv gesehen: kein Ausfall-Hinweis")
+	}
+	// Rückstand unbekannt
+	if out := mirrorBannerPage(t, &MirrorBanner{ActiveSeen: true}); !strings.Contains(out, "Datenstand unbekannt") {
+		t.Error("ohne Rückstand: „Datenstand unbekannt“ fehlt")
+	}
+	// aktiver Server weg: rot, Admin mit Knopf zum Ausfallschutz
+	out = mirrorBannerPage(t, &MirrorBanner{DataAt: "28.10. 06:49", Admin: true})
+	for _, want := range []string{"Aktiver Server nicht erreichbar – Daten vom 28.10. 06:49", "mirror-band err", `href="/admin/server-config?tab=ha"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("weg/Admin: %q fehlt", want)
+		}
+	}
+	if out := mirrorBannerPage(t, &MirrorBanner{DataAt: "28.10. 06:49"}); strings.Contains(out, "?tab=ha") {
+		t.Error("Nicht-Admin: kein Knopf zum Ausfallschutz")
+	}
+	if out := mirrorBannerPage(t, &MirrorBanner{}); !strings.Contains(out, "Aktiver Server nicht erreichbar") || !strings.Contains(out, "Datenstand unbekannt") {
+		t.Error("weg ohne Zeitpunkt")
+	}
+	// eingeschränkt
+	if out := mirrorBannerPage(t, &MirrorBanner{Restricted: true, Admin: true}); !strings.Contains(out, "Spiegel wartet auf das Update des aktiven Servers") {
+		t.Error("eingeschränkt: Hinweis fehlt")
+	}
+	// außerhalb des Spiegels kein Band
+	if out := mirrorBannerPage(t, nil); strings.Contains(out, `class="mirror-band`) {
+		t.Error("ohne Spiegel: Band angezeigt")
+	}
+}
+
+func TestMirrorBannerData(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "http://10.10.0.18:8080/", nil)
+	if (&Handler{}).mirrorBanner(r) != nil {
+		t.Fatal("Spiegel aus: Band")
+	}
+	h := &Handler{}
+	h.SetMirror(MirrorInfo{On: true})
+	h.mirrorAdminFn = func(*http.Request) bool { return true }
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(true), nil }
+	at := time.Date(2026, 10, 28, 6, 49, 0, 0, time.Local)
+	lagCalls := 0
+	h.mirrorLagFetch = func(context.Context) (time.Duration, time.Time, error) {
+		lagCalls++
+		return 3 * time.Second, at, nil
+	}
+	b := h.mirrorBanner(r)
+	if b == nil || !b.ActiveSeen || !b.Admin || b.Restricted || b.Lag != "3 s" || b.DataAt != "28.10. 06:49" || b.ActiveURL != "http://10.10.0.17:8080/" {
+		t.Fatalf("Band: %+v", b)
+	}
+	h.mirrorBanner(r)
+	if lagCalls != 1 {
+		t.Fatalf("Rückstand zwischengespeichert: %d Abfragen", lagCalls)
+	}
+	// Abfragefehler → kein Rückstand
+	h = &Handler{}
+	h.SetMirror(MirrorInfo{On: true, Restricted: true})
+	h.mirrorAdminFn = func(*http.Request) bool { return false }
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return mirrorStatus(false), nil }
+	h.mirrorLagFetch = func(context.Context) (time.Duration, time.Time, error) { return 0, time.Time{}, errors.New("db weg") }
+	if b := h.mirrorBanner(r); b == nil || b.ActiveSeen || b.Admin || !b.Restricted || b.Lag != "" || b.DataAt != "" {
+		t.Fatalf("Fehler: %+v", b)
+	}
+	// noch nichts eingespielt (NULL) → kein Rückstand
+	h.mirrorLagC = mirrorCache[mirrorLag]{}
+	h.mirrorLagFetch = func(context.Context) (time.Duration, time.Time, error) { return 0, time.Time{}, nil }
+	if b := h.mirrorBanner(r); b.Lag != "" || b.DataAt != "" {
+		t.Fatalf("NULL: %+v", b)
+	}
+	// ohne Datenbank kein Absturz
+	h = &Handler{}
+	h.SetMirror(MirrorInfo{On: true})
+	h.mirrorAdminFn = func(*http.Request) bool { return false }
+	h.mirrorPeerFetch = func(context.Context) (haStatus, error) { return haStatus{}, errors.New("x") }
+	if b := h.mirrorBanner(r); b == nil || b.Lag != "" {
+		t.Fatalf("ohne DB: %+v", b)
+	}
+}
+
 // ── nachgezogene Korrekturen ─
 
 func TestMirrorPeerStateGrace(t *testing.T) {
