@@ -42,6 +42,12 @@
 .pm input[type=checkbox]{width:17px;height:17px;cursor:pointer}
 .pm input[type=checkbox]:disabled{cursor:not-allowed;opacity:.45}
 .pm .pm-lock{font-size:12px;color:var(--muted);vertical-align:middle}
+.pm .pm-dep{display:none;margin:2px auto 0;max-width:86px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:10px;line-height:1.3;padding:1px 5px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--muted);cursor:pointer}
+.pm td:hover .pm-dep,.pm td:focus-within .pm-dep{display:block}
+.pm .pm-dep.set{display:block;color:var(--accent);border-color:var(--accent);font-weight:600}
+.pm-dep-pop{position:absolute;z-index:700;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-card,0 8px 24px rgba(0,0,0,.25));padding:10px;width:260px;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.pm-dep-pop[hidden]{display:none}
+.pm-dep-act{display:flex;gap:6px;justify-content:flex-end}
 .pm .pm-n{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px}
 </style>
 
@@ -94,7 +100,7 @@
       <th class="pm-first">Recht</th>
       {{range .Roles}}<th title="{{.Label}} – Rang {{.Level}}">{{.Label}}<small>Rang {{.Level}}</small></th>{{end}}
     </tr></thead>
-    {{$roles := .Roles}}{{$matrix := .Matrix}}{{$grant := .CanGrant}}
+    {{$roles := .Roles}}{{$matrix := .Matrix}}{{$grant := .CanGrant}}{{$mdept := .MatrixDept}}{{$dn := .DeptNames}}
     {{range $gi, $g := .PermissionGroups}}
     <tbody class="pm-group" data-cat="{{$g.Category}}">
       <tr class="pm-head" onclick="pmToggle(this.parentNode, event)">
@@ -107,7 +113,8 @@
         {{range $roles}}{{$role := .}}{{$on := index $matrix $role.ID $perm.ID}}
         <td><input type="checkbox" class="pm-cb" data-role="{{$role.ID}}" data-perm="{{$perm.ID}}" data-grant="{{if $can}}1{{end}}" {{if $on}}checked{{end}}
              {{if not $role.CanManage}}disabled title="Rang zu niedrig, um {{$role.Label}} zu bearbeiten"{{else if and (not $can) (not $on)}}disabled title="Kannst du nicht vergeben – du hast dieses Recht selbst nicht"{{else}}title="{{$perm.Label}} – {{$role.Label}}"{{end}}
-             onchange="saveMatrixCell(this)" aria-label="{{$perm.Label}} für {{$role.Label}}">{{if and $role.CanManage (not $can)}}<i class="ti ti-lock pm-lock" aria-hidden="true"></i>{{end}}</td>
+             onchange="saveMatrixCell(this)" aria-label="{{$perm.Label}} für {{$role.Label}}">{{if and $role.CanManage (not $can)}}<i class="ti ti-lock pm-lock" aria-hidden="true"></i>{{end}}
+             {{if $role.CanManage}}{{$d := index $mdept $role.ID $perm.ID}}<button type="button" class="pm-dep{{if $d}} set{{end}}" data-dep="{{$d}}" onclick="pmDept(this)" title="{{if $d}}Gilt nur in: {{index $dn $d}} (mit Unterabteilungen){{else}}Gilt in allen Abteilungen – antippen, um auf eine Abteilung zu begrenzen{{end}}" aria-label="Abteilung für {{$perm.Label}} – {{$role.Label}}">{{if $d}}{{index $dn $d}}{{else}}<i class="ti ti-building" aria-hidden="true"></i>{{end}}</button>{{end}}</td>
         {{end}}
       </tr>
       {{end}}
@@ -115,6 +122,11 @@
     {{end}}
   </table>
   </div>
+</div>
+<div id="pm-dep-pop" class="pm-dep-pop" hidden role="dialog" aria-label="Abteilung des Rechts">
+  <label for="pm-dep-sel">Recht gilt in</label>
+  <select id="pm-dep-sel" class="form-input"><option value="">allen Abteilungen</option>{{range .Departments}}<option value="{{.ID}}">{{.Indent}}{{.Name}}</option>{{end}}</select>
+  <div class="pm-dep-act"><button type="button" class="btn btn-small btn-primary" onclick="pmDeptSave()">Übernehmen</button><button type="button" class="btn btn-small" onclick="pmDeptClose()">Abbrechen</button></div>
 </div>
 {{end}}
 
@@ -159,6 +171,36 @@ async function pmSave(cb){
   });
   if(!res.ok) throw new Error((await res.text()) || ('HTTP ' + res.status));
 }
+// Abteilung je Recht: Knopf unter dem Häkchen öffnet die Auswahl
+let pmDepBtn = null;
+function pmDept(btn){
+  const pop = document.getElementById('pm-dep-pop'), sel = document.getElementById('pm-dep-sel');
+  pmDepBtn = btn; sel.value = btn.dataset.dep || '';
+  pop.hidden = false;
+  const r = btn.getBoundingClientRect();
+  pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+  pop.style.left = Math.max(8, Math.min(window.scrollX + r.left - 100, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 8)) + 'px';
+  sel.focus();
+}
+function pmDeptClose(){ document.getElementById('pm-dep-pop').hidden = true; pmDepBtn = null; }
+async function pmDeptSave(){
+  const btn = pmDepBtn; if(!btn) return;
+  const cb = btn.closest('td').querySelector('.pm-cb'), sel = document.getElementById('pm-dep-sel'), dep = sel.value;
+  try{
+    const res = await fetch('/admin/roles/matrix-web', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'role_id=' + encodeURIComponent(cb.dataset.role) + '&permission_id=' + encodeURIComponent(cb.dataset.perm) + '&granted=true&department_id=' + encodeURIComponent(dep)
+    });
+    if(!res.ok) throw new Error((await res.text()) || ('HTTP ' + res.status));
+    cb.checked = true; btn.dataset.dep = dep; btn.classList.toggle('set', !!dep);
+    if(dep){ btn.textContent = sel.selectedOptions[0].textContent.trim(); btn.title = 'Gilt nur in: ' + btn.textContent + ' (mit Unterabteilungen)'; }
+    else { btn.innerHTML = '<i class="ti ti-building" aria-hidden="true"></i>'; btn.title = 'Gilt in allen Abteilungen – antippen, um auf eine Abteilung zu begrenzen'; }
+    pmSync(cb.closest('tbody'));
+  }catch(e){ alert('Konnte nicht gespeichert werden: ' + e.message); }
+  pmDeptClose();
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') pmDeptClose(); });
 async function saveMatrixCell(cb){
   cb.disabled = true;
   try{ await pmSave(cb); }
@@ -166,6 +208,8 @@ async function saveMatrixCell(cb){
   cb.disabled = false;
   // ohne eigenes Recht nach dem Wegnehmen nicht wieder vergebbar
   if(!cb.checked && !cb.dataset.grant){ cb.disabled = true; cb.title = 'Kannst du nicht vergeben – du hast dieses Recht selbst nicht'; }
+  const db = cb.closest('td').querySelector('.pm-dep');
+  if(db && !cb.checked && db.dataset.dep){ db.dataset.dep = ''; db.classList.remove('set'); db.innerHTML = '<i class="ti ti-building" aria-hidden="true"></i>'; }
   pmSync(cb.closest('tbody'));
 }
 // Gruppen-Häkchen: an = alle Rechte der Gruppe, die du vergeben darfst; aus = alle weg

@@ -13,9 +13,9 @@
   <span class="badge {{.Task.StatusClass}}">{{.Task.StatusLabel}}</span>
   <div class="widget-icon-toolbar compact">
     {{template "icon-button" (dict "Action" "edit" "OnClick" "mdToggleEdit()")}}
-    <form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag löschen?')" style="display:inline">
-      {{template "icon-button" (dict "Action" "delete" "Type" "submit" "Label" "Löschen")}}
-    </form>
+    {{if .CanDelete}}<form method="POST" action="/maintenance/tasks/{{.Task.ID}}/delete-web" onsubmit="return confirm('Auftrag endgültig löschen?')" style="display:inline">
+      {{template "icon-button" (dict "Action" "delete" "Type" "submit" "Label" "Endgültig löschen (Bereichsadministrator)")}}
+    </form>{{end}}
   </div>
 </div>
 {{template "record-meta-slot" (dict "Module" "maintenance_task" "ID" .Task.ID)}}

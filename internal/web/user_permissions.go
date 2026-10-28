@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -17,7 +18,20 @@ type UserPermissionRow struct {
 	Label       string `json:"label"`
 	Category    string `json:"category"`
 	RoleGranted bool   `json:"role_granted"`
+	RoleDept    string `json:"role_department"` // Abteilung des Rollen-Rechts ("" = alle)
 	Override    *bool  `json:"override"`
+	Department  string `json:"department"` // Abteilung einer Einzel-Erlaubnis ("" = alle)
+}
+
+// userPermissionsPayload: Antwort von GET /users/{id}/permissions.
+type userPermissionsPayload struct {
+	Permissions []UserPermissionRow `json:"permissions"`
+	Departments []userPermDept      `json:"departments"`
+}
+
+type userPermDept struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // canEditUserPermissions gilt fuer Einzelberechtigungen dieselbe Schranke
@@ -55,20 +69,34 @@ func (h *Handler) UserPermissionsWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Abweichungen konnten nicht geladen werden", http.StatusInternalServerError)
 		return
 	}
-	rows := make([]UserPermissionRow, 0, len(perms))
+	overrideDept, _ := h.rbac.UserPermissionDepartments(r.Context(), id)
+	out := userPermissionsPayload{Permissions: make([]UserPermissionRow, 0, len(perms))}
+	deptName := map[string]string{}
+	for _, d := range h.loadDepartments(r.Context()) {
+		deptName[d.ID] = d.Name
+		out.Departments = append(out.Departments, userPermDept{ID: d.ID, Name: d.Indent() + d.Name})
+	}
 	for _, p := range perms {
 		row := UserPermissionRow{
 			ID: p.ID, Key: p.Key, Label: p.Label, Category: p.Category,
 			RoleGranted: h.rbac.HasPermission(string(target.Role), p.Key),
 		}
+		if all, depts := h.rbac.Scope("", string(target.Role), p.Key); !all && len(depts) > 0 {
+			names := make([]string, 0, len(depts))
+			for _, d := range depts {
+				names = append(names, deptName[d])
+			}
+			row.RoleDept = strings.Join(names, ", ")
+		}
 		if granted, ok := overrides[p.ID]; ok {
 			v := granted
 			row.Override = &v
+			row.Department = overrideDept[p.ID]
 		}
-		rows = append(rows, row)
+		out.Permissions = append(out.Permissions, row)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(rows)
+	json.NewEncoder(w).Encode(out)
 }
 
 func (h *Handler) UserPermissionSetWeb(w http.ResponseWriter, r *http.Request) {
@@ -102,14 +130,23 @@ func (h *Handler) UserPermissionSetWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// erlauben – oder Abweichung löschen, wenn die Rolle das Recht hat
 	mode := r.FormValue("mode")
-	if (mode == "allow" || (mode == "clear" && h.rbac.HasPermission(string(target.Role), key))) && !h.mayGrant(r, key) {
+	dept := strings.TrimSpace(r.FormValue("department_id"))
+	if dept != "" && !h.departmentExists(r, dept) {
+		http.Error(w, "Abteilung nicht gefunden", http.StatusBadRequest)
+		return
+	}
+	if mode == "allow" && !h.mayGrantIn(r, key, dept) {
+		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast – und nur in deinen Abteilungen", http.StatusForbidden)
+		return
+	}
+	if mode == "clear" && h.rbac.HasPermission(string(target.Role), key) && !h.mayGrant(r, key) {
 		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast", http.StatusForbidden)
 		return
 	}
 	var opErr error
 	switch mode {
 	case "allow":
-		opErr = h.rbac.SetUserPermission(r.Context(), id, permissionID, true)
+		opErr = h.rbac.SetUserPermissionDepartment(r.Context(), id, permissionID, true, dept)
 	case "deny":
 		opErr = h.rbac.SetUserPermission(r.Context(), id, permissionID, false)
 	case "clear":

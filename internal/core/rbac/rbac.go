@@ -121,23 +121,40 @@ func (r *Repository) ListPermissions(ctx context.Context) ([]*Permission, error)
 // MatrixEntries liefert alle (role_id, permission_id) Paare, die aktuell
 // gewaehrt sind - fuer den schnellen Aufbau der Checkbox-Matrix.
 func (r *Repository) MatrixEntries(ctx context.Context) (map[string]map[string]bool, error) {
-	rows, err := r.db.Query(ctx, `SELECT role_id, permission_id FROM role_permissions`)
+	depts, err := r.MatrixDepartments(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]map[string]bool{}
+	for roleID, perms := range depts {
+		out[roleID] = map[string]bool{}
+		for permID := range perms {
+			out[roleID][permID] = true
+		}
+	}
+	return out, nil
+}
+
+// MatrixDepartments: role_id -> permission_id -> Abteilung des Rechts
+// ("" = in allen Abteilungen).
+func (r *Repository) MatrixDepartments(ctx context.Context) (map[string]map[string]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT role_id::text, permission_id::text, COALESCE(department_id::text, '') FROM role_permissions`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]map[string]bool{}
+	out := map[string]map[string]string{}
 	for rows.Next() {
-		var roleID, permID string
-		if err := rows.Scan(&roleID, &permID); err != nil {
+		var roleID, permID, dept string
+		if err := rows.Scan(&roleID, &permID, &dept); err != nil {
 			return nil, err
 		}
 		if out[roleID] == nil {
-			out[roleID] = map[string]bool{}
+			out[roleID] = map[string]string{}
 		}
-		out[roleID][permID] = true
+		out[roleID][permID] = dept
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (r *Repository) SetRolePermission(ctx context.Context, roleID, permissionID string, granted bool) error {
@@ -152,12 +169,22 @@ func (r *Repository) SetRolePermission(ctx context.Context, roleID, permissionID
 	return err
 }
 
+// SetRolePermissionDepartment vergibt ein Recht an eine Rolle, begrenzt auf
+// eine Abteilung samt Unterabteilungen ("" = in allen Abteilungen).
+func (r *Repository) SetRolePermissionDepartment(ctx context.Context, roleID, permissionID, departmentID string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO role_permissions (role_id, permission_id, department_id) VALUES ($1::uuid, $2::uuid, NULLIF($3, '')::uuid)
+		ON CONFLICT (role_id, permission_id) DO UPDATE SET department_id = EXCLUDED.department_id`,
+		roleID, permissionID, departmentID)
+	return err
+}
+
 // RolePermissionKeys liefert die Menge der Permission-Keys, die einer
 // Rolle (per key, z.B. "admin") aktuell zugewiesen sind - Grundlage fuer
 // den in-memory Cache.
-func (r *Repository) RolePermissionKeysByRoleKey(ctx context.Context) (map[string]map[string]bool, error) {
+func (r *Repository) RolePermissionKeysByRoleKey(ctx context.Context) (map[string]map[string]string, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT ro.key, p.key
+		SELECT ro.key, p.key, COALESCE(rp.department_id::text, '')
 		FROM role_permissions rp
 		JOIN roles ro ON ro.id = rp.role_id
 		JOIN permissions p ON p.id = rp.permission_id`)
@@ -165,18 +192,18 @@ func (r *Repository) RolePermissionKeysByRoleKey(ctx context.Context) (map[strin
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]map[string]bool{}
+	out := map[string]map[string]string{}
 	for rows.Next() {
-		var roleKey, permKey string
-		if err := rows.Scan(&roleKey, &permKey); err != nil {
+		var roleKey, permKey, dept string
+		if err := rows.Scan(&roleKey, &permKey, &dept); err != nil {
 			return nil, err
 		}
 		if out[roleKey] == nil {
-			out[roleKey] = map[string]bool{}
+			out[roleKey] = map[string]string{}
 		}
-		out[roleKey][permKey] = true
+		out[roleKey][permKey] = dept
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // RoleLevelsByKey liefert die Rangstufe je Rollen-Key - Grundlage fuer
@@ -203,28 +230,65 @@ func (r *Repository) RoleLevelsByKey(ctx context.Context) (map[string]int, error
 // Abweichungen (userID -> permissionKey -> granted) - Grundlage fuer den
 // in-memory Override-Cache. true = zusaetzlich erlaubt, false = trotz
 // Rolle entzogen.
-func (r *Repository) UserPermissionOverridesByUserID(ctx context.Context) (map[string]map[string]bool, error) {
+func (r *Repository) UserPermissionOverridesByUserID(ctx context.Context) (map[string]map[string]Override, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT up.user_id::text, p.key, up.granted
+		SELECT up.user_id::text, p.key, up.granted, COALESCE(up.department_id::text, '')
 		FROM user_permissions up
 		JOIN permissions p ON p.id = up.permission_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]map[string]bool{}
+	out := map[string]map[string]Override{}
 	for rows.Next() {
-		var userID, permKey string
+		var userID, permKey, dept string
 		var granted bool
-		if err := rows.Scan(&userID, &permKey, &granted); err != nil {
+		if err := rows.Scan(&userID, &permKey, &granted, &dept); err != nil {
 			return nil, err
 		}
 		if out[userID] == nil {
-			out[userID] = map[string]bool{}
+			out[userID] = map[string]Override{}
 		}
-		out[userID][permKey] = granted
+		out[userID][permKey] = Override{Granted: granted, Department: dept}
 	}
-	return out, nil
+	return out, rows.Err()
+}
+
+// UserPermissionDepartments: permission_id -> Abteilung einer Einzel-Erlaubnis
+// ("" = in allen Abteilungen) – für die Bearbeitungsansicht.
+func (r *Repository) UserPermissionDepartments(ctx context.Context, userID string) (map[string]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT permission_id::text, COALESCE(department_id::text, '') FROM user_permissions WHERE user_id=$1::uuid AND granted`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var permID, dept string
+		if err := rows.Scan(&permID, &dept); err != nil {
+			return nil, err
+		}
+		out[permID] = dept
+	}
+	return out, rows.Err()
+}
+
+// DepartmentParents: Abteilung -> übergeordnete Abteilung ("" = oberste Ebene).
+func (r *Repository) DepartmentParents(ctx context.Context) (map[string]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT id::text, COALESCE(parent_id::text, '') FROM departments`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, parent string
+		if err := rows.Scan(&id, &parent); err != nil {
+			return nil, err
+		}
+		out[id] = parent
+	}
+	return out, rows.Err()
 }
 
 // UserPermissionOverrides liefert die Einzelberechtigungs-Abweichungen
@@ -251,11 +315,21 @@ func (r *Repository) UserPermissionOverrides(ctx context.Context, userID string)
 // SetUserPermission setzt eine Einzelberechtigungs-Abweichung fuer einen
 // Benutzer (erlauben oder entziehen, unabhaengig vom Rollen-Standard).
 func (r *Repository) SetUserPermission(ctx context.Context, userID, permissionID string, granted bool) error {
+	return r.SetUserPermissionDepartment(ctx, userID, permissionID, granted, "")
+}
+
+// SetUserPermissionDepartment: wie SetUserPermission, eine Erlaubnis kann auf
+// eine Abteilung samt Unterabteilungen begrenzt sein ("" = alle). Ein Verbot
+// gilt immer überall.
+func (r *Repository) SetUserPermissionDepartment(ctx context.Context, userID, permissionID string, granted bool, departmentID string) error {
+	if !granted {
+		departmentID = ""
+	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO user_permissions (user_id, permission_id, granted, updated_at)
-		VALUES ($1::uuid, $2::uuid, $3, NOW())
-		ON CONFLICT (user_id, permission_id) DO UPDATE SET granted=EXCLUDED.granted, updated_at=NOW()`,
-		userID, permissionID, granted)
+		INSERT INTO user_permissions (user_id, permission_id, granted, department_id, updated_at)
+		VALUES ($1::uuid, $2::uuid, $3, NULLIF($4, '')::uuid, NOW())
+		ON CONFLICT (user_id, permission_id) DO UPDATE SET granted=EXCLUDED.granted, department_id=EXCLUDED.department_id, updated_at=NOW()`,
+		userID, permissionID, granted, departmentID)
 	return err
 }
 
@@ -286,9 +360,10 @@ type Service struct {
 	repo *Repository
 
 	mu               sync.RWMutex
-	permCache        map[string]map[string]bool // roleKey -> Set(permissionKey)
-	userOverrides    map[string]map[string]bool // userID -> permissionKey -> granted (Allow/Deny)
-	roleLevels       map[string]int             // roleKey -> Rangstufe
+	permCache        map[string]map[string]string   // roleKey -> permissionKey -> Abteilung ("" = alle)
+	userOverrides    map[string]map[string]Override // userID -> permissionKey -> Allow/Deny (+ Abteilung)
+	deptParent       map[string]string              // Abteilung -> übergeordnete Abteilung
+	roleLevels       map[string]int                 // roleKey -> Rangstufe
 	maxRoleLevel     int
 	idleTimeoutMin   int
 	overrideTimeoutM int
@@ -296,7 +371,7 @@ type Service struct {
 
 func NewService(repo *Repository) *Service {
 	s := &Service{
-		repo: repo, permCache: map[string]map[string]bool{}, userOverrides: map[string]map[string]bool{},
+		repo: repo, permCache: map[string]map[string]string{}, userOverrides: map[string]map[string]Override{}, deptParent: map[string]string{},
 		roleLevels: map[string]int{}, idleTimeoutMin: 30, overrideTimeoutM: 10,
 	}
 	return s
@@ -318,6 +393,10 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 		return err
 	}
 	overrides, err := s.repo.UserPermissionOverridesByUserID(ctx)
+	if err != nil {
+		return err
+	}
+	parents, err := s.repo.DepartmentParents(ctx)
 	if err != nil {
 		return err
 	}
@@ -345,6 +424,7 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 	s.mu.Lock()
 	s.permCache = m
 	s.userOverrides = overrides
+	s.deptParent = parents
 	s.roleLevels = levels
 	s.maxRoleLevel = maxLevel
 	s.idleTimeoutMin = idleMin
@@ -357,13 +437,8 @@ func (s *Service) RefreshCache(ctx context.Context) error {
 // bestimmte Berechtigung hat. Nutzt ausschließlich den In-Memory-Cache,
 // damit die Prüfung auch bei jedem Request schnell bleibt.
 func (s *Service) HasPermission(roleKey, permissionKey string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	perms, ok := s.permCache[roleKey]
-	if !ok {
-		return false
-	}
-	return perms[permissionKey]
+	all, depts := s.Scope("", roleKey, permissionKey)
+	return all || len(depts) > 0
 }
 
 // HasPermissionForUser prueft eine Berechtigung fuer einen konkreten
@@ -371,16 +446,8 @@ func (s *Service) HasPermission(roleKey, permissionKey string) bool {
 // Vorrang vor der Rollen-Matrix; ohne Abweichung gilt die Rolle wie
 // gewohnt (HasPermission).
 func (s *Service) HasPermissionForUser(userID, roleKey, permissionKey string) bool {
-	s.mu.RLock()
-	overrides, ok := s.userOverrides[userID]
-	if ok {
-		if granted, hasOverride := overrides[permissionKey]; hasOverride {
-			s.mu.RUnlock()
-			return granted
-		}
-	}
-	s.mu.RUnlock()
-	return s.HasPermission(roleKey, permissionKey)
+	all, depts := s.Scope(userID, roleKey, permissionKey)
+	return all || len(depts) > 0
 }
 
 // RoleLevel liefert die Rangstufe einer Rolle (per key). Unbekannte
@@ -479,6 +546,32 @@ func (s *Service) DeleteRole(ctx context.Context, id string) error {
 
 func (s *Service) SetRolePermission(ctx context.Context, roleID, permissionID string, granted bool) error {
 	if err := s.repo.SetRolePermission(ctx, roleID, permissionID, granted); err != nil {
+		return err
+	}
+	return s.RefreshCache(ctx)
+}
+
+// SetRolePermissionDepartment: Recht vergeben und auf eine Abteilung begrenzen ("" = alle).
+func (s *Service) SetRolePermissionDepartment(ctx context.Context, roleID, permissionID, departmentID string) error {
+	if err := s.repo.SetRolePermissionDepartment(ctx, roleID, permissionID, departmentID); err != nil {
+		return err
+	}
+	return s.RefreshCache(ctx)
+}
+
+// MatrixDepartments: role_id -> permission_id -> Abteilung ("" = alle).
+func (s *Service) MatrixDepartments(ctx context.Context) (map[string]map[string]string, error) {
+	return s.repo.MatrixDepartments(ctx)
+}
+
+// UserPermissionDepartments: permission_id -> Abteilung einer Einzel-Erlaubnis.
+func (s *Service) UserPermissionDepartments(ctx context.Context, userID string) (map[string]string, error) {
+	return s.repo.UserPermissionDepartments(ctx, userID)
+}
+
+// SetUserPermissionDepartment: Einzel-Erlaubnis mit Abteilung ("" = alle).
+func (s *Service) SetUserPermissionDepartment(ctx context.Context, userID, permissionID string, granted bool, departmentID string) error {
+	if err := s.repo.SetUserPermissionDepartment(ctx, userID, permissionID, granted, departmentID); err != nil {
 		return err
 	}
 	return s.RefreshCache(ctx)

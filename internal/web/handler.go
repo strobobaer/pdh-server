@@ -3215,9 +3215,11 @@ type RolesPageData struct {
 	PermissionGroups []PermissionGroup
 	PermissionCount  int
 	Matrix           map[string]map[string]bool // roleID -> permissionID -> granted
+	MatrixDept       map[string]map[string]string // roleID -> permissionID -> Abteilung ("" = alle)
 	CanGrant         map[string]bool            // permKey -> darf die handelnde Person vergeben (rbac_guard.go)
 	NextRoleLevel    int
 	Departments      []deptView
+	DeptNames        map[string]string   // departmentID -> Name
 	RoleDepartments  map[string]string   // roleID -> departmentID
 	RoleTrainings    map[string][]string // roleKey -> Pflichtschulungen
 	Notice, Error    string
@@ -3271,6 +3273,7 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 	roles, _ := h.rbac.ListRoles(ctx)
 	perms, _ := h.rbac.ListPermissions(ctx)
 	matrix, _ := h.rbac.MatrixEntries(ctx)
+	matrixDept, _ := h.rbac.MatrixDepartments(ctx)
 
 	groups := groupPermissions(perms)
 	canGrant := map[string]bool{}
@@ -3299,15 +3302,22 @@ func (h *Handler) RolesPage(w http.ResponseWriter, r *http.Request) {
 		nextRoleLevel = 0
 	}
 
+	depts := h.loadDepartments(ctx)
+	deptNames := map[string]string{}
+	for _, d := range depts {
+		deptNames[d.ID] = d.Name
+	}
 	data := RolesPageData{
 		BaseData:         h.baseData(r, "roles", "Rollen & Berechtigungen", "Rollen"),
 		Roles:            roleColumns,
 		PermissionGroups: groups,
 		PermissionCount:  len(perms),
 		Matrix:           matrix,
+		MatrixDept:       matrixDept,
 		CanGrant:         canGrant,
 		NextRoleLevel:    nextRoleLevel,
-		Departments:      h.loadDepartments(ctx),
+		Departments:      depts,
+		DeptNames:        deptNames,
 		RoleDepartments:  h.roleDepartments(ctx),
 		RoleTrainings:    h.roleTrainings(ctx),
 		Notice:           r.URL.Query().Get("notice"),
@@ -3437,8 +3447,22 @@ func (h *Handler) RoleMatrixWeb(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if granted && !h.mayGrant(r, key) {
-		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast", http.StatusForbidden)
+	dept := strings.TrimSpace(r.FormValue("department_id"))
+	if dept != "" && !h.departmentExists(r, dept) {
+		http.Error(w, "Abteilung nicht gefunden", http.StatusBadRequest)
+		return
+	}
+	if granted && !h.mayGrantIn(r, key, dept) {
+		http.Error(w, "Du kannst nur Rechte vergeben, die du selbst hast – und nur in deinen Abteilungen", http.StatusForbidden)
+		return
+	}
+	if granted {
+		// Abteilung: "" = in allen Abteilungen
+		if err := h.rbac.SetRolePermissionDepartment(r.Context(), roleID, permID, dept); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := h.rbac.SetRolePermission(r.Context(), roleID, permID, granted); err != nil {

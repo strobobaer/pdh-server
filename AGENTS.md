@@ -73,8 +73,9 @@ Update-Prüfung (Core-Einstellungen liest `VERSION`/`CHANGELOG.md` von GitHub ma
   Nebenversionen (0.77.0, 0.78.0 …) vergibt nur der Anwender selbst –
   0.77.0 ist für den Spiegelserver reserviert. Sonst in den obersten, noch
   nicht veröffentlichten Eintrag ergänzen.
-- Ein Pull Request = eine Version. Kommt während der Arbeit ein weiteres
-  Funktionspaket dazu, bekommt es die nächste Korrekturversion.
+- Kommt während der Arbeit ein weiteres Funktionspaket dazu, das der
+  Anwender als eigene Version nennt, bekommt es die nächste
+  Korrekturversion mit eigenem Eintrag.
 - Neuer Eintrag: `## [x.y.z] – JJJJ-MM-TT` ganz oben, `VERSION` gleichzeitig ändern.
 - `TestChangelogMatchesVersion` prüft, dass `VERSION` und oberster Eintrag
   übereinstimmen und die Versionen absteigend sortiert sind.
@@ -110,6 +111,27 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
   der rechten Seitenleiste).
 - Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
   sowie mit 120–160 % Größe prüfen.
+
+## Rechte mitpflegen
+
+- **Alles neu Hinzugefügte braucht ein Recht.** Neue Seiten, Widgets,
+  Aktionen und Schnittstellen prüfen ein Recht (`h.hasPerm`, für einen
+  bestimmten Datensatz `h.hasPermRec`); das Recht per Migration anlegen
+  (`permissions`, passende Kategorie aus `permCategoryOrder`) und den
+  Rollen geben, die es bisher stillschweigend durften – niemand soll
+  durch ein Update ausgesperrt werden.
+- **Rechte haben eine Abteilungsebene.** Ein Recht gilt überall oder nur
+  in einer Abteilung samt Unterabteilungen (`role_permissions.department_id`,
+  `user_permissions.department_id`, `internal/core/rbac/scope.go`). Bei
+  Aktionen an einem Datensatz immer `h.hasPermRec(r, recht, typ, id)`
+  statt `h.hasPerm` verwenden, damit die Abteilung zählt.
+- **Jeder Bereich hat einen Bereichsadministrator** (`<bereich>.admin`). Er
+  hat alle Rechte des Bereichs und darf als Einziger endgültig löschen
+  (`h.isAreaAdmin`, Löschrouten in `gateRules`, `perm_gate.go`). Neue
+  Bereiche bekommen ein eigenes `.admin`-Recht, neue Lösch-Aktionen prüfen es.
+- Rechte nur weitergeben, die man selbst hat (`mayGrant` / `mayGrantIn`).
+- Handbuch-Kapitel „Administration“ und das Änderungsprotokoll (`### Sicherheit`)
+  mitpflegen.
 
 ## Sprache
 

@@ -19,6 +19,9 @@ im Kapitel „Versionen & Updates“ an.
 - Alles auf dem Dashboard ist jetzt ein Widget: „Tabelle offener Vorgänge“ und „Zeitstrahl“ sind neu im Katalog, Aktive Störungen, Schichten und fällige Wartung kommen aus den passenden Widgets – alles lässt sich verschieben, verbreitern oder herausnehmen. Wer schon ein eigenes Dashboard hatte, findet die bisher festen Teile unten angehängt.
 - Neues Widget „Mein Kalender“: die eigenen nächsten 7 Tage mit Schicht, Urlaub, fälligen Vorgängen und Prüfpflichten (neues Recht „Widget Mein Kalender“, anfangs für alle).
 - Neues Widget „Schichtplan Team“: wer aus der eigenen Abteilung in den nächsten 7 Tagen welche Schicht hat, mit Urlaub und Abwesenheit (Recht „Schichtplan sehen“).
+- Rechte auf Abteilungsebene: In der Rollen-Matrix und bei den Einzelrechten lässt sich jedes Recht auf eine Abteilung samt Unterabteilungen begrenzen – z. B. Störungen bearbeiten nur in Halle 2.
+- Bereichsadministrator: Für jeden Bereich (Störungen, Tickets, Wartung, Aufgaben, Projekte, KVP, Infrastruktur, IT, Lager, Beschaffung, Hersteller & Lieferanten, Schichten, Abwesenheit, Managementsysteme) gibt es ein Recht, das alle Rechte des Bereichs umfasst und endgültiges Löschen erlaubt.
+- Stammdaten können vom Bereichsadministrator sofort „endgültig gelöscht“ werden; noch verwendete werden stattdessen ausgeblendet.
 - Mehrere Leitstände: unter Navigation → Leitstände bekommt jede Abteilung, Gruppe oder jedes Team einen eigenen Leitstand aus Bausteinen (Neu anlegen, Vorgänge, Zeitstrahl, Kennzahlen, aktuelle Störungen, fällige Wartung, Hinweistext, Knöpfe zu anderen Leitständen), der nur ihre Vorgänge zeigt.
 - Leitstände blättern auf Wunsch nach einer einstellbaren Zeit zum nächsten weiter; Bedienung am Bildschirm hält das Weiterblättern an.
 - Terminals bekommen im Benutzerstamm einen festen Leitstand; sonst gilt der ihrer Gruppe, dann der ihrer Abteilung, dann der Standard-Leitstand.
@@ -41,6 +44,9 @@ im Kapitel „Versionen & Updates“ an.
 - Farbige Abzeichen (Rolle, Priorität, Status) sind im hellen Modus jetzt gut lesbar.
 
 ### Sicherheit
+- Wartungsaufträge, Aufgaben, Projekte und KVP-Vorschläge kann nur noch der jeweilige Bereichsadministrator endgültig löschen – bisher ging das bei Aufgaben, Projekten und Wartungsaufträgen für jeden.
+- Stammdaten über die Schnittstelle zum Löschen vormerken braucht jetzt das Bearbeiten-Recht des Bereichs; Sperren, Deaktivieren und Feldsätze von Anlagen brauchen „Infrastruktur bearbeiten“.
+- Rechte zum Bearbeiten und Abschließen von Vorgängen beachten jetzt die Abteilung des Vorgangs.
 - Wer Rollen verwalten darf, aber kein Administrator ist, konnte anderen Rollen und Personen Rechte geben, die er selbst nicht hat – das geht jetzt nicht mehr.
 
 ## [0.76.3] – 2026-10-28

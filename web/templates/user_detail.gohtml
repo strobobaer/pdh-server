@@ -494,10 +494,11 @@ async function pdhMakeAdmin(userId, name){
     try {
       const res = await fetch('/users/' + userId + '/permissions', {credentials: 'same-origin'});
       if(!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
-      render(await res.json() || []);
+      const data = await res.json() || {};
+      render(data.permissions || [], data.departments || []);
     } catch(e){ box.innerHTML = ''; const s = document.createElement('span'); s.style.color = 'var(--red)'; s.textContent = 'Konnte nicht geladen werden: ' + e.message; box.appendChild(s); loaded = false; }
   }
-  function render(rows){
+  function render(rows, depts){
     box.replaceChildren();
     let cat = null;
     rows.forEach(function(row){
@@ -514,7 +515,7 @@ async function pdhMakeAdmin(userId, name){
       label.textContent = row.label;
       const hint = document.createElement('div');
       hint.className = 'rec-sub';
-      hint.textContent = 'Rolle: ' + (row.role_granted ? 'erlaubt' : 'nicht erlaubt');
+      hint.textContent = 'Rolle: ' + (row.role_granted ? 'erlaubt' + (row.role_department ? ' (nur ' + row.role_department + ')' : '') : 'nicht erlaubt');
       label.appendChild(hint);
       const sel = document.createElement('select');
       sel.className = 'form-input'; sel.style.cssText = 'width:auto;font-size:12px;padding:5px 8px';
@@ -522,20 +523,29 @@ async function pdhMakeAdmin(userId, name){
       sel.add(new Option('Erlaubt', 'allow'));
       sel.add(new Option('Verboten', 'deny'));
       sel.value = row.override === true ? 'allow' : row.override === false ? 'deny' : 'clear';
-      const mark = function(){ line.style.background = sel.value === 'clear' ? '' : 'rgba(var(--accent-rgb),.07)'; };
+      // Erlaubnis auf eine Abteilung begrenzen
+      const dep = document.createElement('select');
+      dep.className = 'form-input'; dep.style.cssText = 'width:auto;max-width:180px;font-size:12px;padding:5px 8px';
+      dep.setAttribute('aria-label', 'Abteilung für ' + row.label);
+      dep.add(new Option('in allen Abteilungen', ''));
+      depts.forEach(function(d){ dep.add(new Option('nur ' + d.name, d.id)); });
+      dep.value = row.department || '';
+      const mark = function(){ line.style.background = sel.value === 'clear' ? '' : 'rgba(var(--accent-rgb),.07)'; dep.hidden = sel.value !== 'allow' || !depts.length; };
       mark();
-      sel.addEventListener('change', async function(){
-        sel.disabled = true;
+      const save = async function(){
+        sel.disabled = dep.disabled = true;
         try {
           const res = await fetch('/users/' + userId + '/permissions', {method: 'POST', credentials: 'same-origin',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'permission_id=' + encodeURIComponent(row.id) + '&mode=' + encodeURIComponent(sel.value)});
+            body: 'permission_id=' + encodeURIComponent(row.id) + '&mode=' + encodeURIComponent(sel.value) + '&department_id=' + encodeURIComponent(sel.value === 'allow' ? dep.value : '')});
           if(!res.ok) throw new Error(await res.text() || ('HTTP ' + res.status));
           mark();
         } catch(e){ alert('Konnte nicht gespeichert werden: ' + e.message); }
-        finally { sel.disabled = false; }
-      });
-      line.append(label, sel);
+        finally { sel.disabled = dep.disabled = false; }
+      };
+      sel.addEventListener('change', save);
+      dep.addEventListener('change', save);
+      line.append(label, dep, sel);
       box.appendChild(line);
     });
     if(!rows.length) box.textContent = 'Keine Berechtigungen definiert.';

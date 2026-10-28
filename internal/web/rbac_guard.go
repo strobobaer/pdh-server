@@ -33,6 +33,38 @@ func (h *Handler) mayGrant(r *http.Request, key string) bool {
 	return h.actorIsAdmin(r) || h.hasPerm(r, key)
 }
 
+// mayGrantIn: darf die handelnde Person dieses Recht für die Abteilung
+// vergeben ("" = alle Abteilungen)? Wer das Recht selbst nur in einer
+// Abteilung hat, gibt es auch nur dort (oder darunter) weiter.
+func (h *Handler) mayGrantIn(r *http.Request, key, dept string) bool {
+	if h.actorIsAdmin(r) {
+		return true
+	}
+	u := getUser(r)
+	all, depts := h.rbac.Scope(u.ID, string(u.Role), key)
+	if all {
+		return true
+	}
+	return dept != "" && len(depts) > 0 && h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), key, []string{dept})
+}
+
+// hasPermIn: hat die angemeldete Person das Recht für einen Datensatz dieser
+// Abteilungen (Rechte auf Abteilungsebene, rbac/scope.go)?
+func (h *Handler) hasPermIn(r *http.Request, perm string, depts []string) bool {
+	if perm == "" {
+		return true
+	}
+	u := getUser(r)
+	return h.rbac.HasPermissionInDepartment(u.ID, string(u.Role), perm, depts)
+}
+
+// departmentExists: gibt es die (aktive) Abteilung?
+func (h *Handler) departmentExists(r *http.Request, id string) bool {
+	var ok bool
+	_ = h.db.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM departments WHERE id::text = $1)`, id).Scan(&ok)
+	return ok
+}
+
 // permCategoryOrder: Reihenfolge der Gruppen in der Matrix – erst die
 // tägliche Arbeit, dann Material, Personal, Daten, zuletzt die Verwaltung.
 // Unbekannte Kategorien folgen alphabetisch dahinter.

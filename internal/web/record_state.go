@@ -136,6 +136,7 @@ func reasonSuffix(reason string) string {
 type recordMetaData struct {
 	Module, ID string
 	CanEdit    bool
+	CanDelete  bool // Bereichsadministrator: endgültig löschen
 	Master     bool
 	State      recordState
 	Categories []categoryChip
@@ -156,7 +157,8 @@ func (h *Handler) recordMetaContext(w http.ResponseWriter, r *http.Request) (fie
 
 func (h *Handler) renderRecordMeta(w http.ResponseWriter, r *http.Request, m fieldModule, id, msg, errMsg string) {
 	ctx := r.Context()
-	d := recordMetaData{Module: m.Key, ID: id, CanEdit: h.hasPerm(r, m.EditPerm), Master: masterModules[m.Key], Msg: msg, Err: errMsg}
+	d := recordMetaData{Module: m.Key, ID: id, CanEdit: h.hasPermRec(r, masterEditPerm(m), m.Key, id), Master: masterModules[m.Key], Msg: msg, Err: errMsg}
+	d.CanDelete = d.Master && h.isAreaAdmin(r, m.Key, id)
 	d.Categories = h.recordCategoryChips(ctx, m.Key, id)
 	if d.Master {
 		d.State, _ = h.loadRecordState(ctx, m.Key, id)
@@ -179,9 +181,12 @@ func (h *Handler) RecordStateWeb(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !masterModules[m.Key] || !h.hasPerm(r, m.EditPerm) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
+	action := r.FormValue("action")
+	if !masterModules[m.Key] || !h.hasPermRec(r, masterEditPerm(m), m.Key, id) {
+		if !(action == "delete_now" && h.isAreaAdmin(r, m.Key, id)) {
+			http.Error(w, "keine berechtigung", http.StatusForbidden)
+			return
+		}
 	}
 	ctx := r.Context()
 	u := getUser(r)
@@ -190,7 +195,7 @@ func (h *Handler) RecordStateWeb(w http.ResponseWriter, r *http.Request) {
 	ref := historyRefType(m.Key)
 	var msg string
 	var err error
-	switch r.FormValue("action") {
+	switch action {
 	case "lock":
 		_, err = h.db.Exec(ctx, fmt.Sprintf(`UPDATE %s SET locked_at = NOW(), locked_by = $2::uuid, lock_reason = NULLIF($3, '') WHERE id = $1::uuid`, table), id, u.ID, reason)
 		msg = "Datensatz gesperrt."
@@ -221,6 +226,29 @@ func (h *Handler) RecordStateWeb(w http.ResponseWriter, r *http.Request) {
 	case "unmark":
 		err = h.unmarkDeletion(ctx, m.Key, id, u.ID)
 		msg = "Löschvormerkung aufgehoben."
+	case "delete_now":
+		// Bereichsadministrator: sofort endgültig löschen – noch verwendete
+		// Datensätze werden ausgeblendet, damit die Historie erhalten bleibt
+		if !h.isAreaAdmin(r, m.Key, id) {
+			err = errors.New("endgültig löschen darf nur der Bereichsadministrator")
+			break
+		}
+		if err = h.markForDeletion(ctx, m.Key, id, reason, u.ID); err != nil {
+			break
+		}
+		status, note := h.cleanupOne(ctx, m.Key, id)
+		_, _ = h.db.Exec(ctx, `UPDATE deletion_requests SET status = $3, processed_at = NOW(), result_note = $4
+			WHERE module = $1 AND record_id = $2::uuid AND status = 'pending'`, m.Key, id, status, "Bereichsadministrator: "+note)
+		switch status {
+		case "deleted":
+			w.Header().Set("HX-Redirect", recordListURL(m.Key))
+			w.WriteHeader(http.StatusOK)
+			return
+		case "hidden":
+			msg = "Noch verwendet – Datensatz wurde ausgeblendet (" + note + ")."
+		default:
+			err = errors.New("Löschen fehlgeschlagen: " + note)
+		}
 	default:
 		err = errors.New("unbekannte Aktion")
 	}
@@ -616,4 +644,28 @@ func triggerError(err error) error {
 		return errors.New(strings.TrimSpace(strings.Split(s, " (SQLSTATE")[0]))
 	}
 	return err
+}
+
+// masterEditPerm: Bearbeiten-Recht für Sperren, Deaktivieren und Löschvormerkung
+// (Anlagen haben kein Feldsatz-Recht, dafür infrastructure.edit).
+func masterEditPerm(m fieldModule) string {
+	if m.EditPerm == "" && m.Key == "infrastructure" {
+		return "infrastructure.edit"
+	}
+	return m.EditPerm
+}
+
+// recordListURL: Liste eines Stammdaten-Moduls (nach dem Löschen).
+func recordListURL(module string) string {
+	switch module {
+	case "part":
+		return "/inventory"
+	case "storage":
+		return "/storage"
+	case "business_partner":
+		return "/directory"
+	case "infrastructure":
+		return "/infrastructure"
+	}
+	return "/"
 }

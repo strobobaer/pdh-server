@@ -300,6 +300,8 @@ func main() {
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
+	// Löschen nur mit Recht (Bereichsadministrator), vor der Löschvormerkung
+	r.Use(webHandler.PermissionGateMiddleware)
 	r.Use(webHandler.ChangeTrackingMiddleware)
 
 	// API

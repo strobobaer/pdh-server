@@ -1566,6 +1566,20 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Häkchen in der Zeile eines Rechts setzt es für die Rolle in der Spalte – sofort gespeichert. Das Häkchen in der <b>Gruppenzeile</b> setzt oder entfernt die ganze Gruppe; „–“ heißt: nur ein Teil.</li>
     </ol>
     Rollen mit gleichem oder höherem Rang als deinem sind grau. Rechte, die du selbst nicht hast, kannst du nicht vergeben (<i class="ti ti-lock"></i>) – nur Administratoren dürfen alles. Das gilt auch für <b>Einzelrechte</b> im Benutzerstamm.</div>
+  <div class="hb-howto"><b><i class="ti ti-building"></i> So gilt ein Recht nur in einer Abteilung</b>
+    <ol class="hb-steps">
+      <li>In der Matrix mit der Maus über das Häkchen fahren (am Tablet antippen) – darunter erscheint <i class="ti ti-building"></i>.</li>
+      <li><i class="ti ti-building"></i> antippen, bei <b>Recht gilt in</b> die Abteilung wählen, <b>Übernehmen</b>. Unter dem Häkchen steht jetzt der Name der Abteilung.</li>
+      <li>Das Recht gilt dann für Vorgänge und Stammdaten dieser Abteilung <b>und ihrer Unterabteilungen</b> (über die Anlage bzw. die zugewiesene Gruppe). Vorgänge ohne Anlage zählen wie überall.</li>
+    </ol>
+    Beispiel: „Störungen bearbeiten“ nur in <i>Instandhaltung Halle 2</i>, „Störungen sehen“ überall. Bei <b>Einzelrechte</b> im Benutzerstamm wählst du neben „Erlaubt“ ebenso eine Abteilung. Wer ein Recht selbst nur in einer Abteilung hat, kann es auch nur dort weitergeben.</div>
+  <div class="hb-howto"><b><i class="ti ti-crown"></i> Bereichsadministrator</b>
+    <ol class="hb-steps">
+      <li>Jeder Bereich hat ein Recht <b>„… : Bereichsadministrator“</b> (z. B. <code>faults.admin</code>, <code>inventory.admin</code>). Es schließt <b>alle Rechte des Bereichs</b> ein – auch auf eine Abteilung begrenzbar.</li>
+      <li>Nur der Bereichsadministrator darf <b>endgültig löschen</b>: Stammdaten über <b>Status → Endgültig löschen</b> (noch verwendete werden stattdessen ausgeblendet), außerdem Wartungsaufträge, Aufgaben, Projekte und KVP-Vorschläge.</li>
+      <li>Alle anderen können Stammdaten weiter <b>zum Löschen vormerken</b>; der Bereinigungslauf erledigt den Rest.</li>
+    </ol>
+    Anfangs hat nur die Rolle Administrator alle Bereichsadministrator-Rechte. Ein ausdrückliches Verbot eines Einzelrechts gilt auch gegen den Bereichsadministrator.</div>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
   {{range .PermGroups}}
