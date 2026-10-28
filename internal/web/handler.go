@@ -259,7 +259,7 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
-	mirror           MirrorInfo // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	mirror           MirrorInfo                 // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	mirrorActiveURL  func(*http.Request) string // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
 	db               *pgxpool.Pool
 	tmpl             *template.Template
