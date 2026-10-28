@@ -189,6 +189,8 @@ func (d *daemon) statusLocked() apiStatus {
 	st.Access = apiAccess{VIP: a.VIP, VIPOn: a.VIPOn, HooksOn: a.HooksOn, Tested: a.Tested,
 		Iface: d.accessIface, IfaceErr: d.accessErr}
 	if d.node.Kind == "node" {
+		st.Access.Tunnel.Sum = d.tunnel.Sum()
+		st.Self.TunnelSum = st.Access.Tunnel.Sum
 		st.Access.Hooks = d.apiHooksLocked()
 		st.Self.HooksSum = st.Access.Hooks.Sum
 	}
@@ -324,6 +326,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 			m.VIP = d.access.held()
 		}
 		_, m.Hooks, _ = d.hooks.info()
+		m.Tun = d.tunnel.Sum()
 	}
 	return m
 }

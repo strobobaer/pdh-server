@@ -257,6 +257,7 @@ type PartView struct {
 
 type Handler struct {
 	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn    func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
 	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
 	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
 	mirrorPeerC      mirrorCache[mirrorPeer]

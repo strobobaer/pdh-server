@@ -77,8 +77,12 @@ type apiHooks struct {
 	Last  *hookRun `json:"last"`  // letzter Lauf (nil = noch keiner)
 }
 
-// apiTunnel: Cloudflare-Tunnel (füllt Teil 5, Tunnel).
-type apiTunnel struct{}
+// apiTunnel: Cloudflare-Tunnel.
+type apiTunnel struct {
+	Sum       string `json:"sum"`       // Prüfsumme (SHA-256) des abgelegten Tokens, "" = keins
+	Installed bool   `json:"installed"` // Programm cloudflared vorhanden
+	Running   bool   `json:"running"`   // läuft hier gerade
+}
 
 type apiNode struct {
 	ID          string    `json:"id"`
@@ -204,7 +208,24 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 func apiHandler(d *daemon) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, d.statusNow())
+		st := d.statusNow()
+		d.tunnelLive(r.Context(), &st)
+		writeJSON(w, http.StatusOK, st)
+	})
+	// Tunnel-Token vom PDH; leer = Tunnel entfernen
+	mux.HandleFunc("PUT /v1/tunnel", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Token string `json:"token"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		sum, err := d.putTunnel(r.Context(), req.Token)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sum": sum})
 	})
 	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.ParseUint(r.URL.Query().Get("since"), 10, 64)

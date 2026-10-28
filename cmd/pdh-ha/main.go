@@ -433,6 +433,13 @@ func printStatus(w io.Writer, st apiStatus) {
 	if h := st.Access.Hooks; len(h.Names) > 0 || st.Access.HooksOn {
 		fmt.Fprintf(w, "Skripte: %d, %s, letzter Lauf %s\n", len(h.Names), sameText(h.Same), hookRunText(h.Last))
 	}
+	if t := st.Access.Tunnel; t.Installed || t.Sum != "" {
+		run := "aus"
+		if t.Running {
+			run = "läuft hier"
+		}
+		fmt.Fprintf(w, "Tunnel: %s, Token %s\n", run, tunnelSameText(st))
+	}
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
 		if p.Seen {
@@ -455,6 +462,19 @@ func printStatus(w io.Writer, st apiStatus) {
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "Hinweis: %s\n", x)
 	}
+}
+
+// tunnelSameText: Token hier und bei den gesehenen Partnern gleich?
+func tunnelSameText(st apiStatus) string {
+	if st.Access.Tunnel.Sum == "" {
+		return "fehlt"
+	}
+	for _, p := range st.Peers {
+		if p.Kind == "node" && p.Seen && p.TunnelSum != st.Access.Tunnel.Sum {
+			return "verschieden"
+		}
+	}
+	return "gleich"
 }
 
 func sameText(same bool) string {

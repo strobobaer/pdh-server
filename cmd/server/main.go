@@ -334,6 +334,11 @@ func main() {
 		webHandler.StartEnabledQueryPolls(context.Background())
 		webHandler.VPNStartup(context.Background()) // WireGuard: Konfiguration für den Dienst „wireguard“ schreiben
 	}
+	// Ausfallschutz: Tunnel-Token an den lokalen pdh-ha weiterreichen – auf beiden
+	// Servern (aktiv und Spiegel); liest nur aus der Datenbank.
+	if haConfigured() {
+		go webHandler.RunTunnelSync(context.Background())
+	}
 
 	// Modus überwachen (auch im Normalmodus: fängt eine spätere Abschottung ab).
 	// Im Spiegel zusätzlich: Datenbank 60 s weg -> Neustart; im Normalmodus

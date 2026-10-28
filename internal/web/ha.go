@@ -49,6 +49,14 @@ type haStatus struct {
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"`
+	Access         haAccess    `json:"access"`
+}
+
+// haAccess: Zugangsweg aus dem Status von pdh-ha (hier nur, was der Abgleich braucht).
+type haAccess struct {
+	Tunnel struct {
+		Sum string `json:"sum"` // Prüfsumme (SHA-256) des bei pdh-ha abgelegten Tunnel-Tokens
+	} `json:"tunnel"`
 }
 
 type haNode struct {

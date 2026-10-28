@@ -146,6 +146,8 @@ type daemon struct {
 	// Mitwandernde Adresse (nur Knoten); die Felder ändern sich nur unter mu.
 	ifAddrsFn   func() ([]ifAddr, error) // Netzwerkkarten (Tests: Fake)
 	hooks       *hookRunner              // Skripte beim Rollenwechsel
+	tunnel      *tunnelSetup             // Token und Dienst-Ergänzung für cloudflared
+	tunCtl      serviceCtl               // cloudflared starten/stoppen/abfragen
 	access      *accessWorker            // nil = keine Adresse auf diesem Server
 	accessKey   string                   // Einstellung, für die access gilt ("" = keine)
 	accessStop  context.CancelFunc
@@ -193,6 +195,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 	}
 	d.act = observeActor{ev: ev}
 	d.hooks = newHookRunner(ev)
+	d.tunnel, d.tunCtl = newTunnelSetup(d.sys), newTunnelCtl(d.sys)
 	d.saveFn = st.saveState
 	d.tlsFn, d.peerPostFn, d.probeAddrFn, d.holdAfter = d.clusterTLS, d.peerPost, d.probeAddrLocal, time.After
 	return d
