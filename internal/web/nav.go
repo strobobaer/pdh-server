@@ -62,6 +62,7 @@ var navDefs = []navDef{
 	{navItem{"vpn", "/vpn", "ti-shield-lock", "VPN Maschinennetz", "vpn", false}, "material", func(b *BaseData) bool { return b.CanVPN }},
 	{navItem{"directory", "/directory", "ti-building-factory-2", "Hersteller & Lieferanten", "directory", false}, "material", always},
 	{navItem{"procurement", "/procurement", "ti-shopping-cart", "Beschaffung & Einkauf", "procurement", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
+	{navItem{"purchases", "/purchases", "ti-truck-delivery", "Bestellvorgänge", "purchases", false}, "material", func(b *BaseData) bool { return b.CanProcurement }},
 	{navItem{"m365", "/m365", "ti-brand-office", "Vorlagen & Signaturen", "m365", false}, "people", always},
 
 	{navItem{"users", "/users", "ti-users", "Benutzer", "users", false}, "people", func(b *BaseData) bool { return b.CanManageUsers }},

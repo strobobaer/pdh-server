@@ -77,6 +77,7 @@
   <button class="pd-tab" data-tab="parts"><i class="ti ti-package"></i> Ersatzteile <b>{{len .Parts}}</b></button>
   <button class="pd-tab" data-tab="it"><i class="ti ti-server-2"></i> IT <b>{{len .IT}}</b></button>
   <button class="pd-tab" data-tab="records"><i class="ti ti-briefcase"></i> Vorgänge <b>{{len .Records}}</b></button>
+  {{if .CanProcurement}}<button class="pd-tab" data-tab="purchases"><i class="ti ti-truck-delivery"></i> Bestellungen <b>{{len .Purchases}}</b></button>{{end}}
   <button class="pd-tab" data-tab="docs"><i class="ti ti-paperclip"></i> Dokumente</button>
   <button class="pd-tab" data-tab="history"><i class="ti ti-history"></i> Historie</button>
 </div>
@@ -463,6 +464,16 @@
   </form>
   {{end}}
 </div>
+
+<!-- ── Bestellvorgänge ── -->
+{{if .CanProcurement}}
+<div class="pd-pane" data-pane="purchases">
+  <div class="card" style="padding:0;overflow-x:auto">
+    {{template "purchase-links" .Purchases}}
+  </div>
+  <a class="btn btn-small" style="margin-top:8px" href="/purchases"><i class="ti ti-truck-delivery"></i> Alle Bestellvorgänge</a>
+</div>
+{{end}}
 
 <!-- ── Vorgänge ── -->
 <div class="pd-pane" data-pane="records">

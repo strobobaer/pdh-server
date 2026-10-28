@@ -1,0 +1,16 @@
+{{define "purchase-links"}}
+<table>
+  <thead><tr><th>Bestellvorgang</th><th>Lieferant</th><th>Menge</th><th>Stand</th><th>Datum</th></tr></thead>
+  <tbody>
+  {{range .}}
+  <tr>
+    <td><a href="/purchases/{{.ID}}" style="color:var(--accent);font-weight:600;font-family:monospace">{{.Number}}</a>{{if .Title}}<div class="rec-sub">{{.Title}}</div>{{end}}</td>
+    <td>{{.Supplier}}</td>
+    <td style="white-space:nowrap">{{if .Qty}}{{.Qty}}{{else}}–{{end}}</td>
+    <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+    <td style="white-space:nowrap">{{.Date}}</td>
+  </tr>
+  {{else}}<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:14px">Noch kein Bestellvorgang.</td></tr>{{end}}
+  </tbody>
+</table>
+{{end}}

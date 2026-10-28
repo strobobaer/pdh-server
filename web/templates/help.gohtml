@@ -893,7 +893,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "printers") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="purchasing" data-title="Beschaffung, Kanban &amp; Einkauf" data-pages="procurement">
+<section class="hb-ch" id="purchasing" data-title="Beschaffung, Kanban &amp; Einkauf" data-pages="procurement purchases purchase">
   <h2><i class="ti ti-shopping-cart"></i> Beschaffung, Kanban &amp; Einkauf</h2>
   {{template "hb-fig-purchase"}}
   <p>Unter <b>Material &amp; Anlagen → Beschaffung &amp; Einkauf</b> (auch über Core-Einstellungen) findest du die <b>Kanban-Tafel</b>, den <b>Bestellvorschlag</b>, die offenen <b>Bestellungen</b> und die <b>Rahmenverträge</b>.</p>
@@ -925,6 +925,19 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   </ul>
   <p>Rechte (Rollen &amp; Rechte, Gruppe „Beschaffung“): <b>ansehen</b>, <b>Kanban-Regelkreise einrichten</b>, <b>bestellen</b> und <b>Rahmenverträge pflegen</b> lassen sich je Rolle getrennt vergeben.</p>
   {{template "hb-shots" (dict "Ref" (index $s "purchasing") "Can" $can)}}
+  <h3><i class="ti ti-truck-delivery"></i> Bestellvorgänge</h3>
+  <p>Ein <b>Bestellvorgang</b> begleitet eine Bestellung bei einem Lieferanten durch fünf Schritte: <b>Angebot → Bestellung → Auftragsbestätigung (AB) → Lieferung → Rechnung OK</b>. Oben siehst du, wo der Vorgang steht; gelb markiert PDH Abweichungen.</p>
+  <div class="hb-howto"><b><i class="ti ti-shopping-cart"></i> So führst du einen Bestellvorgang</b> (Recht „Bestellvorgänge anlegen und bearbeiten“)
+    <ol class="hb-steps">
+      <li>Navigation → <b>Bestellvorgänge</b> → Lieferant wählen, kurz beschreiben, <b>Anlegen</b>.</li>
+      <li><b>Positionen</b>: Ersatzteil-Nummer eintippen (Vorschlagsliste) – Bezeichnung und Einheit kommen aus dem Teil. Freie Positionen ohne Ersatzteil gehen auch.</li>
+      <li><b>Angebot</b>: Angebotsnummer, Datum und je Position Menge und Preis eintragen, <b>Speichern</b>.</li>
+      <li><b>Angebot → Bestellung</b> übernimmt Mengen und Preise; anpassen, dann <b>Als bestellt markieren</b>. Ohne eigene Bestellnummer gilt die Vorgangsnummer.</li>
+      <li><b>Auftragsbestätigung</b>: AB-Nummer, Datum, Liefertermin und je Position AB-Menge und -Preis eintragen – oder <b>AB wie Bestellung</b>, wenn alles passt. Weicht die AB ab (Menge, Preis, Termin nach Wunschtermin), steht es gelb daneben und in der Historie.</li>
+      <li><b>Lieferung</b>: Lieferschein-Nr. eintragen, je Position die gelieferte Menge und den Lagerort, <b>Wareneingang buchen</b>. Weniger als bestellt = Teillieferung; der Rest bleibt offen. Die Menge wird ins Lager gebucht, volle Kanban-Karten werden zurückgesetzt. Mehr als laut AB meldet PDH als Überlieferung.</li>
+      <li><b>Rechnung OK – Vorgang abschließen</b>. Die Rechnung wird in <b>ELO</b> bearbeitet – das Feld für die Rechnungs- oder ELO-Nummer darf leer bleiben (Recht „Rechnung OK setzen“).</li>
+    </ol>
+    Den Vorgang findest du auch beim <b>Ersatzteil</b> (Reiter Lieferanten &amp; Einkauf) und beim <b>Lieferanten</b> (Reiter Bestellungen). Dokumente (Angebot, AB, Lieferschein) hängst du unten an. Stornieren geht jederzeit; endgültig löschen nur der Bereichsadministrator Beschaffung – gebuchte Lagerbewegungen bleiben dann erhalten.</div>
 </section>
 
 <section class="hb-ch" id="partners" data-title="Hersteller &amp; Lieferanten" data-pages="directory">

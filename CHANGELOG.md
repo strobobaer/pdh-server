@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.76.5] – 2026-10-28
+
+### Neu
+- Bestellvorgänge (Navigation → Bestellvorgänge): ein Vorgang je Lieferant mit mehreren Positionen verfolgt Angebot, Bestellung, Auftragsbestätigung, Lieferung und Rechnung.
+- Die Auftragsbestätigung wird je Position mit der Bestellung verglichen (Menge, Preis) und ihr Liefertermin mit dem Wunschtermin; Abweichungen sind gelb markiert und stehen in der Historie.
+- Lieferungen, auch Teillieferungen, werden mit der AB verglichen (Überlieferung, Rest offen, überfällig) und buchen beim „Wareneingang buchen“ direkt ins Lager; volle Kanban-Karten werden dabei zurückgesetzt.
+- „Rechnung OK“ schließt den Vorgang – auch ohne hinterlegte Rechnung, weil die Rechnung in ELO bearbeitet wird; eine Rechnungs- oder ELO-Nummer kann optional eingetragen werden.
+- Bestellvorgänge stehen beim Ersatzteil (Reiter Lieferanten & Einkauf, dort auch „+ Bestellvorgang“) und beim Lieferanten (Reiter Bestellungen); Angebot, AB und Lieferschein lassen sich als Dokument anhängen.
+- Neue Rechte „Bestellvorgänge anlegen und bearbeiten“, „Wareneingang buchen“ und „Rechnung OK setzen“ (auch je Abteilung); wer bisher bestellen bzw. ins Lager buchen durfte, bekommt sie. Löschen darf nur der Bereichsadministrator Beschaffung.
+
 ## [0.76.4] – 2026-10-28
 
 ### Neu

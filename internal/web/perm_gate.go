@@ -35,7 +35,9 @@ func (h *Handler) recordDepartments(ctx context.Context, refType, id string) []s
 	}
 	refType = refAlias(refType)
 	q := ""
-	if refType == "infrastructure" {
+	if refType == "purchase_order" {
+		q = `SELECT department_id::text FROM purchase_orders WHERE id = $1::uuid AND department_id IS NOT NULL`
+	} else if refType == "infrastructure" {
 		q = `SELECT department_id::text FROM infrastructure_department WHERE infrastructure_id = $1::uuid`
 	} else if src, ok := recordDeptSource[refType]; ok {
 		q = `SELECT idp.department_id::text FROM ` + src.table + ` r JOIN infrastructure_department idp ON idp.infrastructure_id = r.infrastructure_id WHERE r.id = $1::uuid`
@@ -91,7 +93,7 @@ func (h *Handler) hasPermRec(r *http.Request, perm, refType, id string) bool {
 var areaAdminPerm = map[string]string{
 	"ticket": "tickets.admin", "fault": "faults.admin", "maintenance_task": "maintenance.admin", "maintenance": "maintenance.admin",
 	"task": "tasks.admin", "project": "projects.admin", "kvp": "kvp.admin", "infrastructure": "infrastructure.admin",
-	"part": "inventory.admin", "storage": "inventory.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
+	"part": "inventory.admin", "storage": "inventory.admin", "purchase_order": "procurement.admin", "business_partner": "directory.admin", "it_asset": "it.admin",
 }
 
 // isAreaAdmin: Bereichsadministrator für diesen Datensatz?

@@ -239,6 +239,7 @@ type partnerOptionGroup struct {
 
 type PartnerDetailData struct {
 	BaseData
+	Purchases      []purchaseLinkView // Bestellvorgänge bei diesem Lieferanten
 	IsNew          bool
 	CanEdit        bool
 	Tab            string
@@ -342,6 +343,9 @@ func (h *Handler) PartnerDetail(w http.ResponseWriter, r *http.Request) {
 	data.LinkKinds = partnerLinkKinds
 	data.CanCredentials = h.canPartnerCredentials(r)
 	data.History = h.recordHistory(ctx, "business_partner", id)
+	if h.canPurchaseView(r) {
+		data.Purchases = h.purchasesFor(ctx, "", id)
+	}
 	if data.CanEdit {
 		data.PartOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, part_number || ' · ' || name FROM spare_parts WHERE active ORDER BY name LIMIT 3000`)
 		data.ITOptions = h.partnerSimpleOptions(ctx, `SELECT id::text, name || COALESCE(' · ' || NULLIF(model, ''), '') FROM it_assets ORDER BY name LIMIT 3000`)

@@ -290,6 +290,8 @@ type PartDetailData struct {
 	MainSupplierID       string
 	MainSupplierContact  *partnerContact
 	Suppliers            []PartSupplierView
+	Purchases            []purchaseLinkView // Bestellvorgänge mit diesem Teil
+	CanPurchase          bool               // Bestellvorgang anlegen
 	Stock                []PartStockRow
 	Reservations         []PartReservationRow
 	StockValue           string
@@ -383,6 +385,10 @@ func (h *Handler) PartDetailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Manufacturer = h.partnerContactInfo(ctx, p.ManufacturerID, true)
 	data.Suppliers = h.partSuppliers(ctx, id)
+	if h.canPurchaseView(r) {
+		data.Purchases = h.purchasesFor(ctx, id, "")
+		data.CanPurchase = h.hasPerm(r, permPurchaseEdit)
+	}
 	if len(data.Suppliers) > 0 {
 		main := data.Suppliers[0] // bevorzugt, sonst guenstigster (Sortierung in partSuppliers)
 		data.MainSupplier = &main
