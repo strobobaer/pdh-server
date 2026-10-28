@@ -284,7 +284,7 @@ func (d *daemon) probeHold(ctx context.Context, addr string, seconds int) (strin
 	}
 	h := &probeHolding{addr: p, stop: make(chan struct{}), done: make(chan struct{})}
 	d.probeHeld = h // vorgemerkt: kein zweiter Test daneben
-	override, sys, base := d.node.VIPInterface, d.sys, d.runCtx
+	override, sys, base, cl := d.node.VIPInterface, d.sys, d.runCtx, d.cl
 	d.mu.Unlock()
 	fail := func(err error) (string, error) {
 		d.mu.Lock()
@@ -294,6 +294,11 @@ func (d *daemon) probeHold(ctx context.Context, addr string, seconds int) (strin
 		d.mu.Unlock()
 		close(h.done)
 		return "", err
+	}
+	// auch hier prüfen, nicht nur beim Auslösenden: keine Adresse eines
+	// Mitglieds, nur in einem Netz beider Server
+	if err := validateAccess(cl, accessConfig{VIP: p.String()}); err != nil {
+		return fail(err)
 	}
 	addrs, err := d.ifAddrsFn()
 	if err != nil {
@@ -307,6 +312,19 @@ func (d *daemon) probeHold(ctx context.Context, addr string, seconds int) (strin
 	iface, err := pickInterface(addrs, p, override)
 	if err != nil {
 		return fail(err)
+	}
+	// pickInterface prüft bei vip_interface das Netz nicht: die Karte muss
+	// selbst eine Adresse im Netz der Prüfadresse haben (sonst entstünde eine
+	// Route in ein fremdes Netz)
+	inNet := false
+	for _, a := range addrs {
+		if a.Iface == iface && p.Masked().Contains(a.Prefix.Addr()) {
+			inNet = true
+			break
+		}
+	}
+	if !inNet {
+		return fail(fmt.Errorf("Prüfadresse %s liegt nicht im Netz der Netzwerkkarte %s", p, iface))
 	}
 	v := newVIPCtl(sys, iface, p)
 	// schon gesetzt (z. B. als mitwandernde Adresse): nicht anfassen, sonst

@@ -438,6 +438,36 @@ func TestProbeHoldRefusesOwnAddress(t *testing.T) {
 			t.Fatalf("%s angenommen", a)
 		}
 	}
+	// Adresse eines anderen Mitglieds (Partner, Zeuge) → abgelehnt
+	for _, a := range []string{"10.77.1.6/24", "10.77.1.7/24"} {
+		if _, err := d.probeHold(context.Background(), a, 5); err == nil || !strings.Contains(err.Error(), "gehört schon zu Knoten") {
+			t.Fatalf("Knotenadresse %s: %v", a, err)
+		}
+	}
+	// Karte per vip_interface festgelegt: fremdes Netz trotzdem abgelehnt
+	d.lock()
+	d.node.VIPInterface = "eth0"
+	d.unlock()
+	for _, a := range []string{"192.168.1.50/24", "10.77.2.50/24"} {
+		if _, err := d.probeHold(context.Background(), a, 5); err == nil {
+			t.Fatalf("fremdes Netz %s mit vip_interface angenommen", a)
+		}
+	}
+	d.ifAddrsFn = fakeCards("eth0=10.77.1.5/24", "eth1=192.168.1.5/24")
+	if _, err := d.probeHold(context.Background(), "192.168.1.50/24", 5); err == nil {
+		t.Fatal("Netz einer anderen Karte als vip_interface angenommen")
+	}
+	// gültiges Verbund-Netz, aber vip_interface zeigt auf eine Karte in einem anderen Netz
+	d.lock()
+	d.node.VIPInterface = "eth1"
+	d.unlock()
+	if _, err := d.probeHold(context.Background(), "10.77.1.50/24", 5); err == nil || !strings.Contains(err.Error(), "nicht im Netz der Netzwerkkarte eth1") {
+		t.Fatalf("Karte im fremden Netz: %v", err)
+	}
+	d.lock()
+	d.node.VIPInterface = ""
+	d.unlock()
+	d.ifAddrsFn = fakeCards("eth0=10.77.1.5/24")
 	vs.setHeld(true) // schon gesetzt (z. B. mitwandernde Adresse) → nicht anfassen
 	if _, err := d.probeHold(context.Background(), "10.77.1.50/24", 5); err == nil || !strings.Contains(err.Error(), "belegt") {
 		t.Fatalf("gesetzte Adresse: %v", err)
