@@ -716,9 +716,23 @@ html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-styl
    Navigation als ausfahrbares Menue (☰), kompakte Kopfzeile, einspaltige
    Raster, wischbare Tabellen. Touch-Geraete: groessere Tippflaechen. */
 .topbar-burger,.topbar-ctx,.pdh-backdrop,.win11-menu a.tb-share-menu{display:none}
+/* Uhr und Konto-Knopf bleiben immer ganz sichtbar (nichts rechts schrumpft).
+   Wird es eng, kürzt sich der Seitentitel; reicht das nicht, blendet
+   pdhTopbarFit() die übrigen Knöpfe nach data-tb-hide aus (1 zuerst). */
+.topbar > div{min-width:0}
+.topbar > div > *{flex-shrink:0}
+.topbar-path{white-space:nowrap}
+.topbar-cur{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .tb-auto-off{display:none!important}
+/* ausgeblendete Knöpfe erscheinen stattdessen im Benutzermenü (tb-off-N am html) */
+.win11-menu a.tb-ctx-menu,.win11-menu a.tb-theme-menu{display:none}
+html.tb-off-1 .win11-menu a.tb-share-menu,html.tb-off-3 .win11-menu a.tb-theme-menu,html.tb-off-5 .win11-menu a.tb-ctx-menu{display:flex}
 .pdh-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:440}
 [oncontextmenu]{-webkit-touch-callout:none}
 @media (max-width:1180px){
+  .tb-sep{display:none}
+  .topbar-clock .clk-day{display:none}
+  .topbar .theme-toggle{width:36px;min-width:36px}
   .app{grid-template-columns:var(--left-sidebar-w) 1fr}
   .pdh-resizer.right{display:none}
   .context{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:450;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(102%);transition:transform .2s ease}
@@ -738,7 +752,7 @@ html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-styl
   .topbar-path,.status-dot,.tb-label,.tu-name,.tb-share{display:none}
   .win11-menu a.tb-share-menu{display:flex}
   .topbar-cur{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600}
-  .topbar > div{gap:6px!important;margin-left:0!important}
+  .topbar > div{gap:4px!important;margin-left:0!important}
   .theme-toggle{padding:0 10px;height:40px}
   .theme-toggle > span:not(.ctx-badge){display:none}
   .topbar-clock{height:40px;padding:0 8px;gap:4px}
@@ -761,8 +775,10 @@ html[data-style="fiori"] .pl-box,html[data-style="fiori"] .ip-box,html[data-styl
   .rec-tab{white-space:nowrap}
   .rec-head h1{font-size:16px}
   input,select,textarea{font-size:16px!important} /* iOS zoomt sonst beim Antippen */
-  .win11-menu{max-width:calc(100vw - 16px)}
-  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh - 70px);overflow-y:auto}
+  /* 100vw zählt ohne den Zoom der Größe (--ui-scale), daher umrechnen */
+  .win11-menu{max-width:calc(100vw / var(--ui-scale, 1) - 16px)}
+  #user-menu{min-width:0!important;width:calc(100vw / var(--ui-scale, 1) - 16px);max-width:340px}
+  #user-menu{position:fixed!important;right:8px!important;top:56px!important;max-height:calc(100dvh / var(--ui-scale, 1) - 70px);overflow-y:auto}
   .context{width:100vw}
   .pdh-frame-panel{width:100%}
 }
@@ -928,12 +944,12 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
       </a>
       <span class="tb-sep" aria-hidden="true"></span>
       {{if and .CanChat (ne .Page "chat")}}
-      <button type="button" class="theme-toggle tb-share" onclick="pdhShareToChat()" aria-label="{{t "Im Chat teilen"}}" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
-      <button type="button" class="theme-toggle" onclick="activateContextTab('chat')" aria-label="{{t "Chat"}}" title="{{t "Chat in der Seitenleiste öffnen"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
+      <button type="button" class="theme-toggle tb-share" data-tb-hide="1" onclick="pdhShareToChat()" aria-label="{{t "Im Chat teilen"}}" title="{{t "Diese Seite im Chat teilen"}}"><i class="ti ti-share"></i><span>{{t "Im Chat teilen"}}</span></button>
+      <button type="button" class="theme-toggle" data-tb-hide="4" onclick="activateContextTab('chat')" aria-label="{{t "Chat"}}" title="{{t "Chat in der Seitenleiste öffnen"}}" style="position:relative"><i class="ti ti-messages"></i><span>{{t "Chat"}}</span><span class="ctx-badge" id="top-chat-badge" style="display:none;top:-6px;right:-6px"></span></button>
       {{end}}
-      <button type="button" class="theme-toggle topbar-cop" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
+      <button type="button" class="theme-toggle topbar-cop" data-tb-hide="2" onclick="activateContextTab('copilot')" title="{{t "Copilot-Hilfen auf- und zuklappen"}}" aria-label="{{t "Copilot"}}"><i class="ti ti-brain"></i><span>{{t "Copilot"}}</span></button>
       <span class="tb-sep" aria-hidden="true"></span>
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="cycleThemeMode()" aria-label="{{t "Hell/Dunkel wechseln"}}" title="{{t "Hell/Dunkel wechseln"}}">
+      <button type="button" class="theme-toggle" id="theme-toggle" data-tb-hide="3" onclick="cycleThemeMode()" aria-label="{{t "Hell/Dunkel wechseln"}}" title="{{t "Hell/Dunkel wechseln"}}">
         <i class="ti ti-device-desktop" id="theme-toggle-icon"></i>
         <span id="theme-toggle-label">System</span>
       </button>
@@ -952,7 +968,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
         <i class="ti ti-user-plus"></i><span class="tb-label"> {{t "Anmelden zur Erledigung"}}</span>
       </button>
       {{end}}
-      <button type="button" class="theme-toggle topbar-ctx" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
+      <button type="button" class="theme-toggle topbar-ctx" data-tb-hide="5" onclick="toggleSidebar('right')" aria-label="{{t "Suche, Hilfe und mehr"}}" title="{{t "Suche, Hilfe & mehr"}}"><i class="ti ti-layout-sidebar-right"></i></button>
       <span class="tb-sep" aria-hidden="true"></span>
       <div style="position:relative">
         <button type="button" class="topbar-user" onclick="toggleMenu('user-menu')" aria-label="{{t "Benutzermenü"}}" title="{{t "Mein Konto, Darstellung und Abmelden"}}">{{if .UserAvatar}}<img class="tu-av" src="{{.UserAvatar}}" alt="">{{else}}<i class="ti ti-user"></i>{{end}}<span class="tu-name">{{.UserName}}</span><i class="ti ti-chevron-down" style="font-size:11px;margin-left:2px;color:var(--muted)"></i></button>
@@ -963,6 +979,8 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
           <a href="#" class="menu-item" id="um-dw-edit" onclick="closeMenu('user-menu'); pdhDashboardEdit(); return false;"><i class="ti ti-layout-dashboard"></i>{{t "Dashboard anpassen"}}</a>
           <a href="#" class="menu-item" id="um-nav-edit" onclick="closeMenu('user-menu'); pdhNavEdit(true); return false;"><i class="ti ti-adjustments-horizontal"></i>{{t "Navigation anpassen"}}</a>
           {{if and .CanChat (ne .Page "chat")}}<a href="#" class="menu-item tb-share-menu" onclick="pdhShareToChat(); return false;"><i class="ti ti-share"></i>{{t "Im Chat teilen"}}</a>{{end}}
+          <a href="#" class="menu-item tb-ctx-menu" onclick="closeMenu('user-menu'); toggleSidebar('right'); return false;"><i class="ti ti-layout-sidebar-right"></i>{{t "Suche, Hilfe & mehr"}}</a>
+          <a href="#" class="menu-item tb-theme-menu" onclick="cycleThemeMode(); return false;"><i class="ti ti-sun-moon"></i>{{t "Hell/Dunkel wechseln"}}</a>
           <form method="post" action="/translate/live/toggle" style="margin:0" onsubmit="this.back.value=location.pathname+location.search"><input type="hidden" name="back" value="/">
             <button type="submit" class="menu-item" style="width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;color:inherit" translate="no"><i class="ti ti-language"></i>{{if .LiveTranslateOn}}{{t "Live-Übersetzung ausschalten"}}{{else}}{{t "Live-Übersetzung einschalten"}}{{end}}{{if and .LiveTranslateOn (not .LiveTranslateAvail)}} <span title="{{t "Kein Übersetzungsdienst eingerichtet (Server-Einstellungen → Übersetzung)"}}" style="color:var(--amber)">⚠</span>{{end}}</button></form>
           <div class="pal-menu look-menu">
@@ -1203,6 +1221,7 @@ function lookApply() {
   const row = lookEffective('row');
   root.style.setProperty('--row-scale', (row / 100).toFixed(2));
   const rp = document.getElementById('look-row'); if(rp) rp.textContent = row + ' %';
+  if(window.pdhTopbarFitSoon) pdhTopbarFitSoon();
   root.dataset.style = window.PDH_LOOK_ALLOW && lookDraft.style ? lookDraft.style : window.PDH_LOOK_DEFAULT.style;
   document.querySelectorAll('[data-style-pick]').forEach(b => { const on = b.dataset.stylePick === root.dataset.style; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   const sel = document.getElementById('look-font'); if(sel) sel.value = lookDraft.font || '';
@@ -1255,6 +1274,42 @@ async function lookSave() {
 // aktueller Zoom-Faktor (fuer pixelgenaue Positionierung von Menues)
 function pdhZoom() { return parseFloat(getComputedStyle(document.body).zoom) || 1; }
 document.addEventListener('DOMContentLoaded', lookApply);
+// Kopfleiste: passt nicht alles hinein, Knöpfe nach data-tb-hide ausblenden
+// (1 zuerst, Sprache zuletzt). Uhr und Konto-Knopf bleiben immer; der
+// Seitentitel darf vorher bis auf einen Rest schrumpfen.
+function pdhTopbarFit() {
+  const tb = document.querySelector('.topbar'); if(!tb) return;
+  const lang = tb.querySelector('.lang-switch');
+  if(lang) lang.dataset.tbHide = '6';
+  const off = [...tb.querySelectorAll('[data-tb-hide]')];
+  off.forEach(e => e.classList.remove('tb-auto-off'));
+  const html = document.documentElement;
+  [...html.classList].filter(c => c.startsWith('tb-off-')).forEach(c => html.classList.remove(c));
+  tb.querySelectorAll('.tb-sep').forEach(e => e.classList.remove('tb-auto-off'));
+  const cur = tb.querySelector('.topbar-cur');
+  const tight = () => tb.scrollWidth > tb.clientWidth + 1 || (cur && cur.scrollWidth > cur.clientWidth + 1 && cur.clientWidth < 60);
+  if(!tight()) return;
+  tb.querySelectorAll('.tb-sep').forEach(e => e.classList.add('tb-auto-off'));
+  off.sort((a, b) => a.dataset.tbHide - b.dataset.tbHide);
+  for(const e of off) {
+    if(!tight()) break;
+    if(getComputedStyle(e).display === 'none') continue;
+    e.classList.add('tb-auto-off');
+    html.classList.add('tb-off-' + e.dataset.tbHide);
+  }
+}
+(function(){
+  let t = 0;
+  const run = () => { cancelAnimationFrame(t); t = requestAnimationFrame(pdhTopbarFit); };
+  document.addEventListener('DOMContentLoaded', () => {
+    run();
+    const tb = document.querySelector('.topbar');
+    if(tb && window.ResizeObserver) new ResizeObserver(run).observe(tb);
+    if(document.fonts) document.fonts.ready.then(run);
+  });
+  window.addEventListener('resize', run);
+  window.pdhTopbarFitSoon = run;
+})();
 function cycleThemeMode() {
   const current = localStorage.getItem('pdh_theme') || 'system';
   const index = THEME_MODES.indexOf(current);

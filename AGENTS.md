@@ -74,3 +74,40 @@ Update-Prüfung (Core-Einstellungen liest `VERSION`/`CHANGELOG.md` von GitHub ma
 - Neuer Eintrag: `## [x.y.z] – JJJJ-MM-TT` ganz oben, `VERSION` gleichzeitig ändern.
 - `TestChangelogMatchesVersion` prüft, dass `VERSION` und oberster Eintrag
   übereinstimmen und die Versionen absteigend sortiert sind.
+
+## Design-Stil (Fiori/Fluent) mitpflegen
+
+Die Oberfläche hat zwei Design-Stile: **Fiori** (wie SAP, Standard) und
+**Fluent** (wie Windows 11). Logik in `internal/web/ui_style.go`, Aussehen
+allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
+
+- Neue oder geänderte Oberfläche in **beiden Stilen und hell/dunkel**
+  prüfen. Farben, Ecken und Schatten über die Variablen (`--bg`, `--bg2`,
+  `--text`, `--muted`, `--border`, `--accent`, `--shadow-card`) statt fester
+  Werte, dann passen beide Stile automatisch.
+- Seiten mit **eigenem Seitenkopf** (nicht `base.gohtml`, z. B.
+  `login.gohtml`, `easy.gohtml`, `global_dashboard.gohtml`) müssen
+  `document.documentElement.dataset.style` setzen und eine Fiori-Variante
+  ihrer Regeln haben.
+- Der Akzent kommt immer aus dem Farbschema (`--accent`), nie aus dem Stil.
+
+## Kopfleiste
+
+- **Uhr und Benutzermenü müssen immer ganz sichtbar sein** – auf jedem
+  Gerät, bei jeder Vergrößerung. Sie schrumpfen nie.
+- Wird es eng, kürzt sich zuerst der Seitentitel; danach blendet
+  `pdhTopbarFit()` (in `base.gohtml`) Knöpfe nach `data-tb-hide` aus,
+  kleinste Zahl zuerst: 1 Im Chat teilen, 2 Copilot, 3 Hell/Dunkel,
+  4 Chat, 5 rechte Seitenleiste, 6 Sprache (soll möglichst bleiben).
+- Neue Kopfleisten-Knöpfe: nur Symbol, Erklärung im `title`-Tooltip und
+  `aria-label`, kein Text neben dem Knopf; eine passende `data-tb-hide`-Zahl
+  vergeben. Was ausgeblendet werden kann, muss anders erreichbar bleiben
+  (Eintrag im Benutzermenü, sichtbar über `html.tb-off-N`, oder Reiter in
+  der rechten Seitenleiste).
+- Änderungen an der Kopfleiste bei 320, 390, 768, 1024 und 1366 px Breite
+  sowie mit 120–160 % Größe prüfen.
+
+## Sprache
+
+Antworten, Handbuch, Änderungsprotokoll, Commit-Nachrichten und
+Pull-Request-Texte auf **Deutsch**, für Anwender im Betrieb verständlich.

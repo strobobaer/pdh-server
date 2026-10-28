@@ -12,6 +12,7 @@
   var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
   document.documentElement.dataset.palette = {{.PaletteID}};
+  document.documentElement.dataset.style = {{.StyleID}};
   document.documentElement.dataset.themeMode = mode;
   // Zeilenhoehe der Tabelle/Listen: je Geraet gemerkt, sonst Vorgabe aus dem Konto
   var row = parseInt(localStorage.getItem('pdh_leitstand_row'), 10);
@@ -127,6 +128,16 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
 .legend-dot.fault{background:var(--type-fault)}.legend-dot.ticket{background:var(--type-ticket)}.legend-dot.maintenance{background:var(--type-maintenance)}.legend-dot.task{background:var(--type-task)}.legend-dot.overdue{background:var(--overdue)}
+
+/* ── Design-Stil Fiori (ui_style.go): Horizon-Farben, weiße Kopfleiste mit Schatten,
+   Karten ohne Rahmen mit Schatten, Knöpfe mit 8 px Ecke ── */
+:root[data-style="fiori"]{--bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--border:#3a4552;--text:#eaecee;--muted:#a9b4be;--ls-shadow:0 0 2px rgba(0,0,0,.5),0 2px 4px rgba(0,0,0,.5)}
+:root[data-style="fiori"][data-theme="light"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#eff1f2;--border:#d9d9d9;--text:#1d2d3e;--muted:#556b82;--ls-shadow:0 0 2px rgba(34,53,72,.2),0 2px 4px rgba(34,53,72,.2)}
+:root[data-style="fiori"] header{border-bottom:0;box-shadow:var(--ls-shadow);position:relative;z-index:2}
+:root[data-style="fiori"] .brand-mark{border-radius:8px}
+:root[data-style="fiori"] .header-button,:root[data-style="fiori"] .action-button,:root[data-style="fiori"] .row-ctl{border-radius:8px;background:var(--surface);color:var(--accent)}
+:root[data-style="fiori"] #timeline-card,:root[data-style="fiori"] .view-card,:root[data-style="fiori"] #entries-table-wrap,:root[data-style="fiori"] #edit-panel,:root[data-style="fiori"] #create-panel{border-color:transparent;border-radius:12px;box-shadow:var(--ls-shadow)}
+:root[data-style="fiori"] .entry-tile,:root[data-style="fiori"] .create-tile{border-radius:12px;box-shadow:var(--ls-shadow)}
 
 /* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
 #timeline-card{flex:none;border:1px solid var(--border);border-radius:4px;background:var(--surface);padding:12px}
