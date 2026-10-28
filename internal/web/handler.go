@@ -259,6 +259,7 @@ type PartView struct {
 // ── Handler ──────────────────────────────────────────────────
 
 type Handler struct {
+	mirror           MirrorInfo // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
 	db               *pgxpool.Pool
 	tmpl             *template.Template
 	users            *users.Service
