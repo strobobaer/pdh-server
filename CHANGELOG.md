@@ -10,6 +10,19 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.6] – 2026-10-29
+
+### Neu
+- Ausfallschutz mit zwei Servern: eine mitwandernde Adresse im LAN liegt immer auf dem aktiven Server und wechselt bei einer Umschaltung in wenigen Sekunden mit – Geräte und Lesezeichen müssen nicht mehr umgestellt werden.
+- Der Cloudflare-Tunnel wird auf beiden Servern automatisch mit demselben Token eingerichtet und läuft immer nur auf dem aktiven Server.
+- Eigene Skripte in `/etc/pdh/ha-hooks/` laufen bei jedem Rollenwechsel, z. B. um einen DNS-Eintrag umzustellen; testen mit `sudo pdh-ha hook run`.
+- Das Skript `pdh-ha-adresse.sh` führt Schritt für Schritt durch die Umstellung einer bisherigen Server-Adresse zur mitwandernden Adresse, jeder Schritt zurücknehmbar.
+- Neue Karte „Zugangsweg“ im Reiter Ausfallschutz: Zustand von Tunnel, mitwandernder Adresse und Skripten, Adresse testen und einschalten, Skripte ein- und ausschalten oder sofort ausführen.
+
+### Geändert
+- `pdh-ha-join.sh` installiert zusätzlich `iproute2` und `iputils-arping`, legt den Ordner für die Skripte an und richtet mit `--voll` auch `cloudflared` ein.
+- Am Spiegel führt der Link „Bitte den aktiven Server verwenden“ auf die mitwandernde Adresse, sobald sie eingeschaltet ist.
+
 ## [0.77.5] – 2026-10-29
 
 ### Behoben
