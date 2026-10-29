@@ -327,9 +327,14 @@ func (h *hookRunner) runOne(ctx context.Context, f hookFile, e hookEnv) hookResu
 
 // hookEnvLocked baut die Umgebung für die Rolle role (unter mu). VIP: die
 // eingetragene Adresse ohne Präfix, unabhängig vom Schalter vip_on – das
-// Skript soll sie auch kennen, wenn sie noch nicht schaltet.
+// Skript soll sie auch kennen, wenn sie noch nicht schaltet. Während des
+// eigenen Rollentauschs gilt „passiv“ schon für die übergebene Amtszeit: so
+// melden beide Server denselben Wechsel mit derselben Amtszeit.
 func (d *daemon) hookEnvLocked(role ha.Role) hookEnv {
 	e := hookEnv{Role: role, Term: d.p.Term, Node: d.node.ID}
+	if role == ha.Passive && d.carry.HandoverPending > e.Term {
+		e.Term = d.carry.HandoverPending
+	}
 	if a := d.ownAddrsLocked(); len(a) > 0 {
 		e.OwnAddr = hostOfAddr(a[0])
 	}

@@ -321,6 +321,42 @@ func TestRoleChangeTriggersHooks(t *testing.T) {
 	})
 }
 
+// Beim Rollentausch meldet der abgebende Server „passiv“ mit der übergebenen
+// Amtszeit – dieselbe, die der neue aktive Server meldet (HA-Labor „hooks“).
+func TestHooksSwapPassiveTerm(t *testing.T) {
+	skipWindows(t)
+	ctx := context.Background()
+	fn := newFakeNet()
+	cl := duoCluster()
+	cl.Access = accessConfig{VIP: "10.77.1.50/24", HooksOn: true}
+	fn.setView("b", seenView(message{Role: "passiv", Term: 2, Ver: "test", Sees: []string{"a"}}))
+	d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, cl, ha.Persisted{Role: ha.Active, Term: 2, PartnerVersion: "test"}, fn)
+	d.act = &recActor{}
+	dir := t.TempDir()
+	d.hooks.dir = dir
+	out := filepath.Join(t.TempDir(), "runs")
+	writeHook(t, dir, "10-log", "#!/bin/sh\necho \"$PDH_HA_ROLLE $PDH_HA_AMTSZEIT $PDH_HA_VIP\" >> "+out+"\n", 0o755)
+	d.tick(ctx) // erster Takt: bleibt aktiv, keine Skripte
+	d.lock()
+	d.cmd = ha.CmdSwap
+	d.unlock()
+	d.tick(ctx)
+	waitIdle(t, d.hooks)
+	if st := d.statusNow(); st.Self.Role != ha.Passive || st.Self.Term != 2 {
+		t.Fatalf("nach dem Tausch: %s Amtszeit %d", st.Self.Role, st.Self.Term)
+	}
+	if got := hookRuns(out); got != "passiv 3 10.77.1.50\n" {
+		t.Fatalf("Läufe: %q (erwartet passiv mit der übergebenen Amtszeit 3)", got)
+	}
+	// Handlauf während der Übergabe: ebenso die übergebene Amtszeit
+	d.mu.Lock()
+	e := d.hookEnvLocked(ha.Passive)
+	d.mu.Unlock()
+	if e.Term != 3 {
+		t.Fatalf("hook run während der Übergabe: Amtszeit %d", e.Term)
+	}
+}
+
 func TestHeartbeatHooksSumAndSame(t *testing.T) {
 	skipWindows(t)
 	d, _ := hookDaemon(t, "node", true)
