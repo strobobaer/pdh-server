@@ -40,12 +40,48 @@ type hookFile struct {
 	Name   string
 	Path   string
 	Unsafe string // Grund, warum das Skript nicht läuft ("" = ok)
+	Link   bool   // Verknüpfung: wird nie ausgeführt, einmal gemeldet
+}
+
+// errHookDir: Der Skript-Ordner selbst ist unsicher – dann läuft gar nichts
+// (sonst könnte jemand eine geprüfte Datei zwischen Prüfung und Start austauschen).
+type errHookDir struct{ dir, why string }
+
+func (e *errHookDir) Error() string {
+	return fmt.Sprintf("Ordner %s unsicher (%s) – keine Skripte ausgeführt; beheben: sudo chown root:root %s && sudo chmod 755 %s", e.dir, e.why, e.dir, e.dir)
+}
+
+// hookDirUnsafe: Grund, warum der Ordner unsicher ist ("" = ok).
+func hookDirUnsafe(fi fs.FileInfo) string {
+	switch uid, ok := fileUID(fi); {
+	case fi.Mode()&fs.ModeSymlink != 0:
+		return "Verknüpfung statt Ordner"
+	case !fi.IsDir():
+		return "kein Ordner"
+	case fi.Mode().Perm()&0o022 != 0:
+		return "für Gruppe oder andere schreibbar"
+	case ok && uid != hookOwnerUID:
+		return "gehört nicht root"
+	}
+	return ""
 }
 
 // scanHooks liest den Ordner: ausführbare reguläre Dateien in alphabetischer
 // Reihenfolge, dazu eine Prüfsumme (SHA-256 hex) über „Name\0Inhalt\0“. Ein
-// fehlender Ordner ergibt eine leere Liste ohne Fehler.
+// fehlender Ordner ergibt eine leere Liste ohne Fehler, ein unsicherer Ordner
+// (nicht root, für Gruppe/andere schreibbar, Verknüpfung) einen *errHookDir.
+// Verknüpfungen im Ordner kommen mit Link=true zurück (ohne Prüfsumme).
 func scanHooks(dir string) ([]hookFile, string, error) {
+	di, err := os.Lstat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if why := hookDirUnsafe(di); why != "" {
+		return nil, "", &errHookDir{dir: dir, why: why}
+	}
 	ents, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, "", nil
@@ -55,10 +91,15 @@ func scanHooks(dir string) ([]hookFile, string, error) {
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name() < ents[j].Name() })
 	var out []hookFile
+	hashed := 0
 	h := sha256.New()
 	for _, e := range ents {
 		p := filepath.Join(dir, e.Name())
 		fi, err := os.Lstat(p)
+		if err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			out = append(out, hookFile{Name: e.Name(), Path: p, Link: true})
+			continue
+		}
 		if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o111 == 0 {
 			continue
 		}
@@ -74,13 +115,14 @@ func scanHooks(dir string) ([]hookFile, string, error) {
 			f.Unsafe = "gehört nicht root"
 		}
 		out = append(out, f)
+		hashed++
 		h.Write([]byte(e.Name()))
 		h.Write([]byte{0})
 		h.Write(data)
 		h.Write([]byte{0})
 	}
-	if len(out) == 0 {
-		return nil, "", nil
+	if hashed == 0 {
+		return out, "", nil
 	}
 	return out, hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -155,6 +197,7 @@ type hookRunner struct {
 	names   []string
 	sum     string
 	last    *hookRun
+	links   map[string]bool // schon gemeldete Verknüpfungen
 }
 
 func newHookRunner(ev *eventLog) *hookRunner {
@@ -168,12 +211,27 @@ func (h *hookRunner) baseCtx() context.Context {
 	return context.Background()
 }
 
+// setScan merkt Namen und Prüfsumme. Verknüpfungen zählen nicht als Skript;
+// jede wird einmal gemeldet (erneut erst, wenn sie weg war und wiederkommt).
 func (h *hookRunner) setScan(files []hookFile, sum string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.scanned, h.sum, h.names = true, sum, []string{}
+	links := map[string]bool{}
+	var report []string
 	for _, f := range files {
+		if f.Link {
+			links[f.Name] = true
+			if !h.links[f.Name] {
+				report = append(report, f.Name)
+			}
+			continue
+		}
 		h.names = append(h.names, f.Name)
+	}
+	h.links = links
+	h.mu.Unlock()
+	for _, n := range report {
+		h.ev.add(ha.Event{Kind: "warn", Text: fmt.Sprintf("Skript %s ist eine Verknüpfung – übersprungen (nur echte Dateien laufen)", n)})
 	}
 }
 
@@ -273,12 +331,20 @@ func lastLine(s string) string {
 func (h *hookRunner) run(ctx context.Context, e hookEnv) []hookResult {
 	files, sum, err := scanHooks(h.dir)
 	if err != nil {
-		h.ev.add(ha.Event{Kind: "alarm", Text: "Skripte beim Rollenwechsel: Ordner nicht lesbar: " + err.Error()})
+		var unsafe *errHookDir
+		if errors.As(err, &unsafe) {
+			h.ev.add(ha.Event{Kind: "alarm", Text: "Skripte beim Rollenwechsel: " + err.Error()})
+		} else {
+			h.ev.add(ha.Event{Kind: "alarm", Text: "Skripte beim Rollenwechsel: Ordner nicht lesbar: " + err.Error()})
+		}
 		return []hookResult{{Name: h.dir, Out: err.Error()}}
 	}
 	h.setScan(files, sum)
 	res := []hookResult{}
 	for _, f := range files {
+		if f.Link {
+			continue // in setScan gemeldet
+		}
 		if f.Unsafe != "" {
 			res = append(res, hookResult{Name: f.Name, Out: "unsicher – übersprungen (" + f.Unsafe + ")"})
 			h.ev.add(ha.Event{Kind: "warn", Text: fmt.Sprintf("Skript %s unsicher – übersprungen (%s)", f.Name, f.Unsafe)})

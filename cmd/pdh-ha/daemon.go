@@ -597,7 +597,8 @@ func (d *daemon) run(ctx context.Context) error {
 		d.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			d.stopProbeHold() // Prüfadresse nicht liegen lassen
+			d.stopProbeHold()    // Prüfadresse nicht liegen lassen
+			d.stopAccessOnExit() // mitwandernde Adresse bei Automatik „echt“ abgeben
 			return nil
 		case m := <-in:
 			d.handle(ctx, m)
@@ -782,7 +783,7 @@ func (d *daemon) tick(ctx context.Context) {
 // syncAccessLocked startet, ersetzt oder beendet den Arbeiter der
 // mitwandernden Adresse passend zur Einstellung. Läuft unter mu und blockiert
 // nie: Der alte Arbeiter gibt eine gehaltene Adresse im Hintergrund ab, der
-// neue beginnt erst danach. Das Ende des Dienstes (runCtx) gibt nichts ab.
+// neue beginnt erst danach. Das Ende des Dienstes regelt stopAccessOnExit.
 func (d *daemon) syncAccessLocked(ctx context.Context) {
 	a := d.cl.Access
 	key := ""
@@ -834,6 +835,37 @@ func (d *daemon) syncAccessLocked(ctx context.Context) {
 	w.after = d.accessPrev
 	d.access, d.accessStop = w, cancel
 	go w.run(wctx)
+}
+
+// accessExitWait: so lange wartet das Dienstende höchstens auf die Abgabe
+// eines vorigen Arbeiters (dessen Abgabe hat selbst 10 s Frist).
+const accessExitWait = 15 * time.Second
+
+// stopAccessOnExit läuft beim Ende des Dienstes (SIGTERM), nachdem runCtx
+// beendet ist. Bei Automatik „echt“ wird eine gehaltene Adresse abgegeben:
+// sonst bliebe sie beim gestoppten Server, der Partner übernähme die
+// Datenbank, fände die Adresse aber besetzt (Duplikat) und bekäme sie nie.
+// Im Beobachtungsmodus bleibt sie liegen – dort übernimmt der Partner nie
+// selbst, die Geräte bleiben so erreichbar. Eine Abgabe eines vorigen
+// Arbeiters (Einstellung gewechselt) wird kurz abgewartet.
+func (d *daemon) stopAccessOnExit() {
+	d.mu.Lock()
+	w, prev, stop := d.access, d.accessPrev, d.accessStop
+	real := d.settingsLocked().Real()
+	d.mu.Unlock()
+	if stop != nil {
+		stop() // endet ohnehin mit runCtx; so auch ohne (Tests)
+	}
+	if prev != nil {
+		select {
+		case <-prev:
+		case <-time.After(accessExitWait):
+		}
+	}
+	if w == nil || !real {
+		return
+	}
+	w.release() // wartet auf das Ende des Arbeiters, prüft den echten Zustand
 }
 
 func (d *daemon) tickNodeLocked(ctx context.Context) plan {

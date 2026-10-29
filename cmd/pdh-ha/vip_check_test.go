@@ -210,6 +210,31 @@ func TestRunVIPCheckOwnAddressBusy(t *testing.T) {
 	}
 }
 
+// Prüfadresse gleich der eingeschalteten mitwandernden Adresse → abgelehnt,
+// am Auslöser wie am haltenden Partner, auch wenn sie gerade niemand hat.
+func TestVIPCheckRefusesEnabledVIP(t *testing.T) {
+	d, vs, fp := checkDaemon(t, false)
+	d.lock()
+	d.cl.Access = accessConfig{VIP: "10.77.1.50/24", VIPOn: true}
+	d.unlock()
+	if _, err := d.runVIPCheck(context.Background(), testAddr(t)); !errors.Is(err, errProbeIsVIP) {
+		t.Fatalf("runVIPCheck: %v", err)
+	}
+	if _, err := d.probeHold(context.Background(), "10.77.1.50/24", 5); !errors.Is(err, errProbeIsVIP) {
+		t.Fatalf("probeHold: %v", err)
+	}
+	if vs.count("ip addr") != 0 || len(fp.calls) != 0 {
+		t.Fatalf("trotzdem gearbeitet: %v %v", vs.calls, fp.calls)
+	}
+	// ausgeschaltet → erlaubt
+	d.lock()
+	d.cl.Access.VIPOn = false
+	d.unlock()
+	if _, err := d.runVIPCheck(context.Background(), testAddr(t)); err != nil {
+		t.Fatalf("ausgeschaltet: %v", err)
+	}
+}
+
 func TestRunVIPCheckReleasesOnFailure(t *testing.T) {
 	d, vs, fp := checkDaemon(t, false)
 	fp.fail["a>w"] = "keine Verbindung"

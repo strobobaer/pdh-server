@@ -105,9 +105,9 @@ func (w *accessWorker) setHave(have bool) {
 	}
 }
 
-// run gleicht ab, bis ctx endet. Beim Ende wird die Adresse bewusst nicht
-// abgegeben: Ein Neustart von pdh-ha am aktiven Server soll die Anwender
-// nicht trennen; nach einem Neustart des Servers ist sie ohnehin weg.
+// run gleicht ab, bis ctx endet. run selbst gibt beim Ende nichts ab; ob die
+// Adresse beim Ende des Dienstes abgegeben wird, entscheidet
+// daemon.stopAccessOnExit (Automatik „echt“: ja, Beobachtungsmodus: nein).
 func (w *accessWorker) run(ctx context.Context) {
 	defer close(w.done)
 	if w.after != nil {
@@ -158,8 +158,12 @@ func (w *accessWorker) step(ctx context.Context) {
 		return
 	}
 	if want {
-		if before {
-			w.ev.add(ha.Event{Kind: "warn", Text: fmt.Sprintf("Adresse %s war nicht mehr gesetzt – wird wieder übernommen", addr)})
+		// Reparatur (Adresse lag hier und ist verschwunden, z. B. netplan
+		// apply): Meldungen entprellt – entfernt ein Netzwerkdienst sie
+		// laufend, käme sonst jede Sekunde ein Ereignis.
+		repair := before
+		if repair {
+			w.once("warn", fmt.Sprintf("Adresse %s war nicht mehr gesetzt – wird wieder übernommen", addr))
 		}
 		if err := w.vip.Take(ctx); err != nil {
 			if ctx.Err() == nil {
@@ -170,6 +174,11 @@ func (w *accessWorker) step(ctx context.Context) {
 					w.alarm(fmt.Sprintf("Adresse %s nicht übernommen: %v", addr, err))
 				}
 			}
+			return
+		}
+		if repair {
+			w.once("info", fmt.Sprintf("Adresse %s übernommen", addr))
+			w.setHave(true)
 			return
 		}
 		w.changedTo(true, fmt.Sprintf("Adresse %s übernommen", addr))
@@ -187,31 +196,34 @@ func (w *accessWorker) step(ctx context.Context) {
 	w.changedTo(false, fmt.Sprintf("Adresse %s abgegeben", addr))
 }
 
-// changedTo: Wechsel gelungen – Ist merken, melden, Alarm-Entprellung zurücksetzen.
+// changedTo: Wechsel gelungen – Ist merken, melden. Die Entprellung bleibt
+// bestehen (Einträge laufen nach einer Stunde ab): Wechseln Erfolg und
+// Fehlschlag, kommt derselbe Alarm trotzdem höchstens einmal je Stunde.
 func (w *accessWorker) changedTo(have bool, text string) {
-	w.mu.Lock()
-	w.alarmAt = map[string]time.Time{}
-	w.mu.Unlock()
 	w.ev.add(ha.Event{Kind: "info", Text: text})
 	w.setHave(have)
 }
 
-// alarm meldet einen Text höchstens einmal je Stunde.
-func (w *accessWorker) alarm(text string) {
+// alarm meldet einen Alarmtext höchstens einmal je Stunde.
+func (w *accessWorker) alarm(text string) { w.once("alarm", text) }
+
+// once meldet dieselbe Meldung (Art und Text) höchstens einmal je Stunde.
+func (w *accessWorker) once(kind, text string) {
 	now := w.now()
+	key := kind + "|" + text
 	w.mu.Lock()
-	if at, ok := w.alarmAt[text]; ok && now.Sub(at) < vipAlarmRepeat {
+	if at, ok := w.alarmAt[key]; ok && now.Sub(at) < vipAlarmRepeat {
 		w.mu.Unlock()
 		return
 	}
-	for t, at := range w.alarmAt { // Abgelaufenes vergessen (Texte können wechseln)
+	for k, at := range w.alarmAt { // Abgelaufenes vergessen (Texte können wechseln)
 		if now.Sub(at) >= vipAlarmRepeat {
-			delete(w.alarmAt, t)
+			delete(w.alarmAt, k)
 		}
 	}
-	w.alarmAt[text] = now
+	w.alarmAt[key] = now
 	w.mu.Unlock()
-	w.ev.add(ha.Event{Kind: "alarm", Text: text})
+	w.ev.add(ha.Event{Kind: kind, Text: text})
 }
 
 // release gibt die Adresse ab, nachdem der Arbeiter beendet ist (Wechsel der

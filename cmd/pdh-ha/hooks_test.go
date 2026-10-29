@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -101,9 +102,102 @@ func TestScanHooksOwner(t *testing.T) {
 	old := hookOwnerUID
 	defer func() { hookOwnerUID = old }()
 	hookOwnerUID = uint32(os.Getuid()) + 4242
-	fs, _, _ := scanHooks(dir)
-	if len(fs) != 1 || !strings.Contains(fs[0].Unsafe, "gehört nicht root") {
-		t.Fatalf("fremder Besitzer nicht erkannt: %+v", fs)
+	// erst der Ordner: gehört nicht dem erwarteten Besitzer → nichts läuft
+	var dirErr *errHookDir
+	if _, _, err := scanHooks(dir); !errors.As(err, &dirErr) || !strings.Contains(err.Error(), "gehört nicht root") {
+		t.Fatalf("fremder Besitzer des Ordners nicht erkannt: %v", err)
+	}
+	if os.Getuid() != 0 {
+		return // Ordner umschreiben geht nur als root (Container)
+	}
+	if err := os.Chown(dir, int(hookOwnerUID), -1); err != nil {
+		t.Fatal(err)
+	}
+	fs, _, err := scanHooks(dir)
+	if err != nil || len(fs) != 1 || !strings.Contains(fs[0].Unsafe, "gehört nicht root") {
+		t.Fatalf("fremder Besitzer nicht erkannt: %+v %v", fs, err)
+	}
+}
+
+// Der Ordner selbst muss root gehören und darf nicht für Gruppe oder andere
+// schreibbar sein, sonst ließe sich eine geprüfte Datei vor dem Start tauschen.
+func TestScanHooksUnsafeDir(t *testing.T) {
+	skipWindows(t)
+	h, dir := testHookRunner(t)
+	marker := filepath.Join(t.TempDir(), "gelaufen")
+	writeHook(t, dir, "10-a", "#!/bin/sh\ntouch "+marker+"\n", 0o755)
+	for _, mode := range []os.FileMode{0o775, 0o757, 0o777} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		var dirErr *errHookDir
+		if _, _, err := scanHooks(dir); !errors.As(err, &dirErr) || !strings.Contains(err.Error(), "für Gruppe oder andere schreibbar") {
+			t.Fatalf("Ordner %o: %v", mode, err)
+		}
+	}
+	res := h.run(context.Background(), hookEnv{Role: ha.Active})
+	if len(res) != 1 || res[0].OK || !strings.Contains(res[0].Out, "keine Skripte ausgeführt") {
+		t.Fatalf("Läufe: %+v", res)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("Skript trotz unsicherem Ordner gelaufen")
+	}
+	alarm := false
+	for _, e := range h.ev.since(0, 0) {
+		alarm = alarm || e.Kind == "alarm" && strings.Contains(e.Text, "unsicher")
+	}
+	if !alarm {
+		t.Fatalf("kein Alarm: %+v", h.ev.since(0, 0))
+	}
+	// Ordner als Verknüpfung → ebenfalls abgelehnt
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "hooks")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	var dirErr *errHookDir
+	if _, _, err := scanHooks(link); !errors.As(err, &dirErr) || !strings.Contains(err.Error(), "Verknüpfung") {
+		t.Fatalf("Ordner-Verknüpfung: %v", err)
+	}
+}
+
+// Verknüpfungen im Ordner laufen nie, werden aber einmal gemeldet.
+func TestHooksSymlinkReportedOnce(t *testing.T) {
+	skipWindows(t)
+	h, dir := testHookRunner(t)
+	other := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "gelaufen")
+	writeHook(t, other, "ziel", "#!/bin/sh\ntouch "+marker+"\n", 0o755)
+	if err := os.Symlink(filepath.Join(other, "ziel"), filepath.Join(dir, "10-link")); err != nil {
+		t.Fatal(err)
+	}
+	writeHook(t, dir, "20-ok", "#!/bin/sh\necho gut\n", 0o755)
+	fs, sum, err := scanHooks(dir)
+	if err != nil || len(fs) != 2 || !fs[0].Link || fs[1].Link || sum == "" {
+		t.Fatalf("Scan: %+v %q %v", fs, sum, err)
+	}
+	h.rescan()
+	h.rescan()
+	res := h.run(context.Background(), hookEnv{Role: ha.Active})
+	if len(res) != 1 || res[0].Name != "20-ok" || !res[0].OK {
+		t.Fatalf("Läufe: %+v", res)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("Verknüpfung ausgeführt")
+	}
+	if names, _, _ := h.info(); strings.Join(names, ",") != "20-ok" {
+		t.Fatalf("Namen: %v", names)
+	}
+	n := 0
+	for _, e := range h.ev.since(0, 0) {
+		if e.Kind == "warn" && strings.Contains(e.Text, "10-link ist eine Verknüpfung") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("Verknüpfung %d-mal gemeldet statt einmal: %+v", n, h.ev.since(0, 0))
 	}
 }
 

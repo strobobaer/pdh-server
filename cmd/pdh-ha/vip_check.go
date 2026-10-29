@@ -70,6 +70,20 @@ func probeResult(err error) probeResp {
 
 var errProbeBusy = errors.New("Prüfadresse ist belegt – freie Testadresse angeben")
 
+// errProbeIsVIP: Die eingeschaltete mitwandernde Adresse gehört dem Abgleich.
+// Ein Test damit träfe auf den Arbeiter des aktiven Servers (zwei getrennte
+// Steuerungen für dieselbe Adresse) und nähme sie nach dem Test womöglich weg.
+var errProbeIsVIP = errors.New("Adresse ist eingeschaltet – mit freier Testadresse testen oder vorher ausschalten")
+
+// probeIsVIP: Prüfadresse gleich der eingeschalteten mitwandernden Adresse?
+func probeIsVIP(a accessConfig, p netip.Prefix) bool {
+	if !a.VIPOn {
+		return false
+	}
+	v, err := parseVIP(a.VIP)
+	return err == nil && v.Addr() == p.Addr()
+}
+
 func probeBusy(err error) error {
 	var dup *errDuplicate
 	if errors.As(err, &dup) {
@@ -297,6 +311,9 @@ func (d *daemon) probeHold(ctx context.Context, addr string, seconds int) (strin
 	}
 	// auch hier prüfen, nicht nur beim Auslösenden: keine Adresse eines
 	// Mitglieds, nur in einem Netz beider Server
+	if probeIsVIP(cl.Access, p) {
+		return fail(errProbeIsVIP)
+	}
 	if err := validateAccess(cl, accessConfig{VIP: p.String()}); err != nil {
 		return fail(err)
 	}
@@ -484,6 +501,9 @@ func (d *daemon) runVIPCheck(ctx context.Context, addr netip.Prefix) ([]vipCheck
 	}
 	if len(servers) < 2 {
 		return nil, errors.New("Der Test braucht zwei Server im Verbund")
+	}
+	if probeIsVIP(cl.Access, addr) {
+		return nil, errProbeIsVIP
 	}
 	if err := validateAccess(cl, accessConfig{VIP: addr.String()}); err != nil {
 		return nil, err

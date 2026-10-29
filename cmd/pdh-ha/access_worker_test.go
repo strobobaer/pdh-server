@@ -484,3 +484,115 @@ func TestDaemonAccessReleasedDuringSwap(t *testing.T) {
 		t.Fatalf("Adresse während der Übergabe zurückgeholt (add %d, held %v)", n, w.held())
 	}
 }
+
+// Ende des Dienstes (SIGTERM): Automatik „echt“ gibt die gehaltene Adresse
+// ab, damit der Partner sie bekommt; im Beobachtungsmodus bleibt sie liegen.
+func TestDaemonAccessReleasedOnExit(t *testing.T) {
+	for _, c := range []struct {
+		mode string
+		del  int
+	}{{ha.AutoReal, 1}, {ha.AutoObserve, 0}} {
+		t.Run(c.mode, func(t *testing.T) {
+			d, f := accessDaemon(t, fakeCards("eth0=10.77.1.5/24"))
+			d.lock()
+			d.cl.Settings.AutoMode = c.mode
+			d.unlock()
+			ctx, cancel := context.WithCancel(context.Background())
+			d.tick(ctx)
+			waitFor(t, 2*time.Second, "Adresse übernommen", func() bool {
+				d.mu.Lock()
+				w := d.access
+				d.mu.Unlock()
+				return w != nil && w.held()
+			})
+			cancel()
+			d.stopAccessOnExit()
+			if n := f.count(vipDel); n != c.del {
+				t.Fatalf("ip addr del %d-mal statt %d", n, c.del)
+			}
+			f.mu.Lock()
+			held := f.held
+			f.mu.Unlock()
+			if held != (c.del == 0) {
+				t.Fatalf("Adresse liegt noch: %v", held)
+			}
+			if got := hasEvent(d, "Adresse 10.77.1.50 abgegeben"); got != (c.del == 1) {
+				t.Fatalf("Ereignis abgegeben: %v (%v)", got, eventTexts(d))
+			}
+		})
+	}
+}
+
+// Kein Arbeiter (Adresse aus): Dienstende tut nichts und hängt nicht.
+func TestDaemonAccessExitWithoutWorker(t *testing.T) {
+	d, f := accessDaemon(t, fakeCards("eth0=10.77.1.5/24"))
+	d.stopAccessOnExit()
+	if n := f.count("ip"); n != 0 {
+		t.Fatalf("ip aufgerufen: %v", f.calls)
+	}
+}
+
+// Reparatur in Dauerschleife (ein Netzwerkdienst entfernt die Adresse immer
+// wieder): Meldungen höchstens einmal je Stunde, gesetzt wird trotzdem jedes Mal.
+func TestAccessWorkerRepairDebounced(t *testing.T) {
+	f := &vipState{}
+	w := testWorker(t, f)
+	now := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	w.now = func() time.Time { return now }
+	ctx := context.Background()
+	w.set(true, ha.Active, 3)
+	w.step(ctx)
+	for i := 0; i < 5; i++ {
+		f.setHeld(false)
+		w.step(ctx)
+	}
+	if n := f.count(vipAdd); n != 6 {
+		t.Fatalf("ip addr add %d-mal statt sechsmal", n)
+	}
+	if n := workerEvents(w, "warn", "war nicht mehr gesetzt"); n != 1 {
+		t.Fatalf("Reparaturmeldung %d-mal statt einmal", n)
+	}
+	if n := workerEvents(w, "info", "Adresse 10.77.1.50 übernommen"); n != 2 {
+		t.Fatalf("übernommen %d-mal statt zweimal (Übernahme + eine Reparatur)", n)
+	}
+	now = now.Add(61 * time.Minute)
+	f.setHeld(false)
+	w.step(ctx)
+	if n := workerEvents(w, "warn", "war nicht mehr gesetzt"); n != 2 {
+		t.Fatalf("nach einer Stunde %d Reparaturmeldungen statt zwei", n)
+	}
+}
+
+// Wechselnder Erfolg und Fehlschlag: derselbe Alarm trotzdem höchstens einmal je Stunde.
+func TestAccessWorkerAlarmNotResetBySuccess(t *testing.T) {
+	f := &vipState{dup: true}
+	w := testWorker(t, f)
+	now := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	w.now = func() time.Time { return now }
+	ctx := context.Background()
+	setDup := func(b bool) {
+		f.mu.Lock()
+		f.dup = b
+		f.mu.Unlock()
+	}
+	const txt = "wird noch von einem anderen Gerät benutzt"
+	for i := 0; i < 3; i++ {
+		setDup(true)
+		w.set(true, ha.Active, 3)
+		w.step(ctx) // Duplikat → Alarm
+		setDup(false)
+		w.step(ctx) // gelingt
+		if !w.held() {
+			t.Fatalf("Runde %d: nicht übernommen", i)
+		}
+		w.set(false, ha.Passive, 4)
+		w.step(ctx) // abgegeben
+		now = now.Add(time.Minute)
+	}
+	if n := workerEvents(w, "alarm", txt); n != 1 {
+		t.Fatalf("Duplikat-Alarm %d-mal statt einmal", n)
+	}
+	if n := workerEvents(w, "info", "übernommen"); n != 3 {
+		t.Fatalf("übernommen %d-mal statt dreimal (echte Übernahmen bleiben sichtbar)", n)
+	}
+}
