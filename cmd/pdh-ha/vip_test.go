@@ -96,7 +96,9 @@ func TestVIPTake(t *testing.T) {
 		"ip -o -4 addr show dev eth0",
 		"arping -D -c 2 -w 3 -I eth0 10.77.1.50",
 		"ip addr add 10.77.1.50/24 dev eth0",
+		"arping -A -c 2 -I eth0 10.77.1.50",
 		"arping -U -c 3 -I eth0 10.77.1.50",
+		"arping -A -c 2 -I eth0 10.77.1.50",
 		"arping -U -c 3 -I eth0 10.77.1.50",
 	}
 	got := f.got()

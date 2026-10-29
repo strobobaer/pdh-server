@@ -102,6 +102,9 @@ func (v *vipCtl) probeLocked(ctx context.Context, ip netip.Addr) error {
 
 // Take legt die Adresse auf die Karte (nach Duplikat-Prüfung) und meldet sie
 // per Gratuitous ARP; eine zweite Runde folgt nach 5 s im Hintergrund.
+// Gemeldet wird als Antwort (-A) und als Anfrage (-U): Windows schreibt einen
+// noch gültigen Eintrag nur bei der Antwort um (gemessen im Testverbund, WLAN-
+// Client) – sonst hinge es bis zu ~30 s am alten Server. Linux nimmt beides.
 func (v *vipCtl) Take(ctx context.Context) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -119,24 +122,38 @@ func (v *vipCtl) Take(ctx context.Context) error {
 		}
 		return fmt.Errorf("Adresse %s setzen: %w", v.cidr(), err)
 	}
-	announce := []string{"arping", "-U", "-c", "3", "-I", v.iface, v.vip.Addr().String()}
-	if _, err := v.r.Run(ctx, announce, nil, nil); err != nil {
-		if m := toolMissing("arping", err); m != nil {
-			return m
-		}
-		// die Adresse liegt schon an – die Ankündigung ist nur Zugabe
+	if err := v.announce(ctx); err != nil {
+		return err
 	}
 	// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take).
 	// Ohne Halteprüfung davor: Wurde die Adresse in den 5 s abgegeben, scheitert
-	// iputils-arping -U am bind auf die nicht mehr lokale Adresse (Ausgang 2)
+	// iputils-arping -A/-U am bind auf die nicht mehr lokale Adresse (Ausgang 2)
 	// und kündigt nichts an – gilt für iputils-arping ohne ip_nonlocal_bind.
 	// Mit der Habets-Variante oder net.ipv4.ip_nonlocal_bind=1 vorher Has prüfen.
 	go func() {
 		v.sleep(5 * time.Second)
 		bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, _ = v.r.Run(bg, announce, nil, nil)
+		_ = v.announce(bg)
 	}()
+	return nil
+}
+
+// announce meldet die Adresse per Gratuitous ARP, erst als Antwort, dann als
+// Anfrage. Nur ein fehlendes arping ist ein Fehler – die Adresse liegt schon
+// an, die Ankündigung ist Zugabe.
+func (v *vipCtl) announce(ctx context.Context) error {
+	ip := v.vip.Addr().String()
+	for _, argv := range [][]string{
+		{"arping", "-A", "-c", "2", "-I", v.iface, ip},
+		{"arping", "-U", "-c", "3", "-I", v.iface, ip},
+	} {
+		if _, err := v.r.Run(ctx, argv, nil, nil); err != nil {
+			if m := toolMissing("arping", err); m != nil {
+				return m
+			}
+		}
+	}
 	return nil
 }
 
