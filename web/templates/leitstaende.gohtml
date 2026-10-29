@@ -24,6 +24,9 @@
 .lsm-b .lk{grid-column:2;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px}
 .lsm-b .opts .cfg-url{flex:1 1 320px;min-width:0}
 .lsm-b .opts .cfg-num{width:80px}
+.lsm-gf{display:flex;flex-direction:column;gap:4px;max-width:640px}
+.lsm-gfi{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);font-size:13px}
+.lsm-gfi .grip{cursor:grab;color:var(--muted)}
 .lsm-link{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .lsm-link input{flex:1 1 320px;min-width:0;font-family:ui-monospace,monospace;font-size:12.5px}
 .lsm-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -109,6 +112,18 @@
         <select class="form-input" id="lsm-next" name="rotate_next"><option value="">– keiner –</option>{{$id := .ID}}{{$next := .RotateNext}}{{range $.Boards}}{{if ne .ID $id}}<option value="{{.ID}}" {{if eq .ID $next}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select>
         <div class="help">Mehrere Leitstände im Kreis: jeweils den nächsten eintragen.</div></div>
     </div>
+    {{if or $.Grafana $.GrafanaNew}}
+    <div class="form-group" style="margin-top:6px"><label class="form-label">Dazwischen Grafana-Dashboards zeigen</label>
+      <div class="help" style="margin-bottom:6px">Ablauf: dieser Leitstand → die angekreuzten Dashboards (je gleich lange, an der Griffleiste in die Reihenfolge ziehen) → der nächste Leitstand, ohne nächsten wieder dieser. Grafana braucht am Bildschirm eine Anmeldung mit dem Recht „Statistik ansehen“.</div>
+      <div class="lsm-gf" id="lsm-gf">
+        {{$sel := .RotateGrafana}}
+        {{range $id := $sel}}{{range $.Grafana}}{{if eq .ID $id}}<label class="lsm-gfi"><i class="ti ti-grip-vertical grip" aria-hidden="true"></i><input type="checkbox" name="rotate_grafana" value="{{.ID}}" checked> <i class="ti {{.Icon}}"></i> {{.Title}}</label>{{end}}{{end}}{{end}}
+        {{range $.Grafana}}{{$on := false}}{{$gid := .ID}}{{range $sel}}{{if eq . $gid}}{{$on = true}}{{end}}{{end}}{{if not $on}}<label class="lsm-gfi"><i class="ti ti-grip-vertical grip" aria-hidden="true"></i><input type="checkbox" name="rotate_grafana" value="{{.ID}}"> <i class="ti {{.Icon}}"></i> {{.Title}}</label>{{end}}{{end}}
+        {{range $.GrafanaNew}}<label class="lsm-gfi"><i class="ti ti-grip-vertical grip" aria-hidden="true"></i><input type="checkbox" name="rotate_grafana" value="new:{{.UID}}"> <i class="ti ti-sparkles"></i> {{.Title}}{{if .Folder}} <small class="lsm-sub">({{.Folder}})</small>{{end}} <span class="lsm-tag">neu in Grafana</span></label>{{end}}
+      </div>
+      {{if $.GrafanaNew}}<div class="help">„neu in Grafana“: dort angelegt, noch nicht in der Statistik – angekreuzt und gespeichert wird es dort automatisch übernommen.</div>{{end}}
+    </div>
+    {{end}}
   </div>
 
   {{if not $.IsNew}}
@@ -151,10 +166,12 @@
     <button type="button" class="btn-icon rm" title="Baustein entfernen" aria-label="Baustein entfernen"><i class="ti ti-x"></i></button>
   </div>
 </template>
+<template id="lsm-doc-tpl">{{template "doc-picker" (dict "Cfg" false "IDs" "" "Every" "" "Height" "" "HeightDefault" 420 "Class" "cfg-docs" "EveryClass" "cfg-num cfg-every" "HeightClass" "cfg-num cfg-dh")}}</template>
 {{end}}{{end}}
 {{end}}
 
 {{define "scripts"}}{{if .Edit}}
+{{template "doc-view-js"}}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
 const LSM_DEFS = {{.BlockDefs}};
@@ -190,6 +207,13 @@ function lsmItem(b){
     o.querySelector('.cfg-url').value = c.url || ''; o.querySelector('.cfg-h').value = c.height || ''; o.querySelector('.cfg-r').value = c.reload || '';
     el.appendChild(o);
   }
+  if(d.Config === 'docs'){
+    // Baustein „Dokumente“: Dateien hochladen, Reihenfolge, Wechselzeit, Höhe
+    const c = b.config || {}, box = document.getElementById('lsm-doc-tpl').content.firstElementChild.cloneNode(true);
+    box.style.gridColumn = '2';
+    box.querySelector('.cfg-docs').value = c.docs || ''; box.querySelector('.cfg-every').value = c.every || ''; box.querySelector('.cfg-dh').value = c.height || '';
+    el.appendChild(box); pdhDocPicker(box);
+  }
   el.querySelector('.rm').addEventListener('click', () => { el.remove(); lsmSync(); });
   return el;
 }
@@ -210,6 +234,7 @@ function lsmSubmit(){
     const tt = el.querySelector('.tt').value.trim(); if(tt) b.config.title = tt;
     const ta = el.querySelector('.cfg-text'); if(ta) b.config.text = ta.value;
     const u = el.querySelector('.cfg-url'); if(u){ b.config.url = u.value.trim(); b.config.height = el.querySelector('.cfg-h').value; b.config.reload = el.querySelector('.cfg-r').value; }
+    const dk = el.querySelector('.cfg-docs'); if(dk){ b.config.docs = dk.value; b.config.every = el.querySelector('.cfg-every').value; b.config.height = el.querySelector('.cfg-dh').value; }
     const lk = el.querySelector('.lk'); if(lk) b.config.boards = [...lk.querySelectorAll('input:checked')].map(c => c.value).join(',');
     return b;
   });
@@ -236,6 +261,7 @@ lsmSync();
   });
 })();
 if(window.Sortable) Sortable.create(lsmList, {handle: '.grip', animation: 150});
+if(window.Sortable && document.getElementById('lsm-gf')) Sortable.create(document.getElementById('lsm-gf'), {handle: '.grip', animation: 150});
 // Adresse aus dem Namen vorschlagen (nur bei neuem Leitstand)
 {{if .IsNew}}(function(){
   const name = document.getElementById('lsm-name'), slug = document.getElementById('lsm-slug');

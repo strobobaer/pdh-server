@@ -94,13 +94,15 @@ type GlobalDashboardPageData struct {
 	DefaultDueDaysTicket      int
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
-	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
-	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
-	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
-	PaletteID                 string        // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
-	StyleID                   string        // Design-Stil: immer der Firmenstandard (ui_style.go)
-	Kiosk                     bool          // ?kiosk=1: nur Inhalt, ohne Kopf und Knöpfe (Hallenbildschirm)
-	Fullscreen                bool          // ?fs=1: beim Öffnen Vollbild anfordern
+	Timeline                  TimelineStyle     // Zeitstrahl-Darstellung aus dem Theming
+	Row                       int               // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
+	ThemeCSS                  template.CSS      // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
+	PaletteID                 string            // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
+	StyleID                   string            // Design-Stil: immer der Firmenstandard (ui_style.go)
+	Kiosk                     bool              // ?kiosk=1: nur Inhalt, ohne Kopf und Knöpfe (Hallenbildschirm)
+	Fullscreen                bool              // ?fs=1: beim Öffnen Vollbild anfordern
+	Stop                      *grafanaDashboard // ?stop=N: Grafana-Station beim Weiterblättern (leitstand_grafana.go)
+	RotateHref, RotateName    string            // nächste Station beim Weiterblättern
 }
 
 // queryFlag: ?name=1|true|ja (Direktlink zum Leitstand).
@@ -166,6 +168,7 @@ type boardBlockView struct {
 	URL    string
 	FrameH int
 	Reload int
+	Doc    docView // Baustein „Dokumente“
 }
 
 func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board *leitstand) {
@@ -207,6 +210,15 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 		Kiosk:                     queryFlag(r, "kiosk"),
 		Fullscreen:                queryFlag(r, "fs"),
 	}
+	stops := h.grafanaStops(r, board)
+	stop, _ := strconv.Atoi(r.URL.Query().Get("stop"))
+	if stop < 1 || stop > len(stops) {
+		stop = 0
+	} else {
+		data.Stop = &stops[stop-1]
+		data.Subtitle = "Statistik: " + data.Stop.Title
+	}
+	data.RotateHref, data.RotateName = leitstandRotation(r, board, stops, stop)
 	for _, b := range h.listLeitstaende(ctx) {
 		if b.Active || b.IsDefault {
 			data.Boards = append(data.Boards, b)
@@ -230,6 +242,9 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 				v.FrameH = 480
 			}
 			v.Reload, _ = strconv.Atoi(bl.Config["reload"])
+		}
+		if bl.Type == "dokumente" {
+			v.Doc = h.docViewFor(ctx, bl.Config, 420)
 		}
 		if bl.Type == "links" {
 			for _, slug := range strings.Split(bl.Config["boards"], ",") {

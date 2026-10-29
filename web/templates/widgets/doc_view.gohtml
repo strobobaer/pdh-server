@@ -1,0 +1,156 @@
+{{/*
+  doc-view: Bilder, PDF, Word und Excel anzeigen – Widget und Leitstand-Baustein
+  „Dokumente“ (display_docs.go). Mehrere Dateien wechseln sich ab.
+  doc-view-js: Betrachter (Word per mammoth, Excel per SheetJS, erst bei Bedarf
+  geladen) und die Dateiauswahl in den Einstellungen (pdhDocPicker).
+*/}}
+{{define "doc-view"}}
+{{if .Docs}}<div class="dv" style="height:{{.Height}}px" data-every="{{.Every}}">
+  {{range $i, $d := .Docs}}<div class="dv-item{{if eq $i 0}} on{{end}}" data-kind="{{.Kind}}" data-src="{{.URL}}" data-name="{{.Name}}"></div>{{end}}
+  <div class="dv-bar"><span class="dv-name"></span>
+    {{if gt (len .Docs) 1}}<button type="button" class="dv-btn dv-prev" title="Vorige Datei" aria-label="Vorige Datei">‹</button><span class="dv-pos"></span><button type="button" class="dv-btn dv-next" title="Nächste Datei" aria-label="Nächste Datei">›</button>{{end}}
+    <a class="dv-btn dv-open" target="_blank" rel="noopener" title="Datei öffnen bzw. herunterladen" aria-label="Datei öffnen">↗</a></div>
+</div>
+<script>if(window.pdhDocViewBoot) pdhDocViewBoot();</script>
+{{else}}<div class="dv-empty">Noch keine Dateien – in den Einstellungen hochladen.</div>{{end}}
+{{end}}
+
+{{define "doc-view-js"}}
+<style>
+.dv{position:relative;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg2,var(--surface))}
+.dv-item{display:none;flex:1;min-height:0;overflow:auto}
+.dv-item.on{display:block}
+.dv-item img{display:block;width:100%;height:100%;object-fit:contain}
+.dv-item iframe{display:block;width:100%;height:100%;border:0;background:#fff}
+.dv-doc{padding:16px 20px;background:#fff;color:#1d2d3e;font-size:15px;line-height:1.45;min-height:100%}
+.dv-doc img{max-width:100%}
+.dv-doc table{border-collapse:collapse}.dv-doc td,.dv-doc th{border:1px solid #ccc;padding:3px 6px}
+.dv-sheet table{border-collapse:collapse;font-size:15px;background:var(--surface,#fff);color:var(--text)}
+.dv-sheet td,.dv-sheet th{border:1px solid var(--border);padding:4px 8px;white-space:nowrap}
+.dv-sheet tr:first-child td{font-weight:700;background:var(--bg3,var(--bg2));position:sticky;top:0}
+.dv-msg{padding:20px;color:var(--muted);font-size:14px}
+.dv-bar{display:flex;align-items:center;gap:6px;padding:4px 8px;border-top:1px solid var(--border);background:var(--bg3,var(--bg2));font-size:12px;color:var(--muted)}
+.dv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dv-btn{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);text-decoration:none;cursor:pointer;font:inherit;font-size:14px}
+.dv-btn:hover{border-color:var(--accent);color:var(--accent)}
+.dv-empty{color:var(--muted);font-size:13px;padding:10px}
+.dp{display:flex;flex-direction:column;gap:6px}
+.dp-list{display:flex;flex-direction:column;gap:4px}
+.dp-it{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg3,var(--bg2));font-size:12.5px}
+.dp-it span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-it button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px}
+.dp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.dp-row input[type=number]{width:80px}
+.dp-st{font-size:12px;color:var(--muted)}
+</style>
+<script>
+(function(){
+  if(window.pdhDocViewBoot) return;
+  const libs = {};
+  function lib(url, name){
+    if(window[name]) return Promise.resolve(window[name]);
+    return libs[url] || (libs[url] = new Promise((ok, bad) => { const s = document.createElement('script'); s.src = url; s.onload = () => ok(window[name]); s.onerror = () => bad(new Error('Bibliothek nicht erreichbar')); document.head.appendChild(s); }));
+  }
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // eine Datei darstellen (erst, wenn sie gezeigt wird)
+  async function render(it){
+    if(it.dataset.done) return; it.dataset.done = '1';
+    const src = it.dataset.src, kind = it.dataset.kind;
+    try{
+      if(kind === 'image'){ const i = document.createElement('img'); i.src = src; i.alt = it.dataset.name; it.appendChild(i); return; }
+      if(kind === 'pdf'){ const f = document.createElement('iframe'); f.src = src + '#view=FitH&toolbar=0'; f.title = it.dataset.name; it.appendChild(f); return; }
+      if(kind === 'docx'){
+        const [m, buf] = await Promise.all([lib('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js', 'mammoth'), fetch(src).then(r => r.arrayBuffer())]);
+        const res = await m.convertToHtml({arrayBuffer: buf});
+        const d = document.createElement('div'); d.className = 'dv-doc'; d.innerHTML = res.value; // mammoth erzeugt nur einfaches HTML ohne Skripte
+        d.querySelectorAll('script,iframe,object').forEach(x => x.remove());
+        it.appendChild(d); return;
+      }
+      if(kind === 'sheet'){
+        const [X, buf] = await Promise.all([lib('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', 'XLSX'), fetch(src).then(r => r.arrayBuffer())]);
+        const wb = X.read(buf, {type: 'array'});
+        const d = document.createElement('div'); d.className = 'dv-sheet';
+        d.innerHTML = X.utils.sheet_to_html(wb.Sheets[wb.SheetNames[0]], {header: '', footer: ''});
+        d.querySelectorAll('script').forEach(x => x.remove());
+        it.appendChild(d); return;
+      }
+      it.innerHTML = '<div class="dv-msg">Für „' + esc(it.dataset.name) + '“ gibt es keine Vorschau – mit ↗ öffnen.</div>';
+    }catch(e){ it.innerHTML = '<div class="dv-msg">„' + esc(it.dataset.name) + '“ kann nicht angezeigt werden (' + esc(e.message) + ') – mit ↗ öffnen.</div>'; }
+  }
+  function show(box, i){
+    const items = [...box.querySelectorAll('.dv-item')]; if(!items.length) return;
+    i = (i + items.length) % items.length; box._i = i;
+    items.forEach((x, k) => x.classList.toggle('on', k === i));
+    render(items[i]);
+    box.querySelector('.dv-name').textContent = items[i].dataset.name;
+    box.querySelector('.dv-open').href = items[i].dataset.src;
+    const pos = box.querySelector('.dv-pos'); if(pos) pos.textContent = (i + 1) + ' / ' + items.length;
+  }
+  window.pdhDocViewBoot = function(){
+    document.querySelectorAll('.dv:not([data-booted])').forEach(box => {
+      box.dataset.booted = '1'; show(box, 0);
+      const n = box.querySelectorAll('.dv-item').length, every = +box.dataset.every || 20;
+      if(n > 1){
+        let paused = false; box.addEventListener('mouseenter', () => paused = true); box.addEventListener('mouseleave', () => paused = false);
+        box._t = setInterval(() => { if(!document.body.contains(box)) return clearInterval(box._t); if(!paused) show(box, box._i + 1); }, every * 1000);
+      }
+    });
+  };
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.dv .dv-prev, .dv .dv-next'); if(!b) return;
+    const box = b.closest('.dv'); show(box, box._i + (b.classList.contains('dv-next') ? 1 : -1));
+  });
+
+  // Dateiauswahl in den Einstellungen: el enthält ein verstecktes Feld .dp-ids
+  // (kommagetrennte IDs), daraus wird die Liste mit Entfernen und Hochladen.
+  window.pdhDocPicker = function(el){
+    if(!el || el.dataset.dpOn) return; el.dataset.dpOn = '1';
+    const ids = el.querySelector('.dp-ids'), list = el.querySelector('.dp-list'), st = el.querySelector('.dp-st'), file = el.querySelector('.dp-file');
+    let docs = [];
+    function draw(){
+      list.innerHTML = '';
+      docs.forEach((d, k) => {
+        const r = document.createElement('div'); r.className = 'dp-it';
+        r.innerHTML = '<i class="ti ' + ({image: 'ti-photo', pdf: 'ti-file-type-pdf', docx: 'ti-file-type-doc', sheet: 'ti-file-spreadsheet'}[d.kind] || 'ti-file') + '"></i><span></span>'
+          + '<button type="button" data-mv="-1" title="Nach oben" aria-label="Nach oben">↑</button><button type="button" data-rm title="Entfernen" aria-label="Entfernen">✕</button>';
+        r.querySelector('span').textContent = d.name;
+        r.querySelector('[data-rm]').onclick = () => { docs.splice(k, 1); sync(); };
+        r.querySelector('[data-mv]').onclick = () => { if(k > 0){ [docs[k - 1], docs[k]] = [docs[k], docs[k - 1]]; sync(); } };
+        list.appendChild(r);
+      });
+      if(!docs.length) list.innerHTML = '<div class="dp-st">Noch keine Dateien.</div>';
+    }
+    function sync(){ ids.value = docs.map(d => d.id).join(','); ids.dispatchEvent(new Event('input', {bubbles: true})); draw(); }
+    fetch('/display/docs?ids=' + encodeURIComponent(ids.value), {credentials: 'same-origin'}).then(r => r.json()).then(j => {
+      docs = j.docs || []; draw();
+      if(!j.canUpload){ file.closest('label').style.display = 'none'; st.textContent = 'Zum Hochladen fehlt das Recht „Dokumente für Dashboard und Leitstand hochladen“.'; }
+    }).catch(() => draw());
+    file.addEventListener('change', async () => {
+      if(!file.files.length) return;
+      const fd = new FormData(); [...file.files].forEach(f => fd.append('files', f));
+      st.textContent = 'Lädt hoch …';
+      try{
+        const r = await fetch('/display/upload', {method: 'POST', body: fd, credentials: 'same-origin'});
+        const j = await r.json().catch(() => ({}));
+        if(!r.ok || !j.success) throw new Error(j.error || ('HTTP ' + r.status));
+        docs = docs.concat(j.docs); sync(); st.textContent = j.docs.length + ' Datei(en) hochgeladen – zum Übernehmen speichern.';
+      }catch(e){ st.textContent = '⚠ ' + e.message; }
+      file.value = '';
+    });
+  };
+})();
+</script>
+{{end}}
+
+{{define "doc-picker"}}
+<div class="dp">
+  <input type="hidden" class="dp-ids {{.Class}}" {{if .Cfg}}data-cfg="docs"{{end}} value="{{.IDs}}">
+  <div class="dp-list"></div>
+  <div class="dp-row">
+    <label class="btn btn-small" style="cursor:pointer"><i class="ti ti-upload"></i> Dateien hinzufügen<input type="file" class="dp-file" multiple hidden accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.docx,.xlsx,.xls,.csv,image/*,application/pdf"></label>
+    <label>Wechsel alle <input class="form-input {{.EveryClass}}" type="number" min="5" max="3600" {{if .Cfg}}data-cfg="every"{{end}} value="{{.Every}}" placeholder="20"> s</label>
+    <label>Höhe <input class="form-input {{.HeightClass}}" type="number" min="150" max="2000" step="10" {{if .Cfg}}data-cfg="height"{{end}} value="{{.Height}}" placeholder="{{.HeightDefault}}"> px</label>
+  </div>
+  <div class="dp-st">Bilder, PDF, Word (.docx) und Excel (.xlsx, .xls, .csv), je bis 20 MB.</div>
+</div>
+{{end}}
