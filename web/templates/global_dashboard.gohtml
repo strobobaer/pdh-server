@@ -432,6 +432,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     {{if eq .Type "kennzahlen"}}<div class="ls-kpis" data-ls-kpis></div>
     {{else if eq .Type "stoerungen"}}<div class="ls-list" data-ls-list="fault"></div>
     {{else if eq .Type "wartung"}}<div class="ls-list" data-ls-list="maintenance"></div>
+    {{else if eq .Type "schichtplan"}}<div class="sg-box" data-sg-src="/global/shiftplan?b={{with $.Board}}{{.Slug}}{{else}}standard{{end}}"><span style="color:var(--muted);font-size:13px">Schichtplan lädt …</span></div>
     {{else if eq .Type "kalender"}}<div class="ls-calbox" data-ls-calbox><span style="color:var(--muted);font-size:13px">Kalender lädt …</span></div>
     {{else if eq .Type "hinweis"}}<div class="ls-note">{{index .Config "text"}}</div>
     {{else if eq .Type "links"}}<div class="ls-links">{{range .Links}}<a class="header-button" href="/global/b/{{.Slug}}">{{.Name}}</a>{{else}}<span style="color:var(--muted);font-size:13px">Keine anderen Leitstände ausgewählt.</span>{{end}}</div>
@@ -1428,6 +1429,8 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
 </script>
 {{template "grid-drag"}}
 {{template "calendar-js"}}
+{{template "shift-grid-js"}}
+<script>if(window.pdhShiftGridBoot){ pdhShiftGridBoot(); setInterval(pdhShiftGridReload, 300000); }</script>
 <script>
 // Baustein „Kalender“: derselbe Kalender wie unter Übersicht → Kalender, Auswahl oben im Baustein
 (function(){

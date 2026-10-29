@@ -66,6 +66,7 @@ var boardBlockDefs = []boardBlockDef{
 	{"kennzahlen", "Kennzahlen", "ti-chart-bar", "Offen je Art, überfällig, ohne Zuständigen", 4, false, ""},
 	{"stoerungen", "Aktuelle Störungen", "ti-alert-octagon", "Die neuesten offenen Störungen", 2, false, ""},
 	{"wartung", "Fällige Wartung", "ti-tool", "Wartungen, die heute fällig oder überfällig sind", 2, false, ""},
+	{"schichtplan", "Schichtplan", "ti-calendar-week", "Schichtplan wie im Planer: Schichten × Tage mit Namen, darunter Sonderdienste und Bereitschaft (mit Telefon) – Woche und Modell oben wählen", 4, false, ""},
 	{"kalender", "Kalender", "ti-calendar", "Kalender wie unter Übersicht → Kalender: Personen × Tage mit Schichten, Bereitschaft, Abwesenheit und fälligen Vorgängen, Auswahl oben im Baustein", 4, false, ""},
 	{"hinweis", "Hinweistext", "ti-info-circle", "Freier Text, z. B. Ansprechpartner, Schichtinfo oder Sicherheitshinweis", 2, false, "text"},
 	{"links", "Andere Leitstände", "ti-arrows-exchange", "Knöpfe, die andere Leitstände öffnen", 2, false, "boards"},
