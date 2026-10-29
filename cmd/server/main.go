@@ -378,6 +378,8 @@ func main() {
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Dauerverbindungen (EventSource) enden beim Beenden sofort (streams.go)
+	r.Use(webHandler.StreamsMiddleware)
 	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)
 	r.Use(webHandler.MirrorMiddleware)
 	// Aenderungshinweise (Bearbeiter merken), Stammdaten-Sperre, DELETE -> Loeschvormerkung
@@ -457,6 +459,8 @@ func main() {
 
 	srv := &http.Server{Addr: addr, Handler: r,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 120 * time.Second}
+	// Shutdown wartet nicht auf offene Browser-Tabs (Chat-Stream), sonst bis 30 s
+	srv.RegisterOnShutdown(webHandler.CloseStreams)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

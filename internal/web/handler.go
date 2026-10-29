@@ -300,6 +300,8 @@ type Handler struct {
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
 	toolAct          toolActivity // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
+	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
+	closeStreams     context.CancelFunc // beendet streams
 }
 
 func NewHandler(
@@ -336,6 +338,7 @@ func NewHandler(
 		importPoll:  scheduler.NewIntervalManager(),
 	}
 	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
+	h.streams, h.closeStreams = context.WithCancel(context.Background())
 	return h
 }
 

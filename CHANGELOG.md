@@ -31,6 +31,9 @@ im Kapitel „Versionen & Updates“ an.
 - Die mitwandernde Adresse wird nach einem Wechsel auch als ARP-Antwort angekündigt: Windows-Rechner (z. B. im WLAN) erreichen den neuen Server nach etwa 10 Sekunden statt erst nach bis zu 30.
 - Der Adresstest gibt jedem Teilnehmer bis zu 15 Sekunden, die Prüfadresse zu erreichen – so besteht er auch mit einem Zeugen auf einem Windows-PC, der den neuen Halter erst nach kurzer Rückfrage annimmt.
 
+### Behoben
+- Rollentausch, Update und Neustart: Das PDH beendet sich sofort, statt bis zu 30 Sekunden auf offene Browser-Seiten (Chat-Verbindung) zu warten – ein Rollentausch im Ausfallschutz dauert dadurch nur noch wenige Sekunden statt über eine halbe Minute.
+
 ### Sicherheit
 - Skripte beim Rollenwechsel laufen nur, wenn der Ordner `/etc/pdh/ha-hooks` root gehört und nicht für Gruppe oder andere schreibbar ist; Verknüpfungen im Ordner werden einmal gemeldet und nie ausgeführt.
 
