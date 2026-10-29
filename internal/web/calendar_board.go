@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -58,8 +59,15 @@ type calCell struct {
 	Warn     string // gelb: Auftrag ohne Schicht
 }
 
+// calWeek: Kopf je Kalenderwoche.
+type calWeek struct {
+	Label, Range string
+	Current      bool
+}
+
 type calRow struct {
 	UserID, Name, Dept string
+	URL                string // Projektzeile: Link zum Projekt
 	Cells              []calCell
 	Conflicts          int
 	busy               bool
@@ -84,6 +92,9 @@ type CalendarData struct {
 	Counts            map[string]int
 	LoadErrors        []string // Arten, die nicht geladen werden konnten (statt still zu fehlen)
 	Embed             bool     // als Baustein im Leitstand (/global/calendar)
+	ThisWeek          string   // Montag der laufenden Woche
+	Weeks             []calWeek
+	ProjectRows       []calRow // Projekte ganz oben, ohne Personen-Zuordnung
 	Board             string   // Leitstand-Adresse im Baustein
 }
 
@@ -167,20 +178,27 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	if embed {
 		d.Board = board.Slug
 	}
+	// immer ganze Wochen ab Montag (1–6 Wochen)
 	d.Range = atoiDefault(q.Get("days"), 14)
-	if d.Range < 1 || d.Range > 62 {
+	if d.Range < 7 || d.Range > 42 {
 		d.Range = 14
 	}
+	d.Range = (d.Range + 6) / 7 * 7
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	from := today
+	from := mondayOf(today)
 	if t, err := time.ParseInLocation(dayISO, q.Get("from"), time.Local); err == nil {
-		from = t
+		from = mondayOf(t)
 	}
+	d.ThisWeek = mondayOf(today).Format(dayISO)
 	to := from.AddDate(0, 0, d.Range-1)
 	d.From, d.Today = from.Format(dayISO), today.Format(dayISO)
 	d.Prev, d.Next = from.AddDate(0, 0, -d.Range).Format(dayISO), from.AddDate(0, 0, d.Range).Format(dayISO)
 	d.Label = from.Format("02.01.") + " – " + to.Format("02.01.2006")
+	for w := from; w.Before(to); w = w.AddDate(0, 0, 7) {
+		_, kw := w.ISOWeek()
+		d.Weeks = append(d.Weeks, calWeek{Label: fmt.Sprintf("KW %d", kw), Range: w.Format("02.01.") + " – " + w.AddDate(0, 0, 6).Format("02.01."), Current: w.Format(dayISO) == d.ThisWeek})
+	}
 	if shows := q["show"]; len(shows) > 0 {
 		for _, s := range shows {
 			d.Show[s] = true
@@ -348,12 +366,13 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 	// Sonderdienste (planner_duties.go)
 	if d.Show["duty"] && (h.canPlannerView(r) || embed) {
 		canDuty := h.hasPerm(r, permDuties)
-		if rs, err := h.db.Query(ctx, `SELECT a.user_id::text, a.duty_type_id::text, a.date, t.name, t.short_name, t.color, t.qualification
-			FROM duty_assignments a JOIN duty_types t ON t.id = a.duty_type_id WHERE a.date BETWEEN $1 AND $2`, from, to); err == nil {
+		if rs, err := h.db.Query(ctx, `SELECT a.user_id::text, a.duty_type_id::text, a.date, t.name, t.short_name, t.color, t.qualification,
+				CASE WHEN t.show_phone THEN `+userPhoneSQL+` ELSE '' END
+			FROM duty_assignments a JOIN duty_types t ON t.id = a.duty_type_id JOIN users u ON u.id = a.user_id WHERE a.date BETWEEN $1 AND $2`, from, to); err == nil {
 			for rs.Next() {
-				var uid, tid, name, short, color, qual string
+				var uid, tid, name, short, color, qual, phone string
 				var day time.Time
-				if rs.Scan(&uid, &tid, &day, &name, &short, &color, &qual) != nil {
+				if rs.Scan(&uid, &tid, &day, &name, &short, &color, &qual, &phone) != nil {
 					continue
 				}
 				c := cellOf(uid, day)
@@ -367,6 +386,10 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 				ch.Title, ch.URL, ch.Tip = firstNonEmpty(short, name), "/planner?tab=shifts&week="+mondayOf(day).Format(dayISO), name
 				if qual != "" {
 					ch.Tip += " · " + qual
+				}
+				if phone != "" {
+					ch.Title += " · " + phone
+					ch.Tip += " · Tel. " + phone
 				}
 				if canDuty {
 					ch.Drag, ch.Row = "duty", tid
@@ -477,30 +500,25 @@ func (h *Handler) buildCalendar(r *http.Request, board *leitstand) CalendarData 
 				if rs.Scan(&id, &name, &a, &b, &ppl) != nil {
 					continue
 				}
-				if len(ppl) == 0 {
-					ppl = []string{""}
-				}
-				seen := map[string]bool{}
-				for _, uid := range ppl {
-					if seen[uid] {
+				_ = ppl
+				// je Projekt eine eigene Zeile ganz oben – ohne Personen-Zuordnung
+				row := calRow{Name: name, URL: "/projects/" + id, Cells: make([]calCell, len(d.Days))}
+				first := true
+				for i, day := range d.Days {
+					row.Cells[i] = calCell{Date: day.Date, Weekend: day.Weekend, Holiday: day.Holiday, Today: day.Today}
+					t := mustDate(day.Date)
+					if t.Before(a) || t.After(b) {
 						continue
 					}
-					seen[uid] = true
-					first := true
-					for t := a; !t.After(b); t = t.AddDate(0, 0, 1) {
-						c := cellOf(uid, t)
-						if c == nil {
-							continue
-						}
-						ch := calChipFor(calKindByKey("project"))
-						ch.Title, ch.URL = name, "/projects/"+id
-						ch.Tip = "Projekt: " + name + " · " + a.Format("02.01.") + " – " + b.Format("02.01.2006")
-						ch.SpanStart, ch.SpanMid = first, !first
-						first = false
-						c.Items = append(c.Items, ch)
-					}
-					d.Counts["project"]++
+					ch := calChipFor(calKindByKey("project"))
+					ch.Title, ch.URL = name, "/projects/"+id
+					ch.Tip = "Projekt: " + name + " · " + a.Format("02.01.") + " – " + b.Format("02.01.2006")
+					ch.SpanStart, ch.SpanMid = first, !first
+					first = false
+					row.Cells[i].Items = append(row.Cells[i].Items, ch)
 				}
+				d.ProjectRows = append(d.ProjectRows, row)
+				d.Counts["project"]++
 			}
 			rs.Close()
 		}

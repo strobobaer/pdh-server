@@ -42,7 +42,9 @@
 .pl-grid .sh{width:150px;padding:8px;text-align:left;border-left:5px solid var(--sc,#3B82F6);background:var(--bg2)}
 .pl-grid .sh b{display:block;font-size:13px}
 .pl-grid .sh small{color:var(--muted);font-size:11px}
-.pl-cell{padding:5px;min-height:62px;height:62px}
+.pl-cell{padding:5px;min-height:var(--pl-h,62px);height:var(--pl-h,62px)}
+.pl-grid.pl-auto .pl-cell{height:auto;min-height:44px}
+.pl-chip .pl-ph{display:block;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pl-cell.click{cursor:pointer}
 .pl-cell.click:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .pl-cell.under{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--red) 55%,transparent)}
@@ -135,7 +137,7 @@
           {{range $ci, $c := $row.Cells}}{{$day := index $.Days $ci}}
           <td class="pl-cell pl-duty{{if $.CanDuties}} click{{end}}{{if $c.Under}} under{{end}}{{if $day.Weekend}} wkend{{end}}{{if $day.Holiday}} holi{{end}}" style="--sc:{{css $row.Type.Color}}"
               {{if $.CanDuties}}data-kind="duty" data-row="{{$row.Type.ID}}" data-date="{{$day.Date}}" data-shift-name="{{$row.Type.Name}}" data-day-label="{{$day.Short}} {{$day.Label}}" data-qual="{{$row.Type.Qualification}}" data-qualified="{{range $i, $q := $row.Qualified}}{{if $i}},{{end}}{{$q}}{{end}}" data-people="{{range $i, $p := $c.People}}{{if $i}},{{end}}{{$p.ID}}{{end}}" tabindex="0" role="button" aria-label="{{$row.Type.Name}} am {{$day.Short}} {{$day.Label}} einteilen"{{end}}>
-            {{range $c.People}}<span class="pl-chip" data-user="{{.ID}}" title="{{.Name}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}</span>{{end}}
+            {{range $c.People}}<span class="pl-chip" data-user="{{.ID}}" title="{{.Name}}{{if .Phone}} · {{.Phone}}{{end}}{{if .Note}} – {{.Note}}{{end}}">{{.Name}}{{if .Phone}}<small class="pl-ph"><i class="ti ti-phone"></i> {{.Phone}}</small>{{end}}</span>{{end}}
             {{if $row.Type.MinStaff}}<span class="pl-count{{if $c.Under}} bad{{end}}">{{len $c.People}}/{{$row.Type.MinStaff}}</span>
             {{else if and $.CanDuties (not $c.People)}}<span class="pl-add"><i class="ti ti-plus"></i></span>{{end}}
           </td>
@@ -148,6 +150,7 @@
     </div>
     <div class="rec-sub" style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
       {{if or .CanPlan .CanDuties}}<span><i class="ti ti-hand-click"></i> Feld anklicken = einteilen · Name ziehen = verschieben (Strg = kopieren) · am rechten Rand ziehen = über weitere Tage</span>
+      <label style="display:inline-flex;gap:6px;align-items:center">Feldhöhe <select class="form-input" id="pl-height" style="width:auto;padding:4px 6px;font-size:12px" aria-label="Höhe der Namensfelder"><option value="44">Klein</option><option value="62">Normal</option><option value="96">Groß</option><option value="140">Sehr groß</option><option value="auto">Automatisch</option></select></label>
       <button type="button" class="btn btn-small" id="pl-copy" aria-pressed="false" title="Ziehen kopiert statt zu verschieben (für Tablet ohne Strg-Taste)"><i class="ti ti-copy"></i> Kopieren</button>{{end}}
       <span><span class="sw" style="box-shadow:inset 0 0 0 2px var(--red)"></span>Mindestbesetzung unterschritten</span>
       {{if .DraftCount}}<span><span class="pl-chip draft" style="display:inline-block;margin:0">Entwurf</span> {{.DraftCount}} Einteilung(en) aus unveröffentlichten Plänen – nur für Planende sichtbar</span>{{end}}
@@ -264,6 +267,11 @@
       from_date: from.dataset.date, from_row: from.dataset.row, to_date: to.dataset.date, to_row: to.dataset.row, copy: copy}),
     onFill: (ch, from, cells) => pdhGridPost('/planner/grid/fill', {kind: from.dataset.kind, user_id: ch.dataset.user,
       from_date: cells[0].dataset.date, to_date: cells[cells.length - 1].dataset.date, from_row: from.dataset.row})});
+  // Feldhöhe der Namensfelder (im Browser gemerkt)
+  const hs = document.getElementById('pl-height');
+  const setH = v => { grid.classList.toggle('pl-auto', v === 'auto'); grid.style.setProperty('--pl-h', v === 'auto' ? '44px' : v + 'px'); };
+  if(hs){ let v = '62'; try{ v = localStorage.getItem('pdh_pl_h') || '62'; }catch(e){} hs.value = v; setH(v);
+    hs.addEventListener('change', () => { setH(hs.value); try{ localStorage.setItem('pdh_pl_h', hs.value); }catch(e){} }); }
   const cb = document.getElementById('pl-copy');
   if(cb) cb.addEventListener('click', () => { const on = cb.getAttribute('aria-pressed') !== 'true'; cb.setAttribute('aria-pressed', on); cb.classList.toggle('dg-copy-on', on); drag.setCopy(on); });
 })();
@@ -638,7 +646,7 @@
   <div class="card-title"><span><i class="ti ti-star"></i> Sonderdienste, Bereitschaft &amp; Zusatzaufgaben</span><span class="rec-sub">erscheinen im Schichtplan unter den Schichten</span></div>
   <datalist id="du-quals">{{range $s.QualTitles}}<option value="{{.}}">{{end}}</datalist>
   <div style="overflow-x:auto"><table class="du-t">
-    <thead><tr><th colspan="9" style="padding:0"><div class="du-row du-h"><span>Name</span><span>Kürzel</span><span>Art</span><span>Nötige Qualifikation (Personalstamm)</span><span>Min.</span><span>Farbe</span><span>Reihenf.</span><span>Aktiv</span><span></span></div></th></tr></thead>
+    <thead><tr><th colspan="9" style="padding:0"><div class="du-row du-h"><span>Name</span><span>Kürzel</span><span>Art</span><span>Nötige Qualifikation (Personalstamm)</span><span>Min.</span><span>Farbe</span><span>Reihenf.</span><span>Aktiv · Tel.</span><span></span></div></th></tr></thead>
     <tbody>
     {{range $s.DutyTypes}}
     <tr><td colspan="9" style="padding:0"><form method="post" action="/planner/duty-types/{{.ID}}" class="du-row">
@@ -649,7 +657,7 @@
       <input class="form-input" name="min_staff" value="{{.MinStaff}}" type="number" min="0" aria-label="Mindestbesetzung">
       <input name="color" type="color" value="{{.Color}}" aria-label="Farbe">
       <input class="form-input" name="sort_order" value="{{.Sort}}" type="number" aria-label="Reihenfolge">
-      <label><input type="checkbox" name="active" {{if .Active}}checked{{end}}> aktiv</label>
+      <span style="display:flex;flex-direction:column;gap:2px;font-size:11.5px"><label><input type="checkbox" name="active" {{if .Active}}checked{{end}}> aktiv</label><label title="Telefonnummer der eingeteilten Person mit anzeigen"><input type="checkbox" name="show_phone" {{if .ShowPhone}}checked{{end}}> <i class="ti ti-phone"></i> Telefon</label></span>
       <span style="display:flex;gap:4px"><button class="btn btn-small" type="submit" title="Speichern"><i class="ti ti-check"></i></button>
       <button class="btn btn-small" type="submit" formaction="/planner/duty-types/{{.ID}}/delete" onclick="return confirm('Dienstart {{.Name}} löschen? Mit Einteilungen wird sie nur abgeschaltet.')" title="Löschen{{if .Used}} ({{.Used}} Einteilungen – wird abgeschaltet){{end}}"><i class="ti ti-trash"></i></button></span>
     </form></td></tr>
@@ -662,18 +670,18 @@
       <input class="form-input" name="min_staff" value="0" type="number" min="0" aria-label="Mindestbesetzung">
       <input name="color" type="color" value="#F59E0B" aria-label="Farbe">
       <input class="form-input" name="sort_order" value="10" type="number" aria-label="Reihenfolge">
-      <span></span>
+      <label style="font-size:11.5px" title="Telefonnummer der eingeteilten Person mit anzeigen"><input type="checkbox" name="show_phone"> <i class="ti ti-phone"></i> Telefon</label>
       <button class="btn btn-small btn-primary" type="submit"><i class="ti ti-plus"></i> Anlegen</button>
     </form></td></tr>
     </tbody>
   </table></div>
-  <p class="rec-sub">Ist eine Qualifikation eingetragen, bietet der Schichtplan nur Personen an, die sie im Personalstamm (Benutzer → Nachweise) haben und deren Nachweis am Tag noch gilt.</p>
+  <p class="rec-sub"><i class="ti ti-phone"></i> <b>Telefon</b>: Bei der Einteilung steht die Nummer der Person mit dabei (dienstliches Handy, sonst Durchwahl, sonst Telefon aus dem Benutzer) – im Schichtplan, im Kalender und im Leitstand.<br>Ist eine Qualifikation eingetragen, bietet der Schichtplan nur Personen an, die sie im Personalstamm (Benutzer → Nachweise) haben und deren Nachweis am Tag noch gilt.</p>
 </div>
 <style>
 .du-t{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
 .du-t th{text-align:left}
 .du-h{font-size:11px;color:var(--muted);font-weight:600}
-.du-row{display:grid;grid-template-columns:1.6fr .6fr 1.1fr 1.6fr .5fr 44px .6fr 70px 80px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.du-row{display:grid;grid-template-columns:1.6fr .6fr 1.1fr 1.6fr .5fr 44px .6fr 90px 80px;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
 .du-row .form-input{padding:5px 7px;font-size:12.5px}
 .du-row input[type=color]{width:40px;height:30px;border:1px solid var(--border);border-radius:6px;background:none;padding:2px}
 </style>

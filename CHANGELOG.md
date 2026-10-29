@@ -10,6 +10,17 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.1] – 2026-10-29
+
+### Neu
+- Widget und Leitstand-Baustein „Schichtplan“: der Schichtplan so, wie er im Planer aussieht – Schichten × Tage mit Namen, darunter Sonderdienste und Bereitschaft; Woche, Schichtmodell und Feldhöhe oben wählen.
+- Sonderdienste können die Telefonnummer der eingeteilten Person mit anzeigen (Haken „Telefon“ bei der Dienstart; Rufbereitschaft ist voreingestellt) – im Schichtplan, Kalender, Widget und Leitstand.
+- Schichtplan: die Höhe der Namensfelder ist einstellbar (Klein, Normal, Groß, Sehr groß, Automatisch).
+- Kalender: Kalenderwochen stehen oben, angezeigt werden immer ganze Wochen ab Montag (1 bis 6 Wochen).
+
+### Geändert
+- Kalender: Projekte stehen ganz oben – je Projekt eine Zeile mit durchgehendem Balken, ohne Zuordnung zu Personen.
+
 ## [0.77.0] – 2026-10-28
 
 ### Neu

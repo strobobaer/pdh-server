@@ -29,6 +29,13 @@
 .cal-grid thead th span{display:block;font-size:13px}
 .cal-grid thead th em{display:block;font-style:normal;font-size:9.5px;color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-grid thead th.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.cal-grid thead tr.wk th.kw{font-size:12px;font-weight:700;text-align:left;padding:4px 8px;border-left:2px solid var(--border)}
+.cal-grid thead tr.wk th.kw span{display:inline;font-size:11px;font-weight:400;color:var(--muted);margin-left:6px}
+.cal-grid thead tr.wk th.kw.cur{color:var(--accent)}
+.cal-grid thead tr:nth-child(2) th{top:26px}
+.cal-grid tr.proj-row td{height:26px;background:color-mix(in srgb,#64748B 5%,transparent)}
+.cal-grid tr.proj-row th.who{font-weight:500;font-size:12px}
+.cal-grid tr.proj-row .cc.proj:not(.mid){overflow:visible;position:relative;z-index:1;background:color-mix(in srgb,var(--kc) 18%,var(--bg2))}
 .cal-grid .who{position:sticky;left:0;z-index:1;background:var(--bg2);text-align:left;font-size:12.5px;padding:6px 8px;min-width:170px;max-width:200px;font-weight:600}
 .cal-grid thead .who{z-index:3;background:var(--bg3)}
 .cal-grid .who small{display:block;font-weight:400;color:var(--muted);font-size:10.5px}
