@@ -32,8 +32,12 @@ node2 mit `pdh-ha replica-init` zum Datenbank-Spiegel. Szenarien mit
 automatischer Umschaltung „echt“ tauschen danach einmal hin und zurück
 (Pflicht-Testumschaltung) und setzen `auto_mode` auf `real`.
 
-Netze: `lan` (Server + Gateway), `vpn` (Server), `wit` (Server + Zeuge).
+Netze: `lan` (Server + Gateway + Zeuge), `vpn` (Server), `wit` (Server + Zeuge).
 Die Server erreichen sich nur über `lan` und `vpn`, den Zeugen über `wit`.
+Der Zeuge hängt zusätzlich am `lan`, damit er beim Adresstest die
+mitwandernde Adresse prüfen kann; als Weg meldet er nur seine `wit`-Adresse.
+Server und Gateway dürfen Adressen setzen (`NET_ADMIN`, `NET_RAW`); die
+Server haben dafür `ip` und `arping` (Paket `iputils-arping`).
 
 ## Szenarien
 
@@ -70,3 +74,26 @@ Der Rollentausch in `hin-und-her` zählt nicht zur Tageshöchstzahl; so
 In `erzwingen-abgezweigt` und `rewind-fehler` gehen die Zeilen aus der Zeit,
 in der nur node1 schrieb, gewollt in die abgezweigten Daten; sie zählen nicht
 zur Prüfung. `slot-grenze` braucht rund 4 GB freien Platz.
+
+### Zugangsweg (mitwandernde Adresse, Skripte, Umstellung)
+
+Mitwandernde Adresse im Labor: `10.77.1.50/24`. Sobald sie eingeschaltet ist,
+liest ein Wächter alle 0,5 s die Adressen beider Server; tragen beide sie
+gleichzeitig, ist das Szenario sofort nicht bestanden.
+
+| Szenario | Ablauf | Erwartung |
+|---|---|---|
+| `vip-tausch` | Automatik `observe`; `vip test`, Adresse einschalten, Rollen tauschen | erst node1 Halter, binnen 10 s node2; `gw` erreicht die Adresse |
+| `vip-ausfall` | node1 anhalten | node2 übernimmt mit der Adresse |
+| `vip-abschaltung` | node1 von `vpn`/`wit` trennen, seine `lan`-Karte abschalten | node1 schaltet ab (3 Takte + 5 s) und gibt die Adresse binnen 2 s ab; node2 übernimmt sie |
+| `vip-duplikat` | `gw` setzt die Adresse selbst, dann einschalten | node1 übernimmt nicht, Alarm „wird noch von einem anderen Gerät benutzt“; nach dem Entfernen auf `gw` übernimmt node1 binnen 5 s |
+| `vip-entfernt` | Adresse am Halter mit `ip addr del` entfernen | binnen 3 s wieder da |
+| `vip-neustart` | aktiven node1 anhalten, node2 übernimmt, node1 starten | node1 holt die Adresse nicht, wird Standby |
+| `hooks` | Skript `/etc/pdh/ha-hooks/10-log` auf beiden, Skripte ein, Rollen tauschen, Skript nur auf node2 ändern | Protokoll: node2 `aktiv`, node1 `passiv`, gleiche Amtszeit, Adresse; danach Status „anders als beim Partner“ |
+| `umstellung` | Automatik `observe`; node1 bekommt 10.77.1.13, `addrs set … --neustart`, Test mit 10.77.1.60, 10.77.1.11 wird mitwandernde Adresse, Rollen tauschen | Spiegel wieder synchron; erst node1, dann node2 hält 10.77.1.11 |
+
+In `vip-abschaltung` bleibt die Karte im Container (abgeschaltet statt
+getrennt) – nur so ist zu sehen, dass pdh-ha die Adresse selbst abgibt.
+In `umstellung` setzt das Szenario die Absenderadresse mit
+`ip route replace 10.77.1.0/24 dev <Karte> proto kernel scope link src 10.77.1.13`
+(wie das Umstellungsskript), sonst gingen Verbindungen weiter von 10.77.1.11 aus.

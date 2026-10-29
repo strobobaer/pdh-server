@@ -6,6 +6,8 @@
 #   mit Datenbank-Spiegel (Teil 3): beobachtung tausch aktiv-weg-echt
 #            asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
 #            rewind-fehler slot-grenze
+#   Zugangsweg (Teil 5): vip-tausch vip-ausfall vip-abschaltung vip-duplikat
+#            vip-entfernt vip-neustart hooks umstellung
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -41,19 +43,26 @@ declare -A IP=(
 )
 SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv version-anders
     beobachtung tausch aktiv-weg-echt asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
-    rewind-fehler slot-grenze)
+    rewind-fehler slot-grenze
+    vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
 # rewind-fehler läuft mit real: nach dem Pflicht-Tausch liegen die abgezweigten
 # Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
-    [slot-grenze]=observe)
+    [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
 BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
 ACKED="$(mktemp -t ha-lab-acked.XXXXXX)"
-trap 'rm -f "$ACKED"' EXIT
+# Mitwandernde Adresse (Teil 5): Wächter schreibt jeden Moment, in dem beide
+# Server sie gleichzeitig tragen, nach VIP_BAD
+VIP=10.77.1.50/24
+VIP_IP=${VIP%/*}
+VIP_BAD="$(mktemp -t ha-lab-vip.XXXXXX)"
+VIP_WATCH_PID=""
+trap 'rm -f "$ACKED" "$VIP_BAD"' EXIT
 WRITER_PID=""
 
 export PDH_HA_COMMIT="${PDH_HA_COMMIT:-$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo lab)}"
@@ -79,8 +88,15 @@ diag() {
         timeout 10 docker exec "$c" tail -n 25 /var/lib/pdh-ha/events.jsonl 2>&1 | cut -c1-240 | sed 's/^/    /' || true
         echo "--- $c: state.json"
         timeout 10 docker exec "$c" cat /var/lib/pdh-ha/state.json 2>&1 | tr -d '\n' | cut -c1-600 | sed 's/^/    /' || true
+        if [[ "$c" != witness ]]; then
+            echo "--- $c: IPv4-Adressen, Skript-Protokoll"
+            timeout 10 docker exec "$c" ip -o -4 addr show 2>&1 | cut -c1-120 | sed 's/^/    /' || true
+            timeout 10 docker exec "$c" tail -n 5 /var/lib/pdh-ha/hook.log 2>/dev/null | sed 's/^/    /' || true
+        fi
         echo
     done
+    echo "--- gw: IPv4-Adressen"
+    timeout 10 docker exec gw ip -o -4 addr show 2>&1 | cut -c1-120 | sed 's/^/    /' || true
 }
 
 need() {
@@ -104,7 +120,7 @@ status_json() {
 }
 
 # jget <Schlüssel> < JSON. Schlüssel: role term maint blocked settings
-# configured seen:<id> peerrole:<id>; nicht lesbar → "-"
+# configured seen:<id> peerrole:<id> holder hookson hookssame; nicht lesbar → "-"
 jget() {
     if [[ "$JSON_TOOL" == python3 ]]; then
         python3 -c '
@@ -115,6 +131,7 @@ try:
     d = json.loads(sys.stdin.read())
     s = d.get("settings") or {}
     me = d.get("self") or {}
+    acc = d.get("access") or {}
     peers = {p.get("id"): p for p in d.get("peers") or []}
     if k == "sum": v = "%s %s %s" % (me.get("role") or "-", me.get("term"), yn(d.get("configured")))
     elif k == "role": v = me.get("role") or "-"
@@ -133,6 +150,9 @@ try:
     elif k == "current": v = yn(me.get("data_current"))
     elif k.startswith("seen:"): v = yn(peers.get(k[5:], {}).get("seen"))
     elif k.startswith("peerrole:"): v = peers.get(k[9:], {}).get("role") or "-"
+    elif k == "holder": v = acc.get("holder") or "-"
+    elif k == "hookson": v = yn(acc.get("hooks_on"))
+    elif k == "hookssame": v = yn((acc.get("hooks") or {}).get("same"))
     else: v = "-"
 except Exception:
     v = "-"
@@ -156,6 +176,9 @@ print(v)' "$1"
             current) f='if .self.data_current then "ja" else "nein" end' ;;
             seen:*) f='[.peers[]? | select(.id == $id) | .seen] | if .[0] then "ja" else "nein" end' ;;
             peerrole:*) f='[.peers[]? | select(.id == $id) | .role] | .[0] // "-"' ;;
+            holder) f='if (.access.holder // "") == "" then "-" else .access.holder end' ;;
+            hookson) f='if .access.hooks_on then "ja" else "nein" end' ;;
+            hookssame) f='if .access.hooks.same then "ja" else "nein" end' ;;
             *) echo "-"; return ;;
         esac
         jq -r --arg id "${1#*:}" "$f" 2>/dev/null || echo "-"
@@ -196,6 +219,9 @@ snap() {
         ((SECONDS - BOTH_ACT < RW_GRACE)) || fail "zwei aktive Server seit $RW_GRACE s (node1 Amtszeit $T1, node2 Amtszeit $T2)"
     else
         BOTH_ACT=-1
+    fi
+    if [[ -s "$VIP_BAD" ]]; then
+        fail "Adresse gleichzeitig auf node1 und node2: $(head -1 "$VIP_BAD")"
     fi
     ((PG_LAB == 1)) && watch_pg
     return 0
@@ -618,6 +644,325 @@ sc_erzwingen_abgezweigt() { erzwingen_ablauf; }
 
 sc_rewind_fehler() { erzwingen_ablauf rewind-fehler; }
 
+# --- Zugangsweg (Teil 5): mitwandernde Adresse, Skripte, Umstellung ---
+
+# vip_here <Container> [<IP>]: Adresse liegt auf einer Karte des Containers
+# (gestoppt oder nicht erreichbar = nein)
+vip_here() {
+    local out
+    out="$(timeout 5 docker exec "$1" ip -o -4 addr show 2>/dev/null)" || return 1
+    [[ "$out" == *" inet ${2:-$VIP_IP}/"* ]]
+}
+
+# lan_if <Container> <IP>: Name der Karte mit dieser Adresse
+lan_if() {
+    docker exec "$1" ip -o -4 addr show 2>/dev/null | awk -v ip="$2/" 'index($4, ip) == 1 { print $2; exit }'
+}
+
+# holder_is <Container>: nur dieser Server trägt die Adresse, und sein Status
+# nennt ihn als Halter
+holder_is() {
+    local other=node1
+    [[ "$1" == node1 ]] && other=node2
+    vip_here "$1" && ! vip_here "$other" && [[ "$(get "$1" holder)" == "$1" ]]
+}
+
+# gw_ping [<IP>]: das Gateway erreicht die Adresse
+gw_ping() { docker exec gw ping -c1 -W1 "${1:-$VIP_IP}" >/dev/null 2>&1; }
+
+# vip_where: Kurzbefund für Fehlermeldungen
+vip_where() {
+    local c out=""
+    for c in node1 node2 gw; do
+        vip_here "$c" && out+="$c "
+    done
+    echo "Adresse $VIP_IP auf: ${out:-niemand} (Halter laut node1: $(get node1 holder), node2: $(get node2 holder))"
+}
+
+# vip_watch_start: alle 0,5 s die Karten beider Server lesen (gleichzeitig);
+# tragen beide die Adresse, Befund nach VIP_BAD – snap bricht dann ab. Runden,
+# die länger als 1,5 s dauern, zählen nicht (die Übernahme wartet nach der
+# Abgabe mindestens 2 s auf die Duplikat-Prüfung).
+vip_watch_start() {
+    vip_watch_stop
+    : >"$VIP_BAD"
+    (
+        set +e
+        trap - EXIT
+        while :; do
+            t0=$(date +%s%3N)
+            vip_here node1 &
+            p1=$!
+            vip_here node2 &
+            p2=$!
+            a=0 b=0
+            wait "$p1" && a=1
+            wait "$p2" && b=1
+            if ((a == 1 && b == 1 && $(date +%s%3N) - t0 <= 1500)); then
+                echo "$(date +%H:%M:%S.%3N) beide tragen $VIP_IP" >>"$VIP_BAD"
+            fi
+            sleep 0.5
+        done
+    ) &
+    VIP_WATCH_PID=$!
+    log "  Wächter Adresse $VIP_IP läuft (alle 0,5 s)"
+}
+
+vip_watch_stop() {
+    [[ -n "$VIP_WATCH_PID" ]] || return 0
+    kill "$VIP_WATCH_PID" 2>/dev/null || true
+    wait "$VIP_WATCH_PID" 2>/dev/null || true
+    VIP_WATCH_PID=""
+}
+
+# vip_wait <Container> <Sekunden>: wartet (alle 0,2 s), bis die Adresse dort
+# liegt; WAITED = Millisekunden
+WAITED=0
+vip_wait() {
+    local t0 end
+    t0=$(date +%s%3N)
+    end=$((t0 + $2 * 1000))
+    while :; do
+        WAITED=$(($(date +%s%3N) - t0))
+        vip_here "$1" && return 0
+        (($(date +%s%3N) < end)) || return 1
+        sleep 0.2
+    done
+}
+
+# vip_test [<Adresse>]: Adresstest am ersten Server (node1), muss gelingen
+vip_test() {
+    local out rc=0
+    log "Adresstest ${1:-$VIP} in alle Richtungen"
+    out="$(docker exec node1 pdh-ha vip test ${1:+--adresse "$1"} 2>&1)" || rc=$?
+    sed 's/^/    /' <<<"$out"
+    ((rc == 0)) || fail "Adresstest ${1:-$VIP} nicht erfolgreich"
+}
+
+# vip_enter: Adresse eintragen (noch nicht einschalten) – wie im PDH:
+# eintragen, testen, einschalten
+vip_enter() {
+    docker exec node1 pdh-ha access --vip "$VIP" || fail "Adresse $VIP eintragen"
+}
+
+# vip_setup: eintragen, testen, einschalten, node1 (aktiv) hält die Adresse, Wächter an
+vip_setup() {
+    vip_enter
+    vip_test
+    docker exec node1 pdh-ha access --vip-on || fail "mitwandernde Adresse einschalten"
+    wait_for 20 eval 'holder_is node1' || fail "node1 hält die Adresse nicht – $(vip_where)"
+    vip_watch_start
+    wait_for 10 gw_ping || fail "gw erreicht $VIP_IP bei node1 nicht"
+}
+
+# event_on <Container> <Text>: Text steht im Ereignisprotokoll
+event_on() { docker exec "$1" grep -qF -- "$2" /var/lib/pdh-ha/events.jsonl; }
+
+sc_vip_tausch() {
+    vip_setup
+    log "Rollen tauschen – binnen 10 s hält node2 die Adresse, gw erreicht sie"
+    swap_on node1 || fail "Rollentausch auf node1"
+    vip_wait node2 10 || fail "node2 trägt die Adresse nach 10 s nicht – $(vip_where)"
+    log "node2 trägt die Adresse nach $WAITED ms"
+    wait_for 10 eval 'holder_is node2 && gw_ping' || fail "nach dem Tausch – $(vip_where)"
+    # der alte aktive Server gibt vor der Übergabe ab – kein Duplikat-Alarm
+    ! event_on node2 "wird noch von einem anderen Gerät benutzt" || fail "Duplikat-Alarm auf node2 beim Tausch"
+    wait_for 120 mirror_ok_rev || fail "Tausch zu node2 nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2 pg=$(jget pg <<<"$J2"))"
+    watch_for 5 eval 'holder_is node2' || fail "Adresse bleibt nicht bei node2 – $(vip_where)"
+}
+
+sc_vip_ausfall() {
+    vip_setup
+    log "node1 anhalten – node2 übernimmt mit der Adresse"
+    docker stop -t 2 node1 >/dev/null || fail "docker stop node1"
+    wait_for 60 eval '[[ "$R2" == aktiv ]] && holder_is node2 && gw_ping' ||
+        fail "node2 nach 60 s nicht aktiv mit Adresse (node2=$R2) – $(vip_where)"
+    watch_for 5 eval 'holder_is node2' || fail "Adresse bleibt nicht bei node2 – $(vip_where)"
+}
+
+# Läuft auf dem Server: Karte abschalten, dann alle 0,1 s Rolle und Adresse
+# lesen. Ausgabe: Millisekunden bis „nicht mehr aktiv“ und bis „Adresse weg“.
+ABSCHALT_SH='
+ifc=$1 ip=$2 max=$(($3 * 1000))
+ip link set dev "$ifc" down || exit 2
+t0=$(date +%s%3N) tf=-1
+while :; do
+    el=$(($(date +%s%3N) - t0))
+    role=$(pdh-ha status --json 2>/dev/null | grep -o "\"role\":\"[^\"]*\"" | head -1)
+    if ((tf < 0)) && [[ -n "$role" && "$role" != *\"aktiv\" ]]; then tf=$el; fi
+    if ! ip -o -4 addr show dev "$ifc" | grep -q " inet $ip/"; then echo "$tf $el"; exit 0; fi
+    ((el < max)) || { echo "$tf $el"; exit 1; }
+    sleep 0.1
+done'
+
+sc_vip_abschaltung() {
+    vip_setup
+    local ifc res tf tr
+    ifc="$(lan_if node1 "${IP[node1:lan]}")"
+    [[ -n "$ifc" ]] || fail "Karte von node1 im lan nicht gefunden"
+    # Die Karte bleibt (abgeschaltet) im Container – nur so lässt sich sehen,
+    # dass pdh-ha die Adresse selbst abgibt. docker network disconnect nähme
+    # die Karte samt Adresse weg.
+    log "node1 von vpn und wit trennen, Karte $ifc (lan) abschalten – node1 schaltet ab und gibt die Adresse ab"
+    net_off node1 vpn wit || fail "Netz off node1"
+    res="$(docker exec node1 bash -c "$ABSCHALT_SH" _ "$ifc" "$VIP_IP" 30)" || fail "node1 gibt die Adresse nicht ab (abgeschaltet nach ${res% *} ms, Ende nach ${res#* } ms)"
+    read -r tf tr <<<"$res"
+    log "node1 nach $tf ms nicht mehr aktiv, Adresse nach $tr ms abgegeben"
+    # Abschaltung: Partner nicht mehr gesehen (3 Takte) + Selbst-Abschaltung
+    # (fence_s 5 s); die Adresse folgt binnen 2 s
+    ((tf >= 0)) || fail "node1 gab die Adresse ab, ohne abzuschalten"
+    ((tr - tf <= 2000)) || fail "Adresse erst $((tr - tf)) ms nach der Abschaltung abgegeben"
+    ((tr <= (3 + 5 + 2) * 1000)) || fail "Adresse erst nach $tr ms abgegeben (erwartet höchstens Abschaltzeit 5 s + 3 Takte + 2 s)"
+    wait_for 60 eval '[[ "$R2" == aktiv ]] && holder_is node2' || fail "node2 übernimmt nicht mit Adresse (node2=$R2) – $(vip_where)"
+    log "node1 wieder verbinden – Wiedereingliederung als Standby"
+    docker exec node1 ip link set dev "$ifc" up || fail "Karte $ifc auf node1 einschalten"
+    net_on node1 vpn wit || fail "Netz on node1"
+    wait_for 120 mirror_ok_rev || fail "node1 nach Rückkehr nicht synchroner Standby ($R1, pg=$(jget pg <<<"$J1"))"
+    watch_for 5 eval 'holder_is node2' || fail "Adresse bleibt nicht bei node2 – $(vip_where)"
+}
+
+sc_vip_duplikat() {
+    vip_enter
+    vip_test
+    local gif
+    gif="$(lan_if gw "$GW_IP")"
+    [[ -n "$gif" ]] || fail "Karte von gw nicht gefunden"
+    log "gw belegt $VIP selbst, dann einschalten – node1 (aktiv) darf nicht übernehmen"
+    docker exec gw ip addr add "$VIP" dev "$gif" || fail "Adresse auf gw setzen"
+    docker exec node1 pdh-ha access --vip "$VIP" --vip-on || fail "mitwandernde Adresse einschalten"
+    wait_for 20 eval 'event_on node1 "wird noch von einem anderen Gerät benutzt"' ||
+        fail "kein Alarm „wird noch von einem anderen Gerät benutzt“ auf node1"
+    watch_for 8 eval '! vip_here node1 && ! vip_here node2' || fail "Adresse trotz Belegung übernommen – $(vip_where)"
+    vip_watch_start
+    log "gw gibt die Adresse ab – node1 übernimmt im nächsten Takt"
+    docker exec gw ip addr del "$VIP" dev "$gif" || fail "Adresse auf gw entfernen"
+    # Takt 1 s + Duplikat-Prüfung 2 s
+    vip_wait node1 5 || fail "node1 übernimmt nicht binnen 5 s – $(vip_where)"
+    log "node1 trägt die Adresse nach $WAITED ms"
+    wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach der Übernahme – $(vip_where)"
+}
+
+# Läuft auf dem Halter: Adresse entfernen, dann alle 0,1 s prüfen, ob sie
+# wieder da ist. Ausgabe: Millisekunden.
+WIEDER_SH='
+ifc=$1 cidr=$2 max=$(($3 * 1000))
+ip addr del "$cidr" dev "$ifc" || exit 2
+t0=$(date +%s%3N)
+while :; do
+    el=$(($(date +%s%3N) - t0))
+    if ip -o -4 addr show dev "$ifc" | grep -q " inet $cidr "; then echo "$el"; exit 0; fi
+    ((el < max)) || { echo "$el"; exit 1; }
+    sleep 0.1
+done'
+
+sc_vip_entfernt() {
+    vip_setup
+    local ifc ms
+    ifc="$(lan_if node1 "$VIP_IP")"
+    [[ -n "$ifc" ]] || fail "Karte mit $VIP_IP auf node1 nicht gefunden"
+    log "Adresse auf node1 von Hand entfernen – binnen 3 s wieder da"
+    ms="$(docker exec node1 bash -c "$WIEDER_SH" _ "$ifc" "$VIP" 3)" || fail "Adresse nach $ms ms nicht wieder da – $(vip_where)"
+    log "Adresse nach $ms ms wieder gesetzt"
+    wait_for 10 eval 'event_on node1 "war nicht mehr gesetzt – wird wieder übernommen"' || fail "kein Ereignis „war nicht mehr gesetzt“ auf node1"
+    wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach der Rückkehr – $(vip_where)"
+}
+
+# vip_never <Container>: bricht ab, sobald der Server die Adresse trägt
+vip_never() {
+    if vip_here "$1"; then
+        fail "$1 holt die Adresse – $(vip_where)"
+    fi
+    return 0
+}
+
+sc_vip_neustart() {
+    vip_setup
+    log "node1 (aktiv) anhalten – node2 übernimmt die Adresse"
+    docker stop -t 2 node1 >/dev/null || fail "docker stop node1"
+    wait_for 60 eval '[[ "$R2" == aktiv ]] && holder_is node2' || fail "node2 nach 60 s nicht aktiv mit Adresse (node2=$R2) – $(vip_where)"
+    log "node1 starten – holt die Adresse nicht, wird Standby"
+    docker start node1 >/dev/null || fail "docker start node1"
+    wait_for 120 eval 'vip_never node1 && mirror_ok_rev' || fail "node1 nicht synchroner Standby ($R1, pg=$(jget pg <<<"$J1"))"
+    watch_for 10 eval 'vip_never node1 && holder_is node2' || fail "Adresse bleibt nicht bei node2 – $(vip_where)"
+}
+
+HOOK_SH='#!/bin/sh
+echo "$PDH_HA_ROLLE $PDH_HA_AMTSZEIT $PDH_HA_VIP" >>/var/lib/pdh-ha/hook.log
+'
+
+# hook_last <Container>: letzte Zeile des Skript-Protokolls
+hook_last() { docker exec "$1" tail -n 1 /var/lib/pdh-ha/hook.log 2>/dev/null || true; }
+
+# hooks_logged: node2 meldet aktiv, node1 passiv – beide mit Amtszeit von node2
+hooks_logged() {
+    [[ "$(hook_last node2)" == "aktiv $T2 $VIP_IP" && "$(hook_last node1)" == "passiv $T2 $VIP_IP" ]]
+}
+
+sc_hooks() {
+    local c
+    log "Skript 10-log auf beiden Servern ablegen, Skripte einschalten"
+    for c in node1 node2; do
+        docker exec -i "$c" sh -c 'install -d -m 0755 /etc/pdh/ha-hooks && cat >/etc/pdh/ha-hooks/10-log && chmod 0755 /etc/pdh/ha-hooks/10-log' \
+            <<<"$HOOK_SH" || fail "Skript auf $c ablegen"
+    done
+    # Adresse nur eintragen (nicht einschalten): die Skripte kennen sie trotzdem
+    docker exec node1 pdh-ha access --vip "$VIP" --hooks-on || fail "Skripte einschalten"
+    wait_for 30 eval '[[ "$(jget hookson <<<"$J1")" == ja && "$(jget hookson <<<"$J2")" == ja ]]' ||
+        fail "Skripte nicht auf beiden eingeschaltet"
+    log "Rollen tauschen – node2 meldet aktiv, node1 passiv mit gleicher Amtszeit"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 120 mirror_ok_rev || fail "Tausch zu node2 nicht abgeschlossen (node1=$R1, node2=$R2)"
+    wait_for 30 hooks_logged ||
+        fail "Skript-Protokoll: node1 „$(hook_last node1)“, node2 „$(hook_last node2)“ (erwartet passiv/aktiv $T2 $VIP_IP)"
+    log "node1: $(hook_last node1) – node2: $(hook_last node2)"
+    log "Skript nur auf node2 ändern – beide melden „anders als beim Partner“"
+    docker exec node2 sh -c 'echo "# geändert" >>/etc/pdh/ha-hooks/10-log' || fail "Skript auf node2 ändern"
+    wait_for 90 eval '[[ "$(jget hookssame <<<"$J1")" == nein && "$(jget hookssame <<<"$J2")" == nein ]]' ||
+        fail "Status zeigt keine Abweichung (node1 same=$(jget hookssame <<<"$J1"), node2 same=$(jget hookssame <<<"$J2"))"
+}
+
+sc_umstellung() {
+    local ifc old=10.77.1.11 new=10.77.1.13 c
+    ifc="$(lan_if node1 "$old")"
+    [[ -n "$ifc" ]] || fail "Karte von node1 im lan nicht gefunden"
+    log "Schritt 1: node1 bekommt zusätzlich $new auf $ifc und nimmt sie als Absenderadresse"
+    docker exec node1 ip addr add "$new/24" dev "$ifc" || fail "$new auf node1 setzen"
+    docker exec node1 ip route replace 10.77.1.0/24 dev "$ifc" proto kernel scope link src "$new" ||
+        fail "Absenderadresse auf node1 setzen"
+    log "Schritt 2: Adressen von node1 ändern (aktiv, mit Neustart von PostgreSQL)"
+    docker exec node1 pdh-ha addrs set node1 "$new,${IP[node1:vpn]},${IP[node1:wit]}" --neustart || fail "addrs set auf node1"
+    wait_for 60 eval 'event_on node1 "wird für neue Adressen neu gestartet"' || fail "PostgreSQL auf node1 nicht neu gestartet"
+    # der Spiegel holt die Daten jetzt über die neue Adresse
+    wait_for 90 eval 'mirror_ok && [[ "$(psql_on node2 "SELECT sender_host FROM pg_stat_wal_receiver" postgres)" == "$new" ]]' ||
+        fail "Spiegel nach dem Adresswechsel nicht synchron über $new (node1 sync=$(jget sync <<<"$J1"), node2 pg=$(jget pg <<<"$J2"), Quelle $(psql_on node2 "SELECT sender_host FROM pg_stat_wal_receiver" postgres))"
+    for c in node1 node2; do
+        ! event_on "$c" "nicht auf die neuen Adressen umgestellt" || fail "Alarm auf $c: PostgreSQL nicht umgestellt"
+    done
+    log "Schritt 3: Test mit freier Testadresse"
+    vip_test 10.77.1.60/24
+    log "Schritt 4: $old auf node1 entfernen – wird zur mitwandernden Adresse"
+    docker exec node1 ip addr del "$old/24" dev "$ifc" || fail "$old auf node1 entfernen"
+    # ohne promote_secondaries ginge $new mit weg
+    vip_here node1 "$new" || docker exec node1 ip addr add "$new/24" dev "$ifc" || fail "$new auf node1 wieder setzen"
+    docker exec node1 ip route replace 10.77.1.0/24 dev "$ifc" proto kernel scope link src "$new" ||
+        fail "Absenderadresse auf node1 setzen"
+    VIP=$old/24 VIP_IP=$old
+    docker exec node1 pdh-ha access --vip "$VIP" --vip-on || fail "mitwandernde Adresse $VIP einschalten"
+    wait_for 20 eval 'holder_is node1' || fail "node1 hält $VIP_IP nicht – $(vip_where)"
+    vip_watch_start
+    wait_for 10 gw_ping || fail "gw erreicht $VIP_IP bei node1 nicht"
+    log "Schritt 5: Rollen tauschen – node2 hält $VIP_IP"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 120 eval 'mirror_ok_rev && holder_is node2' ||
+        fail "Tausch nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2) – $(vip_where)"
+    wait_for 10 gw_ping || fail "gw erreicht $VIP_IP bei node2 nicht"
+    # node1 spiegelt jetzt von node2 – mit Absenderadresse $new (pg_hba auf
+    # node2 kennt nur noch die neuen Adressen von node1)
+    local src
+    src="$(psql_on node2 "SELECT client_addr FROM pg_stat_replication" postgres)"
+    [[ "$src" == "$new" ]] || fail "node1 spiegelt von $src statt von $new"
+}
+
 # slot_status: Checkpoint auf node1, dann wal_status des Slots von node2
 slot_status() {
     psql_on node1 "CHECKPOINT; SELECT wal_status FROM pg_replication_slots WHERE slot_name = 'pdh_ha_node2'" postgres
@@ -645,7 +990,8 @@ run_scenario() {
     echo "=== Szenario $name"
     LAST_LINE="" T0=$SECONDS
     : >"$ACKED"
-    trap writer_stop EXIT
+    : >"$VIP_BAD"
+    trap 'writer_stop; vip_watch_stop' EXIT
     lab_up "${SC_MODE[$name]:-real}"
     writer_start
     wait_acks 3 30 || fail "Schreib-Generator bestätigt nichts"
