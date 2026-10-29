@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.4] – 2026-10-29
+
+### Geändert
+- Schichtplan-Widget und Leitstand-Baustein „Schichtplan“: die Namensfelder werden so breit, dass Name und Telefonnummer immer ganz zu sehen sind; reicht der Platz nicht, lässt sich der Plan seitlich schieben.
+
 ## [0.77.3] – 2026-10-29
 
 ### Neu
