@@ -22,6 +22,10 @@
 .lsm-b .opts select,.lsm-b .opts input{font:inherit;font-size:12.5px;padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text)}
 .lsm-b textarea{grid-column:2;width:100%;min-height:70px;font:inherit;font-size:13px;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text)}
 .lsm-b .lk{grid-column:2;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px}
+.lsm-b .opts .cfg-url{flex:1 1 320px;min-width:0}
+.lsm-b .opts .cfg-num{width:80px}
+.lsm-link{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.lsm-link input{flex:1 1 320px;min-width:0;font-family:ui-monospace,monospace;font-size:12.5px}
 .lsm-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .lsm-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .lsm-form .help{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
@@ -107,6 +111,22 @@
     </div>
   </div>
 
+  {{if not $.IsNew}}
+  <div class="card">
+    <div class="card-title"><span><i class="ti ti-link"></i> Direktlink</span></div>
+    <p class="lsm-sub" style="margin:0 0 10px;max-width:900px">Link für einen Hallenbildschirm oder ein Lesezeichen. <b>Vollbild</b> schaltet beim Öffnen auf ganzen Bildschirm (manche Browser erst nach einer Berührung). <b>Kioskmodus</b> blendet Kopfzeile, Knöpfe und Werkzeugleiste aus – nur der Inhalt bleibt. Mit der Maus bewegen zeigt unten rechts „Kiosk beenden“.</p>
+    <div class="lsm-types">
+      <label><input type="checkbox" id="lsm-l-fs" checked> Vollbild</label>
+      <label><input type="checkbox" id="lsm-l-kiosk" checked> Kioskmodus</label>
+    </div>
+    <div class="lsm-link">
+      <input class="form-input" id="lsm-l-url" readonly aria-label="Direktlink" data-slug="{{.Slug}}">
+      <button type="button" class="btn btn-small" id="lsm-l-copy"><i class="ti ti-copy"></i> Kopieren</button>
+      <a class="btn btn-small" id="lsm-l-open" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Öffnen</a>
+    </div>
+  </div>
+  {{end}}
+
   <div class="lsm-actions">
     <button type="submit" class="btn btn-primary"><i class="ti ti-device-floppy"></i> Speichern</button>
     <a href="/leitstaende" class="btn">Abbrechen</a>
@@ -161,6 +181,15 @@ function lsmItem(b){
     LSM_BOARDS.forEach(o => { const l = document.createElement('label'); const c = document.createElement('input'); c.type = 'checkbox'; c.value = o.slug; c.checked = on.includes(o.slug); l.append(c, ' ' + o.name); box.appendChild(l); });
     el.appendChild(box);
   }
+  if(d.Config === 'url'){
+    // Baustein „Webseite“: Adresse, Höhe, neu laden
+    const c = b.config || {}, o = document.createElement('div'); o.className = 'opts';
+    o.innerHTML = '<label style="flex:1 1 320px;display:flex;gap:6px;align-items:center">Adresse <input class="cfg-url" type="text" inputmode="url" maxlength="2000" placeholder="https://… oder /seite" aria-label="Adresse der Webseite"></label>'
+      + '<label>Höhe <input class="cfg-num cfg-h" type="number" min="150" max="2000" step="10" placeholder="480" aria-label="Höhe in Pixeln"> px</label>'
+      + '<label>neu laden alle <input class="cfg-num cfg-r" type="number" min="0" max="1440" placeholder="0" aria-label="Neu laden alle … Minuten"> Min.</label>';
+    o.querySelector('.cfg-url').value = c.url || ''; o.querySelector('.cfg-h').value = c.height || ''; o.querySelector('.cfg-r').value = c.reload || '';
+    el.appendChild(o);
+  }
   el.querySelector('.rm').addEventListener('click', () => { el.remove(); lsmSync(); });
   return el;
 }
@@ -180,6 +209,7 @@ function lsmSubmit(){
     const b = {id: el.dataset.id, type: el.dataset.type, size: +el.querySelector('.sz').value, config: {}};
     const tt = el.querySelector('.tt').value.trim(); if(tt) b.config.title = tt;
     const ta = el.querySelector('.cfg-text'); if(ta) b.config.text = ta.value;
+    const u = el.querySelector('.cfg-url'); if(u){ b.config.url = u.value.trim(); b.config.height = el.querySelector('.cfg-h').value; b.config.reload = el.querySelector('.cfg-r').value; }
     const lk = el.querySelector('.lk'); if(lk) b.config.boards = [...lk.querySelectorAll('input:checked')].map(c => c.value).join(',');
     return b;
   });
@@ -188,6 +218,23 @@ function lsmSubmit(){
 }
 (JSON.parse({{.BlocksJSON}}) || []).forEach(b => { const el = lsmItem(b); if(el) lsmList.appendChild(el); });
 lsmSync();
+// Direktlink mit Vollbild/Kioskmodus zusammensetzen
+(function(){
+  const url = document.getElementById('lsm-l-url'); if(!url) return;
+  const fs = document.getElementById('lsm-l-fs'), ki = document.getElementById('lsm-l-kiosk'), open = document.getElementById('lsm-l-open');
+  function build(){
+    const q = []; if(ki.checked) q.push('kiosk=1'); if(fs.checked) q.push('fs=1');
+    url.value = location.origin + '/global/b/' + encodeURIComponent(url.dataset.slug) + (q.length ? '?' + q.join('&') : '');
+    open.href = url.value;
+  }
+  fs.addEventListener('change', build); ki.addEventListener('change', build); build();
+  url.addEventListener('focus', () => url.select());
+  document.getElementById('lsm-l-copy').addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    try{ await navigator.clipboard.writeText(url.value); }catch(_){ url.select(); document.execCommand('copy'); }
+    btn.innerHTML = '<i class="ti ti-check"></i> Kopiert'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i> Kopieren', 1800);
+  });
+})();
 if(window.Sortable) Sortable.create(lsmList, {handle: '.grip', animation: 150});
 // Adresse aus dem Namen vorschlagen (nur bei neuem Leitstand)
 {{if .IsNew}}(function(){

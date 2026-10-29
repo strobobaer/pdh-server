@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -98,6 +99,17 @@ type GlobalDashboardPageData struct {
 	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
 	PaletteID                 string        // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
 	StyleID                   string        // Design-Stil: immer der Firmenstandard (ui_style.go)
+	Kiosk                     bool          // ?kiosk=1: nur Inhalt, ohne Kopf und Knöpfe (Hallenbildschirm)
+	Fullscreen                bool          // ?fs=1: beim Öffnen Vollbild anfordern
+}
+
+// queryFlag: ?name=1|true|ja (Direktlink zum Leitstand).
+func queryFlag(r *http.Request, name string) bool {
+	switch strings.ToLower(r.URL.Query().Get(name)) {
+	case "1", "true", "ja", "on", "yes":
+		return true
+	}
+	return false
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -150,6 +162,10 @@ type boardBlockView struct {
 	Style template.CSS // order und Breite im Raster
 	Title string
 	Links []*leitstand // Baustein „Andere Leitstände“
+	// Baustein „Webseite“: geprüfte Adresse, Höhe (px), neu laden alle … Minuten
+	URL    string
+	FrameH int
+	Reload int
 }
 
 func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board *leitstand) {
@@ -188,6 +204,8 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 		StyleID:                   brand.StyleID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
 		Core:                      map[string]template.CSS{"create": "", "vorgaenge": "", "zeitstrahl": ""},
+		Kiosk:                     queryFlag(r, "kiosk"),
+		Fullscreen:                queryFlag(r, "fs"),
 	}
 	for _, b := range h.listLeitstaende(ctx) {
 		if b.Active || b.IsDefault {
@@ -204,6 +222,14 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 		if _, core := data.Core[bl.Type]; core {
 			data.Core[bl.Type] = v.Style
 			continue
+		}
+		if bl.Type == "webseite" {
+			v.URL = boardEmbedURL(bl.Config["url"])
+			v.FrameH, _ = strconv.Atoi(bl.Config["height"])
+			if v.FrameH == 0 {
+				v.FrameH = 480
+			}
+			v.Reload, _ = strconv.Atoi(bl.Config["reload"])
 		}
 		if bl.Type == "links" {
 			for _, slug := range strings.Split(bl.Config["boards"], ",") {

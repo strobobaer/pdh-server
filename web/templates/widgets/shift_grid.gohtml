@@ -10,7 +10,7 @@
   <a class="sg-btn sg-nav" href="{{.Base}}{{.Sep}}week={{.NextWeek}}&model={{.ModelID}}" title="Nächste Woche" aria-label="Nächste Woche"><i class="ti ti-chevron-right"></i></a>
   {{if ne .Week .ThisWeek}}<a class="sg-btn sg-nav" href="{{.Base}}{{.Sep}}model={{.ModelID}}">Diese Woche</a>{{end}}
   {{if gt (len .Models) 1}}<select class="sg-sel" data-sg-model data-href="{{.Base}}{{.Sep}}week={{.Week}}&model=" aria-label="Schichtmodell">{{range .Models}}<option value="{{.ID}}" {{if eq .ID $.ModelID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
-  <select class="sg-sel" data-sg-height aria-label="Höhe der Namensfelder" title="Feldhöhe"><option value="40">Klein</option><option value="60">Normal</option><option value="90">Groß</option><option value="130">Sehr groß</option><option value="auto">Automatisch</option></select>
+  <select class="sg-sel" data-sg-height aria-label="Höhe der Namensfelder" title="Feldhöhe"><option value="80">Klein</option><option value="120">Normal</option><option value="180">Groß</option><option value="260">Sehr groß</option><option value="auto">Automatisch</option></select>
   {{if not .Embed}}<a class="sg-btn" href="/planner?tab=shifts&week={{.Week}}&model={{.ModelID}}" style="margin-left:auto" title="Im Planer einteilen"><i class="ti ti-external-link"></i> Planer</a>{{end}}
 </div>
 {{if or .Rows .DutyRows}}
@@ -35,30 +35,31 @@
 
 {{define "shift-grid-js"}}
 <style>
-.sg-box{--sg-h:60px;font-size:12.5px}
+.sg-box{--sg-h:120px;font-size:12.5px}
 .sg-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .sg-lbl{font-size:13px;margin:0 4px}
 .sg-btn{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:3px 9px;border:1px solid var(--border);border-radius:7px;background:var(--bg2);color:var(--text);text-decoration:none;font-size:12px;cursor:pointer}
 .sg-btn:hover{border-color:var(--accent);color:var(--accent)}
 .sg-sel{font:inherit;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:7px;background:var(--bg3,var(--bg2));color:var(--text)}
 .sg-scroll{overflow-x:auto}
-.sg-grid{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:640px}
+.sg-grid{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:980px}
 .sg-grid th,.sg-grid td{border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top}
 .sg-grid thead th{padding:4px 2px;font-size:11px;background:var(--bg3,var(--bg2));text-align:center;font-weight:600}
 .sg-grid thead th span{display:block;font-size:13px;font-weight:700}
 .sg-grid thead th.today{box-shadow:inset 0 -3px 0 var(--accent)}
-.sg-grid .sg-h{width:130px;padding:6px 8px;text-align:left;border-left:4px solid var(--sc,var(--border));background:var(--bg2)}
+.sg-grid .sg-h{width:150px;padding:6px 8px;text-align:left;border-left:4px solid var(--sc,var(--border));background:var(--bg2)}
 .sg-grid .sg-h b{display:block;font-size:12.5px}
 .sg-grid .sg-h small{color:var(--muted);font-size:10.5px}
 .sg-grid thead .sg-h{border-left:0}
-.sg-c{padding:4px;height:var(--sg-h);overflow:hidden}
+.sg-c{padding:5px;height:var(--sg-h);overflow:hidden}
 .sg-box.sg-auto .sg-c{height:auto}
 .sg-c.we{background:color-mix(in srgb,var(--muted) 7%,transparent)}
 .sg-c.hol{background:color-mix(in srgb,var(--red,#ef4444) 6%,transparent)}
 .sg-c.under{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--red,#ef4444) 55%,transparent)}
-.sg-chip{display:block;font-size:11.5px;padding:2px 6px;margin-bottom:3px;border-radius:6px;background:color-mix(in srgb,var(--sc) 20%,transparent);border-left:3px solid var(--sc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sg-chip small{display:block;font-size:10.5px;color:var(--muted)}
-.sg-n{font-size:10px;color:var(--muted)}
+/* Namensfelder doppelt so groß wie im Planer, damit sie am Hallenbildschirm lesbar sind */
+.sg-chip{display:block;font-size:23px;font-weight:600;line-height:1.25;padding:5px 10px;margin-bottom:5px;border-radius:9px;background:color-mix(in srgb,var(--sc) 20%,transparent);border-left:5px solid var(--sc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sg-chip small{display:block;font-size:17px;font-weight:400;color:var(--muted)}
+.sg-n{font-size:13px;color:var(--muted)}
 .sg-n.bad{color:var(--red,#ef4444);font-weight:700}
 .sg-sep th{background:var(--bg3,var(--bg2));text-align:left;padding:5px 8px;font-size:12px}
 .sg-empty{color:var(--muted);padding:12px}
@@ -67,9 +68,10 @@
 // Schichtplan-Raster laden und blättern (Dashboard-Widget, Leitstand-Baustein)
 (function(){
   if(window.pdhShiftGridBoot) return;
-  function height(box){ let v = '60'; try{ v = localStorage.getItem('pdh_sg_h') || '60'; }catch(e){}
+  // eigener Speicher-Schlüssel ab 0.77.2 (doppelte Größen), alte Werte gelten nicht mehr
+  function height(box){ let v = '120'; try{ v = localStorage.getItem('pdh_sg_h2') || '120'; }catch(e){}
     const s = box.querySelector('[data-sg-height]'); if(s) s.value = v;
-    box.classList.toggle('sg-auto', v === 'auto'); box.style.setProperty('--sg-h', v === 'auto' ? '40px' : v + 'px'); }
+    box.classList.toggle('sg-auto', v === 'auto'); box.style.setProperty('--sg-h', v === 'auto' ? '80px' : v + 'px'); }
   async function load(box, url){
     try{
       const res = await fetch(url, {credentials: 'same-origin'});
@@ -84,7 +86,7 @@
   document.addEventListener('change', e => {
     const box = e.target.closest('.sg-box'); if(!box) return;
     if(e.target.matches('[data-sg-model]')) load(box, e.target.dataset.href + encodeURIComponent(e.target.value));
-    if(e.target.matches('[data-sg-height]')){ try{ localStorage.setItem('pdh_sg_h', e.target.value); }catch(_){}
+    if(e.target.matches('[data-sg-height]')){ try{ localStorage.setItem('pdh_sg_h2', e.target.value); }catch(_){}
       document.querySelectorAll('.sg-box').forEach(height); }
   });
   // alle noch leeren Kästen laden

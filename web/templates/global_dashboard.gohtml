@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{lang}}">
+<html lang="{{lang}}"{{if .Kiosk}} class="ls-kiosk"{{end}}>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -168,6 +168,19 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .ls-note{white-space:pre-wrap;font-size:calc(15px * var(--row-scale));line-height:1.45}
 .ls-links{display:flex;flex-wrap:wrap;gap:8px}
 #ls-rotate{font-size:12px;color:var(--muted)}
+.ls-web{position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.ls-web iframe{display:block;width:100%;border:0}
+.ls-web-open{margin-left:auto;font-size:12px;color:var(--muted);text-decoration:none}
+.ls-web-open:hover{color:var(--accent)}
+.ls-x .view-head{display:flex;align-items:center;gap:8px}
+/* Kioskmodus (?kiosk=1): nur der Inhalt, ohne Kopf, Werkzeugleiste und Bearbeiten */
+html.ls-kiosk header,html.ls-kiosk main > .toolbar,html.ls-kiosk .ls-web-open{display:none!important}
+html.ls-kiosk main{padding-top:10px}
+#ls-kiosk-bar{position:fixed;right:12px;bottom:12px;z-index:3000;display:flex;gap:6px;opacity:0;pointer-events:none;transition:opacity .25s}
+#ls-kiosk-bar.show{opacity:.92;pointer-events:auto}
+#ls-kiosk-bar a,#ls-kiosk-bar button{display:inline-flex;align-items:center;gap:5px;min-height:38px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;text-decoration:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+#ls-fs-hint{position:fixed;inset:0;z-index:2999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);color:#fff;font-size:22px;font-weight:600;cursor:pointer}
+#ls-fs-hint.show{display:flex}
 :root[data-style="fiori"] .ls-kpi,:root[data-style="fiori"] .ls-li{border-color:transparent;border-radius:12px;box-shadow:var(--ls-shadow)}
 
 /* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
@@ -428,13 +441,14 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 
   {{range .Blocks}}
   <section class="view-card ls-b ls-x" style="{{.Style}}" data-ls="{{.Type}}" aria-label="{{.Title}}">
-    <div class="view-head"><strong>{{.Title}}</strong></div>
+    <div class="view-head"><strong>{{.Title}}</strong>{{if and (eq .Type "webseite") .URL}}<a class="ls-web-open" href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="Seite in neuem Fenster öffnen – falls sie sich nicht einbetten lässt"><i aria-hidden="true">↗</i> öffnen</a>{{end}}</div>
     {{if eq .Type "kennzahlen"}}<div class="ls-kpis" data-ls-kpis></div>
     {{else if eq .Type "stoerungen"}}<div class="ls-list" data-ls-list="fault"></div>
     {{else if eq .Type "wartung"}}<div class="ls-list" data-ls-list="maintenance"></div>
     {{else if eq .Type "schichtplan"}}<div class="sg-box" data-sg-src="/global/shiftplan?b={{with $.Board}}{{.Slug}}{{else}}standard{{end}}"><span style="color:var(--muted);font-size:13px">Schichtplan lädt …</span></div>
     {{else if eq .Type "kalender"}}<div class="ls-calbox" data-ls-calbox><span style="color:var(--muted);font-size:13px">Kalender lädt …</span></div>
     {{else if eq .Type "hinweis"}}<div class="ls-note">{{index .Config "text"}}</div>
+    {{else if eq .Type "webseite"}}{{if .URL}}<div class="ls-web" style="height:{{.FrameH}}px"><iframe src="{{.URL}}" title="{{.Title}}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="fullscreen" data-ls-reload="{{.Reload}}"></iframe></div>{{else}}<span style="color:var(--muted);font-size:13px">Keine Adresse eingetragen.</span>{{end}}
     {{else if eq .Type "links"}}<div class="ls-links">{{range .Links}}<a class="header-button" href="/global/b/{{.Slug}}">{{.Name}}</a>{{else}}<span style="color:var(--muted);font-size:13px">Keine anderen Leitstände ausgewählt.</span>{{end}}</div>
     {{end}}
   </section>
@@ -1422,9 +1436,45 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
       if(busy()){ left = LS_ROTATE.seconds; note.textContent = ''; return; }
       left--;
       note.textContent = '→ ' + LS_ROTATE.name + ' in ' + left + ' s';
-      if(left <= 0) location.href = '/global/b/' + encodeURIComponent(LS_ROTATE.next);
+      // Kiosk/Vollbild (?kiosk=1&fs=1) beim Weiterblättern beibehalten
+      if(left <= 0) location.href = '/global/b/' + encodeURIComponent(LS_ROTATE.next) + location.search;
     }, 1000);
   }
+})();
+</script>
+{{if .Kiosk}}<div id="ls-kiosk-bar" role="toolbar" aria-label="Kioskmodus">
+  <button type="button" id="ls-kiosk-fs" title="Vollbild ein/aus">⛶ Vollbild</button>
+  <a href="/global/b/{{with .Board}}{{.Slug}}{{else}}standard{{end}}" title="Kioskmodus verlassen – Kopfzeile und Knöpfe wieder zeigen">✕ Kiosk beenden</a>
+</div>{{end}}
+{{if .Fullscreen}}<div id="ls-fs-hint" role="button" tabindex="0">Tippen für Vollbild</div>{{end}}
+<script>
+// Direktlink: ?kiosk=1 (ohne Kopf und Knöpfe), ?fs=1 (Vollbild beim Öffnen)
+(function(){
+  const kiosk = {{.Kiosk}}, fs = {{.Fullscreen}};
+  const goFs = function(){ if(!document.fullscreenElement && document.documentElement.requestFullscreen) return document.documentElement.requestFullscreen(); return Promise.resolve(); };
+  if(kiosk || fs){
+    // Links auf andere Leitstände behalten die Einstellung
+    document.querySelectorAll('.ls-links a[href^="/global/b/"]').forEach(function(a){ a.href = a.getAttribute('href') + location.search; });
+  }
+  if(fs){
+    // Browser erlauben Vollbild meist erst nach einer Berührung: dann Hinweis zeigen
+    const hint = document.getElementById('ls-fs-hint');
+    goFs().catch(function(){ hint.classList.add('show'); });
+    hint.addEventListener('click', function(){ hint.classList.remove('show'); goFs().catch(function(){}); });
+    // im Kioskmodus nach dem Verlassen bei der nächsten Berührung wieder Vollbild
+    if(kiosk) document.addEventListener('pointerdown', function(){ goFs().catch(function(){}); }, {passive: true});
+  }
+  if(kiosk){
+    const bar = document.getElementById('ls-kiosk-bar'); let t = 0;
+    const show = function(){ bar.classList.add('show'); clearTimeout(t); t = setTimeout(function(){ bar.classList.remove('show'); }, 3000); };
+    document.addEventListener('mousemove', show, {passive: true});
+    document.addEventListener('keydown', show);
+    document.getElementById('ls-kiosk-fs').addEventListener('click', function(){ if(document.fullscreenElement) document.exitFullscreen(); else goFs().catch(function(){}); });
+  }
+  // Baustein „Webseite“: alle … Minuten neu laden
+  document.querySelectorAll('iframe[data-ls-reload]').forEach(function(f){
+    const m = +f.dataset.lsReload; if(m > 0) setInterval(function(){ f.src = f.src; }, m * 60000);
+  });
 })();
 </script>
 {{template "grid-drag"}}
