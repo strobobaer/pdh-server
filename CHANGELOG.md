@@ -20,8 +20,17 @@ im Kapitel „Versionen & Updates“ an.
 - Neue Karte „Zugangsweg“ im Reiter Ausfallschutz: Zustand von Tunnel, mitwandernder Adresse und Skripten, Adresse testen und einschalten, Skripte ein- und ausschalten oder sofort ausführen.
 
 ### Geändert
-- `pdh-ha-join.sh` installiert zusätzlich `iproute2` und `iputils-arping`, legt den Ordner für die Skripte an und richtet mit `--voll` auch `cloudflared` ein.
+- Das Update von `pdh-ha` installiert auf jedem Server – auch am ersten – die Pakete `iproute2` und `iputils-arping`; `pdh-ha-join.sh` legt zusätzlich den Ordner für die Skripte an und richtet mit `--voll` auch `cloudflared` ein.
 - Am Spiegel führt der Link „Bitte den aktiven Server verwenden“ auf die mitwandernde Adresse, sobald sie eingeschaltet ist.
+- Wird `pdh-ha` beendet, gibt der Server die mitwandernde Adresse bei automatischer Umschaltung „echt“ ab, damit der Partner sie bei einem Ausfall bekommt; im Beobachtungsmodus bleibt sie liegen.
+- Auf einem Server ohne Datenbank-Spiegel bleibt der Autostart des Cloudflare-Tunnels, wie er ist – der Tunnel kommt nach einem Neustart weiter von selbst hoch.
+- Die Karte „Zugangsweg“ meldet „Token fehlt“, wenn auf diesem oder dem anderen Server kein Tunnel-Token liegt, statt den Tunnel als bereit zu zeigen.
+- `pdh-ha-adresse.sh uebergabe` schaltet die Adresse zuerst mitwandernd ein und nimmt sie erst dann aus der festen Netzwerkkonfiguration – die Lücke dauert nur wenige Sekunden, egal wie lange die Bestätigung dauert.
+- Ein Adresstest mit der eingeschalteten mitwandernden Adresse wird abgelehnt; dafür eine freie Testadresse nehmen.
+- Meldungen zur mitwandernden Adresse kommen höchstens einmal je Stunde, auch wenn ein Netzwerkdienst die Adresse laufend entfernt.
+
+### Sicherheit
+- Skripte beim Rollenwechsel laufen nur, wenn der Ordner `/etc/pdh/ha-hooks` root gehört und nicht für Gruppe oder andere schreibbar ist; Verknüpfungen im Ordner werden einmal gemeldet und nie ausgeführt.
 
 ## [0.77.5] – 2026-10-29
 
