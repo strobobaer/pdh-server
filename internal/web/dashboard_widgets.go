@@ -34,7 +34,7 @@ type WidgetDef struct {
 	Type, Name, Icon, Category, Desc string
 	Size                             int    // Standardbreite in Spalten (1–4)
 	Perm                             string // noetige Berechtigung ("" = alle)
-	Config                           string // "" | "links" | "note" | "watch"
+	Config                           string // "" | "links" | "note" | "watch" | "docs"
 	Refresh                          int    // Sekunden bis zur Aktualisierung (0 = nie)
 	Single                           bool   // höchstens einmal je Dashboard (feste Element-IDs)
 	load                             func(h *Handler, ctx context.Context, uid string, inst WidgetInstance, can func(string) bool) (any, error)
@@ -73,6 +73,7 @@ var widgetDefs = []WidgetDef{
 	{Type: "shift_grid", Name: "Schichtplan", Icon: "ti-calendar-week", Category: catLists, Size: 4, Perm: "shifts.view", Refresh: 600, Desc: "Der Schichtplan wie im Planer: Schichten × Tage mit den Namen, darunter Sonderdienste und Bereitschaft (mit Telefon) – Woche, Schichtmodell und Feldhöhe oben wählen", load: loadNone},
 	{Type: "team_shifts", Name: "Schichtplan Team", Icon: "ti-calendar-user", Category: catLists, Size: 4, Perm: "shifts.view", Refresh: 600, Desc: "Wer aus deiner Abteilung in den nächsten 7 Tagen welche Schicht hat – mit Urlaub und Abwesenheit", load: loadTeamShifts},
 	{Type: "my_shifts", Name: "Meine Schichten", Icon: "ti-calendar-time", Category: catPersonal, Size: 2, Refresh: 600, Desc: "Deine Schichten der nächsten 7 Tage", load: loadMyShifts},
+	{Type: "documents", Name: "Dokumente", Icon: "ti-files", Category: catLists, Size: 2, Config: "docs", Desc: "Bilder, PDF, Word- und Excel-Dateien anzeigen – mehrere wechseln sich ab", load: loadDisplayDocs},
 	{Type: "note", Name: "Notizzettel", Icon: "ti-note", Category: catPersonal, Size: 1, Config: "note", Desc: "Eine persönliche Notiz, nur für dich sichtbar", load: loadNote},
 }
 
@@ -158,6 +159,8 @@ func sanitizeWidgets(in []WidgetInstance) ([]WidgetInstance, error) {
 				note = string([]rune(note)[:2000])
 			}
 			cfg["note"] = note
+		case "docs":
+			cleanDocConfig(w.Config, cfg)
 		case "watch":
 			if b := strings.TrimSpace(w.Config["board"]); b != "" && len(b) <= 40 && strings.Trim(b, "0123456789abcdef-") == "" {
 				cfg["board"] = b
@@ -736,6 +739,10 @@ func loadMyShifts(h *Handler, ctx context.Context, uid string, _ WidgetInstance,
 
 func loadScan(_ *Handler, _ context.Context, _ string, _ WidgetInstance, _ func(string) bool) (any, error) {
 	return nil, nil
+}
+
+func loadDisplayDocs(h *Handler, ctx context.Context, _ string, inst WidgetInstance, _ func(string) bool) (any, error) {
+	return h.docViewFor(ctx, inst.Config, 320), nil
 }
 
 func loadNote(_ *Handler, _ context.Context, _ string, inst WidgetInstance, _ func(string) bool) (any, error) {

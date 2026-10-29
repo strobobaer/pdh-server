@@ -10,6 +10,16 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.3] – 2026-10-29
+
+### Neu
+- Leitstand: beim Weiterblättern können Grafana-Dashboards aus der Statistik als zusätzliche Stationen gezeigt werden (Leitstand → Dashboards → nächster Leitstand), bildschirmfüllend und auch im Kioskmodus.
+- In Grafana neu angelegte Dashboards stehen automatisch zur Wahl – im Leitstand-Editor und unter Core → Grafana & Statistik („Neu in Grafana“, mit einem Klick übernehmen).
+- Widget und Leitstand-Baustein „Dokumente“: Bilder, PDF, Word- und Excel-Dateien direkt hochladen und anzeigen; mehrere wechseln sich ab.
+
+### Sicherheit
+- Neues Recht „Dokumente für Dashboard und Leitstand hochladen“ (für Administratoren, Manager und wer Leitstände verwaltet) und neuer Bereichsadministrator „Leitstand & Dashboards“.
+
 ## [0.77.2] – 2026-10-29
 
 ### Neu
