@@ -32,6 +32,16 @@ const usage = `Aufruf: pdh-ha <Befehl>
   status [--json]                     Zustand anzeigen
   maintenance on|off                  Wartung (Automatik aus/an)
   settings '<json>'                   Zeiten setzen ({"settings":{…},"gateway_targets":[…]})
+  access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
+                                      Zugangsweg: mitwandernde Adresse und Skripte
+                                      (--vip-on erst nach erfolgreichem vip test)
+  hook run                            Skripte beim Rollenwechsel jetzt mit der aktuellen
+                                      Rolle ausführen und die Ausgabe zeigen
+  vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
+                                      (Standard: die eingetragene Adresse)
+  addrs set <knoten> <adr,…> [--neustart]
+                                      Adressen eines Knotens ändern (am ersten Server);
+                                      --neustart: aktives PostgreSQL dafür neu starten
   reset --yes                         nach dem Entfernen: Konfiguration sichern und
                                       zurücksetzen (danach setup oder join)
   replica-init [--confirm-host NAME]  diesen (passiven) Server als Datenbank-Spiegel
@@ -179,6 +189,92 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		return 0
+	case "access":
+		vip := fs.String("vip", "", "mitwandernde Adresse mit Präfix, z. B. 10.10.0.202/24 (leer = entfernen)")
+		vipOn := fs.Bool("vip-on", false, "mitwandernde Adresse einschalten")
+		vipOff := fs.Bool("vip-off", false, "mitwandernde Adresse ausschalten")
+		hooksOn := fs.Bool("hooks-on", false, "Skripte beim Rollenwechsel einschalten")
+		hooksOff := fs.Bool("hooks-off", false, "Skripte beim Rollenwechsel ausschalten")
+		if fs.Parse(args[1:]) != nil || fs.NArg() != 0 {
+			return 2
+		}
+		body := map[string]any{}
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "vip" {
+				body["vip"] = *vip
+			}
+		})
+		if *vipOn || *vipOff {
+			body["vip_on"] = *vipOn
+		}
+		if *hooksOn || *hooksOff {
+			body["hooks_on"] = *hooksOn
+		}
+		if *vipOn && *vipOff || *hooksOn && *hooksOff || len(body) == 0 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		if err := apiDo(sock, http.MethodPut, "/v1/access", body, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Zugangsweg gespeichert.")
+		return 0
+	case "vip":
+		if len(args) < 2 || args[1] != "test" {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		addr := fs.String("adresse", "", "Prüfadresse mit Präfix (Standard: die mitwandernde Adresse)")
+		if fs.Parse(args[2:]) != nil || fs.NArg() != 0 {
+			return 2
+		}
+		var r struct {
+			Results []vipCheckResult `json:"results"`
+		}
+		if err := apiDoT(sock, 3*time.Minute, http.MethodPost, "/v1/vip/test", map[string]string{"addr": *addr}, &r); err != nil {
+			return fail(err)
+		}
+		if printVIPCheck(stdout, r.Results) {
+			return 1
+		}
+		fmt.Fprintln(stdout, "Test erfolgreich – die mitwandernde Adresse kann eingeschaltet werden.")
+		return 0
+	case "addrs":
+		// --neustart darf auch nach den Adressen stehen (flag hört dort auf)
+		restart, pos := false, []string{}
+		for _, a := range args[min(len(args), 2):] {
+			switch {
+			case a == "--neustart" || a == "-neustart":
+				restart = true
+			case strings.HasPrefix(a, "-"):
+				fmt.Fprint(stderr, usage)
+				return 2
+			default:
+				pos = append(pos, a)
+			}
+		}
+		if len(args) < 2 || args[1] != "set" || len(pos) != 2 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		body := map[string]any{"node": pos[0], "addrs": splitList(pos[1]), "restart_pg": restart}
+		if err := apiDo(sock, http.MethodPut, "/v1/addrs", body, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Adressen gespeichert und verteilt.")
+		return 0
+	case "hook":
+		if len(args) != 2 || args[1] != "run" {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		var r struct {
+			Results []hookResult `json:"results"`
+		}
+		if err := apiDoT(sock, 5*time.Minute, http.MethodPost, "/v1/hooks/run", map[string]string{}, &r); err != nil {
+			return fail(err)
+		}
+		return printHookResults(stdout, r.Results)
 	case "reset":
 		yes := fs.Bool("yes", false, "bestätigen")
 		if fs.Parse(args[1:]) != nil {
@@ -307,6 +403,23 @@ func cmdRun(override string, stderr io.Writer) error {
 	return d.run(ctx)
 }
 
+// printVIPCheck druckt je Richtung eine Zeile; true = mindestens ein Fehler.
+func printVIPCheck(w io.Writer, res []vipCheckResult) bool {
+	bad := len(res) == 0
+	for _, r := range res {
+		switch {
+		case r.Checker == "":
+			fmt.Fprintf(w, "%s hält: Fehler – %s\n", r.Holder, r.Err)
+		case r.OK:
+			fmt.Fprintf(w, "%s hält, %s prüft: ok\n", r.Holder, r.Checker)
+		default:
+			fmt.Fprintf(w, "%s hält, %s prüft: Fehler – %s\n", r.Holder, r.Checker, r.Err)
+		}
+		bad = bad || !r.OK
+	}
+	return bad
+}
+
 func printStatus(w io.Writer, st apiStatus) {
 	if !st.Configured {
 		fmt.Fprintln(w, "Betriebsart: einzel (Ausfallschutz nicht eingerichtet)")
@@ -325,6 +438,34 @@ func printStatus(w io.Writer, st apiStatus) {
 	fmt.Fprintf(w, "Wartung: %s\n", maint)
 	if st.Blocked != "" {
 		fmt.Fprintf(w, "Übernahme gesperrt: %s\n", st.Blocked)
+	}
+	if a := st.Access; a.VIP != "" {
+		addr, _, _ := strings.Cut(a.VIP, "/")
+		where := "niemand"
+		switch a.Holder {
+		case "":
+		case st.Self.ID:
+			where = "hier"
+		default:
+			where = "bei " + a.Holder
+		}
+		if !a.VIPOn {
+			where += " (aus)"
+		}
+		fmt.Fprintf(w, "Adresse %s: %s\n", addr, where)
+		if a.IfaceErr != "" {
+			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
+		}
+	}
+	if h := st.Access.Hooks; len(h.Names) > 0 || st.Access.HooksOn {
+		fmt.Fprintf(w, "Skripte: %d, %s, letzter Lauf %s\n", len(h.Names), sameText(h.Same), hookRunText(h.Last))
+	}
+	if t := st.Access.Tunnel; t.Installed || t.Sum != "" {
+		run := "aus"
+		if t.Running {
+			run = "läuft hier"
+		}
+		fmt.Fprintf(w, "Tunnel: %s, Token %s\n", run, tunnelSameText(st))
 	}
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
@@ -348,4 +489,57 @@ func printStatus(w io.Writer, st apiStatus) {
 	for _, x := range st.Warnings {
 		fmt.Fprintf(w, "Hinweis: %s\n", x)
 	}
+}
+
+// tunnelSameText: Token hier und bei den gesehenen Partnern gleich?
+func tunnelSameText(st apiStatus) string {
+	if st.Access.Tunnel.Sum == "" {
+		return "fehlt"
+	}
+	for _, p := range st.Peers {
+		if p.Kind == "node" && p.Seen && p.TunnelSum != st.Access.Tunnel.Sum {
+			return "verschieden"
+		}
+	}
+	return "gleich"
+}
+
+func sameText(same bool) string {
+	if same {
+		return "gleich"
+	}
+	return "anders als beim Partner"
+}
+
+// hookRunText: Ausgang des letzten Laufs für die Statuszeile.
+func hookRunText(r *hookRun) string {
+	if r == nil {
+		return "noch keiner"
+	}
+	for _, x := range r.Results {
+		if !x.OK {
+			return "mit Fehler (" + x.Name + ")"
+		}
+	}
+	return "ok"
+}
+
+// printHookResults zeigt je Skript ok oder Fehler plus Ausgabe; 1 bei Fehlern.
+func printHookResults(w io.Writer, res []hookResult) int {
+	if len(res) == 0 {
+		fmt.Fprintln(w, "Keine Skripte vorhanden.")
+		return 0
+	}
+	rc := 0
+	for _, r := range res {
+		state := "ok"
+		if !r.OK {
+			state, rc = "Fehler", 1
+		}
+		fmt.Fprintf(w, "%s: %s (%.1f s)\n", r.Name, state, r.Dur)
+		if r.Out != "" {
+			fmt.Fprintln(w, "  "+strings.ReplaceAll(r.Out, "\n", "\n  "))
+		}
+	}
+	return rc
 }

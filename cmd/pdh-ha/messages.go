@@ -128,10 +128,15 @@ func (d *daemon) clusterMsgLocked(pl *plan, from string, m message) {
 		pl.event("alarm", "Knotenliste nicht gespeichert: "+err.Error())
 		return
 	}
+	old := d.cl
 	d.cl = c
 	d.net.setCluster(c)
 	pl.ufw = true
 	pl.event("info", fmt.Sprintf("Knotenliste übernommen (Version %d)", c.Version))
+	// geänderte Adressen: node.json und PostgreSQL nachziehen; Neustart-Wunsch
+	// und „Zugang neu schreiben“ darf nur der CA-Halter schicken (addrs set)
+	ca := from == old.CAHolder // from: Kennung laut Zertifikat
+	d.followAddrsLocked(pl, old, c, ca && m.RestartPG != "" && m.RestartPG == d.node.ID, ca && m.ReapplyAccess)
 }
 
 func findNode(c clusterConfig, id string) (clusterNode, bool) {
@@ -216,6 +221,7 @@ func (d *daemon) removedHousekeepingLocked(pl *plan) {
 		}
 		d.configured, d.removed, d.started, d.renamePending = false, false, false, false
 		d.node, d.cl, d.p = nodeConfig{}, clusterConfig{}, ha.Persisted{}
+		d.syncAccessLocked(context.Background()) // ohne Einstellung: Arbeiter beenden, Adresse abgeben
 		d.carry, d.last = ha.Output{}, ha.Input{}
 		d.views = map[string]peerView{}
 		pl.event("info", "Zurückgesetzt – bereit zum Einrichten oder Beitreten")

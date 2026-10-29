@@ -53,6 +53,35 @@ type apiStatus struct {
 	Error          string      `json:"error"` // Konfiguration nicht lesbar (configured=false)
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
+	Access         apiAccess   `json:"access"`
+}
+
+// apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.
+type apiAccess struct {
+	VIP      string     `json:"vip"`
+	VIPOn    bool       `json:"vip_on"`
+	HooksOn  bool       `json:"hooks_on"`
+	Iface    string     `json:"iface"`     // gewählte Netzwerkkarte dieses Servers
+	IfaceErr string     `json:"iface_err"` // Kartenwahl gescheitert
+	Holder   string     `json:"holder"`    // Kennung des Servers mit der Adresse ("" = niemand)
+	Tested   *vipTested `json:"tested"`
+	Hooks    apiHooks   `json:"hooks"`
+	Tunnel   apiTunnel  `json:"tunnel"`
+}
+
+// apiHooks: Skripte beim Rollenwechsel.
+type apiHooks struct {
+	Names []string `json:"names"` // ausführbare Skripte in Laufreihenfolge
+	Sum   string   `json:"sum"`   // Prüfsumme über Namen und Inhalte
+	Same  bool     `json:"same"`  // kein gesehener Partner hat eine andere Prüfsumme
+	Last  *hookRun `json:"last"`  // letzter Lauf (nil = noch keiner)
+}
+
+// apiTunnel: Cloudflare-Tunnel.
+type apiTunnel struct {
+	Sum       string `json:"sum"`       // Prüfsumme (SHA-256) des abgelegten Tokens, "" = keins
+	Installed bool   `json:"installed"` // Programm cloudflared vorhanden
+	Running   bool   `json:"running"`   // läuft hier gerade
 }
 
 type apiNode struct {
@@ -77,6 +106,11 @@ type apiNode struct {
 	Timeline    uint32         `json:"timeline"`
 	DataCurrent bool           `json:"data_current"`
 	Diverged    []divergedInfo `json:"diverged"`
+
+	// Zugangsweg (Teil 5)
+	VIPHeld   bool   `json:"vip_held"`
+	HooksSum  string `json:"hooks_sum"`
+	TunnelSum string `json:"tunnel_sum"`
 }
 
 type apiPath struct {
@@ -174,7 +208,28 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 func apiHandler(d *daemon) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, d.statusNow())
+		st := d.statusNow()
+		d.tunnelLive(r.Context(), &st)
+		writeJSON(w, http.StatusOK, st)
+	})
+	// Tunnel-Token vom PDH; leer = Tunnel entfernen
+	mux.HandleFunc("PUT /v1/tunnel", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Token string `json:"token"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		// systemd-Schritte dürfen nicht abbrechen, wenn der Client die Verbindung
+		// schließt (halb übernommene Einrichtung), haben aber eine eigene Frist
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Minute)
+		defer cancel()
+		sum, err := d.putTunnel(ctx, req.Token)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sum": sum})
 	})
 	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		since, _ := strconv.ParseUint(r.URL.Query().Get("since"), 10, 64)
@@ -292,6 +347,62 @@ func apiHandler(d *daemon) http.Handler {
 			return
 		}
 		apiOK(w)
+	})
+	mux.HandleFunc("PUT /v1/access", func(w http.ResponseWriter, r *http.Request) {
+		var req accessUpdate
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := d.updateAccess(req); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
+	// Adressen eines Knotens ändern (nur am CA-Halter)
+	mux.HandleFunc("PUT /v1/addrs", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Node      string   `json:"node"`
+			Addrs     []string `json:"addrs"`
+			RestartPG bool     `json:"restart_pg"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if err := d.setNodeAddrs(req.Node, req.Addrs, req.RestartPG); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
+	// Skripte jetzt mit der aktuellen Rolle ausführen (Testen, Nachholen)
+	mux.HandleFunc("POST /v1/hooks/run", func(w http.ResponseWriter, r *http.Request) {
+		res, err := d.runHooksNow(r.Context())
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
+	})
+	// Adresstest; dauert bis etwa eine Minute (Client mit längerer Frist)
+	mux.HandleFunc("POST /v1/vip/test", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Addr string `json:"addr"` // leer = mitwandernde Adresse
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		addr, err := d.vipTestAddr(req.Addr)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		res, err := d.runVIPCheck(r.Context(), addr)
+		if err != nil {
+			apiFail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
 	})
 	return mux
 }
@@ -591,9 +702,9 @@ func (d *daemon) removeNode(id string, gone bool) error {
 
 // --- Client ---
 
-func apiClient(sock string) *http.Client {
+func apiClientT(sock string, timeout time.Duration) *http.Client {
 	return &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var dl net.Dialer
 			return dl.DialContext(ctx, "unix", sock)
@@ -602,12 +713,16 @@ func apiClient(sock string) *http.Client {
 }
 
 func apiRaw(sock, method, path, body string) (*http.Response, error) {
+	return apiRawT(sock, 30*time.Second, method, path, body)
+}
+
+func apiRawT(sock string, timeout time.Duration, method, path, body string) (*http.Response, error) {
 	req, err := http.NewRequest(method, "http://pdh-ha"+path, strings.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	return apiClient(sock).Do(req)
+	return apiClientT(sock, timeout).Do(req)
 }
 
 // apiError ist eine Fehlerantwort des Dienstes (im Unterschied zu „nicht erreichbar“).
@@ -616,6 +731,11 @@ type apiError struct{ msg string }
 func (e apiError) Error() string { return e.msg }
 
 func apiDo(sock, method, path string, in, out any) error {
+	return apiDoT(sock, 30*time.Second, method, path, in, out)
+}
+
+// apiDoT wie apiDo, mit eigener Frist (lange Aufrufe wie der Adresstest).
+func apiDoT(sock string, timeout time.Duration, method, path string, in, out any) error {
 	body := ""
 	if in != nil {
 		if s, ok := in.(string); ok {
@@ -628,7 +748,7 @@ func apiDo(sock, method, path string, in, out any) error {
 			body = string(b)
 		}
 	}
-	resp, err := apiRaw(sock, method, path, body)
+	resp, err := apiRawT(sock, timeout, method, path, body)
 	if err != nil {
 		return err
 	}

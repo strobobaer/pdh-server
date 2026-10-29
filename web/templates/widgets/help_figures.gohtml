@@ -611,16 +611,37 @@
 
 {{define "hb-fig-spiegelbetrieb"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 200" role="img" aria-label="Ausfallschutz mit zwei Servern: Server 1 schreibt, Server 2 spiegelt die Datenbank, beide über LAN und WireGuard verbunden, der Zeuge beobachtet beide">
-  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
-  <rect class="gr" x="20" y="90" width="170" height="90" rx="8"/><text x="105" y="114" class="t-c t-b">Server 1</text><text x="105" y="134" class="t-c t-m">aktiv · Datenbank schreibend</text><text x="105" y="152" class="t-c t-m">PDH läuft, sichert aufs Laufwerk</text>
-  <rect class="acl" x="450" y="90" width="170" height="90" rx="8"/><text x="535" y="114" class="t-c t-b">Server 2</text><text x="535" y="134" class="t-c t-m">passiv · Datenbank Standby</text><text x="535" y="152" class="t-c t-m">PDH läuft nur lesend (Spiegel)</text>
+<svg viewBox="0 0 640 270" role="img" aria-label="Ausfallschutz mit zwei Servern: Server 1 schreibt und hat die mitwandernde Adresse und den Tunnel, Server 2 spiegelt die Datenbank, beide über LAN und WireGuard verbunden, der Zeuge beobachtet beide; Benutzer und Geräte erreichen immer den aktiven Server">
+  <rect class="bg" x="1" y="1" width="638" height="268" rx="8"/>
+  <rect class="gr" x="20" y="90" width="170" height="92" rx="8"/><text x="105" y="112" class="t-c t-b">Server 1</text><text x="105" y="130" class="t-c t-m">aktiv · Datenbank schreibend</text><text x="105" y="146" class="t-c t-m">PDH läuft, sichert aufs Laufwerk</text><text x="105" y="168" class="t-c t-m">hat 10.10.0.202 · Tunnel läuft</text>
+  <rect class="acl" x="450" y="90" width="170" height="92" rx="8"/><text x="535" y="112" class="t-c t-b">Server 2</text><text x="535" y="130" class="t-c t-m">passiv · Datenbank Standby</text><text x="535" y="146" class="t-c t-m">PDH läuft nur lesend (Spiegel)</text><text x="535" y="168" class="t-c t-m">übernimmt Adresse und Tunnel</text>
   <path class="ar" d="M192 120 H448"/><text x="320" y="114" class="t-c t-m">LAN · Datenbank synchron</text>
   <path class="ar" d="M192 150 H448"/><text x="320" y="166" class="t-c t-m">WireGuard</text>
   <rect class="bg3" x="225" y="12" width="190" height="46" rx="8"/><text x="320" y="32" class="t-c t-b">Zeuge</text><text x="320" y="49" class="t-c t-m">eigene Hardware, eigener Strom</text>
   <path class="ar" d="M250 58 L150 88"/><path class="ar" d="M390 58 L490 88"/>
+  <rect class="bg3" x="20" y="214" width="600" height="44" rx="8"/><text x="320" y="232" class="t-c t-b">Benutzer, Leitstand, Terminals, Drucker</text><text x="320" y="249" class="t-c t-m">immer dieselbe Adresse: 10.10.0.202 im LAN · pdh.firma.de über Cloudflare</text>
+  <path class="ar" d="M105 212 V186"/>
+  <path class="ln" d="M535 212 V186" stroke-dasharray="4 3"/><text x="545" y="202" class="t-m">nach einem Wechsel</text>
 </svg>
-<figcaption>Zwei Server prüfen sich über LAN und WireGuard gegenseitig, die Datenbank wird synchron gespiegelt, am passiven Server läuft das PDH nur lesend; der Zeuge hilft bei der Entscheidung. Automatische Umschaltung zunächst nur als Beobachtung.</figcaption>
+<figcaption>Zwei Server prüfen sich über LAN und WireGuard gegenseitig, die Datenbank wird synchron gespiegelt, am passiven Server läuft das PDH nur lesend; der Zeuge hilft bei der Entscheidung. Die mitwandernde Adresse und der Tunnel liegen immer beim aktiven Server – nach einem Wechsel gehen sie mit. Automatische Umschaltung zunächst nur als Beobachtung.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-zugangsweg"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 200" role="img" aria-label="Karte Zugangsweg im Reiter Ausfallschutz: Zeilen Tunnel, Mitwandernde Adresse und Skripte, darunter Eingabefeld für die Adresse, Haken Adresse mitwandern lassen, Knöpfe Speichern und Testen">
+  <rect class="bg" x="1" y="1" width="638" height="198" rx="8"/>
+  <text x="20" y="26" class="t-b">Zugangsweg</text><text x="100" y="26" class="t-m">Wie Anwender nach einer Umschaltung den neuen aktiven Server erreichen.</text>
+  <circle class="ac" cx="28" cy="48" r="5"/><text x="40" y="52"><tspan class="t-b">Tunnel</tspan>: läuft auf pdh-a</text>
+  <circle class="ac" cx="28" cy="70" r="5"/><text x="40" y="74"><tspan class="t-b">Mitwandernde Adresse</tspan>: 10.10.0.202/24 liegt auf pdh-a</text><text x="40" y="88" class="t-m">Letzter Test 28.10. 14:05 bestanden (pdh-a: ens18, pdh-b: ens18)</text>
+  <circle class="ac" cx="28" cy="106" r="5"/><text x="40" y="110"><tspan class="t-b">Skripte</tspan>: 10-dns – gleich auf beiden Servern</text><text x="40" y="124" class="t-m">Letzter Lauf 28.10. 14:06 als aktiv: 1 von 1 ohne Fehler</text>
+  <rect class="win" x="20" y="138" width="200" height="22" rx="4"/><text x="28" y="153" class="t-m">10.10.0.202/24</text>
+  <rect class="ctl" x="232" y="143" width="12" height="12" rx="2"/><text x="250" y="153">Adresse mitwandern lassen</text>
+  <rect class="acl" x="410" y="138" width="80" height="22" rx="4"/><text x="450" y="153" class="t-c">Speichern</text>
+  <rect class="acl" x="500" y="138" width="80" height="22" rx="4"/><text x="540" y="153" class="t-c">Testen</text>
+  <text x="20" y="184" class="t-m">Darunter: Haken „Skripte bei Umschaltung ausführen“ und „Jetzt ausführen“.</text>
+</svg>
+<figcaption>Die Karte „Zugangsweg“ im Reiter Ausfallschutz: oben der Zustand von Tunnel, mitwandernder Adresse und Skripten, darunter die Einstellungen (am aktiven oder am ersten Server).</figcaption>
 </figure>
 {{end}}
 

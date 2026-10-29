@@ -257,6 +257,7 @@ type PartView struct {
 
 type Handler struct {
 	mirror           MirrorInfo                              // Spiegelmodus; einmal beim Start gesetzt (SetMirror)
+	tunnelTokenFn    func(context.Context) (string, bool)    // Tunnel-Token für den Abgleich mit pdh-ha; nil → Server-Einstellungen (Tests tauschen aus)
 	mirrorActiveURL  func(*http.Request) string              // Adresse des aktiven Servers für die Sperrseite; nil → kein Link
 	mirrorPeerFetch  func(context.Context) (haStatus, error) // pdh-ha-Status; nil → Socket (Tests tauschen aus)
 	mirrorPeerC      mirrorCache[mirrorPeer]
@@ -299,6 +300,8 @@ type Handler struct {
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
 	toolAct          toolActivity // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
+	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
+	closeStreams     context.CancelFunc // beendet streams
 }
 
 func NewHandler(
@@ -335,6 +338,7 @@ func NewHandler(
 		importPoll:  scheduler.NewIntervalManager(),
 	}
 	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
+	h.streams, h.closeStreams = context.WithCancel(context.Background())
 	return h
 }
 
@@ -597,6 +601,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/diverged-delete", h.HADivergedDeleteWeb)
 	r.Post("/admin/server-config/ha/remove", h.HARemoveWeb)
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
+	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
+	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
+	r.Post("/admin/server-config/ha/hooks-run", h.HAHooksRunWeb)
 	r.Get("/admin/server-config/ha/join-script", h.HAJoinScriptWeb)
 	// Reiter „VPN“: WireGuard auf dem Host (vpn.go, vpn_host.go) – nur Administratoren
 	r.Get("/admin/server-config/vpn/script", h.VPNScriptWeb)

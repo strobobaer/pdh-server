@@ -75,6 +75,20 @@ if (( ${#missing_packages[@]} > 0 )); then
     apt-get install -y "${missing_packages[@]}"
 fi
 
+# Mitwandernde Adresse: ip und arping (auch am ersten Server, damit
+# „pdh-ha vip test“ nach einem Update ohne Handarbeit geht). Nach dem Paket
+# fragen, nicht nach dem Programm – das Ubuntu-Paket „arping“ (Habets) hat
+# andere Schalter. Ein Fehler hier bricht das Update von pdh-ha nicht ab:
+# ohne die Pakete fehlt nur die mitwandernde Adresse.
+vip_packages=()
+command -v ip >/dev/null 2>&1 || vip_packages+=(iproute2)
+dpkg -s iputils-arping >/dev/null 2>&1 || vip_packages+=(iputils-arping)
+if (( ${#vip_packages[@]} > 0 )); then
+    export DEBIAN_FRONTEND=noninteractive
+    { apt-get update && apt-get install -y "${vip_packages[@]}"; } \
+        || echo "WARNUNG: ${vip_packages[*]} nicht installiert – für die mitwandernde Adresse: sudo apt-get install iputils-arping iproute2" >&2
+fi
+
 # systemd-run setzt weder HOME noch Go-Caches
 export HOME="${HOME:-/root}"
 export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"

@@ -1,7 +1,8 @@
 package main
 
 // pgActor führt die Aktionen des Entscheidungskerns an PostgreSQL und am
-// Dienst pdh wirklich aus (Teil 3). Virtuelle IP bleibt Beobachtung (Teil 5).
+// Dienst pdh wirklich aus (Teil 3). Die mitwandernde Adresse setzt der
+// Abgleich in access_worker.go (Teil 5), nicht dieser Ausführer.
 
 import (
 	"context"
@@ -104,6 +105,10 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 		return a.unfence(ctx)
 	case ha.ActRejoin:
 		return a.rejoin(ctx, act.Term)
+	case ha.ActVIPTake, ha.ActVIPRelease:
+		// Die mitwandernde Adresse folgt allein dem Abgleich (accessWorker);
+		// ein Fehler hier darf nie Wartung einschalten.
+		return nil
 	}
 	a.ev.add(ha.Event{Kind: "action", Text: fmt.Sprintf("würde jetzt: %s (Amtszeit %d)", act.Kind, act.Term)})
 	return nil

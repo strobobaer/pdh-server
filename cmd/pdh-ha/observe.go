@@ -183,6 +183,19 @@ func (d *daemon) statusLocked() apiStatus {
 		if st.Self.PG == "" {
 			st.Self.PG = "unknown"
 		}
+		st.Self.VIPHeld = d.access != nil && d.access.held()
+	}
+	a := d.cl.Access
+	st.Access = apiAccess{VIP: a.VIP, VIPOn: a.VIPOn, HooksOn: a.HooksOn, Tested: a.Tested,
+		Iface: d.accessIface, IfaceErr: d.accessErr}
+	if d.node.Kind == "node" {
+		st.Access.Tunnel.Sum = d.tunnel.Sum()
+		st.Self.TunnelSum = st.Access.Tunnel.Sum
+		st.Access.Hooks = d.apiHooksLocked()
+		st.Self.HooksSum = st.Access.Hooks.Sum
+	}
+	if st.Self.VIPHeld {
+		st.Access.Holder = d.node.ID
 	}
 	// Vor dem ersten Takt (Neustart-Regel noch nicht angewandt) und nach einem
 	// Speicherfehler nie „aktiv“ melden – sonst sichert z. B. der Agent zu früh.
@@ -220,7 +233,11 @@ func (d *daemon) statusLocked() apiStatus {
 			an.Role, an.Term, an.Version, an.Commit, an.Gateway = ha.Role(m.Role), m.Term, m.Ver, m.Commit, m.Gateway
 			an.PG, an.LSN, an.LagBytes, an.Sync, an.Stale, an.Timeline, an.DataCurrent, an.Diverged =
 				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
+			an.VIPHeld, an.HooksSum, an.TunnelSum = m.VIP, m.Hooks, m.Tun
 			hosts[n.ID] = m.HostID
+		}
+		if st.Access.Holder == "" && an.Seen && an.VIPHeld {
+			st.Access.Holder = n.ID
 		}
 		for _, p := range v.Paths {
 			an.Paths = append(an.Paths, apiPath{Addr: p.Addr, Alive: p.Alive, LastRecvAgo: ago(p.LastRecv), Err: p.Err})
@@ -305,6 +322,11 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 	}
 	if d.node.Kind == "node" {
 		d.hbPGLocked(&m)
+		if d.access != nil {
+			m.VIP = d.access.held()
+		}
+		_, m.Hooks, _ = d.hooks.info()
+		m.Tun = d.tunnel.Sum()
 	}
 	return m
 }

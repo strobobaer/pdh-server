@@ -35,11 +35,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Testlabor mit PostgreSQL (Ubuntu wie in der Produktion); pdh als Platzhalter
+# Testlabor mit PostgreSQL (Ubuntu wie in der Produktion); pdh als Platzhalter.
+# iproute2 und iputils-arping für die mitwandernde Adresse (wie in der
+# Produktion; nicht das Paket arping – das hat andere Schalter)
 FROM ubuntu:26.04 AS lab-pg
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-       postgresql postgresql-contrib iputils-ping curl ca-certificates \
+       postgresql postgresql-contrib iputils-ping iputils-arping iproute2 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/pdh-ha /usr/local/bin/pdh-ha
 COPY deploy/ha-lab/pdh-dummy.sh /usr/local/bin/pdh-dummy

@@ -327,7 +327,8 @@ func TestHAInstallScriptContent(t *testing.T) {
 	s := string(b)
 	for _, want := range []string{"RuntimeDirectory=pdh-ha", "-X main.commit=", "-X main.version=", "iputils-ping",
 		"ExecStart=/usr/local/bin/pdh-ha run", "Restart=always", "RestartSec=2", "RuntimeDirectoryMode=0750",
-		"RuntimeDirectoryPreserve=yes", "StateDirectory=pdh-ha", "groupadd --system pdh", "GOTOOLCHAIN=auto"} {
+		"RuntimeDirectoryPreserve=yes", "StateDirectory=pdh-ha", "groupadd --system pdh", "GOTOOLCHAIN=auto",
+		"dpkg -s iputils-arping", "vip_packages+=(iputils-arping)", "vip_packages+=(iproute2)"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("install-pdh-ha.sh ohne %q", want)
 		}

@@ -49,6 +49,29 @@ type haStatus struct {
 	Warnings       []string    `json:"warnings"`
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"`
+	Access         haAccess    `json:"access"`
+}
+
+// haAccess: Zugangsweg aus dem Status von pdh-ha (hier nur, was der Abgleich braucht).
+type haAccess struct {
+	VIP      string       `json:"vip"` // mit Präfixlänge, z. B. 10.77.1.50/24
+	VIPOn    bool         `json:"vip_on"`
+	HooksOn  bool         `json:"hooks_on"`
+	Iface    string       `json:"iface"` // eigene Netzwerkkarte
+	IfaceErr string       `json:"iface_err"`
+	Holder   string       `json:"holder"` // Server, der die Adresse hält ("" = keiner)
+	Tested   *haVIPTested `json:"tested"`
+	Hooks    struct {
+		Names []string    `json:"names"`
+		Sum   string      `json:"sum"`
+		Same  bool        `json:"same"`
+		Last  *haHooksRun `json:"last"`
+	} `json:"hooks"`
+	Tunnel struct {
+		Sum       string `json:"sum"` // Prüfsumme (SHA-256) des bei pdh-ha abgelegten Tunnel-Tokens
+		Installed bool   `json:"installed"`
+		Running   bool   `json:"running"`
+	} `json:"tunnel"`
 }
 
 type haNode struct {
@@ -64,6 +87,11 @@ type haNode struct {
 	ClockSkew   float64  `json:"clock_skew"`    // Sekunden
 	Paths       []haPath `json:"paths"`
 	Self        bool     `json:"-"`
+
+	// Zugangsweg
+	VIPHeld   bool   `json:"vip_held"`
+	HooksSum  string `json:"hooks_sum"`
+	TunnelSum string `json:"tunnel_sum"`
 
 	// Datenbank-Spiegel
 	PG          string       `json:"pg"` // primary, standby, stopped, error, unknown
@@ -126,6 +154,8 @@ type haView struct {
 	JoinCmd      string
 	JoinExpires  time.Time
 	SuggestAddrs []string // LAN- und WireGuard-Adresse dieses Servers
+	Origin       string   // PDH_CLOUDFLARE_ORIGIN: Ziel des Tunnels
+	TokenSet     bool     // Tunnel-Token in den Server-Einstellungen eingetragen
 }
 
 func (v haView) ModeText() string {
@@ -344,10 +374,12 @@ func haSocket() string {
 }
 
 // haClient: HTTP über den Unix-Socket von pdh-ha, Zeitlimit 3 s.
-func (h *Handler) haClient() *http.Client {
+func (h *Handler) haClient() *http.Client { return h.haClientT(haTimeout) }
+
+func (h *Handler) haClientT(timeout time.Duration) *http.Client {
 	sock := haSocket()
 	return &http.Client{
-		Timeout: haTimeout,
+		Timeout: timeout,
 		Transport: &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", sock)
@@ -357,6 +389,11 @@ func (h *Handler) haClient() *http.Client {
 
 // haDo ruft die Socket-API; Fehlerantworten (400) kommen als Text des Dienstes.
 func (h *Handler) haDo(ctx context.Context, method, path string, in, out any) error {
+	return h.haDoT(ctx, haTimeout, method, path, in, out)
+}
+
+// haDoT wie haDo, mit eigener Frist (langsame Aufrufe wie der Tunnel-Token).
+func (h *Handler) haDoT(ctx context.Context, timeout time.Duration, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -370,7 +407,7 @@ func (h *Handler) haDo(ctx context.Context, method, path string, in, out any) er
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := h.haClient().Do(req)
+	resp, err := h.haClientT(timeout).Do(req)
 	if err != nil {
 		return errors.New("pdh-ha nicht erreichbar: " + err.Error())
 	}
@@ -438,6 +475,8 @@ func (h *Handler) haLoadView(ctx context.Context) haView {
 		}
 		v.Err = haStatusErr(v.Status)
 		v.Events = h.haRecentEvents(ctx, 50)
+		cf := h.cloudflareSettings(ctx)
+		v.Origin, v.TokenSet = cf.Origin, cf.Token != ""
 	}
 	if v.NeedsSetup() && h.driveAgentConfigured() {
 		ctx, cancel := context.WithTimeout(ctx, haTimeout)

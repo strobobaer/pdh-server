@@ -1,7 +1,9 @@
 # Testlabor für pdh-ha – nur Testumgebung. Bedienung über ha-lab.sh.
-# Netze: lan (Server + Gateway), vpn (Server), wit (Server + Zeuge).
+# Netze: lan (Server + Gateway + Zeuge), vpn (Server), wit (Server + Zeuge).
 # Die Server melden nur lan- und vpn-Adressen als Wege zueinander; node1
-# zusätzlich seine wit-Adresse, damit der Zeuge beitreten kann.
+# zusätzlich seine wit-Adresse, damit der Zeuge beitreten kann. Der Zeuge
+# meldet nur seine wit-Adresse; über lan prüft er beim Adresstest die
+# mitwandernde Adresse (10.77.1.50).
 name: pdh-ha-lab
 
 x-pdh-ha: &pdh-ha
@@ -26,6 +28,11 @@ x-pdh-ha-pg: &pdh-ha-pg
   image: pdh-ha-lab-pg:local
   restart: "no"
   init: true
+  # mitwandernde Adresse setzen (ip) und melden (arping); beim Entfernen der
+  # ersten Adresse einer Karte bleibt die zweite (Szenario umstellung)
+  cap_add: [NET_ADMIN, NET_RAW]
+  sysctls:
+    net.ipv4.conf.all.promote_secondaries: 1
 
 services:
   node1:
@@ -78,14 +85,18 @@ services:
     networks:
       wit:
         ipv4_address: 10.77.3.20
+      lan:
+        ipv4_address: 10.77.1.20
 
-  # Gateway-Ziel der Server: antwortet nur auf Ping
+  # Gateway-Ziel der Server: antwortet nur auf Ping; belegt in vip-duplikat
+  # die mitwandernde Adresse selbst
   gw:
     image: alpine:3.20
     container_name: gw
     hostname: gw
     command: ["sleep", "infinity"]
     init: true
+    cap_add: [NET_ADMIN, NET_RAW]
     networks:
       lan:
         ipv4_address: 10.77.1.254

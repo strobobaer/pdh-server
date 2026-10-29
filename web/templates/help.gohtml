@@ -21,6 +21,7 @@
 .hb-ch kbd{font-family:monospace;font-size:11.5px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--bg3)}
 .hb-ch table{font-size:12.5px;margin:8px 0}
 .hb-ch td,.hb-ch th{padding:5px 8px;vertical-align:top}
+.hb-ch pre{font-family:monospace;font-size:12px;line-height:1.5;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:6px 0;overflow-x:auto;white-space:pre;max-width:100%}
 .hb-hide{display:none}
 mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
 @media (max-width:900px){.hb{grid-template-columns:1fr}.hb-toc{position:static;max-height:none}}
@@ -30,6 +31,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   body{height:auto!important;overflow:visible!important;background:#fff;color:#000}
   .hb{display:block}.hb-ch{border:0;padding:0 0 12px}
   .hb-fig,.hb-howto{break-inside:avoid}
+  .hb-ch pre{white-space:pre-wrap;overflow:visible}
   .hb-hide{display:block!important}
 }
 </style>
@@ -1837,13 +1839,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>PDH am Spiegel:</b> Das PDH läuft auch auf dem passiven Server – nur lesen (siehe „So arbeitest du am Spiegel“). <code>/health</code> zeigt dort <code>"mode": "spiegel"</code>.</li>
       <li><b>Rollen tauschen</b> und <b>Übernahme erzwingen</b> wirken immer echt.</li>
       <li><b>Automatische Umschaltung</b> bei einem Ausfall: Standard ist <b>Beobachtung</b>. Der Dienst meldet dann nur „würde jetzt: …“, Rollen bleiben, wie sie sind. Auf <b>echt</b> lässt sie sich erst nach der Pflicht-Testumschaltung stellen.</li>
-      <li>Der <b>Cloudflare-Tunnel</b> läuft nur auf dem aktiven Server und wechselt mit der Rolle – über die öffentliche Adresse erreichst du immer den aktiven Server. Die Adresse im LAN schaltet noch nicht mit um: Dort erreichst du das PDH nach einer Übernahme unter der Adresse des neuen aktiven Servers.</li>
+      <li>Der <b>Cloudflare-Tunnel</b> läuft nur auf dem aktiven Server und wechselt mit der Rolle – über die öffentliche Adresse erreichst du immer den aktiven Server. Im LAN wechselt die <b>mitwandernde Adresse</b> mit, sobald sie eingeschaltet ist (siehe <a href="#hb-zugangsweg">Zugangsweg</a>). Ohne sie erreichst du das PDH nach einer Übernahme unter der eigenen Adresse des neuen aktiven Servers.</li>
     </ul></div>
   {{template "hb-fig-spiegelbetrieb"}}
   <div class="hb-howto"><b><i class="ti ti-eye"></i> So arbeitest du am Spiegel</b>
     <p>Der passive Server zeigt dir das PDH zum Nachsehen – etwa, wenn der aktive Server ausfällt. Du erkennst ihn am orangen Band oben auf jeder Seite.</p>
     <ol class="hb-steps">
-      <li>Die Adresse des Spiegels im Browser öffnen und anmelden. Solange der aktive Server erreichbar ist, dürfen sich hier nur Administratoren anmelden. Alle anderen sehen „Bitte den aktiven Server verwenden“ mit einem Link dorthin.</li>
+      <li>Die Adresse des Spiegels im Browser öffnen und anmelden. Solange der aktive Server erreichbar ist, dürfen sich hier nur Administratoren anmelden. Alle anderen sehen „Bitte den aktiven Server verwenden“ mit einem Link dorthin. Ist die mitwandernde Adresse eingeschaltet, führt der Link auf sie – also immer zum gerade aktiven Server.</li>
       <li>Fällt der aktive Server aus, darf sich jeder anmelden – aber nur zum Lesen. Kann der Spiegel den Zustand nicht feststellen, bleibt es bei den Administratoren.</li>
       <li>Im Band liest du den <b>Datenstand</b>: „aktuell“ oder „vor 2 min“. Ist der aktive Server nicht erreichbar, steht dort „Daten vom“ mit Datum und Uhrzeit. „Status des aktiven Servers unbekannt“ heißt: Der Spiegel kann <code>pdh-ha</code> nicht lesen.</li>
       <li>Ansehen, suchen und Berichte öffnen geht wie gewohnt. Jede Änderung (Speichern, Anlegen, Löschen) lehnt der Spiegel ab: „Dieser Server ist der Spiegel – nur lesen. Änderungen bitte am aktiven Server.“ Bei einem Klick auf der Seite erscheint die Meldung im Hinweisfeld.</li>
@@ -1884,8 +1886,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-arrows-exchange"></i> So tauschst du die Rollen</b>
     <ol class="hb-steps">
       <li>Am <b>aktiven</b> Server <b>Rollen tauschen</b> wählen.</li>
-      <li>Der aktive Server stellt die Datenbank auf „nur lesen“ und wartet, bis der passive alles hat (höchstens 60 Sekunden). Erst dann gibt er ab. Klappt das nicht, bricht der Tausch ab und nichts ändert sich.</li>
-      <li>Das PDH ist für Sekunden nicht erreichbar und läuft danach auf dem anderen Server.</li>
+      <li>Der aktive Server stellt die Datenbank auf „nur lesen“ und wartet, bis der passive alles hat (höchstens 60 Sekunden). Erst dann gibt er ab. Klappt das nicht, bricht der Tausch ab und nichts ändert sich. Meist ist der Tausch nach etwa 5 Sekunden durch; über die mitwandernde Adresse sind Windows-Rechner nach rund 10 Sekunden wieder verbunden.</li>
+      <li>Das PDH ist für Sekunden nicht erreichbar und läuft danach auf dem anderen Server. Mit eingeschalteter mitwandernder Adresse und dem Tunnel bleibt die Adresse für alle gleich.</li>
     </ol>
     <p><b>Hinweis:</b> Hochgeladene Dateien werden noch nicht gespiegelt. Nach einem Tausch fehlen auf dem anderen Server neue Anhänge.</p></div>
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> Synchron und asynchron</b>
@@ -1950,6 +1952,117 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Alarme</b> gehen an die Administratoren. Je Art kommt höchstens einer alle 15 Minuten.</li>
       <li><b>Netzlaufwerk-Sicherung:</b> Sie läuft nur auf dem aktiven Server mit schreibbarer Datenbank. Der passive Server zeigt „Sicherung pausiert: passiver Knoten“. Nach einer Übernahme macht der neue aktive Server sofort eine neue Grundsicherung. Ist <code>pdh-ha</code> nicht erreichbar, pausiert die Sicherung, und nach 15 Minuten kommt ein Fehler.</li>
     </ul></div>
+  <h3 id="hb-zugangsweg"><i class="ti ti-route"></i> Zugangsweg: so finden alle den aktiven Server</h3>
+  <p>Nach einem Rollentausch oder Ausfall sollen Benutzer, Leitstand, Terminals und Drucker den neuen aktiven Server von selbst erreichen – ohne dass jemand Lesezeichen oder Geräte umstellt. Dafür gibt es drei Wege, die du einzeln einschaltest:</p>
+  <ul>
+    <li><b>Mitwandernde Adresse:</b> eine feste Adresse im LAN (z. B. <code>10.10.0.202</code>), die immer der aktive Server hat. Bei einem Wechsel nimmt sie der neue aktive Server innerhalb weniger Sekunden. Sie ist nie auf zwei Servern zugleich.</li>
+    <li><b>Cloudflare-Tunnel:</b> läuft auf beiden Servern eingerichtet, aber nur auf dem aktiven.</li>
+    <li><b>Skripte beim Rollenwechsel:</b> eigene Skripte, z. B. um einen DNS-Eintrag umzustellen – für alles, was die Adresse allein nicht schafft.</li>
+  </ul>
+  <p>Den Zustand zeigt die Karte <b>Zugangsweg</b> im Reiter Ausfallschutz. Einstellen kannst du dort am aktiven Server (oder am ersten Server). Auf der Kommandozeile zeigt <code>sudo pdh-ha status</code> dasselbe in den Zeilen „Adresse …“, „Tunnel: …“ und „Skripte: …“.</p>
+  {{template "hb-fig-zugangsweg"}}
+  <div class="hb-howto"><b><i class="ti ti-network"></i> So richtest du die mitwandernde Adresse ein</b>
+    <p>Du brauchst eine <b>freie Adresse</b> im selben Netz wie beide Server – nicht die eigene Adresse eines Servers oder des Zeugen, außerhalb des DHCP-Bereichs. Soll die bisherige Adresse eines Servers mitwandern, lies zuerst „So stellst du die bisherige Adresse um“.</p>
+    <ol class="hb-steps">
+      <li>Am aktiven Server <b>Server-Einstellungen → Ausfallschutz</b> öffnen, Karte <b>Zugangsweg</b>.</li>
+      <li>Bei <b>Mitwandernde Adresse</b> die Adresse mit Präfix eintragen, z. B. <code>10.10.0.202/24</code>. Den Haken <b>Adresse mitwandern lassen</b> noch nicht setzen. <b>Speichern</b>.</li>
+      <li><b>Testen</b> wählen (Testadresse leer lassen). Der Test legt die Adresse nacheinander auf jeden Server. Alle anderen Teilnehmer prüfen, ob sie dort antwortet – auch der <b>Zeuge</b>. Das dauert meist unter einer halben Minute; kommt ein Teilnehmer nicht gleich durch, versucht er es bis zu 15 Sekunden lang weiter, dann kann der Test bis zu zwei Minuten dauern. Jede Richtung erscheint grün oder rot.</li>
+      <li>Ist alles grün: Haken <b>Adresse mitwandern lassen</b> setzen und <b>Speichern</b>. Ohne bestandenen Test lässt sich der Haken nicht speichern.</li>
+      <li>Die Karte zeigt jetzt „10.10.0.202/24 liegt auf …“ mit dem Namen des aktiven Servers. Geräte und Lesezeichen auf diese Adresse umstellen – danach musst du sie nie wieder ändern.</li>
+    </ol>
+    <p>Ein bestandener Test gilt für jede Adresse im selben Netz, solange beide Server dieselbe Netzwerkkarte benutzen. In einem anderen Netz oder mit einer anderen Karte testest du neu. Auf der Kommandozeile geht dasselbe mit <code>sudo pdh-ha vip test</code> und <code>sudo pdh-ha access --vip 10.10.0.202/24 --vip-on</code>; ausschalten mit <code>sudo pdh-ha access --vip-off</code>.</p>
+    <p>Ist die Adresse schon eingeschaltet, testest du mit einer <b>freien Testadresse</b> im selben Netz. Mit der eingeschalteten Adresse selbst lehnt der Test ab („Adresse ist eingeschaltet – mit freier Testadresse testen oder vorher ausschalten“), damit er ihr nicht in die Quere kommt.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Gut zu wissen zur mitwandernden Adresse</b>
+    <ul>
+      <li><b>Netzwerkkarte:</b> Jeder Server nimmt die Karte, deren eigene Adresse im Netz der mitwandernden Adresse liegt. Passen keine oder mehrere, meldet die Karte „Netzwerkkarte nicht eindeutig“. Dann in <code>/etc/pdh/ha/node.json</code> den Eintrag <code>"vip_interface": "ens18"</code> (Name deiner Karte) ergänzen und <code>sudo systemctl restart pdh-ha</code> ausführen.</li>
+      <li><b>Karte getauscht oder umbenannt:</b> <code>pdh-ha</code> wählt die Karte, wenn die Adresse eingeschaltet wird oder der Dienst startet. Nach einem Wechsel der Netzwerkkarte deshalb <code>sudo systemctl restart pdh-ha</code> ausführen. Am aktiven Server ist die Adresse dabei kurz weg.</li>
+      <li><b><code>pdh-ha</code> beenden</b> (<code>systemctl stop</code> oder <code>restart</code>, Update): Bei automatischer Umschaltung <b>„echt“</b> gibt der Server die Adresse dabei ab. So kann der Partner sie übernehmen, wenn er die Datenbank übernimmt. Im Modus <b>„Beobachtung“</b> bleibt sie auf dem Server liegen – dort übernimmt der Partner nie von selbst, und die Geräte erreichen den Server weiter.</li>
+      <li><b>Nach einem Neustart</b> hat zunächst kein Server die Adresse. Sie kommt, sobald <code>pdh-ha</code> den Server als aktiv bestätigt hat. Die Adresse gehört deshalb nie in die feste Netzwerkkonfiguration (netplan).</li>
+      <li><b>Adresse wird noch benutzt:</b> Antwortet ein anderes Gerät auf die Adresse, nimmt der Server sie nicht und meldet „Adresse … wird noch von einem anderen Gerät benutzt“. Er versucht es laufend weiter. Die Datenbank schaltet trotzdem um – der neue aktive Server ist dann über den Tunnel und seine eigene Adresse erreichbar.</li>
+      <li><b>Entfernt</b> der Netzwerkdienst die Adresse (z. B. durch <code>netplan apply</code>), setzt <code>pdh-ha</code> sie nach wenigen Sekunden wieder.</li>
+      <li><b>Geräte im Netz</b> erfahren den Wechsel sofort: Der neue aktive Server kündigt die Adresse im LAN an (zweimal, nach 5 s noch einmal) – auch als ARP-Antwort, damit Windows-Rechner sie übernehmen. Windows fragt danach zur Sicherheit erst beim alten Server nach und erreicht den neuen nach etwa 8–10 Sekunden (im Testverbund gemessen, Rechner im WLAN). Ein Gerät, das die Ankündigung verpasst, findet den neuen Server spätestens nach etwa 30 Sekunden von selbst.</li>
+      <li>Die Adresse braucht die Pakete <code>iproute2</code> und <code>iputils-arping</code>. Sie kommen beim Update von <code>pdh-ha</code> von selbst dazu – am ersten Server mit dem PDH-Update, an beigetretenen Servern mit dem Update-Befehl aus dem Reiter Ausfallschutz (siehe „Nach einem PDH-Update“). Fehlen sie trotzdem (z. B. ohne Internet beim Update), meldet <code>pdh-ha</code> „Paket … fehlt“; dann <code>sudo apt-get install iputils-arping iproute2</code>.</li>
+      <li>Der Zeuge bekommt die Adresse nie.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn der Test scheitert</b>
+    <p>Unter dem Ergebnis nennt das PDH die typischen Ursachen:</p>
+    <ul>
+      <li><b>Proxmox:</b> Die Firewall der virtuellen Netzwerkkarte hat einen IP-Filter und erlaubt nur die eigene Adresse. Den IP-Filter ausschalten oder die mitwandernde Adresse (und die Testadresse) dort freigeben.</li>
+      <li><b>Switch:</b> ARP-Prüfung (Dynamic ARP Inspection) oder Port-Security lässt keine zweite Adresse am Anschluss zu. Die Adresse im Switch für beide Anschlüsse erlauben.</li>
+      <li><b>Cloud-Server:</b> Zusätzliche Adressen lassen sich dort meist nicht frei verschieben. Stattdessen ein Skript beim Rollenwechsel nehmen (z. B. die Floating-IP des Anbieters umhängen oder DNS umstellen).</li>
+      <li><b>Zeuge in einem anderen Netz:</b> Der Zeuge prüft mit. Erreicht er das Netz der Server nicht (z. B. hinter einer Firewall oder nur über einen anderen Weg), scheitert seine Richtung. Den Zeugen ins Netz der Server stellen oder ihm den Weg dorthin freigeben.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-arrows-right-left"></i> So stellst du die bisherige Adresse um</b>
+    <p>Beispiel: Alle Geräte kennen den Server unter <code>10.10.0.202</code>. Diese Adresse soll mitwandern. Der Server bekommt dafür eine neue eigene Adresse, z. B. <code>10.10.0.203</code>. Das Skript <code>pdh-ha-adresse.sh</code> führt dich in Schritten durch. Jeder Schritt lässt sich einzeln starten, und am Ende steht immer <b>„Zurücknehmen: …“</b> mit den Befehlen, die ihn rückgängig machen. Änderungen am Netz testet es mit <code>netplan try</code>: Bestätigst du nicht mit <b>ENTER</b>, geht nach 120 Sekunden alles von selbst zurück.</p>
+    <p><b>Wo das Skript liegt:</b> am <b>ersten Server</b> (dort, wo der Ausfallschutz eingerichtet wurde) unter <code>/opt/pdh-server/scripts/pdh-ha-adresse.sh</code>, an <b>beigetretenen Servern</b> unter <code>/opt/pdh-ha-src/scripts/pdh-ha-adresse.sh</code>. In den Befehlen unten steht dafür kurz <code>…/pdh-ha-adresse.sh</code>.</p>
+    <ol class="hb-steps">
+      <li><b>Neue eigene Adresse dazu</b> – auf dem Server, der heute <code>.202</code> hat:<br><code>sudo bash …/pdh-ha-adresse.sh neu 10.10.0.203/24</code><br><code>.202</code> bleibt, nichts wird unterbrochen. Das Skript setzt die neue Adresse sofort als Absender für Verbindungen zum Partner (<code>ip route replace …</code>) – ein Neustart ist nicht nötig. Stammt die Netzwerkdatei von cloud-init (<code>50-cloud-init.yaml</code>), schaltet das Skript die Netzwerkkonfiguration von cloud-init ab (<code>/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg</code>) und sagt das an. Sonst käme beim nächsten Start die alte Einstellung zurück.</li>
+      <li><b>Verbund umstellen</b> – am <b>ersten Server</b> (dort, wo der Ausfallschutz eingerichtet wurde):<br><code>sudo bash …/pdh-ha-adresse.sh verbund 10.10.0.203</code><br>Herzschlag und Datenbank-Spiegel laufen danach über <code>.203</code>. PostgreSQL startet dabei kurz neu. Auf einem anderen Server führt das Skript nichts aus, sondern zeigt den Befehl für den ersten Server. Geht die Verbindung zum Partner noch von der alten Adresse aus, bricht es ab und zeigt den Befehl, der das richtet.</li>
+      <li><b>Testen</b> – mit einer freien Testadresse, denn <code>.202</code> ist ja noch belegt:<br><code>sudo bash …/pdh-ha-adresse.sh test 10.10.0.15/24</code><br>Der Test gilt danach auch für <code>.202</code> (gleiches Netz, gleiche Karten). Alternativ in der Karte bei <b>Testadresse</b> eintragen und <b>Testen</b>.</li>
+      <li><b>Prüfliste</b> – zeigt, was <code>.202</code> noch als „genau diesen Server“ benutzt:<br><code>sudo bash …/pdh-ha-adresse.sh pruefliste 10.10.0.202</code><br>Auf <code>.203</code> umstellen: SSH-Zugänge, Überwachung, Firewall-Freigaben nur für <code>.202</code> und vor allem die Netzlaufwerk-Freigabe <b>pdhnas</b> – ein Sicherungsziel darf nicht mitwandern.</li>
+      <li><b>Übergabe</b> – zuerst per SSH über die <b>neue</b> Adresse <code>.203</code> anmelden, dann:<br><code>sudo bash …/pdh-ha-adresse.sh uebergabe 10.10.0.202/24</code><br>Das Skript schaltet <code>.202</code> zuerst als mitwandernde Adresse ein – sie liegt dabei noch fest an, <code>pdh-ha</code> übernimmt sie still. Danach nimmt <code>netplan try</code> sie aus der festen Netzwerkkonfiguration, und <code>pdh-ha</code> setzt sie sofort neu. Die Lücke dauert nur wenige Sekunden, egal wie lange du mit dem Bestätigen brauchst. Bestätigst du nicht, schaltet das Skript die mitwandernde Adresse wieder aus, wartet, bis <code>pdh-ha</code> sie abgegeben hat, und trägt <code>.202</code> wieder fest ein. Vorher prüft es die Einstellung <code>promote_secondaries</code> (sonst nähme der Kernel mit <code>.202</code> auch <code>.203</code> weg) und schaltet sie nach Rückfrage ein. Läuft deine SSH-Sitzung noch über <code>.202</code>, lehnt das Skript ab – sie würde abreißen. Zurücknehmen: erst <code>sudo pdh-ha access --vip-off</code>, warten, bis die Adresse bei niemand liegt, dann die Netzwerkdateien zurück, wie das Skript es ausgibt.</li>
+    </ol>
+    <p>Das Skript gibt am Ende jedes Schritts aus, wie es weitergeht. Gesicherte Netzwerkdateien liegen unter <code>/var/backups/pdh-ha-adresse/</code>. Weitere Angaben: <code>--if NAME</code> (Netzwerkkarte, Standard: die mit der Standardroute), <code>--partner IP</code> (Adresse des anderen Servers für die Absender-Prüfung). Das Skript braucht ein echtes Terminal (wegen <code>netplan try</code>).</p></div>
+  <div class="hb-howto"><b><i class="ti ti-cloud-lock"></i> Cloudflare-Tunnel auf beiden Servern</b>
+    <ul>
+      <li>Das Tunnel-Token trägst du nur einmal ein (Server-Einstellungen → Cloudflare-Tunnel, siehe <a href="#server">Server-Einstellungen</a>). Das PDH gibt es an <code>pdh-ha</code> auf <b>beiden</b> Servern weiter – innerhalb etwa einer Minute, ganz ohne Skript.</li>
+      <li>Der Tunnel läuft nur auf dem aktiven Server. Bei einem Wechsel verbindet er sich in 5–15 Sekunden neu; Anmeldungen bleiben gültig.</li>
+      <li><b>Ohne Datenbank-Spiegel</b> (einzelner Server, oder der erste Server, bevor der Partner mit <code>--voll</code> beigetreten ist) bleibt der Autostart von <code>cloudflared</code>, wie er ist: Der Tunnel kommt nach einem Neustart des Rechners wie gewohnt hoch. Erst mit Spiegel startet <code>pdh-ha</code> ihn nur am aktiven Server und schaltet den Autostart ab.</li>
+      <li>Das <b>Ziel im Cloudflare-Dashboard</b> ist immer <code>localhost:8090</code> (HTTP). Mit einer festen Server-Adresse liefe der Tunnel nach einem Wechsel ins Leere – die Karte warnt dann „Ziel im Cloudflare-Dashboard muss localhost:8090 sein“.</li>
+      <li><code>cloudflared</code> installiert <code>pdh-ha-join.sh</code> nur mit <code>--voll</code>, also beim Einrichten des Datenbank-Spiegels – nie auf dem Zeugen, der keinen Tunnel braucht. Fehlt es auf einem schon eingerichteten Server, <b>nicht erneut mit <code>--voll</code> ausführen</b> – das legt die Datenbank-Kopie neu an. Stattdessen das Paket von Hand installieren, ohne <code>cloudflared service install</code> (bei ARM-Rechnern <code>arm64</code> statt <code>amd64</code>): <code>curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb</code> und <code>sudo dpkg -i /tmp/cloudflared.deb</code>. Den Rest richtet <code>pdh-ha</code> ein.</li>
+      <li>Wurde <code>cloudflared</code> früher mit <code>cloudflared service install &lt;Token&gt;</code> (oder dem Tunnel-Skript aus dem PDH) eingerichtet, steht das alte Token weiter in dessen Dienstdatei. Entfernst du das Token im PDH, bleibt dieses alte Token dort stehen – zum vollständigen Entfernen <code>sudo cloudflared service uninstall</code> ausführen.</li>
+      <li>Ist <code>cloudflared</code> installiert, aber hier kein Token abgelegt, zeigt die Karte „Token fehlt“ (am aktiven Server als Fehler). Ist im ganzen Verbund kein Token eingetragen, zeigt sie nur „nicht eingerichtet“ – ein Ausfallschutz ohne Tunnel ist in Ordnung. Dann das Token in den Server-Einstellungen eintragen bzw. das PDH auf diesem Server aktualisieren. Fehlt das Token auf dem anderen Server, meldet die Karte „Token fehlt auf …“.</li>
+      <li>Die Karte meldet „Token auf den Servern verschieden“ oder einen Fehler, wenn der Tunnel auf dem nicht aktiven Server läuft. Die pdhadmin-Seiten (n8n, pgAdmin, code-server) laufen nach einem Wechsel noch nicht mit.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-terminal-2"></i> Skripte beim Rollenwechsel</b>
+    <p>Wechselt ein Server die Rolle (zu aktiv, passiv oder abgeschaltet), führt <code>pdh-ha</code> deine Skripte aus. Der aktiv werdende Server tut das, nachdem er die mitwandernde Adresse übernommen hat. Die Skripte laufen im Hintergrund und halten die Umschaltung nie auf. Bearbeiten lassen sie sich nur auf dem Server selbst, nicht im PDH.</p>
+    <ol class="hb-steps">
+      <li>Skript in den Ordner <code>/etc/pdh/ha-hooks/</code> legen, z. B. <code>10-dns</code>. Ausgeführt werden alle ausführbaren Dateien in alphabetischer Reihenfolge.</li>
+      <li>Rechte setzen: <code>sudo chown root:root /etc/pdh/ha-hooks/10-dns</code> und <code>sudo chmod 755 /etc/pdh/ha-hooks/10-dns</code>. Dateien, die nicht root gehören oder für Gruppe oder andere schreibbar sind, werden übersprungen („Skript … unsicher – übersprungen“). Verknüpfungen (Symlinks) laufen nie; sie werden einmal gemeldet („Skript … ist eine Verknüpfung – übersprungen“). Auch der Ordner selbst muss root gehören und darf nicht für Gruppe oder andere schreibbar sein, sonst läuft gar kein Skript und es kommt ein Alarm („Ordner … unsicher“) – beheben mit <code>sudo chown root:root /etc/pdh/ha-hooks</code> und <code>sudo chmod 755 /etc/pdh/ha-hooks</code>.</li>
+      <li>Dasselbe Skript auf den <b>anderen Server</b> kopieren. Sind die Skripte verschieden, warnt die Karte „auf den Servern verschieden“.</li>
+      <li>Testen: <code>sudo pdh-ha hook run</code> führt alle Skripte mit der aktuellen Rolle aus und zeigt die Ausgabe. In der Karte geht das mit <b>Jetzt ausführen</b>.</li>
+      <li>In der Karte den Haken <b>Skripte bei Umschaltung ausführen</b> setzen und <b>Speichern</b> (oder <code>sudo pdh-ha access --hooks-on</code>).</li>
+    </ol>
+    <p>Jedes Skript darf höchstens <b>30 Sekunden</b> laufen. Endet es mit Fehler oder läuft zu lange, kommt ein Alarm; die letzten Zeilen der Ausgabe (höchstens 2 KB) stehen im Ereignisprotokoll. Die Skripte laufen als root – für SSH-Aufrufe den Schlüssel von root benutzen und <code>-o BatchMode=yes</code> setzen, damit nichts auf eine Eingabe wartet.</p>
+    <table>
+      <tr><th>Variable</th><th>Inhalt</th></tr>
+      <tr><td><code>PDH_HA_ROLLE</code></td><td>neue Rolle: <code>aktiv</code>, <code>passiv</code> oder <code>abgeschaltet</code></td></tr>
+      <tr><td><code>PDH_HA_AMTSZEIT</code></td><td>Amtszeit (Zähler der Wechsel)</td></tr>
+      <tr><td><code>PDH_HA_KNOTEN</code></td><td>Kennung dieses Servers</td></tr>
+      <tr><td><code>PDH_HA_EIGENE_ADRESSE</code></td><td>erste eigene Adresse dieses Servers (ohne Port)</td></tr>
+      <tr><td><code>PDH_HA_PARTNER_ADRESSE</code></td><td>erste Adresse des anderen Servers</td></tr>
+      <tr><td><code>PDH_HA_VIP</code></td><td>mitwandernde Adresse ohne Präfix, leer wenn keine eingetragen</td></tr>
+    </table>
+    <p><b>Beispiele</b> – jeweils nur auf dem Server, der aktiv wird. Sie stellen einen DNS-Namen (z. B. <code>pdh.firma.local</code>) auf die eigene Adresse des aktiven Servers um.</p>
+    <p>Windows-DNS über SSH und PowerShell (OpenSSH auf dem DNS-Server):</p>
+<pre>#!/bin/sh
+# /etc/pdh/ha-hooks/10-dns-windows
+[ "$PDH_HA_ROLLE" = "aktiv" ] || exit 0
+ssh -o BatchMode=yes dnsadmin@dc01 "powershell -NoProfile -Command \"\$a = Get-DnsServerResourceRecord -ZoneName firma.local -Name pdh -RRType A; \$n = \$a.Clone(); \$n.RecordData.IPv4Address = [ipaddress]'$PDH_HA_EIGENE_ADRESSE'; Set-DnsServerResourceRecord -ZoneName firma.local -OldInputObject \$a -NewInputObject \$n\""</pre>
+    <p>BIND oder ein anderer DNS-Server mit dynamischen Updates (<code>nsupdate</code>, Paket <code>bind9-dnsutils</code>):</p>
+<pre>#!/bin/sh
+# /etc/pdh/ha-hooks/10-dns-nsupdate
+[ "$PDH_HA_ROLLE" = "aktiv" ] || exit 0
+nsupdate -k /etc/pdh/dns.key &lt;&lt;EOF
+server 10.10.0.2
+update delete pdh.firma.local A
+update add pdh.firma.local 60 A $PDH_HA_EIGENE_ADRESSE
+send
+EOF</pre>
+    <p>Pi-hole bis Version 5 (Einträge unter „Local DNS“ in <code>/etc/pihole/custom.list</code>):</p>
+<pre>#!/bin/sh
+# /etc/pdh/ha-hooks/10-dns-pihole
+[ "$PDH_HA_ROLLE" = "aktiv" ] || exit 0
+ssh -o BatchMode=yes root@pihole "sed -i '/ pdh.firma.local\$/d' /etc/pihole/custom.list &amp;&amp; echo '$PDH_HA_EIGENE_ADRESSE pdh.firma.local' &gt;&gt; /etc/pihole/custom.list &amp;&amp; pihole reloaddns"</pre>
+    <p>Cloudflare-DNS über die Schnittstelle (API-Token mit Recht „DNS bearbeiten“; Zonen- und Eintrags-Kennung aus dem Dashboard bzw. der API):</p>
+<pre>#!/bin/sh
+# /etc/pdh/ha-hooks/10-dns-cloudflare
+[ "$PDH_HA_ROLLE" = "aktiv" ] || exit 0
+. /etc/pdh/cloudflare-dns.env   # CF_TOKEN=…  CF_ZONE=…  CF_RECORD=…  (Datei: root, chmod 600)
+curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records/$CF_RECORD" \
+  -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  --data "{\"type\":\"A\",\"name\":\"pdh-intern.firma.de\",\"content\":\"$PDH_HA_EIGENE_ADRESSE\",\"ttl\":60,\"proxied\":false}"</pre>
+    <p>Namen, Zonen und Adressen in den Beispielen an euer Netz anpassen. Mit eingeschalteter mitwandernder Adresse braucht ihr für das LAN meist kein DNS-Skript – dann den DNS-Namen einfach fest auf die mitwandernde Adresse zeigen lassen.</p></div>
   <div class="hb-howto"><b><i class="ti ti-flask"></i> Testlabor</b>
     Für Tests gibt es ein Docker-Testlabor. Es dient nur zum Ausprobieren – im Betrieb laufen die Server mit systemd.</div>
   {{template "hb-shots" (dict "Ref" (index $s "spiegelbetrieb") "Can" $can)}}

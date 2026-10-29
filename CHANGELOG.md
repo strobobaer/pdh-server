@@ -10,6 +10,34 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.6] – 2026-10-29
+
+### Neu
+- Ausfallschutz mit zwei Servern: eine mitwandernde Adresse im LAN liegt immer auf dem aktiven Server und wechselt bei einer Umschaltung in wenigen Sekunden mit – Geräte und Lesezeichen müssen nicht mehr umgestellt werden.
+- Der Cloudflare-Tunnel wird auf beiden Servern automatisch mit demselben Token eingerichtet und läuft immer nur auf dem aktiven Server.
+- Eigene Skripte in `/etc/pdh/ha-hooks/` laufen bei jedem Rollenwechsel, z. B. um einen DNS-Eintrag umzustellen; testen mit `sudo pdh-ha hook run`.
+- Das Skript `pdh-ha-adresse.sh` führt Schritt für Schritt durch die Umstellung einer bisherigen Server-Adresse zur mitwandernden Adresse, jeder Schritt zurücknehmbar.
+- Neue Karte „Zugangsweg“ im Reiter Ausfallschutz: Zustand von Tunnel, mitwandernder Adresse und Skripten, Adresse testen und einschalten, Skripte ein- und ausschalten oder sofort ausführen.
+
+### Geändert
+- Das Update von `pdh-ha` installiert auf jedem Server – auch am ersten – die Pakete `iproute2` und `iputils-arping`; `pdh-ha-join.sh` legt zusätzlich den Ordner für die Skripte an und richtet mit `--voll` auch `cloudflared` ein.
+- Am Spiegel führt der Link „Bitte den aktiven Server verwenden“ auf die mitwandernde Adresse, sobald sie eingeschaltet ist.
+- Wird `pdh-ha` beendet, gibt der Server die mitwandernde Adresse bei automatischer Umschaltung „echt“ ab, damit der Partner sie bei einem Ausfall bekommt; im Beobachtungsmodus bleibt sie liegen.
+- Auf einem Server ohne Datenbank-Spiegel bleibt der Autostart des Cloudflare-Tunnels, wie er ist – der Tunnel kommt nach einem Neustart weiter von selbst hoch.
+- Die Karte „Zugangsweg“ meldet „Token fehlt“, wenn auf diesem oder dem anderen Server kein Tunnel-Token liegt, statt den Tunnel als bereit zu zeigen; ein Verbund ganz ohne Tunnel-Token gilt als „nicht eingerichtet“, nicht als Fehler.
+- `pdh-ha-adresse.sh uebergabe` schaltet die Adresse zuerst mitwandernd ein und nimmt sie erst dann aus der festen Netzwerkkonfiguration – die Lücke dauert nur wenige Sekunden, egal wie lange die Bestätigung dauert.
+- Ein Adresstest mit der eingeschalteten mitwandernden Adresse wird abgelehnt; dafür eine freie Testadresse nehmen.
+- Meldungen zur mitwandernden Adresse kommen höchstens einmal je Stunde, auch wenn ein Netzwerkdienst die Adresse laufend entfernt.
+- Die mitwandernde Adresse wird nach einem Wechsel auch als ARP-Antwort angekündigt: Windows-Rechner (z. B. im WLAN) erreichen den neuen Server nach etwa 10 Sekunden statt erst nach bis zu 30.
+- Der Adresstest gibt jedem Teilnehmer bis zu 15 Sekunden, die Prüfadresse zu erreichen – so besteht er auch mit einem Zeugen auf einem Windows-PC, der den neuen Halter erst nach kurzer Rückfrage annimmt.
+
+### Behoben
+- Rollentausch, Update und Neustart: Das PDH beendet sich sofort, statt bis zu 30 Sekunden auf offene Browser-Seiten (Chat-Verbindung) zu warten – ein Rollentausch im Ausfallschutz dauert dadurch nur noch wenige Sekunden statt über eine halbe Minute.
+- `pdh-ha-adresse.sh uebergabe`: Wird der Testlauf nicht bestätigt, wartet das Skript, bis die mitwandernde Adresse wirklich abgegeben ist, und prüft danach, dass die feste Adresse wieder anliegt; scheitert das Einschalten, bleibt auch die erzeugte Netzwerkeinstellung unverändert.
+
+### Sicherheit
+- Skripte beim Rollenwechsel laufen nur, wenn der Ordner `/etc/pdh/ha-hooks` root gehört und nicht für Gruppe oder andere schreibbar ist; Verknüpfungen im Ordner werden einmal gemeldet und nie ausgeführt.
+
 ## [0.77.5] – 2026-10-29
 
 ### Behoben

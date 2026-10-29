@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -141,6 +142,26 @@ type daemon struct {
 	seqN    atomic.Uint64
 	gwOK    atomic.Int64 // monotone Zeit (ns) der letzten Gateway-Antwort
 	pinging atomic.Bool
+
+	// Mitwandernde Adresse (nur Knoten); die Felder ändern sich nur unter mu.
+	ifAddrsFn   func() ([]ifAddr, error) // Netzwerkkarten (Tests: Fake)
+	hooks       *hookRunner              // Skripte beim Rollenwechsel
+	tunnel      *tunnelSetup             // Token und Dienst-Ergänzung für cloudflared
+	tunCtl      serviceCtl               // cloudflared starten/stoppen/abfragen
+	access      *accessWorker            // nil = keine Adresse auf diesem Server
+	accessKey   string                   // Einstellung, für die access gilt ("" = keine)
+	accessStop  context.CancelFunc
+	accessPrev  <-chan struct{} // Abgabe des vorigen Arbeiters (neuer startet danach)
+	accessIface string
+	accessErr   string // Kartenwahl gescheitert
+
+	// Adresstest (vip_check.go); Tests ersetzen die Wege.
+	tlsFn       func() (*tls.Certificate, *x509.CertPool, error)
+	peerPostFn  func(ctx context.Context, peer clusterNode, path string, in, out any) error
+	probeAddrFn func(ctx context.Context, hostport, expect string) error
+	holdAfter   func(time.Duration) <-chan time.Time
+	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
+	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -170,9 +191,13 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		downSince: map[string]time.Duration{},
 		actQ:      make(chan queuedAction, 16),
 		sys:       execRunner{},
+		ifAddrsFn: listIfAddrs,
 	}
 	d.act = observeActor{ev: ev}
+	d.hooks = newHookRunner(ev)
+	d.tunnel, d.tunCtl = newTunnelSetup(d.sys), newTunnelCtl(d.sys)
 	d.saveFn = st.saveState
+	d.tlsFn, d.peerPostFn, d.probeAddrFn, d.holdAfter = d.clusterTLS, d.peerPost, d.probeAddrLocal, time.After
 	return d
 }
 
@@ -343,6 +368,12 @@ func (d *daemon) startLocked() {
 	}
 	if d.node.Kind == "node" {
 		mux.HandleFunc("POST /v1/config/pull", d.configPullHTTP)
+	}
+	// Adresstest: prüfen auf allen Mitgliedern, Prüfadresse halten nur Server
+	mux.HandleFunc("POST /v1/probe-addr", d.probeAddrHTTP)
+	if d.node.Kind == "node" {
+		mux.HandleFunc("POST /v1/probe-hold", d.probeHoldHTTP)
+		mux.HandleFunc("POST /v1/probe-release", d.probeReleaseHTTP)
 	}
 	var join http.Handler = mux
 	if ok {
@@ -550,6 +581,8 @@ func (d *daemon) applyFirewallOnce() {
 func (d *daemon) run(ctx context.Context) error {
 	d.lock()
 	d.runCtx = ctx
+	d.hooks.ctx = ctx
+	go d.hooks.loop(ctx) // Skript-Ordner alle 30 s neu lesen
 	d.startLocked()
 	d.unlock()
 	go d.applyFirewall()
@@ -564,6 +597,8 @@ func (d *daemon) run(ctx context.Context) error {
 		d.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			d.stopProbeHold()    // Prüfadresse nicht liegen lassen
+			d.stopAccessOnExit() // mitwandernde Adresse bei Automatik „echt“ abgeben
 			return nil
 		case m := <-in:
 			d.handle(ctx, m)
@@ -745,8 +780,97 @@ func (d *daemon) tick(ctx context.Context) {
 	d.execute(ctx, pl)
 }
 
+// syncAccessLocked startet, ersetzt oder beendet den Arbeiter der
+// mitwandernden Adresse passend zur Einstellung. Läuft unter mu und blockiert
+// nie: Der alte Arbeiter gibt eine gehaltene Adresse im Hintergrund ab, der
+// neue beginnt erst danach. Das Ende des Dienstes regelt stopAccessOnExit.
+func (d *daemon) syncAccessLocked(ctx context.Context) {
+	a := d.cl.Access
+	key := ""
+	var vip netip.Prefix
+	if d.node.Kind == "node" && !d.removed && a.VIPOn {
+		if p, err := parseVIP(a.VIP); err == nil {
+			vip, key = p, p.String()+"|"+d.node.VIPInterface
+		}
+	}
+	if key == d.accessKey && (d.access != nil || key == "") {
+		return
+	}
+	if key != d.accessKey {
+		if old := d.access; old != nil {
+			d.accessStop()
+			released := make(chan struct{})
+			go func() {
+				defer close(released)
+				old.release()
+			}()
+			d.accessPrev = released
+		}
+		d.access, d.accessStop, d.accessKey = nil, nil, key
+		d.accessIface, d.accessErr = "", ""
+		delete(d.alarms, "vip-iface")
+	}
+	if key == "" {
+		return
+	}
+	// Kartenwahl; scheitert sie, im nächsten Takt erneut
+	addrs, err := d.ifAddrsFn()
+	iface := ""
+	if err == nil {
+		iface, err = pickInterface(addrs, vip, d.node.VIPInterface)
+	}
+	if err != nil {
+		d.accessErr = err.Error()
+		d.alarmOnce("vip-iface", "Mitwandernde Adresse: "+err.Error())
+		return
+	}
+	d.accessIface, d.accessErr = iface, ""
+	delete(d.alarms, "vip-iface")
+	base := d.runCtx
+	if base == nil {
+		base = ctx
+	}
+	wctx, cancel := context.WithCancel(base)
+	w := newAccessWorker(newVIPCtl(d.sys, iface, vip), d.ev)
+	w.after = d.accessPrev
+	d.access, d.accessStop = w, cancel
+	go w.run(wctx)
+}
+
+// accessExitWait: so lange wartet das Dienstende höchstens auf die Abgabe
+// eines vorigen Arbeiters (dessen Abgabe hat selbst 10 s Frist).
+const accessExitWait = 15 * time.Second
+
+// stopAccessOnExit läuft beim Ende des Dienstes (SIGTERM), nachdem runCtx
+// beendet ist. Bei Automatik „echt“ wird eine gehaltene Adresse abgegeben:
+// sonst bliebe sie beim gestoppten Server, der Partner übernähme die
+// Datenbank, fände die Adresse aber besetzt (Duplikat) und bekäme sie nie.
+// Im Beobachtungsmodus bleibt sie liegen – dort übernimmt der Partner nie
+// selbst, die Geräte bleiben so erreichbar. Eine Abgabe eines vorigen
+// Arbeiters (Einstellung gewechselt) wird kurz abgewartet.
+func (d *daemon) stopAccessOnExit() {
+	d.mu.Lock()
+	w, prev, stop := d.access, d.accessPrev, d.accessStop
+	real := d.settingsLocked().Real()
+	d.mu.Unlock()
+	if stop != nil {
+		stop() // endet ohnehin mit runCtx; so auch ohne (Tests)
+	}
+	if prev != nil {
+		select {
+		case <-prev:
+		case <-time.After(accessExitWait):
+		}
+	}
+	if w == nil || !real {
+		return
+	}
+	w.release() // wartet auf das Ende des Arbeiters, prüft den echten Zustand
+}
+
 func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	pl := plan{net: d.net}
+	d.syncAccessLocked(ctx)
 	if d.removed {
 		return pl
 	}
@@ -770,6 +894,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	d.replInputLocked(ctx, &in, s)
+	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
 	out := ha.Step(in)
 	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
 	if !out.Persist.Equal(d.p) || d.unsaved {
@@ -779,12 +904,20 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 			}
 			d.unsaved = true
 			d.saveAlarmLocked(&pl, "Zustand nicht gespeichert, nichts gesendet: "+err.Error())
+			if d.access != nil {
+				// Zustand auf der Platte ungewiss: nicht aktiv, Adresse abgeben
+				d.access.set(false, ha.Fenced, d.p.Term)
+			}
 			return pl
 		}
 		d.unsaved = false
 	}
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
 	d.p, d.carry = out.Persist, out
+	if d.access != nil {
+		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
+	}
+	d.hooksChangedLocked(before, out.Persist.Role, booting)
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {
