@@ -7,11 +7,16 @@
 #   sudo bash pdh-ha-adresse.sh neu <ip/präfix>
 #       1. Neue eigene Adresse dazu (/etc/netplan/60-pdh-ha.yaml), „netplan try“.
 #          Die neue Adresse steht vorn: Linux nimmt für ausgehende Verbindungen
-#          (Herzschlag, Spiegel) die erste Adresse der Karte.
+#          (Herzschlag, Spiegel) die erste Adresse der Karte. Weil vorhandene
+#          Adressen im laufenden Betrieb nicht umsortiert werden, setzt das Skript
+#          die Absenderadresse sofort per „ip route replace …“ und prüft sie.
+#          Stammt die Datei von cloud-init (50-cloud-init.yaml), wird dessen
+#          Netzwerkkonfiguration abgeschaltet, sonst käme die alte Lage zurück.
 #   sudo bash pdh-ha-adresse.sh verbund <ip>[,<ip>…]
 #       2. Verbund umstellen: „pdh-ha addrs set <dieser Server> … --neustart“
 #          (PostgreSQL startet kurz neu). Geht nur am Server mit der CA – sonst
-#          wird der Befehl für den ersten Server ausgegeben.
+#          wird der Befehl für den ersten Server ausgegeben. Bricht ab, wenn die
+#          Absenderadresse zum Partner nicht die neue ist (auch mit --yes).
 #   sudo bash pdh-ha-adresse.sh test <ip/präfix>
 #       3. Mitwandernde Adresse in alle Richtungen testen (pdh-ha vip test).
 #   sudo bash pdh-ha-adresse.sh pruefliste <alte-ip>
@@ -101,13 +106,13 @@ pick_iface() {
   [[ -n "$IFACE" ]] || fail "Keine Standardroute gefunden – bitte --if NAME angeben."
   ip link show "$IFACE" >/dev/null 2>&1 || fail "Schnittstelle $IFACE gibt es nicht."
 }
-# Kennung der Schnittstelle in netplan (wie pdh-static-ip.sh)
+# Art und Kennung der Karte in netplan (ethernets, bonds, bridges, vlans);
+# KIND/ID werden gesetzt. Unbekannte Karte: Abbruch mit Hinweis.
 netplan_id() {
-  ID="$IFACE"
-  local ids
-  if ids="$(netplan get ethernets 2>/dev/null | grep -E '^[^ #][^:]*:' | sed 's/:.*//')"; then
-    if ! grep -qx "$IFACE" <<<"$ids" && [[ "$(grep -c . <<<"$ids")" -eq 1 ]]; then ID="$ids"; fi
-  fi
+  local r
+  mapfile -t NPFILES < <(netplan_files)
+  r="$(npy card "$IFACE" "${NPFILES[@]}")" || fail "Die Karte $IFACE steht in keiner Datei unter /etc/netplan (weder als Ethernet noch als Bond, Bridge oder VLAN) – die Adresse kann dort nicht ergänzt werden. Nichts geändert."
+  KIND="${r%% *}"; ID="${r#* }"
 }
 # Feste (nicht per DHCP erhaltene) globale IPv4-Adressen der Karte, mit Präfix
 static_addrs() { ip -4 -o addr show dev "$IFACE" scope global | grep -v ' dynamic ' | awk '{print $4}'; }
@@ -120,14 +125,33 @@ partner_ip() {
 import json,sys
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
-for p in d.get("peers") or []:
-    for a in p.get("paths") or []:
-        ad=a.get("addr","")
-        if ad:
-            print(ad.rsplit(":",1)[0].strip("[]")); sys.exit(0)
+peers=d.get("peers") or []
+# Vollwertige Server vor dem Zeugen: der Zeuge hat oft einen anderen Weg
+for want_witness in (False, True):
+    for p in peers:
+        if (p.get("kind") == "witness") != want_witness:
+            continue
+        for a in p.get("paths") or []:
+            ad=a.get("addr","")
+            if ad:
+                print(ad.rsplit(":",1)[0].strip("[]")); sys.exit(0)
 ' 2>/dev/null || true
 }
 route_src() { ip -4 route get "$1" 2>/dev/null | sed -nE 's/.*[[:space:]]src[[:space:]]+([0-9.]+).*/\1/p' | head -n1; }
+# Netz einer Adresse mit Präfix: 10.10.0.203/24 -> 10.10.0.0/24
+net_of() { python3 -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.argv[1]).network)' "$1"; }
+# Läuft gerade eine SSH-Sitzung über diese lokale Adresse? „sudo“ löscht SSH_CONNECTION,
+# darum zusätzlich die aufgebauten Verbindungen auf Port 22 ansehen (genauer Vergleich).
+ssh_over() {
+  local ip="$1" srv
+  srv="$(awk '{print $3}' <<<"${SSH_CONNECTION:-}")"
+  [[ "$srv" == "$ip" ]] && return 0
+  ss -tnH state established '( sport = :22 )' 2>/dev/null | awk -v ip="$ip" '
+    { l=$3; sub(/:[0-9]+$/, "", l); gsub(/[][]/, "", l); sub(/^::ffff:/, "", l); if (l == ip) f=1 }
+    END { exit f ? 0 : 1 }'
+}
+# Regulärer Ausdruck für einen genauen Treffer einer IPv4-Adresse (10.10.0.20 trifft nicht 10.10.0.202)
+ip_re() { local r="${1//./\\.}"; printf '(^|[^0-9.])%s($|[^0-9.]|\\.($|[^0-9]))' "$r"; }
 
 # ---- netplan-Dateien bearbeiten (Sicherung + Rücknahme) ----------------------
 BAK=""
@@ -147,9 +171,21 @@ undo_text() { # Befehle zum Zurücknehmen von Hand
   local f
   for f in "${SAVED[@]:-}"; do [[ -n "$f" ]] && echo "  cp -p $BAK/$(basename "$f") $f"; done
   for f in "${CREATED[@]:-}"; do [[ -n "$f" ]] && echo "  rm -f $f"; done
+  [[ " ${CREATED[*]:-} " != *" $CLOUDCFG "* ]] || echo "  # (cloud-init erzeugt danach 50-cloud-init.yaml beim Start wieder neu)"
   echo "  netplan try --timeout 120"
 }
-# Python-Helfer: find IP DATEI… (Dateien mit dieser Adresse) | remove IP DATEI
+# cloud-init schreibt 50-cloud-init.yaml beim Start neu (die alte Adresse käme zurück):
+# Netzwerkkonfiguration von cloud-init dann abschalten – nur wenn diese Datei geändert wird.
+CLOUDCFG=/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+cloud_guard() {
+  [[ "$(basename "$1")" == "50-cloud-init.yaml" ]] || return 0
+  [[ -d /etc/cloud && ! -e "$CLOUDCFG" ]] || return 0
+  save_file "$CLOUDCFG"
+  printf '# PDH Ausfallschutz (pdh-ha-adresse.sh): cloud-init darf /etc/netplan nicht neu schreiben\nnetwork: {config: disabled}\n' >"$CLOUDCFG"
+  chmod 644 "$CLOUDCFG"
+  warn "$1 stammt von cloud-init und würde beim Start neu erzeugt – darum ist die Netzwerkkonfiguration von cloud-init abgeschaltet ($CLOUDCFG)."
+}
+# Python-Helfer: card NAME DATEI… | count IP KENNUNG DATEI… | find IP DATEI… | remove IP DATEI
 npy() {
   python3 - "$@" <<'PY'
 import sys, os
@@ -158,6 +194,7 @@ try:
 except ImportError:
     sys.stderr.write("python3-yaml fehlt (apt-get install python3-yaml)\n"); sys.exit(4)
 KINDS = ("ethernets", "bonds", "bridges", "vlans", "wifis", "tunnels")
+CARD_KINDS = ("ethernets", "bonds", "bridges", "vlans")
 def ipof(e):
     if isinstance(e, dict):
         e = next(iter(e), "")
@@ -169,7 +206,42 @@ def nodes(doc):
             if isinstance(n, dict):
                 yield n
 op, ip = sys.argv[1], sys.argv[2]
-if op == "find":
+if op == "card":
+    # card NAME DATEI…: „art kennung“ der Karte (Name, set-name oder einziges Ethernet)
+    found, byset, eth = None, None, []
+    for f in sys.argv[3:]:
+        try:
+            doc = yaml.safe_load(open(f))
+        except Exception:
+            continue
+        net = (doc or {}).get("network") or {}
+        for k in CARD_KINDS:
+            for name, n in (net.get(k) or {}).items():
+                if name == ip and not found:
+                    found = (k, name)
+                if isinstance(n, dict) and n.get("set-name") == ip and not byset:
+                    byset = (k, name)
+                if k == "ethernets" and name not in eth:
+                    eth.append(name)
+    r = found or byset or (("ethernets", eth[0]) if len(eth) == 1 else None)
+    if not r:
+        sys.exit(3)
+    print(r[0], r[1])
+elif op == "count":
+    # count IP KENNUNG DATEI…: wie viele andere feste Adressen die Karte (Kennung) führt
+    c = 0
+    for f in sys.argv[4:]:
+        try:
+            doc = yaml.safe_load(open(f))
+        except Exception:
+            continue
+        net = (doc or {}).get("network") or {}
+        for k in CARD_KINDS:
+            n = (net.get(k) or {}).get(sys.argv[3])
+            if isinstance(n, dict):
+                c += sum(1 for e in (n.get("addresses") or []) if ipof(e) != ip)
+    print(c)
+elif op == "find":
     for f in sys.argv[3:]:
         try:
             doc = yaml.safe_load(open(f))
@@ -210,23 +282,25 @@ apply_try() {
 # ---- Schritte -----------------------------------------------------------------
 
 step_neu() {
-  local new="$ARG" newip="${ARG%/*}" olds=() a f list
+  local new="$ARG" newip="${ARG%/*}" olds=() a f list rc net oldfirst=""
   [[ "$new" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.203/24 (ist: $new)"
   need_netplan; pick_iface; netplan_id
-  mapfile -t NPFILES < <(netplan_files)
   mapfile -t olds < <(static_addrs)
   for a in "${olds[@]:-}"; do
     [[ "${a%/*}" != "$newip" ]] || fail "$newip ist schon eine Adresse von $IFACE – nichts zu tun."
   done
   [[ ${#olds[@]} -gt 0 && -n "${olds[0]}" ]] || warn "Die Karte hat keine feste Adresse (DHCP?) – die neue wird zusätzlich eingetragen."
+  [[ -z "${olds[0]:-}" ]] || oldfirst="${olds[0]}"
   if command -v arping >/dev/null 2>&1; then
     info "Prüfe, ob $newip frei ist"
-    arping -D -q -c 2 -w 4 -I "$IFACE" "$newip" || fail "$newip wird im Netz schon benutzt – andere Adresse wählen."
+    rc=0; arping -D -q -c 2 -w 4 -I "$IFACE" "$newip" || rc=$?
+    if (( rc == 1 )); then fail "$newip wird im Netz schon benutzt – andere Adresse wählen."
+    elif (( rc != 0 )); then warn "arping meldete Ausgang $rc – Freiheit von $newip nicht sicher geprüft (Paket iputils-arping?)."; fi
   else
-    warn "arping fehlt (pdh-ha-join.sh --update …) – Freiheit der Adresse nicht geprüft."
+    warn "arping fehlt (Paket iputils-arping; pdh-ha-join.sh --update …) – Freiheit der Adresse nicht geprüft."
   fi
 
-  info "Neue eigene Adresse $new für $IFACE (Datei $NEWFILE)"
+  info "Neue eigene Adresse $new für $IFACE (Datei $NEWFILE, netplan-Art $KIND/$ID)"
   start_backup
   save_file "$NEWFILE"
   # Alte feste Adressen aus anderen Dateien nach vorn/in die neue Datei verschieben,
@@ -237,6 +311,7 @@ step_neu() {
       [[ -n "$f" && "$f" != "$NEWFILE" ]] || continue
       save_file "$f"
       npy remove "${a%/*}" "$f" || { restore_all; fail "Konnte $f nicht bearbeiten – nichts geändert."; }
+      cloud_guard "$f"
       echo "  $a aus $f nach $NEWFILE verschoben (Sicherung: $BAK/$(basename "$f"))"
     done < <(npy find "${a%/*}" "${NPFILES[@]}")
   done
@@ -248,7 +323,7 @@ step_neu() {
 # Die neue Adresse steht vorn – sie ist Absender für Herzschlag und Spiegel.
 network:
   version: 2
-  ethernets:
+  $KIND:
     $ID:
       addresses: [$list]
 EOF
@@ -258,22 +333,36 @@ EOF
   apply_try
   ok "Neue Adresse $new aktiv (alte bleibt)."
 
+  # Absenderadresse sofort setzen (R5/R12): networkd ordnet vorhandene Adressen nicht um.
+  # Nach einem Neustart sorgt die Reihenfolge in netplan dafür.
+  net="$(net_of "$new")" || net=""
+  local routecmd="ip route replace $net dev $IFACE proto kernel scope link src $newip"
+  if [[ -n "$net" ]] && ip route replace "$net" dev "$IFACE" proto kernel scope link src "$newip"; then
+    ok "Absenderadresse auf $newip gesetzt ($routecmd)"
+  else
+    warn "Konnte die Absenderadresse nicht setzen. Von Hand: $routecmd"
+  fi
+
   local p src
   p="$(partner_ip)"
   if [[ -n "$p" ]]; then
     src="$(route_src "$p")"
     if [[ "$src" == "$newip" ]]; then ok "Absenderadresse zum Partner $p: $src (richtig)"
     else
-      warn "Absenderadresse zum Partner $p ist $src, nicht $newip."
-      warn "Nach dem Umstellen im Verbund würde der Partner den Herzschlag/Spiegel von $src ablehnen."
-      warn "Die Reihenfolge der Adressen gilt für schon vorhandene Adressen erst nach einem Neustart des Servers (oder Netzwerkdienstes) –"
-      warn "„verbund“ erst ausführen, wenn „ip route get $p“ als src $newip zeigt. Oder jetzt zurücknehmen (unten)."
+      warn "Absenderadresse zum Partner $p ist ${src:-?}, nicht $newip."
+      warn "Nach dem Umstellen im Verbund würde der Partner den Herzschlag/Spiegel dieser Adresse ablehnen."
+      warn "„verbund“ bricht in diesem Fall ab. Prüfen: ip route get $p  (src muss $newip sein; Partner ggf. mit --partner angeben)."
     fi
   else
     warn "Partner unbekannt – Absenderadresse nicht geprüft. Danach selbst prüfen: ip route get <Partner-IP>  (src muss $newip sein; --partner IP angeben)."
   fi
   echo
   echo "Zurücknehmen:"
+  if [[ -n "$oldfirst" && -n "$net" ]]; then
+    echo "  ip route replace $net dev $IFACE proto kernel scope link src ${oldfirst%/*}"
+  elif [[ -n "$net" ]]; then
+    echo "  ip route del $net dev $IFACE proto kernel scope link src $newip   # nur wenn die Karte danach wieder per DHCP läuft"
+  fi
   undo_text
   echo "  (Sicherung in $BAK)"
   echo "Weiter mit: sudo bash $0 verbund $newip"
@@ -281,15 +370,15 @@ EOF
 
 step_verbund() {
   need_pdhha; pick_iface
-  local addrs="$ARG" ip j self ca p src cur="" a first
+  local addrs="$ARG" ip j self ca p src cur="" a first net
   IFS=, read -r -a _l <<<"$addrs"
   for ip in "${_l[@]}"; do [[ "$ip" =~ $ipv4_re ]] || fail "Ungültige Adresse: $ip (nur IP, ohne /Präfix)"; done
   j="$("$PDHHA" status --json)" || fail "pdh-ha antwortet nicht (läuft der Dienst?)"
   self="$(python3 -c 'import json,sys;print(json.load(sys.stdin)["self"]["id"])' <<<"$j")" || fail "Eigene Kennung nicht lesbar."
-  ca="$(python3 -c 'import json,sys;print("ja" if json.load(sys.stdin).get("ca_holder") else "nein")' <<<"$j")"
+  ca="$(python3 -c 'import json,sys;print("ja" if json.load(sys.stdin).get("ca_holder") else "nein")' <<<"$j")" || fail "Status von pdh-ha nicht lesbar (CA-Halter unbekannt) – nichts geändert."
   [[ -n "$self" ]] || fail "Eigene Kennung nicht lesbar."
   for ip in "${_l[@]}"; do
-    ip -4 -o addr show dev "$IFACE" | awk '{print $4}' | grep -q "^$ip/" || fail "$ip liegt nicht auf $IFACE – zuerst Schritt „neu“."
+    ip -4 -o addr show dev "$IFACE" | awk -v ip="$ip" -F'[ /]+' '$4 == ip {f=1} END {exit f ? 0 : 1}' || fail "$ip liegt nicht auf $IFACE – zuerst Schritt „neu“."
   done
   # bisherige Adressen für die Rücknahme
   while read -r a; do
@@ -302,10 +391,14 @@ step_verbund() {
     src="$(route_src "$p")"
     first="${_l[0]}"
     if [[ "$src" != "$first" ]]; then
+      net="$(ip -4 -o addr show dev "$IFACE" | awk -v ip="$first" -F'[ /]+' '$4 == ip {print $4 "/" $5; exit}')"
+      [[ -z "$net" ]] || net="$(net_of "$net")" || net=""
       warn "Zum Partner $p ginge die Verbindung von ${src:-?} aus, nicht von $first."
       warn "Der Partner erlaubt nach der Umstellung nur noch die neue Adresse – Herzschlag und Spiegel bräche ab."
-      ask "Trotzdem fortfahren?" || fail "Abgebrochen – nichts geändert. Erst die Reihenfolge der Adressen in Ordnung bringen (Neustart nach Schritt „neu“)."
+      fail "Abgebrochen – nichts geändert. Absenderadresse zuerst setzen: ip route replace ${net:-<netz/präfix>} dev $IFACE proto kernel scope link src $first  (danach prüfen: ip route get $p)"
     fi
+  else
+    warn "Partner unbekannt – Absenderadresse nicht geprüft (--partner IP angeben). Vorher prüfen: ip route get <Partner-IP> muss src ${_l[0]} zeigen."
   fi
 
   local cmd="$PDHHA addrs set $self $addrs --neustart"
@@ -342,20 +435,21 @@ step_test() {
 }
 
 step_pruefliste() {
-  local old="${ARG%/*}"
+  local old="${ARG%/*}" re
   [[ "$old" =~ $ipv4_re ]] || fail "Ungültige Adresse: $ARG"
+  re="$(ip_re "$old")"
   info "Fundstellen der alten Adresse $old (nur Anzeige)"
   echo "-- Offene Verbindungen (ss -tn):"
-  ss -tn 2>/dev/null | grep -F "$old" || echo "  keine"
+  ss -tn 2>/dev/null | grep -E "$re" || echo "  keine"
   echo "-- /etc/fstab:"
-  grep -nF "$old" /etc/fstab 2>/dev/null || echo "  keine"
+  grep -nE "$re" /etc/fstab 2>/dev/null || echo "  keine"
   echo "-- /etc/samba/smb.conf (Freigabe pdhnas):"
   if [[ -f /etc/samba/smb.conf ]]; then
-    grep -nF "$old" /etc/samba/smb.conf || echo "  Adresse nicht eingetragen"
+    grep -nE "$re" /etc/samba/smb.conf || echo "  Adresse nicht eingetragen"
     grep -n -i 'pdhnas' /etc/samba/smb.conf || echo "  keine Freigabe pdhnas"
   else echo "  keine smb.conf"; fi
   echo "-- ufw status:"
-  if command -v ufw >/dev/null 2>&1; then ufw status 2>/dev/null | grep -F "$old" || echo "  keine Regel mit $old"; else echo "  ufw fehlt"; fi
+  if command -v ufw >/dev/null 2>&1; then ufw status 2>/dev/null | grep -E "$re" || echo "  keine Regel mit $old"; else echo "  ufw fehlt"; fi
   echo
   warn "Alles, was $old als „genau diesen Server“ meint, muss auf die neue Adresse:"
   echo "  - SSH-Zugänge (Lesezeichen, ~/.ssh/config, Schlüssel-Einträge) auf die neue Adresse"
@@ -367,18 +461,16 @@ step_pruefliste() {
 }
 
 step_uebergabe() {
-  local oldc="$ARG" old="${ARG%/*}" srv f files=() newcnt
+  local oldc="$ARG" old="${ARG%/*}" f files=() newcnt
   [[ "$oldc" =~ $cidr_re ]] || fail "Adresse bitte mit Präfix angeben, z. B. 10.10.0.202/24"
-  srv="$(awk '{print $3}' <<<"${SSH_CONNECTION:-}")"
-  if [[ "$srv" == "$old" ]]; then
-    fail "Diese SSH-Sitzung läuft über die alte Adresse $old – sie risse ab. Bitte über die neue Adresse anmelden und neu starten. Nichts geändert."
+  if ssh_over "$old"; then
+    fail "Es läuft eine SSH-Sitzung über die alte Adresse $old (diese oder eine andere) – sie risse ab. Bitte über die neue Adresse anmelden, die Sitzungen über $old beenden und neu starten. Nichts geändert."
   fi
-  need_pdhha; need_netplan; pick_iface
-  mapfile -t NPFILES < <(netplan_files)
+  need_pdhha; need_netplan; pick_iface; netplan_id
   mapfile -t files < <(npy find "$old" "${NPFILES[@]}")
   [[ ${#files[@]} -gt 0 && -n "${files[0]}" ]] || fail "$old steht in keiner Datei unter /etc/netplan als feste Adresse (DHCP?) – nichts zu entfernen."
   # Der Server muss danach noch eine eigene Adresse haben
-  newcnt="$(netplan get 2>/dev/null | grep -E '^[[:space:]]*-[[:space:]]*.?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+' | grep -vcF "$old" || true)"
+  newcnt="$(npy count "$old" "$ID" "${NPFILES[@]}")" || fail "Netzwerkdateien nicht lesbar – nichts geändert."
   (( newcnt > 0 )) || fail "Außer $old gibt es keine feste eigene Adresse – der Server stünde ohne Adresse da. Zuerst Schritt „neu“."
 
   info "Alte Adresse $oldc: aus der festen Netzwerkkonfiguration nehmen, mitwandernd machen"
@@ -389,6 +481,7 @@ step_uebergabe() {
   for f in "${files[@]}"; do
     save_file "$f"
     npy remove "$old" "$f" || { restore_all; fail "Konnte $f nicht bearbeiten – nichts geändert."; }
+    cloud_guard "$f"
     echo "  $old aus $f entfernt (Sicherung: $BAK/$(basename "$f"))"
   done
   apply_try

@@ -57,7 +57,7 @@ case "$(uname -m)" in x86_64|aarch64) ;; *) warn "Getestet mit amd64/arm64, hier
 
 info "Pakete installieren"
 missing=()
-for p in git iputils-ping ufw python3 iproute2 arping; do
+for p in git iputils-ping ufw python3 iproute2 iputils-arping; do
   dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p")
 done
 command -v go >/dev/null 2>&1 || missing+=(golang-go)
