@@ -85,7 +85,9 @@ install_cloudflared() {
     systemctl disable --now cloudflared >/dev/null 2>&1 || true
     ok "cloudflared installiert"
   else
-    warn "cloudflared konnte nicht installiert werden – später nachholen: pdh-ha-join.sh --update <Commit> --voll"
+    # Nicht auf „--update … --voll“ verweisen: das legt die Datenbank-Kopie neu an (full_node).
+    warn "cloudflared konnte nicht installiert werden – später von Hand nachholen (ohne „cloudflared service install“, nicht erneut mit --voll):"
+    warn "  curl -fsSL -o /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb && sudo dpkg -i /tmp/cloudflared.deb"
   fi
   rm -rf "$tmp"
 }
