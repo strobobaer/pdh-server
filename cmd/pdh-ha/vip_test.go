@@ -157,14 +157,14 @@ func TestVIPToolMissing(t *testing.T) {
 	f := newVIPFake()
 	f.on("arping -D", "", errors.New(`exec: "arping": executable file not found in $PATH`))
 	err := testVIP(t, f).Take(context.Background())
-	want := "arping fehlt – sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> ausführen"
+	want := "Paket iputils-arping fehlt (Programm arping) – sudo apt-get install iputils-arping iproute2 ausführen oder das PDH aktualisieren"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v", err)
 	}
 	f2 := newVIPFake()
 	f2.on("ip ", "", errors.New(`exec: "ip": executable file not found in $PATH`))
 	_, err = testVIP(t, f2).Has(context.Background())
-	want = "ip fehlt – sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> ausführen"
+	want = "Paket iproute2 fehlt (Programm ip) – sudo apt-get install iputils-arping iproute2 ausführen oder das PDH aktualisieren"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v", err)
 	}

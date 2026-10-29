@@ -38,10 +38,15 @@ func (e *errDuplicate) Error() string {
 
 var arpMACRe = regexp.MustCompile(`\[([0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5})\]`)
 
-// toolMissing macht aus „Programm nicht gefunden“ eine Anweisung für den Betreiber.
+// toolPackage: Ubuntu-Paket je Programm. arping muss die iputils-Variante sein
+// (das Paket „arping“ hat andere Schalter und Ausgänge).
+var toolPackage = map[string]string{"arping": "iputils-arping", "ip": "iproute2"}
+
+// toolMissing macht aus „Programm nicht gefunden“ eine Anweisung für den
+// Betreiber – auf jedem Server gleich (das PDH-Update installiert beide Pakete).
 func toolMissing(tool string, err error) error {
 	if err != nil && (errors.Is(err, exec.ErrNotFound) || strings.Contains(err.Error(), "executable file not found")) {
-		return fmt.Errorf("%s fehlt – sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update <Commit> ausführen", tool)
+		return fmt.Errorf("Paket %s fehlt (Programm %s) – sudo apt-get install iputils-arping iproute2 ausführen oder das PDH aktualisieren", toolPackage[tool], tool)
 	}
 	return nil
 }
@@ -121,7 +126,11 @@ func (v *vipCtl) Take(ctx context.Context) error {
 		}
 		// die Adresse liegt schon an – die Ankündigung ist nur Zugabe
 	}
-	// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take)
+	// zweite Runde unabhängig vom Aufrufer (dessen Kontext endet mit Take).
+	// Ohne Halteprüfung davor: Wurde die Adresse in den 5 s abgegeben, scheitert
+	// iputils-arping -U am bind auf die nicht mehr lokale Adresse (Ausgang 2)
+	// und kündigt nichts an – gilt für iputils-arping ohne ip_nonlocal_bind.
+	// Mit der Habets-Variante oder net.ipv4.ip_nonlocal_bind=1 vorher Has prüfen.
 	go func() {
 		v.sleep(5 * time.Second)
 		bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -22,9 +22,12 @@
 #   sudo bash pdh-ha-adresse.sh pruefliste <alte-ip>
 #       Vor Schritt 4: was die alte Adresse noch benutzt (nur Anzeige).
 #   sudo bash pdh-ha-adresse.sh uebergabe <alte-ip/präfix>
-#       4. Alte Adresse aus der festen Netzwerkkonfiguration nehmen („netplan
-#          try“) und als mitwandernde Adresse einschalten (pdh-ha access).
-#          Nicht über SSH auf der alten Adresse starten!
+#       4. Alte Adresse zuerst als mitwandernde Adresse einschalten (pdh-ha
+#          access, sie liegt noch fest an), dann aus der festen
+#          Netzwerkkonfiguration nehmen („netplan try“); pdh-ha setzt sie sofort
+#          neu. Nicht bestätigt: mitwandernd aus, Abgabe abwarten, feste Adresse
+#          zurück. Prüft vorher promote_secondaries. Nicht über SSH auf der
+#          alten Adresse starten!
 #
 # Optionen (überall): --if NAME   Netzwerkkarte (Standard: Standardroute)
 #                     --partner IP  Adresse des anderen Servers für die Prüfung
@@ -475,7 +478,8 @@ step_uebergabe() {
 
   info "Alte Adresse $oldc: aus der festen Netzwerkkonfiguration nehmen, mitwandernd machen"
   warn "Dateien: ${files[*]}"
-  warn "Die Adresse ist ab der Bestätigung kurz weg, bis pdh-ha sie übernimmt (wenige Sekunden)."
+  promote_check
+  warn "Ablauf: erst schaltet pdh-ha die Adresse mitwandernd ein (sie liegt noch fest an), dann nimmt „netplan try“ sie aus der festen Konfiguration. pdh-ha setzt sie sofort neu – die Lücke dauert wenige Sekunden, egal wie lange die Bestätigung dauert."
   ask "So fortfahren?" || fail "Abgebrochen – nichts geändert."
   start_backup
   for f in "${files[@]}"; do
@@ -484,19 +488,88 @@ step_uebergabe() {
     cloud_guard "$f"
     echo "  $old aus $f entfernt (Sicherung: $BAK/$(basename "$f"))"
   done
-  apply_try
-  if ! "$PDHHA" access --vip "$oldc" --vip-on; then
-    warn "pdh-ha hat die mitwandernde Adresse nicht eingeschaltet – stelle die Netzwerkkonfiguration zurück."
+  if ! netplan generate; then
     restore_all
-    netplan apply || true
-    fail "Zurückgestellt: $old ist wieder fest eingetragen. Ursache oben (Test bestanden? „pdh-ha vip test“)."
+    fail "netplan meldet einen Fehler – alles zurückgestellt, nichts geändert."
+  fi
+  # 1. Mitwandernd einschalten, solange die Adresse noch fest anliegt: der
+  #    Abgleich von pdh-ha sieht sie als gehalten und übernimmt sie still.
+  if ! "$PDHHA" access --vip "$oldc" --vip-on; then
+    restore_all
+    fail "pdh-ha hat die mitwandernde Adresse nicht eingeschaltet – nichts geändert (Netzwerkdateien zurückgestellt). Ursache oben (Test bestanden? „pdh-ha vip test“)."
+  fi
+  if ! wait_holder held 15; then
+    warn "pdh-ha meldet nach 15 s noch keinen Halter für $old – weiter mit netplan try (pdh-ha setzt die Adresse, sobald der aktive Server sie übernimmt)."
+  fi
+  # 2. Feste Adresse entfernen. Entfernt netplan sie, setzt pdh-ha sie im
+  #    nächsten Abgleich neu (≤ 1 s + 2 s Prüfung).
+  info "Testlauf: Ist die Verbindung danach noch da, mit ENTER bestätigen – sonst geht es nach 120 s automatisch zurück."
+  if ! netplan try --timeout 120; then
+    uebergabe_back
+    fail "Nicht bestätigt – zurück auf die vorherige Einstellung: $old ist wieder fest eingetragen, die mitwandernde Adresse ist aus."
   fi
   ok "$old ist jetzt die mitwandernde Adresse."
   echo
-  echo "Zurücknehmen:"
+  echo "Zurücknehmen (in dieser Reihenfolge – erst abgeben lassen, dann wieder fest eintragen):"
   echo "  $PDHHA access --vip-off"
+  echo "  # warten, bis „$PDHHA status“ die Adresse bei niemand zeigt (wenige Sekunden)"
   undo_text
   echo "  (Sicherung in $BAK)"
+}
+
+# promote_secondaries: Entfernt netplan die alte Adresse und ist sie auf der
+# Karte die erste (primäre), löscht der Kernel ohne diese Einstellung alle
+# weiteren Adressen im selben Netz mit – auch die neue eigene. Unter Ubuntu ist
+# sie meist an (systemd 50-default.conf); sonst hier einschalten.
+promote_check() {
+  local all="/proc/sys/net/ipv4/conf/all/promote_secondaries" dev="/proc/sys/net/ipv4/conf/$IFACE/promote_secondaries"
+  if [[ "$(cat "$all" 2>/dev/null || echo 0)" == 1 || "$(cat "$dev" 2>/dev/null || echo 0)" == 1 ]]; then
+    ok "promote_secondaries ist an (die neue eigene Adresse bleibt beim Entfernen der alten)"
+    return 0
+  fi
+  warn "net.ipv4.conf.$IFACE.promote_secondaries ist aus: Beim Entfernen von $old nähme der Kernel die neue eigene Adresse mit – der Server wäre nicht mehr erreichbar."
+  ask "promote_secondaries jetzt einschalten (auch dauerhaft in /etc/sysctl.d/60-pdh-ha-adresse.conf)?" \
+    || fail "Abgebrochen – nichts geändert. Von Hand: echo 1 > $all"
+  echo 1 >"$all" || fail "promote_secondaries nicht einschaltbar – nichts geändert."
+  { echo 1 >"$dev"; } 2>/dev/null || true
+  printf '# PDH Ausfallschutz (pdh-ha-adresse.sh): beim Entfernen der ersten Adresse die übrigen behalten\nnet.ipv4.conf.all.promote_secondaries = 1\n' >/etc/sysctl.d/60-pdh-ha-adresse.conf
+  ok "promote_secondaries eingeschaltet"
+}
+
+# wait_holder held|free SEKUNDEN: warten, bis pdh-ha einen Halter der Adresse
+# meldet (held) bzw. keiner sie mehr hält (free). 0 = erreicht.
+wait_holder() {
+  local want="$1" max="$2" i h
+  for (( i = 0; i < max * 2; i++ )); do
+    h="$("$PDHHA" status --json 2>/dev/null | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+print((d.get("access") or {}).get("holder") or "-")
+' 2>/dev/null || true)"
+    case "$want:$h" in
+      held:- | held: | free:) ;; # noch niemand bzw. Status nicht lesbar
+      held:*) return 0 ;;
+      free:-) return 0 ;;
+    esac
+    sleep 0.5
+  done
+  return 1
+}
+
+# uebergabe_back: netplan try nicht bestätigt. netplan hat die alte Adresse
+# wieder fest gesetzt; pdh-ha muss sie zuerst abgeben (die Abgabe nähme sonst
+# die feste Adresse mit), danach die Sicherung zurück und netplan apply.
+uebergabe_back() {
+  warn "Nicht bestätigt – mitwandernde Adresse aus, dann die feste Adresse zurück."
+  "$PDHHA" access --vip-off || warn "„$PDHHA access --vip-off“ gescheitert – bitte von Hand ausführen."
+  if wait_holder free 20; then
+    sleep 2 # Abgabe läuft im Hintergrund nach
+  else
+    warn "pdh-ha meldet nach 20 s noch einen Halter – stelle trotzdem zurück."
+  fi
+  restore_all
+  netplan apply || true
 }
 
 "step_$STEP"

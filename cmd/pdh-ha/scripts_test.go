@@ -175,3 +175,83 @@ done
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// shellFunc holt eine Funktion „name() {“ … „}“ aus pdh-ha-adresse.sh.
+func shellFunc(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile("../../scripts/pdh-ha-adresse.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
+	i := strings.Index(s, "\n"+name+"() {\n")
+	if i < 0 {
+		t.Fatalf("%s nicht gefunden", name)
+	}
+	s = s[i+1:]
+	j := strings.Index(s, "\n}\n")
+	if j < 0 {
+		t.Fatalf("Ende von %s nicht gefunden", name)
+	}
+	return s[:j+3]
+}
+
+// TestAdresseUebergabeReihenfolge: erst mitwandernd einschalten, dann netplan
+// try; bei Abbruch erst ausschalten und Abgabe abwarten, dann zurückstellen.
+func TestAdresseUebergabeReihenfolge(t *testing.T) {
+	step := shellFunc(t, "step_uebergabe")
+	order := func(what string, parts ...string) {
+		t.Helper()
+		last := -1
+		for _, p := range parts {
+			i := strings.Index(step, p)
+			if i < 0 || i < last {
+				t.Fatalf("%s: %q fehlt oder steht an falscher Stelle", what, p)
+			}
+			last = i
+		}
+	}
+	order("Übergabe", "promote_check", `access --vip "$oldc" --vip-on`, "wait_holder held", "netplan try --timeout 120", "uebergabe_back")
+	if strings.Contains(step, "apply_try") {
+		t.Fatal("Übergabe nutzt noch apply_try (Lücke so lang wie die Bestätigung)")
+	}
+	step = shellFunc(t, "uebergabe_back")
+	order("Rückweg", "access --vip-off", "wait_holder free", "restore_all", "netplan apply")
+	if !strings.Contains(shellFunc(t, "promote_check"), "promote_secondaries") {
+		t.Fatal("promote_check prüft promote_secondaries nicht")
+	}
+}
+
+// TestAdresseWaitHolder: wartet auf einen Halter bzw. darauf, dass keiner
+// die Adresse mehr hält (Status per „pdh-ha status --json“).
+func TestAdresseWaitHolder(t *testing.T) {
+	bash := bashOrSkip(t)
+	py, err := exec.LookPath("python3")
+	if err != nil || exec.Command(py, "-c", "import json").Run() != nil {
+		t.Skip("python3 nicht verfügbar")
+	}
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "pdh-ha")
+	// erst zweimal niemand, dann a
+	body := "#!/usr/bin/env bash\n" +
+		"n=$(cat \"$0.n\" 2>/dev/null || echo 0); echo $((n+1)) >\"$0.n\"\n" +
+		"if (( n < 2 )); then echo '{\"access\":{\"holder\":\"\"}}'; else echo '{\"access\":{\"holder\":\"a\"}}'; fi\n"
+	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fn := shellFunc(t, "wait_holder")
+	run := func(args string) error {
+		script := "PDHHA=" + filepath.ToSlash(fake) + "\n" + fn + "wait_holder " + args + "\n"
+		return exec.Command(bash, "-c", script).Run()
+	}
+	if err := run("held 5"); err != nil {
+		t.Fatalf("held: %v", err)
+	}
+	if err := run("free 1"); err == nil {
+		t.Fatal("free trotz Halter a")
+	}
+	os.Remove(fake + ".n")
+	if err := run("free 1"); err != nil {
+		t.Fatalf("free bei niemand: %v", err)
+	}
+}
