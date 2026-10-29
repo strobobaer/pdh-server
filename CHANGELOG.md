@@ -10,6 +10,15 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.2] – 2026-10-29
+
+### Neu
+- Leitstand-Baustein „Webseite“: eine externe Seite (oder eine PDH-Seite) direkt im Leitstand einbetten, mit einstellbarer Höhe und automatischem Neuladen.
+- Direktlink zum Leitstand mit Vollbild und Kioskmodus: unter Leitstände → Bearbeiten → Direktlink den Link zusammenstellen und kopieren; der Kioskmodus zeigt nur den Inhalt ohne Kopfzeile und Knöpfe.
+
+### Geändert
+- Schichtplan-Widget und Leitstand-Baustein „Schichtplan“: die Namensfelder sind doppelt so groß, die Feldhöhen ebenfalls.
+
 ## [0.77.1] – 2026-10-29
 
 ### Neu

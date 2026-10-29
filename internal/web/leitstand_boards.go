@@ -56,7 +56,7 @@ type boardBlockDef struct {
 	Type, Name, Icon, Desc string
 	Size                   int
 	Single                 bool   // höchstens einmal (feste Element-IDs der Seite)
-	Config                 string // "" | "text" | "boards"
+	Config                 string // "" | "text" | "boards" | "url"
 }
 
 var boardBlockDefs = []boardBlockDef{
@@ -70,6 +70,23 @@ var boardBlockDefs = []boardBlockDef{
 	{"kalender", "Kalender", "ti-calendar", "Kalender wie unter Übersicht → Kalender: Personen × Tage mit Schichten, Bereitschaft, Abwesenheit und fälligen Vorgängen, Auswahl oben im Baustein", 4, false, ""},
 	{"hinweis", "Hinweistext", "ti-info-circle", "Freier Text, z. B. Ansprechpartner, Schichtinfo oder Sicherheitshinweis", 2, false, "text"},
 	{"links", "Andere Leitstände", "ti-arrows-exchange", "Knöpfe, die andere Leitstände öffnen", 2, false, "boards"},
+	{"webseite", "Webseite", "ti-world-www", "Externe Seite eingebettet, z. B. Anlagenvisualisierung, Wetter oder Intranet (die Seite muss das Einbetten erlauben)", 4, false, "url"},
+}
+
+// boardEmbedURL: nur http(s)-Adressen oder eigene Seiten ("/…") einbetten.
+func boardEmbedURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 2000 {
+		return ""
+	}
+	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return u.String()
 }
 
 func boardBlockDefFor(t string) (boardBlockDef, bool) {
@@ -122,6 +139,17 @@ func sanitizeBoardBlocks(in []BoardBlock) []BoardBlock {
 				}
 			}
 			cfg["boards"] = strings.Join(ids, ",")
+		case "url":
+			if u := boardEmbedURL(b.Config["url"]); u != "" {
+				cfg["url"] = u
+			}
+			// Höhe in Pixeln, 150–2000
+			if hgt, err := strconv.Atoi(strings.TrimSpace(b.Config["height"])); err == nil {
+				cfg["height"] = strconv.Itoa(min(max(hgt, 150), 2000))
+			}
+			if n, err := strconv.Atoi(strings.TrimSpace(b.Config["reload"])); err == nil && n > 0 {
+				cfg["reload"] = strconv.Itoa(min(max(n, 1), 1440))
+			}
 		}
 		if t := strings.TrimSpace(b.Config["title"]); t != "" {
 			if r := []rune(t); len(r) > 60 {
