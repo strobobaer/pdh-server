@@ -81,11 +81,19 @@ func (v haView) tunnelRow() haAccessRow {
 	a, self := v.Status.Access, v.Status.Self
 	r := haAccessRow{Title: "Tunnel", Icon: "ti-cloud", Level: "off", State: "nicht eingerichtet"}
 	configured := a.Tunnel.Installed || a.Tunnel.Sum != ""
+	// Soll der Verbund überhaupt einen Tunnel haben? cloudflared allein heißt
+	// das nicht (pdh-ha-join.sh --voll installiert es immer).
+	wanted := v.TokenSet || a.Tunnel.Sum != ""
+	for _, p := range v.Status.Peers {
+		wanted = wanted || p.Kind == "node" && p.Seen && p.TunnelSum != ""
+	}
 	switch {
 	case a.Tunnel.Running && self.Role == "aktiv":
 		r.State, r.Level = "läuft auf "+self.ID, "ok"
 	case a.Tunnel.Running:
 		r.State, r.Level = "läuft auf "+self.ID+", ist aber nicht aktiv", "err"
+	case a.Tunnel.Installed && !wanted:
+		r.State = "nicht eingerichtet – cloudflared ist installiert, aber nirgends ein Token eingetragen"
 	case a.Tunnel.Installed && a.Tunnel.Sum == "":
 		// cloudflared da, aber pdh-ha hat kein Token: nach einer Übernahme
 		// gäbe es hier keinen Tunnel

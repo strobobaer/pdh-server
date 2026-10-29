@@ -80,8 +80,18 @@ func TestHAAccessRows(t *testing.T) {
 	if r := rowOf(t, accessView(nil), "Tunnel"); r.Level != "off" {
 		t.Errorf("Tunnel nicht eingerichtet: %+v", r)
 	}
-	// cloudflared installiert, aber hier kein Token: nicht grün
+	// cloudflared installiert (pdh-ha-join.sh --voll), aber nirgends ein
+	// Token: Verbund ohne Tunnel, kein Fehler
 	v = accessView(func(v *haView) {
+		v.Status.Self.Role = "aktiv"
+		v.Status.Access.Tunnel.Installed = true
+	})
+	if r := rowOf(t, v, "Tunnel"); r.Level != "off" || !strings.Contains(r.State, "nicht eingerichtet") {
+		t.Errorf("ohne Token im Verbund: %+v", r)
+	}
+	// cloudflared installiert, Token im PDH eingetragen, aber hier nicht bei pdh-ha: nicht grün
+	v = accessView(func(v *haView) {
+		v.TokenSet = true
 		v.Status.Self.Role = "passiv"
 		v.Status.Access.Tunnel.Installed = true
 	})

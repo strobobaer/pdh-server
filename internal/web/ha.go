@@ -155,6 +155,7 @@ type haView struct {
 	JoinExpires  time.Time
 	SuggestAddrs []string // LAN- und WireGuard-Adresse dieses Servers
 	Origin       string   // PDH_CLOUDFLARE_ORIGIN: Ziel des Tunnels
+	TokenSet     bool     // Tunnel-Token in den Server-Einstellungen eingetragen
 }
 
 func (v haView) ModeText() string {
@@ -474,7 +475,8 @@ func (h *Handler) haLoadView(ctx context.Context) haView {
 		}
 		v.Err = haStatusErr(v.Status)
 		v.Events = h.haRecentEvents(ctx, 50)
-		v.Origin = h.cloudflareSettings(ctx).Origin
+		cf := h.cloudflareSettings(ctx)
+		v.Origin, v.TokenSet = cf.Origin, cf.Token != ""
 	}
 	if v.NeedsSetup() && h.driveAgentConfigured() {
 		ctx, cancel := context.WithTimeout(ctx, haTimeout)

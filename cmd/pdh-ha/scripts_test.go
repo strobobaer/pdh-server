@@ -215,10 +215,33 @@ func TestAdresseUebergabeReihenfolge(t *testing.T) {
 	if strings.Contains(step, "apply_try") {
 		t.Fatal("Übergabe nutzt noch apply_try (Lücke so lang wie die Bestätigung)")
 	}
+	if !strings.Contains(step[strings.Index(step, "--vip-on"):], "netplan generate") {
+		t.Fatal("nach gescheitertem --vip-on fehlt netplan generate")
+	}
 	step = shellFunc(t, "uebergabe_back")
-	order("Rückweg", "access --vip-off", "wait_holder free", "restore_all", "netplan apply")
+	// auf die Karte warten (der Status meldet sofort „niemand“), nach apply nachprüfen
+	order("Rückweg", "access --vip-off", `addr_on "$old"`, "restore_all", "netplan apply", `addr_on "$old" && return 0`)
 	if !strings.Contains(shellFunc(t, "promote_check"), "promote_secondaries") {
 		t.Fatal("promote_check prüft promote_secondaries nicht")
+	}
+}
+
+// TestAdresseAddrOn: erkennt die Adresse auf der Karte genau (10.10.0.1 ist
+// nicht 10.10.0.15, der Punkt ist kein Platzhalter).
+func TestAdresseAddrOn(t *testing.T) {
+	bash := bashOrSkip(t)
+	ip := "ip() {\n" +
+		"  echo '2: eth0    inet 10.10.0.14/24 brd 10.10.0.255 scope global eth0'\n" +
+		"  echo '2: eth0    inet 10.10.0.15/24 scope global secondary eth0'\n}\n"
+	fn := shellFunc(t, "addr_on")
+	on := func(a string) bool {
+		script := ip + "IFACE=eth0\n" + fn + "addr_on " + a + "\n"
+		return exec.Command(bash, "-c", script).Run() == nil
+	}
+	for a, want := range map[string]bool{"10.10.0.15": true, "10.10.0.14": true, "10.10.0.1": false, "10.10.0.150": false, "10x10.0.15": false} {
+		if got := on(a); got != want {
+			t.Errorf("addr_on %s = %v, erwartet %v", a, got, want)
+		}
 	}
 }
 

@@ -496,6 +496,7 @@ step_uebergabe() {
   #    Abgleich von pdh-ha sieht sie als gehalten und übernimmt sie still.
   if ! "$PDHHA" access --vip "$oldc" --vip-on; then
     restore_all
+    netplan generate || true # erzeugte Einstellung wieder passend zu den Dateien
     fail "pdh-ha hat die mitwandernde Adresse nicht eingeschaltet – nichts geändert (Netzwerkdateien zurückgestellt). Ursache oben (Test bestanden? „pdh-ha vip test“)."
   fi
   if ! wait_holder held 15; then
@@ -560,16 +561,27 @@ print((d.get("access") or {}).get("holder") or "-")
 # uebergabe_back: netplan try nicht bestätigt. netplan hat die alte Adresse
 # wieder fest gesetzt; pdh-ha muss sie zuerst abgeben (die Abgabe nähme sonst
 # die feste Adresse mit), danach die Sicherung zurück und netplan apply.
+# Gewartet wird auf die Karte, nicht auf den Status: Nach --vip-off meldet
+# pdh-ha sofort keinen Halter mehr, die Abgabe läuft aber noch.
 uebergabe_back() {
+  local i
   warn "Nicht bestätigt – mitwandernde Adresse aus, dann die feste Adresse zurück."
   "$PDHHA" access --vip-off || warn "„$PDHHA access --vip-off“ gescheitert – bitte von Hand ausführen."
-  if wait_holder free 20; then
-    sleep 2 # Abgabe läuft im Hintergrund nach
+  for (( i = 0; i < 40; i++ )); do addr_on "$old" || break; sleep 0.5; done
+  if addr_on "$old"; then
+    warn "$old liegt nach 20 s noch auf $IFACE – stelle trotzdem zurück."
   else
-    warn "pdh-ha meldet nach 20 s noch einen Halter – stelle trotzdem zurück."
+    sleep 1 # Ankündigungen der Abgabe laufen im Hintergrund nach
   fi
   restore_all
   netplan apply || true
+  for (( i = 0; i < 20; i++ )); do addr_on "$old" && return 0; sleep 0.5; done
+  warn "$old ist nach netplan apply nicht wieder auf $IFACE. Von Hand: netplan apply – oder vorübergehend: ip addr add $oldc dev $IFACE"
+}
+
+# addr_on IP: liegt die Adresse gerade auf der Karte (fest oder mitwandernd)?
+addr_on() {
+  ip -4 -o addr show dev "$IFACE" | awk '{print $4}' | grep -qx "${1//./\\.}/[0-9]*"
 }
 
 "step_$STEP"

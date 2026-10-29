@@ -24,7 +24,7 @@ im Kapitel „Versionen & Updates“ an.
 - Am Spiegel führt der Link „Bitte den aktiven Server verwenden“ auf die mitwandernde Adresse, sobald sie eingeschaltet ist.
 - Wird `pdh-ha` beendet, gibt der Server die mitwandernde Adresse bei automatischer Umschaltung „echt“ ab, damit der Partner sie bei einem Ausfall bekommt; im Beobachtungsmodus bleibt sie liegen.
 - Auf einem Server ohne Datenbank-Spiegel bleibt der Autostart des Cloudflare-Tunnels, wie er ist – der Tunnel kommt nach einem Neustart weiter von selbst hoch.
-- Die Karte „Zugangsweg“ meldet „Token fehlt“, wenn auf diesem oder dem anderen Server kein Tunnel-Token liegt, statt den Tunnel als bereit zu zeigen.
+- Die Karte „Zugangsweg“ meldet „Token fehlt“, wenn auf diesem oder dem anderen Server kein Tunnel-Token liegt, statt den Tunnel als bereit zu zeigen; ein Verbund ganz ohne Tunnel-Token gilt als „nicht eingerichtet“, nicht als Fehler.
 - `pdh-ha-adresse.sh uebergabe` schaltet die Adresse zuerst mitwandernd ein und nimmt sie erst dann aus der festen Netzwerkkonfiguration – die Lücke dauert nur wenige Sekunden, egal wie lange die Bestätigung dauert.
 - Ein Adresstest mit der eingeschalteten mitwandernden Adresse wird abgelehnt; dafür eine freie Testadresse nehmen.
 - Meldungen zur mitwandernden Adresse kommen höchstens einmal je Stunde, auch wenn ein Netzwerkdienst die Adresse laufend entfernt.
@@ -33,6 +33,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Rollentausch, Update und Neustart: Das PDH beendet sich sofort, statt bis zu 30 Sekunden auf offene Browser-Seiten (Chat-Verbindung) zu warten – ein Rollentausch im Ausfallschutz dauert dadurch nur noch wenige Sekunden statt über eine halbe Minute.
+- `pdh-ha-adresse.sh uebergabe`: Wird der Testlauf nicht bestätigt, wartet das Skript, bis die mitwandernde Adresse wirklich abgegeben ist, und prüft danach, dass die feste Adresse wieder anliegt; scheitert das Einschalten, bleibt auch die erzeugte Netzwerkeinstellung unverändert.
 
 ### Sicherheit
 - Skripte beim Rollenwechsel laufen nur, wenn der Ordner `/etc/pdh/ha-hooks` root gehört und nicht für Gruppe oder andere schreibbar ist; Verknüpfungen im Ordner werden einmal gemeldet und nie ausgeführt.
