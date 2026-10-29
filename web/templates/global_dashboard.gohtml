@@ -320,6 +320,44 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 </style>
 <style id="pdh-theme">{{.ThemeCSS}}</style>
 {{template "request-once-script"}}
+<script>
+// Vollbild bleibt beim Weiterschalten an, bis es bewusst ausgeschaltet wird.
+// Ein Seitenwechsel beendet das Vollbild im Browser immer – deshalb wird die
+// Seite bei eingeschaltetem Vollbild zum Rahmen (pdhLsShell) und nur der
+// Inhalt darin wechselt. Die Wahl merkt sich der Browser (pdh_ls_fs).
+(function(){
+  let topWin = window;
+  try{ if(window.top !== window && window.top.pdhLsShell) topWin = window.top; }catch(e){}
+  const KEY = 'pdh_ls_fs', tdoc = function(){ return topWin.document; };
+  const remember = function(v){ try{ localStorage.setItem(KEY, v ? '1' : '0'); }catch(e){} };
+  let leaving = false;
+  window.addEventListener('pagehide', function(){ leaving = true; });
+  window.addEventListener('beforeunload', function(){ leaving = true; });
+  if(topWin === window) document.addEventListener('fullscreenchange', function(){
+    // Esc oder Knopf = bewusst ausgeschaltet; ein Seitenwechsel zählt nicht
+    if(!document.fullscreenElement && !leaving) remember(false);
+  });
+  window.pdhLsFs = {
+    framed: topWin !== window,
+    on: function(){ return !!tdoc().fullscreenElement; },
+    wanted: function(){ try{ return localStorage.getItem(KEY) === '1'; }catch(e){ return false; } },
+    enter: function(){ const d = tdoc().documentElement; if(tdoc().fullscreenElement || !d.requestFullscreen) return Promise.resolve(); return d.requestFullscreen().then(function(){ remember(true); }); },
+    exit: function(){ remember(false); return tdoc().fullscreenElement ? tdoc().exitFullscreen() : Promise.resolve(); },
+    toggle: function(){ return this.on() ? this.exit() : this.enter(); },
+    // zur nächsten Station bzw. zu einem anderen Leitstand
+    go: function(href){
+      if(topWin !== window || !document.fullscreenElement){ location.href = href; return; }
+      window.pdhLsShell = true;
+      const last = setTimeout(function(){}, 0); for(let i = 0; i <= last; i++){ clearTimeout(i); clearInterval(i); }
+      const f = document.createElement('iframe');
+      f.src = href; f.title = document.title; f.allow = 'fullscreen';
+      f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:var(--bg,#000)';
+      f.addEventListener('load', function(){ try{ document.title = f.contentDocument.title; }catch(e){} });
+      document.body.replaceChildren(f);
+    }
+  };
+})();
+</script>
 </head>
 <body>
 <header>
@@ -349,12 +387,12 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     <button class="header-button" type="button" id="view-toggle" onclick="pdhEntriesViewToggle()" title="Vorgänge als Kacheln oder als Tabelle zeigen"><span aria-hidden="true" id="view-toggle-icon">▦</span> <span id="view-toggle-label">Kacheln</span></button>
     <button class="header-button" type="button" id="timeline-toggle" onclick="pdhTimelineToggle()" title="Zeitstrahl ein- oder ausblenden" aria-pressed="true"><span aria-hidden="true">📅</span> <span class="tb-label">Zeitstrahl</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
-    {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
-    {{if .CanManageBoards}}{{with .Board}}{{if .ID}}<a class="header-button" href="/leitstaende/{{.ID}}" title="Bausteine, Zuordnung und Weiterblättern dieses Leitstands bearbeiten"><span aria-hidden="true">⚙</span> <span class="tb-label">Bearbeiten</span></a>{{end}}{{end}}{{end}}
+    {{if .CanChat}}<a class="header-button" href="/chat" target="_top" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
+    {{if .CanManageBoards}}{{with .Board}}{{if .ID}}<a class="header-button" href="/leitstaende/{{.ID}}" target="_top" title="Bausteine, Zuordnung und Weiterblättern dieses Leitstands bearbeiten"><span aria-hidden="true">⚙</span> <span class="tb-label">Bearbeiten</span></a>{{end}}{{end}}{{end}}
     {{if .LoggedIn}}
-    <a class="header-button" href="/?dash=1" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
+    <a class="header-button" href="/?dash=1" target="_top" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
     {{else}}
-    <a class="header-button" href="/login" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
+    <a class="header-button" href="/login" target="_top" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
     {{end}}
   </div>
 </header>
@@ -1380,8 +1418,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
   });
 
   document.getElementById('fullscreen-button').addEventListener('click', function(){
-    if(document.fullscreenElement) document.exitFullscreen();
-    else document.documentElement.requestFullscreen().catch(function(){});
+    pdhLsFs.toggle().catch(function(){});
   });
 
   const headingEditBtn = document.getElementById('heading-edit-btn');
@@ -1444,39 +1481,42 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.
       left--;
       note.textContent = '→ ' + LS_ROTATE.name + ' in ' + left + ' s';
       // nächste Station (Leitstand oder Grafana-Dashboard); Kiosk/Vollbild setzt der Server in die Adresse
-      if(left <= 0) location.href = LS_ROTATE.href;
+      if(left <= 0) pdhLsFs.go(LS_ROTATE.href);
     }, 1000);
   }
 })();
 </script>
 {{if .Kiosk}}<div id="ls-kiosk-bar" role="toolbar" aria-label="Kioskmodus">
   <button type="button" id="ls-kiosk-fs" title="Vollbild ein/aus">⛶ Vollbild</button>
-  <a href="/global/b/{{with .Board}}{{.Slug}}{{else}}standard{{end}}" title="Kioskmodus verlassen – Kopfzeile und Knöpfe wieder zeigen">✕ Kiosk beenden</a>
+  <a href="/global/b/{{with .Board}}{{.Slug}}{{else}}standard{{end}}" target="_top" title="Kioskmodus verlassen – Kopfzeile und Knöpfe wieder zeigen">✕ Kiosk beenden</a>
 </div>{{end}}
-{{if .Fullscreen}}<div id="ls-fs-hint" role="button" tabindex="0">Tippen für Vollbild</div>{{end}}
+<div id="ls-fs-hint" role="button" tabindex="0">Tippen für Vollbild</div>
 <script>
 // Direktlink: ?kiosk=1 (ohne Kopf und Knöpfe), ?fs=1 (Vollbild beim Öffnen)
 (function(){
   const kiosk = {{.Kiosk}}, fs = {{.Fullscreen}};
-  const goFs = function(){ if(!document.fullscreenElement && document.documentElement.requestFullscreen) return document.documentElement.requestFullscreen(); return Promise.resolve(); };
+  const goFs = function(){ return pdhLsFs.enter(); };
   if(kiosk || fs){
     // Links auf andere Leitstände behalten die Einstellung
     document.querySelectorAll('.ls-links a[href^="/global/b/"]').forEach(function(a){ a.href = a.getAttribute('href') + location.search; });
   }
-  if(fs){
-    // Browser erlauben Vollbild meist erst nach einer Berührung: dann Hinweis zeigen
+  // Links auf andere Leitstände: bei Vollbild im Rahmen wechseln, damit es an bleibt
+  document.querySelectorAll('.ls-links a[href^="/global/b/"]').forEach(function(a){
+    a.addEventListener('click', function(e){ if(pdhLsFs.on() || pdhLsFs.framed){ e.preventDefault(); pdhLsFs.go(a.href); } });
+  });
+  // ?fs=1 oder Vollbild war eingeschaltet (und nicht bewusst beendet): wieder einschalten.
+  // Browser erlauben das meist erst nach einer Berührung – dann Hinweis zeigen.
+  if(!pdhLsFs.framed && (fs || pdhLsFs.wanted()) && !pdhLsFs.on()){
     const hint = document.getElementById('ls-fs-hint');
     goFs().catch(function(){ hint.classList.add('show'); });
     hint.addEventListener('click', function(){ hint.classList.remove('show'); goFs().catch(function(){}); });
-    // im Kioskmodus nach dem Verlassen bei der nächsten Berührung wieder Vollbild
-    if(kiosk) document.addEventListener('pointerdown', function(){ goFs().catch(function(){}); }, {passive: true});
   }
   if(kiosk){
     const bar = document.getElementById('ls-kiosk-bar'); let t = 0;
     const show = function(){ bar.classList.add('show'); clearTimeout(t); t = setTimeout(function(){ bar.classList.remove('show'); }, 3000); };
     document.addEventListener('mousemove', show, {passive: true});
     document.addEventListener('keydown', show);
-    document.getElementById('ls-kiosk-fs').addEventListener('click', function(){ if(document.fullscreenElement) document.exitFullscreen(); else goFs().catch(function(){}); });
+    document.getElementById('ls-kiosk-fs').addEventListener('click', function(){ pdhLsFs.toggle().catch(function(){}); });
   }
   // Baustein „Webseite“: alle … Minuten neu laden
   document.querySelectorAll('iframe[data-ls-reload]').forEach(function(f){
