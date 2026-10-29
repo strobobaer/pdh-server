@@ -19,6 +19,9 @@ import (
 	"pdh/internal/ha"
 )
 
+// ohne Wiederholung, sonst warten die Fehlerfälle je 15 s
+func init() { probeRetryMax = 0 }
+
 // vipCheckCluster: Server a (CA-Halter) und b, Zeuge w, alle im Netz 10.77.1.0/24.
 func vipCheckCluster() clusterConfig {
 	return clusterConfig{ClusterID: "c1", Version: 3, CAHolder: "a", Settings: realSettings(), Nodes: []clusterNode{
@@ -257,6 +260,39 @@ func TestRunVIPCheckReleasesOnFailure(t *testing.T) {
 	}
 	if d.cl.Access.Tested != nil || d.cl.Version != ver {
 		t.Fatalf("Tested %+v, Version %d", d.cl.Access.Tested, d.cl.Version)
+	}
+}
+
+// Erreicht ein Prüfender die Adresse erst nach ein paar Versuchen (Windows
+// fragt erst beim alten Halter nach), gilt die Richtung als bestanden.
+func TestRunVIPCheckRetries(t *testing.T) {
+	probeRetryMax, probeRetryPause = 5*time.Second, time.Millisecond
+	t.Cleanup(func() { probeRetryMax, probeRetryPause = 0, time.Second })
+	d, _, fp := checkDaemon(t, false)
+	tries := 0
+	d.peerPostFn = func(ctx context.Context, peer clusterNode, path string, in, out any) error {
+		if r, ok := in.(probeAddrReq); ok && peer.ID == "w" && r.Expect == "b" {
+			if tries++; tries < 3 {
+				*out.(*probeResp) = probeResp{Err: "dial tcp 10.77.1.50:7480: i/o timeout"}
+				return nil
+			}
+		}
+		return fp.post(ctx, peer, path, in, out)
+	}
+	res, err := d.runVIPCheck(context.Background(), testAddr(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res {
+		if !r.OK {
+			t.Fatalf("Ergebnisse: %+v", res)
+		}
+	}
+	if tries != 3 {
+		t.Fatalf("%d Versuche statt 3", tries)
+	}
+	if d.cl.Access.Tested == nil {
+		t.Fatal("Test nicht als bestanden gespeichert")
 	}
 }
 

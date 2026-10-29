@@ -19,7 +19,7 @@ import (
 // Fristen der langsamen Aufrufe: der Adresstest dauert bis ~45 s (jeder
 // Server hält die Adresse höchstens 20 s), ein Skript bis 30 s.
 const (
-	haVIPTestTimeout  = 60 * time.Second
+	haVIPTestTimeout  = 150 * time.Second // pdh-ha bricht nach 2 min ab (probeRunMax)
 	haHooksRunTimeout = 150 * time.Second
 )
 

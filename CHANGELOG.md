@@ -28,7 +28,8 @@ im Kapitel „Versionen & Updates“ an.
 - `pdh-ha-adresse.sh uebergabe` schaltet die Adresse zuerst mitwandernd ein und nimmt sie erst dann aus der festen Netzwerkkonfiguration – die Lücke dauert nur wenige Sekunden, egal wie lange die Bestätigung dauert.
 - Ein Adresstest mit der eingeschalteten mitwandernden Adresse wird abgelehnt; dafür eine freie Testadresse nehmen.
 - Meldungen zur mitwandernden Adresse kommen höchstens einmal je Stunde, auch wenn ein Netzwerkdienst die Adresse laufend entfernt.
-- Die mitwandernde Adresse wird nach einem Wechsel so angekündigt, dass auch Windows-Rechner (z. B. im WLAN) sofort den neuen Server erreichen statt erst nach etwa 30 Sekunden; dadurch besteht auch der Adresstest mit einem Zeugen auf einem Windows-PC.
+- Die mitwandernde Adresse wird nach einem Wechsel auch als ARP-Antwort angekündigt: Windows-Rechner (z. B. im WLAN) erreichen den neuen Server nach etwa 10 Sekunden statt erst nach bis zu 30.
+- Der Adresstest gibt jedem Teilnehmer bis zu 15 Sekunden, die Prüfadresse zu erreichen – so besteht er auch mit einem Zeugen auf einem Windows-PC, der den neuen Halter erst nach kurzer Rückfrage annimmt.
 
 ### Sicherheit
 - Skripte beim Rollenwechsel laufen nur, wenn der Ordner `/etc/pdh/ha-hooks` root gehört und nicht für Gruppe oder andere schreibbar ist; Verknüpfungen im Ordner werden einmal gemeldet und nie ausgeführt.

@@ -26,9 +26,18 @@ import (
 // abgegeben – auch nach Fehlern.
 
 const (
-	probeHoldMax = 20              // Sekunden, die ein Server die Prüfadresse höchstens hält
+	probeHoldMax = 35              // Sekunden, die ein Server die Prüfadresse höchstens hält (zwei Prüfende mit Wiederholung)
 	probeDialMax = 3 * time.Second // Frist für die TLS-Prüfung einer Adresse
 	probeRunMax  = 2 * time.Minute // Frist für den ganzen Test
+)
+
+// Ein Prüfender versucht es bis probeRetryMax wiederholt: Windows schreibt
+// einen gültigen ARP-Eintrag nach der Ankündigung nicht sofort um, sondern
+// fragt erst beim alten Halter nach (im Testverbund ~8 s) – wie ein Gerät
+// nach einem echten Wechsel. Variablen, damit Tests sie verkürzen können.
+var (
+	probeRetryMax   = 15 * time.Second
+	probeRetryPause = time.Second
 )
 
 // vipCheckResult: Ergebnis einer Richtung (Halter hält, Prüfender prüft).
@@ -589,17 +598,27 @@ func (d *daemon) vipCheckHolder(ctx context.Context, cl clusterConfig, self stri
 		if c.ID == holder.ID {
 			continue
 		}
-		var err error
-		switch {
-		case takeErr != nil:
-			err = fmt.Errorf("Prüfadresse auf %s nicht angenommen: %v", holder.ID, takeErr)
-		case c.ID == self:
-			err = d.probeAddrFn(hctx, net.JoinHostPort(addr.Addr().String(), portOf(holder.Addrs)), holder.ID)
-		default:
+		check := func() error {
+			if c.ID == self {
+				return d.probeAddrFn(hctx, net.JoinHostPort(addr.Addr().String(), portOf(holder.Addrs)), holder.ID)
+			}
 			var r probeResp
-			err = d.peerPostFn(hctx, c, "/v1/probe-addr", probeAddrReq{Addr: addr.Addr().String(), Expect: holder.ID}, &r)
+			err := d.peerPostFn(hctx, c, "/v1/probe-addr", probeAddrReq{Addr: addr.Addr().String(), Expect: holder.ID}, &r)
 			if err == nil && !r.OK {
 				err = errors.New(r.Err)
+			}
+			return err
+		}
+		var err error
+		if takeErr != nil {
+			err = fmt.Errorf("Prüfadresse auf %s nicht angenommen: %v", holder.ID, takeErr)
+		} else {
+			start := time.Now()
+			for err = check(); err != nil && time.Since(start) < probeRetryMax && hctx.Err() == nil; err = check() {
+				select {
+				case <-hctx.Done():
+				case <-time.After(probeRetryPause):
+				}
 			}
 		}
 		res := vipCheckResult{Holder: holder.ID, Checker: c.ID, OK: err == nil}
