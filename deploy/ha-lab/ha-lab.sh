@@ -120,7 +120,7 @@ status_json() {
 }
 
 # jget <Schlüssel> < JSON. Schlüssel: role term maint blocked settings
-# configured seen:<id> peerrole:<id> holder hookson hookssame; nicht lesbar → "-"
+# configured seen:<id> peerrole:<id> holder hookson hookssame hooksn; nicht lesbar → "-"
 jget() {
     if [[ "$JSON_TOOL" == python3 ]]; then
         python3 -c '
@@ -153,6 +153,7 @@ try:
     elif k == "holder": v = acc.get("holder") or "-"
     elif k == "hookson": v = yn(acc.get("hooks_on"))
     elif k == "hookssame": v = yn((acc.get("hooks") or {}).get("same"))
+    elif k == "hooksn": v = len((acc.get("hooks") or {}).get("names") or [])
     else: v = "-"
 except Exception:
     v = "-"
@@ -179,6 +180,7 @@ print(v)' "$1"
             holder) f='if (.access.holder // "") == "" then "-" else .access.holder end' ;;
             hookson) f='if .access.hooks_on then "ja" else "nein" end' ;;
             hookssame) f='if .access.hooks.same then "ja" else "nein" end' ;;
+            hooksn) f='(.access.hooks.names // []) | length' ;;
             *) echo "-"; return ;;
         esac
         jq -r --arg id "${1#*:}" "$f" 2>/dev/null || echo "-"
@@ -843,9 +845,9 @@ sc_vip_duplikat() {
 }
 
 # Läuft auf dem Halter: Adresse entfernen, dann alle 0,1 s prüfen, ob sie
-# wieder da ist. Ausgabe: Millisekunden.
+# wieder da ist (Grenze in Millisekunden). Ausgabe: Millisekunden.
 WIEDER_SH='
-ifc=$1 cidr=$2 max=$(($3 * 1000))
+ifc=$1 cidr=$2 max=$3
 ip addr del "$cidr" dev "$ifc" || exit 2
 t0=$(date +%s%3N)
 while :; do
@@ -860,8 +862,10 @@ sc_vip_entfernt() {
     local ifc ms
     ifc="$(lan_if node1 "$VIP_IP")"
     [[ -n "$ifc" ]] || fail "Karte mit $VIP_IP auf node1 nicht gefunden"
-    log "Adresse auf node1 von Hand entfernen – binnen 3 s wieder da"
-    ms="$(docker exec node1 bash -c "$WIEDER_SH" _ "$ifc" "$VIP" 3)" || fail "Adresse nach $ms ms nicht wieder da – $(vip_where)"
+    # Grenze 3,5 s: bis 1 s bis zum nächsten Abgleich (Takt des Arbeiters),
+    # 2 s Duplikat-Prüfung (arping -D -c 2), Rest für Setzen und Messen
+    log "Adresse auf node1 von Hand entfernen – binnen 3,5 s wieder da"
+    ms="$(docker exec node1 bash -c "$WIEDER_SH" _ "$ifc" "$VIP" 3500)" || fail "Adresse nach $ms ms nicht wieder da – $(vip_where)"
     log "Adresse nach $ms ms wieder gesetzt"
     wait_for 10 eval 'event_on node1 "war nicht mehr gesetzt – wird wieder übernommen"' || fail "kein Ereignis „war nicht mehr gesetzt“ auf node1"
     wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach der Rückkehr – $(vip_where)"
@@ -915,6 +919,12 @@ sc_hooks() {
     wait_for 30 hooks_logged ||
         fail "Skript-Protokoll: node1 „$(hook_last node1)“, node2 „$(hook_last node2)“ (erwartet passiv/aktiv $T2 $VIP_IP)"
     log "node1: $(hook_last node1) – node2: $(hook_last node2)"
+    # Ausgangslage: beide kennen das Skript und melden „gleich“ – sonst wäre
+    # „nein“ danach nicht eindeutig (fehlender Block ergibt ebenfalls „nein“).
+    # Der Ordner wird alle 30 s neu gelesen.
+    wait_for 45 eval '[[ "$(jget hooksn <<<"$J1")" == 1 && "$(jget hooksn <<<"$J2")" == 1 &&
+        "$(jget hookssame <<<"$J1")" == ja && "$(jget hookssame <<<"$J2")" == ja ]]' ||
+        fail "Ausgangslage: Skripte nicht auf beiden gleich (node1 $(jget hooksn <<<"$J1") Skript(e) same=$(jget hookssame <<<"$J1"), node2 $(jget hooksn <<<"$J2") same=$(jget hookssame <<<"$J2"))"
     log "Skript nur auf node2 ändern – beide melden „anders als beim Partner“"
     docker exec node2 sh -c 'echo "# geändert" >>/etc/pdh/ha-hooks/10-log' || fail "Skript auf node2 ändern"
     wait_for 90 eval '[[ "$(jget hookssame <<<"$J1")" == nein && "$(jget hookssame <<<"$J2")" == nein ]]' ||
@@ -996,6 +1006,11 @@ run_scenario() {
     writer_start
     wait_acks 3 30 || fail "Schreib-Generator bestätigt nichts"
     "$fn" || fail "Szenario $name abgebrochen"
+    vip_watch_stop
+    # Befund des Wächters nach dem letzten snap
+    if [[ -s "$VIP_BAD" ]]; then
+        fail "Adresse gleichzeitig auf node1 und node2: $(head -1 "$VIP_BAD")"
+    fi
     check_acked
     echo "BESTANDEN: $name"
 }
