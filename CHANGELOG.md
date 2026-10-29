@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.5] – 2026-10-29
+
+### Behoben
+- Leitstand: eingeschaltetes Vollbild bleibt beim Weiterblättern und beim Wechsel zu einem anderen Leitstand an, bis es bewusst ausgeschaltet wird; nach einem Neustart bietet der Bildschirm „Tippen für Vollbild“ an.
+
 ## [0.77.4] – 2026-10-29
 
 ### Geändert
