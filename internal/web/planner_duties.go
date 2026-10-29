@@ -28,6 +28,10 @@ import (
 
 const permDuties = "shifts.duties"
 
+// userPhoneSQL: Telefonnummer einer Person (Alias u) – dienstliches Handy,
+// sonst Durchwahl, sonst Telefon aus den Grunddaten.
+const userPhoneSQL = `COALESCE(NULLIF(u.phone_mobile, ''), NULLIF(u.phone_internal, ''), NULLIF(u.phone, ''), '')`
+
 var dutyKinds = []struct{ Key, Label, Icon string }{
 	{"standby", "Bereitschaft", "ti-phone-call"},
 	{"duty", "Besondere Tätigkeit", "ti-star"},
@@ -55,7 +59,7 @@ func dutyKindIcon(k string) string {
 type dutyType struct {
 	ID, Name, Short, Color, Kind, Qualification, DeptID string
 	MinStaff, Sort                                      int
-	Active                                              bool
+	Active, ShowPhone                                   bool
 	Used                                                int // Einteilungen gesamt
 }
 
@@ -64,7 +68,7 @@ func (d dutyType) Icon() string      { return dutyKindIcon(d.Kind) }
 
 func (h *Handler) dutyTypes(ctx context.Context, activeOnly bool) []dutyType {
 	q := `SELECT t.id::text, t.name, t.short_name, t.color, t.kind, t.qualification, COALESCE(t.department_id::text, ''),
-		t.min_staff, t.sort_order, t.active, (SELECT COUNT(*) FROM duty_assignments a WHERE a.duty_type_id = t.id)
+		t.min_staff, t.sort_order, t.active, t.show_phone, (SELECT COUNT(*) FROM duty_assignments a WHERE a.duty_type_id = t.id)
 		FROM duty_types t`
 	if activeOnly {
 		q += ` WHERE t.active`
@@ -77,7 +81,7 @@ func (h *Handler) dutyTypes(ctx context.Context, activeOnly bool) []dutyType {
 	var out []dutyType
 	for rows.Next() {
 		var t dutyType
-		if rows.Scan(&t.ID, &t.Name, &t.Short, &t.Color, &t.Kind, &t.Qualification, &t.DeptID, &t.MinStaff, &t.Sort, &t.Active, &t.Used) == nil {
+		if rows.Scan(&t.ID, &t.Name, &t.Short, &t.Color, &t.Kind, &t.Qualification, &t.DeptID, &t.MinStaff, &t.Sort, &t.Active, &t.ShowPhone, &t.Used) == nil {
 			if !hexColorRe.MatchString(t.Color) {
 				t.Color = "#F59E0B"
 			}
@@ -177,7 +181,7 @@ func (h *Handler) fillDutyWeek(r *http.Request, d *PlannerData, start time.Time)
 	for _, u := range d.Users {
 		inList[u.ID] = true
 	}
-	rows, err := h.db.Query(ctx, `SELECT a.duty_type_id::text, a.user_id::text, a.date::text, a.note, TRIM(u.first_name || ' ' || u.last_name)
+	rows, err := h.db.Query(ctx, `SELECT a.duty_type_id::text, a.user_id::text, a.date::text, a.note, TRIM(u.first_name || ' ' || u.last_name), `+userPhoneSQL+`
 		FROM duty_assignments a JOIN users u ON u.id = a.user_id
 		WHERE a.date BETWEEN $1 AND $2 ORDER BY u.last_name, u.first_name`, start, start.AddDate(0, 0, 6))
 	if err != nil {
@@ -186,7 +190,8 @@ func (h *Handler) fillDutyWeek(r *http.Request, d *PlannerData, start time.Time)
 	defer rows.Close()
 	for rows.Next() {
 		var tid, uid, date, note, name string
-		if rows.Scan(&tid, &uid, &date, &note, &name) != nil {
+		var phone string
+		if rows.Scan(&tid, &uid, &date, &note, &name, &phone) != nil {
 			continue
 		}
 		i, ok := idx[tid]
@@ -198,7 +203,11 @@ func (h *Handler) fillDutyWeek(r *http.Request, d *PlannerData, start time.Time)
 			continue
 		}
 		c := &d.DutyRows[i].Cells[col]
-		c.People = append(c.People, plannerPerson{ID: uid, Name: name, Short: nameInitials(name), Note: note})
+		p := plannerPerson{ID: uid, Name: name, Short: nameInitials(name), Note: note}
+		if d.DutyRows[i].Type.ShowPhone {
+			p.Phone = phone
+		}
+		c.People = append(c.People, p)
 	}
 	for i := range d.DutyRows {
 		for j := range d.DutyRows[i].Cells {
@@ -452,14 +461,14 @@ func (h *Handler) PlannerDutyTypeSaveWeb(w http.ResponseWriter, r *http.Request)
 	minStaff, _ := strconv.Atoi(r.FormValue("min_staff"))
 	sortOrder, _ := strconv.Atoi(r.FormValue("sort_order"))
 	args := []any{name, truncateRunes(strings.TrimSpace(r.FormValue("short_name")), 10), color, kind,
-		truncateRunes(strings.TrimSpace(r.FormValue("qualification")), 200), max(0, minStaff), sortOrder, r.FormValue("active") == "on"}
+		truncateRunes(strings.TrimSpace(r.FormValue("qualification")), 200), max(0, minStaff), sortOrder, r.FormValue("active") == "on", r.FormValue("show_phone") == "on"}
 	var err error
 	if id == "new" {
-		_, err = h.db.Exec(r.Context(), `INSERT INTO duty_types (name, short_name, color, kind, qualification, min_staff, sort_order, active)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, true)`, args[:7]...)
+		_, err = h.db.Exec(r.Context(), `INSERT INTO duty_types (name, short_name, color, kind, qualification, min_staff, sort_order, active, show_phone)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8 OR true, $9)`, args...)
 	} else if uuidInPathRe.MatchString(id) {
 		_, err = h.db.Exec(r.Context(), `UPDATE duty_types SET name = $1, short_name = $2, color = $3, kind = $4, qualification = $5,
-			min_staff = $6, sort_order = $7, active = $8 WHERE id = $9::uuid`, append(args, id)...)
+			min_staff = $6, sort_order = $7, active = $8, show_phone = $9 WHERE id = $10::uuid`, append(args, id)...)
 	}
 	plannerBack(w, r, "settings", "", "Dienstart „"+name+"“ gespeichert", err)
 }

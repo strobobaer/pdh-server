@@ -133,6 +133,34 @@ allein in CSS über `html[data-style="fiori"]` bzw. `"fluent"`.
 - Handbuch-Kapitel „Administration“ und das Änderungsprotokoll (`### Sicherheit`)
   mitpflegen.
 
+## Prüfung vor jedem Merge (GitHub main ist führend)
+
+Der Branch `main` auf GitHub ist **immer führend**. Es arbeiten mehrere
+Sitzungen gleichzeitig am PDH-Server. Deshalb vor **jedem** Merge prüfen,
+ob es Dopplungen oder Abweichungen zum aktuellen Stand gibt:
+
+1. `git fetch origin main` und den eigenen Branch auf den neuesten Stand
+   von `origin/main` bringen (mergen). Konflikte zugunsten von `main`
+   auflösen und die eigene Änderung darauf neu aufsetzen.
+2. **Dopplungen suchen:** Gibt es auf `main` schon dieselbe oder eine
+   ähnliche Funktion, Route, Migration, Recht, Vorlage, Hilfsfunktion
+   oder denselben Handbuch-Abschnitt? Dann das Vorhandene nutzen bzw.
+   erweitern statt doppelt anlegen (`git diff origin/main...HEAD`,
+   `grep` nach Namen, Routen und Rechte-Schlüsseln).
+3. **Abweichungen klären:**
+   - Migrationsnummern dürfen nicht doppelt vergeben sein; sonst die
+     eigene umnummerieren.
+   - `VERSION` und `CHANGELOG.md` müssen über `main` liegen; sonst die
+     nächste Korrekturversion nehmen und den Eintrag nach oben setzen.
+   - Geänderte Funktionen, Signaturen und Vorlagen von `main` übernehmen
+     und den eigenen Code daran anpassen.
+4. Gefundene Dopplungen und Abweichungen **gleich beheben** und
+   einarbeiten, nicht nur melden.
+5. Danach Tests (`go test ./...`), Build und ggf. Browser-Prüfung erneut
+   laufen lassen und erst dann mergen.
+6. Im Pull-Request-Text kurz festhalten, was die Prüfung ergeben hat
+   (z. B. „keine Dopplungen“ oder „Migration 152 → 154 umnummeriert“).
+
 ## Sprache
 
 Antworten, Handbuch, Änderungsprotokoll, Commit-Nachrichten und

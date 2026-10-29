@@ -181,6 +181,7 @@ type GrafanaSettingsData struct {
 	Health         string // ok / Fehlertext
 	HealthOK       bool
 	Edit           *grafanaDashboard
+	Found          []grafanaFound // in Grafana angelegt, noch keine Kachel (leitstand_grafana.go)
 	Colors         []struct{ Key, Label, CSS string }
 	Icons          []string
 	Message, Error string
@@ -256,6 +257,7 @@ func (h *Handler) GrafanaSettingsPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	d.Found = h.grafanaDiscover(r, d.Dashboards)
 	d.Health = grafanaHealth(ctx, base)
 	d.HealthOK = strings.HasPrefix(d.Health, "ok")
 	h.render(w, "core_grafana", d)

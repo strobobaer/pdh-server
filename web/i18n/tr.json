@@ -1,4 +1,5 @@
 {
+ "Bilder, PDF, Word- und Excel-Dateien anzeigen – mehrere wechseln sich ab": "Resim, PDF, Word ve Excel dosyalarını göster – birden fazlası sırayla değişir",
  "%d Mitglieder": "%d üye",
  "%d kritisch": "%d kritik",
  "%d neu gemeldet": "%d yeni bildirildi",
@@ -739,5 +740,6 @@
  "Bestellvorgänge": "Satın alma siparişleri",
  "Gruppe nach oben": "Grubu yukarı taşı",
  "Gruppe nach unten": "Grubu aşağı taşı",
- "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Girdileri sürükleyin, grupları ↑ ↓ ile taşıyın, yeniden adlandırmak için grup adına tıklayın."
+ "Einträge ziehen, Gruppen mit ↑ ↓ verschieben, Gruppennamen anklicken zum Umbenennen.": "Girdileri sürükleyin, grupları ↑ ↓ ile taşıyın, yeniden adlandırmak için grup adına tıklayın.",
+ "Der Schichtplan wie im Planer: Schichten × Tage mit den Namen, darunter Sonderdienste und Bereitschaft (mit Telefon) – Woche, Schichtmodell und Feldhöhe oben wählen": "Planlayıcıdaki gibi vardiya planı: isimlerle vardiyalar × günler, altında özel görevler ve nöbet (telefonla) – hafta, model ve alan yüksekliği üstte seçilir"
 }

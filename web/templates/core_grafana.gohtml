@@ -50,6 +50,15 @@
   <p class="rec-sub" style="margin-top:8px">{{if .Proxied}}<b>Leer lassen:</b> Grafana läuft durch das PDH unter <a href="/grafana/" target="_blank" rel="noopener"><code>/grafana/</code></a> – gleiche Adresse, gleiches HTTPS (auch über Cloudflare) und automatische Anmeldung mit dem PDH-Konto (Administratoren als Grafana-Admin, sonst nur lesen). Nur eintragen, wenn ein anderes Grafana genutzt werden soll.{{else}}<b>Installation ohne Docker (systemd):</b> Grafana einmalig auf dem Server einrichten mit <code>sudo bash scripts/install-grafana.sh</code> im PDH-Verzeichnis – danach läuft es durch das PDH unter <code>/grafana/</code>. Ein anderes Grafana hier mit Adresse eintragen, z. B. <code>https://grafana.firma.de</code>.{{end}} Dashboard-Adressen dürfen kurz als Pfad (<code>/d/…</code>) eingetragen werden.</p>
 </div>
 
+{{if .Found}}<div class="card">
+  <div class="card-title"><span><i class="ti ti-sparkles"></i> Neu in Grafana ({{len .Found}})</span></div>
+  <p class="rec-sub" style="margin-top:0">In Grafana angelegt, aber noch keine Kachel. Übernehmen legt die Kachel mit Titel und Ordner aus Grafana an – Symbol und Farbe danach mit ✎ anpassen. Auch im Leitstand-Editor (Weiterblättern) stehen sie automatisch zur Wahl.</p>
+  <div style="display:flex;flex-direction:column;gap:6px">{{range .Found}}
+    <form method="post" action="/core/settings/grafana/adopt" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+      <input type="hidden" name="uid" value="{{.UID}}"><i class="ti ti-chart-line"></i><b style="flex:1;min-width:0">{{.Title}}{{if .Folder}} <span class="rec-sub">({{.Folder}})</span>{{end}}</b><code class="rec-sub">{{.Path}}</code>
+      <button class="btn btn-small btn-primary"><i class="ti ti-plus"></i> Übernehmen</button></form>{{end}}
+  </div>
+</div>{{end}}
 <div class="card">
   <div class="card-title"><span><i class="ti ti-layout-grid"></i> Kacheln der Statistik ({{len .Dashboards}})</span></div>
   {{range $i, $g := .Dashboards}}

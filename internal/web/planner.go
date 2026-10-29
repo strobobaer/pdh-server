@@ -167,6 +167,7 @@ type plannerPerson struct {
 	ID, Name, Short string
 	Draft           bool   // aus einem unveröffentlichten Plan
 	Note            string // Notiz an der Zuweisung
+	Phone           string // Sonderdienst mit „Telefon anzeigen“
 }
 
 type plannerCell struct {

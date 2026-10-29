@@ -56,7 +56,7 @@ type boardBlockDef struct {
 	Type, Name, Icon, Desc string
 	Size                   int
 	Single                 bool   // höchstens einmal (feste Element-IDs der Seite)
-	Config                 string // "" | "text" | "boards"
+	Config                 string // "" | "text" | "boards" | "url" | "docs"
 }
 
 var boardBlockDefs = []boardBlockDef{
@@ -66,9 +66,28 @@ var boardBlockDefs = []boardBlockDef{
 	{"kennzahlen", "Kennzahlen", "ti-chart-bar", "Offen je Art, überfällig, ohne Zuständigen", 4, false, ""},
 	{"stoerungen", "Aktuelle Störungen", "ti-alert-octagon", "Die neuesten offenen Störungen", 2, false, ""},
 	{"wartung", "Fällige Wartung", "ti-tool", "Wartungen, die heute fällig oder überfällig sind", 2, false, ""},
+	{"schichtplan", "Schichtplan", "ti-calendar-week", "Schichtplan wie im Planer: Schichten × Tage mit Namen, darunter Sonderdienste und Bereitschaft (mit Telefon) – Woche und Modell oben wählen", 4, false, ""},
 	{"kalender", "Kalender", "ti-calendar", "Kalender wie unter Übersicht → Kalender: Personen × Tage mit Schichten, Bereitschaft, Abwesenheit und fälligen Vorgängen, Auswahl oben im Baustein", 4, false, ""},
 	{"hinweis", "Hinweistext", "ti-info-circle", "Freier Text, z. B. Ansprechpartner, Schichtinfo oder Sicherheitshinweis", 2, false, "text"},
 	{"links", "Andere Leitstände", "ti-arrows-exchange", "Knöpfe, die andere Leitstände öffnen", 2, false, "boards"},
+	{"dokumente", "Dokumente", "ti-files", "Bilder, PDF, Word- und Excel-Dateien anzeigen – mehrere wechseln sich ab, z. B. Arbeitsanweisungen oder Aushänge", 2, false, "docs"},
+	{"webseite", "Webseite", "ti-world-www", "Externe Seite eingebettet, z. B. Anlagenvisualisierung, Wetter oder Intranet (die Seite muss das Einbetten erlauben)", 4, false, "url"},
+}
+
+// boardEmbedURL: nur http(s)-Adressen oder eigene Seiten ("/…") einbetten.
+func boardEmbedURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 2000 {
+		return ""
+	}
+	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return u.String()
 }
 
 func boardBlockDefFor(t string) (boardBlockDef, bool) {
@@ -121,6 +140,19 @@ func sanitizeBoardBlocks(in []BoardBlock) []BoardBlock {
 				}
 			}
 			cfg["boards"] = strings.Join(ids, ",")
+		case "docs":
+			cleanDocConfig(b.Config, cfg)
+		case "url":
+			if u := boardEmbedURL(b.Config["url"]); u != "" {
+				cfg["url"] = u
+			}
+			// Höhe in Pixeln, 150–2000
+			if hgt, err := strconv.Atoi(strings.TrimSpace(b.Config["height"])); err == nil {
+				cfg["height"] = strconv.Itoa(min(max(hgt, 150), 2000))
+			}
+			if n, err := strconv.Atoi(strings.TrimSpace(b.Config["reload"])); err == nil && n > 0 {
+				cfg["reload"] = strconv.Itoa(min(max(n, 1), 1440))
+			}
 		}
 		if t := strings.TrimSpace(b.Config["title"]); t != "" {
 			if r := []rune(t); len(r) > 60 {
@@ -150,7 +182,8 @@ type leitstand struct {
 	RotateNext                string // ID
 	RotateNextSlug            string
 	RotateNextName            string
-	Terminals                 int // direkt zugeordnete Terminals
+	RotateGrafana             []string // Grafana-Dashboards als Stationen beim Weiterblättern (leitstand_grafana.go)
+	Terminals                 int      // direkt zugeordnete Terminals
 }
 
 // HasType: zeigt der Leitstand diese Vorgangsart?
@@ -190,7 +223,7 @@ func (b *leitstand) Scope() string {
 
 const leitstandSelect = `SELECT l.id::text, l.slug, l.name, l.subtitle, l.is_default, l.active,
 	COALESCE(l.department_id::text, ''), COALESCE(l.group_id::text, ''), COALESCE(d.name, ''), COALESCE(g.name, ''),
-	l.types, l.blocks, l.rotate_seconds, COALESCE(l.rotate_next::text, ''), COALESCE(n.slug, ''), COALESCE(n.name, ''),
+	l.types, l.blocks, l.rotate_seconds, COALESCE(l.rotate_next::text, ''), COALESCE(n.slug, ''), COALESCE(n.name, ''), l.rotate_grafana,
 	(SELECT COUNT(*) FROM users u WHERE u.leitstand_id = l.id AND u.active)
 	FROM leitstaende l
 	LEFT JOIN departments d ON d.id = l.department_id
@@ -201,8 +234,9 @@ func scanLeitstand(s rowScanner) (*leitstand, error) {
 	var b leitstand
 	var types string
 	var blocks []byte
+	var grafana string
 	if err := s.Scan(&b.ID, &b.Slug, &b.Name, &b.Subtitle, &b.IsDefault, &b.Active, &b.DepartmentID, &b.GroupID,
-		&b.DepartmentName, &b.GroupName, &types, &blocks, &b.RotateSeconds, &b.RotateNext, &b.RotateNextSlug, &b.RotateNextName, &b.Terminals); err != nil {
+		&b.DepartmentName, &b.GroupName, &types, &blocks, &b.RotateSeconds, &b.RotateNext, &b.RotateNextSlug, &b.RotateNextName, &grafana, &b.Terminals); err != nil {
 		return nil, err
 	}
 	for _, t := range strings.Split(types, ",") {
@@ -212,6 +246,11 @@ func scanLeitstand(s rowScanner) (*leitstand, error) {
 	}
 	_ = json.Unmarshal(blocks, &b.Blocks)
 	b.Blocks = sanitizeBoardBlocks(b.Blocks)
+	for _, g := range strings.Split(grafana, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			b.RotateGrafana = append(b.RotateGrafana, g)
+		}
+	}
 	return &b, nil
 }
 
@@ -398,6 +437,8 @@ type LeitstaendePageData struct {
 	Types       []struct{ Key, Label string }
 	Departments []deptView
 	Groups      []UserOption
+	Grafana     []grafanaDashboard // zur Auswahl beim Weiterblättern (nur mit Recht „Statistik ansehen“)
+	GrafanaNew  []grafanaFound     // in Grafana neu, noch nicht in der Statistik – beim Speichern übernommen
 	Notice      string
 	Error       string
 }
@@ -434,6 +475,12 @@ func (h *Handler) LeitstaendePage(w http.ResponseWriter, r *http.Request) {
 		data, _ := json.Marshal(d.Edit.Blocks)
 		d.BlocksJSON = string(data)
 		d.Types = boardTypes
+		if h.canStatistics(r) {
+			base, _ := h.grafanaBase(r)
+			d.Grafana, _ = h.grafanaDashboards(ctx, base, false)
+			all, _ := h.grafanaDashboards(ctx, base, true)
+			d.GrafanaNew = h.grafanaDiscover(r, all)
+		}
 		d.Departments = h.loadDepartments(ctx)
 		for _, g := range h.loadGroups(ctx) {
 			d.Groups = append(d.Groups, UserOption{ID: g.ID, Name: g.Name})
@@ -494,8 +541,20 @@ func (h *Handler) LeitstandSaveWeb(w http.ResponseWriter, r *http.Request) {
 	case rotate > maxRotateSeconds:
 		rotate = maxRotateSeconds
 	}
-	if next == "" || next == id { // ohne Ziel (oder auf sich selbst) kein Weiterblättern
-		next, rotate = "", 0
+	// Grafana-Stationen nur ändern, wer sie sehen darf – sonst bleiben sie, wie sie sind
+	var grafana []string
+	if h.canStatistics(r) {
+		grafana = h.validGrafanaIDs(r, r.Form["rotate_grafana"])
+	} else if id != "new" {
+		if old := h.leitstandWhere(ctx, "l.id = $1::uuid", id); old != nil {
+			grafana = old.RotateGrafana
+		}
+	}
+	if next == id {
+		next = ""
+	}
+	if next == "" && len(grafana) == 0 { // ohne Ziel kein Weiterblättern
+		rotate = 0
 	}
 	nullable := func(v string) any {
 		if v == "" {
@@ -506,15 +565,15 @@ func (h *Handler) LeitstandSaveWeb(w http.ResponseWriter, r *http.Request) {
 	active := r.FormValue("active") == "on"
 	var err error
 	if id == "new" {
-		err = h.db.QueryRow(ctx, `INSERT INTO leitstaende (slug, name, subtitle, active, department_id, group_id, types, blocks, rotate_seconds, rotate_next)
-			VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, $7, $8::jsonb, $9, $10::uuid) RETURNING id::text`,
+		err = h.db.QueryRow(ctx, `INSERT INTO leitstaende (slug, name, subtitle, active, department_id, group_id, types, blocks, rotate_seconds, rotate_next, rotate_grafana)
+			VALUES ($1, $2, $3, $4, $5::uuid, $6::uuid, $7, $8::jsonb, $9, $10::uuid, $11) RETURNING id::text`,
 			slug, name, subtitle, active, nullable(r.FormValue("department_id")), nullable(r.FormValue("group_id")),
-			strings.Join(types, ","), string(blocksJSON), rotate, nullable(next)).Scan(&id)
+			strings.Join(types, ","), string(blocksJSON), rotate, nullable(next), strings.Join(grafana, ",")).Scan(&id)
 	} else {
 		_, err = h.db.Exec(ctx, `UPDATE leitstaende SET slug=$1, name=$2, subtitle=$3, active=(is_default OR $4), department_id=$5::uuid, group_id=$6::uuid,
-			types=$7, blocks=$8::jsonb, rotate_seconds=$9, rotate_next=$10::uuid, updated_at=NOW() WHERE id=$11::uuid`,
+			types=$7, blocks=$8::jsonb, rotate_seconds=$9, rotate_next=$10::uuid, rotate_grafana=$12, updated_at=NOW() WHERE id=$11::uuid`,
 			slug, name, subtitle, active, nullable(r.FormValue("department_id")), nullable(r.FormValue("group_id")),
-			strings.Join(types, ","), string(blocksJSON), rotate, nullable(next), id)
+			strings.Join(types, ","), string(blocksJSON), rotate, nullable(next), id, strings.Join(grafana, ","))
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "leitstaende_slug_key") {

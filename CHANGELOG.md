@@ -10,6 +10,46 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.5] – 2026-10-29
+
+### Behoben
+- Leitstand: eingeschaltetes Vollbild bleibt beim Weiterblättern und beim Wechsel zu einem anderen Leitstand an, bis es bewusst ausgeschaltet wird; nach einem Neustart bietet der Bildschirm „Tippen für Vollbild“ an.
+
+## [0.77.4] – 2026-10-29
+
+### Geändert
+- Schichtplan-Widget und Leitstand-Baustein „Schichtplan“: die Namensfelder werden so breit, dass Name und Telefonnummer immer ganz zu sehen sind; reicht der Platz nicht, lässt sich der Plan seitlich schieben.
+
+## [0.77.3] – 2026-10-29
+
+### Neu
+- Leitstand: beim Weiterblättern können Grafana-Dashboards aus der Statistik als zusätzliche Stationen gezeigt werden (Leitstand → Dashboards → nächster Leitstand), bildschirmfüllend und auch im Kioskmodus.
+- In Grafana neu angelegte Dashboards stehen automatisch zur Wahl – im Leitstand-Editor und unter Core → Grafana & Statistik („Neu in Grafana“, mit einem Klick übernehmen).
+- Widget und Leitstand-Baustein „Dokumente“: Bilder, PDF, Word- und Excel-Dateien direkt hochladen und anzeigen; mehrere wechseln sich ab.
+
+### Sicherheit
+- Neues Recht „Dokumente für Dashboard und Leitstand hochladen“ (für Administratoren, Manager und wer Leitstände verwaltet) und neuer Bereichsadministrator „Leitstand & Dashboards“.
+
+## [0.77.2] – 2026-10-29
+
+### Neu
+- Leitstand-Baustein „Webseite“: eine externe Seite (oder eine PDH-Seite) direkt im Leitstand einbetten, mit einstellbarer Höhe und automatischem Neuladen.
+- Direktlink zum Leitstand mit Vollbild und Kioskmodus: unter Leitstände → Bearbeiten → Direktlink den Link zusammenstellen und kopieren; der Kioskmodus zeigt nur den Inhalt ohne Kopfzeile und Knöpfe.
+
+### Geändert
+- Schichtplan-Widget und Leitstand-Baustein „Schichtplan“: die Namensfelder sind doppelt so groß, die Feldhöhen ebenfalls.
+
+## [0.77.1] – 2026-10-29
+
+### Neu
+- Widget und Leitstand-Baustein „Schichtplan“: der Schichtplan so, wie er im Planer aussieht – Schichten × Tage mit Namen, darunter Sonderdienste und Bereitschaft; Woche, Schichtmodell und Feldhöhe oben wählen.
+- Sonderdienste können die Telefonnummer der eingeteilten Person mit anzeigen (Haken „Telefon“ bei der Dienstart; Rufbereitschaft ist voreingestellt) – im Schichtplan, Kalender, Widget und Leitstand.
+- Schichtplan: die Höhe der Namensfelder ist einstellbar (Klein, Normal, Groß, Sehr groß, Automatisch).
+- Kalender: Kalenderwochen stehen oben, angezeigt werden immer ganze Wochen ab Montag (1 bis 6 Wochen).
+
+### Geändert
+- Kalender: Projekte stehen ganz oben – je Projekt eine Zeile mit durchgehendem Balken, ohne Zuordnung zu Personen.
+
 ## [0.77.0] – 2026-10-28
 
 ### Neu

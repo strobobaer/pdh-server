@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{lang}}">
+<html lang="{{lang}}"{{if or .Kiosk .Stop}} class="{{if .Kiosk}}ls-kiosk{{end}}{{if .Stop}} ls-stopmode{{end}}"{{end}}>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -168,6 +168,24 @@ main{min-height:0;flex:1;display:flex;flex-direction:column;padding:14px 18px 18
 .ls-note{white-space:pre-wrap;font-size:calc(15px * var(--row-scale));line-height:1.45}
 .ls-links{display:flex;flex-wrap:wrap;gap:8px}
 #ls-rotate{font-size:12px;color:var(--muted)}
+.ls-web{position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+.ls-web iframe{display:block;width:100%;border:0}
+.ls-web-open{margin-left:auto;font-size:12px;color:var(--muted);text-decoration:none}
+.ls-web-open:hover{color:var(--accent)}
+.ls-x .view-head{display:flex;align-items:center;gap:8px}
+/* Kioskmodus (?kiosk=1): nur der Inhalt, ohne Kopf, Werkzeugleiste und Bearbeiten */
+html.ls-kiosk header,html.ls-kiosk main > .toolbar,html.ls-kiosk .ls-web-open{display:none!important}
+html.ls-kiosk main{padding-top:10px}
+/* Grafana-Station beim Weiterblättern (?stop=N): Dashboard füllt die Seite */
+html.ls-stopmode #ls-grid,html.ls-stopmode main > .toolbar .legend,html.ls-stopmode #item-count,html.ls-stopmode main > .toolbar strong{display:none!important}
+#ls-stop{height:calc(100vh - 150px);min-height:300px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface)}
+html.ls-kiosk #ls-stop{height:calc(100vh - 20px)}
+#ls-stop iframe{display:block;width:100%;height:100%;border:0}
+#ls-kiosk-bar{position:fixed;right:12px;bottom:12px;z-index:3000;display:flex;gap:6px;opacity:0;pointer-events:none;transition:opacity .25s}
+#ls-kiosk-bar.show{opacity:.92;pointer-events:auto}
+#ls-kiosk-bar a,#ls-kiosk-bar button{display:inline-flex;align-items:center;gap:5px;min-height:38px;padding:0 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;text-decoration:none;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+#ls-fs-hint{position:fixed;inset:0;z-index:2999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);color:#fff;font-size:22px;font-weight:600;cursor:pointer}
+#ls-fs-hint.show{display:flex}
 :root[data-style="fiori"] .ls-kpi,:root[data-style="fiori"] .ls-li{border-color:transparent;border-radius:12px;box-shadow:var(--ls-shadow)}
 
 /* ── Zeitstrahl (frappe-gantt, wie im User-Dashboard) ── */
@@ -302,6 +320,44 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 </style>
 <style id="pdh-theme">{{.ThemeCSS}}</style>
 {{template "request-once-script"}}
+<script>
+// Vollbild bleibt beim Weiterschalten an, bis es bewusst ausgeschaltet wird.
+// Ein Seitenwechsel beendet das Vollbild im Browser immer – deshalb wird die
+// Seite bei eingeschaltetem Vollbild zum Rahmen (pdhLsShell) und nur der
+// Inhalt darin wechselt. Die Wahl merkt sich der Browser (pdh_ls_fs).
+(function(){
+  let topWin = window;
+  try{ if(window.top !== window && window.top.pdhLsShell) topWin = window.top; }catch(e){}
+  const KEY = 'pdh_ls_fs', tdoc = function(){ return topWin.document; };
+  const remember = function(v){ try{ localStorage.setItem(KEY, v ? '1' : '0'); }catch(e){} };
+  let leaving = false;
+  window.addEventListener('pagehide', function(){ leaving = true; });
+  window.addEventListener('beforeunload', function(){ leaving = true; });
+  if(topWin === window) document.addEventListener('fullscreenchange', function(){
+    // Esc oder Knopf = bewusst ausgeschaltet; ein Seitenwechsel zählt nicht
+    if(!document.fullscreenElement && !leaving) remember(false);
+  });
+  window.pdhLsFs = {
+    framed: topWin !== window,
+    on: function(){ return !!tdoc().fullscreenElement; },
+    wanted: function(){ try{ return localStorage.getItem(KEY) === '1'; }catch(e){ return false; } },
+    enter: function(){ const d = tdoc().documentElement; if(tdoc().fullscreenElement || !d.requestFullscreen) return Promise.resolve(); return d.requestFullscreen().then(function(){ remember(true); }); },
+    exit: function(){ remember(false); return tdoc().fullscreenElement ? tdoc().exitFullscreen() : Promise.resolve(); },
+    toggle: function(){ return this.on() ? this.exit() : this.enter(); },
+    // zur nächsten Station bzw. zu einem anderen Leitstand
+    go: function(href){
+      if(topWin !== window || !document.fullscreenElement){ location.href = href; return; }
+      window.pdhLsShell = true;
+      const last = setTimeout(function(){}, 0); for(let i = 0; i <= last; i++){ clearTimeout(i); clearInterval(i); }
+      const f = document.createElement('iframe');
+      f.src = href; f.title = document.title; f.allow = 'fullscreen';
+      f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:var(--bg,#000)';
+      f.addEventListener('load', function(){ try{ document.title = f.contentDocument.title; }catch(e){} });
+      document.body.replaceChildren(f);
+    }
+  };
+})();
+</script>
 </head>
 <body>
 <header>
@@ -331,12 +387,12 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     <button class="header-button" type="button" id="view-toggle" onclick="pdhEntriesViewToggle()" title="Vorgänge als Kacheln oder als Tabelle zeigen"><span aria-hidden="true" id="view-toggle-icon">▦</span> <span id="view-toggle-label">Kacheln</span></button>
     <button class="header-button" type="button" id="timeline-toggle" onclick="pdhTimelineToggle()" title="Zeitstrahl ein- oder ausblenden" aria-pressed="true"><span aria-hidden="true">📅</span> <span class="tb-label">Zeitstrahl</span></button>
     <button class="header-button" type="button" id="fullscreen-button" title="Vollbild umschalten"><span aria-hidden="true">⛶</span> Vollbild</button>
-    {{if .CanChat}}<a class="header-button" href="/chat" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
-    {{if .CanManageBoards}}{{with .Board}}{{if .ID}}<a class="header-button" href="/leitstaende/{{.ID}}" title="Bausteine, Zuordnung und Weiterblättern dieses Leitstands bearbeiten"><span aria-hidden="true">⚙</span> <span class="tb-label">Bearbeiten</span></a>{{end}}{{end}}{{end}}
+    {{if .CanChat}}<a class="header-button" href="/chat" target="_top" title="Chat öffnen"><span aria-hidden="true">💬</span> Chat</a>{{end}}
+    {{if .CanManageBoards}}{{with .Board}}{{if .ID}}<a class="header-button" href="/leitstaende/{{.ID}}" target="_top" title="Bausteine, Zuordnung und Weiterblättern dieses Leitstands bearbeiten"><span aria-hidden="true">⚙</span> <span class="tb-label">Bearbeiten</span></a>{{end}}{{end}}{{end}}
     {{if .LoggedIn}}
-    <a class="header-button" href="/?dash=1" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
+    <a class="header-button" href="/?dash=1" target="_top" title="Zurück zum normalen PDH-Modus"><span aria-hidden="true">↩</span> Zur Startseite</a>
     {{else}}
-    <a class="header-button" href="/login" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
+    <a class="header-button" href="/login" target="_top" title="In den normalen PDH-Modus wechseln"><span aria-hidden="true">↪</span> Anmelden</a>
     {{end}}
   </div>
 </header>
@@ -353,6 +409,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
     <span id="load-state" role="status" aria-live="polite"></span>
     <span id="ls-rotate" aria-live="off"></span>
   </div>
+  {{with .Stop}}<div id="ls-stop" aria-label="{{.Title}}"><iframe src="{{.Href}}" title="{{.Title}}" allow="fullscreen"></iframe></div>{{end}}
   <div id="ls-grid">
 
   <div id="create-tiles" class="ls-b{{if and .Core (not (index .Core "create"))}} ls-off{{end}}" style="{{index .Core "create"}}">
@@ -428,12 +485,15 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 
   {{range .Blocks}}
   <section class="view-card ls-b ls-x" style="{{.Style}}" data-ls="{{.Type}}" aria-label="{{.Title}}">
-    <div class="view-head"><strong>{{.Title}}</strong></div>
+    <div class="view-head"><strong>{{.Title}}</strong>{{if and (eq .Type "webseite") .URL}}<a class="ls-web-open" href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="Seite in neuem Fenster öffnen – falls sie sich nicht einbetten lässt"><i aria-hidden="true">↗</i> öffnen</a>{{end}}</div>
     {{if eq .Type "kennzahlen"}}<div class="ls-kpis" data-ls-kpis></div>
     {{else if eq .Type "stoerungen"}}<div class="ls-list" data-ls-list="fault"></div>
     {{else if eq .Type "wartung"}}<div class="ls-list" data-ls-list="maintenance"></div>
+    {{else if eq .Type "schichtplan"}}<div class="sg-box" data-sg-src="/global/shiftplan?b={{with $.Board}}{{.Slug}}{{else}}standard{{end}}"><span style="color:var(--muted);font-size:13px">Schichtplan lädt …</span></div>
     {{else if eq .Type "kalender"}}<div class="ls-calbox" data-ls-calbox><span style="color:var(--muted);font-size:13px">Kalender lädt …</span></div>
     {{else if eq .Type "hinweis"}}<div class="ls-note">{{index .Config "text"}}</div>
+    {{else if eq .Type "webseite"}}{{if .URL}}<div class="ls-web" style="height:{{.FrameH}}px"><iframe src="{{.URL}}" title="{{.Title}}" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="fullscreen" data-ls-reload="{{.Reload}}"></iframe></div>{{else}}<span style="color:var(--muted);font-size:13px">Keine Adresse eingetragen.</span>{{end}}
+    {{else if eq .Type "dokumente"}}{{template "doc-view" .Doc}}
     {{else if eq .Type "links"}}<div class="ls-links">{{range .Links}}<a class="header-button" href="/global/b/{{.Slug}}">{{.Name}}</a>{{else}}<span style="color:var(--muted);font-size:13px">Keine anderen Leitstände ausgewählt.</span>{{end}}</div>
     {{end}}
   </section>
@@ -547,7 +607,7 @@ html.timeline-off #entries-table-wrap,html.timeline-off #entries-table-wrap.expa
 // angezeigter Leitstand (leitstand_boards.go)
 {{with .Board}}var LS_BOARD = {{.Slug}};
 var LS_TYPES = {{.Types}};
-var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {{.RotateNextName}}};
+var LS_ROTATE = {seconds: {{.RotateSeconds}}, href: {{$.RotateHref}}, name: {{$.RotateName}}};
 {{else}}var LS_BOARD = 'standard', LS_TYPES = ['fault','ticket','maintenance','task'], LS_ROTATE = {seconds: 0};
 {{end}}
 
@@ -1358,8 +1418,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
   });
 
   document.getElementById('fullscreen-button').addEventListener('click', function(){
-    if(document.fullscreenElement) document.exitFullscreen();
-    else document.documentElement.requestFullscreen().catch(function(){});
+    pdhLsFs.toggle().catch(function(){});
   });
 
   const headingEditBtn = document.getElementById('heading-edit-btn');
@@ -1409,7 +1468,7 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
 
   // Weiterblättern zum nächsten Leitstand: Bedienung startet die Zeit neu,
   // offene Formulare (Vorgang, Anlegen, Wartungsauswahl) halten an
-  if(LS_ROTATE.seconds > 0 && LS_ROTATE.next){
+  if(LS_ROTATE.seconds > 0 && LS_ROTATE.href){
     let left = LS_ROTATE.seconds;
     const note = document.getElementById('ls-rotate');
     const busy = function(){
@@ -1421,13 +1480,56 @@ var LS_ROTATE = {seconds: {{.RotateSeconds}}, next: {{.RotateNextSlug}}, name: {
       if(busy()){ left = LS_ROTATE.seconds; note.textContent = ''; return; }
       left--;
       note.textContent = '→ ' + LS_ROTATE.name + ' in ' + left + ' s';
-      if(left <= 0) location.href = '/global/b/' + encodeURIComponent(LS_ROTATE.next);
+      // nächste Station (Leitstand oder Grafana-Dashboard); Kiosk/Vollbild setzt der Server in die Adresse
+      if(left <= 0) pdhLsFs.go(LS_ROTATE.href);
     }, 1000);
   }
 })();
 </script>
+{{if .Kiosk}}<div id="ls-kiosk-bar" role="toolbar" aria-label="Kioskmodus">
+  <button type="button" id="ls-kiosk-fs" title="Vollbild ein/aus">⛶ Vollbild</button>
+  <a href="/global/b/{{with .Board}}{{.Slug}}{{else}}standard{{end}}" target="_top" title="Kioskmodus verlassen – Kopfzeile und Knöpfe wieder zeigen">✕ Kiosk beenden</a>
+</div>{{end}}
+<div id="ls-fs-hint" role="button" tabindex="0">Tippen für Vollbild</div>
+<script>
+// Direktlink: ?kiosk=1 (ohne Kopf und Knöpfe), ?fs=1 (Vollbild beim Öffnen)
+(function(){
+  const kiosk = {{.Kiosk}}, fs = {{.Fullscreen}};
+  const goFs = function(){ return pdhLsFs.enter(); };
+  if(kiosk || fs){
+    // Links auf andere Leitstände behalten die Einstellung
+    document.querySelectorAll('.ls-links a[href^="/global/b/"]').forEach(function(a){ a.href = a.getAttribute('href') + location.search; });
+  }
+  // Links auf andere Leitstände: bei Vollbild im Rahmen wechseln, damit es an bleibt
+  document.querySelectorAll('.ls-links a[href^="/global/b/"]').forEach(function(a){
+    a.addEventListener('click', function(e){ if(pdhLsFs.on() || pdhLsFs.framed){ e.preventDefault(); pdhLsFs.go(a.href); } });
+  });
+  // ?fs=1 oder Vollbild war eingeschaltet (und nicht bewusst beendet): wieder einschalten.
+  // Browser erlauben das meist erst nach einer Berührung – dann Hinweis zeigen.
+  if(!pdhLsFs.framed && (fs || pdhLsFs.wanted()) && !pdhLsFs.on()){
+    const hint = document.getElementById('ls-fs-hint');
+    goFs().catch(function(){ hint.classList.add('show'); });
+    hint.addEventListener('click', function(){ hint.classList.remove('show'); goFs().catch(function(){}); });
+  }
+  if(kiosk){
+    const bar = document.getElementById('ls-kiosk-bar'); let t = 0;
+    const show = function(){ bar.classList.add('show'); clearTimeout(t); t = setTimeout(function(){ bar.classList.remove('show'); }, 3000); };
+    document.addEventListener('mousemove', show, {passive: true});
+    document.addEventListener('keydown', show);
+    document.getElementById('ls-kiosk-fs').addEventListener('click', function(){ pdhLsFs.toggle().catch(function(){}); });
+  }
+  // Baustein „Webseite“: alle … Minuten neu laden
+  document.querySelectorAll('iframe[data-ls-reload]').forEach(function(f){
+    const m = +f.dataset.lsReload; if(m > 0) setInterval(function(){ f.src = f.src; }, m * 60000);
+  });
+})();
+</script>
 {{template "grid-drag"}}
 {{template "calendar-js"}}
+{{template "shift-grid-js"}}
+{{template "doc-view-js"}}
+<script>if(window.pdhDocViewBoot) pdhDocViewBoot();</script>
+<script>if(window.pdhShiftGridBoot){ pdhShiftGridBoot(); setInterval(pdhShiftGridReload, 300000); }</script>
 <script>
 // Baustein „Kalender“: derselbe Kalender wie unter Übersicht → Kalender, Auswahl oben im Baustein
 (function(){

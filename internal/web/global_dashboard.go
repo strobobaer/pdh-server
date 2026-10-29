@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -52,6 +53,7 @@ func (h *Handler) GlobalDashboardRoutes() chi.Router {
 	r.Get("/b/{slug}", h.GlobalDashboardBoard) // bestimmter Leitstand (leitstand_boards.go)
 	r.Get("/data", h.GlobalDashboardData)
 	r.Get("/calendar", h.CalendarBoardFragment) // Baustein „Kalender“ (calendar_board.go)
+	r.Get("/shiftplan", h.ShiftGridBoardWeb)    // Baustein „Schichtplan“ (shift_grid.go)
 	r.Post("/actions", h.GlobalDashboardAction)
 	r.Post("/complete-start", h.GlobalDashboardCompleteStart)
 	r.Post("/open", h.GlobalDashboardOpen)
@@ -92,11 +94,24 @@ type GlobalDashboardPageData struct {
 	DefaultDueDaysTicket      int
 	DefaultDueDaysTask        int
 	DefaultDueDaysMaintenance int
-	Timeline                  TimelineStyle // Zeitstrahl-Darstellung aus dem Theming
-	Row                       int           // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
-	ThemeCSS                  template.CSS  // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
-	PaletteID                 string        // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
-	StyleID                   string        // Design-Stil: immer der Firmenstandard (ui_style.go)
+	Timeline                  TimelineStyle     // Zeitstrahl-Darstellung aus dem Theming
+	Row                       int               // Zeilenhoehe (%) aus dem Konto als Vorgabe; je Geraet im Browser verstellbar
+	ThemeCSS                  template.CSS      // Farbschemata aus dem Erscheinungsbild (wie im übrigen PDH)
+	PaletteID                 string            // Farbschema: immer der Firmenstandard (gemeinsamer Hallenbildschirm)
+	StyleID                   string            // Design-Stil: immer der Firmenstandard (ui_style.go)
+	Kiosk                     bool              // ?kiosk=1: nur Inhalt, ohne Kopf und Knöpfe (Hallenbildschirm)
+	Fullscreen                bool              // ?fs=1: beim Öffnen Vollbild anfordern
+	Stop                      *grafanaDashboard // ?stop=N: Grafana-Station beim Weiterblättern (leitstand_grafana.go)
+	RotateHref, RotateName    string            // nächste Station beim Weiterblättern
+}
+
+// queryFlag: ?name=1|true|ja (Direktlink zum Leitstand).
+func queryFlag(r *http.Request, name string) bool {
+	switch strings.ToLower(r.URL.Query().Get(name)) {
+	case "1", "true", "ja", "on", "yes":
+		return true
+	}
+	return false
 }
 
 // canEditGlobalDashboardHeading gilt fuer dieselbe Schranke wie die
@@ -149,6 +164,11 @@ type boardBlockView struct {
 	Style template.CSS // order und Breite im Raster
 	Title string
 	Links []*leitstand // Baustein „Andere Leitstände“
+	// Baustein „Webseite“: geprüfte Adresse, Höhe (px), neu laden alle … Minuten
+	URL    string
+	FrameH int
+	Reload int
+	Doc    docView // Baustein „Dokumente“
 }
 
 func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board *leitstand) {
@@ -187,7 +207,18 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 		StyleID:                   brand.StyleID(),
 		Row:                       h.sessionRowHeight(r, loggedIn),
 		Core:                      map[string]template.CSS{"create": "", "vorgaenge": "", "zeitstrahl": ""},
+		Kiosk:                     queryFlag(r, "kiosk"),
+		Fullscreen:                queryFlag(r, "fs"),
 	}
+	stops := h.grafanaStops(r, board)
+	stop, _ := strconv.Atoi(r.URL.Query().Get("stop"))
+	if stop < 1 || stop > len(stops) {
+		stop = 0
+	} else {
+		data.Stop = &stops[stop-1]
+		data.Subtitle = "Statistik: " + data.Stop.Title
+	}
+	data.RotateHref, data.RotateName = leitstandRotation(r, board, stops, stop)
 	for _, b := range h.listLeitstaende(ctx) {
 		if b.Active || b.IsDefault {
 			data.Boards = append(data.Boards, b)
@@ -203,6 +234,17 @@ func (h *Handler) renderLeitstand(w http.ResponseWriter, r *http.Request, board 
 		if _, core := data.Core[bl.Type]; core {
 			data.Core[bl.Type] = v.Style
 			continue
+		}
+		if bl.Type == "webseite" {
+			v.URL = boardEmbedURL(bl.Config["url"])
+			v.FrameH, _ = strconv.Atoi(bl.Config["height"])
+			if v.FrameH == 0 {
+				v.FrameH = 480
+			}
+			v.Reload, _ = strconv.Atoi(bl.Config["reload"])
+		}
+		if bl.Type == "dokumente" {
+			v.Doc = h.docViewFor(ctx, bl.Config, 420)
 		}
 		if bl.Type == "links" {
 			for _, slug := range strings.Split(bl.Config["boards"], ",") {

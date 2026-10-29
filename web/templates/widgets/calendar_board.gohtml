@@ -7,8 +7,8 @@
     <a class="btn btn-icon cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Prev}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}" title="Zurück"><i class="ti ti-chevron-left"></i></a>
     <input type="date" name="from" class="form-input" value="{{.From}}" style="width:auto" onchange="this.form.requestSubmit()">
     <a class="btn btn-icon cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Next}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}" title="Weiter"><i class="ti ti-chevron-right"></i></a>
-    {{if ne .From .Today}}<a class="btn btn-small cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.Today}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}">Heute</a>{{end}}
-    <select name="days" class="form-input" style="width:auto" onchange="this.form.requestSubmit()">{{range .Ranges}}<option value="{{.}}" {{if eq . $.Range}}selected{{end}}>{{.}} Tage</option>{{end}}</select>
+    {{if ne .From .ThisWeek}}<a class="btn btn-small cal-nav" href="{{if .Embed}}/global/calendar?b={{.Board}}&{{else}}/calendar?{{end}}set=1&from={{.ThisWeek}}&days={{.Range}}{{range $k, $v := .Show}}&show={{$k}}{{end}}&dept={{.Dept}}&group={{.Group}}&user={{.User}}&busy={{if .OnlyBusy}}1{{else}}0{{end}}">Diese Woche</a>{{end}}
+    <select name="days" class="form-input" style="width:auto" onchange="this.form.requestSubmit()">{{range .Ranges}}<option value="{{.}}" {{if eq . $.Range}}selected{{end}}>{{if eq . 7}}1 Woche{{else if eq . 14}}2 Wochen{{else if eq . 21}}3 Wochen{{else if eq . 28}}4 Wochen{{else}}6 Wochen{{end}}</option>{{end}}</select>
     <select name="dept" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Abteilungen</option>{{range .Depts}}<option value="{{.Value}}" {{if eq .Value $.Dept}}selected{{end}}>{{.Label}}</option>{{end}}</select>
     <select name="group" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Gruppen</option>{{range .Groups}}<option value="{{.Value}}" {{if eq .Value $.Group}}selected{{end}}>{{.Label}}</option>{{end}}</select>
     <select name="user" class="form-input" style="width:auto" onchange="this.form.requestSubmit()"><option value="">Alle Personen</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.User}}selected{{end}}>{{.Name}}</option>{{end}}</select>
@@ -22,10 +22,17 @@
 
 <div class="card cal-scroll" style="padding:0;overflow:auto;{{if not .Embed}}max-height:calc(100vh - 260px){{else}}max-height:70vh{{end}}">
   <table class="cal-grid">
-    <thead><tr><th class="who">Mitarbeiter</th>
+    <thead><tr class="wk"><th class="who" rowspan="2">Mitarbeiter</th>{{range .Weeks}}<th colspan="7" class="kw{{if .Current}} cur{{end}}">{{.Label}} <span>{{.Range}}</span></th>{{end}}</tr>
+    <tr>
       {{range .Days}}<th class="{{if .Weekend}}we{{end}}{{if .Holiday}} hol{{end}}{{if .Today}} today{{end}}" title="{{.Holiday}}">{{.Short}}<span>{{.Label}}</span>{{if .Holiday}}<em>{{.Holiday}}</em>{{end}}</th>{{end}}
     </tr></thead>
     <tbody>
+    {{range .ProjectRows}}
+    <tr class="proj-row">
+      <th class="who"><a href="{{.URL}}" style="color:inherit;text-decoration:none"><i class="ti ti-timeline" style="color:#64748B"></i> {{.Name}}</a></th>
+      {{range .Cells}}<td data-date="{{.Date}}" class="{{if .Weekend}}we{{end}}{{if .Holiday}} hol{{end}}">{{range .Items}}<a class="cc it{{if .SpanMid}} mid{{end}} proj" href="{{.URL}}" style="--kc:{{css .Color}}" title="{{.Tip}}">{{if .SpanMid}}&nbsp;{{else}}<i class="ti {{.Icon}}"></i> {{.Title}}{{end}}</a>{{end}}</td>{{end}}
+    </tr>
+    {{end}}
     {{range .Rows}}
     <tr data-user="{{.UserID}}">
       <th class="who">{{if .UserID}}{{.Name}}{{else}}<i>{{.Name}}</i>{{end}}{{if .Dept}}<small>{{.Dept}}</small>{{end}}{{if .Conflicts}}<small style="color:var(--red)"><i class="ti ti-alert-octagon"></i> {{.Conflicts}}</small>{{end}}</th>
@@ -37,8 +44,8 @@
       </td>
       {{end}}
     </tr>
-    {{else}}
-    <tr><td colspan="99" style="text-align:center;color:var(--muted);padding:24px">Im Zeitraum gibt es keine Einträge für diese Auswahl.</td></tr>
+    {{else}}{{if not .ProjectRows}}
+    <tr><td colspan="99" style="text-align:center;color:var(--muted);padding:24px">Im Zeitraum gibt es keine Einträge für diese Auswahl.</td></tr>{{end}}
     {{end}}
     </tbody>
   </table>
@@ -64,6 +71,13 @@
 .cal-grid thead th span{display:block;font-size:13px}
 .cal-grid thead th em{display:block;font-style:normal;font-size:9.5px;color:var(--red);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-grid thead th.today{box-shadow:inset 0 -3px 0 var(--accent)}
+.cal-grid thead tr.wk th.kw{font-size:12px;font-weight:700;text-align:left;padding:4px 8px;border-left:2px solid var(--border)}
+.cal-grid thead tr.wk th.kw span{display:inline;font-size:11px;font-weight:400;color:var(--muted);margin-left:6px}
+.cal-grid thead tr.wk th.kw.cur{color:var(--accent)}
+.cal-grid thead tr:nth-child(2) th{top:26px}
+.cal-grid tr.proj-row td{height:26px;background:color-mix(in srgb,#64748B 5%,transparent)}
+.cal-grid tr.proj-row th.who{font-weight:500;font-size:12px}
+.cal-grid tr.proj-row .cc.proj:not(.mid){overflow:visible;position:relative;z-index:1;background:color-mix(in srgb,var(--kc) 18%,var(--bg2))}
 .cal-grid .who{position:sticky;left:0;z-index:1;background:var(--bg2);text-align:left;font-size:12.5px;padding:6px 8px;min-width:170px;max-width:200px;font-weight:600}
 .cal-grid thead .who{z-index:3;background:var(--bg3)}
 .cal-grid .who small{display:block;font-weight:400;color:var(--muted);font-size:10.5px}
