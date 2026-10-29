@@ -176,8 +176,12 @@ func removeFile(path string) (bool, error) {
 }
 
 // Apply legt das Token ab (leer = Einrichtung entfernen). changed: an den
-// Dateien hat sich etwas geändert.
-func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, err error) {
+// Dateien hat sich etwas geändert. mirrored: Server mit Datenbank-Spiegel –
+// dort startet pdh-ha cloudflared nur am aktiven Server, der Autostart wird
+// abgeschaltet. Ohne Spiegel (Einzelserver, erster Server vor dem Beitritt
+// des Partners) startet pdh-ha den Tunnel nie: dann bleibt der Autostart, wie
+// er ist, sonst käme Cloudflare nach einem Neustart des Rechners nicht hoch.
+func (t *tunnelSetup) Apply(ctx context.Context, token string, mirrored bool) (changed bool, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if strings.ContainsAny(token, "\r\n \t\"'\\$") {
@@ -192,7 +196,7 @@ func (t *tunnelSetup) Apply(ctx context.Context, token string) (changed bool, er
 				err = e
 				return
 			}
-			if token != "" {
+			if token != "" && mirrored {
 				// Autostart bleibt aus: gestartet wird nur am aktiven Server
 				if _, e := t.r.Run(ctx, []string{"systemctl", "disable", tunnelUnit}, nil, nil); e != nil {
 					err = e
@@ -258,7 +262,10 @@ func (d *daemon) putTunnel(ctx context.Context, token string) (string, error) {
 			return "", err
 		}
 	}
-	changed, err := d.tunnel.Apply(ctx, token)
+	d.mu.Lock()
+	mirrored := d.pgActorLocked() != nil // nur dann startet pdh-ha den Tunnel selbst
+	d.mu.Unlock()
+	changed, err := d.tunnel.Apply(ctx, token, mirrored)
 	if err != nil {
 		d.event("warn", "Tunnel-Token nicht übernommen: "+err.Error())
 		return "", err
@@ -281,9 +288,10 @@ func (d *daemon) putTunnel(ctx context.Context, token string) (string, error) {
 }
 
 // tunnelLive ergänzt den Status um Angaben, die einen Aufruf brauchen
-// (außerhalb der Sperre).
+// (außerhalb der Sperre). Die Art des Knotens kommt aus dem Status (unter
+// der Sperre kopiert), nicht aus d.node – das ändert sich nur unter d.mu.
 func (d *daemon) tunnelLive(ctx context.Context, st *apiStatus) {
-	if d.tunnel == nil || !st.Configured || d.node.Kind != "node" {
+	if d.tunnel == nil || !st.Configured || st.Self.Kind != "node" {
 		return
 	}
 	st.Access.Tunnel.Installed = d.tunnel.Installed()

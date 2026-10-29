@@ -37,7 +37,11 @@ func rowOf(t *testing.T, v haView, title string) haAccessRow {
 
 func TestHAAccessRows(t *testing.T) {
 	// Tunnel
-	v := accessView(func(v *haView) { v.Status.Access.Tunnel.Installed = true; v.Status.Access.Tunnel.Running = true })
+	v := accessView(func(v *haView) {
+		v.Status.Access.Tunnel.Installed = true
+		v.Status.Access.Tunnel.Running = true
+		v.Status.Access.Tunnel.Sum = "aaa"
+	})
 	if r := rowOf(t, v, "Tunnel"); r.Level != "ok" || r.State != "läuft auf pdh1" {
 		t.Errorf("Tunnel auf aktivem: %+v", r)
 	}
@@ -53,6 +57,7 @@ func TestHAAccessRows(t *testing.T) {
 		v.Status.Access.Tunnel.Installed = true
 		v.Status.Access.Tunnel.Running = true
 		v.Status.Access.Tunnel.Sum = "aaa"
+		v.Status.Peers[0].Seen = true
 		v.Status.Peers[0].TunnelSum = "bbb"
 	})
 	if r := rowOf(t, v, "Tunnel"); r.Level != "warn" || !strings.Contains(r.Detail, "Token auf den Servern verschieden") {
@@ -74,6 +79,47 @@ func TestHAAccessRows(t *testing.T) {
 	}
 	if r := rowOf(t, accessView(nil), "Tunnel"); r.Level != "off" {
 		t.Errorf("Tunnel nicht eingerichtet: %+v", r)
+	}
+	// cloudflared installiert, aber hier kein Token: nicht grün
+	v = accessView(func(v *haView) {
+		v.Status.Self.Role = "passiv"
+		v.Status.Access.Tunnel.Installed = true
+	})
+	if r := rowOf(t, v, "Tunnel"); r.Level != "warn" || !strings.Contains(r.State, "Token fehlt") {
+		t.Errorf("Token fehlt am passiven: %+v", r)
+	}
+	v.Status.Self.Role = "aktiv"
+	if r := rowOf(t, v, "Tunnel"); r.Level != "err" || !strings.Contains(r.State, "Token fehlt") {
+		t.Errorf("Token fehlt am aktiven: %+v", r)
+	}
+	// läuft ohne abgelegtes Token (z. B. alte Dienstdatei mit --token)
+	v = accessView(func(v *haView) {
+		v.Status.Access.Tunnel.Installed = true
+		v.Status.Access.Tunnel.Running = true
+	})
+	if r := rowOf(t, v, "Tunnel"); r.Level != "warn" || !strings.Contains(r.Detail, "kein Token bei pdh-ha abgelegt") {
+		t.Errorf("läuft ohne Token: %+v", r)
+	}
+	// Partner ohne Token, hier vorhanden → warnen; umgekehrt ebenso
+	v = accessView(func(v *haView) {
+		v.Status.Self.Role = "passiv"
+		v.Status.Access.Tunnel.Installed = true
+		v.Status.Access.Tunnel.Sum = "aaa"
+		v.Status.Peers[0].Seen = true
+	})
+	if r := rowOf(t, v, "Tunnel"); r.Level != "warn" || !strings.Contains(r.Detail, "Token fehlt auf pdh2") {
+		t.Errorf("Token fehlt beim Partner: %+v", r)
+	}
+	v.Status.Peers[0].Seen = false // nicht gesehen: keine Aussage
+	if r := rowOf(t, v, "Tunnel"); r.Level != "ok" || r.Detail != "" {
+		t.Errorf("Partner nicht gesehen: %+v", r)
+	}
+	v = accessView(func(v *haView) {
+		v.Status.Peers[0].Seen = true
+		v.Status.Peers[0].TunnelSum = "aaa"
+	})
+	if r := rowOf(t, v, "Tunnel"); r.Level != "warn" || !strings.Contains(r.Detail, "Token fehlt hier, auf pdh2 vorhanden") {
+		t.Errorf("Token fehlt hier: %+v", r)
 	}
 
 	// Adresse

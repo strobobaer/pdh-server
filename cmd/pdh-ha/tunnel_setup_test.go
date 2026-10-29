@@ -29,7 +29,7 @@ func testTunnelSetup(t *testing.T) (*tunnelSetup, *fakeRunner, string) {
 func TestTunnelApply(t *testing.T) {
 	ts, r, _ := testTunnelSetup(t)
 	ctx := context.Background()
-	changed, err := ts.Apply(ctx, "abc")
+	changed, err := ts.Apply(ctx, "abc", true)
 	if err != nil || !changed {
 		t.Fatalf("Apply: %v %v", changed, err)
 	}
@@ -61,13 +61,56 @@ func TestTunnelApply(t *testing.T) {
 		t.Fatalf("Grunddatei:\n%s", base)
 	}
 	n := len(r.list())
-	changed, err = ts.Apply(ctx, "abc")
+	changed, err = ts.Apply(ctx, "abc", true)
 	if err != nil || changed || len(r.list()) != n {
 		t.Fatalf("zweiter Aufruf: changed=%v err=%v Befehle=%v", changed, err, r.list())
 	}
 	// neues Token: geändert, Datei neu
-	if changed, _ = ts.Apply(ctx, "xyz"); !changed || ts.Sum() != sumOf("xyz") {
+	if changed, _ = ts.Apply(ctx, "xyz", true); !changed || ts.Sum() != sumOf("xyz") {
 		t.Fatalf("neues Token: %v %q", changed, ts.stored())
+	}
+}
+
+// Ohne Datenbank-Spiegel (Einzelserver, erster Server vor dem Beitritt des
+// Partners) startet pdh-ha cloudflared nie: der Autostart bleibt, wie er ist.
+func TestTunnelApplyNoMirrorKeepsAutostart(t *testing.T) {
+	ts, r, _ := testTunnelSetup(t)
+	ctx := context.Background()
+	if changed, err := ts.Apply(ctx, "abc", false); err != nil || !changed {
+		t.Fatalf("Apply: %v %v", changed, err)
+	}
+	if got := strings.Join(r.list(), "|"); got != "systemctl daemon-reload" {
+		t.Fatalf("Befehle: %s", got)
+	}
+	if ts.Sum() != sumOf("abc") {
+		t.Fatalf("Sum %q", ts.Sum())
+	}
+}
+
+// putTunnel fragt den Ausführer: nur mit Spiegel (pgActor) wird abgeschaltet.
+func TestTunnelPutAutostartOnlyWithMirror(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		mirrored bool
+		want     string
+	}{
+		{"ohne Spiegel", false, "systemctl daemon-reload"},
+		{"mit Spiegel", true, "systemctl daemon-reload|systemctl disable cloudflared"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := newDaemon(store{etc: t.TempDir(), state: t.TempDir()}, openEventLog(filepath.Join(t.TempDir(), "e.jsonl"), 1<<20, 2))
+			if c.mirrored {
+				d.act = &pgActor{}
+			}
+			ts, r, _ := testTunnelSetup(t)
+			d.tunnel, d.tunCtl = ts, &fakeTunCtl{}
+			if _, err := d.putTunnel(context.Background(), "abc"); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(r.list(), "|"); got != c.want {
+				t.Fatalf("Befehle %q statt %q", got, c.want)
+			}
+		})
 	}
 }
 
@@ -76,14 +119,14 @@ func TestTunnelApplyKeepsExistingUnit(t *testing.T) {
 	if err := os.WriteFile(ts.baseUnit, []byte("[Unit]\nDescription=eigene\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ts.Apply(context.Background(), "abc"); err != nil {
+	if _, err := ts.Apply(context.Background(), "abc", true); err != nil {
 		t.Fatal(err)
 	}
 	if raw, _ := os.ReadFile(ts.baseUnit); string(raw) != "[Unit]\nDescription=eigene\n" {
 		t.Fatalf("fremde Dienstdatei überschrieben: %q", raw)
 	}
 	// leeres Token entfernt eine fremde Grunddatei nicht
-	if _, err := ts.Apply(context.Background(), ""); err != nil {
+	if _, err := ts.Apply(context.Background(), "", true); err != nil {
 		t.Fatal(err)
 	}
 	if !exists(ts.baseUnit) {
@@ -97,7 +140,7 @@ func TestTunnelApplyKeepsExistingUnit(t *testing.T) {
 	if err := os.WriteFile(ts2.packaged[0], []byte("[Unit]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ts2.Apply(context.Background(), "abc"); err != nil {
+	if _, err := ts2.Apply(context.Background(), "abc", true); err != nil {
 		t.Fatal(err)
 	}
 	if exists(filepath.Join(dir2, "cloudflared.service")) {
@@ -108,16 +151,16 @@ func TestTunnelApplyKeepsExistingUnit(t *testing.T) {
 func TestTunnelApplyEmpty(t *testing.T) {
 	ts, r, _ := testTunnelSetup(t)
 	ctx := context.Background()
-	if changed, err := ts.Apply(ctx, ""); err != nil || changed {
+	if changed, err := ts.Apply(ctx, "", true); err != nil || changed {
 		t.Fatalf("leer ohne Einrichtung: %v %v", changed, err)
 	}
 	if len(r.list()) != 0 {
 		t.Fatalf("Befehle ohne Änderung: %v", r.list())
 	}
-	if _, err := ts.Apply(ctx, "abc"); err != nil {
+	if _, err := ts.Apply(ctx, "abc", true); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := ts.Apply(ctx, "")
+	changed, err := ts.Apply(ctx, "", true)
 	if err != nil || !changed {
 		t.Fatalf("leer: %v %v", changed, err)
 	}
@@ -129,7 +172,7 @@ func TestTunnelApplyEmpty(t *testing.T) {
 	if ts.Sum() != "" {
 		t.Fatalf("Sum %q", ts.Sum())
 	}
-	if changed, _ = ts.Apply(ctx, ""); changed {
+	if changed, _ = ts.Apply(ctx, "", true); changed {
 		t.Fatal("erneut leer: changed")
 	}
 }
@@ -137,7 +180,7 @@ func TestTunnelApplyEmpty(t *testing.T) {
 func TestTunnelApplyLab(t *testing.T) {
 	ts, r, _ := testTunnelSetup(t)
 	ts.noSystemd = true
-	if _, err := ts.Apply(context.Background(), "abc"); err != nil {
+	if _, err := ts.Apply(context.Background(), "abc", true); err != nil {
 		t.Fatal(err)
 	}
 	if len(r.list()) != 0 || exists(ts.baseUnit) {
@@ -147,7 +190,7 @@ func TestTunnelApplyLab(t *testing.T) {
 
 func TestTunnelApplyRejectsOddToken(t *testing.T) {
 	ts, _, _ := testTunnelSetup(t)
-	if _, err := ts.Apply(context.Background(), "a\nB=1"); err == nil {
+	if _, err := ts.Apply(context.Background(), "a\nB=1", true); err == nil {
 		t.Fatal("Zeilenumbruch im Token angenommen")
 	}
 }
@@ -356,7 +399,8 @@ func TestTunnelRepairsAfterFailedReload(t *testing.T) {
 	if err != nil || sum != sumOf("abc") {
 		t.Fatalf("Reparatur: %v %q", err, sum)
 	}
-	if got := strings.Join(r.list(), "|"); got != "systemctl daemon-reload|systemctl daemon-reload|systemctl disable cloudflared" {
+	// ohne Datenbank-Spiegel bleibt der Autostart unangetastet
+	if got := strings.Join(r.list(), "|"); got != "systemctl daemon-reload|systemctl daemon-reload" {
 		t.Fatalf("Befehle: %s", got)
 	}
 	if strings.Join(u.calls, ",") != "restart" {

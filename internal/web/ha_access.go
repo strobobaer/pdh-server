@@ -86,20 +86,38 @@ func (v haView) tunnelRow() haAccessRow {
 		r.State, r.Level = "läuft auf "+self.ID, "ok"
 	case a.Tunnel.Running:
 		r.State, r.Level = "läuft auf "+self.ID+", ist aber nicht aktiv", "err"
+	case a.Tunnel.Installed && a.Tunnel.Sum == "":
+		// cloudflared da, aber pdh-ha hat kein Token: nach einer Übernahme
+		// gäbe es hier keinen Tunnel
+		r.State, r.Level = "Token fehlt – Tunnel-Token in den Server-Einstellungen eintragen bzw. PDH hier aktualisieren", "warn"
+		if self.Role == "aktiv" {
+			r.Level = "err"
+		}
 	case a.Tunnel.Installed && self.Role == "aktiv":
 		r.State, r.Level = "eingerichtet, läuft aber nicht auf dem aktiven Server", "err"
 	case a.Tunnel.Installed:
 		r.State, r.Level = "bereit – läuft nur auf dem aktiven Server", "ok"
 	}
 	var detail []string
-	if a.Tunnel.Sum != "" {
-		for _, p := range v.Status.Peers {
-			if p.Kind == "node" && p.TunnelSum != "" && p.TunnelSum != a.Tunnel.Sum {
-				detail = append(detail, "Token auf den Servern verschieden")
-				r.Level = accessLevelMax(r.Level, "warn")
-				break
-			}
+	if a.Tunnel.Running && a.Tunnel.Sum == "" {
+		detail = append(detail, "kein Token bei pdh-ha abgelegt – nach einer Übernahme fehlt der Tunnel")
+		r.Level = accessLevelMax(r.Level, "warn")
+	}
+	// gesehene Partner: fehlt das Token auf einer Seite, gilt das als verschieden
+	for _, p := range v.Status.Peers {
+		if p.Kind != "node" || !p.Seen || p.TunnelSum == a.Tunnel.Sum {
+			continue
 		}
+		switch {
+		case a.Tunnel.Sum == "":
+			detail = append(detail, "Token fehlt hier, auf "+p.ID+" vorhanden")
+		case p.TunnelSum == "":
+			detail = append(detail, "Token fehlt auf "+p.ID)
+		default:
+			detail = append(detail, "Token auf den Servern verschieden")
+		}
+		r.Level = accessLevelMax(r.Level, "warn")
+		break
 	}
 	if configured && v.Origin != "" && !originIsLocal(v.Origin) {
 		detail = append(detail, "Ziel im Cloudflare-Dashboard muss localhost:8090 sein")
