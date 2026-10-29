@@ -67,6 +67,13 @@ func (s systemdService) Active(ctx context.Context) bool {
 	return err == nil
 }
 
+// AutostartOn: Einheit startet beim Hochfahren („enabled“; static, masked
+// u. Ä. zählen nicht).
+func (s systemdService) AutostartOn(ctx context.Context) bool {
+	out, _ := s.r.Run(ctx, []string{"systemctl", "is-enabled", s.unit}, nil, nil)
+	return strings.TrimSpace(string(out)) == "enabled"
+}
+
 func (s systemdService) SetAutostart(ctx context.Context, on bool) error {
 	if on {
 		return s.run(ctx, "enable")
@@ -107,6 +114,10 @@ func (t tunnelService) Restart(ctx context.Context) error {
 
 func (t tunnelService) Active(ctx context.Context) bool {
 	return t.installed(ctx) && t.s.Active(ctx)
+}
+
+func (t tunnelService) AutostartOn(ctx context.Context) bool {
+	return t.installed(ctx) && t.s.AutostartOn(ctx)
 }
 
 func (t tunnelService) SetAutostart(ctx context.Context, on bool) error {

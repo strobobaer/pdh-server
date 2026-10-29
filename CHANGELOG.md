@@ -10,6 +10,11 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.7] – 2026-10-29
+
+### Behoben
+- Ausfallschutz: Schaltet das Tunnel-Skript aus den Server-Einstellungen den Autostart von `cloudflared` wieder ein, schaltet `pdh-ha` ihn innerhalb von 30 Sekunden ab – sonst startete der Tunnel nach einem Neustart auch am passiven Server, und Cloudflare schickte Anfragen auch dorthin.
+
 ## [0.77.6] – 2026-10-29
 
 ### Neu

@@ -480,9 +480,12 @@ func (d *daemon) maybeReconcileLocked(ctx context.Context, now time.Duration) {
 		case d.actQ <- queuedAction{fn: func(ctx context.Context) {
 			defer d.reconcileWait.Store(false)
 			d.mu.Lock()
-			role := d.p.Role
+			role, removed := d.p.Role, d.removed
 			d.mu.Unlock()
 			pa.reconcile(ctx, role)
+			if !removed { // entfernt: wieder Einzelbetrieb mit Autostart
+				pa.keepAutostartOff(ctx)
+			}
 		}}:
 		case <-ctx.Done():
 			d.pendingActs.Add(-1)
