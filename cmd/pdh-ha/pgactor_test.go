@@ -435,3 +435,30 @@ func TestReconcileSkipsWhenBusy(t *testing.T) {
 	close(release)
 	waitFor(t, 2*time.Second, "Abgleich gelaufen", func() bool { return d.actionsIdle() && len(r.list()) > 0 })
 }
+
+// TestKeepAutostartOff: wieder eingeschalteter Autostart (Tunnel-Skript aus
+// dem PDH) wird abgeschaltet und gemeldet, ein abgeschalteter bleibt in Ruhe.
+func TestKeepAutostartOff(t *testing.T) {
+	r := &fakeRunner{}
+	r.on("systemctl list-unit-files", "", "cloudflared.service enabled enabled\n", nil)
+	r.on("systemctl is-enabled pdh", "", "disabled\n", nil)
+	r.on("systemctl is-enabled cloudflared", "", "enabled\n", nil)
+	a, _ := testActor(t, r)
+	a.svc = systemdService{r: r, unit: "pdh"}
+	a.tun = tunnelService{s: systemdService{r: r, unit: tunnelUnit}}
+	a.keepAutostartOff(context.Background())
+	if !has(r.list(), "systemctl disable cloudflared") || has(r.list(), "systemctl disable pdh") {
+		t.Fatalf("Aufrufe: %v", r.list())
+	}
+	if countEvents(a, "Autostart von Tunnel wieder abgeschaltet") != 1 {
+		t.Fatal("Abschalten nicht gemeldet")
+	}
+	r2 := &fakeRunner{}
+	r2.on("systemctl is-enabled", "", "disabled\n", nil)
+	a.svc = systemdService{r: r2, unit: "pdh"}
+	a.tun = tunnelService{s: systemdService{r: r2, unit: tunnelUnit}}
+	a.keepAutostartOff(context.Background())
+	if has(r2.list(), "systemctl disable") {
+		t.Fatalf("abgeschalteter Autostart erneut abgeschaltet: %v", r2.list())
+	}
+}

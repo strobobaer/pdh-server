@@ -248,6 +248,32 @@ func (a *pgActor) disableAutostart(ctx context.Context) error {
 	return errors.Join(a.svc.SetAutostart(ctx, false), a.tun.SetAutostart(ctx, false))
 }
 
+// autostartChecker: Dienste, die melden können, ob ihr Autostart an ist.
+type autostartChecker interface {
+	AutostartOn(ctx context.Context) bool
+}
+
+// keepAutostartOff: Der Autostart bleibt im Verbund aus, auch wenn ihn etwas
+// wieder einschaltet (z. B. das Tunnel-Skript aus dem PDH mit
+// „systemctl enable --now cloudflared“) – sonst startete cloudflared beim
+// Hochfahren auch am passiven Server.
+func (a *pgActor) keepAutostartOff(ctx context.Context) {
+	for _, s := range []struct {
+		name string
+		c    serviceCtl
+	}{{"pdh", a.svc}, {"Tunnel", a.tun}} {
+		ac, ok := s.c.(autostartChecker)
+		if !ok || !ac.AutostartOn(ctx) {
+			continue
+		}
+		if err := s.c.SetAutostart(ctx, false); err != nil {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Autostart von " + s.name + " nicht abgeschaltet: " + err.Error()})
+			continue
+		}
+		a.ev.add(ha.Event{Kind: "info", Text: "Autostart von " + s.name + " wieder abgeschaltet – im Verbund startet pdh-ha " + s.name + " nur am aktiven Server"})
+	}
+}
+
 // fence: Tunnel und pdh aus, Datenbank nur lesend, offene Sitzungen beenden. Die
 // Replikation (walsender) läuft weiter.
 func (a *pgActor) fence(ctx context.Context) error {
