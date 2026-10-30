@@ -308,9 +308,9 @@ type Handler struct {
 	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
 	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
 
-	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und neuester Commit des Update-Zweigs.
-	hasPermHook      func(*http.Request, string) bool
-	latestCommitHook func(context.Context) string
+	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
+	hasPermHook     func(*http.Request, string) bool
+	updateCheckHook func(context.Context) storedUpdateCheck
 }
 
 func NewHandler(

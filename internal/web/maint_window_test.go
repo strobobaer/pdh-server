@@ -19,6 +19,14 @@ import (
 
 const testFullCommit = "abcdef0123456789abcdef0123456789abcdef01"
 
+// testBuildCommit: laufender Stand des PDH in den Knopf-Tests.
+const testBuildCommit = "0123456789abcdef0123456789abcdef01234567"
+
+// mwCurrentCheck: Commit-Vergleich zum laufenden Stand und Zweig, neuerer Stand bekannt.
+func mwCurrentCheck(context.Context) storedUpdateCheck {
+	return storedUpdateCheck{Commit: testFullCommit, Status: "ahead", Build: testBuildCommit, Branch: updateBranch()}
+}
+
 // Zielversion eines Commits ohne Netz (C1: Knopf sendet die Version mit).
 const testTargetVersion = "9.9.9"
 
@@ -44,7 +52,8 @@ func mwHandler(deny ...string) *Handler {
 			}
 			return true
 		},
-		latestCommitHook: func(context.Context) string { return testFullCommit },
+		buildCommit:     testBuildCommit,
+		updateCheckHook: mwCurrentCheck,
 	}
 }
 
@@ -367,6 +376,126 @@ func TestInstallUpdateDockerKeepsOld(t *testing.T) {
 	loc, _ := url.Parse(rec.Header().Get("Location"))
 	if !strings.Contains(loc.Query().Get("notice"), "Update wurde gestartet") {
 		t.Fatalf("Ziel %q", rec.Header().Get("Location"))
+	}
+}
+
+// A1: Der Knopf startet nur mit einem Commit-Vergleich, der zum laufenden
+// Stand und Update-Zweig gehört und einen neueren Stand gefunden hat – nie
+// mit einem veralteten (z. B. nach einem Update von Hand oder Zweigwechsel).
+func TestInstallUpdateStaleCheckRefused(t *testing.T) {
+	cur := mwCurrentCheck(context.Background())
+	stale := map[string]storedUpdateCheck{
+		"anderer Stand":   {Commit: testFullCommit, Status: "ahead", Build: "b49b12b000000000000000000000000000000000", Branch: cur.Branch},
+		"anderer Zweig":   {Commit: testFullCommit, Status: "ahead", Build: testBuildCommit, Branch: "feature/anders"},
+		"ohne Angaben":    {Commit: testFullCommit, Status: "ahead"},
+		"nicht neuer":     {Commit: testFullCommit, Status: "behind", Build: testBuildCommit, Branch: cur.Branch},
+		"gleich":          {Commit: testFullCommit, Status: "identical", Build: testBuildCommit, Branch: cur.Branch},
+		"Vergleich fehlt": {Commit: testFullCommit, Status: "", Build: testBuildCommit, Branch: cur.Branch},
+		"kein Commit":     {Commit: "", Status: "ahead", Build: testBuildCommit, Branch: cur.Branch},
+	}
+	for name, chk := range stale {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeHA{status: mwDuoStatus, events: `[]`, replies: map[string]fakeReply{"/v1/update/start": {200, `{"ok":true,"hints":[]}`}}}
+			startFakeHA(t, f)
+			h := mwHandler()
+			h.updateCheckHook = func(context.Context) storedUpdateCheck { return chk }
+			startMWAgent(t, h, &mwAgent{})
+			rec := httptest.NewRecorder()
+			h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", nil))
+			loc, _ := url.Parse(rec.Header().Get("Location"))
+			if !strings.Contains(loc.Query().Get("notice"), "Kein neuerer Stand bekannt") {
+				t.Fatalf("Ziel %q", rec.Header().Get("Location"))
+			}
+			if _, n := forceBody(t, f); n != 0 {
+				t.Fatal("Update mit veraltetem Commit-Vergleich an pdh-ha geschickt")
+			}
+			// Einzelserver: kein Auftrag beim Agenten
+			noHA(t)
+			a := &mwAgent{}
+			startMWAgent(t, h, a)
+			rec = httptest.NewRecorder()
+			h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", nil))
+			loc, _ = url.Parse(rec.Header().Get("Location"))
+			if !strings.Contains(loc.Query().Get("notice"), "Kein neuerer Stand bekannt") {
+				t.Fatalf("Einzelserver: Ziel %q", rec.Header().Get("Location"))
+			}
+			if len(a.calls) != 0 {
+				t.Fatalf("Einzelserver: Agent-Aufrufe %v", a.calls)
+			}
+		})
+	}
+}
+
+func TestStoredUpdateCheck(t *testing.T) {
+	const b = testBuildCommit
+	c := storedUpdateCheck{Commit: testFullCommit, Status: "ahead", Build: b, Branch: "main"}
+	if !c.current(b, "main") || c.target(b, "main") != testFullCommit {
+		t.Fatal("aktueller Vergleich nicht erkannt")
+	}
+	if c.current("ffff", "main") || c.current(b, "dev") || c.target("ffff", "main") != "" || c.target(b, "dev") != "" {
+		t.Fatal("veralteter Vergleich als aktuell gewertet")
+	}
+	if (storedUpdateCheck{Commit: testFullCommit, Status: "ahead"}).current(b, "main") {
+		t.Fatal("Vergleich ohne Stand/Zweig als aktuell gewertet")
+	}
+	// unbekannter Build: Vergleich gehört dazu (kein Dauer-Neuprüfen), Knopf bleibt aus
+	u := storedUpdateCheck{Commit: testFullCommit, Status: "ahead", Build: "unknown", Branch: "main"}
+	if !u.current("", "main") || !u.current("unknown", "main") || u.target("", "main") != "" {
+		t.Fatal("unbekannter Build falsch behandelt")
+	}
+}
+
+// A1: checkUpdateIfDue prüft sofort, wenn der gespeicherte Vergleich nicht
+// zum laufenden Stand oder Zweig passt – sonst erst nach dem Intervall; ist
+// die automatische Prüfung aus, nie.
+func TestUpdateCheckDue(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-time.Hour)
+	for _, c := range []struct {
+		name           string
+		enabled, stale bool
+		last           time.Time
+		want           bool
+	}{
+		{"aktuell, Intervall läuft", true, false, recent, false},
+		{"aktuell, Intervall vorbei", true, false, now.Add(-25 * time.Hour), true},
+		{"aktuell, nie geprüft", true, false, time.Time{}, true},
+		{"veraltet, Intervall läuft", true, true, recent, true},
+		{"aus, veraltet", false, true, recent, false},
+		{"aus, Intervall vorbei", false, false, now.Add(-25 * time.Hour), false},
+	} {
+		if got := updateCheckDue(c.enabled, c.stale, c.last, 24, now); got != c.want {
+			t.Errorf("%s: %v, erwartet %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A1: Veralteter Vergleich – kein Update anbieten, alte Angaben nicht als
+// aktuell zeigen, Hinweis statt „Ein Update ist verfügbar“.
+func TestCoreSettingsStaleCheck(t *testing.T) {
+	stale := storedUpdateCheck{Commit: testFullCommit, Status: "ahead", Build: "b49b12b000000000000000000000000000000000", Branch: "main"}
+	var d CoreSettingsPageData
+	d.applyUpdateCheck(stale, testBuildCommit, "main")
+	if d.UpdateAvailable || !d.UpdateCheckStale || d.LatestCommit != "" || d.ComparisonStatus != "" {
+		t.Fatalf("veraltet: %+v", d)
+	}
+	d = CoreSettingsPageData{}
+	d.applyUpdateCheck(mwCurrentCheck(context.Background()), testBuildCommit, updateBranch())
+	if !d.UpdateAvailable || d.UpdateCheckStale || d.LatestCommit != shortCommit(testFullCommit) || d.ComparisonStatus != "ahead" {
+		t.Fatalf("aktuell: %+v", d)
+	}
+	tmpl := loadTestTemplates(t)
+	for auto, want := range map[bool]string{
+		true:  "der Commit-Vergleich wird neu ausgeführt",
+		false: "bitte „Commit-Vergleich“ ausführen",
+	} {
+		out := renderPage(t, tmpl, "core_settings", CoreSettingsPageData{CurrentCommit: "0123456789", UpdateCheckStale: true, AutoCheckEnabled: auto, AgentConfigured: true, AgentReachable: true})
+		if !strings.Contains(out, "Stand oder Update-Zweig hat sich geändert") || !strings.Contains(out, want) {
+			t.Errorf("auto=%v: Hinweis fehlt", auto)
+		}
+		if strings.Contains(out, "Ein Update ist verfügbar.") {
+			t.Errorf("auto=%v: veralteter Vergleich als Update angeboten", auto)
+		}
 	}
 }
 

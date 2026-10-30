@@ -79,7 +79,10 @@ http() {
     fi
     ver="$(tr -d '[:space:]' <"$version_file" 2>/dev/null)"
     [[ "$c" == lab0 ]] || ver="$ver-$c"
-    respond 200 OK "{\"version\":\"$ver\",\"migrations_ok\":$mig}"
+    local mode=normal
+    [[ "$rec" == t ]] && mode=spiegel
+    # wie das echte PDH (cmd/server/main.go, response.JSON): verpackt in data
+    respond 200 OK "{\"success\":true,\"data\":{\"commit\":\"$c\",\"migrations_ok\":$mig,\"mode\":\"$mode\",\"service\":\"pdh\",\"status\":\"ok\",\"version\":\"$ver\"}}"
 }
 
 case "${1:-}" in

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -359,5 +360,31 @@ func TestAPIUpdateStartWindowLastRun(t *testing.T) {
 	code, st := updCall(t, sock, http.MethodGet, "/v1/status", nil)
 	if code != http.StatusOK || st["window_last_run"] == nil || st["window_last_run"] == "0001-01-01T00:00:00Z" {
 		t.Fatalf("Status ohne window_last_run: %v", st["window_last_run"])
+	}
+}
+
+// A1: Ein Start auf einen Stand, der schon läuft (eigener oder des Partners),
+// wird abgelehnt – auch mit force. Der Rollentausch (ohne Commit) nicht.
+func TestAPIUpdateStartAlreadyInstalled(t *testing.T) {
+	d, fn, sock := updAPI(t)
+	for _, force := range []bool{false, true} {
+		code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x0", "source": "knopf", "force": force})
+		if code == http.StatusOK || !strings.Contains(fmt.Sprint(m["error"]), "Kein neuerer Stand: x0 ist schon installiert") || d.up.job.ID != "" {
+			t.Fatalf("eigener Stand, force=%v: %d %v %+v", force, code, m, d.up.job)
+		}
+	}
+	// Partner auf x9: auch dessen Stand ist kein neuerer
+	fn.setView("b", upPeerView("x9", ""))
+	d.tick(context.Background())
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x9", "source": "knopf", "force": true})
+	if code == http.StatusOK || !strings.Contains(fmt.Sprint(m["error"]), "Kein neuerer Stand: x9 ist schon installiert") || d.up.job.ID != "" {
+		t.Fatalf("Stand des Partners: %d %v %+v", code, m, d.up.job)
+	}
+	// Rollentausch bleibt möglich
+	fn.setView("b", upPeerView("x0", ""))
+	d.tick(context.Background())
+	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"source": "knopf", "kind": "swap"})
+	if code == http.StatusBadRequest && strings.Contains(fmt.Sprint(m["error"]), "Kein neuerer Stand") {
+		t.Fatalf("Rollentausch abgelehnt: %d %v", code, m)
 	}
 }

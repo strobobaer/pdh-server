@@ -431,3 +431,51 @@ func TestUpdateFreshStartReseals(t *testing.T) {
 		t.Fatalf("Gleichstand gescheitert nach Einfrieren: %q %v %v %q", got3.Phase, got3.LockedAt, got3.MarkFaulty, got3.Result)
 	}
 }
+
+// A1: install_update.sh verweigert das Ziel vor jeder Änderung („…; nichts
+// geaendert.“, z. B. nicht neuer als der installierte Stand). Der Auftrag
+// bricht vor der Sperre ab, X wird aber nicht als fehlerhaft gemerkt.
+func TestUpdatePrepareRefusalNotFaulty(t *testing.T) {
+	for _, kind := range []UpdateKind{UpdateRolling, UpdateSequential} {
+		op, node := OpInstall, "b"
+		if kind == UpdateSequential {
+			op, node = OpInstallNoRestart, "a"
+		}
+		j := waiting(upJob(kind, UpPrepare), op, node, 5)
+		o := upObs("a", Active)
+		a := ack(op, node, false, 5)
+		a.Err = "Ziel c-neu ist nicht neuer als der installierte Stand c-alt; " + InstallUnchangedMarker + "."
+		a.NoFault = true
+		o.Ack = a
+		got, acts := UpdateStep(j, o)
+		if got.Phase != UpRollback || got.MarkFaulty || got.Locked() {
+			t.Fatalf("%s: Phase %q MarkFaulty %v Locked %v", kind, got.Phase, got.MarkFaulty, got.Locked())
+		}
+		if !strings.Contains(got.Result, "nicht eingespielt") || !strings.Contains(got.Result, "nicht neuer") {
+			t.Errorf("%s: Ergebnis %q", kind, got.Result)
+		}
+		for _, ac := range acts {
+			if ac.Kind == UpEvent && strings.Contains(ac.Text, "fehlerhaft gemerkt") && !strings.Contains(ac.Text, "nicht als fehlerhaft") {
+				t.Errorf("%s: Meldung %q", kind, ac.Text)
+			}
+		}
+		// echter Fehler beim Einspielen: weiterhin fehlerhaft
+		o.Ack = ack(op, node, false, 5)
+		if got, _ := UpdateStep(j, o); !got.MarkFaulty {
+			t.Errorf("%s: Bau gescheitert, X nicht fehlerhaft", kind)
+		}
+	}
+}
+
+func TestInstallUnchanged(t *testing.T) {
+	for in, want := range map[string]bool{
+		"Ziel nicht im Update-Zweig (main): abc; nichts geaendert.":                        true,
+		"Update-Agent meldet Fehler: …\nZiel abc ist nicht neuer als …; nichts geaendert.": true,
+		"Bau fehlgeschlagen": false,
+		"":                   false,
+	} {
+		if got := InstallUnchanged(in); got != want {
+			t.Errorf("InstallUnchanged(%q) = %v", in, got)
+		}
+	}
+}

@@ -207,6 +207,10 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 			return nil, errors.New("Eigener Stand unbekannt – Update nicht möglich")
 		case d.views[partner].Last.Commit == "":
 			return nil, errors.New("Stand des Partners unbekannt – Update nicht möglich")
+		case req.Commit == d.commit || req.Commit == d.views[partner].Last.Commit:
+			// A1: nie auf einen schon laufenden Stand (z. B. veralteter
+			// Commit-Vergleich im PDH) – auch nicht mit force
+			return nil, fmt.Errorf("Kein neuerer Stand: %s ist schon installiert", shortCommit(req.Commit))
 		}
 	}
 	if d.busy.Load() {

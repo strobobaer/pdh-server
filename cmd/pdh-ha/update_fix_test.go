@@ -546,3 +546,52 @@ func TestUpdateFreshStartAfterLoad(t *testing.T) {
 		t.Fatalf("nach dem ersten Schritt: fresh %q WaitOp %q", d.up.freshStart, d.up.job.WaitOp)
 	}
 }
+
+// A1: install_update.sh verweigert das Ziel vor jeder Änderung („…; nichts
+// geaendert.“) – das Ergebnis trägt „nicht an X“, auch beim Bauen im
+// Hintergrund. Ein echter Fehler beim Einspielen bleibt einer.
+func TestInstallRefusalNoFault(t *testing.T) {
+	d, _ := upActive(t)
+	d.commit = "o1"
+	refused := errors.New("Update-Agent meldet Fehler: Ziel x1 ist nicht neuer als der installierte Stand o1; " + ha.InstallUnchangedMarker + ".")
+	agentOf(d).err = refused
+	j := rollingJob(ha.UpPrepare, 3)
+	for _, op := range []string{ha.OpInstall, ha.OpInstallNoRestart} {
+		err := d.runUpdateOp(context.Background(), j, op, "x1")
+		var nf noFaultError
+		if err == nil || !errors.As(err, &nf) || !strings.Contains(err.Error(), "nicht neuer") {
+			t.Fatalf("%s: Verweigerung nicht als „nicht an X“ gekennzeichnet: %v", op, err)
+		}
+	}
+	agentOf(d).err = errors.New("Update-Agent meldet Fehler: go build fehlgeschlagen")
+	err := d.runUpdateOp(context.Background(), j, ha.OpInstall, "x1")
+	var nf noFaultError
+	if err == nil || errors.As(err, &nf) {
+		t.Fatalf("echter Fehler als „nicht an X“ gekennzeichnet: %v", err)
+	}
+}
+
+// A1: Bauen im Hintergrund (nacheinander) wird vor jeder Änderung verweigert –
+// Auftrag bricht ab, X steht nicht in der Liste der fehlerhaften Versionen.
+func TestUpdatePrepareRefusalNotMarkedFaulty(t *testing.T) {
+	d, fn := upActive(t)
+	d.commit = "o1"
+	fn.setView("b", upPeerView("o1", ""))
+	agentOf(d).err = errors.New("install_norestart x1: exit status 1: Ziel x1 ist nicht neuer als der installierte Stand o1; " + ha.InstallUnchangedMarker + ".")
+	j := rollingJob(ha.UpPrepare, 3)
+	j.Kind, j.First, j.Second = ha.UpdateSequential, "a", "b"
+	d.mu.Lock()
+	d.up.job = j
+	d.mu.Unlock()
+	waitFor(t, 5*time.Second, "Auftrag abgebrochen", func() bool {
+		d.tick(context.Background())
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.up.job.Phase == ha.UpRollback || d.up.job.Phase == ha.UpFailed
+	})
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.up.job.MarkFaulty || len(d.cl.Faulty) != 0 || !strings.Contains(d.up.job.Result, "nicht eingespielt") {
+		t.Fatalf("MarkFaulty %v Faulty %v Ergebnis %q", d.up.job.MarkFaulty, d.cl.Faulty, d.up.job.Result)
+	}
+}

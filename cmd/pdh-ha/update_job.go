@@ -625,9 +625,9 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 			}
 			return agent.Finish(ctx) // in der Vorbereitung gebaut (install_norestart)
 		}
-		return agent.Install(ctx, commit, false)
+		return installRefusal(agent.Install(ctx, commit, false))
 	case ha.OpInstallNoRestart:
-		return agent.Install(ctx, commit, true)
+		return installRefusal(agent.Install(ctx, commit, true))
 	case ha.OpRollback, ha.OpRollbackNoRestart:
 		noRestart := op == ha.OpRollbackNoRestart
 		if noRestart {
@@ -731,6 +731,16 @@ func (d *daemon) installRunning(j ha.UpdateJob) bool {
 type noFaultError struct{ error }
 
 func (e noFaultError) Unwrap() error { return e.error }
+
+// installRefusal (A1): Hat install_update.sh das Ziel vor jeder Änderung
+// verweigert (ha.InstallUnchangedMarker, z. B. nicht neuer als der
+// installierte Stand), liegt der Fehler nicht an X.
+func installRefusal(err error) error {
+	if err != nil && ha.InstallUnchanged(err.Error()) {
+		return noFaultError{err}
+	}
+	return err
+}
 
 // healthyStandby (C2): Neuaufsetzen schon erledigt – Standby, der vom aktiven
 // Server empfängt, das laufende Programm auf commit und pdh bereit mit der

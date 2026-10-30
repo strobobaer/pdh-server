@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"pdh/internal/ha"
 )
 
 var (
@@ -219,6 +222,14 @@ func (a *updateAgent) jobScript(_ context.Context, args ...string) error {
 	st := a.status
 	a.mu.RUnlock()
 	if !st.Success {
+		if ha.InstallUnchanged(st.Output) {
+			// A1: vor jeder Änderung verweigert – genau diese Zeile melden
+			for _, l := range strings.Split(st.Output, "\n") {
+				if l = strings.TrimSpace(l); ha.InstallUnchanged(l) {
+					return errors.New(l)
+				}
+			}
+		}
 		if msg := lastLine(strings.ReplaceAll(st.Output, "Updater failed:", "")); msg != "" {
 			return errors.New(msg)
 		}
@@ -252,12 +263,8 @@ func (a *updateAgent) pdhHealthy(ctx context.Context, wantVersion, wantCommit st
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("pdh antwortet mit HTTP %d", resp.StatusCode)
 	}
-	var h struct {
-		Version      string `json:"version"`
-		MigrationsOK *bool  `json:"migrations_ok"`
-		Commit       string `json:"commit"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+	h, err := decodePDHHealth(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
 		return errors.New("Antwort von /health unlesbar")
 	}
 	switch {
@@ -269,6 +276,30 @@ func (a *updateAgent) pdhHealthy(ctx context.Context, wantVersion, wantCommit st
 		return fmt.Errorf("Stand %s statt %s", shortSHA(h.Commit), shortSHA(wantCommit))
 	}
 	return nil
+}
+
+// pdhHealthBody: Felder von GET /health des PDH.
+type pdhHealthBody struct {
+	Version      string `json:"version"`
+	MigrationsOK *bool  `json:"migrations_ok"`
+	Commit       string `json:"commit"`
+}
+
+// decodePDHHealth (A2): Das PDH verpackt die Antwort (response.JSON:
+// {"success":true,"data":{…}}); das flache Format (ältere Stände) bleibt
+// als Rückfall.
+func decodePDHHealth(r io.Reader) (pdhHealthBody, error) {
+	var b struct {
+		pdhHealthBody
+		Data *pdhHealthBody `json:"data"`
+	}
+	if err := json.NewDecoder(r).Decode(&b); err != nil {
+		return pdhHealthBody{}, err
+	}
+	if b.Data != nil {
+		return *b.Data, nil
+	}
+	return b.pdhHealthBody, nil
 }
 
 // pdhActive: läuft der Dienst pdh noch (systemctl is-active)?

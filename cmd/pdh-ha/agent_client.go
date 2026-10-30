@@ -405,16 +405,37 @@ func getPDHHealth(ctx context.Context) (pdhHealth, error) {
 	defer resp.Body.Close()
 	h := pdhHealth{Status: resp.StatusCode}
 	if resp.StatusCode == http.StatusOK {
-		var b struct {
-			Version      string `json:"version"`
-			MigrationsOK *bool  `json:"migrations_ok"`
-		}
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&b); err != nil {
+		b, err := decodePDHHealth(io.LimitReader(resp.Body, 64<<10))
+		if err != nil {
 			return h, err
 		}
 		h.Version, h.MigrationsOK = b.Version, b.MigrationsOK
 	}
 	return h, nil
+}
+
+// pdhHealthBody: Felder von GET /health des PDH.
+type pdhHealthBody struct {
+	Version      string `json:"version"`
+	MigrationsOK *bool  `json:"migrations_ok"`
+	Commit       string `json:"commit"`
+}
+
+// decodePDHHealth (A2): Das PDH verpackt die Antwort (response.JSON:
+// {"success":true,"data":{…}}); das flache Format (ältere Stände, Labor)
+// bleibt als Rückfall.
+func decodePDHHealth(r io.Reader) (pdhHealthBody, error) {
+	var b struct {
+		pdhHealthBody
+		Data *pdhHealthBody `json:"data"`
+	}
+	if err := json.NewDecoder(r).Decode(&b); err != nil {
+		return pdhHealthBody{}, err
+	}
+	if b.Data != nil {
+		return *b.Data, nil
+	}
+	return b.pdhHealthBody, nil
 }
 
 // pdhHealthOK: pdh antwortet mit 200, Version wantVersion und

@@ -304,6 +304,10 @@ func (a *updateAgent) jobPrepare(ctx context.Context, s *singleJob) {
 		switch {
 		case errors.Is(err, errUpdateBusy):
 			a.jobFinish(s, ha.UpFailed, err.Error(), false)
+		case ha.InstallUnchanged(err.Error()):
+			// A1: install_update.sh hat vor jeder Änderung verweigert (z. B.
+			// Ziel nicht neuer) – nichts zurückzudrehen, X nicht fehlerhaft.
+			a.jobFinish(s, ha.UpFailed, "Vom Update-Skript abgelehnt: "+err.Error(), false)
 		case herr == nil && head == j.Old[jobSelf]:
 			a.jobFinish(s, ha.UpFailed, "Neue Version nicht abgerufen: "+err.Error(), false)
 		default:

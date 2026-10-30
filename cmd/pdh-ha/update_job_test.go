@@ -908,3 +908,31 @@ func TestSelfDBPending(t *testing.T) {
 		}
 	}
 }
+
+// A2: Das echte PDH verpackt /health (response.JSON: {"success":…,"data":{…}}).
+// Wörtliche Antwort des Testservers; das flache Format bleibt als Rückfall.
+const livePDHHealth = `{"success":true,"data":{"commit":"6a1415acefbe797443667b5c29aa2d4e0e3a4102","migrations_ok":true,"mode":"spiegel","service":"pdh","status":"ok","version":"0.77.8"}}`
+
+func TestPDHHealthWrapped(t *testing.T) {
+	var resp string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, resp)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	writeEnvFile(t, "PDH_SERVER_PORT="+u.Port())
+	ctx := context.Background()
+	resp = livePDHHealth
+	h, err := getPDHHealth(ctx)
+	if err != nil || h.Version != "0.77.8" || h.MigrationsOK == nil || !*h.MigrationsOK || !pdhHealthOK(ctx, "0.77.8") {
+		t.Fatalf("Live-Antwort: %+v %v", h, err)
+	}
+	resp = strings.Replace(livePDHHealth, `"migrations_ok":true`, `"migrations_ok":false`, 1)
+	if h, _ := getPDHHealth(ctx); h.MigrationsOK == nil || *h.MigrationsOK || pdhHealthOK(ctx, "0.77.8") {
+		t.Fatalf("migrations_ok=false im data-Objekt nicht erkannt: %+v", h)
+	}
+	resp = `{"status":"ok","version":"0.77.8","migrations_ok":true}`
+	if !pdhHealthOK(ctx, "0.77.8") {
+		t.Fatal("flaches Format nicht mehr erkannt")
+	}
+}

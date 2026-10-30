@@ -248,17 +248,16 @@ func (h *Handler) maintWatchOnce(ctx context.Context) {
 
 // ── Update per Knopf ────────────────────────────────────────
 
-// latestFullCommit: vollständiger Commit des neuesten Stands im Update-Zweig
-// (letzte Prüfung gegen GitHub).
-func (h *Handler) latestFullCommit(ctx context.Context) string {
-	if h.latestCommitHook != nil {
-		return h.latestCommitHook(ctx)
-	}
-	if h.db == nil {
-		return ""
-	}
-	return strings.TrimSpace(h.getUpdateSetting(ctx, "update_latest_commit", ""))
+// installTarget: Ziel des Update-Knopfs – der neueste Stand im Update-Zweig
+// aus dem letzten Commit-Vergleich, aber nur, wenn dieser zum laufenden
+// Stand und Update-Zweig gehört und einen neueren Stand gefunden hat (A1).
+// "" = kein neuerer Stand bekannt.
+func (h *Handler) installTarget(ctx context.Context) string {
+	return h.loadUpdateCheck(ctx).target(h.buildCommit, updateBranch())
 }
+
+// msgNoNewerKnown: Knopf ohne aktuellen Commit-Vergleich mit neuerem Stand.
+const msgNoNewerKnown = "Kein neuerer Stand bekannt – bitte zuerst „Commit-Vergleich“ ausführen."
 
 // targetVersionOf liest VERSION genau des Commits von GitHub (kurze Frist);
 // "" = unbekannt. Tests ersetzen es.
@@ -432,9 +431,9 @@ func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haSt
 		installRedirect(w, r, url.Values{"notice": {tr(lang, "Das Update wird vom aktiven Server gesteuert.")}})
 		return
 	}
-	commit := h.latestFullCommit(ctx)
+	commit := h.installTarget(ctx)
 	if commit == "" {
-		installRedirect(w, r, url.Values{"notice": {tr(lang, "Der neueste Stand ist noch nicht bekannt – bitte zuerst „Commit-Vergleich“ ausführen.")}})
+		installRedirect(w, r, url.Values{"notice": {tr(lang, msgNoNewerKnown)}})
 		return
 	}
 	kind := st.Window.Kind
@@ -465,6 +464,13 @@ func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haSt
 
 func (h *Handler) installSingle(w http.ResponseWriter, r *http.Request, lang string, force bool) {
 	ctx := r.Context()
+	// Der Agent holt den Stand des Zweigs selbst; der Knopf startet trotzdem
+	// nur mit einem aktuellen Vergleich, der einen neueren Stand kennt (A1).
+	// Das gilt auch für den alten Weg (Docker), der nur hierüber erreicht wird.
+	if h.installTarget(ctx) == "" {
+		installRedirect(w, r, url.Values{"notice": {tr(lang, msgNoNewerKnown)}})
+		return
+	}
 	code, body, err := h.agentRaw(ctx, http.MethodPost, "/v1/update/job/start", map[string]bool{"force": force})
 	if err != nil {
 		installRedirect(w, r, url.Values{"notice": {err.Error()}})

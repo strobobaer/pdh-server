@@ -12,6 +12,7 @@
 #            update-neustart update-nicht-gruen update-nacheinander
 #            update-nacheinander-fehler update-tausch-frist
 #            update-nacheinander-gleichstand update-abbruch-vorher
+#            update-verweigert
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -51,7 +52,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
     update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand
-    update-abbruch-vorher)
+    update-abbruch-vorher update-verweigert)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -1028,7 +1029,8 @@ sc_slot_grenze() {
 
 # --- Update im Verbund (Labor-Agent lab-agent, pdh-Platzhalter pdh-dummy) ---
 # Stand je Server in /var/lib/pdh-lab/commit (Ausgangsstand lab0), Schalter
-# dort als Dateien: fail-install, fail-start-<Commit>, fail-health-<Commit>.
+# dort als Dateien: fail-install, refuse-install, slow-install,
+# fail-start-<Commit>, fail-health-<Commit>.
 # Prüffrist im Labor 60 s (PDH_HA_UPDATE_VERIFY), Countdown 1 min.
 LAB_DIR=/var/lib/pdh-lab
 
@@ -1439,6 +1441,25 @@ sc_update_abbruch_vorher() {
     watch_for 60 eval 'commits_are lab0 lab0' || fail "node2 verlässt lab0 nach dem Abbruch ($(jget commit <<<"$J2"))"
     ! faulty_has lab1 || fail "lab1 nach Abbruch als fehlerhaft gemerkt"
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    no_event 'braucht Hilfe'
+    up_clean
+}
+
+# A1: install_update.sh verweigert das Ziel vor jeder Änderung („…; nichts
+# geaendert.“) – Auftrag bricht vor der Sperre ab, lab1 NICHT fehlerhaft.
+sc_update_verweigert() {
+    up_prepare 1 30
+    log "Labor-Agent auf node2 verweigert das Ziel (nicht neuer)"
+    lab_switch node2 refuse-install on || fail "Schalter setzen"
+    up_start node1 lab1 rolling
+    up_wait 600 fertig abgebrochen
+    up_result_has "nicht eingespielt"
+    up_result_has "nichts geaendert"
+    wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide auf lab0 mit node1 aktiv"
+    ! faulty_has lab1 || fail "lab1 trotz Verweigerung als fehlerhaft gemerkt ($(jget faulty <<<"$J1"))"
+    [[ -z "$(jget faulty <<<"$J1" | tr -d ' -')" ]] || fail "fehlerhafte Versionen: $(jget faulty <<<"$J1")"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    lab_switch node2 refuse-install off || fail "Schalter entfernen"
     no_event 'braucht Hilfe'
     up_clean
 }

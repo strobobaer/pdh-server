@@ -543,3 +543,77 @@ func TestSingleJobPDHNotStoppedBeforeDump(t *testing.T) {
 		t.Fatalf("als fehlerhaft gemerkt: %+v", ws)
 	}
 }
+
+// A1: install_update.sh verweigert das Ziel vor jeder Änderung („…; nichts
+// geaendert.“) – Auftrag endet ohne Rückdrehen, X nicht fehlerhaft, das
+// Ergebnis nennt den Grund.
+func TestSingleJobRefusalNotFaulty(t *testing.T) {
+	for _, moved := range []bool{false, true} {
+		a, rec, clk, _ := jobTestAgent(t)
+		rec.noMove = !moved // moved: Checkout steht (warum auch immer) nicht mehr auf Alt
+		refusal := "Ziel " + jobNewSHA + " ist nicht neuer als der installierte Stand " + jobOldSHA + "; " + ha.InstallUnchangedMarker + "."
+		a.updateRun = func(args []string) {
+			rec.moveHead(args)
+			ok := rec.add("script "+strings.Join(args, " "), nil)
+			out := ""
+			if strings.Join(args, " ") == "--commit "+jobNewSHA+" --no-restart" {
+				ok, out = false, "From github.com:strobobaer/pdh-server\n"+refusal+"\n\nUpdater failed: exit status 1\n"
+			}
+			a.mu.Lock()
+			a.status.Running, a.status.Success, a.status.Output = false, ok, out
+			a.mu.Unlock()
+		}
+		if _, err := a.startSingleJob(context.Background(), "knopf", false); err != nil {
+			t.Fatal(err)
+		}
+		runJob(t, a, clk, 5)
+		if got := rec.all(); got != "script --commit "+jobNewSHA+" --no-restart" {
+			t.Errorf("moved=%v: Befehlsfolge %s", moved, got)
+		}
+		v := a.jobView()
+		if v.Phase != string(ha.UpFailed) || !strings.Contains(v.Result, "abgelehnt") || !strings.Contains(v.Result, "nicht neuer als der installierte Stand") {
+			t.Errorf("moved=%v: Ende %q %q", moved, v.Phase, v.Result)
+		}
+		ws := a.windowSnapshot()
+		if len(ws.Faulty) != 0 || !strings.Contains(ws.LastResult, "nicht eingespielt") || !strings.Contains(ws.LastResult, "nicht neuer") {
+			t.Errorf("moved=%v: Fenster %+v", moved, ws)
+		}
+	}
+}
+
+// A2: Das echte PDH verpackt /health (response.JSON). Wörtliche Antwort des
+// Testservers; das flache Format bleibt als Rückfall.
+func TestPDHHealthyWrapped(t *testing.T) {
+	const live = `{"success":true,"data":{"commit":"6a1415acefbe797443667b5c29aa2d4e0e3a4102","migrations_ok":true,"mode":"spiegel","service":"pdh","status":"ok","version":"0.77.8"}}`
+	var resp string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, resp)
+	}))
+	t.Cleanup(srv.Close)
+	u, _ := url.Parse(srv.URL)
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("PDH_SERVER_PORT="+u.Port()+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &updateAgent{mode: "systemd", repoDir: repo}
+	ctx := context.Background()
+	const live6a = "6a1415acefbe797443667b5c29aa2d4e0e3a4102"
+	resp = live
+	if err := a.pdhHealthy(ctx, "0.77.8", live6a); err != nil {
+		t.Fatalf("Live-Antwort: %v", err)
+	}
+	if err := a.pdhHealthy(ctx, "0.77.9", ""); err == nil || !strings.Contains(err.Error(), "0.77.8") {
+		t.Fatalf("falsche Version nicht erkannt: %v", err)
+	}
+	if err := a.pdhHealthy(ctx, "0.77.8", jobNewSHA); err == nil {
+		t.Fatal("falscher Stand nicht erkannt")
+	}
+	resp = strings.Replace(live, `"migrations_ok":true`, `"migrations_ok":false`, 1)
+	if err := a.pdhHealthy(ctx, "0.77.8", ""); err == nil || !strings.Contains(err.Error(), "Datenbank-Änderungen") {
+		t.Fatalf("migrations_ok=false im data-Objekt nicht erkannt: %v", err)
+	}
+	resp = `{"status":"ok","version":"0.77.8","migrations_ok":true}`
+	if err := a.pdhHealthy(ctx, "0.77.8", ""); err != nil {
+		t.Fatalf("flaches Format: %v", err)
+	}
+}

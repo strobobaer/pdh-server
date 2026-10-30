@@ -3,6 +3,7 @@ package ha
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -54,6 +55,17 @@ const updateSwapRepeat = 20 * time.Second
 
 // Grund, wenn der Gleichstand vor dem Einfrieren (nacheinander) scheitert.
 const reasonNoSync = "Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert"
+
+// InstallUnchangedMarker: So endet die Meldung von install_update.sh, wenn
+// es das Ziel vor jeder Änderung verweigert (nicht im Update-Zweig, nicht
+// neuer als der installierte Stand). Der Wortlaut im Skript muss gleich
+// bleiben. Ein solcher Fehler liegt nicht an X – X nicht fehlerhaft merken.
+const InstallUnchangedMarker = "nichts geaendert"
+
+// InstallUnchanged: Meldet die Ausgabe eine Verweigerung vor jeder Änderung?
+func InstallUnchanged(output string) bool {
+	return strings.Contains(output, InstallUnchangedMarker)
+}
 
 // UpdateJob ist der Auftrag. Old, First und Second setzt der Daemon beim
 // Anlegen; Phase UpPrepare mit leerem PhaseAt ist der Eintritt.
@@ -307,7 +319,12 @@ func (r *upRun) prepare() {
 		if a.OK {
 			r.enter(UpVerifyPrep) // Prüffrist läuft ab dem Ergebnis
 		} else {
-			r.failPrep(fmt.Sprintf("Einspielen auf %s fehlgeschlagen: %s", a.Node, a.Err))
+			if a.NoFault {
+				// A1: vor jeder Änderung verweigert (z. B. Ziel nicht neuer)
+				r.failPrep(fmt.Sprintf("Neue Version auf %s nicht eingespielt: %s", a.Node, a.Err), false)
+			} else {
+				r.failPrep(fmt.Sprintf("Einspielen auf %s fehlgeschlagen: %s", a.Node, a.Err), true)
+			}
 		}
 		return
 	}
@@ -318,7 +335,7 @@ func (r *upRun) prepare() {
 		return
 	}
 	if r.since(j.PhaseAt) > UpdatePrepareWait {
-		r.failPrep("Einspielen nicht rechtzeitig abgeschlossen")
+		r.failPrep("Einspielen nicht rechtzeitig abgeschlossen", true)
 	}
 }
 
@@ -332,7 +349,7 @@ func (r *upRun) verifyPrep() {
 		return
 	}
 	if r.timedOut() {
-		r.failPrep("Prüffrist überschritten")
+		r.failPrep("Prüffrist überschritten", true)
 	}
 }
 
@@ -794,11 +811,16 @@ func (r *upRun) overdue() bool {
 }
 
 // failPrep: Fehler vor der Sperre (Spec 7 „B scheitert vor der Sperre“):
-// zurückdrehen, X fehlerhaft, Meldung.
-func (r *upRun) failPrep(reason string) {
-	r.j.MarkFaulty = true
+// zurückdrehen, Meldung; faulty: X fehlerhaft merken. Ohne faulty (A1:
+// install_update.sh hat vor jeder Änderung verweigert) bleibt X unmarkiert.
+func (r *upRun) failPrep(reason string, faulty bool) {
+	r.j.MarkFaulty = faulty
 	r.undoPrep(reason, true)
-	r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version als fehlerhaft gemerkt", r.j.name(), reason))
+	if faulty {
+		r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version als fehlerhaft gemerkt", r.j.name(), reason))
+		return
+	}
+	r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version nicht als fehlerhaft gemerkt", r.j.name(), reason))
 }
 
 // sealFailed (sequential, C3): Der Spiegel hat nach dem Abschotten von A

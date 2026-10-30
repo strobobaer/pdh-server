@@ -10,6 +10,8 @@
 # Schalter (Dateien):
 #   /var/lib/pdh-lab/fail-install  → install/install_norestart scheitern
 #   /var/lib/pdh-lab/slow-install  → install braucht 40 s (Bau dauert)
+#   /var/lib/pdh-lab/refuse-install → install/install_norestart verweigern vor
+#                                    jeder Änderung (wie install_update.sh: „…; nichts geaendert.“)
 # Läufe gehen nacheinander (Sperrdatei) – wie beim echten Agenten, bei dem
 # pdh-ha auf einen laufenden fremden Lauf wartet und dann erneut sendet.
 set -uo pipefail
@@ -32,6 +34,7 @@ case "$op" in
     install)
         [[ -n "$c" ]] || exit 2
         [[ -e $dir/fail-install ]] && { echo "Einspielen scheitert (Schalter fail-install)" >&2; exit 1; }
+        [[ -e $dir/refuse-install ]] && { echo "Ziel $c ist nicht neuer als der installierte Stand $(cat "$cf" 2>/dev/null); nichts geaendert." >&2; exit 1; }
         [[ -e $dir/slow-install ]] && sleep 40
         rm -f "$pending"
         set_commit "$c"
@@ -40,6 +43,7 @@ case "$op" in
     install_norestart)
         [[ -n "$c" ]] || exit 2
         [[ -e $dir/fail-install ]] && { echo "Bauen scheitert (Schalter fail-install)" >&2; exit 1; }
+        [[ -e $dir/refuse-install ]] && { echo "Ziel $c ist nicht neuer als der installierte Stand $(cat "$cf" 2>/dev/null); nichts geaendert." >&2; exit 1; }
         printf '%s\n' "$c" >"$pending"
         ;;
     finish)
