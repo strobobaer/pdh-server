@@ -97,6 +97,17 @@ diag() {
             echo "--- $c: IPv4-Adressen, Skript-Protokoll"
             timeout 10 docker exec "$c" ip -o -4 addr show 2>&1 | cut -c1-120 | sed 's/^/    /' || true
             timeout 10 docker exec "$c" tail -n 5 /var/lib/pdh-ha/hook.log 2>/dev/null | sed 's/^/    /' || true
+            echo "--- $c: Update-Auftrag, Datenbank, Labor-Agent, /health"
+            timeout 10 docker exec "$c" pdh-ha update status 2>&1 | sed 's/^/    /' || true
+            timeout 10 docker exec "$c" cat /var/lib/pdh-ha/update-job.json 2>/dev/null | tr -d '\n' | cut -c1-900 | sed 's/^/    /' || true
+            echo
+            echo "    pg=$(get "$c" pg) sync=$(get "$c" sync) aktuell=$(get "$c" current) commit=$(get "$c" commit)" \
+                "pdh=$(docker exec "$c" test -f /run/pdh-dummy.running && echo läuft || echo aus)" \
+                "busy=$(status_json "$c" | grep -o '"busy":[a-z]*')"
+            timeout 10 docker exec "$c" sh -c 'ls /var/lib/pdh-lab; tail -n 8 /var/lib/pdh-lab/agent.log' 2>&1 | sed 's/^/    /' || true
+            timeout 10 docker exec "$c" curl -s -m 3 -w ' %{http_code}' http://127.0.0.1:8090/health 2>&1 | sed 's/^/    health: /' || true
+            echo
+            timeout 10 docker exec "$c" sh -c 'tail -n 15 /var/log/postgresql/*.log' 2>&1 | cut -c1-200 | sed 's/^/    /' || true
         fi
         echo
     done
