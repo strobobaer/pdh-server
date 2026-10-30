@@ -26,6 +26,7 @@ type fakeAgent struct {
 	calls []string
 	err   error
 	block chan struct{} // gesetzt: Aufruf wartet darauf oder auf das Ende von ctx
+	busy  bool          // Busy meldet einen laufenden Lauf
 }
 
 func (f *fakeAgent) wait(ctx context.Context) error {
@@ -62,6 +63,12 @@ func (f *fakeAgent) Rollback(_ context.Context, commit string, noRestart bool) e
 }
 
 func (f *fakeAgent) Finish(context.Context) error { return f.add("finish") }
+
+func (f *fakeAgent) Busy(context.Context) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.busy, nil
+}
 
 func (f *fakeAgent) list() []string {
 	f.mu.Lock()

@@ -101,6 +101,14 @@ type UpdateJob struct {
 	Unprotected bool
 	// RollbackSent: im Zurücksetzen ging der Auftrag an den Partner schon raus.
 	RollbackSent bool
+	// InstallSeen: Der Einspiel-Lauf auf First ist beendet (Ergebnis kam, auch
+	// verspätet) oder First lief schon sichtbar auf X. Erst dann zählt im
+	// Rückweg vor der Sperre „Partner auf Alt-Stand“ als Erfolg (N1) – vorher
+	// meldet B während des Baus noch Alt-Stand und alte Version.
+	InstallSeen bool
+	// FreezeSent (sequential): der Auftrag zum Einfrieren ging schon raus –
+	// B kann eingefroren sein und muss auf jedem Rückweg aufgetaut werden.
+	FreezeSent bool
 }
 
 // UpdateAck ist das Ergebnis eines node_op (vom Partner) oder local_op
@@ -109,7 +117,10 @@ type UpdateAck struct {
 	JobID, Op, Node string
 	OK              bool
 	Err             string
-	Seq             uint64
+	// NoFault: der Fehler liegt nicht an X (z. B. nur die Freigabe der
+	// abgeschotteten Datenbank scheiterte) – X nicht als fehlerhaft merken.
+	NoFault bool
+	Seq     uint64
 }
 
 // UpdateObs ist alles, was ein Schritt des Auftrags wissen darf.
@@ -142,6 +153,9 @@ type UpdateObs struct {
 
 	Abort    string // Name des Abbrechenden, "" = keiner
 	Takeover bool   // echte Übernahme/Hand-Übernahme seit Start
+	// FreshStart: erster Schritt nach dem Laden des Auftrags (pdh-ha neu
+	// gestartet). Beim Start gibt der Kern eine Abschottung wieder frei (N5).
+	FreshStart bool
 }
 
 // UpdateActionKind ist die Art einer Aktion des Auftrags.
@@ -231,6 +245,7 @@ func UpdateStep(job UpdateJob, o UpdateObs) (UpdateJob, []UpdateAction) {
 func (r *upRun) step() {
 	o := r.o
 	r.adoptVersion()
+	r.noteInstall()
 	if r.j.Kind != UpdateSequential && r.j.Phase == UpLocked && r.selfFirstActive() {
 		// Übernahme gelungen: der abgebende Server hat erst nach dem
 		// Gleichstand abgegeben (demote/demoteFreeze warten darauf) – gilt
@@ -379,6 +394,19 @@ func (r *upRun) locked() {
 		return
 	}
 	if !j.FreezeAcked {
+		if o.FreshStart && j.Sealed {
+			// N5: pdh-ha startete neu, der Kern gab A beim Start wieder frei –
+			// der Gleichstand ist verloren. Erneut abschotten und warten; war
+			// B womöglich schon eingefroren, zuerst auftauen.
+			switch j.WaitOp {
+			case OpSeal:
+				r.localOp(OpSeal, "")
+				return
+			case OpFreeze:
+				r.nodeOp(j.Second, OpThaw, "")
+				return
+			}
+		}
 		a := r.ack()
 		if a == nil {
 			return
@@ -386,9 +414,16 @@ func (r *upRun) locked() {
 		switch a.Op {
 		case OpSeal:
 			if a.OK {
+				j.FreezeSent = true
 				r.nodeOp(j.Second, OpFreeze, "")
 			} else {
 				r.sealFailed(a.Err)
+			}
+		case OpThaw:
+			if a.OK {
+				r.localOp(OpSeal, "") // B folgt wieder: neu abschotten, Gleichstand abwarten
+			} else {
+				r.rollback(fmt.Sprintf("Auftauen von %s fehlgeschlagen: %s", j.Second, a.Err), false)
 			}
 		case OpFreeze:
 			if a.OK {
@@ -409,7 +444,7 @@ func (r *upRun) locked() {
 		if a.OK {
 			r.gotOK() // Neustart folgt, dann SelfCommit == X
 		} else {
-			r.rollback("Einspielen fehlgeschlagen: "+a.Err, true)
+			r.rollback("Einspielen fehlgeschlagen: "+a.Err, !a.NoFault) // N4: Freigabe gescheitert ≠ X fehlerhaft
 		}
 	}
 }
@@ -696,7 +731,7 @@ func (r *upRun) undoStep() {
 			return
 		}
 		errText = a.Err
-	} else if node != "" && node == r.o.PartnerID && j.WaitOp == OpRollback && r.partnerOnOld() {
+	} else if node != "" && node == r.o.PartnerID && j.WaitOp == OpRollback && j.InstallSeen && r.partnerOnOld() {
 		// Ergebnis verloren (pdh-ha auf dem Partner startet beim Zurückdrehen
 		// neu), der Partner läuft aber schon auf dem Alt-Stand: erledigt.
 		r.finish(UpFailed, j.Result)
@@ -772,9 +807,37 @@ func (r *upRun) failPrep(reason string) {
 // der Checkout von A geht zurück (Rückweg vor der Sperre). X nicht fehlerhaft.
 func (r *upRun) sealFailed(errText string) {
 	j := &r.j
+	if j.FreezeSent {
+		// B kann schon eingefroren sein (Neustart, N5): über das Zurücksetzen
+		// – A freigeben, B auftauen –, X nicht fehlerhaft.
+		r.rollback(reasonNoSync, false)
+		r.event("alarm", fmt.Sprintf("%s: %s (%s)", j.name(), reasonNoSync, errText))
+		return
+	}
 	j.LockedAt = time.Time{}
 	r.undoPrep(reasonNoSync, true)
 	r.event("alarm", fmt.Sprintf("%s: %s (%s)", j.name(), reasonNoSync, errText))
+}
+
+// noteInstall (N1): First auf X gesehen bzw. Einspielen gescheitert. Auch
+// ein verspätetes Ergebnis (der Auftrag wartet schon auf etwas anderes)
+// zählt – es zeigt, dass der Lauf vorbei ist.
+func (r *upRun) noteInstall() {
+	j, o := &r.j, r.o
+	if j.InstallSeen || j.Target == "" {
+		return
+	}
+	if j.First == o.PartnerID && o.Partner.Commit == j.Target {
+		j.InstallSeen = true
+		return
+	}
+	// Ein gescheitertes Einspielen hat B nicht umgestellt: Alt-Stand ist echt.
+	// Ein gelungenes nicht – dann erst B auf X sehen (sonst könnte ein noch
+	// alter Heartbeat „Alt-Stand“ vortäuschen).
+	if a := o.Ack; a != nil && !a.OK && a.JobID == j.ID && a.Node == j.First &&
+		(a.Op == OpInstall || a.Op == OpInstallNoRestart) {
+		j.InstallSeen = true
+	}
 }
 
 // adoptVersion (C1): Ohne Zielversion übernimmt der Auftrag die Version,

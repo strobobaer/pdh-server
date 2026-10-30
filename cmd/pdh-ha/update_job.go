@@ -45,6 +45,7 @@ type upState struct {
 	acks         []ha.UpdateAck // Ergebnisse für die nächsten Schritte (eins je Schritt)
 	abort        string         // Abbruch durch einen Administrator für den nächsten Schritt
 	restartAbort string         // Kennung eines Auftrags, der beim Laden vor der Sperre stand
+	freshStart   string         // Kennung des beim Laden offenen Auftrags bis zum ersten eigenen Schritt (N5)
 	takeover     bool           // Übernahme erkannt, gilt bis zum nächsten gespeicherten Schritt
 	peerSeq      uint64         // höchster Seq, den der Partner je geschickt hat
 	sentSeq      uint64         // zuletzt an den Partner gespiegelter Seq
@@ -141,9 +142,12 @@ func (d *daemon) loadUpdateLocked() {
 		j = ha.UpdateJob{}
 	}
 	d.migrateFaultyLocked()
-	d.up.job, d.up.restartAbort = j, ""
+	d.up.job, d.up.restartAbort, d.up.freshStart = j, "", ""
 	if j.ID != "" && beforeLock(j) {
 		d.up.restartAbort = j.ID
+	}
+	if j.ID != "" && !upEnded(j) {
+		d.up.freshStart = j.ID
 	}
 }
 
@@ -307,6 +311,7 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 	if u.restartAbort == j.ID {
 		o.Abort = "Neustart" // Spec 7: Neustart vor der Sperre → zurückdrehen, abbrechen
 	}
+	o.FreshStart = u.freshStart == j.ID
 	if len(u.acks) > 0 {
 		a := u.acks[0]
 		o.Ack = &a
@@ -322,7 +327,7 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 	if o.Ack != nil {
 		u.acks = u.acks[1:]
 	}
-	u.abort, u.restartAbort, u.takeover = "", "", false
+	u.abort, u.restartAbort, u.takeover, u.freshStart = "", "", false, ""
 	if next.MarkFaulty {
 		d.addFaultyLocked(pl, next.Target, true)
 	}
@@ -555,6 +560,8 @@ func (d *daemon) runOpAsyncLocked(ctx context.Context, j ha.UpdateJob, op, commi
 		a := ha.UpdateAck{JobID: j.ID, Op: op, Node: self, OK: err == nil, Seq: j.Seq}
 		if err != nil {
 			a.Err = err.Error()
+			var nf noFaultError
+			a.NoFault = errors.As(err, &nf)
 			d.event("alarm", fmt.Sprintf("Update-Auftrag %s fehlgeschlagen: %v", op, err))
 		}
 		d.mu.Lock()
@@ -595,7 +602,7 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 			return nil
 		}
 		if err := d.queueWait(ctx, pa.unfence); err != nil {
-			return fmt.Errorf("Abschottung nicht zurückgenommen: %w", err)
+			return noFaultError{fmt.Errorf("Abschottung nicht zurückgenommen: %w", err)} // N4
 		}
 		return nil
 	}
@@ -627,7 +634,7 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 			if err := unseal(); err != nil {
 				return err
 			}
-		} else if d.rolledBack(j, commit, cur, pa) {
+		} else if d.rolledBack(ctx, j, commit, cur, pa) {
 			// C2: Wiederholung nach dem Neustart von pdh-ha, den das
 			// Zurückdrehen selbst auslöst – schon erledigt, kein zweiter Lauf.
 			return nil
@@ -675,8 +682,20 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 // Version und die Datenbank folgt (mit Spiegel) als Standby. So startet die
 // Wiederholung nach dem Neustart von pdh-ha, den das Zurückdrehen selbst
 // auslöst (install-pdh-ha.sh), keinen zweiten Lauf.
-func (d *daemon) rolledBack(j ha.UpdateJob, commit, cur string, pa *pgActor) bool {
+func (d *daemon) rolledBack(ctx context.Context, j ha.UpdateJob, commit, cur string, pa *pgActor) bool {
 	if commit == "" || commit != cur {
+		return false
+	}
+	// N1: Läuft hier noch das Einspielen dieses Auftrags, zeigt der laufende
+	// Stand nur den Zustand vor dem Neustart mit X – dann den normalen Weg
+	// gehen (Agent: Lauf abwarten, dann zurückdrehen).
+	if d.installRunning(j) {
+		return false
+	}
+	d.mu.Lock()
+	agent := d.up.agent
+	d.mu.Unlock()
+	if busy, err := agent.Busy(ctx); err != nil || busy {
 		return false
 	}
 	d.mu.Lock()
@@ -695,6 +714,23 @@ func (d *daemon) rolledBack(j ha.UpdateJob, commit, cur string, pa *pgActor) boo
 	}
 	return true
 }
+
+// installRunning: ein Einspiel-Lauf dieses Auftrags läuft in diesem Dienst.
+func (d *daemon) installRunning(j ha.UpdateJob) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for k := range d.up.running {
+		if strings.HasPrefix(k, j.ID+"|"+ha.OpInstall+"|") || strings.HasPrefix(k, j.ID+"|"+ha.OpInstallNoRestart+"|") {
+			return true
+		}
+	}
+	return false
+}
+
+// noFaultError: Fehler einer Op, der nicht an X liegt (N4).
+type noFaultError struct{ error }
+
+func (e noFaultError) Unwrap() error { return e.error }
 
 // healthyStandby (C2): Neuaufsetzen schon erledigt – Standby, der vom aktiven
 // Server empfängt, das laufende Programm auf commit und pdh bereit mit der

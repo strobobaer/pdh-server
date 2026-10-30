@@ -27,6 +27,9 @@ type agentClient interface {
 	Install(ctx context.Context, commit string, noRestart bool) error
 	Rollback(ctx context.Context, commit string, noRestart bool) error
 	Finish(ctx context.Context) error
+	// Busy: läuft beim Agenten gerade ein Lauf (z. B. ein Einspielen, das
+	// pdh-ha am Ende neu startet)? Fehler = unbekannt.
+	Busy(ctx context.Context) (bool, error)
 }
 
 // agentWait: so lange wartet ein Aufruf höchstens auf das Ende des Updates.
@@ -115,6 +118,10 @@ func (c cmdAgent) Rollback(ctx context.Context, commit string, noRestart bool) e
 }
 
 func (c cmdAgent) Finish(ctx context.Context) error { return c.run(ctx, "finish") }
+
+// Busy: Der Labor-Agent führt seine Läufe nacheinander aus (Sperrdatei);
+// ein Zurückdrehen wartet dort ohnehin auf ein laufendes Einspielen.
+func (c cmdAgent) Busy(context.Context) (bool, error) { return false, nil }
 
 // httpAgent: POST /v1/update, danach GET /v1/status bis running=false.
 // Adresse und Token werden bei jedem Aufruf aus der .env gelesen.
@@ -268,6 +275,30 @@ func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
 			return err
 		}
 	}
+}
+
+// Busy fragt /v1/status einmal.
+func (h *httpAgent) Busy(ctx context.Context) (bool, error) {
+	base := strings.TrimRight(pdhEnv("PDH_UPDATE_AGENT_URL"), "/")
+	if base == "" {
+		base = "http://127.0.0.1:8091"
+	}
+	token := pdhEnv("PDH_UPDATE_AGENT_TOKEN")
+	if token == "" {
+		return false, errors.New("Token des Update-Agenten fehlt")
+	}
+	code, b, err := h.do(ctx, http.MethodGet, base+"/v1/status", token, nil)
+	if err != nil {
+		return false, err
+	}
+	if code != http.StatusOK {
+		return false, fmt.Errorf("Update-Agent: HTTP %d", code)
+	}
+	var st agentRun
+	if err := json.Unmarshal(b, &st); err != nil {
+		return false, err
+	}
+	return st.Running, nil
 }
 
 // waitIdle fragt /v1/status, bis kein Lauf mehr läuft, und liefert dessen Stand.

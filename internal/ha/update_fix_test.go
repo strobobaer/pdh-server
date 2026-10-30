@@ -33,7 +33,7 @@ func TestUpdateAdoptsTargetVersionFromPartner(t *testing.T) {
 // Ohne Zielversion und ohne Antwort von B: nichts übernehmen, warten.
 func TestUpdateNoTargetVersionWaits(t *testing.T) {
 	j := upJob(UpdateRolling, UpVerifyPrep)
-	j.TargetVersion = ""
+	j.TargetVersion, j.InstallSeen = "", true
 	o := upObs("a", Active)
 	o.Partner.Commit, o.MirrorSync = upNew, true
 	got, acts := UpdateStep(j, o)
@@ -94,7 +94,7 @@ func TestUpdateDoneNamesVersion(t *testing.T) {
 // kein „braucht Hilfe“.
 func TestUpdateUndoLostAckPartnerOnOld(t *testing.T) {
 	j := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 5)
-	j.RollbackSent, j.Result = true, "Prüffrist überschritten"
+	j.RollbackSent, j.Result, j.InstallSeen = true, "Prüffrist überschritten", true // B lief auf X
 	o := upObs("a", Active)
 	o.Partner.Commit, o.PartnerPDHOK = upOldB, true
 	got, acts := UpdateStep(j, o)
@@ -301,5 +301,133 @@ func TestUpdateDoneUnprotectedWarns(t *testing.T) {
 	if fin.Phase != UpDone || fin.Result != want ||
 		!reflect.DeepEqual(acts, []UpdateAction{evA("alarm", want)}) {
 		t.Errorf("Ende: %q %q %+v", fin.Phase, fin.Result, acts)
+	}
+}
+
+// N1: Abbruch in der Vorbereitung, während B X noch baut. B meldet dabei
+// Alt-Stand und alte Version – das ist noch kein erledigtes Zurückdrehen.
+// Erst nach dem Ende des Einspiel-Laufs zählt „Partner auf Alt“.
+func TestUpdateUndoWaitsForRunningInstall(t *testing.T) {
+	j := waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5)
+	o := upObs("a", Active)
+	o.Abort = "Admin"
+	o.Partner.Commit, o.PartnerPDHOK = upOldB, true // B baut noch, läuft auf Alt
+	got, acts := UpdateStep(j, o)
+	if got.Phase != UpRollback || got.InstallSeen || len(acts) == 0 || acts[0] != nodeOpA("b", OpRollback, upOldB) {
+		t.Fatalf("Abbruch: %q InstallSeen %v %+v", got.Phase, got.InstallSeen, acts)
+	}
+	o.Abort = ""
+	if again, _ := UpdateStep(got, o); again.Phase != UpRollback {
+		t.Fatalf("Rückweg vor dem Ende des Einspielens beendet: %q", again.Phase)
+	}
+	// Gelungenes Einspielen meldet sich (verspätet): noch nicht genug – der
+	// Heartbeat von B kann noch den Alt-Stand zeigen.
+	o.Ack = ack(OpInstall, "b", true, 5)
+	got, _ = UpdateStep(got, o)
+	if got.InstallSeen || got.Phase != UpRollback {
+		t.Fatalf("gelungenes Einspielen: InstallSeen %v Phase %q", got.InstallSeen, got.Phase)
+	}
+	// B läuft auf X …
+	o.Ack = nil
+	o.Partner.Commit, o.PartnerPDHOK = upNew, false
+	got, _ = UpdateStep(got, o)
+	if !got.InstallSeen || got.Phase != UpRollback {
+		t.Fatalf("B auf X: InstallSeen %v Phase %q", got.InstallSeen, got.Phase)
+	}
+	// … und ist jetzt wirklich zurück auf Alt.
+	o.Partner.Commit, o.PartnerPDHOK = upOldB, true
+	if fin, _ := UpdateStep(got, o); fin.Phase != UpFailed {
+		t.Fatalf("nach dem Zurückdrehen: %q", fin.Phase)
+	}
+	// Gescheitertes Einspielen: B blieb auf Alt – das zählt sofort.
+	j3 := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 6)
+	j3.RollbackSent = true
+	o3 := upObs("a", Active)
+	o3.Partner.Commit, o3.PartnerPDHOK = upOldB, true
+	o3.Ack = ack(OpInstall, "b", false, 5)
+	if fin, _ := UpdateStep(j3, o3); !fin.InstallSeen || fin.Phase != UpFailed {
+		t.Fatalf("gescheitertes Einspielen: %v %q", fin.InstallSeen, fin.Phase)
+	}
+	// Auch: B einmal auf X gesehen genügt.
+	j2 := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 6)
+	j2.RollbackSent = true
+	o2 := upObs("a", Active)
+	o2.Partner.Commit = upNew
+	j2, _ = UpdateStep(j2, o2)
+	if !j2.InstallSeen {
+		t.Fatal("B auf X gesehen, InstallSeen fehlt")
+	}
+}
+
+// N4: Scheitert vor dem Einsetzen nur die Freigabe der Abschottung, wird
+// zurückgesetzt, X aber nicht als fehlerhaft gemerkt.
+func TestUpdateUnsealFailureNotFaulty(t *testing.T) {
+	j := waiting(locked(UpdateSequential, UpLocked, time.Minute, time.Minute), OpInstall, "a", 5)
+	j.FreezeAcked, j.FrozenSynced, j.Sealed = true, true, true
+	o := upObs("a", Active)
+	a := ack(OpInstall, "a", false, 5)
+	a.NoFault = true
+	o.Ack = a
+	got, acts := UpdateStep(j, o)
+	if got.Phase != UpRollback || got.MarkFaulty || len(acts) == 0 || acts[0] != cmdA(CmdSwapAbandon) {
+		t.Fatalf("Phase %q MarkFaulty %v %+v", got.Phase, got.MarkFaulty, acts)
+	}
+	// echter Fehler beim Einsetzen: weiterhin fehlerhaft
+	o.Ack = ack(OpInstall, "a", false, 5)
+	if got, _ := UpdateStep(j, o); !got.MarkFaulty {
+		t.Fatal("Einsetzen gescheitert, X nicht fehlerhaft")
+	}
+}
+
+// N5: Neustart von pdh-ha zwischen Abschotten und Einfrieren – erneut
+// abschotten; war das Einfrieren schon unterwegs, B zuerst auftauen. Erst ein
+// danach bestätigtes Einfrieren setzt den Gleichstand.
+func TestUpdateFreshStartReseals(t *testing.T) {
+	// Abschotten bestätigt, Einfrieren unterwegs
+	j := waiting(locked(UpdateSequential, UpLocked, time.Minute, time.Minute), OpFreeze, "b", 5)
+	j.Sealed, j.FreezeSent = true, true
+	o := upObs("a", Active)
+	o.FreshStart = true
+	got, acts := UpdateStep(j, o)
+	if !reflect.DeepEqual(acts, []UpdateAction{nodeOpA("b", OpThaw, "")}) {
+		t.Fatalf("erst auftauen: %+v", acts)
+	}
+	// verspätetes Ack des alten Einfrierens zählt nicht
+	o.FreshStart = false
+	o.Ack = ack(OpFreeze, "b", true, 5)
+	if g, _ := UpdateStep(got, o); g.FrozenSynced || g.FreezeAcked {
+		t.Fatal("altes Einfrieren als Gleichstand gewertet")
+	}
+	o.Ack = ack(OpThaw, "b", true, got.WaitSeq)
+	got, acts = UpdateStep(got, o)
+	if !reflect.DeepEqual(acts, []UpdateAction{localOpA("a", OpSeal, "")}) {
+		t.Fatalf("dann neu abschotten: %+v", acts)
+	}
+	o.Ack = ack(OpSeal, "a", true, got.WaitSeq)
+	got, acts = UpdateStep(got, o)
+	if !reflect.DeepEqual(acts, []UpdateAction{nodeOpA("b", OpFreeze, "")}) {
+		t.Fatalf("dann einfrieren: %+v", acts)
+	}
+	o.Ack = ack(OpFreeze, "b", true, got.WaitSeq)
+	if got, _ = UpdateStep(got, o); !got.FrozenSynced {
+		t.Fatal("Gleichstand nach neuem Abschotten fehlt")
+	}
+	// Abschotten lief noch (kein Ack): nur erneut abschotten
+	j2 := waiting(locked(UpdateSequential, UpLocked, time.Minute, time.Minute), OpSeal, "a", 5)
+	j2.Sealed = true
+	o2 := upObs("a", Active)
+	o2.FreshStart = true
+	if _, acts := UpdateStep(j2, o2); !reflect.DeepEqual(acts, []UpdateAction{localOpA("a", OpSeal, "")}) {
+		t.Fatalf("erneut abschotten: %+v", acts)
+	}
+	// Gleichstand nach dem Neustart gescheitert, B evtl. eingefroren:
+	// über das Zurücksetzen (B auftauen), X nicht fehlerhaft
+	j3 := waiting(locked(UpdateSequential, UpLocked, time.Minute, time.Minute), OpSeal, "a", 5)
+	j3.Sealed, j3.FreezeSent = true, true
+	o3 := upObs("a", Active)
+	o3.Ack = ack(OpSeal, "a", false, 5)
+	got3, _ := UpdateStep(j3, o3)
+	if got3.Phase != UpRollback || got3.LockedAt.IsZero() || got3.MarkFaulty || got3.Result != reasonNoSync {
+		t.Fatalf("Gleichstand gescheitert nach Einfrieren: %q %v %v %q", got3.Phase, got3.LockedAt, got3.MarkFaulty, got3.Result)
 	}
 }

@@ -278,24 +278,6 @@ func TestHandCommandsRejectedWhileJobOpen(t *testing.T) {
 	_ = fn
 }
 
-// I6: Übernahme erzwingen bleibt Notweg, wenn der Partner nicht zu sehen ist.
-func TestForceTakeoverWhileJobOpen(t *testing.T) {
-	fn := newFakeNet()
-	fn.setView("a", seenView(message{Role: "passiv", Term: 1, Ver: "test", Sees: []string{"b"}}))
-	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1, PartnerVersion: "test"}, fn)
-	d.tick(context.Background())
-	d.up.job = rollingJob(ha.UpLocked, 3)
-	if err := d.command("force_takeover"); err == nil || !strings.Contains(err.Error(), "update abort") {
-		t.Fatalf("Partner sichtbar: %v", err)
-	}
-	d.mu.Lock()
-	d.views = map[string]peerView{}
-	d.mu.Unlock()
-	if err := d.command("force_takeover"); err != nil {
-		t.Fatalf("Partner nicht sichtbar (Notweg): %v", err)
-	}
-}
-
 // I5: Commit wird geprüft bzw. vervollständigt; ohne Alt-Stände kein Auftrag.
 func TestResolveCommit(t *testing.T) {
 	t.Setenv("PDH_HA_AGENT_CMD", "")
@@ -428,5 +410,105 @@ func TestHealthNoteStaleAfterCommitChange(t *testing.T) {
 	}
 	if v := d.selfPDHVersionLocked(d.wall()); v != "" {
 		t.Fatalf("eigene Version nach dem Wechsel: %q", v)
+	}
+}
+
+// N2: Auftrag offen, beide Server passiv (etwa nach „Rollentausch
+// fehlgeschlagen“ in Beobachtung): Übernahme erzwingen ist der Weg heraus.
+// Ist der Partner aktiv, lehnt die bestehende Regel ab.
+func TestForceTakeoverWhileJobOpen(t *testing.T) {
+	fn := newFakeNet()
+	fn.setView("a", seenView(message{Role: "passiv", Term: 1, Ver: "test", Sees: []string{"b"}}))
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1, PartnerVersion: "test"}, fn)
+	d.tick(context.Background())
+	d.up.job = rollingJob(ha.UpLocked, 3)
+	if err := d.command("force_takeover"); err != nil {
+		t.Fatalf("beide passiv, Auftrag offen: %v", err)
+	}
+	if err := d.command("swap"); err == nil {
+		t.Fatal("Rollentausch am passiven Server angenommen")
+	}
+	fn.setView("a", seenView(message{Role: "aktiv", Term: 1, Ver: "test", Sees: []string{"b"}}))
+	d.tick(context.Background())
+	d.up.job = rollingJob(ha.UpLocked, 3)
+	if err := d.command("force_takeover"); err == nil {
+		t.Fatal("Übernahme erzwingen trotz aktivem Partner angenommen")
+	}
+}
+
+// N1: Läuft auf B noch das Einspielen dieses Auftrags (eigener Lauf oder
+// Agent beschäftigt), ist ein „schon zurückgedreht“ nur Schein – der Agent
+// wird gefragt (wartet dort auf das Ende des Laufs).
+func TestUpdateRollbackNotShortcutWhileInstalling(t *testing.T) {
+	for _, c := range []string{"eigener Lauf", "Agent beschäftigt"} {
+		t.Run(c, func(t *testing.T) {
+			d, _ := upActive(t)
+			d.commit = "o1"
+			j := rollingJob(ha.UpRollback, 3)
+			d.mu.Lock()
+			setHealth(d, pdhHealth{Status: 200, Version: "0.9.0", MigrationsOK: boolp(true)})
+			if c == "eigener Lauf" {
+				d.up.running[j.ID+"|"+ha.OpInstall+"|2"] = true
+			} else {
+				agentOf(d).busy = true
+			}
+			d.mu.Unlock()
+			if err := d.runUpdateOp(context.Background(), j, ha.OpRollback, "o1"); err != nil {
+				t.Fatal(err)
+			}
+			if got := agentOf(d).list(); !slices.Equal(got, []string{"rollback o1 false"}) {
+				t.Fatalf("Agent nicht gefragt: %v", got)
+			}
+		})
+	}
+}
+
+// N4: Scheitert vor dem Einsetzen nur die Freigabe der Abschottung, trägt
+// das Ergebnis „nicht an X“.
+func TestSequentialUnsealFailureNoFault(t *testing.T) {
+	d, _ := upActive(t)
+	a, _ := stoppedActor(t, stStandby)
+	if err := writePGVersion(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeStandbySignal(a); err != nil { // gestoppter Standby: unfence scheitert
+		t.Fatal(err)
+	}
+	d.act = a
+	j := rollingJob(ha.UpLocked, 3)
+	j.Kind, j.First, j.Second, j.Sealed = ha.UpdateSequential, "a", "b", true
+	err := d.runUpdateOp(context.Background(), j, ha.OpInstall, "x1")
+	var nf noFaultError
+	if err == nil || !errors.As(err, &nf) {
+		t.Fatalf("Fehler der Freigabe nicht als „nicht an X“ gekennzeichnet: %v", err)
+	}
+	if got := agentOf(d).list(); len(got) != 0 {
+		t.Fatalf("trotz gescheiterter Freigabe eingesetzt: %v", got)
+	}
+}
+
+// N5: Nach dem Laden eines offenen Auftrags trägt der erste eigene Schritt
+// FreshStart; danach nicht mehr.
+func TestUpdateFreshStartAfterLoad(t *testing.T) {
+	d, _ := upActive(t)
+	j := rollingJob(ha.UpLocked, 3)
+	j.Kind, j.First, j.Second, j.Sealed = ha.UpdateSequential, "a", "b", true
+	j.LockedAt, j.PhaseAt = time.Now(), time.Now()
+	j.WaitOp, j.WaitNode, j.WaitSeq = ha.OpFreeze, "b", 3
+	if err := d.st.saveJob(j); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	d.loadUpdateLocked()
+	fresh := d.up.freshStart
+	d.mu.Unlock()
+	if fresh != j.ID {
+		t.Fatalf("freshStart = %q", fresh)
+	}
+	d.tick(context.Background())
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.up.freshStart != "" || d.up.job.WaitOp != ha.OpThaw {
+		t.Fatalf("nach dem ersten Schritt: fresh %q WaitOp %q", d.up.freshStart, d.up.job.WaitOp)
 	}
 }
