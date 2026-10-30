@@ -1079,12 +1079,12 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
   <div class="mirror-band {{if $ok}}warn{{else}}err{{end}}" role="status">
     <i class="ti {{if $ok}}ti-eye{{else}}ti-alert-triangle{{end}}"></i>
     <b>{{t "Spiegel – nur lesen"}}</b>
-    {{- if .Restricted}}<span>· {{t "Spiegel wartet auf das Update des aktiven Servers"}}</span>
+    {{- if .Restricted}}<span>· {{if .Reason}}{{t .Reason}}{{else}}{{t "Spiegel wartet auf das Update des aktiven Servers"}}{{end}}</span>
     {{- else if .ActiveSeen}}<span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
       {{- with .ActiveURL}}<span>· {{t "Aktiver Server:"}} <span class="mb-host" translate="no">{{$m.ActiveHost}}</span></span> <a class="btn btn-small" href="{{.}}">{{t "öffnen"}}</a>{{end}}
     {{- else if not .Known}}<span>· {{t "Status des aktiven Servers unbekannt"}}</span><span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
     {{- else}}<span>· {{if .DataAt}}{{t "Aktiver Server nicht erreichbar – Daten vom %s" .DataAt}}{{else}}{{t "Aktiver Server nicht erreichbar"}} · {{t "Datenstand unbekannt"}}{{end}}</span>{{end}}
-    {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=ha"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
+    {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=dr"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
   </div>
   {{end}}
   <div class="main">

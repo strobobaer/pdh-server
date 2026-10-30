@@ -369,10 +369,10 @@ func TestMirrorRestrictedRedirect(t *testing.T) {
 	info := MirrorInfo{On: true, Restricted: true}
 	hd, calls, tok := mirrorGateTest(t, info, true, mirrorStatus(false))
 	rec := mirrorSessionGet(hd, tok, "/tickets", map[string]string{"Accept": "text/html"})
-	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/admin/server-config?tab=ha" {
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/admin/server-config?tab=dr" {
 		t.Fatalf("Admin /tickets: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	for _, p := range []string{"/admin/server-config", "/admin/server-config?tab=ha", "/admin/server-config/ha/join-script", "/logout"} {
+	for _, p := range []string{"/admin/server-config", "/admin/server-config?tab=dr", "/admin/server-config/ha/join-script", "/logout"} {
 		if rec := mirrorSessionGet(hd, tok, p, nil); rec.Code != http.StatusOK {
 			t.Fatalf("%s muss durch: %d %q", p, rec.Code, rec.Header().Get("Location"))
 		}
@@ -530,7 +530,7 @@ func TestMirrorBannerRendered(t *testing.T) {
 			t.Errorf("aktiv gesehen: %q fehlt", want)
 		}
 	}
-	if strings.Contains(out, "nicht erreichbar") || strings.Contains(out, "?tab=ha") {
+	if strings.Contains(out, "nicht erreichbar") || strings.Contains(out, "?tab=dr") {
 		t.Error("aktiv gesehen: kein Ausfall-Hinweis")
 	}
 	// Rückstand unbekannt
@@ -539,12 +539,12 @@ func TestMirrorBannerRendered(t *testing.T) {
 	}
 	// aktiver Server weg: rot, Admin mit Knopf zum Ausfallschutz
 	out = mirrorBannerPage(t, &MirrorBanner{Known: true, DataAt: "28.10. 06:49", Admin: true})
-	for _, want := range []string{"Aktiver Server nicht erreichbar – Daten vom 28.10. 06:49", "mirror-band err", `href="/admin/server-config?tab=ha"`} {
+	for _, want := range []string{"Aktiver Server nicht erreichbar – Daten vom 28.10. 06:49", "mirror-band err", `href="/admin/server-config?tab=dr"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("weg/Admin: %q fehlt", want)
 		}
 	}
-	if out := mirrorBannerPage(t, &MirrorBanner{Known: true, DataAt: "28.10. 06:49"}); strings.Contains(out, "?tab=ha") {
+	if out := mirrorBannerPage(t, &MirrorBanner{Known: true, DataAt: "28.10. 06:49"}); strings.Contains(out, "?tab=dr") {
 		t.Error("Nicht-Admin: kein Knopf zum Ausfallschutz")
 	}
 	if out := mirrorBannerPage(t, &MirrorBanner{Known: true}); !strings.Contains(out, "Aktiver Server nicht erreichbar") || !strings.Contains(out, "Datenstand unbekannt") {
@@ -552,7 +552,7 @@ func TestMirrorBannerRendered(t *testing.T) {
 	}
 	// Status unbekannt (pdh-ha nicht lesbar): orange statt rot, Admin mit Knopf
 	out = mirrorBannerPage(t, &MirrorBanner{Lag: "4 s", Admin: true})
-	for _, want := range []string{"Status des aktiven Servers unbekannt", "mirror-band warn", "Datenstand vor 4 s", `href="/admin/server-config?tab=ha"`} {
+	for _, want := range []string{"Status des aktiven Servers unbekannt", "mirror-band warn", "Datenstand vor 4 s", `href="/admin/server-config?tab=dr"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("unbekannt: %q fehlt", want)
 		}
@@ -560,7 +560,7 @@ func TestMirrorBannerRendered(t *testing.T) {
 	if strings.Contains(out, "nicht erreichbar") || strings.Contains(out, "mirror-band err") {
 		t.Error("unbekannt: nicht als Ausfall zeigen")
 	}
-	if out := mirrorBannerPage(t, &MirrorBanner{}); strings.Contains(out, "?tab=ha") {
+	if out := mirrorBannerPage(t, &MirrorBanner{}); strings.Contains(out, "?tab=dr") {
 		t.Error("unbekannt, Nicht-Admin: kein Knopf")
 	}
 	// auf dem Stand des aktiven Servers: „aktuell“ statt wachsendem Rückstand
@@ -839,5 +839,42 @@ func TestMirrorRestrictedBackground(t *testing.T) {
 	}
 	if *calls != 2 {
 		t.Fatalf("durchgereicht: %d", *calls)
+	}
+}
+
+func TestMirrorRestrictedURL(t *testing.T) {
+	if mirrorRestrictedURL != "/admin/server-config?tab=dr" {
+		t.Fatalf("mirrorRestrictedURL = %q", mirrorRestrictedURL)
+	}
+}
+
+func TestMirrorReasonInBand(t *testing.T) {
+	out := mirrorBannerPage(t, &MirrorBanner{Restricted: true, Reason: "Programm zu alt für diese Datenbank"})
+	if !strings.Contains(out, "Programm zu alt für diese Datenbank") || strings.Contains(out, "wartet auf das Update") {
+		t.Errorf("Grund fehlt im Band: %s", out)
+	}
+	out = mirrorBannerPage(t, &MirrorBanner{Restricted: true})
+	if !strings.Contains(out, "Spiegel wartet auf das Update des aktiven Servers") {
+		t.Error("ohne Grund: bisheriger Text")
+	}
+}
+
+// Die Migration 154 legt die Rechte an und vergibt sie an die richtigen Rollen
+// (Textprüfung der SQL-Datei, da der Test keine Datenbank braucht).
+func TestMaintenanceRightsMigration(t *testing.T) {
+	b, err := os.ReadFile("../../migrations/154_verbund_update.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		"'system.maintenance_window'", "Wartungsfenster einstellen",
+		"'system.maintenance_abort'", "Automatische Wartung abbrechen",
+		"'System & Sicherheit'", "o.key = 'system.server_config'",
+		"o.key = 'system.manage_roles'", "LIKE '%.admin'", "ON CONFLICT",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Migration 154: %q fehlt", want)
+		}
 	}
 }

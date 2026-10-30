@@ -166,7 +166,7 @@ func (m *mirrorWriter) Unwrap() http.ResponseWriter { return m.ResponseWriter }
 
 const (
 	mirrorLoginURL      = "/login?spiegel=1"
-	mirrorRestrictedURL = "/admin/server-config?tab=ha"
+	mirrorRestrictedURL = "/admin/server-config?tab=dr"
 	mirrorPeerTTL       = 5 * time.Second
 	mirrorPeerGrace     = 30 * time.Second // Abruffehler: letzter Erfolg gilt so lange weiter
 	mirrorPeerTimeout   = 2 * time.Second  // hängender Socket darf Anfragen nicht aufhalten
@@ -425,7 +425,7 @@ func (h *Handler) mirrorLoginHint(r *http.Request, d LoginData) LoginData {
 // Current: Spiegel hat alles vom aktiven Server eingespielt.
 type MirrorBanner struct {
 	Restricted, Known, ActiveSeen, Admin, Current bool
-	Lag, DataAt, ActiveURL                        string
+	Lag, DataAt, ActiveURL, Reason                string
 }
 
 // ActiveHost: Adresse für die Anzeige (ohne Schema und Schrägstrich).
@@ -497,6 +497,7 @@ func (h *Handler) mirrorBanner(r *http.Request) *MirrorBanner {
 	p := h.mirrorPeerState(r.Context())
 	b := &MirrorBanner{
 		Restricted: m.Restricted,
+		Reason:     m.Reason,
 		Known:      p.Known,
 		ActiveSeen: p.ActiveSeen,
 		Admin:      h.mirrorAdmin(r),

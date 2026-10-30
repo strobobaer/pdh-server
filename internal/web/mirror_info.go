@@ -5,6 +5,7 @@ package web
 type MirrorInfo struct {
 	On         bool
 	Restricted bool
+	Reason     string // Grund der Einschränkung (Anzeige im Band), leer = Schema hinkt hinterher
 }
 
 // SetMirror setzt den Spiegelmodus. Nur einmal beim Start, vor Routes() und
