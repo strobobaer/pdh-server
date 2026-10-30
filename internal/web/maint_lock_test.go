@@ -797,3 +797,105 @@ func TestLockNeverWithoutSource(t *testing.T) {
 		t.Fatalf("ohne Quelle: %+v %v", v, err)
 	}
 }
+
+// ── Wartungsbildschirm und Countdown-Band (Task 10) ─────────
+
+func maintScreenBody(t *testing.T, v ha.UpdateView, tok string, path string) string {
+	t.Helper()
+	h, _ := maintTestHandler(t, v)
+	hd, _ := maintChain(h)
+	rec := maintDo(hd, maintReq{method: "GET", path: path, tok: tok, hdr: htmlAccept})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Status %d: %s", rec.Code, rec.Body.String())
+	}
+	return rec.Body.String()
+}
+
+func TestMaintScreenRender(t *testing.T) {
+	adm := maintScreenBody(t, lockedView(), maintToken(t, "admin", time.Now()), "/wartung")
+	for _, want := range []string{
+		"Automatische Wartung läuft", "0.77.7 → 0.77.8",
+		"Abmelden", "Rollentausch", "Datenbank aktualisieren", "Freigabe", // Schrittleiste
+		`class="cur"`, `width:20%`, "Rollentausch läuft", "25 min",
+		`dataset.style`, `dataset.palette`, `data-style="fiori"`,
+		`/wartung/status`, `no-store`, `action="/wartung/abbrechen"`,
+		"Wartung abbrechen und bisherige Version", "Wartung beendet", "Server wird neu gestartet",
+	} {
+		if !strings.Contains(adm, want) {
+			t.Errorf("Administrator-Bildschirm ohne %q", want)
+		}
+	}
+	usr := maintScreenBody(t, lockedView(), maintToken(t, "u1", time.Now()), "/wartung")
+	if strings.Contains(usr, `action="/wartung/abbrechen"`) || !strings.Contains(usr, `href="/wartung/anmelden"`) ||
+		!strings.Contains(usr, "Als Administrator anmelden") {
+		t.Error("ohne Recht: Knopf oder Verweis falsch")
+	}
+	// Englisch: Texte aus dem Katalog
+	h, _ := maintTestHandler(t, lockedView())
+	hd, _ := maintChain(h)
+	rec := maintDo(hd, maintReq{method: "GET", path: "/wartung", hdr: map[string]string{"Accept": "text/html", "Accept-Language": "en"}})
+	if b := rec.Body.String(); !strings.Contains(b, "Automatic maintenance in progress") || !strings.Contains(b, `lang="en"`) {
+		t.Errorf("englischer Bildschirm: %s", b)
+	}
+}
+
+func TestMaintScreenRollingBack(t *testing.T) {
+	v := lockedView()
+	v.RollingBack = true
+	b := maintScreenBody(t, v, maintToken(t, "u1", time.Now()), "/wartung")
+	if !strings.Contains(b, "Wartung wird rückgängig gemacht – die bisherige Version wird wiederhergestellt") {
+		t.Error("kein Hinweis auf Rückgängig")
+	}
+	if strings.Contains(b, "Automatische Wartung läuft") {
+		t.Error("alte Überschrift bei Rückgängig")
+	}
+}
+
+func TestMaintScreenMapsKnownTexts(t *testing.T) {
+	v := lockedView()
+	v.Text = "Rollentausch läuft"
+	h, _ := maintTestHandler(t, v)
+	hd, _ := maintChain(h)
+	rec := maintDo(hd, maintReq{method: "GET", path: "/wartung", hdr: map[string]string{"Accept": "text/html", "Accept-Language": "en"}})
+	if strings.Contains(rec.Body.String(), "Rollentausch läuft") {
+		t.Error("bekannter Phasentext blieb deutsch")
+	}
+}
+
+func TestMaintStatusCountdownOutsideLock(t *testing.T) {
+	until := time.Now().Add(90 * time.Second)
+	h, _ := maintTestHandler(t, ha.UpdateView{Active: true, CountdownUntil: until})
+	hd, _ := maintPlain(h)
+	rec := maintDo(hd, maintReq{method: "GET", path: "/wartung/status"})
+	var m map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["locked"] != false || m["countdown_until"] == nil {
+		t.Fatalf("Status: %v", m)
+	}
+	if _, ok := m["from_version"]; ok {
+		t.Error("Versionen außerhalb der Sperre")
+	}
+	// kein Countdown: Feld fehlt
+	h2, _ := maintTestHandler(t, ha.UpdateView{Active: true})
+	hd2, _ := maintPlain(h2)
+	rec = maintDo(hd2, maintReq{method: "GET", path: "/wartung/status"})
+	if strings.Contains(rec.Body.String(), "countdown_until") {
+		t.Errorf("Feld ohne Countdown: %s", rec.Body.String())
+	}
+}
+
+func TestBaseHasMaintBand(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "web", "templates", "base.gohtml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, want := range []string{`id="maint-band"`, `/wartung/status`, `pdhQuiet`, `countdown_until`,
+		`html.pdh-embedded .maint-band`, `Automatische Wartung in`, `location.href='/wartung'`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("base.gohtml ohne %q", want)
+		}
+	}
+}

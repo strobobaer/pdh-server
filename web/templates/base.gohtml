@@ -228,6 +228,15 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 .mirror-band .mb-ha{margin-left:auto}
 @media (max-width:760px){.mirror-band{padding:6px 12px;font-size:12.5px}.mirror-band .mb-ha{margin-left:0}}
 html.pdh-embedded .mirror-band{display:none} /* eingebettete Ansicht: Band zeigt die äußere Seite */
+/* Countdown vor der automatischen Wartung (Update im Verbund) – auf allen Seiten sichtbar */
+.maint-band{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 22px;font-size:13px;line-height:1.4;flex-shrink:0;border-bottom:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 16%,var(--bg));color:var(--text)}
+.maint-band[hidden]{display:none}
+.maint-band.soon{border-color:var(--red);background:color-mix(in srgb,var(--red) 16%,var(--bg))}
+.maint-band > i{font-size:16px;color:var(--amber)}
+.maint-band.soon > i{color:var(--red)}
+.maint-band .mb-t{font-variant-numeric:tabular-nums}
+@media (max-width:760px){.maint-band{padding:6px 12px;font-size:12.5px}}
+html.pdh-embedded .maint-band{display:none}
 /* ── Context ── */
 .context{background:var(--bg2);border-left:1px solid var(--border);display:grid;grid-template-columns:44px 1fr;overflow:hidden;min-width:0}
 .ctx-tabs{border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 5px;background:var(--bg2)}
@@ -1087,6 +1096,10 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
     {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=dr"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
   </div>
   {{end}}
+  <div class="maint-band" id="maint-band" role="status" hidden>
+    <i class="ti ti-tool"></i>
+    <b id="maint-band-text"></b>
+  </div>
   <div class="main">
     <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{or .Brand.AppName "PDH"}} · {{.Title}}</span><span class="pb-date" data-print-date></span></div>
     {{block "content" .}}{{end}}
@@ -2984,6 +2997,45 @@ function pdhReservedTag(p, kind, ref, reloadName){
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS});
   scan(document.body);
+})();
+</script>
+
+<script>
+// Hinweis-Band vor der automatischen Wartung: fragt alle 15 s /wartung/status (ohne Fortschrittsbalken),
+// zählt bei laufendem Countdown sekündlich herunter und springt bei Sperre auf den Wartungsbildschirm
+(function(){
+  const band = document.getElementById('maint-band');
+  if(!band || document.documentElement.classList.contains('pdh-embedded')) return;
+  const txt = document.getElementById('maint-band-text');
+  const tpl = {{t "Automatische Wartung in %s min – bitte Eingaben speichern"}};
+  let until = 0, skew = 0, tick = null, timer = null;
+  const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  function hide(){ band.hidden = true; until = 0; if(tick){ clearInterval(tick); tick = null; } }
+  function draw(){
+    const left = Math.round((until - (Date.now() + skew)) / 1000);
+    if(left <= 0){ txt.textContent = tpl.replace('%s', '0:00'); return; }
+    txt.textContent = tpl.replace('%s', fmt(left));
+    band.classList.toggle('soon', left <= 30);
+  }
+  function schedule(ms){ clearTimeout(timer); timer = setTimeout(poll, ms); }
+  async function poll(){
+    if(document.hidden){ schedule(15000); return; }
+    try {
+      const r = await fetch('/wartung/status', {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
+      const v = await r.json();
+      if(v.locked){ location.href='/wartung'; return; }
+      const d = Date.parse(r.headers.get('Date') || '');
+      skew = isNaN(d) ? 0 : d - Date.now();
+      const u = v.countdown_until ? Date.parse(v.countdown_until) : 0;
+      if(u && u > Date.now() + skew){
+        until = u; band.hidden = false; draw();
+        if(!tick) tick = setInterval(draw, 1000);
+      } else if(!(until && Date.now() + skew - until < 60000)) hide(); // abgelaufen: Sperre folgt in Kürze
+    } catch(e) { /* Server startet vielleicht neu – weiter fragen */ }
+    schedule(until ? 2000 : 15000);
+  }
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) poll(); });
+  schedule(3000);
 })();
 </script>
 

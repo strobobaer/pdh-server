@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -439,7 +440,12 @@ func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	if !v.Locked {
-		_ = json.NewEncoder(w).Encode(map[string]bool{"locked": false, "active": v.Active})
+		out := map[string]any{"locked": false, "active": v.Active}
+		// Countdown läuft: das Band auf allen Seiten zählt bis dahin herunter
+		if v.CountdownUntil.After(h.maintNow()) {
+			out["countdown_until"] = v.CountdownUntil.UTC().Format(time.RFC3339)
+		}
+		_ = json.NewEncoder(w).Encode(out)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(v)
@@ -522,8 +528,7 @@ func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.Up
 }
 
 // ── Wartungsbildschirm ──────────────────────────────────────
-// Vorerst schlicht; Task 10 ersetzt renderMaintScreen durch die gestaltete
-// Vorlage maint_lock.gohtml.
+// Vorlage web/templates/maint_lock.gohtml (eigener Kopf wie login.gohtml).
 
 // maintScreenData: Inhalt des Bildschirms; Msg/Err schon übersetzt.
 type maintScreenData struct {
@@ -538,42 +543,108 @@ type maintStepView struct {
 	Done, Cur bool
 }
 
+// maintScreenPage: Seitendaten der Vorlage; Texte aus pdh-ha sind schon übersetzt.
 type maintScreenPage struct {
-	Lang, Style, Palette  string
-	ThemeCSS              template.CSS
+	Lang                  string
+	Brand                 Branding
 	Title, Versions, Text string
 	Steps                 []maintStepView
-	Percent               int
+	Percent, RemainingS   int
 	Remaining             string
+	RollingBack           bool
 	Admin, ShowLogin      bool
 	Msg, Err              string
-	TAbort, TAbortConfirm string
-	TLogin, TLoginLink    string
-	TEmail, TPassword     string
-	TRestart, TDone       string
-	TProgress             string
+}
+
+func (p maintScreenPage) Language() string { return p.Lang }
+
+// maintText übersetzt die deutschen Phasentexte und Schritte aus pdh-ha
+// (internal/ha/update_view.go); Unbekanntes bleibt unverändert.
+func maintText(lang, s string) string {
+	switch s {
+	case "Abmelden":
+		return tr(lang, "Abmelden")
+	case "Rollentausch":
+		return tr(lang, "Rollentausch")
+	case "Neustart":
+		return tr(lang, "Neustart")
+	case "Datenbank aktualisieren":
+		return tr(lang, "Datenbank aktualisieren")
+	case "Prüfen":
+		return tr(lang, "Prüfen")
+	case "Freigabe":
+		return tr(lang, "Freigabe")
+	case "Neue Version wird im Hintergrund gebaut":
+		return tr(lang, "Neue Version wird im Hintergrund gebaut")
+	case "Neue Version wird auf dem Partner eingespielt":
+		return tr(lang, "Neue Version wird auf dem Partner eingespielt")
+	case "Vorbereitung wird geprüft":
+		return tr(lang, "Vorbereitung wird geprüft")
+	case "Partner wird geprüft":
+		return tr(lang, "Partner wird geprüft")
+	case "Abmeldung in Kürze – bitte Arbeit speichern":
+		return tr(lang, "Abmeldung in Kürze – bitte Arbeit speichern")
+	case "Server startet mit der neuen Version neu":
+		return tr(lang, "Server startet mit der neuen Version neu")
+	case "Rollentausch läuft":
+		return tr(lang, "Rollentausch läuft")
+	case "Neuer aktiver Server wird geprüft":
+		return tr(lang, "Neuer aktiver Server wird geprüft")
+	case "Neue Version wird geprüft":
+		return tr(lang, "Neue Version wird geprüft")
+	case "Freigabe – Spiegel holt auf":
+		return tr(lang, "Freigabe – Spiegel holt auf")
+	case "Partner zieht die neue Version nach":
+		return tr(lang, "Partner zieht die neue Version nach")
+	case "Update wird zurückgesetzt":
+		return tr(lang, "Update wird zurückgesetzt")
+	case "Rollentausch wird zurückgesetzt":
+		return tr(lang, "Rollentausch wird zurückgesetzt")
+	case "Update abgeschlossen":
+		return tr(lang, "Update abgeschlossen")
+	case "Rollentausch abgeschlossen":
+		return tr(lang, "Rollentausch abgeschlossen")
+	case "Update abgebrochen":
+		return tr(lang, "Update abgebrochen")
+	case "Rollentausch abgebrochen":
+		return tr(lang, "Rollentausch abgebrochen")
+	}
+	return s
+}
+
+// maintScreenTemplate lädt die Vorlage: mit dem geladenen Satz (Betrieb) oder
+// eigenständig (Tests ohne Handler-Vorlagen; Arbeitsverzeichnis egal).
+func (h *Handler) maintScreenTemplate(lang string) (*template.Template, error) {
+	var t *template.Template
+	if h.tmpl != nil {
+		c, err := h.tmpl.Clone()
+		if err != nil {
+			return nil, err
+		}
+		t = bindLang(c, lang)
+	} else {
+		t = bindLang(template.New("maint_lock.gohtml").Funcs(TemplateFuncs()), lang)
+	}
+	for _, p := range []string{"web/templates/maint_lock.gohtml", "../../web/templates/maint_lock.gohtml"} {
+		if _, err := os.Stat(p); err == nil {
+			return t.ParseFiles(p)
+		}
+	}
+	return nil, fmt.Errorf("vorlage maint_lock.gohtml nicht gefunden")
 }
 
 func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, status int, d maintScreenData) {
 	lang := h.requestLang(r)
-	b := h.branding()
 	v := d.View
 	p := maintScreenPage{
-		Lang: lang, Style: b.StyleID(), Palette: b.ThemeID(), ThemeCSS: b.ThemeCSS(),
-		Title:         tr(lang, "Automatische Wartung läuft"),
-		Text:          tr(lang, v.Text),
-		Percent:       min(max(v.Percent, 0), 100),
-		Admin:         d.Admin,
-		ShowLogin:     d.ShowLogin,
-		TAbort:        tr(lang, "Abbrechen und zurücksetzen"),
-		TAbortConfirm: tr(lang, "Wartung wirklich abbrechen und die bisherige Version wiederherstellen?"),
-		TLogin:        tr(lang, "Anmelden"),
-		TLoginLink:    tr(lang, "Als Administrator anmelden"),
-		TEmail:        tr(lang, "E-Mail oder Benutzername"),
-		TPassword:     tr(lang, "Passwort"),
-		TRestart:      tr(lang, "Server wird neu gestartet …"),
-		TDone:         tr(lang, "Wartung beendet"),
-		TProgress:     tr(lang, "Fortschritt"),
+		Lang: lang, Brand: h.branding(),
+		Title:       tr(lang, "Automatische Wartung läuft"),
+		Text:        maintText(lang, v.Text),
+		Percent:     min(max(v.Percent, 0), 100),
+		RemainingS:  max(v.RemainingS, 0),
+		RollingBack: v.RollingBack,
+		Admin:       d.Admin,
+		ShowLogin:   d.ShowLogin,
 	}
 	if v.RollingBack {
 		p.Title = tr(lang, "Wartung wird rückgängig gemacht – die bisherige Version wird wiederhergestellt")
@@ -582,109 +653,25 @@ func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, stat
 		p.Versions = v.FromVersion + " → " + v.ToVersion
 	}
 	for i, s := range v.Steps {
-		p.Steps = append(p.Steps, maintStepView{Name: tr(lang, s), Done: i < v.Step, Cur: i == v.Step})
+		p.Steps = append(p.Steps, maintStepView{Name: maintText(lang, s), Done: i < v.Step, Cur: i == v.Step})
 	}
 	if v.RemainingS > 0 {
 		p.Remaining = tr(lang, "Spätestens in %d min wieder verfügbar", (v.RemainingS+59)/60)
 	}
 	p.Msg, p.Err = d.Msg, d.Err
+	t, err := h.maintScreenTemplate(lang)
+	var buf bytes.Buffer
+	if err == nil {
+		err = t.ExecuteTemplate(&buf, "maint_lock.gohtml", p)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Retry-After", strconv.Itoa(maintRetryAfter))
 	w.WriteHeader(status)
-	if err := maintScreenTmpl.Execute(w, p); err != nil {
+	if err != nil {
 		componentLog("wartung").Error().Err(err).Msg("wartungsbildschirm")
-		fmt.Fprint(w, esc(p.Title))
+		fmt.Fprint(w, "<!DOCTYPE html><meta charset=utf-8><title>PDH</title><p>"+esc(p.Title)+"</p>")
+		return
 	}
+	_, _ = w.Write(buf.Bytes())
 }
-
-var maintScreenTmpl = template.Must(template.New("maint-lock").Parse(`<!DOCTYPE html>
-<html lang="{{.Lang}}">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="referrer" content="no-referrer">
-<title>PDH – {{.Title}}</title>
-<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f1117;--bg2:#1a1d27;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--shadow-card:none;--font:system-ui,sans-serif}
-body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-card);padding:28px;width:100%;max-width:520px}
-h1{font-size:20px;font-weight:600;margin-bottom:6px}
-.ver{color:var(--muted);font-size:14px;margin-bottom:18px}
-.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0 14px}
-.bar>div{height:100%;background:var(--accent)}
-ol{list-style:none;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-bottom:14px}
-li.done{color:var(--text)}
-li.cur{color:var(--accent);font-weight:600}
-.text{font-size:14px;margin-bottom:6px}
-.muted{color:var(--muted);font-size:13px}
-.msg,.err{border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;margin:14px 0}
-.err{border-color:#ef4444}
-form{margin-top:18px}
-label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font:inherit}
-.btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:6px;padding:9px 14px;font:inherit;cursor:pointer;margin-top:12px}
-a{color:var(--accent)}
-.foot{margin-top:20px;font-size:13px}
-html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9}
-html[data-style="fiori"] .card{border:0;border-radius:16px;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
-html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
-</style>
-<style>{{.ThemeCSS}}</style>
-<script>document.documentElement.dataset.palette = {{.Palette}}; document.documentElement.dataset.style = {{.Style}};</script>
-</head>
-<body>
-<main class="card">
-<h1 id="mt-title">{{.Title}}</h1>
-{{if .Versions}}<div class="ver">{{.Versions}}</div>{{end}}
-<div class="muted">{{.TProgress}}: <span id="mt-pct">{{.Percent}}</span> %</div>
-<div class="bar"><div id="mt-bar" style="width:{{.Percent}}%"></div></div>
-{{if .Steps}}<ol>{{range .Steps}}<li class="{{if .Cur}}cur{{else if .Done}}done{{end}}">{{.Name}}</li>{{end}}</ol>{{end}}
-<p class="text" id="mt-text">{{.Text}}</p>
-{{if .Remaining}}<p class="muted">{{.Remaining}}</p>{{end}}
-<p class="muted" id="mt-state" hidden></p>
-{{if .Msg}}<div class="msg">{{.Msg}}</div>{{end}}
-{{if .Err}}<div class="err">{{.Err}}</div>{{end}}
-{{if .Admin}}
-<form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{.TAbortConfirm}})">
-<button class="btn" type="submit">{{.TAbort}}</button>
-</form>
-{{else if .ShowLogin}}
-<form method="post" action="/wartung/anmelden">
-<label for="mt-email">{{.TEmail}}</label><input id="mt-email" name="email" autocomplete="username" required>
-<label for="mt-pw">{{.TPassword}}</label><input id="mt-pw" name="password" type="password" autocomplete="current-password" required>
-<button class="btn" type="submit">{{.TLogin}}</button>
-</form>
-{{else}}
-<p class="foot"><a href="/wartung/anmelden">{{.TLoginLink}}</a></p>
-{{end}}
-</main>
-<script>
-(function(){
-  var admin = {{.Admin}}, loginForm = {{.ShowLogin}}, last = "";
-  function poll(){
-    fetch("/wartung/status", {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(v){
-      document.getElementById("mt-state").hidden = true;
-      if (!v.locked) {
-        document.getElementById("mt-title").textContent = {{.TDone}};
-        location.href = admin ? "/" : "/login";
-        return;
-      }
-      var key = v.phase + "|" + v.step + "|" + v.rolling_back;
-      if (last && key !== last && !loginForm) { location.href = "/wartung"; return; }
-      last = key;
-      document.getElementById("mt-pct").textContent = v.percent;
-      document.getElementById("mt-bar").style.width = v.percent + "%";
-    }).catch(function(){
-      var s = document.getElementById("mt-state");
-      s.textContent = {{.TRestart}};
-      s.hidden = false;
-    });
-  }
-  setInterval(poll, 2000);
-})();
-</script>
-</body>
-</html>`))

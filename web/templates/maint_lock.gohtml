@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>PDH – {{.Title}}</title>
+{{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml">{{end}}
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--red:#ef4444;--shadow-card:none;--font:'DM Sans',system-ui,sans-serif}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-card);padding:32px;width:100%;max-width:560px}
+.head{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.gear{width:40px;height:40px;flex:none;color:var(--accent);animation:spin 6s linear infinite}
+.back .gear{animation-direction:reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.gear{animation:none}}
+h1{font-size:19px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.ver{display:inline-block;margin:8px 0 22px 54px;padding:2px 10px;border:1px solid var(--border);border-radius:999px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pct{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.bar>div{height:100%;background:var(--accent);border-radius:4px;transition:width .6s ease}
+.steps{list-style:none;display:flex;gap:0;margin:22px 0 18px}
+.steps li{flex:1;min-width:0;text-align:center;font-size:12px;color:var(--muted);position:relative;padding-top:20px;overflow-wrap:anywhere;hyphens:auto}
+.steps li::before{content:"";position:absolute;top:4px;left:50%;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--border);z-index:1}
+.steps li::after{content:"";position:absolute;top:8px;left:-50%;width:100%;height:2px;background:var(--border)}
+.steps li:first-child::after{display:none}
+.steps li.done{color:var(--text)}
+.steps li.done::before,.steps li.done::after,.steps li.cur::after{background:var(--accent)}
+.steps li.cur{color:var(--accent);font-weight:600}
+.steps li.cur::before{background:var(--bg2);box-shadow:0 0 0 2px var(--accent)}
+.text{font-size:15px;margin-bottom:6px}
+.muted{color:var(--muted);font-size:13px}
+.msg,.err{border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;margin:16px 0 0;line-height:1.5}
+.err{border-color:var(--red)}
+form{margin-top:20px}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 5px}
+input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 13px;color:var(--text);font:inherit;font-size:14px;outline:0}
+input:focus{border-color:var(--accent)}
+.btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-size:14px;cursor:pointer;margin-top:12px}
+.btn:hover{opacity:.9}
+.btn.danger{background:transparent;color:var(--text);border:1px solid var(--border)}
+.btn.danger:hover{border-color:var(--red);color:var(--red);opacity:1}
+a{color:var(--accent)}
+.foot{margin-top:22px;font-size:13px}
+@media (max-width:480px){.card{padding:22px 18px}.ver{margin-left:0}.steps li{font-size:11px}.btn{width:100%}}
+</style>
+<style>{{.Brand.ThemeCSS}}</style>
+{{with .Brand.DefaultLook.FontHref}}<link rel="stylesheet" href="{{.}}">{{end}}
+<style>{{.Brand.DefaultLook.CSS}} body{zoom:var(--ui-scale)}</style>
+<!-- Farbschema und Design-Stil: Firmenstandard (wie die Anmeldeseite) -->
+<script>document.documentElement.dataset.palette = {{.Brand.ThemeID}}; document.documentElement.dataset.style = {{.Brand.StyleID}};</script>
+<style>
+html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9}
+html[data-style="fiori"] .card{border:0;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"] h1{font-weight:700}
+html[data-style="fiori"] .bar{border-radius:2px}
+html[data-style="fiori"] .bar>div{border-radius:2px}
+html[data-style="fiori"] .steps li.cur{font-weight:700}
+html[data-style="fiori"] input{border:1px solid #556b82;border-radius:4px;background:#fff}
+html[data-style="fiori"] input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
+html[data-style="fiori"] .err{color:#aa0808}
+</style>
+</head>
+<body>
+<main class="card{{if .RollingBack}} back{{end}}">
+  <div class="head">
+    <svg class="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <h1 id="mt-title" role="status">{{.Title}}</h1>
+  </div>
+  {{if .Versions}}<div class="ver" translate="no">{{.Versions}}</div>{{end}}
+  <div class="pct"><span>{{t "Fortschritt"}}</span><span><span id="mt-pct">{{.Percent}}</span> %</span></div>
+  <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{.Percent}}" id="mt-prog"><div id="mt-bar" style="width:{{.Percent}}%"></div></div>
+  {{if .Steps}}<ol class="steps">{{range .Steps}}<li class="{{if .Cur}}cur{{else if .Done}}done{{end}}"{{if .Cur}} aria-current="step"{{end}}>{{.Name}}</li>{{end}}</ol>{{end}}
+  <p class="text" id="mt-text">{{.Text}}</p>
+  <p class="muted" id="mt-rem"{{if not .Remaining}} hidden{{end}}>{{.Remaining}}</p>
+  <p class="muted" id="mt-state" role="status" hidden></p>
+  {{if .Msg}}<div class="msg" role="status">{{.Msg}}</div>{{end}}
+  {{if .Err}}<div class="err" role="alert">{{.Err}}</div>{{end}}
+  {{if .Admin}}
+  <form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{t "Wartung abbrechen und bisherige Version wiederherstellen?"}})">
+    <button class="btn danger" type="submit">{{t "Abbrechen und zurücksetzen"}}</button>
+  </form>
+  {{else if .ShowLogin}}
+  <form method="post" action="/wartung/anmelden">
+    <label for="mt-email">{{t "E-Mail oder Benutzername"}}</label><input id="mt-email" name="email" autocomplete="username" required autofocus>
+    <label for="mt-pw">{{t "Passwort"}}</label><input id="mt-pw" name="password" type="password" autocomplete="current-password" required>
+    <button class="btn" type="submit">{{t "Anmelden"}}</button>
+  </form>
+  {{else}}
+  <p class="foot"><a href="/wartung/anmelden">{{t "Als Administrator anmelden"}}</a></p>
+  {{end}}
+</main>
+<script>
+(function(){
+  var admin = {{.Admin}}, loginForm = {{.ShowLogin}}, last = "", gone = false;
+  var remS = {{.RemainingS}}, remAt = Date.now();
+  var remTpl = {{t "Spätestens in %d min wieder verfügbar"}};
+  function $(id){ return document.getElementById(id); }
+  function showRem(){
+    var el = $("mt-rem"); if (!el || remS <= 0) return;
+    var left = Math.max(0, remS - Math.round((Date.now() - remAt) / 1000));
+    el.textContent = remTpl.replace("%d", Math.max(1, Math.ceil(left / 60)));
+  }
+  function poll(){
+    if (gone) return;
+    fetch("/wartung/status", {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(v){
+      $("mt-state").hidden = true;
+      if (!v.locked) {
+        gone = true;
+        $("mt-title").textContent = {{t "Wartung beendet"}};
+        setTimeout(function(){ location.href = admin ? "/" : "/login"; }, 3000);
+        return;
+      }
+      // Schritt oder Phase gewechselt: Seite neu laden (Texte kommen übersetzt vom Server)
+      var key = v.phase + "|" + v.step + "|" + v.rolling_back;
+      if (last && key !== last && !loginForm) { location.href = "/wartung"; return; }
+      last = key;
+      var p = Math.min(100, Math.max(0, v.percent | 0));
+      $("mt-pct").textContent = p;
+      $("mt-bar").style.width = p + "%";
+      $("mt-prog").setAttribute("aria-valuenow", p);
+      remS = v.remaining_s | 0; remAt = Date.now(); showRem();
+    }).catch(function(){
+      var s = $("mt-state");
+      s.textContent = {{t "Server wird neu gestartet …"}};
+      s.hidden = false;
+    });
+  }
+  setInterval(poll, 2000);
+  setInterval(showRem, 10000);
+})();
+</script>
+</body>
+</html>
