@@ -66,9 +66,10 @@ type opMark struct {
 }
 
 type healthNote struct {
-	h   pdhHealth
-	err error
-	at  time.Time
+	h      pdhHealth
+	err    error
+	at     time.Time
+	commit string // eigener Stand bei der Abfrage – wechselt er, gilt die Antwort nicht mehr
 }
 
 func newUpState() upState {
@@ -756,18 +757,30 @@ func (d *daemon) probeHealthLocked(ctx context.Context) {
 	if d.up.healthFn == nil || !d.up.healthBusy.CompareAndSwap(false, true) {
 		return
 	}
-	fn, at := d.up.healthFn, d.wall()
+	fn, at, commit := d.up.healthFn, d.wall(), d.commit
 	go func() {
 		defer d.up.healthBusy.Store(false)
 		h, err := fn(ctx)
-		d.up.health.Store(&healthNote{h: h, err: err, at: at})
+		d.up.health.Store(&healthNote{h: h, err: err, at: at, commit: commit})
 	}()
+}
+
+// healthLocked: letzte Antwort von /health, wenn sie frisch ist und zum
+// laufenden Stand gehört. Nach einem Wechsel des Stands (Einspielen) zählt
+// eine ältere Antwort nicht – sonst übernähme der Auftrag die Version des
+// noch alten pdh als Zielversion.
+func (d *daemon) healthLocked(wall time.Time) *healthNote {
+	n := d.up.health.Load()
+	if n == nil || wall.Sub(n.at) > upHealthFresh || n.commit != d.commit {
+		return nil
+	}
+	return n
 }
 
 // freshHealthLocked: letzte Antwort von /health, wenn sie frisch ist.
 func (d *daemon) freshHealthLocked(wall time.Time) (pdhHealth, bool) {
-	n := d.up.health.Load()
-	if n == nil || wall.Sub(n.at) > upHealthFresh {
+	n := d.healthLocked(wall)
+	if n == nil {
 		return pdhHealth{}, false
 	}
 	return n.h, n.err == nil
@@ -783,8 +796,8 @@ func (d *daemon) selfPDHOKLocked(want string, wall time.Time) bool {
 // eingeschränkter Spiegel, der auf die Migration am Primary wartet), "down"
 // oder "unknown".
 func (d *daemon) pdhHBLocked() string {
-	n := d.up.health.Load()
-	if n == nil || d.wall().Sub(n.at) > upHealthFresh {
+	n := d.healthLocked(d.wall())
+	if n == nil {
 		return "unknown"
 	}
 	switch {
@@ -809,8 +822,8 @@ func pdhHBVersion(f string) string {
 
 // selfPDHVersionLocked: Version, die das eigene pdh mit 200 meldet ("" = keine Antwort).
 func (d *daemon) selfPDHVersionLocked(wall time.Time) string {
-	n := d.up.health.Load()
-	if n == nil || wall.Sub(n.at) > upHealthFresh || n.err != nil || n.h.Status != http.StatusOK {
+	n := d.healthLocked(wall)
+	if n == nil || n.err != nil || n.h.Status != http.StatusOK {
 		return ""
 	}
 	return n.h.Version

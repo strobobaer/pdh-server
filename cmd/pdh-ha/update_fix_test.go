@@ -21,7 +21,7 @@ import (
 
 // setHealth: letzte Antwort von /health des eigenen pdh (frisch).
 func setHealth(d *daemon, h pdhHealth) {
-	d.up.health.Store(&healthNote{h: h, at: d.wall()})
+	d.up.health.Store(&healthNote{h: h, at: d.wall(), commit: d.commit})
 }
 
 func writePGVersion(a *pgActor) error {
@@ -407,5 +407,26 @@ func TestAgentClient409SameRun(t *testing.T) {
 	h := &httpAgent{poll: time.Millisecond, wait: time.Second}
 	if err := h.Install(context.Background(), "x1", false); err != nil || posts != 1 {
 		t.Fatalf("Wiederholung: %v posts %d", err, posts)
+	}
+}
+
+// C1 (Labor update-neustart): Eine Antwort von /health aus der Zeit vor dem
+// Wechsel des Stands zählt nicht – sonst übernähme der Auftrag die alte
+// Version des noch nicht neu gestarteten pdh als Zielversion.
+func TestHealthNoteStaleAfterCommitChange(t *testing.T) {
+	d, _ := upActive(t)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.commit = "lab0"
+	setHealth(d, pdhHealth{Status: 200, Version: "0.9.0", MigrationsOK: boolp(true)})
+	if got := d.pdhHBLocked(); got != "ok:0.9.0" {
+		t.Fatalf("vor dem Wechsel: %q", got)
+	}
+	d.commit = "lab1"
+	if got := d.pdhHBLocked(); got != "unknown" {
+		t.Fatalf("nach dem Wechsel: %q", got)
+	}
+	if v := d.selfPDHVersionLocked(d.wall()); v != "" {
+		t.Fatalf("eigene Version nach dem Wechsel: %q", v)
 	}
 }
