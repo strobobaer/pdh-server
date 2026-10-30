@@ -1,6 +1,6 @@
 # Update im Verbund und Wartungsfenster
 
-Stand: 2026-10-30 · Status: zur Prüfung ·
+Stand: 2026-10-30 · Status: freigegeben ·
 Gesamt-Architektur: `2026-10-24-ausfallschutz-design.md` (Abschnitt
 „Rollende Updates“) · ersetzt den geplanten Teil 8 „Geplanter Rollentausch“ ·
 Vorgänger: `2026-10-28-ausfallschutz-zugangsweg-design.md`
