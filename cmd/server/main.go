@@ -71,6 +71,7 @@ func main() {
 
 	logger.Init(cfg.Server.Env)
 	log.Info().Str("version", pdh.Version()).Str("commit", buildCommit).Str("env", cfg.Server.Env).Str("einstellungen", envPath).Msg("PDH startet")
+	log.Fatal().Msg("Probe: absichtlich kaputt")
 	if keyCreated {
 		log.Info().Str("datei", envPath).Msg("schlüssel für verschlüsselte server-einstellungen erzeugt (PDH_SETTINGS_KEY) – datei mitsichern!")
 	}

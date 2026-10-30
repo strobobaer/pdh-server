@@ -11,6 +11,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 im Kapitel „Versionen & Updates“ an.
 
 
+## [0.77.91] – 2026-10-30
+
+### Geändert
+
+- Probe für die Abnahme „Update im Verbund“: absichtlich kaputte Version (startet nicht, nur Testserver).
+
 ## [0.77.90] – 2026-10-30
 
 ### Geändert
