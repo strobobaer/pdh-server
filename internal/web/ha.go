@@ -50,6 +50,12 @@ type haStatus struct {
 	CAHolder       bool        `json:"ca_holder"`
 	Error          string      `json:"error"`
 	Access         haAccess    `json:"access"`
+
+	// Update im Verbund (Spec 4, 6)
+	Window        ha.Window     `json:"window"`
+	Update        ha.UpdateView `json:"update"`
+	Faulty        []string      `json:"faulty"`
+	WindowLastRun time.Time     `json:"window_last_run"`
 }
 
 // haAccess: Zugangsweg aus dem Status von pdh-ha (hier nur, was der Abgleich braucht).
@@ -156,6 +162,69 @@ type haView struct {
 	SuggestAddrs []string // LAN- und WireGuard-Adresse dieses Servers
 	Origin       string   // PDH_CLOUDFLARE_ORIGIN: Ziel des Tunnels
 	TokenSet     bool     // Tunnel-Token in den Server-Einstellungen eingetragen
+
+	// Wartungsfenster und Update (maint_window.go)
+	Window       ha.Window     // Einstellungen (ungültig/leer: Standard)
+	Update       ha.UpdateView // laufender bzw. letzter Auftrag
+	Faulty       []string      // als fehlerhaft gemerkte Stände
+	NextWindow   time.Time     // nächster möglicher Beginn (Null = Fenster aus)
+	LastResult   string        // Ergebnis des letzten Auftrags
+	WitnessStale string        // „Zeuge veraltet (<v>, Server <v>)“ oder leer
+	WitnessCmd   string        // Befehl für den Zeugen-Rechner (Notweg)
+
+	NoWindowPerm bool // ohne Recht system.maintenance_window: Fenster nur anzeigen
+}
+
+// IsCluster: Verbund aus zwei Servern eingerichtet und erreichbar.
+func (v haView) IsCluster() bool {
+	return v.Installed && v.Err == "" && v.Status.Configured && v.Status.Mode != string(ha.Single)
+}
+
+// fillWindow übernimmt Fenster, Auftrag und „Zeuge veraltet“ aus dem Status.
+func (v *haView) fillWindow(now time.Time) {
+	v.Window = v.Status.Window
+	if v.Window.Validate() != nil {
+		v.Window = ha.DefaultWindow()
+	}
+	v.Update, v.Faulty = v.Status.Update, v.Status.Faulty
+	if !v.Update.Active {
+		v.LastResult = v.Update.Result
+	}
+	v.WitnessStale, v.WitnessCmd = "", ""
+	self := v.Status.Self
+	if self.Kind != "node" || self.Commit == "" || v.Update.Active || v.Update.EndedAt.IsZero() || now.Sub(v.Update.EndedAt) <= witnessStaleAfter {
+		return
+	}
+	for _, p := range v.Status.Peers {
+		if p.Kind == "witness" && p.Commit != "" && p.Commit != self.Commit {
+			v.WitnessStale = fmt.Sprintf("Zeuge veraltet (%s, Server %s)", p.Version, self.Version)
+			v.WitnessCmd = "sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update " + self.Commit
+			return
+		}
+	}
+}
+
+// setNext berechnet den nächsten möglichen Beginn des Fensters.
+func (v *haView) setNext(baseHour int, hasBackup bool, now time.Time) {
+	v.NextWindow = ha.NextWindow(v.Window, baseHour, hasBackup, now)
+}
+
+// NextWindowText: „04.11.2026 02:00“ oder leer.
+func (v haView) NextWindowText() string {
+	if v.NextWindow.IsZero() {
+		return ""
+	}
+	return v.NextWindow.Local().Format("02.01.2006 15:04")
+}
+
+// KindText: Update-Art in Anwendersprache.
+func (v haView) KindText() string { return updateKindText(v.Window.Kind) }
+
+func updateKindText(k ha.UpdateKind) string {
+	if k == ha.UpdateSequential {
+		return "alle nacheinander"
+	}
+	return "ohne Unterbrechung"
 }
 
 func (v haView) ModeText() string {
@@ -392,33 +461,43 @@ func (h *Handler) haDo(ctx context.Context, method, path string, in, out any) er
 	return h.haDoT(ctx, haTimeout, method, path, in, out)
 }
 
-// haDoT wie haDo, mit eigener Frist (langsame Aufrufe wie der Tunnel-Token).
-func (h *Handler) haDoT(ctx context.Context, timeout time.Duration, method, path string, in, out any) error {
+// haDoRaw ruft die Socket-API und liefert Statuscode und Rumpf unverändert
+// (für Antworten mit Zusatzfeldern wie 409 mit Hinweisen).
+func (h *Handler) haDoRaw(ctx context.Context, timeout time.Duration, method, path string, in any) (int, []byte, error) {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 		body = strings.NewReader(string(b))
 	}
 	req, err := http.NewRequestWithContext(ctx, method, "http://pdh-ha"+path, body)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := h.haClientT(timeout).Do(req)
 	if err != nil {
-		return errors.New("pdh-ha nicht erreichbar: " + err.Error())
+		return 0, nil, errors.New("pdh-ha nicht erreichbar: " + err.Error())
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if resp.StatusCode != http.StatusOK {
+	return resp.StatusCode, b, nil
+}
+
+// haDoT wie haDo, mit eigener Frist (langsame Aufrufe wie der Tunnel-Token).
+func (h *Handler) haDoT(ctx context.Context, timeout time.Duration, method, path string, in, out any) error {
+	code, b, err := h.haDoRaw(ctx, timeout, method, path, in)
+	if err != nil {
+		return err
+	}
+	if code != http.StatusOK {
 		var e struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(b, &e) != nil || e.Error == "" {
-			e.Error = "pdh-ha antwortet mit " + resp.Status
+			e.Error = fmt.Sprintf("pdh-ha antwortet mit %d %s", code, http.StatusText(code))
 		}
 		return errors.New(e.Error)
 	}
@@ -474,6 +553,7 @@ func (h *Handler) haLoadView(ctx context.Context) haView {
 			return v
 		}
 		v.Err = haStatusErr(v.Status)
+		v.fillWindow(time.Now())
 		v.Events = h.haRecentEvents(ctx, 50)
 		cf := h.cloudflareSettings(ctx)
 		v.Origin, v.TokenSet = cf.Origin, cf.Token != ""

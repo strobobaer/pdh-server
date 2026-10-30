@@ -76,6 +76,8 @@ type drStatus struct {
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
+	LastBaseOK   *bool     `json:"last_base_ok"`  // nil: ältere Agenten
+	LastFilesOK  *bool     `json:"last_files_ok"` // nil: ältere Agenten
 }
 
 type drView struct {
@@ -90,7 +92,8 @@ type drView struct {
 	VMAge     string
 	VMWarn    bool
 	Alerts    []string
-	HA        haView // Bereich „Betriebsart“ (ha.go), oben im Reiter
+	HA        haView      // Bereich „Betriebsart“ (ha.go), oben im Reiter
+	Single    maintSingle // Wartungsfenster des Einzelservers (maint_window.go)
 }
 
 // Ago: Zeitangabe für die Anzeige.

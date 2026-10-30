@@ -21,6 +21,7 @@ type UpdateView struct {
 	RollingBack    bool      `json:"rolling_back"`
 	Result         string    `json:"result"`
 	Faulty         []string  `json:"faulty"`
+	EndedAt        time.Time `json:"ended_at"` // Ende des letzten Auftrags (Null = läuft bzw. keiner)
 }
 
 // View bereitet den Auftrag für die Anzeige auf. RemainingS ist die Restzeit
@@ -35,6 +36,9 @@ func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) U
 	}
 	if j.Kind == "" {
 		return v
+	}
+	if j.ended() {
+		v.EndedAt = j.PhaseAt
 	}
 	swap := j.Kind == UpdateSwap
 	switch {

@@ -55,6 +55,11 @@ type CoreSettingsPageData struct {
 	AgentConfigured     bool
 	AgentReachable      bool
 	AgentStatus         string
+	UpdateCluster       bool     // Verbund: „Update im Verbund installieren“ (maint_window.go)
+	UpdatePassive       bool     // dieser Server ist nicht der aktive – das Update steuert der aktive
+	UpdateKindText      string   // Update-Art aus dem Wartungsfenster
+	UpdateAsk           string   // Rückfrage „Nicht alles grün …“ (pdh-ha meldet 409)
+	UpdateAskHints      []string // Hinweise dazu
 	AgentOutput         string
 	NC                  *ncUpdateView // Kachel „Nextcloud-Updates“ (nextcloud_updates.go)
 	Notice              string
@@ -206,6 +211,19 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 			data.AgentStatus = "Update-Agent nicht erreichbar"
 		}
 	}
+	if data.AgentConfigured {
+		if st, cluster, err := h.updateCluster(ctx); err == nil && cluster {
+			data.UpdateCluster = true
+			data.UpdatePassive = st.Self.Role != "aktiv" || h.Mirror().On
+			data.UpdateKindText = updateKindText(st.Window.Kind)
+		}
+	}
+	data.UpdateAsk = clipText(r.URL.Query().Get("ask"), 400)
+	for _, hint := range r.URL.Query()["hint"] {
+		if len(data.UpdateAskHints) < 10 {
+			data.UpdateAskHints = append(data.UpdateAskHints, clipText(hint, 200))
+		}
+	}
 	data.NC = h.ncUpdateViewFor(r.Context())
 	data.CanCode = h.actorIsAdmin(r)
 	data.CanPKI = h.canPKI(r)
@@ -328,15 +346,10 @@ func (h *Handler) CheckUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) InstallUpdateWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageRoles(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
-	if h.updateAgentURL == "" || h.updateAgentToken == "" {
-		http.Redirect(w, r, "/core/settings?notice=Update-Agent+nicht+konfiguriert", http.StatusSeeOther)
-		return
-	}
+// installUpdateLegacy: Update wie bisher (Docker-Betrieb, ältere Agenten):
+// der Agent holt und installiert den Stand sofort (POST /v1/update).
+// Rechte und Agent-Einstellung hat InstallUpdateWeb schon geprüft.
+func (h *Handler) installUpdateLegacy(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.updateAgentURL+"/v1/update", nil)
 	if err != nil {
 		http.Redirect(w, r, "/core/settings?notice=Update-Agent-Adresse+ungültig", http.StatusSeeOther)

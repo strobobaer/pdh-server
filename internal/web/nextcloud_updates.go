@@ -71,10 +71,10 @@ func (h *Handler) ncDir(ctx context.Context) string {
 	return h.getUpdateSetting(ctx, keyNCDir, "/var/www/nextcloud")
 }
 
-// agentJSON: Anfrage an den Update-Agenten.
-func (h *Handler) agentJSON(ctx context.Context, method, path string, body, out any) error {
+// agentRaw: Anfrage an den Update-Agenten; Statuscode und Rumpf unverändert.
+func (h *Handler) agentRaw(ctx context.Context, method, path string, body any) (int, []byte, error) {
 	if !h.driveAgentConfigured() {
-		return errors.New("Der Update-Agent ist nicht eingerichtet")
+		return 0, nil, errors.New("Der Update-Agent ist nicht eingerichtet")
 	}
 	var rd io.Reader
 	if body != nil {
@@ -83,17 +83,27 @@ func (h *Handler) agentJSON(ctx context.Context, method, path string, body, out 
 	}
 	req, err := http.NewRequestWithContext(ctx, method, h.updateAgentURL+path, rd)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+h.updateAgentToken)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return errors.New("Update-Agent nicht erreichbar: " + err.Error())
+		return 0, nil, errors.New("Update-Agent nicht erreichbar: " + err.Error())
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
-	if resp.StatusCode == http.StatusNotFound {
+	return resp.StatusCode, data, nil
+}
+
+// agentJSON: Anfrage an den Update-Agenten.
+func (h *Handler) agentJSON(ctx context.Context, method, path string, body, out any) error {
+	code, data, err := h.agentRaw(ctx, method, path, body)
+	if err != nil {
+		return err
+	}
+	status := fmt.Sprintf("%d %s", code, http.StatusText(code))
+	if code == http.StatusNotFound {
 		return errors.New("Der Update-Agent ist zu alt – zuerst das PDH aktualisieren")
 	}
 	var base struct {
@@ -101,14 +111,14 @@ func (h *Handler) agentJSON(ctx context.Context, method, path string, body, out 
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(data, &base) != nil {
-		return fmt.Errorf("Update-Agent antwortet mit %s", resp.Status)
+		return fmt.Errorf("Update-Agent antwortet mit %s", status)
 	}
 	if out != nil {
 		_ = json.Unmarshal(data, out)
 	}
 	if !base.OK {
 		if base.Error == "" {
-			base.Error = resp.Status
+			base.Error = status
 		}
 		return errors.New(base.Error)
 	}

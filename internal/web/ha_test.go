@@ -26,6 +26,13 @@ type fakeHA struct {
 	vipTest string // Antwort von /v1/vip/test
 	calls   []string
 	bodies  []string
+	replies map[string]fakeReply // Pfad → feste Antwort (vor dem Standard)
+}
+
+// fakeReply: feste Antwort der Attrappe (Status und Rumpf).
+type fakeReply struct {
+	code int
+	body string
 }
 
 func startFakeHA(t *testing.T, f *fakeHA) string {
@@ -41,6 +48,14 @@ func startFakeHA(t *testing.T, f *fakeHA) string {
 		f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 		f.bodies = append(f.bodies, string(b))
 		f.mu.Unlock()
+		f.mu.Lock()
+		rep, fixed := f.replies[r.URL.Path]
+		f.mu.Unlock()
+		if fixed {
+			w.WriteHeader(rep.code)
+			_, _ = w.Write([]byte(rep.body))
+			return
+		}
 		switch r.URL.Path {
 		case "/v1/status":
 			_, _ = w.Write([]byte(f.status))
@@ -509,10 +524,10 @@ func TestHAVersionDiffUpdateCmd(t *testing.T) {
 	if out := renderDR(t, drView{HA: v}); !strings.Contains(out, "pdh-ha version") || strings.Contains(out, "--update 1111111") {
 		t.Error("ohne Commit: Hinweis auf pdh-ha version fehlt")
 	}
-	// gleiche Versionen: kein Befehl
+	// gleiche Versionen: kein Hinweis „nach einem Update“ (der „Notweg“ steht immer im Verbund)
 	v.Status.Warnings = nil
-	if out := renderDR(t, drView{HA: v}); strings.Contains(out, "--update") {
-		t.Error("Update-Befehl ohne Versionsunterschied")
+	if out := renderDR(t, drView{HA: v}); strings.Contains(out, "Nach einem PDH-Update auf dem zweiten Server") {
+		t.Error("Update-Hinweis ohne Versionsunterschied")
 	}
 }
 

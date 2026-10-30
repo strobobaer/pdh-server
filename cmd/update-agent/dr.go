@@ -67,6 +67,8 @@ type drStatus struct {
 	Error        string    `json:"error"`
 	ErrorAt      time.Time `json:"error_at"`
 	EnabledSince time.Time `json:"enabled_since"`
+	LastBaseOK   bool      `json:"last_base_ok"`  // Grundsicherung gelaufen und ohne offenen Fehler (für „alles grün“)
+	LastFilesOK  bool      `json:"last_files_ok"` // Dateiabgleich gelaufen und ohne offenen Fehler
 }
 
 // Gemeinsame Typen für Grundsicherung (info.json), Dateiabgleich und Wiederaufbau.
@@ -263,7 +265,9 @@ func (a *updateAgent) drStatus() drStatus {
 	st := drStatus{OK: true, Supported: true, Config: a.dr.Config, Archiving: a.dr.Archiving,
 		LastWALShip: a.dr.LastWALShip, LastWALFile: a.dr.LastWALFile, LastBase: a.dr.LastBase,
 		LastFileSync: a.dr.LastFileSync, Missing: a.dr.Missing, Running: a.dr.Running, Paused: a.dr.Paused, Advice: a.dr.Advice,
-		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince, LastNode: a.dr.LastNode}
+		Error: drErrorText(a.dr.Errors), ErrorAt: a.dr.ErrorAt, EnabledSince: a.dr.EnabledSince, LastNode: a.dr.LastNode,
+		LastBaseOK:  !a.dr.LastBase.IsZero() && a.dr.Errors["base"] == "",
+		LastFilesOK: !a.dr.LastFileSync.IsZero() && a.dr.Errors["files"] == ""}
 	for _, s := range a.dr.Sources {
 		st.Sources = append(st.Sources, s.Label)
 	}

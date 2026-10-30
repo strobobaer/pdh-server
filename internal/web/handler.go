@@ -307,6 +307,10 @@ type Handler struct {
 	streamsDone      bool               // CloseStreams gerufen: kein neuer Kontext mehr
 	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
 	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
+
+	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und neuester Commit des Update-Zweigs.
+	hasPermHook      func(*http.Request, string) bool
+	latestCommitHook func(context.Context) string
 }
 
 func NewHandler(
@@ -610,6 +614,9 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/diverged-delete", h.HADivergedDeleteWeb)
 	r.Post("/admin/server-config/ha/remove", h.HARemoveWeb)
 	r.Post("/admin/server-config/ha/settings", h.HASettingsWeb)
+	r.Post("/admin/server-config/ha/window", h.HAWindowWeb) // Wartungsfenster (maint_window.go)
+	r.Post("/admin/server-config/ha/faulty-allow", h.HAFaultyAllowWeb)
+	r.Post("/admin/server-config/update-window", h.UpdateWindowWeb)
 	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
 	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
 	r.Post("/admin/server-config/ha/hooks-run", h.HAHooksRunWeb)
@@ -3343,8 +3350,7 @@ type PermissionGroup struct {
 }
 
 func (h *Handler) canManageRoles(r *http.Request) bool {
-	u := getUser(r)
-	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles")
+	return h.hasPerm(r, "system.manage_roles")
 }
 
 // actorIsAdmin: angemeldete Person hat die Rolle "admin" (nur Admins duerfen

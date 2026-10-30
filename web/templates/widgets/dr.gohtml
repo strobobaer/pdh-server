@@ -2,6 +2,13 @@
 {{define "dr-admin"}}{{$v := .}}
 {{template "vpn-style"}}
 {{template "ha-admin" .HA}}
+{{with .Single}}{{if .Available}}
+<div class="card" id="maint-single">
+  <div class="card-title"><span><i class="ti ti-refresh"></i> {{t "Update dieses Servers"}}</span></div>
+  {{if .Job.Active}}{{template "maint-progress" .Job}}{{end}}
+  {{template "maint-window-form" (dict "Action" "/admin/server-config/update-window" "Window" .Window "Can" (not .NoPerm) "Faulty" .Faulty "FaultyAction" "/admin/server-config/update-window" "FaultyField" "allow" "Next" .Next "Last" .LastResult)}}
+</div>
+{{end}}{{end}}
 <div class="card" id="dr-status">
   <div class="card-title"><span><i class="ti ti-shield-check"></i> Ausfallschutz – Sicherung aufs Netzlaufwerk</span>
     {{if not .AgentErr}}<span class="vp-state {{if and .Status.Config.Enabled (not .Status.Error)}}ok{{else if .Status.Config.Enabled}}down{{else}}off{{end}}"><span class="vp-dot{{if and .Status.Config.Enabled (not .Status.Error)}} on{{end}}"></span> {{if .Status.Config.Enabled}}eingeschaltet{{else}}ausgeschaltet{{end}}</span>{{end}}</div>
