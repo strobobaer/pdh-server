@@ -317,6 +317,9 @@ func (h *Handler) drWatch(ctx context.Context) {
 		case <-t.C:
 			t.Reset(5 * time.Minute)
 		}
+		if h.maintSkip("ausfallschutz-sicherung") {
+			continue
+		}
 		if h.appSetting(ctx, drSetEnabled, "") != "1" {
 			continue
 		}

@@ -375,6 +375,15 @@ func (h *Handler) HMIWebSocket(w http.ResponseWriter, r *http.Request) {
 		err := rfbForwardClient(conn, wsc, mode == "view")
 		stop(errText(err, ""))
 	}()
+	ended := make(chan struct{})
+	defer close(ended)
+	go func() { // Wartungssperre bzw. Beenden des PDH: Kontext endet → Sitzung beenden
+		select {
+		case <-r.Context().Done():
+			stop("Verbindung vom Server beendet (Wartung oder Neustart)")
+		case <-ended:
+		}
+	}()
 	reason := <-done
 	finish(reason)
 	log.Info().Str("grund", reason).Msg("hmi-sitzung beendet")

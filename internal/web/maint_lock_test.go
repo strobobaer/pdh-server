@@ -32,6 +32,7 @@ type maintFake struct {
 	calls   int
 	clock   time.Time
 	setting map[string]string
+	h       *Handler
 }
 
 func (f *maintFake) set(v ha.UpdateView, err error) {
@@ -40,11 +41,17 @@ func (f *maintFake) set(v ha.UpdateView, err error) {
 	f.mu.Unlock()
 }
 
-// advance stellt die Uhr vor (Zwischenspeicher 1 s, Frist 30 s).
-func (f *maintFake) advance(d time.Duration) {
+// move stellt nur die Uhr vor (kein Abgleich – Leerlauf).
+func (f *maintFake) move(d time.Duration) {
 	f.mu.Lock()
 	f.clock = f.clock.Add(d)
 	f.mu.Unlock()
+}
+
+// advance stellt die Uhr vor und lässt den Takt einmal abgleichen.
+func (f *maintFake) advance(d time.Duration) {
+	f.move(d)
+	f.h.maintTick(context.Background())
 }
 
 func lockedView() ha.UpdateView {
@@ -62,7 +69,9 @@ func maintTestHandler(t *testing.T, v ha.UpdateView) (*Handler, *maintFake) {
 	t.Helper()
 	f := &maintFake{view: v, clock: time.Now(), setting: map[string]string{}}
 	h := &Handler{jwtSecret: boardTestSecret}
+	f.h = h
 	h.streams, h.closeStreams = context.WithCancel(context.Background())
+	h.mlock.configured = func() bool { return true }
 	h.mlock.fetch = func(context.Context) (ha.UpdateView, error) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -92,6 +101,7 @@ func maintTestHandler(t *testing.T, v ha.UpdateView) (*Handler, *maintFake) {
 		}
 		return &users.User{ID: id, FirstName: "Erika", Role: users.RoleTechnician, Active: true}, nil
 	}
+	h.maintInit(context.Background()) // erster Abgleich wie beim Start (ohne Takt)
 	return h, f
 }
 
@@ -233,8 +243,12 @@ func TestLockAllowsStatusAndStatic(t *testing.T) {
 	if rec := maintDo(hd, maintReq{method: "GET", path: "/wartung", hdr: htmlAccept}); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 		t.Errorf("GET /wartung ohne Sperre: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
-	if rec := maintDo(hd, maintReq{method: "GET", path: "/wartung/status"}); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"locked":false`) {
-		t.Errorf("/wartung/status ohne Sperre: %d %q", rec.Code, rec.Body.String())
+	f.set(ha.UpdateView{Active: true, Phase: "prepare", FromVersion: "0.77.7", ToVersion: "0.77.8", Result: "x", Faulty: []string{"abc"}}, nil)
+	f.advance(2 * time.Second)
+	rec = maintDo(hd, maintReq{method: "GET", path: "/wartung/status"})
+	var st map[string]any
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &st) != nil || st["locked"] != false || st["active"] != true || len(st) != 2 {
+		t.Errorf("/wartung/status ohne Sperre: %d %q – nur locked/active erwartet", rec.Code, rec.Body.String())
 	}
 }
 
@@ -331,7 +345,7 @@ func TestLockAdminKeepsSessionAfterRestart(t *testing.T) {
 	h, f := maintTestHandler(t, lockedView())
 	epoch := time.Now().Add(-30 * time.Second).Unix()
 	f.setting["session.not_before"] = strconv.FormatInt(epoch, 10) // aus der (replizierten) Datenbank
-	h.LoadMaintLock(context.Background())
+	h.maintInit(context.Background())                              // Neustart: Epoche laden, erster Abgleich
 	if h.sessionNotBefore.Load() < epoch {
 		t.Fatalf("Epoche nicht geladen: %d < %d", h.sessionNotBefore.Load(), epoch)
 	}
@@ -349,9 +363,8 @@ func TestLockAdminKeepsSessionAfterRestart(t *testing.T) {
 		t.Fatal("Start nicht gesperrt")
 	}
 	// Sperre vorbei: Administrator weiter angemeldet, Benutzer nicht
-	// (nach einer Störung fragt die Sperre erst nach 5 s erneut)
 	f.set(ha.UpdateView{Result: "ok"}, nil)
-	f.advance(6 * time.Second)
+	f.advance(2 * time.Second)
 	if rec := maintDo(hd, maintReq{method: "GET", path: "/", tok: admin, hdr: htmlAccept}); rec.Code != http.StatusOK || *calls != 1 {
 		t.Fatalf("Administrator nach dem Neustart: %d", rec.Code)
 	}
@@ -389,42 +402,239 @@ func TestLockLoginOnlyAdmins(t *testing.T) {
 	if hasToken(rec) || !strings.Contains(rec.Body.String(), "Ungültige Anmeldedaten") {
 		t.Fatalf("falsches Passwort: %d %q", rec.Code, rec.Body.String())
 	}
+	// Administrator mit fälligem Passwortwechsel: keine Sitzung, Hinweis
+	h.mlock.pwDue = func(*http.Request, *users.User) (bool, string) { return true, "abgelaufen" }
+	rec = post("email=admin&password=geheim")
+	if hasToken(rec) || !strings.Contains(rec.Body.String(), "Passwortwechsel fällig – bitte nach der Wartung anmelden") {
+		t.Fatalf("Passwortwechsel fällig: %d %q", rec.Code, rec.Body.String())
+	}
+	h.mlock.pwDue = func(*http.Request, *users.User) (bool, string) { return false, "" }
 	rec = post("email=admin&password=geheim")
 	if !hasToken(rec) || rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/wartung" {
 		t.Fatalf("Administrator: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }
 
+// Frist zählt die Dauer der ununterbrochenen Störung, nicht das Alter der
+// letzten Antwort: nach 30 s Leerlauf hebt ein einzelner Fehler die Sperre
+// nicht auf.
 func TestLockFailOpenAfter30s(t *testing.T) {
 	h, f := maintTestHandler(t, lockedView())
 	hd, calls := maintPlain(h)
 	if rec := maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept}); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("gesperrt: %d", rec.Code)
 	}
+	f.move(30 * time.Second) // Leerlauf ohne Abgleich
 	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar"))
-	for _, d := range []time.Duration{2 * time.Second, 10 * time.Second, 15 * time.Second} {
+	f.advance(time.Second) // erster Fehler nach 31 s seit der letzten Antwort
+	if !h.MaintLocked() {
+		t.Fatal("ein Fehler nach Leerlauf hebt die Sperre auf")
+	}
+	for _, d := range []time.Duration{10 * time.Second, 10 * time.Second, 9 * time.Second} { // 29 s Störung
 		f.advance(d)
 		if rec := maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept}); rec.Code != http.StatusServiceUnavailable {
-			t.Fatalf("nach %v Störung schon offen: %d", d, rec.Code)
+			t.Fatalf("nach %v weiterer Störung schon offen: %d", d, rec.Code)
 		}
 	}
-	f.advance(5 * time.Second) // 32 s ohne Antwort
+	f.advance(2 * time.Second) // 31 s ununterbrochen gestört
 	if rec := maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept}); rec.Code != http.StatusOK || *calls != 1 {
-		t.Fatalf("nach 30 s ohne Antwort nicht offen: %d", rec.Code)
+		t.Fatalf("nach 31 s Störung nicht offen: %d", rec.Code)
 	}
-	// Antwort wieder da → Sperre gilt wieder
+	// Antwort wieder da → Sperre gilt wieder, Störung beginnt beim nächsten Fehler neu
 	f.set(lockedView(), nil)
-	f.advance(6 * time.Second)
-	if rec := maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept}); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("Antwort wieder da: %d", rec.Code)
+	f.advance(2 * time.Second)
+	if !h.MaintLocked() {
+		t.Fatal("Antwort wieder da: nicht gesperrt")
 	}
-	// Zwischenspeicher: höchstens eine Abfrage je Sekunde
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar"))
+	f.advance(2 * time.Second)
+	if !h.MaintLocked() {
+		t.Fatal("neue Störung: sofort offen")
+	}
+	// Anfragen fragen nie selbst ab
 	n := f.calls
 	for i := 0; i < 5; i++ {
 		maintDo(hd, maintReq{method: "GET", path: "/wartung/status"})
+		maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept})
 	}
 	if f.calls != n {
-		t.Errorf("Zwischenspeicher wirkt nicht: %d Abfragen", f.calls-n)
+		t.Errorf("Anfragen haben %d-mal selbst abgefragt", f.calls-n)
+	}
+}
+
+// Gleichzeitige Leser sehen während einer kurzen Störung nie „offen“.
+func TestLockConcurrentReadersStayLocked(t *testing.T) {
+	h, f := maintTestHandler(t, lockedView())
+	hd, _ := maintPlain(h)
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar"))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	open := 0
+	stop := make(chan struct{})
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				rec := maintDo(hd, maintReq{method: "GET", path: "/tickets", hdr: htmlAccept})
+				if rec.Code != http.StatusServiceUnavailable || !h.MaintLocked() || !h.maintView(context.Background()).Locked {
+					mu.Lock()
+					open++
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for i := 0; i < 25; i++ { // 25 s Störung in Schritten von 1 s
+		f.advance(time.Second)
+	}
+	close(stop)
+	wg.Wait()
+	if open != 0 {
+		t.Fatalf("%d Anfragen sahen die Sperre offen", open)
+	}
+}
+
+// Start ohne Antwort: bei eingerichteter Quelle bis zu 30 s gesperrt; meldet
+// die Quelle eindeutig „nicht verfügbar“ oder gibt es keine, nie gesperrt.
+func TestLockStartWithoutAnswer(t *testing.T) {
+	h, f := maintTestHandler(t, ha.UpdateView{})
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar: connection refused"))
+	h2 := &Handler{}
+	h2.mlock = maintLock{fetch: h.mlock.fetch, now: h.mlock.now, configured: func() bool { return true }}
+	h2.maintInit(context.Background())
+	if !h2.MaintLocked() {
+		t.Fatal("Start ohne Antwort bei eingerichteter Quelle: nicht gesperrt")
+	}
+	f.move(20 * time.Second)
+	h2.maintTick(context.Background())
+	if !h2.MaintLocked() {
+		t.Fatal("nach 20 s ohne Antwort schon offen")
+	}
+	f.move(11 * time.Second)
+	h2.maintTick(context.Background())
+	if h2.MaintLocked() {
+		t.Fatal("nach 31 s ohne Antwort noch gesperrt")
+	}
+	// Agent im Docker-Betrieb bzw. zu alt: sofort offen
+	for _, msg := range []string{"im Docker-Betrieb nicht verfügbar", "Der Update-Agent ist zu alt – zuerst das PDH aktualisieren", "pdh-ha antwortet mit 404 Not Found"} {
+		f.set(ha.UpdateView{}, errors.New(msg))
+		h3 := &Handler{}
+		h3.mlock = maintLock{fetch: h.mlock.fetch, now: h.mlock.now, configured: func() bool { return true }}
+		h3.maintInit(context.Background())
+		if h3.MaintLocked() {
+			t.Errorf("%q: gesperrt", msg)
+		}
+	}
+	// keine Quelle eingerichtet: offen
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar"))
+	h4 := &Handler{}
+	h4.mlock = maintLock{fetch: h.mlock.fetch, now: h.mlock.now, configured: func() bool { return false }}
+	h4.maintInit(context.Background())
+	if h4.MaintLocked() {
+		t.Error("ohne Quelle gesperrt")
+	}
+}
+
+// Der Takt setzt Epoche und schließt Verbindungen, ohne dass eine Anfrage kommt.
+func TestLockTickerActsWithoutRequests(t *testing.T) {
+	old := maintTickEvery
+	maintTickEvery = 10 * time.Millisecond
+	t.Cleanup(func() { maintTickEvery = old })
+	h, f := maintTestHandler(t, ha.UpdateView{Active: true, Phase: "countdown"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := h.streamsCtx()
+	h.LoadMaintLock(ctx)
+	f.set(lockedView(), nil)
+	deadline := time.Now().Add(3 * time.Second)
+	for h.sessionNotBefore.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if h.sessionNotBefore.Load() == 0 {
+		t.Fatal("Takt hat die Sperre nicht erkannt")
+	}
+	select {
+	case <-stream.Done():
+	case <-time.After(time.Second):
+		t.Fatal("Dauerverbindungen nicht geschlossen")
+	}
+	f.mu.Lock()
+	stored := f.setting["session.not_before"]
+	f.mu.Unlock()
+	if stored == "" {
+		t.Error("Epoche nicht gespeichert")
+	}
+}
+
+// Schreibende Hintergrunddienste setzen während der Sperre aus.
+func TestLockPausesBackgroundJobs(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, boardTestSecret)
+	defer h.exportCron.Stop()
+	f := &maintFake{view: lockedView(), clock: time.Now(), h: h}
+	h.mlock.fetch = func(context.Context) (ha.UpdateView, error) { f.mu.Lock(); defer f.mu.Unlock(); return f.view, f.err }
+	h.maintTick(context.Background())
+	if !h.maintSkip("test") {
+		t.Fatal("maintSkip während der Sperre false")
+	}
+	var mu sync.Mutex
+	runs := 0
+	h.importPoll.Start("test", 5*time.Millisecond, func() { mu.Lock(); runs++; mu.Unlock() })
+	defer h.importPoll.Stop("test")
+	time.Sleep(60 * time.Millisecond)
+	mu.Lock()
+	n := runs
+	mu.Unlock()
+	if n != 0 {
+		t.Fatalf("Abruf lief %d-mal während der Sperre", n)
+	}
+	f.set(ha.UpdateView{}, nil)
+	h.maintTick(context.Background())
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n = runs
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n == 0 || h.maintSkip("test") {
+		t.Fatal("nach der Sperre läuft der Abruf nicht wieder")
+	}
+}
+
+// WebSocket-Upgrades enden mit cutStreams (Wartungssperre).
+func TestStreamsCutWebSocket(t *testing.T) {
+	h := &Handler{}
+	h.streams, h.closeStreams = context.WithCancel(context.Background())
+	entered, got := make(chan struct{}), make(chan bool, 1)
+	hd := h.StreamsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		select {
+		case <-r.Context().Done():
+			got <- true
+		case <-time.After(2 * time.Second):
+			got <- false
+		}
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/assets/x/hmi/y/ws", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	go hd.ServeHTTP(httptest.NewRecorder(), req)
+	<-entered
+	h.cutStreams()
+	if !<-got {
+		t.Fatal("WebSocket-Kontext nicht beendet")
+	}
+	if h.streamsCtx().Err() != nil {
+		t.Fatal("nach cutStreams keine neuen Verbindungen möglich")
 	}
 }
 
@@ -449,11 +659,13 @@ func TestLockAbortCallsHA(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("ohne Recht: %d", rec.Code)
 	}
-	// fremde Seite (CSRF): abgewiesen
-	rec = maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: maintToken(t, "admin", time.Now()),
-		hdr: map[string]string{"Accept": "text/html", "Sec-Fetch-Site": "cross-site"}})
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("fremde Seite: %d", rec.Code)
+	// fremde Seite (CSRF): abgewiesen – auch same-site (Nachbar-Subdomain)
+	for _, sfs := range []string{"cross-site", "same-site"} {
+		rec = maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: maintToken(t, "admin", time.Now()),
+			hdr: map[string]string{"Accept": "text/html", "Sec-Fetch-Site": sfs}})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("Sec-Fetch-Site %s: %d", sfs, rec.Code)
+		}
 	}
 	for _, c := range fake.callList() {
 		if strings.Contains(c, "abort") {

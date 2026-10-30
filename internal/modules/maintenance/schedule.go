@@ -227,9 +227,13 @@ func (r *Repository) NextDueForTask(ctx context.Context, taskID string) *time.Ti
 }
 
 // StartScheduler gleicht beim Start und danach stuendlich ab, dass jeder
-// aktive Plan seinen naechsten Auftrag hat.
-func (s *Service) StartScheduler(ctx context.Context) {
+// aktive Plan seinen naechsten Auftrag hat. skip (darf nil sein) lässt einen
+// Lauf aus, z. B. während der Wartungssperre eines Updates.
+func (s *Service) StartScheduler(ctx context.Context, skip func() bool) {
 	run := func() {
+		if skip != nil && skip() {
+			return
+		}
 		n, err := s.repo.EnsurePlanTasks(ctx)
 		if err != nil {
 			log.Warn().Err(err).Str("bereich", "wartung").Msg("wartungsplaene: abgleich fehlgeschlagen")

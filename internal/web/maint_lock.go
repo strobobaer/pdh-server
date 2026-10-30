@@ -13,14 +13,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"pdh/internal/core/users"
 	"pdh/internal/ha"
 )
 
-// Wartungssperre während eines Updates (Spec 2026-10-30-verbund-update §3.3, §8).
+// Wartungssperre während eines Updates (Spec 2026-10-30-verbund-update §3.3, §5.4, §8).
 //
 // In der kritischen Phase eines Updates (Rollentausch, Neustart, Datenbank)
 // sperrt das PDH alle Routen und Schnittstellen: HTML-Anfragen sehen den
@@ -28,42 +27,48 @@ import (
 // die vor der Sperre ausgestellt wurden, gelten nicht mehr (Sitzungs-Epoche
 // app_settings session.not_before) – außer für Inhaber des Rechts
 // „Automatische Wartung abbrechen“, die den Fortschritt verfolgen und
-// abbrechen können.
+// abbrechen können. Schreibende Hintergrunddienste setzen aus (MaintLocked).
 //
 // Zustand: im Verbund vom lokalen pdh-ha (GET /v1/update), beim Einzelserver
-// vom Update-Agenten (GET /v1/update/job); ohne beides nie gesperrt. Der
-// Zustand ist 1 s zwischengespeichert; bei Abfragefehlern gilt der letzte
-// Stand, nach 30 s ohne Antwort ist die Sperre aus (lieber offen als
-// dauerhaft ausgesperrt – die Notbremse bleibt `pdh-ha update abort`).
+// vom Update-Agenten (GET /v1/update/job); ohne beides nie gesperrt. Ein
+// Hintergrund-Takt (alle 2 s, LoadMaintLock) hält den Zustand aktuell;
+// Anfragen lesen nur den letzten bekannten Stand. Antwortet die Quelle nicht,
+// gilt der letzte Stand weiter – erst nach 30 s ununterbrochener Störung ist
+// die Sperre aus (lieber offen als dauerhaft ausgesperrt; die Notbremse
+// bleibt „pdh-ha update abort“). Nach dem Start ohne jede Antwort gilt bei
+// eingerichteter Quelle bis zu 30 s „gesperrt“.
 
 const (
 	permMaintAbort     = "system.maintenance_abort"
 	keySessionNotBefor = "session.not_before"
 
-	maintCacheTTL   = time.Second      // Zustand höchstens einmal je Sekunde abfragen
-	maintErrRetry   = 5 * time.Second  // nach einem Fehler erst später erneut
-	maintFailOpen   = 30 * time.Second // so lange gilt der letzte Stand ohne Antwort
+	maintFailOpen   = 30 * time.Second // so lange gilt der letzte Stand bei ununterbrochener Störung
 	maintFetchWait  = 2 * time.Second  // Frist je Abfrage
 	maintRetryAfter = 30               // Sekunden (Retry-After)
 )
 
+// maintTickEvery: Abstand des Hintergrund-Takts (Tests verkürzen ihn).
+var maintTickEvery = 2 * time.Second
+
 // maintLock: Zustand und austauschbare Quellen der Wartungssperre.
 type maintLock struct {
-	fetch      func(context.Context) (ha.UpdateView, error) // nil → pdh-ha bzw. Update-Agent (Tests tauschen aus)
-	abort      func(ctx context.Context, by string) error   // nil → pdh-ha bzw. Update-Agent
-	admin      func(*users.User) bool                       // nil → globales Recht system.maintenance_abort
-	now        func() time.Time                             // nil → time.Now
-	getSetting func(context.Context, string) string         // nil → app_settings
-	setSetting func(context.Context, string, string) error  // nil → app_settings
+	fetch      func(context.Context) (ha.UpdateView, error)    // nil → pdh-ha bzw. Update-Agent (Tests tauschen aus)
+	configured func() bool                                     // nil → node.json bzw. Agent eingerichtet
+	abort      func(ctx context.Context, by string) error      // nil → pdh-ha bzw. Update-Agent
+	admin      func(*users.User) bool                          // nil → globales Recht system.maintenance_abort
+	pwDue      func(*http.Request, *users.User) (bool, string) // nil → passwordChangeDue
+	now        func() time.Time                                // nil → time.Now
+	getSetting func(context.Context, string) string            // nil → app_settings
+	setSetting func(context.Context, string, string) error     // nil → app_settings
 
-	mu      sync.RWMutex
-	view    ha.UpdateView // letzter erfolgreich abgefragter Stand
-	lastTry time.Time     // letzte Abfrage (Erfolg oder Fehler)
-	lastOK  time.Time     // letzte erfolgreiche Abfrage
-	lastErr bool          // letzte Abfrage fehlgeschlagen
+	tickMu sync.Mutex // genau ein Abgleich gleichzeitig (Takt, Start, nach dem Abbruch)
 
-	refreshing atomic.Bool // genau eine Anfrage fragt ab, die anderen nehmen den Zwischenstand
-	seen       atomic.Bool // Sperre zuletzt gesehen (Übergang → Abmeldung)
+	mu           sync.RWMutex
+	view         ha.UpdateView // letzter beantworteter Stand
+	locked       bool          // wirksamer Zustand der Sperre
+	answered     bool          // seit dem Start mindestens eine eindeutige Antwort
+	failingSince time.Time     // Beginn der laufenden Störung (Null = keine)
+	seen         bool          // Sperre schon gesehen (Übergang → Abmeldung), mit locked geschaltet
 }
 
 func (h *Handler) maintNow() time.Time {
@@ -87,8 +92,16 @@ func haNodeConfigured() bool {
 	return err == nil || !errors.Is(err, fs.ErrNotExist)
 }
 
+// maintSourceConfigured: Es gibt eine Quelle, die eine Sperre melden kann.
+func (h *Handler) maintSourceConfigured() bool {
+	if h.mlock.configured != nil {
+		return h.mlock.configured()
+	}
+	return haNodeConfigured() || h.driveAgentConfigured()
+}
+
 // maintFetch fragt den Auftrag ab: Verbund → pdh-ha, Einzelserver → Agent,
-// sonst (Docker-Testsystem, kein Agent) nie gesperrt.
+// sonst (kein Agent) nie gesperrt.
 func (h *Handler) maintFetch(ctx context.Context) (ha.UpdateView, error) {
 	if h.mlock.fetch != nil {
 		return h.mlock.fetch(ctx)
@@ -111,6 +124,19 @@ func (h *Handler) maintFetch(ctx context.Context) (ha.UpdateView, error) {
 	return ha.UpdateView{}, nil
 }
 
+// maintUnavailable: Die Quelle antwortet eindeutig „gibt es hier nicht“
+// (Agent im Docker-Betrieb, Agent bzw. pdh-ha zu alt, Agent nicht
+// eingerichtet) – dann ist nie gesperrt, auch nicht vorläufig.
+func maintUnavailable(err error) bool {
+	s := err.Error()
+	for _, m := range []string{"im Docker-Betrieb nicht verfügbar", "Update-Agent ist zu alt", "antwortet mit 404", "Update-Agent ist nicht eingerichtet"} {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
+
 // maintAbort bittet pdh-ha bzw. den Agenten, den Auftrag abzubrechen und zurückzusetzen.
 func (h *Handler) maintAbort(ctx context.Context, by string) error {
 	if h.mlock.abort != nil {
@@ -126,71 +152,88 @@ func (h *Handler) maintAbort(ctx context.Context, by string) error {
 	return uiError("Kein Update-Auftrag vorhanden")
 }
 
-// maintRefresh fragt den Auftrag ab und legt das Ergebnis im Zwischenspeicher ab.
-func (h *Handler) maintRefresh(ctx context.Context, now time.Time) error {
+// maintTick: ein Abgleich mit der Quelle (Hintergrund-Takt). Sieht er die
+// Sperre zum ersten Mal, setzt er sofort die Sitzungs-Epoche und schließt
+// alle Dauerverbindungen – unabhängig von eingehenden Anfragen.
+func (h *Handler) maintTick(ctx context.Context) {
+	h.mlock.tickMu.Lock()
+	defer h.mlock.tickMu.Unlock()
 	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), maintFetchWait)
-	defer cancel()
 	v, err := h.maintFetch(fctx)
+	cancel()
+	now := h.maintNow()
+	lg := componentLog("wartung")
+
 	h.mlock.mu.Lock()
-	defer h.mlock.mu.Unlock()
-	h.mlock.lastTry = now
-	if err != nil {
-		if !h.mlock.lastErr {
-			componentLog("wartung").Warn().Err(err).Msg("auftrag nicht abfragbar – letzter stand gilt")
+	switch {
+	case err == nil:
+		if !h.mlock.failingSince.IsZero() && h.mlock.answered {
+			lg.Info().Msg("auftrag wieder abfragbar")
 		}
-		h.mlock.lastErr = true
-		return err
+		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince = v, v.Locked, true, time.Time{}
+	case maintUnavailable(err):
+		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince = ha.UpdateView{}, false, true, time.Time{}
+	default:
+		if h.mlock.failingSince.IsZero() {
+			h.mlock.failingSince = now
+			lg.Warn().Err(err).Msg("auftrag nicht abfragbar – letzter stand gilt")
+		}
+		base := h.mlock.locked
+		if !h.mlock.answered {
+			base = h.maintSourceConfigured() // noch keine Antwort seit dem Start: vorläufig gesperrt
+		}
+		was := h.mlock.locked
+		h.mlock.locked = base && now.Sub(h.mlock.failingSince) < maintFailOpen
+		if was && !h.mlock.locked {
+			lg.Warn().Err(err).Msg("30 s ohne antwort – wartungssperre aufgehoben")
+		}
 	}
-	if h.mlock.lastErr && !h.mlock.lastOK.IsZero() {
-		componentLog("wartung").Info().Msg("auftrag wieder abfragbar")
+	start := h.mlock.locked && !h.mlock.seen
+	h.mlock.seen = h.mlock.locked
+	h.mlock.mu.Unlock()
+
+	if start {
+		h.maintLockStarted(ctx)
 	}
-	h.mlock.view, h.mlock.lastOK, h.mlock.lastErr = v, now, false
-	return nil
 }
 
-// maintView liefert den Auftrag (1 s zwischengespeichert). Locked ist nur
-// gesetzt, wenn die letzte Antwort höchstens 30 s alt ist.
-func (h *Handler) maintView(ctx context.Context) ha.UpdateView {
-	now := h.maintNow()
+// maintLoop: Hintergrund-Takt bis zum Ende von ctx.
+func (h *Handler) maintLoop(ctx context.Context) {
+	t := time.NewTicker(maintTickEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.maintTick(ctx)
+		}
+	}
+}
+
+// maintView liefert den letzten bekannten Stand (ohne Abfrage, ohne Altersprüfung).
+func (h *Handler) maintView(_ context.Context) ha.UpdateView {
 	h.mlock.mu.RLock()
-	wait := maintCacheTTL
-	if h.mlock.lastErr {
-		wait = maintErrRetry
-	}
-	stale := h.mlock.lastTry.IsZero() || now.Sub(h.mlock.lastTry) >= wait
-	h.mlock.mu.RUnlock()
-	if stale && h.mlock.refreshing.CompareAndSwap(false, true) {
-		_ = h.maintRefresh(ctx, now)
-		h.mlock.refreshing.Store(false)
-	}
-	h.mlock.mu.RLock()
-	v, ok := h.mlock.view, h.mlock.lastOK
-	h.mlock.mu.RUnlock()
-	if v.Locked && (ok.IsZero() || now.Sub(ok) > maintFailOpen) {
-		v.Locked = false
-	}
-	h.maintTrack(ctx, v.Locked)
+	defer h.mlock.mu.RUnlock()
+	v := h.mlock.view
+	v.Locked = h.mlock.locked
 	return v
 }
 
-// maintInvalidate: nächste Anfrage fragt sofort neu ab (nach dem Abbruch).
-func (h *Handler) maintInvalidate() {
-	h.mlock.mu.Lock()
-	h.mlock.lastTry = time.Time{}
-	h.mlock.mu.Unlock()
+// MaintLocked: Wartungssperre an – schreibende Hintergrunddienste setzen aus.
+func (h *Handler) MaintLocked() bool {
+	h.mlock.mu.RLock()
+	defer h.mlock.mu.RUnlock()
+	return h.mlock.locked
 }
 
-// maintTrack erkennt den Beginn der Sperre (einmal je Sperre).
-func (h *Handler) maintTrack(ctx context.Context, locked bool) {
-	if !locked {
-		if h.mlock.seen.Load() {
-			h.mlock.seen.Store(false)
-		}
-		return
+// maintSkip: Lauf eines Hintergrunddienstes wegen der Wartungssperre auslassen.
+func (h *Handler) maintSkip(service string) bool {
+	if !h.MaintLocked() {
+		return false
 	}
-	if !h.mlock.seen.Swap(true) {
-		h.maintLockStarted(ctx)
-	}
+	componentLog("wartung").Debug().Str("dienst", service).Msg("lauf während der wartungssperre ausgelassen")
+	return true
 }
 
 // maintLockStarted: Sitzungs-Epoche auf jetzt (falls neuer), speichern und
@@ -244,26 +287,31 @@ func (h *Handler) maintSetSetting(ctx context.Context, key, value string) error 
 	return h.setAppSetting(ctx, key, value)
 }
 
-// LoadMaintLock beim Start, bevor das PDH Anfragen annimmt: Sitzungs-Epoche
-// laden und den Auftrag abfragen – läuft eine Sperre, startet das PDH gesperrt
-// (B nach dem Tausch, Einzelserver nach dem Neustart). Ist pdh-ha bzw. der
-// Agent gerade nicht erreichbar, bis zu drei Versuche im Abstand von 1 s.
-func (h *Handler) LoadMaintLock(ctx context.Context) {
+// maintInit: Sitzungs-Epoche laden, Startzeit merken, ersten Abgleich machen.
+func (h *Handler) maintInit(ctx context.Context) {
 	if s := strings.TrimSpace(h.maintGetSetting(ctx, keySessionNotBefor)); s != "" {
 		if n, err := strconv.ParseInt(s, 10, 64); err == nil && n > 0 {
 			h.sessionNotBefore.Store(n)
 		}
 	}
-	for try := 1; ; try++ {
-		err := h.maintRefresh(ctx, h.maintNow())
-		if err == nil || try >= 3 || !strings.Contains(err.Error(), "nicht erreichbar") {
-			break
-		}
-		time.Sleep(time.Second)
+	h.mlock.mu.Lock()
+	if !h.mlock.answered && h.mlock.failingSince.IsZero() {
+		h.mlock.failingSince = h.maintNow() // „ohne Antwort“ zählt ab dem Start
 	}
+	h.mlock.mu.Unlock()
+	h.maintTick(ctx)
 	if v := h.maintView(ctx); v.Locked {
 		componentLog("wartung").Warn().Str("phase", v.Phase).Msg("start während der wartung – pdh startet gesperrt")
 	}
+}
+
+// LoadMaintLock beim Start, bevor das PDH Anfragen annimmt und bevor die
+// Hintergrunddienste starten: erster Abgleich (läuft eine Sperre, startet
+// das PDH gesperrt – B nach dem Tausch, Einzelserver nach dem Neustart),
+// danach Hintergrund-Takt alle 2 s bis zum Ende von ctx.
+func (h *Handler) LoadMaintLock(ctx context.Context) {
+	h.maintInit(ctx)
+	go h.maintLoop(ctx)
 }
 
 // maintIsAdmin: Inhaber des (globalen) Rechts „Automatische Wartung abbrechen“.
@@ -372,17 +420,24 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// maintStatus: GET /wartung/status – Auftrag als JSON, ohne Anmeldung (Bildschirm fragt alle 2 s).
+// maintStatus: GET /wartung/status – ohne Anmeldung (Bildschirm fragt alle
+// 2 s). Während der Sperre der ganze Auftrag, sonst nur locked/active – ohne
+// Versionen, Ergebnis und fehlerhafte Versionen.
 func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
 	v := h.maintView(r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
+	if !v.Locked {
+		_ = json.NewEncoder(w).Encode(map[string]bool{"locked": false, "active": v.Active})
+		return
+	}
 	_ = json.NewEncoder(w).Encode(v)
 }
 
 // maintLoginPost: POST /wartung/anmelden – wie LoginPost, aber nur für
-// Inhaber des Abbruch-Rechts. Kein Passwort-Pflichtwechsel und keine
-// Spiegel-Regel: beide führen auf Seiten, die während der Sperre gesperrt sind.
+// Inhaber des Abbruch-Rechts. Ist ein Passwortwechsel fällig, keine Sitzung
+// (der Wechsel liefe über gesperrte Seiten) – Hinweis, nach der Wartung
+// anzumelden. Keine Spiegel-Regel: sie leitet auf gesperrte Seiten.
 func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
 	_ = r.ParseForm()
 	login := h.loginFn // Tests; nil → users.Login
@@ -403,6 +458,15 @@ func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.Up
 		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, ShowLogin: true, Err: tr(h.requestLang(r), "Anmeldung während der Wartung nur für Administratoren")})
 		return
 	}
+	pwDue := h.mlock.pwDue // Tests; nil → passwordChangeDue
+	if pwDue == nil {
+		pwDue = h.passwordChangeDue
+	}
+	if due, reason := pwDue(r, user); due {
+		authLog(r, false, "wartung", email, user.ID, name, "wartung: passwortwechsel noetig: "+reason)
+		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, ShowLogin: true, Err: tr(h.requestLang(r), "Passwortwechsel fällig – bitte nach der Wartung anmelden")})
+		return
+	}
 	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
 	authLog(r, true, "wartung", email, user.ID, name, "")
@@ -411,9 +475,10 @@ func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.Up
 
 // maintAbortPost: POST /wartung/abbrechen – Recht prüfen, Abbruch anfordern,
 // protokollieren. Schutz vor fremden Seiten wie bei allen Formularen über das
-// SameSite-Cookie, zusätzlich Sec-Fetch-Site.
+// SameSite-Cookie, zusätzlich Sec-Fetch-Site: nur same-origin, none oder ohne
+// Kopfzeile (ältere Browser, Werkzeuge) – same-site und cross-site nicht.
 func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
-	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
 		http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
 		return
 	}
@@ -441,7 +506,7 @@ func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.Up
 		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, Admin: true, Err: tr(h.requestLang(r), "Abbruch fehlgeschlagen: %s", err.Error())})
 		return
 	}
-	h.maintInvalidate()
+	h.maintTick(r.Context()) // Zustand gleich neu abfragen
 	http.Redirect(w, r, "/wartung?abgebrochen=1", http.StatusSeeOther)
 }
 

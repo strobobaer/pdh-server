@@ -329,6 +329,10 @@ func main() {
 	})
 	webHandler.ConfigureMail(cfg.Mail)
 	webHandler.LoadIconOverrides(context.Background())
+	// Wartungssperre: Sitzungs-Epoche laden und Update-Auftrag abfragen, bevor
+	// Hintergrunddienste starten und Anfragen angenommen werden – läuft eine
+	// Sperre, startet das PDH gesperrt; danach hält ein Takt (2 s) den Zustand aktuell.
+	webHandler.LoadMaintLock(context.Background())
 	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
 		webHandler.StartUpdateChecker(context.Background())
 		webHandler.StartEnabledMqttBrokers(context.Background())
@@ -337,12 +341,12 @@ func main() {
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
-		maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
+		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
 		webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
 		webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
-		faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
+		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())
@@ -389,10 +393,6 @@ func main() {
 		}
 	}
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", copilotModel).Msg("copilot bereit")
-
-	// Wartungssperre: Sitzungs-Epoche laden und Update-Auftrag abfragen, bevor
-	// Anfragen angenommen werden – läuft eine Sperre, startet das PDH gesperrt.
-	webHandler.LoadMaintLock(context.Background())
 
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt

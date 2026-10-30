@@ -118,6 +118,9 @@ func (h *Handler) reconcileMqttConsumer(connectionID string) {
 		topics = append(topics, mp.SourceRef)
 	}
 	handler := func(topic string, payload []byte) {
+		if h.MaintLocked() {
+			return // Wartungssperre: Werte nicht schreiben (der nächste Wert kommt nach der Sperre)
+		}
 		h.recordMqttValue(connectionID, topic, payload)
 	}
 

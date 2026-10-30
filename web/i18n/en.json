@@ -763,5 +763,6 @@
  "Neustart": "Restart",
  "Datenbank aktualisieren": "Update database",
  "Prüfen": "Check",
- "Freigabe": "Release"
+ "Freigabe": "Release",
+ "Passwortwechsel fällig – bitte nach der Wartung anmelden": "Password change due – please sign in after the maintenance"
 }

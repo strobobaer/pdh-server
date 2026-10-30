@@ -14,10 +14,12 @@ import (
 // beim Beenden weiter zu Ende.
 
 // StreamsMiddleware gibt Anfragen mit „Accept: text/event-stream“ (so fragt
-// jeder Browser per EventSource) einen Kontext, den CloseStreams beendet.
+// jeder Browser per EventSource) und WebSocket-Upgrades (HMI, Proxys für
+// n8n, pgAdmin, Code-Server) einen Kontext, den CloseStreams bzw. cutStreams
+// beendet. Der ReverseProxy schließt die Verbindung, sobald er endet.
 func (h *Handler) StreamsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		if !isStreamRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -36,6 +38,12 @@ func (h *Handler) StreamsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// isStreamRequest: Ereignisstrom (EventSource) oder WebSocket-Upgrade.
+func isStreamRequest(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/event-stream") ||
+		strings.Contains(strings.ToLower(r.Header.Get("Upgrade")), "websocket")
 }
 
 // CloseStreams beendet alle offenen Dauerverbindungen (srv.RegisterOnShutdown).

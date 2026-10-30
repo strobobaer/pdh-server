@@ -113,7 +113,9 @@ func (h *Handler) ConfigureUpdates(agentURL, token, buildCommit string) {
 
 func (h *Handler) StartUpdateChecker(ctx context.Context) {
 	go func() {
-		h.checkUpdateIfDue(ctx)
+		if !h.maintSkip("update-pruefung") {
+			h.checkUpdateIfDue(ctx)
+		}
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -121,6 +123,9 @@ func (h *Handler) StartUpdateChecker(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if h.maintSkip("update-pruefung") {
+					continue
+				}
 				h.checkUpdateIfDue(ctx)
 			}
 		}

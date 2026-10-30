@@ -76,7 +76,9 @@ func faultAssigned(f *Fault) bool { return f.AssignedTo != nil && *f.AssignedTo 
 // StartPendingTicketWatcher legt vorgemerkte Tickets an, sobald die Störung
 // zugewiesen ist (Person oder Gruppe) – alle 15 Sekunden, solange die
 // Einstellung an ist (läuft immer, damit Ein-/Ausschalten ohne Neustart wirkt).
-func (s *Service) StartPendingTicketWatcher(ctx context.Context) {
+//
+// skip (darf nil sein) lässt einen Lauf aus, z. B. während der Wartungssperre.
+func (s *Service) StartPendingTicketWatcher(ctx context.Context, skip func() bool) {
 	go func() {
 		t := time.NewTicker(15 * time.Second)
 		defer t.Stop()
@@ -85,7 +87,7 @@ func (s *Service) StartPendingTicketWatcher(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if !autoTicketEnabled() {
+				if !autoTicketEnabled() || (skip != nil && skip()) {
 					continue
 				}
 				runCtx, cancel := context.WithTimeout(context.Background(), time.Minute)

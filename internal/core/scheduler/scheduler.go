@@ -9,6 +9,7 @@ import (
 	"strings"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	cron "github.com/robfig/cron/v3"
@@ -21,6 +22,28 @@ type CronManager struct {
 	mu      sync.Mutex
 	cron    *cron.Cron
 	entries map[string]cron.EntryID
+	gate    gate
+}
+
+// gate: Sperre für alle Läufe (z. B. Wartungssperre während eines Updates).
+type gate struct{ fn atomic.Pointer[func() bool] }
+
+// skip: true → Lauf auslassen.
+func (g *gate) skip() bool {
+	if f := g.fn.Load(); f != nil {
+		return (*f)()
+	}
+	return false
+}
+
+// SetGate: liefert fn true, wird ein fälliger Lauf ausgelassen (nicht
+// nachgeholt). nil hebt die Sperre auf.
+func (m *CronManager) SetGate(fn func() bool) {
+	if fn == nil {
+		m.gate.fn.Store(nil)
+		return
+	}
+	m.gate.fn.Store(&fn)
 }
 
 func NewCronManager() *CronManager {
@@ -42,7 +65,12 @@ func (m *CronManager) Schedule(id, spec string, job func()) error {
 	if spec == "" {
 		return nil
 	}
-	entryID, err := m.cron.AddFunc(spec, job)
+	entryID, err := m.cron.AddFunc(spec, func() {
+		if m.gate.skip() {
+			return
+		}
+		job()
+	})
 	if err != nil {
 		return err
 	}
@@ -94,6 +122,16 @@ type IntervalManager struct {
 	mu      sync.Mutex
 	tickers map[string]*time.Ticker
 	stops   map[string]chan struct{}
+	gate    gate
+}
+
+// SetGate wie CronManager.SetGate.
+func (m *IntervalManager) SetGate(fn func() bool) {
+	if fn == nil {
+		m.gate.fn.Store(nil)
+		return
+	}
+	m.gate.fn.Store(&fn)
 }
 
 func NewIntervalManager() *IntervalManager {
@@ -116,7 +154,9 @@ func (m *IntervalManager) Start(id string, interval time.Duration, job func()) {
 		for {
 			select {
 			case <-ticker.C:
-				job()
+				if !m.gate.skip() {
+					job()
+				}
 			case <-stop:
 				return
 			}

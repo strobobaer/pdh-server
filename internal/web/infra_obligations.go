@@ -315,6 +315,10 @@ func (h *Handler) StartObligationReminders(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				if h.maintSkip("pruefpflichten") {
+					timer.Reset(time.Minute) // nach der Sperre bald nachholen
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if n, err := h.runObligationReminders(runCtx); err != nil {
 					componentLog("pruefpflichten").Error().Err(err).Msg("erinnerungen")

@@ -344,6 +344,10 @@ func NewHandler(
 	}
 	h.mirrorActiveURL = func(r *http.Request) string { return mirrorActiveLink(r, h.mirrorPeerState(r.Context())) }
 	h.streams, h.closeStreams = context.WithCancel(context.Background())
+	// Wartungssperre: geplante Exporte, Bestellvorschlag, Sicherungen und
+	// Abrufe setzen aus (maint_lock.go)
+	h.exportCron.SetGate(h.MaintLocked)
+	h.importPoll.SetGate(h.MaintLocked)
 	return h
 }
 

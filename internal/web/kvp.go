@@ -1489,6 +1489,10 @@ func (h *Handler) StartKVPScheduler(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				if h.maintSkip("kvp-erinnerungen") {
+					timer.Reset(time.Minute) // nach der Sperre bald nachholen
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				h.runKVPReminders(runCtx)
 				cancel()

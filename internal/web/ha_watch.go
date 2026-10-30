@@ -96,7 +96,7 @@ func (h *Handler) haWatch(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		if h.db == nil || !haInstalled() {
+		if h.db == nil || !haInstalled() || h.maintSkip("ausfallschutz-alarme") {
 			continue
 		}
 		h.haWatchOnce(ctx, time.Now(), get, set, notify)
