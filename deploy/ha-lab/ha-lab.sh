@@ -1120,6 +1120,21 @@ up_resume() {
     wait_acks 3 60 || fail "nach dem Auftrag keine Speicherungen"
 }
 
+# up_clean: nach dem Auftrag Wartung aus, keine gescheiterte Aktion
+# (Automatik aus) auf einem der Server; Update-Alarme ins Protokoll
+up_clean() {
+    local c bad
+    snap
+    [[ "$(jget maint <<<"$J1")" == nein && "$(jget maint <<<"$J2")" == nein ]] ||
+        fail "Wartung nach dem Auftrag an (node1 $(jget maint <<<"$J1"), node2 $(jget maint <<<"$J2"))"
+    for c in node1 node2; do
+        bad="$(docker exec "$c" grep -E 'fehlgeschlagen: .*Automatik aus|Zwei aktive Server' /var/lib/pdh-ha/events.jsonl 2>/dev/null | cut -c1-240)" || true
+        [[ -z "$bad" ]] || fail "$c: $bad"
+        docker exec "$c" grep -E 'Update-Auftrag .* fehlgeschlagen|Dringend|braucht Hilfe' /var/lib/pdh-ha/events.jsonl 2>/dev/null |
+            cut -c1-240 | sed "s/^/  $c: /" || true
+    done
+}
+
 sc_update_ok() {
     up_prepare 1 30
     up_start node1 lab1 rolling
@@ -1129,6 +1144,7 @@ sc_update_ok() {
         fail "nicht beide auf lab1 mit node2 aktiv (node1=$R1 $(jget commit <<<"$J1"), node2=$R2 $(jget commit <<<"$J2"))"
     wait_for 30 eval '[[ "$(mig_on node2 lab1)" == t && "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
     wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
+    up_clean
 }
 
 sc_update_b_vorher() {
@@ -1141,6 +1157,7 @@ sc_update_b_vorher() {
     wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
     faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt ($(jget faulty <<<"$J1"))"
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    up_clean
 }
 
 sc_update_b_nachher() {
@@ -1158,6 +1175,7 @@ sc_update_b_nachher() {
     faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt"
     no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
     up_resume
+    up_clean
 }
 
 sc_update_abbruch() {
@@ -1175,6 +1193,7 @@ sc_update_abbruch() {
     ! faulty_has lab1 || fail "lab1 nach Abbruch als fehlerhaft gemerkt"
     no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
     up_resume
+    up_clean
 }
 
 sc_update_neustart() {
@@ -1200,6 +1219,7 @@ sc_update_neustart() {
     up_result_has "abgeschlossen"
     wait_for 180 eval 'mirror_ok_rev && commits_are lab1 lab1' || fail "nicht beide auf lab1 mit node2 aktiv"
     up_resume
+    up_clean
 }
 
 sc_update_nicht_gruen() {
@@ -1216,6 +1236,7 @@ sc_update_nicht_gruen() {
     [[ "$(up_get upphase)" == - ]] || fail "Auftrag trotzdem angelegt (Phase $(up_get upphase))"
     net_on node2 lan vpn || fail "Netz on node2"
     wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nach der Trennung kein synchroner Spiegel auf lab0"
+    up_clean
 }
 
 sc_update_nacheinander() {
@@ -1226,6 +1247,7 @@ sc_update_nacheinander() {
     wait_for 180 eval 'mirror_ok && commits_are lab1 lab1' || fail "nicht beide auf lab1 mit node1 aktiv"
     wait_for 30 eval '[[ "$(mig_on node1 lab1)" == t && "$(mig_on node2 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
     wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
+    up_clean
 }
 
 sc_update_nacheinander_fehler() {
@@ -1243,6 +1265,7 @@ sc_update_nacheinander_fehler() {
     faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt"
     no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
     up_resume
+    up_clean
 }
 
 sc_update_hoechstdauer() {
@@ -1264,6 +1287,7 @@ sc_update_hoechstdauer() {
     ! faulty_has lab1 || fail "lab1 als fehlerhaft gemerkt (nur der Tausch scheiterte)"
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
     up_resume
+    up_clean
 }
 
 run_scenario() {
