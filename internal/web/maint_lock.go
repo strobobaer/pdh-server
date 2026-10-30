@@ -68,6 +68,7 @@ type maintLock struct {
 	locked       bool          // wirksamer Zustand der Sperre
 	answered     bool          // seit dem Start mindestens eine eindeutige Antwort
 	failingSince time.Time     // Beginn der laufenden Störung (Null = keine)
+	failLogged   bool          // laufende Störung schon protokolliert
 	seen         bool          // Sperre schon gesehen (Übergang → Abmeldung), mit locked geschaltet
 }
 
@@ -167,15 +168,18 @@ func (h *Handler) maintTick(ctx context.Context) {
 	h.mlock.mu.Lock()
 	switch {
 	case err == nil:
-		if !h.mlock.failingSince.IsZero() && h.mlock.answered {
+		if h.mlock.failLogged {
 			lg.Info().Msg("auftrag wieder abfragbar")
 		}
-		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince = v, v.Locked, true, time.Time{}
+		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince, h.mlock.failLogged = v, v.Locked, true, time.Time{}, false
 	case maintUnavailable(err):
-		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince = ha.UpdateView{}, false, true, time.Time{}
+		h.mlock.view, h.mlock.locked, h.mlock.answered, h.mlock.failingSince, h.mlock.failLogged = ha.UpdateView{}, false, true, time.Time{}, false
 	default:
 		if h.mlock.failingSince.IsZero() {
 			h.mlock.failingSince = now
+		}
+		if !h.mlock.failLogged { // einmal je Störung, auch beim Start (failingSince dort schon gesetzt)
+			h.mlock.failLogged = true
 			lg.Warn().Err(err).Msg("auftrag nicht abfragbar – letzter stand gilt")
 		}
 		base := h.mlock.locked
@@ -188,8 +192,15 @@ func (h *Handler) maintTick(ctx context.Context) {
 			lg.Warn().Err(err).Msg("30 s ohne antwort – wartungssperre aufgehoben")
 		}
 	}
-	start := h.mlock.locked && !h.mlock.seen
-	h.mlock.seen = h.mlock.locked
+	// Vorläufige Startsperre (noch keine Antwort) sperrt nur Anfragen: keine
+	// Abmeldung, keine Epoche, Verbindungen bleiben – erst eine echte Antwort
+	// mit Locked löst das aus (sonst beendete jeder Neustart ohne schnelle
+	// Antwort alle Sitzungen).
+	start := false
+	if h.mlock.answered {
+		start = h.mlock.locked && !h.mlock.seen
+		h.mlock.seen = h.mlock.locked
+	}
 	h.mlock.mu.Unlock()
 
 	if start {

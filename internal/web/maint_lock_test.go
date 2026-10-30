@@ -541,6 +541,66 @@ func TestLockStartWithoutAnswer(t *testing.T) {
 	}
 }
 
+// Die vorläufige Startsperre (noch keine Antwort) sperrt nur Anfragen: keine
+// Abmeldung, keine gespeicherte Epoche, Verbindungen bleiben offen. Erst eine
+// echte Antwort mit Locked setzt die Epoche – genau einmal.
+func TestLockProvisionalStartKeepsSessions(t *testing.T) {
+	h, f := maintTestHandler(t, ha.UpdateView{})
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar: connection refused"))
+	saved := 0
+	h2 := &Handler{jwtSecret: boardTestSecret, userByIDFn: h.userByIDFn}
+	h2.streams, h2.closeStreams = context.WithCancel(context.Background())
+	h2.mlock = maintLock{fetch: h.mlock.fetch, now: h.mlock.now, admin: h.mlock.admin,
+		configured: func() bool { return true },
+		getSetting: func(context.Context, string) string { return "1700000000" },
+		setSetting: func(context.Context, string, string) error { saved++; return nil }}
+	stream := h2.streamsCtx()
+	h2.maintInit(context.Background())
+	hd, calls := maintChain(h2)
+	if rec := maintDo(hd, maintReq{method: "GET", path: "/", hdr: htmlAccept}); rec.Code != http.StatusServiceUnavailable || *calls != 0 {
+		t.Fatalf("vorläufige Startsperre: %d", rec.Code)
+	}
+	f.move(5 * time.Second)
+	h2.maintTick(context.Background())
+	if h2.sessionNotBefore.Load() != 1700000000 || saved != 0 || stream.Err() != nil {
+		t.Fatalf("vorläufige Sperre hat abgemeldet: not_before=%d gespeichert=%d streams=%v", h2.sessionNotBefore.Load(), saved, stream.Err())
+	}
+	// Quelle antwortet: keine Sperre → wieder offen, Sitzungen unverändert
+	f.set(ha.UpdateView{}, nil)
+	f.move(2 * time.Second)
+	h2.maintTick(context.Background())
+	if h2.MaintLocked() || h2.sessionNotBefore.Load() != 1700000000 || saved != 0 {
+		t.Fatalf("nach Antwort ohne Sperre: locked=%v not_before=%d", h2.MaintLocked(), h2.sessionNotBefore.Load())
+	}
+	// echte Sperre: Epoche einmal angehoben, gespeichert, Verbindungen beendet
+	f.set(lockedView(), nil)
+	for i := 0; i < 3; i++ {
+		f.move(2 * time.Second)
+		h2.maintTick(context.Background())
+	}
+	if h2.sessionNotBefore.Load() <= 1700000000 || saved != 1 || stream.Err() == nil {
+		t.Fatalf("echte Sperre: not_before=%d gespeichert=%d streams=%v", h2.sessionNotBefore.Load(), saved, stream.Err())
+	}
+
+	// Start ohne Antwort, danach direkt eine Antwort mit Locked → Epoche einmal
+	f.set(ha.UpdateView{}, errors.New("pdh-ha nicht erreichbar"))
+	saved = 0
+	h3 := &Handler{}
+	h3.mlock = maintLock{fetch: h.mlock.fetch, now: h.mlock.now, configured: func() bool { return true },
+		setSetting: func(context.Context, string, string) error { saved++; return nil }}
+	h3.maintInit(context.Background())
+	if !h3.MaintLocked() || h3.sessionNotBefore.Load() != 0 || saved != 0 {
+		t.Fatalf("Start ohne Antwort: locked=%v not_before=%d", h3.MaintLocked(), h3.sessionNotBefore.Load())
+	}
+	f.set(lockedView(), nil)
+	f.move(2 * time.Second)
+	h3.maintTick(context.Background())
+	h3.maintTick(context.Background())
+	if h3.sessionNotBefore.Load() == 0 || saved != 1 {
+		t.Fatalf("erste echte Antwort mit Sperre: not_before=%d gespeichert=%d", h3.sessionNotBefore.Load(), saved)
+	}
+}
+
 // Der Takt setzt Epoche und schließt Verbindungen, ohne dass eine Anfrage kommt.
 func TestLockTickerActsWithoutRequests(t *testing.T) {
 	old := maintTickEvery
