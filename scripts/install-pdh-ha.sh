@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # PDH – Ausfallschutz-Dienst pdh-ha bauen und als systemd-Dienst einrichten.
 #
-#   sudo bash scripts/install-pdh-ha.sh <repo_dir>
+#   sudo bash scripts/install-pdh-ha.sh <repo_dir> [--build-only | --install-built]
+#
+# --build-only    nur bauen, nach <repo_dir>/bin/pdh-ha.neu; sonst wird nichts
+#                 angefasst (kein Dienst, keine Unit, kein Binary in /usr/local/bin).
+#                 So baut der Verbund-Update vorab, ohne Neustart.
+# --install-built die mit --build-only gebaute Datei bin/pdh-ha.neu einsetzen
+#                 und den Dienst neu starten (ohne erneuten Bau).
 #
 # Aufgerufen vom Update-Agenten („Ausfallschutz einrichten“), von
 # install_update.sh (bei jedem PDH-Update, wenn pdh-ha installiert ist) und von
@@ -24,6 +30,48 @@ if [[ -z "$repo_dir" || ! -f "$repo_dir/go.mod" || ! -d "$repo_dir/cmd/pdh-ha" ]
     exit 1
 fi
 repo_dir="$(cd "$repo_dir" && pwd)"
+build_only=0
+install_built=0
+case "${2:-}" in
+    "") ;;
+    --build-only) build_only=1 ;;
+    --install-built) install_built=1 ;;
+    *)
+        echo "Aufruf: install-pdh-ha.sh <repo_dir> [--build-only | --install-built]" >&2
+        exit 1
+        ;;
+esac
+prebuilt="$repo_dir/bin/pdh-ha.neu"
+
+# pdh-ha bauen nach $1. systemd-run setzt weder HOME noch Go-Caches.
+build_pdh_ha() {
+    export HOME="${HOME:-/root}"
+    export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"
+    export GOMODCACHE="${GOMODCACHE:-/var/cache/pdh-ha/go-mod}"
+    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24). Ab Go 1.21
+    # lädt go die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
+    export GOTOOLCHAIN=auto
+    local go_minor
+    go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+    if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
+        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+        exit 1
+    fi
+    # root liest ggf. das Repo des PDH-Benutzers – git verlangt dafür safe.directory
+    build_commit="$(git -c safe.directory="$repo_dir" -C "$repo_dir" rev-parse HEAD)"
+    build_version="$(tr -d '[:space:]' < "$repo_dir/VERSION")"
+    local ldflags="-s -w -X main.version=$build_version -X main.commit=$build_commit"
+    (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags "$ldflags" -o "$1" ./cmd/pdh-ha)
+}
+
+if (( build_only )); then
+    mkdir -p "$repo_dir/bin"
+    build_pdh_ha "$prebuilt.tmp"
+    install -m 0755 "$prebuilt.tmp" "$prebuilt"
+    rm -f "$prebuilt.tmp"
+    echo "pdh-ha $build_version ($build_commit) gebaut: $prebuilt (nichts installiert, kein Neustart)."
+    exit 0
+fi
 
 unit_file=/etc/systemd/system/pdh-ha.service
 unit="$(cat <<'EOF'
@@ -89,27 +137,20 @@ if (( ${#vip_packages[@]} > 0 )); then
         || echo "WARNUNG: ${vip_packages[*]} nicht installiert – für die mitwandernde Adresse: sudo apt-get install iputils-arping iproute2" >&2
 fi
 
-# systemd-run setzt weder HOME noch Go-Caches
-export HOME="${HOME:-/root}"
-export GOCACHE="${GOCACHE:-/var/cache/pdh-ha/go-build}"
-export GOMODCACHE="${GOMODCACHE:-/var/cache/pdh-ha/go-mod}"
-
-# Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24). Ab Go 1.21
-# lädt go die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
-export GOTOOLCHAIN=auto
-go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
-if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-    echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: nötig ist mindestens Go 1.21 (lädt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
-    exit 1
+if (( install_built )); then
+    if [[ ! -x "$prebuilt" ]]; then
+        echo "Gebaute Datei $prebuilt fehlt – erst mit --build-only bauen." >&2
+        exit 1
+    fi
+    build_commit="$(git -c safe.directory="$repo_dir" -C "$repo_dir" rev-parse HEAD)"
+    build_version="$(tr -d '[:space:]' < "$repo_dir/VERSION")"
+    built_bin="$prebuilt"
+else
+    build_dir="$(mktemp -d)"
+    trap 'rm -rf "$build_dir"' EXIT
+    build_pdh_ha "$build_dir/pdh-ha"
+    built_bin="$build_dir/pdh-ha"
 fi
-
-# root liest ggf. das Repo des PDH-Benutzers – git verlangt dafür safe.directory
-build_commit="$(git -c safe.directory="$repo_dir" -C "$repo_dir" rev-parse HEAD)"
-build_version="$(tr -d '[:space:]' < "$repo_dir/VERSION")"
-build_dir="$(mktemp -d)"
-trap 'rm -rf "$build_dir"' EXIT
-ldflags="-s -w -X main.version=$build_version -X main.commit=$build_commit"
-(cd "$repo_dir" && GOTOOLCHAIN=auto go build -buildvcs=false -trimpath -ldflags "$ldflags" -o "$build_dir/pdh-ha" ./cmd/pdh-ha)
 
 # zuerst Gruppe, Ablage und Unit, dann das Binary atomar tauschen.
 # Gruppe pdh: Zugriff des PDH auf den Socket /run/pdh-ha/api.sock
@@ -123,8 +164,9 @@ if (( unit_changed )); then
     printf '%s\n' "$unit" > "$unit_file"
     systemctl daemon-reload
 fi
-install -m 0755 "$build_dir/pdh-ha" /usr/local/bin/pdh-ha.new
+install -m 0755 "$built_bin" /usr/local/bin/pdh-ha.new
 mv -f /usr/local/bin/pdh-ha.new /usr/local/bin/pdh-ha
+(( ! install_built )) || rm -f "$prebuilt"
 
 if systemctl is-active --quiet pdh-ha; then
     systemctl restart pdh-ha

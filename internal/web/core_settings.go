@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,18 @@ import (
 )
 
 const updateRepository = "strobobaer/pdh-server"
+
+// updateBranch ist der Update-Zweig (PDH_UPDATE_BRANCH, Standard main) – derselbe,
+// den install_update.sh holt. Ungültige Namen fallen auf main zurück.
+func updateBranch() string {
+	b := strings.TrimSpace(os.Getenv("PDH_UPDATE_BRANCH"))
+	if b == "" || strings.HasPrefix(b, "-") || strings.Contains(b, "..") || !updateBranchRe.MatchString(b) {
+		return "main"
+	}
+	return b
+}
+
+var updateBranchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 
 type CoreSettingsPageData struct {
 	CompletionDepartments string      // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
@@ -162,7 +176,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 	data.LatestVersion, data.NewReleases = h.availableReleases(ctx)
 	data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
 	if latestCommit != "" && h.buildCommit != "" && h.buildCommit != "unknown" {
-		data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "...main"
+		data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "..." + url.PathEscape(updateBranch())
 	}
 	if checked := h.getUpdateSetting(ctx, "update_last_checked_at", ""); checked != "" {
 		if parsed, err := time.Parse(time.RFC3339, checked); err == nil {
@@ -376,7 +390,7 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	var latest struct {
 		SHA string `json:"sha"`
 	}
-	if err := fetchGitHubJSON(requestCtx, "https://api.github.com/repos/"+updateRepository+"/commits/main", &latest); err != nil {
+	if err := fetchGitHubJSON(requestCtx, "https://api.github.com/repos/"+updateRepository+"/commits/"+url.PathEscape(updateBranch()), &latest); err != nil {
 		h.recordUpdateCheckError(ctx, err)
 		return err
 	}

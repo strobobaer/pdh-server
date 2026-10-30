@@ -9,6 +9,48 @@ if [[ "$mode" != "docker" && "$mode" != "systemd" ]]; then
     echo "PDH_UPDATE_MODE must be docker or systemd." >&2
     exit 1
 fi
+
+# Schalter (Update im Verbund, vom Update-Agenten aus pdh-ha heraus):
+#   --commit <sha>    genau diesen Stand einspielen (muss im Update-Zweig liegen)
+#   --rollback <sha>  auf diesen Stand zurueckdrehen (hartes Zuruecksetzen), dann bauen
+#   --no-restart      nur bauen, keine Dienste neu starten oder ersetzen
+#   --finish          vorher gebaute Dateien einsetzen (kein Bau): pdh gemaess
+#                     should-run-pdh neu starten, pdh-ha einsetzen, Agent ersetzen
+# Ohne Schalter: aktueller Stand des Update-Zweigs, bauen und neu starten.
+want_commit=""
+want_rollback=""
+no_restart=0
+finish=0
+while (( $# > 0 )); do
+    case "$1" in
+        --commit|--rollback)
+            flag="$1"
+            [[ $# -ge 2 && "$2" =~ ^[0-9a-f]{7,40}$ ]] || { echo "$flag braucht einen Commit (7 bis 40 Hex-Zeichen)." >&2; exit 1; }
+            if [[ "$flag" == "--commit" ]]; then want_commit="$2"; else want_rollback="$2"; fi
+            shift 2
+            ;;
+        --no-restart) no_restart=1; shift ;;
+        --finish) finish=1; shift ;;
+        *) echo "Unbekannter Schalter: $1" >&2; exit 1 ;;
+    esac
+done
+if [[ -n "$want_commit" && -n "$want_rollback" ]]; then
+    echo "--commit und --rollback schliessen sich aus." >&2
+    exit 1
+fi
+if (( finish )) && [[ -n "$want_commit$want_rollback" || $no_restart -eq 1 ]]; then
+    echo "--finish gilt nur allein." >&2
+    exit 1
+fi
+if [[ "$mode" == "docker" ]] && (( finish || no_restart )) || [[ "$mode" == "docker" && -n "$want_commit$want_rollback" ]]; then
+    echo "Gezielte Updates gibt es nur bei systemd-Installationen." >&2
+    exit 1
+fi
+branch="${PDH_UPDATE_BRANCH:-main}"
+if [[ ! "$branch" =~ ^[A-Za-z0-9._/-]+$ || "$branch" == -* || "$branch" == *..* ]]; then
+    echo "Ungueltiger Update-Zweig: $branch" >&2
+    exit 1
+fi
 repo_uid="$(stat -c '%u' "$repo_dir")"
 repo_gid="$(stat -c '%g' "$repo_dir")"
 
@@ -43,15 +85,36 @@ if [[ -n "$(git_as_checkout_owner diff --name-only)" || -n "$(git_as_checkout_ow
     exit 1
 fi
 
-git_as_checkout_owner fetch --prune origin main
-current="$(git_as_checkout_owner rev-parse HEAD)"
-target="$(git_as_checkout_owner rev-parse "FETCH_HEAD^{commit}")"
-if [[ "$current" == "$target" ]]; then
-    echo "Source is already at $target; verifying/rebuilding the runtime."
-else
-    if ! git_as_checkout_owner merge --ff-only "$target"; then
-        echo "The local branch cannot be fast-forwarded; refusing to overwrite it." >&2
+if [[ -n "$want_rollback" ]]; then
+    # Zurueckdrehen: der Stand muss lokal vorhanden sein, sonst Abbruch vor jeder Aenderung.
+    if ! target="$(git_as_checkout_owner rev-parse --verify --quiet "$want_rollback^{commit}")"         || ! git_as_checkout_owner cat-file -e "$target^{commit}"; then
+        echo "Der Stand $want_rollback ist nicht vorhanden; Zurueckdrehen abgebrochen." >&2
         exit 1
+    fi
+    git_as_checkout_owner reset --hard "$target"
+    echo "Zurueckgedreht auf $target."
+elif (( finish )); then
+    # Einsetzen der vorher gebauten Dateien: Quelltext bleibt, wie er ist.
+    target="$(git_as_checkout_owner rev-parse HEAD)"
+else
+    git_as_checkout_owner fetch --prune origin "$branch"
+    current="$(git_as_checkout_owner rev-parse HEAD)"
+    target="$(git_as_checkout_owner rev-parse "FETCH_HEAD^{commit}")"
+    if [[ -n "$want_commit" ]]; then
+        # Ziel muss im Update-Zweig liegen (Pruefung vor jeder Aenderung).
+        if ! want_full="$(git_as_checkout_owner rev-parse --verify --quiet "$want_commit^{commit}")"             || ! git_as_checkout_owner merge-base --is-ancestor "$want_full" FETCH_HEAD; then
+            echo "Ziel nicht im Update-Zweig ($branch): $want_commit; nichts geaendert." >&2
+            exit 1
+        fi
+        target="$want_full"
+    fi
+    if [[ "$current" == "$target" ]]; then
+        echo "Source is already at $target; verifying/rebuilding the runtime."
+    else
+        if ! git_as_checkout_owner merge --ff-only "$target"; then
+            echo "The local branch cannot be fast-forwarded; refusing to overwrite it." >&2
+            exit 1
+        fi
     fi
 fi
 
@@ -99,8 +162,20 @@ else
         exit 1
     fi
     mkdir -p "$repo_dir/bin"
-    (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
-    (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
+    if (( ! finish )); then
+        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
+        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
+        # pdh-ha mit bauen (nach bin/pdh-ha.neu), solange noch nichts neu gestartet wird
+        if (( no_restart )) && [[ -x /usr/local/bin/pdh-ha ]]; then
+            bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" --build-only
+        fi
+    fi
+    if (( no_restart )); then
+        # Nur gebaut: pdh, pdh-ha und Agent bleiben unberuehrt (spaeter --finish).
+        echo "Gebaut, keine Dienste neu gestartet."
+        echo "Updated to $target."
+        exit 0
+    fi
     # Zuerst die Anwendung neu starten: ein nicht ersetzbares Agent-Binary
     # (z.B. aeltere systemd-Unit ohne /usr/local/bin in ReadWritePaths oder
     # schreibgeschuetztes Dateisystem) darf das Update nicht halb fertig
@@ -121,6 +196,9 @@ else
     # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
     # ein Fehler bricht das Update nicht ab.
     if [[ -x /usr/local/bin/pdh-ha ]]; then
+        # nach --finish: die vorab gebaute Datei einsetzen; sonst bauen und einsetzen
+        ha_args=()
+        (( ! finish )) || ha_args=(--install-built)
         if command -v systemd-run >/dev/null 2>&1; then
             systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
                 || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2

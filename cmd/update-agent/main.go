@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +23,7 @@ type jobStatus struct {
 	Output     string    `json:"output"`
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
+	Commit     string    `json:"commit"` // Ziel des Laufs (--commit/--rollback), sonst leer
 }
 
 type updateAgent struct {
@@ -38,6 +38,8 @@ type updateAgent struct {
 	repoDir string
 	mode    string
 	project string
+
+	updateRun func(args []string) // nil = runUpdate (install_update.sh); Test-Haken
 }
 
 type limitedBuffer struct {
@@ -80,6 +82,9 @@ func main() {
 		project = "pdh-server"
 	}
 	agent := &updateAgent{token: token, repoDir: repoDir, mode: mode, project: project}
+	if mode == "systemd" {
+		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -144,8 +149,30 @@ func (a *updateAgent) statusHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(status)
 }
 
-func (a *updateAgent) updateHandler(w http.ResponseWriter, _ *http.Request) {
+func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
+	// Rumpf ist optional: leer = bisheriges Verhalten (aktueller Stand des Update-Zweigs).
+	var req updateRequest
+	if r.Body != nil {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
+		if len(bytes.TrimSpace(body)) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": "ungültiger Rumpf"})
+				return
+			}
+		}
+	}
+	args, err := req.args()
+	if err != nil {
+		writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if a.mode == "docker" {
+		// Docker-Betrieb nur für Testsysteme: gezielter Stand, Zurückdrehen und
+		// Trennen von Bau und Neustart gibt es dort nicht.
+		if !req.isEmpty() {
+			writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": "Gezielte Updates gibt es nur bei systemd-Installationen"})
+			return
+		}
 		if status, err := a.dockerJobStatus(); err == nil && status.Running {
 			http.Error(w, "update already running", http.StatusConflict)
 			return
@@ -169,40 +196,17 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, _ *http.Request) {
 		a.status = jobStatus{}
 		a.mu.Unlock()
 	} else {
-		a.mu.Lock()
-		if a.status.Running {
-			a.mu.Unlock()
-			http.Error(w, "update already running", http.StatusConflict)
+		commit := req.Commit
+		if commit == "" {
+			commit = req.Rollback
+		}
+		if running, ok := a.startUpdate(commit); !ok {
+			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit})
 			return
 		}
-		a.status = jobStatus{Running: true, StartedAt: time.Now().UTC()}
-		a.mu.Unlock()
-		go a.runUpdate()
+		go a.runUpdateHook(args)
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "started"})
-}
-
-func (a *updateAgent) runUpdate() {
-	output := &limitedBuffer{}
-	script := filepath.Join(a.repoDir, "install_update.sh")
-	command := exec.Command("bash", script)
-	command.Dir = a.repoDir
-	command.Env = append(os.Environ(), "PDH_UPDATE_MODE="+a.mode)
-	command.Stdout = output
-	command.Stderr = output
-	err := command.Run()
-	if err != nil {
-		fmt.Fprintf(output, "\nUpdater failed: %v\n", err)
-	}
-
-	a.mu.Lock()
-	a.status.Running = false
-	a.status.Success = err == nil
-	a.status.Output = output.String()
-	a.status.FinishedAt = time.Now().UTC()
-	a.mu.Unlock()
+	writeUpdateJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 
 func (a *updateAgent) startDockerJob() error {
