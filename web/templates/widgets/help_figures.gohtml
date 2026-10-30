@@ -667,23 +667,25 @@
 
 {{define "hb-fig-wartungsfenster"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 210" role="img" aria-label="Reiter Ausfallschutz mit dem Kasten Wartungsfenster: Auswahl täglich oder wöchentlich, Beginn, Uhrzeit, Update-Art, nächstes Fenster, Ergebnis des letzten Fensters und gemerkte fehlerhafte Versionen">
-  <rect class="bg" x="1" y="1" width="638" height="208" rx="8"/>
+<svg viewBox="0 0 640 250" role="img" aria-label="Reiter Ausfallschutz mit dem Kasten Wartungsfenster: Auswahl täglich oder wöchentlich, Wochentag, Beginn, Uhrzeit, Update-Art, Kästchen Rollen im Fenster tauschen, Speichern, nächster möglicher Beginn, letztes Ergebnis und als fehlerhaft gemerkte Versionen">
+  <rect class="bg" x="1" y="1" width="638" height="248" rx="8"/>
   <text x="16" y="22" class="t-m">Übersicht</text><text x="90" y="22" class="t-b">Ausfallschutz</text><text x="190" y="22" class="t-m">Sicherung</text>
-  <rect class="bg3" x="12" y="32" width="616" height="168" rx="8"/>
-  <text x="26" y="54" class="t-b">📅 Wartungsfenster</text>
-  <text x="26" y="72" class="t-m">Nächstes Fenster: Do 31.10., nach der Grundsicherung, ca. 02:30 · Letztes: 0.77.8 eingespielt</text>
-  <rect class="win" x="26" y="82" width="130" height="22" rx="4"/><text x="34" y="97">täglich</text>
-  <rect class="win" x="166" y="82" width="170" height="22" rx="4"/><text x="174" y="97">nach dem Abgleich</text>
-  <rect class="win" x="346" y="82" width="100" height="22" rx="4"/><text x="354" y="97">bis 05:00</text>
-  <rect class="win" x="456" y="82" width="160" height="22" rx="4"/><text x="464" y="97">ohne Unterbrechung</text>
-  <rect class="ctl" x="26" y="116" width="12" height="12" rx="2"/><text x="44" y="126">Neue Version einspielen</text>
-  <text x="26" y="150" class="t-m">Countdown 2 min · Höchstdauer der Sperre 30 min</text>
-  <text x="26" y="172" class="t-b">Fehlerhafte Versionen</text><text x="170" y="172" class="t-m">0.77.9 (Prüfung gescheitert)</text>
-  <rect class="acl" x="480" y="158" width="130" height="22" rx="4"/><text x="545" y="173" class="t-c">Wieder zulassen</text>
-  <rect class="acl" x="540" y="38" width="76" height="22" rx="4"/><text x="578" y="53" class="t-c">Speichern</text>
+  <rect class="bg3" x="12" y="32" width="616" height="208" rx="8"/>
+  <text x="26" y="54" class="t-b">Wartungsfenster</text><text x="580" y="54" class="t-m">täglich</text>
+  <text x="26" y="72" class="t-m">Nächster möglicher Beginn: 31.10.2026 02:30 · Letztes Ergebnis: 0.77.8 eingespielt</text>
+  <rect class="win" x="26" y="82" width="100" height="22" rx="4"/><text x="34" y="97">täglich</text>
+  <rect class="win" x="136" y="82" width="100" height="22" rx="4"/><text x="144" y="97">Wochentag</text>
+  <rect class="win" x="246" y="82" width="170" height="22" rx="4"/><text x="254" y="97">nach dem Abgleich</text>
+  <rect class="win" x="426" y="82" width="70" height="22" rx="4"/><text x="434" y="97">05:00</text>
+  <rect class="win" x="26" y="112" width="190" height="22" rx="4"/><text x="34" y="127">ohne Unterbrechung</text>
+  <rect class="ctl" x="232" y="117" width="12" height="12" rx="2"/><text x="250" y="127">Neue Version einspielen</text>
+  <rect class="ctl" x="400" y="117" width="12" height="12" rx="2"/><text x="418" y="127">Rollen im Fenster tauschen</text>
+  <text x="26" y="154" class="t-m">Countdown vor der Sperre 2 min · Höchstdauer der Sperre 30 min</text>
+  <rect class="acl" x="26" y="164" width="90" height="22" rx="4"/><text x="71" y="179" class="t-c">Speichern</text>
+  <rect class="rd" x="26" y="198" width="588" height="34" rx="6"/><text x="36" y="213" class="t-b">Als fehlerhaft gemerkte Versionen</text><text x="260" y="213" class="t-m">0.77.9</text>
+  <rect class="acl" x="480" y="203" width="124" height="22" rx="4"/><text x="542" y="218" class="t-c">Wieder zulassen</text>
 </svg>
-<figcaption>Der Kasten „Wartungsfenster“ im Reiter Ausfallschutz: Zeitplan und Update-Art oben, darunter nächstes und letztes Fenster sowie gemerkte fehlerhafte Versionen.</figcaption>
+<figcaption>Der Kasten „Wartungsfenster“ im Reiter Ausfallschutz: Zeitplan und Update-Art, darunter Speichern, oben nächster möglicher Beginn und letztes Ergebnis, unten die als fehlerhaft gemerkten Versionen.</figcaption>
 </figure>
 {{end}}
 

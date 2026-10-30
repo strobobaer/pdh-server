@@ -1629,8 +1629,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Anfangs hat nur die Rolle Administrator alle Bereichsadministrator-Rechte. Ein ausdrückliches Verbot eines Einzelrechts gilt auch gegen den Bereichsadministrator.</div>
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
-      <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen ändern“ hatten.</li>
-      <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Beim Update bekamen es alle Rollen mit „Rollen &amp; Rechte verwalten“ und alle Bereichsadministratoren.</li>
+      <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
+      <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
     </ul>
     Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
@@ -1932,7 +1932,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Beginn</b> wählen: Das Fenster startet nach der täglichen Grundsicherung – <i>vor</i> oder <i>nach</i> dem nächsten Dateiabgleich (Standard: nach). Gibt es keine Ausfallschutz-Sicherung, gilt die <b>Uhrzeit</b> (Standard 02:00).</li>
       <li><b>Spätestens beginnen bis</b> (Standard 05:00) festlegen. Ist die Grundsicherung dann noch nicht fertig, fällt das Fenster aus und du bekommst eine Meldung.</li>
       <li><b>Neue Version einspielen</b> ankreuzen, wenn das Fenster auch aktualisieren soll. Eingespielt wird nur, wenn es eine neuere Version gibt, die nicht als fehlerhaft gemerkt ist.</li>
-      <li>Im Verbund die <b>Update-Art</b> wählen (unten) und, wenn du willst, <b>Rollentausch im Fenster: in jedem Fenster</b>. Bei „ohne Unterbrechung“ gehört ein Rollentausch schon zum Update – dann wird nicht zusätzlich getauscht, die Rollen bleiben vertauscht.</li>
+      <li>Im Verbund die <b>Update-Art</b> wählen (unten) und, wenn du willst, <b>Rollen im Fenster tauschen</b> ankreuzen. Bei „ohne Unterbrechung“ gehört ein Rollentausch schon zum Update – dann wird nicht zusätzlich getauscht, die Rollen bleiben vertauscht.</li>
       <li><b>Countdown vor der Sperre</b> (1–15 Minuten, Standard 2) und <b>Höchstdauer der Sperre</b> (10–120 Minuten, Standard 30) bei Bedarf anpassen, dann <b>Speichern</b>.</li>
     </ol>
     <p>Der Kasten zeigt das <b>nächste Fenster</b>, das <b>Ergebnis des letzten Fensters</b> und die als <b>fehlerhaft gemerkten Versionen</b>. Eine solche Version wird übersprungen, bis eine neuere erscheint. Mit <b>Wieder zulassen</b> (gleiches Recht) versucht das System sie doch noch einmal.</p>

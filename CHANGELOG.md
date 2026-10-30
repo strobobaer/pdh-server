@@ -17,7 +17,7 @@ im Kapitel „Versionen & Updates“ an.
 - Wartungsfenster im Reiter Ausfallschutz: täglich oder wöchentlich nach der Grundsicherung spielt das System automatisch die neue Version ein; fehlerhafte Versionen werden gemerkt und übersprungen, bis eine neuere kommt oder ein Administrator sie wieder zulässt.
 - Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre, vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen (Notbremse auf der Konsole: `pdh-ha update abort`).
 - Der Zeuge zieht selbst nach, wenn beide Server auf demselben Stand sind (Container-Helfer `updater`, abschaltbar mit `PDH_HA_AUTOUPDATE=0`); der Reiter warnt „Zeuge veraltet“, falls er es nicht schafft.
-- Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollentausch im Fenster“).
+- Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollen im Fenster tauschen“).
 
 ### Geändert
 - Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert.
