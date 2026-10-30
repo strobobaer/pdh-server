@@ -54,6 +54,10 @@ type apiStatus struct {
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
 	Access         apiAccess   `json:"access"`
+
+	// Update im Verbund: Auftrag, Phase, Sperre; als fehlerhaft gemerkte Commits
+	Update ha.UpdateView `json:"update"`
+	Faulty []string      `json:"faulty"`
 }
 
 // apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.

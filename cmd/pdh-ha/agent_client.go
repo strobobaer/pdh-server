@@ -1,0 +1,295 @@
+package main
+
+// Aufruf des lokalen Update-Agenten (Update im Verbund, Spec 3.2) und
+// Abfrage des eigenen pdh (/health). Token, Adresse und Port stehen in der
+// .env des PDH (/opt/pdh-server/.env, Pfad über PDH_HA_PDH_ENV); im Labor
+// ersetzt ein Befehl (PDH_HA_AGENT_CMD) den Agenten.
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// agentClient spielt einen Stand ein, dreht zurück oder setzt einen
+// vorbereiteten Bau ein. Jeder Aufruf wartet auf das Ergebnis.
+type agentClient interface {
+	Install(ctx context.Context, commit string, noRestart bool) error
+	Rollback(ctx context.Context, commit string, noRestart bool) error
+	Finish(ctx context.Context) error
+}
+
+// agentWait: so lange wartet ein Aufruf höchstens auf das Ende des Updates.
+const agentWait = 20 * time.Minute
+
+// newAgentClient: PDH_HA_AGENT_CMD gesetzt (Labor) → Befehl; sonst HTTP an
+// den Update-Agenten.
+func newAgentClient() agentClient {
+	if c := strings.Fields(os.Getenv("PDH_HA_AGENT_CMD")); len(c) > 0 {
+		return cmdAgent{argv: c}
+	}
+	return &httpAgent{poll: 2 * time.Second, wait: agentWait}
+}
+
+// pdhEnvPath: .env des PDH.
+func pdhEnvPath() string {
+	if p := os.Getenv("PDH_HA_PDH_ENV"); p != "" {
+		return p
+	}
+	return filepath.Join(pdhRepo(), ".env")
+}
+
+// pdhEnv liefert einen Wert: zuerst aus der Umgebung von pdh-ha (Labor),
+// sonst aus der .env des PDH.
+func pdhEnv(key string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	f, err := os.Open(pdhEnvPath())
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	val := ""
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		line = strings.TrimPrefix(line, "export ")
+		k, v, ok := strings.Cut(line, "=")
+		if !ok || strings.HasPrefix(line, "#") || strings.TrimSpace(k) != key {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		if len(v) >= 2 && (v[0] == '"' && v[len(v)-1] == '"' || v[0] == '\'' && v[len(v)-1] == '\'') {
+			v = v[1 : len(v)-1]
+		}
+		val = v // der letzte Eintrag gilt (wie bei der Shell)
+	}
+	return val
+}
+
+// cmdAgent ruft einen Befehl auf: <argv…> install|install_norestart|
+// rollback|rollback_norestart <commit> bzw. <argv…> finish.
+type cmdAgent struct{ argv []string }
+
+func (c cmdAgent) run(ctx context.Context, args ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, agentWait)
+	defer cancel()
+	argv := append(append([]string(nil), c.argv...), args...)
+	out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %w: %s", strings.Join(args, " "), err, lastLines(string(out), 5))
+	}
+	return nil
+}
+
+func (c cmdAgent) Install(ctx context.Context, commit string, noRestart bool) error {
+	op := "install"
+	if noRestart {
+		op = "install_norestart"
+	}
+	return c.run(ctx, op, commit)
+}
+
+func (c cmdAgent) Rollback(ctx context.Context, commit string, noRestart bool) error {
+	op := "rollback"
+	if noRestart {
+		op = "rollback_norestart"
+	}
+	return c.run(ctx, op, commit)
+}
+
+func (c cmdAgent) Finish(ctx context.Context) error { return c.run(ctx, "finish") }
+
+// httpAgent: POST /v1/update, danach GET /v1/status bis running=false.
+// Adresse und Token werden bei jedem Aufruf aus der .env gelesen.
+type httpAgent struct {
+	poll, wait time.Duration
+	client     *http.Client
+}
+
+// agentUpdateReq ist der Rumpf von POST /v1/update.
+type agentUpdateReq struct {
+	Commit    string `json:"commit,omitempty"`
+	Rollback  string `json:"rollback,omitempty"`
+	NoRestart bool   `json:"no_restart,omitempty"`
+	Finish    bool   `json:"finish,omitempty"`
+}
+
+func (h *httpAgent) Install(ctx context.Context, commit string, noRestart bool) error {
+	return h.run(ctx, agentUpdateReq{Commit: commit, NoRestart: noRestart})
+}
+
+func (h *httpAgent) Rollback(ctx context.Context, commit string, noRestart bool) error {
+	return h.run(ctx, agentUpdateReq{Rollback: commit, NoRestart: noRestart})
+}
+
+func (h *httpAgent) Finish(ctx context.Context) error {
+	return h.run(ctx, agentUpdateReq{Finish: true})
+}
+
+func (h *httpAgent) do(ctx context.Context, method, url, token string, body []byte) (int, []byte, error) {
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, rd)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	c := h.client
+	if c == nil {
+		c = &http.Client{Timeout: 30 * time.Second}
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return resp.StatusCode, b, nil
+}
+
+func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
+	base := strings.TrimRight(pdhEnv("PDH_UPDATE_AGENT_URL"), "/")
+	if base == "" {
+		base = "http://127.0.0.1:8091"
+	}
+	token := pdhEnv("PDH_UPDATE_AGENT_TOKEN")
+	if token == "" {
+		return errors.New("Token des Update-Agenten fehlt (PDH_UPDATE_AGENT_TOKEN in " + pdhEnvPath() + ")")
+	}
+	body, _ := json.Marshal(r)
+	code, b, err := h.do(ctx, http.MethodPost, base+"/v1/update", token, body)
+	if err != nil {
+		return fmt.Errorf("Update-Agent nicht erreichbar: %w", err)
+	}
+	// 409: ein Update läuft schon (z. B. Wiederholung nach Neustart von
+	// pdh-ha) – dessen Ergebnis abwarten
+	if code != http.StatusAccepted && code != http.StatusOK && code != http.StatusConflict {
+		return fmt.Errorf("Update-Agent: HTTP %d: %s", code, strings.TrimSpace(string(b)))
+	}
+	wait := h.wait
+	if wait <= 0 {
+		wait = agentWait
+	}
+	deadline := time.Now().Add(wait)
+	var lastErr error
+	for {
+		code, b, err := h.do(ctx, http.MethodGet, base+"/v1/status", token, nil)
+		switch {
+		case err != nil:
+			lastErr = err // Agent startet beim Update neu: weiter fragen
+		case code != http.StatusOK:
+			lastErr = fmt.Errorf("HTTP %d", code)
+		default:
+			var st struct {
+				Running bool   `json:"running"`
+				Success bool   `json:"success"`
+				Output  string `json:"output"`
+			}
+			if err := json.Unmarshal(b, &st); err != nil {
+				lastErr = err
+				break
+			}
+			if !st.Running {
+				if st.Success {
+					return nil
+				}
+				return fmt.Errorf("Update-Agent meldet Fehler: %s", lastLines(st.Output, 5))
+			}
+		}
+		if !time.Now().Before(deadline) {
+			if lastErr != nil {
+				return fmt.Errorf("Update nicht rechtzeitig abgeschlossen (%v)", lastErr)
+			}
+			return errors.New("Update nicht rechtzeitig abgeschlossen")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(h.poll):
+		}
+	}
+}
+
+// lastLines: die letzten n nicht leeren Zeilen, für Meldungen.
+func lastLines(s string, n int) string {
+	var lines []string
+	for _, l := range strings.Split(strings.ReplaceAll(s, "\r", ""), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, " | ")
+}
+
+// pdhHealth: Antwort von GET /health des eigenen pdh.
+type pdhHealth struct {
+	Status       int
+	Version      string
+	MigrationsOK *bool // fehlt bei älteren Versionen
+}
+
+// up: pdh antwortet und meldet keine offenen Datenbank-Änderungen.
+func (h pdhHealth) up() bool {
+	return h.Status == http.StatusOK && (h.MigrationsOK == nil || *h.MigrationsOK)
+}
+
+// ok: up und erwartete Version.
+func (h pdhHealth) ok(want string) bool { return h.up() && want != "" && h.Version == want }
+
+// getPDHHealth fragt http://127.0.0.1:<PDH_SERVER_PORT, Standard 8090>/health.
+func getPDHHealth(ctx context.Context) (pdhHealth, error) {
+	port := pdhEnv("PDH_SERVER_PORT")
+	if port == "" {
+		port = "8090"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+port+"/health", nil)
+	if err != nil {
+		return pdhHealth{}, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return pdhHealth{}, err
+	}
+	defer resp.Body.Close()
+	h := pdhHealth{Status: resp.StatusCode}
+	if resp.StatusCode == http.StatusOK {
+		var b struct {
+			Version      string `json:"version"`
+			MigrationsOK *bool  `json:"migrations_ok"`
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&b); err != nil {
+			return h, err
+		}
+		h.Version, h.MigrationsOK = b.Version, b.MigrationsOK
+	}
+	return h, nil
+}
+
+// pdhHealthOK: pdh antwortet mit 200, Version wantVersion und
+// migrations_ok=true (fehlt das Feld, zählt nur die Version).
+func pdhHealthOK(ctx context.Context, wantVersion string) bool {
+	h, err := getPDHHealth(ctx)
+	return err == nil && h.ok(wantVersion)
+}

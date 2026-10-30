@@ -95,13 +95,20 @@ type message struct {
 	Cluster  *clusterConfig `json:"cluster,omitempty"`
 	CSR      string         `json:"csr,omitempty"`
 	Cert     string         `json:"cert,omitempty"`
+
+	// Update im Verbund: update_job (Auftrag spiegeln), update_node (Auftrag an
+	// den Partner; Commit = Ziel der Op), update_ack (Ergebnis)
+	Job   *ha.UpdateJob `json:"job,omitempty"`
+	Op    string        `json:"op,omitempty"`
+	JobID string        `json:"job_id,omitempty"`
+	Ack   *ha.UpdateAck `json:"ack,omitempty"`
 }
 
 var deliverTypes = map[string]bool{
 	"vote_req": true, "vote_resp": true, "handover": true, "cluster": true,
 	"renew_req": true, "renew_resp": true, "removed": true,
 	"stale": true, "stale_ack": true, "current": true, "current_ack": true, "vote_probe": true,
-	"diverged_delete": true,
+	"diverged_delete": true, "update_job": true, "update_node": true, "update_ack": true,
 }
 
 // pathStat beschreibt einen Weg; LastRecv monoton, 0 = nie.

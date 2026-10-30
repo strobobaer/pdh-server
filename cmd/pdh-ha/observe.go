@@ -155,8 +155,9 @@ func (d *daemon) statusLocked() apiStatus {
 		OK: true, Configured: d.configured, Mode: d.modeLocked(), Observe: true,
 		Peers: []apiNode{}, Warnings: []string{}, GatewayTargets: []string{},
 		Self:     apiNode{Kind: "node", Role: ha.Active, Version: d.version, Seen: true, Paths: []apiPath{}},
-		Settings: ha.DefaultSettings(),
+		Settings: ha.DefaultSettings(), Faulty: []string{},
 	}
+	st.Update = ha.UpdateJob{}.View(time.Time{}, 0, nil)
 	if d.versionOverride {
 		st.Warnings = append(st.Warnings, "Version überschrieben (Test)")
 	}
@@ -168,6 +169,9 @@ func (d *daemon) statusLocked() apiStatus {
 	now, wall := d.mono(), d.wall()
 	st.Settings = d.settingsLocked()
 	st.Maint, st.CAHolder = d.p.Maint, d.node.CAHolder
+	_, lockMax, _ := d.updateDurationsLocked()
+	st.Update = d.up.job.View(wall, lockMax, d.up.faulty)
+	st.Faulty = append(st.Faulty, d.up.faulty...)
 	st.GatewayTargets = append(st.GatewayTargets, d.cl.GatewayTargets...)
 	st.Self = apiNode{
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,
@@ -328,6 +332,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		}
 		_, m.Hooks, _ = d.hooks.info()
 		m.Tun = d.tunnel.Sum()
+		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 	}
 	return m
 }

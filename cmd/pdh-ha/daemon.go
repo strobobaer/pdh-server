@@ -162,6 +162,8 @@ type daemon struct {
 	holdAfter   func(time.Duration) <-chan time.Time
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
+
+	up upState // Update im Verbund (update_job.go)
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -192,6 +194,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		actQ:      make(chan queuedAction, 16),
 		sys:       execRunner{},
 		ifAddrsFn: listIfAddrs,
+		up:        newUpState(),
 	}
 	d.act = observeActor{ev: ev}
 	d.hooks = newHookRunner(ev)
@@ -289,6 +292,9 @@ func (d *daemon) loadLocked() error {
 	d.lastMode = d.modeLocked()
 	if removed {
 		d.net.setCluster(cl)
+	}
+	if n.Kind == "node" {
+		d.loadUpdateLocked()
 	}
 	return nil
 }
@@ -431,7 +437,7 @@ func (d *daemon) pgEnvLocked(pg *pgCtl) pgEnv {
 	}
 	cl := d.cl
 	cl.Settings = d.settingsLocked()
-	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent)
+	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent || d.frozenCurrentLocked())
 }
 
 // swapCompleted: In diesem Schritt ist ein Rollentausch gelungen – als
@@ -898,6 +904,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	d.replInputLocked(ctx, &in, s)
 	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
+	termBefore := d.p.Term                 // Update im Verbund: Übernahme erkennen
 	out := ha.Step(in)
 	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
 	if !out.Persist.Equal(d.p) || d.unsaved {
@@ -959,6 +966,8 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		}
 		pl.actions = append(pl.actions, a)
 	}
+	// vor replSyncLocked: die Sperre des Auftrags schaltet die Spiegelung asynchron
+	d.updateTickLocked(ctx, &pl, termBefore, swapped, s, views)
 	d.replSyncLocked(ctx, &pl, now, s, mode)
 	if d.node.CAHolder && swapped {
 		d.countSwapLocked(&pl)

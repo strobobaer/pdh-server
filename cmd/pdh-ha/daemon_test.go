@@ -146,6 +146,8 @@ func loadFakeDaemon(t *testing.T, st store, fn *fakeNet) *daemon {
 	d.pingFn = func(context.Context, string) bool { return true }
 	d.gwFn = func() (string, error) { return "", errors.New("kein Gateway") }
 	d.ufwFn = func(context.Context, [][]string) error { return nil }
+	d.up.agent = &fakeAgent{}
+	d.up.healthFn = func(context.Context) (pdhHealth, error) { return pdhHealth{}, errors.New("kein pdh (Test)") }
 	if err := d.load(); err != nil {
 		t.Fatal(err)
 	}

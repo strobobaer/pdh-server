@@ -180,6 +180,47 @@ func (s store) saveState(p ha.Persisted) error {
 	return writeFileAtomic(s.statePath("state.json"), b, 0o600)
 }
 
+// saveStateJSON legt v atomar als <state>/name ab (0600).
+func (s store) saveStateJSON(name string, v any) error {
+	if err := os.MkdirAll(s.state, 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(s.statePath(name), b, 0o600)
+}
+
+// loadJob liest den Update-Auftrag (update-job.json); ohne Datei der leere Auftrag.
+func (s store) loadJob() (ha.UpdateJob, error) {
+	var j ha.UpdateJob
+	err := s.readJSON(s.statePath("update-job.json"), &j)
+	if os.IsNotExist(err) {
+		return ha.UpdateJob{}, nil
+	}
+	return j, err
+}
+
+func (s store) saveJob(j ha.UpdateJob) error { return s.saveStateJSON("update-job.json", j) }
+
+// loadFaulty liest die als fehlerhaft gemerkten Commits (update-faulty.json).
+func (s store) loadFaulty() ([]string, error) {
+	var f []string
+	err := s.readJSON(s.statePath("update-faulty.json"), &f)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return f, err
+}
+
+func (s store) saveFaulty(f []string) error {
+	if f == nil {
+		f = []string{}
+	}
+	return s.saveStateJSON("update-faulty.json", f)
+}
+
 // writeFileAtomic schreibt in eine Temp-Datei im selben Ordner, synchronisiert,
 // benennt um und synchronisiert den Ordner.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
