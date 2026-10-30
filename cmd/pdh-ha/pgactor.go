@@ -152,6 +152,9 @@ func (a *pgActor) demote(ctx context.Context) error {
 // standby.signal und ohne Neustart: Die Datenbank bleibt als unveränderter
 // Rückfallstand liegen. Das Auftauen übernimmt rejoin (pg_rewind-Probelauf).
 func (a *pgActor) demoteFreeze(ctx context.Context) error {
+	if a.pg.status(ctx).State == "stopped" {
+		return nil // schon eingefroren (Wiederholung): nichts zu tun
+	}
 	if a.pushCfg != nil {
 		if err := a.pushCfg(ctx); err != nil {
 			return fmt.Errorf("Konfiguration nicht übertragen: %w", err)
@@ -227,6 +230,11 @@ func (a *pgActor) becomeStandby(ctx context.Context, e pgEnv) error {
 
 func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 	e := a.env()
+	// Datenstand zuerst prüfen: ein abgelehntes Hochstufen darf keine Wirkung
+	// haben (kein Start des eingefrorenen Clusters).
+	if !act.Manual && !e.DataCurrent {
+		return errors.New("Datenstand nicht aktuell")
+	}
 	st := a.pg.status(ctx)
 	// Gestoppt (eingefroren, Update im Verbund): erst starten. Ohne
 	// standby.signal kommt ein Primary hoch und braucht kein pg_promote.
@@ -240,9 +248,6 @@ func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 	alreadyPrimary := fromStopped && st.State == "primary"
 	if st.State != "standby" && !alreadyPrimary {
 		return errors.New("Datenbank ist kein Standby")
-	}
-	if !act.Manual && !e.DataCurrent {
-		return errors.New("Datenstand nicht aktuell")
 	}
 	if !alreadyPrimary {
 		if out, err := a.pg.query(ctx, "SELECT pg_promote(true, 60)"); err != nil || out != "t" {

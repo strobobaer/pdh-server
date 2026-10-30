@@ -740,3 +740,33 @@ func TestDaemonSwapHandoverAfterDemote(t *testing.T) {
 		t.Fatalf("Reihenfolge demote/handover: %v", ol.list())
 	}
 }
+
+// Nach Demote, Einfrieren und Aufgeben meldet der Daemon Erfolg bzw. Scheitern
+// (demoteDone/demoteFailed), sonst wartet die Übergabe ewig.
+func TestActionWorkerDemoteKinds(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze, ha.ActAbandon} {
+		for _, fail := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/fail=%v", kind, fail), func(t *testing.T) {
+				d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1}, newFakeNet())
+				d.act = &recActor{fail: func(ha.Action) error {
+					if fail {
+						return errors.New("kaputt")
+					}
+					return nil
+				}}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				go d.actionWorker(ctx)
+				d.pendingActs.Add(1)
+				d.actQ <- queuedAction{a: ha.Action{Kind: kind, Term: 7}, batch: 1}
+				waitFor(t, 2*time.Second, "Aktion fertig", d.actionsIdle)
+				d.lock()
+				done, failed := d.demoteDone, d.demoteFailed
+				d.unlock()
+				if fail && (failed != 7 || done != 0) || !fail && (done != 7 || failed != 0) {
+					t.Fatalf("done=%d failed=%d", done, failed)
+				}
+			})
+		}
+	}
+}

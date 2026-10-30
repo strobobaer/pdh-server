@@ -588,3 +588,26 @@ func TestPromoteFromStoppedStandby(t *testing.T) {
 	}
 	seq(t, r.list(), "pg_ctlcluster 18 main start", "psql: SELECT pg_promote(true, 60)", "svc restart", "tun start")
 }
+
+func TestPromoteStaleStoppedDoesNotStart(t *testing.T) {
+	a, r := stoppedActor(t, stPrimary)
+	env := a.env
+	a.env = func() pgEnv { e := env(); e.DataCurrent = false; return e }
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote}); err == nil || err.Error() != "Datenstand nicht aktuell" {
+		t.Fatalf("Fehler erwartet: %v", err)
+	}
+	if has(r.list(), "pg_ctlcluster 18 main start") {
+		t.Fatalf("abgelehntes Hochstufen darf nicht starten: %v", r.list())
+	}
+}
+
+func TestDemoteFreezeIdempotentWhenStopped(t *testing.T) {
+	a, r := stoppedActor(t, stPrimary)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemoteFreeze, Term: 3}); err != nil {
+		t.Fatal(err)
+	}
+	l := r.list()
+	if has(l, "pg_ctlcluster") || has(l, "svc ") || has(l, "tun ") {
+		t.Fatalf("nichts zu tun: %v", l)
+	}
+}
