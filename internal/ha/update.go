@@ -11,7 +11,8 @@ import (
 // den zurückgegebenen Auftrag und die Aktionen. Der Daemon des aktiven
 // Servers ruft UpdateStep in jedem Takt, speichert den Auftrag
 // (update-job.json), spiegelt ihn bei gestiegenem Seq an den Partner und
-// führt die Aktionen aus.
+// führt die Aktionen aus. Prüfung „alles grün“: update_ready.go,
+// Anzeige: update_view.go.
 
 // UpdateKind ist die Art des Auftrags.
 type UpdateKind string
@@ -39,6 +40,11 @@ const (
 	UpFailed     UpdatePhase = "abgebrochen"
 )
 
+// UpdatePrepareWait: so lange wartet der Auftrag auf das Ergebnis eines
+// Einspielens, Rückdrehens oder Neuaufsetzens (der Agent selbst wartet bis
+// 20 min). Die Prüffrist (UpdateObs.Verify) zählt erst ab dem Ergebnis.
+const UpdatePrepareWait = 30 * time.Minute
+
 // UpdateJob ist der Auftrag. Old, First und Second setzt der Daemon beim
 // Anlegen; Phase UpPrepare mit leerem PhaseAt ist der Eintritt.
 type UpdateJob struct {
@@ -65,7 +71,8 @@ type UpdateJob struct {
 	// kleinerem Seq, anderer Op oder anderem Knoten gelten als veraltet.
 	WaitOp, WaitNode string
 	WaitSeq          uint64
-	WaitOK           bool // Ergebnis „ok“ ist da
+	WaitOK           bool      // Ergebnis „ok“ ist da
+	AckAt            time.Time // wann es kam (Beginn der Prüffrist im Nachziehen)
 
 	// FreezeAcked (nur sequential): Second hat das Einfrieren bestätigt; erst
 	// danach spielt der aktive Server X ein (zweiter Schritt der Sperre).
@@ -117,17 +124,18 @@ const (
 
 // Ops für node_op und local_op.
 const (
-	OpInstall          = "install"
-	OpInstallNoRestart = "install_norestart"
-	OpRollback         = "rollback"
-	OpFreeze           = "freeze"
-	OpThaw             = "thaw"
-	OpReinit           = "reinit"
+	OpInstall           = "install"
+	OpInstallNoRestart  = "install_norestart"
+	OpRollback          = "rollback"
+	OpRollbackNoRestart = "rollback_norestart" // nur Checkout zurück, laufendes Programm bleibt (sequential vor der Sperre)
+	OpFreeze            = "freeze"
+	OpThaw              = "thaw"
+	OpReinit            = "reinit"
 )
 
 type UpdateAction struct {
 	Kind             UpdateActionKind
-	Node, Op, Commit string // Op: "install" | "install_norestart" | "rollback" | "freeze" | "thaw" | "reinit"
+	Node, Op, Commit string // Op: siehe Op…-Konstanten
 	Command          CommandKind
 	EventKind, Text  string
 }
@@ -170,7 +178,7 @@ type upRun struct {
 
 // UpdateStep führt den Auftrag einen Schritt weiter. Jede Änderung am
 // Auftrag erhöht Seq um eins; jede node_op/local_op geht je Phaseneintritt
-// nur einmal raus.
+// nur einmal raus. Nach dem Ende (Done/Failed) geht keine Op mehr raus.
 func UpdateStep(job UpdateJob, o UpdateObs) (UpdateJob, []UpdateAction) {
 	if job.ended() {
 		return job, nil
@@ -209,9 +217,7 @@ func (r *upRun) step() {
 	case UpVerifyNew:
 		r.verifyNew()
 	case UpRelease:
-		if o.MirrorSync {
-			r.follow()
-		}
+		r.release()
 	case UpFollow:
 		r.followStep()
 	case UpRollback:
@@ -240,7 +246,7 @@ func (r *upRun) prepare() {
 	}
 	if a := r.ack(); a != nil {
 		if a.OK {
-			r.enter(UpVerifyPrep)
+			r.enter(UpVerifyPrep) // Prüffrist läuft ab dem Ergebnis
 		} else {
 			r.failPrep(fmt.Sprintf("Einspielen auf %s fehlgeschlagen: %s", a.Node, a.Err))
 		}
@@ -252,8 +258,8 @@ func (r *upRun) prepare() {
 		r.enter(UpVerifyPrep)
 		return
 	}
-	if r.timedOut() {
-		r.failPrep("Prüffrist überschritten")
+	if r.since(j.PhaseAt) > UpdatePrepareWait {
+		r.failPrep("Einspielen nicht rechtzeitig abgeschlossen")
 	}
 }
 
@@ -321,7 +327,7 @@ func (r *upRun) locked() {
 	}
 	if a := r.ack(); a != nil {
 		if a.OK {
-			j.WaitOK = true // Neustart folgt, dann SelfCommit == X
+			r.gotOK() // Neustart folgt, dann SelfCommit == X
 		} else {
 			r.rollback("Einspielen fehlgeschlagen: "+a.Err, true)
 		}
@@ -346,6 +352,29 @@ func (r *upRun) verifyNew() {
 	}
 }
 
+// release: Second taut auf und holt auf. Scheitert das Auftauen, wird die
+// Sperre trotzdem aufgehoben (R6, unprotected) – zurückgesetzt wird hier
+// nicht mehr, X ist geprüft.
+func (r *upRun) release() {
+	if a := r.ack(); a != nil {
+		if !a.OK {
+			r.unprotected(fmt.Sprintf("Auftauen von %s fehlgeschlagen: %s", a.Node, a.Err))
+			return
+		}
+		r.gotOK()
+	}
+	if r.o.MirrorSync {
+		r.follow()
+	}
+}
+
+// unprotected: Sperre aufheben, obwohl der Spiegel nicht aufgeholt hat;
+// dringender Alarm, dann nachziehen (dessen Fehlerweg endet im Neuaufsetzen).
+func (r *upRun) unprotected(reason string) {
+	r.event("alarm", fmt.Sprintf("Dringend: %s: Spiegel nicht aufgeholt – Verbund ungeschützt (%s)", r.j.name(), reason))
+	r.follow()
+}
+
 // follow: Freigabe (Sperre aus), dann zieht Second X nach.
 func (r *upRun) follow() {
 	r.enter(UpFollow)
@@ -353,13 +382,19 @@ func (r *upRun) follow() {
 	r.nodeOp(r.j.Second, OpInstall, r.j.Target)
 }
 
-// followStep: Second spielt X ein; ein zweiter Versuch, danach neu aufsetzen.
+// followStep: Second spielt X ein. Frist: bis zum Ergebnis
+// UpdatePrepareWait, danach Verify ab dem Ergebnis. Ein zweiter Versuch,
+// danach Neuaufsetzen (reinitStep).
 func (r *upRun) followStep() {
-	j := &r.j
+	j, o := &r.j, r.o
+	if j.WaitOp == OpReinit {
+		r.reinitStep()
+		return
+	}
 	failed := false
 	if a := r.ack(); a != nil {
 		if a.OK {
-			j.WaitOK = true
+			r.gotOK()
 		} else {
 			failed = true
 		}
@@ -370,28 +405,52 @@ func (r *upRun) followStep() {
 		r.finish(UpDone, text)
 		return
 	}
-	if !failed && !j.WaitOK && r.timedOut() {
-		failed = true // kein Ergebnis innerhalb der Frist
+	if !failed {
+		if j.WaitOK {
+			failed = r.since(j.AckAt) > o.Verify
+		} else {
+			failed = r.since(j.PhaseAt) > UpdatePrepareWait
+		}
 	}
 	if !failed {
 		return
 	}
+	j.PhaseAt = o.Now // neue Frist
 	if j.Attempts == 0 {
 		j.Attempts = 1
-		j.PhaseAt = r.o.Now // neue Frist für den zweiten Versuch
 		r.nodeOp(j.Second, OpInstall, j.Target)
 		return
 	}
-	second := j.Second
-	r.finish(UpDone, "abgeschlossen, "+second+" wird neu aufgesetzt")
-	r.nodeOp(second, OpReinit, j.Target)
-	r.event("alarm", fmt.Sprintf("%s: %s konnte die neue Version nicht einspielen und wird neu aufgesetzt", j.name(), second))
+	r.nodeOp(j.Second, OpReinit, j.Target)
+	r.event("info", fmt.Sprintf("%s: %s konnte die neue Version nicht einspielen und wird neu aufgesetzt", j.name(), j.Second))
 }
 
-// rollback: Zurücksetzen beginnen (Spec 5.4). Läuft die neue Version auf
-// diesem (aktiven) Server, gibt er zuerst zurück: CmdSwapAbandon (bzw.
-// CmdSwap beim reinen Rollentausch). Der dann aktive alte Server dirigiert
-// weiter (rollbackStep).
+// reinitStep: auf das Ergebnis des Neuaufsetzens warten; der Auftrag ist
+// danach in jedem Fall fertig (die neue Version läuft auf dem aktiven).
+func (r *upRun) reinitStep() {
+	j := &r.j
+	name, second := j.name(), j.Second
+	var errText string
+	if a := r.ack(); a != nil {
+		if a.OK {
+			r.finish(UpDone, name+" abgeschlossen, "+second+" wurde neu aufgesetzt")
+			r.event("alarm", fmt.Sprintf("%s abgeschlossen: %s wurde neu aufgesetzt", name, second))
+			return
+		}
+		errText = a.Err
+	} else if r.since(j.PhaseAt) > UpdatePrepareWait {
+		errText = "keine Rückmeldung"
+	} else {
+		return
+	}
+	r.finish(UpDone, name+" abgeschlossen, "+second+" konnte nicht neu aufgesetzt werden")
+	r.event("alarm", fmt.Sprintf("Dringend: %s: %s konnte nicht neu aufgesetzt werden (%s) – Verbund ungeschützt, bitte von Hand prüfen", name, second, errText))
+}
+
+// rollback: Zurücksetzen in der Sperre beginnen (Spec 5.4). Läuft die neue
+// Version auf diesem (aktiven) Server, gibt er zuerst zurück: CmdSwapAbandon
+// (bzw. CmdSwap beim reinen Rollentausch). Der dann aktive alte Server
+// dirigiert weiter (rollbackStep).
 func (r *upRun) rollback(reason string, faulty bool) {
 	j := &r.j
 	r.enter(UpRollback)
@@ -410,10 +469,16 @@ func (r *upRun) rollback(reason string, faulty bool) {
 	r.event("alarm", fmt.Sprintf("%s wird zurückgesetzt: %s", j.name(), reason))
 }
 
-// rollbackStep: der alte Server ist aktiv → Partner zurückdrehen, auf das
-// Ergebnis und den aufgeholten Spiegel warten, dann Sperre aus.
+// rollbackStep: ohne Sperre (vor dem Countdown begonnen) nur auf das
+// Rückdrehen warten. In der Sperre: der alte Server ist aktiv → Partner
+// zurückdrehen; fertig, wenn das Ergebnis ok ist, der Spiegel aufgeholt hat
+// und das eigene pdh antwortet (Spec 5.4 Schritt 4), dann Sperre aus.
 func (r *upRun) rollbackStep() {
 	j, o := &r.j, r.o
+	if j.LockedAt.IsZero() {
+		r.undoStep()
+		return
+	}
 	if o.SelfRole != Active || r.selfNewActive() {
 		return // Rücktausch läuft noch
 	}
@@ -427,7 +492,7 @@ func (r *upRun) rollbackStep() {
 	}
 	if a := r.ack(); a != nil {
 		if a.OK {
-			j.WaitOK = true
+			r.gotOK()
 		} else {
 			// Zurücksetzen selbst gescheitert: Sperre bleibt bis zur Höchstdauer.
 			j.WaitOp = ""
@@ -435,7 +500,7 @@ func (r *upRun) rollbackStep() {
 			return
 		}
 	}
-	if (op == "" || j.WaitOK) && o.MirrorSync {
+	if (op == "" || j.WaitOK) && o.MirrorSync && o.SelfPDHOK {
 		r.event("alarm", fmt.Sprintf("%s zurückgesetzt: %s", j.name(), j.Result))
 		r.finish(UpFailed, j.Result)
 	}
@@ -457,19 +522,58 @@ func (r *upRun) rollbackOp() (op, commit string) {
 	return OpRollback, r.j.Old[r.o.PartnerID]
 }
 
-// abort: Abbruch durch einen Administrator. Vor der Sperre: abbrechen (B
-// zurück); in der Sperre: Zurücksetzen, X nicht fehlerhaft. Danach (Rollback,
-// Freigabe, Nachziehen) zählt der Abbruch nicht mehr.
+// undoPrep: Rückweg vor der Sperre (R8/R10). rolling: B zurück auf Alt;
+// sequential: A dreht nur den Checkout zurück (das laufende Programm ist
+// noch alt). Ist nichts zurückzudrehen (swap, Eintritt noch nicht gelaufen),
+// endet der Auftrag sofort; sonst läuft UpRollback ohne Sperre bis zum
+// Ergebnis (undoStep).
+func (r *upRun) undoPrep(result string, sent bool) {
+	j := &r.j
+	if !sent || j.Kind == UpdateSwap {
+		r.finish(UpFailed, result)
+		return
+	}
+	r.enter(UpRollback)
+	j.Result = result
+	j.RollbackSent = true
+	if j.Kind == UpdateSequential {
+		r.localOp(OpRollbackNoRestart, j.Old[r.o.Self])
+	} else {
+		r.nodeOp(j.First, OpRollback, j.Old[j.First])
+	}
+}
+
+// undoStep: Ergebnis des Rückdrehens vor der Sperre abwarten.
+func (r *upRun) undoStep() {
+	j := &r.j
+	node := j.WaitNode
+	var errText string
+	if a := r.ack(); a != nil {
+		if a.OK {
+			r.finish(UpFailed, j.Result)
+			return
+		}
+		errText = a.Err
+	} else if r.since(j.PhaseAt) > UpdatePrepareWait {
+		errText = "keine Rückmeldung"
+	} else {
+		return
+	}
+	r.finish(UpFailed, j.Result)
+	r.event("alarm", fmt.Sprintf("%s braucht Hilfe: Rückdrehen fehlgeschlagen (%s)", node, errText))
+}
+
+// abort: Abbruch durch einen Administrator. Vor der Sperre: abbrechen und
+// zurückdrehen; in der Sperre: Zurücksetzen, X nicht fehlerhaft.
+// Freigabe (R9), Nachziehen und Zurücksetzen: der Abbruch wird übergangen –
+// die neue Version ist geprüft bzw. der Rückweg läuft schon.
 func (r *upRun) abort() bool {
 	j, o := &r.j, r.o
 	switch j.Phase {
 	case UpPrepare, UpVerifyPrep, UpCountdown:
 		sent := j.Phase != UpPrepare || !j.PhaseAt.IsZero()
 		j.AbortedBy = o.Abort
-		r.finish(UpFailed, "abgebrochen von "+o.Abort)
-		if j.Kind == UpdateRolling && sent {
-			r.nodeOp(j.First, OpRollback, j.Old[j.First])
-		}
+		r.undoPrep("abgebrochen von "+o.Abort, sent)
 		r.event("info", fmt.Sprintf("%s abgebrochen von %s", j.name(), o.Abort))
 		return true
 	case UpLocked, UpVerifyNew:
@@ -481,12 +585,12 @@ func (r *upRun) abort() bool {
 }
 
 // overdue: Höchstdauer der Sperre. Locked/VerifyNew → Zurücksetzen;
-// Freigabe → Sperre trotzdem aufheben und nachziehen (die neue Version ist
-// geprüft); Zurücksetzen → aufgeben, Sperre aus, dringender Alarm. Das
-// Zurücksetzen bekommt dabei mindestens die Prüffrist.
+// Freigabe → Sperre trotzdem aufheben und nachziehen (R6); Zurücksetzen →
+// aufgeben, Sperre aus, dringender Alarm. Das Zurücksetzen bekommt dabei
+// mindestens die Prüffrist.
 func (r *upRun) overdue() bool {
 	j, o := &r.j, r.o
-	if j.LockedAt.IsZero() || o.Now.Sub(j.LockedAt) <= o.LockMax {
+	if j.LockedAt.IsZero() || !j.ReleasedAt.IsZero() || o.Now.Sub(j.LockedAt) <= o.LockMax {
 		return false
 	}
 	switch j.Phase {
@@ -494,8 +598,7 @@ func (r *upRun) overdue() bool {
 		r.rollback(reasonLockMax, r.newStarted())
 		return true
 	case UpRelease:
-		r.event("alarm", fmt.Sprintf("%s: %s, Spiegel nicht aufgeholt – Sperre aufgehoben", j.name(), reasonLockMax))
-		r.follow()
+		r.unprotected(reasonLockMax)
 		return true
 	case UpRollback:
 		if !r.timedOut() {
@@ -509,15 +612,11 @@ func (r *upRun) overdue() bool {
 }
 
 // failPrep: Fehler vor der Sperre (Spec 7 „B scheitert vor der Sperre“):
-// B auf Alt, X fehlerhaft, Meldung.
+// zurückdrehen, X fehlerhaft, Meldung.
 func (r *upRun) failPrep(reason string) {
-	j := &r.j
-	j.MarkFaulty = true
-	r.finish(UpFailed, reason)
-	if j.Kind == UpdateRolling {
-		r.nodeOp(j.First, OpRollback, j.Old[j.First])
-	}
-	r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version als fehlerhaft gemerkt", j.name(), reason))
+	r.j.MarkFaulty = true
+	r.undoPrep(reason, true)
+	r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version als fehlerhaft gemerkt", r.j.name(), reason))
 }
 
 // --- Hilfen ---
@@ -525,7 +624,11 @@ func (r *upRun) failPrep(reason string) {
 func (r *upRun) enter(p UpdatePhase) {
 	r.j.Phase = p
 	r.j.PhaseAt = r.o.Now
-	r.j.WaitOp, r.j.WaitNode, r.j.WaitSeq, r.j.WaitOK = "", "", 0, false
+	r.clearWait()
+}
+
+func (r *upRun) clearWait() {
+	r.j.WaitOp, r.j.WaitNode, r.j.WaitSeq, r.j.WaitOK, r.j.AckAt = "", "", 0, false, time.Time{}
 }
 
 func (r *upRun) enterCountdown() {
@@ -534,6 +637,7 @@ func (r *upRun) enterCountdown() {
 }
 
 // finish beendet den Auftrag; eine noch laufende Sperre endet mit ihm.
+// Danach dürfen nur noch Meldungen folgen, keine Ops.
 func (r *upRun) finish(p UpdatePhase, result string) {
 	r.enter(p)
 	r.j.Result = result
@@ -554,7 +658,14 @@ func (r *upRun) localOp(op, commit string) {
 }
 
 func (r *upRun) wait(op, node string) {
-	r.j.WaitOp, r.j.WaitNode, r.j.WaitSeq, r.j.WaitOK = op, node, r.seq, false
+	r.clearWait()
+	r.j.WaitOp, r.j.WaitNode, r.j.WaitSeq = op, node, r.seq
+}
+
+// gotOK vermerkt ein passendes Ergebnis „ok“; weitere Zustellungen zählen nicht.
+func (r *upRun) gotOK() {
+	r.j.WaitOK = true
+	r.j.AckAt = r.o.Now
 }
 
 func (r *upRun) command(c CommandKind) {
@@ -575,7 +686,9 @@ func (r *upRun) ack() *UpdateAck {
 	return a
 }
 
-func (r *upRun) timedOut() bool { return r.o.Now.Sub(r.j.PhaseAt) > r.o.Verify }
+func (r *upRun) since(t time.Time) time.Duration { return r.o.Now.Sub(t) }
+
+func (r *upRun) timedOut() bool { return r.since(r.j.PhaseAt) > r.o.Verify }
 
 func (r *upRun) partnerOnTarget() bool {
 	return r.o.Partner.Commit == r.j.Target && r.o.PartnerPDHOK
@@ -599,183 +712,4 @@ func (r *upRun) newStarted() bool {
 		return r.j.FreezeAcked
 	}
 	return r.j.Phase == UpVerifyNew || r.selfFirstActive()
-}
-
-// --- Prüfung „alles grün“ (Spec 6) ---
-
-// UpdateMinFree ist der Mindestplatz je Server.
-const UpdateMinFree int64 = 2 << 30
-
-// ReadyObs ist die Sicht für die Prüfung „alles grün“.
-type ReadyObs struct {
-	Mode        Mode
-	SelfRole    Role
-	PartnerSeen bool
-	PartnerRole Role
-	SameTerm    bool
-
-	Maint, Busy, JobOpen bool
-
-	SelfCommit, PartnerCommit string
-	Resume                    bool // Fortsetzen eines Auftrags: Stand darf abweichen
-
-	MirrorSync         bool
-	LagBytes, LagLimit int64
-
-	BackupConfigured, LastBaseOK, LastFilesOK bool
-
-	FreeSelf, FreePartner int64
-
-	WitnessExpected, WitnessSeen bool
-}
-
-// UpdateReady prüft „alles grün“. reason ist der erste Hinderungsgrund;
-// hints enthält weitere Gründe und Hinweise, die nicht hindern (Zeuge).
-// Einzelbetrieb: nur Platz und Grundsicherung.
-func UpdateReady(o ReadyObs) (ok bool, reason string, hints []string) {
-	var probs, notes []string
-	add := func(bad bool, msg string) {
-		if bad {
-			probs = append(probs, msg)
-		}
-	}
-	duo := o.Mode != Single
-	if duo {
-		add(!o.PartnerSeen, "Partner nicht erreichbar")
-		if o.PartnerSeen {
-			roles := (o.SelfRole == Active && o.PartnerRole == Passive) ||
-				(o.SelfRole == Passive && o.PartnerRole == Active)
-			add(!roles, fmt.Sprintf("Rollen nicht eindeutig (%s/%s)", o.SelfRole, o.PartnerRole))
-			add(!o.SameTerm, "Amtszeit unterschiedlich")
-		}
-		add(!o.MirrorSync, "Spiegel nicht synchron")
-		add(o.MirrorSync && o.LagLimit > 0 && o.LagBytes >= o.LagLimit, "Verzögerung der Spiegelung zu groß")
-		add(o.Maint, "Wartung eingeschaltet")
-		add(o.Busy, "Ein anderer Vorgang läuft")
-		if !o.Resume {
-			add(o.JobOpen, "Ein Auftrag läuft bereits")
-			add(o.SelfCommit == "" || o.PartnerCommit == "", "Stand des Quelltexts unbekannt")
-			add(o.SelfCommit != "" && o.PartnerCommit != "" && o.SelfCommit != o.PartnerCommit,
-				"Server auf unterschiedlichem Stand")
-		}
-	}
-	if o.BackupConfigured {
-		add(!o.LastBaseOK, "Letzte Grundsicherung nicht erfolgreich")
-		if duo {
-			add(!o.LastFilesOK, "Letzter Dateiabgleich nicht erfolgreich")
-		}
-	}
-	add(o.FreeSelf < UpdateMinFree, "Weniger als 2 GB frei auf diesem Server")
-	if duo {
-		add(o.FreePartner < UpdateMinFree, "Weniger als 2 GB frei auf dem Partner")
-		if o.WitnessExpected && !o.WitnessSeen {
-			notes = append(notes, "Zeuge nicht erreichbar")
-		}
-	}
-	if len(probs) == 0 {
-		return true, "", notes
-	}
-	hints = append(append(hints, probs[1:]...), notes...)
-	return false, probs[0], hints
-}
-
-// --- Anzeige ---
-
-// UpdateView ist der Auftrag für Anzeige und PDH (GET /v1/update).
-type UpdateView struct {
-	Active         bool      `json:"active"`
-	Kind           string    `json:"kind"`
-	Phase          string    `json:"phase"`
-	Steps          []string  `json:"steps"`
-	Step           int       `json:"step"`
-	Percent        int       `json:"percent"`
-	Text           string    `json:"text"`
-	RemainingS     int       `json:"remaining_s"`
-	Locked         bool      `json:"locked"`
-	CountdownUntil time.Time `json:"countdown_until"`
-	FromVersion    string    `json:"from_version"`
-	ToVersion      string    `json:"to_version"`
-	RollingBack    bool      `json:"rolling_back"`
-	Result         string    `json:"result"`
-	Faulty         []string  `json:"faulty"`
-}
-
-// View bereitet den Auftrag für die Anzeige auf. RemainingS ist die Restzeit
-// bis zur Höchstdauer der Sperre (nur während der Sperre, nie negativ).
-func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) UpdateView {
-	v := UpdateView{
-		Active: !j.ended(), Kind: string(j.Kind), Phase: string(j.Phase),
-		Locked: j.Locked(), CountdownUntil: j.CountdownUntil,
-		FromVersion: j.OldVersion, ToVersion: j.TargetVersion,
-		RollingBack: j.Phase == UpRollback, Result: j.Result,
-		Faulty: append([]string{}, faulty...),
-	}
-	if j.Kind == "" {
-		return v
-	}
-	swap := j.Kind == UpdateSwap
-	switch {
-	case swap:
-		v.Steps = []string{"Abmelden", "Rollentausch", "Prüfen", "Freigabe"}
-	case j.Kind == UpdateSequential:
-		v.Steps = []string{"Abmelden", "Neustart", "Datenbank aktualisieren", "Prüfen", "Freigabe"}
-	default:
-		v.Steps = []string{"Abmelden", "Rollentausch", "Datenbank aktualisieren", "Prüfen", "Freigabe"}
-	}
-	v.Step, v.Percent, v.Text = j.viewStep()
-	if swap && v.Step >= 2 {
-		v.Step-- // ohne „Datenbank aktualisieren“
-	}
-	if v.Locked {
-		rem := lockMax - now.Sub(j.LockedAt)
-		if rem < 0 {
-			rem = 0
-		}
-		v.RemainingS = int(rem / time.Second)
-	}
-	return v
-}
-
-// viewStep: Schritt (in der Fünferliste), Prozent und Text je Phase.
-func (j UpdateJob) viewStep() (step, percent int, text string) {
-	seq, swap := j.Kind == UpdateSequential, j.Kind == UpdateSwap
-	what := "Update"
-	if swap {
-		what = "Rollentausch"
-	}
-	switch j.Phase {
-	case UpPrepare:
-		if seq {
-			return 0, 0, "Neue Version wird im Hintergrund gebaut"
-		}
-		return 0, 0, "Neue Version wird auf dem Partner eingespielt"
-	case UpVerifyPrep:
-		if seq {
-			return 0, 3, "Vorbereitung wird geprüft"
-		}
-		return 0, 3, "Partner wird geprüft"
-	case UpCountdown:
-		return 0, 5, "Abmeldung in Kürze – bitte Arbeit speichern"
-	case UpLocked:
-		if seq {
-			return 1, 20, "Server startet mit der neuen Version neu"
-		}
-		return 1, 20, "Rollentausch läuft"
-	case UpVerifyNew:
-		if swap {
-			return 3, 60, "Neuer aktiver Server wird geprüft"
-		}
-		return 3, 60, "Neue Version wird geprüft"
-	case UpRelease:
-		return 4, 90, "Freigabe – Spiegel holt auf"
-	case UpFollow:
-		return 4, 100, "Partner zieht die neue Version nach"
-	case UpRollback:
-		return 3, 60, what + " wird zurückgesetzt"
-	case UpDone:
-		return 4, 100, what + " abgeschlossen"
-	case UpFailed:
-		return 4, 100, what + " abgebrochen"
-	}
-	return 0, 0, ""
 }

@@ -124,21 +124,89 @@ func TestUpdateStepTable(t *testing.T) {
 		{name: "vorbereiten Ack veraltet", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
 			obs:   func() UpdateObs { o := upObs("a", Active); o.Ack = ack(OpInstall, "b", true, 4); return o }(),
 			phase: UpPrepare},
-		// Prepare: Ack fehlerhaft → Failed, B zurück, X fehlerhaft
+		// Prepare: Ack eines anderen Auftrags bzw. für eine andere Op wird übergangen
+		{name: "vorbereiten Ack anderer Auftrag", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
+			obs: func() UpdateObs {
+				o := upObs("a", Active)
+				o.Ack = ack(OpInstall, "b", false, 5)
+				o.Ack.JobID = "j0"
+				return o
+			}(),
+			phase: UpPrepare},
+		{name: "vorbereiten Ack andere Op", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
+			obs:   func() UpdateObs { o := upObs("a", Active); o.Ack = ack(OpRollback, "b", false, 5); return o }(),
+			phase: UpPrepare},
+		// Prepare: ohne Ergebnis wird bis UpdatePrepareWait (30 min) gewartet (R7)
+		{name: "vorbereiten wartet 25 min", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
+			obs:   func() UpdateObs { o := upObs("a", Active); o.Now = upT0.Add(25 * time.Minute); return o }(),
+			phase: UpPrepare},
+		{name: "vorbereiten Frist 31 min", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
+			obs:   func() UpdateObs { o := upObs("a", Active); o.Now = upT0.Add(31 * time.Minute); return o }(),
+			phase: UpRollback,
+			acts: []UpdateAction{nodeOpA("b", OpRollback, upOldB),
+				evA("alarm", "Update auf 0.77.9 abgebrochen: Einspielen nicht rechtzeitig abgeschlossen; Version als fehlerhaft gemerkt")},
+			check: func(t *testing.T, j UpdateJob) {
+				if !j.MarkFaulty || j.Locked() {
+					t.Errorf("MarkFaulty %v Locked %v", j.MarkFaulty, j.Locked())
+				}
+			}},
+		// Prepare: Ack fehlerhaft → B zurückdrehen (Zurücksetzen ohne Sperre, R8), X fehlerhaft
 		{name: "vorbereiten Ack fehlerhaft", job: waiting(upJob(UpdateRolling, UpPrepare), OpInstall, "b", 5),
 			obs:   func() UpdateObs { o := upObs("a", Active); o.Ack = ack(OpInstall, "b", false, 5); return o }(),
-			phase: UpFailed,
+			phase: UpRollback,
 			acts: []UpdateAction{nodeOpA("b", OpRollback, upOldB),
 				evA("alarm", "Update auf 0.77.9 abgebrochen: Einspielen auf b fehlgeschlagen: Bau fehlgeschlagen; Version als fehlerhaft gemerkt")},
+			check: func(t *testing.T, j UpdateJob) {
+				if !j.MarkFaulty || !j.LockedAt.IsZero() || j.Locked() || j.WaitOp != OpRollback {
+					t.Errorf("MarkFaulty %v LockedAt %v WaitOp %q", j.MarkFaulty, j.LockedAt, j.WaitOp)
+				}
+			}},
+		// sequential: Fehler vor der Sperre → A dreht nur den Checkout zurück (R10)
+		{name: "vorbereiten sequential Ack fehlerhaft", job: waiting(upJob(UpdateSequential, UpPrepare), OpInstallNoRestart, "a", 5),
+			obs:   func() UpdateObs { o := upObs("a", Active); o.Ack = ack(OpInstallNoRestart, "a", false, 5); return o }(),
+			phase: UpRollback,
+			acts: []UpdateAction{localOpA("a", OpRollbackNoRestart, upOldA),
+				evA("alarm", "Update auf 0.77.9 abgebrochen: Einspielen auf a fehlgeschlagen: Bau fehlgeschlagen; Version als fehlerhaft gemerkt")},
 			check: func(t *testing.T, j UpdateJob) {
 				if !j.MarkFaulty {
 					t.Error("MarkFaulty fehlt")
 				}
 			}},
-		// VerifyPrep: Frist überschritten → Failed
+		// Zurückdrehen vor der Sperre: Ergebnis ok → Failed mit Grund
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 5)
+			j.RollbackSent, j.MarkFaulty, j.Result = true, true, "Prüffrist überschritten"
+			o := upObs("a", Active)
+			o.Ack = ack(OpRollback, "b", true, 5)
+			return upCase{name: "zurueckdrehen vorher ok", job: j, obs: o, phase: UpFailed,
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Prüffrist überschritten" || !j.ReleasedAt.IsZero() {
+						t.Errorf("Result %q ReleasedAt %v", j.Result, j.ReleasedAt)
+					}
+				}}
+		}(),
+		// Zurückdrehen vor der Sperre scheitert → Failed, Alarm „braucht Hilfe“
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 5)
+			j.RollbackSent, j.Result = true, "Prüffrist überschritten"
+			o := upObs("a", Active)
+			o.Ack = ack(OpRollback, "b", false, 5)
+			return upCase{name: "zurueckdrehen vorher fehlerhaft", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("alarm", "b braucht Hilfe: Rückdrehen fehlgeschlagen (Bau fehlgeschlagen)")}}
+		}(),
+		// Zurückdrehen vor der Sperre ohne Ergebnis: nach 30 min aufgeben
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpRollback), OpRollback, "b", 5)
+			j.RollbackSent = true
+			o := upObs("a", Active)
+			o.Now = upT0.Add(31 * time.Minute)
+			return upCase{name: "zurueckdrehen vorher Frist", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("alarm", "b braucht Hilfe: Rückdrehen fehlgeschlagen (keine Rückmeldung)")}}
+		}(),
+		// VerifyPrep: Frist (ab dem Ergebnis) überschritten → zurückdrehen
 		{name: "pruefen vorher Frist", job: upJob(UpdateRolling, UpVerifyPrep),
 			obs:   func() UpdateObs { o := upObs("a", Active); o.Now = upT0.Add(11 * time.Minute); return o }(),
-			phase: UpFailed,
+			phase: UpRollback,
 			acts: []UpdateAction{nodeOpA("b", OpRollback, upOldB),
 				evA("alarm", "Update auf 0.77.9 abgebrochen: Prüffrist überschritten; Version als fehlerhaft gemerkt")},
 			check: func(t *testing.T, j UpdateJob) {
@@ -220,6 +288,15 @@ func TestUpdateStepTable(t *testing.T) {
 		{name: "pruefen neu ok", job: locked(UpdateRolling, UpVerifyNew, 2*time.Minute, time.Minute),
 			obs:   func() UpdateObs { o := upObs("b", Active); o.SelfPDHOK = true; return o }(),
 			phase: UpRelease, acts: []UpdateAction{nodeOpA("a", OpThaw, "")}},
+		// sequential: pdh auf A ok → B auftauen
+		func() upCase {
+			j := locked(UpdateSequential, UpVerifyNew, 2*time.Minute, time.Minute)
+			j.FreezeAcked = true
+			o := upObs("a", Active)
+			o.SelfPDHOK = true
+			return upCase{name: "pruefen neu sequential ok", job: j, obs: o, phase: UpRelease,
+				acts: []UpdateAction{nodeOpA("b", OpThaw, "")}}
+		}(),
 		// VerifyNew: Frist überschritten → Rollback
 		{name: "pruefen neu Frist", job: locked(UpdateRolling, UpVerifyNew, 12*time.Minute, 11*time.Minute),
 			obs:   upObs("b", Active),
@@ -245,6 +322,34 @@ func TestUpdateStepTable(t *testing.T) {
 			phase: UpFollow, acts: []UpdateAction{nodeOpA("b", OpInstall, upNew)}},
 		{name: "freigabe wartet auf Spiegel", job: locked(UpdateRolling, UpRelease, 3*time.Minute, time.Minute),
 			obs: upObs("b", Active), phase: UpRelease},
+		// Release: Auftauen scheitert → Sperre sofort aufheben, dringender Alarm, nachziehen (R6)
+		{name: "freigabe auftauen fehlerhaft",
+			job:   waiting(locked(UpdateRolling, UpRelease, 3*time.Minute, time.Minute), OpThaw, "a", 5),
+			obs:   func() UpdateObs { o := upObs("b", Active); o.Ack = ack(OpThaw, "a", false, 5); return o }(),
+			phase: UpFollow,
+			acts: []UpdateAction{
+				evA("alarm", "Dringend: Update auf 0.77.9: Spiegel nicht aufgeholt – Verbund ungeschützt (Auftauen von a fehlgeschlagen: Bau fehlgeschlagen)"),
+				nodeOpA("a", OpInstall, upNew)},
+			check: func(t *testing.T, j UpdateJob) {
+				if j.Locked() || !j.ReleasedAt.Equal(now) {
+					t.Errorf("Locked %v ReleasedAt %v", j.Locked(), j.ReleasedAt)
+				}
+			}},
+		// Release über der Höchstdauer → ebenso, kein Zurücksetzen (R6)
+		{name: "freigabe hoechstdauer", job: locked(UpdateRolling, UpRelease, 31*time.Minute, 2*time.Minute),
+			obs:   upObs("b", Active),
+			phase: UpFollow,
+			acts: []UpdateAction{
+				evA("alarm", "Dringend: Update auf 0.77.9: Spiegel nicht aufgeholt – Verbund ungeschützt (Höchstdauer überschritten)"),
+				nodeOpA("a", OpInstall, upNew)},
+			check: func(t *testing.T, j UpdateJob) {
+				if j.Locked() {
+					t.Error("Sperre noch an")
+				}
+			}},
+		// Release: Abbruch wird übergangen (R9)
+		{name: "freigabe abbruch uebergangen", job: locked(UpdateRolling, UpRelease, 3*time.Minute, time.Minute),
+			obs: func() UpdateObs { o := upObs("b", Active); o.Abort = "Admin"; return o }(), phase: UpRelease},
 		// Follow: Ack ok und Partner auf X → Done
 		{name: "nachziehen fertig", job: waiting(upJob(UpdateRolling, UpFollow), OpInstall, "a", 5),
 			obs: func() UpdateObs {
@@ -259,10 +364,32 @@ func TestUpdateStepTable(t *testing.T) {
 			obs:   func() UpdateObs { o := upObs("b", Active); o.Ack = ack(OpInstall, "a", true, 5); return o }(),
 			phase: UpFollow,
 			check: func(t *testing.T, j UpdateJob) {
-				if !j.WaitOK {
-					t.Error("WaitOK fehlt")
+				if !j.WaitOK || !j.AckAt.Equal(now) {
+					t.Errorf("WaitOK %v AckAt %v", j.WaitOK, j.AckAt)
 				}
 			}},
+		// Follow: Ack ok, Partner nach Verify ab dem Ergebnis noch nicht bereit → zweiter Versuch
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpFollow), OpInstall, "a", 5)
+			j.WaitOK, j.AckAt = true, upT0.Add(2*time.Minute)
+			o := upObs("b", Active)
+			o.Now = upT0.Add(13 * time.Minute)
+			return upCase{name: "nachziehen Frist nach Ack", job: j, obs: o, phase: UpFollow,
+				acts: []UpdateAction{nodeOpA("a", OpInstall, upNew)},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Attempts != 1 || j.WaitOK {
+						t.Errorf("Attempts %d WaitOK %v", j.Attempts, j.WaitOK)
+					}
+				}}
+		}(),
+		// … innerhalb von Verify ab dem Ergebnis wird gewartet
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpFollow), OpInstall, "a", 5)
+			j.WaitOK, j.AckAt = true, upT0.Add(5*time.Minute)
+			o := upObs("b", Active)
+			o.Now = upT0.Add(13 * time.Minute)
+			return upCase{name: "nachziehen wartet nach Ack", job: j, obs: o, phase: UpFollow}
+		}(),
 		// Follow: erster Fehler → zweiter Versuch
 		{name: "nachziehen zweiter Versuch", job: waiting(upJob(UpdateRolling, UpFollow), OpInstall, "a", 5),
 			obs:   func() UpdateObs { o := upObs("b", Active); o.Ack = ack(OpInstall, "a", false, 5); return o }(),
@@ -272,15 +399,45 @@ func TestUpdateStepTable(t *testing.T) {
 					t.Errorf("Attempts %d WaitSeq %d", j.Attempts, j.WaitSeq)
 				}
 			}},
-		// Follow: zweiter Fehler → Partner neu aufsetzen, Done
+		// Follow: zweiter Fehler → Partner neu aufsetzen, Auftrag wartet auf das Ergebnis (R8)
 		func() upCase {
 			j := waiting(upJob(UpdateRolling, UpFollow), OpInstall, "a", 5)
 			j.Attempts = 1
 			o := upObs("b", Active)
 			o.Ack = ack(OpInstall, "a", false, 5)
-			return upCase{name: "nachziehen neu aufsetzen", job: j, obs: o, phase: UpDone,
+			return upCase{name: "nachziehen neu aufsetzen", job: j, obs: o, phase: UpFollow,
 				acts: []UpdateAction{nodeOpA("a", OpReinit, upNew),
-					evA("alarm", "Update auf 0.77.9: a konnte die neue Version nicht einspielen und wird neu aufgesetzt")}}
+					evA("info", "Update auf 0.77.9: a konnte die neue Version nicht einspielen und wird neu aufgesetzt")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.WaitOp != OpReinit || !j.PhaseAt.Equal(now) {
+						t.Errorf("WaitOp %q PhaseAt %v", j.WaitOp, j.PhaseAt)
+					}
+				}}
+		}(),
+		// Neuaufsetzen ok → Done mit Alarm
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpFollow), OpReinit, "a", 5)
+			j.Attempts = 1
+			o := upObs("b", Active)
+			o.Ack = ack(OpReinit, "a", true, 5)
+			return upCase{name: "neu aufsetzen ok", job: j, obs: o, phase: UpDone,
+				acts: []UpdateAction{evA("alarm", "Update auf 0.77.9 abgeschlossen: a wurde neu aufgesetzt")}}
+		}(),
+		// Neuaufsetzen scheitert → Done mit dringendem Alarm
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpFollow), OpReinit, "a", 5)
+			j.Attempts = 1
+			o := upObs("b", Active)
+			o.Ack = ack(OpReinit, "a", false, 5)
+			return upCase{name: "neu aufsetzen fehlerhaft", job: j, obs: o, phase: UpDone,
+				acts: []UpdateAction{evA("alarm", "Dringend: Update auf 0.77.9: a konnte nicht neu aufgesetzt werden (Bau fehlgeschlagen) – Verbund ungeschützt, bitte von Hand prüfen")}}
+		}(),
+		// Neuaufsetzen ohne Ergebnis: weiter warten, Partner auf X zählt hier nicht
+		func() upCase {
+			j := waiting(upJob(UpdateRolling, UpFollow), OpReinit, "a", 5)
+			o := upObs("b", Active)
+			o.Partner.Commit, o.PartnerPDHOK = upNew, true
+			return upCase{name: "neu aufsetzen wartet", job: j, obs: o, phase: UpFollow}
 		}(),
 		// Rollback: Self (A) nach dem Rücktausch aktiv → Partner auf Alt
 		func() upCase {
@@ -304,12 +461,26 @@ func TestUpdateStepTable(t *testing.T) {
 			j.Result = "Prüfung der neuen Version fehlgeschlagen"
 			o := upObs("a", Active)
 			o.Ack = ack(OpRollback, "b", true, 5)
-			o.MirrorSync = true
+			o.MirrorSync, o.SelfPDHOK = true, true
 			return upCase{name: "zuruecksetzen fertig", job: j, obs: o, phase: UpFailed,
 				acts: []UpdateAction{evA("alarm", "Update auf 0.77.9 zurückgesetzt: Prüfung der neuen Version fehlgeschlagen")},
 				check: func(t *testing.T, j UpdateJob) {
 					if !j.ReleasedAt.Equal(now) || j.Locked() {
 						t.Errorf("ReleasedAt = %v", j.ReleasedAt)
+					}
+				}}
+		}(),
+		// Rollback: Ack ok und Spiegel, aber pdh auf A antwortet nicht → warten (Spec 5.4 Schritt 4)
+		func() upCase {
+			j := waiting(locked(UpdateRolling, UpRollback, 12*time.Minute, time.Minute), OpRollback, "b", 5)
+			j.RollbackSent = true
+			o := upObs("a", Active)
+			o.Ack = ack(OpRollback, "b", true, 5)
+			o.MirrorSync = true
+			return upCase{name: "zuruecksetzen wartet auf pdh", job: j, obs: o, phase: UpRollback,
+				check: func(t *testing.T, j UpdateJob) {
+					if !j.WaitOK || !j.Locked() {
+						t.Errorf("WaitOK %v Locked %v", j.WaitOK, j.Locked())
 					}
 				}}
 		}(),
@@ -351,7 +522,7 @@ func TestUpdateStepTable(t *testing.T) {
 			j.CountdownUntil = now.Add(time.Minute)
 			o := upObs("a", Active)
 			o.Abort = "Admin"
-			return upCase{name: "abbruch vor sperre", job: j, obs: o, phase: UpFailed,
+			return upCase{name: "abbruch vor sperre", job: j, obs: o, phase: UpRollback,
 				acts: []UpdateAction{nodeOpA("b", OpRollback, upOldB),
 					evA("info", "Update auf 0.77.9 abgebrochen von Admin")},
 				check: func(t *testing.T, j UpdateJob) {
@@ -370,6 +541,35 @@ func TestUpdateStepTable(t *testing.T) {
 					evA("alarm", "Update auf 0.77.9 wird zurückgesetzt: abgebrochen von Admin")},
 				check: func(t *testing.T, j UpdateJob) {
 					if j.AbortedBy != "Admin" || j.MarkFaulty {
+						t.Errorf("AbortedBy %q MarkFaulty %v", j.AbortedBy, j.MarkFaulty)
+					}
+				}}
+		}(),
+		// Abbruch in Locked (rolling, B schon aktiv) → Rücktausch, X nicht fehlerhaft
+		func() upCase {
+			o := upObs("b", Active)
+			o.Abort = "Admin"
+			return upCase{name: "abbruch gesperrt rolling", job: locked(UpdateRolling, UpLocked, 2*time.Minute, 2*time.Minute),
+				obs: o, phase: UpRollback,
+				acts: []UpdateAction{cmdA(CmdSwapAbandon),
+					evA("alarm", "Update auf 0.77.9 wird zurückgesetzt: abgebrochen von Admin")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.AbortedBy != "Admin" || j.MarkFaulty || !j.Locked() {
+						t.Errorf("AbortedBy %q MarkFaulty %v Locked %v", j.AbortedBy, j.MarkFaulty, j.Locked())
+					}
+				}}
+		}(),
+		// sequential: Abbruch vor der Sperre → A dreht den Checkout zurück (R10)
+		func() upCase {
+			j := upJob(UpdateSequential, UpCountdown)
+			j.CountdownUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Abort = "Admin"
+			return upCase{name: "abbruch vor sperre sequential", job: j, obs: o, phase: UpRollback,
+				acts: []UpdateAction{localOpA("a", OpRollbackNoRestart, upOldA),
+					evA("info", "Update auf 0.77.9 abgebrochen von Admin")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.AbortedBy != "Admin" || j.MarkFaulty || j.Locked() {
 						t.Errorf("AbortedBy %q MarkFaulty %v", j.AbortedBy, j.MarkFaulty)
 					}
 				}}
@@ -494,6 +694,11 @@ func TestUpdateReady(t *testing.T) {
 	}{
 		{"alles grün", func(o *ReadyObs) {}, true, "", nil},
 		{"Partner nicht gesehen", func(o *ReadyObs) { o.PartnerSeen = false }, false, "Partner nicht erreichbar", nil},
+		{"Partner nicht gesehen, keine Folgegründe", func(o *ReadyObs) {
+			o.PartnerSeen, o.MirrorSync, o.PartnerCommit, o.FreePartner, o.PartnerRole = false, false, "", 0, ""
+		}, false, "Partner nicht erreichbar", nil},
+		{"Partner nicht gesehen, eigene Gründe bleiben", func(o *ReadyObs) { o.PartnerSeen = false; o.Maint = true },
+			false, "Partner nicht erreichbar", []string{"Wartung eingeschaltet"}},
 		{"beide aktiv", func(o *ReadyObs) { o.PartnerRole = Active }, false, "Rollen nicht eindeutig (aktiv/aktiv)", nil},
 		{"Amtszeit verschieden", func(o *ReadyObs) { o.SameTerm = false }, false, "Amtszeit unterschiedlich", nil},
 		{"Spiegel nicht synchron", func(o *ReadyObs) { o.MirrorSync = false }, false, "Spiegel nicht synchron", nil},
@@ -630,22 +835,13 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 	o = upObs("a", Active)
 	o.Ack = ack(OpFreeze, "b", false, 5)
 	got, acts = UpdateStep(j, o)
-	if got.Phase != UpRollback || got.MarkFaulty || len(acts) != 1 || acts[0].Kind != UpEvent {
+	want = []UpdateAction{evA("alarm", "Update auf 0.77.9 wird zurückgesetzt: Einfrieren von b fehlgeschlagen: Bau fehlgeschlagen")}
+	if got.Phase != UpRollback || got.MarkFaulty || !reflect.DeepEqual(acts, want) {
 		t.Errorf("Einfrieren fehlerhaft: %q %v %+v", got.Phase, got.MarkFaulty, acts)
 	}
 	got, acts = UpdateStep(got, upObs("a", Active))
 	if !reflect.DeepEqual(acts, []UpdateAction{nodeOpA("b", OpThaw, "")}) {
 		t.Errorf("Einfrieren fehlerhaft, Auftauen: %+v", acts)
-	}
-
-	// Freigabe über der Höchstdauer: Sperre trotzdem aufheben und nachziehen.
-	j = locked(UpdateRolling, UpRelease, 31*time.Minute, 2*time.Minute)
-	got, acts = UpdateStep(j, upObs("b", Active))
-	want = []UpdateAction{
-		evA("alarm", "Update auf 0.77.9: Höchstdauer überschritten, Spiegel nicht aufgeholt – Sperre aufgehoben"),
-		nodeOpA("a", OpInstall, upNew)}
-	if got.Phase != UpFollow || got.Locked() || !reflect.DeepEqual(acts, want) {
-		t.Errorf("Freigabe über Höchstdauer: %q locked %v %+v", got.Phase, got.Locked(), acts)
 	}
 
 	// Zurücksetzen auf dem Partner scheitert: Alarm, Sperre bleibt.
@@ -672,9 +868,13 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 	if got, _ := UpdateStep(j, o); got.Phase != UpDone {
 		t.Errorf("Nachziehen ohne Ergebnis: %q", got.Phase)
 	}
-	// Nachziehen: kein Ergebnis innerhalb der Frist → zweiter Versuch mit neuer Frist.
+	// Nachziehen: kein Ergebnis innerhalb von UpdatePrepareWait → zweiter Versuch mit neuer Frist.
 	o = upObs("b", Active)
-	o.Now = upT0.Add(11 * time.Minute)
+	o.Now = upT0.Add(25 * time.Minute)
+	if got, acts := UpdateStep(j, o); got.Phase != UpFollow || len(acts) != 0 {
+		t.Errorf("Nachziehen nach 25 min: %q %+v", got.Phase, acts)
+	}
+	o.Now = upT0.Add(31 * time.Minute)
 	got, acts = UpdateStep(j, o)
 	if got.Attempts != 1 || !got.PhaseAt.Equal(o.Now) || !reflect.DeepEqual(acts, []UpdateAction{nodeOpA("a", OpInstall, upNew)}) {
 		t.Errorf("Nachziehen Frist: Attempts %d %+v", got.Attempts, acts)
@@ -685,7 +885,8 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 	j.PhaseAt = time.Time{}
 	o = upObs("a", Active)
 	o.Abort = "Admin"
-	if got, acts := UpdateStep(j, o); got.Phase != UpFailed || len(acts) != 1 {
+	want = []UpdateAction{evA("info", "Update auf 0.77.9 abgebrochen von Admin")}
+	if got, acts := UpdateStep(j, o); got.Phase != UpFailed || !reflect.DeepEqual(acts, want) {
 		t.Errorf("Abbruch vor Eintritt: %q %+v", got.Phase, acts)
 	}
 }
