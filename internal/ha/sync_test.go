@@ -86,3 +86,15 @@ func TestDataCurrent(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncForceAsync(t *testing.T) {
+	in := syncIn(Duo)
+	in.Sync, in.Streaming, in.ForceAsync = false, true, true
+	if out := SyncStep(in); out.WantSync {
+		t.Fatalf("ForceAsync: Sync-Ziel muss leer bleiben: %+v", out)
+	}
+	in.Sync = true
+	if out := SyncStep(in); out.WantSync || out.MarkStale {
+		t.Fatalf("ForceAsync mit gesetztem Sync: %+v", out)
+	}
+}

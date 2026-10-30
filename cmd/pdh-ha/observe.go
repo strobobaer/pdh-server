@@ -22,6 +22,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 		o.Role, o.Term, o.Version = ha.Role(m.Role), m.Term, m.Ver
 		o.Gateway, o.DataCurrent = m.Gateway, m.DataCurrent
 		o.Maint, o.MaintSeq = m.Maint, m.MaintSeq
+		o.Commit = m.Commit
 		o.VotedFor = m.VotedFor
 		o.PG, o.Sync, o.Stale, o.LSN, o.LagBytes, o.Timeline = m.PG, m.Sync, m.Stale, m.LSN, m.Lag, m.TL
 		o.SeesSelf = slices.Contains(m.Sees, selfID)
@@ -32,7 +33,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, mode ha.Mode, views map[string]peerView) ha.Input {
 	c := d.carry
 	in := ha.Input{
-		SelfID: d.node.ID, Now: now, Wall: wall, Mode: mode, Version: d.version,
+		SelfID: d.node.ID, Now: now, Wall: wall, Mode: mode, Version: d.version, Commit: d.commit,
 		DataCurrent: true, DataAssumed: true, Settings: s, Persist: d.p,
 		HoldUntil: c.HoldUntil, VotePending: c.VotePending, VoteAskedAt: c.VoteAskedAt,
 		HandoverPending: c.HandoverPending, HandoverAt: c.HandoverAt, HandoverSentAt: c.HandoverSentAt,

@@ -323,7 +323,7 @@ func (s *sim) nodeStep(n *simNode) {
 			if s.w != nil {
 				s.send(simMsg{from: n.id, to: "w", hb: hb, vote: a.Term, probe: true})
 			}
-		case ActDemote:
+		case ActDemote, ActDemoteFreeze, ActAbandon:
 			// Abgabe der Datenbank gilt im nächsten Takt als erledigt
 			n.demoteDone = a.Term
 		case ActHandover:
@@ -538,6 +538,22 @@ func TestSimTrio(t *testing.T) {
 			s.run(15) // ein Takt mehr: Übergabe erst nach der Abgabe
 			s.want("a", Passive, 2)
 			s.want("b", Active, 2)
+		}},
+		{"tausch-einfrieren", func(s *sim) {
+			s.run(5)
+			s.node("a").cmd = CmdSwapFreeze
+			s.run(15)
+			s.want("a", Passive, 2)
+			s.want("b", Active, 2)
+		}},
+		{"ruecktausch-aufgeben", func(s *sim) {
+			s.run(5)
+			s.node("a").cmd = CmdSwapFreeze
+			s.run(15)
+			s.node("b").cmd = CmdSwapAbandon
+			s.run(15)
+			s.want("a", Active, 3)
+			s.want("b", Passive, 3)
 		}},
 		{"rollentausch ohne zustellung", func(s *sim) {
 			s.run(5)

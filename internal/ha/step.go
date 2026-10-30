@@ -131,7 +131,7 @@ func (s *stepper) decide() {
 	if s.adoptHigherTerm() {
 		return
 	}
-	if s.in.Command == CmdSwap && s.swap() {
+	if k := swapKind(s.in.Command); k != "" && s.swap(k) {
 		return
 	}
 	if s.in.Booting && s.boot() {
@@ -249,8 +249,22 @@ func (s *stepper) forceTakeover() bool {
 	return true
 }
 
+// swapKind ordnet einem Tauschbefehl die Abgabe-Aktion zu; leer = kein Tausch.
+func swapKind(c CommandKind) ActionKind {
+	switch c {
+	case CmdSwap:
+		return ActDemote
+	case CmdSwapFreeze:
+		return ActDemoteFreeze
+	case CmdSwapAbandon:
+		return ActAbandon
+	}
+	return ""
+}
+
 // swap: Handbefehl Rollentausch, nur aktiv mit gesehenem passivem Partner.
-func (s *stepper) swap() bool {
+// k bestimmt, wie die eigene Datenbank abgegeben wird.
+func (s *stepper) swap(k ActionKind) bool {
 	pa := s.in.Partner
 	if s.p.Role != Active || !seen(pa) || pa.Role != Passive {
 		return false
@@ -260,7 +274,7 @@ func (s *stepper) swap() bool {
 	defer func() { s.manual = false }()
 	// Die Übergabe folgt erst, wenn die eigene Datenbank abgegeben ist
 	// (DemoteDone) – sonst stuft der Partner hoch, während sie noch schreibt.
-	s.act(ActDemote, s.p.Term)
+	s.act(k, s.p.Term)
 	s.act(ActVIPRelease, s.p.Term)
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = next, s.in.Now, 0
 	s.out.HandoverReadyAt = 0

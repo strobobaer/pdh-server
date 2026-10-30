@@ -13,6 +13,7 @@ type SyncIn struct {
 	LastStreaming time.Duration // monoton, zuletzt streaming gesehen
 	StaleAcked    bool          // Zeuge hat „Partner nicht aktuell“ bestätigt
 	PartnerStale  bool          // eigener Vermerk „Partner nicht aktuell“
+	ForceAsync    bool          // Update-Sperre: Standby nie als Sync-Ziel führen
 }
 
 // SyncOut sagt, was der aktive Knoten tun soll.
@@ -28,6 +29,9 @@ type SyncOut struct {
 // Bestätigung des Zeugen asynchron geschaltet – sonst könnte der veraltete
 // Partner mit dessen Stimme übernehmen und Speicherungen gingen verloren.
 func SyncStep(in SyncIn) SyncOut {
+	if in.ForceAsync {
+		return SyncOut{} // leeres Sync-Ziel, keine Vermerke
+	}
 	out := SyncOut{WantSync: in.Sync}
 	switch {
 	case in.Sync && !in.Streaming && in.Now-in.LastStreaming >= in.Settings.AsyncAfter:
