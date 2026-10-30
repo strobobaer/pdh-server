@@ -11,7 +11,7 @@
 #   Update im Verbund: update-ok update-b-vorher update-b-nachher update-abbruch
 #            update-neustart update-nicht-gruen update-nacheinander
 #            update-nacheinander-fehler update-tausch-frist
-#            update-nacheinander-gleichstand
+#            update-nacheinander-gleichstand update-abbruch-vorher
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -50,7 +50,8 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     rewind-fehler slot-grenze
     vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
-    update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand)
+    update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand
+    update-abbruch-vorher)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -1414,6 +1415,31 @@ sc_update_nacheinander_gleichstand() {
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
     no_event 'Dringend'
     up_resume
+    up_clean
+}
+
+# N1: Abbruch in der Vorbereitung, während node2 lab1 noch baut (40 s). node2
+# meldet in der Zeit noch lab0 – der Auftrag darf erst enden, wenn node2 nach
+# dem Bau wirklich wieder auf lab0 ist; danach bleibt es dort.
+sc_update_abbruch_vorher() {
+    up_prepare 1 30
+    lab_switch node2 slow-install on || fail "Schalter setzen"
+    up_start node1 lab1 rolling
+    wait_for 30 eval '[[ "$(agent_runs node2 install lab1)" == 1 ]]' || fail "Einspielen auf node2 beginnt nicht"
+    log "Einspielen auf node2 läuft (40 s) – Abbruch auf node1"
+    docker exec node1 pdh-ha update abort || fail "update abort auf node1"
+    up_wait 300 fertig abgebrochen
+    up_result_has "abgebrochen von Befehlszeile"
+    lab_switch node2 slow-install off || fail "Schalter entfernen"
+    local n
+    n="$(docker exec node2 tail -n 1 /var/lib/pdh-lab/agent.log 2>/dev/null)"
+    log "letzter Lauf auf node2: $n"
+    [[ "$n" == *"rollback lab0"* ]] || fail "Auftrag endete, bevor node2 zurückgedreht war (letzter Lauf: $n)"
+    wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide auf lab0 mit node1 aktiv"
+    watch_for 60 eval 'commits_are lab0 lab0' || fail "node2 verlässt lab0 nach dem Abbruch ($(jget commit <<<"$J2"))"
+    ! faulty_has lab1 || fail "lab1 nach Abbruch als fehlerhaft gemerkt"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    no_event 'braucht Hilfe'
     up_clean
 }
 

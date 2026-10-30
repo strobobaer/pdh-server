@@ -117,7 +117,7 @@ Spiegel, der auf die Migration am Primary wartet).
 
 Schalter (Dateien in `/var/lib/pdh-lab/`): `fail-install` (Einspielen
 scheitert), `fail-start-<Commit>` (pdh startet mit diesem Stand nicht),
-`fail-health-<Commit>` (`/health` antwortet 500). Die Prüffrist ist im Labor
+`fail-health-<Commit>` (`/health` antwortet 500), `slow-install` (Einspielen braucht 40 s). Läufe von `lab-agent` gehen nacheinander (Sperrdatei), wie beim echten Agenten. Die Prüffrist ist im Labor
 60 s (`PDH_HA_UPDATE_VERIFY`), der Countdown 1 min. In der Sperre ruht der
 Schreib-Generator, wo das Szenario einen Rückweg erwartet – im Betrieb schreibt
 dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verloren.
@@ -134,3 +134,4 @@ dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verlor
 | `update-nacheinander-fehler` | `fail-health-lab1` auf node1, Art „alle nacheinander“ | node2 wird mit seinem eingefrorenen Stand aktiv, node1 zurück auf lab0, `mig_lab1` nirgends, lab1 fehlerhaft |
 | `update-tausch-frist` | Höchstdauer 10 min; im Countdown node2 trennen, nach dem Beginn des Zurücksetzens verbinden | Tausch-Befehl wird wiederholt, nach der Tauschfrist (3 min) Zurücksetzen, Ergebnis „Rollentausch nicht gelungen“, deutlich vor der Höchstdauer, lab1 nicht fehlerhaft, kein Dringend-Alarm |
 | `update-nacheinander-gleichstand` | WAL-Einspielen auf node2 angehalten, Zeile auf node1 geschrieben, Start „alle nacheinander“ mit Trotzdem (`force`) | node1 wird abgeschottet, Gleichstand kommt nicht: node2 wird nicht eingefroren, Ergebnis „Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert“, Zeile bleibt erhalten, lab1 nicht fehlerhaft |
+| `update-abbruch-vorher` | `slow-install` auf node2 (Bau 40 s), Update starten, während des Baus `pdh-ha update abort` | Auftrag endet erst, nachdem node2 nach dem Bau wirklich auf lab0 zurückgedreht ist (letzter Lauf `rollback lab0`), beide bleiben auf lab0, lab1 nicht fehlerhaft |

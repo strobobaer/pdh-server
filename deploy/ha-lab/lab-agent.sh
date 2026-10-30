@@ -9,6 +9,9 @@
 # (wie install-pdh-ha.sh im echten Betrieb), rollback_norestart nicht.
 # Schalter (Dateien):
 #   /var/lib/pdh-lab/fail-install  → install/install_norestart scheitern
+#   /var/lib/pdh-lab/slow-install  → install braucht 40 s (Bau dauert)
+# Läufe gehen nacheinander (Sperrdatei) – wie beim echten Agenten, bei dem
+# pdh-ha auf einen laufenden fremden Lauf wartet und dann erneut sendet.
 set -uo pipefail
 dir=/var/lib/pdh-lab
 cf=${PDH_HA_COMMIT_FILE:-$dir/commit}
@@ -16,6 +19,8 @@ pending=$dir/pending
 mkdir -p "$dir"
 op=${1:-}
 c=${2:-}
+exec 9>"$dir/agent.lock"
+flock 9
 echo "$(date +%H:%M:%S) $op $c" >>"$dir/agent.log"
 
 # set_commit <commit>: atomar schreiben (pdh-ha liest je Takt)
@@ -27,9 +32,10 @@ case "$op" in
     install)
         [[ -n "$c" ]] || exit 2
         [[ -e $dir/fail-install ]] && { echo "Einspielen scheitert (Schalter fail-install)" >&2; exit 1; }
+        [[ -e $dir/slow-install ]] && sleep 40
         rm -f "$pending"
         set_commit "$c"
-        exec /usr/local/bin/pdh-dummy restart
+        exec /usr/local/bin/pdh-dummy restart 9>&- # Hintergrund-Migration ohne die Sperrdatei
         ;;
     install_norestart)
         [[ -n "$c" ]] || exit 2
@@ -40,13 +46,13 @@ case "$op" in
         [[ -s $pending ]] || { echo "kein vorbereiteter Stand" >&2; exit 1; }
         set_commit "$(cat "$pending")"
         rm -f "$pending"
-        exec /usr/local/bin/pdh-dummy restart
+        exec /usr/local/bin/pdh-dummy restart 9>&- # Hintergrund-Migration ohne die Sperrdatei
         ;;
     rollback)
         [[ -n "$c" ]] || exit 2
         rm -f "$pending"
         set_commit "$c"
-        /usr/local/bin/pdh-dummy restart || exit 1
+        /usr/local/bin/pdh-dummy restart 9>&- || exit 1
         # Wie das echte install_update.sh --rollback (über install-pdh-ha.sh):
         # pdh-ha startet neu, bevor das Ergebnis zurückkommt – der laufende
         # Auftrag stirbt ohne Ergebnis (C2). Die Schleife im Einstiegsskript
