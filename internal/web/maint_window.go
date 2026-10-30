@@ -14,7 +14,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"sync"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"pdh/internal/ha"
@@ -135,6 +135,10 @@ func (h *Handler) doSingleWindow(ctx context.Context, f url.Values) (string, err
 		}
 		return "Version wieder zugelassen", nil
 	}
+	// Einzelserver: Update-Art und Rollentausch gibt es nicht – Standardwerte (B1)
+	def := ha.DefaultWindow()
+	f.Set("kind", string(def.Kind))
+	f.Del("swap")
 	win, err := windowFromForm(f)
 	if err != nil {
 		return "", err
@@ -254,6 +258,21 @@ func (h *Handler) latestFullCommit(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimSpace(h.getUpdateSetting(ctx, "update_latest_commit", ""))
+}
+
+// targetVersionOf liest VERSION genau des Commits von GitHub (kurze Frist);
+// "" = unbekannt. Tests ersetzen es.
+var targetVersionOf = func(ctx context.Context, commit string) string {
+	if !commitIDRe.MatchString(commit) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	v, err := fetchGitHubRawRef(ctx, commit, "VERSION")
+	if v = strings.TrimSpace(v); err != nil || !validVersionRe.MatchString(v) {
+		return ""
+	}
+	return v
 }
 
 // updateCluster: läuft der Server im Verbund (zwei Server)? Fehler: pdh-ha
@@ -425,6 +444,11 @@ func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haSt
 	configured, baseOK, filesOK := h.drBackupFlags(ctx)
 	in := map[string]any{"commit": commit, "source": "knopf", "kind": string(kind), "force": force,
 		"backup_configured": configured, "last_base_ok": baseOK, "last_files_ok": filesOK}
+	// C1: Zielversion mitsenden (VERSION genau dieses Commits); unbekannt →
+	// pdh-ha übernimmt die Version von B nach dem Einspielen.
+	if v := targetVersionOf(ctx, commit); v != "" {
+		in["version"] = v
+	}
 	code, body, err := h.haDoRaw(ctx, 15*time.Second, http.MethodPost, "/v1/update/start", in)
 	if err != nil {
 		installRedirect(w, r, url.Values{"notice": {err.Error()}})

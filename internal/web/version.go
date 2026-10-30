@@ -156,7 +156,12 @@ func versionLabel(commit string) string {
 
 // fetchGitHubRaw liest eine Datei vom Branch main (max. 1 MB).
 func fetchGitHubRaw(ctx context.Context, path string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://raw.githubusercontent.com/"+updateRepository+"/main/"+path, nil)
+	return fetchGitHubRawRef(ctx, "main", path)
+}
+
+// fetchGitHubRawRef liest eine Datei eines Zweigs bzw. Commits (max. 1 MB).
+func fetchGitHubRawRef(ctx context.Context, ref, path string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://raw.githubusercontent.com/"+updateRepository+"/"+ref+"/"+path, nil)
 	if err != nil {
 		return "", err
 	}

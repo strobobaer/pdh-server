@@ -19,6 +19,13 @@ import (
 
 const testFullCommit = "abcdef0123456789abcdef0123456789abcdef01"
 
+// Zielversion eines Commits ohne Netz (C1: Knopf sendet die Version mit).
+const testTargetVersion = "9.9.9"
+
+func init() {
+	targetVersionOf = func(context.Context, string) string { return testTargetVersion }
+}
+
 // mwReq: Anfrage eines Administrators (Formular).
 func mwReq(target string, form url.Values) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
@@ -262,7 +269,7 @@ func TestInstallUpdateClusterConflictAsks(t *testing.T) {
 	f.mu.Lock()
 	_ = json.Unmarshal([]byte(f.bodies[len(f.bodies)-1]), &req)
 	f.mu.Unlock()
-	if req["source"] != "knopf" || req["commit"] != testFullCommit || req["kind"] != "sequential" || req["force"] != false ||
+	if req["source"] != "knopf" || req["commit"] != testFullCommit || req["kind"] != "sequential" || req["force"] != false || req["version"] != testTargetVersion ||
 		req["backup_configured"] != true || req["last_base_ok"] != true || req["last_files_ok"] != false {
 		t.Fatalf("Start-Rumpf: %v", req)
 	}
@@ -443,7 +450,7 @@ func TestSingleServerWindowBox(t *testing.T) {
 	noHA(t)
 	h := mwHandler()
 	a := &mwAgent{replies: map[string]fakeReply{
-		"GET /v1/window": {200, `{"ok":true,"cluster":false,"window":{"mode":"daily","weekday":0,"begin":"after_files","clock":"02:00","latest":"05:00","install":true,"kind":"rolling","countdown_min":2,"lock_max_min":30},"last_run":"2026-10-30T02:00:00Z","last_result":"Update auf 0.77.9 abgeschlossen","faulty":["deadbee1234"],"next":"2026-10-31T02:00:00Z"}`},
+		"GET /v1/window":     {200, `{"ok":true,"cluster":false,"window":{"mode":"daily","weekday":0,"begin":"after_files","clock":"02:00","latest":"05:00","install":true,"kind":"rolling","countdown_min":2,"lock_max_min":30},"last_run":"2026-10-30T02:00:00Z","last_result":"Update auf 0.77.9 abgeschlossen","faulty":["deadbee1234"],"next":"2026-10-31T02:00:00Z"}`},
 		"GET /v1/update/job": {200, `{"ok":true,"active":true,"percent":40,"text":"Server startet mit der neuen Version neu","steps":["a","b"],"step":1}`},
 	}}
 	startMWAgent(t, h, a)
@@ -456,6 +463,27 @@ func TestSingleServerWindowBox(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Einzelserver-Karte ohne %q", want)
 		}
+	}
+	// B1: Verbund-Felder nur im Verbund
+	for _, bad := range []string{`name="kind"`, `name="swap"`} {
+		if strings.Contains(out, bad) {
+			t.Errorf("Einzelserver-Karte mit Verbund-Feld %q", bad)
+		}
+	}
+}
+
+// B1: Einzelserver speichert für Update-Art und Rollentausch die Standardwerte.
+func TestSingleWindowFormDefaultsClusterFields(t *testing.T) {
+	noHA(t)
+	h := mwHandler()
+	a := &mwAgent{}
+	startMWAgent(t, h, a)
+	form := url.Values{"mode": {"daily"}, "weekday": {"0"}, "begin": {"after_files"}, "clock": {"02:00"}, "latest": {"05:00"},
+		"install": {"1"}, "swap": {"1"}, "countdown_min": {"2"}, "lock_max_min": {"30"}}
+	h.UpdateWindowWeb(httptest.NewRecorder(), mwReq("/admin/server-config/update-window", form))
+	body, ok := a.called("POST /v1/window")
+	if !ok || !strings.Contains(body, `"kind":"rolling"`) || !strings.Contains(body, `"swap":false`) {
+		t.Fatalf("Rumpf %q", body)
 	}
 }
 

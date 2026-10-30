@@ -26,10 +26,12 @@
   <div><label class="form-label">{{t "Uhrzeit (nur ohne Ausfallschutz-Sicherung)"}}</label><input class="form-input" type="time" name="clock" value="{{$w.Clock}}"></div>
   <div><label class="form-label">{{t "Spätestens beginnen bis"}}</label><input class="form-input" type="time" name="latest" value="{{$w.Latest}}"></div>
   <div><label class="form-label"><input type="checkbox" name="install" value="1"{{if $w.Install}} checked{{end}}> {{t "Neue Version einspielen"}}</label></div>
+  {{if .Cluster}}{{/* nur im Verbund: Update-Art und Rollentausch (Einzelserver speichert die Standardwerte) */}}
   <div><label class="form-label">{{t "Update-Art"}}</label><select class="form-input" name="kind">
     <option value="rolling"{{if eq $w.Kind "rolling"}} selected{{end}}>{{t "ohne Unterbrechung (Rollentausch)"}}</option>
     <option value="sequential"{{if eq $w.Kind "sequential"}} selected{{end}}>{{t "alle nacheinander (kurze Unterbrechung)"}}</option></select></div>
   <div><label class="form-label"><input type="checkbox" name="swap" value="1"{{if $w.Swap}} checked{{end}}> {{t "Rollen im Fenster tauschen"}}</label></div>
+  {{end}}
   <div><label class="form-label">{{t "Countdown vor der Sperre (min)"}}</label><input class="form-input" type="number" name="countdown_min" min="1" max="15" value="{{$w.CountdownMin}}"></div>
   <div><label class="form-label">{{t "Höchstdauer der Sperre (min)"}}</label><input class="form-input" type="number" name="lock_max_min" min="10" max="120" value="{{$w.LockMaxMin}}"></div>
   <div><button class="btn" type="submit"><i class="ti ti-device-floppy"></i> {{t "Speichern"}}</button></div>
@@ -168,7 +170,7 @@
   {{end}}
 
   {{if .IsCluster}}
-  {{template "maint-window-form" (dict "Action" "/admin/server-config/ha/window" "Window" .Window "Can" (and .CanEditSettings (not .NoWindowPerm)) "Faulty" .Faulty "FaultyAction" "/admin/server-config/ha/faulty-allow" "FaultyField" "commit" "Next" .NextWindow "Last" .LastResult)}}
+  {{template "maint-window-form" (dict "Action" "/admin/server-config/ha/window" "Window" .Window "Can" (and .CanEditSettings (not .NoWindowPerm)) "Faulty" .Faulty "FaultyAction" "/admin/server-config/ha/faulty-allow" "FaultyField" "commit" "Next" .NextWindow "Last" .LastResult "Cluster" true)}}
   <details style="margin-top:10px"><summary>{{t "Notweg: von Hand aktualisieren"}}</summary>
     <p class="vp-hint">{{t "Nur wenn das automatische Update nicht möglich ist: auf dem zweiten Server und auf dem Zeugen-Rechner ausführen."}}</p>
     {{if .WitnessCmd}}<div class="vp-cmd"><code class="vp-key">{{.WitnessCmd}}</code></div>{{else if .UpdateCmd}}<div class="vp-cmd"><code class="vp-key">{{.UpdateCmd}}</code></div>{{else}}<p class="vp-hint"><code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code></p>{{end}}

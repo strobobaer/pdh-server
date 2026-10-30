@@ -9,7 +9,9 @@
 {{if .Brand.AppLogo}}<link rel="icon" href="{{.Brand.AppLogo}}">{{else}}<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml">{{end}}
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--red:#ef4444;--shadow-card:none;--font:'DM Sans',system-ui,sans-serif}
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#222536;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--red:#ef4444;--field-border:var(--border);--shadow-card:none;--font:'DM Sans',system-ui,sans-serif}
+/* hell (Gerät hell eingestellt, data-theme setzt das Skript unten) */
+html[data-theme="light"]{--bg:#f3f3f3;--bg2:#fff;--bg3:#f9f9f9;--accent:#005fb8;--on-accent:#fff;--text:#1b1b1b;--muted:#5f5f5f;--border:#e2e2e2;--red:#dc2626;--field-border:#8a8a8a;--shadow-card:0 2px 8px rgba(0,0,0,.08)}
 body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-card);padding:32px;width:100%;max-width:560px}
 .head{display:flex;align-items:center;gap:14px;margin-bottom:6px}
@@ -37,7 +39,7 @@ h1{font-size:19px;font-weight:600;line-height:1.3;overflow-wrap:anywhere}
 .err{border-color:var(--red)}
 form{margin-top:20px}
 label{display:block;font-size:12px;color:var(--muted);margin:10px 0 5px}
-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:9px 13px;color:var(--text);font:inherit;font-size:14px;outline:0}
+input{width:100%;background:var(--bg3);border:1px solid var(--field-border);border-radius:8px;padding:9px 13px;color:var(--text);font:inherit;font-size:14px;outline:0}
 input:focus{border-color:var(--accent)}
 .btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-size:14px;cursor:pointer;margin-top:12px}
 .btn:hover{opacity:.9}
@@ -50,19 +52,20 @@ a{color:var(--accent)}
 <style>{{.Brand.ThemeCSS}}</style>
 {{with .Brand.DefaultLook.FontHref}}<link rel="stylesheet" href="{{.}}">{{end}}
 <style>{{.Brand.DefaultLook.CSS}} body{zoom:var(--ui-scale)}</style>
-<!-- Farbschema und Design-Stil: Firmenstandard (wie die Anmeldeseite) -->
-<script>document.documentElement.dataset.palette = {{.Brand.ThemeID}}; document.documentElement.dataset.style = {{.Brand.StyleID}};</script>
+<!-- Farbschema und Design-Stil: Firmenstandard; hell/dunkel folgt dem Gerät (prefers-color-scheme) -->
+<script>(function(){var e=document.documentElement,m=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');function s(){e.dataset.theme=m&&m.matches?'dark':'light';}e.dataset.palette={{.Brand.ThemeID}};e.dataset.style={{.Brand.StyleID}};s();if(m&&m.addEventListener)m.addEventListener('change',s);})();</script>
 <style>
-html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9}
-html[data-style="fiori"] .card{border:0;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"]{--bg:#12171c;--bg2:#1d232a;--bg3:#242c35;--text:#eaecee;--muted:#a9b4be;--border:#3a4552;--field-border:#8396a8;--red:#ff8888;--shadow-card:0 0 2px rgba(0,0,0,.5),0 8px 16px rgba(0,0,0,.5)}
+html[data-style="fiori"][data-theme="light"]{--bg:#f5f6f7;--bg2:#fff;--bg3:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9;--field-border:#556b82;--red:#aa0808;--shadow-card:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"] .card{border:0;box-shadow:var(--shadow-card)}
 html[data-style="fiori"] h1{font-weight:700}
 html[data-style="fiori"] .bar{border-radius:2px}
 html[data-style="fiori"] .bar>div{border-radius:2px}
 html[data-style="fiori"] .steps li.cur{font-weight:700}
-html[data-style="fiori"] input{border:1px solid #556b82;border-radius:4px;background:#fff}
+html[data-style="fiori"] input{border:1px solid var(--field-border);border-radius:4px;background:var(--bg3)}
 html[data-style="fiori"] input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
-html[data-style="fiori"] .err{color:#aa0808}
+html[data-style="fiori"] .err{color:var(--red)}
 </style>
 </head>
 <body>
@@ -81,9 +84,11 @@ html[data-style="fiori"] .err{color:#aa0808}
   {{if .Msg}}<div class="msg" role="status">{{.Msg}}</div>{{end}}
   {{if .Err}}<div class="err" role="alert">{{.Err}}</div>{{end}}
   {{if .Admin}}
+  {{if .CanAbort}}
   <form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{t "Wartung abbrechen und bisherige Version wiederherstellen?"}})">
     <button class="btn danger" type="submit">{{t "Abbrechen und zurücksetzen"}}</button>
   </form>
+  {{else if .AbortNote}}<p class="muted foot" role="status">{{.AbortNote}}</p>{{end}}
   {{else if .ShowLogin}}
   <form method="post" action="/wartung/anmelden">
     <label for="mt-email">{{t "E-Mail oder Benutzername"}}</label><input id="mt-email" name="email" autocomplete="username" required autofocus>

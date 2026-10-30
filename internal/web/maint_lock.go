@@ -553,10 +553,23 @@ type maintScreenPage struct {
 	Remaining             string
 	RollingBack           bool
 	Admin, ShowLogin      bool
-	Msg, Err              string
+	// CanAbort: Abbruch-Knopf zeigen (I7: nicht im Zurücksetzen und nicht ab der Freigabe);
+	// AbortNote erklärt sonst, warum es nichts mehr abzubrechen gibt.
+	CanAbort  bool
+	AbortNote string
+	Msg, Err  string
 }
 
 func (p maintScreenPage) Language() string { return p.Lang }
+
+// maintPastRelease: ab der Freigabe ist die neue Version geprüft – kein Abbruch mehr.
+func maintPastRelease(phase string) bool {
+	switch ha.UpdatePhase(phase) {
+	case ha.UpRelease, ha.UpFollow, ha.UpDone, ha.UpFailed:
+		return true
+	}
+	return false
+}
 
 // maintText übersetzt die deutschen Phasentexte und Schritte aus pdh-ha
 // (internal/ha/update_view.go); Unbekanntes bleibt unverändert.
@@ -646,11 +659,29 @@ func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, stat
 		Admin:       d.Admin,
 		ShowLogin:   d.ShowLogin,
 	}
+	if d.Admin {
+		switch {
+		case v.RollingBack:
+			p.AbortNote = tr(lang, "Zurücksetzen läuft bereits – Abbrechen ist nicht mehr nötig.")
+		case maintPastRelease(v.Phase):
+			p.AbortNote = tr(lang, "Das Update ist schon freigegeben – Abbrechen ist nicht mehr möglich.")
+		default:
+			p.CanAbort = true
+		}
+	}
 	if v.RollingBack {
 		p.Title = tr(lang, "Wartung wird rückgängig gemacht – die bisherige Version wird wiederhergestellt")
 	}
 	if v.FromVersion != "" || v.ToVersion != "" {
-		p.Versions = v.FromVersion + " → " + v.ToVersion
+		to := v.ToVersion
+		if to == "" {
+			// C1: Zielversion noch nicht bekannt (wird nach dem Einspielen übernommen)
+			to = tr(lang, "neue Version")
+		}
+		p.Versions = v.FromVersion + " → " + to
+		if v.Kind == string(ha.UpdateSwap) {
+			p.Versions = v.FromVersion // reiner Rollentausch: gleiche Version
+		}
 	}
 	for i, s := range v.Steps {
 		p.Steps = append(p.Steps, maintStepView{Name: maintText(lang, s), Done: i < v.Step, Cur: i == v.Step})
