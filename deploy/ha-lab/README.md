@@ -97,3 +97,33 @@ getrennt) – nur so ist zu sehen, dass pdh-ha die Adresse selbst abgibt.
 In `umstellung` setzt das Szenario die Absenderadresse mit
 `ip route replace 10.77.1.0/24 dev <Karte> proto kernel scope link src 10.77.1.13`
 (wie das Umstellungsskript), sonst gingen Verbindungen weiter von 10.77.1.11 aus.
+
+### Update im Verbund
+
+pdh und der Update-Agent sind Platzhalter: `lab-agent` „spielt einen Stand
+ein“, indem er den Commit nach `/var/lib/pdh-lab/commit` schreibt (pdh-ha liest
+ihn je Takt, `PDH_HA_COMMIT_FILE`) und `pdh-dummy` neu startet;
+`install_norestart` merkt den Stand nur vor, `finish` setzt ihn ein. Ausgangsstand
+ist `lab0`. `pdh-dummy` beantwortet `/health` auf Port 8090 (`socat`) mit der
+Version aus `VERSION`; als Primary mit einem Stand ungleich `lab0` legt es die
+Tabelle `mig_<Commit>` in der Datenbank `lab` an („Datenbank-Änderung“), bis
+dahin meldet es `migrations_ok: false`.
+
+Schalter (Dateien in `/var/lib/pdh-lab/`): `fail-install` (Einspielen
+scheitert), `fail-start-<Commit>` (pdh startet mit diesem Stand nicht),
+`fail-health-<Commit>` (`/health` antwortet 500). Die Prüffrist ist im Labor
+60 s (`PDH_HA_UPDATE_VERIFY`), der Countdown 1 min. In der Sperre ruht der
+Schreib-Generator, wo das Szenario einen Rückweg erwartet – im Betrieb schreibt
+dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verloren.
+
+| Szenario | Ablauf | Erwartung |
+|---|---|---|
+| `update-ok` | `update start lab1 --kind rolling` | node2 spielt lab1 ein, Tausch, node1 zieht nach; beide auf lab1, node2 aktiv, `mig_lab1` auf beiden |
+| `update-b-vorher` | `fail-health-lab1` auf node2, dann Update | Prüffrist überschritten, node2 zurück auf lab0, lab1 als fehlerhaft gemerkt, keine `mig_lab1` |
+| `update-b-nachher` | im Countdown `fail-health-lab1` auf node2 | nach dem Tausch legt node2 `mig_lab1` an, Prüfung scheitert, Zurücksetzen: node1 mit alter Datenbank aktiv, `mig_lab1` nirgends, lab1 fehlerhaft |
+| `update-abbruch` | in der Sperre `pdh-ha update abort` auf node2 | Zurücksetzen, Ergebnis „abgebrochen von Befehlszeile“, lab1 nicht fehlerhaft |
+| `update-neustart` | node1 vor der Sperre neu starten; zweiter Auftrag: node2 in der Prüfung neu starten | erst „abgebrochen von Neustart“ mit beiden auf lab0, dann setzt node2 den Auftrag fort: abgeschlossen |
+| `update-nicht-gruen` | node2 von `lan`/`vpn` trennen, Start mit Quelle „zeitplan“ und per Befehl | HTTP 409 bzw. Fehler, kein Auftrag |
+| `update-nacheinander` | `update start lab1 --kind sequential` | node2 eingefroren, node1 startet mit lab1 neu, node2 zieht nach; node1 aktiv, beide auf lab1 |
+| `update-nacheinander-fehler` | `fail-health-lab1` auf node1, Art „alle nacheinander“ | node2 wird mit seinem eingefrorenen Stand aktiv, node1 zurück auf lab0, `mig_lab1` nirgends, lab1 fehlerhaft |
+| `update-hoechstdauer` | Höchstdauer 10 min; im Countdown node2 trennen, nach 8 min verbinden | Tausch findet nicht statt, nach 10 min Zurücksetzen und Freigabe, Ergebnis „Höchstdauer überschritten“, lab1 nicht fehlerhaft |
