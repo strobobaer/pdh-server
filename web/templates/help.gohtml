@@ -1921,7 +1921,8 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Zweiter Server</b> und <b>Zeugen-Rechner</b> (Programm): <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code></li>
       <li><b>Zeuge als Container</b>: im PDH-Quelltext auf denselben Stand gehen (<code>git fetch</code>, <code>git checkout &lt;Commit&gt;</code>), dann in <code>deploy/ha-witness</code> <code>PDH_HA_COMMIT=&lt;Commit&gt; docker compose up -d --build</code> (der Commit erscheint dann auch in der Übersicht). <code>PDH_HA_ADDR</code> und Code sind nicht nötig – sie liegen schon in den Volumes.</li>
       <li>Nach kurzer Zeit verschwindet die Warnung „Versionen unterschiedlich“.</li>
-    </ol></div>
+    </ol>
+    <p><b>Der Zeuge zieht von selbst nach:</b> Haben beide Server denselben Stand, der Zeuge nicht, und läuft kein Update, aktualisiert sich der Zeuge nach spätestens fünf Minuten selbst. Beim Container übernimmt das der Dienst <code>updater</code> (Docker-Socket und Volume <code>ha-src</code>); er baut den Zeugen bei Misserfolg auf den alten Stand zurück. Beim Programm startet <code>pdh-ha</code> dafür <code>pdh-ha-join.sh --update &lt;Commit&gt; --witness</code>. Abschalten: Container <code>PDH_HA_AUTOUPDATE=0</code>, Programm <code>PDH_HA_SELFUPDATE=0</code>.</p></div>
   <div class="hb-howto"><b><i class="ti ti-trash"></i> So entfernst du einen Server oder Zeugen</b>
     <ol class="hb-steps">
       <li>Das geht nur am ersten Server (dort, wo der Ausfallschutz eingerichtet wurde): Bereich <b>Knoten entfernen</b>.</li>

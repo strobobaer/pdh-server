@@ -102,6 +102,8 @@ type message struct {
 	Op    string        `json:"op,omitempty"`
 	JobID string        `json:"job_id,omitempty"`
 	Ack   *ha.UpdateAck `json:"ack,omitempty"`
+	// hb eines Servers: ein Update-Auftrag läuft (der Zeuge zieht dann nicht nach)
+	UpJob bool `json:"upjob,omitempty"`
 }
 
 var deliverTypes = map[string]bool{

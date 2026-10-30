@@ -163,7 +163,8 @@ type daemon struct {
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 
-	up upState // Update im Verbund (update_job.go)
+	up  upState      // Update im Verbund (update_job.go)
+	wsu selfUpdater // Zeuge als Programm zieht sich nach (witness_update.go)
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -1011,6 +1012,7 @@ func (d *daemon) tickWitnessLocked(ctx context.Context) plan {
 		d.p = p
 	}
 	d.booting = false
+	d.selfUpdateLocked(ctx)
 	pl.send("", d.heartbeatLocked(false, views, wall))
 	d.clusterRequestsLocked(&pl, now, s, views)
 	d.checkRenewLocked(&pl, wall)

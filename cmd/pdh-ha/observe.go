@@ -242,6 +242,9 @@ func (d *daemon) statusLocked() apiStatus {
 				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
 			an.VIPHeld, an.HooksSum, an.TunnelSum = m.VIP, m.Hooks, m.Tun
 			hosts[n.ID] = m.HostID
+			if d.node.Kind == "witness" && an.Seen && m.UpJob {
+				st.Update.Active = true // Zeuge: ein Server meldet einen laufenden Auftrag
+			}
 		}
 		if st.Access.Holder == "" && an.Seen && an.VIPHeld {
 			st.Access.Holder = n.ID
@@ -335,6 +338,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		_, m.Hooks, _ = d.hooks.info()
 		m.Tun = d.tunnel.Sum()
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
+		m.UpJob = !upEnded(d.up.job)
 	}
 	return m
 }

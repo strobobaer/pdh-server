@@ -4,6 +4,7 @@
 #   sudo bash pdh-ha-join.sh [<Code>]           als zweiter Server beitreten
 #   sudo bash pdh-ha-join.sh --witness [<Code>] als Zeuge beitreten
 #   sudo bash pdh-ha-join.sh --update <Commit>  pdh-ha auf diesen Stand bringen
+#                                               (auch mit --witness: baut nur pdh-ha)
 #   … --voll                                    zusätzlich PDH + Datenbank-Spiegel
 #                                               (Standby des aktiven Servers)
 #
@@ -27,7 +28,7 @@ ok()   { printf '\033[1;32m✔ %s\033[0m\n' "$*"; }
 info() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 fail() { printf '\033[1;31m✘ %s\033[0m\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
 WITNESS=0 VOLL=0 UPDATE="" CODE="${PDH_HA_JOIN:-}" GOT_CODE=0
 while [[ $# -gt 0 ]]; do
@@ -42,7 +43,6 @@ while [[ $# -gt 0 ]]; do
 done
 (( ! (VOLL && WITNESS) )) || fail "--voll nicht zusammen mit --witness (der Zeuge hat keine Datenbank)"
 if [[ -n "$UPDATE" ]]; then
-  [[ $WITNESS -eq 0 ]] || fail "--update nicht zusammen mit --witness"
   CODE=""
 elif [[ -z "$CODE" ]]; then
   read -r -p "Beitrittscode: " CODE || true

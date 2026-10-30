@@ -9,6 +9,12 @@
 # Danach genügt `docker compose up -d`; Schlüssel und Zustand liegen in den Volumes.
 # Zustand ansehen: docker compose exec witness pdh-ha status
 # Port 7480/tcp muss von beiden Servern aus erreichbar sein.
+#
+# Selbst-Update: Der Dienst "updater" (nur unter Docker) holt den Zeugen auf den
+# Stand der beiden Server, sobald beide denselben Stand haben und kein Update
+# läuft. Er klont das Repository ins Volume ha-src und baut nur den Dienst
+# "witness" neu (gleicher Projektname, gleiche Volumes). Abschalten:
+#   PDH_HA_AUTOUPDATE=0 docker compose up -d updater
 name: pdh-ha-witness
 
 services:
@@ -32,6 +38,22 @@ services:
       - ha-etc:/etc/pdh/ha
       - ha-state:/var/lib/pdh-ha
 
+  # Helfer: zieht den Zeugen nach (updater.sh). Braucht den Docker-Socket des
+  # Rechners; baut sich nie selbst neu (nur "witness").
+  updater:
+    build:
+      context: ../..
+      dockerfile: deploy/ha-witness/updater.Dockerfile
+    image: pdh-ha-witness-updater:local
+    restart: unless-stopped
+    environment:
+      PDH_HA_AUTOUPDATE: ${PDH_HA_AUTOUPDATE:-1}
+      PDH_HA_REPO: ${PDH_HA_REPO:-https://github.com/strobobaer/pdh-server.git}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ha-src:/src
+
 volumes:
   ha-etc:
   ha-state:
+  ha-src:
