@@ -83,7 +83,9 @@ func pdhEnv(key string) string {
 type cmdAgent struct{ argv []string }
 
 func (c cmdAgent) run(ctx context.Context, args ...string) error {
-	ctx, cancel := context.WithTimeout(ctx, agentWait)
+	// Das Ende des Dienstes bricht den Befehl nicht ab: Er startet pdh-ha
+	// womöglich selbst neu (Einspielen), ein Abbruch ließe ihn halb fertig.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), agentWait)
 	defer cancel()
 	argv := append(append([]string(nil), c.argv...), args...)
 	out, err := exec.CommandContext(ctx, argv[0], argv[1:]...).CombinedOutput()

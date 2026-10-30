@@ -25,6 +25,22 @@ type fakeAgent struct {
 	mu    sync.Mutex
 	calls []string
 	err   error
+	block chan struct{} // gesetzt: Aufruf wartet darauf oder auf das Ende von ctx
+}
+
+func (f *fakeAgent) wait(ctx context.Context) error {
+	f.mu.Lock()
+	b := f.block
+	f.mu.Unlock()
+	if b == nil {
+		return nil
+	}
+	select {
+	case <-b:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (f *fakeAgent) add(s string) error {
@@ -34,8 +50,11 @@ func (f *fakeAgent) add(s string) error {
 	return f.err
 }
 
-func (f *fakeAgent) Install(_ context.Context, commit string, noRestart bool) error {
-	return f.add(fmt.Sprintf("install %s %v", commit, noRestart))
+func (f *fakeAgent) Install(ctx context.Context, commit string, noRestart bool) error {
+	if err := f.add(fmt.Sprintf("install %s %v", commit, noRestart)); err != nil {
+		return err
+	}
+	return f.wait(ctx)
 }
 
 func (f *fakeAgent) Rollback(_ context.Context, commit string, noRestart bool) error {
@@ -765,4 +784,92 @@ func callStrings(r *fakeRunner) []string {
 		out = append(out, c.String())
 	}
 	return out
+}
+
+// Beendet sich der Dienst während eines Auftrags (das eigene Einspielen
+// startet pdh-ha neu), ist das kein Ergebnis: kein update_ack, nichts gemerkt.
+func TestUpdateNodeOpCancelledNoAck(t *testing.T) {
+	fn := newFakeNet()
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1}, fn)
+	agentOf(d).block = make(chan struct{})
+	job := rollingJob(ha.UpPrepare, 3)
+	job.WaitOp, job.WaitNode, job.WaitSeq = ha.OpInstall, "b", 3
+	ctx, cancel := context.WithCancel(context.Background())
+	d.handle(ctx, inbound{From: "a", Msg: message{T: "update_node", Op: ha.OpInstall, Commit: "x1", JobID: "j1", Job: &job, Seq: 1}})
+	waitFor(t, 2*time.Second, "Agent-Aufruf", func() bool { return len(agentOf(d).list()) == 1 })
+	cancel()
+	waitFor(t, 2*time.Second, "Ende des Laufs", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return len(d.up.running) == 0
+	})
+	time.Sleep(50 * time.Millisecond)
+	if n := len(fn.messages("update_ack")); n != 0 {
+		t.Fatalf("abgebrochener Lauf als Ergebnis gemeldet: %+v", fn.messages("update_ack"))
+	}
+	d.mu.Lock()
+	cached := len(d.up.done)
+	d.mu.Unlock()
+	if cached != 0 {
+		t.Fatal("abgebrochener Lauf gemerkt")
+	}
+	if hasEvent(d, "fehlgeschlagen") {
+		t.Fatal("Abbruch beim Beenden als Fehler gemeldet")
+	}
+	// Wiederholung nach dem Neustart läuft erneut
+	agentOf(d).block = nil
+	d.handle(context.Background(), inbound{From: "a", Msg: message{T: "update_node", Op: ha.OpInstall, Commit: "x1", JobID: "j1", Job: &job, Seq: 2}})
+	waitFor(t, 2*time.Second, "update_ack nach Wiederholung", func() bool { return len(fn.messages("update_ack")) == 1 })
+	if a := fn.messages("update_ack")[0].m.Ack; !a.OK {
+		t.Fatalf("Wiederholung: %+v", a)
+	}
+}
+
+func TestUpdateJobMirrorNewJobReplacesEnded(t *testing.T) {
+	fn := newFakeNet()
+	d := fakeDaemon(t, nodeConfig{ID: "b", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Passive, Term: 1}, fn)
+	old := rollingJob(ha.UpDone, 50)
+	old.ID = "alt"
+	d.up.job = old
+	j := rollingJob(ha.UpPrepare, 3) // neuer Auftrag, Seq des Partners liegt zurück
+	d.handle(context.Background(), inbound{From: "a", Msg: message{T: "update_job", Job: &j, Seq: 1}})
+	if d.up.job.ID != "j1" || d.up.job.Seq != 3 {
+		t.Fatalf("neuer offener Auftrag nicht übernommen: %+v", d.up.job)
+	}
+	if got, _ := d.st.loadJob(); got.ID != "j1" {
+		t.Fatal("neuer Auftrag nicht gespeichert")
+	}
+	// ein anderer, beendeter Auftrag mit kleinerem Seq ersetzt den offenen nicht
+	other := rollingJob(ha.UpFailed, 2)
+	other.ID = "anders"
+	d.handle(context.Background(), inbound{From: "a", Msg: message{T: "update_job", Job: &other, Seq: 2}})
+	if d.up.job.ID != "j1" {
+		t.Fatalf("offener Auftrag ersetzt: %+v", d.up.job)
+	}
+	// ein anderer, offener Auftrag ersetzt einen offenen nur mit höherem Seq
+	open2 := rollingJob(ha.UpPrepare, 2)
+	open2.ID = "zwei"
+	d.handle(context.Background(), inbound{From: "a", Msg: message{T: "update_job", Job: &open2, Seq: 3}})
+	if d.up.job.ID != "j1" {
+		t.Fatalf("offener Auftrag durch kleineren Seq ersetzt: %+v", d.up.job)
+	}
+}
+
+func TestStartUpdateSeqAbovePartner(t *testing.T) {
+	d, _ := upActive(t)
+	d.up.job = rollingJob(ha.UpDone, 4)
+	in := rollingJob(ha.UpDone, 40) // Partner schickte einmal Seq 40
+	d.mu.Lock()
+	d.mirrorInLocked(&plan{}, in)
+	d.up.job = rollingJob(ha.UpDone, 4)
+	j := rollingJob("", 0)
+	j.ID = "neu"
+	err := d.startUpdateLocked(j)
+	d.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.up.job.Seq != 41 {
+		t.Fatalf("Seq über dem des Partners erwartet: %d", d.up.job.Seq)
+	}
 }

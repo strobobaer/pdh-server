@@ -47,6 +47,7 @@ type upState struct {
 	abort        string         // Abbruch durch einen Administrator für den nächsten Schritt
 	restartAbort string         // Kennung eines Auftrags, der beim Laden vor der Sperre stand
 	takeover     bool           // Übernahme erkannt, gilt bis zum nächsten gespeicherten Schritt
+	peerSeq      uint64         // höchster Seq, den der Partner je geschickt hat
 	sentSeq      uint64         // zuletzt an den Partner gespiegelter Seq
 	sentAt       time.Time      // letzte Spiegelung (Wanduhr)
 	opSent       opMark         // offener Auftrag an einen Knoten: seit wann bekannt
@@ -159,7 +160,7 @@ func (d *daemon) startUpdateLocked(j ha.UpdateJob) error {
 		return errors.New("Auftrag ohne Kennung")
 	}
 	j.Phase, j.PhaseAt = ha.UpPrepare, time.Time{}
-	j.Seq = cur.Seq + 1 // höherer Seq gewinnt beim Spiegeln
+	j.Seq = max(cur.Seq, d.up.peerSeq) + 1 // höherer Seq gewinnt beim Spiegeln
 	if err := d.st.saveJob(j); err != nil {
 		return fmt.Errorf("Update-Auftrag nicht gespeichert: %w", err)
 	}
@@ -409,7 +410,8 @@ func (d *daemon) mirrorInLocked(pl *plan, j ha.UpdateJob) {
 	if j.ID == u.job.ID && j.Seq >= u.job.Seq {
 		u.restartAbort = "" // der dirigierende Server lebt
 	}
-	if j.Seq <= u.job.Seq {
+	u.peerSeq = max(u.peerSeq, j.Seq)
+	if !mirrorWins(u.job, j) {
 		return
 	}
 	if err := d.st.saveJob(j); err != nil {
@@ -420,6 +422,21 @@ func (d *daemon) mirrorInLocked(pl *plan, j ha.UpdateJob) {
 	if j.MarkFaulty {
 		d.addFaultyLocked(pl, j.Target)
 	}
+}
+
+// mirrorWins: Ersetzt der gespiegelte Auftrag in den eigenen? Derselbe
+// Auftrag: höherer Seq gewinnt. Ein anderer, offener Auftrag ersetzt einen
+// beendeten (bzw. fehlenden) unabhängig vom Seq – sonst behielte ein
+// Partner, dessen Seq vorausliegt (lange weg, Zustand neu), den alten
+// Auftrag und dirigierte nach dem Tausch nicht weiter.
+func mirrorWins(cur, in ha.UpdateJob) bool {
+	if in.ID == "" {
+		return false
+	}
+	if in.ID != cur.ID && !upEnded(in) && (cur.ID == "" || upEnded(cur)) {
+		return true
+	}
+	return in.Seq > cur.Seq
 }
 
 // updateNodeLocked: Auftrag des dirigierenden Partners an diesen Server.
@@ -458,6 +475,16 @@ func (d *daemon) runOpAsyncLocked(ctx context.Context, j ha.UpdateJob, op, commi
 	self := d.node.ID
 	go func() {
 		err := d.runUpdateOp(ctx, j, op, commit)
+		if err != nil && ctx.Err() != nil {
+			// Dienst endet (z. B. startet das eigene Einspielen pdh-ha neu):
+			// kein Ergebnis – weder merken noch melden. Der dirigierende
+			// Server wiederholt den Auftrag nach upResendAfter; „install X“
+			// bei laufendem X gilt dann sofort als erledigt.
+			d.mu.Lock()
+			delete(d.up.running, key)
+			d.mu.Unlock()
+			return
+		}
 		a := ha.UpdateAck{JobID: j.ID, Op: op, Node: self, OK: err == nil, Seq: j.Seq}
 		if err != nil {
 			a.Err = err.Error()
