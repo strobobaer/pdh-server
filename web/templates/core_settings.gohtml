@@ -111,7 +111,7 @@
       <p style="margin:0 0 8px;font-size:13px"><i class="ti ti-alert-triangle" style="color:var(--amber)"></i> {{.UpdateAsk}}</p>
       {{if .UpdateAskHints}}<ul style="margin:0 0 8px 18px;padding:0;font-size:12px;color:var(--muted)">{{range .UpdateAskHints}}<li>{{.}}</li>{{end}}</ul>{{end}}
       <form method="POST" action="/core/settings/install-update" style="display:flex;gap:8px;flex-wrap:wrap">
-        <input type="hidden" name="force" value="1">
+        <input type="hidden" name="force" value="1"><input type="hidden" name="token" value="{{.UpdateAskToken}}">
         <button class="btn btn-primary btn-small" type="submit"><i class="ti ti-download"></i> {{t "Trotzdem aktualisieren"}}</button>
         <a class="btn btn-small" href="/core/settings">{{t "Abbrechen"}}</a>
       </form>

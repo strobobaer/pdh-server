@@ -12,6 +12,9 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"sync"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -296,12 +299,61 @@ type updateReply struct {
 	Hints []string `json:"hints"`
 }
 
-// clipText kürzt Text aus der Adresszeile (Anzeige, kein Vertrauen).
-func clipText(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n])
+// updateAsk: Rückfrage „Nicht alles grün“ – bleibt beim Server (je Benutzer),
+// die Adresszeile trägt keinen Text. Das Einmal-Token erlaubt genau einen
+// erzwungenen Start durch denselben Benutzer.
+type updateAsk struct {
+	Reason  string
+	Hints   []string
+	Token   string
+	Expires time.Time
+}
+
+const updateAskTTL = 10 * time.Minute
+
+var updateAsks = struct {
+	sync.Mutex
+	m map[string]updateAsk
+}{m: map[string]updateAsk{}}
+
+func updateAskPrune(now time.Time) {
+	for k, a := range updateAsks.m {
+		if now.After(a.Expires) {
+			delete(updateAsks.m, k)
+		}
 	}
-	return s
+}
+
+func updateAskPut(user, reason string, hints []string) {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	now := time.Now()
+	updateAsks.Lock()
+	defer updateAsks.Unlock()
+	updateAskPrune(now)
+	updateAsks.m[user] = updateAsk{Reason: reason, Hints: hints, Token: hex.EncodeToString(b), Expires: now.Add(updateAskTTL)}
+}
+
+// updateAskGet: Rückfrage des Benutzers ansehen (bleibt erhalten).
+func updateAskGet(user string) (updateAsk, bool) {
+	updateAsks.Lock()
+	defer updateAsks.Unlock()
+	updateAskPrune(time.Now())
+	a, ok := updateAsks.m[user]
+	return a, ok
+}
+
+// updateAskConsume: Token prüfen und verbrauchen (einmalig, nur derselbe Benutzer).
+func updateAskConsume(user, token string) bool {
+	updateAsks.Lock()
+	defer updateAsks.Unlock()
+	updateAskPrune(time.Now())
+	a, ok := updateAsks.m[user]
+	if !ok || token == "" || a.Token != token {
+		return false
+	}
+	delete(updateAsks.m, user)
+	return true
 }
 
 // installRedirect leitet auf die Core-Einstellungen zurück.
@@ -324,16 +376,18 @@ func (h *Handler) InstallUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	ctx := r.Context()
 	lang := h.requestLang(r)
+	// erzwingen nur mit dem Einmal-Token der Rückfrage desselben Benutzers
+	force := r.FormValue("force") == "1" && updateAskConsume(getUser(r).ID, r.FormValue("token"))
 	st, cluster, err := h.updateCluster(ctx)
 	if err != nil {
 		installRedirect(w, r, url.Values{"notice": {err.Error()}})
 		return
 	}
 	if cluster {
-		h.installCluster(w, r, st, lang)
+		h.installCluster(w, r, st, lang, force)
 		return
 	}
-	h.installSingle(w, r, lang)
+	h.installSingle(w, r, lang, force)
 }
 
 // installDone wertet die Antwort „Update starten“ aus (409 = nicht grün).
@@ -342,11 +396,8 @@ func installDone(w http.ResponseWriter, r *http.Request, lang string, code int, 
 	case code == http.StatusOK && rep.OK:
 		installRedirect(w, r, url.Values{"notice": {tr(lang, "Update wurde gestartet. Den Fortschritt zeigt Server-Einstellungen → Ausfallschutz.")}})
 	case code == http.StatusConflict && !force:
-		q := url.Values{"ask": {tr(lang, "Nicht alles grün (%s). Trotzdem mit kurzer Unterbrechung aktualisieren?", rep.Error)}}
-		for _, h := range rep.Hints {
-			q.Add("hint", h)
-		}
-		installRedirect(w, r, q)
+		updateAskPut(getUser(r).ID, rep.Error, rep.Hints)
+		installRedirect(w, r, url.Values{"ask": {"1"}})
 	default:
 		msg := rep.Error
 		if msg == "" {
@@ -356,7 +407,7 @@ func installDone(w http.ResponseWriter, r *http.Request, lang string, code int, 
 	}
 }
 
-func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haStatus, lang string) {
+func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haStatus, lang string, force bool) {
 	ctx := r.Context()
 	if st.Self.Role != "aktiv" || h.Mirror().On {
 		installRedirect(w, r, url.Values{"notice": {tr(lang, "Das Update wird vom aktiven Server gesteuert.")}})
@@ -371,7 +422,6 @@ func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haSt
 	if kind != ha.UpdateRolling && kind != ha.UpdateSequential {
 		kind = ha.DefaultWindow().Kind
 	}
-	force := r.FormValue("force") == "1"
 	configured, baseOK, filesOK := h.drBackupFlags(ctx)
 	in := map[string]any{"commit": commit, "source": "knopf", "kind": string(kind), "force": force,
 		"backup_configured": configured, "last_base_ok": baseOK, "last_files_ok": filesOK}
@@ -389,9 +439,8 @@ func (h *Handler) installCluster(w http.ResponseWriter, r *http.Request, st haSt
 	installDone(w, r, lang, code, rep, force)
 }
 
-func (h *Handler) installSingle(w http.ResponseWriter, r *http.Request, lang string) {
+func (h *Handler) installSingle(w http.ResponseWriter, r *http.Request, lang string, force bool) {
 	ctx := r.Context()
-	force := r.FormValue("force") == "1"
 	code, body, err := h.agentRaw(ctx, http.MethodPost, "/v1/update/job/start", map[string]bool{"force": force})
 	if err != nil {
 		installRedirect(w, r, url.Values{"notice": {err.Error()}})

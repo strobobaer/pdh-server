@@ -60,6 +60,7 @@ type CoreSettingsPageData struct {
 	UpdateKindText      string   // Update-Art aus dem Wartungsfenster
 	UpdateAsk           string   // Rückfrage „Nicht alles grün …“ (pdh-ha meldet 409)
 	UpdateAskHints      []string // Hinweise dazu
+	UpdateAskToken      string   // Einmal-Token für „Trotzdem aktualisieren“
 	AgentOutput         string
 	NC                  *ncUpdateView // Kachel „Nextcloud-Updates“ (nextcloud_updates.go)
 	Notice              string
@@ -218,10 +219,11 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 			data.UpdateKindText = updateKindText(st.Window.Kind)
 		}
 	}
-	data.UpdateAsk = clipText(r.URL.Query().Get("ask"), 400)
-	for _, hint := range r.URL.Query()["hint"] {
-		if len(data.UpdateAskHints) < 10 {
-			data.UpdateAskHints = append(data.UpdateAskHints, clipText(hint, 200))
+	// Rückfrage nur aus dem Serverzustand dieses Benutzers; die Adresszeile trägt keinen Text
+	if r.URL.Query().Get("ask") == "1" {
+		if a, ok := updateAskGet(getUser(r).ID); ok {
+			data.UpdateAsk = tr(h.requestLang(r), "Nicht alles grün (%s). Trotzdem mit kurzer Unterbrechung aktualisieren?", a.Reason)
+			data.UpdateAskHints, data.UpdateAskToken = a.Hints, a.Token
 		}
 	}
 	data.NC = h.ncUpdateViewFor(r.Context())

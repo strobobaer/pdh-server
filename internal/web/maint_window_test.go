@@ -250,11 +250,12 @@ func TestInstallUpdateClusterConflictAsks(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || loc.Path != "/core/settings" {
 		t.Fatalf("Status %d, Ziel %q", rec.Code, rec.Header().Get("Location"))
 	}
-	if ask := loc.Query().Get("ask"); ask != "Nicht alles grün (Partner nicht erreichbar). Trotzdem mit kurzer Unterbrechung aktualisieren?" {
-		t.Fatalf("Rückfrage: %q", ask)
+	if loc.RawQuery != "ask=1" {
+		t.Fatalf("Adresszeile trägt Text: %q", loc.RawQuery)
 	}
-	if hints := loc.Query()["hint"]; len(hints) != 1 || hints[0] != "Freier Platz nicht geprüft" {
-		t.Fatalf("Hinweise: %q", hints)
+	ak, ok := updateAskGet("a1")
+	if !ok || ak.Reason != "Partner nicht erreichbar" || len(ak.Hints) != 1 || ak.Hints[0] != "Freier Platz nicht geprüft" || ak.Token == "" {
+		t.Fatalf("Rückfrage im Speicher: %+v", ak)
 	}
 	// Stand der Sicherung gemeldet (RULING R14)
 	var req map[string]any
@@ -274,7 +275,7 @@ func TestInstallUpdateForce(t *testing.T) {
 	h := mwHandler()
 	startMWAgent(t, h, &mwAgent{})
 	rec := httptest.NewRecorder()
-	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}}))
+	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}, "token": {mwAskToken(t, "a1")}}))
 	loc, _ := url.Parse(rec.Header().Get("Location"))
 	if loc.Query().Get("ask") != "" || !strings.Contains(loc.Query().Get("notice"), "gestartet") {
 		t.Fatalf("Ziel %q", rec.Header().Get("Location"))
@@ -291,7 +292,7 @@ func TestInstallUpdateForce(t *testing.T) {
 	f.replies["/v1/update/start"] = fakeReply{409, `{"ok":false,"error":"Ein anderer Vorgang läuft","hints":[]}`}
 	f.mu.Unlock()
 	rec = httptest.NewRecorder()
-	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}}))
+	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}, "token": {mwAskToken(t, "a1")}}))
 	loc, _ = url.Parse(rec.Header().Get("Location"))
 	if loc.Query().Get("ask") != "" || !strings.Contains(loc.Query().Get("notice"), "Ein anderer Vorgang läuft") {
 		t.Fatalf("Ziel %q", rec.Header().Get("Location"))
@@ -323,7 +324,7 @@ func TestInstallUpdateSingleUsesJob(t *testing.T) {
 	a := &mwAgent{replies: map[string]fakeReply{"POST /v1/update/job/start": {200, `{"ok":true,"hints":[]}`}}}
 	startMWAgent(t, h, a)
 	rec := httptest.NewRecorder()
-	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}}))
+	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", url.Values{"force": {"1"}, "token": {mwAskToken(t, "a1")}}))
 	body, ok := a.called("POST /v1/update/job/start")
 	if !ok || !strings.Contains(body, `"force":true`) {
 		t.Fatalf("Agent-Aufrufe %v, Rumpf %q", a.calls, body)
@@ -338,8 +339,8 @@ func TestInstallUpdateSingleUsesJob(t *testing.T) {
 	rec = httptest.NewRecorder()
 	h.InstallUpdateWeb(rec, mwReq("/core/settings/install-update", nil))
 	loc, _ := url.Parse(rec.Header().Get("Location"))
-	if !strings.Contains(loc.Query().Get("ask"), "Sicherung ist nicht aktuell") {
-		t.Fatalf("Ziel %q", rec.Header().Get("Location"))
+	if ak, ok := updateAskGet("a1"); loc.RawQuery != "ask=1" || !ok || ak.Reason != "Sicherung ist nicht aktuell" {
+		t.Fatalf("Ziel %q, Rückfrage %+v", rec.Header().Get("Location"), ak)
 	}
 }
 
@@ -455,5 +456,90 @@ func TestSingleServerWindowBox(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("Einzelserver-Karte ohne %q", want)
 		}
+	}
+}
+
+// mwAskToken legt eine Rückfrage für den Benutzer an und liefert ihr Token.
+func mwAskToken(t *testing.T, user string) string {
+	t.Helper()
+	updateAskPut(user, "Test", nil)
+	a, ok := updateAskGet(user)
+	if !ok {
+		t.Fatal("Rückfrage fehlt")
+	}
+	return a.Token
+}
+
+func forceBody(t *testing.T, f *fakeHA) (force bool, n int) {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, c := range f.calls {
+		if c == "POST /v1/update/start" {
+			var req map[string]any
+			_ = json.Unmarshal([]byte(f.bodies[i]), &req)
+			force, _ = req["force"].(bool)
+			n++
+		}
+	}
+	return
+}
+
+func TestInstallUpdateForceNeedsToken(t *testing.T) {
+	f := &fakeHA{status: mwDuoStatus, events: `[]`, replies: map[string]fakeReply{
+		"/v1/update/start": {200, `{"ok":true,"hints":[]}`}}}
+	startFakeHA(t, f)
+	h := mwHandler()
+	startMWAgent(t, h, &mwAgent{})
+	post := func(user, token string) {
+		req := mwReq("/core/settings/install-update", url.Values{"force": {"1"}, "token": {token}})
+		req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: user, Role: users.RoleAdmin}))
+		h.InstallUpdateWeb(httptest.NewRecorder(), req)
+	}
+	// ohne Token: normaler Start
+	post("a1", "")
+	post("a1", "erfunden")
+	if force, n := forceBody(t, f); n != 2 || force {
+		t.Fatalf("ohne Token erzwungen: force=%v n=%d", force, n)
+	}
+	// Token eines anderen Benutzers
+	tok := mwAskToken(t, "a1")
+	post("b2", tok)
+	f.mu.Lock()
+	var last map[string]any
+	_ = json.Unmarshal([]byte(f.bodies[len(f.bodies)-1]), &last)
+	f.mu.Unlock()
+	if last["force"] != false {
+		t.Fatal("fremdes Token erzwingt")
+	}
+	// gültig: einmal
+	post("a1", tok)
+	f.mu.Lock()
+	_ = json.Unmarshal([]byte(f.bodies[len(f.bodies)-1]), &last)
+	f.mu.Unlock()
+	if last["force"] != true {
+		t.Fatal("gültiges Token erzwingt nicht")
+	}
+	post("a1", tok)
+	f.mu.Lock()
+	_ = json.Unmarshal([]byte(f.bodies[len(f.bodies)-1]), &last)
+	f.mu.Unlock()
+	if last["force"] != false {
+		t.Fatal("Token zweimal verwendbar")
+	}
+}
+
+func TestUpdateAskExpires(t *testing.T) {
+	updateAskPut("x9", "Grund", nil)
+	updateAsks.Lock()
+	a := updateAsks.m["x9"]
+	a.Expires = time.Now().Add(-time.Second)
+	updateAsks.m["x9"] = a
+	updateAsks.Unlock()
+	if updateAskConsume("x9", a.Token) {
+		t.Fatal("abgelaufenes Token angenommen")
+	}
+	if _, ok := updateAskGet("x9"); ok {
+		t.Fatal("abgelaufene Rückfrage nicht entfernt")
 	}
 }
