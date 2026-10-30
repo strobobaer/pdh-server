@@ -8,6 +8,9 @@
 #            rewind-fehler slot-grenze
 #   Zugangsweg (Teil 5): vip-tausch vip-ausfall vip-abschaltung vip-duplikat
 #            vip-entfernt vip-neustart hooks umstellung
+#   Update im Verbund: update-ok update-b-vorher update-b-nachher update-abbruch
+#            update-neustart update-nicht-gruen update-nacheinander
+#            update-nacheinander-fehler update-hoechstdauer
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -44,7 +47,9 @@ declare -A IP=(
 SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv version-anders
     beobachtung tausch aktiv-weg-echt asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
     rewind-fehler slot-grenze
-    vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung)
+    vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung
+    update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
+    update-nacheinander update-nacheinander-fehler update-hoechstdauer)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -120,7 +125,8 @@ status_json() {
 }
 
 # jget <Schlüssel> < JSON. Schlüssel: role term maint blocked settings
-# configured seen:<id> peerrole:<id> holder hookson hookssame hooksn; nicht lesbar → "-"
+# configured seen:<id> peerrole:<id> holder hookson hookssame hooksn commit
+# peercommit:<id> upphase upresult faulty window; nicht lesbar → "-"
 jget() {
     if [[ "$JSON_TOOL" == python3 ]]; then
         python3 -c '
@@ -154,6 +160,14 @@ try:
     elif k == "hookson": v = yn(acc.get("hooks_on"))
     elif k == "hookssame": v = yn((acc.get("hooks") or {}).get("same"))
     elif k == "hooksn": v = len((acc.get("hooks") or {}).get("names") or [])
+    elif k == "commit": v = me.get("commit") or "-"
+    elif k.startswith("peercommit:"): v = peers.get(k[11:], {}).get("commit") or "-"
+    elif k == "upphase": v = (d.get("update") or {}).get("phase") or "-"
+    elif k == "upresult": v = (d.get("update") or {}).get("result") or ""
+    elif k == "faulty": v = " ".join(d.get("faulty") or [])
+    elif k == "window":
+        w = d.get("window") or {}
+        v = "%s/%s" % (w.get("countdown_min"), w.get("lock_max_min"))
     else: v = "-"
 except Exception:
     v = "-"
@@ -181,6 +195,12 @@ print(v)' "$1"
             hookson) f='if .access.hooks_on then "ja" else "nein" end' ;;
             hookssame) f='if .access.hooks.same then "ja" else "nein" end' ;;
             hooksn) f='(.access.hooks.names // []) | length' ;;
+            commit) f='.self.commit // "-" | if . == "" then "-" else . end' ;;
+            peercommit:*) f='[.peers[]? | select(.id == $id) | .commit] | .[0] // "-" | if . == "" then "-" else . end' ;;
+            upphase) f='.update.phase // "-" | if . == "" then "-" else . end' ;;
+            upresult) f='.update.result // ""' ;;
+            faulty) f='(.faulty // []) | join(" ")' ;;
+            window) f='"\(.window.countdown_min)/\(.window.lock_max_min)"' ;;
             *) echo "-"; return ;;
         esac
         jq -r --arg id "${1#*:}" "$f" 2>/dev/null || echo "-"
@@ -991,6 +1011,259 @@ sc_slot_grenze() {
     docker start node2 >/dev/null || fail "docker start node2"
     wait_for 300 mirror_ok || fail "node2 nach Neukopie kein synchroner Standby (pg=$(jget pg <<<"$J2"))"
     docker exec node2 grep -q 'neu vom aktiven Server kopiert' /var/lib/pdh-ha/events.jsonl || fail "keine Neukopie auf node2"
+}
+
+# --- Update im Verbund (Labor-Agent lab-agent, pdh-Platzhalter pdh-dummy) ---
+# Stand je Server in /var/lib/pdh-lab/commit (Ausgangsstand lab0), Schalter
+# dort als Dateien: fail-install, fail-start-<Commit>, fail-health-<Commit>.
+# Prüffrist im Labor 60 s (PDH_HA_UPDATE_VERIFY), Countdown 1 min.
+LAB_DIR=/var/lib/pdh-lab
+
+# lab_switch <Container> <Schalter> on|off
+lab_switch() {
+    if [[ "$3" == on ]]; then
+        docker exec "$1" touch "$LAB_DIR/$2"
+    else
+        docker exec "$1" rm -f "$LAB_DIR/$2"
+    fi
+}
+
+# up_api <Container> <Methode> <Pfad> [<JSON>]: Socket-API, Ausgabe „<HTTP-Code> <Rumpf>“
+up_api() {
+    local out
+    out="$(docker exec "$1" curl -sS --unix-socket /run/pdh-ha/api.sock -X "$2" -H 'Content-Type: application/json' \
+        ${4:+-d "$4"} -w '\n%{http_code}' "http://pdh-ha$3" 2>&1)"
+    printf '%s %s\n' "$(tail -n 1 <<<"$out")" "$(sed '$d' <<<"$out" | tr '\n' ' ')"
+}
+
+# up_prepare <Countdown min> <Höchstdauer min>: Wartungsfenster setzen, auf
+# beiden Servern abwarten; Ausgangsstand lab0 auf beiden
+up_prepare() {
+    local r
+    r="$(up_api node1 PUT /v1/window '{"mode":"off","weekday":0,"begin":"after_files","clock":"02:00","latest":"05:00","install":true,"kind":"rolling","swap":false,"countdown_min":'"$1"',"lock_max_min":'"$2"'}')"
+    [[ "$r" == 200* ]] || fail "Wartungsfenster setzen: $r"
+    UP_WIN="$1/$2"
+    wait_for 30 eval '[[ "$(jget window <<<"$J1")" == "$UP_WIN" && "$(jget window <<<"$J2")" == "$UP_WIN" ]]' ||
+        fail "Wartungsfenster kommt nicht an (node1 $(jget window <<<"$J1"), node2 $(jget window <<<"$J2"))"
+    wait_for 30 eval 'commits_are lab0 lab0' || fail "Ausgangsstand nicht lab0 auf beiden"
+}
+
+# up_start <Container> <Commit> <Art>
+up_start() {
+    log "Update auf $2 starten ($3, auf $1)"
+    docker exec "$1" pdh-ha update start "$2" --kind "$3" || fail "Update-Auftrag auf $1 nicht angelegt"
+}
+
+# up_get <Schlüssel>: Auftrag aus Sicht des aktiven Servers (letzter snap)
+up_get() {
+    if [[ "$R2" == aktiv ]]; then jget "$1" <<<"$J2"; else jget "$1" <<<"$J1"; fi
+}
+
+# up_phase_in <Phase …>: Phase des Auftrags (aktiver Server) ist eine davon;
+# jeder Wechsel kommt ins Protokoll
+UP_LAST=""
+up_phase_in() {
+    local p
+    p="$(up_get upphase)"
+    if [[ "$p" != "$UP_LAST" ]]; then
+        log "  Phase: $p"
+        UP_LAST=$p
+    fi
+    [[ " $* " == *" $p "* ]]
+}
+
+# up_wait <Sekunden> <Phase …>: bis der Auftrag eine der Phasen erreicht
+up_wait() {
+    local t=$1
+    shift
+    log "warten auf Phase: $*"
+    wait_for "$t" up_phase_in "$@" ||
+        fail "Phase $* nicht erreicht (zuletzt $(up_get upphase), Ergebnis: $(up_get upresult))"
+}
+
+# up_result_has <Text>: Ergebnis in „pdh-ha update status“ des aktiven Servers
+up_result_has() {
+    local c=node1 out
+    [[ "$R2" == aktiv ]] && c=node2
+    out="$(docker exec "$c" pdh-ha update status 2>&1)"
+    log "update status ($c): $(tr '\n' ';' <<<"$out")"
+    grep -q "Ergebnis: .*$1" <<<"$out" || fail "Ergebnis ohne „$1“: $out"
+}
+
+# commits_are <node1> <node2>: eigener Stand und Sicht des Partners
+commits_are() {
+    [[ "$(jget commit <<<"$J1")" == "$1" && "$(jget commit <<<"$J2")" == "$2" &&
+        "$(jget peercommit:node2 <<<"$J1")" == "$2" && "$(jget peercommit:node1 <<<"$J2")" == "$1" ]]
+}
+
+# faulty_has <Commit>: als fehlerhaft gemerkt (Sicht beider Server)
+faulty_has() {
+    [[ " $(jget faulty <<<"$J1") " == *" $1 "* && " $(jget faulty <<<"$J2") " == *" $1 "* ]]
+}
+
+# mig_on <Container> <Commit>: Tabelle mig_<Commit> in lab vorhanden (t/f)
+mig_on() { psql_on "$1" "SELECT to_regclass('public.mig_$2') IS NOT NULL"; }
+
+# no_mig <Commit>: Datenbank-Änderung auf keinem Server
+no_mig() { [[ "$(mig_on node1 "$1")" == f && "$(mig_on node2 "$1")" == f ]]; }
+
+# up_lock_pause: In der Sperre schreibt niemand (pdh sperrt im Betrieb alle
+# Zugänge) – der Schreib-Generator ruht vom Countdown bis zum Ende. Sonst
+# gingen beim Zurücksetzen gewollt die Zeilen aus der Sperre verloren.
+up_lock_pause() {
+    log "Countdown – Schreib-Generator ruht während der Sperre"
+    writer_stop
+}
+
+up_resume() {
+    writer_start
+    wait_acks 3 60 || fail "nach dem Auftrag keine Speicherungen"
+}
+
+sc_update_ok() {
+    up_prepare 1 30
+    up_start node1 lab1 rolling
+    up_wait 600 fertig abgebrochen
+    up_result_has "abgeschlossen"
+    wait_for 120 eval 'mirror_ok_rev && commits_are lab1 lab1' ||
+        fail "nicht beide auf lab1 mit node2 aktiv (node1=$R1 $(jget commit <<<"$J1"), node2=$R2 $(jget commit <<<"$J2"))"
+    wait_for 30 eval '[[ "$(mig_on node2 lab1)" == t && "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
+    wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
+}
+
+sc_update_b_vorher() {
+    up_prepare 1 30
+    log "pdh auf node2 mit lab1 meldet sich nicht gesund"
+    lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
+    up_start node1 lab1 rolling
+    up_wait 600 fertig abgebrochen
+    up_result_has "Prüffrist überschritten"
+    wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
+    faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt ($(jget faulty <<<"$J1"))"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+}
+
+sc_update_b_nachher() {
+    up_prepare 1 30
+    up_start node1 lab1 rolling
+    up_wait 600 countdown
+    up_lock_pause
+    log "pdh auf node2 mit lab1 wird nach dem Tausch krank"
+    lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
+    up_wait 300 pruefen_neu
+    wait_for 60 eval '[[ "$(mig_on node2 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 auf node2 nicht eingespielt"
+    up_wait 600 fertig abgebrochen
+    up_result_has "Prüfung der neuen Version fehlgeschlagen"
+    wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
+    faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
+    up_resume
+}
+
+sc_update_abbruch() {
+    up_prepare 1 30
+    up_start node1 lab1 rolling
+    up_wait 600 countdown
+    up_lock_pause
+    lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
+    up_wait 300 pruefen_neu
+    log "Abbruch in der Sperre auf dem aktiven node2"
+    docker exec node2 pdh-ha update abort || fail "update abort auf node2"
+    up_wait 600 fertig abgebrochen
+    up_result_has "abgebrochen von Befehlszeile"
+    wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
+    ! faulty_has lab1 || fail "lab1 nach Abbruch als fehlerhaft gemerkt"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
+    up_resume
+}
+
+sc_update_neustart() {
+    up_prepare 1 30
+    log "Teil 1: node1 (dirigiert) vor der Sperre neu starten → zurückdrehen, abbrechen"
+    lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
+    up_start node1 lab1 rolling
+    up_wait 600 pruefen_vorher
+    docker restart -t 2 node1 >/dev/null || fail "docker restart node1"
+    up_wait 300 fertig abgebrochen
+    up_result_has "abgebrochen von Neustart"
+    lab_switch node2 fail-health-lab1 off || fail "Schalter entfernen"
+    wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nach Teil 1 nicht beide auf lab0 mit node1 aktiv"
+    log "Teil 2: node2 (dirigiert) in der Sperre neu starten → Auftrag setzt fort"
+    up_start node1 lab1 rolling
+    up_wait 600 countdown
+    up_lock_pause
+    lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
+    up_wait 300 pruefen_neu
+    lab_switch node2 fail-health-lab1 off || fail "Schalter entfernen"
+    docker restart -t 2 node2 >/dev/null || fail "docker restart node2"
+    up_wait 600 fertig abgebrochen
+    up_result_has "abgeschlossen"
+    wait_for 180 eval 'mirror_ok_rev && commits_are lab1 lab1' || fail "nicht beide auf lab1 mit node2 aktiv"
+    up_resume
+}
+
+sc_update_nicht_gruen() {
+    up_prepare 1 30
+    log "node2 von lan und vpn trennen – Spiegel getrennt"
+    net_off node2 lan vpn || fail "Netz off node2"
+    wait_for 30 eval '[[ "$(jget seen:node2 <<<"$J1")" == nein ]]' || fail "node1 sieht node2 noch"
+    local r
+    r="$(up_api node1 POST /v1/update/start '{"commit":"lab1","source":"zeitplan","kind":"rolling"}')"
+    log "Zeitplan: $r"
+    [[ "$r" == 409* && "$r" == *'"ok":false'* ]] || fail "Zeitplan nicht abgelehnt: $r"
+    ! docker exec node1 pdh-ha update start lab1 --kind rolling || fail "Knopf ohne Rückfrage angenommen"
+    snap
+    [[ "$(up_get upphase)" == - ]] || fail "Auftrag trotzdem angelegt (Phase $(up_get upphase))"
+    net_on node2 lan vpn || fail "Netz on node2"
+    wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nach der Trennung kein synchroner Spiegel auf lab0"
+}
+
+sc_update_nacheinander() {
+    up_prepare 1 30
+    up_start node1 lab1 sequential
+    up_wait 900 fertig abgebrochen
+    up_result_has "abgeschlossen"
+    wait_for 180 eval 'mirror_ok && commits_are lab1 lab1' || fail "nicht beide auf lab1 mit node1 aktiv"
+    wait_for 30 eval '[[ "$(mig_on node1 lab1)" == t && "$(mig_on node2 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
+    wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
+}
+
+sc_update_nacheinander_fehler() {
+    up_prepare 1 30
+    log "pdh auf node1 mit lab1 meldet sich nicht gesund"
+    lab_switch node1 fail-health-lab1 on || fail "Schalter setzen"
+    up_start node1 lab1 sequential
+    up_wait 600 countdown
+    up_lock_pause
+    up_wait 300 pruefen_neu
+    wait_for 60 eval '[[ "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 auf node1 nicht eingespielt"
+    up_wait 600 fertig abgebrochen
+    up_result_has "Prüfung der neuen Version fehlgeschlagen"
+    wait_for 180 eval 'mirror_ok_rev && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node2 aktiv"
+    faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
+    up_resume
+}
+
+sc_update_hoechstdauer() {
+    up_prepare 1 10
+    up_start node1 lab1 rolling
+    up_wait 600 countdown
+    up_lock_pause
+    log "node2 von lan und vpn trennen – der Tausch kann nicht stattfinden"
+    net_off node2 lan vpn || fail "Netz off node2"
+    up_wait 180 gesperrt
+    local t=$SECONDS
+    watch_for 480 eval 'roles aktiv passiv && [[ "$(up_get upphase)" == gesperrt ]]' ||
+        fail "Sperre endet vor der Höchstdauer (node1=$R1, Phase $(up_get upphase))"
+    log "nach $((SECONDS - t)) s gesperrt: node2 wieder verbinden"
+    net_on node2 lan vpn || fail "Netz on node2"
+    up_wait 600 fertig abgebrochen
+    up_result_has "Höchstdauer überschritten"
+    wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
+    ! faulty_has lab1 || fail "lab1 als fehlerhaft gemerkt (nur der Tausch scheiterte)"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    up_resume
 }
 
 run_scenario() {

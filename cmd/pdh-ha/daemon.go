@@ -760,6 +760,7 @@ func (d *daemon) tick(ctx context.Context) {
 		return
 	}
 	d.startLocked()
+	d.labCommitLocked()
 	hk := plan{net: d.net}
 	d.removedHousekeepingLocked(&hk)
 	if !d.configured {
@@ -788,6 +789,24 @@ func (d *daemon) tick(ctx context.Context) {
 	}
 	d.unlock()
 	d.execute(ctx, pl)
+}
+
+// labCommitLocked (nur Testlabor): Ist PDH_HA_COMMIT_FILE gesetzt, gilt der
+// Stand des Quelltexts aus dieser Datei – je Takt neu gelesen. So zeigt ein
+// „eingespieltes“ Update (lab-agent schreibt die Datei) den neuen Stand ohne
+// Neubau von pdh-ha. Fehlt die Datei oder ist sie leer, bleibt der Stand.
+func (d *daemon) labCommitLocked() {
+	f := os.Getenv("PDH_HA_COMMIT_FILE")
+	if f == "" {
+		return
+	}
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return
+	}
+	if c := strings.TrimSpace(string(b)); c != "" {
+		d.commit = c
+	}
 }
 
 // syncAccessLocked startet, ersetzt oder beendet den Arbeiter der

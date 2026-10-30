@@ -39,6 +39,9 @@ services:
     <<: *pdh-ha-pg
     container_name: node1
     hostname: node1
+    environment:
+      # Update im Verbund: Prüffrist im Labor verkürzt
+      PDH_HA_UPDATE_VERIFY: ${PDH_HA_UPDATE_VERIFY:-60s}
     volumes:
       - node1-etc:/etc/pdh/ha
       - node1-state:/var/lib/pdh-ha
@@ -60,6 +63,7 @@ services:
     hostname: node2
     environment:
       PDH_HA_VERSION_OVERRIDE: ${NODE2_VERSION_OVERRIDE:-}
+      PDH_HA_UPDATE_VERIFY: ${PDH_HA_UPDATE_VERIFY:-60s}
     volumes:
       - node2-etc:/etc/pdh/ha
       - node2-state:/var/lib/pdh-ha

@@ -772,3 +772,33 @@ func TestActionWorkerDemoteKinds(t *testing.T) {
 		}
 	}
 }
+
+// Testlabor: PDH_HA_COMMIT_FILE ersetzt den Stand je Takt; fehlende oder
+// leere Datei lässt ihn stehen.
+func TestLabCommitFile(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "commit")
+	d := &daemon{commit: "abc"}
+	d.labCommitLocked()
+	if d.commit != "abc" {
+		t.Fatalf("ohne Variable: %q", d.commit)
+	}
+	t.Setenv("PDH_HA_COMMIT_FILE", f)
+	d.labCommitLocked()
+	if d.commit != "abc" {
+		t.Fatalf("ohne Datei: %q", d.commit)
+	}
+	if err := os.WriteFile(f, []byte("lab1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.labCommitLocked()
+	if d.commit != "lab1" {
+		t.Fatalf("aus Datei: %q", d.commit)
+	}
+	if err := os.WriteFile(f, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.labCommitLocked()
+	if d.commit != "lab1" {
+		t.Fatalf("leere Datei: %q", d.commit)
+	}
+}
