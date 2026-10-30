@@ -151,7 +151,26 @@ func loadFakeDaemon(t *testing.T, st store, fn *fakeNet) *daemon {
 	if err := d.load(); err != nil {
 		t.Fatal(err)
 	}
+	// läuft vor dem Löschen der Temp-Ordner (t.Cleanup: zuletzt angemeldet,
+	// zuerst ausgeführt): Hintergrundarbeit des Takts darf nicht mehr in sie
+	// schreiben, sonst scheitert das Aufräumen (unter -race sichtbar)
+	t.Cleanup(func() { waitBackground(d, 2*time.Second) })
 	return d
+}
+
+// waitBackground wartet höchstens max, bis Aktionen, Update-Ops und die
+// Abfrage von /health ausgelaufen sind.
+func waitBackground(d *daemon, max time.Duration) {
+	end := time.Now().Add(max)
+	for time.Now().Before(end) {
+		d.mu.Lock()
+		ops := len(d.up.running)
+		d.mu.Unlock()
+		if ops == 0 && d.actionsIdle() && !d.up.healthBusy.Load() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func eventTexts(d *daemon) []string {
