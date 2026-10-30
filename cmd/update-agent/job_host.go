@@ -53,6 +53,7 @@ mv -f "$PDH_UPD_DUMP.part" "$PDH_UPD_DUMP"
 
 const (
 	jobStopScript     = `systemctl stop pdh`
+	jobStartScript    = `systemctl start pdh`
 	jobIsActiveScript = `systemctl is-active --quiet pdh`
 )
 
@@ -209,13 +210,8 @@ func (a *updateAgent) jobHost(ctx context.Context, script string, env map[string
 // jobScript: install_update.sh mit Schaltern, synchron; der Lauf erscheint
 // wie jeder andere unter /v1/status.
 func (a *updateAgent) jobScript(_ context.Context, args ...string) error {
-	commit := ""
-	for i := 0; i+1 < len(args); i++ {
-		if args[i] == "--commit" || args[i] == "--rollback" {
-			commit = args[i+1]
-		}
-	}
-	if _, ok := a.startUpdate(commit); !ok {
+	op, commit := opOfArgs(args)
+	if _, ok := a.startUpdate(commit, op); !ok {
 		return errUpdateBusy
 	}
 	a.runUpdateHook(args)

@@ -32,6 +32,10 @@ func TestInstallScriptCommitGuard(t *testing.T) {
 	if !strings.Contains(s, "Ziel nicht im Update-Zweig") {
 		t.Error("Abbruchmeldung „Ziel nicht im Update-Zweig“ fehlt")
 	}
+	// Nur vorwärts: installierter Stand Vorfahre des Ziels, vor dem Zusammenführen
+	if fwd := strings.Index(s, `merge-base --is-ancestor "$current" "$target"`); fwd < 0 || fwd > merge || !strings.Contains(s, "nicht neuer als der installierte Stand") {
+		t.Errorf("Prüfung „Ziel neuer als installierter Stand“ fehlt bzw. steht nach merge --ff-only (%d/%d)", fwd, merge)
+	}
 	// Die Prüfung steht vor jeder Änderung (vor Bau und Neustart).
 	if build := strings.Index(s, "go build"); build < anc {
 		t.Error("Bau steht vor der Zielprüfung")
@@ -150,7 +154,7 @@ func TestUpdateHandlerRunningBeforeAnswerAndConflict(t *testing.T) {
 	a.mu.RLock()
 	st := a.status
 	a.mu.RUnlock()
-	if !st.Running || st.Commit != "abc1234" || st.Success || st.Output != "" || st.StartedAt.IsZero() {
+	if !st.Running || st.Commit != "abc1234" || st.Op != "install" || st.Success || st.Output != "" || st.StartedAt.IsZero() {
 		t.Fatalf("Status nach 202: %+v", st)
 	}
 	<-ch
@@ -158,11 +162,11 @@ func TestUpdateHandlerRunningBeforeAnswerAndConflict(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("Status %d, erwartet 409", rec.Code)
 	}
-	var body struct{ Error, Commit string }
+	var body struct{ Error, Commit, Op string }
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Error != "Update läuft bereits" || body.Commit != "abc1234" {
+	if body.Error != "Update läuft bereits" || body.Commit != "abc1234" || body.Op != "install" {
 		t.Fatalf("409-Rumpf: %s", rec.Body.String())
 	}
 }
@@ -377,5 +381,27 @@ func TestNoRestartBuildFailureKeepsRunningBinary(t *testing.T) {
 	}
 	if strings.Contains(log, "systemctl") {
 		t.Errorf("Dienst angefasst:\n%s", log)
+	}
+}
+
+// I3: Art des Laufs aus Anfrage bzw. Schaltern.
+func TestUpdateOpOfRequest(t *testing.T) {
+	for _, c := range []struct {
+		r    updateRequest
+		want string
+	}{
+		{updateRequest{Commit: "abc1234"}, "install"},
+		{updateRequest{Commit: "abc1234", NoRestart: true}, "install_norestart"},
+		{updateRequest{Rollback: "abc1234"}, "rollback"},
+		{updateRequest{Rollback: "abc1234", NoRestart: true}, "rollback_norestart"},
+		{updateRequest{Finish: true}, "finish"},
+		{updateRequest{}, ""},
+	} {
+		if got := c.r.op(); got != c.want {
+			t.Errorf("%+v: %q, will %q", c.r, got, c.want)
+		}
+	}
+	if op, c := opOfArgs([]string{"--rollback", "abc1234", "--no-restart"}); op != "rollback_norestart" || c != "abc1234" {
+		t.Errorf("opOfArgs: %q %q", op, c)
 	}
 }

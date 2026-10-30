@@ -99,6 +99,8 @@ func jobHostLabel(script string) string {
 		return "rename"
 	case jobStopScript:
 		return "stop-pdh"
+	case jobStartScript:
+		return "start-pdh"
 	case jobIsActiveScript:
 		return "pdh-active"
 	}
@@ -233,7 +235,7 @@ func TestSingleJobRollbackOnHealthFail(t *testing.T) {
 		t.Fatalf("Start: %+v", v)
 	}
 	runJob(t, a, clk, 40)
-	want := "script --commit " + jobNewSHA + " --no-restart | psql-lock | pg_dump | script --finish | " +
+	want := "script --commit " + jobNewSHA + " --no-restart | psql-lock | stop-pdh | pdh-active | pg_dump | script --finish | " +
 		"stop-pdh | pdh-active | createdb | pg_restore | terminate | rename | script --rollback " + jobOldSHA + " | psql-unlock"
 	if got := rec.all(); got != want {
 		t.Fatalf("Befehlsfolge\n got: %s\nwant: %s", got, want)
@@ -438,7 +440,8 @@ func TestSingleJobRestoreFailureKeepsDatabase(t *testing.T) {
 // pdh lässt sich nicht stoppen: kein Zurückspielen, trotzdem alter Stand.
 func TestSingleJobRollbackPdhStillRunning(t *testing.T) {
 	a, rec, clk, health := jobTestAgent(t)
-	rec.fail["pdh-active"] = false // systemctl is-active: läuft
+	// pdh läuft nach dem Einsetzen und lässt sich dann nicht mehr stoppen
+	rec.on["script --finish"] = func() { rec.mu.Lock(); rec.fail["pdh-active"] = false; rec.mu.Unlock() }
 	rollbackAfterFinish(t, a, clk, health)
 	got := rec.all()
 	if !strings.Contains(got, "stop-pdh | pdh-active | pdh-active | script --rollback "+jobOldSHA) || strings.Contains(got, "createdb") {
@@ -490,7 +493,7 @@ func TestSingleJobDumpFailureAbortsBeforeRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	runJob(t, a, clk, 10)
-	want := "script --commit " + jobNewSHA + " --no-restart | psql-lock | pg_dump | script --rollback " + jobOldSHA + " --no-restart | psql-unlock"
+	want := "script --commit " + jobNewSHA + " --no-restart | psql-lock | stop-pdh | pdh-active | pg_dump | script --rollback " + jobOldSHA + " --no-restart | psql-unlock | start-pdh"
 	if got := rec.all(); got != want {
 		t.Fatalf("Befehlsfolge\n got: %s\nwant: %s", got, want)
 	}
@@ -515,5 +518,28 @@ func TestSingleJobDumpSpace(t *testing.T) {
 	var nr jobNotReady
 	if !errors.As(err, &nr) || !strings.Contains(nr.reason, "Sicherung vor dem Update") {
 		t.Fatalf("Platz für die Sicherung: %v", err)
+	}
+}
+
+// I4: pdh wird vor der Sicherung gestoppt; lässt es sich nicht stoppen,
+// gibt es keine Sicherung und kein Einsetzen – alter Stand läuft weiter.
+func TestSingleJobPDHNotStoppedBeforeDump(t *testing.T) {
+	a, rec, clk, _ := jobTestAgent(t)
+	rec.fail["pdh-active"] = false // systemctl is-active: läuft weiter
+	if _, err := a.startSingleJob(context.Background(), "knopf", false); err != nil {
+		t.Fatal(err)
+	}
+	runJob(t, a, clk, 10)
+	want := "script --commit " + jobNewSHA + " --no-restart | psql-lock | stop-pdh | pdh-active | pdh-active | " +
+		"script --rollback " + jobOldSHA + " --no-restart | psql-unlock | start-pdh"
+	if got := rec.all(); got != want {
+		t.Fatalf("Befehlsfolge\n got: %s\nwant: %s", got, want)
+	}
+	v := a.jobView()
+	if v.Phase != string(ha.UpFailed) || !strings.Contains(v.Result, "nicht gestoppt") {
+		t.Fatalf("Ende: %+v", v)
+	}
+	if ws := a.windowSnapshot(); len(ws.Faulty) != 0 {
+		t.Fatalf("als fehlerhaft gemerkt: %+v", ws)
 	}
 }

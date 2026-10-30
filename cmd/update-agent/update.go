@@ -54,6 +54,54 @@ func (r updateRequest) args() ([]string, error) {
 	return args, nil
 }
 
+// op: Art des Laufs für /v1/status (pdh-ha ordnet das Ergebnis damit zu).
+func (r updateRequest) op() string {
+	return argsOp(r.Commit != "", r.Rollback != "", r.NoRestart, r.Finish)
+}
+
+// target: Ziel des Laufs (--commit bzw. --rollback).
+func (r updateRequest) target() string {
+	if r.Commit != "" {
+		return r.Commit
+	}
+	return r.Rollback
+}
+
+func argsOp(commit, rollback, noRestart, finish bool) string {
+	suffix := ""
+	if noRestart {
+		suffix = "_norestart"
+	}
+	switch {
+	case finish:
+		return "finish"
+	case rollback:
+		return "rollback" + suffix
+	case commit:
+		return "install" + suffix
+	}
+	return ""
+}
+
+// opOfArgs: Art und Ziel eines Laufs aus den Schaltern von install_update.sh.
+func opOfArgs(args []string) (op, commit string) {
+	var c, rb, nr, fin bool
+	for i, a := range args {
+		switch a {
+		case "--commit", "--rollback":
+			if i+1 < len(args) {
+				commit = args[i+1]
+			}
+			c, rb = c || a == "--commit", rb || a == "--rollback"
+		case "--no-restart":
+			nr = true
+		case "--finish":
+			fin = true
+		}
+	}
+	return argsOp(c, rb, nr, fin), commit
+}
+
 func (r updateRequest) isEmpty() bool {
 	return r.Commit == "" && r.Rollback == "" && !r.NoRestart && !r.Finish
 }
@@ -115,13 +163,13 @@ func writeUpdateJSON(w http.ResponseWriter, code int, v any) {
 // startUpdate setzt den Status auf „läuft“, bevor der Aufrufer 202 bekommt
 // (die erste Statusabfrage darf nie das alte Ergebnis sehen). false = läuft
 // schon; dann ist running der laufende Stand.
-func (a *updateAgent) startUpdate(commit string) (running jobStatus, ok bool) {
+func (a *updateAgent) startUpdate(commit, op string) (running jobStatus, ok bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.status.Running {
 		return a.status, false
 	}
-	a.status = jobStatus{Running: true, Commit: commit, StartedAt: time.Now().UTC()}
+	a.status = jobStatus{Running: true, Commit: commit, Op: op, StartedAt: time.Now().UTC()}
 	a.saveUpdateStatus()
 	return a.status, true
 }

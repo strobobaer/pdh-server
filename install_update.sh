@@ -107,6 +107,12 @@ else
             exit 1
         fi
         target="$want_full"
+        # Nur vorwärts: der installierte Stand muss Vorfahre des Ziels sein –
+        # sonst endete das Vorspulen still ohne Änderung (älteres Ziel).
+        if [[ "$current" != "$target" ]] && ! git_as_checkout_owner merge-base --is-ancestor "$current" "$target"; then
+            echo "Ziel $want_commit ist nicht neuer als der installierte Stand $current; nichts geaendert." >&2
+            exit 1
+        fi
     fi
     if [[ "$current" == "$target" ]]; then
         echo "Source is already at $target; verifying/rebuilding the runtime."

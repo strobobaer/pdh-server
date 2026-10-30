@@ -84,7 +84,7 @@ func TestWindowTickHandsToHA(t *testing.T) {
 		t.Fatalf("Starts: %v", starts)
 	}
 	s := starts[0]
-	if s["source"] != "zeitplan" || s["commit"] != jobNewSHA || s["backup_configured"] != false || s["kind"] != nil {
+	if s["source"] != "zeitplan" || s["commit"] != jobNewSHA || s["backup_configured"] != false || s["kind"] != nil || s["version"] != "0.77.9" { // C1: Zielversion mitgesendet
 		t.Fatalf("Start-Rumpf: %v", s)
 	}
 	if a.jobView().Active {

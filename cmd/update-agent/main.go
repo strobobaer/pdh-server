@@ -24,20 +24,23 @@ type jobStatus struct {
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
 	Commit     string    `json:"commit"` // Ziel des Laufs (--commit/--rollback), sonst leer
+	Op         string    `json:"op"`     // Art: install[_norestart], rollback[_norestart], finish; leer = ohne Schalter
 }
 
 type updateAgent struct {
-	dr      drState                                                           // Ausfallschutz (dr.go), eigener Mutex
-	drApply func(context.Context, drConfig) (bool, error)                     // nil = drApplyPostgres
-	drSysID func(context.Context) (string, error)                             // nil = psql (dr_owner.go)
-	ha      haJob                                                             // pdh-ha-Installation (ha.go)
-	haRun   func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
-	mu      sync.RWMutex
-	status  jobStatus
-	token   string
-	repoDir string
-	mode    string
-	project string
+	dr        drState                                                           // Ausfallschutz (dr.go), eigener Mutex
+	drApply   func(context.Context, drConfig) (bool, error)                     // nil = drApplyPostgres
+	drSysID   func(context.Context) (string, error)                             // nil = psql (dr_owner.go)
+	drTLI     func(context.Context) uint32                                      // nil = psql (dr_timeline.go)
+	drPartner func(context.Context) bool                                        // nil = pdh-ha-Status (dr_timeline.go)
+	ha        haJob                                                             // pdh-ha-Installation (ha.go)
+	haRun     func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
+	mu        sync.RWMutex
+	status    jobStatus
+	token     string
+	repoDir   string
+	mode      string
+	project   string
 
 	updateRun func(args []string) // nil = runUpdate (install_update.sh); Test-Haken
 
@@ -218,12 +221,9 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
 			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Ein Update-Auftrag läuft bereits"})
 			return
 		}
-		commit := req.Commit
-		if commit == "" {
-			commit = req.Rollback
-		}
-		if running, ok := a.startUpdate(commit); !ok {
-			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit})
+		if running, ok := a.startUpdate(req.target(), req.op()); !ok {
+			// Art und Ziel des laufenden Laufs: pdh-ha wartet nur auf das eigene Ergebnis
+			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit, "op": running.Op})
 			return
 		}
 		go a.runUpdateHook(args)

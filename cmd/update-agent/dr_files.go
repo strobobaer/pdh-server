@@ -223,7 +223,16 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	// zwei Server (pdh-ha): nur der aktive Knoten sichert. Schon erzeugte
 	// WAL-Dateien im Zwischenspeicher gehören zur Geschichte der Datenbank und
 	// gehen trotzdem aufs Laufwerk (z. B. nach dem Abgeben).
-	if !a.drCheckActive(ctx) {
+	active := a.drCheckActive(ctx)
+	tli := uint32(0)
+	if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 || active {
+		tli = a.drTimeline(ctx)
+	}
+	if tli > 0 {
+		// I1: verworfene Zeitlinie (Zurücksetzen im Verbund) nie aufs Laufwerk
+		a.drQuarantineSpool(tli)
+	}
+	if !active {
 		if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 && drTargetCheck(target) == nil && a.drOwnerCheck(ctx, cfg.Target) == nil {
 			walDir := filepath.Join(target, "wal")
 			_ = os.MkdirAll(walDir, 0o750)
@@ -256,6 +265,10 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	}
 	walDir := filepath.Join(target, "wal")
 	_ = os.MkdirAll(walDir, 0o750)
+	if tli > 0 && a.drPartnerPassive(ctx) {
+		// I1: verworfene Zeitlinie auf dem Laufwerk beiseitelegen, neue Grundsicherung
+		a.drQuarantineDrive(target, tli, now)
+	}
 	n, last, err := drShipWAL(a.hp(drSpoolDir), walDir)
 	switch {
 	case err != nil && !errors.Is(err, os.ErrNotExist):

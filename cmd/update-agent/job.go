@@ -340,6 +340,13 @@ func (a *updateAgent) jobLocked(ctx context.Context, s *singleJob) {
 		return
 	}
 	db["PDH_UPD_DUMP"] = s.Dump
+	// I4: pdh vor der Sicherung stoppen – sonst gingen Schreibvorgänge
+	// zwischen Sicherung und Neustart beim Zurückspielen verloren. --finish
+	// startet pdh mit der neuen Version, jeder Abbruch davor wieder die alte.
+	if err := a.jobStopPDH(ctx); err != nil {
+		a.jobAbandon(ctx, s, "pdh vor der Sicherung nicht gestoppt: "+err.Error())
+		return
+	}
 	if err := a.jobHost(ctx, jobDumpScript, db); err != nil {
 		a.jobAbandon(ctx, s, "Sicherung vor dem Update fehlgeschlagen: "+err.Error())
 		return
@@ -363,7 +370,28 @@ func (a *updateAgent) jobLocked(ctx context.Context, s *singleJob) {
 func (a *updateAgent) jobAbandon(ctx context.Context, s *singleJob, reason string) {
 	a.jobUndoCheckout(ctx, s)
 	a.jobUnlock(ctx, s)
+	if !s.Job.LockedAt.IsZero() {
+		// pdh lief evtl. schon nicht mehr (vor der Sicherung gestoppt): alter Stand wieder an
+		if err := a.jobHost(ctx, jobStartScript, nil); err != nil {
+			log.Printf("update: ALARM: pdh nicht wieder gestartet: %v", err)
+			reason += "; pdh nicht wieder gestartet – bitte von Hand prüfen"
+		}
+	}
 	a.jobFinish(s, ha.UpFailed, reason, false)
+}
+
+// jobStopPDH stoppt pdh und prüft, dass es wirklich steht.
+func (a *updateAgent) jobStopPDH(ctx context.Context) error {
+	if err := a.jobHost(ctx, jobStopScript, nil); err != nil {
+		return err
+	}
+	if a.pdhActive(ctx) {
+		a.sleepFn()(5 * time.Second)
+		if a.pdhActive(ctx) {
+			return errors.New("pdh läuft noch")
+		}
+	}
+	return nil
 }
 
 // jobRollback: Zurücksetzen beginnen (Datenbank aus der Sicherung, alter Stand).

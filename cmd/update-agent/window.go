@@ -20,12 +20,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"pdh/internal/ha"
 )
+
+// windowVersionRe: Inhalt von VERSION (x.y.z).
+var windowVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 const (
 	dockerNotAvailMsg = "im Docker-Betrieb nicht verfügbar"
@@ -268,6 +272,11 @@ func (a *updateAgent) windowToHA(ctx context.Context, w ha.Window, faulty []stri
 			skipped = "Neue Version " + shortSHA(target) + " ist als fehlerhaft gemerkt"
 		default:
 			body["commit"], what = target, "Update auf "+shortSHA(target)
+			// C1: Zielversion mitsenden, soweit der Stand schon im Checkout
+			// liegt; sonst übernimmt pdh-ha die Version von B nach dem Einspielen.
+			if v, err := a.git(ctx, "show", target+":VERSION"); err == nil && windowVersionRe.MatchString(v) {
+				body["version"], what = v, "Update auf "+v
+			}
 		}
 	}
 	if what == "" {
