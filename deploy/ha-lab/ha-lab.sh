@@ -1320,12 +1320,13 @@ usage() {
 cmd_race() {
     command -v docker >/dev/null || { echo "docker fehlt" >&2; exit 1; }
     log "go test -race in golang:1.24"
-    docker run --rm -v "$repo:/src:ro" -e CGO_ENABLED=1 golang:1.24 bash -c '
+    # Quellen als tar über stdin statt Bind-Mount: läuft so auch aus einem
+    # Hilfscontainer heraus (dessen Pfade kennt der Docker-Dienst nicht)
+    tar -C "$repo" -cf - go.mod go.sum internal/ha cmd/pdh-ha |
+        docker run --rm -i -e CGO_ENABLED=1 golang:1.24 bash -c '
         set -euo pipefail
-        mkdir -p /work/internal /work/cmd
-        cp /src/go.mod /src/go.sum /work/
-        cp -r /src/internal/ha /work/internal/ha
-        cp -r /src/cmd/pdh-ha /work/cmd/pdh-ha
+        mkdir -p /work
+        tar -xf - -C /work
         cd /work
         go test -race -count=1 ./internal/ha/ ./cmd/pdh-ha/'
 }
