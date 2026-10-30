@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -302,6 +303,10 @@ type Handler struct {
 	toolAct          toolActivity // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams
+	streamsMu        sync.Mutex         // schützt streams/closeStreams (cutStreams ersetzt sie)
+	streamsDone      bool               // CloseStreams gerufen: kein neuer Kontext mehr
+	mlock            maintLock          // Wartungssperre während eines Updates (maint_lock.go)
+	sessionNotBefore atomic.Int64       // Sitzungen mit iat davor sind ungültig (app_settings session.not_before)
 }
 
 func NewHandler(
@@ -2097,9 +2102,16 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // Stellen (z.B. die oeffentliche Leitstand-Seite), die nur wissen muessen,
 // ob bereits eine gueltige Sitzung besteht.
 func (h *Handler) sessionUserID(r *http.Request) string {
+	id, _ := h.sessionClaims(r)
+	return id
+}
+
+// sessionClaims wie sessionUserID, zusätzlich der Ausstellungszeitpunkt (iat,
+// Unix-Sekunden; 0 = fehlt) für die Sitzungs-Epoche (maint_lock.go).
+func (h *Handler) sessionClaims(r *http.Request) (string, int64) {
 	cookie, err := r.Cookie("pdh_token")
 	if err != nil || cookie.Value == "" {
-		return ""
+		return "", 0
 	}
 	token, err := jwt.Parse(cookie.Value, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
@@ -2109,27 +2121,28 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 	})
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Msg("sitzung: jwt ungueltig")
-		return ""
+		return "", 0
 	}
 	if !token.Valid {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt als ungueltig markiert")
-		return ""
+		return "", 0
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt-claims unlesbar")
-		return ""
+		return "", 0
 	}
 	if scope, _ := claims["scope"].(string); scope != "" {
 		// zweckgebundene Tokens (z. B. Fertigmeldung im Leitstand) sind keine Sitzung
 		log.Warn().Str("path", r.URL.Path).Str("scope", scope).Msg("sitzung: zweckgebundenes token als cookie abgelehnt")
-		return ""
+		return "", 0
 	}
 	userID, _ := claims["sub"].(string)
 	if userID == "" {
 		log.Warn().Str("path", r.URL.Path).Msg("sitzung: jwt ohne sub-claim")
 	}
-	return userID
+	iat, _ := claims["iat"].(float64)
+	return userID, int64(iat)
 }
 
 // sessionUser validiert die Sitzung vollstaendig: gueltiges JWT UND ein
@@ -2137,14 +2150,21 @@ func (h *Handler) sessionUserID(r *http.Request) string {
 // nicht - das Konto kann zwischenzeitlich deaktiviert oder geloescht
 // worden sein (GetByID liefert dann keinen Treffer). Liefert nil, wenn
 // keine gueltige Sitzung besteht.
+//
+// Sitzungen, die vor der letzten Wartungssperre ausgestellt wurden, gelten
+// nicht mehr (außer für Inhaber des Abbruch-Rechts, maint_lock.go).
 func (h *Handler) sessionUser(r *http.Request) *users.User {
-	userID := h.sessionUserID(r)
+	userID, iat := h.sessionClaims(r)
 	if userID == "" {
 		return nil
 	}
 	user, err := h.userByID(r.Context(), userID)
 	if err != nil {
 		log.Warn().Err(err).Str("path", r.URL.Path).Str("user_id", userID).Msg("sitzung: benutzer nicht ladbar (deaktiviert/geloescht?)")
+		return nil
+	}
+	if h.sessionRevoked(user, iat) {
+		log.Info().Str("bereich", "auth").Str("user", user.ID).Str("path", r.URL.Path).Msg("sitzung: durch wartung beendet")
 		return nil
 	}
 	return user

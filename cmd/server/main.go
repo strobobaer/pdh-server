@@ -390,9 +390,15 @@ func main() {
 	}
 	log.Info().Str("backend", cfg.Copilot.Backend).Str("model", copilotModel).Msg("copilot bereit")
 
+	// Wartungssperre: Sitzungs-Epoche laden und Update-Auftrag abfragen, bevor
+	// Anfragen angenommen werden – läuft eine Sperre, startet das PDH gesperrt.
+	webHandler.LoadMaintLock(context.Background())
+
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Wartungssperre während eines Updates: vor allen Routen und Schnittstellen (maint_lock.go)
+	r.Use(webHandler.MaintLockMiddleware)
 	// Dauerverbindungen (EventSource) enden beim Beenden sofort (streams.go)
 	r.Use(webHandler.StreamsMiddleware)
 	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)

@@ -17,16 +17,21 @@ import (
 // jeder Browser per EventSource) einen Kontext, den CloseStreams beendet.
 func (h *Handler) StreamsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if h.streams == nil || !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+		if !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		streams := h.streamsCtx()
+		if streams == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
-		if h.streams.Err() != nil {
+		if streams.Err() != nil {
 			cancel() // PDH wird schon beendet – AfterFunc liefe erst nebenläufig
 		} else {
-			stop := context.AfterFunc(h.streams, cancel)
+			stop := context.AfterFunc(streams, cancel)
 			defer stop()
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -36,7 +41,30 @@ func (h *Handler) StreamsMiddleware(next http.Handler) http.Handler {
 // CloseStreams beendet alle offenen Dauerverbindungen (srv.RegisterOnShutdown).
 // Der Browser verbindet sich von selbst neu, sobald das PDH wieder läuft.
 func (h *Handler) CloseStreams() {
+	h.streamsMu.Lock()
+	defer h.streamsMu.Unlock()
+	h.streamsDone = true
 	if h.closeStreams != nil {
 		h.closeStreams()
 	}
+}
+
+// streamsCtx: aktueller Kontext der Dauerverbindungen (cutStreams ersetzt ihn).
+func (h *Handler) streamsCtx() context.Context {
+	h.streamsMu.Lock()
+	defer h.streamsMu.Unlock()
+	return h.streams
+}
+
+// cutStreams beendet alle offenen Dauerverbindungen, ohne das PDH zu beenden
+// (Wartungssperre): Danach gilt ein neuer Kontext, spätere Verbindungen sind
+// wieder möglich. Nach CloseStreams (Beenden) bleibt es beim beendeten.
+func (h *Handler) cutStreams() {
+	h.streamsMu.Lock()
+	defer h.streamsMu.Unlock()
+	if h.closeStreams == nil || h.streamsDone {
+		return
+	}
+	h.closeStreams()
+	h.streams, h.closeStreams = context.WithCancel(context.Background())
 }

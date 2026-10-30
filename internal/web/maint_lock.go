@@ -1,0 +1,614 @@
+package web
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"pdh/internal/core/users"
+	"pdh/internal/ha"
+)
+
+// Wartungssperre während eines Updates (Spec 2026-10-30-verbund-update §3.3, §8).
+//
+// In der kritischen Phase eines Updates (Rollentausch, Neustart, Datenbank)
+// sperrt das PDH alle Routen und Schnittstellen: HTML-Anfragen sehen den
+// Wartungsbildschirm, alles andere bekommt 503 mit Retry-After. Sitzungen,
+// die vor der Sperre ausgestellt wurden, gelten nicht mehr (Sitzungs-Epoche
+// app_settings session.not_before) – außer für Inhaber des Rechts
+// „Automatische Wartung abbrechen“, die den Fortschritt verfolgen und
+// abbrechen können.
+//
+// Zustand: im Verbund vom lokalen pdh-ha (GET /v1/update), beim Einzelserver
+// vom Update-Agenten (GET /v1/update/job); ohne beides nie gesperrt. Der
+// Zustand ist 1 s zwischengespeichert; bei Abfragefehlern gilt der letzte
+// Stand, nach 30 s ohne Antwort ist die Sperre aus (lieber offen als
+// dauerhaft ausgesperrt – die Notbremse bleibt `pdh-ha update abort`).
+
+const (
+	permMaintAbort     = "system.maintenance_abort"
+	keySessionNotBefor = "session.not_before"
+
+	maintCacheTTL   = time.Second      // Zustand höchstens einmal je Sekunde abfragen
+	maintErrRetry   = 5 * time.Second  // nach einem Fehler erst später erneut
+	maintFailOpen   = 30 * time.Second // so lange gilt der letzte Stand ohne Antwort
+	maintFetchWait  = 2 * time.Second  // Frist je Abfrage
+	maintRetryAfter = 30               // Sekunden (Retry-After)
+)
+
+// maintLock: Zustand und austauschbare Quellen der Wartungssperre.
+type maintLock struct {
+	fetch      func(context.Context) (ha.UpdateView, error) // nil → pdh-ha bzw. Update-Agent (Tests tauschen aus)
+	abort      func(ctx context.Context, by string) error   // nil → pdh-ha bzw. Update-Agent
+	admin      func(*users.User) bool                       // nil → globales Recht system.maintenance_abort
+	now        func() time.Time                             // nil → time.Now
+	getSetting func(context.Context, string) string         // nil → app_settings
+	setSetting func(context.Context, string, string) error  // nil → app_settings
+
+	mu      sync.RWMutex
+	view    ha.UpdateView // letzter erfolgreich abgefragter Stand
+	lastTry time.Time     // letzte Abfrage (Erfolg oder Fehler)
+	lastOK  time.Time     // letzte erfolgreiche Abfrage
+	lastErr bool          // letzte Abfrage fehlgeschlagen
+
+	refreshing atomic.Bool // genau eine Anfrage fragt ab, die anderen nehmen den Zwischenstand
+	seen       atomic.Bool // Sperre zuletzt gesehen (Übergang → Abmeldung)
+}
+
+func (h *Handler) maintNow() time.Time {
+	if h.mlock.now != nil {
+		return h.mlock.now()
+	}
+	return time.Now()
+}
+
+// haNodeConfigured: Dieser Rechner gehört zu einem Ausfallschutz-Verbund
+// (node.json unter PDH_HA_ETC bzw. /etc/pdh/ha; „keine Berechtigung“ zählt als
+// eingerichtet) – wie haConfigured in cmd/server. Bewusst nicht der Socket:
+// Während install_update.sh pdh-ha neu baut, fehlt er kurz, und die Sperre
+// darf dann nicht auf den Agenten (ohne Auftrag) ausweichen.
+func haNodeConfigured() bool {
+	dir := "/etc/pdh/ha"
+	if v := os.Getenv("PDH_HA_ETC"); v != "" {
+		dir = v
+	}
+	_, err := os.Stat(filepath.Join(dir, "node.json"))
+	return err == nil || !errors.Is(err, fs.ErrNotExist)
+}
+
+// maintFetch fragt den Auftrag ab: Verbund → pdh-ha, Einzelserver → Agent,
+// sonst (Docker-Testsystem, kein Agent) nie gesperrt.
+func (h *Handler) maintFetch(ctx context.Context) (ha.UpdateView, error) {
+	if h.mlock.fetch != nil {
+		return h.mlock.fetch(ctx)
+	}
+	switch {
+	case haNodeConfigured():
+		var v ha.UpdateView
+		err := h.haDo(ctx, http.MethodGet, "/v1/update", nil, &v)
+		return v, err
+	case h.driveAgentConfigured():
+		// Der Agent legt die Felder der Ansicht neben "ok" in die Antwort.
+		var out struct {
+			ha.UpdateView
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		err := h.agentJSON(ctx, http.MethodGet, "/v1/update/job", nil, &out)
+		return out.UpdateView, err
+	}
+	return ha.UpdateView{}, nil
+}
+
+// maintAbort bittet pdh-ha bzw. den Agenten, den Auftrag abzubrechen und zurückzusetzen.
+func (h *Handler) maintAbort(ctx context.Context, by string) error {
+	if h.mlock.abort != nil {
+		return h.mlock.abort(ctx, by)
+	}
+	body := map[string]string{"by": by}
+	switch {
+	case haNodeConfigured():
+		return h.haDo(ctx, http.MethodPost, "/v1/update/abort", body, nil)
+	case h.driveAgentConfigured():
+		return h.agentJSON(ctx, http.MethodPost, "/v1/update/job/abort", body, nil)
+	}
+	return uiError("Kein Update-Auftrag vorhanden")
+}
+
+// maintRefresh fragt den Auftrag ab und legt das Ergebnis im Zwischenspeicher ab.
+func (h *Handler) maintRefresh(ctx context.Context, now time.Time) error {
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), maintFetchWait)
+	defer cancel()
+	v, err := h.maintFetch(fctx)
+	h.mlock.mu.Lock()
+	defer h.mlock.mu.Unlock()
+	h.mlock.lastTry = now
+	if err != nil {
+		if !h.mlock.lastErr {
+			componentLog("wartung").Warn().Err(err).Msg("auftrag nicht abfragbar – letzter stand gilt")
+		}
+		h.mlock.lastErr = true
+		return err
+	}
+	if h.mlock.lastErr && !h.mlock.lastOK.IsZero() {
+		componentLog("wartung").Info().Msg("auftrag wieder abfragbar")
+	}
+	h.mlock.view, h.mlock.lastOK, h.mlock.lastErr = v, now, false
+	return nil
+}
+
+// maintView liefert den Auftrag (1 s zwischengespeichert). Locked ist nur
+// gesetzt, wenn die letzte Antwort höchstens 30 s alt ist.
+func (h *Handler) maintView(ctx context.Context) ha.UpdateView {
+	now := h.maintNow()
+	h.mlock.mu.RLock()
+	wait := maintCacheTTL
+	if h.mlock.lastErr {
+		wait = maintErrRetry
+	}
+	stale := h.mlock.lastTry.IsZero() || now.Sub(h.mlock.lastTry) >= wait
+	h.mlock.mu.RUnlock()
+	if stale && h.mlock.refreshing.CompareAndSwap(false, true) {
+		_ = h.maintRefresh(ctx, now)
+		h.mlock.refreshing.Store(false)
+	}
+	h.mlock.mu.RLock()
+	v, ok := h.mlock.view, h.mlock.lastOK
+	h.mlock.mu.RUnlock()
+	if v.Locked && (ok.IsZero() || now.Sub(ok) > maintFailOpen) {
+		v.Locked = false
+	}
+	h.maintTrack(ctx, v.Locked)
+	return v
+}
+
+// maintInvalidate: nächste Anfrage fragt sofort neu ab (nach dem Abbruch).
+func (h *Handler) maintInvalidate() {
+	h.mlock.mu.Lock()
+	h.mlock.lastTry = time.Time{}
+	h.mlock.mu.Unlock()
+}
+
+// maintTrack erkennt den Beginn der Sperre (einmal je Sperre).
+func (h *Handler) maintTrack(ctx context.Context, locked bool) {
+	if !locked {
+		if h.mlock.seen.Load() {
+			h.mlock.seen.Store(false)
+		}
+		return
+	}
+	if !h.mlock.seen.Swap(true) {
+		h.maintLockStarted(ctx)
+	}
+}
+
+// maintLockStarted: Sitzungs-Epoche auf jetzt (falls neuer), speichern und
+// offene Dauerverbindungen beenden.
+func (h *Handler) maintLockStarted(ctx context.Context) {
+	now := h.maintNow().Unix()
+	raised := false
+	for {
+		cur := h.sessionNotBefore.Load()
+		if now <= cur {
+			break
+		}
+		if h.sessionNotBefore.CompareAndSwap(cur, now) {
+			raised = true
+			break
+		}
+	}
+	if raised && !h.Mirror().On { // Spiegel: Datenbank nur lesbar, der aktive Server schreibt
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		if err := h.maintSetSetting(sctx, keySessionNotBefor, strconv.FormatInt(now, 10)); err != nil {
+			componentLog("wartung").Warn().Err(err).Msg("session.not_before nicht gespeichert")
+		}
+		cancel()
+	}
+	componentLog("wartung").Warn().Int64("not_before", h.sessionNotBefore.Load()).Msg("wartungssperre an – sitzungen beendet, dauerverbindungen geschlossen")
+	h.cutStreams()
+}
+
+// maintNotBeforeString: aktuelle Sitzungs-Epoche als Text (wie gespeichert).
+func (h *Handler) maintNotBeforeString() string {
+	return strconv.FormatInt(h.sessionNotBefore.Load(), 10)
+}
+
+func (h *Handler) maintGetSetting(ctx context.Context, key string) string {
+	if h.mlock.getSetting != nil {
+		return h.mlock.getSetting(ctx, key)
+	}
+	if h.db == nil {
+		return ""
+	}
+	return h.appSetting(ctx, key, "")
+}
+
+func (h *Handler) maintSetSetting(ctx context.Context, key, value string) error {
+	if h.mlock.setSetting != nil {
+		return h.mlock.setSetting(ctx, key, value)
+	}
+	if h.db == nil {
+		return nil
+	}
+	return h.setAppSetting(ctx, key, value)
+}
+
+// LoadMaintLock beim Start, bevor das PDH Anfragen annimmt: Sitzungs-Epoche
+// laden und den Auftrag abfragen – läuft eine Sperre, startet das PDH gesperrt
+// (B nach dem Tausch, Einzelserver nach dem Neustart). Ist pdh-ha bzw. der
+// Agent gerade nicht erreichbar, bis zu drei Versuche im Abstand von 1 s.
+func (h *Handler) LoadMaintLock(ctx context.Context) {
+	if s := strings.TrimSpace(h.maintGetSetting(ctx, keySessionNotBefor)); s != "" {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil && n > 0 {
+			h.sessionNotBefore.Store(n)
+		}
+	}
+	for try := 1; ; try++ {
+		err := h.maintRefresh(ctx, h.maintNow())
+		if err == nil || try >= 3 || !strings.Contains(err.Error(), "nicht erreichbar") {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if v := h.maintView(ctx); v.Locked {
+		componentLog("wartung").Warn().Str("phase", v.Phase).Msg("start während der wartung – pdh startet gesperrt")
+	}
+}
+
+// maintIsAdmin: Inhaber des (globalen) Rechts „Automatische Wartung abbrechen“.
+// Ein nur in einer Abteilung vergebenes Recht zählt nicht – der Abbruch wirkt
+// auf den ganzen Server.
+func (h *Handler) maintIsAdmin(u *users.User) bool {
+	if h.mlock.admin != nil {
+		return h.mlock.admin(u)
+	}
+	if u == nil || h.rbac == nil {
+		return false
+	}
+	all, _ := h.rbac.Scope(u.ID, string(u.Role), permMaintAbort)
+	return all
+}
+
+// sessionRevoked: Sitzung vor der letzten Wartungssperre ausgestellt (iat <
+// session.not_before) und der Benutzer hat das Abbruch-Recht nicht.
+func (h *Handler) sessionRevoked(u *users.User, iat int64) bool {
+	nb := h.sessionNotBefore.Load()
+	return nb > 0 && iat < nb && !h.maintIsAdmin(u)
+}
+
+// maintFreePath: auch während der Sperre erreichbar (Bildschirm-Zubehör, /health für den Agenten).
+func maintFreePath(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	p := r.URL.Path
+	if strings.HasPrefix(p, "/static/") || strings.HasPrefix(p, "/vendor/") || p == "/health" {
+		return true
+	}
+	for _, n := range AppIconFiles {
+		if p == "/"+n {
+			return true
+		}
+	}
+	return false
+}
+
+// maintWantsJSON: keine Seitennavigation – Schnittstelle, Webhook, fetch, Ereignisstrom.
+func maintWantsJSON(r *http.Request) bool {
+	p, acc := r.URL.Path, r.Header.Get("Accept")
+	return strings.HasPrefix(p, "/api/") || strings.Contains(p, "/webhook") ||
+		strings.Contains(acc, "text/event-stream") || !strings.Contains(acc, "text/html")
+}
+
+// maintSession: angemeldeter Benutzer (Cookie) und ob er das Abbruch-Recht hat.
+func (h *Handler) maintSession(r *http.Request) (*users.User, bool) {
+	u := h.sessionUser(r)
+	return u, u != nil && h.maintIsAdmin(u)
+}
+
+// MaintLockMiddleware sperrt während der Wartung alle Routen (vor allen
+// anderen Middlewares, siehe cmd/server/main.go).
+func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		if p == "/wartung/status" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			h.maintStatus(w, r)
+			return
+		}
+		v := h.maintView(r.Context())
+		if !v.Locked {
+			if p == "/wartung" || strings.HasPrefix(p, "/wartung/") {
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		switch {
+		case p == "/wartung/anmelden" && r.Method == http.MethodPost:
+			h.maintLoginPost(w, r, v)
+			return
+		case p == "/wartung/abbrechen" && r.Method == http.MethodPost:
+			h.maintAbortPost(w, r, v)
+			return
+		case maintFreePath(r):
+			next.ServeHTTP(w, r)
+			return
+		}
+		u, admin := h.maintSession(r)
+		if !admin {
+			if _, err := r.Cookie("pdh_token"); err == nil || u != nil {
+				clearSessionCookies(w) // Abmelden: Sitzung gilt nach der Sperre nicht mehr
+			}
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(maintRetryAfter))
+		w.Header().Set("Cache-Control", "no-store")
+		switch {
+		case r.Header.Get("HX-Request") == "true":
+			w.Header().Set("HX-Redirect", "/wartung")
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case maintWantsJSON(r):
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "Wartung", "retry_after": maintRetryAfter})
+		default:
+			d := maintScreenData{View: v, Admin: admin, ShowLogin: p == "/wartung/anmelden" && !admin}
+			if r.URL.Query().Get("abgebrochen") == "1" && p == "/wartung" {
+				d.Msg = tr(h.requestLang(r), "Abbruch angefordert – die bisherige Version wird wiederhergestellt")
+			}
+			h.renderMaintScreen(w, r, http.StatusServiceUnavailable, d)
+		}
+	})
+}
+
+// maintStatus: GET /wartung/status – Auftrag als JSON, ohne Anmeldung (Bildschirm fragt alle 2 s).
+func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
+	v := h.maintView(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// maintLoginPost: POST /wartung/anmelden – wie LoginPost, aber nur für
+// Inhaber des Abbruch-Rechts. Kein Passwort-Pflichtwechsel und keine
+// Spiegel-Regel: beide führen auf Seiten, die während der Sperre gesperrt sind.
+func (h *Handler) maintLoginPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
+	_ = r.ParseForm()
+	login := h.loginFn // Tests; nil → users.Login
+	if login == nil {
+		login = h.users.Login
+	}
+	email := r.FormValue("email")
+	w.Header().Set("Retry-After", strconv.Itoa(maintRetryAfter))
+	token, user, err := login(r.Context(), email, r.FormValue("password"))
+	if err != nil {
+		authLog(r, false, "wartung", email, "", "", err.Error())
+		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, ShowLogin: true, Err: tr(h.requestLang(r), "Ungültige Anmeldedaten")})
+		return
+	}
+	name := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	if !h.maintIsAdmin(user) {
+		authLog(r, false, "wartung", email, user.ID, name, "wartung: ohne recht "+permMaintAbort)
+		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, ShowLogin: true, Err: tr(h.requestLang(r), "Anmeldung während der Wartung nur für Administratoren")})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "pdh_token", Value: token, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: "pdh_user_id", Value: user.ID, Path: "/", MaxAge: 86400, SameSite: http.SameSiteLaxMode})
+	authLog(r, true, "wartung", email, user.ID, name, "")
+	http.Redirect(w, r, "/wartung", http.StatusSeeOther)
+}
+
+// maintAbortPost: POST /wartung/abbrechen – Recht prüfen, Abbruch anfordern,
+// protokollieren. Schutz vor fremden Seiten wie bei allen Formularen über das
+// SameSite-Cookie, zusätzlich Sec-Fetch-Site.
+func (h *Handler) maintAbortPost(w http.ResponseWriter, r *http.Request, v ha.UpdateView) {
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+		return
+	}
+	u, admin := h.maintSession(r)
+	if !admin {
+		uid := ""
+		if u != nil {
+			uid = u.ID
+		}
+		componentLog("wartung").Warn().Str("user", uid).Str("ip", r.RemoteAddr).Msg("abbruch ohne recht abgewiesen")
+		h.renderMaintScreen(w, r, http.StatusForbidden, maintScreenData{View: v, Err: tr(h.requestLang(r), "Nur Administratoren dürfen die Wartung abbrechen")})
+		return
+	}
+	by := strings.TrimSpace(u.FirstName + " " + u.LastName)
+	if by == "" {
+		by = u.Username
+	}
+	err := h.maintAbort(r.Context(), by)
+	ev := componentLog("wartung").Warn()
+	if err != nil {
+		ev = componentLog("wartung").Error().Err(err)
+	}
+	ev.Str("action", "update-abort").Str("user", u.ID).Str("user_name", by).Str("phase", v.Phase).Msg("automatische wartung: abbruch angefordert")
+	if err != nil {
+		h.renderMaintScreen(w, r, http.StatusServiceUnavailable, maintScreenData{View: v, Admin: true, Err: tr(h.requestLang(r), "Abbruch fehlgeschlagen: %s", err.Error())})
+		return
+	}
+	h.maintInvalidate()
+	http.Redirect(w, r, "/wartung?abgebrochen=1", http.StatusSeeOther)
+}
+
+// ── Wartungsbildschirm ──────────────────────────────────────
+// Vorerst schlicht; Task 10 ersetzt renderMaintScreen durch die gestaltete
+// Vorlage maint_lock.gohtml.
+
+// maintScreenData: Inhalt des Bildschirms; Msg/Err schon übersetzt.
+type maintScreenData struct {
+	View      ha.UpdateView
+	Admin     bool // Abbruch-Knopf
+	ShowLogin bool // Anmeldeformular für Administratoren
+	Msg, Err  string
+}
+
+type maintStepView struct {
+	Name      string
+	Done, Cur bool
+}
+
+type maintScreenPage struct {
+	Lang, Style, Palette  string
+	ThemeCSS              template.CSS
+	Title, Versions, Text string
+	Steps                 []maintStepView
+	Percent               int
+	Remaining             string
+	Admin, ShowLogin      bool
+	Msg, Err              string
+	TAbort, TAbortConfirm string
+	TLogin, TLoginLink    string
+	TEmail, TPassword     string
+	TRestart, TDone       string
+	TProgress             string
+}
+
+func (h *Handler) renderMaintScreen(w http.ResponseWriter, r *http.Request, status int, d maintScreenData) {
+	lang := h.requestLang(r)
+	b := h.branding()
+	v := d.View
+	p := maintScreenPage{
+		Lang: lang, Style: b.StyleID(), Palette: b.ThemeID(), ThemeCSS: b.ThemeCSS(),
+		Title:         tr(lang, "Automatische Wartung läuft"),
+		Text:          tr(lang, v.Text),
+		Percent:       min(max(v.Percent, 0), 100),
+		Admin:         d.Admin,
+		ShowLogin:     d.ShowLogin,
+		TAbort:        tr(lang, "Abbrechen und zurücksetzen"),
+		TAbortConfirm: tr(lang, "Wartung wirklich abbrechen und die bisherige Version wiederherstellen?"),
+		TLogin:        tr(lang, "Anmelden"),
+		TLoginLink:    tr(lang, "Als Administrator anmelden"),
+		TEmail:        tr(lang, "E-Mail oder Benutzername"),
+		TPassword:     tr(lang, "Passwort"),
+		TRestart:      tr(lang, "Server wird neu gestartet …"),
+		TDone:         tr(lang, "Wartung beendet"),
+		TProgress:     tr(lang, "Fortschritt"),
+	}
+	if v.RollingBack {
+		p.Title = tr(lang, "Wartung wird rückgängig gemacht – die bisherige Version wird wiederhergestellt")
+	}
+	if v.FromVersion != "" || v.ToVersion != "" {
+		p.Versions = v.FromVersion + " → " + v.ToVersion
+	}
+	for i, s := range v.Steps {
+		p.Steps = append(p.Steps, maintStepView{Name: tr(lang, s), Done: i < v.Step, Cur: i == v.Step})
+	}
+	if v.RemainingS > 0 {
+		p.Remaining = tr(lang, "Spätestens in %d min wieder verfügbar", (v.RemainingS+59)/60)
+	}
+	p.Msg, p.Err = d.Msg, d.Err
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", strconv.Itoa(maintRetryAfter))
+	w.WriteHeader(status)
+	if err := maintScreenTmpl.Execute(w, p); err != nil {
+		componentLog("wartung").Error().Err(err).Msg("wartungsbildschirm")
+		fmt.Fprint(w, esc(p.Title))
+	}
+}
+
+var maintScreenTmpl = template.Must(template.New("maint-lock").Parse(`<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>PDH – {{.Title}}</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--bg2:#1a1d27;--accent:#4f6ef7;--on-accent:#fff;--text:#e8eaf6;--muted:#6b7280;--border:#2a2d3e;--shadow-card:none;--font:system-ui,sans-serif}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-card);padding:28px;width:100%;max-width:520px}
+h1{font-size:20px;font-weight:600;margin-bottom:6px}
+.ver{color:var(--muted);font-size:14px;margin-bottom:18px}
+.bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin:6px 0 14px}
+.bar>div{height:100%;background:var(--accent)}
+ol{list-style:none;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-bottom:14px}
+li.done{color:var(--text)}
+li.cur{color:var(--accent);font-weight:600}
+.text{font-size:14px;margin-bottom:6px}
+.muted{color:var(--muted);font-size:13px}
+.msg,.err{border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;margin:14px 0}
+.err{border-color:#ef4444}
+form{margin-top:18px}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font:inherit}
+.btn{background:var(--accent);color:var(--on-accent);border:0;border-radius:6px;padding:9px 14px;font:inherit;cursor:pointer;margin-top:12px}
+a{color:var(--accent)}
+.foot{margin-top:20px;font-size:13px}
+html[data-style="fiori"]{--bg:#f5f6f7;--bg2:#fff;--text:#1d2d3e;--muted:#556b82;--border:#d9d9d9}
+html[data-style="fiori"] .card{border:0;border-radius:16px;box-shadow:0 0 2px rgba(34,53,72,.2),0 8px 16px rgba(34,53,72,.15)}
+html[data-style="fiori"] .btn{border-radius:8px;font-weight:700}
+</style>
+<style>{{.ThemeCSS}}</style>
+<script>document.documentElement.dataset.palette = {{.Palette}}; document.documentElement.dataset.style = {{.Style}};</script>
+</head>
+<body>
+<main class="card">
+<h1 id="mt-title">{{.Title}}</h1>
+{{if .Versions}}<div class="ver">{{.Versions}}</div>{{end}}
+<div class="muted">{{.TProgress}}: <span id="mt-pct">{{.Percent}}</span> %</div>
+<div class="bar"><div id="mt-bar" style="width:{{.Percent}}%"></div></div>
+{{if .Steps}}<ol>{{range .Steps}}<li class="{{if .Cur}}cur{{else if .Done}}done{{end}}">{{.Name}}</li>{{end}}</ol>{{end}}
+<p class="text" id="mt-text">{{.Text}}</p>
+{{if .Remaining}}<p class="muted">{{.Remaining}}</p>{{end}}
+<p class="muted" id="mt-state" hidden></p>
+{{if .Msg}}<div class="msg">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="err">{{.Err}}</div>{{end}}
+{{if .Admin}}
+<form method="post" action="/wartung/abbrechen" onsubmit="return confirm({{.TAbortConfirm}})">
+<button class="btn" type="submit">{{.TAbort}}</button>
+</form>
+{{else if .ShowLogin}}
+<form method="post" action="/wartung/anmelden">
+<label for="mt-email">{{.TEmail}}</label><input id="mt-email" name="email" autocomplete="username" required>
+<label for="mt-pw">{{.TPassword}}</label><input id="mt-pw" name="password" type="password" autocomplete="current-password" required>
+<button class="btn" type="submit">{{.TLogin}}</button>
+</form>
+{{else}}
+<p class="foot"><a href="/wartung/anmelden">{{.TLoginLink}}</a></p>
+{{end}}
+</main>
+<script>
+(function(){
+  var admin = {{.Admin}}, loginForm = {{.ShowLogin}}, last = "";
+  function poll(){
+    fetch("/wartung/status", {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(v){
+      document.getElementById("mt-state").hidden = true;
+      if (!v.locked) {
+        document.getElementById("mt-title").textContent = {{.TDone}};
+        location.href = admin ? "/" : "/login";
+        return;
+      }
+      var key = v.phase + "|" + v.step + "|" + v.rolling_back;
+      if (last && key !== last && !loginForm) { location.href = "/wartung"; return; }
+      last = key;
+      document.getElementById("mt-pct").textContent = v.percent;
+      document.getElementById("mt-bar").style.width = v.percent + "%";
+    }).catch(function(){
+      var s = document.getElementById("mt-state");
+      s.textContent = {{.TRestart}};
+      s.hidden = false;
+    });
+  }
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>`))
