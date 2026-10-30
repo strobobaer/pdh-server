@@ -35,6 +35,9 @@ type agentClient interface {
 // agentWait: so lange wartet ein Aufruf höchstens auf das Ende des Updates.
 const agentWait = 20 * time.Minute
 
+// agentRestartGrace: so lange gilt ein nicht erreichbarer Agent als „startet gerade neu“.
+const agentRestartGrace = time.Minute
+
 // newAgentClient: PDH_HA_AGENT_CMD gesetzt (Labor) → Befehl; sonst HTTP an
 // den Update-Agenten.
 func newAgentClient() agentClient {
@@ -244,9 +247,21 @@ func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
 		wait = agentWait
 	}
 	deadline := time.Now().Add(wait)
+	// Der Agent startet nach jedem Lauf kurz neu: Verbindungsfehler beim
+	// Senden so lange wiederholen, bevor sie als Fehler zählen.
+	reachUntil := time.Now().Add(agentRestartGrace)
+	if reachUntil.After(deadline) {
+		reachUntil = deadline
+	}
 	for {
 		code, b, err := h.do(ctx, http.MethodPost, base+"/v1/update", token, body)
 		if err != nil {
+			if time.Now().Before(reachUntil) {
+				if err := sleepCtx(ctx, h.poll); err != nil {
+					return err
+				}
+				continue
+			}
 			return fmt.Errorf("Update-Agent nicht erreichbar: %w", err)
 		}
 		if code != http.StatusAccepted && code != http.StatusOK && code != http.StatusConflict {

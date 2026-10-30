@@ -371,6 +371,40 @@ func TestAgentClient409ForeignRun(t *testing.T) {
 	}
 }
 
+// Agent startet nach jedem Lauf kurz neu: ein Verbindungsfehler beim Senden
+// wird wiederholt statt als Fehler gemeldet (sonst falsches „braucht Hilfe“).
+func TestAgentClientRetriesWhileAgentRestarts(t *testing.T) {
+	var mu sync.Mutex
+	posts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/v1/update":
+			posts++
+			if posts <= 2 {
+				conn, _, _ := w.(http.Hijacker).Hijack()
+				_ = conn.Close() // wie ein gerade neu startender Agent
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+		case "/v1/status":
+			_ = json.NewEncoder(w).Encode(agentRun{Success: true, Commit: "o1", Op: "rollback"})
+		}
+	}))
+	defer srv.Close()
+	writeEnvFile(t, "PDH_UPDATE_AGENT_URL="+srv.URL, "PDH_UPDATE_AGENT_TOKEN=t")
+	h := &httpAgent{poll: time.Millisecond, wait: 5 * time.Second}
+	if err := h.Rollback(context.Background(), "o1", false); err != nil {
+		t.Fatalf("Neustart des Agenten nicht abgewartet: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if posts != 3 {
+		t.Fatalf("posts %d, erwartet 3", posts)
+	}
+}
+
 // 409 mit demselben Auftrag (Wiederholung): dessen Ergebnis zählt.
 func TestAgentClient409SameRun(t *testing.T) {
 	posts := 0
