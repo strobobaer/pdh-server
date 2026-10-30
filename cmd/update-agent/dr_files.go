@@ -210,6 +210,9 @@ func (a *updateAgent) drLoop(ctx context.Context) {
 }
 
 func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
+	// Wartungsfenster zuerst (auch ohne Sicherung): Beginn „vor dem Abgleich“
+	// hält den Dateiabgleich unten an, bis das Fenster beendet ist.
+	a.windowTick(ctx, now)
 	a.dr.mu.Lock()
 	cfg := a.dr.Config
 	a.dr.mu.Unlock()
@@ -266,26 +269,32 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 		a.drOK("wal")
 	}
 	if cfg.Enabled {
-		a.dr.mu.Lock()
-		lastBase, lastTry, lastFiles, baseNeeded := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync, a.dr.BaseNeeded
-		if a.dr.FilesTry.After(lastFiles) {
-			lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
-		}
-		a.dr.mu.Unlock()
-		// Dateien zuerst: die Grundsicherung übernimmt die Quellen des letzten Abgleichs
-		if drFilesDue(lastFiles, cfg.FileSyncMinutes, now) && a.drStartRun("files") == nil {
-			a.dr.mu.Lock()
-			a.dr.FilesTry = now
-			a.dr.mu.Unlock()
-		}
-		if (baseNeeded || drBaseDue(lastBase, cfg.BaseHour, now)) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
-			a.dr.mu.Lock()
-			a.dr.BaseTry = now
-			a.dr.mu.Unlock()
-		}
+		a.drStartDue(cfg, now)
 	}
 	if err := a.drSave(); err != nil {
 		log.Printf("ausfallschutz: state.json: %v", err)
+	}
+}
+
+// drStartDue startet fällige Läufe. Der Dateiabgleich wartet, solange ein
+// Wartungsfenster mit Beginn „vor dem Abgleich“ läuft (window.go).
+func (a *updateAgent) drStartDue(cfg drConfig, now time.Time) {
+	a.dr.mu.Lock()
+	lastBase, lastTry, lastFiles, baseNeeded := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync, a.dr.BaseNeeded
+	if a.dr.FilesTry.After(lastFiles) {
+		lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
+	}
+	a.dr.mu.Unlock()
+	// Dateien zuerst: die Grundsicherung übernimmt die Quellen des letzten Abgleichs
+	if drFilesDue(lastFiles, cfg.FileSyncMinutes, now) && !a.windowHoldsFiles() && a.drStartRun("files") == nil {
+		a.dr.mu.Lock()
+		a.dr.FilesTry = now
+		a.dr.mu.Unlock()
+	}
+	if (baseNeeded || drBaseDue(lastBase, cfg.BaseHour, now)) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
+		a.dr.mu.Lock()
+		a.dr.BaseTry = now
+		a.dr.mu.Unlock()
 	}
 }
 

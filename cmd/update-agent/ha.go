@@ -69,33 +69,19 @@ func (a *updateAgent) drHASelf(ctx context.Context) (haSelf, bool, error) {
 	if _, err := os.Stat(filepath.Join(haEtcDir(), "node.json")); errors.Is(err, os.ErrNotExist) {
 		return haSelf{}, true, nil
 	}
-	sock := haSocketPath()
-	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{
-		DisableKeepAlives: true,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", sock)
-		},
-	}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://pdh-ha/v1/status", nil)
-	if err != nil {
-		return haSelf{}, false, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return haSelf{}, false, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return haSelf{}, false, fmt.Errorf("pdh-ha: HTTP %d", resp.StatusCode)
-	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	var st struct {
 		Configured bool   `json:"configured"`
 		Error      string `json:"error"`
 		Self       haSelf `json:"self"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&st); err != nil {
+	code, err := haDo(ctx, http.MethodGet, "/v1/status", nil, &st)
+	if err != nil {
 		return haSelf{}, false, err
+	}
+	if code != http.StatusOK {
+		return haSelf{}, false, fmt.Errorf("pdh-ha: HTTP %d", code)
 	}
 	switch {
 	case st.Error != "":

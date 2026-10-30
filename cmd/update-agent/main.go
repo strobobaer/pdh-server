@@ -27,10 +27,10 @@ type jobStatus struct {
 }
 
 type updateAgent struct {
-	dr      drState // Ausfallschutz (dr.go), eigener Mutex
-	drApply func(context.Context, drConfig) (bool, error) // nil = drApplyPostgres
-	drSysID func(context.Context) (string, error)         // nil = psql (dr_owner.go)
-	ha      haJob                                         // pdh-ha-Installation (ha.go)
+	dr      drState                                                           // Ausfallschutz (dr.go), eigener Mutex
+	drApply func(context.Context, drConfig) (bool, error)                     // nil = drApplyPostgres
+	drSysID func(context.Context) (string, error)                             // nil = psql (dr_owner.go)
+	ha      haJob                                                             // pdh-ha-Installation (ha.go)
 	haRun   func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
 	mu      sync.RWMutex
 	status  jobStatus
@@ -40,6 +40,13 @@ type updateAgent struct {
 	project string
 
 	updateRun func(args []string) // nil = runUpdate (install_update.sh); Test-Haken
+
+	win       winRuntime                                                // Wartungsfenster (window.go)
+	sj        jobRuntime                                                // Update auf dem Einzelserver (job.go)
+	gitRun    func(ctx context.Context, args ...string) (string, error) // nil = git im repoDir; Test-Haken
+	clock     func() time.Time                                          // nil = time.Now; Test-Haken
+	freeSpace func(path string) (int64, bool)                           // nil = freeSpaceOS; Test-Haken
+	jobManual bool                                                      // Tests: Schritte des Auftrags von Hand
 }
 
 type limitedBuffer struct {
@@ -84,6 +91,8 @@ func main() {
 	agent := &updateAgent{token: token, repoDir: repoDir, mode: mode, project: project}
 	if mode == "systemd" {
 		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
+		agent.windowLoad()
+		agent.loadSingleJob() // offener Auftrag (Einzelserver) läuft weiter
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -112,6 +121,13 @@ func main() {
 	// Ausfallschutz mit zwei Servern – pdh-ha (ha.go)
 	mux.Handle("POST /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallHandler)))
 	mux.Handle("GET /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallStatusHandler)))
+	// Update auf dem Einzelserver und Wartungsfenster (job.go, window.go)
+	mux.Handle("GET /v1/update/job", agent.authorized(http.HandlerFunc(agent.jobHandler)))
+	mux.Handle("POST /v1/update/job/start", agent.authorized(http.HandlerFunc(agent.jobStartHandler)))
+	mux.Handle("POST /v1/update/job/abort", agent.authorized(http.HandlerFunc(agent.jobAbortHandler)))
+	mux.Handle("GET /v1/window", agent.authorized(http.HandlerFunc(agent.windowGetHandler)))
+	mux.Handle("POST /v1/window", agent.authorized(http.HandlerFunc(agent.windowPostHandler)))
+	mux.Handle("DELETE /v1/window/faulty/{commit}", agent.authorized(http.HandlerFunc(agent.windowFaultyDeleteHandler)))
 
 	server := &http.Server{
 		Addr:              listen,
@@ -196,6 +212,11 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
 		a.status = jobStatus{}
 		a.mu.Unlock()
 	} else {
+		if a.singleJobActive() {
+			// Einzelserver-Auftrag (job.go) führt install_update.sh selbst aus
+			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Ein Update-Auftrag läuft bereits"})
+			return
+		}
 		commit := req.Commit
 		if commit == "" {
 			commit = req.Rollback
