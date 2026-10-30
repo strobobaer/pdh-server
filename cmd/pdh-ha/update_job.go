@@ -26,8 +26,6 @@ import (
 )
 
 const (
-	upCountdownDefault = 2 * time.Minute  // Countdown vor der Sperre (Spec 4)
-	upLockMaxDefault   = 30 * time.Minute // Höchstdauer der Sperre (Spec 4)
 	upVerifyDefault    = 10 * time.Minute // Prüffrist (PDH_HA_UPDATE_VERIFY, nur Labor)
 	upResendAfter      = 2 * time.Minute  // offenen Auftrag an einen Knoten ohne Ergebnis wiederholen
 	upMirrorEvery      = 30 * time.Second // Auftrag auch ohne Änderung erneut spiegeln
@@ -122,9 +120,10 @@ func opCommit(j ha.UpdateJob, op, node string) string {
 
 // updateDurationsLocked: Countdown und Höchstdauer der Sperre, Prüffrist.
 func (d *daemon) updateDurationsLocked() (countdown, lockMax, verify time.Duration) {
-	// Standardwerte (Spec 4); einstellbar, sobald es die Wartungsfenster-
-	// Einstellungen gibt. Die Prüffrist nur im Labor verkürzen.
-	countdown, lockMax, verify = upCountdownDefault, upLockMaxDefault, upVerifyDefault
+	// Countdown und Höchstdauer kommen aus dem Wartungsfenster (ungültig oder
+	// nie gesetzt: Standardwerte, Spec 4). Die Prüffrist nur im Labor verkürzen.
+	w := d.windowLocked()
+	countdown, lockMax, verify = time.Duration(w.CountdownMin)*time.Minute, time.Duration(w.LockMaxMin)*time.Minute, upVerifyDefault
 	if v, err := time.ParseDuration(os.Getenv("PDH_HA_UPDATE_VERIFY")); err == nil && v > 0 {
 		verify = v
 	}

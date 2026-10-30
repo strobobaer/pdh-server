@@ -44,6 +44,7 @@ type apiStatus struct {
 	Peers          []apiNode   `json:"peers"`
 	Maint          bool        `json:"maint"`
 	Settings       ha.Settings `json:"settings"`
+	Window         ha.Window   `json:"window"` // Wartungsfenster
 	GatewayTargets []string    `json:"gateway_targets"`
 	Blocked        string      `json:"blocked"` // ha.Allowed-Grund, "" = frei
 	Observe        bool        `json:"observe"` // automatische Umschaltung nur gemeldet (auto_mode observe)
@@ -352,6 +353,7 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	registerUpdateRoutes(mux, d)
 	mux.HandleFunc("PUT /v1/access", func(w http.ResponseWriter, r *http.Request) {
 		var req accessUpdate
 		if !decodeBody(w, r, &req) {

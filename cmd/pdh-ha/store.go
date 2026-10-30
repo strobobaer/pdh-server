@@ -45,6 +45,7 @@ type clusterConfig struct {
 	Version        uint64        `json:"version"`
 	Nodes          []clusterNode `json:"nodes"`
 	Settings       ha.Settings   `json:"settings"`
+	Window         ha.Window     `json:"window"` // Wartungsfenster (Update im Verbund)
 	GatewayTargets []string      `json:"gateway_targets"`
 	Revoked        []string      `json:"revoked"` // Seriennummern hex
 	Swaps          int           `json:"swaps"`       // gelungene Rollentausche seit Einrichtung des Spiegels

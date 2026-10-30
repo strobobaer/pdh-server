@@ -92,7 +92,7 @@ func setupFiles(st store, o setupOpts) error {
 		return err
 	}
 	cl := clusterConfig{
-		ClusterID: clusterID, CAHolder: id, Version: 1, Settings: ha.DefaultSettings(),
+		ClusterID: clusterID, CAHolder: id, Version: 1, Settings: ha.DefaultSettings(), Window: ha.DefaultWindow(),
 		Nodes: []clusterNode{{ID: id, Kind: "node", Addrs: addrs, Serial: serialHex(c)}},
 	}
 	steps := []func() error{

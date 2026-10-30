@@ -168,6 +168,7 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	now, wall := d.mono(), d.wall()
 	st.Settings = d.settingsLocked()
+	st.Window = d.windowLocked()
 	st.Maint, st.CAHolder = d.p.Maint, d.node.CAHolder
 	_, lockMax, _ := d.updateDurationsLocked()
 	st.Update = d.up.job.View(wall, lockMax, d.up.faulty)
