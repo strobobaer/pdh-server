@@ -449,7 +449,14 @@ func printUpdate(w io.Writer, v ha.UpdateView) {
 		fmt.Fprintf(w, "Update: %s (%s)\n", state, v.Kind)
 		fmt.Fprintf(w, "Schritt: %s – %s (%d %%)\n", v.Phase, v.Text, v.Percent)
 		if v.FromVersion != "" || v.ToVersion != "" {
-			fmt.Fprintf(w, "Version: %s -> %s\n", v.FromVersion, v.ToVersion)
+			to := v.ToVersion
+			if to == "" {
+				to = "neue Version (noch unbekannt)" // C1: wird nach dem Einspielen übernommen
+			}
+			if v.Kind == string(ha.UpdateSwap) {
+				to = v.FromVersion
+			}
+			fmt.Fprintf(w, "Version: %s -> %s\n", v.FromVersion, to)
 		}
 		if v.Locked {
 			fmt.Fprintf(w, "Gesperrt, noch höchstens %d s\n", v.RemainingS)
