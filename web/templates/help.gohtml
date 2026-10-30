@@ -1561,8 +1561,9 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li><b>Core-Einstellungen</b> öffnen. Im Kasten <b>GitHub-Updates</b> siehst du die <b>installierte Version</b> und die <b>Version auf GitHub</b>. PDH prüft regelmäßig selbst (einstellbar); sofort geht es mit <b>Commit-Vergleich</b>.</li>
       <li>Ist ein Update da, listet <b>Neu in … Version(en)</b> alle Änderungen seit deiner Version – lies sie vor dem Installieren.</li>
-      <li><b>Update installieren</b> klicken und bestätigen. Der Dienst startet neu; nach einer Minute die Seite neu laden.</li>
+      <li><b>Update installieren</b> klicken und bestätigen. Zuerst läuft ein <b>Countdown</b> (Band „Automatische Wartung in …“), dann sperrt der <b>Wartungsbildschirm</b> kurz alle Eingaben, der Dienst startet neu und prüft sich. Klappt etwas nicht, kommt der alte Stand automatisch zurück. Danach ist die Seite wieder da (nach einer Minute neu laden, falls nicht).</li>
     </ol>
+    <b>Mit zwei Servern</b> aktualisiert derselbe Knopf <b>alle Rechner des Verbunds</b> (Spiegel und Zeuge ziehen mit) – siehe <a href="#ausfallschutz">Update im Verbund und Wartungsfenster</a>. Dort richtest du auch ein <b>Wartungsfenster</b> ein, das nachts automatisch aktualisiert.<br>
     Vor den Datenbank-Änderungen legt PDH automatisch eine Vollsicherung an (<a href="#backup">mehr</a>). Danach steht die neue Nummer in der Kopfzeile.<br>
     <b>Am Server von Hand:</b> nicht nur <code>git pull</code> – das holt die Dateien, baut das Programm aber nicht neu, und neue Seiten passen dann nicht zum alten Programm (z. B. „Template-Fehler … can't evaluate field …“). Richtig ist im PDH-Verzeichnis <code>sudo PDH_UPDATE_MODE=systemd bash install_update.sh</code> (bei Docker <code>PDH_UPDATE_MODE=docker</code>) – holt, baut und startet neu.</div>
   <div class="hb-howto"><b><i class="ti ti-cloud"></i> So aktualisierst du Nextcloud</b>
@@ -1626,6 +1627,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Alle anderen können Stammdaten weiter <b>zum Löschen vormerken</b>; der Bereinigungslauf erledigt den Rest.</li>
     </ol>
     Anfangs hat nur die Rolle Administrator alle Bereichsadministrator-Rechte. Ein ausdrückliches Verbot eines Einzelrechts gilt auch gegen den Bereichsadministrator.</div>
+  <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
+    <ul>
+      <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen ändern“ hatten.</li>
+      <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Beim Update bekamen es alle Rollen mit „Rollen &amp; Rechte verwalten“ und alle Bereichsadministratoren.</li>
+    </ul>
+    Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
@@ -1914,15 +1921,77 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die Betriebsart steht danach auf <b>Trio</b>, der Hinweis „kein Zeuge“ verschwindet.</li>
     </ol>
     <p><b>Wichtig:</b> Der Zeuge braucht <b>eigene Hardware und eigenen Strom</b>. Läuft er auf demselben Gerät oder an derselben Stromversorgung wie ein Server, fällt er mit aus – dann ist er wertlos. Erkennt das PDH gemeinsame Hardware, zeigt es eine Warnung.</p></div>
-  <div class="hb-howto"><b><i class="ti ti-refresh"></i> Nach einem PDH-Update</b>
-    <p>Das Update des PDH bringt <code>pdh-ha</code> nur auf dem ersten Server auf den neuen Stand. Die Übersicht warnt dann „Versionen unterschiedlich“ und zeigt den passenden Befehl.</p>
+  <h3 id="hb-verbund-update"><i class="ti ti-refresh"></i> Update im Verbund und Wartungsfenster</h3>
+  <p>Mit zwei Servern (und Zeuge) bringt <b>ein Auslöser alle Rechner auf denselben Stand</b>: per Knopf in den Core-Einstellungen oder automatisch im Wartungsfenster. Geht etwas schief, setzt das System <b>immer auf den bisherigen Stand zurück</b> – auch nach Datenbank-Änderungen, ohne Datenverlust.</p>
+  {{template "hb-fig-verbundupdate"}}
+  {{template "hb-fig-wartungsfenster"}}
+  <div class="hb-howto"><b><i class="ti ti-calendar-time"></i> So richtest du das Wartungsfenster ein</b> (Recht „Wartungsfenster einstellen“)
+    <ol class="hb-steps">
+      <li><b>Server-Einstellungen → Ausfallschutz</b> öffnen, Kasten <b>Wartungsfenster</b>. Im Verbund geht das am aktiven (oder am ersten) Server, ohne Verbund am Einzelserver.</li>
+      <li><b>Wartungsfenster</b> auf <i>täglich</i> oder <i>wöchentlich</i> stellen (bei wöchentlich den Wochentag wählen). Standard ist <i>aus</i>.</li>
+      <li><b>Beginn</b> wählen: Das Fenster startet nach der täglichen Grundsicherung – <i>vor</i> oder <i>nach</i> dem nächsten Dateiabgleich (Standard: nach). Gibt es keine Ausfallschutz-Sicherung, gilt die <b>Uhrzeit</b> (Standard 02:00).</li>
+      <li><b>Spätestens beginnen bis</b> (Standard 05:00) festlegen. Ist die Grundsicherung dann noch nicht fertig, fällt das Fenster aus und du bekommst eine Meldung.</li>
+      <li><b>Neue Version einspielen</b> ankreuzen, wenn das Fenster auch aktualisieren soll. Eingespielt wird nur, wenn es eine neuere Version gibt, die nicht als fehlerhaft gemerkt ist.</li>
+      <li>Im Verbund die <b>Update-Art</b> wählen (unten) und, wenn du willst, <b>Rollentausch im Fenster: in jedem Fenster</b>. Bei „ohne Unterbrechung“ gehört ein Rollentausch schon zum Update – dann wird nicht zusätzlich getauscht, die Rollen bleiben vertauscht.</li>
+      <li><b>Countdown vor der Sperre</b> (1–15 Minuten, Standard 2) und <b>Höchstdauer der Sperre</b> (10–120 Minuten, Standard 30) bei Bedarf anpassen, dann <b>Speichern</b>.</li>
+    </ol>
+    <p>Der Kasten zeigt das <b>nächste Fenster</b>, das <b>Ergebnis des letzten Fensters</b> und die als <b>fehlerhaft gemerkten Versionen</b>. Eine solche Version wird übersprungen, bis eine neuere erscheint. Mit <b>Wieder zulassen</b> (gleiches Recht) versucht das System sie doch noch einmal.</p>
+    <p>Auch der Knopf <b>Update installieren</b> in den Core-Einstellungen folgt dieser Update-Art, nutzt aber nicht das Fenster. Am Spiegel ist der Knopf gesperrt („wird vom aktiven Server gesteuert“).</p></div>
+  <div class="hb-howto"><b><i class="ti ti-route-2"></i> Was bei einem Update im Verbund passiert</b>
+    <p>Zuerst die <b>Prüfung „alles grün“</b>: Beide Server sehen sich, genau einer ist aktiv, der Spiegel ist synchron, beide haben denselben Stand, die letzte Grundsicherung und der letzte Dateiabgleich waren in Ordnung und beide Server haben mindestens 2 GB frei. Ein nicht erreichbarer Zeuge ist nur ein Hinweis. Ist etwas nicht grün, bricht das Wartungsfenster ab und meldet den Grund; der Knopf fragt nach („Trotzdem mit kurzer Unterbrechung?“) und nimmt bei „Ja“ die Art „alle nacheinander“.</p>
+    <p><b>Update-Art „ohne Unterbrechung“</b> (Standard):</p>
+    <ol class="hb-steps">
+      <li>Der Spiegel (Server B) spielt die neue Version ein und wird geprüft. Alle arbeiten weiter am aktiven Server A.</li>
+      <li>Ein <b>Countdown</b> erscheint als Band („Automatische Wartung in 2:00 min – bitte Eingaben speichern“).</li>
+      <li><b>Sperre:</b> Alle werden abgemeldet, der Wartungsbildschirm erscheint. A gibt die Rolle ab und friert seine Datenbank ein, B wird aktiv und spielt die Datenbank-Änderungen ein.</li>
+      <li>B wird geprüft (Prüffrist 10 Minuten). Ist alles gut, <b>gibt das System frei</b>: A wird Spiegel von B, die Sperre endet, ihr arbeitet auf B weiter.</li>
+      <li>A spielt die neue Version ein und wird geprüft. Dann steht die Meldung „Update auf … abgeschlossen“. Die Rollen bleiben vertauscht.</li>
+    </ol>
+    <p><b>Update-Art „alle nacheinander“:</b> A baut die neue Version im Hintergrund, dann Countdown und Sperre. B wird eingefroren, A startet mit der neuen Version und spielt die Datenbank-Änderungen ein. Nach der Prüfung folgt die Freigabe, danach zieht B nach. Das ist kürzer vorbereitet, aber die Unterbrechung ist spürbar länger.</p>
+    <p><b>Wenn etwas scheitert:</b></p>
+    <ul>
+      <li><b>Vor der Sperre</b> (Spiegel scheitert): Der Spiegel geht auf den alten Stand zurück, die Version wird als fehlerhaft gemerkt, niemand hat etwas bemerkt.</li>
+      <li><b>In der Sperre</b>: Das System setzt zurück. Der eingefrorene Server wird wieder aktiv (alter Stand, alte Version), der andere kommt als Spiegel zurück und geht auf den alten Stand. Das Zurücksetzen gibt es <b>immer</b>, auch wenn schon Datenbank-Änderungen liefen. Daten gehen nicht verloren, weil in der Sperre niemand schreibt – auch keine Schnittstelle.</li>
+      <li><b>Nach der Freigabe</b> (A scheitert): zweiter Versuch, danach wird A neu von B aufgesetzt. Scheitert auch das, kommt ein Alarm.</li>
+      <li><b>Neustart während der Sperre:</b> Der Auftrag liegt auf beiden Servern, der aktive setzt ihn fort. Vor dem Tausch wird abgebrochen. Startet ein Server in der Prüfphase neu, läuft das Update weiter statt sofort zurückzusetzen – hängt es, erzwingen Prüffrist und Höchstdauer das Zurücksetzen.</li>
+      <li><b>Echter Ausfall oder Übernahme von Hand:</b> Der Auftrag wird abgebrochen, es folgt kein weiterer automatischer Schritt.</li>
+    </ul>
+    <p><b>Wichtig zu wissen:</b></p>
+    <ul>
+      <li>Während der Sperre werden <b>alle Benutzer abgemeldet – auch Systembenutzer</b> (Terminals, Leitstand-Anzeigen). Sie müssen sich nach jeder Wartung neu anmelden.</li>
+      <li>Die Sperre kann die <b>Höchstdauer</b> (Standard 30 Minuten) um bis zu die <b>Prüffrist</b> (Standard 10 Minuten) überschreiten, weil das Zurücksetzen nach Ablauf selbst Zeit braucht.</li>
+      <li>Solange die Server unterschiedliche Versionen haben, bleibt die automatische Übernahme gesperrt („Versionen unterschiedlich“).</li>
+      <li>Ein Spiegel, dessen Datenbank neuer ist als sein Programm, zeigt „Programm zu alt für diese Datenbank“ und sperrt sich.</li>
+      <li>Meldungen (Fortschritt, Abbruch, Alarm) gehen an die Administratoren.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-lock"></i> Wartungsbildschirm und Abbrechen</b>
+    <p>Vor der Sperre zeigt ein <b>Band</b> auf jeder Seite den Countdown. Mit der Sperre erscheint der <b>Wartungsbildschirm</b>: „Automatische Wartung läuft“, die Versionen („0.77.7 → 0.77.8“), ein Fortschrittsbalken (Abmelden → Rollentausch → Datenbank aktualisieren → Prüfen → Freigabe), ein Satz zum Geschehen und die geschätzte Restzeit. Beim Zurücksetzen steht dort „Wartung wird rückgängig gemacht“. Antwortet der Server kurz nicht (Neustart, Tausch), bleibt der Bildschirm stehen und fragt alle 2 Sekunden neu. Am Ende folgt „Wartung beendet“ und die Weiterleitung zur Anmeldung. Schnittstellen (App, n8n, Webhooks) antworten in dieser Zeit mit „503 – später versuchen“.</p>
+    <ol class="hb-steps">
+      <li>Wer das Recht <b>„Automatische Wartung abbrechen“</b> hat, bleibt angemeldet. Alle anderen melden sich unten auf dem Bildschirm über <b>Als Administrator anmelden</b> an; ohne das Recht klappt das nicht.</li>
+      <li><b>Abbrechen und zurücksetzen</b> drücken und bestätigen. Das System setzt zurück und gibt frei; das Protokoll nennt deinen Namen. Die Version gilt dabei <i>nicht</i> als fehlerhaft.</li>
+      <li><b>Notbremse ohne PDH:</b> auf der Konsole des aktiven Servers <code>sudo pdh-ha update abort</code>. Den Stand zeigt <code>sudo pdh-ha update status</code>.</li>
+    </ol>
+    <p>Andere Seiten bleiben auch für Administratoren gesperrt. Scheitert das Zurücksetzen selbst, bleibt die Sperre bis zur Höchstdauer, dann kommt ein dringender Alarm.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-server"></i> Update auf dem Einzelserver</b>
+    <p>Ohne Verbund läuft das Update mit <b>Countdown und Sperre</b> (Wartungsbildschirm wie oben). Vorher prüft das System, dass die letzte Grundsicherung in Ordnung ist und mindestens 2 GB frei sind. Das Programm legt die „Sicherung vor dem Update“ an, startet mit der neuen Version neu und spielt die Datenbank-Änderungen ein. Scheitert die Prüfung (Frist 10 Minuten), kommt <b>automatisch der alte Stand zurück</b>: Datenbank aus der Sicherung, alte Version, Neustart. Die Version wird als fehlerhaft gemerkt. Das Wartungsfenster steht dort zunächst auf <i>aus</i>.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-eye-check"></i> Zeuge aktualisiert sich selbst</b>
+    <p>Der Zeuge folgt den Servern: Haben beide Server denselben Stand, der Zeuge nicht, und läuft kein Auftrag, zieht er nach spätestens fünf Minuten nach.</p>
+    <ol class="hb-steps">
+      <li><b>Zeuge als Container:</b> Der Dienst <code>updater</code> aus <code>deploy/ha-witness/compose.yaml</code> baut den Zeugen neu. Er braucht dafür den <b>Docker-Socket</b> (<code>/var/run/docker.sock</code>) – damit kann der Helfer Container auf dem Rechner steuern. Das ist so gewollt, gib dem Rechner deshalb keine weitere Aufgabe. Schlüssel und Beitritt bleiben erhalten. Zeigt der Zeuge nach dem Neubau nicht innerhalb von 2 Minuten beide Server, baut der Helfer den alten Stand zurück.</li>
+      <li><b>Zeuge als Programm:</b> <code>pdh-ha</code> startet <code>pdh-ha-join.sh --update &lt;Commit&gt; --witness</code> selbst.</li>
+      <li><b>Abschalten:</b> beim Container <code>PDH_HA_AUTOUPDATE=0</code>, beim Programm <code>PDH_HA_SELFUPDATE=0</code>.</li>
+      <li><b>Einmalig von Hand</b>: Hat dein Zeuge noch eine ältere <code>compose.yaml</code> ohne <code>updater</code>, die neue Datei einspielen und den Container einmal neu starten (Notweg unten).</li>
+    </ol>
+    <p>Als Sicherheitsnetz zeigt der Reiter <b>„Zeuge veraltet (…)“</b> mit dem Befehl zum Kopieren, wenn der Zeuge 30 Minuten nach einem abgeschlossenen Update noch auf dem alten Stand ist. Ein veralteter Zeuge sperrt weder Update noch Umschaltung.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-refresh"></i> Notweg: Server von Hand nachziehen</b>
+    <p>Normalerweise ist das nicht mehr nötig. Zeigt die Übersicht trotzdem „Versionen unterschiedlich“ (etwa wenn ein Server beim Update nicht erreichbar war), zieht man ihn so von Hand nach. Der Befehl steht eingeklappt auch im Reiter Ausfallschutz.</p>
     <ol class="hb-steps">
       <li>Den <b>Commit</b> des ersten Servers ablesen: in der Übersicht in Klammern hinter seiner Version, oder dort <code>pdh-ha version</code> ausführen.</li>
       <li><b>Zweiter Server</b> und <b>Zeugen-Rechner</b> (Programm): <code>sudo bash /opt/pdh-ha-src/scripts/pdh-ha-join.sh --update &lt;Commit&gt;</code></li>
       <li><b>Zeuge als Container</b>: im PDH-Quelltext auf denselben Stand gehen (<code>git fetch</code>, <code>git checkout &lt;Commit&gt;</code>), dann in <code>deploy/ha-witness</code> <code>PDH_HA_COMMIT=&lt;Commit&gt; docker compose up -d --build</code> (der Commit erscheint dann auch in der Übersicht). <code>PDH_HA_ADDR</code> und Code sind nicht nötig – sie liegen schon in den Volumes.</li>
       <li>Nach kurzer Zeit verschwindet die Warnung „Versionen unterschiedlich“.</li>
     </ol>
-    <p><b>Der Zeuge zieht von selbst nach:</b> Haben beide Server denselben Stand, der Zeuge nicht, und läuft kein Update, aktualisiert sich der Zeuge nach spätestens fünf Minuten selbst. Beim Container übernimmt das der Dienst <code>updater</code> (Docker-Socket und Volume <code>ha-src</code>); er baut den Zeugen bei Misserfolg auf den alten Stand zurück. Beim Programm startet <code>pdh-ha</code> dafür <code>pdh-ha-join.sh --update &lt;Commit&gt; --witness</code>. Abschalten: Container <code>PDH_HA_AUTOUPDATE=0</code>, Programm <code>PDH_HA_SELFUPDATE=0</code>.</p></div>
+    <p>Der Zeuge zieht normalerweise von selbst nach (siehe „Zeuge aktualisiert sich selbst“). Dieser Weg ist nur der Notweg, etwa wenn die Selbst-Aktualisierung abgeschaltet ist.</p></div>
   <div class="hb-howto"><b><i class="ti ti-trash"></i> So entfernst du einen Server oder Zeugen</b>
     <ol class="hb-steps">
       <li>Das geht nur am ersten Server (dort, wo der Ausfallschutz eingerichtet wurde): Bereich <b>Knoten entfernen</b>.</li>
@@ -1982,7 +2051,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Adresse wird noch benutzt:</b> Antwortet ein anderes Gerät auf die Adresse, nimmt der Server sie nicht und meldet „Adresse … wird noch von einem anderen Gerät benutzt“. Er versucht es laufend weiter. Die Datenbank schaltet trotzdem um – der neue aktive Server ist dann über den Tunnel und seine eigene Adresse erreichbar.</li>
       <li><b>Entfernt</b> der Netzwerkdienst die Adresse (z. B. durch <code>netplan apply</code>), setzt <code>pdh-ha</code> sie nach wenigen Sekunden wieder.</li>
       <li><b>Geräte im Netz</b> erfahren den Wechsel sofort: Der neue aktive Server kündigt die Adresse im LAN an (zweimal, nach 5 s noch einmal) – auch als ARP-Antwort, damit Windows-Rechner sie übernehmen. Windows fragt danach zur Sicherheit erst beim alten Server nach und erreicht den neuen nach etwa 8–10 Sekunden (im Testverbund gemessen, Rechner im WLAN). Ein Gerät, das die Ankündigung verpasst, findet den neuen Server spätestens nach etwa 30 Sekunden von selbst.</li>
-      <li>Die Adresse braucht die Pakete <code>iproute2</code> und <code>iputils-arping</code>. Sie kommen beim Update von <code>pdh-ha</code> von selbst dazu – am ersten Server mit dem PDH-Update, an beigetretenen Servern mit dem Update-Befehl aus dem Reiter Ausfallschutz (siehe „Nach einem PDH-Update“). Fehlen sie trotzdem (z. B. ohne Internet beim Update), meldet <code>pdh-ha</code> „Paket … fehlt“; dann <code>sudo apt-get install iputils-arping iproute2</code>.</li>
+      <li>Die Adresse braucht die Pakete <code>iproute2</code> und <code>iputils-arping</code>. Sie kommen beim Update von <code>pdh-ha</code> von selbst dazu – am ersten Server mit dem PDH-Update, an beigetretenen Servern mit dem Update im Verbund (siehe „Update im Verbund und Wartungsfenster“; als Notweg „Server von Hand nachziehen“). Fehlen sie trotzdem (z. B. ohne Internet beim Update), meldet <code>pdh-ha</code> „Paket … fehlt“; dann <code>sudo apt-get install iputils-arping iproute2</code>.</li>
       <li>Der Zeuge bekommt die Adresse nie.</li>
     </ul></div>
   <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn der Test scheitert</b>

@@ -10,6 +10,27 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.8] – 2026-10-30
+
+### Neu
+- Update im Verbund: „Update installieren“ bringt beide Server und den Zeugen auf denselben Stand – wahlweise ohne Unterbrechung (mit Rollentausch) oder alle nacheinander; bei jedem Fehler setzt das System auf den bisherigen Stand zurück, auch nach Datenbank-Änderungen.
+- Wartungsfenster im Reiter Ausfallschutz: täglich oder wöchentlich nach der Grundsicherung spielt das System automatisch die neue Version ein; fehlerhafte Versionen werden gemerkt und übersprungen, bis eine neuere kommt oder ein Administrator sie wieder zulässt.
+- Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre, vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen (Notbremse auf der Konsole: `pdh-ha update abort`).
+- Der Zeuge zieht selbst nach, wenn beide Server auf demselben Stand sind (Container-Helfer `updater`, abschaltbar mit `PDH_HA_AUTOUPDATE=0`); der Reiter warnt „Zeuge veraltet“, falls er es nicht schafft.
+- Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollentausch im Fenster“).
+
+### Geändert
+- Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert.
+- Ein Spiegel, dessen Datenbank neuer ist als sein Programm, meldet „Programm zu alt für diese Datenbank“ und sperrt sich.
+- Der Befehl zum Nachziehen von Hand (`pdh-ha-join.sh --update`) ist jetzt nur noch der Notweg.
+
+### Behoben
+- Das Band am Spiegel verweist auf den Reiter Ausfallschutz.
+
+### Sicherheit
+- Neue Rechte „Wartungsfenster einstellen“ und „Automatische Wartung abbrechen“; Rollen mit den bisher zuständigen Rechten bekommen sie automatisch.
+- Während der Wartung werden alle Benutzer abgemeldet, auch Systembenutzer (Terminals, Leitstand-Anzeigen); nur Inhaber des Abbruch-Rechts bleiben angemeldet.
+
 ## [0.77.7] – 2026-10-29
 
 ### Behoben

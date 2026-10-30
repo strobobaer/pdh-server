@@ -645,6 +645,48 @@
 </figure>
 {{end}}
 
+{{define "hb-fig-verbundupdate"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 170" role="img" aria-label="Update im Verbund: Prüfung, Spiegel aktualisieren, Countdown, Sperre mit Rollentausch, Prüfung, Freigabe, zweiter Server aktualisieren; bei einem Fehler Zurücksetzen auf den alten Stand">
+  <rect class="bg" x="1" y="1" width="638" height="168" rx="8"/>
+  <rect class="acl" x="10" y="20" width="90" height="56" rx="8"/><text x="55" y="42" class="t-c t-b">1 Prüfen</text><text x="55" y="58" class="t-c t-m">alles grün?</text>
+  <rect class="acl" x="112" y="20" width="90" height="56" rx="8"/><text x="157" y="42" class="t-c t-b">2 Spiegel</text><text x="157" y="58" class="t-c t-m">neu einspielen</text>
+  <rect class="am" x="214" y="20" width="90" height="56" rx="8"/><text x="259" y="42" class="t-c t-b">3 Countdown</text><text x="259" y="58" class="t-c t-m">Band, 2 min</text>
+  <rect class="bg3" x="316" y="20" width="110" height="56" rx="8"/><text x="371" y="42" class="t-c t-b">4 Sperre</text><text x="371" y="58" class="t-c t-m">Rollentausch,</text><text x="371" y="70" class="t-c t-m">Datenbank</text>
+  <rect class="acl" x="438" y="20" width="90" height="56" rx="8"/><text x="483" y="42" class="t-c t-b">5 Prüfen</text><text x="483" y="58" class="t-c t-m">höchstens 10 min</text>
+  <rect class="gr" x="540" y="20" width="90" height="56" rx="8"/><text x="585" y="42" class="t-c t-b">6 Freigabe</text><text x="585" y="58" class="t-c t-m">dann 2. Server</text>
+  <path class="ar" d="M100 48 H110"/><path class="ar" d="M202 48 H212"/><path class="ar" d="M304 48 H314"/><path class="ar" d="M426 48 H436"/><path class="ar" d="M528 48 H538"/>
+  <path class="ln" d="M483 78 V104" stroke-dasharray="4 3"/><path class="ln" d="M371 78 V104" stroke-dasharray="4 3"/>
+  <rect class="rd" x="316" y="106" width="212" height="44" rx="8"/><text x="422" y="126" class="t-c t-b">Fehler oder Abbruch</text><text x="422" y="141" class="t-c t-m">zurück auf den alten Stand – immer</text>
+  <text x="16" y="108" class="t-m">Bis Schritt 3 arbeiten alle</text><text x="16" y="122" class="t-m">weiter am bisherigen Server.</text>
+  <text x="16" y="146" class="t-m">In Schritt 4–5 sind alle abgemeldet.</text>
+</svg>
+<figcaption>Der Spiegel wird zuerst aktualisiert. Nach Countdown und kurzer Sperre mit Rollentausch wird geprüft; bei jedem Fehler setzt das System auf den bisherigen Stand zurück.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-wartungsfenster"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 210" role="img" aria-label="Reiter Ausfallschutz mit dem Kasten Wartungsfenster: Auswahl täglich oder wöchentlich, Beginn, Uhrzeit, Update-Art, nächstes Fenster, Ergebnis des letzten Fensters und gemerkte fehlerhafte Versionen">
+  <rect class="bg" x="1" y="1" width="638" height="208" rx="8"/>
+  <text x="16" y="22" class="t-m">Übersicht</text><text x="90" y="22" class="t-b">Ausfallschutz</text><text x="190" y="22" class="t-m">Sicherung</text>
+  <rect class="bg3" x="12" y="32" width="616" height="168" rx="8"/>
+  <text x="26" y="54" class="t-b">📅 Wartungsfenster</text>
+  <text x="26" y="72" class="t-m">Nächstes Fenster: Do 31.10., nach der Grundsicherung, ca. 02:30 · Letztes: 0.77.8 eingespielt</text>
+  <rect class="win" x="26" y="82" width="130" height="22" rx="4"/><text x="34" y="97">täglich</text>
+  <rect class="win" x="166" y="82" width="170" height="22" rx="4"/><text x="174" y="97">nach dem Abgleich</text>
+  <rect class="win" x="346" y="82" width="100" height="22" rx="4"/><text x="354" y="97">bis 05:00</text>
+  <rect class="win" x="456" y="82" width="160" height="22" rx="4"/><text x="464" y="97">ohne Unterbrechung</text>
+  <rect class="ctl" x="26" y="116" width="12" height="12" rx="2"/><text x="44" y="126">Neue Version einspielen</text>
+  <text x="26" y="150" class="t-m">Countdown 2 min · Höchstdauer der Sperre 30 min</text>
+  <text x="26" y="172" class="t-b">Fehlerhafte Versionen</text><text x="170" y="172" class="t-m">0.77.9 (Prüfung gescheitert)</text>
+  <rect class="acl" x="480" y="158" width="130" height="22" rx="4"/><text x="545" y="173" class="t-c">Wieder zulassen</text>
+  <rect class="acl" x="540" y="38" width="76" height="22" rx="4"/><text x="578" y="53" class="t-c">Speichern</text>
+</svg>
+<figcaption>Der Kasten „Wartungsfenster“ im Reiter Ausfallschutz: Zeitplan und Update-Art oben, darunter nächstes und letztes Fenster sowie gemerkte fehlerhafte Versionen.</figcaption>
+</figure>
+{{end}}
+
 {{define "hb-fig-spiegelband"}}
 <figure class="hb-fig">
 <svg viewBox="0 0 640 110" role="img" aria-label="Seite am Spiegel: oben ein oranges Band mit Spiegel nur lesen, Datenstand und Link zum aktiven Server, darunter die gewohnte Seite">
