@@ -300,7 +300,7 @@ type Handler struct {
 	mqttImport       *mqttimport.Manager
 	exportCron       *scheduler.CronManager
 	importPoll       *scheduler.IntervalManager
-	toolAct          toolActivity // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
+	toolAct          toolActivity       // offene Admin-Werkzeuge je Sitzung (admin_tool_activity.go)
 	streams          context.Context    // endet beim Beenden: Dauerverbindungen (streams.go)
 	closeStreams     context.CancelFunc // beendet streams
 	streamsMu        sync.Mutex         // schützt streams/closeStreams (cutStreams ersetzt sie)
@@ -397,8 +397,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/inventory", h.Inventory)
 	// Lieferschein scannen / Bauteil erkennen (part_scan.go, part_scan_web.go)
 	r.Get("/inventory/scan", h.InventoryScanPage)
-	r.Get("/inventory/lookup", h.InventoryLookupWeb) // Barcode → Teil
-	r.Get("/scan", h.ScanWeb)                         // Widget „Scannen“: Code → Anlage, Teil, Kanban (scan.go)
+	r.Get("/inventory/lookup", h.InventoryLookupWeb)   // Barcode → Teil
+	r.Get("/scan", h.ScanWeb)                          // Widget „Scannen“: Code → Anlage, Teil, Kanban (scan.go)
 	r.Get("/inventory/booking/refs", h.BookingRefsWeb) // offene Vorgänge für Ausbuchung/Reservierung
 	r.Post("/inventory/scan/{kind:delivery|part}", h.InventoryScanUploadWeb)
 	r.Get("/inventory/scan/{id}", h.InventoryScanDetail)
@@ -455,7 +455,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/tasks/{id}/time/start", h.TaskStartTime)
 	r.Get("/projects", h.ProjectsPage)
 	r.Get("/projects/{id}", h.ProjectDetail)
-	h.maintenanceRoutes(r) // Wartung (maintenance_web.go)
+	h.maintenanceRoutes(r)     // Wartung (maintenance_web.go)
 	r.Get("/shifts", h.Shifts) // → Planer
 	// Planer: Schichtplan, Urlaub & Abwesenheit, Wartungsplanung, Modelle & Vorlagen (planner*.go)
 	r.Get("/planner", h.PlannerPage)
@@ -468,12 +468,12 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/ms/{id}/{action}", h.MSActionWeb)
 	r.Post("/planner/shifts/cell", h.PlannerCellWeb)
 	r.Post("/planner/shifts/copy-week", h.PlannerCopyWeekWeb)
-	r.Get("/planner/grid-view", h.ShiftGridWeb) // Schichtplan-Raster fürs Dashboard-Widget (shift_grid.go)
+	r.Get("/planner/grid-view", h.ShiftGridWeb)        // Schichtplan-Raster fürs Dashboard-Widget (shift_grid.go)
 	r.Post("/planner/grid/move", h.PlannerGridMoveWeb) // Eintrag ziehen: verschieben/kopieren (planner_duties.go)
 	r.Post("/planner/grid/fill", h.PlannerGridFillWeb) // Eintrag am Rand über weitere Tage ziehen
 	r.Post("/planner/duties/cell", h.PlannerDutyCellWeb)
 	r.Post("/planner/absences/{id}/extend", h.PlannerAbsenceExtendWeb) // im Kalender am Rand ziehen
-	r.Post("/calendar/move", h.CalendarMoveWeb)                         // Fälligkeit im Kalender verschieben
+	r.Post("/calendar/move", h.CalendarMoveWeb)                        // Fälligkeit im Kalender verschieben
 	r.Post("/planner/duty-types/{id}", h.PlannerDutyTypeSaveWeb)
 	r.Post("/planner/duty-types/{id}/delete", h.PlannerDutyTypeDeleteWeb)
 	r.Post("/planner/absences", h.PlannerAbsenceCreateWeb)
@@ -562,7 +562,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/time/{id}/edit-web", h.TimeEditWeb)
 	r.Post("/records/{refType}/{id}/people", h.RecordPeopleWeb) // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Get("/records/{refType}/{id}/group-options", h.RecordGroupOptionsWeb)
-	r.Post("/records/{refType}/{id}/group", h.RecordGroupWeb) // war PUT, wird von Cloudflare/Nginx blockiert
+	r.Post("/records/{refType}/{id}/group", h.RecordGroupWeb)                // war PUT, wird von Cloudflare/Nginx blockiert
 	r.Post("/records/{refType}/{id}/plant-stopped", h.RecordPlantStoppedWeb) // „Anlage steht“ (push.go)
 	// Push-Benachrichtigungen aufs Handy (push.go)
 	r.Get("/push/key", h.PushKeyWeb)
@@ -812,7 +812,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/costcenters/{id}/active", h.CostCenterActiveWeb)
 	r.Get("/statistics", h.StatisticsPage)
 	r.Get("/statistics/{id}", h.StatisticsViewPage)
-	r.Handle("/grafana", http.HandlerFunc(h.GrafanaProxy))   // Grafana hinter dem PDH (grafana_proxy.go)
+	r.Handle("/grafana", http.HandlerFunc(h.GrafanaProxy)) // Grafana hinter dem PDH (grafana_proxy.go)
 	r.Handle("/grafana/*", http.HandlerFunc(h.GrafanaProxy))
 	r.Handle("/code", http.HandlerFunc(h.CodeServerProxy)) // VS Code im Browser, nur Admins (codeserver_proxy.go)
 	r.Handle("/code/*", http.HandlerFunc(h.CodeServerProxy))
@@ -1140,7 +1140,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		IdleTimeoutMinutes:     h.rbac.IdleTimeoutMinutes(),
 		OverrideTimeoutMinutes: h.rbac.OverrideTimeoutMinutes(),
 		IsAdmin:                u.Role == users.RoleAdmin,
-		CanManageUsers:        h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
+		CanManageUsers:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_users"),
 		CanManageRoles:         h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.manage_roles"),
 		CanManageLeitstand:     h.rbac.HasPermissionForUser(u.ID, string(u.Role), permLeitstand),
 		CanImport:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "import.read"),
@@ -1563,7 +1563,7 @@ func (h *Handler) buildDashboardGantt(ctx context.Context, now time.Time) []Gant
 				ID: m.ID, RefType: "maintenance", Title: m.Title,
 				StartISO: start.Format("2006-01-02"), EndISO: end.Format("2006-01-02"),
 				IsProvisional: false, IsDone: isDone, IsRunning: m.Status == maintenance.TaskInProgress, Color: "#c99a3c", // synchron mit dem Leitstand-Zeitstrahl
-				IsUpcoming: maintUpcoming(m, now),
+				IsUpcoming:      maintUpcoming(m, now),
 				DetailURL:       "/maintenance/tasks/" + m.ID,
 				DueDateEndpoint: "/api/v1/maintenance/tasks/" + m.ID + "/due-date",
 			})
@@ -2321,7 +2321,7 @@ func (h *Handler) FaultDetail(w http.ResponseWriter, r *http.Request) {
 	data := FaultDetailData{
 		BaseData: base,
 		Users:    h.userOptions(ctx),
-		History: h.recordHistory(ctx, "fault", id),
+		History:  h.recordHistory(ctx, "fault", id),
 		Fault: FaultDetailView{
 			ID: fault.ID, Title: fault.Title,
 			Description:      fault.Description,
@@ -2674,15 +2674,15 @@ type StorageNodeView struct {
 
 type StoragePageData struct {
 	BaseData
-	Tree         []StorageNodeView
-	Stats        map[string]int
-	Targets      []storageTarget // Ziel-Auswahl für Sammelanlegen/Kopieren (storage_bulk.go)
+	Tree    []StorageNodeView
+	Stats   map[string]int
+	Targets []storageTarget // Ziel-Auswahl für Sammelanlegen/Kopieren (storage_bulk.go)
 	// Sammelanlegen: Dialog nach dem Absenden offen lassen (Ergebnis, „Fertig“), Ziel hervorheben
 	BulkOpen          bool
 	BulkDone, BulkErr string
 	OpenID            string
-	CanEdit      bool
-	Message, Err string
+	CanEdit           bool
+	Message, Err      string
 }
 
 // storageTypeIcon: Symbol des Lagertyps (icons.go, änderbar unter /admin/icons).
@@ -3324,9 +3324,9 @@ type RolesPageData struct {
 	Roles            []RoleColumn
 	PermissionGroups []PermissionGroup
 	PermissionCount  int
-	Matrix           map[string]map[string]bool // roleID -> permissionID -> granted
+	Matrix           map[string]map[string]bool   // roleID -> permissionID -> granted
 	MatrixDept       map[string]map[string]string // roleID -> permissionID -> Abteilung ("" = alle)
-	CanGrant         map[string]bool            // permKey -> darf die handelnde Person vergeben (rbac_guard.go)
+	CanGrant         map[string]bool              // permKey -> darf die handelnde Person vergeben (rbac_guard.go)
 	NextRoleLevel    int
 	Departments      []deptView
 	DeptNames        map[string]string   // departmentID -> Name

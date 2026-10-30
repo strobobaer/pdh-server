@@ -6,8 +6,8 @@
 package scheduler
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"

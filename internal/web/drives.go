@@ -261,7 +261,9 @@ func resolveDataPath(p string) string {
 
 // ── Mount-Dienst (Update-Agent) ─────────────────────────────
 
-func (h *Handler) driveAgentConfigured() bool { return h.updateAgentURL != "" && h.updateAgentToken != "" }
+func (h *Handler) driveAgentConfigured() bool {
+	return h.updateAgentURL != "" && h.updateAgentToken != ""
+}
 
 func (h *Handler) driveAgent(ctx context.Context, path string, body any) error {
 	if !h.driveAgentConfigured() {

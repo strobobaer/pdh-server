@@ -316,7 +316,7 @@ func main() {
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
 	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted, Reason: mirrorReason}) // vor Routes(), danach unveränderlich
-	webHandler.RegisterMaintenanceProtocol() // Wartungsprotokoll (PDF) an der Anlage
+	webHandler.RegisterMaintenanceProtocol()                                                         // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
 		ClientID:          cfg.Microsoft.ClientID,
@@ -344,8 +344,8 @@ func main() {
 		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
-		webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
-		webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
+		webHandler.StartNextcloudAdminSync(context.Background())                         // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
+		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
 		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
 		webHandler.StartDriveMonitor(context.Background())
