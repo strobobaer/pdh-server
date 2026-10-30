@@ -370,7 +370,7 @@ func TestHAInstallScriptContent(t *testing.T) {
 	// vor dem Agent-Neustart und außerhalb seiner cgroup
 	i := strings.Index(us, "systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-")
 	k := strings.Index(us, "--unit=pdh-update-agent-restart")
-	if !strings.Contains(us, "if [[ -x /usr/local/bin/pdh-ha ]]") || i < 0 || k < 0 || i > k {
+	if !strings.Contains(us, `if [[ -x "$pdh_ha_bin" ]]`) || !strings.Contains(us, "/usr/local/bin/pdh-ha") || i < 0 || k < 0 || i > k {
 		t.Error("install_update.sh baut pdh-ha nicht vor dem Agent-Neustart per systemd-run")
 	}
 	// systemd-run --pipe zeigt die Ausgabe direkt, ein Journal der Einmal-Unit gibt es nicht
