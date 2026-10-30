@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -173,6 +174,13 @@ func (a *updateAgent) startSingleJob(ctx context.Context, source string, force b
 	if !ok {
 		hints = append(hints, "Trotz „"+reason+"“ gestartet")
 	}
+	if n, known := a.freeSpaceFn()(drStateDir()); known && n < ha.UpdateMinFree {
+		msg := "Weniger als 2 GB frei für die Sicherung vor dem Update (" + drStateDir() + ")"
+		if !force {
+			return nil, jobNotReady{reason: msg, hints: hints}
+		}
+		hints = append(hints, "Trotz „"+msg+"“ gestartet")
+	}
 	oldVersion, _ := a.git(ctx, "show", old+":VERSION")
 	win := ws.Window
 	if win.Validate() != nil {
@@ -290,8 +298,18 @@ func (a *updateAgent) jobPrepare(ctx context.Context, s *singleJob) {
 		return
 	}
 	if err := a.jobScript(ctx, "--commit", j.Target, "--no-restart"); err != nil {
-		a.jobUndoCheckout(ctx, s)
-		a.jobFinish(s, ha.UpFailed, "Neue Version konnte nicht gebaut werden: "+err.Error(), true)
+		// Nur ein Fehler beim Bauen spricht gegen X. Abruf/Netz, Ziel nicht im
+		// Zweig oder ein anderer Lauf nicht – der Checkout steht dann noch auf Alt.
+		head, herr := a.git(ctx, "rev-parse", "HEAD")
+		switch {
+		case errors.Is(err, errUpdateBusy):
+			a.jobFinish(s, ha.UpFailed, err.Error(), false)
+		case herr == nil && head == j.Old[jobSelf]:
+			a.jobFinish(s, ha.UpFailed, "Neue Version nicht abgerufen: "+err.Error(), false)
+		default:
+			a.jobUndoCheckout(ctx, s)
+			a.jobFinish(s, ha.UpFailed, "Neue Version konnte nicht gebaut werden: "+err.Error(), herr == nil)
+		}
 		return
 	}
 	j.TargetVersion, _ = a.git(ctx, "show", j.Target+":VERSION")
@@ -314,7 +332,7 @@ func (a *updateAgent) jobLocked(ctx context.Context, s *singleJob) {
 	db, err := a.jobDBEnv()
 	if err == nil {
 		db["PDH_UPD_COMMIT"] = j.Target
-		db["PDH_UPD_NOT_BEFORE"] = j.LockedAt.UTC().Format(time.RFC3339)
+		db["PDH_UPD_NOT_BEFORE"] = strconv.FormatInt(j.LockedAt.Unix(), 10) // Unix-Sekunden (R16)
 		err = a.jobHost(ctx, jobLockScript, db)
 	}
 	if err != nil {
@@ -329,6 +347,11 @@ func (a *updateAgent) jobLocked(ctx context.Context, s *singleJob) {
 	s.Finishing = true
 	a.jobPut(*s) // vor --finish speichern: der Agent startet danach neu
 	if err := a.jobScript(ctx, "--finish"); err != nil {
+		if errors.Is(err, errUpdateBusy) {
+			s.Finishing = false // nichts eingesetzt
+			a.jobAbandon(ctx, s, err.Error())
+			return
+		}
 		a.jobRollback(s, "Neue Version konnte nicht eingesetzt werden: "+err.Error(), true)
 		return
 	}
@@ -369,13 +392,18 @@ func (a *updateAgent) jobRollbackStep(ctx context.Context, s *singleJob) {
 				log.Printf("update: pdh nicht gestoppt: %v", err)
 			}
 			s.RbStep = rbRestore
-		case rbRestore:
-			db, err := a.jobDBEnv()
-			if err == nil {
-				db["PDH_UPD_DUMP"] = s.Dump
-				err = a.jobHost(ctx, jobRestoreScript, db)
+			if a.pdhActive(ctx) {
+				a.sleepFn()(5 * time.Second)
+				if a.pdhActive(ctx) {
+					// Nie unter einem laufenden pdh die Datenbank tauschen.
+					const msg = "pdh ließ sich nicht stoppen – Datenbank nicht zurückgespielt"
+					log.Printf("update: ALARM: %s", msg)
+					j.Result += "; " + msg
+					s.RbStep = rbScript
+				}
 			}
-			if err != nil {
+		case rbRestore:
+			if err := a.jobRestoreDB(ctx, s); err != nil {
 				j.Result += "; Datenbank nicht zurückgespielt: " + err.Error()
 			}
 			s.RbStep = rbScript
@@ -476,19 +504,29 @@ func (a *updateAgent) abortSingleJob(by string) error {
 	if by == "" {
 		by = "Administrator"
 	}
+	a.sj.saveMu.Lock()
+	defer a.sj.saveMu.Unlock()
 	a.sj.mu.Lock()
-	s := a.sj.job
-	a.sj.mu.Unlock()
+	j := &a.sj.job.Job
 	switch {
-	case jobEnded(s.Job):
+	case jobEnded(*j):
+		a.sj.mu.Unlock()
 		return errors.New("Kein Update-Auftrag aktiv")
-	case s.Job.Phase == ha.UpRollback || s.Job.Phase == ha.UpRelease:
+	case j.Phase == ha.UpRollback || j.Phase == ha.UpRelease:
+		a.sj.mu.Unlock()
 		return errors.New("Das Update wird bereits beendet bzw. zurückgesetzt")
-	case s.Job.AbortedBy != "":
+	case j.AbortedBy != "":
+		a.sj.mu.Unlock()
 		return nil
 	}
-	s.Job.AbortedBy = by
-	a.jobPut(s)
+	// nur das Feld am aktuellen Auftrag – nie eine ältere Kopie zurückschreiben
+	j.AbortedBy = by
+	j.Seq++
+	s := a.sj.job
+	a.sj.mu.Unlock()
+	if err := writeStateJSON(singleJobFile(), s); err != nil {
+		log.Printf("update: update-job.json nicht gespeichert: %v", err)
+	}
 	log.Printf("update: Abbruch durch %s", by)
 	return nil
 }

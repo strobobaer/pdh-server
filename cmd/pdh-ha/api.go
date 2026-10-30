@@ -57,8 +57,9 @@ type apiStatus struct {
 	Access         apiAccess   `json:"access"`
 
 	// Update im Verbund: Auftrag, Phase, Sperre; als fehlerhaft gemerkte Commits
-	Update ha.UpdateView `json:"update"`
-	Faulty []string      `json:"faulty"`
+	Update        ha.UpdateView `json:"update"`
+	Faulty        []string      `json:"faulty"`
+	WindowLastRun time.Time     `json:"window_last_run"` // Beginn des letzten Wartungsfensters im Verbund (Null = nie)
 }
 
 // apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.

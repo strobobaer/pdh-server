@@ -328,3 +328,33 @@ func TestFaultyClusterWide(t *testing.T) {
 		t.Fatal("alte Datei bleibt")
 	}
 }
+
+// Zeitplan-Start verbraucht das Fenster im ganzen Verbund (window_last_run),
+// damit nach einem Rollentausch der neue aktive Server nicht noch einmal beginnt.
+func TestAPIUpdateStartWindowLastRun(t *testing.T) {
+	d, fn, sock := updAPI(t)
+	v0 := d.cl.Version
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "knopf"})
+	if code != http.StatusOK || !d.cl.WindowLastRun.IsZero() || d.cl.Version != v0 {
+		t.Fatalf("Knopf darf das Fenster nicht verbrauchen: %d %v %v", code, m, d.cl.WindowLastRun)
+	}
+	d.up.job = ha.UpdateJob{}
+	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"})
+	if code != http.StatusOK || d.cl.WindowLastRun.IsZero() || d.cl.Version != v0+1 {
+		t.Fatalf("Zeitplan: %d %v last=%v v%d", code, m, d.cl.WindowLastRun, d.cl.Version)
+	}
+	if cl, _ := d.st.loadCluster(); !cl.WindowLastRun.Equal(d.cl.WindowLastRun) {
+		t.Fatalf("nicht gespeichert: %v", cl.WindowLastRun)
+	}
+	var pub *clusterConfig
+	for _, s := range fn.messages("cluster") {
+		pub = s.m.Cluster
+	}
+	if pub == nil || pub.WindowLastRun.IsZero() {
+		t.Fatalf("nicht verteilt: %+v", pub)
+	}
+	code, st := updCall(t, sock, http.MethodGet, "/v1/status", nil)
+	if code != http.StatusOK || st["window_last_run"] == nil || st["window_last_run"] == "0001-01-01T00:00:00Z" {
+		t.Fatalf("Status ohne window_last_run: %v", st["window_last_run"])
+	}
+}

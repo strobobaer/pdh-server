@@ -135,6 +135,18 @@ func TestWindowTickHandsToHA(t *testing.T) {
 			t.Fatal("passiver Server darf das Fenster nicht starten")
 		}
 	})
+	t.Run("schon begonnen", func(t *testing.T) {
+		a, _, _, _ := jobTestAgent(t)
+		haInstalled(t)
+		// Vor dem Rollentausch hat der frühere aktive Server das Fenster begonnen.
+		earlier := windowNow.Add(-40 * time.Minute).UTC().Format(time.RFC3339)
+		st := strings.Replace(verbundStatus(true, false, ""), `"faulty":`, `"window_last_run":"`+earlier+`","faulty":`, 1)
+		f := haFakeVerbundSocket(t, st)
+		a.windowTick(context.Background(), windowNow)
+		if len(f.got()) != 0 || !a.windowSnapshot().LastRun.IsZero() {
+			t.Fatalf("zweites Fenster in derselben Nacht: %v %+v", f.got(), a.windowSnapshot())
+		}
+	})
 	t.Run("fehlerhaft im Verbund", func(t *testing.T) {
 		a, _, _, _ := jobTestAgent(t)
 		haInstalled(t)
@@ -212,13 +224,34 @@ func TestWindowHoldsFileSync(t *testing.T) {
 	if a.dr.Running != "" || !a.dr.FilesTry.Equal(a.dr.LastFileSync) {
 		t.Fatalf("Abgleich trotz Fenster gestartet: running=%q", a.dr.Running)
 	}
-	// Fenster beendet: Abgleich wieder frei.
-	a.sj.mu.Lock()
-	a.sj.job.Job.Phase = ha.UpDone
-	a.sj.mu.Unlock()
-	a.windowTick(context.Background(), windowNow.Add(time.Minute))
-	if a.windowHoldsFiles() {
+	// Neustart des Agenten (Ende von --finish): Sperre des Abgleichs bleibt.
+	b := &updateAgent{mode: "systemd", repoDir: a.repoDir}
+	b.dr.Config = a.dr.Config
+	b.dr.LastBase, b.dr.LastFileSync, b.dr.FilesTry = a.dr.LastBase, a.dr.LastFileSync, a.dr.FilesTry
+	b.jobManual = true
+	b.windowLoad()
+	b.loadSingleJob()
+	if !b.jobView().Active || !b.windowHoldsFiles() {
+		t.Fatalf("nach Neustart: aktiv=%v hold=%v", b.jobView().Active, b.windowHoldsFiles())
+	}
+	b.wireJobFakes(&jobRec{fail: map[string]bool{}, on: map[string]func(){}}, &jobClock{t: windowNow})
+	b.windowTick(context.Background(), windowNow.Add(time.Minute))
+	b.drStartDue(b.dr.Config, windowNow.Add(time.Minute))
+	if !b.windowHoldsFiles() || b.dr.Running != "" || !b.dr.FilesTry.Equal(b.dr.LastFileSync) {
+		t.Fatalf("Abgleich nach Neustart gestartet: hold=%v running=%q", b.windowHoldsFiles(), b.dr.Running)
+	}
+	// Fenster beendet: Abgleich wieder frei (auch dauerhaft).
+	b.sj.mu.Lock()
+	b.sj.job.Job.Phase = ha.UpDone
+	b.sj.mu.Unlock()
+	b.windowTick(context.Background(), windowNow.Add(2*time.Minute))
+	if b.windowHoldsFiles() {
 		t.Fatal("Abgleich nach dem Fenster weiter angehalten")
+	}
+	c := &updateAgent{mode: "systemd", repoDir: a.repoDir}
+	c.windowLoad()
+	if c.windowHoldsFiles() {
+		t.Fatal("Freigabe des Abgleichs nicht gespeichert")
 	}
 }
 

@@ -15,12 +15,12 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"io"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
-	"strconv"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,8 +128,19 @@ func (d *daemon) readyObsLocked(partner, witness string, req updateStartReq) (ha
 // hindern (z. B. Zeuge nicht erreichbar). Ein nicht grüner Stand ist ein
 // notReadyError.
 func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
+	var after []plan
 	d.lock()
-	defer d.unlock()
+	hints, err := d.startUpdateReqLocked(req, &after)
+	d.unlock()
+	for _, pl := range after {
+		d.execute(context.Background(), pl)
+	}
+	return hints, err
+}
+
+// startUpdateReqLocked: Rumpf von startUpdate; Pläne zum Ausführen nach dem
+// Entsperren kommen in after.
+func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]string, error) {
 	if err := d.clusterEditable(); err != nil {
 		return nil, err
 	}
@@ -217,6 +228,18 @@ func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
 		d.event("info", "Rollentausch angelegt ("+src+")")
 	} else {
 		d.event("info", fmt.Sprintf("Update auf %s angelegt (%s, %s)", shortCommit(req.Commit), kind, src))
+	}
+	if src == srcZeitplan {
+		// Fenster dieser Nacht verbraucht – im ganzen Verbund, damit nach einem
+		// Rollentausch der neue aktive Server nicht noch einmal beginnt.
+		cl := d.cl
+		cl.WindowLastRun = d.wall()
+		cl.Version++
+		if pl, err := d.publishClusterLocked(cl); err != nil {
+			d.event("alarm", "Beginn des Wartungsfensters nicht gespeichert: "+err.Error())
+		} else {
+			*after = append(*after, pl)
+		}
 	}
 	return hints, nil
 }

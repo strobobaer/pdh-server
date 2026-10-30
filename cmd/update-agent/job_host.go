@@ -41,20 +41,62 @@ const jobUnlockScript = `set -euo pipefail
 psql -X -q -v ON_ERROR_STOP=1 -c "DELETE FROM app_settings WHERE key = 'update.backup_skip_commit'"
 `
 
-// Sicherung vor dem Update; erst nach vollständigem Schreiben unter dem Namen.
+// Sicherung vor dem Update; geprüft (lesbares Inhaltsverzeichnis) und erst
+// danach unter dem endgültigen Namen.
 const jobDumpScript = `set -euo pipefail
 umask 077
 pg_dump -Fc -f "$PDH_UPD_DUMP.part"
+test -s "$PDH_UPD_DUMP.part"
+pg_restore --list "$PDH_UPD_DUMP.part" >/dev/null
 mv -f "$PDH_UPD_DUMP.part" "$PDH_UPD_DUMP"
 `
 
-// Zurückspielen in einem Rutsch: scheitert es, bleibt die Datenbank, wie sie war.
-const jobRestoreScript = `set -euo pipefail
-test -s "$PDH_UPD_DUMP"
-pg_restore --clean --if-exists --no-owner --single-transaction -d "$PGDATABASE" "$PDH_UPD_DUMP"
+const (
+	jobStopScript     = `systemctl stop pdh`
+	jobIsActiveScript = `systemctl is-active --quiet pdh`
+)
+
+// Zurückspielen der Datenbank (R17): in eine frische Datenbank <db>_rueckweg
+// als Benutzer postgres (Eigentümer und Rechte aus der Sicherung), dann – nur
+// mit gestopptem pdh – Tausch der Namen in einem Rutsch; die gescheiterte
+// Datenbank bleibt als <db>_fehlgeschlagen_<Zeit> zur Untersuchung. Scheitert
+// ein Schritt vor dem Tausch, bleibt die Datenbank unberührt. Namen nur über
+// Umgebung und psql-Variablen.
+const jobRbPrelude = `set -euo pipefail
+unset PGHOST PGHOSTADDR PGPORT PGUSER PGPASSWORD PGDATABASE PGSSLMODE
+pgsu() { runuser -u postgres -- "$@"; }
 `
 
-const jobStopScript = `systemctl stop pdh`
+const jobRbCreateScript = jobRbPrelude + `pgsu psql -X -q -d postgres -v ON_ERROR_STOP=1 -v db="$PDH_UPD_DB" -v rb="$PDH_UPD_RB_DB" <<'SQL'
+SELECT pg_get_userbyid(datdba) AS owner, pg_encoding_to_char(encoding) AS enc, datcollate AS coll, datctype AS ctype
+  FROM pg_database WHERE datname = :'db' \gset
+DROP DATABASE IF EXISTS :"rb";
+CREATE DATABASE :"rb" WITH TEMPLATE template0 OWNER :"owner" ENCODING :'enc' LC_COLLATE :'coll' LC_CTYPE :'ctype';
+SQL
+`
+
+// Die Sicherung gehört root (0600): postgres liest sie über die Standardeingabe.
+const jobRbRestoreScript = jobRbPrelude + `test -s "$PDH_UPD_DUMP"
+pgsu pg_restore --exit-on-error -d "$PDH_UPD_RB_DB" < "$PDH_UPD_DUMP"
+`
+
+const jobRbTerminateScript = jobRbPrelude + `pgsu psql -X -q -d postgres -v ON_ERROR_STOP=1 -v db="$PDH_UPD_DB" <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = :'db' AND pid <> pg_backend_pid();
+SQL
+`
+
+// Beide Umbenennungen in einer Transaktion: entweder beide oder keine.
+const jobRbRenameScript = jobRbPrelude + `pgsu psql -X -q -d postgres -v ON_ERROR_STOP=1 -v db="$PDH_UPD_DB" -v rb="$PDH_UPD_RB_DB" -v failed="$PDH_UPD_FAILED_DB" <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN (:'db', :'rb') AND pid <> pg_backend_pid();
+BEGIN;
+ALTER DATABASE :"db" RENAME TO :"failed";
+ALTER DATABASE :"rb" RENAME TO :"db";
+COMMIT;
+SQL
+`
+
+// errUpdateBusy: install_update.sh läuft schon (anderer Lauf) – nichts geändert.
+var errUpdateBusy = errors.New("Ein anderes Update läuft gerade")
 
 // git: Befehl im Checkout (nur lesend; root liest das Repo des PDH-Benutzers,
 // daher safe.directory wie in install-update-agent.sh).
@@ -174,7 +216,7 @@ func (a *updateAgent) jobScript(_ context.Context, args ...string) error {
 		}
 	}
 	if _, ok := a.startUpdate(commit); !ok {
-		return errors.New("Ein anderes Update läuft gerade")
+		return errUpdateBusy
 	}
 	a.runUpdateHook(args)
 	a.mu.RLock()
@@ -229,6 +271,52 @@ func (a *updateAgent) pdhHealthy(ctx context.Context, wantVersion, wantCommit st
 		return errors.New("Datenbank-Änderungen nicht vollständig")
 	case h.Commit != "" && wantCommit != "" && !sameCommit(h.Commit, wantCommit):
 		return fmt.Errorf("Stand %s statt %s", shortSHA(h.Commit), shortSHA(wantCommit))
+	}
+	return nil
+}
+
+// pdhActive: läuft der Dienst pdh noch (systemctl is-active)?
+func (a *updateAgent) pdhActive(ctx context.Context) bool {
+	return a.jobHost(ctx, jobIsActiveScript, nil) == nil
+}
+
+func (a *updateAgent) sleepFn() func(time.Duration) {
+	if a.sleep != nil {
+		return a.sleep
+	}
+	return time.Sleep
+}
+
+// pgName: Datenbankname aus base und suffix, höchstens 63 Bytes (Postgres
+// kürzt sonst stillschweigend).
+func pgName(base, suffix string) string {
+	if n := 63 - len(suffix); len(base) > n {
+		base = base[:n]
+	}
+	return base + suffix
+}
+
+// jobRestoreDB: Datenbank aus der Sicherung vor dem Update zurückspielen (R17).
+func (a *updateAgent) jobRestoreDB(ctx context.Context, s *singleJob) error {
+	db := a.pdhEnv("PDH_DATABASE_NAME")
+	if db == "" {
+		return errors.New("PDH_DATABASE_NAME fehlt in .env")
+	}
+	env := map[string]string{
+		"PDH_UPD_DB":        db,
+		"PDH_UPD_RB_DB":     pgName(db, "_rueckweg"),
+		"PDH_UPD_FAILED_DB": pgName(db, "_fehlgeschlagen_"+a.now().Format("200601021504")),
+		"PDH_UPD_DUMP":      s.Dump,
+	}
+	for _, step := range []struct{ script, what string }{
+		{jobRbCreateScript, "Datenbank für den Rückweg nicht angelegt"},
+		{jobRbRestoreScript, "Sicherung nicht eingespielt"},
+		{jobRbTerminateScript, "Verbindungen nicht getrennt"},
+		{jobRbRenameScript, "Datenbanken nicht getauscht"},
+	} {
+		if err := a.jobHost(ctx, step.script, env); err != nil {
+			return fmt.Errorf("%s (bisherige Datenbank unverändert): %w", step.what, err)
+		}
 	}
 	return nil
 }

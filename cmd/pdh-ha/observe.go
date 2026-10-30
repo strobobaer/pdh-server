@@ -173,6 +173,7 @@ func (d *daemon) statusLocked() apiStatus {
 	_, lockMax, _ := d.updateDurationsLocked()
 	st.Update = d.up.job.View(wall, lockMax, d.cl.Faulty)
 	st.Faulty = append(st.Faulty, d.cl.Faulty...)
+	st.WindowLastRun = d.cl.WindowLastRun
 	st.GatewayTargets = append(st.GatewayTargets, d.cl.GatewayTargets...)
 	st.Self = apiNode{
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,

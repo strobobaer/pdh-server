@@ -46,6 +46,7 @@ type updateAgent struct {
 	gitRun    func(ctx context.Context, args ...string) (string, error) // nil = git im repoDir; Test-Haken
 	clock     func() time.Time                                          // nil = time.Now; Test-Haken
 	freeSpace func(path string) (int64, bool)                           // nil = freeSpaceOS; Test-Haken
+	sleep     func(time.Duration)                                       // nil = time.Sleep; Test-Haken
 	jobManual bool                                                      // Tests: Schritte des Auftrags von Hand
 }
 

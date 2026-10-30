@@ -35,19 +35,21 @@ const (
 )
 
 // windowState: Zustand des Fensters (window.json). Window und Faulty gelten
-// nur auf dem Einzelserver; im Verbund führt pdh-ha beides.
+// nur auf dem Einzelserver; im Verbund führt pdh-ha beides. HoldFiles
+// überlebt den Neustart des Agenten am Ende von --finish.
 type windowState struct {
 	Window     ha.Window `json:"window"`
 	LastRun    time.Time `json:"last_run"`
 	LastResult string    `json:"last_result"`
 	Faulty     []string  `json:"faulty"`
+	HoldFiles  bool      `json:"hold_files"` // Beginn „vor dem Abgleich“: Abgleich wartet bis zum Ende des Fensters
+	HoldSince  time.Time `json:"hold_since"`
 }
 
 type winRuntime struct {
-	mu        sync.Mutex
-	st        windowState
-	holdSince time.Time // Beginn „vor dem Abgleich“: Abgleich wartet bis zum Ende des Fensters
-	saveMu    sync.Mutex
+	mu     sync.Mutex
+	st     windowState
+	saveMu sync.Mutex
 }
 
 func windowFile() string { return filepath.Join(drStateDir(), "window.json") }
@@ -126,8 +128,10 @@ func (a *updateAgent) windowUpdate(fn func(*windowState)) {
 func (a *updateAgent) windowHoldsFiles() bool {
 	a.win.mu.Lock()
 	defer a.win.mu.Unlock()
-	return !a.win.holdSince.IsZero()
+	return a.win.st.HoldFiles
 }
+
+func windowReleaseFiles(s *windowState) { s.HoldFiles, s.HoldSince = false, time.Time{} }
 
 // commitIn: Stand in der Liste (Kurzform ab 7 Zeichen in beide Richtungen).
 func commitIn(list []string, sha string) bool {
@@ -191,25 +195,29 @@ func (a *updateAgent) windowTick(ctx context.Context, now time.Time) {
 		return // pdh-ha eingerichtet, aber nicht erreichbar: kein Fenster
 	}
 	snap := a.windowSnapshot()
-	w, faulty, jobActive := snap.Window, snap.Faulty, a.singleJobActive()
+	w, faulty, jobActive, lastRun := snap.Window, snap.Faulty, a.singleJobActive(), snap.LastRun
 	if cluster {
 		if !hs.active() {
-			a.win.mu.Lock()
-			a.win.holdSince = time.Time{}
-			a.win.mu.Unlock()
+			if snap.HoldFiles {
+				a.windowUpdate(windowReleaseFiles)
+			}
 			return
 		}
 		w, faulty, jobActive = hs.window(), hs.Faulty, hs.Update.Active
+		// R18: Beginn im ganzen Verbund (pdh-ha) – nach einem Rollentausch
+		// beginnt der neue aktive Server in derselben Nacht nicht noch einmal.
+		// Die lokale Angabe bleibt für Auslassungen und abgelehnte Starts.
+		if hs.WindowLastRun.After(lastRun) {
+			lastRun = hs.WindowLastRun
+		}
 	}
-	a.win.mu.Lock()
-	if !a.win.holdSince.IsZero() && (!jobActive || now.Sub(a.win.holdSince) >= windowHoldMax) {
-		a.win.holdSince = time.Time{}
+	if snap.HoldFiles && (!jobActive || now.Sub(snap.HoldSince) >= windowHoldMax) {
+		a.windowUpdate(windowReleaseFiles)
 	}
-	a.win.mu.Unlock()
 	if jobActive {
 		return
 	}
-	due, skip := ha.WindowDue(w, a.windowObs(now), snap.LastRun, now)
+	due, skip := ha.WindowDue(w, a.windowObs(now), lastRun, now)
 	if skip != "" {
 		a.windowUpdate(func(s *windowState) { s.LastRun, s.LastResult = now, skip })
 		return
@@ -226,9 +234,7 @@ func (a *updateAgent) windowTick(ctx context.Context, now time.Time) {
 		result, started = a.windowSingle(ctx, w)
 	}
 	if started && w.Begin == ha.WindowBeforeFiles {
-		a.win.mu.Lock()
-		a.win.holdSince = now
-		a.win.mu.Unlock()
+		a.windowUpdate(func(s *windowState) { s.HoldFiles, s.HoldSince = true, now })
 	}
 	// Ein schon beendeter Auftrag hat sein Ergebnis selbst eingetragen.
 	if cluster || !started || a.singleJobActive() {
@@ -345,8 +351,9 @@ type haVerbund struct {
 	Settings   struct {
 		Window *ha.Window `json:"window"`
 	} `json:"settings"`
-	Update ha.UpdateView `json:"update"`
-	Faulty []string      `json:"faulty"`
+	Update        ha.UpdateView `json:"update"`
+	Faulty        []string      `json:"faulty"`
+	WindowLastRun time.Time     `json:"window_last_run"` // Beginn des letzten Fensters im Verbund (R18)
 }
 
 // active: wie drHASelf – Rolle aktiv und Datenbank schreibbar.

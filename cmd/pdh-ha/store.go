@@ -45,10 +45,11 @@ type clusterConfig struct {
 	Version        uint64        `json:"version"`
 	Nodes          []clusterNode `json:"nodes"`
 	Settings       ha.Settings   `json:"settings"`
-	Window         ha.Window     `json:"window"` // Wartungsfenster (Update im Verbund)
-	Faulty         []string      `json:"faulty"` // als fehlerhaft gemerkte Commits, im ganzen Verbund
+	Window         ha.Window     `json:"window"`          // Wartungsfenster (Update im Verbund)
+	Faulty         []string      `json:"faulty"`          // als fehlerhaft gemerkte Commits, im ganzen Verbund
+	WindowLastRun  time.Time     `json:"window_last_run"` // Beginn des letzten Wartungsfensters (Zeitplan), im ganzen Verbund
 	GatewayTargets []string      `json:"gateway_targets"`
-	Revoked        []string      `json:"revoked"` // Seriennummern hex
+	Revoked        []string      `json:"revoked"`     // Seriennummern hex
 	Swaps          int           `json:"swaps"`       // gelungene Rollentausche seit Einrichtung des Spiegels
 	SwapTested     bool          `json:"swap_tested"` // Pflicht-Testumschaltung (hin und zurück) erledigt
 	Access         accessConfig  `json:"access"`      // Zugangsweg: mitwandernde Adresse, Skripte
