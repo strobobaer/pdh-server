@@ -7,7 +7,7 @@
 {{if .Next.IsZero}}{{else}}<p class="vp-hint"><i class="ti ti-clock-play"></i> {{t "Nächster möglicher Beginn"}}: <b>{{.Next.Local.Format "02.01.2006 15:04"}}</b></p>{{end}}
 {{if .Last}}<p class="vp-hint"><i class="ti ti-history"></i> {{t "Letztes Ergebnis"}}: {{.Last}}</p>{{end}}
 {{if .Can}}
-<form method="post" action="{{.Action}}" class="vp-form">
+<form method="post" action="{{.Action}}" class="vp-form" style="margin-top:10px">
   <div><label class="form-label">{{t "Wartungsfenster"}}</label><select class="form-input" name="mode">
     <option value="off"{{if eq $w.Mode "off"}} selected{{end}}>{{t "aus"}}</option>
     <option value="daily"{{if eq $w.Mode "daily"}} selected{{end}}>{{t "täglich"}}</option>
