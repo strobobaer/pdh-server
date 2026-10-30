@@ -44,7 +44,7 @@ type pgActor struct {
 	passfile string // Pfad der passfile (Tests: Temp-Ordner)
 
 	mu        sync.Mutex
-	syncNames string // gewünschte synchronous_standby_names (Replikation, Task 8)
+	syncNames string      // gewünschte synchronous_standby_names (Replikation, Task 8)
 	mirror    *mirrorNote // zuletzt gemeldeter Ausgang des Spiegel-Starts (nil = keiner)
 }
 
@@ -183,6 +183,31 @@ func (a *pgActor) abandon(ctx context.Context) error {
 	return a.stopPG(ctx)
 }
 
+// seal (Update „nacheinander“, C3): am aktiven Server abschotten wie beim
+// Abgeben (pdh und Tunnel aus, nur lesend, Sitzungen beendet) und warten,
+// bis der Spiegel alles eingespielt hat – erst dann darf der Partner
+// eingefroren werden. Scheitert der Gleichstand, wird die Abschottung
+// zurückgenommen; der Server arbeitet weiter wie vorher.
+func (a *pgActor) seal(ctx context.Context) error {
+	undo := func(err error) error {
+		if uerr := a.unfence(ctx); uerr != nil {
+			err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
+		}
+		return err
+	}
+	if err := a.fence(ctx); err != nil {
+		return undo(err)
+	}
+	e := a.env()
+	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
+		if ctx.Err() == nil {
+			err = fmt.Errorf("Spiegel hat nicht aufgeholt (Frist %s)", a.wait)
+		}
+		return undo(err)
+	}
+	return nil
+}
+
 // freeze: Standby einfrieren – PostgreSQL stoppen, Daten und standby.signal
 // bleiben unverändert.
 func (a *pgActor) freeze(ctx context.Context) error {
@@ -218,6 +243,17 @@ func (a *pgActor) waitCaughtUp(ctx context.Context, app string) error {
 		case <-time.After(a.poll):
 		}
 	}
+}
+
+// frozenPrimary: Datenordner vorhanden und ohne standby.signal – ein
+// gestoppter Primary (eingefroren), kein Standby.
+func (a *pgActor) frozenPrimary() bool {
+	dd := filepath.FromSlash(a.pg.c.DataDir)
+	if _, err := os.Stat(filepath.Join(dd, "PG_VERSION")); err != nil {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(dd, "standby.signal"))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // becomeStandby: standby.signal und Konfiguration für den Partner als Quelle.
@@ -363,9 +399,20 @@ func (a *pgActor) fence(ctx context.Context) error {
 	return err
 }
 
+// unfence: wieder schreibbar, Dienste an. Ist die Datenbank eingefroren
+// (gestoppt, ohne standby.signal – etwa nach demoteFreeze, wenn die
+// Übernahme des Partners scheitert), wird sie zuerst wieder gestartet (I2):
+// sie ist der unveränderte eigene Stand, der Partner hat nicht übernommen.
 func (a *pgActor) unfence(ctx context.Context) error {
 	e := a.env()
-	if st := a.pg.status(ctx); st.State != "primary" {
+	st := a.pg.status(ctx)
+	if st.State == "stopped" && a.frozenPrimary() {
+		if err := a.pg.ctl(ctx, "start"); err != nil {
+			return fmt.Errorf("Eingefrorene Datenbank nicht gestartet: %w", err)
+		}
+		st = a.pg.status(ctx)
+	}
+	if st.State != "primary" {
 		return fmt.Errorf("Datenbank ist nicht schreibbar (%s) – Übernahme erzwingen nötig", st.State)
 	}
 	if err := a.pg.writeConf(ctx, a.primaryConf(e, false)); err != nil {

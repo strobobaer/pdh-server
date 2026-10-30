@@ -19,6 +19,9 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
+	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -176,6 +179,12 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 		}
 	} else if req.Commit == "" {
 		return nil, errors.New("Commit fehlt")
+	} else {
+		c, err := resolveCommit(req.Commit)
+		if err != nil {
+			return nil, err
+		}
+		req.Commit = c
 	}
 	if req.Force {
 		kind = ha.UpdateSequential // kurze Unterbrechung statt Rollentausch
@@ -190,6 +199,15 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 	var hints []string
 	if cur := d.up.job; cur.ID != "" && !upEnded(cur) {
 		return nil, errors.New("Ein Update-Auftrag läuft bereits")
+	}
+	if kind != ha.UpdateSwap {
+		// I5: ohne beide Alt-Stände gäbe es keinen Rückweg (auch nicht mit force)
+		switch {
+		case d.commit == "":
+			return nil, errors.New("Eigener Stand unbekannt – Update nicht möglich")
+		case d.views[partner].Last.Commit == "":
+			return nil, errors.New("Stand des Partners unbekannt – Update nicht möglich")
+		}
 	}
 	if d.busy.Load() {
 		// auch mit force: eine laufende Wiederherstellung/Neuspiegelung nie überlappen
@@ -242,6 +260,41 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 		}
 	}
 	return hints, nil
+}
+
+var (
+	fullCommitRe  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	shortCommitRe = regexp.MustCompile(`^[0-9a-f]{4,39}$`)
+	labCommitRe   = regexp.MustCompile(`^[0-9A-Za-z._-]{1,40}$`)
+)
+
+// gitRevParse vervollständigt einen gekürzten Commit im Quellordner des PDH
+// (nur lesend). Tests ersetzen ihn.
+var gitRevParse = func(repo, c string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "git", "-c", "safe.directory="+repo, "-C", repo,
+		"rev-parse", "--verify", "--quiet", c+"^{commit}").Output()
+	return strings.TrimSpace(string(out)), err
+}
+
+// resolveCommit (I5): Ziel des Auftrags als voller Commit (40 Hex-Zeichen);
+// gekürzt wird per git rev-parse im Quellordner vervollständigt. Im Labor
+// (PDH_HA_AGENT_CMD) gelten auch Namen wie „lab1“.
+func resolveCommit(c string) (string, error) {
+	switch {
+	case fullCommitRe.MatchString(c):
+		return c, nil
+	case os.Getenv("PDH_HA_AGENT_CMD") != "" && labCommitRe.MatchString(c):
+		return c, nil
+	case shortCommitRe.MatchString(c):
+		full, err := gitRevParse(pdhRepo(), c)
+		if err == nil && fullCommitRe.MatchString(full) {
+			return full, nil
+		}
+		return "", fmt.Errorf("Commit %s im Quellordner %s nicht gefunden", c, pdhRepo())
+	}
+	return "", errors.New("Ungültiger Commit (40 Hex-Zeichen, klein)")
 }
 
 func shortCommit(c string) string {

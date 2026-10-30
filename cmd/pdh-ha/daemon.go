@@ -163,7 +163,7 @@ type daemon struct {
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 
-	up  upState      // Update im Verbund (update_job.go)
+	up  upState     // Update im Verbund (update_job.go)
 	wsu selfUpdater // Zeuge als Programm zieht sich nach (witness_update.go)
 }
 

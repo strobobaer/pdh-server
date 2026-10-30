@@ -466,7 +466,7 @@ func TestFrozenNodeDataCurrent(t *testing.T) {
 	d, _ := upActive(t)
 	d.dataCurrent = false
 	j := rollingJob(ha.UpRollback, 3) // a ist Second: eingefroren
-	j.LockedAt = time.Now()
+	j.LockedAt, j.FrozenSynced = time.Now(), true
 	pg := &pgCtl{}
 	for _, c := range []struct {
 		phase ha.UpdatePhase
@@ -494,7 +494,7 @@ func TestForceAsyncWhileLocked(t *testing.T) {
 		t.Fatal("ohne Auftrag synchron erwartet")
 	}
 	j := rollingJob(ha.UpLocked, 3)
-	j.LockedAt, j.PhaseAt = time.Now(), time.Now()
+	j.LockedAt, j.PhaseAt, j.CmdAt = time.Now(), time.Now(), time.Now() // Tausch-Befehl gerade gesendet
 	d.mu.Lock()
 	d.up.job = j
 	d.mu.Unlock()

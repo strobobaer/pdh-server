@@ -20,6 +20,9 @@ import (
 // Socket-Schnittstelle läuft. Beide stehen auf dem Stand "x0".
 func updAPI(t *testing.T) (*daemon, *fakeNet, string) {
 	t.Helper()
+	// Kurznamen wie im Labor („x1“): resolveCommit nimmt sie nur mit
+	// Labor-Agent an (Prüfung echter Commits: TestResolveCommit).
+	t.Setenv("PDH_HA_AGENT_CMD", "lab-agent")
 	d, fn := upActive(t)
 	d.commit = "x0"
 	fn.setView("b", upPeerView("x0", ""))

@@ -79,6 +79,10 @@ func locked(kind UpdateKind, phase UpdatePhase, lockedAgo, phaseAgo time.Duratio
 	now := upT0.Add(time.Minute)
 	j.LockedAt = now.Add(-lockedAgo)
 	j.PhaseAt = now.Add(-phaseAgo)
+	// nach dem Tausch bzw. Einfrieren: Gleichstand bestätigt (C3);
+	// ein Tausch-Befehl ging mit dem Phasenbeginn raus (I2)
+	j.FrozenSynced = phase != UpLocked
+	j.CmdAt = j.PhaseAt
 	return j
 }
 
@@ -218,7 +222,7 @@ func TestUpdateStepTable(t *testing.T) {
 		{name: "pruefen vorher rolling ok", job: upJob(UpdateRolling, UpVerifyPrep),
 			obs: func() UpdateObs {
 				o := upObs("a", Active)
-				o.Partner.Commit, o.PartnerPDHOK, o.MirrorSync = upNew, true, true
+				o.Partner.Commit, o.PartnerPDHVersion, o.MirrorSync = upNew, upToVer, true
 				return o
 			}(),
 			phase: UpCountdown,
@@ -251,15 +255,15 @@ func TestUpdateStepTable(t *testing.T) {
 					}
 				}}
 		}(),
-		// Countdown vorbei, sequential → Locked, erst B einfrieren
+		// Countdown vorbei, sequential → Locked, erst A abschotten (Gleichstand), dann B einfrieren
 		func() upCase {
 			j := upJob(UpdateSequential, UpCountdown)
 			j.CountdownUntil = now
 			return upCase{name: "countdown sequential", job: j, obs: upObs("a", Active), phase: UpLocked,
-				acts: []UpdateAction{nodeOpA("b", OpFreeze, "")},
+				acts: []UpdateAction{localOpA("a", OpSeal, "")},
 				check: func(t *testing.T, j UpdateJob) {
-					if j.FreezeAcked || j.WaitOp != OpFreeze {
-						t.Errorf("FreezeAcked %v WaitOp %q", j.FreezeAcked, j.WaitOp)
+					if j.FreezeAcked || j.WaitOp != OpSeal || !j.Sealed {
+						t.Errorf("FreezeAcked %v WaitOp %q Sealed %v", j.FreezeAcked, j.WaitOp, j.Sealed)
 					}
 				}}
 		}(),
@@ -279,7 +283,7 @@ func TestUpdateStepTable(t *testing.T) {
 		// Locked sequential: eigener Commit X → VerifyNew
 		func() upCase {
 			j := locked(UpdateSequential, UpLocked, time.Minute, time.Minute)
-			j.FreezeAcked = true
+			j.FreezeAcked, j.FrozenSynced = true, true
 			o := upObs("a", Active)
 			o.SelfCommit = upNew
 			return upCase{name: "gesperrt sequential neu gestartet", job: j, obs: o, phase: UpVerifyNew}
@@ -291,7 +295,7 @@ func TestUpdateStepTable(t *testing.T) {
 		// sequential: pdh auf A ok → B auftauen
 		func() upCase {
 			j := locked(UpdateSequential, UpVerifyNew, 2*time.Minute, time.Minute)
-			j.FreezeAcked = true
+			j.FreezeAcked, j.FrozenSynced = true, true
 			o := upObs("a", Active)
 			o.SelfPDHOK = true
 			return upCase{name: "pruefen neu sequential ok", job: j, obs: o, phase: UpRelease,
@@ -453,7 +457,7 @@ func TestUpdateStepTable(t *testing.T) {
 		}(),
 		// Rollback: B (neu) wartet nach CmdSwapAbandon auf den Rücktausch
 		{name: "zuruecksetzen wartet auf Ruecktausch", job: locked(UpdateRolling, UpRollback, 12*time.Minute, time.Minute),
-			obs: upObs("b", Active), phase: UpRollback},
+			obs: func() UpdateObs { o := upObs("b", Active); o.Handover = true; return o }(), phase: UpRollback},
 		// Rollback: Ack ok und Spiegel → Failed, Sperre aus
 		func() upCase {
 			j := waiting(locked(UpdateRolling, UpRollback, 12*time.Minute, time.Minute), OpRollback, "b", 5)
@@ -815,7 +819,7 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 	// sequential: Einspielen auf A scheitert → A gibt ab (Rücktausch, B mit
 	// eingefrorenem Stand wird aktiv), X fehlerhaft.
 	j := waiting(locked(UpdateSequential, UpLocked, 2*time.Minute, 2*time.Minute), OpInstall, "a", 5)
-	j.FreezeAcked = true
+	j.FreezeAcked, j.FrozenSynced = true, true
 	o := upObs("a", Active)
 	o.Ack = ack(OpInstall, "a", false, 5)
 	got, acts := UpdateStep(j, o)
@@ -900,7 +904,7 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 func TestUpdateRollbackWaitsForOwnPrimary(t *testing.T) {
 	for _, kind := range []UpdateKind{UpdateRolling, UpdateSequential} {
 		j := locked(kind, UpRollback, 2*time.Minute, time.Second)
-		j.FreezeAcked = true
+		j.FreezeAcked, j.FrozenSynced = true, true
 		self := "a" // rolling: a ist Second (alter aktiver Server)
 		if kind == UpdateSequential {
 			self = "b" // sequential: b (eingefroren) wird aktiv

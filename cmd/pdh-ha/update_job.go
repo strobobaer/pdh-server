@@ -16,9 +16,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -176,11 +178,19 @@ func (d *daemon) setJobLocked(j ha.UpdateJob) {
 func (d *daemon) abortUpdate(by string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if j := d.up.job; j.ID == "" || upEnded(j) {
+	j := d.up.job
+	if j.ID == "" || upEnded(j) {
 		return errors.New("Kein Update-Auftrag offen")
 	}
 	if d.p.Role != ha.Active {
 		return errors.New("Abbrechen nur auf dem aktiven Server")
+	}
+	// I7: nicht still verwerfen – klar sagen, warum es nichts mehr abzubrechen gibt
+	switch j.Phase {
+	case ha.UpRollback:
+		return errors.New("Zurücksetzen läuft bereits")
+	case ha.UpRelease, ha.UpFollow:
+		return errors.New("Update ist schon freigegeben – die neue Version ist geprüft")
 	}
 	if by == "" {
 		by = "unbekannt"
@@ -211,12 +221,31 @@ func swapExpected(j ha.UpdateJob) bool {
 	return false
 }
 
-// frozenCurrentLocked (R11): Dieser Server ist der eingefrorene Server des
-// Auftrags; seine Daten sind der letzte Stand vor der Sperre (niemand
-// schrieb) – das Hochstufen beim Zurücksetzen darf nicht abgelehnt werden.
+// upWantVersion: welche Version pdh im Auftrag melden muss. Im Zurücksetzen
+// die alte; beim reinen Rollentausch die laufende; sonst die Zielversion –
+// ist sie (noch) unbekannt, nichts (C1: nie die eigene alte Version als
+// Ziel annehmen; der Auftrag übernimmt die Version von B nach dem Einspielen).
+func upWantVersion(j ha.UpdateJob, own string) string {
+	switch {
+	case j.Phase == ha.UpRollback:
+		if j.OldVersion != "" {
+			return j.OldVersion
+		}
+		return own
+	case j.Kind == ha.UpdateSwap:
+		return own
+	}
+	return j.TargetVersion
+}
+
+// frozenCurrentLocked (R11, für „nacheinander“ korrigiert): Dieser Server
+// ist der eingefrorene Server des Auftrags und hatte beim Einfrieren
+// bestätigt den Gleichstand (FrozenSynced) – seine Daten sind der letzte
+// Stand vor der Sperre, das Hochstufen beim Zurücksetzen darf nicht
+// abgelehnt werden. Ohne bestätigten Gleichstand nie.
 func (d *daemon) frozenCurrentLocked() bool {
 	j := d.up.job
-	if j.LockedAt.IsZero() || j.Second == "" || j.Second != d.node.ID {
+	if j.LockedAt.IsZero() || j.Second == "" || j.Second != d.node.ID || !j.FrozenSynced {
 		return false
 	}
 	switch j.Phase {
@@ -240,7 +269,7 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 		d.probeHealthLocked(ctx)
 	}
 	partner, _ := d.peerIDsLocked()
-	if partner == "" || d.p.Role != ha.Active || d.unsaved || d.booting {
+	if partner == "" || d.p.Role != ha.Active || d.unsaved {
 		return
 	}
 	wall := d.wall()
@@ -252,24 +281,23 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 		return
 	}
 	countdown, lockMax, verify := d.updateDurationsLocked()
-	want := j.TargetVersion
-	if j.Phase == ha.UpRollback {
-		want = j.OldVersion // zurückgesetzt wird auf die alte Version
-	}
-	if want == "" {
-		want = d.version
-	}
 	pn, _ := d.clusterNodeLocked(partner)
 	pv := views[partner]
+	want := upWantVersion(j, d.version)
 	o := ha.UpdateObs{
 		Now: wall, Self: d.node.ID, SelfRole: d.p.Role, SelfCommit: d.commit,
 		PartnerID: partner, Partner: obsFrom(pn, pv, d.node.ID),
-		SelfPDHOK:     d.selfPDHOKLocked(want, wall),
-		PartnerPDHOK:  pv.seen() && pv.Last.PDH == "ok:"+want,
-		MirrorSync:    d.mirrorSyncLocked(s, partner, pv),
-		SelfDBPending: d.selfDBPendingLocked(),
-		Abort:         u.abort,
-		Countdown:     countdown, LockMax: lockMax, Verify: verify,
+		SelfPDHOK:      d.selfPDHOKLocked(want, wall),
+		PartnerPDHOK:   want != "" && pv.seen() && pv.Last.PDH == "ok:"+want,
+		SelfPDHVersion: d.selfPDHVersionLocked(wall),
+		MirrorSync:     d.mirrorSyncLocked(s, partner, pv),
+		SelfDBPending:  d.selfDBPendingLocked(),
+		Handover:       d.carry.HandoverPending != 0,
+		Abort:          u.abort,
+		Countdown:      countdown, LockMax: lockMax, Verify: verify,
+	}
+	if pv.seen() {
+		o.PartnerPDHVersion = pdhHBVersion(pv.Last.PDH)
 	}
 	if updateTakeover(j, termBefore, d.p.Term, d.p.Role, swapped) {
 		u.takeover = true // bleibt gemerkt, falls das Speichern dieses Schritts scheitert
@@ -558,12 +586,35 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 		}
 		return nil
 	}
+	// unseal (sequential, A): Abschottung für den Gleichstand zurücknehmen –
+	// vor dem Einspielen (die neue Version muss schreiben) und auf jedem
+	// Rückweg. Nur am aktiven Server mit Datenbank-Spiegel.
+	unseal := func() error {
+		if !j.Sealed || j.First != self || pa == nil || role != ha.Active {
+			return nil
+		}
+		if err := d.queueWait(ctx, pa.unfence); err != nil {
+			return fmt.Errorf("Abschottung nicht zurückgenommen: %w", err)
+		}
+		return nil
+	}
 	switch op {
+	case ha.OpSeal:
+		if pa == nil {
+			return nil // ohne Datenbank-Spiegel gibt es nichts abzugleichen
+		}
+		if role != ha.Active {
+			return errors.New("Abschotten nur am aktiven Server")
+		}
+		return d.queueWait(ctx, pa.seal)
 	case ha.OpInstall:
 		if commit != "" && commit == cur {
 			return nil // läuft schon mit diesem Stand
 		}
 		if j.Kind == ha.UpdateSequential && j.First == self {
+			if err := unseal(); err != nil {
+				return err
+			}
 			return agent.Finish(ctx) // in der Vorbereitung gebaut (install_norestart)
 		}
 		return agent.Install(ctx, commit, false)
@@ -571,6 +622,15 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 		return agent.Install(ctx, commit, true)
 	case ha.OpRollback, ha.OpRollbackNoRestart:
 		noRestart := op == ha.OpRollbackNoRestart
+		if noRestart {
+			if err := unseal(); err != nil {
+				return err
+			}
+		} else if d.rolledBack(j, commit, cur, pa) {
+			// C2: Wiederholung nach dem Neustart von pdh-ha, den das
+			// Zurückdrehen selbst auslöst – schon erledigt, kein zweiter Lauf.
+			return nil
+		}
 		if !noRestart && role != ha.Active && pa != nil {
 			// eigene Datenbank zuerst wieder Standby des aktiven Servers
 			// (abgezweigt, wenn hier die neue Version schrieb); folgt sie
@@ -594,6 +654,10 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 		if err := needPG(); err != nil {
 			return err
 		}
+		if d.healthyStandby(j, commit, cur) {
+			// Wiederholung: schon gesunder Standby des aktiven mit X – erledigt
+			return nil
+		}
 		if err := d.queueWait(ctx, pa.reinit); err != nil {
 			return fmt.Errorf("Neuaufsetzen fehlgeschlagen: %w", err)
 		}
@@ -603,6 +667,45 @@ func (d *daemon) runUpdateOp(ctx context.Context, j ha.UpdateJob, op, commit str
 		return nil
 	}
 	return fmt.Errorf("unbekannter Update-Auftrag %q", op)
+}
+
+// rolledBack (C2): Das Zurückdrehen auf commit ist schon erledigt – das
+// laufende Programm hat diesen Stand, pdh antwortet bereit mit der alten
+// Version und die Datenbank folgt (mit Spiegel) als Standby. So startet die
+// Wiederholung nach dem Neustart von pdh-ha, den das Zurückdrehen selbst
+// auslöst (install-pdh-ha.sh), keinen zweiten Lauf.
+func (d *daemon) rolledBack(j ha.UpdateJob, commit, cur string, pa *pgActor) bool {
+	if commit == "" || commit != cur {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	want := j.OldVersion
+	if want == "" {
+		want = d.version
+	}
+	if !d.selfPDHOKLocked(want, d.wall()) {
+		return false
+	}
+	if pa != nil {
+		if st := d.lastPG(); st == nil || st.State != "standby" {
+			return false
+		}
+	}
+	return true
+}
+
+// healthyStandby (C2): Neuaufsetzen schon erledigt – Standby, der vom aktiven
+// Server empfängt, das laufende Programm auf commit und pdh bereit mit der
+// Zielversion.
+func (d *daemon) healthyStandby(j ha.UpdateJob, commit, cur string) bool {
+	if commit != "" && commit != cur {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.lastPG()
+	return st != nil && st.State == "standby" && st.Streaming && d.selfPDHOKLocked(upWantVersion(j, d.version), d.wall())
 }
 
 // queueWait reiht fn in die Aktions-Warteschlange ein und wartet auf das Ende.
@@ -675,16 +778,42 @@ func (d *daemon) selfPDHOKLocked(want string, wall time.Time) bool {
 	return ok && h.ok(want)
 }
 
-// pdhHBLocked: Heartbeat-Feld pdh – "ok:<Version>", "down" oder "unknown".
+// pdhHBLocked: Heartbeat-Feld pdh – "ok:<Version>" (bereit),
+// "mirror:<Version>" (antwortet mit 200, aber migrations_ok=false: z. B.
+// eingeschränkter Spiegel, der auf die Migration am Primary wartet), "down"
+// oder "unknown".
 func (d *daemon) pdhHBLocked() string {
 	n := d.up.health.Load()
 	if n == nil || d.wall().Sub(n.at) > upHealthFresh {
 		return "unknown"
 	}
-	if n.err == nil && n.h.up() {
+	switch {
+	case n.err == nil && n.h.up():
 		return "ok:" + n.h.Version
+	case n.err == nil && n.h.Status == http.StatusOK && n.h.Version != "":
+		return "mirror:" + n.h.Version
 	}
 	return "down"
+}
+
+// pdhHBVersion: Version aus dem Heartbeat-Feld pdh ("ok:" oder "mirror:"),
+// sonst "".
+func pdhHBVersion(f string) string {
+	for _, p := range []string{"ok:", "mirror:"} {
+		if v, ok := strings.CutPrefix(f, p); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// selfPDHVersionLocked: Version, die das eigene pdh mit 200 meldet ("" = keine Antwort).
+func (d *daemon) selfPDHVersionLocked(wall time.Time) string {
+	n := d.up.health.Load()
+	if n == nil || wall.Sub(n.at) > upHealthFresh || n.err != nil || n.h.Status != http.StatusOK {
+		return ""
+	}
+	return n.h.Version
 }
 
 // selfDBPendingLocked: Datenbank-Spiegel eingerichtet, die eigene Datenbank

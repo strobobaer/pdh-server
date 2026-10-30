@@ -104,6 +104,9 @@ func (c cmdAgent) Install(ctx context.Context, commit string, noRestart bool) er
 }
 
 func (c cmdAgent) Rollback(ctx context.Context, commit string, noRestart bool) error {
+	if commit == "" {
+		return errors.New("Zurückdrehen ohne Alt-Stand verweigert")
+	}
 	op := "rollback"
 	if noRestart {
 		op = "rollback_norestart"
@@ -133,7 +136,60 @@ func (h *httpAgent) Install(ctx context.Context, commit string, noRestart bool) 
 }
 
 func (h *httpAgent) Rollback(ctx context.Context, commit string, noRestart bool) error {
+	if commit == "" {
+		// I5: ohne Ziel würde der Agent den neuesten Stand einspielen
+		return errors.New("Zurückdrehen ohne Alt-Stand verweigert")
+	}
 	return h.run(ctx, agentUpdateReq{Rollback: commit, NoRestart: noRestart})
+}
+
+// op: Art des Laufs, wie sie der Agent in /v1/status meldet.
+func (r agentUpdateReq) op() string {
+	suffix := ""
+	if r.NoRestart {
+		suffix = "_norestart"
+	}
+	switch {
+	case r.Finish:
+		return "finish"
+	case r.Rollback != "":
+		return "rollback" + suffix
+	case r.Commit != "":
+		return "install" + suffix
+	}
+	return ""
+}
+
+func (r agentUpdateReq) target() string {
+	if r.Rollback != "" {
+		return r.Rollback
+	}
+	return r.Commit
+}
+
+// agentRun: Lauf laut Agent (409-Rumpf bzw. /v1/status).
+type agentRun struct {
+	Running bool   `json:"running"`
+	Success bool   `json:"success"`
+	Output  string `json:"output"`
+	Commit  string `json:"commit"`
+	Op      string `json:"op"`
+}
+
+// known: meldet der Agent Stand bzw. Art des Laufs? (ältere Agenten nicht)
+func (st agentRun) known() bool { return st.Commit != "" || st.Op != "" }
+
+// mine: gehört der Lauf zu dieser Anfrage? Meldet der Agent weder Stand
+// noch Art (älterer Agent), lässt sich das nicht prüfen – dann wie bisher.
+// Meldet er die Art nicht, zählt nur der Stand.
+func (st agentRun) mine(r agentUpdateReq) bool {
+	if !st.known() {
+		return true
+	}
+	if st.Commit != r.target() {
+		return false
+	}
+	return st.Op == "" || st.Op == r.op()
 }
 
 func (h *httpAgent) Finish(ctx context.Context) error {
@@ -176,20 +232,46 @@ func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
 		return errors.New("Token des Update-Agenten fehlt (PDH_UPDATE_AGENT_TOKEN in " + pdhEnvPath() + ")")
 	}
 	body, _ := json.Marshal(r)
-	code, b, err := h.do(ctx, http.MethodPost, base+"/v1/update", token, body)
-	if err != nil {
-		return fmt.Errorf("Update-Agent nicht erreichbar: %w", err)
-	}
-	// 409: ein Update läuft schon (z. B. Wiederholung nach Neustart von
-	// pdh-ha) – dessen Ergebnis abwarten
-	if code != http.StatusAccepted && code != http.StatusOK && code != http.StatusConflict {
-		return fmt.Errorf("Update-Agent: HTTP %d: %s", code, strings.TrimSpace(string(b)))
-	}
 	wait := h.wait
 	if wait <= 0 {
 		wait = agentWait
 	}
 	deadline := time.Now().Add(wait)
+	for {
+		code, b, err := h.do(ctx, http.MethodPost, base+"/v1/update", token, body)
+		if err != nil {
+			return fmt.Errorf("Update-Agent nicht erreichbar: %w", err)
+		}
+		if code != http.StatusAccepted && code != http.StatusOK && code != http.StatusConflict {
+			return fmt.Errorf("Update-Agent: HTTP %d: %s", code, strings.TrimSpace(string(b)))
+		}
+		// 409: ein Lauf läuft schon. Derselbe Auftrag (Wiederholung nach dem
+		// Neustart von pdh-ha): dessen Ergebnis zählt. Ein fremder Lauf (I3):
+		// dessen Ende abwarten, dann den eigenen Auftrag erneut senden.
+		var busy agentRun
+		foreign := code == http.StatusConflict && json.Unmarshal(b, &busy) == nil && busy.known() && !busy.mine(r)
+		st, err := h.waitIdle(ctx, base, token, deadline)
+		if err != nil {
+			return err
+		}
+		if !foreign && st.mine(r) {
+			if st.Success {
+				return nil
+			}
+			return fmt.Errorf("Update-Agent meldet Fehler: %s", lastLines(st.Output, 5))
+		}
+		// fremdes Ergebnis: zählt nicht – erneut senden
+		if !time.Now().Before(deadline) {
+			return errors.New("Update nicht rechtzeitig abgeschlossen (anderer Lauf beim Agenten)")
+		}
+		if err := sleepCtx(ctx, h.poll); err != nil {
+			return err
+		}
+	}
+}
+
+// waitIdle fragt /v1/status, bis kein Lauf mehr läuft, und liefert dessen Stand.
+func (h *httpAgent) waitIdle(ctx context.Context, base, token string, deadline time.Time) (agentRun, error) {
 	var lastErr error
 	for {
 		code, b, err := h.do(ctx, http.MethodGet, base+"/v1/status", token, nil)
@@ -199,33 +281,33 @@ func (h *httpAgent) run(ctx context.Context, r agentUpdateReq) error {
 		case code != http.StatusOK:
 			lastErr = fmt.Errorf("HTTP %d", code)
 		default:
-			var st struct {
-				Running bool   `json:"running"`
-				Success bool   `json:"success"`
-				Output  string `json:"output"`
-			}
+			var st agentRun
 			if err := json.Unmarshal(b, &st); err != nil {
 				lastErr = err
 				break
 			}
 			if !st.Running {
-				if st.Success {
-					return nil
-				}
-				return fmt.Errorf("Update-Agent meldet Fehler: %s", lastLines(st.Output, 5))
+				return st, nil
 			}
 		}
 		if !time.Now().Before(deadline) {
 			if lastErr != nil {
-				return fmt.Errorf("Update nicht rechtzeitig abgeschlossen (%v)", lastErr)
+				return agentRun{}, fmt.Errorf("Update nicht rechtzeitig abgeschlossen (%v)", lastErr)
 			}
-			return errors.New("Update nicht rechtzeitig abgeschlossen")
+			return agentRun{}, errors.New("Update nicht rechtzeitig abgeschlossen")
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(h.poll):
+		if err := sleepCtx(ctx, h.poll); err != nil {
+			return agentRun{}, err
 		}
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
 	}
 }
 

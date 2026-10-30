@@ -502,6 +502,8 @@ func (d *daemon) setMaintenance(on bool) error {
 		return errors.New("Aus dem Cluster entfernt")
 	case d.node.Kind == "witness":
 		return errors.New("Auf dem Zeugen nicht möglich")
+	case d.updateOpenLocked():
+		return errUpdateOpen // I6
 	}
 	p := d.p
 	p.Maint = on
@@ -520,6 +522,20 @@ func (d *daemon) setMaintenance(on bool) error {
 		d.event("info", text)
 	}
 	return nil
+}
+
+// errUpdateOpen: Handbefehle neben einem offenen Update-Auftrag (I6).
+var errUpdateOpen = errors.New("Update läuft – zuerst „pdh-ha update abort“")
+
+// updateOpenLocked: ein Update-Auftrag ist offen (auch gespiegelt am passiven Server).
+func (d *daemon) updateOpenLocked() bool {
+	return d.up.job.ID != "" && !upEnded(d.up.job)
+}
+
+// partnerSeenLocked: der andere Server ist gerade zu sehen.
+func (d *daemon) partnerSeenLocked() bool {
+	partner, _ := d.peerIDsLocked()
+	return partner != "" && d.views[partner].seen()
 }
 
 // command merkt einen Handbefehl für den nächsten Takt vor.
@@ -553,6 +569,11 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Der aktive Server ist erreichbar – bitte am aktiven Server „Rollen tauschen“ verwenden")
 	case c == ha.CmdSwap && d.p.Role != ha.Active:
 		return errors.New("Nur auf dem aktiven Server möglich")
+	case d.updateOpenLocked() && (c == ha.CmdSwap || d.partnerSeenLocked()):
+		// I6: kein Handtausch neben dem Auftrag. Übernahme erzwingen bleibt
+		// als Notweg, wenn der Partner (der dirigierende Server) nicht zu
+		// sehen ist – der Auftrag bricht dann als Übernahme ab.
+		return errUpdateOpen
 	}
 	d.cmd = c
 	d.event("info", "Befehl: "+text)

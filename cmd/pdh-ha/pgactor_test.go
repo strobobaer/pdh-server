@@ -21,7 +21,7 @@ type svcLog struct {
 	startErr error // Start scheitert (pdh dauerhaft „failed“)
 }
 
-func (s *svcLog) log(op string)                            { _, _ = s.r.Run(context.Background(), []string{s.name, op}, nil, nil) }
+func (s *svcLog) log(op string) { _, _ = s.r.Run(context.Background(), []string{s.name, op}, nil, nil) }
 func (s *svcLog) Start(context.Context) error {
 	s.log("start")
 	s.active = s.startErr == nil

@@ -45,6 +45,16 @@ const (
 // 20 min). Die Prüffrist (UpdateObs.Verify) zählt erst ab dem Ergebnis.
 const UpdatePrepareWait = 30 * time.Minute
 
+// UpdateSwapWait: eigene Frist für den Rollentausch in der Sperre; danach
+// wird zurückgesetzt (der Tausch selbst ist kein Fehler von X).
+const UpdateSwapWait = 3 * time.Minute
+
+// updateSwapRepeat: so oft wird ein Tausch-Befehl höchstens wiederholt.
+const updateSwapRepeat = 20 * time.Second
+
+// Grund, wenn der Gleichstand vor dem Einfrieren (nacheinander) scheitert.
+const reasonNoSync = "Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert"
+
 // UpdateJob ist der Auftrag. Old, First und Second setzt der Daemon beim
 // Anlegen; Phase UpPrepare mit leerem PhaseAt ist der Eintritt.
 type UpdateJob struct {
@@ -77,6 +87,18 @@ type UpdateJob struct {
 	// FreezeAcked (nur sequential): Second hat das Einfrieren bestätigt; erst
 	// danach spielt der aktive Server X ein (zweiter Schritt der Sperre).
 	FreezeAcked bool
+	// FrozenSynced: Der eingefrorene Server hatte beim Einfrieren den
+	// Gleichstand mit dem aktiven (rolling: demoteFreeze wartet darauf;
+	// sequential: A war abgeschottet und B hatte aufgeholt). Nur dann darf
+	// die eingefrorene Kopie beim Zurücksetzen hochgestuft werden.
+	FrozenSynced bool
+	// Sealed (nur sequential): A wurde für den Gleichstand abgeschottet
+	// (pdh gestoppt, Datenbank nur lesend) und ist noch nicht wieder frei.
+	Sealed bool
+	// CmdAt: letzter Tausch-Befehl (Wiederholung, Frist UpdateSwapWait).
+	CmdAt time.Time
+	// Unprotected: Sperre ohne aufgeholten Spiegel aufgehoben (R6).
+	Unprotected bool
 	// RollbackSent: im Zurücksetzen ging der Auftrag an den Partner schon raus.
 	RollbackSent bool
 }
@@ -100,6 +122,12 @@ type UpdateObs struct {
 	Partner    PeerObs
 
 	SelfPDHOK, PartnerPDHOK bool // /health: erwartete Version, migrations_ok
+	// SelfPDHVersion, PartnerPDHVersion: Version, die pdh mit HTTP 200
+	// meldet – auch als eingeschränkter Spiegel (migrations_ok=false); ""
+	// = keine Antwort. Vor der Sperre genügt am Spiegel die Version.
+	SelfPDHVersion, PartnerPDHVersion string
+	// Handover: der eigene Rollentausch (Übergabe) läuft gerade.
+	Handover bool
 	// MirrorSync: Standby des Partners verbunden (streaming) und Verzögerung
 	// unter der Grenze – nicht „synchroner Modus“ (der ist während der Sperre
 	// absichtlich aus, SyncIn.ForceAsync = job.Locked()).
@@ -135,6 +163,11 @@ const (
 	OpFreeze            = "freeze"
 	OpThaw              = "thaw"
 	OpReinit            = "reinit"
+	// OpSeal (sequential, lokal am aktiven Server): abschotten wie beim
+	// Abgeben (pdh gestoppt, nur lesend, Verbindungen getrennt) und warten,
+	// bis der Spiegel alles eingespielt hat. Scheitert der Gleichstand, nimmt
+	// die Op die Abschottung selbst zurück.
+	OpSeal = "seal"
 )
 
 type UpdateAction struct {
@@ -197,6 +230,13 @@ func UpdateStep(job UpdateJob, o UpdateObs) (UpdateJob, []UpdateAction) {
 
 func (r *upRun) step() {
 	o := r.o
+	r.adoptVersion()
+	if r.j.Kind != UpdateSequential && r.j.Phase == UpLocked && r.selfFirstActive() {
+		// Übernahme gelungen: der abgebende Server hat erst nach dem
+		// Gleichstand abgegeben (demote/demoteFreeze warten darauf) – gilt
+		// auch, wenn im selben Schritt ein Abbruch das Zurücksetzen auslöst.
+		r.j.FrozenSynced = true
+	}
 	if o.Takeover {
 		// Spec 7: Auftrag abbrechen, kein weiterer automatischer Schritt.
 		r.event("alarm", "Auftrag abgebrochen: Übernahme")
@@ -257,8 +297,8 @@ func (r *upRun) prepare() {
 		return
 	}
 	// Startet pdh-ha auf B beim Einspielen neu, geht das Ergebnis verloren;
-	// B auf X mit bereitem pdh gilt dann als Erfolg.
-	if j.Kind == UpdateRolling && r.partnerOnTarget() {
+	// B auf X mit antwortendem pdh gilt dann als Erfolg.
+	if j.Kind == UpdateRolling && r.partnerReadyPrep() {
 		r.enter(UpVerifyPrep)
 		return
 	}
@@ -267,10 +307,12 @@ func (r *upRun) prepare() {
 	}
 }
 
-// verifyPrep: rolling prüft B (Commit X, pdh bereit, Spiegel aufgeholt);
-// sequential geht sofort weiter.
+// verifyPrep: rolling prüft B (Commit X, pdh antwortet mit der Zielversion,
+// Spiegel aufgeholt); sequential geht sofort weiter. B läuft hier als
+// eingeschränkter Spiegel und wartet erwartungsgemäß auf die Migration –
+// migrations_ok zählt erst nach der Sperre (verifyNew am neuen Primary).
 func (r *upRun) verifyPrep() {
-	if r.j.Kind == UpdateSequential || (r.partnerOnTarget() && r.o.MirrorSync) {
+	if r.j.Kind == UpdateSequential || (r.partnerReadyPrep() && r.o.MirrorSync) {
 		r.enterCountdown()
 		return
 	}
@@ -282,7 +324,8 @@ func (r *upRun) verifyPrep() {
 // countdown: nach Ablauf Sperre an. rolling/swap: der abgebende Server
 // (Second, noch aktiv) gibt den Tausch-Befehl; ist First schon aktiv, lief
 // der Tausch bereits (veralteter Auftrag nach Spiegelung) – kein zweiter.
-// sequential: erst Second einfrieren, das Einspielen folgt nach dem Ack.
+// sequential: erst A abschotten und den Gleichstand abwarten (OpSeal), dann
+// Second einfrieren; das Einspielen folgt nach dem Ack des Einfrierens.
 func (r *upRun) countdown() {
 	j, o := &r.j, r.o
 	if o.Now.Before(j.CountdownUntil) {
@@ -290,34 +333,67 @@ func (r *upRun) countdown() {
 	}
 	r.enter(UpLocked)
 	j.LockedAt = o.Now
-	j.FreezeAcked = false
+	j.FreezeAcked, j.FrozenSynced = false, false
 	switch j.Kind {
 	case UpdateSequential:
-		r.nodeOp(j.Second, OpFreeze, "")
+		j.Sealed = true
+		r.localOp(OpSeal, "")
 	default:
 		if o.Self == j.Second && o.SelfRole == Active {
-			cmd := CmdSwapFreeze
-			if j.Kind == UpdateSwap {
-				cmd = CmdSwap
-			}
-			r.command(cmd)
+			r.swapCommand()
 		}
 	}
 }
 
+// swapCommand: Tausch-Befehl der Sperre (rolling: mit Einfrieren, swap: normal).
+func (r *upRun) swapCommand() {
+	cmd := CmdSwapFreeze
+	if r.j.Kind == UpdateSwap {
+		cmd = CmdSwap
+	}
+	r.j.CmdAt = r.o.Now
+	r.command(cmd)
+}
+
 // locked: warten, bis die neue Version auf dem dirigierenden Server läuft.
+// rolling/swap: Der Tausch-Befehl wird wiederholt, solange der abgebende
+// Server noch aktiv ist und keine Übergabe läuft (verlorener oder
+// gescheiterter Tausch); nach UpdateSwapWait wird zurückgesetzt.
 func (r *upRun) locked() {
 	j, o := &r.j, r.o
 	if j.Kind != UpdateSequential {
 		if r.selfFirstActive() {
-			r.enter(UpVerifyNew)
+			r.enter(UpVerifyNew) // FrozenSynced setzt step()
+			return
+		}
+		if o.Self != j.Second || o.SelfRole != Active || o.Handover {
+			return
+		}
+		if r.since(j.PhaseAt) > UpdateSwapWait {
+			r.rollback("Rollentausch nicht gelungen", false)
+			return
+		}
+		if r.since(j.CmdAt) >= updateSwapRepeat {
+			r.swapCommand()
 		}
 		return
 	}
 	if !j.FreezeAcked {
-		if a := r.ack(); a != nil {
+		a := r.ack()
+		if a == nil {
+			return
+		}
+		switch a.Op {
+		case OpSeal:
 			if a.OK {
-				j.FreezeAcked = true
+				r.nodeOp(j.Second, OpFreeze, "")
+			} else {
+				r.sealFailed(a.Err)
+			}
+		case OpFreeze:
+			if a.OK {
+				// A war abgeschottet und B hatte aufgeholt: Gleichstand beim Einfrieren.
+				j.FreezeAcked, j.FrozenSynced = true, true
 				r.localOp(OpInstall, j.Target)
 			} else {
 				r.rollback(fmt.Sprintf("Einfrieren von %s fehlgeschlagen: %s", j.Second, a.Err), false)
@@ -378,6 +454,7 @@ func (r *upRun) release() {
 // dringender Alarm, dann nachziehen (dessen Fehlerweg endet im Neuaufsetzen).
 func (r *upRun) unprotected(reason string) {
 	r.event("alarm", fmt.Sprintf("Dringend: %s: Spiegel nicht aufgeholt – Verbund ungeschützt (%s)", r.j.name(), reason))
+	r.j.Unprotected = true
 	r.follow()
 }
 
@@ -406,8 +483,12 @@ func (r *upRun) followStep() {
 		}
 	}
 	if !failed && r.partnerOnTarget() {
-		text := j.name() + " abgeschlossen"
-		r.event("info", text)
+		text, kind := j.name()+" abgeschlossen", "info"
+		if j.Unprotected {
+			// Auftauen scheiterte, A hat X trotzdem eingespielt: Spiegel prüfen
+			text, kind = text+" – Spiegel ungeschützt, bitte prüfen", "alarm"
+		}
+		r.event(kind, text)
 		r.finish(UpDone, text)
 		return
 	}
@@ -459,6 +540,18 @@ func (r *upRun) reinitStep() {
 // dirigiert weiter (rollbackStep).
 func (r *upRun) rollback(reason string, faulty bool) {
 	j := &r.j
+	if r.selfNewActive() && j.Kind != UpdateSwap && !j.FrozenSynced {
+		// Verteidigung (C3): Die eingefrorene Kopie hatte beim Einfrieren
+		// keinen bestätigten Gleichstand – sie hochzustufen verlöre Daten.
+		// Kein Rücktausch; die neue Version bleibt aktiv, Sperre aus.
+		if faulty {
+			j.MarkFaulty = true
+		}
+		text := fmt.Sprintf("Dringend: %s: %s – eingefrorener Stand ohne bestätigten Gleichstand, kein Zurücksetzen; Sperre aufgehoben, bitte von Hand prüfen", j.name(), reason)
+		r.finish(UpFailed, reason+"; kein Zurücksetzen (Gleichstand nicht bestätigt)")
+		r.event("alarm", text)
+		return
+	}
 	r.enter(UpRollback)
 	j.Result = reason
 	j.RollbackSent = false
@@ -466,13 +559,20 @@ func (r *upRun) rollback(reason string, faulty bool) {
 		j.MarkFaulty = true
 	}
 	if r.selfNewActive() {
-		cmd := CmdSwapAbandon
-		if j.Kind == UpdateSwap {
-			cmd = CmdSwap
-		}
-		r.command(cmd)
+		r.swapBack()
 	}
 	r.event("alarm", fmt.Sprintf("%s wird zurückgesetzt: %s", j.name(), reason))
+}
+
+// swapBack: Rücktausch im Zurücksetzen (CmdSwapAbandon bzw. CmdSwap beim
+// reinen Rollentausch).
+func (r *upRun) swapBack() {
+	cmd := CmdSwapAbandon
+	if r.j.Kind == UpdateSwap {
+		cmd = CmdSwap
+	}
+	r.j.CmdAt = r.o.Now
+	r.command(cmd)
 }
 
 // rollbackStep: ohne Sperre (vor dem Countdown begonnen) nur auf das
@@ -485,8 +585,32 @@ func (r *upRun) rollbackStep() {
 		r.undoStep()
 		return
 	}
-	if o.SelfRole != Active || r.selfNewActive() {
-		return // Rücktausch läuft noch
+	if o.SelfRole != Active {
+		return
+	}
+	if r.selfNewActive() {
+		// Rücktausch läuft noch; verlorenen bzw. gescheiterten Befehl wiederholen
+		if !o.Handover && r.since(j.CmdAt) >= updateSwapRepeat {
+			r.swapBack()
+		}
+		return
+	}
+	if r.unsealFirst() {
+		// sequential vor dem Einspielen: A war abgeschottet – erst wieder
+		// freigeben (Checkout zurück), dann B auftauen.
+		if j.WaitOp != OpRollbackNoRestart {
+			r.localOp(OpRollbackNoRestart, j.Old[o.Self])
+			return
+		}
+		a := r.ack()
+		if a == nil {
+			return
+		}
+		if !a.OK {
+			r.event("alarm", fmt.Sprintf("Abschottung von %s nicht zurückgenommen: %s", o.Self, a.Err))
+		}
+		j.Sealed = false
+		r.clearWait()
 	}
 	op, commit := r.rollbackOp()
 	if !j.RollbackSent {
@@ -513,6 +637,10 @@ func (r *upRun) rollbackStep() {
 			r.event("alarm", fmt.Sprintf("Zurücksetzen auf %s fehlgeschlagen: %s", a.Node, a.Err))
 			return
 		}
+	} else if op == OpRollback && j.WaitOp == OpRollback && !j.WaitOK && r.partnerOnOld() {
+		// Ergebnis verloren (pdh-ha startet beim Zurückdrehen neu), der
+		// Partner läuft aber schon auf dem Alt-Stand mit der alten Version.
+		r.gotOK()
 	}
 	if (op == "" || j.WaitOK) && o.MirrorSync && o.SelfPDHOK {
 		r.event("alarm", fmt.Sprintf("%s zurückgesetzt: %s", j.name(), j.Result))
@@ -568,6 +696,11 @@ func (r *upRun) undoStep() {
 			return
 		}
 		errText = a.Err
+	} else if node != "" && node == r.o.PartnerID && j.WaitOp == OpRollback && r.partnerOnOld() {
+		// Ergebnis verloren (pdh-ha auf dem Partner startet beim Zurückdrehen
+		// neu), der Partner läuft aber schon auf dem Alt-Stand: erledigt.
+		r.finish(UpFailed, j.Result)
+		return
 	} else if r.since(j.PhaseAt) > UpdatePrepareWait {
 		errText = "keine Rückmeldung"
 	} else {
@@ -631,6 +764,33 @@ func (r *upRun) failPrep(reason string) {
 	r.j.MarkFaulty = true
 	r.undoPrep(reason, true)
 	r.event("alarm", fmt.Sprintf("%s abgebrochen: %s; Version als fehlerhaft gemerkt", r.j.name(), reason))
+}
+
+// sealFailed (sequential, C3): Der Spiegel hat nach dem Abschotten von A
+// nicht aufgeholt – B wird nicht eingefroren. Die Op hat die Abschottung
+// zurückgenommen; die Sperre gilt als nie begonnen (nichts geändert), nur
+// der Checkout von A geht zurück (Rückweg vor der Sperre). X nicht fehlerhaft.
+func (r *upRun) sealFailed(errText string) {
+	j := &r.j
+	j.LockedAt = time.Time{}
+	r.undoPrep(reasonNoSync, true)
+	r.event("alarm", fmt.Sprintf("%s: %s (%s)", j.name(), reasonNoSync, errText))
+}
+
+// adoptVersion (C1): Ohne Zielversion übernimmt der Auftrag die Version,
+// die pdh nach dem Einspielen von X meldet (B bzw. bei „nacheinander“ A) –
+// dann zeigen Bildschirm und Meldungen die echte Version.
+func (r *upRun) adoptVersion() {
+	j, o := &r.j, r.o
+	if j.TargetVersion != "" || j.Kind == UpdateSwap || j.Target == "" {
+		return
+	}
+	switch {
+	case o.Partner.Commit == j.Target && o.PartnerPDHVersion != "":
+		j.TargetVersion = o.PartnerPDHVersion
+	case o.SelfCommit == j.Target && o.SelfPDHVersion != "":
+		j.TargetVersion = o.SelfPDHVersion
+	}
 }
 
 // --- Hilfen ---
@@ -704,8 +864,31 @@ func (r *upRun) since(t time.Time) time.Duration { return r.o.Now.Sub(t) }
 
 func (r *upRun) timedOut() bool { return r.since(r.j.PhaseAt) > r.o.Verify }
 
+// partnerOnTarget (nach der Sperre): Partner auf X, pdh ganz bereit
+// (Version und migrations_ok).
 func (r *upRun) partnerOnTarget() bool {
 	return r.o.Partner.Commit == r.j.Target && r.o.PartnerPDHOK
+}
+
+// partnerReadyPrep (vor der Sperre): Partner auf X, pdh antwortet mit der
+// Zielversion – auch als eingeschränkter Spiegel (C1).
+func (r *upRun) partnerReadyPrep() bool {
+	j := r.j
+	return r.o.Partner.Commit == j.Target && j.TargetVersion != "" && r.o.PartnerPDHVersion == j.TargetVersion
+}
+
+// partnerOnOld (Zurückdrehen): Partner auf seinem Alt-Stand, pdh bereit mit
+// der alten Version (der Daemon prüft im Zurücksetzen gegen OldVersion).
+func (r *upRun) partnerOnOld() bool {
+	old := r.j.Old[r.o.PartnerID]
+	return old != "" && r.o.Partner.Commit == old && r.o.PartnerPDHOK
+}
+
+// unsealFirst: sequential, dieser Server ist A, hat X noch nicht ausgeführt
+// und ist noch abgeschottet – im Zurücksetzen zuerst freigeben.
+func (r *upRun) unsealFirst() bool {
+	j := r.j
+	return j.Kind == UpdateSequential && r.o.Self == j.First && !j.FreezeAcked && j.Sealed
 }
 
 func (r *upRun) selfFirstActive() bool { return r.o.Self == r.j.First && r.o.SelfRole == Active }
