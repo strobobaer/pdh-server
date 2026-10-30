@@ -462,3 +462,129 @@ func TestKeepAutostartOff(t *testing.T) {
 		t.Fatalf("abgeschalteter Autostart erneut abgeschaltet: %v", r2.list())
 	}
 }
+
+// --- Einfrieren, Aufgeben, Hochstufen aus gestopptem Zustand ---
+
+const stoppedLs = "18 main 5432 down postgres /d /l\n"
+
+func TestDemoteFreezeStopsWithoutStandby(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	a, _ := testActor(t, r)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemoteFreeze, Term: 3}); err != nil {
+		t.Fatal(err)
+	}
+	l := r.list()
+	seq(t, l, "tun stop", "svc stop", "pg_ctlcluster 18 main reload", "psql: SELECT pg_terminate_backend", "pg_ctlcluster 18 main stop -m fast")
+	if has(l, "pg_ctlcluster 18 main start") {
+		t.Fatalf("eingefroren heißt gestoppt: %v", l)
+	}
+	if _, err := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); err == nil {
+		t.Fatal("standby.signal darf nicht entstehen")
+	}
+	if strings.Contains(confText(t, a), "primary_conninfo") {
+		t.Fatal("kein Standby-Betrieb beim Einfrieren")
+	}
+}
+
+func TestDemoteFreezeWaitsForCatchUp(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/80|sync", nil)
+	a, _ := testActor(t, r)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemoteFreeze}); err == nil {
+		t.Fatal("Frist erwartet")
+	}
+	if has(r.list(), "pg_ctlcluster 18 main stop") {
+		t.Fatal("ohne Gleichstand nicht stoppen")
+	}
+}
+
+func TestAbandonSkipsCatchUp(t *testing.T) {
+	// Partner hat nicht aufgeholt – Aufgeben wartet trotzdem nicht darauf.
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/80|sync", nil)
+	a, svc := testActor(t, r)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActAbandon, Term: 3}); err != nil {
+		t.Fatal(err)
+	}
+	l := r.list()
+	seq(t, l, "tun stop", "svc stop", "pg_ctlcluster 18 main stop -m fast")
+	if svc.active || has(l, "pg_ctlcluster 18 main start") {
+		t.Fatalf("nur stoppen: %v", l)
+	}
+	if _, err := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); err == nil {
+		t.Fatal("standby.signal darf nicht entstehen")
+	}
+}
+
+func TestFreezeStopsStandby(t *testing.T) {
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stStandby, nil)
+	a, _ := testActor(t, r)
+	sig := filepath.Join(a.pg.c.DataDir, "standby.signal")
+	if err := os.WriteFile(sig, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.freeze(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	l := r.list()
+	if !has(l, "pg_ctlcluster 18 main stop -m fast") || has(l, "pg_ctlcluster 18 main start") {
+		t.Fatalf("Befehle: %v", l)
+	}
+	if _, err := os.Stat(sig); err != nil {
+		t.Fatal("standby.signal muss bleiben")
+	}
+}
+
+// stoppedActor: Cluster steht, nach "start" meldet PostgreSQL den Zustand state.
+func stoppedActor(t *testing.T, state string) (*pgActor, *fakeRunner) {
+	t.Helper()
+	up := false
+	r := (&fakeRunner{}).
+		onFn("pg_ctlcluster 18 main start", "", func(fakeCall) (string, error) { up = true; return "", nil }).
+		onFn("pg_lsclusters", "", func(fakeCall) (string, error) {
+			if up {
+				return "18 main 5432 online postgres /d /l\n", nil
+			}
+			return stoppedLs, nil
+		}).
+		onFn("runuser", "(SELECT timeline_id FROM pg_control_checkpoint())", func(fakeCall) (string, error) {
+			if !up {
+				return "", errors.New("läuft nicht")
+			}
+			return state, nil
+		}).
+		on("runuser", "SELECT pg_promote", "t", nil).
+		on("runuser", "SELECT pg_is_in_recovery()", "f", nil)
+	a, _ := testActor(t, r)
+	return a, r
+}
+
+func TestPromoteFromStoppedPrimary(t *testing.T) {
+	a, r := stoppedActor(t, stPrimary)
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 4}); err != nil {
+		t.Fatal(err)
+	}
+	l := r.list()
+	if !has(l, "pg_ctlcluster 18 main start") || has(l, "psql: SELECT pg_promote") {
+		t.Fatalf("start ja, pg_promote nein: %v", l)
+	}
+	seq(t, l, "pg_ctlcluster 18 main start", "chown", "pg_ctlcluster 18 main reload", "svc restart", "tun start")
+	if c := confText(t, a); !strings.Contains(c, "synchronous_standby_names = 'pdh_ha_b'") || strings.Contains(c, "default_transaction_read_only") {
+		t.Fatalf("Konfiguration:\n%s", c)
+	}
+}
+
+func TestPromoteFromStoppedStandby(t *testing.T) {
+	a, r := stoppedActor(t, stStandby)
+	if err := os.WriteFile(filepath.Join(a.pg.c.DataDir, "standby.signal"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 4}); err != nil {
+		t.Fatal(err)
+	}
+	seq(t, r.list(), "pg_ctlcluster 18 main start", "psql: SELECT pg_promote(true, 60)", "svc restart", "tun start")
+}

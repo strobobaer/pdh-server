@@ -257,7 +257,7 @@ func TestObserveActorOnly(t *testing.T) {
 	ev := testEvents(t)
 	a := observeActor{ev: ev}
 	kinds := []ha.ActionKind{ha.ActPromote, ha.ActDemote, ha.ActFence, ha.ActUnfence, ha.ActVIPTake,
-		ha.ActVIPRelease, ha.ActRequestVote, ha.ActHandover, ha.ActRejoin}
+		ha.ActVIPRelease, ha.ActRequestVote, ha.ActHandover, ha.ActRejoin, ha.ActDemoteFreeze, ha.ActAbandon}
 	for _, k := range kinds {
 		if err := a.Do(context.Background(), ha.Action{Kind: k, Term: 4}); err != nil {
 			t.Fatal(err)

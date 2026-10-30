@@ -99,6 +99,10 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 		return a.promote(ctx, act)
 	case ha.ActDemote:
 		return a.demote(ctx)
+	case ha.ActDemoteFreeze:
+		return a.demoteFreeze(ctx)
+	case ha.ActAbandon:
+		return a.abandon(ctx)
 	case ha.ActFence:
 		return a.fence(ctx)
 	case ha.ActUnfence:
@@ -143,6 +147,53 @@ func (a *pgActor) demote(ctx context.Context) error {
 	return a.pg.ctl(ctx, "start")
 }
 
+// demoteFreeze: Einfrieren für das Update im Verbund. Wie demote bis zum
+// Stopp (nur lesend, Gleichstand abwarten, PostgreSQL stoppen), aber ohne
+// standby.signal und ohne Neustart: Die Datenbank bleibt als unveränderter
+// Rückfallstand liegen. Das Auftauen übernimmt rejoin (pg_rewind-Probelauf).
+func (a *pgActor) demoteFreeze(ctx context.Context) error {
+	if a.pushCfg != nil {
+		if err := a.pushCfg(ctx); err != nil {
+			return fmt.Errorf("Konfiguration nicht übertragen: %w", err)
+		}
+	}
+	if err := a.fence(ctx); err != nil {
+		return err
+	}
+	e := a.env()
+	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
+		if uerr := a.unfence(ctx); uerr != nil {
+			err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
+		}
+		return err
+	}
+	return a.stopPG(ctx)
+}
+
+// abandon: Rückfallstand verwerfen (Rücktausch ohne Rückweg). Dienste und
+// PostgreSQL werden gestoppt, ohne auf den Partner zu warten und ohne
+// Standby einzurichten; die Wiedereingliederung entscheidet später rejoin.
+func (a *pgActor) abandon(ctx context.Context) error {
+	if err := a.stopServices(ctx); err != nil {
+		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
+	}
+	return a.stopPG(ctx)
+}
+
+// freeze: Standby einfrieren – PostgreSQL stoppen, Daten und standby.signal
+// bleiben unverändert.
+func (a *pgActor) freeze(ctx context.Context) error {
+	return a.stopPG(ctx)
+}
+
+// stopPG stoppt PostgreSQL; ist es schon gestoppt, ist das kein Fehler.
+func (a *pgActor) stopPG(ctx context.Context) error {
+	if err := a.pg.ctl(ctx, "stop"); err != nil && a.pg.status(ctx).State != "stopped" {
+		return err
+	}
+	return nil
+}
+
 // waitCaughtUp wartet, bis der Partner alles eingespielt hat.
 func (a *pgActor) waitCaughtUp(ctx context.Context, app string) error {
 	deadline := time.Now().Add(a.wait)
@@ -176,14 +227,27 @@ func (a *pgActor) becomeStandby(ctx context.Context, e pgEnv) error {
 
 func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 	e := a.env()
-	if st := a.pg.status(ctx); st.State != "standby" {
+	st := a.pg.status(ctx)
+	// Gestoppt (eingefroren, Update im Verbund): erst starten. Ohne
+	// standby.signal kommt ein Primary hoch und braucht kein pg_promote.
+	fromStopped := st.State == "stopped"
+	if fromStopped {
+		if err := a.pg.ctl(ctx, "start"); err != nil {
+			return fmt.Errorf("Datenbank nicht gestartet: %w", err)
+		}
+		st = a.pg.status(ctx)
+	}
+	alreadyPrimary := fromStopped && st.State == "primary"
+	if st.State != "standby" && !alreadyPrimary {
 		return errors.New("Datenbank ist kein Standby")
 	}
 	if !act.Manual && !e.DataCurrent {
 		return errors.New("Datenstand nicht aktuell")
 	}
-	if out, err := a.pg.query(ctx, "SELECT pg_promote(true, 60)"); err != nil || out != "t" {
-		return fmt.Errorf("pg_promote fehlgeschlagen: %v %s", err, out)
+	if !alreadyPrimary {
+		if out, err := a.pg.query(ctx, "SELECT pg_promote(true, 60)"); err != nil || out != "t" {
+			return fmt.Errorf("pg_promote fehlgeschlagen: %v %s", err, out)
+		}
 	}
 	if out, err := a.pg.query(ctx, "SELECT pg_is_in_recovery()"); err != nil || out != "f" {
 		return fmt.Errorf("Datenbank nach dem Hochstufen nicht schreibbar: %v %s", err, out)

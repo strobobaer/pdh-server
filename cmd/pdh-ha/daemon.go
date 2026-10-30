@@ -686,7 +686,7 @@ func (d *daemon) actionWorker(ctx context.Context) {
 					failed = q.batch
 					d.actionFailed(q.a, err)
 				}
-				if q.a.Kind == ha.ActDemote {
+				if q.a.Kind == ha.ActDemote || q.a.Kind == ha.ActDemoteFreeze || q.a.Kind == ha.ActAbandon {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
 					d.lock()
 					if err == nil {
