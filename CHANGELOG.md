@@ -13,14 +13,15 @@ im Kapitel „Versionen & Updates“ an.
 ## [0.77.8] – 2026-10-30
 
 ### Neu
-- Update im Verbund: „Update installieren“ bringt beide Server und den Zeugen auf denselben Stand – wahlweise ohne Unterbrechung (mit Rollentausch) oder alle nacheinander; bei jedem Fehler setzt das System auf den bisherigen Stand zurück, auch nach Datenbank-Änderungen.
+- Update im Verbund: „Update installieren“ bringt beide Server und den Zeugen auf denselben Stand – wahlweise ohne Unterbrechung (mit Rollentausch) oder alle nacheinander; bei jedem Fehler setzt das System auf den bisherigen Stand zurück, auch nach Datenbank-Änderungen. Bei „alle nacheinander“ wird der Spiegel nur mit bestätigtem Gleichstand eingefroren, sonst bricht das Update ohne Änderung ab („Spiegel nicht auf Gleichstand“).
+- Während eines Updates lehnt `pdh-ha` Rollentausch und Wartung von Hand ab („zuerst `pdh-ha update abort`“); nach einem Zurücksetzen macht die Ausfallschutz-Sicherung sofort eine neue Grundsicherung und legt den verworfenen Stand auf dem Laufwerk beiseite.
 - Wartungsfenster im Reiter Ausfallschutz: täglich oder wöchentlich nach der Grundsicherung spielt das System automatisch die neue Version ein; fehlerhafte Versionen werden gemerkt und übersprungen, bis eine neuere kommt oder ein Administrator sie wieder zulässt.
-- Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre, vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen (Notbremse auf der Konsole: `pdh-ha update abort`).
+- Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre (hell oder dunkel wie das Gerät), vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen, solange das Update weder zurückgesetzt wird noch schon freigegeben ist (Notbremse auf der Konsole: `pdh-ha update abort`).
 - Der Zeuge zieht selbst nach, wenn beide Server auf demselben Stand sind (Container-Helfer `updater`, abschaltbar mit `PDH_HA_AUTOUPDATE=0`); der Reiter warnt „Zeuge veraltet“, falls er es nicht schafft.
 - Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollen im Fenster tauschen“).
 
 ### Geändert
-- Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert.
+- Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert; die Sicherung vor dem Update entsteht bei angehaltenem PDH.
 - Ein Spiegel, dessen Datenbank neuer ist als sein Programm, meldet „Programm zu alt für diese Datenbank“ und sperrt sich.
 - Der Befehl zum Nachziehen von Hand (`pdh-ha-join.sh --update`) ist jetzt nur noch der Notweg.
 
