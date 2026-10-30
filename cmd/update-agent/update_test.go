@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -214,5 +215,167 @@ func TestUpdateStatusPersisted(t *testing.T) {
 	e.loadUpdateStatus()
 	if e.status.Running || e.status.Output != "" {
 		t.Fatalf("kaputte Datei: %+v", e.status)
+	}
+}
+
+// --- Verhalten von install_update.sh --finish (echtes bash, Stub-Programme) ---
+
+// findBash bevorzugt Git Bash (unter Windows liegt sonst ggf. WSL-bash im Pfad).
+func findBash(t *testing.T) string {
+	t.Helper()
+	for _, c := range []string{`C:\Program Files\Git\bin\bash.exe`, `C:\Program Files (x86)\Git\bin\bash.exe`} {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	b, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash fehlt")
+	}
+	return b
+}
+
+type finishEnv struct {
+	bash, dir string
+}
+
+func newFinishEnv(t *testing.T) *finishEnv {
+	t.Helper()
+	bash := findBash(t)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git fehlt")
+	}
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "repo")
+	for _, d := range []string{filepath.Join(repo, "scripts"), filepath.Join(repo, "bin"), filepath.Join(dir, "stubs")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := func(p, c string) {
+		if err := os.WriteFile(p, []byte(c), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w(filepath.Join(repo, "install_update.sh"), readRepoFile(t, "../../install_update.sh"))
+	w(filepath.Join(repo, "scripts", "install-pdh-ha.sh"), "#!/usr/bin/env bash\necho \"install-pdh-ha $*\" >> \"$PDH_TEST_LOG\"\n")
+	w(filepath.Join(repo, ".gitignore"), "bin/\n")
+	stub := func(name, body string) { w(filepath.Join(dir, "stubs", name), "#!/usr/bin/env bash\n"+body+"\n") }
+	stub("systemctl", `echo "systemctl $*" >> "$PDH_TEST_LOG"`)
+	stub("systemd-run", `echo "systemd-run $*" >> "$PDH_TEST_LOG"; exit "${PDH_TEST_SD_RC:-0}"`)
+	stub("go", `echo "go $*" >> "$PDH_TEST_LOG"; exit 1`)
+	w(filepath.Join(dir, "pdh-ha"), "#!/usr/bin/env bash\nexit 0\n")
+	git := func(args ...string) {
+		c := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false"}, args...)...)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("add", "-A")
+	git("commit", "-q", "-m", "x")
+	git("remote", "add", "origin", "https://github.com/strobobaer/pdh-server.git")
+	return &finishEnv{bash: bash, dir: dir}
+}
+
+func (e *finishEnv) head(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", filepath.Join(e.dir, "repo"), "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func (e *finishEnv) put(t *testing.T, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(e.dir, "repo", "bin", name), []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// run startet install_update.sh mit den Stubs im PATH; liefert Protokoll, Ausgabe und Exitcode.
+func (e *finishEnv) run(t *testing.T, sdRC string, args ...string) (log, out string, code int) {
+	t.Helper()
+	script := `PATH="$PWD/stubs:$PATH" PDH_TEST_LOG="$PWD/log" PDH_HA_BIN="$PWD/pdh-ha" PDH_AGENT_BIN="$PWD/agent-bin" ` +
+		`PDH_UPDATE_MODE=systemd PDH_TEST_SD_RC=` + sdRC + ` bash ./repo/install_update.sh "$@"`
+	c := exec.Command(e.bash, append([]string{"-c", script, "x"}, args...)...)
+	c.Dir = e.dir
+	b, err := c.CombinedOutput()
+	out = string(b)
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	lb, _ := os.ReadFile(filepath.Join(e.dir, "log"))
+	return string(lb), out, code
+}
+
+func TestFinishRefusesMissingFilesBeforeRestart(t *testing.T) {
+	e := newFinishEnv(t)
+	log, out, code := e.run(t, "0", "--finish")
+	if code == 0 || !strings.Contains(out, "bin/pdh") {
+		t.Fatalf("Abschluss ohne bin/pdh: code %d, %s", code, out)
+	}
+	if strings.Contains(log, "systemctl") || strings.Contains(log, "systemd-run") || strings.Contains(log, "install-pdh-ha") {
+		t.Fatalf("Dienst vor der Prüfung angefasst:\n%s", log)
+	}
+	// pdh-ha.neu fehlt (pdh-ha ist eingerichtet)
+	e.put(t, "pdh", "#!/bin/sh\n")
+	e.put(t, "update-agent", "#!/bin/sh\n")
+	e.put(t, ".built-commit", e.head(t)+"\n")
+	log, out, code = e.run(t, "0", "--finish")
+	if code == 0 || !strings.Contains(out, "pdh-ha.neu") || strings.Contains(log, "systemctl") {
+		t.Fatalf("Abschluss ohne pdh-ha.neu: code %d, %s\n%s", code, out, log)
+	}
+	// gebaut aus anderem Stand
+	e.put(t, "pdh-ha.neu", "#!/bin/sh\n")
+	e.put(t, ".built-commit", "0000000000000000000000000000000000000000\n")
+	log, out, code = e.run(t, "0", "--finish")
+	if code == 0 || !strings.Contains(out, "gebaut wurde") || strings.Contains(log, "systemctl") {
+		t.Fatalf("Abschluss mit fremdem Bau: code %d, %s\n%s", code, out, log)
+	}
+}
+
+func TestFinishInstallsBuiltPdhHa(t *testing.T) {
+	e := newFinishEnv(t)
+	e.put(t, "pdh", "#!/bin/sh\n")
+	e.put(t, "update-agent", "#!/bin/sh\n")
+	e.put(t, "pdh-ha.neu", "#!/bin/sh\n")
+	e.put(t, ".built-commit", e.head(t)+"\n")
+	log, out, code := e.run(t, "0", "--finish")
+	if code != 0 {
+		t.Fatalf("code %d: %s\n%s", code, out, log)
+	}
+	if !strings.Contains(log, "systemctl restart pdh\n") {
+		t.Errorf("pdh nicht neu gestartet:\n%s", log)
+	}
+	if !strings.Contains(log, "install-pdh-ha.sh") || !strings.Contains(log, "--install-built") {
+		t.Errorf("pdh-ha ohne --install-built eingesetzt:\n%s", log)
+	}
+	if strings.Contains(log, "go ") {
+		t.Errorf("Abschluss baut neu:\n%s", log)
+	}
+	// Fehler beim Einsetzen von pdh-ha: Abschluss schlägt fehl
+	_, out, code = e.run(t, "1", "--finish")
+	if code == 0 || !strings.Contains(out, "Abschluss fehlgeschlagen") {
+		t.Fatalf("Fehler beim pdh-ha-Einsetzen nicht gemeldet: code %d, %s", code, out)
+	}
+}
+
+func TestNoRestartBuildFailureKeepsRunningBinary(t *testing.T) {
+	e := newFinishEnv(t)
+	e.put(t, "pdh", "alt")
+	// go-Stub scheitert: bin/pdh darf nicht angetastet sein, kein Dienst angefasst
+	log, _, code := e.run(t, "0", "--no-restart")
+	if code == 0 {
+		t.Fatal("Bau mit fehlendem go muss scheitern")
+	}
+	if b, _ := os.ReadFile(filepath.Join(e.dir, "repo", "bin", "pdh")); string(b) != "alt" {
+		t.Errorf("laufendes bin/pdh verändert: %q", b)
+	}
+	if strings.Contains(log, "systemctl") {
+		t.Errorf("Dienst angefasst:\n%s", log)
 	}
 }

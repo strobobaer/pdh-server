@@ -152,23 +152,48 @@ if [[ "$mode" == "docker" ]]; then
     # code-server (/code/) ebenso separat
     { "${compose[@]}" build codeserver && "${compose[@]}" up -d --no-deps codeserver; } || echo "code-server konnte nicht gestartet werden (/code/) - Update trotzdem fertig." >&2
 else
-    # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
-    # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
-    # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
-    export GOTOOLCHAIN=auto
-    go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
-    if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
-        echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
-        exit 1
-    fi
-    mkdir -p "$repo_dir/bin"
-    if (( ! finish )); then
-        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh ./cmd/server)
-        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent ./cmd/update-agent)
+    # Pfade (fuer Tests ueberschreibbar)
+    pdh_ha_bin="${PDH_HA_BIN:-/usr/local/bin/pdh-ha}"
+    agent_bin="${PDH_AGENT_BIN:-/usr/local/bin/pdh-update-agent}"
+    bin_dir="$repo_dir/bin"
+    mkdir -p "$bin_dir"
+    if (( finish )); then
+        # Vorab gebaute Dateien pruefen, bevor irgendein Dienst angefasst wird.
+        if [[ ! -x "$bin_dir/pdh" || ! -x "$bin_dir/update-agent" ]]; then
+            echo "Abschluss nicht moeglich: bin/pdh oder bin/update-agent fehlt (erst mit --no-restart bauen)." >&2
+            exit 1
+        fi
+        if [[ -x "$pdh_ha_bin" && ! -x "$bin_dir/pdh-ha.neu" ]]; then
+            echo "Abschluss nicht moeglich: bin/pdh-ha.neu fehlt (erst mit --no-restart bauen)." >&2
+            exit 1
+        fi
+        built_commit="$(cat "$bin_dir/.built-commit" 2>/dev/null || true)"
+        if [[ "$built_commit" != "$target" ]]; then
+            echo "Abschluss nicht moeglich: gebaut wurde ${built_commit:-unbekannt}, der Quelltext steht auf $target." >&2
+            exit 1
+        fi
+    else
+        # Go: Das Projekt braucht die Go-Version aus go.mod (derzeit 1.24, wegen des
+        # Anthropic-SDK). Aeltere Installationen ab Go 1.21 (z. B. Ubuntu 24.04 mit 1.22)
+        # laden die passende Version beim Bauen selbst nach (GOTOOLCHAIN=auto).
+        export GOTOOLCHAIN=auto
+        go_minor="$(go env GOVERSION 2>/dev/null | sed -nE 's/^go1\.([0-9]+).*/\1/p')"
+        if [[ -z "$go_minor" || "$go_minor" -lt 21 ]]; then
+            echo "Go $(go env GOVERSION 2>/dev/null || echo '?') ist zu alt: noetig ist mindestens Go 1.21 (laedt dann Go 1.24 selbst nach). Bitte Go aktualisieren." >&2
+            exit 1
+        fi
+        # Alles unter .neu-Namen bauen und erst nach dem letzten erfolgreichen Bau
+        # umbenennen: scheitert ein Bau, bleibt die laufende Version unberuehrt.
+        rm -f "$bin_dir/.built-commit" "$bin_dir/pdh-ha.neu" "$bin_dir/pdh.neu" "$bin_dir/update-agent.neu"
+        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w -X main.buildCommit=$target" -o bin/pdh.neu ./cmd/server)
+        (cd "$repo_dir" && go build -buildvcs=false -trimpath -ldflags="-s -w" -o bin/update-agent.neu ./cmd/update-agent)
         # pdh-ha mit bauen (nach bin/pdh-ha.neu), solange noch nichts neu gestartet wird
-        if (( no_restart )) && [[ -x /usr/local/bin/pdh-ha ]]; then
+        if (( no_restart )) && [[ -x "$pdh_ha_bin" ]]; then
             bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" --build-only
         fi
+        mv -f "$bin_dir/pdh.neu" "$bin_dir/pdh"
+        mv -f "$bin_dir/update-agent.neu" "$bin_dir/update-agent"
+        printf '%s\n' "$target" > "$bin_dir/.built-commit"
     fi
     if (( no_restart )); then
         # Nur gebaut: pdh, pdh-ha und Agent bleiben unberuehrt (spaeter --finish).
@@ -184,8 +209,8 @@ else
     # passiver Server ohne laufenden Datenbank-Spiegel, nicht starten; ältere
     # pdh-ha ohne den Befehl = wie bisher starten.
     should_rc=0
-    if [[ -x /usr/local/bin/pdh-ha ]]; then
-        /usr/local/bin/pdh-ha should-run-pdh >/dev/null 2>&1 || should_rc=$?
+    if [[ -x "$pdh_ha_bin" ]]; then
+        "$pdh_ha_bin" should-run-pdh >/dev/null 2>&1 || should_rc=$?
     fi
     if [[ $should_rc -ne 1 ]]; then
         systemctl restart pdh
@@ -194,23 +219,29 @@ else
     fi
     # Ausfallschutz (pdh-ha): nur wenn eingerichtet. Vor dem Agent-Neustart und
     # per systemd-run außerhalb von Agent-cgroup und -Sandbox (/etc beschreibbar);
-    # ein Fehler bricht das Update nicht ab.
-    if [[ -x /usr/local/bin/pdh-ha ]]; then
+    # ein Fehler bricht das normale Update nicht ab, den Abschluss (--finish) schon.
+    if [[ -x "$pdh_ha_bin" ]]; then
         # nach --finish: die vorab gebaute Datei einsetzen; sonst bauen und einsetzen
         ha_args=()
         (( ! finish )) || ha_args=(--install-built)
+        ha_rc=0
         if command -v systemd-run >/dev/null 2>&1; then
-            systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
-                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
+            systemd-run --wait --pipe --collect --quiet --unit=pdh-ha-update-$(date +%s) bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" ${ha_args[@]+"${ha_args[@]}"} || ha_rc=$?
         else
-            bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" \
-                || echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
+            bash "$repo_dir/scripts/install-pdh-ha.sh" "$repo_dir" ${ha_args[@]+"${ha_args[@]}"} || ha_rc=$?
+        fi
+        if (( ha_rc != 0 )); then
+            if (( finish )); then
+                echo "pdh-ha konnte nicht eingesetzt werden (Abschluss fehlgeschlagen) – siehe Ausgabe oben" >&2
+                exit 1
+            fi
+            echo "WARNING: pdh-ha-Update fehlgeschlagen – siehe Ausgabe oben" >&2
         fi
     fi
-    if install -m 0755 "$repo_dir/bin/update-agent" /usr/local/bin/pdh-update-agent; then
+    if install -m 0755 "$repo_dir/bin/update-agent" "$agent_bin"; then
         systemd-run --quiet --unit=pdh-update-agent-restart --on-active=5s systemctl restart pdh-update-agent
     else
-        echo "WARNING: /usr/local/bin/pdh-update-agent konnte nicht ersetzt werden; der Update-Agent bleibt auf der alten Version." >&2
+        echo "WARNING: $agent_bin konnte nicht ersetzt werden; der Update-Agent bleibt auf der alten Version." >&2
         echo "         Auf dem Server 'sudo ./install-update-agent.sh' im Repo-Verzeichnis ausfuehren (aktualisiert die systemd-Unit inkl. ReadWritePaths)." >&2
     fi
     # code-server (/code/): nur wenn eingerichtet (scripts/install-code-server.sh); Fehler bricht das Update nicht ab
