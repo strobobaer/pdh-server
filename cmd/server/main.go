@@ -130,7 +130,9 @@ func main() {
 		vctx, vcancel := context.WithTimeout(context.Background(), 30*time.Second)
 		applied, known, verr := database.MigrationVersions(vctx, db.Pool, "migrations")
 		vcancel()
-		if verr == nil && schemaAhead(applied, known) {
+		if verr != nil {
+			log.Warn().Err(verr).Msg("spiegel: migrationsnummern nicht lesbar – prüfung „programm zu alt“ übersprungen")
+		} else if schemaAhead(applied, known) {
 			restricted = true
 			mirrorReason = "Programm zu alt für diese Datenbank"
 		}

@@ -5,6 +5,8 @@ INSERT INTO permissions (key, label, category) VALUES
     ('system.maintenance_abort', 'Automatische Wartung abbrechen', 'System & Sicherheit')
 ON CONFLICT (key) DO NOTHING;
 
+-- Die Rechte gelten systemweit: nur Rollen, deren Quellrecht überall gilt (department_id IS NULL),
+-- bekommen sie; auf eine Abteilung begrenzte Quellrechte geben sie nicht.
 -- Wartungsfenster einstellen: alle Rollen, die den Ausfallschutz einstellen dürfen
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT DISTINCT r.id, p.id FROM roles r
@@ -12,7 +14,7 @@ CROSS JOIN permissions p
 WHERE p.key = 'system.maintenance_window'
   AND EXISTS (
         SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
-        WHERE rp.role_id = r.id AND o.key = 'system.server_config')
+        WHERE rp.role_id = r.id AND rp.department_id IS NULL AND o.key = 'system.server_config')
 ON CONFLICT DO NOTHING;
 
 -- Wartung abbrechen: Rollen mit Rollenverwaltung und alle Bereichsadministratoren
@@ -22,5 +24,5 @@ CROSS JOIN permissions p
 WHERE p.key = 'system.maintenance_abort'
   AND EXISTS (
         SELECT 1 FROM role_permissions rp JOIN permissions o ON o.id = rp.permission_id
-        WHERE rp.role_id = r.id AND (o.key = 'system.manage_roles' OR o.key LIKE '%.admin'))
+        WHERE rp.role_id = r.id AND rp.department_id IS NULL AND (o.key = 'system.manage_roles' OR o.key LIKE '%.admin'))
 ON CONFLICT DO NOTHING;

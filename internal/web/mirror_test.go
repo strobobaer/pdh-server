@@ -877,4 +877,8 @@ func TestMaintenanceRightsMigration(t *testing.T) {
 			t.Errorf("Migration 154: %q fehlt", want)
 		}
 	}
+	// Beide Vergaben nur aus globalen Quellrechten (Abteilungsrechte geben sie nicht)
+	if n := strings.Count(s, "rp.department_id IS NULL"); n != 2 {
+		t.Errorf("Migration 154: department_id-IS-NULL-Bedingung %d-mal, erwartet 2", n)
+	}
 }
