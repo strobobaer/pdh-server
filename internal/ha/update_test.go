@@ -890,3 +890,47 @@ func TestUpdateStepEdgeCases(t *testing.T) {
 		t.Errorf("Abbruch vor Eintritt: %q %+v", got.Phase, acts)
 	}
 }
+
+// Labor update-nacheinander-fehler: Nach dem Rücktausch ist der alte Server
+// schon aktiv, seine Datenbank aber noch nicht hochgestuft. Der Auftrag an
+// den Partner (Wiedereingliederung, Rückdrehen) darf erst danach rausgehen –
+// sonst sieht pg_rewind gegen den noch laufenden Standby dieselbe Zeitleiste,
+// spult nichts zurück, und der Partner bleibt mit den Datenbank-Änderungen
+// von X hängen (Zurücksetzen endet nie).
+func TestUpdateRollbackWaitsForOwnPrimary(t *testing.T) {
+	for _, kind := range []UpdateKind{UpdateRolling, UpdateSequential} {
+		j := locked(kind, UpRollback, 2*time.Minute, time.Second)
+		j.FreezeAcked = true
+		self := "a" // rolling: a ist Second (alter aktiver Server)
+		if kind == UpdateSequential {
+			self = "b" // sequential: b (eingefroren) wird aktiv
+		}
+		o := upObs(self, Active)
+		o.SelfDBPending = true
+		got, acts := UpdateStep(j, o)
+		if len(acts) != 0 || got.RollbackSent || got.Seq != j.Seq {
+			t.Errorf("%s: Auftrag an den Partner vor dem Hochstufen: %+v %+v", kind, acts, got)
+		}
+		o.SelfDBPending = false
+		got, acts = UpdateStep(got, o)
+		partner := o.PartnerID
+		if !got.RollbackSent || !reflect.DeepEqual(acts, []UpdateAction{nodeOpA(partner, OpRollback, j.Old[partner])}) {
+			t.Errorf("%s: nach dem Hochstufen kein Rückdrehen des Partners: %+v", kind, acts)
+		}
+	}
+}
+
+// Neue Version prüfen: pdh antwortet schon, die eigene Datenbank ist aber
+// noch nicht hochgestuft – kein Auftauen des Partners, bis sie Primary ist.
+func TestUpdateVerifyNewWaitsForOwnPrimary(t *testing.T) {
+	j := locked(UpdateRolling, UpVerifyNew, time.Minute, 10*time.Second)
+	o := upObs("b", Active)
+	o.SelfPDHOK, o.SelfDBPending = true, true
+	if got, acts := UpdateStep(j, o); got.Phase != UpVerifyNew || len(acts) != 0 {
+		t.Fatalf("Auftauen vor dem Hochstufen: %q %+v", got.Phase, acts)
+	}
+	o.SelfDBPending = false
+	if got, acts := UpdateStep(j, o); got.Phase != UpRelease || !reflect.DeepEqual(acts, []UpdateAction{nodeOpA("a", OpThaw, "")}) {
+		t.Fatalf("nach dem Hochstufen: %q %+v", got.Phase, acts)
+	}
+}

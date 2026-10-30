@@ -104,7 +104,11 @@ type UpdateObs struct {
 	// unter der Grenze – nicht „synchroner Modus“ (der ist während der Sperre
 	// absichtlich aus, SyncIn.ForceAsync = job.Locked()).
 	MirrorSync bool
-	Ack        *UpdateAck
+	// SelfDBPending: Die eigene Datenbank ist (noch) nicht schreibbarer Primary –
+	// etwa direkt nach dem Rücktausch, solange das Hochstufen bzw. der Start
+	// aus dem eingefrorenen Stand läuft. Ohne Datenbank-Spiegel immer false.
+	SelfDBPending bool
+	Ack           *UpdateAck
 
 	Countdown, LockMax, Verify time.Duration
 
@@ -334,10 +338,12 @@ func (r *upRun) locked() {
 	}
 }
 
-// verifyNew: neue Version prüfen (Frist Verify ab Phasenbeginn).
+// verifyNew: neue Version prüfen (Frist Verify ab Phasenbeginn). Die eigene
+// Datenbank muss dabei schon Primary sein – das Auftauen des Partners
+// (Wiedereingliederung) braucht eine hochgestufte Quelle.
 func (r *upRun) verifyNew() {
 	j := &r.j
-	if r.o.SelfPDHOK {
+	if r.o.SelfPDHOK && !r.o.SelfDBPending {
 		if j.Kind == UpdateSwap {
 			r.event("info", "Rollentausch abgeschlossen")
 			r.finish(UpDone, "Rollentausch abgeschlossen")
@@ -484,6 +490,14 @@ func (r *upRun) rollbackStep() {
 	}
 	op, commit := r.rollbackOp()
 	if !j.RollbackSent {
+		if o.SelfDBPending && op != "" {
+			// Erst wenn die eigene Datenbank Primary ist: Die Wiedereingliederung
+			// des Partners (pg_rewind) braucht eine hochgestufte Quelle. Gegen den
+			// noch laufenden Standby sähe pg_rewind dieselbe Zeitleiste, hielte
+			// nichts für zurückzuspulen, und der Partner bliebe mit seinem
+			// neueren Stand (Datenbank-Änderungen von X) hängen.
+			return
+		}
 		j.RollbackSent = true
 		if op != "" {
 			r.nodeOp(o.PartnerID, op, commit)

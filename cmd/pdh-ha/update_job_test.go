@@ -873,3 +873,31 @@ func TestStartUpdateSeqAbovePartner(t *testing.T) {
 		t.Fatalf("Seq über dem des Partners erwartet: %d", d.up.job.Seq)
 	}
 }
+
+// Zurücksetzen/Prüfen warten auf die eigene hochgestufte Datenbank: ohne
+// Spiegel nie, sonst bis die letzte Abfrage einen schreibbaren Primary zeigt.
+func TestSelfDBPending(t *testing.T) {
+	d, _ := upActive(t)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.selfDBPendingLocked() {
+		t.Fatal("ohne Datenbank-Spiegel darf nichts warten")
+	}
+	pa, _ := testActor(t, &fakeRunner{})
+	d.act = pa
+	for _, c := range []struct {
+		st   *pgStatus
+		want bool
+	}{
+		{nil, true},
+		{&pgStatus{State: "stopped"}, true},
+		{&pgStatus{State: "standby"}, true},
+		{&pgStatus{State: "primary", ReadOnly: true}, true},
+		{&pgStatus{State: "primary"}, false},
+	} {
+		d.pgSt.Store(c.st)
+		if got := d.selfDBPendingLocked(); got != c.want {
+			t.Errorf("%+v: %v, will %v", c.st, got, c.want)
+		}
+	}
+}

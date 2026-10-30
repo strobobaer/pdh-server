@@ -26,13 +26,13 @@ import (
 )
 
 const (
-	upVerifyDefault    = 10 * time.Minute // Prüffrist (PDH_HA_UPDATE_VERIFY, nur Labor)
-	upResendAfter      = 2 * time.Minute  // offenen Auftrag an einen Knoten ohne Ergebnis wiederholen
-	upMirrorEvery      = 30 * time.Second // Auftrag auch ohne Änderung erneut spiegeln
-	upMirrorKeep       = 10 * time.Minute // beendeten Auftrag so lange weiter spiegeln
-	upHealthFresh      = 30 * time.Second // so lange gilt die letzte Antwort von /health
-	upMaxAcks          = 8
-	upMaxDone          = 16
+	upVerifyDefault = 10 * time.Minute // Prüffrist (PDH_HA_UPDATE_VERIFY, nur Labor)
+	upResendAfter   = 2 * time.Minute  // offenen Auftrag an einen Knoten ohne Ergebnis wiederholen
+	upMirrorEvery   = 30 * time.Second // Auftrag auch ohne Änderung erneut spiegeln
+	upMirrorKeep    = 10 * time.Minute // beendeten Auftrag so lange weiter spiegeln
+	upHealthFresh   = 30 * time.Second // so lange gilt die letzte Antwort von /health
+	upMaxAcks       = 8
+	upMaxDone       = 16
 )
 
 // upState: Auftrag und Hilfszustand des Dienstes (alles unter mu, außer den
@@ -264,11 +264,12 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 	o := ha.UpdateObs{
 		Now: wall, Self: d.node.ID, SelfRole: d.p.Role, SelfCommit: d.commit,
 		PartnerID: partner, Partner: obsFrom(pn, pv, d.node.ID),
-		SelfPDHOK:    d.selfPDHOKLocked(want, wall),
-		PartnerPDHOK: pv.seen() && pv.Last.PDH == "ok:"+want,
-		MirrorSync:   d.mirrorSyncLocked(s, partner, pv),
-		Abort:        u.abort,
-		Countdown:    countdown, LockMax: lockMax, Verify: verify,
+		SelfPDHOK:     d.selfPDHOKLocked(want, wall),
+		PartnerPDHOK:  pv.seen() && pv.Last.PDH == "ok:"+want,
+		MirrorSync:    d.mirrorSyncLocked(s, partner, pv),
+		SelfDBPending: d.selfDBPendingLocked(),
+		Abort:         u.abort,
+		Countdown:     countdown, LockMax: lockMax, Verify: verify,
 	}
 	if updateTakeover(j, termBefore, d.p.Term, d.p.Role, swapped) {
 		u.takeover = true // bleibt gemerkt, falls das Speichern dieses Schritts scheitert
@@ -684,6 +685,17 @@ func (d *daemon) pdhHBLocked() string {
 		return "ok:" + n.h.Version
 	}
 	return "down"
+}
+
+// selfDBPendingLocked: Datenbank-Spiegel eingerichtet, die eigene Datenbank
+// laut letzter Abfrage aber (noch) nicht schreibbarer Primary – z. B. direkt
+// nach dem Rücktausch, solange das Hochstufen läuft.
+func (d *daemon) selfDBPendingLocked() bool {
+	if d.pgActorLocked() == nil {
+		return false
+	}
+	st := d.lastPG()
+	return st == nil || st.State != "primary" || st.ReadOnly
 }
 
 // mirrorSyncLocked (R1): Standby des Partners verbunden (streaming) und
