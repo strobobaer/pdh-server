@@ -101,11 +101,8 @@ func TestAPIUpdateStartNotReady(t *testing.T) {
 }
 
 func TestAPIUpdateStartFaulty(t *testing.T) {
-	d, _, sock := updAPI(t)
-	if err := d.st.saveFaulty([]string{"x1"}); err != nil {
-		t.Fatal(err)
-	}
-	d.up.faulty = []string{"x1"}
+	d, fn, sock := updAPI(t)
+	d.cl.Faulty = []string{"x1"}
 
 	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"})
 	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Version als fehlerhaft gemerkt") {
@@ -126,11 +123,14 @@ func TestAPIUpdateStartFaulty(t *testing.T) {
 
 	// Eintrag löschen
 	code, m = updCall(t, sock, http.MethodDelete, "/v1/update/faulty/x1", nil)
-	if code != http.StatusOK || slices.Contains(d.up.faulty, "x1") {
-		t.Fatalf("löschen: %d %v %v", code, m, d.up.faulty)
+	if code != http.StatusOK || slices.Contains(d.cl.Faulty, "x1") {
+		t.Fatalf("löschen: %d %v %v", code, m, d.cl.Faulty)
 	}
-	if f, _ := d.st.loadFaulty(); len(f) != 0 {
-		t.Fatalf("Datei: %v", f)
+	if cl, _ := d.st.loadCluster(); len(cl.Faulty) != 0 || cl.Version != d.cl.Version {
+		t.Fatalf("Verbund-Einstellungen: %+v", cl)
+	}
+	if len(fn.messages("cluster")) == 0 {
+		t.Fatal("Änderung nicht verteilt")
 	}
 }
 
@@ -186,7 +186,7 @@ func TestCLIUpdateStatus(t *testing.T) {
 	t.Setenv("PDH_HA_SOCKET", sock)
 	d.up.job = rollingJob(ha.UpLocked, 6)
 	d.up.job.LockedAt = d.wall()
-	d.up.faulty = []string{"deadbeef"}
+	d.cl.Faulty = []string{"deadbeef"}
 
 	var out, errb bytes.Buffer
 	if rc := runCLI([]string{"update", "status"}, &out, &errb); rc != 0 {
@@ -213,5 +213,118 @@ func TestCLIUpdateStatus(t *testing.T) {
 	}
 	if d.up.job.Kind != ha.UpdateSequential || d.up.job.Target != "x1" || d.up.job.Source != "knopf" {
 		t.Fatalf("Auftrag: %+v", d.up.job)
+	}
+}
+
+func TestAPIUpdateStartSwap(t *testing.T) {
+	d, _, sock := updAPI(t)
+	for _, k := range []string{"rolling", "sequential"} {
+		if code, _ := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"kind": k, "source": "zeitplan"}); code != http.StatusBadRequest {
+			t.Fatalf("%s ohne Commit: %d", k, code)
+		}
+	}
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"kind": "swap", "source": "zeitplan", "commit": "ignoriert"})
+	if code != http.StatusOK {
+		t.Fatalf("swap: %d %v", code, m)
+	}
+	j := d.up.job
+	if j.Kind != ha.UpdateSwap || j.Target != "" || j.First != "b" || j.Second != "a" || j.Source != "zeitplan" ||
+		j.Old["a"] != "x0" || j.Old["b"] != "x0" || j.Phase != ha.UpPrepare {
+		t.Fatalf("Auftrag: %+v", j)
+	}
+}
+
+func TestAPIUpdateStartDisk(t *testing.T) {
+	d, fn, sock := updAPI(t)
+	old := freeSpace
+	t.Cleanup(func() { freeSpace = old })
+	freeSpace = func(string) (int64, bool) { return 100 << 30, true }
+	pv := upPeerView("x0", "")
+	pv.Last.Disk = "free:1000"
+	fn.setView("b", pv)
+	d.tick(context.Background())
+	body := map[string]any{"commit": "x1", "source": "zeitplan", "backup_configured": false}
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", body)
+	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Partner") {
+		t.Fatalf("zu wenig Platz auf dem Partner: %d %v", code, m)
+	}
+	// unbekannt: kein Fehler, Hinweis
+	pv.Last.Disk = "unknown"
+	fn.setView("b", pv)
+	freeSpace = func(string) (int64, bool) { return 0, false }
+	d.tick(context.Background())
+	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", body)
+	if code != http.StatusOK || !strings.Contains(strings.Join(anyStrings(m["hints"]), "|"), "Freier Platz nicht geprüft") {
+		t.Fatalf("unbekannter Platz: %d %v", code, m)
+	}
+}
+
+func anyStrings(v any) []string {
+	var out []string
+	l, _ := v.([]any)
+	for _, x := range l {
+		out = append(out, x.(string))
+	}
+	return out
+}
+
+func TestAPIUpdateStartBackup(t *testing.T) {
+	d, _, sock := updAPI(t)
+	old := freeSpace
+	t.Cleanup(func() { freeSpace = old })
+	freeSpace = func(string) (int64, bool) { return 100 << 30, true }
+	pv := upPeerView("x0", "")
+	pv.Last.Disk = "free:" + "107374182400"
+	d.net.(*fakeNet).setView("b", pv)
+	d.tick(context.Background())
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{
+		"commit": "x1", "source": "zeitplan", "backup_configured": true, "last_base_ok": false, "last_files_ok": true})
+	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Grundsicherung") {
+		t.Fatalf("Grundsicherung fehlgeschlagen: %d %v", code, m)
+	}
+	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"})
+	if code != http.StatusOK || !strings.Contains(strings.Join(anyStrings(m["hints"]), "|"), "Sicherung nicht geprüft") {
+		t.Fatalf("Angabe fehlt: %d %v", code, m)
+	}
+}
+
+func TestAPIUpdateForceBusyBlocks(t *testing.T) {
+	d, _, sock := updAPI(t)
+	d.busy.Store(true)
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "knopf", "force": true})
+	if code != http.StatusConflict || d.up.job.ID != "" {
+		t.Fatalf("force trotz Vorgang: %d %v", code, m)
+	}
+}
+
+func TestFaultyClusterWide(t *testing.T) {
+	d, fn := upActive(t)
+	j := rollingJob(ha.UpVerifyPrep, 3)
+	j.PhaseAt = time.Now().Add(-11 * time.Minute)
+	d.up.job = j
+	v0 := d.cl.Version
+	d.tick(context.Background())
+	if !slices.Equal(d.cl.Faulty, []string{"x1"}) || d.cl.Version != v0+1 {
+		t.Fatalf("Verbund-Einstellungen: %v v%d", d.cl.Faulty, d.cl.Version)
+	}
+	var pub *clusterConfig
+	for _, s := range fn.messages("cluster") {
+		pub = s.m.Cluster
+	}
+	if pub == nil || !slices.Equal(pub.Faulty, []string{"x1"}) {
+		t.Fatalf("nicht verteilt: %+v", pub)
+	}
+	// Migration der alten Datei beim Laden
+	st := store{etc: t.TempDir(), state: t.TempDir()}
+	_ = st.saveNode(nodeConfig{ID: "a", Kind: "node", CAHolder: true})
+	_ = st.saveCluster(duoCluster())
+	_ = st.saveState(ha.Persisted{Role: ha.Active, Term: 1})
+	_ = st.saveFaulty([]string{"alt1"})
+	d2 := loadFakeDaemon(t, st, newFakeNet())
+	if !slices.Equal(d2.cl.Faulty, []string{"alt1"}) {
+		t.Fatalf("Migration: %v", d2.cl.Faulty)
+	}
+	if _, err := os.Stat(st.statePath("update-faulty.json")); err == nil {
+		t.Fatal("alte Datei bleibt")
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"slices"
 	"strings"
 	"time"
@@ -38,6 +39,12 @@ type updateStartReq struct {
 	Kind    string `json:"kind"`    // leer = Art aus dem Wartungsfenster
 	Force   bool   `json:"force"`   // nur mit "knopf": trotzdem, mit kurzer Unterbrechung
 	Version string `json:"version"` // Anzeigename der Zielversion; leer = Kurzform des Commits
+
+	// Stand der Sicherung (Ausfallschutz-Sicherung), vom Update-Agenten bzw.
+	// PDH gemeldet; fehlt die Angabe, wird die Sicherung nicht geprüft.
+	BackupConfigured *bool `json:"backup_configured"`
+	LastBaseOK       *bool `json:"last_base_ok"`
+	LastFilesOK      *bool `json:"last_files_ok"`
 }
 
 // notReadyError: Prüfung „alles grün“ nicht bestanden (HTTP 409).
@@ -57,12 +64,21 @@ func (d *daemon) windowLocked() ha.Window {
 	return ha.DefaultWindow()
 }
 
+// parseDiskHB liest das Herzschlag-Feld disk ("free:<Bytes>").
+func parseDiskHB(v string) (int64, bool) {
+	n, ok := strings.CutPrefix(v, "free:")
+	if !ok {
+		return 0, false
+	}
+	b, err := strconv.ParseInt(n, 10, 64)
+	return b, err == nil && b >= 0
+}
+
 // readyObsLocked baut die Sicht für die Prüfung „alles grün“ aus dem Stand
-// des Dienstes. Nicht bekannt sind dem Dienst der freie Platz (die
-// Herzschlag-Angabe „disk“ ist nur ein Platzhalter) und der Stand der
-// Sicherungen: beide werden hier nicht geprüft (BackupConfigured=false,
-// Platz unbegrenzt); das Wartungsfenster (Task 7) prüft die Sicherungen selbst.
-func (d *daemon) readyObsLocked(partner, witness string) ha.ReadyObs {
+// des Dienstes. Den freien Platz melden beide Server im Herzschlag (disk);
+// ist er unbekannt, scheitert die Prüfung nicht, es gibt einen Hinweis.
+// Die Sicherung meldet der Aufrufer (req); fehlt die Angabe: Hinweis.
+func (d *daemon) readyObsLocked(partner, witness string, req updateStartReq) (ha.ReadyObs, []string) {
 	s := d.settingsLocked()
 	pv := d.views[partner]
 	o := ha.ReadyObs{
@@ -73,10 +89,39 @@ func (d *daemon) readyObsLocked(partner, witness string) ha.ReadyObs {
 		Busy:     d.busy.Load(), JobOpen: d.up.job.ID != "" && !upEnded(d.up.job),
 		SelfCommit: d.commit, PartnerCommit: pv.Last.Commit,
 		MirrorSync: d.mirrorSyncLocked(s, partner, pv), LagLimit: s.LagLimit,
-		FreeSelf: math.MaxInt64, FreePartner: math.MaxInt64,
 		WitnessExpected: witness != "", WitnessSeen: witness != "" && d.views[witness].seen(),
 	}
-	return o
+	var hints []string
+	o.FreeSelf, o.FreePartner = math.MaxInt64, math.MaxInt64
+	unchecked := false
+	if n, ok := parseDiskHB(d.diskHBLocked()); ok {
+		o.FreeSelf = n
+	} else {
+		unchecked = true
+	}
+	if n, ok := parseDiskHB(pv.Last.Disk); ok {
+		o.FreePartner = n
+	} else if pv.seen() {
+		unchecked = true
+	}
+	if unchecked {
+		hints = append(hints, "Freier Platz nicht geprüft")
+	}
+	if req.BackupConfigured == nil {
+		hints = append(hints, "Sicherung nicht geprüft")
+	} else if o.BackupConfigured = *req.BackupConfigured; o.BackupConfigured {
+		o.LastBaseOK, o.LastFilesOK = true, true
+		if req.LastBaseOK == nil || req.LastFilesOK == nil {
+			hints = append(hints, "Stand der letzten Sicherung nicht vollständig gemeldet")
+		}
+		if req.LastBaseOK != nil {
+			o.LastBaseOK = *req.LastBaseOK
+		}
+		if req.LastFilesOK != nil {
+			o.LastFilesOK = *req.LastFilesOK
+		}
+	}
+	return o, hints
 }
 
 // startUpdate prüft und legt einen Auftrag an. Rückgabe: Hinweise, die nicht
@@ -105,21 +150,26 @@ func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
 		return nil, errors.New("Erzwingen ist nur über den Knopf möglich")
 	}
 	req.Commit = strings.TrimSpace(req.Commit)
-	if req.Commit == "" {
-		return nil, errors.New("Commit fehlt")
-	}
 	kind := ha.UpdateKind(req.Kind)
 	switch kind {
 	case "":
 		kind = d.windowLocked().Kind
-	case ha.UpdateRolling, ha.UpdateSequential:
+	case ha.UpdateRolling, ha.UpdateSequential, ha.UpdateSwap:
 	default:
 		return nil, fmt.Errorf("Unbekannte Update-Art %q", req.Kind)
+	}
+	if kind == ha.UpdateSwap {
+		req.Commit, req.Version = "", "" // nur Rollentausch, keine neue Version
+		if req.Force {
+			return nil, errors.New("Rollentausch kann nicht erzwungen werden")
+		}
+	} else if req.Commit == "" {
+		return nil, errors.New("Commit fehlt")
 	}
 	if req.Force {
 		kind = ha.UpdateSequential // kurze Unterbrechung statt Rollentausch
 	}
-	if src == srcZeitplan && slices.Contains(d.up.faulty, req.Commit) {
+	if src == srcZeitplan && req.Commit != "" && slices.Contains(d.cl.Faulty, req.Commit) {
 		return nil, notReadyError{reason: "Version als fehlerhaft gemerkt"}
 	}
 	partner, witness := d.peerIDsLocked()
@@ -130,6 +180,10 @@ func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
 	if cur := d.up.job; cur.ID != "" && !upEnded(cur) {
 		return nil, errors.New("Ein Update-Auftrag läuft bereits")
 	}
+	if d.busy.Load() {
+		// auch mit force: eine laufende Wiederherstellung/Neuspiegelung nie überlappen
+		return nil, notReadyError{reason: "Ein anderer Vorgang läuft"}
+	}
 	if req.Force {
 		// Der Knopf darf trotz nicht grün weitermachen, aber nicht ohne Partner:
 		// sonst hinge der Auftrag an einem Server, der nicht antwortet.
@@ -137,7 +191,9 @@ func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
 			return nil, errors.New("Partner nicht erreichbar")
 		}
 	} else {
-		ok, reason, h := ha.UpdateReady(d.readyObsLocked(partner, witness))
+		ro, extra := d.readyObsLocked(partner, witness, req)
+		ok, reason, h := ha.UpdateReady(ro)
+		h = append(h, extra...)
 		if !ok {
 			return nil, notReadyError{reason: reason, hints: h}
 		}
@@ -157,7 +213,11 @@ func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
 	if err := d.startUpdateLocked(j); err != nil {
 		return nil, err
 	}
-	d.event("info", fmt.Sprintf("Update auf %s angelegt (%s, %s)", shortCommit(req.Commit), kind, src))
+	if kind == ha.UpdateSwap {
+		d.event("info", "Rollentausch angelegt ("+src+")")
+	} else {
+		d.event("info", fmt.Sprintf("Update auf %s angelegt (%s, %s)", shortCommit(req.Commit), kind, src))
+	}
 	return hints, nil
 }
 
@@ -173,7 +233,7 @@ func (d *daemon) updateView() ha.UpdateView {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	_, lockMax, _ := d.updateDurationsLocked()
-	return d.up.job.View(d.wall(), lockMax, d.up.faulty)
+	return d.up.job.View(d.wall(), lockMax, d.cl.Faulty)
 }
 
 // allowedEditor: gleiche Prüfung wie bei den Einstellungen – CA-Knoten oder
@@ -185,25 +245,32 @@ func (d *daemon) allowedEditorLocked() error {
 	return nil
 }
 
-// forgetFaulty nimmt einen Commit aus der Liste der fehlerhaften Versionen.
+// forgetFaulty nimmt einen Commit aus der Liste der fehlerhaften Versionen
+// (Verbund-Einstellungen, gilt auf beiden Servern).
 func (d *daemon) forgetFaulty(commit string) error {
 	d.lock()
-	defer d.unlock()
 	if err := d.clusterEditable(); err != nil {
+		d.unlock()
 		return err
 	}
 	if err := d.allowedEditorLocked(); err != nil {
+		d.unlock()
 		return err
 	}
-	if !slices.Contains(d.up.faulty, commit) {
+	if !slices.Contains(d.cl.Faulty, commit) {
+		d.unlock()
 		return errors.New("Version ist nicht als fehlerhaft gemerkt")
 	}
-	f := slices.DeleteFunc(slices.Clone(d.up.faulty), func(c string) bool { return c == commit })
-	if err := d.st.saveFaulty(f); err != nil {
+	cl := d.cl
+	cl.Faulty = slices.DeleteFunc(slices.Clone(d.cl.Faulty), func(c string) bool { return c == commit })
+	cl.Version++
+	pl, err := d.publishClusterLocked(cl)
+	d.unlock()
+	if err != nil {
 		return fmt.Errorf("Liste nicht gespeichert: %w", err)
 	}
-	d.up.faulty = f
-	d.event("info", "Version "+shortCommit(commit)+" nicht mehr als fehlerhaft gemerkt")
+	pl.event("info", "Version "+shortCommit(commit)+" nicht mehr als fehlerhaft gemerkt")
+	d.execute(context.Background(), pl)
 	return nil
 }
 

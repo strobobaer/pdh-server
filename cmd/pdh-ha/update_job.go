@@ -38,8 +38,7 @@ const (
 // upState: Auftrag und Hilfszustand des Dienstes (alles unter mu, außer den
 // atomaren Feldern).
 type upState struct {
-	job    ha.UpdateJob
-	faulty []string
+	job ha.UpdateJob
 
 	acks         []ha.UpdateAck // Ergebnisse für die nächsten Schritte (eins je Schritt)
 	abort        string         // Abbruch durch einen Administrator für den nächsten Schritt
@@ -138,11 +137,8 @@ func (d *daemon) loadUpdateLocked() {
 		d.alarmOnce("update-job", "Update-Auftrag nicht lesbar: "+err.Error())
 		j = ha.UpdateJob{}
 	}
-	f, err := d.st.loadFaulty()
-	if err != nil {
-		d.alarmOnce("update-faulty", "Liste fehlerhafter Versionen nicht lesbar: "+err.Error())
-	}
-	d.up.job, d.up.faulty, d.up.restartAbort = j, f, ""
+	d.migrateFaultyLocked()
+	d.up.job, d.up.restartAbort = j, ""
 	if j.ID != "" && beforeLock(j) {
 		d.up.restartAbort = j.ID
 	}
@@ -298,7 +294,7 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 	}
 	u.abort, u.restartAbort, u.takeover = "", "", false
 	if next.MarkFaulty {
-		d.addFaultyLocked(pl, next.Target)
+		d.addFaultyLocked(pl, next.Target, true)
 	}
 	// Auftrag zuerst spiegeln: Der Partner kennt ihn, bevor er durch einen
 	// Tausch-Befehl aktiv wird (der Befehl wirkt erst im nächsten Takt).
@@ -389,17 +385,59 @@ func (d *daemon) queueAckLocked(a ha.UpdateAck) {
 	}
 }
 
-// addFaultyLocked merkt einen Commit als fehlerhaft (update-faulty.json).
-func (d *daemon) addFaultyLocked(pl *plan, commit string) {
-	if commit == "" || slices.Contains(d.up.faulty, commit) {
+// migrateFaultyLocked übernimmt die frühere knotenlokale Liste
+// (update-faulty.json) einmalig in die Verbund-Einstellungen.
+func (d *daemon) migrateFaultyLocked() {
+	f, err := d.st.loadFaulty()
+	if err != nil {
+		d.alarmOnce("update-faulty", "Liste fehlerhafter Versionen nicht lesbar: "+err.Error())
 		return
 	}
-	f := append(append([]string(nil), d.up.faulty...), commit)
-	if err := d.st.saveFaulty(f); err != nil {
+	if _, err := os.Stat(d.st.statePath("update-faulty.json")); err != nil {
+		return
+	}
+	cl := d.cl
+	cl.Faulty = slices.Clone(d.cl.Faulty)
+	changed := false
+	for _, c := range f {
+		if c != "" && !slices.Contains(cl.Faulty, c) {
+			cl.Faulty = append(cl.Faulty, c)
+			changed = true
+		}
+	}
+	if changed {
+		cl.Version++ // verteilt sich über den Abgleich der Knotenliste
+		if err := d.st.saveCluster(cl); err != nil {
+			d.alarmOnce("update-faulty", "Fehlerhafte Versionen nicht übernommen: "+err.Error())
+			return
+		}
+		d.cl = cl
+	}
+	_ = os.Remove(d.st.statePath("update-faulty.json"))
+}
+
+// addFaultyLocked merkt einen Commit als fehlerhaft – im ganzen Verbund
+// (clusterConfig.Faulty). Nur der dirigierende (aktive) Server erhöht die
+// Version und verteilt (publish); der Partner trägt den Commit aus dem
+// gespiegelten Auftrag nur lokal nach, ohne die Version zu erhöhen.
+func (d *daemon) addFaultyLocked(pl *plan, commit string, publish bool) {
+	if commit == "" || slices.Contains(d.cl.Faulty, commit) {
+		return
+	}
+	cl := d.cl
+	cl.Faulty = append(slices.Clone(d.cl.Faulty), commit)
+	if publish {
+		cl.Version++
+	}
+	if err := d.st.saveCluster(cl); err != nil {
 		d.saveAlarmLocked(pl, "Fehlerhafte Version nicht gespeichert: "+err.Error())
 		return
 	}
-	d.up.faulty = f
+	d.cl = cl
+	if publish {
+		d.net.setCluster(cl)
+		pl.send("", message{T: "cluster", ID: d.node.ID, Seq: d.nextSeq(), Cluster: &cl})
+	}
 }
 
 // mirrorInLocked: gespiegelten Auftrag vom Partner übernehmen – nur mit
@@ -419,7 +457,7 @@ func (d *daemon) mirrorInLocked(pl *plan, j ha.UpdateJob) {
 	}
 	d.setJobLocked(j)
 	if j.MarkFaulty {
-		d.addFaultyLocked(pl, j.Target)
+		d.addFaultyLocked(pl, j.Target, false)
 	}
 }
 

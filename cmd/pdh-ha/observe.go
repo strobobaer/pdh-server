@@ -171,8 +171,8 @@ func (d *daemon) statusLocked() apiStatus {
 	st.Window = d.windowLocked()
 	st.Maint, st.CAHolder = d.p.Maint, d.node.CAHolder
 	_, lockMax, _ := d.updateDurationsLocked()
-	st.Update = d.up.job.View(wall, lockMax, d.up.faulty)
-	st.Faulty = append(st.Faulty, d.up.faulty...)
+	st.Update = d.up.job.View(wall, lockMax, d.cl.Faulty)
+	st.Faulty = append(st.Faulty, d.cl.Faulty...)
 	st.GatewayTargets = append(st.GatewayTargets, d.cl.GatewayTargets...)
 	st.Self = apiNode{
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,
@@ -313,7 +313,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 	m := message{
 		T: "hb", ID: d.node.ID, Role: string(d.p.Role), Term: d.p.Term, Ver: d.version, Commit: d.commit,
 		DataCurrent: true, DataAssumed: true, Gateway: gw, Maint: d.p.Maint, MaintSeq: d.p.MaintSeq,
-		PG: "unknown", PDH: "unknown", Disk: "unknown", Seq: d.nextSeq(), Wall: wall.UTC(),
+		PG: "unknown", PDH: "unknown", Disk: d.diskHBLocked(), Seq: d.nextSeq(), Wall: wall.UTC(),
 		HostID: d.hostID, ClusterVer: d.cl.Version,
 	}
 	for _, n := range d.cl.Nodes {

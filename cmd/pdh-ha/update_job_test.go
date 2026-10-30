@@ -204,8 +204,8 @@ func TestUpdateJobMirrorHigherSeq(t *testing.T) {
 	if got, _ := d.st.loadJob(); got.Seq != 5 {
 		t.Fatalf("gespiegelter Auftrag nicht gespeichert: %+v", got)
 	}
-	if f, _ := d.st.loadFaulty(); !slices.Equal(f, []string{"x1"}) {
-		t.Fatalf("fehlerhafte Version nicht gemerkt: %v", f)
+	if cl, _ := d.st.loadCluster(); !slices.Equal(cl.Faulty, []string{"x1"}) {
+		t.Fatalf("fehlerhafte Version nicht gemerkt: %v", cl.Faulty)
 	}
 	for _, seq := range []uint64{4, 5} {
 		old := rollingJob(ha.UpPrepare, seq)
@@ -392,8 +392,8 @@ func TestUpdateMarkFaultySaved(t *testing.T) {
 	if !d.up.job.MarkFaulty {
 		t.Fatalf("X fehlerhaft erwartet: %+v", d.up.job)
 	}
-	if f, _ := d.st.loadFaulty(); !slices.Equal(f, []string{"x1"}) {
-		t.Fatalf("update-faulty.json: %v", f)
+	if !slices.Equal(d.cl.Faulty, []string{"x1"}) {
+		t.Fatalf("Verbund-Einstellungen: %v", d.cl.Faulty)
 	}
 	if st := d.statusNow(); !slices.Equal(st.Faulty, []string{"x1"}) || st.Update.Phase != string(ha.UpRollback) {
 		t.Fatalf("Status: %+v %+v", st.Faulty, st.Update)
