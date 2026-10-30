@@ -243,3 +243,20 @@ func TestJoinScriptWitnessUpdate(t *testing.T) {
 		t.Fatalf("bash -n updater.sh: %v\n%s", err, out)
 	}
 }
+
+// Minor: Der Stand der Server wird vor git checkout geprüft (nur ein Commit,
+// kein Zweig, keine Marke, kein Schalter).
+func TestWitnessUpdaterRejectsNonCommit(t *testing.T) {
+	for _, bad := range []string{"main", "--orphan=x", "v0.77.8"} {
+		e := newEnv(t,
+			scene{self: commitY, peers: servers(bad, true, true)},
+			scene{self: commitY, peers: servers(bad, true, true)})
+		log, out, _ := e.run(t)
+		if strings.Contains(log, "checkout --detach "+bad) || strings.Contains(log, "up -d") {
+			t.Errorf("%q: ungeprüft ausgecheckt bzw. gebaut:\n%s", bad, log)
+		}
+		if !strings.Contains(out, "Ungültiger Stand") {
+			t.Errorf("%q: keine Meldung:\n%s", bad, out)
+		}
+	}
+}

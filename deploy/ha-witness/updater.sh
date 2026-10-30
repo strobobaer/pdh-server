@@ -59,12 +59,15 @@ common_commit() {
 }
 
 build() {  # $1 = Commit
+  # nur ein Commit (7 bis 40 Hex-Zeichen) – nie ein Zweig, eine Marke oder ein Schalter
+  [[ "$1" =~ ^[0-9a-f]{7,40}$ ]] || { log "Ungültiger Stand: $1"; return 1; }
   git -C "$SRC" checkout --detach "$1" >/dev/null 2>&1 || { log "Stand $1 nicht auszuchecken"; return 1; }
   PDH_HA_COMMIT="$1" docker compose -p pdh-ha-witness -f "$COMPOSE" up -d --build witness
 }
 
 update_to() {  # $1 = neuer Stand, $2 = alter Stand
   local x="$1" old="$2" i tries ok=0
+  [[ "$x" =~ ^[0-9a-f]{7,40}$ ]] || { log "Ungültiger Stand: $x"; return 1; }
   if [[ ! -d "$SRC/.git" ]]; then
     log "Quelltext fehlt, hole ihn von $REPO"
     git clone --quiet "$REPO" "$SRC" || { log "Klonen gescheitert"; return 1; }
