@@ -103,11 +103,17 @@ In `umstellung` setzt das Szenario die Absenderadresse mit
 pdh und der Update-Agent sind Platzhalter: `lab-agent` „spielt einen Stand
 ein“, indem er den Commit nach `/var/lib/pdh-lab/commit` schreibt (pdh-ha liest
 ihn je Takt, `PDH_HA_COMMIT_FILE`) und `pdh-dummy` neu startet;
-`install_norestart` merkt den Stand nur vor, `finish` setzt ihn ein. Ausgangsstand
-ist `lab0`. `pdh-dummy` beantwortet `/health` auf Port 8090 (`socat`) mit der
-Version aus `VERSION`; als Primary mit einem Stand ungleich `lab0` legt es die
-Tabelle `mig_<Commit>` in der Datenbank `lab` an („Datenbank-Änderung“), bis
-dahin meldet es `migrations_ok: false`.
+`install_norestart` merkt den Stand nur vor, `finish` setzt ihn ein. `rollback`
+startet danach pdh-ha neu – wie `install_update.sh --rollback` im Betrieb (das
+Einstiegsskript startet pdh-ha in einer Schleife wieder); `rollback_norestart`
+nicht. Ausgangsstand ist `lab0`. `pdh-dummy` beantwortet `/health` auf Port 8090
+(`socat`) mit der Version je Stand: `lab0` = Inhalt von `VERSION`, sonst
+`<VERSION>-<Stand>` (z. B. `0.77.8-lab1`). Die Szenarien starten Aufträge ohne
+`--version`; pdh-ha übernimmt die Zielversion von B nach dem Einspielen. Als
+Primary mit einem Stand ungleich `lab0` legt pdh-dummy die Tabelle
+`mig_<Commit>` in der Datenbank `lab` an („Datenbank-Änderung“); bis die Tabelle
+da ist, meldet es `migrations_ok: false` – auch am Spiegel (eingeschränkter
+Spiegel, der auf die Migration am Primary wartet).
 
 Schalter (Dateien in `/var/lib/pdh-lab/`): `fail-install` (Einspielen
 scheitert), `fail-start-<Commit>` (pdh startet mit diesem Stand nicht),
@@ -118,12 +124,13 @@ dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verlor
 
 | Szenario | Ablauf | Erwartung |
 |---|---|---|
-| `update-ok` | `update start lab1 --kind rolling` | node2 spielt lab1 ein, Tausch, node1 zieht nach; beide auf lab1, node2 aktiv, `mig_lab1` auf beiden |
-| `update-b-vorher` | `fail-health-lab1` auf node2, dann Update | Prüffrist überschritten, node2 zurück auf lab0, lab1 als fehlerhaft gemerkt, keine `mig_lab1` |
-| `update-b-nachher` | im Countdown `fail-health-lab1` auf node2 | nach dem Tausch legt node2 `mig_lab1` an, Prüfung scheitert, Zurücksetzen: node1 mit alter Datenbank aktiv, `mig_lab1` nirgends, lab1 fehlerhaft |
-| `update-abbruch` | in der Sperre `pdh-ha update abort` auf node2 | Zurücksetzen, Ergebnis „abgebrochen von Befehlszeile“, lab1 nicht fehlerhaft |
+| `update-ok` | `update start lab1 --kind rolling` | node2 spielt lab1 ein, Tausch, node1 zieht nach; beide auf lab1, node2 aktiv, `mig_lab1` auf beiden; Ergebnis nennt die übernommene Version („Update auf 0.77.8-lab1 abgeschlossen“) |
+| `update-b-vorher` | `fail-health-lab1` auf node2, dann Update | Prüffrist überschritten, node2 zurück auf lab0, lab1 als fehlerhaft gemerkt, keine `mig_lab1`; pdh-ha auf node2 startet beim Zurückdrehen neu – trotzdem genau ein Lauf und kein „braucht Hilfe“ |
+| `update-b-nachher` | im Countdown `fail-health-lab1` auf node2 | nach dem Tausch legt node2 `mig_lab1` an, Prüfung scheitert, Zurücksetzen: node1 mit alter Datenbank aktiv, `mig_lab1` nirgends, lab1 fehlerhaft; „update abort“ im Zurücksetzen abgewiesen („Zurücksetzen läuft bereits“), genau ein Zurückdrehen, kein Dringend-Alarm |
+| `update-abbruch` | in der Sperre erst Handtausch, Übernahme erzwingen und Wartung versuchen, dann `pdh-ha update abort` auf node2 | Handbefehle abgewiesen („zuerst pdh-ha update abort“), dann Zurücksetzen, Ergebnis „abgebrochen von Befehlszeile“, lab1 nicht fehlerhaft |
 | `update-neustart` | node1 vor der Sperre neu starten; zweiter Auftrag: node2 in der Prüfung neu starten | erst „abgebrochen von Neustart“ mit beiden auf lab0, dann setzt node2 den Auftrag fort: abgeschlossen |
 | `update-nicht-gruen` | node2 von `lan`/`vpn` trennen, Start mit Quelle „zeitplan“ und per Befehl | HTTP 409 bzw. Fehler, kein Auftrag |
 | `update-nacheinander` | `update start lab1 --kind sequential` | node2 eingefroren, node1 startet mit lab1 neu, node2 zieht nach; node1 aktiv, beide auf lab1 |
 | `update-nacheinander-fehler` | `fail-health-lab1` auf node1, Art „alle nacheinander“ | node2 wird mit seinem eingefrorenen Stand aktiv, node1 zurück auf lab0, `mig_lab1` nirgends, lab1 fehlerhaft |
-| `update-hoechstdauer` | Höchstdauer 10 min; im Countdown node2 trennen, nach 8 min verbinden | Tausch findet nicht statt, nach 10 min Zurücksetzen und Freigabe, Ergebnis „Höchstdauer überschritten“, lab1 nicht fehlerhaft |
+| `update-tausch-frist` | Höchstdauer 10 min; im Countdown node2 trennen, nach dem Beginn des Zurücksetzens verbinden | Tausch-Befehl wird wiederholt, nach der Tauschfrist (3 min) Zurücksetzen, Ergebnis „Rollentausch nicht gelungen“, deutlich vor der Höchstdauer, lab1 nicht fehlerhaft, kein Dringend-Alarm |
+| `update-nacheinander-gleichstand` | WAL-Einspielen auf node2 angehalten, Zeile auf node1 geschrieben, Start „alle nacheinander“ mit Trotzdem (`force`) | node1 wird abgeschottet, Gleichstand kommt nicht: node2 wird nicht eingefroren, Ergebnis „Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert“, Zeile bleibt erhalten, lab1 nicht fehlerhaft |

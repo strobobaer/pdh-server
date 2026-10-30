@@ -5,7 +5,9 @@
 #   lab-agent finish
 # „Einspielen“ heißt hier: Commit nach $PDH_HA_COMMIT_FILE schreiben (pdh-ha
 # liest ihn je Takt) und pdh-dummy neu starten. install_norestart merkt den
-# Commit nur vor; finish setzt ihn ein. Schalter (Dateien):
+# Commit nur vor; finish setzt ihn ein. rollback startet danach pdh-ha neu
+# (wie install-pdh-ha.sh im echten Betrieb), rollback_norestart nicht.
+# Schalter (Dateien):
 #   /var/lib/pdh-lab/fail-install  → install/install_norestart scheitern
 set -uo pipefail
 dir=/var/lib/pdh-lab
@@ -44,7 +46,14 @@ case "$op" in
         [[ -n "$c" ]] || exit 2
         rm -f "$pending"
         set_commit "$c"
-        exec /usr/local/bin/pdh-dummy restart
+        /usr/local/bin/pdh-dummy restart || exit 1
+        # Wie das echte install_update.sh --rollback (über install-pdh-ha.sh):
+        # pdh-ha startet neu, bevor das Ergebnis zurückkommt – der laufende
+        # Auftrag stirbt ohne Ergebnis (C2). Die Schleife im Einstiegsskript
+        # startet pdh-ha wieder; der Lauf hier endet erst danach.
+        touch /run/pdh-ha.restart
+        pkill -TERM -x pdh-ha || true
+        sleep 5
         ;;
     rollback_norestart)
         # nur der vorbereitete Stand verfällt; das laufende Programm bleibt

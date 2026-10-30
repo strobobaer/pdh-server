@@ -10,7 +10,8 @@
 #            vip-entfernt vip-neustart hooks umstellung
 #   Update im Verbund: update-ok update-b-vorher update-b-nachher update-abbruch
 #            update-neustart update-nicht-gruen update-nacheinander
-#            update-nacheinander-fehler update-hoechstdauer
+#            update-nacheinander-fehler update-tausch-frist
+#            update-nacheinander-gleichstand
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -49,7 +50,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     rewind-fehler slot-grenze
     vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
-    update-nacheinander update-nacheinander-fehler update-hoechstdauer)
+    update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -1146,11 +1147,44 @@ up_clean() {
     done
 }
 
+# lab_ver <Stand>: Version, die pdh-dummy für den Stand meldet (lab0 = VERSION)
+lab_ver() {
+    local base
+    base="$(tr -d '[:space:]' <"$repo/VERSION")"
+    if [[ "$1" == lab0 ]]; then echo "$base"; else echo "$base-$1"; fi
+}
+
+# no_event <Muster>: kein Ereignis dieser Art auf einem der Server
+no_event() {
+    local c hit
+    for c in node1 node2; do
+        hit="$(docker exec "$c" grep -E -- "$1" /var/lib/pdh-ha/events.jsonl 2>/dev/null | head -1 | cut -c1-240)" || true
+        [[ -z "$hit" ]] || fail "$c: unerwartetes Ereignis: $hit"
+    done
+}
+
+# agent_runs <Container> <Op> <Stand>: wie oft lab-agent diese Op ausführte
+agent_runs() {
+    docker exec "$1" grep -cE " $2 $3\$" /var/lib/pdh-lab/agent.log 2>/dev/null || true
+}
+
+# rollback_once <Container>: genau ein Zurückdrehen auf lab0 (C2: keine
+# Wiederholungsschleife, obwohl pdh-ha dabei neu startet)
+rollback_once() {
+    local n
+    n="$(agent_runs "$1" rollback lab0)"
+    log "$1: Zurückdrehen auf lab0 lief ${n:-0}-mal"
+    [[ "$n" == 1 ]] || fail "$1: Zurückdrehen lief ${n:-0}-mal statt einmal"
+}
+
 sc_update_ok() {
     up_prepare 1 30
+    # C1: Start ohne --version; node2 läuft nach dem Einspielen als
+    # eingeschränkter Spiegel (migrations_ok=false), der Auftrag übernimmt
+    # dessen Version und zeigt sie im Ergebnis
     up_start node1 lab1 rolling
     up_wait 600 fertig abgebrochen
-    up_result_has "abgeschlossen"
+    up_result_has "Update auf $(lab_ver lab1) abgeschlossen"
     wait_for 120 eval 'mirror_ok_rev && commits_are lab1 lab1' ||
         fail "nicht beide auf lab1 mit node2 aktiv (node1=$R1 $(jget commit <<<"$J1"), node2=$R2 $(jget commit <<<"$J2"))"
     wait_for 30 eval '[[ "$(mig_on node2 lab1)" == t && "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
@@ -1168,6 +1202,10 @@ sc_update_b_vorher() {
     wait_for 120 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
     faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt ($(jget faulty <<<"$J1"))"
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    # C2: pdh-ha auf node2 startet beim Zurückdrehen neu – trotzdem kein
+    # falscher Alarm und kein zweiter Lauf
+    no_event 'braucht Hilfe'
+    rollback_once node2
     up_clean
 }
 
@@ -1180,13 +1218,37 @@ sc_update_b_nachher() {
     lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
     up_wait 300 pruefen_neu
     wait_for 60 eval '[[ "$(mig_on node2 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 auf node2 nicht eingespielt"
+    up_wait 300 zuruecksetzen
+    up_abort_refused "Zurücksetzen läuft bereits"
     up_wait 600 fertig abgebrochen
     up_result_has "Prüfung der neuen Version fehlgeschlagen"
     wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
     faulty_has lab1 || fail "lab1 nicht als fehlerhaft gemerkt"
     no_mig lab1 || fail "Datenbank-Änderung lab1 nach dem Zurücksetzen noch vorhanden"
+    # C2: Zurückdrehen mit Neustart von pdh-ha auf node2 – kein Dringend-Alarm,
+    # keine Wiederholungsschleife bis zur Höchstdauer
+    no_event 'Dringend'
+    rollback_once node2
     up_resume
     up_clean
+}
+
+# up_abort_refused <Text>: „pdh-ha update abort“ am aktiven Server wird mit
+# diesem Grund abgelehnt (I7). Wechselt gerade der aktive Server, erneut versuchen.
+up_abort_refused() {
+    local i c out
+    for ((i = 0; i < 15; i++)); do
+        snap
+        c=node1
+        [[ "$R2" == aktiv ]] && c=node2
+        if out="$(docker exec "$c" pdh-ha update abort 2>&1)"; then
+            fail "Abbruch angenommen statt abgelehnt ($c): $out"
+        fi
+        log "update abort auf $c: $out"
+        [[ "$out" == *"$1"* ]] && return 0
+        sleep 1
+    done
+    fail "Abbruch nicht mit „$1“ abgelehnt: $out"
 }
 
 sc_update_abbruch() {
@@ -1196,6 +1258,18 @@ sc_update_abbruch() {
     up_lock_pause
     lab_switch node2 fail-health-lab1 on || fail "Schalter setzen"
     up_wait 300 pruefen_neu
+    # I6: Handtausch, Übernahme erzwingen und Wartung neben dem Auftrag abgewiesen
+    local r
+    r="$(up_api node2 POST /v1/command '{"cmd":"swap"}')"
+    log "Handtausch während des Auftrags: $r"
+    [[ "$r" != 200* && "$r" == *"update abort"* ]] || fail "Handtausch nicht abgewiesen: $r"
+    r="$(up_api node1 POST /v1/command '{"cmd":"force_takeover"}')"
+    log "Übernahme erzwingen während des Auftrags: $r"
+    [[ "$r" != 200* ]] || fail "Übernahme erzwingen nicht abgewiesen: $r"
+    if r="$(docker exec node2 pdh-ha maintenance on 2>&1)"; then
+        fail "Wartung während des Auftrags angenommen: $r"
+    fi
+    [[ "$r" == *"update abort"* ]] || fail "Wartung ohne Hinweis abgewiesen: $r"
     log "Abbruch in der Sperre auf dem aktiven node2"
     docker exec node2 pdh-ha update abort || fail "update abort auf node2"
     up_wait 600 fertig abgebrochen
@@ -1279,7 +1353,10 @@ sc_update_nacheinander_fehler() {
     up_clean
 }
 
-sc_update_hoechstdauer() {
+# I2: Der Tausch findet nicht statt (node2 getrennt). Der Auftrag wiederholt
+# den Tausch-Befehl und setzt nach seiner eigenen Tauschfrist (3 min) zurück –
+# nicht erst nach der Höchstdauer der Sperre (10 min).
+sc_update_tausch_frist() {
     up_prepare 1 10
     up_start node1 lab1 rolling
     up_wait 600 countdown
@@ -1288,15 +1365,54 @@ sc_update_hoechstdauer() {
     net_off node2 lan vpn || fail "Netz off node2"
     up_wait 180 gesperrt
     local t=$SECONDS
-    watch_for 480 eval 'roles aktiv passiv && [[ "$(up_get upphase)" == gesperrt ]]' ||
-        fail "Sperre endet vor der Höchstdauer (node1=$R1, Phase $(up_get upphase))"
-    log "nach $((SECONDS - t)) s gesperrt: node2 wieder verbinden"
+    up_wait 330 zuruecksetzen
+    ((SECONDS - t < 330)) || fail "Zurücksetzen erst nach $((SECONDS - t)) s"
+    log "nach $((SECONDS - t)) s Zurücksetzen (Tauschfrist): node2 wieder verbinden"
     net_on node2 lan vpn || fail "Netz on node2"
     up_wait 600 fertig abgebrochen
-    up_result_has "Höchstdauer überschritten"
+    up_result_has "Rollentausch nicht gelungen"
+    ((SECONDS - t < 600)) || fail "Sperre dauerte bis zur Höchstdauer ($((SECONDS - t)) s)"
     wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide zurück auf lab0 mit node1 aktiv"
     ! faulty_has lab1 || fail "lab1 als fehlerhaft gemerkt (nur der Tausch scheiterte)"
     no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    no_event 'Dringend'
+    up_resume
+    up_clean
+}
+
+# C3: „alle nacheinander“ mit „Trotzdem“, der Spiegel hinkt hinterher (WAL-
+# Einspielen auf node2 angehalten). node1 wird abgeschottet, der Gleichstand
+# kommt nicht – node2 wird NICHT eingefroren, node1 arbeitet weiter, nichts
+# geht verloren (Zeile nach dem Anhalten bleibt erhalten), lab1 nicht fehlerhaft.
+sc_update_nacheinander_gleichstand() {
+    up_prepare 1 30
+    local q_tab="SELECT to_regclass('public.c3_probe') IS NOT NULL"
+    local q_row="SELECT count(*) FROM c3_probe WHERE x = 'nach-anhalten'"
+    psql_on node1 "CREATE TABLE IF NOT EXISTS c3_probe (x text)" >/dev/null
+    wait_for 30 eval '[[ "$(psql_on node2 "$q_tab")" == t ]]' || fail "Prüftabelle nicht auf node2"
+    log "WAL-Einspielen auf node2 anhalten – Spiegel empfängt, spielt aber nicht ein"
+    psql_on node2 "SELECT pg_wal_replay_pause()" >/dev/null
+    wait_for 10 eval '[[ "$(psql_on node2 "SELECT pg_get_wal_replay_pause_state()")" == paused ]]' ||
+        fail "Einspielen auf node2 nicht angehalten"
+    psql_on node1 "INSERT INTO c3_probe VALUES ('nach-anhalten')" >/dev/null
+    [[ "$(psql_on node1 "$q_row")" == 1 ]] || fail "Zeile nach dem Anhalten nicht gespeichert"
+    local r
+    r="$(up_api node1 POST /v1/update/start '{"commit":"lab1","kind":"sequential","force":true}')"
+    log "Start mit Trotzdem: $r"
+    [[ "$r" == 200* ]] || fail "Auftrag mit Trotzdem nicht angelegt: $r"
+    up_wait 600 countdown
+    up_lock_pause
+    up_wait 600 fertig abgebrochen
+    up_result_has "Spiegel nicht auf Gleichstand"
+    [[ "$(psql_on node2 "SELECT pg_is_in_recovery()")" == t ]] || fail "node2 nicht mehr als Standby erreichbar (eingefroren?)"
+    log "WAL-Einspielen auf node2 fortsetzen"
+    psql_on node2 "SELECT pg_wal_replay_resume()" >/dev/null
+    wait_for 180 eval 'mirror_ok && commits_are lab0 lab0' || fail "nicht beide auf lab0 mit node1 aktiv"
+    [[ "$(psql_on node1 "$q_row")" == 1 ]] || fail "Zeile nach dem Anhalten auf node1 verloren"
+    wait_for 60 eval '[[ "$(psql_on node2 "$q_row")" == 1 ]]' || fail "Zeile nach dem Anhalten kommt nicht auf node2 an"
+    ! faulty_has lab1 || fail "lab1 als fehlerhaft gemerkt (nur der Spiegel hinkte)"
+    no_mig lab1 || fail "Datenbank-Änderung lab1 vorhanden"
+    no_event 'Dringend'
     up_resume
     up_clean
 }

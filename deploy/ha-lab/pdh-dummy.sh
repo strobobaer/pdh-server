@@ -7,7 +7,11 @@
 #   /var/lib/pdh-lab/fail-start-<commit>   → start scheitert
 #   /var/lib/pdh-lab/fail-health-<commit>  → /health antwortet 500
 # Als Primary mit Stand ≠ lab0 legt pdh die Tabelle mig_<commit> in der
-# Datenbank lab an; bis dahin meldet /health migrations_ok=false.
+# Datenbank lab an; bis dahin meldet /health migrations_ok=false – auch am
+# Spiegel (Standby): dort wartet pdh als eingeschränkter Spiegel, bis die
+# Tabelle vom Primary ankommt (wie das echte PDH mit offenen Migrationen).
+# Version je Stand: lab0 = Inhalt von VERSION, sonst <VERSION>-<Stand>
+# (z. B. 0.77.8-lab1) – so prüft das Labor die Zielversion des Auftrags.
 set -uo pipefail
 flag=/run/pdh-dummy.running
 migpid=/run/pdh-dummy.migrate.pid
@@ -70,10 +74,11 @@ http() {
     c="$(commit)"
     [[ -e $dir/fail-health-$c ]] && { respond 500 "Internal Server Error"; return; }
     rec="$(q postgres "SELECT pg_is_in_recovery()")" || { respond 503 "Service Unavailable"; return; }
-    if [[ "$rec" == f && "$c" != lab0 && "$(q lab "SELECT to_regclass('public.mig_$c') IS NOT NULL")" != t ]]; then
-        mig=false
+    if [[ "$c" != lab0 && "$(q lab "SELECT to_regclass('public.mig_$c') IS NOT NULL")" != t ]]; then
+        mig=false # Primary: Migration läuft noch; Spiegel: eingeschränkt, wartet auf den Primary
     fi
     ver="$(tr -d '[:space:]' <"$version_file" 2>/dev/null)"
+    [[ "$c" == lab0 ]] || ver="$ver-$c"
     respond 200 OK "{\"version\":\"$ver\",\"migrations_ok\":$mig}"
 }
 
