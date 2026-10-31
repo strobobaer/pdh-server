@@ -27,6 +27,7 @@ im Kapitel „Versionen & Updates“ an.
 
 ### Behoben
 - Das Band am Spiegel verweist auf den Reiter Ausfallschutz.
+- Der Update-Zweig (`PDH_UPDATE_BRANCH`) gilt nur noch aus der `.env`: Ein in die Datenbank übernommener Wert wird nicht mehr beachtet, sonst prüfte das PDH einen anderen Zweig, als der Update-Agent einspielt.
 
 ### Sicherheit
 - Neue Rechte „Wartungsfenster einstellen“ und „Automatische Wartung abbrechen“; Rollen mit den bisher zuständigen Rechten bekommen sie automatisch.

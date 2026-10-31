@@ -29,11 +29,12 @@ func BootstrapKey(key string) bool {
 	return strings.HasPrefix(key, "PDH_DATABASE_") || key == "PDH_SETTINGS_KEY" || key == "PDH_ENV_FILE"
 }
 
-// AgentKey: Zugang zum Update-Agenten. Der Agent liest ihn nur aus seiner
-// Einstellungsdatei (install-update-agent.sh) – ein abweichender Wert in der
-// Datenbank führte zu „401 Unauthorized“. Daher nie aus der Datenbank.
+// AgentKey: Zugang zum Update-Agenten und Update-Zweig. Agent und
+// install_update.sh lesen sie nur aus der Einstellungsdatei – ein abweichender
+// Wert in der Datenbank führte zu „401 Unauthorized“ bzw. dazu, dass das PDH
+// einen anderen Zweig prüft, als eingespielt wird. Daher nie aus der Datenbank.
 func AgentKey(key string) bool {
-	return key == "PDH_UPDATE_AGENT_TOKEN" || key == "PDH_UPDATE_AGENT_URL"
+	return key == "PDH_UPDATE_AGENT_TOKEN" || key == "PDH_UPDATE_AGENT_URL" || key == "PDH_UPDATE_BRANCH"
 }
 
 // SecretKey: Heuristik fuer geheime Werte (zusaetzlich zum Katalog).

@@ -71,7 +71,7 @@ func TestCommentOutKeys(t *testing.T) {
 }
 
 func TestAgentKeysStayInFile(t *testing.T) {
-	for _, k := range []string{"PDH_UPDATE_AGENT_TOKEN", "PDH_UPDATE_AGENT_URL"} {
+	for _, k := range []string{"PDH_UPDATE_AGENT_TOKEN", "PDH_UPDATE_AGENT_URL", "PDH_UPDATE_BRANCH"} {
 		if !AgentKey(k) {
 			t.Errorf("%s muss in der Datei bleiben", k)
 		}

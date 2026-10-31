@@ -78,7 +78,7 @@
 <div class="grid2" style="grid-template-columns:1fr 1fr;gap:14px">
   <div class="card">
     <div class="card-title">{{t "GitHub-Updates"}}</div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Repository: strobobaer/pdh-server · Branch: main</p>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Repository: strobobaer/pdh-server · Branch: {{.UpdateBranch}}</p>
     <dl style="display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;font-size:13px">
       <dt style="color:var(--muted)">{{t "Installierte Version"}}</dt><dd style="margin:0"><b>{{.CurrentVersion}}</b> · <a href="/help#versions">{{t "Änderungen"}}</a></dd>
       <dt style="color:var(--muted)">{{t "Version auf GitHub"}}</dt><dd style="margin:0">{{if .LatestVersion}}{{.LatestVersion}}{{else}}{{if .LatestCommit}}{{t "nicht angegeben"}}{{else}}{{t "Noch nicht geprüft"}}{{end}}{{end}}</dd>

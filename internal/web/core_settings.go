@@ -40,6 +40,7 @@ type CoreSettingsPageData struct {
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
+	UpdateBranch        string // PDH_UPDATE_BRANCH, Standard main
 	CurrentVersion      string
 	LatestVersion       string
 	NewReleases         []ChangelogRelease
@@ -182,6 +183,7 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	chk := h.loadUpdateCheck(ctx)
+	data.UpdateBranch = updateBranch()
 	data.applyUpdateCheck(chk, h.buildCommit, updateBranch())
 	if !data.UpdateCheckStale {
 		_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
