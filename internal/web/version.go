@@ -154,11 +154,6 @@ func versionLabel(commit string) string {
 	return v
 }
 
-// fetchGitHubRaw liest eine Datei vom Branch main (max. 1 MB).
-func fetchGitHubRaw(ctx context.Context, path string) (string, error) {
-	return fetchGitHubRawRef(ctx, "main", path)
-}
-
 // fetchGitHubRawRef liest eine Datei eines Zweigs bzw. Commits (max. 1 MB).
 func fetchGitHubRawRef(ctx context.Context, ref, path string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://raw.githubusercontent.com/"+updateRepository+"/"+ref+"/"+path, nil)
@@ -178,17 +173,17 @@ func fetchGitHubRawRef(ctx context.Context, ref, path string) (string, error) {
 	return string(b), err
 }
 
-// checkGitHubVersion speichert die Version auf main und deren
-// Aenderungsprotokoll (als Markdown; geparst und escaped wird erst bei der
-// Anzeige). Fehler sind nicht fatal: aeltere Staende auf main haben noch
-// keine VERSION-Datei.
+// checkGitHubVersion speichert die Version auf dem Update-Zweig
+// (PDH_UPDATE_BRANCH, Standard main) und deren Aenderungsprotokoll (als
+// Markdown; geparst und escaped wird erst bei der Anzeige). Fehler sind nicht
+// fatal: aeltere Staende haben noch keine VERSION-Datei.
 func (h *Handler) checkGitHubVersion(ctx context.Context) {
 	latest, changelog := "", ""
-	v, err := fetchGitHubRaw(ctx, "VERSION")
+	v, err := fetchGitHubRawRef(ctx, updateBranch(), "VERSION")
 	if err == nil && validVersionRe.MatchString(strings.TrimSpace(v)) {
 		latest = strings.TrimSpace(v)
 		if compareVersions(latest, pdh.Version()) > 0 {
-			changelog, _ = fetchGitHubRaw(ctx, "CHANGELOG.md")
+			changelog, _ = fetchGitHubRawRef(ctx, updateBranch(), "CHANGELOG.md")
 		}
 	} else if err != nil {
 		componentLog("system").Debug().Err(err).Msg("update-prüfung: VERSION auf GitHub nicht lesbar")
@@ -197,7 +192,7 @@ func (h *Handler) checkGitHubVersion(ctx context.Context) {
 	_ = h.setUpdateSetting(ctx, "update_latest_changelog", changelog)
 }
 
-// availableReleases: Versionen auf main, die neuer als die installierte sind.
+// availableReleases: Versionen auf dem Update-Zweig, die neuer als die installierte sind.
 func (h *Handler) availableReleases(ctx context.Context) (string, []ChangelogRelease) {
 	latest := h.getUpdateSetting(ctx, "update_latest_version", "")
 	if latest == "" || compareVersions(latest, pdh.Version()) <= 0 {
