@@ -19,11 +19,15 @@ im Kapitel „Versionen & Updates“ an.
 - Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre (hell oder dunkel wie das Gerät), vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen, solange das Update weder zurückgesetzt wird noch schon freigegeben ist (Notbremse auf der Konsole: `pdh-ha update abort`).
 - Der Zeuge zieht selbst nach, wenn beide Server auf demselben Stand sind (Container-Helfer `updater`, abschaltbar mit `PDH_HA_AUTOUPDATE=0`); der Reiter warnt „Zeuge veraltet“, falls er es nicht schafft.
 - Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollen im Fenster tauschen“).
+- Bei „Automatik aus (Wartung)“ fragt das Wartungsfenster vor dem Update nach; ohne Bestätigung innerhalb von 3 Minuten entfällt das Update.
+- Ein laufendes Update lässt sich vor der Sperre im Wartungs-Band und unter Ausfallschutz abbrechen.
+- `pdh-ha update confirm` bestätigt die Nachfrage auf der Befehlszeile.
 
 ### Geändert
 - Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert; die Sicherung vor dem Update entsteht bei angehaltenem PDH.
 - Ein Spiegel, dessen Datenbank neuer ist als sein Programm, meldet „Programm zu alt für diese Datenbank“ und sperrt sich.
 - Der Befehl zum Nachziehen von Hand (`pdh-ha-join.sh --update`) ist jetzt nur noch der Notweg.
+- „Update installieren“ funktioniert im Verbund auch bei „Automatik aus (Wartung)“.
 
 ### Behoben
 - Das Band am Spiegel verweist auf den Reiter Ausfallschutz.

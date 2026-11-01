@@ -1630,7 +1630,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-tool"></i> Rechte für Update und Wartung</b>
     <ul>
       <li><b>„Wartungsfenster einstellen“</b> (Kategorie „System &amp; Sicherheit“): Wartungsfenster einrichten und fehlerhafte Versionen wieder zulassen (<a href="#ausfallschutz">mehr</a>). Beim Update bekamen es alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ hatten.</li>
-      <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
+      <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Das Recht umfasst auch das <b>Absagen</b> der Wartungsfenster-Nachfrage und das <b>Abbrechen</b> eines Updates vor der Sperre. <b>Durchführen</b> braucht dasselbe Recht wie „Update installieren“ (Rollen &amp; Berechtigungen verwalten). Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
     </ul>
     Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
@@ -1936,7 +1936,18 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>Countdown vor der Sperre</b> (1–15 Minuten, Standard 2) und <b>Höchstdauer der Sperre</b> (10–120 Minuten, Standard 30) bei Bedarf anpassen, dann <b>Speichern</b>.</li>
     </ol>
     <p>Der Kasten zeigt das <b>nächste Fenster</b>, das <b>Ergebnis des letzten Fensters</b> und die als <b>fehlerhaft gemerkten Versionen</b>. Eine solche Version wird übersprungen, bis eine neuere erscheint. Mit <b>Wieder zulassen</b> (gleiches Recht) versucht das System sie doch noch einmal.</p>
-    <p>Auch der Knopf <b>Update installieren</b> in den Core-Einstellungen folgt dieser Update-Art, nutzt aber nicht das Fenster. Am Spiegel ist der Knopf gesperrt („wird vom aktiven Server gesteuert“).</p></div>
+    <p>Auch der Knopf <b>Update installieren</b> in den Core-Einstellungen folgt dieser Update-Art, nutzt aber nicht das Fenster. Er funktioniert auch bei <b>Automatik aus (Wartung)</b>: Dein Klick ist dann die Bestätigung. Am Spiegel ist der Knopf gesperrt („wird vom aktiven Server gesteuert“).</p>
+    <p>Bei <b>Automatik an</b> spielt das Fenster ohne Nachfrage ein. Vor der Sperre lässt sich das Update mit <b>Abbrechen</b> stoppen.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-help-circle"></i> So beantwortest du die Nachfrage des Wartungsfensters</b> (bei <b>Automatik aus (Wartung)</b>)
+    {{template "hb-fig-nachfrageband"}}
+    <ol class="hb-steps">
+      <li>Beginnt das Fenster mit einem Update, erscheint auf allen Seiten ein Band: „Wartungsfenster: Update auf … durchführen? Noch m:ss min“. Dasselbe steht im Fortschrittskasten unter <b>Server-Einstellungen → Ausfallschutz</b>.</li>
+      <li><b>Durchführen</b> klicken, um das Update zu starten. Das System prüft noch einmal „alles grün“. Ist etwas nicht grün, entfällt das Update und der Grund steht in der Meldung. <b>Durchführen</b> braucht dasselbe Recht wie <b>Update installieren</b>.</li>
+      <li><b>Absagen</b> klicken, wenn jetzt nicht aktualisiert werden soll. Dafür brauchst du das Recht „Automatische Wartung abbrechen“.</li>
+      <li>Kommt innerhalb von <b>3 Minuten</b> keine Antwort, entfällt das Update („Update entfallen: nicht bestätigt“). Das System versucht es am nächsten Termin des Wartungsfensters wieder.</li>
+      <li>Auf der Befehlszeile bestätigst du am aktiven Server mit <code>sudo pdh-ha update confirm</code>.</li>
+    </ol>
+    <p>Läuft schon der Countdown vor der Sperre, hat das Band den Knopf <b>Abbrechen</b> (gleiches Recht). Ihn gibt es auch im Fortschrittskasten.</p></div>
   <div class="hb-howto"><b><i class="ti ti-route-2"></i> Was bei einem Update im Verbund passiert</b>
     <p>Zuerst die <b>Prüfung „alles grün“</b>: Beide Server sehen sich, genau einer ist aktiv, der Spiegel ist synchron, beide haben denselben Stand, die letzte Grundsicherung und der letzte Dateiabgleich waren in Ordnung und beide Server haben mindestens 2 GB frei. Ein nicht erreichbarer Zeuge ist nur ein Hinweis. Ist etwas nicht grün, bricht das Wartungsfenster ab und meldet den Grund; der Knopf fragt nach („Trotzdem mit kurzer Unterbrechung?“) und nimmt bei „Ja“ die Art „alle nacheinander“.</p>
     <p><b>Update-Art „ohne Unterbrechung“</b> (Standard):</p>
