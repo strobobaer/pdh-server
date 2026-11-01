@@ -899,3 +899,118 @@ func TestBaseHasMaintBand(t *testing.T) {
 		}
 	}
 }
+
+// ── Nachfrage vor der Sperre: Durchführen, Absagen, Abbrechen, Status ──
+
+func askView() ha.UpdateView {
+	return ha.UpdateView{Active: true, Kind: "rolling", Phase: "nachfrage", AskUntil: time.Now().Add(2 * time.Minute), ToVersion: "0.77.9"}
+}
+
+// maintAskHandler: Attrappen für Durchführen (nur „admin“) und Abbrechen; zählen die Aufrufe.
+func maintAskHandler(t *testing.T, v ha.UpdateView) (http.Handler, *int, *int, *[]string) {
+	t.Helper()
+	h, _ := maintTestHandler(t, v)
+	var confirms, aborts int
+	var who []string
+	h.mlock.confirmer = func(u *users.User) bool { return u != nil && u.ID == "admin" }
+	h.mlock.confirm = func(_ context.Context, by string) error {
+		confirms++
+		who = append(who, by)
+		return nil
+	}
+	h.mlock.abort = func(_ context.Context, by string) error {
+		aborts++
+		who = append(who, by)
+		return nil
+	}
+	hd, _ := maintPlain(h)
+	return hd, &confirms, &aborts, &who
+}
+
+func TestStatusAskOnlyWithRight(t *testing.T) {
+	hd, _, _, _ := maintAskHandler(t, askView())
+	get := func(tok string) map[string]any {
+		rec := maintDo(hd, maintReq{method: "GET", path: "/wartung/status", tok: tok})
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	for _, tok := range []string{"", maintToken(t, "u1", time.Now())} {
+		out := get(tok)
+		for _, k := range []string{"phase", "ask_until", "to_version", "can_confirm", "can_abort"} {
+			if _, ok := out[k]; ok {
+				t.Errorf("ohne Recht (%q): %s darf nicht erscheinen: %v", tok, k, out)
+			}
+		}
+	}
+	out := get(maintToken(t, "admin", time.Now()))
+	if out["phase"] != "nachfrage" || out["ask_until"] == nil || out["to_version"] != "0.77.9" || out["can_confirm"] != true || out["can_abort"] != true {
+		t.Errorf("mit Recht: %v", out)
+	}
+}
+
+func TestConfirmPostUnlocked(t *testing.T) {
+	hd, confirms, _, who := maintAskHandler(t, askView())
+	js := map[string]string{"Accept": "application/json"}
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/durchfuehren", body: "x=1", tok: maintToken(t, "admin", time.Now()), hdr: js})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ok":true`) || *confirms != 1 {
+		t.Fatalf("mit Recht: %d %s confirms=%d", rec.Code, rec.Body.String(), *confirms)
+	}
+	if len(*who) != 1 || (*who)[0] != "Max Muster" {
+		t.Errorf("Name: %v", *who)
+	}
+	rec = maintDo(hd, maintReq{method: "POST", path: "/wartung/durchfuehren", body: "x=1", tok: maintToken(t, "u1", time.Now()), hdr: js})
+	if rec.Code != http.StatusForbidden || *confirms != 1 {
+		t.Errorf("ohne Recht: %d confirms=%d", rec.Code, *confirms)
+	}
+}
+
+func TestConfirmPostError(t *testing.T) {
+	h, _ := maintTestHandler(t, askView())
+	h.mlock.confirmer = func(*users.User) bool { return true }
+	h.mlock.confirm = func(context.Context, string) error { return errors.New("Keine Nachfrage offen") }
+	hd, _ := maintPlain(h)
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/durchfuehren", body: "x=1", tok: maintToken(t, "admin", time.Now()), hdr: map[string]string{"Accept": "application/json"}})
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.OK || !strings.Contains(out.Error, "Keine Nachfrage offen") {
+		t.Errorf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConfirmPostCrossSite(t *testing.T) {
+	hd, confirms, _, _ := maintAskHandler(t, askView())
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/durchfuehren", body: "x=1", tok: maintToken(t, "admin", time.Now()),
+		hdr: map[string]string{"Accept": "application/json", "Sec-Fetch-Site": "cross-site"}})
+	if rec.Code != http.StatusForbidden || *confirms != 0 {
+		t.Errorf("%d confirms=%d", rec.Code, *confirms)
+	}
+}
+
+func TestAbortPostUnlocked(t *testing.T) {
+	v := askView()
+	v.Phase = "countdown"
+	hd, _, aborts, _ := maintAskHandler(t, v)
+	tok := maintToken(t, "admin", time.Now())
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: tok, hdr: map[string]string{"Accept": "application/json"}})
+	if rec.Code != http.StatusOK || *aborts != 1 {
+		t.Fatalf("JSON: %d aborts=%d", rec.Code, *aborts)
+	}
+	rec = maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: tok, hdr: map[string]string{"Accept": "text/html"}})
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/admin/server-config?") || !strings.Contains(rec.Header().Get("Location"), "tab=dr") || !strings.Contains(rec.Header().Get("Location"), "msg=") || *aborts != 2 {
+		t.Errorf("Formular: %d %s aborts=%d", rec.Code, rec.Header().Get("Location"), *aborts)
+	}
+}
+
+func TestConfirmPostLocked(t *testing.T) {
+	hd, confirms, _, _ := maintAskHandler(t, lockedView())
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/durchfuehren", body: "x=1", tok: maintToken(t, "admin", time.Now()), hdr: map[string]string{"Accept": "application/json"}})
+	if rec.Code != http.StatusConflict || *confirms != 0 {
+		t.Errorf("%d confirms=%d", rec.Code, *confirms)
+	}
+}

@@ -56,6 +56,8 @@ type maintLock struct {
 	fetch      func(context.Context) (ha.UpdateView, error)    // nil → pdh-ha bzw. Update-Agent (Tests tauschen aus)
 	configured func() bool                                     // nil → node.json bzw. Agent eingerichtet
 	abort      func(ctx context.Context, by string) error      // nil → pdh-ha bzw. Update-Agent
+	confirm    func(ctx context.Context, by string) error      // nil → pdh-ha (Nachfrage bestätigen)
+	confirmer  func(*users.User) bool                          // nil → globales Recht system.manage_roles
 	admin      func(*users.User) bool                          // nil → globales Recht system.maintenance_abort
 	pwDue      func(*http.Request, *users.User) (bool, string) // nil → passwordChangeDue
 	now        func() time.Time                                // nil → time.Now
@@ -152,6 +154,20 @@ func (h *Handler) maintAbort(ctx context.Context, by string) error {
 		return h.agentJSON(ctx, http.MethodPost, "/v1/update/job/abort", body, nil)
 	}
 	return uiError("Kein Update-Auftrag vorhanden")
+}
+
+// maintConfirm bestätigt die Nachfrage vor der Sperre (nur im Verbund, pdh-ha).
+// Die Sicherungsangaben gehen wie beim Start mit, damit pdh-ha „alles grün“ neu prüft.
+func (h *Handler) maintConfirm(ctx context.Context, by string) error {
+	if h.mlock.confirm != nil {
+		return h.mlock.confirm(ctx, by)
+	}
+	if !haNodeConfigured() {
+		return uiError("Keine Nachfrage offen")
+	}
+	configured, baseOK, filesOK := h.drBackupFlags(ctx)
+	body := map[string]any{"by": by, "backup_configured": configured, "last_base_ok": baseOK, "last_files_ok": filesOK}
+	return h.haDo(ctx, http.MethodPost, "/v1/update/confirm", body, nil)
 }
 
 // maintTick: ein Abgleich mit der Quelle (Hintergrund-Takt). Sieht er die
@@ -340,6 +356,25 @@ func (h *Handler) maintIsAdmin(u *users.User) bool {
 	return all
 }
 
+// maintMayConfirm: darf die Nachfrage bestätigen (globales Recht system.manage_roles,
+// wie „Update einspielen“).
+func (h *Handler) maintMayConfirm(u *users.User) bool {
+	if h.mlock.confirmer != nil {
+		return h.mlock.confirmer(u)
+	}
+	if u == nil || h.rbac == nil {
+		return false
+	}
+	all, _ := h.rbac.Scope(u.ID, string(u.Role), "system.manage_roles")
+	return all
+}
+
+// maintBox: Auftrag samt Rechten der Sitzung (für die Oberfläche).
+type maintBox struct {
+	ha.UpdateView
+	CanConfirm, CanAbort bool
+}
+
 // sessionRevoked: Sitzung vor der letzten Wartungssperre ausgestellt (iat <
 // session.not_before) und der Benutzer hat das Abbruch-Recht nicht.
 func (h *Handler) sessionRevoked(u *users.User, iat int64) bool {
@@ -388,6 +423,10 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 		}
 		v := h.maintView(r.Context())
 		if !v.Locked {
+			if r.Method == http.MethodPost && (p == "/wartung/durchfuehren" || p == "/wartung/abbrechen") {
+				h.maintActionPost(w, r, p == "/wartung/durchfuehren")
+				return
+			}
 			if p == "/wartung" || strings.HasPrefix(p, "/wartung/") {
 				http.Redirect(w, r, "/", http.StatusFound)
 				return
@@ -401,6 +440,9 @@ func (h *Handler) MaintLockMiddleware(next http.Handler) http.Handler {
 			return
 		case p == "/wartung/abbrechen" && r.Method == http.MethodPost:
 			h.maintAbortPost(w, r, v)
+			return
+		case p == "/wartung/durchfuehren" && r.Method == http.MethodPost:
+			http.Error(w, tr(h.requestLang(r), "Keine Nachfrage offen"), http.StatusConflict) // gesperrt: nichts mehr zu bestätigen
 			return
 		case maintFreePath(r):
 			next.ServeHTTP(w, r)
@@ -445,10 +487,86 @@ func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
 		if v.CountdownUntil.After(h.maintNow()) {
 			out["countdown_until"] = v.CountdownUntil.UTC().Format(time.RFC3339)
 		}
+		h.maintStatusExtra(r, v, out)
 		_ = json.NewEncoder(w).Encode(out)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// maintStatusExtra: Zusatzfelder für Sitzungen mit Recht zum Durchführen oder
+// Absagen – Phase, Frist der Nachfrage und Zielversion. Alle anderen sehen sie nicht.
+func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[string]any) {
+	u := h.sessionUser(r)
+	if u == nil {
+		return
+	}
+	canConfirm, canAbort := h.maintMayConfirm(u), h.maintIsAdmin(u)
+	if !canConfirm && !canAbort {
+		return
+	}
+	out["phase"] = v.Phase
+	if v.Phase == string(ha.UpAsk) && !v.AskUntil.IsZero() {
+		out["ask_until"] = v.AskUntil.UTC().Format(time.RFC3339)
+	}
+	out["to_version"] = v.ToVersion
+	out["can_confirm"] = canConfirm
+	out["can_abort"] = canAbort
+}
+
+// maintActionPost: POST /wartung/durchfuehren (confirm) bzw. /wartung/abbrechen
+// außerhalb der Sperre – Nachfrage bestätigen bzw. Update absagen/abbrechen.
+// Schutz vor fremden Seiten wie bei maintAbortPost (Sec-Fetch-Site).
+func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confirm bool) {
+	lang := h.requestLang(r)
+	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
+		http.Error(w, tr(lang, "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+		return
+	}
+	u := h.sessionUser(r)
+	allowed := u != nil && h.maintIsAdmin(u)
+	action, okMsg := "update-abort", "Abbruch angefordert"
+	if confirm {
+		allowed = u != nil && h.maintMayConfirm(u)
+		action, okMsg = "update-confirm", "Update bestätigt – es beginnt in Kürze"
+	}
+	if !allowed {
+		uid := ""
+		if u != nil {
+			uid = u.ID
+		}
+		componentLog("wartung").Warn().Str("user", uid).Str("ip", r.RemoteAddr).Str("action", action).Msg("ohne recht abgewiesen")
+		http.Error(w, tr(lang, "Keine Berechtigung"), http.StatusForbidden)
+		return
+	}
+	by := strings.TrimSpace(u.FirstName + " " + u.LastName)
+	if by == "" {
+		by = u.Username
+	}
+	var err error
+	if confirm {
+		err = h.maintConfirm(r.Context(), by)
+	} else {
+		err = h.maintAbort(r.Context(), by)
+	}
+	ev := componentLog("wartung").Info()
+	if err != nil {
+		ev = componentLog("wartung").Warn().Err(err)
+	}
+	ev.Str("action", action).Str("user", u.ID).Str("user_name", by).Msg("automatische wartung: aktion vor der sperre")
+	h.maintTick(r.Context()) // Zustand gleich neu abfragen
+	msg := tr(lang, okMsg)
+	if maintWantsJSON(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "msg": msg})
+		return
+	}
+	drRedirect(w, r, msg, err)
 }
 
 // maintLoginPost: POST /wartung/anmelden – wie LoginPost, aber nur für
