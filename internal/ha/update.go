@@ -228,7 +228,9 @@ func (j UpdateJob) ended() bool {
 	return j.Phase == UpNone || j.Phase == UpDone || j.Phase == UpFailed
 }
 
-// name: Bezeichnung in Meldungen („Update auf 0.77.9“ bzw. „Rollentausch“).
+// Name: Bezeichnung in Meldungen („Update auf 0.77.9“ bzw. „Rollentausch“).
+func (j UpdateJob) Name() string { return j.name() }
+
 func (j UpdateJob) name() string {
 	if j.Kind == UpdateSwap {
 		return "Rollentausch"

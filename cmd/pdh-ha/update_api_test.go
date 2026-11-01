@@ -388,3 +388,129 @@ func TestAPIUpdateStartAlreadyInstalled(t *testing.T) {
 		t.Fatalf("Rollentausch abgelehnt: %d %v", code, m)
 	}
 }
+
+// ── Wartungsfenster mit Nachfrage ─────────────────────────────────────────
+
+func TestAPIUpdateStartAskInMaint(t *testing.T) {
+	d, _, sock := updAPI(t)
+	d.p.Maint = true
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"})
+	if code != http.StatusOK || m["ok"] != true || m["asking"] != true {
+		t.Fatalf("Nachfrage: %d %v", code, m)
+	}
+	j := d.up.job
+	if j.Phase != ha.UpAsk || j.AskUntil.Sub(j.PhaseAt) != ha.UpdateAskWait || j.PhaseAt.IsZero() {
+		t.Fatalf("Auftrag: %+v", j)
+	}
+	want := "Wartungsfenster: Update auf x1 wartet auf Bestätigung (bis " + j.AskUntil.Local().Format("15:04") + ")"
+	if !hasEvent(d, want) {
+		t.Fatalf("Ereignis fehlt: %q", want)
+	}
+}
+
+func TestAPIUpdateStartKnopfInMaint(t *testing.T) {
+	d, _, sock := updAPI(t)
+	d.p.Maint = true
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "knopf"})
+	if code != http.StatusOK || m["asking"] != false || d.up.job.Phase != ha.UpPrepare {
+		t.Fatalf("Knopf in der Wartung: %d %v %+v", code, m, d.up.job)
+	}
+}
+
+func TestAPIUpdateStartNoMaintNoAsk(t *testing.T) {
+	d, _, sock := updAPI(t)
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"})
+	if code != http.StatusOK || m["asking"] != false || d.up.job.Phase != ha.UpPrepare {
+		t.Fatalf("ohne Wartung: %d %v %+v", code, m, d.up.job)
+	}
+}
+
+func TestAPIUpdateStartSwapInMaint(t *testing.T) {
+	d, _, sock := updAPI(t)
+	d.p.Maint = true
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"source": "zeitplan", "kind": "swap"})
+	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Wartung eingeschaltet") || d.up.job.ID != "" {
+		t.Fatalf("Rollentausch in der Wartung: %d %v", code, m)
+	}
+}
+
+func TestAPIUpdateConfirm(t *testing.T) {
+	d, _, sock := updAPI(t)
+	d.p.Maint = true
+	if code, m := updCall(t, sock, http.MethodPost, "/v1/update/confirm", map[string]any{"by": "Anna"}); code == http.StatusOK ||
+		!strings.Contains(m["error"].(string), "Keine Nachfrage offen") {
+		t.Fatalf("ohne Auftrag: %d %v", code, m)
+	}
+	if code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"}); code != http.StatusOK {
+		t.Fatalf("Start: %d %v", code, m)
+	}
+	code, m := updCall(t, sock, http.MethodPost, "/v1/update/confirm", map[string]any{"by": "Anna"})
+	if code != http.StatusOK || m["ok"] != true {
+		t.Fatalf("Bestätigen: %d %v", code, m)
+	}
+	if code, m = updCall(t, sock, http.MethodPost, "/v1/update/confirm", map[string]any{"by": "Bernd"}); code == http.StatusOK ||
+		!strings.Contains(m["error"].(string), "Keine Nachfrage offen") {
+		t.Fatalf("zweites Bestätigen: %d %v", code, m)
+	}
+	d.tick(context.Background())
+	if d.up.job.Phase != ha.UpPrepare || d.up.job.ConfirmedBy != "Anna" {
+		t.Fatalf("nach dem Takt: %+v", d.up.job)
+	}
+	if code, m = updCall(t, sock, http.MethodPost, "/v1/update/confirm", nil); code == http.StatusOK {
+		t.Fatalf("außerhalb der Nachfrage: %d %v", code, m)
+	}
+
+	// Partner nicht synchron: Update entfällt mit Grund
+	d2, _, sock2 := updAPI(t)
+	d2.p.Maint = true
+	if code, m := updCall(t, sock2, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "zeitplan"}); code != http.StatusOK {
+		t.Fatalf("Start: %d %v", code, m)
+	}
+	// Spiegel melden: PostgreSQL ist Primär, aber ohne verbundenen Standby
+	d2.mu.Lock()
+	old := d2.act
+	d2.act = &pgActor{}
+	d2.pgSt.Store(&pgStatus{State: "primary"})
+	d2.mu.Unlock()
+	code, m = updCall(t, sock2, http.MethodPost, "/v1/update/confirm", map[string]any{"by": "Anna"})
+	d2.mu.Lock()
+	d2.act = old
+	d2.mu.Unlock()
+	if code != http.StatusConflict || m["error"] != "Update entfallen: Spiegel nicht synchron" {
+		t.Fatalf("nicht synchron: %d %v", code, m)
+	}
+	d2.tick(context.Background())
+	if d2.up.job.Phase != ha.UpFailed || d2.up.job.Result != "Update entfallen: Spiegel nicht synchron" {
+		t.Fatalf("entfallen: %+v", d2.up.job)
+	}
+}
+
+func TestUpdateAskSurvivesRestart(t *testing.T) {
+	st := store{etc: t.TempDir(), state: t.TempDir()}
+	for _, err := range []error{
+		st.saveNode(nodeConfig{ID: "a", Kind: "node", CAHolder: true}), st.saveCluster(duoCluster()),
+		st.saveState(ha.Persisted{Role: ha.Active, Term: 1, PartnerVersion: "test"}),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	j := rollingJob(ha.UpAsk, 2)
+	j.Source = srcZeitplan
+	j.PhaseAt = time.Now()
+	j.AskUntil = j.PhaseAt.Add(ha.UpdateAskWait)
+	if err := st.saveJob(j); err != nil {
+		t.Fatal(err)
+	}
+	fn := newFakeNet()
+	fn.setView("b", upPeerView("", ""))
+	d := loadFakeDaemon(t, st, fn)
+	d.booting = false
+	if d.up.restartAbort != "" {
+		t.Fatalf("Neustart darf die Nachfrage nicht abbrechen: %q", d.up.restartAbort)
+	}
+	d.tick(context.Background())
+	if d.up.job.Phase != ha.UpAsk {
+		t.Fatalf("Nachfrage nach Neustart: %+v", d.up.job)
+	}
+}

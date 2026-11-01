@@ -289,8 +289,9 @@ func (a *updateAgent) windowToHA(ctx context.Context, w ha.Window, faulty []stri
 		body["kind"], what = string(ha.UpdateSwap), "Rollentausch"
 	}
 	var resp struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
+		OK     bool   `json:"ok"`
+		Error  string `json:"error"`
+		Asking bool   `json:"asking"` // Wartung an: pdh-ha fragt erst nach
 	}
 	code, err := haDo(ctx, http.MethodPost, "/v1/update/start", body, &resp)
 	if err != nil {
@@ -303,6 +304,9 @@ func (a *updateAgent) windowToHA(ctx context.Context, w ha.Window, faulty []stri
 		return what + " nicht gestartet: " + resp.Error, false
 	}
 	msg := what + " an pdh-ha übergeben"
+	if resp.Asking {
+		msg = what + " wartet auf Bestätigung"
+	}
 	if skipped != "" {
 		msg += " (" + skipped + ")"
 	}

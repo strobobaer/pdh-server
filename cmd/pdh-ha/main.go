@@ -35,6 +35,7 @@ const usage = `Aufruf: pdh-ha <Befehl>
   update status                       Update-Auftrag und fehlerhafte Versionen anzeigen
   update start <commit> [--kind rolling|sequential] [--version V]
                                       Update im Verbund starten (nach der Prüfung „alles grün“)
+  update confirm                      Nachfrage des Wartungsfensters bestätigen
   update abort                        offenen Update-Auftrag abbrechen und zurücksetzen
   window '<json>'                     Wartungsfenster setzen (siehe status --json, Feld window)
   access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]

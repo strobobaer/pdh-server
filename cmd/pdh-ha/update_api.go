@@ -5,6 +5,7 @@ package main
 //
 //	GET    /v1/update                  -> ha.UpdateView
 //	POST   /v1/update/start            {"commit","source","kind","force","version"}
+//	POST   /v1/update/confirm          {"by"} (+ Sicherungsangaben wie beim Start)
 //	POST   /v1/update/abort            {"by"}
 //	DELETE /v1/update/faulty/{commit}
 //	PUT    /v1/window                  ha.Window
@@ -48,6 +49,13 @@ type updateStartReq struct {
 	BackupConfigured *bool `json:"backup_configured"`
 	LastBaseOK       *bool `json:"last_base_ok"`
 	LastFilesOK      *bool `json:"last_files_ok"`
+}
+
+// updateConfirmReq: Bestätigung einer Nachfrage; die Sicherungsangaben gelten
+// wie beim Start (die Prüfung „alles grün“ läuft dabei noch einmal).
+type updateConfirmReq struct {
+	By string `json:"by"`
+	updateStartReq
 }
 
 // notReadyError: Prüfung „alles grün“ nicht bestanden (HTTP 409).
@@ -128,40 +136,41 @@ func (d *daemon) readyObsLocked(partner, witness string, req updateStartReq) (ha
 }
 
 // startUpdate prüft und legt einen Auftrag an. Rückgabe: Hinweise, die nicht
-// hindern (z. B. Zeuge nicht erreichbar). Ein nicht grüner Stand ist ein
-// notReadyError.
-func (d *daemon) startUpdate(req updateStartReq) ([]string, error) {
+// hindern (z. B. Zeuge nicht erreichbar), und ob der Auftrag zuerst nachfragt
+// (Wartung ist an, das Fenster kam vom Zeitplan). Ein nicht grüner Stand ist
+// ein notReadyError.
+func (d *daemon) startUpdate(req updateStartReq) (hints []string, asking bool, err error) {
 	var after []plan
 	d.lock()
-	hints, err := d.startUpdateReqLocked(req, &after)
+	hints, asking, err = d.startUpdateReqLocked(req, &after)
 	d.unlock()
 	for _, pl := range after {
 		d.execute(context.Background(), pl)
 	}
-	return hints, err
+	return hints, asking, err
 }
 
 // startUpdateReqLocked: Rumpf von startUpdate; Pläne zum Ausführen nach dem
 // Entsperren kommen in after.
-func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]string, error) {
+func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]string, bool, error) {
 	if err := d.clusterEditable(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if d.modeLocked() == ha.Single {
-		return nil, errors.New("Update im Verbund nur mit zwei Servern möglich")
+		return nil, false, errors.New("Update im Verbund nur mit zwei Servern möglich")
 	}
 	if d.p.Role != ha.Active {
-		return nil, errors.New("Update nur auf dem aktiven Server starten")
+		return nil, false, errors.New("Update nur auf dem aktiven Server starten")
 	}
 	src := req.Source
 	if src == "" {
 		src = srcKnopf
 	}
 	if src != srcKnopf && src != srcZeitplan {
-		return nil, fmt.Errorf("Unbekannte Quelle %q", req.Source)
+		return nil, false, fmt.Errorf("Unbekannte Quelle %q", req.Source)
 	}
 	if req.Force && src != srcKnopf {
-		return nil, errors.New("Erzwingen ist nur über den Knopf möglich")
+		return nil, false, errors.New("Erzwingen ist nur über den Knopf möglich")
 	}
 	req.Commit = strings.TrimSpace(req.Commit)
 	kind := ha.UpdateKind(req.Kind)
@@ -170,19 +179,19 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 		kind = d.windowLocked().Kind
 	case ha.UpdateRolling, ha.UpdateSequential, ha.UpdateSwap:
 	default:
-		return nil, fmt.Errorf("Unbekannte Update-Art %q", req.Kind)
+		return nil, false, fmt.Errorf("Unbekannte Update-Art %q", req.Kind)
 	}
 	if kind == ha.UpdateSwap {
 		req.Commit, req.Version = "", "" // nur Rollentausch, keine neue Version
 		if req.Force {
-			return nil, errors.New("Rollentausch kann nicht erzwungen werden")
+			return nil, false, errors.New("Rollentausch kann nicht erzwungen werden")
 		}
 	} else if req.Commit == "" {
-		return nil, errors.New("Commit fehlt")
+		return nil, false, errors.New("Commit fehlt")
 	} else {
 		c, err := resolveCommit(req.Commit)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		req.Commit = c
 	}
@@ -190,45 +199,50 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 		kind = ha.UpdateSequential // kurze Unterbrechung statt Rollentausch
 	}
 	if src == srcZeitplan && req.Commit != "" && slices.Contains(d.cl.Faulty, req.Commit) {
-		return nil, notReadyError{reason: "Version als fehlerhaft gemerkt"}
+		return nil, false, notReadyError{reason: "Version als fehlerhaft gemerkt"}
 	}
 	partner, witness := d.peerIDsLocked()
 	if partner == "" {
-		return nil, errors.New("Kein Partner eingerichtet")
+		return nil, false, errors.New("Kein Partner eingerichtet")
 	}
 	var hints []string
+	ask := false
 	if cur := d.up.job; cur.ID != "" && !upEnded(cur) {
-		return nil, errors.New("Ein Update-Auftrag läuft bereits")
+		return nil, false, errors.New("Ein Update-Auftrag läuft bereits")
 	}
 	if kind != ha.UpdateSwap {
 		// I5: ohne beide Alt-Stände gäbe es keinen Rückweg (auch nicht mit force)
 		switch {
 		case d.commit == "":
-			return nil, errors.New("Eigener Stand unbekannt – Update nicht möglich")
+			return nil, false, errors.New("Eigener Stand unbekannt – Update nicht möglich")
 		case d.views[partner].Last.Commit == "":
-			return nil, errors.New("Stand des Partners unbekannt – Update nicht möglich")
+			return nil, false, errors.New("Stand des Partners unbekannt – Update nicht möglich")
 		case req.Commit == d.commit || req.Commit == d.views[partner].Last.Commit:
 			// A1: nie auf einen schon laufenden Stand (z. B. veralteter
 			// Commit-Vergleich im PDH) – auch nicht mit force
-			return nil, fmt.Errorf("Kein neuerer Stand: %s ist schon installiert", shortCommit(req.Commit))
+			return nil, false, fmt.Errorf("Kein neuerer Stand: %s ist schon installiert", shortCommit(req.Commit))
 		}
 	}
 	if d.busy.Load() {
 		// auch mit force: eine laufende Wiederherstellung/Neuspiegelung nie überlappen
-		return nil, notReadyError{reason: "Ein anderer Vorgang läuft"}
+		return nil, false, notReadyError{reason: "Ein anderer Vorgang läuft"}
 	}
 	if req.Force {
 		// Der Knopf darf trotz nicht grün weitermachen, aber nicht ohne Partner:
 		// sonst hinge der Auftrag an einem Server, der nicht antwortet.
 		if !d.views[partner].seen() {
-			return nil, errors.New("Partner nicht erreichbar")
+			return nil, false, errors.New("Partner nicht erreichbar")
 		}
 	} else {
 		ro, extra := d.readyObsLocked(partner, witness, req)
+		// Wartung hindert nur den Rollentausch des Fensters; Knopf und
+		// Fenster-Update dürfen (das Fenster fragt dann nach).
+		ro.MaintAllowed = src == srcKnopf || kind != ha.UpdateSwap
+		ask = src == srcZeitplan && ro.Maint && kind != ha.UpdateSwap
 		ok, reason, h := ha.UpdateReady(ro)
 		h = append(h, extra...)
 		if !ok {
-			return nil, notReadyError{reason: reason, hints: h}
+			return nil, false, notReadyError{reason: reason, hints: h}
 		}
 		hints = h
 	}
@@ -243,10 +257,17 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 	if kind == ha.UpdateSequential {
 		j.First, j.Second = d.node.ID, partner
 	}
-	if err := d.startUpdateLocked(j); err != nil {
-		return nil, err
+	if ask {
+		// Wartung ist an: erst nachfragen, der Auftrag wartet bis AskUntil
+		wall := d.wall()
+		j.Phase, j.PhaseAt, j.AskUntil = ha.UpAsk, wall, wall.Add(ha.UpdateAskWait)
 	}
-	if kind == ha.UpdateSwap {
+	if err := d.startUpdateLocked(j); err != nil {
+		return nil, false, err
+	}
+	if ask {
+		d.event("info", fmt.Sprintf("Wartungsfenster: %s wartet auf Bestätigung (bis %s)", j.Name(), j.AskUntil.Local().Format("15:04")))
+	} else if kind == ha.UpdateSwap {
 		d.event("info", "Rollentausch angelegt ("+src+")")
 	} else {
 		d.event("info", fmt.Sprintf("Update auf %s angelegt (%s, %s)", shortCommit(req.Commit), kind, src))
@@ -263,7 +284,7 @@ func (d *daemon) startUpdateReqLocked(req updateStartReq, after *[]plan) ([]stri
 			*after = append(*after, pl)
 		}
 	}
-	return hints, nil
+	return hints, ask, nil
 }
 
 var (
@@ -390,7 +411,7 @@ func registerUpdateRoutes(mux *http.ServeMux, d *daemon) {
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		hints, err := d.startUpdate(req)
+		hints, asking, err := d.startUpdate(req)
 		var nr notReadyError
 		switch {
 		case errors.As(err, &nr):
@@ -405,7 +426,23 @@ func registerUpdateRoutes(mux *http.ServeMux, d *daemon) {
 			if hints == nil {
 				hints = []string{}
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "hints": hints})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "hints": hints, "asking": asking})
+		}
+	})
+	mux.HandleFunc("POST /v1/update/confirm", func(w http.ResponseWriter, r *http.Request) {
+		var req updateConfirmReq
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		err := d.confirmUpdate(req)
+		var nr notReadyError
+		switch {
+		case errors.As(err, &nr):
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": nr.reason})
+		case err != nil:
+			apiFail(w, err)
+		default:
+			apiOK(w)
 		}
 	})
 	mux.HandleFunc("POST /v1/update/abort", func(w http.ResponseWriter, r *http.Request) {
@@ -468,6 +505,9 @@ func printUpdate(w io.Writer, v ha.UpdateView) {
 		if !v.CountdownUntil.IsZero() && v.Phase == string(ha.UpCountdown) {
 			fmt.Fprintf(w, "Sperre um %s\n", v.CountdownUntil.Local().Format(time.TimeOnly))
 		}
+		if !v.AskUntil.IsZero() && v.Phase == string(ha.UpAsk) {
+			fmt.Fprintf(w, "Nachfrage: wartet auf Bestätigung bis %s\n", v.AskUntil.Local().Format("15:04"))
+		}
 		if v.Result != "" {
 			fmt.Fprintf(w, "Ergebnis: %s\n", v.Result)
 		}
@@ -477,7 +517,7 @@ func printUpdate(w io.Writer, v ha.UpdateView) {
 	}
 }
 
-// cmdUpdate: „pdh-ha update status|start|abort“.
+// cmdUpdate: „pdh-ha update status|start|confirm|abort“.
 func cmdUpdate(args []string, sock string, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "pdh-ha:", err)
@@ -500,6 +540,12 @@ func cmdUpdate(args []string, sock string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		fmt.Fprintln(stdout, "Abbruch vorgemerkt – der Auftrag wird zurückgesetzt.")
+		return 0
+	case "confirm":
+		if err := apiDo(sock, http.MethodPost, "/v1/update/confirm", map[string]string{"by": "Befehlszeile"}, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Bestätigt – das Update beginnt.")
 		return 0
 	case "start":
 		fs := flag.NewFlagSet("pdh-ha update start", flag.ContinueOnError)

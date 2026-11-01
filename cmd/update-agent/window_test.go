@@ -116,6 +116,16 @@ func TestWindowTickHandsToHA(t *testing.T) {
 			t.Fatalf("Stand der Sicherung fehlt: %v", s[0])
 		}
 	})
+	t.Run("Nachfrage", func(t *testing.T) {
+		a, _, _, _ := jobTestAgent(t)
+		haInstalled(t)
+		f := haFakeVerbundSocket(t, verbundStatus(true, false, ""))
+		f.answer = `{"ok":true,"asking":true,"hints":[]}`
+		a.windowTick(context.Background(), windowNow)
+		if ws := a.windowSnapshot(); ws.LastResult != "Update auf 0.77.9 wartet auf Bestätigung" {
+			t.Fatalf("Ergebnis: %+v", ws)
+		}
+	})
 	t.Run("nicht grün", func(t *testing.T) {
 		a, _, _, _ := jobTestAgent(t)
 		haInstalled(t)

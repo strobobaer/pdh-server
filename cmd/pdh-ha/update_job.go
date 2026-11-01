@@ -42,15 +42,17 @@ const (
 type upState struct {
 	job ha.UpdateJob
 
-	acks         []ha.UpdateAck // Ergebnisse für die nächsten Schritte (eins je Schritt)
-	abort        string         // Abbruch durch einen Administrator für den nächsten Schritt
-	restartAbort string         // Kennung eines Auftrags, der beim Laden vor der Sperre stand
-	freshStart   string         // Kennung des beim Laden offenen Auftrags bis zum ersten eigenen Schritt (N5)
-	takeover     bool           // Übernahme erkannt, gilt bis zum nächsten gespeicherten Schritt
-	peerSeq      uint64         // höchster Seq, den der Partner je geschickt hat
-	sentSeq      uint64         // zuletzt an den Partner gespiegelter Seq
-	sentAt       time.Time      // letzte Spiegelung (Wanduhr)
-	opSent       opMark         // offener Auftrag an einen Knoten: seit wann bekannt
+	acks           []ha.UpdateAck // Ergebnisse für die nächsten Schritte (eins je Schritt)
+	abort          string         // Abbruch durch einen Administrator für den nächsten Schritt
+	confirm        string         // Bestätigung der Nachfrage (Wer) für den nächsten Schritt
+	confirmBlocked string         // Grund, warum die Bestätigung nicht mehr grün war (Update entfällt)
+	restartAbort   string         // Kennung eines Auftrags, der beim Laden vor der Sperre stand
+	freshStart     string         // Kennung des beim Laden offenen Auftrags bis zum ersten eigenen Schritt (N5)
+	takeover       bool           // Übernahme erkannt, gilt bis zum nächsten gespeicherten Schritt
+	peerSeq        uint64         // höchster Seq, den der Partner je geschickt hat
+	sentSeq        uint64         // zuletzt an den Partner gespiegelter Seq
+	sentAt         time.Time      // letzte Spiegelung (Wanduhr)
+	opSent         opMark         // offener Auftrag an einen Knoten: seit wann bekannt
 
 	running map[string]bool         // laufende Ops (opKey)
 	done    map[string]ha.UpdateAck // Ergebnisse erledigter Ops (Wiederholung ohne zweiten Lauf)
@@ -161,7 +163,9 @@ func (d *daemon) startUpdateLocked(j ha.UpdateJob) error {
 	if j.ID == "" {
 		return errors.New("Auftrag ohne Kennung")
 	}
-	j.Phase, j.PhaseAt = ha.UpPrepare, time.Time{}
+	if j.Phase != ha.UpAsk { // die Nachfrage kommt fertig vorbereitet vom Aufrufer
+		j.Phase, j.PhaseAt = ha.UpPrepare, time.Time{}
+	}
 	j.Seq = max(cur.Seq, d.up.peerSeq) + 1 // höherer Seq gewinnt beim Spiegeln
 	if err := d.st.saveJob(j); err != nil {
 		return fmt.Errorf("Update-Auftrag nicht gespeichert: %w", err)
@@ -201,6 +205,34 @@ func (d *daemon) abortUpdate(by string) error {
 		by = "unbekannt"
 	}
 	d.up.abort = by
+	return nil
+}
+
+// confirmUpdate: Bestätigung der Nachfrage; prüft noch einmal „alles grün“
+// (die Wartung zählt dabei nicht) und wirkt im nächsten Schritt. Ist der
+// Stand nicht mehr grün, entfällt das Update mit dem Grund.
+func (d *daemon) confirmUpdate(req updateConfirmReq) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	j := d.up.job
+	if j.ID == "" || j.Phase != ha.UpAsk || d.up.confirm != "" || d.up.confirmBlocked != "" {
+		return errors.New("Keine Nachfrage offen")
+	}
+	if d.p.Role != ha.Active {
+		return errors.New("Bestätigen nur auf dem aktiven Server")
+	}
+	partner, witness := d.peerIDsLocked()
+	ro, _ := d.readyObsLocked(partner, witness, req.updateStartReq)
+	ro.MaintAllowed, ro.JobOpen = true, false
+	if ok, reason, _ := ha.UpdateReady(ro); !ok {
+		d.up.confirmBlocked = reason
+		return notReadyError{reason: "Update entfallen: " + reason}
+	}
+	by := req.By
+	if by == "" {
+		by = "unbekannt"
+	}
+	d.up.confirm = by
 	return nil
 }
 
@@ -299,7 +331,8 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 		SelfDBPending:  d.selfDBPendingLocked(),
 		Handover:       d.carry.HandoverPending != 0,
 		Abort:          u.abort,
-		Countdown:      countdown, LockMax: lockMax, Verify: verify,
+		Confirm:        u.confirm, ConfirmBlocked: u.confirmBlocked,
+		Countdown: countdown, LockMax: lockMax, Verify: verify,
 	}
 	if pv.seen() {
 		o.PartnerPDHVersion = pdhHBVersion(pv.Last.PDH)
@@ -327,7 +360,8 @@ func (d *daemon) updateTickLocked(ctx context.Context, pl *plan, termBefore uint
 	if o.Ack != nil {
 		u.acks = u.acks[1:]
 	}
-	u.abort, u.restartAbort, u.takeover, u.freshStart = "", "", false, ""
+	u.abort, u.confirm, u.confirmBlocked = "", "", ""
+	u.restartAbort, u.takeover, u.freshStart = "", false, ""
 	if next.MarkFaulty {
 		d.addFaultyLocked(pl, next.Target, true)
 	}
