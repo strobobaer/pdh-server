@@ -235,6 +235,8 @@ html.pdh-embedded .mirror-band{display:none} /* eingebettete Ansicht: Band zeigt
 .maint-band > i{font-size:16px;color:var(--amber)}
 .maint-band.soon > i{color:var(--red)}
 .maint-band .mb-t{font-variant-numeric:tabular-nums}
+.maint-band .mb-act{margin-left:auto;display:inline-flex;gap:6px}
+.maint-band .mb-act .btn{color:var(--text);border-color:var(--border)}
 @media (max-width:760px){.maint-band{padding:6px 12px;font-size:12.5px}}
 html.pdh-embedded .maint-band{display:none}
 /* ── Context ── */
@@ -1099,6 +1101,7 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
   <div class="maint-band" id="maint-band" role="status" hidden>
     <i class="ti ti-tool"></i>
     <b id="maint-band-text"></b>
+    <span class="mb-act"></span>
   </div>
   <div class="main">
     <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{or .Brand.AppName "PDH"}} · {{.Title}}</span><span class="pb-date" data-print-date></span></div>
@@ -3007,15 +3010,49 @@ function pdhReservedTag(p, kind, ref, reloadName){
   const band = document.getElementById('maint-band');
   if(!band || document.documentElement.classList.contains('pdh-embedded')) return;
   const txt = document.getElementById('maint-band-text');
+  const act = band.querySelector('.mb-act');
   const tpl = {{t "Automatische Wartung in %s min – bitte Eingaben speichern"}};
-  let until = 0, skew = 0, tick = null, timer = null;
+  const askTpl = {{t "Wartungsfenster: Update auf %v durchführen? Noch %s min"}};
+  const L = {
+    go: {{t "Durchführen"}}, goQ: {{t "Update jetzt durchführen?"}},
+    no: {{t "Absagen"}}, noQ: {{t "Update absagen?"}},
+    stop: {{t "Abbrechen"}}, stopQ: {{t "Update abbrechen und zurücksetzen?"}},
+    err: {{t "Aktion nicht möglich"}}
+  };
+  let until = 0, skew = 0, tick = null, timer = null, mode = '', ver = '', note = '', acts = '';
   const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  function hide(){ band.hidden = true; until = 0; if(tick){ clearInterval(tick); tick = null; } }
+  function hide(){ band.hidden = true; until = 0; mode = ''; note = ''; acts = ''; act.textContent = ''; band.classList.remove('soon'); if(tick){ clearInterval(tick); tick = null; } }
   function draw(){
-    const left = Math.round((until - (Date.now() + skew)) / 1000);
-    if(left <= 0){ txt.textContent = tpl.replace('%s', '0:00'); return; }
+    const left = Math.max(0, Math.round((until - (Date.now() + skew)) / 1000));
+    if(note){ txt.textContent = note; return; }
+    if(mode === 'ask'){ txt.textContent = askTpl.replace('%v', ver).replace('%s', fmt(left)); band.classList.remove('soon'); return; }
     txt.textContent = tpl.replace('%s', fmt(left));
     band.classList.toggle('soon', left <= 30);
+  }
+  // Knöpfe nur neu aufbauen, wenn sich ihre Zusammensetzung ändert (sonst geht ein Klick verloren)
+  function buttons(list){
+    const key = list.map(b => b.url).join('|');
+    if(key === acts) return;
+    acts = key; act.textContent = '';
+    list.forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = 'btn btn-small' + (b.primary ? ' btn-primary' : ''); el.textContent = b.label;
+      el.addEventListener('click', () => post(b, el));
+      act.appendChild(el);
+    });
+  }
+  async function post(b, el){
+    if(!confirm(b.q)) return;
+    el.disabled = true;
+    try {
+      const r = await fetch(b.url, {method: 'POST', credentials: 'same-origin', headers: {Accept: 'application/json'}});
+      let j = null;
+      try { j = await r.json(); } catch(e) { /* z. B. 403 als Klartext */ }
+      note = j ? (j.ok ? (j.msg || '') : (j.error || L.err)) : (r.statusText || (L.err + ' (' + r.status + ')'));
+    } catch(e) { note = L.err; }
+    el.disabled = false; draw();
+    setTimeout(() => { note = ''; draw(); }, 6000);
+    poll();
   }
   function schedule(ms){ clearTimeout(timer); timer = setTimeout(poll, ms); }
   async function poll(){
@@ -3027,10 +3064,20 @@ function pdhReservedTag(p, kind, ref, reloadName){
       const d = Date.parse(r.headers.get('Date') || '');
       skew = isNaN(d) ? 0 : d - Date.now();
       const u = v.countdown_until ? Date.parse(v.countdown_until) : 0;
-      if(u && u > Date.now() + skew){
-        until = u; band.hidden = false; draw();
+      const ask = (v.phase === 'nachfrage' && v.ask_until) ? Date.parse(v.ask_until) : 0;
+      if(ask && ask > Date.now() + skew){
+        until = ask; mode = 'ask'; ver = v.to_version || ''; band.hidden = false;
+        const l = [];
+        if(v.can_confirm) l.push({url: '/wartung/durchfuehren', label: L.go, q: L.goQ, primary: true});
+        if(v.can_abort) l.push({url: '/wartung/abbrechen', label: L.no, q: L.noQ});
+        buttons(l); draw();
         if(!tick) tick = setInterval(draw, 1000);
-      } else if(!(until && Date.now() + skew - until < 60000)) hide(); // abgelaufen: Sperre folgt in Kürze
+      } else if(u && u > Date.now() + skew){
+        until = u; mode = 'count'; band.hidden = false;
+        buttons(v.can_abort ? [{url: '/wartung/abbrechen', label: L.stop, q: L.stopQ}] : []); draw();
+        if(!tick) tick = setInterval(draw, 1000);
+      } else if(!(until && mode === 'count' && Date.now() + skew - until < 60000)) hide(); // abgelaufen: Sperre folgt in Kürze
+      else buttons([]);
     } catch(e) { /* Server startet vielleicht neu – weiter fragen */ }
     schedule(until ? 2000 : 15000);
   }

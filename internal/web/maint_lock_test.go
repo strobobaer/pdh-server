@@ -1014,3 +1014,36 @@ func TestConfirmPostLocked(t *testing.T) {
 		t.Errorf("%d confirms=%d", rec.Code, *confirms)
 	}
 }
+
+func TestMaintProgressButtons(t *testing.T) {
+	tmpl := loadTestTemplates(t)
+	render := func(b maintBox) string {
+		t.Helper()
+		c, _ := tmpl.Clone()
+		var sb strings.Builder
+		if err := bindLang(c, "de").ExecuteTemplate(&sb, "maint-progress", b); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	has := func(out, s string) bool { return strings.Contains(out, s) }
+	ask := ha.UpdateView{Active: true, Phase: "nachfrage", ToVersion: "0.77.9", AskUntil: time.Now().Add(2 * time.Minute)}
+
+	out := render(maintBox{UpdateView: ask, CanConfirm: true, CanAbort: true})
+	if !has(out, `action="/wartung/durchfuehren"`) || !has(out, `action="/wartung/abbrechen"`) {
+		t.Errorf("Nachfrage mit Rechten: beide Knöpfe erwartet:\n%s", out)
+	}
+	out = render(maintBox{UpdateView: ask, CanAbort: true})
+	if has(out, "durchfuehren") || !has(out, "abbrechen") {
+		t.Errorf("ohne Durchführen-Recht: nur Absagen erwartet")
+	}
+	cd := ha.UpdateView{Active: true, Phase: "countdown"}
+	out = render(maintBox{UpdateView: cd, CanConfirm: true, CanAbort: true})
+	if has(out, "durchfuehren") || !has(out, `action="/wartung/abbrechen"`) {
+		t.Errorf("Countdown: nur Abbrechen erwartet")
+	}
+	out = render(maintBox{UpdateView: ha.UpdateView{Active: true, Phase: "gesperrt"}, CanConfirm: true, CanAbort: true})
+	if has(out, "durchfuehren") || has(out, "abbrechen") {
+		t.Errorf("gesperrt: keine Knöpfe erwartet")
+	}
+}

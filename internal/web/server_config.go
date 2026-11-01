@@ -285,6 +285,8 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		h.maintFillView(r.Context(), &d.DR, time.Now())
 		noWin := !h.maintMayWindow(r, permMaintWindow)
 		d.DR.HA.NoWindowPerm, d.DR.Single.NoPerm = noWin, noWin
+		u := getUser(r)
+		d.DR.HA.CanConfirmUpdate, d.DR.HA.CanAbortUpdate = h.maintMayConfirm(u), h.maintIsAdmin(u)
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

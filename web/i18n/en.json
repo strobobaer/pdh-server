@@ -859,5 +859,16 @@
  "wöchentlich": "weekly",
  "Änderungen": "Changes",
  "ohne Unterbrechung": "without interruption",
- "alle nacheinander": "one after another"
+ "alle nacheinander": "one after another",
+ "Absagen": "Decline",
+ "Update absagen?": "Decline the update?",
+ "Update jetzt durchführen?": "Run the update now?",
+ "Update abbrechen und zurücksetzen?": "Cancel the update and roll back?",
+ "Aktion nicht möglich": "Action not possible",
+ "Keine Nachfrage offen": "No confirmation request pending",
+ "Keine Berechtigung": "No permission",
+ "Update bestätigt – es beginnt in Kürze": "Update confirmed – it will start shortly",
+ "Abbruch angefordert": "Cancellation requested",
+ "Wartungsfenster: Update auf %v durchführen? Noch bis %s": "Maintenance window: run the update to %v? Open until %s",
+ "Wartungsfenster: Update auf %v durchführen? Noch %s min": "Maintenance window: run the update to %v? %s min left"
 }

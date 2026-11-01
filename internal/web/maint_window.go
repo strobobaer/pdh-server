@@ -164,6 +164,9 @@ type maintSingle struct {
 	NoPerm bool // ohne Recht system.maintenance_window: nur anzeigen
 }
 
+// JobBox: Auftrag für den Fortschrittskasten; der Einzelserver kennt weder Nachfrage noch Abbrechen.
+func (s maintSingle) JobBox() maintBox { return maintBox{UpdateView: s.Job} }
+
 // maintLoadSingle fragt den Update-Agenten; im Verbund, bei Docker-Betrieb
 // oder ohne Agent ist Available falsch.
 func (h *Handler) maintLoadSingle(ctx context.Context) maintSingle {

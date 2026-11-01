@@ -5,7 +5,7 @@
 {{with .Single}}{{if .Available}}
 <div class="card" id="maint-single">
   <div class="card-title"><span><i class="ti ti-refresh"></i> {{t "Update dieses Servers"}}</span></div>
-  {{if .Job.Active}}{{template "maint-progress" .Job}}{{end}}
+  {{if .Job.Active}}{{template "maint-progress" .JobBox}}{{end}}
   {{template "maint-window-form" (dict "Action" "/admin/server-config/update-window" "Window" .Window "Can" (not .NoPerm) "Faulty" .Faulty "FaultyAction" "/admin/server-config/update-window" "FaultyField" "allow" "Next" .Next "Last" .LastResult "Cluster" false)}}
 </div>
 {{end}}{{end}}

@@ -859,5 +859,16 @@
  "wöchentlich": "неделно",
  "Änderungen": "Промени",
  "ohne Unterbrechung": "без прекинување",
- "alle nacheinander": "еден по друг"
+ "alle nacheinander": "еден по друг",
+ "Absagen": "Откажи",
+ "Update absagen?": "Да се откаже ажурирањето?",
+ "Update jetzt durchführen?": "Да се изврши ажурирањето сега?",
+ "Update abbrechen und zurücksetzen?": "Да се прекине ажурирањето и да се врати назад?",
+ "Aktion nicht möglich": "Дејството не е можно",
+ "Keine Nachfrage offen": "Нема отворено барање за потврда",
+ "Keine Berechtigung": "Нема дозвола",
+ "Update bestätigt – es beginnt in Kürze": "Ажурирањето е потврдено – наскоро започнува",
+ "Abbruch angefordert": "Побарано е откажување",
+ "Wartungsfenster: Update auf %v durchführen? Noch bis %s": "Прозорец за одржување: да се изврши ажурирање на %v? Уште до %s",
+ "Wartungsfenster: Update auf %v durchführen? Noch %s min": "Прозорец за одржување: да се изврши ажурирање на %v? Уште %s мин"
 }

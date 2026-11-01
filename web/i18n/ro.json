@@ -859,5 +859,16 @@
  "wöchentlich": "săptămânal",
  "Änderungen": "Modificări",
  "ohne Unterbrechung": "fără întrerupere",
- "alle nacheinander": "pe rând"
+ "alle nacheinander": "pe rând",
+ "Absagen": "Refuză",
+ "Update absagen?": "Refuzați actualizarea?",
+ "Update jetzt durchführen?": "Executați actualizarea acum?",
+ "Update abbrechen und zurücksetzen?": "Anulați actualizarea și reveniți la versiunea anterioară?",
+ "Aktion nicht möglich": "Acțiunea nu este posibilă",
+ "Keine Nachfrage offen": "Nicio solicitare de confirmare deschisă",
+ "Keine Berechtigung": "Nu aveți permisiunea",
+ "Update bestätigt – es beginnt in Kürze": "Actualizare confirmată – va începe în curând",
+ "Abbruch angefordert": "Anulare solicitată",
+ "Wartungsfenster: Update auf %v durchführen? Noch bis %s": "Fereastră de mentenanță: executați actualizarea la %v? Până la %s",
+ "Wartungsfenster: Update auf %v durchführen? Noch %s min": "Fereastră de mentenanță: executați actualizarea la %v? Mai sunt %s min"
 }

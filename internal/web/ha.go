@@ -173,6 +173,14 @@ type haView struct {
 	WitnessCmd   string        // Befehl für den Zeugen-Rechner (Notweg)
 
 	NoWindowPerm bool // ohne Recht system.maintenance_window: Fenster nur anzeigen
+
+	// Rechte der Sitzung für Durchführen bzw. Absagen/Abbrechen (Fortschrittskasten)
+	CanConfirmUpdate, CanAbortUpdate bool
+}
+
+// UpdateBox: Auftrag samt Rechten der Sitzung für den Fortschrittskasten.
+func (v haView) UpdateBox() maintBox {
+	return maintBox{UpdateView: v.Update, CanConfirm: v.CanConfirmUpdate, CanAbort: v.CanAbortUpdate}
 }
 
 // IsCluster: Verbund aus zwei Servern eingerichtet und erreichbar.

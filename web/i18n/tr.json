@@ -859,5 +859,16 @@
  "wöchentlich": "haftalık",
  "Änderungen": "Değişiklikler",
  "ohne Unterbrechung": "kesintisiz",
- "alle nacheinander": "sırayla"
+ "alle nacheinander": "sırayla",
+ "Absagen": "Reddet",
+ "Update absagen?": "Güncelleme reddedilsin mi?",
+ "Update jetzt durchführen?": "Güncelleme şimdi yapılsın mı?",
+ "Update abbrechen und zurücksetzen?": "Güncelleme iptal edilip geri alınsın mı?",
+ "Aktion nicht möglich": "İşlem yapılamıyor",
+ "Keine Nachfrage offen": "Bekleyen onay isteği yok",
+ "Keine Berechtigung": "Yetki yok",
+ "Update bestätigt – es beginnt in Kürze": "Güncelleme onaylandı – kısa süre içinde başlayacak",
+ "Abbruch angefordert": "İptal istendi",
+ "Wartungsfenster: Update auf %v durchführen? Noch bis %s": "Bakım penceresi: %v sürümüne güncelleme yapılsın mı? Şu saate kadar: %s",
+ "Wartungsfenster: Update auf %v durchführen? Noch %s min": "Bakım penceresi: %v sürümüne güncelleme yapılsın mı? Kalan: %s dk"
 }

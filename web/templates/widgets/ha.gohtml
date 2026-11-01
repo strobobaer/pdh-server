@@ -60,6 +60,13 @@
   <progress value="{{.Percent}}" max="100" style="width:100%;accent-color:var(--accent)">{{.Percent}} %</progress>
   {{if .Steps}}<ol class="vp-hint" style="padding-left:18px;margin:6px 0 0">{{$s := .Step}}{{range $i, $n := .Steps}}<li{{if eq $i $s}} style="font-weight:600;color:var(--text)"{{end}}>{{$n}}</li>{{end}}</ol>{{end}}
   {{if .Locked}}<div class="vp-meta"><i class="ti ti-lock"></i> {{t "Das PDH ist gesperrt – noch höchstens"}} {{.RemainingS}} s</div>{{end}}
+  {{if eq .Phase "nachfrage"}}<div class="vp-meta"><i class="ti ti-help-circle"></i> {{t "Wartungsfenster: Update auf %v durchführen? Noch bis %s" .ToVersion (.AskUntil.Local.Format "15:04")}}</div>{{end}}
+  {{if or (and .CanConfirm (eq .Phase "nachfrage")) (and .CanAbort (or (eq .Phase "nachfrage") (eq .Phase "vorbereiten") (eq .Phase "pruefen_vorher") (eq .Phase "countdown")))}}
+  <div class="mb-act" style="display:flex;gap:6px;margin-top:8px">
+    {{if and .CanConfirm (eq .Phase "nachfrage")}}<form method="post" action="/wartung/durchfuehren" onsubmit="return confirm('{{t "Update jetzt durchführen?"}}')"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-player-play"></i> {{t "Durchführen"}}</button></form>{{end}}
+    {{if .CanAbort}}<form method="post" action="/wartung/abbrechen" onsubmit="return confirm('{{if eq .Phase "nachfrage"}}{{t "Update absagen?"}}{{else}}{{t "Update abbrechen und zurücksetzen?"}}{{end}}')"><button class="btn btn-small" type="submit"><i class="ti ti-player-stop"></i> {{if eq .Phase "nachfrage"}}{{t "Absagen"}}{{else}}{{t "Abbrechen"}}{{end}}</button></form>{{end}}
+  </div>
+  {{end}}
 </div>
 {{end}}
 
@@ -97,7 +104,7 @@
   <p class="vp-hint">Die Adressen nutzen die Server untereinander (Port 7480). Mehrere mit Komma trennen.</p>
   {{end}}
   {{else if not .Err}}
-  {{if .Update.Active}}{{template "maint-progress" .Update}}{{end}}
+  {{if .Update.Active}}{{template "maint-progress" .UpdateBox}}{{end}}
   {{if .Status.Observe}}<div class="vp-msg err"><i class="ti ti-eye"></i> <b>Automatische Umschaltung: Beobachtung.</b> Fällt ein Server aus, meldet der Dienst nur, was er tun würde. „Rollen tauschen“ und „Übernahme erzwingen“ wirken echt{{if .HasMirror}}, der Datenbank-Spiegel läuft{{end}}.</div>{{else}}<div class="vp-msg err"><i class="ti ti-bolt"></i> <b>Automatische Umschaltung: echt.</b> Zugangsweg wird erst mit Teil 5 umgeschaltet – nach einer Übernahme ist das PDH nur unter der Adresse des neuen aktiven Knotens erreichbar.</div>{{end}}
   {{if and .HasMirror (not .Status.SwapTested)}}<div class="vp-msg"><i class="ti ti-list-check"></i> <b>Pflicht-Testumschaltung offen:</b> einmal „Rollen tauschen“ und zurück. Erst danach lässt sich die automatische Umschaltung auf „echt“ stellen.</div>{{else if .HasMirror}}<p class="vp-hint"><i class="ti ti-circle-check"></i> Pflicht-Testumschaltung erledigt.</p>{{end}}
   {{range .Status.Warnings}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{.}}</div>{{end}}
