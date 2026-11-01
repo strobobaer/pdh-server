@@ -21,6 +21,7 @@ type UpdateView struct {
 	RollingBack    bool      `json:"rolling_back"`
 	Result         string    `json:"result"`
 	Faulty         []string  `json:"faulty"`
+	AskUntil       time.Time `json:"ask_until"` // Ende der Nachfrage (nur Phase „nachfrage“)
 	EndedAt        time.Time `json:"ended_at"` // Ende des letzten Auftrags (Null = läuft bzw. keiner)
 }
 
@@ -33,6 +34,9 @@ func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) U
 		FromVersion: j.OldVersion, ToVersion: j.TargetVersion,
 		RollingBack: j.Phase == UpRollback, Result: j.Result,
 		Faulty: append([]string{}, faulty...),
+	}
+	if j.Phase == UpAsk {
+		v.AskUntil = j.AskUntil
 	}
 	if j.Kind == "" {
 		return v
@@ -71,6 +75,8 @@ func (j UpdateJob) viewStep() (step, percent int, text string) {
 		what = "Rollentausch"
 	}
 	switch j.Phase {
+	case UpAsk:
+		return 0, 0, "Wartet auf Bestätigung"
 	case UpPrepare:
 		if seq {
 			return 0, 0, "Neue Version wird im Hintergrund gebaut"

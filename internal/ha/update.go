@@ -29,6 +29,7 @@ type UpdatePhase string
 
 const (
 	UpNone       UpdatePhase = ""
+	UpAsk        UpdatePhase = "nachfrage"
 	UpPrepare    UpdatePhase = "vorbereiten"
 	UpVerifyPrep UpdatePhase = "pruefen_vorher"
 	UpCountdown  UpdatePhase = "countdown"
@@ -40,6 +41,10 @@ const (
 	UpDone       UpdatePhase = "fertig"
 	UpFailed     UpdatePhase = "abgebrochen"
 )
+
+// UpdateAskWait: so lange wartet die Nachfrage auf eine Bestätigung; danach
+// entfällt das Update, ohne dass etwas geändert wurde.
+const UpdateAskWait = 3 * time.Minute
 
 // UpdatePrepareWait: so lange wartet der Auftrag auf das Ergebnis eines
 // Einspielens, Rückdrehens oder Neuaufsetzens (der Agent selbst wartet bis
@@ -85,6 +90,9 @@ type UpdateJob struct {
 	Result     string // Ergebnis bzw. Grund in Anwendersprache
 	MarkFaulty bool   // X als fehlerhaft merken (der Daemon trägt es in update-faulty.json ein)
 	AbortedBy  string
+	// AskUntil: Ende der Nachfrage (nur Phase UpAsk); ConfirmedBy: wer sie bestätigt hat.
+	AskUntil    time.Time
+	ConfirmedBy string
 	Seq        uint64 // steigt bei jeder Änderung; höherer Seq gewinnt beim Spiegeln
 
 	// Offener Auftrag an einen Knoten (node_op/local_op) dieser Phase.
@@ -164,6 +172,10 @@ type UpdateObs struct {
 	Countdown, LockMax, Verify time.Duration
 
 	Abort    string // Name des Abbrechenden, "" = keiner
+	// Confirm: Name des Bestätigenden in der Nachfrage, "" = keiner.
+	// ConfirmBlocked: Grund, warum die Bestätigung nicht mehr gilt (z. B. nicht
+	// mehr alles grün), "" = keiner; beendet die Nachfrage auch ohne Confirm.
+	Confirm, ConfirmBlocked string
 	Takeover bool   // echte Übernahme/Hand-Übernahme seit Start
 	// FreshStart: erster Schritt nach dem Laden des Auftrags (pdh-ha neu
 	// gestartet). Beim Start gibt der Kern eine Abschottung wieder frei (N5).
@@ -264,6 +276,12 @@ func (r *upRun) step() {
 		// auch, wenn im selben Schritt ein Abbruch das Zurücksetzen auslöst.
 		r.j.FrozenSynced = true
 	}
+	if o.Takeover && r.j.Phase == UpAsk {
+		// Nachfrage: noch nichts geändert, die Rolle wechselte nur – leise enden.
+		r.event("info", r.j.name()+" entfallen: Rolle gewechselt")
+		r.finish(UpFailed, "Update entfallen: Rolle gewechselt")
+		return
+	}
 	if o.Takeover {
 		// Spec 7: Auftrag abbrechen, kein weiterer automatischer Schritt.
 		r.event("alarm", "Auftrag abgebrochen: Übernahme")
@@ -277,6 +295,8 @@ func (r *upRun) step() {
 		return
 	}
 	switch r.j.Phase {
+	case UpAsk:
+		r.ask()
 	case UpPrepare:
 		r.prepare()
 	case UpVerifyPrep:
@@ -293,6 +313,26 @@ func (r *upRun) step() {
 		r.followStep()
 	case UpRollback:
 		r.rollbackStep()
+	}
+}
+
+// ask: wartet auf die Bestätigung. Vorrang: ConfirmBlocked → Confirm → Frist.
+// Nach der Bestätigung beginnt UpPrepare mit leerem PhaseAt (= Eintritt).
+func (r *upRun) ask() {
+	j, o := &r.j, r.o
+	switch {
+	case o.ConfirmBlocked != "":
+		r.event("info", fmt.Sprintf("%s entfallen: %s", j.name(), o.ConfirmBlocked))
+		r.finish(UpFailed, "Update entfallen: "+o.ConfirmBlocked)
+	case o.Confirm != "":
+		j.ConfirmedBy = o.Confirm
+		j.Phase = UpPrepare
+		j.PhaseAt = time.Time{}
+		r.clearWait()
+		r.event("info", fmt.Sprintf("%s bestätigt von %s", j.name(), o.Confirm))
+	case !o.Now.Before(j.AskUntil):
+		r.event("info", j.name()+" entfallen: nicht bestätigt")
+		r.finish(UpFailed, "Update entfallen: nicht bestätigt")
 	}
 }
 
@@ -769,6 +809,12 @@ func (r *upRun) undoStep() {
 func (r *upRun) abort() bool {
 	j, o := &r.j, r.o
 	switch j.Phase {
+	case UpAsk:
+		// Nichts geändert: kein Zurückdrehen.
+		j.AbortedBy = o.Abort
+		r.event("info", fmt.Sprintf("%s abgesagt von %s", j.name(), o.Abort))
+		r.finish(UpFailed, "Update abgesagt von "+o.Abort)
+		return true
 	case UpPrepare, UpVerifyPrep, UpCountdown:
 		sent := j.Phase != UpPrepare || !j.PhaseAt.IsZero()
 		j.AbortedBy = o.Abort

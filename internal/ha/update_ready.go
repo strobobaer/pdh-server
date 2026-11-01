@@ -16,6 +16,9 @@ type ReadyObs struct {
 	SameTerm    bool
 
 	Maint, Busy, JobOpen bool
+	// MaintAllowed: Wartung ist eingeschaltet, aber ausdrücklich erlaubt
+	// (Wartungsfenster mit Nachfrage) – kein Grund gegen das Update.
+	MaintAllowed bool
 
 	SelfCommit, PartnerCommit string
 	Resume                    bool // Fortsetzen eines Auftrags: Stand darf abweichen
@@ -56,7 +59,7 @@ func UpdateReady(o ReadyObs) (ok bool, reason string, hints []string) {
 		add(o.MirrorSync && o.LagLimit > 0 && o.LagBytes >= o.LagLimit, "Verzögerung der Spiegelung zu groß")
 	}
 	if duo {
-		add(o.Maint, "Wartung eingeschaltet")
+		add(o.Maint && !o.MaintAllowed, "Wartung eingeschaltet")
 		add(o.Busy, "Ein anderer Vorgang läuft")
 		add(!o.Resume && o.JobOpen, "Ein Auftrag läuft bereits")
 	}

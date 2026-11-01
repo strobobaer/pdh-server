@@ -591,6 +591,101 @@ func TestUpdateStepTable(t *testing.T) {
 					}
 				}}
 		}(),
+		// Nachfrage: wartet, läuft ab, bestätigt, nicht grün, abgesagt, Übernahme
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			return upCase{name: "nachfrage wartet", job: j, obs: upObs("a", Active), phase: UpAsk}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now
+			return upCase{name: "nachfrage abgelaufen", job: j, obs: upObs("a", Active), phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 entfallen: nicht bestätigt")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update entfallen: nicht bestätigt" || j.MarkFaulty {
+						t.Errorf("Result %q MarkFaulty %v", j.Result, j.MarkFaulty)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Confirm = "Max Muster"
+			return upCase{name: "nachfrage bestätigt", job: j, obs: o, phase: UpPrepare,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 bestätigt von Max Muster")},
+				check: func(t *testing.T, j UpdateJob) {
+					if !j.PhaseAt.IsZero() || j.ConfirmedBy != "Max Muster" {
+						t.Errorf("PhaseAt %v ConfirmedBy %q", j.PhaseAt, j.ConfirmedBy)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Confirm, o.ConfirmBlocked = "Max", "Spiegel nicht synchron"
+			return upCase{name: "nachfrage bestätigt, nicht grün", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 entfallen: Spiegel nicht synchron")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update entfallen: Spiegel nicht synchron" {
+						t.Errorf("Result %q", j.Result)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.ConfirmBlocked = "Spiegel nicht synchron"
+			return upCase{name: "nachfrage nur nicht grün", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 entfallen: Spiegel nicht synchron")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update entfallen: Spiegel nicht synchron" {
+						t.Errorf("Result %q", j.Result)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Abort = "Max"
+			return upCase{name: "nachfrage abgesagt", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 abgesagt von Max")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update abgesagt von Max" || j.AbortedBy != "Max" {
+						t.Errorf("Result %q AbortedBy %q", j.Result, j.AbortedBy)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Abort, o.Confirm = "A", "B"
+			return upCase{name: "nachfrage abgesagt und bestätigt", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 abgesagt von A")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update abgesagt von A" {
+						t.Errorf("Result %q", j.Result)
+					}
+				}}
+		}(),
+		func() upCase {
+			j := upJob(UpdateRolling, UpAsk)
+			j.AskUntil = now.Add(time.Minute)
+			o := upObs("a", Active)
+			o.Takeover = true
+			return upCase{name: "nachfrage Übernahme", job: j, obs: o, phase: UpFailed,
+				acts: []UpdateAction{evA("info", "Update auf 0.77.9 entfallen: Rolle gewechselt")},
+				check: func(t *testing.T, j UpdateJob) {
+					if j.Result != "Update entfallen: Rolle gewechselt" {
+						t.Errorf("Result %q", j.Result)
+					}
+				}}
+		}(),
 		// Kind swap: Eintritt → direkt Countdown
 		func() upCase {
 			j := upJob(UpdateSwap, UpPrepare)
@@ -631,7 +726,7 @@ func TestUpdateStepTable(t *testing.T) {
 			if !reflect.DeepEqual(acts, c.acts) {
 				t.Errorf("Aktionen =\n  %+v\nwill\n  %+v", acts, c.acts)
 			}
-			if got.Phase != before.Phase && !got.PhaseAt.Equal(c.obs.Now) {
+			if got.Phase != before.Phase && !got.PhaseAt.Equal(c.obs.Now) && !(got.Phase == UpPrepare && got.PhaseAt.IsZero()) { // leeres PhaseAt = Eintritt
 				t.Errorf("PhaseAt = %v, will %v beim Phasenwechsel", got.PhaseAt, c.obs.Now)
 			}
 			changed := !reflect.DeepEqual(withSeq(got, 0), withSeq(before, 0))
@@ -708,6 +803,7 @@ func TestUpdateReady(t *testing.T) {
 		{"Spiegel nicht synchron", func(o *ReadyObs) { o.MirrorSync = false }, false, "Spiegel nicht synchron", nil},
 		{"Verzögerung zu groß", func(o *ReadyObs) { o.LagBytes = 20 << 20 }, false, "Verzögerung der Spiegelung zu groß", nil},
 		{"Wartung", func(o *ReadyObs) { o.Maint = true }, false, "Wartung eingeschaltet", nil},
+		{"Wartung erlaubt", func(o *ReadyObs) { o.Maint = true; o.MaintAllowed = true }, true, "", nil},
 		{"anderer Vorgang", func(o *ReadyObs) { o.Busy = true }, false, "Ein anderer Vorgang läuft", nil},
 		{"Auftrag offen", func(o *ReadyObs) { o.JobOpen = true }, false, "Ein Auftrag läuft bereits", nil},
 		{"Stand verschieden", func(o *ReadyObs) { o.PartnerCommit = "c0" }, false, "Server auf unterschiedlichem Stand", nil},
@@ -777,6 +873,7 @@ func TestUpdateViewPhases(t *testing.T) {
 		active  bool
 		back    bool
 	}{
+		{UpdateRolling, UpAsk, 0, 0, "Wartet auf Bestätigung", true, false},
 		{UpdateRolling, UpPrepare, 0, 0, "Neue Version wird auf dem Partner eingespielt", true, false},
 		{UpdateSequential, UpPrepare, 0, 0, "Neue Version wird im Hintergrund gebaut", true, false},
 		{UpdateRolling, UpVerifyPrep, 0, 3, "Partner wird geprüft", true, false},
@@ -799,6 +896,16 @@ func TestUpdateViewPhases(t *testing.T) {
 			t.Errorf("%s/%s: Step %d Percent %d Text %q Active %v RollingBack %v; will %d %d %q %v %v",
 				c.kind, c.phase, v.Step, v.Percent, v.Text, v.Active, v.RollingBack, c.step, c.percent, c.text, c.active, c.back)
 		}
+	}
+	ask := upJob(UpdateRolling, UpAsk)
+	ask.AskUntil = now.Add(time.Minute)
+	if v := ask.View(now, 30*time.Minute, nil); !v.AskUntil.Equal(ask.AskUntil) {
+		t.Errorf("AskUntil in Nachfrage = %v", v.AskUntil)
+	}
+	prep := upJob(UpdateRolling, UpPrepare)
+	prep.AskUntil = now
+	if v := prep.View(now, 30*time.Minute, nil); !v.AskUntil.IsZero() {
+		t.Errorf("AskUntil außerhalb der Nachfrage = %v", v.AskUntil)
 	}
 	seq := upJob(UpdateSequential, UpLocked).View(now, 30*time.Minute, nil)
 	if seq.Steps[1] != "Neustart" {
