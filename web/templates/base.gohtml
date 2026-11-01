@@ -3021,7 +3021,9 @@ function pdhReservedTag(p, kind, ref, reloadName){
   };
   let until = 0, skew = 0, tick = null, timer = null, mode = '', ver = '', note = '', acts = '';
   const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  function hide(){ band.hidden = true; until = 0; mode = ''; note = ''; acts = ''; act.textContent = ''; band.classList.remove('soon'); if(tick){ clearInterval(tick); tick = null; } }
+  function hide(){ until = 0; mode = ''; acts = ''; act.textContent = ''; band.classList.remove('soon'); if(tick){ clearInterval(tick); tick = null; }
+    if(note){ band.hidden = false; txt.textContent = note; return; } // Rückmeldung einer Aktion bleibt sichtbar
+    band.hidden = true; }
   function draw(){
     const left = Math.max(0, Math.round((until - (Date.now() + skew)) / 1000));
     if(note){ txt.textContent = note; return; }
@@ -3051,7 +3053,7 @@ function pdhReservedTag(p, kind, ref, reloadName){
       note = j ? (j.ok ? (j.msg || '') : (j.error || L.err)) : (r.statusText || (L.err + ' (' + r.status + ')'));
     } catch(e) { note = L.err; }
     el.disabled = false; draw();
-    setTimeout(() => { note = ''; draw(); }, 6000);
+    setTimeout(() => { note = ''; poll(); }, 6000);
     poll();
   }
   function schedule(ms){ clearTimeout(timer); timer = setTimeout(poll, ms); }
