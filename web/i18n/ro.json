@@ -834,6 +834,8 @@
  "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet.": "Instalați actualizarea în cluster? Utilizatorii sunt deconectați scurt timp.",
  "Update installieren": "Instalează actualizarea",
  "Update läuft": "Actualizare în curs",
+ "Update wartet auf Bestätigung": "Actualizarea așteaptă confirmarea",
+ "Update abgesagt": "Actualizare anulată",
  "Update nicht gestartet: %s": "Actualizarea nu a pornit: %s",
  "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet.": "Descărcați și instalați actualizarea din ramura GitHub main? Serviciul va fi repornit.",
  "Update wurde gestartet. Den Fortschritt zeigt Server-Einstellungen → Ausfallschutz.": "Actualizarea a pornit. Progresul se vede în Setări server → Protecție la avarie.",

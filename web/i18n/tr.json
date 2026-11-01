@@ -834,6 +834,8 @@
  "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet.": "Güncelleme kümede kurulsun mu? Kullanıcılar kısa süre oturumdan çıkarılır.",
  "Update installieren": "Güncellemeyi kur",
  "Update läuft": "Güncelleme sürüyor",
+ "Update wartet auf Bestätigung": "Güncelleme onay bekliyor",
+ "Update abgesagt": "Güncelleme iptal edildi",
  "Update nicht gestartet: %s": "Güncelleme başlatılamadı: %s",
  "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet.": "Güncelleme GitHub main dalından indirilip kurulsun mu? Hizmet yeniden başlatılır.",
  "Update wurde gestartet. Den Fortschritt zeigt Server-Einstellungen → Ausfallschutz.": "Güncelleme başlatıldı. İlerleme Sunucu ayarları → Kesinti koruması bölümünde görünür.",

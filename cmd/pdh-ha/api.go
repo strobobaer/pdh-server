@@ -503,7 +503,7 @@ func (d *daemon) setMaintenance(on bool) error {
 	case d.node.Kind == "witness":
 		return errors.New("Auf dem Zeugen nicht möglich")
 	case d.updateOpenLocked():
-		return errUpdateOpen // I6
+		return d.updateOpenErrLocked() // I6
 	}
 	p := d.p
 	p.Maint = on
@@ -788,4 +788,13 @@ func apiDoT(sock string, timeout time.Duration, method, path string, in, out any
 		return json.Unmarshal(b, out)
 	}
 	return nil
+}
+
+// updateOpenErrLocked: Fehlertext für Handbefehle neben einem offenen Auftrag;
+// in der Nachfrage gibt es noch nichts abzubrechen, nur zu beantworten.
+func (d *daemon) updateOpenErrLocked() error {
+	if d.up.job.Phase == ha.UpAsk {
+		return errors.New("Nachfrage offen – zuerst beantworten oder absagen")
+	}
+	return errUpdateOpen
 }

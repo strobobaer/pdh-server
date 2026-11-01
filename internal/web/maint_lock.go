@@ -58,6 +58,7 @@ type maintLock struct {
 	abort      func(ctx context.Context, by string) error      // nil → pdh-ha bzw. Update-Agent
 	confirm    func(ctx context.Context, by string) error      // nil → pdh-ha (Nachfrage bestätigen)
 	confirmer  func(*users.User) bool                          // nil → globales Recht system.manage_roles
+	cluster    func() bool                                     // nil → haNodeConfigured (Tests tauschen aus)
 	admin      func(*users.User) bool                          // nil → globales Recht system.maintenance_abort
 	pwDue      func(*http.Request, *users.User) (bool, string) // nil → passwordChangeDue
 	now        func() time.Time                                // nil → time.Now
@@ -94,6 +95,23 @@ func haNodeConfigured() bool {
 	}
 	_, err := os.Stat(filepath.Join(dir, "node.json"))
 	return err == nil || !errors.Is(err, fs.ErrNotExist)
+}
+
+// maintCluster: Verbund (pdh-ha) – nur dort gibt es die Nachfrage vor der Sperre.
+func (h *Handler) maintCluster() bool {
+	if h.mlock.cluster != nil {
+		return h.mlock.cluster()
+	}
+	return haNodeConfigured()
+}
+
+// maintMayAct: Rechte der Sitzung für Durchführen und Absagen/Abbrechen vor der
+// Sperre. Am Spiegel-PDH gibt es keine Knöpfe (der aktive Server führt aus).
+func (h *Handler) maintMayAct(u *users.User) (confirm, abort bool) {
+	if u == nil || h.Mirror().On {
+		return false, false
+	}
+	return h.maintMayConfirm(u), h.maintIsAdmin(u)
 }
 
 // maintSourceConfigured: Es gibt eine Quelle, die eine Sperre melden kann.
@@ -497,11 +515,10 @@ func (h *Handler) maintStatus(w http.ResponseWriter, r *http.Request) {
 // maintStatusExtra: Zusatzfelder für Sitzungen mit Recht zum Durchführen oder
 // Absagen – Phase, Frist der Nachfrage und Zielversion. Alle anderen sehen sie nicht.
 func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[string]any) {
-	u := h.sessionUser(r)
-	if u == nil {
+	if !v.Active || !h.maintCluster() { // Einzelserver unverändert: keine Nachfrage, keine Zusatzfelder
 		return
 	}
-	canConfirm, canAbort := h.maintMayConfirm(u), h.maintIsAdmin(u)
+	canConfirm, canAbort := h.maintMayAct(h.sessionUser(r))
 	if !canConfirm && !canAbort {
 		return
 	}
@@ -510,6 +527,9 @@ func (h *Handler) maintStatusExtra(r *http.Request, v ha.UpdateView, out map[str
 		out["ask_until"] = v.AskUntil.UTC().Format(time.RFC3339)
 	}
 	out["to_version"] = v.ToVersion
+	if v.TargetLabel != "" {
+		out["to_version"] = v.TargetLabel
+	}
 	out["can_confirm"] = canConfirm
 	out["can_abort"] = canAbort
 }
@@ -526,6 +546,9 @@ func (h *Handler) maintActionPost(w http.ResponseWriter, r *http.Request, confir
 	u := h.sessionUser(r)
 	allowed := u != nil && h.maintIsAdmin(u)
 	action, okMsg := "update-abort", "Abbruch angefordert"
+	if !confirm && h.maintView(r.Context()).Phase == string(ha.UpAsk) {
+		okMsg = "Update abgesagt"
+	}
 	if confirm {
 		allowed = u != nil && h.maintMayConfirm(u)
 		action, okMsg = "update-confirm", "Update bestätigt – es beginnt in Kürze"

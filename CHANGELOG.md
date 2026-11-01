@@ -37,6 +37,7 @@ im Kapitel „Versionen & Updates“ an.
 ### Sicherheit
 - Neue Rechte „Wartungsfenster einstellen“ und „Automatische Wartung abbrechen“; Rollen mit den bisher zuständigen Rechten bekommen sie automatisch.
 - Während der Wartung werden alle Benutzer abgemeldet, auch Systembenutzer (Terminals, Leitstand-Anzeigen); nur Inhaber des Abbruch-Rechts bleiben angemeldet.
+- „Automatische Wartung abbrechen“ erlaubt jetzt auch Absagen und Abbrechen vor der Sperre; das Durchführen der Nachfrage braucht das Recht „Rollen & Berechtigungen verwalten“.
 
 ## [0.77.7] – 2026-10-29
 

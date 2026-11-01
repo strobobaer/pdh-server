@@ -179,6 +179,7 @@ func (d *daemon) startUpdateLocked(j ha.UpdateJob) error {
 func (d *daemon) setJobLocked(j ha.UpdateJob) {
 	if j.ID != d.up.job.ID {
 		d.up.acks, d.up.abort, d.up.opSent, d.up.takeover = nil, "", opMark{}, false
+		d.up.confirm, d.up.confirmBlocked = "", "" // eine alte Bestätigung gilt nie für die nächste Nachfrage
 	}
 	d.up.job, d.up.restartAbort = j, ""
 }
@@ -217,6 +218,12 @@ func (d *daemon) confirmUpdate(req updateConfirmReq) error {
 	j := d.up.job
 	if j.ID == "" || j.Phase != ha.UpAsk || d.up.confirm != "" || d.up.confirmBlocked != "" {
 		return errors.New("Keine Nachfrage offen")
+	}
+	if !j.AskUntil.IsZero() && !d.wall().Before(j.AskUntil) {
+		return errors.New("Keine Nachfrage offen") // Frist um: der nächste Takt lässt das Update entfallen
+	}
+	if d.up.abort != "" {
+		return errors.New("Update wurde bereits abgesagt")
 	}
 	if d.p.Role != ha.Active {
 		return errors.New("Bestätigen nur auf dem aktiven Server")

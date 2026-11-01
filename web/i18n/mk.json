@@ -834,6 +834,8 @@
  "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet.": "Да се инсталира ажурирањето во кластерот? Корисниците се одјавуваат накратко.",
  "Update installieren": "Инсталирај ажурирање",
  "Update läuft": "Ажурирањето е во тек",
+ "Update wartet auf Bestätigung": "Ажурирањето чека потврда",
+ "Update abgesagt": "Ажурирањето е откажано",
  "Update nicht gestartet: %s": "Ажурирањето не е започнато: %s",
  "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet.": "Да се преземе и инсталира ажурирањето од GitHub гранката main? Услугата ќе се рестартира.",
  "Update wurde gestartet. Den Fortschritt zeigt Server-Einstellungen → Ausfallschutz.": "Ажурирањето е започнато. Напредокот се гледа во Поставки на серверот → Заштита од испад.",

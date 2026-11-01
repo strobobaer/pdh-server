@@ -72,6 +72,7 @@ func maintTestHandler(t *testing.T, v ha.UpdateView) (*Handler, *maintFake) {
 	f.h = h
 	h.streams, h.closeStreams = context.WithCancel(context.Background())
 	h.mlock.configured = func() bool { return true }
+	h.mlock.cluster = func() bool { return true }
 	h.mlock.fetch = func(context.Context) (ha.UpdateView, error) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -1045,5 +1046,62 @@ func TestMaintProgressButtons(t *testing.T) {
 	out = render(maintBox{UpdateView: ha.UpdateView{Active: true, Phase: "gesperrt"}, CanConfirm: true, CanAbort: true})
 	if has(out, "durchfuehren") || has(out, "abbrechen") {
 		t.Errorf("gesperrt: keine Knöpfe erwartet")
+	}
+}
+
+func askStatus(t *testing.T, h *Handler, v ha.UpdateView) map[string]any {
+	t.Helper()
+	h.mlock.confirmer = func(u *users.User) bool { return u != nil && u.ID == "admin" }
+	hd, _ := maintPlain(h)
+	rec := maintDo(hd, maintReq{method: "GET", path: "/wartung/status", tok: maintToken(t, "admin", time.Now())})
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestStatusAskExtraOnlyInCluster(t *testing.T) {
+	h, _ := maintTestHandler(t, askView())
+	h.mlock.cluster = func() bool { return false }
+	out := askStatus(t, h, askView())
+	for _, k := range []string{"phase", "ask_until", "to_version", "can_confirm", "can_abort"} {
+		if _, ok := out[k]; ok {
+			t.Errorf("Einzelserver: %s darf nicht erscheinen: %v", k, out)
+		}
+	}
+}
+
+func TestStatusAskExtraNotOnMirror(t *testing.T) {
+	h, _ := maintTestHandler(t, askView())
+	h.SetMirror(MirrorInfo{On: true})
+	out := askStatus(t, h, askView())
+	if _, ok := out["can_confirm"]; ok {
+		t.Errorf("Spiegel: keine Knöpfe: %v", out)
+	}
+}
+
+func TestStatusIdleNoExtra(t *testing.T) {
+	h, f := maintTestHandler(t, ha.UpdateView{})
+	out := askStatus(t, h, f.view)
+	if _, ok := out["can_abort"]; ok || out["active"] != false {
+		t.Errorf("ohne Auftrag: %v", out)
+	}
+}
+
+func TestStatusAskTargetLabel(t *testing.T) {
+	v := askView()
+	v.ToVersion, v.TargetLabel = "", "abcdef0"
+	h, _ := maintTestHandler(t, v)
+	if out := askStatus(t, h, v); out["to_version"] != "abcdef0" {
+		t.Errorf("Zielversion unbekannt: %v", out)
+	}
+}
+
+func TestAbortPostInAskSaysCancelled(t *testing.T) {
+	hd, _, aborts, _ := maintAskHandler(t, askView())
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: maintToken(t, "admin", time.Now()), hdr: map[string]string{"Accept": "application/json"}})
+	if rec.Code != http.StatusOK || *aborts != 1 || !strings.Contains(rec.Body.String(), "Update abgesagt") {
+		t.Fatalf("Absage: %d %s", rec.Code, rec.Body.String())
 	}
 }

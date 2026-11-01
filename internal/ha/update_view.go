@@ -18,11 +18,12 @@ type UpdateView struct {
 	CountdownUntil time.Time `json:"countdown_until"`
 	FromVersion    string    `json:"from_version"`
 	ToVersion      string    `json:"to_version"`
+	TargetLabel    string    `json:"target_label"` // Zielversion, sonst Kurz-Commit (Anzeige in der Nachfrage)
 	RollingBack    bool      `json:"rolling_back"`
 	Result         string    `json:"result"`
 	Faulty         []string  `json:"faulty"`
 	AskUntil       time.Time `json:"ask_until"` // Ende der Nachfrage (nur Phase „nachfrage“)
-	EndedAt        time.Time `json:"ended_at"` // Ende des letzten Auftrags (Null = läuft bzw. keiner)
+	EndedAt        time.Time `json:"ended_at"`  // Ende des letzten Auftrags (Null = läuft bzw. keiner)
 }
 
 // View bereitet den Auftrag für die Anzeige auf. RemainingS ist die Restzeit
@@ -37,6 +38,13 @@ func (j UpdateJob) View(now time.Time, lockMax time.Duration, faulty []string) U
 	}
 	if j.Phase == UpAsk {
 		v.AskUntil = j.AskUntil
+		v.TargetLabel = j.TargetVersion
+		if v.TargetLabel == "" {
+			v.TargetLabel = j.Target
+			if len(v.TargetLabel) > 7 {
+				v.TargetLabel = v.TargetLabel[:7]
+			}
+		}
 	}
 	if j.Kind == "" {
 		return v

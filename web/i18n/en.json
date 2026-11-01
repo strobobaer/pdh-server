@@ -834,6 +834,8 @@
  "Update im Verbund installieren? Die Anwender werden dabei kurz abgemeldet.": "Install the update in the cluster? Users are signed out briefly.",
  "Update installieren": "Install update",
  "Update läuft": "Update in progress",
+ "Update wartet auf Bestätigung": "Update waiting for confirmation",
+ "Update abgesagt": "Update cancelled",
  "Update nicht gestartet: %s": "Update not started: %s",
  "Update vom GitHub-Branch main herunterladen und installieren? Der Dienst wird dabei neu gestartet.": "Download and install the update from the GitHub branch main? The service restarts in the process.",
  "Update wurde gestartet. Den Fortschritt zeigt Server-Einstellungen → Ausfallschutz.": "Update started. Progress is shown under Server settings → Failover protection.",

@@ -55,12 +55,12 @@
 {{/* Fortschritt eines laufenden Auftrags (Daten: ha.UpdateView). Lädt sich alle 5 s selbst nach. */}}
 {{define "maint-progress"}}
 <div id="ha-update-progress" class="vp-msg" role="status" hx-get="/admin/server-config?tab=dr" hx-trigger="every 5s" hx-select="#ha-update-progress" hx-target="this" hx-swap="outerHTML">
-  <i class="ti ti-loader"></i> <b>{{if .RollingBack}}{{t "Update wird zurückgesetzt"}}{{else}}{{t "Update läuft"}}{{end}}</b>{{if .ToVersion}} – {{.FromVersion}} → {{.ToVersion}}{{end}}
+  <i class="ti ti-loader"></i> <b>{{if .RollingBack}}{{t "Update wird zurückgesetzt"}}{{else if eq .Phase "nachfrage"}}{{t "Update wartet auf Bestätigung"}}{{else}}{{t "Update läuft"}}{{end}}</b>{{if and .ToVersion (ne .Phase "nachfrage")}} – {{.FromVersion}} → {{.ToVersion}}{{end}}
   <div class="vp-meta">{{.Text}}</div>
   <progress value="{{.Percent}}" max="100" style="width:100%;accent-color:var(--accent)">{{.Percent}} %</progress>
   {{if .Steps}}<ol class="vp-hint" style="padding-left:18px;margin:6px 0 0">{{$s := .Step}}{{range $i, $n := .Steps}}<li{{if eq $i $s}} style="font-weight:600;color:var(--text)"{{end}}>{{$n}}</li>{{end}}</ol>{{end}}
   {{if .Locked}}<div class="vp-meta"><i class="ti ti-lock"></i> {{t "Das PDH ist gesperrt – noch höchstens"}} {{.RemainingS}} s</div>{{end}}
-  {{if eq .Phase "nachfrage"}}<div class="vp-meta"><i class="ti ti-help-circle"></i> {{t "Wartungsfenster: Update auf %v durchführen? Noch bis %s" .ToVersion (.AskUntil.Local.Format "15:04")}}</div>{{end}}
+  {{if eq .Phase "nachfrage"}}<div class="vp-meta"><i class="ti ti-help-circle"></i> {{t "Wartungsfenster: Update auf %v durchführen? Noch bis %s" (or .TargetLabel .ToVersion) (.AskUntil.Local.Format "15:04")}}</div>{{end}}
   {{if or (and .CanConfirm (eq .Phase "nachfrage")) (and .CanAbort (or (eq .Phase "nachfrage") (eq .Phase "vorbereiten") (eq .Phase "pruefen_vorher") (eq .Phase "countdown")))}}
   <div class="mb-act" style="display:flex;gap:6px;margin-top:8px">
     {{if and .CanConfirm (eq .Phase "nachfrage")}}<form method="post" action="/wartung/durchfuehren" onsubmit="return confirm('{{t "Update jetzt durchführen?"}}')"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-player-play"></i> {{t "Durchführen"}}</button></form>{{end}}

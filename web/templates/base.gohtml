@@ -3033,7 +3033,7 @@ function pdhReservedTag(p, kind, ref, reloadName){
   }
   // Knöpfe nur neu aufbauen, wenn sich ihre Zusammensetzung ändert (sonst geht ein Klick verloren)
   function buttons(list){
-    const key = list.map(b => b.url).join('|');
+    const key = list.map(b => b.url + '#' + b.label).join('|');
     if(key === acts) return;
     acts = key; act.textContent = '';
     list.forEach(b => {

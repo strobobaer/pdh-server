@@ -93,7 +93,7 @@ type UpdateJob struct {
 	// AskUntil: Ende der Nachfrage (nur Phase UpAsk); ConfirmedBy: wer sie bestätigt hat.
 	AskUntil    time.Time
 	ConfirmedBy string
-	Seq        uint64 // steigt bei jeder Änderung; höherer Seq gewinnt beim Spiegeln
+	Seq         uint64 // steigt bei jeder Änderung; höherer Seq gewinnt beim Spiegeln
 
 	// Offener Auftrag an einen Knoten (node_op/local_op) dieser Phase.
 	// Der Daemon schickt mit jeder Aktion den Seq des zurückgegebenen
@@ -171,12 +171,12 @@ type UpdateObs struct {
 
 	Countdown, LockMax, Verify time.Duration
 
-	Abort    string // Name des Abbrechenden, "" = keiner
+	Abort string // Name des Abbrechenden, "" = keiner
 	// Confirm: Name des Bestätigenden in der Nachfrage, "" = keiner.
 	// ConfirmBlocked: Grund, warum die Bestätigung nicht mehr gilt (z. B. nicht
 	// mehr alles grün), "" = keiner; beendet die Nachfrage auch ohne Confirm.
 	Confirm, ConfirmBlocked string
-	Takeover bool   // echte Übernahme/Hand-Übernahme seit Start
+	Takeover                bool // echte Übernahme/Hand-Übernahme seit Start
 	// FreshStart: erster Schritt nach dem Laden des Auftrags (pdh-ha neu
 	// gestartet). Beim Start gibt der Kern eine Abschottung wieder frei (N5).
 	FreshStart bool

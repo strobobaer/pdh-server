@@ -1045,3 +1045,20 @@ func TestUpdateVerifyNewWaitsForOwnPrimary(t *testing.T) {
 		t.Fatalf("nach dem Hochstufen: %q %+v", got.Phase, acts)
 	}
 }
+
+func TestViewAskTargetLabel(t *testing.T) {
+	j := upJob(UpdateRolling, UpAsk)
+	j.TargetVersion, j.Target = "", "abcdef0123456789"
+	v := j.View(time.Now(), time.Minute, nil)
+	if v.TargetLabel != "abcdef0" || v.ToVersion != "" || j.TargetVersion != "" {
+		t.Fatalf("ohne Version: label=%q to=%q", v.TargetLabel, v.ToVersion)
+	}
+	j.TargetVersion = "0.77.9"
+	if v = j.View(time.Now(), time.Minute, nil); v.TargetLabel != "0.77.9" {
+		t.Fatalf("mit Version: %q", v.TargetLabel)
+	}
+	j.Phase = UpPrepare
+	if v = j.View(time.Now(), time.Minute, nil); v.TargetLabel != "" {
+		t.Fatalf("nur in der Nachfrage: %q", v.TargetLabel)
+	}
+}
