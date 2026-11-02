@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.100] – 2026-11-02
+
+### Geändert
+
+- Probe: sechste harmlose Version als Update-Ziel für die Abnahme „Wartungsfenster mit Nachfrage“.
+
 ## [0.77.99] – 2026-11-01
 
 ### Geändert
