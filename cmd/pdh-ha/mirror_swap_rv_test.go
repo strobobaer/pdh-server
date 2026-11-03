@@ -71,6 +71,9 @@ func TestRV_FrozenFallbackDuringLock(t *testing.T) {
 	if dryRuns(r) > 0 {
 		t.Errorf("RUECKFALLSTAND ANGEFASST: pg_rewind waehrend der Sperre; %v", r.list())
 	}
+	if hasEvent(m.d, "nicht angebunden") {
+		t.Errorf("Alarm im Update-Auftrag: %v", eventTexts(m.d))
+	}
 }
 
 // P2: Partner Rolle aktiv, seine Datenbank noch Standby (Hochstufen laeuft) bzw. gestoppt.
@@ -169,6 +172,10 @@ func TestRV_StaleStatusAfterFreeze(t *testing.T) {
 	if dryRuns(r) > 0 {
 		t.Errorf("EINGEFRORENER STAND ANGEFASST: pg_rewind nach normalem swap_freeze")
 	}
+	// der veraltete Stand von vor dem Stopp löst keinen Alarm aus (R33: erst eine ganz neue Abfrage zählt)
+	if hasEvent(m.d, "nicht angebunden") {
+		t.Errorf("Fehlalarm aus veraltetem Stand: %v", eventTexts(m.d))
+	}
 }
 
 // Mit Marke und offenem Update-Auftrag (Rückfallstand) bleibt der Server unberührt.
@@ -206,12 +213,15 @@ func TestRV_MarkRejoinsOnce(t *testing.T) {
 	}
 }
 
-// Der Aktor prüft frisch: ist die Datenbank kein nur lesender Primary, geschieht nichts.
+// Der Aktor prüft frisch: ist die Datenbank kein nur lesender Primary, geschieht nichts; das
+// Ergebnis ist „warten“, nicht „erledigt“ (die Marke bleibt, R33/N2).
 func TestRejoinStrandedChecksFreshStatus(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil) // schreibbar
 	a, _ := testActor(t, r)
-	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoinStranded, Term: 2, Manual: true}); err != nil {
-		t.Fatal(err)
+	err := a.Do(context.Background(), ha.Action{Kind: ha.ActRejoinStranded, Term: 2, Manual: true})
+	var wait strandedWaitError
+	if !errors.As(err, &wait) {
+		t.Fatalf("Warten erwartet: %v", err)
 	}
 	if has(r.list(), "svc stop") || strings.Contains(strings.Join(r.list(), "\n"), "pg_rewind") {
 		t.Fatalf("nichts darf geschehen: %v", r.list())

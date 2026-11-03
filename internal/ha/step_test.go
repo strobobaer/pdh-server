@@ -2150,6 +2150,16 @@ func TestStepStrandedRejoin(t *testing.T) {
 	if o := Step(mk(func(in *Input) { in.RejoinAsked = true })); count(o) != 0 || !o.RejoinAsked {
 		t.Fatalf("zweite Wiederanbindung im selben Zustand: %d %v", count(o), o.RejoinAsked)
 	}
+	// erneuter Versuch (Daemon setzt RejoinAsked zurück, R33): wieder die Aktion, aber kein zweiter Alarm
+	if !out.RejoinAlarmed || len(out.Events) == 0 {
+		t.Fatalf("erster Versuch ohne Alarm: %+v", out)
+	}
+	if o := Step(mk(func(in *Input) { in.RejoinAlarmed = true })); count(o) != 1 || !o.RejoinAlarmed || len(o.Events) != 0 {
+		t.Fatalf("erneuter Versuch: %d %v %+v", count(o), o.RejoinAlarmed, o.Events)
+	}
+	if o := Step(mk(func(in *Input) { in.RejoinAlarmed, in.UndoRefused = true, false })); o.RejoinAlarmed {
+		t.Fatal("Alarm-Merker ohne Marke nicht zurückgesetzt")
+	}
 	// eine schon eingereihte zählt (kein zweites, Zustand bleibt)
 	if o := Step(mk(func(in *Input) { in.RejoinBusy = true })); count(o) != 0 || o.RejoinAsked {
 		t.Fatalf("Wiederanbindung neben einer eingereihten: %d", count(o))

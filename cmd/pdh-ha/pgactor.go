@@ -155,7 +155,7 @@ func (a *pgActor) demote(ctx context.Context, term uint64) error {
 		// Der Partner ist (praktisch) hochgestuft: unser Stopp läge hinter dem Trennpunkt,
 		// wir könnten der neuen Zeitlinie nicht folgen. Nur lesend bleiben, merken, pg_rewind.
 		a.markRefused()
-		return swapTakenError{}
+		return swapTakenError{rejoin: true}
 	case phaseUnknown:
 		return swapWithdrawnError{} // ungewiss (Fenced): nur lesend lassen, nichts tun
 	}
@@ -221,7 +221,7 @@ func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote 
 		if demote {
 			a.markRefused()
 		}
-		return err
+		return swapTakenError{rejoin: demote} // keine Wartung: der Partner arbeitet (N3)
 	case phaseUnknown:
 		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Zustand der Rolle ist ungewiss"})
 		return err
@@ -255,15 +255,51 @@ func (a *pgActor) markRefused() {
 	}
 }
 
-// rejoinStranded (R32): Wiederanbindung nach verweigerter Rücknahme. Der Aktor prüft
-// den eigenen Stand frisch: nur ein laufender, nur lesender Primary wird angefasst,
-// sonst geschieht nichts (zum Beispiel eingefrorener Rückfallstand oder schon Standby).
+// rejoinStranded (R32, R33): Wiederanbindung nach verweigerter Rücknahme oder per Handbefehl.
+// Der Aktor prüft den eigenen Stand frisch: nur ein laufender, nur lesender Primary wird
+// angefasst (nie ein eingefrorener Rückfallstand). Schon Standby: erledigt. Jeder andere Stand:
+// strandedWaitError, es geschieht nichts. Scheitert die Wiederanbindung, kommt die Datenbank
+// wieder als nur lesender Primary hoch (die Konfiguration stammt aus dem Abschotten), sonst
+// hilft danach auch der Handbefehl nicht mehr.
 func (a *pgActor) rejoinStranded(ctx context.Context, term uint64) error {
-	if st := a.pg.status(ctx); st.State != "primary" || !st.ReadOnly {
-		a.ev.add(ha.Event{Kind: "info", Text: "Wiederanbindung nicht nötig: die Datenbank ist kein nur lesender Primary"})
+	switch err := strandedStateErr(a.pg.status(ctx)); {
+	case errors.Is(err, errAlreadyStandby):
+		a.ev.add(ha.Event{Kind: "info", Text: "Wiederanbindung nicht nötig: die Datenbank ist schon Standby"})
 		return nil
+	case err != nil:
+		return err
 	}
-	return a.rejoin(ctx, term)
+	err := a.rejoin(ctx, term)
+	if err != nil && a.pg.status(ctx).State == "stopped" {
+		if serr := a.pg.ctl(ctx, "start"); serr != nil {
+			a.ev.add(ha.Event{Kind: "alarm", Text: "Datenbank nach gescheiterter Wiederanbindung nicht gestartet: " + serr.Error()})
+		}
+	}
+	return err
+}
+
+// errAlreadyStandby: die Datenbank folgt schon dem Partner.
+var errAlreadyStandby = errors.New("Die Datenbank ist schon Standby – nichts zu tun")
+
+// strandedWaitError: Die Datenbank ist in keinem Stand für die Wiederanbindung. Kein
+// Fehlschlag der Aktion: nichts wurde angefasst, keine Wartung, eine Marke bleibt (N2).
+type strandedWaitError struct{ why string }
+
+func (e strandedWaitError) Error() string { return "Wiederanbindung nicht möglich: " + e.why }
+
+// strandedStateErr: nil nur für einen laufenden, nur lesenden Primary.
+func strandedStateErr(st pgStatus) error {
+	switch {
+	case st.State == "primary" && st.ReadOnly:
+		return nil
+	case st.State == "standby":
+		return errAlreadyStandby
+	case st.State == "primary":
+		return strandedWaitError{"die Datenbank ist schreibbar"}
+	case st.State == "stopped":
+		return strandedWaitError{"die Datenbank ist gestoppt (ein eingefrorener Stand bleibt unberührt)"}
+	}
+	return strandedWaitError{"der Stand der Datenbank ist nicht lesbar: " + st.Err}
 }
 
 // abandon: Rückfallstand verwerfen (Rücktausch ohne Rückweg). Dienste und
@@ -642,11 +678,15 @@ func (e *finalSyncError) Error() string {
 func (e *finalSyncError) Unwrap() error { return e.err }
 func (e *finalSyncError) noMaint()      {}
 
-// swapTakenError: der Partner hat während der Abgabe übernommen; demote bleibt nur lesend.
-type swapTakenError struct{}
+// swapTakenError: der Partner hat während der Abgabe übernommen; die Datenbank bleibt nur
+// lesend. rejoin: die Marke ist gesetzt, die Wiederanbindung folgt von selbst (nur demote).
+type swapTakenError struct{ rejoin bool }
 
-func (swapTakenError) Error() string {
-	return "Der Partner hat inzwischen übernommen – nur lesend, Wiederanbindung folgt"
+func (e swapTakenError) Error() string {
+	if e.rejoin {
+		return "Der Partner hat inzwischen übernommen – nur lesend, Wiederanbindung folgt"
+	}
+	return "Der Partner hat inzwischen übernommen – nur lesend"
 }
 func (swapTakenError) noMaint() {}
 

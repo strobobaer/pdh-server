@@ -955,13 +955,7 @@ func (d *daemon) swapPhase(term uint64) swapPhase {
 	return phaseUnknown
 }
 
-// handingOver: die eigene Übergabe läuft (passiv, nächste Amtszeit offen).
-func (d *daemon) handingOver() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.handingOverLocked()
-}
-
+// handingOverLocked: die eigene Übergabe läuft (passiv, nächste Amtszeit offen).
 func (d *daemon) handingOverLocked() bool {
 	return d.p.Role == ha.Passive && d.carry.HandoverPending == d.p.Term+1
 }

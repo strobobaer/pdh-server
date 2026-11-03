@@ -168,6 +168,128 @@ func (d *daemon) deleteDivergedAt(node, id string) error {
 	return nil
 }
 
+// strandedText: Alarm und Statuswarnung für einen gestrandeten Server (R33).
+const strandedText = "Dieser Server ist nicht angebunden: Datenbank nur lesend, Partner aktiv. Wiederanbinden: sudo pdh-ha rejoin"
+
+const (
+	strandedAlarmKey = "stranded"
+	// strandedFreshPolls: so viele neue Zustandsabfragen, bevor der Alarm gilt. Es läuft
+	// immer nur eine, also begann die zweite erst, nachdem der Zustand schon galt; der
+	// Stand aus einem Rollentausch (abgeschottet vor dem Stopp) zählt damit nicht.
+	strandedFreshPolls = 2
+	// rejoinRetryWait: Abstand der Versuche, solange die Marke steht, aber die Datenbank
+	// gerade kein nur lesender Primary ist (Statusfehler, gestoppt).
+	rejoinRetryWait = 30 * time.Second
+)
+
+// strandedReasonLocked: nil, wenn dieser Server gestrandet ist und nur der Handbefehl hilft:
+// passiv, letzter Stand nur lesender Primary, Partner aktiv und Primary gesehen, kein Update-
+// Auftrag, keine Marke, keine Übergabe, keine Abgabe oder Wiederanbindung in der Warteschlange.
+// Sonst der Grund. Eine einzige Stelle für Alarm, Statuswarnung und Handbefehl (R33).
+func (d *daemon) strandedReasonLocked() error {
+	switch {
+	case !d.configured:
+		return errNotConfigured
+	case d.removed:
+		return errors.New("Aus dem Cluster entfernt")
+	case d.node.Kind == "witness":
+		return errors.New("Auf dem Zeugen nicht möglich")
+	case d.modeLocked() == ha.Single:
+		return errors.New("Nur mit zwei Servern möglich")
+	case d.pgActorLocked() == nil:
+		return errors.New("Hier ist kein Datenbank-Spiegel eingerichtet")
+	case d.updateOpenLocked():
+		return d.updateOpenErrLocked() // eingefrorener Rückfallstand: nie anfassen
+	case d.p.Role != ha.Passive:
+		return errors.New("Nur auf einem passiven Server möglich")
+	case d.carry.HandoverPending != 0 || d.pendingDemotes.Load() > 0:
+		return errors.New("Die Abgabe läuft noch – bitte kurz warten")
+	case d.undoRefused:
+		return errors.New("Die Wiederanbindung läuft schon automatisch")
+	case d.pendingRejoins.Load() > 0:
+		return errors.New("Eine Wiederanbindung läuft schon")
+	case !ha.PartnerLeads(d.last.Partner, d.p.Term):
+		return errors.New("Der Partner ist nicht als aktiver Server mit Primary-Datenbank zu sehen")
+	}
+	st := d.lastPG()
+	if st == nil {
+		return errors.New("Der Stand der Datenbank ist noch nicht bekannt")
+	}
+	return strandedStateErr(*st)
+}
+
+// strandedConfirmLocked: der Zustand gilt und ist durch frische Abfragen belegt.
+func (d *daemon) strandedConfirmLocked() bool {
+	if d.strandedReasonLocked() != nil {
+		d.strandedSample, d.strandedFresh = nil, 0
+		return false
+	}
+	if cur := d.lastPG(); cur != d.strandedSample {
+		if d.strandedSample != nil {
+			d.strandedFresh++
+		}
+		d.strandedSample = cur
+	}
+	return d.strandedFresh >= strandedFreshPolls
+}
+
+// rejoinCmd: Handbefehl „pdh-ha rejoin“. Prüft unter der Sperre, dann frisch den eigenen
+// Stand im Aktor, und reiht die Wiederanbindung ein; sonst ein Fehler mit Grund. Der Aktor
+// prüft beim Ausführen noch einmal. Ohne Marke geht es nur über diesen Befehl, nie von selbst.
+func (d *daemon) rejoinCmd(ctx context.Context) error {
+	d.rejoinMu.Lock()
+	defer d.rejoinMu.Unlock()
+	d.lock()
+	err := d.strandedReasonLocked()
+	pa := d.pgActorLocked()
+	d.unlock()
+	if err != nil {
+		return err
+	}
+	if err := strandedStateErr(pa.pg.status(ctx)); err != nil {
+		return err
+	}
+	d.lock()
+	err = d.strandedReasonLocked() // der Stand kann sich während der Abfrage geändert haben
+	if err != nil {
+		d.unlock()
+		return err
+	}
+	act := ha.Action{Kind: ha.ActRejoinStranded, Term: d.last.Partner.Term, Manual: true}
+	base := d.runCtx
+	d.unlock()
+	if base == nil {
+		base = context.Background()
+	}
+	d.event("info", "Befehl: Wiederanbinden")
+	d.enqueueActions(base, []ha.Action{act})
+	return nil
+}
+
+// strandedDone wertet den Ausgang von rejoin_stranded aus; zurück kommt, was als
+// Fehlschlag der Aktion zählt. Warten: nichts angefasst, kein Fehlschlag; mit Marke später
+// neu (N2). Sonst ist die Marke erledigt, auch nach einem Fehlschlag: die Automatik hatte
+// ihren einen Versuch, ab dann meldet R33 den Zustand und der Handbefehl führt heraus.
+func (d *daemon) strandedDone(err error) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var wait strandedWaitError
+	if !errors.As(err, &wait) {
+		d.undoRefused, d.rejoinRetryAt, d.rejoinWaitWhy = false, 0, ""
+		return err
+	}
+	if !d.undoRefused {
+		d.event("warn", err.Error()) // Handbefehl: der Stand hat sich seit der Prüfung geändert
+		return nil
+	}
+	d.rejoinRetryAt = d.mono() + rejoinRetryWait
+	if d.rejoinWaitWhy != wait.why {
+		d.rejoinWaitWhy = wait.why
+		d.event("warn", "Wiederanbindung wartet: "+wait.why+" – neuer Versuch folgt")
+	}
+	return nil
+}
+
 func (a *pgActor) binPath(name string) string {
 	return path.Join("/usr/lib/postgresql", a.pg.c.Version, "bin", name)
 }

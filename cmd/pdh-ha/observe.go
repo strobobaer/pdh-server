@@ -42,7 +42,7 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
 		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
-		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind, RejoinAsked: c.RejoinAsked,
+		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind, RejoinAsked: c.RejoinAsked, RejoinAlarmed: c.RejoinAlarmed,
 		UndoRefused: d.undoRefused, UpdateOpen: d.updateOpenLocked(), RejoinBusy: d.pendingRejoins.Load() > 0,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
@@ -144,6 +144,7 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 		}
 	}
 	set("version", versionDiff != "", versionDiff, "Versionen wieder gleich")
+	set(strandedAlarmKey, d.strandedConfirmLocked(), strandedText, "")
 }
 
 // statusNow liefert die Anzeige für GET /v1/status.
@@ -282,6 +283,9 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	if versionDiff {
 		st.Warnings = append(st.Warnings, "Versionen unterschiedlich")
+	}
+	if d.alarms[strandedAlarmKey] {
+		st.Warnings = append(st.Warnings, strandedText)
 	}
 	d.mirrorStatusLocked(&st)
 	return st

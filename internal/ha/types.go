@@ -390,6 +390,7 @@ type Input struct {
 	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
 	SwapSeq         uint64        // Nummer des letzten Tauschversuchs
 	RejoinAsked     bool          // Wiederanbindung für „Rücknahme verweigert“ schon ausgelöst
+	RejoinAlarmed   bool          // dazu schon gemeldet (ein erneuter Versuch meldet nicht noch einmal)
 	UndoRefused     bool          // Daemon-Speicher: demote hat die Rücknahme verweigert, weil der Partner übernommen hat
 	UpdateOpen      bool          // ein Update-Auftrag ist offen
 	RejoinBusy      bool          // eine Wiederanbindung ist eingereiht oder läuft
@@ -418,4 +419,5 @@ type Output struct {
 	SwapSeq         uint64
 	SwapKind        ActionKind
 	RejoinAsked     bool
+	RejoinAlarmed   bool
 }

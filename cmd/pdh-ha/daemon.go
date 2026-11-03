@@ -124,6 +124,13 @@ type daemon struct {
 	undoRefused    bool         // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
 	lastMode       ha.Mode
 
+	// Gestrandeter Server (rejoin.go, R33)
+	rejoinMu       sync.Mutex    // Handbefehl rejoin: einer zur Zeit (vor clMu und mu)
+	rejoinRetryAt  time.Duration // nur unter mu: frühester neuer Versuch mit Marke (monoton, 0 = keiner)
+	rejoinWaitWhy  string        // nur unter mu: zuletzt gemeldeter Grund des Wartens
+	strandedSample *pgStatus     // nur unter mu: zuletzt gezählte Abfrage
+	strandedFresh  int           // nur unter mu: neue Abfragen, seit der Zustand gilt
+
 	certNotAfter time.Time
 	renewKey     []byte
 	renewAt      time.Time
@@ -717,15 +724,12 @@ func (d *daemon) actionWorker(ctx context.Context) {
 			} else if q.batch != failed {
 				d.busy.Store(true)
 				err := d.doAction(ctx, q.a)
+				if q.a.Kind == ha.ActRejoinStranded {
+					err = d.strandedDone(err)
+				}
 				if err != nil {
 					failed = q.batch
 					d.actionFailed(q.a, err)
-				}
-				if q.a.Kind == ha.ActRejoinStranded && err == nil {
-					// R32: angebunden (oder nichts zu tun): die Marke ist erledigt
-					d.mu.Lock()
-					d.undoRefused = false
-					d.mu.Unlock()
 				}
 				if isDemote(q.a.Kind) {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
@@ -981,6 +985,9 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	d.pingRound(ctx, s.Tick)
 	in := d.inputLocked(now, wall, s, mode, views)
 	in.Booting = d.booting
+	if d.rejoinRetryAt != 0 && now >= d.rejoinRetryAt {
+		d.rejoinRetryAt, in.RejoinAsked = 0, false // N2: mit Marke neuer Versuch der Wiederanbindung
+	}
 	if d.unsaved && in.Persist.Role == ha.Active {
 		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
 	}

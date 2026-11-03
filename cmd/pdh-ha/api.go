@@ -309,6 +309,14 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	// Handbefehl: gestrandeten Server wieder anbinden (R33); läuft danach im Hintergrund
+	mux.HandleFunc("POST /v1/rejoin", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.rejoinCmd(r.Context()); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
 	mux.HandleFunc("POST /v1/diverged/delete", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ID   string `json:"id"`

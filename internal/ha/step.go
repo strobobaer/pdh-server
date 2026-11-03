@@ -93,7 +93,7 @@ func Step(in Input) Output {
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
 	s.out.HandoverReadyAt = in.HandoverReadyAt
 	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
-	s.out.RejoinAsked = in.RejoinAsked
+	s.out.RejoinAsked, s.out.RejoinAlarmed = in.RejoinAsked, in.RejoinAlarmed
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -109,7 +109,7 @@ func Step(in Input) Output {
 	}
 	if s.p.Role != Passive {
 		s.clearHandover()
-		s.out.RejoinAsked = false
+		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
 	}
 	s.noActive()
 	s.out.Persist = s.p
@@ -288,26 +288,36 @@ func (s *stepper) swap(k ActionKind) bool {
 	return true
 }
 
+// PartnerLeads: der Partner ist aktiv gesehen, seine Datenbank Primary und seine Amtszeit
+// nicht älter als term – nur ihm darf ein gestrandeter Server folgen.
+func PartnerLeads(pa *PeerObs, term uint64) bool {
+	return seen(pa) && pa.Role == Active && pa.PG == "primary" && pa.Term >= term
+}
+
 // strandedRejoin (R32): Passiv, und demote hat die Rücknahme verweigert, weil der
 // Partner während der Abgabe übernommen hat (Marke UndoRefused im Daemon-Speicher).
 // Dann einmal je Zustand als Standby wieder anbinden – nur mit Partner aktiv und
 // dessen Datenbank Primary, ohne offene Übergabe und ohne offenen Update-Auftrag
 // (dort hält der eingefrorene Rückfallstand). Die Ursache ist eine Handaktion
 // (geplanter Tausch): Die Aktion ist Manual und läuft auch in Beobachtung und Wartung.
-// Ob die eigene Datenbank wirklich ein nur lesender Primary ist, prüft der Aktor frisch.
+// Ob die eigene Datenbank wirklich ein nur lesender Primary ist, prüft der Aktor frisch;
+// trifft er einen anderen Stand an, setzt der Daemon RejoinAsked für einen neuen Versuch
+// zurück (R33, gemeldet wird nur beim ersten).
 func (s *stepper) strandedRejoin() {
 	in, pa := s.in, s.in.Partner
 	if in.RejoinBusy {
 		return // eine ist schon eingereiht oder läuft
 	}
-	stranded := in.UndoRefused && !in.UpdateOpen && s.out.HandoverPending == 0 &&
-		seen(pa) && pa.Role == Active && pa.PG == "primary" && pa.Term >= s.p.Term
+	stranded := in.UndoRefused && !in.UpdateOpen && s.out.HandoverPending == 0 && PartnerLeads(pa, s.p.Term)
 	switch {
 	case !in.UndoRefused:
-		s.out.RejoinAsked = false
+		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
 	case stranded && !in.RejoinAsked:
 		s.out.RejoinAsked = true
-		s.event("alarm", "Passiver Server nach verweigerter Rücknahme – wird als Standby wieder angebunden")
+		if !in.RejoinAlarmed {
+			s.out.RejoinAlarmed = true
+			s.event("alarm", "Passiver Server nach verweigerter Rücknahme – wird als Standby wieder angebunden")
+		}
 		s.manual = true
 		s.act(ActRejoinStranded, pa.Term)
 		s.manual = false

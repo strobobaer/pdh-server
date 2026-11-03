@@ -54,6 +54,9 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       zurücksetzen (danach setup oder join)
   replica-init [--confirm-host NAME]  diesen (passiven) Server als Datenbank-Spiegel
                                       des aktiven einrichten (überschreibt die Datenbank)
+  rejoin                              diesen passiven Server mit nur lesender Datenbank wieder
+                                      als Standby des aktiven anbinden (wenn status es meldet;
+                                      eigene Daten werden vorher gesichert)
   peer-pg-major                       PostgreSQL-Hauptversion des aktiven Servers
   should-run-pdh                      Exit 0, wenn pdh hier laufen soll
   mirror-pipe --label L --term N --node K <host> rsync --server …
@@ -322,6 +325,16 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprint(stderr, usage)
 			return 2
 		}
+		return 0
+	case "rejoin":
+		if len(args) != 1 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		if err := apiDo(sock, http.MethodPost, "/v1/rejoin", map[string]string{}, nil); err != nil {
+			return fail(err)
+		}
+		fmt.Fprintln(stdout, "Wiederanbindung eingereiht – Fortschritt unter „pdh-ha status“.")
 		return 0
 	case "reset":
 		yes := fs.Bool("yes", false, "bestätigen")
