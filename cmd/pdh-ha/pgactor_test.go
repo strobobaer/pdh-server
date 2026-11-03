@@ -712,7 +712,9 @@ func TestDemoteNoUndoWhenRoleGone(t *testing.T) {
 				r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil).on("runuser", "pg_stat_replication", lag, nil)
 				a, svc := testActor(t, r)
 				c.mod(a, r)
-				a.mayUndo = func() bool { return false }
+				marked := false
+				a.phase = func(uint64) swapPhase { return phaseTaken }
+				a.refused = func() { marked = true }
 				if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err == nil {
 					t.Fatal("Fehler erwartet")
 				}
@@ -721,6 +723,10 @@ func TestDemoteNoUndoWhenRoleGone(t *testing.T) {
 				}
 				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
 					t.Fatal("Datenbank trotz verlorener Rolle wieder schreibbar")
+				}
+				// die Marke „Rücknahme verweigert“ setzt nur demote, nicht demote_freeze (R32.4)
+				if marked != (kind == ha.ActDemote) {
+					t.Fatalf("Marke gesetzt=%v bei %s", marked, kind)
 				}
 			})
 		}
@@ -735,8 +741,7 @@ func TestDemoteChecksHandoverBeforeStop(t *testing.T) {
 				on("runuser", "pg_is_in_recovery", stPrimary, nil).
 				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
 			a, svc := testActor(t, r)
-			a.handing = func() bool { return false } // Step hat zurückgenommen
-			a.mayUndo = func() bool { return true }
+			a.phase = func(uint64) swapPhase { return phaseWithdrawn } // Step hat zurückgenommen
 			if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err == nil {
 				t.Fatal("Fehler erwartet")
 			}
@@ -778,22 +783,35 @@ func TestPromoteManualReadOnlyPrimary(t *testing.T) {
 	}
 }
 
-// R31.3: Hat der Partner übernommen und ist der Gleichstand erreicht, läuft demote bis zum Standby zu Ende.
-func TestDemoteCompletesWhenPartnerTookOver(t *testing.T) {
-	r := (&fakeRunner{}).
-		on("runuser", "pg_is_in_recovery", stPrimary, nil).
-		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
-	a, _ := testActor(t, r)
-	a.handing = func() bool { return false }
-	a.mayUndo = func() bool { return false } // Partner aktiv, Rolle nicht mehr unsere
-	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true}); err != nil {
-		t.Fatal(err)
-	}
-	if !has(r.list(), "pg_ctlcluster 18 main stop") || has(r.list(), "svc start") {
-		t.Fatalf("demote nicht bis zum Standby: %v", r.list())
-	}
-	if _, err := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); err != nil {
-		t.Fatal("standby.signal fehlt")
+// R32.3: Hat der Partner übernommen, stoppt demote nicht und wird nicht Standby: die Datenbank
+// bleibt nur lesend, die Marke wird gesetzt (Wiederanbindung über pg_rewind). demote_freeze
+// läuft wie bisher zu Ende, ohne Marke.
+func TestDemoteTakenOverStaysReadOnly(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, _ := testActor(t, r)
+			marked := false
+			a.phase = func(uint64) swapPhase { return phaseTaken }
+			a.refused = func() { marked = true }
+			err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+			stopped := has(r.list(), "pg_ctlcluster 18 main stop")
+			if kind == ha.ActDemote {
+				var nm interface{ noMaint() }
+				if err == nil || !errors.As(err, &nm) || stopped || !marked || has(r.list(), "svc start") {
+					t.Fatalf("demote: Fehler=%v gestoppt=%v Marke=%v: %v", err, stopped, marked, r.list())
+				}
+				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+					t.Fatal("nicht mehr nur lesend")
+				}
+				return
+			}
+			if err != nil || !stopped || marked {
+				t.Fatalf("demote_freeze: Fehler=%v gestoppt=%v Marke=%v", err, stopped, marked)
+			}
+		})
 	}
 }
 
@@ -803,8 +821,7 @@ func TestWithdrawnSwapErrorNoMaintenance(t *testing.T) {
 		on("runuser", "pg_is_in_recovery", stPrimary, nil).
 		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
 	a, _ := testActor(t, r)
-	a.handing = func() bool { return false }
-	a.mayUndo = func() bool { return true }
+	a.phase = func(uint64) swapPhase { return phaseWithdrawn }
 	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true})
 	var nm interface{ noMaint() }
 	if err == nil || !errors.As(err, &nm) {

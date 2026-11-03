@@ -2119,47 +2119,71 @@ func TestStepNoActiveGiving(t *testing.T) {
 	}
 }
 
-// R31: Passiv, eigene Datenbank läuft als nur lesender Primary, keine Übergabe offen,
-// Partner aktiv gesehen: einmal ActRejoin (Standby werden), danach nicht erneut.
+// R32: Passiv mit der Marke „Rücknahme verweigert“ (Daemon-Speicher), Partner aktiv und
+// dessen Datenbank Primary, kein Update-Auftrag offen: genau einmal ActRejoinStranded,
+// in jedem Modus. Ohne Marke feuert nichts.
 func TestStepStrandedRejoin(t *testing.T) {
 	mk := func(mod func(in *Input)) Input {
 		in := base(Trio, Passive)
 		in.Persist.Term = 2
 		in.Partner = seenPeer("node", Active, 2, 100*sec)
+		in.Partner.PG = "primary"
 		in.Witness = seenPeer("witness", Witness, 2, 100*sec)
-		in.OwnReadOnlyPrimary = true
+		in.UndoRefused = true
 		mod(&in)
 		return in
 	}
-	rejoins := func(o Output) int {
+	count := func(o Output) int {
 		n := 0
 		for _, a := range o.Actions {
-			if a.Kind == ActRejoin {
+			if a.Kind == ActRejoinStranded {
 				n++
 			}
 		}
 		return n
 	}
 	out := Step(mk(func(*Input) {}))
-	if rejoins(out) != 1 || !out.RejoinAsked || out.Persist.Role != Passive {
-		t.Fatalf("erwartet ein ActRejoin und Passiv: %d %v %s", rejoins(out), out.RejoinAsked, out.Persist.Role)
+	if count(out) != 1 || !out.RejoinAsked || out.Persist.Role != Passive || !out.Actions[0].Manual {
+		t.Fatalf("erwartet genau eine Wiederanbindung (Manual), Passiv: %d %v %s", count(out), out.RejoinAsked, out.Persist.Role)
 	}
 	// einmalig je Zustand
-	if o := Step(mk(func(in *Input) { in.RejoinAsked = true })); rejoins(o) != 0 || !o.RejoinAsked {
-		t.Fatalf("zweites ActRejoin im selben Zustand: %d %v", rejoins(o), o.RejoinAsked)
+	if o := Step(mk(func(in *Input) { in.RejoinAsked = true })); count(o) != 0 || !o.RejoinAsked {
+		t.Fatalf("zweite Wiederanbindung im selben Zustand: %d %v", count(o), o.RejoinAsked)
 	}
-	// Zustand weg (Datenbank ist Standby): Marke zurück, später wieder möglich
-	if o := Step(mk(func(in *Input) { in.RejoinAsked, in.OwnReadOnlyPrimary = true, false })); rejoins(o) != 0 || o.RejoinAsked {
-		t.Fatalf("Marke nicht zurückgesetzt: %d %v", rejoins(o), o.RejoinAsked)
+	// eine schon eingereihte zählt (kein zweites, Zustand bleibt)
+	if o := Step(mk(func(in *Input) { in.RejoinBusy = true })); count(o) != 0 || o.RejoinAsked {
+		t.Fatalf("Wiederanbindung neben einer eingereihten: %d", count(o))
 	}
+	// Marke weg: Zustand zurück
+	if o := Step(mk(func(in *Input) { in.RejoinAsked, in.UndoRefused = true, false })); count(o) != 0 || o.RejoinAsked {
+		t.Fatalf("Marke nicht zurückgesetzt: %d %v", count(o), o.RejoinAsked)
+	}
+	// Beobachtung und Wartung ändern nichts: die Ursache ist eine Handaktion
 	for name, mod := range map[string]func(*Input){
-		"Übergabe offen":     func(in *Input) { in.HandoverPending, in.HandoverAt = 3, 99*sec; in.SwapSeq = 1 },
-		"Partner passiv":     func(in *Input) { in.Partner = seenPeer("node", Passive, 2, 100*sec) },
-		"Partner nicht da":   func(in *Input) { in.Partner = gonePeer("node", Active, 2, 95*sec) },
-		"Partner Amtszeit 1": func(in *Input) { in.Partner = seenPeer("node", Active, 1, 100*sec) },
+		"Beobachtung": func(in *Input) { in.Settings.AutoMode = AutoObserve },
+		"Wartung": func(in *Input) {
+			in.Persist.Maint = true
+			in.Partner.Maint, in.Partner.MaintSeq = true, in.Persist.MaintSeq
+		},
 	} {
-		if o := Step(mk(mod)); rejoins(o) != 0 {
-			t.Errorf("%s: ActRejoin trotz Ausschluss", name)
+		if o := Step(mk(mod)); count(o) != 1 {
+			t.Errorf("%s: %d Wiederanbindungen, erwartet 1", name, count(o))
+		}
+	}
+	// ohne Marke und in allen Ausschlussfällen feuert nichts
+	for name, mod := range map[string]func(*Input){
+		"ohne Marke":              func(in *Input) { in.UndoRefused = false },
+		"ohne Marke, Beobachtung": func(in *Input) { in.UndoRefused = false; in.Settings.AutoMode = AutoObserve },
+		"Update-Auftrag offen":    func(in *Input) { in.UpdateOpen = true },
+		"Übergabe offen":          func(in *Input) { in.HandoverPending, in.HandoverAt = 3, 99*sec; in.SwapSeq = 1 },
+		"Partner passiv":          func(in *Input) { in.Partner = seenPeer("node", Passive, 2, 100*sec); in.Partner.PG = "primary" },
+		"Partner noch Standby":    func(in *Input) { in.Partner.PG = "standby" },
+		"Partner gestoppt":        func(in *Input) { in.Partner.PG = "stopped" },
+		"Partner nicht da":        func(in *Input) { in.Partner = gonePeer("node", Active, 2, 95*sec) },
+		"Partner Amtszeit 1":      func(in *Input) { in.Partner = seenPeer("node", Active, 1, 100*sec); in.Partner.PG = "primary" },
+	} {
+		if o := Step(mk(mod)); count(o) != 0 {
+			t.Errorf("%s: Wiederanbindung trotz Ausschluss", name)
 		}
 	}
 }

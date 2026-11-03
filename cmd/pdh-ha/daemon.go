@@ -120,6 +120,8 @@ type daemon struct {
 	busy           atomic.Bool  // eine Aktion läuft gerade
 	pendingActs    atomic.Int32 // wartend oder laufend
 	pendingDemotes atomic.Int32 // davon: Abgaben (demote, demote_freeze, abandon)
+	pendingRejoins atomic.Int32 // davon: Wiederanbindungen (rejoin, rejoin_stranded)
+	undoRefused    bool         // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
 	lastMode       ha.Mode
 
 	certNotAfter time.Time
@@ -683,12 +685,18 @@ func (d *daemon) enqueueActions(ctx context.Context, acts []ha.Action) {
 		if isDemote(a.Kind) {
 			d.pendingDemotes.Add(1)
 		}
+		if isRejoin(a.Kind) {
+			d.pendingRejoins.Add(1)
+		}
 		select {
 		case d.actQ <- queuedAction{a: a, batch: b}:
 		case <-ctx.Done():
 			d.pendingActs.Add(-1)
 			if isDemote(a.Kind) {
 				d.pendingDemotes.Add(-1)
+			}
+			if isRejoin(a.Kind) {
+				d.pendingRejoins.Add(-1)
 			}
 			return
 		}
@@ -713,6 +721,12 @@ func (d *daemon) actionWorker(ctx context.Context) {
 					failed = q.batch
 					d.actionFailed(q.a, err)
 				}
+				if q.a.Kind == ha.ActRejoinStranded && err == nil {
+					// R32: angebunden (oder nichts zu tun): die Marke ist erledigt
+					d.mu.Lock()
+					d.undoRefused = false
+					d.mu.Unlock()
+				}
 				if isDemote(q.a.Kind) {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
 					d.lock()
@@ -728,6 +742,9 @@ func (d *daemon) actionWorker(ctx context.Context) {
 			if q.fn == nil && isDemote(q.a.Kind) {
 				d.pendingDemotes.Add(-1)
 			}
+			if q.fn == nil && isRejoin(q.a.Kind) {
+				d.pendingRejoins.Add(-1)
+			}
 			d.pendingActs.Add(-1)
 		}
 	}
@@ -737,6 +754,9 @@ func (d *daemon) actionWorker(ctx context.Context) {
 func isDemote(k ha.ActionKind) bool {
 	return k == ha.ActDemote || k == ha.ActDemoteFreeze || k == ha.ActAbandon
 }
+
+// isRejoin: Wiederanbindung als Standby.
+func isRejoin(k ha.ActionKind) bool { return k == ha.ActRejoin || k == ha.ActRejoinStranded }
 
 // swapCommand: Handbefehl, der einen Rollentausch beginnt.
 func swapCommand(c ha.CommandKind) bool {
@@ -993,6 +1013,9 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		d.unsaved = false
 	}
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
+	if out.Persist.Role == ha.Active {
+		d.undoRefused = false // wieder aktiv: die Marke gilt nicht mehr
+	}
 	d.p, d.carry = out.Persist, out
 	if d.access != nil {
 		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)

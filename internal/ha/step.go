@@ -288,21 +288,29 @@ func (s *stepper) swap(k ActionKind) bool {
 	return true
 }
 
-// strandedRejoin (R31): Passiv, aber die eigene Datenbank läuft als nur lesender
-// Primary (der Partner hat während der Abgabe übernommen, die Rücknahme wurde
-// verweigert), keine Übergabe offen, Partner aktiv gesehen: einmal je Zustand
-// als Standby wieder anbinden (Wiedereingliederung mit pg_rewind-Probelauf).
+// strandedRejoin (R32): Passiv, und demote hat die Rücknahme verweigert, weil der
+// Partner während der Abgabe übernommen hat (Marke UndoRefused im Daemon-Speicher).
+// Dann einmal je Zustand als Standby wieder anbinden – nur mit Partner aktiv und
+// dessen Datenbank Primary, ohne offene Übergabe und ohne offenen Update-Auftrag
+// (dort hält der eingefrorene Rückfallstand). Die Ursache ist eine Handaktion
+// (geplanter Tausch): Die Aktion ist Manual und läuft auch in Beobachtung und Wartung.
+// Ob die eigene Datenbank wirklich ein nur lesender Primary ist, prüft der Aktor frisch.
 func (s *stepper) strandedRejoin() {
 	in, pa := s.in, s.in.Partner
-	stranded := in.OwnReadOnlyPrimary && s.out.HandoverPending == 0 &&
-		seen(pa) && pa.Role == Active && pa.Term >= s.p.Term
+	if in.RejoinBusy {
+		return // eine ist schon eingereiht oder läuft
+	}
+	stranded := in.UndoRefused && !in.UpdateOpen && s.out.HandoverPending == 0 &&
+		seen(pa) && pa.Role == Active && pa.PG == "primary" && pa.Term >= s.p.Term
 	switch {
-	case !stranded:
+	case !in.UndoRefused:
 		s.out.RejoinAsked = false
-	case !in.RejoinAsked:
+	case stranded && !in.RejoinAsked:
 		s.out.RejoinAsked = true
-		s.event("alarm", "Passiver Server mit nur lesender Datenbank – wird als Standby wieder angebunden")
-		s.act(ActRejoin, pa.Term)
+		s.event("alarm", "Passiver Server nach verweigerter Rücknahme – wird als Standby wieder angebunden")
+		s.manual = true
+		s.act(ActRejoinStranded, pa.Term)
+		s.manual = false
 	}
 }
 

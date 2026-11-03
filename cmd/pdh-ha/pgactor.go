@@ -41,12 +41,14 @@ type pgActor struct {
 	// letzter Dateiabgleich vor der Übergabe (nil = keine Spiegelung); hat seine
 	// eigene Frist (MirrorFinalMax), unabhängig von wait
 	mirrorFinal func(ctx context.Context) error
-	mayUndo     func() bool   // Rücknahme erlaubt (nil = ja)
-	handing     func() bool   // der eigene Tausch läuft noch (nil = ja)
-	wait        time.Duration // Frist für den Gleichstand beim Abgeben
-	poll        time.Duration
-	now         func() time.Time
-	passfile    string // Pfad der passfile (Tests: Temp-Ordner)
+	// Stand des eigenen Tauschs (Amtszeit term der Abgabe); nil = läuft (Tests, Handbefehle)
+	phase func(term uint64) swapPhase
+	// merkt „Rücknahme verweigert, Partner hat übernommen“ für die Wiederanbindung (R32)
+	refused  func()
+	wait     time.Duration // Frist für den Gleichstand beim Abgeben
+	poll     time.Duration
+	now      func() time.Time
+	passfile string // Pfad der passfile (Tests: Temp-Ordner)
 
 	mu        sync.Mutex
 	syncNames string      // gewünschte synchronous_standby_names (Replikation, Task 8)
@@ -103,9 +105,9 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 	case ha.ActPromote:
 		return a.promote(ctx, act)
 	case ha.ActDemote:
-		return a.demote(ctx)
+		return a.demote(ctx, act.Term)
 	case ha.ActDemoteFreeze:
-		return a.demoteFreeze(ctx)
+		return a.demoteFreeze(ctx, act.Term)
 	case ha.ActAbandon:
 		return a.abandon(ctx)
 	case ha.ActFence:
@@ -114,6 +116,8 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 		return a.unfence(ctx)
 	case ha.ActRejoin:
 		return a.rejoin(ctx, act.Term)
+	case ha.ActRejoinStranded:
+		return a.rejoinStranded(ctx, act.Term)
 	case ha.ActVIPTake, ha.ActVIPRelease:
 		// Die mitwandernde Adresse folgt allein dem Abgleich (accessWorker);
 		// ein Fehler hier darf nie Wartung einschalten.
@@ -127,7 +131,7 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 // Programme im selben PostgreSQL schreiben dann nicht mehr), dann auf den
 // Gleichstand warten – bis dahin bleibt alles umkehrbar. Erst danach wird
 // PostgreSQL gestoppt und Standby des Partners.
-func (a *pgActor) demote(ctx context.Context) error {
+func (a *pgActor) demote(ctx context.Context, term uint64) error {
 	e := a.env()
 	if a.pushCfg != nil {
 		if err := a.pushCfg(ctx); err != nil {
@@ -138,13 +142,22 @@ func (a *pgActor) demote(ctx context.Context) error {
 		return err
 	}
 	if err := a.finalMirror(ctx); err != nil {
-		return a.undoFence(ctx, err)
+		return a.undoFence(ctx, err, term, true)
 	}
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
-		return a.undoFence(ctx, err)
+		return a.undoFence(ctx, err, term, true)
 	}
-	if a.withdrawn() { // M3: vor dem Stoppen noch einmal prüfen
-		return a.undoFence(ctx, swapWithdrawnError{})
+	// vor dem Stoppen noch einmal prüfen (R32.3)
+	switch a.phaseOf(term) {
+	case phaseWithdrawn:
+		return a.undoFence(ctx, swapWithdrawnError{}, term, true)
+	case phaseTaken:
+		// Der Partner ist (praktisch) hochgestuft: unser Stopp läge hinter dem Trennpunkt,
+		// wir könnten der neuen Zeitlinie nicht folgen. Nur lesend bleiben, merken, pg_rewind.
+		a.markRefused()
+		return swapTakenError{}
+	case phaseUnknown:
+		return swapWithdrawnError{} // ungewiss (Fenced): nur lesend lassen, nichts tun
 	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil {
 		return err
@@ -159,7 +172,7 @@ func (a *pgActor) demote(ctx context.Context) error {
 // Stopp (nur lesend, Gleichstand abwarten, PostgreSQL stoppen), aber ohne
 // standby.signal und ohne Neustart: Die Datenbank bleibt als unveränderter
 // Rückfallstand liegen. Das Auftauen übernimmt rejoin (pg_rewind-Probelauf).
-func (a *pgActor) demoteFreeze(ctx context.Context) error {
+func (a *pgActor) demoteFreeze(ctx context.Context, term uint64) error {
 	if a.pg.status(ctx).State == "stopped" {
 		return nil // schon eingefroren (Wiederholung): nichts zu tun
 	}
@@ -172,14 +185,15 @@ func (a *pgActor) demoteFreeze(ctx context.Context) error {
 		return err
 	}
 	if err := a.finalMirror(ctx); err != nil {
-		return a.undoFence(ctx, err)
+		return a.undoFence(ctx, err, term, false)
 	}
 	e := a.env()
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
-		return a.undoFence(ctx, err)
+		return a.undoFence(ctx, err, term, false)
 	}
-	if a.withdrawn() { // M3: vor dem Stoppen noch einmal prüfen
-		return a.undoFence(ctx, swapWithdrawnError{})
+	// vor dem Stoppen noch einmal prüfen: nur ein zurückgenommener Tausch geht zurück (R32.4)
+	if a.phaseOf(term) == phaseWithdrawn {
+		return a.undoFence(ctx, swapWithdrawnError{}, term, false)
 	}
 	return a.stopPG(ctx)
 }
@@ -198,11 +212,18 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 
 // undoFence nimmt das Abschotten nach einem gescheiterten Abgeben zurück; scheitert
 // auch das, wird es an den Fehler angehängt.
-func (a *pgActor) undoFence(ctx context.Context, err error) error {
-	if a.mayUndo != nil && !a.mayUndo() {
-		// C1: Der Partner hat übernommen (oder der Zustand ist ungewiss): wieder
-		// einschalten gäbe zwei schreibbare Datenbanken und zwei Tunnel.
-		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: die Rolle ist inzwischen nicht mehr aktiv"})
+func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote bool) error {
+	switch a.phaseOf(term) {
+	case phaseTaken:
+		// C1: Der Partner hat übernommen: wieder einschalten gäbe zwei schreibbare
+		// Datenbanken und zwei Tunnel. Bei demote merken, damit die Wiederanbindung folgt.
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Partner hat inzwischen übernommen"})
+		if demote {
+			a.markRefused()
+		}
+		return err
+	case phaseUnknown:
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Zustand der Rolle ist ungewiss"})
 		return err
 	}
 	if uerr := a.unfence(ctx); uerr != nil {
@@ -211,15 +232,39 @@ func (a *pgActor) undoFence(ctx context.Context, err error) error {
 	return err
 }
 
-// withdrawn: der Step hat den Tausch zurückgenommen (Rolle wieder aktiv, keine
-// offene Übergabe). Hat stattdessen der Partner übernommen und ist der Gleichstand
-// erreicht, läuft die Abgabe wie früher bis zum Standby zu Ende (R31.3).
-func (a *pgActor) withdrawn() bool {
-	return !a.stillGiving() && (a.mayUndo == nil || a.mayUndo())
+// swapPhase: Stand des eigenen Rollentauschs aus Sicht der Abgabe.
+type swapPhase int
+
+const (
+	phaseGiving    swapPhase = iota // die Übergabe läuft noch (oder unbekannt)
+	phaseWithdrawn                  // der Step hat zurückgenommen: wieder aktiv
+	phaseTaken                      // der Partner hat übernommen
+	phaseUnknown                    // ungewiss (z. B. Fenced), ohne Übernahme
+)
+
+func (a *pgActor) phaseOf(term uint64) swapPhase {
+	if a.phase == nil {
+		return phaseGiving
+	}
+	return a.phase(term)
 }
 
-// stillGiving: der eigene Rollentausch läuft noch (nil = ja).
-func (a *pgActor) stillGiving() bool { return a.handing == nil || a.handing() }
+func (a *pgActor) markRefused() {
+	if a.refused != nil {
+		a.refused()
+	}
+}
+
+// rejoinStranded (R32): Wiederanbindung nach verweigerter Rücknahme. Der Aktor prüft
+// den eigenen Stand frisch: nur ein laufender, nur lesender Primary wird angefasst,
+// sonst geschieht nichts (zum Beispiel eingefrorener Rückfallstand oder schon Standby).
+func (a *pgActor) rejoinStranded(ctx context.Context, term uint64) error {
+	if st := a.pg.status(ctx); st.State != "primary" || !st.ReadOnly {
+		a.ev.add(ha.Event{Kind: "info", Text: "Wiederanbindung nicht nötig: die Datenbank ist kein nur lesender Primary"})
+		return nil
+	}
+	return a.rejoin(ctx, term)
+}
 
 // abandon: Rückfallstand verwerfen (Rücktausch ohne Rückweg). Dienste und
 // PostgreSQL werden gestoppt, ohne auf den Partner zu warten und ohne
@@ -596,6 +641,14 @@ func (e *finalSyncError) Error() string {
 }
 func (e *finalSyncError) Unwrap() error { return e.err }
 func (e *finalSyncError) noMaint()      {}
+
+// swapTakenError: der Partner hat während der Abgabe übernommen; demote bleibt nur lesend.
+type swapTakenError struct{}
+
+func (swapTakenError) Error() string {
+	return "Der Partner hat inzwischen übernommen – nur lesend, Wiederanbindung folgt"
+}
+func (swapTakenError) noMaint() {}
 
 // swapWithdrawnError: der Tausch wurde vor dem Stoppen zurückgenommen.
 type swapWithdrawnError struct{}

@@ -93,8 +93,6 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, pt)
 	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
-	// R31: passiv mit laufendem, nur lesendem Primary (nicht während einer Abgabe)
-	in.OwnReadOnlyPrimary = st != nil && st.State == "primary" && st.ReadOnly && d.pendingDemotes.Load() == 0
 	d.maybeRecopyLocked(ctx, pa, st, in.Partner, in.Now)
 }
 

@@ -925,15 +925,34 @@ func (d *daemon) trashEmptyOKLocked(pl *plan, from string, m message) bool {
 // wireActor hängt die Spiegelung und die Rollenprüfungen an den Ausführer.
 func (d *daemon) wireActor(pa *pgActor) {
 	pa.mirrorFinal = d.mirrorFinalSync // liest die Einstellungen erst beim Abgeben
-	pa.handing = d.handingOver
-	pa.mayUndo = func() bool {
-		// Rücknahme nur, solange diese Amtszeit noch uns gehört: wieder aktiv (der
-		// Step hat zurückgenommen) oder die eigene Übergabe läuft noch. Hat der Partner
-		// übernommen oder ist der Zustand ungewiss (Fenced), bleibt es abgeschottet.
+	pa.phase = d.swapPhase
+	pa.refused = func() {
 		d.mu.Lock()
-		defer d.mu.Unlock()
-		return d.p.Role == ha.Active || d.handingOverLocked()
+		d.undoRefused = true
+		d.mu.Unlock()
 	}
+}
+
+// swapPhase: Stand des eigenen Tauschs mit Abgabe-Amtszeit term (für den Aktor).
+// Aktiv: der Step hat zurückgenommen. Passiv mit offener Übergabe: läuft. Eigene
+// Amtszeit höher oder Partner aktiv mit höherer Amtszeit gesehen: Partner hat übernommen.
+func (d *daemon) swapPhase(term uint64) swapPhase {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	switch {
+	case d.p.Role == ha.Active:
+		return phaseWithdrawn
+	case d.p.Role == ha.Passive && d.carry.HandoverPending == term+1:
+		return phaseGiving
+	case d.p.Term > term:
+		return phaseTaken
+	}
+	if id := d.partnerLocked(); id != "" {
+		if pv := d.views[id]; pv.seen() && pv.Last.T == "hb" && ha.Role(pv.Last.Role) == ha.Active && pv.Last.Term > term {
+			return phaseTaken
+		}
+	}
+	return phaseUnknown
 }
 
 // handingOver: die eigene Übergabe läuft (passiv, nächste Amtszeit offen).

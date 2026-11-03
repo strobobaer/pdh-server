@@ -307,16 +307,17 @@ func (p Persisted) Equal(q Persisted) bool {
 type ActionKind string
 
 const (
-	ActPromote     ActionKind = "promote"
-	ActDemote      ActionKind = "demote"
-	ActFence       ActionKind = "fence"
-	ActUnfence     ActionKind = "unfence"
-	ActVIPTake     ActionKind = "vip_take"
-	ActVIPRelease  ActionKind = "vip_release"
-	ActRequestVote ActionKind = "request_vote"
-	ActHandover    ActionKind = "handover"
-	ActRejoin      ActionKind = "rejoin"
-	ActProbeVote   ActionKind = "probe_vote"
+	ActPromote        ActionKind = "promote"
+	ActDemote         ActionKind = "demote"
+	ActFence          ActionKind = "fence"
+	ActUnfence        ActionKind = "unfence"
+	ActVIPTake        ActionKind = "vip_take"
+	ActVIPRelease     ActionKind = "vip_release"
+	ActRequestVote    ActionKind = "request_vote"
+	ActHandover       ActionKind = "handover"
+	ActRejoin         ActionKind = "rejoin"
+	ActRejoinStranded ActionKind = "rejoin_stranded" // Wiederanbindung nach verweigerter Rücknahme (R32)
+	ActProbeVote      ActionKind = "probe_vote"
 
 	// Tausch mit Einfrieren: Datenbank abgeben, aber eingefroren lassen
 	// (kein Wiederanlauf als Standby); ActAbandon verwirft den Stand.
@@ -374,23 +375,25 @@ type Input struct {
 	Persist  Persisted
 
 	// aus dem vorigen Output
-	HoldUntil          time.Duration
-	VotePending        uint64
-	VoteAskedAt        time.Duration
-	HandoverPending    uint64        // >0: eigener Rollentausch an diese Amtszeit läuft
-	HandoverAt         time.Duration // Beginn des Rollentauschs
-	HandoverSentAt     time.Duration // letzte handover-Aktion
-	NoActiveSince      time.Duration // >0: seit dann zwei passive, keiner aktiv
-	NoActiveAlarmed    bool
-	VoteSince          time.Duration // erste noch offene Stimmbitte
-	VoteAlarmed        bool
-	LastMutual         time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
-	Would              ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
-	HandoverReadyAt    time.Duration // seit wann die Übergabe bereit ist (nach demote)
-	SwapSeq            uint64        // Nummer des letzten Tauschversuchs
-	RejoinAsked        bool          // ActRejoin für „passiv, Primary nur lesend“ schon ausgelöst
-	OwnReadOnlyPrimary bool          // eigene Datenbank läuft als nur lesender Primary (Daemon, ohne laufende Abgabe)
-	SwapKind           ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
+	HoldUntil       time.Duration
+	VotePending     uint64
+	VoteAskedAt     time.Duration
+	HandoverPending uint64        // >0: eigener Rollentausch an diese Amtszeit läuft
+	HandoverAt      time.Duration // Beginn des Rollentauschs
+	HandoverSentAt  time.Duration // letzte handover-Aktion
+	NoActiveSince   time.Duration // >0: seit dann zwei passive, keiner aktiv
+	NoActiveAlarmed bool
+	VoteSince       time.Duration // erste noch offene Stimmbitte
+	VoteAlarmed     bool
+	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
+	Would           ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
+	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
+	SwapSeq         uint64        // Nummer des letzten Tauschversuchs
+	RejoinAsked     bool          // Wiederanbindung für „Rücknahme verweigert“ schon ausgelöst
+	UndoRefused     bool          // Daemon-Speicher: demote hat die Rücknahme verweigert, weil der Partner übernommen hat
+	UpdateOpen      bool          // ein Update-Auftrag ist offen
+	RejoinBusy      bool          // eine Wiederanbindung ist eingereiht oder läuft
+	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
 }
 
 // Output ist das Ergebnis eines Schrittes.
