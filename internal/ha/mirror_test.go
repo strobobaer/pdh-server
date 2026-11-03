@@ -155,7 +155,7 @@ func TestMirrorSources(t *testing.T) {
 		t.Error("etc-pdh muss /ha/ ausschließen")
 	}
 	nd := byL("nextcloud-data")
-	for _, e := range []string{"--exclude=/appdata_*/preview/", "--exclude=*.part", "--exclude=/nextcloud.log"} {
+	for _, e := range []string{"--exclude=/appdata_*/preview/", "--exclude=/*/uploads/", "--exclude=*.part", "--exclude=/nextcloud.log"} {
 		if !has(nd, e) {
 			t.Errorf("nextcloud-data ohne %s", e)
 		}

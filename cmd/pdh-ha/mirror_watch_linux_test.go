@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -144,14 +145,14 @@ func TestMirrorFinalSyncBarrierLeavesNoTrace(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "uploads", "x.txt"), nil, 0o644)
 	finalAndCheck(t, f, ctx, "x.txt")
 	for _, p := range mw.pending()["uploads"] {
-		if strings.Contains(p, "pdh-sperre") {
+		if strings.Contains(p, "mirror-sperre") {
 			t.Fatalf("Markendatei vorgemerkt: %s", p)
 		}
 	}
 	f.rs.mu.Lock()
 	defer f.rs.mu.Unlock()
 	for _, s := range f.rs.stdins {
-		if strings.Contains(string(s), "pdh-sperre") {
+		if strings.Contains(string(s), "mirror-sperre") {
 			t.Fatalf("Markendatei übertragen: %q", s)
 		}
 	}
@@ -178,4 +179,95 @@ func TestMirrorRunPathsIntermediateSymlinkDropped(t *testing.T) {
 	if err := f.w.runPaths(context.Background(), "uploads", []string{"link"}); err != nil || f.rs.count() != 1 {
 		t.Fatalf("Symlink selbst: err %v, Aufrufe %d", err, f.rs.count())
 	}
+}
+
+func fullRunsOf(f *mirrorFix, before int, label string) int {
+	f.rs.mu.Lock()
+	defer f.rs.mu.Unlock()
+	n := 0
+	for _, c := range f.rs.calls[before:] {
+		if c[len(c)-1] == "b:"+label && !strings.Contains(strings.Join(c, " "), "--files-from") {
+			n++
+		}
+	}
+	return n
+}
+
+// Ruling R17: Ein gelöschter Ordner verwirft die Quelle nicht; finalSync geht
+// den schnellen Weg ohne vollen Lauf von uploads.
+func TestMirrorWatchRemovedDirKeepsCoverage(t *testing.T) {
+	f, repo, mw, ctx := coveredFix(t)
+	sub := filepath.Join(repo, "uploads", "sub")
+	os.Mkdir(filepath.Join(sub, "kind"), 0o755)
+	finalAndCheck(t, f, ctx)
+	f.advance(2 * time.Minute)
+	if err := f.w.runAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(sub)
+	before := nCalls(f)
+	if err := f.w.finalSync(ctx, 20*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if n := fullRunsOf(f, before, "uploads"); n != 0 {
+		t.Fatalf("voller Lauf von uploads trotz gelöschtem Ordner: %d", n)
+	}
+	for d := range mw.watchedDirs() {
+		if strings.HasPrefix(d, filepath.Join(mw.rootOf("uploads"), "sub")) {
+			t.Fatalf("Watch für gelöschten Ordner bleibt: %s", d)
+		}
+	}
+}
+
+// Wiederholtes Löschen und Neuanlegen im Wechsel: der neue Ordner bleibt beobachtet,
+// egal in welcher Reihenfolge Löschmeldung und Neuanlage verarbeitet werden.
+func TestMirrorWatchDeleteRecreateLoop(t *testing.T) {
+	f, repo, _, ctx := coveredFix(t)
+	sub := filepath.Join(repo, "uploads", "sub")
+	for i := 0; i < 30; i++ {
+		os.RemoveAll(sub)
+		os.Mkdir(sub, 0o755)
+		n := fmt.Sprintf("n%d.txt", i)
+		os.WriteFile(filepath.Join(sub, n), nil, 0o644)
+		finalAndCheck(t, f, ctx, "sub/"+n)
+		if fullRunsOf(f, 0, "uploads") > 1 { // nur der erste Lauf aus coveredFix
+			t.Fatalf("Durchlauf %d: voller Lauf trotz abgedeckter Quelle", i)
+		}
+	}
+}
+
+// Das Muster /*/uploads/ (Nextcloud-Teil-Uploads) für den Watch gegen echtes rsync.
+func TestMirrorWatchExcludesVsRsync(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"anna/uploads/web-file-upload-1", "anna/files/uploads", "uploads/x", "anna/files", "appdata_1/preview/a", "appdata_1/uploads"} {
+		os.MkdirAll(filepath.Join(root, d), 0o755)
+	}
+	for _, p := range []string{"anna/uploads/web-file-upload-1/0", "anna/files/uploads/f", "uploads/x/f", "anna/files/g.part", "anna/files/ok", "appdata_1/preview/a/p", "appdata_1/uploads/u", "anna/uploads.txt", "nextcloud.log"} {
+		os.WriteFile(filepath.Join(root, p), []byte("x"), 0o644)
+	}
+	src, _ := ha.MirrorSourceByLabel("/r", func() ha.Settings {
+		s := ha.DefaultSettings()
+		s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/d", "/a"
+		return s
+	}(), "nextcloud-data")
+	args := append([]string{"-an", "--out-format=%n"}, src.Exclude...)
+	out, err := exec.Command("rsync", append(args, root+"/", t.TempDir()+"/")...).CombinedOutput()
+	if err != nil {
+		t.Skipf("rsync: %v", err)
+	}
+	got := map[string]bool{}
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		got[strings.TrimSuffix(l, "/")] = true
+	}
+	rules := parseWatchExcludes(src.Exclude)
+	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		rel, _ := filepath.Rel(root, p)
+		if rel == "." {
+			return nil
+		}
+		if watch := !watchExcluded(rules, rel, d.IsDir()); watch != got[rel] {
+			t.Errorf("%s: Watch %v, rsync %v", rel, watch, got[rel])
+		}
+		return nil
+	})
 }

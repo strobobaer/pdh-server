@@ -181,7 +181,7 @@ func mustRel(t *testing.T, root, p string) string {
 
 func TestMirrorWatchExcludeMatcher(t *testing.T) {
 	rules := parseWatchExcludes([]string{"--exclude=/ha/", "--exclude=/appdata_*/preview/", "--exclude=*.part",
-		"--exclude=/nextcloud.log", "--exclude=/data/dir/"})
+		"--exclude=/nextcloud.log", "--exclude=/data/dir/", "--exclude=/*/uploads/"})
 	for _, c := range []struct {
 		rel   string
 		isDir bool
@@ -191,6 +191,7 @@ func TestMirrorWatchExcludeMatcher(t *testing.T) {
 		{"appdata_1/preview", true, true}, {"appdata_1/preview/a/b.jpg", false, true}, {"appdata_1/files/x", false, false},
 		{"a.part", false, true}, {"d/e/a.part", false, true}, {"a.parts", false, false},
 		{"nextcloud.log", false, true}, {"sub/nextcloud.log", false, false},
+		{"anna/uploads", true, true}, {"anna/uploads/web-1/0", false, true}, {"anna/files/uploads", true, false}, {"uploads", true, false}, {"anna/uploads", false, false},
 		{"data/dir", true, true}, {"data/dir/f", false, true}, {"data/other", true, false},
 	} {
 		if got := watchExcluded(rules, c.rel, c.isDir); got != c.want {
@@ -648,4 +649,28 @@ func exitErr(t *testing.T, code int) error {
 		t.Fatal("Prozess endete ohne Fehler")
 	}
 	return fmt.Errorf("rsync: %w", err)
+}
+
+// Ruling R17: Der Sperrordner liegt neben mirror.json (nicht im Temp-Ordner);
+// Reste eines früheren Laufs verschwinden beim Start.
+func TestMirrorWatchBarrierDirNextToState(t *testing.T) {
+	f, _ := newWatchFix(t)
+	base := filepath.Dir(f.w.d.statePath)
+	left := filepath.Join(base, "mirror-sperre")
+	os.MkdirAll(left, 0o755)
+	os.WriteFile(filepath.Join(left, "rest"), nil, 0o644)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	f.w.step(ctx)
+	mw := watchOf(t, f.w)
+	if _, err := os.Stat(filepath.Join(left, "rest")); err == nil {
+		t.Fatal("Rest des früheren Laufs nicht entfernt")
+	}
+	if fi, err := os.Stat(left); err != nil || !fi.IsDir() {
+		t.Fatalf("Sperrordner fehlt: %v", err)
+	}
+	if !mw.barrier(ctx, watchWait) {
+		t.Fatal("Sperre kommt nicht durch")
+	}
 }
