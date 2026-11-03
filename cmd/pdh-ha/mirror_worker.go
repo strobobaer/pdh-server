@@ -191,11 +191,10 @@ func (w *mirrorWorker) active() bool { return w.want && w.role == ha.Active }
 // (oder Ausschalten) bricht einen laufenden Abgleich ab.
 func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) {
 	srcs := ha.MirrorSources(w.d.repo, s)
-	present := w.presence(srcs)
 	w.mu.Lock()
 	was := w.active()
 	w.want, w.role, w.term, w.cfg = want, role, term, s
-	w.refreshFirstLocked(srcs, present)
+	w.refreshFirstLocked(srcs, nil) // ohne Dateisystem: Skipped zählt vorerst weiter, refreshFirst prüft nach
 	var cancel context.CancelFunc
 	if !w.active() {
 		cancel = w.cancel
@@ -285,10 +284,23 @@ func mirrorAlarmAfter(s ha.Settings) time.Duration {
 	return s.MirrorAlarmAfter
 }
 
+// refreshFirst rechnet FirstDone mit dem echten Stand der Quellordner neu. Nur in
+// der Arbeiter-Goroutine: set darf nie das Dateisystem anfassen.
+func (w *mirrorWorker) refreshFirst() {
+	w.mu.Lock()
+	srcs := ha.MirrorSources(w.d.repo, w.cfg)
+	w.mu.Unlock()
+	present := w.presence(srcs)
+	w.mu.Lock()
+	w.refreshFirstLocked(srcs, present)
+	w.mu.Unlock()
+}
+
 func (w *mirrorWorker) step(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	w.refreshFirst()
 	w.mu.Lock()
 	due := w.active() && (w.lastStart.IsZero() || w.d.now().Sub(w.lastStart) >= mirrorEvery(w.cfg))
 	w.mu.Unlock()

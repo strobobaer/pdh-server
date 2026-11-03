@@ -581,6 +581,7 @@ func TestMirrorSkippedOnlyWhileMissing(t *testing.T) {
 	}
 	f.files["/r/chat_files"] = true // taucht später auf
 	f.w.set(true, ha.Active, 1, mirrorSettings)
+	f.w.refreshFirst() // der Arbeiter prüft den Pfad
 	if f.w.snapshot().FirstDone {
 		t.Fatal("FirstDone trotz neu aufgetauchter Quelle")
 	}
@@ -623,5 +624,28 @@ func TestMirrorVanishedUnfinishedSource(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("alarm: %v", f.texts("alarm"))
+	}
+}
+
+// set läuft unter der Sperre des Daemons und darf das Dateisystem nie anfassen.
+func TestMirrorSetNoFilesystem(t *testing.T) {
+	f := newMirrorFix(t)
+	ctx := context.Background()
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	f.w.runAll(ctx)
+	calls := 0
+	f.w.d.exists = func(string) bool { calls++; return true }
+	f.w.d.hasFiles = func(string) bool { calls++; return true }
+	f.w.d.size = func(string) int64 { calls++; return 1 }
+	s := mirrorSettings
+	s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/nc/data", "/nc/app"
+	f.w.set(true, ha.Active, 1, s)
+	f.w.set(false, ha.Passive, 2, s)
+	if calls != 0 {
+		t.Fatalf("set hat das Dateisystem angefasst (%d Aufrufe)", calls)
+	}
+	// neue Quelle ohne LastOK: FirstDone sofort falsch, ohne Dateisystem
+	if f.w.snapshot().FirstDone {
+		t.Fatal("FirstDone trotz neuer Quellen")
 	}
 }
