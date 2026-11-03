@@ -66,6 +66,8 @@ im Kapitel „Versionen & Updates“ an.
 - „Update installieren“ funktioniert im Verbund auch bei „Automatik aus (Wartung)“.
 
 ### Behoben
+- Ein Server verliert den Kontakt zum Verbund nicht mehr, wenn das Netzwerk seine feste Adresse neu setzt: Die mitwandernde Adresse liegt jetzt als `/32` auf der Karte und wird nie Absender. Bestehende Server stellen sich im laufenden Betrieb um.
+- `pdh-ha status` zeigt am Zeugen keine irreführende Zeile „Skripte: 0, anders als beim Partner“ mehr, denn der Zeuge führt keine Skripte aus.
 - Das Band am Spiegel verweist auf den Reiter Ausfallschutz.
 - Der Update-Zweig (`PDH_UPDATE_BRANCH`) gilt nur noch aus der `.env`: Ein in die Datenbank übernommener Wert wird nicht mehr beachtet, sonst prüfte das PDH einen anderen Zweig, als der Update-Agent einspielt.
 - Core-Einstellungen zeigen bei „Version auf GitHub“ und „Branch“ den eingestellten Update-Zweig statt immer `main`.

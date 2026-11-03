@@ -60,7 +60,8 @@ ipv4_re='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
 [[ -n "$IFACE" ]] || IFACE="$(ip -4 route show default | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
 [[ -n "$IFACE" ]] || fail "Keine Standardroute gefunden – bitte --if, --ip und --gw angeben."
 ip link show "$IFACE" >/dev/null 2>&1 || fail "Schnittstelle $IFACE gibt es nicht."
-CUR_IP="$(ip -4 -o addr show dev "$IFACE" scope global | awk '{print $4; exit}')"
+# /32 ist die mitwandernde Adresse von pdh-ha, nicht die Adresse des Servers
+CUR_IP="$(ip -4 -o addr show dev "$IFACE" scope global | awk '$4 !~ /\/32$/ {print $4; exit}')"
 [[ -n "$IP" ]] || IP="$CUR_IP"
 [[ -n "$GW" ]] || GW="$(ip -4 route show default dev "$IFACE" | awk '{print $3; exit}')"
 if [[ -z "$DNS" ]]; then

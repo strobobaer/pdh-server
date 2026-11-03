@@ -474,7 +474,7 @@ func printStatus(w io.Writer, st apiStatus) {
 			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
 		}
 	}
-	if h := st.Access.Hooks; len(h.Names) > 0 || st.Access.HooksOn {
+	if h := st.Access.Hooks; st.Self.Kind != "witness" && (len(h.Names) > 0 || st.Access.HooksOn) {
 		fmt.Fprintf(w, "Skripte: %d, %s, letzter Lauf %s\n", len(h.Names), sameText(h.Same), hookRunText(h.Last))
 	}
 	if t := st.Access.Tunnel; t.Installed || t.Sum != "" {

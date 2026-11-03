@@ -13,10 +13,12 @@ import (
 )
 
 // vipState: Fake-runner mit Zustand – ip addr add/del ändern, was
-// ip addr show meldet; dup lässt die Duplikat-Prüfung anschlagen.
+// ip addr show meldet; dup lässt die Duplikat-Prüfung anschlagen; old: die
+// Adresse liegt noch als /24 auf der Karte (Bestand).
 type vipState struct {
 	mu    sync.Mutex
 	held  bool
+	old   bool
 	dup   bool
 	calls []string
 }
@@ -28,6 +30,9 @@ func (f *vipState) Run(_ context.Context, argv []string, _ []string, _ []byte) (
 	f.calls = append(f.calls, cmd)
 	switch {
 	case strings.HasPrefix(cmd, "ip -o -4 addr show"):
+		if f.old {
+			return []byte(ipShowOldBehind), nil
+		}
 		if f.held {
 			return []byte(ipShowHeld), nil
 		}
@@ -38,6 +43,8 @@ func (f *vipState) Run(_ context.Context, argv []string, _ []string, _ []byte) (
 		}
 	case strings.HasPrefix(cmd, "ip addr add"):
 		f.held = true
+	case cmd == vipDelOld:
+		f.old = false
 	case strings.HasPrefix(cmd, "ip addr del"):
 		if !f.held {
 			return nil, errors.New("RTNETLINK answers: Cannot assign requested address")
@@ -66,8 +73,9 @@ func (f *vipState) setHeld(b bool) {
 }
 
 const (
-	vipAdd = "ip addr add 10.77.1.50/24 dev eth0"
-	vipDel = "ip addr del 10.77.1.50/24 dev eth0"
+	vipAdd    = "ip addr add 10.77.1.50/32 dev eth0"
+	vipDel    = "ip addr del 10.77.1.50/32 dev eth0"
+	vipDelOld = "ip addr del 10.77.1.50/24 dev eth0"
 )
 
 func testWorker(t *testing.T, f runner) *accessWorker {
@@ -182,6 +190,39 @@ func TestAccessWorkerRepairs(t *testing.T) {
 	w.step(ctx) // im Soll: nichts tun
 	if n := f.count(vipAdd); n != 2 {
 		t.Fatalf("ip addr add %d-mal statt zweimal", n)
+	}
+}
+
+// Bestand: eine als /24 gesetzte Adresse wird im Betrieb auf /32 umgestellt,
+// ohne dass sie weg ist oder erneut per ARP geprüft wird.
+func TestAccessWorkerMigratesOldPrefix(t *testing.T) {
+	f := &vipState{old: true}
+	w := testWorker(t, f)
+	w.set(true, ha.Active, 1)
+	w.step(context.Background())
+	if f.count(vipAdd) != 1 || f.count(vipDelOld) != 1 || f.count("arping") != 0 || f.count(vipDel) != 0 {
+		t.Fatalf("Befehle: %q", f.calls)
+	}
+	if !w.held() {
+		t.Fatal("Adresse gilt nicht mehr als gehalten")
+	}
+	w.step(context.Background())
+	if f.count(vipAdd) != 1 || f.count(vipDelOld) != 1 {
+		t.Fatalf("zweiter Abgleich stellt erneut um: %q", f.calls)
+	}
+}
+
+func TestAccessWorkerOldPrefixNotMigratedWithoutWant(t *testing.T) {
+	f := &vipState{old: true}
+	w := testWorker(t, f)
+	w.step(context.Background()) // noch kein Soll
+	if f.count(vipAdd) != 0 || f.count(vipDelOld) != 0 {
+		t.Fatalf("Befehle ohne Soll: %q", f.calls)
+	}
+	w.set(false, ha.Passive, 1)
+	w.step(context.Background())
+	if f.count(vipAdd) != 0 || f.count(vipDelOld) != 1 {
+		t.Fatalf("Soll weg muss den alten Eintrag abgeben: %q", f.calls)
 	}
 }
 
@@ -416,7 +457,7 @@ func TestDaemonAccessIfaceAmbiguous(t *testing.T) {
 	d.node.VIPInterface = "eth1"
 	d.unlock()
 	d.tick(ctx)
-	waitFor(t, 2*time.Second, "Adresse auf eth1", func() bool { return f.count("ip addr add 10.77.1.50/24 dev eth1") == 1 })
+	waitFor(t, 2*time.Second, "Adresse auf eth1", func() bool { return f.count("ip addr add 10.77.1.50/32 dev eth1") == 1 })
 	if st := d.statusNow(); st.Access.Iface != "eth1" || st.Access.IfaceErr != "" {
 		t.Fatalf("Zugang: %+v", st.Access)
 	}

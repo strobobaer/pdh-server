@@ -88,6 +88,7 @@ gleichzeitig, ist das Szenario sofort nicht bestanden.
 | `vip-abschaltung` | node1 von `vpn`/`wit` trennen, seine `lan`-Karte abschalten | node1 schaltet ab (3 Takte + 5 s) und gibt die Adresse binnen 2 s ab; node2 übernimmt sie |
 | `vip-duplikat` | `gw` setzt die Adresse selbst, dann einschalten | node1 übernimmt nicht, Alarm „wird noch von einem anderen Gerät benutzt“; nach dem Entfernen auf `gw` übernimmt node1 binnen 5 s |
 | `vip-entfernt` | Adresse am Halter mit `ip addr del` entfernen | binnen 3,5 s wieder da (bis 1 s Takt des Abgleichs + 2 s Duplikat-Prüfung + Setzen/Messen) |
+| `vip-absender` | feste Adresse am Halter neu setzen, danach die Adresse als `/24` setzen | Absender bleibt die feste Adresse, die Adresse bleibt erreichbar; `/24` wird binnen 5 s auf `/32` umgestellt |
 | `vip-neustart` | aktiven node1 anhalten, node2 übernimmt, node1 starten | node1 holt die Adresse nicht, wird Standby |
 | `hooks` | Skript `/etc/pdh/ha-hooks/10-log` auf beiden, Skripte ein, Rollen tauschen, Skript nur auf node2 ändern | Protokoll: node2 `aktiv`, node1 `passiv`, gleiche Amtszeit, Adresse; vor der Änderung Status „gleich“ auf beiden, danach „anders als beim Partner“ |
 | `umstellung` | Automatik `observe`; node1 bekommt 10.77.1.13, `addrs set … --neustart`, Test mit 10.77.1.60, 10.77.1.11 wird mitwandernde Adresse, Rollen tauschen | Spiegel wieder synchron; erst node1, dann node2 hält 10.77.1.11 |
