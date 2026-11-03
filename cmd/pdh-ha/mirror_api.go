@@ -408,7 +408,11 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	// R25: von passiv auf aktiv gewechselt (auch über einen Neustart: gemerkte Rolle passiv)?
 	// Erst festhalten, dann die Rolle merken, dann darf der Arbeiter laufen.
 	if w.On && w.Role == ha.Active && (rt.takePromoted() || rt.persistedRole == ha.Passive) {
-		wk.markPromoted()
+		if err := wk.markPromoted(); err != nil {
+			// ohne gespeicherten Wechsel weder "aktiv" merken noch den Arbeiter starten
+			wk.alarmOnce("promote-save", "Spiegelung: Wechsel auf aktiv nicht gespeichert, es wird nichts übertragen: "+err.Error())
+			return
+		}
 	}
 	if w.On && (w.Role == ha.Active || w.Role == ha.Passive) && w.Role != rt.persistedRole {
 		ib.setLastRole(w.Role) // eigene Rolle dauerhaft merken (Fenced löscht "war aktiv" nicht)

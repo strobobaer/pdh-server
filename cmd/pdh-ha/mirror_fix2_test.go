@@ -288,3 +288,60 @@ func TestMirrorDataIDResetOnlyWarnsAboutSpace(t *testing.T) {
 		t.Fatal("DataReset geht beim Neustart verloren")
 	}
 }
+
+// Runde 3: der Wechsel muss auf der Platte stehen, bevor "aktiv" gemerkt wird – auch wenn
+// `set` das Flag im Speicher schon gesetzt hat. Neustart direkt danach, ohne Lauf: kein --delete.
+func TestMirrorPromotedSavedBeforeRunSurvivesRestart(t *testing.T) {
+	f := newFix2(t)
+	w := f.worker()
+	w.set(true, ha.Passive, 1, fix2Settings)
+	w.set(true, ha.Active, 2, fix2Settings) // Promoted nur im Speicher
+	w.markPromoted()
+	b, _ := os.ReadFile(f.state)
+	if !strings.Contains(string(b), `"promoted":true`) {
+		t.Fatalf("mirror.json ohne promoted: %s", b)
+	}
+	// Absturz vor dem ersten Lauf, Neustart als aktiver Server
+	w2 := f.worker()
+	w2.set(true, ha.Active, 3, fix2Settings)
+	if err := w2.runAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if del, nodel := uploadsCalls(f.rs); del != 0 || nodel != 1 {
+		t.Fatalf("nach Neustart: mit --delete %d, ohne %d", del, nodel)
+	}
+}
+
+// Scheitert das Speichern, meldet markPromoted den Fehler (reconcile merkt dann "aktiv" nicht).
+func TestMirrorMarkPromotedReportsSaveError(t *testing.T) {
+	f := newFix2(t)
+	blocker := filepath.Join(f.dir, "datei")
+	os.WriteFile(blocker, []byte("x"), 0o644)
+	f.state = filepath.Join(blocker, "unterordner", "mirror.json") // Elternordner nicht anlegbar
+	w := f.worker()
+	w.set(true, ha.Passive, 1, fix2Settings)
+	w.set(true, ha.Active, 2, fix2Settings)
+	if err := w.markPromoted(); err == nil {
+		t.Fatal("Speicherfehler nicht gemeldet")
+	}
+}
+
+// Reihenfolge in reconcile: steht last_role=aktiv in der Inbox, steht der Wechsel schon in mirror.json.
+func TestMirrorReconcileSavesPromotionBeforeLastRole(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	os.MkdirAll(m.w.repo+"/uploads", 0o755)
+	os.WriteFile(m.w.repo+"/uploads/a.txt", []byte("x"), 0o644)
+	os.MkdirAll(filepath.Dir(m.w.statePath), 0o700)
+	inbox := filepath.Join(filepath.Dir(m.w.statePath), mirrorInboxFile)
+	os.WriteFile(inbox, []byte(`{"last_role":"passiv","data_id":"X"}`), 0o600)
+	m.tick()
+	m.ready()
+	waitFor(t, 3*time.Second, "last_role aktiv", func() bool {
+		b, _ := os.ReadFile(inbox)
+		return strings.Contains(string(b), `"last_role":"aktiv"`)
+	})
+	b, _ := os.ReadFile(m.w.statePath)
+	if !strings.Contains(string(b), `"promoted":true`) && !strings.Contains(string(b), `"unproven":true`) {
+		t.Fatalf("Wechsel nicht gespeichert, obwohl aktiv gemerkt: %s", b)
+	}
+}

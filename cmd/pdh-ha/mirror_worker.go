@@ -100,6 +100,7 @@ type mirrorWorker struct {
 	watchSig    string
 	fullAt      map[string]time.Time // Beginn des letzten erfolgreichen vollen Laufs je Quelle
 	present     map[string]bool      // letzter echter Stand der Quellordner (refreshFirst)
+	onDisk      bool                 // Promoted steht so in mirror.json (nur unter mu)
 }
 
 func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
@@ -178,6 +179,7 @@ func (w *mirrorWorker) load() {
 	}
 	w.st.Partner, w.st.DataID = w.d.node, s.DataID
 	w.st.Promoted, w.st.DataReset = s.Promoted, s.DataReset
+	w.onDisk = s.Promoted
 	if s.Partner != "" && s.Partner != w.d.node {
 		// Stand eines anderen Partners: nichts davon sagt etwas über die Daten dieses Partners
 		w.st.DataID = ""
@@ -197,7 +199,10 @@ func (w *mirrorWorker) load() {
 }
 
 // save schreibt den Stand; aufgerufen ohne mu, mit einer Kopie.
-func (w *mirrorWorker) save(st mirrorState) {
+func (w *mirrorWorker) save(st mirrorState) { _ = w.saveErr(st) }
+
+// saveErr wie save, meldet aber den Fehler und merkt, ob Promoted auf der Platte steht.
+func (w *mirrorWorker) saveErr(st mirrorState) error {
 	b, _ := json.Marshal(struct {
 		FirstDone bool                        `json:"first_done"`
 		LastOK    time.Time                   `json:"last_ok"`
@@ -210,7 +215,12 @@ func (w *mirrorWorker) save(st mirrorState) {
 	os.MkdirAll(filepath.Dir(w.d.statePath), 0o700)
 	if err := writeFileAtomic(w.d.statePath, b, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "pdh-ha: Spiegel-Zustand %s: %v\n", w.d.statePath, err)
+		return err
 	}
+	w.mu.Lock()
+	w.onDisk = st.Promoted
+	w.mu.Unlock()
+	return nil
 }
 
 func copyState(st mirrorState) mirrorState {
@@ -357,17 +367,18 @@ func (w *mirrorWorker) unproven(label string) bool {
 }
 
 // markPromoted merkt (dauerhaft), dass dieser Server von passiv auf aktiv gewechselt
-// ist; der nächste Lauf prüft die Quellen auf Belege. Schreibt eine Datei.
-func (w *mirrorWorker) markPromoted() {
+// ist; der nächste Lauf prüft die Quellen auf Belege. Schreibt eine Datei und
+// meldet, ob sie auf der Platte steht; erst danach darf die Rolle "aktiv" gemerkt werden.
+func (w *mirrorWorker) markPromoted() error {
 	w.mu.Lock()
-	if w.st.Promoted {
+	w.st.Promoted = true // im Speicher kann es schon stehen (set), auf der Platte noch nicht
+	if w.onDisk {
 		w.mu.Unlock()
-		return
+		return nil
 	}
-	w.st.Promoted = true
 	snap := copyState(w.st)
 	w.mu.Unlock()
-	w.save(snap)
+	return w.saveErr(snap)
 }
 
 // settlePromotion (R25): nach dem Wechsel von passiv auf aktiv gilt jede vorhandene
