@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -42,6 +44,7 @@ type mirrorFix struct {
 	clock *time.Time
 	files map[string]bool // Pfad -> vorhanden
 	full  map[string]bool // Pfad -> hat Dateien
+	sizes map[string]int64
 	free  int64
 	freeK bool
 	mu    sync.Mutex
@@ -64,7 +67,12 @@ func newMirrorFix(t *testing.T) *mirrorFix {
 		now:       func() time.Time { f.mu.Lock(); defer f.mu.Unlock(); return *f.clock },
 		exists:    func(p string) bool { return f.files[p] },
 		hasFiles:  func(p string) bool { return f.full[p] },
-		size:      func(string) int64 { return 100 },
+		size: func(p string) int64 {
+			if n, ok := f.sizes[p]; ok {
+				return n
+			}
+			return 100
+		},
 	})
 	return f
 }
@@ -369,5 +377,195 @@ func TestMirrorFinalSyncDeadline(t *testing.T) {
 	f.rs.fn = nil
 	if err := f.w.finalSync(context.Background(), time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Fix 1: Platz nur für Quellen, die noch nie fertig waren.
+func TestMirrorDiskCheckAfterPartialSuccess(t *testing.T) {
+	f := newMirrorFix(t)
+	f.sizes = map[string]int64{"/r/uploads": 60, "/r/chat_files": 30, "/etc/pdh": 10}
+	f.freeK, f.free = true, 150
+	bad := true
+	f.rs.fn = func(_ context.Context, argv []string) error {
+		if bad && strings.HasSuffix(argv[len(argv)-1], ":chat_files") {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	ctx := context.Background()
+	f.w.runAll(ctx) // kopiert uploads und etc-pdh, chat_files scheitert
+	bad = false
+	f.free = 40 // Partner hält jetzt 70 der 100
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err != nil {
+		t.Fatalf("Platzprüfung blockiert nach Teilerfolg: %v", err)
+	}
+	if !f.w.snapshot().FirstDone {
+		t.Fatal("FirstDone fehlt")
+	}
+}
+
+// Fix 2: finalSync meldet nur Erfolg, wenn wirklich abgeglichen wurde.
+func TestMirrorFinalSyncNotActive(t *testing.T) {
+	f := newMirrorFix(t)
+	f.w.set(true, ha.Passive, 1, mirrorSettings)
+	if err := f.w.finalSync(context.Background(), time.Second); err == nil {
+		t.Fatal("Fehler erwartet: Worker nicht aktiv")
+	}
+	f.w.set(false, ha.Active, 1, mirrorSettings)
+	if err := f.w.finalSync(context.Background(), time.Second); err == nil {
+		t.Fatal("Fehler erwartet: Spiegelung aus")
+	}
+}
+
+func TestMirrorFinalSyncAborted(t *testing.T) {
+	f := newMirrorFix(t)
+	started := make(chan struct{})
+	f.rs.fn = func(ctx context.Context, _ []string) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	done := make(chan error, 1)
+	go func() { done <- f.w.finalSync(context.Background(), time.Minute) }()
+	<-started
+	f.w.set(true, ha.Passive, 2, mirrorSettings)
+	select {
+	case err := <-done:
+		if !errors.Is(err, errMirrorAborted) {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("finalSync hängt")
+	}
+}
+
+// Abbruch speichert keinen Erfolg.
+func TestMirrorAbortKeepsState(t *testing.T) {
+	f := newMirrorFix(t)
+	ctx := context.Background()
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	// Abbruch vor dem ersten Erfolg: nichts gespeichert
+	started := make(chan struct{}, 1)
+	f.rs.fn = func(c context.Context, _ []string) error {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-c.Done()
+		return c.Err()
+	}
+	done := make(chan error, 1)
+	go func() { done <- f.w.runAll(ctx) }()
+	<-started
+	f.w.set(true, ha.Passive, 2, mirrorSettings)
+	<-done
+	if st := f.w.snapshot(); st.FirstDone || !st.LastOK.IsZero() {
+		t.Fatalf("Erfolg trotz Abbruch: %+v", st)
+	}
+	if _, err := os.Stat(f.w.d.statePath); err == nil {
+		t.Fatal("mirror.json nach Abbruch geschrieben")
+	}
+	// Abbruch nach einem Erfolg: Datei und Zeiten unverändert
+	f.rs.fn = nil
+	f.w.set(true, ha.Active, 3, mirrorSettings)
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(f.w.d.statePath)
+	okAt := f.w.snapshot().LastOK
+	f.rs.fn = func(c context.Context, _ []string) error { started <- struct{}{}; <-c.Done(); return c.Err() }
+	f.advance(time.Minute)
+	go func() { done <- f.w.runAll(ctx) }()
+	<-started
+	f.w.set(true, ha.Passive, 4, mirrorSettings)
+	<-done
+	after, _ := os.ReadFile(f.w.d.statePath)
+	if string(before) != string(after) || !f.w.snapshot().LastOK.Equal(okAt) || !f.w.snapshot().FirstDone {
+		t.Fatalf("Zustand nach Abbruch verändert: %+v", f.w.snapshot())
+	}
+}
+
+// Fix 3: beschädigte Zustandsdatei.
+func TestMirrorCorruptState(t *testing.T) {
+	f := newMirrorFix(t)
+	if len(f.texts("alarm")) != 0 {
+		t.Fatal("fehlende Datei darf keinen Alarm auslösen")
+	}
+	if err := os.WriteFile(f.w.d.statePath, []byte("{kaputt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w2 := newMirrorWorker(f.w.d)
+	if w2.snapshot().FirstDone {
+		t.Fatal("FirstDone aus beschädigter Datei")
+	}
+	al := f.texts("alarm")
+	if len(al) != 1 || al[0] != "Zustand der Spiegelung beschädigt, Erstabgleich läuft neu" {
+		t.Fatalf("alarm: %v", al)
+	}
+	if _, err := os.Stat(f.w.d.statePath + ".kaputt"); err != nil {
+		t.Fatalf("Datei nicht beiseitegelegt: %v", err)
+	}
+	if _, err := os.Stat(f.w.d.statePath); err == nil {
+		t.Fatal("beschädigte Datei liegt noch")
+	}
+}
+
+func TestMirrorEmptyRefusedAfterRestart(t *testing.T) {
+	f := newMirrorFix(t)
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	ctx := context.Background()
+	if err := f.w.runAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	w2 := newMirrorWorker(f.w.d)
+	f.full["/r/uploads"] = false
+	n := f.rs.count()
+	w2.set(true, ha.Active, 2, mirrorSettings)
+	if err := w2.runAll(ctx); err == nil {
+		t.Fatal("Fehler erwartet")
+	}
+	for _, c := range f.rs.calls[n:] {
+		if strings.HasSuffix(c[len(c)-1], ":uploads") {
+			t.Fatal("leere Quelle nach Neustart gespiegelt")
+		}
+	}
+	if al := f.texts("alarm"); len(al) != 1 || !strings.Contains(al[0], "uploads ist leer") {
+		t.Fatalf("alarm: %v", al)
+	}
+}
+
+// Fix 4: FirstDone gilt für die aktuelle Quellenliste.
+func TestMirrorFirstDoneFollowsSources(t *testing.T) {
+	f := newMirrorFix(t)
+	ctx := context.Background()
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	if err := f.w.runAll(ctx); err != nil || !f.w.snapshot().FirstDone {
+		t.Fatalf("err=%v st=%+v", err, f.w.snapshot())
+	}
+	s := mirrorSettings
+	s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/nc/data", "/nc/app"
+	f.files["/nc/data"], f.files["/nc/app"], f.files["/nc/data/.ocdata"] = true, true, true
+	f.full["/nc/data"], f.full["/nc/app"] = true, true
+	f.w.set(true, ha.Active, 1, s)
+	if st := f.w.snapshot(); st.FirstDone || st.FirstPercent == 100 {
+		t.Fatalf("FirstDone trotz neuer Quellen: %+v", st)
+	}
+	// Platzprüfung gilt wieder, nur für die neuen Quellen
+	f.freeK, f.free = true, 1
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err == nil || !strings.Contains(err.Error(), "Zu wenig Platz") {
+		t.Fatalf("err = %v", err)
+	}
+	f.freeK = false
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !f.w.snapshot().FirstDone {
+		t.Fatal("FirstDone fehlt nach allen Quellen")
 	}
 }
