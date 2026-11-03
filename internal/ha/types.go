@@ -42,6 +42,17 @@ type Settings struct {
 	LagLimit   int64         // Verzögerungsgrenze der Spiegelung in Bytes
 	SlotKeep   int64         // Höchstmenge zurückgehaltener Änderungen in Bytes
 	AutoMode   string        // AutoObserve | AutoReal
+
+	// Datei-Spiegelung (Teil 6)
+	MirrorOn         bool          // Dateien auf den Standby spiegeln
+	MirrorNextcloud  bool          // Nextcloud (Daten, Programm, Webserver, Zertifikate) mitnehmen
+	MirrorEvery      time.Duration // Abstand der Abgleiche der nicht sofortigen Quellen
+	MirrorTrashDays  int           // Tage, die Gelöschtes im Papierkorb des Standby bleibt
+	MirrorAlarmAfter time.Duration // so lange ohne erfolgreichen Abgleich → Alarm
+	MirrorFinalMax   time.Duration // Frist des letzten Abgleichs vor einer geplanten Übergabe
+	MirrorBWLimitKB  int           // Bandbreite in KB/s; 0 = unbegrenzt
+	NCDataDir        string        // Nextcloud-Datenordner (Pflicht bei MirrorNextcloud)
+	NCAppDir         string        // Nextcloud-Programmordner
 }
 
 // Betriebsarten der automatischen Umschaltung.
@@ -66,6 +77,12 @@ func DefaultSettings() Settings {
 		LagLimit:     16 << 20,
 		SlotKeep:     20 << 30,
 		AutoMode:     AutoObserve,
+
+		MirrorEvery:      time.Minute,
+		MirrorTrashDays:  14,
+		MirrorAlarmAfter: 5 * time.Minute,
+		MirrorFinalMax:   120 * time.Second,
+		NCAppDir:         "/var/www/nextcloud",
 	}
 }
 
@@ -105,7 +122,7 @@ func (s Settings) Validate() error {
 	if s.TakeoverTrio < min || s.TakeoverDuo < min {
 		return errors.New("Übernahmezeit muss mindestens Selbst-Abschaltung + 2 × Takt + 5 s sein")
 	}
-	return nil
+	return s.validateMirror()
 }
 
 // Takeover liefert die Übernahmezeit der Betriebsart (Einzel: keine).
@@ -131,6 +148,16 @@ type settingsJSON struct {
 	LagLimitMB  int64  `json:"lag_limit_mb"`
 	SlotKeepGB  int64  `json:"slot_keep_gb"`
 	AutoMode    string `json:"auto_mode"`
+
+	MirrorOn        bool   `json:"mirror_on"`
+	MirrorNextcloud bool   `json:"mirror_nextcloud"`
+	MirrorEveryS    int    `json:"mirror_every_s"`
+	MirrorTrashDays int    `json:"mirror_trash_days"`
+	MirrorAlarmMin  int    `json:"mirror_alarm_min"`
+	MirrorFinalS    int    `json:"mirror_final_s"`
+	MirrorBWLimitKB int    `json:"mirror_bwlimit_kb"`
+	NCDataDir       string `json:"nc_data_dir"`
+	NCAppDir        string `json:"nc_app_dir"`
 }
 
 func (s Settings) MarshalJSON() ([]byte, error) {
@@ -145,6 +172,16 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 		LagLimitMB:    s.LagLimit >> 20,
 		SlotKeepGB:    s.SlotKeep >> 30,
 		AutoMode:      s.AutoMode,
+
+		MirrorOn:        s.MirrorOn,
+		MirrorNextcloud: s.MirrorNextcloud,
+		MirrorEveryS:    int(s.MirrorEvery / time.Second),
+		MirrorTrashDays: s.MirrorTrashDays,
+		MirrorAlarmMin:  int(s.MirrorAlarmAfter / time.Minute),
+		MirrorFinalS:    int(s.MirrorFinalMax / time.Second),
+		MirrorBWLimitKB: s.MirrorBWLimitKB,
+		NCDataDir:       s.NCDataDir,
+		NCAppDir:        s.NCAppDir,
 	})
 }
 
@@ -164,6 +201,16 @@ func (s *Settings) UnmarshalJSON(b []byte) error {
 		LagLimit:     j.LagLimitMB << 20,
 		SlotKeep:     j.SlotKeepGB << 30,
 		AutoMode:     j.AutoMode,
+
+		MirrorOn:         j.MirrorOn,
+		MirrorNextcloud:  j.MirrorNextcloud,
+		MirrorEvery:      time.Duration(j.MirrorEveryS) * time.Second,
+		MirrorTrashDays:  j.MirrorTrashDays,
+		MirrorAlarmAfter: time.Duration(j.MirrorAlarmMin) * time.Minute,
+		MirrorFinalMax:   time.Duration(j.MirrorFinalS) * time.Second,
+		MirrorBWLimitKB:  j.MirrorBWLimitKB,
+		NCDataDir:        j.NCDataDir,
+		NCAppDir:         j.NCAppDir,
 	}
 	// Alte Dateien kennen die neuen Felder nicht: fehlend/0/leer → Standard.
 	def := DefaultSettings()
@@ -178,6 +225,21 @@ func (s *Settings) UnmarshalJSON(b []byte) error {
 	}
 	if j.AutoMode == "" {
 		s.AutoMode = def.AutoMode
+	}
+	if j.MirrorEveryS == 0 {
+		s.MirrorEvery = def.MirrorEvery
+	}
+	if j.MirrorTrashDays == 0 {
+		s.MirrorTrashDays = def.MirrorTrashDays
+	}
+	if j.MirrorAlarmMin == 0 {
+		s.MirrorAlarmAfter = def.MirrorAlarmAfter
+	}
+	if j.MirrorFinalS == 0 {
+		s.MirrorFinalMax = def.MirrorFinalMax
+	}
+	if j.NCAppDir == "" {
+		s.NCAppDir = def.NCAppDir
 	}
 	return nil
 }
