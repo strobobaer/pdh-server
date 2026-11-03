@@ -210,11 +210,7 @@ func (d *daemon) removedLocked(pl *plan) {
 	if pa := d.pgActorLocked(); pa != nil && d.node.CAHolder { // ein entfernter Knoten wird nie aktiv (R14)
 		// wieder Einzelbetrieb: pdh und Tunnel starten wie früher beim Hochfahren
 		d.enqueueFnLocked(context.Background(), func(ctx context.Context) {
-			for _, s := range []serviceCtl{pa.svc, pa.tun} {
-				if err := s.SetAutostart(ctx, true); err == nil {
-					_ = s.Start(ctx)
-				}
-			}
+			pa.restoreSingle(ctx)
 		})
 	}
 }

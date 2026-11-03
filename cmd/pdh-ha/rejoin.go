@@ -720,6 +720,10 @@ func (a *pgActor) freeBytes(ctx context.Context, dir string) (int64, error) {
 
 // queryDB wie query, aber in der Datenbank db.
 func (p *pgCtl) queryDB(ctx context.Context, db, sql string) (string, error) {
+	// psql behandelt einen Namen mit = als Verbindungszeichenkette (Optionen, Bibliotheken)
+	if db == "" || strings.HasPrefix(db, "-") || strings.ContainsAny(db, "=\t\n\r '\"\\") {
+		return "", fmt.Errorf("Ungültiger Datenbankname %q", db)
+	}
 	out, err := p.r.Run(ctx, []string{"runuser", "-u", "postgres", "--", "psql", "-XAtq",
 		"-p", strconv.Itoa(p.c.Port), "-d", db, "-v", "ON_ERROR_STOP=1"}, nil, []byte(sql))
 	return strings.TrimSpace(string(out)), err

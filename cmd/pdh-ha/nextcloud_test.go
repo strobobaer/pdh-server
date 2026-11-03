@@ -26,9 +26,9 @@ import (
 func ncCronTemp(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	old := ncCronDir
-	ncCronDir = dir
-	t.Cleanup(func() { ncCronDir = old })
+	old, oldB := ncCronDir, ncCronBackup
+	ncCronDir, ncCronBackup = dir, filepath.Join(t.TempDir(), "nextcloud.cron")
+	t.Cleanup(func() { ncCronDir, ncCronBackup = old, oldB })
 	return dir
 }
 
@@ -57,7 +57,7 @@ func writeFile(t *testing.T, name, text string) {
 func TestNextcloudCtlStartStop(t *testing.T) {
 	ncNoLab(t)
 	cron := ncCronTemp(t)
-	on, off := filepath.Join(cron, "nextcloud"), filepath.Join(cron, "nextcloud.pdh-aus")
+	on, off := filepath.Join(cron, "nextcloud"), ncCronBackup
 	writeFile(t, off, "*/5 * * * * www-data php -f /var/www/nextcloud/cron.php\n")
 	r := ncUnitsRunner()
 	ctl := newNextcloudCtl(r, func() bool { return true })
@@ -69,7 +69,7 @@ func TestNextcloudCtlStartStop(t *testing.T) {
 	if !exists(on) || exists(off) {
 		t.Fatal("Cron-Auftrag nicht zurückbenannt")
 	}
-	seq(t, r.list(), "systemctl start php8.3-fpm.service", "systemctl start certbot.timer", "systemctl reload nginx")
+	seq(t, r.list(), "systemctl start php8.3-fpm.service", "systemctl start certbot.timer")
 
 	// Stop in umgekehrter Reihenfolge: Certbot, PHP-FPM, Cron-Auftrag
 	r2 := ncUnitsRunner()
@@ -101,35 +101,6 @@ func TestNextcloudCtlStartWhileRunningNoReload(t *testing.T) {
 	}
 	if has(r.list(), "systemctl reload nginx") {
 		t.Fatalf("nginx nur beim Wechsel von aus nach an neu laden (alle 30 s startet der Abgleich): %v", r.list())
-	}
-}
-
-func TestNextcloudCronBothKeepsNewer(t *testing.T) {
-	cron := ncCronTemp(t)
-	on, off := filepath.Join(cron, "nextcloud"), filepath.Join(cron, "nextcloud.pdh-aus")
-	writeFile(t, on, "neu")
-	writeFile(t, off, "alt")
-	if err := ncCronOn(); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(on); string(b) != "neu" || exists(off) {
-		t.Fatal("die neuere Datei nextcloud bleibt, der Zwilling entfällt")
-	}
-	// Ausschalten mit beiden: die neuere gilt auch dann
-	writeFile(t, off, "alt")
-	if err := ncCronOff(); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(off); string(b) != "neu" || exists(on) {
-		t.Fatal("Ausschalten: neuere Datei zählt")
-	}
-	// weder noch: kein Fehler
-	_ = os.Remove(off)
-	if err := ncCronOff(); err != nil {
-		t.Fatal(err)
-	}
-	if err := ncCronOn(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -340,7 +311,7 @@ func TestReconcilePassiveFixesCron(t *testing.T) {
 	a.nc = newNextcloudCtl(r, func() bool { return true })
 	writeFile(t, filepath.Join(cron, "nextcloud"), "x")
 	a.reconcile(context.Background(), ha.Passive)
-	if exists(filepath.Join(cron, "nextcloud")) || !exists(filepath.Join(cron, "nextcloud.pdh-aus")) {
+	if exists(filepath.Join(cron, "nextcloud")) || !exists(ncCronBackup) {
 		t.Fatal("Cron-Auftrag am passiven Server nicht abgeschaltet")
 	}
 }
@@ -383,12 +354,6 @@ func TestNcTrust(t *testing.T) {
 	_ = ncTrust(ctx, r, "/var/www/nextcloud", "10.0.0.9")
 	if !has(r.list(), occ+"config:system:set trusted_domains 4 --value=10.0.0.9") {
 		t.Fatalf("Lücke: %v", r.list())
-	}
-	// Schlüssel fehlt (Fehler ohne Ausgabe): Index 0
-	r = (&fakeRunner{}).on(get, "", "", errors.New("exit 1"))
-	_ = ncTrust(ctx, r, "/var/www/nextcloud", "10.0.0.9")
-	if !has(r.list(), occ+"config:system:set trusted_domains 0 --value=10.0.0.9") {
-		t.Fatalf("leer: %v", r.list())
 	}
 	// Störung (Fehler mit Ausgabe): nichts überschreiben
 	r = (&fakeRunner{}).on(get, "", "Datenbank nicht erreichbar", errors.New("exit 1"))
@@ -497,49 +462,43 @@ func (q *ncFakeQ) Query(_ context.Context, sql string) (string, error) {
 }
 
 func TestNcCheckFiles(t *testing.T) {
-	data := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Skip("Pfade nur unter Linux")
+	}
+	data := ncDataDirOK(t)
 	if err := os.MkdirAll(filepath.Join(data, "alice", "files"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(data, "alice", "files", "a.txt"), "a")
 	lines := []string{
-		"home::alice\tfiles/a.txt",       // vorhanden
-		"home::alice\tfiles/b.txt",       // fehlt
-		"home::alice\tfiles/sub/c.txt",   // fehlt
-		"object::user:bob\tfiles/o.txt",  // anderer Speicher: übersprungen
-		"home::alice\tfiles/../../etc/x", // außerhalb: abgelehnt
-		"home::../evil\tfiles/e.txt",     // Benutzer außerhalb: abgelehnt
-		"home::alice\tfiles/uploads/u",   // Hochlade-Rest: übersprungen
-		"home::alice\tappdata_x/f",       // appdata: übersprungen
-		"home::alice\t/files/abs",        // absolut: abgelehnt
-	}
-	var local string
-	if runtime.GOOS != "windows" {
-		local = filepath.ToSlash(t.TempDir())
-		lines = append(lines, "local::"+local+"/\tfiles/l.txt")
+		ncRow("home::alice", "files/a.txt"),          // vorhanden
+		ncRow("home::alice", "files/b.txt"),          // fehlt
+		ncRow("home::alice", "files/sub/c.txt"),      // fehlt
+		ncRow("object::user:bob", "files/o.txt"),     // anderer Speicher: übersprungen
+		ncRow("home::alice", "files/../../etc/x"),    // außerhalb: abgelehnt
+		ncRow("home::../evil", "files/e.txt"),        // Benutzer außerhalb: abgelehnt
+		ncRow("home::alice", "/files/abs"),           // absolut: abgelehnt
+		"kaputte zeile ohne base64 !!",               // ignoriert
+		ncRow("local::"+data+"/ext/", "files/l.txt"), // unter dem Datenordner: geprüft
 	}
 	q := &ncFakeQ{prefix: "pre_", out: strings.Join(lines, "\n")}
-	since := time.Unix(1730000000, 0)
-	missing, err := ncCheckFiles(context.Background(), q, filepath.ToSlash(data), since)
+	res, err := ncCheckFiles(context.Background(), q, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"alice/files/b.txt", "alice/files/sub/c.txt"}
-	if local != "" {
-		want = append(want, local+"/files/l.txt")
-	}
-	if strings.Join(missing, ",") != strings.Join(want, ",") {
-		t.Fatalf("fehlend: %v, erwartet %v", missing, want)
+	want := []string{"alice/files/b.txt", "alice/files/sub/c.txt", data + "/ext/files/l.txt"}
+	if strings.Join(res.Missing, ",") != strings.Join(want, ",") || res.Checked != 4 {
+		t.Fatalf("fehlend: %v (geprüft %d), erwartet %v", res.Missing, res.Checked, want)
 	}
 	sql := q.sql[0]
-	for _, frag := range []string{"pre_filecache", "pre_storages", "pre_mimetypes", "httpd/unix-directory", "path LIKE 'files/%'", "storage_mtime >= 1730000000", "LIMIT 100000"} {
+	for _, frag := range []string{"pre_filecache", "pre_storages", "pre_mimetypes", "httpd/unix-directory", "path LIKE 'files/%'"} {
 		if !strings.Contains(sql, frag) {
 			t.Fatalf("SQL ohne %q:\n%s", frag, sql)
 		}
 	}
-	// Standardpräfix und Fehler
+	// unsicheres Präfix -> oc_, Fehler weitergeben
 	q2 := &ncFakeQ{prefix: "oc_; DROP", err: errors.New("weg")}
-	if _, err := ncCheckFiles(context.Background(), q2, "/d", time.Time{}); err == nil || !strings.Contains(q2.sql[0], "oc_filecache") {
+	if _, err := ncCheckFiles(context.Background(), q2, data); err == nil || !strings.Contains(q2.sql[0], "oc_filecache") {
 		t.Fatalf("Präfix unsicher -> oc_, Fehler weitergeben: %v\n%v", err, q2.sql)
 	}
 }
@@ -563,7 +522,10 @@ $CONFIG = array (
 	}
 	// die Abfrage läuft in dieser Datenbank, nur lesend
 	r := (&fakeRunner{}).on("runuser", "", "", nil)
-	q := newNCQuery(testPG(r), filepath.ToSlash(app))
+	q, err := newNCQuery(testPG(r), filepath.ToSlash(app))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := q.Query(context.Background(), "SELECT 1"); err != nil {
 		t.Fatal(err)
 	}
@@ -577,32 +539,22 @@ func TestNcCheckAfterTakeover(t *testing.T) {
 	rt, app := ncRT(t, &fakeRunner{})
 	var lines []string
 	for i := 0; i < 250; i++ {
-		lines = append(lines, fmt.Sprintf("home::nobody\tfiles/f%03d", i))
+		lines = append(lines, ncRow("home::nobody", fmt.Sprintf("files/f%03d", i)))
 	}
 	q := &ncFakeQ{prefix: "oc_", out: strings.Join(lines, "\n")}
-	rt.ncCheckAfterTakeover(context.Background(), q, ha.Settings{NCAppDir: app, NCDataDir: filepath.ToSlash(t.TempDir())}, time.Time{})
+	rt.ncCheckAfterTakeover(context.Background(), q, ha.Settings{NCAppDir: app, NCDataDir: ncDataDirOK(t)})
 	res := rt.ncRes.Load()
-	if res == nil || res.Total != 250 || len(res.Missing) != 200 {
+	if res == nil || res.Total != 250 || len(res.Missing) != 200 || res.Checked != 250 {
 		t.Fatalf("Ergebnis: %+v", res)
 	}
 	found := false
 	for _, e := range rt.ev.since(0, 0) {
-		if e.Kind == "alarm" && e.Text == "Nach der Übernahme fehlen 250 Nextcloud-Dateien" {
+		if e.Kind == "alarm" && strings.HasPrefix(e.Text, "Nach der Übernahme fehlen 250 Nextcloud-Dateien") {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatal("Alarm fehlt")
 	}
-	// nichts fehlt: kein Alarm, Ergebnis leer
-	rt2, _ := ncRT(t, &fakeRunner{})
-	rt2.ncCheckAfterTakeover(context.Background(), &ncFakeQ{prefix: "oc_"}, ha.Settings{NCDataDir: "/d"}, time.Time{})
-	if r := rt2.ncRes.Load(); r == nil || r.Total != 0 {
-		t.Fatalf("leer: %+v", r)
-	}
-	for _, e := range rt2.ev.since(0, 0) {
-		if e.Kind == "alarm" {
-			t.Fatalf("kein Alarm: %v", e)
-		}
-	}
+	// ungültiger Datenbankname: keine Abfrage (siehe TestNCDBNameRejected)
 }

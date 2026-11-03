@@ -484,7 +484,7 @@ func (a *pgActor) ncStart(ctx context.Context) {
 	if a.nc == nil {
 		return
 	}
-	a.ncNote("start", "Nextcloud nicht gestartet: ", a.nc.Start(ctx))
+	a.ncNote("start", "Nextcloud nicht gestartet: ", ncTimed(ctx, a.nc.Start))
 }
 
 // ncStop stoppt Nextcloud; Fehler wie bei ncStart.
@@ -492,7 +492,20 @@ func (a *pgActor) ncStop(ctx context.Context) {
 	if a.nc == nil {
 		return
 	}
-	a.ncNote("stop", "Nextcloud nicht gestoppt: ", a.nc.Stop(ctx))
+	a.ncNote("stop", "Nextcloud nicht gestoppt: ", ncTimed(ctx, a.nc.Stop))
+}
+
+// restoreSingle: Einzelbetrieb nach dem Entfernen aus dem Verbund – pdh, Tunnel und
+// Nextcloud starten wie früher beim Hochfahren (Reihenfolge wie beim Start).
+func (a *pgActor) restoreSingle(ctx context.Context) {
+	for _, s := range []serviceCtl{a.svc, a.tun, a.nc} {
+		if s == nil {
+			continue
+		}
+		if err := s.SetAutostart(ctx, true); err == nil {
+			_ = s.Start(ctx)
+		}
+	}
 }
 
 func (a *pgActor) ncNote(kind, text string, err error) {
