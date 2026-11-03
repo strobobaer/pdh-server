@@ -16,8 +16,8 @@ import (
 
 // R35: Wortlaut für einen Datenordner, an dem ein echter pg_rewind nicht zu Ende kam.
 const (
-	unsafeText   = "Datenbank nach abgebrochener Wiederanbindung gestoppt: Daten unsicher. Neu kopieren: sudo pdh-ha rejoin"
-	unsafePromo  = "Daten nach abgebrochener Wiederanbindung unsicher – bitte aus der Sicherung wiederherstellen"
+	unsafeText   = "Datenbank nach abgebrochener Wiederanbindung gestoppt: Daten unsicher. Neu kopieren: sudo pdh-ha rejoin. Ist der Partner nicht erreichbar: aus der Sicherung wiederherstellen mit sudo bash scripts/pdh-restore.sh"
+	unsafePromo  = "Daten nach abgebrochener Wiederanbindung unsicher – bitte aus der Sicherung wiederherstellen (sudo bash scripts/pdh-restore.sh)"
 	realRewind   = "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_rewind --target-pgdata"
 	baseBackup   = "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_basebackup"
 	startCluster = "pg_ctlcluster 18 main start"

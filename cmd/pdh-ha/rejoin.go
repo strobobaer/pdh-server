@@ -172,10 +172,10 @@ func (d *daemon) deleteDivergedAt(node, id string) error {
 const strandedText = "Dieser Server ist nicht angebunden: Datenbank nur lesend, Partner aktiv. Wiederanbinden: sudo pdh-ha rejoin"
 
 // rewindUnsafeText: Alarm und Statuswarnung für einen Ordner aus einem abgebrochenen pg_rewind (R35).
-const rewindUnsafeText = "Datenbank nach abgebrochener Wiederanbindung gestoppt: Daten unsicher. Neu kopieren: sudo pdh-ha rejoin"
+const rewindUnsafeText = "Datenbank nach abgebrochener Wiederanbindung gestoppt: Daten unsicher. Neu kopieren: sudo pdh-ha rejoin. Ist der Partner nicht erreichbar: aus der Sicherung wiederherstellen mit sudo bash scripts/pdh-restore.sh"
 
 // errDataUnsafe: promote und Rücknahme lehnen so einen Ordner ab, auch von Hand.
-var errDataUnsafe = errors.New("Daten nach abgebrochener Wiederanbindung unsicher – bitte aus der Sicherung wiederherstellen")
+var errDataUnsafe = errors.New("Daten nach abgebrochener Wiederanbindung unsicher – bitte aus der Sicherung wiederherstellen (sudo bash scripts/pdh-restore.sh)")
 
 const (
 	strandedAlarmKey = "stranded"

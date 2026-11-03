@@ -145,6 +145,9 @@ WAL="/var/lib/postgresql/pdh-restore-wal"
 rm -rf "$WAL"; mkdir -p "$WAL"
 rsync -rt "$FROM/wal/" "$WAL/"
 chown -R postgres:postgres "$DATA" "$WAL"; chmod 700 "$DATA"
+# Marke von pdh-ha „Wiederanbindung abgebrochen, Daten unsicher“: gilt dem alten Ordner.
+# Der wiederhergestellte Stand ist gut – bliebe sie liegen, würde pdh-ha ihn ablehnen.
+rm -f "$DATA.rewind-laeuft"
 touch "$DATA/recovery.signal"
 {
   echo "# pdh-restore (wird nach der Wiederherstellung entfernt)"
