@@ -92,6 +92,7 @@ func Step(in Input) Output {
 	s.out.VotePending, s.out.VoteAskedAt = in.VotePending, in.VoteAskedAt
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
 	s.out.HandoverReadyAt = in.HandoverReadyAt
+	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -274,7 +275,9 @@ func (s *stepper) swap(k ActionKind) bool {
 	defer func() { s.manual = false }()
 	// Die Übergabe folgt erst, wenn die eigene Datenbank abgegeben ist
 	// (DemoteDone) – sonst stuft der Partner hoch, während sie noch schreibt.
+	s.out.SwapSeq, s.out.SwapKind = s.in.SwapSeq+1, k
 	s.act(k, s.p.Term)
+	s.out.Actions[len(s.out.Actions)-1].Seq = s.out.SwapSeq
 	s.act(ActVIPRelease, s.p.Term)
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = next, s.in.Now, 0
 	s.out.HandoverReadyAt = 0
@@ -294,6 +297,21 @@ func (s *stepper) receiveHandover() bool {
 	return true
 }
 
+// demoteDeadline: so lange darf die Abgabe beim Rollentausch dauern, bevor der
+// Tausch abgebrochen wird: Übernahmezeit + demoteWait. Mit Datei-Spiegelung läuft
+// vorher der letzte Abgleich (R27): seine Frist kommt dazu.
+func demoteDeadline(s Settings, m Mode) time.Duration {
+	d := s.Takeover(m) + demoteWait
+	if s.MirrorOn {
+		fin := s.MirrorFinalMax
+		if fin <= 0 {
+			fin = DefaultSettings().MirrorFinalMax
+		}
+		d += fin
+	}
+	return d
+}
+
 // handover begleitet den eigenen Rollentausch: wiederholen, beenden oder
 // nach der Übernahmezeit zurück nach aktiv. true = Schritt endet.
 func (s *stepper) handover() bool {
@@ -307,26 +325,17 @@ func (s *stepper) handover() bool {
 		return false
 	}
 	took := in.Settings.Takeover(in.Mode)
-	// Mit Datei-Spiegelung läuft vor der Abgabe der letzte Abgleich (R27): seine
-	// Frist kommt zur Wartezeit dazu, sonst gäbe der Step die Rolle zurück, während
-	// demote noch arbeitet.
-	demoteBy := took + demoteWait
-	if in.Settings.MirrorOn {
-		fin := in.Settings.MirrorFinalMax
-		if fin <= 0 {
-			fin = DefaultSettings().MirrorFinalMax
-		}
-		demoteBy += fin
-	}
+	demoteBy := demoteDeadline(in.Settings, in.Mode)
 	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
 	// Partner hat noch nichts bekommen, also zurück nach aktiv.
-	if in.DemoteFailed == hp-1 || in.DemoteDone != hp-1 && in.Now-s.out.HandoverAt >= demoteBy {
+	done := in.DemoteDone != 0 && in.DemoteDone == s.out.SwapSeq
+	if in.DemoteFailed != 0 && in.DemoteFailed == s.out.SwapSeq || !done && in.Now-s.out.HandoverAt >= demoteBy {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
 		s.unfence()
 		return true
 	}
-	if in.DemoteDone != hp-1 {
+	if !done {
 		return true // Abgabe läuft noch
 	}
 	if s.out.HandoverReadyAt == 0 {
@@ -546,7 +555,11 @@ func (s *stepper) noActive() {
 	if s.out.NoActiveSince == 0 {
 		s.out.NoActiveSince = in.Now
 	}
-	if !s.out.NoActiveAlarmed && in.Now-s.out.NoActiveSince >= in.Settings.Takeover(in.Mode) {
+	wait := in.Settings.Takeover(in.Mode)
+	if pa.Giving {
+		wait = demoteDeadline(in.Settings, in.Mode) // geplanter Tausch: die Abgabe darf so lange dauern
+	}
+	if !s.out.NoActiveAlarmed && in.Now-s.out.NoActiveSince >= wait {
 		s.out.NoActiveAlarmed = true
 		s.event("alarm", "Kein aktiver Server – bitte Übernahme erzwingen")
 	}

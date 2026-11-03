@@ -106,6 +106,8 @@ type message struct {
 	// hb eines Servers: ein Update-Auftrag läuft (der Zeuge zieht dann nicht nach)
 	UpJob bool `json:"upjob,omitempty"`
 
+	Giving bool `json:"giving,omitempty"` // Rollentausch: dieser passive Server gibt gerade ab
+
 	// Datei-Spiegelung (Teil 6), nur Server mit eingeschalteter Spiegelung
 	MirrorFirst   bool      `json:"mirror_first,omitempty"`   // Erstabgleich fertig
 	MirrorAt      time.Time `json:"mirror_at,omitzero"`       // letzter erfolgreicher Abgleich

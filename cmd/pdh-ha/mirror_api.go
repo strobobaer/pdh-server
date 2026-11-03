@@ -548,7 +548,11 @@ func (d *daemon) mirrorFirstLocked() (on, done bool) {
 		return true, false
 	}
 	wk := d.mir.worker.Load()
-	return true, wk != nil && wk.snapshot().FirstDone
+	if wk == nil {
+		return true, false
+	}
+	st := wk.snapshot()
+	return true, st.FirstDone && st.Checked // wie im Herzschlag
 }
 
 // mirrorFinalSync: letzter Dateiabgleich beim geplanten Rollentausch (pgActor.mirrorFinal).
@@ -579,7 +583,7 @@ func (d *daemon) mirrorFinalSync(ctx context.Context) error {
 	// R27: Hat der Step den Rollentausch inzwischen zurückgenommen (Rolle wieder
 	// aktiv, keine Übergabe offen), darf demote nicht weitermachen.
 	d.mu.Lock()
-	gone := d.p.Role != ha.Passive || d.carry.HandoverPending == 0
+	gone := !d.handingOverLocked()
 	d.mu.Unlock()
 	if gone {
 		return errors.New("Rollentausch wurde inzwischen abgebrochen")
@@ -916,4 +920,29 @@ func (d *daemon) trashEmptyOKLocked(pl *plan, from string, m message) bool {
 		return false
 	}
 	return true
+}
+
+// wireActor hängt die Spiegelung und die Rollenprüfungen an den Ausführer.
+func (d *daemon) wireActor(pa *pgActor) {
+	pa.mirrorFinal = d.mirrorFinalSync // liest die Einstellungen erst beim Abgeben
+	pa.handing = d.handingOver
+	pa.mayUndo = func() bool {
+		// Rücknahme nur, solange diese Amtszeit noch uns gehört: wieder aktiv (der
+		// Step hat zurückgenommen) oder die eigene Übergabe läuft noch. Hat der Partner
+		// übernommen oder ist der Zustand ungewiss (Fenced), bleibt es abgeschottet.
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.p.Role == ha.Active || d.handingOverLocked()
+	}
+}
+
+// handingOver: die eigene Übergabe läuft (passiv, nächste Amtszeit offen).
+func (d *daemon) handingOver() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.handingOverLocked()
+}
+
+func (d *daemon) handingOverLocked() bool {
+	return d.p.Role == ha.Passive && d.carry.HandoverPending == d.p.Term+1
 }

@@ -214,7 +214,7 @@ func TestFenceOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	seq(t, r.list(), "tun stop", "svc stop", "chown", "pg_ctlcluster 18 main reload", "psql: SELECT pg_terminate_backend")
-	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only") {
+	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
 		t.Fatal("nicht abgeschaltet")
 	}
 	for _, c := range r.calls {
@@ -374,7 +374,7 @@ func TestReconcileWritableNotActiveFences(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a, _ := testActor(t, r)
 	a.reconcile(context.Background(), ha.Passive)
-	if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+	if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
 		t.Fatal("schreibbare Datenbank nicht abgeschaltet")
 	}
 	found := false
@@ -690,5 +690,62 @@ func TestAbandonNoFinalSync(t *testing.T) {
 	}
 	if has(r.list(), "mirrorfinal") {
 		t.Fatalf("letzter Abgleich bei abandon/Übernahme: %v", r.list())
+	}
+}
+
+// C1: Hat der Partner übernommen (Rücknahme nicht mehr erlaubt), bleibt der
+// Server abgeschottet – auch wenn der letzte Abgleich oder der Gleichstand scheitern.
+func TestDemoteNoUndoWhenRoleGone(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mod  func(a *pgActor, r *fakeRunner)
+	}{
+		{"letzter Abgleich", func(a *pgActor, r *fakeRunner) { a.mirrorFinal = finalLog(r, errors.New("abgebrochen")) }},
+		{"Gleichstand", func(a *pgActor, r *fakeRunner) {}},
+	} {
+		for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+			t.Run(c.name+"/"+string(kind), func(t *testing.T) {
+				lag := "pdh_ha_b|streaming|0/100|0/100|sync"
+				if c.name == "Gleichstand" {
+					lag = "pdh_ha_b|streaming|0/100|0/80|sync"
+				}
+				r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil).on("runuser", "pg_stat_replication", lag, nil)
+				a, svc := testActor(t, r)
+				c.mod(a, r)
+				a.mayUndo = func() bool { return false }
+				if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err == nil {
+					t.Fatal("Fehler erwartet")
+				}
+				if has(r.list(), "svc start") || has(r.list(), "tun start") || svc.active || tunOf(a).active {
+					t.Fatalf("Dienste trotz verlorener Rolle wieder an: %v", r.list())
+				}
+				if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+					t.Fatal("Datenbank trotz verlorener Rolle wieder schreibbar")
+				}
+			})
+		}
+	}
+}
+
+// M3: Ist der Tausch vor dem Stoppen schon zurückgenommen (handing false), wird nicht gestoppt.
+func TestDemoteChecksHandoverBeforeStop(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, svc := testActor(t, r)
+			a.handing = func() bool { return false } // Step hat zurückgenommen
+			a.mayUndo = func() bool { return true }
+			if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err == nil {
+				t.Fatal("Fehler erwartet")
+			}
+			if has(r.list(), "pg_ctlcluster 18 main stop") {
+				t.Fatalf("gestoppt trotz zurückgenommenem Tausch: %v", r.list())
+			}
+			if !svc.active || strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+				t.Fatal("nicht zurückgenommen")
+			}
+		})
 	}
 }

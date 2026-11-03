@@ -41,6 +41,8 @@ type pgActor struct {
 	// letzter Dateiabgleich vor der Übergabe (nil = keine Spiegelung); hat seine
 	// eigene Frist (MirrorFinalMax), unabhängig von wait
 	mirrorFinal func(ctx context.Context) error
+	mayUndo     func() bool   // Rücknahme erlaubt (nil = ja)
+	handing     func() bool   // der eigene Tausch läuft noch (nil = ja)
 	wait        time.Duration // Frist für den Gleichstand beim Abgeben
 	poll        time.Duration
 	now         func() time.Time
@@ -141,6 +143,9 @@ func (a *pgActor) demote(ctx context.Context) error {
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
 		return a.undoFence(ctx, err)
 	}
+	if !a.stillGiving() { // M3: vor dem Stoppen noch einmal prüfen
+		return a.undoFence(ctx, errors.New("Rollentausch wurde inzwischen abgebrochen"))
+	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil {
 		return err
 	}
@@ -173,6 +178,9 @@ func (a *pgActor) demoteFreeze(ctx context.Context) error {
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
 		return a.undoFence(ctx, err)
 	}
+	if !a.stillGiving() { // M3: vor dem Stoppen noch einmal prüfen
+		return a.undoFence(ctx, errors.New("Rollentausch wurde inzwischen abgebrochen"))
+	}
 	return a.stopPG(ctx)
 }
 
@@ -183,7 +191,7 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 		return nil
 	}
 	if err := a.mirrorFinal(ctx); err != nil {
-		return fmt.Errorf("Letzter Abgleich der Dateien nicht fertig: %w", err)
+		return &finalSyncError{err: err}
 	}
 	return nil
 }
@@ -191,11 +199,20 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 // undoFence nimmt das Abschotten nach einem gescheiterten Abgeben zurück; scheitert
 // auch das, wird es an den Fehler angehängt.
 func (a *pgActor) undoFence(ctx context.Context, err error) error {
+	if a.mayUndo != nil && !a.mayUndo() {
+		// C1: Der Partner hat übernommen (oder der Zustand ist ungewiss): wieder
+		// einschalten gäbe zwei schreibbare Datenbanken und zwei Tunnel.
+		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: die Rolle ist inzwischen nicht mehr aktiv"})
+		return err
+	}
 	if uerr := a.unfence(ctx); uerr != nil {
-		err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
+		err = fmt.Errorf("%v; Rücknahme fehlgeschlagen: %v", err, uerr)
 	}
 	return err
 }
+
+// stillGiving: der eigene Rollentausch läuft noch (nil = ja).
+func (a *pgActor) stillGiving() bool { return a.handing == nil || a.handing() }
 
 // abandon: Rückfallstand verwerfen (Rücktausch ohne Rückweg). Dienste und
 // PostgreSQL werden gestoppt, ohne auf den Partner zu warten und ohne
@@ -557,3 +574,11 @@ func hostOfAddr(a string) string {
 	}
 	return a
 }
+
+// finalSyncError: der letzte Dateiabgleich vor der Übergabe ist gescheitert.
+type finalSyncError struct{ err error }
+
+func (e *finalSyncError) Error() string {
+	return "Letzter Abgleich der Dateien nicht fertig: " + e.err.Error()
+}
+func (e *finalSyncError) Unwrap() error { return e.err }

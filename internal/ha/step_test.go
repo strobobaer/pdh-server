@@ -898,7 +898,7 @@ func TestStepCommands(t *testing.T) {
 		in.Witness = seenPeer("witness", Witness, 3, 100*sec)
 		in.HandoverPending, in.HandoverAt, in.HandoverSentAt = 4, at, sentAt
 		// Abgabe der Datenbank erledigt, Übergabe läuft seit at
-		in.DemoteDone, in.HandoverReadyAt = 3, at
+		in.SwapSeq, in.DemoteDone, in.HandoverReadyAt = 1, 1, at
 		return in
 	}
 	runCases(t, []stepCase{
@@ -1871,6 +1871,7 @@ func swapped(t *testing.T) Input {
 	in.Persist = out.Persist
 	in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
 	in.HandoverReadyAt = out.HandoverReadyAt
+	in.SwapSeq, in.SwapKind = out.SwapSeq, out.SwapKind
 	return in
 }
 
@@ -1888,7 +1889,7 @@ func TestHandoverWaitsForDemote(t *testing.T) {
 	}
 	in.Now += sec
 	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
-	in.DemoteDone = 1
+	in.DemoteDone = in.SwapSeq
 	out := Step(in)
 	if !hasKind(out, ActHandover) || out.HandoverReadyAt != in.Now {
 		t.Fatalf("handover nach demote erwartet: %v, bereit %v", out.Actions, out.HandoverReadyAt)
@@ -1899,7 +1900,7 @@ func TestHandoverDemoteFailed(t *testing.T) {
 	in := swapped(t)
 	in.Now += sec
 	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
-	in.DemoteFailed = 1
+	in.DemoteFailed = in.SwapSeq
 	out := Step(in)
 	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || hasKind(out, ActHandover) {
 		t.Fatalf("Abbruch erwartet: %s %v", out.Persist.Role, out.Actions)
@@ -1989,5 +1990,131 @@ func TestHandoverDemoteDeadlineMirror(t *testing.T) {
 				t.Fatalf("kein Abbruch zur Frist: %s %v", out.Persist.Role, out.Events)
 			}
 		})
+	}
+}
+
+// carryOver: Zustand eines Schrittes in den nächsten Eingang übernehmen.
+func carryOver(in Input, out Output) Input {
+	in.Persist = out.Persist
+	in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
+	in.HandoverReadyAt = out.HandoverReadyAt
+	in.SwapSeq, in.SwapKind = out.SwapSeq, out.SwapKind
+	in.Command = CmdNone
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	return in
+}
+
+// I1 (R28): Die Marken gelten je Versuch. Ein gescheiterter erster Versuch
+// darf den zweiten Tausch derselben Amtszeit nicht sofort abbrechen.
+func TestHandoverRetryAfterFailedDemote(t *testing.T) {
+	in := swapped(t)
+	if in.SwapSeq != 1 {
+		t.Fatalf("Versuchsnummer 1 erwartet: %d", in.SwapSeq)
+	}
+	in.Now += sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	in.DemoteFailed = in.SwapSeq
+	out := Step(in)
+	if out.Persist.Role != Active || countEvents(out, "Rollentausch abgebrochen") != 1 {
+		t.Fatalf("Abbruch erwartet: %s %v", out.Persist.Role, out.Events)
+	}
+	in = carryOver(in, out)
+	in.Now += sec
+	in.Command = CmdSwap
+	out = Step(in)
+	if out.Persist.Role != Passive || out.SwapSeq != 2 || out.HandoverPending != 2 {
+		t.Fatalf("zweiter Tausch: %s Versuch %d offen %d", out.Persist.Role, out.SwapSeq, out.HandoverPending)
+	}
+	for _, a := range out.Actions {
+		if a.Kind == ActDemote && a.Seq != 2 {
+			t.Fatalf("demote ohne Versuchsnummer 2: %+v", a)
+		}
+	}
+	in = carryOver(in, out)
+	in.Now += sec // DemoteFailed trägt noch Versuch 1
+	out = Step(in)
+	if out.Persist.Role != Passive || countEvents(out, "Rollentausch abgebrochen") != 0 {
+		t.Fatalf("veraltete Marke bricht den neuen Tausch ab: %s %v", out.Persist.Role, out.Events)
+	}
+}
+
+// I2 (R28): Ein altes DemoteDone lässt die Übergabe nicht raus, bevor das neue demote fertig ist.
+func TestHandoverStaleDemoteDone(t *testing.T) {
+	in := swapped(t)
+	in.DemoteDone = in.SwapSeq // Versuch 1 gelungen, Partner übernimmt nicht
+	in.Now += sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	out := Step(in)
+	if !hasKind(out, ActHandover) {
+		t.Fatalf("Versuch 1: Übergabe erwartet: %v", out.Actions)
+	}
+	// Partner bleibt passiv: nach der Übernahmezeit zurück nach aktiv
+	in = carryOver(in, out)
+	in.Now += in.Settings.TakeoverTrio + sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	in.Partner.SeesSelf = true
+	out = Step(in)
+	if out.Persist.Role != Active {
+		t.Fatalf("Rücknahme erwartet: %s %v", out.Persist.Role, out.Events)
+	}
+	in = carryOver(in, out)
+	in.Now += sec
+	in.Command = CmdSwapFreeze
+	out = Step(in)
+	in = carryOver(in, out)
+	in.Now += sec // DemoteDone steht noch auf Versuch 1, das neue demote läuft
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	out = Step(in)
+	if hasKind(out, ActHandover) {
+		t.Fatalf("Übergabe, bevor das neue demote fertig ist: %v", out.Actions)
+	}
+}
+
+// M1: Nur demote und demote_freeze lassen den Arbeiter bis zur Übernahme aktiv; abandon nicht.
+func TestSwapKindCarried(t *testing.T) {
+	for cmd, want := range map[CommandKind]ActionKind{CmdSwap: ActDemote, CmdSwapFreeze: ActDemoteFreeze, CmdSwapAbandon: ActAbandon} {
+		in := base(Trio, Active)
+		in.Partner = seenPeer("node", Passive, 1, 100*sec)
+		in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+		in.Command = cmd
+		if out := Step(in); out.SwapKind != want {
+			t.Errorf("%s: SwapKind %q, erwartet %q", cmd, out.SwapKind, want)
+		}
+	}
+}
+
+// I3 (R30): Meldet der passive Partner „Übergabe läuft“, bleibt der Alarm
+// „Kein aktiver Server“ bis zur Frist des Tauschs (Übernahmezeit + 90 s + letzter Abgleich) aus.
+func TestStepNoActiveGiving(t *testing.T) {
+	const text = "Kein aktiver Server – bitte Übernahme erzwingen"
+	run := func(mirror bool, since time.Duration, giving bool) Output {
+		in := base(Trio, Passive)
+		in.Now = 500 * sec
+		in.Partner = seenPeer("node", Passive, 1, 500*sec)
+		in.Witness = seenPeer("witness", Witness, 1, 500*sec)
+		in.Partner.Giving = giving
+		in.NoActiveSince = since
+		in.Settings.MirrorOn, in.Settings.MirrorFinalMax = mirror, 120*sec
+		return Step(in)
+	}
+	alarm := func(o Output) bool { return countEvents(o, text) == 1 }
+	took := base(Trio, Passive).Settings.TakeoverTrio
+	// ohne Meldung: Alarm nach der Übernahmezeit
+	if !alarm(run(true, 500*sec-took, false)) {
+		t.Fatal("ohne Übergabe: Alarm nach der Übernahmezeit erwartet")
+	}
+	// mit Meldung, Spiegelung an: bis took+90+120 kein Alarm
+	if alarm(run(true, 500*sec-took-90*sec-119*sec, true)) {
+		t.Fatal("Alarm trotz laufender Übergabe")
+	}
+	if !alarm(run(true, 500*sec-took-90*sec-120*sec, true)) {
+		t.Fatal("kein Alarm nach der Frist der Übergabe")
+	}
+	// Spiegelung aus: Frist ohne den letzten Abgleich
+	if alarm(run(false, 500*sec-took-89*sec, true)) {
+		t.Fatal("Alarm trotz laufender Übergabe (Spiegelung aus)")
+	}
+	if !alarm(run(false, 500*sec-took-90*sec, true)) {
+		t.Fatal("kein Alarm nach der Frist (Spiegelung aus)")
 	}
 }

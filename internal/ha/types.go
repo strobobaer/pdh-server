@@ -264,6 +264,7 @@ type PeerObs struct {
 	LSN         uint64 // Schreibposition (Replay) des Partners
 	LagBytes    int64  // Verzögerung der Spiegelung in Bytes
 	Timeline    uint32 // Zeitlinie der Partner-Datenbank
+	Giving      bool   // der passive Partner gibt gerade ab (Rollentausch, Abgabe läuft)
 	Commit      string // Stand des Quelltexts des Partners (leer = unbekannt)
 }
 
@@ -326,7 +327,8 @@ const (
 type Action struct {
 	Kind   ActionKind
 	Term   uint64
-	Manual bool // durch Handbefehl ausgelöst: immer echt, auch bei Beobachtung
+	Manual bool   // durch Handbefehl ausgelöst: immer echt, auch bei Beobachtung
+	Seq    uint64 // Tauschversuch (nur demote/demote_freeze/abandon): Marken gelten je Versuch
 }
 
 // Event ist ein Protokolleintrag; Kind "role", "action", "alarm" oder "info".
@@ -365,8 +367,8 @@ type Input struct {
 	Handover         uint64 // >0: aktiver Partner übergibt diese Amtszeit
 	Command          CommandKind
 	ProbeGranted     uint64 // >0: Zeuge hat die Probe-Stimme für diese Amtszeit gegeben
-	DemoteDone       uint64 // >0: demote dieser Amtszeit ist abgeschlossen
-	DemoteFailed     uint64 // >0: demote dieser Amtszeit ist fehlgeschlagen
+	DemoteDone       uint64 // >0: demote dieses Tauschversuchs (Action.Seq) ist abgeschlossen
+	DemoteFailed     uint64 // >0: demote dieses Tauschversuchs ist fehlgeschlagen
 
 	Settings Settings
 	Persist  Persisted
@@ -385,6 +387,8 @@ type Input struct {
 	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
 	Would           ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
 	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
+	SwapSeq         uint64        // Nummer des letzten Tauschversuchs
+	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -406,4 +410,6 @@ type Output struct {
 	LastMutual      time.Duration
 	Would           ActionKind
 	HandoverReadyAt time.Duration
+	SwapSeq         uint64
+	SwapKind        ActionKind
 }

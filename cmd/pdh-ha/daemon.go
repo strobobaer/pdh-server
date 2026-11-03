@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -93,8 +94,8 @@ type daemon struct {
 	cmd          ha.CommandKind
 	handoverIn   uint64
 	voteGranted  uint64
-	demoteDone   uint64 // Amtszeit der zuletzt erfolgreich ausgeführten Abgabe (demote)
-	demoteFailed uint64 // Amtszeit einer gescheiterten Abgabe
+	demoteDone   uint64 // Tauschversuch (Action.Seq) der zuletzt erfolgreich ausgeführten Abgabe
+	demoteFailed uint64 // Tauschversuch einer gescheiterten Abgabe
 	probeGranted uint64 // Zeuge würde dieser Amtszeit zustimmen (Probestimme)
 	dataCurrent  bool   // echter Datenstand (Replikation)
 
@@ -113,12 +114,13 @@ type daemon struct {
 	reconcileWait atomic.Bool   // Abgleich steht in der Warteschlange
 
 	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
-	actQ        chan queuedAction
-	actOnce     sync.Once
-	actBatch    uint64       // nur unter mu
-	busy        atomic.Bool  // eine Aktion läuft gerade
-	pendingActs atomic.Int32 // wartend oder laufend
-	lastMode    ha.Mode
+	actQ           chan queuedAction
+	actOnce        sync.Once
+	actBatch       uint64       // nur unter mu
+	busy           atomic.Bool  // eine Aktion läuft gerade
+	pendingActs    atomic.Int32 // wartend oder laufend
+	pendingDemotes atomic.Int32 // davon: Abgaben (demote, demote_freeze, abandon)
+	lastMode       ha.Mode
 
 	certNotAfter time.Time
 	renewKey     []byte
@@ -420,7 +422,7 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		defer d.mu.Unlock()
 		return d.pgEnvLocked(pg)
 	})
-	pa.mirrorFinal = d.mirrorFinalSync // liest die Einstellungen erst beim Abgeben
+	d.wireActor(pa)
 	d.act = pa
 	// PostgreSQL-Port für den Partner öffnen (ufwRules mit pg)
 	go d.applyFirewall()
@@ -496,7 +498,11 @@ func (d *daemon) maybeReconcileLocked(ctx context.Context, now time.Duration) {
 			defer d.reconcileWait.Store(false)
 			d.mu.Lock()
 			role, removed := d.p.Role, d.removed
+			handing := role == ha.Passive && d.carry.HandoverPending != 0
 			d.mu.Unlock()
+			if handing {
+				return // Übergabe läuft: die Abgabe schaltet selbst, nichts anfassen
+			}
 			pa.reconcile(ctx, role)
 			if !removed { // entfernt: wieder Einzelbetrieb mit Autostart
 				pa.keepAutostartOff(ctx)
@@ -674,10 +680,16 @@ func (d *daemon) enqueueActions(ctx context.Context, acts []ha.Action) {
 	d.mu.Unlock()
 	for _, a := range acts {
 		d.pendingActs.Add(1)
+		if isDemote(a.Kind) {
+			d.pendingDemotes.Add(1)
+		}
 		select {
 		case d.actQ <- queuedAction{a: a, batch: b}:
 		case <-ctx.Done():
 			d.pendingActs.Add(-1)
+			if isDemote(a.Kind) {
+				d.pendingDemotes.Add(-1)
+			}
 			return
 		}
 	}
@@ -701,21 +713,34 @@ func (d *daemon) actionWorker(ctx context.Context) {
 					failed = q.batch
 					d.actionFailed(q.a, err)
 				}
-				if q.a.Kind == ha.ActDemote || q.a.Kind == ha.ActDemoteFreeze || q.a.Kind == ha.ActAbandon {
+				if isDemote(q.a.Kind) {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
 					d.lock()
 					if err == nil {
-						d.demoteDone = q.a.Term
+						d.demoteDone = q.a.Seq
 					} else {
-						d.demoteFailed = q.a.Term
+						d.demoteFailed = q.a.Seq
 					}
 					d.unlock()
 				}
 				d.busy.Store(false)
 			}
+			if q.fn == nil && isDemote(q.a.Kind) {
+				d.pendingDemotes.Add(-1)
+			}
 			d.pendingActs.Add(-1)
 		}
 	}
+}
+
+// isDemote: Abgabe der eigenen Datenbank beim Rollentausch.
+func isDemote(k ha.ActionKind) bool {
+	return k == ha.ActDemote || k == ha.ActDemoteFreeze || k == ha.ActAbandon
+}
+
+// swapCommand: Handbefehl, der einen Rollentausch beginnt.
+func swapCommand(c ha.CommandKind) bool {
+	return c == ha.CmdSwap || c == ha.CmdSwapFreeze || c == ha.CmdSwapAbandon
 }
 
 // actionsIdle: keine Aktion wartet oder läuft.
@@ -736,6 +761,13 @@ func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
 func (d *daemon) actionFailed(a ha.Action, err error) {
+	// R29: Ein gescheiterter letzter Dateiabgleich ist nur Alarm und Rücknahme; die
+	// automatische Übernahme bleibt möglich (Spec 7).
+	var fs *finalSyncError
+	if errors.As(err, &fs) {
+		d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v", a.Kind, err))
+		return
+	}
 	d.lock()
 	p := d.p
 	p.Maint = true
@@ -933,6 +965,12 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		in.Persist.Role = ha.Fenced // Zustand auf der Platte ungewiss: nicht aktiv
 	}
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
+	if swapCommand(in.Command) && d.pendingDemotes.Load() > 0 {
+		// R28: Kein neuer Tausch, solange eine Abgabe läuft oder wartet (auch die
+		// Wiederholung des Updates); die Marke des alten Versuchs bliebe sonst übrig.
+		in.Command = ha.CmdNone
+		d.event("info", "Rollentausch zurückgestellt: die vorige Abgabe läuft noch")
+	}
 	d.replInputLocked(ctx, &in, s)
 	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
 	termBefore := d.p.Term                 // Update im Verbund: Übernahme erkennen
@@ -962,9 +1000,10 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	d.hooksChangedLocked(before, out.Persist.Role, booting)
 	// Während der eigenen Übergabe (Rolle schon passiv, Partner noch nicht
 	// übernommen) gleicht der Arbeiter weiter ab: der letzte Abgleich von demote
-	// bräuchte sonst eine aktive Rolle und bräche sofort ab.
+	// bräuchte sonst eine aktive Rolle und bräche sofort ab. Nicht bei abandon:
+	// dort wird der eigene Stand aufgegeben, es wird nichts mehr übertragen.
 	mirrorRole := out.Persist.Role
-	if mirrorRole == ha.Passive && out.HandoverPending != 0 {
+	if mirrorRole == ha.Passive && out.HandoverPending != 0 && out.SwapKind != ha.ActAbandon {
 		mirrorRole = ha.Active
 	}
 	d.mirrorTickLocked(ctx, before, mirrorRole, s, views)

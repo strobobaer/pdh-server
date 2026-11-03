@@ -2,17 +2,45 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"pdh/internal/ha"
 )
 
-// blockRsync: rsync hängt, bis der Lauf abgebrochen wird – der Erstabgleich bleibt offen.
-func blockRsync(m *mdt) {
+// blockRsync: legt eine Quelle mit Datei an (sonst läuft nie ein rsync) und lässt rsync
+// hängen, bis der Lauf abgebrochen wird – der Erstabgleich bleibt offen. Der Kanal
+// meldet jeden rsync-Start.
+func blockRsync(t *testing.T, m *mdt) chan struct{} {
+	t.Helper()
+	up := filepath.Join(m.dir, "repo", "uploads")
+	if err := os.MkdirAll(up, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(up, "x"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{}, 64)
 	m.rs.mu.Lock()
-	m.rs.fn = func(ctx context.Context, _ []string) error { <-ctx.Done(); return ctx.Err() }
+	m.rs.fn = func(ctx context.Context, _ []string) error {
+		started <- struct{}{}
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	m.rs.mu.Unlock()
+	return started
+}
+
+// awaitRsync wartet auf den Start eines rsync.
+func awaitRsync(t *testing.T, started chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rsync nicht gestartet")
+	}
 }
 
 const firstSyncMsg = "Erstabgleich der Dateien läuft – Rollentausch erst danach möglich"
@@ -20,9 +48,10 @@ const firstSyncMsg = "Erstabgleich der Dateien läuft – Rollentausch erst dana
 // Im Erstabgleich ist der Handtausch gesperrt; Übernahme erzwingen nie.
 func TestSwapRefusedDuringFirstSync(t *testing.T) {
 	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
-	blockRsync(m)
+	started := blockRsync(t, m)
 	m.tick()
 	m.ready()
+	awaitRsync(t, started)
 	if err := m.d.command("swap"); err == nil || err.Error() != firstSyncMsg {
 		t.Fatalf("swap im Erstabgleich: %v", err)
 	}
@@ -35,7 +64,7 @@ func TestSwapRefusedDuringFirstSync(t *testing.T) {
 
 	// Übernahme erzwingen am nicht aktiven Server bleibt als Notweg offen.
 	p := newMDT(t, ha.Passive, true, message{Role: "passiv"})
-	blockRsync(p)
+	blockRsync(t, p)
 	p.tick()
 	p.ready()
 	if err := p.d.command("force_takeover"); err != nil {
@@ -63,9 +92,10 @@ func TestSwapAllowedAfterFirstSyncOrMirrorOff(t *testing.T) {
 // „Alles grün“ bekommt die Spiegelung aus dem Zwischengespeicherten.
 func TestReadyObsMirror(t *testing.T) {
 	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
-	blockRsync(m)
+	started := blockRsync(t, m)
 	m.tick()
 	m.ready()
+	awaitRsync(t, started)
 	obs := func(d *daemon) ha.ReadyObs {
 		d.lock()
 		defer d.unlock()

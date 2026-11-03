@@ -26,6 +26,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 		o.VotedFor = m.VotedFor
 		o.PG, o.Sync, o.Stale, o.LSN, o.LagBytes, o.Timeline = m.PG, m.Sync, m.Stale, m.LSN, m.Lag, m.TL
 		o.SeesSelf = slices.Contains(m.Sees, selfID)
+		o.Giving = m.Giving
 	}
 	return o
 }
@@ -41,6 +42,7 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
 		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
+		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl
@@ -340,7 +342,8 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		m.Tun = d.tunnel.Sum()
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 		m.UpJob = !upEnded(d.up.job)
-		d.mirrorHBLocked(&m) // Zwischenspeicher, kein Dateizugriff
+		m.Giving = d.p.Role == ha.Passive && d.carry.HandoverPending != 0 // eigener Rollentausch: Abgabe läuft
+		d.mirrorHBLocked(&m)                                              // Zwischenspeicher, kein Dateizugriff
 	}
 	return m
 }
