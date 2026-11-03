@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -121,14 +122,14 @@ func TestSwapRetryAfterFailedDemote(t *testing.T) {
 // C: Nach gelungenem demote, aber gescheiterter Übernahme geht beim neuen Tausch
 // die Übergabe raus, bevor das neue demote fertig ist.
 type gateActor struct {
-	n       int
+	n       atomic.Int32
 	release chan struct{}
 }
 
 func (g *gateActor) Do(_ context.Context, a ha.Action) error {
 	if a.Kind == ha.ActDemoteFreeze {
-		g.n++
-		if g.n >= 2 {
+		g.n.Add(1)
+		if g.n.Load() >= 2 {
 			<-g.release
 		}
 	}
@@ -166,14 +167,14 @@ func TestSwapStaleDemoteDone(t *testing.T) {
 		}
 	}
 	if s := d.statusNow(); s.Self.Role != ha.Active || s.Self.Term != 1 {
-		t.Fatalf("nicht zurück nach aktiv: %s %v n=%d carry=%+v", s.Self.Role, eventTexts(d), g.n, d.carry)
+		t.Fatalf("nicht zurück nach aktiv: %s %v", s.Self.Role, eventTexts(d))
 	}
 	before := len(fn.messages("handover"))
 	swap()
 	d.tick(ctx)
 	time.Sleep(100 * time.Millisecond)
 	after := len(fn.messages("handover"))
-	t.Logf("demote-Aufrufe=%d, Übergaben vorher=%d nachher=%d, Rolle=%s", g.n, before, after, d.statusNow().Self.Role)
+	t.Logf("demote-Aufrufe=%d, Übergaben vorher=%d nachher=%d, Rolle=%s", g.n.Load(), before, after, d.statusNow().Self.Role)
 	if after > before {
 		t.Errorf("Übergabe gesendet, während das neue demote noch blockiert")
 	}
