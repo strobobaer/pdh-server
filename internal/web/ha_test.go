@@ -361,9 +361,11 @@ func TestHASettingsInvalid(t *testing.T) {
 		Settings       map[string]int `json:"settings"`
 		GatewayTargets []string       `json:"gateway_targets"`
 	}
-	_ = json.Unmarshal([]byte(f.bodies[0]), &body)
-	if f.calls[0] != "PUT /v1/settings" || body.Settings["fence_s"] != 10 || body.Settings["takeover_trio_s"] != 30 || len(body.GatewayTargets) != 2 {
-		t.Fatalf("gesendet: %v %s", f.calls, f.bodies[0])
+	// erst die aktuellen Einstellungen lesen (Datei-Spiegelung behalten), dann speichern
+	last := len(f.calls) - 1
+	_ = json.Unmarshal([]byte(f.bodies[last]), &body)
+	if f.calls[0] != "GET /v1/status" || f.calls[last] != "PUT /v1/settings" || body.Settings["fence_s"] != 10 || body.Settings["takeover_trio_s"] != 30 || len(body.GatewayTargets) != 2 {
+		t.Fatalf("gesendet: %v %s", f.calls, f.bodies[last])
 	}
 }
 

@@ -287,6 +287,7 @@ func (h *Handler) ServerConfigPage(w http.ResponseWriter, r *http.Request) {
 		d.DR.HA.NoWindowPerm, d.DR.Single.NoPerm = noWin, noWin
 		u := getUser(r)
 		d.DR.HA.CanConfirmUpdate, d.DR.HA.CanAbortUpdate = h.maintMayAct(u)
+		d.DR.HA.MirrorCan, d.DR.HA.MirrorAdmin = h.maintMayWindow(r, permFileMirror), h.maintMayWindow(r, permFileMirrorAdmin)
 	}
 	h.fillEnvTakeover(r.Context(), &d)
 	d.NCTheme = h.nextcloudTheme()

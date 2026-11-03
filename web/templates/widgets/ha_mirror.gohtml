@@ -1,0 +1,83 @@
+{{/* Server-Einstellungen → Ausfallschutz → Datei-Spiegelung (internal/web/ha_mirror.go). Daten: haView (Methode MirrorView). Stil: vp-* (in dr-admin geladen). Texte aus der Anwendung (Fehler, fehlende Dateien) stehen nur als Text, nie in Adresse oder Skript. */}}
+{{define "ha-mirror"}}{{with .MirrorView}}{{$m := .M}}
+<div class="card-title" style="margin-top:14px" id="ha-mirror"><span><i class="ti ti-copy"></i> {{t "Datei-Spiegelung"}}</span>
+  {{if not $m.On}}<span class="vp-state off"><span class="vp-dot"></span> {{t "aus"}}</span>
+  {{else if $m.Running}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "Abgleich läuft"}}</span>
+  {{else if not $m.FirstDone}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "Erstabgleich"}}</span>
+  {{else if $m.Active}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "bereit"}}</span>
+  {{else}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "empfängt"}}</span>{{end}}</div>
+
+{{if not $m.On}}
+<p class="vp-hint">{{t "Die Spiegelung ist aus. Eingeschaltet hält das PDH die hochgeladenen Dateien auf dem zweiten Server aktuell – nach einer Übernahme fehlen dann keine Anhänge."}}</p>
+{{else}}
+<p class="vp-hint">{{if $m.Active}}{{t "Dieser Server gleicht seine Dateien auf den zweiten Server ab."}}{{else}}{{t "Dieser Server empfängt die Dateien vom aktiven Server."}}{{end}}</p>
+{{if and (not $m.FirstDone) $m.Active}}
+<div class="vp-msg" role="status"><i class="ti ti-loader"></i> <b>{{t "Erstabgleich läuft"}}</b> – {{$m.FirstPercent}} %
+  <progress value="{{$m.FirstPercent}}" max="100" style="width:100%;accent-color:var(--accent)">{{$m.FirstPercent}} %</progress>
+  <div class="vp-meta">{{t "Bis er fertig ist, sind noch nicht alle Dateien auf dem zweiten Server."}}</div></div>
+{{else if not $m.FirstDone}}
+<div class="vp-msg"><i class="ti ti-loader"></i> {{t "Der Erstabgleich ist noch nicht fertig."}}</div>
+{{end}}
+<p class="vp-hint"><i class="ti ti-history"></i> {{t "Letzter Abgleich"}}: <b>{{.LastText}}</b>{{if and $m.Active (gt $m.LastRunSec 0.0)}} · {{t "Dauer"}} {{.RunText}}{{end}}</p>
+{{if .HasSources}}
+<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;background:var(--bg2)">
+  {{range $m.Sources}}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:4px">
+    <code class="vp-key">{{.Label}}</code><span class="vp-meta">{{if .Skipped}}{{t "übersprungen"}}{{else}}{{.AgoText}}{{end}}</span>
+    {{if .Unproven}}<span class="vp-meta" style="font-weight:600;color:var(--text)" title="{{t "Läuft ohne Löschen, bis der Partner die Quelle belegt hat"}}">{{t "ohne Löschen"}}</span>{{end}}
+    {{if .Err}}<span class="vp-meta" style="color:var(--red)">{{.Err}}</span>{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{if $m.On}}
+{{if $m.Err}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{t "Der letzte Abgleich ist fehlgeschlagen"}}: {{$m.Err}}</div>{{end}}
+{{if $m.WatchErr}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{t "Die Sofort-Übertragung ist gestört"}}: {{$m.WatchErr}}</div>{{end}}
+{{if $m.Slow}}<div class="vp-msg err"><i class="ti ti-hourglass"></i> {{t "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen."}}</div>{{end}}
+{{if $m.WatchLimited}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{t "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:"}}<span class="vp-cmd"><code class="vp-key">sudo sysctl -w fs.inotify.max_user_watches=524288</code></span></div>{{end}}
+{{if not $m.EnvSame}}<div class="vp-msg err"><i class="ti ti-file-diff"></i> {{t "Die Einstellungsdatei .env ist auf den beiden Servern verschieden. Sie wird nicht gespiegelt – nach einer Übernahme gelten dort andere Einstellungen."}}</div>{{end}}
+{{if not $m.NCVerSame}}<div class="vp-msg err"><i class="ti ti-versions"></i> {{t "Nextcloud oder PHP haben auf den beiden Servern verschiedene Fassungen. Beide gleich halten, sonst startet Nextcloud nach einer Übernahme nicht."}}</div>{{end}}
+{{if .CertBad}}<div class="vp-msg err"><i class="ti ti-certificate"></i> {{t "Das Zertifikat von Nextcloud enthält die mitwandernde Adresse nicht. Nach einer Übernahme meldet der Browser einen Zertifikatsfehler."}}</div>{{end}}
+{{if .BaseWarn}}<div class="vp-msg err"><i class="ti ti-link"></i> {{t "PDH_NEXTCLOUD_BASEURL zeigt auf die feste Adresse %s eines Servers. Besser einen Namen oder die mitwandernde Adresse eintragen, sonst findet das PDH Nextcloud nach einer Übernahme nicht." .BaseWarn}}</div>{{end}}
+{{if .FinalHigh}}<div class="vp-msg err"><i class="ti ti-clock-exclamation"></i> {{t "Eine Frist über 150 s kann ein Update mit Rollentausch abbrechen lassen"}}</div>{{end}}
+{{if $m.Unproven}}<div class="vp-msg err"><i class="ti ti-shield-question"></i> {{t "Ohne Löschen übertragen, weil der Erstabgleich beim Wechsel fehlte"}}: {{range $i, $l := $m.Unproven}}{{if $i}}, {{end}}{{$l}}{{end}}</div>{{end}}
+{{if $m.NCMissingTotal}}
+<div class="vp-msg err"><i class="ti ti-file-off"></i> <b>{{t "Nach der Übernahme fehlen %d Nextcloud-Dateien" $m.NCMissingTotal}}</b> ({{t "geprüft: %d neueste Einträge" $m.NCChecked}})
+  <ul style="margin:4px 0 0;padding-left:18px">{{range .MissingShown}}<li class="vp-key">{{.}}</li>{{end}}</ul>
+  {{if .MissingMore}}<div class="vp-meta">{{t "… und %d weitere" .MissingMore}}</div>{{end}}</div>
+{{else if $m.NCMissing}}
+<div class="vp-msg err"><i class="ti ti-file-off"></i> <b>{{t "Nach der Übernahme fehlen Nextcloud-Dateien"}}</b>
+  <ul style="margin:4px 0 0;padding-left:18px">{{range .MissingShown}}<li class="vp-key">{{.}}</li>{{end}}</ul></div>
+{{end}}
+{{if $m.Orphans}}<div class="vp-msg"><i class="ti ti-arrow-back-up"></i> {{t "%d Rückkehrer-Dateien: Stände eines früheren aktiven Servers, die nicht übertragen waren, liegen im Papierkorb. Zurückholen ist Handarbeit." $m.Orphans}}</div>{{end}}
+
+<p class="vp-hint"><i class="ti ti-trash"></i> {{t "Papierkorb"}}: <b>{{.TrashText}}</b> – {{t "Gelöschtes bleibt dort %d Tage." .Form.TrashDays}}</p>
+{{end}}
+
+{{if or .CanRun .CanTrash}}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+  {{if .CanRun}}<form method="post" action="/admin/server-config/ha/mirror-run"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-refresh"></i> {{t "Jetzt abgleichen"}}</button></form>{{end}}
+  {{if .CanTrash}}<form method="post" action="/admin/server-config/ha/mirror-trash-empty" onsubmit="return confirm('{{t "Papierkorb mit %s endgültig leeren? Das lässt sich nicht rückgängig machen." .TrashText}}')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> {{t "Papierkorb leeren"}}</button></form>{{end}}
+</div>
+{{end}}
+
+{{if .Edit}}{{$f := .Form}}
+<form method="post" action="/admin/server-config/ha/mirror" class="vp-form" style="margin-top:10px">
+  <div><label class="form-label"><input type="hidden" name="mirror_on" value="0"><input type="checkbox" name="mirror_on" value="1"{{if $f.On}} checked{{end}}> {{t "Dateien auf den zweiten Server spiegeln"}}</label></div>
+  <div><label class="form-label"><input type="hidden" name="mirror_nextcloud" value="0"><input type="checkbox" name="mirror_nextcloud" value="1"{{if $f.Nextcloud}} checked{{end}}> {{t "Nextcloud mitnehmen"}}</label></div>
+  <div><label class="form-label">{{t "Abstand des Abgleichs (s)"}}</label><input class="form-input" type="number" name="mirror_every_s" min="30" max="3600" value="{{$f.EveryS}}"></div>
+  <div><label class="form-label">{{t "Papierkorb aufbewahren (Tage)"}}</label><input class="form-input" type="number" name="mirror_trash_days" min="1" max="365" value="{{$f.TrashDays}}"></div>
+  <div><label class="form-label">{{t "Alarm nach (min)"}}</label><input class="form-input" type="number" name="mirror_alarm_min" min="1" max="1440" value="{{$f.AlarmMin}}"></div>
+  <div><label class="form-label">{{t "Frist für den letzten Abgleich (s)"}}</label><input class="form-input" type="number" name="mirror_final_s" min="10" max="600" value="{{$f.FinalS}}"></div>
+  <div><label class="form-label">{{t "Bandbreite (KB/s, 0 = unbegrenzt)"}}</label><input class="form-input" type="number" name="mirror_bwlimit_kb" min="0" value="{{$f.BWLimitKB}}"></div>
+  <div><label class="form-label">{{t "Nextcloud-Datenordner"}}</label><input class="form-input" name="nc_data_dir" value="{{$f.NCDataDir}}" placeholder="/srv/nextcloud/data" autocomplete="off"></div>
+  <div><label class="form-label">{{t "Nextcloud-Programmordner"}}</label><input class="form-input" name="nc_app_dir" value="{{$f.NCAppDir}}" placeholder="/var/www/nextcloud" autocomplete="off"></div>
+  <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> {{t "Speichern"}}</button></div>
+</form>
+<p class="vp-hint">{{t "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen."}}</p>
+{{else}}
+<p class="vp-hint">{{t "Die Spiegelung ändern darf nur, wer das Recht „Datei-Spiegelung einstellen“ hat – am aktiven oder am ersten Server."}}</p>
+{{end}}
+{{end}}{{end}}
