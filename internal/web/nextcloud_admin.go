@@ -163,6 +163,10 @@ func (h *Handler) StartNextcloudAdminSync(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				if h.maintSkip("nextcloud-dienstkonto") {
+					timer.Reset(time.Minute) // nach der Sperre bald nachholen
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 				h.syncNCServiceAccount(runCtx)
 				cancel()

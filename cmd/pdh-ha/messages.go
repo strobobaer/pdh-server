@@ -77,6 +77,21 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 		if kind == "node" {
 			d.renewRespLocked(&pl, m)
 		}
+	case "update_job":
+		// Update im Verbund: Auftrag des dirigierenden Partners spiegeln
+		if !witness && kind == "node" && m.Job != nil {
+			d.mirrorInLocked(&pl, *m.Job)
+		}
+	case "update_node":
+		if !witness && kind == "node" {
+			d.updateNodeLocked(ctx, &pl, in.From, m)
+		}
+	case "update_ack":
+		if !witness && kind == "node" && m.Ack != nil {
+			a := *m.Ack
+			a.Node = in.From // Absender laut Zertifikat, nie laut Nachricht
+			d.queueAckLocked(a)
+		}
 	case "removed":
 		// nur der CA-Knoten darf entfernen (laut eigener Knotenliste)
 		if kind == "node" && in.From == d.cl.CAHolder && !d.removed {

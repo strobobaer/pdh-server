@@ -114,6 +114,7 @@ func main() {
 	}
 	mirrorOn := mode == mirror.ReadOnly
 	restricted := false
+	mirrorReason := ""
 	if mirrorOn {
 		pctx, pcancel := context.WithTimeout(context.Background(), 30*time.Second)
 		pending, initialized, perr := database.PendingMigrations(pctx, db.Pool, "migrations")
@@ -123,6 +124,17 @@ func main() {
 			restricted = true // im Zweifel eingeschränkt
 		} else {
 			restricted = schemaBehind(pending, initialized)
+		}
+		// Die Datenbank ist neuer als das Programm (Update lief auf dem aktiven
+		// Server, dieser Spiegel hat noch das alte Programm): ebenfalls eingeschränkt.
+		vctx, vcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		applied, known, verr := database.MigrationVersions(vctx, db.Pool, "migrations")
+		vcancel()
+		if verr != nil {
+			log.Warn().Err(verr).Msg("spiegel: migrationsnummern nicht lesbar – prüfung „programm zu alt“ übersprungen")
+		} else if schemaAhead(applied, known) {
+			restricted = true
+			mirrorReason = "Programm zu alt für diese Datenbank"
 		}
 		log.Warn().Bool("schema_veraltet", restricted).Msg("spiegelmodus: PDH startet nur lesend")
 	}
@@ -139,7 +151,10 @@ func main() {
 		// Neue Programmversion bzw. ausstehende Datenbank-Aenderungen: vorher
 		// automatisch eine Vollsicherung des bisherigen Stands anlegen.
 		backupCtx, backupCancel := context.WithTimeout(context.Background(), 2*time.Hour)
-		if err := web.BackupBeforeUpdate(backupCtx, db.Pool, buildCommit, "migrations"); err != nil {
+		if skipUpdateBackup(func(key string) string { return startupAppSetting(db, key) }, buildCommit) {
+			// Der Update-Agent hat vor dem Einspielen schon eine Rückfallkopie angelegt.
+			log.Info().Str("commit", buildCommit).Msg("Sicherung vor Update ausgelassen – Rückfallkopie vorhanden")
+		} else if err := web.BackupBeforeUpdate(backupCtx, db.Pool, buildCommit, "migrations"); err != nil {
 			if os.Getenv("PDH_SKIP_UPDATE_BACKUP") == "1" {
 				log.Error().Err(err).Msg("vollsicherung vor dem update fehlgeschlagen – PDH_SKIP_UPDATE_BACKUP=1, update wird trotzdem angewendet")
 			} else {
@@ -300,8 +315,8 @@ func main() {
 
 	// Web Handler
 	webHandler := web.NewHandler(db.Pool, tmpl, userSvc, shiftSvc, storageSvc, infraSvc, ticketSvc, faultSvc, maintSvc, invSvc, itSvc, timeSvc, checkSvc, taskSvc, projectSvc, rbacSvc, cfg.Auth.JWTSecret)
-	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted}) // vor Routes(), danach unveränderlich
-	webHandler.RegisterMaintenanceProtocol() // Wartungsprotokoll (PDF) an der Anlage
+	webHandler.SetMirror(web.MirrorInfo{On: mirrorOn, Restricted: restricted, Reason: mirrorReason}) // vor Routes(), danach unveränderlich
+	webHandler.RegisterMaintenanceProtocol()                                                         // Wartungsprotokoll (PDF) an der Anlage
 	webHandler.ConfigureUpdates(cfg.Update.AgentURL, cfg.Update.AgentToken, buildCommit)
 	webHandler.ConfigureMicrosoft(web.MicrosoftOAuthConfig{
 		ClientID:          cfg.Microsoft.ClientID,
@@ -314,6 +329,10 @@ func main() {
 	})
 	webHandler.ConfigureMail(cfg.Mail)
 	webHandler.LoadIconOverrides(context.Background())
+	// Wartungssperre: Sitzungs-Epoche laden und Update-Auftrag abfragen, bevor
+	// Hintergrunddienste starten und Anfragen angenommen werden – läuft eine
+	// Sperre, startet das PDH gesperrt; danach hält ein Takt (2 s) den Zustand aktuell.
+	webHandler.LoadMaintLock(context.Background())
 	if !mirrorOn { // Spiegel: keine Hintergrunddienste, die schreiben oder nach außen wirken
 		webHandler.StartUpdateChecker(context.Background())
 		webHandler.StartEnabledMqttBrokers(context.Background())
@@ -322,12 +341,12 @@ func main() {
 		webHandler.StartPurchaseReportSchedule(context.Background())
 		webHandler.StartBackupSystem(context.Background())
 		webHandler.StartChangeNotifier(context.Background())
-		maintSvc.StartScheduler(context.Background()) // je Wartungsplan genau ein offener Auftrag (stuendlich)
+		maintSvc.StartScheduler(context.Background(), webHandler.MaintLocked) // je Wartungsplan genau ein offener Auftrag (stuendlich)
 		webHandler.StartTrainingScheduler(context.Background())
 		webHandler.StartObligationReminders(context.Background())
-		webHandler.StartNextcloudAdminSync(context.Background()) // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
-		webHandler.StartPushNotifier(context.Background()) // Push aufs Handy bei neuen Störungen/Tickets
-		faultSvc.StartPendingTicketWatcher(context.Background()) // Ticket aus Störung erst nach Zuweisung
+		webHandler.StartNextcloudAdminSync(context.Background())                         // Dienstkonto pdhNCadmin: PDH-Passwort hat Vorrang
+		webHandler.StartPushNotifier(context.Background())                               // Push aufs Handy bei neuen Störungen/Tickets
+		faultSvc.StartPendingTicketWatcher(context.Background(), webHandler.MaintLocked) // Ticket aus Störung erst nach Zuweisung
 		webHandler.StartKVPScheduler(context.Background())
 		webHandler.StartDriveMonitor(context.Background())
 		webHandler.StartEnabledImportPolls(context.Background())
@@ -378,6 +397,8 @@ func main() {
 	r := chi.NewRouter()
 	// RequestID vor dem Protokoll, damit jede Zeile ihre Request-ID traegt
 	r.Use(chimw.RequestID, webHandler.RequestLogger, chimw.Recoverer, middleware.CORS)
+	// Wartungssperre während eines Updates: vor allen Routen und Schnittstellen (maint_lock.go)
+	r.Use(webHandler.MaintLockMiddleware)
 	// Dauerverbindungen (EventSource) enden beim Beenden sofort (streams.go)
 	r.Use(webHandler.StreamsMiddleware)
 	// Spiegelmodus: Schreibsperre fuer Web und API (vor allem, was schreiben koennte)
@@ -395,11 +416,14 @@ func main() {
 			http.Error(w, "db error", 503)
 			return
 		}
-		response.JSON(w, http.StatusOK, map[string]string{
+		response.JSON(w, http.StatusOK, map[string]any{
 			"status":  "ok",
 			"service": "pdh",
 			"version": pdh.Version(),
 			"mode":    mode.String(),
+			"commit":  buildCommit,
+			// false: Spiegel mit offenen Migrationen bzw. Programm zu alt für die Datenbank
+			"migrations_ok": !restricted,
 		})
 	})
 
@@ -563,4 +587,15 @@ func loadServerSettings(db *database.DB, envPath string) *config.Config {
 	}
 	logger.Init(cfg.Server.Env)
 	return cfg
+}
+
+// startupAppSetting liest einen Wert aus app_settings, bevor der Handler existiert ("" = fehlt).
+func startupAppSetting(db *database.DB, key string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var v string
+	if err := db.Pool.QueryRow(ctx, `SELECT value FROM app_settings WHERE key=$1`, key).Scan(&v); err != nil {
+		return ""
+	}
+	return v
 }

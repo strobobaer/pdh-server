@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -139,7 +140,7 @@ func (w *accessWorker) step(ctx context.Context) {
 	want, wantSet, before := w.want, w.wantSet, w.have
 	w.mu.Unlock()
 	addr := w.vip.vip.Addr()
-	has, err := w.vip.Has(ctx)
+	has, old, err := w.vip.state(ctx)
 	unknown := err != nil
 	if unknown {
 		if ctx.Err() != nil {
@@ -155,6 +156,9 @@ func (w *accessWorker) step(ctx context.Context) {
 		w.setHave(has)
 	}
 	if !wantSet || has == want {
+		if wantSet && want && old {
+			w.migrate(ctx, addr)
+		}
 		return
 	}
 	if want {
@@ -194,6 +198,17 @@ func (w *accessWorker) step(ctx context.Context) {
 		return // vorsorglich abgegeben, war nach letztem Wissen nicht hier
 	}
 	w.changedTo(false, fmt.Sprintf("Adresse %s abgegeben", addr))
+}
+
+// migrate: Bestand aus der Zeit vor /32 im Betrieb umstellen (siehe cardCIDR).
+func (w *accessWorker) migrate(ctx context.Context, addr netip.Addr) {
+	if err := w.vip.Migrate(ctx); err != nil {
+		if ctx.Err() == nil {
+			w.alarm(fmt.Sprintf("Adresse %s nicht umgestellt: %v", addr, err))
+		}
+		return
+	}
+	w.ev.add(ha.Event{Kind: "info", Text: fmt.Sprintf("Adresse %s auf /32 umgestellt", addr)})
 }
 
 // changedTo: Wechsel gelungen – Ist merken, melden. Die Entprellung bleibt

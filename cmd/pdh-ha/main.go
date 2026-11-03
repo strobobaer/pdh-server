@@ -32,6 +32,12 @@ const usage = `Aufruf: pdh-ha <Befehl>
   status [--json]                     Zustand anzeigen
   maintenance on|off                  Wartung (Automatik aus/an)
   settings '<json>'                   Zeiten setzen ({"settings":{…},"gateway_targets":[…]})
+  update status                       Update-Auftrag und fehlerhafte Versionen anzeigen
+  update start <commit> [--kind rolling|sequential] [--version V]
+                                      Update im Verbund starten (nach der Prüfung „alles grün“)
+  update confirm                      Nachfrage des Wartungsfensters bestätigen
+  update abort                        offenen Update-Auftrag abbrechen und zurücksetzen
+  window '<json>'                     Wartungsfenster setzen (siehe status --json, Feld window)
   access [--vip ip/präfix] [--vip-on|--vip-off] [--hooks-on|--hooks-off]
                                       Zugangsweg: mitwandernde Adresse und Skripte
                                       (--vip-on erst nach erfolgreichem vip test)
@@ -186,6 +192,17 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		if err := apiDo(sock, http.MethodPut, "/v1/settings", args[1], nil); err != nil {
+			return fail(err)
+		}
+		return 0
+	case "update":
+		return cmdUpdate(args[1:], sock, stdout, stderr)
+	case "window":
+		if len(args) != 2 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		if err := apiDo(sock, http.MethodPut, "/v1/window", args[1], nil); err != nil {
 			return fail(err)
 		}
 		return 0
@@ -457,7 +474,7 @@ func printStatus(w io.Writer, st apiStatus) {
 			fmt.Fprintf(w, "  Netzwerkkarte: %s\n", a.IfaceErr)
 		}
 	}
-	if h := st.Access.Hooks; len(h.Names) > 0 || st.Access.HooksOn {
+	if h := st.Access.Hooks; st.Self.Kind != "witness" && (len(h.Names) > 0 || st.Access.HooksOn) {
 		fmt.Fprintf(w, "Skripte: %d, %s, letzter Lauf %s\n", len(h.Names), sameText(h.Same), hookRunText(h.Last))
 	}
 	if t := st.Access.Tunnel; t.Installed || t.Sum != "" {

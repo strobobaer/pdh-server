@@ -271,3 +271,30 @@ func PendingMigrations(ctx context.Context, pool *pgxpool.Pool, dir string) (pen
 	}
 	return pending, true, nil
 }
+
+// MigrationVersions liefert die in der Datenbank angewendeten und die im
+// Programm bekannten Migrationsnummern (für die Prüfung „Programm zu alt“).
+func MigrationVersions(ctx context.Context, pool *pgxpool.Pool, dir string) (applied, known []int, err error) {
+	migrations, err := loadMigrations(dir)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, m := range migrations {
+		known = append(known, m.Version)
+	}
+	var exists bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('public.schema_migrations') IS NOT NULL`).Scan(&exists); err != nil {
+		return nil, nil, err
+	}
+	if !exists {
+		return nil, known, nil
+	}
+	set, err := appliedMigrations(ctx, pool)
+	if err != nil {
+		return nil, nil, err
+	}
+	for v := range set {
+		applied = append(applied, v)
+	}
+	return applied, known, nil
+}

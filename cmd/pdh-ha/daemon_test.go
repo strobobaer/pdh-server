@@ -146,10 +146,31 @@ func loadFakeDaemon(t *testing.T, st store, fn *fakeNet) *daemon {
 	d.pingFn = func(context.Context, string) bool { return true }
 	d.gwFn = func() (string, error) { return "", errors.New("kein Gateway") }
 	d.ufwFn = func(context.Context, [][]string) error { return nil }
+	d.up.agent = &fakeAgent{}
+	d.up.healthFn = func(context.Context) (pdhHealth, error) { return pdhHealth{}, errors.New("kein pdh (Test)") }
 	if err := d.load(); err != nil {
 		t.Fatal(err)
 	}
+	// läuft vor dem Löschen der Temp-Ordner (t.Cleanup: zuletzt angemeldet,
+	// zuerst ausgeführt): Hintergrundarbeit des Takts darf nicht mehr in sie
+	// schreiben, sonst scheitert das Aufräumen (unter -race sichtbar)
+	t.Cleanup(func() { waitBackground(d, 2*time.Second) })
 	return d
+}
+
+// waitBackground wartet höchstens max, bis Aktionen, Update-Ops und die
+// Abfrage von /health ausgelaufen sind.
+func waitBackground(d *daemon, max time.Duration) {
+	end := time.Now().Add(max)
+	for time.Now().Before(end) {
+		d.mu.Lock()
+		ops := len(d.up.running)
+		d.mu.Unlock()
+		if ops == 0 && d.actionsIdle() && !d.up.healthBusy.Load() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func eventTexts(d *daemon) []string {
@@ -257,7 +278,7 @@ func TestObserveActorOnly(t *testing.T) {
 	ev := testEvents(t)
 	a := observeActor{ev: ev}
 	kinds := []ha.ActionKind{ha.ActPromote, ha.ActDemote, ha.ActFence, ha.ActUnfence, ha.ActVIPTake,
-		ha.ActVIPRelease, ha.ActRequestVote, ha.ActHandover, ha.ActRejoin}
+		ha.ActVIPRelease, ha.ActRequestVote, ha.ActHandover, ha.ActRejoin, ha.ActDemoteFreeze, ha.ActAbandon}
 	for _, k := range kinds {
 		if err := a.Do(context.Background(), ha.Action{Kind: k, Term: 4}); err != nil {
 			t.Fatal(err)
@@ -738,5 +759,65 @@ func TestDaemonSwapHandoverAfterDemote(t *testing.T) {
 	}
 	if demote < 0 || handover < 0 || handover < demote {
 		t.Fatalf("Reihenfolge demote/handover: %v", ol.list())
+	}
+}
+
+// Nach Demote, Einfrieren und Aufgeben meldet der Daemon Erfolg bzw. Scheitern
+// (demoteDone/demoteFailed), sonst wartet die Übergabe ewig.
+func TestActionWorkerDemoteKinds(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze, ha.ActAbandon} {
+		for _, fail := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/fail=%v", kind, fail), func(t *testing.T) {
+				d := fakeDaemon(t, nodeConfig{ID: "a", Kind: "node"}, duoCluster(), ha.Persisted{Role: ha.Active, Term: 1}, newFakeNet())
+				d.act = &recActor{fail: func(ha.Action) error {
+					if fail {
+						return errors.New("kaputt")
+					}
+					return nil
+				}}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				go d.actionWorker(ctx)
+				d.pendingActs.Add(1)
+				d.actQ <- queuedAction{a: ha.Action{Kind: kind, Term: 7}, batch: 1}
+				waitFor(t, 2*time.Second, "Aktion fertig", d.actionsIdle)
+				d.lock()
+				done, failed := d.demoteDone, d.demoteFailed
+				d.unlock()
+				if fail && (failed != 7 || done != 0) || !fail && (done != 7 || failed != 0) {
+					t.Fatalf("done=%d failed=%d", done, failed)
+				}
+			})
+		}
+	}
+}
+
+// Testlabor: PDH_HA_COMMIT_FILE ersetzt den Stand je Takt; fehlende oder
+// leere Datei lässt ihn stehen.
+func TestLabCommitFile(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "commit")
+	d := &daemon{commit: "abc"}
+	d.labCommitLocked()
+	if d.commit != "abc" {
+		t.Fatalf("ohne Variable: %q", d.commit)
+	}
+	t.Setenv("PDH_HA_COMMIT_FILE", f)
+	d.labCommitLocked()
+	if d.commit != "abc" {
+		t.Fatalf("ohne Datei: %q", d.commit)
+	}
+	if err := os.WriteFile(f, []byte("lab1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.labCommitLocked()
+	if d.commit != "lab1" {
+		t.Fatalf("aus Datei: %q", d.commit)
+	}
+	if err := os.WriteFile(f, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d.labCommitLocked()
+	if d.commit != "lab1" {
+		t.Fatalf("leere Datei: %q", d.commit)
 	}
 }

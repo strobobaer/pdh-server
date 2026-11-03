@@ -10,6 +10,38 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.8] – 2026-10-30
+
+### Neu
+- Update im Verbund: „Update installieren“ bringt beide Server und den Zeugen auf denselben Stand – wahlweise ohne Unterbrechung (mit Rollentausch) oder alle nacheinander; bei jedem Fehler setzt das System auf den bisherigen Stand zurück, auch nach Datenbank-Änderungen. Bei „alle nacheinander“ wird der Spiegel nur mit bestätigtem Gleichstand eingefroren, sonst bricht das Update ohne Änderung ab („Spiegel nicht auf Gleichstand“).
+- Während eines Updates lehnt `pdh-ha` Rollentausch und Wartung von Hand ab („zuerst `pdh-ha update abort`“); nach einem Zurücksetzen macht die Ausfallschutz-Sicherung sofort eine neue Grundsicherung und legt den verworfenen Stand auf dem Laufwerk beiseite.
+- Wartungsfenster im Reiter Ausfallschutz: täglich oder wöchentlich nach der Grundsicherung spielt das System automatisch die neue Version ein; fehlerhafte Versionen werden gemerkt und übersprungen, bis eine neuere kommt oder ein Administrator sie wieder zulässt.
+- Wartungsbildschirm mit Fortschrittsbalken und Restzeit während der Sperre (hell oder dunkel wie das Gerät), vorher ein Band mit Countdown; Administratoren dürfen dort abbrechen und zurücksetzen, solange das Update weder zurückgesetzt wird noch schon freigegeben ist (Notbremse auf der Konsole: `pdh-ha update abort`).
+- Der Zeuge zieht selbst nach, wenn beide Server auf demselben Stand sind (Container-Helfer `updater`, abschaltbar mit `PDH_HA_AUTOUPDATE=0`); der Reiter warnt „Zeuge veraltet“, falls er es nicht schafft.
+- Geplanter Rollentausch im Wartungsfenster (Einstellung „Rollen im Fenster tauschen“).
+- Bei „Automatik aus (Wartung)“ fragt das Wartungsfenster vor dem Update nach; ohne Bestätigung innerhalb von 3 Minuten entfällt das Update.
+- Ein laufendes Update lässt sich vor der Sperre im Wartungs-Band und unter Ausfallschutz abbrechen.
+- `pdh-ha update confirm` bestätigt die Nachfrage auf der Befehlszeile.
+
+### Geändert
+- Update auf dem Einzelserver läuft mit Countdown, Sperre und automatischem Rückweg auf den alten Stand, wenn die Prüfung scheitert; die Sicherung vor dem Update entsteht bei angehaltenem PDH.
+- Ein Spiegel, dessen Datenbank neuer ist als sein Programm, meldet „Programm zu alt für diese Datenbank“ und sperrt sich.
+- Der Befehl zum Nachziehen von Hand (`pdh-ha-join.sh --update`) ist jetzt nur noch der Notweg.
+- „Update installieren“ funktioniert im Verbund auch bei „Automatik aus (Wartung)“.
+
+### Behoben
+- `pdh-ha update status` zeigt ein entfallenes oder abgesagtes Update als „nicht durchgeführt“ und nicht mehr als „abgebrochen (100 %)“, denn dabei wurde nichts geändert.
+- Ein Server verliert den Kontakt zum Verbund nicht mehr, wenn das Netzwerk seine feste Adresse neu setzt: Die mitwandernde Adresse liegt jetzt als `/32` auf der Karte und wird nie Absender. Bestehende Server stellen sich im laufenden Betrieb um.
+- `pdh-ha status` zeigt am Zeugen keine irreführende Zeile „Skripte: 0, anders als beim Partner“ mehr, denn der Zeuge führt keine Skripte aus.
+- Das Band am Spiegel verweist auf den Reiter Ausfallschutz.
+- Der Update-Zweig (`PDH_UPDATE_BRANCH`) gilt nur noch aus der `.env`: Ein in die Datenbank übernommener Wert wird nicht mehr beachtet, sonst prüfte das PDH einen anderen Zweig, als der Update-Agent einspielt.
+- Core-Einstellungen zeigen bei „Version auf GitHub“ und „Branch“ den eingestellten Update-Zweig statt immer `main`.
+
+### Sicherheit
+- Neue Rechte „Wartungsfenster einstellen“ und „Automatische Wartung abbrechen“; Rollen mit den bisher zuständigen Rechten bekommen sie automatisch.
+- Während der Wartung werden alle Benutzer abgemeldet, auch Systembenutzer (Terminals, Leitstand-Anzeigen); nur Inhaber des Abbruch-Rechts bleiben angemeldet.
+- „Automatische Wartung abbrechen“ erlaubt jetzt auch Absagen und Abbrechen vor der Sperre; das Durchführen der Nachfrage braucht das Recht „Rollen & Berechtigungen verwalten“.
+
 ## [0.77.7] – 2026-10-29
 
 ### Behoben

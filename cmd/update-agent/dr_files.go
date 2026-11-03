@@ -210,6 +210,9 @@ func (a *updateAgent) drLoop(ctx context.Context) {
 }
 
 func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
+	// Wartungsfenster zuerst (auch ohne Sicherung): Beginn „vor dem Abgleich“
+	// hält den Dateiabgleich unten an, bis das Fenster beendet ist.
+	a.windowTick(ctx, now)
 	a.dr.mu.Lock()
 	cfg := a.dr.Config
 	a.dr.mu.Unlock()
@@ -220,7 +223,16 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	// zwei Server (pdh-ha): nur der aktive Knoten sichert. Schon erzeugte
 	// WAL-Dateien im Zwischenspeicher gehören zur Geschichte der Datenbank und
 	// gehen trotzdem aufs Laufwerk (z. B. nach dem Abgeben).
-	if !a.drCheckActive(ctx) {
+	active := a.drCheckActive(ctx)
+	tli := uint32(0)
+	if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 || active {
+		tli = a.drTimeline(ctx)
+	}
+	if tli > 0 {
+		// I1: verworfene Zeitlinie (Zurücksetzen im Verbund) nie aufs Laufwerk
+		a.drQuarantineSpool(tli)
+	}
+	if !active {
 		if files, _ := drSpoolFiles(a.hp(drSpoolDir)); len(files) > 0 && drTargetCheck(target) == nil && a.drOwnerCheck(ctx, cfg.Target) == nil {
 			walDir := filepath.Join(target, "wal")
 			_ = os.MkdirAll(walDir, 0o750)
@@ -253,6 +265,10 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 	}
 	walDir := filepath.Join(target, "wal")
 	_ = os.MkdirAll(walDir, 0o750)
+	if tli > 0 && a.drPartnerPassive(ctx) {
+		// I1: verworfene Zeitlinie auf dem Laufwerk beiseitelegen, neue Grundsicherung
+		a.drQuarantineDrive(target, tli, now)
+	}
 	n, last, err := drShipWAL(a.hp(drSpoolDir), walDir)
 	switch {
 	case err != nil && !errors.Is(err, os.ErrNotExist):
@@ -266,26 +282,32 @@ func (a *updateAgent) drTick(ctx context.Context, now time.Time) {
 		a.drOK("wal")
 	}
 	if cfg.Enabled {
-		a.dr.mu.Lock()
-		lastBase, lastTry, lastFiles, baseNeeded := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync, a.dr.BaseNeeded
-		if a.dr.FilesTry.After(lastFiles) {
-			lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
-		}
-		a.dr.mu.Unlock()
-		// Dateien zuerst: die Grundsicherung übernimmt die Quellen des letzten Abgleichs
-		if drFilesDue(lastFiles, cfg.FileSyncMinutes, now) && a.drStartRun("files") == nil {
-			a.dr.mu.Lock()
-			a.dr.FilesTry = now
-			a.dr.mu.Unlock()
-		}
-		if (baseNeeded || drBaseDue(lastBase, cfg.BaseHour, now)) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
-			a.dr.mu.Lock()
-			a.dr.BaseTry = now
-			a.dr.mu.Unlock()
-		}
+		a.drStartDue(cfg, now)
 	}
 	if err := a.drSave(); err != nil {
 		log.Printf("ausfallschutz: state.json: %v", err)
+	}
+}
+
+// drStartDue startet fällige Läufe. Der Dateiabgleich wartet, solange ein
+// Wartungsfenster mit Beginn „vor dem Abgleich“ läuft (window.go).
+func (a *updateAgent) drStartDue(cfg drConfig, now time.Time) {
+	a.dr.mu.Lock()
+	lastBase, lastTry, lastFiles, baseNeeded := a.dr.LastBase, a.dr.BaseTry, a.dr.LastFileSync, a.dr.BaseNeeded
+	if a.dr.FilesTry.After(lastFiles) {
+		lastFiles = a.dr.FilesTry // nach einem Fehler erst im nächsten Intervall erneut
+	}
+	a.dr.mu.Unlock()
+	// Dateien zuerst: die Grundsicherung übernimmt die Quellen des letzten Abgleichs
+	if drFilesDue(lastFiles, cfg.FileSyncMinutes, now) && !a.windowHoldsFiles() && a.drStartRun("files") == nil {
+		a.dr.mu.Lock()
+		a.dr.FilesTry = now
+		a.dr.mu.Unlock()
+	}
+	if (baseNeeded || drBaseDue(lastBase, cfg.BaseHour, now)) && drBaseRetryOK(lastTry, now) && a.drStartRun("base") == nil {
+		a.dr.mu.Lock()
+		a.dr.BaseTry = now
+		a.dr.mu.Unlock()
 	}
 }
 

@@ -87,6 +87,31 @@ func schemaBehind(pending []string, initialized bool) bool {
 	return initialized && len(pending) > 0
 }
 
+// schemaAhead: Die Datenbank kennt Migrationen, die dieses Programm nicht
+// kennt – das Programm ist zu alt für die Datenbank (Spiegel sperrt sich).
+func schemaAhead(applied, known []int) bool {
+	k := make(map[int]bool, len(known))
+	for _, v := range known {
+		k[v] = true
+	}
+	for _, v := range applied {
+		if !k[v] {
+			return true
+		}
+	}
+	return false
+}
+
+// skipUpdateBackup: Der Update-Agent hat für genau diesen Programmstand
+// bereits eine Rückfallkopie angelegt (app_settings update.backup_skip_commit).
+// Ein leerer oder unbekannter Stand lässt die Sicherung nie entfallen.
+func skipUpdateBackup(get func(string) string, commit string) bool {
+	if commit == "" || commit == "unknown" {
+		return false
+	}
+	return get("update.backup_skip_commit") == commit
+}
+
 // loadServerSettingsReadOnly lädt die Konfiguration im Spiegelmodus: ohne
 // Übernahme aus der Einstellungsdatei und ohne Erzeugen eines JWT-Secrets
 // (beides würde in die Datenbank schreiben).

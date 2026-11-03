@@ -88,6 +88,7 @@ gleichzeitig, ist das Szenario sofort nicht bestanden.
 | `vip-abschaltung` | node1 von `vpn`/`wit` trennen, seine `lan`-Karte abschalten | node1 schaltet ab (3 Takte + 5 s) und gibt die Adresse binnen 2 s ab; node2 übernimmt sie |
 | `vip-duplikat` | `gw` setzt die Adresse selbst, dann einschalten | node1 übernimmt nicht, Alarm „wird noch von einem anderen Gerät benutzt“; nach dem Entfernen auf `gw` übernimmt node1 binnen 5 s |
 | `vip-entfernt` | Adresse am Halter mit `ip addr del` entfernen | binnen 3,5 s wieder da (bis 1 s Takt des Abgleichs + 2 s Duplikat-Prüfung + Setzen/Messen) |
+| `vip-absender` | feste Adresse am Halter neu setzen, danach die Adresse als `/24` setzen | Absender bleibt die feste Adresse, die Adresse bleibt erreichbar; `/24` wird binnen 5 s auf `/32` umgestellt |
 | `vip-neustart` | aktiven node1 anhalten, node2 übernimmt, node1 starten | node1 holt die Adresse nicht, wird Standby |
 | `hooks` | Skript `/etc/pdh/ha-hooks/10-log` auf beiden, Skripte ein, Rollen tauschen, Skript nur auf node2 ändern | Protokoll: node2 `aktiv`, node1 `passiv`, gleiche Amtszeit, Adresse; vor der Änderung Status „gleich“ auf beiden, danach „anders als beim Partner“ |
 | `umstellung` | Automatik `observe`; node1 bekommt 10.77.1.13, `addrs set … --neustart`, Test mit 10.77.1.60, 10.77.1.11 wird mitwandernde Adresse, Rollen tauschen | Spiegel wieder synchron; erst node1, dann node2 hält 10.77.1.11 |
@@ -97,3 +98,42 @@ getrennt) – nur so ist zu sehen, dass pdh-ha die Adresse selbst abgibt.
 In `umstellung` setzt das Szenario die Absenderadresse mit
 `ip route replace 10.77.1.0/24 dev <Karte> proto kernel scope link src 10.77.1.13`
 (wie das Umstellungsskript), sonst gingen Verbindungen weiter von 10.77.1.11 aus.
+
+### Update im Verbund
+
+pdh und der Update-Agent sind Platzhalter: `lab-agent` „spielt einen Stand
+ein“, indem er den Commit nach `/var/lib/pdh-lab/commit` schreibt (pdh-ha liest
+ihn je Takt, `PDH_HA_COMMIT_FILE`) und `pdh-dummy` neu startet;
+`install_norestart` merkt den Stand nur vor, `finish` setzt ihn ein. `rollback`
+startet danach pdh-ha neu – wie `install_update.sh --rollback` im Betrieb (das
+Einstiegsskript startet pdh-ha in einer Schleife wieder); `rollback_norestart`
+nicht. Ausgangsstand ist `lab0`. `pdh-dummy` beantwortet `/health` auf Port 8090
+(`socat`) mit der Version je Stand: `lab0` = Inhalt von `VERSION`, sonst
+`<VERSION>-<Stand>` (z. B. `0.77.8-lab1`). Die Szenarien starten Aufträge ohne
+`--version`; pdh-ha übernimmt die Zielversion von B nach dem Einspielen. Als
+Primary mit einem Stand ungleich `lab0` legt pdh-dummy die Tabelle
+`mig_<Commit>` in der Datenbank `lab` an („Datenbank-Änderung“); bis die Tabelle
+da ist, meldet es `migrations_ok: false` – auch am Spiegel (eingeschränkter
+Spiegel, der auf die Migration am Primary wartet).
+
+Schalter (Dateien in `/var/lib/pdh-lab/`): `fail-install` (Einspielen
+scheitert), `fail-start-<Commit>` (pdh startet mit diesem Stand nicht),
+`fail-health-<Commit>` (`/health` antwortet 500), `slow-install` (Einspielen braucht 40 s). Läufe von `lab-agent` gehen nacheinander (Sperrdatei), wie beim echten Agenten. Die Prüffrist ist im Labor
+60 s (`PDH_HA_UPDATE_VERIFY`), der Countdown 1 min. In der Sperre ruht der
+Schreib-Generator, wo das Szenario einen Rückweg erwartet – im Betrieb schreibt
+dann niemand, die Zeilen aus der Sperre gingen beim Zurücksetzen gewollt verloren.
+
+| Szenario | Ablauf | Erwartung |
+|---|---|---|
+| `update-ok` | `update start lab1 --kind rolling` | node2 spielt lab1 ein, Tausch, node1 zieht nach; beide auf lab1, node2 aktiv, `mig_lab1` auf beiden; Ergebnis nennt die übernommene Version („Update auf 0.77.8-lab1 abgeschlossen“) |
+| `update-b-vorher` | `fail-health-lab1` auf node2, dann Update | Prüffrist überschritten, node2 zurück auf lab0, lab1 als fehlerhaft gemerkt, keine `mig_lab1`; pdh-ha auf node2 startet beim Zurückdrehen neu – trotzdem genau ein Lauf und kein „braucht Hilfe“ |
+| `update-b-nachher` | im Countdown `fail-health-lab1` auf node2 | nach dem Tausch legt node2 `mig_lab1` an, Prüfung scheitert, Zurücksetzen: node1 mit alter Datenbank aktiv, `mig_lab1` nirgends, lab1 fehlerhaft; „update abort“ im Zurücksetzen abgewiesen („Zurücksetzen läuft bereits“), genau ein Zurückdrehen, kein Dringend-Alarm |
+| `update-abbruch` | in der Sperre erst Handtausch, Übernahme erzwingen und Wartung versuchen, dann `pdh-ha update abort` auf node2 | Handbefehle abgewiesen („zuerst pdh-ha update abort“), dann Zurücksetzen, Ergebnis „abgebrochen von Befehlszeile“, lab1 nicht fehlerhaft |
+| `update-neustart` | node1 vor der Sperre neu starten; zweiter Auftrag: node2 in der Prüfung neu starten | erst „abgebrochen von Neustart“ mit beiden auf lab0, dann setzt node2 den Auftrag fort: abgeschlossen |
+| `update-nicht-gruen` | node2 von `lan`/`vpn` trennen, Start mit Quelle „zeitplan“ und per Befehl | HTTP 409 bzw. Fehler, kein Auftrag |
+| `update-nacheinander` | `update start lab1 --kind sequential` | node2 eingefroren, node1 startet mit lab1 neu, node2 zieht nach; node1 aktiv, beide auf lab1 |
+| `update-nacheinander-fehler` | `fail-health-lab1` auf node1, Art „alle nacheinander“ | node2 wird mit seinem eingefrorenen Stand aktiv, node1 zurück auf lab0, `mig_lab1` nirgends, lab1 fehlerhaft |
+| `update-tausch-frist` | Höchstdauer 10 min; im Countdown node2 trennen, nach dem Beginn des Zurücksetzens verbinden | Tausch-Befehl wird wiederholt, nach der Tauschfrist (3 min) Zurücksetzen, Ergebnis „Rollentausch nicht gelungen“, deutlich vor der Höchstdauer, lab1 nicht fehlerhaft, kein Dringend-Alarm |
+| `update-nacheinander-gleichstand` | WAL-Einspielen auf node2 angehalten, Zeile auf node1 geschrieben, Start „alle nacheinander“ mit Trotzdem (`force`) | node1 wird abgeschottet, Gleichstand kommt nicht: node2 wird nicht eingefroren, Ergebnis „Spiegel nicht auf Gleichstand – Update abgebrochen, nichts geändert“, Zeile bleibt erhalten, lab1 nicht fehlerhaft |
+| `update-abbruch-vorher` | `slow-install` auf node2 (Bau 40 s), Update starten, während des Baus `pdh-ha update abort` | Auftrag endet erst, nachdem node2 nach dem Bau wirklich auf lab0 zurückgedreht ist (letzter Lauf `rollback lab0`), beide bleiben auf lab0, lab1 nicht fehlerhaft |
+| `update-verweigert` | `refuse-install` auf node2 (Labor-Agent meldet wie `install_update.sh` „…; nichts geaendert.“), Update starten | Auftrag bricht vor der Sperre ab, Ergebnis „nicht eingespielt“ mit Grund, beide bleiben auf lab0, lab1 **nicht** fehlerhaft, keine `mig_lab1` |

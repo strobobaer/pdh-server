@@ -202,6 +202,7 @@ type PeerObs struct {
 	LSN         uint64 // Schreibposition (Replay) des Partners
 	LagBytes    int64  // Verzögerung der Spiegelung in Bytes
 	Timeline    uint32 // Zeitlinie der Partner-Datenbank
+	Commit      string // Stand des Quelltexts des Partners (leer = unbekannt)
 }
 
 // Persisted ist der dauerhaft gespeicherte Zustand (state.json).
@@ -253,6 +254,11 @@ const (
 	ActHandover    ActionKind = "handover"
 	ActRejoin      ActionKind = "rejoin"
 	ActProbeVote   ActionKind = "probe_vote"
+
+	// Tausch mit Einfrieren: Datenbank abgeben, aber eingefroren lassen
+	// (kein Wiederanlauf als Standby); ActAbandon verwirft den Stand.
+	ActDemoteFreeze ActionKind = "demote_freeze"
+	ActAbandon      ActionKind = "abandon"
 )
 
 type Action struct {
@@ -273,6 +279,8 @@ const (
 	CmdForceTakeover CommandKind = "force_takeover"
 	CmdMaintOn       CommandKind = "maint_on"
 	CmdMaintOff      CommandKind = "maint_off"
+	CmdSwapFreeze    CommandKind = "swap_freeze"  // Tausch, eigene Datenbank einfrieren
+	CmdSwapAbandon   CommandKind = "swap_abandon" // Rücktausch, eigenen Stand aufgeben
 )
 
 // Input ist alles, was ein Entscheidungsschritt wissen darf.
@@ -282,6 +290,7 @@ type Input struct {
 	Wall    time.Time     // nur für Anzeige, Tageszähler, Wartezeit
 	Mode    Mode
 	Version string
+	Commit  string // eigener Stand des Quelltexts (leer = unbekannt)
 
 	Gateway       bool          // entprellte Gateway-Prüfung
 	GatewayLastOK time.Duration // monotoner Zeitpunkt der letzten erfolgreichen Prüfung; 0 = nie seit Start

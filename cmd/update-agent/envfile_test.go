@@ -36,7 +36,7 @@ func TestCommentOutEnvKeys(t *testing.T) {
 	if matches, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*bak*")); len(matches) > 0 {
 		t.Errorf("Klartext-Sicherungskopie angelegt: %v", matches)
 	}
-	for k, want := range map[string]bool{"PDH_DATABASE_PASSWORD": true, "PDH_UPDATE_AGENT_TOKEN": true, "PDH_GRAFANA_DB_PASSWORD": true, "PDH_SETTINGS_KEY": true,
+	for k, want := range map[string]bool{"PDH_DATABASE_PASSWORD": true, "PDH_UPDATE_AGENT_TOKEN": true, "PDH_UPDATE_BRANCH": true, "PDH_GRAFANA_DB_PASSWORD": true, "PDH_SETTINGS_KEY": true,
 		"PDH_MICROSOFT_CLIENT_SECRET": false, "PDH_AUTH_JWTSECRET": false} {
 		if envRemoveBlocked(k) != want {
 			t.Errorf("%s: blockiert=%v", k, !want)

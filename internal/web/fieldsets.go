@@ -63,6 +63,9 @@ func (h *Handler) hasPerm(r *http.Request, perm string) bool {
 	if perm == "" {
 		return true
 	}
+	if h.hasPermHook != nil {
+		return h.hasPermHook(r, perm)
+	}
 	u := getUser(r)
 	return h.rbac.HasPermissionForUser(u.ID, string(u.Role), perm)
 }

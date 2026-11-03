@@ -137,6 +137,9 @@ func (d *daemon) replSyncLocked(ctx context.Context, pl *plan, now time.Duration
 		// Hat der Zeuge den Vermerk bestätigt, steht er dort – auch wenn der
 		// Partner inzwischen wieder streamt; dann „wieder aktuell“ melden
 		StaleAcked: staleAcked, PartnerStale: partnerStale || staleAcked,
+		// Update-Sperre: der Partner ist eingefroren bzw. holt erst nach der
+		// Freigabe auf – nie auf ihn warten (R1)
+		ForceAsync: d.up.job.Locked(),
 	})
 	switch {
 	case out.MarkStale:

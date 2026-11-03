@@ -1918,3 +1918,43 @@ func TestHandoverDemoteTimeout(t *testing.T) {
 		t.Fatalf("Zeitüberschreitung beim demote: %s %v", out.Persist.Role, out.Events)
 	}
 }
+
+// swapFreezeIn: aktiver Knoten, Partner gesehen und passiv, Tauschbefehl cmd.
+func swapFreezeIn(cmd CommandKind) Input {
+	in := base(Trio, Active)
+	in.Persist.Term = 3
+	in.Partner = seenPeer("node", Passive, 3, 100*sec)
+	in.Witness = seenPeer("witness", Witness, 3, 100*sec)
+	in.Command = cmd
+	return in
+}
+
+func actionKinds(out Output) map[ActionKind]bool {
+	m := map[ActionKind]bool{}
+	for _, a := range out.Actions {
+		m[a.Kind] = true
+	}
+	return m
+}
+
+func TestSwapFreezeEmitsDemoteFreeze(t *testing.T) {
+	out := Step(swapFreezeIn(CmdSwapFreeze))
+	k := actionKinds(out)
+	if !k[ActDemoteFreeze] || !k[ActVIPRelease] || k[ActDemote] || k[ActAbandon] {
+		t.Fatalf("Aktionen falsch: %+v", out.Actions)
+	}
+	if out.Persist.Role != Passive || out.HandoverPending != out.Persist.Term+1 {
+		t.Fatalf("Rolle %v, HandoverPending %d", out.Persist.Role, out.HandoverPending)
+	}
+}
+
+func TestSwapAbandonEmitsAbandon(t *testing.T) {
+	out := Step(swapFreezeIn(CmdSwapAbandon))
+	k := actionKinds(out)
+	if !k[ActAbandon] || !k[ActVIPRelease] || k[ActDemote] || k[ActDemoteFreeze] {
+		t.Fatalf("Aktionen falsch: %+v", out.Actions)
+	}
+	if out.Persist.Role != Passive || out.HandoverPending != out.Persist.Term+1 {
+		t.Fatalf("Rolle %v, HandoverPending %d", out.Persist.Role, out.HandoverPending)
+	}
+}

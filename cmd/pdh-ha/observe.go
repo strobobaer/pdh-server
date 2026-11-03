@@ -22,6 +22,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 		o.Role, o.Term, o.Version = ha.Role(m.Role), m.Term, m.Ver
 		o.Gateway, o.DataCurrent = m.Gateway, m.DataCurrent
 		o.Maint, o.MaintSeq = m.Maint, m.MaintSeq
+		o.Commit = m.Commit
 		o.VotedFor = m.VotedFor
 		o.PG, o.Sync, o.Stale, o.LSN, o.LagBytes, o.Timeline = m.PG, m.Sync, m.Stale, m.LSN, m.Lag, m.TL
 		o.SeesSelf = slices.Contains(m.Sees, selfID)
@@ -32,7 +33,7 @@ func obsFrom(n clusterNode, v peerView, selfID string) ha.PeerObs {
 func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, mode ha.Mode, views map[string]peerView) ha.Input {
 	c := d.carry
 	in := ha.Input{
-		SelfID: d.node.ID, Now: now, Wall: wall, Mode: mode, Version: d.version,
+		SelfID: d.node.ID, Now: now, Wall: wall, Mode: mode, Version: d.version, Commit: d.commit,
 		DataCurrent: true, DataAssumed: true, Settings: s, Persist: d.p,
 		HoldUntil: c.HoldUntil, VotePending: c.VotePending, VoteAskedAt: c.VoteAskedAt,
 		HandoverPending: c.HandoverPending, HandoverAt: c.HandoverAt, HandoverSentAt: c.HandoverSentAt,
@@ -154,8 +155,9 @@ func (d *daemon) statusLocked() apiStatus {
 		OK: true, Configured: d.configured, Mode: d.modeLocked(), Observe: true,
 		Peers: []apiNode{}, Warnings: []string{}, GatewayTargets: []string{},
 		Self:     apiNode{Kind: "node", Role: ha.Active, Version: d.version, Seen: true, Paths: []apiPath{}},
-		Settings: ha.DefaultSettings(),
+		Settings: ha.DefaultSettings(), Faulty: []string{},
 	}
+	st.Update = ha.UpdateJob{}.View(time.Time{}, 0, nil)
 	if d.versionOverride {
 		st.Warnings = append(st.Warnings, "Version überschrieben (Test)")
 	}
@@ -166,7 +168,12 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	now, wall := d.mono(), d.wall()
 	st.Settings = d.settingsLocked()
+	st.Window = d.windowLocked()
 	st.Maint, st.CAHolder = d.p.Maint, d.node.CAHolder
+	_, lockMax, _ := d.updateDurationsLocked()
+	st.Update = d.up.job.View(wall, lockMax, d.cl.Faulty)
+	st.Faulty = append(st.Faulty, d.cl.Faulty...)
+	st.WindowLastRun = d.cl.WindowLastRun
 	st.GatewayTargets = append(st.GatewayTargets, d.cl.GatewayTargets...)
 	st.Self = apiNode{
 		ID: d.node.ID, Kind: d.node.Kind, Role: d.p.Role, Term: d.p.Term, Version: d.version, Commit: d.commit,
@@ -235,6 +242,9 @@ func (d *daemon) statusLocked() apiStatus {
 				m.PG, m.LSN, m.Lag, m.Sync, m.Stale, m.TL, m.DataCurrent, m.Diverged
 			an.VIPHeld, an.HooksSum, an.TunnelSum = m.VIP, m.Hooks, m.Tun
 			hosts[n.ID] = m.HostID
+			if d.node.Kind == "witness" && an.Seen && m.UpJob {
+				st.Update.Active = true // Zeuge: ein Server meldet einen laufenden Auftrag
+			}
 		}
 		if st.Access.Holder == "" && an.Seen && an.VIPHeld {
 			st.Access.Holder = n.ID
@@ -307,7 +317,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 	m := message{
 		T: "hb", ID: d.node.ID, Role: string(d.p.Role), Term: d.p.Term, Ver: d.version, Commit: d.commit,
 		DataCurrent: true, DataAssumed: true, Gateway: gw, Maint: d.p.Maint, MaintSeq: d.p.MaintSeq,
-		PG: "unknown", PDH: "unknown", Disk: "unknown", Seq: d.nextSeq(), Wall: wall.UTC(),
+		PG: "unknown", PDH: "unknown", Disk: d.diskHBLocked(), Seq: d.nextSeq(), Wall: wall.UTC(),
 		HostID: d.hostID, ClusterVer: d.cl.Version,
 	}
 	for _, n := range d.cl.Nodes {
@@ -327,6 +337,8 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		}
 		_, m.Hooks, _ = d.hooks.info()
 		m.Tun = d.tunnel.Sum()
+		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
+		m.UpJob = !upEnded(d.up.job)
 	}
 	return m
 }

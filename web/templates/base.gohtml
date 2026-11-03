@@ -228,6 +228,18 @@ html.sidebar-left-collapsed .nav-item.active{border-right-color:var(--accent)}
 .mirror-band .mb-ha{margin-left:auto}
 @media (max-width:760px){.mirror-band{padding:6px 12px;font-size:12.5px}.mirror-band .mb-ha{margin-left:0}}
 html.pdh-embedded .mirror-band{display:none} /* eingebettete Ansicht: Band zeigt die äußere Seite */
+/* Countdown vor der automatischen Wartung (Update im Verbund) – auf allen Seiten sichtbar */
+.maint-band{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 22px;font-size:13px;line-height:1.4;flex-shrink:0;border-bottom:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 16%,var(--bg));color:var(--text)}
+.maint-band[hidden]{display:none}
+.maint-band.soon{border-color:var(--red);background:color-mix(in srgb,var(--red) 16%,var(--bg))}
+.maint-band > i{font-size:16px;color:var(--amber)}
+.maint-band.soon > i{color:var(--red)}
+.maint-band > b{flex:1 1 220px;min-width:0}
+.maint-band .mb-t{font-variant-numeric:tabular-nums}
+.maint-band .mb-act{margin-left:auto;display:inline-flex;gap:6px}
+.maint-band .mb-act .btn:not(.btn-primary){color:var(--text);border-color:var(--border)}
+@media (max-width:760px){.maint-band{padding:6px 12px;font-size:12.5px}}
+html.pdh-embedded .maint-band{display:none}
 /* ── Context ── */
 .context{background:var(--bg2);border-left:1px solid var(--border);display:grid;grid-template-columns:44px 1fr;overflow:hidden;min-width:0}
 .ctx-tabs{border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 5px;background:var(--bg2)}
@@ -1079,14 +1091,19 @@ table,.li,.act-item,.rec-row{zoom:var(--row-scale,1)}
   <div class="mirror-band {{if $ok}}warn{{else}}err{{end}}" role="status">
     <i class="ti {{if $ok}}ti-eye{{else}}ti-alert-triangle{{end}}"></i>
     <b>{{t "Spiegel – nur lesen"}}</b>
-    {{- if .Restricted}}<span>· {{t "Spiegel wartet auf das Update des aktiven Servers"}}</span>
+    {{- if .Restricted}}<span>· {{if .Reason}}{{t .Reason}}{{else}}{{t "Spiegel wartet auf das Update des aktiven Servers"}}{{end}}</span>
     {{- else if .ActiveSeen}}<span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
       {{- with .ActiveURL}}<span>· {{t "Aktiver Server:"}} <span class="mb-host" translate="no">{{$m.ActiveHost}}</span></span> <a class="btn btn-small" href="{{.}}">{{t "öffnen"}}</a>{{end}}
     {{- else if not .Known}}<span>· {{t "Status des aktiven Servers unbekannt"}}</span><span>· {{if .Current}}{{t "Datenstand aktuell"}}{{else if .Lag}}{{t "Datenstand vor %s" .Lag}}{{else}}{{t "Datenstand unbekannt"}}{{end}}</span>
     {{- else}}<span>· {{if .DataAt}}{{t "Aktiver Server nicht erreichbar – Daten vom %s" .DataAt}}{{else}}{{t "Aktiver Server nicht erreichbar"}} · {{t "Datenstand unbekannt"}}{{end}}</span>{{end}}
-    {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=ha"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
+    {{- if and .Admin (not .ActiveSeen)}}<a class="btn btn-small mb-ha" href="/admin/server-config?tab=dr"><i class="ti ti-shield-check"></i> {{t "Ausfallschutz"}}</a>{{end}}
   </div>
   {{end}}
+  <div class="maint-band" id="maint-band" role="status" hidden>
+    <i class="ti ti-tool"></i>
+    <b id="maint-band-text"></b>
+    <span class="mb-act"></span>
+  </div>
   <div class="main">
     <div class="print-brand">{{if .Brand.PrintLogo}}<img src="{{.Brand.PrintLogo}}" alt="">{{end}}<span>{{or .Brand.AppName "PDH"}} · {{.Title}}</span><span class="pb-date" data-print-date></span></div>
     {{block "content" .}}{{end}}
@@ -2984,6 +3001,91 @@ function pdhReservedTag(p, kind, ref, reloadName){
     });
   }).observe(document.body, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS});
   scan(document.body);
+})();
+</script>
+
+<script>
+// Hinweis-Band vor der automatischen Wartung: fragt alle 15 s /wartung/status (ohne Fortschrittsbalken),
+// zählt bei laufendem Countdown sekündlich herunter und springt bei Sperre auf den Wartungsbildschirm
+(function(){
+  const band = document.getElementById('maint-band');
+  if(!band || document.documentElement.classList.contains('pdh-embedded')) return;
+  const txt = document.getElementById('maint-band-text');
+  const act = band.querySelector('.mb-act');
+  const tpl = {{t "Automatische Wartung in %s min – bitte Eingaben speichern"}};
+  const askTpl = {{t "Wartungsfenster: Update auf %v durchführen? Noch %s min"}};
+  const L = {
+    go: {{t "Durchführen"}}, goQ: {{t "Update jetzt durchführen?"}},
+    no: {{t "Absagen"}}, noQ: {{t "Update absagen?"}},
+    stop: {{t "Abbrechen"}}, stopQ: {{t "Update abbrechen und zurücksetzen?"}},
+    err: {{t "Aktion nicht möglich"}}
+  };
+  let until = 0, skew = 0, tick = null, timer = null, mode = '', ver = '', note = '', acts = '';
+  const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  function hide(){ until = 0; mode = ''; acts = ''; act.textContent = ''; band.classList.remove('soon'); if(tick){ clearInterval(tick); tick = null; }
+    if(note){ band.hidden = false; txt.textContent = note; return; } // Rückmeldung einer Aktion bleibt sichtbar
+    band.hidden = true; }
+  function draw(){
+    const left = Math.max(0, Math.round((until - (Date.now() + skew)) / 1000));
+    if(note){ txt.textContent = note; return; }
+    if(mode === 'ask'){ txt.textContent = askTpl.replace('%v', ver).replace('%s', fmt(left)); band.classList.remove('soon'); return; }
+    txt.textContent = tpl.replace('%s', fmt(left));
+    band.classList.toggle('soon', left <= 30);
+  }
+  // Knöpfe nur neu aufbauen, wenn sich ihre Zusammensetzung ändert (sonst geht ein Klick verloren)
+  function buttons(list){
+    const key = list.map(b => b.url + '#' + b.label).join('|');
+    if(key === acts) return;
+    acts = key; act.textContent = '';
+    list.forEach(b => {
+      const el = document.createElement('button');
+      el.type = 'button'; el.className = 'btn btn-small' + (b.primary ? ' btn-primary' : ''); el.textContent = b.label;
+      el.addEventListener('click', () => post(b, el));
+      act.appendChild(el);
+    });
+  }
+  async function post(b, el){
+    if(!confirm(b.q)) return;
+    el.disabled = true;
+    try {
+      const r = await fetch(b.url, {method: 'POST', credentials: 'same-origin', headers: {Accept: 'application/json'}});
+      let j = null;
+      try { j = await r.json(); } catch(e) { /* z. B. 403 als Klartext */ }
+      note = j ? (j.ok ? (j.msg || '') : (j.error || L.err)) : (r.statusText || (L.err + ' (' + r.status + ')'));
+    } catch(e) { note = L.err; }
+    el.disabled = false; draw();
+    setTimeout(() => { note = ''; poll(); }, 6000);
+    poll();
+  }
+  function schedule(ms){ clearTimeout(timer); timer = setTimeout(poll, ms); }
+  async function poll(){
+    if(document.hidden){ schedule(15000); return; }
+    try {
+      const r = await fetch('/wartung/status', {credentials: 'same-origin', cache: 'no-store', pdhQuiet: true});
+      const v = await r.json();
+      if(v.locked){ location.href='/wartung'; return; }
+      const d = Date.parse(r.headers.get('Date') || '');
+      skew = isNaN(d) ? 0 : d - Date.now();
+      const u = v.countdown_until ? Date.parse(v.countdown_until) : 0;
+      const ask = (v.phase === 'nachfrage' && v.ask_until) ? Date.parse(v.ask_until) : 0;
+      if(ask && ask > Date.now() + skew){
+        until = ask; mode = 'ask'; ver = v.to_version || ''; band.hidden = false;
+        const l = [];
+        if(v.can_confirm) l.push({url: '/wartung/durchfuehren', label: L.go, q: L.goQ, primary: true});
+        if(v.can_abort) l.push({url: '/wartung/abbrechen', label: L.no, q: L.noQ});
+        buttons(l); draw();
+        if(!tick) tick = setInterval(draw, 1000);
+      } else if(u && u > Date.now() + skew){
+        until = u; mode = 'count'; band.hidden = false;
+        buttons(v.can_abort ? [{url: '/wartung/abbrechen', label: L.stop, q: L.stopQ}] : []); draw();
+        if(!tick) tick = setInterval(draw, 1000);
+      } else if(!(until && mode === 'count' && Date.now() + skew - until < 60000)) hide(); // abgelaufen: Sperre folgt in Kürze
+      else buttons([]);
+    } catch(e) { /* Server startet vielleicht neu – weiter fragen */ }
+    schedule(until ? 2000 : 15000);
+  }
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) poll(); });
+  schedule(3000);
 })();
 </script>
 

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,20 +23,34 @@ type jobStatus struct {
 	Output     string    `json:"output"`
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
+	Commit     string    `json:"commit"` // Ziel des Laufs (--commit/--rollback), sonst leer
+	Op         string    `json:"op"`     // Art: install[_norestart], rollback[_norestart], finish; leer = ohne Schalter
 }
 
 type updateAgent struct {
-	dr      drState // Ausfallschutz (dr.go), eigener Mutex
-	drApply func(context.Context, drConfig) (bool, error) // nil = drApplyPostgres
-	drSysID func(context.Context) (string, error)         // nil = psql (dr_owner.go)
-	ha      haJob                                         // pdh-ha-Installation (ha.go)
-	haRun   func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
-	mu      sync.RWMutex
-	status  jobStatus
-	token   string
-	repoDir string
-	mode    string
-	project string
+	dr        drState                                                           // Ausfallschutz (dr.go), eigener Mutex
+	drApply   func(context.Context, drConfig) (bool, error)                     // nil = drApplyPostgres
+	drSysID   func(context.Context) (string, error)                             // nil = psql (dr_owner.go)
+	drTLI     func(context.Context) uint32                                      // nil = psql (dr_timeline.go)
+	drPartner func(context.Context) bool                                        // nil = pdh-ha-Status (dr_timeline.go)
+	ha        haJob                                                             // pdh-ha-Installation (ha.go)
+	haRun     func(context.Context, string, map[string]string, io.Writer) error // nil = hostCommandEnv
+	mu        sync.RWMutex
+	status    jobStatus
+	token     string
+	repoDir   string
+	mode      string
+	project   string
+
+	updateRun func(args []string) // nil = runUpdate (install_update.sh); Test-Haken
+
+	win       winRuntime                                                // Wartungsfenster (window.go)
+	sj        jobRuntime                                                // Update auf dem Einzelserver (job.go)
+	gitRun    func(ctx context.Context, args ...string) (string, error) // nil = git im repoDir; Test-Haken
+	clock     func() time.Time                                          // nil = time.Now; Test-Haken
+	freeSpace func(path string) (int64, bool)                           // nil = freeSpaceOS; Test-Haken
+	sleep     func(time.Duration)                                       // nil = time.Sleep; Test-Haken
+	jobManual bool                                                      // Tests: Schritte des Auftrags von Hand
 }
 
 type limitedBuffer struct {
@@ -80,6 +93,11 @@ func main() {
 		project = "pdh-server"
 	}
 	agent := &updateAgent{token: token, repoDir: repoDir, mode: mode, project: project}
+	if mode == "systemd" {
+		agent.loadUpdateStatus() // Ergebnis des letzten Laufs überlebt den Neustart des Agenten
+		agent.windowLoad()
+		agent.loadSingleJob() // offener Auftrag (Einzelserver) läuft weiter
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -107,6 +125,13 @@ func main() {
 	// Ausfallschutz mit zwei Servern – pdh-ha (ha.go)
 	mux.Handle("POST /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallHandler)))
 	mux.Handle("GET /v1/ha/install", agent.authorized(http.HandlerFunc(agent.haInstallStatusHandler)))
+	// Update auf dem Einzelserver und Wartungsfenster (job.go, window.go)
+	mux.Handle("GET /v1/update/job", agent.authorized(http.HandlerFunc(agent.jobHandler)))
+	mux.Handle("POST /v1/update/job/start", agent.authorized(http.HandlerFunc(agent.jobStartHandler)))
+	mux.Handle("POST /v1/update/job/abort", agent.authorized(http.HandlerFunc(agent.jobAbortHandler)))
+	mux.Handle("GET /v1/window", agent.authorized(http.HandlerFunc(agent.windowGetHandler)))
+	mux.Handle("POST /v1/window", agent.authorized(http.HandlerFunc(agent.windowPostHandler)))
+	mux.Handle("DELETE /v1/window/faulty/{commit}", agent.authorized(http.HandlerFunc(agent.windowFaultyDeleteHandler)))
 
 	server := &http.Server{
 		Addr:              listen,
@@ -144,8 +169,30 @@ func (a *updateAgent) statusHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(status)
 }
 
-func (a *updateAgent) updateHandler(w http.ResponseWriter, _ *http.Request) {
+func (a *updateAgent) updateHandler(w http.ResponseWriter, r *http.Request) {
+	// Rumpf ist optional: leer = bisheriges Verhalten (aktueller Stand des Update-Zweigs).
+	var req updateRequest
+	if r.Body != nil {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
+		if len(bytes.TrimSpace(body)) > 0 {
+			if err := json.Unmarshal(body, &req); err != nil {
+				writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": "ungültiger Rumpf"})
+				return
+			}
+		}
+	}
+	args, err := req.args()
+	if err != nil {
+		writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if a.mode == "docker" {
+		// Docker-Betrieb nur für Testsysteme: gezielter Stand, Zurückdrehen und
+		// Trennen von Bau und Neustart gibt es dort nicht.
+		if !req.isEmpty() {
+			writeUpdateJSON(w, http.StatusBadRequest, map[string]string{"error": "Gezielte Updates gibt es nur bei systemd-Installationen"})
+			return
+		}
 		if status, err := a.dockerJobStatus(); err == nil && status.Running {
 			http.Error(w, "update already running", http.StatusConflict)
 			return
@@ -169,40 +216,19 @@ func (a *updateAgent) updateHandler(w http.ResponseWriter, _ *http.Request) {
 		a.status = jobStatus{}
 		a.mu.Unlock()
 	} else {
-		a.mu.Lock()
-		if a.status.Running {
-			a.mu.Unlock()
-			http.Error(w, "update already running", http.StatusConflict)
+		if a.singleJobActive() {
+			// Einzelserver-Auftrag (job.go) führt install_update.sh selbst aus
+			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Ein Update-Auftrag läuft bereits"})
 			return
 		}
-		a.status = jobStatus{Running: true, StartedAt: time.Now().UTC()}
-		a.mu.Unlock()
-		go a.runUpdate()
+		if running, ok := a.startUpdate(req.target(), req.op()); !ok {
+			// Art und Ziel des laufenden Laufs: pdh-ha wartet nur auf das eigene Ergebnis
+			writeUpdateJSON(w, http.StatusConflict, map[string]string{"error": "Update läuft bereits", "commit": running.Commit, "op": running.Op})
+			return
+		}
+		go a.runUpdateHook(args)
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "started"})
-}
-
-func (a *updateAgent) runUpdate() {
-	output := &limitedBuffer{}
-	script := filepath.Join(a.repoDir, "install_update.sh")
-	command := exec.Command("bash", script)
-	command.Dir = a.repoDir
-	command.Env = append(os.Environ(), "PDH_UPDATE_MODE="+a.mode)
-	command.Stdout = output
-	command.Stderr = output
-	err := command.Run()
-	if err != nil {
-		fmt.Fprintf(output, "\nUpdater failed: %v\n", err)
-	}
-
-	a.mu.Lock()
-	a.status.Running = false
-	a.status.Success = err == nil
-	a.status.Output = output.String()
-	a.status.FinishedAt = time.Now().UTC()
-	a.mu.Unlock()
+	writeUpdateJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 
 func (a *updateAgent) startDockerJob() error {

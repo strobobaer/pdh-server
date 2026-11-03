@@ -162,6 +162,9 @@ type daemon struct {
 	holdAfter   func(time.Duration) <-chan time.Time
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
+
+	up  upState     // Update im Verbund (update_job.go)
+	wsu selfUpdater // Zeuge als Programm zieht sich nach (witness_update.go)
 }
 
 // queuedAction: Aktionen eines Schritts bilden eine Gruppe; scheitert eine,
@@ -192,6 +195,7 @@ func newDaemon(st store, ev *eventLog) *daemon {
 		actQ:      make(chan queuedAction, 16),
 		sys:       execRunner{},
 		ifAddrsFn: listIfAddrs,
+		up:        newUpState(),
 	}
 	d.act = observeActor{ev: ev}
 	d.hooks = newHookRunner(ev)
@@ -289,6 +293,9 @@ func (d *daemon) loadLocked() error {
 	d.lastMode = d.modeLocked()
 	if removed {
 		d.net.setCluster(cl)
+	}
+	if n.Kind == "node" {
+		d.loadUpdateLocked()
 	}
 	return nil
 }
@@ -431,7 +438,7 @@ func (d *daemon) pgEnvLocked(pg *pgCtl) pgEnv {
 	}
 	cl := d.cl
 	cl.Settings = d.settingsLocked()
-	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent)
+	return buildPGEnv(self, partner, cl, pass, pg.c, d.dataCurrent || d.frozenCurrentLocked())
 }
 
 // swapCompleted: In diesem Schritt ist ein Rollentausch gelungen – als
@@ -686,7 +693,7 @@ func (d *daemon) actionWorker(ctx context.Context) {
 					failed = q.batch
 					d.actionFailed(q.a, err)
 				}
-				if q.a.Kind == ha.ActDemote {
+				if q.a.Kind == ha.ActDemote || q.a.Kind == ha.ActDemoteFreeze || q.a.Kind == ha.ActAbandon {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
 					d.lock()
 					if err == nil {
@@ -753,6 +760,7 @@ func (d *daemon) tick(ctx context.Context) {
 		return
 	}
 	d.startLocked()
+	d.labCommitLocked()
 	hk := plan{net: d.net}
 	d.removedHousekeepingLocked(&hk)
 	if !d.configured {
@@ -781,6 +789,24 @@ func (d *daemon) tick(ctx context.Context) {
 	}
 	d.unlock()
 	d.execute(ctx, pl)
+}
+
+// labCommitLocked (nur Testlabor): Ist PDH_HA_COMMIT_FILE gesetzt, gilt der
+// Stand des Quelltexts aus dieser Datei – je Takt neu gelesen. So zeigt ein
+// „eingespieltes“ Update (lab-agent schreibt die Datei) den neuen Stand ohne
+// Neubau von pdh-ha. Fehlt die Datei oder ist sie leer, bleibt der Stand.
+func (d *daemon) labCommitLocked() {
+	f := os.Getenv("PDH_HA_COMMIT_FILE")
+	if f == "" {
+		return
+	}
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return
+	}
+	if c := strings.TrimSpace(string(b)); c != "" {
+		d.commit = c
+	}
 }
 
 // syncAccessLocked startet, ersetzt oder beendet den Arbeiter der
@@ -898,6 +924,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	in.VoteGranted, in.Handover, in.Command = d.voteGranted, d.handoverIn, d.cmd
 	d.replInputLocked(ctx, &in, s)
 	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
+	termBefore := d.p.Term                 // Update im Verbund: Übernahme erkennen
 	out := ha.Step(in)
 	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
 	if !out.Persist.Equal(d.p) || d.unsaved {
@@ -959,6 +986,8 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		}
 		pl.actions = append(pl.actions, a)
 	}
+	// vor replSyncLocked: die Sperre des Auftrags schaltet die Spiegelung asynchron
+	d.updateTickLocked(ctx, &pl, termBefore, swapped, s, views)
 	d.replSyncLocked(ctx, &pl, now, s, mode)
 	if d.node.CAHolder && swapped {
 		d.countSwapLocked(&pl)
@@ -1002,6 +1031,7 @@ func (d *daemon) tickWitnessLocked(ctx context.Context) plan {
 		d.p = p
 	}
 	d.booting = false
+	d.selfUpdateLocked(ctx)
 	pl.send("", d.heartbeatLocked(false, views, wall))
 	d.clusterRequestsLocked(&pl, now, s, views)
 	d.checkRenewLocked(&pl, wall)

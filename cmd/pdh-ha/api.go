@@ -44,6 +44,7 @@ type apiStatus struct {
 	Peers          []apiNode   `json:"peers"`
 	Maint          bool        `json:"maint"`
 	Settings       ha.Settings `json:"settings"`
+	Window         ha.Window   `json:"window"` // Wartungsfenster
 	GatewayTargets []string    `json:"gateway_targets"`
 	Blocked        string      `json:"blocked"` // ha.Allowed-Grund, "" = frei
 	Observe        bool        `json:"observe"` // automatische Umschaltung nur gemeldet (auto_mode observe)
@@ -54,6 +55,11 @@ type apiStatus struct {
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
 	Access         apiAccess   `json:"access"`
+
+	// Update im Verbund: Auftrag, Phase, Sperre; als fehlerhaft gemerkte Commits
+	Update        ha.UpdateView `json:"update"`
+	Faulty        []string      `json:"faulty"`
+	WindowLastRun time.Time     `json:"window_last_run"` // Beginn des letzten Wartungsfensters im Verbund (Null = nie)
 }
 
 // apiAccess: Zugangsweg – mitwandernde Adresse, Skripte, Tunnel.
@@ -348,6 +354,7 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	registerUpdateRoutes(mux, d)
 	mux.HandleFunc("PUT /v1/access", func(w http.ResponseWriter, r *http.Request) {
 		var req accessUpdate
 		if !decodeBody(w, r, &req) {
@@ -495,6 +502,8 @@ func (d *daemon) setMaintenance(on bool) error {
 		return errors.New("Aus dem Cluster entfernt")
 	case d.node.Kind == "witness":
 		return errors.New("Auf dem Zeugen nicht möglich")
+	case d.updateOpenLocked():
+		return d.updateOpenErrLocked() // I6
 	}
 	p := d.p
 	p.Maint = on
@@ -513,6 +522,14 @@ func (d *daemon) setMaintenance(on bool) error {
 		d.event("info", text)
 	}
 	return nil
+}
+
+// errUpdateOpen: Handbefehle neben einem offenen Update-Auftrag (I6).
+var errUpdateOpen = errors.New("Update läuft – zuerst „pdh-ha update abort“")
+
+// updateOpenLocked: ein Update-Auftrag ist offen (auch gespiegelt am passiven Server).
+func (d *daemon) updateOpenLocked() bool {
+	return d.up.job.ID != "" && !upEnded(d.up.job)
 }
 
 // command merkt einen Handbefehl für den nächsten Takt vor.
@@ -546,6 +563,12 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Der aktive Server ist erreichbar – bitte am aktiven Server „Rollen tauschen“ verwenden")
 	case c == ha.CmdSwap && d.p.Role != ha.Active:
 		return errors.New("Nur auf dem aktiven Server möglich")
+	case d.updateOpenLocked() && c == ha.CmdSwap:
+		// I6: kein Handtausch neben dem Auftrag. Übernahme erzwingen bleibt
+		// als Notweg, solange kein aktiver Server erreichbar ist (der Fall
+		// „Partner aktiv“ wird oben abgewiesen; N2: auch wenn beide passiv
+		// sind) – der Auftrag bricht dann als Übernahme ab.
+		return errUpdateOpen
 	}
 	d.cmd = c
 	d.event("info", "Befehl: "+text)
@@ -765,4 +788,13 @@ func apiDoT(sock string, timeout time.Duration, method, path string, in, out any
 		return json.Unmarshal(b, out)
 	}
 	return nil
+}
+
+// updateOpenErrLocked: Fehlertext für Handbefehle neben einem offenen Auftrag;
+// in der Nachfrage gibt es noch nichts abzubrechen, nur zu beantworten.
+func (d *daemon) updateOpenErrLocked() error {
+	if d.up.job.Phase == ha.UpAsk {
+		return errors.New("Nachfrage offen – zuerst beantworten oder absagen")
+	}
+	return errUpdateOpen
 }

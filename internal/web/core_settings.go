@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,18 @@ import (
 )
 
 const updateRepository = "strobobaer/pdh-server"
+
+// updateBranch ist der Update-Zweig (PDH_UPDATE_BRANCH, Standard main) – derselbe,
+// den install_update.sh holt. Ungültige Namen fallen auf main zurück.
+func updateBranch() string {
+	b := strings.TrimSpace(os.Getenv("PDH_UPDATE_BRANCH"))
+	if b == "" || strings.HasPrefix(b, "-") || strings.Contains(b, "..") || !updateBranchRe.MatchString(b) {
+		return "main"
+	}
+	return b
+}
+
+var updateBranchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 
 type CoreSettingsPageData struct {
 	CompletionDepartments string      // Abschluss-Assistent: Abteilungen fuer "wer war dabei"
@@ -26,6 +40,7 @@ type CoreSettingsPageData struct {
 	BaseData
 	AutoCheckEnabled    bool
 	CheckInterval       int
+	UpdateBranch        string // PDH_UPDATE_BRANCH, Standard main
 	CurrentVersion      string
 	LatestVersion       string
 	NewReleases         []ChangelogRelease
@@ -38,9 +53,16 @@ type CoreSettingsPageData struct {
 	LastChecked         string
 	LastCheckError      string
 	UpdateAvailable     bool
+	UpdateCheckStale    bool // Vergleich gehört zu einem anderen Stand oder Update-Zweig (A1)
 	AgentConfigured     bool
 	AgentReachable      bool
 	AgentStatus         string
+	UpdateCluster       bool     // Verbund: „Update im Verbund installieren“ (maint_window.go)
+	UpdatePassive       bool     // dieser Server ist nicht der aktive – das Update steuert der aktive
+	UpdateKindText      string   // Update-Art aus dem Wartungsfenster
+	UpdateAsk           string   // Rückfrage „Nicht alles grün …“ (pdh-ha meldet 409)
+	UpdateAskHints      []string // Hinweise dazu
+	UpdateAskToken      string   // Einmal-Token für „Trotzdem aktualisieren“
 	AgentOutput         string
 	NC                  *ncUpdateView // Kachel „Nextcloud-Updates“ (nextcloud_updates.go)
 	Notice              string
@@ -99,7 +121,9 @@ func (h *Handler) ConfigureUpdates(agentURL, token, buildCommit string) {
 
 func (h *Handler) StartUpdateChecker(ctx context.Context) {
 	go func() {
-		h.checkUpdateIfDue(ctx)
+		if !h.maintSkip("update-pruefung") {
+			h.checkUpdateIfDue(ctx)
+		}
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -107,6 +131,9 @@ func (h *Handler) StartUpdateChecker(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if h.maintSkip("update-pruefung") {
+					continue
+				}
 				h.checkUpdateIfDue(ctx)
 			}
 		}
@@ -124,15 +151,12 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 	if interval < 1 || interval > 168 {
 		interval = 24
 	}
-	latestCommit := h.getUpdateSetting(ctx, "update_latest_commit", "")
 	data := CoreSettingsPageData{
 		BaseData:         h.baseData(r, "core-settings", "Core-Einstellungen", "Systemverwaltung"),
 		AutoCheckEnabled: enabled,
 		CheckInterval:    interval,
 		CurrentVersion:   pdh.Version(),
 		CurrentCommit:    shortCommit(h.buildCommit),
-		LatestCommit:     shortCommit(latestCommit),
-		ComparisonStatus: h.getUpdateSetting(ctx, "update_comparison_status", ""),
 		LastCheckError:   h.getUpdateSetting(ctx, "update_last_check_error", ""),
 		AgentConfigured:  h.updateAgentURL != "" && h.updateAgentToken != "",
 		Notice:           r.URL.Query().Get("notice"),
@@ -158,18 +182,22 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	}
-	_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
-	data.LatestVersion, data.NewReleases = h.availableReleases(ctx)
-	data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
-	if latestCommit != "" && h.buildCommit != "" && h.buildCommit != "unknown" {
-		data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "...main"
+	chk := h.loadUpdateCheck(ctx)
+	data.UpdateBranch = updateBranch()
+	data.applyUpdateCheck(chk, h.buildCommit, updateBranch())
+	if !data.UpdateCheckStale {
+		_ = json.Unmarshal([]byte(h.getUpdateSetting(ctx, "update_comparison_commits", "[]")), &data.ComparisonCommits)
+		data.LatestVersion, data.NewReleases = h.availableReleases(ctx)
+		data.ComparedCommitCount, _ = strconv.Atoi(h.getUpdateSetting(ctx, "update_comparison_commit_count", "0"))
+		if chk.Commit != "" && h.buildCommit != "" && h.buildCommit != "unknown" {
+			data.ComparisonURL = "https://github.com/" + updateRepository + "/compare/" + url.PathEscape(h.buildCommit) + "..." + url.PathEscape(updateBranch())
+		}
 	}
 	if checked := h.getUpdateSetting(ctx, "update_last_checked_at", ""); checked != "" {
 		if parsed, err := time.Parse(time.RFC3339, checked); err == nil {
 			data.LastChecked = parsed.Local().Format("02.01.2006 15:04:05")
 		}
 	}
-	data.UpdateAvailable = updateAvailable(data.ComparisonStatus, h.buildCommit)
 	if data.AgentConfigured {
 		if status, err := h.fetchUpdateAgentStatus(ctx); err == nil {
 			data.AgentReachable = true
@@ -185,6 +213,20 @@ func (h *Handler) CoreSettingsPage(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			data.AgentStatus = "Update-Agent nicht erreichbar"
+		}
+	}
+	if data.AgentConfigured {
+		if st, cluster, err := h.updateCluster(ctx); err == nil && cluster {
+			data.UpdateCluster = true
+			data.UpdatePassive = st.Self.Role != "aktiv" || h.Mirror().On
+			data.UpdateKindText = updateKindText(st.Window.Kind)
+		}
+	}
+	// Rückfrage nur aus dem Serverzustand dieses Benutzers; die Adresszeile trägt keinen Text
+	if r.URL.Query().Get("ask") == "1" {
+		if a, ok := updateAskGet(getUser(r).ID); ok {
+			data.UpdateAsk = tr(h.requestLang(r), "Nicht alles grün (%s). Trotzdem mit kurzer Unterbrechung aktualisieren?", a.Reason)
+			data.UpdateAskHints, data.UpdateAskToken = a.Hints, a.Token
 		}
 	}
 	data.NC = h.ncUpdateViewFor(r.Context())
@@ -309,15 +351,10 @@ func (h *Handler) CheckUpdateWeb(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) InstallUpdateWeb(w http.ResponseWriter, r *http.Request) {
-	if !h.canManageRoles(r) {
-		http.Error(w, "keine berechtigung", http.StatusForbidden)
-		return
-	}
-	if h.updateAgentURL == "" || h.updateAgentToken == "" {
-		http.Redirect(w, r, "/core/settings?notice=Update-Agent+nicht+konfiguriert", http.StatusSeeOther)
-		return
-	}
+// installUpdateLegacy: Update wie bisher (Docker-Betrieb, ältere Agenten):
+// der Agent holt und installiert den Stand sofort (POST /v1/update).
+// Rechte und Agent-Einstellung hat InstallUpdateWeb schon geprüft.
+func (h *Handler) installUpdateLegacy(w http.ResponseWriter, r *http.Request) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.updateAgentURL+"/v1/update", nil)
 	if err != nil {
 		http.Redirect(w, r, "/core/settings?notice=Update-Agent-Adresse+ungültig", http.StatusSeeOther)
@@ -354,20 +391,86 @@ func (h *Handler) setUpdateSetting(ctx context.Context, key, value string) error
 }
 
 func (h *Handler) checkUpdateIfDue(ctx context.Context) {
-	if h.getUpdateSetting(ctx, "update_auto_check_enabled", "true") != "true" {
-		return
-	}
+	enabled := h.getUpdateSetting(ctx, "update_auto_check_enabled", "true") == "true"
 	interval, err := strconv.Atoi(h.getUpdateSetting(ctx, "update_check_interval_hours", "24"))
 	if err != nil || interval < 1 || interval > 168 {
 		interval = 24
 	}
-	last, err := time.Parse(time.RFC3339, h.getUpdateSetting(ctx, "update_last_checked_at", ""))
-	if err == nil && time.Since(last) < time.Duration(interval)*time.Hour {
+	last, _ := time.Parse(time.RFC3339, h.getUpdateSetting(ctx, "update_last_checked_at", ""))
+	stale := !h.loadUpdateCheck(ctx).current(h.buildCommit, updateBranch())
+	if !updateCheckDue(enabled, stale, last, interval, time.Now()) {
 		return
 	}
 	if err := h.checkGitHubUpdate(ctx); err != nil {
 		fmt.Printf("update check failed: %v\n", err)
 	}
+}
+
+// updateCheckDue: automatische Prüfung jetzt fällig? Nach einem Update (anderer
+// Stand) oder Zweigwechsel sofort, sonst nach dem Intervall; ausgeschaltet nie.
+func updateCheckDue(enabled, stale bool, last time.Time, intervalHours int, now time.Time) bool {
+	if !enabled {
+		return false
+	}
+	return stale || last.IsZero() || now.Sub(last) >= time.Duration(intervalHours)*time.Hour
+}
+
+// storedUpdateCheck: letzter Commit-Vergleich, wie checkGitHubUpdate ihn
+// gespeichert hat – mit dem Stand und Update-Zweig, für die er galt (A1).
+type storedUpdateCheck struct {
+	Commit string // neuester Stand des Update-Zweigs (voll)
+	Status string // ahead, behind, identical, diverged; "" = kein Vergleich
+	Build  string // laufender Stand bei der Prüfung ("unknown" = unbekannt)
+	Branch string // Update-Zweig bei der Prüfung
+}
+
+// checkedBuild: so wird der laufende Stand beim Vergleich gespeichert.
+func checkedBuild(build string) string {
+	if build = strings.TrimSpace(build); build == "" {
+		return "unknown"
+	}
+	return build
+}
+
+// current: Gehört der Vergleich zum laufenden Stand und Update-Zweig? Fehlen
+// die Angaben (Vergleich einer älteren Version), gilt er als veraltet.
+func (c storedUpdateCheck) current(build, branch string) bool {
+	return c.Build != "" && c.Build == checkedBuild(build) && c.Branch != "" && c.Branch == branch
+}
+
+// target: Ziel des Update-Knopfs – nur aus einem aktuellen Vergleich, der
+// einen neueren Stand gefunden hat; sonst "".
+func (c storedUpdateCheck) target(build, branch string) string {
+	if !c.current(build, branch) || !updateAvailable(c.Status, build) {
+		return ""
+	}
+	return strings.TrimSpace(c.Commit)
+}
+
+// loadUpdateCheck liest den gespeicherten Vergleich (Tests: updateCheckHook).
+func (h *Handler) loadUpdateCheck(ctx context.Context) storedUpdateCheck {
+	if h.updateCheckHook != nil {
+		return h.updateCheckHook(ctx)
+	}
+	if h.db == nil {
+		return storedUpdateCheck{}
+	}
+	get := func(k string) string { return strings.TrimSpace(h.getUpdateSetting(ctx, k, "")) }
+	return storedUpdateCheck{Commit: get("update_latest_commit"), Status: get("update_comparison_status"),
+		Build: get("update_checked_build"), Branch: get("update_checked_branch")}
+}
+
+// applyUpdateCheck: Vergleich für die Seite. Veraltet: kein Update anbieten
+// und den alten Vergleich nicht als aktuell zeigen.
+func (d *CoreSettingsPageData) applyUpdateCheck(c storedUpdateCheck, build, branch string) {
+	if !c.current(build, branch) {
+		d.UpdateCheckStale = true
+		d.LatestCommit, d.ComparisonStatus, d.UpdateAvailable = "", "", false
+		return
+	}
+	d.LatestCommit = shortCommit(c.Commit)
+	d.ComparisonStatus = c.Status
+	d.UpdateAvailable = updateAvailable(c.Status, build)
 }
 
 func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
@@ -376,7 +479,7 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 	var latest struct {
 		SHA string `json:"sha"`
 	}
-	if err := fetchGitHubJSON(requestCtx, "https://api.github.com/repos/"+updateRepository+"/commits/main", &latest); err != nil {
+	if err := fetchGitHubJSON(requestCtx, "https://api.github.com/repos/"+updateRepository+"/commits/"+url.PathEscape(updateBranch()), &latest); err != nil {
 		h.recordUpdateCheckError(ctx, err)
 		return err
 	}
@@ -407,6 +510,14 @@ func (h *Handler) checkGitHubUpdate(ctx context.Context) error {
 		return err
 	}
 	if err := h.setUpdateSetting(ctx, "update_comparison_status", comparisonStatus); err != nil {
+		return err
+	}
+	// A1: Stand und Zweig dieses Vergleichs – nach einem Update oder
+	// Zweigwechsel gilt er als veraltet
+	if err := h.setUpdateSetting(ctx, "update_checked_build", checkedBuild(h.buildCommit)); err != nil {
+		return err
+	}
+	if err := h.setUpdateSetting(ctx, "update_checked_branch", updateBranch()); err != nil {
 		return err
 	}
 	commitViews := make([]UpdateCommitView, 0)

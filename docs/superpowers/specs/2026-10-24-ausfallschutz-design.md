@@ -2,6 +2,9 @@
 
 Stand: 2026-10-24 · Status: Entwurf zur Freigabe
 
+Vermerk: Teil 8 („Geplanter Rollentausch“) ist aufgegangen in
+`2026-10-30-verbund-update-design.md` (Update im Verbund und Wartungsfenster).
+
 ## 1. Ziel
 
 Größtmöglicher Ausfallschutz für PDH und die Admin-Werkzeuge („pdhadmin“: n8n,

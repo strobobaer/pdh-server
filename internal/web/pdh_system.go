@@ -274,6 +274,9 @@ func (h *Handler) StartChangeNotifier(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				if h.maintSkip("aenderungshinweise") {
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				if err := h.processChangeQueue(runCtx); err != nil {
 					componentLog("benachrichtigung").Error().Err(err).Msg("aenderungshinweise fehlgeschlagen")

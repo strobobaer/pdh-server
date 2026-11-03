@@ -125,3 +125,42 @@ func TestWatchSchemaCatchUpPendingStays(t *testing.T) {
 		t.Fatalf("done=%d", done)
 	}
 }
+
+func TestSchemaAhead(t *testing.T) {
+	cases := []struct {
+		name           string
+		applied, known []int
+		want           bool
+	}{
+		{"gleich", []int{1, 2, 3}, []int{1, 2, 3}, false},
+		{"Datenbank hinkt hinterher", []int{1, 2}, []int{1, 2, 3}, false},
+		{"Datenbank ist neuer", []int{1, 2, 3, 4}, []int{1, 2, 3}, true},
+		{"unbekannte Lücke", []int{1, 5}, []int{1, 2, 3}, true},
+		{"leer", nil, []int{1}, false},
+	}
+	for _, c := range cases {
+		if got := schemaAhead(c.applied, c.known); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestSkipUpdateBackup(t *testing.T) {
+	get := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "update.backup_skip_commit" {
+				return v
+			}
+			return ""
+		}
+	}
+	if !skipUpdateBackup(get("abc123"), "abc123") {
+		t.Error("gleicher Stand: Sicherung muss entfallen")
+	}
+	if skipUpdateBackup(get("abc123"), "def456") {
+		t.Error("anderer Stand: Sicherung muss laufen")
+	}
+	if skipUpdateBackup(get(""), "") || skipUpdateBackup(get("unknown"), "unknown") {
+		t.Error("leerer/unbekannter Stand darf nie auslassen")
+	}
+}

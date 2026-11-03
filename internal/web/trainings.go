@@ -1080,6 +1080,10 @@ func (h *Handler) StartTrainingScheduler(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-timer.C:
+				if h.maintSkip("schulungen") {
+					timer.Reset(time.Minute) // nach der Sperre bald nachholen
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if n, err := h.runTrainingDue(runCtx); err != nil {
 					componentLog("schulungen").Error().Err(err).Msg("faelligkeiten pruefen")

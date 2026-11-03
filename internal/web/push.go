@@ -375,6 +375,9 @@ func (h *Handler) StartPushNotifier(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				if h.maintSkip("push") {
+					continue
+				}
 				runCtx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 				h.runPush(runCtx)
 				cancel()

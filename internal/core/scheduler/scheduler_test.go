@@ -96,3 +96,45 @@ func TestIntervalManagerStopAll(t *testing.T) {
 	m.StopAll()
 	m.Stop("a") // must not panic calling Stop again after StopAll
 }
+
+// Gesperrt (z. B. Wartungssperre): fällige Läufe werden ausgelassen.
+func TestIntervalManagerGate(t *testing.T) {
+	m := NewIntervalManager()
+	var locked atomic.Bool
+	locked.Store(true)
+	m.SetGate(locked.Load)
+	var calls int32
+	m.Start("g", 5*time.Millisecond, func() { atomic.AddInt32(&calls, 1) })
+	defer m.Stop("g")
+	time.Sleep(40 * time.Millisecond)
+	if n := atomic.LoadInt32(&calls); n != 0 {
+		t.Fatalf("job ran %d times while gated", n)
+	}
+	locked.Store(false)
+	time.Sleep(40 * time.Millisecond)
+	if atomic.LoadInt32(&calls) == 0 {
+		t.Fatal("job did not run after the gate opened")
+	}
+}
+
+func TestCronManagerGateWrapsJob(t *testing.T) {
+	m := NewCronManager()
+	defer m.Stop()
+	m.SetGate(func() bool { return true })
+	ran := false
+	if err := m.Schedule("x", "* * * * *", func() { ran = true }); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	job := m.cron.Entry(m.entries["x"]).Job
+	m.mu.Unlock()
+	job.Run()
+	if ran {
+		t.Fatal("cron job ran while gated")
+	}
+	m.SetGate(nil)
+	job.Run()
+	if !ran {
+		t.Fatal("cron job did not run without gate")
+	}
+}

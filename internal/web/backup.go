@@ -1308,10 +1308,12 @@ func (h *Handler) StartBackupSystem(ctx context.Context) {
 	if h.db == nil {
 		return
 	}
-	h.markStaleBackupRuns(ctx)
-	h.StartBackupSchedules(ctx)
-	go h.drWatch(ctx) // Ausfallschutz: Alarme an die Admins (dr.go)
-	go h.haWatch(ctx) // Ausfallschutz pdh-ha: Alarme an die Admins (ha_watch.go)
+	if !h.maintSkip("sicherung-aufraeumen") { // Start während der Sperre: nicht schreiben
+		h.markStaleBackupRuns(ctx)
+	}
+	h.StartBackupSchedules(ctx) // Läufe über exportCron (Wartungssperre dort)
+	go h.drWatch(ctx)           // Ausfallschutz: Alarme an die Admins (dr.go)
+	go h.haWatch(ctx)           // Ausfallschutz pdh-ha: Alarme an die Admins (ha_watch.go)
 }
 
 // ── Automatische Vollsicherung bei jedem Update ─────────────
