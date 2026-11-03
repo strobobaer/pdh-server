@@ -172,10 +172,10 @@ type mirrorWant struct {
 	Settings ha.Settings
 	Partner  string
 
-	PartnerSeen  bool
-	PartnerRole  ha.Role
-	PartnerFirst bool
-	PartnerDisk  string
+	PartnerSeen   bool
+	PartnerRole   ha.Role
+	PartnerFirst  bool
+	PartnerDisk   string
 	PartnerDataID string
 }
 
@@ -210,6 +210,8 @@ type mirrorRT struct {
 	seenActive bool // in diesem Prozess aktiv gesehen (auch als Stand vor dem Neustart)
 	retAt      time.Time
 	seeded     bool
+	lastAP     ha.Role // zuletzt gesehene Rolle aktiv/passiv
+	promoted   bool    // passiv -> aktiv gesehen, noch nicht an den Arbeiter gemeldet
 	lastPub    ha.Role // nur Takt
 
 	// nur loop
@@ -253,12 +255,26 @@ func (rt *mirrorRT) view() mirrorInboxView {
 	return v
 }
 
+// takePromoted liefert einmalig, ob passiv -> aktiv gesehen wurde.
+func (rt *mirrorRT) takePromoted() bool {
+	rt.rmu.Lock()
+	defer rt.rmu.Unlock()
+	p := rt.promoted
+	rt.promoted = false
+	return p
+}
+
 // noteRoleLocked: aktiv → passiv zählt als Rückkehr. rmu gehalten.
 func (rt *mirrorRT) noteRoleLocked(r ha.Role) {
 	switch r {
 	case ha.Active:
 		rt.sawActive, rt.seenActive = true, true
+		if rt.lastAP == ha.Passive {
+			rt.promoted = true
+		}
+		rt.lastAP = ha.Active
 	case ha.Passive:
+		rt.lastAP = ha.Passive
 		if rt.sawActive {
 			rt.sawActive = false
 			rt.retAt = rt.env.now()
@@ -307,6 +323,12 @@ func (rt *mirrorRT) newWorker(partner string) *mirrorWorker {
 	d := mirrorDeps{
 		ev: rt.ev, repo: rt.env.repo, node: partner, exe: rt.env.exe, rsync: rt.env.rsync,
 		statePath: rt.env.statePath, now: rt.env.now,
+		proof: func(label string) (bool, bool) {
+			if ib := rt.inbox.Load(); ib != nil {
+				return ib.proofOf(label)
+			}
+			return false, false
+		},
 		free: func() (int64, bool) {
 			if w := rt.want.Load(); w != nil {
 				return parseDiskHB(w.PartnerDisk)
@@ -368,11 +390,6 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if w == nil || ib == nil {
 		return
 	}
-	// eigene Rolle dauerhaft merken (nur aktiv/passiv; Fenced löscht „war aktiv“ nicht)
-	if w.On && (w.Role == ha.Active || w.Role == ha.Passive) && w.Role != rt.persistedRole {
-		ib.setLastRole(w.Role)
-		rt.persistedRole = w.Role
-	}
 	wk := rt.worker.Load()
 	if wk != nil && w.Partner != rt.partner {
 		rt.stopWorker()
@@ -388,6 +405,15 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if wk == nil {
 		return
 	}
+	// R25: von passiv auf aktiv gewechselt (auch über einen Neustart: gemerkte Rolle passiv)?
+	// Erst festhalten, dann die Rolle merken, dann darf der Arbeiter laufen.
+	if w.On && w.Role == ha.Active && (rt.takePromoted() || rt.persistedRole == ha.Passive) {
+		wk.markPromoted()
+	}
+	if w.On && (w.Role == ha.Active || w.Role == ha.Passive) && w.Role != rt.persistedRole {
+		ib.setLastRole(w.Role) // eigene Rolle dauerhaft merken (Fenced löscht "war aktiv" nicht)
+		rt.persistedRole = w.Role
+	}
 	switch {
 	case w.On:
 		rt.startWorker(ctx, wk)
@@ -402,6 +428,9 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	// aktive Partner "fertig" meldet
 	if w.On && w.Role == ha.Passive && w.PartnerSeen && w.PartnerRole == ha.Active {
 		wk.adoptFirst(w.PartnerFirst, ib.proofOf)
+	}
+	if w.On && w.Role == ha.Passive {
+		wk.liftUnproven(ib.proofOf) // eigener Beleg nach einem Rücktausch
 	}
 	rt.ownFirst.Store(wk.snapshot().FirstDone)
 }
@@ -565,6 +594,7 @@ type apiMirrorSource struct {
 	Label     string  `json:"label"`
 	LastOKAgo float64 `json:"last_ok_ago"` // -1 = noch nie
 	Skipped   bool    `json:"skipped"`
+	Unproven  bool    `json:"unproven"` // läuft ohne --delete, bis der Partner die Quelle belegt hat
 	Err       string  `json:"err"`
 }
 
@@ -586,7 +616,8 @@ type apiMirror struct {
 	EnvSame      bool    `json:"env_same"`
 	NCVerSame    bool    `json:"nc_ver_same"`
 
-	Sources []apiMirrorSource `json:"sources"`
+	Sources  []apiMirrorSource `json:"sources"`
+	Unproven []string          `json:"unproven"` // Quellen ohne Beleg (Wechsel vor dem Erstabgleich)
 }
 
 // sameOrEmpty: gleich, oder eine Seite weiß es nicht (kein Hinweis).
@@ -598,7 +629,7 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 	if d.node.Kind != "node" {
 		return
 	}
-	am := &apiMirror{On: st.Settings.MirrorOn, LastOKAgo: -1, EnvSame: true, NCVerSame: true, Sources: []apiMirrorSource{}}
+	am := &apiMirror{On: st.Settings.MirrorOn, LastOKAgo: -1, EnvSame: true, NCVerSame: true, Sources: []apiMirrorSource{}, Unproven: []string{}}
 	st.Mirror = am
 	if !am.On {
 		return
@@ -645,7 +676,10 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 		sort.Strings(labels)
 		for _, l := range labels {
 			ls := own.PerLabel[l]
-			am.Sources = append(am.Sources, apiMirrorSource{Label: l, LastOKAgo: ago(ls.LastOK), Skipped: ls.Skipped, Err: ls.Err})
+			am.Sources = append(am.Sources, apiMirrorSource{Label: l, LastOKAgo: ago(ls.LastOK), Skipped: ls.Skipped, Unproven: ls.Unproven, Err: ls.Err})
+			if ls.Unproven {
+				am.Unproven = append(am.Unproven, l)
+			}
 		}
 	} else {
 		// passiv: der aktive Partner kennt den Abgleich, dieser Server den Papierkorb
@@ -801,6 +835,9 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 	}
 	if m.WatchErr != "" {
 		fmt.Fprintf(w, "  Sofort-Übertragung: %s\n", m.WatchErr)
+	}
+	if len(m.Unproven) > 0 {
+		fmt.Fprintf(w, "  Ohne Löschen übertragen (Erstabgleich fehlte beim Wechsel): %s\n", strings.Join(m.Unproven, ", "))
 	}
 	if m.TrashBytes > 0 || m.Orphans > 0 {
 		fmt.Fprintf(w, "  Papierkorb der Spiegelung: %s, %d Rückkehrer-Dateien\n", humanBytes(m.TrashBytes), m.Orphans)

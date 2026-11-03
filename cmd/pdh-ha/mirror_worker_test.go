@@ -160,6 +160,7 @@ func TestMirrorOnlyActive(t *testing.T) {
 		close(cancelled)
 		return ctx.Err()
 	}
+	f.w.d.proof = func(string) (bool, bool) { return true, true } // mit Beleg: kein Alarm wegen des Wechsels
 	f.w.set(true, ha.Active, 1, mirrorSettings)
 	done := make(chan error, 1)
 	go func() { done <- f.w.runAll(context.Background()) }()

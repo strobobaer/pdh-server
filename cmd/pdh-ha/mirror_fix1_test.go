@@ -160,7 +160,7 @@ func TestMirrorNewPartnerResetsState(t *testing.T) {
 	}
 	other := newMirrorWorker(mirrorDeps{ev: f.ev, repo: "/r", node: "c", statePath: f.w.d.statePath})
 	other.set(true, ha.Active, 1, mirrorSettings)
-	if st := other.snapshot(); st.FirstDone || len(st.PerLabel) != 0 || !st.LastOK.IsZero() {
+	if st := other.snapshot(); st.FirstDone || !st.LastOK.IsZero() || !st.PerLabel["uploads"].LastOK.IsZero() {
 		t.Fatalf("neuer Partner erbt den Stand: %+v", st)
 	}
 }

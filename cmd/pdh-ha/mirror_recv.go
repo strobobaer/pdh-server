@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,13 +56,13 @@ type mirrorInboxDeps struct {
 }
 
 type mirrorInboxState struct {
-	Orphans    int             `json:"orphans,omitempty"`     // Rückkehrer-Dateien seit dem letzten Leeren
-	Pending    map[string]bool `json:"pending,omitempty"`     // Quellen, deren nächster Lauf nach dem Wechsel zählt
-	Armed      time.Time       `json:"armed,omitempty"`       // ReturnedAt, das schon verarbeitet ist
-	NginxDirty bool            `json:"nginx_dirty,omitempty"` // gespiegelte nginx-Dateien sind noch nicht erfolgreich geladen
-	LastRole   ha.Role         `json:"last_role,omitempty"`   // zuletzt bekannte eigene Rolle (aktiv/passiv): übersteht einen Absturz
-	Proof      map[string]mirrorProof `json:"proof,omitempty"`      // je Quelle: erster fehlerfreier löschender Lauf
-	DataID     string                 `json:"data_id,omitempty"`   // Kennung dieser Ablage (einmal zufällig); ändert sie sich, ist der Empfang neu
+	Orphans    int                    `json:"orphans,omitempty"`     // Rückkehrer-Dateien seit dem letzten Leeren
+	Pending    map[string]bool        `json:"pending,omitempty"`     // Quellen, deren nächster Lauf nach dem Wechsel zählt
+	Armed      time.Time              `json:"armed,omitempty"`       // ReturnedAt, das schon verarbeitet ist
+	NginxDirty bool                   `json:"nginx_dirty,omitempty"` // gespiegelte nginx-Dateien sind noch nicht erfolgreich geladen
+	LastRole   ha.Role                `json:"last_role,omitempty"`   // zuletzt bekannte eigene Rolle (aktiv/passiv): übersteht einen Absturz
+	Proof      map[string]mirrorProof `json:"proof,omitempty"`       // je Quelle: erster fehlerfreier löschender Lauf
+	DataID     string                 `json:"data_id,omitempty"`     // Kennung dieser Ablage (einmal zufällig); ändert sie sich, ist der Empfang neu
 }
 
 // mirrorProof belegt, dass diese Quelle hier einmal vollständig angekommen ist.

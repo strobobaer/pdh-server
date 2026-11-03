@@ -38,6 +38,7 @@ type mirrorLabelState struct {
 	Skipped  bool      `json:"skipped,omitempty"`   // Quelle fehlt bewusst (gilt als erledigt)
 	SawFiles bool      `json:"saw_files,omitempty"` // die Quelle hatte einmal Dateien (Schutz vor leerer Quelle)
 	Adopted  bool      `json:"adopted,omitempty"`   // Erstabgleich laut aktivem Partner fertig (übernommen, nicht selbst gelaufen)
+	Unproven bool      `json:"unproven,omitempty"`  // dieser Server wurde aktiv, ohne dass die Quelle belegt war: läuft ohne --delete (R25)
 	Err      string    `json:"err,omitempty"`
 }
 
@@ -53,25 +54,28 @@ type mirrorState struct {
 	WatchErr               string // letzter Fehler der Sofort-Übertragung (leer nach dem nächsten Erfolg)
 	Partner, DataID        string // für wen der Stand gilt (Kennung des Partners, Datenkennung seines Empfängers)
 	Checked                bool   // Quellordner wurden einmal wirklich geprüft (vorher kein „Erstabgleich fertig“ im Herzschlag)
+	Promoted               bool   // von passiv auf aktiv gewechselt, Quellen noch nicht auf Belege geprüft (gespeichert)
+	DataReset              bool   // Datenkennung des Partners hat gewechselt, Erstabgleich noch nicht fertig: Platzmangel nur warnen
 }
 
 // mirrorDeps: alles, was der Arbeiter von außen braucht (in Tests ersetzbar).
 type mirrorDeps struct {
 	ev        *eventLog
-	repo      string               // Ordner der PDH-Installation (pdhRepo())
-	node      string               // Kennung des Partners
-	exe       string               // pdh-ha für „rsync -e“ (os.Executable)
-	rsync     runner               // führt rsync aus (mit Prozessgruppe, siehe mirrorExec)
-	free      func() (int64, bool) // freier Platz am Partner aus dem Herzschlag
-	statePath string               // mirror.json
-	now       func() time.Time     // nil = time.Now
-	exists    func(string) bool    // nil = Datei/Ordner vorhanden
-	hasFiles  func(string) bool    // nil = Ordner enthält etwas
-	size      func(string) int64   // nil = Summe der Dateigrößen
-	lexists   func(string) bool    // nil = Eintrag vorhanden (Symlinks zählen selbst)
-	islink    func(string) bool    // nil = Eintrag ist ein Symlink
-	settle    time.Duration        // Sammelzeit der Sofort-Übertragung (0 = 2 s)
-	watchAdd  func(string) error   // nil = inotify (Test-Einhängepunkt)
+	repo      string                                // Ordner der PDH-Installation (pdhRepo())
+	node      string                                // Kennung des Partners
+	exe       string                                // pdh-ha für „rsync -e“ (os.Executable)
+	rsync     runner                                // führt rsync aus (mit Prozessgruppe, siehe mirrorExec)
+	free      func() (int64, bool)                  // freier Platz am Partner aus dem Herzschlag
+	statePath string                                // mirror.json
+	now       func() time.Time                      // nil = time.Now
+	exists    func(string) bool                     // nil = Datei/Ordner vorhanden
+	hasFiles  func(string) bool                     // nil = Ordner enthält etwas
+	size      func(string) int64                    // nil = Summe der Dateigrößen
+	lexists   func(string) bool                     // nil = Eintrag vorhanden (Symlinks zählen selbst)
+	islink    func(string) bool                     // nil = Eintrag ist ein Symlink
+	proof     func(label string) (done, files bool) // eigener Beleg des Empfängers (nil = keiner)
+	settle    time.Duration                         // Sammelzeit der Sofort-Übertragung (0 = 2 s)
+	watchAdd  func(string) error                    // nil = inotify (Test-Einhängepunkt)
 }
 
 type mirrorWorker struct {
@@ -95,7 +99,7 @@ type mirrorWorker struct {
 	watchCancel context.CancelFunc
 	watchSig    string
 	fullAt      map[string]time.Time // Beginn des letzten erfolgreichen vollen Laufs je Quelle
-	present     map[string]bool // letzter echter Stand der Quellordner (refreshFirst)
+	present     map[string]bool      // letzter echter Stand der Quellordner (refreshFirst)
 }
 
 func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
@@ -162,6 +166,8 @@ func (w *mirrorWorker) load() {
 		PerLabel  map[string]mirrorLabelState `json:"per_label"`
 		Partner   string                      `json:"partner"`
 		DataID    string                      `json:"data_id"`
+		Promoted  bool                        `json:"promoted"`
+		DataReset bool                        `json:"data_reset"`
 	}
 	if json.Unmarshal(b, &s) != nil {
 		// beschädigt: beiseitelegen und melden – ohne den Stand fehlt der Schutz
@@ -171,9 +177,11 @@ func (w *mirrorWorker) load() {
 		return
 	}
 	w.st.Partner, w.st.DataID = w.d.node, s.DataID
+	w.st.Promoted, w.st.DataReset = s.Promoted, s.DataReset
 	if s.Partner != "" && s.Partner != w.d.node {
 		// Stand eines anderen Partners: nichts davon sagt etwas über die Daten dieses Partners
 		w.st.DataID = ""
+		w.st.PerLabel = keepOwn(s.PerLabel)
 		if w.d.ev != nil {
 			w.d.ev.add(ha.Event{Kind: "info", Text: "Neuer Partner " + w.d.node + ": Erstabgleich läuft neu"})
 		}
@@ -196,7 +204,9 @@ func (w *mirrorWorker) save(st mirrorState) {
 		PerLabel  map[string]mirrorLabelState `json:"per_label"`
 		Partner   string                      `json:"partner,omitempty"`
 		DataID    string                      `json:"data_id,omitempty"`
-	}{st.FirstDone, st.LastOK, st.PerLabel, st.Partner, st.DataID})
+		Promoted  bool                        `json:"promoted,omitempty"`
+		DataReset bool                        `json:"data_reset,omitempty"`
+	}{st.FirstDone, st.LastOK, st.PerLabel, st.Partner, st.DataID, st.Promoted, st.DataReset})
 	os.MkdirAll(filepath.Dir(w.d.statePath), 0o700)
 	if err := writeFileAtomic(w.d.statePath, b, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "pdh-ha: Spiegel-Zustand %s: %v\n", w.d.statePath, err)
@@ -229,7 +239,11 @@ func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) 
 	srcs := ha.MirrorSources(w.d.repo, s)
 	w.mu.Lock()
 	was := w.active()
+	prev := w.role
 	w.want, w.role, w.term, w.cfg = want, role, term, s
+	if prev == ha.Passive && role == ha.Active {
+		w.st.Promoted = true // zählt beim nächsten Lauf (R25)
+	}
 	w.refreshFirstLocked(srcs, nil) // ohne Dateisystem: Skipped zählt vorerst weiter, refreshFirst prüft nach
 	var cancel context.CancelFunc
 	if !w.active() {
@@ -286,10 +300,9 @@ func mirrorLabelDone(ls mirrorLabelState, present bool) bool {
 // aktiven Partners (Herzschlag), aber nur für Quellen, die dieser Server selbst
 // als vollständig empfangen belegen kann (proof: erster fehlerfreier löschender
 // Lauf, und ob Dateien da waren). Ohne Beleg gilt die Quelle nicht, auch wenn der
-// Partner „fertig“ meldet: ein leerer Ersatzserver darf so nie als gefüllt
-// gelten. Mit Beleg wird auch SawFiles gesetzt (Schutz vor leerer Quelle). on=false
-// nimmt die Übernahme zurück (neue Quelle beim Partner). Schreibt eine Datei: nie
-// aus dem Takt aufrufen.
+// Partner „fertig“ meldet. SawFiles (Schutz vor leerer Quelle) folgt immer dem
+// Beleg; on=false nimmt nur die Übernahme (Adopted) zurück. Schreibt eine Datei:
+// nie aus dem Takt aufrufen.
 func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files bool)) {
 	w.mu.Lock()
 	srcs := ha.MirrorSources(w.d.repo, w.cfg)
@@ -297,28 +310,121 @@ func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files
 	for _, m := range srcs {
 		ls := w.st.PerLabel[m.Label]
 		done, files := false, false
-		if on && proof != nil {
+		if proof != nil {
 			done, files = proof(m.Label)
 		}
-		switch {
-		case done && ls.LastOK.IsZero() && (!ls.Adopted || files && !ls.SawFiles):
-			ls.Adopted, ls.SawFiles = true, ls.SawFiles || files
-		case !done && ls.Adopted:
-			ls.Adopted = false
-			if ls.LastOK.IsZero() {
-				ls.SawFiles = false
-			}
-		default:
-			continue
+		old := ls
+		if done && files {
+			ls.SawFiles = true
 		}
-		w.st.PerLabel[m.Label] = ls
-		changed = true
+		switch {
+		case on && done && ls.LastOK.IsZero():
+			ls.Adopted = true
+		case ls.Adopted && !(on && done):
+			ls.Adopted = false
+		}
+		if ls != old {
+			w.st.PerLabel[m.Label] = ls
+			changed = true
+		}
 	}
 	if !changed {
 		w.mu.Unlock()
 		return
 	}
 	w.refreshFirstLocked(srcs, nil)
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+}
+
+// keepOwn behält beim Zurücksetzen nur, was der eigenen Quelle gehört.
+func keepOwn(per map[string]mirrorLabelState) map[string]mirrorLabelState {
+	out := map[string]mirrorLabelState{}
+	for l, ls := range per {
+		if ls.SawFiles || ls.Unproven {
+			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven}
+		}
+	}
+	return out
+}
+
+// unproven: die Quelle läuft ohne --delete.
+func (w *mirrorWorker) unproven(label string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.st.PerLabel[label].Unproven
+}
+
+// markPromoted merkt (dauerhaft), dass dieser Server von passiv auf aktiv gewechselt
+// ist; der nächste Lauf prüft die Quellen auf Belege. Schreibt eine Datei.
+func (w *mirrorWorker) markPromoted() {
+	w.mu.Lock()
+	if w.st.Promoted {
+		w.mu.Unlock()
+		return
+	}
+	w.st.Promoted = true
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+}
+
+// settlePromotion (R25): nach dem Wechsel von passiv auf aktiv gilt jede vorhandene
+// Quelle ohne eigenen Beleg des Empfängers als unbelegt: sie läuft ohne --delete, der
+// Partner behält seine Dateien. Alarm einmal je Quelle. Gespeichert wird vor dem Lauf.
+func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[string]bool) {
+	w.mu.Lock()
+	if !w.st.Promoted {
+		w.mu.Unlock()
+		return
+	}
+	var marked []string
+	for _, m := range srcs {
+		if !present[m.Label] {
+			continue
+		}
+		if w.d.proof != nil {
+			if done, _ := w.d.proof(m.Label); done {
+				continue
+			}
+		}
+		ls := w.st.PerLabel[m.Label]
+		if ls.Unproven {
+			continue
+		}
+		ls.Unproven = true
+		w.st.PerLabel[m.Label] = ls
+		marked = append(marked, m.Label)
+	}
+	w.st.Promoted = false
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+	for _, l := range marked {
+		w.alarmOnce("unproven:"+l, "Quelle "+l+": Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Bitte prüfen und die Rollen tauschen.")
+	}
+}
+
+// liftUnproven hebt „unbelegt“ auf, sobald dieser Server die Quelle selbst
+// vollständig empfangen hat (Beleg nach einem Rücktausch). Schreibt eine Datei.
+func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool)) {
+	w.mu.Lock()
+	changed := false
+	for l, ls := range w.st.PerLabel {
+		if !ls.Unproven {
+			continue
+		}
+		if done, _ := proof(l); done {
+			ls.Unproven = false
+			w.st.PerLabel[l] = ls
+			changed = true
+		}
+	}
+	if !changed {
+		w.mu.Unlock()
+		return
+	}
 	snap := copyState(w.st)
 	w.mu.Unlock()
 	w.save(snap)
@@ -342,7 +448,8 @@ func (w *mirrorWorker) observeDataID(id string) {
 	w.st.DataID = id
 	var cancel context.CancelFunc
 	if reset {
-		w.st.PerLabel = map[string]mirrorLabelState{}
+		w.st.PerLabel = keepOwn(w.st.PerLabel) // SawFiles und Unproven gehören der eigenen Quelle
+		w.st.DataReset = true
 		w.st.LastOK = time.Time{}
 		w.fullAt = map[string]time.Time{}
 		w.refreshFirstLocked(ha.MirrorSources(w.d.repo, w.cfg), nil)
@@ -522,6 +629,11 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	w.mu.Unlock()
 	defer cancel()
 	present := w.presence(srcs)
+	w.settlePromotion(srcs, present)
+	w.mu.Lock()
+	per0 = copyState(w.st).PerLabel
+	dataReset := w.st.DataReset
+	w.mu.Unlock()
 	firstDone := mirrorFirstDone(srcs, per0, present)
 
 	var out []mirrorOutcome
@@ -573,9 +685,13 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		}
 		if free, ok := w.d.free(); ok && free < need {
 			err := fmt.Errorf("Zu wenig Platz am Partner: nötig %s, frei %s", humanBytes(need), humanBytes(free))
-			w.alarm(err.Error())
-			w.finish(rctx, ctx, start, s, srcs, nil, nil, err)
-			return err
+			if !dataReset {
+				w.alarm(err.Error())
+				w.finish(rctx, ctx, start, s, srcs, nil, nil, err)
+				return err
+			}
+			// R26: Ablage des Partners neu angelegt, seine Daten sind noch da: nur warnen
+			w.alarmOnce("space-reset", err.Error()+" – die Ablage des Partners wurde neu angelegt, der Abgleich läuft trotzdem")
 		}
 	}
 
@@ -603,7 +719,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		default:
 			saw[m.Label] = w.d.hasFiles(m.Path)
 			t0 := time.Now()
-			if _, err := w.d.rsync.Run(rctx, w.argv(m, term, s), nil, nil); err != nil && !vanishedOnly(err) {
+			if _, err := w.d.rsync.Run(rctx, w.argvDel(m, term, s, !w.unproven(m.Label)), nil, nil); err != nil && !vanishedOnly(err) {
 				o.err = fmt.Errorf("%s: %w", m.Label, err)
 			} else {
 				o.ok = true
@@ -634,7 +750,15 @@ func vanishedOnly(err error) bool {
 // argv baut den rsync-Aufruf. Der Rechnername ist nur Platzhalter für rsync;
 // mirror-pipe verbindet anhand von --node.
 func (w *mirrorWorker) argv(m ha.MirrorSource, term uint64, s ha.Settings) []string {
-	a := []string{"rsync", "-a", "--numeric-ids", "--delete", "--backup", "--partial-dir=.pdh-teil", "--delay-updates"}
+	return w.argvDel(m, term, s, true)
+}
+
+// argvDel: del=false lässt --delete weg (unbelegte Quelle: der Partner behält seine Dateien).
+func (w *mirrorWorker) argvDel(m ha.MirrorSource, term uint64, s ha.Settings, del bool) []string {
+	a := []string{"rsync", "-a", "--numeric-ids", "--backup", "--partial-dir=.pdh-teil", "--delay-updates"}
+	if del {
+		a = append(a[:3], append([]string{"--delete"}, a[3:]...)...)
+	}
 	if s.MirrorBWLimitKB > 0 {
 		a = append(a, "--bwlimit="+strconv.Itoa(s.MirrorBWLimitKB))
 	}
@@ -702,6 +826,9 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 		}
 	}
 	w.refreshFirstLocked(srcs, present)
+	if w.st.FirstDone {
+		w.st.DataReset = false
+	}
 	alarmNow := first != nil && runErr == nil && end.Sub(w.failSince) >= mirrorAlarmAfter(s)
 	if alarmNow {
 		w.alarmed = true

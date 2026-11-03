@@ -164,7 +164,7 @@ type daemon struct {
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 
 	// Datei-Spiegelung (mirror_api.go); mir entsteht beim ersten Takt eines Servers
-	mir       *mirrorRT
+	mir        *mirrorRT
 	mirrorWire *mirrorWiring // nil = Produktion; Tests ersetzen die Umgebung
 
 	up  upState     // Update im Verbund (update_job.go)
