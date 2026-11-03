@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.102] – 2026-11-03
+
+### Behoben
+
+- Probe: Stand mit lesbarem Hauptknopf im Wartungs-Band und korrigierter Anzeige von „pdh-ha update status“.
+
 ## [0.77.101] – 2026-11-03
 
 ### Behoben
