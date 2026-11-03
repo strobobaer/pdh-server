@@ -48,7 +48,8 @@ var mirrorLongOK = map[string]bool{
 	"--delete": true, "--delete-during": true, "--delete-delay": true, "--delete-after": true,
 	"--numeric-ids": true, "--backup": true, "--from0": true, "--files-from=-": true,
 	"--partial-dir=.pdh-teil": true, "--delay-updates": true,
-	"--no-r": true, // rsync sendet es mit -R und --files-from
+	"--no-r":                true, // rsync sendet es mit -R und --files-from
+	"--ignore-missing-args": true, // fehlende Pfade der Liste sind kein Fehler
 }
 
 // mirrorShortOK prüft ein Bündel von Kurzoptionen. Vor dem „e.“-Teil sind nur

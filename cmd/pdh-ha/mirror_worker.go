@@ -29,7 +29,8 @@ const (
 	mirrorAlarmRepeat = time.Hour // derselbe Alarmtext höchstens einmal je Stunde
 	mirrorStateFile   = "/var/lib/pdh-ha/mirror.json"
 	mirrorTick        = time.Second
-	rsyncVanished     = 24 // „Quelldateien während des Laufs verschwunden“ ist kein Fehler
+	rsyncVanished     = 24              // „Quelldateien während des Laufs verschwunden“ ist kein Fehler
+	mirrorBarrierWait = 5 * time.Second // so lange darf die Ereigniskette vor dem letzten Abgleich brauchen
 )
 
 type mirrorLabelState struct {
@@ -64,6 +65,7 @@ type mirrorDeps struct {
 	hasFiles  func(string) bool    // nil = Ordner enthält etwas
 	size      func(string) int64   // nil = Summe der Dateigrößen
 	lexists   func(string) bool    // nil = Eintrag vorhanden (Symlinks zählen selbst)
+	islink    func(string) bool    // nil = Eintrag ist ein Symlink
 	settle    time.Duration        // Sammelzeit der Sofort-Übertragung (0 = 2 s)
 	watchAdd  func(string) error   // nil = inotify (Test-Einhängepunkt)
 }
@@ -106,6 +108,9 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 	}
 	if cfg.size == nil {
 		cfg.size = dirSize
+	}
+	if cfg.islink == nil {
+		cfg.islink = func(p string) bool { fi, err := os.Lstat(p); return err == nil && fi.Mode()&os.ModeSymlink != 0 }
 	}
 	if cfg.lexists == nil {
 		cfg.lexists = func(p string) bool { _, err := os.Lstat(p); return err == nil }
@@ -404,12 +409,18 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	if final {
 		w.mu.Lock()
 		mw = w.watch
-		for _, m := range srcs {
-			if m.Instant && present[m.Label] && w.coveredLocked(m.Label) {
-				covered[m.Label] = true
-			}
-		}
 		w.mu.Unlock()
+		// Erst die Ereigniskette leeren (Markendatei durch die Warteschlange);
+		// erst danach zählt, was abgedeckt ist und was vorgemerkt wurde.
+		if mw != nil && mw.barrier(rctx, mirrorBarrierWait) {
+			w.mu.Lock()
+			for _, m := range srcs {
+				if m.Instant && present[m.Label] && w.coveredLocked(m.Label) {
+					covered[m.Label] = true
+				}
+			}
+			w.mu.Unlock()
+		}
 		srcs = finalOrder(srcs)
 		for _, m := range srcs { // zuerst die vorgemerkten Pfade
 			if !covered[m.Label] || rctx.Err() != nil {
@@ -777,10 +788,12 @@ func (w *mirrorWorker) sendPaths(ctx context.Context, m ha.MirrorSource, term ui
 		if p == "" || c != p || c == "." || c == ".." || strings.HasPrefix(c, "../") || strings.HasPrefix(c, "/") {
 			continue
 		}
-		if !w.d.lexists(filepath.Join(m.Path, filepath.FromSlash(p))) {
+		if !w.d.lexists(filepath.Join(m.Path, filepath.FromSlash(p))) || w.viaSymlink(m.Path, p) {
 			continue
 		}
-		in = append(append(in, p...), 0)
+		// „./“ davor: rsync liest Einträge mit # oder ; am Anfang sonst als Kommentar
+		in = append(append(in, "./"...), p...)
+		in = append(in, 0)
 	}
 	if len(in) == 0 {
 		return nil
@@ -798,8 +811,22 @@ func (w *mirrorWorker) argvPaths(m ha.MirrorSource, term uint64, s ha.Settings) 
 	if s.MirrorBWLimitKB > 0 {
 		a = append(a, "--bwlimit="+strconv.Itoa(s.MirrorBWLimitKB))
 	}
-	a = append(a, "--files-from=-", "--from0")
+	a = append(a, "--files-from=-", "--from0", "--ignore-missing-args")
 	a = append(a, m.Exclude...)
 	rsh := fmt.Sprintf("%s mirror-pipe --label %s --term %d --node %s", w.d.exe, m.Label, term, w.d.node)
 	return append(a, "-e", rsh, strings.TrimSuffix(m.Path, "/")+"/", w.d.node+":"+m.Label)
+}
+
+// viaSymlink: ein Bestandteil von p vor dem letzten ist ein Symlink. rsync
+// würde im Ziel einen echten Ordner mit dem Inhalt von außerhalb anlegen.
+func (w *mirrorWorker) viaSymlink(root, p string) bool {
+	segs := strings.Split(p, "/")
+	cur := root
+	for _, s := range segs[:len(segs)-1] {
+		cur = filepath.Join(cur, s)
+		if w.d.islink(cur) {
+			return true
+		}
+	}
+	return false
 }

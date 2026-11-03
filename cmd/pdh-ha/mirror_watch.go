@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,7 +28,8 @@ import (
 const (
 	mirrorWatchSettle     = 2 * time.Second // Sammelzeit
 	mirrorWatchPendingMax = 10000           // Pfade je Quelle, darüber übernimmt der volle Abgleich
-	mirrorWatchRescan     = 30 * time.Second
+	mirrorWatchRescan     = 5 * time.Second // Wiederholung für fehlende oder neu entstandene Quellen
+	mirrorWatchRescanWait = 2 * time.Second // Ruhezeit nach einem Anstoß, damit viele Löschungen nur einen Durchlauf auslösen
 )
 
 var errWatchLimit = errors.New("Grenze für beobachtete Ordner erreicht")
@@ -48,20 +50,23 @@ type mirrorWatch struct {
 	initial chan struct{}      // geschlossen, sobald der erste Durchlauf fertig ist
 	poke    chan struct{}      // Anstoß für einen neuen Durchlauf (Platz 1)
 
-	initOnce sync.Once
-	mu       sync.Mutex
-	fw       *fsnotify.Watcher
-	roots    map[string]string // Quelle -> aufgelöster Ordner
-	walkedAt map[string]time.Time
-	gen      map[string]int
-	pend     map[string]watchSnap
-	flying   map[string]watchSnap
-	flightOK map[string]bool
-	armed    map[string]bool
-	dirs     map[string]bool
-	seq      uint64
-	limited  bool
-	stopped  bool
+	initOnce   sync.Once
+	mu         sync.Mutex
+	fw         *fsnotify.Watcher
+	roots      map[string]string // Quelle -> aufgelöster Ordner
+	walkedAt   map[string]time.Time
+	gen        map[string]int
+	pend       map[string]watchSnap
+	flying     map[string]watchSnap
+	flightOK   map[string]bool
+	armed      map[string]bool
+	dirs       map[string]bool
+	seq        uint64
+	barrierDir string                   // nur für Sperren beobachteter Ordner (außerhalb aller Quellen)
+	waiters    map[string]chan struct{} // Markendatei -> wartet auf ihr Ereignis
+	bseq       uint64
+	limited    bool
+	stopped    bool
 }
 
 // newMirrorWatch beobachtet die Instant-Quellen von sources.
@@ -75,7 +80,7 @@ func newMirrorWatch(sources []ha.MirrorSource, settle time.Duration, emit func(l
 		initial: make(chan struct{}), poke: make(chan struct{}, 1),
 		roots: map[string]string{}, walkedAt: map[string]time.Time{}, gen: map[string]int{},
 		pend: map[string]watchSnap{}, flying: map[string]watchSnap{}, flightOK: map[string]bool{},
-		armed: map[string]bool{}, dirs: map[string]bool{},
+		armed: map[string]bool{}, dirs: map[string]bool{}, waiters: map[string]chan struct{}{},
 	}
 	for _, m := range sources {
 		if m.Instant {
@@ -98,6 +103,14 @@ func (mw *mirrorWatch) run(ctx context.Context) {
 	mw.mu.Lock()
 	mw.fw = fw
 	mw.mu.Unlock()
+	if d, err := os.MkdirTemp("", "pdh-sperre-"); err == nil {
+		if fw.Add(d) == nil {
+			mw.mu.Lock()
+			mw.barrierDir = d
+			mw.mu.Unlock()
+		}
+		defer os.RemoveAll(d)
+	}
 	defer func() {
 		fw.Close()
 		mw.mu.Lock()
@@ -138,6 +151,15 @@ func (mw *mirrorWatch) scan(ctx context.Context) {
 			return
 		case <-t.C:
 		case <-mw.poke:
+			select { // Ruhezeit: weitere Anstöße zählen mit
+			case <-ctx.Done():
+				return
+			case <-time.After(mw.rescanWait()):
+			}
+			select {
+			case <-mw.poke:
+			default:
+			}
 		}
 		if mw.isLimited() {
 			return
@@ -289,6 +311,10 @@ func relInside(root, p string) (string, bool) {
 func (mw *mirrorWatch) locate(name string) (label, rel string, ok bool) {
 	mw.mu.Lock()
 	defer mw.mu.Unlock()
+	return mw.locateLocked(name)
+}
+
+func (mw *mirrorWatch) locateLocked(name string) (label, rel string, ok bool) {
 	best := -1
 	for _, m := range mw.srcs {
 		root := mw.roots[m.Label]
@@ -304,6 +330,12 @@ func (mw *mirrorWatch) locate(name string) (label, rel string, ok bool) {
 // handle wertet ein Ereignis aus. Löschen und Umbenennen (alter Name) meldet
 // nichts: Gelöschtes überträgt nur der volle Abgleich.
 func (mw *mirrorWatch) handle(ctx context.Context, ev fsnotify.Event) {
+	if mw.barrierEvent(ev) {
+		return
+	}
+	if ev.Op&(fsnotify.Remove|fsnotify.Rename) != 0 || ev.Op == 0 { // 0: z. B. Aushängen
+		mw.gone(ev)
+	}
 	if ev.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Chmod) == 0 {
 		return
 	}
@@ -362,6 +394,7 @@ func (mw *mirrorWatch) reset(label string) {
 	mw.mu.Lock()
 	mw.pend[label] = watchSnap{}
 	mw.walkedAt[label] = time.Time{}
+	delete(mw.roots, label) // wird beim nächsten Durchlauf neu aufgelöst
 	mw.gen[label]++
 	mw.mu.Unlock()
 	select {
@@ -585,6 +618,103 @@ func (r watchRule) match(parts []string, isDir bool) bool {
 			}
 			return true
 		}
+	}
+	return false
+}
+
+func (mw *mirrorWatch) rescanWait() time.Duration {
+	if mw.settle < mirrorWatchRescanWait {
+		return mw.settle
+	}
+	return mirrorWatchRescanWait
+}
+
+// gone behandelt Löschen, Umbenennen und Aushängen: Ein beobachteter Ordner
+// samt Teilbaum (oder die Wurzel selbst) wird aus der Buchführung genommen, die
+// Quelle gilt nicht mehr als abgedeckt, und ein neuer Durchlauf legt die
+// Watches unter den neuen Namen an. Gelöschte Dateien übernimmt der volle Lauf.
+func (mw *mirrorWatch) gone(ev fsnotify.Event) {
+	name := ev.Name
+	var label string
+	var rm []string
+	mw.mu.Lock()
+	for _, m := range mw.srcs {
+		if root := mw.roots[m.Label]; root != "" && name == root {
+			label = m.Label
+		}
+	}
+	if label == "" {
+		if !mw.dirs[name] {
+			mw.mu.Unlock()
+			return
+		}
+		l, _, ok := mw.locateLocked(name)
+		if !ok {
+			mw.mu.Unlock()
+			return
+		}
+		label = l
+	}
+	for d := range mw.dirs {
+		if d == name || strings.HasPrefix(d, name+string(filepath.Separator)) {
+			rm = append(rm, d)
+			delete(mw.dirs, d)
+		}
+	}
+	fw := mw.fw
+	mw.mu.Unlock()
+	if fw != nil {
+		for _, d := range rm {
+			fw.Remove(d) // ein umbenannter Ordner meldet sonst weiter unter dem alten Namen
+		}
+	}
+	mw.reset(label)
+}
+
+func (mw *mirrorWatch) barrierEvent(ev fsnotify.Event) bool {
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	if mw.barrierDir == "" || filepath.Dir(ev.Name) != mw.barrierDir {
+		return false
+	}
+	if ch, ok := mw.waiters[ev.Name]; ok && ev.Op&fsnotify.Create != 0 {
+		delete(mw.waiters, ev.Name)
+		close(ch)
+	}
+	return true
+}
+
+// barrier schickt eine Markendatei durch dieselbe Ereigniswarteschlange wie
+// die Quellen und wartet, bis ihr Ereignis verarbeitet ist. Danach sind alle
+// früheren Änderungen vorgemerkt. Die Datei liegt in einem eigenen Ordner
+// außerhalb der Quellen und kommt nie beim Partner an. false: nicht
+// rechtzeitig (die Quelle gilt dann als nicht abgedeckt).
+func (mw *mirrorWatch) barrier(ctx context.Context, max time.Duration) bool {
+	mw.mu.Lock()
+	dir := mw.barrierDir
+	if dir == "" || mw.stopped {
+		mw.mu.Unlock()
+		return false
+	}
+	mw.bseq++
+	file := filepath.Join(dir, "m"+strconv.FormatUint(mw.bseq, 10))
+	ch := make(chan struct{})
+	mw.waiters[file] = ch
+	mw.mu.Unlock()
+	defer func() {
+		mw.mu.Lock()
+		delete(mw.waiters, file)
+		mw.mu.Unlock()
+		os.Remove(file)
+	}()
+	if os.WriteFile(file, nil, 0o600) != nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	case <-time.After(max):
+	case <-ctx.Done():
 	}
 	return false
 }
