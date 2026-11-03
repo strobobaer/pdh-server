@@ -54,6 +54,8 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       des aktiven einrichten (überschreibt die Datenbank)
   peer-pg-major                       PostgreSQL-Hauptversion des aktiven Servers
   should-run-pdh                      Exit 0, wenn pdh hier laufen soll
+  mirror-pipe --label L --term N --node K <host> rsync --server …
+                                      Kanal der Datei-Spiegelung (nur für rsync -e)
   version                             Version anzeigen
 `
 
@@ -311,6 +313,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "Zurückgesetzt. Sicherung: %s (Zustand: %s.reset-…)\n", backup, st.state)
 		}
 		return 0
+	case "mirror-pipe":
+		// Ersatz für ssh bei rsync -e; läuft nur als Kindprozess von rsync
+		return runMirrorPipe(args[1:], os.Stdin, os.Stdout, stderr)
 	case "version":
 		fmt.Fprintf(stdout, "pdh-ha %s %s\n", version, commit)
 		return 0
