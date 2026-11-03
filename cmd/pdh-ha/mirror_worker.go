@@ -51,6 +51,8 @@ type mirrorState struct {
 	SlowerThanInterval     bool
 	WatchLimited           bool
 	WatchErr               string // letzter Fehler der Sofort-Übertragung (leer nach dem nächsten Erfolg)
+	Partner, DataID        string // für wen der Stand gilt (Kennung des Partners, Datenkennung seines Empfängers)
+	Checked                bool   // Quellordner wurden einmal wirklich geprüft (vorher kein „Erstabgleich fertig“ im Herzschlag)
 }
 
 // mirrorDeps: alles, was der Arbeiter von außen braucht (in Tests ersetzbar).
@@ -93,6 +95,7 @@ type mirrorWorker struct {
 	watchCancel context.CancelFunc
 	watchSig    string
 	fullAt      map[string]time.Time // Beginn des letzten erfolgreichen vollen Laufs je Quelle
+	present     map[string]bool // letzter echter Stand der Quellordner (refreshFirst)
 }
 
 func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
@@ -128,6 +131,7 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 		alarmAt: map[string]time.Time{}, fullAt: map[string]time.Time{},
 	}
 	w.st.PerLabel = map[string]mirrorLabelState{}
+	w.st.Partner = cfg.node
 	w.load()
 	return w
 }
@@ -156,12 +160,23 @@ func (w *mirrorWorker) load() {
 		FirstDone bool                        `json:"first_done"`
 		LastOK    time.Time                   `json:"last_ok"`
 		PerLabel  map[string]mirrorLabelState `json:"per_label"`
+		Partner   string                      `json:"partner"`
+		DataID    string                      `json:"data_id"`
 	}
 	if json.Unmarshal(b, &s) != nil {
 		// beschädigt: beiseitelegen und melden – ohne den Stand fehlt der Schutz
 		// vor leerer Quelle, der Erstabgleich läuft neu
 		os.Rename(w.d.statePath, w.d.statePath+".kaputt")
 		w.alarm("Zustand der Spiegelung beschädigt, Erstabgleich läuft neu")
+		return
+	}
+	w.st.Partner, w.st.DataID = w.d.node, s.DataID
+	if s.Partner != "" && s.Partner != w.d.node {
+		// Stand eines anderen Partners: nichts davon sagt etwas über die Daten dieses Partners
+		w.st.DataID = ""
+		if w.d.ev != nil {
+			w.d.ev.add(ha.Event{Kind: "info", Text: "Neuer Partner " + w.d.node + ": Erstabgleich läuft neu"})
+		}
 		return
 	}
 	w.st.FirstDone, w.st.LastOK = s.FirstDone, s.LastOK
@@ -179,7 +194,9 @@ func (w *mirrorWorker) save(st mirrorState) {
 		FirstDone bool                        `json:"first_done"`
 		LastOK    time.Time                   `json:"last_ok"`
 		PerLabel  map[string]mirrorLabelState `json:"per_label"`
-	}{st.FirstDone, st.LastOK, st.PerLabel})
+		Partner   string                      `json:"partner,omitempty"`
+		DataID    string                      `json:"data_id,omitempty"`
+	}{st.FirstDone, st.LastOK, st.PerLabel, st.Partner, st.DataID})
 	os.MkdirAll(filepath.Dir(w.d.statePath), 0o700)
 	if err := writeFileAtomic(w.d.statePath, b, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "pdh-ha: Spiegel-Zustand %s: %v\n", w.d.statePath, err)
@@ -235,6 +252,20 @@ func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) 
 func (w *mirrorWorker) run(ctx context.Context) {
 	t := time.NewTicker(mirrorTick)
 	defer t.Stop()
+	// Der echte Stand der Quellordner wird auch während eines langen Laufs nachgeführt
+	// (der Herzschlag meldet sonst „Erstabgleich fertig“, obwohl eine Quelle noch läuft).
+	go func() {
+		r := time.NewTicker(mirrorTick)
+		defer r.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.C:
+				w.refreshFirst()
+			}
+		}
+	}()
 	for {
 		w.step(ctx)
 		select {
@@ -252,21 +283,31 @@ func mirrorLabelDone(ls mirrorLabelState, present bool) bool {
 }
 
 // adoptFirst übernimmt am passiven Server den Stand „Erstabgleich fertig“ des
-// aktiven Partners (Herzschlag) und merkt ihn in mirror.json: wird dieser
-// Server aktiv, verlangt er keinen neuen Erstabgleich. on=false nimmt die
-// Übernahme zurück (neue Quelle beim Partner). Schreibt eine Datei: nie aus dem
-// Takt aufrufen.
-func (w *mirrorWorker) adoptFirst(on bool) {
+// aktiven Partners (Herzschlag), aber nur für Quellen, die dieser Server selbst
+// als vollständig empfangen belegen kann (proof: erster fehlerfreier löschender
+// Lauf, und ob Dateien da waren). Ohne Beleg gilt die Quelle nicht, auch wenn der
+// Partner „fertig“ meldet: ein leerer Ersatzserver darf so nie als gefüllt
+// gelten. Mit Beleg wird auch SawFiles gesetzt (Schutz vor leerer Quelle). on=false
+// nimmt die Übernahme zurück (neue Quelle beim Partner). Schreibt eine Datei: nie
+// aus dem Takt aufrufen.
+func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files bool)) {
 	w.mu.Lock()
 	srcs := ha.MirrorSources(w.d.repo, w.cfg)
 	changed := false
 	for _, m := range srcs {
 		ls := w.st.PerLabel[m.Label]
+		done, files := false, false
+		if on && proof != nil {
+			done, files = proof(m.Label)
+		}
 		switch {
-		case on && ls.LastOK.IsZero() && !ls.Adopted:
-			ls.Adopted = true
-		case !on && ls.Adopted:
+		case done && ls.LastOK.IsZero() && (!ls.Adopted || files && !ls.SawFiles):
+			ls.Adopted, ls.SawFiles = true, ls.SawFiles || files
+		case !done && ls.Adopted:
 			ls.Adopted = false
+			if ls.LastOK.IsZero() {
+				ls.SawFiles = false
+			}
 		default:
 			continue
 		}
@@ -283,8 +324,41 @@ func (w *mirrorWorker) adoptFirst(on bool) {
 	w.save(snap)
 }
 
-// stopWatch beendet die Sofort-Übertragung und vergisst sie, damit ein
-// späterer Start sie neu aufbaut (Arbeiter wurde ausgeschaltet).
+// observeDataID: der Empfänger des Partners meldet eine Datenkennung. Ändert sie
+// sich gegenüber der gemerkten (Ersatzserver, neu aufgebaute Ablage), sagt der
+// bisherige Stand nichts mehr über seine Daten: alles zurück, der Erstabgleich
+// läuft neu. Eine leere Kennung (alte Gegenstelle) gilt als unbekannt und löst
+// nie etwas aus. Schreibt eine Datei: nie aus dem Takt aufrufen.
+func (w *mirrorWorker) observeDataID(id string) {
+	if id == "" {
+		return
+	}
+	w.mu.Lock()
+	if w.st.DataID == id {
+		w.mu.Unlock()
+		return
+	}
+	reset := w.st.DataID != ""
+	w.st.DataID = id
+	var cancel context.CancelFunc
+	if reset {
+		w.st.PerLabel = map[string]mirrorLabelState{}
+		w.st.LastOK = time.Time{}
+		w.fullAt = map[string]time.Time{}
+		w.refreshFirstLocked(ha.MirrorSources(w.d.repo, w.cfg), nil)
+		cancel = w.cancel // ein laufender Abgleich gilt dem alten Stand
+	}
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	w.save(snap)
+	if reset && w.d.ev != nil {
+		w.d.ev.add(ha.Event{Kind: "info", Text: "Empfänger bei " + w.d.node + " hat neue Daten-Kennung: Erstabgleich läuft neu"})
+	}
+}
+
 func (w *mirrorWorker) stopWatch() {
 	w.mu.Lock()
 	cancel := w.watchCancel
@@ -316,6 +390,11 @@ func mirrorFirstDone(srcs []ha.MirrorSource, per map[string]mirrorLabelState, pr
 
 // refreshFirstLocked setzt FirstDone und FirstPercent für die aktuellen Quellen.
 func (w *mirrorWorker) refreshFirstLocked(srcs []ha.MirrorSource, present map[string]bool) {
+	if present == nil {
+		present = w.present // ohne Dateisystem: der letzte echte Stand
+	} else {
+		w.present, w.st.Checked = present, true
+	}
 	w.st.FirstDone = mirrorFirstDone(srcs, w.st.PerLabel, present)
 	n := 0
 	for _, m := range srcs {

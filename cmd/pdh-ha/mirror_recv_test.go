@@ -197,7 +197,7 @@ func TestInboxDataNotMounted(t *testing.T) {
 	} else {
 		d(nil)
 	}
-	f.setView(func(v *mirrorInboxView) { v.FirstDone = true })
+	f.prove("nextcloud-data", true)
 	if _, _, r := f.accept("nextcloud-data", 3); r != "Datenordner nicht erreichbar" {
 		t.Fatalf("ohne .ocdata: %q", r)
 	}
@@ -572,7 +572,7 @@ func TestInboxNginxReloadFailRetried(t *testing.T) {
 func TestInboxAlarmOncePerHour(t *testing.T) {
 	f := newInboxFix(t)
 	os.MkdirAll(f.root+"/nc/data", 0o755)
-	f.setView(func(v *mirrorInboxView) { v.FirstDone = true })
+	f.prove("nextcloud-data", true)
 	for i := 0; i < 30; i++ {
 		f.accept("nextcloud-data", 3)
 		f.mu.Lock()
@@ -581,5 +581,60 @@ func TestInboxAlarmOncePerHour(t *testing.T) {
 	}
 	if n := strings.Count(f.events(), "alarm: "); n != 1 {
 		t.Fatalf("Alarme = %d", n)
+	}
+}
+
+// prove setzt den Beleg des Empfängers für eine Quelle (erster löschender Lauf ohne Fehler).
+func (f *inboxFix) prove(label string, files bool) {
+	f.in.mu.Lock()
+	f.in.st.Proof[label] = mirrorProof{At: f.now, Files: files}
+	f.in.mu.Unlock()
+}
+
+// R22d: .ocdata wird nur verlangt, wenn dieser Empfänger die Quelle selbst schon einmal
+// vollständig bekommen hat – auch wenn der Partner "Erstabgleich fertig" meldet.
+func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
+	f := newInboxFix(t)
+	os.MkdirAll(f.root+"/nc/data", 0o755)
+	f.setView(func(v *mirrorInboxView) { v.FirstDone = true })
+	if _, d, r := f.accept("nextcloud-data", 3); r != "" {
+		t.Fatalf("ohne eigenen Beleg: %q", r)
+	} else {
+		d(nil)
+	}
+	// ein löschender Lauf ohne Fehler ergibt den Beleg (samt "Dateien da")
+	os.WriteFile(f.root+"/nc/data/x", []byte("1"), 0o644)
+	_, d, r := f.acceptDel("nextcloud-data", 3)
+	if r != "" {
+		t.Fatalf("löschender Lauf: %q", r)
+	}
+	d(nil)
+	if done, files := f.in.proofOf("nextcloud-data"); !done || !files {
+		t.Fatalf("Beleg: %v %v", done, files)
+	}
+	// ein fehlgeschlagener Lauf belegt nichts
+	_, d, _ = f.acceptDel("uploads", 3)
+	d(errors.New("rsync 23"))
+	if done, _ := f.in.proofOf("uploads"); done {
+		t.Fatal("Beleg trotz Fehler")
+	}
+	// ein Sofort-Strom (ohne --delete) belegt nichts
+	_, d, _ = f.accept("uploads", 3)
+	d(nil)
+	if done, _ := f.in.proofOf("uploads"); done {
+		t.Fatal("Beleg ohne löschenden Lauf")
+	}
+	// jetzt mit Beleg ist .ocdata Pflicht
+	if _, _, r := f.accept("nextcloud-data", 3); r != "Datenordner nicht erreichbar" {
+		t.Fatalf("mit Beleg ohne .ocdata: %q", r)
+	}
+	// Beleg und Datenkennung überstehen einen Neustart
+	id := f.in.dataID()
+	if id == "" {
+		t.Fatal("keine Datenkennung")
+	}
+	f.rebuild()
+	if done, files := f.in.proofOf("nextcloud-data"); !done || !files || f.in.dataID() != id {
+		t.Fatalf("nach Neustart: %v %v %q", done, files, f.in.dataID())
 	}
 }

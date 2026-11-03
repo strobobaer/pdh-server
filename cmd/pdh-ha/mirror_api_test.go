@@ -328,38 +328,6 @@ func TestMirrorRunOnActive(t *testing.T) {
 	}
 }
 
-func TestMirrorFirstCarriedOver(t *testing.T) {
-	m := newMDT(t, ha.Passive, true, message{Role: "aktiv", MirrorFirst: true})
-	m.tick()
-	rt := m.ready()
-	// Empfänger: der aktive Partner meldet „Erstabgleich fertig“
-	if v := rt.view(); !v.FirstDone || v.Role != ha.Passive {
-		t.Fatalf("Ansicht: %+v", v)
-	}
-	// und festgehalten in mirror.json
-	waitFor(t, 3*time.Second, "übernommen", func() bool {
-		wk := rt.worker.Load()
-		return wk != nil && wk.snapshot().FirstDone
-	})
-	waitFor(t, 3*time.Second, "in mirror.json festgehalten", func() bool {
-		b, err := os.ReadFile(m.w.statePath)
-		return err == nil && strings.Contains(string(b), `"adopted":true`)
-	})
-	// dieser Server wird später aktiv (neuer Prozess): kein neuer Erstabgleich
-	w2 := newMirrorWorker(mirrorDeps{ev: m.d.ev, repo: m.w.repo, node: "b", rsync: m.rs, statePath: m.w.statePath})
-	w2.set(true, ha.Active, 2, m.d.settingsLocked())
-	if st := w2.snapshot(); !st.FirstDone || st.FirstPercent != 100 {
-		t.Fatalf("neuer aktiver Server verlangt Erstabgleich: %+v", st)
-	}
-	// meldet der Partner später „nicht fertig“ (neue Quelle), gilt es nicht mehr
-	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 1, Ver: "test", Sees: []string{"a"}, MirrorFirst: false}))
-	m.tick()
-	waitFor(t, 3*time.Second, "zurückgenommen", func() bool { return !rt.worker.Load().snapshot().FirstDone })
-	if v := rt.view(); v.FirstDone {
-		t.Errorf("Ansicht: %+v", v)
-	}
-}
-
 func TestDaemonStartsWorkerOnlyWhenOn(t *testing.T) {
 	m := newMDT(t, ha.Active, false, message{Role: "passiv"})
 	m.tick()
@@ -751,7 +719,7 @@ func TestMirrorTrashEmptyFromPeer(t *testing.T) {
 		t.Fatal("Unbekannter leert den Papierkorb")
 	}
 	// der Partner darf es: ohne das Schloss des Daemons (der Aufruf kehrt sofort zurück)
-	m.d.handle(m.ctx, inbound{From: "b", Msg: message{T: "mirror_trash_empty", ID: "b", Seq: 2}})
+	m.d.handle(m.ctx, inbound{From: "b", Msg: message{T: "mirror_trash_empty", ID: "b", Seq: 2, Term: 1}})
 	waitFor(t, 3*time.Second, "Papierkorb geleert", func() bool { return !exists() })
 	waitFor(t, 3*time.Second, "Ereignis", func() bool { return hasEvent(m.d, "Papierkorb der Spiegelung geleert") })
 	_ = rt

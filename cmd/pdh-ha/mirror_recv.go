@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,6 +61,29 @@ type mirrorInboxState struct {
 	Armed      time.Time       `json:"armed,omitempty"`       // ReturnedAt, das schon verarbeitet ist
 	NginxDirty bool            `json:"nginx_dirty,omitempty"` // gespiegelte nginx-Dateien sind noch nicht erfolgreich geladen
 	LastRole   ha.Role         `json:"last_role,omitempty"`   // zuletzt bekannte eigene Rolle (aktiv/passiv): übersteht einen Absturz
+	Proof      map[string]mirrorProof `json:"proof,omitempty"`      // je Quelle: erster fehlerfreier löschender Lauf
+	DataID     string                 `json:"data_id,omitempty"`   // Kennung dieser Ablage (einmal zufällig); ändert sie sich, ist der Empfang neu
+}
+
+// mirrorProof belegt, dass diese Quelle hier einmal vollständig angekommen ist.
+type mirrorProof struct {
+	At    time.Time `json:"at"`
+	Files bool      `json:"files,omitempty"` // es waren Dateien da
+}
+
+// proofOf: eigener Beleg für eine Quelle (nie aus dem Herzschlag des Absenders).
+func (m *mirrorInbox) proofOf(label string) (done, files bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.st.Proof[label]
+	return ok, p.Files
+}
+
+// dataID ist die Kennung dieser Ablage (leer erst vor dem Laden).
+func (m *mirrorInbox) dataID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.DataID
 }
 
 // lastRole ist die zuletzt gemerkte eigene Rolle (leer = unbekannt).
@@ -101,7 +126,15 @@ func newMirrorInbox(d mirrorInboxDeps) *mirrorInbox {
 	}
 	m := &mirrorInbox{d: d, busy: map[string]bool{}, logAt: map[string]time.Time{}, alarmAt: map[string]time.Time{}}
 	m.st.Pending = map[string]bool{}
+	m.st.Proof = map[string]mirrorProof{}
 	m.load()
+	if m.st.DataID == "" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err == nil {
+			m.st.DataID = hex.EncodeToString(b[:])
+			m.save()
+		}
+	}
 	return m
 }
 
@@ -160,6 +193,9 @@ func (m *mirrorInbox) load() {
 	if s.Pending == nil {
 		s.Pending = map[string]bool{}
 	}
+	if s.Proof == nil {
+		s.Proof = map[string]mirrorProof{}
+	}
 	m.st = s
 }
 
@@ -173,6 +209,10 @@ func (m *mirrorInbox) save() {
 	s.Pending = make(map[string]bool, len(m.st.Pending))
 	for k, v := range m.st.Pending {
 		s.Pending[k] = v
+	}
+	s.Proof = make(map[string]mirrorProof, len(m.st.Proof))
+	for k, v := range m.st.Proof {
+		s.Proof[k] = v
 	}
 	m.mu.Unlock()
 	b, _ := json.Marshal(s)
@@ -310,7 +350,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		return fail("Zielordner ist ein Link")
 	}
 	// Nach dem Erstabgleich muss der Nextcloud-Datenordner eingehängt sein.
-	if label == "nextcloud-data" && v.FirstDone {
+	if _, proven := m.proofOf(label); label == "nextcloud-data" && proven {
 		if _, err := os.Lstat(filepath.Join(target, ".ocdata")); err != nil {
 			m.alarm("ocdata", "Nextcloud-Datenordner nicht erreichbar (.ocdata fehlt): Spiegelung wird nicht angenommen")
 			return fail("Datenordner nicht erreichbar")
@@ -376,6 +416,18 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			free()
 			if derr != nil {
 				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %v", label, peerID, derr), mirrorErrLogEvery)
+			}
+			if derr == nil && deleting {
+				files := countFiles(target) > 0
+				m.mu.Lock()
+				if m.st.Proof == nil {
+					m.st.Proof = map[string]mirrorProof{}
+				}
+				if old, ok := m.st.Proof[label]; !ok || files != old.Files {
+					m.st.Proof[label] = mirrorProof{At: m.d.now(), Files: files || old.Files}
+				}
+				m.mu.Unlock()
+				m.save()
 			}
 			if pending {
 				// Was rsync vor einem Abbruch schon in den Papierkorb gelegt hat,

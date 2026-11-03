@@ -36,9 +36,11 @@ import (
 const (
 	mirrorScanEvery = time.Minute
 	mirrorLoopEvery = time.Second
-	mirrorStopWait  = 5 * time.Second // so lange wartet das Abschalten auf den Arbeiter
 	mirrorPhpWait   = 10 * time.Second
 )
+
+// mirrorStopWait: so lange wartet das Abschalten auf den Arbeiter (Variable für Tests).
+var mirrorStopWait = 5 * time.Second
 
 // envIgnore: Schlüssel der .env, die auf beiden Servern verschieden sein dürfen.
 // Alle PDH_HA_* gelten immer als ausgenommen.
@@ -174,6 +176,7 @@ type mirrorWant struct {
 	PartnerRole  ha.Role
 	PartnerFirst bool
 	PartnerDisk  string
+	PartnerDataID string
 }
 
 // mirrorCache: Zahlen aus der Dateiarbeit von scanLoop; der Herzschlag liest nur sie.
@@ -214,8 +217,6 @@ type mirrorRT struct {
 	partner       string
 	wcancel       context.CancelFunc
 	wdone         chan struct{}
-	adoptSet      bool
-	adoptVal      bool
 
 	// nur scanLoop
 	lastPrune string
@@ -377,7 +378,6 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 		rt.stopWorker()
 		rt.worker.Store(nil)
 		wk = nil
-		rt.adoptSet = false
 	}
 	if wk == nil && w.Partner != "" {
 		wk = rt.newWorker(w.Partner)
@@ -394,11 +394,14 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	default:
 		rt.stopWorker()
 	}
-	// Erstabgleich vom aktiven Partner übernehmen (und festhalten)
-	if w.On && w.Role == ha.Passive && w.PartnerSeen && w.PartnerRole == ha.Active &&
-		(!rt.adoptSet || rt.adoptVal != w.PartnerFirst) {
-		wk.adoptFirst(w.PartnerFirst)
-		rt.adoptSet, rt.adoptVal = true, w.PartnerFirst
+	// Datenkennung des Partner-Empfängers: ein Ersatzserver verlangt einen neuen Erstabgleich
+	if w.On && w.PartnerSeen {
+		wk.observeDataID(w.PartnerDataID)
+	}
+	// Erstabgleich: nur, was dieser Empfänger selbst belegen kann, und nur wenn der
+	// aktive Partner "fertig" meldet
+	if w.On && w.Role == ha.Passive && w.PartnerSeen && w.PartnerRole == ha.Active {
+		wk.adoptFirst(w.PartnerFirst, ib.proofOf)
 	}
 	rt.ownFirst.Store(wk.snapshot().FirstDone)
 }
@@ -414,6 +417,7 @@ func (rt *mirrorRT) startWorker(ctx context.Context, wk *mirrorWorker) {
 			return // der alte Lauf endet noch
 		}
 	}
+	wk.stopWatch() // ein beim Abschalten verpasstes Aufräumen nachholen: der Watch baut sich neu auf
 	wctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	rt.wcancel, rt.wdone = cancel, done
@@ -527,7 +531,7 @@ func (d *daemon) mirrorTickLocked(ctx context.Context, before, after ha.Role, s 
 	partner := d.partnerLocked()
 	w := &mirrorWant{On: s.MirrorOn && partner != "" && !d.removed, Role: after, Term: d.p.Term, Settings: s, Partner: partner}
 	if pv, ok := views[partner]; ok && partner != "" && pv.seen() && pv.Last.T == "hb" {
-		w.PartnerSeen, w.PartnerRole, w.PartnerFirst, w.PartnerDisk = true, ha.Role(pv.Last.Role), pv.Last.MirrorFirst, pv.Last.Disk
+		w.PartnerSeen, w.PartnerRole, w.PartnerFirst, w.PartnerDisk, w.PartnerDataID = true, ha.Role(pv.Last.Role), pv.Last.MirrorFirst, pv.Last.Disk, pv.Last.MirrorDataID
 	}
 	rt.publish(before, w)
 	base := d.runCtx
@@ -546,7 +550,10 @@ func (d *daemon) mirrorHBLocked(m *message) {
 	}
 	if wk := rt.worker.Load(); wk != nil {
 		st := wk.snapshot()
-		m.MirrorFirst, m.MirrorAt = st.FirstDone, st.LastOK
+		m.MirrorFirst, m.MirrorAt = st.FirstDone && st.Checked, st.LastOK
+	}
+	if ib := rt.inbox.Load(); ib != nil {
+		m.MirrorDataID = ib.dataID()
 	}
 	if c := rt.cache.Load(); c != nil {
 		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans = c.EnvSum, c.NCVer, c.TrashB, c.Orphans
@@ -701,7 +708,12 @@ func (d *daemon) mirrorRun(ctx context.Context) error {
 	if wk == nil {
 		return errors.New("Die Spiegelung ist noch nicht bereit")
 	}
-	return wk.runAll(ctx)
+	// wartet auf einen laufenden Abgleich und läuft dann selbst; ein Abbruch ist ein Fehler
+	if err := wk.runOnce(ctx, true, false); errors.Is(err, errMirrorAborted) {
+		return errors.New("Der Abgleich wurde abgebrochen (Rollenwechsel oder Spiegelung ausgeschaltet)")
+	} else {
+		return err
+	}
 }
 
 // mirrorTrashEmptyReq bittet den passiven Partner, seine Papierkörbe zu leeren.
@@ -714,9 +726,9 @@ func (d *daemon) mirrorTrashEmptyReq() error {
 		return errors.New("Es gibt keinen Partner")
 	}
 	d.mu.Lock()
-	net, from, seq := d.net, d.node.ID, d.nextSeq()
+	net, from, seq, term := d.net, d.node.ID, d.nextSeq(), d.p.Term
 	d.mu.Unlock()
-	net.sendTo(partner, message{T: "mirror_trash_empty", ID: from, Seq: seq})
+	net.sendTo(partner, message{T: "mirror_trash_empty", ID: from, Seq: seq, Term: term})
 	d.event("info", "Papierkorb der Spiegelung bei "+partner+" wird geleert (angefordert)")
 	return nil
 }
@@ -793,4 +805,24 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 	if m.TrashBytes > 0 || m.Orphans > 0 {
 		fmt.Fprintf(w, "  Papierkorb der Spiegelung: %s, %d Rückkehrer-Dateien\n", humanBytes(m.TrashBytes), m.Orphans)
 	}
+}
+
+// trashEmptyOKLocked prüft einen Auftrag "Papierkorb leeren" (R23): das Löschen
+// ist endgültig, darum nur auf dem passiven Server, nur vom als aktiv gesehenen
+// Partner und nicht mit einer älteren Amtszeit. Sonst nur ein Ereignis.
+func (d *daemon) trashEmptyOKLocked(pl *plan, from string, m message) bool {
+	why := ""
+	switch pv := d.views[from]; {
+	case d.p.Role != ha.Passive || d.booting || d.unsaved:
+		why = "dieser Server ist nicht passiv"
+	case !pv.seen() || ha.Role(pv.Last.Role) != ha.Active:
+		why = "der Absender ist nicht als aktiv gesehen"
+	case m.Term < d.p.Term:
+		why = "die Amtszeit ist veraltet"
+	}
+	if why != "" {
+		pl.event("warn", "Auftrag 'Papierkorb der Spiegelung leeren' von "+from+" abgelehnt: "+why)
+		return false
+	}
+	return true
 }

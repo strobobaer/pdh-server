@@ -113,6 +113,7 @@ type message struct {
 	MirrorTrashB  int64     `json:"mirror_trash_b,omitempty"` // Größe der Papierkörbe
 	EnvSum        string    `json:"env_sum,omitempty"`        // Prüfsumme der .env (ohne Serverdaten)
 	NCVer         string    `json:"nc_ver,omitempty"`         // Nextcloud- und PHP-Fassung
+	MirrorDataID  string    `json:"mirror_data_id,omitempty"` // Kennung der Empfangsablage (ändert sich bei einem Ersatzserver)
 }
 
 var deliverTypes = map[string]bool{

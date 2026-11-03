@@ -96,7 +96,7 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 	case "mirror_trash_empty":
 		// Papierkorb der Spiegelung leeren (Auftrag des Partners über den geprüften Weg)
 		if !witness && kind == "node" {
-			emptyTrash = true
+			emptyTrash = d.trashEmptyOKLocked(&pl, in.From, m)
 		}
 	case "removed":
 		// nur der CA-Knoten darf entfernen (laut eigener Knotenliste)
