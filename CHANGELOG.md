@@ -10,6 +10,12 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.101] – 2026-11-03
+
+### Behoben
+
+- Probe: Stand mit der mitwandernden Adresse als /32 zum Prüfen im echten Netz (Rollentausch, Erreichbarkeit aus Windows).
+
 ## [0.77.100] – 2026-11-02
 
 ### Geändert
