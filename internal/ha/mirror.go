@@ -83,7 +83,8 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 	if !s.MirrorNextcloud {
 		return src
 	}
-	appEx := []string{}
+	// Der Papierkorb des Datenordners liegt im Elternordner des Ziels, also hier.
+	appEx := []string{"--exclude=/.pdh-papierkorb/"}
 	// Liegt der Datenordner im Programmordner, gehört er nicht in diese Quelle.
 	if rel := strings.TrimPrefix(path.Clean(s.NCDataDir), path.Clean(s.NCAppDir)+"/"); rel != path.Clean(s.NCDataDir) {
 		appEx = append(appEx, "--exclude=/"+rel+"/")

@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,9 +54,10 @@ type mirrorInboxDeps struct {
 }
 
 type mirrorInboxState struct {
-	Orphans int             `json:"orphans,omitempty"` // Rückkehrer-Dateien seit dem letzten Leeren
-	Pending map[string]bool `json:"pending,omitempty"` // Quellen, deren nächster Lauf nach dem Wechsel zählt
-	Armed   time.Time       `json:"armed,omitempty"`   // ReturnedAt, das schon verarbeitet ist
+	Orphans    int             `json:"orphans,omitempty"`     // Rückkehrer-Dateien seit dem letzten Leeren
+	Pending    map[string]bool `json:"pending,omitempty"`     // Quellen, deren nächster Lauf nach dem Wechsel zählt
+	Armed      time.Time       `json:"armed,omitempty"`       // ReturnedAt, das schon verarbeitet ist
+	NginxDirty bool            `json:"nginx_dirty,omitempty"` // gespiegelte nginx-Dateien sind noch nicht erfolgreich geladen
 }
 
 type mirrorInbox struct {
@@ -108,7 +110,20 @@ func (m *mirrorInbox) logOnce(key, kind, text string, every time.Duration) {
 }
 
 func (m *mirrorInbox) alarm(key, text string) {
-	m.logOnce("alarm:"+key, "alarm", text, mirrorAlarmRepeat)
+	now := m.d.now()
+	m.mu.Lock()
+	if at, ok := m.alarmAt[key]; ok && now.Sub(at) < mirrorAlarmRepeat {
+		m.mu.Unlock()
+		return
+	}
+	for k, at := range m.alarmAt {
+		if now.Sub(at) >= mirrorAlarmRepeat {
+			delete(m.alarmAt, k)
+		}
+	}
+	m.alarmAt[key] = now
+	m.mu.Unlock()
+	m.event("alarm", text)
 }
 
 func (m *mirrorInbox) load() {
@@ -315,12 +330,20 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		return nil, nil, text
 	}
 
+	// Nur ein löschender Lauf (--delete) füllt den Papierkorb; Sofort-Ströme
+	// zählen nicht und verbrauchen die Vormerkung nicht.
+	deleting := false
+	for _, a := range req.Argv {
+		if strings.HasPrefix(a, "--delete") {
+			deleting = true
+		}
+	}
 	m.mu.Lock()
-	pending := m.st.Pending[label]
+	pending := m.st.Pending[label] && deleting
 	m.mu.Unlock()
 	before := 0
 	if pending {
-		before = countFiles(trash)
+		before = countFiles(trash) // ohne Schloss: der Papierkorb kann groß sein
 	}
 	var sigBefore map[string]string
 	if label == "nginx" {
@@ -333,41 +356,64 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			free()
 			if derr != nil {
 				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %v", label, peerID, derr), mirrorErrLogEvery)
-				return
 			}
 			if pending {
+				// Was rsync vor einem Abbruch schon in den Papierkorb gelegt hat,
+				// zählt auch; die Vormerkung bleibt dann bestehen.
+				grew := countFiles(trash) - before
 				m.mu.Lock()
-				delete(m.st.Pending, label)
-				if n := countFiles(trash) - before; n > 0 {
-					m.st.Orphans += n
+				if grew > 0 {
+					m.st.Orphans += grew
+				}
+				if derr == nil {
+					delete(m.st.Pending, label)
 				}
 				m.mu.Unlock()
 				m.save()
 			}
+			// nginx: Änderung merken (auch bei Abbruch); geladen wird nach jedem
+			// erfolgreichen Lauf von nginx und der Zertifikatsquellen, solange
+			// der Merker steht.
 			if label == "nginx" && !sameSig(sigBefore, treeSig(target)) {
-				m.reloadNginx()
+				m.mu.Lock()
+				m.st.NginxDirty = true
+				m.mu.Unlock()
+				m.save()
+			}
+			if derr == nil && (label == "nginx" || label == "ssl-pdh-nextcloud" || label == "letsencrypt") {
+				m.mu.Lock()
+				dirty := m.st.NginxDirty
+				m.mu.Unlock()
+				if dirty && m.reloadNginx() {
+					m.mu.Lock()
+					m.st.NginxDirty = false
+					m.mu.Unlock()
+					m.save()
+				}
 			}
 		})
 	}
 	return argv, done, ""
 }
 
-// reloadNginx prüft die Einstellungen und lädt nginx neu; bei Fehler Alarm.
-func (m *mirrorInbox) reloadNginx() {
+// reloadNginx prüft die Einstellungen und lädt nginx neu; bei Fehler Alarm
+// und false.
+func (m *mirrorInbox) reloadNginx() bool {
 	if m.d.run == nil {
-		return
+		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), mirrorNginxTimeout)
 	defer cancel()
 	if out, err := m.d.run.Run(ctx, []string{"nginx", "-t"}, nil, nil); err != nil {
 		m.alarm("nginx-t", "Gespiegelte nginx-Einstellungen sind fehlerhaft, nginx wurde nicht neu geladen: "+mirrorStderrLine(append([]byte(err.Error()+" "), out...)))
-		return
+		return false
 	}
 	if out, err := m.d.run.Run(ctx, []string{"systemctl", "reload", "nginx"}, nil, nil); err != nil {
 		m.alarm("nginx-reload", "nginx konnte nicht neu geladen werden: "+mirrorStderrLine(append([]byte(err.Error()+" "), out...)))
-		return
+		return false
 	}
 	m.event("info", "nginx nach gespiegelten Einstellungen neu geladen")
+	return true
 }
 
 // trashDayDirs liefert alle Tagesordner (JJJJ-MM-TT) in den Papierkörben der

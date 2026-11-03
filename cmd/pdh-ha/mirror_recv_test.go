@@ -39,6 +39,7 @@ func newInboxFix(t *testing.T) *inboxFix {
 	f.srcs = []ha.MirrorSource{
 		{Label: "uploads", Path: root + "/repo/uploads"},
 		{Label: "nginx", Path: root + "/etc/nginx"},
+		{Label: "ssl-pdh-nextcloud", Path: root + "/etc/ssl"},
 		{Label: "nextcloud-data", Path: root + "/nc/data"},
 	}
 	for _, d := range []string{"repo", "etc", "nc"} {
@@ -67,6 +68,15 @@ func (f *inboxFix) accept(label string, term uint64) ([]string, func(error), str
 	return f.in.Accept(context.Background(), "a", "node", mirrorRequest{
 		Label: label, Term: term, Argv: []string{"rsync", "--server", "-a", ".", "x"},
 	})
+}
+
+func (f *inboxFix) acceptArgv(label string, extra ...string) ([]string, func(error), string) {
+	argv := append([]string{"rsync", "--server", "-a"}, extra...)
+	return f.in.Accept(context.Background(), "a", "node", mirrorRequest{Label: label, Term: 3, Argv: append(argv, ".", "x")})
+}
+
+func (f *inboxFix) acceptDel(label string, term uint64) ([]string, func(error), string) {
+	return f.acceptArgv(label, "--delete")
 }
 
 func (f *inboxFix) events() string {
@@ -399,7 +409,7 @@ func TestOrphans(t *testing.T) {
 
 	run := func(add int) {
 		t.Helper()
-		_, done, r := f.accept("uploads", 3)
+		_, done, r := f.acceptDel("uploads", 3)
 		if r != "" {
 			t.Fatal(r)
 		}
@@ -450,16 +460,16 @@ func TestOrphansFailedRunKeepsPending(t *testing.T) {
 	os.Mkdir(f.root+"/repo/uploads", 0o755)
 	f.setView(func(v *mirrorInboxView) { v.ReturnedAt = f.now })
 	trash := f.root + "/repo/.pdh-papierkorb/2026-11-03/uploads"
-	_, done, _ := f.accept("uploads", 3)
+	_, done, _ := f.acceptDel("uploads", 3)
 	os.WriteFile(trash+"/x", []byte("x"), 0o600)
 	done(errors.New("abgebrochen"))
-	if f.in.orphans() != 0 {
-		t.Fatal("fehlgeschlagener Lauf zählt nicht")
+	if f.in.orphans() != 1 {
+		t.Fatalf("Zuwachs eines fehlgeschlagenen Laufs geht nicht verloren: %d", f.in.orphans())
 	}
-	_, done, _ = f.accept("uploads", 3)
+	_, done, _ = f.acceptDel("uploads", 3)
 	os.WriteFile(trash+"/y", []byte("y"), 0o600)
 	done(nil)
-	if f.in.orphans() != 1 { // x war schon vor dem zweiten Lauf da
+	if f.in.orphans() != 2 { // x vom Abbruch, y vom zweiten Lauf
 		t.Fatalf("Zähler = %d", f.in.orphans())
 	}
 }
@@ -474,5 +484,102 @@ func TestInboxCorruptState(t *testing.T) {
 	}
 	if n := strings.Count(f.events(), "alarm: "); n != 1 {
 		t.Fatalf("Alarme = %d\n%s", n, f.events())
+	}
+}
+
+// Ein Sofort-Strom (--files-from, ohne --delete) verbraucht die Vormerkung nicht.
+func TestOrphansPathsStreamKeepsPending(t *testing.T) {
+	f := newInboxFix(t)
+	os.Mkdir(f.root+"/repo/uploads", 0o755)
+	f.setView(func(v *mirrorInboxView) { v.ReturnedAt = f.now })
+	trash := f.root + "/repo/.pdh-papierkorb/2026-11-03/uploads"
+	_, done, r := f.acceptArgv("uploads", "--files-from=-", "--from0")
+	if r != "" {
+		t.Fatal(r)
+	}
+	os.WriteFile(trash+"/p", []byte("x"), 0o600)
+	done(nil)
+	if f.in.orphans() != 0 {
+		t.Fatalf("Strom ohne --delete zählt nicht: %d", f.in.orphans())
+	}
+	_, done, _ = f.acceptDel("uploads", 3)
+	for _, n := range []string{"a", "b", "c", "d", "e"} {
+		os.WriteFile(trash+"/"+n, []byte("x"), 0o600)
+	}
+	done(nil)
+	if f.in.orphans() != 5 {
+		t.Fatalf("löschender Lauf: %d", f.in.orphans())
+	}
+}
+
+func TestInboxNginxFailedStreamRetried(t *testing.T) {
+	f := newInboxFix(t)
+	dir := f.root + "/etc/nginx"
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(dir+"/nginx.conf", []byte("alt"), 0o644)
+	_, done, _ := f.accept("nginx", 3)
+	os.WriteFile(dir+"/nginx.conf", []byte("neuer Inhalt"), 0o644)
+	done(errors.New("rsync endete mit Fehler"))
+	if len(f.calls()) != 0 {
+		t.Fatalf("nach Abbruch kein Neuladen: %v", f.calls())
+	}
+	f.rebuild() // der Merker überlebt einen Neustart
+	_, done, _ = f.accept("nginx", 3)
+	done(nil)
+	if got := strings.Join(f.calls(), ";"); got != "nginx -t;systemctl reload nginx" {
+		t.Fatalf("Folgelauf ohne Änderung muss nachholen: %q", got)
+	}
+	_, done, _ = f.accept("nginx", 3)
+	done(nil)
+	if len(f.calls()) != 2 {
+		t.Fatalf("danach nicht erneut: %v", f.calls())
+	}
+}
+
+func TestInboxNginxTestFailRetriedAfterCerts(t *testing.T) {
+	f := newInboxFix(t)
+	f.nginxRun(t, true, "nginx -t") // Zertifikate fehlen noch
+	f.rs.mu.Lock()
+	f.rs.calls, f.rs.fn = nil, nil
+	f.rs.mu.Unlock()
+	os.MkdirAll(f.root+"/etc/ssl", 0o755)
+	_, done, _ := f.accept("ssl-pdh-nextcloud", 3) // Zertifikate sind da
+	done(nil)
+	if got := strings.Join(f.calls(), ";"); got != "nginx -t;systemctl reload nginx" {
+		t.Fatalf("Zertifikate-Lauf muss nginx neu laden: %q", got)
+	}
+	_, done, _ = f.accept("ssl-pdh-nextcloud", 3)
+	done(nil)
+	if len(f.calls()) != 2 {
+		t.Fatalf("ohne Merker kein Neuladen: %v", f.calls())
+	}
+}
+
+func TestInboxNginxReloadFailRetried(t *testing.T) {
+	f := newInboxFix(t)
+	f.nginxRun(t, true, "systemctl reload nginx")
+	f.rs.mu.Lock()
+	f.rs.calls, f.rs.fn = nil, nil
+	f.rs.mu.Unlock()
+	_, done, _ := f.accept("nginx", 3)
+	done(nil)
+	if got := strings.Join(f.calls(), ";"); got != "nginx -t;systemctl reload nginx" {
+		t.Fatalf("Wiederholung: %q", got)
+	}
+}
+
+// Alarme: höchstens einer je Stunde, auch wenn andere Meldungen häufiger kommen.
+func TestInboxAlarmOncePerHour(t *testing.T) {
+	f := newInboxFix(t)
+	os.MkdirAll(f.root+"/nc/data", 0o755)
+	f.setView(func(v *mirrorInboxView) { v.FirstDone = true })
+	for i := 0; i < 30; i++ {
+		f.accept("nextcloud-data", 3)
+		f.mu.Lock()
+		f.now = f.now.Add(61 * time.Second)
+		f.mu.Unlock()
+	}
+	if n := strings.Count(f.events(), "alarm: "); n != 1 {
+		t.Fatalf("Alarme = %d", n)
 	}
 }

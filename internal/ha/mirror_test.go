@@ -175,6 +175,10 @@ func TestMirrorSources(t *testing.T) {
 	if !has(app, "--exclude=/data/") {
 		t.Errorf("nextcloud-app muss den Datenordner ausschließen: %v", app.Exclude)
 	}
+	// Der Papierkorb des Datenordners liegt im Programmordner und darf nie mitgespiegelt werden.
+	if !has(app, "--exclude=/.pdh-papierkorb/") {
+		t.Errorf("nextcloud-app muss .pdh-papierkorb ausschließen: %v", app.Exclude)
+	}
 }
 
 func TestMirrorTrashDir(t *testing.T) {
