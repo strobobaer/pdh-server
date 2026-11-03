@@ -177,6 +177,9 @@ type mirrorWant struct {
 	PartnerFirst  bool
 	PartnerDisk   string
 	PartnerDataID string
+	PartnerSyncAt time.Time // letzter erfolgreicher Abgleich laut Herzschlag des Partners
+
+	Addr string // mitwandernde Adresse (ohne Präfix), "" = keine
 }
 
 // mirrorCache: Zahlen aus der Dateiarbeit von scanLoop; der Herzschlag liest nur sie.
@@ -184,7 +187,15 @@ type mirrorCache struct {
 	EnvSum, NCVer string
 	TrashB        int64
 	Orphans       int
+	CertCovers    *bool // Zertifikat enthält die mitwandernde Adresse (nil = kein TLS / unbekannt)
 	At            time.Time
+}
+
+// ncResult: Ergebnis des Prüflaufs nach einer Übernahme.
+type ncResult struct {
+	Missing []string // höchstens ncMissingKeep Pfade
+	Total   int
+	At      time.Time
 }
 
 type mirrorRT struct {
@@ -195,6 +206,8 @@ type mirrorRT struct {
 	worker atomic.Pointer[mirrorWorker]
 	inbox  atomic.Pointer[mirrorInbox]
 	cache  atomic.Pointer[mirrorCache]
+	ncRes  atomic.Pointer[ncResult]  // Prüflauf der Nextcloud-Dateien (nil = keiner)
+	syncAt atomic.Pointer[time.Time] // zuletzt bekannter Abgleich des Partners
 
 	ownFirst  atomic.Bool // eigener Stand „Erstabgleich fertig“ (aus dem Arbeiter)
 	kick      chan struct{}
@@ -221,7 +234,27 @@ type mirrorRT struct {
 	wdone         chan struct{}
 
 	// nur scanLoop
-	lastPrune string
+	lastPrune  string
+	trustedFor string // Adresse, die als trusted_domains geprüft ist ("" = noch nicht)
+
+	amu     sync.Mutex
+	alarmAt map[string]time.Time // Alarme der Nextcloud-Arbeit, je Art höchstens einmal je Stunde
+}
+
+// alarmOnce meldet einen Alarm je Schlüssel höchstens einmal je Stunde.
+func (rt *mirrorRT) alarmOnce(key, text string) {
+	now := rt.env.now()
+	rt.amu.Lock()
+	if at, ok := rt.alarmAt[key]; ok && now.Sub(at) < mirrorAlarmRepeat {
+		rt.amu.Unlock()
+		return
+	}
+	if rt.alarmAt == nil {
+		rt.alarmAt = map[string]time.Time{}
+	}
+	rt.alarmAt[key] = now
+	rt.amu.Unlock()
+	rt.ev.add(ha.Event{Kind: "alarm", Text: text})
 }
 
 func newMirrorRT(env mirrorWiring, ev *eventLog, stop func()) *mirrorRT {
@@ -294,6 +327,11 @@ func (rt *mirrorRT) publish(before ha.Role, w *mirrorWant) {
 	rt.noteRoleLocked(w.Role)
 	rt.rmu.Unlock()
 	rt.want.Store(w) // vor stopMir: neue Verbindungen sehen die neue Rolle schon
+	if t := w.PartnerSyncAt; !t.IsZero() {
+		if cur := rt.syncAt.Load(); cur == nil || t.After(*cur) {
+			rt.syncAt.Store(&t) // Stand für den Prüflauf nach einer Übernahme
+		}
+	}
 	if wk := rt.worker.Load(); wk != nil {
 		wk.set(w.On, w.Role, w.Term, w.Settings)
 	}
@@ -509,7 +547,13 @@ func (rt *mirrorRT) scan(ctx context.Context) {
 		}
 		c.TrashB, _ = ib.trashInfo()
 		c.Orphans = ib.orphans()
+		if w.Settings.MirrorNextcloud {
+			c.CertCovers = rt.ncMaintain(ctx, w)
+		}
 		rt.cache.Store(c)
+	}
+	if w.Role == ha.Passive {
+		rt.ncRes.Store(nil) // der Prüflauf gilt nur nach der eigenen Übernahme
 	}
 	// einmal am Tag auf jedem Server, auch bei ausgeschalteter Spiegelung
 	if day := now.Format(mirrorDayLayout); day != rt.lastPrune {
@@ -520,7 +564,87 @@ func (rt *mirrorRT) scan(ctx context.Context) {
 	}
 }
 
+// ncMaintain (nur scanLoop, nie im Takt): Zertifikat gegen die mitwandernde
+// Adresse prüfen und – nur am aktiven Server, einmal je Adresse – die Adresse in
+// trusted_domains eintragen. Liefert, ob das Zertifikat die Adresse enthält
+// (nil = kein TLS, keine Adresse oder nicht lesbar). Fehler sind nur Alarme.
+func (rt *mirrorRT) ncMaintain(ctx context.Context, w *mirrorWant) *bool {
+	s := w.Settings
+	if _, err := os.Stat(filepath.Join(filepath.FromSlash(s.NCAppDir), "occ")); err != nil || w.Addr == "" {
+		return nil
+	}
+	if w.Role != ha.Active {
+		rt.trustedFor = "" // nach der nächsten Übernahme neu prüfen
+	} else if rt.trustedFor != w.Addr {
+		if err := ncTrust(ctx, rt.env.run, s.NCAppDir, w.Addr); err != nil {
+			rt.alarmOnce("nc-trust", "Nextcloud: "+err.Error())
+		} else {
+			rt.trustedFor = w.Addr
+		}
+	}
+	covered, hasTLS, err := ncCertCovers(ncSitesDir, w.Addr)
+	if err != nil {
+		rt.alarmOnce("nc-cert", "Nextcloud-Zertifikat nicht lesbar: "+err.Error())
+	}
+	if !hasTLS {
+		return nil
+	}
+	return &covered
+}
+
+// ncCheckAfterTakeover (eigene Goroutine nach einer Übernahme, nie im Takt und
+// nie unter dem Schloss des Daemons): prüft, welche Nextcloud-Dateien die
+// Datenbank kennt, die aber hier fehlen. since ist der zuletzt bekannte Abgleich.
+// occ maintenance:data-fingerprint läuft nie von selbst; der Reiter nennt den Befehl.
+func (rt *mirrorRT) ncCheckAfterTakeover(ctx context.Context, q ncQuery, s ha.Settings, since time.Time) {
+	dataDir := s.NCDataDir
+	if dataDir == "" {
+		dataDir = readNCConfig(s.NCAppDir).DataDir
+	}
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	missing, err := ncCheckFiles(cctx, q, dataDir, since)
+	if err != nil {
+		rt.alarmOnce("nc-check", "Prüflauf der Nextcloud-Dateien nach der Übernahme nicht möglich: "+err.Error())
+		return
+	}
+	res := &ncResult{Total: len(missing), At: rt.env.now()}
+	res.Missing = missing
+	if len(res.Missing) > ncMissingKeep {
+		res.Missing = res.Missing[:ncMissingKeep]
+	}
+	rt.ncRes.Store(res)
+	if res.Total > 0 {
+		rt.ev.add(ha.Event{Kind: "alarm", Text: fmt.Sprintf("Nach der Übernahme fehlen %d Nextcloud-Dateien", res.Total)})
+		return
+	}
+	rt.ev.add(ha.Event{Kind: "info", Text: "Prüflauf nach der Übernahme: alle Nextcloud-Dateien sind vorhanden"})
+}
+
 // --- Anbindung an den Daemon ---
+
+// startNCCheck startet den Prüflauf nach einer Übernahme in einer eigenen
+// Goroutine (pgActor.afterTakeover); ohne Nextcloud-Spiegelung nichts.
+func (d *daemon) startNCCheck(pg *pgCtl) {
+	d.mu.Lock()
+	rt, s, ctx := d.mir, d.settingsLocked(), d.runCtx
+	d.mu.Unlock()
+	if rt == nil || !s.MirrorNextcloud || s.NCAppDir == "" {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var since time.Time
+	if t := rt.syncAt.Load(); t != nil {
+		since = *t
+	}
+	rt.wg.Add(1)
+	go func() {
+		defer rt.wg.Done()
+		rt.ncCheckAfterTakeover(ctx, newNCQuery(pg, s.NCAppDir), s, since)
+	}()
+}
 
 // ensureMirrorLocked legt die Spiegelung an (einmal, ohne Dateizugriff).
 func (d *daemon) ensureMirrorLocked() *mirrorRT {
@@ -619,6 +743,12 @@ func (d *daemon) mirrorTickLocked(ctx context.Context, before, after ha.Role, s 
 	w := &mirrorWant{On: s.MirrorOn && partner != "" && !d.removed, Role: after, Term: d.p.Term, Settings: s, Partner: partner}
 	if pv, ok := views[partner]; ok && partner != "" && pv.seen() && pv.Last.T == "hb" {
 		w.PartnerSeen, w.PartnerRole, w.PartnerFirst, w.PartnerDisk, w.PartnerDataID = true, ha.Role(pv.Last.Role), pv.Last.MirrorFirst, pv.Last.Disk, pv.Last.MirrorDataID
+		if ha.Role(pv.Last.Role) == ha.Active {
+			w.PartnerSyncAt = pv.Last.MirrorAt
+		}
+	}
+	if a := d.cl.Access; a.VIPOn && a.VIP != "" {
+		w.Addr, _, _ = strings.Cut(a.VIP, "/")
 	}
 	rt.publish(before, w)
 	base := d.runCtx
@@ -658,21 +788,24 @@ type apiMirrorSource struct {
 
 // apiMirror: Datei-Spiegelung im Status. Am Zeugen fehlt das Feld.
 type apiMirror struct {
-	On           bool    `json:"on"`
-	Active       bool    `json:"active"` // dieser Server gleicht ab (sonst empfängt er)
-	Running      bool    `json:"running"`
-	FirstDone    bool    `json:"first_done"`
-	FirstPercent int     `json:"first_percent"`
-	LastOKAgo    float64 `json:"last_ok_ago"` // Sekunden seit dem letzten Abgleich, -1 = noch nie
-	LastRunSec   float64 `json:"last_run_s"`
-	Err          string  `json:"err"`
-	WatchErr     string  `json:"watch_err"` // letzter Fehler der Sofort-Übertragung
-	Slow         bool    `json:"slower_than_interval"`
-	WatchLimited bool    `json:"watch_limited"`
-	TrashBytes   int64   `json:"trash_bytes"` // Papierkörbe am passiven Server
-	Orphans      int     `json:"orphans"`     // Rückkehrer-Dateien am passiven Server
-	EnvSame      bool    `json:"env_same"`
-	NCVerSame    bool    `json:"nc_ver_same"`
+	On             bool     `json:"on"`
+	Active         bool     `json:"active"` // dieser Server gleicht ab (sonst empfängt er)
+	Running        bool     `json:"running"`
+	FirstDone      bool     `json:"first_done"`
+	FirstPercent   int      `json:"first_percent"`
+	LastOKAgo      float64  `json:"last_ok_ago"` // Sekunden seit dem letzten Abgleich, -1 = noch nie
+	LastRunSec     float64  `json:"last_run_s"`
+	Err            string   `json:"err"`
+	WatchErr       string   `json:"watch_err"` // letzter Fehler der Sofort-Übertragung
+	Slow           bool     `json:"slower_than_interval"`
+	WatchLimited   bool     `json:"watch_limited"`
+	TrashBytes     int64    `json:"trash_bytes"` // Papierkörbe am passiven Server
+	Orphans        int      `json:"orphans"`     // Rückkehrer-Dateien am passiven Server
+	EnvSame        bool     `json:"env_same"`
+	NCVerSame      bool     `json:"nc_ver_same"`
+	NCMissing      []string `json:"nc_missing"`       // nach der Übernahme fehlende Nextcloud-Dateien (höchstens 200)
+	NCMissingTotal int      `json:"nc_missing_total"` // Anzahl aller fehlenden
+	CertCovers     *bool    `json:"cert_covers"`      // Zertifikat enthält die mitwandernde Adresse (null = kein TLS)
 
 	Sources  []apiMirrorSource `json:"sources"`
 	Unproven []string          `json:"unproven"` // Quellen ohne Beleg (Wechsel vor dem Erstabgleich)
@@ -687,7 +820,7 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 	if d.node.Kind != "node" {
 		return
 	}
-	am := &apiMirror{On: st.Settings.MirrorOn, LastOKAgo: -1, EnvSame: true, NCVerSame: true, Sources: []apiMirrorSource{}, Unproven: []string{}}
+	am := &apiMirror{On: st.Settings.MirrorOn, LastOKAgo: -1, EnvSame: true, NCVerSame: true, NCMissing: []string{}, Sources: []apiMirrorSource{}, Unproven: []string{}}
 	st.Mirror = am
 	if !am.On {
 		return
@@ -720,7 +853,16 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 		}
 	}
 	am.Active = st.Self.Role == ha.Active
+	am.CertCovers = cache.CertCovers
+	if am.CertCovers != nil && !*am.CertCovers {
+		st.Warnings = append(st.Warnings, "Das Zertifikat von Nextcloud enthält die mitwandernde Adresse nicht")
+	}
 	if am.Active {
+		if rt != nil {
+			if r := rt.ncRes.Load(); r != nil {
+				am.NCMissing, am.NCMissingTotal = r.Missing, r.Total
+			}
+		}
 		am.Running, am.FirstDone, am.FirstPercent = own.Running, own.FirstDone, own.FirstPercent
 		am.LastOKAgo, am.LastRunSec = ago(own.LastOK), own.LastRun.Seconds()
 		am.Err, am.WatchErr, am.Slow, am.WatchLimited = own.Err, own.WatchErr, own.SlowerThanInterval, own.WatchLimited
@@ -926,6 +1068,14 @@ func (d *daemon) trashEmptyOKLocked(pl *plan, from string, m message) bool {
 func (d *daemon) wireActor(pa *pgActor) {
 	pa.mirrorFinal = d.mirrorFinalSync // liest die Einstellungen erst beim Abgeben
 	pa.phase = d.swapPhase
+	if pa.nc == nil {
+		pa.nc = newNextcloudCtl(d.sys, ncEnabled(func() ha.Settings {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			return d.settingsLocked()
+		}))
+	}
+	pa.afterTakeover = func() { d.startNCCheck(pa.pg) }
 	pa.refused = func() {
 		d.mu.Lock()
 		d.undoRefused = true

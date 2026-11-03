@@ -33,12 +33,19 @@ type pgEnv struct {
 }
 
 type pgActor struct {
-	pg      *pgCtl
-	svc     serviceCtl // pdh
-	tun     serviceCtl // Cloudflare-Tunnel (nur am aktiven Knoten)
-	ev      *eventLog
-	env     func() pgEnv
-	pushCfg func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
+	pg  *pgCtl
+	svc serviceCtl // pdh
+	tun serviceCtl // Cloudflare-Tunnel (nur am aktiven Knoten)
+	// Nextcloud (nur am aktiven Knoten); nil = keiner. Ein Fehler hier ist nur ein
+	// Alarm und gibt nie einen Fehler der Aktion zurück: Nextcloud löst keine
+	// Umschaltung aus und schaltet keine Wartung ein.
+	nc serviceCtl
+	// nach einer Übernahme (promote), wenn Nextcloud gestartet ist: Prüflauf der
+	// Dateien; läuft in einer eigenen Goroutine, nie hier (nil = keiner)
+	afterTakeover func()
+	ev            *eventLog
+	env           func() pgEnv
+	pushCfg       func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
 	// letzter Dateiabgleich vor der Übergabe (nil = keine Spiegelung); hat seine
 	// eigene Frist (MirrorFinalMax), unabhängig von wait
 	mirrorFinal func(ctx context.Context) error
@@ -54,8 +61,9 @@ type pgActor struct {
 	rewindMem atomic.Bool // pg_rewind begonnen, Ordner noch nicht als Standby gelaufen (mit Datei, R35)
 
 	mu        sync.Mutex
-	syncNames string      // gewünschte synchronous_standby_names (Replikation, Task 8)
-	mirror    *mirrorNote // zuletzt gemeldeter Ausgang des Spiegel-Starts (nil = keiner)
+	syncNames string               // gewünschte synchronous_standby_names (Replikation, Task 8)
+	mirror    *mirrorNote          // zuletzt gemeldeter Ausgang des Spiegel-Starts (nil = keiner)
+	ncAlarmAt map[string]time.Time // letzter Alarm je Art ("start", "stop")
 }
 
 // mirrorNote: Ausgang eines Spiegel-Starts ("" = gestartet, sonst Fehler).
@@ -452,13 +460,59 @@ func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 		return err
 	}
 	// pdh lief als Spiegel: neu starten statt auf seinen Wächter zu warten
-	return errors.Join(a.svc.Restart(ctx), a.tun.Start(ctx))
+	err := errors.Join(a.svc.Restart(ctx), a.tun.Start(ctx))
+	// die Datenbank ist schreibbar: jetzt darf Nextcloud laufen
+	a.ncStart(ctx)
+	if a.afterTakeover != nil {
+		a.afterTakeover()
+	}
+	return err
 }
 
-// stopServices: erst den Tunnel, dann pdh.
+// stopServices: erst den Tunnel, dann Nextcloud, dann pdh. Nextcloud macht nie
+// einen Fehler daraus (ncStop meldet nur einen Alarm).
 func (a *pgActor) stopServices(ctx context.Context) error {
 	a.mirrorReset()
-	return errors.Join(a.tun.Stop(ctx), a.svc.Stop(ctx))
+	terr := a.tun.Stop(ctx)
+	a.ncStop(ctx)
+	return errors.Join(terr, a.svc.Stop(ctx))
+}
+
+// ncStart startet Nextcloud (nur nach einem schreibbaren Stand der Datenbank);
+// ein Fehler ist ein Alarm, höchstens einmal je Stunde, nie ein Fehler der Aktion.
+func (a *pgActor) ncStart(ctx context.Context) {
+	if a.nc == nil {
+		return
+	}
+	a.ncNote("start", "Nextcloud nicht gestartet: ", a.nc.Start(ctx))
+}
+
+// ncStop stoppt Nextcloud; Fehler wie bei ncStart.
+func (a *pgActor) ncStop(ctx context.Context) {
+	if a.nc == nil {
+		return
+	}
+	a.ncNote("stop", "Nextcloud nicht gestoppt: ", a.nc.Stop(ctx))
+}
+
+func (a *pgActor) ncNote(kind, text string, err error) {
+	a.mu.Lock()
+	if err == nil {
+		delete(a.ncAlarmAt, kind)
+		a.mu.Unlock()
+		return
+	}
+	now := a.now()
+	if at, ok := a.ncAlarmAt[kind]; ok && now.Sub(at) < mirrorRepeat {
+		a.mu.Unlock()
+		return
+	}
+	if a.ncAlarmAt == nil {
+		a.ncAlarmAt = map[string]time.Time{}
+	}
+	a.ncAlarmAt[kind] = now
+	a.mu.Unlock()
+	a.ev.add(ha.Event{Kind: "alarm", Text: text + err.Error()})
 }
 
 // mirrorStarted meldet den Ausgang des Spiegel-Starts nur bei Änderung oder
@@ -496,7 +550,11 @@ func (a *pgActor) mirrorReset() {
 // disableAutostart: im Verbund startet pdh-ha pdh und Tunnel, nie systemd
 // beim Hochfahren (dort ist PostgreSQL kurz schreibbar).
 func (a *pgActor) disableAutostart(ctx context.Context) error {
-	return errors.Join(a.svc.SetAutostart(ctx, false), a.tun.SetAutostart(ctx, false))
+	err := errors.Join(a.svc.SetAutostart(ctx, false), a.tun.SetAutostart(ctx, false))
+	if a.nc != nil {
+		a.ncNote("autostart", "Autostart von Nextcloud nicht abgeschaltet: ", a.nc.SetAutostart(ctx, false))
+	}
+	return err
 }
 
 // autostartChecker: Dienste, die melden können, ob ihr Autostart an ist.
@@ -512,7 +570,10 @@ func (a *pgActor) keepAutostartOff(ctx context.Context) {
 	for _, s := range []struct {
 		name string
 		c    serviceCtl
-	}{{"pdh", a.svc}, {"Tunnel", a.tun}} {
+	}{{"pdh", a.svc}, {"Tunnel", a.tun}, {"Nextcloud", a.nc}} {
+		if s.c == nil {
+			continue
+		}
 		ac, ok := s.c.(autostartChecker)
 		if !ok || !ac.AutostartOn(ctx) {
 			continue
@@ -570,7 +631,9 @@ func (a *pgActor) unfence(ctx context.Context) error {
 	if err := a.pg.ctl(ctx, "reload"); err != nil {
 		return err
 	}
-	return errors.Join(a.svc.Start(ctx), a.tun.Start(ctx))
+	err := errors.Join(a.svc.Start(ctx), a.tun.Start(ctx))
+	a.ncStart(ctx)
+	return err
 }
 
 // reconcile gleicht Dienste und Datenbank mit der Rolle ab – nur in die
@@ -589,6 +652,7 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 			if err := a.tun.Start(ctx); err != nil {
 				a.ev.add(ha.Event{Kind: "alarm", Text: "Tunnel auf dem aktiven Server nicht gestartet: " + err.Error()})
 			}
+			a.ncStart(ctx)
 		}
 		return
 	}
@@ -598,6 +662,11 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 		} else {
 			a.ev.add(ha.Event{Kind: "alarm", Text: "Tunnel auf nicht aktivem Server nicht gestoppt: " + err.Error()})
 		}
+	}
+	// Nextcloud läuft nur am aktiven Server; Active umfasst auch einen von einem
+	// Installationsskript wieder angelegten Cron-Auftrag
+	if a.nc != nil && a.nc.Active(ctx) {
+		a.ncStop(ctx)
 	}
 	e := a.env()
 	st := a.pg.status(ctx)
