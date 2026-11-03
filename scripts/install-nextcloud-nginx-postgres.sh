@@ -260,11 +260,15 @@ verbund_passiv() {
   PASSIV_RC_SAVE=""
   PASSIV_RC_SET=0
   trap passiv_aufraeumen EXIT
-  if [[ -e /usr/sbin/policy-rc.d ]]; then
-    PASSIV_RC_SAVE="$(mktemp /var/tmp/policy-rc.d.XXXXXX)"
-    cp -p /usr/sbin/policy-rc.d "${PASSIV_RC_SAVE}"
+  # A file with our marker line is a leftover of an aborted run (kill, power loss):
+  # not saved, simply replaced and removed again at the end.
+  if [[ -e /usr/sbin/policy-rc.d ]] && ! grep -q '^# pdh-nextcloud-verbund-policy' /usr/sbin/policy-rc.d; then
+    local rcsave
+    rcsave="$(mktemp /var/tmp/policy-rc.d.XXXXXX)"
+    cp -p /usr/sbin/policy-rc.d "${rcsave}"
+    PASSIV_RC_SAVE="${rcsave}"
   fi
-  printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+  printf '#!/bin/sh\n# pdh-nextcloud-verbund-policy (temporary, removed after the install)\nexit 101\n' > /usr/sbin/policy-rc.d
   chmod 755 /usr/sbin/policy-rc.d
   PASSIV_RC_SET=1
   log "Installing packages (passive server: no database)"
@@ -313,7 +317,6 @@ verbund_passiv() {
     sed -i -E "s#unix:/run/php/php[0-9.]*-fpm\.sock#unix:${PHP_SOCKET}#" "${site}"
     ln -sfn "${site}" /etc/nginx/sites-enabled/nextcloud.conf
     nginx -t
-    systemctl reload nginx
   else
     log "No Nginx site file – nginx stays as it is"
   fi
@@ -322,7 +325,7 @@ verbund_passiv() {
   # nginx and Redis may run on the passive server.
   passiv_aufraeumen
   trap - EXIT
-  systemctl start nginx || warn "nginx could not be started – check: systemctl status nginx"
+  systemctl reload-or-restart nginx || warn "nginx could not be started or reloaded – check: systemctl status nginx"
   systemctl start redis-server || warn "redis-server could not be started – check: systemctl status redis-server"
 
   log "Passive server ready"

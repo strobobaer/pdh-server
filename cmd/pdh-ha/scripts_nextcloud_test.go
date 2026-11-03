@@ -257,7 +257,11 @@ func TestVerbundRolleAusStatus(t *testing.T) {
 func TestNextcloudVerbundPassivBremstDienste(t *testing.T) {
 	f := scriptFuncOf(t, ncScript, "verbund_passiv")
 	mustContain(t, "verbund_passiv", f, "policy-rc.d", "exit 101", "trap passiv_aufraeumen EXIT", "php_fpm_aus",
-		"systemctl start nginx", "systemctl start redis-server")
+		"reload-or-restart nginx", "systemctl start redis-server", "# pdh-nextcloud-verbund-policy")
+	mustNotContain(t, "verbund_passiv", f, "systemctl reload nginx")
+	if strings.Index(f, "PASSIV_RC_SAVE=\"${rcsave}\"") < strings.Index(f, "cp -p /usr/sbin/policy-rc.d") {
+		t.Error("PASSIV_RC_SAVE erst nach erfolgreichem cp setzen")
+	}
 	apt := strings.Index(f, "apt-get install")
 	off := strings.Index(f[apt:], "php_fpm_aus")
 	chk := strings.Index(f, "No PHP-FPM found")
