@@ -106,11 +106,30 @@ func postRejoin(d *daemon) (int, string) {
 	return rec.Code, e.Error
 }
 
+// tickUntil taktet, bis cond gilt. Der Alarm zählt neue Zustandsabfragen (strandedFreshPolls). Die
+// Abfrage läuft neben dem Takt, und ob ein Takt ihr Ergebnis schon sieht, ist Zufall: Eine feste
+// Zahl von Takten reicht deshalb nicht, auch nicht die vier eines settle.
+func tickUntil(m *mdt, what string, cond func() bool) {
+	m.t.Helper()
+	waitFor(m.t, 10*time.Second, what, func() bool {
+		m.tick()
+		return cond()
+	})
+}
+
+// awaitStranded taktet, bis die Warnung für den gestrandeten Server steht.
+func awaitStranded(m *mdt) {
+	m.t.Helper()
+	tickUntil(m, "Warnung „nicht angebunden“", func() bool {
+		return slices.Contains(m.d.statusNow().Warnings, strandedText)
+	})
+}
+
 // Beweis aus der Prüfung (Neustart: keine Marke): keine Automatik, aber der Betreiber
 // sieht den Zustand einmal als Alarm, in der Statuswarnung, in pdh-ha status und im JSON.
 func TestStrandedRestartOperatorView(t *testing.T) {
 	m, r := passiveRO(t, nil, activePrimary, false)
-	settle(m)
+	awaitStranded(m)
 	settle(m)
 	settle(m)
 	if n := dryRuns(r); n != 0 {
@@ -147,7 +166,7 @@ func TestStrandedRestartOperatorView(t *testing.T) {
 func TestStrandedAlarmPerState(t *testing.T) {
 	rg := newStrandedRig(t, activePrimary, false)
 	m := rg.m
-	settle(m)
+	awaitStranded(m)
 	m.fn.setView("b", seenView(message{Role: "passiv", Term: 2, PG: "standby", Ver: "test", Sees: []string{"a"}}))
 	settle(m)
 	if !slices.Contains(m.d.statusNow().Warnings, strandedText) {
@@ -159,7 +178,7 @@ func TestStrandedAlarmPerState(t *testing.T) {
 		t.Fatal("Warnung nach Ende des Zustands")
 	}
 	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 2, PG: "primary", Ver: "test", Sees: []string{"a"}}))
-	settle(m)
+	awaitStranded(m)
 	if n := countEvent(m.d, "alarm: "+strandedText); n != 2 {
 		t.Fatalf("Alarm %d-mal, erwartet zweimal: %v", n, eventTexts(m.d))
 	}
@@ -339,9 +358,7 @@ func TestStrandedRejoinFailsThenHand(t *testing.T) {
 	if rg.marked() {
 		t.Fatal("Marke blockiert den Handbefehl")
 	}
-	if !slices.Contains(rg.m.d.statusNow().Warnings, strandedText) {
-		t.Fatalf("Warnung fehlt nach gescheiterter Wiederanbindung: %v", eventTexts(rg.m.d))
-	}
+	awaitStranded(rg.m) // Warnung nach gescheiterter Wiederanbindung
 	rg.r.on("df", "", "Avail\n999999\n", nil)
 	if code, msg := postRejoin(rg.m.d); code != http.StatusOK {
 		t.Fatalf("rejoin: %d %s", code, msg)

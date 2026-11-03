@@ -580,7 +580,7 @@ func TestStrandedAlarmHoldDown(t *testing.T) {
 	good := message{Role: "aktiv", Term: 2, PG: "primary", Ver: "test", Sees: []string{"a"}}
 	bad := good
 	bad.PG = "stopped"
-	settle(m)
+	awaitStranded(m)
 	for i := 0; i < 6; i++ {
 		m.fn.setView("b", seenView(bad))
 		m.tick()
@@ -588,7 +588,12 @@ func TestStrandedAlarmHoldDown(t *testing.T) {
 			t.Fatalf("Warnung im Aussetzer %d weg", i)
 		}
 		m.fn.setView("b", seenView(good))
-		settle(m)
+		// der Zustand gilt wieder ganz: jeder Aussetzer ist ein eigenes Ende mit eigener Rückkehr
+		tickUntil(m, "Zustand wieder bestätigt", func() bool {
+			m.d.lock()
+			defer m.d.unlock()
+			return m.d.strandedGoneAt == 0
+		})
 	}
 	if n := countEvent(m.d, "alarm: "+strandedText); n != 1 {
 		t.Fatalf("Alarm %d-mal: %v", n, eventTexts(m.d))
