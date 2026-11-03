@@ -35,6 +35,9 @@ func MirrorRecvRefuse(o MirrorRecvObs) string {
 	return ""
 }
 
+// mirrorShortLetters sind die erlaubten Kurzoptionen.
+const mirrorShortLetters = "abdDglnoprRtv"
+
 var (
 	mirrorShortRe = regexp.MustCompile(`^-[a-zA-Z]+(e\.[a-zA-Z0-9.]*)?$|^-e\.[a-zA-Z0-9.]*$`)
 	mirrorBWRe    = regexp.MustCompile(`^--bwlimit=[0-9]+$`)
@@ -48,9 +51,11 @@ var mirrorLongOK = map[string]bool{
 	"--no-r": true, // rsync sendet es mit -R und --files-from
 }
 
-// mirrorShortOK prüft ein Bündel von Kurzoptionen. Buchstaben, die einen Wert
-// aus dem nächsten Argument nehmen (e, B, T, f, M), sind vor dem „e.“-Teil
-// verboten; nur die Fähigkeitenliste „e.…“ ist erlaubt.
+// mirrorShortOK prüft ein Bündel von Kurzoptionen. Vor dem „e.“-Teil sind nur
+// die Buchstaben in mirrorShortLetters erlaubt (Positivliste): -s lässt rsync
+// eine neue Argumentliste von stdin lesen, -K folgt Symlinks aus dem Ziel
+// heraus, e/B/T/f/M nehmen ein Wertargument. Die Fähigkeitenliste „e.…“ darf
+// beliebige Buchstaben enthalten (z. B. das s in -e.iLsfxCIvu).
 func mirrorShortOK(a string) bool {
 	if !mirrorShortRe.MatchString(a) {
 		return false
@@ -59,7 +64,7 @@ func mirrorShortOK(a string) bool {
 	if i := strings.Index(pre, "e."); i >= 0 {
 		pre = pre[:i]
 	}
-	return !strings.ContainsAny(pre, "eBTfM")
+	return strings.Trim(pre, mirrorShortLetters) == ""
 }
 
 // MirrorServerArgs prüft die Argumente, mit denen der Absender rsync auf dem
