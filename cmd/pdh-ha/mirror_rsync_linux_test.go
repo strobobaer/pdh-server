@@ -177,3 +177,82 @@ func TestMirrorRsyncRefusesDangerousOptions(t *testing.T) {
 		t.Fatalf("keep.txt: %q", b)
 	}
 }
+
+// rewriteRsync führt die Aufrufe des Arbeiters mit dem echten rsync aus, setzt
+// aber den Kanal-Prozess des Tests und den Zielordner des Empfängers ein.
+type rewriteRsync struct{ rsh, dst string }
+
+func (r rewriteRsync) Run(ctx context.Context, argv, env []string, stdin []byte) ([]byte, error) {
+	a := append([]string(nil), argv...)
+	for i := range a {
+		if a[i] == "-e" {
+			a[i+1] = r.rsh
+		}
+	}
+	a[len(a)-1] = "b:" + r.dst
+	return mirrorExec{}.Run(ctx, a, env, stdin)
+}
+
+// runPaths über den echten Kanal: Namen mit Leerzeichen, Umlaut, Zeilenumbruch
+// und führendem „-“ kommen unverändert an, nichts wird gelöscht, und rsync
+// bleibt bei den Optionen, die der Empfänger annimmt.
+func TestMirrorRunPathsRealRsync(t *testing.T) {
+	if _, err := exec.LookPath("rsync"); err != nil {
+		t.Skip("rsync fehlt")
+	}
+	root := t.TempDir()
+	repo, dst, trash := filepath.Join(root, "repo"), filepath.Join(root, "dst"), filepath.Join(root, "trash")
+	src := filepath.Join(repo, "uploads")
+	for _, d := range []string{filepath.Join(src, "unter"), dst, trash} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names := []string{"a b.txt", "ä.pdf", "zeile\num.txt", "-rf", "unter/-x y\n.txt"}
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(src, n), []byte("inhalt:"+n), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("a b.txt", filepath.Join(src, "link")); err != nil {
+		t.Fatal(err)
+	}
+	names = append(names, "link")
+	os.WriteFile(filepath.Join(dst, "alt.txt"), []byte("bleibt"), 0o644) // ohne --delete unberührt
+
+	r := &rsyncRecv{target: dst, trash: trash, done: make(chan error, 4), refused: make(chan string, 4)}
+	e := newMirrorEnv(t, "echo", "a", "node", r)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PDH_TEST_PIPE", "1")
+	t.Setenv("PDH_TEST_BIN", exe)
+	t.Setenv("PDH_HA_ETC", e.st.etc)
+	w := newMirrorWorker(mirrorDeps{
+		ev: openEventLog(filepath.Join(root, "ev.jsonl"), 1<<20, 2), repo: repo, node: "b", exe: exe,
+		rsync:     rewriteRsync{rsh: rshScript(t) + " --label uploads --term 1 --node b", dst: "/ziel/"},
+		statePath: filepath.Join(root, "mirror.json"),
+	})
+	w.set(true, ha.Active, 1, mirrorSettings)
+	if err := w.runPaths(context.Background(), "uploads", names); err != nil {
+		select {
+		case msg := <-r.refused:
+			t.Fatalf("Empfänger lehnt ab: %s (%v)", msg, err)
+		default:
+		}
+		t.Fatalf("runPaths: %v", err)
+	}
+	for _, n := range names[:5] {
+		got, err := os.ReadFile(filepath.Join(dst, n))
+		if err != nil || string(got) != "inhalt:"+n {
+			t.Fatalf("%q: %q %v", n, got, err)
+		}
+	}
+	if tgt, err := os.Readlink(filepath.Join(dst, "link")); err != nil || tgt != "a b.txt" {
+		t.Fatalf("Symlink: %q %v", tgt, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dst, "alt.txt")); string(b) != "bleibt" {
+		t.Fatalf("alt.txt wurde angefasst: %q", b)
+	}
+}

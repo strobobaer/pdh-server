@@ -15,14 +15,16 @@ import (
 
 // fakeRsync zeichnet die rsync-Aufrufe auf; fn darf blockieren oder scheitern.
 type fakeRsync struct {
-	mu    sync.Mutex
-	calls [][]string
-	fn    func(ctx context.Context, argv []string) error
+	mu     sync.Mutex
+	calls  [][]string
+	stdins [][]byte
+	fn     func(ctx context.Context, argv []string) error
 }
 
-func (f *fakeRsync) Run(ctx context.Context, argv, _ []string, _ []byte) ([]byte, error) {
+func (f *fakeRsync) Run(ctx context.Context, argv, _ []string, stdin []byte) ([]byte, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string(nil), argv...))
+	f.stdins = append(f.stdins, append([]byte(nil), stdin...))
 	fn := f.fn
 	f.mu.Unlock()
 	if fn != nil {

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,9 @@ type mirrorDeps struct {
 	exists    func(string) bool    // nil = Datei/Ordner vorhanden
 	hasFiles  func(string) bool    // nil = Ordner enthält etwas
 	size      func(string) int64   // nil = Summe der Dateigrößen
+	lexists   func(string) bool    // nil = Eintrag vorhanden (Symlinks zählen selbst)
+	settle    time.Duration        // Sammelzeit der Sofort-Übertragung (0 = 2 s)
+	watchAdd  func(string) error   // nil = inotify (Test-Einhängepunkt)
 }
 
 type mirrorWorker struct {
@@ -80,6 +84,11 @@ type mirrorWorker struct {
 	failSince time.Time
 	alarmed   bool
 	alarmAt   map[string]time.Time
+
+	watch       *mirrorWatch // Sofort-Übertragung (nil = läuft nicht)
+	watchCancel context.CancelFunc
+	watchSig    string
+	fullAt      map[string]time.Time // Beginn des letzten erfolgreichen vollen Laufs je Quelle
 }
 
 func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
@@ -98,6 +107,9 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 	if cfg.size == nil {
 		cfg.size = dirSize
 	}
+	if cfg.lexists == nil {
+		cfg.lexists = func(p string) bool { _, err := os.Lstat(p); return err == nil }
+	}
 	if cfg.free == nil {
 		cfg.free = func() (int64, bool) { return 0, false }
 	}
@@ -106,7 +118,7 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 	}
 	w := &mirrorWorker{
 		d: cfg, kick: make(chan struct{}, 1), sem: make(chan struct{}, 1),
-		alarmAt: map[string]time.Time{},
+		alarmAt: map[string]time.Time{}, fullAt: map[string]time.Time{},
 	}
 	w.st.PerLabel = map[string]mirrorLabelState{}
 	w.load()
@@ -301,6 +313,7 @@ func (w *mirrorWorker) step(ctx context.Context) {
 		return
 	}
 	w.refreshFirst()
+	w.syncWatch(ctx)
 	w.mu.Lock()
 	due := w.active() && (w.lastStart.IsZero() || w.d.now().Sub(w.lastStart) >= mirrorEvery(w.cfg))
 	w.mu.Unlock()
@@ -312,20 +325,24 @@ func (w *mirrorWorker) step(ctx context.Context) {
 // runAll gleicht alle Quellen einmal ab. Läuft schon ein Abgleich, kehrt es
 // sofort zurück (nie zwei zugleich).
 func (w *mirrorWorker) runAll(ctx context.Context) error {
-	if err := w.runOnce(ctx, false); !errors.Is(err, errMirrorAborted) {
+	if err := w.runOnce(ctx, false, false); !errors.Is(err, errMirrorAborted) {
 		return err
 	}
 	return nil // nicht aktiv oder abgebrochen: kein Fehler des Abgleichs
 }
 
-// finalSync: letzter Abgleich vor der Übergabe, höchstens max lang; ein
+// finalSync: letzter Abgleich vor der Übergabe, höchstens max lang: erst die
+// vorgemerkten Pfade der beobachteten Quellen, dann die übrigen Quellen voll
+// (nextcloud-app, etc-pdh, nginx, ssl-pdh-nextcloud, letsencrypt); Instant-
+// Quellen laufen nur voll, wenn der Watch fehlt, begrenzt oder noch nicht
+// bereit ist. Ein
 // Überschreiten der Frist ist ein Fehler. nil heißt nur: der Partner ist
 // aktuell; ist der Arbeiter nicht aktiv oder wird der Lauf abgebrochen,
 // kommt errMirrorAborted. Wartet auf einen laufenden Abgleich.
 func (w *mirrorWorker) finalSync(ctx context.Context, max time.Duration) error {
 	cctx, cancel := context.WithTimeout(ctx, max)
 	defer cancel()
-	err := w.runOnce(cctx, true)
+	err := w.runOnce(cctx, true, true)
 	if err == nil && cctx.Err() != nil {
 		err = cctx.Err()
 	}
@@ -342,7 +359,7 @@ type mirrorOutcome struct {
 	err     error
 }
 
-func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
+func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	if wait {
 		select {
 		case w.sem <- struct{}{}:
@@ -380,6 +397,36 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 	var out []mirrorOutcome
 	var saw = map[string]bool{}
 
+	// Letzter Abgleich: Quellen, die der Watch lückenlos abdeckt, brauchen nur
+	// ihre vorgemerkten Pfade; alles andere läuft voll.
+	covered := map[string]bool{}
+	var mw *mirrorWatch
+	if final {
+		w.mu.Lock()
+		mw = w.watch
+		for _, m := range srcs {
+			if m.Instant && present[m.Label] && w.coveredLocked(m.Label) {
+				covered[m.Label] = true
+			}
+		}
+		w.mu.Unlock()
+		srcs = finalOrder(srcs)
+		for _, m := range srcs { // zuerst die vorgemerkten Pfade
+			if !covered[m.Label] || rctx.Err() != nil {
+				continue
+			}
+			snap := mw.snapshot()[m.Label]
+			if len(snap) == 0 {
+				continue
+			}
+			if err := w.sendPaths(rctx, m, term, s, sortedKeys(snap)); err != nil {
+				out = append(out, mirrorOutcome{label: m.Label, err: err})
+			} else {
+				mw.ack(m.Label, snap)
+			}
+		}
+	}
+
 	// Platz am Partner vor dem Erstabgleich
 	if !firstDone {
 		var need int64
@@ -400,6 +447,9 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 		if rctx.Err() != nil {
 			break
 		}
+		if covered[m.Label] {
+			continue
+		}
 		o := mirrorOutcome{label: m.Label}
 		switch {
 		case !present[m.Label] && per0[m.Label].SawFiles && per0[m.Label].LastOK.IsZero():
@@ -416,10 +466,14 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 			w.alarm(o.err.Error())
 		default:
 			saw[m.Label] = w.d.hasFiles(m.Path)
+			t0 := time.Now()
 			if _, err := w.d.rsync.Run(rctx, w.argv(m, term, s), nil, nil); err != nil && !vanishedOnly(err) {
 				o.err = fmt.Errorf("%s: %w", m.Label, err)
 			} else {
 				o.ok = true
+				w.mu.Lock()
+				w.fullAt[m.Label] = t0 // ab hier deckt der Watch die Quelle lückenlos ab
+				w.mu.Unlock()
 			}
 		}
 		out = append(out, o)
@@ -580,4 +634,172 @@ func (mirrorExec) Run(ctx context.Context, argv []string, env []string, stdin []
 		return out, fmt.Errorf("%s: %w: %s", argv[0], err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+// --- Sofort-Übertragung ---
+
+var errMirrorBusy = errors.New("anderer Abgleich läuft")
+
+// coveredLocked: der Watch deckt die Quelle lückenlos ab – er hat sie ohne
+// Grenzfehler durchlaufen, und seitdem ist ein voller Lauf gelungen, der erst
+// danach begann. Nur mit mu aufrufen.
+func (w *mirrorWorker) coveredLocked(label string) bool {
+	if w.watch == nil || w.st.WatchLimited {
+		return false
+	}
+	since := w.watch.walkedSince(label)
+	return !since.IsZero() && w.fullAt[label].After(since)
+}
+
+// finalOrder: für den letzten Abgleich zuerst Quellen, die voll laufen müssen
+// (Instant-Quellen ohne Watch), dann nextcloud-app, etc-pdh, nginx,
+// ssl-pdh-nextcloud, letsencrypt.
+func finalOrder(srcs []ha.MirrorSource) []ha.MirrorSource {
+	rank := map[string]int{"nextcloud-app": 1, "etc-pdh": 2, "nginx": 3, "ssl-pdh-nextcloud": 4, "letsencrypt": 5}
+	out := append([]ha.MirrorSource(nil), srcs...)
+	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Label] < rank[out[j].Label] })
+	return out
+}
+
+// syncWatch startet oder beendet die Sofort-Übertragung je nach Soll und Rolle
+// und startet sie neu, wenn sich die Instant-Quellen ändern. Nur aus der
+// Arbeiter-Goroutine; der Watch selbst läuft in eigenen Goroutinen.
+func (w *mirrorWorker) syncWatch(ctx context.Context) {
+	w.mu.Lock()
+	var inst []ha.MirrorSource
+	if w.active() {
+		for _, m := range ha.MirrorSources(w.d.repo, w.cfg) {
+			if m.Instant {
+				inst = append(inst, m)
+			}
+		}
+	}
+	var sig strings.Builder
+	for _, m := range inst {
+		sig.WriteString(m.Label + "\x00" + m.Path + "\x00" + strings.Join(m.Exclude, "\x01") + "\x02")
+	}
+	if sig.String() == w.watchSig {
+		w.mu.Unlock()
+		return
+	}
+	old := w.watchCancel
+	w.watch, w.watchCancel, w.watchSig = nil, nil, sig.String()
+	w.st.WatchLimited = false
+	w.fullAt = map[string]time.Time{}
+	if len(inst) > 0 {
+		wctx, cancel := context.WithCancel(ctx)
+		var mw *mirrorWatch
+		mw = newMirrorWatch(inst, w.d.settle, func(label string, paths []string) {
+			w.onWatch(wctx, mw, label, paths)
+		}, func() { w.onLimited(mw) })
+		mw.add = w.d.watchAdd
+		w.watch, w.watchCancel = mw, cancel
+		go mw.run(wctx)
+	}
+	w.mu.Unlock()
+	if old != nil {
+		old()
+	}
+}
+
+// onLimited: der Watch erreicht die Grenze für beobachtete Ordner; der volle
+// Abgleich läuft weiter und übernimmt die Quelle.
+func (w *mirrorWorker) onLimited(mw *mirrorWatch) {
+	w.mu.Lock()
+	cur := w.watch == mw
+	if cur {
+		w.st.WatchLimited = true
+	}
+	w.mu.Unlock()
+	if cur {
+		w.alarm("Sofort-Übertragung eingeschränkt: zu viele Ordner zum Beobachten (fs.inotify.max_user_watches erhöhen) – der regelmäßige Abgleich läuft weiter")
+	}
+}
+
+// onWatch überträgt gesammelte Pfade und meldet das Ergebnis an den Watch.
+// Läuft gerade ein anderer Abgleich, bleiben die Pfade vorgemerkt.
+func (w *mirrorWorker) onWatch(ctx context.Context, mw *mirrorWatch, label string, paths []string) {
+	err := w.runPathsOpt(ctx, label, paths, false)
+	mw.result(label, err == nil)
+}
+
+// runPaths überträgt genau diese Pfade (relativ zur Quelle) ohne --delete;
+// Gelöschtes behandelt der volle Abgleich. Wartet auf einen laufenden Abgleich.
+func (w *mirrorWorker) runPaths(ctx context.Context, label string, paths []string) error {
+	return w.runPathsOpt(ctx, label, paths, true)
+}
+
+func (w *mirrorWorker) runPathsOpt(ctx context.Context, label string, paths []string, wait bool) error {
+	if wait {
+		select {
+		case w.sem <- struct{}{}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	} else {
+		select {
+		case w.sem <- struct{}{}:
+		default:
+			return errMirrorBusy
+		}
+	}
+	defer func() { <-w.sem }()
+
+	w.mu.Lock()
+	if !w.active() {
+		w.mu.Unlock()
+		return errMirrorAborted
+	}
+	s, term := w.cfg, w.term
+	rctx, cancel := context.WithCancel(ctx)
+	w.cancel = cancel
+	w.mu.Unlock()
+	defer cancel()
+	m, ok := ha.MirrorSourceByLabel(w.d.repo, s, label)
+	if !ok {
+		return fmt.Errorf("Unbekannte Quelle %s", label)
+	}
+	err := w.sendPaths(rctx, m, term, s, paths)
+	if err != nil && rctx.Err() != nil && ctx.Err() == nil {
+		return errMirrorAborted // Rollen- oder Einstellungswechsel
+	}
+	return err
+}
+
+// sendPaths schickt die Pfade NUL-getrennt über stdin (--files-from=- --from0),
+// damit Leerzeichen, Umlaute, Zeilenumbrüche und ein führendes „-“ nie als
+// Option oder Trenner gelten. Pfade, die es nicht mehr gibt oder die aus der
+// Quelle hinausführen, entfallen.
+func (w *mirrorWorker) sendPaths(ctx context.Context, m ha.MirrorSource, term uint64, s ha.Settings, paths []string) error {
+	var in []byte
+	for _, p := range paths {
+		c := path.Clean(p)
+		if p == "" || c != p || c == "." || c == ".." || strings.HasPrefix(c, "../") || strings.HasPrefix(c, "/") {
+			continue
+		}
+		if !w.d.lexists(filepath.Join(m.Path, filepath.FromSlash(p))) {
+			continue
+		}
+		in = append(append(in, p...), 0)
+	}
+	if len(in) == 0 {
+		return nil
+	}
+	if _, err := w.d.rsync.Run(ctx, w.argvPaths(m, term, s), nil, in); err != nil && !vanishedOnly(err) {
+		return fmt.Errorf("%s: %w", m.Label, err)
+	}
+	return nil
+}
+
+// argvPaths: wie argv, aber ohne --delete (rsync verweigert es mit --files-from
+// ohne -r) und mit der Pfadliste von stdin.
+func (w *mirrorWorker) argvPaths(m ha.MirrorSource, term uint64, s ha.Settings) []string {
+	a := []string{"rsync", "-a", "--numeric-ids", "--backup", "--partial-dir=.pdh-teil", "--delay-updates"}
+	if s.MirrorBWLimitKB > 0 {
+		a = append(a, "--bwlimit="+strconv.Itoa(s.MirrorBWLimitKB))
+	}
+	a = append(a, "--files-from=-", "--from0")
+	a = append(a, m.Exclude...)
+	rsh := fmt.Sprintf("%s mirror-pipe --label %s --term %d --node %s", w.d.exe, m.Label, term, w.d.node)
+	return append(a, "-e", rsh, strings.TrimSuffix(m.Path, "/")+"/", w.d.node+":"+m.Label)
 }
