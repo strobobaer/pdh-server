@@ -569,3 +569,59 @@ func TestMirrorFirstDoneFollowsSources(t *testing.T) {
 		t.Fatal("FirstDone fehlt nach allen Quellen")
 	}
 }
+
+// Skipped zählt nur, solange der Quellordner weiter fehlt.
+func TestMirrorSkippedOnlyWhileMissing(t *testing.T) {
+	f := newMirrorFix(t)
+	ctx := context.Background()
+	f.files["/r/chat_files"] = false
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	if err := f.w.runAll(ctx); err != nil || !f.w.snapshot().FirstDone {
+		t.Fatalf("err=%v st=%+v", err, f.w.snapshot())
+	}
+	f.files["/r/chat_files"] = true // taucht später auf
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	if f.w.snapshot().FirstDone {
+		t.Fatal("FirstDone trotz neu aufgetauchter Quelle")
+	}
+	f.freeK, f.free = true, 1
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err == nil || !strings.Contains(err.Error(), "Zu wenig Platz") {
+		t.Fatalf("Platzprüfung umgangen: %v", err)
+	}
+	f.freeK = false
+	f.advance(time.Minute)
+	if err := f.w.runAll(ctx); err != nil || !f.w.snapshot().FirstDone {
+		t.Fatalf("err=%v st=%+v", err, f.w.snapshot())
+	}
+}
+
+// Eine nie fertig gewordene Quelle mit Dateien, die verschwindet, ist ein Fehler.
+func TestMirrorVanishedUnfinishedSource(t *testing.T) {
+	f := newMirrorFix(t)
+	ctx := context.Background()
+	f.rs.fn = func(_ context.Context, argv []string) error {
+		if strings.HasSuffix(argv[len(argv)-1], ":chat_files") {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
+	f.w.set(true, ha.Active, 1, mirrorSettings)
+	f.w.runAll(ctx) // chat_files hat Dateien, scheitert
+	f.files["/r/chat_files"] = false
+	f.advance(time.Minute)
+	err := f.w.runAll(ctx)
+	if err == nil || !strings.Contains(err.Error(), "Quelle chat_files fehlt") {
+		t.Fatalf("err = %v", err)
+	}
+	if f.w.snapshot().FirstDone {
+		t.Fatal("FirstDone ohne die Daten der verschwundenen Quelle")
+	}
+	found := false
+	for _, a := range f.texts("alarm") {
+		found = found || a == "Quelle chat_files fehlt – nicht gespiegelt"
+	}
+	if !found {
+		t.Fatalf("alarm: %v", f.texts("alarm"))
+	}
+}

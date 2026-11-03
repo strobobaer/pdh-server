@@ -190,10 +190,12 @@ func (w *mirrorWorker) active() bool { return w.want && w.role == ha.Active }
 // wird unter der Sperre des Daemons aufgerufen. Ein Wechsel weg von „aktiv“
 // (oder Ausschalten) bricht einen laufenden Abgleich ab.
 func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) {
+	srcs := ha.MirrorSources(w.d.repo, s)
+	present := w.presence(srcs)
 	w.mu.Lock()
 	was := w.active()
 	w.want, w.role, w.term, w.cfg = want, role, term, s
-	w.refreshFirstLocked(ha.MirrorSources(w.d.repo, s))
+	w.refreshFirstLocked(srcs, present)
 	var cancel context.CancelFunc
 	if !w.active() {
 		cancel = w.cancel
@@ -227,12 +229,23 @@ func (w *mirrorWorker) run(ctx context.Context) {
 }
 
 // mirrorLabelDone: die Quelle war einmal fehlerfrei durch (oder fehlt bewusst).
-func mirrorLabelDone(ls mirrorLabelState) bool { return !ls.LastOK.IsZero() || ls.Skipped }
+func mirrorLabelDone(ls mirrorLabelState, present bool) bool {
+	return !ls.LastOK.IsZero() || (ls.Skipped && !present)
+}
+
+// presence prüft (ohne mu) einmal, welche Quellordner jetzt da sind.
+func (w *mirrorWorker) presence(srcs []ha.MirrorSource) map[string]bool {
+	p := make(map[string]bool, len(srcs))
+	for _, m := range srcs {
+		p[m.Label] = w.d.exists(m.Path)
+	}
+	return p
+}
 
 // mirrorFirstDone: wahr, wenn jede aktuelle Quelle durch ist.
-func mirrorFirstDone(srcs []ha.MirrorSource, per map[string]mirrorLabelState) bool {
+func mirrorFirstDone(srcs []ha.MirrorSource, per map[string]mirrorLabelState, present map[string]bool) bool {
 	for _, m := range srcs {
-		if !mirrorLabelDone(per[m.Label]) {
+		if !mirrorLabelDone(per[m.Label], present[m.Label]) {
 			return false
 		}
 	}
@@ -240,11 +253,11 @@ func mirrorFirstDone(srcs []ha.MirrorSource, per map[string]mirrorLabelState) bo
 }
 
 // refreshFirstLocked setzt FirstDone und FirstPercent für die aktuellen Quellen.
-func (w *mirrorWorker) refreshFirstLocked(srcs []ha.MirrorSource) {
-	w.st.FirstDone = mirrorFirstDone(srcs, w.st.PerLabel)
+func (w *mirrorWorker) refreshFirstLocked(srcs []ha.MirrorSource, present map[string]bool) {
+	w.st.FirstDone = mirrorFirstDone(srcs, w.st.PerLabel, present)
 	n := 0
 	for _, m := range srcs {
-		if mirrorLabelDone(w.st.PerLabel[m.Label]) {
+		if mirrorLabelDone(w.st.PerLabel[m.Label], present[m.Label]) {
 			n++
 		}
 	}
@@ -340,15 +353,17 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 	}
 	s, term := w.cfg, w.term
 	srcs := ha.MirrorSources(w.d.repo, s)
-	firstDone := mirrorFirstDone(srcs, w.st.PerLabel)
-	done0 := copyState(w.st).PerLabel
+	per0 := w.st.PerLabel
 	rctx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
 	start := w.d.now()
 	w.lastStart = start
 	w.st.Running = true
+	per0 = copyState(w.st).PerLabel
 	w.mu.Unlock()
 	defer cancel()
+	present := w.presence(srcs)
+	firstDone := mirrorFirstDone(srcs, per0, present)
 
 	var out []mirrorOutcome
 	var saw = map[string]bool{}
@@ -357,7 +372,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 	if !firstDone {
 		var need int64
 		for _, m := range srcs {
-			if w.d.exists(m.Path) && !mirrorLabelDone(done0[m.Label]) {
+			if present[m.Label] && !mirrorLabelDone(per0[m.Label], true) {
 				need += w.d.size(m.Path)
 			}
 		}
@@ -375,7 +390,11 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait bool) error {
 		}
 		o := mirrorOutcome{label: m.Label}
 		switch {
-		case !w.d.exists(m.Path):
+		case !present[m.Label] && per0[m.Label].SawFiles && per0[m.Label].LastOK.IsZero():
+			// nie fertig geworden und jetzt verschwunden (z. B. Datenordner nicht eingehängt)
+			o.err = fmt.Errorf("Quelle %s fehlt – nicht gespiegelt", m.Label)
+			w.alarm(o.err.Error())
+		case !present[m.Label]:
 			o.skipped = true
 		case m.Label == "nextcloud-data" && !w.d.exists(path.Join(m.Path, ".ocdata")):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
@@ -438,6 +457,7 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 		return errMirrorAborted // Rollen- oder Einstellungswechsel
 	}
 
+	present := w.presence(srcs)
 	var first error = runErr
 	var events []ha.Event
 	w.mu.Lock()
@@ -450,6 +470,9 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 		switch {
 		case o.err != nil:
 			ls.Err = o.err.Error()
+			if saw[o.label] {
+				ls.SawFiles = true // Dateien gesehen, aber noch nicht fertig: Verschwinden ist ein Fehler
+			}
 			if first == nil {
 				first = o.err
 			}
@@ -476,7 +499,7 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 			w.failSince = start
 		}
 	}
-	w.refreshFirstLocked(srcs)
+	w.refreshFirstLocked(srcs, present)
 	alarmNow := first != nil && runErr == nil && end.Sub(w.failSince) >= mirrorAlarmAfter(s)
 	if alarmNow {
 		w.alarmed = true
