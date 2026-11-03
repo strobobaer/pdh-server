@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,7 +69,7 @@ func TestNextcloudVerbundPassiv(t *testing.T) {
 	f := scriptFuncOf(t, ncScript, "verbund_passiv")
 	mustNotContain(t, "verbund_passiv", f, "psql", "createdb", "occ", "enable postgresql", "restart postgresql",
 		"systemctl enable", "restart \"${PHP_FPM_SERVICE}\"", "cat > /etc/cron.d/nextcloud")
-	mustContain(t, "verbund_passiv", f, "disable --now \"${PHP_FPM_SERVICE}\"", "/var/lib/pdh-ha/nextcloud.cron",
+	mustContain(t, "verbund_passiv", f, "/var/lib/pdh-ha/nextcloud.cron",
 		"mkdir -p \"$(dirname", "www-data:www-data", "verbund_pruefen passiv")
 	if strings.Contains(scriptText(t, ncScript), "nextcloud.pdh-aus") {
 		t.Error("nextcloud.pdh-aus kommt im Skript vor")
@@ -180,4 +181,95 @@ func TestRewindTexteNennenSicherung(t *testing.T) {
 	if !strings.Contains(rewindUnsafeText, "sudo pdh-ha rejoin") {
 		t.Error("rewindUnsafeText muss rejoin weiter nennen")
 	}
+}
+
+// runShellFuncs führt Funktionen aus dem Nextcloud-Skript in bash aus (awk und sed
+// müssen da sein, sonst wird übersprungen).
+func runShellFuncs(t *testing.T, funcs []string, call string) (string, int) {
+	t.Helper()
+	bash := bashOrSkip(t)
+	for _, tool := range []string{"awk", "sed"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skip(tool + " nicht verfügbar")
+		}
+	}
+	var src strings.Builder
+	for _, f := range funcs {
+		src.WriteString(scriptFuncOf(t, ncScript, f))
+	}
+	src.WriteString(call + "\n")
+	out, err := exec.Command(bash, "-c", src.String()).Output()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	return string(out), code
+}
+
+// TestHbaErlaubtNurTcpLoopback: Nextcloud verbindet sich per TCP (localhost). Eine
+// „local“-Socket-Zeile genügt nicht, eine host-Zeile für Loopback schon.
+func TestHbaErlaubtNurTcpLoopback(t *testing.T) {
+	cases := []struct {
+		name, hba string
+		want      int
+	}{
+		{"nur local peer", "local all all peer\n", 1},
+		{"local plus fremdes Netz", "local all all peer\nhost all all 10.0.0.0/8 scram-sha-256\n", 1},
+		{"Loopback v4", "local all all peer\nhost all all 127.0.0.1/32 scram-sha-256\n", 0},
+		{"Loopback v6", "host nextcloud nextcloud ::1/128 scram-sha-256\n", 0},
+		{"localhost-Name", "host all all localhost md5\n", 0},
+		{"Rolle in Liste", "host db1,nextcloud all,x 127.0.0.1/32 md5\n", 0},
+		{"anderer Benutzer", "host all postgres 127.0.0.1/32 md5\n", 1},
+		{"andere Datenbank", "host other all 127.0.0.1/32 md5\n", 1},
+		{"reject", "host all all 127.0.0.1/32 reject\n", 1},
+		{"Kommentar", "# host all all 127.0.0.1/32 md5\n", 1},
+	}
+	for _, c := range cases {
+		f := filepath.Join(t.TempDir(), "pg_hba.conf")
+		if err := os.WriteFile(f, []byte(c.hba), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, code := runShellFuncs(t, []string{"hba_erlaubt"}, "hba_erlaubt '"+f+"' nextcloud nextcloud")
+		if code != c.want {
+			t.Errorf("%s: Ausgang %d, erwartet %d", c.name, code, c.want)
+		}
+	}
+}
+
+// TestVerbundRolleAusStatus: die Rolle des eigenen Servers kommt aus self, nicht aus peers.
+func TestVerbundRolleAusStatus(t *testing.T) {
+	js := `{"ok":true,"configured":true,"self":{"id":"a","kind":"node","role":"passiv","term":3,"paths":[]},"peers":[{"id":"b","role":"aktiv"}]}`
+	out, _ := runShellFuncs(t, []string{"verbund_rolle"}, "verbund_rolle '"+js+"'")
+	if strings.TrimSpace(out) != "passiv" {
+		t.Errorf("Rolle %q, erwartet passiv", out)
+	}
+	out, _ = runShellFuncs(t, []string{"verbund_rolle"}, "verbund_rolle '{\"configured\":false}'")
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("ohne self keine Rolle, bekam %q", out)
+	}
+}
+
+// TestNextcloudVerbundPassivBremstDienste: während der Installation verbietet policy-rc.d
+// jeden Dienststart; Aufräumen läuft über trap in jedem Fall, vor den Prüfungen sind alle
+// PHP-FPM-Fassungen aus, nginx und Redis werden am Ende gezielt gestartet.
+func TestNextcloudVerbundPassivBremstDienste(t *testing.T) {
+	f := scriptFuncOf(t, ncScript, "verbund_passiv")
+	mustContain(t, "verbund_passiv", f, "policy-rc.d", "exit 101", "trap passiv_aufraeumen EXIT", "php_fpm_aus",
+		"systemctl start nginx", "systemctl start redis-server")
+	apt := strings.Index(f, "apt-get install")
+	off := strings.Index(f[apt:], "php_fpm_aus")
+	chk := strings.Index(f, "No PHP-FPM found")
+	if apt < 0 || off < 0 || chk < 0 || apt+off > chk {
+		t.Error("php_fpm_aus muss direkt nach apt-get und vor den Prüfungen stehen")
+	}
+	if strings.Index(f, "trap passiv_aufraeumen EXIT") > apt {
+		t.Error("trap muss vor apt-get gesetzt sein")
+	}
+	a := scriptFuncOf(t, ncScript, "passiv_aufraeumen")
+	mustContain(t, "passiv_aufraeumen", a, "policy-rc.d", "php_fpm_aus")
+	p := scriptFuncOf(t, ncScript, "php_fpm_aus")
+	mustContain(t, "php_fpm_aus", p, "/etc/php/*/fpm", "disable --now")
+	mustNotContain(t, "php_fpm_aus", p, "systemctl enable")
 }

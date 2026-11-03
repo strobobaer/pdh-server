@@ -126,8 +126,9 @@ tune_php_ini() {
 
 # ---- Cluster mode (--verbund) ------------------------------------------------
 # Exit 0 if pg_hba.conf $1 lets role $3 into database $2 from this server
-# (local socket or loopback). Only a hint: the first matching line wins in
-# PostgreSQL, we do not model that.
+# (TCP to localhost or loopback: Nextcloud connects with --database-host localhost,
+# so a "local" socket line does not count). Only a hint: the first matching line
+# wins in PostgreSQL, we do not model that.
 hba_erlaubt() {
   awk -v d="$2" -v u="$3" '
     function has(list, w,   n, a, i) {
@@ -135,11 +136,15 @@ hba_erlaubt() {
       for (i = 1; i <= n; i++) if (a[i] == "all" || a[i] == w) return 1
       return 0
     }
-    $1 == "local" && $NF != "reject" && has($2, d) && has($3, u) { found = 1 }
     $1 ~ /^host(ssl|nossl)?$/ && $NF != "reject" && $4 ~ /^(127\.|::1|localhost|samehost|0\.0\.0\.0\/0|::\/0)/ \
       && has($2, d) && has($3, u) { found = 1 }
     END { exit found ? 0 : 1 }
   ' "$1"
+}
+
+# Own role from the compact pdh-ha status JSON (field self.role, not peers).
+verbund_rolle() {
+  printf '%s' "$1" | sed -nE 's/.*"self":\{[^}]*"role":"([^"]*)".*/\1/p'
 }
 
 # Checks shared by all cluster modes: pdh-ha present, role matches the mode, same
@@ -156,7 +161,7 @@ verbund_pruefen() {
     err "--verbund: this server is not part of a cluster yet (pdh-ha status --json says not configured)."
     exit 1
   fi
-  role="$(printf '%s' "${js}" | sed -nE 's/.*"self":\{[^}]*"role":"([^"]*)".*/\1/p')"
+  role="$(verbund_rolle "${js}")"
   case "${want}" in
     aktiv) [[ "${role}" == "aktiv" ]] || { err "--verbund ${VERBUND} runs on the ACTIVE server, this one is '${role:-unknown}'. Run it on the active server."; exit 1; } ;;
     passiv) [[ "${role}" == "passiv" ]] || { err "--verbund passiv runs on the PASSIVE server, this one is '${role:-unknown}'. Run it on the passive server."; exit 1; } ;;
@@ -221,11 +226,47 @@ verbund_vorhanden() {
   verbund_weiter
 }
 
+# Stop and disable every installed PHP-FPM version (pdh-ha starts it on the
+# active server only).
+php_fpm_aus() {
+  local d v
+  for d in /etc/php/*/fpm; do
+    [[ -d "${d}" ]] || continue
+    v="$(basename "$(dirname "${d}")")"
+    systemctl disable --now "php${v}-fpm" 2>/dev/null || true
+  done
+}
+
+# Passive server cleanup, also on abort (trap): PHP-FPM off, policy-rc.d back as it was.
+passiv_aufraeumen() {
+  php_fpm_aus
+  if [[ -n "${PASSIV_RC_SAVE:-}" && -e "${PASSIV_RC_SAVE}" ]]; then
+    mv -f "${PASSIV_RC_SAVE}" /usr/sbin/policy-rc.d
+  elif [[ "${PASSIV_RC_SET:-0}" == "1" ]]; then
+    rm -f /usr/sbin/policy-rc.d
+  fi
+  PASSIV_RC_SAVE=""
+  PASSIV_RC_SET=0
+}
+
 # Passive server: packages, PHP and nginx only. No database access, no Nextcloud
 # files (they arrive by mirroring), PHP-FPM stopped and without autostart.
 verbund_passiv() {
   verbund_pruefen passiv
   export DEBIAN_FRONTEND=noninteractive
+  # The packages must not start or enable services on a passive server: for the
+  # duration of the install policy-rc.d forbids every start (exit 101). An existing
+  # policy-rc.d is saved and put back.
+  PASSIV_RC_SAVE=""
+  PASSIV_RC_SET=0
+  trap passiv_aufraeumen EXIT
+  if [[ -e /usr/sbin/policy-rc.d ]]; then
+    PASSIV_RC_SAVE="$(mktemp /var/tmp/policy-rc.d.XXXXXX)"
+    cp -p /usr/sbin/policy-rc.d "${PASSIV_RC_SAVE}"
+  fi
+  printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+  chmod 755 /usr/sbin/policy-rc.d
+  PASSIV_RC_SET=1
   log "Installing packages (passive server: no database)"
   apt-get update
   apt-get install -y \
@@ -233,6 +274,9 @@ verbund_passiv() {
     php-fpm php-cli php-pgsql php-xml php-mbstring php-curl php-zip \
     php-gd php-intl php-bcmath php-gmp php-imagick php-apcu \
     unzip curl wget bzip2 ca-certificates acl redis-server php-redis
+
+  # The package scripts may still have enabled PHP-FPM: off before any check.
+  php_fpm_aus
 
   if [[ -z "${PHP_VERSION}" ]]; then
     PHP_VERSION="$(find /etc/php -mindepth 2 -maxdepth 2 -type d -name fpm 2>/dev/null | sed -E 's#/etc/php/([^/]+)/fpm#\1#' | sort -V | tail -n 1)"
@@ -250,8 +294,6 @@ verbund_passiv() {
 
   log "Tuning PHP-FPM"
   tune_php_ini
-  # pdh-ha starts PHP-FPM only on the active server.
-  systemctl disable --now "${PHP_FPM_SERVICE}"
 
   log "Preparing empty folders for the mirror"
   mkdir -p "${NEXTCLOUD_DIR}" "${NEXTCLOUD_DATA_DIR}"
@@ -275,6 +317,13 @@ verbund_passiv() {
   else
     log "No Nginx site file – nginx stays as it is"
   fi
+
+  # Install done: policy-rc.d back, then start what the policy held back.
+  # nginx and Redis may run on the passive server.
+  passiv_aufraeumen
+  trap - EXIT
+  systemctl start nginx || warn "nginx could not be started – check: systemctl status nginx"
+  systemctl start redis-server || warn "redis-server could not be started – check: systemctl status redis-server"
 
   log "Passive server ready"
   printf '\nFolders: %s and %s (empty, owner www-data) – file mirroring fills them.\n' "${NEXTCLOUD_DIR}" "${NEXTCLOUD_DATA_DIR}"
