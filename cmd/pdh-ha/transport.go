@@ -112,6 +112,7 @@ var deliverTypes = map[string]bool{
 	"renew_req": true, "renew_resp": true, "removed": true,
 	"stale": true, "stale_ack": true, "current": true, "current_ack": true, "vote_probe": true,
 	"diverged_delete": true, "update_job": true, "update_node": true, "update_ack": true,
+	"mirror_trash_empty": true,
 }
 
 // pathStat beschreibt einen Weg; LastRecv monoton, 0 = nie.
