@@ -704,6 +704,7 @@ func (w *mirrorWorker) syncWatch(ctx context.Context) {
 			w.onWatch(wctx, mw, label, paths)
 		}, func() { w.onLimited(mw) })
 		mw.add = w.d.watchAdd
+		mw.barrierBase = filepath.Dir(w.d.statePath)
 		w.watch, w.watchCancel = mw, cancel
 		go mw.run(wctx)
 	}

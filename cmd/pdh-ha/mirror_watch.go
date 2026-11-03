@@ -28,6 +28,7 @@ import (
 const (
 	mirrorWatchSettle     = 2 * time.Second // Sammelzeit
 	mirrorWatchPendingMax = 10000           // Pfade je Quelle, darüber übernimmt der volle Abgleich
+	mirrorBarrierDirName  = "mirror-sperre"
 	mirrorWatchRescan     = 5 * time.Second // Wiederholung für fehlende oder neu entstandene Quellen
 	mirrorWatchRescanWait = 2 * time.Second // Ruhezeit nach einem Anstoß, damit viele Löschungen nur einen Durchlauf auslösen
 )
@@ -50,23 +51,24 @@ type mirrorWatch struct {
 	initial chan struct{}      // geschlossen, sobald der erste Durchlauf fertig ist
 	poke    chan struct{}      // Anstoß für einen neuen Durchlauf (Platz 1)
 
-	initOnce   sync.Once
-	mu         sync.Mutex
-	fw         *fsnotify.Watcher
-	roots      map[string]string // Quelle -> aufgelöster Ordner
-	walkedAt   map[string]time.Time
-	gen        map[string]int
-	pend       map[string]watchSnap
-	flying     map[string]watchSnap
-	flightOK   map[string]bool
-	armed      map[string]bool
-	dirs       map[string]bool
-	seq        uint64
-	barrierDir string                   // nur für Sperren beobachteter Ordner (außerhalb aller Quellen)
-	waiters    map[string]chan struct{} // Markendatei -> wartet auf ihr Ereignis
-	bseq       uint64
-	limited    bool
-	stopped    bool
+	initOnce    sync.Once
+	mu          sync.Mutex
+	fw          *fsnotify.Watcher
+	roots       map[string]string // Quelle -> aufgelöster Ordner
+	walkedAt    map[string]time.Time
+	gen         map[string]int
+	pend        map[string]watchSnap
+	flying      map[string]watchSnap
+	flightOK    map[string]bool
+	armed       map[string]bool
+	dirs        map[string]bool
+	seq         uint64
+	barrierBase string                   // Zustandsordner, in dem der Sperrordner liegt (leer = Temp)
+	barrierDir  string                   // nur für Sperren beobachteter Ordner (außerhalb aller Quellen)
+	waiters     map[string]chan struct{} // Markendatei -> wartet auf ihr Ereignis
+	bseq        uint64
+	limited     bool
+	stopped     bool
 }
 
 // newMirrorWatch beobachtet die Instant-Quellen von sources.
@@ -103,13 +105,10 @@ func (mw *mirrorWatch) run(ctx context.Context) {
 	mw.mu.Lock()
 	mw.fw = fw
 	mw.mu.Unlock()
-	if d, err := os.MkdirTemp("", "pdh-sperre-"); err == nil {
-		if fw.Add(d) == nil {
-			mw.mu.Lock()
-			mw.barrierDir = d
-			mw.mu.Unlock()
-		}
-		defer os.RemoveAll(d)
+	if d := mw.makeBarrierDir(); d != "" && fw.Add(d) == nil {
+		mw.mu.Lock()
+		mw.barrierDir = d
+		mw.mu.Unlock()
 	}
 	defer func() {
 		fw.Close()
@@ -334,7 +333,7 @@ func (mw *mirrorWatch) handle(ctx context.Context, ev fsnotify.Event) {
 		return
 	}
 	if ev.Op&(fsnotify.Remove|fsnotify.Rename) != 0 || ev.Op == 0 { // 0: z. B. Aushängen
-		mw.gone(ev)
+		mw.gone(ctx, ev)
 	}
 	if ev.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Chmod) == 0 {
 		return
@@ -630,17 +629,19 @@ func (mw *mirrorWatch) rescanWait() time.Duration {
 }
 
 // gone behandelt Löschen, Umbenennen und Aushängen: Ein beobachteter Ordner
-// samt Teilbaum (oder die Wurzel selbst) wird aus der Buchführung genommen, die
-// Quelle gilt nicht mehr als abgedeckt, und ein neuer Durchlauf legt die
+// samt Teilbaum wird aus der Buchführung genommen. Wurde nur ein Ordner
+// gelöscht, bleibt die Quelle abgedeckt. Bei Umbenennen, Aushängen und allem an
+// der Wurzel gilt sie nicht mehr als abgedeckt, und ein neuer Durchlauf legt die
 // Watches unter den neuen Namen an. Gelöschte Dateien übernimmt der volle Lauf.
-func (mw *mirrorWatch) gone(ev fsnotify.Event) {
+func (mw *mirrorWatch) gone(ctx context.Context, ev fsnotify.Event) {
 	name := ev.Name
 	var label string
 	var rm []string
+	isRoot := false
 	mw.mu.Lock()
 	for _, m := range mw.srcs {
 		if root := mw.roots[m.Label]; root != "" && name == root {
-			label = m.Label
+			label, isRoot = m.Label, true
 		}
 	}
 	if label == "" {
@@ -667,6 +668,15 @@ func (mw *mirrorWatch) gone(ev fsnotify.Event) {
 		for _, d := range rm {
 			fw.Remove(d) // ein umbenannter Ordner meldet sonst weiter unter dem alten Namen
 		}
+	}
+	if !isRoot && ev.Op == fsnotify.Remove {
+		// Ordner gelöscht: kein Anlass, die Quelle zu verwerfen. Gibt es den Namen
+		// schon wieder (das Anlegen kam vor dieser Meldung an, oder ein Durchlauf
+		// war schneller), wird er neu beobachtet und sein Inhalt gemeldet.
+		if fi, err := os.Lstat(name); err == nil && fi.IsDir() {
+			mw.walk(ctx, label, name, true)
+		}
+		return
 	}
 	mw.reset(label)
 }
@@ -717,4 +727,24 @@ func (mw *mirrorWatch) barrier(ctx context.Context, max time.Duration) bool {
 	case <-ctx.Done():
 	}
 	return false
+}
+
+// makeBarrierDir legt den Ordner für die Markendateien neben mirror.json an
+// (Temp-Ordner werden von systemd-tmpfiles geleert) und räumt Reste eines
+// früheren Laufs weg. Er liegt außerhalb aller Quellen und bleibt nach dem
+// Ende leer stehen; der nächste Start räumt ihn neu auf. Leer = nicht möglich.
+func (mw *mirrorWatch) makeBarrierDir() string {
+	if mw.barrierBase == "" {
+		d, err := os.MkdirTemp("", "pdh-sperre-")
+		if err != nil {
+			return ""
+		}
+		return d
+	}
+	d := filepath.Join(mw.barrierBase, mirrorBarrierDirName)
+	os.RemoveAll(d)
+	if os.MkdirAll(d, 0o700) != nil {
+		return ""
+	}
+	return d
 }

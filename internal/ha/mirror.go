@@ -90,7 +90,7 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 	}
 	return append(src,
 		MirrorSource{Label: "nextcloud-data", Path: s.NCDataDir, Instant: true, Exclude: []string{
-			"--exclude=/appdata_*/preview/", "--exclude=*.part", "--exclude=/nextcloud.log"}},
+			"--exclude=/appdata_*/preview/", "--exclude=/*/uploads/", "--exclude=*.part", "--exclude=/nextcloud.log"}},
 		MirrorSource{Label: "nextcloud-app", Path: s.NCAppDir, Exclude: appEx},
 		MirrorSource{Label: "nginx", Path: "/etc/nginx"},
 		MirrorSource{Label: "ssl-pdh-nextcloud", Path: "/etc/ssl/pdh-nextcloud"},
