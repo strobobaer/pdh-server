@@ -195,6 +195,7 @@ type transport struct {
 	// mirrorRecv nimmt Datei-Spiegelungen an (Kanal pdh-mirror/1); vor serve setzen.
 	// nil: solche Verbindungen werden geschlossen.
 	mirrorRecv mirrorReceiver
+	mirrors    map[*mirrorStream]struct{} // laufende Spiegelströme (mu)
 }
 
 // newTransport erwartet in cert die Kette Knoten + CA (loadTLSCert), damit
@@ -351,6 +352,11 @@ func (t *transport) setCluster(cl clusterConfig) {
 	for _, pc := range t.conns {
 		if _, ok := t.nodeLocked(pc.peer); !ok || t.revokedLocked(pc.serial) {
 			pc.close()
+		}
+	}
+	for ms := range t.mirrors {
+		if _, ok := t.nodeLocked(ms.peer); !ok || t.revokedLocked(ms.serial) {
+			ms.cancel()
 		}
 	}
 	t.reconcileLocked()

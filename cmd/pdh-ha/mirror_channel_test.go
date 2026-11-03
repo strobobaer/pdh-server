@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
@@ -16,11 +18,13 @@ import (
 
 // fakeRecv ist die Attrappe des Empfängers (der echte kommt mit Teil 6, Aufgabe 6).
 type fakeRecv struct {
-	mu     sync.Mutex
-	calls  []mirrorAcceptCall
-	argv   []string
-	refuse string
-	done   chan error
+	mu      sync.Mutex
+	calls   []mirrorAcceptCall
+	argv    []string
+	refuse  string
+	done    chan error
+	entered chan struct{} // optional: Accept meldet sich hier und wartet auf release
+	release chan struct{}
 }
 
 type mirrorAcceptCall struct {
@@ -39,6 +43,10 @@ func (f *fakeRecv) Accept(ctx context.Context, peerID, peerKind string, req mirr
 	f.mu.Lock()
 	f.calls = append(f.calls, mirrorAcceptCall{peerID, peerKind, req})
 	f.mu.Unlock()
+	if f.release != nil {
+		f.entered <- struct{}{}
+		<-f.release
+	}
 	if f.refuse != "" {
 		return nil, nil, f.refuse
 	}
@@ -358,5 +366,155 @@ func TestMirrorHeartbeatUnaffected(t *testing.T) {
 	}
 	if err := doneWithin(t, f); err != nil {
 		t.Fatalf("done: %v", err)
+	}
+}
+
+// clientSerial liest die Seriennummer des Client-Zertifikats aus der Ablage.
+func clientSerial(t *testing.T, st store) string {
+	t.Helper()
+	b, err := os.ReadFile(st.etcPath("node.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blk, _ := pem.Decode(b)
+	c, err := x509.ParseCertificate(blk.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return serialHex(c)
+}
+
+func (e *mirrorEnv) revokeClient(t *testing.T, serial string) {
+	t.Helper()
+	e.srv.mu.Lock()
+	cl := e.srv.cl
+	e.srv.mu.Unlock()
+	cl.Version++
+	cl.Revoked = append(append([]string(nil), cl.Revoked...), serial)
+	e.srv.setCluster(cl)
+}
+
+func startHangingStream(t *testing.T, e *mirrorEnv, f *fakeRecv) (chan int, func()) {
+	t.Helper()
+	pr, pw := io.Pipe()
+	res := make(chan int, 1)
+	go func() {
+		var out, errw bytes.Buffer
+		res <- runMirrorPipeWith(e.st, e.pipeArgs(), pr, &out, &errw)
+	}()
+	return res, func() { pw.Close() }
+}
+
+func TestMirrorChannelRevoked(t *testing.T) {
+	t.Run("beim Anmelden", func(t *testing.T) {
+		f := newFakeRecv()
+		e := newMirrorEnv(t, "echo", "a", "node", f)
+		e.revokeClient(t, clientSerial(t, e.st))
+		var out, errw bytes.Buffer
+		if code := runMirrorPipeWith(e.st, e.pipeArgs(), strings.NewReader("x"), &out, &errw); code == 0 {
+			t.Fatal("gesperrter Absender darf nicht durchkommen")
+		}
+		if f.callCount() != 0 {
+			t.Fatal("Accept für einen Gesperrten aufgerufen")
+		}
+	})
+	t.Run("mitten im Strom", func(t *testing.T) {
+		f := newFakeRecv()
+		e := newMirrorEnv(t, "hang", "a", "node", f)
+		res, closeIn := startHangingStream(t, e, f)
+		defer closeIn()
+		waitFor(t, 10*time.Second, "Strom läuft", func() bool { return f.callCount() == 1 })
+		time.Sleep(200 * time.Millisecond)
+		e.revokeClient(t, clientSerial(t, e.st))
+		if err := doneWithin(t, f); err == nil {
+			t.Fatal("abgebrochener Strom sollte einen Fehler melden")
+		}
+		select {
+		case <-res:
+		case <-time.After(10 * time.Second):
+			t.Fatal("Client wurde nicht freigegeben")
+		}
+	})
+	t.Run("während Accept", func(t *testing.T) {
+		f := newFakeRecv()
+		f.entered, f.release = make(chan struct{}, 1), make(chan struct{})
+		e := newMirrorEnv(t, "hang", "a", "node", f)
+		res, closeIn := startHangingStream(t, e, f)
+		defer closeIn()
+		<-f.entered
+		e.revokeClient(t, clientSerial(t, e.st))
+		close(f.release)
+		err := doneWithin(t, f)
+		if err == nil || !strings.Contains(err.Error(), "vor dem Start") {
+			t.Fatalf("Kind darf nicht starten: %v", err)
+		}
+		<-res
+	})
+	t.Run("entfernt", func(t *testing.T) {
+		f := newFakeRecv()
+		e := newMirrorEnv(t, "hang", "a", "node", f)
+		res, closeIn := startHangingStream(t, e, f)
+		defer closeIn()
+		waitFor(t, 10*time.Second, "Strom läuft", func() bool { return f.callCount() == 1 })
+		time.Sleep(200 * time.Millisecond)
+		e.srv.mu.Lock()
+		cl := e.srv.cl
+		e.srv.mu.Unlock()
+		cl.Version++
+		cl.Nodes = []clusterNode{cl.Nodes[1], cl.Nodes[2]}
+		e.srv.setCluster(cl)
+		if err := doneWithin(t, f); err == nil {
+			t.Fatal("Strom eines entfernten Knotens sollte enden")
+		}
+		<-res
+	})
+}
+
+func TestMirrorChannelStopMirrors(t *testing.T) {
+	f := newFakeRecv()
+	e := newMirrorEnv(t, "hang", "a", "node", f)
+	res, closeIn := startHangingStream(t, e, f)
+	defer closeIn()
+	waitFor(t, 10*time.Second, "Strom läuft", func() bool { return f.callCount() == 1 })
+	time.Sleep(200 * time.Millisecond)
+	e.srv.stopMirrors()
+	if err := doneWithin(t, f); err == nil {
+		t.Fatal("stopMirrors sollte den Strom abbrechen")
+	}
+	select {
+	case <-res:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Client wurde nicht freigegeben")
+	}
+	waitFor(t, 5*time.Second, "Strom abgemeldet", func() bool {
+		e.srv.mu.Lock()
+		defer e.srv.mu.Unlock()
+		return len(e.srv.mirrors) == 0
+	})
+}
+
+// Der Absender prüft die Gegenstelle: gesperrte Seriennummer des Servers.
+func TestMirrorDialRefusesRevokedServer(t *testing.T) {
+	f := newFakeRecv()
+	e := newMirrorEnv(t, "echo", "a", "node", f)
+	cert := e.srv.currentCert()
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := e.st.loadCluster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl.Revoked = []string{serialHex(leaf)}
+	if err := e.st.saveCluster(cl); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	if code := runMirrorPipeWith(e.st, e.pipeArgs(), strings.NewReader("x"), &out, &errw); code == 0 {
+		t.Fatal("gesperrter Server darf keine Dateien bekommen")
+	}
+	if f.callCount() != 0 {
+		t.Fatal("Anfrage an gesperrten Server gesendet")
 	}
 }

@@ -74,7 +74,7 @@ func readMirrorLine(br *bufio.Reader) ([]byte, error) {
 // geschlossen, Accept läuft dann nie.
 func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) {
 	defer raw.Close()
-	id, _, kind, err := t.identifyKind(c.ConnectionState())
+	id, serial, kind, err := t.identifyKind(c.ConnectionState())
 	if err != nil {
 		t.reject(raw.RemoteAddr())
 		return
@@ -83,6 +83,25 @@ func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) 
 	if kind != "node" || rcv == nil {
 		return
 	}
+
+	// Der Strom meldet sich an: setCluster (Sperrung, Entfernen) und stopMirrors
+	// (Rollenwechsel) brechen ihn über lctx ab, auch vor und während Accept.
+	lctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ms, ok := t.registerMirror(id, serial, cancel)
+	if !ok {
+		return
+	}
+	defer t.unregisterMirror(ms)
+	watch := make(chan struct{})
+	defer close(watch)
+	go func() {
+		select {
+		case <-lctx.Done():
+			raw.Close()
+		case <-watch:
+		}
+	}()
 
 	// Frist nur für die erste Zeile
 	raw.SetReadDeadline(time.Now().Add(mirrorFirstLine))
@@ -97,8 +116,9 @@ func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) 
 	}
 	raw.SetReadDeadline(time.Time{})
 
-	lctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	if lctx.Err() != nil {
+		return
+	}
 	argv, done, refuse := rcv.Accept(lctx, id, kind, req)
 	reply := func(r mirrorReply) bool {
 		b, _ := json.Marshal(r)
@@ -114,6 +134,10 @@ func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) 
 	}
 	if refuse != "" {
 		reply(mirrorReply{Error: refuse})
+		return
+	}
+	if lctx.Err() != nil { // während Accept gesperrt oder Rollenwechsel
+		finish(errors.New("abgebrochen vor dem Start"))
 		return
 	}
 	if len(argv) == 0 {
@@ -148,17 +172,7 @@ func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) 
 
 	// Abbruch (Kontext oder Fehler) schließt die Verbindung, damit beide
 	// Kopierschleifen enden; der Kontext beendet das Kind.
-	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		select {
-		case <-lctx.Done():
-			raw.Close()
-		case <-stop:
-		}
-	}()
 	// Gegenstelle -> Kind
 	var inErr error
 	var exited atomic.Bool // Kind ist fertig: ein Fehler beim Lesen danach zählt nicht
@@ -188,7 +202,6 @@ func (t *transport) serveMirror(ctx context.Context, c *tls.Conn, raw net.Conn) 
 		c.CloseWrite()
 		raw.SetReadDeadline(time.Now().Add(2 * time.Second))
 	}
-	close(stop)
 	if lctx.Err() != nil {
 		raw.Close()
 	}
@@ -397,6 +410,16 @@ func dialMirror(st store, id string) (*mirrorConn, error) {
 		if err == nil && c.ConnectionState().NegotiatedProtocol != alpnMirror {
 			err = errors.New("Gegenstelle spricht kein " + alpnMirror)
 		}
+		if err == nil {
+			// wie dialOnce: Zertifikat nicht gesperrt, Kennung und Art stimmen
+			pid, pkind, perr := peerIdentity(c.ConnectionState(), cl.Revoked)
+			switch {
+			case perr != nil:
+				err = perr
+			case pid != id || pkind != "node":
+				err = fmt.Errorf("Gegenstelle meldet sich als %q (%s)", pid, pkind)
+			}
+		}
 		if err != nil {
 			raw.Close()
 			last = err
@@ -405,4 +428,42 @@ func dialMirror(st store, id string) (*mirrorConn, error) {
 		return &mirrorConn{tls: c, raw: raw}, nil
 	}
 	return nil, fmt.Errorf("Gegenstelle %s nicht erreichbar: %v", id, last)
+}
+
+// mirrorStream ist ein laufender Spiegelstrom auf dem Empfänger.
+type mirrorStream struct {
+	peer, serial string
+	cancel       context.CancelFunc
+}
+
+// registerMirror trägt einen Strom ein, wenn der Absender unter derselben
+// Sperre noch zum Cluster gehört und nicht gesperrt ist (wie runConn).
+func (t *transport) registerMirror(peer, serial string, cancel context.CancelFunc) (*mirrorStream, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.nodeLocked(peer); !ok || t.revokedLocked(serial) {
+		return nil, false
+	}
+	ms := &mirrorStream{peer: peer, serial: serial, cancel: cancel}
+	if t.mirrors == nil {
+		t.mirrors = map[*mirrorStream]struct{}{}
+	}
+	t.mirrors[ms] = struct{}{}
+	return ms, true
+}
+
+func (t *transport) unregisterMirror(ms *mirrorStream) {
+	t.mu.Lock()
+	delete(t.mirrors, ms)
+	t.mu.Unlock()
+}
+
+// stopMirrors bricht alle laufenden Spiegelströme ab (Rollenwechsel des
+// Empfängers: der Daemon ruft es beim Wechsel, Ruling R9).
+func (t *transport) stopMirrors() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for ms := range t.mirrors {
+		ms.cancel()
+	}
 }
