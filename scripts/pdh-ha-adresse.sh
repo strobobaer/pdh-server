@@ -117,8 +117,9 @@ netplan_id() {
   r="$(npy card "$IFACE" "${NPFILES[@]}")" || fail "Die Karte $IFACE steht in keiner Datei unter /etc/netplan (weder als Ethernet noch als Bond, Bridge oder VLAN) – die Adresse kann dort nicht ergänzt werden. Nichts geändert."
   KIND="${r%% *}"; ID="${r#* }"
 }
-# Feste (nicht per DHCP erhaltene) globale IPv4-Adressen der Karte, mit Präfix
-static_addrs() { ip -4 -o addr show dev "$IFACE" scope global | grep -v ' dynamic ' | awk '{print $4}'; }
+# Feste (nicht per DHCP erhaltene) globale IPv4-Adressen der Karte, mit Präfix.
+# /32 ist die mitwandernde Adresse von pdh-ha, keine feste.
+static_addrs() { ip -4 -o addr show dev "$IFACE" scope global | grep -v ' dynamic ' | awk '$4 !~ /\/32$/ {print $4}'; }
 
 # Stand der Absenderadresse zum Partner (Regel R5)
 partner_ip() {

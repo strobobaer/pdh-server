@@ -7,7 +7,7 @@
 #            asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
 #            rewind-fehler slot-grenze
 #   Zugangsweg (Teil 5): vip-tausch vip-ausfall vip-abschaltung vip-duplikat
-#            vip-entfernt vip-neustart hooks umstellung
+#            vip-entfernt vip-absender vip-neustart hooks umstellung
 #   Update im Verbund: update-ok update-b-vorher update-b-nachher update-abbruch
 #            update-neustart update-nicht-gruen update-nacheinander
 #            update-nacheinander-fehler update-tausch-frist
@@ -49,7 +49,7 @@ declare -A IP=(
 SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv version-anders
     beobachtung tausch aktiv-weg-echt asynchron-zeuge asynchron-ohne-zeuge erzwingen-abgezweigt
     rewind-fehler slot-grenze
-    vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-neustart hooks umstellung
+    vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-absender vip-neustart hooks umstellung
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
     update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand
     update-abbruch-vorher update-verweigert)
@@ -899,10 +899,37 @@ sc_vip_entfernt() {
     # Grenze 3,5 s: bis 1 s bis zum nächsten Abgleich (Takt des Arbeiters),
     # 2 s Duplikat-Prüfung (arping -D -c 2), Rest für Setzen und Messen
     log "Adresse auf node1 von Hand entfernen – binnen 3,5 s wieder da"
-    ms="$(docker exec node1 bash -c "$WIEDER_SH" _ "$ifc" "$VIP" 3500)" || fail "Adresse nach $ms ms nicht wieder da – $(vip_where)"
+    ms="$(docker exec node1 bash -c "$WIEDER_SH" _ "$ifc" "$VIP_IP/32" 3500)" || fail "Adresse nach $ms ms nicht wieder da – $(vip_where)"
     log "Adresse nach $ms ms wieder gesetzt"
     wait_for 10 eval 'event_on node1 "war nicht mehr gesetzt – wird wieder übernommen"' || fail "kein Ereignis „war nicht mehr gesetzt“ auf node1"
     wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach der Rückkehr – $(vip_where)"
+}
+
+# Die feste Adresse wird neu gesetzt (z. B. durch den Netzwerkdienst): Sie bleibt
+# Absender, die mitwandernde liegt weiter als /32 an. Eine aus älteren Versionen
+# noch als /24 gesetzte Adresse stellt der Abgleich im Betrieb um.
+sc_vip_absender() {
+    vip_setup
+    local ifc fest=10.77.1.11 partner=10.77.1.12 src def
+    ifc="$(lan_if node1 "$VIP_IP")"
+    [[ -n "$ifc" ]] || fail "Karte mit $VIP_IP auf node1 nicht gefunden"
+    docker exec node1 ip -o -4 addr show dev "$ifc" | grep -q " inet $VIP_IP/32 " || fail "Adresse nicht als /32 gesetzt – $(vip_where)"
+    def="$(docker exec node1 ip -4 route show default)"
+    log "Feste Adresse auf node1 entfernen und neu setzen"
+    docker exec node1 sh -c "ip addr del $fest/24 dev $ifc && ip addr add $fest/24 dev $ifc" || fail "$fest neu setzen"
+    [[ -z "$def" ]] || docker exec node1 sh -c "ip route replace $def" || fail "Standardroute wiederherstellen"
+    src="$(docker exec node1 ip route get "$partner" | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+    [[ "$src" == "$fest" ]] || fail "Absender zum Partner ist ${src:-unbekannt} statt $fest"
+    wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach dem Neusetzen – $(vip_where)"
+
+    log "Bestand: Adresse als /24 setzen – binnen 5 s auf /32 umgestellt"
+    docker exec node1 sh -c "ip addr add $VIP dev $ifc && ip addr del $VIP_IP/32 dev $ifc" || fail "Adresse als /24 setzen"
+    wait_for 5 eval 'event_on node1 "Adresse $VIP_IP auf /32 umgestellt"' || fail "kein Ereignis zur Umstellung – $(vip_where)"
+    docker exec node1 ip -o -4 addr show dev "$ifc" | grep -q " inet $VIP_IP/32 " || fail "/32 fehlt nach der Umstellung – $(vip_where)"
+    ! docker exec node1 ip -o -4 addr show dev "$ifc" | grep -q " inet $VIP " || fail "/24 liegt noch an – $(vip_where)"
+    src="$(docker exec node1 ip route get "$partner" | awk '{for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
+    [[ "$src" == "$fest" ]] || fail "Absender nach der Umstellung ist ${src:-unbekannt} statt $fest"
+    wait_for 10 eval 'holder_is node1 && gw_ping' || fail "nach der Umstellung – $(vip_where)"
 }
 
 # vip_never <Container>: bricht ab, sobald der Server die Adresse trägt

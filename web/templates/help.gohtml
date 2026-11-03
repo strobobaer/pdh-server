@@ -2056,6 +2056,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Ist alles grün: Haken <b>Adresse mitwandern lassen</b> setzen und <b>Speichern</b>. Ohne bestandenen Test lässt sich der Haken nicht speichern.</li>
       <li>Die Karte zeigt jetzt „10.10.0.202/24 liegt auf …“ mit dem Namen des aktiven Servers. Geräte und Lesezeichen auf diese Adresse umstellen – danach musst du sie nie wieder ändern.</li>
     </ol>
+    <p>Mit <code>ip addr</code> siehst du die Adresse auf der Netzwerkkarte immer als <code>/32</code>, auch wenn du <code>/24</code> eingetragen hast. Das ist Absicht: So bleibt die feste Adresse des Servers der Absender seiner Verbindungen.</p>
     <p>Ein bestandener Test gilt für jede Adresse im selben Netz, solange beide Server dieselbe Netzwerkkarte benutzen. In einem anderen Netz oder mit einer anderen Karte testest du neu. Auf der Kommandozeile geht dasselbe mit <code>sudo pdh-ha vip test</code> und <code>sudo pdh-ha access --vip 10.10.0.202/24 --vip-on</code>; ausschalten mit <code>sudo pdh-ha access --vip-off</code>.</p>
     <p>Ist die Adresse schon eingeschaltet, testest du mit einer <b>freien Testadresse</b> im selben Netz. Mit der eingeschalteten Adresse selbst lehnt der Test ab („Adresse ist eingeschaltet – mit freier Testadresse testen oder vorher ausschalten“), damit er ihr nicht in die Quere kommt.</p></div>
   <div class="hb-howto"><b><i class="ti ti-info-circle"></i> Gut zu wissen zur mitwandernden Adresse</b>

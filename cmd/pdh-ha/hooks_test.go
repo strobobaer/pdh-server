@@ -317,6 +317,14 @@ func TestPrintStatusHooks(t *testing.T) {
 	if strings.Contains(b.String(), "Skripte") {
 		t.Errorf("Skriptzeile ohne Skripte:\n%s", b.String())
 	}
+	// Der Zeuge führt keine Skripte aus, auch wenn sie im Verbund eingeschaltet sind.
+	wit := apiStatus{Configured: true, Mode: ha.Trio, Self: apiNode{ID: "zeuge", Kind: "witness"}}
+	wit.Access.HooksOn = true
+	b.Reset()
+	printStatus(&b, wit)
+	if strings.Contains(b.String(), "Skripte") {
+		t.Errorf("Skriptzeile am Zeugen:\n%s", b.String())
+	}
 }
 
 func TestPrintHookResults(t *testing.T) {
