@@ -1062,3 +1062,23 @@ func TestViewAskTargetLabel(t *testing.T) {
 		t.Fatalf("nur in der Nachfrage: %q", v.TargetLabel)
 	}
 }
+
+// In der Nachfrage beendet (entfallen, abgesagt): Es wurde nichts geändert,
+// die Anzeige darf nicht wie ein abgebrochenes Update aussehen.
+func TestViewEndedInAsk(t *testing.T) {
+	now := upT0.Add(10 * time.Minute)
+	for _, result := range []string{"Update entfallen: nicht bestätigt", "Update entfallen: Rolle gewechselt", "Update abgesagt von admin"} {
+		j := upJob(UpdateRolling, UpFailed)
+		j.AskUntil, j.Result = now, result
+		v := j.View(now, time.Minute, nil)
+		if v.Text != "Update nicht durchgeführt" || v.Percent != 0 || v.Step != 0 || v.Active || v.Result != result {
+			t.Errorf("%s: Text %q Percent %d Step %d Active %v Result %q", result, v.Text, v.Percent, v.Step, v.Active, v.Result)
+		}
+	}
+	// Bestätigt und danach gescheitert: Das Update lief, es bleibt „abgebrochen“.
+	j := upJob(UpdateRolling, UpFailed)
+	j.AskUntil, j.ConfirmedBy = now, "admin"
+	if v := j.View(now, time.Minute, nil); v.Text != "Update abgebrochen" || v.Percent != 100 {
+		t.Errorf("nach Bestätigung: Text %q Percent %d", v.Text, v.Percent)
+	}
+}

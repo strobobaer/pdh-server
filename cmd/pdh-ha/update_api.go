@@ -483,12 +483,13 @@ func printUpdate(w io.Writer, v ha.UpdateView) {
 	if !v.Active && v.Kind == "" {
 		fmt.Fprintln(w, "Update: kein Auftrag")
 	} else {
-		state := "läuft"
-		if !v.Active {
-			state = "beendet"
+		if v.Active {
+			fmt.Fprintf(w, "Update: läuft (%s)\n", v.Kind)
+			fmt.Fprintf(w, "Schritt: %s – %s (%d %%)\n", v.Phase, v.Text, v.Percent)
+		} else {
+			fmt.Fprintf(w, "Update: beendet (%s)\n", v.Kind)
+			fmt.Fprintf(w, "Stand: %s\n", v.Text)
 		}
-		fmt.Fprintf(w, "Update: %s (%s)\n", state, v.Kind)
-		fmt.Fprintf(w, "Schritt: %s – %s (%d %%)\n", v.Phase, v.Text, v.Percent)
 		if v.FromVersion != "" || v.ToVersion != "" {
 			to := v.ToVersion
 			if to == "" {

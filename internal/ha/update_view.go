@@ -116,6 +116,9 @@ func (j UpdateJob) viewStep() (step, percent int, text string) {
 	case UpDone:
 		return 4, 100, what + " abgeschlossen"
 	case UpFailed:
+		if !j.AskUntil.IsZero() && j.ConfirmedBy == "" {
+			return 0, 0, what + " nicht durchgeführt" // in der Nachfrage beendet: nichts geändert
+		}
 		return 4, 100, what + " abgebrochen"
 	}
 	return 0, 0, ""

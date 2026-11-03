@@ -30,6 +30,7 @@ im Kapitel „Versionen & Updates“ an.
 - „Update installieren“ funktioniert im Verbund auch bei „Automatik aus (Wartung)“.
 
 ### Behoben
+- `pdh-ha update status` zeigt ein entfallenes oder abgesagtes Update als „nicht durchgeführt“ und nicht mehr als „abgebrochen (100 %)“, denn dabei wurde nichts geändert.
 - Ein Server verliert den Kontakt zum Verbund nicht mehr, wenn das Netzwerk seine feste Adresse neu setzt: Die mitwandernde Adresse liegt jetzt als `/32` auf der Karte und wird nie Absender. Bestehende Server stellen sich im laufenden Betrieb um.
 - `pdh-ha status` zeigt am Zeugen keine irreführende Zeile „Skripte: 0, anders als beim Partner“ mehr, denn der Zeuge führt keine Skripte aus.
 - Das Band am Spiegel verweist auf den Reiter Ausfallschutz.
