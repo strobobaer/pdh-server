@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"pdh/internal/ha"
@@ -49,6 +50,8 @@ type pgActor struct {
 	poll     time.Duration
 	now      func() time.Time
 	passfile string // Pfad der passfile (Tests: Temp-Ordner)
+
+	rewindMem atomic.Bool // pg_rewind begonnen, Ordner noch nicht als Standby gelaufen (mit Datei, R35)
 
 	mu        sync.Mutex
 	syncNames string      // gewünschte synchronous_standby_names (Replikation, Task 8)
@@ -118,6 +121,8 @@ func (a *pgActor) Do(ctx context.Context, act ha.Action) error {
 		return a.rejoin(ctx, act.Term)
 	case ha.ActRejoinStranded:
 		return a.rejoinStranded(ctx, act.Term)
+	case ha.ActRecopyUnsafe:
+		return a.recopyUnsafe(ctx)
 	case ha.ActVIPTake, ha.ActVIPRelease:
 		// Die mitwandernde Adresse folgt allein dem Abgleich (accessWorker);
 		// ein Fehler hier darf nie Wartung einschalten.
@@ -258,10 +263,14 @@ func (a *pgActor) markRefused() {
 // rejoinStranded (R32, R33): Wiederanbindung nach verweigerter Rücknahme oder per Handbefehl.
 // Der Aktor prüft den eigenen Stand frisch: nur ein laufender, nur lesender Primary wird
 // angefasst (nie ein eingefrorener Rückfallstand). Schon Standby: erledigt. Jeder andere Stand:
-// strandedWaitError, es geschieht nichts. Scheitert die Wiederanbindung, kommt die Datenbank
-// wieder als nur lesender Primary hoch (die Konfiguration stammt aus dem Abschotten), sonst
-// hilft danach auch der Handbefehl nicht mehr.
+// strandedWaitError, es geschieht nichts. Scheitert die Wiederanbindung, bevor ein echter
+// pg_rewind lief, kommt die Datenbank wieder als nur lesender Primary hoch (die Konfiguration
+// stammt aus dem Abschotten), sonst hilft danach auch der Handbefehl nicht mehr. Mit der Datei
+// aus dem Rewind bleibt sie gestoppt (R35).
 func (a *pgActor) rejoinStranded(ctx context.Context, term uint64) error {
+	if a.rewindUnsafe() {
+		return strandedWaitError{"die Daten sind nach einer abgebrochenen Wiederanbindung unsicher"}
+	}
 	switch err := strandedStateErr(a.pg.status(ctx)); {
 	case errors.Is(err, errAlreadyStandby):
 		a.ev.add(ha.Event{Kind: "info", Text: "Wiederanbindung nicht nötig: die Datenbank ist schon Standby"})
@@ -270,7 +279,7 @@ func (a *pgActor) rejoinStranded(ctx context.Context, term uint64) error {
 		return err
 	}
 	err := a.rejoin(ctx, term)
-	if err != nil && a.pg.status(ctx).State == "stopped" {
+	if err != nil && !a.rewindUnsafe() && a.pg.status(ctx).State == "stopped" {
 		if serr := a.pg.ctl(ctx, "start"); serr != nil {
 			a.ev.add(ha.Event{Kind: "alarm", Text: "Datenbank nach gescheiterter Wiederanbindung nicht gestartet: " + serr.Error()})
 		}
@@ -394,6 +403,9 @@ func (a *pgActor) becomeStandby(ctx context.Context, e pgEnv) error {
 }
 
 func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
+	if a.rewindUnsafe() {
+		return errDataUnsafe // auch von Hand: dieser Ordner darf nie Primary werden (R35)
+	}
 	e := a.env()
 	// Datenstand zuerst prüfen: ein abgelehntes Hochstufen darf keine Wirkung
 	// haben (kein Start des eingefrorenen Clusters).
@@ -538,6 +550,9 @@ func (a *pgActor) fence(ctx context.Context) error {
 // Übernahme des Partners scheitert), wird sie zuerst wieder gestartet (I2):
 // sie ist der unveränderte eigene Stand, der Partner hat nicht übernommen.
 func (a *pgActor) unfence(ctx context.Context) error {
+	if a.rewindUnsafe() {
+		return errDataUnsafe
+	}
 	e := a.env()
 	st := a.pg.status(ctx)
 	if st.State == "stopped" && a.frozenPrimary() {
@@ -586,6 +601,18 @@ func (a *pgActor) reconcile(ctx context.Context, role ha.Role) {
 	}
 	e := a.env()
 	st := a.pg.status(ctx)
+	if a.rewindUnsafe() {
+		switch st.State {
+		case "standby":
+			a.clearRewindMarker() // als Standby hochgekommen: die Daten folgen dem Partner
+		case "primary":
+			// Nach einem Neustart des Rechners startet das System PostgreSQL von selbst.
+			if err := a.pg.ctl(ctx, "stop"); err != nil {
+				a.ev.add(ha.Event{Kind: "alarm", Text: "Datenbank mit unsicheren Daten nicht gestoppt: " + err.Error()})
+			}
+			st = a.pg.status(ctx)
+		}
+	}
 	switch {
 	case st.State == "standby":
 		if !a.svc.Active(ctx) {
@@ -654,6 +681,9 @@ func (a *pgActor) recopy(ctx context.Context) {
 	}
 	if err != nil {
 		a.ev.add(ha.Event{Kind: "alarm", Text: err.Error()})
+	}
+	if a.rewindUnsafe() {
+		return // zurückgeholter Ordner aus einem abgebrochenen pg_rewind: bleibt gestoppt (R35)
 	}
 	if serr := a.pg.ctl(ctx, "start"); serr != nil {
 		a.ev.add(ha.Event{Kind: "alarm", Text: "Neukopie: PostgreSQL startet nicht: " + serr.Error()})

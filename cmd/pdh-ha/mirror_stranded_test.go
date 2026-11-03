@@ -142,11 +142,18 @@ func TestStrandedRestartOperatorView(t *testing.T) {
 	}
 }
 
-// Einmal je Zustand: Endet der Zustand, verschwindet die Warnung; kehrt er zurück, kommt ein neuer Alarm.
+// Einmal je Zustand: Endet der Zustand (länger als die Haltezeit), verschwindet die Warnung; kehrt er
+// zurück, kommt ein neuer Alarm. Innerhalb der Haltezeit bleibt die Warnung stehen.
 func TestStrandedAlarmPerState(t *testing.T) {
-	m, _ := passiveRO(t, nil, activePrimary, false)
+	rg := newStrandedRig(t, activePrimary, false)
+	m := rg.m
 	settle(m)
 	m.fn.setView("b", seenView(message{Role: "passiv", Term: 2, PG: "standby", Ver: "test", Sees: []string{"a"}}))
+	settle(m)
+	if !slices.Contains(m.d.statusNow().Warnings, strandedText) {
+		t.Fatal("Warnung vor Ablauf der Haltezeit weg")
+	}
+	rg.shift.Store(int64(alarmAfter + time.Second))
 	settle(m)
 	if slices.Contains(m.d.statusNow().Warnings, strandedText) {
 		t.Fatal("Warnung nach Ende des Zustands")

@@ -589,6 +589,8 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Nur mit zwei Servern möglich")
 	case c == ha.CmdForceTakeover && d.p.Role == ha.Active:
 		return errors.New("Nur auf einem nicht aktiven Server möglich")
+	case c == ha.CmdForceTakeover && d.rewindUnsafeLocked():
+		return errDataUnsafe // R35: auch von Hand nicht übernehmen, die Rolle wäre sonst schon aktiv
 	case c == ha.CmdForceTakeover && d.last.Partner != nil && d.last.Partner.Seen && d.last.Partner.Role == ha.Active:
 		// sonst verliert ein gesunder aktiver Server seine Rolle, und was er
 		// bis dahin allein gespeichert hat, landet in den abgezweigten Daten

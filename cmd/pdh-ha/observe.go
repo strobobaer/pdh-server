@@ -144,7 +144,8 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 		}
 	}
 	set("version", versionDiff != "", versionDiff, "Versionen wieder gleich")
-	set(strandedAlarmKey, d.strandedConfirmLocked(), strandedText, "")
+	set(strandedAlarmKey, d.strandedHoldLocked(now), strandedText, "")
+	set(rewindUnsafeKey, d.rewindAlarmLocked(), rewindUnsafeText, "")
 }
 
 // statusNow liefert die Anzeige für GET /v1/status.
@@ -286,6 +287,9 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	if d.alarms[strandedAlarmKey] {
 		st.Warnings = append(st.Warnings, strandedText)
+	}
+	if d.alarms[rewindUnsafeKey] {
+		st.Warnings = append(st.Warnings, rewindUnsafeText)
 	}
 	d.mirrorStatusLocked(&st)
 	return st

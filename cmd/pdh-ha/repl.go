@@ -92,6 +92,9 @@ func (d *daemon) replInputLocked(ctx context.Context, in *ha.Input, s ha.Setting
 	default:
 		d.dataCurrent = ha.DataCurrent(standby, lag, s.LagLimit, pt)
 	}
+	if pa.rewindUnsafe() {
+		d.dataCurrent = false // R35: die Automatik übernimmt diesen Stand nie
+	}
 	in.DataCurrent, in.DataAssumed = d.dataCurrent, false
 	d.maybeRecopyLocked(ctx, pa, st, in.Partner, in.Now)
 }

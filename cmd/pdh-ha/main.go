@@ -56,7 +56,8 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       des aktiven einrichten (überschreibt die Datenbank)
   rejoin                              diesen passiven Server mit nur lesender Datenbank wieder
                                       als Standby des aktiven anbinden (wenn status es meldet;
-                                      eigene Daten werden vorher gesichert)
+                                      eigene Daten werden vorher gesichert); nach einer
+                                      abgebrochenen Wiederanbindung: Datenbank neu kopieren
   peer-pg-major                       PostgreSQL-Hauptversion des aktiven Servers
   should-run-pdh                      Exit 0, wenn pdh hier laufen soll
   mirror-pipe --label L --term N --node K <host> rsync --server …

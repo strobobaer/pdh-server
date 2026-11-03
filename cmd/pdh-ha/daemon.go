@@ -130,6 +130,7 @@ type daemon struct {
 	rejoinWaitWhy  string        // nur unter mu: zuletzt gemeldeter Grund des Wartens
 	strandedSample *pgStatus     // nur unter mu: zuletzt gezählte Abfrage
 	strandedFresh  int           // nur unter mu: neue Abfragen, seit der Zustand gilt
+	strandedGoneAt time.Duration // nur unter mu: seit wann der Zustand nicht mehr gilt (monoton, 0 = gilt)
 
 	certNotAfter time.Time
 	renewKey     []byte
@@ -723,8 +724,15 @@ func (d *daemon) actionWorker(ctx context.Context) {
 				d.busy.Store(false)
 			} else if q.batch != failed {
 				d.busy.Store(true)
-				err := d.doAction(ctx, q.a)
-				if q.a.Kind == ha.ActRejoinStranded {
+				var err error
+				hand := q.a.Kind == ha.ActRejoinStranded || q.a.Kind == ha.ActRecopyUnsafe
+				if hand {
+					err = d.strandedGuard()
+				}
+				if err == nil {
+					err = d.doAction(ctx, q.a)
+				}
+				if hand {
 					err = d.strandedDone(err)
 				}
 				if err != nil {
@@ -760,7 +768,9 @@ func isDemote(k ha.ActionKind) bool {
 }
 
 // isRejoin: Wiederanbindung als Standby.
-func isRejoin(k ha.ActionKind) bool { return k == ha.ActRejoin || k == ha.ActRejoinStranded }
+func isRejoin(k ha.ActionKind) bool {
+	return k == ha.ActRejoin || k == ha.ActRejoinStranded || k == ha.ActRecopyUnsafe
+}
 
 // swapCommand: Handbefehl, der einen Rollentausch beginnt.
 func swapCommand(c ha.CommandKind) bool {

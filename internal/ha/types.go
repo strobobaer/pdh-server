@@ -317,6 +317,7 @@ const (
 	ActHandover       ActionKind = "handover"
 	ActRejoin         ActionKind = "rejoin"
 	ActRejoinStranded ActionKind = "rejoin_stranded" // Wiederanbindung nach verweigerter Rücknahme (R32)
+	ActRecopyUnsafe   ActionKind = "recopy_unsafe"   // Handbefehl: Neukopie nach abgebrochenem pg_rewind (R35)
 	ActProbeVote      ActionKind = "probe_vote"
 
 	// Tausch mit Einfrieren: Datenbank abgeben, aber eingefroren lassen
