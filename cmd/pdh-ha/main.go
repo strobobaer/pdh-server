@@ -45,6 +45,8 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       Rolle ausführen und die Ausgabe zeigen
   vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
                                       (Standard: die eingetragene Adresse)
+  mirror status|run|trash-empty       Datei-Spiegelung: Stand zeigen; sofort abgleichen und
+                                      Papierkorb am Partner leeren (nur am aktiven Server)
   addrs set <knoten> <adr,…> [--neustart]
                                       Adressen eines Knotens ändern (am ersten Server);
                                       --neustart: aktives PostgreSQL dafür neu starten
@@ -294,6 +296,33 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		return printHookResults(stdout, r.Results)
+	case "mirror":
+		if len(args) != 2 {
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		switch args[1] {
+		case "status":
+			var m apiMirror
+			if err := apiDo(sock, http.MethodGet, "/v1/mirror", nil, &m); err != nil {
+				return fail(err)
+			}
+			printMirrorStatus(stdout, &m)
+		case "run":
+			if err := apiDoT(sock, 30*time.Minute, http.MethodPost, "/v1/mirror/run", map[string]string{}, nil); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "Abgleich fertig.")
+		case "trash-empty":
+			if err := apiDo(sock, http.MethodPost, "/v1/mirror/trash-empty", map[string]string{}, nil); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "Papierkorb der Spiegelung wird beim Partner geleert.")
+		default:
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
+		return 0
 	case "reset":
 		yes := fs.Bool("yes", false, "bestätigen")
 		if fs.Parse(args[1:]) != nil {
@@ -489,6 +518,7 @@ func printStatus(w io.Writer, st apiStatus) {
 		}
 		fmt.Fprintf(w, "Tunnel: %s, Token %s\n", run, tunnelSameText(st))
 	}
+	printMirrorStatus(w, st.Mirror)
 	for _, p := range st.Peers {
 		seen := "nicht gesehen"
 		if p.Seen {

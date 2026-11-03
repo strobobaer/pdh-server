@@ -105,6 +105,14 @@ type message struct {
 	Ack   *ha.UpdateAck `json:"ack,omitempty"`
 	// hb eines Servers: ein Update-Auftrag läuft (der Zeuge zieht dann nicht nach)
 	UpJob bool `json:"upjob,omitempty"`
+
+	// Datei-Spiegelung (Teil 6), nur Server mit eingeschalteter Spiegelung
+	MirrorFirst   bool      `json:"mirror_first,omitempty"`   // Erstabgleich fertig
+	MirrorAt      time.Time `json:"mirror_at,omitzero"`       // letzter erfolgreicher Abgleich
+	MirrorOrphans int       `json:"mirror_orphans,omitempty"` // Rückkehrer-Dateien im Empfang
+	MirrorTrashB  int64     `json:"mirror_trash_b,omitempty"` // Größe der Papierkörbe
+	EnvSum        string    `json:"env_sum,omitempty"`        // Prüfsumme der .env (ohne Serverdaten)
+	NCVer         string    `json:"nc_ver,omitempty"`         // Nextcloud- und PHP-Fassung
 }
 
 var deliverTypes = map[string]bool{

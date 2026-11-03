@@ -37,6 +37,7 @@ type mirrorLabelState struct {
 	LastOK   time.Time `json:"last_ok,omitempty"`
 	Skipped  bool      `json:"skipped,omitempty"`   // Quelle fehlt bewusst (gilt als erledigt)
 	SawFiles bool      `json:"saw_files,omitempty"` // die Quelle hatte einmal Dateien (Schutz vor leerer Quelle)
+	Adopted  bool      `json:"adopted,omitempty"`   // Erstabgleich laut aktivem Partner fertig (übernommen, nicht selbst gelaufen)
 	Err      string    `json:"err,omitempty"`
 }
 
@@ -49,6 +50,7 @@ type mirrorState struct {
 	Err                    string
 	SlowerThanInterval     bool
 	WatchLimited           bool
+	WatchErr               string // letzter Fehler der Sofort-Übertragung (leer nach dem nächsten Erfolg)
 }
 
 // mirrorDeps: alles, was der Arbeiter von außen braucht (in Tests ersetzbar).
@@ -246,7 +248,51 @@ func (w *mirrorWorker) run(ctx context.Context) {
 
 // mirrorLabelDone: die Quelle war einmal fehlerfrei durch (oder fehlt bewusst).
 func mirrorLabelDone(ls mirrorLabelState, present bool) bool {
-	return !ls.LastOK.IsZero() || (ls.Skipped && !present)
+	return !ls.LastOK.IsZero() || ls.Adopted || (ls.Skipped && !present)
+}
+
+// adoptFirst übernimmt am passiven Server den Stand „Erstabgleich fertig“ des
+// aktiven Partners (Herzschlag) und merkt ihn in mirror.json: wird dieser
+// Server aktiv, verlangt er keinen neuen Erstabgleich. on=false nimmt die
+// Übernahme zurück (neue Quelle beim Partner). Schreibt eine Datei: nie aus dem
+// Takt aufrufen.
+func (w *mirrorWorker) adoptFirst(on bool) {
+	w.mu.Lock()
+	srcs := ha.MirrorSources(w.d.repo, w.cfg)
+	changed := false
+	for _, m := range srcs {
+		ls := w.st.PerLabel[m.Label]
+		switch {
+		case on && ls.LastOK.IsZero() && !ls.Adopted:
+			ls.Adopted = true
+		case !on && ls.Adopted:
+			ls.Adopted = false
+		default:
+			continue
+		}
+		w.st.PerLabel[m.Label] = ls
+		changed = true
+	}
+	if !changed {
+		w.mu.Unlock()
+		return
+	}
+	w.refreshFirstLocked(srcs, nil)
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+}
+
+// stopWatch beendet die Sofort-Übertragung und vergisst sie, damit ein
+// späterer Start sie neu aufbaut (Arbeiter wurde ausgeschaltet).
+func (w *mirrorWorker) stopWatch() {
+	w.mu.Lock()
+	cancel := w.watchCancel
+	w.watch, w.watchCancel, w.watchSig = nil, nil, ""
+	w.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // presence prüft (ohne mu) einmal, welche Quellordner jetzt da sind.
@@ -695,7 +741,7 @@ func (w *mirrorWorker) syncWatch(ctx context.Context) {
 	}
 	old := w.watchCancel
 	w.watch, w.watchCancel, w.watchSig = nil, nil, sig.String()
-	w.st.WatchLimited = false
+	w.st.WatchLimited, w.st.WatchErr = false, ""
 	w.fullAt = map[string]time.Time{}
 	if len(inst) > 0 {
 		wctx, cancel := context.WithCancel(ctx)
@@ -732,6 +778,15 @@ func (w *mirrorWorker) onLimited(mw *mirrorWatch) {
 // Läuft gerade ein anderer Abgleich, bleiben die Pfade vorgemerkt.
 func (w *mirrorWorker) onWatch(ctx context.Context, mw *mirrorWatch, label string, paths []string) {
 	err := w.runPathsOpt(ctx, label, paths, false)
+	// der letzte echte Fehler bleibt sichtbar (Status); Besetzt und Abbruch sind keine
+	w.mu.Lock()
+	switch {
+	case err == nil:
+		w.st.WatchErr = ""
+	case !errors.Is(err, errMirrorBusy) && !errors.Is(err, errMirrorAborted) && ctx.Err() == nil:
+		w.st.WatchErr = err.Error()
+	}
+	w.mu.Unlock()
 	mw.result(label, err == nil)
 }
 

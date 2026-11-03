@@ -55,6 +55,7 @@ type apiStatus struct {
 	AutoMode       string      `json:"auto_mode"`
 	Busy           bool        `json:"busy"` // eine Aktion läuft
 	Access         apiAccess   `json:"access"`
+	Mirror         *apiMirror  `json:"mirror,omitempty"` // Datei-Spiegelung; fehlt am Zeugen
 
 	// Update im Verbund: Auftrag, Phase, Sperre; als fehlerhaft gemerkte Commits
 	Update        ha.UpdateView `json:"update"`
@@ -390,6 +391,29 @@ func apiHandler(d *daemon) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "results": res})
+	})
+	// Datei-Spiegelung: Stand, sofort abgleichen, Papierkorb am Partner leeren
+	mux.HandleFunc("GET /v1/mirror", func(w http.ResponseWriter, r *http.Request) {
+		st := d.statusNow()
+		if st.Mirror == nil {
+			apiFail(w, errMirrorWitness)
+			return
+		}
+		writeJSON(w, http.StatusOK, st.Mirror)
+	})
+	mux.HandleFunc("POST /v1/mirror/run", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mirrorRun(r.Context()); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
+	mux.HandleFunc("POST /v1/mirror/trash-empty", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mirrorTrashEmptyReq(); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
 	})
 	// Adresstest; dauert bis etwa eine Minute (Client mit längerer Frist)
 	mux.HandleFunc("POST /v1/vip/test", func(w http.ResponseWriter, r *http.Request) {

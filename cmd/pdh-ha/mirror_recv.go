@@ -58,6 +58,26 @@ type mirrorInboxState struct {
 	Pending    map[string]bool `json:"pending,omitempty"`     // Quellen, deren nächster Lauf nach dem Wechsel zählt
 	Armed      time.Time       `json:"armed,omitempty"`       // ReturnedAt, das schon verarbeitet ist
 	NginxDirty bool            `json:"nginx_dirty,omitempty"` // gespiegelte nginx-Dateien sind noch nicht erfolgreich geladen
+	LastRole   ha.Role         `json:"last_role,omitempty"`   // zuletzt bekannte eigene Rolle (aktiv/passiv): übersteht einen Absturz
+}
+
+// lastRole ist die zuletzt gemerkte eigene Rolle (leer = unbekannt).
+func (m *mirrorInbox) lastRole() ha.Role {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.LastRole
+}
+
+// setLastRole merkt die eigene Rolle dauerhaft (schreibt eine Datei: nicht aus
+// dem Takt aufrufen).
+func (m *mirrorInbox) setLastRole(r ha.Role) {
+	m.mu.Lock()
+	same := m.st.LastRole == r
+	m.st.LastRole = r
+	m.mu.Unlock()
+	if !same {
+		m.save()
+	}
 }
 
 type mirrorInbox struct {

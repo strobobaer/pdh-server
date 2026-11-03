@@ -163,6 +163,10 @@ type daemon struct {
 	probeHeld   *probeHolding // gehaltene Prüfadresse (nur unter mu)
 	vipChecking atomic.Bool   // ein Test läuft (auslösender Server)
 
+	// Datei-Spiegelung (mirror_api.go); mir entsteht beim ersten Takt eines Servers
+	mir       *mirrorRT
+	mirrorWire *mirrorWiring // nil = Produktion; Tests ersetzen die Umgebung
+
 	up  upState     // Update im Verbund (update_job.go)
 	wsu selfUpdater // Zeuge als Programm zieht sich nach (witness_update.go)
 }
@@ -383,6 +387,9 @@ func (d *daemon) startLocked() {
 		mux.HandleFunc("POST /v1/probe-release", d.probeReleaseHTTP)
 	}
 	var join http.Handler = mux
+	if rt := d.ensureMirrorLocked(); rt != nil {
+		tr.mirrorRecv = rt // vor serve setzen: der Empfänger lehnt selbst ab, wenn er nicht darf
+	}
 	if ok {
 		ctx, cancel := context.WithCancel(d.runCtx)
 		d.trCancel = cancel
@@ -901,6 +908,9 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	pl := plan{net: d.net}
 	d.syncAccessLocked(ctx)
 	if d.removed {
+		if d.mir != nil { // aus dem Cluster entfernt: die Spiegelung ruht
+			d.mirrorTickLocked(ctx, d.p.Role, ha.Fenced, ha.DefaultSettings(), nil)
+		}
 		return pl
 	}
 	now, wall := d.mono(), d.wall()
@@ -938,6 +948,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 				// Zustand auf der Platte ungewiss: nicht aktiv, Adresse abgeben
 				d.access.set(false, ha.Fenced, d.p.Term)
 			}
+			d.mirrorTickLocked(ctx, before, ha.Fenced, s, views) // auch die Spiegelung ruht
 			return pl
 		}
 		d.unsaved = false
@@ -948,6 +959,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
 	}
 	d.hooksChangedLocked(before, out.Persist.Role, booting)
+	d.mirrorTickLocked(ctx, before, out.Persist.Role, s, views)
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {

@@ -280,6 +280,7 @@ func (d *daemon) statusLocked() apiStatus {
 	if versionDiff {
 		st.Warnings = append(st.Warnings, "Versionen unterschiedlich")
 	}
+	d.mirrorStatusLocked(&st)
 	return st
 }
 
@@ -339,6 +340,7 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		m.Tun = d.tunnel.Sum()
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 		m.UpJob = !upEnded(d.up.job)
+		d.mirrorHBLocked(&m) // Zwischenspeicher, kein Dateizugriff
 	}
 	return m
 }

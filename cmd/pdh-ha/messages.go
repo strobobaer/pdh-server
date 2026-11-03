@@ -22,6 +22,7 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 	kind := d.kindOfLocked(in.From)
 	m := in.Msg
 	witness := d.node.Kind == "witness"
+	emptyTrash := false
 	switch m.T {
 	case "vote_req":
 		if witness && kind == "node" {
@@ -92,6 +93,11 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 			a.Node = in.From // Absender laut Zertifikat, nie laut Nachricht
 			d.queueAckLocked(a)
 		}
+	case "mirror_trash_empty":
+		// Papierkorb der Spiegelung leeren (Auftrag des Partners über den geprüften Weg)
+		if !witness && kind == "node" {
+			emptyTrash = true
+		}
 	case "removed":
 		// nur der CA-Knoten darf entfernen (laut eigener Knotenliste)
 		if kind == "node" && in.From == d.cl.CAHolder && !d.removed {
@@ -99,6 +105,9 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 		}
 	}
 	d.unlock()
+	if emptyTrash {
+		go d.mirrorEmptyTrash(ctx, in.From) // Dateiarbeit: nie unter dem Schloss
+	}
 	d.execute(ctx, pl)
 }
 
