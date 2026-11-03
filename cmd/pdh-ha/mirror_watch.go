@@ -48,6 +48,7 @@ type mirrorWatch struct {
 	emit    func(label string, paths []string)
 	limitFn func()
 	add     func(string) error // nil = fsnotify (in Tests ersetzbar)
+	done    chan struct{}      // geschlossen, wenn run beendet ist
 	initial chan struct{}      // geschlossen, sobald der erste Durchlauf fertig ist
 	poke    chan struct{}      // Anstoß für einen neuen Durchlauf (Platz 1)
 
@@ -79,7 +80,7 @@ func newMirrorWatch(sources []ha.MirrorSource, settle time.Duration, emit func(l
 	mw := &mirrorWatch{
 		rules: map[string][]watchRule{}, settle: settle, retry: 5 * settle, rescan: mirrorWatchRescan,
 		maxPend: mirrorWatchPendingMax, emit: emit, limitFn: limited,
-		initial: make(chan struct{}), poke: make(chan struct{}, 1),
+		initial: make(chan struct{}), done: make(chan struct{}), poke: make(chan struct{}, 1),
 		roots: map[string]string{}, walkedAt: map[string]time.Time{}, gen: map[string]int{},
 		pend: map[string]watchSnap{}, flying: map[string]watchSnap{}, flightOK: map[string]bool{},
 		armed: map[string]bool{}, dirs: map[string]bool{}, waiters: map[string]chan struct{}{},
@@ -96,6 +97,7 @@ func newMirrorWatch(sources []ha.MirrorSource, settle time.Duration, emit func(l
 
 // run beobachtet, bis ctx endet.
 func (mw *mirrorWatch) run(ctx context.Context) {
+	defer close(mw.done)
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		mw.setLimited() // keine inotify-Instanz: voller Abgleich übernimmt

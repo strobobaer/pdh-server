@@ -253,11 +253,21 @@ func TestMirrorAlarmAfter(t *testing.T) {
 
 func TestMirrorZeroSettingsUseDefaults(t *testing.T) {
 	f := newMirrorFix(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { // der Watch schreibt in das Zustandsverzeichnis: erst beenden, dann aufräumen
+		cancel()
+		f.w.mu.Lock()
+		mw := f.w.watch
+		f.w.mu.Unlock()
+		if mw != nil {
+			<-mw.done
+		}
+	}()
 	f.w.set(true, ha.Active, 1, ha.Settings{}) // MirrorEvery/AlarmAfter = 0
 	if err := f.w.runAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	f.w.step(context.Background()) // darf nicht in Panik geraten, Abstand gilt als Standard
+	f.w.step(ctx) // darf nicht in Panik geraten, Abstand gilt als Standard
 	if mirrorEvery(ha.Settings{}) != time.Minute || mirrorAlarmAfter(ha.Settings{}) != 5*time.Minute {
 		t.Fatal("Standardwerte")
 	}

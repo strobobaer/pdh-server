@@ -224,13 +224,14 @@ func TestMirrorWatchRemovedDirKeepsCoverage(t *testing.T) {
 func TestMirrorWatchDeleteRecreateLoop(t *testing.T) {
 	f, repo, _, ctx := coveredFix(t)
 	sub := filepath.Join(repo, "uploads", "sub")
+	base := fullRunsOf(f, 0, "uploads")
 	for i := 0; i < 30; i++ {
 		os.RemoveAll(sub)
 		os.Mkdir(sub, 0o755)
 		n := fmt.Sprintf("n%d.txt", i)
 		os.WriteFile(filepath.Join(sub, n), nil, 0o644)
 		finalAndCheck(t, f, ctx, "sub/"+n)
-		if fullRunsOf(f, 0, "uploads") > 1 { // nur der erste Lauf aus coveredFix
+		if fullRunsOf(f, 0, "uploads") > base {
 			t.Fatalf("Durchlauf %d: voller Lauf trotz abgedeckter Quelle", i)
 		}
 	}
