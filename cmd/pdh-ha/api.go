@@ -594,6 +594,13 @@ func (d *daemon) command(cmd string) error {
 		// sind) – der Auftrag bricht dann als Übernahme ab.
 		return errUpdateOpen
 	}
+	// Im Erstabgleich fehlen dem Partner noch Dateien: kein Rollentausch.
+	// Übernahme erzwingen wird nie gesperrt (Notweg). Nur Zwischengespeichertes.
+	if c == ha.CmdSwap {
+		if on, done := d.mirrorFirstLocked(); on && !done {
+			return errors.New("Erstabgleich der Dateien läuft – Rollentausch erst danach möglich")
+		}
+	}
 	d.cmd = c
 	d.event("info", "Befehl: "+text)
 	return nil

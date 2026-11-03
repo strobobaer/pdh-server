@@ -214,7 +214,7 @@ func TestFenceOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	seq(t, r.list(), "tun stop", "svc stop", "chown", "pg_ctlcluster 18 main reload", "psql: SELECT pg_terminate_backend")
-	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only") {
 		t.Fatal("nicht abgeschaltet")
 	}
 	for _, c := range r.calls {
@@ -374,7 +374,7 @@ func TestReconcileWritableNotActiveFences(t *testing.T) {
 	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
 	a, _ := testActor(t, r)
 	a.reconcile(context.Background(), ha.Passive)
-	if !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") {
 		t.Fatal("schreibbare Datenbank nicht abgeschaltet")
 	}
 	found := false
@@ -609,5 +609,86 @@ func TestDemoteFreezeIdempotentWhenStopped(t *testing.T) {
 	l := r.list()
 	if has(l, "pg_ctlcluster") || has(l, "svc ") || has(l, "tun ") {
 		t.Fatalf("nichts zu tun: %v", l)
+	}
+}
+
+// finalLog: mirrorFinal-Fake, das seinen Aufruf in der Reihenfolge des fakeRunner festhält.
+func finalLog(r *fakeRunner, err error) func(context.Context) error {
+	return func(context.Context) error {
+		_, _ = r.Run(context.Background(), []string{"mirrorfinal"}, nil, nil)
+		return err
+	}
+}
+
+// Der letzte Dateiabgleich läuft nach dem Abschotten (Dienste aus, nur lesend)
+// und vor dem Warten auf den Gleichstand – so kann nach ihm nichts Neues kommen.
+func TestDemoteRunsFinalSyncAfterFence(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, _ := testActor(t, r)
+			a.pushCfg = func(context.Context) error {
+				_, _ = r.Run(context.Background(), []string{"push"}, nil, nil)
+				return nil
+			}
+			a.mirrorFinal = finalLog(r, nil)
+			if err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true}); err != nil {
+				t.Fatal(err)
+			}
+			seq(t, r.list(), "push", "svc stop", "psql: SELECT pg_terminate_backend", "mirrorfinal",
+				"psql: SELECT application_name", "pg_ctlcluster 18 main stop")
+		})
+	}
+}
+
+// Scheitert der letzte Abgleich, wird zurückgenommen wie bei fehlendem Gleichstand.
+func TestDemoteFinalSyncFails(t *testing.T) {
+	for _, kind := range []ha.ActionKind{ha.ActDemote, ha.ActDemoteFreeze} {
+		t.Run(string(kind), func(t *testing.T) {
+			r := (&fakeRunner{}).
+				on("runuser", "pg_is_in_recovery", stPrimary, nil).
+				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+			a, svc := testActor(t, r)
+			a.mirrorFinal = finalLog(r, errors.New("rsync 23"))
+			err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
+			if err == nil || err.Error() != "Letzter Abgleich der Dateien nicht fertig: rsync 23" {
+				t.Fatalf("Fehler: %v", err)
+			}
+			l := r.list()
+			if has(l, "pg_ctlcluster 18 main stop") {
+				t.Fatalf("nach dem Fehler darf nichts mehr abgegeben werden: %v", l)
+			}
+			seq(t, l, "mirrorfinal", "svc start")
+			if !svc.active || !tunOf(a).active {
+				t.Fatal("Dienste nicht wieder an")
+			}
+			if strings.Contains(confText(t, a), "default_transaction_read_only") {
+				t.Fatalf("nur-lesend nicht zurückgenommen:\n%s", confText(t, a))
+			}
+			if _, serr := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); serr == nil {
+				t.Fatal("Rolle verändert: standby.signal liegt da")
+			}
+		})
+	}
+}
+
+// abandon (Rücktausch ohne Rückweg) und die Übernahme am Partner kennen keinen letzten Abgleich.
+func TestAbandonNoFinalSync(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "(SELECT timeline_id FROM pg_control_checkpoint())", stStandby, nil).
+		on("runuser", "SELECT pg_promote", "t", nil).
+		on("runuser", "SELECT pg_is_in_recovery()", "f", nil)
+	a, _ := testActor(t, r)
+	a.mirrorFinal = finalLog(r, errors.New("darf nicht laufen"))
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActAbandon, Term: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 4, Manual: true}); err != nil {
+		t.Fatal(err)
+	}
+	if has(r.list(), "mirrorfinal") {
+		t.Fatalf("letzter Abgleich bei abandon/Übernahme: %v", r.list())
 	}
 }

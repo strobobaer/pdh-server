@@ -537,6 +537,45 @@ func (d *daemon) ensureMirrorLocked() *mirrorRT {
 	return d.mir
 }
 
+// mirrorFirstLocked: ob die Spiegelung gilt (eingeschaltet, Partner da) und ob
+// der Erstabgleich fertig ist. Nur Einstellungen und Zeiger, kein Dateizugriff
+// und nie die langen Schlösser des Arbeiters (snapshot hält w.mu nur kurz).
+func (d *daemon) mirrorFirstLocked() (on, done bool) {
+	if d.node.Kind != "node" || d.removed || !d.settingsLocked().MirrorOn || d.partnerLocked() == "" {
+		return false, false
+	}
+	if d.mir == nil {
+		return true, false
+	}
+	wk := d.mir.worker.Load()
+	return true, wk != nil && wk.snapshot().FirstDone
+}
+
+// mirrorFinalSync: letzter Dateiabgleich beim geplanten Rollentausch (pgActor.mirrorFinal).
+// Liest die Einstellungen erst jetzt; läuft ohne die Sperre des Daemons, der Herzschlag
+// geht währenddessen weiter. nil bei ausgeschalteter Spiegelung.
+func (d *daemon) mirrorFinalSync(ctx context.Context) error {
+	d.mu.Lock()
+	s, rt := d.settingsLocked(), d.mir
+	on := s.MirrorOn && d.partnerLocked() != "" && !d.removed
+	d.mu.Unlock()
+	if !on {
+		return nil
+	}
+	var wk *mirrorWorker
+	if rt != nil {
+		wk = rt.worker.Load()
+	}
+	if wk == nil {
+		return errors.New("Spiegelung noch nicht bereit")
+	}
+	max := s.MirrorFinalMax
+	if max <= 0 {
+		max = ha.DefaultSettings().MirrorFinalMax
+	}
+	return wk.finalSync(ctx, max)
+}
+
 // mirrorStopStreams bricht laufende Spiegelströme des Transports ab (R9).
 func (d *daemon) mirrorStopStreams() {
 	if s, ok := d.net.(interface{ stopMirrors() }); ok {

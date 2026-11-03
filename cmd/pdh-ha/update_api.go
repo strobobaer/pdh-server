@@ -102,6 +102,7 @@ func (d *daemon) readyObsLocked(partner, witness string, req updateStartReq) (ha
 		MirrorSync: d.mirrorSyncLocked(s, partner, pv), LagLimit: s.LagLimit,
 		WitnessExpected: witness != "", WitnessSeen: witness != "" && d.views[witness].seen(),
 	}
+	o.MirrorOn, o.MirrorFirstDone = d.mirrorFirstLocked()
 	var hints []string
 	o.FreeSelf, o.FreePartner = math.MaxInt64, math.MaxInt64
 	unchecked := false

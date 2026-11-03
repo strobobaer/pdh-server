@@ -420,6 +420,7 @@ func (d *daemon) selectActorLocked(ctx context.Context) {
 		defer d.mu.Unlock()
 		return d.pgEnvLocked(pg)
 	})
+	pa.mirrorFinal = d.mirrorFinalSync // liest die Einstellungen erst beim Abgeben
 	d.act = pa
 	// PostgreSQL-Port für den Partner öffnen (ufwRules mit pg)
 	go d.applyFirewall()
@@ -959,7 +960,14 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
 	}
 	d.hooksChangedLocked(before, out.Persist.Role, booting)
-	d.mirrorTickLocked(ctx, before, out.Persist.Role, s, views)
+	// Während der eigenen Übergabe (Rolle schon passiv, Partner noch nicht
+	// übernommen) gleicht der Arbeiter weiter ab: der letzte Abgleich von demote
+	// bräuchte sonst eine aktive Rolle und bräche sofort ab.
+	mirrorRole := out.Persist.Role
+	if mirrorRole == ha.Passive && out.HandoverPending != 0 {
+		mirrorRole = ha.Active
+	}
+	d.mirrorTickLocked(ctx, before, mirrorRole, s, views)
 	in.Persist = out.Persist
 	d.last = in
 	if g := d.voteGranted; g != 0 && (d.carry.VotePending != g || d.p.Term >= g) {

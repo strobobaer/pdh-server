@@ -32,16 +32,19 @@ type pgEnv struct {
 }
 
 type pgActor struct {
-	pg       *pgCtl
-	svc      serviceCtl // pdh
-	tun      serviceCtl // Cloudflare-Tunnel (nur am aktiven Knoten)
-	ev       *eventLog
-	env      func() pgEnv
-	pushCfg  func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
-	wait     time.Duration                   // Frist für den Gleichstand beim Abgeben
-	poll     time.Duration
-	now      func() time.Time
-	passfile string // Pfad der passfile (Tests: Temp-Ordner)
+	pg      *pgCtl
+	svc     serviceCtl // pdh
+	tun     serviceCtl // Cloudflare-Tunnel (nur am aktiven Knoten)
+	ev      *eventLog
+	env     func() pgEnv
+	pushCfg func(ctx context.Context) error // Konfiguration an den Partner (nil = keine)
+	// letzter Dateiabgleich vor der Übergabe (nil = keine Spiegelung); hat seine
+	// eigene Frist (MirrorFinalMax), unabhängig von wait
+	mirrorFinal func(ctx context.Context) error
+	wait        time.Duration // Frist für den Gleichstand beim Abgeben
+	poll        time.Duration
+	now         func() time.Time
+	passfile    string // Pfad der passfile (Tests: Temp-Ordner)
 
 	mu        sync.Mutex
 	syncNames string      // gewünschte synchronous_standby_names (Replikation, Task 8)
@@ -132,11 +135,11 @@ func (a *pgActor) demote(ctx context.Context) error {
 	if err := a.fence(ctx); err != nil {
 		return err
 	}
+	if err := a.finalMirror(ctx); err != nil {
+		return a.undoFence(ctx, err)
+	}
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
-		if uerr := a.unfence(ctx); uerr != nil {
-			err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
-		}
-		return err
+		return a.undoFence(ctx, err)
 	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil {
 		return err
@@ -163,14 +166,35 @@ func (a *pgActor) demoteFreeze(ctx context.Context) error {
 	if err := a.fence(ctx); err != nil {
 		return err
 	}
+	if err := a.finalMirror(ctx); err != nil {
+		return a.undoFence(ctx, err)
+	}
 	e := a.env()
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
-		if uerr := a.unfence(ctx); uerr != nil {
-			err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
-		}
-		return err
+		return a.undoFence(ctx, err)
 	}
 	return a.stopPG(ctx)
+}
+
+// finalMirror: letzter Dateiabgleich nach dem Abschotten (Dienste aus, Datenbank
+// nur lesend) – danach kann nichts Neues mehr ankommen. Ohne Spiegelung nichts.
+func (a *pgActor) finalMirror(ctx context.Context) error {
+	if a.mirrorFinal == nil {
+		return nil
+	}
+	if err := a.mirrorFinal(ctx); err != nil {
+		return fmt.Errorf("Letzter Abgleich der Dateien nicht fertig: %w", err)
+	}
+	return nil
+}
+
+// undoFence nimmt das Abschotten nach einem gescheiterten Abgeben zurück; scheitert
+// auch das, wird es an den Fehler angehängt.
+func (a *pgActor) undoFence(ctx context.Context, err error) error {
+	if uerr := a.unfence(ctx); uerr != nil {
+		err = fmt.Errorf("%w; Rücknahme fehlgeschlagen: %v", err, uerr)
+	}
+	return err
 }
 
 // abandon: Rückfallstand verwerfen (Rücktausch ohne Rückweg). Dienste und
