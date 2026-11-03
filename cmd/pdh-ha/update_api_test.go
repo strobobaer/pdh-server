@@ -514,3 +514,29 @@ func TestUpdateAskSurvivesRestart(t *testing.T) {
 		t.Fatalf("Nachfrage nach Neustart: %+v", d.up.job)
 	}
 }
+
+// „update status“: Ein beendeter Auftrag zeigt den Stand ohne Schritt und
+// Prozent, der Grund steht unter „Ergebnis“ (das Labor liest diese Zeile).
+func TestPrintUpdateEnded(t *testing.T) {
+	var out bytes.Buffer
+	printUpdate(&out, ha.UpdateView{
+		Kind: "rolling", Phase: string(ha.UpFailed), Text: "Update nicht durchgeführt",
+		FromVersion: "0.9.0", ToVersion: "0.9.1", Result: "Update entfallen: nicht bestätigt",
+	})
+	s := out.String()
+	for _, want := range []string{"Update: beendet (rolling)", "Stand: Update nicht durchgeführt", "Version: 0.9.0 -> 0.9.1", "Ergebnis: Update entfallen: nicht bestätigt"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("%q fehlt in:\n%s", want, s)
+		}
+	}
+	for _, not := range []string{"Schritt:", "%", string(ha.UpFailed)} {
+		if strings.Contains(s, not) {
+			t.Errorf("%q darf nicht vorkommen:\n%s", not, s)
+		}
+	}
+	out.Reset()
+	printUpdate(&out, ha.UpdateView{Active: true, Kind: "rolling", Phase: string(ha.UpLocked), Text: "Rollentausch läuft", Percent: 20})
+	if s := out.String(); !strings.Contains(s, "Schritt: "+string(ha.UpLocked)+" – Rollentausch läuft (20 %)") {
+		t.Errorf("laufender Auftrag:\n%s", s)
+	}
+}

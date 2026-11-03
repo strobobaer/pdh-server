@@ -234,9 +234,10 @@ html.pdh-embedded .mirror-band{display:none} /* eingebettete Ansicht: Band zeigt
 .maint-band.soon{border-color:var(--red);background:color-mix(in srgb,var(--red) 16%,var(--bg))}
 .maint-band > i{font-size:16px;color:var(--amber)}
 .maint-band.soon > i{color:var(--red)}
+.maint-band > b{flex:1 1 220px;min-width:0}
 .maint-band .mb-t{font-variant-numeric:tabular-nums}
 .maint-band .mb-act{margin-left:auto;display:inline-flex;gap:6px}
-.maint-band .mb-act .btn{color:var(--text);border-color:var(--border)}
+.maint-band .mb-act .btn:not(.btn-primary){color:var(--text);border-color:var(--border)}
 @media (max-width:760px){.maint-band{padding:6px 12px;font-size:12.5px}}
 html.pdh-embedded .maint-band{display:none}
 /* ── Context ── */

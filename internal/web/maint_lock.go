@@ -760,6 +760,8 @@ func maintText(lang, s string) string {
 		return tr(lang, "Rollentausch abgeschlossen")
 	case "Update abgebrochen":
 		return tr(lang, "Update abgebrochen")
+	case "Update nicht durchgeführt":
+		return tr(lang, "Update nicht durchgeführt")
 	case "Rollentausch abgebrochen":
 		return tr(lang, "Rollentausch abgebrochen")
 	}

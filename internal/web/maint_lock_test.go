@@ -894,7 +894,8 @@ func TestBaseHasMaintBand(t *testing.T) {
 	}
 	s := string(raw)
 	for _, want := range []string{`id="maint-band"`, `/wartung/status`, `pdhQuiet`, `countdown_until`,
-		`html.pdh-embedded .maint-band`, `Automatische Wartung in`, `location.href='/wartung'`} {
+		`html.pdh-embedded .maint-band`, `Automatische Wartung in`, `location.href='/wartung'`,
+		`.maint-band .mb-act .btn:not(.btn-primary)`} { // Hauptknopf behält seine weiße Schrift
 		if !strings.Contains(s, want) {
 			t.Errorf("base.gohtml ohne %q", want)
 		}
