@@ -48,6 +48,17 @@ func (r *watchRec) emit(label string, paths []string) {
 	r.ch <- append([]string(nil), paths...)
 }
 
+// copyAll liefert eine Kopie der gemeldeten Pfade (Schlüssel „Quelle:Pfad“).
+func (r *watchRec) copyAll() map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := make(map[string]bool, len(r.all))
+	for k := range r.all {
+		c[k] = true
+	}
+	return c
+}
+
 func (r *watchRec) seen(label, p string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -152,7 +163,7 @@ func TestMirrorWatchExcluded(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "ok.txt"), []byte("ok"), 0o644)
 	r.waitFor(t, "src", "ok.txt")
 	time.Sleep(300 * time.Millisecond) // Nachzügler abwarten
-	for k := range r.all {
+	for k := range r.copyAll() {
 		if k != "src:ok.txt" && k != "src:d" {
 			t.Fatalf("zu Unrecht gemeldet: %s", k)
 		}
@@ -226,7 +237,7 @@ func TestMirrorWatchOutside(t *testing.T) {
 	os.WriteFile(filepath.Join(outside, "sub", "neu.txt"), []byte("n"), 0o644)
 	os.WriteFile(filepath.Join(root, "ok.txt"), []byte("ok"), 0o644)
 	r.waitFor(t, "src", "ok.txt")
-	for k := range r.all {
+	for k := range r.copyAll() {
 		if strings.Contains(k, "neu.txt") || strings.Contains(k, "geheim") {
 			t.Fatalf("hinter dem Symlink gemeldet: %s", k)
 		}
@@ -341,7 +352,7 @@ func TestMirrorRunPathsNames(t *testing.T) {
 	f := newMirrorFix(t)
 	f.w.d.lexists = func(p string) bool { return !strings.HasSuffix(p, "weg.txt") }
 	f.w.set(true, ha.Active, 3, mirrorSettings)
-	names := []string{"a b.txt", "ä.pdf", "zeile\num.txt", "-rf", "weg.txt", "../aussen", "/abs", "x/../y"}
+	names := []string{"a b.txt", "ä.pdf", "zeile\num.txt", "-rf", "#1 Rechnung.pdf", ";semi", "weg.txt", "../aussen", "/abs", "x/../y"}
 	if err := f.w.runPaths(context.Background(), "uploads", names); err != nil {
 		t.Fatal(err)
 	}
@@ -349,12 +360,13 @@ func TestMirrorRunPathsNames(t *testing.T) {
 		t.Fatalf("Aufrufe: %d", f.rs.count())
 	}
 	argv, stdin := f.rs.calls[0], f.rs.stdins[0]
-	want := "a b.txt\x00ä.pdf\x00zeile\num.txt\x00-rf\x00"
+	var want string
+	want = strings.NewReplacer("@", "\x00", "~", "\n").Replace("./a b.txt@./ä.pdf@./zeile~um.txt@./-rf@./#1 Rechnung.pdf@./;semi@")
 	if string(stdin) != want {
 		t.Fatalf("stdin = %q, erwartet %q", stdin, want)
 	}
 	joined := " " + strings.Join(argv, " ") + " "
-	for _, must := range []string{" --files-from=- ", " --from0 ", " -a ", " --numeric-ids ", " --backup ", " --partial-dir=.pdh-teil ", " --delay-updates ",
+	for _, must := range []string{" --files-from=- ", " --from0 ", " --ignore-missing-args ", " -a ", " --numeric-ids ", " --backup ", " --partial-dir=.pdh-teil ", " --delay-updates ",
 		" -e pdh-ha mirror-pipe --label uploads --term 3 --node b ", " /r/uploads/ b:uploads "} {
 		if !strings.Contains(joined, must) {
 			t.Fatalf("fehlt %q in %v", must, argv)
@@ -470,7 +482,7 @@ func TestMirrorWatchWorkerFlow(t *testing.T) {
 	for {
 		p, _ := filesFromCalls(f)
 		if len(p) > 0 {
-			if p[0][0] != "b:uploads" || p[0][1] != "neu.txt" {
+			if p[0][0] != "b:uploads" || p[0][1] != "./neu.txt" {
 				t.Fatalf("Sofort-Aufruf: %v", p)
 			}
 			break

@@ -208,7 +208,7 @@ func TestMirrorRunPathsRealRsync(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	names := []string{"a b.txt", "ä.pdf", "zeile\num.txt", "-rf", "unter/-x y\n.txt"}
+	names := []string{"a b.txt", "ä.pdf", "zeile\num.txt", "-rf", "unter/-x y\n.txt", "#1 Rechnung.pdf", ";semi.txt"}
 	for _, n := range names {
 		if err := os.WriteFile(filepath.Join(src, n), []byte("inhalt:"+n), 0o644); err != nil {
 			t.Fatal(err)
@@ -243,7 +243,7 @@ func TestMirrorRunPathsRealRsync(t *testing.T) {
 		}
 		t.Fatalf("runPaths: %v", err)
 	}
-	for _, n := range names[:5] {
+	for _, n := range names[:7] {
 		got, err := os.ReadFile(filepath.Join(dst, n))
 		if err != nil || string(got) != "inhalt:"+n {
 			t.Fatalf("%q: %q %v", n, got, err)
@@ -254,5 +254,57 @@ func TestMirrorRunPathsRealRsync(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(dst, "alt.txt")); string(b) != "bleibt" {
 		t.Fatalf("alt.txt wurde angefasst: %q", b)
+	}
+}
+
+// realPathsWorker: Arbeiter mit echtem rsync über den echten Kanal.
+func realPathsWorker(t *testing.T) (w *mirrorWorker, src, dst string, r *rsyncRecv) {
+	t.Helper()
+	if _, err := exec.LookPath("rsync"); err != nil {
+		t.Skip("rsync fehlt")
+	}
+	root := t.TempDir()
+	repo, trash := filepath.Join(root, "repo"), filepath.Join(root, "trash")
+	dst = filepath.Join(root, "dst")
+	src = filepath.Join(repo, "uploads")
+	for _, d := range []string{src, dst, trash} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r = &rsyncRecv{target: dst, trash: trash, done: make(chan error, 8), refused: make(chan string, 8)}
+	e := newMirrorEnv(t, "echo", "a", "node", r)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PDH_TEST_PIPE", "1")
+	t.Setenv("PDH_TEST_BIN", exe)
+	t.Setenv("PDH_HA_ETC", e.st.etc)
+	w = newMirrorWorker(mirrorDeps{
+		ev: openEventLog(filepath.Join(root, "ev.jsonl"), 1<<20, 2), repo: repo, node: "b", exe: exe,
+		rsync:     rewriteRsync{rsh: rshScript(t) + " --label uploads --term 1 --node b", dst: "/ziel/"},
+		statePath: filepath.Join(root, "mirror.json"),
+	})
+	w.set(true, ha.Active, 1, mirrorSettings)
+	return
+}
+
+// Ruling R16: Ein Pfad, der nach der Prüfung verschwindet, ist kein Fehler
+// (rsync Exit 23 ohne --ignore-missing-args); der Empfänger nimmt die Option an.
+func TestMirrorRunPathsRealRsyncMissingArg(t *testing.T) {
+	w, src, dst, r := realPathsWorker(t)
+	w.d.lexists = func(string) bool { return true } // die Prüfung sieht den Pfad noch
+	os.WriteFile(filepath.Join(src, "da.txt"), []byte("da"), 0o644)
+	if err := w.runPaths(context.Background(), "uploads", []string{"weg.txt", "da.txt"}); err != nil {
+		select {
+		case msg := <-r.refused:
+			t.Fatalf("Empfänger lehnt ab: %s (%v)", msg, err)
+		default:
+		}
+		t.Fatalf("runPaths: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dst, "da.txt")); err != nil || string(b) != "da" {
+		t.Fatalf("da.txt: %q %v", b, err)
 	}
 }
