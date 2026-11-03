@@ -93,6 +93,7 @@ func Step(in Input) Output {
 	s.out.HandoverPending, s.out.HandoverAt, s.out.HandoverSentAt = in.HandoverPending, in.HandoverAt, in.HandoverSentAt
 	s.out.HandoverReadyAt = in.HandoverReadyAt
 	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
+	s.out.RejoinAsked = in.RejoinAsked
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -108,6 +109,7 @@ func Step(in Input) Output {
 	}
 	if s.p.Role != Passive {
 		s.clearHandover()
+		s.out.RejoinAsked = false
 	}
 	s.noActive()
 	s.out.Persist = s.p
@@ -151,6 +153,7 @@ func (s *stepper) decide() {
 			return
 		}
 		s.manual = false
+		s.strandedRejoin()
 		if s.in.Mode == Trio {
 			s.passiveTrio()
 		} else {
@@ -283,6 +286,24 @@ func (s *stepper) swap(k ActionKind) bool {
 	s.out.HandoverReadyAt = 0
 	s.become(Passive, "")
 	return true
+}
+
+// strandedRejoin (R31): Passiv, aber die eigene Datenbank läuft als nur lesender
+// Primary (der Partner hat während der Abgabe übernommen, die Rücknahme wurde
+// verweigert), keine Übergabe offen, Partner aktiv gesehen: einmal je Zustand
+// als Standby wieder anbinden (Wiedereingliederung mit pg_rewind-Probelauf).
+func (s *stepper) strandedRejoin() {
+	in, pa := s.in, s.in.Partner
+	stranded := in.OwnReadOnlyPrimary && s.out.HandoverPending == 0 &&
+		seen(pa) && pa.Role == Active && pa.Term >= s.p.Term
+	switch {
+	case !stranded:
+		s.out.RejoinAsked = false
+	case !in.RejoinAsked:
+		s.out.RejoinAsked = true
+		s.event("alarm", "Passiver Server mit nur lesender Datenbank – wird als Standby wieder angebunden")
+		s.act(ActRejoin, pa.Term)
+	}
 }
 
 // receiveHandover: der Partner übergibt die nächste Amtszeit – zählt nicht

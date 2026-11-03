@@ -143,8 +143,8 @@ func (a *pgActor) demote(ctx context.Context) error {
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
 		return a.undoFence(ctx, err)
 	}
-	if !a.stillGiving() { // M3: vor dem Stoppen noch einmal prüfen
-		return a.undoFence(ctx, errors.New("Rollentausch wurde inzwischen abgebrochen"))
+	if a.withdrawn() { // M3: vor dem Stoppen noch einmal prüfen
+		return a.undoFence(ctx, swapWithdrawnError{})
 	}
 	if err := a.pg.ctl(ctx, "stop"); err != nil {
 		return err
@@ -178,8 +178,8 @@ func (a *pgActor) demoteFreeze(ctx context.Context) error {
 	if err := a.waitCaughtUp(ctx, slotName(e.PartnerID)); err != nil {
 		return a.undoFence(ctx, err)
 	}
-	if !a.stillGiving() { // M3: vor dem Stoppen noch einmal prüfen
-		return a.undoFence(ctx, errors.New("Rollentausch wurde inzwischen abgebrochen"))
+	if a.withdrawn() { // M3: vor dem Stoppen noch einmal prüfen
+		return a.undoFence(ctx, swapWithdrawnError{})
 	}
 	return a.stopPG(ctx)
 }
@@ -209,6 +209,13 @@ func (a *pgActor) undoFence(ctx context.Context, err error) error {
 		err = fmt.Errorf("%v; Rücknahme fehlgeschlagen: %v", err, uerr)
 	}
 	return err
+}
+
+// withdrawn: der Step hat den Tausch zurückgenommen (Rolle wieder aktiv, keine
+// offene Übergabe). Hat stattdessen der Partner übernommen und ist der Gleichstand
+// erreicht, läuft die Abgabe wie früher bis zum Standby zu Ende (R31.3).
+func (a *pgActor) withdrawn() bool {
+	return !a.stillGiving() && (a.mayUndo == nil || a.mayUndo())
 }
 
 // stillGiving: der eigene Rollentausch läuft noch (nil = ja).
@@ -323,6 +330,11 @@ func (a *pgActor) promote(ctx context.Context, act ha.Action) error {
 		st = a.pg.status(ctx)
 	}
 	alreadyPrimary := fromStopped && st.State == "primary"
+	// R31: Von Hand darf auch ein laufender, nur lesender Primary übernommen werden
+	// (abgeschottet nach einem Tausch, dessen Rücknahme verweigert wurde).
+	if act.Manual && st.State == "primary" && st.ReadOnly {
+		alreadyPrimary = true
+	}
 	if st.State != "standby" && !alreadyPrimary {
 		return errors.New("Datenbank ist kein Standby")
 	}
@@ -576,9 +588,17 @@ func hostOfAddr(a string) string {
 }
 
 // finalSyncError: der letzte Dateiabgleich vor der Übergabe ist gescheitert.
+// Wie swapWithdrawnError setzt er keine Wartung (R29, R31.4).
 type finalSyncError struct{ err error }
 
 func (e *finalSyncError) Error() string {
 	return "Letzter Abgleich der Dateien nicht fertig: " + e.err.Error()
 }
 func (e *finalSyncError) Unwrap() error { return e.err }
+func (e *finalSyncError) noMaint()      {}
+
+// swapWithdrawnError: der Tausch wurde vor dem Stoppen zurückgenommen.
+type swapWithdrawnError struct{}
+
+func (swapWithdrawnError) Error() string { return "Rollentausch wurde inzwischen abgebrochen" }
+func (swapWithdrawnError) noMaint()      {}

@@ -2118,3 +2118,48 @@ func TestStepNoActiveGiving(t *testing.T) {
 		t.Fatal("kein Alarm nach der Frist (Spiegelung aus)")
 	}
 }
+
+// R31: Passiv, eigene Datenbank läuft als nur lesender Primary, keine Übergabe offen,
+// Partner aktiv gesehen: einmal ActRejoin (Standby werden), danach nicht erneut.
+func TestStepStrandedRejoin(t *testing.T) {
+	mk := func(mod func(in *Input)) Input {
+		in := base(Trio, Passive)
+		in.Persist.Term = 2
+		in.Partner = seenPeer("node", Active, 2, 100*sec)
+		in.Witness = seenPeer("witness", Witness, 2, 100*sec)
+		in.OwnReadOnlyPrimary = true
+		mod(&in)
+		return in
+	}
+	rejoins := func(o Output) int {
+		n := 0
+		for _, a := range o.Actions {
+			if a.Kind == ActRejoin {
+				n++
+			}
+		}
+		return n
+	}
+	out := Step(mk(func(*Input) {}))
+	if rejoins(out) != 1 || !out.RejoinAsked || out.Persist.Role != Passive {
+		t.Fatalf("erwartet ein ActRejoin und Passiv: %d %v %s", rejoins(out), out.RejoinAsked, out.Persist.Role)
+	}
+	// einmalig je Zustand
+	if o := Step(mk(func(in *Input) { in.RejoinAsked = true })); rejoins(o) != 0 || !o.RejoinAsked {
+		t.Fatalf("zweites ActRejoin im selben Zustand: %d %v", rejoins(o), o.RejoinAsked)
+	}
+	// Zustand weg (Datenbank ist Standby): Marke zurück, später wieder möglich
+	if o := Step(mk(func(in *Input) { in.RejoinAsked, in.OwnReadOnlyPrimary = true, false })); rejoins(o) != 0 || o.RejoinAsked {
+		t.Fatalf("Marke nicht zurückgesetzt: %d %v", rejoins(o), o.RejoinAsked)
+	}
+	for name, mod := range map[string]func(*Input){
+		"Übergabe offen":     func(in *Input) { in.HandoverPending, in.HandoverAt = 3, 99*sec; in.SwapSeq = 1 },
+		"Partner passiv":     func(in *Input) { in.Partner = seenPeer("node", Passive, 2, 100*sec) },
+		"Partner nicht da":   func(in *Input) { in.Partner = gonePeer("node", Active, 2, 95*sec) },
+		"Partner Amtszeit 1": func(in *Input) { in.Partner = seenPeer("node", Active, 1, 100*sec) },
+	} {
+		if o := Step(mk(mod)); rejoins(o) != 0 {
+			t.Errorf("%s: ActRejoin trotz Ausschluss", name)
+		}
+	}
+}

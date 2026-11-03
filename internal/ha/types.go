@@ -374,21 +374,23 @@ type Input struct {
 	Persist  Persisted
 
 	// aus dem vorigen Output
-	HoldUntil       time.Duration
-	VotePending     uint64
-	VoteAskedAt     time.Duration
-	HandoverPending uint64        // >0: eigener Rollentausch an diese Amtszeit läuft
-	HandoverAt      time.Duration // Beginn des Rollentauschs
-	HandoverSentAt  time.Duration // letzte handover-Aktion
-	NoActiveSince   time.Duration // >0: seit dann zwei passive, keiner aktiv
-	NoActiveAlarmed bool
-	VoteSince       time.Duration // erste noch offene Stimmbitte
-	VoteAlarmed     bool
-	LastMutual      time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
-	Would           ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
-	HandoverReadyAt time.Duration // seit wann die Übergabe bereit ist (nach demote)
-	SwapSeq         uint64        // Nummer des letzten Tauschversuchs
-	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
+	HoldUntil          time.Duration
+	VotePending        uint64
+	VoteAskedAt        time.Duration
+	HandoverPending    uint64        // >0: eigener Rollentausch an diese Amtszeit läuft
+	HandoverAt         time.Duration // Beginn des Rollentauschs
+	HandoverSentAt     time.Duration // letzte handover-Aktion
+	NoActiveSince      time.Duration // >0: seit dann zwei passive, keiner aktiv
+	NoActiveAlarmed    bool
+	VoteSince          time.Duration // erste noch offene Stimmbitte
+	VoteAlarmed        bool
+	LastMutual         time.Duration // zuletzt gegenseitige Sicht mit Partner (Trio: oder Zeuge)
+	Would              ActionKind    // Beobachtung: zuletzt gemeldete „würde jetzt“-Aktion
+	HandoverReadyAt    time.Duration // seit wann die Übergabe bereit ist (nach demote)
+	SwapSeq            uint64        // Nummer des letzten Tauschversuchs
+	RejoinAsked        bool          // ActRejoin für „passiv, Primary nur lesend“ schon ausgelöst
+	OwnReadOnlyPrimary bool          // eigene Datenbank läuft als nur lesender Primary (Daemon, ohne laufende Abgabe)
+	SwapKind           ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
 }
 
 // Output ist das Ergebnis eines Schrittes.
@@ -412,4 +414,5 @@ type Output struct {
 	HandoverReadyAt time.Duration
 	SwapSeq         uint64
 	SwapKind        ActionKind
+	RejoinAsked     bool
 }

@@ -761,10 +761,10 @@ func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
 func (d *daemon) actionFailed(a ha.Action, err error) {
-	// R29: Ein gescheiterter letzter Dateiabgleich ist nur Alarm und Rücknahme; die
+	// R29/R31.4: Ein gescheiterter letzter Dateiabgleich (und ein zurückgenommener Tausch) ist nur Alarm und Rücknahme; die
 	// automatische Übernahme bleibt möglich (Spec 7).
-	var fs *finalSyncError
-	if errors.As(err, &fs) {
+	var nm interface{ noMaint() }
+	if errors.As(err, &nm) {
 		d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v", a.Kind, err))
 		return
 	}

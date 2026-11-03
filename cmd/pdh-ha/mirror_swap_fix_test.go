@@ -363,3 +363,98 @@ func TestReconcileSkipsOpenHandover(t *testing.T) {
 		t.Fatalf("Abgleich fasst die Übergabe an: %v", l[n0:])
 	}
 }
+
+// fakePG: der Status des Fake-PostgreSQL folgt der geschriebenen Konfiguration (nur lesend ja/nein).
+func stuckRig(t *testing.T) (*mdt, *pgActor, *svcLog, *fakeRunner, chan struct{}) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	up := filepath.Join(m.dir, "repo", "uploads")
+	os.MkdirAll(up, 0o755)
+	os.WriteFile(filepath.Join(up, "x"), []byte("x"), 0o644)
+	r := &fakeRunner{}
+	a, svc := testActor(t, r)
+	r.onFn("runuser", "pg_is_in_recovery", func(c fakeCall) (string, error) {
+		if !strings.Contains(c.stdin, "pg_last_wal") { // die einfache Abfrage nach dem Hochstufen
+			return "f", nil
+		}
+		b, _ := os.ReadFile(filepath.Join(a.pg.c.ConfDir, "conf.d", "pdh-ha.conf"))
+		if strings.Contains(string(b), "default_transaction_read_only = on") {
+			return "f|0/100|1|on|pdh_ha_b|", nil
+		}
+		return stPrimary, nil
+	})
+	r.on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	m.d.wireActor(a)
+	m.d.act = a
+	m.d.gwFn = func() (string, error) { return "10.0.0.254", nil }
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 5*time.Second, "Erstabgleich", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	waitFor(t, 5*time.Second, "idle", m.d.actionsIdle)
+	return m, a, svc, r, make(chan struct{}, 32)
+}
+
+func forceReconcile(m *mdt) {
+	m.d.lock()
+	m.d.reconcileAt = m.d.mono() - 31*time.Second
+	m.d.unlock()
+	m.tick()
+	time.Sleep(100 * time.Millisecond)
+	waitFor(m.t, 5*time.Second, "idle", m.d.actionsIdle)
+}
+
+// R31: Der Partner übernimmt im letzten Abgleich (Rücknahme verweigert) und verschwindet danach:
+// der Server wird mit aktivem Partner einmal als Standby angebunden; ohne Partner macht
+// „Übernahme erzwingen“ ihn voll arbeitsfähig (aktiv, schreibbar, Dienste an).
+func TestSwapStrandedServerRecovers(t *testing.T) {
+	m, a, svc, r, inFinal := stuckRig(t)
+	m.rs.mu.Lock()
+	m.rs.fn = func(ctx context.Context, _ []string) error { inFinal <- struct{}{}; <-ctx.Done(); return ctx.Err() }
+	m.rs.mu.Unlock()
+	if err := m.d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	m.tick()
+	<-inFinal
+	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 2, Ver: "test", Sees: []string{"a"}, PG: "primary", Sync: true}))
+	m.tick()
+	waitFor(t, 5*time.Second, "demote Ende", m.d.actionsIdle)
+	for i := 0; i < 5; i++ {
+		forceReconcile(m)
+	}
+	// Wiederanbindung genau einmal versucht (kein Schleifen)
+	dry := 0
+	for _, c := range r.list() {
+		if strings.Contains(c, "pg_rewind") && strings.Contains(c, "--dry-run") {
+			dry++
+		}
+	}
+	if dry != 1 {
+		t.Fatalf("pg_rewind-Probelauf %d-mal, erwartet genau einmal", dry)
+	}
+
+	// Partner verschwindet
+	m.fn.setView("b", peerView{Last: message{T: "hb", Role: "aktiv", Term: 2, Ver: "test"}, LastSeen: -10 * time.Minute})
+	time.Sleep(200 * time.Millisecond)
+	for i := 0; i < 3; i++ {
+		forceReconcile(m)
+	}
+	// ohne aktiven Partner bleibt der Server abgeschottet
+	if ro := strings.Contains(confText(t, a), "default_transaction_read_only = on"); !ro || svc.active || tunOf(a).active {
+		t.Fatalf("ohne Partner nicht abgeschottet: nur lesend=%v pdh=%v Tunnel=%v", ro, svc.active, tunOf(a).active)
+	}
+	if err := m.d.command("force_takeover"); err != nil {
+		t.Fatalf("force_takeover: %v", err)
+	}
+	m.tick()
+	waitFor(t, 5*time.Second, "promote Ende", m.d.actionsIdle)
+	for i := 0; i < 3; i++ {
+		forceReconcile(m)
+	}
+	m.d.lock()
+	role := m.d.p.Role
+	m.d.unlock()
+	ro := strings.Contains(confText(t, a), "default_transaction_read_only = on")
+	if role != ha.Active || ro || !svc.active || !tunOf(a).active {
+		t.Errorf("GESTRANDET: Rolle %s, nur lesend=%v, pdh=%v, Tunnel=%v; %v", role, ro, svc.active, tunOf(a).active, eventTexts(m.d))
+	}
+}

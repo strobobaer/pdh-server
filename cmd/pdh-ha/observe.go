@@ -42,7 +42,7 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		VoteSince: c.VoteSince, VoteAlarmed: c.VoteAlarmed, LastMutual: c.LastMutual,
 		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
-		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind,
+		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind, RejoinAsked: c.RejoinAsked,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl

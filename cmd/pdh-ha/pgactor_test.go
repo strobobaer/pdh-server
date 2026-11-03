@@ -749,3 +749,65 @@ func TestDemoteChecksHandoverBeforeStop(t *testing.T) {
 		})
 	}
 }
+
+// R31.2: Übernahme von Hand nimmt einen laufenden, nur lesenden Primary an und schaltet ihn schreibbar;
+// ohne Handbefehl bleibt es bei der Ablehnung.
+func TestPromoteManualReadOnlyPrimary(t *testing.T) {
+	ro := "f|0/100|1|on|pdh_ha_b|"
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", ro, nil).
+		onFn("runuser", "SELECT pg_is_in_recovery()", func(c fakeCall) (string, error) {
+			if strings.Contains(c.stdin, "pg_last_wal") {
+				return ro, nil
+			}
+			return "f", nil
+		})
+	a, svc := testActor(t, r)
+	svc.active = false
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 3}); err == nil {
+		t.Fatal("ohne Handbefehl muss das Hochstufen abgelehnt werden")
+	}
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActPromote, Term: 3, Manual: true}); err != nil {
+		t.Fatalf("Übernahme von Hand: %v", err)
+	}
+	if has(r.list(), "psql: SELECT pg_promote") {
+		t.Fatal("pg_promote auf einem Primary")
+	}
+	if strings.Contains(confText(t, a), "default_transaction_read_only") || !svc.active || !tunOf(a).active {
+		t.Fatal("nicht schreibbar oder Dienste aus")
+	}
+}
+
+// R31.3: Hat der Partner übernommen und ist der Gleichstand erreicht, läuft demote bis zum Standby zu Ende.
+func TestDemoteCompletesWhenPartnerTookOver(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	a, _ := testActor(t, r)
+	a.handing = func() bool { return false }
+	a.mayUndo = func() bool { return false } // Partner aktiv, Rolle nicht mehr unsere
+	if err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !has(r.list(), "pg_ctlcluster 18 main stop") || has(r.list(), "svc start") {
+		t.Fatalf("demote nicht bis zum Standby: %v", r.list())
+	}
+	if _, err := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); err != nil {
+		t.Fatal("standby.signal fehlt")
+	}
+}
+
+// R31.4: „Rollentausch wurde inzwischen abgebrochen“ setzt wie der letzte Abgleich keine Wartung.
+func TestWithdrawnSwapErrorNoMaintenance(t *testing.T) {
+	r := (&fakeRunner{}).
+		on("runuser", "pg_is_in_recovery", stPrimary, nil).
+		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
+	a, _ := testActor(t, r)
+	a.handing = func() bool { return false }
+	a.mayUndo = func() bool { return true }
+	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote, Term: 3, Manual: true})
+	var nm interface{ noMaint() }
+	if err == nil || !errors.As(err, &nm) {
+		t.Fatalf("Fehler ohne Wartung erwartet: %v", err)
+	}
+}
