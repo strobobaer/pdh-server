@@ -123,7 +123,32 @@ func TestMirrorFinalSyncReadsSettingsAtCall(t *testing.T) {
 	m.tick()
 	rt := m.ready()
 	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	m.d.lock()
+	m.d.p.Role, m.d.carry.HandoverPending = ha.Passive, 2 // Übergabe läuft
+	m.d.unlock()
 	if err := m.d.mirrorFinalSync(context.Background()); err != nil {
 		t.Fatalf("letzter Abgleich: %v", err)
+	}
+}
+
+// R27: Hat der Step den Tausch während des letzten Abgleichs zurückgenommen,
+// meldet mirrorFinalSync einen Fehler, und demote macht nicht weiter.
+func TestMirrorFinalSyncStopsWhenSwapWithdrawn(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv"})
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 3*time.Second, "Erstabgleich fertig", func() bool { return rt.worker.Load().snapshot().FirstDone })
+	set := func(role ha.Role, pending uint64) {
+		m.d.lock()
+		m.d.p.Role, m.d.carry.HandoverPending = role, pending
+		m.d.unlock()
+	}
+	set(ha.Passive, 2) // Übergabe läuft
+	if err := m.d.mirrorFinalSync(context.Background()); err != nil {
+		t.Fatalf("bei laufender Übergabe: %v", err)
+	}
+	set(ha.Active, 0) // Step hat zurückgenommen
+	if err := m.d.mirrorFinalSync(context.Background()); err == nil {
+		t.Fatal("Fehler erwartet: Tausch zurückgenommen")
 	}
 }

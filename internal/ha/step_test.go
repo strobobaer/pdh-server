@@ -1958,3 +1958,36 @@ func TestSwapAbandonEmitsAbandon(t *testing.T) {
 		t.Fatalf("Rolle %v, HandoverPending %d", out.Persist.Role, out.HandoverPending)
 	}
 }
+
+// R27: Mit Datei-Spiegelung zählt die Frist des letzten Abgleichs zur Wartezeit
+// auf die Abgabe; ohne Spiegelung bleibt sie unverändert.
+func TestHandoverDemoteDeadlineMirror(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		on    bool
+		max   time.Duration
+		extra time.Duration
+	}{
+		{"aus", false, 120 * sec, 0},
+		{"an, eigene Frist", true, 200 * sec, 200 * sec},
+		{"an, Frist 0 = Standard", true, 0, DefaultSettings().MirrorFinalMax},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			in := swapped(t)
+			in.Settings.MirrorOn, in.Settings.MirrorFinalMax = c.on, c.max
+			base := in.HandoverAt + in.Settings.TakeoverTrio + 90*sec
+			// kurz vor der (verlängerten) Frist: weiter warten
+			in.Now = base + c.extra - sec
+			in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+			if out := Step(in); out.Persist.Role != Passive || countEvents(out, "Rollentausch abgebrochen") != 0 {
+				t.Fatalf("zu früh abgebrochen: %s %v", out.Persist.Role, out.Events)
+			}
+			// auf der Frist: Abbruch
+			in.Now = base + c.extra
+			in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+			if out := Step(in); out.Persist.Role != Active || countEvents(out, "Rollentausch abgebrochen") != 1 {
+				t.Fatalf("kein Abbruch zur Frist: %s %v", out.Persist.Role, out.Events)
+			}
+		})
+	}
+}

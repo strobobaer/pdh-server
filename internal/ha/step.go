@@ -307,9 +307,20 @@ func (s *stepper) handover() bool {
 		return false
 	}
 	took := in.Settings.Takeover(in.Mode)
+	// Mit Datei-Spiegelung läuft vor der Abgabe der letzte Abgleich (R27): seine
+	// Frist kommt zur Wartezeit dazu, sonst gäbe der Step die Rolle zurück, während
+	// demote noch arbeitet.
+	demoteBy := took + demoteWait
+	if in.Settings.MirrorOn {
+		fin := in.Settings.MirrorFinalMax
+		if fin <= 0 {
+			fin = DefaultSettings().MirrorFinalMax
+		}
+		demoteBy += fin
+	}
 	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
 	// Partner hat noch nichts bekommen, also zurück nach aktiv.
-	if in.DemoteFailed == hp-1 || in.DemoteDone != hp-1 && in.Now-s.out.HandoverAt >= took+demoteWait {
+	if in.DemoteFailed == hp-1 || in.DemoteDone != hp-1 && in.Now-s.out.HandoverAt >= demoteBy {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
 		s.unfence()

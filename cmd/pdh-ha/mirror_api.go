@@ -573,7 +573,18 @@ func (d *daemon) mirrorFinalSync(ctx context.Context) error {
 	if max <= 0 {
 		max = ha.DefaultSettings().MirrorFinalMax
 	}
-	return wk.finalSync(ctx, max)
+	if err := wk.finalSync(ctx, max); err != nil {
+		return err
+	}
+	// R27: Hat der Step den Rollentausch inzwischen zurückgenommen (Rolle wieder
+	// aktiv, keine Übergabe offen), darf demote nicht weitermachen.
+	d.mu.Lock()
+	gone := d.p.Role != ha.Passive || d.carry.HandoverPending == 0
+	d.mu.Unlock()
+	if gone {
+		return errors.New("Rollentausch wurde inzwischen abgebrochen")
+	}
+	return nil
 }
 
 // mirrorStopStreams bricht laufende Spiegelströme des Transports ab (R9).
