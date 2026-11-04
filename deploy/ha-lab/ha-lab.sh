@@ -2209,11 +2209,11 @@ sc_spiegel_ruecknahme_uebernahme() {
     mirror_enable 10 200
     rw_probe_start node1 node2
     STRICT_RW=1
-    log "100 MB bei 200 KB/s, Frist 10 s – Rollentausch scheitert am letzten Abgleich"
-    put_file node1 "$UPLOADS/gross.bin" 100M
+    log "200 MB bei 200 KB/s, Frist 10 s – Rollentausch scheitert am letzten Abgleich"
+    put_file node1 "$UPLOADS/gross.bin" 200M
     local try r n0 taken=0 ref0
     local q='Aktion demote fehlgeschlagen' q2='Übernahme erzwingen abgelehnt'
-    for try in 1 2 3 4 5 6; do
+    for try in 1 2 3 4 5 6 7 8 9 10; do
         n0="$(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl)" || true
         ref0="$(docker exec node2 grep -c "$q2" /var/lib/pdh-ha/events.jsonl)" || true
         wait_for 30 eval 'swap_on node1 2>/dev/null' || fail "Rollentausch auf node1 nicht angenommen"
@@ -2231,12 +2231,19 @@ sc_spiegel_ruecknahme_uebernahme() {
         log "Versuch $try: node2 lehnt ab, node1 ist wieder aktiv"
         wait_for 30 eval 'roles aktiv passiv && pg_writable node1' || fail "node1 nach dem Abbruch nicht wieder aktiv (node1=$R1, node2=$R2)"
     done
-    ((taken == 1)) || fail "Zeitpunkt in 6 Versuchen verfehlt"
+    ((taken == 1)) || fail "Zeitpunkt in 10 Versuchen verfehlt"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
-    # R42, zweiter Teil: Marke gesetzt, Wiederanbindung als Standby
+    # Zwei Wege, beide ohne schreibbaren node1 (rw_probe_check unten): Sieht node1 die höhere
+    # Amtszeit noch in der Übergabe, setzt er die Marke (R42, zweiter Teil). Kreuzen sich die
+    # Takte, ist er schon aktiv und sieht sie vor dem unfence im zweiten Takt der Rücknahme (R48).
     wait_for 120 mirror_ok_rev || fail "node1 nicht als Standby angebunden (node1=$R1 pg=$(jget pg <<<"$J1"))"
-    log "node1 ist Standby (pg_rewind echt: $(rewind_real_runs node1))"
-    event_on node1 "wird als Standby wieder angebunden" || fail "Wiederanbindung nach verweigerter Rücknahme nicht gemeldet"
+    if event_on node1 "wird als Standby wieder angebunden"; then
+        log "node1 ist Standby über die Marke (R42), pg_rewind echt: $(rewind_real_runs node1)"
+    elif event_on node1 "Aktiver Server abgelöst"; then
+        log "node1 ist Standby über den zweiten Takt der Rücknahme (R48), pg_rewind echt: $(rewind_real_runs node1)"
+    else
+        fail "Wiederanbindung nicht gemeldet"
+    fi
     [[ "$R1" == passiv ]] || fail "node1 am Ende nicht passiv ($R1)"
     ! pg_writable node1 || fail "node1 am Ende schreibbar"
     pdh_on node1 && [[ "$(jget pg <<<"$J1")" != standby ]] && fail "pdh läuft auf dem abgeschotteten node1"
