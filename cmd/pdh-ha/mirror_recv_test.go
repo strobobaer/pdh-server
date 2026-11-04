@@ -111,6 +111,9 @@ func TestInboxAccept(t *testing.T) {
 }
 
 func TestInboxOneStreamPerLabel(t *testing.T) {
+	old := mirrorBusyWait
+	mirrorBusyWait = 50 * time.Millisecond
+	t.Cleanup(func() { mirrorBusyWait = old })
 	f := newInboxFix(t)
 	os.Mkdir(f.root+"/repo/uploads", 0o755)
 	_, done, refuse := f.accept("uploads", 3)
@@ -636,5 +639,41 @@ func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 	f.rebuild()
 	if done, files := f.in.proofOf("nextcloud-data"); !done || !files || f.in.dataID() != id {
 		t.Fatalf("nach Neustart: %v %v %q", done, files, f.in.dataID())
+	}
+}
+
+// Im Labor gefunden (spiegel-tausch-wiederholung): Der Absender bricht einen Lauf ab und
+// startet gleich den nächsten, der Empfänger räumt noch auf. Der neue Lauf wartet kurz,
+// statt abgelehnt zu werden und den Rollentausch scheitern zu lassen.
+func TestInboxNewStreamWaitsForOldToEnd(t *testing.T) {
+	f := newInboxFix(t)
+	os.Mkdir(f.root+"/repo/uploads", 0o755)
+	_, done, refuse := f.accept("uploads", 3)
+	if refuse != "" {
+		t.Fatal(refuse)
+	}
+	type res struct {
+		done   func(error)
+		refuse string
+	}
+	got := make(chan res, 1)
+	go func() {
+		_, d, r := f.accept("uploads", 3)
+		got <- res{d, r}
+	}()
+	select {
+	case r := <-got:
+		t.Fatalf("zweiter Strom wartet nicht: %q", r.refuse)
+	case <-time.After(100 * time.Millisecond):
+	}
+	done(errors.New("abgebrochen"))
+	select {
+	case r := <-got:
+		if r.refuse != "" || r.done == nil {
+			t.Fatalf("zweiter Strom nach dem Ende des ersten: %q", r.refuse)
+		}
+		r.done(nil)
+	case <-time.After(5 * time.Second):
+		t.Fatal("zweiter Strom bleibt hängen")
 	}
 }

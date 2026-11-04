@@ -33,7 +33,12 @@ const (
 	mirrorErrLogEvery  = time.Minute // Fehler einer Übertragung je Quelle höchstens einmal je Minute
 	mirrorNginxTimeout = 30 * time.Second
 	mirrorDayLayout    = "2006-01-02"
+	mirrorBusyPoll     = 50 * time.Millisecond
 )
+
+// mirrorBusyWait: so lange wartet ein neuer Strom auf das Ende des alten derselben Quelle
+// (kürzer als mirrorFirstLine, länger als mirrorChildWait; Variable für Tests).
+var mirrorBusyWait = 6 * time.Second
 
 // mirrorInboxView ist der Stand des Daemons, den der Empfänger braucht; Task 7
 // füllt ihn ohne zu blockieren.
@@ -327,14 +332,26 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		m.save()
 	}
 
-	// höchstens ein Strom je Quelle
-	m.mu.Lock()
-	if m.busy[label] {
+	// höchstens ein Strom je Quelle. Ein vom Absender abgebrochener Lauf räumt hier noch
+	// kurz auf: darauf warten, sonst scheitert ein gleich folgender Lauf (letzter Abgleich).
+	wait := time.Now().Add(mirrorBusyWait)
+	for {
+		m.mu.Lock()
+		if !m.busy[label] {
+			m.busy[label] = true
+			m.mu.Unlock()
+			break
+		}
 		m.mu.Unlock()
-		return nil, nil, "Quelle " + label + " wird schon übertragen"
+		if !time.Now().Before(wait) {
+			return nil, nil, "Quelle " + label + " wird schon übertragen"
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, "Quelle " + label + " wird schon übertragen"
+		case <-time.After(mirrorBusyPoll):
+		}
 	}
-	m.busy[label] = true
-	m.mu.Unlock()
 	free := func() {
 		m.mu.Lock()
 		delete(m.busy, label)
