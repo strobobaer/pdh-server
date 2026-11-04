@@ -230,6 +230,7 @@ func TestMirrorTrashEmptyRoleChecks(t *testing.T) {
 			m.d.handle(m.ctx, inbound{From: c.from, Msg: message{T: "mirror_trash_empty", ID: c.from, Seq: 9, Term: c.term}})
 			if c.want {
 				waitFor(t, 3*time.Second, "geleert", func() bool { return !exists() })
+				waitFor(t, 3*time.Second, "Ereignis", func() bool { return hasEvent(m.d, "Papierkorb der Spiegelung geleert") })
 				return
 			}
 			time.Sleep(150 * time.Millisecond)

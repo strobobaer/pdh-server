@@ -106,7 +106,7 @@ func (d *daemon) handle(ctx context.Context, in inbound) {
 	}
 	d.unlock()
 	if emptyTrash {
-		go d.mirrorEmptyTrash(ctx, in.From) // Dateiarbeit: nie unter dem Schloss
+		d.startEmptyTrash(ctx, in.From) // Dateiarbeit: nie unter dem Schloss
 	}
 	d.execute(ctx, pl)
 }

@@ -988,6 +988,22 @@ func (d *daemon) mirrorTrashEmptyReq() error {
 	return nil
 }
 
+// startEmptyTrash führt den Auftrag in einer verfolgten Goroutine aus (Muster startNCCheck).
+func (d *daemon) startEmptyTrash(ctx context.Context, from string) {
+	d.mu.Lock()
+	rt := d.mir
+	d.mu.Unlock()
+	if rt == nil {
+		d.mirrorEmptyTrash(ctx, from) // ohne Empfänger nur die Meldung
+		return
+	}
+	rt.wg.Add(1)
+	go func() {
+		defer rt.wg.Done()
+		d.mirrorEmptyTrash(ctx, from)
+	}()
+}
+
 // mirrorEmptyTrash leert die Papierkörbe hier (Auftrag des Partners). Läuft
 // ohne das Schloss des Daemons.
 func (d *daemon) mirrorEmptyTrash(ctx context.Context, from string) {
