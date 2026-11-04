@@ -1615,7 +1615,9 @@ trash_count() {
 # schreibbar ist (der Wächter im Takt von snap sähe ein kurzes Fenster nicht)
 RW_PROBE_SH='while :; do
     r=$(runuser -u postgres -- psql -XAtq -d postgres -c "SELECT NOT (pg_is_in_recovery() OR current_setting('"'"'default_transaction_read_only'"'"')::bool)" 2>/dev/null)
-    echo "$(date +%s%3N) ${r:-x}" >>/var/lib/pdh-lab/rw.log
+    # x = Datenbank läuft nicht; b = sie läuft, aber die Abfrage scheiterte (blind)
+    [ -n "$r" ] || { pg_isready -q 2>/dev/null && r=b || r=x; }
+    echo "$(date +%s%3N) $r" >>/var/lib/pdh-lab/rw.log
     sleep 0.1
 done'
 rw_probe_start() {
@@ -1625,14 +1627,57 @@ rw_probe_start() {
     done
 }
 
+# rw_scan <Jetzt ms> < Messung: Grund, warum die Messung nichts belegt; leer = in Ordnung
+rw_scan() {
+    awk -v gap=3000 -v blind=5 '
+        NR > 1 && $1 - p > gap { print "Lücke von " $1 - p " ms in der Messung"; bad = 1; exit }
+        $2 == "b" { if (++b >= blind) { print "blind: " b " Abfragen hintereinander gescheitert, obwohl die Datenbank läuft"; bad = 1; exit } }
+        $2 != "b" { b = 0 }
+        { p = $1 }
+        END { if (!bad && NR == 0) print "keine Werte" }'
+}
+
+# rw_probe_none_after <Container> <ms>: seit diesem Zeitpunkt nie schreibbar
+rw_probe_none_after() {
+    local bad
+    rw_probe_alive "$1"
+    bad="$(docker exec "$1" awk -v t="$2" '$1 > t && $2 == "t" { print $1; exit }' /var/lib/pdh-lab/rw.log)"
+    [[ -z "$bad" ]] || fail "$1 wurde schreibbar, $((bad - $2)) ms nach dem Scheitern der Abgabe (R51 schließt das aus)"
+}
+
 # rw_probe_alive <Container …>: Die Messung lief bis eben; eine tote Messung zählt nicht als Bestehen
 rw_probe_alive() {
-    local c last now
+    local c last now why
     for c in "$@"; do
         last="$(docker exec "$c" tail -n 1 /var/lib/pdh-lab/rw.log | cut -d" " -f1)"
         now="$(docker exec "$c" date +%s%3N)"
         [[ -n "$last" ]] && ((now - last < 5000)) || fail "Messung auf $c ist tot (letzter Wert vor $((now - ${last:-0})) ms)"
+        why="$(docker exec "$c" cat /var/lib/pdh-lab/rw.log | rw_scan "$now")"
+        [[ -z "$why" ]] || fail "Messung auf $c: $why"
     done
+}
+
+# cmd_rw_selbsttest: Die Prüfung der Messung, ohne Container. Jeder Fall muss das erwartete Ergebnis
+# liefern; sonst Rückgabewert 1.
+cmd_rw_selbsttest() {
+    local rc=0 now=100000
+    pruefe() { # <Name> <Teil des Grundes, leer = in Ordnung> <Zeilen>
+        local why
+        why="$(printf '%b' "$3" | rw_scan "$now")"
+        if { [[ -z "$2" && -z "$why" ]]; } || { [[ -n "$2" && "$why" == *"$2"* ]]; }; then
+            echo "gut: $1"
+        else
+            echo "FEHLER: $1: erwartet „$2“, Ergebnis „$why“"
+            rc=1
+        fi
+    }
+    pruefe "gesund" "" '99500 t\n99700 t\n99900 f\n'
+    pruefe "Datenbank gestoppt" "" '99500 x\n99700 x\n99900 x\n'
+    pruefe "einzelner Fehlschlag" "" '99300 t\n99500 b\n99700 t\n99900 t\n'
+    pruefe "blind: Datenbank läuft, Abfrage scheitert" "blind" '99000 t\n99100 b\n99200 b\n99300 b\n99400 b\n99500 b\n99900 t\n'
+    pruefe "Lücke" "Lücke" '90000 t\n99800 t\n99900 t\n'
+    pruefe "keine Werte" "keine Werte" ''
+    return "$rc"
 }
 
 # rw_probe_check <alter Server> <neuer Server>: der alte Server war zuletzt
@@ -2211,7 +2256,7 @@ sc_spiegel_ruecknahme_uebernahme() {
     STRICT_RW=1
     log "200 MB bei 200 KB/s, Frist 10 s – Rollentausch scheitert am letzten Abgleich"
     put_file node1 "$UPLOADS/gross.bin" 200M
-    local try r n0 taken=0 ref0
+    local try r n0 taken=0 ref0 t_scheitern
     local q='Aktion demote fehlgeschlagen' q2='Übernahme erzwingen abgelehnt'
     for try in 1 2 3 4 5 6 7 8 9 10; do
         n0="$(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl)" || true
@@ -2222,6 +2267,7 @@ sc_spiegel_ruecknahme_uebernahme() {
             ((SECONDS < end)) || fail "Abgabe wird nicht als gescheitert gemeldet (Versuch $try)"
             sleep 0.05
         done
+        t_scheitern=$(date +%s%3N)
         r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
         log "Versuch $try: Übernahme erzwingen direkt nach der Meldung: $r"
         if [[ "$r" == 200* ]] && wait_for 15 eval '[[ "$R2" == aktiv || "$(docker exec node2 grep -c "$q2" /var/lib/pdh-ha/events.jsonl)" != "$ref0" ]]' && [[ "$R2" == aktiv ]]; then
@@ -2247,6 +2293,9 @@ sc_spiegel_ruecknahme_uebernahme() {
     [[ "$R1" == passiv ]] || fail "node1 am Ende nicht passiv ($R1)"
     ! pg_writable node1 || fail "node1 am Ende schreibbar"
     pdh_on node1 && [[ "$(jget pg <<<"$J1")" != standby ]] && fail "pdh läuft auf dem abgeschotteten node1"
+    # R51: Die Abgabe ist gescheitert, Ende der Abschottung kommt nur noch über den zweiten Takt: Auf
+    # beiden Wegen wird node1 hier nie mehr schreibbar, auch nicht ohne Überlappung
+    rw_probe_none_after node1 "$t_scheitern"
     rw_probe_check node1 node2
     STRICT_RW=0
 }
@@ -2403,6 +2452,10 @@ main() {
     case "$cmd" in
         race)
             cmd_race
+            return
+            ;;
+        rw-selbsttest)
+            cmd_rw_selbsttest
             return
             ;;
         "" | -h | --help)
