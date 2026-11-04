@@ -18,7 +18,7 @@
 #            spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
 #            spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch
 #            spiegel-rolling-update spiegel-ruecknahme-uebernahme
-#            spiegel-netz-weg-im-abgleich
+#            spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -62,7 +62,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     spiegel-datei spiegel-loeschen spiegel-tausch spiegel-tausch-frist spiegel-tausch-wiederholung
     spiegel-ausfall spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
     spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update
-    spiegel-ruecknahme-uebernahme spiegel-netz-weg-im-abgleich)
+    spiegel-ruecknahme-uebernahme spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -70,7 +70,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
 # Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
     [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe
-    [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe)
+    [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe [spiegel-bestaetigung]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
 BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
@@ -158,7 +158,7 @@ status_json() {
 # jget <Schlüssel> < JSON. Schlüssel: role term maint blocked settings
 # configured seen:<id> peerrole:<id> holder hookson hookssame hooksn commit
 # peercommit:<id> upphase upresult faulty window; Datei-Spiegelung: mon mfirst
-# mrunning morphans merr mmissing mtotal; nicht lesbar → "-"
+# mrunning morphans merr mmissing mtotal mwait; nicht lesbar → "-"
 jget() {
     if [[ "$JSON_TOOL" == python3 ]]; then
         python3 -c '
@@ -208,6 +208,7 @@ try:
     elif k == "merr": v = mir.get("err") or ""
     elif k == "mmissing": v = "|".join(mir.get("nc_missing") or [])
     elif k == "mtotal": v = mir.get("nc_missing_total", 0)
+    elif k == "mwait": v = " ".join(mir.get("wait_confirm") or [])
     else: v = "-"
 except Exception:
     v = "-"
@@ -248,6 +249,7 @@ print(v)' "$1"
             merr) f='.mirror.err // ""' ;;
             mmissing) f='(.mirror.nc_missing // []) | join("|")' ;;
             mtotal) f='.mirror.nc_missing_total // 0' ;;
+            mwait) f='(.mirror.wait_confirm // []) | join(" ")' ;;
             *) echo "-"; return ;;
         esac
         jq -r --arg id "${1#*:}" "$f" 2>/dev/null || echo "-"
@@ -1580,6 +1582,13 @@ mirror_enable() {
     wait_for 120 mirror_first_ok ||
         fail "Erstabgleich nicht fertig (node1 $(jget mfirst <<<"$J1"), node2 $(jget mfirst <<<"$J2"), Fehler: $(jget merr <<<"$J1"))"
     [[ -n "$(file_id node2 "$UPLOADS/grundbestand.txt")" ]] || fail "Grundbestand nach dem Erstabgleich nicht auf node2"
+    # R47: Beleg des Empfängers kommt per Herzschlag, der Absender gilt danach selbst als belegt
+    wait_for 15 eval 'has_proof node1 uploads && has_proof node2 uploads' || fail "kein Beleg für uploads auf beiden Servern"
+}
+
+# has_proof <Container> <Quelle>: eigener Beleg laut Ablage des Empfängers
+has_proof() {
+    docker exec "$1" cat /var/lib/pdh-ha/mirror-inbox.json 2>/dev/null | grep -q "\"proof\":{[^}]*\"$2\":{"
 }
 
 # file_id <Container> <Pfad>: „Prüfsumme Besitzer“, leer, wenn die Datei fehlt
@@ -1616,10 +1625,21 @@ rw_probe_start() {
     done
 }
 
+# rw_probe_alive <Container …>: Die Messung lief bis eben; eine tote Messung zählt nicht als Bestehen
+rw_probe_alive() {
+    local c last now
+    for c in "$@"; do
+        last="$(docker exec "$c" tail -n 1 /var/lib/pdh-lab/rw.log | cut -d" " -f1)"
+        now="$(docker exec "$c" date +%s%3N)"
+        [[ -n "$last" ]] && ((now - last < 5000)) || fail "Messung auf $c ist tot (letzter Wert vor $((now - ${last:-0})) ms)"
+    done
+}
+
 # rw_probe_check <alter Server> <neuer Server>: der alte Server war zuletzt
 # schreibbar, bevor der neue es zum ersten Mal war
 rw_probe_check() {
     local last first
+    rw_probe_alive "$1" "$2"
     last="$(docker exec "$1" awk '$2 == "t" { x = $1 } END { print x + 0 }' /var/lib/pdh-lab/rw.log)"
     first="$(docker exec "$2" awk '$2 == "t" { print $1; exit }' /var/lib/pdh-lab/rw.log)"
     ((last > 0)) || fail "Messung zeigt nichts: $1 war nie schreibbar"
@@ -1632,6 +1652,7 @@ rw_probe_check() {
 # der aktive Server schon, und ist es am Ende wieder
 rw_probe_only() {
     local last n
+    rw_probe_alive "$1" "$2"
     last="$(docker exec "$1" tail -n 1 /var/lib/pdh-lab/rw.log | cut -d" " -f2)"
     n="$(docker exec "$1" grep -c ' t$' /var/lib/pdh-lab/rw.log)"
     ((n > 0)) || fail "Messung zeigt nichts: $1 war nie schreibbar"
@@ -2212,11 +2233,10 @@ sc_spiegel_ruecknahme_uebernahme() {
     done
     ((taken == 1)) || fail "Zeitpunkt in 6 Versuchen verfehlt"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
-    if wait_for 120 mirror_ok_rev; then
-        log "node1 ist Standby (pg_rewind echt: $(rewind_real_runs node1))"
-    else
-        log "node1 bleibt abgeschottet (node1=$R1 pg=$(jget pg <<<"$J1"))"
-    fi
+    # R42, zweiter Teil: Marke gesetzt, Wiederanbindung als Standby
+    wait_for 120 mirror_ok_rev || fail "node1 nicht als Standby angebunden (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    log "node1 ist Standby (pg_rewind echt: $(rewind_real_runs node1))"
+    event_on node1 "wird als Standby wieder angebunden" || fail "Wiederanbindung nach verweigerter Rücknahme nicht gemeldet"
     [[ "$R1" == passiv ]] || fail "node1 am Ende nicht passiv ($R1)"
     ! pg_writable node1 || fail "node1 am Ende schreibbar"
     pdh_on node1 && [[ "$(jget pg <<<"$J1")" != standby ]] && fail "pdh läuft auf dem abgeschotteten node1"
@@ -2251,6 +2271,81 @@ sc_spiegel_netz_weg_im_abgleich() {
     [[ "$(rewind_real_runs node1)" == 1 ]] || fail "pg_rewind lief nicht genau einmal echt: $(docker exec node1 cat /var/lib/pdh-lab/rewind.log)"
     ! event_on node1 "neu vom aktiven Server kopiert" || fail "Neukopie statt pg_rewind"
     STRICT_RW=0
+}
+
+# mirror_waits: Quellen, die laut node1 auf Bestätigung warten (mit Leerzeichen getrennt)
+mirror_waits() { jget mwait <<<"$J1"; }
+
+# alarm_count <Container> <Text>
+alarm_count() { docker exec "$1" grep -F -- "$2" /var/lib/pdh-ha/events.jsonl 2>/dev/null | grep -c '"kind":"alarm"' || true; }
+
+# R47: Empfänger mit eigener Datei: kein Löschen, ein Alarm, Bestätigung nur am aktiven Server;
+# danach Papierkorb und kein neuer Alarm bei einem Tausch. Leeres Ziel: Löschen ohne Bestätigung.
+sc_spiegel_bestaetigung() {
+    mirror_dirs
+    local eigen="$UPLOADS/nur-auf-node2.txt" leer=/opt/pdh-server/chat_files/kommt-und-geht.txt r n
+    local q="Quelle uploads: Der Partner hat dort schon Dateien"
+    docker exec node2 sh -c 'echo eigener Stand >"$1"' _ "$eigen" || fail "Datei auf node2 anlegen"
+    docker exec node1 sh -c 'echo geht >"$1"' _ "$leer" || fail "Datei auf node1 anlegen"
+    log "Spiegelung ein: node2 hat in uploads eine eigene Datei, chat_files ist dort leer"
+    mirror_set 120 0
+    wait_for 120 mirror_first_ok || fail "Erstabgleich nicht fertig (Fehler: $(jget merr <<<"$J1"))"
+    wait_for 15 eval '[[ -n "$(file_id node2 "$UPLOADS/grundbestand.txt")" && " $(mirror_waits) " == *" uploads "* ]]' ||
+        fail "Status nennt uploads nicht (wartet: $(mirror_waits))"
+    wait_for 15 eval '(($(alarm_count node1 "$q") >= 1))' || fail "kein Alarm zu uploads auf node1"
+    log "Leeres Ziel: Löschen geht ohne Bestätigung"
+    wait_for 15 eval 'has_proof node2 chat_files' || fail "kein Beleg für chat_files auf node2"
+    docker exec node1 rm "$leer" || fail "Datei auf node1 löschen"
+    wait_for 45 eval '[[ -z "$(file_id node2 "$leer")" ]] && trash_has node2 kommt-und-geht.txt' || fail "leeres Ziel: Datei nicht gelöscht"
+    log "Eigene Datei auf node2 bleibt über zwei Abgleiche"
+    watch_for 35 eval '[[ -n "$(file_id node2 "$eigen")" ]]' || fail "eigene Datei auf node2 ohne Bestätigung gelöscht"
+    n="$(alarm_count node1 "$q")"
+    [[ "$n" == 1 ]] || fail "$n Alarme statt einem"
+    if r="$(docker exec node2 pdh-ha mirror confirm 2>&1)"; then
+        fail "Bestätigung am passiven node2 angenommen: $r"
+    fi
+    log "am passiven node2 abgelehnt: $r"
+    log "am aktiven node1 bestätigen – die Datei wandert in den Papierkorb von node2"
+    docker exec node1 pdh-ha mirror confirm || fail "Bestätigung auf node1"
+    wait_for 45 eval '[[ -z "$(file_id node2 "$eigen")" ]] && trash_has node2 nur-auf-node2.txt' || fail "Datei nach der Bestätigung nicht im Papierkorb von node2"
+    wait_for 15 eval '[[ -z "$(mirror_waits)" ]] && has_proof node2 uploads' || fail "wartet nach der Bestätigung noch: $(mirror_waits)"
+    log "Tausch hin und zurück: kein neuer Alarm, Löschen geht weiter"
+    pflicht_tausch
+    wait_for 45 eval 'has_proof node1 uploads' || fail "kein Beleg auf node1"
+    [[ -z "$(mirror_waits)" ]] || fail "wartet nach dem Tausch: $(mirror_waits)"
+    n="$(alarm_count node1 "$q")"
+    [[ "$n" == 1 ]] || fail "$n Alarme nach dem Tausch"
+    [[ "$(alarm_count node2 "$q")" == 0 ]] || fail "Alarm auf node2 nach dem Tausch"
+    ! event_on node1 "wurde aktiv" || fail "Alarm „wurde aktiv“ auf node1"
+    ! event_on node2 "wurde aktiv" || fail "Alarm „wurde aktiv“ auf node2"
+    docker exec node1 rm "$UPLOADS/grundbestand.txt" || fail "Datei auf node1 löschen"
+    docker exec node1 sh -c "echo bleibt >$UPLOADS/bleibt.txt"
+    wait_for 45 eval '[[ -z "$(file_id node2 "$UPLOADS/grundbestand.txt")" ]]' || fail "Löschen geht nach dem Tausch nicht"
+}
+
+# N3: Rolling-Update bei ausgeschalteter Spiegelung, Rücktausch, Einschalten: Der aktive Server
+# kennt die Dateien aus der Zeit, in der der andere aktiv war, nicht. Sie bleiben am Partner.
+sc_spiegel_update_aus() {
+    up_prepare 1 30
+    mirror_dirs
+    local f="$UPLOADS/waehrend-update-auf-node2.txt" a
+    up_start node1 lab1 rolling
+    up_wait 600 fertig abgebrochen
+    up_result_has "abgeschlossen"
+    wait_for 120 eval 'mirror_ok_rev && commits_are lab1 lab1' || fail "nicht beide auf lab1 mit node2 aktiv"
+    log "node2 ist aktiv und bekommt eine Datei, die node1 nicht kennt; Rücktausch"
+    docker exec node2 sh -c 'echo neu >"$1"' _ "$f" || fail "Datei auf node2 anlegen"
+    a="$(file_id node2 "$f")"
+    swap_on node2 || fail "Rollentausch auf node2"
+    wait_for 180 mirror_ok || fail "Rücktausch nicht abgeschlossen (node1=$R1, node2=$R2)"
+    log "Spiegelung einschalten: nichts wird am Partner gelöscht"
+    mirror_set 120 0
+    wait_for 120 mirror_first_ok || fail "Erstabgleich nicht fertig (Fehler: $(jget merr <<<"$J1"))"
+    watch_for 40 eval '[[ "$(file_id node2 "$f")" == "$a" ]]' || fail "Datei auf node2 gelöscht oder verändert ($(file_id node2 "$f"))"
+    ! trash_has node2 waehrend-update-auf-node2.txt || fail "Datei im Papierkorb von node2"
+    wait_for 15 eval '[[ " $(mirror_waits) " == *" uploads "* ]]' || fail "Status nennt uploads nicht (wartet: $(mirror_waits))"
+    [[ "$(alarm_count node1 "Quelle uploads: Der Partner hat dort schon Dateien")" == 1 ]] || fail "kein oder mehr als ein Alarm"
+    up_clean
 }
 
 run_scenario() {
