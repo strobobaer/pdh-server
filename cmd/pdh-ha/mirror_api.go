@@ -615,12 +615,22 @@ func (rt *mirrorRT) ncCheckAfterTakeover(ctx context.Context, q ncQuery, s ha.Se
 	rt.ncRes.Store(res)
 	switch {
 	case res.Total > 0:
-		rt.ev.add(ha.Event{Kind: "alarm", Text: fmt.Sprintf("Nach der Übernahme fehlen %d Nextcloud-Dateien (von den neuesten %d geprüften Einträgen)", res.Total, res.Checked)})
+		rt.ev.add(ha.Event{Kind: "alarm", Text: fmt.Sprintf("Nach der Übernahme fehlen %d Nextcloud-Dateien (von den neuesten %d geprüften Einträgen): %s", res.Total, res.Checked, ncNames(res))})
 	case chk.Checked == 0:
 		rt.ev.add(ha.Event{Kind: "info", Text: fmt.Sprintf("Prüflauf nach der Übernahme: nichts geprüft (%d Einträge, keiner auf einem prüfbaren Speicher)", chk.Rows)})
 	default:
 		rt.ev.add(ha.Event{Kind: "info", Text: fmt.Sprintf("Prüflauf nach der Übernahme: die neuesten %d Einträge geprüft, keine Datei fehlt", chk.Checked)})
 	}
+}
+
+// ncNames: die ersten fehlenden Dateien für den Alarm; die ganze Liste steht im Status.
+func ncNames(r *ncResult) string {
+	n := min(len(r.Missing), ncAlarmNames)
+	s := strings.Join(r.Missing[:n], ", ")
+	if r.Total > n {
+		s += fmt.Sprintf(" und %d weitere", r.Total-n)
+	}
+	return s
 }
 
 // --- Anbindung an den Daemon ---

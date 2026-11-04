@@ -558,3 +558,36 @@ func TestNcCheckAfterTakeover(t *testing.T) {
 	}
 	// ungültiger Datenbankname: keine Abfrage (siehe TestNCDBNameRejected)
 }
+
+// Spec Abschnitt 8: Der Alarm nennt die fehlenden Dateien, nicht nur ihre Zahl.
+func TestNcCheckAlarmNamesFiles(t *testing.T) {
+	rt, app := ncRT(t, &fakeRunner{})
+	q := &ncFakeQ{prefix: "oc_", out: ncRow("home::alice", "files/fehlt.bin")}
+	rt.ncCheckAfterTakeover(context.Background(), q, ha.Settings{NCAppDir: app, NCDataDir: ncDataDirOK(t)})
+	found := false
+	for _, e := range rt.ev.since(0, 0) {
+		if e.Kind == "alarm" && strings.Contains(e.Text, "alice/files/fehlt.bin") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Alarm nennt die Datei nicht: %+v", rt.ev.since(0, 0))
+	}
+
+	// Bei vielen Dateien nur die ersten, mit Hinweis auf den Rest
+	rt2, app2 := ncRT(t, &fakeRunner{})
+	var lines []string
+	for i := 0; i < 250; i++ {
+		lines = append(lines, ncRow("home::nobody", fmt.Sprintf("files/f%03d", i)))
+	}
+	q2 := &ncFakeQ{prefix: "oc_", out: strings.Join(lines, "\n")}
+	rt2.ncCheckAfterTakeover(context.Background(), q2, ha.Settings{NCAppDir: app2, NCDataDir: ncDataDirOK(t)})
+	for _, e := range rt2.ev.since(0, 0) {
+		if e.Kind != "alarm" {
+			continue
+		}
+		if !strings.Contains(e.Text, "nobody/files/f000") || strings.Contains(e.Text, "nobody/files/f100") || !strings.Contains(e.Text, "weitere") {
+			t.Fatalf("Alarm bei vielen Dateien: %q", e.Text)
+		}
+	}
+}
