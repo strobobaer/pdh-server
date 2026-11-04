@@ -2294,3 +2294,23 @@ func TestHandoverFailedWitnessOnly(t *testing.T) {
 		t.Fatalf("Zeuge meldet höhere Amtszeit: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
 	}
 }
+
+// Ein angenommener Befehl „Übernahme erzwingen“ läuft erst im nächsten Takt. Ist der Partner
+// inzwischen als aktiv gemeldet (zurückgenommener Tausch), gälte dieselbe Ablehnung wie an der
+// Schnittstelle: sonst wären beide schreibbar.
+func TestForceTakeoverRefusedWhenPartnerActive(t *testing.T) {
+	in := base(Trio, Passive)
+	in.Partner = seenPeer("node", Active, 1, 100*sec)
+	in.Partner.Term = 1
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.Command = CmdForceTakeover
+	out := Step(in)
+	if out.Persist.Role != Passive || hasKind(out, ActPromote) || countEvents(out, "Übernahme erzwingen abgelehnt") != 1 {
+		t.Fatalf("Rolle %s, Aktionen %v, Ereignisse %v", out.Persist.Role, out.Actions, out.Events)
+	}
+	// Partner weg: der Notweg bleibt
+	in.Partner.Seen = false
+	if out = Step(in); out.Persist.Role != Active || !hasKind(out, ActPromote) {
+		t.Fatalf("Notweg: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+}

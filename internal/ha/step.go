@@ -239,6 +239,12 @@ func (s *stepper) forceTakeover() bool {
 	if s.p.Role == Active {
 		return false
 	}
+	// Die Schnittstelle prüft das schon, der Befehl läuft aber erst in diesem Takt: Inzwischen
+	// kann der Partner einen Tausch zurückgenommen haben und schreibbar sein.
+	if pa := s.in.Partner; seen(pa) && pa.Role == Active {
+		s.event("alarm", "Übernahme erzwingen abgelehnt: der Partner ist aktiv")
+		return false
+	}
 	s.manual = true
 	defer func() { s.manual = false }()
 	t := s.p.Term
