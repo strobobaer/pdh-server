@@ -20,7 +20,7 @@ bash deploy/ha-lab/ha-lab.sh status      # pdh-ha status aller drei
 bash deploy/ha-lab/ha-lab.sh <Szenario>  # ein Szenario (jeweils frisch aufgebaut)
 bash deploy/ha-lab/ha-lab.sh alle        # alle Szenarien nacheinander
 bash deploy/ha-lab/ha-lab.sh down        # Labor samt Volumes entfernen
-bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.24
+bash deploy/ha-lab/ha-lab.sh race        # go test -race in golang:1.24, mit echtem rsync
 ```
 
 `up` richtet node1 ein, lässt node2 und den Zeugen mit Beitrittscode
@@ -174,3 +174,5 @@ durch ein Skript, das jeden Aufruf protokolliert und den echten Lauf ausführt o
 | `spiegel-uebernahme-im-abgleich` | 50 MB bei 200 KB/s, Frist 90 s, Tausch hängt im letzten Abgleich, node2 „Übernahme erzwingen“ | nie zwei schreibbare Datenbanken (Messung 0,1 s, Wächter sofort); node1 wird über genau einen echten `pg_rewind` Standby, keine Neukopie, Merker weg; Spiegelung läuft von node2 nach node1 |
 | `spiegel-rejoin-abbruch` | node1 hart anhalten, node2 übernimmt, node1 startet, echtes `pg_rewind` wird nach 20 ms abgebrochen und pdh-ha stirbt; dann node2 anhalten, node1 neu starten, node2 starten, `pdh-ha rejoin` | Datenbank auf node1 bleibt gestoppt, Markierdatei und Alarm, „Übernahme erzwingen“ abgelehnt, auch ohne Partner; nach dem Neustart wieder gestoppt; `rejoin` kopiert neu ohne weiteren `pg_rewind`, Markierdatei weg, synchroner Standby |
 | `spiegel-rolling-update` | erst im Erstabgleich Update und Tausch versuchen, dann Aufbau wie `update-ok` mit Hochladen bis zum Tausch | im Erstabgleich beides abgelehnt („Erstabgleich“); danach Update abgeschlossen, node2 aktiv, keine bestätigte Datei fehlt, Spiegelung in neuer Richtung |
+
+`spiegel-heartbeat` braucht rund 2,5 GB freien Platz (Dateien auf beiden Servern und alte Fassungen im Papierkorb).
