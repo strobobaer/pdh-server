@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"pdh/internal/ha"
 )
@@ -589,5 +590,32 @@ func TestNcCheckAlarmNamesFiles(t *testing.T) {
 		if !strings.Contains(e.Text, "nobody/files/f000") || strings.Contains(e.Text, "nobody/files/f100") || !strings.Contains(e.Text, "weitere") {
 			t.Fatalf("Alarm bei vielen Dateien: %q", e.Text)
 		}
+	}
+}
+
+// R45 (B5): Dateinamen legen Benutzer fest; im Alarm stehen sie gesäubert und begrenzt.
+func TestNcNamesSanitized(t *testing.T) {
+	long := "a\nb\x1b[31mc`d" + strings.Repeat("ä", 4000)
+	s := ncNames(&ncResult{Missing: []string{long, "[Hier neu anmelden](http://x)"}, Total: 2})
+	if strings.ContainsAny(s, "\n\r\x1b") {
+		t.Fatalf("Steuerzeichen: %q", s)
+	}
+	if !utf8.ValidString(s) {
+		t.Fatalf("ungültiges UTF-8: %q", s)
+	}
+	parts := strings.Split(s, ", ")
+	if len(parts) != 2 {
+		t.Fatalf("Teile: %q", s)
+	}
+	for _, p := range parts {
+		if !strings.HasPrefix(p, "`") || !strings.HasSuffix(p, "`") || strings.Contains(p[1:len(p)-1], "`") {
+			t.Fatalf("nicht als Code gesetzt: %q", p)
+		}
+	}
+	if n := utf8.RuneCountInString(parts[0]); n > 122 {
+		t.Fatalf("Länge %d", n)
+	}
+	if !strings.HasPrefix(parts[0], "`a b[31mc'd") {
+		t.Fatalf("gesäubert: %q", parts[0][:20])
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"pdh/internal/ha"
 )
@@ -633,10 +634,38 @@ func (rt *mirrorRT) ncCheckAfterTakeover(ctx context.Context, q ncQuery, s ha.Se
 	}
 }
 
+// ncSafeName: Dateinamen legen Benutzer fest, der Alarm geht als Markdown in Chat und Mail
+// der Admins. Darum ohne Steuerzeichen, eine Zeile, begrenzt und als Code gesetzt.
+func ncSafeName(name string) string {
+	var sb strings.Builder
+	n := 0
+	for _, r := range strings.ToValidUTF8(name, "?") {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			r = ' '
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
+			continue
+		case r == '`':
+			r = '\''
+		}
+		if n == ncAlarmNameLen-1 { // mit dem Zeichen „…“ höchstens ncAlarmNameLen
+			sb.WriteRune('…')
+			break
+		}
+		sb.WriteRune(r)
+		n++
+	}
+	return "`" + sb.String() + "`"
+}
+
 // ncNames: die ersten fehlenden Dateien für den Alarm; die ganze Liste steht im Status.
 func ncNames(r *ncResult) string {
 	n := min(len(r.Missing), ncAlarmNames)
-	s := strings.Join(r.Missing[:n], ", ")
+	names := make([]string, n)
+	for i, m := range r.Missing[:n] {
+		names[i] = ncSafeName(m)
+	}
+	s := strings.Join(names, ", ")
 	if r.Total > n {
 		s += fmt.Sprintf(" und %d weitere", r.Total-n)
 	}

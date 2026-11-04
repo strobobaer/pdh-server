@@ -28,13 +28,14 @@ import (
 )
 
 const (
-	ncCronName    = "nextcloud"
-	ncCertbot     = "certbot.timer"
-	ncOccWait     = 30 * time.Second
-	ncMissingKeep = 200     // so viele fehlende Pfade nennt der Status höchstens
-	ncAlarmNames  = 5       // so viele davon nennt der Alarm
-	ncQueryLimit  = 100000  // Zeilen des Prüflaufs (die neuesten nach fileid)
-	ncFileMax     = 1 << 20 // größere Konfigurations- und Zertifikatsdateien werden nicht gelesen
+	ncCronName     = "nextcloud"
+	ncCertbot      = "certbot.timer"
+	ncOccWait      = 30 * time.Second
+	ncMissingKeep  = 200     // so viele fehlende Pfade nennt der Status höchstens
+	ncAlarmNames   = 5       // so viele davon nennt der Alarm
+	ncAlarmNameLen = 120     // so viele Zeichen je Name nennt der Alarm
+	ncQueryLimit   = 100000  // Zeilen des Prüflaufs (die neuesten nach fileid)
+	ncFileMax      = 1 << 20 // größere Konfigurations- und Zertifikatsdateien werden nicht gelesen
 )
 
 var (
