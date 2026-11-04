@@ -430,7 +430,7 @@ func TestHAMirrorConfirm(t *testing.T) {
 	const form = `action="/admin/server-config/ha/mirror-confirm"`
 	wait := map[string]any{"wait_confirm": []string{"uploads", "nginx"}}
 	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, wait), true, true, "")
-	if !strings.Contains(out, form) || !strings.Contains(out, "Dieser Server ist vollständig") || !strings.Contains(out, "uploads") {
+	if !strings.Contains(out, form) || !strings.Contains(out, "Dieser Server ist vollständig") || !strings.Contains(out, "(2)") || !strings.Contains(out, "uploads") {
 		t.Errorf("Knopf oder Quellen fehlen: %s", out)
 	}
 	if !strings.Contains(out, "onsubmit=\"return confirm(") || !strings.Contains(out, "Papierkorb") {
