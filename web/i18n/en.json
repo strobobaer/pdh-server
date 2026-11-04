@@ -900,6 +900,7 @@
  "PDH_NEXTCLOUD_BASEURL zeigt auf die feste Adresse %s eines Servers. Besser einen Namen oder die mitwandernde Adresse eintragen, sonst findet das PDH Nextcloud nach einer Übernahme nicht.": "PDH_NEXTCLOUD_BASEURL points to the fixed address %s of a server. Better enter a name or the floating address, otherwise PDH will not find Nextcloud after a takeover.",
  "Eine Frist über 150 s kann ein Update mit Rollentausch abbrechen lassen": "A deadline over 150 s can make an update with a role swap abort",
  "Ohne Löschen übertragen, weil der Erstabgleich beim Wechsel fehlte": "Transferred without deleting because the initial sync was missing at the switch",
+ "wartet auf Bestätigung": "waiting for confirmation",
  "Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht": "Waiting for confirmation, nothing is deleted on the partner",
  "Dieser Server ist vollständig": "This server is complete",
  "Dieser Server ist wirklich vollständig? Abweichende Dateien am Partner wandern in den Papierkorb.": "Is this server really complete? Differing files on the partner move to the trash.",

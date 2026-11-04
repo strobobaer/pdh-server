@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -263,7 +264,7 @@ func TestMirrorMigration155(t *testing.T) {
 	}
 	s := string(b)
 	for _, want := range []string{
-		"'system.file_mirror'", "Datei-Spiegelung einstellen", "'system.file_mirror_admin'", "Papierkorb der Datei-Spiegelung leeren",
+		"'system.file_mirror'", "Datei-Spiegelung einstellen", "'system.file_mirror_admin'", "Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren",
 		"'System & Sicherheit'", "o.key = 'system.server_config'", "ON CONFLICT (key) DO NOTHING", "ON CONFLICT DO NOTHING",
 	} {
 		if !strings.Contains(s, want) {
@@ -475,5 +476,53 @@ func TestHAMirrorConfirm(t *testing.T) {
 	f.mu.Unlock()
 	if msg, err := mwHandler().haDoMirrorConfirm(context.Background(), url.Values{}); err == nil || !strings.Contains(err.Error(), "aktiven") {
 		t.Errorf("Ablehnung: %q %v", msg, err)
+	}
+}
+
+// R56: Beim Warten zeigt die Karte nicht grün „bereit“, und die Quellenzeile sagt es auch.
+func TestHAMirrorWaitingNotReady(t *testing.T) {
+	wait := map[string]any{"wait_confirm": []string{"uploads"}, "sources": []map[string]any{
+		{"label": "uploads", "last_ok_ago": 5.0, "waiting": true}, {"label": "etc-pdh", "last_ok_ago": 5.0}}}
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, wait), true, true, "")
+	if strings.Contains(out, ">{{t") || strings.Contains(out, "</span> bereit</span>") {
+		t.Errorf("Karte meldet bereit: %s", out)
+	}
+	if !strings.Contains(out, "wartet auf Bestätigung") {
+		t.Errorf("Zustand fehlt: %s", out)
+	}
+	row := strings.Index(out, "<code class=\"vp-key\">uploads</code>")
+	other := strings.Index(out, "<code class=\"vp-key\">etc-pdh</code>")
+	if row < 0 || other < row || !strings.Contains(out[row:other], "wartet") {
+		t.Errorf("Quellenzeile: %s", out)
+	}
+	if !strings.Contains(out, "ha-mirror-wait") {
+		t.Errorf("Wartemeldung ohne eigene Klasse: %s", out)
+	}
+	if ready := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{}), true, true, ""); !strings.Contains(ready, "bereit") {
+		t.Errorf("ohne Warten nicht bereit: %s", ready)
+	}
+}
+
+// R56: Die Route ist am Router, und ohne Recht führt sie nicht zum Socket.
+func TestHAMirrorConfirmRoute(t *testing.T) {
+	b, err := os.ReadFile("handler.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ReplaceAll(string(b), "\r", ""), `r.Post("/admin/server-config/ha/mirror-confirm", h.HAMirrorConfirmWeb)`) {
+		t.Fatal("Route fehlt")
+	}
+	found := false
+	walk := func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method == http.MethodPost && route == "/admin/server-config/ha/mirror-confirm" {
+			found = true
+		}
+		return nil
+	}
+	if err := chi.Walk((&Handler{}).Routes(), walk); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Route nicht am Router")
 	}
 }

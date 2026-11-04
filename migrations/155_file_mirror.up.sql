@@ -2,7 +2,7 @@
 -- Datei-Spiegelung (Ausfallschutz Teil 6): zwei neue Rechte (Kategorie System & Sicherheit).
 INSERT INTO permissions (key, label, category) VALUES
     ('system.file_mirror', 'Datei-Spiegelung einstellen', 'System & Sicherheit'),
-    ('system.file_mirror_admin', 'Papierkorb der Datei-Spiegelung leeren', 'System & Sicherheit')
+    ('system.file_mirror_admin', 'Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren', 'System & Sicherheit')
 ON CONFLICT (key) DO NOTHING;
 
 -- Die Rechte gelten systemweit: nur Rollen, deren Quellrecht überall gilt (department_id IS NULL),

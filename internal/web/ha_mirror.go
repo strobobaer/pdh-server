@@ -2,7 +2,7 @@ package web
 
 // Datei-Spiegelung (Ausfallschutz Teil 6, Spec 9–11): Karte „Datei-Spiegelung“
 // im Reiter Ausfallschutz. Das PDH liest apiStatus.Mirror von pdh-ha, speichert
-// die Einstellungen über PUT /v1/settings und reicht zwei Knöpfe weiter.
+// die Einstellungen über PUT /v1/settings und reicht die Knöpfe weiter.
 //
 //	POST /admin/server-config/ha/mirror              Einstellungen speichern      (system.file_mirror)
 //	POST /admin/server-config/ha/mirror-run          Abgleich jetzt               (system.file_mirror)
@@ -81,6 +81,7 @@ type haMirrorSource struct {
 	Skipped   bool    `json:"skipped"`
 	Unproven  bool    `json:"unproven"`
 	Err       string  `json:"err"`
+	Waiting   bool    `json:"waiting"`
 }
 
 // Text der Quelle: wann zuletzt abgeglichen.

@@ -900,6 +900,7 @@
  "PDH_NEXTCLOUD_BASEURL zeigt auf die feste Adresse %s eines Servers. Besser einen Namen oder die mitwandernde Adresse eintragen, sonst findet das PDH Nextcloud nach einer Übernahme nicht.": "PDH_NEXTCLOUD_BASEURL bir sunucunun sabit adresi %s’i gösteriyor. Bir ad veya taşınan adresi girmek daha iyidir, aksi halde PDH devralmadan sonra Nextcloud’u bulamaz.",
  "Eine Frist über 150 s kann ein Update mit Rollentausch abbrechen lassen": "150 sn’yi aşan bir süre, rol değişimli bir güncellemenin iptal olmasına yol açabilir",
  "Ohne Löschen übertragen, weil der Erstabgleich beim Wechsel fehlte": "Geçiş sırasında ilk eşitleme eksik olduğu için silmeden aktarıldı",
+ "wartet auf Bestätigung": "onay bekleniyor",
  "Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht": "Onay bekleniyor, eşte hiçbir şey silinmiyor",
  "Dieser Server ist vollständig": "Bu sunucu eksiksiz",
  "Dieser Server ist wirklich vollständig? Abweichende Dateien am Partner wandern in den Papierkorb.": "Bu sunucu gerçekten eksiksiz mi? Eşteki farklı dosyalar çöp kutusuna taşınır.",

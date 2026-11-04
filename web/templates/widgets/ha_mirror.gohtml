@@ -4,6 +4,7 @@
   {{if not $m.On}}<span class="vp-state off"><span class="vp-dot"></span> {{t "aus"}}</span>
   {{else if $m.Running}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "Abgleich läuft"}}</span>
   {{else if not $m.FirstDone}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "Erstabgleich"}}</span>
+  {{else if $m.WaitConfirm}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "wartet auf Bestätigung"}}</span>
   {{else if $m.Active}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "bereit"}}</span>
   {{else}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "empfängt"}}</span>{{end}}</div>
 
@@ -24,7 +25,8 @@
   {{range $m.Sources}}
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:4px">
     <code class="vp-key">{{.Label}}</code><span class="vp-meta">{{if .Skipped}}{{t "übersprungen"}}{{else}}{{.AgoText}}{{end}}</span>
-    {{if .Unproven}}<span class="vp-meta" style="font-weight:600;color:var(--text)" title="{{t "Läuft ohne Löschen, bis der Partner die Quelle belegt hat"}}">{{t "ohne Löschen"}}</span>{{end}}
+    {{if .Waiting}}<span class="vp-meta" style="font-weight:600;color:var(--text)">{{t "wartet auf Bestätigung"}}</span>
+    {{else if .Unproven}}<span class="vp-meta" style="font-weight:600;color:var(--text)" title="{{t "Läuft ohne Löschen, bis der Partner die Quelle belegt hat"}}">{{t "ohne Löschen"}}</span>{{end}}
     {{if .Err}}<span class="vp-meta" style="color:var(--red)">{{.Err}}</span>{{end}}
   </div>
   {{end}}
@@ -42,7 +44,7 @@
 {{if .CertBad}}<div class="vp-msg err"><i class="ti ti-certificate"></i> {{t "Das Zertifikat von Nextcloud enthält die mitwandernde Adresse nicht. Nach einer Übernahme meldet der Browser einen Zertifikatsfehler."}}</div>{{end}}
 {{if .BaseWarn}}<div class="vp-msg err"><i class="ti ti-link"></i> {{t "PDH_NEXTCLOUD_BASEURL zeigt auf die feste Adresse %s eines Servers. Besser einen Namen oder die mitwandernde Adresse eintragen, sonst findet das PDH Nextcloud nach einer Übernahme nicht." .BaseWarn}}</div>{{end}}
 {{if .FinalHigh}}<div class="vp-msg err"><i class="ti ti-clock-exclamation"></i> {{t "Eine Frist über 150 s kann ein Update mit Rollentausch abbrechen lassen"}}</div>{{end}}
-{{if $m.WaitConfirm}}<div class="vp-msg err"><i class="ti ti-shield-question"></i> {{t "Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht"}} ({{len $m.WaitConfirm}}): {{range $i, $l := $m.WaitConfirm}}{{if $i}}, {{end}}<span class="vp-key">{{$l}}</span>{{end}}</div>{{else if $m.Unproven}}<div class="vp-msg err"><i class="ti ti-shield-question"></i> {{t "Ohne Löschen übertragen, weil der Erstabgleich beim Wechsel fehlte"}}: {{range $i, $l := $m.Unproven}}{{if $i}}, {{end}}{{$l}}{{end}}</div>{{end}}
+{{if $m.WaitConfirm}}<div class="vp-msg err ha-mirror-wait"><i class="ti ti-shield-question"></i> {{t "Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht"}} ({{len $m.WaitConfirm}}): {{range $i, $l := $m.WaitConfirm}}{{if $i}}, {{end}}<span class="vp-key">{{$l}}</span>{{end}}</div>{{else if $m.Unproven}}<div class="vp-msg err"><i class="ti ti-shield-question"></i> {{t "Ohne Löschen übertragen, weil der Erstabgleich beim Wechsel fehlte"}}: {{range $i, $l := $m.Unproven}}{{if $i}}, {{end}}{{$l}}{{end}}</div>{{end}}
 {{if $m.NCMissingTotal}}
 <div class="vp-msg err"><i class="ti ti-file-off"></i> <b>{{t "Nach der Übernahme fehlen %d Nextcloud-Dateien" $m.NCMissingTotal}}</b> ({{t "geprüft: %d neueste Einträge" $m.NCChecked}})
   <ul style="margin:4px 0 0;padding-left:18px">{{range .MissingShown}}<li class="vp-key">{{.}}</li>{{end}}</ul>
@@ -75,7 +77,7 @@
   <div><label class="form-label">{{t "Bandbreite (KB/s, 0 = unbegrenzt)"}}</label><input class="form-input" type="number" name="mirror_bwlimit_kb" min="0" value="{{$f.BWLimitKB}}"></div>
   <div><label class="form-label">{{t "Nextcloud-Datenordner"}}</label><input class="form-input" name="nc_data_dir" value="{{$f.NCDataDir}}" placeholder="/srv/nextcloud/data" autocomplete="off"></div>
   <div><label class="form-label">{{t "Nextcloud-Programmordner"}}</label><input class="form-input" name="nc_app_dir" value="{{$f.NCAppDir}}" placeholder="/var/www/nextcloud" autocomplete="off"></div>
-  <div><button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> {{t "Speichern"}}</button></div>
+  <div><button class="btn btn-primary ha-mirror-save" type="submit"><i class="ti ti-device-floppy"></i> {{t "Speichern"}}</button></div>
 </form>
 <p class="vp-hint">{{t "Mit „Nextcloud mitnehmen“ braucht es den Datenordner. Die Frist des letzten Abgleichs sollte 150 s nicht übersteigen."}}</p>
 {{else}}
