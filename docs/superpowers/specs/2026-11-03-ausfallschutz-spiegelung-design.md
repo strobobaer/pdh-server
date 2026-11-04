@@ -252,7 +252,7 @@ Lauf je Quelle, Laufzeit, Erstabgleich mit Fortschritt, Warnungen aus den Abschn
 6 und 8, Papierkorb mit Größe und Knopf zum Leeren, Einstellungen. Neue Oberfläche wird
 in Fiori und Fluent, hell und dunkel und bei 390 px geprüft.
 
-**Befehle:** `pdh-ha mirror status`, `pdh-ha mirror run` (Abgleich sofort),
+**Befehle:** `pdh-ha mirror status`, `pdh-ha mirror run` (Abgleich sofort), `pdh-ha mirror confirm` (Abschnitt 5),
 `pdh-ha mirror-pipe` (nur intern für rsync). `pdh-ha status` bekommt eine Zeile
 „Spiegelung“, nicht am Zeugen.
 

@@ -7,6 +7,7 @@ package web
 //	POST /admin/server-config/ha/mirror              Einstellungen speichern      (system.file_mirror)
 //	POST /admin/server-config/ha/mirror-run          Abgleich jetzt               (system.file_mirror)
 //	POST /admin/server-config/ha/mirror-trash-empty  Papierkorb leeren, endgültig (system.file_mirror_admin)
+//	POST /admin/server-config/ha/mirror-confirm      Dieser Server ist vollständig (system.file_mirror_admin)
 //
 // Beide Rechte gelten systemweit (wie das Wartungsfenster): ein auf eine
 // Abteilung begrenztes Recht reicht nicht.
@@ -71,6 +72,7 @@ type haMirror struct {
 	CertCovers     *bool            `json:"cert_covers"` // null = kein TLS
 	Sources        []haMirrorSource `json:"sources"`
 	Unproven       []string         `json:"unproven"`
+	WaitConfirm    []string         `json:"wait_confirm"` // wartet auf Bestätigung (R47)
 }
 
 type haMirrorSource struct {
@@ -98,6 +100,8 @@ type mirrorView struct {
 	Form   mirrorForm
 	Edit   bool // Einstellungen als Formular (sonst nur Anzeige)
 	CanRun bool // „Abgleich jetzt“
+	// „Dieser Server ist vollständig“: nur mit dem Recht, am aktiven Server, wenn eine Quelle wartet
+	CanConfirm bool
 	// Papierkorb leeren: nur mit dem Recht und wenn am aktiven Server etwas liegt
 	CanTrash bool
 
@@ -143,6 +147,7 @@ func (v haView) MirrorView() mirrorView {
 	mv.Edit = v.MirrorCan && v.CanEditSettings()
 	mv.CanRun = v.MirrorCan && m.On && m.Active
 	mv.CanTrash = v.MirrorAdmin && m.Active && m.TrashBytes > 0
+	mv.CanConfirm = v.MirrorAdmin && m.On && m.Active && len(m.WaitConfirm) > 0
 	mv.FinalHigh = m.On && mv.Form.FinalS > mirrorFinalWarnS
 	if m.On && s.MirrorNextcloud {
 		mv.BaseWarn = mirrorBaseURLWarn(v.NCBaseURL, v.Status.Access.VIP, v.nodeAddrs())
@@ -348,4 +353,18 @@ func (h *Handler) HAMirrorRunWeb(w http.ResponseWriter, r *http.Request) {
 // HAMirrorTrashEmptyWeb: POST /admin/server-config/ha/mirror-trash-empty
 func (h *Handler) HAMirrorTrashEmptyWeb(w http.ResponseWriter, r *http.Request) {
 	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorTrash, "mirror-trash-empty")(w, r)
+}
+
+// haDoMirrorConfirm: Dieser Server ist vollständig: Der nächste Abgleich löscht am Partner.
+// Der passive Server lehnt über pdh-ha ab.
+func (h *Handler) haDoMirrorConfirm(ctx context.Context, _ url.Values) (string, error) {
+	if err := h.haDo(ctx, http.MethodPost, "/v1/mirror/confirm", map[string]any{}, nil); err != nil {
+		return "", err
+	}
+	return "Bestätigt: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in den Papierkorb", nil
+}
+
+// HAMirrorConfirmWeb: POST /admin/server-config/ha/mirror-confirm
+func (h *Handler) HAMirrorConfirmWeb(w http.ResponseWriter, r *http.Request) {
+	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorConfirm, "mirror-confirm")(w, r)
 }

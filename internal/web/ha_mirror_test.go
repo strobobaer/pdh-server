@@ -423,3 +423,57 @@ func mirrorEdit(t *testing.T, status string, fn func(map[string]any)) string {
 	b, _ := json.Marshal(m)
 	return string(b)
 }
+
+// R47: „Dieser Server ist vollständig“ nur mit system.file_mirror_admin, nur am aktiven Server
+// und nur, wenn eine Quelle wartet; der passive Server lehnt über pdh-ha ab.
+func TestHAMirrorConfirm(t *testing.T) {
+	const form = `action="/admin/server-config/ha/mirror-confirm"`
+	wait := map[string]any{"wait_confirm": []string{"uploads", "nginx"}}
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, wait), true, true, "")
+	if !strings.Contains(out, form) || !strings.Contains(out, "Dieser Server ist vollständig") || !strings.Contains(out, "uploads") {
+		t.Errorf("Knopf oder Quellen fehlen: %s", out)
+	}
+	if !strings.Contains(out, "onsubmit=\"return confirm(") || !strings.Contains(out, "Papierkorb") {
+		t.Errorf("Rückfrage fehlt: %s", out)
+	}
+	if out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, wait), true, false, ""); strings.Contains(out, form) {
+		t.Errorf("Knopf ohne Recht: %s", out)
+	} else if !strings.Contains(out, "uploads") {
+		t.Errorf("Hinweis ohne Recht fehlt: %s", out)
+	}
+	if out := mirrorCard(t, mirrorStatusJSON(t, "passiv", nil, wait), true, true, ""); strings.Contains(out, form) {
+		t.Errorf("Knopf am passiven Server: %s", out)
+	}
+	if out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{}), true, true, ""); strings.Contains(out, form) {
+		t.Errorf("Knopf ohne wartende Quelle: %s", out)
+	}
+
+	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, wait), events: `[]`}
+	startFakeHA(t, f)
+	post := func(h *Handler) int {
+		rec := httptest.NewRecorder()
+		h.HAMirrorConfirmWeb(rec, mwReq("/admin/server-config/ha/mirror-confirm", url.Values{}))
+		return rec.Code
+	}
+	for _, missing := range [][]string{{permFileMirrorAdmin}, {permFileMirror, permFileMirrorAdmin}} {
+		if c := post(mwHandler(missing...)); c != http.StatusForbidden {
+			t.Errorf("ohne %v: %d", missing, c)
+		}
+	}
+	if f.count("POST /v1/mirror/confirm") != 0 {
+		t.Fatalf("Socket ohne Recht: %v", f.callList())
+	}
+	if c := post(mwHandler()); c != http.StatusSeeOther && c != http.StatusFound {
+		t.Errorf("mit Recht: %d", c)
+	}
+	if f.count("POST /v1/mirror/confirm") != 1 {
+		t.Errorf("nicht weitergereicht: %v", f.callList())
+	}
+	// Ablehnung am passiven Server wird angezeigt und nicht als Erfolg gemeldet
+	f.mu.Lock()
+	f.replies = map[string]fakeReply{"/v1/mirror/confirm": {400, `{"ok":false,"error":"Nur auf dem aktiven Server möglich"}`}}
+	f.mu.Unlock()
+	if msg, err := mwHandler().haDoMirrorConfirm(context.Background(), url.Values{}); err == nil || !strings.Contains(err.Error(), "aktiven") {
+		t.Errorf("Ablehnung: %q %v", msg, err)
+	}
+}

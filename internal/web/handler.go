@@ -619,6 +619,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/admin/server-config/ha/mirror", h.HAMirrorWeb) // Datei-Spiegelung (ha_mirror.go)
 	r.Post("/admin/server-config/ha/mirror-run", h.HAMirrorRunWeb)
 	r.Post("/admin/server-config/ha/mirror-trash-empty", h.HAMirrorTrashEmptyWeb)
+	r.Post("/admin/server-config/ha/mirror-confirm", h.HAMirrorConfirmWeb)
 	r.Post("/admin/server-config/update-window", h.UpdateWindowWeb)
 	r.Post("/admin/server-config/ha/access", h.HAAccessWeb)
 	r.Post("/admin/server-config/ha/vip-test", h.HAVIPTestWeb)
