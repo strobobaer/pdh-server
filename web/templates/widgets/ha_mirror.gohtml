@@ -57,7 +57,7 @@
 {{end}}
 
 {{if or .CanRun .CanTrash}}
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
+<div class="ha-mirror-acts" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
   {{if .CanRun}}<form method="post" action="/admin/server-config/ha/mirror-run"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-refresh"></i> {{t "Jetzt abgleichen"}}</button></form>{{end}}
   {{if .CanTrash}}<form method="post" action="/admin/server-config/ha/mirror-trash-empty" onsubmit="return confirm('{{t "Papierkorb mit %s endgültig leeren? Das lässt sich nicht rückgängig machen." .TrashText}}')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> {{t "Papierkorb leeren"}}</button></form>{{end}}
 </div>

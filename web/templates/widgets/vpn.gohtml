@@ -3,7 +3,7 @@
 
 {{define "vpn-style"}}
 <style>
-.vp-msg{font-size:12.5px;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.vp-msg{font-size:12.5px;padding:8px 12px;border-radius:8px;margin-bottom:12px;overflow-wrap:anywhere}
 .vp-msg.ok{background:rgba(16,185,129,.12);color:var(--green)}
 .vp-msg.err{background:rgba(239,68,68,.12);color:var(--red)}
 .vp-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:999px;background:var(--bg3)}
@@ -20,7 +20,8 @@
 .vp-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap}
 .vp-row.off{opacity:.55}
 .vp-row b{font-size:13.5px}
-.vp-meta{font-size:11.5px;color:var(--muted)}
+.vp-meta{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+html[data-style="fiori"][data-theme="dark"] .ha-mirror-acts .btn:not(.btn-primary){color:var(--text)}
 .vp-acts{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;align-items:center}
 .vp-show{border:2px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--bg2)}
 .vp-show-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px;align-items:start}
