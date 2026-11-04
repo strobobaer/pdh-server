@@ -1588,7 +1588,7 @@ mirror_enable() {
 
 # has_proof <Container> <Quelle>: eigener Beleg laut Ablage des Empfängers
 has_proof() {
-    docker exec "$1" cat /var/lib/pdh-ha/mirror-inbox.json 2>/dev/null | grep -q "\"proof\":{[^}]*\"$2\":{"
+    docker exec "$1" cat /var/lib/pdh-ha/mirror-inbox.json 2>/dev/null | grep -q "\"$2\":{\"at\":"
 }
 
 # file_id <Container> <Pfad>: „Prüfsumme Besitzer“, leer, wenn die Datei fehlt
