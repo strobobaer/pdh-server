@@ -30,7 +30,7 @@ func withdrawnRig(t *testing.T) (*mdt, *pgActor, *svcLog) {
 		return errors.New("rsync 23")
 	}
 	m.rs.mu.Unlock()
-	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
+	m.noWatchCover() // der letzte Abgleich läuft in jedem Fall voll
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -488,9 +488,12 @@ func TestMirrorStaleRoleDoesNotDecide(t *testing.T) {
 	}
 }
 
-// touchUpload: eine neue Datei vor dem Tausch. Sonst ruft der letzte Abgleich rsync je nach
-// Zeitablauf gar nicht auf: Deckt der Watch die Quelle ab und ist nichts vorgemerkt, gibt es nichts
-// zu tun (unter Linux der Regelfall).
-func (m *mdt) touchUpload() {
-	_ = os.WriteFile(filepath.Join(m.dir, "repo", "uploads", "vor-dem-tausch"), []byte("x"), 0o644)
+// noWatchCover: Das Rig hat keine echten inotify-Beobachtungen (watchAdd). Der letzte Abgleich ruft
+// rsync nur, wenn der Watch die Quelle nicht abdeckt; ob das so ist, hinge sonst vom Zeitablauf ab.
+func (m *mdt) noWatchCover() {
+	m.t.Helper()
+	wk := m.rt().worker.Load()
+	wk.mu.Lock()
+	wk.fullAt = map[string]time.Time{}
+	wk.mu.Unlock()
 }
