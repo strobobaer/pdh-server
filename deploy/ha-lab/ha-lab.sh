@@ -17,7 +17,8 @@
 #            spiegel-tausch-frist spiegel-tausch-wiederholung spiegel-ausfall
 #            spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
 #            spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch
-#            spiegel-rolling-update
+#            spiegel-rolling-update spiegel-ruecknahme-uebernahme
+#            spiegel-netz-weg-im-abgleich
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -60,7 +61,8 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     update-abbruch-vorher update-verweigert
     spiegel-datei spiegel-loeschen spiegel-tausch spiegel-tausch-frist spiegel-tausch-wiederholung
     spiegel-ausfall spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
-    spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update)
+    spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update
+    spiegel-ruecknahme-uebernahme spiegel-netz-weg-im-abgleich)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -1620,9 +1622,22 @@ rw_probe_check() {
     local last first
     last="$(docker exec "$1" awk '$2 == "t" { x = $1 } END { print x + 0 }' /var/lib/pdh-lab/rw.log)"
     first="$(docker exec "$2" awk '$2 == "t" { print $1; exit }' /var/lib/pdh-lab/rw.log)"
-    [[ -n "$last" && -n "$first" ]] || fail "Messung der Schreibbarkeit unvollständig ($1: $last, $2: $first)"
+    ((last > 0)) || fail "Messung zeigt nichts: $1 war nie schreibbar"
+    [[ -n "$first" ]] || fail "Messung zeigt nichts: $2 wurde nie schreibbar"
     log "$1 zuletzt schreibbar $((first - last)) ms, bevor $2 schreibbar wurde"
     ((last < first)) || fail "zwei schreibbare Server: $1 noch $((last - first)) ms schreibbar, nachdem $2 es schon war"
+}
+
+# rw_probe_only <aktiver Server> <Partner>: Rücknahme: der Partner war nie schreibbar,
+# der aktive Server schon, und ist es am Ende wieder
+rw_probe_only() {
+    local last n
+    last="$(docker exec "$1" tail -n 1 /var/lib/pdh-lab/rw.log | cut -d" " -f2)"
+    n="$(docker exec "$1" grep -c ' t$' /var/lib/pdh-lab/rw.log)"
+    ((n > 0)) || fail "Messung zeigt nichts: $1 war nie schreibbar"
+    [[ "$last" == t ]] || fail "$1 ist am Ende nicht schreibbar ($last)"
+    n="$(docker exec "$2" grep -c ' t$' /var/lib/pdh-lab/rw.log)" || true
+    [[ "${n:-0}" == 0 ]] || fail "zwei schreibbare Server: $2 war $n Mal schreibbar"
 }
 
 # Hochladen bis pdh stoppt: dieselbe Sperrdatei wie „pdh-dummy stop“ – eine
@@ -1728,8 +1743,10 @@ nc_start_ok() {
 }
 
 # pg_rewind_wrap <Container> <log|abbruch>: pg_rewind ersetzen, Aufrufe stehen in
-# /var/lib/pdh-lab/rewind.log. log: echtes pg_rewind. abbruch: der echte Lauf wird
-# nach 20 ms hart beendet, das Skript hängt, und die Marke rewind-begonnen entsteht
+# /var/lib/pdh-lab/rewind.log. log: echtes pg_rewind. abbruch: der echte Lauf wird hart
+# beendet, sobald er die erste Datei im Datenordner verändert hat (neuer als ein Stempel
+# von vor dem Lauf), das Skript hängt danach. In rewind-begonnen steht „geaendert=<Anzahl>“
+# oder, wenn der Lauf vorher endete, „nicht-unterbrochen“: Dann zeigt das Szenario nichts.
 pg_rewind_wrap() {
     docker exec "$1" bash -c '
         m=$1
@@ -1740,9 +1757,19 @@ pg_rewind_wrap() {
             echo "echo \"\$(date +%H:%M:%S) \$*\" >>/var/lib/pdh-lab/rewind.log"
             echo "case \" \$* \" in *\" --dry-run \"*) exec \"$b.real\" \"\$@\" ;; esac"
             if [[ "$m" == abbruch ]]; then
+                echo "s=/var/lib/pdh-lab/rewind-stempel; : >\"\$s\"; sleep 0.05"
                 echo "\"$b.real\" \"\$@\" >/dev/null 2>&1 &"
-                echo "p=\$!; sleep 0.02; kill -9 \"\$p\" 2>/dev/null"
-                echo ": >/var/lib/pdh-lab/rewind-begonnen"
+                echo "p=\$!"
+                echo "while kill -0 \"\$p\" 2>/dev/null; do"
+                echo "    n=\$(find \"\$2\" -type f -newer \"\$s\" 2>/dev/null | wc -l)"
+                echo "    if ((n > 0)); then"
+                echo "        kill -9 \"\$p\"; wait \"\$p\" 2>/dev/null"
+                echo "        echo \"geaendert=\$(find \"\$2\" -type f -newer \"\$s\" | wc -l)\" >/var/lib/pdh-lab/rewind-begonnen"
+                echo "        exec sleep 600"
+                echo "    fi"
+                echo "    sleep 0.01"
+                echo "done"
+                echo "echo nicht-unterbrochen >/var/lib/pdh-lab/rewind-begonnen"
                 echo "exec sleep 600"
             else
                 echo "exec \"$b.real\" \"\$@\""
@@ -1812,6 +1839,7 @@ sc_spiegel_tausch() {
 # node1 bleibt aktiv. f, old und t0 gelten danach beim Aufrufer.
 tausch_frist_ablauf() {
     mirror_enable 10 200
+    rw_probe_start node1 node2
     f="$UPLOADS/gross.bin"
     docker exec node1 sh -c 'echo alte Fassung >"$1"' _ "$f" || fail "alte Fassung anlegen"
     wait_for 15 eval '[[ -n "$(file_id node2 "$f")" ]]' || fail "alte Fassung kommt nicht auf node2 an"
@@ -1842,6 +1870,7 @@ sc_spiegel_tausch_frist() {
     a="$(file_id node1 "$f")"
     wait_for 120 eval '[[ "$(file_id node2 "$f")" == "$a" ]]' || fail "Datei nach dem Abbruch nicht übertragen (Fehler: $(jget merr <<<"$J1"))"
     trash_has node2 gross.bin || fail "alte Fassung nicht im Papierkorb von node2"
+    rw_probe_only node1 node2
 }
 
 sc_spiegel_tausch_wiederholung() {
@@ -1864,6 +1893,7 @@ sc_spiegel_tausch_wiederholung() {
     ((T2 == t0 + 1)) || fail "Amtszeit nach dem zweiten Tausch $T2, erwartet $((t0 + 1))"
     [[ "$(file_id node2 "$f")" == "$a" ]] || fail "große Datei fehlt nach dem Tausch auf node2"
     [[ "$(jget maint <<<"$J2")" == nein ]] || fail "Wartung nach dem zweiten Tausch an"
+    rw_probe_check node1 node2
 }
 
 sc_spiegel_ausfall() {
@@ -2051,19 +2081,26 @@ sc_spiegel_uebernahme_im_abgleich() {
     wait_for 30 eval '[[ "$(file_id node1 "$g")" == "$a" ]]' || fail "Datei von node2 kommt nicht auf node1 an"
 }
 
-# pg_rewind wird mittendrin abgebrochen (echter Lauf hart beendet, pdh-ha stirbt mit):
-# Datenbank bleibt gestoppt, Datei und Alarm, Übernahme wird abgelehnt, auch wenn der
-# Partner weg ist; „pdh-ha rejoin“ kopiert neu.
+# pg_rewind wird mittendrin abgebrochen: 300 MB neue Daten auf node2 geben dem echten Lauf
+# etwas zu kopieren, er wird hart beendet, sobald er den Datenordner verändert hat, und
+# pdh-ha stirbt mit. Datenbank bleibt gestoppt, Datei und Alarm, Übernahme wird abgelehnt,
+# auch wenn der Partner weg ist; „pdh-ha rejoin“ kopiert genau diesen Ordner neu.
 sc_spiegel_rejoin_abbruch() {
-    local marker='/var/lib/postgresql/*/main.rewind-laeuft' r
+    local marker='/var/lib/postgresql/*/main.rewind-laeuft' r w
     pg_rewind_wrap node1 abbruch
     log "node1 hart anhalten, node2 übernimmt"
     docker kill node1 >/dev/null || fail "docker kill node1"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nach 60 s nicht aktiv (node2=$R2)"
     wait_acks 5 30 || fail "auf node2 keine Speicherungen"
-    log "node1 starten – pg_rewind läuft an und wird abgebrochen, pdh-ha stirbt mit"
+    docker exec node2 runuser -u postgres -- psql -XAtq -d lab -v ON_ERROR_STOP=1 \
+        -c "CREATE TABLE rewind_fuellung AS SELECT g, md5(g::text) || repeat('x', 1000) AS pad FROM generate_series(1, 300000) g" >/dev/null ||
+        fail "Fülldaten auf node2 schreiben"
+    log "node1 starten – pg_rewind läuft an und wird nach der ersten Änderung abgebrochen, pdh-ha stirbt mit"
     docker start node1 >/dev/null || fail "docker start node1"
-    wait_for 120 eval 'docker exec node1 test -e /var/lib/pdh-lab/rewind-begonnen' || fail "pg_rewind auf node1 beginnt nicht (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    wait_for 180 eval 'docker exec node1 test -e /var/lib/pdh-lab/rewind-begonnen' || fail "pg_rewind auf node1 beginnt nicht (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    w="$(docker exec node1 cat /var/lib/pdh-lab/rewind-begonnen)"
+    log "pg_rewind abgebrochen: $w"
+    [[ "$w" == geaendert=* && "${w#geaendert=}" -gt 0 ]] || fail "Datenordner vor dem Abbruch nicht verändert: $w"
     docker exec node1 sh -c "ls $marker" >/dev/null || fail "Marke fehlt, während pg_rewind läuft"
     docker exec node1 bash -c 'touch /run/pdh-ha.restart; pkill -KILL -x pdh-ha; pkill -KILL -f "[p]g_rewind"; true' || fail "pdh-ha auf node1 beenden"
     sleep 2
@@ -2084,6 +2121,7 @@ sc_spiegel_rejoin_abbruch() {
     log "Neustart von node1 – die Marke hält, die Datenbank bleibt oder geht wieder aus"
     docker restart -t 2 node1 >/dev/null || fail "docker restart node1"
     wait_for 60 eval '[[ "$R1" != aktiv && "$(jget pg <<<"$J1")" == stopped ]]' || fail "node1 nach Neustart nicht mit gestoppter Datenbank (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    log "pg.status auf dem halb zurückgespulten Ordner: $(jget pg <<<"$J1")"
     log "node2 starten"
     docker start node2 >/dev/null || fail "docker start node2"
     wait_for 120 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary && "$R1" == passiv ]] && pg_writable node2' ||
@@ -2104,6 +2142,8 @@ sc_spiegel_rejoin_abbruch() {
 # update-ok). Vorher: Im Erstabgleich ist das Update nicht „alles grün“ und der Tausch gesperrt.
 sc_spiegel_rolling_update() {
     up_prepare 1 30
+    rw_probe_start node1 node2
+    STRICT_RW=1
     mirror_dirs
     put_file node1 "$UPLOADS/erstabgleich.bin" 50M
     log "Spiegelung ein, Erstabgleich bei 200 KB/s läuft"
@@ -2128,6 +2168,7 @@ sc_spiegel_rolling_update() {
         fail "nicht beide auf lab1 mit node2 aktiv (node1=$R1 $(jget commit <<<"$J1"), node2=$R2 $(jget commit <<<"$J2"))"
     wait_for 30 eval '[[ "$(mig_on node2 lab1)" == t && "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
     upload_check node1 node2
+    rw_probe_check node1 node2
     [[ "$(file_id node2 "$UPLOADS/erstabgleich.bin")" == "$(file_id node1 "$UPLOADS/erstabgleich.bin")" ]] || fail "Datei aus dem Erstabgleich verschieden"
     log "Spiegelung läuft nach dem Update in der neuen Richtung"
     local g="$UPLOADS/nach-dem-update.txt" a
@@ -2136,6 +2177,66 @@ sc_spiegel_rolling_update() {
     wait_for 30 eval '[[ "$(file_id node1 "$g")" == "$a" ]]' || fail "Datei von node2 kommt nicht auf node1 an"
     wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
     up_clean
+}
+
+# R42: „Übernahme erzwingen“ genau am Ende der Frist des letzten Abgleichs, node1 hängt noch in
+# der Wartezeit vor der Rücknahme. Nie zwei Schreibende, node1 endet abgeschottet oder als Standby.
+sc_spiegel_ruecknahme_uebernahme() {
+    pg_rewind_wrap node1 log
+    mirror_enable 10 200
+    rw_probe_start node1 node2
+    STRICT_RW=1
+    log "50 MB bei 200 KB/s, Frist 10 s – Rollentausch hängt im letzten Abgleich"
+    put_file node1 "$UPLOADS/gross.bin" 50M
+    local t0 r
+    t0=$(date +%s%3N)
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 8 eval '[[ "$R1" == passiv && "$(jget pg <<<"$J1")" == primary ]]' || fail "node1 nicht im letzten Abgleich (node1=$R1)"
+    # Takt bis zur Abgabe (bis 1 s) + Frist 10 s; danach 3 Takte Wartezeit bis zur Rücknahme
+    while (($(date +%s%3N) - t0 < 11000)); do sleep 0.1; done
+    r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
+    log "Übernahme erzwingen $(($(date +%s%3N) - t0)) ms nach dem Tausch: $r"
+    [[ "$r" == 200* ]] || fail "Übernahme erzwingen auf node2 abgewiesen, Zeitpunkt verfehlt: $r"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
+    if wait_for 120 mirror_ok_rev; then
+        log "node1 ist Standby (pg_rewind echt: $(rewind_real_runs node1))"
+    else
+        log "node1 bleibt abgeschottet (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    fi
+    [[ "$R1" == passiv ]] || fail "node1 am Ende nicht passiv ($R1)"
+    ! pg_writable node1 || fail "node1 am Ende schreibbar"
+    pdh_on node1 && [[ "$(jget pg <<<"$J1")" != standby ]] && fail "pdh läuft auf dem abgeschotteten node1"
+    rw_probe_check node1 node2
+    STRICT_RW=0
+}
+
+# R43: node1 verliert im letzten Abgleich Partner und Zeugen, node2 übernimmt mit dem Zeugen.
+# node1 wird nie schreibbar (keine Rücknahme ohne Sicht) und nach der Rückkehr per pg_rewind Standby.
+sc_spiegel_netz_weg_im_abgleich() {
+    pg_rewind_wrap node1 log
+    mirror_enable 60 200
+    rw_probe_start node1 node2
+    STRICT_RW=1
+    log "50 MB bei 200 KB/s, Frist 60 s – Rollentausch hängt im letzten Abgleich"
+    put_file node1 "$UPLOADS/gross.bin" 50M
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 30 eval '[[ "$R1" == passiv && "$(jget pg <<<"$J1")" == primary ]] && docker exec node1 pgrep -x rsync >/dev/null' ||
+        fail "node1 nicht im letzten Abgleich (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    log "node1 von allen Netzen trennen – node2 übernimmt mit dem Zeugen"
+    net_off node1 lan vpn wit || fail "Netz off node1"
+    wait_for 90 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nach 90 s nicht aktiv (node2=$R2)"
+    log "node1 bis über das Ende der Frist hinaus beobachten"
+    watch_for 75 eval '[[ "$R1" != aktiv ]] && ! pg_writable node1 && ! pdh_on node1' ||
+        fail "node1 ohne Sicht nicht abgeschottet (node1=$R1, schreibbar $(pg_writable node1 && echo ja || echo nein), pdh $(pdh_on node1 && echo an || echo aus))"
+    [[ "$R1" == abgeschaltet ]] || fail "node1 nach der Frist nicht abgeschaltet ($R1)"
+    event_on node1 "Rollentausch abgebrochen" || fail "Abbruch des Tauschs nicht gemeldet"
+    log "node1 wieder verbinden – per pg_rewind Standby"
+    net_on node1 lan vpn wit || fail "Netz on node1"
+    wait_for 180 mirror_ok_rev || fail "node1 nach der Rückkehr nicht synchroner Standby (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    rw_probe_check node1 node2
+    [[ "$(rewind_real_runs node1)" == 1 ]] || fail "pg_rewind lief nicht genau einmal echt: $(docker exec node1 cat /var/lib/pdh-lab/rewind.log)"
+    ! event_on node1 "neu vom aktiven Server kopiert" || fail "Neukopie statt pg_rewind"
+    STRICT_RW=0
 }
 
 run_scenario() {
