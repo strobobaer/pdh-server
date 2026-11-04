@@ -2286,7 +2286,7 @@ sc_spiegel_bestaetigung() {
     local eigen="$UPLOADS/nur-auf-node2.txt" leer=/opt/pdh-server/chat_files/kommt-und-geht.txt r n
     local q="Quelle uploads: Der Partner hat dort schon Dateien"
     docker exec node2 sh -c 'echo eigener Stand >"$1"' _ "$eigen" || fail "Datei auf node2 anlegen"
-    docker exec node1 sh -c 'echo geht >"$1"' _ "$leer" || fail "Datei auf node1 anlegen"
+    docker exec node1 sh -c 'echo geht >"$1"; echo bleibt >"$1.bleibt"' _ "$leer" || fail "Dateien auf node1 anlegen" # ganz leer gilt als Fehler (refusedEmpty)
     log "Spiegelung ein: node2 hat in uploads eine eigene Datei, chat_files ist dort leer"
     mirror_set 120 0
     wait_for 120 mirror_first_ok || fail "Erstabgleich nicht fertig (Fehler: $(jget merr <<<"$J1"))"
