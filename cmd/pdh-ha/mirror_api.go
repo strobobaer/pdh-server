@@ -324,6 +324,9 @@ func (rt *mirrorRT) publish(before ha.Role, w *mirrorWant) {
 		rt.noteRoleLocked(before) // Stand vor dem Neustart: war dieser Server aktiv?
 	}
 	rt.noteRoleLocked(w.Role)
+	if !w.On {
+		rt.promoted = false // ohne Spiegelung gibt es keinen Wechsel „vor dem Erstabgleich“
+	}
 	rt.rmu.Unlock()
 	rt.want.Store(w) // vor stopMir: neue Verbindungen sehen die neue Rolle schon
 	if wk := rt.worker.Load(); wk != nil {

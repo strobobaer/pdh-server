@@ -251,15 +251,16 @@ func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) 
 	was := w.active()
 	prev := w.role
 	w.want, w.role, w.term, w.cfg = want, role, term, s
-	if prev == ha.Passive && role == ha.Active {
-		w.st.Promoted = true // zählt beim nächsten Lauf (R25)
+	if want && prev == ha.Passive && role == ha.Active {
+		w.st.Promoted = true // zählt beim nächsten Lauf (R25); bei ausgeschalteter Spiegelung ist es kein Wechsel „vor dem Erstabgleich“
 	}
 	w.refreshFirstLocked(srcs, nil) // ohne Dateisystem: Skipped zählt vorerst weiter, refreshFirst prüft nach
 	var cancel context.CancelFunc
-	if !w.active() {
+	switch {
+	case !w.active():
 		cancel = w.cancel
 		w.failSince, w.alarmed = time.Time{}, false
-	} else if !was {
+	case !was:
 		w.lastStart = time.Time{} // gerade aktiv geworden: sofort abgleichen
 	}
 	w.mu.Unlock()
