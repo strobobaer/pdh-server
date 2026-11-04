@@ -49,6 +49,8 @@ services:
       # umbenennen (Neukopie legt den Datenordner beiseite)
       - node1-pgdata:/var/lib/postgresql
       - node1-pgconf:/etc/postgresql
+      # Datei-Spiegelung: uploads und chat_files auf eigenem Volume wie in der Produktion
+      - node1-files:/opt/pdh-server
     networks:
       lan:
         ipv4_address: 10.77.1.11
@@ -71,6 +73,8 @@ services:
       # umbenennen (Neukopie legt den Datenordner beiseite)
       - node2-pgdata:/var/lib/postgresql
       - node2-pgconf:/etc/postgresql
+      # Datei-Spiegelung: uploads und chat_files auf eigenem Volume wie in der Produktion
+      - node2-files:/opt/pdh-server
     networks:
       lan:
         ipv4_address: 10.77.1.12
@@ -134,5 +138,7 @@ volumes:
   node1-pgconf:
   node2-pgdata:
   node2-pgconf:
+  node1-files:
+  node2-files:
   witness-etc:
   witness-state:

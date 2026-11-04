@@ -13,6 +13,11 @@
 #            update-nacheinander-fehler update-tausch-frist
 #            update-nacheinander-gleichstand update-abbruch-vorher
 #            update-verweigert
+#   Datei-Spiegelung (Teil 6): spiegel-datei spiegel-loeschen spiegel-tausch
+#            spiegel-tausch-frist spiegel-tausch-wiederholung spiegel-ausfall
+#            spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
+#            spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch
+#            spiegel-rolling-update
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -52,17 +57,24 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     vip-tausch vip-ausfall vip-abschaltung vip-duplikat vip-entfernt vip-absender vip-neustart hooks umstellung
     update-ok update-b-vorher update-b-nachher update-abbruch update-neustart update-nicht-gruen
     update-nacheinander update-nacheinander-fehler update-tausch-frist update-nacheinander-gleichstand
-    update-abbruch-vorher update-verweigert)
+    update-abbruch-vorher update-verweigert
+    spiegel-datei spiegel-loeschen spiegel-tausch spiegel-tausch-frist spiegel-tausch-wiederholung
+    spiegel-ausfall spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
+    spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
 # rewind-fehler läuft mit real: nach dem Pflicht-Tausch liegen die abgezweigten
 # Daten auf einer höheren Zeitleiste (pg_waldump -t).
 declare -A SC_MODE=([beobachtung]=observe [tausch]=observe [erzwingen-abgezweigt]=observe
-    [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe)
+    [slot-grenze]=observe [vip-tausch]=observe [umstellung]=observe
+    [spiegel-datei]=observe [spiegel-loeschen]=observe [spiegel-tausch]=observe [spiegel-aus]=observe)
 PG_LAB=0                        # 1 = Datenbank-Spiegel eingerichtet, Wächter aktiv
 BOTH_RW=-1                      # seit wann zwei schreibbare Datenbanken (SECONDS)
 BOTH_ACT=-1                     # seit wann zwei aktive Server verschiedener Amtszeit
+STRICT_RW=0                     # 1 = zwei schreibbare Datenbanken sofort nicht bestanden (kein Neustart im Spiel)
+NC_WATCH=0                      # 1 = Nextcloud-Attrappe darf nie auf beiden Servern laufen
+LAB_MODE=observe                # Automatik des laufenden Szenarios
 ACKED="$(mktemp -t ha-lab-acked.XXXXXX)"
 # Mitwandernde Adresse (Teil 5): Wächter schreibt jeden Moment, in dem beide
 # Server sie gleichzeitig tragen, nach VIP_BAD
@@ -111,6 +123,9 @@ diag() {
             timeout 10 docker exec "$c" curl -s -m 3 -w ' %{http_code}' http://127.0.0.1:8090/health 2>&1 | sed 's/^/    health: /' || true
             echo
             timeout 10 docker exec "$c" sh -c 'tail -n 15 /var/log/postgresql/*.log' 2>&1 | cut -c1-200 | sed 's/^/    /' || true
+            echo "--- $c: Datei-Spiegelung"
+            timeout 10 docker exec "$c" pdh-ha mirror status 2>&1 | sed 's/^/    /' || true
+            timeout 10 docker exec "$c" sh -c 'cat /var/lib/pdh-ha/mirror.json; echo; cat /var/lib/pdh-ha/mirror-inbox.json; echo; tail -n 8 /var/lib/pdh-lab/nc.log' 2>/dev/null | cut -c1-500 | sed 's/^/    /' || true
         fi
         echo
     done
@@ -140,7 +155,8 @@ status_json() {
 
 # jget <Schlüssel> < JSON. Schlüssel: role term maint blocked settings
 # configured seen:<id> peerrole:<id> holder hookson hookssame hooksn commit
-# peercommit:<id> upphase upresult faulty window; nicht lesbar → "-"
+# peercommit:<id> upphase upresult faulty window; Datei-Spiegelung: mon mfirst
+# mrunning morphans merr mmissing mtotal; nicht lesbar → "-"
 jget() {
     if [[ "$JSON_TOOL" == python3 ]]; then
         python3 -c '
@@ -152,6 +168,7 @@ try:
     s = d.get("settings") or {}
     me = d.get("self") or {}
     acc = d.get("access") or {}
+    mir = d.get("mirror") or {}
     peers = {p.get("id"): p for p in d.get("peers") or []}
     if k == "sum": v = "%s %s %s" % (me.get("role") or "-", me.get("term"), yn(d.get("configured")))
     elif k == "role": v = me.get("role") or "-"
@@ -182,6 +199,13 @@ try:
     elif k == "window":
         w = d.get("window") or {}
         v = "%s/%s" % (w.get("countdown_min"), w.get("lock_max_min"))
+    elif k == "mon": v = yn(mir.get("on"))
+    elif k == "mfirst": v = yn(mir.get("first_done"))
+    elif k == "mrunning": v = yn(mir.get("running"))
+    elif k == "morphans": v = mir.get("orphans", 0)
+    elif k == "merr": v = mir.get("err") or ""
+    elif k == "mmissing": v = "|".join(mir.get("nc_missing") or [])
+    elif k == "mtotal": v = mir.get("nc_missing_total", 0)
     else: v = "-"
 except Exception:
     v = "-"
@@ -215,6 +239,13 @@ print(v)' "$1"
             upresult) f='.update.result // ""' ;;
             faulty) f='(.faulty // []) | join(" ")' ;;
             window) f='"\(.window.countdown_min)/\(.window.lock_max_min)"' ;;
+            mon) f='if .mirror.on then "ja" else "nein" end' ;;
+            mfirst) f='if .mirror.first_done then "ja" else "nein" end' ;;
+            mrunning) f='if .mirror.running then "ja" else "nein" end' ;;
+            morphans) f='.mirror.orphans // 0' ;;
+            merr) f='.mirror.err // ""' ;;
+            mmissing) f='(.mirror.nc_missing // []) | join("|")' ;;
+            mtotal) f='.mirror.nc_missing_total // 0' ;;
             *) echo "-"; return ;;
         esac
         jq -r --arg id "${1#*:}" "$f" 2>/dev/null || echo "-"
@@ -260,6 +291,7 @@ snap() {
         fail "Adresse gleichzeitig auf node1 und node2: $(head -1 "$VIP_BAD")"
     fi
     ((PG_LAB == 1)) && watch_pg
+    ((NC_WATCH == 1)) && watch_nc
     return 0
 }
 
@@ -285,6 +317,7 @@ watch_pg() {
         BOTH_RW=-1
         return 0
     fi
+    ((STRICT_RW == 0)) || fail "zwei schreibbare Datenbanken"
     if ((BOTH_RW < 0)); then
         BOTH_RW=$SECONDS
         log "  Wächter: zwei schreibbare Datenbanken"
@@ -387,6 +420,7 @@ BUILT=0
 # lab_up [observe|real]: Trio mit Datenbank-Spiegel, node1 aktiv
 lab_up() {
     local mode=${1:-observe}
+    LAB_MODE=$mode
     log "Labor aufbauen (Version ${PDH_HA_COMMIT}, Automatik $mode)"
     PG_LAB=0
     dc down -v --remove-orphans >/dev/null 2>&1 || true
@@ -1491,6 +1525,619 @@ sc_update_verweigert() {
     up_clean
 }
 
+# --- Datei-Spiegelung (Teil 6) ---
+# Die Quellen liegen wie im Betrieb unter /opt/pdh-server (eigenes Volume), der
+# Papierkorb daneben. Laborzeiten: Abstand 30 s (kleinster erlaubter Wert), Alarm
+# nach 1 min. Nextcloud ist eine Attrappe (nc-dummy, PDH_HA_NC_CMD) mit einem leeren
+# occ, einer config.php und den drei Tabellen, die der Prüflauf liest.
+UPLOADS=/opt/pdh-server/uploads
+TRASH=/opt/pdh-server/.pdh-papierkorb
+NC_APP=/var/www/nextcloud
+NC_DATA=/srv/nc-data
+UPLOAD_ACKS=/var/lib/pdh-lab/upload-acks
+MIR_NC=""                       # „nc“ = Nextcloud mitnehmen
+
+# settings_mirror <Frist s> <Bandbreite KB/s>: Einstellungen mit eingeschalteter Spiegelung
+settings_mirror() {
+    local j extra
+    j="$(settings_json "$LAB_MODE")"
+    extra='"mirror_on":true,"mirror_every_s":30,"mirror_trash_days":14,"mirror_alarm_min":1,'
+    extra+="\"mirror_final_s\":$1,\"mirror_bwlimit_kb\":$2"
+    if [[ "$MIR_NC" == nc ]]; then
+        extra+=",\"mirror_nextcloud\":true,\"nc_data_dir\":\"$NC_DATA\",\"nc_app_dir\":\"$NC_APP\""
+    fi
+    echo "${j/\"auto_mode\"/$extra,\"auto_mode\"}"
+}
+
+# active_node: der laut letztem snap aktive Server
+active_node() { if [[ "$R2" == aktiv ]]; then echo node2; else echo node1; fi; }
+
+# mirror_set <Frist s> <Bandbreite KB/s>: Spiegelung einstellen, ohne zu warten
+mirror_set() {
+    snap
+    docker exec "$(active_node)" pdh-ha settings "$(settings_mirror "$1" "$2")" >/dev/null || fail "Einstellungen der Spiegelung setzen"
+}
+
+# mirror_dirs: Quellordner auf beiden Servern, ein Grundbestand auf node1
+mirror_dirs() {
+    local c
+    for c in node1 node2; do
+        docker exec "$c" install -d "$UPLOADS" /opt/pdh-server/chat_files || fail "Quellordner auf $c anlegen"
+    done
+    docker exec node1 sh -c "echo Grundbestand >$UPLOADS/grundbestand.txt" || fail "Grundbestand anlegen"
+}
+
+# mirror_first_ok: Erstabgleich fertig, aus Sicht beider Server
+mirror_first_ok() { [[ "$(jget mfirst <<<"$J1")" == ja && "$(jget mfirst <<<"$J2")" == ja ]]; }
+
+# mirror_enable [<Frist s>] [<Bandbreite KB/s>]: einschalten und Erstabgleich abwarten
+mirror_enable() {
+    mirror_dirs
+    log "Spiegelung einschalten (Frist ${1:-120} s, Bandbreite ${2:-0} KB/s${MIR_NC:+, Nextcloud})"
+    mirror_set "${1:-120}" "${2:-0}"
+    wait_for 120 mirror_first_ok ||
+        fail "Erstabgleich nicht fertig (node1 $(jget mfirst <<<"$J1"), node2 $(jget mfirst <<<"$J2"), Fehler: $(jget merr <<<"$J1"))"
+    [[ -n "$(file_id node2 "$UPLOADS/grundbestand.txt")" ]] || fail "Grundbestand nach dem Erstabgleich nicht auf node2"
+}
+
+# file_id <Container> <Pfad>: „Prüfsumme Besitzer“, leer, wenn die Datei fehlt
+file_id() {
+    docker exec "$1" sh -c '[ -f "$1" ] && printf "%s %s\n" "$(sha256sum <"$1" | cut -d" " -f1)" "$(stat -c %u:%g "$1")"' _ "$2" 2>/dev/null || true
+}
+
+# put_file <Container> <Pfad> <Größe>: Datei mit Zufallsinhalt
+put_file() {
+    docker exec "$1" sh -c 'mkdir -p "$(dirname "$1")" && head -c "$2" /dev/urandom >"$1.neu" && mv "$1.neu" "$1"' _ "$2" "$3" || fail "Datei $2 auf $1 schreiben"
+}
+
+# trash_has <Container> <Dateiname> [<Papierkorb>]: Datei liegt im Papierkorb
+trash_has() {
+    [[ -n "$(docker exec "$1" find "${3:-$TRASH}" -type f -name "$2" 2>/dev/null)" ]]
+}
+
+# trash_count <Container>: Zahl der Dateien im Papierkorb der PDH-Quellen
+trash_count() {
+    docker exec "$1" sh -c "find $TRASH -type f 2>/dev/null | wc -l"
+}
+
+# rw_probe_start <Container …>: liest im Container alle 0,1 s, ob die Datenbank
+# schreibbar ist (der Wächter im Takt von snap sähe ein kurzes Fenster nicht)
+RW_PROBE_SH='while :; do
+    r=$(runuser -u postgres -- psql -XAtq -d postgres -c "SELECT NOT (pg_is_in_recovery() OR current_setting('"'"'default_transaction_read_only'"'"')::bool)" 2>/dev/null)
+    echo "$(date +%s%3N) ${r:-x}" >>/var/lib/pdh-lab/rw.log
+    sleep 0.1
+done'
+rw_probe_start() {
+    local c
+    for c in "$@"; do
+        docker exec -d "$c" bash -c "$RW_PROBE_SH" || fail "Messung auf $c starten"
+    done
+}
+
+# rw_probe_check <alter Server> <neuer Server>: der alte Server war zuletzt
+# schreibbar, bevor der neue es zum ersten Mal war
+rw_probe_check() {
+    local last first
+    last="$(docker exec "$1" awk '$2 == "t" { x = $1 } END { print x + 0 }' /var/lib/pdh-lab/rw.log)"
+    first="$(docker exec "$2" awk '$2 == "t" { print $1; exit }' /var/lib/pdh-lab/rw.log)"
+    [[ -n "$last" && -n "$first" ]] || fail "Messung der Schreibbarkeit unvollständig ($1: $last, $2: $first)"
+    log "$1 zuletzt schreibbar $((first - last)) ms, bevor $2 schreibbar wurde"
+    ((last < first)) || fail "zwei schreibbare Server: $1 noch $((last - first)) ms schreibbar, nachdem $2 es schon war"
+}
+
+# Hochladen bis pdh stoppt: dieselbe Sperrdatei wie „pdh-dummy stop“ – eine
+# Datei gilt als bestätigt, bevor der Stopp von pdh fertig ist, wie eine Anfrage,
+# auf die das echte pdh beim Stoppen wartet. Jeder 20. Lauf in einem neuen Ordner.
+UPLOAD_SH='d=$1
+: >/var/lib/pdh-lab/upload-acks
+exec 9>/run/pdh-dummy.lock
+i=0
+while :; do
+    flock 9
+    [ -f /run/pdh-dummy.running ] || break
+    i=$((i + 1))
+    rel="schleife/$((i / 20))/datei $i.bin"
+    mkdir -p "$d/schleife/$((i / 20))"
+    head -c 4096 /dev/urandom >"$d/$rel"
+    echo "$rel" >>/var/lib/pdh-lab/upload-acks
+    flock -u 9
+    sleep 0.1
+done'
+
+upload_start() { docker exec -d "$1" bash -c "$UPLOAD_SH" _ "$UPLOADS" || fail "Hochladen auf $1 starten"; }
+
+# upload_count <Container>: bestätigte Dateien
+upload_count() { docker exec "$1" sh -c "wc -l <$UPLOAD_ACKS" 2>/dev/null || echo 0; }
+
+# sums_of <Container>: Prüfsummen der Dateien, deren Namen auf stdin stehen
+sums_of() {
+    docker exec -i "$1" bash -c 'cd "$1" && tr "\n" "\0" | xargs -0 -r sha256sum -- 2>/dev/null; true' _ "$UPLOADS"
+}
+
+# upload_check <von> <nach>: jede bestätigte Datei liegt mit gleichem Inhalt auf beiden
+upload_check() {
+    local list n s1 s2 miss
+    list="$(docker exec "$1" cat "$UPLOAD_ACKS")"
+    n="$(wc -l <<<"$list")"
+    ((n >= 5)) || fail "nur $n Dateien bestätigt"
+    s1="$(sums_of "$1" <<<"$list")"
+    s2="$(sums_of "$2" <<<"$list")"
+    (($(wc -l <<<"$s1") == n)) || fail "auf $1 fehlen bestätigte Dateien ($(wc -l <<<"$s1") von $n)"
+    miss="$(comm -23 <(sort <<<"$s1") <(sort <<<"$s2"))"
+    [[ -z "$miss" ]] || fail "$(wc -l <<<"$miss") von $n bestätigten Dateien fehlen auf $2 oder weichen ab, z. B.: $(head -3 <<<"$miss")"
+    log "alle $n bestätigten Dateien auf $2 vorhanden und gleich"
+}
+
+# old_sender <Container> <Amtszeit> <Partner>: rsync von Hand mit dieser Amtszeit, muss
+# scheitern. Ausgabe: der Fehlertext
+old_sender() {
+    docker exec "$1" sh -c 'mkdir -p /tmp/alt && echo alt >/tmp/alt/alter-absender.txt'
+    if docker exec "$1" rsync -a --numeric-ids -e "pdh-ha mirror-pipe --label uploads --term $2 --node $3" /tmp/alt/ "$3:uploads" 2>&1; then
+        fail "Absender mit Amtszeit $2 wurde von $3 angenommen"
+    fi
+}
+
+# nc_prepare: Nextcloud-Attrappe nur auf node1 (der passive Server bekommt das Programm
+# über die Spiegelung), Tabellen in der Datenbank nextcloud; startet die Attrappe
+nc_prepare() {
+    MIR_NC=nc
+    docker exec node1 sh -c "install -d $NC_APP/config $NC_DATA/alice/files &&
+        : >$NC_APP/occ && : >$NC_DATA/.ocdata &&
+        printf '%s\n' \"<?php \\\$CONFIG = array('dbname' => 'nextcloud', 'dbtableprefix' => 'oc_', 'datadirectory' => '$NC_DATA');\" >$NC_APP/config/config.php" ||
+        fail "Nextcloud-Attrappe anlegen"
+    psql_on node1 "CREATE DATABASE nextcloud" postgres >/dev/null
+    docker exec node1 runuser -u postgres -- psql -XAtq -d nextcloud -v ON_ERROR_STOP=1 \
+        -c "CREATE TABLE oc_storages (numeric_id bigint PRIMARY KEY, id text)" \
+        -c "CREATE TABLE oc_mimetypes (id bigint PRIMARY KEY, mimetype text)" \
+        -c "CREATE TABLE oc_filecache (fileid bigserial PRIMARY KEY, storage bigint, path text, mimetype bigint)" \
+        -c "INSERT INTO oc_storages VALUES (1, 'home::alice')" \
+        -c "INSERT INTO oc_mimetypes VALUES (1, 'httpd/unix-directory'), (2, 'application/octet-stream')" >/dev/null ||
+        fail "Tabellen der Attrappe anlegen"
+    docker exec -e LAB_HAND=1 node1 nc-dummy start || fail "Nextcloud-Attrappe starten"
+}
+
+# nc_row <Pfad unter alice>: Eintrag in oc_filecache (synchron auf dem Standby)
+nc_row() {
+    docker exec "$(active_node)" runuser -u postgres -- psql -XAtq -d nextcloud -v ON_ERROR_STOP=1 \
+        -c "INSERT INTO oc_filecache (storage, path, mimetype) VALUES (1, '$1', 2)" >/dev/null || fail "Eintrag $1 in oc_filecache"
+}
+
+nc_running() { docker exec "$1" test -f /run/nc-dummy.running 2>/dev/null; }
+
+# nc_only <Container>: die Attrappe läuft dort und nur dort
+nc_only() {
+    local other=node1
+    [[ "$1" == node1 ]] && other=node2
+    nc_running "$1" && ! nc_running "$other"
+}
+
+watch_nc() {
+    if nc_running node1 && nc_running node2; then
+        fail "Nextcloud-Attrappe läuft auf beiden Servern"
+    fi
+    return 0
+}
+
+# nc_start_ok: kein Start durch pdh-ha, solange die Datenbank nicht schreibbar war
+nc_start_ok() {
+    local c bad
+    for c in node1 node2; do
+        bad="$(docker exec "$c" grep -E 'start schreibbar=(f|$)' /var/lib/pdh-lab/nc.log 2>/dev/null)" || true
+        [[ -z "$bad" ]] || fail "$c: Nextcloud vor der schreibbaren Datenbank gestartet: $bad"
+    done
+}
+
+# pg_rewind_wrap <Container> <log|abbruch>: pg_rewind ersetzen, Aufrufe stehen in
+# /var/lib/pdh-lab/rewind.log. log: echtes pg_rewind. abbruch: der echte Lauf wird
+# nach 20 ms hart beendet, das Skript hängt, und die Marke rewind-begonnen entsteht
+pg_rewind_wrap() {
+    docker exec "$1" bash -c '
+        m=$1
+        b="$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)/pg_rewind"
+        mv "$b" "$b.real"
+        {
+            echo "#!/bin/bash"
+            echo "echo \"\$(date +%H:%M:%S) \$*\" >>/var/lib/pdh-lab/rewind.log"
+            echo "case \" \$* \" in *\" --dry-run \"*) exec \"$b.real\" \"\$@\" ;; esac"
+            if [[ "$m" == abbruch ]]; then
+                echo "\"$b.real\" \"\$@\" >/dev/null 2>&1 &"
+                echo "p=\$!; sleep 0.02; kill -9 \"\$p\" 2>/dev/null"
+                echo ": >/var/lib/pdh-lab/rewind-begonnen"
+                echo "exec sleep 600"
+            else
+                echo "exec \"$b.real\" \"\$@\""
+            fi
+        } >"$b"
+        chmod 0755 "$b"
+        : >/var/lib/pdh-lab/rewind.log
+        chmod 0666 /var/lib/pdh-lab/rewind.log
+        chmod 0777 /var/lib/pdh-lab' _ "$2" || fail "pg_rewind auf $1 ersetzen"
+}
+
+# rewind_real_runs <Container>: echte Läufe (ohne Probelauf) laut Protokoll
+rewind_real_runs() { docker exec "$1" sh -c "grep -vc -- --dry-run /var/lib/pdh-lab/rewind.log" 2>/dev/null || true; }
+
+sc_spiegel_datei() {
+    mirror_enable
+    local f="$UPLOADS/Bericht für März 2026.txt" a
+    log "Datei mit Leerzeichen und Umlaut auf node1 – binnen 10 s auf node2"
+    docker exec node1 sh -c 'head -c 20000 /dev/urandom >"$1" && chown www-data:www-data "$1"' _ "$f" || fail "Datei auf node1 anlegen"
+    a="$(file_id node1 "$f")"
+    [[ "$a" == *" 33:33" ]] || fail "Besitzer auf node1 nicht www-data: $a"
+    local t0=$SECONDS
+    wait_for 10 eval '[[ "$(file_id node2 "$f")" == "$a" ]]' || fail "nach 10 s nicht gleich auf node2 ($(file_id node2 "$f"), erwartet $a)"
+    log "auf node2 nach $((SECONDS - t0)) s, gleicher Inhalt und Besitzer"
+    # Datei ändern: die alte Fassung kommt in den Papierkorb
+    docker exec node1 sh -c 'echo geändert >>"$1"' _ "$f" || fail "Datei auf node1 ändern"
+    a="$(file_id node1 "$f")"
+    wait_for 10 eval '[[ "$(file_id node2 "$f")" == "$a" ]]' || fail "Änderung nach 10 s nicht auf node2"
+    trash_has node2 "Bericht für März 2026.txt" || fail "alte Fassung nicht im Papierkorb von node2"
+}
+
+sc_spiegel_loeschen() {
+    mirror_enable
+    local f="$UPLOADS/wird-geloescht.txt"
+    docker exec node1 sh -c 'echo weg >"$1"' _ "$f" || fail "Datei auf node1 anlegen"
+    wait_for 10 eval '[[ -n "$(file_id node2 "$f")" ]]' || fail "Datei kommt nicht auf node2 an"
+    log "Datei auf node1 löschen – nach einem Abstand (30 s) auf node2 weg und im Papierkorb"
+    docker exec node1 rm "$f" || fail "Datei auf node1 löschen"
+    wait_for 45 eval '[[ -z "$(file_id node2 "$f")" ]] && trash_has node2 wird-geloescht.txt' ||
+        fail "nach 45 s auf node2 nicht weg oder nicht im Papierkorb ($(docker exec node2 find "$TRASH" -type f 2>&1 | head -3))"
+    [[ -n "$(file_id node2 "$UPLOADS/grundbestand.txt")" ]] || fail "Grundbestand auf node2 mit weggelöscht"
+    # Löschen meldet den Papierkorb nicht als Rückkehrer: node2 war nie aktiv
+    [[ "$(jget morphans <<<"$J2")" == 0 ]] || fail "Rückkehrer-Zähler auf node2: $(jget morphans <<<"$J2")"
+}
+
+sc_spiegel_tausch() {
+    mirror_enable
+    rw_probe_start node1 node2
+    log "Hochladen auf node1 bis zum Tausch"
+    upload_start node1
+    wait_for 30 eval '(($(upload_count node1) >= 40))' || fail "Hochladen auf node1 kommt nicht voran"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 180 mirror_ok_rev || fail "Tausch nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2 pg=$(jget pg <<<"$J2"), Fehler $(jget merr <<<"$J1"))"
+    upload_check node1 node2
+    rw_probe_check node1 node2
+    log "Richtung folgt der Rolle: Datei auf node2 kommt auf node1 an"
+    local f="$UPLOADS/nach-dem-tausch.txt" a
+    docker exec node2 sh -c 'echo Rückweg >"$1"' _ "$f" || fail "Datei auf node2 anlegen"
+    a="$(file_id node2 "$f")"
+    wait_for 15 eval '[[ "$(file_id node1 "$f")" == "$a" ]]' || fail "Datei von node2 kommt nicht auf node1 an"
+    # Abgleich nach dem Wechsel: Nichts ging auf node1 in den Papierkorb
+    docker exec node2 pdh-ha mirror run >/dev/null || fail "Abgleich auf node2"
+    [[ "$(trash_count node1)" == 0 ]] || fail "$(trash_count node1) Dateien im Papierkorb von node1 nach sauberem Tausch"
+}
+
+# tausch_frist_ablauf: kleine Bandbreite, große Datei, Frist 10 s – Tausch bricht ab,
+# node1 bleibt aktiv. f, old und t0 gelten danach beim Aufrufer.
+tausch_frist_ablauf() {
+    mirror_enable 10 200
+    f="$UPLOADS/gross.bin"
+    docker exec node1 sh -c 'echo alte Fassung >"$1"' _ "$f" || fail "alte Fassung anlegen"
+    wait_for 15 eval '[[ -n "$(file_id node2 "$f")" ]]' || fail "alte Fassung kommt nicht auf node2 an"
+    old="$(file_id node2 "$f")"
+    snap
+    t0=$T1
+    log "50 MB bei 200 KB/s, Frist 10 s – Rollentausch muss abbrechen"
+    put_file node1 "$f" 50M
+    local start=$SECONDS
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 40 eval 'event_on node1 "Rollentausch abgebrochen"' || fail "kein Ereignis „Rollentausch abgebrochen“ nach 40 s (node1=$R1)"
+    log "nach $((SECONDS - start)) s abgebrochen"
+    event_on node1 "Letzter Abgleich der Dateien nicht fertig" || fail "Grund nicht gemeldet"
+    wait_for 30 eval 'roles aktiv passiv && pdh_on node1 && pg_writable node1' ||
+        fail "node1 nach dem Abbruch nicht wieder aktiv mit pdh und schreibbarer Datenbank (node1=$R1, pdh $(pdh_on node1 && echo an || echo aus))"
+    [[ "$T1" == "$t0" && "$T2" == "$t0" ]] || fail "Amtszeit geändert ($T1/$T2, vorher $t0)"
+    [[ "$(jget maint <<<"$J1")" == nein ]] || fail "Abbruch schaltet Wartung ein"
+    [[ "$(file_id node2 "$f")" == "$old" ]] || fail "unfertige Datei auf node2 sichtbar: $(file_id node2 "$f")"
+    wait_acks 3 30 || fail "nach dem Abbruch keine Speicherungen"
+}
+
+sc_spiegel_tausch_frist() {
+    local f old t0
+    tausch_frist_ablauf
+    log "Bandbreite frei – die Datei kommt an, die alte Fassung liegt im Papierkorb"
+    mirror_set 120 0
+    local a
+    a="$(file_id node1 "$f")"
+    wait_for 120 eval '[[ "$(file_id node2 "$f")" == "$a" ]]' || fail "Datei nach dem Abbruch nicht übertragen (Fehler: $(jget merr <<<"$J1"))"
+    trash_has node2 gross.bin || fail "alte Fassung nicht im Papierkorb von node2"
+}
+
+sc_spiegel_tausch_wiederholung() {
+    local f old t0
+    tausch_frist_ablauf
+    log "Ursache behoben (Bandbreite frei), zweiter Tausch in derselben Amtszeit"
+    mirror_set 120 0
+    local tries=0 ok=0 a
+    a="$(file_id node1 "$f")"
+    while ((tries < 30)); do
+        if swap_on node1 2>/dev/null; then
+            ok=1
+            break
+        fi
+        tries=$((tries + 1))
+        sleep 1
+    done
+    ((ok == 1)) || fail "zweiter Tausch nicht angenommen"
+    wait_for 180 mirror_ok_rev || fail "zweiter Tausch nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2 pg=$(jget pg <<<"$J2"), Ereignisse: $(docker exec node1 tail -n 3 /var/lib/pdh-ha/events.jsonl | cut -c1-200))"
+    ((T2 == t0 + 1)) || fail "Amtszeit nach dem zweiten Tausch $T2, erwartet $((t0 + 1))"
+    [[ "$(file_id node2 "$f")" == "$a" ]] || fail "große Datei fehlt nach dem Tausch auf node2"
+    [[ "$(jget maint <<<"$J2")" == nein ]] || fail "Wartung nach dem zweiten Tausch an"
+}
+
+sc_spiegel_ausfall() {
+    nc_prepare
+    mirror_enable 120 200
+    wait_for 45 eval 'nc_only node1' || fail "Nextcloud-Attrappe läuft nicht nur auf node1"
+    local big=alice/files/unterwegs.bin
+    docker exec node1 sh -c "echo da >$NC_DATA/alice/files/vorhanden.txt" || fail "vorhandene Datei anlegen"
+    nc_row files/vorhanden.txt
+    wait_for 15 eval '[[ -n "$(file_id node2 "$NC_DATA/alice/files/vorhanden.txt")" ]]' || fail "vorhandene Datei kommt nicht auf node2 an"
+    log "große Datei bei 200 KB/s unterwegs, Datenbank kennt sie schon – node1 hart anhalten"
+    put_file node1 "$NC_DATA/$big" 30M
+    nc_row files/unterwegs.bin
+    docker kill node1 >/dev/null || fail "docker kill node1"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nach 60 s nicht aktiv (node2=$R2)"
+    [[ -z "$(file_id node2 "$NC_DATA/$big")" ]] || fail "Datei ist doch angekommen – Szenario zeigt nichts"
+    wait_for 60 eval '[[ "$(jget mtotal <<<"$J2")" == 1 && "$(jget mmissing <<<"$J2")" == "$big" ]]' ||
+        fail "Prüflauf nennt die Datei nicht (Anzahl $(jget mtotal <<<"$J2"), Liste $(jget mmissing <<<"$J2"))"
+    event_on node2 "$big" || fail "Alarm nennt die Datei nicht"
+    docker exec node2 grep -F "$big" /var/lib/pdh-ha/events.jsonl | grep -q '"kind":"alarm"' || fail "Meldung ist kein Alarm"
+    wait_for 45 eval 'nc_running node2' || fail "Nextcloud-Attrappe läuft nach der Übernahme nicht auf node2"
+    nc_start_ok
+}
+
+sc_spiegel_rueckkehr() {
+    mirror_enable
+    snap
+    local old=$T1 tmp
+    log "node1 hart anhalten, Datei auf node1 neu (nie übertragen)"
+    docker kill node1 >/dev/null || fail "docker kill node1"
+    tmp="$(mktemp -d)"
+    echo "nur auf node1" >"$tmp/rueckkehrer.txt"
+    docker cp "$tmp/rueckkehrer.txt" node1:"$UPLOADS/rueckkehrer.txt" || fail "Datei in den gestoppten node1 legen"
+    rm -rf "$tmp"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nach 60 s nicht aktiv (node2=$R2)"
+    log "node1 starten – wird passiv, die Datei wandert in seinen Papierkorb"
+    docker start node1 >/dev/null || fail "docker start node1"
+    wait_for 120 mirror_ok_rev || fail "node1 nach 120 s nicht synchroner Standby ($R1, pg=$(jget pg <<<"$J1"))"
+    wait_for 60 eval '[[ -z "$(file_id node1 "$UPLOADS/rueckkehrer.txt")" ]] && trash_has node1 rueckkehrer.txt' ||
+        fail "Datei nicht im Papierkorb von node1"
+    wait_for 90 eval '[[ "$(jget morphans <<<"$J1")" == 1 && "$(jget morphans <<<"$J2")" == 1 ]]' ||
+        fail "Zähler der Rückkehrer nicht 1 (node1 $(jget morphans <<<"$J1"), node2 $(jget morphans <<<"$J2"))"
+    log "Absender mit alter Amtszeit $old: am aktiven node2 und nach dem Rücktausch am passiven node2"
+    local out
+    out="$(old_sender node1 "$old" node2)" || fail "Absender mit alter Amtszeit angenommen: $out"
+    log "  rsync meldet: $(head -1 <<<"$out" | cut -c1-160)"
+    wait_for 10 eval 'event_on node2 "Dateien von node1 abgelehnt: Dieser Server ist nicht passiv"' || fail "kein Ereignis zum abgelehnten Absender am aktiven node2"
+    swap_on node2 || fail "Rollentausch auf node2"
+    wait_for 180 mirror_ok || fail "Rücktausch nicht abgeschlossen (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2 pg=$(jget pg <<<"$J2"))"
+    out="$(old_sender node1 "$old" node2)" || fail "Absender mit alter Amtszeit angenommen: $out"
+    log "  rsync meldet: $(head -1 <<<"$out" | cut -c1-160)"
+    wait_for 10 eval 'event_on node2 "Dateien von node1 abgelehnt: Absender hat eine alte Amtszeit"' || fail "kein Ereignis „alte Amtszeit“ auf node2"
+    [[ -z "$(file_id node2 "$UPLOADS/alter-absender.txt")" ]] || fail "Datei des alten Absenders auf node2"
+}
+
+sc_spiegel_heartbeat() {
+    mirror_enable
+    snap
+    local t=$T1
+    local m1 m2 hit
+    m1="$(docker exec node1 sh -c 'wc -l </var/lib/pdh-ha/events.jsonl')"
+    m2="$(docker exec node2 sh -c 'wc -l </var/lib/pdh-ha/events.jsonl')"
+    log "500 MB Dateilast auf node1, dazu laufend neue Fassungen – 2 min kein Rollenwechsel"
+    docker exec -d node1 bash -c 'd=$1
+        for i in $(seq 1 50); do head -c 10M /dev/urandom >"$d/last-$i.bin"; done
+        for i in $(seq 1 100); do head -c 5M /dev/urandom >"$d/wechsel-$((i % 5)).bin"; sleep 1; done
+        : >/var/lib/pdh-lab/last-fertig' _ "$UPLOADS" || fail "Dateilast starten"
+    watch_for 120 eval 'roles aktiv passiv && [[ "$T1" == "$t" && "$T2" == "$t" && "$(jget seen:node1 <<<"$J2")" == ja && "$(jget seen:node2 <<<"$J1")" == ja ]]' ||
+        fail "unter Dateilast: node1=$R1/$T1 node2=$R2/$T2 (vorher Amtszeit $t), sehen sich: $(jget seen:node2 <<<"$J1")/$(jget seen:node1 <<<"$J2")"
+    hit="$(docker exec node1 tail -n +"$((m1 + 1))" /var/lib/pdh-ha/events.jsonl; docker exec node2 tail -n +"$((m2 + 1))" /var/lib/pdh-ha/events.jsonl)"
+    hit="$(grep -E 'Rollentausch|Kein aktiver Server|Übernahme|Wartung an|Rolle:' <<<"$hit" | head -3 | cut -c1-240)" || true
+    [[ -z "$hit" ]] || fail "unter Dateilast: $hit"
+    wait_for 60 eval 'docker exec node1 test -e /var/lib/pdh-lab/last-fertig' || fail "Dateilast endet nicht"
+    docker exec node1 pdh-ha mirror run >/dev/null || fail "Abgleich nach der Dateilast"
+    local a b
+    a="$(docker exec node1 sh -c "cd $UPLOADS && sha256sum last-*.bin wechsel-*.bin | sort")"
+    b="$(docker exec node2 sh -c "cd $UPLOADS && sha256sum last-*.bin wechsel-*.bin | sort")"
+    [[ -n "$a" && "$a" == "$b" ]] || fail "Dateien nach der Dateilast verschieden ($(wc -l <<<"$a") / $(wc -l <<<"$b"))"
+    log "alle $(wc -l <<<"$a") Dateien gleich; letzter Lauf $(docker exec node1 pdh-ha mirror status | head -1)"
+}
+
+sc_spiegel_nextcloud() {
+    nc_prepare
+    NC_WATCH=1
+    mirror_enable
+    wait_for 45 eval 'nc_only node1' || fail "Attrappe läuft nicht nur auf node1"
+    wait_for 30 eval 'docker exec node2 test -f "$NC_APP/occ"' || fail "Programmordner nicht auf node2 gespiegelt"
+    watch_for 5 eval 'nc_only node1' || fail "Attrappe bleibt nicht nur auf node1"
+    log "Rollentausch – Attrappe folgt der Rolle"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 180 eval 'mirror_ok_rev && nc_only node2' ||
+        fail "Attrappe nach dem Tausch nicht nur auf node2 (node1 $(nc_running node1 && echo an || echo aus), node2 $(nc_running node2 && echo an || echo aus))"
+    nc_start_ok
+    log "am passiven node1 von Hand gestartet (Installationsskript) – pdh-ha stoppt sie"
+    NC_WATCH=0
+    docker exec -e LAB_HAND=1 node1 nc-dummy start || fail "Attrappe von Hand starten"
+    wait_for 45 eval 'nc_only node2' || fail "Attrappe läuft am passiven node1 weiter"
+    NC_WATCH=1
+    log "Neustart des passiven node1 – Attrappe bleibt aus"
+    docker restart -t 2 node1 >/dev/null || fail "docker restart node1"
+    wait_for 120 mirror_ok_rev || fail "node1 nach dem Neustart nicht Standby ($R1, pg=$(jget pg <<<"$J1"))"
+    watch_for 10 eval 'nc_only node2' || fail "Attrappe nach Neustart von node1 nicht nur auf node2"
+    log "Neustart des aktiven node2 – Attrappe läuft danach wieder dort"
+    docker restart -t 2 node2 >/dev/null || fail "docker restart node2"
+    wait_for 120 eval 'mirror_ok_rev && nc_only node2' ||
+        fail "nach Neustart von node2: node1=$R1, node2=$R2, Attrappe node1 $(nc_running node1 && echo an || echo aus), node2 $(nc_running node2 && echo an || echo aus)"
+    watch_for 5 eval 'nc_only node2' || fail "Attrappe bleibt nicht auf node2"
+    nc_start_ok
+    log "Nextcloud startet nach dem Tausch nicht: Alarm, keine weitere Umschaltung"
+    lab_switch node1 fail-nc-start on || fail "Schalter setzen"
+    swap_on node2 || fail "Rollentausch auf node2"
+    wait_for 180 mirror_ok || fail "Tausch zurück nicht abgeschlossen (node1=$R1, node2=$R2)"
+    wait_for 30 eval 'event_on node1 "Nextcloud nicht gestartet"' || fail "kein Alarm „Nextcloud nicht gestartet“ auf node1"
+    watch_for 30 eval 'roles aktiv passiv && [[ "$(jget maint <<<"$J1")" == nein ]]' || fail "Nextcloud-Fehler löst Umschaltung oder Wartung aus (node1=$R1, node2=$R2, Wartung $(jget maint <<<"$J1"))"
+    nc_running node2 && fail "Attrappe läuft auf dem passiven node2"
+    lab_switch node1 fail-nc-start off || fail "Schalter entfernen"
+    wait_for 45 eval 'nc_only node1' || fail "Attrappe startet nach dem Fehler nicht auf node1"
+}
+
+sc_spiegel_aus() {
+    mirror_dirs
+    local f="$UPLOADS/nie-uebertragen.txt" r
+    log "Spiegelung aus (Standard): nichts wird übertragen, der Empfänger lehnt ab"
+    docker exec node1 sh -c 'echo bleibt >"$1"' _ "$f" || fail "Datei auf node1 anlegen"
+    snap
+    [[ "$(jget mon <<<"$J1")" == nein ]] || fail "Spiegelung ist nicht aus"
+    if r="$(docker exec node1 pdh-ha mirror run 2>&1)"; then
+        fail "mirror run bei ausgeschalteter Spiegelung angenommen: $r"
+    fi
+    log "mirror run: $r"
+    local out
+    out="$(old_sender node1 "$T1" node2)" || fail "rsync von Hand trotz ausgeschalteter Spiegelung angenommen: $out"
+    log "  rsync meldet: $(head -1 <<<"$out" | cut -c1-160)"
+    wait_for 10 eval 'event_on node2 "Dateien von node1 abgelehnt: Spiegelung ist aus"' || fail "kein Ereignis zur Ablehnung auf node2"
+    watch_for 35 eval '[[ -z "$(file_id node2 "$f")" ]]' || fail "Datei trotz ausgeschalteter Spiegelung auf node2"
+    [[ -z "$(file_id node2 "$UPLOADS/alter-absender.txt")" ]] || fail "Datei von Hand trotz ausgeschalteter Spiegelung auf node2"
+    log "Rollentausch wie bisher, ohne letzten Abgleich"
+    pflicht_tausch
+    [[ -z "$(file_id node2 "$f")" ]] || fail "Datei nach dem Tausch auf node2"
+    log "Einschalten, Datei kommt an; Ausschalten: nichts Neues mehr"
+    mirror_enable
+    wait_for 10 eval '[[ -n "$(file_id node2 "$f")" ]]' || fail "Datei kommt nach dem Einschalten nicht auf node2 an"
+    docker exec node1 pdh-ha settings "$(settings_json "$LAB_MODE")" >/dev/null || fail "Spiegelung ausschalten"
+    wait_for 30 eval '[[ "$(jget mon <<<"$J1")" == nein && "$(jget mon <<<"$J2")" == nein ]]' || fail "Spiegelung geht nicht aus"
+    f="$UPLOADS/nach-dem-ausschalten.txt"
+    docker exec node1 sh -c 'echo bleibt >"$1"' _ "$f" || fail "Datei auf node1 anlegen"
+    watch_for 35 eval '[[ -z "$(file_id node2 "$f")" ]]' || fail "Datei trotz ausgeschalteter Spiegelung auf node2"
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 120 mirror_ok_rev || fail "Tausch bei ausgeschalteter Spiegelung nicht abgeschlossen"
+}
+
+# Der Partner übernimmt, während node1 im letzten Abgleich hängt: node1 steht nur
+# lesend da, darf die Abschottung nicht zurücknehmen und wird per echtem pg_rewind Standby.
+sc_spiegel_uebernahme_im_abgleich() {
+    pg_rewind_wrap node1 log
+    mirror_enable 90 200
+    rw_probe_start node1 node2
+    STRICT_RW=1
+    snap
+    local t0=$T1 f="$UPLOADS/gross.bin"
+    log "50 MB bei 200 KB/s, Frist 90 s – Rollentausch hängt im letzten Abgleich"
+    put_file node1 "$f" 50M
+    swap_on node1 || fail "Rollentausch auf node1"
+    wait_for 30 eval '[[ "$R1" == passiv && "$(jget pg <<<"$J1")" == primary ]] && docker exec node1 pgrep -x rsync >/dev/null' ||
+        fail "node1 nicht im letzten Abgleich (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    ! pg_writable node1 || fail "node1 ist im letzten Abgleich schreibbar"
+    log "node2 übernimmt von Hand, während node1 noch abgleicht"
+    local r
+    r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
+    [[ "$r" == 200* ]] || fail "Übernahme erzwingen auf node2 abgewiesen: $r"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
+    ((T2 > t0)) || fail "Amtszeit nach der Übernahme $T2, vorher $t0"
+    log "node1 muss per pg_rewind zum Standby werden"
+    wait_for 180 mirror_ok_rev ||
+        fail "node1 nicht synchroner Standby (node1=$R1 pg=$(jget pg <<<"$J1"), node2=$R2, Marke $(docker exec node1 sh -c 'ls /var/lib/postgresql/*/*.rewind-laeuft 2>/dev/null'))"
+    rw_probe_check node1 node2
+    [[ "$(rewind_real_runs node1)" == 1 ]] || fail "pg_rewind lief nicht genau einmal echt: $(docker exec node1 cat /var/lib/pdh-lab/rewind.log)"
+    ! event_on node1 "neu vom aktiven Server kopiert" || fail "Neukopie statt pg_rewind"
+    wait_for 30 eval 'docker exec node1 sh -c "! ls /var/lib/postgresql/*/*.rewind-laeuft" >/dev/null 2>&1' || fail "Merker der Wiederanbindung bleibt liegen"
+    STRICT_RW=0
+    log "Spiegelung läuft in der neuen Richtung"
+    local g="$UPLOADS/nach-der-uebernahme.txt" a
+    docker exec node2 sh -c 'echo neu >"$1"' _ "$g" || fail "Datei auf node2 anlegen"
+    a="$(file_id node2 "$g")"
+    wait_for 30 eval '[[ "$(file_id node1 "$g")" == "$a" ]]' || fail "Datei von node2 kommt nicht auf node1 an"
+}
+
+# pg_rewind wird mittendrin abgebrochen (echter Lauf hart beendet, pdh-ha stirbt mit):
+# Datenbank bleibt gestoppt, Datei und Alarm, Übernahme wird abgelehnt, auch wenn der
+# Partner weg ist; „pdh-ha rejoin“ kopiert neu.
+sc_spiegel_rejoin_abbruch() {
+    local marker='/var/lib/postgresql/*/main.rewind-laeuft' r
+    pg_rewind_wrap node1 abbruch
+    log "node1 hart anhalten, node2 übernimmt"
+    docker kill node1 >/dev/null || fail "docker kill node1"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nach 60 s nicht aktiv (node2=$R2)"
+    wait_acks 5 30 || fail "auf node2 keine Speicherungen"
+    log "node1 starten – pg_rewind läuft an und wird abgebrochen, pdh-ha stirbt mit"
+    docker start node1 >/dev/null || fail "docker start node1"
+    wait_for 120 eval 'docker exec node1 test -e /var/lib/pdh-lab/rewind-begonnen' || fail "pg_rewind auf node1 beginnt nicht (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    docker exec node1 sh -c "ls $marker" >/dev/null || fail "Marke fehlt, während pg_rewind läuft"
+    docker exec node1 bash -c 'touch /run/pdh-ha.restart; pkill -KILL -x pdh-ha; pkill -KILL -f "[p]g_rewind"; true' || fail "pdh-ha auf node1 beenden"
+    sleep 2
+    wait_for 60 eval '[[ "$R1" == passiv && "$(jget pg <<<"$J1")" == stopped ]]' || fail "node1 nicht passiv mit gestoppter Datenbank (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    docker exec node1 sh -c "ls $marker" >/dev/null || fail "Markierdatei nach dem Abbruch nicht da"
+    wait_for 30 eval 'event_on node1 "Datenbank nach abgebrochener Wiederanbindung gestoppt"' || fail "kein Alarm zum abgebrochenen pg_rewind"
+    watch_for 10 eval '[[ "$(jget pg <<<"$J1")" == stopped ]]' || fail "Datenbank auf node1 startet wieder ($(jget pg <<<"$J1"))"
+    r="$(up_api node1 POST /v1/command '{"cmd":"force_takeover"}')"
+    log "Übernahme erzwingen auf node1: $r"
+    [[ "$r" != 200* && "$r" == *"unsicher"* ]] || fail "Übernahme auf unsicheren Daten nicht abgelehnt: $r"
+    log "node2 hart anhalten – node1 darf auch dann nicht übernehmen"
+    writer_stop
+    docker kill node2 >/dev/null || fail "docker kill node2"
+    watch_for 40 eval '[[ "$R1" != aktiv && "$(jget pg <<<"$J1")" == stopped ]]' || fail "node1 übernimmt auf unsicheren Daten (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    r="$(up_api node1 POST /v1/command '{"cmd":"force_takeover"}')"
+    log "Übernahme erzwingen ohne Partner: $r"
+    [[ "$r" != 200* && "$r" == *"unsicher"* ]] || fail "Übernahme ohne Partner nicht abgelehnt: $r"
+    log "Neustart von node1 – die Marke hält, die Datenbank bleibt oder geht wieder aus"
+    docker restart -t 2 node1 >/dev/null || fail "docker restart node1"
+    wait_for 60 eval '[[ "$R1" != aktiv && "$(jget pg <<<"$J1")" == stopped ]]' || fail "node1 nach Neustart nicht mit gestoppter Datenbank (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    log "node2 starten"
+    docker start node2 >/dev/null || fail "docker start node2"
+    wait_for 120 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary && "$R1" == passiv ]] && pg_writable node2' ||
+        fail "node2 nach dem Start nicht aktiv (node1=$R1, node2=$R2, pg=$(jget pg <<<"$J2"))"
+    writer_start
+    log "pdh-ha rejoin auf node1 – Neukopie ohne weiteren pg_rewind"
+    local real
+    real="$(rewind_real_runs node1)"
+    wait_for 60 eval 'docker exec node1 pdh-ha rejoin >/dev/null 2>&1' || fail "pdh-ha rejoin abgelehnt: $(docker exec node1 pdh-ha rejoin 2>&1)"
+    wait_for 240 mirror_ok_rev || fail "node1 nach rejoin kein synchroner Standby (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    event_on node1 "neu vom aktiven Server kopiert" || fail "keine Neukopie auf node1"
+    docker exec node1 sh -c "! ls $marker" >/dev/null 2>&1 || fail "Markierdatei nach der Neukopie noch da"
+    [[ "$(rewind_real_runs node1)" == "$real" ]] || fail "weiterer pg_rewind nach der Marke: $(docker exec node1 cat /var/lib/pdh-lab/rewind.log)"
+    wait_acks 5 60 || fail "nach der Neukopie keine Speicherungen"
+}
+
+# Update „ohne Unterbrechung“ mit Rollentausch bei eingeschalteter Spiegelung (Aufbau wie
+# update-ok). Vorher: Im Erstabgleich ist das Update nicht „alles grün“ und der Tausch gesperrt.
+sc_spiegel_rolling_update() {
+    up_prepare 1 30
+    mirror_dirs
+    put_file node1 "$UPLOADS/erstabgleich.bin" 50M
+    log "Spiegelung ein, Erstabgleich bei 200 KB/s läuft"
+    mirror_set 120 200
+    wait_for 60 eval '[[ "$(jget mon <<<"$J1")" == ja && "$(jget mfirst <<<"$J1")" == nein ]] && docker exec node1 pgrep -x rsync >/dev/null' ||
+        fail "Erstabgleich läuft nicht (first=$(jget mfirst <<<"$J1"))"
+    local r
+    r="$(up_api node1 POST /v1/update/start '{"commit":"lab1","source":"zeitplan","kind":"rolling"}')"
+    log "Zeitplan im Erstabgleich: $r"
+    [[ "$r" == 409* && "$r" == *"Erstabgleich"* ]] || fail "Update im Erstabgleich nicht abgelehnt: $r"
+    r="$(up_api node1 POST /v1/command '{"cmd":"swap"}')"
+    log "Rollentausch im Erstabgleich: $r"
+    [[ "$r" != 200* && "$r" == *"Erstabgleich"* ]] || fail "Rollentausch im Erstabgleich nicht abgelehnt: $r"
+    log "Bandbreite frei, Erstabgleich fertig"
+    mirror_set 120 0
+    wait_for 180 mirror_first_ok || fail "Erstabgleich nicht fertig (Fehler: $(jget merr <<<"$J1"))"
+    upload_start node1
+    up_start node1 lab1 rolling
+    up_wait 600 fertig abgebrochen
+    up_result_has "Update auf $(lab_ver lab1) abgeschlossen"
+    wait_for 120 eval 'mirror_ok_rev && commits_are lab1 lab1' ||
+        fail "nicht beide auf lab1 mit node2 aktiv (node1=$R1 $(jget commit <<<"$J1"), node2=$R2 $(jget commit <<<"$J2"))"
+    wait_for 30 eval '[[ "$(mig_on node2 lab1)" == t && "$(mig_on node1 lab1)" == t ]]' || fail "Datenbank-Änderung lab1 fehlt"
+    upload_check node1 node2
+    [[ "$(file_id node2 "$UPLOADS/erstabgleich.bin")" == "$(file_id node1 "$UPLOADS/erstabgleich.bin")" ]] || fail "Datei aus dem Erstabgleich verschieden"
+    log "Spiegelung läuft nach dem Update in der neuen Richtung"
+    local g="$UPLOADS/nach-dem-update.txt" a
+    docker exec node2 sh -c 'echo neu >"$1"' _ "$g" || fail "Datei auf node2 anlegen"
+    a="$(file_id node2 "$g")"
+    wait_for 30 eval '[[ "$(file_id node1 "$g")" == "$a" ]]' || fail "Datei von node2 kommt nicht auf node1 an"
+    wait_acks 5 30 || fail "nach dem Update keine Speicherungen"
+    up_clean
+}
+
 run_scenario() {
     local name=$1 fn
     fn="sc_${name//-/_}"
@@ -1523,11 +2170,13 @@ cmd_race() {
     log "go test -race in golang:1.24"
     # Quellen als tar über stdin statt Bind-Mount: läuft so auch aus einem
     # Hilfscontainer heraus (dessen Pfade kennt der Docker-Dienst nicht)
-    tar -C "$repo" -cf - go.mod go.sum internal/ha cmd/pdh-ha scripts/pdh-ha-adresse.sh scripts/pdh-ha-join.sh |
+    tar -C "$repo" -cf - go.mod go.sum internal/ha cmd/pdh-ha scripts |
         docker run --rm -i -e CGO_ENABLED=1 golang:1.24 bash -c '
         set -euo pipefail
         mkdir -p /work
         tar -xf - -C /work
+        # Tests der Datei-Spiegelung laufen mit echtem rsync (ohne rsync: übersprungen)
+        apt-get update -qq && apt-get install -y -qq --no-install-recommends rsync >/dev/null
         cd /work
         go test -race -count=1 ./internal/ha/ ./cmd/pdh-ha/'
 }
