@@ -578,6 +578,16 @@ func (d *daemon) updateOpen() bool {
 	return d.updateOpenLocked()
 }
 
+// partnerActiveNowLocked: Der Partner ist aktiv, laut letztem Takt oder laut dem schon
+// eingetroffenen Herzschlag (der letzte Takt kann bis zu einem Takt alt sein).
+func (d *daemon) partnerActiveNowLocked() bool {
+	if p := d.last.Partner; p != nil && p.Seen && p.Role == ha.Active {
+		return true
+	}
+	pv, ok := d.net.peers(d.settingsLocked().Tick)[d.partnerLocked()]
+	return ok && pv.seen() && pv.Last.T == "hb" && ha.Role(pv.Last.Role) == ha.Active
+}
+
 // command merkt einen Handbefehl für den nächsten Takt vor.
 func (d *daemon) command(cmd string) error {
 	d.lock()
@@ -605,7 +615,7 @@ func (d *daemon) command(cmd string) error {
 		return errors.New("Nur auf einem nicht aktiven Server möglich")
 	case c == ha.CmdForceTakeover && d.rewindUnsafeLocked():
 		return errDataUnsafe // R35: auch von Hand nicht übernehmen, die Rolle wäre sonst schon aktiv
-	case c == ha.CmdForceTakeover && d.last.Partner != nil && d.last.Partner.Seen && d.last.Partner.Role == ha.Active:
+	case c == ha.CmdForceTakeover && d.partnerActiveNowLocked():
 		// sonst verliert ein gesunder aktiver Server seine Rolle, und was er
 		// bis dahin allein gespeichert hat, landet in den abgezweigten Daten
 		return errors.New("Der aktive Server ist erreichbar – bitte am aktiven Server „Rollen tauschen“ verwenden")

@@ -497,3 +497,15 @@ func (m *mdt) noWatchCover() {
 	wk.fullAt = map[string]time.Time{}
 	wk.mu.Unlock()
 }
+
+// Im Labor gefunden (update-abbruch): Der Partner ist seit einem Bruchteil des Takts aktiv, sein
+// Herzschlag ist schon da, der letzte Takt kannte ihn aber noch als passiv. Der Befehl wird gleich
+// an der Schnittstelle abgelehnt, nicht erst still im nächsten Takt.
+func TestForceTakeoverUsesFreshPartnerView(t *testing.T) {
+	m := newMDT(t, ha.Passive, true, message{Role: "passiv"})
+	m.tick()
+	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 2, Ver: "test", Sees: []string{"a"}}))
+	if err := m.d.command("force_takeover"); err == nil {
+		t.Fatal("angenommen, obwohl der Herzschlag den Partner als aktiv meldet")
+	}
+}
