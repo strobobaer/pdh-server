@@ -29,7 +29,8 @@ type pgEnv struct {
 	CAFile, CertFile, KeyFile string // PostgreSQL-Kopien (postgres, 0600)
 	SlotKeepMB                int64
 	Listen                    []string
-	DataCurrent               bool // für promote ohne Handbefehl
+	DataCurrent               bool          // für promote ohne Handbefehl
+	Tick                      time.Duration // Takt: so schnell kommt ein Herzschlag des Partners an
 }
 
 type pgActor struct {
@@ -226,7 +227,7 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 // undoFence nimmt das Abschotten nach einem gescheiterten Abgeben zurück; scheitert
 // auch das, wird es an den Fehler angehängt.
 func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote bool) error {
-	switch a.phaseOf(term) {
+	switch a.settledPhase(ctx, term) {
 	case phaseTaken:
 		// C1: Der Partner hat übernommen: wieder einschalten gäbe zwei schreibbare
 		// Datenbanken und zwei Tunnel. Bei demote merken, damit die Wiederanbindung folgt.
@@ -260,6 +261,26 @@ func (a *pgActor) phaseOf(term uint64) swapPhase {
 		return phaseGiving
 	}
 	return a.phase(term)
+}
+
+// settledPhase: Stand des Tauschs vor einer Rücknahme. Übernimmt der Partner, endet sein
+// Dateiempfang sofort; der letzte Abgleich scheitert also, bevor sein Herzschlag hier im
+// nächsten Takt zählt. Wer dann zurücknähme, machte die Datenbank neben dem neuen aktiven
+// Server schreibbar. Darum drei Takte warten (einer darf verloren gehen), solange der Tausch
+// noch als laufend gilt.
+func (a *pgActor) settledPhase(ctx context.Context, term uint64) swapPhase {
+	end := time.Now().Add(3 * a.env().Tick)
+	for {
+		p := a.phaseOf(term)
+		if p != phaseGiving || !time.Now().Before(end) {
+			return p
+		}
+		select {
+		case <-ctx.Done():
+			return p
+		case <-time.After(a.poll):
+		}
+	}
 }
 
 func (a *pgActor) markRefused() {

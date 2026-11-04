@@ -105,3 +105,55 @@ func TestMirrorNewBandwidthRestartsRun(t *testing.T) {
 		t.Fatalf("Stand nach dem Abbruch: %+v", st)
 	}
 }
+
+// Im Labor gefunden (spiegel-uebernahme-im-abgleich): Übernimmt der Partner, endet sein
+// Dateiempfang sofort, der letzte Abgleich scheitert also vor dem nächsten Takt. Damals
+// galt der Tausch noch als laufend, die Abschottung wurde zurückgenommen, und zwei
+// Datenbanken waren schreibbar. Die Rücknahme wartet jetzt den Herzschlag des Partners ab.
+func TestSwapFinalSyncFailsBeforePartnerHeartbeat(t *testing.T) {
+	m, a, svc, _, inFinal := proofRig(t)
+	env := a.env
+	a.env = func() pgEnv { e := env(); e.Tick = 500 * time.Millisecond; return e }
+	release := make(chan struct{})
+	m.rs.mu.Lock()
+	m.rs.fn = func(ctx context.Context, _ []string) error {
+		inFinal <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return errors.New("rsync: Verbindung vom Partner beendet")
+	}
+	m.rs.mu.Unlock()
+	if err := m.d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	m.tick()
+	select {
+	case <-inFinal:
+	case <-time.After(10 * time.Second):
+		t.Fatal("letzter Abgleich nicht gestartet")
+	}
+	close(release)                     // der Empfang endet …
+	time.Sleep(100 * time.Millisecond) // … und erst danach kommt der Herzschlag
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") || svc.active || tunOf(a).active {
+		t.Fatal("Abschottung vor dem Herzschlag des Partners zurückgenommen")
+	}
+	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 2, Ver: "test", Sees: []string{"a"}}))
+	m.tick()
+	waitFor(t, 5*time.Second, "demote zu Ende", m.d.actionsIdle)
+	m.tick()
+	waitFor(t, 5*time.Second, "Takt zu Ende", m.d.actionsIdle)
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") || svc.active || tunOf(a).active {
+		t.Errorf("zwei schreibbare Server: svc=%v tun=%v, Einstellungen %q", svc.active, tunOf(a).active, confText(t, a))
+	}
+	m.d.lock()
+	marked, maint := m.d.undoRefused, m.d.p.Maint
+	m.d.unlock()
+	if maint {
+		t.Error("Wartung nach der Übernahme des Partners")
+	}
+	if !marked && !hasEvent(m.d, "wieder angebunden") {
+		t.Errorf("keine Wiederanbindung vorgemerkt: %v", eventTexts(m.d))
+	}
+}

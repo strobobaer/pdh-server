@@ -58,7 +58,7 @@ func buildPGEnv(self, partner clusterNode, cl clusterConfig, pass string, c pgCl
 	if s.Validate() != nil {
 		s = ha.DefaultSettings()
 	}
-	e.SlotKeepMB = s.SlotKeep >> 20
+	e.SlotKeepMB, e.Tick = s.SlotKeep>>20, s.Tick
 	for _, a := range self.Addrs {
 		e.Listen = append(e.Listen, hostOfAddr(a))
 	}
