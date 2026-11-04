@@ -41,6 +41,7 @@ func TestSwapPartnerTakesOverDuringFinalSync(t *testing.T) {
 	m.rs.mu.Lock()
 	m.rs.fn = func(ctx context.Context, _ []string) error { inFinal <- struct{}{}; <-ctx.Done(); return ctx.Err() }
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +195,7 @@ func TestSwapFailedFinalSyncRestores(t *testing.T) {
 		return errors.New("rsync 23")
 	}
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -411,6 +413,7 @@ func TestSwapStrandedServerRecovers(t *testing.T) {
 	m.rs.mu.Lock()
 	m.rs.fn = func(ctx context.Context, _ []string) error { inFinal <- struct{}{}; <-ctx.Done(); return ctx.Err() }
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}

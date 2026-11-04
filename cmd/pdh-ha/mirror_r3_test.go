@@ -30,6 +30,7 @@ func withdrawnRig(t *testing.T) (*mdt, *pgActor, *svcLog) {
 		return errors.New("rsync 23")
 	}
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -485,4 +486,11 @@ func TestMirrorStaleRoleDoesNotDecide(t *testing.T) {
 	if hasEvent(m.d, "wurde aktiv") {
 		t.Fatalf("falscher Alarm: %s", fmt.Sprint(eventTexts(m.d)))
 	}
+}
+
+// touchUpload: eine neue Datei vor dem Tausch. Sonst ruft der letzte Abgleich rsync je nach
+// Zeitablauf gar nicht auf: Deckt der Watch die Quelle ab und ist nichts vorgemerkt, gibt es nichts
+// zu tun (unter Linux der Regelfall).
+func (m *mdt) touchUpload() {
+	_ = os.WriteFile(filepath.Join(m.dir, "repo", "uploads", "vor-dem-tausch"), []byte("x"), 0o644)
 }

@@ -124,6 +124,7 @@ func TestSwapFinalSyncFailsBeforePartnerHeartbeat(t *testing.T) {
 		return errors.New("rsync: Verbindung vom Partner beendet")
 	}
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -192,6 +193,7 @@ func finalFails(t *testing.T) (*mdt, *pgActor, *svcLog) {
 	m.rs.mu.Lock()
 	m.rs.fn = func(context.Context, []string) error { return errors.New("rsync 23") }
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +251,7 @@ func TestSwapPhaseUnknownWithoutContact(t *testing.T) {
 	m.rs.mu.Lock()
 	m.rs.fn = func(ctx context.Context, _ []string) error { inFinal <- struct{}{}; <-ctx.Done(); return ctx.Err() }
 	m.rs.mu.Unlock()
+	m.touchUpload() // der letzte Abgleich überträgt in jedem Fall etwas
 	if err := m.d.command("swap"); err != nil {
 		t.Fatal(err)
 	}
