@@ -136,6 +136,9 @@ func TestMirrorReplacementServerForcesFirstSync(t *testing.T) {
 	if st.DataID != "B" || !st.LastOK.IsZero() || st.FirstPercent == 100 {
 		t.Fatalf("Stand: %+v", st)
 	}
+	// Erst nach dem Speichern lesen: Unter Windows scheitert das Umbenennen, solange der Test die
+	// Datei gerade offen hat (nur in diesem Test, Linux kennt das nicht).
+	time.Sleep(300 * time.Millisecond)
 	waitFor(t, 3*time.Second, "mirror.json mit neuer Kennung", func() bool { return strings.Contains(adoptedFile(m), `"data_id":"B"`) })
 	// und der Herzschlag meldet nicht „fertig“
 	m.d.mu.Lock()
