@@ -9,7 +9,41 @@ import (
 	"pdh/internal/ha"
 )
 
-// offRig: Spiegelung aus, Rolle start; die Rolle ist gemerkt.
+// R47: Die Rollenvorgeschichte entscheidet nicht über --delete. Tausch bei ausgeschalteter
+// Spiegelung, hin und zurück oder einfach: Der Empfänger hat keinen Beleg, das Einschalten
+// löscht nichts am Partner, und der „Wechsel“ gibt keinen eigenen Alarm.
+func TestMirrorSwapWhileOffNoDeleteNoPromotion(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		start ha.Role
+		steps []ha.Role
+	}{
+		{"einfacher Tausch", ha.Passive, []ha.Role{ha.Active}},
+		{"hin und zurück", ha.Active, []ha.Role{ha.Passive, ha.Active}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := offRig(t, tc.start)
+			for _, r := range tc.steps {
+				m.setRole(r)
+			}
+			if del, nodel := m.mirrorAfterOn(); del != 0 || nodel != 1 {
+				t.Fatalf("uploads: mit --delete %d, ohne %d", del, nodel)
+			}
+			time.Sleep(100 * time.Millisecond)
+			if hasEvent(m.d, "wurde aktiv") {
+				t.Fatalf("Alarm zum Wechsel: %v", eventTexts(m.d))
+			}
+			if _, statErr := os.Stat(filepath.Join(filepath.Dir(m.w.statePath), mirrorInboxFile)); statErr == nil {
+				rt := m.rt()
+				if r := rt.inbox.Load().lastRole(); r == tc.start && tc.start == ha.Passive {
+					t.Fatalf("Rolle bei ausgeschalteter Spiegelung gemerkt: %s", r)
+				}
+			}
+		})
+	}
+}
+
+// offRig: Spiegelung aus, Rolle start.
 func offRig(t *testing.T, start ha.Role) *mdt {
 	t.Helper()
 	other := "passiv"
@@ -25,14 +59,7 @@ func offRig(t *testing.T, start ha.Role) *mdt {
 		t.Fatal(err)
 	}
 	m.tick()
-	waitFor(t, 5*time.Second, "Rolle gemerkt", func() bool {
-		rt := m.rt()
-		if rt == nil {
-			return false
-		}
-		ib := rt.inbox.Load()
-		return ib != nil && ib.lastRole() == start
-	})
+	m.ready()
 	return m
 }
 
@@ -58,28 +85,12 @@ func (m *mdt) mirrorAfterOn() (del, nodel int) {
 	return uploadsCalls(m.rs)
 }
 
-// R44 (B3, B8): Einfacher Tausch bei ausgeschalteter Spiegelung: Der Server war vorher passiv
-// und hat vielleicht nicht alles. Das Einschalten löscht nichts am Partner und meldet es.
-func TestMirrorSwapWhileOffSimpleKeepsProtection(t *testing.T) {
-	m := offRig(t, ha.Passive)
-	m.setRole(ha.Active)
-	if del, nodel := m.mirrorAfterOn(); del != 0 || nodel != 1 {
-		t.Fatalf("uploads: mit --delete %d, ohne %d", del, nodel)
-	}
-	waitFor(t, 5*time.Second, "Alarm", func() bool { return hasEvent(m.d, "Quelle uploads: Dieser Server wurde aktiv") })
-}
-
-// R44: Hin und zurück bei ausgeschalteter Spiegelung (F2): Der Server war vorher aktiv, kein
-// Wechsel: normaler Erstabgleich, kein Fehlalarm.
-func TestMirrorSwapWhileOffRoundTripNoAlarm(t *testing.T) {
-	m := offRig(t, ha.Active)
-	m.setRole(ha.Passive)
-	m.setRole(ha.Active)
-	if del, nodel := m.mirrorAfterOn(); del != 1 || nodel != 0 {
-		t.Fatalf("uploads: mit --delete %d, ohne %d", del, nodel)
-	}
-	time.Sleep(100 * time.Millisecond)
-	if hasEvent(m.d, "wurde aktiv") {
-		t.Fatalf("Fehlalarm: %v", eventTexts(m.d))
-	}
+// R47: Ausschalten macht Belege und Bestätigung ungültig.
+func TestMirrorOffDropsProofs(t *testing.T) {
+	m, _, _, rt, _ := proofRig(t)
+	ib := rt.inbox.Load()
+	ib.noteSource("uploads")
+	m.setOn(false)
+	m.tick()
+	waitFor(t, 5*time.Second, "Beleg weg", func() bool { ok, _ := ib.proofOf("uploads"); return !ok })
 }

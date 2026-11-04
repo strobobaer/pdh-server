@@ -209,6 +209,7 @@ func TestSwapRollbackOnlyAsActive(t *testing.T) {
 	rs := &roleSvc{serviceCtl: svc, d: m.d}
 	a.svc = rs
 	m.tick()
+	m.tick() // R48: erst im zweiten Takt schreibbar
 	waitFor(t, 5*time.Second, "Rücknahme", m.d.actionsIdle)
 	m.d.mu.Lock()
 	role := m.d.p.Role
@@ -264,5 +265,55 @@ func TestSwapPhaseUnknownWithoutContact(t *testing.T) {
 	m.d.mu.Unlock()
 	if p := m.d.swapPhase(term); p != phaseUnknown {
 		t.Fatalf("ohne Sicht: %v", p)
+	}
+}
+
+// lostSvc: Während unfence wechselt die Rolle (höhere Amtszeit gesehen).
+type lostSvc struct {
+	serviceCtl
+	d *daemon
+}
+
+func (s *lostSvc) Start(ctx context.Context) error {
+	s.d.mu.Lock()
+	s.d.p.Role = ha.Passive
+	s.d.mu.Unlock()
+	return s.serviceCtl.Start(ctx)
+}
+
+// R48: Rolle wechselt während unfence: keine weiteren Dienste, nur lesend, keine Wartung.
+func TestUnfenceRoleLostDuringStart(t *testing.T) {
+	m, a, svc := finalFails(t)
+	a.svc = &lostSvc{serviceCtl: svc, d: m.d}
+	m.tick()
+	m.tick()
+	waitFor(t, 5*time.Second, "Rücknahme", m.d.actionsIdle)
+	if svc.active || tunOf(a).active {
+		t.Errorf("Dienste an: svc=%v tun=%v", svc.active, tunOf(a).active)
+	}
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Errorf("schreibbar: %q", confText(t, a))
+	}
+	m.d.mu.Lock()
+	maint := m.d.p.Maint
+	m.d.mu.Unlock()
+	if maint {
+		t.Error("Wartung nach dem Rollenwechsel in der Rücknahme")
+	}
+}
+
+// R48: Rolle schon vor dem Reload weg: Die Einstellungen bleiben nur lesend.
+func TestUnfenceRoleLostBeforeReload(t *testing.T) {
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", "f|0/100|1|on|pdh_ha_b|", nil)
+	a, svc := testActor(t, r)
+	svc.active = false
+	tunOf(a).active = false
+	a.stillActive = func() bool { return false }
+	err := a.unfence(context.Background())
+	if err == nil {
+		t.Fatal("kein Fehler")
+	}
+	if has(r.list(), "pg_ctlcluster 18 main reload") || svc.active || tunOf(a).active {
+		t.Fatalf("Aufrufe: %v, svc=%v", r.list(), svc.active)
 	}
 }

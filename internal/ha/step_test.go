@@ -1902,7 +1902,7 @@ func TestHandoverDemoteFailed(t *testing.T) {
 	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
 	in.DemoteFailed = in.SwapSeq
 	out := Step(in)
-	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || hasKind(out, ActHandover) {
+	if second := Step(carryOver(in, out)); out.Persist.Role != Active || hasKind(out, ActUnfence) || !hasKind(second, ActUnfence) || hasKind(out, ActHandover) {
 		t.Fatalf("Abbruch erwartet: %s %v", out.Persist.Role, out.Actions)
 	}
 	if countEvents(out, "Rollentausch abgebrochen") != 1 || out.HandoverPending != 0 {
@@ -1996,6 +1996,7 @@ func TestHandoverDemoteDeadlineMirror(t *testing.T) {
 // carryOver: Zustand eines Schrittes in den nächsten Eingang übernehmen.
 func carryOver(in Input, out Output) Input {
 	in.Persist = out.Persist
+	in.UnfencePending = out.UnfencePending
 	in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
 	in.HandoverReadyAt = out.HandoverReadyAt
 	in.SwapSeq, in.SwapKind = out.SwapSeq, out.SwapKind
@@ -2312,5 +2313,60 @@ func TestForceTakeoverRefusedWhenPartnerActive(t *testing.T) {
 	in.Partner.Seen = false
 	if out = Step(in); out.Persist.Role != Active || !hasKind(out, ActPromote) {
 		t.Fatalf("Notweg: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+}
+
+// R48: Rücknahme in zwei Takten: erst Rolle aktiv, senden; im nächsten Takt schreibbar.
+func TestRollbackInTwoTicks(t *testing.T) {
+	in := swapped(t)
+	in.Now += sec
+	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+	in.DemoteFailed = in.SwapSeq
+	out := Step(in)
+	if out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.UnfencePending {
+		t.Fatalf("Takt N: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.UnfencePending)
+	}
+	in = carryOver(in, out)
+	in.Now += sec
+	high := in
+	out = Step(in)
+	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || out.UnfencePending {
+		t.Fatalf("Takt N+1: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.UnfencePending)
+	}
+	// Höhere Amtszeit im Takt N+1: nie schreibbar
+	pa := *high.Partner
+	pa.Role, pa.Term = Active, high.Persist.Term+1
+	high.Partner = &pa
+	out = Step(high)
+	if hasKind(out, ActUnfence) || !hasKind(out, ActRejoin) || out.UnfencePending {
+		t.Fatalf("höhere Amtszeit: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+}
+
+// R49: Ohne Sicht zurückgefallen schottet der Server auch aktiv ab (R43-Zweig).
+func TestHandoverNoSightFences(t *testing.T) {
+	in := swapped(t)
+	in.Now += 100 * sec
+	in.Partner.Seen, in.Witness.Seen = false, false
+	in.DemoteFailed = in.SwapSeq
+	out := Step(in)
+	if out.Persist.Role != Fenced || !hasKind(out, ActFence) || hasKind(out, ActUnfence) {
+		t.Fatalf("Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+}
+
+// R49: Bei offenem Update-Auftrag läuft kein Rejoin, auch nicht aus abgeschaltet: Der
+// eingefrorene Rückfallstand bleibt. Die Marke holt die Wiederanbindung nach dem Auftrag nach.
+func TestHigherTermWithOpenUpdateNoRejoin(t *testing.T) {
+	for _, role := range []Role{Fenced, Active} {
+		in := base(Trio, role)
+		in.UpdateOpen = true
+		in.Partner = seenPeer("node", Active, 2, 100*sec)
+		in.Partner.Term = 2
+		in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+		out := Step(in)
+		if hasKind(out, ActRejoin) || !hasKind(out, ActFence) || !out.SetUndoRefused || out.Persist.Role != Passive || out.Persist.Term != 2 {
+			t.Fatalf("%s: Rolle %s, Amtszeit %d, Aktionen %v, Marke %v", role, out.Persist.Role, out.Persist.Term, out.Actions, out.SetUndoRefused)
+		}
 	}
 }

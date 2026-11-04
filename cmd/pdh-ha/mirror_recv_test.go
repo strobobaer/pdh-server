@@ -622,7 +622,7 @@ func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 		t.Fatal("Beleg trotz Fehler")
 	}
 	// ein Sofort-Strom (ohne --delete) belegt nichts
-	_, d, _ = f.accept("uploads", 3)
+	_, d, _ = f.acceptArgv("uploads", "--files-from=-", "--from0")
 	d(nil)
 	if done, _ := f.in.proofOf("uploads"); done {
 		t.Fatal("Beleg ohne löschenden Lauf")

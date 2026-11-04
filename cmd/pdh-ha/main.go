@@ -45,8 +45,9 @@ const usage = `Aufruf: pdh-ha <Befehl>
                                       Rolle ausführen und die Ausgabe zeigen
   vip test [--adresse ip/präfix]      mitwandernde Adresse in alle Richtungen testen
                                       (Standard: die eingetragene Adresse)
-  mirror status|run|trash-empty       Datei-Spiegelung: Stand zeigen; sofort abgleichen und
-                                      Papierkorb am Partner leeren (nur am aktiven Server)
+  mirror status|run|trash-empty|confirm  Datei-Spiegelung: Stand zeigen; sofort abgleichen,
+                                      Papierkorb am Partner leeren und bestätigen, dass dieser
+                                      Server vollständig ist (nur am aktiven Server)
   addrs set <knoten> <adr,…> [--neustart]
                                       Adressen eines Knotens ändern (am ersten Server);
                                       --neustart: aktives PostgreSQL dafür neu starten
@@ -317,6 +318,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 				return fail(err)
 			}
 			fmt.Fprintln(stdout, "Abgleich fertig.")
+		case "confirm":
+			if err := apiDo(sock, http.MethodPost, "/v1/mirror/confirm", map[string]string{}, nil); err != nil {
+				return fail(err)
+			}
+			fmt.Fprintln(stdout, "Bestätigt: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in seinen Papierkorb.")
 		case "trash-empty":
 			if err := apiDo(sock, http.MethodPost, "/v1/mirror/trash-empty", map[string]string{}, nil); err != nil {
 				return fail(err)

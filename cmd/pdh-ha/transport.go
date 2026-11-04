@@ -116,6 +116,8 @@ type message struct {
 	EnvSum        string    `json:"env_sum,omitempty"`        // Prüfsumme der .env (ohne Serverdaten)
 	NCVer         string    `json:"nc_ver,omitempty"`         // Nextcloud- und PHP-Fassung
 	MirrorDataID  string    `json:"mirror_data_id,omitempty"` // Kennung der Empfangsablage (ändert sich bei einem Ersatzserver)
+	MirrorProven  []string  `json:"mirror_proven,omitempty"`  // Quellen mit eigenem Beleg des Empfängers (R47)
+	MirrorWait    []string  `json:"mirror_wait,omitempty"`    // Quellen, deren Ziel nicht leer war: warten auf Bestätigung
 }
 
 var deliverTypes = map[string]bool{

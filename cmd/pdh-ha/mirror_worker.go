@@ -40,6 +40,9 @@ type mirrorLabelState struct {
 	Adopted  bool      `json:"adopted,omitempty"`   // Erstabgleich laut aktivem Partner fertig (übernommen, nicht selbst gelaufen)
 	Unproven bool      `json:"unproven,omitempty"`  // dieser Server wurde aktiv, ohne dass die Quelle belegt war: läuft ohne --delete (R25)
 	Err      string    `json:"err,omitempty"`
+
+	ConfirmedFor string `json:"confirmed_for,omitempty"` // am aktiven Server bestätigt, für diese Datenkennung des Empfängers (R47)
+	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
 }
 
 type mirrorState struct {
@@ -60,22 +63,24 @@ type mirrorState struct {
 
 // mirrorDeps: alles, was der Arbeiter von außen braucht (in Tests ersetzbar).
 type mirrorDeps struct {
-	ev        *eventLog
-	repo      string                                // Ordner der PDH-Installation (pdhRepo())
-	node      string                                // Kennung des Partners
-	exe       string                                // pdh-ha für „rsync -e“ (os.Executable)
-	rsync     runner                                // führt rsync aus (mit Prozessgruppe, siehe mirrorExec)
-	free      func() (int64, bool)                  // freier Platz am Partner aus dem Herzschlag
-	statePath string                                // mirror.json
-	now       func() time.Time                      // nil = time.Now
-	exists    func(string) bool                     // nil = Datei/Ordner vorhanden
-	hasFiles  func(string) bool                     // nil = Ordner enthält etwas
-	size      func(string) int64                    // nil = Summe der Dateigrößen
-	lexists   func(string) bool                     // nil = Eintrag vorhanden (Symlinks zählen selbst)
-	islink    func(string) bool                     // nil = Eintrag ist ein Symlink
-	proof     func(label string) (done, files bool) // eigener Beleg des Empfängers (nil = keiner)
-	settle    time.Duration                         // Sammelzeit der Sofort-Übertragung (0 = 2 s)
-	watchAdd  func(string) error                    // nil = inotify (Test-Einhängepunkt)
+	ev           *eventLog
+	repo         string                                // Ordner der PDH-Installation (pdhRepo())
+	node         string                                // Kennung des Partners
+	exe          string                                // pdh-ha für „rsync -e“ (os.Executable)
+	rsync        runner                                // führt rsync aus (mit Prozessgruppe, siehe mirrorExec)
+	free         func() (int64, bool)                  // freier Platz am Partner aus dem Herzschlag
+	statePath    string                                // mirror.json
+	now          func() time.Time                      // nil = time.Now
+	exists       func(string) bool                     // nil = Datei/Ordner vorhanden
+	hasFiles     func(string) bool                     // nil = Ordner enthält etwas
+	size         func(string) int64                    // nil = Summe der Dateigrößen
+	lexists      func(string) bool                     // nil = Eintrag vorhanden (Symlinks zählen selbst)
+	islink       func(string) bool                     // nil = Eintrag ist ein Symlink
+	proof        func(label string) (done, files bool) // eigener Beleg des Empfängers (nil = keiner)
+	settle       time.Duration                         // Sammelzeit der Sofort-Übertragung (0 = 2 s)
+	watchAdd     func(string) error                    // nil = inotify (Test-Einhängepunkt)
+	partnerProof func(label string) bool               // Empfänger hat einen eigenen Beleg (nil = nicht geprüft: Tests)
+	partnerWait  func(label string) bool               // Empfänger meldet „wartet auf Bestätigung“
 }
 
 type mirrorWorker struct {
@@ -411,7 +416,7 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 		if ls.Unproven {
 			continue
 		}
-		ls.Unproven = true
+		ls.Unproven, ls.WaitAlarmed = true, true
 		w.st.PerLabel[m.Label] = ls
 		marked = append(marked, m.Label)
 	}
@@ -420,8 +425,135 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 	w.mu.Unlock()
 	w.save(snap)
 	for _, l := range marked {
-		w.alarmOnce("unproven:"+l, "Quelle "+l+": Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Bitte prüfen und die Rollen tauschen.")
+		w.alarmOnce("unproven:"+l, "Quelle "+l+": Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm")
 	}
+}
+
+// mayDelete (R47): --delete nur, wenn der Empfänger einen eigenen Beleg hat oder der aktive
+// Server für dessen Datenkennung bestätigt hat; nie bei „unbelegt“ (R25). confirmed: Der
+// Lauf stützt sich auf die Bestätigung und sagt das dem Empfänger.
+func (w *mirrorWorker) mayDelete(label string) (del, confirmed bool) {
+	w.mu.Lock()
+	ls, id := w.st.PerLabel[label], w.st.DataID
+	w.mu.Unlock()
+	if ls.Unproven {
+		return false, false
+	}
+	if ls.ConfirmedFor != "" && ls.ConfirmedFor == id {
+		return true, true
+	}
+	return w.d.partnerProof == nil || w.d.partnerProof(label), false
+}
+
+// waiting: Quellen, die auf die Bestätigung warten: „unbelegt“ oder vom Empfänger gemeldet.
+func (w *mirrorWorker) waiting() []string {
+	w.mu.Lock()
+	srcs := ha.MirrorSources(w.d.repo, w.cfg)
+	per, id := copyState(w.st).PerLabel, w.st.DataID
+	w.mu.Unlock()
+	var out []string
+	for _, m := range srcs {
+		ls := per[m.Label]
+		switch {
+		case ls.Unproven:
+			out = append(out, m.Label)
+		case ls.ConfirmedFor != "" && ls.ConfirmedFor == id:
+		case w.d.partnerWait != nil && w.d.partnerWait(m.Label):
+			out = append(out, m.Label)
+		}
+	}
+	return out
+}
+
+// noteWaiting meldet jede wartende Quelle einmal, auch über einen Neustart (R47). Schreibt
+// eine Datei: nie aus dem Takt aufrufen.
+func (w *mirrorWorker) noteWaiting() {
+	labels := w.waiting()
+	w.mu.Lock()
+	var fresh []string
+	for _, l := range labels {
+		ls := w.st.PerLabel[l]
+		if !ls.WaitAlarmed {
+			ls.WaitAlarmed = true
+			w.st.PerLabel[l] = ls
+			fresh = append(fresh, l)
+		}
+	}
+	if len(fresh) == 0 {
+		w.mu.Unlock()
+		return
+	}
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+	for _, l := range fresh {
+		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Quelle " + l + ": Der Partner hat dort schon Dateien ohne Beleg. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"})
+	}
+}
+
+// confirm: Dieser Server ist vollständig (R47): Für die aktuelle Datenkennung des Empfängers
+// läuft der nächste Abgleich mit --delete, abweichende Dateien am Partner wandern in seinen
+// Papierkorb. Bleibt über einen Neustart. Schreibt eine Datei.
+func (w *mirrorWorker) confirm() error {
+	w.mu.Lock()
+	id := w.st.DataID
+	if id == "" {
+		w.mu.Unlock()
+		return errors.New("Die Kennung des Partners ist noch nicht bekannt – bitte kurz warten")
+	}
+	for _, m := range ha.MirrorSources(w.d.repo, w.cfg) {
+		ls := w.st.PerLabel[m.Label]
+		ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = false, false, id
+		w.st.PerLabel[m.Label] = ls
+	}
+	w.lastStart = time.Time{} // gleich abgleichen
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	if err := w.saveErr(snap); err != nil {
+		return err
+	}
+	select {
+	case w.kick <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// noteOwnProof: Der Partner meldet den Beleg für eine Quelle, die dieser Server (nicht
+// unbelegt) schon erfolgreich abgeglichen hat: Der eigene Stand gehört dazu (note schreibt
+// eine Datei, nur bei Änderung). Sonst stünde nach dem ersten Tausch jede Quelle auf „wartet“.
+func (w *mirrorWorker) noteOwnProof(proven []string, note func(label string)) {
+	w.mu.Lock()
+	var mine []string
+	for _, l := range proven {
+		if ls := w.st.PerLabel[l]; !ls.Unproven && !ls.LastOK.IsZero() {
+			mine = append(mine, l)
+		}
+	}
+	w.mu.Unlock()
+	for _, l := range mine {
+		note(l)
+	}
+}
+
+// dropConfirm: Spiegelung aus: Die Bestätigung gilt nicht über den Abschnitt hinaus.
+func (w *mirrorWorker) dropConfirm() {
+	w.mu.Lock()
+	changed := false
+	for l, ls := range w.st.PerLabel {
+		if ls.ConfirmedFor != "" || ls.WaitAlarmed {
+			ls.ConfirmedFor, ls.WaitAlarmed = "", false
+			w.st.PerLabel[l] = ls
+			changed = true
+		}
+	}
+	if !changed {
+		w.mu.Unlock()
+		return
+	}
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
 }
 
 // liftUnproven hebt „unbelegt“ auf, sobald dieser Server die Quelle selbst
@@ -737,7 +869,12 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 		default:
 			saw[m.Label] = w.d.hasFiles(m.Path)
 			t0 := time.Now()
-			if _, err := w.d.rsync.Run(rctx, w.argvDel(m, term, s, !w.unproven(m.Label)), nil, nil); err != nil && !vanishedOnly(err) {
+			del, conf := w.mayDelete(m.Label)
+			argv := w.argvDel(m, term, s, del)
+			if conf {
+				argv = confirmedArgv(argv)
+			}
+			if _, err := w.d.rsync.Run(rctx, argv, nil, nil); err != nil && !vanishedOnly(err) {
 				o.err = fmt.Errorf("%s: %w", m.Label, err)
 			} else {
 				o.ok = true
@@ -783,6 +920,17 @@ func (w *mirrorWorker) argvDel(m ha.MirrorSource, term uint64, s ha.Settings, de
 	a = append(a, m.Exclude...)
 	rsh := fmt.Sprintf("%s mirror-pipe --label %s --term %d --node %s", w.d.exe, m.Label, term, w.d.node)
 	return append(a, "-e", rsh, strings.TrimSuffix(m.Path, "/")+"/", w.d.node+":"+m.Label)
+}
+
+// confirmedArgv setzt im Aufruf von mirror-pipe den Schalter für den bestätigten Lauf.
+func confirmedArgv(a []string) []string {
+	out := append([]string(nil), a...)
+	for i := range out {
+		if i > 0 && out[i-1] == "-e" {
+			out[i] = strings.Replace(out[i], " mirror-pipe ", " mirror-pipe --bestaetigt ", 1)
+		}
+	}
+	return out
 }
 
 // finish verbucht das Ergebnis eines Laufs (ohne mu zu halten, solange etwas

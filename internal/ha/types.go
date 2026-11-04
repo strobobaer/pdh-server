@@ -393,6 +393,7 @@ type Input struct {
 	RejoinAsked     bool          // Wiederanbindung für „Rücknahme verweigert“ schon ausgelöst
 	RejoinAlarmed   bool          // dazu schon gemeldet (ein erneuter Versuch meldet nicht noch einmal)
 	UndoRefused     bool          // Daemon-Speicher: demote hat die Rücknahme verweigert, weil der Partner übernommen hat
+	UnfencePending  bool          // R48: Tausch zurückgenommen, Rolle aktiv gesendet; im nächsten Takt schreibbar
 	UpdateOpen      bool          // ein Update-Auftrag ist offen
 	RejoinBusy      bool          // eine Wiederanbindung ist eingereiht oder läuft
 	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
@@ -407,6 +408,8 @@ type Output struct {
 	// R42: Übergabe geräumt, während die Abgabe gescheitert ist oder läuft: abgeschottet
 	// bleiben, Wiederanbindung vormerken (Daemon-Speicher UndoRefused)
 	SetUndoRefused bool
+	// R48: siehe Input
+	UnfencePending bool
 
 	HoldUntil       time.Duration
 	VotePending     uint64

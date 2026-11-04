@@ -729,7 +729,13 @@ func (d *daemon) actionWorker(ctx context.Context) {
 				if hand {
 					err = d.strandedGuard()
 				}
-				if err == nil {
+				// R49: zwischen Einreihen und Ausführung kann ein Auftrag begonnen haben;
+				// sein eingefrorener Rückfallstand bleibt unberührt
+				skip := q.a.Kind == ha.ActRejoin && d.updateOpen()
+				if skip {
+					d.event("warn", "Wiederanbindung übersprungen: Update-Auftrag ist offen")
+				}
+				if err == nil && !skip {
 					err = d.doAction(ctx, q.a)
 				}
 				if hand {

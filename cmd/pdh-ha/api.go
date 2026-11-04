@@ -416,6 +416,13 @@ func apiHandler(d *daemon) http.Handler {
 		}
 		apiOK(w)
 	})
+	mux.HandleFunc("POST /v1/mirror/confirm", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.mirrorConfirm(); err != nil {
+			apiFail(w, err)
+			return
+		}
+		apiOK(w)
+	})
 	mux.HandleFunc("POST /v1/mirror/trash-empty", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.mirrorTrashEmptyReq(); err != nil {
 			apiFail(w, err)
@@ -562,6 +569,13 @@ var errUpdateOpen = errors.New("Update läuft – zuerst „pdh-ha update abort�
 // updateOpenLocked: ein Update-Auftrag ist offen (auch gespiegelt am passiven Server).
 func (d *daemon) updateOpenLocked() bool {
 	return d.up.job.ID != "" && !upEnded(d.up.job)
+}
+
+// updateOpen wie updateOpenLocked, für Aufrufer ohne das Schloss.
+func (d *daemon) updateOpen() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.updateOpenLocked()
 }
 
 // command merkt einen Handbefehl für den nächsten Takt vor.

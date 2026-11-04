@@ -36,9 +36,10 @@ const (
 // mirrorRequest ist die erste Zeile des Absenders. Argv sind die Wörter des
 // rsync-Aufrufs nach dem Rechnernamen („rsync --server …“).
 type mirrorRequest struct {
-	Label string   `json:"label"`
-	Term  uint64   `json:"term"`
-	Argv  []string `json:"argv"`
+	Label     string   `json:"label"`
+	Term      uint64   `json:"term"`
+	Argv      []string `json:"argv"`
+	Confirmed bool     `json:"confirmed,omitempty"` // Löschen ist am aktiven Server bestätigt (R47)
 }
 
 type mirrorReply struct {
@@ -301,6 +302,7 @@ func runMirrorPipeWith(st store, args []string, in io.Reader, out, errw io.Write
 	label := fs.String("label", "", "Quelle")
 	term := fs.Uint64("term", 0, "Amtszeit des Absenders")
 	node := fs.String("node", "", "Kennung der Gegenstelle")
+	confirmed := fs.Bool("bestaetigt", false, "Löschen ist am aktiven Server bestätigt")
 	if fs.Parse(args) != nil {
 		return 2
 	}
@@ -320,7 +322,7 @@ func runMirrorPipeWith(st store, args []string, in io.Reader, out, errw io.Write
 	defer c.raw.Close()
 	br := bufio.NewReaderSize(c.tls, maxLine+1)
 
-	b, _ := json.Marshal(mirrorRequest{Label: *label, Term: *term, Argv: rest[1:]})
+	b, _ := json.Marshal(mirrorRequest{Label: *label, Term: *term, Argv: rest[1:], Confirmed: *confirmed})
 	c.raw.SetWriteDeadline(time.Now().Add(mirrorFirstLine))
 	if _, err := c.tls.Write(append(b, '\n')); err != nil {
 		return fail(err)

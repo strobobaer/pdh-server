@@ -214,6 +214,7 @@ func TestSwapFailedFinalSyncRestores(t *testing.T) {
 	t.Logf("vor dem nächsten Takt: svc=%v tun=%v readonly=%v falscherAlarm=%v", svc.active, tunOf(a).active,
 		strings.Contains(confText(t, a), "default_transaction_read_only"), falseAlarm)
 	m.tick()
+	m.tick() // R48: erst im zweiten Takt schreibbar
 	waitFor(t, 5*time.Second, "Rücknahme", m.d.actionsIdle)
 	m.d.lock()
 	role, pend, maint := m.d.p.Role, m.d.carry.HandoverPending, m.d.p.Maint

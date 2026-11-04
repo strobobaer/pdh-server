@@ -53,11 +53,13 @@ type pgActor struct {
 	// Stand des eigenen Tauschs (Amtszeit term der Abgabe); nil = läuft (Tests, Handbefehle)
 	phase func(term uint64) swapPhase
 	// merkt „Rücknahme verweigert, Partner hat übernommen“ für die Wiederanbindung (R32)
-	refused  func()
-	wait     time.Duration // Frist für den Gleichstand beim Abgeben
-	poll     time.Duration
-	now      func() time.Time
-	passfile string // Pfad der passfile (Tests: Temp-Ordner)
+	refused func()
+	// R48: die Rolle ist noch aktiv (nil = nicht geprüft: Tests, Handbefehle am aktiven Server)
+	stillActive func() bool
+	wait        time.Duration // Frist für den Gleichstand beim Abgeben
+	poll        time.Duration
+	now         func() time.Time
+	passfile    string // Pfad der passfile (Tests: Temp-Ordner)
 
 	rewindMem atomic.Bool // pg_rewind begonnen, Ordner noch nicht als Standby gelaufen (mit Datei, R35)
 
@@ -664,16 +666,45 @@ func (a *pgActor) unfence(ctx context.Context) error {
 	if st.State != "primary" {
 		return fmt.Errorf("Datenbank ist nicht schreibbar (%s) – Übernahme erzwingen nötig", st.State)
 	}
+	if !a.roleActive() {
+		return unfenceRoleError{}
+	}
 	if err := a.pg.writeConf(ctx, a.primaryConf(e, false)); err != nil {
 		return err
+	}
+	if !a.roleActive() {
+		// noch nicht geladen, aber zurückschreiben: Der nächste reload darf es nicht aufnehmen
+		return errors.Join(unfenceRoleError{}, a.fence(ctx))
 	}
 	if err := a.pg.ctl(ctx, "reload"); err != nil {
 		return err
 	}
-	err := errors.Join(a.svc.Start(ctx), a.tun.Start(ctx))
+	// R48: Vor jedem Dienst prüfen: Sieht der Takt inzwischen eine höhere Amtszeit, ist die Rolle
+	// weg, und der Server schottet sich wieder ab.
+	var err error
+	for _, s := range []serviceCtl{a.svc, a.tun} {
+		if !a.roleActive() {
+			return errors.Join(unfenceRoleError{}, a.fence(ctx))
+		}
+		err = errors.Join(err, s.Start(ctx))
+	}
+	if !a.roleActive() {
+		return errors.Join(unfenceRoleError{}, a.fence(ctx))
+	}
 	a.ncStart(ctx)
 	return err
 }
+
+func (a *pgActor) roleActive() bool { return a.stillActive == nil || a.stillActive() }
+
+// unfenceRoleError: Die Rolle ging während der Rücknahme verloren. Kein Fehlschlag mit
+// Wartung, die Wiederanbindung folgt der höheren Amtszeit.
+type unfenceRoleError struct{}
+
+func (unfenceRoleError) Error() string {
+	return "Rücknahme abgebrochen: dieser Server ist nicht mehr aktiv"
+}
+func (unfenceRoleError) noMaint() {}
 
 // reconcile gleicht Dienste und Datenbank mit der Rolle ab – nur in die
 // sichere Richtung: nie hochstufen, Tunnel nie auf einem nicht aktiven

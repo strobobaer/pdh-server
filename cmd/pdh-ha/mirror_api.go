@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -178,6 +179,8 @@ type mirrorWant struct {
 	PartnerFirst  bool
 	PartnerDisk   string
 	PartnerDataID string
+	PartnerProven []string // Quellen mit eigenem Beleg des Empfängers (R47)
+	PartnerWait   []string // Quellen, deren Ziel beim Empfänger nicht leer war
 
 	Addr string // mitwandernde Adresse (ohne Präfix), "" = keine
 }
@@ -359,6 +362,14 @@ func (rt *mirrorRT) newWorker(partner string) *mirrorWorker {
 	d := mirrorDeps{
 		ev: rt.ev, repo: rt.env.repo, node: partner, exe: rt.env.exe, rsync: rt.env.rsync,
 		statePath: rt.env.statePath, now: rt.env.now,
+		partnerProof: func(label string) bool {
+			w := rt.want.Load()
+			return w != nil && slices.Contains(w.PartnerProven, label)
+		},
+		partnerWait: func(label string) bool {
+			w := rt.want.Load()
+			return w != nil && slices.Contains(w.PartnerWait, label) && !slices.Contains(w.PartnerProven, label)
+		},
 		proof: func(label string) (bool, bool) {
 			if ib := rt.inbox.Load(); ib != nil {
 				return ib.proofOf(label)
@@ -426,13 +437,6 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if w == nil || ib == nil {
 		return
 	}
-	// R44: Auch ohne Spiegelung merken, welche Rolle der Server zu Beginn des Abschnitts hatte.
-	// Bei ausgeschalteter Spiegelung bleibt der gemerkte Stand stehen: Wird sie am aktiven Server
-	// eingeschaltet, zählt ein vorher passiver Stand als Wechsel (R25), hin und zurück nicht.
-	if (w.Role == ha.Active || w.Role == ha.Passive) && !w.On && rt.persistedRole == "" {
-		ib.setLastRole(w.Role)
-		rt.persistedRole = w.Role
-	}
 	wk := rt.worker.Load()
 	if wk != nil && w.Partner != rt.partner {
 		rt.stopWorker()
@@ -478,6 +482,17 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	}
 	if w.On && w.Role == ha.Passive {
 		wk.liftUnproven(ib.proofOf) // eigener Beleg nach einem Rücktausch
+	}
+	switch {
+	case !w.On:
+		// R47: Bei ausgeschalteter Spiegelung laufen die Stände auseinander, also gilt kein
+		// Beleg und keine Bestätigung über den Abschnitt hinaus.
+		ib.dropProofs()
+		wk.dropConfirm()
+	case w.Role == ha.Active && w.PartnerSeen:
+		ib.noteActive()
+		wk.noteOwnProof(w.PartnerProven, ib.noteSource)
+		wk.noteWaiting()
 	}
 	rt.ownFirst.Store(wk.snapshot().FirstDone)
 }
@@ -795,6 +810,7 @@ func (d *daemon) mirrorTickLocked(ctx context.Context, before, after ha.Role, s 
 	w := &mirrorWant{On: s.MirrorOn && partner != "" && !d.removed, Role: after, Term: d.p.Term, Settings: s, Partner: partner}
 	if pv, ok := views[partner]; ok && partner != "" && pv.seen() && pv.Last.T == "hb" {
 		w.PartnerSeen, w.PartnerRole, w.PartnerFirst, w.PartnerDisk, w.PartnerDataID = true, ha.Role(pv.Last.Role), pv.Last.MirrorFirst, pv.Last.Disk, pv.Last.MirrorDataID
+		w.PartnerProven, w.PartnerWait = pv.Last.MirrorProven, pv.Last.MirrorWait
 	}
 	if a := d.cl.Access; a.VIPOn && a.VIP != "" {
 		w.Addr, _, _ = strings.Cut(a.VIP, "/")
@@ -819,7 +835,7 @@ func (d *daemon) mirrorHBLocked(m *message) {
 		m.MirrorFirst, m.MirrorAt = st.FirstDone && st.Checked, st.LastOK
 	}
 	if ib := rt.inbox.Load(); ib != nil {
-		m.MirrorDataID = ib.dataID()
+		m.MirrorDataID, m.MirrorProven, m.MirrorWait = ib.dataID(), ib.proofs(), ib.waits()
 	}
 	if c := rt.cache.Load(); c != nil {
 		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans = c.EnvSum, c.NCVer, c.TrashB, c.Orphans
@@ -833,6 +849,7 @@ type apiMirrorSource struct {
 	Skipped   bool    `json:"skipped"`
 	Unproven  bool    `json:"unproven"` // läuft ohne --delete, bis der Partner die Quelle belegt hat
 	Err       string  `json:"err"`
+	Waiting   bool    `json:"waiting,omitempty"` // wartet auf Bestätigung (R47)
 }
 
 // apiMirror: Datei-Spiegelung im Status. Am Zeugen fehlt das Feld.
@@ -859,6 +876,8 @@ type apiMirror struct {
 
 	Sources  []apiMirrorSource `json:"sources"`
 	Unproven []string          `json:"unproven"` // Quellen ohne Beleg (Wechsel vor dem Erstabgleich)
+	// Quellen, die auf „Dieser Server ist vollständig“ warten (R47; fehlt bei älteren Versionen)
+	WaitConfirm []string `json:"wait_confirm,omitempty"`
 }
 
 // sameOrEmpty: gleich, oder eine Seite weiß es nicht (kein Hinweis).
@@ -919,6 +938,11 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 		if partnerSeen {
 			am.TrashBytes, am.Orphans = pm.MirrorTrashB, pm.MirrorOrphans
 		}
+		if rt != nil {
+			if wk := rt.worker.Load(); wk != nil {
+				am.WaitConfirm = wk.waiting()
+			}
+		}
 		labels := make([]string, 0, len(own.PerLabel))
 		for l := range own.PerLabel {
 			labels = append(labels, l)
@@ -926,7 +950,8 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 		sort.Strings(labels)
 		for _, l := range labels {
 			ls := own.PerLabel[l]
-			am.Sources = append(am.Sources, apiMirrorSource{Label: l, LastOKAgo: ago(ls.LastOK), Skipped: ls.Skipped, Unproven: ls.Unproven, Err: ls.Err})
+			am.Sources = append(am.Sources, apiMirrorSource{Label: l, LastOKAgo: ago(ls.LastOK), Skipped: ls.Skipped, Unproven: ls.Unproven, Err: ls.Err,
+				Waiting: slices.Contains(am.WaitConfirm, l)})
 			if ls.Unproven {
 				am.Unproven = append(am.Unproven, l)
 			}
@@ -998,6 +1023,22 @@ func (d *daemon) mirrorRun(ctx context.Context) error {
 	} else {
 		return err
 	}
+}
+
+// mirrorConfirm: „Dieser Server ist vollständig“ (pdh-ha mirror confirm); nur auf dem aktiven Server.
+func (d *daemon) mirrorConfirm() error {
+	wk, _, err := d.mirrorGate(true)
+	if err != nil {
+		return err
+	}
+	if wk == nil {
+		return errors.New("Die Spiegelung ist noch nicht bereit")
+	}
+	if err := wk.confirm(); err != nil {
+		return err
+	}
+	d.event("alarm", "Bestätigt: Dieser Server ist vollständig. Abweichende Dateien am Partner wandern in seinen Papierkorb")
+	return nil
 }
 
 // mirrorTrashEmptyReq bittet den passiven Partner, seine Papierkörbe zu leeren.
@@ -1102,8 +1143,8 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 	if m.WatchErr != "" {
 		fmt.Fprintf(w, "  Sofort-Übertragung: %s\n", m.WatchErr)
 	}
-	if len(m.Unproven) > 0 {
-		fmt.Fprintf(w, "  Ohne Löschen übertragen (Erstabgleich fehlte beim Wechsel): %s\n", strings.Join(m.Unproven, ", "))
+	if len(m.WaitConfirm) > 0 {
+		fmt.Fprintf(w, "  Wartet auf Bestätigung, nichts wird gelöscht: %s (sudo pdh-ha mirror confirm)\n", strings.Join(m.WaitConfirm, ", "))
 	}
 	if m.TrashBytes > 0 || m.Orphans > 0 {
 		fmt.Fprintf(w, "  Papierkorb der Spiegelung: %s, %d Rückkehrer-Dateien\n", humanBytes(m.TrashBytes), m.Orphans)
@@ -1142,6 +1183,11 @@ func (d *daemon) wireActor(pa *pgActor) {
 		}))
 	}
 	pa.afterTakeover = func() { d.startNCCheck(pa.pg) }
+	pa.stillActive = func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.p.Role == ha.Active
+	}
 	pa.refused = func() {
 		d.mu.Lock()
 		d.undoRefused = true

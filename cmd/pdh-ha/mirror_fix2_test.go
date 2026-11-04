@@ -112,7 +112,7 @@ func TestMirrorPromotedWithoutProofNeverDeletes(t *testing.T) {
 	if del, _ := uploadsCalls(f.rs); del != 0 {
 		t.Fatal("zweiter Lauf löscht")
 	}
-	if n := f.alarms("Quelle uploads: Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Bitte prüfen und die Rollen tauschen."); n != 1 {
+	if n := f.alarms("Quelle uploads: Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"); n != 1 {
 		t.Fatalf("Alarme: %d (%v)", n, f.ev.readAll())
 	}
 	st := w.snapshot()
@@ -199,7 +199,7 @@ func TestMirrorPromotedAcrossRestartViaPersistedRole(t *testing.T) {
 	}
 	var b bytes.Buffer
 	printMirrorStatus(&b, st)
-	if !strings.Contains(b.String(), "uploads") || !strings.Contains(b.String(), "Ohne Löschen") {
+	if !strings.Contains(b.String(), "uploads") || !strings.Contains(b.String(), "Wartet auf Bestätigung") {
 		t.Errorf("Zeile fehlt: %q", b.String())
 	}
 }

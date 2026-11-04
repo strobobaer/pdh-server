@@ -94,6 +94,7 @@ func Step(in Input) Output {
 	s.out.HandoverReadyAt = in.HandoverReadyAt
 	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
 	s.out.RejoinAsked, s.out.RejoinAlarmed = in.RejoinAsked, in.RejoinAlarmed
+	s.out.UnfencePending = in.UnfencePending
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -110,6 +111,9 @@ func Step(in Input) Output {
 	if s.p.Role != Passive {
 		s.clearHandover()
 		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
+	}
+	if s.p.Role != Active {
+		s.out.UnfencePending = false
 	}
 	s.noActive()
 	s.out.Persist = s.p
@@ -226,6 +230,14 @@ func (s *stepper) adoptHigherTerm() bool {
 	if s.p.Role == Active || s.p.Role == Fenced {
 		if s.p.Role == Active {
 			s.event("alarm", fmt.Sprintf("Aktiver Server abgelöst (neue Amtszeit %d)", t))
+		}
+		// R49: Bei offenem Update-Auftrag kein Rejoin, der eingefrorene Rückfallstand bleibt.
+		// Abgeschottet warten, die Marke bindet nach dem Auftrag an (strandedRejoin).
+		if s.in.UpdateOpen {
+			s.act(ActFence, t)
+			s.out.SetUndoRefused = true
+			s.become(Passive, "")
+			return true
 		}
 		s.act(ActRejoin, t)
 		s.become(Rejoin, "")
@@ -389,10 +401,16 @@ func (s *stepper) handover() bool {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
 		if !mutual(pa) {
+			if s.out.SwapKind != ActAbandon {
+				s.act(ActFence, s.p.Term) // R49: auch wenn die Abgabe nicht bis zum Abschotten kam
+			}
 			s.become(Fenced, "")
 			return true
 		}
-		s.unfence()
+		// R48: In diesem Takt nur Rolle aktiv speichern und senden; schreibbar wird die
+		// Datenbank erst im nächsten, wenn bis dahin keine höhere Amtszeit gesehen wurde.
+		s.out.UnfencePending = true
+		s.become(Active, "")
 		return true
 	}
 	if !done {
@@ -459,6 +477,13 @@ func (s *stepper) boot() bool {
 
 func (s *stepper) active() {
 	in := s.in
+	if s.out.UnfencePending { // R48: höhere Amtszeit hätte schon adoptHigherTerm genommen
+		s.out.UnfencePending = false
+		s.manual = true
+		s.act(ActUnfence, s.p.Term)
+		s.act(ActVIPTake, s.p.Term)
+		s.manual = false
+	}
 	if pa := in.Partner; seen(pa) && pa.Role == Active && pa.Term == s.p.Term {
 		if !s.p.Maint {
 			s.setMaint(true)

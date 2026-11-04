@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -68,6 +69,8 @@ type mirrorInboxState struct {
 	LastRole   ha.Role                `json:"last_role,omitempty"`   // zuletzt bekannte eigene Rolle (aktiv/passiv): übersteht einen Absturz
 	Proof      map[string]mirrorProof `json:"proof,omitempty"`       // je Quelle: erster fehlerfreier löschender Lauf
 	DataID     string                 `json:"data_id,omitempty"`     // Kennung dieser Ablage (einmal zufällig); ändert sie sich, ist der Empfang neu
+	Seeded     map[string]bool        `json:"seeded,omitempty"`      // Quellen, deren Ziel beim ersten Lauf leer war, noch ohne Beleg (R47)
+	Wait       map[string]bool        `json:"wait,omitempty"`        // Quellen, deren Ziel nicht leer war: warten auf Bestätigung am aktiven Server (R47)
 }
 
 // mirrorProof belegt, dass diese Quelle hier einmal vollständig angekommen ist.
@@ -82,6 +85,101 @@ func (m *mirrorInbox) proofOf(label string) (done, files bool) {
 	defer m.mu.Unlock()
 	p, ok := m.st.Proof[label]
 	return ok, p.Files
+}
+
+// proofs: Quellen mit eigenem Beleg (für den Herzschlag; berührt nur den Speicher).
+func (m *mirrorInbox) proofs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.st.Proof))
+	for l := range m.st.Proof {
+		out = append(out, l)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// waits: Quellen, die auf die Bestätigung am aktiven Server warten (für den Herzschlag).
+func (m *mirrorInbox) waits() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.st.Wait))
+	for l := range m.st.Wait {
+		out = append(out, l)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// noteSource: Dieser Server hat die Quelle auf einen belegten Partner abgeglichen: Beide
+// Stände gehören zusammen, nach einem Tausch läuft der Abgleich in die andere Richtung
+// ohne neue Bestätigung. Schreibt eine Datei.
+func (m *mirrorInbox) noteSource(label string) {
+	m.mu.Lock()
+	_, ok := m.st.Proof[label]
+	if !ok {
+		if m.st.Proof == nil {
+			m.st.Proof = map[string]mirrorProof{}
+		}
+		m.st.Proof[label] = mirrorProof{At: m.d.now(), Files: true}
+	}
+	_, w := m.st.Wait[label]
+	delete(m.st.Wait, label)
+	m.mu.Unlock()
+	if !ok || w {
+		m.save()
+	}
+}
+
+// noteActive: Dieser Server ist aktiv und schreibt selbst: ein Lauf auf ein leeres Ziel
+// aus der Zeit davor gilt nicht mehr. Schreibt eine Datei nur bei Änderung.
+func (m *mirrorInbox) noteActive() {
+	m.mu.Lock()
+	n := len(m.st.Seeded)
+	m.st.Seeded = nil
+	m.mu.Unlock()
+	if n > 0 {
+		m.save()
+	}
+}
+
+// dropProofs: Spiegelung aus: Die Stände laufen auseinander, die Belege gelten nicht mehr.
+// Schreibt eine Datei nur bei Änderung.
+func (m *mirrorInbox) dropProofs() {
+	m.mu.Lock()
+	n := len(m.st.Proof) + len(m.st.Seeded) + len(m.st.Wait)
+	m.st.Proof, m.st.Seeded, m.st.Wait = map[string]mirrorProof{}, nil, nil
+	m.mu.Unlock()
+	if n > 0 {
+		m.save()
+	}
+}
+
+// mirrorTargetEmpty: Das Ziel enthält keine Datei. Ausgeschlossene Ordner der ersten Ebene
+// (/etc/pdh/ha) und der Teil-Ordner von rsync zählen nicht, ebenso leere Ordner. Bricht bei
+// der ersten Datei ab. Läuft auf der Verbindung, nie im Takt (R14).
+func mirrorTargetEmpty(target string, exclude []string) bool {
+	skip := map[string]bool{".pdh-teil": true}
+	for _, e := range exclude {
+		if n, ok := strings.CutPrefix(e, "--exclude=/"); ok && strings.HasSuffix(n, "/") && !strings.ContainsAny(n[:len(n)-1], "/*") {
+			skip[n[:len(n)-1]] = true
+		}
+	}
+	empty := true
+	filepath.WalkDir(target, func(p string, de fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if de.IsDir() {
+			if p != target && skip[de.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		empty = false
+		return filepath.SkipAll
+	})
+	return empty
 }
 
 // dataID ist die Kennung dieser Ablage (leer erst vor dem Laden).
@@ -219,6 +317,7 @@ func (m *mirrorInbox) save() {
 	for k, v := range m.st.Proof {
 		s.Proof[k] = v
 	}
+	s.Seeded, s.Wait = maps.Clone(m.st.Seeded), maps.Clone(m.st.Wait)
 	m.mu.Unlock()
 	b, _ := json.Marshal(s)
 	os.MkdirAll(filepath.Dir(m.d.statePath), 0o700)
@@ -415,6 +514,37 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			deleting = true
 		}
 	}
+	// R47: Ohne eigenen Beleg löscht nur ein Lauf auf ein leeres Ziel oder einer, den der
+	// aktive Server bestätigt hat. Ein Lauf auf ein leeres Ziel gibt den Beleg von selbst, auch
+	// wenn er erst im zweiten Anlauf durchkommt; Pfad-Läufe (Sofort) belegen nichts.
+	full := true
+	for _, a := range req.Argv {
+		if strings.HasPrefix(a, "--files-from") {
+			full = false
+		}
+	}
+	proven, _ := m.proofOf(label)
+	seeded := false
+	if !proven {
+		empty := mirrorTargetEmpty(target, src.Exclude)
+		m.mu.Lock()
+		changed := false
+		if empty && !m.st.Seeded[label] {
+			if m.st.Seeded == nil {
+				m.st.Seeded = map[string]bool{}
+			}
+			m.st.Seeded[label], changed = true, true
+		}
+		seeded = m.st.Seeded[label]
+		m.mu.Unlock()
+		if changed {
+			m.save()
+		}
+		if deleting && !seeded && !req.Confirmed {
+			return fail("Löschen ohne Beleg abgelehnt: Bestätigung am aktiven Server nötig")
+		}
+	}
+
 	m.mu.Lock()
 	pending := m.st.Pending[label] && deleting
 	m.mu.Unlock()
@@ -434,7 +564,8 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			if derr != nil {
 				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %v", label, peerID, derr), mirrorErrLogEvery)
 			}
-			if derr == nil && deleting {
+			switch {
+			case derr == nil && (deleting || full && seeded):
 				files := countFiles(target) > 0
 				m.mu.Lock()
 				if m.st.Proof == nil {
@@ -443,8 +574,21 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 				if old, ok := m.st.Proof[label]; !ok || files != old.Files {
 					m.st.Proof[label] = mirrorProof{At: m.d.now(), Files: files || old.Files}
 				}
+				delete(m.st.Seeded, label)
+				delete(m.st.Wait, label)
 				m.mu.Unlock()
 				m.save()
+			case derr == nil && full && !proven:
+				m.mu.Lock()
+				had := m.st.Wait[label]
+				if m.st.Wait == nil {
+					m.st.Wait = map[string]bool{}
+				}
+				m.st.Wait[label] = true
+				m.mu.Unlock()
+				if !had {
+					m.save()
+				}
 			}
 			if pending {
 				// Was rsync vor einem Abbruch schon in den Papierkorb gelegt hat,
