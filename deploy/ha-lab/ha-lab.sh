@@ -2179,24 +2179,38 @@ sc_spiegel_rolling_update() {
     up_clean
 }
 
-# R42: „Übernahme erzwingen“ genau am Ende der Frist des letzten Abgleichs, node1 hängt noch in
-# der Wartezeit vor der Rücknahme. Nie zwei Schreibende, node1 endet abgeschottet oder als Standby.
+# R42 (B1, B7): „Übernahme erzwingen“ genau dann, wenn die Abgabe nach Ablauf der Frist als
+# gescheitert gemeldet ist und node1 noch passiv ist: das Fenster, in dem das alte Programm schon
+# schreibbar war. Ist node1 schon wieder aktiv gemeldet, lehnt node2 ab; dann ein neuer Versuch.
+# Nie zwei Schreibende, node1 endet abgeschottet oder als Standby.
 sc_spiegel_ruecknahme_uebernahme() {
     pg_rewind_wrap node1 log
     mirror_enable 10 200
     rw_probe_start node1 node2
     STRICT_RW=1
-    log "50 MB bei 200 KB/s, Frist 10 s – Rollentausch hängt im letzten Abgleich"
-    put_file node1 "$UPLOADS/gross.bin" 50M
-    local t0 r
-    t0=$(date +%s%3N)
-    swap_on node1 || fail "Rollentausch auf node1"
-    wait_for 8 eval '[[ "$R1" == passiv && "$(jget pg <<<"$J1")" == primary ]]' || fail "node1 nicht im letzten Abgleich (node1=$R1)"
-    # Takt bis zur Abgabe (bis 1 s) + Frist 10 s; danach 3 Takte Wartezeit bis zur Rücknahme
-    while (($(date +%s%3N) - t0 < 11000)); do sleep 0.1; done
-    r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
-    log "Übernahme erzwingen $(($(date +%s%3N) - t0)) ms nach dem Tausch: $r"
-    [[ "$r" == 200* ]] || fail "Übernahme erzwingen auf node2 abgewiesen, Zeitpunkt verfehlt: $r"
+    log "100 MB bei 200 KB/s, Frist 10 s – Rollentausch scheitert am letzten Abgleich"
+    put_file node1 "$UPLOADS/gross.bin" 100M
+    local try r n0 taken=0 ref0
+    local q='Aktion demote fehlgeschlagen' q2='Übernahme erzwingen abgelehnt'
+    for try in 1 2 3 4 5 6; do
+        n0="$(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl)" || true
+        ref0="$(docker exec node2 grep -c "$q2" /var/lib/pdh-ha/events.jsonl)" || true
+        wait_for 30 eval 'swap_on node1 2>/dev/null' || fail "Rollentausch auf node1 nicht angenommen"
+        local end=$((SECONDS + 40))
+        while (($(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl) == n0)); do
+            ((SECONDS < end)) || fail "Abgabe wird nicht als gescheitert gemeldet (Versuch $try)"
+            sleep 0.05
+        done
+        r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
+        log "Versuch $try: Übernahme erzwingen direkt nach der Meldung: $r"
+        if [[ "$r" == 200* ]] && wait_for 15 eval '[[ "$R2" == aktiv || "$(docker exec node2 grep -c "$q2" /var/lib/pdh-ha/events.jsonl)" != "$ref0" ]]' && [[ "$R2" == aktiv ]]; then
+            taken=1
+            break
+        fi
+        log "Versuch $try: node2 lehnt ab, node1 ist wieder aktiv"
+        wait_for 30 eval 'roles aktiv passiv && pg_writable node1' || fail "node1 nach dem Abbruch nicht wieder aktiv (node1=$R1, node2=$R2)"
+    done
+    ((taken == 1)) || fail "Zeitpunkt in 6 Versuchen verfehlt"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
     if wait_for 120 mirror_ok_rev; then
         log "node1 ist Standby (pg_rewind echt: $(rewind_real_runs node1))"
