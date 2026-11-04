@@ -85,8 +85,9 @@ Es gelten nur Quellen, die es gibt. Die Nextcloud-Einträge entfallen, wenn
 - **cloudflared:** Das Token verteilt Teil 5 bereits.
 - **`/etc/pdh/ha/`:** Gehört zum Rechner und ist auf dem Empfänger immer gesperrt.
 
-**Rsync-Optionen:** `-a --numeric-ids --delete --backup --backup-dir=…`, Zwischenname
-für unfertige Dateien (`--delay-updates` bzw. `--partial-dir`, im Plan festzulegen).
+**Rsync-Optionen:** `-a --numeric-ids --backup --backup-dir=…`, dazu `--delete` nur nach der
+Regel „Löschen nur mit Beleg“ aus Abschnitt 5; Zwischenname für unfertige Dateien
+(`--delay-updates` und `--partial-dir=.pdh-teil`).
 Anders als aufs Netzlaufwerk werden Besitzer und Rechte mitkopiert. Die Einrichtung
 prüft, dass `www-data` und `pdh` auf beiden Servern dieselbe Kennung haben.
 
@@ -136,6 +137,38 @@ eingeschalteter Spiegelung. Bei einem Rollenwechsel beendet der Worker laufende
 
 **Erstabgleich:** Startet beim Einschalten, nachdem der freie Platz geprüft wurde.
 Der Reiter zeigt den Fortschritt. Bis er fertig ist, gelten die Regeln aus Abschnitt 7.
+
+**Löschen nur mit Beleg:** Welcher Server vollständig ist, weiß nur der Betreiber. Die
+Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
+
+- Hat der Empfänger für eine Quelle keinen eigenen Beleg, läuft der Lauf ohne `--delete`. Ein
+  `--delete` ohne Beleg und ohne Bestätigung lehnt der Empfänger ab.
+- War sein Ziel beim Start des Laufs leer (ausgeschlossene Ordner und leere Ordner zählen nicht,
+  ein Lesefehler zählt als nicht leer), entsteht der Beleg nach dem Lauf von selbst. Auch ein
+  abgebrochener Lauf zählt beim nächsten weiter als Lauf auf ein leeres Ziel. Ein neuer Partner
+  braucht also keine Bestätigung. Sofort-Übertragungen belegen nichts.
+- War das Ziel nicht leer, wartet die Quelle: ein einmaliger Alarm, der Reiter zeigt
+  „wartet auf Bestätigung“ mit der Anzahl und je Quelle. Eine wartende Quelle kommt nur über die
+  Bestätigung heraus, nie über ein später leeres Ziel.
+- Die Bestätigung (`pdh-ha mirror confirm`, Knopf „Dieser Server ist vollständig“) gilt am
+  aktiven Server und nur für die in dem Moment wartenden Quellen; am passiven Server und ohne
+  wartende Quelle wird sie abgelehnt. Eine später wartende Quelle meldet sich einzeln. Sie gilt für
+  die aktuelle Datenkennung des Empfängers, bleibt über einen Neustart erhalten und ist verbraucht,
+  sobald der Empfänger den Beleg meldet. Der nächste Lauf löscht, abweichende Dateien am Partner
+  wandern in seinen Papierkorb.
+- Der aktive Server gilt selbst als belegt, sobald der Partner den Beleg meldet und die Quelle
+  hier nicht unbelegt ist, mit dem echten Stand der Quelle (leer bleibt leer). Sonst stünde nach
+  dem ersten Tausch jede Quelle auf „wartet“.
+- Übernimmt ein Server im Erstabgleich ohne eigenen Beleg, ist die Quelle unbelegt und mündet in
+  denselben Zustand. Ein eigener Beleg, den er später als Empfänger bekommt, hebt das auf.
+- Ausschalten verwirft Belege, Bestätigungen und die gemerkte Rolle, weil die Stände dann
+  auseinanderlaufen.
+- **Datenträger:** Beleg und Quelle sind an die Gerätenummer (`st_dev`) des Ordners gebunden,
+  sie steht im Zustand. Empfänger: Beleg und die Marke „leeres Ziel“ gelten nur auf demselben
+  Datenträger, sonst wartet die Quelle wieder. Absender: Eine geänderte Nummer der Quelle heißt kein
+  `--delete`, Alarm und Bestätigung. `lost+found` zählt nicht als Inhalt der Quelle. Fehlt die Nummer
+  in einer älteren Zustandsdatei, wird sie beim ersten Lauf ohne Alarm nachgetragen. Es gibt
+  keine Mengengrenze und kein `--max-delete`, gewolltes Aufräumen gäbe sonst Fehlalarme.
 
 ## 6. Nextcloud je Rolle
 
@@ -249,7 +282,10 @@ Im Reiter Ausfallschutz, für den ganzen Verbund (`ha.Settings`), Änderungen wi
 
 **Reiter Ausfallschutz, neue Karte „Datei-Spiegelung“:** Zustand, letzter erfolgreicher
 Lauf je Quelle, Laufzeit, Erstabgleich mit Fortschritt, Warnungen aus den Abschnitten 3,
-6 und 8, Papierkorb mit Größe und Knopf zum Leeren, Einstellungen. Neue Oberfläche wird
+6 und 8, Papierkorb mit Größe und Knopf zum Leeren, Einstellungen. Wartet eine Quelle auf die
+Bestätigung (Abschnitt 5), zeigt die Karte statt „bereit“ den Zustand „wartet auf Bestätigung“, die
+Anzahl und die Quellen und, mit Recht und am aktiven Server, den Knopf „Dieser Server ist
+vollständig“ mit Rückfrage. Neue Oberfläche wird
 in Fiori und Fluent, hell und dunkel und bei 390 px geprüft.
 
 **Befehle:** `pdh-ha mirror status`, `pdh-ha mirror run` (Abgleich sofort), `pdh-ha mirror confirm` (Abschnitt 5),
@@ -257,15 +293,20 @@ in Fiori und Fluent, hell und dunkel und bei 390 px geprüft.
 „Spiegelung“, nicht am Zeugen.
 
 **Heartbeat:** Optionale Felder für den letzten erfolgreichen Abgleich und die Prüfsumme
-der `.env`. Ältere Versionen ignorieren sie.
+der `.env`, dazu `mirror_proven` (Quellen mit eigenem Beleg des Empfängers), `mirror_wait`
+(Quellen, deren Ziel nicht leer war) und `up_lead` (Kennung des offenen Update-Auftrags, „-“ =
+keiner). Ältere Versionen ignorieren sie. Fehlt `mirror_proven`, löscht der Absender nicht; fehlt
+`up_lead`, bleibt der Handweg für einen fremden Auftrag gesperrt.
 
 ## 11. Rechte und Sicherheit
 
 - Neues Recht `system.file_mirror` (Migration 155, Kategorie „System & Sicherheit“):
   Einstellungen ändern, Abgleich auslösen. Es geht an die Rollen mit
   `system.server_config`; niemand wird ausgesperrt.
-- Den Papierkorb endgültig leeren darf nur, wer das Bereichsadministrator-Recht
-  `system.file_mirror_admin` hat (`areaAdminPerm`, `h.isAreaAdmin`). Einen allgemeinen
+- Den Papierkorb endgültig leeren und „Dieser Server ist vollständig“ bestätigen darf nur, wer
+  das Bereichsadministrator-Recht `system.file_mirror_admin` hat (`areaAdminPerm`, `h.isAreaAdmin`).
+  Die Bezeichnung nennt beides: „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb
+  leeren“. Wer beides darf, kann den Rückweg über den Papierkorb selbst beenden. Einen allgemeinen
   System-Bereichsadministrator gibt es bisher nicht.
 - Mitglieder des Verbunds vertrauen sich: Ein übernommener aktiver Server kann Dateien
   am passiven überschreiben, auch Skripte in `ha-hooks`, die dort als root laufen. Das
