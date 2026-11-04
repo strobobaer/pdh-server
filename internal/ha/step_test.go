@@ -2197,3 +2197,100 @@ func TestStepStrandedRejoin(t *testing.T) {
 		}
 	}
 }
+
+// R42: Sieht der abgebende Server eine höhere Amtszeit, während die Abgabe gescheitert ist
+// oder noch läuft, wird abgeschottet und die Wiederanbindung vorgemerkt.
+func TestHandoverHigherTermWhileGiving(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mark   func(in *Input)
+		kind   ActionKind
+		fenced bool
+	}{
+		{"gescheitert", func(in *Input) { in.DemoteFailed = in.SwapSeq }, ActDemote, true},
+		{"läuft noch", func(in *Input) {}, ActDemote, true},
+		{"fertig", func(in *Input) { in.DemoteDone = in.SwapSeq }, ActDemote, false},
+		{"eingefroren: Rückfallstand bleibt", func(in *Input) { in.DemoteFailed = in.SwapSeq }, ActDemoteFreeze, false},
+		{"aufgegeben", func(in *Input) {}, ActAbandon, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := swapped(t)
+			in.Now += sec
+			in.SwapKind = tc.kind
+			in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+			tc.mark(&in)
+			in.Partner.Role, in.Partner.Term = Active, in.HandoverPending
+			out := Step(in)
+			if out.Persist.Role != Passive || out.HandoverPending != 0 || hasKind(out, ActUnfence) {
+				t.Fatalf("Rolle %s, offen %d, Aktionen %v", out.Persist.Role, out.HandoverPending, out.Actions)
+			}
+			if hasKind(out, ActFence) != tc.fenced || out.SetUndoRefused != tc.fenced {
+				t.Fatalf("Abschotten %v, Marke %v, erwartet %v", out.Actions, out.SetUndoRefused, tc.fenced)
+			}
+		})
+	}
+}
+
+// R43: Ohne gegenseitige Sicht mit dem Partner wird eine gescheiterte Abgabe nicht
+// zurückgenommen, der Server geht auf abgeschaltet.
+func TestHandoverFailedWithoutPartnerStaysFenced(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mark func(in *Input)
+	}{
+		{"gescheitert", func(in *Input) { in.DemoteFailed = in.SwapSeq }},
+		{"Frist abgelaufen", func(in *Input) { in.Now = in.HandoverAt + demoteDeadline(in.Settings, in.Mode) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := swapped(t)
+			in.Now += 100 * sec
+			in.Partner.Seen, in.Witness.Seen = false, false
+			tc.mark(&in)
+			out := Step(in) // Partner und Zeuge nicht gesehen
+			if out.Persist.Role != Fenced || hasKind(out, ActUnfence) {
+				t.Fatalf("Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+			}
+			if countEvents(out, "Rollentausch abgebrochen") != 1 || out.HandoverPending != 0 {
+				t.Fatalf("Ereignis/Zustand: %v %d", out.Events, out.HandoverPending)
+			}
+			// Noch immer niemand zu sehen: bleibt abgeschaltet
+			in = carryOver(in, out)
+			in.Now += sec
+			if out = Step(in); out.Persist.Role != Fenced || hasKind(out, ActUnfence) {
+				t.Fatalf("zweiter Takt: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+			}
+			// Der Partner hat inzwischen übernommen: höhere Amtszeit geht vor
+			in = carryOver(in, out)
+			in.Now += sec
+			in.Partner.Seen, in.Partner.Role, in.Partner.Term = true, Active, in.Persist.Term+1
+			if out = Step(in); hasKind(out, ActUnfence) || !hasKind(out, ActRejoin) {
+				t.Fatalf("nach der Rückkehr: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+			}
+		})
+	}
+}
+
+// R43: Der Zeuge als einzige Sicht: erst abgeschaltet (kein unfence im selben Takt), im
+// nächsten Takt zurück; eine höhere Amtszeit des Zeugen geht vor.
+func TestHandoverFailedWitnessOnly(t *testing.T) {
+	in := swapped(t)
+	in.Now += 100 * sec
+	in.Partner.Seen = false
+	in.DemoteFailed = in.SwapSeq
+	out := Step(in)
+	if out.Persist.Role != Fenced || hasKind(out, ActUnfence) {
+		t.Fatalf("Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+	in = carryOver(in, out)
+	in.Now += sec
+	high := in
+	if out = Step(in); out.Persist.Role != Active || !hasKind(out, ActUnfence) {
+		t.Fatalf("mit dem Zeugen zurück: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+	w := *high.Witness
+	w.Term = high.Persist.Term + 1
+	high.Witness = &w
+	if out = Step(high); hasKind(out, ActUnfence) || !hasKind(out, ActRejoin) {
+		t.Fatalf("Zeuge meldet höhere Amtszeit: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+}

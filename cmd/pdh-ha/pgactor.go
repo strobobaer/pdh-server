@@ -224,8 +224,11 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 	return nil
 }
 
-// undoFence nimmt das Abschotten nach einem gescheiterten Abgeben zurück; scheitert
-// auch das, wird es an den Fehler angehängt.
+// undoFence nach einem gescheiterten Abgeben: Hat der Step schon zurückgenommen (Rolle
+// aktiv), wird wieder eingeschaltet; scheitert das, wird es an den Fehler angehängt. Solange
+// der Tausch als laufend gilt, geschieht hier nichts (R42): Der Server ist noch passiv und
+// wäre neben einem übernehmenden Partner schreibbar. Den Rückweg geht allein der Step, mit
+// gespeicherter und gesendeter Rolle aktiv, und nur mit Sicht auf den Partner (R43).
 func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote bool) error {
 	switch a.settledPhase(ctx, term) {
 	case phaseTaken:
@@ -238,6 +241,8 @@ func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote 
 		return swapTakenError{rejoin: demote} // keine Wartung: der Partner arbeitet (N3)
 	case phaseUnknown:
 		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Zustand der Rolle ist ungewiss"})
+		return err
+	case phaseGiving:
 		return err
 	}
 	if uerr := a.unfence(ctx); uerr != nil {

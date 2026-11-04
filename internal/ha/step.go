@@ -359,18 +359,33 @@ func (s *stepper) handover() bool {
 		return false
 	}
 	in, pa := s.in, s.in.Partner
+	done := in.DemoteDone != 0 && in.DemoteDone == s.out.SwapSeq
 	if s.p.Term >= hp || seen(pa) && pa.Term >= hp {
+		// R42: Der Partner führt, die Abgabe ist aber gescheitert oder läuft noch: Abgeschottet
+		// bleiben und als Standby anbinden. Nur bei demote; der eingefrorene Rückfallstand eines
+		// Update-Auftrags (R32) und ein aufgegebener Stand bleiben unberührt.
+		if !done && s.out.SwapKind == ActDemote {
+			s.act(ActFence, s.p.Term)
+			s.out.SetUndoRefused = true
+		}
 		s.clearHandover()
 		return false
 	}
 	took := in.Settings.Takeover(in.Mode)
 	demoteBy := demoteDeadline(in.Settings, in.Mode)
 	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
-	// Partner hat noch nichts bekommen, also zurück nach aktiv.
-	done := in.DemoteDone != 0 && in.DemoteDone == s.out.SwapSeq
+	// Partner hat noch nichts bekommen, also zurück nach aktiv. Nur hier wird
+	// zurückgenommen (R42): Die Rolle ist gespeichert und gesendet, bevor die
+	// Datenbank schreibbar wird. Ohne Sicht auf den Partner kann er längst übernommen
+	// haben (R43): abgeschaltet, fenced() nimmt erst bei wiederhergestellter Sicht
+	// zurück, eine höhere Amtszeit geht dort vor.
 	if in.DemoteFailed != 0 && in.DemoteFailed == s.out.SwapSeq || !done && in.Now-s.out.HandoverAt >= demoteBy {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
+		if !mutual(pa) {
+			s.become(Fenced, "")
+			return true
+		}
 		s.unfence()
 		return true
 	}

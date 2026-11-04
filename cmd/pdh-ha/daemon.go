@@ -1032,6 +1032,8 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	d.handoverIn, d.cmd, d.booting = 0, ha.CmdNone, false
 	if out.Persist.Role == ha.Active {
 		d.undoRefused = false // wieder aktiv: die Marke gilt nicht mehr
+	} else if out.SetUndoRefused {
+		d.undoRefused = true // R42: der Partner führt, die Abgabe hat nicht geklappt
 	}
 	d.p, d.carry = out.Persist, out
 	if d.access != nil {

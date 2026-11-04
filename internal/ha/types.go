@@ -404,6 +404,10 @@ type Output struct {
 	Actions []Action
 	Events  []Event
 
+	// R42: Übergabe geräumt, während die Abgabe gescheitert ist oder läuft: abgeschottet
+	// bleiben, Wiederanbindung vormerken (Daemon-Speicher UndoRefused)
+	SetUndoRefused bool
+
 	HoldUntil       time.Duration
 	VotePending     uint64
 	VoteAskedAt     time.Duration

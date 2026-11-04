@@ -10,9 +10,8 @@ import (
 	"pdh/internal/ha"
 )
 
-// Im Labor gefunden: Ein Rollentausch, solange die Spiegelung aus ist, ist kein Wechsel
-// „vor dem Erstabgleich“. Wird sie danach am aktiven Server eingeschaltet, ist das ein
-// normaler Erstabgleich mit --delete und ohne Alarm.
+// Der Arbeiter selbst zählt einen Wechsel bei ausgeschalteter Spiegelung nicht; ob er als
+// Wechsel gilt, entscheidet reconcile anhand der gemerkten Rolle (R44, Tests offRig unten).
 func TestMirrorSwapWhileOffNotPromoted(t *testing.T) {
 	f := newFix2(t)
 	w := f.worker()
@@ -155,5 +154,115 @@ func TestSwapFinalSyncFailsBeforePartnerHeartbeat(t *testing.T) {
 	}
 	if !marked && !hasEvent(m.d, "wieder angebunden") {
 		t.Errorf("keine Wiederanbindung vorgemerkt: %v", eventTexts(m.d))
+	}
+}
+
+// R42: Solange der Tausch als laufend gilt, nimmt die Abgabe nichts zurück.
+func TestUndoFenceGivingLeavesFenced(t *testing.T) {
+	r := (&fakeRunner{}).on("runuser", "pg_is_in_recovery", stPrimary, nil)
+	a, svc := testActor(t, r)
+	a.phase = func(uint64) swapPhase { return phaseGiving }
+	a.mirrorFinal = func(context.Context) error { return errors.New("Frist") }
+	if err := a.demote(context.Background(), 1); err == nil {
+		t.Fatal("kein Fehler")
+	}
+	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Fatalf("zurückgenommen: svc=%v tun=%v Einstellungen %q", svc.active, tunOf(a).active, confText(t, a))
+	}
+}
+
+// roleSvc merkt die Rolle des Daemons beim Start des Dienstes.
+type roleSvc struct {
+	serviceCtl
+	d    *daemon
+	seen []ha.Role
+}
+
+func (s *roleSvc) Start(ctx context.Context) error {
+	s.d.mu.Lock()
+	s.seen = append(s.seen, s.d.p.Role)
+	s.d.mu.Unlock()
+	return s.serviceCtl.Start(ctx)
+}
+
+// finalFails: Rig, dessen letzter Abgleich sofort scheitert; der Tausch ist gestartet, die Abgabe zu Ende.
+func finalFails(t *testing.T) (*mdt, *pgActor, *svcLog) {
+	t.Helper()
+	m, a, svc, _, _ := proofRig(t)
+	m.rs.mu.Lock()
+	m.rs.fn = func(context.Context, []string) error { return errors.New("rsync 23") }
+	m.rs.mu.Unlock()
+	if err := m.d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	m.tick()
+	waitFor(t, 10*time.Second, "demote zu Ende", m.d.actionsIdle)
+	if svc.active || !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Fatalf("nach der gescheiterten Abgabe: svc=%v, Einstellungen %q", svc.active, confText(t, a))
+	}
+	return m, a, svc
+}
+
+// R42 (B1, B7): Dienste starten nur in der Rolle aktiv.
+func TestSwapRollbackOnlyAsActive(t *testing.T) {
+	m, a, svc := finalFails(t)
+	rs := &roleSvc{serviceCtl: svc, d: m.d}
+	a.svc = rs
+	m.tick()
+	waitFor(t, 5*time.Second, "Rücknahme", m.d.actionsIdle)
+	m.d.mu.Lock()
+	role := m.d.p.Role
+	seen := append([]ha.Role(nil), rs.seen...)
+	m.d.mu.Unlock()
+	if role != ha.Active || !svc.active || strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Fatalf("nicht zurückgenommen: Rolle %s svc=%v", role, svc.active)
+	}
+	for _, r := range seen {
+		if r != ha.Active {
+			t.Fatalf("pdh startet in der Rolle %s", r)
+		}
+	}
+}
+
+// R42: Die Abgabe ist gescheitert, der nächste Takt sieht eine höhere Amtszeit: keine
+// Rücknahme, abgeschottet, Wiederanbindung vorgemerkt.
+func TestSwapFailedThenPartnerTakesOver(t *testing.T) {
+	m, a, svc := finalFails(t)
+	m.fn.setView("b", seenView(message{Role: "aktiv", Term: 2, Ver: "test", Sees: []string{"a"}}))
+	m.tick()
+	waitFor(t, 5*time.Second, "Abschotten", m.d.actionsIdle)
+	m.d.mu.Lock()
+	role, marked := m.d.p.Role, m.d.undoRefused
+	m.d.mu.Unlock()
+	if role != ha.Passive || !marked {
+		t.Errorf("Rolle %s, Marke %v", role, marked)
+	}
+	if svc.active || tunOf(a).active || !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Errorf("zwei schreibende Server: svc=%v tun=%v", svc.active, tunOf(a).active)
+	}
+}
+
+// R43: Ohne frische gegenseitige Sicht ist der Stand des Tauschs ungewiss.
+func TestSwapPhaseUnknownWithoutContact(t *testing.T) {
+	m, _, _, _, inFinal := proofRig(t)
+	m.rs.mu.Lock()
+	m.rs.fn = func(ctx context.Context, _ []string) error { inFinal <- struct{}{}; <-ctx.Done(); return ctx.Err() }
+	m.rs.mu.Unlock()
+	if err := m.d.command("swap"); err != nil {
+		t.Fatal(err)
+	}
+	m.tick()
+	<-inFinal
+	m.d.mu.Lock()
+	term := m.d.p.Term
+	m.d.mu.Unlock()
+	if p := m.d.swapPhase(term); p != phaseGiving {
+		t.Fatalf("mit Sicht: %v", p)
+	}
+	m.d.mu.Lock()
+	m.d.carry.LastMutual = m.d.mono() - m.d.settingsLocked().FenceAfter
+	m.d.mu.Unlock()
+	if p := m.d.swapPhase(term); p != phaseUnknown {
+		t.Fatalf("ohne Sicht: %v", p)
 	}
 }

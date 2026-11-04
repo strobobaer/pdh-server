@@ -1098,7 +1098,7 @@ func (d *daemon) wireActor(pa *pgActor) {
 }
 
 // swapPhase: Stand des eigenen Tauschs mit Abgabe-Amtszeit term (für den Aktor).
-// Aktiv: der Step hat zurückgenommen. Passiv mit offener Übergabe: läuft. Eigene
+// Aktiv: der Step hat zurückgenommen. Passiv mit offener Übergabe und Sicht: läuft. Eigene
 // Amtszeit höher oder Partner aktiv mit höherer Amtszeit gesehen: Partner hat übernommen.
 func (d *daemon) swapPhase(term uint64) swapPhase {
 	d.mu.Lock()
@@ -1107,6 +1107,10 @@ func (d *daemon) swapPhase(term uint64) swapPhase {
 	case d.p.Role == ha.Active:
 		return phaseWithdrawn
 	case d.p.Role == ha.Passive && d.carry.HandoverPending == term+1:
+		// R43: Ohne frische gegenseitige Sicht kann der Partner längst übernommen haben
+		if d.mono()-d.carry.LastMutual >= d.settingsLocked().FenceAfter {
+			return phaseUnknown
+		}
 		return phaseGiving
 	case d.p.Term > term:
 		return phaseTaken

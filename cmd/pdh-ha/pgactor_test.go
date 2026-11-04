@@ -128,6 +128,7 @@ func TestDemoteTimeoutRestartsPDH(t *testing.T) {
 		on("runuser", "pg_is_in_recovery", stPrimary, nil).
 		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/80|sync", nil)
 	a, svc := testActor(t, r)
+	a.phase = func(uint64) swapPhase { return phaseWithdrawn } // der Step hat zurückgenommen (R42)
 	err := a.Do(context.Background(), ha.Action{Kind: ha.ActDemote})
 	if err == nil || !strings.Contains(err.Error(), "Partner hat nicht aufgeholt") {
 		t.Fatalf("Frist: %v", err)
@@ -651,6 +652,7 @@ func TestDemoteFinalSyncFails(t *testing.T) {
 				on("runuser", "pg_is_in_recovery", stPrimary, nil).
 				on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/100|sync", nil)
 			a, svc := testActor(t, r)
+			a.phase = func(uint64) swapPhase { return phaseWithdrawn } // der Step hat zurückgenommen (R42)
 			a.mirrorFinal = finalLog(r, errors.New("rsync 23"))
 			err := a.Do(context.Background(), ha.Action{Kind: kind, Term: 3, Manual: true})
 			if err == nil || err.Error() != "Letzter Abgleich der Dateien nicht fertig: rsync 23" {
