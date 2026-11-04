@@ -43,7 +43,7 @@ func (d *daemon) inputLocked(now time.Duration, wall time.Time, s ha.Settings, m
 		HandoverReadyAt: c.HandoverReadyAt, Would: c.Would, DemoteDone: d.demoteDone,
 		DemoteFailed: d.demoteFailed, ProbeGranted: d.probeGranted,
 		SwapSeq: c.SwapSeq, SwapKind: c.SwapKind, RejoinAsked: c.RejoinAsked, RejoinAlarmed: c.RejoinAlarmed,
-		UnfencePending: c.UnfencePending, UndoRefused: d.undoRefused, UpdateOpen: d.updateOpenLocked(), RejoinBusy: d.pendingRejoins.Load() > 0,
+		UndoRefused: d.undoRefused, UpdateOpen: d.updateOpenLocked(), RejoinBusy: d.pendingRejoins.Load() > 0,
 	}
 	if gl := time.Duration(d.gwOK.Load()); gl > 0 {
 		in.GatewayLastOK = gl
@@ -146,6 +146,8 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 	set("version", versionDiff != "", versionDiff, "Versionen wieder gleich")
 	set(strandedAlarmKey, d.strandedHoldLocked(now), strandedText, "")
 	set(rewindUnsafeKey, d.rewindAlarmLocked(), rewindUnsafeText, "")
+	foreign, hand := d.foreignJobLocked(now)
+	set("foreign-job", foreign, foreignJobText(d.up.job.ID, hand), "")
 }
 
 // statusNow liefert die Anzeige für GET /v1/status.
@@ -351,6 +353,10 @@ func (d *daemon) heartbeatLocked(gw bool, views map[string]peerView, wall time.T
 		m.Tun = d.tunnel.Sum()
 		m.PDH = d.pdhHBLocked() // Update im Verbund: „pdh auf B antwortet“
 		m.UpJob = !upEnded(d.up.job)
+		m.UpLead = "-"
+		if m.UpJob {
+			m.UpLead = d.up.job.ID
+		}
 		m.Giving = d.p.Role == ha.Passive && d.carry.HandoverPending != 0 // eigener Rollentausch: Abgabe läuft
 		d.mirrorHBLocked(&m)                                              // Zwischenspeicher, kein Dateizugriff
 	}

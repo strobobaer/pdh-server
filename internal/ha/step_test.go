@@ -515,7 +515,6 @@ func TestStepTable(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 			check: func(t *testing.T, out Output) {
 				wantEvent(t, out, "role", "Rolle: abgeschaltet → aktiv (Amtszeit 1)")
 			},
@@ -538,7 +537,6 @@ func TestStepTable(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 		},
 		{
 			name: "duo abgeschaltet, kein gateway, kein partner",
@@ -1073,7 +1071,6 @@ func TestStepCommands(t *testing.T) {
 			name: "rollentausch fehlgeschlagen",
 			in:   func() Input { return pending(70*sec, 95*sec) },
 			role: Active, term: 3,
-			actions: acts(ActUnfence, 3, ActVIPTake, 3),
 			check: func(t *testing.T, out Output) {
 				if out.HandoverPending != 0 {
 					t.Fatalf("Rollentausch nicht beendet: %d", out.HandoverPending)
@@ -1336,7 +1333,6 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 			check:   holdIs(0),
 		},
 		{
@@ -1392,7 +1388,6 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 			check:   holdIs(0),
 		},
 		{
@@ -1403,7 +1398,6 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 			check:   holdIs(0),
 		},
 		{
@@ -1424,7 +1418,6 @@ func TestStepBoot(t *testing.T) {
 			name: "duo 60 s mit gateway",
 			in:   func() Input { return held(Duo, 60*sec) },
 			role: Active, term: 1,
-			actions: acts(ActUnfence, 1, ActVIPTake, 1),
 			check:   holdIs(0),
 		},
 		{
@@ -1996,7 +1989,6 @@ func TestHandoverDemoteDeadlineMirror(t *testing.T) {
 // carryOver: Zustand eines Schrittes in den nächsten Eingang übernehmen.
 func carryOver(in Input, out Output) Input {
 	in.Persist = out.Persist
-	in.UnfencePending = out.UnfencePending
 	in.HandoverPending, in.HandoverAt, in.HandoverSentAt = out.HandoverPending, out.HandoverAt, out.HandoverSentAt
 	in.HandoverReadyAt = out.HandoverReadyAt
 	in.SwapSeq, in.SwapKind = out.SwapSeq, out.SwapKind
@@ -2285,7 +2277,7 @@ func TestHandoverFailedWitnessOnly(t *testing.T) {
 	in = carryOver(in, out)
 	in.Now += sec
 	high := in
-	if out = Step(in); out.Persist.Role != Active || !hasKind(out, ActUnfence) {
+	if out = Step(in); out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.Persist.UnfencePending {
 		t.Fatalf("mit dem Zeugen zurück: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
 	}
 	w := *high.Witness
@@ -2323,22 +2315,22 @@ func TestRollbackInTwoTicks(t *testing.T) {
 	in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
 	in.DemoteFailed = in.SwapSeq
 	out := Step(in)
-	if out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.UnfencePending {
-		t.Fatalf("Takt N: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.UnfencePending)
+	if out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.Persist.UnfencePending {
+		t.Fatalf("Takt N: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.Persist.UnfencePending)
 	}
 	in = carryOver(in, out)
 	in.Now += sec
 	high := in
 	out = Step(in)
-	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || out.UnfencePending {
-		t.Fatalf("Takt N+1: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.UnfencePending)
+	if out.Persist.Role != Active || !hasKind(out, ActUnfence) || out.Persist.UnfencePending {
+		t.Fatalf("Takt N+1: Rolle %s, Aktionen %v, offen %v", out.Persist.Role, out.Actions, out.Persist.UnfencePending)
 	}
 	// Höhere Amtszeit im Takt N+1: nie schreibbar
 	pa := *high.Partner
 	pa.Role, pa.Term = Active, high.Persist.Term+1
 	high.Partner = &pa
 	out = Step(high)
-	if hasKind(out, ActUnfence) || !hasKind(out, ActRejoin) || out.UnfencePending {
+	if hasKind(out, ActUnfence) || !hasKind(out, ActRejoin) || out.Persist.UnfencePending {
 		t.Fatalf("höhere Amtszeit: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
 	}
 }
@@ -2368,5 +2360,128 @@ func TestHigherTermWithOpenUpdateNoRejoin(t *testing.T) {
 		if hasKind(out, ActRejoin) || !hasKind(out, ActFence) || !out.SetUndoRefused || out.Persist.Role != Passive || out.Persist.Term != 2 {
 			t.Fatalf("%s: Rolle %s, Amtszeit %d, Aktionen %v, Marke %v", role, out.Persist.Role, out.Persist.Term, out.Actions, out.SetUndoRefused)
 		}
+	}
+}
+
+// R51: Jede Rücknahme läuft über zwei Takte: erst Rolle aktiv mit Merker, dann ActUnfence und
+// ActVIPTake. Eine höhere Amtszeit im zweiten Takt verhindert das Einschalten.
+func TestAllRollbacksInTwoTicks(t *testing.T) {
+	fenced := func(t *testing.T) Input {
+		in := base(Trio, Fenced)
+		in.Partner = seenPeer("node", Passive, 1, 100*sec)
+		in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+		in.Witness.Seen = false
+		return in
+	}
+	for _, tc := range []struct {
+		name string
+		in   func(t *testing.T) Input
+	}{
+		{"abgeschaltet, Partner zurück", fenced},
+		{"abgeschaltet, nur der Zeuge zurück", func(t *testing.T) Input {
+			in := fenced(t)
+			in.Partner.Seen, in.Witness.Seen = false, true
+			return in
+		}},
+		{"abgeschaltet im Halten nach dem Neustart", func(t *testing.T) Input {
+			in := fenced(t)
+			in.HoldUntil = in.Now + 10*sec
+			return in
+		}},
+		{"Neustart, Partner da", func(t *testing.T) Input {
+			in := fenced(t)
+			in.Persist.Role, in.Booting = Active, true
+			return in
+		}},
+		{"Tausch gescheitert, Partner blieb passiv", func(t *testing.T) Input {
+			in := swapped(t)
+			in.DemoteDone = in.SwapSeq
+			in.Now += sec
+			in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+			out := Step(in)
+			in = carryOver(in, out)
+			in.Now += in.Settings.Takeover(in.Mode)
+			in.Partner.LastSeen, in.Witness.LastSeen = in.Now, in.Now
+			return in
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := tc.in(t)
+			out := Step(in)
+			if out.Persist.Role != Active || hasKind(out, ActUnfence) || hasKind(out, ActVIPTake) || !out.Persist.UnfencePending {
+				t.Fatalf("Takt N: Rolle %s, Aktionen %v, Merker %v", out.Persist.Role, out.Actions, out.Persist.UnfencePending)
+			}
+			next := in
+			next.Persist, next.Booting = out.Persist, false
+			next.Now += sec
+			next.HoldUntil, next.HandoverPending = 0, 0
+			high := next
+			second := Step(next)
+			if !hasKind(second, ActUnfence) || !hasKind(second, ActVIPTake) || second.Persist.UnfencePending {
+				t.Fatalf("Takt N+1: Rolle %s, Aktionen %v", second.Persist.Role, second.Actions)
+			}
+			pa := *high.Partner
+			pa.Seen, pa.Role, pa.Term = true, Active, high.Persist.Term+1
+			high.Partner = &pa
+			if o := Step(high); hasKind(o, ActUnfence) || !hasKind(o, ActRejoin) || o.Persist.UnfencePending {
+				t.Fatalf("höhere Amtszeit: Rolle %s, Aktionen %v", o.Persist.Role, o.Actions)
+			}
+		})
+	}
+}
+
+// R51: Neustart zwischen den Takten: Der Merker steht in der Zustandsdatei, der Server bleibt
+// nicht aktiv und nur lesend stehen; auch nicht in Beobachtung.
+func TestUnfencePendingAcrossRestart(t *testing.T) {
+	in := base(Trio, Active)
+	in.Partner = seenPeer("node", Passive, 1, 100*sec)
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.Persist.UnfencePending = true
+	in.Booting = true
+	out := Step(in) // Partner da: wieder Takt N
+	if out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.Persist.UnfencePending {
+		t.Fatalf("Start: Rolle %s, Aktionen %v, Merker %v", out.Persist.Role, out.Actions, out.Persist.UnfencePending)
+	}
+	in.Persist, in.Booting = out.Persist, false
+	in.Now += sec
+	if out = Step(in); !hasKind(out, ActUnfence) || out.Persist.UnfencePending {
+		t.Fatalf("danach: Aktionen %v", out.Actions)
+	}
+	// Partner weg: abgeschaltet, Merker verfällt, der Rückweg fängt neu an
+	in = base(Trio, Active)
+	in.Partner = seenPeer("node", Passive, 1, 100*sec)
+	in.Partner.Seen = false
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.Witness.Seen = false
+	in.Persist.UnfencePending, in.Booting = true, true
+	if out = Step(in); out.Persist.Role != Fenced || out.Persist.UnfencePending || hasKind(out, ActUnfence) {
+		t.Fatalf("ohne Partner: Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
+	}
+	// Beobachtung: Rolle bleibt aktiv, im nächsten Takt wird eingeschaltet
+	in = base(Trio, Active)
+	in.Settings.AutoMode = AutoObserve
+	in.Partner = seenPeer("node", Passive, 1, 100*sec)
+	in.Witness = seenPeer("witness", Witness, 1, 100*sec)
+	in.Booting, in.Persist.UnfencePending = true, true
+	if out = Step(in); out.Persist.Role != Active || hasKind(out, ActUnfence) || !out.Persist.UnfencePending {
+		t.Fatalf("Beobachtung, Start: Rolle %s, Aktionen %v, Merker %v", out.Persist.Role, out.Actions, out.Persist.UnfencePending)
+	}
+	in.Persist, in.Booting = out.Persist, false
+	in.Now += sec
+	if out = Step(in); !hasKind(out, ActUnfence) {
+		t.Fatalf("Beobachtung, danach: Aktionen %v", out.Actions)
+	}
+}
+
+// R56: Der R43-Zweig schottet ohne Ausnahme ab; einer gestoppten Datenbank tut das nichts.
+func TestHandoverNoSightFencesAlsoAbandon(t *testing.T) {
+	in := swapped(t)
+	in.SwapKind = ActAbandon
+	in.Now += 100 * sec
+	in.Partner.Seen, in.Witness.Seen = false, false
+	in.DemoteFailed = in.SwapSeq
+	out := Step(in)
+	if out.Persist.Role != Fenced || !hasKind(out, ActFence) {
+		t.Fatalf("Rolle %s, Aktionen %v", out.Persist.Role, out.Actions)
 	}
 }

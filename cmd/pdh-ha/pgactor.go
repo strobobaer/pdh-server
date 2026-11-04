@@ -226,11 +226,10 @@ func (a *pgActor) finalMirror(ctx context.Context) error {
 	return nil
 }
 
-// undoFence nach einem gescheiterten Abgeben: Hat der Step schon zurückgenommen (Rolle
-// aktiv), wird wieder eingeschaltet; scheitert das, wird es an den Fehler angehängt. Solange
-// der Tausch als laufend gilt, geschieht hier nichts (R42): Der Server ist noch passiv und
-// wäre neben einem übernehmenden Partner schreibbar. Den Rückweg geht allein der Step, mit
-// gespeicherter und gesendeter Rolle aktiv, und nur mit Sicht auf den Partner (R43).
+// undoFence nach einem gescheiterten Abgeben: Der Aktor hebt nie selbst auf (R51), auch nicht,
+// wenn der Step die Rolle schon zurückgenommen hat. Der Server bleibt abgeschottet, die Aufhebung
+// kommt allein über ActUnfence aus dem zweiten Takt, nur ohne höhere Amtszeit. Hier wird nur
+// festgestellt, ob der Partner übernommen hat, damit die Wiederanbindung folgt.
 func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote bool) error {
 	switch a.settledPhase(ctx, term) {
 	case phaseTaken:
@@ -244,11 +243,6 @@ func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote 
 	case phaseUnknown:
 		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Zustand der Rolle ist ungewiss"})
 		return err
-	case phaseGiving:
-		return err
-	}
-	if uerr := a.unfence(ctx); uerr != nil {
-		err = fmt.Errorf("%v; Rücknahme fehlgeschlagen: %v", err, uerr)
 	}
 	return err
 }

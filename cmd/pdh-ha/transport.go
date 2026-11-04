@@ -104,7 +104,8 @@ type message struct {
 	JobID string        `json:"job_id,omitempty"`
 	Ack   *ha.UpdateAck `json:"ack,omitempty"`
 	// hb eines Servers: ein Update-Auftrag läuft (der Zeuge zieht dann nicht nach)
-	UpJob bool `json:"upjob,omitempty"`
+	UpJob  bool   `json:"upjob,omitempty"`
+	UpLead string `json:"up_lead,omitempty"` // R53: Kennung des offenen Auftrags, „-“ = keiner; fehlt bei älteren Versionen
 
 	Giving bool `json:"giving,omitempty"` // Rollentausch: dieser passive Server gibt gerade ab
 

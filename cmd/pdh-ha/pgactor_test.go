@@ -123,7 +123,8 @@ func TestDemotePushFailsKeepsAll(t *testing.T) {
 	}
 }
 
-func TestDemoteTimeoutRestartsPDH(t *testing.T) {
+// R51: Auch nach der RÃ¼cknahme durch den Step hebt der Aktor nicht selbst auf.
+func TestDemoteTimeoutStaysFenced(t *testing.T) {
 	r := (&fakeRunner{}).
 		on("runuser", "pg_is_in_recovery", stPrimary, nil).
 		on("runuser", "pg_stat_replication", "pdh_ha_b|streaming|0/100|0/80|sync", nil)
@@ -133,11 +134,11 @@ func TestDemoteTimeoutRestartsPDH(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Partner hat nicht aufgeholt") {
 		t.Fatalf("Frist: %v", err)
 	}
-	if has(r.list(), "pg_ctlcluster 18 main stop") || !svc.active {
-		t.Fatalf("nach Frist nichts gestoppt, pdh wieder an: %v", r.list())
+	if has(r.list(), "pg_ctlcluster 18 main stop") || svc.active {
+		t.Fatalf("nach Frist nichts gestoppt, pdh bleibt aus: %v", r.list())
 	}
-	if strings.Contains(confText(t, a), "default_transaction_read_only") {
-		t.Fatal("nur-lesend nicht zurückgenommen")
+	if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+		t.Fatal("Abschottung vom Aktor zurückgenommen")
 	}
 }
 
@@ -662,12 +663,11 @@ func TestDemoteFinalSyncFails(t *testing.T) {
 			if has(l, "pg_ctlcluster 18 main stop") {
 				t.Fatalf("nach dem Fehler darf nichts mehr abgegeben werden: %v", l)
 			}
-			seq(t, l, "mirrorfinal", "svc start")
-			if !svc.active || !tunOf(a).active {
-				t.Fatal("Dienste nicht wieder an")
+			if svc.active || tunOf(a).active {
+				t.Fatal("Dienste vom Aktor wieder gestartet (R51)")
 			}
-			if strings.Contains(confText(t, a), "default_transaction_read_only") {
-				t.Fatalf("nur-lesend nicht zurückgenommen:\n%s", confText(t, a))
+			if !strings.Contains(confText(t, a), "default_transaction_read_only") {
+				t.Fatalf("Abschottung vom Aktor zurückgenommen:\n%s", confText(t, a))
 			}
 			if _, serr := os.Stat(filepath.Join(a.pg.c.DataDir, "standby.signal")); serr == nil {
 				t.Fatal("Rolle verändert: standby.signal liegt da")
@@ -804,8 +804,8 @@ func TestDemoteChecksHandoverBeforeStop(t *testing.T) {
 			if has(r.list(), "pg_ctlcluster 18 main stop") {
 				t.Fatalf("gestoppt trotz zurückgenommenem Tausch: %v", r.list())
 			}
-			if !svc.active || strings.Contains(confText(t, a), "default_transaction_read_only = on") {
-				t.Fatal("nicht zurückgenommen")
+			if svc.active || !strings.Contains(confText(t, a), "default_transaction_read_only = on") {
+				t.Fatal("vom Aktor zurückgenommen (R51)")
 			}
 		})
 	}

@@ -38,7 +38,7 @@ func TestInboxRealRsyncTrash(t *testing.T) {
 		now:     func() time.Time { return time.Date(2026, 11, 3, 12, 0, 0, 0, time.Local) },
 		sources: func(ha.Settings) []ha.MirrorSource { return []ha.MirrorSource{{Label: "L", Path: dst}} },
 	})
-	in.noteSource("L") // R47: Löschen nur mit Beleg
+	in.noteSource("L", true) // R47: Löschen nur mit Beleg
 	e := newMirrorEnv(t, "echo", "a", "node", in)
 	if out, err := runRsync(t, e, src); err != nil {
 		t.Fatalf("rsync: %v\n%s", err, out)
@@ -96,7 +96,7 @@ func TestInboxRealRsyncAppKeepsTrash(t *testing.T) {
 		now:     func() time.Time { return time.Date(2026, 11, 3, 12, 0, 0, 0, time.Local) },
 		sources: func(ha.Settings) []ha.MirrorSource { return []ha.MirrorSource{{Label: "L", Path: app}} },
 	})
-	in.noteSource("L") // R47: Löschen nur mit Beleg
+	in.noteSource("L", true) // R47: Löschen nur mit Beleg
 	e := newMirrorEnv(t, "echo", "a", "node", in)
 	if out, err := runRsync(t, e, src, real.Exclude...); err != nil {
 		t.Fatalf("rsync: %v\n%s", err, out)

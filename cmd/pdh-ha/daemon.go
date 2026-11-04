@@ -116,12 +116,13 @@ type daemon struct {
 	// Aktionen laufen nacheinander im Hintergrund, der Takt läuft weiter.
 	actQ           chan queuedAction
 	actOnce        sync.Once
-	actBatch       uint64       // nur unter mu
-	busy           atomic.Bool  // eine Aktion läuft gerade
-	pendingActs    atomic.Int32 // wartend oder laufend
-	pendingDemotes atomic.Int32 // davon: Abgaben (demote, demote_freeze, abandon)
-	pendingRejoins atomic.Int32 // davon: Wiederanbindungen (rejoin, rejoin_stranded)
-	undoRefused    bool         // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
+	actBatch       uint64        // nur unter mu
+	busy           atomic.Bool   // eine Aktion läuft gerade
+	pendingActs    atomic.Int32  // wartend oder laufend
+	pendingDemotes atomic.Int32  // davon: Abgaben (demote, demote_freeze, abandon)
+	pendingRejoins atomic.Int32  // davon: Wiederanbindungen (rejoin, rejoin_stranded)
+	foreignSince   time.Duration // nur unter mu: seit wann ein fremder Update-Auftrag gilt (R53, 0 = nicht)
+	undoRefused    bool          // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
 	lastMode       ha.Mode
 
 	// Gestrandeter Server (rejoin.go, R33)
@@ -729,11 +730,16 @@ func (d *daemon) actionWorker(ctx context.Context) {
 				if hand {
 					err = d.strandedGuard()
 				}
-				// R49: zwischen Einreihen und Ausführung kann ein Auftrag begonnen haben;
-				// sein eingefrorener Rückfallstand bleibt unberührt
+				// R49, R56: Zwischen Einreihen und Ausführung kann ein Auftrag begonnen haben. Sein
+				// eingefrorener Rückfallstand bleibt unberührt: abschotten statt anbinden, die Marke
+				// holt die Wiederanbindung nach dem Auftrag nach.
 				skip := q.a.Kind == ha.ActRejoin && d.updateOpen()
 				if skip {
 					d.event("warn", "Wiederanbindung übersprungen: Update-Auftrag ist offen")
+					err = d.doAction(ctx, ha.Action{Kind: ha.ActFence, Term: q.a.Term})
+					d.lock()
+					d.undoRefused = true
+					d.unlock()
 				}
 				if err == nil && !skip {
 					err = d.doAction(ctx, q.a)

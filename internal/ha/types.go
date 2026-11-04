@@ -283,6 +283,10 @@ type Persisted struct {
 
 	// Stale: Amtszeit → Schreibposition, ab der der Partner veraltet ist.
 	Stale map[string]uint64 `json:"stale,omitempty"`
+
+	// R51: Rolle aktiv ist gesendet, im nächsten Takt wird eingeschaltet. Gespeichert: Ein Neustart
+	// zwischen den Takten lässt den Server nicht aktiv und nur lesend stehen.
+	UnfencePending bool `json:"unfence_pending,omitempty"`
 }
 
 // Equal vergleicht zwei Zustände; die Karte Stale verhindert ==.
@@ -296,7 +300,7 @@ func (p Persisted) Equal(q Persisted) bool {
 			return false
 		}
 	}
-	return p.Term == q.Term && p.Role == q.Role && p.LastSwitch.Equal(q.LastSwitch) &&
+	return p.UnfencePending == q.UnfencePending && p.Term == q.Term && p.Role == q.Role && p.LastSwitch.Equal(q.LastSwitch) &&
 		p.SwitchDay == q.SwitchDay && p.SwitchCount == q.SwitchCount &&
 		p.Maint == q.Maint && p.MaintSeq == q.MaintSeq &&
 		p.PartnerVersion == q.PartnerVersion && p.VotedTerm == q.VotedTerm && p.VotedFor == q.VotedFor
@@ -393,7 +397,6 @@ type Input struct {
 	RejoinAsked     bool          // Wiederanbindung für „Rücknahme verweigert“ schon ausgelöst
 	RejoinAlarmed   bool          // dazu schon gemeldet (ein erneuter Versuch meldet nicht noch einmal)
 	UndoRefused     bool          // Daemon-Speicher: demote hat die Rücknahme verweigert, weil der Partner übernommen hat
-	UnfencePending  bool          // R48: Tausch zurückgenommen, Rolle aktiv gesendet; im nächsten Takt schreibbar
 	UpdateOpen      bool          // ein Update-Auftrag ist offen
 	RejoinBusy      bool          // eine Wiederanbindung ist eingereiht oder läuft
 	SwapKind        ActionKind    // Art der Abgabe des laufenden Tauschs (demote, demote_freeze, abandon)
@@ -408,8 +411,6 @@ type Output struct {
 	// R42: Übergabe geräumt, während die Abgabe gescheitert ist oder läuft: abgeschottet
 	// bleiben, Wiederanbindung vormerken (Daemon-Speicher UndoRefused)
 	SetUndoRefused bool
-	// R48: siehe Input
-	UnfencePending bool
 
 	HoldUntil       time.Duration
 	VotePending     uint64

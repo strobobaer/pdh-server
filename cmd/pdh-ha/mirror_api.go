@@ -483,16 +483,20 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if w.On && w.Role == ha.Passive {
 		wk.liftUnproven(ib.proofOf) // eigener Beleg nach einem Rücktausch
 	}
-	switch {
-	case !w.On:
+	if !w.On {
 		// R47: Bei ausgeschalteter Spiegelung laufen die Stände auseinander, also gilt kein
-		// Beleg und keine Bestätigung über den Abschnitt hinaus.
+		// Beleg und keine Bestätigung über den Abschnitt hinaus. R55: auch keine gemerkte Rolle,
+		// sonst zählte ein Tausch in dieser Zeit beim Einschalten als Übernahme im Erstabgleich.
 		ib.dropProofs()
 		wk.dropConfirm()
-	case w.Role == ha.Active && w.PartnerSeen:
+		ib.setLastRole("")
+		rt.persistedRole = ""
+	} else if w.Role == ha.Active {
 		ib.noteActive()
-		wk.noteOwnProof(w.PartnerProven, ib.noteSource)
-		wk.noteWaiting()
+		if w.PartnerSeen {
+			wk.noteOwnProof(w.PartnerProven, ib.noteSource)
+			wk.noteWaiting()
+		}
 	}
 	rt.ownFirst.Store(wk.snapshot().FirstDone)
 }

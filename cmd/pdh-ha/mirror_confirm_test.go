@@ -303,7 +303,7 @@ func TestDaemonMirrorConfirmOnlyActive(t *testing.T) {
 	if err := m.d.mirrorConfirm(); err == nil || !strings.Contains(err.Error(), "aktiven") {
 		t.Fatalf("passiv: %v", err)
 	}
-	a := newMDT(t, ha.Active, true, message{Role: "passiv", MirrorDataID: "k"})
+	a := newMDT(t, ha.Active, true, message{Role: "passiv", MirrorDataID: "k", MirrorWait: []string{"uploads"}})
 	a.tick()
 	rt := a.ready()
 	waitFor(t, 5*time.Second, "Datenkennung", func() bool { return rt.worker.Load().snapshot().DataID == "k" })

@@ -94,7 +94,6 @@ func Step(in Input) Output {
 	s.out.HandoverReadyAt = in.HandoverReadyAt
 	s.out.SwapSeq, s.out.SwapKind = in.SwapSeq, in.SwapKind
 	s.out.RejoinAsked, s.out.RejoinAlarmed = in.RejoinAsked, in.RejoinAlarmed
-	s.out.UnfencePending = in.UnfencePending
 	s.out.NoActiveSince, s.out.NoActiveAlarmed = in.NoActiveSince, in.NoActiveAlarmed
 	s.out.VoteSince, s.out.VoteAlarmed = in.VoteSince, in.VoteAlarmed
 	s.out.LastMutual = in.LastMutual
@@ -113,7 +112,7 @@ func Step(in Input) Output {
 		s.out.RejoinAsked, s.out.RejoinAlarmed = false, false
 	}
 	if s.p.Role != Active {
-		s.out.UnfencePending = false
+		s.p.UnfencePending = false
 	}
 	s.noActive()
 	s.out.Persist = s.p
@@ -124,6 +123,7 @@ func (s *stepper) decide() {
 	if s.in.Mode == Single {
 		s.clearVote()
 		s.become(Active, "")
+		s.unfencePending() // Partner zwischen den Takten entfernt: nicht nur lesend stehen bleiben
 		return
 	}
 	s.observe()
@@ -392,25 +392,19 @@ func (s *stepper) handover() bool {
 	took := in.Settings.Takeover(in.Mode)
 	demoteBy := demoteDeadline(in.Settings, in.Mode)
 	// Abgabe der eigenen Datenbank fehlgeschlagen oder zu langsam: der
-	// Partner hat noch nichts bekommen, also zurück nach aktiv. Nur hier wird
-	// zurückgenommen (R42): Die Rolle ist gespeichert und gesendet, bevor die
-	// Datenbank schreibbar wird. Ohne Sicht auf den Partner kann er längst übernommen
-	// haben (R43): abgeschaltet, fenced() nimmt erst bei wiederhergestellter Sicht
-	// zurück, eine höhere Amtszeit geht dort vor.
+	// Partner hat noch nichts bekommen, also zurück nach aktiv (R51: über unfence, in zwei
+	// Takten wie jede Rücknahme). Ohne Sicht auf den Partner kann er längst übernommen haben
+	// (R43): abgeschaltet, fenced() nimmt erst bei wiederhergestellter Sicht zurück, eine
+	// höhere Amtszeit geht dort vor.
 	if in.DemoteFailed != 0 && in.DemoteFailed == s.out.SwapSeq || !done && in.Now-s.out.HandoverAt >= demoteBy {
 		s.clearHandover()
 		s.event("alarm", "Rollentausch abgebrochen")
 		if !mutual(pa) {
-			if s.out.SwapKind != ActAbandon {
-				s.act(ActFence, s.p.Term) // R49: auch wenn die Abgabe nicht bis zum Abschotten kam
-			}
+			s.act(ActFence, s.p.Term) // R49: auch wenn die Abgabe nicht bis zum Abschotten kam
 			s.become(Fenced, "")
 			return true
 		}
-		// R48: In diesem Takt nur Rolle aktiv speichern und senden; schreibbar wird die
-		// Datenbank erst im nächsten, wenn bis dahin keine höhere Amtszeit gesehen wurde.
-		s.out.UnfencePending = true
-		s.become(Active, "")
+		s.unfence()
 		return true
 	}
 	if !done {
@@ -459,7 +453,7 @@ func (s *stepper) boot() bool {
 		return false
 	}
 	if !s.in.Settings.Real() {
-		// Beobachtung: Rolle bleibt wie gespeichert.
+		// Beobachtung: Rolle bleibt wie gespeichert, ein gespeicherter Merker zählt im nächsten Takt.
 		if !mutual(s.in.Partner) {
 			s.would(ActFence)
 		}
@@ -477,13 +471,7 @@ func (s *stepper) boot() bool {
 
 func (s *stepper) active() {
 	in := s.in
-	if s.out.UnfencePending { // R48: höhere Amtszeit hätte schon adoptHigherTerm genommen
-		s.out.UnfencePending = false
-		s.manual = true
-		s.act(ActUnfence, s.p.Term)
-		s.act(ActVIPTake, s.p.Term)
-		s.manual = false
-	}
+	s.unfencePending()
 	if pa := in.Partner; seen(pa) && pa.Role == Active && pa.Term == s.p.Term {
 		if !s.p.Maint {
 			s.setMaint(true)
@@ -537,9 +525,23 @@ func (s *stepper) fenced() {
 	}
 }
 
-func (s *stepper) unfence() {
+// unfencePending: zweiter Takt der Rücknahme (R51); eine höhere Amtszeit hätte schon adoptHigherTerm genommen.
+func (s *stepper) unfencePending() {
+	if !s.p.UnfencePending {
+		return
+	}
+	s.p.UnfencePending = false
+	s.manual = true
 	s.act(ActUnfence, s.p.Term)
 	s.act(ActVIPTake, s.p.Term)
+	s.manual = false
+}
+
+// unfence: der einzige Weg zurück nach aktiv (R51). In diesem Takt nur Rolle aktiv speichern
+// und senden; ActUnfence und ActVIPTake kommen im nächsten Takt aus active(), wenn bis dahin keine
+// höhere Amtszeit gesehen wurde. Der Merker steht in der Zustandsdatei und übersteht einen Neustart.
+func (s *stepper) unfence() {
+	s.p.UnfencePending = true
 	s.become(Active, "")
 }
 

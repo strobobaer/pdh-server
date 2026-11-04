@@ -71,6 +71,7 @@ type mirrorInboxState struct {
 	DataID     string                 `json:"data_id,omitempty"`     // Kennung dieser Ablage (einmal zufällig); ändert sie sich, ist der Empfang neu
 	Seeded     map[string]bool        `json:"seeded,omitempty"`      // Quellen, deren Ziel beim ersten Lauf leer war, noch ohne Beleg (R47)
 	Wait       map[string]bool        `json:"wait,omitempty"`        // Quellen, deren Ziel nicht leer war: warten auf Bestätigung am aktiven Server (R47)
+	Dev        map[string]uint64      `json:"dev,omitempty"`         // Gerätenummer des Ziels je Quelle: Beleg und Seeded gelten nur dort (R54)
 }
 
 // mirrorProof belegt, dass diese Quelle hier einmal vollständig angekommen ist.
@@ -114,14 +115,14 @@ func (m *mirrorInbox) waits() []string {
 // noteSource: Dieser Server hat die Quelle auf einen belegten Partner abgeglichen: Beide
 // Stände gehören zusammen, nach einem Tausch läuft der Abgleich in die andere Richtung
 // ohne neue Bestätigung. Schreibt eine Datei.
-func (m *mirrorInbox) noteSource(label string) {
+func (m *mirrorInbox) noteSource(label string, files bool) {
 	m.mu.Lock()
 	_, ok := m.st.Proof[label]
 	if !ok {
 		if m.st.Proof == nil {
 			m.st.Proof = map[string]mirrorProof{}
 		}
-		m.st.Proof[label] = mirrorProof{At: m.d.now(), Files: true}
+		m.st.Proof[label] = mirrorProof{At: m.d.now(), Files: files}
 	}
 	_, w := m.st.Wait[label]
 	delete(m.st.Wait, label)
@@ -148,12 +149,16 @@ func (m *mirrorInbox) noteActive() {
 func (m *mirrorInbox) dropProofs() {
 	m.mu.Lock()
 	n := len(m.st.Proof) + len(m.st.Seeded) + len(m.st.Wait)
-	m.st.Proof, m.st.Seeded, m.st.Wait = map[string]mirrorProof{}, nil, nil
+	m.st.Proof, m.st.Seeded, m.st.Wait, m.st.Dev = map[string]mirrorProof{}, nil, nil, nil
 	m.mu.Unlock()
 	if n > 0 {
 		m.save()
 	}
 }
+
+// mirrorWalk durchläuft das Ziel; mirrorDev (mirror_dev_*.go) liefert die Gerätenummer eines
+// Ordners. Beide austauschbar für Tests.
+var mirrorWalk = filepath.WalkDir
 
 // mirrorTargetEmpty: Das Ziel enthält keine Datei. Ausgeschlossene Ordner der ersten Ebene
 // (/etc/pdh/ha) und der Teil-Ordner von rsync zählen nicht, ebenso leere Ordner. Bricht bei
@@ -166,9 +171,10 @@ func mirrorTargetEmpty(target string, exclude []string) bool {
 		}
 	}
 	empty := true
-	filepath.WalkDir(target, func(p string, de fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	_ = mirrorWalk(target, func(p string, de fs.DirEntry, err error) error {
+		if err != nil { // nicht lesbar: kann Dateien enthalten (R54)
+			empty = false
+			return filepath.SkipAll
 		}
 		if de.IsDir() {
 			if p != target && skip[de.Name()] {
@@ -317,7 +323,7 @@ func (m *mirrorInbox) save() {
 	for k, v := range m.st.Proof {
 		s.Proof[k] = v
 	}
-	s.Seeded, s.Wait = maps.Clone(m.st.Seeded), maps.Clone(m.st.Wait)
+	s.Seeded, s.Wait, s.Dev = maps.Clone(m.st.Seeded), maps.Clone(m.st.Wait), maps.Clone(m.st.Dev)
 	m.mu.Unlock()
 	b, _ := json.Marshal(s)
 	os.MkdirAll(filepath.Dir(m.d.statePath), 0o700)
@@ -416,6 +422,41 @@ func (m *mirrorInbox) refuse(peerID, text string) string {
 	return text
 }
 
+// checkDev (R54): Beleg und Seeded gelten nur auf dem Datenträger, auf dem sie entstanden. Ist
+// das Ziel jetzt ein anderer (Einhängepunkt fehlt, Tausch), wartet die Quelle wieder auf die
+// Bestätigung. Fehlt die Nummer (alte Zustandsdatei), wird sie still nachgetragen.
+func (m *mirrorInbox) checkDev(label, target string) {
+	dev, ok := mirrorDev(target)
+	if !ok {
+		return
+	}
+	m.mu.Lock()
+	old, had := m.st.Dev[label]
+	if had && old == dev {
+		m.mu.Unlock()
+		return
+	}
+	if m.st.Dev == nil {
+		m.st.Dev = map[string]uint64{}
+	}
+	m.st.Dev[label] = dev
+	_, proven := m.st.Proof[label]
+	lost := had && (proven || m.st.Seeded[label] || m.st.Wait[label])
+	if lost {
+		delete(m.st.Proof, label)
+		delete(m.st.Seeded, label)
+		if m.st.Wait == nil {
+			m.st.Wait = map[string]bool{}
+		}
+		m.st.Wait[label] = true
+	}
+	m.mu.Unlock()
+	m.save()
+	if lost {
+		m.logOnce("dev:"+label, "warn", "Quelle "+label+": Das Ziel liegt auf einem anderen Datenträger, die Quelle wartet auf Bestätigung", mirrorErrLogEvery)
+	}
+}
+
 // Accept siehe mirrorReceiver.
 func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req mirrorRequest) ([]string, func(error), string) {
 	v := m.d.view()
@@ -465,6 +506,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	if fi, err := os.Lstat(target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return fail("Zielordner ist ein Link")
 	}
+	m.checkDev(label, target)
 	// Nach dem Erstabgleich muss der Nextcloud-Datenordner eingehängt sein.
 	if _, proven := m.proofOf(label); label == "nextcloud-data" && proven {
 		if _, err := os.Lstat(filepath.Join(target, ".ocdata")); err != nil {
@@ -529,7 +571,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		empty := mirrorTargetEmpty(target, src.Exclude)
 		m.mu.Lock()
 		changed := false
-		if empty && !m.st.Seeded[label] {
+		if empty && !m.st.Seeded[label] && !m.st.Wait[label] { // wer wartet, kommt nur über die Bestätigung heraus
 			if m.st.Seeded == nil {
 				m.st.Seeded = map[string]bool{}
 			}

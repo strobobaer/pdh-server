@@ -28,6 +28,7 @@ func updAPI(t *testing.T) (*daemon, *fakeNet, string) {
 	d.commit = "x0"
 	fn.setView("b", upPeerView("x0", ""))
 	d.tick(context.Background()) // Sicht auf den Partner übernehmen
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	dir, err := os.MkdirTemp("", "ha")
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +72,7 @@ func TestAPIUpdateStartNotReady(t *testing.T) {
 	d, fn, sock := updAPI(t)
 	fn.setView("b", upPeerView("x9", "")) // Partner auf anderem Stand
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 
 	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x1", "source": "knopf"})
 	if code != http.StatusConflict || m["ok"] != false || !strings.Contains(m["error"].(string), "unterschiedlichem Stand") {
@@ -247,6 +249,7 @@ func TestAPIUpdateStartDisk(t *testing.T) {
 	pv.Last.Disk = "free:1000"
 	fn.setView("b", pv)
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	body := map[string]any{"commit": "x1", "source": "zeitplan", "backup_configured": false}
 	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", body)
 	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Partner") {
@@ -257,6 +260,7 @@ func TestAPIUpdateStartDisk(t *testing.T) {
 	fn.setView("b", pv)
 	freeSpace = func(string) (int64, bool) { return 0, false }
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", body)
 	if code != http.StatusOK || !strings.Contains(strings.Join(anyStrings(m["hints"]), "|"), "Freier Platz nicht geprüft") {
 		t.Fatalf("unbekannter Platz: %d %v", code, m)
@@ -281,6 +285,7 @@ func TestAPIUpdateStartBackup(t *testing.T) {
 	pv.Last.Disk = "free:" + "107374182400"
 	d.net.(*fakeNet).setView("b", pv)
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{
 		"commit": "x1", "source": "zeitplan", "backup_configured": true, "last_base_ok": false, "last_files_ok": true})
 	if code != http.StatusConflict || !strings.Contains(m["error"].(string), "Grundsicherung") {
@@ -308,6 +313,7 @@ func TestFaultyClusterWide(t *testing.T) {
 	d.up.job = j
 	v0 := d.cl.Version
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	if !slices.Equal(d.cl.Faulty, []string{"x1"}) || d.cl.Version != v0+1 {
 		t.Fatalf("Verbund-Einstellungen: %v v%d", d.cl.Faulty, d.cl.Version)
 	}
@@ -376,6 +382,7 @@ func TestAPIUpdateStartAlreadyInstalled(t *testing.T) {
 	// Partner auf x9: auch dessen Stand ist kein neuerer
 	fn.setView("b", upPeerView("x9", ""))
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	code, m := updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"commit": "x9", "source": "knopf", "force": true})
 	if code == http.StatusOK || !strings.Contains(fmt.Sprint(m["error"]), "Kein neuerer Stand: x9 ist schon installiert") || d.up.job.ID != "" {
 		t.Fatalf("Stand des Partners: %d %v %+v", code, m, d.up.job)
@@ -383,6 +390,7 @@ func TestAPIUpdateStartAlreadyInstalled(t *testing.T) {
 	// Rollentausch bleibt möglich
 	fn.setView("b", upPeerView("x0", ""))
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	code, m = updCall(t, sock, http.MethodPost, "/v1/update/start", map[string]any{"source": "knopf", "kind": "swap"})
 	if code == http.StatusBadRequest && strings.Contains(fmt.Sprint(m["error"]), "Kein neuerer Stand") {
 		t.Fatalf("Rollentausch abgelehnt: %d %v", code, m)
@@ -453,6 +461,7 @@ func TestAPIUpdateConfirm(t *testing.T) {
 		t.Fatalf("zweites Bestätigen: %d %v", code, m)
 	}
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	if d.up.job.Phase != ha.UpPrepare || d.up.job.ConfirmedBy != "Anna" {
 		t.Fatalf("nach dem Takt: %+v", d.up.job)
 	}
@@ -510,6 +519,7 @@ func TestUpdateAskSurvivesRestart(t *testing.T) {
 		t.Fatalf("Neustart darf die Nachfrage nicht abbrechen: %q", d.up.restartAbort)
 	}
 	d.tick(context.Background())
+	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	if d.up.job.Phase != ha.UpAsk {
 		t.Fatalf("Nachfrage nach Neustart: %+v", d.up.job)
 	}

@@ -89,7 +89,7 @@ func (m *mdt) mirrorAfterOn() (del, nodel int) {
 func TestMirrorOffDropsProofs(t *testing.T) {
 	m, _, _, rt, _ := proofRig(t)
 	ib := rt.inbox.Load()
-	ib.noteSource("uploads")
+	ib.noteSource("uploads", true)
 	m.setOn(false)
 	m.tick()
 	waitFor(t, 5*time.Second, "Beleg weg", func() bool { ok, _ := ib.proofOf("uploads"); return !ok })

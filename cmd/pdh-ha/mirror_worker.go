@@ -43,6 +43,7 @@ type mirrorLabelState struct {
 
 	ConfirmedFor string `json:"confirmed_for,omitempty"` // am aktiven Server bestätigt, für diese Datenkennung des Empfängers (R47)
 	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
+	SrcDev       uint64 `json:"src_dev,omitempty"`       // Gerätenummer der Quelle (R54); fehlt sie, wird sie beim nächsten Lauf nachgetragen
 }
 
 type mirrorState struct {
@@ -118,7 +119,15 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 	if cfg.hasFiles == nil {
 		cfg.hasFiles = func(p string) bool {
 			e, err := os.ReadDir(p)
-			return err == nil && len(e) > 0
+			if err != nil {
+				return false
+			}
+			for _, x := range e {
+				if x.Name() != "lost+found" { // legt jedes neue Dateisystem an: kein Bestand (R54)
+					return true
+				}
+			}
+			return false
 		}
 	}
 	if cfg.size == nil {
@@ -364,8 +373,8 @@ func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files
 func keepOwn(per map[string]mirrorLabelState) map[string]mirrorLabelState {
 	out := map[string]mirrorLabelState{}
 	for l, ls := range per {
-		if ls.SawFiles || ls.Unproven {
-			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven}
+		if ls.SawFiles || ls.Unproven || ls.SrcDev != 0 {
+			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven, SrcDev: ls.SrcDev}
 		}
 	}
 	return out
@@ -426,6 +435,45 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 	w.save(snap)
 	for _, l := range marked {
 		w.alarmOnce("unproven:"+l, "Quelle "+l+": Dieser Server wurde aktiv, bevor der Erstabgleich fertig war. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm")
+	}
+}
+
+// checkSourceDevs (R54): Liegt die Quelle auf einem anderen Datenträger als beim letzten Lauf,
+// sagt ihr Stand nichts mehr über den Partner: kein --delete, Alarm, Bestätigung wie R47. Eine
+// fehlende Nummer (alte Zustandsdatei, erster Lauf) wird still nachgetragen.
+func (w *mirrorWorker) checkSourceDevs(srcs []ha.MirrorSource, present map[string]bool) {
+	var moved []string
+	changed := false
+	for _, m := range srcs {
+		if !present[m.Label] {
+			continue
+		}
+		dev, ok := mirrorDev(m.Path)
+		if !ok {
+			continue
+		}
+		w.mu.Lock()
+		ls := w.st.PerLabel[m.Label]
+		if ls.SrcDev != dev {
+			if ls.SrcDev != 0 {
+				ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = true, true, ""
+				moved = append(moved, m.Label)
+			}
+			ls.SrcDev = dev
+			w.st.PerLabel[m.Label] = ls
+			changed = true
+		}
+		w.mu.Unlock()
+	}
+	if !changed {
+		return
+	}
+	w.mu.Lock()
+	snap := copyState(w.st)
+	w.mu.Unlock()
+	w.save(snap)
+	for _, l := range moved {
+		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Quelle " + l + ": Der Datenträger der Quelle hat sich geändert. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"})
 	}
 }
 
@@ -491,20 +539,25 @@ func (w *mirrorWorker) noteWaiting() {
 	}
 }
 
-// confirm: Dieser Server ist vollständig (R47): Für die aktuelle Datenkennung des Empfängers
-// läuft der nächste Abgleich mit --delete, abweichende Dateien am Partner wandern in seinen
-// Papierkorb. Bleibt über einen Neustart. Schreibt eine Datei.
+// confirm: Dieser Server ist vollständig (R47, R55): Nur für die in diesem Moment wartenden
+// Quellen läuft der nächste Abgleich mit --delete, abweichende Dateien am Partner wandern in
+// seinen Papierkorb. Eine später wartende Quelle meldet sich einzeln. Ohne wartende Quelle eine
+// Ablehnung. Gilt für die aktuelle Datenkennung, bleibt über einen Neustart. Schreibt eine Datei.
 func (w *mirrorWorker) confirm() error {
+	labels := w.waiting()
+	if len(labels) == 0 {
+		return errors.New("Keine Quelle wartet auf Bestätigung")
+	}
 	w.mu.Lock()
 	id := w.st.DataID
 	if id == "" {
 		w.mu.Unlock()
 		return errors.New("Die Kennung des Partners ist noch nicht bekannt – bitte kurz warten")
 	}
-	for _, m := range ha.MirrorSources(w.d.repo, w.cfg) {
-		ls := w.st.PerLabel[m.Label]
+	for _, l := range labels {
+		ls := w.st.PerLabel[l]
 		ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = false, false, id
-		w.st.PerLabel[m.Label] = ls
+		w.st.PerLabel[l] = ls
 	}
 	w.lastStart = time.Time{} // gleich abgleichen
 	snap := copyState(w.st)
@@ -522,17 +575,31 @@ func (w *mirrorWorker) confirm() error {
 // noteOwnProof: Der Partner meldet den Beleg für eine Quelle, die dieser Server (nicht
 // unbelegt) schon erfolgreich abgeglichen hat: Der eigene Stand gehört dazu (note schreibt
 // eine Datei, nur bei Änderung). Sonst stünde nach dem ersten Tausch jede Quelle auf „wartet“.
-func (w *mirrorWorker) noteOwnProof(proven []string, note func(label string)) {
+func (w *mirrorWorker) noteOwnProof(proven []string, note func(label string, files bool)) {
 	w.mu.Lock()
-	var mine []string
+	mine := map[string]bool{}
+	used := false
 	for _, l := range proven {
-		if ls := w.st.PerLabel[l]; !ls.Unproven && !ls.LastOK.IsZero() {
-			mine = append(mine, l)
+		ls := w.st.PerLabel[l]
+		if !ls.Unproven && !ls.LastOK.IsZero() {
+			mine[l] = ls.SawFiles // der echte Stand: eine leere Quelle bleibt leer (R55)
+		}
+		if ls.ConfirmedFor != "" { // der Beleg ersetzt die Bestätigung, sie gilt nicht weiter
+			ls.ConfirmedFor = ""
+			w.st.PerLabel[l] = ls
+			used = true
 		}
 	}
+	var snap mirrorState
+	if used {
+		snap = copyState(w.st)
+	}
 	w.mu.Unlock()
-	for _, l := range mine {
-		note(l)
+	if used {
+		w.save(snap)
+	}
+	for l, files := range mine {
+		note(l, files)
 	}
 }
 
@@ -780,6 +847,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	defer cancel()
 	present := w.presence(srcs)
 	w.settlePromotion(srcs, present)
+	w.checkSourceDevs(srcs, present)
 	w.mu.Lock()
 	per0 = copyState(w.st).PerLabel
 	dataReset := w.st.DataReset
