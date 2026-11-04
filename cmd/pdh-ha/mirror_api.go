@@ -425,6 +425,13 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if w == nil || ib == nil {
 		return
 	}
+	// R44: Auch ohne Spiegelung merken, welche Rolle der Server zu Beginn des Abschnitts hatte.
+	// Bei ausgeschalteter Spiegelung bleibt der gemerkte Stand stehen: Wird sie am aktiven Server
+	// eingeschaltet, zählt ein vorher passiver Stand als Wechsel (R25), hin und zurück nicht.
+	if (w.Role == ha.Active || w.Role == ha.Passive) && !w.On && rt.persistedRole == "" {
+		ib.setLastRole(w.Role)
+		rt.persistedRole = w.Role
+	}
 	wk := rt.worker.Load()
 	if wk != nil && w.Partner != rt.partner {
 		rt.stopWorker()
