@@ -250,6 +250,7 @@ func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) 
 	w.mu.Lock()
 	was := w.active()
 	prev := w.role
+	prevBW := w.cfg.MirrorBWLimitKB
 	w.want, w.role, w.term, w.cfg = want, role, term, s
 	if want && prev == ha.Passive && role == ha.Active {
 		w.st.Promoted = true // zählt beim nächsten Lauf (R25); bei ausgeschalteter Spiegelung ist es kein Wechsel „vor dem Erstabgleich“
@@ -262,6 +263,11 @@ func (w *mirrorWorker) set(want bool, role ha.Role, term uint64, s ha.Settings) 
 		w.failSince, w.alarmed = time.Time{}, false
 	case !was:
 		w.lastStart = time.Time{} // gerade aktiv geworden: sofort abgleichen
+	case prevBW != s.MirrorBWLimitKB:
+		// Neue Bandbreitengrenze: Ein Lauf mit der alten hielte den Abgleich und einen
+		// Rollentausch sonst bis zu seinem Ende auf. rsync setzt beim nächsten Lauf fort.
+		cancel = w.cancel
+		w.lastStart = time.Time{}
 	}
 	w.mu.Unlock()
 	if cancel != nil {
