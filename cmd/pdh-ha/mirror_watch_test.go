@@ -471,6 +471,15 @@ func TestMirrorWatchWorkerFlow(t *testing.T) {
 	f.w.set(true, ha.Active, 1, mirrorSettings)
 	f.w.step(ctx) // startet den Watch und gleicht einmal voll ab
 	mw := watchOf(t, f.w)
+	// Der Durchlauf läuft in eigener Goroutine: Erst wenn er fertig ist, zählt ein voller Lauf
+	// als abdeckend. Sonst läuft die Quelle im letzten Abgleich voll (sicher, aber nicht dieser Fall).
+	walked := time.Now().Add(watchWait)
+	for mw.walkedSince("uploads").IsZero() || mw.walkedSince("chat_files").IsZero() {
+		if time.Now().After(walked) {
+			t.Fatal("Durchlauf des Watch endet nicht")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	// einen weiteren vollen Lauf nach dem Durchlauf des Watch erzwingen
 	f.advance(2 * time.Minute)
 	if err := f.w.runAll(ctx); err != nil {
