@@ -541,11 +541,7 @@ func (s *stepper) unfencePending() {
 // und senden; ActUnfence und ActVIPTake kommen im nächsten Takt aus active(), wenn bis dahin keine
 // höhere Amtszeit gesehen wurde. Der Merker steht in der Zustandsdatei und übersteht einen Neustart.
 func (s *stepper) unfence() {
-	// PROBE (nicht committen): Fehler S4/S5 wieder eingebaut: Aufhebung schon in Takt N
-	s.manual = true
-	s.act(ActUnfence, s.p.Term)
-	s.act(ActVIPTake, s.p.Term)
-	s.manual = false
+	s.p.UnfencePending = true
 	s.become(Active, "")
 }
 
