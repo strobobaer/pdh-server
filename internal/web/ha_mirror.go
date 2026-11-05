@@ -357,12 +357,22 @@ func (h *Handler) HAMirrorTrashEmptyWeb(w http.ResponseWriter, r *http.Request) 
 }
 
 // haDoMirrorConfirm: Dieser Server ist vollständig: Der nächste Abgleich löscht am Partner.
-// Der passive Server lehnt über pdh-ha ab.
-func (h *Handler) haDoMirrorConfirm(ctx context.Context, _ url.Values) (string, error) {
-	if err := h.haDo(ctx, http.MethodPost, "/v1/mirror/confirm", map[string]any{}, nil); err != nil {
+// Der passive Server lehnt über pdh-ha ab. R61: Die Karte sendet die Quellen mit, die sie beim
+// Klick zeigte (labels); pdh-ha gibt nur diese frei und nennt sie; später wartende bleiben wartend.
+func (h *Handler) haDoMirrorConfirm(ctx context.Context, f url.Values) (string, error) {
+	var res struct {
+		Labels []string `json:"labels"`
+	}
+	labels := []string{}
+	for _, l := range f["labels"] {
+		if l = strings.TrimSpace(l); l != "" {
+			labels = append(labels, l)
+		}
+	}
+	if err := h.haDo(ctx, http.MethodPost, "/v1/mirror/confirm", map[string]any{"labels": labels}, &res); err != nil {
 		return "", err
 	}
-	return "Bestätigt: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in den Papierkorb", nil
+	return "Bestätigt für " + strings.Join(res.Labels, ", ") + ": Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in den Papierkorb", nil
 }
 
 // HAMirrorConfirmWeb: POST /admin/server-config/ha/mirror-confirm

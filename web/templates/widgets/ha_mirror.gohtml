@@ -5,6 +5,7 @@
   {{else if $m.Running}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "Abgleich läuft"}}</span>
   {{else if not $m.FirstDone}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "Erstabgleich"}}</span>
   {{else if $m.WaitConfirm}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "wartet auf Bestätigung"}}</span>
+  {{else if or $m.Err $m.WatchErr}}<span class="vp-state off"><span class="vp-dot"></span> {{t "gestört"}}</span>
   {{else if $m.Active}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "bereit"}}</span>
   {{else}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "empfängt"}}</span>{{end}}</div>
 
@@ -61,7 +62,7 @@
 {{if or .CanRun .CanTrash .CanConfirm}}
 <div class="ha-mirror-acts" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">
   {{if .CanRun}}<form method="post" action="/admin/server-config/ha/mirror-run"><button class="btn btn-small btn-primary" type="submit"><i class="ti ti-refresh"></i> {{t "Jetzt abgleichen"}}</button></form>{{end}}
-  {{if .CanConfirm}}<form method="post" action="/admin/server-config/ha/mirror-confirm" onsubmit="return confirm('{{t "Dieser Server ist wirklich vollständig? Abweichende Dateien am Partner wandern in den Papierkorb."}}')"><button class="btn btn-small" type="submit"><i class="ti ti-shield-check"></i> {{t "Dieser Server ist vollständig"}}</button></form>{{end}}
+  {{if .CanConfirm}}<form method="post" action="/admin/server-config/ha/mirror-confirm" onsubmit="return confirm('{{t "Dieser Server ist wirklich vollständig? Abweichende Dateien am Partner wandern in den Papierkorb."}}')">{{range $m.WaitConfirm}}<input type="hidden" name="labels" value="{{.}}">{{end}}<button class="btn btn-small" type="submit"><i class="ti ti-shield-check"></i> {{t "Dieser Server ist vollständig"}}</button></form>{{end}}
   {{if .CanTrash}}<form method="post" action="/admin/server-config/ha/mirror-trash-empty" onsubmit="return confirm('{{t "Papierkorb mit %s endgültig leeren? Das lässt sich nicht rückgängig machen." .TrashText}}')"><button class="btn btn-small" type="submit"><i class="ti ti-trash"></i> {{t "Papierkorb leeren"}}</button></form>{{end}}
 </div>
 {{end}}

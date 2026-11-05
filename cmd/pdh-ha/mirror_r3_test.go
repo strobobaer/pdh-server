@@ -122,13 +122,13 @@ func TestForeignJobAlarmAndHandAbort(t *testing.T) {
 	if !hasEvent(m.d, "sudo pdh-ha update abort") {
 		t.Fatalf("kein Alarm mit Befehl: %v", eventTexts(m.d))
 	}
+	m.tick() // Minor (Runde 4): erst nach dem weiteren Takt zählen, sonst ist „einmalig“ nicht belegt
 	n := 0
 	for _, s := range eventTexts(m.d) {
 		if strings.Contains(s, "sudo pdh-ha update abort") {
 			n++
 		}
 	}
-	m.tick()
 	if n != 1 {
 		t.Fatalf("Alarm %d-mal", n)
 	}
@@ -216,11 +216,11 @@ func TestMirrorConfirmOnlyWaiting(t *testing.T) {
 	w := f.worker()
 	w.set(true, ha.Active, 1, fix2Settings)
 	w.observeDataID("k")
-	if err := w.confirm(); err == nil {
+	if _, err := w.confirm(nil); err == nil {
 		t.Fatal("Bestätigung ohne wartende Quelle angenommen")
 	}
 	f.wait["uploads"] = true
-	if err := w.confirm(); err != nil {
+	if _, err := w.confirm(nil); err != nil {
 		t.Fatal(err)
 	}
 	st := w.snapshot()
@@ -245,7 +245,7 @@ func TestMirrorConfirmConsumedByProof(t *testing.T) {
 	w.set(true, ha.Active, 1, fix2Settings)
 	w.observeDataID("k")
 	f.wait["uploads"] = true
-	if err := w.confirm(); err != nil {
+	if _, err := w.confirm(nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.runAll(context.Background()); err != nil {

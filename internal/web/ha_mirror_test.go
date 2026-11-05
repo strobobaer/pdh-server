@@ -526,3 +526,45 @@ func TestHAMirrorConfirmRoute(t *testing.T) {
 		t.Fatal("Route nicht am Router")
 	}
 }
+
+// Minor (Runde 4): Bei einem Fehler des Abgleichs oder der Sofort-Übertragung zeigt der Kopf der Karte
+// nicht grün „bereit“, sondern „gestört“.
+func TestHAMirrorErrorNotReady(t *testing.T) {
+	for _, m := range []map[string]any{{"err": "uploads: rsync 23"}, {"watch_err": "inotify"}} {
+		out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, m), true, true, "")
+		if strings.Contains(out, "</span> bereit</span>") || !strings.Contains(out, "</span> gestört</span>") {
+			t.Errorf("Kopf bei %v: %s", m, out[:min(len(out), 2000)])
+		}
+	}
+	if ready := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{}), true, true, ""); !strings.Contains(ready, "</span> bereit</span>") {
+		t.Errorf("ohne Fehler nicht bereit: %s", ready[:min(len(ready), 2000)])
+	}
+}
+
+// R61 (T9): Die Karte sendet die angezeigten Quellen als versteckte Felder mit; der Handler reicht sie
+// an pdh-ha weiter, und die Meldung nennt, was pdh-ha wirklich freigegeben hat.
+func TestHAMirrorConfirmSendsLabels(t *testing.T) {
+	wait := map[string]any{"wait_confirm": []string{"uploads", "nginx"}}
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, wait), true, true, "")
+	for _, l := range []string{"uploads", "nginx"} {
+		if !strings.Contains(out, `<input type="hidden" name="labels" value="`+l+`">`) {
+			t.Errorf("verstecktes Feld für %s fehlt", l)
+		}
+	}
+	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, wait), events: `[]`,
+		replies: map[string]fakeReply{"/v1/mirror/confirm": {200, `{"ok":true,"labels":["uploads"]}`}}}
+	startFakeHA(t, f)
+	msg, err := mwHandler().haDoMirrorConfirm(context.Background(), url.Values{"labels": {"uploads", "nginx"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	body := strings.Join(f.bodies, " ")
+	f.mu.Unlock()
+	if !strings.Contains(body, `"labels":["uploads","nginx"]`) {
+		t.Errorf("Quellen nicht weitergereicht: %s", body)
+	}
+	if !strings.Contains(msg, "uploads") || strings.Contains(msg, "nginx") {
+		t.Errorf("Meldung nennt nicht die freigegebenen Quellen: %q", msg)
+	}
+}

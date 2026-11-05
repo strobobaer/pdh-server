@@ -1048,20 +1048,23 @@ func (d *daemon) mirrorRun(ctx context.Context) error {
 	}
 }
 
-// mirrorConfirm: „Dieser Server ist vollständig“ (pdh-ha mirror confirm); nur auf dem aktiven Server.
-func (d *daemon) mirrorConfirm() error {
+// mirrorConfirm: „Dieser Server ist vollständig“ (pdh-ha mirror confirm, Knopf der Karte); nur auf
+// dem aktiven Server. labels (R61): die Quellen, die die Karte beim Klick zeigte; leer = alle
+// wartenden (Befehlszeile). Liefert die freigegebenen Quellen, das Ereignis nennt sie.
+func (d *daemon) mirrorConfirm(labels []string) ([]string, error) {
 	wk, _, err := d.mirrorGate(true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if wk == nil {
-		return errors.New("Die Spiegelung ist noch nicht bereit")
+		return nil, errors.New("Die Spiegelung ist noch nicht bereit")
 	}
-	if err := wk.confirm(); err != nil {
-		return err
+	got, err := wk.confirm(labels)
+	if err != nil {
+		return nil, err
 	}
-	d.event("alarm", "Bestätigt: Dieser Server ist vollständig. Abweichende Dateien am Partner wandern in seinen Papierkorb")
-	return nil
+	d.event("alarm", "Bestätigt: Dieser Server ist vollständig für "+strings.Join(got, ", ")+". Abweichende Dateien am Partner wandern dort in seinen Papierkorb")
+	return got, nil
 }
 
 // mirrorTrashEmptyReq bittet den passiven Partner, seine Papierkörbe zu leeren.

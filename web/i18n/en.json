@@ -879,6 +879,7 @@
  "Erstabgleich": "Initial sync",
  "bereit": "ready",
  "empfängt": "receiving",
+ "gestört": "disturbed",
  "Die Spiegelung ist aus. Eingeschaltet hält das PDH die hochgeladenen Dateien auf dem zweiten Server aktuell – nach einer Übernahme fehlen dann keine Anhänge.": "Mirroring is off. When on, PDH keeps the uploaded files on the second server up to date – no attachments are missing after a takeover.",
  "Dieser Server gleicht seine Dateien auf den zweiten Server ab.": "This server syncs its files to the second server.",
  "Dieser Server empfängt die Dateien vom aktiven Server.": "This server receives the files from the active server.",

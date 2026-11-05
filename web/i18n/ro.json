@@ -879,6 +879,7 @@
  "Erstabgleich": "Prima sincronizare",
  "bereit": "pregătit",
  "empfängt": "primește",
+ "gestört": "perturbată",
  "Die Spiegelung ist aus. Eingeschaltet hält das PDH die hochgeladenen Dateien auf dem zweiten Server aktuell – nach einer Übernahme fehlen dann keine Anhänge.": "Oglindirea este oprită. Când este pornită, PDH ține fișierele încărcate de pe al doilea server la zi – după o preluare nu lipsește niciun atașament.",
  "Dieser Server gleicht seine Dateien auf den zweiten Server ab.": "Acest server își sincronizează fișierele pe al doilea server.",
  "Dieser Server empfängt die Dateien vom aktiven Server.": "Acest server primește fișierele de la serverul activ.",

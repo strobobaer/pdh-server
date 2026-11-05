@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -545,20 +546,34 @@ func (w *mirrorWorker) noteWaiting() {
 	}
 }
 
-// confirm: Dieser Server ist vollständig (R47, R55): Nur für die in diesem Moment wartenden
-// Quellen läuft der nächste Abgleich mit --delete, abweichende Dateien am Partner wandern in
-// seinen Papierkorb. Eine später wartende Quelle meldet sich einzeln. Ohne wartende Quelle eine
-// Ablehnung. Gilt für die aktuelle Datenkennung, bleibt über einen Neustart. Schreibt eine Datei.
-func (w *mirrorWorker) confirm() error {
+// confirm: Dieser Server ist vollständig (R47, R55, R61): Nur für die in diesem Moment wartenden
+// Quellen – und nur für die in only genannten, wenn die Karte ihre Liste mitsendet – läuft der
+// nächste Abgleich mit --delete, abweichende Dateien am Partner wandern in seinen Papierkorb. Eine
+// später wartende Quelle meldet sich einzeln und bleibt wartend. Ohne wartende Quelle (oder ohne
+// Schnittmenge) eine Ablehnung. Liefert die freigegebenen Quellen. Gilt für die aktuelle
+// Datenkennung, bleibt über einen Neustart. Schreibt eine Datei.
+func (w *mirrorWorker) confirm(only []string) ([]string, error) {
 	labels := w.waiting()
+	if len(only) > 0 {
+		var both []string
+		for _, l := range labels {
+			if slices.Contains(only, l) {
+				both = append(both, l)
+			}
+		}
+		if len(both) == 0 && len(labels) > 0 {
+			return nil, fmt.Errorf("Keine der genannten Quellen wartet auf Bestätigung – es warten: %s", strings.Join(labels, ", "))
+		}
+		labels = both
+	}
 	if len(labels) == 0 {
-		return errors.New("Keine Quelle wartet auf Bestätigung")
+		return nil, errors.New("Keine Quelle wartet auf Bestätigung")
 	}
 	w.mu.Lock()
 	id := w.st.DataID
 	if id == "" {
 		w.mu.Unlock()
-		return errors.New("Die Kennung des Partners ist noch nicht bekannt – bitte kurz warten")
+		return nil, errors.New("Die Kennung des Partners ist noch nicht bekannt – bitte kurz warten")
 	}
 	w.mu.Unlock()
 	// R58: Die Bestätigung macht den jetzigen Ordner zum richtigen: neue Kennung in Ordner und
@@ -567,7 +582,7 @@ func (w *mirrorWorker) confirm() error {
 		for _, l := range labels {
 			if m, ok := ha.MirrorSourceByLabel(w.d.repo, w.cfg, l); ok && w.d.exists(m.Path) {
 				if err := w.d.identRenew(l, mirrorIDPath(m, m.Path)); err != nil {
-					return err
+					return nil, err
 				}
 			}
 		}
@@ -582,13 +597,13 @@ func (w *mirrorWorker) confirm() error {
 	snap := copyState(w.st)
 	w.mu.Unlock()
 	if err := w.saveErr(snap); err != nil {
-		return err
+		return nil, err
 	}
 	select {
 	case w.kick <- struct{}{}:
 	default:
 	}
-	return nil
+	return labels, nil
 }
 
 // noteOwnProof: Der Partner meldet den Beleg für eine Quelle, die dieser Server (nicht

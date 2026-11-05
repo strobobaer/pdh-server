@@ -879,6 +879,7 @@
  "Erstabgleich": "İlk eşitleme",
  "bereit": "hazır",
  "empfängt": "alıyor",
+ "gestört": "bozuk",
  "Die Spiegelung ist aus. Eingeschaltet hält das PDH die hochgeladenen Dateien auf dem zweiten Server aktuell – nach einer Übernahme fehlen dann keine Anhänge.": "Yansıtma kapalı. Açıkken PDH, yüklenen dosyaları ikinci sunucuda güncel tutar – devralmadan sonra hiçbir ek eksik kalmaz.",
  "Dieser Server gleicht seine Dateien auf den zweiten Server ab.": "Bu sunucu dosyalarını ikinci sunucuya eşitler.",
  "Dieser Server empfängt die Dateien vom aktiven Server.": "Bu sunucu dosyaları etkin sunucudan alır.",

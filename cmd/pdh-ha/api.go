@@ -417,11 +417,19 @@ func apiHandler(d *daemon) http.Handler {
 		apiOK(w)
 	})
 	mux.HandleFunc("POST /v1/mirror/confirm", func(w http.ResponseWriter, r *http.Request) {
-		if err := d.mirrorConfirm(); err != nil {
+		// R61: labels = die Quellen, die die Karte zeigte (leer: alle wartenden, Befehlszeile)
+		var req struct {
+			Labels []string `json:"labels"`
+		}
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		got, err := d.mirrorConfirm(req.Labels)
+		if err != nil {
 			apiFail(w, err)
 			return
 		}
-		apiOK(w)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "labels": got})
 	})
 	mux.HandleFunc("POST /v1/mirror/trash-empty", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.mirrorTrashEmptyReq(); err != nil {

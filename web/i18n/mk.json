@@ -879,6 +879,7 @@
  "Erstabgleich": "Прво усогласување",
  "bereit": "подготвено",
  "empfängt": "прима",
+ "gestört": "нарушено",
  "Die Spiegelung ist aus. Eingeschaltet hält das PDH die hochgeladenen Dateien auf dem zweiten Server aktuell – nach einer Übernahme fehlen dann keine Anhänge.": "Огледалото е исклучено. Кога е вклучено, PDH ги одржува прикачените датотеки на вториот сервер ажурни – по преземањето не недостасуваат прилози.",
  "Dieser Server gleicht seine Dateien auf den zweiten Server ab.": "Овој сервер ги усогласува своите датотеки со вториот сервер.",
  "Dieser Server empfängt die Dateien vom aktiven Server.": "Овој сервер ги прима датотеките од активниот сервер.",

@@ -319,10 +319,14 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 			}
 			fmt.Fprintln(stdout, "Abgleich fertig.")
 		case "confirm":
-			if err := apiDo(sock, http.MethodPost, "/v1/mirror/confirm", map[string]string{}, nil); err != nil {
+			var res struct {
+				Labels []string `json:"labels"`
+			}
+			if err := apiDo(sock, http.MethodPost, "/v1/mirror/confirm", map[string]string{}, &res); err != nil {
 				return fail(err)
 			}
-			fmt.Fprintln(stdout, "Bestätigt: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in seinen Papierkorb.")
+			// R61: ohne Liste gelten alle wartenden Quellen – die Antwort nennt sie
+			fmt.Fprintf(stdout, "Bestätigt für %s: Der nächste Abgleich löscht, abweichende Dateien am Partner wandern in seinen Papierkorb.\n", strings.Join(res.Labels, ", "))
 		case "trash-empty":
 			if err := apiDo(sock, http.MethodPost, "/v1/mirror/trash-empty", map[string]string{}, nil); err != nil {
 				return fail(err)

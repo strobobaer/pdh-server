@@ -226,7 +226,7 @@ func TestIDSourceSwappedNoDelete(t *testing.T) {
 			if got := w.waiting(); len(got) != 1 {
 				t.Fatalf("wartet: %v", got)
 			}
-			if err := w.confirm(); err != nil {
+			if _, err := w.confirm(nil); err != nil {
 				t.Fatal(err)
 			}
 			id, _ := os.ReadFile(filepath.Join(f.repo, "uploads", ha.MirrorIDName))

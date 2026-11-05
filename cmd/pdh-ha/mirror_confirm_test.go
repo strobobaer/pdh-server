@@ -227,7 +227,7 @@ func TestMirrorConfirmFlow(t *testing.T) {
 	if n := f.alarms("Quelle uploads: "); n != 1 {
 		t.Fatalf("Alarm nach Neustart wiederholt: %d", n)
 	}
-	if err := w2.confirm(); err != nil {
+	if _, err := w2.confirm(nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := w2.waiting(); len(got) != 0 {
@@ -256,7 +256,7 @@ func TestMirrorConfirmNeedsDataID(t *testing.T) {
 	f := newFixProof(t)
 	w := f.worker()
 	w.set(true, ha.Active, 1, fix2Settings)
-	if err := w.confirm(); err == nil {
+	if _, err := w.confirm(nil); err == nil {
 		t.Fatal("Bestätigung ohne Kennung des Empfängers angenommen")
 	}
 }
@@ -284,7 +284,7 @@ func TestMirrorPromotedThenConfirmed(t *testing.T) {
 	if got := w.waiting(); len(got) != 1 {
 		t.Fatalf("wartet: %v", got)
 	}
-	if err := w.confirm(); err != nil {
+	if _, err := w.confirm(nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := runAgain(w); err != nil {
@@ -300,14 +300,14 @@ func TestDaemonMirrorConfirmOnlyActive(t *testing.T) {
 	m := newMDT(t, ha.Passive, true, message{Role: "aktiv", MirrorDataID: "k"})
 	m.tick()
 	m.ready()
-	if err := m.d.mirrorConfirm(); err == nil || !strings.Contains(err.Error(), "aktiven") {
+	if _, err := m.d.mirrorConfirm(nil); err == nil || !strings.Contains(err.Error(), "aktiven") {
 		t.Fatalf("passiv: %v", err)
 	}
 	a := newMDT(t, ha.Active, true, message{Role: "passiv", MirrorDataID: "k", MirrorWait: []string{"uploads"}})
 	a.tick()
 	rt := a.ready()
 	waitFor(t, 5*time.Second, "Datenkennung", func() bool { return rt.worker.Load().snapshot().DataID == "k" })
-	if err := a.d.mirrorConfirm(); err != nil {
+	if _, err := a.d.mirrorConfirm(nil); err != nil {
 		t.Fatalf("aktiv: %v", err)
 	}
 }
