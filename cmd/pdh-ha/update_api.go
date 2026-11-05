@@ -453,11 +453,12 @@ func registerUpdateRoutes(mux *http.ServeMux, d *daemon) {
 		if !decodeBody(w, r, &req) {
 			return
 		}
-		if err := d.abortUpdate(req.By); err != nil {
+		msg, err := d.abortUpdateMsg(req.By)
+		if err != nil {
 			apiFail(w, err)
 			return
 		}
-		apiOK(w)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg}) // R60: Ergebnis am passiven Server
 	})
 	mux.HandleFunc("DELETE /v1/update/faulty/{commit}", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.forgetFaulty(r.PathValue("commit")); err != nil {
@@ -538,10 +539,17 @@ func cmdUpdate(args []string, sock string, stdout, stderr io.Writer) int {
 		printUpdate(stdout, v)
 		return 0
 	case "abort":
-		if err := apiDo(sock, http.MethodPost, "/v1/update/abort", map[string]string{"by": "Befehlszeile"}, nil); err != nil {
+		var res struct {
+			Message string `json:"message"`
+		}
+		if err := apiDo(sock, http.MethodPost, "/v1/update/abort", map[string]string{"by": "Befehlszeile"}, &res); err != nil {
 			return fail(err)
 		}
-		fmt.Fprintln(stdout, "Abbruch vorgemerkt – der Auftrag wird zurückgesetzt.")
+		if res.Message != "" {
+			fmt.Fprintln(stdout, res.Message) // passiver Server (R53, R60)
+		} else {
+			fmt.Fprintln(stdout, "Abbruch vorgemerkt – der Auftrag wird zurückgesetzt.")
+		}
 		return 0
 	case "confirm":
 		if err := apiDo(sock, http.MethodPost, "/v1/update/confirm", map[string]string{"by": "Befehlszeile"}, nil); err != nil {

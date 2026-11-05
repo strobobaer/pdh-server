@@ -123,6 +123,7 @@ type daemon struct {
 	pendingRejoins atomic.Int32  // davon: Wiederanbindungen (rejoin, rejoin_stranded)
 	foreignSince   time.Duration // nur unter mu: seit wann ein fremder Update-Auftrag gilt (R53, 0 = nicht)
 	undoRefused    bool          // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
+	unfenceFailTxt string        // nur unter mu: Grund des letzten gescheiterten ActUnfence (R59: derselbe Grund wird einmal gemeldet)
 	lastMode       ha.Mode
 
 	// Gestrandeter Server (rejoin.go, R33)
@@ -747,9 +748,18 @@ func (d *daemon) actionWorker(ctx context.Context) {
 				if hand {
 					err = d.strandedDone(err)
 				}
+				if q.a.Kind == ha.ActUnfence && err == nil {
+					d.lock()
+					d.unfenceFailTxt = ""
+					d.unlock()
+				}
 				if err != nil {
-					failed = q.batch
-					d.actionFailed(q.a, err)
+					// R59: Ein gescheitertes ActUnfence (außer an der Rolle) wird im nächsten Takt
+					// wiederholt; derselbe Grund wird nur beim ersten Mal gemeldet.
+					if !(q.a.Kind == ha.ActUnfence && d.retryUnfence(q.a, err)) {
+						failed = q.batch
+						d.actionFailed(q.a, err)
+					}
 				}
 				if isDemote(q.a.Kind) {
 					// erst jetzt darf der Rollentausch übergeben (Step wartet darauf)
@@ -805,6 +815,35 @@ func (d *daemon) doAction(ctx context.Context, a ha.Action) (err error) {
 	return act.Do(ctx, a)
 }
 
+// retryUnfence (R59): ActUnfence ist gescheitert, nicht an der Rolle (unfenceRoleError). Der Merker
+// UnfencePending wird wieder gesetzt und gespeichert: Der nächste Takt wiederholt die Rücknahme,
+// nachdem er die Amtszeit geprüft hat (eine höhere nimmt die Rolle, der Merker fällt). true, wenn
+// derselbe Grund schon gemeldet ist: dann kein weiterer Alarm und keine weitere Wartung.
+func (d *daemon) retryUnfence(a ha.Action, err error) (repeat bool) {
+	var role unfenceRoleError
+	if errors.As(err, &role) {
+		return false
+	}
+	d.lock()
+	defer d.unlock()
+	if d.p.Role != ha.Active || d.p.Term != a.Term || d.unsaved {
+		return false
+	}
+	p := d.p
+	p.UnfencePending = true
+	if serr := d.saveFn(p); serr != nil {
+		d.unsaved = true
+		pl := plan{}
+		d.saveAlarmLocked(&pl, "Zustand nicht gespeichert: "+serr.Error())
+		d.events(pl.events)
+		return false
+	}
+	d.p = p
+	repeat = d.unfenceFailTxt == err.Error()
+	d.unfenceFailTxt = err.Error()
+	return repeat
+}
+
 // actionFailed: Fehler beim Ausführen → Wartung an + Alarm.
 func (d *daemon) actionFailed(a ha.Action, err error) {
 	// R29/R31.4: Ein gescheiterter letzter Dateiabgleich (und ein zurückgenommener Tausch) ist nur Alarm und Rücknahme; die
@@ -826,7 +865,11 @@ func (d *daemon) actionFailed(a ha.Action, err error) {
 		d.saveAlarmLocked(&pl, "Zustand nicht gespeichert: "+serr.Error())
 	}
 	d.unlock()
-	d.event("alarm", fmt.Sprintf("Aktion %s fehlgeschlagen: %v – Automatik aus", a.Kind, err))
+	text := fmt.Sprintf("Aktion %s fehlgeschlagen: %v – Automatik aus", a.Kind, err)
+	if a.Kind == ha.ActUnfence {
+		text += "; die Rücknahme wird im nächsten Takt wiederholt" // R59
+	}
+	d.event("alarm", text)
 	d.events(pl.events)
 }
 
@@ -1022,6 +1065,7 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	}
 	d.replInputLocked(ctx, &in, s)
 	before, booting := d.p.Role, d.booting // für die Skripte beim Rollenwechsel
+	pendBefore := d.p.UnfencePending       // Takt N der Rücknahme: für die Skripte noch keine Rolle (R59)
 	termBefore := d.p.Term                 // Update im Verbund: Übernahme erkennen
 	out := ha.Step(in)
 	swapped := swapCompleted(in, out) // vor in.Persist = out.Persist unten
@@ -1049,9 +1093,10 @@ func (d *daemon) tickNodeLocked(ctx context.Context) plan {
 	}
 	d.p, d.carry = out.Persist, out
 	if d.access != nil {
-		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, d.cl.Access), out.Persist.Role, out.Persist.Term)
+		// R59: Adresse erst mit ActUnfence in Takt N+1 (UnfencePending), nicht schon mit der Rolle
+		d.access.set(accessWant(out.Persist.Role, out.HandoverPending, out.Persist.UnfencePending, d.cl.Access), out.Persist.Role, out.Persist.Term)
 	}
-	d.hooksChangedLocked(before, out.Persist.Role, booting)
+	d.hooksChangedLocked(hookRole(before, pendBefore), hookRole(out.Persist.Role, out.Persist.UnfencePending), booting)
 	// Während der eigenen Übergabe (Rolle schon passiv, Partner noch nicht
 	// übernommen) gleicht der Arbeiter weiter ab: der letzte Abgleich von demote
 	// bräuchte sonst eine aktive Rolle und bräche sofort ab. Nicht bei abandon:

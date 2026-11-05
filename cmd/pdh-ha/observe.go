@@ -147,7 +147,9 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 	set(strandedAlarmKey, d.strandedHoldLocked(now), strandedText, "")
 	set(rewindUnsafeKey, d.rewindAlarmLocked(), rewindUnsafeText, "")
 	foreign, hand := d.foreignJobLocked(now)
-	set("foreign-job", foreign, foreignJobText(d.up.job.ID, hand), "")
+	set("foreign-job", foreign, foreignJobText(d.up.job.ID, hand, d.frozenHintLocked()), "")
+	// R60: erst nach alarmAfter: ein kurz gestoppter Stand (Neustart, laufende Abgabe) ist keine Sackgasse
+	set(frozenAlarmKey, down(frozenAlarmKey, !d.frozenStrandedLocked()), frozenStrandedText+d.frozenHintLocked(), "")
 }
 
 // statusNow liefert die Anzeige für GET /v1/status.
@@ -292,6 +294,9 @@ func (d *daemon) statusLocked() apiStatus {
 	}
 	if d.alarms[rewindUnsafeKey] {
 		st.Warnings = append(st.Warnings, rewindUnsafeText)
+	}
+	if d.alarms[frozenAlarmKey] {
+		st.Warnings = append(st.Warnings, frozenStrandedText+d.frozenHintLocked()) // R60: dauerhaft, bis es aufgelöst ist
 	}
 	d.mirrorStatusLocked(&st)
 	return st

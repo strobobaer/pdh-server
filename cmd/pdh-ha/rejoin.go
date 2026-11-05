@@ -193,6 +193,35 @@ const (
 	rejoinRetryWait = 30 * time.Second
 )
 
+const (
+	frozenAlarmKey = "frozen-stranded"
+	// frozenStrandedText: Anfang von Alarm und Statuswarnung der Sackgasse (R60), der Hinweis folgt.
+	frozenStrandedText = "Dieser Server ist nicht angebunden: "
+)
+
+// frozenHintLocked (R60): Die Datenbank hier ist gestoppt und ein eingefrorener Primary-Stand
+// (kein standby.signal), etwa der Rückfallstand eines beendeten Update-Auftrags. Weder die Marke
+// noch der Handbefehl binden ihn an, solange er gestoppt ist (strandedStateErr). Der Hinweis nennt
+// den Weg: PostgreSQL starten (abgeschottet nur lesend), danach anbinden. "" sonst.
+func (d *daemon) frozenHintLocked() string {
+	pa := d.pgActorLocked()
+	st := d.lastPG()
+	if pa == nil || st == nil || st.State != "stopped" || !pa.frozenPrimary() {
+		return ""
+	}
+	return "Die Datenbank ist gestoppt (eingefrorener Rückfallstand) und wird so nicht angebunden. Stand behalten: nichts tun. Anbinden: sudo pg_ctlcluster " +
+		pa.pg.c.Version + " " + pa.pg.c.Name + " start (startet nur lesend), danach: sudo pdh-ha rejoin (mit gesetzter Marke läuft es von selbst)"
+}
+
+// frozenStrandedLocked (R60): Sackgasse: passiv, kein Auftrag offen, keine Übergabe, Abgabe oder
+// Wiederanbindung unterwegs, der Partner führt, und hier liegt ein gestoppter eingefrorener Stand.
+// Alarm einmal, Statuswarnung dauerhaft.
+func (d *daemon) frozenStrandedLocked() bool {
+	return d.configured && !d.removed && d.node.Kind == "node" && d.p.Role == ha.Passive &&
+		!d.updateOpenLocked() && d.carry.HandoverPending == 0 && d.pendingDemotes.Load() == 0 &&
+		d.pendingRejoins.Load() == 0 && ha.PartnerLeads(d.last.Partner, d.p.Term) && d.frozenHintLocked() != ""
+}
+
 // strandedReasonLocked: nil, wenn dieser Server gestrandet ist und nur der Handbefehl hilft:
 // passiv, letzter Stand nur lesender Primary, Partner aktiv und Primary gesehen, kein Update-
 // Auftrag, keine Marke, keine Übergabe, keine Abgabe oder Wiederanbindung in der Warteschlange.
@@ -219,6 +248,8 @@ func (d *daemon) strandedReasonLocked() error {
 		return errors.New("Nur auf einem passiven Server möglich")
 	case d.carry.HandoverPending != 0 || d.pendingDemotes.Load() > 0:
 		return errors.New("Die Abgabe läuft noch – bitte kurz warten")
+	case !unsafe && d.frozenHintLocked() != "":
+		return errors.New(d.frozenHintLocked()) // R60: nicht „läuft schon automatisch“, das stimmt hier nie
 	case d.undoRefused && !unsafe:
 		return errors.New("Die Wiederanbindung läuft schon automatisch")
 	case d.pendingRejoins.Load() > 0:

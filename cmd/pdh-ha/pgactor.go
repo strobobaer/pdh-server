@@ -658,7 +658,7 @@ func (a *pgActor) unfence(ctx context.Context) error {
 		st = a.pg.status(ctx)
 	}
 	if st.State != "primary" {
-		return fmt.Errorf("Datenbank ist nicht schreibbar (%s) – Übernahme erzwingen nötig", st.State)
+		return fmt.Errorf("Datenbank ist nicht schreibbar (%s)", st.State)
 	}
 	if !a.roleActive() {
 		return unfenceRoleError{}

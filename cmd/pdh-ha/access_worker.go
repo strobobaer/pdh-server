@@ -19,9 +19,11 @@ import (
 // accessWant: Die Adresse gehört genau dann hierher, wenn sie eingeschaltet
 // ist, dieser Server aktiv ist und keine eigene Übergabe (Rollentausch) läuft.
 // Der alte aktive Server bleibt während seiner Übergabe „aktiv“ – die Adresse
-// muss dann schon weg sein, sonst holte der Abgleich sie sofort zurück.
-func accessWant(role ha.Role, handoverPending uint64, a accessConfig) bool {
-	return a.VIPOn && role == ha.Active && handoverPending == 0
+// muss dann schon weg sein, sonst holte der Abgleich sie sofort zurück. In der
+// Rücknahme (R51, R59) ist die Rolle in Takt N schon aktiv, die Adresse folgt erst mit ActUnfence
+// in Takt N+1 (unfencePending).
+func accessWant(role ha.Role, handoverPending uint64, unfencePending bool, a accessConfig) bool {
+	return a.VIPOn && role == ha.Active && handoverPending == 0 && !unfencePending
 }
 
 // vipAlarmRepeat: derselbe Alarmtext höchstens einmal je Stunde.

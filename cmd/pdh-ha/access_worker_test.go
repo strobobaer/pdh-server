@@ -127,15 +127,18 @@ func TestAccessWant(t *testing.T) {
 		{ha.Witness, on, false},
 		{ha.Active, off, false},
 	} {
-		if got := accessWant(c.role, 0, c.a); got != c.want {
+		if got := accessWant(c.role, 0, false, c.a); got != c.want {
 			t.Errorf("accessWant(%s, 0, vip_on=%v) = %v", c.role, c.a.VIPOn, got)
 		}
 	}
 }
 
 func TestAccessWantDuringHandover(t *testing.T) {
-	if accessWant(ha.Active, 5, accessConfig{VIP: "10.77.1.50/24", VIPOn: true}) {
-		t.Fatal("während der eigenen Übergabe darf die Adresse nicht gewollt sein")
+	if accessWant(ha.Active, 5, false, accessConfig{VIP: "10.77.1.50/24", VIPOn: true}) {
+		t.Fatal("Adresse während der eigenen Übergabe")
+	}
+	if accessWant(ha.Active, 0, true, accessConfig{VIP: "10.77.1.50/24", VIPOn: true}) {
+		t.Fatal("Adresse in Takt N der Rücknahme (R59: erst mit ActUnfence in Takt N+1)")
 	}
 }
 
@@ -415,6 +418,7 @@ func TestDaemonAccessFollowsRole(t *testing.T) {
 	d, f := accessDaemon(t, fakeCards("eth0=10.77.1.5/24", "eth1=192.168.9.5/24"))
 	ctx := stopAccess(t, d)
 	d.tick(ctx)
+	d.tick(ctx) // R59: nach dem Start kommt die Adresse erst mit ActUnfence im zweiten Takt
 	if r := d.statusNow().Self.Role; r != ha.Active {
 		t.Fatalf("Rolle %s", r)
 	}
@@ -501,6 +505,7 @@ func TestDaemonAccessReleasedDuringSwap(t *testing.T) {
 	d.act = blockActor{release}
 	ctx := stopAccess(t, d)
 	d.tick(ctx)
+	d.tick(ctx) // R59: zweiter Takt nach dem Start
 	waitFor(t, 2*time.Second, "Adresse übernommen", func() bool { return f.count(vipAdd) == 1 })
 	if err := d.command("swap"); err != nil {
 		t.Fatal(err)
@@ -540,6 +545,7 @@ func TestDaemonAccessReleasedOnExit(t *testing.T) {
 			d.unlock()
 			ctx, cancel := context.WithCancel(context.Background())
 			d.tick(ctx)
+			d.tick(ctx) // R59: zweiter Takt nach dem Start
 			waitFor(t, 2*time.Second, "Adresse übernommen", func() bool {
 				d.mu.Lock()
 				w := d.access

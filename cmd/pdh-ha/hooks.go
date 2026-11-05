@@ -414,11 +414,22 @@ func (d *daemon) hookEnvLocked(role ha.Role) hookEnv {
 	return e
 }
 
+// hookRole: die Rolle, die für die Skripte zählt. In Takt N der Rücknahme (R51, R59) ist die
+// Rolle schon aktiv, der Server aber noch abgeschottet: Für die Skripte gilt noch keine Rolle
+// (""), „aktiv“ kommt erst mit ActUnfence in Takt N+1.
+func hookRole(r ha.Role, unfencePending bool) ha.Role {
+	if r == ha.Active && unfencePending {
+		return ""
+	}
+	return r
+}
+
 // hooksChangedLocked startet nach einem Rollenwechsel die Skripte (nur Knoten,
-// nur bei hooks_on; nie im ersten Takt nach dem Start). Der Aufruf blockiert
-// nie: die Skripte laufen im Hintergrund.
+// nur bei hooks_on; nie im ersten Takt nach dem Start). before und after kommen
+// aus hookRole; ohne Rolle (Takt N der Rücknahme) läuft nichts. Der Aufruf
+// blockiert nie: die Skripte laufen im Hintergrund.
 func (d *daemon) hooksChangedLocked(before, after ha.Role, booting bool) {
-	if booting || before == after || !d.cl.Access.HooksOn || d.node.Kind != "node" {
+	if booting || before == after || after == "" || !d.cl.Access.HooksOn || d.node.Kind != "node" {
 		return
 	}
 	var w *accessWorker
