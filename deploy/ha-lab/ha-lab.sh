@@ -2276,6 +2276,10 @@ sc_spiegel_ruecknahme_uebernahme() {
         fi
         log "Versuch $try: node2 lehnt ab, node1 ist wieder aktiv"
         wait_for 30 eval 'roles aktiv passiv && pg_writable node1' || fail "node1 nach dem Abbruch nicht wieder aktiv (node1=$R1, node2=$R2)"
+        # Ob der Befehl vor dem Herzschlag von node1 läuft, hängt am Abstand der beiden Takte, und der
+        # bleibt fest. Neustart von pdh-ha am passiven node2 verschiebt ihn; das Fenster bleibt dasselbe.
+        docker exec node2 bash -c 'touch /run/pdh-ha.restart; pkill -TERM -x pdh-ha; true' || fail "pdh-ha auf node2 neu starten"
+        wait_for 30 eval 'roles aktiv passiv && [[ "$(jget seen:node1 <<<"$J2")" == ja ]]' || fail "node2 nach dem Neustart nicht passiv (node2=$R2)"
     done
     ((taken == 1)) || fail "Zeitpunkt in 10 Versuchen verfehlt"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
