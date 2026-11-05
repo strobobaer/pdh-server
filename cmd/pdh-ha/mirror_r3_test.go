@@ -509,3 +509,23 @@ func TestForceTakeoverUsesFreshPartnerView(t *testing.T) {
 		t.Fatal("angenommen, obwohl der Herzschlag den Partner als aktiv meldet")
 	}
 }
+
+// Unter Windows scheitert das Umbenennen, solange jemand die Zieldatei kurz offen hat. Das machte
+// Tests zufällig rot und ließ dort einen Stand ungespeichert. Linux kennt das nicht.
+func TestWriteFileAtomicWhileReaderOpen(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "z.json")
+	if err := os.WriteFile(p, []byte("alt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { time.Sleep(100 * time.Millisecond); h.Close() }()
+	if err := writeFileAtomic(p, []byte("neu"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "neu" {
+		t.Fatalf("Inhalt %q", b)
+	}
+}

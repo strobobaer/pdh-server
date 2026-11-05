@@ -251,7 +251,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameRetry(tmp, path); err != nil {
 		os.Remove(tmp)
 		return err
 	}
@@ -423,4 +423,18 @@ func (l *eventLog) since(seq uint64, limit int) []loggedEvent {
 	}
 	l.mu.Unlock()
 	return after(l.readAll(), seq, limit)
+}
+
+// renameRetry: Unter Windows scheitert das Umbenennen, solange jemand die Zieldatei kurz offen
+// hat; dort einige Male wiederholen. Linux kennt das nicht und versucht es genau einmal.
+func renameRetry(from, to string) error {
+	err := os.Rename(from, to)
+	if runtime.GOOS != "windows" {
+		return err
+	}
+	for i := 0; err != nil && i < 40; i++ {
+		time.Sleep(25 * time.Millisecond)
+		err = os.Rename(from, to)
+	}
+	return err
 }
