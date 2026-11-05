@@ -480,6 +480,8 @@ func TestMirrorWatchWorkerFlow(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	// Der volle Lauf muss später beginnen als der Durchlauf endete; die Uhr unter Windows ist grob.
+	time.Sleep(30 * time.Millisecond)
 	// einen weiteren vollen Lauf nach dem Durchlauf des Watch erzwingen
 	f.advance(2 * time.Minute)
 	if err := f.w.runAll(ctx); err != nil {

@@ -529,3 +529,28 @@ func TestWriteFileAtomicWhileReaderOpen(t *testing.T) {
 		t.Fatalf("Inhalt %q", b)
 	}
 }
+
+// Im race-Lauf gefunden: Kommt das Einschalten, während der Arbeiter gerade gebaut wird, ging es
+// verloren, bis der nächste Takt es wiederholte. Das Einschalten gilt sofort.
+func TestMirrorWantDuringWorkerBuild(t *testing.T) {
+	w, _, _, _ := newMirrorWiring(t)
+	var rt *mirrorRT
+	on := &mirrorWant{On: true, Role: ha.Active, Partner: "b", Settings: ha.DefaultSettings()}
+	tune := w.tune
+	w.tune = func(d *mirrorDeps, i *mirrorInboxDeps) {
+		tune(d, i)
+		if d != nil {
+			rt.want.Store(on) // publish: der Arbeiter ist noch nicht eingetragen
+		}
+	}
+	rt = newMirrorRT(*w, testEvents(t), nil)
+	rt.want.Store(&mirrorWant{Role: ha.Active, Partner: "b", Settings: ha.DefaultSettings()})
+	rt.build()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rt.reconcile(ctx)
+	rt.stopWorker()
+	if !rt.worker.Load().snapshot().On {
+		t.Fatal("Einschalten während des Baus ging verloren")
+	}
+}

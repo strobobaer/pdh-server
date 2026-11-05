@@ -448,6 +448,12 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 		wk.set(w.On, w.Role, w.Term, w.Settings)
 		rt.partner = w.Partner
 		rt.worker.Store(wk)
+		// publish speichert das Soll vor dem Blick auf den Arbeiter: Was es während des Baus nicht
+		// an ihn geben konnte, steht jetzt in want.
+		if cur := rt.want.Load(); cur != w {
+			wk.set(cur.On, cur.Role, cur.Term, cur.Settings)
+			w = cur
+		}
 	}
 	if wk == nil {
 		return
