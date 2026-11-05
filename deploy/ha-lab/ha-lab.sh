@@ -18,7 +18,8 @@
 #            spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
 #            spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch
 #            spiegel-rolling-update spiegel-ruecknahme-uebernahme
-#            spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus
+#            spiegel-ruecknahme-zweiter-takt spiegel-netz-weg-im-abgleich
+#            spiegel-bestaetigung spiegel-update-aus
 # Jedes Szenario läuft mit Datenbank-Spiegel und Schreib-Generator; danach muss
 # jede bestätigte Zeile auf dem aktiven Server liegen. Wächter: nie zwei
 # schreibbare Datenbanken länger als RW_GRACE Sekunden.
@@ -62,7 +63,7 @@ SCENARIOS=(aktiv-weg leitung-weg zeuge-weg hin-und-her rueckkehr neustart-aktiv 
     spiegel-datei spiegel-loeschen spiegel-tausch spiegel-tausch-frist spiegel-tausch-wiederholung
     spiegel-ausfall spiegel-rueckkehr spiegel-heartbeat spiegel-nextcloud spiegel-aus
     spiegel-uebernahme-im-abgleich spiegel-rejoin-abbruch spiegel-rolling-update
-    spiegel-ruecknahme-uebernahme spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus)
+    spiegel-ruecknahme-uebernahme spiegel-ruecknahme-zweiter-takt spiegel-netz-weg-im-abgleich spiegel-bestaetigung spiegel-update-aus)
 # Automatik je Szenario: observe (Standard nach der Einrichtung) oder real
 # (erst nach Pflicht-Tausch erlaubt; lab_up tauscht dann hin und zurück).
 # Die Szenarien aus Teil 2 prüfen echte Übernahmen und laufen mit real.
@@ -2278,6 +2279,8 @@ sc_spiegel_ruecknahme_uebernahme() {
         wait_for 30 eval 'roles aktiv passiv && pg_writable node1' || fail "node1 nach dem Abbruch nicht wieder aktiv (node1=$R1, node2=$R2)"
         # Ob der Befehl vor dem Herzschlag von node1 läuft, hängt am Abstand der beiden Takte, und der
         # bleibt fest. Neustart von pdh-ha am passiven node2 verschiebt ihn; das Fenster bleibt dasselbe.
+        # R62 (T11): zufällig warten, sonst folgt der Neustart dem Takt von node1 und der Abstand bleibt
+        sleep "0.$((RANDOM % 10))"
         docker exec node2 bash -c 'touch /run/pdh-ha.restart; pkill -TERM -x pdh-ha; true' || fail "pdh-ha auf node2 neu starten"
         wait_for 30 eval 'roles aktiv passiv && [[ "$(jget seen:node1 <<<"$J2")" == ja ]]' || fail "node2 nach dem Neustart nicht passiv (node2=$R2)"
     done
@@ -2301,6 +2304,88 @@ sc_spiegel_ruecknahme_uebernahme() {
     # beiden Wegen wird node1 hier nie mehr schreibbar, auch nicht ohne Überlappung
     rw_probe_none_after node1 "$t_scheitern"
     rw_probe_check node1 node2
+    STRICT_RW=0
+}
+
+# net_delay <Container> <ms>: ausgehende Pakete auf lan und vpn verzögern (tc netem). Braucht
+# NET_ADMIN (compose.yaml cap_add) und iproute2 im Container (Dockerfile lab-pg), beides vorhanden.
+net_delay() {
+    local c=$1 ms=$2 n ifc
+    for n in lan vpn; do
+        ifc="$(lan_if "$c" "${IP[$c:$n]}")"
+        [[ -n "$ifc" ]] || { echo "Karte für ${IP[$c:$n]} auf $c nicht gefunden" >&2; return 1; }
+        docker exec "$c" tc qdisc replace dev "$ifc" root netem delay "${ms}ms" || return 1
+    done
+    docker exec "$c" tc qdisc show 2>/dev/null | grep -qF netem
+}
+
+# net_delay_off <Container>: Verzögerung wieder entfernen
+net_delay_off() {
+    local c=$1 n ifc
+    for n in lan vpn; do
+        ifc="$(lan_if "$c" "${IP[$c:$n]}")"
+        [[ -z "$ifc" ]] || docker exec "$c" tc qdisc del dev "$ifc" root 2>/dev/null || true
+    done
+}
+
+# R62 (T10): Der Weg über den zweiten Takt der Rücknahme (R51) als Pflichtweg. Die Herzschläge von
+# node1 kommen um NETEM_MS verzögert an (tc netem auf lan und vpn). „Übernahme erzwingen“ geht an
+# node2, sobald node1 den Abbruch meldet (Takt N: Rolle aktiv mit Merker): node2 sieht node1 noch
+# passiv und nimmt an, wenn sein Takt vor der verzögerten Meldung liegt; sonst lehnt F6 ab, und ein
+# neuer Versuch folgt mit neu gestartetem pdh-ha auf node2 (anderer Abstand der Takte). Bestanden
+# nur, wenn node1 die höhere Amtszeit in Takt N+1 vor ActUnfence sieht („Aktiver Server abgelöst“
+# in der nächsten Amtszeit), nie mehr schreibbar wird und als Standby endet. Die Verzögerung bleibt
+# unter einem Takt: node2 übernimmt, bevor node1 in Takt N+1 zurücknehmen könnte.
+NETEM_MS=600
+sc_spiegel_ruecknahme_zweiter_takt() {
+    pg_rewind_wrap node1 log
+    mirror_enable 10 200
+    rw_probe_start node1 node2
+    STRICT_RW=1
+    net_delay node1 "$NETEM_MS" || fail "tc netem auf node1 (NET_ADMIN, iproute2)"
+    log "Herzschläge von node1 um $NETEM_MS ms verzögert: $(docker exec node1 tc qdisc show 2>/dev/null | grep -F netem | head -1)"
+    log "200 MB bei 200 KB/s, Frist 10 s – Rollentausch scheitert am letzten Abgleich"
+    put_file node1 "$UPLOADS/gross.bin" 200M
+    local try n0 a0 r t_scheitern term0 taken=0
+    local q='Rollentausch abgebrochen' qa='Aktiver Server abgelöst'
+    for try in 1 2 3 4 5 6 7 8; do
+        snap
+        term0=$T1
+        n0="$(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl)" || true
+        a0="$(docker exec node1 grep -c "$qa" /var/lib/pdh-ha/events.jsonl)" || true
+        wait_for 30 eval 'swap_on node1 2>/dev/null' || fail "Rollentausch auf node1 nicht angenommen"
+        local end=$((SECONDS + 40))
+        while (($(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl) == n0)); do
+            ((SECONDS < end)) || fail "Abbruch des Tauschs nicht gemeldet (Versuch $try)"
+            sleep 0.05
+        done
+        t_scheitern=$(date +%s%3N)
+        r="$(up_api node2 POST /v1/command '{"cmd":"force_takeover"}')"
+        log "Versuch $try: Übernahme erzwingen in Takt N von node1 (Amtszeit $term0): $r"
+        if [[ "$r" == 200* ]] && wait_for 15 eval '[[ "$R2" == aktiv ]]'; then
+            taken=1
+            break
+        fi
+        log "Versuch $try: node2 lehnt ab (F6), node1 bleibt aktiv"
+        wait_for 30 eval 'roles aktiv passiv && pg_writable node1' || fail "node1 nach dem Abbruch nicht wieder aktiv (node1=$R1, node2=$R2)"
+        sleep "0.$((RANDOM % 10))"
+        docker exec node2 bash -c 'touch /run/pdh-ha.restart; pkill -TERM -x pdh-ha; true' || fail "pdh-ha auf node2 neu starten"
+        wait_for 30 eval 'roles aktiv passiv && [[ "$(jget seen:node1 <<<"$J2")" == ja ]]' || fail "node2 nach dem Neustart nicht passiv (node2=$R2)"
+    done
+    ((taken == 1)) || fail "Zweiter Takt in 8 Versuchen nicht getroffen"
+    wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
+    wait_for 120 mirror_ok_rev || fail "node1 nicht als Standby angebunden (node1=$R1 pg=$(jget pg <<<"$J1"))"
+    (($(docker exec node1 grep -c "$qa" /var/lib/pdh-ha/events.jsonl) > a0)) ||
+        fail "Pflichtweg verfehlt: node1 meldet keine Ablösung nach Takt N (über die Marke: $(docker exec node1 grep -c 'wird als Standby wieder angebunden' /var/lib/pdh-ha/events.jsonl))"
+    docker exec node1 grep -qF "$qa (neue Amtszeit $((term0 + 1)))" /var/lib/pdh-ha/events.jsonl || fail "Ablösung nicht in Amtszeit $((term0 + 1))"
+    log "node1 ist Standby über den zweiten Takt der Rücknahme (R51), pg_rewind echt: $(rewind_real_runs node1)"
+    [[ "$R1" == passiv ]] || fail "node1 am Ende nicht passiv ($R1)"
+    ! pg_writable node1 || fail "node1 am Ende schreibbar"
+    # R51: Ab der gemeldeten Abgabe wird node1 nie mehr schreibbar: Die Rücknahme in Takt N+1
+    # unterbleibt, weil die höhere Amtszeit vorher da ist
+    rw_probe_none_after node1 "$t_scheitern"
+    rw_probe_check node1 node2
+    net_delay_off node1
     STRICT_RW=0
 }
 

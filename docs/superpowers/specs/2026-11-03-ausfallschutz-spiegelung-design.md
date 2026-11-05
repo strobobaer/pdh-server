@@ -152,7 +152,10 @@ Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
   Bestätigung heraus, nie über ein später leeres Ziel.
 - Die Bestätigung (`pdh-ha mirror confirm`, Knopf „Dieser Server ist vollständig“) gilt am
   aktiven Server und nur für die in dem Moment wartenden Quellen; am passiven Server und ohne
-  wartende Quelle wird sie abgelehnt. Eine später wartende Quelle meldet sich einzeln. Sie gilt für
+  wartende Quelle wird sie abgelehnt. Die Karte sendet die Quellen mit, die sie beim Klick zeigte,
+  und die Bestätigung gilt nur für die Schnittmenge mit den wartenden (R61); eine Quelle, die erst
+  nach dem Laden der Seite wartend wurde, bleibt wartend und meldet sich einzeln. Die Befehlszeile
+  ohne Liste nimmt alle wartenden Quellen; Antwort und Ereignis nennen die betroffenen. Sie gilt für
   die aktuelle Datenkennung des Empfängers, bleibt über einen Neustart erhalten und ist verbraucht,
   sobald der Empfänger den Beleg meldet. Der nächste Lauf löscht, abweichende Dateien am Partner
   wandern in seinen Papierkorb.
@@ -163,12 +166,22 @@ Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
   denselben Zustand. Ein eigener Beleg, den er später als Empfänger bekommt, hebt das auf.
 - Ausschalten verwirft Belege, Bestätigungen und die gemerkte Rolle, weil die Stände dann
   auseinanderlaufen.
-- **Datenträger:** Beleg und Quelle sind an die Gerätenummer (`st_dev`) des Ordners gebunden,
-  sie steht im Zustand. Empfänger: Beleg und die Marke „leeres Ziel“ gelten nur auf demselben
-  Datenträger, sonst wartet die Quelle wieder. Absender: Eine geänderte Nummer der Quelle heißt kein
-  `--delete`, Alarm und Bestätigung. `lost+found` zählt nicht als Inhalt der Quelle. Fehlt die Nummer
-  in einer älteren Zustandsdatei, wird sie beim ersten Lauf ohne Alarm nachgetragen. Es gibt
-  keine Mengengrenze und kein `--max-delete`, gewolltes Aufräumen gäbe sonst Fehlalarme.
+- **Kennung des Ordners (R57, R58):** Jeder gespiegelte Ordner trägt die Datei `.pdh-mirror-id`
+  mit einem Zufallswert; bei `nextcloud-app` liegt sie in `config/`, weil Nextclouds
+  Integritätsprüfung fremde Dateien im Programmordner meldet und `config/` ausnimmt. Der Zustand
+  des Empfängers speichert je Quelle den Wert des eigenen Ordners; Absender und Empfänger desselben
+  Servers nutzen denselben Eintrag (ein nie aktiver Standby hat bei der Übernahme denselben Bezug).
+  Beleg, die Marke „leeres Ziel“ und `--delete` gelten nur, wenn die Datei lesbar ist und passt;
+  fehlend, anders oder nicht lesbar heißt anderer Ordner (Datenträger getauscht oder nicht
+  eingehängt). Die Datei entsteht beim Annehmen nach dem Anlegen des Ziels, wird vor dem Setzen des
+  Belegs erneut geprüft und in keiner Richtung übertragen; Leer-Prüfungen ignorieren sie und
+  `lost+found`. Empfänger mit gespeichertem Wert und fehlender oder fremder Kennung lehnt den Lauf
+  mit Alarm ab, auch ohne `--delete`; `.ocdata` wird vorher geprüft. Gewollter Tausch am Empfänger:
+  Spiegelung aus und ein (verwirft den Zustand), dann leer gibt den Beleg, sonst Bestätigung.
+  Absender mit gespeichertem Wert und fehlender oder fremder Kennung: Lauf ohne `--delete`, Alarm,
+  Bestätigung wie oben; die Bestätigung schreibt die neue Kennung. Ein Absender-Beleg (Partner
+  meldet den Beleg) entsteht nur mit geprüfter Kennung, und „unbelegt“ wird nur mit Kennung und
+  Beleg aufgehoben. Kein stilles Nachtragen, keine Mengengrenze und kein `--max-delete`.
 
 ## 6. Nextcloud je Rolle
 
@@ -240,6 +253,20 @@ sich die Rolle `nextcloud` am passiven Server anmelden darf, sobald er aktiv wir
   nicht als „alles grün“. Der Grund steht in der Meldung.
 - **Spiegelung ausgeschaltet:** Keine Sperre, nur der Hinweis, dass Dateien fehlen können.
 - **Echter Ausfall:** Eine automatische oder erzwungene Übernahme bleibt immer möglich.
+- **Rücknahme in zwei Takten (R51, R59):** Scheitert die Abgabe, nimmt der Step die Rolle in Takt N
+  nur zurück (Rolle aktiv, Merker `unfence_pending`, gespeichert). Erst Takt N+1 schaltet ein
+  (`ActUnfence`, `ActVIPTake`), und nur, wenn bis dahin keine höhere Amtszeit gesehen wurde; der
+  Aktor hebt nie selbst auf. Mit der Rolle folgen in Takt N weder die mitwandernde Adresse noch die
+  Rollenskripte, beides kommt erst in Takt N+1. Scheitert `ActUnfence` (außer an der Rolle), bleibt
+  der Merker stehen, und der nächste Takt wiederholt nach Prüfung der Amtszeit; derselbe Grund wird
+  einmal gemeldet, der Alarm nennt keinen Ausweg, den es nicht gibt.
+- **Offener Auftrag, den der aktive Partner nicht führt (R53, R60):** Der passive Server bleibt
+  abgeschottet und bindet nicht von selbst an; nach 30 s ein Alarm mit `sudo pdh-ha update abort`
+  am passiven Server, der nur diesen Auftrag beendet. Ist die Datenbank dort ein gestoppter,
+  eingefrorener Stand, nennen Alarm und Ergebnis des Abbruchs das und den Weg heraus (PostgreSQL
+  nur lesend starten, danach `pdh-ha rejoin`, mit Marke von selbst); bleibt der Stand gestoppt, gibt
+  es nach einer Minute einen Alarm und eine dauerhafte Statuswarnung, und `pdh-ha rejoin` nennt
+  denselben Weg statt „läuft schon automatisch“.
 
 ## 8. Fehlerfälle
 
@@ -285,10 +312,12 @@ Lauf je Quelle, Laufzeit, Erstabgleich mit Fortschritt, Warnungen aus den Abschn
 6 und 8, Papierkorb mit Größe und Knopf zum Leeren, Einstellungen. Wartet eine Quelle auf die
 Bestätigung (Abschnitt 5), zeigt die Karte statt „bereit“ den Zustand „wartet auf Bestätigung“, die
 Anzahl und die Quellen und, mit Recht und am aktiven Server, den Knopf „Dieser Server ist
-vollständig“ mit Rückfrage. Neue Oberfläche wird
+vollständig“ mit Rückfrage; der Knopf sendet die angezeigten Quellen mit (R61). Bei einem Fehler
+des Abgleichs oder der Sofort-Übertragung zeigt der Kopf „gestört“, nicht „bereit“. Neue Oberfläche wird
 in Fiori und Fluent, hell und dunkel und bei 390 px geprüft.
 
-**Befehle:** `pdh-ha mirror status`, `pdh-ha mirror run` (Abgleich sofort), `pdh-ha mirror confirm` (Abschnitt 5),
+**Befehle:** `pdh-ha mirror status`, `pdh-ha mirror run` (Abgleich sofort), `pdh-ha mirror confirm`
+(Abschnitt 5; ohne Liste alle wartenden Quellen, die Antwort nennt sie),
 `pdh-ha mirror-pipe` (nur intern für rsync). `pdh-ha status` bekommt eine Zeile
 „Spiegelung“, nicht am Zeugen.
 
@@ -329,6 +358,9 @@ der inotify-Meldungen, Fälle aus Abschnitt 7, Dienste je Rolle, Prüflauf.
 - Heartbeat unter Dateilast: keine falsche Umschaltung.
 - Nextcloud als Attrappe: Dienste folgen der Rolle.
 - Spiegelung aus: Verhalten wie bisher.
+- Rücknahme über den zweiten Takt als Pflichtweg (R62): Herzschläge von node1 per `tc netem`
+  verzögert, „Übernahme erzwingen“ in Takt N; bestanden nur mit „Aktiver Server abgelöst“ in der
+  nächsten Amtszeit und ohne Schreibbarkeit von node1 nach der gemeldeten Abgabe.
 
 **Echtes Netz (.14/.17 mit Zeuge):** Dort ist keine Nextcloud installiert (geprüft am
 03.11.; je 44 GB frei, 3,2 GB RAM). Die Abnahme installiert sie über `--verbund`, der Name
