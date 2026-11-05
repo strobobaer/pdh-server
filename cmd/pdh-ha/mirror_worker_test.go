@@ -115,7 +115,7 @@ func TestMirrorRsyncArgv(t *testing.T) {
 			got = c
 		}
 	}
-	want := `rsync -a --numeric-ids --delete --backup --partial-dir=.pdh-teil --delay-updates --exclude=/ha/ ` +
+	want := `rsync -a --numeric-ids --delete --backup --partial-dir=.pdh-teil --delay-updates --exclude=/ha/ --exclude=/.pdh-mirror-id ` +
 		`-e pdh-ha mirror-pipe --label etc-pdh --term 7 --node b /etc/pdh/ b:etc-pdh`
 	if strings.Join(got, " ") != want {
 		t.Fatalf("argv:\n got %q\nwant %q", strings.Join(got, " "), want)

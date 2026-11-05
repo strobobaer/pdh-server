@@ -187,3 +187,27 @@ func TestMirrorTrashDir(t *testing.T) {
 		t.Fatalf("Papierkorb: %s", got)
 	}
 }
+
+// R57: Jede Quelle trägt die Kennungsdatei .pdh-mirror-id und schließt sie von der Übertragung aus.
+// Bei nextcloud-app liegt sie in config/, weil Nextclouds Integritätsprüfung fremde Dateien im
+// Programmordner meldet (EXTRA_FILE) und config/ davon ausnimmt.
+func TestMirrorSourcesIDFile(t *testing.T) {
+	s := DefaultSettings()
+	s.MirrorNextcloud, s.NCDataDir = true, "/srv/nc-data"
+	for _, x := range MirrorSources("/opt/pdh", s) {
+		want := MirrorIDName
+		if x.Label == "nextcloud-app" {
+			want = "config/" + MirrorIDName
+		}
+		if x.IDFile() != want {
+			t.Errorf("%s: Kennungsdatei %q, erwartet %q", x.Label, x.IDFile(), want)
+		}
+		found := false
+		for _, e := range x.Exclude {
+			found = found || e == "--exclude=/"+want
+		}
+		if !found {
+			t.Errorf("%s schließt die Kennung nicht aus: %v", x.Label, x.Exclude)
+		}
+	}
+}

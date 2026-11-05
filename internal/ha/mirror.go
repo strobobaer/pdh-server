@@ -16,6 +16,33 @@ type MirrorSource struct {
 	Exclude     []string
 }
 
+// MirrorIDName ist die Kennungsdatei eines gespiegelten Ordners (R57): ein Zufallswert, den
+// Absender und Empfänger je Ordner im Zustand speichern. Fehlt sie oder weicht sie ab, ist es
+// ein anderer Ordner (Datenträger getauscht oder nicht eingehängt). Sie wird nie übertragen.
+const MirrorIDName = ".pdh-mirror-id"
+
+// mirrorIDSub: Unterordner der Kennungsdatei je Quelle. Bei nextcloud-app liegt sie in config/,
+// weil Nextclouds Integritätsprüfung fremde Dateien im Programmordner meldet (EXTRA_FILE) und
+// config/ davon ausgenommen ist.
+var mirrorIDSub = map[string]string{"nextcloud-app": "config"}
+
+// IDFile: Pfad der Kennungsdatei relativ zur Quelle (Schrägstriche).
+func (m MirrorSource) IDFile() string {
+	if sub := mirrorIDSub[m.Label]; sub != "" {
+		return sub + "/" + MirrorIDName
+	}
+	return MirrorIDName
+}
+
+// withIDExclude hängt an jede Quelle den Ausschluss ihrer Kennungsdatei an: Sie wird in keiner
+// Richtung übertragen, und --delete lässt die des Empfängers stehen.
+func withIDExclude(src []MirrorSource) []MirrorSource {
+	for i := range src {
+		src[i].Exclude = append(src[i].Exclude, "--exclude=/"+src[i].IDFile())
+	}
+	return src
+}
+
 // mirrorForbidden sind Ordner, die nie als Nextcloud-Pfad taugen (zu weit
 // oben im System oder der Ausfallschutz selbst).
 var mirrorForbidden = map[string]bool{
@@ -81,7 +108,7 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 		{Label: "etc-pdh", Path: "/etc/pdh", Exclude: []string{"--exclude=/ha/"}},
 	}
 	if !s.MirrorNextcloud {
-		return src
+		return withIDExclude(src)
 	}
 	// Der Papierkorb des Datenordners liegt im Elternordner des Ziels, also hier.
 	appEx := []string{"--exclude=/.pdh-papierkorb/"}
@@ -89,14 +116,14 @@ func MirrorSources(repo string, s Settings) []MirrorSource {
 	if rel := strings.TrimPrefix(path.Clean(s.NCDataDir), path.Clean(s.NCAppDir)+"/"); rel != path.Clean(s.NCDataDir) {
 		appEx = append(appEx, "--exclude=/"+rel+"/")
 	}
-	return append(src,
+	return withIDExclude(append(src,
 		MirrorSource{Label: "nextcloud-data", Path: s.NCDataDir, Instant: true, Exclude: []string{
 			"--exclude=/appdata_*/preview/", "--exclude=/*/uploads/", "--exclude=*.part", "--exclude=/nextcloud.log"}},
 		MirrorSource{Label: "nextcloud-app", Path: s.NCAppDir, Exclude: appEx},
 		MirrorSource{Label: "nginx", Path: "/etc/nginx"},
 		MirrorSource{Label: "ssl-pdh-nextcloud", Path: "/etc/ssl/pdh-nextcloud"},
 		MirrorSource{Label: "letsencrypt", Path: "/etc/letsencrypt"},
-	)
+	))
 }
 
 // MirrorSourceByLabel sucht eine Quelle nach ihrem Namen.

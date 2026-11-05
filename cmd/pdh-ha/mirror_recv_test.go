@@ -591,6 +591,7 @@ func TestInboxAlarmOncePerHour(t *testing.T) {
 func (f *inboxFix) prove(label string, files bool) {
 	f.in.mu.Lock()
 	f.in.st.Proof[label] = mirrorProof{At: f.now, Files: files}
+	f.in.idOK[label] = true // ein echter Lauf hat die Kennung geprüft (R57)
 	f.in.mu.Unlock()
 }
 
@@ -605,8 +606,10 @@ func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 	} else {
 		d(nil)
 	}
-	// ein löschender Lauf ohne Fehler ergibt den Beleg (samt "Dateien da")
+	// ein löschender Lauf ohne Fehler ergibt den Beleg (samt "Dateien da"). Der erste Lauf auf das
+	// leere Ziel hat schon belegt und .ocdata mitgebracht: ab jetzt ist sie Pflicht (R22d, R58).
 	os.WriteFile(f.root+"/nc/data/x", []byte("1"), 0o644)
+	os.WriteFile(f.root+"/nc/data/.ocdata", nil, 0o644)
 	_, d, r := f.acceptDel("nextcloud-data", 3)
 	if r != "" {
 		t.Fatalf("löschender Lauf: %q", r)
@@ -628,6 +631,7 @@ func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 		t.Fatal("Beleg ohne löschenden Lauf")
 	}
 	// jetzt mit Beleg ist .ocdata Pflicht
+	os.Remove(f.root + "/nc/data/.ocdata")
 	if _, _, r := f.accept("nextcloud-data", 3); r != "Datenordner nicht erreichbar" {
 		t.Fatalf("mit Beleg ohne .ocdata: %q", r)
 	}
@@ -637,8 +641,18 @@ func TestInboxOcdataOnlyWithOwnProof(t *testing.T) {
 		t.Fatal("keine Datenkennung")
 	}
 	f.rebuild()
-	if done, files := f.in.proofOf("nextcloud-data"); !done || !files || f.in.dataID() != id {
-		t.Fatalf("nach Neustart: %v %v %q", done, files, f.in.dataID())
+	// R57: Der Beleg gilt erst wieder, wenn die Kennung des Ordners geprüft ist (nächster Lauf)
+	if done, _ := f.in.proofOf("nextcloud-data"); done || f.in.dataID() != id {
+		t.Fatalf("nach Neustart vor der Prüfung der Kennung: %v %q", done, f.in.dataID())
+	}
+	os.WriteFile(f.root+"/nc/data/.ocdata", nil, 0o644)
+	_, d, r = f.acceptDel("nextcloud-data", 3)
+	if r != "" {
+		t.Fatalf("nach Neustart: %q", r)
+	}
+	d(nil)
+	if done, files := f.in.proofOf("nextcloud-data"); !done || !files {
+		t.Fatalf("nach Neustart und Prüfung: %v %v", done, files)
 	}
 }
 

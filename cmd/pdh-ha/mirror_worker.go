@@ -43,7 +43,6 @@ type mirrorLabelState struct {
 
 	ConfirmedFor string `json:"confirmed_for,omitempty"` // am aktiven Server bestätigt, für diese Datenkennung des Empfängers (R47)
 	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
-	SrcDev       uint64 `json:"src_dev,omitempty"`       // Gerätenummer der Quelle (R54); fehlt sie, wird sie beim nächsten Lauf nachgetragen
 }
 
 type mirrorState struct {
@@ -82,6 +81,8 @@ type mirrorDeps struct {
 	watchAdd     func(string) error                    // nil = inotify (Test-Einhängepunkt)
 	partnerProof func(label string) bool               // Empfänger hat einen eigenen Beleg (nil = nicht geprüft: Tests)
 	partnerWait  func(label string) bool               // Empfänger meldet „wartet auf Bestätigung“
+	ident        func(label, idPath string) idCheck    // Kennung des Quellordners prüfen (R57; nil = keine Kennung: Tests)
+	identRenew   func(label, idPath string) error      // Bestätigung: neue Kennung schreiben (R58)
 }
 
 type mirrorWorker struct {
@@ -115,20 +116,6 @@ func newMirrorWorker(cfg mirrorDeps) *mirrorWorker {
 	}
 	if cfg.exists == nil {
 		cfg.exists = func(p string) bool { _, err := os.Stat(p); return err == nil }
-	}
-	if cfg.hasFiles == nil {
-		cfg.hasFiles = func(p string) bool {
-			e, err := os.ReadDir(p)
-			if err != nil {
-				return false
-			}
-			for _, x := range e {
-				if x.Name() != "lost+found" { // legt jedes neue Dateisystem an: kein Bestand (R54)
-					return true
-				}
-			}
-			return false
-		}
 	}
 	if cfg.size == nil {
 		cfg.size = dirSize
@@ -373,8 +360,8 @@ func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files
 func keepOwn(per map[string]mirrorLabelState) map[string]mirrorLabelState {
 	out := map[string]mirrorLabelState{}
 	for l, ls := range per {
-		if ls.SawFiles || ls.Unproven || ls.SrcDev != 0 {
-			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven, SrcDev: ls.SrcDev}
+		if ls.SawFiles || ls.Unproven {
+			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven}
 		}
 	}
 	return out
@@ -438,42 +425,61 @@ func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[strin
 	}
 }
 
-// checkSourceDevs (R54): Liegt die Quelle auf einem anderen Datenträger als beim letzten Lauf,
-// sagt ihr Stand nichts mehr über den Partner: kein --delete, Alarm, Bestätigung wie R47. Eine
-// fehlende Nummer (alte Zustandsdatei, erster Lauf) wird still nachgetragen.
-func (w *mirrorWorker) checkSourceDevs(srcs []ha.MirrorSource, present map[string]bool) {
-	var moved []string
-	changed := false
+// hasFilesOf: Die Quelle enthält echte Dateien: lost+found, leere Ordner und die Kennung
+// .pdh-mirror-id zählen nicht (R57), ein Lesefehler zählt als Inhalt.
+func (w *mirrorWorker) hasFilesOf(m ha.MirrorSource) bool {
+	if w.d.hasFiles != nil {
+		return w.d.hasFiles(m.Path)
+	}
+	return !mirrorTargetEmpty(m.Path, m.Exclude)
+}
+
+// checkSourceIDs (R57, R58): Die Kennung .pdh-mirror-id jeder vorhandenen Quelle muss zum
+// gespeicherten Wert passen (derselbe Eintrag, den dieser Server als Empfänger nutzt). Fehlt sie
+// oder weicht sie ab, ist es ein anderer Ordner (Datenträger getauscht oder nicht eingehängt): Der
+// Stand hier sagt nichts über den Partner, also kein --delete, Alarm und Bestätigung wie R47. Ohne
+// gespeicherten Wert wird die Kennung übernommen oder angelegt. Vor settlePromotion, damit der
+// Alarm die Ursache nennt. Schreibt eine Datei; nur in der Goroutine des Arbeiters.
+func (w *mirrorWorker) checkSourceIDs(srcs []ha.MirrorSource, present map[string]bool) {
+	if w.d.ident == nil {
+		return
+	}
+	var other, failed []string
 	for _, m := range srcs {
 		if !present[m.Label] {
 			continue
 		}
-		dev, ok := mirrorDev(m.Path)
-		if !ok {
+		r := w.d.ident(m.Label, mirrorIDPath(m, m.Path))
+		if r == idOK {
 			continue
 		}
 		w.mu.Lock()
 		ls := w.st.PerLabel[m.Label]
-		if ls.SrcDev != dev {
-			if ls.SrcDev != 0 {
-				ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = true, true, ""
-				moved = append(moved, m.Label)
-			}
-			ls.SrcDev = dev
-			w.st.PerLabel[m.Label] = ls
-			changed = true
-		}
+		fresh := !ls.Unproven
+		ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = true, true, ""
+		w.st.PerLabel[m.Label] = ls
 		w.mu.Unlock()
+		if !fresh {
+			continue
+		}
+		if r == idFail {
+			failed = append(failed, m.Label)
+		} else {
+			other = append(other, m.Label)
+		}
 	}
-	if !changed {
+	if len(other)+len(failed) == 0 {
 		return
 	}
 	w.mu.Lock()
 	snap := copyState(w.st)
 	w.mu.Unlock()
 	w.save(snap)
-	for _, l := range moved {
-		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Quelle " + l + ": Der Datenträger der Quelle hat sich geändert. Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"})
+	for _, l := range other {
+		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Quelle " + l + ": Der Quellordner ist ein anderer – die Kennung " + ha.MirrorIDName + " fehlt oder weicht ab (Datenträger getauscht oder nicht eingehängt). Auf dem Partner wird nichts gelöscht. Ist dieser Server vollständig: sudo pdh-ha mirror confirm"})
+	}
+	for _, l := range failed {
+		w.d.ev.add(ha.Event{Kind: "alarm", Text: "Quelle " + l + ": Die Kennung " + ha.MirrorIDName + " lässt sich im Quellordner nicht anlegen. Auf dem Partner wird nichts gelöscht, bis das behoben und bestätigt ist: sudo pdh-ha mirror confirm"})
 	}
 }
 
@@ -554,6 +560,19 @@ func (w *mirrorWorker) confirm() error {
 		w.mu.Unlock()
 		return errors.New("Die Kennung des Partners ist noch nicht bekannt – bitte kurz warten")
 	}
+	w.mu.Unlock()
+	// R58: Die Bestätigung macht den jetzigen Ordner zum richtigen: neue Kennung in Ordner und
+	// Zustand, vor dem Freigeben (ohne Dateizugriff im Takt: confirm läuft im Aufruf der API).
+	if w.d.identRenew != nil {
+		for _, l := range labels {
+			if m, ok := ha.MirrorSourceByLabel(w.d.repo, w.cfg, l); ok && w.d.exists(m.Path) {
+				if err := w.d.identRenew(l, mirrorIDPath(m, m.Path)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	w.mu.Lock()
 	for _, l := range labels {
 		ls := w.st.PerLabel[l]
 		ls.Unproven, ls.WaitAlarmed, ls.ConfirmedFor = false, false, id
@@ -624,7 +643,9 @@ func (w *mirrorWorker) dropConfirm() {
 }
 
 // liftUnproven hebt „unbelegt“ auf, sobald dieser Server die Quelle selbst
-// vollständig empfangen hat (Beleg nach einem Rücktausch). Schreibt eine Datei.
+// vollständig empfangen hat (Beleg nach einem Rücktausch, nur mit passender Kennung: proof
+// prüft das, R57). Der Alarm-Merker fällt mit, damit sich die nächste wartende Quelle wieder
+// meldet. Schreibt eine Datei.
 func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool)) {
 	w.mu.Lock()
 	changed := false
@@ -633,7 +654,7 @@ func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool))
 			continue
 		}
 		if done, _ := proof(l); done {
-			ls.Unproven = false
+			ls.Unproven, ls.WaitAlarmed = false, false
 			w.st.PerLabel[l] = ls
 			changed = true
 		}
@@ -846,8 +867,8 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	w.mu.Unlock()
 	defer cancel()
 	present := w.presence(srcs)
+	w.checkSourceIDs(srcs, present)
 	w.settlePromotion(srcs, present)
-	w.checkSourceDevs(srcs, present)
 	w.mu.Lock()
 	per0 = copyState(w.st).PerLabel
 	dataReset := w.st.DataReset
@@ -935,7 +956,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
 		default:
-			saw[m.Label] = w.d.hasFiles(m.Path)
+			saw[m.Label] = w.hasFilesOf(m)
 			t0 := time.Now()
 			del, conf := w.mayDelete(m.Label)
 			argv := w.argvDel(m, term, s, del)
@@ -962,7 +983,7 @@ func (w *mirrorWorker) refusedEmpty(m ha.MirrorSource) bool {
 	w.mu.Lock()
 	saw := w.st.PerLabel[m.Label].SawFiles
 	w.mu.Unlock()
-	return saw && !w.d.hasFiles(m.Path)
+	return saw && !w.hasFilesOf(m)
 }
 
 func vanishedOnly(err error) bool {
@@ -1284,8 +1305,8 @@ func (w *mirrorWorker) sendPaths(ctx context.Context, m ha.MirrorSource, term ui
 		if p == "" || c != p || c == "." || c == ".." || strings.HasPrefix(c, "../") || strings.HasPrefix(c, "/") {
 			continue
 		}
-		if !w.d.lexists(filepath.Join(m.Path, filepath.FromSlash(p))) || w.viaSymlink(m.Path, p) {
-			continue
+		if p == m.IDFile() || !w.d.lexists(filepath.Join(m.Path, filepath.FromSlash(p))) || w.viaSymlink(m.Path, p) {
+			continue // die Kennung (R57) wird nie übertragen, auch nicht über die Pfadliste
 		}
 		// „./“ davor: rsync liest Einträge mit # oder ; am Anfang sonst als Kommentar
 		in = append(append(in, "./"...), p...)

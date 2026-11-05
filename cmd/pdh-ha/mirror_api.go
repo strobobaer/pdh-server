@@ -376,6 +376,19 @@ func (rt *mirrorRT) newWorker(partner string) *mirrorWorker {
 			}
 			return false, false
 		},
+		// R57: Quelle und Ziel nutzen denselben Kennungseintrag des Empfängers
+		ident: func(label, idPath string) idCheck {
+			if ib := rt.inbox.Load(); ib != nil {
+				return ib.checkID(label, idPath)
+			}
+			return idFail
+		},
+		identRenew: func(label, idPath string) error {
+			if ib := rt.inbox.Load(); ib != nil {
+				return ib.renewID(label, idPath)
+			}
+			return errors.New("Dateiempfang noch nicht bereit")
+		},
 		free: func() (int64, bool) {
 			if w := rt.want.Load(); w != nil {
 				return parseDiskHB(w.PartnerDisk)

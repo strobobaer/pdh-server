@@ -20,6 +20,7 @@ func setProof(rt *mirrorRT, files bool, labels ...string) {
 	ib.mu.Lock()
 	for _, l := range labels {
 		ib.st.Proof[l] = mirrorProof{At: time.Now(), Files: files}
+		ib.idOK[l] = true // ein echter Lauf hat die Kennung geprüft (R57)
 	}
 	ib.mu.Unlock()
 }
