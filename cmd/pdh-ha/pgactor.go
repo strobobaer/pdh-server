@@ -244,6 +244,9 @@ func (a *pgActor) undoFence(ctx context.Context, err error, term uint64, demote 
 		a.ev.add(ha.Event{Kind: "alarm", Text: "Abschottung bleibt: der Zustand der Rolle ist ungewiss"})
 		return err
 	}
+	if a.settledPhase(ctx, term) == phaseWithdrawn { // PROBE (nicht committen): S4 wörtlich
+		_ = a.unfence(ctx)
+	}
 	return err
 }
 
