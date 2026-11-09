@@ -275,6 +275,8 @@ type InfraDetailData struct {
 	RespFromID      string   // geerbt von diesem Element ("" = eigene Angabe)
 	RespFromName    string   // dessen Name
 	HMI             hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
+	KioskTerminalID string   // zugeordnetes Kiosk-Terminal (migrations/155)
+	KioskTerminals  []kioskTerminalOption
 	Message, Error  string
 	Obligations     []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
 	ObligationDue   int                 // davon überfällig oder im Vorlauf
@@ -340,6 +342,10 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	if data.CanEditInfra {
 		data.Departments = h.loadDepartments(ctx)
 		data.ParentOptions = flattenNodes(h.infraTreeViews(ctx), "", id)
+		if data.HMI.Manage { // Auswahl „Kiosk-Terminal“ (kiosk_terminals.go)
+			_ = h.db.QueryRow(ctx, `SELECT COALESCE(kiosk_terminal_id::text, '') FROM infrastructure WHERE id = $1::uuid`, id).Scan(&data.KioskTerminalID)
+			data.KioskTerminals = h.kioskTerminalOptions(ctx, data.KioskTerminalID)
+		}
 	}
 	var effID string
 	_ = h.db.QueryRow(ctx, `SELECT COALESCE((SELECT department_id::text FROM infrastructure WHERE id = $1::uuid), ''),
@@ -474,7 +480,7 @@ func (h *Handler) saveInfraMaster(ctx context.Context, r *http.Request, id strin
 			return err
 		}
 	}
-	return nil
+	return h.saveInfraKioskTerminal(ctx, r, id)
 }
 
 type infraField struct{ Label, Value string }
@@ -491,13 +497,15 @@ func (f infraFields) value(label string) string {
 
 // infraHistoryFields: lesbare Werte der Stammdaten fuer den Vergleich vor/nach dem Speichern.
 func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraFields, error) {
-	var typ, parent, location, desc, maker, model, serial, installed, supplier, service, cc, dept, resp string
+	var typ, parent, location, desc, maker, model, serial, installed, supplier, service, cc, dept, resp, kiosk string
 	err := h.db.QueryRow(ctx, `
 		SELECT i.type::text, COALESCE(p.name, ''), COALESCE(i.location, ''), COALESCE(i.description, ''),
 		       COALESCE(m.name, i.manufacturer, ''), COALESCE(i.model, ''), COALESCE(i.serial_no, ''),
 		       COALESCE(to_char(i.installed_at, 'DD.MM.YYYY'), ''), COALESCE(s.name, ''), COALESCE(sp.name, ''),
-		       COALESCE(cc.number || ' - ' || cc.name, ''), COALESCE(d.name, ''), COALESCE(TRIM(ru.first_name || ' ' || ru.last_name), '')
+		       COALESCE(cc.number || ' - ' || cc.name, ''), COALESCE(d.name, ''), COALESCE(TRIM(ru.first_name || ' ' || ru.last_name), ''),
+		       COALESCE(kt.name, '')
 		  FROM infrastructure i
+		  LEFT JOIN kiosk_terminals kt ON kt.id = i.kiosk_terminal_id
 		  LEFT JOIN infrastructure p ON p.id = i.parent_id
 		  LEFT JOIN business_partners m ON m.id = i.manufacturer_id
 		  LEFT JOIN business_partners s ON s.id = i.supplier_id
@@ -505,7 +513,7 @@ func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraField
 		  LEFT JOIN cost_centers cc ON cc.id = i.cost_center_id
 		  LEFT JOIN departments d ON d.id = i.department_id
 		  LEFT JOIN users ru ON ru.id = i.responsible_to
-		 WHERE i.id = $1::uuid AND i.active`, id).Scan(&typ, &parent, &location, &desc, &maker, &model, &serial, &installed, &supplier, &service, &cc, &dept, &resp)
+		 WHERE i.id = $1::uuid AND i.active`, id).Scan(&typ, &parent, &location, &desc, &maker, &model, &serial, &installed, &supplier, &service, &cc, &dept, &resp, &kiosk)
 	if err != nil {
 		return nil, err
 	}
@@ -516,5 +524,6 @@ func (h *Handler) infraHistoryFields(ctx context.Context, id string) (infraField
 		{"Name", name}, {"Typ", t.Label}, {"Übergeordnet", parent}, {"Standort", location}, {"Beschreibung", desc},
 		{"Hersteller", maker}, {"Modell", model}, {"Seriennummer", serial}, {"In Betrieb seit", installed},
 		{"Lieferant", supplier}, {"Servicepartner", service}, {"Kostenstelle", cc}, {"Abteilung", dept}, {"Verantwortlich", resp},
+		{"Kiosk-Terminal", kiosk},
 	}, nil
 }

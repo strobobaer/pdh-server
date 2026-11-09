@@ -1,0 +1,99 @@
+{{template "base" .}}
+{{define "content"}}
+<style>
+.kt-card{border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:12px;scroll-margin-top:80px}
+.kt-card:target{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.25)}
+.kt-head{display:flex;gap:12px;align-items:center;padding:12px 14px;flex-wrap:wrap}
+.kt-head .ico{width:40px;height:40px;border-radius:10px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:21px;color:var(--accent);flex-shrink:0}
+.kt-head b{font-size:14px}
+.kt-head .sub{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere}
+.kt-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.kt-fp{font-family:ui-monospace,Consolas,monospace;font-size:11px}
+</style>
+
+<div style="margin-bottom:14px">
+  <h1 style="font-size:19px;font-weight:600"><i class="ti ti-device-desktop-share"></i> Kiosk-Terminals</h1>
+  <p class="rec-sub" style="margin-top:3px">Terminals (hmi-kiosk) an den Bedienplätzen. Ist einer Anlage ein Terminal zugeordnet, öffnet „Am Terminal zeigen“ im Reiter <b>HMI</b> das Bediengerät direkt auf dem Bildschirm des Terminals.</p>
+</div>
+
+{{if .Notice}}<div class="card" role="status" style="margin-bottom:14px;border-color:var(--green)"><i class="ti ti-circle-check" style="color:var(--green)"></i> {{.Notice}}</div>{{end}}
+{{if .Err}}<div class="card" role="alert" style="margin-bottom:14px;border-color:var(--red);color:var(--red)"><i class="ti ti-alert-circle"></i> {{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title"><span><i class="ti ti-list-check"></i> So verbindest du ein Terminal</span>
+    <button class="btn btn-small btn-primary" type="button" onclick="ktNew()"><i class="ti ti-plus"></i> Terminal hinzufügen</button></div>
+  <ol class="rec-sub" style="font-size:12px;padding-left:18px;display:flex;flex-direction:column;gap:3px;margin:0">
+    <li>Am Terminal die Admin-Seite öffnen (<code>https://&lt;Terminal&gt;:8443</code>) → <b>Netzwerk → Fernsteuerung (PDH)</b> → Schlüssel erzeugen. Der Schlüssel (beginnt mit <code>hmik_</code>) wird nur einmal angezeigt.</li>
+    <li>Hier „Terminal hinzufügen“: Name, Adresse, den Schlüssel und den dort angezeigten <b>Fingerabdruck</b> eintragen.</li>
+    <li><b>Verbindung prüfen</b>. Dann die Anlage öffnen → Stammdaten → <b>Kiosk-Terminal</b> wählen.</li>
+  </ol>
+</div>
+
+{{range .Terminals}}
+<div class="kt-card" id="k-{{.ID}}">
+  <div class="kt-head">
+    <div class="ico"><i class="ti ti-device-desktop"></i></div>
+    <div style="min-width:0">
+      <b>{{.Name}}</b> {{if not .Active}}<span class="badge" style="background:var(--muted)">inaktiv</span>{{end}}
+      <div class="sub">{{.BaseURL}} · Schlüssel {{if .HasKey}}gesetzt{{else}}<span style="color:var(--red)">fehlt</span>{{end}} · {{.Plants}} Anlage(n) · geändert {{.UpdatedAt}}</div>
+      <div class="sub kt-fp" title="SHA-256 des öffentlichen Schlüssels">{{.FingerprintColons}}</div>
+    </div>
+    <div class="kt-actions">
+      <form method="POST" action="/core/settings/kiosk-terminals/{{.ID}}/check" onsubmit="ktBusy(this,'Prüfe…')"><button class="btn btn-small" type="submit"><i class="ti ti-plug-connected"></i> Verbindung prüfen</button></form>
+      <button class="btn btn-small" type="button" onclick="ktEdit(this)" data-id="{{.ID}}" data-name="{{.Name}}" data-url="{{.BaseURL}}" data-fp="{{.FingerprintColons}}" data-active="{{.Active}}" title="Bearbeiten" aria-label="Bearbeiten"><i class="ti ti-edit"></i></button>
+      <form method="POST" action="/core/settings/kiosk-terminals/{{.ID}}/delete" onsubmit="return confirm('Terminal „{{.Name}}“ löschen? {{.Plants}} Anlage(n) verlieren die Zuordnung.')"><button class="btn btn-small" type="submit" style="color:var(--red)" title="Löschen" aria-label="Löschen"><i class="ti ti-trash"></i></button></form>
+    </div>
+  </div>
+</div>
+{{else}}
+<div class="card" style="margin-bottom:14px"><div class="rec-sub"><i class="ti ti-info-circle"></i> Noch keine Kiosk-Terminals eingerichtet.</div></div>
+{{end}}
+
+<div class="card" id="kt-form-card" hidden>
+  <div class="card-title"><span id="kt-form-title">Terminal hinzufügen</span><button class="btn btn-small" type="button" onclick="ktClose()">Abbrechen</button></div>
+  <form method="POST" action="/core/settings/kiosk-terminals" id="kt-form" autocomplete="off">
+    <input type="hidden" name="terminal_id" id="kt-id">
+    <div class="grid2" style="gap:10px">
+      <div class="form-group"><label class="form-label" for="kt-name">Name *</label><input class="form-input" name="name" id="kt-name" required maxlength="120" placeholder="z. B. Terminal Presse 2"></div>
+      <div class="form-group"><label class="form-label" for="kt-url">Adresse *</label><input class="form-input" name="base_url" id="kt-url" required placeholder="https://10.1.2.3:8443" pattern="https://.+:[0-9]{1,5}/?"></div>
+      <div class="form-group"><label class="form-label" for="kt-key">Schlüssel <span id="kt-key-req">*</span></label><input class="form-input" type="password" name="api_key" id="kt-key" autocomplete="new-password" placeholder="hmik_…" spellcheck="false">
+        <div class="rec-sub" id="kt-key-hint" style="font-size:11.5px;margin-top:3px">Wird verschlüsselt gespeichert und nie wieder angezeigt.</div></div>
+      <div class="form-group"><label class="form-label" for="kt-fp">Fingerabdruck (SHA-256) *</label><input class="form-input kt-fp" name="pubkey_sha256" id="kt-fp" required spellcheck="false" placeholder="ab:cd:… oder abcd…">
+        <div class="rec-sub" style="font-size:11.5px;margin-top:3px">Wie auf der Admin-Seite des Terminals, mit oder ohne Doppelpunkte. Nur einem Terminal mit genau diesem Schlüssel vertraut PDH.</div></div>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" name="active" id="kt-active" checked> Aktiv (in den Anlagen auswählbar, Befehle erlaubt)</label>
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:10px"><i class="ti ti-device-floppy"></i> Speichern</button>
+  </form>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+function ktBusy(form, text){ const b = form.querySelector('button'); b.disabled = true; b.innerHTML = '<i class="ti ti-loader-2"></i> ' + text; }
+function ktOpen(title){
+  const c = document.getElementById('kt-form-card');
+  document.getElementById('kt-form-title').textContent = title;
+  c.hidden = false; c.scrollIntoView({behavior: 'smooth', block: 'start'});
+  setTimeout(() => document.getElementById('kt-name').focus(), 250);
+}
+function ktClose(){ document.getElementById('kt-form-card').hidden = true; }
+function ktNew(){
+  document.getElementById('kt-form').reset();
+  document.getElementById('kt-id').value = '';
+  const k = document.getElementById('kt-key'); k.required = true; k.placeholder = 'hmik_…';
+  document.getElementById('kt-key-req').hidden = false;
+  ktOpen('Terminal hinzufügen');
+}
+function ktEdit(btn){
+  document.getElementById('kt-form').reset();
+  document.getElementById('kt-id').value = btn.dataset.id;
+  document.getElementById('kt-name').value = btn.dataset.name;
+  document.getElementById('kt-url').value = btn.dataset.url;
+  document.getElementById('kt-fp').value = btn.dataset.fp;
+  document.getElementById('kt-active').checked = btn.dataset.active === 'true';
+  const k = document.getElementById('kt-key'); k.required = false; k.placeholder = 'gesetzt – leer lassen = unverändert';
+  document.getElementById('kt-key-req').hidden = true;
+  ktOpen('Terminal bearbeiten');
+}
+</script>
+{{end}}
