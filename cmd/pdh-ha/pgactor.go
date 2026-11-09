@@ -629,7 +629,13 @@ func (a *pgActor) fence(ctx context.Context) error {
 		return fmt.Errorf("pdh bzw. Tunnel nicht gestoppt: %w", err)
 	}
 	if st := a.pg.status(ctx); st.State != "primary" {
-		return nil // Standby oder gestoppt: schreibt ohnehin nicht
+		// Standby: schreibt ohnehin nicht. R65 (U10): Gestoppt (oder nicht abfragbar) ohne
+		// standby.signal die nur lesende Konfiguration trotzdem schreiben: Ein späterer Start, von
+		// Hand oder beim Hochfahren, kommt dann nur lesend. Kein reload, die Datenbank läuft nicht.
+		if st.State == "standby" || !a.frozenPrimary() {
+			return nil
+		}
+		return a.pg.writeConf(ctx, a.primaryConf(e, true))
 	}
 	if err := a.pg.writeConf(ctx, a.primaryConf(e, true)); err != nil {
 		return err

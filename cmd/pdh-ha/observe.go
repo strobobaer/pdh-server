@@ -147,6 +147,10 @@ func (d *daemon) stateAlarmsLocked(pl *plan, now time.Duration, wall time.Time, 
 	set(strandedAlarmKey, d.strandedHoldLocked(now), strandedText, "")
 	set(rewindUnsafeKey, d.rewindAlarmLocked(), rewindUnsafeText, "")
 	foreign, hand := d.foreignJobLocked(now)
+	// R65: erst mit einem Datenbankstand, dessen Abfrage nach Beginn des Zustands begann (es läuft
+	// immer nur eine, also die zweite fertige): Der Alarm kommt einmal, und sein Hinweis auf den
+	// eingefrorenen Stand hängt an diesem Stand. Ohne Datenbank-Spiegel gibt es keine Abfrage.
+	foreign = foreign && (d.pgActorLocked() == nil || d.pgSeq.Load() >= d.foreignPGSeq+strandedFreshPolls)
 	set("foreign-job", foreign, foreignJobText(d.up.job.ID, hand, d.frozenHintLocked()), "")
 	// R60: erst nach alarmAfter: ein kurz gestoppter Stand (Neustart, laufende Abgabe) ist keine Sackgasse
 	set(frozenAlarmKey, down(frozenAlarmKey, !d.frozenStrandedLocked()), frozenStrandedText+d.frozenHintLocked(), "")

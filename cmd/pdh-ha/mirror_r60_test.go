@@ -45,16 +45,11 @@ func TestAbortFrozenNamesWayOut(t *testing.T) {
 		t.Run(map[bool]string{false: "ohneMarke", true: "mitMarke"}[marked], func(t *testing.T) {
 			rg := frozenRig(t, marked)
 			m := rg.m
-			m.tick()
-			m.tick()
+			// R65: Der Alarm wartet auf einen frisch abgefragten Datenbankstand (zwei Abfragen nach
+			// Beginn), zwei Takte reichen dafür nicht immer; der Inhalt wird unverändert geprüft.
+			alarm := tickUntilForeignAlarm(t, m)
 			const start = "sudo pg_ctlcluster 18 main start"
-			alarm := ""
-			for _, s := range eventTexts(m.d) {
-				if strings.Contains(s, "sudo pdh-ha update abort") {
-					alarm = s
-				}
-			}
-			if alarm == "" || !strings.Contains(alarm, "eingefroren") || !strings.Contains(alarm, start) {
+			if !strings.Contains(alarm, "eingefroren") || !strings.Contains(alarm, start) {
 				t.Fatalf("Alarm nennt den eingefrorenen Stand nicht: %q", alarm)
 			}
 			msg, err := m.d.abortUpdateMsg("Befehlszeile")

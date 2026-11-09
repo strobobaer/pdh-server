@@ -203,10 +203,15 @@ const (
 // (kein standby.signal), etwa der Rückfallstand eines beendeten Update-Auftrags. Weder die Marke
 // noch der Handbefehl binden ihn an, solange er gestoppt ist (strandedStateErr). Der Hinweis nennt
 // den Weg: PostgreSQL starten (abgeschottet nur lesend), danach anbinden. "" sonst.
-func (d *daemon) frozenHintLocked() string {
+func (d *daemon) frozenHintLocked() string { return d.frozenHintFor(d.lastPG()) }
+
+// frozenHintFor wie frozenHintLocked, für den Stand st (abort: frisch abgefragt, R65). R65 (U9): Nach
+// abgebrochenem pg_rewind ist der Ordner unsicher und kein Rückfallstand: kein Hinweis, der Weg ist die
+// Neukopie (rewindUnsafeText). „startet nur lesend“ stimmt, weil fence die nur lesende Konfiguration
+// auch bei gestoppter Datenbank schreibt (U10). mu gehalten.
+func (d *daemon) frozenHintFor(st *pgStatus) string {
 	pa := d.pgActorLocked()
-	st := d.lastPG()
-	if pa == nil || st == nil || st.State != "stopped" || !pa.frozenPrimary() {
+	if pa == nil || st == nil || st.State != "stopped" || pa.rewindUnsafe() || !pa.frozenPrimary() {
 		return ""
 	}
 	return "Die Datenbank ist gestoppt (eingefrorener Rückfallstand) und wird so nicht angebunden. Stand behalten: nichts tun. Anbinden: sudo pg_ctlcluster " +
@@ -248,7 +253,7 @@ func (d *daemon) strandedReasonLocked() error {
 		return errors.New("Nur auf einem passiven Server möglich")
 	case d.carry.HandoverPending != 0 || d.pendingDemotes.Load() > 0:
 		return errors.New("Die Abgabe läuft noch – bitte kurz warten")
-	case !unsafe && d.frozenHintLocked() != "":
+	case d.frozenHintLocked() != "":
 		return errors.New(d.frozenHintLocked()) // R60: nicht „läuft schon automatisch“, das stimmt hier nie
 	case d.undoRefused && !unsafe:
 		return errors.New("Die Wiederanbindung läuft schon automatisch")

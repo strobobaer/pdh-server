@@ -101,6 +101,7 @@ type daemon struct {
 
 	pgSt          atomic.Pointer[pgStatus] // zuletzt bekannter Zustand von PostgreSQL
 	pgQuerying    atomic.Bool
+	pgSeq         atomic.Uint64 // fertige Abfragen von PostgreSQL (R65)
 	lastStreaming time.Duration // monoton: Partner zuletzt als streaming gesehen
 	// Amtszeit, in der lastStreaming gesetzt wurde
 	lastStreamingTerm uint64
@@ -122,6 +123,7 @@ type daemon struct {
 	pendingDemotes atomic.Int32  // davon: Abgaben (demote, demote_freeze, abandon)
 	pendingRejoins atomic.Int32  // davon: Wiederanbindungen (rejoin, rejoin_stranded)
 	foreignSince   time.Duration // nur unter mu: seit wann ein fremder Update-Auftrag gilt (R53, 0 = nicht)
+	foreignPGSeq   uint64        // nur unter mu: Stand von pgSeq, als der fremde Auftrag begann (R65)
 	undoRefused    bool          // nur unter mu: demote hat die Rücknahme verweigert (Partner übernommen), R32
 	// R64: Rücknahme nach aktiv (nur unter mu). unfenceWait: Rolle aktiv mit Rücknahme, ActUnfence
 	// noch nicht gelungen (Adresse folgt erst danach). unfenceHang: Grund, solange ActUnfence

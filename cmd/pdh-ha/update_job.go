@@ -194,6 +194,18 @@ func (d *daemon) abortUpdate(by string) error {
 // Beenden gilt: Bei gestoppter Datenbank den eingefrorenen Stand und den echten Ausweg (R60).
 // Am aktiven Server bleibt die Meldung leer (Abbruch vorgemerkt).
 func (d *daemon) abortUpdateMsg(by string) (string, error) {
+	// R65: Am passiven Server zählt der Stand der Datenbank jetzt, nicht der zuletzt abgefragte;
+	// abgefragt wird ohne mu.
+	d.mu.Lock()
+	pa, passive := d.pgActorLocked(), d.p.Role != ha.Active
+	d.mu.Unlock()
+	var fresh *pgStatus
+	if pa != nil && passive {
+		ctx, cancel := context.WithTimeout(context.Background(), abortPGWait)
+		st := pa.pg.status(ctx)
+		cancel()
+		fresh = &st
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	j := d.up.job
@@ -206,7 +218,7 @@ func (d *daemon) abortUpdateMsg(by string) (string, error) {
 				return "", err
 			}
 			msg := "Update-Auftrag " + j.ID + " beendet, nichts wurde zurückgedreht. "
-			if h := d.frozenHintLocked(); h != "" {
+			if h := d.frozenHintFor(fresh); h != "" {
 				return msg + h, nil
 			}
 			return msg + "Die Wiederanbindung folgt über die Marke oder: sudo pdh-ha rejoin", nil
@@ -236,6 +248,9 @@ func (d *daemon) abortActiveLocked(j ha.UpdateJob, by string) error {
 // (Variable für Tests). Beim Tausch im Auftrag kommt die Spiegelung einen Moment später.
 var upForeignHold = 30 * time.Second
 
+// abortPGWait: so lange darf die frische Abfrage der Datenbank beim Abbruch am passiven Server dauern.
+const abortPGWait = 10 * time.Second
+
 // foreignJobLocked (R53): Hier ist ein Auftrag offen, den der aktive Partner nicht führt. Der
 // Server bleibt abgeschottet und bindet nicht von selbst an. alarm: melden. hand: der Partner
 // sagt das ausdrücklich (Feld up_lead), also darf ein Mensch den Auftrag hier beenden. Eine ältere
@@ -262,6 +277,7 @@ func (d *daemon) foreignJobLocked(now time.Duration) (alarm, hand bool) {
 	}
 	if d.foreignSince == 0 {
 		d.foreignSince = max(now, 1)
+		d.foreignPGSeq = d.pgSeq.Load()
 	}
 	if now-d.foreignSince < upForeignHold {
 		return false, false

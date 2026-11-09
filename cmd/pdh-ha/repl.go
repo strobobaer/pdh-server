@@ -44,6 +44,7 @@ func (d *daemon) pgRound(ctx context.Context, pa *pgActor) {
 		defer d.pgQuerying.Store(false)
 		st := pa.pg.status(ctx)
 		d.pgSt.Store(&st)
+		d.pgSeq.Add(1) // R65: Zähler der fertigen Abfragen (frischer Stand für Alarme)
 	}()
 }
 
