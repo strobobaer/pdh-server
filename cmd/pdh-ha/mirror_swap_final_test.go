@@ -353,6 +353,9 @@ func TestReconcileSkipsOpenHandover(t *testing.T) {
 	a, _ := testActor(t, r)
 	m.d.act = a
 	m.tick()
+	// erst die Startaktionen des ersten Takts abwarten – unter Last meldet
+	// actionsIdle sonst „frei“, bevor sie eingereiht sind
+	waitFor(t, 5*time.Second, "Start", func() bool { return has(r.list(), "tun start") })
 	waitFor(t, 2*time.Second, "idle", m.d.actionsIdle)
 	n0 := len(r.list())
 	m.d.lock()
