@@ -415,7 +415,12 @@
         <div class="form-group"><label class="form-label">VNC-Passwort</label><input name="password" type="password" class="form-input" maxlength="64" autocomplete="new-password" placeholder="leer = ohne Passwort">
           <label id="hmi-clear-pw" style="display:none;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin-top:4px"><input type="checkbox" name="clear_password"> gespeichertes Passwort entfernen</label></div>
         <div class="form-group" style="grid-column:1/-1"><label class="form-label">Hinweis</label><input name="notes" class="form-input" maxlength="500" placeholder="optional, z. B. nur bei Stillstand bedienen"></div>
-        <label style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="allow_control" checked style="width:18px;height:18px"> Bedienen erlaubt (sonst für alle nur ansehen)</label>
+        <label style="grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="allow_control" checked style="width:18px;height:18px" onchange="hmiTermHint(this.form)"> Bedienen erlaubt (sonst für alle nur ansehen)</label>
+        <div class="form-group"><label class="form-label">Ansehen am Terminal</label><select name="terminal_view" class="form-input" onchange="hmiTermHint(this.form)">
+          <option value="everyone">Jeder</option><option value="card">Nur mit Karte</option><option value="never">Niemand</option></select></div>
+        <div class="form-group"><label class="form-label">Bedienen am Terminal</label><select name="terminal_control" class="form-input" onchange="hmiTermHint(this.form)">
+          <option value="never">Niemand</option><option value="card">Nur mit Karte</option><option value="everyone">Jeder</option></select></div>
+        <div id="hmi-term-hint" role="status" style="grid-column:1/-1;font-size:12px"></div>
       </div>
       <div id="hmi-form-msg" style="font-size:12px;margin:8px 0"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -596,17 +601,29 @@ function hmiEdit(id){
   f.elements.port.value = x.port || 5900;
   f.elements.notes.value = x.notes || '';
   f.elements.allow_control.checked = x.allow_control !== false;
+  f.elements.terminal_view.value = x.terminal_view || 'everyone';
+  f.elements.terminal_control.value = x.terminal_control || 'card';
+  hmiTermHint(f);
   f.elements.password.placeholder = x.has_password ? 'unverändert lassen' : 'leer = ohne Passwort';
   document.getElementById('hmi-clear-pw').style.display = x.has_password ? 'flex' : 'none';
   document.getElementById('hmi-form-msg').textContent = '';
   f.style.display = 'block'; f.elements.name.focus();
+}
+// Hinweis zu „Am Terminal bedienen“: jeder darf / Bedienung am HMI ausgeschaltet
+function hmiTermHint(f){
+  const box = document.getElementById('hmi-term-hint'); if(!box || !f) return;
+  let t = '';
+  if(!f.elements.allow_control.checked) t = '<span style="color:var(--muted)">Bedienung ist für dieses HMI ausgeschaltet – am Terminal nur Ansehen.</span>';
+  else if(f.elements.terminal_control.value === 'everyone') t = '<span style="color:var(--red)">Jede Person am Terminal kann dieses HMI ohne Karte bedienen.</span>';
+  box.innerHTML = t;
 }
 async function hmiSave(f){
   const msg = document.getElementById('hmi-form-msg');
   const id = f.elements.id.value;
   const body = {name: f.elements.name.value, host: f.elements.host.value, port: parseInt(f.elements.port.value, 10) || 5900,
     password: f.elements.password.value, clear_password: f.elements.clear_password.checked,
-    allow_control: f.elements.allow_control.checked, notes: f.elements.notes.value};
+    allow_control: f.elements.allow_control.checked, notes: f.elements.notes.value,
+    terminal_view: f.elements.terminal_view.value, terminal_control: f.elements.terminal_control.value};
   try{
     await hmiJSON('/infrastructure/' + HMI_INFRA + '/hmis' + (id ? '/' + encodeURIComponent(id) : ''), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     f.style.display = 'none'; hmiLoad();
