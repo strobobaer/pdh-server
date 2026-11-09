@@ -81,13 +81,22 @@ func TestMirrorValidate(t *testing.T) {
 		{"NC relativ", ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir = true, "daten" })},
 		{"NC App relativ", ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/srv/d", "app" })},
 	}
-	for _, p := range []string{"/", "/etc", "/etc/pdh", "/etc/pdh/ha", "/var", "/opt"} {
+	for _, p := range []string{"/", "/etc", "/etc/pdh", "/etc/pdh/ha", "/var", "/opt", "/etc/pdh/ha/x", "/etc/pdh/ha/a/b", "/etc/pdh/ha/../ha/x"} {
 		p := p
 		bad = append(bad, struct {
 			name string
 			s    Settings
-		}{"Pfad " + p, ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir = true, p })})
+		}{"Pfad " + p, ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir = true, p })},
+			struct {
+				name string
+				s    Settings
+			}{"Programmordner " + p, ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/srv/d", p })})
 	}
+	// Gesamtprüfung #3: gleicher Daten- und Programmordner ergäbe zwei Quellen auf ein Ziel
+	bad = append(bad, struct {
+		name string
+		s    Settings
+	}{"Datenordner = Programmordner", ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/srv/nc", "/srv/nc/" })})
 	for _, c := range bad {
 		if err := c.s.Validate(); err == nil {
 			t.Errorf("%s: Fehler erwartet", c.name)
@@ -99,6 +108,11 @@ func TestMirrorValidate(t *testing.T) {
 	})
 	if err := good.Validate(); err != nil {
 		t.Errorf("gültige Einstellung abgelehnt: %v", err)
+	}
+	// Nachbarn von /etc/pdh/ha sind kein Teil davon
+	near := ok(func(s *Settings) { s.MirrorNextcloud, s.NCDataDir, s.NCAppDir = true, "/etc/pdh/hadata", "/srv/nc" })
+	if err := near.Validate(); err != nil {
+		t.Errorf("/etc/pdh/hadata abgelehnt: %v", err)
 	}
 	// Ohne Nextcloud sind die Pfade frei; ungesetzte (0) Spiegelzeiten gelten als Standard.
 	zero := DefaultSettings()

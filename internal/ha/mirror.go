@@ -53,8 +53,13 @@ func checkMirrorDir(name, p string) error {
 	if !path.IsAbs(p) {
 		return errors.New(name + " muss ein absoluter Pfad sein")
 	}
-	if mirrorForbidden[path.Clean(p)] {
-		return errors.New(name + " darf nicht " + path.Clean(p) + " sein")
+	c := path.Clean(p)
+	if mirrorForbidden[c] {
+		return errors.New(name + " darf nicht " + c + " sein")
+	}
+	// Ablage des Ausfallschutzes: wird nie gespiegelt und nie beschrieben
+	if strings.HasPrefix(c, "/etc/pdh/ha/") {
+		return errors.New(name + " darf nicht unter /etc/pdh/ha liegen")
 	}
 	return nil
 }
@@ -93,6 +98,10 @@ func (s Settings) validateMirror() error {
 		}
 		if err := checkMirrorDir("Nextcloud-Programmordner", s.NCAppDir); err != nil {
 			return err
+		}
+		// zwei Quellen auf dasselbe Ziel gingen sich gegenseitig ins Gehege
+		if path.Clean(s.NCDataDir) == path.Clean(s.NCAppDir) {
+			return errors.New("Nextcloud-Datenordner und -Programmordner müssen verschieden sein")
 		}
 	}
 	return nil
