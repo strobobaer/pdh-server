@@ -23,6 +23,7 @@ im Kapitel „Versionen & Updates“ an.
 - Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
 - Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
 - Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
+- Haben die Benutzer `pdh` oder `www-data` auf den beiden Servern verschiedene Nummern, hält die Spiegelung die betroffenen Ordner mit einem Alarm an; Karte und `pdh-ha mirror status` nennen beide Nummern.
 
 ### Geändert
 - „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.
@@ -31,17 +32,22 @@ im Kapitel „Versionen & Updates“ an.
 - Ohne Sicht auf den Partner (und im Trio auf den Zeugen) nimmt ein Server einen gescheiterten Tausch nicht zurück, sondern bleibt abgeschottet.
 - Rollenskripte laufen nur noch bei einem echten Rollenwechsel, nicht beim Neustart von `pdh-ha`.
 - Sicherung, Wiederaufbau und Rückspielen nehmen die Kennungsdatei `.pdh-mirror-id` nicht mit.
+- Die Karte vergleicht neben der `.env` auch `/etc/pdh/pdh.env`; das Token des Update-Agenten gehört nur in die `.env`, `scripts/repair-update-agent-token.sh` nimmt es aus `pdh.env` heraus.
+- Nextcloud-Daten- und Programmordner dürfen nicht unter `/etc/pdh/ha` liegen und müssen verschieden sein.
 
 ### Behoben
 - Übernimmt der Partner mitten in einem Tausch, wird der alte Server automatisch wieder als passiver Server angebunden, statt ohne Datenbank stehen zu bleiben.
 - Bricht das Zurückspulen der Datenbank beim Wiederanbinden ab, startet der halb zurückgespulte Stand nicht mehr unbemerkt; `pdh-ha rejoin` kopiert die Datenbank dann neu, `pdh-restore.sh` räumt die Markierung auf.
 - Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
+- „Papierkorb leeren“ meldet die Rückkehrer-Dateien nur noch als erledigt, wenn wirklich alles geleert ist, und hört nach einem Rollenwechsel auf.
 
 ### Sicherheit
-- Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen mit „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
+- Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
 - Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
 - Der Empfänger nimmt nur Dateien an, wenn er passiv ist und sie vom aktuell aktiven Server kommen, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.
 - `/etc/pdh/ha/`, die `.env` und `cloudflared` werden nie gespiegelt.
+- „Dieser Server ist vollständig“ und „Papierkorb leeren“ lehnen Anfragen ab, die von einer fremden Seite kommen (auch von einer Nachbarseite wie Nextcloud unter derselben Domain).
+- Texte vom Partner und Dateinamen erscheinen in Protokoll, Alarm, Chat und Mail ohne Steuerzeichen, Zeilentrenner und Schreibrichtungs-Zeichen.
 
 ## [0.77.8] – 2026-10-30
 

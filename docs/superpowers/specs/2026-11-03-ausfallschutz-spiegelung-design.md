@@ -1,6 +1,6 @@
 # Ausfallschutz Teil 6: Datei-Spiegelung und Nextcloud im Verbund
 
-Stand: 2026-11-03 · Status: Entwurf zur Durchsicht ·
+Stand: 2026-11-03 · Status: umgesetzt in 0.77.9 ·
 Erweitert: `2026-10-24-ausfallschutz-design.md` (Abschnitte 7, 9, 16) ·
 Baut auf: `2026-10-30-verbund-update-design.md` (PR #14) ·
 Version: 0.77.9 (nächste Korrekturversion nach dem Merge von PR #14)
