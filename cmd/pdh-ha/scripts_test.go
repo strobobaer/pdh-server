@@ -179,7 +179,13 @@ done
 // shellFunc holt eine Funktion „name() {“ … „}“ aus pdh-ha-adresse.sh.
 func shellFunc(t *testing.T, name string) string {
 	t.Helper()
-	b, err := os.ReadFile("../../scripts/pdh-ha-adresse.sh")
+	return shellFuncIn(t, "pdh-ha-adresse.sh", name)
+}
+
+// shellFuncIn holt eine Funktion „name() {“ … „}“ aus scripts/<script>.
+func shellFuncIn(t *testing.T, script, name string) string {
+	t.Helper()
+	b, err := os.ReadFile("../../scripts/" + script)
 	if err != nil {
 		t.Fatal(err)
 	}
