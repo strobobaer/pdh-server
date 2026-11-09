@@ -863,6 +863,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/core/settings/infra-responsible", h.InfraRespDefaultWeb)
 	r.Post("/core/settings/completion", h.CompletionSettingsWeb)
 	r.Post("/core/settings/easy-mode", h.EasyModeSettingsWeb)
+	r.Post("/core/settings/terminal", h.TerminalSettingsWeb)
 	r.Post("/core/settings/defaults", h.DefaultsSaveWeb)
 	r.Get("/leitstaende", h.LeitstaendePage)
 	r.Get("/leitstaende/{id}", h.LeitstaendePage)
