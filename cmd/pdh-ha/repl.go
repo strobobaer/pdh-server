@@ -286,7 +286,11 @@ func (d *daemon) hbPGLocked(m *message) {
 		partner, _ := d.peerIDsLocked()
 		m.Sync = pa.syncTarget() != ""
 		_, m.Stale = d.p.Stale[partner]
-		if _, err := os.Stat(d.needCopyMarker(partner)); err == nil {
+		// need_copy erst, wenn der Slot neu angelegt ist: Mit dem alten,
+		// ungültigen Slot scheitert pg_basebackup -S des Partners, und er
+		// versucht es erst nach recopyRetry wieder.
+		if _, err := os.Stat(d.needCopyMarker(partner)); err == nil &&
+			!slices.Contains(st.LostSlots, slotName(partner)) {
 			m.NeedCopy = true
 		}
 		if sb, ok := partnerStandby(st, partner); ok && st.LSN > sb.FlushLSN {
