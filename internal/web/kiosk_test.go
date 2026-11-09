@@ -309,7 +309,9 @@ func TestKioskOpenResponseMapping(t *testing.T) {
 		{"nicht gefunden", "error", 404, `{"error":"x"}`, false, []string{"404"}},
 		{"Schlüssel falsch", "unauthorized", 401, `{"error":"Schlüssel ungültig"}`, false, []string{"Schlüssel"}},
 		{"Eingaben ungültig", "invalid", 422, `{"error":"Host ungültig"}`, false, []string{"Host ungültig"}},
-		{"nicht bereit", "not_ready", 503, `{"error":"Wartungsmodus"}`, false, []string{"nicht bereit"}},
+		{"nicht bereit", "not_ready", 503, `{"error":"Wartungsmodus"}`, false, []string{"nicht bereit", "Wartungsmodus"}},
+		{"nicht bereit mit Grund vom Terminal", "not_ready", 503, `{"error":"HMI nicht erreichbar: <b>Zeitüberschreitung</b>\nZeile 2"}`, false, []string{"nicht bereit", "HMI nicht erreichbar: <b>Zeitüberschreitung</b> Zeile 2"}},
+		{"nicht bereit ohne Grund", "not_ready", 503, `kaputt`, false, []string{"nicht bereit (Wartung, Sicherung"}},
 		{"sonstiger Fehler", "error", 500, `kaputt`, false, []string{"500"}},
 		{"200 ohne opened", "error", 200, `{"status":"seltsam"}`, false, []string{"Unerwartete"}},
 	}
@@ -344,6 +346,30 @@ func TestKioskOpenResponseMapping(t *testing.T) {
 	out = newKioskClient(srv.URL, testKioskKey, kioskPin(srv)).open(context.Background(), kioskOpenRequest{Mode: "view"}, "Halle 3")
 	if strings.Contains(out.Message, "seit") || strings.Contains(out.Message, "()") || out.Since != "" {
 		t.Errorf("belegt ohne since: %+v", out)
+	}
+}
+
+// Grund des Terminals (503, 422): ohne Steuerzeichen, gekürzt mit „…“; das
+// Escaping übernimmt die Anzeige (hmiEsc), die Meldung ist reiner Text.
+func TestKioskErrorTextCleanAndShort(t *testing.T) {
+	if got := kioskErrorText([]byte(`{"error":"a\tb\r\nc"}`)); got != "a b  c" {
+		t.Errorf("Steuerzeichen: %q", got)
+	}
+	long := strings.Repeat("ä", 500)
+	got := kioskErrorText([]byte(`{"error":"` + long + `"}`))
+	if n := len([]rune(got)); n != 200 || !strings.HasSuffix(got, "…") {
+		t.Errorf("Kürzung: %d %q", n, got)
+	}
+	out := kioskMapOpen("Halle 3", 503, []byte(`{"error":"`+long+`"}`), nil)
+	if out.Kind != "not_ready" || !strings.Contains(out.Message, "ääää…") {
+		t.Errorf("503 lang: %+v", out)
+	}
+	out = kioskMapOpen("Halle 3", 422, []byte(`{"error":"Das Ziel ist dieses Terminal selbst."}`), nil)
+	if strings.HasSuffix(out.Message, "..") || !strings.HasSuffix(out.Message, "selbst.") {
+		t.Errorf("422 Satzende: %q", out.Message)
+	}
+	if got := kioskErrorText([]byte(`{"error":"x"`)); got != "" {
+		t.Errorf("kein JSON: %q", got)
 	}
 }
 
@@ -391,6 +417,15 @@ func TestKioskLabel(t *testing.T) {
 	}
 	if got := kioskLabel("A\tB\n", "C\x00"); strings.ContainsAny(got, "\t\n\x00") {
 		t.Errorf("Steuerzeichen: %q", got)
+	}
+	// Format- und Trennzeichen (Cf, Zl, Zp) lehnt das Terminal ab (422): Weiches
+	// Trennzeichen und Nullbreite fallen weg, Zeilen-/Absatztrenner werden Leerzeichen.
+	shy, zwsp, ls, ps, rlo, bom, zwj := string(rune(0xad)), string(rune(0x200b)), string(rune(0x2028)), string(rune(0x2029)), string(rune(0x202e)), string(rune(0xfeff)), string(rune(0x200d))
+	if got := kioskLabel("Pres"+shy+"se"+zwsp+" 3"+ls+"Linie"+ps+"A", "Mo"+rlo+"Tor"+bom); got != "Presse 3 Linie A / MoTor" {
+		t.Errorf("Format-/Trennzeichen: %q", got)
+	}
+	if got := kioskUserName("J"+zwj+"örg", "Mü"+shy+"ßig", ""); got != "Jörg Müßig" {
+		t.Errorf("Benutzer mit Formatzeichen: %q", got)
 	}
 	if got := kioskLabel("", ""); got == "" {
 		t.Error("leeres Label (Terminal verlangt eines)")

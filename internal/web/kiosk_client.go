@@ -250,14 +250,20 @@ type kioskHTTPError struct {
 
 func (e *kioskHTTPError) Error() string { return fmt.Sprintf("HTTP %d %s", e.Code, e.Text) }
 
+// kioskErrorText: Feld „error“ der Antwort als reiner Text ohne Steuerzeichen,
+// höchstens 200 Zeichen (gekürzt mit „…“). Escapen übernimmt die Anzeige.
 func kioskErrorText(b []byte) string {
 	var x struct {
 		Error string `json:"error"`
 	}
-	if json.Unmarshal(b, &x) == nil {
-		return kioskClip(x.Error, 200)
+	if json.Unmarshal(b, &x) != nil {
+		return ""
 	}
-	return ""
+	s := kioskCleanText(x.Error)
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:199]) + "…"
+	}
+	return s
 }
 
 func (c *kioskClient) status(ctx context.Context) (kioskStatus, error) {
@@ -347,15 +353,29 @@ func kioskMapOpen(terminal string, code int, body []byte, err error) kioskOutcom
 		if t := kioskErrorText(body); t != "" {
 			out.Message += ": " + t
 		}
-		out.Message += "."
+		out.Message = kioskSentence(out.Message)
 	case http.StatusTooManyRequests:
 		out.Kind, out.Message = "rate_limited", "Terminal "+q+" sperrt PDH nach zu vielen Fehlversuchen mit falschem Schlüssel. Bitte später erneut versuchen und den Schlüssel unter Kiosk-Terminals prüfen."
 	case http.StatusServiceUnavailable:
-		out.Kind, out.Message = "not_ready", "Terminal "+q+" ist gerade nicht bereit (Wartung, Sicherung oder eine Sitzung startet). Bitte gleich noch einmal versuchen."
+		// Das Terminal nennt den Grund (Wartung, Sicherung, HMI nicht erreichbar …).
+		out.Kind = "not_ready"
+		if t := kioskErrorText(body); t != "" {
+			out.Message = kioskSentence("Terminal " + q + " ist gerade nicht bereit: " + t)
+		} else {
+			out.Message = "Terminal " + q + " ist gerade nicht bereit (Wartung, Sicherung oder eine Sitzung startet). Bitte gleich noch einmal versuchen."
+		}
 	default:
 		out.Kind, out.Message = "error", fmt.Sprintf("Terminal %s hat mit einem Fehler geantwortet (HTTP %d).", q, code)
 	}
 	return out
+}
+
+// kioskSentence: Satzende ergänzen, ohne einen Punkt (oder „…“) zu verdoppeln.
+func kioskSentence(s string) string {
+	if strings.HasSuffix(s, ".") || strings.HasSuffix(s, "!") || strings.HasSuffix(s, "?") {
+		return s
+	}
+	return s + "."
 }
 
 // kioskStatusMessage: Ergebnis von „Verbindung prüfen“.
@@ -423,11 +443,16 @@ func kioskLabel(plantPath, hmiName string) string {
 	return p + sep + n
 }
 
-// kioskCleanText: Steuerzeichen durch Leerzeichen ersetzen, Rand kürzen.
+// kioskCleanText: Steuer-, Zeilen- und Absatztrennzeichen durch Leerzeichen
+// ersetzen, Formatzeichen (Unicode Cf: weiches Trennzeichen, Nullbreite,
+// Bidi-Steuerung) entfernen, Rand kürzen. Das Terminal lehnt beides ab (422).
 func kioskCleanText(s string) string {
 	return strings.TrimSpace(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		switch {
+		case unicode.IsControl(r), unicode.In(r, unicode.Zl, unicode.Zp):
 			return ' '
+		case unicode.Is(unicode.Cf, r):
+			return -1
 		}
 		return r
 	}, s))

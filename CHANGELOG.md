@@ -16,6 +16,7 @@ im Kapitel „Versionen & Updates“ an.
 - Kiosk-Terminals: Im Reiter HMI einer Anlage öffnet „Am Terminal zeigen“ das HMI direkt auf dem Bildschirm des hmi-kiosk-Terminals am Bedienplatz, „Am Terminal bedienen“ mit Tastatur und Maus (nur wo Bedienen erlaubt ist); ist das Terminal belegt, nennt PDH das laufende HMI und seit wann.
 - Neue Verwaltung „Kiosk-Terminals“ (Core-Einstellungen und Navigation): Terminals mit Adresse, Schlüssel und Fingerabdruck anlegen, ändern, löschen und mit „Verbindung prüfen“ testen; in den Stammdaten einer Anlage wählst du ihr Kiosk-Terminal.
 - Befehle an ein Terminal stehen unter „Letzte Zugriffe“ des HMI mit dem Namen des Terminals.
+- Ist das Terminal gerade nicht bereit, zeigt PDH den Grund, den das Terminal nennt (z. B. Wartung, Sicherung oder HMI vom Terminal aus nicht erreichbar).
 - Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
 
 ### Sicherheit
