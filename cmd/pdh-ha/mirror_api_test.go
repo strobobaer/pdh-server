@@ -135,7 +135,7 @@ func TestEnvSum(t *testing.T) {
 		return p
 	}
 	base := write("PDH_PORT=8080\nSECRET=abc\n")
-	want := envSum(base, nil)
+	want := envSum(base)
 	if want == "" {
 		t.Fatal("keine Summe")
 	}
@@ -149,9 +149,10 @@ func TestEnvSum(t *testing.T) {
 		"Ausfallschutz-Schlüssel PDH_HA_*":                "PDH_PORT=8080\nSECRET=abc\nPDH_HA_SOCKET=/x\nPDH_HA_ANDERES=1\n",
 		"Wert eines ausgenommenen Schlüssels anders":      "PDH_PORT=8080\nSECRET=abc\nPDH_UPDATE_BRANCH=main\nPDH_SERVER_HOST=x\n",
 		"Zeilen ohne Gleichheitszeichen werden ignoriert": "PDH_PORT=8080\nkaputt\nSECRET=abc\n",
+		"Token des Update-Agenten (je Server)":            "PDH_PORT=8080\nSECRET=abc\nPDH_UPDATE_AGENT_TOKEN=t1\n",
 	}
 	for name, body := range same {
-		if got := envSum(write(body), nil); got != want {
+		if got := envSum(write(body)); got != want {
 			t.Errorf("%s: Summe %s statt %s", name, got, want)
 		}
 	}
@@ -160,17 +161,57 @@ func TestEnvSum(t *testing.T) {
 		"zusätzlicher Wert":   "PDH_PORT=8080\nSECRET=abc\nNEU=1\n",
 		"fehlender Schlüssel": "PDH_PORT=8080\n",
 	} {
-		if got := envSum(write(body), nil); got == want {
+		if got := envSum(write(body)); got == want {
 			t.Errorf("%s: Summe unverändert", name)
 		}
 	}
-	// zusätzliche Ausnahmen des Aufrufers
-	if envSum(write("PDH_PORT=8080\nSECRET=abc\nX=1\n"), []string{"X"}) != want {
-		t.Error("ignore-Liste wirkt nicht")
-	}
 	// unlesbar: leer (kein Hinweis auf der Gegenseite)
-	if got := envSum(filepath.Join(dir, "gibt-es-nicht"), nil); got != "" {
+	if got := envSum(filepath.Join(dir, "gibt-es-nicht")); got != "" {
 		t.Errorf("unlesbar: %q", got)
+	}
+}
+
+// I2 (R69): /etc/pdh/pdh.env zählt mit; sie wird nach .env gelesen und gewinnt
+// wie beim Dienst pdh. Fehlt sie, zählt nur die .env.
+func TestEnvSumWithPdhEnv(t *testing.T) {
+	dir := t.TempDir()
+	put := func(name, s string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	env := put(".env", "PDH_PORT=8080\nSECRET=abc\n")
+	only := envSum(env)
+	missing := filepath.Join(dir, "fehlt.env")
+	if got := envSum(env, missing); got != only {
+		t.Errorf("fehlende pdh.env: %s statt %s", got, only)
+	}
+	pe := put("pdh.env", "PDH_NEXTCLOUD_URL=https://nc\n")
+	withNC := envSum(env, pe)
+	if withNC == only {
+		t.Error("Wert aus pdh.env ändert die Summe nicht")
+	}
+	// Token des Update-Agenten in pdh.env ist serverbezogen und zählt nicht
+	put("pdh.env", "PDH_NEXTCLOUD_URL=https://nc\nPDH_UPDATE_AGENT_TOKEN=anders\n")
+	if got := envSum(env, pe); got != withNC {
+		t.Error("PDH_UPDATE_AGENT_TOKEN in pdh.env ändert die Summe")
+	}
+	// pdh.env überschreibt .env: gleicher wirksamer Stand, gleiche Summe
+	put("pdh.env", "SECRET=abc\nPDH_NEXTCLOUD_URL=https://nc\n")
+	if got := envSum(env, pe); got != withNC {
+		t.Error("gleicher wirksamer Wert in beiden Dateien ändert die Summe")
+	}
+	put("pdh.env", "SECRET=neu\nPDH_NEXTCLOUD_URL=https://nc\n")
+	if got := envSum(env, pe); got == withNC {
+		t.Error("pdh.env überschreibt .env nicht")
+	}
+	// Standardverdrahtung liest <repo>/.env und <PDH_HA_PDH_ETC>/pdh.env
+	t.Setenv("PDH_HA_PDH_ETC", dir)
+	w := mirrorWiring{repo: dir}.fill()
+	if got := w.fnEnv(); got != envSum(env, pe) {
+		t.Errorf("Standardverdrahtung ohne pdh.env: %s", got)
 	}
 }
 

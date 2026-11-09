@@ -45,41 +45,48 @@ const (
 var mirrorStopWait = 5 * time.Second
 
 // envIgnore: Schlüssel der .env, die auf beiden Servern verschieden sein dürfen.
-// Alle PDH_HA_* gelten immer als ausgenommen.
-var envIgnore = []string{"PDH_UPDATE_BRANCH", "PDH_UPDATE_TOKEN", "PDH_SERVER_HOST", "PDH_DATABASE_HOST"}
+// Alle PDH_HA_* gelten immer als ausgenommen. Das Token des Update-Agenten ist
+// je Server zufällig und gehört nur in <repo>/.env (I2/R69).
+var envIgnore = []string{"PDH_UPDATE_BRANCH", "PDH_UPDATE_TOKEN", "PDH_SERVER_HOST", "PDH_DATABASE_HOST", "PDH_UPDATE_AGENT_TOKEN"}
 
-// envSum liefert eine Prüfsumme über die Schlüssel=Wert-Paare der .env ohne
-// serverbezogene Schlüssel (envIgnore, ignore und PDH_HA_*). Reihenfolge,
-// Kommentare und Leerzeilen ändern sie nicht. Eine unlesbare Datei gibt "".
-func envSum(path string, ignore []string) string {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
+// envSum liefert eine Prüfsumme über die Schlüssel=Wert-Paare der übergebenen
+// Dateien ohne serverbezogene Schlüssel (envIgnore und PDH_HA_*). Spätere
+// Dateien überschreiben frühere wie beim Dienst pdh (<repo>/.env, dann
+// /etc/pdh/pdh.env); eine fehlende Datei zählt nicht. Reihenfolge der Zeilen,
+// Kommentare und Leerzeilen ändern die Summe nicht. Ist keine Datei lesbar: "".
+func envSum(paths ...string) string {
 	skip := map[string]bool{}
 	for _, k := range envIgnore {
 		skip[k] = true
 	}
-	for _, k := range ignore {
-		skip[k] = true
-	}
 	kv := map[string]string{}
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+	read := false
+	for _, path := range paths {
+		b, err := os.ReadFile(path)
+		if err != nil {
 			continue
 		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		k, v, ok := strings.Cut(line, "=")
-		k = strings.TrimSpace(k)
-		if !ok || k == "" || skip[k] || strings.HasPrefix(k, "PDH_HA_") {
-			continue
+		read = true
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+			k, v, ok := strings.Cut(line, "=")
+			k = strings.TrimSpace(k)
+			if !ok || k == "" || skip[k] || strings.HasPrefix(k, "PDH_HA_") {
+				continue
+			}
+			v = strings.TrimSpace(v)
+			if n := len(v); n >= 2 && (v[0] == '"' && v[n-1] == '"' || v[0] == '\'' && v[n-1] == '\'') {
+				v = v[1 : n-1]
+			}
+			kv[k] = v
 		}
-		v = strings.TrimSpace(v)
-		if n := len(v); n >= 2 && (v[0] == '"' && v[n-1] == '"' || v[0] == '\'' && v[n-1] == '\'') {
-			v = v[1 : n-1]
-		}
-		kv[k] = v
+	}
+	if !read {
+		return ""
 	}
 	keys := make([]string, 0, len(kv))
 	for k := range kv {
@@ -150,8 +157,8 @@ func (e mirrorWiring) fill() mirrorWiring {
 		e.now = time.Now
 	}
 	if e.fnEnv == nil {
-		repo := e.repo
-		e.fnEnv = func() string { return envSum(filepath.Join(repo, ".env"), nil) }
+		repo, etc := e.repo, pdhEtc()
+		e.fnEnv = func() string { return envSum(filepath.Join(repo, ".env"), filepath.Join(etc, "pdh.env")) }
 	}
 	if e.fnNC == nil {
 		run := e.run

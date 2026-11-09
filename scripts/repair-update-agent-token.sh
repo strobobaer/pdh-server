@@ -5,8 +5,11 @@
 #   sudo bash scripts/repair-update-agent-token.sh
 #
 # Maßgeblich ist das Token aus der Datei des Agenten (<PDH-Verzeichnis>/.env,
-# siehe install-update-agent.sh). Jede weitere Datei, aus der der Dienst pdh
-# Umgebungsvariablen liest (z. B. /etc/pdh/pdh.env), bekommt denselben Wert.
+# siehe install-update-agent.sh). Das Token gehört nur dorthin: aus
+# /etc/pdh/pdh.env wird es entfernt, denn diese Datei wird im Verbund mit
+# Ausfallschutz auf den passiven Server gespiegelt und das Token ist je Server
+# verschieden. Jede weitere Datei, aus der der Dienst pdh Umgebungsvariablen
+# liest, bekommt denselben Wert wie die .env.
 # Ein in der Datenbank gespeicherter Wert wird ab Version 0.55.0 ignoriert und
 # beim Start entfernt (Migration 131). Das Token wird nicht ausgegeben.
 set -Eeuo pipefail
@@ -51,12 +54,24 @@ fi
 # Dateien, aus denen der Dienst pdh liest
 mapfile -t files < <(systemctl show -p EnvironmentFiles --value pdh 2>/dev/null | tr ' ' '\n' | sed -n 's/^-\{0,1\}\(\/[^ (]*\).*/\1/p' | sort -u)
 [[ -f /etc/pdh/pdh.env ]] && files+=("/etc/pdh/pdh.env")
+# Liest der Dienst pdh die .env nicht, bleibt das Token in pdh.env (nur angeglichen).
+reads_agent_env=0
+for f in "${files[@]}"; do
+  [[ "$(readlink -f "$f")" == "$(readlink -f "$agent_env")" ]] && reads_agent_env=1
+done
 fixed=0
 for f in $(printf '%s\n' "${files[@]}" | sort -u); do
   [[ -f "$f" && "$(readlink -f "$f")" != "$(readlink -f "$agent_env")" ]] || continue
   cur="$(get_token "$f")"
   [[ -z "$cur" ]] && continue
-  if [[ "$cur" != "$token" ]]; then
+  if [[ $reads_agent_env -eq 1 && "$(readlink -f "$f")" == "$(readlink -f /etc/pdh/pdh.env)" ]]; then
+    # gespiegelte Datei: Token nur in der .env (sonst bekommt der passive
+    # Server das Token des aktiven und sein Agent antwortet mit 401)
+    log "$f: Token entfernt (gehört nur in $agent_env)"
+    cp -a "$f" "$f.bak.agenttoken.$(date +%Y%m%d%H%M%S)"
+    sed -i '/^PDH_UPDATE_AGENT_TOKEN=/d' "$f"
+    fixed=1
+  elif [[ "$cur" != "$token" ]]; then
     log "$f: abweichendes Token ($(fp "$cur")) → angeglichen"
     cp -a "$f" "$f.bak.agenttoken.$(date +%Y%m%d%H%M%S)"
     sed -i '/^PDH_UPDATE_AGENT_TOKEN=/d' "$f"
