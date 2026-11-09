@@ -599,6 +599,20 @@ func TestHAMirrorRecvErrShown(t *testing.T) {
 	}
 }
 
+// I3: Weichen die Benutzerkennungen ab, zeigt die Karte auf beiden Servern „gestört“ mit beiden Nummern.
+func TestHAMirrorUIDWarnShown(t *testing.T) {
+	warn := "Benutzerkennung pdh: hier 998, Partner 997 – vor dem Spiegeln angleichen"
+	for _, role := range []string{"aktiv", "passiv"} {
+		out := mirrorCard(t, mirrorStatusJSON(t, role, nil, map[string]any{"uid_warn": warn}), true, true, "")
+		if !strings.Contains(out, "</span> gestört</span>") {
+			t.Errorf("%s: Kopf nicht „gestört“: %s", role, out[:min(len(out), 2000)])
+		}
+		if !strings.Contains(out, "Spiegelung angehalten, die Benutzerkennungen weichen ab") || !strings.Contains(out, "hier 998, Partner 997") {
+			t.Errorf("%s: Hinweis fehlt: %s", role, out)
+		}
+	}
+}
+
 // R66: Fehlermeldungen im Zustand „gestört“ stehen in Textfarbe (Kontrast über 4,5 in beiden Stilen,
 // hell und dunkel) mit roter Markierung, nicht in Rot auf rötlichem Grund.
 func TestHAMirrorErrorReadable(t *testing.T) {

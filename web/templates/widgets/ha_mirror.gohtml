@@ -5,7 +5,7 @@
   {{else if $m.Running}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "Abgleich läuft"}}</span>
   {{else if not $m.FirstDone}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "Erstabgleich"}}</span>
   {{else if $m.WaitConfirm}}<span class="vp-state off"><span class="vp-dot wait"></span> {{t "wartet auf Bestätigung"}}</span>
-  {{else if or $m.Err $m.WatchErr $m.RecvErr}}<span class="vp-state off"><span class="vp-dot"></span> {{t "gestört"}}</span>
+  {{else if or $m.Err $m.WatchErr $m.RecvErr $m.UIDWarn}}<span class="vp-state off"><span class="vp-dot"></span> {{t "gestört"}}</span>
   {{else if $m.Active}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "bereit"}}</span>
   {{else}}<span class="vp-state ok"><span class="vp-dot on"></span> {{t "empfängt"}}</span>{{end}}</div>
 
@@ -38,6 +38,7 @@
 {{if $m.On}}
 {{if $m.Err}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Der letzte Abgleich ist fehlgeschlagen"}}: {{$m.Err}}</div>{{end}}
 {{if $m.RecvErr}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Der Empfang wird abgelehnt"}}: {{$m.RecvErr}}</div>{{end}}
+{{if $m.UIDWarn}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-users"></i> {{t "Spiegelung angehalten, die Benutzerkennungen weichen ab"}}: {{$m.UIDWarn}}</div>{{end}}
 {{if $m.WatchErr}}<div class="vp-msg err ha-mirror-err"><i class="ti ti-alert-triangle"></i> {{t "Die Sofort-Übertragung ist gestört"}}: {{$m.WatchErr}}</div>{{end}}
 {{if $m.Slow}}<div class="vp-msg err"><i class="ti ti-hourglass"></i> {{t "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen."}}</div>{{end}}
 {{if $m.WatchLimited}}<div class="vp-msg err"><i class="ti ti-alert-triangle"></i> {{t "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:"}}<span class="vp-cmd"><code class="vp-key">sudo sysctl -w fs.inotify.max_user_watches=524288</code></span></div>{{end}}

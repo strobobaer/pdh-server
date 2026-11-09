@@ -1944,7 +1944,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-fig-dateispiegelung"}}
   <div class="hb-howto"><b><i class="ti ti-player-play"></i> So schaltest du die Datei-Spiegelung ein</b> (Recht „Datei-Spiegelung einstellen“)
     <ol class="hb-steps">
-      <li>Vorher prüfen: Auf beiden Servern zeigen <code>id -u pdh</code> und <code>id -u www-data</code> dieselbe Zahl – die Spiegelung überträgt Besitzer als Nummer. Der Partner braucht so viel freien Platz, wie die Quellen groß sind; was dort schon liegt, rechnet die Prüfung nicht mit.</li>
+      <li>Vorher prüfen: Auf beiden Servern zeigen <code>id -u pdh</code> und <code>id -u www-data</code> dieselbe Zahl – die Spiegelung überträgt Besitzer als Nummer. Weichen sie ab, hält die Spiegelung die betroffenen Ordner an, meldet einmal einen Alarm, und die Karte zeigt beide Nummern („Benutzerkennung pdh: hier 998, Partner 997“); erst nach dem Angleichen läuft sie weiter. Der Partner braucht so viel freien Platz, wie die Quellen groß sind; was dort schon liegt, rechnet die Prüfung nicht mit.</li>
       <li>Am <b>aktiven</b> Server <b>Server-Einstellungen → Ausfallschutz</b> öffnen, Karte <b>Datei-Spiegelung</b>.</li>
       <li><b>Dateien auf den zweiten Server spiegeln</b> ankreuzen und <b>Speichern</b>. Die übrigen Werte passen meist: Abstand des Abgleichs 60 s, Papierkorb 14 Tage, Alarm nach 5 min, Frist für den letzten Abgleich 120 s, Bandbreite unbegrenzt.</li>
       <li>Der <b>Erstabgleich</b> beginnt; die Karte zeigt den Fortschritt in Prozent. Bis er fertig ist, lehnt der Server <b>Rollen tauschen</b> ab („Erstabgleich der Dateien läuft – Rollentausch erst danach möglich“), und ein Update gilt nicht als „alles grün“.</li>

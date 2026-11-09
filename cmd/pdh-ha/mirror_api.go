@@ -134,6 +134,7 @@ type mirrorWiring struct {
 	now       func() time.Time
 	fnEnv     func() string                             // Summe der .env
 	fnNC      func(context.Context, ha.Settings) string // Nextcloud-Fassung
+	fnUIDs    func() string                             // Benutzerkennungen pdh/www-data (I3)
 	scanEvery time.Duration
 	loopEvery time.Duration
 	tune      func(*mirrorDeps, *mirrorInboxDeps) // Test-Einhängepunkt
@@ -164,6 +165,9 @@ func (e mirrorWiring) fill() mirrorWiring {
 		run := e.run
 		e.fnNC = func(ctx context.Context, s ha.Settings) string { return ncVersion(ctx, s.NCAppDir, run) }
 	}
+	if e.fnUIDs == nil {
+		e.fnUIDs = localUIDs
+	}
 	if e.scanEvery <= 0 {
 		e.scanEvery = mirrorScanEvery
 	}
@@ -188,6 +192,7 @@ type mirrorWant struct {
 	PartnerDataID string
 	PartnerProven []string // Quellen mit eigenem Beleg des Empfängers (R47)
 	PartnerWait   []string // Quellen, deren Ziel beim Empfänger nicht leer war
+	PartnerUIDs   string   // Benutzerkennungen des Partners ("" = alte Version, I3)
 
 	Addr string // mitwandernde Adresse (ohne Präfix), "" = keine
 }
@@ -195,6 +200,7 @@ type mirrorWant struct {
 // mirrorCache: Zahlen aus der Dateiarbeit von scanLoop; der Herzschlag liest nur sie.
 type mirrorCache struct {
 	EnvSum, NCVer string
+	UIDs          string // eigene Benutzerkennungen (I3)
 	TrashB        int64
 	Orphans       int
 	CertCovers    *bool // Zertifikat enthält die mitwandernde Adresse (nil = kein TLS / unbekannt)
@@ -403,6 +409,14 @@ func (rt *mirrorRT) newWorker(partner string) *mirrorWorker {
 			}
 			return 0, false
 		},
+		// I3: eigene Nummern frisch (Arbeiter-Goroutine, nie im Takt), die des Partners aus dem Herzschlag
+		uids: func() (string, string) {
+			w := rt.want.Load()
+			if w == nil || w.PartnerUIDs == "" {
+				return "", ""
+			}
+			return rt.env.fnUIDs(), w.PartnerUIDs
+		},
 	}
 	if rt.env.tune != nil {
 		rt.env.tune(&d, nil)
@@ -600,6 +614,7 @@ func (rt *mirrorRT) scan(ctx context.Context) {
 	if w.On {
 		c := &mirrorCache{At: now}
 		c.EnvSum = rt.env.fnEnv()
+		c.UIDs = rt.env.fnUIDs()
 		if w.Settings.MirrorNextcloud {
 			c.NCVer = rt.env.fnNC(ctx, w.Settings)
 		}
@@ -848,7 +863,7 @@ func (d *daemon) mirrorTickLocked(ctx context.Context, before, after ha.Role, s 
 	w := &mirrorWant{On: s.MirrorOn && partner != "" && !d.removed, Role: after, Term: d.p.Term, Settings: s, Partner: partner}
 	if pv, ok := views[partner]; ok && partner != "" && pv.seen() && pv.Last.T == "hb" {
 		w.PartnerSeen, w.PartnerRole, w.PartnerFirst, w.PartnerDisk, w.PartnerDataID = true, ha.Role(pv.Last.Role), pv.Last.MirrorFirst, pv.Last.Disk, pv.Last.MirrorDataID
-		w.PartnerProven, w.PartnerWait = pv.Last.MirrorProven, pv.Last.MirrorWait
+		w.PartnerProven, w.PartnerWait, w.PartnerUIDs = pv.Last.MirrorProven, pv.Last.MirrorWait, pv.Last.UIDs
 	}
 	if a := d.cl.Access; a.VIPOn && a.VIP != "" {
 		w.Addr, _, _ = strings.Cut(a.VIP, "/")
@@ -876,7 +891,7 @@ func (d *daemon) mirrorHBLocked(m *message) {
 		m.MirrorDataID, m.MirrorProven, m.MirrorWait = ib.dataID(), ib.proofs(), ib.waits()
 	}
 	if c := rt.cache.Load(); c != nil {
-		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans = c.EnvSum, c.NCVer, c.TrashB, c.Orphans
+		m.EnvSum, m.NCVer, m.MirrorTrashB, m.MirrorOrphans, m.UIDs = c.EnvSum, c.NCVer, c.TrashB, c.Orphans, c.UIDs
 	}
 }
 
@@ -918,6 +933,8 @@ type apiMirror struct {
 	WaitConfirm []string `json:"wait_confirm,omitempty"`
 	// Am passiven Server: zuletzt abgelehnter Empfang je Quelle, bis ein Lauf gelingt (R66)
 	RecvErr string `json:"recv_err,omitempty"`
+	// Benutzerkennungen weichen ab: betroffene Quellen angehalten (I3)
+	UIDWarn string `json:"uid_warn,omitempty"`
 }
 
 // sameOrEmpty: gleich, oder eine Seite weiß es nicht (kein Hinweis).
@@ -1015,6 +1032,10 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 	if partnerSeen {
 		am.EnvSame = sameOrEmpty(cache.EnvSum, pm.EnvSum)
 		am.NCVerSame = sameOrEmpty(cache.NCVer, pm.NCVer)
+		if mm := uidMismatch(cache.UIDs, pm.UIDs); len(mm) > 0 {
+			am.UIDWarn = uidWarnText(mm)
+			st.Warnings = append(st.Warnings, am.UIDWarn)
+		}
 	}
 	if !am.EnvSame {
 		st.Warnings = append(st.Warnings, "Die Einstellungsdatei .env ist auf den beiden Servern verschieden")
@@ -1190,6 +1211,9 @@ func printMirrorStatus(w io.Writer, m *apiMirror) {
 	}
 	if m.WatchErr != "" {
 		fmt.Fprintf(w, "  Sofort-Übertragung: %s\n", m.WatchErr)
+	}
+	if m.UIDWarn != "" {
+		fmt.Fprintf(w, "  Angehalten: %s\n", m.UIDWarn)
 	}
 	if len(m.WaitConfirm) > 0 {
 		fmt.Fprintf(w, "  Wartet auf Bestätigung, nichts wird gelöscht: %s (sudo pdh-ha mirror confirm)\n", strings.Join(m.WaitConfirm, ", "))

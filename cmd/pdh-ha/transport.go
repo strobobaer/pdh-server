@@ -119,6 +119,7 @@ type message struct {
 	MirrorDataID  string    `json:"mirror_data_id,omitempty"` // Kennung der Empfangsablage (ändert sich bei einem Ersatzserver)
 	MirrorProven  []string  `json:"mirror_proven,omitempty"`  // Quellen mit eigenem Beleg des Empfängers (R47)
 	MirrorWait    []string  `json:"mirror_wait,omitempty"`    // Quellen, deren Ziel nicht leer war: warten auf Bestätigung
+	UIDs          string    `json:"uids,omitempty"`           // Benutzerkennungen „pdh=…,www-data=…“ (I3; fehlt bei älteren Versionen)
 }
 
 var deliverTypes = map[string]bool{

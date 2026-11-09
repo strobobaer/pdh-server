@@ -86,6 +86,7 @@ type mirrorDeps struct {
 	partnerWait  func(label string) bool               // Empfänger meldet „wartet auf Bestätigung“
 	ident        func(label, idPath string) idCheck    // Kennung des Quellordners prüfen (R57; nil = keine Kennung: Tests)
 	identRenew   func(label, idPath string) error      // Bestätigung: neue Kennung schreiben (R58)
+	uids         func() (own, partner string)          // Nummern von pdh/www-data, eigene und des Partners (I3; nil = keine Prüfung)
 }
 
 type mirrorWorker struct {
@@ -104,6 +105,7 @@ type mirrorWorker struct {
 	failSince time.Time
 	alarmed   bool
 	alarmAt   map[string]time.Time
+	uidAlarm  string // zuletzt gemeldete Abweichung der Benutzerkennungen (einmaliger Alarm)
 
 	watch       *mirrorWatch // Sofort-Übertragung (nil = läuft nicht)
 	watchCancel context.CancelFunc
@@ -870,6 +872,7 @@ type mirrorOutcome struct {
 	skipped bool // Quelle fehlt oder wird bewusst nicht gespiegelt
 	ok      bool
 	err     error
+	held    bool // angehalten wegen abweichender Benutzerkennung (eigener Alarm, kein „gestört“)
 }
 
 func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
@@ -912,6 +915,7 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 	dataReset := w.st.DataReset
 	w.mu.Unlock()
 	firstDone := mirrorFirstDone(srcs, per0, present)
+	holds := w.uidHolds() // I3: Quellen mit abweichender Benutzerkennung laufen nicht
 
 	var out []mirrorOutcome
 	var saw = map[string]bool{}
@@ -942,6 +946,10 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			}
 			snap := mw.snapshot()[m.Label]
 			if len(snap) == 0 {
+				continue
+			}
+			if h := holds[m.Label]; h != "" {
+				out = append(out, mirrorOutcome{label: m.Label, err: errors.New(h), held: true})
 				continue
 			}
 			if err := w.sendPaths(rctx, m, term, s, sortedKeys(snap)); err != nil {
@@ -987,6 +995,8 @@ func (w *mirrorWorker) runOnce(ctx context.Context, wait, final bool) error {
 			w.alarm(o.err.Error())
 		case !present[m.Label]:
 			o.skipped = true
+		case holds[m.Label] != "":
+			o.err, o.held = errors.New(holds[m.Label]), true
 		case m.Label == "nextcloud-data" && !w.d.exists(path.Join(m.Path, ".ocdata")):
 			o.err = fmt.Errorf("Quelle %s ist leer – nicht gespiegelt", m.Label)
 			w.alarm(o.err.Error())
@@ -1078,6 +1088,7 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 
 	present := w.presence(srcs)
 	var first error = runErr
+	var failed error // erster Fehler, der zum Alarm „gestört“ zählt (angehaltene Quellen melden sich selbst)
 	var events []ha.Event
 	w.mu.Lock()
 	st := &w.st
@@ -1094,6 +1105,9 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 			}
 			if first == nil {
 				first = o.err
+			}
+			if failed == nil && !o.held {
+				failed = o.err
 			}
 		case o.skipped:
 			ls.Err, ls.Skipped = "", true
@@ -1114,7 +1128,10 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 		}
 	} else {
 		st.Err = first.Error()
-		if w.failSince.IsZero() {
+		switch {
+		case failed == nil && runErr == nil:
+			w.failSince = time.Time{} // nur angehaltene Quellen: kein „gestört“
+		case w.failSince.IsZero():
 			w.failSince = start
 		}
 	}
@@ -1122,7 +1139,7 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 	if w.st.FirstDone {
 		w.st.DataReset = false
 	}
-	alarmNow := first != nil && runErr == nil && end.Sub(w.failSince) >= mirrorAlarmAfter(s)
+	alarmNow := failed != nil && runErr == nil && end.Sub(w.failSince) >= mirrorAlarmAfter(s)
 	if alarmNow {
 		w.alarmed = true
 	}
@@ -1133,7 +1150,7 @@ func (w *mirrorWorker) finish(rctx, ctx context.Context, start time.Time, s ha.S
 		w.d.ev.add(e)
 	}
 	if alarmNow {
-		w.alarmOnce("fail", "Spiegelung gestört: "+first.Error())
+		w.alarmOnce("fail", "Spiegelung gestört: "+failed.Error())
 	}
 	w.save(snap)
 	return first
@@ -1324,6 +1341,9 @@ func (w *mirrorWorker) runPathsOpt(ctx context.Context, label string, paths []st
 	m, ok := ha.MirrorSourceByLabel(w.d.repo, s, label)
 	if !ok {
 		return fmt.Errorf("Unbekannte Quelle %s", label)
+	}
+	if h := w.uidHolds()[label]; h != "" {
+		return errors.New(h)
 	}
 	err := w.sendPaths(rctx, m, term, s, paths)
 	if err != nil && rctx.Err() != nil && ctx.Err() == nil {
