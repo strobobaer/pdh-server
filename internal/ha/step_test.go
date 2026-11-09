@@ -1333,7 +1333,7 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			check:   holdIs(0),
+			check: holdIs(0),
 		},
 		{
 			name: "aktiv, partner mit höherer amtszeit",
@@ -1388,7 +1388,7 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			check:   holdIs(0),
+			check: holdIs(0),
 		},
 		{
 			name: "trio 30 s mit zeuge",
@@ -1398,7 +1398,7 @@ func TestStepBoot(t *testing.T) {
 				return in
 			},
 			role: Active, term: 1,
-			check:   holdIs(0),
+			check: holdIs(0),
 		},
 		{
 			name: "trio 30 s ohne zeuge",
@@ -1418,7 +1418,7 @@ func TestStepBoot(t *testing.T) {
 			name: "duo 60 s mit gateway",
 			in:   func() Input { return held(Duo, 60*sec) },
 			role: Active, term: 1,
-			check:   holdIs(0),
+			check: holdIs(0),
 		},
 		{
 			name: "duo 60 s ohne gateway",

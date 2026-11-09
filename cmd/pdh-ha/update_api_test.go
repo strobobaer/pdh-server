@@ -27,7 +27,7 @@ func updAPI(t *testing.T) (*daemon, *fakeNet, string) {
 	d, fn := upActive(t)
 	d.commit = "x0"
 	fn.setView("b", upPeerView("x0", ""))
-	d.tick(context.Background()) // Sicht auf den Partner übernehmen
+	d.tick(context.Background())                         // Sicht auf den Partner übernehmen
 	waitFor(t, 5*time.Second, "Aktionen", d.actionsIdle) // Rücknahme im zweiten Takt (R51)
 	dir, err := os.MkdirTemp("", "ha")
 	if err != nil {
