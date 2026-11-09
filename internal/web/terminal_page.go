@@ -55,17 +55,17 @@ type terminalInfo struct {
 
 // terminalPage: Daten für terminal.gohtml.
 type terminalPage struct {
-	Mode    string // schoner | info | neu
-	Idle    int    // Rückkehrzeit in Sekunden (0 = kein Timer)
-	NoInfra bool
-	NoPerm   bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
+	Mode       string // schoner | info | neu
+	Idle       int    // Rückkehrzeit in Sekunden (0 = kein Timer)
+	NoInfra    bool
+	NoPerm     bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
 	CanFaults  bool
 	CanTickets bool
 	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
-	InfraID string
-	Name    string
-	Path    string
-	Info    terminalInfo
+	InfraID    string
+	Name       string
+	Path       string
+	Info       terminalInfo
 }
 
 // FaultsMore/TicketsMore: nicht angezeigte offene Einträge.

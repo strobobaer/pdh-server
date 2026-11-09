@@ -323,7 +323,9 @@ func TestAnlagenterminalGlobalSettingAuthz(t *testing.T) {
 		r.ServeHTTP(rec, req)
 		return rec
 	}
-	t.Cleanup(func() { _, _ = e.pool.Exec(context.Background(), `DELETE FROM app_settings WHERE key = $1`, KeyTerminalIdle) })
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM app_settings WHERE key = $1`, KeyTerminalIdle)
+	})
 	if rec := post("/core/settings/terminal", "idle_seconds=200", rolesOnly); rec.Code != http.StatusForbidden {
 		t.Errorf("nur Rollen verwalten: %d", rec.Code)
 	}
