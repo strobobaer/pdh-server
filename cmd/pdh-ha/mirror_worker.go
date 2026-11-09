@@ -44,6 +44,8 @@ type mirrorLabelState struct {
 
 	ConfirmedFor string `json:"confirmed_for,omitempty"` // am aktiven Server bestätigt, für diese Datenkennung des Empfängers (R47)
 	WaitAlarmed  bool   `json:"wait_alarmed,omitempty"`  // „wartet auf Bestätigung“ ist gemeldet (einmalig, auch über einen Neustart)
+
+	AbsentAtPromote bool `json:"absent_at_promote,omitempty"` // fehlte bei der Übernahme ohne eigenen Beleg: wird beim Erscheinen unbelegt (R63)
 }
 
 type mirrorState struct {
@@ -322,7 +324,7 @@ func mirrorLabelDone(ls mirrorLabelState, present bool) bool {
 // Partner „fertig“ meldet. SawFiles (Schutz vor leerer Quelle) folgt immer dem
 // Beleg; on=false nimmt nur die Übernahme (Adopted) zurück. Schreibt eine Datei:
 // nie aus dem Takt aufrufen.
-func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files bool)) {
+func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files bool), lost func(label string) bool) {
 	w.mu.Lock()
 	srcs := ha.MirrorSources(w.d.repo, w.cfg)
 	changed := false
@@ -336,10 +338,13 @@ func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files
 		if done && files {
 			ls.SawFiles = true
 		}
+		// R63 (U4): zurückgenommen wird nur bei nachweislich fehlendem Beleg (lost), nicht wegen einer
+		// nach dem Neustart noch ungeprüften Kennung. lost=nil: ohne gültigen Beleg zurücknehmen.
+		gone := !done && (lost == nil || lost(m.Label))
 		switch {
 		case on && done && ls.LastOK.IsZero():
 			ls.Adopted = true
-		case ls.Adopted && !(on && done):
+		case ls.Adopted && (!on || gone):
 			ls.Adopted = false
 		}
 		if ls != old {
@@ -361,8 +366,8 @@ func (w *mirrorWorker) adoptFirst(on bool, proof func(label string) (done, files
 func keepOwn(per map[string]mirrorLabelState) map[string]mirrorLabelState {
 	out := map[string]mirrorLabelState{}
 	for l, ls := range per {
-		if ls.SawFiles || ls.Unproven {
-			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven}
+		if ls.SawFiles || ls.Unproven || ls.AbsentAtPromote {
+			out[l] = mirrorLabelState{SawFiles: ls.SawFiles, Unproven: ls.Unproven, AbsentAtPromote: ls.AbsentAtPromote}
 		}
 	}
 	return out
@@ -393,31 +398,45 @@ func (w *mirrorWorker) markPromoted() error {
 // settlePromotion (R25): nach dem Wechsel von passiv auf aktiv gilt jede vorhandene
 // Quelle ohne eigenen Beleg des Empfängers als unbelegt: sie läuft ohne --delete, der
 // Partner behält seine Dateien. Alarm einmal je Quelle. Gespeichert wird vor dem Lauf.
+// R63 (U3): Eine Quelle, die bei der Übernahme fehlt und keinen eigenen Beleg hat, wird vorgemerkt
+// (AbsentAtPromote) und beim Erscheinen unbelegt: Der Beleg des Partners allein gibt nie --delete.
 func (w *mirrorWorker) settlePromotion(srcs []ha.MirrorSource, present map[string]bool) {
 	w.mu.Lock()
-	if !w.st.Promoted {
+	promoted := w.st.Promoted
+	changed := promoted
+	var marked []string
+	for _, m := range srcs {
+		ls := w.st.PerLabel[m.Label]
+		if !promoted && !ls.AbsentAtPromote {
+			continue
+		}
+		old := ls
+		own := false
+		if w.d.proof != nil {
+			own, _ = w.d.proof(m.Label)
+		}
+		switch {
+		case own:
+			ls.AbsentAtPromote = false
+		case !present[m.Label]:
+			ls.AbsentAtPromote = !ls.Unproven
+		default:
+			ls.AbsentAtPromote = false
+			if !ls.Unproven {
+				ls.Unproven, ls.WaitAlarmed = true, true
+				marked = append(marked, m.Label)
+			}
+		}
+		if ls != old {
+			w.st.PerLabel[m.Label] = ls
+			changed = true
+		}
+	}
+	w.st.Promoted = false
+	if !changed {
 		w.mu.Unlock()
 		return
 	}
-	var marked []string
-	for _, m := range srcs {
-		if !present[m.Label] {
-			continue
-		}
-		if w.d.proof != nil {
-			if done, _ := w.d.proof(m.Label); done {
-				continue
-			}
-		}
-		ls := w.st.PerLabel[m.Label]
-		if ls.Unproven {
-			continue
-		}
-		ls.Unproven, ls.WaitAlarmed = true, true
-		w.st.PerLabel[m.Label] = ls
-		marked = append(marked, m.Label)
-	}
-	w.st.Promoted = false
 	snap := copyState(w.st)
 	w.mu.Unlock()
 	w.save(snap)
@@ -491,7 +510,7 @@ func (w *mirrorWorker) mayDelete(label string) (del, confirmed bool) {
 	w.mu.Lock()
 	ls, id := w.st.PerLabel[label], w.st.DataID
 	w.mu.Unlock()
-	if ls.Unproven {
+	if ls.Unproven || ls.AbsentAtPromote {
 		return false, false
 	}
 	if ls.ConfirmedFor != "" && ls.ConfirmedFor == id {
@@ -637,13 +656,16 @@ func (w *mirrorWorker) noteOwnProof(proven []string, note func(label string, fil
 	}
 }
 
-// dropConfirm: Spiegelung aus: Die Bestätigung gilt nicht über den Abschnitt hinaus.
-func (w *mirrorWorker) dropConfirm() {
+// dropOff: Spiegelung aus: Die Bestätigung gilt nicht über den Abschnitt hinaus. R63 (U5): Auch
+// „Erstabgleich fertig“ je Quelle fällt (LastOK, Adopted); nach dem Einschalten greift die
+// Platzprüfung wieder, statt den ganzen Bestand auf ein womöglich nicht eingehängtes Ziel zu
+// schicken. Schreibt eine Datei nur bei Änderung.
+func (w *mirrorWorker) dropOff() {
 	w.mu.Lock()
 	changed := false
 	for l, ls := range w.st.PerLabel {
-		if ls.ConfirmedFor != "" || ls.WaitAlarmed {
-			ls.ConfirmedFor, ls.WaitAlarmed = "", false
+		if ls.ConfirmedFor != "" || ls.WaitAlarmed || !ls.LastOK.IsZero() || ls.Adopted {
+			ls.ConfirmedFor, ls.WaitAlarmed, ls.LastOK, ls.Adopted = "", false, time.Time{}, false
 			w.st.PerLabel[l] = ls
 			changed = true
 		}
@@ -652,6 +674,7 @@ func (w *mirrorWorker) dropConfirm() {
 		w.mu.Unlock()
 		return
 	}
+	w.refreshFirstLocked(ha.MirrorSources(w.d.repo, w.cfg), nil)
 	snap := copyState(w.st)
 	w.mu.Unlock()
 	w.save(snap)
@@ -665,11 +688,11 @@ func (w *mirrorWorker) liftUnproven(proof func(label string) (done, files bool))
 	w.mu.Lock()
 	changed := false
 	for l, ls := range w.st.PerLabel {
-		if !ls.Unproven {
+		if !ls.Unproven && !ls.AbsentAtPromote {
 			continue
 		}
 		if done, _ := proof(l); done {
-			ls.Unproven, ls.WaitAlarmed = false, false
+			ls.Unproven, ls.WaitAlarmed, ls.AbsentAtPromote = false, false, false
 			w.st.PerLabel[l] = ls
 			changed = true
 		}

@@ -279,7 +279,7 @@ func TestMirrorEmptySourceRoundTrip(t *testing.T) {
 	}
 	f.proof.set("uploads")
 	w.set(true, ha.Passive, 2, fix2Settings)
-	w.adoptFirst(true, func(string) (bool, bool) { return true, got["uploads"] })
+	w.adoptFirst(true, func(string) (bool, bool) { return true, got["uploads"] }, nil)
 	w.set(true, ha.Active, 3, fix2Settings)
 	if err := runAgain(w); err != nil {
 		t.Fatalf("leere Quelle nach dem Rücktausch: %v", err)

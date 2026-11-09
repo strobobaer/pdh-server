@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -88,6 +89,11 @@ func writeMirrorID(p string) (string, error) {
 	if err := writeFileAtomic(p, []byte(id+"\n"), 0o644); err != nil {
 		return "", err
 	}
+	// R63 (U1): Besitzer und Gruppe wie der Ordner, nicht root – das System-Update von Nextcloud
+	// (updater.phar als www-data) bricht sonst an der nicht schreibbaren Datei in config/ ab
+	if err := chownLikeParent(p); err != nil {
+		return "", fmt.Errorf("Besitzer der Kennung %s nicht gesetzt: %w", p, err)
+	}
 	return id, nil
 }
 
@@ -155,6 +161,29 @@ func (m *mirrorInbox) proofStored(label string) bool {
 	defer m.mu.Unlock()
 	_, ok := m.st.Proof[label]
 	return ok
+}
+
+// proofLost (R63, U4): Der Beleg gilt nachweislich nicht: keiner gespeichert, oder die letzte
+// Prüfung der Kennung passte nicht (anderer Ordner, nicht anlegbar). Eine nach dem Neustart noch
+// ungeprüfte Kennung zählt nicht: Sie nimmt den übernommenen Erstabgleich nicht zurück.
+func (m *mirrorInbox) proofLost(label string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, stored := m.st.Proof[label]
+	ok, checked := m.idOK[label]
+	return !stored || checked && !ok
+}
+
+// recheckIDs (R63, U4): Am passiven Server nach dem Start einmal die Kennung jeder Quelle prüfen,
+// für die ein Wert gespeichert ist (sonst gälte jeder Beleg erst nach dem nächsten Lauf des
+// Partners). Legt keine Kennung an; ein fehlender Ordner zählt als anderer. Dateizugriff: nur in
+// der Schleife der Spiegelung, nie im Takt (R14).
+func (m *mirrorInbox) recheckIDs(srcs []ha.MirrorSource) {
+	for _, s := range srcs {
+		if m.hasID(s.Label) {
+			m.checkID(s.Label, mirrorIDPath(s, path.Clean(s.Path)))
+		}
+	}
 }
 
 // hasID: für die Quelle ist ein Wert gespeichert (dieser Server kennt den Ordner).

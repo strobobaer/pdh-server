@@ -232,6 +232,7 @@ type mirrorRT struct {
 
 	// nur loop
 	persistedRole ha.Role
+	idsChecked    bool // R63: Kennungen am passiven Server nach dem Start einmal geprüft
 	partner       string
 	wcancel       context.CancelFunc
 	wdone         chan struct{}
@@ -494,10 +495,17 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 	if w.On && w.PartnerSeen {
 		wk.observeDataID(w.PartnerDataID)
 	}
+	// R63 (U4): Nach dem Start einmal die Kennungen prüfen (hier, nicht im Takt): Sonst gälte jeder
+	// gespeicherte Beleg erst nach dem nächsten Lauf des Partners, und eine Übernahme im Fenster
+	// fände keinen Beleg.
+	if w.On && w.Role == ha.Passive && !rt.idsChecked {
+		ib.recheckIDs(ib.sources(w.Settings))
+		rt.idsChecked = true
+	}
 	// Erstabgleich: nur, was dieser Empfänger selbst belegen kann, und nur wenn der
 	// aktive Partner "fertig" meldet
 	if w.On && w.Role == ha.Passive && w.PartnerSeen && w.PartnerRole == ha.Active {
-		wk.adoptFirst(w.PartnerFirst, ib.proofOf)
+		wk.adoptFirst(w.PartnerFirst, ib.proofOf, ib.proofLost)
 	}
 	if w.On && w.Role == ha.Passive {
 		wk.liftUnproven(ib.proofOf) // eigener Beleg nach einem Rücktausch
@@ -507,7 +515,7 @@ func (rt *mirrorRT) reconcile(ctx context.Context) {
 		// Beleg und keine Bestätigung über den Abschnitt hinaus. R55: auch keine gemerkte Rolle,
 		// sonst zählte ein Tausch in dieser Zeit beim Einschalten als Übernahme im Erstabgleich.
 		ib.dropProofs()
-		wk.dropConfirm()
+		wk.dropOff()
 		ib.setLastRole("")
 		rt.persistedRole = ""
 	} else if w.Role == ha.Active {

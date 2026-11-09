@@ -238,3 +238,42 @@ func TestTriggerError(t *testing.T) {
 		t.Error("nil")
 	}
 }
+
+// R63 (U2, U11): Die Kennung der Datei-Spiegelung (.pdh-mirror-id) kommt weder in die Sicherung
+// noch beim Rückspielen zurück, auch nicht aus einer älteren Sicherung. Auf einem neuen
+// Datenträger fehlt sie danach, und die Spiegelung verlangt die Bestätigung statt zu löschen.
+func TestBackupSkipsMirrorID(t *testing.T) {
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, ".pdh-mirror-id"), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
+	os.WriteFile(filepath.Join(src, "bild.png"), []byte("PNG"), 0o644)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	n, err := backupFiles(zw, src, "files/uploads/")
+	if err != nil || n != 1 {
+		t.Fatalf("backupFiles: %d, %v", n, err)
+	}
+	// ältere Sicherung mit Kennung
+	w, _ := zw.Create("files/uploads/.pdh-mirror-id")
+	w.Write([]byte("fedcba9876543210fedcba9876543210\n"))
+	zw.Close()
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".pdh-mirror-id") {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("Kennung in der Sicherung: %d (erwartet nur die eingeschleuste)", seen)
+	}
+	dst := t.TempDir()
+	if n, err := restoreFiles(zr, "files/uploads/", dst); err != nil || n != 1 {
+		t.Fatalf("restoreFiles: %d, %v", n, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, ".pdh-mirror-id")); err == nil {
+		t.Fatal("Kennung zurückgespielt")
+	}
+}

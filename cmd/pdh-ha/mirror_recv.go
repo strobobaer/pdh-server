@@ -155,7 +155,7 @@ func (m *mirrorInbox) noteActive() {
 // Schreibt eine Datei nur bei Änderung.
 func (m *mirrorInbox) dropProofs() {
 	m.mu.Lock()
-	n := len(m.st.Proof) + len(m.st.Seeded) + len(m.st.Wait)
+	n := len(m.st.Proof) + len(m.st.Seeded) + len(m.st.Wait) + len(m.st.ID) // NEU-3: auch eine allein gespeicherte Kennung
 	m.st.Proof, m.st.Seeded, m.st.Wait, m.st.ID = map[string]mirrorProof{}, nil, nil, nil
 	m.idOK = map[string]bool{}
 	m.mu.Unlock()
@@ -521,7 +521,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	idPath := mirrorIDPath(src, target)
 	switch m.checkID(label, idPath) {
 	case idOther:
-		m.alarm("id:"+label, "Quelle "+label+": Der Zielordner ist ein anderer – die Kennung "+ha.MirrorIDName+" fehlt oder weicht ab (Datenträger getauscht oder nicht eingehängt). Spiegelung wird nicht angenommen. Gewollter Tausch: Spiegelung aus- und wieder einschalten")
+		m.alarm("id:"+label, "Quelle "+label+": Der Zielordner ist ein anderer – die Kennung "+ha.MirrorIDName+" fehlt oder weicht ab. Spiegelung wird nicht angenommen. Nicht eingehängt: einhängen, dann läuft es von selbst weiter. Nur bei gewolltem Tausch: Spiegelung aus- und wieder einschalten")
 		return fail("Zielordner ist ein anderer (Kennung fehlt oder weicht ab)")
 	case idFail:
 		return fail("Kennung des Zielordners nicht anlegbar")

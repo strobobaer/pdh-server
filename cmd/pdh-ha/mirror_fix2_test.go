@@ -210,11 +210,11 @@ func TestMirrorSawFilesFollowsOwnProof(t *testing.T) {
 	f.proof.set("uploads")
 	w := f.worker()
 	w.set(true, ha.Passive, 1, fix2Settings)
-	w.adoptFirst(true, f.proof.fn)
+	w.adoptFirst(true, f.proof.fn, nil)
 	if ls := w.snapshot().PerLabel["uploads"]; !ls.Adopted || !ls.SawFiles {
 		t.Fatalf("Übernahme: %+v", ls)
 	}
-	w.adoptFirst(false, f.proof.fn) // Partner meldet kurz "nicht fertig"
+	w.adoptFirst(false, f.proof.fn, nil) // Partner meldet kurz "nicht fertig"
 	if ls := w.snapshot().PerLabel["uploads"]; ls.Adopted || !ls.SawFiles {
 		t.Fatalf("Rücknahme verliert SawFiles: %+v", ls)
 	}
@@ -226,7 +226,7 @@ func TestMirrorSawFilesFollowsOwnProof(t *testing.T) {
 	w2.st.PerLabel["uploads"] = mirrorLabelState{LastOK: time.Now()}
 	w2.mu.Unlock()
 	w2.set(true, ha.Passive, 1, fix2Settings)
-	w2.adoptFirst(true, g.proof.fn)
+	w2.adoptFirst(true, g.proof.fn, nil)
 	if ls := w2.snapshot().PerLabel["uploads"]; !ls.SawFiles || ls.Adopted {
 		t.Fatalf("eigenes LastOK: %+v", ls)
 	}

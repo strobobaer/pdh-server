@@ -171,6 +171,13 @@ func TestRestoreRaeumtRewindMarke(t *testing.T) {
 	}
 }
 
+// R63 (U2): pdh-restore.sh spielt die Kennung der Datei-Spiegelung nie zurück (auch nicht die in
+// config/ von Nextcloud): Auf einem neuen Datenträger fehlt sie, die Spiegelung verlangt die Bestätigung.
+func TestRestoreSkipsMirrorID(t *testing.T) {
+	s := scriptText(t, "pdh-restore.sh")
+	mustContain(t, "pdh-restore.sh", s, `rsync -rtl --exclude=/.pdh-mirror-id --exclude=/config/.pdh-mirror-id "${@:3}"`)
+}
+
 // TestRewindTexteNennenSicherung: Alarm und Fehler nennen den Ausweg ohne Partner.
 func TestRewindTexteNennenSicherung(t *testing.T) {
 	for name, txt := range map[string]string{"rewindUnsafeText": rewindUnsafeText, "errDataUnsafe": errDataUnsafe.Error()} {
