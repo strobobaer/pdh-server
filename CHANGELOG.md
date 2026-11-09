@@ -10,7 +10,7 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
-## [0.78.0] – 2026-11-09
+## [0.77.9] – 2026-11-09
 
 ### Neu
 - Kiosk-Terminals: Im Reiter HMI einer Anlage öffnet „Am Terminal zeigen“ das HMI direkt auf dem Bildschirm des hmi-kiosk-Terminals am Bedienplatz, „Am Terminal bedienen“ mit Tastatur und Maus (nur wo Bedienen erlaubt ist); ist das Terminal belegt, nennt PDH das laufende HMI und seit wann.
@@ -19,7 +19,10 @@ im Kapitel „Versionen & Updates“ an.
 - Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
 
 ### Sicherheit
-- Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; Terminals einrichten nur mit „HMI-Verbindungen einrichten“.
+- Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; es gilt je Anlage, bei Rechten auf Abteilungsebene also nur für die Anlagen dieser Abteilung.
+- Terminals einrichten, ändern, prüfen und löschen nur mit „HMI-Verbindungen einrichten“ ohne Abteilungsbegrenzung (standardmäßig Administratoren).
+- Ändert sich Adresse oder Fingerabdruck eines Terminals, verwirft PDH den gespeicherten Schlüssel und verlangt einen neuen – Schlüssel und VNC-Passwörter lassen sich so nicht auf ein anderes Gerät umlenken.
+- An ein Terminal geht immer nur ein Befehl gleichzeitig; Befehle für archivierte Anlagen werden abgewiesen.
 - PDH vertraut einem Terminal nur, wenn der Fingerabdruck seines Zertifikatsschlüssels stimmt; Schlüssel und VNC-Passwort werden verschlüsselt gespeichert, nie angezeigt und nie protokolliert.
 
 ## [0.77.8] – 2026-10-30
