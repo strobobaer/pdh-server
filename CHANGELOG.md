@@ -10,6 +10,18 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.78.0] – 2026-11-09
+
+### Neu
+- Kiosk-Terminals: Im Reiter HMI einer Anlage öffnet „Am Terminal zeigen“ das HMI direkt auf dem Bildschirm des hmi-kiosk-Terminals am Bedienplatz, „Am Terminal bedienen“ mit Tastatur und Maus (nur wo Bedienen erlaubt ist); ist das Terminal belegt, nennt PDH das laufende HMI und seit wann.
+- Neue Verwaltung „Kiosk-Terminals“ (Core-Einstellungen und Navigation): Terminals mit Adresse, Schlüssel und Fingerabdruck anlegen, ändern, löschen und mit „Verbindung prüfen“ testen; in den Stammdaten einer Anlage wählst du ihr Kiosk-Terminal.
+- Befehle an ein Terminal stehen unter „Letzte Zugriffe“ des HMI mit dem Namen des Terminals.
+- Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
+
+### Sicherheit
+- Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; Terminals einrichten nur mit „HMI-Verbindungen einrichten“.
+- PDH vertraut einem Terminal nur, wenn der Fingerabdruck seines Zertifikatsschlüssels stimmt; Schlüssel und VNC-Passwort werden verschlüsselt gespeichert, nie angezeigt und nie protokolliert.
+
 ## [0.77.8] – 2026-10-30
 
 ### Neu
