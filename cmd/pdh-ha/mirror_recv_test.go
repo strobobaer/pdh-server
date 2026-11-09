@@ -459,6 +459,12 @@ func TestEmptyTrashFailureAndRoleChange(t *testing.T) {
 	if err := f.in.emptyTrash(context.Background()); err != nil || f.in.orphans() != 0 {
 		t.Fatalf("Leeren: %v, Zähler %d", err, f.in.orphans())
 	}
+	// Runde 2 M10: auch ohne Tagesordner zählt die Rolle
+	f.in.st.Orphans = 2
+	f.setView(func(v *mirrorInboxView) { v.Role = ha.Active })
+	if err := f.in.emptyTrash(context.Background()); err == nil || f.in.orphans() != 2 {
+		t.Fatalf("ohne Tagesordner nach Rollenwechsel: %v, Zähler %d", err, f.in.orphans())
+	}
 }
 
 func TestEmptyTrashKeepsLinkTargets(t *testing.T) {

@@ -815,6 +815,10 @@ func (m *mirrorInbox) emptyTrash(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
+	// auch ohne Tagesordner und nach dem letzten: den Zähler nullt nur der passive Server
+	if len(errs) == 0 && m.d.view().Role != ha.Passive {
+		errs = append(errs, errors.New("Rolle gewechselt, dieser Server ist nicht mehr passiv"))
+	}
 	if len(errs) > 0 {
 		return errors.Join(errs...) // Rückkehrer-Dateien können noch da sein: Zähler bleibt
 	}
