@@ -40,6 +40,7 @@ im Kapitel „Versionen & Updates“ an.
 - Bricht das Zurückspulen der Datenbank beim Wiederanbinden ab, startet der halb zurückgespulte Stand nicht mehr unbemerkt; `pdh-ha rejoin` kopiert die Datenbank dann neu, `pdh-restore.sh` räumt die Markierung auf.
 - Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
 - „Papierkorb leeren“ meldet die Rückkehrer-Dateien nur noch als erledigt, wenn wirklich alles geleert ist, und hört nach einem Rollenwechsel auf.
+- War der passive Server so lange weg, dass seine Datenbank neu kopiert werden muss, beginnt die Neukopie erst, wenn der aktive Server dafür bereit ist; sie scheitert nicht mehr gleich und wartet dann zehn Minuten.
 
 ### Sicherheit
 - Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen, die „Server-Einstellungen (.env) bearbeiten & Server neu starten“ überall hatten, bekommen beide automatisch.
