@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -753,6 +754,24 @@ func TestLockAbortCallsHA(t *testing.T) {
 	fake.mu.Unlock()
 	if !strings.Contains(body, `"by":"Max Muster"`) {
 		t.Errorf("Abbruch ohne Namen: %q", body)
+	}
+}
+
+// R72: „Wartung abbrechen“ über einfaches HTTP hinter einem Proxy ohne Host-Weitergabe (kein
+// Sec-Fetch-Site, Origin passt nicht zum Host) geht durch wie auf main – nur Sec-Fetch-Site zählt.
+func TestLockAbortProxyWithoutSecFetchSite(t *testing.T) {
+	maintHAEtc(t)
+	fake := &fakeHA{}
+	startFakeHA(t, fake)
+	h, _ := maintTestHandler(t, lockedView())
+	hd, _ := maintChain(h)
+	rec := maintDo(hd, maintReq{method: "POST", path: "/wartung/abbrechen", body: "x=1", tok: maintToken(t, "admin", time.Now()),
+		hdr: map[string]string{"Accept": "text/html", "Origin": "http://pdh.lan"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("Abbruch hinter Proxy: %d %q", rec.Code, rec.Body.String())
+	}
+	if !slices.Contains(fake.callList(), "POST /v1/update/abort") {
+		t.Fatalf("pdh-ha nicht aufgerufen: %v", fake.callList())
 	}
 }
 

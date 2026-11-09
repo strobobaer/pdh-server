@@ -356,7 +356,7 @@ func (h *Handler) HAMirrorRunWeb(w http.ResponseWriter, r *http.Request) {
 
 // HAMirrorTrashEmptyWeb: POST /admin/server-config/ha/mirror-trash-empty
 func (h *Handler) HAMirrorTrashEmptyWeb(w http.ResponseWriter, r *http.Request) {
-	if h.refuseForeignSite(w, r) { // endgültig am Partner: nur von dieser Seite selbst
+	if h.refuseForeignOrigin(w, r) { // endgültig am Partner: nur von dieser Seite selbst
 		return
 	}
 	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorTrash, "mirror-trash-empty")(w, r)
@@ -388,7 +388,7 @@ func (h *Handler) haDoMirrorConfirm(ctx context.Context, f url.Values) (string, 
 
 // HAMirrorConfirmWeb: POST /admin/server-config/ha/mirror-confirm
 func (h *Handler) HAMirrorConfirmWeb(w http.ResponseWriter, r *http.Request) {
-	if h.refuseForeignSite(w, r) { // endgültig am Partner: nur von dieser Seite selbst
+	if h.refuseForeignOrigin(w, r) { // endgültig am Partner: nur von dieser Seite selbst
 		return
 	}
 	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorConfirm, "mirror-confirm")(w, r)

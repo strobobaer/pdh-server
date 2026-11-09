@@ -632,26 +632,32 @@ func TestHAMirrorFinalActionsRefuseForeignSite(t *testing.T) {
 	}
 }
 
-// Runde 2 M7: eine Prüfung für alle endgültigen Aktionen (Wartung, Spiegelung).
-func TestForeignSite(t *testing.T) {
+// R72: Die strengere Origin-Prüfung gilt nur für die endgültigen Spiegel-Aktionen; die
+// Wartungsaktionen prüfen wie auf main nur Sec-Fetch-Site.
+func TestForeignOrigin(t *testing.T) {
+	const pub = "https://pdh.firma.de"
 	cases := []struct {
-		sfs, origin, host, fwd string
-		foreign                bool
+		sfs, origin, host, fwd, pub string
+		foreign                     bool
 	}{
-		{"same-origin", "", "pdh.firma.de", "", false},
-		{"none", "", "pdh.firma.de", "", false},
-		{"same-site", "", "pdh.firma.de", "", true},
-		{"cross-site", "https://pdh.firma.de", "pdh.firma.de", "", true}, // Kopfzeile gewinnt
-		{"", "", "pdh.firma.de", "", false},                              // Werkzeuge ohne beide
-		{"", "https://pdh.firma.de", "pdh.firma.de", "", false},
-		{"", "https://PDH.firma.de", "pdh.firma.de", "", false},
-		{"", "https://cloud.firma.de", "pdh.firma.de", "", true},
-		{"", "https://pdh.firma.de", "127.0.0.1:8090", "pdh.firma.de", false}, // hinter nginx
-		{"", "https://pdh.firma.de", "127.0.0.1:8090", "", true},
-		{"", "null", "pdh.firma.de", "", true},
+		{"same-origin", "", "pdh.firma.de", "", "", false},
+		{"none", "", "pdh.firma.de", "", "", false},
+		{"same-site", "", "pdh.firma.de", "", "", true},
+		{"cross-site", "https://pdh.firma.de", "pdh.firma.de", "", "", true}, // Kopfzeile gewinnt
+		{"", "", "pdh.firma.de", "", "", false},                              // Werkzeuge ohne beide
+		{"", "https://pdh.firma.de", "pdh.firma.de", "", "", false},
+		{"", "https://PDH.firma.de", "pdh.firma.de", "", "", false},
+		{"", "https://cloud.firma.de", "pdh.firma.de", "", pub, true},
+		{"", "https://pdh.firma.de", "pdh-intern:8090", "pdh.firma.de", "", false}, // X-Forwarded-Host
+		{"", "https://pdh.firma.de", "pdh-intern:8090", "", pub, false},            // PDH_PUBLIC_URL
+		{"", "https://cloud.firma.de", "pdh-intern:8090", "", pub, true},
+		{"", "http://pdh.lan", "127.0.0.1:8090", "", "", false}, // Proxy ohne Host-Weitergabe
+		{"", "http://pdh.lan", "[::1]:8090", "", "", false},
+		{"", "http://pdh.lan", "localhost", "", "", false},
+		{"", "null", "pdh.firma.de", "", "", true},
 	}
 	for _, c := range cases {
-		r := httptest.NewRequest(http.MethodPost, "http://"+c.host+"/x", nil)
+		r := httptest.NewRequest(http.MethodPost, "http://pdh.firma.de/x", nil)
 		r.Host = c.host
 		if c.sfs != "" {
 			r.Header.Set("Sec-Fetch-Site", c.sfs)
@@ -662,9 +668,43 @@ func TestForeignSite(t *testing.T) {
 		if c.fwd != "" {
 			r.Header.Set("X-Forwarded-Host", c.fwd)
 		}
-		if got := foreignSite(r); got != c.foreign {
+		if got := foreignOrigin(r, c.pub); got != c.foreign {
 			t.Errorf("%+v: %v", c, got)
 		}
+		// Wartung wie auf main: nur Sec-Fetch-Site zählt
+		if want := c.sfs == "same-site" || c.sfs == "cross-site"; foreignSite(r) != want {
+			t.Errorf("Wartung %+v: %v", c, !want)
+		}
+	}
+}
+
+// R72: Die Spiegel-Aktion nimmt einen Origin an, der zu PDH_PUBLIC_URL passt (Proxy ohne Host-Weitergabe
+// unter anderem Namen), und lehnt einen fremden ab.
+func TestHAMirrorConfirmPublicURLOrigin(t *testing.T) {
+	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, map[string]any{"wait_confirm": []string{"uploads"}}), events: `[]`,
+		replies: map[string]fakeReply{"/v1/mirror/confirm": {200, `{"ok":true,"labels":["uploads"]}`}}}
+	startFakeHA(t, f)
+	post := func(origin string) int {
+		h := mwHandler()
+		h.mailCfg.PublicURL = "https://pdh.firma.de"
+		rec := httptest.NewRecorder()
+		req := mwReq("/admin/server-config/ha/mirror-confirm", url.Values{"labels": {"uploads"}})
+		req.Host = "pdh-intern:8090"
+		req.Header.Set("Origin", origin)
+		h.HAMirrorConfirmWeb(rec, req)
+		return rec.Code
+	}
+	if c := post("https://cloud.firma.de"); c != http.StatusForbidden {
+		t.Errorf("fremder Origin: %d", c)
+	}
+	if n := f.count("POST /v1/mirror/confirm"); n != 0 {
+		t.Fatalf("fremde Anfrage weitergereicht: %d", n)
+	}
+	if c := post("https://pdh.firma.de"); c == http.StatusForbidden {
+		t.Errorf("Origin aus PDH_PUBLIC_URL abgelehnt")
+	}
+	if n := f.count("POST /v1/mirror/confirm"); n != 1 {
+		t.Errorf("passende Anfrage nicht weitergereicht: %d", n)
 	}
 }
 
