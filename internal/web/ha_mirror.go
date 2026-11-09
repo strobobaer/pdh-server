@@ -354,8 +354,23 @@ func (h *Handler) HAMirrorRunWeb(w http.ResponseWriter, r *http.Request) {
 	h.haRoutePerm(permFileMirror, h.haDoMirrorRun, "mirror-run")(w, r)
 }
 
+// mirrorForeignSite: Die endgültigen Aktionen am Partner (Papierkorb leeren, Bestätigen) lehnen
+// wie maintAbortPost Anfragen ab, die nicht von dieser Seite selbst kommen. SameSite=Lax allein
+// schützt nicht vor einer Nachbarseite derselben Website (z. B. Nextcloud unter einer Subdomain).
+// Ohne Kopfzeile (ältere Browser, Werkzeuge) und bei „none“ geht es durch.
+func (h *Handler) mirrorForeignSite(w http.ResponseWriter, r *http.Request) bool {
+	if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
+		http.Error(w, tr(h.requestLang(r), "Anfrage von fremder Seite abgewiesen"), http.StatusForbidden)
+		return true
+	}
+	return false
+}
+
 // HAMirrorTrashEmptyWeb: POST /admin/server-config/ha/mirror-trash-empty
 func (h *Handler) HAMirrorTrashEmptyWeb(w http.ResponseWriter, r *http.Request) {
+	if h.mirrorForeignSite(w, r) {
+		return
+	}
 	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorTrash, "mirror-trash-empty")(w, r)
 }
 
@@ -385,5 +400,8 @@ func (h *Handler) haDoMirrorConfirm(ctx context.Context, f url.Values) (string, 
 
 // HAMirrorConfirmWeb: POST /admin/server-config/ha/mirror-confirm
 func (h *Handler) HAMirrorConfirmWeb(w http.ResponseWriter, r *http.Request) {
+	if h.mirrorForeignSite(w, r) {
+		return
+	}
 	h.haRoutePerm(permFileMirrorAdmin, h.haDoMirrorConfirm, "mirror-confirm")(w, r)
 }

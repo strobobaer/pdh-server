@@ -584,6 +584,49 @@ func TestHAMirrorConfirmNeedsLabels(t *testing.T) {
 	}
 }
 
+// Gesamtprüfung Minor 1: Die endgültigen Aktionen (Bestätigen, Papierkorb leeren) lehnen
+// Anfragen von fremden Seiten ab (Sec-Fetch-Site same-site/cross-site) wie der Abbruch der Wartung.
+func TestHAMirrorFinalActionsRefuseForeignSite(t *testing.T) {
+	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, map[string]any{"wait_confirm": []string{"uploads"}}), events: `[]`,
+		replies: map[string]fakeReply{"/v1/mirror/confirm": {200, `{"ok":true,"labels":["uploads"]}`}}}
+	startFakeHA(t, f)
+	routes := map[string]struct {
+		h    func(*Handler) http.HandlerFunc
+		call string
+	}{
+		"mirror-confirm":     {func(h *Handler) http.HandlerFunc { return h.HAMirrorConfirmWeb }, "POST /v1/mirror/confirm"},
+		"mirror-trash-empty": {func(h *Handler) http.HandlerFunc { return h.HAMirrorTrashEmptyWeb }, "POST /v1/mirror/trash-empty"},
+	}
+	for name, rt := range routes {
+		for _, sfs := range []string{"same-site", "cross-site"} {
+			rec := httptest.NewRecorder()
+			req := mwReq("/admin/server-config/ha/"+name, url.Values{"labels": {"uploads"}})
+			req.Header.Set("Sec-Fetch-Site", sfs)
+			rt.h(mwHandler())(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("%s mit Sec-Fetch-Site %s: %d", name, sfs, rec.Code)
+			}
+		}
+		if n := f.count(rt.call); n != 0 {
+			t.Errorf("%s: fremde Anfrage weitergereicht: %v", name, f.callList())
+		}
+		for _, sfs := range []string{"same-origin", "none", ""} {
+			rec := httptest.NewRecorder()
+			req := mwReq("/admin/server-config/ha/"+name, url.Values{"labels": {"uploads"}})
+			if sfs != "" {
+				req.Header.Set("Sec-Fetch-Site", sfs)
+			}
+			rt.h(mwHandler())(rec, req)
+			if rec.Code == http.StatusForbidden {
+				t.Errorf("%s mit Sec-Fetch-Site %q abgelehnt", name, sfs)
+			}
+		}
+		if n := f.count(rt.call); n != 3 {
+			t.Errorf("%s: eigene Anfragen %d statt 3 weitergereicht", name, n)
+		}
+	}
+}
+
 // R66: Am passiven Server zeigt die Karte einen abgelehnten Empfang als „gestört“ mit dem Grund,
 // nicht grün „empfängt“.
 func TestHAMirrorRecvErrShown(t *testing.T) {
