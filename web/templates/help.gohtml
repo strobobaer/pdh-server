@@ -689,7 +689,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   {{template "hb-shots" (dict "Ref" (index $s "kiosk") "Can" $can)}}
 </section>
 
-<section class="hb-ch" id="terminal" data-title="Anlagenterminal" data-pages="terminal">
+<section class="hb-ch" id="terminal" data-title="Anlagenterminal" data-pages="">
   <h2><i class="ti ti-device-tablet"></i> Anlagenterminal</h2>
   <p>Das <b>Anlagenterminal</b> ist ein Bildschirm an der Anlage (Wandterminal), an dem jede Person ohne Anmeldung sieht, was an dieser Anlage und ihren Unteranlagen gerade los ist, und etwas melden kann. Es ist für den Einsatz mit Touch gedacht: große Flächen, wenig Text, kein PDH-Menü.</p>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein Terminal ein</b>
@@ -698,12 +698,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>In den Stammdaten dieses Benutzers den <b>Terminal-Standort</b> wählen – das ist die Anlage, für die das Terminal gilt. Das Terminal zeigt diese Anlage und alle ihre Unteranlagen, sonst nichts.</li>
       <li>Am Bildschirm im Browser <code>https://&lt;PDH-Adresse&gt;/terminal</code> öffnen, als dieser Systembenutzer anmelden und den Browser in den Vollbildmodus schalten.</li>
     </ol>
-    Ein eigenes Gerät für das Terminal (das Produkt „PDH-Terminal“) folgt später; bis dahin geht es in jedem Browser. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
+    Ein eigenes Gerät für das Terminal (das Produkt „PDH-Terminal“) ist noch nicht verfügbar; bis dahin geht es in jedem Browser. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
   <h3>Was am Terminal passiert</h3>
   <ul>
     <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
-    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht deren Name dabei. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Unten führt <b>Neu</b> weiter.</li>
-    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen die vorhandene vereinfachte Meldeseite der Anlage. <b>Stillstand</b> ist noch nicht verfügbar und folgt später. <b>Zurück</b> geht zur Störungsinfo.</li>
+    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Unten führt <b>Neu</b> weiter.</li>
+    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
   </ul>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
@@ -718,7 +718,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <li><b>Ansehen am Terminal</b>: <b>Jeder</b> (Standard) · <b>Nur mit Karte</b> · <b>Niemand</b>.</li>
     <li><b>Bedienen am Terminal</b>: <b>Niemand</b> · <b>Nur mit Karte</b> (Standard) · <b>Jeder</b>.</li>
   </ul>
-  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Wählst du bei <b>Bedienen am Terminal</b> „Jeder“, kann jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt dann im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Sobald HMIs am Terminal angezeigt werden, kann bei <b>Bedienen am Terminal</b> „Jeder“ jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt schon jetzt im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
   <p>Ist beim HMI <b>Bedienen erlaubt</b> ausgeschaltet, gilt am Terminal beim Bedienen immer „Niemand“, auch wenn etwas anderes gespeichert ist. Das Formular weist darauf hin.</p>
   {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
 </section>
