@@ -311,6 +311,7 @@ type Handler struct {
 
 	// Austauschbare Quellen (nur Tests; nil = echt): Rechteprüfung und gespeicherter Commit-Vergleich.
 	hasPermHook     func(*http.Request, string) bool
+	kioskPermHook   func(r *http.Request, perm, infraID string) bool // Tests: Rechte je Anlage ("" = ohne Abteilungsbegrenzung), kiosk_terminals.go
 	updateCheckHook func(context.Context) storedUpdateCheck
 }
 
@@ -1162,7 +1163,7 @@ func (h *Handler) baseData(r *http.Request, page, title, ctxTitle string) BaseDa
 		TerminalInfraID:        h.terminalInfraID(r),
 		CanBackup:              h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.backup"),
 		CanPrinters:            h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.manage"),
-		CanKioskTerminals:      h.rbac.HasPermissionForUser(u.ID, string(u.Role), permHMIManage),
+		CanKioskTerminals:      h.canManageKiosk(r),
 		CanPrint:               h.rbac.HasPermissionForUser(u.ID, string(u.Role), "printers.use"),
 		CanCleanup:             h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.cleanup"),
 		CanServerConfig:        u.Role == users.RoleAdmin && h.rbac.HasPermissionForUser(u.ID, string(u.Role), "system.server_config"),

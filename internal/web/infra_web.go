@@ -277,6 +277,7 @@ type InfraDetailData struct {
 	HMI             hmiPerms // Reiter „HMI“: ansehen / bedienen / einrichten
 	KioskTerminalID string   // zugeordnetes Kiosk-Terminal (migrations/155)
 	KioskTerminals  []kioskTerminalOption
+	CanKioskAssign  bool // Auswahl „Kiosk-Terminal“: hmi.manage für diese Anlage
 	Message, Error  string
 	Obligations     []obligationView    // Reiter „Prüfungen & GBU“ (infra_obligations.go)
 	ObligationDue   int                 // davon überfällig oder im Vorlauf
@@ -323,6 +324,7 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 			data.ObligationDue++
 		}
 	}
+	data.HMI.Kiosk = h.kioskPerm(r, permHMIKiosk, id) // Reiter „HMI“ und Knöpfe: Recht für diese Anlage
 	data.Today = time.Now().Format("2006-01-02")
 	data.EasyTexts = h.infraEasyTexts(ctx, id)
 	if string(node.Type) == chamberType {
@@ -342,7 +344,8 @@ func (h *Handler) InfraDetail(w http.ResponseWriter, r *http.Request) {
 	if data.CanEditInfra {
 		data.Departments = h.loadDepartments(ctx)
 		data.ParentOptions = flattenNodes(h.infraTreeViews(ctx), "", id)
-		if data.HMI.Manage { // Auswahl „Kiosk-Terminal“ (kiosk_terminals.go)
+		data.CanKioskAssign = h.kioskPerm(r, permHMIManage, id)
+		if data.CanKioskAssign { // Auswahl „Kiosk-Terminal“ (kiosk_terminals.go)
 			_ = h.db.QueryRow(ctx, `SELECT COALESCE(kiosk_terminal_id::text, '') FROM infrastructure WHERE id = $1::uuid`, id).Scan(&data.KioskTerminalID)
 			data.KioskTerminals = h.kioskTerminalOptions(ctx, data.KioskTerminalID)
 		}

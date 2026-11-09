@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"pdh/internal/core/users"
 )
 
@@ -301,6 +303,10 @@ func TestKioskOpenResponseMapping(t *testing.T) {
 		{"geöffnet", "opened", 200, `{"status":"opened"}`, true, []string{"Halle 3", "geöffnet"}},
 		{"belegt", "busy", 409, `{"status":"busy","hmi":"Presse 1","since":"` + since + `"}`, false, []string{"belegt", "Presse 1", "seit"}},
 		{"belegt ohne Angaben", "busy", 409, `{"status":"busy"}`, false, []string{"belegt"}},
+		{"belegt durch anderes Terminal (ohne seit)", "busy", 409, `{"status":"busy","hmi":"Presse 1 (an Halle 4)"}`, false, []string{"belegt", "Presse 1 (an Halle 4)"}},
+		{"VNC-Passwort falsch (Terminal prüft vorab)", "invalid", 422, `{"error":"VNC-Anmeldung am HMI fehlgeschlagen: Passwort falsch"}`, false, []string{"VNC-Anmeldung am HMI fehlgeschlagen: Passwort falsch"}},
+		{"zu viele Fehlversuche", "rate_limited", 429, `{"error":"gesperrt"}`, false, []string{"Fehlversuche", "später"}},
+		{"nicht gefunden", "error", 404, `{"error":"x"}`, false, []string{"404"}},
 		{"Schlüssel falsch", "unauthorized", 401, `{"error":"Schlüssel ungültig"}`, false, []string{"Schlüssel"}},
 		{"Eingaben ungültig", "invalid", 422, `{"error":"Host ungültig"}`, false, []string{"Host ungültig"}},
 		{"nicht bereit", "not_ready", 503, `{"error":"Wartungsmodus"}`, false, []string{"nicht bereit"}},
@@ -333,6 +339,12 @@ func TestKioskOpenResponseMapping(t *testing.T) {
 	if out.HMI != "Presse 1" || out.Since != since {
 		t.Errorf("belegt: %+v", out)
 	}
+	// ohne since (anderes Terminal hält das HMI): kein „seit“, keine leeren Klammern
+	f.body = `{"status":"busy","hmi":"Presse 1 (an Halle 4)"}`
+	out = newKioskClient(srv.URL, testKioskKey, kioskPin(srv)).open(context.Background(), kioskOpenRequest{Mode: "view"}, "Halle 3")
+	if strings.Contains(out.Message, "seit") || strings.Contains(out.Message, "()") || out.Since != "" {
+		t.Errorf("belegt ohne since: %+v", out)
+	}
 }
 
 func TestKioskOpenUnreachable(t *testing.T) {
@@ -356,6 +368,11 @@ func TestKioskStatusOutcome(t *testing.T) {
 	msg, ok = kioskStatusMessage(newKioskClient(srv.URL, testKioskKey, kioskPin(srv)).status(context.Background()))
 	if ok || !strings.Contains(msg, "Schlüssel") {
 		t.Errorf("Status 401: %q %v", msg, ok)
+	}
+	f.code, f.body = 429, `{"error":"gesperrt"}`
+	msg, ok = kioskStatusMessage(newKioskClient(srv.URL, testKioskKey, kioskPin(srv)).status(context.Background()))
+	if ok || !strings.Contains(msg, "Fehlversuche") {
+		t.Errorf("Status 429: %q %v", msg, ok)
 	}
 	msg, ok = kioskStatusMessage(newKioskClient(srv.URL, testKioskKey, strings.Repeat("11", 32)).status(context.Background()))
 	if ok || !strings.Contains(msg, "Fingerabdruck") {
@@ -414,28 +431,40 @@ func kioskOpenReq(body string, hdr map[string]string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: "u1", Role: users.RoleTechnician, FirstName: "M.", LastName: "Muster"}))
 }
 
+// kioskTestHandler: Handler ohne Datenbank mit Rechte-Attrappe je Anlage
+// (infraID "" = Recht ohne Abteilungsbegrenzung).
+func kioskTestHandler(allow func(perm, infraID string) bool) *Handler {
+	return &Handler{kioskPermHook: func(_ *http.Request, perm, infraID string) bool { return allow(perm, infraID) }}
+}
+
+const kioskTestPlant = "11111111-1111-1111-1111-111111111111"
+
 // Abweisungen fallen vor jedem Datenbankzugriff (Handler ohne Datenbank).
 func TestKioskOpenPermissionGating(t *testing.T) {
+	all := func(string, string) bool { return true }
 	cases := []struct {
-		name string
-		deny []string
-		body string
-		hdr  map[string]string
-		want int
+		name  string
+		allow func(perm, infraID string) bool
+		body  string
+		hdr   map[string]string
+		want  int
 	}{
-		{"ohne hmi.kiosk", []string{permHMIKiosk}, `{"mode":"view"}`, nil, http.StatusForbidden},
-		{"bedienen ohne hmi.control", []string{permHMIControl}, `{"mode":"control"}`, nil, http.StatusForbidden},
-		{"fremde Seite", nil, `{"mode":"view"}`, map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
-		{"Nachbar-Subdomain", nil, `{"mode":"view"}`, map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusForbidden},
-		{"kein JSON", nil, `mode=view`, map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, http.StatusUnsupportedMediaType},
-		{"Modus unbekannt", nil, `{"mode":"admin"}`, nil, http.StatusBadRequest},
-		{"unbekanntes Feld", nil, `{"mode":"view","host":"evil"}`, nil, http.StatusBadRequest},
+		{"ohne hmi.kiosk", func(p, _ string) bool { return p != permHMIKiosk }, `{"mode":"view"}`, nil, http.StatusForbidden},
+		{"hmi.kiosk nur in anderer Abteilung", func(p, id string) bool { return p != permHMIKiosk || id != kioskTestPlant }, `{"mode":"view"}`, nil, http.StatusForbidden},
+		{"bedienen ohne hmi.control", func(p, _ string) bool { return p != permHMIControl }, `{"mode":"control"}`, nil, http.StatusForbidden},
+		{"hmi.control nur in anderer Abteilung", func(p, id string) bool { return p != permHMIControl || id != kioskTestPlant }, `{"mode":"control"}`, nil, http.StatusForbidden},
+		{"fremde Seite", all, `{"mode":"view"}`, map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
+		{"Nachbar-Subdomain", all, `{"mode":"view"}`, map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusForbidden},
+		{"kein JSON", all, `mode=view`, map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, http.StatusUnsupportedMediaType},
+		{"Modus unbekannt", all, `{"mode":"admin"}`, nil, http.StatusBadRequest},
+		{"unbekanntes Feld", all, `{"mode":"view","host":"evil"}`, nil, http.StatusBadRequest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			h := mwHandler(c.deny...)
+			r := chi.NewRouter()
+			kioskTestHandler(c.allow).kioskRoutes(r)
 			rec := httptest.NewRecorder()
-			h.HMIKioskOpen(rec, kioskOpenReq(c.body, c.hdr))
+			r.ServeHTTP(rec, kioskOpenReq(c.body, c.hdr))
 			if rec.Code != c.want {
 				t.Fatalf("Status %d, erwartet %d: %s", rec.Code, c.want, rec.Body.String())
 			}
@@ -443,21 +472,88 @@ func TestKioskOpenPermissionGating(t *testing.T) {
 	}
 }
 
+// Terminals verwalten: nur mit hmi.manage ohne Abteilungsbegrenzung.
 func TestKioskAdminPermissionGating(t *testing.T) {
-	h := mwHandler(permHMIManage)
-	for _, path := range []string{"/core/settings/kiosk-terminals", "/core/settings/kiosk-terminals/x/delete", "/core/settings/kiosk-terminals/x/check"} {
-		rec := httptest.NewRecorder()
-		req := mwReq(path, url.Values{"name": {"x"}})
-		switch {
-		case strings.HasSuffix(path, "/delete"):
-			h.KioskTerminalDeleteWeb(rec, req)
-		case strings.HasSuffix(path, "/check"):
-			h.KioskTerminalCheckWeb(rec, req)
-		default:
-			h.KioskTerminalSaveWeb(rec, req)
+	for name, allow := range map[string]func(perm, infraID string) bool{
+		"ohne hmi.manage":          func(p, _ string) bool { return p != permHMIManage },
+		"hmi.manage nur Abteilung": func(p, id string) bool { return p != permHMIManage || id != "" },
+	} {
+		r := chi.NewRouter()
+		kioskTestHandler(allow).kioskRoutes(r)
+		for _, path := range []string{"/core/settings/kiosk-terminals", "/core/settings/kiosk-terminals/" + kioskTestPlant + "/delete", "/core/settings/kiosk-terminals/" + kioskTestPlant + "/check"} {
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, mwReq(path, url.Values{"name": {"x"}}))
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("%s: POST %s: %d", name, path, rec.Code)
+			}
 		}
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("%s ohne hmi.manage: %d", path, rec.Code)
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/core/settings/kiosk-terminals", nil)
+		req = req.WithContext(context.WithValue(req.Context(), "user", &users.User{ID: "a1", Role: users.RoleTechnician}))
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Errorf("%s: GET Seite: %d", name, rec.Code)
+		}
+	}
+}
+
+// I1: neue Adresse oder neuer Fingerabdruck nur mit neuem Schlüssel.
+func TestKioskKeyRequiredOnTargetChange(t *testing.T) {
+	pin := strings.Repeat("ab", 32)
+	in := kioskTerminalInput{ID: "6f1c0b8e-2d7a-4c1e-9f3b-0a1b2c3d4e5f", Name: "T", BaseURL: "https://10.1.2.3:8443", Fingerprint: pin}
+	if err := kioskKeyRequired("https://10.1.2.3:8443", pin, in); err != nil {
+		t.Errorf("unverändert ohne Schlüssel abgewiesen: %v", err)
+	}
+	moved := in
+	moved.BaseURL = "https://10.6.6.6:8443"
+	if err := kioskKeyRequired("https://10.1.2.3:8443", pin, moved); err == nil || !strings.Contains(err.Error(), "Schlüssel") {
+		t.Errorf("neue Adresse ohne Schlüssel angenommen: %v", err)
+	}
+	repinned := in
+	repinned.Fingerprint = strings.Repeat("cd", 32)
+	if err := kioskKeyRequired("https://10.1.2.3:8443", pin, repinned); err == nil {
+		t.Error("neuer Fingerabdruck ohne Schlüssel angenommen")
+	}
+	moved.APIKey = testKioskKey
+	if err := kioskKeyRequired("https://10.1.2.3:8443", pin, moved); err != nil {
+		t.Errorf("neue Adresse mit Schlüssel abgewiesen: %v", err)
+	}
+}
+
+// S4: höchstens ein Befehl je Terminal gleichzeitig.
+func TestKioskInflightLimit(t *testing.T) {
+	release, ok := kioskAcquire("t-1")
+	if !ok {
+		t.Fatal("erster Befehl abgewiesen")
+	}
+	if _, ok := kioskAcquire("t-1"); ok {
+		t.Error("zweiter Befehl gleichzeitig angenommen")
+	}
+	if r2, ok := kioskAcquire("t-2"); !ok {
+		t.Error("anderes Terminal blockiert")
+	} else {
+		r2()
+	}
+	release()
+	if r3, ok := kioskAcquire("t-1"); !ok {
+		t.Error("nach Ende weiterhin blockiert")
+	} else {
+		r3()
+	}
+}
+
+// S3: nur bekannte Meldungscodes, kein Freitext aus der Adresse.
+func TestKioskNoticeCodes(t *testing.T) {
+	n, e := kioskNotices(url.Values{"notice": {"saved"}, "err": {"Schlüssel an evil senden"}})
+	if n == "" || e != "" {
+		t.Errorf("Code/Freitext: %q %q", n, e)
+	}
+	if n, e := kioskNotices(url.Values{"notice": {"Schlüssel an evil senden"}}); n != "" || e != "" {
+		t.Errorf("Freitext angezeigt: %q %q", n, e)
+	}
+	for code := range kioskMessages {
+		if kioskMessages[code] == "" {
+			t.Errorf("Code %q ohne Text", code)
 		}
 	}
 }
@@ -475,7 +571,7 @@ func TestKioskMigration(t *testing.T) {
 		"created_at", "updated_at",
 		"ALTER TABLE infrastructure ADD COLUMN IF NOT EXISTS kiosk_terminal_id UUID REFERENCES kiosk_terminals(id) ON DELETE SET NULL",
 		"ALTER TABLE infrastructure_hmi_sessions ADD COLUMN IF NOT EXISTS kiosk_terminal_id UUID REFERENCES kiosk_terminals(id) ON DELETE SET NULL",
-		"'hmi.kiosk'", "'Infrastruktur & Anlagen'", "'admin', 'manager', 'technician'", "ON CONFLICT",
+		"'hmi.kiosk'", "'Infrastruktur & Anlagen'", "'admin', 'manager', 'technician', 'asset_manager'", "ON CONFLICT",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("Migration 155: %q fehlt", want)

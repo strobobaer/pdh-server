@@ -109,8 +109,14 @@ type kioskTerminalInput struct {
 	Active                                 bool
 }
 
+// kioskFormError: Prüffehler mit Meldungscode (Text in kioskMessages); in der
+// Adresse der Verwaltungsseite steht nur der Code, nie Freitext.
+type kioskFormError struct{ Code string }
+
+func (e kioskFormError) Error() string { return kioskMessages[e.Code] }
+
 // parseKioskTerminalForm prüft das Formular. Beim Anlegen ist der Schlüssel
-// Pflicht, beim Ändern heißt leer „unverändert“.
+// Pflicht, beim Ändern heißt leer „unverändert“ (siehe kioskKeyRequired).
 func parseKioskTerminalForm(f url.Values) (kioskTerminalInput, error) {
 	in := kioskTerminalInput{
 		ID:     strings.TrimSpace(f.Get("terminal_id")),
@@ -119,25 +125,35 @@ func parseKioskTerminalForm(f url.Values) (kioskTerminalInput, error) {
 		Active: f.Get("active") == "on",
 	}
 	if in.ID != "" && !kioskUUIDRe.MatchString(in.ID) {
-		return in, errors.New("Unbekanntes Terminal")
+		return in, kioskFormError{"not_found"}
 	}
 	if !kioskValidName(in.Name) {
-		return in, errors.New("Name: 1 bis 120 Zeichen, keine Steuerzeichen")
+		return in, kioskFormError{"name_invalid"}
 	}
 	var err error
 	if in.BaseURL, err = normalizeKioskBaseURL(f.Get("base_url")); err != nil {
-		return in, err
+		return in, kioskFormError{"url_invalid"}
 	}
 	if in.APIKey == "" && in.ID == "" {
-		return in, errors.New("Bitte den Schlüssel eintragen (Terminal: Admin-Seite → Netzwerk → Fernsteuerung (PDH))")
+		return in, kioskFormError{"key_missing"}
 	}
 	if in.APIKey != "" && !validKioskAPIKey(in.APIKey) {
-		return in, errors.New("Schlüssel ungültig: beginnt mit hmik_ und hat danach 43 Zeichen – bitte vollständig kopieren")
+		return in, kioskFormError{"key_invalid"}
 	}
 	if in.Fingerprint, err = normalizeKioskFingerprint(f.Get("pubkey_sha256")); err != nil {
-		return in, err
+		return in, kioskFormError{"fp_invalid"}
 	}
 	return in, nil
+}
+
+// kioskKeyRequired: Ändert sich Adresse oder Fingerabdruck, gilt der
+// gespeicherte Schlüssel nicht weiter – sonst ginge er (und mit ihm jedes
+// VNC-Passwort) an ein anderes Gerät. Dann muss ein neuer Schlüssel her.
+func kioskKeyRequired(oldURL, oldPin string, in kioskTerminalInput) error {
+	if in.APIKey == "" && (in.BaseURL != oldURL || in.Fingerprint != oldPin) {
+		return kioskFormError{"key_required"}
+	}
+	return nil
 }
 
 // ── Client ───────────────────────────────────────────────────
@@ -332,6 +348,8 @@ func kioskMapOpen(terminal string, code int, body []byte, err error) kioskOutcom
 			out.Message += ": " + t
 		}
 		out.Message += "."
+	case http.StatusTooManyRequests:
+		out.Kind, out.Message = "rate_limited", "Terminal "+q+" sperrt PDH nach zu vielen Fehlversuchen mit falschem Schlüssel. Bitte später erneut versuchen und den Schlüssel unter Kiosk-Terminals prüfen."
 	case http.StatusServiceUnavailable:
 		out.Kind, out.Message = "not_ready", "Terminal "+q+" ist gerade nicht bereit (Wartung, Sicherung oder eine Sitzung startet). Bitte gleich noch einmal versuchen."
 	default:
@@ -349,6 +367,8 @@ func kioskStatusMessage(st kioskStatus, err error) (string, bool) {
 			return "Verbindung abgewiesen: Der Fingerabdruck des Zertifikats stimmt nicht mit dem eingetragenen überein.", false
 		case errors.As(err, &he) && he.Code == http.StatusUnauthorized:
 			return "Das Terminal hat den Schlüssel abgelehnt – bitte neu erzeugen und eintragen.", false
+		case errors.As(err, &he) && he.Code == http.StatusTooManyRequests:
+			return "Das Terminal sperrt PDH nach zu vielen Fehlversuchen – bitte später erneut versuchen.", false
 		case errors.As(err, &he):
 			return fmt.Sprintf("Das Terminal antwortet mit einem Fehler (HTTP %d).", he.Code), false
 		}

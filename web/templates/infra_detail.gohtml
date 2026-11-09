@@ -191,7 +191,7 @@
     <div class="form-group"><label class="form-label">Verantwortlich</label>
       <select name="responsible_to" class="form-input"><option value="">– von übergeordneter Anlage erben{{if and .EffectiveResp .RespFromID}} ({{.EffectiveResp}}){{end}} –</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.ResponsibleID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
       <div class="rec-sub" style="margin-top:3px">Ansprechperson für diese Anlage. Gilt auch für alle Unteranlagen ohne eigene Angabe.</div></div>
-    {{if .HMI.Manage}}
+    {{if .CanKioskAssign}}
     <div class="form-group"><label class="form-label">Kiosk-Terminal</label>
       <select name="kiosk_terminal_id" class="form-input"><option value="">– keines –</option>{{range .KioskTerminals}}<option value="{{.ID}}" {{if eq .ID $.KioskTerminalID}}selected{{end}}>{{.Label}}</option>{{end}}</select>
       <div class="rec-sub" style="margin-top:3px">Terminal am Bedienplatz dieser Anlage. Im Reiter „HMI“ erscheint dann „Am Terminal zeigen“. Terminals einrichten: <a href="/core/settings/kiosk-terminals">Kiosk-Terminals</a>.</div></div>

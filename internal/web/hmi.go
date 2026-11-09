@@ -39,8 +39,7 @@ type hmiPerms struct {
 }
 
 func (h *Handler) hmiPermsFor(r *http.Request) hmiPerms {
-	p := hmiPerms{View: h.hasPerm(r, permHMIView), Control: h.hasPerm(r, permHMIControl), Manage: h.hasPerm(r, permHMIManage),
-		Kiosk: h.hasPerm(r, permHMIKiosk)}
+	p := hmiPerms{View: h.hasPerm(r, permHMIView), Control: h.hasPerm(r, permHMIControl), Manage: h.hasPerm(r, permHMIManage)}
 	if p.Control { // bedienen schliesst ansehen ein
 		p.View = true
 	}
@@ -104,6 +103,12 @@ func (h *Handler) NoVNCScript(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 	p := h.hmiPermsFor(r)
+	// Kiosk-Knöpfe: Rechte für genau diese Anlage (Abteilung zählt, kiosk_terminals.go)
+	kp := hmiPerms{Kiosk: h.kioskPerm(r, permHMIKiosk, chi.URLParam(r, "id"))}
+	if kp.Kiosk {
+		kp.Control = h.kioskPerm(r, permHMIControl, chi.URLParam(r, "id"))
+	}
+	p.Kiosk = kp.Kiosk
 	if !p.View && !p.Manage && !p.Kiosk {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung (HMI ansehen)"})
 		return
@@ -129,7 +134,7 @@ func (h *Handler) HMIList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v.CanControl = p.Control && v.AllowControl
-		v.KioskView, v.KioskControl = kioskButtons(p, kioskTerminal != "", v.AllowControl)
+		v.KioskView, v.KioskControl = kioskButtons(kp, kioskTerminal != "", v.AllowControl)
 		if !p.Manage {
 			v.Host, v.Port = "", 0
 		}
@@ -229,6 +234,7 @@ func (h *Handler) HMIDelete(w http.ResponseWriter, r *http.Request) {
 // HMISessions: die letzten Zugriffe (wer, wann, wie) – fuer alle mit HMI-Rechten.
 func (h *Handler) HMISessions(w http.ResponseWriter, r *http.Request) {
 	p := h.hmiPermsFor(r)
+	p.Kiosk = h.kioskPerm(r, permHMIKiosk, chi.URLParam(r, "id"))
 	if !p.View && !p.Manage && !p.Kiosk {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung"})
 		return

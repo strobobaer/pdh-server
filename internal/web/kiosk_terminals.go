@@ -9,15 +9,22 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Kiosk-Terminals: Verwaltung (Core-Einstellungen → Kiosk-Terminals),
 // Zuordnung je Anlage (Stammdaten) und Fernbefehl „Am Terminal zeigen“
 // aus dem HMI-Reiter. Client und Prüfungen: kiosk_client.go.
+//
+// Rechte: Terminals gehören zu keiner Abteilung, deshalb verlangt ihre
+// Verwaltung hmi.manage OHNE Abteilungsbegrenzung (rbac.Scope „all“).
+// Alles an einer Anlage (Befehl, Zuordnung, Knöpfe) prüft das Recht für
+// genau diese Anlage (hasPermRec, Abteilung zählt).
 
 func (h *Handler) kioskRoutes(r chi.Router) {
 	r.Get("/core/settings/kiosk-terminals", h.KioskTerminalsPage)
@@ -27,8 +34,25 @@ func (h *Handler) kioskRoutes(r chi.Router) {
 	r.Post("/infrastructure/{id}/hmis/{hmiID}/kiosk", h.HMIKioskOpen)
 }
 
-// canManageKiosk: Terminals einrichten wie HMIs einrichten (hmi.manage).
-func (h *Handler) canManageKiosk(r *http.Request) bool { return h.hasPerm(r, permHMIManage) }
+// kioskPerm: Recht für eine Anlage (Abteilung zählt) bzw. mit infraID ""
+// das Recht ohne jede Abteilungsbegrenzung.
+func (h *Handler) kioskPerm(r *http.Request, perm, infraID string) bool {
+	if h.kioskPermHook != nil {
+		return h.kioskPermHook(r, perm, infraID)
+	}
+	if h.rbac == nil {
+		return false
+	}
+	if infraID == "" {
+		u := getUser(r)
+		all, _ := h.rbac.Scope(u.ID, string(u.Role), perm)
+		return all
+	}
+	return h.hasPermRec(r, perm, "infrastructure", infraID)
+}
+
+// canManageKiosk: Terminals einrichten – hmi.manage ohne Abteilungsbegrenzung.
+func (h *Handler) canManageKiosk(r *http.Request) bool { return h.kioskPerm(r, permHMIManage, "") }
 
 // kioskKey: eigener Schlüssel für die Terminal-Schlüssel (wie hmiKey).
 func (h *Handler) kioskKey() []byte {
@@ -47,11 +71,68 @@ func kioskSameOrigin(r *http.Request) bool {
 	return sfs == "" || sfs == "same-origin" || sfs == "none"
 }
 
+// kioskMessages: Meldungen der Verwaltungsseite. In der Adresse
+// (?notice=/?err=) stehen nur diese Codes, nie Freitext.
+var kioskMessages = map[string]string{
+	"saved":          "Terminal gespeichert – jetzt „Verbindung prüfen“.",
+	"deleted":        "Terminal gelöscht.",
+	"checked":        "Verbindung geprüft – das Ergebnis steht beim Terminal.",
+	"not_found":      "Terminal nicht gefunden.",
+	"name_invalid":   "Name: 1 bis 120 Zeichen, keine Steuerzeichen.",
+	"name_taken":     "Ein Terminal mit diesem Namen gibt es schon.",
+	"url_invalid":    "Adresse: https://<Terminal>:<Port>, z. B. https://10.1.2.3:8443.",
+	"key_missing":    "Bitte den Schlüssel eintragen (Terminal: Admin-Seite → Netzwerk → Fernsteuerung (PDH)).",
+	"key_invalid":    "Schlüssel ungültig: beginnt mit hmik_ und hat danach 43 Zeichen – bitte vollständig kopieren.",
+	"key_required":   "Adresse oder Fingerabdruck wurden geändert: Der bisherige Schlüssel gilt dafür nicht. Bitte am Terminal einen neuen Schlüssel erzeugen und hier eintragen.",
+	"key_unreadable": "Schlüssel des Terminals nicht lesbar oder nicht gesetzt – bitte neu eintragen.",
+	"fp_invalid":     "Fingerabdruck: 64 Hex-Zeichen, mit oder ohne Doppelpunkte (wie auf der Admin-Seite des Terminals).",
+	"save_failed":    "Terminal konnte nicht gespeichert werden.",
+	"delete_failed":  "Terminal konnte nicht gelöscht werden.",
+	"load_failed":    "Kiosk-Terminals konnten nicht geladen werden.",
+	"busy":           "An dieses Terminal läuft gerade ein Befehl – bitte kurz warten.",
+}
+
+// kioskNotices: Meldungen aus der Adresse – nur bekannte Codes.
+func kioskNotices(q url.Values) (notice, errMsg string) {
+	return kioskMessages[q.Get("notice")], kioskMessages[q.Get("err")]
+}
+
+// kioskCheckResult: letztes Ergebnis von „Verbindung prüfen“ je Terminal
+// (nur im Speicher; nach einem Neustart leer).
+type kioskCheckResult struct {
+	OK      bool
+	Message string
+	At      time.Time
+}
+
+var kioskChecks sync.Map // Terminal-ID → kioskCheckResult
+
+func kioskLastCheck(tid string) (kioskCheckResult, bool) {
+	v, ok := kioskChecks.Load(tid)
+	if !ok {
+		return kioskCheckResult{}, false
+	}
+	return v.(kioskCheckResult), true
+}
+
+// kioskInflight: höchstens ein Befehl je Terminal gleichzeitig (Schutz vor
+// Fluten des Terminals und des Zugriffsprotokolls).
+var kioskInflight sync.Map
+
+func kioskAcquire(tid string) (release func(), ok bool) {
+	if _, busy := kioskInflight.LoadOrStore(tid, struct{}{}); busy {
+		return nil, false
+	}
+	return func() { kioskInflight.Delete(tid) }, true
+}
+
 type kioskTerminalView struct {
 	ID, Name, BaseURL, Fingerprint, FingerprintColons string
 	HasKey, Active                                    bool
 	Plants                                            int
 	UpdatedAt                                         string
+	Check                                             *kioskCheckResult
+	CheckAt                                           string
 }
 
 func kioskColons(hexs string) string {
@@ -85,6 +166,9 @@ func (h *Handler) loadKioskTerminals(ctx context.Context, onlyActive bool) ([]ki
 			return nil, err
 		}
 		v.FingerprintColons = kioskColons(v.Fingerprint)
+		if c, ok := kioskLastCheck(v.ID); ok {
+			v.Check, v.CheckAt = &c, c.At.Local().Format(kioskTimeDisplay)
+		}
 		out = append(out, v)
 	}
 	return out, rows.Err()
@@ -106,87 +190,122 @@ func (h *Handler) KioskTerminalsPage(w http.ResponseWriter, r *http.Request) {
 	d := KioskTerminalsPageData{
 		BaseData:  h.baseData(r, "kiosk-terminals", "Kiosk-Terminals", "Systemverwaltung"),
 		Terminals: list,
-		Notice:    r.URL.Query().Get("notice"), Err: r.URL.Query().Get("err"),
 	}
+	d.Notice, d.Err = kioskNotices(r.URL.Query())
 	if err != nil {
-		d.Err = "Kiosk-Terminals konnten nicht geladen werden"
+		d.Err = kioskMessages["load_failed"]
 	}
 	h.render(w, "kiosk_terminals", d)
 }
 
-func kioskBack(w http.ResponseWriter, r *http.Request, notice, errMsg, anchor string) {
-	p := "/core/settings/kiosk-terminals?"
-	if notice != "" {
-		p += "notice=" + url.QueryEscape(notice) + "&"
+// kioskBack: zurück zur Verwaltung mit Meldungscodes (siehe kioskMessages).
+func kioskBack(w http.ResponseWriter, r *http.Request, noticeCode, errCode, anchor string) {
+	q := url.Values{}
+	if noticeCode != "" {
+		q.Set("notice", noticeCode)
 	}
-	if errMsg != "" {
-		p += "err=" + url.QueryEscape(errMsg) + "&"
+	if errCode != "" {
+		q.Set("err", errCode)
 	}
-	p = strings.TrimRight(p, "&?")
+	p := "/core/settings/kiosk-terminals"
+	if len(q) > 0 {
+		p += "?" + q.Encode()
+	}
 	if anchor != "" {
 		p += "#" + url.PathEscape(anchor)
 	}
 	http.Redirect(w, r, p, http.StatusSeeOther)
 }
 
+func kioskErrCode(err error) string {
+	var fe kioskFormError
+	if errors.As(err, &fe) {
+		return fe.Code
+	}
+	return "save_failed"
+}
+
+// kioskUpdateSQL: Ändern. Der Schlüssel bleibt nur, wenn Adresse und
+// Fingerabdruck gleich bleiben (zweite Sicherung neben kioskKeyRequired, auch
+// bei gleichzeitigen Änderungen); sonst wird er verworfen.
+const kioskUpdateSQL = `UPDATE kiosk_terminals SET name = $2, base_url = $3, pubkey_sha256 = $4, active = $5,
+		api_key_enc = CASE WHEN $6 <> '' THEN $6 WHEN base_url = $3 AND pubkey_sha256 = $4 THEN api_key_enc ELSE '' END,
+		updated_at = NOW()
+	WHERE id = $1::uuid`
+
 // KioskTerminalSaveWeb: POST /core/settings/kiosk-terminals – anlegen oder (terminal_id) ändern.
 func (h *Handler) KioskTerminalSaveWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageKiosk(r) || !kioskSameOrigin(r) {
-		http.Error(w, "keine Berechtigung (HMI einrichten)", http.StatusForbidden)
+		http.Error(w, "keine Berechtigung (HMI einrichten, ohne Abteilungsbegrenzung)", http.StatusForbidden)
 		return
 	}
 	_ = r.ParseForm()
 	in, err := parseKioskTerminalForm(r.PostForm)
 	if err != nil {
-		kioskBack(w, r, "", err.Error(), "")
+		kioskBack(w, r, "", kioskErrCode(err), "")
 		return
+	}
+	ctx := r.Context()
+	var oldURL, oldPin string
+	if in.ID != "" {
+		if err := h.db.QueryRow(ctx, `SELECT base_url, pubkey_sha256 FROM kiosk_terminals WHERE id = $1::uuid`, in.ID).Scan(&oldURL, &oldPin); err != nil {
+			kioskBack(w, r, "", "not_found", "")
+			return
+		}
+		if err := kioskKeyRequired(oldURL, oldPin, in); err != nil {
+			kioskBack(w, r, "", kioskErrCode(err), "k-"+in.ID)
+			return
+		}
 	}
 	keyEnc := ""
 	if in.APIKey != "" {
 		if keyEnc, err = encryptSecret(h.kioskKey(), in.APIKey); err != nil {
-			kioskBack(w, r, "", "Schlüssel konnte nicht gespeichert werden", "")
+			kioskBack(w, r, "", "save_failed", "")
 			return
 		}
 	}
-	ctx := r.Context()
 	if in.ID == "" {
 		err = h.db.QueryRow(ctx, `INSERT INTO kiosk_terminals (name, base_url, api_key_enc, pubkey_sha256, active)
 			VALUES ($1, $2, $3, $4, $5) RETURNING id::text`, in.Name, in.BaseURL, keyEnc, in.Fingerprint, in.Active).Scan(&in.ID)
 	} else {
 		var tag pgconn.CommandTag
-		tag, err = h.db.Exec(ctx, `UPDATE kiosk_terminals SET name = $2, base_url = $3, pubkey_sha256 = $4, active = $5,
-				api_key_enc = CASE WHEN $6 <> '' THEN $6 ELSE api_key_enc END, updated_at = NOW()
-			WHERE id = $1::uuid`, in.ID, in.Name, in.BaseURL, in.Fingerprint, in.Active, keyEnc)
+		tag, err = h.db.Exec(ctx, kioskUpdateSQL, in.ID, in.Name, in.BaseURL, in.Fingerprint, in.Active, keyEnc)
 		if err == nil && tag.RowsAffected() == 0 {
-			kioskBack(w, r, "", "Terminal nicht gefunden", "")
+			kioskBack(w, r, "", "not_found", "")
 			return
 		}
 	}
 	if err != nil {
 		var pe *pgconn.PgError
 		if errors.As(err, &pe) && pe.Code == "23505" {
-			kioskBack(w, r, "", "Ein Terminal mit dem Namen „"+in.Name+"“ gibt es schon", "")
+			kioskBack(w, r, "", "name_taken", "")
 			return
 		}
-		kioskBack(w, r, "", "Terminal konnte nicht gespeichert werden", "")
+		kioskBack(w, r, "", "save_failed", "")
 		return
 	}
-	componentLog("kiosk").Info().Str("terminal", in.ID).Str("user", getUser(r).ID).Bool("schluessel_neu", in.APIKey != "").Msg("kiosk-terminal gespeichert")
-	kioskBack(w, r, "Terminal „"+in.Name+"“ gespeichert – jetzt „Verbindung prüfen“", "", "k-"+in.ID)
+	kioskChecks.Delete(in.ID) // altes Prüfergebnis gilt nicht mehr
+	componentLog("kiosk").Info().Str("terminal", in.ID).Str("user", getUser(r).ID).
+		Str("adresse_alt", oldURL).Str("adresse", in.BaseURL).
+		Str("fingerabdruck_alt", oldPin).Str("fingerabdruck", in.Fingerprint).
+		Bool("schluessel_neu", in.APIKey != "").Msg("kiosk-terminal gespeichert")
+	kioskBack(w, r, "saved", "", "k-"+in.ID)
 }
 
 // KioskTerminalDeleteWeb: Anlagen verlieren die Zuordnung (ON DELETE SET NULL).
 func (h *Handler) KioskTerminalDeleteWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageKiosk(r) || !kioskSameOrigin(r) {
-		http.Error(w, "keine Berechtigung (HMI einrichten)", http.StatusForbidden)
+		http.Error(w, "keine Berechtigung (HMI einrichten, ohne Abteilungsbegrenzung)", http.StatusForbidden)
 		return
 	}
-	if _, err := h.db.Exec(r.Context(), `DELETE FROM kiosk_terminals WHERE id::text = $1`, chi.URLParam(r, "tid")); err != nil {
-		kioskBack(w, r, "", "Terminal konnte nicht gelöscht werden", "")
+	tid := chi.URLParam(r, "tid")
+	if _, err := h.db.Exec(r.Context(), `DELETE FROM kiosk_terminals WHERE id::text = $1`, tid); err != nil {
+		kioskBack(w, r, "", "delete_failed", "")
 		return
 	}
-	componentLog("kiosk").Info().Str("terminal", chi.URLParam(r, "tid")).Str("user", getUser(r).ID).Msg("kiosk-terminal gelöscht")
-	kioskBack(w, r, "Terminal gelöscht", "", "")
+	kioskChecks.Delete(tid)
+	componentLog("kiosk").Info().Str("terminal", tid).Str("user", getUser(r).ID).Msg("kiosk-terminal gelöscht")
+	kioskBack(w, r, "deleted", "", "")
 }
 
 type kioskTarget struct {
@@ -202,30 +321,36 @@ func (h *Handler) loadKioskTerminal(ctx context.Context, id string) (*kioskTarge
 }
 
 // KioskTerminalCheckWeb: „Verbindung prüfen“ – GET /api/remote/v1/status.
+// Die Meldung bleibt ausführlich (abgelehnt, Zeitüberschreitung,
+// Fingerabdruck): sie sehen nur Personen mit hmi.manage ohne
+// Abteilungsbegrenzung, die die Adresse ohnehin selbst eintragen.
 func (h *Handler) KioskTerminalCheckWeb(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageKiosk(r) || !kioskSameOrigin(r) {
-		http.Error(w, "keine Berechtigung (HMI einrichten)", http.StatusForbidden)
+		http.Error(w, "keine Berechtigung (HMI einrichten, ohne Abteilungsbegrenzung)", http.StatusForbidden)
 		return
 	}
 	t, err := h.loadKioskTerminal(r.Context(), chi.URLParam(r, "tid"))
 	if err != nil {
-		kioskBack(w, r, "", "Terminal nicht gefunden", "")
+		kioskBack(w, r, "", "not_found", "")
 		return
 	}
 	key, err := decryptSecret(h.kioskKey(), t.KeyEnc)
 	if err != nil || key == "" {
-		kioskBack(w, r, "", "„"+t.Name+"“: Schlüssel nicht lesbar – bitte neu eintragen", "k-"+t.ID)
+		kioskBack(w, r, "", "key_unreadable", "k-"+t.ID)
 		return
 	}
+	release, ok := kioskAcquire(t.ID)
+	if !ok {
+		kioskBack(w, r, "", "busy", "k-"+t.ID)
+		return
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(r.Context(), kioskTimeout)
 	defer cancel()
 	msg, ok := kioskStatusMessage(newKioskClient(t.BaseURL, key, t.Fingerprint).status(ctx))
+	kioskChecks.Store(t.ID, kioskCheckResult{OK: ok, Message: msg, At: time.Now()})
 	componentLog("kiosk").Info().Str("terminal", t.ID).Bool("ok", ok).Msg("kiosk-terminal geprüft")
-	if ok {
-		kioskBack(w, r, "„"+t.Name+"“: "+msg, "", "k-"+t.ID)
-		return
-	}
-	kioskBack(w, r, "", "„"+t.Name+"“: "+msg, "k-"+t.ID)
+	kioskBack(w, r, "checked", "", "k-"+t.ID)
 }
 
 // ── Zuordnung an der Anlage ──────────────────────────────────
@@ -257,9 +382,9 @@ func (h *Handler) kioskTerminalOptions(ctx context.Context, current string) []ki
 	return out
 }
 
-// saveInfraKioskTerminal: Feld „Kiosk-Terminal“ der Stammdaten (nur mit hmi.manage).
+// saveInfraKioskTerminal: Feld „Kiosk-Terminal“ der Stammdaten (hmi.manage für diese Anlage).
 func (h *Handler) saveInfraKioskTerminal(ctx context.Context, r *http.Request, infraID string) error {
-	if _, ok := r.Form["kiosk_terminal_id"]; !ok || !h.hasPerm(r, permHMIManage) {
+	if _, ok := r.Form["kiosk_terminal_id"]; !ok || !h.kioskPerm(r, permHMIManage, infraID) {
 		return nil
 	}
 	tid := strings.TrimSpace(r.FormValue("kiosk_terminal_id"))
@@ -290,11 +415,6 @@ func (h *Handler) HMIKioskOpen(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusForbidden, "Anfrage von fremder Seite abgewiesen")
 		return
 	}
-	p := h.hmiPermsFor(r)
-	if !p.Kiosk {
-		fail(http.StatusForbidden, "keine Berechtigung (HMI am Kiosk-Terminal zeigen)")
-		return
-	}
 	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
 		fail(http.StatusUnsupportedMediaType, "JSON erwartet")
 		return
@@ -308,27 +428,47 @@ func (h *Handler) HMIKioskOpen(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, "ungültige Eingabe")
 		return
 	}
-	if in.Mode == "control" && !p.Control {
-		fail(http.StatusForbidden, "keine Berechtigung (HMI bedienen)")
-		return
-	}
 	ctx, infraID, hmiID := r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "hmiID")
 	if !kioskUUIDRe.MatchString(infraID) || !kioskUUIDRe.MatchString(hmiID) {
 		fail(http.StatusNotFound, "HMI nicht gefunden")
 		return
 	}
-	t, err := h.loadHMI(ctx, infraID, hmiID)
+	// Rechte für genau diese Anlage (Abteilung zählt)
+	if !h.kioskPerm(r, permHMIKiosk, infraID) {
+		fail(http.StatusForbidden, "keine Berechtigung (HMI am Kiosk-Terminal zeigen)")
+		return
+	}
+	if in.Mode == "control" && !h.kioskPerm(r, permHMIControl, infraID) {
+		fail(http.StatusForbidden, "keine Berechtigung (HMI bedienen)")
+		return
+	}
+	// Anlage: aktiv, zugeordnetes Terminal, Pfad für die Leiste
+	var termID, plantPath string
+	err := h.db.QueryRow(ctx, `SELECT COALESCE(kiosk_terminal_id::text, ''), COALESCE(`+assetPathExpr("$1::uuid")+`, name)
+		FROM infrastructure WHERE id = $1::uuid AND active`, infraID).Scan(&termID, &plantPath)
+	if errors.Is(err, pgx.ErrNoRows) {
+		fail(http.StatusNotFound, "Anlage nicht gefunden oder archiviert")
+		return
+	}
 	if err != nil {
+		componentLog("kiosk").Warn().Err(err).Str("infra", infraID).Msg("anlage laden")
+		fail(http.StatusInternalServerError, "Anlage konnte nicht geladen werden")
+		return
+	}
+	// HMI nur unter seiner eigenen Anlage (loadHMI filtert nach infrastructure_id)
+	t, err := h.loadHMI(ctx, infraID, hmiID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		fail(http.StatusNotFound, "HMI nicht gefunden")
+		return
+	}
+	if err != nil {
+		fail(http.StatusInternalServerError, "HMI konnte nicht geladen werden")
 		return
 	}
 	if in.Mode == "control" && !t.AllowControl {
 		fail(http.StatusForbidden, "An diesem HMI ist Bedienen nicht erlaubt")
 		return
 	}
-	var termID, plantPath string
-	_ = h.db.QueryRow(ctx, `SELECT COALESCE(kiosk_terminal_id::text, ''), `+assetPathExpr("$1::uuid")+` FROM infrastructure WHERE id = $1::uuid`, infraID).
-		Scan(&termID, &plantPath)
 	if termID == "" {
 		fail(http.StatusConflict, "Dieser Anlage ist kein Kiosk-Terminal zugeordnet")
 		return
@@ -338,6 +478,12 @@ func (h *Handler) HMIKioskOpen(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusConflict, "Das zugeordnete Kiosk-Terminal ist inaktiv")
 		return
 	}
+	release, ok := kioskAcquire(term.ID)
+	if !ok {
+		fail(http.StatusTooManyRequests, "An das Terminal „"+term.Name+"“ läuft gerade ein Befehl – bitte kurz warten und noch einmal versuchen.")
+		return
+	}
+	defer release()
 	user := getUser(r)
 	logSession := func(errText string) {
 		_, _ = h.db.Exec(context.Background(), `INSERT INTO infrastructure_hmi_sessions
@@ -353,8 +499,8 @@ func (h *Handler) HMIKioskOpen(w http.ResponseWriter, r *http.Request) {
 	}
 	key, err := decryptSecret(h.kioskKey(), term.KeyEnc)
 	if err != nil || key == "" {
-		logSession("Terminal-Schlüssel nicht lesbar")
-		fail(http.StatusInternalServerError, "Schlüssel des Terminals nicht lesbar – bitte unter Kiosk-Terminals neu eintragen")
+		logSession("Terminal-Schlüssel nicht lesbar oder nicht gesetzt")
+		fail(http.StatusInternalServerError, "Schlüssel des Terminals nicht lesbar oder nicht gesetzt – bitte unter Kiosk-Terminals neu eintragen")
 		return
 	}
 	if plantPath == "" {

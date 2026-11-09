@@ -29,7 +29,7 @@
   </ol>
 </div>
 
-{{range .Terminals}}
+{{range $t := .Terminals}}
 <div class="kt-card" id="k-{{.ID}}">
   <div class="kt-head">
     <div class="ico"><i class="ti ti-device-desktop"></i></div>
@@ -37,6 +37,7 @@
       <b>{{.Name}}</b> {{if not .Active}}<span class="badge" style="background:var(--muted)">inaktiv</span>{{end}}
       <div class="sub">{{.BaseURL}} · Schlüssel {{if .HasKey}}gesetzt{{else}}<span style="color:var(--red)">fehlt</span>{{end}} · {{.Plants}} Anlage(n) · geändert {{.UpdatedAt}}</div>
       <div class="sub kt-fp" title="SHA-256 des öffentlichen Schlüssels">{{.FingerprintColons}}</div>
+      {{with .Check}}<div class="sub" role="status" style="color:{{if .OK}}var(--green){{else}}var(--red){{end}}"><i class="ti {{if .OK}}ti-circle-check{{else}}ti-alert-circle{{end}}"></i> {{.Message}} <span style="color:var(--muted)">({{$t.CheckAt}})</span></div>{{end}}
     </div>
     <div class="kt-actions">
       <form method="POST" action="/core/settings/kiosk-terminals/{{.ID}}/check" onsubmit="ktBusy(this,'Prüfe…')"><button class="btn btn-small" type="submit"><i class="ti ti-plug-connected"></i> Verbindung prüfen</button></form>
@@ -81,6 +82,7 @@ function ktNew(){
   document.getElementById('kt-form').reset();
   document.getElementById('kt-id').value = '';
   const k = document.getElementById('kt-key'); k.required = true; k.placeholder = 'hmik_…';
+  document.getElementById('kt-key-hint').textContent = 'Wird verschlüsselt gespeichert und nie wieder angezeigt.';
   document.getElementById('kt-key-req').hidden = false;
   ktOpen('Terminal hinzufügen');
 }
@@ -92,6 +94,7 @@ function ktEdit(btn){
   document.getElementById('kt-fp').value = btn.dataset.fp;
   document.getElementById('kt-active').checked = btn.dataset.active === 'true';
   const k = document.getElementById('kt-key'); k.required = false; k.placeholder = 'gesetzt – leer lassen = unverändert';
+  document.getElementById('kt-key-hint').textContent = 'Leer lassen = unverändert. Änderst du Adresse oder Fingerabdruck, verwirft PDH den bisherigen Schlüssel – dann hier einen neuen eintragen.';
   document.getElementById('kt-key-req').hidden = true;
   ktOpen('Terminal bearbeiten');
 }
