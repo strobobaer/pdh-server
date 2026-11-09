@@ -246,6 +246,9 @@ func TestBackupSkipsMirrorID(t *testing.T) {
 	src := t.TempDir()
 	os.WriteFile(filepath.Join(src, ".pdh-mirror-id"), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
 	os.WriteFile(filepath.Join(src, "bild.png"), []byte("PNG"), 0o644)
+	// Minor 6: auch eine Kennung tiefer im Baum (Datenordner unter dem Programmordner)
+	os.MkdirAll(filepath.Join(src, "data"), 0o755)
+	os.WriteFile(filepath.Join(src, "data", ".pdh-mirror-id"), []byte("0123456789abcdef0123456789abcdef\n"), 0o644)
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	n, err := backupFiles(zw, src, "files/uploads/")
@@ -254,6 +257,8 @@ func TestBackupSkipsMirrorID(t *testing.T) {
 	}
 	// ältere Sicherung mit Kennung
 	w, _ := zw.Create("files/uploads/.pdh-mirror-id")
+	w.Write([]byte("fedcba9876543210fedcba9876543210\n"))
+	w, _ = zw.Create("files/uploads/data/.pdh-mirror-id")
 	w.Write([]byte("fedcba9876543210fedcba9876543210\n"))
 	zw.Close()
 	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -266,14 +271,16 @@ func TestBackupSkipsMirrorID(t *testing.T) {
 			seen++
 		}
 	}
-	if seen != 1 {
-		t.Fatalf("Kennung in der Sicherung: %d (erwartet nur die eingeschleuste)", seen)
+	if seen != 2 {
+		t.Fatalf("Kennung in der Sicherung: %d (erwartet nur die zwei eingeschleusten)", seen)
 	}
 	dst := t.TempDir()
 	if n, err := restoreFiles(zr, "files/uploads/", dst); err != nil || n != 1 {
 		t.Fatalf("restoreFiles: %d, %v", n, err)
 	}
-	if _, err := os.Stat(filepath.Join(dst, ".pdh-mirror-id")); err == nil {
-		t.Fatal("Kennung zurückgespielt")
+	for _, p := range []string{".pdh-mirror-id", filepath.Join("data", ".pdh-mirror-id")} {
+		if _, err := os.Stat(filepath.Join(dst, p)); err == nil {
+			t.Fatalf("Kennung %s zurückgespielt", p)
+		}
 	}
 }

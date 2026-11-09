@@ -175,7 +175,7 @@ func TestRestoreRaeumtRewindMarke(t *testing.T) {
 // config/ von Nextcloud): Auf einem neuen Datenträger fehlt sie, die Spiegelung verlangt die Bestätigung.
 func TestRestoreSkipsMirrorID(t *testing.T) {
 	s := scriptText(t, "pdh-restore.sh")
-	mustContain(t, "pdh-restore.sh", s, `rsync -rtl --exclude=/.pdh-mirror-id --exclude=/config/.pdh-mirror-id "${@:3}"`)
+	mustContain(t, "pdh-restore.sh", s, `rsync -rtl --exclude=.pdh-mirror-id "${@:3}"`)
 }
 
 // TestRewindTexteNennenSicherung: Alarm und Fehler nennen den Ausweg ohne Partner.

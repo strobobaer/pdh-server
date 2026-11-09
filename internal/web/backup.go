@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -346,7 +347,7 @@ func backupFiles(zw *zip.Writer, dir, prefix string) (int, error) {
 		if err != nil {
 			return err
 		}
-		if rel == ha.MirrorIDName {
+		if filepath.Base(rel) == ha.MirrorIDName {
 			return nil // R63: Kennung der Datei-Spiegelung gehört zum Datenträger, nicht in die Sicherung
 		}
 		info, err := d.Info()
@@ -729,7 +730,7 @@ func restoreFiles(zr *zip.Reader, prefix, dir string) (int, error) {
 		if !strings.HasPrefix(f.Name, prefix) || strings.HasSuffix(f.Name, "/") {
 			continue
 		}
-		if strings.TrimPrefix(f.Name, prefix) == ha.MirrorIDName {
+		if path.Base(f.Name) == ha.MirrorIDName {
 			// R63: auch aus älteren Sicherungen nie zurück – auf einem neuen Datenträger muss die
 			// Kennung fehlen, sonst löschte die Spiegelung am Partner ohne Bestätigung
 			continue

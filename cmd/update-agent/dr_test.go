@@ -406,7 +406,7 @@ func TestDRParseN8N(t *testing.T) {
 
 func TestDRRsyncArgs(t *testing.T) {
 	got := strings.Join(drRsyncArgs(drSource{Label: "uploads", Path: "/r/uploads"}, "/t", "2026-10-24"), " ")
-	want := "-rt --copy-links --delete --backup --backup-dir=/t/papierkorb/2026-10-24/uploads --exclude=.git --exclude=/.pdh-mirror-id /r/uploads/ /t/files/uploads/"
+	want := "-rt --copy-links --delete --backup --backup-dir=/t/papierkorb/2026-10-24/uploads --exclude=.git --exclude=.pdh-mirror-id /r/uploads/ /t/files/uploads/"
 	if got != want {
 		t.Fatalf("\n got %s\nwant %s", got, want)
 	}
@@ -418,8 +418,10 @@ func TestDRRsyncArgs(t *testing.T) {
 	if !strings.HasSuffix(f, " /r/.env /t/files/env") || strings.Contains(f, "pdh-mirror-id") {
 		t.Fatalf("Datei: %s", f)
 	}
-	// R63: Die Kennung der Datei-Spiegelung kommt nie aufs Laufwerk, bei Nextcloud liegt sie in config/
-	if a := strings.Join(drRsyncArgs(drSource{Label: "nextcloud-app", Path: "/var/www/nextcloud"}, "/t", "2026-10-24"), " "); !strings.Contains(a, " --exclude=/config/.pdh-mirror-id ") {
+	// R63, Gesamtprüfung Minor 6: Die Kennung der Datei-Spiegelung kommt in keiner Tiefe aufs
+	// Laufwerk – bei Nextcloud liegt sie in config/ und, wenn der Datenordner im Programmordner
+	// liegt (…/nextcloud/data), auch in data/
+	if a := strings.Join(drRsyncArgs(drSource{Label: "nextcloud-app", Path: "/var/www/nextcloud"}, "/t", "2026-10-24"), " "); !strings.Contains(a, " --exclude=.pdh-mirror-id ") || strings.Contains(a, "--exclude=/") {
 		t.Fatalf("nextcloud-app: %s", a)
 	}
 }

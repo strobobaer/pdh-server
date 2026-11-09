@@ -118,7 +118,7 @@ func drRsyncArgs(src drSource, target, day string) []string {
 	}
 	// R63: Die Kennung der Datei-Spiegelung gehört zum Datenträger und kommt nie aufs Laufwerk;
 	// nach dem Zurückspielen auf einen neuen Datenträger fehlt sie, und die Spiegelung fragt nach
-	args = append(args, "--exclude=/"+ha.MirrorSource{Label: src.Label}.IDFile())
+	args = append(args, "--exclude="+ha.MirrorIDName) // ohne „/“: in jeder Tiefe (Datenordner unter dem Programmordner)
 	args = append(args, src.Filter...)
 	return append(args, src.Path+"/", target+"/files/"+src.Label+"/")
 }

@@ -185,7 +185,7 @@ fi
 restore_dir() { # Label Zielordner [rsync-Filter …]
   [[ -d "$FROM/files/$1" ]] || return 0
   # Kennung der Datei-Spiegelung nie zurück (R63): auf einem neuen Datenträger muss sie fehlen
-  mkdir -p "$2"; rsync -rtl --exclude=/.pdh-mirror-id --exclude=/config/.pdh-mirror-id "${@:3}" "$FROM/files/$1/" "$2/"
+  mkdir -p "$2"; rsync -rtl --exclude=.pdh-mirror-id "${@:3}" "$FROM/files/$1/" "$2/"
 }
 restore_dir uploads "$REPO/uploads"
 restore_dir chat_files "$REPO/chat_files"
