@@ -388,8 +388,16 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	// Rückkehrzeit des Terminals vorab prüfen (nur Benutzerverwaltung, nur System-Benutzer)
 	idleSent := false
-	if _, sent := r.Form["terminal_idle_seconds"]; sent && h.canManageUsers(r) && h.isSystemUser(ctx, id) {
-		idleSent = true
+	if _, sent := r.Form["terminal_idle_seconds"]; sent && h.canManageUsers(r) {
+		sys, err := h.isSystemUser(ctx, id)
+		if err != nil {
+			componentLog("terminal").Error().Err(err).Str("user", id).Msg("systembenutzer prüfen")
+			userRedirect(w, r, id, "master", "", errTerminalIdleSave)
+			return
+		}
+		idleSent = sys
+	}
+	if idleSent {
 		if raw := v("terminal_idle_seconds"); raw != "" {
 			if _, err := parseTerminalIdle(raw); err != nil {
 				userRedirect(w, r, id, "master", "", err)
@@ -436,6 +444,10 @@ func (h *Handler) UserMasterSaveWeb(w http.ResponseWriter, r *http.Request) {
 	}
 	if idleSent {
 		if err := h.saveTerminalIdle(ctx, id, v("terminal_idle_seconds")); err != nil {
+			if !errors.Is(err, errTerminalIdle) {
+				componentLog("terminal").Error().Err(err).Str("user", id).Msg("rückkehrzeit speichern")
+				err = errTerminalIdleSave
+			}
 			userRedirect(w, r, id, "master", "", err)
 			return
 		}

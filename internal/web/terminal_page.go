@@ -49,6 +49,8 @@ type terminalInfo struct {
 	FaultsTotal  int            `json:"faultsTotal"`
 	Tickets      []terminalItem `json:"tickets"`
 	TicketsTotal int            `json:"ticketsTotal"`
+	CanFaults    bool           `json:"canFaults"`
+	CanTickets   bool           `json:"canTickets"`
 }
 
 // terminalPage: Daten für terminal.gohtml.
@@ -56,6 +58,10 @@ type terminalPage struct {
 	Mode    string // schoner | info | neu
 	Idle    int    // Rückkehrzeit in Sekunden (0 = kein Timer)
 	NoInfra bool
+	NoPerm   bool // dem Terminal-Benutzer fehlen faults.view und tickets.view für diese Anlage
+	CanFaults  bool
+	CanTickets bool
+	EasyMode   bool // Easy-Mode an: „Neu“ darf zur Meldeseite /e/{id} führen
 	InfraID string
 	Name    string
 	Path    string
@@ -122,17 +128,28 @@ func (h *Handler) terminalRoot(ctx context.Context, infraID string) (name string
 	return name, err == nil, err
 }
 
-// terminalInfraLookup: Anlage des Terminal-Benutzers ("" = keine); echte DB-Fehler werden gemeldet.
-func (h *Handler) terminalInfraLookup(ctx context.Context, uid string) (string, error) {
+// terminalInfraLookup: Anlage und Rolle des Terminal-Benutzers (Anlage "" = keine); echte DB-Fehler werden gemeldet.
+func (h *Handler) terminalInfraLookup(ctx context.Context, uid string) (infra, role string, err error) {
 	if h.db == nil {
-		return "", nil
+		return "", "", nil
 	}
-	var infra string
-	err := h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, '') FROM users WHERE id = $1::uuid AND is_system_user`, uid).Scan(&infra)
+	err = h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, ''), role::text FROM users WHERE id = $1::uuid AND is_system_user`, uid).Scan(&infra, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return "", "", nil
 	}
-	return infra, err
+	return infra, role, err
+}
+
+// terminalPerms: darf der Terminal-Benutzer (nicht die angemeldete Person – bei einer
+// Override-Sitzung ist das jemand anderes) Störungen bzw. Tickets dieser Anlage ansehen?
+// Das Recht gilt mit Abteilungsbezug der Anlage.
+func (h *Handler) terminalPerms(ctx context.Context, uid, role, infraID string) (faults, tickets bool) {
+	if h.rbac == nil || uid == "" {
+		return false, false
+	}
+	depts := h.recordDepartments(ctx, "infrastructure", infraID)
+	return h.rbac.HasPermissionInDepartment(uid, role, "faults.view", depts),
+		h.rbac.HasPermissionInDepartment(uid, role, "tickets.view", depts)
 }
 
 // terminalSubtree: Anlage samt sichtbaren Unteranlagen (wie infraSubtreeIDs, aber mit Fehlern).
@@ -158,8 +175,8 @@ func (h *Handler) terminalSubtree(ctx context.Context, id string) ([]string, err
 
 // loadTerminalInfo: offene Störungen und Tickets im Teilbaum der Anlage
 // (je höchstens terminalListLimit neueste, dazu die Gesamtzahl).
-func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string) (terminalInfo, error) {
-	info := terminalInfo{InfraID: infraID, Faults: []terminalItem{}, Tickets: []terminalItem{}}
+func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string, canFaults, canTickets bool) (terminalInfo, error) {
+	info := terminalInfo{InfraID: infraID, Faults: []terminalItem{}, Tickets: []terminalItem{}, CanFaults: canFaults, CanTickets: canTickets}
 	_, ok, err := h.terminalRoot(ctx, infraID)
 	if err != nil {
 		return info, err
@@ -220,11 +237,15 @@ func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string) (termina
 		}
 		return items, total, rs.Err()
 	}
-	if info.Faults, info.FaultsTotal, err = load("faults", "status::text NOT IN ('resolved','closed')"); err != nil {
-		return info, err
+	if canFaults {
+		if info.Faults, info.FaultsTotal, err = load("faults", "status::text NOT IN ('resolved','closed')"); err != nil {
+			return info, err
+		}
 	}
-	if info.Tickets, info.TicketsTotal, err = load("tickets", "status::text IN ('open','in_progress','pending')"); err != nil {
-		return info, err
+	if canTickets {
+		if info.Tickets, info.TicketsTotal, err = load("tickets", "status::text IN ('open','in_progress','pending')"); err != nil {
+			return info, err
+		}
 	}
 	return info, nil
 }
@@ -238,7 +259,7 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
 	}
-	infra, err := h.terminalInfraLookup(r.Context(), uid)
+	infra, role, err := h.terminalInfraLookup(r.Context(), uid)
 	var name string
 	var ok bool
 	if err == nil {
@@ -254,6 +275,11 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		return p, true
 	}
 	p.InfraID, p.Name, p.Path = infra, name, h.infraPath(r.Context(), infra)
+	p.CanFaults, p.CanTickets = h.terminalPerms(r.Context(), uid, role, infra)
+	p.NoPerm = !p.CanFaults && !p.CanTickets
+	if mode == "neu" {
+		p.EasyMode = h.easyModeEnabled(r.Context())
+	}
 	if mode != "schoner" {
 		p.Idle = h.terminalIdleSeconds(r.Context(), uid)
 	}
@@ -288,8 +314,8 @@ func (h *Handler) TerminalInfoPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !p.NoInfra {
-		info, err := h.loadTerminalInfo(r.Context(), p.InfraID)
+	if !p.NoInfra && !p.NoPerm {
+		info, err := h.loadTerminalInfo(r.Context(), p.InfraID, p.CanFaults, p.CanTickets)
 		if err != nil {
 			componentLog("terminal").Error().Err(err).Msg("störungsinfo")
 			http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)
@@ -317,7 +343,11 @@ func (h *Handler) TerminalInfoJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Diesem Terminal ist keine Anlage zugeordnet", http.StatusNotFound)
 		return
 	}
-	info, err := h.loadTerminalInfo(r.Context(), p.InfraID)
+	if p.NoPerm {
+		http.Error(w, "Keine Berechtigung für Störungen und Tickets dieser Anlage", http.StatusForbidden)
+		return
+	}
+	info, err := h.loadTerminalInfo(r.Context(), p.InfraID, p.CanFaults, p.CanTickets)
 	if err != nil {
 		componentLog("terminal").Error().Err(err).Msg("info.json")
 		http.Error(w, "Die Daten konnten nicht geladen werden.", http.StatusInternalServerError)

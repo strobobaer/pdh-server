@@ -26,3 +26,11 @@ func effectiveHMITerminalControl(allowControl bool, control string) string {
 	}
 	return control
 }
+
+// hmiTermOr liefert *s, bei nil den Standardwert (Anlegen ohne Terminal-Felder).
+func hmiTermOr(s *string, def string) string {
+	if s == nil {
+		return def
+	}
+	return *s
+}

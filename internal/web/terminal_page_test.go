@@ -60,7 +60,7 @@ func TestTerminalWithoutInfra(t *testing.T) {
 
 func TestTerminalTemplateIdleAndEscaping(t *testing.T) {
 	h, _ := terminalTestHandler(t)
-	d := terminalPage{Mode: "info", Idle: 45, InfraID: "33333333-3333-3333-3333-333333333333", Name: `<b>Presse</b>`, Path: `A › "B"`,
+	d := terminalPage{Mode: "info", Idle: 45, CanFaults: true, CanTickets: true, EasyMode: true, InfraID: "33333333-3333-3333-3333-333333333333", Name: `<b>Presse</b>`, Path: `A › "B"`,
 		Info: terminalInfo{Faults: []terminalItem{{ID: "f1", Title: `<script>alert(1)</script>`, Path: "Unter", StatusLabel: "Offen", Age: "vor 3 h"}}, FaultsTotal: 60}}
 	rec := httptest.NewRecorder()
 	h.renderTerminal(rec, d)

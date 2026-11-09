@@ -305,9 +305,15 @@ func TestAnlagenterminalInfo(t *testing.T) {
 	ticket("T-A zu", infraA, "closed")
 	ticket("T-C fremd", infraC, "open")
 
-	h := &Handler{db: pool, jwtSecret: "test-geheim"}
+	// Das Terminal darf Störungen und Tickets ansehen (überall)
+	_, err = pool.Exec(ctx, `INSERT INTO user_permissions (user_id, permission_id, granted)
+		SELECT $1::uuid, id, true FROM permissions WHERE key IN ('faults.view', 'tickets.view')`, term)
+	must(err)
+	rb := rbac.NewService(rbac.NewRepository(pool))
+	must(rb.Warm(ctx))
+	h := &Handler{db: pool, rbac: rb, jwtSecret: "test-geheim"}
 
-	info, err := h.loadTerminalInfo(ctx, infraA)
+	info, err := h.loadTerminalInfo(ctx, infraA, true, true)
 	must(err)
 	titles := func(items []terminalItem) string {
 		var s []string
@@ -337,7 +343,7 @@ func TestAnlagenterminalInfo(t *testing.T) {
 	for i := 0; i < 58; i++ {
 		fault("Masse", infraB, "detected", false)
 	}
-	info, err = h.loadTerminalInfo(ctx, infraA)
+	info, err = h.loadTerminalInfo(ctx, infraA, true, true)
 	must(err)
 	if len(info.Faults) != terminalListLimit || info.FaultsTotal != 60 {
 		t.Errorf("Limit: %d Einträge, total %d", len(info.Faults), info.FaultsTotal)
@@ -396,7 +402,7 @@ func TestAnlagenterminalInfo(t *testing.T) {
 	if rec := get("/terminal/info.json"); rec.Code != http.StatusNotFound {
 		t.Errorf("info.json ausgeblendet: %d", rec.Code)
 	}
-	if _, err := h.loadTerminalInfo(ctx, infraA); err == nil {
+	if _, err := h.loadTerminalInfo(ctx, infraA, true, true); err == nil {
 		t.Error("loadTerminalInfo bei ausgeblendeter Anlage ohne Fehler")
 	}
 }
@@ -424,7 +430,9 @@ func TestAnlagenterminalDBError(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type) VALUES ($1, 'plant') RETURNING id::text`, "Fehler "+sfx).Scan(&infra); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = pool.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, infra)
+	if _, err := pool.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, infra); err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		p2, err := pgxpool.New(ctx, dsn)
 		if err != nil {
@@ -444,7 +452,7 @@ func TestAnlagenterminalDBError(t *testing.T) {
 	// abgebrochener Kontext: Fehler, nicht errTerminalNoInfra
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := h.loadTerminalInfo(cctx, infra); err == nil || err == errTerminalNoInfra {
+	if _, err := h.loadTerminalInfo(cctx, infra, true, true); err == nil || err == errTerminalNoInfra {
 		t.Errorf("abgebrochener Kontext: %v", err)
 	}
 

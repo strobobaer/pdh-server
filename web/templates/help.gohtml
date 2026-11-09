@@ -609,7 +609,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <ul>
     <li><b>HMI ansehen</b> – nur zuschauen. Tastatur, Maus und Zwischenablage verwirft der Server, auch wenn der Browser sie schicken würde.</li>
     <li><b>HMI bedienen</b> – mit Tastatur und Maus arbeiten, sofern am HMI „Bedienen erlaubt“ ist. Deine Eingaben wirken direkt auf die Anlage.</li>
-    <li><b>HMI-Verbindungen einrichten</b> – HMIs anlegen, ändern, löschen.</li>
+    <li><b>HMI-Verbindungen einrichten</b> – HMIs anlegen, ändern, löschen. Bei Rechten auf Abteilungsebene gilt das nur für Anlagen dieser Abteilung.</li>
   </ul>
   <p>Standardmäßig dürfen Administratoren, Manager und Techniker ansehen; bedienen und einrichten nur Administratoren. Weitere Rollen bekommen die Rechte unter <b>Rollen &amp; Berechtigungen</b> (Kategorie „Infrastruktur“).</p>
   <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein HMI ein</b>
@@ -702,13 +702,13 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <h3>Was am Terminal passiert</h3>
   <ul>
     <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
-    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Unten führt <b>Neu</b> weiter.</li>
-    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
+    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht der Weg dorthin (Pfad unterhalb der Terminal-Anlage) vor dem Alter. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Welche Listen das Terminal zeigt, hängt von den Rechten des <b>Terminal-Benutzers</b> ab (auch wenn sich jemand kurz per Override am Terminal anmeldet): <b>Störungen ansehen</b> für die Störungsliste, <b>Tickets ansehen</b> für die Ticketliste, jeweils für die Abteilung der Anlage. Fehlt eines der Rechte, steht an der Stelle „Keine Berechtigung für Störungen“ bzw. „… für Tickets“; fehlen beide, zeigt das Terminal nur „Keine Berechtigung“. Unten führt <b>Neu</b> weiter.</li>
+    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen vorerst beide die Meldeseite des Easy-Mode der Anlage (eine eigene Ticket-Meldung ist noch nicht verfügbar). Ist der <b>Easy-Mode</b> in den Core-Einstellungen ausgeschaltet, sind <b>Störung</b> und <b>Ticket</b> abgeblendet und das Terminal weist darauf hin („Melden am Terminal ist ausgeschaltet“) – so landet am Wandbildschirm niemand auf der Anmeldeseite. <b>Stillstand</b> ist noch nicht verfügbar. <b>Zurück</b> geht zur Störungsinfo.</li>
   </ul>
   <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
   <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
     <ol class="hb-steps">
-      <li><b>Für alle Terminals:</b> <b>Core-Einstellungen</b> → Karte <b>Anlagenterminal: Rückkehrzeit</b> → Sekunden eintragen → <b>Speichern</b>. Erlaubt sind 30 bis 3600 Sekunden, ohne Eintrag gelten <b>120</b> Sekunden. Ändern darf es, wer Benutzer verwalten darf.</li>
+      <li><b>Für alle Terminals:</b> <b>Core-Einstellungen</b> → Karte <b>Anlagenterminal: Rückkehrzeit</b> → Sekunden eintragen → <b>Speichern</b>. Erlaubt sind 30 bis 3600 Sekunden, ohne Eintrag gelten <b>120</b> Sekunden. Die Karte sehen und ändern kann nur, wer Benutzer verwalten darf.</li>
       <li><b>Für ein einzelnes Terminal:</b> den Systembenutzer öffnen und im Terminal-Block <b>Rückkehrzeit zum Bildschirmschoner</b> eintragen. <b>Leer</b> heißt: die globale Einstellung gilt.</li>
     </ol>
     Werte außerhalb von 30 bis 3600 oder Text lehnt PDH mit einer Meldung ab; der bisherige Wert bleibt. Ein geänderter Wert gilt, sobald das Terminal die Seite neu lädt.</div>

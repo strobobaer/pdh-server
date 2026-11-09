@@ -33,6 +33,7 @@
       var empty = document.querySelector('[data-empty="' + kind + '"]');
       var more = document.querySelector('[data-more="' + kind + '"]');
       var cnt = document.querySelector('[data-count="' + kind + '"]');
+      if (!list || !cnt || !more) return; // Kachel ohne Berechtigung: nichts zu füllen
       cnt.textContent = total;
       cnt.classList.toggle('has', total > 0);
       list.textContent = '';
@@ -68,8 +69,8 @@
         })
         .then(function (d) {
           if (!d) return;
-          fill('faults', d.faults || [], d.faultsTotal || 0);
-          fill('tickets', d.tickets || [], d.ticketsTotal || 0);
+          if (d.canFaults !== false) fill('faults', d.faults || [], d.faultsTotal || 0);
+          if (d.canTickets !== false) fill('tickets', d.tickets || [], d.ticketsTotal || 0);
         })
         .catch(function () { /* offline: alter Stand bleibt */ });
     };

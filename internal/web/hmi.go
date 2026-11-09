@@ -152,7 +152,7 @@ var hmiHostRe = regexp.MustCompile(`^[A-Za-z0-9._:\-\[\]]{1,253}$`)
 // HMISave: anlegen (ohne hmiID) oder aendern. Leeres Passwort = unveraendert,
 // clear_password = entfernen.
 func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
-	if !h.hasPerm(r, permHMIManage) {
+	if !h.hasPermRec(r, permHMIManage, "infrastructure", chi.URLParam(r, "id")) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "keine Berechtigung (HMI einrichten)"})
 		return
 	}
@@ -190,19 +190,12 @@ func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Passwort zu lang"})
 		return
 	}
-	// Anlagenterminal: fehlende Felder (alte Clients) = Standardwerte
-	termView, termControl := hmiTermEveryone, hmiTermCard
-	if in.TerminalView != nil {
-		termView = *in.TerminalView
-	}
-	if in.TerminalControl != nil {
-		termControl = *in.TerminalControl
-	}
-	if !validHMITerminalView(termView) {
+	// Anlagenterminal: fehlende Felder (alte Clients) bleiben unverändert (Standard nur beim Anlegen)
+	if in.TerminalView != nil && !validHMITerminalView(*in.TerminalView) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Ansehen am Terminal ungültig"})
 		return
 	}
-	if !validHMITerminalControl(termControl) {
+	if in.TerminalControl != nil && !validHMITerminalControl(*in.TerminalControl) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Bedienen am Terminal ungültig"})
 		return
 	}
@@ -220,13 +213,14 @@ func (h *Handler) HMISave(w http.ResponseWriter, r *http.Request) {
 	if hmiID == "" {
 		err = h.db.QueryRow(ctx, `INSERT INTO infrastructure_hmis (infrastructure_id, name, host, port, password_enc, allow_control, notes, created_by, terminal_view, terminal_control)
 			VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, NULLIF($8,'')::uuid, $9, $10) RETURNING id::text`,
-			infraID, in.Name, in.Host, in.Port, pwEnc, in.AllowControl, in.Notes, getUser(r).ID, termView, termControl).Scan(&hmiID)
+			infraID, in.Name, in.Host, in.Port, pwEnc, in.AllowControl, in.Notes, getUser(r).ID,
+			hmiTermOr(in.TerminalView, hmiTermEveryone), hmiTermOr(in.TerminalControl, hmiTermCard)).Scan(&hmiID)
 	} else {
 		var tag interface{ RowsAffected() int64 }
-		tag, err = h.db.Exec(ctx, `UPDATE infrastructure_hmis SET name=$3, host=$4, port=$5, allow_control=$6, notes=$7, terminal_view=$10, terminal_control=$11,
+		tag, err = h.db.Exec(ctx, `UPDATE infrastructure_hmis SET name=$3, host=$4, port=$5, allow_control=$6, notes=$7, terminal_view=COALESCE($10, terminal_view), terminal_control=COALESCE($11, terminal_control),
 				password_enc = CASE WHEN $9 THEN '' WHEN $8 <> '' THEN $8 ELSE password_enc END, updated_at=NOW()
 			WHERE id=$2::uuid AND infrastructure_id=$1::uuid`,
-			infraID, hmiID, in.Name, in.Host, in.Port, in.AllowControl, in.Notes, pwEnc, in.ClearPassword, termView, termControl)
+			infraID, hmiID, in.Name, in.Host, in.Port, in.AllowControl, in.Notes, pwEnc, in.ClearPassword, in.TerminalView, in.TerminalControl)
 		if err == nil && tag.RowsAffected() == 0 {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "HMI nicht gefunden"})
 			return

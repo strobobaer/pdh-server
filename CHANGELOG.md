@@ -23,8 +23,18 @@ im Kapitel „Versionen & Updates“ an.
 - Ist das Terminal gerade nicht bereit, zeigt PDH den Grund, den das Terminal nennt (z. B. Wartung, Sicherung oder HMI vom Terminal aus nicht erreichbar).
 - Handbuch-Kapitel „Kiosk-Terminals“, auch zum PDH-Terminalmodus (Web-Kachel mit angemeldetem Systembenutzer am Terminal).
 
+### Geändert
+- Anlagenterminal: Störungen und Tickets zeigt das Terminal nur, wenn der Terminal-Benutzer „Störungen ansehen“ bzw. „Tickets ansehen“ für die Abteilung der Anlage hat; sonst erscheint an der Stelle ein Hinweis, ohne beide Rechte „Keine Berechtigung“.
+- Anlagenterminal: Ist der Easy-Mode ausgeschaltet, sind „Störung“ und „Ticket“ unter „Neu“ abgeblendet und das Terminal erklärt es, statt zur Anmeldeseite zu führen.
+- Die Karte „Anlagenterminal: Rückkehrzeit“ in den Core-Einstellungen sehen nur Personen, die sie auch speichern dürfen (Benutzer verwalten).
+
+### Behoben
+- HMI speichern: Fehlen „Ansehen/Bedienen am Terminal“ in einer Anfrage (z. B. älteres Formular), bleiben die gespeicherten Werte erhalten, statt auf die Standardwerte zurückzufallen.
+- Rückkehrzeit des Terminals: Datenbankfehler beim Speichern werden gemeldet, statt „gespeichert“ zu zeigen.
+
 ### Sicherheit
 - Neues Recht „HMI am Kiosk-Terminal der Anlage zeigen“ (`hmi.kiosk`) für Administratoren, Manager, Techniker und Anlagenverantwortliche; es gilt je Anlage, bei Rechten auf Abteilungsebene also nur für die Anlagen dieser Abteilung.
+- HMI-Verbindungen anlegen und ändern verlangt „HMI-Verbindungen einrichten“ jetzt für die Abteilung der Anlage (bisher genügte das Recht in irgendeiner Abteilung).
 - Terminals einrichten, ändern, prüfen und löschen nur mit „HMI-Verbindungen einrichten“ ohne Abteilungsbegrenzung (standardmäßig Administratoren).
 - Ändert sich Adresse oder Fingerabdruck eines Terminals, verwirft PDH den gespeicherten Schlüssel und verlangt einen neuen – Schlüssel und VNC-Passwörter lassen sich so nicht auf ein anderes Gerät umlenken.
 - An ein Terminal geht immer nur ein Befehl gleichzeitig; Befehle für archivierte Anlagen werden abgewiesen.

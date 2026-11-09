@@ -187,14 +187,14 @@
     </form>
   </div>
 
-  <div class="card" id="terminal-idle">
+  {{if .CanTerminalSettings}}<div class="card" id="terminal-idle">
     <div class="card-title">Anlagenterminal: Rückkehrzeit</div>
     <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Nach so vielen Sekunden ohne Berührung kehrt das Terminal zum Bildschirmschoner zurück (30 bis 3600, Standard 120). Je Terminal lässt sich der Wert am System-Benutzer überschreiben.</p>
     <form method="POST" action="/core/settings/terminal">
       <div class="form-group"><label class="form-label" for="terminal-idle-seconds">Sekunden</label><input class="form-input" id="terminal-idle-seconds" name="idle_seconds" inputmode="numeric" pattern="[0-9]*" value="{{.TerminalIdle}}" style="max-width:140px"></div>
       {{template "icon-button" (dict "Action" "save" "ShowLabel" true "Type" "submit" "Label" "Speichern")}}
     </form>
-  </div>
+  </div>{{end}}
 
   <div class="card" id="autologout">
     <div class="card-title">Auto-Logout</div>

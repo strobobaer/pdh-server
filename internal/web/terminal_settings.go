@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
 	"pdh/pkg/appsettings"
 )
 
@@ -25,6 +27,9 @@ const (
 )
 
 var errTerminalIdle = errors.New("Rückkehrzeit muss zwischen 30 und 3600 Sekunden liegen")
+
+// errTerminalIdleSave: Datenbankfehler beim Speichern (Text für die Anzeige, Ursache steht im Protokoll).
+var errTerminalIdleSave = errors.New("Rückkehrzeit konnte nicht gespeichert werden")
 
 // parseTerminalIdle prüft die Eingabe einer Rückkehrzeit (Sekunden).
 func parseTerminalIdle(s string) (int, error) {
@@ -54,7 +59,11 @@ func (h *Handler) terminalIdleSeconds(ctx context.Context, userID string) int {
 	}
 	var n *int
 	if userID != "" {
-		_ = h.db.QueryRow(ctx, `SELECT idle_seconds FROM terminal_settings WHERE user_id = $1::uuid`, userID).Scan(&n)
+		err := h.db.QueryRow(ctx, `SELECT idle_seconds FROM terminal_settings WHERE user_id = $1::uuid`, userID).Scan(&n)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			componentLog("terminal").Error().Err(err).Msg("rückkehrzeit des terminals")
+			n = nil // sicher auf den globalen Wert zurückfallen
+		}
 	}
 	if n != nil && *n >= terminalIdleMin && *n <= terminalIdleMax {
 		return *n
@@ -64,8 +73,14 @@ func (h *Handler) terminalIdleSeconds(ctx context.Context, userID string) int {
 
 // terminalIdleField liefert den eigenen Wert des Terminal-Benutzers für das Formular ("" = global).
 func (h *Handler) terminalIdleField(ctx context.Context, userID string) string {
+	if h.db == nil {
+		return ""
+	}
 	var n *int
-	_ = h.db.QueryRow(ctx, `SELECT idle_seconds FROM terminal_settings WHERE user_id = $1::uuid`, userID).Scan(&n)
+	if err := h.db.QueryRow(ctx, `SELECT idle_seconds FROM terminal_settings WHERE user_id = $1::uuid`, userID).Scan(&n); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		componentLog("terminal").Error().Err(err).Msg("rückkehrzeit des terminals (formular)")
+		return ""
+	}
 	if n == nil {
 		return ""
 	}
@@ -75,6 +90,9 @@ func (h *Handler) terminalIdleField(ctx context.Context, userID string) string {
 // saveTerminalIdle speichert die Rückkehrzeit eines System-Benutzers
 // (leer = globalen Wert verwenden). Bei Nicht-System-Benutzern passiert nichts.
 func (h *Handler) saveTerminalIdle(ctx context.Context, userID, raw string) error {
+	if h.db == nil {
+		return errors.New("keine Datenbank")
+	}
 	raw = strings.TrimSpace(raw)
 	var val any
 	if raw != "" {
@@ -109,8 +127,15 @@ func (h *Handler) TerminalSettingsWeb(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/core/settings?notice="+url.QueryEscape("Rückkehrzeit des Terminals gespeichert"), http.StatusSeeOther)
 }
 
-func (h *Handler) isSystemUser(ctx context.Context, userID string) bool {
+// isSystemUser: ist der Benutzer ein Systembenutzer? Datenbankfehler werden gemeldet (kein stilles „nein“).
+func (h *Handler) isSystemUser(ctx context.Context, userID string) (bool, error) {
+	if h.db == nil {
+		return false, errors.New("keine Datenbank")
+	}
 	var sys bool
-	_ = h.db.QueryRow(ctx, `SELECT is_system_user FROM users WHERE id = $1::uuid`, userID).Scan(&sys)
-	return sys
+	err := h.db.QueryRow(ctx, `SELECT is_system_user FROM users WHERE id = $1::uuid`, userID).Scan(&sys)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return sys, err
 }
