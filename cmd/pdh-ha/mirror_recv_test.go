@@ -384,6 +384,83 @@ func TestTrashInfoAndEmpty(t *testing.T) {
 	}
 }
 
+// Gesamtprüfung #76, #87: Wer auf den Platz der Quelle wartet, wird danach neu geprüft – ist
+// dieser Server inzwischen nicht mehr passiv (oder die Spiegelung aus), lehnt Accept ab.
+func TestInboxAcceptRechecksAfterWait(t *testing.T) {
+	for name, change := range map[string]func(v *mirrorInboxView){
+		"Rolle aktiv":    func(v *mirrorInboxView) { v.Role = ha.Active },
+		"neue Amtszeit":  func(v *mirrorInboxView) { v.Term = 9 },
+		"Spiegelung aus": func(v *mirrorInboxView) { v.Settings.MirrorOn = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newInboxFix(t)
+			os.Mkdir(f.root+"/repo/uploads", 0o755)
+			f.in.mu.Lock()
+			f.in.busy["uploads"] = true // ein alter Strom räumt noch auf
+			f.in.mu.Unlock()
+			res := make(chan string, 1)
+			go func() {
+				_, done, r := f.accept("uploads", 3)
+				if done != nil {
+					done(nil)
+				}
+				res <- r
+			}()
+			time.Sleep(3 * mirrorBusyPoll) // Accept wartet jetzt
+			f.setView(change)
+			f.in.mu.Lock()
+			delete(f.in.busy, "uploads")
+			f.in.mu.Unlock()
+			select {
+			case r := <-res:
+				if r == "" {
+					t.Fatal("nach der Wartezeit ohne erneute Prüfung angenommen")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Accept hängt")
+			}
+			f.in.mu.Lock()
+			busy := f.in.busy["uploads"]
+			f.in.mu.Unlock()
+			if busy {
+				t.Error("Platz der Quelle nach Ablehnung nicht frei")
+			}
+		})
+	}
+}
+
+// Gesamtprüfung #30, #77: Nur ein vollständig geleerter Papierkorb setzt den Rückkehrer-Zähler
+// auf 0 (die Dateien können die einzige Kopie sein); nach einem Rollenwechsel bricht der Auftrag ab.
+func TestEmptyTrashFailureAndRoleChange(t *testing.T) {
+	f := newInboxFix(t)
+	a := mkTrashDay(t, f.root+"/repo", "2026-11-02")
+	f.in.st.Orphans = 4
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := f.in.emptyTrash(ctx); err == nil {
+		t.Fatal("abgebrochen ohne Fehler")
+	}
+	if f.in.orphans() != 4 {
+		t.Fatalf("Zähler nach Fehlschlag: %d", f.in.orphans())
+	}
+	// nicht mehr passiv: nichts löschen, Zähler bleibt
+	f.setView(func(v *mirrorInboxView) { v.Role = ha.Active })
+	if err := f.in.emptyTrash(context.Background()); err == nil || !strings.Contains(err.Error(), "Rolle") {
+		t.Fatalf("nach Rollenwechsel: %v", err)
+	}
+	if _, err := os.Stat(a); err != nil {
+		t.Fatalf("nach Rollenwechsel gelöscht: %v", err)
+	}
+	if f.in.orphans() != 4 {
+		t.Fatalf("Zähler nach Rollenwechsel: %d", f.in.orphans())
+	}
+	// wieder passiv: geleert, Zähler 0
+	f.setView(func(v *mirrorInboxView) { v.Role = ha.Passive })
+	if err := f.in.emptyTrash(context.Background()); err != nil || f.in.orphans() != 0 {
+		t.Fatalf("Leeren: %v, Zähler %d", err, f.in.orphans())
+	}
+}
+
 func TestEmptyTrashKeepsLinkTargets(t *testing.T) {
 	if os.PathSeparator != '/' {
 		t.Skip("Links nur unter Unix")

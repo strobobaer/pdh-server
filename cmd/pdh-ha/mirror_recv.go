@@ -460,13 +460,17 @@ func (m *mirrorInbox) refuse(peerID, text string) string {
 
 // Accept siehe mirrorReceiver.
 func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req mirrorRequest) ([]string, func(error), string) {
-	v := m.d.view()
 	label := req.Label
-	src, known := m.byLabel(v.Settings, label)
-	if r := ha.MirrorRecvRefuse(ha.MirrorRecvObs{
-		PeerKind: peerKind, SelfRole: v.Role, SelfTerm: v.Term, SenderTerm: req.Term,
-		MirrorOn: v.Settings.MirrorOn, LabelKnown: known,
-	}); r != "" {
+	check := func() (mirrorInboxView, ha.MirrorSource, string) {
+		v := m.d.view()
+		src, known := m.byLabel(v.Settings, label)
+		return v, src, ha.MirrorRecvRefuse(ha.MirrorRecvObs{
+			PeerKind: peerKind, SelfRole: v.Role, SelfTerm: v.Term, SenderTerm: req.Term,
+			MirrorOn: v.Settings.MirrorOn, LabelKnown: known,
+		})
+	}
+	v, _, r := check()
+	if r != "" {
 		return nil, nil, m.refuse(peerID, r)
 	}
 	if m.arm(v) {
@@ -497,6 +501,13 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		m.mu.Lock()
 		delete(m.busy, label)
 		m.mu.Unlock()
+	}
+	// Die Wartezeit kann einen Wechsel von Rolle, Amtszeit oder Einstellungen überdauert haben:
+	// mit dem Stand von jetzt neu prüfen (hängt so nicht an der Reihenfolge im Takt)
+	_, src, r := check()
+	if r != "" {
+		free()
+		return nil, nil, m.refuse(peerID, r)
 	}
 	fail := func(text string) ([]string, func(error), string) {
 		free()
@@ -795,15 +806,23 @@ func (m *mirrorInbox) emptyTrash(ctx context.Context) error {
 			errs = append(errs, err)
 			break
 		}
+		// Nur der passive Server leert endgültig: nach einem Rollenwechsel aufhören
+		if m.d.view().Role != ha.Passive {
+			errs = append(errs, errors.New("Rolle gewechselt, dieser Server ist nicht mehr passiv"))
+			break
+		}
 		if err := os.RemoveAll(dir); err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...) // Rückkehrer-Dateien können noch da sein: Zähler bleibt
 	}
 	m.mu.Lock()
 	m.st.Orphans = 0
 	m.mu.Unlock()
 	m.save()
-	return errors.Join(errs...)
+	return nil
 }
 
 func (m *mirrorInbox) sources(s ha.Settings) []ha.MirrorSource {
