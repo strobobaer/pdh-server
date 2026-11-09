@@ -502,7 +502,7 @@ func TestDaemonAccessReleasedDuringSwap(t *testing.T) {
 	d.unlock()
 	release := make(chan struct{})
 	defer close(release)
-	d.act = blockActor{release}
+	d.act = blockDemote{release} // R64: die Adresse kommt erst nach gelungenem ActUnfence, nur die Abgabe blockiert
 	ctx := stopAccess(t, d)
 	d.tick(ctx)
 	d.tick(ctx) // R59: zweiter Takt nach dem Start
@@ -642,4 +642,14 @@ func TestAccessWorkerAlarmNotResetBySuccess(t *testing.T) {
 	if n := workerEvents(w, "info", "übernommen"); n != 3 {
 		t.Fatalf("übernommen %d-mal statt dreimal (echte Übernahmen bleiben sichtbar)", n)
 	}
+}
+
+// blockDemote blockiert nur die Abgabe; alle anderen Aktionen gelingen sofort.
+type blockDemote struct{ release chan struct{} }
+
+func (b blockDemote) Do(_ context.Context, a ha.Action) error {
+	if isDemote(a.Kind) {
+		<-b.release
+	}
+	return nil
 }

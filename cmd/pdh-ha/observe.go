@@ -298,6 +298,10 @@ func (d *daemon) statusLocked() apiStatus {
 	if d.alarms[frozenAlarmKey] {
 		st.Warnings = append(st.Warnings, frozenStrandedText+d.frozenHintLocked()) // R60: dauerhaft, bis es aufgelöst ist
 	}
+	if d.unfenceHang != "" {
+		// R64: ohne Wartung, aber nie still – solange die Rücknahme scheitert
+		st.Warnings = append(st.Warnings, "Rücknahme hängt: "+d.unfenceHang+" – dieser Server ist aktiv, aber nur lesend und ohne Dienste; sie wird in jedem Takt wiederholt")
+	}
 	d.mirrorStatusLocked(&st)
 	return st
 }

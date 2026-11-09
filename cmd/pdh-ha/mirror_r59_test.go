@@ -136,14 +136,14 @@ func TestRetryUnfenceDecision(t *testing.T) {
 	if _, pending := pendingOf(m); pending {
 		t.Fatal("Merker nach Rollenfehler gesetzt")
 	}
-	if m.d.retryUnfence(a, errors.New("Datenbank ist nicht schreibbar (stopped)")) {
-		t.Fatal("erster Fehler gilt als Wiederholung")
+	if !m.d.retryUnfence(a, errors.New("Datenbank ist nicht schreibbar (stopped)")) {
+		t.Fatal("Datenbankfehler wird nicht wiederholt")
 	}
 	if _, pending := pendingOf(m); !pending {
 		t.Fatal("Merker nach Datenbankfehler nicht gesetzt")
 	}
-	if !m.d.retryUnfence(a, errors.New("Datenbank ist nicht schreibbar (stopped)")) {
-		t.Fatal("derselbe Grund gilt nicht als Wiederholung")
+	if m.d.retryUnfence(ha.Action{Kind: ha.ActUnfence, Term: 0}, errors.New("Datenbank ist nicht schreibbar (stopped)")) {
+		t.Fatal("Rücknahme einer anderen Amtszeit wiederholt")
 	}
 }
 

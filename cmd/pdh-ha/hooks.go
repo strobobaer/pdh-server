@@ -424,19 +424,24 @@ func hookRole(r ha.Role, unfencePending bool) ha.Role {
 	return r
 }
 
-// hooksChangedLocked startet nach einem Rollenwechsel die Skripte (nur Knoten,
-// nur bei hooks_on; nie im ersten Takt nach dem Start). before und after kommen
-// aus hookRole; ohne Rolle (Takt N der Rücknahme) läuft nichts. Der Aufruf
-// blockiert nie: die Skripte laufen im Hintergrund.
-func (d *daemon) hooksChangedLocked(before, after ha.Role, booting bool) {
-	if booting || before == after || after == "" || !d.cl.Access.HooksOn || d.node.Kind != "node" {
+// hooksFollowLocked startet nach einem Rollenwechsel die Skripte (nur Knoten, nur bei hooks_on; nie
+// im ersten Takt nach dem Start). role kommt aus hookRole; ohne Rolle (Takt N der Rücknahme) läuft
+// nichts. R64: Gezählt wird gegen die zuletzt für die Skripte gemeldete Rolle (hooksRole, beim Laden
+// die gespeicherte), nicht gegen den vorigen Takt: Eine Wiederholung der Rücknahme und ein Neustart
+// ohne Rollenwechsel lösen nichts aus. Der Aufruf blockiert nie: die Skripte laufen im Hintergrund.
+func (d *daemon) hooksFollowLocked(role ha.Role, booting bool) {
+	if role == "" || role == d.hooksRole {
+		return
+	}
+	d.hooksRole = role
+	if booting || !d.cl.Access.HooksOn || d.node.Kind != "node" {
 		return
 	}
 	var w *accessWorker
 	if d.cl.Access.VIPOn {
 		w = d.access
 	}
-	d.hooks.submit(d.hookEnvLocked(after), w)
+	d.hooks.submit(d.hookEnvLocked(role), w)
 }
 
 // apiHooksLocked: Skripte für den Status. Same: kein gesehener Partner hat
