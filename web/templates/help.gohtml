@@ -617,6 +617,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Anlage öffnen → Reiter <b>HMI</b> → <b>HMI hinzufügen</b>.</li>
       <li><b>Name</b>, <b>Adresse</b> (IP oder Rechnername im Anlagennetz), <b>Port</b> (meist 5900) und das <b>VNC-Passwort</b> des Panels eintragen. Der PDH-Server muss das HMI im Netz erreichen können.</li>
       <li><b>Bedienen erlaubt</b> abwählen, wenn an diesem HMI niemand aus der Ferne eingreifen soll – dann ist für alle nur Ansehen möglich.</li>
+      <li><b>Ansehen am Terminal</b> und <b>Bedienen am Terminal</b> legen fest, wer das HMI am <a href="#terminal">Anlagenterminal</a> ansehen bzw. bedienen darf (Jeder, Nur mit Karte, Niemand). Bei ausgeschaltetem „Bedienen erlaubt“ gilt am Terminal beim Bedienen immer „Niemand“.</li>
       <li><b>Speichern</b>. Beim Ändern bleibt das Passwort, wenn du das Feld leer lässt.</li>
     </ol>
     Unterstützt werden VNC ohne Anmeldung und mit VNC-Passwort. Verlangt das HMI ein anderes Verfahren (z. B. VeNCrypt/TLS oder Benutzer + Passwort), meldet der Viewer das.</div>
@@ -686,6 +687,40 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     Nach einer Wartung von PDH sind auch Systembenutzer abgemeldet – dann die Kachel öffnen und den Systembenutzer neu anmelden.</div>
   <p>Rechte: <b>HMI am Kiosk-Terminal der Anlage zeigen</b> (<code>hmi.kiosk</code>) haben standardmäßig Administratoren, Manager, Techniker und Anlagenverantwortliche. Gilt ein Recht nur für eine Abteilung, gilt es auch hier nur für deren Anlagen. Anlagen ein Terminal zuordnen dürfen Personen mit <b>HMI-Verbindungen einrichten</b> (<code>hmi.manage</code>) für diese Anlage. Terminals selbst einrichten, ändern, prüfen und löschen dürfen nur Personen, die <code>hmi.manage</code> <b>ohne Abteilungsbegrenzung</b> haben (standardmäßig Administratoren) – ein Terminal kann Anlagen mehrerer Abteilungen dienen.</p>
   {{template "hb-shots" (dict "Ref" (index $s "kiosk") "Can" $can)}}
+</section>
+
+<section class="hb-ch" id="terminal" data-title="Anlagenterminal" data-pages="terminal">
+  <h2><i class="ti ti-device-tablet"></i> Anlagenterminal</h2>
+  <p>Das <b>Anlagenterminal</b> ist ein Bildschirm an der Anlage (Wandterminal), an dem jede Person ohne Anmeldung sieht, was an dieser Anlage und ihren Unteranlagen gerade los ist, und etwas melden kann. Es ist für den Einsatz mit Touch gedacht: große Flächen, wenig Text, kein PDH-Menü.</p>
+  <div class="hb-howto"><b><i class="ti ti-plug-connected"></i> So richtest du ein Terminal ein</b>
+    <ol class="hb-steps">
+      <li>Einen <b>Systembenutzer</b> für das Terminal anlegen (<b>Benutzer</b>, Haken „Systemnutzer“).</li>
+      <li>In den Stammdaten dieses Benutzers den <b>Terminal-Standort</b> wählen – das ist die Anlage, für die das Terminal gilt. Das Terminal zeigt diese Anlage und alle ihre Unteranlagen, sonst nichts.</li>
+      <li>Am Bildschirm im Browser <code>https://&lt;PDH-Adresse&gt;/terminal</code> öffnen, als dieser Systembenutzer anmelden und den Browser in den Vollbildmodus schalten.</li>
+    </ol>
+    Ein eigenes Gerät für das Terminal (das Produkt „PDH-Terminal“) folgt später; bis dahin geht es in jedem Browser. Die Seite ist nur für Systembenutzer gedacht – andere Benutzer sehen den Hinweis, dass die Seite für Terminal-Benutzer bestimmt ist. Ist dem Benutzer keine Anlage zugeordnet oder die Anlage ausgeblendet, steht auf dem Terminal „Diesem Terminal ist keine Anlage zugeordnet“.</div>
+  <h3>Was am Terminal passiert</h3>
+  <ul>
+    <li><b>Bildschirmschoner</b> – Anlagenname und Uhrzeit. Eine Berührung öffnet die Störungsinfo.</li>
+    <li><b>Störungsinfo</b> – die offenen Störungen und die offenen Tickets der Anlage und ihrer Unteranlagen, die neuesten zuerst (je höchstens 50, dazu „… und N weitere“). Bei Einträgen aus Unteranlagen steht deren Name dabei. Die Seite aktualisiert sich alle 30 Sekunden von selbst. Unten führt <b>Neu</b> weiter.</li>
+    <li><b>Neu</b> – <b>Störung</b> und <b>Ticket</b> öffnen die vorhandene vereinfachte Meldeseite der Anlage. <b>Stillstand</b> ist noch nicht verfügbar und folgt später. <b>Zurück</b> geht zur Störungsinfo.</li>
+  </ul>
+  <p>Rührt niemand das Terminal an, kehrt es nach der <b>Rückkehrzeit</b> von Störungsinfo und „Neu“ zum Bildschirmschoner zurück.</p>
+  <div class="hb-howto"><b><i class="ti ti-clock"></i> So stellst du die Rückkehrzeit ein</b>
+    <ol class="hb-steps">
+      <li><b>Für alle Terminals:</b> <b>Core-Einstellungen</b> → Karte <b>Anlagenterminal: Rückkehrzeit</b> → Sekunden eintragen → <b>Speichern</b>. Erlaubt sind 30 bis 3600 Sekunden, ohne Eintrag gelten <b>120</b> Sekunden. Ändern darf es, wer Benutzer verwalten darf.</li>
+      <li><b>Für ein einzelnes Terminal:</b> den Systembenutzer öffnen und im Terminal-Block <b>Rückkehrzeit zum Bildschirmschoner</b> eintragen. <b>Leer</b> heißt: die globale Einstellung gilt.</li>
+    </ol>
+    Werte außerhalb von 30 bis 3600 oder Text lehnt PDH mit einer Meldung ab; der bisherige Wert bleibt. Ein geänderter Wert gilt, sobald das Terminal die Seite neu lädt.</div>
+  <h3>HMI am Terminal: Ansehen und Bedienen</h3>
+  <p>Je HMI-Verbindung (Anlage → Reiter <b>HMI</b> → HMI anlegen oder bearbeiten) legst du fest, wer das HMI am Terminal ansehen und bedienen darf. Die Felder werden gespeichert; das HMI selbst erscheint am Terminal erst mit einem späteren Ausbau.</p>
+  <ul>
+    <li><b>Ansehen am Terminal</b>: <b>Jeder</b> (Standard) · <b>Nur mit Karte</b> · <b>Niemand</b>.</li>
+    <li><b>Bedienen am Terminal</b>: <b>Niemand</b> · <b>Nur mit Karte</b> (Standard) · <b>Jeder</b>.</li>
+  </ul>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Vorsicht bei „Jeder“</b>Wählst du bei <b>Bedienen am Terminal</b> „Jeder“, kann jede Person am Terminal das HMI ohne Karte bedienen – ihre Eingaben wirken direkt auf die Anlage. PDH warnt dann im Formular in Rot. Nutze das nur, wenn der Bildschirm für Unbefugte nicht erreichbar ist.</div>
+  <p>Ist beim HMI <b>Bedienen erlaubt</b> ausgeschaltet, gilt am Terminal beim Bedienen immer „Niemand“, auch wenn etwas anderes gespeichert ist. Das Formular weist darauf hin.</p>
+  {{template "hb-shots" (dict "Ref" (index $s "terminal") "Can" $can)}}
 </section>
 
 <section class="hb-ch" id="watch" data-title="Anlagen-Schnellübersicht" data-pages="plant-watch">

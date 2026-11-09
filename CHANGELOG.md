@@ -10,6 +10,14 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.10] – 2026-11-09
+
+### Neu
+- Anlagenterminal: Unter `/terminal` zeigt ein Wandbildschirm den Bildschirmschoner, die offenen Störungen und Tickets der Anlage samt Unteranlagen und führt über „Neu“ zur Meldeseite für Störung oder Ticket. Es läuft mit einem Systembenutzer, dessen Terminal-Standort die Anlage ist (Stillstand folgt später).
+- Rückkehrzeit zum Bildschirmschoner: in den Core-Einstellungen für alle Terminals (Standard 120 Sekunden, erlaubt 30 bis 3600) und je Terminal am Systembenutzer; leer heißt „global“.
+- HMI-Verbindungen haben die neuen Felder „Ansehen am Terminal“ (Jeder, Nur mit Karte, Niemand) und „Bedienen am Terminal“ (Niemand, Nur mit Karte, Jeder); bei ausgeschaltetem „Bedienen erlaubt“ gilt am Terminal immer „Niemand“, bei „Jeder“ warnt das Formular.
+- Handbuch-Kapitel „Anlagenterminal“.
+
 ## [0.77.9] – 2026-11-09
 
 ### Neu
