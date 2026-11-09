@@ -557,7 +557,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		free()
 		text := "Aufruf nicht erlaubt"
 		if err != nil {
-			text = err.Error()
+			text = safeLine(err.Error(), mirrorStderrMax) // nennt die Option des Absenders
 		}
 		m.logOnce("refuse:"+peerID+":"+text, "warn", "Dateien von "+peerID+" abgelehnt: "+text, mirrorErrLogEvery)
 		return nil, nil, text
@@ -619,7 +619,7 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 		once.Do(func() {
 			free()
 			if derr != nil {
-				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %v", label, peerID, derr), mirrorErrLogEvery)
+				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %s", label, peerID, safeLine(derr.Error(), mirrorStderrMax)), mirrorErrLogEvery)
 			} else {
 				m.mu.Lock()
 				delete(m.recvErr, label) // R66: der Empfang läuft wieder

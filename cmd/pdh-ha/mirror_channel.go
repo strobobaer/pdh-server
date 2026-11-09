@@ -260,24 +260,26 @@ func (m *mirrorStderr) snippet() string {
 	return mirrorStderrLine(m.buf)
 }
 
-// mirrorStderrLine macht aus der Fehlerausgabe eine Zeile von höchstens
-// mirrorStderrMax Bytes: Zeilenumbrüche werden Leerzeichen, andere
-// Steuerzeichen entfallen.
-func mirrorStderrLine(b []byte) string {
-	s := strings.ToValidUTF8(string(b), "?")
+// safeLine macht fremden Text (Fehlerausgabe von rsync, Dateinamen, Optionen und
+// Meldungen des Absenders) zu einer Zeile für Protokoll, Alarm, Chat und Mail:
+// Ungültiges UTF-8 wird „?“; Zeilenumbruch, Tabulator und Zeilen-/Absatztrenner
+// (Zl, Zp wie U+2028) werden Leerzeichen; andere Steuer- und Formatzeichen (Cc, Cf,
+// darunter die Bidi-Steuerzeichen) entfallen. maxBytes > 0 kürzt an einer
+// Zeichengrenze auf höchstens so viele Bytes.
+func safeLine(s string, maxBytes int) string {
 	var sb strings.Builder
-	for _, r := range s {
+	for _, r := range strings.ToValidUTF8(s, "?") {
 		switch {
-		case r == '\n' || r == '\r' || r == '\t':
+		case r == '\n' || r == '\r' || r == '\t' || unicode.In(r, unicode.Zl, unicode.Zp):
 			sb.WriteByte(' ')
-		case unicode.IsControl(r):
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
 		default:
 			sb.WriteRune(r)
 		}
 	}
 	out := strings.TrimSpace(sb.String())
-	if len(out) > mirrorStderrMax {
-		cut := mirrorStderrMax
+	if maxBytes > 0 && len(out) > maxBytes {
+		cut := maxBytes
 		for cut > 0 && !utf8.RuneStart(out[cut]) {
 			cut--
 		}
@@ -285,6 +287,9 @@ func mirrorStderrLine(b []byte) string {
 	}
 	return out
 }
+
+// mirrorStderrLine: Fehlerausgabe als eine Zeile von höchstens mirrorStderrMax Bytes.
+func mirrorStderrLine(b []byte) string { return safeLine(string(b), mirrorStderrMax) }
 
 // --- Absender: pdh-ha mirror-pipe (Ersatz für ssh bei rsync -e) ---
 

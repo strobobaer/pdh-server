@@ -16,7 +16,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"pdh/internal/ha"
 )
@@ -700,13 +699,8 @@ func (rt *mirrorRT) ncCheckAfterTakeover(ctx context.Context, q ncQuery, s ha.Se
 func ncSafeName(name string) string {
 	var sb strings.Builder
 	n := 0
-	for _, r := range strings.ToValidUTF8(name, "?") {
-		switch {
-		case r == '\n' || r == '\r' || r == '\t':
-			r = ' '
-		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
-			continue
-		case r == '`':
+	for _, r := range safeLine(name, 0) {
+		if r == '`' {
 			r = '\''
 		}
 		if n == ncAlarmNameLen-1 { // mit dem Zeichen „…“ höchstens ncAlarmNameLen
