@@ -239,3 +239,164 @@ func TestAnlagenterminalIdleSettings(t *testing.T) {
 		t.Errorf("leer: %d", got)
 	}
 }
+
+func TestAnlagenterminalInfo(t *testing.T) {
+	dsn := os.Getenv("PDH_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PDH_TEST_DSN nicht gesetzt")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := func(q string, args ...any) string {
+		t.Helper()
+		var s string
+		must(pool.QueryRow(ctx, q, args...).Scan(&s))
+		return s
+	}
+	must(database.RunMigrations(ctx, pool, "../../migrations"))
+
+	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	term := id(`INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone, is_system_user)
+		VALUES ($1::text, $1::text || '@x', 'x', 'T', 'U', 'viewer', '', '', true) RETURNING id::text`, "tm"+sfx)
+	infraA := id(`INSERT INTO infrastructure (name, type) VALUES ($1, 'plant') RETURNING id::text`, "Halle A "+sfx)
+	infraB := id(`INSERT INTO infrastructure (name, type, parent_id) VALUES ($1, 'plant', $2::uuid) RETURNING id::text`, "Presse B "+sfx, infraA)
+	infraH := id(`INSERT INTO infrastructure (name, type, parent_id, hidden_at) VALUES ($1, 'plant', $2::uuid, NOW()) RETURNING id::text`, "Versteckt "+sfx, infraA)
+	infraC := id(`INSERT INTO infrastructure (name, type) VALUES ($1, 'plant') RETURNING id::text`, "Fremd C "+sfx)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM faults WHERE created_by = $1::uuid`, term)
+		_, _ = pool.Exec(ctx, `DELETE FROM tickets WHERE created_by = $1::uuid`, term)
+		_, _ = pool.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = NULL WHERE id = $1::uuid`, term)
+		_, _ = pool.Exec(ctx, `DELETE FROM infrastructure WHERE id = ANY($1::uuid[])`, []string{infraB, infraH, infraA, infraC})
+		_, _ = pool.Exec(ctx, `DELETE FROM terminal_settings WHERE user_id = $1::uuid`, term)
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1::uuid`, term)
+	}()
+	fault := func(title, infra, status string, archived bool) {
+		t.Helper()
+		_, err := pool.Exec(ctx, `INSERT INTO faults (title, status, infrastructure_id, created_by, archived_at)
+			VALUES ($1, $2::fault_status, $3::uuid, $4::uuid, CASE WHEN $5 THEN NOW() END)`, title, status, infra, term, archived)
+		must(err)
+	}
+	ticket := func(title, infra, status string) {
+		t.Helper()
+		_, err := pool.Exec(ctx, `INSERT INTO tickets (title, status, infrastructure_id, created_by) VALUES ($1, $2::ticket_status, $3::uuid, $4::uuid)`, title, status, infra, term)
+		must(err)
+	}
+	fault("A offen", infraA, "detected", false)
+	fault("B in Arbeit", infraB, "in_progress", false)
+	fault("B geloest", infraB, "resolved", false)
+	fault("A geschlossen", infraA, "closed", false)
+	fault("A archiviert", infraA, "closed", true) // Trigger 108 löscht archived_at bei offenem Status
+	fault("C fremd", infraC, "detected", false)
+	fault("H versteckt", infraH, "detected", false)
+	ticket("T-A offen", infraA, "open")
+	ticket("T-B in Arbeit", infraB, "in_progress")
+	ticket("T-B wartet", infraB, "pending")
+	ticket("T-A geloest", infraA, "resolved")
+	ticket("T-A zu", infraA, "closed")
+	ticket("T-C fremd", infraC, "open")
+
+	h := &Handler{db: pool, jwtSecret: "test-geheim"}
+
+	info, err := h.loadTerminalInfo(ctx, infraA)
+	must(err)
+	titles := func(items []terminalItem) string {
+		var s []string
+		for _, it := range items {
+			s = append(s, it.Title+"@"+it.Path)
+		}
+		return strings.Join(s, "|")
+	}
+	ft := titles(info.Faults)
+	if info.FaultsTotal != 2 || len(info.Faults) != 2 || !strings.Contains(ft, "A offen@") || !strings.Contains(ft, "B in Arbeit@Presse B "+sfx) {
+		t.Errorf("Störungen: total %d %s", info.FaultsTotal, ft)
+	}
+	for _, bad := range []string{"geloest", "fremd", "versteckt", "archiviert", "geschlossen"} {
+		if strings.Contains(ft, bad) {
+			t.Errorf("Störung %q darf nicht erscheinen: %s", bad, ft)
+		}
+	}
+	tt := titles(info.Tickets)
+	if info.TicketsTotal != 3 || len(info.Tickets) != 3 || strings.Contains(tt, "geloest") || strings.Contains(tt, "fremd") || strings.Contains(tt, "zu@") {
+		t.Errorf("Tickets: total %d %s", info.TicketsTotal, tt)
+	}
+	if info.Faults[0].StatusLabel == "" || info.Faults[0].Age != "gerade eben" {
+		t.Errorf("Status/Alter: %+v", info.Faults[0])
+	}
+
+	// sehr viele offene Störungen: höchstens 50, Gesamtzahl bleibt
+	for i := 0; i < 58; i++ {
+		fault("Masse", infraB, "detected", false)
+	}
+	info, err = h.loadTerminalInfo(ctx, infraA)
+	must(err)
+	if len(info.Faults) != terminalListLimit || info.FaultsTotal != 60 {
+		t.Errorf("Limit: %d Einträge, total %d", len(info.Faults), info.FaultsTotal)
+	}
+	if info.Faults[0].Title != "Masse" {
+		t.Errorf("neueste zuerst verletzt: %s", info.Faults[0].Title)
+	}
+
+	// Seiten über die Routen
+	terminalTemplatePath = "../../web/templates/terminal.gohtml"
+	h.tmpl = loadTestTemplates(t)
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+	sys := &users.User{ID: term, Role: users.Role("viewer"), IsSystemUser: true}
+	get := func(p string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", p, nil)
+		req = req.WithContext(context.WithValue(req.Context(), "user", sys))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	noInfra := "Diesem Terminal ist keine Anlage zugeordnet"
+	if rec := get("/terminal/info"); rec.Code != 200 || !strings.Contains(rec.Body.String(), noInfra) {
+		t.Errorf("ohne Anlage: %d", rec.Code)
+	}
+	_, err = pool.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, infraA)
+	must(err)
+	rec := get("/terminal/info")
+	body := rec.Body.String()
+	if rec.Code != 200 || strings.Contains(body, noInfra) || !strings.Contains(body, "und 10 weitere") || !strings.Contains(body, `data-idle="120"`) {
+		t.Errorf("info: %d, Hinweis auf weitere bzw. data-idle=120 fehlt", rec.Code)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO terminal_settings (user_id, idle_seconds) VALUES ($1::uuid, 45)`, term)
+	must(err)
+	if body := get("/terminal/neu").Body.String(); !strings.Contains(body, `data-idle="45"`) || !strings.Contains(body, `href="/e/`+infraA+`"`) {
+		t.Errorf("neu: data-idle=45 bzw. Melde-Link fehlt")
+	}
+	if body := get("/terminal").Body.String(); !strings.Contains(body, `data-idle="0"`) || !strings.Contains(body, "Zum Melden berühren") {
+		t.Errorf("Schoner")
+	}
+	jr := get("/terminal/info.json")
+	var js terminalInfo
+	must(json.Unmarshal(jr.Body.Bytes(), &js))
+	if jr.Code != 200 || js.FaultsTotal != 60 || len(js.Faults) != 50 {
+		t.Errorf("info.json: %d %d/%d", jr.Code, js.FaultsTotal, len(js.Faults))
+	}
+
+	// ausgeblendete Anlage → wie ohne Anlage, kein 500
+	_, err = pool.Exec(ctx, `UPDATE infrastructure SET hidden_at = NOW() WHERE id = $1::uuid`, infraA)
+	must(err)
+	for _, p := range []string{"/terminal", "/terminal/info", "/terminal/neu"} {
+		if rec := get(p); rec.Code != 200 || !strings.Contains(rec.Body.String(), noInfra) {
+			t.Errorf("ausgeblendet %s: %d", p, rec.Code)
+		}
+	}
+	if rec := get("/terminal/info.json"); rec.Code != http.StatusNotFound {
+		t.Errorf("info.json ausgeblendet: %d", rec.Code)
+	}
+	if _, err := h.loadTerminalInfo(ctx, infraA); err == nil {
+		t.Error("loadTerminalInfo bei ausgeblendeter Anlage ohne Fehler")
+	}
+}
