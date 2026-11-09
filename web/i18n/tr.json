@@ -893,6 +893,7 @@
  "ohne Löschen": "silmeden",
  "Der letzte Abgleich ist fehlgeschlagen": "Son eşitleme başarısız oldu",
  "Die Sofort-Übertragung ist gestört": "Anında aktarım bozuk",
+ "Der Empfang wird abgelehnt": "Alım reddediliyor",
  "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen.": "Bir eşitleme ayarlanan aralıktan uzun sürüyor. Aralığı artırın veya sunucular arasındaki bağlantıyı denetleyin.",
  "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:": "Anında aktarım kısıtlı: izlenecek çok fazla klasör var. Düzenli eşitleme sürüyor. Her iki sunucuda çalıştırın:",
  "Die Einstellungsdatei .env ist auf den beiden Servern verschieden. Sie wird nicht gespiegelt – nach einer Übernahme gelten dort andere Einstellungen.": "Ayar dosyası .env iki sunucuda farklı. Yansıtılmaz – devralmadan sonra orada başka ayarlar geçerli olur.",

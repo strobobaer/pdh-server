@@ -893,6 +893,7 @@
  "ohne Löschen": "fără ștergere",
  "Der letzte Abgleich ist fehlgeschlagen": "Ultima sincronizare a eșuat",
  "Die Sofort-Übertragung ist gestört": "Transferul imediat este perturbat",
+ "Der Empfang wird abgelehnt": "Primirea este refuzată",
  "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen.": "O sincronizare durează mai mult decât intervalul setat. Măriți intervalul sau verificați conexiunea dintre servere.",
  "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:": "Transferul imediat este limitat: sunt prea multe foldere de urmărit. Sincronizarea periodică continuă. Rulați pe ambele servere:",
  "Die Einstellungsdatei .env ist auf den beiden Servern verschieden. Sie wird nicht gespiegelt – nach einer Übernahme gelten dort andere Einstellungen.": ".env, fișierul de setări, este diferit pe cele două servere. Nu este oglindit – după o preluare se aplică acolo alte setări.",

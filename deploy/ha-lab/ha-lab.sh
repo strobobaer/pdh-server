@@ -2337,6 +2337,9 @@ net_delay_off() {
 # in der nächsten Amtszeit), nie mehr schreibbar wird und als Standby endet. Die Verzögerung bleibt
 # unter einem Takt: node2 übernimmt, bevor node1 in Takt N+1 zurücknehmen könnte.
 NETEM_MS=600
+# R66: Trefferquote je Versuch rund 30 % (gemessen): 0,7^14 ≈ 0,7 % – auf richtigem Code wird das
+# Szenario damit seltener als in 1 % der Läufe zufällig rot
+TRIES_ZWEITER_TAKT=14
 sc_spiegel_ruecknahme_zweiter_takt() {
     pg_rewind_wrap node1 log
     mirror_enable 10 200
@@ -2348,7 +2351,7 @@ sc_spiegel_ruecknahme_zweiter_takt() {
     put_file node1 "$UPLOADS/gross.bin" 200M
     local try n0 a0 r t_scheitern term0 taken=0
     local q='Rollentausch abgebrochen' qa='Aktiver Server abgelöst'
-    for try in 1 2 3 4 5 6 7 8; do
+    for ((try = 1; try <= TRIES_ZWEITER_TAKT; try++)); do
         snap
         term0=$T1
         n0="$(docker exec node1 grep -c "$q" /var/lib/pdh-ha/events.jsonl)" || true
@@ -2372,7 +2375,7 @@ sc_spiegel_ruecknahme_zweiter_takt() {
         docker exec node2 bash -c 'touch /run/pdh-ha.restart; pkill -TERM -x pdh-ha; true' || fail "pdh-ha auf node2 neu starten"
         wait_for 30 eval 'roles aktiv passiv && [[ "$(jget seen:node1 <<<"$J2")" == ja ]]' || fail "node2 nach dem Neustart nicht passiv (node2=$R2)"
     done
-    ((taken == 1)) || fail "Zweiter Takt in 8 Versuchen nicht getroffen"
+    ((taken == 1)) || fail "Zweiter Takt in $TRIES_ZWEITER_TAKT Versuchen nicht getroffen"
     wait_for 60 eval '[[ "$R2" == aktiv && "$(jget pg <<<"$J2")" == primary ]]' || fail "node2 nicht aktiv nach Erzwingen ($R2)"
     wait_for 120 mirror_ok_rev || fail "node1 nicht als Standby angebunden (node1=$R1 pg=$(jget pg <<<"$J1"))"
     (($(docker exec node1 grep -c "$qa" /var/lib/pdh-ha/events.jsonl) > a0)) ||

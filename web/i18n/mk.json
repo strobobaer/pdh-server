@@ -893,6 +893,7 @@
  "ohne Löschen": "без бришење",
  "Der letzte Abgleich ist fehlgeschlagen": "Последното усогласување не успеа",
  "Die Sofort-Übertragung ist gestört": "Моменталниот пренос е нарушен",
+ "Der Empfang wird abgelehnt": "Примањето е одбиено",
  "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen.": "Едно усогласување трае подолго од поставениот интервал. Зголемете го интервалот или проверете ја врската меѓу серверите.",
  "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:": "Моменталниот пренос е ограничен: има премногу папки за набљудување. Редовното усогласување продолжува. Извршете на двата сервера:",
  "Die Einstellungsdatei .env ist auf den beiden Servern verschieden. Sie wird nicht gespiegelt – nach einer Übernahme gelten dort andere Einstellungen.": "Датотеката со поставки .env е различна на двата сервера. Не се огледува – по преземањето таму важат други поставки.",

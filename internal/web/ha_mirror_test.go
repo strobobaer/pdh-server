@@ -453,7 +453,7 @@ func TestHAMirrorConfirm(t *testing.T) {
 	startFakeHA(t, f)
 	post := func(h *Handler) int {
 		rec := httptest.NewRecorder()
-		h.HAMirrorConfirmWeb(rec, mwReq("/admin/server-config/ha/mirror-confirm", url.Values{}))
+		h.HAMirrorConfirmWeb(rec, mwReq("/admin/server-config/ha/mirror-confirm", url.Values{"labels": {"uploads"}}))
 		return rec.Code
 	}
 	for _, missing := range [][]string{{permFileMirrorAdmin}, {permFileMirror, permFileMirrorAdmin}} {
@@ -474,7 +474,7 @@ func TestHAMirrorConfirm(t *testing.T) {
 	f.mu.Lock()
 	f.replies = map[string]fakeReply{"/v1/mirror/confirm": {400, `{"ok":false,"error":"Nur auf dem aktiven Server möglich"}`}}
 	f.mu.Unlock()
-	if msg, err := mwHandler().haDoMirrorConfirm(context.Background(), url.Values{}); err == nil || !strings.Contains(err.Error(), "aktiven") {
+	if msg, err := mwHandler().haDoMirrorConfirm(context.Background(), url.Values{"labels": {"uploads"}}); err == nil || !strings.Contains(err.Error(), "aktiven") {
 		t.Errorf("Ablehnung: %q %v", msg, err)
 	}
 }
@@ -566,5 +566,48 @@ func TestHAMirrorConfirmSendsLabels(t *testing.T) {
 	}
 	if !strings.Contains(msg, "uploads") || strings.Contains(msg, "nginx") {
 		t.Errorf("Meldung nennt nicht die freigegebenen Quellen: %q", msg)
+	}
+}
+
+// R66: Die Web-Route bestätigt nur genannte Quellen; ohne Liste (alte Seite, Formular von Hand)
+// lehnt sie ab, statt alle wartenden freizugeben. Die Befehlszeile ohne Liste bleibt erlaubt.
+func TestHAMirrorConfirmNeedsLabels(t *testing.T) {
+	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, map[string]any{"wait_confirm": []string{"uploads"}}), events: `[]`}
+	startFakeHA(t, f)
+	for _, v := range []url.Values{{}, {"labels": {" "}}} {
+		if msg, err := mwHandler().haDoMirrorConfirm(context.Background(), v); err == nil || !strings.Contains(err.Error(), "Keine Quelle") {
+			t.Errorf("ohne Quellen %v: %q %v", v, msg, err)
+		}
+	}
+	if n := f.count("POST /v1/mirror/confirm"); n != 0 {
+		t.Fatalf("ohne Quellen an pdh-ha weitergereicht: %v", f.callList())
+	}
+}
+
+// R66: Am passiven Server zeigt die Karte einen abgelehnten Empfang als „gestört“ mit dem Grund,
+// nicht grün „empfängt“.
+func TestHAMirrorRecvErrShown(t *testing.T) {
+	out := mirrorCard(t, mirrorStatusJSON(t, "passiv", nil, map[string]any{"recv_err": "uploads: Zielordner ist ein anderer (Kennung fehlt oder weicht ab)"}), true, true, "")
+	if strings.Contains(out, "</span> empfängt</span>") || !strings.Contains(out, "</span> gestört</span>") {
+		t.Errorf("Kopf bei abgelehntem Empfang: %s", out[:min(len(out), 2000)])
+	}
+	if !strings.Contains(out, "Der Empfang wird abgelehnt") || !strings.Contains(out, "Zielordner ist ein anderer") {
+		t.Errorf("Grund fehlt: %s", out)
+	}
+	if ok := mirrorCard(t, mirrorStatusJSON(t, "passiv", nil, map[string]any{}), true, true, ""); !strings.Contains(ok, "</span> empfängt</span>") {
+		t.Errorf("ohne Ablehnung nicht „empfängt“: %s", ok[:min(len(ok), 2000)])
+	}
+}
+
+// R66: Fehlermeldungen im Zustand „gestört“ stehen in Textfarbe (Kontrast über 4,5 in beiden Stilen,
+// hell und dunkel) mit roter Markierung, nicht in Rot auf rötlichem Grund.
+func TestHAMirrorErrorReadable(t *testing.T) {
+	out := mirrorCard(t, mirrorStatusJSON(t, "aktiv", nil, map[string]any{"err": "uploads: rsync 23", "watch_err": "inotify",
+		"sources": []map[string]any{{"label": "uploads", "last_ok_ago": 5.0, "err": "rsync 23"}}}), true, true, "")
+	if n := strings.Count(out, `class="vp-msg err ha-mirror-err"`); n != 2 {
+		t.Errorf("Fehlermeldungen ohne lesbare Klasse: %d", n)
+	}
+	if strings.Contains(out, `style="color:var(--red)">rsync 23`) || !strings.Contains(out, `ha-mirror-srcerr`) {
+		t.Errorf("Fehler der Quelle in Rot: %s", out)
 	}
 }

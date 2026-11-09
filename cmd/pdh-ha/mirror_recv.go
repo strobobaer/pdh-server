@@ -145,6 +145,7 @@ func (m *mirrorInbox) noteActive() {
 	m.mu.Lock()
 	n := len(m.st.Seeded)
 	m.st.Seeded = nil
+	m.recvErr = map[string]string{} // Ablehnungen aus der Zeit als Empfänger gelten nicht mehr (R66)
 	m.mu.Unlock()
 	if n > 0 {
 		m.save()
@@ -157,7 +158,7 @@ func (m *mirrorInbox) dropProofs() {
 	m.mu.Lock()
 	n := len(m.st.Proof) + len(m.st.Seeded) + len(m.st.Wait) + len(m.st.ID) // NEU-3: auch eine allein gespeicherte Kennung
 	m.st.Proof, m.st.Seeded, m.st.Wait, m.st.ID = map[string]mirrorProof{}, nil, nil, nil
-	m.idOK = map[string]bool{}
+	m.idOK, m.recvErr = map[string]bool{}, map[string]string{}
 	m.mu.Unlock()
 	if n > 0 {
 		m.save()
@@ -209,6 +210,19 @@ func mirrorTargetEmpty(target string, exclude []string) bool {
 	return empty
 }
 
+// recvErrText (R66): abgelehnte Läufe je Quelle („uploads: Grund; nginx: Grund“), "" ohne. Nur
+// Speicher: für die Karte am passiven Server.
+func (m *mirrorInbox) recvErrText() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.recvErr))
+	for l, t := range m.recvErr {
+		out = append(out, l+": "+t)
+	}
+	sort.Strings(out)
+	return strings.Join(out, "; ")
+}
+
 // dataID ist die Kennung dieser Ablage (leer erst vor dem Laden).
 func (m *mirrorInbox) dataID() string {
 	m.mu.Lock()
@@ -243,7 +257,8 @@ type mirrorInbox struct {
 	st      mirrorInboxState
 	logAt   map[string]time.Time // Fehler/Ablehnungen: letzter Eintrag je Schlüssel
 	alarmAt map[string]time.Time
-	idOK    map[string]bool // letzte Prüfung der Kennung je Quelle passte (nur Speicher, R57)
+	idOK    map[string]bool   // letzte Prüfung der Kennung je Quelle passte (nur Speicher, R57)
+	recvErr map[string]string // zuletzt abgelehnter Lauf je Quelle, bis einer gelingt (nur Speicher, für die Karte, R66)
 
 	saveMu sync.Mutex // Schreiben von mirror-inbox.json nacheinander
 }
@@ -255,7 +270,7 @@ func newMirrorInbox(d mirrorInboxDeps) *mirrorInbox {
 	if d.statePath == "" {
 		d.statePath = filepath.Join(filepath.Dir(mirrorStateFile), mirrorInboxFile)
 	}
-	m := &mirrorInbox{d: d, busy: map[string]bool{}, logAt: map[string]time.Time{}, alarmAt: map[string]time.Time{}, idOK: map[string]bool{}}
+	m := &mirrorInbox{d: d, busy: map[string]bool{}, logAt: map[string]time.Time{}, alarmAt: map[string]time.Time{}, idOK: map[string]bool{}, recvErr: map[string]string{}}
 	m.st.Pending = map[string]bool{}
 	m.st.Proof = map[string]mirrorProof{}
 	m.load()
@@ -486,6 +501,9 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 	}
 	fail := func(text string) ([]string, func(error), string) {
 		free()
+		m.mu.Lock()
+		m.recvErr[label] = text // R66: die Karte zeigt den abgelehnten Empfang
+		m.mu.Unlock()
 		return nil, nil, m.refuse(peerID, text)
 	}
 
@@ -603,6 +621,10 @@ func (m *mirrorInbox) Accept(ctx context.Context, peerID, peerKind string, req m
 			free()
 			if derr != nil {
 				m.logOnce("err:"+label, "warn", fmt.Sprintf("Dateien %s von %s nicht vollständig empfangen: %v", label, peerID, derr), mirrorErrLogEvery)
+			} else {
+				m.mu.Lock()
+				delete(m.recvErr, label) // R66: der Empfang läuft wieder
+				m.mu.Unlock()
 			}
 			switch {
 			case derr == nil && (deleting || full && seeded) && m.checkID(label, idPath) != idOK:

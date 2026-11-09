@@ -893,6 +893,7 @@
  "ohne Löschen": "without deleting",
  "Der letzte Abgleich ist fehlgeschlagen": "The last sync failed",
  "Die Sofort-Übertragung ist gestört": "The instant transfer is disturbed",
+ "Der Empfang wird abgelehnt": "Receiving is refused",
  "Ein Abgleich dauert länger als der eingestellte Abstand. Abstand erhöhen oder die Verbindung zwischen den Servern prüfen.": "A sync takes longer than the set interval. Increase the interval or check the connection between the servers.",
  "Die Sofort-Übertragung ist eingeschränkt: Es gibt zu viele Ordner zu beobachten. Der regelmäßige Abgleich läuft weiter. Auf beiden Servern ausführen:": "The instant transfer is limited: there are too many folders to watch. The regular sync keeps running. Run on both servers:",
  "Die Einstellungsdatei .env ist auf den beiden Servern verschieden. Sie wird nicht gespiegelt – nach einer Übernahme gelten dort andere Einstellungen.": "The .env settings file differs between the two servers. It is not mirrored – after a takeover, different settings apply there.",

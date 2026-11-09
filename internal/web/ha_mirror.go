@@ -14,6 +14,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -73,6 +74,7 @@ type haMirror struct {
 	Sources        []haMirrorSource `json:"sources"`
 	Unproven       []string         `json:"unproven"`
 	WaitConfirm    []string         `json:"wait_confirm"` // wartet auf Bestätigung (R47)
+	RecvErr        string           `json:"recv_err"`     // passiver Server: abgelehnter Empfang (R66)
 }
 
 type haMirrorSource struct {
@@ -368,6 +370,11 @@ func (h *Handler) haDoMirrorConfirm(ctx context.Context, f url.Values) (string, 
 		if l = strings.TrimSpace(l); l != "" {
 			labels = append(labels, l)
 		}
+	}
+	if len(labels) == 0 {
+		// R66: ohne Liste (alte Seite, Formular von Hand) nie alle wartenden freigeben; die
+		// Befehlszeile ohne Liste bleibt ausdrücklich erlaubt
+		return "", errors.New("Keine Quelle genannt – bitte die Seite neu laden und erneut bestätigen")
 	}
 	if err := h.haDo(ctx, http.MethodPost, "/v1/mirror/confirm", map[string]any{"labels": labels}, &res); err != nil {
 		return "", err

@@ -909,6 +909,8 @@ type apiMirror struct {
 	Unproven []string          `json:"unproven"` // Quellen ohne Beleg (Wechsel vor dem Erstabgleich)
 	// Quellen, die auf „Dieser Server ist vollständig“ warten (R47; fehlt bei älteren Versionen)
 	WaitConfirm []string `json:"wait_confirm,omitempty"`
+	// Am passiven Server: zuletzt abgelehnter Empfang je Quelle, bis ein Lauf gelingt (R66)
+	RecvErr string `json:"recv_err,omitempty"`
 }
 
 // sameOrEmpty: gleich, oder eine Seite weiß es nicht (kein Hinweis).
@@ -997,6 +999,11 @@ func (d *daemon) mirrorStatusLocked(st *apiStatus) {
 			}
 		}
 		am.TrashBytes, am.Orphans = cache.TrashB, cache.Orphans
+		if rt != nil {
+			if ib := rt.inbox.Load(); ib != nil {
+				am.RecvErr = ib.recvErrText() // R66: abgelehnter Empfang statt grün „empfängt“
+			}
+		}
 	}
 	if partnerSeen {
 		am.EnvSame = sameOrEmpty(cache.EnvSum, pm.EnvSum)
