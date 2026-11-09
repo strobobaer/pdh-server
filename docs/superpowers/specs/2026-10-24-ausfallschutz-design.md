@@ -151,7 +151,10 @@ Einrichtung virtuelle IP oder DNS-Skript ab.
 
 ## 9. Spiegelung (rsync)
 
-- Aktiv → passiv über SSH mit eigenem, auf rsync beschränktem Schlüssel.
+- Aktiv → passiv über den verschlüsselten Verbund-Kanal auf Port 7480 (TLS mit den
+  Knoten-Zertifikaten, `rsync -e "pdh-ha mirror-pipe …"`), nicht über SSH; der
+  Empfänger setzt Zielpfad und Papierkorb selbst und prüft die rsync-Optionen
+  (Teil 6, `2026-11-03-ausfallschutz-spiegelung-design.md` Abschnitt 4).
 - Intervall einstellbar (Standard 1 min), zusätzlich sofort nach Uploads.
 - Inhalt: Uploads, Chat-Dateien, `/etc/pdh` (ohne `/etc/pdh/ha/`), n8n-Daten,
   pgAdmin-/code-server-Einstellungen, nginx-Seiten, cloudflared-Konfiguration,
@@ -239,5 +242,8 @@ Oberfläche, Assistent und Handbuch wachsen mit jedem Teilprojekt mit.
 - Postgres-Hauptversion der Produktion (Ubuntu 22.04 = 14, 24.04 = 16) und
   Umgang mit gemischten Versionen.
 - Weitere Datenbanken im selben Postgres (z. B. Nextcloud) werden mitrepliziert –
-  gewollt; Nextcloud selbst ist nicht Teil der Umschaltung.
+  gewollt. Nextcloud gehört seit Teil 6 zur Umschaltung: Mit „Nextcloud mitnehmen“
+  werden ihre Dateien gespiegelt, und PHP-FPM, Cron und Certbot schalten mit der
+  Rolle um; Nextcloud selbst löst nie eine Umschaltung aus
+  (`2026-11-03-ausfallschutz-spiegelung-design.md` Abschnitt 6).
 - Speicherort und Format von n8n-Daten auf den Produktivservern.

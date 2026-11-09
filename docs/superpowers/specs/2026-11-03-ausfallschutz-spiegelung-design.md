@@ -3,7 +3,7 @@
 Stand: 2026-11-03 · Status: Entwurf zur Durchsicht ·
 Erweitert: `2026-10-24-ausfallschutz-design.md` (Abschnitte 7, 9, 16) ·
 Baut auf: `2026-10-30-verbund-update-design.md` (PR #14) ·
-Version: nächste Korrekturversion nach dem Merge von PR #14
+Version: 0.77.9 (nächste Korrekturversion nach dem Merge von PR #14)
 
 ## 1. Ziel und Umfang
 
@@ -137,6 +137,11 @@ eingeschalteter Spiegelung. Bei einem Rollenwechsel beendet der Worker laufende
 
 **Erstabgleich:** Startet beim Einschalten, nachdem der freie Platz geprüft wurde.
 Der Reiter zeigt den Fortschritt. Bis er fertig ist, gelten die Regeln aus Abschnitt 7.
+Die Platzprüfung ist streng (R67): Der Partner braucht freien Platz in Höhe der ganzen
+Quellgröße, auch wenn er denselben Bestand schon trägt. Ausschalten nimmt den Stand
+„Erstabgleich fertig“ je Quelle zurück (R63), nach dem Wiedereinschalten greift die
+Prüfung also erneut. Reicht der Platz nicht, bleibt die Spiegelung mit „Zu wenig Platz am
+Partner“ stehen; der Ausweg ist, am Partner Platz zu schaffen. Es geht nichts verloren.
 
 **Löschen nur mit Beleg:** Welcher Server vollständig ist, weiß nur der Betreiber. Die
 Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
@@ -161,11 +166,18 @@ Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
   wandern in seinen Papierkorb.
 - Der aktive Server gilt selbst als belegt, sobald der Partner den Beleg meldet und die Quelle
   hier nicht unbelegt ist, mit dem echten Stand der Quelle (leer bleibt leer). Sonst stünde nach
-  dem ersten Tausch jede Quelle auf „wartet“.
+  dem ersten Tausch jede Quelle auf „wartet“. Nach einem Wechsel von passiv zu aktiv reicht der
+  Beleg des Partners allein nie für `--delete` (R63); es zählt nur der eigene Beleg dieses Servers.
 - Übernimmt ein Server im Erstabgleich ohne eigenen Beleg, ist die Quelle unbelegt und mündet in
-  denselben Zustand. Ein eigener Beleg, den er später als Empfänger bekommt, hebt das auf.
-- Ausschalten verwirft Belege, Bestätigungen und die gemerkte Rolle, weil die Stände dann
-  auseinanderlaufen.
+  denselben Zustand. Ein eigener Beleg, den er später als Empfänger bekommt, hebt das auf. Fehlt
+  eine Quelle bei der Übernahme ganz und hat dieser Server keinen eigenen Beleg, bleibt sie
+  unbelegt und wartet nach dem Anlegen auf die Bestätigung (R63). Den Stand „Erstabgleich
+  fertig“ (`adoptFirst`) nimmt der Server nur zurück, wenn ein fehlender Beleg gespeichert ist
+  oder die Kennung nicht passt; eine nur nicht geprüfte Kennung reicht dafür nicht. Am passiven
+  Server prüft er die Kennungen einmal nach dem Start, außerhalb des Takts.
+- Ausschalten verwirft Belege, Bestätigungen, die gemerkte Rolle und den Stand „Erstabgleich
+  fertig“ je Quelle, weil die Stände dann auseinanderlaufen; das gilt und wird gespeichert auch
+  dann, wenn nur eine Kennung gespeichert war (R63).
 - **Kennung des Ordners (R57, R58):** Jeder gespiegelte Ordner trägt die Datei `.pdh-mirror-id`
   mit einem Zufallswert; bei `nextcloud-app` liegt sie in `config/`, weil Nextclouds
   Integritätsprüfung fremde Dateien im Programmordner meldet und `config/` ausnimmt. Der Zustand
@@ -182,6 +194,13 @@ Vorgeschichte der Rollen entscheidet darum nicht über `--delete`.
   Bestätigung wie oben; die Bestätigung schreibt die neue Kennung. Ein Absender-Beleg (Partner
   meldet den Beleg) entsteht nur mit geprüfter Kennung, und „unbelegt“ wird nur mit Kennung und
   Beleg aufgehoben. Kein stilles Nachtragen, keine Mengengrenze und kein `--max-delete`.
+  Besitzer und Gruppe der Kennungsdatei folgen ihrem Ordner (R63; bei `nextcloud-app` also
+  `www-data`, damit der Nextcloud-Updater sie nicht stört). Sicherung, Rückspielen, DR und
+  `pdh-restore.sh` schließen sie aus: Wer auf einen neuen Datenträger zurückspielt, landet so im
+  Fall „anderer Ordner“ und muss bestätigen. Wer einen Ordner per Kopie umzieht, lässt die
+  Kennung weg, sonst gälte die Kopie als derselbe Ordner. Der Alarm am Absender trennt „nicht
+  eingehängt“ vom gewollten Tausch und nennt das Einhängen zuerst; Einhängen allein hebt das
+  Warten nicht auf, danach ist die Bestätigung nötig.
 
 ## 6. Nextcloud je Rolle
 
@@ -258,15 +277,29 @@ sich die Rolle `nextcloud` am passiven Server anmelden darf, sobald er aktiv wir
   (`ActUnfence`, `ActVIPTake`), und nur, wenn bis dahin keine höhere Amtszeit gesehen wurde; der
   Aktor hebt nie selbst auf. Mit der Rolle folgen in Takt N weder die mitwandernde Adresse noch die
   Rollenskripte, beides kommt erst in Takt N+1. Scheitert `ActUnfence` (außer an der Rolle), bleibt
-  der Merker stehen, und der nächste Takt wiederholt nach Prüfung der Amtszeit; derselbe Grund wird
-  einmal gemeldet, der Alarm nennt keinen Ausweg, den es nicht gibt.
+  der Merker stehen, und der nächste Takt wiederholt nach Prüfung der Amtszeit; der Alarm nennt
+  keinen Ausweg, den es nicht gibt.
+- **Hängende Rücknahme (R64, ersetzt den Wartungsteil aus R59):** Ein gescheitertes `ActUnfence`
+  schaltet keine Wartung ein, die Automatik bleibt an. Der Alarm kommt einmal je Rücknahme und wird
+  bei Rollenverlust, Amtszeitwechsel und Erfolg zurückgesetzt. Solange sie hängt, zeigt der Status
+  dauerhaft „Rücknahme hängt: …“; gelingt sie, gibt es das Ereignis „Rücknahme gelungen“. Fälle,
+  die nicht wiederholt werden, sagen das auch nicht. Die mitwandernde Adresse kommt immer erst nach
+  gelungenem `ActUnfence`, auch im ersten Versuch und nach dem Start (R68); scheitert es dauerhaft,
+  bleibt der Server aktiv, nur lesend und ohne Adresse.
+- **Rollenskripte (R64):** Sie laufen nur, wenn sich die Rolle gegenüber der zuletzt gemeldeten
+  ändert. Beim Start gilt die gespeicherte Rolle als zuletzt gemeldet; ein Neustart, ein Update
+  ohne Wechsel und das Wiederholen einer Rücknahme lösen sie also nicht aus.
 - **Offener Auftrag, den der aktive Partner nicht führt (R53, R60):** Der passive Server bleibt
   abgeschottet und bindet nicht von selbst an; nach 30 s ein Alarm mit `sudo pdh-ha update abort`
   am passiven Server, der nur diesen Auftrag beendet. Ist die Datenbank dort ein gestoppter,
   eingefrorener Stand, nennen Alarm und Ergebnis des Abbruchs das und den Weg heraus (PostgreSQL
   nur lesend starten, danach `pdh-ha rejoin`, mit Marke von selbst); bleibt der Stand gestoppt, gibt
   es nach einer Minute einen Alarm und eine dauerhafte Statuswarnung, und `pdh-ha rejoin` nennt
-  denselben Weg statt „läuft schon automatisch“.
+  denselben Weg statt „läuft schon automatisch“. Alarm und Abbruch lesen dafür einen frischen Stand
+  der Datenbank (R65); der Alarm kommt darum bis zu zwei Abfragen später (R68). Nach einem
+  abgebrochenen `pg_rewind` (unsicherer Ordner) gibt es keinen Hinweis auf den eingefrorenen Stand,
+  der Weg ist `pdh-ha rejoin`. `fence` schreibt die nur lesende Konfiguration auch bei gestoppter
+  Datenbank; nur ein Standby bleibt ausgenommen.
 
 ## 8. Fehlerfälle
 
