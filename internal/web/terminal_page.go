@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
 	"pdh"
 )
@@ -110,23 +111,67 @@ func terminalRelPath(nodes map[string]terminalNode, id, root string) string {
 // terminalRoot: Name der Terminal-Anlage; ok=false bei ausgeblendeter,
 // deaktivierter oder gelöschter Anlage (infraSubtreeIDs liefert die Wurzel
 // auch dann, deshalb hier gesondert prüfen).
-func (h *Handler) terminalRoot(ctx context.Context, infraID string) (name string, ok bool) {
+func (h *Handler) terminalRoot(ctx context.Context, infraID string) (name string, ok bool, err error) {
 	if infraID == "" || h.db == nil {
-		return "", false
+		return "", false, nil
 	}
-	err := h.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id = $1::uuid AND active AND hidden_at IS NULL`, infraID).Scan(&name)
-	return name, err == nil
+	err = h.db.QueryRow(ctx, `SELECT name FROM infrastructure WHERE id = $1::uuid AND active AND hidden_at IS NULL`, infraID).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	return name, err == nil, err
+}
+
+// terminalInfraLookup: Anlage des Terminal-Benutzers ("" = keine); echte DB-Fehler werden gemeldet.
+func (h *Handler) terminalInfraLookup(ctx context.Context, uid string) (string, error) {
+	if h.db == nil {
+		return "", nil
+	}
+	var infra string
+	err := h.db.QueryRow(ctx, `SELECT COALESCE(terminal_infrastructure_id::text, '') FROM users WHERE id = $1::uuid AND is_system_user`, uid).Scan(&infra)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return infra, err
+}
+
+// terminalSubtree: Anlage samt sichtbaren Unteranlagen (wie infraSubtreeIDs, aber mit Fehlern).
+func (h *Handler) terminalSubtree(ctx context.Context, id string) ([]string, error) {
+	rows, err := h.db.Query(ctx, `WITH RECURSIVE sub AS (
+			SELECT id FROM infrastructure WHERE id = $1::uuid
+			UNION SELECT i.id FROM infrastructure i JOIN sub ON i.parent_id = sub.id WHERE i.hidden_at IS NULL
+		) SELECT id::text FROM sub LIMIT 2000`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		ids = append(ids, s)
+	}
+	return ids, rows.Err()
 }
 
 // loadTerminalInfo: offene Störungen und Tickets im Teilbaum der Anlage
 // (je höchstens terminalListLimit neueste, dazu die Gesamtzahl).
 func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string) (terminalInfo, error) {
 	info := terminalInfo{InfraID: infraID, Faults: []terminalItem{}, Tickets: []terminalItem{}}
-	if _, ok := h.terminalRoot(ctx, infraID); !ok {
+	_, ok, err := h.terminalRoot(ctx, infraID)
+	if err != nil {
+		return info, err
+	}
+	if !ok {
 		return info, errTerminalNoInfra
 	}
 	info.InfraPath = h.infraPath(ctx, infraID)
-	ids := h.infraSubtreeIDs(ctx, infraID)
+	ids, err := h.terminalSubtree(ctx, infraID)
+	if err != nil {
+		return info, err
+	}
 
 	nodes := map[string]terminalNode{}
 	rows, err := h.db.Query(ctx, `SELECT id::text, name, COALESCE(parent_id::text, '') FROM infrastructure WHERE id = ANY($1::uuid[])`, ids)
@@ -136,11 +181,16 @@ func (h *Handler) loadTerminalInfo(ctx context.Context, infraID string) (termina
 	for rows.Next() {
 		var id string
 		var n terminalNode
-		if rows.Scan(&id, &n.Name, &n.Parent) == nil {
-			nodes[id] = n
+		if err := rows.Scan(&id, &n.Name, &n.Parent); err != nil {
+			rows.Close()
+			return info, err
 		}
+		nodes[id] = n
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return info, err
+	}
 
 	now := time.Now()
 	load := func(table, cond string) ([]terminalItem, int, error) {
@@ -188,8 +238,17 @@ func (h *Handler) terminalGate(w http.ResponseWriter, r *http.Request, mode stri
 		http.Error(w, "Diese Seite ist nur für Terminal-Benutzer (Systembenutzer) bestimmt.", http.StatusForbidden)
 		return p, false
 	}
-	infra := h.terminalInfraID(r)
-	name, ok := h.terminalRoot(r.Context(), infra)
+	infra, err := h.terminalInfraLookup(r.Context(), uid)
+	var name string
+	var ok bool
+	if err == nil {
+		name, ok, err = h.terminalRoot(r.Context(), infra)
+	}
+	if err != nil {
+		componentLog("terminal").Error().Err(err).Msg("anlage des terminals")
+		http.Error(w, "Daten nicht verfügbar", http.StatusInternalServerError)
+		return p, false
+	}
 	if !ok {
 		p.NoInfra = true
 		return p, true

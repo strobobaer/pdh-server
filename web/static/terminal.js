@@ -60,7 +60,12 @@
     };
     var refresh = function () {
       fetch('/terminal/info.json', { cache: 'no-store', credentials: 'same-origin' })
-        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (r) {
+          // Anlage nicht mehr zugeordnet/ausgeblendet (403/404 ...): zurück zum Schoner statt veralteter Liste
+          if (r.status === 403 || r.status === 404 || r.redirected) { location.replace('/terminal'); return null; }
+          if (!r.ok) return null; // vorübergehender Fehler: alter Stand bleibt
+          return r.json();
+        })
         .then(function (d) {
           if (!d) return;
           fill('faults', d.faults || [], d.faultsTotal || 0);

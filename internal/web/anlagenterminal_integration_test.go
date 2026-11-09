@@ -400,3 +400,64 @@ func TestAnlagenterminalInfo(t *testing.T) {
 		t.Error("loadTerminalInfo bei ausgeblendeter Anlage ohne Fehler")
 	}
 }
+
+// DB-Fehler dürfen nicht als „keine Anlage zugeordnet“ erscheinen (500 statt 200).
+func TestAnlagenterminalDBError(t *testing.T) {
+	dsn := os.Getenv("PDH_TEST_DSN")
+	if dsn == "" {
+		t.Skip("PDH_TEST_DSN nicht gesetzt")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RunMigrations(ctx, pool, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+	sfx := strings.ReplaceAll(time.Now().Format("150405.000000"), ".", "")
+	var term, infra string
+	if err := pool.QueryRow(ctx, `INSERT INTO users (username, email, password_hash, first_name, last_name, role, department, phone, is_system_user)
+		VALUES ($1::text, $1::text || '@x', 'x', 'T', 'U', 'viewer', '', '', true) RETURNING id::text`, "te"+sfx).Scan(&term); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO infrastructure (name, type) VALUES ($1, 'plant') RETURNING id::text`, "Fehler "+sfx).Scan(&infra); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = pool.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = $2::uuid WHERE id = $1::uuid`, term, infra)
+	defer func() {
+		p2, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			return
+		}
+		defer p2.Close()
+		_, _ = p2.Exec(ctx, `UPDATE users SET terminal_infrastructure_id = NULL WHERE id = $1::uuid`, term)
+		_, _ = p2.Exec(ctx, `DELETE FROM infrastructure WHERE id = $1::uuid`, infra)
+		_, _ = p2.Exec(ctx, `DELETE FROM users WHERE id = $1::uuid`, term)
+	}()
+
+	terminalTemplatePath = "../../web/templates/terminal.gohtml"
+	h := &Handler{db: pool, jwtSecret: "test-geheim", tmpl: loadTestTemplates(t)}
+	r := chi.NewRouter()
+	h.terminalRoutes(r)
+
+	// abgebrochener Kontext: Fehler, nicht errTerminalNoInfra
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := h.loadTerminalInfo(cctx, infra); err == nil || err == errTerminalNoInfra {
+		t.Errorf("abgebrochener Kontext: %v", err)
+	}
+
+	// geschlossener Pool: alle Seiten 500 ohne die Meldung „keine Anlage“
+	pool.Close()
+	sys := &users.User{ID: term, Role: users.Role("viewer"), IsSystemUser: true}
+	for _, p := range []string{"/terminal", "/terminal/info", "/terminal/neu", "/terminal/info.json"} {
+		req := httptest.NewRequest("GET", p, nil)
+		req = req.WithContext(context.WithValue(req.Context(), "user", sys))
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "keine Anlage zugeordnet") {
+			t.Errorf("%s bei DB-Fehler: %d %q", p, rec.Code, rec.Body.String())
+		}
+	}
+}
