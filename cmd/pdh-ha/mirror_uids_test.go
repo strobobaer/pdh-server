@@ -269,3 +269,28 @@ func TestUIDsFromFiles(t *testing.T) {
 		t.Errorf("ohne Benutzer: %q", got)
 	}
 }
+
+// Runde 3 R2-3: Hält die Spiegelung wegen abweichender Kennungen an, nennt die Ablehnung des
+// Rollentauschs diesen Grund statt „Erstabgleich läuft“.
+func TestSwapRefusalNamesUIDHold(t *testing.T) {
+	m := newMDT(t, ha.Active, true, message{Role: "passiv", UIDs: "pdh=997:998"})
+	m.w.fnUIDs = func() string { return "pdh=998:998" }
+	up := filepath.Join(filepath.FromSlash(m.w.repo), "uploads")
+	if err := os.MkdirAll(up, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(up, "a.txt"), []byte("x"), 0o644)
+	m.tick()
+	rt := m.ready()
+	waitFor(t, 5*time.Second, "Quelle angehalten", func() bool {
+		wk := rt.worker.Load()
+		return wk != nil && strings.Contains(wk.snapshot().PerLabel["uploads"].Err, "Benutzerkennung")
+	})
+	err := m.d.command("swap")
+	if err == nil || !strings.Contains(err.Error(), "Benutzerkennung pdh: hier 998, Partner 997") || strings.Contains(err.Error(), "Erstabgleich der Dateien läuft") {
+		t.Fatalf("swap: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Rollentausch erst danach möglich") {
+		t.Errorf("Ausweg fehlt: %v", err)
+	}
+}

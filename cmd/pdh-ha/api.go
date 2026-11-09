@@ -643,6 +643,10 @@ func (d *daemon) command(cmd string) error {
 	// Übernahme erzwingen wird nie gesperrt (Notweg). Nur Zwischengespeichertes.
 	if c == ha.CmdSwap {
 		if on, done := d.mirrorFirstLocked(); on && !done {
+			if why := d.mirrorUIDWarnLocked(); why != "" {
+				// R2-3: angehalten, nicht „läuft“ – den echten Grund nennen
+				return errors.New("Dateien werden nicht gespiegelt (" + why + ") – Rollentausch erst danach möglich")
+			}
 			return errors.New("Erstabgleich der Dateien läuft – Rollentausch erst danach möglich")
 		}
 	}

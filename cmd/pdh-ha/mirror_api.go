@@ -804,6 +804,20 @@ func (d *daemon) mirrorFirstLocked() (on, done bool) {
 	return true, st.FirstDone && st.Checked // wie im Herzschlag
 }
 
+// mirrorUIDWarnLocked: Hinweis, wenn die Kennungen mit dem Partner abweichen und Quellen
+// darum angehalten sind ("" = keine Abweichung bekannt). Nur Zeiger, kein Dateizugriff.
+func (d *daemon) mirrorUIDWarnLocked() string {
+	rt := d.mir
+	if rt == nil {
+		return ""
+	}
+	w := rt.want.Load()
+	if w == nil {
+		return ""
+	}
+	return uidWarnText(uidMismatch(rt.ownUIDsNow(), w.PartnerUIDs, d.settingsLocked().MirrorNextcloud))
+}
+
 // mirrorFinalSync: letzter Dateiabgleich beim geplanten Rollentausch (pgActor.mirrorFinal).
 // Liest die Einstellungen erst jetzt; läuft ohne die Sperre des Daemons, der Herzschlag
 // geht währenddessen weiter. nil bei ausgeschalteter Spiegelung.
