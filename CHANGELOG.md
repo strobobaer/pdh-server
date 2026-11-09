@@ -10,6 +10,39 @@ Aufbau je Version: `## [x.y.z] – JJJJ-MM-TT`, darunter `### Neu`, `### Geände
 `### Behoben`, `### Sicherheit` mit Stichpunkten. Das Handbuch zeigt diese Datei
 im Kapitel „Versionen & Updates“ an.
 
+## [0.77.9] – 2026-11-09
+
+### Neu
+- Ausfallschutz mit zwei Servern: Die neue Datei-Spiegelung überträgt Anhänge, Chat-Dateien und Einstellungen (`/etc/pdh`, nginx, Zertifikate) fast in Echtzeit auf den passiven Server – nach einem Tausch fehlt keine Datei mehr; Standard ist aus.
+- Nextcloud im Verbund: Mit „Nextcloud mitnehmen“ werden Datenordner und Programm mitgespiegelt, Nextcloud ist auf beiden Servern startbereit und arbeitet immer nur auf dem aktiven – für Clients bleibt es derselbe Server.
+- Das Nextcloud-Installationsskript kennt `--verbund aktiv-neu`, `--verbund aktiv-vorhanden` und `--verbund passiv` und nennt am Ende den fertigen Befehl für den anderen Server.
+- Neue Karte „Datei-Spiegelung“ im Reiter Ausfallschutz mit Zustand, letztem Abgleich je Quelle, Fortschritt des Erstabgleichs, Papierkorb, Warnungen und Einstellungen; `pdh-ha status` hat eine Zeile „Spiegelung“, dazu `pdh-ha mirror status` und `pdh-ha mirror run`.
+- Beim Rollentausch läuft nach der Datenbank ein letzter Abgleich der Dateien (höchstens 120 Sekunden); klappt er nicht, bricht der Tausch ohne Änderung ab.
+- Gelöschte und überschriebene Dateien landen am passiven Server 14 Tage lang in einem Papierkorb; „Papierkorb leeren“ leert ihn vorher.
+- Am Partner wird erst gelöscht, wenn sein Stand belegt ist: Ein gefüllter Ordner wartet auf „Dieser Server ist vollständig“ (Knopf oder `pdh-ha mirror confirm`).
+- Nach einem harten Ausfall nennt der neue aktive Server die Nextcloud-Dateien, die noch nicht übertragen waren, in der Karte und im Alarm.
+- Jeder gespiegelte Ordner trägt eine Kennungsdatei `.pdh-mirror-id`; nach einem Plattentausch oder bei nicht eingehängtem Laufwerk löscht die Spiegelung nichts und meldet sich.
+- Handbuch: neuer Abschnitt „Datei-Spiegelung und Nextcloud im Verbund“ mit Einschalten, Bestätigen, Nextcloud, Papierkorb und Fehlerbildern.
+
+### Geändert
+- „Rollen tauschen“ und die Prüfung „alles grün“ vor einem Update warten, bis der Erstabgleich der Dateien fertig ist.
+- Ein gescheiterter Tausch wird in zwei Takten zurückgenommen: erst die Rolle, im nächsten Takt Datenbank, Dienste und mitwandernde Adresse.
+- Scheitert die Rücknahme, bleibt die Automatik an; der Server versucht es in jedem Takt neu und zeigt solange die Warnung „Rücknahme hängt“.
+- Ohne Sicht auf den Partner (und im Trio auf den Zeugen) nimmt ein Server einen gescheiterten Tausch nicht zurück, sondern bleibt abgeschottet.
+- Rollenskripte laufen nur noch bei einem echten Rollenwechsel, nicht beim Neustart von `pdh-ha`.
+- Sicherung, Wiederaufbau und Rückspielen nehmen die Kennungsdatei `.pdh-mirror-id` nicht mit.
+
+### Behoben
+- Übernimmt der Partner mitten in einem Tausch, bindet sich der alte Server per `pg_rewind` als Standby an, statt ohne Datenbank stehen zu bleiben.
+- Ein abgebrochenes `pg_rewind` lässt den Datenordner nicht mehr unbemerkt starten; `pdh-ha rejoin` kopiert dann neu, `pdh-restore.sh` räumt die Markierung auf.
+- Ein offener Update-Auftrag, den der aktive Partner nicht führt, meldet sich mit Alarm und lässt sich am passiven Server mit `pdh-ha update abort` beenden.
+
+### Sicherheit
+- Neue Rechte „Datei-Spiegelung einstellen“ und „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“; Rollen mit „Server-Einstellungen (.env) bearbeiten & Server neu starten“ bekommen beide automatisch.
+- Die Dateien laufen durch den verschlüsselten Kanal des Verbunds (Port 7480) mit den Zertifikaten der Server; der Zeuge bekommt keine Dateien.
+- Der Empfänger nimmt nur an, wenn er passiv ist und der Absender mindestens seine Amtszeit hat, setzt Zielpfad und Papierkorb selbst und lässt nur eine feste Liste von rsync-Optionen zu.
+- `/etc/pdh/ha/`, die `.env` und `cloudflared` werden nie gespiegelt.
+
 ## [0.77.8] – 2026-10-30
 
 ### Neu

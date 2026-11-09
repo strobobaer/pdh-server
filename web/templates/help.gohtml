@@ -1633,6 +1633,12 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li><b>„Automatische Wartung abbrechen“</b>: Wer es hat, bleibt während der Sperre angemeldet und darf auf dem Wartungsbildschirm abbrechen und zurücksetzen. Das Recht umfasst auch das <b>Absagen</b> der Wartungsfenster-Nachfrage und das <b>Abbrechen</b> eines Updates vor der Sperre. <b>Durchführen</b> braucht dasselbe Recht wie „Update installieren“ (Rollen &amp; Berechtigungen verwalten). Beim Update bekamen es alle Rollen mit „Rollen &amp; Berechtigungen verwalten“ und alle Bereichsadministratoren.</li>
     </ul>
     Als Ausgangspunkt zählt nur ein Recht, das überall gilt – eines, das auf eine Abteilung begrenzt ist, reicht nicht. Beide Rechte lassen sich wie alle anderen vergeben, aber nur an Personen, die sie selbst haben.</div>
+  <div class="hb-howto"><b><i class="ti ti-copy"></i> Rechte für die Datei-Spiegelung</b>
+    <ul>
+      <li><b>„Datei-Spiegelung einstellen“</b> (<code>system.file_mirror</code>, Kategorie „System &amp; Sicherheit“): Spiegelung und „Nextcloud mitnehmen“ ein- und ausschalten, Werte ändern und <b>Jetzt abgleichen</b> (<a href="#hb-dateispiegelung">mehr</a>).</li>
+      <li><b>„Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“</b> (<code>system.file_mirror_admin</code>): <b>Dieser Server ist vollständig</b> bestätigen und den <b>Papierkorb leeren</b>. Wer beides darf, kann den Rückweg über den Papierkorb selbst beenden – darum nur wenigen geben.</li>
+    </ul>
+    Die beiden Rechte sind <b>eigenständig</b>: Das zweite schließt das erste nicht ein, anders als ein Bereichsadministrator. Wer einstellen und bestätigen soll, braucht beide. Sie gelten systemweit. Beim Update bekamen beide alle Rollen, die „Server-Einstellungen (.env) bearbeiten &amp; Server neu starten“ überall hatten.</div>
   <p><b>Was ohne Recht geht:</b> Störungen und Tickets melden, kommentieren, Zeiten erfassen und Chat. Alles andere – bearbeiten, Status ändern, abschließen, anlegen von Aufgaben, Projekten, Wartungen, IT-Geräten, Ersatzteilen und Lagerorten – braucht das passende Recht. Wer an einem Vorgang beteiligt ist (zugewiesen, verantwortlich, angelegt oder über die Gruppe), darf diesen Vorgang auch ohne das Recht bearbeiten. Fehlt ein Recht, meldet PDH „Keine Berechtigung“ mit dem Namen des Rechts.</p>
   <p>Server-Einstellungen wie Datenbank, E-Mail, Microsoft 365 oder Nextcloud pflegst du unter <b>Server-Einstellungen</b> (<a href="#server">mehr</a>) – die <code>.env</code>-Datei muss dafür niemand mehr von Hand bearbeiten.</p>
   <h3>Berechtigungen <i class="ti ti-refresh" title="automatisch aus dem System"></i></h3>
@@ -1809,6 +1815,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <p><b>Wie aktuell ist die Sicherung?</b> Die Datenbank höchstens <b>5 Minuten</b> alt (einstellbar), Dateien höchstens so alt wie der Dateiabgleich (Standard 60 Minuten). Jede Nacht kommt eine Grundsicherung dazu; aufbewahrt wird 14 Tage (einstellbar). Gelöschte oder überschriebene Dateien landen so lange im <b>Papierkorb</b> auf dem Laufwerk. Nextcloud wird im laufenden Betrieb abgeglichen, n8n dafür kurz angehalten.</p>
   <p>Die Freigabe enthält Zugangsdaten (<code>.env</code>, Nextcloud-<code>config.php</code>) – nur Administratoren dürfen darauf zugreifen.</p>
   <p>Mit zwei Servern zeigt der Reiter auf dem passiven Server den Hinweis „Beobachtung: würde pausieren – …“. In dieser Version läuft die Sicherung trotzdem weiter (siehe <a href="#spiegelbetrieb">Ausfallschutz mit zwei Servern</a>).</p>
+  <p>Mit zwei Servern hält die <a href="#hb-dateispiegelung">Datei-Spiegelung</a> die Dateien zusätzlich auf dem zweiten Server aktuell. Sie ersetzt die Sicherung nicht: Was länger als die Papierkorb-Frist (14 Tage) gelöscht ist, gibt es nur noch in der Sicherung.</p>
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> So baust du den Server wieder auf</b>
     <ol class="hb-steps">
       <li>Frischen Ubuntu-Server oder eine neue VM bereitstellen.</li>
@@ -1843,6 +1850,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
   <div class="hb-howto"><b><i class="ti ti-eye"></i> Was wirklich passiert – und was nur gemeldet wird</b>
     <ul>
       <li><b>Datenbank-Spiegel:</b> Ist er eingerichtet, schreibt der aktive Server jede Speicherung auch auf den passiven. Das läuft immer echt.</li>
+      <li><b>Datei-Spiegelung:</b> Ist sie eingeschaltet, überträgt der aktive Server Anhänge, Einstellungen und auf Wunsch Nextcloud auf den passiven – immer echt (siehe <a href="#hb-dateispiegelung">Datei-Spiegelung</a>). Standard ist aus.</li>
       <li><b>PDH am Spiegel:</b> Das PDH läuft auch auf dem passiven Server – nur lesen (siehe „So arbeitest du am Spiegel“). <code>/health</code> zeigt dort <code>"mode": "spiegel"</code>.</li>
       <li><b>Rollen tauschen</b> und <b>Übernahme erzwingen</b> wirken immer echt.</li>
       <li><b>Automatische Umschaltung</b> bei einem Ausfall: Standard ist <b>Beobachtung</b>. Der Dienst meldet dann nur „würde jetzt: …“, Rollen bleiben, wie sie sind. Auf <b>echt</b> lässt sie sich erst nach der Pflicht-Testumschaltung stellen.</li>
@@ -1894,9 +1902,10 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     <ol class="hb-steps">
       <li>Am <b>aktiven</b> Server <b>Rollen tauschen</b> wählen.</li>
       <li>Der aktive Server stellt die Datenbank auf „nur lesen“ und wartet, bis der passive alles hat (höchstens 60 Sekunden). Erst dann gibt er ab. Klappt das nicht, bricht der Tausch ab und nichts ändert sich. Meist ist der Tausch nach etwa 5 Sekunden durch; über die mitwandernde Adresse sind Windows-Rechner nach rund 10 Sekunden wieder verbunden.</li>
+      <li>Ist die <a href="#hb-dateispiegelung">Datei-Spiegelung</a> eingeschaltet, läuft danach noch ein <b>letzter Abgleich</b> der Dateien (höchstens 120 Sekunden, einstellbar). Er gehört zur kurzen Sperre des Tauschs: PDH und Nextcloud stehen dabei schon, die Datenbank ist nur lesend. Klappt er nicht, bricht der Tausch ab und der Grund steht im Reiter.</li>
       <li>Das PDH ist für Sekunden nicht erreichbar und läuft danach auf dem anderen Server. Mit eingeschalteter mitwandernder Adresse und dem Tunnel bleibt die Adresse für alle gleich.</li>
     </ol>
-    <p><b>Hinweis:</b> Hochgeladene Dateien werden noch nicht gespiegelt. Nach einem Tausch fehlen auf dem anderen Server neue Anhänge.</p></div>
+    <p>Ohne Datei-Spiegelung fehlen nach einem Tausch auf dem anderen Server die neuen Anhänge – die Karte <b>Datei-Spiegelung</b> und die Prüfung vor einem Update weisen darauf hin.</p></div>
   <div class="hb-howto"><b><i class="ti ti-refresh-alert"></i> Synchron und asynchron</b>
     <ul>
       <li><b>Synchron</b> (Normalfall): Jede Speicherung liegt erst dann als gespeichert vor, wenn auch der passive Server sie hat. Es geht nichts verloren.</li>
@@ -1921,6 +1930,90 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
       <li>Die Betriebsart steht danach auf <b>Trio</b>, der Hinweis „kein Zeuge“ verschwindet.</li>
     </ol>
     <p><b>Wichtig:</b> Der Zeuge braucht <b>eigene Hardware und eigenen Strom</b>. Läuft er auf demselben Gerät oder an derselben Stromversorgung wie ein Server, fällt er mit aus – dann ist er wertlos. Erkennt das PDH gemeinsame Hardware, zeigt es eine Warnung.</p></div>
+  <h3 id="hb-dateispiegelung"><i class="ti ti-copy"></i> Datei-Spiegelung und Nextcloud im Verbund</h3>
+  <p>Die Datenbank wandert schon mit, die Dateien erst mit der <b>Datei-Spiegelung</b>. Ist sie eingeschaltet, überträgt der aktive Server seine Dateien fast in Echtzeit auf den passiven: neue Anhänge und Chat-Dateien nach wenigen Sekunden, alles andere mit dem <b>Abgleich</b> jede Minute. Die Richtung folgt der Rolle. Nach einem Tausch fehlt so keine Datei, nach einem harten Ausfall höchstens die letzten Sekunden bis zur letzten Minute.</p>
+  <ul>
+    <li><b>Gespiegelt</b> werden: <code>uploads</code> und <code>chat_files</code> des PDH, <code>/etc/pdh</code> (mit den Skripten in <code>ha-hooks</code>), <code>/etc/nginx</code>, <code>/etc/ssl/pdh-nextcloud</code>, <code>/etc/letsencrypt</code> und mit „Nextcloud mitnehmen“ der Nextcloud-Datenordner und der Programmordner (<code>/var/www/nextcloud</code> samt <code>config.php</code>). Was es auf dem Server nicht gibt, entfällt.</li>
+    <li><b>Nie gespiegelt</b> werden <code>/etc/pdh/ha/</code> (gehört zum Rechner), die <code>.env</code> (enthält Serverbezogenes – die Karte warnt, wenn sie sich unterscheidet) und <code>cloudflared</code> (das Token verteilt der Ausfallschutz selbst). Vorschaubilder von Nextcloud und unfertige Hochladungen bleiben ebenfalls weg.</li>
+    <li>Die Spiegelung läuft durch den verschlüsselten Kanal des Verbunds (Port 7480, mit den Zertifikaten der Server). Der Zeuge bekommt keine Dateien.</li>
+    <li>Sie läuft nur am aktiven Server, auch bei <b>Automatik aus (Wartung)</b>. PDH und Nextcloud arbeiten weiter, wenn die Übertragung einmal scheitert.</li>
+  </ul>
+  {{template "hb-fig-dateispiegelung"}}
+  <div class="hb-howto"><b><i class="ti ti-player-play"></i> So schaltest du die Datei-Spiegelung ein</b> (Recht „Datei-Spiegelung einstellen“)
+    <ol class="hb-steps">
+      <li>Vorher prüfen: Auf beiden Servern zeigen <code>id -u pdh</code> und <code>id -u www-data</code> dieselbe Zahl – die Spiegelung überträgt Besitzer als Nummer. Der Partner braucht so viel freien Platz, wie die Quellen groß sind; was dort schon liegt, rechnet die Prüfung nicht mit.</li>
+      <li>Am <b>aktiven</b> Server <b>Server-Einstellungen → Ausfallschutz</b> öffnen, Karte <b>Datei-Spiegelung</b>.</li>
+      <li><b>Dateien auf den zweiten Server spiegeln</b> ankreuzen und <b>Speichern</b>. Die übrigen Werte passen meist: Abstand des Abgleichs 60 s, Papierkorb 14 Tage, Alarm nach 5 min, Frist für den letzten Abgleich 120 s, Bandbreite unbegrenzt.</li>
+      <li>Der <b>Erstabgleich</b> beginnt; die Karte zeigt den Fortschritt in Prozent. Bis er fertig ist, lehnt der Server <b>Rollen tauschen</b> ab („Erstabgleich der Dateien läuft – Rollentausch erst danach möglich“), und ein Update gilt nicht als „alles grün“.</li>
+      <li>War ein Ordner auf dem Partner <b>schon gefüllt</b> – auf einem frischen Server meist <code>/etc/nginx</code> und <code>/etc/pdh</code> –, steht die Karte auf <b>wartet auf Bestätigung</b>. Die Dateien werden trotzdem übertragen, aber am Partner wird nichts gelöscht. Weiter mit „So bestätigst du …“ unten.</li>
+      <li>Danach zeigt der Kopf der Karte <b>bereit</b>, am passiven Server <b>empfängt</b>. <b>Jetzt abgleichen</b> startet einen Abgleich sofort (auf der Konsole <code>sudo pdh-ha mirror run</code>, den Stand zeigt <code>sudo pdh-ha mirror status</code>).</li>
+    </ol>
+    <p><b>Gut zu wissen:</b> Eine neue Bandbreitengrenze bricht den laufenden Abgleich ab – während eines Tauschs also auch den Tausch. Die Frist für den letzten Abgleich sollte 150 s nicht übersteigen, sonst kann ein Update mit Rollentausch abbrechen. Ausschalten verwirft, was die Spiegelung über den Partner weiß: Nach dem Wiedereinschalten laufen Erstabgleich und Platzprüfung neu, und ein gefüllter Partner wartet wieder auf Bestätigung.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-shield-check"></i> So bestätigst du „Dieser Server ist vollständig“</b> (Recht „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“)
+    <p>Welcher Server die vollständigen Dateien hat, weiß nur ihr. Darum löscht die Spiegelung am Partner erst, wenn dessen Stand belegt ist: Ein leerer Ordner auf dem Partner ist nach dem ersten Lauf von selbst belegt, ein gefüllter braucht deine Bestätigung.</p>
+    <ol class="hb-steps">
+      <li>Die Karte nennt die wartenden Quellen, z. B. „Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht (1): nginx“. Dazu kommt einmal ein Alarm („Der Partner hat dort schon Dateien ohne Beleg“).</li>
+      <li>Prüfen, dass der <b>aktive</b> Server wirklich alle Dateien hat. Bestätige nie am Server mit dem älteren Stand.</li>
+      <li>Am aktiven Server <b>Dieser Server ist vollständig</b> wählen und die Rückfrage bestätigen. Auf der Konsole: <code>sudo pdh-ha mirror confirm</code>.</li>
+      <li>Der nächste Abgleich löscht am Partner, was es hier nicht gibt. Abweichende Dateien wandern dort in den Papierkorb – 14 Tage lang zurückholbar.</li>
+    </ol>
+    <p>Der Knopf gilt nur für die Quellen, die die Karte beim Klick zeigte. Wird danach noch eine Quelle wartend, meldet sie sich einzeln und bleibt wartend. Meldet der Knopf „Keine Quelle genannt – bitte die Seite neu laden“, die Seite neu laden. Der Befehl ohne Liste nimmt alle wartenden Quellen und nennt sie in der Antwort.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-cloud"></i> So nimmst du Nextcloud in den Verbund</b>
+    <p>Nextcloud ist dann auf beiden Servern startbereit, arbeitet aber nur auf dem aktiven. Für Browser, Desktop-Client und Handy-App bleibt es derselbe Server unter derselben Adresse. Das Skript liegt im PDH-Ordner unter <code>scripts/install-nextcloud-nginx-postgres.sh</code> und kennt dafür <code>--verbund</code> mit drei Fällen.</p>
+    <ol class="hb-steps">
+      <li><b>Am aktiven Server</b>, je nach Lage:<br>Neue Nextcloud: <code>sudo bash scripts/install-nextcloud-nginx-postgres.sh --verbund aktiv-neu --domain cloud.firma.local --admin-pass … --db-pass … --data-dir /srv/nextcloud/data</code>. Der <b>Name</b> bei <code>--domain</code> ist die Adresse, unter der alle Nextcloud erreichen – ein Name oder die mitwandernde Adresse, nie die feste Adresse eines Servers. Das Skript startet PostgreSQL nicht neu und schaltet keinen Autostart ein.<br>Vorhandene Nextcloud: <code>sudo bash scripts/install-nextcloud-nginx-postgres.sh --verbund aktiv-vorhanden --install-dir /var/www/nextcloud --data-dir /srv/nextcloud/data</code> – prüft nur und ändert nichts.</li>
+      <li>Am Ende zeigt das Skript den <b>vollständigen Befehl für den passiven Server</b> (mit den Nummern von <code>www-data</code> und <code>pdh</code> und der PHP-Fassung). Ihn kopieren.</li>
+      <li><b>Am passiven Server</b>: Den Nextcloud-Datenordner anlegen bzw. das Laufwerk dafür einhängen, dann den kopierten Befehl im PDH-Ordner ausführen (<code>--verbund passiv …</code>). Er installiert nur Pakete, PHP und nginx und legt leere Ordner an – ohne Datenbankzugriff. PHP-FPM bleibt aus. Verschiedene Nummern oder PHP-Fassungen lehnt er mit dem passenden Befehl ab.</li>
+      <li><b>Zertifikat</b>: Nextcloud braucht ein Server-Zertifikat für den Namen bzw. die mitwandernde Adresse (<b>Core-Einstellungen → Zertifikate (Nextcloud)</b> → Server). Es liegt unter <code>/etc/ssl/pdh-nextcloud</code> und wird mitgespiegelt. Fehlt die mitwandernde Adresse darin, warnt die Karte.</li>
+      <li>Am aktiven Server in der Karte <b>Datei-Spiegelung</b> den <b>Nextcloud-Datenordner</b> (und, falls abweichend, den Programmordner) eintragen, <b>Nextcloud mitnehmen</b> ankreuzen und <b>Speichern</b>. Der Erstabgleich füllt die Ordner am passiven Server.</li>
+      <li>Steht in den Server-Einstellungen bei Nextcloud die feste Adresse eines Servers (<code>PDH_NEXTCLOUD_BASEURL</code>), warnt die Karte: dort den Namen oder die mitwandernde Adresse eintragen.</li>
+      <li>Einmal <b>Rollen tauschen</b> und zurück. Dabei Web, Desktop-Client und App prüfen, auch einen Freigabe-Link und den Kalender.</li>
+    </ol>
+    <p><b>Was beim Wechsel passiert:</b> Am aktiven Server laufen PHP-FPM, der Nextcloud-Cron (alle 5 Minuten) und der Certbot-Zeitgeber, am passiven nicht; nginx und Redis laufen auf beiden. Erst wird die Datenbank schreibbar, dann startet Nextcloud. Die mitwandernde Adresse trägt der aktive Server selbst in <code>trusted_domains</code> ein. Im Browser musst du dich nach einem Wechsel eventuell neu anmelden; Clients mit App-Passwort melden sich von selbst wieder an. <b>Nextcloud löst nie eine Umschaltung aus:</b> Startet sie nach einem Wechsel nicht, kommt nur ein Alarm.</p>
+    <p><code>pdh-ha</code> startet und stoppt <b>alle</b> PHP-FPM-Dienste des Servers (<code>php*-fpm</code>), auch die anderer PHP-Seiten. Andere PHP-Seiten gehören deshalb nicht auf diese Server. Schaltest du „Nextcloud mitnehmen“ wieder aus, läuft Nextcloud am aktiven Server wieder mit Autostart und Cron; am passiven bleibt sie aus, bis zur nächsten Übernahme.</p></div>
+  <div class="hb-howto"><b><i class="ti ti-trash"></i> Papierkorb</b>
+    <ul>
+      <li>Was der Abgleich am passiven Server löscht oder überschreibt, legt er in den Papierkorb neben dem gespiegelten Ordner: <code>&lt;Ordner darüber&gt;/.pdh-papierkorb/&lt;Datum&gt;/&lt;Quelle&gt;/</code>, z. B. <code>/etc/.pdh-papierkorb/2026-11-09/nginx/</code>. Nur root kann ihn lesen.</li>
+      <li>Nach <b>14 Tagen</b> (einstellbar) räumt der Server ihn von selbst auf. Zurückholen ist Handarbeit: die Datei aus dem Papierkorb an ihren Platz kopieren – am aktiven Server, sonst überschreibt sie der nächste Abgleich.</li>
+      <li><b>Rückkehrer-Dateien:</b> Kommt ein früherer aktiver Server zurück, wird er passiv. Was er noch nicht übertragen hatte, landet in seinem Papierkorb. Die Karte nennt die Anzahl, gelöscht wird nichts still.</li>
+      <li><b>Papierkorb leeren</b> am aktiven Server leert den Papierkorb des Partners endgültig. Das braucht das Recht „Datei-Spiegelung: Löschen am Partner freigeben und Papierkorb leeren“.</li>
+      <li>Ist der Nextcloud-Datenordner ein eigenes Laufwerk (Einhängepunkt), liegt sein Papierkorb im Ordner darüber und damit auf dem Systemlaufwerk. Dann dort auf freien Platz achten – oder den Datenordner eine Ebene tiefer anlegen (z. B. <code>/srv/ncdisk/data</code>, wenn das Laufwerk unter <code>/srv/ncdisk</code> hängt).</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-id"></i> Kennungsdatei <code>.pdh-mirror-id</code></b>
+    <p>Jeder gespiegelte Ordner enthält die Datei <code>.pdh-mirror-id</code> (bei Nextcloud im Programmordner unter <code>config/</code>). Sie ist das Erkennungszeichen des Ordners. Fehlt sie oder passt sie nicht, gilt der Ordner als ein anderer – etwa nach einem Plattentausch oder wenn das Laufwerk nicht eingehängt ist. Dann löscht die Spiegelung nichts.</p>
+    <ul>
+      <li>Die Datei nicht löschen, nicht von Hand übertragen. Sie gehört dem Besitzer ihres Ordners (bei Nextcloud <code>www-data</code>), damit das Nextcloud-Update weiter klappt.</li>
+      <li><b>Umzug per Kopie</b> (z. B. auf eine größere Platte): Die Kennung nicht mitkopieren, z. B. <code>rsync -a --exclude=/.pdh-mirror-id alt/ neu/</code>, beim Nextcloud-Programmordner <code>--exclude=/config/.pdh-mirror-id</code>. Sonst gilt die Kopie als derselbe Ordner, und der Abgleich löscht am Partner, was dort neuer ist.</li>
+      <li>Sicherung, Wiederaufbau und Rückspielen nehmen die Kennung <b>nicht</b> mit. Nach einer Wiederherstellung auf einen neuen Datenträger meldet der Server „Der Quellordner ist ein anderer“; erst prüfen, dann bestätigen.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-alert-triangle"></i> Wenn bei der Datei-Spiegelung etwas nicht stimmt</b>
+    <ul>
+      <li><b>„Spiegelung gestört: …“</b>: Der Partner ist weg oder die Übertragung scheitert seit 5 Minuten (einstellbar). PDH und Nextcloud laufen weiter, die Spiegelung versucht es laufend neu. Der Kopf der Karte zeigt <b>gestört</b> und den Grund.</li>
+      <li><b>„Zu wenig Platz am Partner: nötig …, frei …“</b>: Die Spiegelung bleibt stehen. Die Prüfung verlangt freien Platz in Höhe der ganzen Quelle, auch wenn der Partner dieselben Dateien schon hat – nach jedem Aus- und Einschalten wieder. Ausweg: am Partner Platz schaffen (Platte vergrößern oder aufräumen).</li>
+      <li><b>„Sofort-Übertragung eingeschränkt: zu viele Ordner …“</b>: Der Abgleich jede Minute läuft weiter. Auf beiden Servern <code>sudo sysctl -w fs.inotify.max_user_watches=524288</code> ausführen.</li>
+      <li><b>„Ein Abgleich dauert länger als der eingestellte Abstand“</b>: kein Alarm, nur ein Hinweis. Bei sehr großen Ordnern den Abstand erhöhen oder die Verbindung prüfen.</li>
+      <li><b>„Der Quellordner ist ein anderer“</b> (aktiver Server): Datenträger getauscht oder nicht eingehängt. Nicht eingehängt: erst einhängen, <b>dann</b> bestätigen – Einhängen allein reicht nicht. Getauscht: erst die Dateien zurückspielen, dann bestätigen. Bis dahin wird am Partner nichts gelöscht.</li>
+      <li><b>„Der Zielordner ist ein anderer“</b> (passiver Server): Er nimmt nichts mehr an, der aktive Server meldet nach 5 Minuten „Spiegelung gestört“. Nicht eingehängt: einhängen, dann läuft es von selbst weiter. Nur bei einem gewollten Plattentausch: Spiegelung aus- und wieder einschalten; ein leerer Ordner ist danach von selbst belegt, ein gefüllter wartet auf Bestätigung.</li>
+      <li><b>„Nextcloud-Datenordner nicht erreichbar (.ocdata fehlt)“</b>: Das Laufwerk mit den Nextcloud-Daten ist nicht eingehängt. Es wird nichts aufs Systemlaufwerk geschrieben; einhängen genügt.</li>
+      <li><b>„Dieser Server wurde aktiv, bevor der Erstabgleich fertig war“</b>: Die Quelle läuft ohne Löschen am Partner. Nur bestätigen, wenn dieser Server wirklich vollständig ist. Dasselbe gilt, wenn bei einer Übernahme ein Ordner ganz fehlte.</li>
+      <li>Am passiven Server zeigt die Karte <b>gestört</b> mit „Der Empfang wird abgelehnt: …“ – der Grund steht dahinter.</li>
+      <li><b>„Letzter Abgleich der Dateien nicht fertig: …“</b>: Der Tausch ist abgebrochen, der bisherige aktive Server arbeitet weiter. Das dauert einige Sekunden länger als ein Abbruch ohne Spiegelung.</li>
+      <li>Ein <b>früherer aktiver Server</b>, der noch sendet, wird abgelehnt; das Ereignis steht am Empfänger.</li>
+      <li>Bricht eine Übertragung mitten in einer Datei ab, bleibt die alte Fassung gültig; der nächste Lauf holt nach.</li>
+      <li><b>Nextcloud oder PHP verschieden</b> auf den beiden Servern: Die Karte warnt. Beide gleich halten, sonst startet Nextcloud nach einer Übernahme nicht.</li>
+      <li><b><code>nginx -t</code> scheitert</b> am passiven Server: Er lädt nginx nicht neu, die alte Einstellung läuft weiter, es kommt ein Alarm.</li>
+      <li><b>„Nach der Übernahme fehlen … Nextcloud-Dateien“</b>: Nach einem harten Ausfall vergleicht der neue aktive Server die neuesten Einträge von Nextcloud mit der Platte. Die Karte listet die fehlenden Dateien, der Alarm nennt die ersten Namen. Diese Dateien von den Clients neu hochladen lassen. Fehlende PDH-Anhänge meldet der Prüflauf nur als Anzahl.</li>
+    </ul></div>
+  <div class="hb-howto"><b><i class="ti ti-arrow-back-up"></i> Gescheiterter Tausch und Sonderfälle</b>
+    <ul>
+      <li><b>Rücknahme:</b> Scheitert ein Tausch, wird der bisherige aktive Server für einen Takt wieder aktiv, aber nur lesend, ohne mitwandernde Adresse und ohne Rollenskripte. Erst der nächste Takt schaltet Datenbank und Dienste ein und nimmt die Adresse.</li>
+      <li><b>„Rücknahme hängt: …“</b>: Scheitert dieses Einschalten (z. B. Datenbank kurz nicht erreichbar), bleibt die Automatik an. Es kommt ein Alarm, die Warnung steht dauerhaft im Status, und jeder Takt versucht es neu. Ist es gelungen, steht im Ereignisprotokoll „Rücknahme gelungen“.</li>
+      <li><b>Netz weg während des Tauschs:</b> Sieht der abgebende Server den Partner nicht mehr (im Trio auch den Zeugen nicht), nimmt er den Tausch nicht zurück. Er bleibt abgeschottet, bis er wieder Sicht hat oder der Partner übernimmt. So werden nie zwei Server schreibbar.</li>
+      <li><b>Restrisiko:</b> Geht genau in der Rücknahme der Herzschlag des Partners verloren, können beide Server kurz schreibbar sein – meist 1 bis 2 Sekunden, beim Start von Nextcloud bis 10 Sekunden länger. Im <b>Duo</b> (ohne Zeuge) reicht für die Rücknahme das erreichbare Gateway; dann kann es so lange dauern wie die Unterbrechung zwischen den Servern. Im synchronen Betrieb hängen Speicherungen in dieser Zeit, Dateien schützt das aber nicht. Darum ist ein Zeuge empfohlen.</li>
+      <li><b>Rollenskripte</b> laufen nur bei einem echten Rollenwechsel, nicht beim Neustart von <code>pdh-ha</code> oder nach einem Update ohne Wechsel.</li>
+      <li><b>Alarm zu einem offenen Update-Auftrag am passiven Server:</b> Der Partner ist schon aktiv und führt diesen Auftrag nicht. Am passiven Server <code>sudo pdh-ha update abort</code> ausführen. Ist der Partner älter, ihn zuerst aktualisieren. Ist die Datenbank dort danach gestoppt (eingefrorener Rückfallstand), bindet sie sich nicht von selbst an: den Stand behalten (nichts tun) oder <code>sudo pg_ctlcluster &lt;Version&gt; &lt;Name&gt; start</code> (startet nur lesend), dann <code>sudo pdh-ha rejoin</code>. Bleibt sie gestoppt, kommt nach einer Minute ein Alarm und eine dauerhafte Warnung.</li>
+      <li><b>Abgebrochenes Zurückspulen (pg_rewind):</b> Der Datenordner kann halb zurückgespult sein und startet nicht. Weg: <code>sudo pdh-ha rejoin</code> – das kopiert die Datenbank neu vom Partner. Ist kein Partner erreichbar, bleibt nur die Wiederherstellung aus der Sicherung; <code>pdh-restore.sh</code> entfernt dabei die Markierung <code>&lt;Datenordner&gt;.rewind-laeuft</code> selbst.</li>
+    </ul></div>
   <h3 id="hb-verbund-update"><i class="ti ti-refresh"></i> Update im Verbund und Wartungsfenster</h3>
   <p>Mit zwei Servern (und Zeuge) bringt <b>ein Auslöser alle Rechner auf denselben Stand</b>: per Knopf in den Core-Einstellungen oder automatisch im Wartungsfenster. Geht etwas schief, setzt das System <b>immer auf den bisherigen Stand zurück</b> – auch nach Datenbank-Änderungen, ohne Datenverlust.</p>
   {{template "hb-fig-verbundupdate"}}
@@ -1949,7 +2042,7 @@ mark{background:rgba(245,158,11,.35);color:inherit;border-radius:3px}
     </ol>
     <p>Läuft schon der Countdown vor der Sperre, hat das Band den Knopf <b>Abbrechen</b> (gleiches Recht). Ihn gibt es auch im Fortschrittskasten.</p></div>
   <div class="hb-howto"><b><i class="ti ti-route-2"></i> Was bei einem Update im Verbund passiert</b>
-    <p>Zuerst die <b>Prüfung „alles grün“</b>: Beide Server sehen sich, genau einer ist aktiv, der Spiegel ist synchron, beide haben denselben Stand, die letzte Grundsicherung und der letzte Dateiabgleich waren in Ordnung und beide Server haben mindestens 2 GB frei. Ein nicht erreichbarer Zeuge ist nur ein Hinweis. Ist etwas nicht grün, bricht das Wartungsfenster ab und meldet den Grund; der Knopf fragt nach („Trotzdem mit kurzer Unterbrechung?“) und nimmt bei „Ja“ die Art „alle nacheinander“.</p>
+    <p>Zuerst die <b>Prüfung „alles grün“</b>: Beide Server sehen sich, genau einer ist aktiv, der Spiegel ist synchron, beide haben denselben Stand, die letzte Grundsicherung und der letzte Dateiabgleich waren in Ordnung, bei eingeschalteter Datei-Spiegelung ist der Erstabgleich fertig, und beide Server haben mindestens 2 GB frei. Ein nicht erreichbarer Zeuge ist nur ein Hinweis. Ist etwas nicht grün, bricht das Wartungsfenster ab und meldet den Grund; der Knopf fragt nach („Trotzdem mit kurzer Unterbrechung?“) und nimmt bei „Ja“ die Art „alle nacheinander“.</p>
     <p><b>Update-Art „ohne Unterbrechung“</b> (Standard):</p>
     <ol class="hb-steps">
       <li>Der Spiegel (Server B) spielt die neue Version ein und wird geprüft. Alle arbeiten weiter am aktiven Server A.</li>

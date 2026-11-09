@@ -611,11 +611,11 @@
 
 {{define "hb-fig-spiegelbetrieb"}}
 <figure class="hb-fig">
-<svg viewBox="0 0 640 270" role="img" aria-label="Ausfallschutz mit zwei Servern: Server 1 schreibt und hat die mitwandernde Adresse und den Tunnel, Server 2 spiegelt die Datenbank, beide über LAN und WireGuard verbunden, der Zeuge beobachtet beide; Benutzer und Geräte erreichen immer den aktiven Server">
+<svg viewBox="0 0 640 270" role="img" aria-label="Ausfallschutz mit zwei Servern: Server 1 schreibt und hat die mitwandernde Adresse und den Tunnel, Server 2 spiegelt die Datenbank und mit eingeschalteter Datei-Spiegelung die Dateien, beide über LAN und WireGuard verbunden, der Zeuge beobachtet beide; Benutzer und Geräte erreichen immer den aktiven Server">
   <rect class="bg" x="1" y="1" width="638" height="268" rx="8"/>
   <rect class="gr" x="20" y="90" width="170" height="92" rx="8"/><text x="105" y="112" class="t-c t-b">Server 1</text><text x="105" y="130" class="t-c t-m">aktiv · Datenbank schreibend</text><text x="105" y="146" class="t-c t-m">PDH läuft, sichert aufs Laufwerk</text><text x="105" y="168" class="t-c t-m">hat 10.10.0.202 · Tunnel läuft</text>
   <rect class="acl" x="450" y="90" width="170" height="92" rx="8"/><text x="535" y="112" class="t-c t-b">Server 2</text><text x="535" y="130" class="t-c t-m">passiv · Datenbank Standby</text><text x="535" y="146" class="t-c t-m">PDH läuft nur lesend (Spiegel)</text><text x="535" y="168" class="t-c t-m">übernimmt Adresse und Tunnel</text>
-  <path class="ar" d="M192 120 H448"/><text x="320" y="114" class="t-c t-m">LAN · Datenbank synchron</text>
+  <path class="ar" d="M192 120 H448"/><text x="320" y="114" class="t-c t-m">LAN · Datenbank synchron · Dateien (Spiegelung)</text>
   <path class="ar" d="M192 150 H448"/><text x="320" y="166" class="t-c t-m">WireGuard</text>
   <rect class="bg3" x="225" y="12" width="190" height="46" rx="8"/><text x="320" y="32" class="t-c t-b">Zeuge</text><text x="320" y="49" class="t-c t-m">eigene Hardware, eigener Strom</text>
   <path class="ar" d="M250 58 L150 88"/><path class="ar" d="M390 58 L490 88"/>
@@ -623,7 +623,33 @@
   <path class="ar" d="M105 212 V186"/>
   <path class="ln" d="M535 212 V186" stroke-dasharray="4 3"/><text x="545" y="202" class="t-m">nach einem Wechsel</text>
 </svg>
-<figcaption>Zwei Server prüfen sich über LAN und WireGuard gegenseitig, die Datenbank wird synchron gespiegelt, am passiven Server läuft das PDH nur lesend; der Zeuge hilft bei der Entscheidung. Die mitwandernde Adresse und der Tunnel liegen immer beim aktiven Server – nach einem Wechsel gehen sie mit. Automatische Umschaltung zunächst nur als Beobachtung.</figcaption>
+<figcaption>Zwei Server prüfen sich über LAN und WireGuard gegenseitig, die Datenbank wird synchron gespiegelt, mit eingeschalteter Datei-Spiegelung auch Anhänge, Einstellungen und Nextcloud; am passiven Server läuft das PDH nur lesend; der Zeuge hilft bei der Entscheidung. Die mitwandernde Adresse und der Tunnel liegen immer beim aktiven Server – nach einem Wechsel gehen sie mit. Automatische Umschaltung zunächst nur als Beobachtung.</figcaption>
+</figure>
+{{end}}
+
+{{define "hb-fig-dateispiegelung"}}
+<figure class="hb-fig">
+<svg viewBox="0 0 640 262" role="img" aria-label="Karte Datei-Spiegelung im Reiter Ausfallschutz am aktiven Server: Kopf mit Zustand wartet auf Bestätigung, letzter Abgleich, Liste der Quellen mit Zeit seit dem letzten Lauf, Quelle nginx wartet auf Bestätigung, Hinweis dass am Partner nichts gelöscht wird, Papierkorb mit Größe, Knöpfe Jetzt abgleichen, Dieser Server ist vollständig und Papierkorb leeren">
+  <rect class="bg" x="1" y="1" width="638" height="260" rx="8"/>
+  <text x="20" y="26" class="t-b">Datei-Spiegelung</text>
+  <rect class="am" x="466" y="12" width="158" height="20" rx="10"/><text x="545" y="26" class="t-c">wartet auf Bestätigung</text>
+  <text x="20" y="48" class="t-m">Dieser Server gleicht seine Dateien auf den zweiten Server ab.</text>
+  <text x="20" y="66">Letzter Abgleich: <tspan class="t-b">vor 20 s</tspan> · Dauer 3 s</text>
+  <rect class="win" x="20" y="76" width="600" height="70" rx="6"/>
+  <text x="32" y="94" class="t-b">uploads</text><text x="110" y="94" class="t-m">vor 20 s</text>
+  <text x="32" y="110" class="t-b">chat_files</text><text x="110" y="110" class="t-m">vor 20 s</text>
+  <text x="32" y="126" class="t-b">etc-pdh</text><text x="110" y="126" class="t-m">vor 20 s</text>
+  <text x="330" y="94" class="t-b">nginx</text><text x="410" y="94" class="t-m">vor 20 s</text><text x="470" y="94" class="t-b">wartet auf Bestätigung</text>
+  <text x="330" y="110" class="t-b">nextcloud-data</text><text x="430" y="110" class="t-m">vor 20 s</text>
+  <text x="330" y="126" class="t-b">nextcloud-app</text><text x="430" y="126" class="t-m">vor 20 s</text>
+  <rect class="rd" x="20" y="154" width="600" height="24" rx="6"/><text x="30" y="170">Wartet auf Bestätigung, auf dem Partner wird nichts gelöscht (1): nginx</text>
+  <text x="20" y="196">Papierkorb: <tspan class="t-b">1,2 GB</tspan> – Gelöschtes bleibt dort 14 Tage.</text>
+  <rect class="acl" x="20" y="206" width="120" height="22" rx="4"/><text x="80" y="221" class="t-c">Jetzt abgleichen</text>
+  <rect class="win" x="150" y="206" width="180" height="22" rx="4"/><text x="240" y="221" class="t-c">Dieser Server ist vollständig</text>
+  <rect class="win" x="340" y="206" width="120" height="22" rx="4"/><text x="400" y="221" class="t-c">Papierkorb leeren</text>
+  <text x="20" y="250" class="t-m">Darunter die Einstellungen: Spiegelung an/aus, Nextcloud mitnehmen, Abstand, Papierkorb, Alarm, Frist, Bandbreite, Nextcloud-Ordner.</text>
+</svg>
+<figcaption>Die Karte „Datei-Spiegelung“ am aktiven Server. Der Kopf zeigt den Zustand: aus, Erstabgleich, Abgleich läuft, wartet auf Bestätigung, gestört, bereit – am passiven Server „empfängt“.</figcaption>
 </figure>
 {{end}}
 
