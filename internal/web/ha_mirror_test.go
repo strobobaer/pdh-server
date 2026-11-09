@@ -113,13 +113,13 @@ func TestHASettingsKeepMirror(t *testing.T) {
 func toJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
 
 func TestHAMirrorSettingsSaved(t *testing.T) {
-	data := "/srv/nextcloud/data"
+	data, app := "/srv/nextcloud/data", "/var/www/nextcloud" // verschieden (Gesamtprüfung #3)
 	f := &fakeHA{status: mirrorStatusJSON(t, "aktiv", nil, map[string]any{}), events: `[]`}
 	startFakeHA(t, f)
 	h := &Handler{}
 	ctx := context.Background()
 	form := url.Values{"mirror_on": {"0", "1"}, "mirror_nextcloud": {"0", "1"}, "mirror_every_s": {"120"}, "mirror_trash_days": {"21"},
-		"mirror_alarm_min": {"10"}, "mirror_final_s": {"90"}, "mirror_bwlimit_kb": {"2048"}, "nc_data_dir": {data}, "nc_app_dir": {data}}
+		"mirror_alarm_min": {"10"}, "mirror_final_s": {"90"}, "mirror_bwlimit_kb": {"2048"}, "nc_data_dir": {data}, "nc_app_dir": {app}}
 	msg, err := h.haDoMirror(ctx, form)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +129,7 @@ func TestHAMirrorSettingsSaved(t *testing.T) {
 	}
 	got, targets := mirrorSavedSettings(t, f)
 	for k, want := range map[string]any{"mirror_on": true, "mirror_nextcloud": true, "mirror_every_s": 120, "mirror_trash_days": 21, "mirror_alarm_min": 10,
-		"mirror_final_s": 90, "mirror_bwlimit_kb": 2048, "nc_data_dir": data, "nc_app_dir": data,
+		"mirror_final_s": 90, "mirror_bwlimit_kb": 2048, "nc_data_dir": data, "nc_app_dir": app,
 		// alles andere bleibt
 		"tick_s": 1, "fence_s": 10, "takeover_trio_s": 30, "takeover_duo_s": 60, "cooldown_min": 15, "max_per_day": 3, "async_after_s": 10, "lag_limit_mb": 16, "slot_keep_gb": 20, "auto_mode": "observe"} {
 		if toJSON(got[k]) != toJSON(want) {
